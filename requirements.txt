@@ -1,0 +1,42 @@
+# Neural Fights - Requirements
+# =============================
+# Simulador de combate 2D com IA avançada
+# Python 3.10+ recomendado
+
+# === CORE DEPENDENCIES ===
+
+# Interface gráfica do simulador de combate
+pygame>=2.5.0
+
+# Interface gráfica do menu principal (Tkinter já vem com Python)
+# tkinter (built-in)
+
+# Interface moderna para o modo torneio
+customtkinter>=5.2.0
+
+# === OPTIONAL DEPENDENCIES ===
+
+# Para desenvolvimento e testes
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
+
+# Para análise de performance (opcional)
+# line_profiler>=4.0.0
+# memory_profiler>=0.60.0
+
+# === NOTES ===
+# 
+# Instalação:
+#   pip install -r requirements.txt
+#
+# Ou instalação mínima:
+#   pip install pygame customtkinter
+#
+# Executar o jogo:
+#   python run.py
+#
+# Executar modo torneio:
+#   python run_tournament.py
+#
+# Gerar nova database de armas/personagens:
+#   python -c "from tools.gerador_database import gerar_database_completa; gerar_database_completa()"
