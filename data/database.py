@@ -5,15 +5,17 @@ Funções de persistência de dados (JSON).
 import json
 import os
 import sys
+import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models import Personagem, Arma
 
 # Caminhos dos arquivos de dados - agora dentro de data/
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(DATA_DIR)
 ARQUIVO_CHARS = os.path.join(DATA_DIR, "personagens.json")
 ARQUIVO_ARMAS = os.path.join(DATA_DIR, "armas.json")
-ARQUIVO_MATCH = os.path.join(DATA_DIR, "match_config.json")
+ARQUIVO_MATCH = os.path.join(PROJECT_DIR, "match_config.json")
 
 def carregar_json(arquivo):
     if not os.path.exists(arquivo): return []
@@ -23,8 +25,50 @@ def carregar_json(arquivo):
     except: return []
 
 def salvar_json(arquivo, dados):
-    with open(arquivo, "w", encoding="utf-8") as f:
-        json.dump(dados, f, indent=4, ensure_ascii=False)
+    """Salva JSON atomicamente, preservando o arquivo anterior em caso de falha."""
+    destino = os.path.abspath(arquivo)
+    diretorio = os.path.dirname(destino)
+    temporario = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=diretorio,
+            prefix=f".{os.path.basename(destino)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
+            temporario = f.name
+            json.dump(dados, f, indent=4, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.replace(temporario, destino)
+        temporario = None
+    finally:
+        if temporario and os.path.exists(temporario):
+            os.unlink(temporario)
+
+
+def carregar_match_config():
+    """Carrega a configuração compartilhada por todos os pontos de entrada."""
+    config = carregar_json(ARQUIVO_MATCH)
+    if not isinstance(config, dict):
+        raise ValueError(f"Configuração de luta inválida: {ARQUIVO_MATCH}")
+    return config
+
+
+def salvar_match_config(config, preservar_existente=True):
+    """Atualiza a configuração canônica sem apagar opções de outros fluxos."""
+    if not isinstance(config, dict):
+        raise TypeError("A configuração de luta precisa ser um dicionário")
+
+    dados_finais = {}
+    if preservar_existente and os.path.exists(ARQUIVO_MATCH):
+        dados_finais.update(carregar_match_config())
+    dados_finais.update(config)
+    salvar_json(ARQUIVO_MATCH, dados_finais)
 
 def carregar_armas():
     raw = carregar_json(ARQUIVO_ARMAS)

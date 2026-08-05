@@ -4,11 +4,11 @@ Tela de seleção de lutadores para batalha
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
-import json
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from data.database import salvar_match_config
 from simulation import simulacao
 from ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS,
@@ -347,8 +347,7 @@ class TelaLuta(tk.Frame):
         }
         
         try:
-            with open("match_config.json", "w", encoding="utf-8") as f:
-                json.dump(match_data, f, indent=4, ensure_ascii=False)
+            salvar_match_config(match_data)
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao salvar: {e}")
             return

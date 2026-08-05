@@ -8,10 +8,13 @@ from data.database import (
     salvar_json,
     carregar_armas,
     carregar_personagens,
+    carregar_match_config,
     salvar_lista_armas,
     salvar_lista_chars,
+    salvar_match_config,
     ARQUIVO_CHARS,
     ARQUIVO_ARMAS,
+    ARQUIVO_MATCH,
 )
 
 # Re-exporta o módulo database inteiro para compatibilidade
@@ -23,8 +26,11 @@ __all__ = [
     'salvar_json',
     'carregar_armas',
     'carregar_personagens',
+    'carregar_match_config',
     'salvar_lista_armas',
     'salvar_lista_chars',
+    'salvar_match_config',
     'ARQUIVO_CHARS',
     'ARQUIVO_ARMAS',
+    'ARQUIVO_MATCH',
 ]

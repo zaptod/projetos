@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.characters import Personagem
 from models.weapons import Arma
+from data import database
 from data.database import carregar_armas, carregar_personagens, carregar_arma_por_nome
 
 
@@ -491,12 +492,6 @@ class TournamentRunner:
     
     def setup_match_config(self, fighter1_name: str, fighter2_name: str, cenario: str = "Arena"):
         """Configura o match_config.json para a próxima luta"""
-        import json
-        import os
-        
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_path = os.path.join(base_dir, "match_config.json")
-        
         config = {
             "p1_nome": fighter1_name,
             "p2_nome": fighter2_name,
@@ -504,10 +499,9 @@ class TournamentRunner:
             "portrait_mode": False
         }
         
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=4, ensure_ascii=False)
+        database.salvar_match_config(config)
         
-        return config_path
+        return database.ARQUIVO_MATCH
     
     def launch_simulation(self):
         """Lança o simulador Pygame"""

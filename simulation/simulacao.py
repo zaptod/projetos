@@ -87,10 +87,9 @@ class Simulador:
     def _check_portrait_mode(self) -> bool:
         """Verifica se o modo retrato está ativado no config"""
         try:
-            with open("match_config.json", "r", encoding="utf-8") as f:
-                config = json.load(f)
-                return config.get("portrait_mode", False)
-        except:
+            config = database.carregar_match_config()
+            return bool(config.get("portrait_mode", False))
+        except (OSError, ValueError, TypeError):
             return False
 
     def recarregar_tudo(self):
@@ -172,16 +171,24 @@ class Simulador:
             traceback.print_exc()
 
     def carregar_luta_dados(self):
-        try:
-            with open("match_config.json", "r", encoding="utf-8") as f: config = json.load(f)
-        except: return None, None, "Arena", False
+        config = database.carregar_match_config()
+        campos_ausentes = [
+            campo for campo in ("p1_nome", "p2_nome") if not config.get(campo)
+        ]
+        if campos_ausentes:
+            raise ValueError(
+                "Configuração de luta sem campo(s): " + ", ".join(campos_ausentes)
+            )
+
         todos = database.carregar_personagens()
         armas = database.carregar_armas()
+
         def montar(nome):
             p = next((x for x in todos if x.nome == nome), None)
+            if p is None:
+                raise ValueError(f"Personagem não encontrado na configuração: {nome}")
             # Always set arma_obj, even if None
-            if p:
-                p.arma_obj = next((a for a in armas if a.nome == p.nome_arma), None) if p.nome_arma else None
+            p.arma_obj = next((a for a in armas if a.nome == p.nome_arma), None) if p.nome_arma else None
             return p
         l1 = Lutador(montar(config["p1_nome"]), 5.0, 8.0)
         l2 = Lutador(montar(config["p2_nome"]), 19.0, 8.0)
