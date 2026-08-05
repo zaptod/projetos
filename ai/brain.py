@@ -828,16 +828,6 @@ class AIBrain:
         if self._processar_reacao_oponente(dt, distancia, inimigo):
             return
         
-        # === SISTEMA DE DESVIO INTELIGENTE v8.0 ===
-        if self._processar_desvio_inteligente(dt, distancia, inimigo):
-            return
-        
-        if self._processar_quirks(dt, distancia, inimigo):
-            return
-        
-        if self._processar_reacoes(dt, distancia, inimigo):
-            return
-        
         # === PRIORIZAÇÃO DE SKILLS PARA MAGOS ===
         # Se o personagem é um caster (role de mago), prioriza skills sobre ataques básicos
         usa_skills_primeiro = False
@@ -954,7 +944,7 @@ class AIBrain:
             tipo_desvio = "ATAQUE_FISICO"
             urgencia = 1.0 - (distancia / 3.5)
         
-        # 2. Projétil vindo
+        # 2. Projéteis vindo
         projetil_info = self._analisar_projeteis_vindo(inimigo)
         if projetil_info["vindo"]:
             desvio_necessario = True
@@ -2182,6 +2172,8 @@ class AIBrain:
         # v2.0: inclui lógica contra Mangual e Adagas Gêmeas reformulados
         tipo_ini = perc.get("arma_inimigo_tipo", "")
         arma_inimigo_estilo = ""
+        # Define arma_inimigo from inimigo object
+        arma_inimigo = getattr(getattr(inimigo, 'dados', None), 'arma_obj', None)
         if arma_inimigo and hasattr(arma_inimigo, 'estilo'):
             arma_inimigo_estilo = arma_inimigo.estilo
         
@@ -2189,8 +2181,11 @@ class AIBrain:
         if tipo_ini == "Dupla" and arma_inimigo_estilo == "Adagas Gêmeas":
             # Adagas Gêmeas são letais de perto mas frágeis
             # Manter distância e punir a aproximação
+            arma_personagem = getattr(getattr(self.parent, 'dados', None), 'arma_obj', None)
+            alcance_efetivo = getattr(arma_personagem, 'distancia', 3.0) if arma_personagem else 3.0
             dist_segura = alcance_efetivo * 1.2  # Fica além do alcance das adagas
-            if distancia < dist_segura and roll < 0.45:
+            roll_adagas = random.random()
+            if distancia < dist_segura and roll_adagas < 0.45:
                 self.acao_atual = random.choice(["RECUAR", "ESQUIVAR", "CIRCULAR"])
         
         if tipo_ini == "Corrente":
@@ -2907,7 +2902,7 @@ class AIBrain:
             p.vel_z = random.uniform(10.0, 14.0)
             self.cd_pulo = random.uniform(0.8, 2.0)
             
-            if self.arquetipo in ["ASSASSINO", "NINJA", "BERSERKER", "ACROBATA"]:
+            if self.arquetipo in ["ASSASSINO", "NINJA", "BERSERKER", "ACROBATA", "SOMBRA"]:
                 self.acao_atual = "ATAQUE_AEREO"
             else:
                 self.acao_atual = "RECUAR"
@@ -3196,7 +3191,7 @@ class AIBrain:
             else:
                 self.acao_atual = "PRESSIONAR"
         elif tipo == "TRAP":
-            # Após colocar trap, tentar atrair inimigo
+            # Após colocar trap, tenta atrair inimigo
             self.acao_atual = "RECUAR"
         elif tipo == "TRANSFORM":
             # Transformado = agressivo
@@ -3215,7 +3210,7 @@ class AIBrain:
                 self.acao_atual = "PRESSIONAR"
         elif tipo in ["PROJETIL", "BEAM"]:
             # Skills de distância, manter range
-            if self.estilo_luta in ["KITE", "RANGED"]:
+            if self.estilo_luta in ["KITE", "RANGED", "HIT_RUN"]:
                 self.acao_atual = "RECUAR"
             else:
                 self.acao_atual = "CIRCULAR"
@@ -3426,11 +3421,9 @@ class AIBrain:
             data = skill["data"]
             custo = skill.get("custo", data.get("custo", 15))
             
-            # Verifica mana
             if p.mana < custo:
                 continue
             
-            # Verifica cooldown
             nome = skill["nome"]
             if nome in p.cd_skills and p.cd_skills[nome] > 0:
                 continue
@@ -3763,7 +3756,7 @@ class AIBrain:
                         self.acao_atual = random.choice(["MATAR", "ESMAGAR", "MATAR"])
                     elif em_combo:
                         if roll < 0.70:
-                            self.acao_atual = random.choice(["ESMAGAR", "MATAR"])
+                            self.acao_atual = random.choice(["MATAR", "ATAQUE_RAPIDO", "ESMAGAR"])
                         else:
                             # Pausa tática: muda ângulo antes do próximo slam
                             self.acao_atual = random.choice(["FLANQUEAR", "CIRCULAR"])
@@ -3771,7 +3764,7 @@ class AIBrain:
                             self.parent.mangual_slam_combo = min(5, slam_combo + 1)
                     else:
                         if roll < 0.55:
-                            self.acao_atual = random.choice(["ESMAGAR", "MATAR", "ESMAGAR"])
+                            self.acao_atual = random.choice(["MATAR", "ESMAGAR", "COMBATE"])
                         elif roll < 0.80:
                             self.acao_atual = random.choice(["FLANQUEAR", "ESMAGAR"])
                         else:
@@ -3802,9 +3795,14 @@ class AIBrain:
                 elif distancia < alcance_ideal:
                     self.acao_atual = random.choice(["MATAR", "ESMAGAR", "FLANQUEAR"])
                 elif no_alcance:
-                    self.acao_atual = random.choice(["MATAR", "CIRCULAR", "COMBATE"])
+                    if inimigo_hp_pct < 0.3:
+                        self.acao_atual = "MATAR"
+                    elif roll < 0.7:
+                        self.acao_atual = random.choice(["MATAR", "ATAQUE_RAPIDO", "MATAR"])
+                    else:
+                        self.acao_atual = random.choice(["FLANQUEAR", "CIRCULAR"])
                 else:
-                    self.acao_atual = "APROXIMAR"
+                    self.acao_atual = random.choice(["APROXIMAR", "PRESSIONAR"])
             return
         
         # ── ADAGAS GÊMEAS (Dupla) - combo agressivo ──
@@ -3994,7 +3992,7 @@ class AIBrain:
         """Aplica modificadores baseados no momentum da luta"""
         # Momentum positivo = mais agressivo
         if self.momentum > 0.3:
-            if self.acao_atual in ["CIRCULAR", "RECUAR", "BLOQUEAR"]:
+            if self.acao_atual in ["CIRCULAR", "RECUAR", "BLOQUEAR", "FLANQUEAR"]:
                 if random.random() < self.momentum * 0.5:
                     self.acao_atual = random.choice(["PRESSIONAR", "MATAR", "APROXIMAR"])
         

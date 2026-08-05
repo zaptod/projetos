@@ -233,6 +233,7 @@ class Tournament:
         
         # Processa BYEs da primeira rodada
         self._process_byes()
+        self._advance_to_next_match()
         
         return True
     
@@ -252,11 +253,13 @@ class Tournament:
                 match.loser_name = match.fighter1_name
                 match.completed = True
                 match.ko_type = "BYE"
+                self._advance_winner(match)
             elif match.fighter2_name.startswith("BYE"):
                 match.winner_name = match.fighter1_name
                 match.loser_name = match.fighter2_name
                 match.completed = True
                 match.ko_type = "BYE"
+                self._advance_winner(match)
     
     def record_match_result(self, winner_name: str, duration: float = 0.0, 
                            ko_type: str = "KO", fight_log: List[str] = None):

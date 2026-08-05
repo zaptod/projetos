@@ -19,28 +19,28 @@ sys.path.insert(0, PROJECT_DIR)
 def mostrar_ajuda():
     """Mostra informacoes de uso"""
     print("""
-╔══════════════════════════════════════════════════════════════╗
-║                    NEURAL FIGHTS v2.0                        ║
-╠══════════════════════════════════════════════════════════════╣
-║  Uso:                                                        ║
-║    python run.py           Inicia o launcher (UI)            ║
-║    python run.py --sim     Simulacao automatica (IA vs IA)   ║
-║    python run.py --test    Modo de teste manual              ║
-║    python run.py --help    Mostra esta ajuda                 ║
-╠══════════════════════════════════════════════════════════════╣
-║  Modo de Teste Manual (--test):                              ║
-║    WASD/Setas  = Mover                                       ║
-║    SPACE       = Pular                                       ║
-║    J/Z         = Atacar                                      ║
-║    1-5         = Usar Skills                                 ║
-║    T           = Trocar controle (P1/P2)                     ║
-║    R           = Resetar luta                                ║
-║    F1          = Toggle Debug                                ║
-║    F2          = Vida Infinita                               ║
-║    F3          = Mana Infinita                               ║
-║    F4          = Cooldowns Zero                              ║
-║    ESC         = Sair                                        ║
-╚══════════════════════════════════════════════════════════════╝
+----------------------------------------------------------------
+                    NEURAL FIGHTS v12.0
+----------------------------------------------------------------
+  Uso:
+    python run.py           Inicia o launcher (UI)
+    python run.py --sim     Simulacao automatica (IA vs IA)
+    python run.py --test    Modo de teste manual
+    python run.py --help    Mostra esta ajuda
+----------------------------------------------------------------
+  Modo de Teste Manual (--test):
+    WASD/Setas  = Mover
+    SPACE       = Pular
+    J/Z         = Atacar
+    1-5         = Usar Skills
+    T           = Trocar controle (P1/P2)
+    R           = Resetar luta
+    F1          = Toggle Debug
+    F2          = Vida Infinita
+    F3          = Mana Infinita
+    F4          = Cooldowns Zero
+    ESC         = Sair
+----------------------------------------------------------------
     """)
 
 def main():
@@ -52,7 +52,7 @@ def main():
             # Executa simulacao diretamente
             from simulation import Simulador
             sim = Simulador()
-            sim.executar()
+            sim.run()
         
         elif arg == '--test':
             # Modo de teste manual

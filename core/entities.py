@@ -60,7 +60,7 @@ class Lutador:
         self.cd_skills = {}
         
         # Carrega skills da arma
-        arma = self.dados.arma_obj
+        arma = getattr(self.dados, 'arma_obj', None)
         if arma:
             habilidades = getattr(arma, 'habilidades', [])
             if habilidades:
@@ -1513,7 +1513,7 @@ class Lutador:
 
     def get_pos_ponteira_arma(self):
         """Retorna posição da ponta da arma"""
-        arma = self.dados.arma_obj
+        arma = getattr(self.dados, 'arma_obj', None)
         if not arma:
             return None
         
@@ -1548,7 +1548,7 @@ class Lutador:
 
     def get_escudo_info(self):
         """Retorna info do escudo orbital"""
-        arma = self.dados.arma_obj
+        arma = getattr(self.dados, 'arma_obj', None)
         if not arma or "Orbital" not in arma.tipo:
             return None
         cx, cy = int(self.pos[0] * PPM), int(self.pos[1] * PPM)

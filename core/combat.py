@@ -619,7 +619,12 @@ class AreaEffect:
                 self.timer_onda = 0
                 self.onda_atual += 1
                 self.alvos_atingidos.clear()  # Nova onda = novo dano
-                resultados.append({"nova_onda": True})
+                resultados.append({
+                    "nova_onda": True,
+                    "x": self.x,
+                    "y": self.y,
+                    "raio": self.raio * 1.5,
+                })
         
         # === METEOROS ALEATÓRIOS ===
         if self.meteoros > 0 and self.meteoros_spawned < self.meteoros:

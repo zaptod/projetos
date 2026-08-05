@@ -179,7 +179,9 @@ class Simulador:
         armas = database.carregar_armas()
         def montar(nome):
             p = next((x for x in todos if x.nome == nome), None)
-            if p and p.nome_arma: p.arma_obj = next((a for a in armas if a.nome == p.nome_arma), None)
+            # Always set arma_obj, even if None
+            if p:
+                p.arma_obj = next((a for a in armas if a.nome == p.nome_arma), None) if p.nome_arma else None
             return p
         l1 = Lutador(montar(config["p1_nome"]), 5.0, 8.0)
         l2 = Lutador(montar(config["p2_nome"]), 19.0, 8.0)
@@ -515,7 +517,7 @@ class Simulador:
                 if hasattr(proj, 'raio_explosao') and proj.raio_explosao > 0:
                     from core.combat import AreaEffect
                     explosao = AreaEffect(proj.nome + " Explosão", proj.x, proj.y, proj.dono)
-                    explosao.raio_max = proj.raio_explosao
+                    explosao.raio = proj.raio_explosao
                     explosao.dano = proj.dano * 0.5  # Dano de área é 50% do projétil
                     explosao.tipo_efeito = tipo_efeito
                     if hasattr(self, 'areas'):
@@ -620,7 +622,7 @@ class Simulador:
                             # Cria nova onda expandindo
                             from core.combat import AreaEffect
                             nova = AreaEffect(area.nome + " Onda", res["x"], res["y"], area.dono)
-                            nova.raio_max = res.get("raio_max", area.raio_max * 1.5)
+                            nova.raio = res.get("raio", area.raio * 1.5)
                             nova.dano = area.dano * 0.7
                             nova.tipo_efeito = area.tipo_efeito
                             novas_areas.append(nova)
@@ -629,7 +631,7 @@ class Simulador:
                             # Cria meteoro caindo
                             from core.combat import AreaEffect
                             meteoro = AreaEffect("Meteoro", res["x"], res["y"], area.dono)
-                            meteoro.raio_max = res.get("raio", 3.0)
+                            meteoro.raio = res.get("raio", 3.0)
                             meteoro.dano = res.get("dano", 30)
                             meteoro.tipo_efeito = "FOGO"
                             novas_areas.append(meteoro)
@@ -2281,8 +2283,7 @@ class Simulador:
                         # Pulso de brilho
                         pulso = 0.7 + 0.3 * math.sin(orbe.pulso)
                         glow_alpha = int(100 * pulso)
-                        cor_glow = (*orbe.cor[:3], glow_alpha)
-                        pygame.draw.circle(s, cor_glow, (glow_size, glow_size), glow_size)
+                        pygame.draw.circle(s, (*orbe.cor, glow_alpha), (glow_size, glow_size), glow_size)
                         self.tela.blit(s, (ox - glow_size, oy - glow_size))
                     
                     # Orbe principal (núcleo brilhante)

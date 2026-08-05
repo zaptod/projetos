@@ -1,3 +1,86 @@
 [
- 
+    {
+        "nome": "Lohan",
+        "tamanho": 1.9,
+        "forca": 7.0,
+        "mana": 3.0,
+        "nome_arma": "Lohan`s weapon",
+        "cor_r": 40,
+        "cor_g": 40,
+        "cor_b": 50,
+        "classe": "Criomante (Gelo)",
+        "personalidade": "Protetor"
+    },
+    {
+        "nome": "Molestador da meia noite",
+        "tamanho": 1.2,
+        "forca": 7.5,
+        "mana": 1.0,
+        "nome_arma": "Molestater 2000",
+        "cor_r": 220,
+        "cor_g": 180,
+        "cor_b": 50,
+        "classe": "Berserker (Fúria)",
+        "personalidade": "Masoquista"
+    },
+    {
+        "nome": "Virian lewin",
+        "tamanho": 1.75,
+        "forca": 7.0,
+        "mana": 3.0,
+        "nome_arma": "tessia",
+        "cor_r": 255,
+        "cor_g": 255,
+        "cor_b": 255,
+        "classe": "Assassino (Crítico)",
+        "personalidade": "Acrobático"
+    },
+    {
+        "nome": "negritude",
+        "tamanho": 1.8,
+        "forca": 6.0,
+        "mana": 4.0,
+        "nome_arma": "corrente do preto",
+        "cor_r": 40,
+        "cor_g": 40,
+        "cor_b": 50,
+        "classe": "Duelista (Precisão)",
+        "personalidade": "Agressivo"
+    },
+    {
+        "nome": "mariana simoes",
+        "tamanho": 1.68,
+        "forca": 7.0,
+        "mana": 7.0,
+        "nome_arma": "arco",
+        "cor_r": 230,
+        "cor_g": 120,
+        "cor_b": 30,
+        "classe": "Druida (Natureza)",
+        "personalidade": "Perseguidor"
+    },
+    {
+        "nome": "toji",
+        "tamanho": 1.5,
+        "forca": 9.0,
+        "mana": 1.0,
+        "nome_arma": "tessia",
+        "cor_r": 200,
+        "cor_g": 50,
+        "cor_b": 50,
+        "classe": "Assassino (Crítico)",
+        "personalidade": "Sombrio"
+    },
+    {
+        "nome": "Andre yung",
+        "tamanho": 1.0,
+        "forca": 3.5,
+        "mana": 6.5,
+        "nome_arma": "tessia",
+        "cor_r": 83,
+        "cor_g": 188,
+        "cor_b": 104,
+        "classe": "Feiticeiro (Caos)",
+        "personalidade": "Tático"
+    }
 ]
