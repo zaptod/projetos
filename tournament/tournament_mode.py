@@ -537,6 +537,7 @@ class TournamentRunner:
             "p1_nome": fighter1_name,
             "p2_nome": fighter2_name,
             "cenario": cenario,
+            "best_of": 1,
             "portrait_mode": False
         }
         

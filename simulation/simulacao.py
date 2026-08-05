@@ -21,9 +21,15 @@ from core.hitbox import sistema_hitbox, verificar_hit, get_debug_visual, atualiz
 from core.arena import Arena, ARENAS, get_arena, set_arena  # v9.0 Sistema de Arena
 from ai import CombatChoreographer  # Sistema de Coreografia v5.0
 from core.game_feel import GameFeelManager, HitStopManager  # Sistema de Game Feel v8.0
+from core.match_series import BestOfSeries
 
 class Simulador:
     def __init__(self):
+        self.match_config = database.carregar_match_config()
+        best_of = self.match_config.get("best_of", 1)
+        if isinstance(best_of, str) and best_of in {"1", "3", "5"}:
+            best_of = int(best_of)
+        self.best_of_series = BestOfSeries(best_of)
         pygame.init()
         
         # Carrega config primeiro para saber o modo de tela
@@ -65,6 +71,11 @@ class Simulador:
         self.slow_mo_timer = 0.0
         self.hit_stop_timer = 0.0 
         self.vencedor = None
+        self.vencedor_round_side = None
+        self.vencedor_serie_side = None
+        self.empate_round = False
+        self.round_finalizado = False
+        self._slow_mo_ended = False
         self.rastros = {} 
         self.vida_visual_p1 = 100; self.vida_visual_p2 = 100
         
@@ -86,7 +97,9 @@ class Simulador:
     def _check_portrait_mode(self) -> bool:
         """Verifica se o modo retrato está ativado no config"""
         try:
-            config = database.carregar_match_config()
+            config = getattr(self, "match_config", None)
+            if config is None:
+                config = database.carregar_match_config()
             return bool(config.get("portrait_mode", False))
         except (OSError, ValueError, TypeError):
             return False
@@ -102,6 +115,9 @@ class Simulador:
             self.summons = []; self.traps = []; self.beams = []; self.areas = []
             self.time_scale = 1.0; self.slow_mo_timer = 0.0; self.hit_stop_timer = 0.0
             self.vencedor = None; self.paused = False; self.rastros = {self.p1: [], self.p2: []}
+            self.vencedor_round_side = None; self.empate_round = False; self.round_finalizado = False
+            self.vencedor_serie_side = self.best_of_series.winner
+            self._slow_mo_ended = False
             if self.p1: self.vida_visual_p1 = self.p1.vida_max
             if self.p2: self.vida_visual_p2 = self.p2.vida_max
             
@@ -170,7 +186,9 @@ class Simulador:
             traceback.print_exc()
 
     def carregar_luta_dados(self):
-        config = database.carregar_match_config()
+        config = getattr(self, "match_config", None)
+        if config is None:
+            config = database.carregar_match_config()
         campos_ausentes = [
             campo for campo in ("p1_nome", "p2_nome") if not config.get(campo)
         ]
@@ -195,6 +213,62 @@ class Simulador:
         portrait_mode = config.get("portrait_mode", False)
         return l1, l2, cenario, portrait_mode
 
+    def _nome_do_slot(self, slot):
+        lutador = self.p1 if slot == "p1" else self.p2
+        return lutador.dados.nome
+
+    def _finalizar_round(self, winner_slot=None):
+        """Fecha e contabiliza um round uma única vez."""
+        if not hasattr(self, "best_of_series"):
+            self.best_of_series = BestOfSeries(1)
+        if getattr(self, "round_finalizado", False):
+            return False
+
+        if winner_slot is None:
+            registrado = self.best_of_series.record_draw()
+        else:
+            registrado = self.best_of_series.record_win(winner_slot)
+
+        if not registrado:
+            return False
+
+        self.round_finalizado = True
+        self.vencedor_round_side = winner_slot
+        self.vencedor_serie_side = self.best_of_series.winner
+        self.empate_round = winner_slot is None
+        self.vencedor = (
+            "EMPATE" if winner_slot is None else self._nome_do_slot(winner_slot)
+        )
+        self.ativar_slow_motion()
+        return True
+
+    def _detectar_resultado_round(self):
+        """Detecta o resultado pelo estado real dos dois lutadores."""
+        if getattr(self, "round_finalizado", False):
+            return False
+
+        p1_morto = bool(getattr(self.p1, "morto", False))
+        p2_morto = bool(getattr(self.p2, "morto", False))
+
+        if not p1_morto and not p2_morto:
+            return False
+        if p1_morto and p2_morto:
+            return self._finalizar_round()
+        return self._finalizar_round("p2" if p1_morto else "p1")
+
+    def _reiniciar_round_ou_serie(self):
+        """R avança o round ou inicia uma nova série após o campeão."""
+        if self.best_of_series.finished:
+            self.best_of_series.reset_series()
+        else:
+            self.best_of_series.reset_round()
+        self.recarregar_tudo()
+
+    def _atualizar_lutadores(self, dt):
+        """Atualiza os dois slots antes de qualquer decisão sobre o round."""
+        self.p1.update(dt, self.p2)
+        self.p2.update(dt, self.p1)
+
     def processar_inputs(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT: self.rodando = False
@@ -204,7 +278,7 @@ class Simulador:
                     self.rodando = False 
                 if event.key == pygame.K_r: 
                     if self.audio: self.audio.play_ui("confirm")
-                    self.recarregar_tudo()
+                    self._reiniciar_round_ou_serie()
                 if event.key == pygame.K_SPACE: 
                     if self.audio: self.audio.play_ui("select")
                     self.paused = not self.paused
@@ -243,7 +317,59 @@ class Simulador:
         if keys[pygame.K_a] or keys[pygame.K_LEFT]: self.cam.x -= move_speed; self.cam.modo = "MANUAL"
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]: self.cam.x += move_speed; self.cam.modo = "MANUAL"
 
+    def _atualizar_visuais_round_finalizado(self, dt):
+        """Mantém o impacto final animado sem reabrir dano, IA ou física."""
+        if getattr(self, "cam", None):
+            self.cam.atualizar(dt, self.p1, self.p2)
+        atualizar_debug(dt)
+
+        if getattr(self, "paused", False):
+            return
+
+        for texto in getattr(self, "textos", []):
+            texto.update(dt)
+        self.textos = [texto for texto in getattr(self, "textos", []) if texto.vida > 0]
+
+        for onda in getattr(self, "shockwaves", []):
+            onda.update(dt)
+        self.shockwaves = [onda for onda in getattr(self, "shockwaves", []) if onda.vida > 0]
+
+        for nome_lista in (
+            "impact_flashes", "magic_clashes", "block_effects",
+            "dash_trails", "hit_sparks",
+        ):
+            efeitos = getattr(self, nome_lista, [])
+            for efeito in efeitos:
+                efeito.update(dt)
+            setattr(self, nome_lista, [efeito for efeito in efeitos if efeito.vida > 0])
+
+        if getattr(self, "magic_vfx", None):
+            self.magic_vfx.update(dt)
+        if getattr(self, "movement_anims", None):
+            self.movement_anims.update(dt)
+        if getattr(self, "attack_anims", None):
+            self.attack_anims.update(dt)
+
+        if not hasattr(self, "decals"):
+            self.decals = []
+        for particula in getattr(self, "particulas", [])[:]:
+            particula.atualizar(dt)
+            if particula.vida <= 0:
+                if particula.cor == VERMELHO_SANGUE and random.random() < 0.3:
+                    self.decals.append(
+                        Decal(particula.x, particula.y, particula.tamanho * 2, SANGUE_ESCURO)
+                    )
+                self.particulas.remove(particula)
+        if len(getattr(self, "decals", [])) > 100:
+            self.decals.pop(0)
+
     def update(self, dt):
+        if getattr(self, "round_finalizado", False):
+            self._atualizar_visuais_round_finalizado(dt)
+            return
+        if self._detectar_resultado_round():
+            return
+
         self.cam.atualizar(dt, self.p1, self.p2)
         # Atualiza sistema de debug de hitbox
         atualizar_debug(dt)
@@ -490,9 +616,16 @@ class Simulador:
                 else:
                     proj.ativo = False
                 
-                if alvo.tomar_dano(dano_final, dx/dist, dy/dist, tipo_efeito):
+                morreu = alvo.tomar_dano(
+                    dano_final,
+                    dx/dist,
+                    dy/dist,
+                    tipo_efeito,
+                    atacante=proj.dono,
+                )
+                dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano_final)
+                if morreu:
                     self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
-                    self.ativar_slow_motion(); self.vencedor = proj.dono.dados.nome
                 else:
                     # Texto especial para execução
                     if bonus_condicao >= 5.0:
@@ -503,21 +636,22 @@ class Simulador:
                         cor_txt = proj.cor if hasattr(proj, 'cor') else BRANCO
                     else:
                         cor_txt = self._get_cor_efeito(tipo_efeito)
-                    self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_final), cor_txt))
+                    self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor_txt))
                     
                     # Partículas baseadas no efeito
                     self._spawn_particulas_efeito(alvo.pos[0]*PPM, alvo.pos[1]*PPM, tipo_efeito)
                 
                 # === v11.0: LIFESTEAL ===
                 if hasattr(proj, 'lifesteal') and proj.lifesteal > 0:
-                    cura = dano_final * proj.lifesteal
+                    cura = dano_aplicado * proj.lifesteal
                     proj.dono.vida = min(proj.dono.vida_max, proj.dono.vida + cura)
                     self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura)}", (200, 100, 200), 16))
                 
                 # Efeito DRENAR recupera vida do atacante
                 elif tipo_efeito == "DRENAR":
-                    proj.dono.vida = min(proj.dono.vida_max, proj.dono.vida + dano_final * 0.15)
-                    self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(dano_final*0.15)}", (100, 255, 150), 16))
+                    cura = dano_aplicado * 0.15
+                    proj.dono.vida = min(proj.dono.vida_max, proj.dono.vida + cura)
+                    self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura)}", (100, 255, 150), 16))
                 
                 # === v11.0: EXPLOSÃO NO IMPACTO ===
                 if hasattr(proj, 'raio_explosao') and proj.raio_explosao > 0:
@@ -537,7 +671,7 @@ class Simulador:
                     if getattr(alvo, 'congelado', False):
                         alvo.congelado = False
                         # Dano bonus por quebrar gelo
-                        alvo.tomar_dano(dano_final * 0.5, 0, 0, "GELO")
+                        alvo.tomar_dano(dano_final * 0.5, 0, 0, "GELO", atacante=proj.dono)
                         self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 60, "SHATTER!", (180, 220, 255), 24))
                 
                 # === v11.0: CHAIN LIGHTNING ===
@@ -594,13 +728,19 @@ class Simulador:
                             # Aplica dano mágico
                             dano_final = orbe.dono.get_dano_modificado(orbe.dano) if hasattr(orbe.dono, 'get_dano_modificado') else orbe.dano
                             
-                            if alvo.tomar_dano(dano_final, dx/dist, dy/dist, "NORMAL"):
+                            morreu = alvo.tomar_dano(
+                                dano_final,
+                                dx/dist,
+                                dy/dist,
+                                "NORMAL",
+                                atacante=orbe.dono,
+                            )
+                            dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano_final)
+                            if morreu:
                                 self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
-                                self.ativar_slow_motion()
-                                self.vencedor = orbe.dono.dados.nome
                             else:
                                 # Texto mágico colorido
-                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_final), orbe.cor))
+                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), orbe.cor))
                                 # Partículas mágicas
                                 self._spawn_particulas_efeito(alvo.pos[0]*PPM, alvo.pos[1]*PPM, "NORMAL")
 
@@ -663,13 +803,18 @@ class Simulador:
                             alvo = res["alvo"]
                             dano_dot = res.get("dano", 5)
                             tipo_dot = res.get("tipo", "FOGO")
-                            if alvo.tomar_dano(dano_dot, 0, 0, tipo_dot):
+                            if alvo.tomar_dano(
+                                dano_dot,
+                                0,
+                                0,
+                                tipo_dot,
+                                aplicar_modificadores_debuff=False,
+                            ):
                                 self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
-                                self.ativar_slow_motion()
-                                self.vencedor = area.dono.dados.nome
                             else:
                                 cor_dot = self._get_cor_efeito(tipo_dot)
-                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_dot), cor_dot, 14))
+                                dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano_dot)
+                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor_dot, 14))
                 
                 if area.ativo and getattr(area, 'ativado', True):
                     # Verifica colisão com alvos
@@ -690,7 +835,14 @@ class Simulador:
                             
                             dano = area.dono.get_dano_modificado(area.dano) if hasattr(area.dono, 'get_dano_modificado') else area.dano
                             invencibilidade_antes = max(0.0, getattr(alvo, 'invencivel_timer', 0.0))
-                            morreu = alvo.tomar_dano(dano, dx/(dist or 1), dy/(dist or 1), area.tipo_efeito)
+                            morreu = alvo.tomar_dano(
+                                dano,
+                                dx/(dist or 1),
+                                dy/(dist or 1),
+                                area.tipo_efeito,
+                                atacante=area.dono,
+                            )
+                            dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
                             # tomar_dano já aplica o efeito principal. Aqui entram
                             # apenas os metadados adicionais da área e efeito2,
                             # desde que o impacto não tenha sido negado.
@@ -705,11 +857,9 @@ class Simulador:
                                 )
                             if morreu:
                                 self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
-                                self.ativar_slow_motion()
-                                self.vencedor = area.dono.dados.nome
                             elif impacto_aplicado:
                                 cor_txt = self._get_cor_efeito(area.tipo_efeito)
-                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano), cor_txt))
+                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor_txt))
             
             # Adiciona novas áreas criadas por ondas/meteoros
             self.areas.extend(novas_areas)
@@ -735,12 +885,18 @@ class Simulador:
                         dx = alvo.pos[0] - beam.dono.pos[0]
                         dy = alvo.pos[1] - beam.dono.pos[1]
                         dist = math.hypot(dx, dy) or 1
-                        if alvo.tomar_dano(dano, dx/dist, dy/dist, beam.tipo_efeito):
+                        morreu = alvo.tomar_dano(
+                            dano,
+                            dx/dist,
+                            dy/dist,
+                            beam.tipo_efeito,
+                            atacante=beam.dono,
+                        )
+                        dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
+                        if morreu:
                             self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
-                            self.ativar_slow_motion()
-                            self.vencedor = beam.dono.dados.nome
                         else:
-                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano), (255, 255, 100)))
+                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), (255, 255, 100)))
                             self.cam.aplicar_shake(8.0, 0.1)
             self.beams = [b for b in self.beams if b.ativo]
 
@@ -754,17 +910,19 @@ class Simulador:
                     if res.get("tipo") == "ataque":
                         alvo = res["alvo"]
                         dano = res["dano"]
-                        if alvo.tomar_dano(dano, 0, 0, "NORMAL"):
+                        morreu = alvo.tomar_dano(
+                            dano, 0, 0, "NORMAL", atacante=summon.dono
+                        )
+                        dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
+                        if morreu:
                             self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
-                            self.ativar_slow_motion()
-                            self.vencedor = summon.dono.dados.nome
                         else:
-                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano), summon.cor))
+                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), summon.cor))
                     
                     elif res.get("tipo") == "aura":
                         alvo = res["alvo"]
                         dano = res["dano"]
-                        alvo.tomar_dano(dano, 0, 0, "NORMAL")
+                        alvo.tomar_dano(dano, 0, 0, "NORMAL", atacante=summon.dono)
                     
                     elif res.get("revive"):
                         # Fenix reviveu!
@@ -793,7 +951,13 @@ class Simulador:
                             
                             # Dano de contato
                             if trap.dano_contato > 0:
-                                lutador.tomar_dano(trap.dano_contato * dt, 0, 0, trap.efeito_contato or "NORMAL")
+                                lutador.tomar_dano(
+                                    trap.dano_contato * dt,
+                                    0,
+                                    0,
+                                    trap.efeito_contato or "NORMAL",
+                                    atacante=trap.dono,
+                                )
             
             self.traps = [t for t in self.traps if t.ativo]
         
@@ -808,7 +972,7 @@ class Simulador:
                     if res.get("tipo") == "contato":
                         alvo = res["alvo"]
                         dano = res["dano"]
-                        alvo.tomar_dano(dano, 0, 0, "NORMAL")
+                        alvo.tomar_dano(dano, 0, 0, "NORMAL", atacante=lutador)
                     elif res.get("tipo") == "slow":
                         alvo = res["alvo"]
                         alvo.slow_timer = max(alvo.slow_timer, 0.1)
@@ -834,18 +998,24 @@ class Simulador:
                         dano = res["dano"]
                         efeito = res.get("efeito", "NORMAL")
                         
-                        if alvo.tomar_dano(dano, 0, 0, efeito):
+                        morreu = alvo.tomar_dano(
+                            dano, 0, 0, efeito, atacante=lutador
+                        )
+                        dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
+                        if morreu:
                             self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
-                            self.ativar_slow_motion()
-                            self.vencedor = lutador.dados.nome
                         else:
                             cor = self._get_cor_efeito(efeito)
-                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano), cor, 12))
+                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor, 12))
                 
                 if not channel.ativo:
                     lutador.channel_ativo = None
 
-        if not self.vencedor:
+        legacy_finished = (
+            not hasattr(self, "round_finalizado")
+            and bool(getattr(self, "vencedor", None))
+        )
+        if not getattr(self, "round_finalizado", False) and not legacy_finished:
             # Atualiza Sistema de Coreografia v5.0
             if self.choreographer:
                 momento_anterior = self.choreographer.momento_atual
@@ -855,7 +1025,7 @@ class Simulador:
                 if self.choreographer.momento_atual == "CLASH" and momento_anterior != "CLASH":
                     self._executar_sword_clash()
             
-            self.p1.update(dt, self.p2); self.p2.update(dt, self.p1)
+            self._atualizar_lutadores(dt)
             
             # === ATUALIZA COOLDOWNS DE SOM DE PAREDE ===
             if hasattr(self, '_wall_sound_cooldown'):
@@ -884,6 +1054,8 @@ class Simulador:
             
             self.resolver_fisica_corpos(dt)
             self.verificar_colisoes_combate()
+            if self._detectar_resultado_round():
+                return
             self.atualizar_rastros()
             self.vida_visual_p1 += (self.p1.vida - self.vida_visual_p1) * 5 * dt
             self.vida_visual_p2 += (self.p2.vida - self.vida_visual_p2) * 5 * dt
@@ -1637,13 +1809,16 @@ class Simulador:
             p2.vel[1] += ny * fator_repulsao
 
     def verificar_colisoes_combate(self):
-        if self.p1.dados.arma_obj and self.p2.dados.arma_obj:
+        if (
+            not self.p1.morto
+            and not self.p2.morto
+            and self.p1.dados.arma_obj
+            and self.p2.dados.arma_obj
+        ):
             if self.checar_clash_geral(self.p1, self.p2):
                 self.efeito_clash(self.p1, self.p2); return 
-        morreu_1 = self.checar_ataque(self.p1, self.p2)
-        morreu_2 = self.checar_ataque(self.p2, self.p1)
-        if morreu_1: self.ativar_slow_motion(); self.vencedor = self.p1.dados.nome
-        if morreu_2: self.ativar_slow_motion(); self.vencedor = self.p2.dados.nome
+        self.checar_ataque(self.p1, self.p2)
+        self.checar_ataque(self.p2, self.p1)
 
     def efeito_clash(self, p1, p2):
         """Efeito visual dramático quando armas colidem"""
@@ -1867,7 +2042,11 @@ class Simulador:
                     if impact_result['zoom_punch'] > 0:
                         self.cam.zoom_punch(impact_result['zoom_punch'], 0.15)
             
-            if defensor.tomar_dano(dano, kb_x, kb_y, "NORMAL", atacante=atacante):
+            morreu = defensor.tomar_dano(
+                dano, kb_x, kb_y, "NORMAL", atacante=atacante
+            )
+            dano_aplicado = getattr(defensor, "ultimo_dano_recebido", dano)
+            if morreu:
                 # === ÁUDIO v10.0 - SOM DE MORTE ===
                 if self.audio:
                     self.audio.play_special("ko", volume=1.0)
@@ -1876,7 +2055,7 @@ class Simulador:
                 self.spawn_particulas(dx, dy, vx/mag, vy/mag, VERMELHO_SANGUE, 50)
                 
                 # Knockback visual épico na morte
-                self._criar_knockback_visual(defensor, direcao_impacto, dano * 1.5)
+                self._criar_knockback_visual(defensor, direcao_impacto, dano_aplicado * 1.5)
                 
                 # Game Feel já processou camera shake para morte
                 if not self.game_feel:
@@ -1889,36 +2068,34 @@ class Simulador:
                 
                 self.shockwaves.append(Shockwave(dx, dy, VERMELHO_SANGUE, 2.0))
                 self.textos.append(FloatingText(dx, dy - 50, "FATAL!", VERMELHO_SANGUE, 45))
-                self.ativar_slow_motion()
-                self.vencedor = atacante.dados.nome
                 return True
             else:
                 # === ÁUDIO v10.0 - SOM DE IMPACTO ===
                 if self.audio:
                     listener_x = self.cam.x / PPM
                     is_counter = resultado_hit and resultado_hit.get("counter_hit", False)
-                    self.audio.play_impact(dano, defensor.pos[0], listener_x, is_critico, is_counter)
+                    self.audio.play_impact(dano_aplicado, defensor.pos[0], listener_x, is_critico, is_counter)
                 
                 # === HIT NORMAL - EFEITOS PROPORCIONAIS AO DANO E FORÇA ===
                 # Knockback visual proporcional ao dano
-                if dano > 8 or forca_atacante > 12:
-                    self._criar_knockback_visual(defensor, direcao_impacto, dano)
+                if dano_aplicado > 8 or forca_atacante > 12:
+                    self._criar_knockback_visual(defensor, direcao_impacto, dano_aplicado)
                 
                 # Partículas proporcionais
-                qtd_part = max(5, min(25, int(dano / 3)))
+                qtd_part = max(5, min(25, int(dano_aplicado / 3)))
                 self.spawn_particulas(dx, dy, vx/mag, vy/mag, VERMELHO_SANGUE, qtd_part)
                 
                 # Se Game Feel está gerenciando shake/hitstop, não duplicamos
                 if not self.game_feel:
-                    shake_intensity = min(20.0, 5.0 + dano * 0.3)
+                    shake_intensity = min(20.0, 5.0 + dano_aplicado * 0.3)
                     self.cam.aplicar_shake(shake_intensity, 0.12)
-                    self.hit_stop_timer = min(0.1, 0.02 + dano * 0.002)
-                    if dano > 15:
+                    self.hit_stop_timer = min(0.1, 0.02 + dano_aplicado * 0.002)
+                    if dano_aplicado > 15:
                         self.cam.zoom_punch(0.08, 0.1)
                 
                 # Shockwave para ataques fortes
                 tier = get_impact_tier(forca_atacante)
-                if dano > 10 or forca_atacante >= 14:
+                if dano_aplicado > 10 or forca_atacante >= 14:
                     self.shockwaves.append(Shockwave(dx, dy, BRANCO, 0.6 * tier['shockwave_size']))
                 
                 # === TEXTO DE DANO ESTILIZADO ===
@@ -1926,17 +2103,17 @@ class Simulador:
                     cor_txt = (255, 50, 50)  # Vermelho intenso - crítico
                     tamanho_txt = 32
                     self.textos.append(FloatingText(dx, dy - 50, "CRÍTICO!", (255, 200, 0), 24))
-                elif dano > 25:
+                elif dano_aplicado > 25:
                     cor_txt = (255, 100, 100)  # Vermelho claro - dano alto
                     tamanho_txt = 28
-                elif dano > 15:
+                elif dano_aplicado > 15:
                     cor_txt = (255, 200, 100)  # Laranja - dano médio
                     tamanho_txt = 24
                 else:
                     cor_txt = BRANCO
                     tamanho_txt = 20
                 
-                self.textos.append(FloatingText(dx, dy - 30, int(dano), cor_txt, tamanho_txt))
+                self.textos.append(FloatingText(dx, dy - 30, int(dano_aplicado), cor_txt, tamanho_txt))
         return False
 
     def spawn_particulas(self, x, y, dir_x, dir_y, cor, qtd):
@@ -1948,7 +2125,8 @@ class Simulador:
     def ativar_slow_motion(self):
         self.time_scale = 0.2; self.slow_mo_timer = 2.0
         # Som de slow motion
-        self.audio.play_special("slowmo_start", 0.6)
+        if getattr(self, "audio", None):
+            self.audio.play_special("slowmo_start", 0.6)
 
     def desenhar(self):
         self.tela.fill(COR_FUNDO)
@@ -2350,15 +2528,20 @@ class Simulador:
         if self.show_hitbox_debug:
             self.desenhar_hitbox_debug()
 
+        if self.show_hud and not self.vencedor:
+            self.desenhar_barras(self.p1, 20, 20, COR_P1, self.vida_visual_p1)
+            # Ajusta posição P2 baseado no modo (220 em portrait, 320 em normal)
+            p2_offset = 220 if self.portrait_mode else 320
+            self.desenhar_barras(self.p2, self.screen_width - p2_offset, 20, COR_P2, self.vida_visual_p2)
+            self.desenhar_placar_serie()
+            if not self.portrait_mode:  # Esconde controles em portrait para mais espaço
+                self.desenhar_controles()
+
+        # O resultado precisa permanecer visível mesmo com o HUD oculto.
+        if self.vencedor:
+            self.desenhar_vitoria()
+
         if self.show_hud:
-            if not self.vencedor:
-                self.desenhar_barras(self.p1, 20, 20, COR_P1, self.vida_visual_p1)
-                # Ajusta posição P2 baseado no modo (220 em portrait, 320 em normal)
-                p2_offset = 220 if self.portrait_mode else 320
-                self.desenhar_barras(self.p2, self.screen_width - p2_offset, 20, COR_P2, self.vida_visual_p2)
-                if not self.portrait_mode:  # Esconde controles em portrait para mais espaço
-                    self.desenhar_controles() 
-            else: self.desenhar_vitoria()
             if self.paused: self.desenhar_pause()
         if self.show_analysis: self.desenhar_analise()
 
@@ -3451,6 +3634,44 @@ class Simulador:
         ft = pygame.font.SysFont("Arial", ft_size, bold=True)
         self.tela.blit(ft.render(f"{l.dados.nome}", True, BRANCO), (x+10, y+5))
 
+    def _renderizar_texto_ajustado(
+        self, texto, fonte_nome, tamanho, cor, largura_max, bold=False, tamanho_min=14
+    ):
+        """Renderiza uma linha sem deixá-la escapar da largura da tela."""
+        tamanho_atual = tamanho
+        while True:
+            fonte = pygame.font.SysFont(fonte_nome, tamanho_atual, bold=bold)
+            surface = fonte.render(texto, True, cor)
+            if surface.get_width() <= largura_max or tamanho_atual <= tamanho_min:
+                break
+            tamanho_atual = max(tamanho_min, tamanho_atual - 2)
+
+        if surface.get_width() > largura_max:
+            escala = largura_max / surface.get_width()
+            surface = pygame.transform.smoothscale(
+                surface,
+                (largura_max, max(1, int(surface.get_height() * escala))),
+            )
+        return surface
+
+    def desenhar_placar_serie(self):
+        serie = self.best_of_series
+        texto = (
+            f"ROUND {serie.round_number}  |  "
+            f"P1 {serie.wins['p1']} x {serie.wins['p2']} P2  |  "
+            f"MD{serie.best_of}"
+        )
+        surface = self._renderizar_texto_ajustado(
+            texto,
+            "Arial",
+            20,
+            COR_TEXTO_TITULO,
+            self.screen_width - 40,
+            bold=True,
+        )
+        placar_y = 70 if self.portrait_mode else 20
+        self.tela.blit(surface, ((self.screen_width - surface.get_width()) // 2, placar_y))
+
     def desenhar_controles(self):
         x, y = 20, 90 
         w, h = 220, 210
@@ -3485,10 +3706,45 @@ class Simulador:
 
     def desenhar_vitoria(self):
         s = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA); s.fill(COR_UI_BG); self.tela.blit(s, (0,0))
-        ft = pygame.font.SysFont("Impact", 80); txt = ft.render(f"{self.vencedor} VENCEU!", True, COR_TEXTO_TITULO)
+        serie = self.best_of_series
+        if serie.finished:
+            nome_campeao = self._nome_do_slot(serie.winner)
+            titulo = f"{nome_campeao} CAMPEÃO DA SÉRIE!"
+            instrucao = "Pressione 'R' para Nova Série ou 'ESC' para Sair"
+        elif self.empate_round:
+            titulo = f"EMPATE NO ROUND {serie.round_number}!"
+            instrucao = "Pressione 'R' para Repetir o Round ou 'ESC' para Sair"
+        else:
+            titulo = f"{self.vencedor} VENCEU O ROUND {serie.round_number}!"
+            instrucao = "Pressione 'R' para Próximo Round ou 'ESC' para Sair"
+
+        txt = self._renderizar_texto_ajustado(
+            titulo,
+            "Impact",
+            64,
+            COR_TEXTO_TITULO,
+            self.screen_width - 40,
+            tamanho_min=20,
+        )
         self.tela.blit(txt, (self.screen_width//2 - txt.get_width()//2, self.screen_height//2 - 100))
-        ft2 = pygame.font.SysFont("Arial", 24); msg = ft2.render("Pressione 'R' para Reiniciar ou 'ESC' para Sair", True, COR_TEXTO_INFO)
-        self.tela.blit(msg, (self.screen_width//2 - msg.get_width()//2, self.screen_height//2 + 20))
+        placar = f"PLACAR: P1 {serie.wins['p1']} x {serie.wins['p2']} P2"
+        score = self._renderizar_texto_ajustado(
+            placar,
+            "Arial",
+            28,
+            BRANCO,
+            self.screen_width - 40,
+            bold=True,
+        )
+        self.tela.blit(score, (self.screen_width//2 - score.get_width()//2, self.screen_height//2))
+        msg = self._renderizar_texto_ajustado(
+            instrucao,
+            "Arial",
+            22,
+            COR_TEXTO_INFO,
+            self.screen_width - 40,
+        )
+        self.tela.blit(msg, (self.screen_width//2 - msg.get_width()//2, self.screen_height//2 + 45))
 
     def run(self):
         self._slow_mo_ended = False  # Flag para tocar som de vitória uma vez
@@ -3501,8 +3757,9 @@ class Simulador:
                         self.time_scale = 1.0
                         # Som de fim do slow-mo e vitória
                         if not self._slow_mo_ended and self.vencedor:
-                            self.audio.play_special("slowmo_end", 0.5)
-                            self.audio.play_special("arena_victory", 1.0)
+                            if self.audio:
+                                self.audio.play_special("slowmo_end", 0.5)
+                                self.audio.play_special("arena_victory", 1.0)
                             self._slow_mo_ended = True
                 dt = raw_dt * self.time_scale
                 self.processar_inputs(); self.update(dt); self.desenhar(); pygame.display.flip()

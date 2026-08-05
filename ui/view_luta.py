@@ -8,12 +8,29 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.database import salvar_match_config
+from data.database import carregar_match_config, salvar_match_config
 from simulation import simulacao
 from ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS,
     COR_TEXTO, COR_TEXTO_DIM, COR_WARNING, COR_P1, COR_P2, CORES_CLASSE
 )
+
+
+BEST_OF_VALIDOS = (1, 3, 5)
+
+
+def carregar_best_of_inicial():
+    """Retorna um valor persistido valido sem alterar a configuracao."""
+    try:
+        valor = carregar_match_config().get("best_of", 1)
+    except (OSError, TypeError, ValueError):
+        return "1"
+
+    if type(valor) is int and valor in BEST_OF_VALIDOS:
+        return str(valor)
+    if isinstance(valor, str) and valor in {"1", "3", "5"}:
+        return valor
+    return "1"
 
 
 class TelaLuta(tk.Frame):
@@ -127,9 +144,9 @@ class TelaLuta(tk.Frame):
         tk.Label(frame_cfg, text="⚙️ CONFIGURAÇÃO", font=("Arial", 10, "bold"), 
                  bg=COR_BG_SECUNDARIO, fg=COR_ACCENT).pack(pady=(0, 10))
         
-        tk.Label(frame_cfg, text="Rounds:", font=("Arial", 9), 
+        tk.Label(frame_cfg, text="Melhor de:", font=("Arial", 9),
                  bg=COR_BG_SECUNDARIO, fg=COR_TEXTO).pack()
-        self.var_best_of = tk.StringVar(value="1")
+        self.var_best_of = tk.StringVar(value=carregar_best_of_inicial())
         ttk.Combobox(frame_cfg, textvariable=self.var_best_of,
                      values=["1", "3", "5"], state="readonly", width=8).pack(pady=5)
         

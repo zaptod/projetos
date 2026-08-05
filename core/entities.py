@@ -5,6 +5,13 @@ Classe principal do lutador com sistema de combate.
 
 import math
 import random
+from core.status_runtime import (
+    DEBUFF_FAMILY_ORDER,
+    efeito_bloqueado_por_imunidade,
+    get_duracao_padrao,
+    get_status_runtime,
+    normalizar_efeito,
+)
 from utils.config import PPM, GRAVIDADE_Z, ATRITO, ALTURA_PADRAO
 
 
@@ -149,6 +156,17 @@ class Lutador:
         self.tempo_parado = False
         self.silenciado_timer = 0.0
         self.exausto_timer = 0.0
+        self.fraco_timer = 0.0
+        self.vulneravel_timer = 0.0
+        self.maldito_timer = 0.0
+        self.corroendo_timer = 0.0
+        self.exposto_timer = 0.0
+        self.cura_bloqueada_timer = 0.0
+        self.cura_bloqueada = 0.0  # Alias legado usado por integrações antigas.
+        self.imune_debuffs_timer = 0.0
+        self.dano_reduzido = 1.0
+        self.vulnerabilidade = 1.0
+        self.ultimo_dano_recebido = 0.0
         self._slow_fator_antes_enraizado = 1.0
         self._slow_fator_antes_congelado = 1.0
         self._slow_fator_antes_tempo_parado = 1.0
@@ -691,6 +709,15 @@ class Lutador:
             self.exausto_timer = max(0.0, self.exausto_timer - dt)
             if self.exausto_timer <= 0:
                 self.regen_mana_base = self.regen_mana_base_normal
+
+        for timer_debuff in (
+            'fraco_timer', 'vulneravel_timer', 'maldito_timer',
+            'corroendo_timer', 'exposto_timer',
+        ):
+            tempo_restante = getattr(self, timer_debuff, 0.0)
+            if tempo_restante > 0:
+                setattr(self, timer_debuff, max(0.0, tempo_restante - dt))
+        self._sincronizar_modificadores_debuff()
         
         for skill_nome in list(self.cd_skills.keys()):
             if self.cd_skills[skill_nome] > 0:
@@ -755,6 +782,43 @@ class Lutador:
             dot.atualizar(dt)
             if not dot.ativo:
                 self.dots_ativos.remove(dot)
+
+    def _renovar_dot(self, tipo, dano_por_tick, duracao, cor):
+        """Adiciona um DoT ou renova a instância ativa do mesmo tipo."""
+        from core.combat import DotEffect
+
+        for dot in self.dots_ativos:
+            if dot.ativo and dot.tipo == tipo:
+                dot.vida = max(dot.vida, duracao)
+                dot.duracao = max(dot.duracao, duracao)
+                dot.dano_por_tick = max(dot.dano_por_tick, dano_por_tick * 0.5)
+                return dot
+
+        dot = DotEffect(tipo, self, dano_por_tick, duracao, cor)
+        self.dots_ativos.append(dot)
+        return dot
+
+    def _get_modificador_dano_causado_debuff(self):
+        """Retorna apenas o modificador temporário de dano causado."""
+        return 0.7 if self.fraco_timer > 0 else 1.0
+
+    def _get_modificador_dano_recebido_debuff(self):
+        """Debuffs recebidos não multiplicam entre si; prevalece o maior."""
+        modificadores = [1.0]
+        if self.vulneravel_timer > 0:
+            modificadores.append(1.5)
+        if self.maldito_timer > 0:
+            modificadores.append(1.3)
+        if self.corroendo_timer > 0:
+            modificadores.append(1.2)
+        if self.exposto_timer > 0:
+            modificadores.append(2.0)
+        return max(modificadores)
+
+    def _sincronizar_modificadores_debuff(self):
+        """Mantém os atributos legados coerentes com os timers ativos."""
+        self.dano_reduzido = self._get_modificador_dano_causado_debuff()
+        self.vulnerabilidade = self._get_modificador_dano_recebido_debuff()
     
     def _atualizar_dash_trail(self, dt):
         """Fade do trail de dash"""
@@ -1228,14 +1292,34 @@ class Lutador:
                 orbe.iniciar_carga(alvo)
                 self.buffer_orbes.append(orbe)
 
-    def tomar_dano(self, dano, empurrao_x, empurrao_y, tipo_efeito="NORMAL", atacante=None):
+    def tomar_dano(
+        self,
+        dano,
+        empurrao_x,
+        empurrao_y,
+        tipo_efeito="NORMAL",
+        atacante=None,
+        aplicar_modificadores_debuff=True,
+    ):
         """Recebe dano com suporte a efeitos e reflexão"""
         from core.combat import DotEffect
-        
+
+        self.ultimo_dano_recebido = 0.0
         if self.morto or self.invencivel_timer > 0:
             return False
         
         dano_final = dano
+
+        # O dano recebido é o ponto comum entre golpes básicos e skills.
+        # Modificadores de classe/buff já vieram calculados no valor de dano.
+        if aplicar_modificadores_debuff:
+            if atacante is not None:
+                get_mod_causado = getattr(atacante, '_get_modificador_dano_causado_debuff', None)
+                if callable(get_mod_causado):
+                    dano_final *= get_mod_causado()
+                elif getattr(atacante, 'fraco_timer', 0.0) > 0:
+                    dano_final *= 0.7
+            dano_final *= self._get_modificador_dano_recebido_debuff()
         
         if "Cavaleiro" in self.classe_nome:
             dano_final *= 0.75
@@ -1246,6 +1330,8 @@ class Lutador:
         for buff in self.buffs_ativos:
             if buff.escudo_atual > 0:
                 dano_final = buff.absorver_dano(dano_final)
+
+        self.ultimo_dano_recebido = max(0.0, dano_final)
         
         # Reflexo de dano (Reflexo Espelhado)
         dano_refletido = 0
@@ -1380,9 +1466,10 @@ class Lutador:
             
         elif efeito == "CORROENDO":
             # Corrosão: Dano + reduz defesa
-            dot = DotEffect("CORROENDO", self, 1.5 * intensidade, duracao or 4.0, (150, 100, 50))
-            self.dots_ativos.append(dot)
-            self.mod_defesa *= 0.8  # -20% defesa
+            duracao_corrosao = duracao or 4.0
+            self._renovar_dot("CORROENDO", 1.5 * intensidade, duracao_corrosao, (150, 100, 50))
+            self.corroendo_timer = max(self.corroendo_timer, duracao_corrosao)
+            self._sincronizar_modificadores_debuff()
             
         elif efeito == "NECROSE":
             # Necrose: DoT que impede cura
@@ -1394,11 +1481,10 @@ class Lutador:
             
         elif efeito == "MALDITO":
             # Maldição: DoT + dano recebido aumentado
-            dot = DotEffect("MALDITO", self, 1.0 * intensidade, duracao or 6.0, (100, 0, 100))
-            self.dots_ativos.append(dot)
-            if not hasattr(self, 'vulnerabilidade'):
-                self.vulnerabilidade = 1.0
-            self.vulnerabilidade = 1.3
+            duracao_maldicao = duracao or 6.0
+            self._renovar_dot("MALDITO", 1.0 * intensidade, duracao_maldicao, (100, 0, 100))
+            self.maldito_timer = max(self.maldito_timer, duracao_maldicao)
+            self._sincronizar_modificadores_debuff()
         
         # =================================================================
         # CONTROLE DE GRUPO (CC)
@@ -1499,15 +1585,13 @@ class Lutador:
         # =================================================================
         elif efeito == "FRACO":
             # Fraco: Dano reduzido
-            if not hasattr(self, 'dano_reduzido'):
-                self.dano_reduzido = 1.0
-            self.dano_reduzido = 0.7
+            self.fraco_timer = max(self.fraco_timer, duracao or 4.0)
+            self._sincronizar_modificadores_debuff()
             
         elif efeito == "VULNERAVEL":
             # Vulnerável: Dano recebido aumentado
-            if not hasattr(self, 'vulnerabilidade'):
-                self.vulnerabilidade = 1.0
-            self.vulnerabilidade = 1.5
+            self.vulneravel_timer = max(self.vulneravel_timer, duracao or 4.0)
+            self._sincronizar_modificadores_debuff()
             
         elif efeito == "EXAUSTO":
             # Exausto: Regen de stamina/mana reduzida
@@ -1524,9 +1608,8 @@ class Lutador:
             
         elif efeito == "EXPOSTO":
             # Exposto: Ignora parte da defesa
-            if not hasattr(self, 'exposto_timer'):
-                self.exposto_timer = 0
-            self.exposto_timer = duracao or 4.0
+            self.exposto_timer = max(self.exposto_timer, duracao or 4.0)
+            self._sincronizar_modificadores_debuff()
         
         # =================================================================
         # EFEITOS DE EMPURRÃO/MOVIMENTO

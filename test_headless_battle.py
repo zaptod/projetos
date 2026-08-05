@@ -458,15 +458,22 @@ class HeadlessBattle:
                     dist = math.hypot(alvo.pos[0] - proj.x, alvo.pos[1] - proj.y)
                     if dist < (proj.raio + alvo.raio_fisico):
                         dano = proj.dano
-                        alvo.tomar_dano(dano, 0, 0, proj.tipo_efeito if hasattr(proj, 'tipo_efeito') else "NORMAL")
+                        alvo.tomar_dano(
+                            dano,
+                            0,
+                            0,
+                            proj.tipo_efeito if hasattr(proj, 'tipo_efeito') else "NORMAL",
+                            atacante=proj.dono,
+                        )
+                        dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
                         
                         if proj.dono == self.p1:
-                            self.stats["dano_causado_p1"] += dano
+                            self.stats["dano_causado_p1"] += dano_aplicado
                         else:
-                            self.stats["dano_causado_p2"] += dano
+                            self.stats["dano_causado_p2"] += dano_aplicado
                         
                         if DEBUG_COMBAT:
-                            log(f"[HIT] {proj.nome} atingiu {alvo.dados.nome} (-{dano:.1f} HP)", "DEBUG")
+                            log(f"[HIT] {proj.nome} atingiu {alvo.dados.nome} (-{dano_aplicado:.1f} HP)", "DEBUG")
                         
                         proj.ativo = False
                         if proj in self.projeteis:
@@ -508,12 +515,19 @@ class HeadlessBattle:
                     dist = math.hypot(alvo.pos[0] - closest_x, alvo.pos[1] - closest_y)
                     if dist < (beam.largura / 50 + alvo.raio_fisico):  # largura em pixels, converter
                         dano = beam.dano * dt
-                        alvo.tomar_dano(dano, dx/length, dy/length, beam.tipo_efeito if hasattr(beam, 'tipo_efeito') else "NORMAL")
+                        alvo.tomar_dano(
+                            dano,
+                            dx/length,
+                            dy/length,
+                            beam.tipo_efeito if hasattr(beam, 'tipo_efeito') else "NORMAL",
+                            atacante=beam.dono,
+                        )
+                        dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
                         
                         if beam.dono == self.p1:
-                            self.stats["dano_causado_p1"] += dano
+                            self.stats["dano_causado_p1"] += dano_aplicado
                         else:
-                            self.stats["dano_causado_p2"] += dano
+                            self.stats["dano_causado_p2"] += dano_aplicado
                             
             except Exception as e:
                 self.erros.append(f"Erro ao atualizar beam: {e}")
@@ -540,12 +554,19 @@ class HeadlessBattle:
                     dist = math.hypot(alvo.pos[0] - area.x, alvo.pos[1] - area.y)
                     if dist < area.raio:
                         dano = area.dano * dt
-                        alvo.tomar_dano(dano, 0, 0, area.tipo_efeito if hasattr(area, 'tipo_efeito') else "NORMAL")
+                        alvo.tomar_dano(
+                            dano,
+                            0,
+                            0,
+                            area.tipo_efeito if hasattr(area, 'tipo_efeito') else "NORMAL",
+                            atacante=area.dono,
+                        )
+                        dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
                         
                         if area.dono == self.p1:
-                            self.stats["dano_causado_p1"] += dano
+                            self.stats["dano_causado_p1"] += dano_aplicado
                         else:
-                            self.stats["dano_causado_p2"] += dano
+                            self.stats["dano_causado_p2"] += dano_aplicado
                             
             except Exception as e:
                 self.erros.append(f"Erro ao atualizar área: {e}")
@@ -563,15 +584,16 @@ class HeadlessBattle:
                     if res.get("tipo") == "ataque":
                         alvo = res["alvo"]
                         dano = res["dano"]
-                        alvo.tomar_dano(dano, 0, 0, "NORMAL")
+                        alvo.tomar_dano(dano, 0, 0, "NORMAL", atacante=summon.dono)
+                        dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
                         
                         if summon.dono == self.p1:
-                            self.stats["dano_causado_p1"] += dano
+                            self.stats["dano_causado_p1"] += dano_aplicado
                         else:
-                            self.stats["dano_causado_p2"] += dano
+                            self.stats["dano_causado_p2"] += dano_aplicado
                         
                         if DEBUG_SUMMONS:
-                            log(f"[SUMMON ATK] {summon.nome} atacou {alvo.dados.nome} (-{dano:.1f})", "DEBUG")
+                            log(f"[SUMMON ATK] {summon.nome} atacou {alvo.dados.nome} (-{dano_aplicado:.1f})", "DEBUG")
                     
                     elif res.get("revive"):
                         if DEBUG_SUMMONS:
