@@ -644,14 +644,14 @@ class Simulador:
                 # === v11.0: LIFESTEAL ===
                 if hasattr(proj, 'lifesteal') and proj.lifesteal > 0:
                     cura = dano_aplicado * proj.lifesteal
-                    proj.dono.vida = min(proj.dono.vida_max, proj.dono.vida + cura)
-                    self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura)}", (200, 100, 200), 16))
+                    cura_real = proj.dono.receber_cura(cura)
+                    self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura_real)}", (200, 100, 200), 16))
                 
                 # Efeito DRENAR recupera vida do atacante
                 elif tipo_efeito == "DRENAR":
                     cura = dano_aplicado * 0.15
-                    proj.dono.vida = min(proj.dono.vida_max, proj.dono.vida + cura)
-                    self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura)}", (100, 255, 150), 16))
+                    cura_real = proj.dono.receber_cura(cura)
+                    self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura_real)}", (100, 255, 150), 16))
                 
                 # === v11.0: EXPLOSÃO NO IMPACTO ===
                 if hasattr(proj, 'raio_explosao') and proj.raio_explosao > 0:
@@ -975,8 +975,12 @@ class Simulador:
                         alvo.tomar_dano(dano, 0, 0, "NORMAL", atacante=lutador)
                     elif res.get("tipo") == "slow":
                         alvo = res["alvo"]
-                        alvo.slow_timer = max(alvo.slow_timer, 0.1)
-                        alvo.slow_fator = min(alvo.slow_fator, res["fator"])
+                        fator = max(0.01, res["fator"])
+                        alvo._aplicar_efeito_status(
+                            "LENTO",
+                            duracao=0.1,
+                            intensidade=0.5 / fator,
+                        )
                 
                 if not transform.ativo:
                     lutador.transformacao_ativa = None

@@ -2,6 +2,11 @@
 =============================================================================
 NEURAL FIGHTS - MAGIC SYSTEM v2.0 COLOSSAL EDITION
 =============================================================================
+CATÁLOGO LEGADO/EXPERIMENTAL: o executor real de combate é ``Lutador``. As
+definições compartilhadas são sincronizadas de ``core.status_runtime`` abaixo;
+este módulo não deve ser ligado em paralelo ao runtime, pois isso duplicaria
+dano, stacking e timers.
+
 Sistema de Magia Expandido com:
 - 15+ Status Effects com mecânicas únicas
 - 8 Elementos com reações entre si
@@ -17,6 +22,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any
 from enum import Enum
+
+from core.status_runtime import BUFF_EFFECT_RUNTIME, STATUS_RUNTIME, normalizar_efeito
 
 
 # =============================================================================
@@ -160,15 +167,18 @@ class StatusEffect:
         Atualiza o status effect.
         Retorna (ainda_ativo, dano_causado)
         """
-        self.tempo_restante -= dt
+        dt = max(0.0, dt)
+        tempo_ativo = min(dt, max(0.0, self.tempo_restante))
+        self.tempo_restante = max(0.0, self.tempo_restante - dt)
         dano = 0.0
         
-        # Processa ticks de dano
-        if self.dano_por_tick > 0:
-            self.tempo_ultimo_tick += dt
-            if self.tempo_ultimo_tick >= self.tick_interval:
-                self.tempo_ultimo_tick = 0
-                dano = self.dano_por_tick * self.stacks
+        # Valor negativo representa cura no catálogo legado.
+        if self.dano_por_tick != 0 and self.tick_interval > 0:
+            self.tempo_ultimo_tick += tempo_ativo
+            ticks = int((self.tempo_ultimo_tick + 1e-9) / self.tick_interval)
+            if ticks:
+                self.tempo_ultimo_tick -= ticks * self.tick_interval
+                dano = self.dano_por_tick * self.stacks * ticks
         
         return self.tempo_restante > 0, dano
     
@@ -551,9 +561,85 @@ STATUS_EFFECTS_DB = {
 }
 
 
+# Mantém a API pública antiga como uma visão compatível dos números que o jogo
+# realmente executa. A classe StatusEffect continua disponível para ferramentas
+# externas, mas não é uma segunda fonte de balanceamento.
+_MODIFICADORES_RUNTIME = (
+    "mod_velocidade",
+    "mod_dano_recebido",
+    "mod_dano_causado",
+    "mod_cura_recebida",
+    "mod_cooldown",
+    "mod_mana_custo",
+)
+for _efeito, _runtime_data in STATUS_RUNTIME.items():
+    _legacy_data = STATUS_EFFECTS_DB.get(_efeito)
+    if _legacy_data is None:
+        continue
+    if "duracao" in _runtime_data:
+        _legacy_data["duracao"] = _runtime_data["duracao"]
+    for _campo in _MODIFICADORES_RUNTIME:
+        _legacy_data.pop(_campo, None)
+        if _campo in _runtime_data:
+            _legacy_data[_campo] = _runtime_data[_campo]
+    if "dano_base" in _runtime_data:
+        _legacy_data["dano_por_tick"] = _runtime_data["dano_base"] * 0.5
+        _legacy_data["tick_interval"] = 0.5
+
+for _efeito, _runtime_data in BUFF_EFFECT_RUNTIME.items():
+    _legacy_data = STATUS_EFFECTS_DB.get(_efeito)
+    if _legacy_data is None:
+        continue
+    if "buff_velocidade" in _runtime_data:
+        _legacy_data["mod_velocidade"] = _runtime_data["buff_velocidade"]
+    if "buff_dano" in _runtime_data:
+        _legacy_data["mod_dano_causado"] = _runtime_data["buff_dano"]
+    for _campo in ("mod_dano_recebido", "mod_cura_recebida", "mod_cooldown"):
+        if _campo in _runtime_data:
+            _legacy_data[_campo] = _runtime_data[_campo]
+    if "cura_por_segundo" in _runtime_data:
+        _legacy_data["dano_por_tick"] = -_runtime_data["cura_por_segundo"]
+        _legacy_data["tick_interval"] = 1.0
+
+del _campo, _efeito, _legacy_data, _runtime_data
+
+
 # =============================================================================
 # CONDIÇÕES ESPECIAIS DE ATIVAÇÃO
 # =============================================================================
+
+def _tem_dot_runtime(alvo, *tipos) -> bool:
+    esperados = {normalizar_efeito(tipo) for tipo in tipos}
+    return any(
+        getattr(dot, "ativo", True)
+        and normalizar_efeito(getattr(dot, "tipo", "")) in esperados
+        for dot in getattr(alvo, "dots_ativos", [])
+    )
+
+
+def _tem_status_legado(alvo, nome_display) -> bool:
+    return any(
+        getattr(efeito, "nome", None) == nome_display
+        for efeito in getattr(alvo, "status_effects", [])
+    )
+
+
+def _alvo_debuffado(alvo) -> bool:
+    timers = (
+        "stun_timer", "slow_timer", "enraizado_timer", "congelado_timer",
+        "silenciado_timer", "exausto_timer", "fraco_timer",
+        "vulneravel_timer", "maldito_timer", "corroendo_timer",
+        "exposto_timer", "cura_bloqueada_timer",
+    )
+    if any(getattr(alvo, timer, 0.0) > 0.0 for timer in timers):
+        return True
+    if getattr(alvo, "dots_ativos", []):
+        return True
+    return any(
+        getattr(efeito, "mod_dano_recebido", 1.0) > 1.0
+        for efeito in getattr(alvo, "status_effects", [])
+    )
+
 
 CONDICOES_SKILL = {
     "SEMPRE": lambda caster, alvo: True,
@@ -561,11 +647,23 @@ CONDICOES_SKILL = {
     "ALVO_ALTA_VIDA": lambda caster, alvo: alvo.vida / alvo.vida_max > 0.7,
     "CASTER_BAIXA_VIDA": lambda caster, alvo: caster.vida / caster.vida_max < 0.3,
     "CASTER_ALTA_VIDA": lambda caster, alvo: caster.vida / caster.vida_max > 0.7,
-    "ALVO_ATORDOADO": lambda caster, alvo: any(e.nome == "Atordoado" for e in getattr(alvo, 'status_effects', [])),
-    "ALVO_QUEIMANDO": lambda caster, alvo: any(e.nome == "Queimando" for e in getattr(alvo, 'status_effects', [])),
-    "ALVO_CONGELADO": lambda caster, alvo: any(e.nome == "Congelado" for e in getattr(alvo, 'status_effects', [])),
-    "ALVO_ENVENENADO": lambda caster, alvo: any(e.nome == "Envenenado" for e in getattr(alvo, 'status_effects', [])),
-    "ALVO_DEBUFFADO": lambda caster, alvo: len([e for e in getattr(alvo, 'status_effects', []) if e.mod_dano_recebido > 1.0]) > 0,
+    "ALVO_ATORDOADO": lambda caster, alvo: (
+        getattr(alvo, "stun_timer", 0.0) > 0.0
+        or _tem_status_legado(alvo, "Atordoado")
+    ),
+    "ALVO_QUEIMANDO": lambda caster, alvo: (
+        _tem_dot_runtime(alvo, "QUEIMANDO")
+        or _tem_status_legado(alvo, "Queimando")
+    ),
+    "ALVO_CONGELADO": lambda caster, alvo: (
+        getattr(alvo, "congelado_timer", 0.0) > 0.0
+        or _tem_status_legado(alvo, "Congelado")
+    ),
+    "ALVO_ENVENENADO": lambda caster, alvo: (
+        _tem_dot_runtime(alvo, "ENVENENADO")
+        or _tem_status_legado(alvo, "Envenenado")
+    ),
+    "ALVO_DEBUFFADO": lambda caster, alvo: _alvo_debuffado(alvo),
     "ALVO_NO_AR": lambda caster, alvo: getattr(alvo, 'z', 0) > 0.5,
     "COSTAS_ALVO": lambda caster, alvo: _esta_nas_costas(caster, alvo),
     "DISTANCIA_CURTA": lambda caster, alvo: _distancia(caster, alvo) < 2.0,
@@ -699,11 +797,13 @@ COMBOS_MAGICOS = {
 
 def criar_status_effect(nome: str, duracao_override: float = None) -> Optional[StatusEffect]:
     """Cria um status effect a partir do banco de dados"""
+    nome = normalizar_efeito(nome)
     if nome not in STATUS_EFFECTS_DB:
         return None
     
     dados = STATUS_EFFECTS_DB[nome].copy()
-    duracao = duracao_override if duracao_override else dados.pop("duracao", 1.0)
+    duracao_catalogo = dados.pop("duracao", 1.0)
+    duracao = duracao_catalogo if duracao_override is None else duracao_override
     nome_display = dados.pop("nome", nome)
     descricao = dados.pop("descricao", "")
     

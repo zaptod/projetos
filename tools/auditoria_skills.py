@@ -14,6 +14,11 @@ sys.path.insert(0, '.')
 
 from core.skills import SKILL_DB, contar_skills
 from core.combat import Projetil, AreaEffect, Beam, Buff, Summon, Trap, Transform, Channel
+from core.status_runtime import (
+    BUFF_EFFECT_RUNTIME,
+    EFEITOS_TRATADOS_FORA_DO_STATUS,
+    STATUS_RUNTIME,
+)
 
 # Tipos de skills suportados pelo sistema atual
 TIPOS_IMPLEMENTADOS = {"PROJETIL", "AREA", "DASH", "BUFF", "BEAM", "SUMMON", "TRAP", "TRANSFORM", "CHANNEL", "NADA"}
@@ -22,12 +27,18 @@ TIPOS_IMPLEMENTADOS = {"PROJETIL", "AREA", "DASH", "BUFF", "BEAM", "SUMMON", "TR
 TIPOS_PENDENTES = {}  # Todos implementados agora!
 
 # Efeitos de status implementados (verificar em entities.py)
-EFEITOS_IMPLEMENTADOS = {
-    "NORMAL", "QUEIMANDO", "CONGELADO", "LENTO", "PARALISIA", "ENVENENADO",
-    "SANGRANDO", "DRENAR", "MALDITO", "MEDO", "CEGO", "SILENCIADO",
-    "ENRAIZADO", "EMPURRAO", "KNOCK_UP", "EXPLOSAO", "VULNERAVEL", "EXPOSTO",
-    "NECROSE", "POSSESSO", "VORTEX", "PUXADO", "EXAUSTO", "CHARME",
-    "TEMPO_PARADO", "PERFURAR"
+EFEITOS_PENDENTES_STATUS = {
+    nome
+    for nome, definicao in STATUS_RUNTIME.items()
+    if definicao.get("categoria") == "pendente"
+}
+EFEITOS_PARCIAIS_STATUS = {
+    nome
+    for nome, definicao in STATUS_RUNTIME.items()
+    if str(definicao.get("categoria", "")).endswith("_parcial")
+}
+EFEITOS_IMPLEMENTADOS = EFEITOS_TRATADOS_FORA_DO_STATUS | {
+    nome for nome in STATUS_RUNTIME if nome not in EFEITOS_PENDENTES_STATUS
 }
 
 # Features avançadas que precisam verificação
@@ -94,9 +105,18 @@ def auditar_todas_skills():
             problemas.append(f"Tipo '{tipo}' desconhecido")
         
         # Verifica efeito
-        if efeito and efeito not in EFEITOS_IMPLEMENTADOS:
+        if efeito in EFEITOS_PENDENTES_STATUS:
+            avisos.append(f"Efeito '{efeito}' está explicitamente pendente")
+            skills_efeito_desconhecido.append((nome, efeito))
+        elif efeito in EFEITOS_PARCIAIS_STATUS:
+            avisos.append(f"Efeito '{efeito}' tem implementação parcial explícita")
+        elif efeito and efeito not in EFEITOS_IMPLEMENTADOS:
             avisos.append(f"Efeito '{efeito}' pode não estar implementado")
             skills_efeito_desconhecido.append((nome, efeito))
+
+        efeito_buff = data.get("efeito_buff")
+        if efeito_buff and efeito_buff not in BUFF_EFFECT_RUNTIME:
+            avisos.append(f"Buff '{efeito_buff}' não consta no contrato do runtime")
         
         # Verifica features avançadas
         features_usadas = []
@@ -205,9 +225,12 @@ def auditar_todas_skills():
    - Trigger ao morrer (Último Suspiro)
    - Stats aleatórios (Mutação)
 
-3. VERIFICAR EFEITOS:
-   - BOMBA_RELOGIO, LINK_ALMA, ACELERADO, REGENERANDO
-   - DETERMINADO, FURIA, ABENÇOADO, IMORTAL
+3. EFEITOS DELIBERADAMENTE PENDENTES:
+   - BOMBA_RELOGIO, LINK_ALMA, TROCAR_POS
+   - POSSESSO e CHARME (exigem origem/alvo e regras de IA)
+
+4. EFEITOS PARCIAIS, SEM PROMESSA DE MECÂNICA COMPLETA:
+   - CEGO, MEDO, SONO e EXAUSTO
 """)
     
     return {

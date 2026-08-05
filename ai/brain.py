@@ -2840,7 +2840,7 @@ class AIBrain:
         
         if quirk == "REGENERADOR":
             if self.tempo_desde_dano > 5.0 and hp_pct < 0.9:
-                p.vida = min(p.vida_max, p.vida + 0.5)
+                p.receber_cura(0.5)
             return False
         
         if quirk in quirk_handlers:

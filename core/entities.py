@@ -236,12 +236,258 @@ class Lutador:
         if not self.skills_arma:
             return None
         return self.skills_arma[self.skill_atual_idx]
+
+    def _buffs_validos(self):
+        """Itera apenas buffs ainda ativos, inclusive entre dois updates."""
+        return (buff for buff in self.buffs_ativos if getattr(buff, "ativo", True))
+
+    def _get_modificador_cooldown_buff(self):
+        modificador = 1.0
+        for buff in self._buffs_validos():
+            modificador *= max(0.0, getattr(buff, "mod_cooldown", 1.0))
+        return modificador
+
+    def _get_modificador_mana_custo_buff(self):
+        modificador = 1.0
+        for buff in self._buffs_validos():
+            modificador *= max(0.0, getattr(buff, "mod_mana_custo", 1.0))
+        return modificador
+
+    def _get_modificador_velocidade_ataque_buff(self):
+        modificador = 1.0
+        for buff in self._buffs_validos():
+            modificador *= max(0.01, getattr(buff, "buff_velocidade_ataque", 1.0))
+        return modificador
+
+    def esta_imune_a_debuffs(self):
+        return self.imune_debuffs_timer > 0.0
+
+    def _tipos_dot_ativos(self):
+        return {
+            normalizar_efeito(dot.tipo)
+            for dot in self.dots_ativos
+            if getattr(dot, "ativo", True) and getattr(dot, "vida", 0.0) > 0.0
+        }
+
+    def _get_modificador_cura_recebida(self):
+        """Usa o debuff mais forte uma vez e o melhor bônus de cura ativo."""
+        tipos_dot = self._tipos_dot_ativos()
+        modificadores_debuff = [1.0]
+
+        bloqueio_legado = max(
+            self.cura_bloqueada_timer,
+            getattr(self, "cura_bloqueada", 0.0),
+        )
+        if bloqueio_legado > 0.0:
+            modificadores_debuff.append(0.0)
+
+        for efeito in ("ENVENENADO", "MALDITO", "NECROSE"):
+            ativo = efeito in tipos_dot
+            if efeito == "MALDITO":
+                ativo = ativo or self.maldito_timer > 0.0
+            if efeito == "NECROSE":
+                ativo = ativo or bloqueio_legado > 0.0
+            if ativo:
+                modificadores_debuff.append(
+                    get_status_runtime(efeito).get("mod_cura_recebida", 1.0)
+                )
+
+        bonus_buff = 1.0
+        for buff in self._buffs_validos():
+            bonus_buff = max(
+                bonus_buff,
+                max(0.0, getattr(buff, "mod_cura_recebida", 1.0)),
+            )
+        return min(modificadores_debuff) * bonus_buff
+
+    def receber_cura(self, quantidade):
+        """Aplica cura pelo ponto único do runtime e retorna a cura real."""
+        if self.morto or quantidade <= 0.0:
+            return 0.0
+
+        cura_modificada = quantidade * self._get_modificador_cura_recebida()
+        if cura_modificada <= 0.0:
+            return 0.0
+
+        vida_antes = self.vida
+        self.vida = min(self.vida_max, self.vida + cura_modificada)
+        return max(0.0, self.vida - vida_antes)
+
+    def curar(self, quantidade):
+        """Alias semântico para integrações que usam o verbo curto."""
+        return self.receber_cura(quantidade)
+
+    def _limitar_dano_letal_por_imortalidade(self, dano):
+        """Consome a primeira proteção disponível e preserva exatamente 1 HP."""
+        dano = max(0.0, dano)
+        if self.vida - dano > 0.0:
+            return dano
+        for buff in self._buffs_validos():
+            consumir = getattr(buff, "consumir_imortalidade", None)
+            if callable(consumir) and consumir():
+                return max(0.0, self.vida - 1.0)
+        return dano
+
+    def _familia_debuff_ativa(self, familia, tipos_dot):
+        timers = {
+            "FRACO": "fraco_timer",
+            "VULNERAVEL": "vulneravel_timer",
+            "MALDITO": "maldito_timer",
+            "CORROENDO": "corroendo_timer",
+            "EXPOSTO": "exposto_timer",
+            "ENRAIZADO": "enraizado_timer",
+            "SILENCIADO": "silenciado_timer",
+            "EXAUSTO": "exausto_timer",
+            "CEGO": "cego_timer",
+            "MEDO": "medo_timer",
+            "CHARME": "charme_timer",
+            "POSSESSO": "possesso_timer",
+            "BOMBA_RELOGIO": "bomba_relogio_timer",
+        }
+        if familia in tipos_dot:
+            return True
+        if familia == "NECROSE":
+            return max(
+                self.cura_bloqueada_timer,
+                getattr(self, "cura_bloqueada", 0.0),
+            ) > 0.0
+        if familia == "CONGELADO":
+            return self.congelado_timer > 0.0 or self.congelado
+        if familia == "TEMPO_PARADO":
+            return self.tempo_parado_timer > 0.0 or self.tempo_parado
+        if familia == "SONO":
+            return bool(getattr(self, "dormindo", False))
+        if familia == "ATORDOADO":
+            return (
+                self.stun_timer > 0.0
+                and not self.congelado
+                and not self.tempo_parado
+                and not getattr(self, "dormindo", False)
+            )
+        if familia == "LENTO":
+            return (
+                self.slow_timer > 0.0
+                and self.enraizado_timer <= 0.0
+                and not self.congelado
+                and not self.tempo_parado
+            )
+        if familia == "MARCADO":
+            return bool(getattr(self, "marcado", False))
+        timer = timers.get(familia)
+        return bool(timer and getattr(self, timer, 0.0) > 0.0)
+
+    def _recalcular_movimento_apos_limpeza(self):
+        if self.tempo_parado_timer > 0.0 or self.enraizado_timer > 0.0:
+            self.slow_fator = 0.0
+        elif self.congelado_timer > 0.0:
+            self.slow_fator = min(self._slow_fator_antes_congelado, 0.3)
+        elif self.slow_timer > 0.0:
+            candidatos = [
+                valor
+                for valor in (
+                    self.slow_fator,
+                    self._slow_fator_antes_enraizado,
+                    self._slow_fator_antes_congelado,
+                    self._slow_fator_antes_tempo_parado,
+                )
+                if 0.0 < valor < 1.0
+            ]
+            self.slow_fator = min(candidatos, default=0.5)
+        else:
+            self.slow_fator = 1.0
+
+    def _remover_familia_debuff(self, familia):
+        timers = {
+            "FRACO": "fraco_timer",
+            "VULNERAVEL": "vulneravel_timer",
+            "MALDITO": "maldito_timer",
+            "CORROENDO": "corroendo_timer",
+            "EXPOSTO": "exposto_timer",
+            "ENRAIZADO": "enraizado_timer",
+            "SILENCIADO": "silenciado_timer",
+            "EXAUSTO": "exausto_timer",
+            "CEGO": "cego_timer",
+            "MEDO": "medo_timer",
+            "CHARME": "charme_timer",
+            "POSSESSO": "possesso_timer",
+            "BOMBA_RELOGIO": "bomba_relogio_timer",
+        }
+        self.dots_ativos = [
+            dot
+            for dot in self.dots_ativos
+            if normalizar_efeito(getattr(dot, "tipo", "")) != familia
+        ]
+
+        timer = timers.get(familia)
+        if timer:
+            setattr(self, timer, 0.0)
+        if familia == "NECROSE":
+            self.cura_bloqueada_timer = 0.0
+            self.cura_bloqueada = 0.0
+        elif familia == "CONGELADO":
+            self.congelado_timer = 0.0
+            self.congelado = False
+            self.stun_timer = 0.0
+        elif familia == "TEMPO_PARADO":
+            self.tempo_parado_timer = 0.0
+            self.tempo_parado = False
+            self.stun_timer = 0.0
+        elif familia == "SONO":
+            self.dormindo = False
+            self.stun_timer = 0.0
+        elif familia == "ATORDOADO":
+            self.stun_timer = 0.0
+        elif familia == "LENTO":
+            self.slow_timer = 0.0
+        elif familia == "MARCADO":
+            self.marcado = False
+        elif familia == "EXAUSTO":
+            self.regen_mana_base = self.regen_mana_base_normal
+        elif familia == "BOMBA_RELOGIO":
+            self.bomba_relogio_dano = 0.0
+
+    def remover_debuffs(self, limite=None):
+        """Remove famílias lógicas; DoTs repetidos contam como um debuff."""
+        if limite is not None:
+            limite = max(0, int(limite))
+        tipos_dot = self._tipos_dot_ativos()
+        familias_ativas = [
+            familia
+            for familia in DEBUFF_FAMILY_ORDER
+            if self._familia_debuff_ativa(familia, tipos_dot)
+        ]
+        selecionadas = familias_ativas if limite is None else familias_ativas[:limite]
+        for familia in selecionadas:
+            self._remover_familia_debuff(familia)
+
+        self._recalcular_movimento_apos_limpeza()
+        self._sincronizar_modificadores_debuff()
+        return selecionadas
+
+    def _aplicar_buff_skill(self, nome_skill, data, classe_buff):
+        """Aplica a parte instantânea e registra a parte persistente do buff."""
+        if data.get("remove_todos_debuffs"):
+            self.remover_debuffs()
+        elif data.get("remove_debuffs"):
+            self.remover_debuffs(data["remove_debuffs"])
+
+        if data.get("imune_debuffs"):
+            self.imune_debuffs_timer = max(
+                self.imune_debuffs_timer,
+                float(data["imune_debuffs"]),
+            )
+        if data.get("cura"):
+            self.receber_cura(data["cura"])
+
+        self.buffs_ativos.append(classe_buff(nome_skill, self))
     
     def calcular_dano_ataque(self, dano_base):
         """Calcula dano final com crítico e encantamentos"""
         from models import ENCANTAMENTOS
         
         dano = dano_base * self.mod_dano
+        for buff in self._buffs_validos():
+            dano *= getattr(buff, "buff_dano", 1.0)
         
         critico_chance = self.arma_critico
         if "Assassino" in self.classe_nome:
@@ -274,19 +520,25 @@ class Lutador:
                 continue
             
             if efeito == "burn":
-                dot = DotEffect("Queimadura", alvo, dano_tick=5, duracao=3.0)
-                alvo.dots_ativos.append(dot)
+                if not alvo.esta_imune_a_debuffs():
+                    dot = DotEffect("QUEIMANDO", alvo, dano_por_tick=5, duracao=3.0, cor=(255, 100, 0))
+                    alvo.dots_ativos.append(dot)
             elif efeito == "slow":
-                alvo.slow_timer = 2.0
-                alvo.slow_fator = 0.5
+                alvo._aplicar_efeito_status("LENTO", duracao=2.0)
             elif efeito == "poison":
-                dot = DotEffect("Veneno", alvo, dano_tick=enc.get("dot_dano", 3), 
-                               duracao=enc.get("dot_duracao", 5.0))
-                alvo.dots_ativos.append(dot)
+                if not alvo.esta_imune_a_debuffs():
+                    dot = DotEffect(
+                        "ENVENENADO",
+                        alvo,
+                        dano_por_tick=enc.get("dot_dano", 3),
+                        duracao=enc.get("dot_duracao", 5.0),
+                        cor=(100, 255, 100),
+                    )
+                    alvo.dots_ativos.append(dot)
             elif efeito == "lifesteal":
                 percent = enc.get("lifesteal_percent", 10) / 100.0
                 cura = alvo.vida * 0.1 * percent
-                self.vida = min(self.vida_max, self.vida + cura)
+                self.receber_cura(cura)
 
     def usar_skill_arma(self, skill_idx=None):
         """Usa a skill equipada na arma"""
@@ -316,18 +568,22 @@ class Lutador:
         custo_real = skill_info["custo"]
         if "Mago" in self.classe_nome:
             custo_real *= 0.8
+        custo_real *= self._get_modificador_mana_custo_buff()
         
         if self.arma_passiva and self.arma_passiva.get("efeito") == "no_mana_cost":
             chance = self.arma_passiva.get("valor", 0) / 100.0
             if random.random() < chance:
                 custo_real = 0
         
-        if self.mana < custo_real:
+        custo_vida = data.get("custo_vida", 0) or data.get("custo_vida_percent", 0) * self.vida_max
+        if self.mana < custo_real or (custo_vida > 0 and self.vida <= custo_vida):
             return False
         
+        if custo_vida > 0:
+            self.vida -= custo_vida
         self.mana -= custo_real
         
-        cd = data["cooldown"]
+        cd = data["cooldown"] * self._get_modificador_cooldown_buff()
         if self.arma_passiva and self.arma_passiva.get("efeito") == "cooldown":
             cd *= (1 - self.arma_passiva.get("valor", 0) / 100.0)
         
@@ -404,11 +660,7 @@ class Lutador:
             if audio:
                 audio.play_skill("BUFF", nome_skill, self.pos[0], phase="cast")
             
-            if data.get("cura"):
-                self.vida = min(self.vida_max, self.vida + data["cura"])
-            
-            buff = Buff(nome_skill, self)
-            self.buffs_ativos.append(buff)
+            self._aplicar_buff_skill(nome_skill, data, Buff)
         
         elif tipo == "BEAM":
             # === ÁUDIO v10.0 - SOM DE BEAM ===
@@ -496,20 +748,18 @@ class Lutador:
         
         if "Mago" in self.classe_nome:
             custo *= 0.8
+        custo *= self._get_modificador_mana_custo_buff()
         
         # Custo em vida (Pacto de Sangue, Sacrifício)
         custo_vida = data.get("custo_vida", 0) or data.get("custo_vida_percent", 0) * self.vida_max
-        if custo_vida > 0:
-            if self.vida <= custo_vida:
-                return False  # Não pode usar se morreria
-            self.vida -= custo_vida
-        
-        if self.mana < custo:
+        if self.mana < custo or (custo_vida > 0 and self.vida <= custo_vida):
             return False
         
+        if custo_vida > 0:
+            self.vida -= custo_vida
         self.mana -= custo
         
-        cd = data.get("cooldown", 5.0)
+        cd = data.get("cooldown", 5.0) * self._get_modificador_cooldown_buff()
         self.cd_skills[skill_nome] = cd
         
         rad = math.radians(self.angulo_olhar)
@@ -576,11 +826,7 @@ class Lutador:
             if audio:
                 audio.play_skill("BUFF", skill_nome, self.pos[0], phase="cast")
             
-            if data.get("cura"):
-                self.vida = min(self.vida_max, self.vida + data["cura"])
-            
-            buff = Buff(skill_nome, self)
-            self.buffs_ativos.append(buff)
+            self._aplicar_buff_skill(skill_nome, data, Buff)
         
         elif tipo == "BEAM":
             # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
@@ -654,6 +900,16 @@ class Lutador:
             self.invencivel_timer -= dt
         if self.flash_timer > 0:
             self.flash_timer -= dt
+        bloqueio_cura = max(
+            self.cura_bloqueada_timer,
+            getattr(self, "cura_bloqueada", 0.0),
+        )
+        if bloqueio_cura > 0.0:
+            bloqueio_cura = max(0.0, bloqueio_cura - dt)
+            self.cura_bloqueada_timer = bloqueio_cura
+            self.cura_bloqueada = bloqueio_cura
+        if self.imune_debuffs_timer > 0.0:
+            self.imune_debuffs_timer = max(0.0, self.imune_debuffs_timer - dt)
         if self.stun_timer > 0:
             self.stun_timer -= dt
         if self.cd_skill_arma > 0:
@@ -749,7 +1005,7 @@ class Lutador:
         self.mana = min(self.mana_max, self.mana + mana_regen * dt)
         
         if "Paladino" in self.classe_nome:
-            self.vida = min(self.vida_max, self.vida + self.vida_max * 0.005 * dt)  # Reduzido de 2% para 0.5%
+            self.receber_cura(self.vida_max * 0.005 * dt)  # Reduzido de 2% para 0.5%
         
         dx = inimigo.pos[0] - self.pos[0]
         dy = inimigo.pos[1] - self.pos[1]
@@ -800,19 +1056,29 @@ class Lutador:
 
     def _get_modificador_dano_causado_debuff(self):
         """Retorna apenas o modificador temporário de dano causado."""
-        return 0.7 if self.fraco_timer > 0 else 1.0
+        if self.fraco_timer > 0:
+            return get_status_runtime("FRACO").get("mod_dano_causado", 0.7)
+        return 1.0
 
     def _get_modificador_dano_recebido_debuff(self):
         """Debuffs recebidos não multiplicam entre si; prevalece o maior."""
         modificadores = [1.0]
         if self.vulneravel_timer > 0:
-            modificadores.append(1.5)
+            modificadores.append(
+                get_status_runtime("VULNERAVEL").get("mod_dano_recebido", 1.5)
+            )
         if self.maldito_timer > 0:
-            modificadores.append(1.3)
+            modificadores.append(
+                get_status_runtime("MALDITO").get("mod_dano_recebido", 1.3)
+            )
         if self.corroendo_timer > 0:
-            modificadores.append(1.2)
+            modificadores.append(
+                get_status_runtime("CORROENDO").get("mod_dano_recebido", 1.2)
+            )
         if self.exposto_timer > 0:
-            modificadores.append(2.0)
+            modificadores.append(
+                get_status_runtime("EXPOSTO").get("mod_dano_recebido", 2.0)
+            )
         return max(modificadores)
 
     def _sincronizar_modificadores_debuff(self):
@@ -856,7 +1122,7 @@ class Lutador:
         if self.modo_adrenalina:
             acc = 70.0 * self.mod_velocidade
         
-        for buff in self.buffs_ativos:
+        for buff in self._buffs_validos():
             acc *= buff.buff_velocidade
         
         # v8.0: Aplica variação humana na aceleração
@@ -1151,7 +1417,9 @@ class Lutador:
                     base_cd *= 0.7
                 elif "Colosso" in self.brain.arquetipo:
                     base_cd *= 1.3
-                self.cooldown_ataque = base_cd
+                self.cooldown_ataque = (
+                    base_cd / self._get_modificador_velocidade_ataque_buff()
+                )
     
     def _disparar_arremesso(self, alvo):
         """Dispara projéteis de arma de arremesso"""
@@ -1320,6 +1588,9 @@ class Lutador:
                 elif getattr(atacante, 'fraco_timer', 0.0) > 0:
                     dano_final *= 0.7
             dano_final *= self._get_modificador_dano_recebido_debuff()
+
+        for buff in self._buffs_validos():
+            dano_final *= max(0.0, getattr(buff, "mod_dano_recebido", 1.0))
         
         if "Cavaleiro" in self.classe_nome:
             dano_final *= 0.75
@@ -1327,21 +1598,30 @@ class Lutador:
         if "Ladino" in self.classe_nome and random.random() < 0.2:
             return False
         
-        for buff in self.buffs_ativos:
+        for buff in self._buffs_validos():
             if buff.escudo_atual > 0:
                 dano_final = buff.absorver_dano(dano_final)
+
+        dano_final = self._limitar_dano_letal_por_imortalidade(dano_final)
 
         self.ultimo_dano_recebido = max(0.0, dano_final)
         
         # Reflexo de dano (Reflexo Espelhado)
         dano_refletido = 0
-        for buff in self.buffs_ativos:
+        for buff in self._buffs_validos():
             if hasattr(buff, 'refletir') and buff.refletir > 0:
                 dano_refletido += dano_final * buff.refletir
         
         # Aplica dano refletido ao atacante (se existir)
         if dano_refletido > 0 and atacante is not None and not atacante.morto:
             # Aplica dano direto sem recursão (sem passar atacante)
+            limitar_reflexo = getattr(
+                atacante,
+                "_limitar_dano_letal_por_imortalidade",
+                None,
+            )
+            if callable(limitar_reflexo):
+                dano_refletido = limitar_reflexo(dano_refletido)
             atacante.vida -= dano_refletido
             atacante.flash_timer = 0.15
             atacante.flash_cor = (200, 200, 255)  # Flash azulado para reflexo
@@ -1350,6 +1630,17 @@ class Lutador:
         
         self.vida -= dano_final
         self.invencivel_timer = 0.3
+
+        if atacante is not None and dano_final > 0.0 and not atacante.morto:
+            get_buffs_atacante = getattr(atacante, "_buffs_validos", None)
+            receber_cura_atacante = getattr(atacante, "receber_cura", None)
+            if callable(get_buffs_atacante) and callable(receber_cura_atacante):
+                lifesteal = sum(
+                    max(0.0, getattr(buff, "lifesteal", 0.0))
+                    for buff in get_buffs_atacante()
+                )
+                if lifesteal > 0.0:
+                    receber_cura_atacante(dano_final * lifesteal)
         
         # Flash de dano mais longo e visível (proporcional ao dano)
         self.flash_timer = min(0.25, 0.1 + dano_final * 0.005)
@@ -1448,49 +1739,90 @@ class Lutador:
             intensidade: Multiplicador de intensidade (default 1.0)
         """
         from core.combat import DotEffect
+
+        efeito = normalizar_efeito(efeito)
+        if self.esta_imune_a_debuffs() and efeito_bloqueado_por_imunidade(efeito):
+            return False
+        definicao = get_status_runtime(efeito)
+        duracao_padrao = get_duracao_padrao(efeito, 0.0)
         
         # =================================================================
         # DANOS AO LONGO DO TEMPO (DoT)
         # =================================================================
-        if efeito == "VENENO" or efeito == "ENVENENADO":
-            dot = DotEffect("ENVENENADO", self, 1.5 * intensidade, duracao or 4.0, (100, 255, 100))
+        if efeito == "ENVENENADO":
+            dot = DotEffect(
+                "ENVENENADO",
+                self,
+                definicao.get("dano_base", 1.5) * intensidade,
+                duracao or duracao_padrao,
+                (100, 255, 100),
+            )
             self.dots_ativos.append(dot)
             
-        elif efeito == "SANGRAMENTO" or efeito == "SANGRANDO":
-            dot = DotEffect("SANGRANDO", self, 2.0 * intensidade, duracao or 3.0, (180, 0, 30))
+        elif efeito == "SANGRANDO":
+            dot = DotEffect(
+                "SANGRANDO",
+                self,
+                definicao.get("dano_base", 2.0) * intensidade,
+                duracao or duracao_padrao,
+                (180, 0, 30),
+            )
             self.dots_ativos.append(dot)
             
-        elif efeito == "QUEIMAR" or efeito == "QUEIMANDO":
-            dot = DotEffect("QUEIMANDO", self, 2.5 * intensidade, duracao or 2.5, (255, 100, 0))
+        elif efeito == "QUEIMANDO":
+            dot = DotEffect(
+                "QUEIMANDO",
+                self,
+                definicao.get("dano_base", 2.5) * intensidade,
+                duracao or duracao_padrao,
+                (255, 100, 0),
+            )
             self.dots_ativos.append(dot)
             
         elif efeito == "CORROENDO":
             # Corrosão: Dano + reduz defesa
-            duracao_corrosao = duracao or 4.0
-            self._renovar_dot("CORROENDO", 1.5 * intensidade, duracao_corrosao, (150, 100, 50))
+            duracao_corrosao = duracao or duracao_padrao
+            self._renovar_dot(
+                "CORROENDO",
+                definicao.get("dano_base", 1.5) * intensidade,
+                duracao_corrosao,
+                (150, 100, 50),
+            )
             self.corroendo_timer = max(self.corroendo_timer, duracao_corrosao)
             self._sincronizar_modificadores_debuff()
             
         elif efeito == "NECROSE":
             # Necrose: DoT que impede cura
-            dot = DotEffect("NECROSE", self, 3.0 * intensidade, duracao or 5.0, (50, 50, 50))
-            self.dots_ativos.append(dot)
-            if not hasattr(self, 'cura_bloqueada'):
-                self.cura_bloqueada = 0
-            self.cura_bloqueada = duracao or 5.0
+            duracao_necrose = duracao or duracao_padrao
+            self._renovar_dot(
+                "NECROSE",
+                definicao.get("dano_base", 3.0) * intensidade,
+                duracao_necrose,
+                (50, 50, 50),
+            )
+            self.cura_bloqueada_timer = max(
+                self.cura_bloqueada_timer,
+                duracao_necrose,
+            )
+            self.cura_bloqueada = self.cura_bloqueada_timer
             
         elif efeito == "MALDITO":
             # Maldição: DoT + dano recebido aumentado
-            duracao_maldicao = duracao or 6.0
-            self._renovar_dot("MALDITO", 1.0 * intensidade, duracao_maldicao, (100, 0, 100))
+            duracao_maldicao = duracao or duracao_padrao
+            self._renovar_dot(
+                "MALDITO",
+                definicao.get("dano_base", 1.0) * intensidade,
+                duracao_maldicao,
+                (100, 0, 100),
+            )
             self.maldito_timer = max(self.maldito_timer, duracao_maldicao)
             self._sincronizar_modificadores_debuff()
         
         # =================================================================
         # CONTROLE DE GRUPO (CC)
         # =================================================================
-        elif efeito == "CONGELAR" or efeito == "CONGELADO":
-            duracao_congelamento = duracao or 2.0
+        elif efeito == "CONGELADO":
+            duracao_congelamento = duracao or duracao_padrao
             duracao_lentidao = duracao_congelamento + 1.0
             if self.congelado_timer <= 0:
                 self._slow_fator_antes_congelado = self.slow_fator
@@ -1501,15 +1833,15 @@ class Lutador:
             self.congelado = True
             
         elif efeito == "LENTO":
-            self.slow_timer = max(self.slow_timer, duracao or 2.0)
+            self.slow_timer = max(self.slow_timer, duracao or duracao_padrao)
             self.slow_fator = min(self.slow_fator, 0.5 / intensidade)
             
-        elif efeito == "ATORDOAR" or efeito == "ATORDOADO":
-            self.stun_timer = max(self.stun_timer, (duracao or 0.8) * intensidade)
+        elif efeito == "ATORDOADO":
+            self.stun_timer = max(self.stun_timer, (duracao or duracao_padrao) * intensidade)
             
         elif efeito == "PARALISIA":
             # Paralisia: Stun mais curto mas frequente
-            self.stun_timer = max(self.stun_timer, (duracao or 0.5) * intensidade)
+            self.stun_timer = max(self.stun_timer, (duracao or duracao_padrao) * intensidade)
             self.flash_cor = (255, 255, 100)
             self.flash_timer = 0.3
             
@@ -1517,18 +1849,18 @@ class Lutador:
             # Enraizado: Não pode mover mas pode atacar
             if self.enraizado_timer <= 0:
                 self._slow_fator_antes_enraizado = self.slow_fator
-            self.enraizado_timer = max(self.enraizado_timer, duracao or 2.5)
+            self.enraizado_timer = max(self.enraizado_timer, duracao or duracao_padrao)
             self.slow_fator = 0.0  # Velocidade zero
             
         elif efeito == "SILENCIADO":
             # Silenciado: Não pode usar skills
-            self.silenciado_timer = max(self.silenciado_timer, duracao or 3.0)
+            self.silenciado_timer = max(self.silenciado_timer, duracao or duracao_padrao)
             
         elif efeito == "CEGO":
             # Cego: Ângulo de visão prejudicado (IA afetada)
             if not hasattr(self, 'cego_timer'):
                 self.cego_timer = 0
-            self.cego_timer = duracao or 2.0
+            self.cego_timer = max(self.cego_timer, duracao or duracao_padrao)
             self.flash_cor = (255, 255, 200)
             self.flash_timer = 0.5
             
@@ -1536,7 +1868,7 @@ class Lutador:
             # Medo: Força a fugir
             if not hasattr(self, 'medo_timer'):
                 self.medo_timer = 0
-            self.medo_timer = duracao or 2.5
+            self.medo_timer = max(self.medo_timer, duracao or duracao_padrao)
             if self.brain is not None:
                 self.brain.medo = 1.0  # Maximiza medo na IA
             
@@ -1544,14 +1876,14 @@ class Lutador:
             # Charme: Inimigo te segue
             if not hasattr(self, 'charme_timer'):
                 self.charme_timer = 0
-            self.charme_timer = duracao or 2.0
+            self.charme_timer = max(self.charme_timer, duracao or duracao_padrao)
             
         elif efeito == "SONO":
             # Sono: Stun longo que quebra com dano
             if not hasattr(self, 'dormindo'):
                 self.dormindo = False
             self.dormindo = True
-            self.stun_timer = max(self.stun_timer, duracao or 4.0)
+            self.stun_timer = max(self.stun_timer, duracao or duracao_padrao)
             
         elif efeito == "KNOCK_UP":
             # Knock Up: Joga no ar
@@ -1566,7 +1898,7 @@ class Lutador:
             
         elif efeito == "TEMPO_PARADO":
             # Tempo parado: Completamente imobilizado
-            duracao_tempo_parado = duracao or 2.0
+            duracao_tempo_parado = duracao or duracao_padrao
             if self.tempo_parado_timer <= 0:
                 self._slow_fator_antes_tempo_parado = self.slow_fator
             self.stun_timer = max(self.stun_timer, duracao_tempo_parado)
@@ -1585,19 +1917,19 @@ class Lutador:
         # =================================================================
         elif efeito == "FRACO":
             # Fraco: Dano reduzido
-            self.fraco_timer = max(self.fraco_timer, duracao or 4.0)
+            self.fraco_timer = max(self.fraco_timer, duracao or duracao_padrao)
             self._sincronizar_modificadores_debuff()
             
         elif efeito == "VULNERAVEL":
             # Vulnerável: Dano recebido aumentado
-            self.vulneravel_timer = max(self.vulneravel_timer, duracao or 4.0)
+            self.vulneravel_timer = max(self.vulneravel_timer, duracao or duracao_padrao)
             self._sincronizar_modificadores_debuff()
             
         elif efeito == "EXAUSTO":
             # Exausto: Regen de stamina/mana reduzida
             if not hasattr(self, 'regen_mana_base_normal'):
                 self.regen_mana_base_normal = self.regen_mana_base
-            self.exausto_timer = max(self.exausto_timer, duracao or 5.0)
+            self.exausto_timer = max(self.exausto_timer, duracao or duracao_padrao)
             self.regen_mana_base = self.regen_mana_base_normal * 0.3
             
         elif efeito == "MARCADO":
@@ -1608,7 +1940,7 @@ class Lutador:
             
         elif efeito == "EXPOSTO":
             # Exposto: Ignora parte da defesa
-            self.exposto_timer = max(self.exposto_timer, duracao or 4.0)
+            self.exposto_timer = max(self.exposto_timer, duracao or duracao_padrao)
             self._sincronizar_modificadores_debuff()
         
         # =================================================================
@@ -1633,7 +1965,7 @@ class Lutador:
             # Bomba relógio: Explode depois de X segundos
             if not hasattr(self, 'bomba_relogio_timer'):
                 self.bomba_relogio_timer = 0
-            self.bomba_relogio_timer = duracao or 3.0
+            self.bomba_relogio_timer = max(self.bomba_relogio_timer, duracao or duracao_padrao)
             self.bomba_relogio_dano = 80.0 * intensidade
             
         elif efeito == "LINK_ALMA":
@@ -1645,7 +1977,12 @@ class Lutador:
             # Possessão: Controle invertido temporário
             if not hasattr(self, 'possesso_timer'):
                 self.possesso_timer = 0
-            self.possesso_timer = duracao or 3.0
+            self.possesso_timer = max(self.possesso_timer, duracao or duracao_padrao)
+
+        else:
+            return False
+
+        return True
 
     def tomar_clash(self, ex, ey):
         """Recebe impacto de clash de armas"""
@@ -1710,7 +2047,7 @@ class Lutador:
         """Retorna dano com todos os modificadores"""
         dano = dano_base * self.mod_dano
         
-        for buff in self.buffs_ativos:
+        for buff in self._buffs_validos():
             dano *= buff.buff_dano
         
         if "Berserker" in self.classe_nome:

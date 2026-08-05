@@ -133,6 +133,18 @@ class StatusRuntimeRegressionTests(unittest.TestCase):
 
         self.assertEqual(self._active_timer_families(fighter, timers), 1)
 
+    def test_cura_maior_cleanses_necrosis_before_healing(self) -> None:
+        fighter = self._fighter("Major heal versus necrosis")
+        fighter._aplicar_efeito_status("NECROSE")
+        fighter._aplicar_efeito_status("FRACO")
+        fighter.vida = fighter.vida_max - 70.0
+
+        self._cast_class_buff(fighter, "Cura Maior")
+
+        self.assertEqual(fighter.cura_bloqueada_timer, 0.0)
+        self.assertFalse(any(dot.tipo == "NECROSE" for dot in fighter.dots_ativos))
+        self.assertAlmostEqual(fighter.vida, fighter.vida_max - 10.0)
+
     def test_immunity_blocks_status_and_area_metadata_but_not_damage(self) -> None:
         fighter = self._fighter("Immune target")
         enemy = self._fighter("Enemy")

@@ -3,6 +3,7 @@ import math
 import random
 from utils.config import *
 from core.skills import get_skill_data
+from core.status_runtime import BUFF_EFFECT_RUNTIME
 
 
 class ArmaProjetil:
@@ -674,29 +675,52 @@ class AreaEffect:
     
     def aplicar_efeitos_alvo(self, alvo, aplicar_efeito_principal=True):
         """Aplica os efeitos de controle da área no alvo."""
+        usa_runtime_status = callable(getattr(alvo, "esta_imune_a_debuffs", None))
+
         # Slow
         if self.slow_fator < 1.0:
-            alvo.slow_timer = max(alvo.slow_timer, self.duracao)
-            alvo.slow_fator = min(alvo.slow_fator, self.slow_fator)
+            if usa_runtime_status:
+                intensidade = 0.5 / max(0.01, self.slow_fator)
+                alvo._aplicar_efeito_status(
+                    "LENTO",
+                    duracao=self.duracao,
+                    intensidade=intensidade,
+                )
+            else:
+                alvo.slow_timer = max(alvo.slow_timer, self.duracao)
+                alvo.slow_fator = min(alvo.slow_fator, self.slow_fator)
         
         # Stun
         if self.duracao_stun > 0 and random.random() < self.chance_stun:
-            alvo.stun_timer = max(alvo.stun_timer, self.duracao_stun)
+            if usa_runtime_status:
+                alvo._aplicar_efeito_status("ATORDOADO", duracao=self.duracao_stun)
+            else:
+                alvo.stun_timer = max(alvo.stun_timer, self.duracao_stun)
         
         # Fear
         if self.duracao_fear > 0:
-            medo_timer = getattr(alvo, 'medo_timer', 0.0)
-            alvo.medo_timer = max(medo_timer, self.duracao_fear)
-            brain = getattr(alvo, 'brain', None)
-            if brain is not None:
-                brain.medo = 1.0
+            if usa_runtime_status:
+                alvo._aplicar_efeito_status("MEDO", duracao=self.duracao_fear)
+            else:
+                alvo.medo_timer = max(alvo.medo_timer, self.duracao_fear)
+                brain = getattr(alvo, "brain", None)
+                if brain is not None:
+                    brain.medo = 1.0
         
         # Gravidade
         if self.gravidade_aumentada > 1.0:
             # Impede pulo e causa slow
             alvo.vel_z = min(alvo.vel_z, 0)
-            alvo.slow_timer = max(alvo.slow_timer, self.duracao)
-            alvo.slow_fator = min(alvo.slow_fator, 1.0 / self.gravidade_aumentada)
+            fator_gravidade = 1.0 / self.gravidade_aumentada
+            if usa_runtime_status:
+                alvo._aplicar_efeito_status(
+                    "LENTO",
+                    duracao=self.duracao,
+                    intensidade=0.5 / max(0.01, fator_gravidade),
+                )
+            else:
+                alvo.slow_timer = max(alvo.slow_timer, self.duracao)
+                alvo.slow_fator = min(alvo.slow_fator, fator_gravidade)
         
         # Efeito principal
         if aplicar_efeito_principal:
@@ -790,31 +814,73 @@ class Buff:
     def __init__(self, nome_skill, alvo):
         self.nome = nome_skill
         data = get_skill_data(nome_skill)
+        self.efeito = data.get("efeito_buff")
+        defaults = BUFF_EFFECT_RUNTIME.get(self.efeito, {})
         
         self.alvo = alvo
-        self.duracao = data.get("duracao", 5.0)
+        duracao_fallback = data.get("duracao_imortal") or data.get("imune_debuffs") or 5.0
+        self.duracao = data.get("duracao", duracao_fallback)
+        if self.efeito == "IMORTAL":
+            self.duracao = data.get("duracao_imortal", self.duracao)
         self.vida = self.duracao
         self.cor = data.get("cor", BRANCO)
         
         # Efeitos possíveis
         self.escudo = data.get("escudo", 0)
         self.escudo_atual = self.escudo
-        self.buff_dano = data.get("buff_dano", 1.0)
-        self.buff_velocidade = data.get("buff_velocidade", 1.0)
-        self.refletir = data.get("refletir", 0)
-        self.cura_por_segundo = data.get("regen", 0)
+        self.buff_dano = data.get(
+            "buff_dano",
+            data.get("bonus_dano", defaults.get("buff_dano", 1.0)),
+        )
+        self.buff_velocidade = data.get(
+            "buff_velocidade",
+            data.get(
+                "bonus_velocidade",
+                data.get(
+                    "bonus_velocidade_movimento",
+                    defaults.get("buff_velocidade", 1.0),
+                ),
+            ),
+        )
+        self.buff_velocidade_ataque = data.get("bonus_velocidade_ataque", 1.0)
+        self.refletir = data.get("refletir", data.get("reflete_dano", 0))
+        self.cura_por_segundo = data.get(
+            "regen",
+            data.get("cura_tick", defaults.get("cura_por_segundo", 0)),
+        )
+        self.mod_dano_recebido = data.get(
+            "dano_recebido_bonus",
+            defaults.get("mod_dano_recebido", 1.0),
+        )
+        self.mod_cura_recebida = defaults.get("mod_cura_recebida", 1.0)
+        self.mod_cooldown = (
+            0.0 if data.get("sem_cooldown") else defaults.get("mod_cooldown", 1.0)
+        )
+        self.mod_mana_custo = 0.5 if data.get("custo_mana_metade") else 1.0
+        self.lifesteal = data.get("lifesteal", 0.0)
+        self.imortal_disponivel = bool(defaults.get("imortal", False))
         
         self.ativo = True
 
     def atualizar(self, dt):
-        self.vida -= dt
+        dt = max(0.0, dt)
+        tempo_ativo = min(dt, max(0.0, self.vida))
+        self.vida = max(0.0, self.vida - dt)
         
         # Cura contínua
-        if self.cura_por_segundo > 0:
-            self.alvo.vida = min(self.alvo.vida_max, self.alvo.vida + self.cura_por_segundo * dt)
+        if self.cura_por_segundo > 0 and tempo_ativo > 0.0:
+            self.alvo.receber_cura(self.cura_por_segundo * tempo_ativo)
         
         if self.vida <= 0:
             self.ativo = False
+
+    def consumir_imortalidade(self):
+        if not self.ativo or not self.imortal_disponivel:
+            return False
+        self.imortal_disponivel = False
+        self.ativo = False
+        self.vida = 0.0
+        return True
     
     def absorver_dano(self, dano):
         """Tenta absorver dano com escudo, retorna dano restante"""
@@ -858,13 +924,22 @@ class DotEffect:
         while self.tick_timer + 1e-9 >= self.tick_interval:
             self.tick_timer = max(0.0, self.tick_timer - self.tick_interval)
             if not self.alvo.morto:
-                self.alvo.vida -= self.dano_por_tick
+                limitar_letal = getattr(
+                    self.alvo,
+                    "_limitar_dano_letal_por_imortalidade",
+                    None,
+                )
+                dano_tick = (
+                    limitar_letal(self.dano_por_tick)
+                    if callable(limitar_letal)
+                    else self.dano_por_tick
+                )
+                self.alvo.vida -= dano_tick
                 if self.alvo.vida <= 0:
                     self.alvo.morrer()
 
         if self.vida <= 0:
             self.ativo = False
-
 
 # =============================================================================
 # NOVAS CLASSES v2.0 - SUMMON, TRAP, TRANSFORM, CHANNEL
@@ -1208,11 +1283,11 @@ class Channel:
             # Cura o caster
             if self.cura_por_segundo > 0:
                 cura = self.cura_por_segundo * self.tick_interval
-                self.dono.vida = min(self.dono.vida_max, self.dono.vida + cura)
+                cura_real = self.dono.receber_cura(cura)
                 resultados.append({
                     "tipo": "cura",
                     "alvo": self.dono,
-                    "valor": cura
+                    "valor": cura_real
                 })
             
             # Dano em linha (beam)
