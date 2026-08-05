@@ -1,5 +1,4 @@
 import pygame
-import json
 import math
 import random
 import sys
@@ -690,11 +689,25 @@ class Simulador:
                                 self.audio.play_skill("AREA", skill_name, area.x, listener_x, phase="impact")
                             
                             dano = area.dono.get_dano_modificado(area.dano) if hasattr(area.dono, 'get_dano_modificado') else area.dano
-                            if alvo.tomar_dano(dano, dx/(dist or 1), dy/(dist or 1), area.tipo_efeito):
+                            invencibilidade_antes = max(0.0, getattr(alvo, 'invencivel_timer', 0.0))
+                            morreu = alvo.tomar_dano(dano, dx/(dist or 1), dy/(dist or 1), area.tipo_efeito)
+                            # tomar_dano já aplica o efeito principal. Aqui entram
+                            # apenas os metadados adicionais da área e efeito2,
+                            # desde que o impacto não tenha sido negado.
+                            impacto_aplicado = (
+                                getattr(alvo, 'invencivel_timer', 0.0)
+                                > invencibilidade_antes
+                            )
+                            if impacto_aplicado:
+                                area.aplicar_efeitos_alvo(
+                                    alvo,
+                                    aplicar_efeito_principal=False,
+                                )
+                            if morreu:
                                 self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
                                 self.ativar_slow_motion()
                                 self.vencedor = area.dono.dados.nome
-                            else:
+                            elif impacto_aplicado:
                                 cor_txt = self._get_cor_efeito(area.tipo_efeito)
                                 self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano), cor_txt))
             

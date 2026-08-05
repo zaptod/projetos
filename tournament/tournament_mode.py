@@ -373,7 +373,12 @@ class Tournament:
     def get_progress(self) -> Dict:
         """Retorna progresso do torneio"""
         total_matches = sum(len(r.matches) for r in self.bracket)
-        completed_matches = len(self.fight_history)
+        completed_matches = sum(
+            1
+            for round_obj in self.bracket
+            for match in round_obj.matches
+            if match.completed
+        )
         
         return {
             "total_participants": len(self.participants),
@@ -386,6 +391,38 @@ class Tournament:
             "champion": self.champion,
             "state": self.state.value
         }
+
+    @staticmethod
+    def _serialize_match(match: TournamentMatch) -> Dict:
+        """Converte uma luta para o formato persistido."""
+        return {
+            "match_id": match.match_id,
+            "round_num": match.round_num,
+            "fighter1_name": match.fighter1_name,
+            "fighter2_name": match.fighter2_name,
+            "winner_name": match.winner_name,
+            "loser_name": match.loser_name,
+            "duration": match.duration,
+            "ko_type": match.ko_type,
+            "fight_log": list(match.fight_log),
+            "completed": match.completed,
+        }
+
+    @staticmethod
+    def _deserialize_match(match_data: Dict) -> TournamentMatch:
+        """Restaura uma luta, aceitando saves anteriores ao fight_log."""
+        return TournamentMatch(
+            match_id=match_data["match_id"],
+            round_num=match_data["round_num"],
+            fighter1_name=match_data["fighter1_name"],
+            fighter2_name=match_data["fighter2_name"],
+            winner_name=match_data.get("winner_name"),
+            loser_name=match_data.get("loser_name"),
+            duration=match_data.get("duration", 0.0),
+            ko_type=match_data.get("ko_type", ""),
+            fight_log=list(match_data.get("fight_log") or []),
+            completed=match_data.get("completed", False),
+        )
     
     def save_state(self, filename: str = "tournament_state.json"):
         """Salva estado do torneio"""
@@ -397,6 +434,9 @@ class Tournament:
             "current_round": self.current_round,
             "current_match": self.current_match,
             "bracket": [],
+            "fight_history": [
+                self._serialize_match(match) for match in self.fight_history
+            ],
             "stats": self.stats
         }
         
@@ -408,18 +448,7 @@ class Tournament:
                 "matches": []
             }
             for match in round_obj.matches:
-                match_data = {
-                    "match_id": match.match_id,
-                    "round_num": match.round_num,
-                    "fighter1_name": match.fighter1_name,
-                    "fighter2_name": match.fighter2_name,
-                    "winner_name": match.winner_name,
-                    "loser_name": match.loser_name,
-                    "duration": match.duration,
-                    "ko_type": match.ko_type,
-                    "completed": match.completed
-                }
-                round_data["matches"].append(match_data)
+                round_data["matches"].append(self._serialize_match(match))
             state["bracket"].append(round_data)
         
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -448,6 +477,7 @@ class Tournament:
             self.stats = state.get("stats", self.stats)
             
             self.bracket = []
+            matches_by_id = {}
             for round_data in state["bracket"]:
                 round_obj = TournamentRound(
                     round_num=round_data["round_num"],
@@ -455,19 +485,30 @@ class Tournament:
                     completed=round_data["completed"]
                 )
                 for match_data in round_data["matches"]:
-                    match = TournamentMatch(
-                        match_id=match_data["match_id"],
-                        round_num=match_data["round_num"],
-                        fighter1_name=match_data["fighter1_name"],
-                        fighter2_name=match_data["fighter2_name"],
-                        winner_name=match_data["winner_name"],
-                        loser_name=match_data["loser_name"],
-                        duration=match_data["duration"],
-                        ko_type=match_data["ko_type"],
-                        completed=match_data["completed"]
-                    )
+                    match = self._deserialize_match(match_data)
                     round_obj.matches.append(match)
+                    matches_by_id[match.match_id] = match
                 self.bracket.append(round_obj)
+
+            history_data = state.get("fight_history")
+            if history_data is None:
+                # Saves antigos não persistiam o histórico. Reconstrói as
+                # lutas reais concluídas, sem incluir avanços automáticos.
+                self.fight_history = [
+                    match
+                    for round_obj in self.bracket
+                    for match in round_obj.matches
+                    if match.completed and match.ko_type != "BYE"
+                ]
+            else:
+                self.fight_history = []
+                for match_data in history_data:
+                    match = matches_by_id.get(match_data["match_id"])
+                    if match is None:
+                        match = self._deserialize_match(match_data)
+                    elif "fight_log" in match_data:
+                        match.fight_log = list(match_data.get("fight_log") or [])
+                    self.fight_history.append(match)
             
             print(f"✅ Estado carregado de {filepath}")
             return True

@@ -44,6 +44,7 @@ class Lutador:
         
         # Regeneração baseada na classe
         self.regen_mana_base = self.class_data.get("regen_mana", 3.0)
+        self.regen_mana_base_normal = self.regen_mana_base
         
         # Modificadores de classe
         self.mod_dano = self.class_data.get("mod_forca", 1.0)
@@ -141,6 +142,16 @@ class Lutador:
         self.stun_timer = 0.0
         self.slow_timer = 0.0
         self.slow_fator = 1.0
+        self.enraizado_timer = 0.0
+        self.congelado_timer = 0.0
+        self.congelado = False
+        self.tempo_parado_timer = 0.0
+        self.tempo_parado = False
+        self.silenciado_timer = 0.0
+        self.exausto_timer = 0.0
+        self._slow_fator_antes_enraizado = 1.0
+        self._slow_fator_antes_congelado = 1.0
+        self._slow_fator_antes_tempo_parado = 1.0
         self.modo_adrenalina = False
         
         # === SISTEMA DE CHANNELING v8.0 (Para Magos) ===
@@ -261,6 +272,9 @@ class Lutador:
 
     def usar_skill_arma(self, skill_idx=None):
         """Usa a skill equipada na arma"""
+        if self.silenciado_timer > 0:
+            return False
+
         from core.combat import Projetil, AreaEffect, Beam, Buff, Summon, Trap, Transform, Channel
         from effects.audio import AudioManager
         
@@ -440,6 +454,9 @@ class Lutador:
 
     def usar_skill_classe(self, skill_nome):
         """Usa uma skill de classe específica"""
+        if self.silenciado_timer > 0:
+            return False
+
         from core.combat import Projetil, AreaEffect, Beam, Buff, Summon, Trap, Transform, Channel
         from effects.audio import AudioManager
         
@@ -626,7 +643,54 @@ class Lutador:
         if self.slow_timer > 0:
             self.slow_timer -= dt
             if self.slow_timer <= 0:
-                self.slow_fator = 1.0
+                self.slow_timer = 0.0
+                if (self.enraizado_timer <= 0 and self.congelado_timer <= 0
+                        and self.tempo_parado_timer <= 0):
+                    self.slow_fator = 1.0
+
+        if self.enraizado_timer > 0:
+            self.enraizado_timer = max(0.0, self.enraizado_timer - dt)
+            if self.enraizado_timer <= 0:
+                if self.tempo_parado_timer > 0:
+                    self.slow_fator = 0.0
+                elif self.congelado_timer > 0:
+                    self.slow_fator = min(self._slow_fator_antes_enraizado, 0.3)
+                elif self.slow_timer > 0:
+                    self.slow_fator = self._slow_fator_antes_enraizado
+                else:
+                    self.slow_fator = 1.0
+
+        if self.congelado_timer > 0:
+            self.congelado_timer = max(0.0, self.congelado_timer - dt)
+            if self.congelado_timer <= 0:
+                self.congelado = False
+                if self.enraizado_timer > 0 or self.tempo_parado_timer > 0:
+                    self.slow_fator = 0.0
+                elif self.slow_timer > 0:
+                    self.slow_fator = self._slow_fator_antes_congelado
+                else:
+                    self.slow_fator = 1.0
+
+        if self.tempo_parado_timer > 0:
+            self.tempo_parado_timer = max(0.0, self.tempo_parado_timer - dt)
+            if self.tempo_parado_timer <= 0:
+                self.tempo_parado = False
+                if self.enraizado_timer > 0:
+                    self.slow_fator = 0.0
+                elif self.congelado_timer > 0:
+                    self.slow_fator = min(self._slow_fator_antes_tempo_parado, 0.3)
+                elif self.slow_timer > 0:
+                    self.slow_fator = self._slow_fator_antes_tempo_parado
+                else:
+                    self.slow_fator = 1.0
+
+        if self.silenciado_timer > 0:
+            self.silenciado_timer = max(0.0, self.silenciado_timer - dt)
+
+        if self.exausto_timer > 0:
+            self.exausto_timer = max(0.0, self.exausto_timer - dt)
+            if self.exausto_timer <= 0:
+                self.regen_mana_base = self.regen_mana_base_normal
         
         for skill_nome in list(self.cd_skills.keys()):
             if self.cd_skills[skill_nome] > 0:
@@ -1340,11 +1404,14 @@ class Lutador:
         # CONTROLE DE GRUPO (CC)
         # =================================================================
         elif efeito == "CONGELAR" or efeito == "CONGELADO":
-            self.stun_timer = max(self.stun_timer, duracao or 2.0)
-            self.slow_timer = max(self.slow_timer, (duracao or 2.0) + 1.0)
-            self.slow_fator = 0.3
-            if not hasattr(self, 'congelado'):
-                self.congelado = False
+            duracao_congelamento = duracao or 2.0
+            duracao_lentidao = duracao_congelamento + 1.0
+            if self.congelado_timer <= 0:
+                self._slow_fator_antes_congelado = self.slow_fator
+            self.stun_timer = max(self.stun_timer, duracao_congelamento)
+            self.slow_timer = max(self.slow_timer, duracao_lentidao)
+            self.congelado_timer = max(self.congelado_timer, duracao_lentidao)
+            self.slow_fator = min(self.slow_fator, 0.3)
             self.congelado = True
             
         elif efeito == "LENTO":
@@ -1362,16 +1429,14 @@ class Lutador:
             
         elif efeito == "ENRAIZADO":
             # Enraizado: Não pode mover mas pode atacar
-            if not hasattr(self, 'enraizado_timer'):
-                self.enraizado_timer = 0
+            if self.enraizado_timer <= 0:
+                self._slow_fator_antes_enraizado = self.slow_fator
             self.enraizado_timer = max(self.enraizado_timer, duracao or 2.5)
             self.slow_fator = 0.0  # Velocidade zero
             
         elif efeito == "SILENCIADO":
             # Silenciado: Não pode usar skills
-            if not hasattr(self, 'silenciado_timer'):
-                self.silenciado_timer = 0
-            self.silenciado_timer = duracao or 3.0
+            self.silenciado_timer = max(self.silenciado_timer, duracao or 3.0)
             
         elif efeito == "CEGO":
             # Cego: Ângulo de visão prejudicado (IA afetada)
@@ -1415,10 +1480,12 @@ class Lutador:
             
         elif efeito == "TEMPO_PARADO":
             # Tempo parado: Completamente imobilizado
-            self.stun_timer = max(self.stun_timer, duracao or 2.0)
+            duracao_tempo_parado = duracao or 2.0
+            if self.tempo_parado_timer <= 0:
+                self._slow_fator_antes_tempo_parado = self.slow_fator
+            self.stun_timer = max(self.stun_timer, duracao_tempo_parado)
+            self.tempo_parado_timer = max(self.tempo_parado_timer, duracao_tempo_parado)
             self.slow_fator = 0.0
-            if not hasattr(self, 'tempo_parado'):
-                self.tempo_parado = False
             self.tempo_parado = True
             
         elif efeito == "VORTEX":
@@ -1444,10 +1511,10 @@ class Lutador:
             
         elif efeito == "EXAUSTO":
             # Exausto: Regen de stamina/mana reduzida
-            if not hasattr(self, 'exausto_timer'):
-                self.exausto_timer = 0
-            self.exausto_timer = duracao or 5.0
-            self.regen_mana_base *= 0.3
+            if not hasattr(self, 'regen_mana_base_normal'):
+                self.regen_mana_base_normal = self.regen_mana_base
+            self.exausto_timer = max(self.exausto_timer, duracao or 5.0)
+            self.regen_mana_base = self.regen_mana_base_normal * 0.3
             
         elif efeito == "MARCADO":
             # Marcado: Próximo ataque causa dano extra

@@ -117,6 +117,21 @@ class TournamentByeRegressionTests(unittest.TestCase):
             "a rodada seguinte ainda tem vaga TBD apos as quartas",
         )
 
+    def test_finished_tournament_reports_full_progress_with_byes(self):
+        tournament = self._build_tournament()
+        self.assertTrue(tournament.start_tournament())
+
+        while tournament.state != TournamentState.FINISHED:
+            current_match = tournament.get_current_match()
+            self.assertIsNotNone(current_match)
+            self.assertTrue(
+                tournament.record_match_result(current_match.fighter1_name)
+            )
+
+        progress = tournament.get_progress()
+        self.assertEqual(progress["total_matches"], progress["completed_matches"])
+        self.assertEqual(progress["progress_percent"], 100.0)
+
 
 if __name__ == "__main__":
     unittest.main()

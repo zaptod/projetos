@@ -1278,12 +1278,22 @@ class TelaArmas(tk.Frame):
                 forma2_lamina=geo.get("forma2_lamina", 0),
                 # Cores
                 r=cores["r"], g=cores["g"], b=cores["b"],
-                # Habilidades
+                # Habilidades e atributos avancados
                 habilidades=dados["habilidades"],
                 encantamentos=dados["encantamentos"],
-                cabo_dano=dados["cabo_dano"],
+                passiva=dados.get("passiva"),
+                critico=dados.get("critico", 0.0),
+                velocidade_ataque=dados.get("velocidade_ataque", 1.0),
                 afinidade_elemento=dados["afinidade_elemento"],
+                durabilidade=dados.get("durabilidade", 100.0),
+                durabilidade_max=dados.get("durabilidade_max", 100.0),
+                cabo_dano=dados["cabo_dano"],
             )
+
+            # No construtor, ``None`` gera uma passiva aleatoria. Durante uma
+            # edicao, a ausencia explicita de passiva deve continuar ausente.
+            if "passiva" in dados:
+                nova.passiva = dados["passiva"]
             
             if self.indice_em_edicao is not None:
                 self.controller.lista_armas[self.indice_em_edicao] = nova
@@ -1343,6 +1353,10 @@ class TelaArmas(tk.Frame):
         idx = self.tree.index(sel[0])
         arma = self.controller.lista_armas[idx]
         
+        # ``to_dict`` devolve os valores-base esperados pelo construtor, sem os
+        # modificadores ja aplicados em critico, velocidade e durabilidade maxima.
+        serializado = arma.to_dict()
+
         # Preenche dados para edicao
         self.dados_arma = {
             "nome": arma.nome,
@@ -1378,6 +1392,11 @@ class TelaArmas(tk.Frame):
             "encantamentos": getattr(arma, 'encantamentos', []),
             "cabo_dano": arma.cabo_dano,
             "afinidade_elemento": getattr(arma, 'afinidade_elemento', None),
+            "passiva": serializado["passiva"],
+            "critico": serializado["critico"],
+            "velocidade_ataque": serializado["velocidade_ataque"],
+            "durabilidade": serializado["durabilidade"],
+            "durabilidade_max": serializado["durabilidade_max"],
         }
         
         self.indice_em_edicao = idx

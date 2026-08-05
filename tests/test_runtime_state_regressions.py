@@ -151,6 +151,23 @@ class TemporaryStatusRegressionTests(unittest.TestCase):
         self.assertEqual(fighter.silenciado_timer, 0.0)
         self.assertTrue(fighter.usar_skill_arma())
 
+    def test_exhaustion_is_idempotent_and_restores_mana_regen(self) -> None:
+        fighter = self._fighter("Exausto")
+        enemy = self._fighter("Alvo")
+        normal_regen = fighter.regen_mana_base
+
+        fighter._aplicar_efeito_status("EXAUSTO", duracao=0.1)
+        reduced_regen = fighter.regen_mana_base
+        fighter._aplicar_efeito_status("EXAUSTO", duracao=0.1)
+
+        self.assertAlmostEqual(reduced_regen, normal_regen * 0.3)
+        self.assertAlmostEqual(fighter.regen_mana_base, reduced_regen)
+
+        fighter.update(0.2, enemy)
+
+        self.assertEqual(fighter.exausto_timer, 0.0)
+        self.assertAlmostEqual(fighter.regen_mana_base, normal_regen)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,7 +8,7 @@ import sys
 import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import Personagem, Arma
+from models import Personagem, Arma, get_raridade_data
 
 # Caminhos dos arquivos de dados - agora dentro de data/
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -77,17 +77,16 @@ def carregar_armas():
 def carregar_personagens():
     raw_chars = carregar_json(ARQUIVO_CHARS)
     raw_armas = carregar_json(ARQUIVO_ARMAS)
+    pesos_por_nome = {
+        item["nome"]: float(item.get("peso", 0))
+        * get_raridade_data(item.get("raridade", "Comum"))["mod_peso"]
+        for item in raw_armas
+    }
     
     lista = []
     for item in raw_chars:
-        peso_arma = 0
         nome_arma = item.get("nome_arma", "")
-        
-        # Busca o peso atualizado da arma
-        for a in raw_armas:
-            if a["nome"] == nome_arma:
-                peso_arma = a["peso"]
-                break
+        peso_arma = pesos_por_nome.get(nome_arma, 0)
         
         p = Personagem(
             item["nome"], item["tamanho"], item["forca"], item["mana"],

@@ -672,8 +672,8 @@ class AreaEffect:
         
         return resultados
     
-    def aplicar_efeitos_alvo(self, alvo):
-        """Aplica todos os efeitos da área no alvo"""
+    def aplicar_efeitos_alvo(self, alvo, aplicar_efeito_principal=True):
+        """Aplica os efeitos de controle da área no alvo."""
         # Slow
         if self.slow_fator < 1.0:
             alvo.slow_timer = max(alvo.slow_timer, self.duracao)
@@ -685,18 +685,22 @@ class AreaEffect:
         
         # Fear
         if self.duracao_fear > 0:
-            if hasattr(alvo, 'medo_timer'):
-                alvo.medo_timer = max(alvo.medo_timer, self.duracao_fear)
-            alvo.brain.medo = 1.0
+            medo_timer = getattr(alvo, 'medo_timer', 0.0)
+            alvo.medo_timer = max(medo_timer, self.duracao_fear)
+            brain = getattr(alvo, 'brain', None)
+            if brain is not None:
+                brain.medo = 1.0
         
         # Gravidade
         if self.gravidade_aumentada > 1.0:
             # Impede pulo e causa slow
             alvo.vel_z = min(alvo.vel_z, 0)
+            alvo.slow_timer = max(alvo.slow_timer, self.duracao)
             alvo.slow_fator = min(alvo.slow_fator, 1.0 / self.gravidade_aumentada)
         
         # Efeito principal
-        alvo._aplicar_efeito_status(self.tipo_efeito)
+        if aplicar_efeito_principal:
+            alvo._aplicar_efeito_status(self.tipo_efeito)
         
         # Efeito secundário
         if self.efeito2:
@@ -841,17 +845,23 @@ class DotEffect:
         self.ativo = True
 
     def atualizar(self, dt):
-        self.vida -= dt
-        self.tick_timer += dt
-        
-        if self.tick_timer >= self.tick_interval:
-            self.tick_timer = 0
-            # Aplica dano
+        if not self.ativo:
+            return
+
+        dt = max(0.0, dt)
+        tempo_ativo = min(dt, max(0.0, self.vida))
+        self.vida = max(0.0, self.vida - dt)
+        self.tick_timer += tempo_ativo
+
+        # Consome todos os ticks completos acumulados. Somente o trecho do
+        # frame em que o DoT ainda estava vivo entra no acumulador.
+        while self.tick_timer + 1e-9 >= self.tick_interval:
+            self.tick_timer = max(0.0, self.tick_timer - self.tick_interval)
             if not self.alvo.morto:
                 self.alvo.vida -= self.dano_por_tick
                 if self.alvo.vida <= 0:
                     self.alvo.morrer()
-        
+
         if self.vida <= 0:
             self.ativo = False
 
