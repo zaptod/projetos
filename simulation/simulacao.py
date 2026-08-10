@@ -7,17 +7,35 @@ import threading
 from collections.abc import Mapping
 
 from data import database
-from utils.config import *
-from effects import (Particula, FloatingText, Decal, Shockwave, Câmera, EncantamentoEffect,
+from utils.config import (
+    ALTURA,
+    AMARELO_FAISCA,
+    AZUL_MANA,
+    BRANCO,
+    COR_CORPO,
+    COR_FUNDO,
+    COR_GRID,
+    COR_P1,
+    COR_P2,
+    COR_TEXTO_INFO,
+    COR_TEXTO_TITULO,
+    COR_UI_BG,
+    FPS,
+    LARGURA,
+    PPM,
+    SANGUE_ESCURO,
+    VERMELHO_SANGUE,
+)
+from effects import (Particula, FloatingText, Decal, Shockwave, Câmera,
                      ImpactFlash, MagicClash, BlockEffect, DashTrail, HitSpark,
                      MovementAnimationManager, MovementType,  # v8.0 Movement Animations
                      AttackAnimationManager, calcular_knockback_com_forca, get_impact_tier,  # v8.0 Attack Animations
-                     MagicVFXManager, get_element_from_skill)  # v11.0 Magic VFX
+                     MagicVFXManager)  # v11.0 Magic VFX
 from effects.audio import AudioManager  # v10.0 Sistema de Áudio
 from core.entities import Lutador
-from core.physics import colisao_linha_circulo, intersect_line_circle, colisao_linha_linha, normalizar_angulo
-from core.hitbox import sistema_hitbox, verificar_hit, get_debug_visual, atualizar_debug, DEBUG_VISUAL
-from core.arena import Arena, ARENAS, get_arena, set_arena  # v9.0 Sistema de Arena
+from core.physics import intersect_line_circle, colisao_linha_linha, normalizar_angulo
+from core.hitbox import sistema_hitbox, verificar_hit, atualizar_debug, DEBUG_VISUAL
+from core.arena import set_arena  # v9.0 Sistema de Arena
 from ai import CombatChoreographer  # Sistema de Coreografia v5.0
 from core.game_feel import GameFeelManager, HitStopManager  # Sistema de Game Feel v8.0
 from core.match_series import BestOfSeries
@@ -1932,7 +1950,6 @@ class Simulador:
         """Efeito visual de bloqueio"""
         # === ÁUDIO v10.0 - SOM DE BLOQUEIO ===
         if self.audio:
-            listener_x = self.cam.x / PPM
             self.audio.play_special("shield_block", volume=0.7)
         
         # Direção do impacto
@@ -1974,9 +1991,6 @@ class Simulador:
     
     def _efeito_parry(self, proj, parryer):
         """Efeito visual de parry (defesa com ataque)"""
-        # Cor do parryer
-        cor = (parryer.dados.cor_r, parryer.dados.cor_g, parryer.dados.cor_b)
-        
         # Flash de impacto especial
         self.impact_flashes.append(ImpactFlash(proj.x * PPM, proj.y * PPM, AMARELO_FAISCA, 1.8, "clash"))
         
@@ -3000,9 +3014,6 @@ class Simulador:
         # Alpha diminui conforme avança
         alpha = int(180 * (1 - attack_prog * 0.7))
         
-        # Largura do arco
-        arc_width = max(3, int(8 * (1 - attack_prog * 0.5)))
-        
         # Desenha o arco de corte
         s = pygame.Surface((int(arc_radius * 3), int(arc_radius * 3)), pygame.SRCALPHA)
         arc_center = (int(arc_radius * 1.5), int(arc_radius * 1.5))
@@ -3296,7 +3307,7 @@ class Simulador:
                     try:
                         pygame.draw.polygon(self.tela, cor_escura, lam_poly)
                         pygame.draw.polygon(self.tela, cor, lam_poly, 1)
-                    except: pass
+                    except (pygame.error, TypeError, ValueError, OverflowError): pass
                     # Fio da lâmina (highlight central)
                     pygame.draw.line(self.tela, cor_clara,
                                      (int(cabo_ex), int(cabo_ey)),
@@ -3317,7 +3328,7 @@ class Simulador:
                                              (max(0,min(sz*2-1,local_e[0])), max(0,min(sz*2-1,local_e[1]))),
                                              max(4, lam_w_base + 3))
                             self.tela.blit(gs, (mid_x, mid_y))
-                        except: pass
+                        except (pygame.error, TypeError, ValueError, OverflowError): pass
 
                     # ── Runa na lâmina (raridade) ──
                     if raridade not in ['Comum', 'Incomum']:
@@ -3328,7 +3339,7 @@ class Simulador:
                             rs = pygame.Surface((8, 8), pygame.SRCALPHA)
                             pygame.draw.circle(rs, (*cor_raridade, rune_a), (4, 4), 3)
                             self.tela.blit(rs, (rune_x - 4, rune_y - 4))
-                        except: pass
+                        except (pygame.error, TypeError, ValueError, OverflowError): pass
 
                     # ── Ponta brilhante ──
                     tip_r = max(2, larg - 1)
@@ -3337,7 +3348,7 @@ class Simulador:
                         ts = pygame.Surface((tip_r * 5, tip_r * 5), pygame.SRCALPHA)
                         pygame.draw.circle(ts, (*cor_clara, tip_a), (tip_r*2, tip_r*2), tip_r * 2)
                         self.tela.blit(ts, (int(tip_x) - tip_r*2, int(tip_y) - tip_r*2))
-                    except: pass
+                    except (pygame.error, TypeError, ValueError, OverflowError): pass
                     tip_cor = cor_raridade if raridade not in ['Comum'] else cor_clara
                     pygame.draw.circle(self.tela, tip_cor, (int(tip_x), int(tip_y)), tip_r)
 
@@ -3419,7 +3430,7 @@ class Simulador:
                 shadow_chain = [(int(p[0]+3), int(p[1]+3)) for p in chain_pts]
                 if len(shadow_chain) > 1:
                     try: pygame.draw.lines(self.tela, (20, 20, 22), False, shadow_chain, max(4, larg_base + 2))
-                    except: pass
+                    except (pygame.error, TypeError, ValueError, OverflowError): pass
 
                 # Elos individuais (alternando horizontal/vertical)
                 elo_w = max(5, larg_base + 2)
@@ -3441,7 +3452,7 @@ class Simulador:
                     try:
                         pygame.draw.polygon(self.tela, (90, 92, 100), elo_pts)
                         pygame.draw.polygon(self.tela, (145, 148, 160), elo_pts, 1)
-                    except: pass
+                    except (pygame.error, TypeError, ValueError, OverflowError): pass
 
                 # ── Bola espigada (iron flail head) ──
                 if chain_pts:
@@ -3456,7 +3467,7 @@ class Simulador:
                             glow_a = int(120 * anim_scale)
                             pygame.draw.circle(gs, (*cor, min(255, glow_a)), (glow_r, glow_r), glow_r)
                             self.tela.blit(gs, (int(end_x) - glow_r, int(end_y) - glow_r))
-                        except: pass
+                        except (pygame.error, TypeError, ValueError, OverflowError): pass
 
                     # Sombra da bola
                     pygame.draw.circle(self.tela, (15, 15, 18), (int(end_x) + 3, int(end_y) + 3), ball_r + 1)
@@ -3493,7 +3504,7 @@ class Simulador:
                         try:
                             pygame.draw.polygon(self.tela, cor, spike_pts)
                             pygame.draw.polygon(self.tela, cor_clara, spike_pts, 1)
-                        except: pass
+                        except (pygame.error, TypeError, ValueError, OverflowError): pass
 
                     # Anel de reforço na bola
                     pygame.draw.circle(self.tela, (70, 72, 80), (int(end_x), int(end_y)), ball_r, 2)
@@ -3506,7 +3517,7 @@ class Simulador:
                             pygame.draw.circle(rs, (*cor_raridade, rar_alpha),
                                                (ball_r * 2, ball_r * 2), ball_r + 4)
                             self.tela.blit(rs, (int(end_x) - ball_r * 2, int(end_y) - ball_r * 2))
-                        except: pass
+                        except (pygame.error, TypeError, ValueError, OverflowError): pass
 
             else:
                 # Outras correntes (Chicote, Kusarigama, etc.)
@@ -3526,9 +3537,9 @@ class Simulador:
                 if len(pts) > 1:
                     shadow_pts = [(p[0]+2, p[1]+2) for p in pts]
                     try: pygame.draw.lines(self.tela, (30, 30, 30), False, shadow_pts, max(3, larg_base))
-                    except: pass
+                    except (pygame.error, TypeError, ValueError, OverflowError): pass
                     try: pygame.draw.lines(self.tela, (120, 120, 130), False, pts, max(3, larg_base))
-                    except: pass
+                    except (pygame.error, TypeError, ValueError, OverflowError): pass
                     for i, (px2, py2) in enumerate(pts):
                         if i % 2 == 0:
                             pygame.draw.circle(self.tela, (90, 90, 100), (px2, py2), max(2, larg_base//2))
@@ -3684,7 +3695,6 @@ class Simulador:
                 
                 # Glow da espada
                 for glow in range(4, 0, -1):
-                    glow_cor = (*cor, 40 // glow)
                     pygame.draw.line(self.tela, cor, 
                                    (int(px), int(py)), (int(sword_end_x), int(sword_end_y)), 
                                    max(2, larg_base//2) + glow)
@@ -3747,7 +3757,6 @@ class Simulador:
 
     def desenhar_hitbox_debug(self):
         """Desenha visualização de debug das hitboxes"""
-        debug_info = get_debug_visual()
         fonte = pygame.font.SysFont("Arial", 10)
         
         # Desenha hitboxes em tempo real para cada lutador

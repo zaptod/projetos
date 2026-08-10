@@ -1,9 +1,83 @@
 # combat.py
+import copy
 import math
 import random
 from utils.config import *
 from core.skills import get_skill_data
 from core.status_runtime import BUFF_EFFECT_RUNTIME
+
+
+PERFIS_MUTACAO = (
+    {
+        "nome": "brutal",
+        "buff_dano": 1.5,
+        "buff_velocidade": 0.8,
+        "mod_dano_recebido": 1.15,
+    },
+    {
+        "nome": "agil",
+        "buff_dano": 0.85,
+        "buff_velocidade": 1.6,
+        "mod_dano_recebido": 1.0,
+    },
+    {
+        "nome": "resiliente",
+        "buff_dano": 0.9,
+        "buff_velocidade": 0.85,
+        "mod_dano_recebido": 0.6,
+    },
+)
+
+
+def criar_metadata_impacto(fonte=None, **overrides):
+    """Cria o contrato unico que acompanha uma fonte ate ``Lutador``."""
+    metadata = {
+        "nome_skill": getattr(fonte, "nome", None),
+        "tipo_fonte": getattr(fonte, "tipo_fonte", "desconhecida"),
+        "eh_skill": bool(getattr(fonte, "eh_skill", False)),
+        "eh_projetil": bool(getattr(fonte, "eh_projetil", False)),
+        "ground": bool(getattr(fonte, "ground", False)),
+        "rouba_buff": bool(getattr(fonte, "rouba_buff", False)),
+        "refletido": bool(getattr(fonte, "refletido", False)),
+    }
+    metadata.update(overrides)
+    return metadata
+
+
+def refletir_projetil(projetil, novo_dono):
+    """Troca ownership e voo uma unica vez, antes de qualquer dano."""
+    if (
+        projetil is None
+        or novo_dono is None
+        or getattr(projetil, "dono", None) is novo_dono
+        or getattr(projetil, "reflexoes", 0) >= 1
+        or not getattr(projetil, "ativo", True)
+    ):
+        return False
+
+    dono_anterior = getattr(projetil, "dono", None)
+    projetil.dono = novo_dono
+    if hasattr(projetil, "angulo"):
+        projetil.angulo = (float(projetil.angulo) + 180.0) % 360.0
+    if hasattr(projetil, "angulo_disparo"):
+        projetil.angulo_disparo = (
+            float(projetil.angulo_disparo) + 180.0
+        ) % 360.0
+    if hasattr(projetil, "angulo_visual"):
+        projetil.angulo_visual = getattr(
+            projetil,
+            "angulo",
+            getattr(projetil, "angulo_disparo", projetil.angulo_visual),
+        )
+    if hasattr(projetil, "alvo"):
+        projetil.alvo = dono_anterior
+    if hasattr(projetil, "alvo_forcado"):
+        projetil.alvo_forcado = dono_anterior
+    if hasattr(projetil, "retornando"):
+        projetil.retornando = False
+    projetil.reflexoes = 1
+    projetil.refletido = True
+    return True
 
 
 def _posicao_alvo(alvo):
@@ -59,6 +133,13 @@ class ArmaProjetil:
         self.angulo = angulo
         self.angulo_visual = angulo  # Para rotação visual
         self.dono = dono
+        self.tipo_fonte = "projetil_arma"
+        self.eh_skill = False
+        self.eh_projetil = True
+        self.ground = False
+        self.rouba_buff = False
+        self.reflexoes = 0
+        self.refletido = False
         
         self.dano = dano
         self.vel = velocidade
@@ -148,6 +229,13 @@ class OrbeMagico:
         self.x = x
         self.y = y
         self.dono = dono
+        self.tipo_fonte = "orbe_arma"
+        self.eh_skill = False
+        self.eh_projetil = True
+        self.ground = False
+        self.rouba_buff = False
+        self.reflexoes = 0
+        self.refletido = False
         self.dano = dano
         self.cor = cor
         self.raio = 0.25  # Raio de colisão
@@ -314,6 +402,13 @@ class Projetil:
         self.y = y
         self.angulo = angulo
         self.dono = dono
+        self.tipo_fonte = "projetil_skill"
+        self.eh_skill = True
+        self.eh_projetil = True
+        self.ground = False
+        self.rouba_buff = bool(data.get("rouba_buff", False))
+        self.reflexoes = 0
+        self.refletido = False
         
         # Atributos básicos carregados
         self.tipo_efeito = data.get("efeito", "NORMAL")
@@ -510,6 +605,24 @@ class Projetil:
             self.ativo = False
         
         return None
+
+    def criar_duplicata(self, evento):
+        """Materializa o unico filho temporal, incapaz de duplicar novamente."""
+        if not evento or not evento.get("duplicar"):
+            return None
+        duplicata = Projetil(
+            self.nome,
+            evento["x"],
+            evento["y"],
+            evento["angulo"],
+            self.dono,
+        )
+        duplicata.dano = self.dano * 0.7
+        duplicata.duplicado = True
+        duplicata.duplica_apos = 0.0
+        duplicata.refletido = self.refletido
+        duplicata.reflexoes = self.reflexoes
+        return duplicata
     
     def verificar_condicao(self, alvo):
         """Retorna o multiplicador declarado quando a condição é cumprida."""
@@ -604,6 +717,12 @@ class AreaEffect:
         self.x = x
         self.y = y
         self.dono = dono
+        self.tipo_fonte = "area_skill"
+        self.eh_skill = True
+        self.eh_projetil = False
+        self.ground = bool(data.get("ground", True))
+        self.rouba_buff = False
+        self.refletido = False
         
         self.raio = data.get("raio_area", 2.0)
         self.dano = data.get("dano", 10.0)
@@ -745,6 +864,9 @@ class AreaEffect:
             for alvo in alvos:
                 if alvo == self.dono or alvo.morto:
                     continue
+                imune_ground = getattr(alvo, "esta_imune_ground", None)
+                if self.ground and callable(imune_ground) and imune_ground():
+                    continue
                 dist = math.hypot(alvo.pos[0] - self.x, alvo.pos[1] - self.y)
                 if dist < self.raio_atual * 1.5:  # Pull range um pouco maior
                     resultados.append({"pull": True, "alvo": alvo, "forca": self.forca_puxar})
@@ -756,6 +878,9 @@ class AreaEffect:
                 self.tick_timer = 0
                 for alvo in alvos:
                     if alvo == self.dono or alvo.morto:
+                        continue
+                    imune_ground = getattr(alvo, "esta_imune_ground", None)
+                    if self.ground and callable(imune_ground) and imune_ground():
                         continue
                     dist = math.hypot(alvo.pos[0] - self.x, alvo.pos[1] - self.y)
                     if dist < self.raio_atual:
@@ -880,6 +1005,12 @@ class Beam:
         self.x1, self.y1 = x_origem, y_origem
         self.x2, self.y2 = x_destino, y_destino
         self.dono = dono
+        self.tipo_fonte = "beam_skill"
+        self.eh_skill = True
+        self.eh_projetil = False
+        self.ground = False
+        self.rouba_buff = False
+        self.refletido = False
         
         self.dano = data.get("dano", 15.0)
         self.cor = data.get("cor", (255, 255, 100))
@@ -979,13 +1110,16 @@ class Beam:
 
 class Buff:
     """Efeito de buff/debuff em um lutador"""
-    def __init__(self, nome_skill, alvo):
+    def __init__(self, nome_skill, alvo, *, rng=None):
         self.nome = nome_skill
         data = get_skill_data(nome_skill)
         self.efeito = data.get("efeito_buff")
         defaults = BUFF_EFFECT_RUNTIME.get(self.efeito, {})
-        
+
         self.alvo = alvo
+        self.dono = alvo
+        self.rng = rng if rng is not None else random
+        self.roubavel = bool(data.get("roubavel", True))
         duracao_fallback = data.get("duracao_imortal") or data.get("imune_debuffs") or 5.0
         self.duracao = data.get("duracao", duracao_fallback)
         if self.efeito == "IMORTAL":
@@ -1027,8 +1161,40 @@ class Buff:
         self.mod_mana_custo = 0.5 if data.get("custo_mana_metade") else 1.0
         self.lifesteal = data.get("lifesteal", 0.0)
         self.imortal_disponivel = bool(defaults.get("imortal", False))
-        
+        self.voo = bool(data.get("voo", False))
+        self.imune_ground = bool(data.get("imune_ground", False))
+        self.altura_voo = max(0.1, float(data.get("altura_voo", 1.5)))
+        self.reflete_projeteis = bool(data.get("reflete_projeteis", False))
+        self.reflete_skills = bool(data.get("reflete_skills", False))
+        self.reflete_skills_disponivel = self.reflete_skills
+
+        self.perfil_stats = None
+        self.modificadores_stats = {}
+        if data.get("stats_aleatorios", False):
+            perfil = copy.deepcopy(self.rng.choice(PERFIS_MUTACAO))
+            self.perfil_stats = perfil.pop("nome")
+            self.modificadores_stats = perfil
+            self.buff_dano *= perfil["buff_dano"]
+            self.buff_velocidade *= perfil["buff_velocidade"]
+            self.mod_dano_recebido *= perfil["mod_dano_recebido"]
+
         self.ativo = True
+
+    def clonar_para(self, novo_alvo):
+        """Clona estado restante sem compartilhar a instancia roubada."""
+        clone = copy.copy(self)
+        clone.alvo = novo_alvo
+        clone.dono = novo_alvo
+        clone.rng = getattr(novo_alvo, "rng_runtime", random)
+        clone.modificadores_stats = dict(self.modificadores_stats)
+        clone.ativo = True
+        return clone
+
+    def consumir_reflexao_skill(self):
+        if not self.ativo or not self.reflete_skills_disponivel:
+            return False
+        self.reflete_skills_disponivel = False
+        return True
 
     def atualizar(self, dt):
         dt = max(0.0, dt)
@@ -1486,6 +1652,12 @@ class Channel:
         data = get_skill_data(nome_skill)
         
         self.dono = dono
+        self.tipo_fonte = "channel_skill"
+        self.eh_skill = True
+        self.eh_projetil = False
+        self.ground = False
+        self.rouba_buff = False
+        self.refletido = False
         self.duracao_max = data.get("duracao_max", 3.0)
         self.vida = self.duracao_max
         self.cor = data.get("cor", (255, 200, 100))
@@ -1570,6 +1742,7 @@ class Channel:
                     atacante=self.dono,
                     ignorar_invencibilidade=True,
                     ignorar_escudo=self.penetra_escudo,
+                    metadata_impacto=criar_metadata_impacto(self),
                 )
             else:
                 tomar_dano = getattr(alvo, "tomar_dano", None)
@@ -1584,6 +1757,7 @@ class Channel:
                             atacante=self.dono,
                             ignorar_invencibilidade=True,
                             ignorar_escudo=self.penetra_escudo,
+                            metadata_impacto=criar_metadata_impacto(self),
                         )
                     except TypeError:
                         tomar_dano(
@@ -1647,8 +1821,84 @@ class Channel:
         """Interrompe a canalizacao"""
         self.canalizando = False
         self.ativo = False
-        if getattr(self.dono, "channel_ativo", None) is self:
+        channel_atual = getattr(self.dono, "channel_ativo", None)
+        if channel_atual is self:
             self.dono.channel_ativo = None
+        if channel_atual is self or channel_atual is None:
             self.dono.canalizando = False
             self.dono.skill_canalizando = None
             self.dono.tempo_canalizacao = 0.0
+
+
+class PortalPair:
+    """Par bidirecional com trava por entidade para impedir ping-pong."""
+
+    def __init__(
+        self,
+        nome_skill,
+        ponto_inicial,
+        ponto_final,
+        dono,
+        *,
+        duracao=None,
+        raio=0.65,
+    ):
+        data = get_skill_data(nome_skill)
+        self.nome = nome_skill
+        self.dono = dono
+        self.ponto_a = (float(ponto_inicial[0]), float(ponto_inicial[1]))
+        self.ponto_b = (float(ponto_final[0]), float(ponto_final[1]))
+        self.duracao = float(
+            data.get("duracao_portal", 5.0) if duracao is None else duracao
+        )
+        self.vida = max(0.0, self.duracao)
+        self.raio = max(0.05, float(raio))
+        self.cor = data.get("cor", (100, 100, 255))
+        self.ativo = self.vida > 0.0
+        self.entidades_bloqueadas = set()
+
+    def _dentro(self, entidade, ponto):
+        return math.hypot(
+            entidade.pos[0] - ponto[0],
+            entidade.pos[1] - ponto[1],
+        ) <= self.raio
+
+    def atualizar(self, dt, entidades=()):
+        if not self.ativo:
+            return []
+        self.vida = max(0.0, self.vida - max(0.0, float(dt)))
+        if self.vida <= 0.0:
+            self.ativo = False
+            self.entidades_bloqueadas.clear()
+            return []
+
+        eventos = []
+        for entidade in entidades or ():
+            if entidade is None or getattr(entidade, "morto", False):
+                continue
+            identificador = id(entidade)
+            dentro_a = self._dentro(entidade, self.ponto_a)
+            dentro_b = self._dentro(entidade, self.ponto_b)
+            if identificador in self.entidades_bloqueadas:
+                if not dentro_a and not dentro_b:
+                    self.entidades_bloqueadas.discard(identificador)
+                continue
+
+            destino = None
+            origem = None
+            if dentro_a:
+                origem, destino = self.ponto_a, self.ponto_b
+            elif dentro_b:
+                origem, destino = self.ponto_b, self.ponto_a
+            if destino is None:
+                continue
+
+            entidade.pos[0], entidade.pos[1] = destino
+            self.entidades_bloqueadas.add(identificador)
+            eventos.append({
+                "tipo": "portal",
+                "entidade": entidade,
+                "origem": origem,
+                "destino": destino,
+            })
+        return eventos

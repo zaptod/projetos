@@ -289,8 +289,8 @@ def validar_armas(
                 erros.append(f"{caminho}.{campo} deve ser numerico")
             elif not math.isfinite(float(valor)):
                 erros.append(f"{caminho}.{campo} deve ser finito")
-            elif valor <= 0:
-                erros.append(f"{caminho}.{campo} deve ser maior que zero")
+            elif valor < 0:
+                erros.append(f"{caminho}.{campo} nao pode ser negativo")
 
         desconhecidas = _nomes_habilidades(arma, caminho, erros) - skills_validas
         if desconhecidas:

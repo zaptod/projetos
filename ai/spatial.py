@@ -10,8 +10,11 @@ MELHORIAS v10.0:
 - Sistema de "zonas seguras" e "zonas perigosas"
 """
 
+import logging
 import math
 import random
+
+LOGGER = logging.getLogger(__name__)
 
 
 class SpatialAwarenessSystem:
@@ -78,7 +81,8 @@ class SpatialAwarenessSystem:
         try:
             from core.arena import get_arena
             self._arena_cache = get_arena()
-        except:
+        except Exception:
+            LOGGER.debug("Falha ao obter arena para consciência espacial", exc_info=True)
             return
         
         arena = self._arena_cache
@@ -412,7 +416,6 @@ class SpatialAwarenessSystem:
         Ajusta uma direção de movimento para evitar colisões.
         VERSÃO MELHORADA com predição.
         """
-        esp = self.consciencia
         p = self.parent
         
         if not self._arena_cache:

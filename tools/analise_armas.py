@@ -1,72 +1,84 @@
-"""Valida e resume as armas persistidas no banco canonico."""
+"""Gate estrutural e resumo do banco canonico de armas."""
 
 from __future__ import annotations
 
 import argparse
 import json
-from collections import Counter
+import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence, TextIO
 
-from data.database import ARQUIVO_ARMAS
-from tools.diagnostico_hitbox import diagnosticar_arma
-
-
-def carregar_armas(caminho: str | Path = ARQUIVO_ARMAS) -> list[dict[str, Any]]:
-    path = Path(caminho)
-    with path.open("r", encoding="utf-8") as stream:
-        dados = json.load(stream)
-    if not isinstance(dados, list):
-        raise ValueError(f"Banco de armas precisa ser uma lista: {path}")
-    return dados
+from tools.diagnostico_hitbox import (
+    DEFAULT_WEAPONS,
+    HitboxGateReport,
+    _write_output,
+    carregar_armas,
+    criar_relatorio,
+    render_text,
+)
 
 
 def analisar_armas(armas: list[dict[str, Any]]) -> list[str]:
-    problemas: list[str] = []
-    nomes: set[str] = set()
+    """API legada: devolve somente erros e avisos acionaveis."""
 
-    for indice, arma in enumerate(armas):
-        if not isinstance(arma, dict):
-            problemas.append(f"item {indice}: esperado objeto JSON")
-            continue
-
-        nome = str(arma.get("nome", "")).strip()
-        if not nome:
-            problemas.append(f"item {indice}: nome ausente")
-        elif nome in nomes:
-            problemas.append(f"nome duplicado: {nome}")
-        nomes.add(nome)
-
-        for diagnostico in diagnosticar_arma(arma):
-            problemas.append(f"{diagnostico.nome}: {diagnostico.problema}")
-
-    return problemas
+    report = criar_relatorio(
+        armas,
+        arquivo="memoria",
+        hitbox_source=None,
+    )
+    return [
+        f"{item.nome}: {item.problema}"
+        for item in report.diagnosticos
+        if item.nivel in {"error", "warning"}
+    ]
 
 
-def main(argv: list[str] | None = None) -> int:
+def analisar_relatorio(
+    armas: list[dict[str, Any]],
+    *,
+    arquivo: str,
+) -> HitboxGateReport:
+    """Valida pelo contrato de :mod:`data.database` e classifica achados."""
+
+    return criar_relatorio(armas, arquivo=arquivo, hitbox_source=None)
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--arquivo", type=Path, default=Path(ARQUIVO_ARMAS))
-    args = parser.parse_args(argv)
+    parser.add_argument("--arquivo", type=Path, default=DEFAULT_WEAPONS)
+    parser.add_argument("--json", action="store_true", help="emite JSON ASCII")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="retorna codigo 2 quando houver avisos de limite operacional",
+    )
+    return parser
 
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    stdout: TextIO = sys.stdout,
+    stderr: TextIO = sys.stderr,
+) -> int:
+    args = build_parser().parse_args(argv)
+    weapons_path = args.arquivo.resolve()
     try:
-        armas = carregar_armas(args.arquivo)
+        armas = carregar_armas(weapons_path)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        print(f"ERRO: {exc}")
-        return 2
-
-    contagem = Counter(str(arma.get("tipo", "Desconhecido")) for arma in armas)
-    print(f"Armas: {len(armas)}")
-    for tipo, quantidade in sorted(contagem.items()):
-        print(f"  {tipo}: {quantidade}")
-
-    problemas = analisar_armas(armas)
-    if problemas:
-        print(f"Problemas: {len(problemas)}")
-        for problema in problemas:
-            print(f"  - {problema}")
+        _write_output(f"input error: {exc}\n", stderr)
         return 1
 
-    print("Validacao concluida sem problemas.")
+    report = analisar_relatorio(armas, arquivo=str(weapons_path))
+    if args.json:
+        _write_output(json.dumps(report.to_dict(), ensure_ascii=True, sort_keys=True) + "\n", stdout)
+    else:
+        _write_output(render_text(report, title="WEAPON DATABASE GATE"), stdout)
+
+    if report.errors:
+        return 1
+    if args.strict and report.warnings:
+        return 2
     return 0
 
 

@@ -86,6 +86,9 @@ class JsonPersistenceRegressionTests(unittest.TestCase):
             dano=10,
             peso=10,
             raridade="Mítico",
+            comp_cabo=20,
+            comp_lamina=50,
+            largura=5,
         )
         original = Personagem(
             "Persistente",

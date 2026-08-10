@@ -79,8 +79,8 @@ LOGGER = logging.getLogger(__name__)
 # Importação do sistema de análise de armas v10.0
 try:
     from core.weapon_analysis import (
-        analisador_armas, get_weapon_profile, compare_weapons,
-        get_safe_distance, evaluate_combat_position, ThreatLevel, WeaponStyle
+        get_weapon_profile, compare_weapons,
+        get_safe_distance, evaluate_combat_position
     )
     WEAPON_ANALYSIS_AVAILABLE = True
 except ImportError:
@@ -88,7 +88,7 @@ except ImportError:
 
 # Importação do sistema de estratégia de skills v1.0
 try:
-    from ai.skill_strategy import SkillStrategySystem, CombatSituation, SkillPriority
+    from ai.skill_strategy import SkillStrategySystem, CombatSituation
     SKILL_STRATEGY_AVAILABLE = True
 except ImportError:
     SKILL_STRATEGY_AVAILABLE = False
@@ -526,7 +526,8 @@ class AIBrain:
             from core.hitbox import HITBOX_PROFILES
             perfil = HITBOX_PROFILES.get(tipo, HITBOX_PROFILES.get("Reta", {}))
             range_mult = perfil.get("range_mult", 2.0)
-        except:
+        except Exception:
+            LOGGER.debug("Falha ao carregar perfil de hitbox da arma", exc_info=True)
             perfil = {}
             range_mult = 2.0
         
@@ -970,7 +971,6 @@ class AIBrain:
     
     def _processar_desvio_inteligente(self, dt, distancia, inimigo):
         """Sistema de desvio avançado com antecipação e timing humano"""
-        p = self.parent
         leitura = self.leitura_oponente
         
         # Não desvia se estiver em berserk ou muito confiante
@@ -1386,8 +1386,6 @@ class AIBrain:
     def _executar_ataque_oportunidade(self, janela, distancia, inimigo):
         """Executa ataque aproveitando janela de oportunidade"""
         tipo = janela["tipo"]
-        qualidade = janela["qualidade"]
-        
         # Escolhe ação baseado no tipo de janela
         if tipo == "pos_ataque":
             # Contra-ataque rápido
@@ -1431,8 +1429,6 @@ class AIBrain:
     
     def _executar_ataque(self, distancia, inimigo):
         """Executa um ataque baseado na distância e situação - v12.2"""
-        p = self.parent
-        
         # Usa alcance efetivo calculado
         alcance_efetivo = self._calcular_alcance_efetivo()
         
@@ -1662,12 +1658,11 @@ class AIBrain:
         try:
             from core.arena import get_arena
             arena = get_arena()
-        except:
+        except Exception:
+            LOGGER.debug("Falha ao obter arena para consciência espacial", exc_info=True)
             return  # Se arena não disponível, ignora
         
         # === DETECÇÃO DE PAREDES ===
-        margem_detecao = 3.0  # Começa a detectar parede a 3m
-        
         dist_norte = p.pos[1] - arena.min_y
         dist_sul = arena.max_y - p.pos[1]
         dist_oeste = p.pos[0] - arena.min_x
@@ -1908,8 +1903,6 @@ class AIBrain:
         """
         esp = self.consciencia_espacial
         tatica = self.tatica_espacial
-        p = self.parent
-        
         # === MODIFICADORES POR SITUAÇÃO ===
         
         # Se encurralado
@@ -1988,7 +1981,6 @@ class AIBrain:
         Ajusta uma direção de movimento para evitar obstáculos.
         Retorna nova direção segura.
         """
-        esp = self.consciencia_espacial
         p = self.parent
         
         # Converte direção pra radianos
@@ -2025,8 +2017,8 @@ class AIBrain:
                 
                 # Se tudo bloqueado, fica parado (retorna direção atual)
                 return direcao_alvo
-        except:
-            pass
+        except Exception:
+            LOGGER.debug("Falha ao ajustar direção para evitar obstáculo", exc_info=True)
         
         return direcao_alvo
     
@@ -2172,8 +2164,6 @@ class AIBrain:
             return
         
         perc = self.percepcao_arma
-        p = self.parent
-        
         estrategia = perc.get("estrategia_recomendada", "neutro")
         matchup = perc.get("matchup_favoravel", 0.0)
         
@@ -2445,8 +2435,6 @@ class AIBrain:
     
     def _gerar_reacao_inteligente(self, acao_oponente, distancia, inimigo):
         """Gera uma reação inteligente ao oponente"""
-        mem = self.memoria_oponente
-        
         if acao_oponente == "MATAR" and distancia < 4.0:
             if "REATIVO" in self.tracos or "OPORTUNISTA" in self.tracos:
                 self.reacao_pendente = "CONTRA_ATAQUE"
@@ -2536,8 +2524,6 @@ class AIBrain:
     
     def _executar_acao_sincronizada(self, acao, distancia, inimigo):
         """Executa ação sincronizada de momento cinematográfico v8.0"""
-        p = self.parent
-        
         acoes = {
             "CIRCULAR_LENTO": lambda: setattr(self, 'timer_decisao', 0.5) or "CIRCULAR",
             "ENCARAR": lambda: "BLOQUEAR",
@@ -3298,8 +3284,6 @@ class AIBrain:
         if not dash_skills:
             return False
         
-        p = self.parent
-        
         for skill in dash_skills:
             data = skill["data"]
             dist_dash = data.get("distancia", 3.0)
@@ -3672,7 +3656,6 @@ class AIBrain:
         
         # Zonas de distância relativas ao alcance
         muito_perto = distancia < alcance_ideal * 0.5
-        perto = distancia < alcance_ideal
         no_alcance = distancia <= alcance_efetivo
         quase_no_alcance = distancia <= alcance_efetivo * 1.3
         longe = distancia > alcance_efetivo * 1.5
@@ -3752,7 +3735,8 @@ class AIBrain:
                 from core.hitbox import HITBOX_PROFILES
                 perfil_hb = HITBOX_PROFILES.get("Corrente", {})
                 zona_morta_ratio = perfil_hb.get("min_range_ratio", 0.25)
-            except:
+            except Exception:
+                LOGGER.debug("Falha ao carregar perfil de hitbox do mangual", exc_info=True)
                 zona_morta_ratio = 0.25
             zona_morta = alcance_efetivo * zona_morta_ratio
             
@@ -3783,8 +3767,6 @@ class AIBrain:
                 em_zona_morta = distancia < zona_morta
                 em_zona_ideal = zona_morta <= distancia <= zona_ideal_max
                 em_zona_longa = zona_ideal_max < distancia <= zona_longa_max
-                fora_alcance  = distancia > zona_longa_max
-
                 slam_combo = getattr(self.parent, 'mangual_slam_combo', 0)
                 em_combo   = slam_combo >= 2
 
@@ -4130,7 +4112,8 @@ class AIBrain:
             from core.hitbox import HITBOX_PROFILES
             profile = HITBOX_PROFILES.get(tipo, HITBOX_PROFILES.get("Reta", {}))
             range_mult = profile.get("range_mult", 2.0)
-        except:
+        except Exception:
+            LOGGER.debug("Falha ao calcular alcance pelo perfil de hitbox", exc_info=True)
             range_mult = 2.0
         
         # Alcance base = raio do personagem * multiplicador do tipo de arma

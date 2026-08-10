@@ -1,332 +1,606 @@
-# diagnostico_hitbox.py - Analisa hitboxes de todas as armas
-"""
-Script para diagnosticar problemas de hitbox em todas as armas.
-Verifica se o tipo de hitbox está correto para cada tipo de arma.
+"""Gate de consistencia entre dados de armas e a implementacao de hitboxes.
+
+Erros representam contrato estrutural ou geometria impossivel. Avisos indicam
+valores ainda executaveis, mas fora de limites operacionais muito amplos; eles
+so bloqueiam com ``--strict``. Informacoes documentam campos aceitos que nao
+participam do alcance da hitbox.
 """
 
+from __future__ import annotations
+
+import argparse
+import ast
 import json
-from dataclasses import dataclass
+import math
+import os
+import sys
+from collections import Counter
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import List
+from typing import Any, Mapping, Sequence, TextIO
 
-from data.database import ARQUIVO_ARMAS
+# Mantem a saida de CLI (especialmente JSON) livre do banner de importacao.
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
-@dataclass
+from data import database
+from models.constants import LISTA_TIPOS_ARMA, TIPOS_ARMA
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_WEAPONS = Path(database.ARQUIVO_ARMAS).resolve()
+DEFAULT_HITBOX_SOURCE = PROJECT_ROOT / "core" / "hitbox.py"
+
+INTEGER_GEOMETRY_FIELDS = {"quantidade", "quantidade_orbitais"}
+OPERATIONAL_MAXIMUMS = {
+    "quantidade": 64,
+    "quantidade_orbitais": 64,
+    "largura": 500.0,
+    "largura_ponta": 500.0,
+}
+DEFAULT_OPERATIONAL_MAXIMUM = 1_000.0
+
+HITBOX_PREDICATES = (
+    "_eh_arma_corrente",
+    "_eh_arma_lamina",
+    "_eh_arma_ranged",
+    "_eh_arma_area",
+)
+HITBOX_CALCULATORS = (
+    "_calcular_hitbox_corrente",
+    "_calcular_hitbox_lamina",
+    "_calcular_hitbox_ranged",
+    "_calcular_hitbox_area",
+    "_calcular_hitbox_orbital",
+)
+
+
+@dataclass(frozen=True)
 class DiagnosticoArma:
     nome: str
     tipo: str
     problema: str
     sugestao: str
-    valores_relevantes: dict
+    valores_relevantes: dict[str, Any]
+    nivel: str = "error"
+    codigo: str = "invalid-geometry"
 
-def carregar_armas(caminho=ARQUIVO_ARMAS):
-    with Path(caminho).open("r", encoding="utf-8") as f:
-        return json.load(f)
 
-def diagnosticar_arma(arma: dict) -> List[DiagnosticoArma]:
-    """Analisa uma arma e retorna problemas encontrados"""
-    problemas = []
-    nome = arma.get("nome", "Sem nome")
-    tipo = arma.get("tipo", "Desconhecido")
-    
-    # Valores importantes
-    comp_cabo = arma.get("comp_cabo", 0)
-    comp_lamina = arma.get("comp_lamina", 0)
-    comp_corrente = arma.get("comp_corrente", 0)
-    comp_ponta = arma.get("comp_ponta", 0)
-    distancia = arma.get("distancia", 0)
-    tamanho_projetil = arma.get("tamanho_projetil", 0)
-    quantidade = arma.get("quantidade", 1)
-    tamanho_arco = arma.get("tamanho_arco", 0)
-    tamanho_flecha = arma.get("tamanho_flecha", 0)
-    quantidade_orbitais = arma.get("quantidade_orbitais", 1)
-    tamanho = arma.get("tamanho", 0)
-    distancia_max = arma.get("distancia_max", 0)
-    forma1_cabo = arma.get("forma1_cabo", 0)
-    forma1_lamina = arma.get("forma1_lamina", 0)
-    forma2_cabo = arma.get("forma2_cabo", 0)
-    forma2_lamina = arma.get("forma2_lamina", 0)
-    largura = arma.get("largura", 0)
-    
-    # === DIAGNÓSTICOS POR TIPO ===
-    
-    if tipo == "Reta":
-        # Armas retas precisam de comp_cabo e comp_lamina
-        if comp_cabo <= 0 and comp_lamina <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma RETA sem comp_cabo ou comp_lamina",
-                sugestao="Definir comp_cabo e comp_lamina > 0",
-                valores_relevantes={"comp_cabo": comp_cabo, "comp_lamina": comp_lamina}
-            ))
-        elif comp_cabo + comp_lamina < 20:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma RETA muito curta",
-                sugestao="Aumentar comp_cabo + comp_lamina para pelo menos 20",
-                valores_relevantes={"total": comp_cabo + comp_lamina}
-            ))
-    
-    elif tipo == "Dupla":
-        # Armas duplas também usam cabo + lamina
-        if comp_cabo <= 0 and comp_lamina <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma DUPLA sem comp_cabo ou comp_lamina",
-                sugestao="Definir comp_cabo e comp_lamina > 0",
-                valores_relevantes={"comp_cabo": comp_cabo, "comp_lamina": comp_lamina}
-            ))
-    
-    elif tipo == "Corrente":
-        # Correntes DEVEM usar comp_corrente, NÃO comp_cabo/comp_lamina
-        if comp_corrente <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma CORRENTE sem comp_corrente definido",
-                sugestao="Definir comp_corrente > 0 (recomendado: 60-150)",
-                valores_relevantes={"comp_corrente": comp_corrente}
-            ))
-        if comp_cabo > 0 or comp_lamina > 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma CORRENTE com comp_cabo/comp_lamina (vai ser ignorado)",
-                sugestao="O sistema usa comp_corrente para Correntes",
-                valores_relevantes={"comp_corrente": comp_corrente, "comp_cabo": comp_cabo, "comp_lamina": comp_lamina}
-            ))
-        # Verificar se comp_ponta está definido (bola do mangual)
-        if comp_ponta <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma CORRENTE sem comp_ponta (tamanho da bola/lâmina)",
-                sugestao="Definir comp_ponta > 0 para visualização da ponta",
-                valores_relevantes={"comp_ponta": comp_ponta}
-            ))
-    
-    elif tipo == "Arremesso":
-        if tamanho_projetil <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma ARREMESSO sem tamanho_projetil",
-                sugestao="Definir tamanho_projetil > 0",
-                valores_relevantes={"tamanho_projetil": tamanho_projetil}
-            ))
-        if quantidade < 1:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma ARREMESSO sem quantidade",
-                sugestao="Definir quantidade >= 1",
-                valores_relevantes={"quantidade": quantidade}
-            ))
-    
-    elif tipo == "Arco":
-        if tamanho_arco <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma ARCO sem tamanho_arco",
-                sugestao="Definir tamanho_arco > 0",
-                valores_relevantes={"tamanho_arco": tamanho_arco}
-            ))
-        if tamanho_flecha <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma ARCO sem tamanho_flecha",
-                sugestao="Definir tamanho_flecha > 0",
-                valores_relevantes={"tamanho_flecha": tamanho_flecha}
-            ))
-    
-    elif tipo == "Orbital":
-        if distancia <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma ORBITAL sem distancia",
-                sugestao="Definir distancia > 0 (distância do orbital ao centro)",
-                valores_relevantes={"distancia": distancia}
-            ))
-        if largura <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma ORBITAL sem largura (ângulo de cobertura)",
-                sugestao="Definir largura > 0 para escudos, ou deixar pequeno para orbes",
-                valores_relevantes={"largura": largura}
-            ))
-    
-    elif tipo == "Mágica":
-        if tamanho <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma MÁGICA sem tamanho",
-                sugestao="Definir tamanho > 0",
-                valores_relevantes={"tamanho": tamanho}
-            ))
-        if quantidade < 1:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma MÁGICA sem quantidade de espadas",
-                sugestao="Definir quantidade >= 1",
-                valores_relevantes={"quantidade": quantidade}
-            ))
-        if distancia_max <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma MÁGICA sem distancia_max",
-                sugestao="Definir distancia_max > 0",
-                valores_relevantes={"distancia_max": distancia_max}
-            ))
-    
-    elif tipo == "Transformável":
-        # Precisa das duas formas
-        if forma1_cabo <= 0 and forma1_lamina <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma TRANSFORMÁVEL sem forma1",
-                sugestao="Definir forma1_cabo e forma1_lamina > 0",
-                valores_relevantes={"forma1_cabo": forma1_cabo, "forma1_lamina": forma1_lamina}
-            ))
-        if forma2_cabo <= 0 and forma2_lamina <= 0:
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma TRANSFORMÁVEL sem forma2",
-                sugestao="Definir forma2_cabo e forma2_lamina > 0",
-                valores_relevantes={"forma2_cabo": forma2_cabo, "forma2_lamina": forma2_lamina}
-            ))
-        # Também pode usar comp_cabo/comp_lamina como fallback
-        if (forma1_cabo <= 0 and forma1_lamina <= 0) and (comp_cabo <= 0 and comp_lamina <= 0):
-            problemas.append(DiagnosticoArma(
-                nome=nome, tipo=tipo,
-                problema="Arma TRANSFORMÁVEL sem nenhuma forma definida",
-                sugestao="Definir pelo menos comp_cabo/comp_lamina ou forma1/forma2",
-                valores_relevantes={}
-            ))
-    
-    else:
-        problemas.append(DiagnosticoArma(
-            nome=nome, tipo=tipo,
-            problema=f"Tipo de arma desconhecido: {tipo}",
-            sugestao="Usar um dos tipos: Reta, Dupla, Corrente, Arremesso, Arco, Orbital, Mágica, Transformável",
-            valores_relevantes={}
-        ))
-    
-    return problemas
+@dataclass(frozen=True)
+class HitboxGateReport:
+    arquivo: str
+    hitbox_source: str | None
+    total: int
+    por_tipo: dict[str, int]
+    diagnosticos: tuple[DiagnosticoArma, ...]
 
-def verificar_hitbox_implementacao():
-    """Verifica se hitbox.py trata todos os tipos corretamente"""
-    print("\n" + "="*60)
-    print("VERIFICAÇÃO DA IMPLEMENTAÇÃO DE HITBOX")
-    print("="*60)
-    
-    # Tipos e o que cada um DEVE usar
-    mapeamento_esperado = {
-        "Reta": {
-            "tipo_hitbox": "Linha",
-            "usa": "comp_cabo + comp_lamina",
-            "escala": "2.0x raio"
-        },
-        "Dupla": {
-            "tipo_hitbox": "Linha (x2)",
-            "usa": "comp_cabo + comp_lamina",
-            "escala": "1.5x raio"
-        },
-        "Corrente": {
-            "tipo_hitbox": "Linha ondulada",
-            "usa": "comp_corrente (NÃO comp_cabo/lamina!)",
-            "escala": "3.0x raio"
-        },
-        "Arremesso": {
-            "tipo_hitbox": "Área (projéteis)",
-            "usa": "tamanho_projetil, quantidade",
-            "escala": "2.0x raio"
-        },
-        "Arco": {
-            "tipo_hitbox": "Área (flecha)",
-            "usa": "tamanho_arco, tamanho_flecha",
-            "escala": "3.0x raio"
-        },
-        "Orbital": {
-            "tipo_hitbox": "Circular/Arco",
-            "usa": "distancia, largura",
-            "escala": "1.5x raio"
-        },
-        "Mágica": {
-            "tipo_hitbox": "Área (espadas flutuantes)",
-            "usa": "tamanho, quantidade, distancia_max",
-            "escala": "2.5x raio"
-        },
-        "Transformável": {
-            "tipo_hitbox": "Linha",
-            "usa": "forma1/forma2 ou comp_cabo/comp_lamina",
-            "escala": "2.5x raio"
+    @property
+    def errors(self) -> int:
+        return sum(item.nivel == "error" for item in self.diagnosticos)
+
+    @property
+    def warnings(self) -> int:
+        return sum(item.nivel == "warning" for item in self.diagnosticos)
+
+    @property
+    def infos(self) -> int:
+        return sum(item.nivel == "info" for item in self.diagnosticos)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "arquivo": self.arquivo,
+            "hitbox_source": self.hitbox_source,
+            "total": self.total,
+            "por_tipo": self.por_tipo,
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "accepted_infos": self.infos,
+            "diagnosticos": [asdict(item) for item in self.diagnosticos],
         }
+
+
+def _diagnostico(
+    *,
+    nome: str,
+    tipo: str,
+    nivel: str,
+    codigo: str,
+    problema: str,
+    sugestao: str,
+    valores: Mapping[str, Any] | None = None,
+) -> DiagnosticoArma:
+    return DiagnosticoArma(
+        nome=nome,
+        tipo=tipo,
+        problema=problema,
+        sugestao=sugestao,
+        valores_relevantes=dict(valores or {}),
+        nivel=nivel,
+        codigo=codigo,
+    )
+
+
+def carregar_armas(caminho: str | Path = DEFAULT_WEAPONS) -> list[dict[str, Any]]:
+    path = Path(caminho)
+    with path.open("r", encoding="utf-8") as stream:
+        dados = json.load(stream)
+    if not isinstance(dados, list):
+        raise ValueError(f"Banco de armas precisa ser uma lista: {path}")
+    if any(not isinstance(item, dict) for item in dados):
+        raise ValueError(f"Todos os itens do banco precisam ser objetos JSON: {path}")
+    return dados
+
+
+def diagnosticar_arma(arma: dict[str, Any]) -> list[DiagnosticoArma]:
+    """Analisa a geometria persistida de uma unica arma."""
+
+    nome_bruto = arma.get("nome")
+    nome = nome_bruto.strip() if isinstance(nome_bruto, str) and nome_bruto.strip() else "Sem nome"
+    tipo = arma.get("tipo")
+    if tipo not in TIPOS_ARMA:
+        return [
+            _diagnostico(
+                nome=nome,
+                tipo=str(tipo or "Desconhecido"),
+                nivel="error",
+                codigo="unknown-weapon-type",
+                problema=f"Tipo de arma desconhecido: {tipo!r}",
+                sugestao="Usar um tipo presente em LISTA_TIPOS_ARMA",
+                valores={"tipos_aceitos": LISTA_TIPOS_ARMA},
+            )
+        ]
+
+    diagnosticos: list[DiagnosticoArma] = []
+    for campo in TIPOS_ARMA[tipo]["geometria"]:
+        valor = arma.get(campo)
+        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+            diagnosticos.append(
+                _diagnostico(
+                    nome=nome,
+                    tipo=tipo,
+                    nivel="error",
+                    codigo="invalid-geometry-number",
+                    problema=f"{campo} deve ser numerico",
+                    sugestao=f"Definir {campo} com valor finito e maior que zero",
+                    valores={campo: valor},
+                )
+            )
+            continue
+        if not math.isfinite(float(valor)):
+            diagnosticos.append(
+                _diagnostico(
+                    nome=nome,
+                    tipo=tipo,
+                    nivel="error",
+                    codigo="non-finite-geometry",
+                    problema=f"{campo} nao e finito",
+                    sugestao=f"Definir {campo} com valor finito e maior que zero",
+                    valores={campo: valor},
+                )
+            )
+            continue
+        if valor <= 0:
+            diagnosticos.append(
+                _diagnostico(
+                    nome=nome,
+                    tipo=tipo,
+                    nivel="error",
+                    codigo="non-positive-geometry",
+                    problema=f"{campo} produz geometria nula ou invertida",
+                    sugestao=f"Definir {campo} com valor maior que zero",
+                    valores={campo: valor},
+                )
+            )
+            continue
+        if campo in INTEGER_GEOMETRY_FIELDS and not isinstance(valor, int):
+            diagnosticos.append(
+                _diagnostico(
+                    nome=nome,
+                    tipo=tipo,
+                    nivel="error",
+                    codigo="non-integer-count",
+                    problema=f"{campo} deve ser uma contagem inteira",
+                    sugestao=f"Definir {campo} como inteiro maior ou igual a 1",
+                    valores={campo: valor},
+                )
+            )
+            continue
+
+        limite = OPERATIONAL_MAXIMUMS.get(campo, DEFAULT_OPERATIONAL_MAXIMUM)
+        if valor > limite:
+            diagnosticos.append(
+                _diagnostico(
+                    nome=nome,
+                    tipo=tipo,
+                    nivel="warning",
+                    codigo="geometry-operational-outlier",
+                    problema=f"{campo} esta fora do limite operacional amplo",
+                    sugestao="Revisar balanceamento; o valor ainda e geometricamente executavel",
+                    valores={campo: valor, "limite_operacional": limite},
+                )
+            )
+
+    if tipo == "Corrente" and (arma.get("comp_cabo", 0) > 0 or arma.get("comp_lamina", 0) > 0):
+        diagnosticos.append(
+            _diagnostico(
+                nome=nome,
+                tipo=tipo,
+                nivel="info",
+                codigo="accepted-chain-visual-fallback",
+                problema=(
+                    "comp_cabo/comp_lamina sao aceitos como visual/fallback e nao "
+                    "participam do alcance da hitbox de corrente"
+                ),
+                sugestao="Nenhuma alteracao necessaria",
+                valores={
+                    "comp_corrente": arma.get("comp_corrente"),
+                    "comp_cabo": arma.get("comp_cabo"),
+                    "comp_lamina": arma.get("comp_lamina"),
+                },
+            )
+        )
+
+    return diagnosticos
+
+
+def _find_assignment(tree: ast.Module, name: str) -> Any:
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if any(isinstance(target, ast.Name) and target.id == name for target in targets):
+            return ast.literal_eval(node.value)
+    raise ValueError(f"atribuicao literal ausente: {name}")
+
+
+def diagnosticar_implementacao_hitbox(caminho: str | Path = DEFAULT_HITBOX_SOURCE) -> list[DiagnosticoArma]:
+    """Confere perfis e roteamento por AST, sem executar o runtime de combate."""
+
+    path = Path(caminho)
+    try:
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        profiles = _find_assignment(tree, "HITBOX_PROFILES")
+    except (OSError, SyntaxError, TypeError, ValueError) as exc:
+        return [
+            _diagnostico(
+                nome="Implementacao",
+                tipo="Fonte",
+                nivel="error",
+                codigo="invalid-hitbox-source",
+                problema=f"Nao foi possivel validar {path}: {exc}",
+                sugestao="Restaurar uma fonte Python valida com HITBOX_PROFILES literal",
+            )
+        ]
+
+    diagnosticos: list[DiagnosticoArma] = []
+    if not isinstance(profiles, dict):
+        return [
+            _diagnostico(
+                nome="Implementacao",
+                tipo="Fonte",
+                nivel="error",
+                codigo="invalid-hitbox-profiles",
+                problema="HITBOX_PROFILES precisa ser um dicionario literal",
+                sugestao="Declarar um perfil literal para cada tipo canonico",
+            )
+        ]
+
+    for tipo in LISTA_TIPOS_ARMA:
+        profile = profiles.get(tipo)
+        if not isinstance(profile, dict):
+            diagnosticos.append(
+                _diagnostico(
+                    nome="Implementacao",
+                    tipo=tipo,
+                    nivel="error",
+                    codigo="missing-hitbox-profile",
+                    problema="Tipo canonico sem perfil de hitbox",
+                    sugestao=f"Adicionar HITBOX_PROFILES[{tipo!r}]",
+                )
+            )
+            continue
+
+        for campo in ("shape", "idle_shape"):
+            if not isinstance(profile.get(campo), str) or not profile[campo]:
+                diagnosticos.append(
+                    _diagnostico(
+                        nome="Implementacao",
+                        tipo=tipo,
+                        nivel="error",
+                        codigo="invalid-hitbox-profile",
+                        problema=f"Perfil possui {campo} invalido",
+                        sugestao=f"Definir {campo} como texto nao vazio",
+                        valores={campo: profile.get(campo)},
+                    )
+                )
+
+        for campo in ("range_mult", "attack_arc_mult"):
+            valor = profile.get(campo)
+            if (
+                isinstance(valor, bool)
+                or not isinstance(valor, (int, float))
+                or not math.isfinite(float(valor))
+                or valor <= 0
+            ):
+                diagnosticos.append(
+                    _diagnostico(
+                        nome="Implementacao",
+                        tipo=tipo,
+                        nivel="error",
+                        codigo="invalid-hitbox-profile",
+                        problema=f"Perfil possui {campo} nao positivo ou nao finito",
+                        sugestao=f"Definir {campo} com numero finito maior que zero",
+                        valores={campo: valor},
+                    )
+                )
+
+        minimo = profile.get("min_range_ratio")
+        if (
+            isinstance(minimo, bool)
+            or not isinstance(minimo, (int, float))
+            or not math.isfinite(float(minimo))
+            or not 0 <= minimo < 1
+        ):
+            diagnosticos.append(
+                _diagnostico(
+                    nome="Implementacao",
+                    tipo=tipo,
+                    nivel="error",
+                    codigo="invalid-hitbox-profile",
+                    problema="min_range_ratio deve estar no intervalo [0, 1)",
+                    sugestao="Corrigir a zona morta do perfil",
+                    valores={"min_range_ratio": minimo},
+                )
+            )
+
+        inicio = profile.get("hit_window_start")
+        fim = profile.get("hit_window_end")
+        if not (
+            isinstance(inicio, (int, float))
+            and not isinstance(inicio, bool)
+            and isinstance(fim, (int, float))
+            and not isinstance(fim, bool)
+            and 0 <= inicio <= fim <= 1
+        ):
+            diagnosticos.append(
+                _diagnostico(
+                    nome="Implementacao",
+                    tipo=tipo,
+                    nivel="error",
+                    codigo="invalid-hit-window",
+                    problema="Janela de hit deve satisfazer 0 <= inicio <= fim <= 1",
+                    sugestao="Corrigir hit_window_start/hit_window_end",
+                    valores={"inicio": inicio, "fim": fim},
+                )
+            )
+
+    classes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "SistemaHitbox"
+    ]
+    if len(classes) != 1:
+        diagnosticos.append(
+            _diagnostico(
+                nome="Implementacao",
+                tipo="Fonte",
+                nivel="error",
+                codigo="invalid-hitbox-class",
+                problema="SistemaHitbox precisa existir exatamente uma vez",
+                sugestao="Restaurar a classe canonica SistemaHitbox",
+                valores={"ocorrencias": len(classes)},
+            )
+        )
+        return diagnosticos
+
+    methods = {
+        node.name: node
+        for node in classes[0].body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    
-    for tipo, info in mapeamento_esperado.items():
-        print(f"\n{tipo}:")
-        print(f"  Hitbox: {info['tipo_hitbox']}")
-        print(f"  Usa: {info['usa']}")
-        print(f"  Escala: {info['escala']}")
+    for method_name in (*HITBOX_PREDICATES, *HITBOX_CALCULATORS, "calcular_hitbox_arma"):
+        if method_name not in methods:
+            diagnosticos.append(
+                _diagnostico(
+                    nome="Implementacao",
+                    tipo="Fonte",
+                    nivel="error",
+                    codigo="missing-hitbox-method",
+                    problema=f"Metodo ausente: SistemaHitbox.{method_name}",
+                    sugestao="Restaurar o metodo referenciado pelo roteamento",
+                )
+            )
 
-def main():
-    print("="*60)
-    print("DIAGNÓSTICO DE HITBOXES - NEURAL FIGHTS")
-    print("="*60)
-    
-    armas = carregar_armas()
-    print(f"\nTotal de armas: {len(armas)}")
-    
-    # Conta por tipo
-    tipos_count = {}
+    predicate_types: dict[str, set[str]] = {}
+    canonical_types = set(LISTA_TIPOS_ARMA)
+    for method_name in HITBOX_PREDICATES:
+        method = methods.get(method_name)
+        predicate_types[method_name] = (
+            {
+                node.value
+                for node in ast.walk(method)
+                if isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and node.value in canonical_types
+            }
+            if method is not None
+            else set()
+        )
+
+    dispatcher = methods.get("calcular_hitbox_arma")
+    routed_by: dict[str, list[str]] = {tipo: [] for tipo in LISTA_TIPOS_ARMA}
+    if dispatcher is not None and any(
+        isinstance(node, ast.Constant) and node.value == "Orbital"
+        for node in ast.walk(dispatcher)
+    ):
+        routed_by["Orbital"].append("direct-orbital-branch")
+    for method_name, handled_types in predicate_types.items():
+        for tipo in handled_types:
+            routed_by[tipo].append(method_name)
+    for tipo, handlers in routed_by.items():
+        if len(handlers) != 1:
+            diagnosticos.append(
+                _diagnostico(
+                    nome="Implementacao",
+                    tipo=tipo,
+                    nivel="error",
+                    codigo="ambiguous-hitbox-routing" if handlers else "missing-hitbox-routing",
+                    problema=(
+                        "Tipo possui roteamento ambiguo de hitbox"
+                        if handlers
+                        else "Tipo nao possui roteamento explicito de hitbox"
+                    ),
+                    sugestao="Manter exatamente um predicado por tipo canonico",
+                    valores={"handlers": handlers},
+                )
+            )
+
+    if dispatcher is not None:
+        called_methods = {
+            node.func.attr
+            for node in ast.walk(dispatcher)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        for method_name in HITBOX_CALCULATORS:
+            if method_name not in called_methods:
+                diagnosticos.append(
+                    _diagnostico(
+                        nome="Implementacao",
+                        tipo="Fonte",
+                        nivel="error",
+                        codigo="unreferenced-hitbox-calculator",
+                        problema=f"Calculador nao referenciado: {method_name}",
+                        sugestao="Conectar o calculador ao dispatcher ou remover codigo morto",
+                    )
+                )
+
+    return diagnosticos
+
+
+def criar_relatorio(
+    armas: list[dict[str, Any]],
+    *,
+    arquivo: str,
+    hitbox_source: str | Path | None = DEFAULT_HITBOX_SOURCE,
+) -> HitboxGateReport:
+    diagnosticos: list[DiagnosticoArma] = []
+    database_ok = True
+    try:
+        database.validar_armas(armas)
+    except database.DataValidationError as exc:
+        database_ok = False
+        diagnosticos.extend(
+            _diagnostico(
+                nome="Banco",
+                tipo="Contrato",
+                nivel="error",
+                codigo="database-contract",
+                problema=erro,
+                sugestao="Corrigir o registro sem remover armas ou referencias",
+            )
+            for erro in exc.erros
+        )
+
     for arma in armas:
-        t = arma.get("tipo", "Desconhecido")
-        tipos_count[t] = tipos_count.get(t, 0) + 1
-    
-    print("\nArmas por tipo:")
-    for t, c in sorted(tipos_count.items()):
-        print(f"  {t}: {c}")
-    
-    # Diagnóstico
-    todos_problemas = []
-    for arma in armas:
-        problemas = diagnosticar_arma(arma)
-        todos_problemas.extend(problemas)
-    
-    if todos_problemas:
-        print("\n" + "="*60)
-        print(f"PROBLEMAS ENCONTRADOS: {len(todos_problemas)}")
-        print("="*60)
-        
-        # Agrupa por tipo
-        por_tipo = {}
-        for p in todos_problemas:
-            if p.tipo not in por_tipo:
-                por_tipo[p.tipo] = []
-            por_tipo[p.tipo].append(p)
-        
-        for tipo, probs in sorted(por_tipo.items()):
-            print(f"\n--- {tipo} ({len(probs)} problemas) ---")
-            for p in probs:
-                print(f"\n  [{p.nome}]")
-                print(f"    Problema: {p.problema}")
-                print(f"    Sugestão: {p.sugestao}")
-                if p.valores_relevantes:
-                    print(f"    Valores: {p.valores_relevantes}")
+        for item in diagnosticar_arma(arma):
+            if database_ok or item.nivel != "error":
+                diagnosticos.append(item)
+
+    if hitbox_source is not None:
+        diagnosticos.extend(diagnosticar_implementacao_hitbox(hitbox_source))
+
+    por_tipo = Counter(str(arma.get("tipo", "Desconhecido")) for arma in armas)
+    return HitboxGateReport(
+        arquivo=arquivo,
+        hitbox_source=str(Path(hitbox_source).resolve()) if hitbox_source is not None else None,
+        total=len(armas),
+        por_tipo=dict(sorted(por_tipo.items())),
+        diagnosticos=tuple(diagnosticos),
+    )
+
+
+def render_text(report: HitboxGateReport, *, title: str = "HITBOX / WEAPON GEOMETRY GATE") -> str:
+    lines = [
+        title,
+        f"Weapons file: {report.arquivo}",
+        f"Hitbox source: {report.hitbox_source or 'not checked'}",
+        f"Weapons: {report.total}",
+        f"Errors: {report.errors}",
+        f"Warnings: {report.warnings}",
+        f"Accepted informational findings: {report.infos}",
+        "Types: " + ", ".join(f"{name}={count}" for name, count in report.por_tipo.items()),
+    ]
+    if report.diagnosticos:
+        lines.append("Findings:")
+        for item in report.diagnosticos:
+            lines.append(
+                f"- {item.nivel.upper()} {item.codigo} [{item.nome} / {item.tipo}]: "
+                f"{item.problema} | {item.sugestao}"
+            )
     else:
-        print("\n✓ Nenhum problema encontrado!")
-    
-    verificar_hitbox_implementacao()
-    
-    print("\n" + "="*60)
-    print("ANÁLISE ESPECÍFICA: ARMAS DO TIPO CORRENTE")
-    print("="*60)
-    
-    for arma in armas:
-        if arma.get("tipo") == "Corrente":
-            print(f"\n[{arma['nome']}]")
-            print(f"  comp_corrente: {arma.get('comp_corrente', 0)}")
-            print(f"  comp_ponta: {arma.get('comp_ponta', 0)}")
-            print(f"  largura_ponta: {arma.get('largura_ponta', 0)}")
-            print(f"  comp_cabo: {arma.get('comp_cabo', 0)} (deve ser 0)")
-            print(f"  comp_lamina: {arma.get('comp_lamina', 0)} (deve ser 0)")
+        lines.append("Findings: none")
+    if report.errors:
+        lines.append("Result: FAILED")
+    elif report.warnings:
+        lines.append("Result: ACCEPTED IN NORMAL MODE (strict mode rejects warnings)")
+    else:
+        lines.append("Result: PASSED (informational findings explicitly accepted)")
+    return "\n".join(lines) + "\n"
 
-    return 1 if todos_problemas else 0
+
+def _write_output(text: str, stream: TextIO) -> None:
+    try:
+        stream.write(text)
+    except UnicodeEncodeError:
+        encoding = getattr(stream, "encoding", None) or "ascii"
+        safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        stream.write(safe)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--arquivo", type=Path, default=DEFAULT_WEAPONS)
+    parser.add_argument("--hitbox-source", type=Path, default=DEFAULT_HITBOX_SOURCE)
+    parser.add_argument("--json", action="store_true", help="emite JSON ASCII")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="retorna codigo 2 quando houver avisos de limite operacional",
+    )
+    return parser
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    stdout: TextIO = sys.stdout,
+    stderr: TextIO = sys.stderr,
+) -> int:
+    args = build_parser().parse_args(argv)
+    weapons_path = args.arquivo.resolve()
+    hitbox_source = args.hitbox_source.resolve()
+    try:
+        armas = carregar_armas(weapons_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        _write_output(f"input error: {exc}\n", stderr)
+        return 1
+
+    report = criar_relatorio(
+        armas,
+        arquivo=str(weapons_path),
+        hitbox_source=hitbox_source,
+    )
+    if args.json:
+        _write_output(json.dumps(report.to_dict(), ensure_ascii=True, sort_keys=True) + "\n", stdout)
+    else:
+        _write_output(render_text(report), stdout)
+
+    if report.errors:
+        return 1
+    if args.strict and report.warnings:
+        return 2
+    return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

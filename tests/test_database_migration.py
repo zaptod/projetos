@@ -16,6 +16,9 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "raridade": "Comum",
                 "dano": 10,
                 "peso": 3,
+                "comp_cabo": 20,
+                "comp_lamina": 50,
+                "largura": 5,
                 "habilidades": [{"nome": "Golpe Devastador", "custo": 999}],
             }
         ]
@@ -53,6 +56,9 @@ class DatabaseMigrationTests(unittest.TestCase):
                 "raridade": "Comum",
                 "dano": 10,
                 "peso": 3,
+                "comp_cabo": 20,
+                "comp_lamina": 50,
+                "largura": 5,
                 "habilidades": [{"nome": "Skill sem mapeamento", "custo": 1}],
             }
         ]

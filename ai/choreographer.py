@@ -503,8 +503,6 @@ class CombatChoreographer:
         if self.momento_atual == "NEUTRO":
             return None
         
-        outro = self.lutador2 if lutador == self.lutador1 else self.lutador1
-        
         # Ações baseadas no momento
         if self.momento_atual == "STANDOFF":
             return "CIRCULAR_LENTO"

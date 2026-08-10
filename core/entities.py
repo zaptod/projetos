@@ -266,7 +266,10 @@ class Lutador:
         """Usa o contrato canônico do modelo, preservando fixtures legadas."""
         calcular = getattr(self.dados, "get_vida_max", None)
         if callable(calcular):
-            valor = float(calcular())
+            try:
+                valor = float(calcular())
+            except (TypeError, ValueError):
+                valor = 0.0
             if valor > 0.0:
                 return valor
         base = 80.0 + (self.dados.resistencia * 5)  # Vida reduzida para lutas mais rápidas
@@ -276,7 +279,10 @@ class Lutador:
         """Usa o contrato canônico do modelo, preservando fixtures legadas."""
         calcular = getattr(self.dados, "get_mana_max", None)
         if callable(calcular):
-            valor = float(calcular())
+            try:
+                valor = float(calcular())
+            except (TypeError, ValueError):
+                valor = 0.0
             if valor > 0.0:
                 return valor
         base = 50.0 + (getattr(self.dados, 'mana', 0) * 10.0)
@@ -286,7 +292,10 @@ class Lutador:
         """Retorna velocidade planar já consolidada pelo modelo de domínio."""
         calcular = getattr(self.dados, "get_velocidade_movimento", None)
         if callable(calcular):
-            valor = float(calcular())
+            try:
+                valor = float(calcular())
+            except (TypeError, ValueError):
+                valor = -1.0
             if valor >= 0.0:
                 return valor
         return max(0.0, float(getattr(self.dados, "velocidade", 5.0)))
@@ -445,7 +454,6 @@ class Lutador:
                 self.stun_timer > 0.0
                 and not self.congelado
                 and not self.tempo_parado
-                and not getattr(self, "dormindo", False)
             )
         if familia == "LENTO":
             return (

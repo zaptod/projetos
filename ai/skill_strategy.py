@@ -17,9 +17,8 @@ A IA agora:
 
 import logging
 import random
-import math
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
 from core.skills import get_skill_data
@@ -795,8 +794,6 @@ class SkillStrategySystem:
         dt: float = 1.0 / 60.0,
     ) -> Optional[Tuple[SkillProfile, str]]:
         """Obtém a melhor skill para usar agora baseado no plano"""
-        p = self.parent
-        
         # Atualiza fase
         fase = self.determinar_fase(situacao)
         self.fase_atual = fase
