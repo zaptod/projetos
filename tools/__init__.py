@@ -1,7 +1,6 @@
-"""
-NEURAL FIGHTS - Módulo Tools
-Ferramentas de diagnóstico e análise.
+"""Ferramentas de manutencao executaveis explicitamente.
+
+O pacote nao reexporta scripts para evitar efeitos colaterais e imports circulares.
 """
 
-from tools.diagnostico_hitbox import *
-from tools.analise_armas import *
+__all__: list[str] = []

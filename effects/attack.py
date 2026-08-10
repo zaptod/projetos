@@ -23,8 +23,7 @@ import pygame
 import math
 import random
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional, Dict
-from enum import Enum, auto
+from typing import List, Tuple
 
 
 # =============================================================================

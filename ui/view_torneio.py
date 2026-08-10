@@ -7,15 +7,9 @@ Lança as lutas no Pygame e permite registrar vencedores manualmente.
 
 import customtkinter as ctk
 from tkinter import messagebox
-import subprocess
 import threading
-import json
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from tournament.tournament_mode import Tournament, TournamentRunner, TournamentState
+from tournament.tournament_mode import Tournament, TournamentRunner
 
 
 class MatchCard(ctk.CTkFrame):

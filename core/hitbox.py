@@ -249,13 +249,13 @@ class SistemaHitbox:
         elif self._eh_arma_lamina(tipo):
             return self._calcular_hitbox_lamina(lutador, arma, cx, cy, rad, fator, raio_char)
         
-        # === ARMAS RANGED (Arremesso/Arco) - Usam projéteis, não hitbox direta ===
-        elif self._eh_arma_ranged(tipo):
-            return self._calcular_hitbox_ranged(lutador, arma, cx, cy, rad, fator, raio_char)
-        
         # === ARMAS DE ÁREA (Mágica) ===
         elif self._eh_arma_area(tipo):
             return self._calcular_hitbox_area(lutador, arma, cx, cy, rad, fator, raio_char)
+
+        # === ARMAS RANGED (Arremesso/Arco) - Usam projéteis, não hitbox direta ===
+        elif self._eh_arma_ranged(tipo):
+            return self._calcular_hitbox_ranged(lutador, arma, cx, cy, rad, fator, raio_char)
         
         # === ARMAS ORBITAIS (colisão especial) ===
         elif "Orbital" in tipo:
@@ -275,8 +275,8 @@ class SistemaHitbox:
         return any(t in tipo for t in ["Reta", "Dupla", "Transformável"])
     
     def _eh_arma_ranged(self, tipo: str) -> bool:
-        """Verifica se é arma ranged (usa projéteis) - inclui Mágica"""
-        return any(t in tipo for t in ["Arremesso", "Arco", "Mágica"])
+        """Verifica se e arma ranged baseada em projetil."""
+        return any(t in tipo for t in ["Arremesso", "Arco"])
     
     def _eh_arma_area(self, tipo: str) -> bool:
         """Verifica se é arma de área (usa colisão de distância) - Apenas Mágica"""
@@ -500,12 +500,8 @@ class SistemaHitbox:
     def _calcular_hitbox_area(self, lutador, arma, cx, cy, rad, fator, raio_char) -> HitboxInfo:
         """Calcula hitbox para armas de área (Mágica)"""
         tipo = arma.tipo
-        
-        if "Mágica" in tipo:
-            # Mágica: 2.5x o raio
-            fator_arma = 2.5
-        else:
-            fator_arma = 2.0
+        profile = get_hitbox_profile(tipo)
+        fator_arma = profile["range_mult"]
         
         alcance_px = raio_char * fator_arma
         largura_ang = max(60.0, arma.largura * 2)  # Arco mais generoso
@@ -518,7 +514,9 @@ class SistemaHitbox:
             alcance=alcance_px,
             angulo=math.degrees(rad),
             largura_angular=largura_ang,
-            ativo=True  # Armas de área sempre ativas quando equipadas
+            ativo=True,  # Armas de área sempre ativas quando equipadas
+            forma=profile["shape"] if lutador.atacando else profile["idle_shape"],
+            profile=profile,
         )
     
     def _calcular_hitbox_orbital(self, lutador, arma, cx, cy, fator, raio_char) -> HitboxInfo:

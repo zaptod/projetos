@@ -5,20 +5,10 @@ Demonstra todos os novos efeitos de magia de forma visual.
 """
 
 import pygame
-import math
 import random
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from effects.magic_vfx import (
     MagicVFXManager,
-    MagicParticle,
-    DramaticExplosion,
-    DramaticBeam,
-    DramaticAura,
-    DramaticSummon,
     ELEMENT_PALETTES
 )
 

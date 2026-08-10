@@ -18,8 +18,8 @@ Filosofia de Design:
 import pygame
 import random
 import math
-from dataclasses import dataclass, field
-from typing import List, Tuple, Optional, Callable
+from dataclasses import dataclass
+from typing import List, Tuple, Optional
 from enum import Enum, auto
 
 

@@ -54,10 +54,14 @@ STATUS_RUNTIME = {
     "PARALISIA": {"categoria": "cc", "duracao": 0.5},
     "ENRAIZADO": {"categoria": "cc", "duracao": 2.5},
     "SILENCIADO": {"categoria": "cc", "duracao": 3.0},
-    "CEGO": {"categoria": "cc_parcial", "duracao": 2.0},
-    "MEDO": {"categoria": "cc_parcial", "duracao": 2.5},
-    "CHARME": {"categoria": "pendente", "duracao": 2.0},
-    "SONO": {"categoria": "cc_parcial", "duracao": 4.0},
+    "CEGO": {
+        "categoria": "debuff",
+        "duracao": 2.0,
+        "desvio_mira_graus": 35.0,
+    },
+    "MEDO": {"categoria": "cc", "duracao": 2.5},
+    "CHARME": {"categoria": "controle_mental", "duracao": 2.0},
+    "SONO": {"categoria": "cc", "duracao": 4.0},
     "KNOCK_UP": {"categoria": "cc", "duracao": 0.5},
     "TEMPO_PARADO": {"categoria": "cc", "duracao": 2.0},
     "FRACO": {
@@ -70,17 +74,33 @@ STATUS_RUNTIME = {
         "duracao": 4.0,
         "mod_dano_recebido": 1.5,
     },
-    "EXAUSTO": {"categoria": "debuff_parcial", "duracao": 5.0},
-    "MARCADO": {"categoria": "pendente", "duracao": 6.0},
+    "EXAUSTO": {
+        "categoria": "debuff",
+        "duracao": 5.0,
+        "mod_regen_mana": 0.3,
+    },
+    "MARCADO": {
+        "categoria": "debuff",
+        "duracao": 6.0,
+        "mod_proximo_dano_recebido": 1.5,
+    },
     "EXPOSTO": {
         "categoria": "debuff",
         "duracao": 4.0,
         "mod_dano_recebido": 2.0,
     },
-    "BOMBA_RELOGIO": {"categoria": "pendente", "duracao": 3.0},
-    "LINK_ALMA": {"categoria": "pendente"},
-    "POSSESSO": {"categoria": "pendente", "duracao": 3.0},
-    "TROCAR_POS": {"categoria": "pendente"},
+    "BOMBA_RELOGIO": {
+        "categoria": "especial",
+        "duracao": 3.0,
+        "raio_explosao": 2.5,
+    },
+    "LINK_ALMA": {
+        "categoria": "especial",
+        "duracao": 6.0,
+        "percentual_compartilhado": 0.5,
+    },
+    "POSSESSO": {"categoria": "controle_mental", "duracao": 3.0},
+    "TROCAR_POS": {"categoria": "transporte"},
     # O deslocamento real destes efeitos é processado fora do status. As flags
     # legadas ainda são aceitas, mas não são a fonte da força física.
     "PUXADO": {"categoria": "transporte"},
@@ -137,6 +157,7 @@ DEBUFF_FAMILY_ORDER = (
     "CHARME",
     "MARCADO",
     "POSSESSO",
+    "LINK_ALMA",
     "BOMBA_RELOGIO",
 )
 

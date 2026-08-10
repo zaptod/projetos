@@ -3,18 +3,20 @@ FORJA DE ARMAS - NEURAL FIGHTS
 Sistema de criação de armas com Wizard guiado
 """
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 import math
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models import (
     Arma, TIPOS_ARMA, LISTA_TIPOS_ARMA, RARIDADES, LISTA_RARIDADES,
-    ENCANTAMENTOS, LISTA_ENCANTAMENTOS, get_raridade_data, get_tipo_arma_data,
-    validar_arma_personagem, sugerir_tamanho_arma, calcular_tamanho_arma
+    ENCANTAMENTOS, LISTA_ENCANTAMENTOS, sugerir_tamanho_arma
 )
-from data import carregar_armas, salvar_lista_armas, carregar_personagens
+from data import (
+    DataValidationError,
+    carregar_personagens,
+    remover_arma,
+    renomear_arma,
+    salvar_lista_armas,
+)
 from core import SKILL_DB
 from ui.theme import COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS, COR_TEXTO, COR_TEXTO_DIM, CORES_RARIDADE
 
@@ -26,6 +28,7 @@ class TelaArmas(tk.Frame):
         self.controller = controller
         self.configure(bg=COR_BG)
         self.indice_em_edicao = None
+        self.nome_original_edicao = None
         
         # Estado do Wizard
         self.passo_atual = 1
@@ -1296,8 +1299,12 @@ class TelaArmas(tk.Frame):
                 nova.passiva = dados["passiva"]
             
             if self.indice_em_edicao is not None:
+                nome_original = self.nome_original_edicao
+                if nome_original and nome_original != nova.nome:
+                    renomear_arma(nome_original, nova.nome)
                 self.controller.lista_armas[self.indice_em_edicao] = nova
                 self.indice_em_edicao = None
+                self.nome_original_edicao = None
             else:
                 self.controller.lista_armas.append(nova)
             
@@ -1400,6 +1407,7 @@ class TelaArmas(tk.Frame):
         }
         
         self.indice_em_edicao = idx
+        self.nome_original_edicao = arma.nome
         self.mostrar_passo(1)
 
     def editar_arma(self):
@@ -1415,14 +1423,44 @@ class TelaArmas(tk.Frame):
         idx = self.tree.index(sel[0])
         arma = self.controller.lista_armas[idx]
         
-        if messagebox.askyesno("Confirmar", f"Deletar '{arma.nome}'?"):
-            del self.controller.lista_armas[idx]
-            salvar_lista_armas(self.controller.lista_armas)
+        if not messagebox.askyesno("Confirmar", f"Deletar '{arma.nome}'?"):
+            return
+
+        personagens = carregar_personagens()
+        afetados = [p for p in personagens if p.nome_arma == arma.nome]
+        substituta = None
+        if afetados:
+            opcoes = [a.nome for a in self.controller.lista_armas if a.nome != arma.nome]
+            if not opcoes:
+                messagebox.showerror(
+                    "Arma em uso",
+                    "Nao e possivel remover a unica arma enquanto personagens a utilizam.",
+                )
+                return
+            substituta = simpledialog.askstring(
+                "Substituir arma",
+                f"{len(afetados)} personagem(ns) usam esta arma.\n"
+                "Informe uma substituta:\n" + ", ".join(opcoes),
+                parent=self,
+            )
+            if substituta is None:
+                return
+            substituta = substituta.strip()
+            if substituta not in opcoes:
+                messagebox.showerror("Arma invalida", "Escolha uma arma existente da lista.")
+                return
+
+        try:
+            remover_arma(arma.nome, substituir_por=substituta)
+            self.controller.recarregar_dados()
             self.atualizar_lista()
+        except (DataValidationError, OSError) as exc:
+            messagebox.showerror("Erro ao deletar", str(exc))
 
     def nova_arma(self):
         """Inicia criacao de nova arma"""
         self.indice_em_edicao = None
+        self.nome_original_edicao = None
         self.dados_arma = {
             "nome": "",
             "tipo": "Reta",

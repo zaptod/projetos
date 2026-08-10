@@ -6,12 +6,9 @@ Padrão visual alinhado com a Forja de Armas
 import tkinter as tk
 from tkinter import ttk, messagebox
 import math
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import Personagem, LISTA_CLASSES, CLASSES_DATA, get_class_data
-from data import carregar_personagens, salvar_lista_chars, carregar_armas
+from models import Personagem, get_class_data
+from data import salvar_lista_chars
 from ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS, 
     COR_TEXTO, COR_TEXTO_DIM, COR_WARNING, COR_DANGER, CORES_CLASSE, CATEGORIAS_CLASSE

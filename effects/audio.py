@@ -8,7 +8,11 @@ import pygame
 import os
 import random
 import json
+import logging
 from typing import Dict, List, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 class AudioManager:
@@ -73,6 +77,62 @@ class AudioManager:
         # UI
         "ui": "ui", "ui_select": "ui", "ui_confirm": "ui", "ui_back": "ui",
     }
+
+    # Eventos sem asset proprio reutilizam um som semanticamente proximo.
+    # Assim, toda chave publica continua audivel sem exigir arquivos ficticios
+    # no sound_config.json.
+    SOUND_FALLBACKS = {
+        "punch_light": "slash_light",
+        "punch_medium": "slash_heavy",
+        "punch_heavy": "slash_critical",
+        "kick_light": "slash_light",
+        "kick_heavy": "slash_heavy",
+        "kick_spin": "slash_critical",
+        "stab_quick": "slash_light",
+        "stab_deep": "slash_heavy",
+        "impact_flesh": "wall_impact_light",
+        "impact_heavy": "wall_impact_heavy",
+        "impact_critical": "slash_critical",
+        "fireball_fly": "fireball_cast",
+        "ice_shard": "ice_cast",
+        "ice_impact": "ice_cast",
+        "lightning_charge": "lightning_bolt",
+        "lightning_impact": "lightning_bolt",
+        "energy_charge": "energy_blast",
+        "energy_impact": "energy_blast",
+        "beam_charge": "beam_fire",
+        "beam_end": "beam_fire",
+        "dash_impact": "dash_whoosh",
+        "teleport_out": "dash_whoosh",
+        "teleport_in": "dodge_whoosh",
+        "buff_activate": "energy_blast",
+        "buff_pulse": "energy_blast",
+        "heal_cast": "ice_cast",
+        "heal_complete": "ice_cast",
+        "shield_up": "clash_magic",
+        "shield_block": "clash_swords",
+        "shield_break": "clash_projectiles",
+        "summon_cast": "energy_blast",
+        "jump_land": "wall_impact_light",
+        "step_1": "jump_start",
+        "step_2": "jump_start",
+        "step_3": "jump_start",
+        "step_4": "jump_start",
+        "dodge_slide": "dodge_whoosh",
+        "wall_hit": "wall_impact_light",
+        "ground_impact": "wall_impact_heavy",
+        "arena_victory": "arena_start",
+        "round_start": "arena_start",
+        "round_end": "arena_start",
+        "ui_back": "ui_select",
+        "slowmo_whoosh": "dodge_whoosh",
+        "slowmo_return": "dash_whoosh",
+        "ko_impact": "slash_critical",
+        "combo_hit": "slash_heavy",
+        "counter_hit": "clash_swords",
+        "perfect_block": "clash_swords",
+        "stagger": "wall_impact_heavy",
+    }
     
     def __init__(self):
         self.enabled = True
@@ -98,8 +158,7 @@ class AudioManager:
         # Diretório de sons - usa caminho absoluto
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.sound_dir = os.path.join(base_dir, "sounds")
-        print(f"[AUDIO] Sound directory: {self.sound_dir}")
-        print(f"[AUDIO] Directory exists: {os.path.exists(self.sound_dir)}")
+        logger.debug("Sound directory: %s", self.sound_dir)
         
         if not os.path.exists(self.sound_dir):
             os.makedirs(self.sound_dir, exist_ok=True)
@@ -111,8 +170,8 @@ class AudioManager:
         try:
             pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
             pygame.mixer.set_num_channels(32)  # 32 canais simultâneos
-        except:
-            print("Aviso: Sistema de áudio não disponível")
+        except pygame.error as exc:
+            logger.warning("Sistema de audio indisponivel: %s", exc)
             self.enabled = False
             return
         
@@ -135,8 +194,8 @@ class AudioManager:
                         if "master" in config["_volumes"]:
                             self.master_volume = config["_volumes"]["master"]
                     return config
-            except:
-                pass
+            except (OSError, json.JSONDecodeError, TypeError) as exc:
+                logger.warning("Configuracao de audio invalida em %s: %s", config_file, exc)
         return {}
     
     def save_volume_config(self):
@@ -150,8 +209,8 @@ class AudioManager:
         try:
             with open(config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"[AUDIO] Error saving volume config: {e}")
+        except (OSError, TypeError) as exc:
+            logger.error("Falha ao salvar volumes de audio: %s", exc)
     
     def set_category_volume(self, category: str, volume: float):
         """Define volume de uma categoria."""
@@ -183,7 +242,7 @@ class AudioManager:
         self.sound_groups.clear()
         self.sound_config = self._load_sound_config()
         self._setup_sounds()
-        print("AudioManager: Sons recarregados!")
+        logger.info("Sons recarregados")
     
     @classmethod
     def get_instance(cls):
@@ -340,10 +399,10 @@ class AudioManager:
             if os.path.exists(filepath):
                 try:
                     sound = pygame.mixer.Sound(filepath)
-                    print(f"[AUDIO] Loaded configured: {name} -> {filepath}")
+                    logger.debug("Loaded configured sound %s -> %s", name, filepath)
                     return sound
-                except Exception as e:
-                    print(f"[AUDIO] Error loading {filepath}: {e}")
+                except pygame.error as exc:
+                    logger.warning("Falha ao carregar %s: %s", filepath, exc)
         
         # Tenta carregar arquivo com nome padrão
         for ext in ['.wav', '.ogg', '.mp3']:
@@ -351,10 +410,14 @@ class AudioManager:
             if os.path.exists(filepath):
                 try:
                     sound = pygame.mixer.Sound(filepath)
-                    print(f"[AUDIO] Loaded: {name} -> {filepath}")
+                    logger.debug("Loaded sound %s -> %s", name, filepath)
                     return sound
-                except Exception as e:
-                    print(f"[AUDIO] Error loading {filepath}: {e}")
+                except pygame.error as exc:
+                    logger.warning("Falha ao carregar %s: %s", filepath, exc)
+
+        fallback = self.SOUND_FALLBACKS.get(name)
+        if fallback and fallback != name:
+            return self._load_or_generate_sound(fallback)
         
         # SEM som configurado = não toca nada (sem sons procedurais)
         return None
@@ -373,7 +436,7 @@ class AudioManager:
             pan: Panorâmica (-1.0 esquerda, 0.0 centro, 1.0 direita)
         """
         if not self.enabled or not sound_name:
-            print(f"[AUDIO] play() - disabled or no name: enabled={self.enabled}, name={sound_name}")
+            logger.debug("Audio ignorado: enabled=%s name=%s", self.enabled, sound_name)
             return
         
         # Tenta tocar do grupo primeiro (variação aleatória)
@@ -382,12 +445,12 @@ class AudioManager:
         if sound_name in self.sound_groups:
             sounds = self.sound_groups[sound_name]
             sound = random.choice(sounds)
-            print(f"[AUDIO] Playing from group: {sound_name}")
+            logger.debug("Playing sound group: %s", sound_name)
         elif sound_name in self.sounds:
             sound = self.sounds[sound_name]
-            print(f"[AUDIO] Playing sound: {sound_name}")
+            logger.debug("Playing sound: %s", sound_name)
         else:
-            print(f"[AUDIO] Sound NOT FOUND: {sound_name} (available: {list(self.sounds.keys())[:5]}...)")
+            logger.debug("Sound not found: %s", sound_name)
             return
         
         if sound:
@@ -407,7 +470,7 @@ class AudioManager:
             else:
                 sound.set_volume(final_volume)
             
-            print(f"[AUDIO] >>> PLAYING {actual_name} [{category}] vol={final_volume:.2f}")
+            logger.debug("Playing %s [%s] volume=%.2f", actual_name, category, final_volume)
             sound.play()
     
     def play_positional(self, sound_name: str, pos_x: float, listener_x: float, 
@@ -497,7 +560,7 @@ class AudioManager:
             else:
                 sound = "slash_light"
                 volume = 0.7
-            print(f"[AUDIO] Slash sound: damage={damage:.1f}, critical={is_critical} -> {sound}")
+            logger.debug("Slash damage=%.1f critical=%s sound=%s", damage, is_critical, sound)
         else:
             sound = category
             volume = 0.7
@@ -588,6 +651,18 @@ class AudioManager:
         
         elif skill_type == "TELEPORT":
             sound = "teleport_out" if phase == "cast" else "teleport_in"
+
+        elif skill_type == "SUMMON":
+            sound = "summon_cast"
+
+        elif skill_type == "TRAP":
+            sound = "shield_up"
+
+        elif skill_type == "TRANSFORM":
+            sound = "buff_activate"
+
+        elif skill_type == "CHANNEL":
+            sound = "beam_charge" if phase == "cast" else "beam_fire"
         
         if sound:
             if pos_x != 0:
@@ -597,7 +672,6 @@ class AudioManager:
     
     def play_movement(self, movement_type: str, pos_x: float = 0, listener_x: float = 0):
         """Toca som de movimento"""
-        print(f"[AUDIO] play_movement called: type={movement_type}, pos_x={pos_x}")
         sound_map = {
             "jump": "jump_start",
             "land": "jump_land",
@@ -606,15 +680,12 @@ class AudioManager:
         }
         
         sound = sound_map.get(movement_type)
-        print(f"[AUDIO] play_movement: mapped '{movement_type}' -> '{sound}'")
         if sound:
             # Volume mais alto para pulos (0.7) para ser audível mesmo com atenuação espacial
             volume = 0.3 if movement_type == "footstep" else 0.7
             if pos_x != 0:
-                print(f"[AUDIO] Calling play_positional for {sound}")
                 self.play_positional(sound, pos_x, listener_x, volume=volume)
             else:
-                print(f"[AUDIO] Calling play for {sound}")
                 self.play(sound, volume=volume)
     
     def play_special(self, event_type: str, volume: float = 0.8):

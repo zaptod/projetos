@@ -5,8 +5,7 @@ Classe Arma e funções de validação/sugestão
 
 import random
 from .constants import (
-    RARIDADES, TIPOS_ARMA, ENCANTAMENTOS, PASSIVAS_ARMA,
-    get_raridade_data, get_tipo_arma_data
+    ENCANTAMENTOS, PASSIVAS_ARMA, get_raridade_data
 )
 
 

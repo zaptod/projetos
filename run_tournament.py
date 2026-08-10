@@ -4,12 +4,6 @@ NEURAL FIGHTS - Lançador do Modo Torneio
 Execute este script para iniciar o Modo Torneio diretamente.
 """
 
-import os
-import sys
-
-# Setup path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 def main():
     try:
         import customtkinter as ctk
@@ -19,8 +13,7 @@ def main():
         print("=" * 60)
         print("\n  Execute: pip install customtkinter")
         print("\n  Depois execute este script novamente.")
-        input("\n  Pressione ENTER para sair...")
-        return
+        return 2
     
     # Configura tema
     ctk.set_appearance_mode("dark")
@@ -44,7 +37,8 @@ def main():
     
     # Inicia loop principal
     root.mainloop()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

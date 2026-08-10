@@ -259,7 +259,7 @@ python run.py
 python run_tournament.py
 
 # Gerar nova database
-python -c "from tools.gerador_database import gerar_database_completa; gerar_database_completa()"
+python -m scripts.gerar_roster --modo completo --seed 42
 
 # Testar batalha headless
 python test_headless_battle.py

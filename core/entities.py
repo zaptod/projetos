@@ -5,6 +5,7 @@ Classe principal do lutador com sistema de combate.
 
 import math
 import random
+from dataclasses import dataclass
 from core.status_runtime import (
     DEBUFF_FAMILY_ORDER,
     efeito_bloqueado_por_imunidade,
@@ -13,6 +14,17 @@ from core.status_runtime import (
     normalizar_efeito,
 )
 from utils.config import PPM, GRAVIDADE_Z, ATRITO, ALTURA_PADRAO
+
+
+@dataclass(frozen=True)
+class ImpactResult:
+    """Resultado explícito de uma tentativa de impacto no runtime."""
+
+    atingiu: bool
+    dano: float = 0.0
+    efeito_aplicado: bool = False
+    morreu: bool = False
+    bloqueado_por: str | None = None
 
 
 class Lutador:
@@ -48,15 +60,27 @@ class Lutador:
         self.estamina_max = 100.0
         self.mana_max = self._calcular_mana_max()
         self.mana = self.mana_max
+        self.velocidade_movimento_base = self._calcular_velocidade_movimento()
+        self.mod_velocidade_transformacao = 1.0
+        self.resistencia = float(getattr(self.dados, "resistencia", 0.0))
+        self.intangivel = False
+        self.transformacao_ativa = None
         
         # Regeneração baseada na classe
-        self.regen_mana_base = self.class_data.get("regen_mana", 3.0)
+        get_regen_mana = getattr(self.dados, "get_regen_mana", None)
+        self.regen_mana_base = (
+            float(get_regen_mana())
+            if callable(get_regen_mana)
+            else self.class_data.get("regen_mana", 3.0)
+        )
         self.regen_mana_base_normal = self.regen_mana_base
         
         # Modificadores de classe
         self.mod_dano = self.class_data.get("mod_forca", 1.0)
+        # Mantido como metadado público legado. O modificador de classe já
+        # está incorporado em ``velocidade_movimento_base`` e não é reaplicado.
         self.mod_velocidade = self.class_data.get("mod_velocidade", 1.0)
-        self.mod_defesa = 1.0 / self.class_data.get("mod_vida", 1.0)
+        self.mod_defesa = 1.0
         
         # Cor de aura da classe
         self.cor_aura = self.class_data.get("cor_aura", (200, 200, 200))
@@ -156,6 +180,16 @@ class Lutador:
         self.tempo_parado = False
         self.silenciado_timer = 0.0
         self.exausto_timer = 0.0
+        self.cego_timer = 0.0
+        self.medo_timer = 0.0
+        self.sono_timer = 0.0
+        self.dormindo = False
+        self.marcado_timer = 0.0
+        self.marcado = False
+        self.marcado_multiplicador = get_status_runtime("MARCADO").get(
+            "mod_proximo_dano_recebido",
+            1.5,
+        )
         self.fraco_timer = 0.0
         self.vulneravel_timer = 0.0
         self.maldito_timer = 0.0
@@ -164,9 +198,24 @@ class Lutador:
         self.cura_bloqueada_timer = 0.0
         self.cura_bloqueada = 0.0  # Alias legado usado por integrações antigas.
         self.imune_debuffs_timer = 0.0
+        self.charme_timer = 0.0
+        self.charme_origem = None
+        self.possesso_timer = 0.0
+        self.possesso_origem = None
+        self.bomba_relogio_timer = 0.0
+        self.bomba_relogio_dano = 0.0
+        self.bomba_relogio_raio = 0.0
+        self.bomba_relogio_origem = None
+        self.link_alma_timer = 0.0
+        self.link_alma_alvo = None
+        self.link_alma_percentual = 0.0
+        self.provocacao_timer = 0.0
+        self.provocacao_origem = None
+        self._fontes_impacto_recentes = {}
         self.dano_reduzido = 1.0
         self.vulnerabilidade = 1.0
         self.ultimo_dano_recebido = 0.0
+        self.ultimo_resultado_impacto = ImpactResult(False, bloqueado_por="inicial")
         self._slow_fator_antes_enraizado = 1.0
         self._slow_fator_antes_congelado = 1.0
         self._slow_fator_antes_tempo_parado = 1.0
@@ -176,6 +225,7 @@ class Lutador:
         self.canalizando = False
         self.skill_canalizando = None
         self.tempo_canalizacao = 0.0
+        self.channel_ativo = None
         self.usando_skill = False  # Flag para skills em geral
         
         # Animação e visual
@@ -210,16 +260,47 @@ class Lutador:
 
         # IA
         self.brain = AIBrain(self)
+        self._inimigo_atual = None
 
     def _calcular_vida_max(self):
-        """Calcula vida máxima com modificadores"""
+        """Usa o contrato canônico do modelo, preservando fixtures legadas."""
+        calcular = getattr(self.dados, "get_vida_max", None)
+        if callable(calcular):
+            valor = float(calcular())
+            if valor > 0.0:
+                return valor
         base = 80.0 + (self.dados.resistencia * 5)  # Vida reduzida para lutas mais rápidas
         return base * self.class_data.get("mod_vida", 1.0)
     
     def _calcular_mana_max(self):
-        """Calcula mana máxima com modificadores"""
+        """Usa o contrato canônico do modelo, preservando fixtures legadas."""
+        calcular = getattr(self.dados, "get_mana_max", None)
+        if callable(calcular):
+            valor = float(calcular())
+            if valor > 0.0:
+                return valor
         base = 50.0 + (getattr(self.dados, 'mana', 0) * 10.0)
         return base * self.class_data.get("mod_mana", 1.0)
+
+    def _calcular_velocidade_movimento(self):
+        """Retorna velocidade planar já consolidada pelo modelo de domínio."""
+        calcular = getattr(self.dados, "get_velocidade_movimento", None)
+        if callable(calcular):
+            valor = float(calcular())
+            if valor >= 0.0:
+                return valor
+        return max(0.0, float(getattr(self.dados, "velocidade", 5.0)))
+
+    def get_velocidade_movimento(self):
+        """Velocidade-alvo atual, incluindo apenas modificadores temporários."""
+        velocidade = self.velocidade_movimento_base * self.mod_velocidade_transformacao
+        for buff in self._buffs_validos():
+            velocidade *= max(0.0, getattr(buff, "buff_velocidade", 1.0))
+        return max(0.0, velocidade)
+
+    def _get_aceleracao_movimento(self, fator=1.0):
+        """Converte velocidade-alvo em aceleração compatível com o atrito."""
+        return self.get_velocidade_movimento() * ATRITO * max(0.0, fator)
 
     def trocar_skill(self):
         """Troca para a próxima skill disponível"""
@@ -342,7 +423,9 @@ class Lutador:
             "MEDO": "medo_timer",
             "CHARME": "charme_timer",
             "POSSESSO": "possesso_timer",
+            "LINK_ALMA": "link_alma_timer",
             "BOMBA_RELOGIO": "bomba_relogio_timer",
+            "PROVOCADO": "provocacao_timer",
         }
         if familia in tipos_dot:
             return True
@@ -356,7 +439,7 @@ class Lutador:
         if familia == "TEMPO_PARADO":
             return self.tempo_parado_timer > 0.0 or self.tempo_parado
         if familia == "SONO":
-            return bool(getattr(self, "dormindo", False))
+            return self.sono_timer > 0.0 or self.dormindo
         if familia == "ATORDOADO":
             return (
                 self.stun_timer > 0.0
@@ -372,7 +455,7 @@ class Lutador:
                 and not self.tempo_parado
             )
         if familia == "MARCADO":
-            return bool(getattr(self, "marcado", False))
+            return self.marcado_timer > 0.0 or self.marcado
         timer = timers.get(familia)
         return bool(timer and getattr(self, timer, 0.0) > 0.0)
 
@@ -410,7 +493,9 @@ class Lutador:
             "MEDO": "medo_timer",
             "CHARME": "charme_timer",
             "POSSESSO": "possesso_timer",
+            "LINK_ALMA": "link_alma_timer",
             "BOMBA_RELOGIO": "bomba_relogio_timer",
+            "PROVOCADO": "provocacao_timer",
         }
         self.dots_ativos = [
             dot
@@ -433,18 +518,29 @@ class Lutador:
             self.tempo_parado = False
             self.stun_timer = 0.0
         elif familia == "SONO":
-            self.dormindo = False
-            self.stun_timer = 0.0
+            self._quebrar_sono()
         elif familia == "ATORDOADO":
             self.stun_timer = 0.0
         elif familia == "LENTO":
             self.slow_timer = 0.0
         elif familia == "MARCADO":
             self.marcado = False
+            self.marcado_timer = 0.0
         elif familia == "EXAUSTO":
             self.regen_mana_base = self.regen_mana_base_normal
         elif familia == "BOMBA_RELOGIO":
             self.bomba_relogio_dano = 0.0
+            self.bomba_relogio_raio = 0.0
+            self.bomba_relogio_origem = None
+        elif familia == "LINK_ALMA":
+            self.link_alma_alvo = None
+            self.link_alma_percentual = 0.0
+        elif familia == "CHARME":
+            self.charme_origem = None
+        elif familia == "POSSESSO":
+            self.possesso_origem = None
+        elif familia == "PROVOCADO":
+            self.provocacao_origem = None
 
     def remover_debuffs(self, limite=None):
         """Remove famílias lógicas; DoTs repetidos contam como um debuff."""
@@ -453,7 +549,7 @@ class Lutador:
         tipos_dot = self._tipos_dot_ativos()
         familias_ativas = [
             familia
-            for familia in DEBUFF_FAMILY_ORDER
+            for familia in (*DEBUFF_FAMILY_ORDER, "PROVOCADO")
             if self._familia_debuff_ativa(familia, tipos_dot)
         ]
         selecionadas = familias_ativas if limite is None else familias_ativas[:limite]
@@ -540,9 +636,117 @@ class Lutador:
                 cura = alvo.vida * 0.1 * percent
                 self.receber_cura(cura)
 
-    def usar_skill_arma(self, skill_idx=None):
+    def esta_sob_controle_mental(self):
+        """Indica se o lutador perdeu temporariamente o controle ofensivo."""
+        return self.charme_timer > 0.0 or self.possesso_timer > 0.0
+
+    def esta_canalizando(self):
+        channel = getattr(self, "channel_ativo", None)
+        return bool(
+            (channel is not None and getattr(channel, "ativo", False))
+            or getattr(self, "canalizando", False)
+        )
+
+    def pode_iniciar_acao(self, *, permitir_medo=False):
+        """Contrato único para movimento, ataques e novos casts."""
+        return not (
+            self.morto
+            or self.dormindo
+            or (self.medo_timer > 0.0 and not permitir_medo)
+            or self.esta_sob_controle_mental()
+            or self.esta_canalizando()
+        )
+
+    def get_angulo_mira(self, angulo_real):
+        """Aplica cegueira de forma fixa e reproduzível, sem RNG por frame."""
+        if self.cego_timer <= 0.0:
+            return float(angulo_real)
+        desvio = get_status_runtime("CEGO").get("desvio_mira_graus", 35.0)
+        return (float(angulo_real) + float(desvio) + 180.0) % 360.0 - 180.0
+
+    def _quebrar_sono(self):
+        if not self.dormindo and self.sono_timer <= 0.0:
+            return False
+        self.dormindo = False
+        self.sono_timer = 0.0
+        return True
+
+    def _consumir_marca(self):
+        if not self.marcado or self.marcado_timer <= 0.0:
+            return False
+        self.marcado = False
+        self.marcado_timer = 0.0
+        return True
+
+    def pode_causar_dano(self, alvo=None):
+        """Contrato comum para toda fonte ofensiva pertencente ao lutador."""
+        if self.morto or self.esta_sob_controle_mental():
+            return False
+        if self.provocacao_timer > 0.0 and self.provocacao_origem is not None:
+            if getattr(self.provocacao_origem, "morto", False):
+                self.provocacao_timer = 0.0
+                self.provocacao_origem = None
+            elif alvo is not None and alvo is not self.provocacao_origem:
+                return False
+        return True
+
+    def aplicar_provocacao(self, origem, duracao):
+        """Força as fontes ofensivas do lutador a respeitarem o provocador."""
+        if (
+            origem is None
+            or origem is self
+            or self.morto
+            or getattr(origem, "morto", False)
+            or self.esta_imune_a_debuffs()
+        ):
+            return False
+        self.provocacao_origem = origem
+        self.provocacao_timer = max(self.provocacao_timer, max(0.0, float(duracao)))
+        return self.provocacao_timer > 0.0
+
+    def remover_congelamento(self):
+        """Consome CONGELADO e restaura o slow herdado com segurança."""
+        estava_congelado = self.congelado or self.congelado_timer > 0.0
+        if not estava_congelado:
+            return False
+        self.congelado = False
+        self.congelado_timer = 0.0
+        self._recalcular_movimento_apos_limpeza()
+        return True
+
+    def _interromper_acoes_ofensivas(self):
+        """Cancela ações em curso ao entrar em controle mental."""
+        self.atacando = False
+        self.usando_skill = False
+        channel = getattr(self, "channel_ativo", None)
+        if channel is not None:
+            interromper = getattr(channel, "interromper", None)
+            if callable(interromper):
+                interromper()
+            self.channel_ativo = None
+        self.interromper_canalizacao()
+
+    def _resolver_alvo_troca(self, alvo=None):
+        """Retorna um alvo vivo e distinto para a Troca de Almas."""
+        alvo = alvo or self._inimigo_atual
+        if alvo is None or alvo is self or self.morto or getattr(alvo, "morto", True):
+            return None
+        if not hasattr(alvo, "pos") or len(alvo.pos) < 2:
+            return None
+        return alvo
+
+    def _trocar_posicoes(self, alvo):
+        """Troca somente a posição planar, preservando velocidade e altura."""
+        pos_self = list(self.pos)
+        pos_alvo = list(alvo.pos)
+        self.pos[0], self.pos[1] = pos_alvo[0], pos_alvo[1]
+        alvo.pos[0], alvo.pos[1] = pos_self[0], pos_self[1]
+        self.dash_timer = 0.25
+        return True
+
+    def usar_skill_arma(self, skill_idx=None, alvo=None):
         """Usa a skill equipada na arma"""
-        if self.silenciado_timer > 0:
+        if self.silenciado_timer > 0 or not self.pode_iniciar_acao():
             return False
 
         from core.combat import Projetil, AreaEffect, Beam, Buff, Summon, Trap, Transform, Channel
@@ -564,6 +768,12 @@ class Lutador:
         
         data = skill_info["data"]
         tipo = data.get("tipo", "NADA")
+        efeito = normalizar_efeito(data.get("efeito"))
+        alvo_troca = None
+        if efeito == "TROCAR_POS":
+            alvo_troca = self._resolver_alvo_troca(alvo)
+            if alvo_troca is None:
+                return False
         
         custo_real = skill_info["custo"]
         if "Mago" in self.classe_nome:
@@ -630,29 +840,32 @@ class Lutador:
             if audio:
                 audio.play_skill("DASH", nome_skill, self.pos[0], phase="cast")
             
-            dist = data.get("distancia", 4.0)
-            dano = data.get("dano", 0)
-            
-            self.pos[0] += math.cos(rad) * dist
-            self.pos[1] += math.sin(rad) * dist
-            
-            self.dash_timer = 0.25
-            
-            for i in range(5):
-                self.dash_trail.append((
-                    self.pos[0] - math.cos(rad) * dist * (i/5),
-                    self.pos[1] - math.sin(rad) * dist * (i/5),
-                    1.0 - i*0.2
-                ))
-            
-            if dano > 0:
-                area = AreaEffect(nome_skill, self.pos[0], self.pos[1], self)
-                area.dano = dano
-                area.raio = 1.5
-                self.buffer_areas.append(area)
-            
-            if data.get("invencivel"):
-                self.invencivel_timer = 0.3
+            if efeito == "TROCAR_POS":
+                self._trocar_posicoes(alvo_troca)
+            else:
+                dist = data.get("distancia", 4.0)
+                dano = data.get("dano_chegada", data.get("dano", 0))
+
+                self.pos[0] += math.cos(rad) * dist
+                self.pos[1] += math.sin(rad) * dist
+
+                self.dash_timer = 0.25
+
+                for i in range(5):
+                    self.dash_trail.append((
+                        self.pos[0] - math.cos(rad) * dist * (i/5),
+                        self.pos[1] - math.sin(rad) * dist * (i/5),
+                        1.0 - i*0.2
+                    ))
+
+                if dano > 0:
+                    area = AreaEffect(nome_skill, self.pos[0], self.pos[1], self)
+                    area.dano = dano
+                    area.raio = 1.5
+                    self.buffer_areas.append(area)
+
+                if data.get("invencivel"):
+                    self.invencivel_timer = 0.3
         
         elif tipo == "BUFF":
             # === ÁUDIO v10.0 - SOM DE BUFF ===
@@ -668,12 +881,15 @@ class Lutador:
             if audio:
                 audio.play_skill("BEAM", nome_skill, self.pos[0], phase="cast")
             
-            alcance = data.get("alcance", 8.0)
-            end_x = self.pos[0] + math.cos(rad) * alcance
-            end_y = self.pos[1] + math.sin(rad) * alcance
-            
-            beam = Beam(nome_skill, self.pos[0], self.pos[1], end_x, end_y, self)
-            self.buffer_beams.append(beam)
+            if data.get("canalizavel", False):
+                Channel(nome_skill, self)
+            else:
+                alcance = data.get("alcance", 8.0)
+                end_x = self.pos[0] + math.cos(rad) * alcance
+                end_y = self.pos[1] + math.sin(rad) * alcance
+
+                beam = Beam(nome_skill, self.pos[0], self.pos[1], end_x, end_y, self)
+                self.buffer_beams.append(beam)
         
         # === TIPOS ADICIONAIS (v2.0) ===
         elif tipo == "SUMMON":
@@ -707,22 +923,18 @@ class Lutador:
             if audio:
                 audio.play_skill("TRANSFORM", nome_skill, self.pos[0], phase="cast")
             
-            transform = Transform(nome_skill, self)
-            self.transformacao_ativa = transform
+            Transform(nome_skill, self)
         
         elif tipo == "CHANNEL":
             audio = AudioManager.get_instance()
             if audio:
                 audio.play_skill("CHANNEL", nome_skill, self.pos[0], phase="cast")
             
-            channel = Channel(nome_skill, self)
-            if not hasattr(self, 'buffer_channels'):
-                self.buffer_channels = []
-            self.buffer_channels.append(channel)
+            Channel(nome_skill, self)
         
         return True
 
-    def usar_skill_classe(self, skill_nome):
+    def usar_skill_classe(self, skill_nome, alvo=None):
         """Usa uma skill de classe específica"""
         if self.silenciado_timer > 0:
             return False
@@ -743,7 +955,17 @@ class Lutador:
             return False
         
         data = skill_info["data"]
+        if not self.pode_iniciar_acao(
+            permitir_medo=bool(data.get("remove_todos_debuffs", False)),
+        ):
+            return False
         tipo = data.get("tipo", "NADA")
+        efeito = normalizar_efeito(data.get("efeito"))
+        alvo_troca = None
+        if efeito == "TROCAR_POS":
+            alvo_troca = self._resolver_alvo_troca(alvo)
+            if alvo_troca is None:
+                return False
         custo = skill_info["custo"]
         
         if "Mago" in self.classe_nome:
@@ -798,27 +1020,30 @@ class Lutador:
             if audio:
                 audio.play_skill("DASH", skill_nome, self.pos[0], phase="cast")
             
-            dist = data.get("distancia", 4.0)
-            dano = data.get("dano", 0)
-            
-            self.pos[0] += math.cos(rad) * dist
-            self.pos[1] += math.sin(rad) * dist
-            
-            for i in range(5):
-                self.dash_trail.append((
-                    self.pos[0] - math.cos(rad) * dist * (i/5),
-                    self.pos[1] - math.sin(rad) * dist * (i/5),
-                    1.0 - i*0.2
-                ))
-            
-            if dano > 0:
-                area = AreaEffect(skill_nome, self.pos[0], self.pos[1], self)
-                area.dano = dano
-                area.raio = 1.5
-                self.buffer_areas.append(area)
-            
-            if data.get("invencivel"):
-                self.invencivel_timer = 0.3
+            if efeito == "TROCAR_POS":
+                self._trocar_posicoes(alvo_troca)
+            else:
+                dist = data.get("distancia", 4.0)
+                dano = data.get("dano_chegada", data.get("dano", 0))
+
+                self.pos[0] += math.cos(rad) * dist
+                self.pos[1] += math.sin(rad) * dist
+
+                for i in range(5):
+                    self.dash_trail.append((
+                        self.pos[0] - math.cos(rad) * dist * (i/5),
+                        self.pos[1] - math.sin(rad) * dist * (i/5),
+                        1.0 - i*0.2
+                    ))
+
+                if dano > 0:
+                    area = AreaEffect(skill_nome, self.pos[0], self.pos[1], self)
+                    area.dano = dano
+                    area.raio = 1.5
+                    self.buffer_areas.append(area)
+
+                if data.get("invencivel"):
+                    self.invencivel_timer = 0.3
         
         elif tipo == "BUFF":
             # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
@@ -834,12 +1059,15 @@ class Lutador:
             if audio:
                 audio.play_skill("BEAM", skill_nome, self.pos[0], phase="cast")
             
-            alcance = data.get("alcance", 8.0)
-            end_x = self.pos[0] + math.cos(rad) * alcance
-            end_y = self.pos[1] + math.sin(rad) * alcance
-            
-            beam = Beam(skill_nome, self.pos[0], self.pos[1], end_x, end_y, self)
-            self.buffer_beams.append(beam)
+            if data.get("canalizavel", False):
+                Channel(skill_nome, self)
+            else:
+                alcance = data.get("alcance", 8.0)
+                end_x = self.pos[0] + math.cos(rad) * alcance
+                end_y = self.pos[1] + math.sin(rad) * alcance
+
+                beam = Beam(skill_nome, self.pos[0], self.pos[1], end_x, end_y, self)
+                self.buffer_beams.append(beam)
         
         # === NOVOS TIPOS v2.0 ===
         elif tipo == "SUMMON":
@@ -875,29 +1103,155 @@ class Lutador:
             if audio:
                 audio.play_skill("TRANSFORM", skill_nome, self.pos[0], phase="cast")
             
-            transform = Transform(skill_nome, self)
-            if not hasattr(self, 'transformacao_ativa'):
-                self.transformacao_ativa = None
-            self.transformacao_ativa = transform
+            Transform(skill_nome, self)
         
         elif tipo == "CHANNEL":
             audio = AudioManager.get_instance()
             if audio:
                 audio.play_skill("CHANNEL", skill_nome, self.pos[0], phase="cast")
             
-            channel = Channel(skill_nome, self)
-            if not hasattr(self, 'channel_ativo'):
-                self.channel_ativo = None
-            self.channel_ativo = channel
+            Channel(skill_nome, self)
         
         return True
+
+    def _atualizar_efeitos_especiais(self, dt):
+        """Atualiza vínculos/status que precisam de origem e ação na expiração."""
+        dt = max(0.0, dt)
+        if self.morto:
+            self.charme_timer = 0.0
+            self.charme_origem = None
+            self.possesso_timer = 0.0
+            self.possesso_origem = None
+            self.bomba_relogio_timer = 0.0
+            self.bomba_relogio_dano = 0.0
+            self.bomba_relogio_raio = 0.0
+            self.bomba_relogio_origem = None
+            self.link_alma_timer = 0.0
+            self.link_alma_alvo = None
+            self.link_alma_percentual = 0.0
+            return
+
+        if self.charme_timer <= 0.0:
+            self.charme_timer = 0.0
+            self.charme_origem = None
+        else:
+            origem = self.charme_origem
+            if origem is None or origem is self or getattr(origem, "morto", True):
+                self.charme_timer = 0.0
+                self.charme_origem = None
+            else:
+                self.charme_timer = max(0.0, self.charme_timer - dt)
+                if self.charme_timer <= 0.0:
+                    self.charme_origem = None
+
+        if self.possesso_timer <= 0.0:
+            self.possesso_timer = 0.0
+            self.possesso_origem = None
+        else:
+            origem = self.possesso_origem
+            if origem is None or origem is self or getattr(origem, "morto", True):
+                self.possesso_timer = 0.0
+                self.possesso_origem = None
+            else:
+                self.possesso_timer = max(0.0, self.possesso_timer - dt)
+                if self.possesso_timer <= 0.0:
+                    self.possesso_origem = None
+
+        if self.link_alma_timer <= 0.0:
+            self.link_alma_timer = 0.0
+            self.link_alma_alvo = None
+            self.link_alma_percentual = 0.0
+        else:
+            parceiro = self.link_alma_alvo
+            if parceiro is None or parceiro is self or getattr(parceiro, "morto", True):
+                self.link_alma_timer = 0.0
+                self.link_alma_alvo = None
+                self.link_alma_percentual = 0.0
+            else:
+                self.link_alma_timer = max(0.0, self.link_alma_timer - dt)
+                if self.link_alma_timer <= 0.0:
+                    self.link_alma_alvo = None
+                    self.link_alma_percentual = 0.0
+
+        if self.bomba_relogio_timer > 0.0:
+            self.bomba_relogio_timer = max(0.0, self.bomba_relogio_timer - dt)
+            if self.bomba_relogio_timer <= 0.0:
+                from core.combat import AreaEffect
+
+                dano = self.bomba_relogio_dano
+                raio = self.bomba_relogio_raio
+                origem = self.bomba_relogio_origem
+                self.bomba_relogio_dano = 0.0
+                self.bomba_relogio_raio = 0.0
+                self.bomba_relogio_origem = None
+                if dano > 0.0 and origem is not None and origem is not self:
+                    explosao = AreaEffect(
+                        "Bomba Relógio",
+                        self.pos[0],
+                        self.pos[1],
+                        origem,
+                    )
+                    explosao.delay = 0.0
+                    explosao.ativado = True
+                    explosao.raio = raio
+                    explosao.dano = dano
+                    explosao.dano_precalculado = True
+                    explosao.tipo_efeito = "EXPLOSAO"
+                    self.buffer_areas.append(explosao)
+        elif self.bomba_relogio_origem is not None:
+            self.bomba_relogio_timer = 0.0
+            self.bomba_relogio_dano = 0.0
+            self.bomba_relogio_raio = 0.0
+            self.bomba_relogio_origem = None
+
+    def _executar_charme(self, dt, origem, distancia):
+        """Segue o conjurador sem entregar o controle permanente à IA."""
+        distancia_seguir = (
+            self.raio_fisico
+            + getattr(origem, "raio_fisico", 0.5)
+            + 0.35
+        )
+        if distancia <= distancia_seguir:
+            return
+
+        aceleracao = self._get_aceleracao_movimento(35.0 / 45.0)
+        rad = math.radians(self.angulo_olhar)
+        self.vel[0] += math.cos(rad) * aceleracao * dt
+        self.vel[1] += math.sin(rad) * aceleracao * dt
+
+    def _executar_medo(self, dt, origem):
+        """Foge diretamente da ameaça enquanto o timer explícito estiver ativo."""
+        dx = self.pos[0] - origem.pos[0]
+        dy = self.pos[1] - origem.pos[1]
+        distancia = math.hypot(dx, dy) or 1.0
+        aceleracao = self._get_aceleracao_movimento(1.3)
+        self.vel[0] += (dx / distancia) * aceleracao * dt
+        self.vel[1] += (dy / distancia) * aceleracao * dt
+        if self.brain is not None:
+            self.brain.acao_atual = "FUGIR"
 
     def update(self, dt, inimigo):
         """Atualiza estado do lutador"""
         from core.physics import normalizar_angulo
+
+        self._inimigo_atual = inimigo
         
         if self.invencivel_timer > 0:
             self.invencivel_timer -= dt
+        if self._fontes_impacto_recentes:
+            self._fontes_impacto_recentes = {
+                fonte: restante - dt
+                for fonte, restante in self._fontes_impacto_recentes.items()
+                if restante - dt > 0.0
+            }
+        if self.provocacao_timer > 0.0:
+            self.provocacao_timer = max(0.0, self.provocacao_timer - dt)
+            if (
+                self.provocacao_timer <= 0.0
+                or self.provocacao_origem is None
+                or getattr(self.provocacao_origem, "morto", False)
+            ):
+                self.provocacao_origem = None
         if self.flash_timer > 0:
             self.flash_timer -= dt
         bloqueio_cura = max(
@@ -961,6 +1315,21 @@ class Lutador:
         if self.silenciado_timer > 0:
             self.silenciado_timer = max(0.0, self.silenciado_timer - dt)
 
+        self.cego_timer = max(0.0, self.cego_timer - dt)
+        self.medo_timer = max(0.0, self.medo_timer - dt)
+        if self.sono_timer > 0.0:
+            self.sono_timer = max(0.0, self.sono_timer - dt)
+            if self.sono_timer <= 0.0:
+                self.dormindo = False
+        elif self.dormindo:
+            self.dormindo = False
+        if self.marcado_timer > 0.0:
+            self.marcado_timer = max(0.0, self.marcado_timer - dt)
+            if self.marcado_timer <= 0.0:
+                self.marcado = False
+        elif self.marcado:
+            self.marcado = False
+
         if self.exausto_timer > 0:
             self.exausto_timer = max(0.0, self.exausto_timer - dt)
             if self.exausto_timer <= 0:
@@ -974,6 +1343,7 @@ class Lutador:
             if tempo_restante > 0:
                 setattr(self, timer_debuff, max(0.0, tempo_restante - dt))
         self._sincronizar_modificadores_debuff()
+        self._atualizar_efeitos_especiais(dt)
         
         for skill_nome in list(self.cd_skills.keys()):
             if self.cd_skills[skill_nome] > 0:
@@ -1007,18 +1377,41 @@ class Lutador:
         if "Paladino" in self.classe_nome:
             self.receber_cura(self.vida_max * 0.005 * dt)  # Reduzido de 2% para 0.5%
         
-        dx = inimigo.pos[0] - self.pos[0]
-        dy = inimigo.pos[1] - self.pos[1]
+        origem_charme = (
+            self.charme_origem
+            if self.charme_timer > 0.0
+            else None
+        )
+        origem_possesso = (
+            self.possesso_origem
+            if self.possesso_timer > 0.0
+            else None
+        )
+        alvo_comportamento = origem_charme or origem_possesso or inimigo
+        dx = alvo_comportamento.pos[0] - self.pos[0]
+        dy = alvo_comportamento.pos[1] - self.pos[1]
         distancia = math.hypot(dx, dy)
-        angulo_alvo = math.degrees(math.atan2(dy, dx))
+        angulo_alvo = self.get_angulo_mira(math.degrees(math.atan2(dy, dx)))
         diff = normalizar_angulo(angulo_alvo - self.angulo_olhar)
         
         vel_giro = 20.0 if "Assassino" in self.classe_nome or "Ninja" in self.classe_nome else 10.0
         self.angulo_olhar += diff * vel_giro * dt
 
-        if self.stun_timer <= 0 and not inimigo.morto:
+        if self.dormindo or self.esta_canalizando():
+            self.vel[0] = 0.0
+            self.vel[1] = 0.0
+        elif self.stun_timer <= 0:
+            if origem_possesso is not None:
+                # Em uma luta autônoma 1x1 não existe um segundo canal de
+                # comandos: possessão suspende movimento e iniciativa.
+                self.vel[0] = 0.0
+                self.vel[1] = 0.0
+            elif origem_charme is not None:
+                self._executar_charme(dt, origem_charme, distancia)
+            elif self.medo_timer > 0.0 and not inimigo.morto:
+                self._executar_medo(dt, inimigo)
             # Só processa IA se tiver brain (não em modo manual)
-            if self.brain is not None:
+            elif not inimigo.morto and self.brain is not None:
                 self.brain.processar(dt, distancia, inimigo)
                 self.executar_movimento(dt, distancia)
                 self.executar_ataques(dt, distancia, inimigo)
@@ -1100,7 +1493,7 @@ class Lutador:
 
     def aplicar_fisica(self, dt):
         """Aplica física de movimento"""
-        vel_mult = self.slow_fator * self.mod_velocidade
+        vel_mult = self.slow_fator
         
         if self.z > 0 or self.vel_z > 0:
             self.vel_z -= GRAVIDADE_Z * dt
@@ -1117,13 +1510,14 @@ class Lutador:
 
     def executar_movimento(self, dt, distancia):
         """Executa movimento baseado na ação da IA - v8.0 com comportamento humano"""
+        if self.dormindo or self.esta_canalizando():
+            self.vel[0] = 0.0
+            self.vel[1] = 0.0
+            return
         acao = self.brain.acao_atual
-        acc = 45.0 * self.mod_velocidade
+        acc = self._get_aceleracao_movimento()
         if self.modo_adrenalina:
-            acc = 70.0 * self.mod_velocidade
-        
-        for buff in self._buffs_validos():
-            acc *= buff.buff_velocidade
+            acc *= 70.0 / 45.0
         
         # v8.0: Aplica variação humana na aceleração
         if hasattr(self.brain, 'ritmo_combate'):
@@ -1283,6 +1677,9 @@ class Lutador:
 
     def executar_ataques(self, dt, distancia, inimigo):
         """Executa ataques físicos com sistema de animação aprimorado v2.0"""
+        if not self.pode_iniciar_acao():
+            self.atacando = False
+            return
         from core.combat import ArmaProjetil, FlechaProjetil, OrbeMagico
         from effects.weapon_animations import get_weapon_animation_manager, WEAPON_PROFILES
         
@@ -1508,6 +1905,8 @@ class Lutador:
             angulo_mira = math.degrees(math.atan2(dy_mira, dx_mira))
         else:
             angulo_mira = self.angulo_olhar
+
+        angulo_mira = self.get_angulo_mira(angulo_mira)
         
         # Imprecisão pequena (arqueiro é preciso!)
         angulo_mira += random.uniform(-2, 2)
@@ -1560,6 +1959,95 @@ class Lutador:
                 orbe.iniciar_carga(alvo)
                 self.buffer_orbes.append(orbe)
 
+    def _obter_partilha_link(self, dano):
+        """Divide dano final de HP, sem aplicar novamente defesa ou status."""
+        dano = max(0.0, dano)
+        if self.link_alma_timer <= 0.0:
+            return dano, None, 0.0
+
+        parceiro = self.link_alma_alvo
+        if parceiro is None or parceiro is self or getattr(parceiro, "morto", True):
+            self.link_alma_timer = 0.0
+            self.link_alma_alvo = None
+            self.link_alma_percentual = 0.0
+            return dano, None, 0.0
+
+        percentual = min(1.0, max(0.0, self.link_alma_percentual))
+        compartilhado = dano * percentual
+        return dano - compartilhado, parceiro, compartilhado
+
+    def aplicar_dano_direto(
+        self,
+        dano,
+        *,
+        compartilhar_link=True,
+        flash_cor=(255, 100, 255),
+    ):
+        """Reduz HP sem defesa/i-frame; usado por DoT, reflexo e Link."""
+        if self.morto or dano <= 0.0:
+            return 0.0
+
+        dano_proprio = max(0.0, dano)
+        parceiro = None
+        dano_parceiro = 0.0
+        if compartilhar_link:
+            dano_proprio, parceiro, dano_parceiro = self._obter_partilha_link(dano_proprio)
+
+        dano_proprio = self._limitar_dano_letal_por_imortalidade(dano_proprio)
+        self.vida -= dano_proprio
+        self.ultimo_dano_recebido = dano_proprio
+        if dano_proprio > 0.0:
+            self._quebrar_sono()
+        self.flash_timer = min(0.25, 0.1 + dano_proprio * 0.005)
+        self.flash_cor = flash_cor
+
+        if parceiro is not None and dano_parceiro > 0.0:
+            parceiro.aplicar_dano_direto(
+                dano_parceiro,
+                compartilhar_link=False,
+                flash_cor=(255, 100, 255),
+            )
+
+        if self.vida <= 0.0:
+            self.morrer()
+        return dano_proprio
+
+    def _receber_dano_link(self, dano):
+        """Compatibilidade: recebe a parcela compartilhada sem nova partilha."""
+        return self.aplicar_dano_direto(dano, compartilhar_link=False)
+
+    def resolver_impacto(
+        self,
+        dano,
+        empurrao_x,
+        empurrao_y,
+        tipo_efeito="NORMAL",
+        atacante=None,
+        aplicar_modificadores_debuff=True,
+        duracao_efeito=None,
+        raio_efeito=None,
+        percentual_efeito=None,
+        fonte_impacto=None,
+        ignorar_invencibilidade=False,
+        ignorar_escudo=False,
+    ):
+        """Aplica um impacto e retorna seu resultado sem depender de timers."""
+        self.tomar_dano(
+            dano,
+            empurrao_x,
+            empurrao_y,
+            tipo_efeito,
+            atacante=atacante,
+            aplicar_modificadores_debuff=aplicar_modificadores_debuff,
+            duracao_efeito=duracao_efeito,
+            raio_efeito=raio_efeito,
+            percentual_efeito=percentual_efeito,
+            fonte_impacto=fonte_impacto,
+            ignorar_invencibilidade=ignorar_invencibilidade,
+            ignorar_escudo=ignorar_escudo,
+        )
+        return self.ultimo_resultado_impacto
+
     def tomar_dano(
         self,
         dano,
@@ -1568,12 +2056,87 @@ class Lutador:
         tipo_efeito="NORMAL",
         atacante=None,
         aplicar_modificadores_debuff=True,
+        duracao_efeito=None,
+        raio_efeito=None,
+        percentual_efeito=None,
+        fonte_impacto=None,
+        ignorar_invencibilidade=False,
+        ignorar_escudo=False,
     ):
         """Recebe dano com suporte a efeitos e reflexão"""
         from core.combat import DotEffect
 
         self.ultimo_dano_recebido = 0.0
-        if self.morto or self.invencivel_timer > 0:
+        if self.morto:
+            self.ultimo_resultado_impacto = ImpactResult(False, bloqueado_por="morto")
+            return False
+        if self.intangivel:
+            self.ultimo_resultado_impacto = ImpactResult(
+                False,
+                bloqueado_por="intangibilidade",
+            )
+            return False
+        chave_fonte = fonte_impacto
+        if chave_fonte is not None:
+            try:
+                hash(chave_fonte)
+            except TypeError:
+                chave_fonte = ("id", id(chave_fonte))
+        if chave_fonte is not None and chave_fonte in self._fontes_impacto_recentes:
+            self.ultimo_resultado_impacto = ImpactResult(
+                False,
+                bloqueado_por="fonte_duplicada",
+            )
+            return False
+        if self.invencivel_timer > 0 and not ignorar_invencibilidade:
+            self.ultimo_resultado_impacto = ImpactResult(
+                False,
+                bloqueado_por="invencibilidade",
+            )
+            return False
+        pode_atacar = getattr(atacante, "pode_causar_dano", None)
+        if atacante is not None and atacante is not self and callable(pode_atacar):
+            if not pode_atacar(self):
+                self.ultimo_resultado_impacto = ImpactResult(
+                    False,
+                    bloqueado_por="controle_mental_atacante",
+                )
+                return False
+        if chave_fonte is not None:
+            self._fontes_impacto_recentes[chave_fonte] = 1.0
+
+        efeito_normalizado = normalizar_efeito(tipo_efeito)
+        if efeito_normalizado == "BOMBA_RELOGIO":
+            aplicado = self._aplicar_efeito_status(
+                efeito_normalizado,
+                duracao=duracao_efeito,
+                origem=atacante,
+                dano_efeito=dano,
+                raio_efeito=raio_efeito,
+            )
+            self.ultimo_resultado_impacto = ImpactResult(
+                atingiu=aplicado,
+                efeito_aplicado=aplicado,
+                bloqueado_por=None if aplicado else "efeito_rejeitado",
+            )
+            if aplicado:
+                self.flash_timer = 0.2
+                self.flash_cor = (255, 150, 0)
+            return False
+
+        if dano <= 0.0:
+            aplicado = self._aplicar_efeito_status(
+                efeito_normalizado,
+                duracao=duracao_efeito,
+                origem=atacante,
+                percentual_efeito=percentual_efeito,
+            )
+            self.ultimo_resultado_impacto = ImpactResult(
+                atingiu=True,
+                efeito_aplicado=aplicado,
+            )
+            if aplicado:
+                self.flash_timer = 0.15
             return False
         
         dano_final = dano
@@ -1594,17 +2157,33 @@ class Lutador:
         
         if "Cavaleiro" in self.classe_nome:
             dano_final *= 0.75
+
+        dano_final *= max(0.0, float(getattr(self, "mod_defesa", 1.0)))
         
         if "Ladino" in self.classe_nome and random.random() < 0.2:
+            self.ultimo_resultado_impacto = ImpactResult(False, bloqueado_por="esquiva")
             return False
         
-        for buff in self._buffs_validos():
-            if buff.escudo_atual > 0:
-                dano_final = buff.absorver_dano(dano_final)
+        if not ignorar_escudo:
+            for buff in self._buffs_validos():
+                if buff.escudo_atual > 0:
+                    dano_final = buff.absorver_dano(dano_final)
 
-        dano_final = self._limitar_dano_letal_por_imortalidade(dano_final)
+        marca_ativa = bool(
+            dano_final > 0.0
+            and self.marcado
+            and self.marcado_timer > 0.0
+        )
+        if marca_ativa:
+            dano_final *= max(0.0, float(self.marcado_multiplicador))
 
-        self.ultimo_dano_recebido = max(0.0, dano_final)
+        dano_final = self.aplicar_dano_direto(
+            dano_final,
+            compartilhar_link=True,
+            flash_cor=(255, 255, 255),
+        )
+        if marca_ativa and dano_final > 0.0:
+            self._consumir_marca()
         
         # Reflexo de dano (Reflexo Espelhado)
         dano_refletido = 0
@@ -1612,23 +2191,22 @@ class Lutador:
             if hasattr(buff, 'refletir') and buff.refletir > 0:
                 dano_refletido += dano_final * buff.refletir
         
-        # Aplica dano refletido ao atacante (se existir)
+        # Aplica dano refletido ao atacante pelo mesmo caminho de perda direta.
         if dano_refletido > 0 and atacante is not None and not atacante.morto:
-            # Aplica dano direto sem recursão (sem passar atacante)
-            limitar_reflexo = getattr(
-                atacante,
-                "_limitar_dano_letal_por_imortalidade",
-                None,
-            )
-            if callable(limitar_reflexo):
-                dano_refletido = limitar_reflexo(dano_refletido)
-            atacante.vida -= dano_refletido
+            aplicar_reflexo = getattr(atacante, "aplicar_dano_direto", None)
+            if callable(aplicar_reflexo):
+                aplicar_reflexo(
+                    dano_refletido,
+                    compartilhar_link=True,
+                    flash_cor=(200, 200, 255),
+                )
+            else:
+                atacante.vida -= dano_refletido
             atacante.flash_timer = 0.15
             atacante.flash_cor = (200, 200, 255)  # Flash azulado para reflexo
             if atacante.vida <= 0:
                 atacante.morrer()
-        
-        self.vida -= dano_final
+
         self.invencivel_timer = 0.3
 
         if atacante is not None and dano_final > 0.0 and not atacante.morto:
@@ -1719,17 +2297,39 @@ class Lutador:
         self.vel[0] += empurrao_x * kb
         self.vel[1] += empurrao_y * kb
         
-        self._aplicar_efeito_status(tipo_efeito)
+        efeito_aplicado = False
+        if not self.morto:
+            efeito_aplicado = self._aplicar_efeito_status(
+                tipo_efeito,
+                duracao=duracao_efeito,
+                origem=atacante,
+                percentual_efeito=percentual_efeito,
+            )
         
         if self.vida < self.vida_max * 0.3:
             self.modo_adrenalina = True
         
-        if self.vida <= 0:
+        morreu = self.morto or self.vida <= 0.0
+        if morreu and not self.morto:
             self.morrer()
-            return True
-        return False
+        self.ultimo_resultado_impacto = ImpactResult(
+            atingiu=True,
+            dano=dano_final,
+            efeito_aplicado=efeito_aplicado,
+            morreu=morreu,
+        )
+        return morreu
 
-    def _aplicar_efeito_status(self, efeito, duracao=None, intensidade=1.0):
+    def _aplicar_efeito_status(
+        self,
+        efeito,
+        duracao=None,
+        intensidade=1.0,
+        origem=None,
+        dano_efeito=None,
+        raio_efeito=None,
+        percentual_efeito=None,
+    ):
         """
         Aplica efeitos de status do dano - Sistema v2.0 COLOSSAL
         
@@ -1737,6 +2337,10 @@ class Lutador:
             efeito: Nome do efeito a aplicar
             duracao: Duração customizada (opcional)
             intensidade: Multiplicador de intensidade (default 1.0)
+            origem: Lutador que originou efeitos que dependem de vínculo
+            dano_efeito: Payload de dano para efeitos temporizados
+            raio_efeito: Raio configurado pela fonte do efeito
+            percentual_efeito: Fração configurada pela fonte do efeito
         """
         from core.combat import DotEffect
 
@@ -1857,33 +2461,45 @@ class Lutador:
             self.silenciado_timer = max(self.silenciado_timer, duracao or duracao_padrao)
             
         elif efeito == "CEGO":
-            # Cego: Ângulo de visão prejudicado (IA afetada)
-            if not hasattr(self, 'cego_timer'):
-                self.cego_timer = 0
-            self.cego_timer = max(self.cego_timer, duracao or duracao_padrao)
+            duracao_cegueira = duracao if duracao is not None else duracao_padrao
+            if duracao_cegueira <= 0.0:
+                return False
+            self.cego_timer = max(self.cego_timer, duracao_cegueira)
             self.flash_cor = (255, 255, 200)
             self.flash_timer = 0.5
             
         elif efeito == "MEDO":
-            # Medo: Força a fugir
-            if not hasattr(self, 'medo_timer'):
-                self.medo_timer = 0
-            self.medo_timer = max(self.medo_timer, duracao or duracao_padrao)
-            if self.brain is not None:
-                self.brain.medo = 1.0  # Maximiza medo na IA
+            duracao_medo = duracao if duracao is not None else duracao_padrao
+            if duracao_medo <= 0.0:
+                return False
+            self.medo_timer = max(self.medo_timer, duracao_medo)
+            self._interromper_acoes_ofensivas()
             
         elif efeito == "CHARME":
-            # Charme: Inimigo te segue
-            if not hasattr(self, 'charme_timer'):
-                self.charme_timer = 0
-            self.charme_timer = max(self.charme_timer, duracao or duracao_padrao)
+            # Charme: segue a origem e não a ataca enquanto durar.
+            if (
+                origem is None
+                or origem is self
+                or getattr(origem, "morto", True)
+            ):
+                return False
+            duracao_charme = duracao if duracao is not None else duracao_padrao
+            if duracao_charme <= 0.0:
+                return False
+            if self.charme_origem is origem:
+                self.charme_timer = max(self.charme_timer, duracao_charme)
+            else:
+                self.charme_timer = duracao_charme
+            self.charme_origem = origem
+            self._interromper_acoes_ofensivas()
             
         elif efeito == "SONO":
-            # Sono: Stun longo que quebra com dano
-            if not hasattr(self, 'dormindo'):
-                self.dormindo = False
+            duracao_sono = duracao if duracao is not None else duracao_padrao
+            if duracao_sono <= 0.0:
+                return False
             self.dormindo = True
-            self.stun_timer = max(self.stun_timer, duracao or duracao_padrao)
+            self.sono_timer = max(self.sono_timer, duracao_sono)
+            self._interromper_acoes_ofensivas()
             
         elif efeito == "KNOCK_UP":
             # Knock Up: Joga no ar
@@ -1926,17 +2542,25 @@ class Lutador:
             self._sincronizar_modificadores_debuff()
             
         elif efeito == "EXAUSTO":
-            # Exausto: Regen de stamina/mana reduzida
-            if not hasattr(self, 'regen_mana_base_normal'):
-                self.regen_mana_base_normal = self.regen_mana_base
-            self.exausto_timer = max(self.exausto_timer, duracao or duracao_padrao)
-            self.regen_mana_base = self.regen_mana_base_normal * 0.3
+            duracao_exaustao = duracao if duracao is not None else duracao_padrao
+            if duracao_exaustao <= 0.0:
+                return False
+            self.exausto_timer = max(self.exausto_timer, duracao_exaustao)
+            self.regen_mana_base = self.regen_mana_base_normal * definicao.get(
+                "mod_regen_mana",
+                0.3,
+            )
             
         elif efeito == "MARCADO":
-            # Marcado: Próximo ataque causa dano extra
-            if not hasattr(self, 'marcado'):
-                self.marcado = False
+            duracao_marca = duracao if duracao is not None else duracao_padrao
+            if duracao_marca <= 0.0:
+                return False
             self.marcado = True
+            self.marcado_timer = max(self.marcado_timer, duracao_marca)
+            self.marcado_multiplicador = definicao.get(
+                "mod_proximo_dano_recebido",
+                1.5,
+            )
             
         elif efeito == "EXPOSTO":
             # Exposto: Ignora parte da defesa
@@ -1962,22 +2586,71 @@ class Lutador:
             pass
             
         elif efeito == "BOMBA_RELOGIO":
-            # Bomba relógio: Explode depois de X segundos
-            if not hasattr(self, 'bomba_relogio_timer'):
-                self.bomba_relogio_timer = 0
-            self.bomba_relogio_timer = max(self.bomba_relogio_timer, duracao or duracao_padrao)
-            self.bomba_relogio_dano = 80.0 * intensidade
+            # A aplicação apenas arma a marca; o dano nasce na expiração.
+            if origem is None or origem is self:
+                return False
+            duracao_bomba = duracao if duracao is not None else duracao_padrao
+            if duracao_bomba <= 0.0:
+                return False
+            self.bomba_relogio_timer = duracao_bomba
+            self.bomba_relogio_dano = max(
+                0.0,
+                (80.0 if dano_efeito is None else dano_efeito) * intensidade,
+            )
+            self.bomba_relogio_raio = max(
+                0.0,
+                raio_efeito
+                if raio_efeito is not None
+                else definicao.get("raio_explosao", 2.5),
+            )
+            self.bomba_relogio_origem = origem
             
         elif efeito == "LINK_ALMA":
-            # Link de alma: Dano compartilhado
-            if not hasattr(self, 'link_alma_alvo'):
-                self.link_alma_alvo = None
+            # O alvo divide dano recebido pelo caminho central com a origem.
+            if (
+                origem is None
+                or origem is self
+                or getattr(origem, "morto", True)
+            ):
+                return False
+            duracao_link = duracao if duracao is not None else duracao_padrao
+            if duracao_link <= 0.0:
+                return False
+            if self.link_alma_alvo is origem:
+                self.link_alma_timer = max(self.link_alma_timer, duracao_link)
+            else:
+                self.link_alma_timer = duracao_link
+            self.link_alma_alvo = origem
+            self.link_alma_percentual = min(
+                1.0,
+                max(
+                    0.0,
+                    (
+                        percentual_efeito
+                        if percentual_efeito is not None
+                        else definicao.get("percentual_compartilhado", 0.5)
+                    )
+                    * intensidade,
+                ),
+            )
                 
         elif efeito == "POSSESSO":
-            # Possessão: Controle invertido temporário
-            if not hasattr(self, 'possesso_timer'):
-                self.possesso_timer = 0
-            self.possesso_timer = max(self.possesso_timer, duracao or duracao_padrao)
+            # Em duelos autônomos, possessão suspende toda iniciativa do alvo.
+            if (
+                origem is None
+                or origem is self
+                or getattr(origem, "morto", True)
+            ):
+                return False
+            duracao_possesso = duracao if duracao is not None else duracao_padrao
+            if duracao_possesso <= 0.0:
+                return False
+            if self.possesso_origem is origem:
+                self.possesso_timer = max(self.possesso_timer, duracao_possesso)
+            else:
+                self.possesso_timer = duracao_possesso
+            self.possesso_origem = origem
+            self._interromper_acoes_ofensivas()
 
         else:
             return False
@@ -1993,8 +2666,33 @@ class Lutador:
 
     def morrer(self):
         """Processa morte do lutador"""
+        transformacao = getattr(self, "transformacao_ativa", None)
+        if transformacao is not None:
+            encerrar = getattr(transformacao, "encerrar", None)
+            if callable(encerrar):
+                encerrar()
+        self.transformacao_ativa = None
+        self.interromper_canalizacao()
         self.morto = True
         self.vida = 0
+        self.cego_timer = 0.0
+        self.medo_timer = 0.0
+        self._quebrar_sono()
+        self.marcado_timer = 0.0
+        self.marcado = False
+        self.exausto_timer = 0.0
+        self.regen_mana_base = self.regen_mana_base_normal
+        self.charme_timer = 0.0
+        self.charme_origem = None
+        self.possesso_timer = 0.0
+        self.possesso_origem = None
+        self.bomba_relogio_timer = 0.0
+        self.bomba_relogio_dano = 0.0
+        self.bomba_relogio_raio = 0.0
+        self.bomba_relogio_origem = None
+        self.link_alma_timer = 0.0
+        self.link_alma_alvo = None
+        self.link_alma_percentual = 0.0
         self.arma_droppada_pos = list(self.pos)
         self.arma_droppada_ang = self.angulo_arma_visual
 
@@ -2099,6 +2797,12 @@ class Lutador:
     
     def interromper_canalizacao(self):
         """Interrompe a canalização atual"""
+        channel = getattr(self, "channel_ativo", None)
+        if channel is not None:
+            interromper = getattr(channel, "interromper", None)
+            if callable(interromper):
+                interromper()
+            self.channel_ativo = None
         self.canalizando = False
         self.skill_canalizando = None
         self.tempo_canalizacao = 0.0

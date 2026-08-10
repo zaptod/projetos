@@ -1,11 +1,6 @@
 # main.py
 import tkinter as tk
 from tkinter import messagebox
-import sys
-import os
-
-# Adiciona o diretório pai ao path para imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data import database
 

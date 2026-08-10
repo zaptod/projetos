@@ -6,6 +6,49 @@ from core.skills import get_skill_data
 from core.status_runtime import BUFF_EFFECT_RUNTIME
 
 
+def _posicao_alvo(alvo):
+    """Retorna a posicao planar de lutadores e entidades auxiliares."""
+    pos = getattr(alvo, "pos", None)
+    if pos is not None and len(pos) >= 2:
+        return float(pos[0]), float(pos[1])
+    if hasattr(alvo, "x") and hasattr(alvo, "y"):
+        return float(alvo.x), float(alvo.y)
+    return None
+
+
+def _alvo_esta_ativo(alvo):
+    """Contrato minimo usado por efeitos que escolhem alvos adicionais."""
+    if alvo is None or getattr(alvo, "morto", False):
+        return False
+    return getattr(alvo, "ativo", True) and _posicao_alvo(alvo) is not None
+
+
+def alvo_cumpre_condicao(alvo, condicao):
+    """Avalia as condicoes ofensivas declaradas no ``SKILL_DB``."""
+    if not condicao:
+        return True
+
+    if condicao == "ALVO_BAIXA_VIDA":
+        vida_max = max(0.0001, float(getattr(alvo, "vida_max", 0.0)))
+        return float(getattr(alvo, "vida", 0.0)) / vida_max < 0.3
+
+    if condicao == "ALVO_QUEIMANDO":
+        return any(
+            getattr(dot, "tipo", None) in {"QUEIMANDO", "QUEIMAR"}
+            and getattr(dot, "ativo", True)
+            for dot in getattr(alvo, "dots_ativos", ())
+        )
+
+    if condicao == "ALVO_CONGELADO":
+        return bool(
+            getattr(alvo, "congelado", False)
+            or getattr(alvo, "congelado_timer", 0.0) > 0.0
+        )
+
+    # Condicao desconhecida nunca concede bonus silenciosamente.
+    return False
+
+
 class ArmaProjetil:
     """Projétil de arma física (facas, flechas, etc) - diferente de skills"""
     def __init__(self, tipo, x, y, angulo, dono, dano, velocidade=15.0, tamanho=0.3, cor=(200, 200, 200)):
@@ -286,6 +329,7 @@ class Projetil:
         
         # Multi-shot support
         self.multi_shot = data.get("multi_shot", 1)
+        self.fonte_impacto = object()
         
         # === NOVOS ATRIBUTOS v2.0 ===
         
@@ -298,11 +342,8 @@ class Projetil:
         self.perfura = data.get("perfura", False)
         self.alvos_perfurados = set() if self.perfura else None
         
-        # Chain (correntes para múltiplos alvos)
-        self.chain = data.get("chain", 0)
-        self.chain_count = 0
-        self.chain_decay = data.get("chain_decay", 0.8)
-        self.chain_targets = set()
+        # Alvo explícito usado por vetores derivados, como o contágio.
+        self.alvo_forcado = None
         
         # Retorno (volta para o dono)
         self.retorna = data.get("retorna", False)
@@ -315,10 +356,19 @@ class Projetil:
         # Explosão com delay
         self.delay_explosao = data.get("delay_explosao", 0)
         self.explodiu = False
+
+        # Metadados do status viajam com a fonte; o alvo não reconstrói a skill.
+        self.duracao_efeito = data.get("duracao_controle")
+        self.percentual_efeito = data.get("link_percent")
         
         # Cone (atinge área cônica)
         self.cone = data.get("cone", False)
         self.angulo_cone = data.get("angulo_cone", 60)
+        self.origem_cone = (float(dono.pos[0]), float(dono.pos[1])) if self.cone else None
+        self.alcance_cone = data.get(
+            "alcance_cone",
+            data.get("alcance", max(0.5, self.vel * self.vida)),
+        )
         
         # Duplicação temporal
         self.duplica_apos = data.get("duplica_apos", 0)
@@ -372,6 +422,7 @@ class Projetil:
         # Contagioso (espalha para outros)
         self.contagioso = data.get("contagioso", False)
         self.raio_contagio = data.get("raio_contagio", 2.0)
+        self.alvos_contagiados = set()
         
         self.ativo = True
         self.trail = []  # Rastro visual
@@ -417,9 +468,11 @@ class Projetil:
                 self.ativo = False
         
         # === MOVIMENTO ===
+        # Cones sao volumes ancorados no ponto e angulo originais do cast.
         rad = math.radians(self.angulo)
-        self.x += math.cos(rad) * self.vel * dt
-        self.y += math.sin(rad) * self.vel * dt
+        if not self.cone:
+            self.x += math.cos(rad) * self.vel * dt
+            self.y += math.sin(rad) * self.vel * dt
         
         # Salva posição para trail
         self.trail.append((self.x, self.y))
@@ -445,9 +498,13 @@ class Projetil:
         # === VIDA ===
         self.vida -= dt
         if self.vida <= 0:
+            if self.tipo_efeito == "BOMBA_RELOGIO":
+                self.ativo = False
+                return None
             # Explosão com delay
             if self.delay_explosao > 0 and not self.explodiu:
                 self.explodiu = True
+                self.ativo = False
                 return {"explodir": True, "x": self.x, "y": self.y, 
                         "raio": self.raio_explosao or 2.0}
             self.ativo = False
@@ -455,28 +512,78 @@ class Projetil:
         return None
     
     def verificar_condicao(self, alvo):
-        """Verifica se a condição de dano extra é cumprida"""
+        """Retorna o multiplicador declarado quando a condição é cumprida."""
         if not self.condicao:
             return 1.0
-        
-        hp_percent = alvo.vida / alvo.vida_max
-        
-        if self.condicao == "ALVO_BAIXA_VIDA" and hp_percent < 0.3:
+
+        if alvo_cumpre_condicao(alvo, self.condicao):
             if self.executa:
-                return 10.0  # Execução!
+                return 10.0
             return self.dano_bonus_condicao
-        
-        elif self.condicao == "ALVO_QUEIMANDO":
-            for dot in alvo.dots_ativos:
-                if dot.tipo in ["QUEIMANDO", "QUEIMAR"]:
-                    return self.dano_bonus_condicao
-        
-        elif self.condicao == "ALVO_CONGELADO":
-            if getattr(alvo, 'congelado', False):
-                return self.dano_bonus_condicao
-        
+
         return 1.0
-    
+
+    def colidir(self, alvo):
+        """Testa a colisão circular padrão ou o volume angular de um cone."""
+        if alvo is self.dono or not _alvo_esta_ativo(alvo) or not self.ativo:
+            return False
+
+        pos_alvo = _posicao_alvo(alvo)
+        raio_alvo = float(getattr(alvo, "raio_fisico", 0.5))
+        if not self.cone:
+            return math.hypot(pos_alvo[0] - self.x, pos_alvo[1] - self.y) < (
+                self.raio + raio_alvo
+            )
+
+        origem_x, origem_y = self.origem_cone
+        dx = pos_alvo[0] - origem_x
+        dy = pos_alvo[1] - origem_y
+        distancia = math.hypot(dx, dy)
+        if distancia > self.alcance_cone + raio_alvo:
+            return False
+        if distancia <= raio_alvo:
+            return True
+
+        angulo_alvo = math.degrees(math.atan2(dy, dx))
+        diferenca = (angulo_alvo - self.angulo + 180.0) % 360.0 - 180.0
+        tolerancia_alvo = math.degrees(
+            math.asin(min(1.0, raio_alvo / max(distancia, raio_alvo)))
+        )
+        return abs(diferenca) <= self.angulo_cone / 2.0 + tolerancia_alvo
+
+    def criar_contagio(self, alvo_origem, candidatos):
+        """Cria o próximo vetor da Praga sem reinfectar a mesma fonte."""
+        if not self.contagioso or not _alvo_esta_ativo(alvo_origem):
+            return None
+
+        origem = _posicao_alvo(alvo_origem)
+        self.alvos_contagiados.add(id(alvo_origem))
+        elegiveis = []
+        for candidato in candidatos or ():
+            if (
+                candidato is self.dono
+                or candidato is alvo_origem
+                or id(candidato) in self.alvos_contagiados
+                or not _alvo_esta_ativo(candidato)
+                or not callable(getattr(candidato, "resolver_impacto", None))
+            ):
+                continue
+            destino = _posicao_alvo(candidato)
+            distancia = math.hypot(destino[0] - origem[0], destino[1] - origem[1])
+            if distancia <= self.raio_contagio:
+                elegiveis.append((distancia, candidato, destino))
+
+        if not elegiveis:
+            return None
+
+        _, proximo, destino = min(elegiveis, key=lambda item: item[0])
+        angulo = math.degrees(math.atan2(destino[1] - origem[1], destino[0] - origem[0]))
+        contagio = Projetil(self.nome, origem[0], origem[1], angulo, self.dono)
+        contagio.dano = self.dano
+        contagio.alvo_forcado = proximo
+        contagio.alvos_contagiados = self.alvos_contagiados.copy()
+        return contagio
+
     def pode_atingir(self, alvo):
         """Verifica se pode atingir o alvo (para perfuração)"""
         if self.perfura:
@@ -485,20 +592,6 @@ class Projetil:
             self.alvos_perfurados.add(id(alvo))
         return True
     
-    def chain_para(self, alvo):
-        """Tenta fazer chain para outro alvo"""
-        if self.chain <= 0 or self.chain_count >= self.chain:
-            return None
-        
-        self.chain_count += 1
-        self.chain_targets.add(id(alvo))
-        
-        # Reduz dano
-        self.dano *= self.chain_decay
-        
-        return {"chain": True, "from": (self.x, self.y), "to": alvo}
-
-
 class AreaEffect:
     """
     Efeito de área (explosões, nuvens, campos, etc)
@@ -514,6 +607,7 @@ class AreaEffect:
         
         self.raio = data.get("raio_area", 2.0)
         self.dano = data.get("dano", 10.0)
+        self.dano_precalculado = False
         self.cor = data.get("cor", BRANCO)
         self.duracao = data.get("duracao", 0.5)
         self.tipo_efeito = data.get("efeito", "NORMAL")
@@ -594,6 +688,12 @@ class AreaEffect:
         # Taunt
         self.taunt = data.get("taunt", False)
         self.duracao_taunt = data.get("duracao_taunt", 0)
+
+        # Condições ofensivas também pertencem ao contrato de AREA.
+        self.condicao = data.get("condicao")
+        self.dano_bonus_condicao = data.get("dano_bonus_condicao", 1.0)
+        self.executa = data.get("executa", False)
+        self.remove_congelamento = data.get("remove_congelamento", False)
 
     def atualizar(self, dt, alvos=None):
         """Atualiza efeito de área com todos os novos comportamentos"""
@@ -724,11 +824,35 @@ class AreaEffect:
         
         # Efeito principal
         if aplicar_efeito_principal:
-            alvo._aplicar_efeito_status(self.tipo_efeito)
+            kwargs_status = {}
+            if self.dono is not None:
+                kwargs_status["origem"] = self.dono
+            if self.tipo_efeito == "CHARME" and self.duracao_charme > 0.0:
+                kwargs_status["duracao"] = self.duracao_charme
+            alvo._aplicar_efeito_status(self.tipo_efeito, **kwargs_status)
         
         # Efeito secundário
         if self.efeito2:
-            alvo._aplicar_efeito_status(self.efeito2)
+            if self.dono is None:
+                alvo._aplicar_efeito_status(self.efeito2)
+            else:
+                alvo._aplicar_efeito_status(self.efeito2, origem=self.dono)
+
+        if self.taunt and self.dono is not None and self.duracao_taunt > 0.0:
+            aplicar_taunt = getattr(alvo, "aplicar_provocacao", None)
+            if callable(aplicar_taunt):
+                aplicar_taunt(self.dono, self.duracao_taunt)
+
+    def verificar_condicao(self, alvo):
+        """Retorna ``(cumprida, multiplicador)`` para a resolução da área."""
+        if not self.condicao:
+            return True, 1.0
+        cumprida = alvo_cumpre_condicao(alvo, self.condicao)
+        if not cumprida:
+            return False, 1.0
+        if self.executa:
+            return True, 10.0
+        return True, self.dano_bonus_condicao
     
     def calcular_puxar(self, alvo_pos):
         """Calcula força de puxar para o centro"""
@@ -766,7 +890,9 @@ class Beam:
         self.chain = data.get("chain", 0)
         self.chain_count = 0
         self.chain_decay = data.get("chain_decay", 0.8)
+        self.chain_range = data.get("chain_range", 5.0)
         self.chain_targets = set()
+        self.alvo_forcado = None
         
         # Canalização
         self.canalizavel = data.get("canalizavel", False)
@@ -807,6 +933,48 @@ class Beam:
         self.largura = max(1, int(8 * (self.vida / 0.15)))
         if self.vida <= 0:
             self.ativo = False
+
+    def criar_salto(self, alvo_origem, candidatos):
+        """Cria um segmento de chain lightning para o hostil mais próximo."""
+        if self.chain <= 0 or self.chain_count >= self.chain:
+            return None
+
+        origem = _posicao_alvo(alvo_origem)
+        if origem is None:
+            return None
+        self.chain_targets.add(id(alvo_origem))
+
+        elegiveis = []
+        for candidato in candidatos or ():
+            if (
+                candidato is self.dono
+                or candidato is alvo_origem
+                or id(candidato) in self.chain_targets
+                or not _alvo_esta_ativo(candidato)
+            ):
+                continue
+            destino = _posicao_alvo(candidato)
+            distancia = math.hypot(destino[0] - origem[0], destino[1] - origem[1])
+            if distancia <= self.chain_range:
+                elegiveis.append((distancia, candidato, destino))
+
+        if not elegiveis:
+            return None
+
+        _, proximo, destino = min(elegiveis, key=lambda item: item[0])
+        salto = Beam(
+            self.nome,
+            origem[0],
+            origem[1],
+            destino[0],
+            destino[1],
+            self.dono,
+        )
+        salto.dano = self.dano * self.chain_decay
+        salto.chain_count = self.chain_count + 1
+        salto.chain_targets = self.chain_targets.copy()
+        salto.alvo_forcado = proximo
+        return salto
 
 
 class Buff:
@@ -924,19 +1092,27 @@ class DotEffect:
         while self.tick_timer + 1e-9 >= self.tick_interval:
             self.tick_timer = max(0.0, self.tick_timer - self.tick_interval)
             if not self.alvo.morto:
-                limitar_letal = getattr(
-                    self.alvo,
-                    "_limitar_dano_letal_por_imortalidade",
-                    None,
-                )
-                dano_tick = (
-                    limitar_letal(self.dano_por_tick)
-                    if callable(limitar_letal)
-                    else self.dano_por_tick
-                )
-                self.alvo.vida -= dano_tick
-                if self.alvo.vida <= 0:
-                    self.alvo.morrer()
+                aplicar_direto = getattr(self.alvo, "aplicar_dano_direto", None)
+                if callable(aplicar_direto):
+                    aplicar_direto(
+                        self.dano_por_tick,
+                        compartilhar_link=True,
+                        flash_cor=self.cor,
+                    )
+                else:
+                    limitar_letal = getattr(
+                        self.alvo,
+                        "_limitar_dano_letal_por_imortalidade",
+                        None,
+                    )
+                    dano_tick = (
+                        limitar_letal(self.dano_por_tick)
+                        if callable(limitar_letal)
+                        else self.dano_por_tick
+                    )
+                    self.alvo.vida -= dano_tick
+                    if self.alvo.vida <= 0:
+                        self.alvo.morrer()
 
         if self.vida <= 0:
             self.ativo = False
@@ -969,9 +1145,10 @@ class Summon:
         # Tipo de summon
         self.summon_tipo = data.get("summon_tipo", "BASICO")
         self.copia_caster = data.get("copia_caster", False)
+        self._ultimo_ataque_copiado = getattr(dono, "ataque_id", 0)
         
         # Comportamento
-        self.raio_agressao = 5.0
+        self.raio_agressao = 20.0 if self.copia_caster else 5.0
         self.raio_ataque = 1.5
         self.velocidade = 4.0
         self.cooldown_ataque = 1.5
@@ -1007,6 +1184,12 @@ class Summon:
         # Cooldown de ataque
         if self.cd_timer > 0:
             self.cd_timer -= dt
+
+        ataque_copia_pendente = False
+        if self.copia_caster:
+            ataque_atual = getattr(self.dono, "ataque_id", 0)
+            ataque_copia_pendente = ataque_atual != self._ultimo_ataque_copiado
+            self._ultimo_ataque_copiado = ataque_atual
         
         # Encontra alvo mais proximo
         melhor_alvo = None
@@ -1028,12 +1211,21 @@ class Summon:
             dy = self.alvo.pos[1] - self.y
             dist = math.hypot(dx, dy) or 1
             self.angulo = math.degrees(math.atan2(dy, dx))
-            
+
+            if ataque_copia_pendente:
+                resultados.append({
+                    "tipo": "ataque",
+                    "alvo": self.alvo,
+                    "dano": self._calcular_dano_copiado(),
+                    "x": self.x,
+                    "y": self.y,
+                })
+
             if dist > self.raio_ataque:
                 # Aproxima
                 self.x += (dx / dist) * self.velocidade * dt
                 self.y += (dy / dist) * self.velocidade * dt
-            elif self.cd_timer <= 0:
+            elif not self.copia_caster and self.cd_timer <= 0:
                 # Ataca!
                 self.cd_timer = self.cooldown_ataque
                 resultados.append({
@@ -1067,6 +1259,13 @@ class Summon:
                     })
         
         return resultados
+
+    def _calcular_dano_copiado(self):
+        """Replica o dano do ataque básico atual do conjurador."""
+        arma = getattr(getattr(self.dono, "dados", None), "arma_obj", None)
+        dano_base = float(getattr(arma, "dano", self.dano))
+        modificar = getattr(self.dono, "get_dano_modificado", None)
+        return modificar(dano_base) if callable(modificar) else dano_base
     
     def tomar_dano(self, dano):
         """Summon recebe dano"""
@@ -1143,60 +1342,110 @@ class Transform:
     def __init__(self, nome_skill, alvo):
         self.nome = nome_skill
         data = get_skill_data(nome_skill)
-        
+
         self.alvo = alvo
         self.duracao = data.get("duracao", 10.0)
         self.vida = self.duracao
         self.cor = data.get("cor", (200, 200, 255))
-        
-        # Salva stats originais
+
+        anterior = getattr(alvo, "transformacao_ativa", None)
+        if anterior is not None and anterior is not self:
+            encerrar = getattr(anterior, "encerrar", None)
+            if callable(encerrar):
+                encerrar()
+
+        # Campos reais consumidos por Lutador. O snapshot permite restaurar
+        # exatamente o estado anterior, inclusive quando ele ja tinha buffs.
         self.stats_originais = {
-            "velocidade": alvo.velocidade if hasattr(alvo, 'velocidade') else 5.0,
-            "cor": alvo.cor if hasattr(alvo, 'cor') else (255, 255, 255),
+            "mod_velocidade_transformacao": getattr(
+                alvo,
+                "mod_velocidade_transformacao",
+                1.0,
+            ),
+            "resistencia": getattr(alvo, "resistencia", 0.0),
+            "mod_defesa": getattr(alvo, "mod_defesa", 1.0),
+            "cor_aura": getattr(alvo, "cor_aura", (255, 255, 255)),
+            "intangivel": getattr(alvo, "intangivel", False),
         }
-        
+
         # Modificadores
         self.bonus_resistencia = data.get("bonus_resistencia", 0)
         self.bonus_velocidade = data.get("bonus_velocidade", 1.0)
         self.intangivel = data.get("intangivel", False)
         self.dano_contato = data.get("dano_contato", 0)
-        
+
         # Auras
         self.aura_slow = data.get("aura_slow", 1.0)
         self.aura_raio = data.get("aura_raio", 0)
-        
-        # Aplica transformacao
-        self._aplicar_transformacao()
+
         self.ativo = True
-    
+        self._aplicado = False
+
+        self._aplicar_transformacao()
+        alvo.transformacao_ativa = self
+
     def _aplicar_transformacao(self):
-        """Aplica os efeitos da transformacao"""
-        if hasattr(self.alvo, 'velocidade'):
-            self.alvo.velocidade *= self.bonus_velocidade
-        if hasattr(self.alvo, 'cor'):
-            self.alvo.cor = self.cor
-        if self.intangivel and hasattr(self.alvo, 'intangivel'):
-            self.alvo.intangivel = True
-    
+        """Aplica uma unica vez os modificadores usados pelo runtime."""
+        if self._aplicado:
+            return False
+
+        fator_resistencia = max(0.01, 1.0 + float(self.bonus_resistencia))
+        self.alvo.mod_velocidade_transformacao = (
+            float(self.stats_originais["mod_velocidade_transformacao"])
+            * max(0.0, float(self.bonus_velocidade))
+        )
+        self.alvo.resistencia = (
+            float(self.stats_originais["resistencia"]) * fator_resistencia
+        )
+        self.alvo.mod_defesa = (
+            float(self.stats_originais["mod_defesa"]) / fator_resistencia
+        )
+        self.alvo.cor_aura = self.cor
+        self.alvo.intangivel = bool(
+            self.stats_originais["intangivel"] or self.intangivel
+        )
+        self.alvo._transformacao_token = self
+        self._aplicado = True
+        return True
+
     def _reverter_transformacao(self):
-        """Reverte para estado original"""
-        if hasattr(self.alvo, 'velocidade'):
-            self.alvo.velocidade = self.stats_originais["velocidade"]
-        if hasattr(self.alvo, 'cor'):
-            self.alvo.cor = self.stats_originais["cor"]
-        if self.intangivel and hasattr(self.alvo, 'intangivel'):
-            self.alvo.intangivel = False
-    
+        """Restaura o snapshot sem desfazer uma transformacao mais nova."""
+        if not self._aplicado:
+            return False
+        if getattr(self.alvo, "_transformacao_token", None) is not self:
+            self._aplicado = False
+            return False
+
+        for atributo, valor in self.stats_originais.items():
+            setattr(self.alvo, atributo, valor)
+        self.alvo._transformacao_token = None
+        self._aplicado = False
+        return True
+
+    def encerrar(self):
+        """Encerra de forma idempotente e libera a referencia do lutador."""
+        self._reverter_transformacao()
+        self.ativo = False
+        if getattr(self.alvo, "transformacao_ativa", None) is self:
+            self.alvo.transformacao_ativa = None
+
     def atualizar(self, dt, alvos=None):
         """Atualiza transformacao"""
         resultados = []
-        
-        self.vida -= dt
-        
+
+        if not self.ativo:
+            return resultados
+        if getattr(self.alvo, "morto", False):
+            self.encerrar()
+            return resultados
+
+        tempo_ativo = min(max(0.0, float(dt)), max(0.0, self.vida))
+        self.vida = max(0.0, self.vida - tempo_ativo)
+
         # Dano de contato
         if self.dano_contato > 0 and alvos:
             for alvo in alvos:
-                if alvo == self.alvo or alvo.morto:
+                if alvo == self.alvo or getattr(alvo, "morto", False):
                     continue
                 dist = math.hypot(alvo.pos[0] - self.alvo.pos[0], 
                                  alvo.pos[1] - self.alvo.pos[1])
@@ -1204,13 +1453,13 @@ class Transform:
                     resultados.append({
                         "tipo": "contato",
                         "alvo": alvo,
-                        "dano": self.dano_contato * dt
+                        "dano": self.dano_contato * tempo_ativo
                     })
-        
+
         # Aura de slow
         if self.aura_raio > 0 and self.aura_slow < 1.0 and alvos:
             for alvo in alvos:
-                if alvo == self.alvo or alvo.morto:
+                if alvo == self.alvo or getattr(alvo, "morto", False):
                     continue
                 dist = math.hypot(alvo.pos[0] - self.alvo.pos[0],
                                  alvo.pos[1] - self.alvo.pos[1])
@@ -1222,9 +1471,8 @@ class Transform:
                     })
         
         if self.vida <= 0:
-            self._reverter_transformacao()
-            self.ativo = False
-        
+            self.encerrar()
+
         return resultados
 
 
@@ -1255,77 +1503,152 @@ class Channel:
         # Estado
         self.ativo = True
         self.canalizando = True
-        self.tick_timer = 0
-        self.tick_interval = 0.1
-        
+        self.tick_timer = 0.0
+        self.tick_interval = max(0.001, float(data.get("tick_interval", 0.1)))
+
         # Direção do beam (se aplicavel)
         self.angulo = dono.angulo_olhar if hasattr(dono, 'angulo_olhar') else 0
-    
+
+        anterior = getattr(dono, "channel_ativo", None)
+        if anterior is not None and anterior is not self:
+            interromper = getattr(anterior, "interromper", None)
+            if callable(interromper):
+                interromper()
+
+        dono.channel_ativo = self
+        dono.canalizando = True
+        dono.skill_canalizando = nome_skill
+        dono.tempo_canalizacao = 0.0
+        dono.atacando = False
+        dono.usando_skill = False
+        if hasattr(dono, "vel"):
+            dono.vel[0] = 0.0
+            dono.vel[1] = 0.0
+
+    def _processar_tick(self, alvos):
+        """Executa um intervalo inteiro; o dano entra pelo ponto canonico."""
+        resultados = []
+
+        if self.cura_por_segundo > 0:
+            cura = self.cura_por_segundo * self.tick_interval
+            receber_cura = getattr(self.dono, "receber_cura", None)
+            cura_real = receber_cura(cura) if callable(receber_cura) else 0.0
+            resultados.append({
+                "tipo": "cura",
+                "alvo": self.dono,
+                "valor": cura_real,
+            })
+
+        if self.dano_por_segundo <= 0 or not alvos:
+            return resultados
+
+        for alvo in alvos:
+            if alvo == self.dono or getattr(alvo, "morto", False):
+                continue
+
+            dx = alvo.pos[0] - self.dono.pos[0]
+            dy = alvo.pos[1] - self.dono.pos[1]
+            dist = math.hypot(dx, dy)
+            if dist >= self.alcance:
+                continue
+
+            ang_alvo = math.degrees(math.atan2(dy, dx))
+            diff = abs((ang_alvo - self.angulo + 180.0) % 360.0 - 180.0)
+            if diff >= 15.0:
+                continue
+
+            dano = self.dano_por_segundo * self.tick_interval
+            direcao_x = dx / dist if dist > 0.0 else 0.0
+            direcao_y = dy / dist if dist > 0.0 else 0.0
+            resolver = getattr(alvo, "resolver_impacto", None)
+            if callable(resolver):
+                impacto = resolver(
+                    dano,
+                    direcao_x,
+                    direcao_y,
+                    self.tipo_efeito,
+                    atacante=self.dono,
+                    ignorar_invencibilidade=True,
+                    ignorar_escudo=self.penetra_escudo,
+                )
+            else:
+                tomar_dano = getattr(alvo, "tomar_dano", None)
+                impacto = None
+                if callable(tomar_dano):
+                    try:
+                        tomar_dano(
+                            dano,
+                            direcao_x,
+                            direcao_y,
+                            self.tipo_efeito,
+                            atacante=self.dono,
+                            ignorar_invencibilidade=True,
+                            ignorar_escudo=self.penetra_escudo,
+                        )
+                    except TypeError:
+                        tomar_dano(
+                            dano,
+                            direcao_x,
+                            direcao_y,
+                            self.tipo_efeito,
+                            atacante=self.dono,
+                        )
+
+            resultados.append({
+                "tipo": "impacto",
+                "alvo": alvo,
+                "dano": getattr(
+                    impacto,
+                    "dano",
+                    getattr(alvo, "ultimo_dano_recebido", 0.0),
+                ),
+                "efeito": self.tipo_efeito,
+                "penetra_escudo": self.penetra_escudo,
+                "impacto": impacto,
+            })
+
+        return resultados
+
     def atualizar(self, dt, alvos=None):
         """Atualiza canalizacao"""
         resultados = []
-        
-        if not self.canalizando:
-            self.ativo = False
+
+        if not self.ativo:
             return resultados
-        
-        self.vida -= dt
-        self.tick_timer += dt
-        
-        # Imobiliza o caster
-        if self.imobiliza and hasattr(self.dono, 'vel'):
-            self.dono.vel = [0, 0]
-        
-        # Aplica efeitos a cada tick
-        if self.tick_timer >= self.tick_interval:
-            self.tick_timer = 0
-            
-            # Cura o caster
-            if self.cura_por_segundo > 0:
-                cura = self.cura_por_segundo * self.tick_interval
-                cura_real = self.dono.receber_cura(cura)
-                resultados.append({
-                    "tipo": "cura",
-                    "alvo": self.dono,
-                    "valor": cura_real
-                })
-            
-            # Dano em linha (beam)
-            if self.dano_por_segundo > 0 and alvos:
-                rad = math.radians(self.angulo)
-                for alvo in alvos:
-                    if alvo == self.dono or alvo.morto:
-                        continue
-                    
-                    # Verifica se alvo esta na linha do beam
-                    dx = alvo.pos[0] - self.dono.pos[0]
-                    dy = alvo.pos[1] - self.dono.pos[1]
-                    dist = math.hypot(dx, dy)
-                    
-                    if dist < self.alcance:
-                        # Angulo para o alvo
-                        ang_alvo = math.degrees(math.atan2(dy, dx))
-                        diff = abs(ang_alvo - self.angulo)
-                        if diff > 180:
-                            diff = 360 - diff
-                        
-                        # Se o alvo esta dentro de 15 graus do beam
-                        if diff < 15:
-                            dano = self.dano_por_segundo * self.tick_interval
-                            resultados.append({
-                                "tipo": "dano",
-                                "alvo": alvo,
-                                "dano": dano,
-                                "efeito": self.tipo_efeito,
-                                "penetra_escudo": self.penetra_escudo
-                            })
-        
+        if (
+            not self.canalizando
+            or getattr(self.dono, "morto", False)
+            or getattr(self.dono, "channel_ativo", None) is not self
+        ):
+            self.interromper()
+            return resultados
+
+        if hasattr(self.dono, "vel"):
+            self.dono.vel[0] = 0.0
+            self.dono.vel[1] = 0.0
+
+        tempo_ativo = min(max(0.0, float(dt)), max(0.0, self.vida))
+        self.vida = max(0.0, self.vida - tempo_ativo)
+        self.tick_timer += tempo_ativo
+        self.dono.tempo_canalizacao = (
+            float(getattr(self.dono, "tempo_canalizacao", 0.0)) + tempo_ativo
+        )
+
+        while self.tick_timer + 1e-12 >= self.tick_interval:
+            self.tick_timer -= self.tick_interval
+            resultados.extend(self._processar_tick(alvos))
+
         if self.vida <= 0:
-            self.ativo = False
-        
+            self.interromper()
+
         return resultados
-    
+
     def interromper(self):
         """Interrompe a canalizacao"""
         self.canalizando = False
         self.ativo = False
+        if getattr(self.dono, "channel_ativo", None) is self:
+            self.dono.channel_ativo = None
+            self.dono.canalizando = False
+            self.dono.skill_canalizando = None
+            self.dono.tempo_canalizacao = 0.0

@@ -15,6 +15,7 @@ A IA agora:
 =============================================================================
 """
 
+import logging
 import random
 import math
 from enum import Enum
@@ -22,6 +23,9 @@ from typing import Dict, List, Optional, Tuple, Set
 from dataclasses import dataclass, field
 
 from core.skills import get_skill_data
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -180,9 +184,10 @@ class SkillStrategySystem:
     Cria e executa planos de batalha baseados no kit de habilidades.
     """
     
-    def __init__(self, parent, brain):
+    def __init__(self, parent, brain, rng=None):
         self.parent = parent
         self.brain = brain
+        self.rng = rng if rng is not None else getattr(brain, "rng", random)
         
         # Todas as skills analisadas
         self.skills: Dict[str, SkillProfile] = {}
@@ -726,11 +731,23 @@ class SkillStrategySystem:
     
     def atualizar(self, dt: float):
         """Atualiza timers"""
+        dt = max(0.0, float(dt))
         if self.cd_global > 0:
-            self.cd_global -= dt
+            self.cd_global = max(0.0, self.cd_global - dt)
         for tipo in self.cd_por_tipo:
             if self.cd_por_tipo[tipo] > 0:
-                self.cd_por_tipo[tipo] -= dt
+                self.cd_por_tipo[tipo] = max(0.0, self.cd_por_tipo[tipo] - dt)
+
+    def _chance_temporal(self, chance_60fps: float, dt: float) -> bool:
+        """Preserva a taxa de uma probabilidade histórica por frame a 60 FPS."""
+        chance = max(0.0, min(1.0, float(chance_60fps)))
+        dt = max(0.0, float(dt))
+        if chance <= 0.0 or dt <= 0.0:
+            return False
+        if chance >= 1.0:
+            return True
+        chance_ajustada = 1.0 - ((1.0 - chance) ** (dt * 60.0))
+        return self.rng.random() < chance_ajustada
     
     def determinar_fase(self, situacao: CombatSituation) -> CombatPhase:
         """Determina a fase atual do combate"""
@@ -772,7 +789,11 @@ class SkillStrategySystem:
             return plano.rotacao_critical
         return plano.rotacao_neutral
     
-    def obter_melhor_skill(self, situacao: CombatSituation) -> Optional[Tuple[SkillProfile, str]]:
+    def obter_melhor_skill(
+        self,
+        situacao: CombatSituation,
+        dt: float = 1.0 / 60.0,
+    ) -> Optional[Tuple[SkillProfile, str]]:
         """Obtém a melhor skill para usar agora baseado no plano"""
         p = self.parent
         
@@ -782,27 +803,30 @@ class SkillStrategySystem:
         
         # Se está em combo, continua
         if self.combo_em_andamento and self.combo_index < len(self.combo_em_andamento):
+            if self.cd_global > 0:
+                return None
             skill_nome = self.combo_em_andamento[self.combo_index]
             if self._pode_usar_skill(skill_nome, situacao):
-                self.combo_index += 1
-                return (self.skills[skill_nome], f"combo_{self.combo_index}")
+                # O cursor só avança em ``registrar_uso``. Selecionar não é o
+                # mesmo que executar: mana, alvo ou o cast ainda podem falhar.
+                return (self.skills[skill_nome], f"combo_{self.combo_index + 1}")
             else:
                 self.combo_em_andamento = None
                 self.combo_index = 0
         
         # Verifica combos disponíveis
         combo = self._verificar_combo_disponivel(situacao)
-        if combo and random.random() < 0.5:
+        if combo and self._chance_temporal(0.5, dt):
             skill1, skill2, razao = combo
             if self._pode_usar_skill(skill1, situacao):
                 self.combo_em_andamento = [skill1, skill2]
-                self.combo_index = 1
+                self.combo_index = 0
                 return (self.skills[skill1], f"iniciando_combo_{razao}")
         
         # Obtém rotação da fase
         rotacao = self.obter_rotacao_atual(fase)
         
-        # Procura skill disponível na rotação (ignora condições ideais para ser mais agressivo)
+        # Procura skill disponível na rotação respeitando seu contrato de uso.
         for skill_nome in rotacao:
             if self._pode_usar_skill(skill_nome, situacao):
                 return (self.skills[skill_nome], f"rotacao_{fase.value}")
@@ -821,6 +845,9 @@ class SkillStrategySystem:
         
         skill = self.skills[nome]
         p = self.parent
+
+        if self.cd_global > 0:
+            return False
         
         # Mana
         if p.mana < skill.custo:
@@ -834,6 +861,9 @@ class SkillStrategySystem:
         if skill.tipo in self.cd_por_tipo:
             if self.cd_por_tipo[skill.tipo] > 0:
                 return False
+
+        if not self._condicoes_ideais(nome, situacao):
+            return False
         
         return True
     
@@ -852,14 +882,13 @@ class SkillStrategySystem:
         if sit.meu_hp_percent < skill.hp_proprio_min:
             return False
         if sit.meu_hp_percent > skill.hp_proprio_max:
-            # Para skills de cura, só retorna False se HP > max
-            if skill.proposito_principal == SkillPurpose.SUSTAIN:
-                return False
+            return False
         
-        # HP inimigo (para finishers)
-        if skill.proposito_principal == SkillPurpose.FINISHER:
-            if sit.inimigo_hp_percent > skill.hp_inimigo_max:
-                return False
+        # HP inimigo
+        if sit.inimigo_hp_percent < skill.hp_inimigo_min:
+            return False
+        if sit.inimigo_hp_percent > skill.hp_inimigo_max:
+            return False
         
         # Skills que não dependem de distância (BUFF, SUMMON, TRANSFORM)
         if skill.tipo in ["BUFF", "SUMMON", "TRANSFORM", "TRAP"]:
@@ -903,6 +932,13 @@ class SkillStrategySystem:
             if skill.tipo in self.cd_por_tipo:
                 self.cd_por_tipo[skill.tipo] = 3.0
             self.cd_global = 0.3  # Pequeno delay entre skills
+
+        if self.combo_em_andamento and self.combo_index < len(self.combo_em_andamento):
+            if self.combo_em_andamento[self.combo_index] == nome:
+                self.combo_index += 1
+                if self.combo_index >= len(self.combo_em_andamento):
+                    self.combo_em_andamento = None
+                    self.combo_index = 0
     
     def registrar_uso_skill(self, nome: str):
         """Alias para registrar_uso (compatibilidade)"""
@@ -937,27 +973,44 @@ class SkillStrategySystem:
     
     def _log_plano(self):
         """Loga o plano de batalha criado"""
+        if not LOGGER.isEnabledFor(logging.DEBUG):
+            return
+
         p = self.parent
-        print(f"\n{'='*60}")
-        print(f"[BATTLE PLAN] {p.dados.nome}")
-        print(f"{'='*60}")
-        print(f"  Role: {self.role_principal.value.upper()}")
-        print(f"  Estilo: {self.plano.estilo} | Distância: {self.plano.distancia_preferida:.1f}m | Mana: {self.plano.foco_mana}")
-        print(f"\n  === SKILLS ANALISADAS ({len(self.skills)}) ===")
+        linhas = [
+            "=" * 60,
+            f"[BATTLE PLAN] {p.dados.nome}",
+            "=" * 60,
+            f"  Role: {self.role_principal.value.upper()}",
+            (
+                f"  Estilo: {self.plano.estilo} | "
+                f"Distância: {self.plano.distancia_preferida:.1f}m | "
+                f"Mana: {self.plano.foco_mana}"
+            ),
+            f"  === SKILLS ANALISADAS ({len(self.skills)}) ===",
+        ]
         for skill in self.skills.values():
             props = ", ".join([p.value for p in skill.propositos])
-            print(f"    [{skill.tipo:8}] {skill.nome:25} | Custo:{skill.custo:5.0f} | Dano:{skill.dano_total:5.0f} | {props}")
+            linhas.append(
+                f"    [{skill.tipo:8}] {skill.nome:25} | "
+                f"Custo:{skill.custo:5.0f} | Dano:{skill.dano_total:5.0f} | {props}"
+            )
         
         if self.plano.combos:
-            print(f"\n  === COMBOS DESCOBERTOS ({len(self.plano.combos)}) ===")
+            linhas.append(f"  === COMBOS DESCOBERTOS ({len(self.plano.combos)}) ===")
             for s1, s2, razao in self.plano.combos[:5]:
-                print(f"    {s1} -> {s2} ({razao})")
-        
-        print(f"\n  === ROTAÇÕES ===")
-        print(f"    Opening:      {self.plano.rotacao_opening}")
-        print(f"    Neutral:      {self.plano.rotacao_neutral}")
-        print(f"    Advantage:    {self.plano.rotacao_advantage}")
-        print(f"    Disadvantage: {self.plano.rotacao_disadvantage}")
-        print(f"    Finishing:    {self.plano.rotacao_finishing}")
-        print(f"    Critical:     {self.plano.rotacao_critical}")
-        print(f"{'='*60}\n")
+                linhas.append(f"    {s1} -> {s2} ({razao})")
+
+        linhas.extend(
+            [
+                "  === ROTAÇÕES ===",
+                f"    Opening:      {self.plano.rotacao_opening}",
+                f"    Neutral:      {self.plano.rotacao_neutral}",
+                f"    Advantage:    {self.plano.rotacao_advantage}",
+                f"    Disadvantage: {self.plano.rotacao_disadvantage}",
+                f"    Finishing:    {self.plano.rotacao_finishing}",
+                f"    Critical:     {self.plano.rotacao_critical}",
+                "=" * 60,
+            ]
+        )
+        LOGGER.debug("\n%s", "\n".join(linhas))

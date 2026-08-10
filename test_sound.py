@@ -1,30 +1,39 @@
-"""Test sound system"""
-import os
-os.chdir(r'c:\Users\adrian\Desktop\projetos\.venv\neural')
+"""Diagnostico manual do sistema de audio.
 
-import pygame
-pygame.init()
-pygame.mixer.init()
+Este modulo e import-safe para nao reproduzir som durante a descoberta de testes.
+Execute-o diretamente quando quiser realizar o diagnostico interativo.
+"""
 
-from effects.audio import AudioManager
-
-# Create audio manager
-audio = AudioManager.get_instance()
-
-print(f"Audio enabled: {audio.enabled}")
-print(f"Sounds loaded: {list(audio.sounds.keys())}")
-print(f"Sound groups: {list(audio.sound_groups.keys())}")
-
-# Play directly to test
-print("\nPlaying wall_impact_light directly at FULL VOLUME...")
-if 'wall_impact_light' in audio.sounds:
-    sound = audio.sounds['wall_impact_light']
-    sound.set_volume(1.0)  # Max volume
-    sound.play()
-    print("Playing NOW!")
-else:
-    print("Sound not found!")
+from __future__ import annotations
 
 import time
-time.sleep(3)
-print("Done!")
+
+
+def main() -> int:
+    import pygame
+
+    from effects.audio import AudioManager
+
+    pygame.init()
+    pygame.mixer.init()
+
+    audio = AudioManager.get_instance()
+    print(f"Audio enabled: {audio.enabled}")
+    print(f"Sounds loaded: {list(audio.sounds.keys())}")
+    print(f"Sound groups: {list(audio.sound_groups.keys())}")
+
+    print("\nPlaying wall_impact_light directly at full volume...")
+    if "wall_impact_light" not in audio.sounds:
+        print("Sound not found!")
+        return 1
+
+    sound = audio.sounds["wall_impact_light"]
+    sound.set_volume(1.0)
+    sound.play()
+    time.sleep(3)
+    print("Done!")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

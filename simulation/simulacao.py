@@ -3,9 +3,8 @@ import math
 import random
 import sys
 import os
-
-# Adiciona o diretório pai ao path para imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import threading
+from collections.abc import Mapping
 
 from data import database
 from utils.config import *
@@ -23,14 +22,109 @@ from ai import CombatChoreographer  # Sistema de Coreografia v5.0
 from core.game_feel import GameFeelManager, HitStopManager  # Sistema de Game Feel v8.0
 from core.match_series import BestOfSeries
 
+
+DELETE_MATCH_CONFIG_ENV = "NEURAL_FIGHTS_DELETE_MATCH_CONFIG"
+
+
+class _SilentAudioManager:
+    """Adaptador nulo usado para manter chamadas de áudio fora do combate."""
+
+    enabled = False
+    sounds = {}
+
+    def __getattr__(self, _name):
+        return lambda *_args, **_kwargs: None
+
+
 class Simulador:
-    def __init__(self):
-        self.match_config = database.carregar_match_config()
+    _lifecycle_lock = threading.RLock()
+    _active_owner_token = None
+
+    @staticmethod
+    def criar_match_config_padrao():
+        """Cria uma luta válida em memória sem consultar/gravar estado runtime."""
+        personagens = database.carregar_personagens()
+        if len(personagens) < 2:
+            raise RuntimeError(
+                "São necessários pelo menos 2 personagens cadastrados "
+                "para iniciar uma luta."
+            )
+        return {
+            "p1_nome": personagens[0].nome,
+            "p2_nome": personagens[1].nome,
+            "cenario": "Arena",
+            "best_of": 1,
+            "portrait_mode": False,
+        }
+
+    def __init__(self, match_config=None, *, headless=False, seed=None):
+        self._lifecycle_token = None
+        self._random_state_before_seed = None
+        self._closed = True
+        owner_token = object()
+
+        # A aquisição acontece antes de qualquer leitura ou inicialização. Isso
+        # impede que duas construções concorrentes disputem os singletons.
+        with Simulador._lifecycle_lock:
+            if Simulador._active_owner_token is not None:
+                raise RuntimeError(
+                    "Já existe uma instância ativa de Simulador neste processo; "
+                    "chame close() antes de criar outra."
+                )
+            Simulador._active_owner_token = owner_token
+            self._lifecycle_token = owner_token
+            self._closed = False
+
+        try:
+            self._inicializar(match_config, headless=headless, seed=seed)
+        except BaseException as exc:
+            try:
+                self.close()
+            except BaseException as cleanup_error:
+                exc.add_note(f"Falha adicional ao limpar Simulador: {cleanup_error}")
+            raise
+
+    def _inicializar(self, match_config=None, *, headless=False, seed=None):
+        if match_config is None:
+            # Configurações visuais isoladas pertencem ao processo que as
+            # consome. Removê-las logo após a leitura evita depender da vida
+            # da interface que iniciou este subprocesso.
+            isolated_config_path = None
+            if os.environ.get(DELETE_MATCH_CONFIG_ENV) == "1":
+                isolated_config_path = os.environ.get(database.MATCH_CONFIG_ENV)
+
+            try:
+                match_config = database.carregar_match_config()
+            finally:
+                if isolated_config_path:
+                    try:
+                        os.remove(os.path.abspath(isolated_config_path))
+                    except FileNotFoundError:
+                        pass
+                    except OSError as exc:
+                        # O processo pai ainda mantém um fallback após wait().
+                        print(
+                            f"Aviso: não foi possível remover config temporária: {exc}",
+                            file=sys.stderr,
+                        )
+        elif not isinstance(match_config, Mapping):
+            raise TypeError("match_config precisa ser um mapeamento")
+
+        self.match_config = dict(match_config)
+        self.headless = bool(headless)
+        self.seed = seed
+        if seed is not None:
+            self._random_state_before_seed = random.getstate()
+            random.seed(seed)
+
         best_of = self.match_config.get("best_of", 1)
         if isinstance(best_of, str) and best_of in {"1", "3", "5"}:
             best_of = int(best_of)
         self.best_of_series = BestOfSeries(best_of)
-        pygame.init()
+        if self.headless:
+            pygame.font.init()
+        else:
+            pygame.init()
         
         # Carrega config primeiro para saber o modo de tela
         self.portrait_mode = self._check_portrait_mode()
@@ -44,8 +138,11 @@ class Simulador:
             self.screen_width = LARGURA
             self.screen_height = ALTURA
         
-        self.tela = pygame.display.set_mode((self.screen_width, self.screen_height))
-        pygame.display.set_caption("Neural Fights - v9.0 ARENA EDITION")
+        if self.headless:
+            self.tela = pygame.Surface((self.screen_width, self.screen_height))
+        else:
+            self.tela = pygame.display.set_mode((self.screen_width, self.screen_height))
+            pygame.display.set_caption("Neural Fights - v9.0 ARENA EDITION")
         self.clock = pygame.time.Clock()
         self.rodando = True
         
@@ -94,6 +191,14 @@ class Simulador:
         
         self.recarregar_tudo()
 
+    def _assert_active_owner(self):
+        if (
+            self._closed
+            or self._lifecycle_token is None
+            or Simulador._active_owner_token is not self._lifecycle_token
+        ):
+            raise RuntimeError("Esta instância de Simulador não está mais ativa")
+
     def _check_portrait_mode(self) -> bool:
         """Verifica se o modo retrato está ativado no config"""
         try:
@@ -105,85 +210,71 @@ class Simulador:
             return False
 
     def recarregar_tudo(self):
-        try:
-            self.p1, self.p2, self.cenario, _ = self.carregar_luta_dados()
-            self.particulas = []; self.decals = []; self.textos = []; self.shockwaves = []; self.projeteis = []
-            # Reset novos efeitos v7.0
-            self.impact_flashes = []; self.magic_clashes = []; self.block_effects = []
-            self.dash_trails = []; self.hit_sparks = []
-            # Reset efeitos v2.0 (skills avançadas)
-            self.summons = []; self.traps = []; self.beams = []; self.areas = []
-            self.time_scale = 1.0; self.slow_mo_timer = 0.0; self.hit_stop_timer = 0.0
-            self.vencedor = None; self.paused = False; self.rastros = {self.p1: [], self.p2: []}
-            self.vencedor_round_side = None; self.empate_round = False; self.round_finalizado = False
-            self.vencedor_serie_side = self.best_of_series.winner
-            self._slow_mo_ended = False
-            if self.p1: self.vida_visual_p1 = self.p1.vida_max
-            if self.p2: self.vida_visual_p2 = self.p2.vida_max
-            
-            # Inicializa Sistema de Coreografia
-            CombatChoreographer.reset()
-            self.choreographer = CombatChoreographer.get_instance()
-            if self.p1 and self.p2:
-                self.choreographer.registrar_lutadores(self.p1, self.p2)
-            
-            # === INICIALIZA GAME FEEL v8.0 ===
-            GameFeelManager.reset()
-            self.game_feel = GameFeelManager.get_instance()
-            self.game_feel.set_camera(self.cam)
-            if self.p1 and self.p2:
-                self.game_feel.registrar_lutadores(self.p1, self.p2)
-            
-            # === INICIALIZA MOVEMENT ANIMATIONS v8.0 ===
-            MovementAnimationManager.reset()
-            self.movement_anims = MovementAnimationManager.get_instance()
-            self.movement_anims.set_ppm(PPM)
-            
-            # === INICIALIZA ATTACK ANIMATIONS v8.0 IMPACT EDITION ===
-            AttackAnimationManager.reset()
-            self.attack_anims = AttackAnimationManager()
-            self.attack_anims.set_ppm(PPM)
-            
-            # === INICIALIZA ARENA v9.0 ===
-            cenario_nome = getattr(self, 'cenario', 'Arena') or 'Arena'
-            self.arena = set_arena(cenario_nome)
-            
-            # Configura câmera para conhecer os limites da arena
-            self.cam.set_arena_bounds(
-                self.arena.centro_x, 
-                self.arena.centro_y,
-                self.arena.largura,
-                self.arena.altura
-            )
-            
-            # Posiciona lutadores nos spawn points da arena
-            if self.p1 and self.p2:
-                spawn1, spawn2 = self.arena.get_spawn_points()
-                self.p1.pos[0] = spawn1[0]
-                self.p1.pos[1] = spawn1[1]
-                self.p2.pos[0] = spawn2[0]
-                self.p2.pos[1] = spawn2[1]
-            
-            # Rastreamento de estados anteriores para detectar mudanças
-            self._prev_z = {self.p1: 0, self.p2: 0}
-            
-            # === INICIALIZA SISTEMA DE ÁUDIO v10.0 ===
-            AudioManager.reset()
+        # O lock também serializa reload e close: nenhum reset global pode
+        # ocorrer enquanto a instância está sendo encerrada.
+        with Simulador._lifecycle_lock:
+            self._assert_active_owner()
+            self._recarregar_tudo_owned()
+
+    def _recarregar_tudo_owned(self):
+        self.p1, self.p2, self.cenario, _ = self.carregar_luta_dados()
+        self.particulas = []; self.decals = []; self.textos = []; self.shockwaves = []; self.projeteis = []
+        self.impact_flashes = []; self.magic_clashes = []; self.block_effects = []
+        self.dash_trails = []; self.hit_sparks = []
+        self.summons = []; self.traps = []; self.beams = []; self.areas = []
+        self.time_scale = 1.0; self.slow_mo_timer = 0.0; self.hit_stop_timer = 0.0
+        self.vencedor = None; self.paused = False; self.rastros = {self.p1: [], self.p2: []}
+        self.vencedor_round_side = None; self.empate_round = False; self.round_finalizado = False
+        self.vencedor_serie_side = self.best_of_series.winner
+        self._slow_mo_ended = False
+        self.vida_visual_p1 = self.p1.vida_max
+        self.vida_visual_p2 = self.p2.vida_max
+
+        CombatChoreographer.reset()
+        self.choreographer = CombatChoreographer.get_instance()
+        self.choreographer.registrar_lutadores(self.p1, self.p2)
+
+        GameFeelManager.reset()
+        self.game_feel = GameFeelManager.get_instance()
+        self.game_feel.set_camera(self.cam)
+        self.game_feel.registrar_lutadores(self.p1, self.p2)
+
+        MovementAnimationManager.reset()
+        self.movement_anims = MovementAnimationManager.get_instance()
+        self.movement_anims.set_ppm(PPM)
+
+        AttackAnimationManager.reset()
+        self.attack_anims = AttackAnimationManager()
+        self.attack_anims.set_ppm(PPM)
+
+        cenario_nome = getattr(self, 'cenario', 'Arena') or 'Arena'
+        self.arena = set_arena(cenario_nome)
+        self.cam.set_arena_bounds(
+            self.arena.centro_x,
+            self.arena.centro_y,
+            self.arena.largura,
+            self.arena.altura,
+        )
+
+        spawn1, spawn2 = self.arena.get_spawn_points()
+        self.p1.pos[0], self.p1.pos[1] = spawn1
+        self.p2.pos[0], self.p2.pos[1] = spawn2
+        self._prev_z = {self.p1: 0, self.p2: 0}
+
+        # Entidades também consultam o singleton diretamente. No headless,
+        # todas recebem o mesmo adaptador nulo e nenhuma carga de áudio ocorre.
+        AudioManager.reset()
+        if self.headless:
+            self.audio = _SilentAudioManager()
+            AudioManager._instance = self.audio
+        else:
             self.audio = AudioManager.get_instance()
-            self._prev_stagger = {self.p1: False, self.p2: False}
-            self._prev_dash = {self.p1: 0, self.p2: 0}
-            
-            # === INICIALIZA MAGIC VFX v11.0 ===
-            MagicVFXManager.reset()
-            self.magic_vfx = MagicVFXManager.get_instance()
-            
-            # Som de início de arena/luta
-            self.audio.play_special("arena_start", 0.8)
-                
-        except Exception as e: 
-            import traceback
-            print(f"Erro: {e}")
-            traceback.print_exc()
+        self._prev_stagger = {self.p1: False, self.p2: False}
+        self._prev_dash = {self.p1: 0, self.p2: 0}
+
+        MagicVFXManager.reset()
+        self.magic_vfx = MagicVFXManager.get_instance()
+        self.audio.play_special("arena_start", 0.8)
 
     def carregar_luta_dados(self):
         config = getattr(self, "match_config", None)
@@ -520,7 +611,21 @@ class Simulador:
                     self.shockwaves.append(Shockwave(resultado["x"] * PPM, resultado["y"] * PPM, proj.cor, tamanho=2.5))
                     self._spawn_particulas_efeito(resultado["x"] * PPM, resultado["y"] * PPM, "EXPLOSAO")
             
-            alvo = self.p2 if proj.dono == self.p1 else self.p1
+            alvo = getattr(proj, "alvo_forcado", None)
+            if alvo is None:
+                alvo = self.p2 if proj.dono == self.p1 else self.p1
+            alvos_cone_secundarios = []
+            colisao_cone = None
+            if getattr(proj, "cone", False):
+                alvos_no_cone = [
+                    candidato
+                    for candidato in self._obter_alvos_hostis(proj.dono)
+                    if proj.colidir(candidato)
+                ]
+                colisao_cone = bool(alvos_no_cone)
+                if alvos_no_cone:
+                    alvo = alvos_no_cone[0]
+                    alvos_cone_secundarios = alvos_no_cone[1:]
             
             # === SISTEMA DE BLOQUEIO/DESVIO v7.0 ===
             bloqueado = self._verificar_bloqueio_projetil(proj, alvo)
@@ -530,7 +635,9 @@ class Simulador:
             
             # Verifica colisão - ArmaProjetil tem método próprio
             colidiu = False
-            if hasattr(proj, 'colidir'):
+            if colisao_cone is not None:
+                colidiu = colisao_cone
+            elif hasattr(proj, 'colidir'):
                 colidiu = proj.colidir(alvo)
             else:
                 # Projéteis de skill (antigo)
@@ -616,14 +723,44 @@ class Simulador:
                 else:
                     proj.ativo = False
                 
-                morreu = alvo.tomar_dano(
-                    dano_final,
-                    dx/dist,
-                    dy/dist,
-                    tipo_efeito,
-                    atacante=proj.dono,
-                )
-                dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano_final)
+                kwargs_impacto = {
+                    "atacante": proj.dono,
+                    "fonte_impacto": getattr(proj, "fonte_impacto", proj),
+                    "ignorar_invencibilidade": getattr(proj, "multi_shot", 1) > 1,
+                    "duracao_efeito": (
+                        getattr(proj, "delay_explosao", 0.0) or None
+                        if tipo_efeito == "BOMBA_RELOGIO"
+                        else getattr(proj, "duracao_efeito", None)
+                    ),
+                    "raio_efeito": (
+                        getattr(proj, "raio_explosao", None)
+                        if tipo_efeito == "BOMBA_RELOGIO"
+                        else None
+                    ),
+                    "percentual_efeito": getattr(proj, "percentual_efeito", None),
+                }
+                resolver_impacto = getattr(alvo, "resolver_impacto", None)
+                if callable(resolver_impacto):
+                    impacto = resolver_impacto(
+                        dano_final,
+                        dx/dist,
+                        dy/dist,
+                        tipo_efeito,
+                        **kwargs_impacto,
+                    )
+                    morreu = impacto.morreu
+                    dano_aplicado = impacto.dano
+                    impacto_aplicado = impacto.atingiu
+                else:
+                    morreu = alvo.tomar_dano(
+                        dano_final,
+                        dx/dist,
+                        dy/dist,
+                        tipo_efeito,
+                        **kwargs_impacto,
+                    )
+                    dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano_final)
+                    impacto_aplicado = getattr(alvo, "invencivel_timer", 0.0) > 0.0
                 if morreu:
                     self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
                 else:
@@ -652,9 +789,25 @@ class Simulador:
                     cura = dano_aplicado * 0.15
                     cura_real = proj.dono.receber_cura(cura)
                     self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura_real)}", (100, 255, 150), 16))
+
+                # Praga se propaga somente para outro lutador hostil disponível
+                # dentro do raio, carregando o histórico para não reinfectar.
+                criar_contagio = getattr(proj, "criar_contagio", None)
+                if impacto_aplicado:
+                    if callable(criar_contagio):
+                        contagio = criar_contagio(
+                            alvo,
+                            self._obter_alvos_hostis(proj.dono),
+                        )
+                        if contagio is not None:
+                            novos_projeteis.append(contagio)
                 
                 # === v11.0: EXPLOSÃO NO IMPACTO ===
-                if hasattr(proj, 'raio_explosao') and proj.raio_explosao > 0:
+                if (
+                    hasattr(proj, 'raio_explosao')
+                    and proj.raio_explosao > 0
+                    and tipo_efeito != "BOMBA_RELOGIO"
+                ):
                     from core.combat import AreaEffect
                     explosao = AreaEffect(proj.nome + " Explosão", proj.x, proj.y, proj.dono)
                     explosao.raio = proj.raio_explosao
@@ -666,38 +819,42 @@ class Simulador:
                     self.shockwaves.append(Shockwave(proj.x * PPM, proj.y * PPM, cor_impacto, tamanho=2.5))
                     self._spawn_particulas_efeito(proj.x * PPM, proj.y * PPM, "EXPLOSAO")
                 
-                # === v11.0: REMOVE CONGELAMENTO (Shatter) ===
-                if hasattr(proj, 'remove_congelamento') and proj.remove_congelamento:
-                    if getattr(alvo, 'congelado', False):
-                        alvo.congelado = False
-                        # Dano bonus por quebrar gelo
-                        alvo.tomar_dano(dano_final * 0.5, 0, 0, "GELO", atacante=proj.dono)
-                        self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 60, "SHATTER!", (180, 220, 255), 24))
-                
-                # === v11.0: CHAIN LIGHTNING ===
-                if hasattr(proj, 'chain') and proj.chain > 0 and proj.chain_count < proj.chain:
-                    # Encontra próximo alvo (pode ser qualquer um exceto o atingido)
-                    alvos_possiveis = [a for a in [self.p1, self.p2] if a != alvo and a.vivo and id(a) not in proj.chain_targets]
-                    if alvos_possiveis:
-                        prox_alvo = alvos_possiveis[0]
-                        dx = prox_alvo.pos[0] - alvo.pos[0]
-                        dy = prox_alvo.pos[1] - alvo.pos[1]
-                        dist = math.hypot(dx, dy)
-                        # Chain range baseado na distância original ou padrão de 5.0
-                        chain_range = getattr(proj, 'raio_contagio', 5.0)
-                        if dist <= chain_range:
-                            from core.combat import Projetil
-                            proj.chain_count += 1
-                            proj.chain_targets.add(id(alvo))
-                            chain_proj = Projetil(proj.nome, alvo.pos[0], alvo.pos[1], math.atan2(dy, dx), proj.dono)
-                            chain_proj.dano = proj.dano * proj.chain_decay
-                            chain_proj.chain = proj.chain
-                            chain_proj.chain_count = proj.chain_count
-                            chain_proj.chain_targets = proj.chain_targets.copy()
-                            chain_proj.cor = proj.cor if hasattr(proj, 'cor') else (150, 200, 255)
-                            novos_projeteis.append(chain_proj)
-                            # Efeito visual de chain
-                            self._spawn_particulas_efeito(alvo.pos[0]*PPM, alvo.pos[1]*PPM, "ELETRICO")
+                if proj.remove_congelamento and impacto_aplicado:
+                    remover_congelamento = getattr(alvo, "remover_congelamento", None)
+                    if callable(remover_congelamento):
+                        remover_congelamento()
+
+                # Um cone é uma única fonte capaz de atingir cada entidade no
+                # volume uma vez. O cache de fonte fica por alvo, portanto não
+                # impede os demais acertos e ainda bloqueia duplicatas.
+                for alvo_cone in alvos_cone_secundarios:
+                    bonus_cone = proj.verificar_condicao(alvo_cone)
+                    dano_cone = proj.dono.get_dano_modificado(proj.dano)
+                    dano_cone *= bonus_cone
+                    dx_cone = alvo_cone.pos[0] - proj.origem_cone[0]
+                    dy_cone = alvo_cone.pos[1] - proj.origem_cone[1]
+                    dist_cone = math.hypot(dx_cone, dy_cone) or 1.0
+                    impacto_cone = alvo_cone.resolver_impacto(
+                        dano_cone,
+                        dx_cone / dist_cone,
+                        dy_cone / dist_cone,
+                        proj.tipo_efeito,
+                        atacante=proj.dono,
+                        fonte_impacto=proj.fonte_impacto,
+                        ignorar_invencibilidade=proj.multi_shot > 1,
+                    )
+                    if impacto_cone.atingiu:
+                        self.textos.append(FloatingText(
+                            alvo_cone.pos[0] * PPM,
+                            alvo_cone.pos[1] * PPM - 30,
+                            int(impacto_cone.dano),
+                            self._get_cor_efeito(proj.tipo_efeito),
+                        ))
+                        self._spawn_particulas_efeito(
+                            alvo_cone.pos[0] * PPM,
+                            alvo_cone.pos[1] * PPM,
+                            proj.tipo_efeito,
+                        )
 
         # Adiciona projéteis criados por split/duplicação/chain
         self.projeteis.extend(novos_projeteis)
@@ -833,28 +990,64 @@ class Simulador:
                                 skill_name = getattr(area, 'nome_skill', '')
                                 self.audio.play_skill("AREA", skill_name, area.x, listener_x, phase="impact")
                             
-                            dano = area.dono.get_dano_modificado(area.dano) if hasattr(area.dono, 'get_dano_modificado') else area.dano
-                            invencibilidade_antes = max(0.0, getattr(alvo, 'invencivel_timer', 0.0))
-                            morreu = alvo.tomar_dano(
-                                dano,
-                                dx/(dist or 1),
-                                dy/(dist or 1),
-                                area.tipo_efeito,
-                                atacante=area.dono,
-                            )
-                            dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
+                            if getattr(area, "dano_precalculado", False):
+                                dano = area.dano
+                            else:
+                                dano = area.dono.get_dano_modificado(area.dano) if hasattr(area.dono, 'get_dano_modificado') else area.dano
+                            condicao_cumprida, bonus_condicao = area.verificar_condicao(alvo)
+                            dano *= bonus_condicao
+                            kwargs_impacto = {
+                                "atacante": area.dono,
+                                "duracao_efeito": (
+                                    area.duracao_charme or None
+                                    if area.tipo_efeito == "CHARME"
+                                    else None
+                                ),
+                            }
+                            resolver_impacto = getattr(alvo, "resolver_impacto", None)
+                            if callable(resolver_impacto):
+                                impacto = resolver_impacto(
+                                    dano,
+                                    dx/(dist or 1),
+                                    dy/(dist or 1),
+                                    area.tipo_efeito,
+                                    **kwargs_impacto,
+                                )
+                                morreu = impacto.morreu
+                                dano_aplicado = impacto.dano
+                                impacto_aplicado = impacto.atingiu
+                            else:
+                                morreu = alvo.tomar_dano(
+                                    dano,
+                                    dx/(dist or 1),
+                                    dy/(dist or 1),
+                                    area.tipo_efeito,
+                                    **kwargs_impacto,
+                                )
+                                dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
+                                impacto_aplicado = getattr(alvo, 'invencivel_timer', 0.0) > 0.0
                             # tomar_dano já aplica o efeito principal. Aqui entram
                             # apenas os metadados adicionais da área e efeito2,
                             # desde que o impacto não tenha sido negado.
-                            impacto_aplicado = (
-                                getattr(alvo, 'invencivel_timer', 0.0)
-                                > invencibilidade_antes
-                            )
                             if impacto_aplicado:
                                 area.aplicar_efeitos_alvo(
                                     alvo,
                                     aplicar_efeito_principal=False,
                                 )
+                                if area.remove_congelamento and condicao_cumprida:
+                                    remover_congelamento = getattr(
+                                        alvo,
+                                        "remover_congelamento",
+                                        None,
+                                    )
+                                    if callable(remover_congelamento) and remover_congelamento():
+                                        self.textos.append(FloatingText(
+                                            alvo.pos[0] * PPM,
+                                            alvo.pos[1] * PPM - 60,
+                                            "SHATTER!",
+                                            (180, 220, 255),
+                                            24,
+                                        ))
                             if morreu:
                                 self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
                             elif impacto_aplicado:
@@ -867,10 +1060,13 @@ class Simulador:
 
         # === ATUALIZA BEAMS ===
         if hasattr(self, 'beams'):
+            novos_beams = []
             for beam in self.beams:
                 beam.atualizar(dt)
                 if beam.ativo and not beam.hit_aplicado:
-                    alvo = self.p2 if beam.dono == self.p1 else self.p1
+                    alvo = getattr(beam, "alvo_forcado", None)
+                    if alvo is None:
+                        alvo = self.p2 if beam.dono == self.p1 else self.p1
                     # Verifica se beam cruza com alvo
                     if self._beam_colide_alvo(beam, alvo):
                         beam.hit_aplicado = True
@@ -878,26 +1074,48 @@ class Simulador:
                         # === ÁUDIO v10.0 - SOM DE BEAM ===
                         if self.audio:
                             listener_x = self.cam.x / PPM
-                            skill_name = getattr(beam, 'nome_skill', '')
+                            skill_name = getattr(beam, 'nome', '')
                             self.audio.play_skill("BEAM", skill_name, beam.dono.pos[0], listener_x, phase="impact")
-                        
+
                         dano = beam.dono.get_dano_modificado(beam.dano) if hasattr(beam.dono, 'get_dano_modificado') else beam.dano
-                        dx = alvo.pos[0] - beam.dono.pos[0]
-                        dy = alvo.pos[1] - beam.dono.pos[1]
+                        pos_alvo = self._posicao_alvo_combate(alvo)
+                        dx = pos_alvo[0] - beam.x1
+                        dy = pos_alvo[1] - beam.y1
                         dist = math.hypot(dx, dy) or 1
-                        morreu = alvo.tomar_dano(
-                            dano,
-                            dx/dist,
-                            dy/dist,
-                            beam.tipo_efeito,
-                            atacante=beam.dono,
-                        )
-                        dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
-                        if morreu:
-                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
+                        resolver_impacto = getattr(alvo, "resolver_impacto", None)
+                        if callable(resolver_impacto):
+                            impacto = resolver_impacto(
+                                dano,
+                                dx/dist,
+                                dy/dist,
+                                beam.tipo_efeito,
+                                atacante=beam.dono,
+                                fonte_impacto=beam,
+                            )
+                            morreu = impacto.morreu
+                            dano_aplicado = impacto.dano
+                            impacto_aplicado = impacto.atingiu
                         else:
-                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), (255, 255, 100)))
+                            alvo.tomar_dano(dano)
+                            morreu = not getattr(alvo, "ativo", True)
+                            dano_aplicado = dano
+                            impacto_aplicado = True
+                        if morreu:
+                            self.textos.append(FloatingText(pos_alvo[0]*PPM, pos_alvo[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
+                        elif impacto_aplicado:
+                            self.textos.append(FloatingText(pos_alvo[0]*PPM, pos_alvo[1]*PPM - 30, int(dano_aplicado), (255, 255, 100)))
                             self.cam.aplicar_shake(8.0, 0.1)
+                        if impacto_aplicado:
+                            salto = beam.criar_salto(
+                                alvo,
+                                self._obter_alvos_hostis(
+                                    beam.dono,
+                                    incluir_summons=True,
+                                ),
+                            )
+                            if salto is not None:
+                                novos_beams.append(salto)
+            self.beams.extend(novos_beams)
             self.beams = [b for b in self.beams if b.ativo]
 
         # === ATUALIZA SUMMONS (Invocações) v2.0 ===
@@ -1338,14 +1556,42 @@ class Simulador:
                 vida = random.uniform(0.4, 0.8)
                 self.particulas.append(Particula(x, y, cor, vx, vy, tamanho, vida))
     
+    @staticmethod
+    def _posicao_alvo_combate(alvo):
+        pos = getattr(alvo, "pos", None)
+        if pos is not None and len(pos) >= 2:
+            return float(pos[0]), float(pos[1])
+        return float(alvo.x), float(alvo.y)
+
+    def _obter_alvos_hostis(self, dono, incluir_summons=False):
+        """Lista alvos disponíveis para chain/contágio sem duplicar entidades."""
+        candidatos = [self.p1, self.p2]
+        candidatos.extend(getattr(self, "alvos_adicionais", ()))
+        if incluir_summons:
+            candidatos.extend(getattr(self, "summons", ()))
+
+        hostis = []
+        vistos = set()
+        for candidato in candidatos:
+            if candidato is None or candidato is dono or id(candidato) in vistos:
+                continue
+            if getattr(candidato, "morto", False) or not getattr(candidato, "ativo", True):
+                continue
+            if getattr(candidato, "dono", None) is dono:
+                continue
+            vistos.add(id(candidato))
+            hostis.append(candidato)
+        return hostis
+
     def _beam_colide_alvo(self, beam, alvo):
         """Verifica se um beam colide com um alvo"""
         # Usa colisão linha-círculo
         from core.physics import colisao_linha_circulo
         pt1 = (beam.x1 * PPM, beam.y1 * PPM)
         pt2 = (beam.x2 * PPM, beam.y2 * PPM)
-        centro = (alvo.pos[0] * PPM, alvo.pos[1] * PPM)
-        raio = alvo.raio_fisico * PPM
+        alvo_x, alvo_y = self._posicao_alvo_combate(alvo)
+        centro = (alvo_x * PPM, alvo_y * PPM)
+        raio = getattr(alvo, "raio_fisico", 0.5) * PPM
         return colisao_linha_circulo(pt1, pt2, centro, raio)
 
     # =========================================================================
@@ -1905,6 +2151,10 @@ class Simulador:
         - Evita o bug de múltiplos hits durante um único swing
         """
         
+        pode_causar_dano = getattr(atacante, "pode_causar_dano", None)
+        if callable(pode_causar_dano) and not pode_causar_dano(defensor):
+            return False
+
         # Armas ranged e mágicas NÃO usam hitbox direta
         # Elas causam dano apenas via projéteis/orbes
         arma = atacante.dados.arma_obj
@@ -1934,6 +2184,19 @@ class Simulador:
             # Usa o novo sistema de dano modificado
             dano_base = arma.dano * (atacante.dados.forca / 2.0)
             dano, is_critico = atacante.calcular_dano_ataque(dano_base) if hasattr(atacante, 'calcular_dano_ataque') else (dano_base, False)
+            if dano <= 0:
+                return False
+
+            # O vetor base é calculado uma única vez. Game Feel pode reduzi-lo
+            # (inclusive a zero) e o resultado passa a ser a fonte de verdade.
+            direcao_impacto = math.atan2(vy, vx)
+            pos_impacto = (dx / PPM, dy / PPM)
+            knockback_final = calcular_knockback_com_forca(
+                atacante,
+                defensor,
+                direcao_impacto,
+                dano,
+            )
             
             # === ÁUDIO v10.0 - SOM DE ATAQUE (baseado no dano) ===
             tipo_ataque = arma.tipo if arma else "SOCO"
@@ -1986,70 +2249,90 @@ class Simulador:
                     posicao=(dx, dy),
                     tipo_golpe=tipo_golpe,
                     is_critico=is_critico,
-                    knockback=(vx/mag * 15, vy/mag * 15)
+                    knockback=knockback_final,
                 )
                 
                 # Usa valores processados pelo Game Feel
                 dano = resultado_hit["dano_final"]
-                
-                # === FEEDBACK VISUAL DE SUPER ARMOR ===
-                if resultado_hit["super_armor_ativa"]:
-                    # Efeito especial - defensor "tankou" o golpe
-                    self.textos.append(FloatingText(dx, dy - 60, "ARMOR!", (255, 200, 50), 22))
-                    # Partículas de escudo
-                    for _ in range(8):
-                        ang = random.uniform(0, math.pi * 2)
-                        vel = random.uniform(3, 8)
-                        self.particulas.append(Particula(
-                            dx, dy, (255, 200, 100), 
-                            math.cos(ang) * vel, math.sin(ang) * vel,
-                            random.randint(4, 8), 0.4
-                        ))
+                knockback_final = resultado_hit["knockback"]
             
-            # === EFEITOS DE IMPACTO MELHORADOS v8.0 IMPACT EDITION ===
-            direcao_impacto = math.atan2(vy, vx)
             forca_atacante = atacante.dados.forca
-            
-            # Hit Spark na direção do golpe
-            self.hit_sparks.append(HitSpark(dx, dy, AMARELO_FAISCA, direcao_impacto, 1.2))
-            
-            # Impact Flash colorido
+
+            # A entidade continua decidindo se o impacto é aceito (i-frame,
+            # esquiva, escudo etc.), mas não volta a escalar o knockback.
+            resolver_impacto = getattr(defensor, "resolver_impacto", None)
+            if callable(resolver_impacto):
+                impacto = resolver_impacto(
+                    dano,
+                    0.0,
+                    0.0,
+                    "NORMAL",
+                    atacante=atacante,
+                )
+                morreu = impacto.morreu
+                dano_aplicado = impacto.dano
+                impacto_aplicado = impacto.atingiu and dano_aplicado > 0.0
+            else:
+                morreu = defensor.tomar_dano(
+                    dano,
+                    0.0,
+                    0.0,
+                    "NORMAL",
+                    atacante=atacante,
+                )
+                dano_aplicado = getattr(defensor, "ultimo_dano_recebido", dano)
+                resultado_impacto = getattr(defensor, "ultimo_resultado_impacto", None)
+                impacto_aplicado = (
+                    getattr(resultado_impacto, "atingiu", dano_aplicado > 0.0)
+                    and dano_aplicado > 0.0
+                )
+
+            if not impacto_aplicado:
+                return False
+
+            kb_x, kb_y = knockback_final
+            defensor.vel[0] += kb_x
+            defensor.vel[1] += kb_y
+            magnitude_knockback = math.hypot(kb_x, kb_y)
+            direcao_vfx = (
+                math.atan2(kb_y, kb_x)
+                if magnitude_knockback > 1e-9
+                else direcao_impacto
+            )
+
+            # === FEEDBACK VISUAL DE SUPER ARMOR ===
+            if resultado_hit and resultado_hit["super_armor_ativa"]:
+                self.textos.append(FloatingText(dx, dy - 60, "ARMOR!", (255, 200, 50), 22))
+                for _ in range(8):
+                    ang = random.uniform(0, math.pi * 2)
+                    vel = random.uniform(3, 8)
+                    self.particulas.append(Particula(
+                        dx, dy, (255, 200, 100),
+                        math.cos(ang) * vel, math.sin(ang) * vel,
+                        random.randint(4, 8), 0.4
+                    ))
+
+            # === EFEITOS DE IMPACTO MELHORADOS v8.0 IMPACT EDITION ===
+            self.hit_sparks.append(HitSpark(dx, dy, AMARELO_FAISCA, direcao_vfx, 1.2))
             cor_arma = (arma.r, arma.g, arma.b) if hasattr(arma, 'r') else BRANCO
             self.impact_flashes.append(ImpactFlash(dx, dy, cor_arma, 1.0, "normal"))
-            
-            # === SISTEMA DE KNOCKBACK BASEADO EM FORÇA ===
-            # Calcula knockback com a nova fórmula
-            pos_impacto = (dx / PPM, dy / PPM)
-            kb_base = calcular_knockback_com_forca(atacante, defensor, direcao_impacto, dano)
-            kb_x, kb_y = kb_base[0], kb_base[1]
-            
-            if resultado_hit and not resultado_hit["sofreu_stagger"]:
-                # Super Armor ativa - knockback reduzido
-                kb_x *= 0.2
-                kb_y *= 0.2
-            
-            # === EFEITOS DE ATAQUE BASEADOS EM FORÇA ===
+
             if self.attack_anims:
                 impact_result = self.attack_anims.criar_attack_impact(
                     atacante=atacante,
                     alvo=defensor,
-                    dano=dano,
+                    dano=dano_aplicado,
                     posicao=pos_impacto,
-                    direcao=direcao_impacto,
+                    direcao=direcao_vfx,
                     tipo_dano="physical",
                     is_critico=is_critico
                 )
-                
-                # Aplica shake/zoom do sistema de ataque se não houver GameFeel
+
                 if not self.game_feel:
                     self.cam.aplicar_shake(impact_result['shake_intensity'], impact_result['shake_duration'])
                     if impact_result['zoom_punch'] > 0:
                         self.cam.zoom_punch(impact_result['zoom_punch'], 0.15)
-            
-            morreu = defensor.tomar_dano(
-                dano, kb_x, kb_y, "NORMAL", atacante=atacante
-            )
-            dano_aplicado = getattr(defensor, "ultimo_dano_recebido", dano)
+
             if morreu:
                 # === ÁUDIO v10.0 - SOM DE MORTE ===
                 if self.audio:
@@ -2059,7 +2342,12 @@ class Simulador:
                 self.spawn_particulas(dx, dy, vx/mag, vy/mag, VERMELHO_SANGUE, 50)
                 
                 # Knockback visual épico na morte
-                self._criar_knockback_visual(defensor, direcao_impacto, dano_aplicado * 1.5)
+                if magnitude_knockback > 1e-9:
+                    self._criar_knockback_visual(
+                        defensor,
+                        direcao_vfx,
+                        magnitude_knockback * 1.5,
+                    )
                 
                 # Game Feel já processou camera shake para morte
                 if not self.game_feel:
@@ -2082,8 +2370,12 @@ class Simulador:
                 
                 # === HIT NORMAL - EFEITOS PROPORCIONAIS AO DANO E FORÇA ===
                 # Knockback visual proporcional ao dano
-                if dano_aplicado > 8 or forca_atacante > 12:
-                    self._criar_knockback_visual(defensor, direcao_impacto, dano_aplicado)
+                if magnitude_knockback > 1e-9 and (dano_aplicado > 8 or forca_atacante > 12):
+                    self._criar_knockback_visual(
+                        defensor,
+                        direcao_vfx,
+                        magnitude_knockback,
+                    )
                 
                 # Partículas proporcionais
                 qtd_part = max(5, min(25, int(dano_aplicado / 3)))
@@ -2347,6 +2639,21 @@ class Simulador:
         # === DESENHA PROJÉTEIS COM TRAIL DRAMÁTICO v11.0 ===
         pulse_time = pygame.time.get_ticks() / 1000.0
         for proj in self.projeteis:
+            if getattr(proj, "cone", False):
+                origem_x, origem_y = proj.origem_cone
+                pontos = [self.cam.converter(origem_x * PPM, origem_y * PPM)]
+                angulo_inicial = proj.angulo - proj.angulo_cone / 2.0
+                segmentos = max(3, int(proj.angulo_cone / 10.0))
+                for indice in range(segmentos + 1):
+                    angulo = math.radians(
+                        angulo_inicial + proj.angulo_cone * indice / segmentos
+                    )
+                    x = origem_x + math.cos(angulo) * proj.alcance_cone
+                    y = origem_y + math.sin(angulo) * proj.alcance_cone
+                    pontos.append(self.cam.converter(x * PPM, y * PPM))
+                pygame.draw.polygon(self.tela, proj.cor, pontos, 2)
+                continue
+
             # Trail dramático com glow
             if hasattr(proj, 'trail') and len(proj.trail) > 1:
                 cor_trail = proj.cor if hasattr(proj, 'cor') else BRANCO
@@ -3751,9 +4058,13 @@ class Simulador:
         self.tela.blit(msg, (self.screen_width//2 - msg.get_width()//2, self.screen_height//2 + 45))
 
     def run(self):
+        if self.headless:
+            raise RuntimeError(
+                "Use simulation.headless.HeadlessMatchRunner para execução headless"
+            )
         self._slow_mo_ended = False  # Flag para tocar som de vitória uma vez
-        while self.rodando:
-            try:
+        try:
+            while self.rodando:
                 raw_dt = self.clock.tick(FPS) / 1000.0
                 if self.slow_mo_timer > 0:
                     self.slow_mo_timer -= raw_dt
@@ -3767,22 +4078,81 @@ class Simulador:
                             self._slow_mo_ended = True
                 dt = raw_dt * self.time_scale
                 self.processar_inputs(); self.update(dt); self.desenhar(); pygame.display.flip()
-            except Exception as e:
-                import traceback
-                print(f"ERRO NO LOOP: {e}")
-                traceback.print_exc()
-                # Mostra diálogo de erro
+        finally:
+            self.close()
+
+    def close(self):
+        """Libera recursos do processo; é seguro chamar mais de uma vez."""
+        cleanup_errors = []
+        with Simulador._lifecycle_lock:
+            token = getattr(self, "_lifecycle_token", None)
+            if (
+                getattr(self, "_closed", True)
+                or token is None
+                or Simulador._active_owner_token is not token
+            ):
+                self._closed = True
+                self._lifecycle_token = None
+                return
+
+            self._closed = True
+            try:
+                # Enquanto este token é o dono exclusivo, qualquer singleton
+                # existente pertence a esta execução, inclusive os criados
+                # parcialmente antes de uma exceção de bootstrap.
+                for manager_class in (
+                    AudioManager,
+                    MagicVFXManager,
+                    AttackAnimationManager,
+                    MovementAnimationManager,
+                    GameFeelManager,
+                    HitStopManager,
+                    CombatChoreographer,
+                ):
+                    try:
+                        manager_class.reset()
+                    except Exception as exc:
+                        cleanup_errors.append((manager_class.__name__, exc))
+                        # Mesmo que a rotina específica de teardown falhe,
+                        # não deixe um singleton parcial acessível à próxima
+                        # execução do simulador.
+                        if hasattr(manager_class, "_instance"):
+                            manager_class._instance = None
+
                 try:
-                    import tkinter as tk
-                    from tkinter import messagebox
-                    root = tk.Tk()
-                    root.withdraw()
-                    messagebox.showerror("Erro", f"Simulação falhou:\n{e}")
-                    root.destroy()
-                except:
-                    pass
-                self.rodando = False
-        pygame.quit()
+                    pygame.quit()
+                except Exception as exc:
+                    cleanup_errors.append(("pygame", exc))
+
+                random_state = getattr(self, "_random_state_before_seed", None)
+                if random_state is not None:
+                    try:
+                        random.setstate(random_state)
+                    except Exception as exc:
+                        cleanup_errors.append(("random", exc))
+                    finally:
+                        self._random_state_before_seed = None
+
+                for attr in (
+                    "audio",
+                    "magic_vfx",
+                    "attack_anims",
+                    "movement_anims",
+                    "game_feel",
+                    "choreographer",
+                ):
+                    if hasattr(self, attr):
+                        setattr(self, attr, None)
+            finally:
+                if Simulador._active_owner_token is token:
+                    Simulador._active_owner_token = None
+                self._lifecycle_token = None
+
+        if cleanup_errors:
+            detalhes = ", ".join(nome for nome, _exc in cleanup_errors)
+            raise RuntimeError(
+                f"Falha ao limpar recurso(s) do Simulador: {detalhes}"
+            ) from cleanup_errors[0][1]
 
 if __name__ == "__main__":
     Simulador().run()

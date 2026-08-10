@@ -121,6 +121,7 @@ SKILL_DB = {
         "tipo": "PROJETIL", "dano": 20.0, "velocidade": 20.0, "raio": 0.5,
         "vida": 0.5, "cor": (150, 220, 255), "custo": 15.0, "cooldown": 4.0,
         "efeito": "LENTO", "elemento": "GELO", "cone": True, "angulo_cone": 60,
+        "alcance_cone": 5.0,
         "descricao": "Cone de gelo que atinge múltiplos alvos"
     },
     "Muralha de Gelo": {
@@ -132,7 +133,8 @@ SKILL_DB = {
     "Shatter": {
         "tipo": "AREA", "dano": 60.0, "raio_area": 2.5, "cor": (200, 240, 255),
         "custo": 25.0, "cooldown": 10.0, "efeito": "VULNERAVEL", "elemento": "GELO",
-        "condicao": "ALVO_CONGELADO", "remove_congelamento": True,
+        "condicao": "ALVO_CONGELADO", "dano_bonus_condicao": 1.5,
+        "remove_congelamento": True,
         "descricao": "Estilhaça alvos congelados - dano massivo"
     },
     "Zero Absoluto": {
@@ -183,7 +185,7 @@ SKILL_DB = {
     "Corrente em Cadeia": {
         "tipo": "BEAM", "dano": 18.0, "alcance": 10.0, "cor": (255, 255, 120),
         "custo": 25.0, "cooldown": 8.0, "efeito": "PARALISIA", "elemento": "RAIO",
-        "chain": 4, "chain_decay": 0.8,
+        "chain": 4, "chain_decay": 0.8, "chain_range": 5.0,
         "descricao": "Raio que salta entre até 4 alvos"
     },
     "Sobrecarga": {
@@ -640,7 +642,7 @@ SKILL_DB = {
     "Execução": {
         "tipo": "PROJETIL", "dano": 100.0, "velocidade": 8.0, "raio": 0.3,
         "vida": 1.5, "cor": (255, 0, 0), "custo": 50.0, "cooldown": 30.0,
-        "condicao": "ALVO_BAIXA_VIDA",
+        "condicao": "ALVO_BAIXA_VIDA", "dano_bonus_condicao": 2.0,
         "descricao": "Dano massivo contra alvos com pouca vida"
     },
     "Terremoto": {
@@ -701,7 +703,7 @@ SKILL_DB = {
     "Cópia Sombria": {
         "tipo": "SUMMON", "cor": (100, 100, 100), "custo": 45.0, "cooldown": 30.0,
         "duracao": 8.0, "copia_caster": True,
-        "descricao": "Cria uma cópia que imita seus ataques"
+        "descricao": "Cria uma cópia que repete seus ataques básicos"
     },
     "Link de Vida": {
         "tipo": "PROJETIL", "dano": 0.0, "velocidade": 20.0, "raio": 0.3,

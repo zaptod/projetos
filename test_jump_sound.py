@@ -1,38 +1,36 @@
+"""Diagnostico manual dos sons de pulo e aterrissagem.
+
+O codigo fica protegido por ``main`` para que a descoberta de testes seja segura.
 """
-Quick test to verify jump sound triggering in-game.
-Run this then watch console for [SOUND] messages.
-"""
-import pygame
-pygame.init()
-pygame.mixer.init()
 
-from effects.audio import AudioManager
-
-# Test the audio system directly
-print("=== TESTING AUDIO SYSTEM ===")
-audio = AudioManager.get_instance()
-
-print("\n1. Testing play_movement('jump')...")
-audio.play_movement("jump", 10.0, 10.0)
+from __future__ import annotations
 
 import time
-time.sleep(1)
 
-print("\n2. Testing play_movement('land')...")
-audio.play_movement("land", 10.0, 10.0)
 
-time.sleep(1)
+def main() -> int:
+    import pygame
 
-print("\n3. Testing direct play('jump_start')...")
-audio.play("jump_start")
+    from effects.audio import AudioManager
 
-time.sleep(1)
+    pygame.init()
+    pygame.mixer.init()
+    audio = AudioManager.get_instance()
 
-print("\n4. Testing direct play from group 'jump'...")
-audio.play("jump")
+    checks = (
+        ("play_movement('jump')", lambda: audio.play_movement("jump", 10.0, 10.0), 1),
+        ("play_movement('land')", lambda: audio.play_movement("land", 10.0, 10.0), 1),
+        ("play('jump_start')", lambda: audio.play("jump_start"), 1),
+        ("play('jump')", lambda: audio.play("jump"), 2),
+    )
+    for index, (label, callback, wait_seconds) in enumerate(checks, start=1):
+        print(f"\n{index}. Testing {label}...")
+        callback()
+        time.sleep(wait_seconds)
 
-time.sleep(2)
+    print("\nTest complete.")
+    return 0
 
-print("\n=== TEST COMPLETE ===")
-print("If you heard sounds, the audio system is working.")
-print("The issue might be in jump detection thresholds.")
+
+if __name__ == "__main__":
+    raise SystemExit(main())

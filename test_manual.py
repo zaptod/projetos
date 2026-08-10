@@ -38,17 +38,12 @@ OUTROS:
 """
 
 import pygame
-import sys
-import os
 import math
-
-# Adiciona o diretorio do projeto ao path
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, PROJECT_DIR)
+import sys
 
 from simulation.simulacao import Simulador
-from utils.config import PPM, LARGURA, ALTURA
-from core.skills import SKILL_DB, listar_skills_para_ui
+from utils.config import LARGURA, ALTURA
+from core.skills import SKILL_DB
 from data.database import carregar_personagens
 
 # Cores
@@ -69,8 +64,10 @@ class SimuladorManual(Simulador):
     Simulador com controle manual do jogador e menus de configuração
     """
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, match_config=None):
+        if match_config is None:
+            match_config = self.criar_match_config_padrao()
+        super().__init__(match_config=match_config)
         
         # Controle manual
         self.controlando = self.p1  # Comeca controlando P1
@@ -973,10 +970,15 @@ def main():
     """Ponto de entrada"""
     print("\nIniciando NEURAL FIGHTS - Modo de Teste Manual v2.0...")
     print("Carregando...")
-    
-    sim = SimuladorManual()
+
+    try:
+        sim = SimuladorManual()
+    except RuntimeError as exc:
+        print(f"Erro: {exc}", file=sys.stderr)
+        return 1
     sim.executar()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

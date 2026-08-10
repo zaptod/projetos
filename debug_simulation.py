@@ -3,13 +3,9 @@ Real-time debug for simulation - patches the Simulador to show arena info
 Run this instead of run.py
 """
 import pygame
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from simulation.simulacao import Simulador
-from utils.config import PPM, LARGURA, ALTURA
+from utils.config import PPM, LARGURA
 
 # Store original desenhar
 original_desenhar = Simulador.desenhar

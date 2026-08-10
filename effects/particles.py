@@ -6,7 +6,6 @@ Partículas, faíscas e efeitos de encantamento
 import pygame
 import random
 import math
-from utils.config import PPM
 
 
 # Cores dos encantamentos para partículas

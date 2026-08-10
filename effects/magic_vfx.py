@@ -12,8 +12,7 @@ Inclui:
 import pygame
 import random
 import math
-from typing import List, Tuple, Optional
-from utils.config import PPM
+from typing import List, Tuple
 
 
 # =============================================================================

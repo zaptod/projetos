@@ -10,11 +10,6 @@ Uso:
     python run.py --help    # Mostra ajuda
 """
 import sys
-import os
-
-# Adiciona o diretorio do projeto ao path
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, PROJECT_DIR)
 
 def mostrar_ajuda():
     """Mostra informacoes de uso"""
@@ -43,33 +38,54 @@ def mostrar_ajuda():
 ----------------------------------------------------------------
     """)
 
-def main():
-    """Ponto de entrada principal."""
-    if len(sys.argv) > 1:
-        arg = sys.argv[1].lower()
+def main(argv=None):
+    """Executa o ponto de entrada e devolve um codigo de saida de processo."""
+    argumentos = list(sys.argv[1:] if argv is None else argv)
+
+    if len(argumentos) > 1:
+        print("Erro: informe apenas uma opcao por execucao.", file=sys.stderr)
+        mostrar_ajuda()
+        return 2
+
+    if argumentos:
+        arg = argumentos[0].lower()
         
         if arg == '--sim':
             # Executa simulacao diretamente
             from simulation import Simulador
-            sim = Simulador()
+            try:
+                match_config = Simulador.criar_match_config_padrao()
+            except RuntimeError as exc:
+                print(f"Erro: {exc}", file=sys.stderr)
+                return 1
+            sim = Simulador(match_config=match_config)
             sim.run()
+            return 0
         
         elif arg == '--test':
             # Modo de teste manual
             from test_manual import SimuladorManual
-            sim = SimuladorManual()
+            try:
+                sim = SimuladorManual()
+            except RuntimeError as exc:
+                print(f"Erro: {exc}", file=sys.stderr)
+                return 1
             sim.executar()
+            return 0
         
         elif arg in ['--help', '-h', '/?']:
             mostrar_ajuda()
+            return 0
         
         else:
-            print(f"Argumento desconhecido: {arg}")
+            print(f"Argumento desconhecido: {arg}", file=sys.stderr)
             mostrar_ajuda()
+            return 2
     else:
         # Executa o launcher (UI)
         from ui.main import main as run_launcher
         run_launcher()
+        return 0
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

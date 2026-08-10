@@ -6,7 +6,10 @@ Verifica se o tipo de hitbox está correto para cada tipo de arma.
 
 import json
 from dataclasses import dataclass
-from typing import List, Tuple
+from pathlib import Path
+from typing import List
+
+from data.database import ARQUIVO_ARMAS
 
 @dataclass
 class DiagnosticoArma:
@@ -16,8 +19,8 @@ class DiagnosticoArma:
     sugestao: str
     valores_relevantes: dict
 
-def carregar_armas():
-    with open("armas.json", "r", encoding="utf-8") as f:
+def carregar_armas(caminho=ARQUIVO_ARMAS):
+    with Path(caminho).open("r", encoding="utf-8") as f:
         return json.load(f)
 
 def diagnosticar_arma(arma: dict) -> List[DiagnosticoArma]:
@@ -323,5 +326,7 @@ def main():
             print(f"  comp_cabo: {arma.get('comp_cabo', 0)} (deve ser 0)")
             print(f"  comp_lamina: {arma.get('comp_lamina', 0)} (deve ser 0)")
 
+    return 1 if todos_problemas else 0
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

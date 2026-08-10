@@ -4,15 +4,12 @@ Tela de seleção de lutadores para batalha
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.database import carregar_match_config, salvar_match_config
 from simulation import simulacao
 from ui.theme import (
-    COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS,
-    COR_TEXTO, COR_TEXTO_DIM, COR_WARNING, COR_P1, COR_P2, CORES_CLASSE
+    COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT,
+    COR_TEXTO, COR_TEXTO_DIM, COR_P1, COR_P2, CORES_CLASSE
 )
 
 

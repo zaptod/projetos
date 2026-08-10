@@ -6,6 +6,8 @@ Gerencia leitura do oponente, janelas de oportunidade, baiting e momentum.
 import math
 import random
 
+from ai.contracts import obter_brain
+
 
 class CombatTacticsSystem:
     """
@@ -76,8 +78,9 @@ class CombatTacticsSystem:
             ataque_prep = True
         if hasattr(inimigo, 'cooldown_ataque') and inimigo.cooldown_ataque < 0.2:
             ataque_prep = True
-        if hasattr(inimigo, 'ai') and inimigo.ai:
-            ai_ini = inimigo.ai
+        brain_inimigo = obter_brain(inimigo)
+        if brain_inimigo:
+            ai_ini = brain_inimigo
             if ai_ini.acao_atual in ["MATAR", "ESMAGAR", "ATAQUE_RAPIDO", "CONTRA_ATAQUE"]:
                 ataque_prep = True
         
@@ -182,8 +185,9 @@ class CombatTacticsSystem:
             self.pressao_aplicada = max(0.0, self.pressao_aplicada - dt * 0.5)
         
         # Pressão recebida
-        if hasattr(inimigo, 'ai') and inimigo.ai:
-            ai_ini = inimigo.ai
+        brain_inimigo = obter_brain(inimigo)
+        if brain_inimigo:
+            ai_ini = brain_inimigo
             if distancia < 3.0 and ai_ini.acao_atual in ["MATAR", "PRESSIONAR", "ESMAGAR"]:
                 self.pressao_recebida = min(1.0, self.pressao_recebida + dt * 0.5)
             else:

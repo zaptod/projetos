@@ -1,313 +1,605 @@
+"""Auditoria estrutural, import-safe, do catalogo de skills.
+
+A ferramenta valida somente contratos que podem ser demonstrados pelos arquivos
+fonte. Ela nao instancia objetos de combate e nao classifica uma skill como
+"funcional" sem um teste de runtime correspondente.
 """
-=============================================================================
-AUDITORIA COMPLETA DE SKILLS - Neural Fights v2.0
-=============================================================================
-Verifica:
-1. Todas as skills no banco de dados
-2. Se cada mecanica esta implementada
-3. Bugs pendentes
-4. Funcionalidade no jogo
-=============================================================================
-"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
 import sys
-sys.path.insert(0, '.')
+from collections import Counter
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Iterable, Mapping, Sequence, TextIO
 
-from core.skills import SKILL_DB, contar_skills
-from core.combat import Projetil, AreaEffect, Beam, Buff, Summon, Trap, Transform, Channel
-from core.status_runtime import (
-    BUFF_EFFECT_RUNTIME,
-    EFEITOS_TRATADOS_FORA_DO_STATUS,
-    STATUS_RUNTIME,
-)
 
-# Tipos de skills suportados pelo sistema atual
-TIPOS_IMPLEMENTADOS = {"PROJETIL", "AREA", "DASH", "BUFF", "BEAM", "SUMMON", "TRAP", "TRANSFORM", "CHANNEL", "NADA"}
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CATALOG = PROJECT_ROOT / "core" / "skills.py"
+DEFAULT_STATUS_CONTRACT = PROJECT_ROOT / "core" / "status_runtime.py"
+DEFAULT_EVIDENCE_MANIFEST = PROJECT_ROOT / "tools" / "skill_runtime_evidence.py"
 
-# Tipos que precisam de implementacao adicional
-TIPOS_PENDENTES = {}  # Todos implementados agora!
-
-# Efeitos de status implementados (verificar em entities.py)
-EFEITOS_PENDENTES_STATUS = {
-    nome
-    for nome, definicao in STATUS_RUNTIME.items()
-    if definicao.get("categoria") == "pendente"
-}
-EFEITOS_PARCIAIS_STATUS = {
-    nome
-    for nome, definicao in STATUS_RUNTIME.items()
-    if str(definicao.get("categoria", "")).endswith("_parcial")
-}
-EFEITOS_IMPLEMENTADOS = EFEITOS_TRATADOS_FORA_DO_STATUS | {
-    nome for nome in STATUS_RUNTIME if nome not in EFEITOS_PENDENTES_STATUS
+SUPPORTED_TYPES = {
+    "NADA",
+    "PROJETIL",
+    "AREA",
+    "DASH",
+    "BUFF",
+    "BEAM",
+    "SUMMON",
+    "TRAP",
+    "TRANSFORM",
+    "CHANNEL",
 }
 
-# Features avançadas que precisam verificação
-FEATURES_AVANCADAS = [
-    "homing",           # Projéteis teleguiados
-    "perfura",          # Perfuração
-    "chain",            # Chain lightning
-    "retorna",          # Projétil que volta
-    "raio_explosao",    # Explosão no impacto
-    "delay_explosao",   # Explosão com delay
-    "cone",             # Ataque em cone
-    "duplica_apos",     # Duplicação temporal
-    "split_aleatorio",  # Split aleatório
-    "chance_backfire",  # Chance de errar
-    "elemento_aleatorio",  # Elemento random
-    "dano_variavel",    # Dano variável
-    "efeito_aleatorio", # Efeito random
-    "condicao",         # Condições especiais
-    "lifesteal",        # Roubo de vida
-    "remove_congelamento",  # Shatter
-    "contagioso",       # Espalha entre alvos
-    "multi_shot",       # Múltiplos projéteis
-]
+COMMON_REQUIRED = {"tipo", "custo", "cooldown"}
+TYPE_REQUIRED = {
+    "NADA": set(),
+    "PROJETIL": {"descricao", "cor", "dano", "velocidade", "raio", "vida"},
+    "AREA": {"descricao", "cor", "dano", "raio_area"},
+    "DASH": {"descricao", "cor", "distancia"},
+    "BUFF": {"descricao", "cor"},
+    "BEAM": {"descricao", "cor", "dano", "alcance"},
+    "SUMMON": {"descricao", "cor", "duracao"},
+    "TRAP": {"descricao", "cor", "dano", "duracao", "vida_estrutura"},
+    "TRANSFORM": {"descricao", "cor", "duracao"},
+    "CHANNEL": {"descricao", "cor", "duracao_max"},
+}
 
-def auditar_todas_skills():
-    """Auditoria completa de todas as skills"""
-    
-    print("=" * 80)
-    print("AUDITORIA COMPLETA DE SKILLS - NEURAL FIGHTS v2.0")
-    print("=" * 80)
-    
-    # Contagem por tipo
-    contagem = contar_skills()
-    print(f"\n📊 TOTAL: {len(SKILL_DB)} skills")
-    print("\nPor tipo:")
-    for tipo, qtd in sorted(contagem.items()):
-        status = "✅" if tipo in TIPOS_IMPLEMENTADOS else "❌ NÃO IMPLEMENTADO"
-        print(f"  {tipo}: {qtd} {status}")
-    
-    # Skills por categoria de problema
-    skills_ok = []
-    skills_tipo_pendente = []
-    skills_feature_nao_processada = []
-    skills_efeito_desconhecido = []
-    
-    print("\n" + "=" * 80)
-    print("ANÁLISE DETALHADA POR SKILL")
-    print("=" * 80)
-    
-    for nome, data in SKILL_DB.items():
-        if nome == "Nenhuma":
-            continue
-            
-        tipo = data.get("tipo", "DESCONHECIDO")
-        efeito = data.get("efeito", "NORMAL")
-        problemas = []
-        avisos = []
-        
-        # Verifica tipo
-        if tipo in TIPOS_PENDENTES:
-            problemas.append(f"Tipo '{tipo}' não implementado no loop de jogo")
-            skills_tipo_pendente.append(nome)
-        elif tipo not in TIPOS_IMPLEMENTADOS:
-            problemas.append(f"Tipo '{tipo}' desconhecido")
-        
-        # Verifica efeito
-        if efeito in EFEITOS_PENDENTES_STATUS:
-            avisos.append(f"Efeito '{efeito}' está explicitamente pendente")
-            skills_efeito_desconhecido.append((nome, efeito))
-        elif efeito in EFEITOS_PARCIAIS_STATUS:
-            avisos.append(f"Efeito '{efeito}' tem implementação parcial explícita")
-        elif efeito and efeito not in EFEITOS_IMPLEMENTADOS:
-            avisos.append(f"Efeito '{efeito}' pode não estar implementado")
-            skills_efeito_desconhecido.append((nome, efeito))
+NUMERIC_NON_NEGATIVE = {
+    "custo",
+    "cooldown",
+    "dano",
+    "velocidade",
+    "raio",
+    "vida",
+    "raio_area",
+    "distancia",
+    "alcance",
+    "duracao",
+    "duracao_max",
+    "vida_estrutura",
+}
 
-        efeito_buff = data.get("efeito_buff")
-        if efeito_buff and efeito_buff not in BUFF_EFFECT_RUNTIME:
-            avisos.append(f"Buff '{efeito_buff}' não consta no contrato do runtime")
-        
-        # Verifica features avançadas
-        features_usadas = []
-        for feature in FEATURES_AVANCADAS:
-            if feature in data:
-                features_usadas.append(feature)
-        
-        # Features especiais que precisam verificação
-        if "canalizavel" in data:
-            avisos.append("Canalização requer implementação especial")
-        if "summon_vida" in data:
-            avisos.append("Summon requer sistema de invocações")
-        if "cria_portal" in data:
-            avisos.append("Portal requer sistema de teleporte bidirecional")
-        if "reverte_estado" in data:
-            avisos.append("Reverter tempo requer snapshot de estado")
-        if "stats_aleatorios" in data:
-            avisos.append("Stats aleatórios requer implementação")
-        if "bloqueia_movimento" in data:
-            avisos.append("Bloqueio de movimento requer sistema de colisão")
-        if "reflete_projeteis" in data:
-            avisos.append("Reflexão de projéteis precisa verificação")
-        if "reflete_skills" in data:
-            avisos.append("Contrafeitiço precisa implementação")
-        if "sem_cooldown" in data:
-            avisos.append("Sem cooldown temporário precisa implementação")
-        if "duracao_controle" in data:
-            avisos.append("Controle mental precisa implementação")
-        if "revive_hp_percent" in data:
-            avisos.append("Ressurreição precisa sistema de morte/revive")
-        if "ativa_ao_morrer" in data:
-            avisos.append("Trigger ao morrer precisa hook especial")
-        if "copia_caster" in data:
-            avisos.append("Cópia sombria precisa sistema de clones")
-        if "link_percent" in data:
-            avisos.append("Link de alma precisa sistema de conexão")
-        if "rouba_buff" in data:
-            avisos.append("Roubo de buff precisa implementação")
-        if "bonus_vs_trevas" in data:
-            avisos.append("Bônus vs elemento precisa verificação no dano")
-        if "intangivel" in data:
-            avisos.append("Intangibilidade precisa sistema de colisão")
-        if "voo" in data:
-            avisos.append("Voo precisa sistema de altura/layers")
-        if "trocar_pos" in data or "TROCAR_POS" in str(data.get("efeito", "")):
-            avisos.append("Troca de posição precisa implementação")
-        
-        # Classifica
-        if problemas:
-            pass
-        elif avisos:
-            skills_feature_nao_processada.append((nome, avisos))
-        else:
-            skills_ok.append(nome)
-    
-    # Relatório
-    print("\n" + "=" * 80)
-    print("📋 RELATÓRIO FINAL")
-    print("=" * 80)
-    
-    print(f"\n✅ SKILLS FUNCIONANDO ({len(skills_ok)}):")
-    for nome in skills_ok[:20]:  # Mostra primeiras 20
-        print(f"   • {nome}")
-    if len(skills_ok) > 20:
-        print(f"   ... e mais {len(skills_ok) - 20} skills")
-    
-    print(f"\n❌ TIPOS NÃO IMPLEMENTADOS ({len(skills_tipo_pendente)}):")
-    for nome in skills_tipo_pendente:
-        tipo = SKILL_DB[nome].get("tipo")
-        print(f"   • {nome} [{tipo}]")
-    
-    print(f"\n⚠️  SKILLS COM FEATURES PENDENTES ({len(skills_feature_nao_processada)}):")
-    for nome, avisos in skills_feature_nao_processada[:15]:
-        print(f"   • {nome}")
-        for aviso in avisos[:2]:
-            print(f"      - {aviso}")
-    
-    if skills_efeito_desconhecido:
-        print(f"\n🔶 EFEITOS POSSIVELMENTE NÃO IMPLEMENTADOS:")
-        efeitos_unicos = set(e for _, e in skills_efeito_desconhecido)
-        for efeito in efeitos_unicos:
-            skills_com_efeito = [n for n, e in skills_efeito_desconhecido if e == efeito]
-            print(f"   • {efeito}: {', '.join(skills_com_efeito)}")
-    
-    # Resumo de ações necessárias
-    print("\n" + "=" * 80)
-    print("🔧 AÇÕES NECESSÁRIAS")
-    print("=" * 80)
-    
-    print("""
-1. IMPLEMENTAR TIPOS FALTANTES:
-   - SUMMON: Sistema de invocações (Fênix, Treant, Espírito, Cópia Sombria)
-   - CHANNEL: Skills canalizáveis (Chamas do Dragão, Fotossíntese, Desintegrar)
-   - TRAP: Estruturas/armadilhas (Muralha de Gelo)
-   - TRANSFORM: Transformações (Avatar de Gelo, Forma Relâmpago)
-
-2. IMPLEMENTAR FEATURES ESPECIAIS:
-   - Reflexão de projéteis/skills (Escudo Arcano, Contrafeitiço)
-   - Roubo de buffs (Roubar Magia)
-   - Portais bidirecionais (Portal Arcano)
-   - Reverter tempo (Reverter)
-   - Controle mental (Possessão)
-   - Sistema de clones (Cópia Sombria)
-   - Voo/Levitação (Levitar)
-   - Troca de posição (Troca de Almas)
-   - Trigger ao morrer (Último Suspiro)
-   - Stats aleatórios (Mutação)
-
-3. EFEITOS DELIBERADAMENTE PENDENTES:
-   - BOMBA_RELOGIO, LINK_ALMA, TROCAR_POS
-   - POSSESSO e CHARME (exigem origem/alvo e regras de IA)
-
-4. EFEITOS PARCIAIS, SEM PROMESSA DE MECÂNICA COMPLETA:
-   - CEGO, MEDO, SONO e EXAUSTO
-""")
-    
-    return {
-        "ok": len(skills_ok),
-        "tipo_pendente": len(skills_tipo_pendente),
-        "feature_pendente": len(skills_feature_nao_processada),
-        "total": len(SKILL_DB) - 1
-    }
+# Estes campos sao validos estruturalmente, mas sua presenca nao prova que a
+# mecanica tenha paridade entre simulador visual, headless e torneio.
+RUNTIME_EVIDENCE_FIELDS = {
+    "chain",
+    "cone",
+    "contagioso",
+    "copia_caster",
+    "cria_portal",
+    "dano_chegada",
+    "duplica_apos",
+    "reflete_projeteis",
+    "reflete_skills",
+    "remove_congelamento",
+    "reverte_estado",
+    "rouba_buff",
+    "sem_cooldown",
+    "stats_aleatorios",
+    "voo",
+}
 
 
-def testar_skill_basica(nome):
-    """Testa se uma skill basica pode ser criada"""
+@dataclass(frozen=True)
+class Finding:
+    level: str
+    code: str
+    message: str
+    skill: str | None = None
+
+
+@dataclass(frozen=True)
+class AuditReport:
+    catalog: str
+    evidence_manifest: str
+    total: int
+    by_type: dict[str, int]
+    verified_runtime_evidence: dict[str, tuple[str, ...]]
+    findings: tuple[Finding, ...]
+
+    @property
+    def errors(self) -> int:
+        return sum(item.level == "error" for item in self.findings)
+
+    @property
+    def warnings(self) -> int:
+        return sum(item.level == "warning" for item in self.findings)
+
+    @property
+    def structurally_valid(self) -> int:
+        invalid = {item.skill for item in self.findings if item.level == "error" and item.skill}
+        return max(0, self.total - len(invalid))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "catalog": self.catalog,
+            "evidence_manifest": self.evidence_manifest,
+            "total": self.total,
+            "by_type": self.by_type,
+            "verified_runtime_evidence": {
+                field_name: list(references)
+                for field_name, references in self.verified_runtime_evidence.items()
+            },
+            "structurally_valid": self.structurally_valid,
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "findings": [asdict(item) for item in self.findings],
+        }
+
+
+class AuditInputError(RuntimeError):
+    """Erro operacional ao carregar uma fonte da auditoria."""
+
+
+def _literal_assignments(path: Path, names: Iterable[str]) -> dict[str, Any]:
+    """Le atribuicoes literais sem importar o pacote do jogo."""
+    requested = set(names)
     try:
-        data = SKILL_DB.get(nome)
-        if not data:
-            return False, "Skill nao encontrada"
-        
-        tipo = data.get("tipo")
-        
-        # Mock de dono
-        class FakeDono:
-            def __init__(self):
-                self.pos = [0, 0]
-                self.morto = False
-                self.angulo_olhar = 0
-                self.vida_max = 100
-                self.vida = 100
-                self.velocidade = 5.0
-                self.cor = (255, 255, 255)
-        
-        dono = FakeDono()
-        
-        if tipo == "PROJETIL":
-            p = Projetil(nome, 0, 0, 0, dono)
-            return True, f"OK - dano={p.dano}, vel={p.vel}, homing={p.homing}"
-        elif tipo == "AREA":
-            a = AreaEffect(nome, 0, 0, dono)
-            return True, f"OK - dano={a.dano}, raio={a.raio}, vortex={a.vortex}"
-        elif tipo == "BEAM":
-            b = Beam(nome, 0, 0, 5, 0, dono)
-            return True, f"OK - dano={b.dano}, alcance={b.alcance}"
-        elif tipo == "BUFF":
-            bf = Buff(nome, dono)
-            return True, f"OK - duracao={bf.duracao}"
-        elif tipo == "SUMMON":
-            s = Summon(nome, 0, 0, dono)
-            return True, f"OK - vida={s.vida}, dano={s.dano}, tipo={s.summon_tipo}"
-        elif tipo == "TRAP":
-            t = Trap(nome, 0, 0, dono)
-            return True, f"OK - vida={t.vida}, bloqueia={t.bloqueia_movimento}"
-        elif tipo == "TRANSFORM":
-            tr = Transform(nome, dono)
-            return True, f"OK - duracao={tr.duracao}, bonus_vel={tr.bonus_velocidade}"
-        elif tipo == "CHANNEL":
-            ch = Channel(nome, dono)
-            return True, f"OK - duracao={ch.duracao_max}, dps={ch.dano_por_segundo}"
+        source = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise AuditInputError(f"nao foi possivel ler {path}: {exc}") from exc
+
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError as exc:
+        raise AuditInputError(f"fonte Python invalida em {path}:{exc.lineno}: {exc.msg}") from exc
+
+    found: dict[str, Any] = {}
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        value = node.value
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id in requested:
+                try:
+                    found[target.id] = ast.literal_eval(value)
+                except (TypeError, ValueError) as exc:
+                    raise AuditInputError(
+                        f"{target.id} em {path} precisa ser uma estrutura literal"
+                    ) from exc
+
+    missing = requested - found.keys()
+    if missing:
+        raise AuditInputError(f"atribuicoes ausentes em {path}: {', '.join(sorted(missing))}")
+    return found
+
+
+def load_sources(
+    catalog_path: Path,
+    status_path: Path,
+    evidence_path: Path,
+) -> tuple[Mapping[str, Any], dict[str, Any], Mapping[str, Any]]:
+    catalog = _literal_assignments(catalog_path, {"SKILL_DB"})["SKILL_DB"]
+    contracts = _literal_assignments(
+        status_path,
+        {
+            "STATUS_ALIASES",
+            "STATUS_RUNTIME",
+            "BUFF_EFFECT_RUNTIME",
+            "EFEITOS_TRATADOS_FORA_DO_STATUS",
+        },
+    )
+    evidence = _literal_assignments(
+        evidence_path,
+        {"SKILL_RUNTIME_EVIDENCE"},
+    )["SKILL_RUNTIME_EVIDENCE"]
+    if not isinstance(catalog, dict):
+        raise AuditInputError("SKILL_DB precisa ser um dicionario")
+    if not isinstance(evidence, dict):
+        raise AuditInputError("SKILL_RUNTIME_EVIDENCE precisa ser um dicionario")
+    return catalog, contracts, evidence
+
+
+def _finding(level: str, code: str, message: str, skill: str | None = None) -> Finding:
+    return Finding(level=level, code=code, message=message, skill=skill)
+
+
+def _evidence_reference_label(module: str, class_name: str, method_name: str) -> str:
+    return f"{module}:{class_name}.{method_name}"
+
+
+def _module_source_path(module: str, project_root: Path) -> Path | None:
+    parts = module.split(".")
+    if not parts or parts[0] != "tests" or any(not part.isidentifier() for part in parts):
+        return None
+    return project_root.joinpath(*parts).with_suffix(".py")
+
+
+def _validate_test_reference(
+    module: str,
+    class_name: str,
+    method_name: str,
+    *,
+    project_root: Path,
+    parsed_modules: dict[str, tuple[Path, ast.Module] | str],
+) -> str | None:
+    """Valida uma referencia de teste somente pela arvore sintatica."""
+    module_path = _module_source_path(module, project_root)
+    if module_path is None:
+        return "modulo deve apontar para tests e conter apenas identificadores Python"
+
+    cached = parsed_modules.get(module)
+    if cached is None:
+        try:
+            source = module_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            cached = f"nao foi possivel ler modulo {module_path}: {exc}"
         else:
-            return False, f"Tipo '{tipo}' nao testavel diretamente"
-            
-    except Exception as e:
-        return False, f"ERRO: {str(e)}"
+            try:
+                cached = (module_path, ast.parse(source, filename=str(module_path)))
+            except SyntaxError as exc:
+                cached = (
+                    f"modulo de teste Python invalido em "
+                    f"{module_path}:{exc.lineno}: {exc.msg}"
+                )
+        parsed_modules[module] = cached
+
+    if isinstance(cached, str):
+        return cached
+
+    module_path, tree = cached
+    classes = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    ]
+    if not classes:
+        return f"classe {class_name!r} nao existe em {module_path}"
+    if len(classes) > 1:
+        return f"classe {class_name!r} e ambigua em {module_path}"
+    if not method_name.startswith("test_"):
+        return f"metodo {method_name!r} nao possui prefixo test_"
+
+    methods = [
+        node
+        for node in classes[0].body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == method_name
+    ]
+    if not methods:
+        return f"metodo {class_name}.{method_name} nao existe em {module_path}"
+    if len(methods) > 1:
+        return f"metodo {class_name}.{method_name} e ambiguo em {module_path}"
+    return None
+
+
+def validate_runtime_evidence(
+    evidence: Mapping[str, Any],
+    *,
+    project_root: Path = PROJECT_ROOT,
+) -> tuple[dict[str, tuple[str, ...]], tuple[Finding, ...]]:
+    """Retorna apenas evidencias cujo modulo, classe e metodo existem."""
+    findings: list[Finding] = []
+    verified: dict[str, tuple[str, ...]] = {}
+    parsed_modules: dict[str, tuple[Path, ast.Module] | str] = {}
+
+    provided_fields = set(evidence)
+    for field_name in sorted(RUNTIME_EVIDENCE_FIELDS - provided_fields):
+        findings.append(
+            _finding(
+                "error",
+                "evidence-field-missing",
+                f"manifesto nao mapeia o campo avancado: {field_name}",
+            )
+        )
+    for field_name in sorted(provided_fields - RUNTIME_EVIDENCE_FIELDS, key=str):
+        findings.append(
+            _finding(
+                "error",
+                "unknown-evidence-field",
+                f"manifesto mapeia campo avancado desconhecido: {field_name!r}",
+            )
+        )
+
+    for field_name in sorted(RUNTIME_EVIDENCE_FIELDS & provided_fields):
+        raw_references = evidence[field_name]
+        if not isinstance(raw_references, (tuple, list)):
+            findings.append(
+                _finding(
+                    "error",
+                    "invalid-evidence-list",
+                    f"evidencias de {field_name} devem ser uma lista ou tupla",
+                )
+            )
+            continue
+
+        valid_references: list[str] = []
+        seen_references: set[tuple[str, str, str]] = set()
+        for index, raw_reference in enumerate(raw_references):
+            if (
+                not isinstance(raw_reference, (tuple, list))
+                or len(raw_reference) != 3
+                or any(not isinstance(part, str) or not part for part in raw_reference)
+            ):
+                findings.append(
+                    _finding(
+                        "error",
+                        "invalid-evidence-reference",
+                        (
+                            f"evidencia {index} de {field_name} deve conter "
+                            "(modulo, classe, metodo)"
+                        ),
+                    )
+                )
+                continue
+
+            module, class_name, method_name = raw_reference
+            reference = (module, class_name, method_name)
+            label = _evidence_reference_label(*reference)
+            if reference in seen_references:
+                findings.append(
+                    _finding(
+                        "error",
+                        "duplicate-evidence-reference",
+                        f"evidencia duplicada para {field_name}: {label}",
+                    )
+                )
+                continue
+            seen_references.add(reference)
+
+            problem = _validate_test_reference(
+                *reference,
+                project_root=project_root,
+                parsed_modules=parsed_modules,
+            )
+            if problem:
+                findings.append(
+                    _finding(
+                        "error",
+                        "invalid-evidence-target",
+                        f"evidencia invalida para {field_name} ({label}): {problem}",
+                    )
+                )
+                continue
+            valid_references.append(label)
+
+        if valid_references:
+            verified[field_name] = tuple(valid_references)
+
+    return dict(sorted(verified.items())), tuple(findings)
+
+
+def audit_catalog(
+    catalog: Mapping[str, Any],
+    contracts: Mapping[str, Any],
+    evidence: Mapping[str, Any],
+    *,
+    catalog_label: str = "SKILL_DB",
+    evidence_label: str = "SKILL_RUNTIME_EVIDENCE",
+    project_root: Path = PROJECT_ROOT,
+) -> AuditReport:
+    verified_evidence, evidence_findings = validate_runtime_evidence(
+        evidence,
+        project_root=project_root,
+    )
+    findings: list[Finding] = list(evidence_findings)
+    by_type: Counter[str] = Counter()
+
+    status_runtime = contracts.get("STATUS_RUNTIME", {})
+    status_aliases = contracts.get("STATUS_ALIASES", {})
+    buff_runtime = contracts.get("BUFF_EFFECT_RUNTIME", {})
+    external_effects = set(contracts.get("EFEITOS_TRATADOS_FORA_DO_STATUS", set()))
+    known_effects = set(status_runtime) | set(status_aliases) | external_effects
+
+    sentinel = catalog.get("Nenhuma")
+    if not isinstance(sentinel, dict) or sentinel.get("tipo") != "NADA":
+        findings.append(
+            _finding("error", "invalid-sentinel", "'Nenhuma' deve existir com tipo NADA", "Nenhuma")
+        )
+
+    for name, raw in catalog.items():
+        skill_name = name if isinstance(name, str) else repr(name)
+        if not isinstance(name, str) or not name.strip():
+            findings.append(_finding("error", "invalid-name", "nome deve ser texto nao vazio", skill_name))
+        if not isinstance(raw, dict):
+            findings.append(_finding("error", "invalid-record", "registro deve ser um dicionario", skill_name))
+            continue
+
+        skill_type = raw.get("tipo")
+        by_type[str(skill_type or "AUSENTE")] += 1
+        if skill_type not in SUPPORTED_TYPES:
+            findings.append(
+                _finding("error", "unsupported-type", f"tipo ausente ou desconhecido: {skill_type!r}", skill_name)
+            )
+            continue
+
+        required = COMMON_REQUIRED | TYPE_REQUIRED[skill_type]
+        for field_name in sorted(required - raw.keys()):
+            findings.append(
+                _finding("error", "missing-field", f"campo obrigatorio ausente: {field_name}", skill_name)
+            )
+
+        for field_name in sorted(NUMERIC_NON_NEGATIVE & raw.keys()):
+            value = raw[field_name]
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                findings.append(
+                    _finding("error", "invalid-number", f"{field_name} deve ser numerico", skill_name)
+                )
+            elif value < 0:
+                findings.append(
+                    _finding("error", "negative-number", f"{field_name} nao pode ser negativo", skill_name)
+                )
+
+        if "descricao" in raw and not isinstance(raw["descricao"], str):
+            findings.append(_finding("error", "invalid-description", "descricao deve ser texto", skill_name))
+
+        if "cor" in raw:
+            color = raw["cor"]
+            valid_color = (
+                isinstance(color, (tuple, list))
+                and len(color) == 3
+                and all(isinstance(channel, int) and not isinstance(channel, bool) and 0 <= channel <= 255 for channel in color)
+            )
+            if not valid_color:
+                findings.append(
+                    _finding("error", "invalid-color", "cor deve conter tres inteiros entre 0 e 255", skill_name)
+                )
+
+        effect = raw.get("efeito")
+        if effect:
+            canonical_effect = status_aliases.get(str(effect).upper(), str(effect).upper())
+            if canonical_effect not in known_effects:
+                findings.append(
+                    _finding(
+                        "warning",
+                        "effect-without-contract",
+                        f"efeito sem contrato estrutural conhecido: {effect}",
+                        skill_name,
+                    )
+                )
+            category = status_runtime.get(canonical_effect, {}).get("categoria", "")
+            if category == "pendente" or str(category).endswith("_parcial"):
+                findings.append(
+                    _finding(
+                        "warning",
+                        "partial-status-contract",
+                        f"efeito possui contrato parcial ou pendente: {canonical_effect}",
+                        skill_name,
+                    )
+                )
+
+        buff_effect = raw.get("efeito_buff")
+        if buff_effect and buff_effect not in buff_runtime:
+            findings.append(
+                _finding(
+                    "warning",
+                    "buff-without-contract",
+                    f"efeito_buff sem contrato conhecido: {buff_effect}",
+                    skill_name,
+                )
+            )
+
+        evidence_fields = sorted(
+            (RUNTIME_EVIDENCE_FIELDS & raw.keys()) - verified_evidence.keys()
+        )
+        if evidence_fields:
+            findings.append(
+                _finding(
+                    "warning",
+                    "runtime-evidence-required",
+                    "campos exigem teste de runtime/paridade: " + ", ".join(evidence_fields),
+                    skill_name,
+                )
+            )
+
+    return AuditReport(
+        catalog=catalog_label,
+        evidence_manifest=evidence_label,
+        total=len(catalog),
+        by_type=dict(sorted(by_type.items())),
+        verified_runtime_evidence=verified_evidence,
+        findings=tuple(findings),
+    )
+
+
+def render_text(report: AuditReport) -> str:
+    lines = [
+        "SKILL CATALOG STRUCTURAL AUDIT",
+        f"Catalog: {report.catalog}",
+        f"Evidence manifest: {report.evidence_manifest}",
+        f"Total records: {report.total}",
+        f"Structurally valid records: {report.structurally_valid}",
+        f"Errors: {report.errors}",
+        f"Warnings: {report.warnings}",
+        "Types: " + ", ".join(f"{name}={count}" for name, count in report.by_type.items()),
+    ]
+    if report.verified_runtime_evidence:
+        lines.append("Verified runtime evidence:")
+        for field_name, references in report.verified_runtime_evidence.items():
+            lines.append(f"- {field_name}: " + ", ".join(references))
+    else:
+        lines.append("Verified runtime evidence: none")
+    if report.findings:
+        lines.append("Findings:")
+        for item in report.findings:
+            location = f" [{item.skill}]" if item.skill else ""
+            lines.append(f"- {item.level.upper()} {item.code}{location}: {item.message}")
+    else:
+        lines.append("Findings: none")
+    lines.append(
+        "Scope: structural contracts only; this report does not claim runtime functionality."
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _write_output(text: str, stream: TextIO) -> None:
+    """Escreve sem falhar em consoles Windows com encoding limitado."""
+    try:
+        stream.write(text)
+    except UnicodeEncodeError:
+        encoding = getattr(stream, "encoding", None) or "ascii"
+        safe_text = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+        stream.write(safe_text)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="retorna codigo 2 quando houver warnings (erros sempre retornam 1)",
+    )
+    parser.add_argument("--json", action="store_true", help="emite o relatorio como JSON ASCII")
+    parser.add_argument(
+        "--catalog",
+        type=Path,
+        default=DEFAULT_CATALOG,
+        help="arquivo Python com SKILL_DB",
+    )
+    parser.add_argument(
+        "--status-contract",
+        type=Path,
+        default=DEFAULT_STATUS_CONTRACT,
+        help="arquivo Python com os contratos de status",
+    )
+    parser.add_argument(
+        "--evidence-manifest",
+        type=Path,
+        default=DEFAULT_EVIDENCE_MANIFEST,
+        help="arquivo Python literal com SKILL_RUNTIME_EVIDENCE",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None, *, stdout: TextIO = sys.stdout, stderr: TextIO = sys.stderr) -> int:
+    args = build_parser().parse_args(argv)
+    catalog_path = args.catalog.resolve()
+    status_path = args.status_contract.resolve()
+    evidence_path = args.evidence_manifest.resolve()
+    try:
+        catalog, contracts, evidence = load_sources(
+            catalog_path,
+            status_path,
+            evidence_path,
+        )
+        report = audit_catalog(
+            catalog,
+            contracts,
+            evidence,
+            catalog_label=str(catalog_path),
+            evidence_label=str(evidence_path),
+        )
+    except AuditInputError as exc:
+        _write_output(f"audit input error: {exc}\n", stderr)
+        return 1
+
+    if args.json:
+        _write_output(json.dumps(report.to_dict(), ensure_ascii=True, sort_keys=True) + "\n", stdout)
+    else:
+        _write_output(render_text(report), stdout)
+
+    if report.errors:
+        return 1
+    if args.strict and report.warnings:
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
-    resultado = auditar_todas_skills()
-    
-    print("\n" + "=" * 80)
-    print("🧪 TESTES DE CRIAÇÃO DE SKILLS")
-    print("=" * 80)
-    
-    # Testa algumas skills específicas
-    skills_testar = [
-        "Bola de Fogo", "Mísseis Arcanos", "Buraco Negro", 
-        "Corrente em Cadeia", "Fênix", "Avatar de Gelo"
-    ]
-    
-    for nome in skills_testar:
-        ok, msg = testar_skill_basica(nome)
-        status = "✅" if ok else "❌"
-        print(f"{status} {nome}: {msg}")
+    raise SystemExit(main())

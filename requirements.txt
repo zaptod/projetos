@@ -6,13 +6,13 @@
 # === CORE DEPENDENCIES ===
 
 # Interface gráfica do simulador de combate
-pygame>=2.5.0
+pygame-ce>=2.5.7,<3
 
 # Interface gráfica do menu principal (Tkinter já vem com Python)
 # tkinter (built-in)
 
 # Interface moderna para o modo torneio
-customtkinter>=5.2.0
+customtkinter>=5.2,<6
 
 # === OPTIONAL DEPENDENCIES ===
 
@@ -38,5 +38,5 @@ customtkinter>=5.2.0
 # Executar modo torneio:
 #   python run_tournament.py
 #
-# Gerar nova database de armas/personagens:
-#   python -c "from tools.gerador_database import gerar_database_completa; gerar_database_completa()"
+# Gerar e salvar uma nova database validada:
+#   python -m scripts.gerar_roster --modo completo --seed 42

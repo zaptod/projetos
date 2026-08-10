@@ -134,13 +134,13 @@ run_tournament.py           # Lançador direto do torneio
 ### Gerar Novo Roster
 ```bash
 # Roster completo (~150 personagens)
-python scripts/gerar_roster.py --modo completo
+python -m scripts.gerar_roster --modo completo
 
 # Torneio de 64
-python scripts/gerar_roster.py --modo 64
+python -m scripts.gerar_roster --modo 64
 
 # Torneio rápido de 16
-python scripts/gerar_roster.py --modo 16
+python -m scripts.gerar_roster --modo 16
 ```
 
 ### Fluxo do Torneio

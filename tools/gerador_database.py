@@ -12,70 +12,46 @@ Gera personagens e armas com MÁXIMA DIVERSIDADE:
 - Nomes gerados proceduralmente
 """
 
-import json
 import random
-import os
-import sys
-import math
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import logging
 
 from models.constants import (
     LISTA_CLASSES, LISTA_RARIDADES, LISTA_TIPOS_ARMA, 
-    LISTA_ENCANTAMENTOS, TIPOS_ARMA, ENCANTAMENTOS, CLASSES_DATA
+    LISTA_ENCANTAMENTOS, ENCANTAMENTOS
 )
 from ai.personalities import PERSONALIDADES_PRESETS
+from core.skills import SKILL_DB
+from data import database
+
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
-# SKILLS ORGANIZADAS POR ELEMENTO E TIPO
+# CATALOGOS CANONICOS
 # =============================================================================
 
-SKILLS_OFENSIVAS = {
-    "FOGO": ["Bola de Fogo", "Meteoro", "Lança de Fogo", "Explosão Nova", "Chamas do Dragão", 
-             "Pilar de Fogo", "Chuva de Fogo", "Cometa Flamejante", "Incineração"],
-    "GELO": ["Estilhaço de Gelo", "Lança de Gelo", "Nevasca", "Cone de Gelo", "Zero Absoluto",
-             "Tempestade de Granizo", "Lâmina Congelante", "Avalanche"],
-    "RAIO": ["Relâmpago", "Corrente Elétrica", "Tempestade", "Corrente em Cadeia", "Sobrecarga",
-             "Trovão Devastador", "Pulso Elétrico", "Fúria do Céu"],
-    "TREVAS": ["Esfera Sombria", "Lâmina de Sangue", "Explosão Necrótica", "Drenar Vida",
-               "Toque da Morte", "Corrupção", "Maldição Fatal", "Vazio Absoluto"],
-    "LUZ": ["Raio Sagrado", "Explosão Divina", "Luz Purificadora", "Julgamento",
-            "Lança Celestial", "Fúria Divina", "Espadas de Luz"],
-    "NATUREZA": ["Dardo Venenoso", "Espinhos", "Fúria Bestial", "Garras da Terra",
-                 "Tempestade de Pétalas", "Mordida Venenosa", "Enxame"],
-    "ARCANO": ["Disparo de Mana", "Mísseis Arcanos", "Explosão Arcana", "Desintegrar",
-               "Lâmina Dimensional", "Caos Arcano", "Ruptura Mágica"],
-    "FISICO": ["Avanço Brutal", "Fúria Giratória", "Impacto Sônico", "Golpe do Executor",
-               "Perfurar", "Golpe Devastador", "Terremoto", "Onda de Choque"],
-}
 
-SKILLS_DEFENSIVAS = {
-    "GELO": ["Prisão de Gelo", "Armadura de Gelo", "Muralha Congelada"],
-    "LUZ": ["Escudo Arcano", "Benção", "Aura Protetora", "Escudo Divino"],
-    "ARCANO": ["Reflexo Espelhado", "Distorção Temporal", "Barreira Mágica"],
-    "FISICO": ["Escudo de Combate", "Postura Defensiva", "Contra-Ataque"],
-    "TREVAS": ["Véu das Sombras", "Absorção Sombria"],
-    "NATUREZA": ["Regeneração", "Casca de Pedra", "Pele de Ferro"],
-}
+def _agrupar_skills(filtro):
+    """Cria visoes do catalogo sem manter uma segunda lista de nomes."""
 
-SKILLS_UTILIDADE = {
-    "RAIO": ["Teleporte Relâmpago", "Velocidade do Trovão", "Passo do Raio"],
-    "TREVAS": ["Portal Sombrio", "Passo das Sombras", "Invisibilidade"],
-    "LUZ": ["Cura Menor", "Cura Maior", "Purificação", "Ressurreição"],
-    "ARCANO": ["Velocidade Arcana", "Amplificador", "Clarividência", "Blink"],
-    "NATUREZA": ["Camuflagem", "Raízes", "Nuvem Tóxica"],
-    "FOGO": ["Passos Flamejantes", "Explosão de Recuo"],
-    "GELO": ["Passos Gélidos", "Congelar Área"],
-}
+    grupos = {}
+    for nome, dados in SKILL_DB.items():
+        if nome == "Nenhuma" or not filtro(dados):
+            continue
+        elemento = dados.get("elemento", "FISICO")
+        grupos.setdefault(elemento, []).append(nome)
+    return {elemento: sorted(nomes) for elemento, nomes in grupos.items()}
 
-# Compilação de todas as skills
-TODAS_SKILLS = []
-for skills in SKILLS_OFENSIVAS.values():
-    TODAS_SKILLS.extend(skills)
-for skills in SKILLS_DEFENSIVAS.values():
-    TODAS_SKILLS.extend(skills)
-for skills in SKILLS_UTILIDADE.values():
-    TODAS_SKILLS.extend(skills)
+
+SKILLS_OFENSIVAS = _agrupar_skills(
+    lambda dados: dados.get("tipo")
+    in {"PROJETIL", "AREA", "BEAM", "DASH", "CHANNEL", "TRAP", "SUMMON"}
+)
+SKILLS_DEFENSIVAS = _agrupar_skills(lambda dados: dados.get("tipo") == "BUFF")
+SKILLS_UTILIDADE = _agrupar_skills(
+    lambda dados: dados.get("tipo") in {"TRANSFORM"}
+)
+TODAS_SKILLS = sorted(nome for nome in SKILL_DB if nome != "Nenhuma")
 
 # =============================================================================
 # ESTILOS E VARIAÇÕES POR TIPO DE ARMA
@@ -235,12 +211,9 @@ TITULOS = [
     "", "", "", "", "", "",
 ]
 
-LISTA_PERSONALIDADES = [
-    "Agressivo", "Defensivo", "Tático", "Equilibrado", "Berserker",
-    "Assassino", "Guardião", "Duelista", "Predador", "Sobrevivente",
-    "Caçador", "Protetor", "Vingador", "Provocador", "Calculista",
-    "Impulsivo", "Paciente", "Oportunista", "Dominador", "Evasivo",
-]
+# Mantido como alias publico por compatibilidade com scripts antigos. A fonte
+# continua sendo PERSONALIDADES_PRESETS; nenhuma personalidade e inventada aqui.
+LISTA_PERSONALIDADES = list(PERSONALIDADES_PRESETS)
 
 # =============================================================================
 # FUNÇÕES DE GERAÇÃO
@@ -342,7 +315,16 @@ def valor_range(r):
 
 
 def gerar_arma(tipo, raridade, variante_idx=None, encantamento=None, skill=None):
-    """Gera uma arma com máxima diversidade"""
+    """Gera uma arma usando apenas valores presentes nos catalogos canonicos."""
+
+    if tipo not in LISTA_TIPOS_ARMA:
+        raise ValueError(f"Tipo de arma desconhecido: {tipo!r}")
+    if raridade not in LISTA_RARIDADES:
+        raise ValueError(f"Raridade desconhecida: {raridade!r}")
+    if encantamento is not None and encantamento not in LISTA_ENCANTAMENTOS:
+        raise ValueError(f"Encantamento desconhecido: {encantamento!r}")
+    if skill is not None and skill not in SKILL_DB:
+        raise ValueError(f"Skill inexistente: {skill!r}")
     
     estilos = ESTILOS_ARMA.get(tipo, ESTILOS_ARMA["Reta"])
     variantes = estilos["variantes"]
@@ -406,6 +388,7 @@ def gerar_arma(tipo, raridade, variante_idx=None, encantamento=None, skill=None)
         
     elif tipo == "Arremesso":
         arma["tamanho_projetil"] = valor_range(variante.get("tam", (4, 7)))
+        arma["largura"] = arma["tamanho_projetil"]
         arma["quantidade"] = random.randint(*variante.get("qtd", (2, 4)))
         arma["velocidade_projetil"] = variante.get("vel", 15)
         arma["tipo_projetil"] = variante.get("tipo", "faca")
@@ -441,6 +424,7 @@ def gerar_arma(tipo, raridade, variante_idx=None, encantamento=None, skill=None)
         arma["forma2_lamina"] = valor_range(variante.get("f2_lam", (70, 100)))
         arma["comp_cabo"] = arma["forma1_cabo"]
         arma["comp_lamina"] = arma["forma1_lamina"]
+        arma["largura"] = 5.0
     
     # Valores padrão para campos ausentes
     for campo in ["comp_cabo", "comp_lamina", "largura", "distancia", "comp_corrente", 
@@ -455,7 +439,14 @@ def gerar_arma(tipo, raridade, variante_idx=None, encantamento=None, skill=None)
 
 
 def gerar_personagem(classe, personalidade, arma_nome, cor=None):
-    """Gera um personagem diverso"""
+    """Gera um personagem compativel com o contrato persistido."""
+
+    if classe not in LISTA_CLASSES:
+        raise ValueError(f"Classe desconhecida: {classe!r}")
+    if personalidade not in PERSONALIDADES_PRESETS:
+        raise ValueError(f"Personalidade inexistente: {personalidade!r}")
+    if not isinstance(arma_nome, str) or not arma_nome.strip():
+        raise ValueError("arma_nome deve ser uma string nao vazia")
     nome = gerar_nome_personagem()
     
     if cor is None:
@@ -483,16 +474,11 @@ def gerar_personagem(classe, personalidade, arma_nome, cor=None):
         mana_base += 2
     
     tamanho = random.uniform(1.4, 2.2)
-    resistencia = random.uniform(3, 8)
-    agilidade = random.uniform(3, 8)
-    
     personagem = {
         "nome": nome,
         "tamanho": round(tamanho, 2),
         "forca": round(forca_base, 1),
         "mana": round(mana_base, 1),
-        "resistencia": round(resistencia, 1),
-        "agilidade": round(agilidade, 1),
         "nome_arma": arma_nome,
         "cor_r": cor[0],
         "cor_g": cor[1],
@@ -529,15 +515,33 @@ def selecionar_arma_por_classe(classe, armas):
     return [a for a in armas if a["tipo"] in tipos_preferidos]
 
 
+def _reservar_nome_unico(registro, nomes_usados):
+    """Resolve colisoes de nomes de forma deterministica e sem descartar dados."""
+
+    base = registro["nome"].strip()
+    nome = base
+    sufixo = 2
+    while nome in nomes_usados:
+        nome = f"{base} #{sufixo}"
+        sufixo += 1
+    registro["nome"] = nome
+    nomes_usados.add(nome)
+
+
 def gerar_database_diversa(num_personagens=64):
     """Gera database com MÁXIMA DIVERSIDADE"""
+
+    if isinstance(num_personagens, bool) or not isinstance(num_personagens, int):
+        raise TypeError("num_personagens deve ser inteiro")
+    if num_personagens < 1:
+        raise ValueError("num_personagens deve ser maior que zero")
     
     armas = []
     personagens = []
     nomes_armas_usados = set()
     nomes_personagens_usados = set()
     
-    print("Gerando armas diversas...")
+    logger.debug("Gerando armas diversas")
     
     for tipo in LISTA_TIPOS_ARMA:
         variantes = ESTILOS_ARMA.get(tipo, ESTILOS_ARMA["Reta"])["variantes"]
@@ -553,14 +557,8 @@ def gerar_database_diversa(num_personagens=64):
             
             arma = gerar_arma(tipo, raridade, var_idx, encantamento, skill)
             
-            tentativas = 0
-            while arma["nome"] in nomes_armas_usados and tentativas < 10:
-                arma = gerar_arma(tipo, raridade, var_idx, encantamento, skill)
-                tentativas += 1
-            
-            if arma["nome"] not in nomes_armas_usados:
-                armas.append(arma)
-                nomes_armas_usados.add(arma["nome"])
+            _reservar_nome_unico(arma, nomes_armas_usados)
+            armas.append(arma)
     
     for raridade in ["Épico", "Lendário", "Mítico"]:
         for tipo in LISTA_TIPOS_ARMA:
@@ -570,28 +568,21 @@ def gerar_database_diversa(num_personagens=64):
             
             arma = gerar_arma(tipo, raridade, None, enc, skill)
             
-            if arma["nome"] not in nomes_armas_usados:
-                armas.append(arma)
-                nomes_armas_usados.add(arma["nome"])
+            _reservar_nome_unico(arma, nomes_armas_usados)
+            armas.append(arma)
     
-    print(f"  → {len(armas)} armas geradas")
-    print("Gerando personagens diversos...")
+    logger.debug("%d armas geradas", len(armas))
+    logger.debug("Gerando personagens diversos")
     
-    for classe_idx, classe in enumerate(LISTA_CLASSES):
+    for classe_idx, classe in enumerate(LISTA_CLASSES[:num_personagens]):
         personalidade = LISTA_PERSONALIDADES[classe_idx % len(LISTA_PERSONALIDADES)]
         armas_apropriadas = selecionar_arma_por_classe(classe, armas)
         arma = random.choice(armas_apropriadas) if armas_apropriadas else random.choice(armas)
         
         personagem = gerar_personagem(classe, personalidade, arma["nome"])
         
-        tentativas = 0
-        while personagem["nome"] in nomes_personagens_usados and tentativas < 10:
-            personagem = gerar_personagem(classe, personalidade, arma["nome"])
-            tentativas += 1
-        
-        if personagem["nome"] not in nomes_personagens_usados:
-            personagens.append(personagem)
-            nomes_personagens_usados.add(personagem["nome"])
+        _reservar_nome_unico(personagem, nomes_personagens_usados)
+        personagens.append(personagem)
     
     while len(personagens) < num_personagens:
         classe = random.choice(LISTA_CLASSES)
@@ -600,62 +591,94 @@ def gerar_database_diversa(num_personagens=64):
         
         personagem = gerar_personagem(classe, personalidade, arma["nome"])
         
-        if personagem["nome"] not in nomes_personagens_usados:
-            personagens.append(personagem)
-            nomes_personagens_usados.add(personagem["nome"])
+        _reservar_nome_unico(personagem, nomes_personagens_usados)
+        personagens.append(personagem)
     
-    print(f"  → {len(personagens)} personagens gerados")
+    logger.debug("%d personagens gerados", len(personagens))
     
     return armas, personagens
 
 
-def salvar_database(armas, personagens, substituir=True):
-    """Salva a database gerada"""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = os.path.join(base_dir, "data")
-    
-    armas_file = os.path.join(data_dir, "armas.json")
-    personagens_file = os.path.join(data_dir, "personagens.json")
-    
+def gerar_database_completa(num_personagens=64, estrategia="balanceada", *, seed=None):
+    """API publica do gerador usada pela UI e pelos scripts de torneio.
+
+    ``balanceada`` e ``representativa`` compartilham o mesmo contrato de dados;
+    o segundo nome e mantido para compatibilidade com os entrypoints antigos.
+    A funcao somente gera e valida: persistir continua sendo uma decisao
+    explicita do chamador.
+    """
+
+    estrategias = {"balanceada", "representativa", "diversa"}
+    if estrategia not in estrategias:
+        raise ValueError(
+            f"Estrategia desconhecida: {estrategia!r}. "
+            f"Use uma de: {', '.join(sorted(estrategias))}"
+        )
+    estado_random = random.getstate()
+    if seed is not None:
+        random.seed(seed)
+    try:
+        armas, personagens = gerar_database_diversa(num_personagens)
+        database.validar_database(armas, personagens)
+        return armas, personagens
+    finally:
+        if seed is not None:
+            random.setstate(estado_random)
+
+
+def salvar_database(
+    armas,
+    personagens,
+    substituir=True,
+    *,
+    arquivo_armas=None,
+    arquivo_personagens=None,
+):
+    """Valida e persiste armas/personagens como uma unidade coerente."""
+
+    armas_file = arquivo_armas or database.ARQUIVO_ARMAS
+    personagens_file = arquivo_personagens or database.ARQUIVO_CHARS
+
+    armas_novas = [dict(arma) for arma in armas]
+    personagens_novos = [dict(personagem) for personagem in personagens]
+
     if substituir:
-        armas_final = armas
-        personagens_final = personagens
+        armas_final = armas_novas
+        personagens_final = personagens_novos
     else:
-        try:
-            with open(armas_file, 'r', encoding='utf-8') as f:
-                armas_existentes = json.load(f)
-        except:
-            armas_existentes = []
-        
-        try:
-            with open(personagens_file, 'r', encoding='utf-8') as f:
-                personagens_existentes = json.load(f)
-        except:
-            personagens_existentes = []
-        
-        nomes_armas = {a["nome"] for a in armas_existentes}
-        nomes_personagens = {p["nome"] for p in personagens_existentes}
-        
-        for arma in armas:
-            if arma["nome"] not in nomes_armas:
-                armas_existentes.append(arma)
-        
-        for personagem in personagens:
-            if personagem["nome"] not in nomes_personagens:
-                personagens_existentes.append(personagem)
-        
-        armas_final = armas_existentes
-        personagens_final = personagens_existentes
-    
-    with open(armas_file, 'w', encoding='utf-8') as f:
-        json.dump(armas_final, f, indent=2, ensure_ascii=False)
-    
-    with open(personagens_file, 'w', encoding='utf-8') as f:
-        json.dump(personagens_final, f, indent=2, ensure_ascii=False)
-    
-    print(f"\n✅ Database salva:")
-    print(f"   - {len(armas_final)} armas em {armas_file}")
-    print(f"   - {len(personagens_final)} personagens em {personagens_file}")
+        armas_existentes = database.carregar_json(armas_file)
+        personagens_existentes = database.carregar_json(personagens_file)
+        database.validar_database(armas_existentes, personagens_existentes)
+
+        nomes_armas = {arma["nome"] for arma in armas_existentes}
+        nomes_personagens = {personagem["nome"] for personagem in personagens_existentes}
+        conflitos_armas = nomes_armas & {arma.get("nome") for arma in armas_novas}
+        conflitos_personagens = nomes_personagens & {
+            personagem.get("nome") for personagem in personagens_novos
+        }
+        conflitos = sorted(conflitos_armas | conflitos_personagens)
+        if conflitos:
+            raise database.DataValidationError(
+                "nomes ja existentes no banco: " + ", ".join(conflitos)
+            )
+
+        armas_final = [*armas_existentes, *armas_novas]
+        personagens_final = [*personagens_existentes, *personagens_novos]
+
+    database.salvar_database(
+        armas_final,
+        personagens_final,
+        arquivo_armas=armas_file,
+        arquivo_personagens=personagens_file,
+    )
+
+    logger.info(
+        "Database salva: %d armas em %s; %d personagens em %s",
+        len(armas_final),
+        armas_file,
+        len(personagens_final),
+        personagens_file,
+    )
     
     return armas_final, personagens_final
 
@@ -667,7 +690,7 @@ if __name__ == "__main__":
     
     armas, personagens = gerar_database_diversa(64)
     
-    print("\n📊 Estatísticas:")
+    print("\nEstatisticas:")
     
     tipos_count = {}
     for a in armas:
@@ -695,4 +718,4 @@ if __name__ == "__main__":
     
     salvar_database(armas, personagens, substituir=True)
     
-    print("\n✅ Database gerada com sucesso!")
+    print("\nDatabase gerada com sucesso!")

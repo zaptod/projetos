@@ -6,15 +6,12 @@ Coloca todos os personagens em brackets e roda lutas automaticamente.
 """
 
 import random
-import json
 import os
 import sys
 import time
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 from enum import Enum
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.characters import Personagem
 from models.weapons import Arma
@@ -425,7 +422,7 @@ class Tournament:
         )
     
     def save_state(self, filename: str = "tournament_state.json"):
-        """Salva estado do torneio"""
+        """Salva o estado atomicamente, sem truncar o save anterior."""
         state = {
             "name": self.name,
             "participants": self.participants,
@@ -454,61 +451,124 @@ class Tournament:
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         filepath = os.path.join(base_dir, "data", filename)
         
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
+        database.salvar_json(filepath, state)
         
         print(f"✅ Estado salvo em {filepath}")
     
     def load_state(self, filename: str = "tournament_state.json") -> bool:
-        """Carrega estado do torneio"""
+        """Carrega e valida todo o save antes de alterar o torneio atual."""
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         filepath = os.path.join(base_dir, "data", filename)
         
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                state = json.load(f)
-            
-            self.name = state["name"]
-            self.participants = state["participants"]
-            self.state = TournamentState(state["state"])
-            self.champion = state["champion"]
-            self.current_round = state["current_round"]
-            self.current_match = state["current_match"]
-            self.stats = state.get("stats", self.stats)
-            
-            self.bracket = []
+            if not os.path.exists(filepath):
+                raise FileNotFoundError(filepath)
+            state = database.carregar_json(filepath)
+            if not isinstance(state, dict):
+                raise database.DataValidationError("save de torneio deve ser um objeto JSON")
+
+            name = state["name"]
+            participants = state["participants"]
+            if not isinstance(name, str) or not name.strip():
+                raise database.DataValidationError("name deve ser uma string nao vazia")
+            if not isinstance(participants, list) or not all(
+                isinstance(nome, str) and nome for nome in participants
+            ):
+                raise database.DataValidationError("participants deve conter somente nomes")
+            if len(participants) != len(set(participants)):
+                raise database.DataValidationError("participants contem nomes duplicados")
+
+            tournament_state = TournamentState(state["state"])
+            champion = state.get("champion")
+            current_round = state["current_round"]
+            current_match = state["current_match"]
+            if (
+                isinstance(current_round, bool)
+                or not isinstance(current_round, int)
+                or current_round < 0
+                or isinstance(current_match, bool)
+                or not isinstance(current_match, int)
+                or current_match < 0
+            ):
+                raise database.DataValidationError(
+                    "current_round e current_match devem ser inteiros nao negativos"
+                )
+
+            stats_data = state.get("stats", {})
+            if not isinstance(stats_data, dict):
+                raise database.DataValidationError("stats deve ser um objeto JSON")
+            stats = dict(self.stats)
+            stats.update(stats_data)
+
+            bracket_data = state["bracket"]
+            if not isinstance(bracket_data, list):
+                raise database.DataValidationError("bracket deve ser uma lista")
+            bracket = []
             matches_by_id = {}
-            for round_data in state["bracket"]:
+            for round_data in bracket_data:
+                if not isinstance(round_data, dict) or not isinstance(
+                    round_data.get("matches"), list
+                ):
+                    raise database.DataValidationError("rodada invalida no bracket")
                 round_obj = TournamentRound(
                     round_num=round_data["round_num"],
                     name=round_data["name"],
                     completed=round_data["completed"]
                 )
                 for match_data in round_data["matches"]:
+                    if not isinstance(match_data, dict):
+                        raise database.DataValidationError("luta invalida no bracket")
                     match = self._deserialize_match(match_data)
+                    if match.match_id in matches_by_id:
+                        raise database.DataValidationError(
+                            f"match_id duplicado: {match.match_id}"
+                        )
                     round_obj.matches.append(match)
                     matches_by_id[match.match_id] = match
-                self.bracket.append(round_obj)
+                bracket.append(round_obj)
 
             history_data = state.get("fight_history")
             if history_data is None:
                 # Saves antigos não persistiam o histórico. Reconstrói as
                 # lutas reais concluídas, sem incluir avanços automáticos.
-                self.fight_history = [
+                fight_history = [
                     match
-                    for round_obj in self.bracket
+                    for round_obj in bracket
                     for match in round_obj.matches
                     if match.completed and match.ko_type != "BYE"
                 ]
             else:
-                self.fight_history = []
+                if not isinstance(history_data, list):
+                    raise database.DataValidationError("fight_history deve ser uma lista")
+                fight_history = []
                 for match_data in history_data:
+                    if not isinstance(match_data, dict):
+                        raise database.DataValidationError("historico contem luta invalida")
                     match = matches_by_id.get(match_data["match_id"])
                     if match is None:
                         match = self._deserialize_match(match_data)
                     elif "fight_log" in match_data:
                         match.fight_log = list(match_data.get("fight_log") or [])
-                    self.fight_history.append(match)
+                    fight_history.append(match)
+
+            if current_round > len(bracket):
+                raise database.DataValidationError("current_round esta fora do bracket")
+            if current_round < len(bracket) and current_match > len(
+                bracket[current_round].matches
+            ):
+                raise database.DataValidationError("current_match esta fora da rodada")
+
+            # Commit em memoria: nenhuma validacao posterior pode deixar o
+            # objeto parcialmente restaurado.
+            self.name = name
+            self.participants = participants
+            self.state = tournament_state
+            self.champion = champion
+            self.current_round = current_round
+            self.current_match = current_match
+            self.stats = stats
+            self.bracket = bracket
+            self.fight_history = fight_history
             
             print(f"✅ Estado carregado de {filepath}")
             return True
@@ -523,16 +583,32 @@ class Tournament:
 
 class TournamentRunner:
     """Executor de torneio - conecta torneio com simulador visual"""
+
+    _DELETE_MATCH_CONFIG_ENV = "NEURAL_FIGHTS_DELETE_MATCH_CONFIG"
     
-    def __init__(self, tournament: Tournament):
+    def __init__(self, tournament: Tournament, match_config_path: str | None = None):
         self.tournament = tournament
+        self.match_config_path = match_config_path
+        self._isolated_visual_config = match_config_path is None
         self.simulation_config = {
             "max_duration": 120.0,
+            "fixed_dt": 1.0 / 60.0,
+            "seed": 0,
+            "draw_retry_limit": 2,
             "auto_advance": True,
         }
     
     def setup_match_config(self, fighter1_name: str, fighter2_name: str, cenario: str = "Arena"):
         """Configura o match_config.json para a próxima luta"""
+        config_path = self.match_config_path
+        if self._isolated_visual_config:
+            import tempfile
+            import uuid
+
+            config_path = os.path.join(
+                tempfile.gettempdir(),
+                f"neural-fights-match-{uuid.uuid4().hex}.json",
+            )
         config = {
             "p1_nome": fighter1_name,
             "p2_nome": fighter2_name,
@@ -541,20 +617,68 @@ class TournamentRunner:
             "portrait_mode": False
         }
         
-        database.salvar_match_config(config)
-        
-        return database.ARQUIVO_MATCH
+        try:
+            saved_path = database.salvar_match_config(
+                config,
+                preservar_existente=False,
+                arquivo=config_path,
+            )
+        except Exception:
+            if self._isolated_visual_config and config_path:
+                self._remove_visual_config(config_path)
+            raise
+
+        self.match_config_path = saved_path
+
+        return self.match_config_path
+
+    @staticmethod
+    def _remove_visual_config(config_path: str) -> None:
+        try:
+            os.remove(config_path)
+        except FileNotFoundError:
+            pass
     
     def launch_simulation(self):
         """Lança o simulador Pygame"""
         import subprocess
         import os
-        
+
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        sim_path = os.path.join(base_dir, "simulation", "simulacao.py")
-        
-        # Executa o simulador
-        subprocess.Popen(["python", sim_path], cwd=base_dir)
+        config_path = self.match_config_path
+
+        env = os.environ.copy()
+        if config_path:
+            env[database.MATCH_CONFIG_ENV] = config_path
+        if self._isolated_visual_config and config_path:
+            env[self._DELETE_MATCH_CONFIG_ENV] = "1"
+
+        # Usa o mesmo interpretador e o mesmo estado isolado do processo pai.
+        try:
+            process = subprocess.Popen(
+                [sys.executable, "-m", "simulation.simulacao"],
+                cwd=base_dir,
+                env=env,
+            )
+        except Exception:
+            if self._isolated_visual_config and config_path:
+                self._remove_visual_config(config_path)
+            raise
+
+        if self._isolated_visual_config and config_path:
+            import threading
+
+            def cleanup_config():
+                try:
+                    process.wait()
+                except Exception:
+                    # A remoção continua obrigatória mesmo se wait() falhar.
+                    pass
+                finally:
+                    self._remove_visual_config(config_path)
+
+            threading.Thread(target=cleanup_config, daemon=True).start()
+        return process
     
     def run_single_match_visual(self, match: TournamentMatch) -> bool:
         """Configura e lança uma luta visual"""
@@ -567,121 +691,84 @@ class TournamentRunner:
         return True
     
     def run_single_match(self, match: TournamentMatch) -> Dict:
-        """Executa uma única luta usando simulação simplificada"""
-        from data.database import carregar_armas, carregar_personagens, carregar_arma_por_nome
-        from models.constants import CLASSES_DATA
-        
-        # Carrega dados dos lutadores
-        personagens = carregar_personagens()
-        armas = carregar_armas()
-        
-        # Encontra os personagens
-        p1_data = next((p for p in personagens if p.nome == match.fighter1_name), None)
-        p2_data = next((p for p in personagens if p.nome == match.fighter2_name), None)
-        
-        if not p1_data or not p2_data:
-            print(f"❌ Personagens não encontrados: {match.fighter1_name}, {match.fighter2_name}")
-            return {"success": False, "error": "Personagens não encontrados"}
-        
-        # Simulação simplificada baseada em atributos
-        # Calcula poder de combate de cada lutador
-        
-        def calcular_poder(personagem, arma_data):
-            """Calcula poder de combate baseado em atributos"""
-            classe = personagem.classe if hasattr(personagem, 'classe') else "Guerreiro"
-            class_data = CLASSES_DATA.get(classe, {})
-            
-            # Stats base
-            forca = personagem.forca if hasattr(personagem, 'forca') else 5.0
-            mana = personagem.mana if hasattr(personagem, 'mana') else 5.0
-            
-            # Modificadores de classe
-            mod_forca = class_data.get("mod_forca", 1.0)
-            mod_mana = class_data.get("mod_mana", 1.0)
-            mod_vida = class_data.get("mod_vida", 1.0)
-            mod_vel = class_data.get("mod_velocidade", 1.0)
-            
-            # Poder físico
-            poder_fisico = forca * mod_forca * 10
-            
-            # Poder mágico
-            poder_magico = mana * mod_mana * 8
-            
-            # Poder de arma
-            poder_arma = 0
-            if arma_data:
-                dano = arma_data.dano if hasattr(arma_data, 'dano') else 3.0
-                poder_arma = dano * 5
-                
-                # Bonus de raridade
-                raridade_bonus = {
-                    "Comum": 1.0, "Incomum": 1.1, "Raro": 1.25,
-                    "Épico": 1.4, "Lendário": 1.6, "Mítico": 2.0
+        """Executa uma luta no mesmo motor usado pela apresentação visual."""
+        from simulation.headless import run_headless_match
+
+        config = {
+            "p1_nome": match.fighter1_name,
+            "p2_nome": match.fighter2_name,
+            "cenario": "Arena",
+            "best_of": 1,
+            "portrait_mode": False,
+        }
+        retry_limit = int(self.simulation_config.get("draw_retry_limit", 2))
+        if retry_limit < 0:
+            return {
+                "success": False,
+                "error": "draw_retry_limit precisa ser maior ou igual a zero",
+                "reason": "invalid_configuration",
+            }
+
+        initial_seed = int(self.simulation_config.get("seed", 0)) + int(match.match_id)
+        engine_results = []
+        result = None
+        for attempt in range(retry_limit + 1):
+            attempt_seed = initial_seed + attempt
+            result = run_headless_match(
+                config,
+                fixed_dt=float(self.simulation_config.get("fixed_dt", 1.0 / 60.0)),
+                max_duration=float(self.simulation_config.get("max_duration", 120.0)),
+                seed=attempt_seed,
+            )
+            engine_results.append(result.to_dict())
+
+            # Erros reais do motor são terminais; somente empates são refeitos.
+            if not result.success:
+                return {
+                    "success": False,
+                    "error": result.error or "Falha desconhecida no simulador",
+                    "reason": "engine_error",
+                    "attempts": attempt + 1,
+                    "engine_result": result.to_dict(),
+                    "engine_results": engine_results,
                 }
-                rar = arma_data.raridade if hasattr(arma_data, 'raridade') else "Comum"
-                poder_arma *= raridade_bonus.get(rar, 1.0)
-                
-                # Bonus de encantamentos
-                if hasattr(arma_data, 'encantamentos') and arma_data.encantamentos:
-                    poder_arma *= 1.0 + len(arma_data.encantamentos) * 0.15
-            
-            # Poder de vida/resistência
-            poder_defesa = mod_vida * 20
-            
-            # Poder de velocidade (chance de esquiva/crítico)
-            poder_agilidade = mod_vel * 15
-            
-            # Poder total com aleatoriedade
-            poder_total = poder_fisico + poder_magico + poder_arma + poder_defesa + poder_agilidade
-            poder_total *= random.uniform(0.8, 1.2)  # Variação de ±20%
-            
-            return poder_total
-        
-        # Busca armas
-        arma1 = next((a for a in armas if a.nome == p1_data.nome_arma), None)
-        arma2 = next((a for a in armas if a.nome == p2_data.nome_arma), None)
-        
-        # Calcula poderes
-        poder1 = calcular_poder(p1_data, arma1)
-        poder2 = calcular_poder(p2_data, arma2)
-        
-        # Determina vencedor
-        total = poder1 + poder2
-        prob_p1 = poder1 / total
-        
-        roll = random.random()
-        
-        if roll < prob_p1:
-            winner = match.fighter1_name
-            margin = poder1 - poder2
+            if result.winner is not None:
+                break
         else:
-            winner = match.fighter2_name
-            margin = poder2 - poder1
-        
-        # Determina tipo de vitória baseado na margem
-        if margin > 50:
-            ko_type = "KO Devastador"
-            duration = random.uniform(10, 30)
-        elif margin > 25:
-            ko_type = "KO Técnico"
-            duration = random.uniform(30, 60)
-        elif margin > 10:
-            ko_type = "KO"
-            duration = random.uniform(60, 90)
-        else:
-            ko_type = "Decisão Apertada"
-            duration = random.uniform(90, 120)
-        
+            return {
+                "success": False,
+                "error": (
+                    "Luta permaneceu empatada após "
+                    f"{retry_limit + 1} tentativa(s) determinísticas"
+                ),
+                "reason": "draw_retry_exhausted",
+                "attempts": retry_limit + 1,
+                "engine_result": result.to_dict(),
+                "engine_results": engine_results,
+            }
+
+        ko_type = (
+            "Duplo KO" if result.reason == "double_ko"
+            else "KO" if result.reason == "knockout"
+            else "Decisão por HP"
+        )
         return {
             "success": True,
-            "winner": winner,
-            "duration": duration,
+            "winner": result.winner,
+            "duration": result.duration,
             "ko_type": ko_type,
             "stats": {
-                "poder_p1": poder1,
-                "poder_p2": poder2,
-                "margem": margin
-            }
+                "frames": result.frames,
+                "seed": result.seed,
+                "p1_hp": result.p1_hp,
+                "p2_hp": result.p2_hp,
+                "p1_hp_ratio": result.p1_hp_ratio,
+                "p2_hp_ratio": result.p2_hp_ratio,
+                "reason": result.reason,
+                "attempts": len(engine_results),
+            },
+            "engine_result": result.to_dict(),
+            "engine_results": engine_results,
         }
     
     def _default_weapon(self):
@@ -733,10 +820,10 @@ class TournamentRunner:
                 )
                 print(f"   🏆 Vencedor: {winner} ({result['ko_type']} em {result['duration']:.1f}s)")
             else:
-                # Decide aleatoriamente em caso de erro
-                winner = random.choice([match.fighter1_name, match.fighter2_name])
-                self.tournament.record_match_result(winner_name=winner, ko_type="Decisão")
-                print(f"   🏆 Vencedor (decisão): {winner}")
+                raise RuntimeError(
+                    "Falha ao executar luta real do torneio: "
+                    + str(result.get("error", "erro desconhecido"))
+                )
             
             time.sleep(delay_between_fights)
         

@@ -23,18 +23,13 @@ Uso:
 """
 
 import pygame
-import sys
 import os
 import random
 import math
-import time
 import json
 import traceback
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
-
-# Adiciona o diretório raiz ao path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from typing import Tuple
 
 # Cores para terminal
 class Colors:
@@ -214,7 +209,7 @@ class VisualDebugSimulator:
         }
         
         # Imports necessários
-        from utils.config import PPM, FPS, LARGURA, ALTURA
+        from utils.config import PPM, FPS
         from effects import Câmera
         from core.arena import set_arena
         

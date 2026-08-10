@@ -1,8 +1,9 @@
 import io
 import json
+import tempfile
 import unittest
 from contextlib import redirect_stdout
-from unittest.mock import mock_open, patch
+from pathlib import Path
 
 from tournament.tournament_mode import (
     Tournament,
@@ -14,22 +15,19 @@ from tournament.tournament_mode import (
 
 class TournamentPersistenceRegressionTests(unittest.TestCase):
     def _save_to_dict(self, tournament):
-        mocked_open = mock_open()
-        with patch("builtins.open", mocked_open):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "state.json"
             with redirect_stdout(io.StringIO()):
-                tournament.save_state("ignored.json")
-
-        written = "".join(
-            call.args[0] for call in mocked_open().write.call_args_list
-        )
-        return json.loads(written)
+                tournament.save_state(str(path))
+            return json.loads(path.read_text(encoding="utf-8"))
 
     def _load_from_dict(self, state):
         tournament = Tournament()
-        mocked_open = mock_open(read_data=json.dumps(state))
-        with patch("builtins.open", mocked_open):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "state.json"
+            path.write_text(json.dumps(state), encoding="utf-8")
             with redirect_stdout(io.StringIO()):
-                loaded = tournament.load_state("ignored.json")
+                loaded = tournament.load_state(str(path))
 
         self.assertTrue(loaded)
         return tournament
