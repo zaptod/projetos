@@ -20,6 +20,78 @@ from data import (
 from core import SKILL_DB
 from ui.theme import COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS, COR_TEXTO, COR_TEXTO_DIM, CORES_RARIDADE
 
+
+GEOMETRY_EDITOR_CONFIG = {
+    "Reta": (
+        ("comp_cabo", "Comp. Cabo", 1, 120),
+        ("comp_lamina", "Comp. Lamina", 1, 150),
+        ("largura", "Espessura", 1, 30),
+    ),
+    "Dupla": (
+        ("comp_cabo", "Comp. Cabo", 1, 50),
+        ("comp_lamina", "Comp. Lamina", 1, 80),
+        ("largura", "Espessura", 1, 15),
+        ("separacao", "Separacao", 5, 50),
+    ),
+    "Corrente": (
+        ("comp_corrente", "Comp. Corrente", 50, 300),
+        ("comp_ponta", "Comp. Ponta", 10, 50),
+        ("largura_ponta", "Largura Ponta", 5, 30),
+    ),
+    "Arremesso": (
+        ("tamanho_projetil", "Tamanho Projetil", 5, 40),
+        ("largura", "Largura", 3, 20),
+        ("quantidade", "Quantidade", 1, 8),
+    ),
+    "Arco": (
+        ("tamanho_arco", "Tamanho Arco", 30, 120),
+        ("forca_arco", "Forca", 1, 20),
+        ("tamanho_flecha", "Tam. Flecha", 20, 80),
+    ),
+    "Orbital": (
+        ("largura", "Tamanho", 10, 80),
+        ("distancia", "Dist. Orbita", 15, 100),
+        ("quantidade_orbitais", "Quantidade", 1, 6),
+    ),
+    "Mágica": (
+        ("quantidade", "Quantidade", 1, 8),
+        ("tamanho", "Tamanho", 5, 40),
+        ("distancia_max", "Alcance", 30, 150),
+    ),
+    "Transformável": (
+        ("forma1_cabo", "Forma1 Cabo", 10, 100),
+        ("forma1_lamina", "Forma1 Lamina", 20, 120),
+        ("forma2_cabo", "Forma2 Cabo", 10, 150),
+        ("forma2_lamina", "Forma2 Lamina", 10, 80),
+        ("largura", "Espessura", 2, 15),
+    ),
+}
+
+
+def preencher_geometria_padrao(tipo, geometria):
+    """Preenche dimensoes obrigatorias antes de construir/persistir uma arma."""
+
+    for campo, _rotulo, minimo, maximo in GEOMETRY_EDITOR_CONFIG[tipo]:
+        valor = geometria.get(campo)
+        if (
+            isinstance(valor, bool)
+            or not isinstance(valor, (int, float))
+            or not math.isfinite(float(valor))
+            or valor <= 0
+        ):
+            geometria[campo] = (minimo + maximo) / 2
+    return geometria
+
+
+for _tipo, _config in GEOMETRY_EDITOR_CONFIG.items():
+    _campos_editor = {item[0] for item in _config}
+    _campos_contrato = set(TIPOS_ARMA[_tipo]["geometria"])
+    if _campos_editor != _campos_contrato:
+        raise RuntimeError(
+            f"Geometria do editor divergente para {_tipo}: "
+            f"editor={sorted(_campos_editor)}, contrato={sorted(_campos_contrato)}"
+        )
+
 class TelaArmas(tk.Frame):
     """Tela principal da Forja de Armas com sistema Wizard"""
     
@@ -521,51 +593,8 @@ class TelaArmas(tk.Frame):
         frame_geo = tk.Frame(self.frame_conteudo_passo, bg=COR_BG_SECUNDARIO)
         frame_geo.pack(fill="x", pady=10)
         
-        configs = {
-            "Reta": [
-                ("comp_cabo", "Comp. Cabo", 1, 120),
-                ("comp_lamina", "Comp. Lamina", 1, 150),
-                ("largura", "Espessura", 1, 30),
-            ],
-            "Dupla": [
-                ("comp_cabo", "Comp. Cabo", 1, 50),
-                ("comp_lamina", "Comp. Lamina", 1, 80),
-                ("largura", "Espessura", 1, 15),
-                ("separacao", "Separacao", 5, 50),
-            ],
-            "Corrente": [
-                ("comp_corrente", "Comp. Corrente", 50, 300),
-                ("comp_ponta", "Comp. Ponta", 10, 50),
-                ("largura_ponta", "Largura Ponta", 5, 30),
-            ],
-            "Arremesso": [
-                ("tamanho_projetil", "Tamanho Projetil", 5, 40),
-                ("largura", "Largura", 3, 20),
-                ("quantidade", "Quantidade", 1, 8),
-            ],
-            "Arco": [
-                ("tamanho_arco", "Tamanho Arco", 30, 120),
-                ("forca_arco", "Forca", 1, 20),
-                ("tamanho_flecha", "Tam. Flecha", 20, 80),
-            ],
-            "Orbital": [
-                ("largura", "Tamanho", 10, 80),
-                ("distancia", "Dist. Orbita", 15, 100),
-                ("quantidade_orbitais", "Quantidade", 1, 6),
-            ],
-            "Mágica": [
-                ("quantidade", "Quantidade", 1, 8),
-                ("tamanho", "Tamanho", 5, 40),
-                ("distancia_max", "Alcance", 30, 150),
-            ],
-            "Transformável": [
-                ("forma1_cabo", "Forma1 Cabo", 10, 100),
-                ("forma1_lamina", "Forma1 Lamina", 20, 120),
-                ("forma2_cabo", "Forma2 Cabo", 10, 150),
-                ("forma2_lamina", "Forma2 Lamina", 10, 80),
-                ("largura", "Espessura", 2, 15),
-            ],
-        }
+        configs = GEOMETRY_EDITOR_CONFIG
+        preencher_geometria_padrao(tipo, self.dados_arma["geometria"])
         
         for i, (key, label, minv, maxv) in enumerate(configs.get(tipo, [])):
             tk.Label(
@@ -573,7 +602,7 @@ class TelaArmas(tk.Frame):
                 bg=COR_BG_SECUNDARIO, fg=COR_TEXTO, font=("Arial", 9)
             ).grid(row=i, column=0, sticky="w", pady=2)
             
-            val = self.dados_arma["geometria"].get(key, (minv + maxv) // 2)
+            val = self.dados_arma["geometria"][key]
             
             scale = tk.Scale(
                 frame_geo, from_=minv, to=maxv, orient="horizontal",
