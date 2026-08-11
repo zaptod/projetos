@@ -26,10 +26,35 @@ from models.constants import (
 
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(DATA_DIR)
+RUNTIME_DATA_DIR_ENV = "NEURAL_FIGHTS_RUNTIME_DIR"
+
+
+def resolver_runtime_data_dir() -> str:
+    """Retorna um diretorio gravavel, separado dos assets instalados."""
+    override = os.environ.get(RUNTIME_DATA_DIR_ENV)
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    else:
+        base = os.environ.get("XDG_STATE_HOME")
+        if not base:
+            base = os.path.join(os.path.expanduser("~"), ".local", "state")
+    if not base:
+        base = os.path.join(tempfile.gettempdir(), "neural-fights")
+        return os.path.abspath(base)
+    return os.path.abspath(os.path.join(base, "neural-fights"))
+
+
+RUNTIME_DIR = resolver_runtime_data_dir()
+# Assets imutaveis distribuidos com o pacote. Os aliases historicos sao
+# mantidos para ferramentas que auditam o catalogo da versao instalada.
 ARQUIVO_CHARS = os.path.join(DATA_DIR, "personagens.json")
 ARQUIVO_ARMAS = os.path.join(DATA_DIR, "armas.json")
+ARQUIVO_CHARS_RUNTIME = os.path.join(RUNTIME_DIR, "personagens.json")
+ARQUIVO_ARMAS_RUNTIME = os.path.join(RUNTIME_DIR, "armas.json")
 ARQUIVO_MATCH_DEFAULT = os.path.join(DATA_DIR, "fixtures", "default_match_config.json")
-ARQUIVO_MATCH = os.path.join(DATA_DIR, "runtime", "match_config.json")
+ARQUIVO_MATCH = os.path.join(RUNTIME_DIR, "match_config.json")
 MATCH_CONFIG_ENV = "NEURAL_FIGHTS_MATCH_CONFIG"
 
 
@@ -42,6 +67,45 @@ class DataValidationError(ValueError):
         else:
             self.erros = tuple(str(erro) for erro in erros)
         super().__init__("Dados invalidos:\n- " + "\n- ".join(self.erros))
+
+
+def resolver_database_paths(
+    *,
+    arquivo_armas: str | None = None,
+    arquivo_personagens: str | None = None,
+    para_escrita: bool = False,
+) -> tuple[str, str]:
+    """Resolve um snapshot coerente sem escrever no pacote instalado.
+
+    Leituras usam a copia do usuario quando o par runtime existe e recorrem
+    aos assets empacotados enquanto ela ainda nao foi criada. Escritas sempre
+    apontam para o diretorio runtime. Um par runtime parcial e tratado como
+    corrupcao para nao combinar versoes diferentes silenciosamente.
+    """
+
+    if (arquivo_armas is None) != (arquivo_personagens is None):
+        raise ValueError(
+            "informe arquivo_armas e arquivo_personagens juntos para manter "
+            "o snapshot coerente"
+        )
+    if arquivo_armas is not None and arquivo_personagens is not None:
+        return os.path.abspath(arquivo_armas), os.path.abspath(arquivo_personagens)
+
+    runtime_armas = os.path.abspath(ARQUIVO_ARMAS_RUNTIME)
+    runtime_chars = os.path.abspath(ARQUIVO_CHARS_RUNTIME)
+    if para_escrita:
+        return runtime_armas, runtime_chars
+
+    armas_existe = os.path.exists(runtime_armas)
+    chars_existe = os.path.exists(runtime_chars)
+    if armas_existe != chars_existe:
+        ausente = runtime_chars if armas_existe else runtime_armas
+        raise DataValidationError(
+            "snapshot runtime incompleto; arquivo ausente: " + ausente
+        )
+    if armas_existe:
+        return runtime_armas, runtime_chars
+    return os.path.abspath(ARQUIVO_ARMAS), os.path.abspath(ARQUIVO_CHARS)
 
 
 def carregar_json(arquivo: str, padrao: Any = None) -> Any:
@@ -362,8 +426,12 @@ def carregar_database(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Carrega e valida o snapshot coerente de armas e personagens."""
 
-    raw_armas = carregar_json(arquivo_armas or ARQUIVO_ARMAS)
-    raw_chars = carregar_json(arquivo_personagens or ARQUIVO_CHARS)
+    armas_path, chars_path = resolver_database_paths(
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+    )
+    raw_armas = carregar_json(armas_path)
+    raw_chars = carregar_json(chars_path)
     validar_database(raw_armas, raw_chars)
     return raw_armas, raw_chars
 
@@ -380,12 +448,78 @@ def salvar_database(
     armas_json = [dict(item) for item in armas]
     chars_json = [dict(item) for item in personagens]
     validar_database(armas_json, chars_json)
+    armas_path, chars_path = resolver_database_paths(
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+        para_escrita=True,
+    )
+    os.makedirs(os.path.dirname(armas_path), exist_ok=True)
+    os.makedirs(os.path.dirname(chars_path), exist_ok=True)
     salvar_jsons_coerentes(
         {
-            arquivo_armas or ARQUIVO_ARMAS: armas_json,
-            arquivo_personagens or ARQUIVO_CHARS: chars_json,
+            armas_path: armas_json,
+            chars_path: chars_json,
         }
     )
+
+
+def atualizar_arma(
+    nome_atual: str,
+    arma_atualizada: Mapping[str, Any] | Arma,
+    *,
+    arquivo_armas: str | None = None,
+    arquivo_personagens: str | None = None,
+) -> int:
+    """Atualiza todos os campos e referencias da arma em uma transacao."""
+
+    nome_atual = nome_atual.strip()
+    if not nome_atual:
+        raise DataValidationError("o nome atual deve ser nao vazio")
+    if isinstance(arma_atualizada, Mapping):
+        nova_arma = dict(arma_atualizada)
+    else:
+        converter = getattr(arma_atualizada, "to_dict", None)
+        if not callable(converter):
+            raise TypeError("arma_atualizada deve ser um mapeamento ou Arma")
+        nova_arma = dict(converter())
+
+    novo_nome = str(nova_arma.get("nome", "")).strip()
+    nova_arma["nome"] = novo_nome
+    if not novo_nome:
+        raise DataValidationError("o novo nome deve ser nao vazio")
+
+    armas, personagens = carregar_database(
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+    )
+    nomes = {arma["nome"] for arma in armas}
+    if nome_atual not in nomes:
+        raise DataValidationError(f"arma inexistente: {nome_atual!r}")
+    if novo_nome != nome_atual and novo_nome in nomes:
+        raise DataValidationError(f"ja existe uma arma chamada {novo_nome!r}")
+
+    armas_novas = [dict(arma) for arma in armas]
+    indice = next(
+        indice
+        for indice, arma in enumerate(armas_novas)
+        if arma["nome"] == nome_atual
+    )
+    armas_novas[indice] = nova_arma
+    personagens_novos = [dict(personagem) for personagem in personagens]
+    afetados = 0
+    if novo_nome != nome_atual:
+        for personagem in personagens_novos:
+            if personagem["nome_arma"] == nome_atual:
+                personagem["nome_arma"] = novo_nome
+                afetados += 1
+
+    salvar_database(
+        armas_novas,
+        personagens_novos,
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+    )
+    return afetados
 
 
 def renomear_arma(
@@ -517,14 +651,27 @@ def salvar_match_config(
     return caminho
 
 
-def carregar_armas() -> list[Arma]:
-    raw = carregar_json(ARQUIVO_ARMAS)
-    validar_armas(raw)
+def carregar_armas(
+    *,
+    arquivo_armas: str | None = None,
+    arquivo_personagens: str | None = None,
+) -> list[Arma]:
+    raw, _ = carregar_database(
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+    )
     return [Arma(**item) for item in raw]
 
 
-def carregar_personagens() -> list[Personagem]:
-    raw_armas, raw_chars = carregar_database()
+def carregar_personagens(
+    *,
+    arquivo_armas: str | None = None,
+    arquivo_personagens: str | None = None,
+) -> list[Personagem]:
+    raw_armas, raw_chars = carregar_database(
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+    )
     pesos_por_nome = {
         item["nome"]: float(item.get("peso", 0))
         * get_raridade_data(item.get("raridade", "Comum"))["mod_peso"]
@@ -554,12 +701,12 @@ def carregar_personagens() -> list[Personagem]:
 
 def salvar_lista_armas(lista: Sequence[Arma]) -> None:
     armas = [arma.to_dict() for arma in lista]
-    personagens = carregar_json(ARQUIVO_CHARS)
+    _, personagens = carregar_database()
     salvar_database(armas, personagens)
 
 
 def salvar_lista_chars(lista: Sequence[Personagem]) -> None:
-    armas = carregar_json(ARQUIVO_ARMAS)
+    armas, _ = carregar_database()
     personagens = [personagem.to_dict() for personagem in lista]
     salvar_database(armas, personagens)
 

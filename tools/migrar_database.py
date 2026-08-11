@@ -135,8 +135,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        armas = database.carregar_json(database.ARQUIVO_ARMAS)
-        personagens = database.carregar_json(database.ARQUIVO_CHARS)
+        armas, personagens = database.carregar_database()
         armas_novas, personagens_novos, alteracoes = migrar_documentos(armas, personagens)
     except (OSError, database.DataValidationError, TypeError, ValueError) as exc:
         print(f"ERRO: {exc}")

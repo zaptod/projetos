@@ -1,41 +1,72 @@
-"""
-NEURAL FIGHTS - Lançador do Modo Torneio
-========================================
-Execute este script para iniciar o Modo Torneio diretamente.
-"""
+"""Ponto de entrada da interface de torneio do Neural Fights."""
 
-def main():
+from __future__ import annotations
+
+import sys
+
+
+def _console_print(value, *, file=None) -> None:
+    destination = file or sys.stdout
+    encoding = getattr(destination, "encoding", None)
+    text = str(value)
+    if encoding:
+        text = text.encode(encoding, "backslashreplace").decode(encoding)
+    print(text, file=destination)
+
+
+def mostrar_ajuda() -> None:
+    """Mostra o uso sem depender de uma UI ou de um console UTF-8."""
+
+    print(
+        "NEURAL FIGHTS - MODO TORNEIO\n"
+        "Uso:\n"
+        "  python run_tournament.py          Inicia a interface de torneio\n"
+        "  python run_tournament.py --help   Mostra esta ajuda"
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Inicia o torneio e devolve um codigo apropriado para automacao."""
+
+    argumentos = list(sys.argv[1:] if argv is None else argv)
+    if argumentos:
+        if len(argumentos) == 1 and argumentos[0].lower() in {"--help", "-h", "/?"}:
+            mostrar_ajuda()
+            return 0
+
+        _console_print(
+            f"Argumento desconhecido: {' '.join(argumentos)}",
+            file=sys.stderr,
+        )
+        mostrar_ajuda()
+        return 2
+
     try:
         import customtkinter as ctk
     except ImportError:
         print("=" * 60)
-        print("  ERRO: CustomTkinter não instalado!")
+        print("  ERRO: CustomTkinter nao instalado!")
         print("=" * 60)
         print("\n  Execute: pip install customtkinter")
         print("\n  Depois execute este script novamente.")
         return 2
-    
-    # Configura tema
+
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
-    
-    # Importa e lança o torneio
+
     from ui.view_torneio import TournamentWindow
-    
+
     print("=" * 60)
-    print("  🏆 NEURAL FIGHTS - MODO TORNEIO")
+    print("  NEURAL FIGHTS - MODO TORNEIO")
     print("=" * 60)
     print("\n  Iniciando janela do torneio...")
-    
-    # Cria janela raiz oculta
+
     root = ctk.CTk()
     root.withdraw()
-    
-    # Cria janela do torneio
+
     window = TournamentWindow(root)
     window.protocol("WM_DELETE_WINDOW", root.destroy)
-    
-    # Inicia loop principal
+
     root.mainloop()
     return 0
 

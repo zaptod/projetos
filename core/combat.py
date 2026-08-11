@@ -2,7 +2,7 @@
 import copy
 import math
 import random
-from utils.config import *
+from utils.config import BRANCO
 from core.skills import get_skill_data
 from core.status_runtime import BUFF_EFFECT_RUNTIME
 
@@ -720,7 +720,9 @@ class AreaEffect:
         self.tipo_fonte = "area_skill"
         self.eh_skill = True
         self.eh_projetil = False
-        self.ground = bool(data.get("ground", True))
+        # Explosoes e fenomenos aereos atingem alvos em voo. Apenas skills
+        # explicitamente presas ao solo concedem a imunidade de Levitar.
+        self.ground = bool(data.get("ground", False))
         self.rouba_buff = False
         self.refletido = False
         
@@ -1460,6 +1462,12 @@ class Trap:
         self.x = x
         self.y = y
         self.dono = dono
+        self.tipo_fonte = "trap_skill"
+        self.eh_skill = True
+        self.eh_projetil = False
+        self.ground = bool(data.get("ground", True))
+        self.rouba_buff = False
+        self.refletido = False
         
         self.vida_max = data.get("vida_estrutura", 100.0)
         self.vida = self.vida_max
@@ -1855,7 +1863,9 @@ class PortalPair:
         self.raio = max(0.05, float(raio))
         self.cor = data.get("cor", (100, 100, 255))
         self.ativo = self.vida > 0.0
-        self.entidades_bloqueadas = set()
+        # O conjurador nasce sobre a boca de destino; ele precisa sair do
+        # volume antes de poder atravessar o portal de volta.
+        self.entidades_bloqueadas = {id(dono)} if dono is not None else set()
 
     def _dentro(self, entidade, ponto):
         return math.hypot(

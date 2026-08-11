@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "neural-fights"
 version = "12.0.0"
 description = "Simulador de combate 2D com lutadores controlados por IA"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pygame-ce>=2.5.7,<3",
@@ -34,19 +35,19 @@ include = [
     "models*",
     "scripts*",
     "simulation*",
+    "sounds*",
+    "tests*",
     "tools*",
     "tournament*",
     "ui*",
     "utils*",
 ]
-exclude = ["examples*", "tests*"]
+exclude = ["examples*"]
 namespaces = false
 
 [tool.setuptools.package-data]
 data = ["*.json", "fixtures/*.json"]
-
-[tool.setuptools.data-files]
-sounds = ["sounds/*.json", "sounds/*.mp3", "sounds/*.wav"]
+sounds = ["*.json", "*.mp3", "*.wav", "*.ogg"]
 
 [project.optional-dependencies]
 dev = [
@@ -66,4 +67,4 @@ line-length = 100
 exclude = ["**/__pycache__"]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
+select = ["E9", "E722", "F401", "F541", "F63", "F7", "F82", "F841"]

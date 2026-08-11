@@ -1,9 +1,13 @@
 import io
 import json
+import os
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
+
+import tournament.tournament_mode as tournament_module
 
 from tournament.tournament_mode import (
     Tournament,
@@ -146,6 +150,62 @@ class TournamentPersistenceRegressionTests(unittest.TestCase):
         restored = self._load_from_dict(state)
 
         self.assertEqual([], restored.fight_history)
+
+    def test_default_state_uses_ignored_runtime_path_independent_of_cwd(self):
+        tournament = Tournament("Estado local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime_path = Path(temp_dir) / "runtime" / "tournament.json"
+            other_cwd = Path(temp_dir) / "other"
+            other_cwd.mkdir()
+            with (
+                patch.object(
+                    tournament_module,
+                    "DEFAULT_TOURNAMENT_STATE",
+                    str(runtime_path),
+                ),
+                patch.dict(
+                    os.environ,
+                    {tournament_module.TOURNAMENT_STATE_ENV: ""},
+                ),
+                redirect_stdout(io.StringIO()),
+            ):
+                tournament.save_state()
+                previous_cwd = Path.cwd()
+                try:
+                    os.chdir(other_cwd)
+                    restored = Tournament()
+                    self.assertTrue(restored.load_state())
+                finally:
+                    os.chdir(previous_cwd)
+
+        self.assertEqual(restored.name, "Estado local")
+
+    def test_relative_environment_override_stays_in_runtime_directory(self):
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(tournament_module.database, "RUNTIME_DIR", temp_dir),
+            patch.dict(
+                os.environ,
+                {tournament_module.TOURNAMENT_STATE_ENV: "estado-custom.json"},
+            ),
+        ):
+            resolved = tournament_module._resolver_caminho_estado()
+
+        self.assertEqual(
+            Path(resolved),
+            Path(temp_dir).resolve() / "estado-custom.json",
+        )
+
+    def test_relative_explicit_path_is_resolved_from_current_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(temp_dir)
+                resolved = tournament_module._resolver_caminho_estado("save.json")
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertEqual(Path(resolved), Path(temp_dir).resolve() / "save.json")
 
 
 if __name__ == "__main__":

@@ -106,7 +106,14 @@ class JsonPersistenceRegressionTests(unittest.TestCase):
                 return [weapon.to_dict()]
             self.fail(f"caminho inesperado: {path}")
 
-        with patch.object(database, "carregar_json", side_effect=load_fixture):
+        with (
+            patch.object(database, "carregar_json", side_effect=load_fixture),
+            patch.object(
+                database,
+                "resolver_database_paths",
+                return_value=(database.ARQUIVO_ARMAS, database.ARQUIVO_CHARS),
+            ),
+        ):
             reloaded = database.carregar_personagens()[0]
 
         self.assertAlmostEqual(reloaded.velocidade, original.velocidade)

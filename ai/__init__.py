@@ -1,61 +1,51 @@
-"""
-=============================================================================
-NEURAL FIGHTS - Sistema de IA v9.0 SPATIAL AWARENESS EDITION
-=============================================================================
-Módulo de Inteligência Artificial modularizado.
-Sistema de comportamento humano realista com:
-- Antecipação e leitura do oponente
-- Desvios inteligentes com timing humano
-- Baiting e fintas
-- Janelas de oportunidade
-- Momentum e pressão psicológica
-- Combos e follow-ups
-- Consciência espacial (paredes, obstáculos)
-=============================================================================
+"""Exports lazy do sistema de IA.
+
+Catalogos declarativos, como :mod:`ai.personalities`, podem ser importados por
+validadores e ferramentas sem inicializar o runtime de combate ou Pygame.
 """
 
-from ai.choreographer import CombatChoreographer
-from ai.brain import AIBrain
-from ai.personalities import (
-    TODOS_TRACOS, TRACOS_AGRESSIVIDADE, TRACOS_DEFENSIVO, TRACOS_MOBILIDADE,
-    TRACOS_SKILLS, TRACOS_MENTAL, TRACOS_ESPECIAIS,
-    ARQUETIPO_DATA, ESTILOS_LUTA, QUIRKS, FILOSOFIAS, HUMORES
-)
+from __future__ import annotations
 
-# Novos módulos v9.0
-from ai.spatial import SpatialAwarenessSystem
-from ai.emotions import EmotionSystem
-from ai.combat_tactics import CombatTacticsSystem
+from importlib import import_module
 
-# Novo módulo v10.0 - Estratégia de Skills
-try:
-    from ai.skill_strategy import SkillStrategySystem, CombatSituation, SkillPriority, StrategicRole
-    SKILL_STRATEGY_AVAILABLE = True
-except ImportError:
-    SKILL_STRATEGY_AVAILABLE = False
 
-__all__ = [
-    'CombatChoreographer',
-    'AIBrain',
-    'TODOS_TRACOS',
-    'TRACOS_AGRESSIVIDADE',
-    'TRACOS_DEFENSIVO',
-    'TRACOS_MOBILIDADE',
-    'TRACOS_SKILLS',
-    'TRACOS_MENTAL',
-    'TRACOS_ESPECIAIS',
-    'ARQUETIPO_DATA',
-    'ESTILOS_LUTA',
-    'QUIRKS',
-    'FILOSOFIAS',
-    'HUMORES',
-    # Novos sistemas
-    'SpatialAwarenessSystem',
-    'EmotionSystem',
-    'CombatTacticsSystem',
-    # Sistema de Estratégia de Skills
-    'SkillStrategySystem',
-    'CombatSituation',
-    'SkillPriority',
-    'StrategicRole',
-]
+_EXPORTS = {
+    "CombatChoreographer": ("ai.choreographer", "CombatChoreographer"),
+    "AIBrain": ("ai.brain", "AIBrain"),
+    "TODOS_TRACOS": ("ai.personalities", "TODOS_TRACOS"),
+    "TRACOS_AGRESSIVIDADE": ("ai.personalities", "TRACOS_AGRESSIVIDADE"),
+    "TRACOS_DEFENSIVO": ("ai.personalities", "TRACOS_DEFENSIVO"),
+    "TRACOS_MOBILIDADE": ("ai.personalities", "TRACOS_MOBILIDADE"),
+    "TRACOS_SKILLS": ("ai.personalities", "TRACOS_SKILLS"),
+    "TRACOS_MENTAL": ("ai.personalities", "TRACOS_MENTAL"),
+    "TRACOS_ESPECIAIS": ("ai.personalities", "TRACOS_ESPECIAIS"),
+    "ARQUETIPO_DATA": ("ai.personalities", "ARQUETIPO_DATA"),
+    "ESTILOS_LUTA": ("ai.personalities", "ESTILOS_LUTA"),
+    "QUIRKS": ("ai.personalities", "QUIRKS"),
+    "FILOSOFIAS": ("ai.personalities", "FILOSOFIAS"),
+    "HUMORES": ("ai.personalities", "HUMORES"),
+    "SpatialAwarenessSystem": ("ai.spatial", "SpatialAwarenessSystem"),
+    "EmotionSystem": ("ai.emotions", "EmotionSystem"),
+    "CombatTacticsSystem": ("ai.combat_tactics", "CombatTacticsSystem"),
+    "SkillStrategySystem": ("ai.skill_strategy", "SkillStrategySystem"),
+    "CombatSituation": ("ai.skill_strategy", "CombatSituation"),
+    "SkillPriority": ("ai.skill_strategy", "SkillPriority"),
+    "StrategicRole": ("ai.skill_strategy", "StrategicRole"),
+}
+
+SKILL_STRATEGY_AVAILABLE = True
+__all__ = [*_EXPORTS, "SKILL_STRATEGY_AVAILABLE"]
+
+
+def __getattr__(name: str):
+    try:
+        module_name, attribute = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
+    value = getattr(import_module(module_name), attribute)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *__all__})

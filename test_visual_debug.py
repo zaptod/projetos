@@ -352,8 +352,6 @@ class VisualDebugSimulator:
     
     def testar_skill(self, skill_nome: str, skill_data: dict) -> dict:
         """Testa uma skill específica e retorna resultado"""
-        from core.entities import Lutador
-        from core.skills import SKILL_DB
         from utils.config import PPM
         from ai import CombatChoreographer
         from core.game_feel import GameFeelManager

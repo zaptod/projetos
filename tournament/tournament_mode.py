@@ -10,13 +10,45 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from enum import Enum
 
-from models.characters import Personagem
-from models.weapons import Arma
 from data import database
-from data.database import carregar_armas, carregar_personagens, carregar_arma_por_nome
+from data.database import carregar_personagens
+
+
+TOURNAMENT_STATE_ENV = "NEURAL_FIGHTS_TOURNAMENT_STATE"
+DEFAULT_TOURNAMENT_STATE = os.path.join(
+    database.RUNTIME_DIR,
+    "tournament_state.json",
+)
+
+
+def _console_print(*values, sep=" ", end="\n", file=None, flush=False):
+    """Imprime dados livres sem quebrar consoles de encoding limitado."""
+
+    destination = file or sys.stdout
+    encoding = getattr(destination, "encoding", None)
+    if encoding:
+        safe_values = [
+            str(value).encode(encoding, "backslashreplace").decode(encoding)
+            for value in values
+        ]
+    else:
+        safe_values = [str(value) for value in values]
+    print(*safe_values, sep=sep, end=end, file=destination, flush=flush)
+
+
+def _resolver_caminho_estado(filename=None):
+    if filename is not None:
+        caminho = filename
+        base_relativa = os.getcwd()
+    else:
+        caminho = os.environ.get(TOURNAMENT_STATE_ENV) or DEFAULT_TOURNAMENT_STATE
+        base_relativa = database.RUNTIME_DIR
+    if not os.path.isabs(caminho):
+        caminho = os.path.join(base_relativa, caminho)
+    return os.path.abspath(caminho)
 
 
 class TournamentState(Enum):
@@ -89,7 +121,7 @@ class Tournament:
             personagens = carregar_personagens()
             
             if not personagens:
-                print("❌ Nenhum personagem encontrado no banco de dados!")
+                _console_print("ERRO: Nenhum personagem encontrado no banco de dados!")
                 return 0
             
             # personagens são objetos Personagem, não dicionários
@@ -98,11 +130,11 @@ class Tournament:
             # Ajusta para potência de 2
             self._adjust_to_power_of_two()
             
-            print(f"✅ {len(self.participants)} participantes carregados")
+            _console_print(f"OK: {len(self.participants)} participantes carregados")
             return len(self.participants)
             
         except Exception as e:
-            print(f"❌ Erro ao carregar participantes: {e}")
+            _console_print(f"ERRO: Falha ao carregar participantes: {e}")
             return 0
     
     def add_participant(self, name: str) -> bool:
@@ -144,7 +176,7 @@ class Tournament:
     def generate_bracket(self) -> bool:
         """Gera as chaves do torneio"""
         if len(self.participants) < 2:
-            print("❌ Mínimo de 2 participantes necessário!")
+            _console_print("ERRO: Minimo de 2 participantes necessario!")
             return False
         
         self._adjust_to_power_of_two()
@@ -201,7 +233,10 @@ class Tournament:
         self.current_round = 0
         self.current_match = 0
         
-        print(f"✅ Bracket gerado: {len(self.participants)} participantes, {num_rounds} rodadas")
+        _console_print(
+            f"OK: Bracket gerado: {len(self.participants)} participantes, "
+            f"{num_rounds} rodadas"
+        )
         return True
     
     def get_current_match(self) -> Optional[TournamentMatch]:
@@ -267,7 +302,7 @@ class Tournament:
             return False
         
         if winner_name not in [match.fighter1_name, match.fighter2_name]:
-            print(f"❌ Vencedor '{winner_name}' não está nesta luta!")
+            _console_print(f"ERRO: Vencedor '{winner_name}' nao esta nesta luta!")
             return False
         
         match.winner_name = winner_name
@@ -300,11 +335,8 @@ class Tournament:
             return
         
         next_round = self.bracket[match.round_num + 1]
-        match_index = match.match_id
-        
         # Descobre qual luta da próxima rodada
         # Lutas 0,1 -> Luta 0; Lutas 2,3 -> Luta 1; etc.
-        current_round_matches = len(self.bracket[match.round_num].matches)
         matches_before = sum(len(r.matches) for r in self.bracket[:match.round_num])
         local_index = match.match_id - matches_before
         next_match_index = local_index // 2
@@ -342,27 +374,27 @@ class Tournament:
         """Retorna uma representação visual do bracket"""
         lines = []
         lines.append("=" * 70)
-        lines.append(f"  🏆 {self.name}")
+        lines.append(f"  [TORNEIO] {self.name}")
         lines.append("=" * 70)
         
         for round_obj in self.bracket:
-            lines.append(f"\n📋 {round_obj.name}")
+            lines.append(f"\n[RODADA] {round_obj.name}")
             lines.append("-" * 40)
             
             for match in round_obj.matches:
-                status = "✅" if match.completed else "⏳"
+                status = "[OK]" if match.completed else "[PENDENTE]"
                 f1 = match.fighter1_name[:20]
                 f2 = match.fighter2_name[:20]
                 
                 if match.completed:
-                    winner = "←" if match.winner_name == match.fighter1_name else "→"
+                    winner = "<-" if match.winner_name == match.fighter1_name else "->"
                     lines.append(f"  {status} {f1:20} vs {f2:20} [{winner}]")
                 else:
                     lines.append(f"  {status} {f1:20} vs {f2:20}")
         
         if self.champion:
             lines.append("\n" + "=" * 70)
-            lines.append(f"  🏆 CAMPEÃO: {self.champion}")
+            lines.append(f"  [CAMPEAO] {self.champion}")
             lines.append("=" * 70)
         
         return "\n".join(lines)
@@ -421,7 +453,7 @@ class Tournament:
             completed=match_data.get("completed", False),
         )
     
-    def save_state(self, filename: str = "tournament_state.json"):
+    def save_state(self, filename: str | None = None):
         """Salva o estado atomicamente, sem truncar o save anterior."""
         state = {
             "name": self.name,
@@ -448,17 +480,15 @@ class Tournament:
                 round_data["matches"].append(self._serialize_match(match))
             state["bracket"].append(round_data)
         
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        filepath = os.path.join(base_dir, "data", filename)
-        
+        filepath = _resolver_caminho_estado(filename)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
         database.salvar_json(filepath, state)
         
-        print(f"✅ Estado salvo em {filepath}")
+        _console_print(f"OK: Estado salvo em {filepath}")
     
-    def load_state(self, filename: str = "tournament_state.json") -> bool:
+    def load_state(self, filename: str | None = None) -> bool:
         """Carrega e valida todo o save antes de alterar o torneio atual."""
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        filepath = os.path.join(base_dir, "data", filename)
+        filepath = _resolver_caminho_estado(filename)
         
         try:
             if not os.path.exists(filepath):
@@ -570,14 +600,14 @@ class Tournament:
             self.bracket = bracket
             self.fight_history = fight_history
             
-            print(f"✅ Estado carregado de {filepath}")
+            _console_print(f"OK: Estado carregado de {filepath}")
             return True
             
         except FileNotFoundError:
-            print(f"⚠️ Arquivo não encontrado: {filepath}")
+            _console_print(f"AVISO: Arquivo nao encontrado: {filepath}")
             return False
         except Exception as e:
-            print(f"❌ Erro ao carregar estado: {e}")
+            _console_print(f"ERRO: Falha ao carregar estado: {e}")
             return False
 
 
@@ -788,13 +818,13 @@ class TournamentRunner:
     def run_tournament_automated(self, delay_between_fights: float = 1.0):
         """Executa o torneio completo automaticamente"""
         if not self.tournament.start_tournament():
-            print("❌ Falha ao iniciar torneio")
+            _console_print("ERRO: Falha ao iniciar torneio")
             return
         
-        print(self.tournament.get_bracket_display())
-        print("\n" + "=" * 70)
-        print("  🎮 INICIANDO TORNEIO AUTOMÁTICO")
-        print("=" * 70)
+        _console_print(self.tournament.get_bracket_display())
+        _console_print("\n" + "=" * 70)
+        _console_print("  INICIANDO TORNEIO AUTOMATICO")
+        _console_print("=" * 70)
         
         while self.tournament.state != TournamentState.FINISHED:
             match = self.tournament.get_current_match()
@@ -806,7 +836,7 @@ class TournamentRunner:
                 # BYE já processado
                 continue
             
-            print(f"\n⚔️  LUTA: {match.fighter1_name} vs {match.fighter2_name}")
+            _console_print(f"\nLUTA: {match.fighter1_name} vs {match.fighter2_name}")
             
             # Executa a luta
             result = self.run_single_match(match)
@@ -818,7 +848,10 @@ class TournamentRunner:
                     duration=result["duration"],
                     ko_type=result["ko_type"]
                 )
-                print(f"   🏆 Vencedor: {winner} ({result['ko_type']} em {result['duration']:.1f}s)")
+                _console_print(
+                    f"   Vencedor: {winner} "
+                    f"({result['ko_type']} em {result['duration']:.1f}s)"
+                )
             else:
                 raise RuntimeError(
                     "Falha ao executar luta real do torneio: "
@@ -827,15 +860,15 @@ class TournamentRunner:
             
             time.sleep(delay_between_fights)
         
-        print("\n" + self.tournament.get_bracket_display())
+        _console_print("\n" + self.tournament.get_bracket_display())
         self.tournament.save_state()
 
 
 if __name__ == "__main__":
     # Teste do sistema de torneio
-    print("=" * 70)
-    print("  NEURAL FIGHTS - SISTEMA DE TORNEIO")
-    print("=" * 70)
+    _console_print("=" * 70)
+    _console_print("  NEURAL FIGHTS - SISTEMA DE TORNEIO")
+    _console_print("=" * 70)
     
     tournament = Tournament("Torneio Teste")
     
@@ -844,7 +877,7 @@ if __name__ == "__main__":
     
     if len(tournament.participants) < 2:
         # Adiciona participantes de teste
-        print("\nAdicionando participantes de teste...")
+        _console_print("\nAdicionando participantes de teste...")
         for i in range(8):
             tournament.add_participant(f"Lutador_{i+1}")
     
@@ -852,11 +885,11 @@ if __name__ == "__main__":
     tournament.generate_bracket()
     
     # Mostra bracket
-    print(tournament.get_bracket_display())
+    _console_print(tournament.get_bracket_display())
     
     # Simula algumas lutas manualmente
     tournament.start_tournament()
     
     match = tournament.get_current_match()
     if match:
-        print(f"\n🎮 Próxima luta: {match.fighter1_name} vs {match.fighter2_name}")
+        _console_print(f"\nProxima luta: {match.fighter1_name} vs {match.fighter2_name}")

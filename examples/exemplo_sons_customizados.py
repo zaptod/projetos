@@ -363,7 +363,6 @@ def exemplo_mixer():
 def exemplo_echo():
     """Cria efeito de eco"""
     
-    import pygame
     import time
     
     audio = AudioManager.get_instance()

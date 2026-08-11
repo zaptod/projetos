@@ -58,7 +58,7 @@ def main():
     sim = Simulador()
     
     # Print arena info after creation
-    print(f"\nAfter Simulador init:")
+    print("\nAfter Simulador init:")
     print(f"  sim.arena = {sim.arena}")
     if sim.arena:
         print(f"  Arena name: {sim.arena.config.nome}")

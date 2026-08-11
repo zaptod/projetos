@@ -11,6 +11,15 @@ Uso:
 """
 import sys
 
+
+def _console_print(value, *, file=None):
+    destination = file or sys.stdout
+    encoding = getattr(destination, "encoding", None)
+    text = str(value)
+    if encoding:
+        text = text.encode(encoding, "backslashreplace").decode(encoding)
+    print(text, file=destination)
+
 def mostrar_ajuda():
     """Mostra informacoes de uso"""
     print("""
@@ -43,7 +52,7 @@ def main(argv=None):
     argumentos = list(sys.argv[1:] if argv is None else argv)
 
     if len(argumentos) > 1:
-        print("Erro: informe apenas uma opcao por execucao.", file=sys.stderr)
+        _console_print("Erro: informe apenas uma opcao por execucao.", file=sys.stderr)
         mostrar_ajuda()
         return 2
 
@@ -56,7 +65,7 @@ def main(argv=None):
             try:
                 match_config = Simulador.criar_match_config_padrao()
             except RuntimeError as exc:
-                print(f"Erro: {exc}", file=sys.stderr)
+                _console_print(f"Erro: {exc}", file=sys.stderr)
                 return 1
             sim = Simulador(match_config=match_config)
             sim.run()
@@ -68,7 +77,7 @@ def main(argv=None):
             try:
                 sim = SimuladorManual()
             except RuntimeError as exc:
-                print(f"Erro: {exc}", file=sys.stderr)
+                _console_print(f"Erro: {exc}", file=sys.stderr)
                 return 1
             sim.executar()
             return 0
@@ -78,7 +87,7 @@ def main(argv=None):
             return 0
         
         else:
-            print(f"Argumento desconhecido: {arg}", file=sys.stderr)
+            _console_print(f"Argumento desconhecido: {arg}", file=sys.stderr)
             mostrar_ajuda()
             return 2
     else:

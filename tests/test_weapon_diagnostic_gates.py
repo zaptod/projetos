@@ -24,9 +24,16 @@ from ui.view_armas import GEOMETRY_EDITOR_CONFIG, preencher_geometria_padrao
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _carregar_database_canonica():
+    return database.carregar_database(
+        arquivo_armas=database.ARQUIVO_ARMAS,
+        arquivo_personagens=database.ARQUIVO_CHARS,
+    )
+
+
 class WeaponGeometryContractTests(unittest.TestCase):
     def test_canonical_database_has_positive_type_geometry_and_atomic_round_trip(self):
-        armas, personagens = database.carregar_database()
+        armas, personagens = _carregar_database_canonica()
 
         arremessos = [arma for arma in armas if arma["tipo"] == "Arremesso"]
         transformaveis = [arma for arma in armas if arma["tipo"] == "Transformável"]
@@ -62,7 +69,7 @@ class WeaponGeometryContractTests(unittest.TestCase):
         self.assertEqual(personagens, reloaded_characters)
 
     def test_database_rejects_zero_or_missing_required_geometry(self):
-        armas, _personagens = database.carregar_database()
+        armas, _personagens = _carregar_database_canonica()
         cases = (
             next(arma for arma in armas if arma["tipo"] == "Arremesso"),
             next(arma for arma in armas if arma["tipo"] == "Transformável"),
@@ -198,7 +205,7 @@ class WeaponGateCLITests(unittest.TestCase):
                 self.assertNotIn("UnicodeEncodeError", result.stderr.decode("cp1252"))
 
     def test_strict_mode_rejects_operational_warning_but_normal_mode_accepts_it(self):
-        armas, _personagens = database.carregar_database()
+        armas, _personagens = _carregar_database_canonica()
         outlier = copy.deepcopy(next(arma for arma in armas if arma["tipo"] == "Reta"))
         outlier["comp_lamina"] = 1_001.0
 
@@ -227,7 +234,7 @@ class WeaponGateCLITests(unittest.TestCase):
                     self.assertIn(b"geometry-operational-outlier", strict.stdout)
 
     def test_structural_geometry_error_fails_both_gates(self):
-        armas, _personagens = database.carregar_database()
+        armas, _personagens = _carregar_database_canonica()
         invalid = copy.deepcopy(
             next(arma for arma in armas if arma["tipo"] == "Transformável")
         )

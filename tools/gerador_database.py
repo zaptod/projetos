@@ -636,8 +636,11 @@ def salvar_database(
 ):
     """Valida e persiste armas/personagens como uma unidade coerente."""
 
-    armas_file = arquivo_armas or database.ARQUIVO_ARMAS
-    personagens_file = arquivo_personagens or database.ARQUIVO_CHARS
+    armas_file, personagens_file = database.resolver_database_paths(
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+        para_escrita=True,
+    )
 
     armas_novas = [dict(arma) for arma in armas]
     personagens_novos = [dict(personagem) for personagem in personagens]
@@ -646,9 +649,13 @@ def salvar_database(
         armas_final = armas_novas
         personagens_final = personagens_novos
     else:
-        armas_existentes = database.carregar_json(armas_file)
-        personagens_existentes = database.carregar_json(personagens_file)
-        database.validar_database(armas_existentes, personagens_existentes)
+        if arquivo_armas is None and arquivo_personagens is None:
+            armas_existentes, personagens_existentes = database.carregar_database()
+        else:
+            armas_existentes, personagens_existentes = database.carregar_database(
+                arquivo_armas=armas_file,
+                arquivo_personagens=personagens_file,
+            )
 
         nomes_armas = {arma["nome"] for arma in armas_existentes}
         nomes_personagens = {personagem["nome"] for personagem in personagens_existentes}

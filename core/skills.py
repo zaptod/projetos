@@ -11,7 +11,6 @@ Catálogo expandido de habilidades com:
 =============================================================================
 """
 
-from utils.config import PPM
 
 # ============================================================================
 # CATÁLOGO MASTER DE HABILIDADES v2.0
@@ -54,7 +53,8 @@ SKILL_DB = {
         "descricao": "Explosão ao redor do conjurador"
     },
     "Inferno": {
-        "tipo": "AREA", "dano": 15.0, "raio_area": 4.0, "cor": (255, 80, 0),
+        "tipo": "AREA", "ground": True,
+        "dano": 15.0, "raio_area": 4.0, "cor": (255, 80, 0),
         "custo": 45.0, "cooldown": 15.0, "efeito": "QUEIMANDO", "elemento": "FOGO",
         "duracao": 5.0, "dano_tick": 10.0,
         "descricao": "Campo de fogo persistente"
@@ -254,7 +254,8 @@ SKILL_DB = {
         "descricao": "Causa medo em todos próximos"
     },
     "Tentáculos do Vazio": {
-        "tipo": "AREA", "dano": 15.0, "raio_area": 3.0, "cor": (30, 0, 50),
+        "tipo": "AREA", "ground": True,
+        "dano": 15.0, "raio_area": 3.0, "cor": (30, 0, 50),
         "custo": 30.0, "cooldown": 10.0, "efeito": "ENRAIZADO", "elemento": "VOID",
         "duracao": 3.0, "dano_tick": 8.0,
         "descricao": "Tentáculos que prendem e causam dano"
@@ -374,7 +375,8 @@ SKILL_DB = {
         "descricao": "Dispara 3 espinhos em leque"
     },
     "Raízes": {
-        "tipo": "AREA", "dano": 0.0, "raio_area": 2.0, "cor": (100, 80, 50),
+        "tipo": "AREA", "ground": True,
+        "dano": 0.0, "raio_area": 2.0, "cor": (100, 80, 50),
         "custo": 18.0, "cooldown": 8.0, "efeito": "ENRAIZADO", "elemento": "NATUREZA",
         "duracao": 2.5,
         "descricao": "Prende inimigos no lugar"
@@ -412,7 +414,8 @@ SKILL_DB = {
         "descricao": "Canaliza para curar (não pode mover)"
     },
     "Wrath of Nature": {
-        "tipo": "AREA", "dano": 60.0, "raio_area": 6.0, "cor": (100, 200, 50),
+        "tipo": "AREA", "ground": True,
+        "dano": 60.0, "raio_area": 6.0, "cor": (100, 200, 50),
         "custo": 65.0, "cooldown": 40.0, "elemento": "NATUREZA",
         "efeito": "ENRAIZADO", "efeito2": "ENVENENADO",
         "delay": 1.0, "ondas": 3,
@@ -646,7 +649,8 @@ SKILL_DB = {
         "descricao": "Dano massivo contra alvos com pouca vida"
     },
     "Terremoto": {
-        "tipo": "AREA", "dano": 45.0, "raio_area": 4.0, "cor": (150, 100, 50),
+        "tipo": "AREA", "ground": True,
+        "dano": 45.0, "raio_area": 4.0, "cor": (150, 100, 50),
         "custo": 35.0, "cooldown": 15.0, "efeito": "KNOCK_UP",
         "descricao": "Abala o chão derrubando inimigos"
     },

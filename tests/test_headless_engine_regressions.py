@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import json
 import os
 import random
 import sys
@@ -163,15 +165,16 @@ class HeadlessRunnerContractTests(unittest.TestCase):
 
     def test_same_seed_reproduces_the_same_time_limit_decision(self) -> None:
         class RandomSimulator:
-            def __init__(self, **_kwargs):
+            def __init__(self, **kwargs):
                 self.p1 = _fighter("A")
                 self.p2 = _fighter("B")
                 self.round_finalizado = False
                 self.vencedor_round_side = None
+                self.rng = random.Random(kwargs["seed"])
 
             def update(self, _dt):
-                self.p1.vida -= random.random()
-                self.p2.vida -= random.random()
+                self.p1.vida -= self.rng.random()
+                self.p2.vida -= self.rng.random()
 
             def close(self):
                 pass
@@ -193,6 +196,32 @@ class HeadlessRunnerContractTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual(first.reason, "time_limit_decision")
+
+    def test_runner_rejects_nonfinite_or_fractional_timing(self) -> None:
+        config = {"p1_nome": "A", "p2_nome": "B"}
+        for options in (
+            {"fixed_dt": float("nan")},
+            {"fixed_dt": float("inf")},
+            {"max_duration": float("nan")},
+            {"max_frames": float("inf")},
+            {"max_frames": 1.5},
+        ):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                HeadlessMatchRunner(config, **options)
+
+    def test_cleanup_error_becomes_explicit_failed_result(self) -> None:
+        class CleanupBrokenSimulator(self.FakeSimulator):
+            def close(self):
+                raise RuntimeError("cleanup failed")
+
+        with patch("simulation.headless.Simulador", CleanupBrokenSimulator):
+            result = HeadlessMatchRunner(
+                {"p1_nome": "A", "p2_nome": "B"},
+                max_frames=3,
+            ).run()
+
+        self.assertFalse(result.success)
+        self.assertIn("falha ao liberar simulador", result.error)
 
     def test_initialization_error_becomes_an_explicit_failed_result(self) -> None:
         class BrokenSimulator:
@@ -412,6 +441,35 @@ class HeadlessCliContractTests(unittest.TestCase):
             exit_code = headless_cli.main(["--mode", "rapido"])
 
         self.assertEqual(exit_code, 1)
+
+    def test_result_json_is_rfc_compliant_and_cp1252_safe(self) -> None:
+        result = HeadlessMatchResult(
+            success=True,
+            winner="Fogo🔥",
+            winner_slot="p1",
+            reason="knockout",
+            duration=1.0,
+            frames=60,
+            seed=1,
+            p1_name="Fogo🔥",
+            p2_name="B",
+            p1_hp=10.0,
+            p2_hp=0.0,
+            p1_hp_ratio=0.1,
+            p2_hp_ratio=0.0,
+        )
+        raw = io.BytesIO()
+        console = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+        try:
+            with patch("sys.stdout", console):
+                headless_cli._print_result(result)
+                console.flush()
+        finally:
+            console.detach()
+
+        payload = json.loads(raw.getvalue().decode("cp1252"))
+        self.assertEqual(payload["winner"], "Fogo🔥")
+        self.assertNotIn("NaN", raw.getvalue().decode("cp1252"))
 
 
 if __name__ == "__main__":

@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 from typing import Any
+
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
 from data import database
 from simulation.headless import HeadlessMatchRunner, HeadlessMatchResult
@@ -128,7 +131,14 @@ def executar_teste_stress(
 
 
 def _print_result(result: HeadlessMatchResult) -> None:
-    print(json.dumps(result.to_dict(), ensure_ascii=False, sort_keys=True))
+    print(
+        json.dumps(
+            result.to_dict(),
+            ensure_ascii=True,
+            allow_nan=False,
+            sort_keys=True,
+        )
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -166,11 +176,27 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
     except Exception as exc:
-        print(json.dumps({"success": False, "error": f"{type(exc).__name__}: {exc}"}))
+        print(
+            json.dumps(
+                {"success": False, "error": f"{type(exc).__name__}: {exc}"},
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+        )
         return 1
 
-    for result in results:
-        _print_result(result)
+    try:
+        for result in results:
+            _print_result(result)
+    except (TypeError, ValueError) as exc:
+        print(
+            json.dumps(
+                {"success": False, "error": f"serialization error: {exc}"},
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+        )
+        return 1
     return 0 if results and all(result.success for result in results) else 1
 
 

@@ -1,9 +1,8 @@
-"""Execução determinística do motor real sem janela ou arquivo de configuração."""
+"""Execucao deterministica do motor real sem janela ou estado compartilhado."""
 
 from __future__ import annotations
 
 import math
-import random
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
@@ -12,7 +11,7 @@ from .simulacao import Simulador
 
 @dataclass(frozen=True)
 class HeadlessMatchResult:
-    """Resultado serializável de uma execução do motor de combate."""
+    """Resultado serializavel de uma execucao do motor de combate."""
 
     success: bool
     winner: str | None
@@ -38,7 +37,7 @@ class HeadlessMatchResult:
 
 
 class HeadlessMatchRunner:
-    """Controla somente relógio/seed; todas as regras vivem em Simulador.update."""
+    """Controla relogio/seed; as regras continuam em ``Simulador.update``."""
 
     def __init__(
         self,
@@ -51,18 +50,28 @@ class HeadlessMatchRunner:
     ) -> None:
         if not isinstance(match_config, Mapping):
             raise TypeError("match_config precisa ser um mapeamento")
-        if fixed_dt <= 0.0:
-            raise ValueError("fixed_dt precisa ser positivo")
-        if max_duration <= 0.0:
-            raise ValueError("max_duration precisa ser positivo")
+
+        fixed_dt = float(fixed_dt)
+        max_duration = float(max_duration)
+        if not math.isfinite(fixed_dt) or fixed_dt <= 0.0:
+            raise ValueError("fixed_dt precisa ser finito e positivo")
+        if not math.isfinite(max_duration) or max_duration <= 0.0:
+            raise ValueError("max_duration precisa ser finito e positivo")
         if max_frames is None:
             max_frames = math.ceil(max_duration / fixed_dt)
-        if max_frames <= 0:
-            raise ValueError("max_frames precisa ser positivo")
+        if isinstance(max_frames, bool):
+            raise ValueError("max_frames precisa ser um inteiro positivo")
+        max_frames_float = float(max_frames)
+        if (
+            not math.isfinite(max_frames_float)
+            or not max_frames_float.is_integer()
+            or max_frames_float <= 0
+        ):
+            raise ValueError("max_frames precisa ser um inteiro positivo")
 
         self.match_config = dict(match_config)
         self.match_config["best_of"] = 1
-        self.fixed_dt = float(fixed_dt)
+        self.fixed_dt = fixed_dt
         self.max_frames = int(max_frames)
         self.seed = int(seed)
 
@@ -84,8 +93,10 @@ class HeadlessMatchRunner:
         p1_name, p1_hp, p1_ratio = self._fighter_snapshot(simulator.p1)
         p2_name, p2_hp, p2_ratio = self._fighter_snapshot(simulator.p2)
         winner = (
-            p1_name if winner_slot == "p1"
-            else p2_name if winner_slot == "p2"
+            p1_name
+            if winner_slot == "p1"
+            else p2_name
+            if winner_slot == "p2"
             else None
         )
         return HeadlessMatchResult(
@@ -124,13 +135,34 @@ class HeadlessMatchRunner:
             winner_slot=winner_slot,
         )
 
+    def _failure_result(self, frames: int, exc: BaseException) -> HeadlessMatchResult:
+        return HeadlessMatchResult(
+            success=False,
+            winner=None,
+            winner_slot=None,
+            reason="error",
+            duration=frames * self.fixed_dt,
+            frames=frames,
+            seed=self.seed,
+            p1_name=str(self.match_config.get("p1_nome") or ""),
+            p2_name=str(self.match_config.get("p2_nome") or ""),
+            p1_hp=0.0,
+            p2_hp=0.0,
+            p1_hp_ratio=0.0,
+            p2_hp_ratio=0.0,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+
     def run(self) -> HeadlessMatchResult:
-        """Executa exatamente ``Simulador.update(fixed_dt)`` até um terminal."""
-        random_state = random.getstate()
+        """Executa ``Simulador.update(fixed_dt)`` ate um estado terminal."""
+
         simulator = None
         frames = 0
+        result: HeadlessMatchResult | None = None
         try:
-            random.seed(self.seed)
+            # O proprio Simulador adquire ownership e controla o RNG global de
+            # forma atomica. Semear antes desse lock criaria uma race entre
+            # runners simultaneos.
             simulator = Simulador(
                 match_config=self.match_config,
                 headless=True,
@@ -139,40 +171,35 @@ class HeadlessMatchRunner:
             for frames in range(1, self.max_frames + 1):
                 simulator.update(self.fixed_dt)
                 if simulator.round_finalizado:
-                    if simulator.p1.morto and simulator.p2.morto:
-                        reason = "double_ko"
-                    else:
-                        reason = "knockout"
-                    return self._result_from_simulator(
+                    reason = (
+                        "double_ko"
+                        if simulator.p1.morto and simulator.p2.morto
+                        else "knockout"
+                    )
+                    result = self._result_from_simulator(
                         simulator,
                         frames=frames,
                         reason=reason,
                         winner_slot=simulator.vencedor_round_side,
                     )
-            return self._time_limit_result(simulator)
+                    break
+            if result is None:
+                result = self._time_limit_result(simulator)
         except Exception as exc:
-            p1_name = str(self.match_config.get("p1_nome") or "")
-            p2_name = str(self.match_config.get("p2_nome") or "")
-            return HeadlessMatchResult(
-                success=False,
-                winner=None,
-                winner_slot=None,
-                reason="error",
-                duration=frames * self.fixed_dt,
-                frames=frames,
-                seed=self.seed,
-                p1_name=p1_name,
-                p2_name=p2_name,
-                p1_hp=0.0,
-                p2_hp=0.0,
-                p1_hp_ratio=0.0,
-                p2_hp_ratio=0.0,
-                error=f"{type(exc).__name__}: {exc}",
-            )
+            result = self._failure_result(frames, exc)
         finally:
             if simulator is not None:
-                simulator.close()
-            random.setstate(random_state)
+                try:
+                    simulator.close()
+                except Exception as exc:
+                    result = self._failure_result(
+                        frames,
+                        RuntimeError(f"falha ao liberar simulador: {exc}"),
+                    )
+
+        if result is None:  # pragma: no cover - defesa contra fluxo impossivel
+            return self._failure_result(frames, RuntimeError("resultado ausente"))
+        return result
 
 
 def run_headless_match(
@@ -180,6 +207,7 @@ def run_headless_match(
     **runner_options: Any,
 ) -> HeadlessMatchResult:
     """Atalho funcional usado por CLI e torneio."""
+
     return HeadlessMatchRunner(match_config, **runner_options).run()
 
 

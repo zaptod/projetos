@@ -172,6 +172,35 @@ class DataContractTests(unittest.TestCase):
             self.assertEqual("Arma renomeada", armas[0]["nome"])
             self.assertEqual("Arma renomeada", personagens[0]["nome_arma"])
 
+    def test_edicao_de_arma_atualiza_campos_e_referencias_na_mesma_transacao(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            armas_path = Path(temp_dir) / "armas.json"
+            chars_path = Path(temp_dir) / "personagens.json"
+            database.salvar_database(
+                [arma_valida()],
+                [personagem_valido()],
+                arquivo_armas=str(armas_path),
+                arquivo_personagens=str(chars_path),
+            )
+            atualizada = arma_valida("Arma revisada")
+            atualizada["dano"] = 37.0
+
+            afetados = database.atualizar_arma(
+                "Arma de teste",
+                atualizada,
+                arquivo_armas=str(armas_path),
+                arquivo_personagens=str(chars_path),
+            )
+
+            armas, personagens = database.carregar_database(
+                arquivo_armas=str(armas_path),
+                arquivo_personagens=str(chars_path),
+            )
+            self.assertEqual(1, afetados)
+            self.assertEqual("Arma revisada", armas[0]["nome"])
+            self.assertEqual(37.0, armas[0]["dano"])
+            self.assertEqual("Arma revisada", personagens[0]["nome_arma"])
+
     def test_remocao_de_arma_referenciada_exige_substituta(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             armas_path = Path(temp_dir) / "armas.json"
@@ -216,6 +245,68 @@ class DataContractTests(unittest.TestCase):
             ):
                 self.assertEqual({"best_of": 3}, database.carregar_match_config())
             self.assertFalse(runtime.exists())
+
+    def test_database_default_is_read_only_until_first_runtime_save(self):
+        """O wheel fornece defaults; edicoes devem criar um par fora dele."""
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            package_dir = root / "package"
+            runtime_dir = root / "runtime"
+            package_dir.mkdir()
+            package_armas = package_dir / "armas.json"
+            package_chars = package_dir / "personagens.json"
+            runtime_armas = runtime_dir / "armas.json"
+            runtime_chars = runtime_dir / "personagens.json"
+            armas_default = [arma_valida()]
+            chars_default = [personagem_valido()]
+            package_armas.write_text(json.dumps(armas_default), encoding="utf-8")
+            package_chars.write_text(json.dumps(chars_default), encoding="utf-8")
+            bytes_armas = package_armas.read_bytes()
+            bytes_chars = package_chars.read_bytes()
+
+            with patch.multiple(
+                database,
+                ARQUIVO_ARMAS=str(package_armas),
+                ARQUIVO_CHARS=str(package_chars),
+                ARQUIVO_ARMAS_RUNTIME=str(runtime_armas),
+                ARQUIVO_CHARS_RUNTIME=str(runtime_chars),
+            ):
+                self.assertEqual(
+                    (armas_default, chars_default),
+                    database.carregar_database(),
+                )
+                self.assertFalse(runtime_dir.exists())
+
+                armas_editadas = [arma_valida("Arma runtime")]
+                chars_editados = [personagem_valido(nome_arma="Arma runtime")]
+                database.salvar_database(armas_editadas, chars_editados)
+                self.assertEqual(
+                    (armas_editadas, chars_editados),
+                    database.carregar_database(),
+                )
+
+            self.assertEqual(package_armas.read_bytes(), bytes_armas)
+            self.assertEqual(package_chars.read_bytes(), bytes_chars)
+            self.assertTrue(runtime_armas.is_file())
+            self.assertTrue(runtime_chars.is_file())
+
+    def test_database_rejeita_snapshot_runtime_parcial(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runtime_armas = root / "runtime" / "armas.json"
+            runtime_chars = root / "runtime" / "personagens.json"
+            runtime_armas.parent.mkdir()
+            runtime_armas.write_text("[]", encoding="utf-8")
+
+            with (
+                patch.object(database, "ARQUIVO_ARMAS_RUNTIME", str(runtime_armas)),
+                patch.object(database, "ARQUIVO_CHARS_RUNTIME", str(runtime_chars)),
+                self.assertRaises(database.DataValidationError) as raised,
+            ):
+                database.resolver_database_paths()
+
+        self.assertIn("snapshot runtime incompleto", str(raised.exception))
 
 
 class TournamentStateContractTests(unittest.TestCase):

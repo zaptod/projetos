@@ -1,68 +1,69 @@
+"""Exports publicos lazy do nucleo do Neural Fights.
+
+Importar um submodulo leve, como :mod:`core.skills`, nao deve inicializar
+Pygame, audio, arena ou o runtime de combate. Os nomes historicamente
+reexportados continuam disponiveis e sao carregados apenas quando acessados.
 """
-NEURAL FIGHTS - Módulo Core
-Funcionalidades essenciais do jogo.
-"""
 
-from core.physics import (
-    normalizar_angulo,
-    distancia_pontos,
-    colisao_linha_circulo,
-    intersect_line_circle,
-    colisao_linha_linha
-)
-from core.skills import SKILL_DB, get_skill_data
-from core.entities import Lutador
-from core.game_feel import (
-    GameFeelManager,
-    HitStopManager,
-    SuperArmorSystem,
-    ChannelingSystem,
-    CameraFeel,
-    ChannelState,
-    SuperArmorState,
-)
+from __future__ import annotations
 
-# v10.0 - Combat e Hitbox movidos para core
-from core.combat import (
-    ArmaProjetil, FlechaProjetil, OrbeMagico,
-    Projetil, AreaEffect, Beam, Buff, DotEffect,
-)
-from core.hitbox import (
-    DEBUG_HITBOX, DEBUG_VISUAL,
-    HitboxInfo, SistemaHitbox,
-    sistema_hitbox, verificar_hit, get_debug_visual, atualizar_debug,
-)
+from importlib import import_module
 
-# v10.0 - Arena movida para core
-from core.arena import Arena
 
-__all__ = [
+_EXPORTS = {
     # Physics
-    'normalizar_angulo',
-    'distancia_pontos',
-    'colisao_linha_circulo',
-    'intersect_line_circle',
-    'colisao_linha_linha',
+    "normalizar_angulo": ("core.physics", "normalizar_angulo"),
+    "distancia_pontos": ("core.physics", "distancia_pontos"),
+    "colisao_linha_circulo": ("core.physics", "colisao_linha_circulo"),
+    "intersect_line_circle": ("core.physics", "intersect_line_circle"),
+    "colisao_linha_linha": ("core.physics", "colisao_linha_linha"),
     # Skills
-    'SKILL_DB',
-    'get_skill_data',
+    "SKILL_DB": ("core.skills", "SKILL_DB"),
+    "get_skill_data": ("core.skills", "get_skill_data"),
     # Entities
-    'Lutador',
-    # Game Feel v8.0
-    'GameFeelManager',
-    'HitStopManager',
-    'SuperArmorSystem',
-    'ChannelingSystem',
-    'CameraFeel',
-    'ChannelState',
-    'SuperArmorState',
+    "Lutador": ("core.entities", "Lutador"),
+    # Game feel
+    "GameFeelManager": ("core.game_feel", "GameFeelManager"),
+    "HitStopManager": ("core.game_feel", "HitStopManager"),
+    "SuperArmorSystem": ("core.game_feel", "SuperArmorSystem"),
+    "ChannelingSystem": ("core.game_feel", "ChannelingSystem"),
+    "CameraFeel": ("core.game_feel", "CameraFeel"),
+    "ChannelState": ("core.game_feel", "ChannelState"),
+    "SuperArmorState": ("core.game_feel", "SuperArmorState"),
     # Combat
-    'ArmaProjetil', 'FlechaProjetil', 'OrbeMagico',
-    'Projetil', 'AreaEffect', 'Beam', 'Buff', 'DotEffect',
+    "ArmaProjetil": ("core.combat", "ArmaProjetil"),
+    "FlechaProjetil": ("core.combat", "FlechaProjetil"),
+    "OrbeMagico": ("core.combat", "OrbeMagico"),
+    "Projetil": ("core.combat", "Projetil"),
+    "AreaEffect": ("core.combat", "AreaEffect"),
+    "Beam": ("core.combat", "Beam"),
+    "Buff": ("core.combat", "Buff"),
+    "DotEffect": ("core.combat", "DotEffect"),
     # Hitbox
-    'DEBUG_HITBOX', 'DEBUG_VISUAL',
-    'HitboxInfo', 'SistemaHitbox',
-    'sistema_hitbox', 'verificar_hit', 'get_debug_visual', 'atualizar_debug',
+    "DEBUG_HITBOX": ("core.hitbox", "DEBUG_HITBOX"),
+    "DEBUG_VISUAL": ("core.hitbox", "DEBUG_VISUAL"),
+    "HitboxInfo": ("core.hitbox", "HitboxInfo"),
+    "SistemaHitbox": ("core.hitbox", "SistemaHitbox"),
+    "sistema_hitbox": ("core.hitbox", "sistema_hitbox"),
+    "verificar_hit": ("core.hitbox", "verificar_hit"),
+    "get_debug_visual": ("core.hitbox", "get_debug_visual"),
+    "atualizar_debug": ("core.hitbox", "atualizar_debug"),
     # Arena
-    'Arena',
-]
+    "Arena": ("core.arena", "Arena"),
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    try:
+        module_name, attribute = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
+    value = getattr(import_module(module_name), attribute)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *__all__})

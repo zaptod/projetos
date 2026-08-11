@@ -7,8 +7,17 @@ Interface para configurar sons para todos os eventos do jogo.
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
-import json
 import shutil
+
+from effects.audio_paths import (
+    PACKAGE_SOUND_DIR,
+    get_runtime_config_path,
+    get_runtime_sound_dir,
+    load_sound_config,
+    remove_runtime_sound_overrides,
+    resolve_sound_file,
+    save_sound_config,
+)
 
 # Cores do tema
 COR_FUNDO = "#2C3E50"
@@ -151,13 +160,13 @@ class TelaSons(tk.Frame):
         self.controller = controller
         self.configure(bg=COR_FUNDO)
         
-        # Diretório de sons
-        self.sound_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds")
-        if not os.path.exists(self.sound_dir):
-            os.makedirs(self.sound_dir, exist_ok=True)
+        # Assets originais ficam no pacote; customizacoes sao estado local.
+        self.sound_dir = str(get_runtime_sound_dir())
+        self.package_sound_dir = str(PACKAGE_SOUND_DIR)
+        os.makedirs(self.sound_dir, exist_ok=True)
         
         # Arquivo de configuração
-        self.config_file = os.path.join(self.sound_dir, "sound_config.json")
+        self.config_file = str(get_runtime_config_path())
         self.sound_config = self._load_config()
         
         # Widgets de som selecionados
@@ -170,13 +179,10 @@ class TelaSons(tk.Frame):
     
     def _load_config(self) -> dict:
         """Carrega configuração de sons."""
-        if os.path.exists(self.config_file):
-            try:
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                pass
-        return {}
+        try:
+            return load_sound_config()
+        except (OSError, ValueError, TypeError):
+            return {}
     
     def _save_config(self):
         """Salva configuração de sons."""
@@ -186,12 +192,10 @@ class TelaSons(tk.Frame):
             volumes[cat] = slider_data['var'].get() / 100.0
         self.sound_config["_volumes"] = volumes
         
-        with open(self.config_file, 'w', encoding='utf-8') as f:
-            json.dump(self.sound_config, f, indent=2, ensure_ascii=False)
+        save_sound_config(self.sound_config)
     
     def _criar_painel_volumes(self):
         """Cria painel com sliders de volume por categoria."""
-        from effects.audio import AudioManager
         
         volume_frame = tk.LabelFrame(
             self, text=" 🎚️ Volumes por Categoria ",
@@ -279,7 +283,7 @@ class TelaSons(tk.Frame):
                 from effects.audio import AudioManager
                 audio = AudioManager.get_instance()
                 audio.set_category_volume(category, vol / 100.0)
-            except:
+            except (OSError, RuntimeError, AttributeError, TypeError):
                 pass
 
     def _criar_interface(self):
@@ -329,8 +333,8 @@ class TelaSons(tk.Frame):
         tk.Label(
             info_frame, 
             text="📌 Clique no botão '...' para selecionar um arquivo de som (.wav, .ogg, .mp3)\n"
-                 "📌 Sons configurados são copiados para a pasta 'sounds' do jogo\n"
-                 "📌 Sons não configurados usarão sons procedurais gerados automaticamente",
+                 "📌 Sons configurados são copiados para a pasta local do usuário\n"
+                 "📌 Sons não configurados usam o asset padrão ou fallback disponível",
             font=("Arial", 9), bg=COR_CARD, fg="#BDC3C7", justify="left"
         ).pack(pady=8, padx=10)
         
@@ -467,9 +471,7 @@ class TelaSons(tk.Frame):
     def _atualizar_status(self, event_id: str, filename: str, status_label: tk.Label):
         """Atualiza o indicador de status do som."""
         if filename:
-            # Verifica se arquivo existe
-            filepath = os.path.join(self.sound_dir, filename)
-            if os.path.exists(filepath):
+            if resolve_sound_file(filename) is not None:
                 status_label.config(text="✓", fg=COR_SUCCESS)
             else:
                 status_label.config(text="?", fg=COR_WARNING)
@@ -498,7 +500,8 @@ class TelaSons(tk.Frame):
             dest_path = os.path.join(self.sound_dir, dest_name)
             
             try:
-                if filepath != dest_path:
+                if os.path.abspath(filepath) != os.path.abspath(dest_path):
+                    remove_runtime_sound_overrides(event_id)
                     shutil.copy2(filepath, dest_path)
                 
                 file_var.set(dest_name)
@@ -510,6 +513,7 @@ class TelaSons(tk.Frame):
     
     def _limpar_som(self, event_id: str, file_var: tk.StringVar, status_label: tk.Label):
         """Remove configuração de som."""
+        remove_runtime_sound_overrides(event_id)
         file_var.set("")
         if event_id in self.sound_config:
             del self.sound_config[event_id]
@@ -520,13 +524,16 @@ class TelaSons(tk.Frame):
         filename = file_var.get()
         
         if not filename:
-            messagebox.showinfo("Info", "Nenhum som configurado.\nSerá usado som procedural.")
+            messagebox.showinfo(
+                "Info",
+                "Nenhum som configurado.\nSerá usado o asset padrão ou fallback.",
+            )
             return
         
-        filepath = os.path.join(self.sound_dir, filename)
-        
-        if not os.path.exists(filepath):
-            messagebox.showwarning("Aviso", f"Arquivo não encontrado:\n{filepath}")
+        filepath = resolve_sound_file(filename)
+
+        if filepath is None:
+            messagebox.showwarning("Aviso", f"Arquivo não encontrado:\n{filename}")
             return
         
         try:
@@ -534,7 +541,7 @@ class TelaSons(tk.Frame):
             if not pygame.mixer.get_init():
                 pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
             
-            sound = pygame.mixer.Sound(filepath)
+            sound = pygame.mixer.Sound(str(filepath))
             sound.play()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao reproduzir:\n{e}")
@@ -555,8 +562,8 @@ class TelaSons(tk.Frame):
         try:
             from effects.audio import AudioManager
             audio = AudioManager.get_instance()
-            audio.save_volume_config()
-        except:
+            audio.reload_sounds()
+        except (OSError, RuntimeError, AttributeError, TypeError):
             pass
         
         messagebox.showinfo("Sucesso", "Configuração de sons e volumes salva!")
