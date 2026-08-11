@@ -14,40 +14,25 @@ dependencies = [
 ]
 
 [project.scripts]
-neural-fights = "run:main"
-neural-fights-tournament = "run_tournament:main"
-neural-fights-headless = "test_headless_battle:main"
-neural-fights-roster = "scripts.gerar_roster:main"
-neural-fights-migrate-database = "tools.migrar_database:main"
-neural-fights-audit-skills = "tools.auditoria_skills:main"
+neural-fights = "neural_fights.cli.main:main"
+neural-fights-tournament = "neural_fights.cli.tournament:main"
+neural-fights-headless = "neural_fights.cli.headless:main"
+neural-fights-roster = "neural_fights.cli.roster:main"
+neural-fights-migrate-database = "neural_fights.tools.migrar_database:main"
+neural-fights-audit-skills = "neural_fights.tools.auditoria_skills:main"
 
 [tool.setuptools]
-include-package-data = true
-py-modules = ["run", "run_tournament", "test_manual", "test_headless_battle"]
+include-package-data = false
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = [
-    "ai*",
-    "core*",
-    "data*",
-    "effects*",
-    "models*",
-    "scripts*",
-    "simulation*",
-    "sounds*",
-    "tests*",
-    "tools*",
-    "tournament*",
-    "ui*",
-    "utils*",
-]
-exclude = ["examples*"]
+include = ["neural_fights*"]
+exclude = ["tests*", "examples*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-data = ["*.json", "fixtures/*.json"]
-sounds = ["*.json", "*.mp3", "*.wav", "*.ogg"]
+"neural_fights.data" = ["*.json", "fixtures/*.json"]
+"neural_fights.sounds" = ["*.json", "*.mp3", "*.wav", "*.ogg"]
 
 [project.optional-dependencies]
 dev = [

@@ -6,9 +6,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.combat import AreaEffect, Buff
-from core.entities import Lutador
-from core.skills import get_skill_data
+from neural_fights.core.combat import AreaEffect, Buff
+from neural_fights.core.entities import Lutador
+from neural_fights.core.skills import get_skill_data
 
 
 class StatusRuntimeRegressionTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class StatusRuntimeRegressionTests(unittest.TestCase):
             nome_arma="",
             arma_obj=None,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             return Lutador(data, 5.0, 5.0)
 
     def _cast_class_buff(self, fighter: Lutador, skill_name: str) -> None:
@@ -36,7 +36,7 @@ class StatusRuntimeRegressionTests(unittest.TestCase):
         )
         fighter.cd_skills[skill_name] = 0.0
 
-        with patch("effects.audio.AudioManager.get_instance", return_value=None):
+        with patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=None):
             self.assertTrue(fighter.usar_skill_classe(skill_name))
 
     @staticmethod
@@ -164,7 +164,7 @@ class StatusRuntimeRegressionTests(unittest.TestCase):
         area.tipo_efeito = "ENRAIZADO"
         area.efeito2 = "ENVENENADO"
 
-        with patch("core.combat.random.random", return_value=0.0):
+        with patch("neural_fights.core.combat.random.random", return_value=0.0):
             area.aplicar_efeitos_alvo(fighter)
 
         self.assertEqual(fighter.slow_timer, 0.0)

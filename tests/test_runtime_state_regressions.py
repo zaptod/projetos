@@ -6,9 +6,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import simulation.simulacao as simulation_module
-from core.entities import Lutador
-from simulation.simulacao import Simulador
+import neural_fights.simulation.simulacao as simulation_module
+from neural_fights.core.entities import Lutador
+from neural_fights.simulation.simulacao import Simulador
 
 
 class MatchConfigurationRegressionTests(unittest.TestCase):
@@ -105,7 +105,7 @@ class TemporaryStatusRegressionTests(unittest.TestCase):
             nome_arma="",
             arma_obj=None,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             return Lutador(data, 5.0, 5.0)
 
     def test_root_expires_and_restores_movement(self) -> None:

@@ -3,7 +3,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from tournament.tournament_mode import Tournament, TournamentState
+from neural_fights.tournament.tournament_mode import Tournament, TournamentState
 
 
 class TournamentByeRegressionTests(unittest.TestCase):
@@ -66,12 +66,11 @@ class TournamentByeRegressionTests(unittest.TestCase):
         bye_match_index, bye_match = next(
             (index, match)
             for index, match in enumerate(first_round.matches)
-            if match.fighter1_name.startswith("BYE")
-            or match.fighter2_name.startswith("BYE")
+            if match.fighter1_is_bye or match.fighter2_is_bye
         )
         expected_winner = (
             bye_match.fighter2_name
-            if bye_match.fighter1_name.startswith("BYE")
+            if bye_match.fighter1_is_bye
             else bye_match.fighter1_name
         )
 
@@ -131,6 +130,35 @@ class TournamentByeRegressionTests(unittest.TestCase):
         progress = tournament.get_progress()
         self.assertEqual(progress["total_matches"], progress["completed_matches"])
         self.assertEqual(progress["progress_percent"], 100.0)
+
+    def test_real_fighter_name_starting_with_bye_is_not_auto_advanced(self):
+        tournament = Tournament("BYE nao e prefixo reservado")
+        tournament.participants = ["BYE Fighter", "Adversario"]
+        with patch.object(tournament, "shuffle_participants"):
+            self.assertTrue(tournament.generate_bracket())
+
+        match = tournament.bracket[0].matches[0]
+        self.assertFalse(match.fighter1_is_bye)
+        self.assertFalse(match.fighter2_is_bye)
+        self.assertTrue(tournament.start_tournament())
+        self.assertFalse(match.completed)
+        self.assertIs(tournament.get_current_match(), match)
+
+    def test_generated_byes_are_never_paired_together(self):
+        for seed in range(10):
+            tournament = Tournament(f"Distribuicao {seed}")
+            tournament.participants = [f"Lutador {index}" for index in range(5)]
+            with patch("neural_fights.tournament.tournament_mode.random.shuffle") as shuffle:
+                # Mantem a ordem deterministica; o contrato independe dela.
+                shuffle.side_effect = lambda values: None
+                self.assertTrue(tournament.generate_bracket())
+
+            self.assertFalse(
+                any(
+                    match.fighter1_is_bye and match.fighter2_is_bye
+                    for match in tournament.bracket[0].matches
+                )
+            )
 
 
 if __name__ == "__main__":

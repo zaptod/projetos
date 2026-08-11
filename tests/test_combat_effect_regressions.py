@@ -6,10 +6,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import simulation.simulacao as simulation_module
-from core.combat import AreaEffect, DotEffect
-from core.entities import Lutador
-from simulation.simulacao import Simulador
+import neural_fights.simulation.simulacao as simulation_module
+from neural_fights.core.combat import AreaEffect, DotEffect
+from neural_fights.core.entities import Lutador
+from neural_fights.simulation.simulacao import Simulador
 
 
 class AreaEffectRegressionTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class AreaEffectRegressionTests(unittest.TestCase):
             nome_arma="",
             arma_obj=None,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             return Lutador(data, x, 5.0)
 
     @staticmethod
@@ -102,7 +102,7 @@ class AreaEffectRegressionTests(unittest.TestCase):
             _aplicar_efeito_status=apply_status,
         )
 
-        with patch("core.combat.random.random", return_value=0.0):
+        with patch("neural_fights.core.combat.random.random", return_value=0.0):
             area.aplicar_efeitos_alvo(target, aplicar_efeito_principal=False)
 
         self.assertEqual(target.slow_timer, 2.0)

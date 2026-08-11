@@ -7,7 +7,7 @@ Demonstra todos os novos efeitos de magia de forma visual.
 import pygame
 import random
 
-from effects.magic_vfx import (
+from neural_fights.effects.magic_vfx import (
     MagicVFXManager,
     ELEMENT_PALETTES
 )

@@ -6,11 +6,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from core.combat import Channel, Transform
-from core.entities import Lutador
-from core.skills import get_skill_data
-from core.status_runtime import STATUS_RUNTIME
-from models.characters import Personagem
+from neural_fights.core.combat import Channel, Transform
+from neural_fights.core.entities import Lutador
+from neural_fights.core.skills import get_skill_data
+from neural_fights.core.status_runtime import STATUS_RUNTIME
+from neural_fights.models.characters import Personagem
 
 
 class _Shield:
@@ -40,7 +40,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
             nome_arma="",
             arma_obj=None,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             fighter = Lutador(data, x, y)
         fighter.vida_max = 1000.0
         fighter.vida = fighter.vida_max
@@ -69,7 +69,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
             mana=4.0,
             peso_arma_cache=8.0,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             light = Lutador(light_data, 0.0, 0.0)
             heavy = Lutador(heavy_data, 0.0, 0.0)
 
@@ -87,7 +87,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
         brain = SimpleNamespace(acao_atual="APROXIMAR", tracos=set())
         light.brain = brain
         heavy.brain = SimpleNamespace(acao_atual="APROXIMAR", tracos=set())
-        with patch("core.entities.random.random", return_value=1.0):
+        with patch("neural_fights.core.entities.random.random", return_value=1.0):
             light.executar_movimento(0.1, 10.0)
             heavy.executar_movimento(0.1, 10.0)
         light.aplicar_fisica(0.1)
@@ -110,7 +110,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
         self.assertTrue(blinded._aplicar_efeito_status("CEGO", duracao=1.0))
         self.assertEqual(blinded.get_angulo_mira(0.0), 35.0)
         self.assertEqual(blinded.get_angulo_mira(0.0), 35.0)
-        with patch("core.entities.random.uniform", return_value=0.0):
+        with patch("neural_fights.core.entities.random.uniform", return_value=0.0):
             blinded._disparar_flecha(target)
         self.assertAlmostEqual(blinded.buffer_projeteis[-1].angulo, 35.0)
 
@@ -205,7 +205,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
             "bonus_velocidade": 2.0,
             "intangivel": True,
         }
-        with patch("core.combat.get_skill_data", return_value=data):
+        with patch("neural_fights.core.combat.get_skill_data", return_value=data):
             transform = Transform("Forma de teste", fighter)
 
         self.assertAlmostEqual(fighter.get_velocidade_movimento(), originals[0] * 2.0)
@@ -252,7 +252,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
             "intangivel": False,
         }
         with patch(
-            "core.combat.get_skill_data",
+            "neural_fights.core.combat.get_skill_data",
             side_effect=[first_data, second_data],
         ):
             first = Transform("Primeira", fighter)
@@ -301,7 +301,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
         self._add_class_skill(owner, "Fotossíntese")
         owner.mana = 100.0
 
-        with patch("effects.audio.AudioManager.get_instance", return_value=None):
+        with patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=None):
             self.assertTrue(owner.usar_skill_classe("Chamas do Dragão", alvo=target))
 
         channel = owner.channel_ativo
@@ -313,7 +313,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
         owner.atacando = True
         owner.executar_ataques(0.1, 5.0, target)
         self.assertFalse(owner.atacando)
-        with patch("effects.audio.AudioManager.get_instance", return_value=None):
+        with patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=None):
             self.assertFalse(owner.usar_skill_classe("Fotossíntese", alvo=target))
 
         channel.interromper()

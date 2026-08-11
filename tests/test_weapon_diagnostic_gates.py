@@ -14,11 +14,11 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.hitbox import SistemaHitbox
-from data import database
-from models import Arma, TIPOS_ARMA
-from tools import analise_armas, diagnostico_hitbox, gerador_database
-from ui.view_armas import GEOMETRY_EDITOR_CONFIG, preencher_geometria_padrao
+from neural_fights.core.hitbox import SistemaHitbox
+from neural_fights.data import database
+from neural_fights.models import Arma, TIPOS_ARMA
+from neural_fights.tools import analise_armas, diagnostico_hitbox, gerador_database
+from neural_fights.ui.view_armas import GEOMETRY_EDITOR_CONFIG, preencher_geometria_padrao
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -167,7 +167,7 @@ class WeaponGateCLITests(unittest.TestCase):
         )
 
     def test_default_gates_are_strict_clean_and_json_is_machine_readable(self):
-        for module in ("tools.analise_armas", "tools.diagnostico_hitbox"):
+        for module in ("neural_fights.tools.analise_armas", "neural_fights.tools.diagnostico_hitbox"):
             with self.subTest(module=module):
                 result = self._run_module(module, "--strict", "--json")
                 self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
@@ -196,7 +196,7 @@ class WeaponGateCLITests(unittest.TestCase):
                 os.chdir(previous)
 
     def test_cp1252_output_is_safe(self):
-        for module in ("tools.analise_armas", "tools.diagnostico_hitbox"):
+        for module in ("neural_fights.tools.analise_armas", "neural_fights.tools.diagnostico_hitbox"):
             with self.subTest(module=module):
                 result = self._run_module(module, "--strict", cp1252=True)
                 output = result.stdout.decode("cp1252")
@@ -212,7 +212,7 @@ class WeaponGateCLITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "armas.json"
             path.write_text(json.dumps([outlier], ensure_ascii=False), encoding="utf-8")
-            for module in ("tools.analise_armas", "tools.diagnostico_hitbox"):
+            for module in ("neural_fights.tools.analise_armas", "neural_fights.tools.diagnostico_hitbox"):
                 with self.subTest(module=module):
                     normal = self._run_module(module, "--arquivo", str(path))
                     strict = self._run_module(
@@ -243,7 +243,7 @@ class WeaponGateCLITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "invalid_armas.json"
             path.write_text(json.dumps([invalid], ensure_ascii=False), encoding="utf-8")
-            for module in ("tools.analise_armas", "tools.diagnostico_hitbox"):
+            for module in ("neural_fights.tools.analise_armas", "neural_fights.tools.diagnostico_hitbox"):
                 with self.subTest(module=module):
                     result = self._run_module(
                         module,

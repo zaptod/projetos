@@ -5,8 +5,8 @@ from __future__ import annotations
 import random
 import unittest
 
-from data.database import validar_database
-from tools.gerador_database import gerar_database_completa
+from neural_fights.data.database import validar_database
+from neural_fights.tools.gerador_database import gerar_database_completa
 
 
 class GeneratorDeterminismTests(unittest.TestCase):

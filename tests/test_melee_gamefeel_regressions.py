@@ -9,9 +9,9 @@ from unittest.mock import Mock, patch
 
 import pygame
 
-from core.entities import Lutador
-from core.game_feel import GameFeelManager
-from simulation.simulacao import Simulador
+from neural_fights.core.entities import Lutador
+from neural_fights.core.game_feel import GameFeelManager
+from neural_fights.simulation.simulacao import Simulador
 
 
 class MeleeGameFeelRegressionTests(unittest.TestCase):
@@ -45,7 +45,7 @@ class MeleeGameFeelRegressionTests(unittest.TestCase):
             cor_g=150,
             cor_b=150,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             return Lutador(data, x, 5.0)
 
     def setUp(self) -> None:
@@ -95,9 +95,9 @@ class MeleeGameFeelRegressionTests(unittest.TestCase):
         base_knockback = (12.0, 4.0)
 
         with (
-            patch("simulation.simulacao.verificar_hit", return_value=(True, "hit")),
+            patch("neural_fights.simulation.simulacao.verificar_hit", return_value=(True, "hit")),
             patch(
-                "simulation.simulacao.calcular_knockback_com_forca",
+                "neural_fights.simulation.simulacao.calcular_knockback_com_forca",
                 return_value=base_knockback,
             ) as calculate_knockback,
             patch.object(manager, "processar_hit", wraps=manager.processar_hit) as process_hit,
@@ -117,9 +117,9 @@ class MeleeGameFeelRegressionTests(unittest.TestCase):
         expected_knockback = (2.4, 0.8)  # 80% de resistência da classe.
 
         with (
-            patch("simulation.simulacao.verificar_hit", return_value=(True, "hit")),
+            patch("neural_fights.simulation.simulacao.verificar_hit", return_value=(True, "hit")),
             patch(
-                "simulation.simulacao.calcular_knockback_com_forca",
+                "neural_fights.simulation.simulacao.calcular_knockback_com_forca",
                 return_value=base_knockback,
             ) as calculate_knockback,
             patch.object(manager, "processar_hit", wraps=manager.processar_hit) as process_hit,
@@ -141,9 +141,9 @@ class MeleeGameFeelRegressionTests(unittest.TestCase):
         life_before = defender.vida
 
         with (
-            patch("simulation.simulacao.verificar_hit", return_value=(True, "hit")),
+            patch("neural_fights.simulation.simulacao.verificar_hit", return_value=(True, "hit")),
             patch(
-                "simulation.simulacao.calcular_knockback_com_forca",
+                "neural_fights.simulation.simulacao.calcular_knockback_com_forca",
                 return_value=(12.0, 4.0),
             ),
         ):
@@ -163,8 +163,8 @@ class MeleeGameFeelRegressionTests(unittest.TestCase):
         life_before = defender.vida
 
         with (
-            patch("simulation.simulacao.verificar_hit", return_value=(True, "hit")),
-            patch("simulation.simulacao.calcular_knockback_com_forca") as calculate_knockback,
+            patch("neural_fights.simulation.simulacao.verificar_hit", return_value=(True, "hit")),
+            patch("neural_fights.simulation.simulacao.calcular_knockback_com_forca") as calculate_knockback,
             patch.object(manager, "processar_hit", wraps=manager.processar_hit) as process_hit,
         ):
             simulator.checar_ataque(attacker, defender)

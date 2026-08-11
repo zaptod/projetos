@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import io
 import json
 import os
@@ -11,11 +12,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools import auditoria_skills
+from neural_fights.tools import auditoria_skills
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-AUDIT_SCRIPT = PROJECT_ROOT / "tools" / "auditoria_skills.py"
+AUDIT_SCRIPT = PROJECT_ROOT / "neural_fights" / "tools" / "auditoria_skills.py"
 
 
 class SkillAuditCLITests(unittest.TestCase):
@@ -54,8 +55,8 @@ class SkillAuditCLITests(unittest.TestCase):
                 sys.executable,
                 "-c",
                 (
-                    "import sys; import tools.auditoria_skills; "
-                    "print('runtime-loaded=' + str('core.entities' in sys.modules))"
+                    "import sys; import neural_fights.tools.auditoria_skills; "
+                    "print('runtime-loaded=' + str('neural_fights.core.entities' in sys.modules))"
                 ),
             ],
             env=environment,
@@ -77,10 +78,8 @@ class SkillAuditCLITests(unittest.TestCase):
         self.assertGreater(report["total"], 1)
         self.assertEqual(report["errors"], 0)
         self.assertIn("structurally_valid", report)
-        self.assertEqual(
-            set(report["verified_runtime_evidence"]),
-            set(auditoria_skills.RUNTIME_EVIDENCE_FIELDS),
-        )
+        self.assertFalse(report["evidence_sources_verified"])
+        self.assertEqual(report["verified_runtime_evidence"], {})
 
         runtime_warning_skills = {
             finding["skill"]
@@ -100,6 +99,21 @@ class SkillAuditCLITests(unittest.TestCase):
         self.assertIn("Warnings: 0", output)
         self.assertNotIn("UnicodeEncodeError", result.stderr.decode("cp1252"))
 
+    def test_checkout_mode_explicitly_verifies_evidence_sources(self):
+        result = self._run_cli(
+            "--json",
+            "--strict",
+            "--verify-evidence-sources",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+        report = json.loads(result.stdout.decode("ascii"))
+        self.assertTrue(report["evidence_sources_verified"])
+        self.assertEqual(
+            set(report["verified_runtime_evidence"]),
+            set(auditoria_skills.RUNTIME_EVIDENCE_FIELDS),
+        )
+
     def test_strict_mode_still_fails_when_runtime_evidence_is_missing(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             manifest_path = Path(temporary_directory) / "empty_evidence.py"
@@ -109,6 +123,7 @@ class SkillAuditCLITests(unittest.TestCase):
             )
             result = self._run_cli(
                 "--strict",
+                "--verify-evidence-sources",
                 "--evidence-manifest",
                 str(manifest_path),
             )
@@ -145,6 +160,8 @@ class SkillAuditCLITests(unittest.TestCase):
         output = result.stdout.decode("utf-8")
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
         self.assertIn("structural contracts only", output)
+        self.assertIn("Runtime evidence source verification: not requested", output)
+        self.assertNotIn("Verified runtime evidence:", output)
         self.assertNotIn("SKILLS FUNCIONANDO", output)
 
     def test_missing_evidence_manifest_is_an_input_error_even_in_strict_mode(self):
@@ -180,6 +197,7 @@ class SkillAuditCLITests(unittest.TestCase):
                     result = self._run_cli(
                         "--json",
                         "--strict",
+                        "--verify-evidence-sources",
                         "--evidence-manifest",
                         str(manifest_path),
                     )
@@ -210,6 +228,7 @@ class SkillAuditCLITests(unittest.TestCase):
             result = self._run_cli(
                 "--json",
                 "--strict",
+                "--verify-evidence-sources",
                 "--evidence-manifest",
                 str(manifest_path),
             )
@@ -223,6 +242,170 @@ class SkillAuditCLITests(unittest.TestCase):
                 for finding in report["findings"]
             )
         )
+
+    def test_recent_runtime_contracts_have_explicit_verified_evidence(self):
+        expected_references = {
+            "afeta_caster": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_time_stop_consumes_duration_and_caster_targeting_contracts",
+            "ativa_ao_morrer": "tests.test_death_skill_regressions:DeathSkillRegressionTests.test_last_breath_has_priority_then_resurrection_spends_real_resources",
+            "bloqueia_projeteis": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_ice_wall_intercepts_fast_hostile_projectiles_until_destroyed",
+            "bonus_area": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_amplification_is_a_cast_snapshot_for_magic_damage_and_area",
+            "bonus_dano_magico": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_amplification_is_a_cast_snapshot_for_magic_damage_and_area",
+            "bonus_vs_trevas": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_holy_bonuses_apply_only_to_explicit_dark_affinity",
+            "cura_percent": "tests.test_death_skill_regressions:DeathSkillRegressionTests.test_last_breath_has_priority_then_resurrection_spends_real_resources",
+            "cura_por_morte": "tests.test_death_skill_regressions:DeathSkillRegressionTests.test_harvest_heals_flat_amount_only_after_a_terminal_owned_kill",
+            "dano_contato": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_ember_shield_retaliates_once_per_accepted_melee_source",
+            "delay_saida": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_shadow_portal_has_delayed_untargetable_exit_and_cast_parity",
+            "duracao_stop": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_time_stop_consumes_duration_and_caster_targeting_contracts",
+            "esquiva_garantida": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_prediction_consumes_only_two_accepted_hostile_impacts",
+            "forca_empurrao": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_repulsion_consumes_configured_force_without_changing_damage",
+            "invisivel_durante": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_shadow_portal_has_delayed_untargetable_exit_and_cast_parity",
+            "pilares": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_celestial_pillars_share_one_impact_identity",
+            "raio_pilar": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_celestial_pillars_share_one_impact_identity",
+            "revive_hp_percent": "tests.test_death_skill_regressions:DeathSkillRegressionTests.test_last_breath_has_priority_then_resurrection_spends_real_resources",
+            "stacks_por_segundo": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_toxic_cloud_stacks_only_for_each_targets_exposure",
+            "ve_ataques": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_prediction_consumes_only_two_accepted_hostile_impacts",
+            "vida_estrutura": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_ice_wall_intercepts_fast_hostile_projectiles_until_destroyed",
+        }
+        _, _, evidence = auditoria_skills.load_sources(
+            auditoria_skills.DEFAULT_CATALOG,
+            auditoria_skills.DEFAULT_STATUS_CONTRACT,
+            auditoria_skills.DEFAULT_EVIDENCE_MANIFEST,
+        )
+
+        verified, findings = auditoria_skills.validate_runtime_evidence(evidence)
+
+        self.assertFalse(
+            [finding for finding in findings if finding.level == "error"],
+            findings,
+        )
+        self.assertLessEqual(
+            set(expected_references),
+            auditoria_skills.RUNTIME_EVIDENCE_FIELDS,
+        )
+        for field_name, reference in expected_references.items():
+            with self.subTest(field=field_name):
+                self.assertIn(reference, verified[field_name])
+
+    def test_advanced_field_values_and_coherence_are_structurally_validated(self):
+        catalog, contracts, evidence = auditoria_skills.load_sources(
+            auditoria_skills.DEFAULT_CATALOG,
+            auditoria_skills.DEFAULT_STATUS_CONTRACT,
+            auditoria_skills.DEFAULT_EVIDENCE_MANIFEST,
+        )
+        cases = (
+            ("Último Suspiro", "cura_percent", 1.5, "invalid-fraction"),
+            (
+                "Último Suspiro",
+                "ativa_ao_morrer",
+                "yes",
+                "invalid-boolean",
+            ),
+            ("Último Suspiro", "cooldown", 0.0, "unsafe-death-trigger-cooldown"),
+            ("Ressurreição", "revive_hp_percent", 0.0, "invalid-fraction"),
+            ("Colheita de Almas", "cura_por_morte", 0.0, "non-positive-number"),
+            ("Amplificar Magia", "bonus_dano_magico", 1.0, "invalid-multiplier"),
+            ("Amplificar Magia", "bonus_area", 0.5, "invalid-multiplier"),
+            ("Raio Sagrado", "bonus_vs_trevas", 1.0, "invalid-multiplier"),
+            ("Escudo de Brasas", "dano_contato", 0.0, "non-positive-number"),
+            ("Muralha de Gelo", "bloqueia_projeteis", 1, "invalid-boolean"),
+            ("Muralha de Gelo", "vida_estrutura", 0.0, "non-positive-number"),
+            ("Parar o Tempo", "afeta_caster", "no", "invalid-boolean"),
+            ("Parar o Tempo", "duracao_stop", 0.0, "non-positive-number"),
+            ("Julgamento Celestial", "pilares", 0, "invalid-pillar-count"),
+            ("Julgamento Celestial", "raio_pilar", 0.0, "invalid-pillar-radius"),
+            ("Repulsão", "forca_empurrao", 0.0, "non-positive-number"),
+            ("Nuvem Tóxica", "stacks_por_segundo", 0, "invalid-stack-rate"),
+            ("Portal Sombrio", "invisivel_durante", "yes", "invalid-boolean"),
+            ("Portal Sombrio", "delay_saida", 0.0, "invalid-invisible-exit-delay"),
+            ("Previsão", "esquiva_garantida", 0, "invalid-dodge-charges"),
+            ("Previsão", "ve_ataques", "yes", "invalid-boolean"),
+        )
+
+        for skill, field, value, expected_code in cases:
+            with self.subTest(skill=skill, field=field):
+                invalid_catalog = copy.deepcopy(catalog)
+                invalid_catalog[skill][field] = value
+                report = auditoria_skills.audit_catalog(
+                    invalid_catalog,
+                    contracts,
+                    evidence,
+                )
+                self.assertTrue(
+                    any(
+                        finding.code == expected_code and finding.skill == skill
+                        for finding in report.findings
+                    )
+                )
+
+    def test_advanced_cross_field_coherence_is_structurally_validated(self):
+        catalog, contracts, evidence = auditoria_skills.load_sources(
+            auditoria_skills.DEFAULT_CATALOG,
+            auditoria_skills.DEFAULT_STATUS_CONTRACT,
+            auditoria_skills.DEFAULT_EVIDENCE_MANIFEST,
+        )
+        cases = (
+            (
+                "Último Suspiro",
+                lambda record: record.pop("cura_percent"),
+                "incomplete-death-trigger",
+            ),
+            (
+                "Ressurreição",
+                lambda record: record.update(cooldown=0.0),
+                "unsafe-revive-cooldown",
+            ),
+            (
+                "Colheita de Almas",
+                lambda record: record.update(dano=0.0),
+                "kill-heal-without-damage",
+            ),
+            (
+                "Amplificar Magia",
+                lambda record: record.pop("duracao"),
+                "missing-persistent-buff-duration",
+            ),
+            (
+                "Raio Sagrado",
+                lambda record: record.update(dano=0.0),
+                "dark-bonus-without-damage",
+            ),
+            (
+                "Julgamento Celestial",
+                lambda record: record.pop("pilares"),
+                "orphan-pillar-radius",
+            ),
+            (
+                "Portal Sombrio",
+                lambda record: record.update(invisivel_durante=False),
+                "orphan-invisible-exit-delay",
+            ),
+            (
+                "Nuvem Tóxica",
+                lambda record: record.pop("duracao"),
+                "missing-stacking-area-duration",
+            ),
+            (
+                "Nenhuma",
+                lambda record: record.update(bonus_area=1.5),
+                "invalid-advanced-field-type",
+            ),
+        )
+
+        for skill, mutate, expected_code in cases:
+            with self.subTest(skill=skill, code=expected_code):
+                invalid_catalog = copy.deepcopy(catalog)
+                mutate(invalid_catalog[skill])
+                report = auditoria_skills.audit_catalog(
+                    invalid_catalog,
+                    contracts,
+                    evidence,
+                )
+                self.assertTrue(
+                    any(
+                        finding.code == expected_code and finding.skill == skill
+                        for finding in report.findings
+                    )
+                )
 
 
 if __name__ == "__main__":

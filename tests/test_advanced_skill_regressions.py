@@ -6,11 +6,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import simulation.simulacao as simulation_module
-from core.combat import AreaEffect, Beam, Projetil, Summon
-from core.entities import Lutador
-from core.skills import get_skill_data
-from simulation.simulacao import Simulador
+import neural_fights.simulation.simulacao as simulation_module
+from neural_fights.core.combat import AreaEffect, Beam, Projetil, Summon
+from neural_fights.core.entities import Lutador
+from neural_fights.core.skills import get_skill_data
+from neural_fights.simulation.simulacao import Simulador
 
 
 class AdvancedSkillRegressionTests(unittest.TestCase):
@@ -28,7 +28,7 @@ class AdvancedSkillRegressionTests(unittest.TestCase):
             nome_arma="",
             arma_obj=None,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             fighter = Lutador(data, x, y)
         fighter.vida_max = 1000.0
         fighter.vida = 1000.0
@@ -203,7 +203,7 @@ class AdvancedSkillRegressionTests(unittest.TestCase):
         fighter.mana = 100.0
         fighter.angulo_olhar = 0.0
 
-        with patch("effects.audio.AudioManager.get_instance", return_value=None):
+        with patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=None):
             used = fighter.usar_skill_classe("Teleporte Relâmpago")
 
         self.assertTrue(used)

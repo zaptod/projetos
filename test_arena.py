@@ -3,9 +3,9 @@ Test file to debug arena obstacle drawing
 """
 import pygame
 
-from utils.config import PPM, LARGURA, ALTURA
-from core.arena import set_arena
-from effects.camera import Câmera
+from neural_fights.utils.config import PPM, LARGURA, ALTURA
+from neural_fights.core.arena import set_arena
+from neural_fights.effects.camera import Câmera
 
 def main():
     pygame.init()

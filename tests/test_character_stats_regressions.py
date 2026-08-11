@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from models.characters import Personagem
+from neural_fights.models.characters import Personagem
 
 
 class CharacterStatsRegressionTests(unittest.TestCase):
@@ -18,7 +18,7 @@ class CharacterStatsRegressionTests(unittest.TestCase):
     }
 
     def _character(self, weapon_weight: float = 2.0) -> Personagem:
-        with patch("models.characters.get_class_data", return_value=self.CLASS_DATA):
+        with patch("neural_fights.models.characters.get_class_data", return_value=self.CLASS_DATA):
             return Personagem("Teste", 2, 5, 4, peso_arma_cache=weapon_weight)
 
     def test_life_modifier_is_applied_exactly_once(self) -> None:

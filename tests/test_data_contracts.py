@@ -12,11 +12,11 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from ai.personalities import PERSONALIDADES_PRESETS
-from core.skills import SKILL_DB
-from data import database
-from tools import gerador_database
-from tournament.tournament_mode import Tournament, TournamentState
+from neural_fights.ai.personalities import PERSONALIDADES_PRESETS
+from neural_fights.core.skills import SKILL_DB
+from neural_fights.data import database
+from neural_fights.tools import gerador_database
+from neural_fights.tournament.tournament_mode import Tournament, TournamentState
 
 
 def arma_valida(nome="Arma de teste"):

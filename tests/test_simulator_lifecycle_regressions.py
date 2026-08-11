@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import random
+import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pygame
 
-from ai import CombatChoreographer
-from core.game_feel import GameFeelManager, HitStopManager
-from data import database
-from effects import AttackAnimationManager, MagicVFXManager, MovementAnimationManager
-from effects.audio import AudioManager
-from simulation.simulacao import Simulador, _SilentAudioManager
+from neural_fights.ai import CombatChoreographer
+from neural_fights.core.game_feel import GameFeelManager, HitStopManager
+from neural_fights.data import database
+from neural_fights.effects import AttackAnimationManager, MagicVFXManager, MovementAnimationManager
+from neural_fights.effects.audio import AudioManager
+from neural_fights.simulation.simulacao import Simulador, _SilentAudioManager
+from neural_fights.simulation.manual import SimuladorManual
 
 
 MANAGERS = (
@@ -31,6 +34,24 @@ MANAGERS = (
 class SimulatorLifecycleRegressionTests(unittest.TestCase):
     def setUp(self) -> None:
         self._random_state = random.getstate()
+        self._runtime_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._runtime_dir.cleanup)
+        runtime_dir = Path(self._runtime_dir.name) / "database"
+        self._database_patchers = (
+            patch.object(
+                database,
+                "ARQUIVO_ARMAS_RUNTIME",
+                str(runtime_dir / "armas.json"),
+            ),
+            patch.object(
+                database,
+                "ARQUIVO_CHARS_RUNTIME",
+                str(runtime_dir / "personagens.json"),
+            ),
+        )
+        for patcher in self._database_patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def tearDown(self) -> None:
         # Isolamento defensivo caso uma asserção interrompa um teste no meio.
@@ -72,7 +93,7 @@ class SimulatorLifecycleRegressionTests(unittest.TestCase):
         with patch.object(Simulador, "_inicializar"):
             simulator = Simulador(match_config={})
 
-        with patch("simulation.simulacao.pygame.quit") as quit_pygame:
+        with patch("neural_fights.simulation.simulacao.pygame.quit") as quit_pygame:
             simulator.close()
             simulator.close()
 
@@ -80,6 +101,33 @@ class SimulatorLifecycleRegressionTests(unittest.TestCase):
         self.assertTrue(simulator._closed)
         self.assertIsNone(simulator._lifecycle_token)
         self.assertIsNone(Simulador._active_owner_token)
+
+    def test_manual_post_init_failure_releases_base_ownership(self) -> None:
+        with (
+            patch.object(Simulador, "_inicializar"),
+            patch.object(
+                SimuladorManual,
+                "_inicializar_modo_manual",
+                side_effect=RuntimeError("menu quebrado"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "menu quebrado"),
+        ):
+            SimuladorManual(match_config={})
+
+        self.assertIsNone(Simulador._active_owner_token)
+
+    def test_manual_loop_closes_on_return_and_exception(self) -> None:
+        for side_effect in (None, RuntimeError("frame manual quebrado")):
+            manual = object.__new__(SimuladorManual)
+            manual._executar_loop_manual = Mock(side_effect=side_effect)
+            manual.close = Mock()
+
+            if side_effect is None:
+                manual.executar()
+            else:
+                with self.assertRaisesRegex(RuntimeError, "frame manual quebrado"):
+                    manual.executar()
+            manual.close.assert_called_once_with()
 
     def test_seeded_instance_restores_random_state_on_close_and_init_failure(self) -> None:
         random.seed(918273)

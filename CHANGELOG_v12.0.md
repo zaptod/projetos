@@ -1,5 +1,8 @@
 # NEURAL FIGHTS - Changelog v12.0 TOURNAMENT EDITION
 
+> Arquitetura atual: todo código distribuído vive sob `neural_fights.*`; a
+> wheel não inclui pacotes genéricos de topo, wrappers da raiz ou `tests/`.
+
 ## 🏆 MODO TORNEIO E GERADOR DE ROSTER COMPLETO
 
 ### Data: Dezembro 2024
@@ -8,7 +11,7 @@
 
 ## ✨ NOVAS FUNCIONALIDADES
 
-### 🏆 Sistema de Torneio (`tournament/`)
+### 🏆 Sistema de Torneio (`neural_fights/tournament/`)
 - **Bracket System**: Sistema de chaves eliminatórias automático
 - **Tournament Class**: Gerenciador completo de torneios com:
   - Geração automática de brackets (potência de 2)
@@ -26,7 +29,7 @@
     - Velocidade e defesa
   - Tipos de vitória: KO Devastador, KO Técnico, KO, Decisão
 
-### 🎨 Interface Gráfica do Torneio (`ui/view_torneio.py`)
+### 🎨 Interface Gráfica do Torneio (`neural_fights/ui/view_torneio.py`)
 - **BracketView**: Visualização interativa do bracket
   - Cores por status (verde=concluído, laranja=atual, cinza=aguardando)
   - Destaque do vencedor de cada luta
@@ -38,7 +41,7 @@
   
 - **FightLogPanel**: Histórico de lutas em tempo real
 
-### 🎲 Gerador de Database (`tools/gerador_database.py`)
+### 🎲 Gerador de Database (`neural_fights/tools/gerador_database.py`)
 Gerador automático que cobre TODAS as combinações:
 
 - **16 Classes**:
@@ -72,7 +75,7 @@ Gerador automático que cobre TODAS as combinações:
 ### 📜 Scripts de Execução
 
 - **`run_tournament.py`**: Lança o modo torneio diretamente
-- **`scripts/gerar_roster.py`**: Gera roster completo
+- **`neural_fights/cli/roster.py`**: Gera roster completo
   - `--modo completo`: Gera ~150 personagens cobrindo tudo
   - `--modo 64`: Torneio de 64 lutadores
   - `--modo 16`: Torneio de 16 lutadores
@@ -82,19 +85,18 @@ Gerador automático que cobre TODAS as combinações:
 ## 📁 ARQUIVOS CRIADOS
 
 ```
-tournament/
+neural_fights/tournament/
 ├── __init__.py
 └── tournament_mode.py      # Sistema de torneio completo
 
-tools/
+neural_fights/tools/
 └── gerador_database.py     # Gerador de personagens e armas
 
-ui/
+neural_fights/ui/
 └── view_torneio.py         # Interface do torneio (CustomTkinter)
 
-scripts/
-├── __init__.py
-└── gerar_roster.py         # Script de geração de roster
+neural_fights/cli/
+└── roster.py               # Comando de geração de roster
 
 run_tournament.py           # Lançador direto do torneio
 ```
@@ -103,11 +105,11 @@ run_tournament.py           # Lançador direto do torneio
 
 ## 🔧 MODIFICAÇÕES
 
-### `ui/main.py`
+### `neural_fights/ui/main.py`
 - Adicionado botão "🏆 MODO TORNEIO" no menu principal
 - Função `abrir_torneio()` para lançar janela do torneio
 
-### `data/database.py`
+### `neural_fights/data/database.py`
 - Adicionada função `carregar_arma_por_nome()`
 
 ---
@@ -134,13 +136,13 @@ run_tournament.py           # Lançador direto do torneio
 ### Gerar Novo Roster
 ```bash
 # Roster completo (~150 personagens)
-python -m scripts.gerar_roster --modo completo
+python -m neural_fights.cli.roster --modo completo
 
 # Torneio de 64
-python -m scripts.gerar_roster --modo 64
+python -m neural_fights.cli.roster --modo 64
 
 # Torneio rápido de 16
-python -m scripts.gerar_roster --modo 16
+python -m neural_fights.cli.roster --modo 16
 ```
 
 ### Fluxo do Torneio

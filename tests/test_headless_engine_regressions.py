@@ -6,18 +6,23 @@ import io
 import json
 import os
 import random
+import subprocess
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
 import pygame
 
-import test_headless_battle as headless_cli
-from data import database
-from simulation.headless import HeadlessMatchResult, HeadlessMatchRunner
-from simulation.simulacao import DELETE_MATCH_CONFIG_ENV, Simulador
-from tournament.tournament_mode import Tournament, TournamentMatch, TournamentRunner
+from neural_fights.cli import headless as headless_cli
+from neural_fights.data import database
+from neural_fights.simulation.headless import HeadlessMatchResult, HeadlessMatchRunner
+from neural_fights.simulation.simulacao import DELETE_MATCH_CONFIG_ENV, Simulador
+from neural_fights.tournament.tournament_mode import Tournament, TournamentMatch, TournamentRunner
 
 
 def _fighter(name: str, hp: float = 100.0, hp_max: float = 100.0):
@@ -65,26 +70,57 @@ class SimulatorConstructionTests(unittest.TestCase):
                 Simulador(match_config=config, headless=True)
 
     def test_isolated_file_is_removed_even_when_loading_it_fails(self) -> None:
-        config_path = os.path.abspath("isolated-broken-match.json")
-        with (
-            patch.dict(
-                os.environ,
-                {
-                    database.MATCH_CONFIG_ENV: config_path,
-                    DELETE_MATCH_CONFIG_ENV: "1",
-                },
-            ),
-            patch.object(
-                database,
-                "carregar_match_config",
-                side_effect=ValueError("config quebrada"),
-            ),
-            patch("simulation.simulacao.os.remove") as remove_config,
-        ):
-            with self.assertRaisesRegex(ValueError, "config quebrada"):
+        descriptor, config_path = tempfile.mkstemp(
+            prefix="neural-fights-match-",
+            suffix=".json",
+        )
+        os.close(descriptor)
+        try:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        database.MATCH_CONFIG_ENV: config_path,
+                        DELETE_MATCH_CONFIG_ENV: "1",
+                    },
+                ),
+                patch.object(
+                    database,
+                    "carregar_match_config",
+                    side_effect=ValueError("config quebrada"),
+                ),
+                patch("neural_fights.simulation.simulacao.os.remove") as remove_config,
+            ):
+                with self.assertRaisesRegex(ValueError, "config quebrada"):
+                    Simulador()
+
+            remove_config.assert_called_once_with(config_path)
+        finally:
+            if os.path.exists(config_path):
+                os.remove(config_path)
+
+    def test_cleanup_flag_never_deletes_an_arbitrary_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "important.json")
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        database.MATCH_CONFIG_ENV: config_path,
+                        DELETE_MATCH_CONFIG_ENV: "1",
+                    },
+                ),
+                patch.object(
+                    database,
+                    "carregar_match_config",
+                    side_effect=ValueError("config quebrada"),
+                ),
+                patch("neural_fights.simulation.simulacao.os.remove") as remove_config,
+                self.assertRaisesRegex(ValueError, "config quebrada"),
+            ):
                 Simulador()
 
-        remove_config.assert_called_once_with(config_path)
+        remove_config.assert_not_called()
 
     def test_public_run_releases_resources_and_propagates_loop_errors(self) -> None:
         simulator = object.__new__(Simulador)
@@ -100,6 +136,22 @@ class SimulatorConstructionTests(unittest.TestCase):
             simulator.run()
 
         simulator.close.assert_called_once_with()
+
+    def test_public_run_preserves_frame_error_when_close_also_fails(self) -> None:
+        simulator = object.__new__(Simulador)
+        simulator.headless = False
+        simulator.rodando = True
+        simulator.clock = SimpleNamespace(tick=lambda _fps: 16)
+        simulator.slow_mo_timer = 0.0
+        simulator.time_scale = 1.0
+        simulator.processar_inputs = Mock(side_effect=RuntimeError("frame quebrado"))
+        simulator.close = Mock(side_effect=RuntimeError("cleanup quebrado"))
+
+        with self.assertRaisesRegex(RuntimeError, "frame quebrado") as raised:
+            simulator.run()
+
+        notes = getattr(raised.exception, "__notes__", [])
+        self.assertTrue(any("cleanup quebrado" in note for note in notes))
 
 
 class HeadlessRunnerContractTests(unittest.TestCase):
@@ -134,7 +186,7 @@ class HeadlessRunnerContractTests(unittest.TestCase):
 
     def test_runner_uses_only_simulator_update_with_fixed_dt(self) -> None:
         config = {"p1_nome": "A", "p2_nome": "B"}
-        with patch("simulation.headless.Simulador", self.FakeSimulator):
+        with patch("neural_fights.simulation.headless.Simulador", self.FakeSimulator):
             result = HeadlessMatchRunner(
                 config,
                 fixed_dt=0.125,
@@ -155,7 +207,7 @@ class HeadlessRunnerContractTests(unittest.TestCase):
     def test_runner_restores_global_random_state(self) -> None:
         random.seed(9123)
         state_before = random.getstate()
-        with patch("simulation.headless.Simulador", self.FakeSimulator):
+        with patch("neural_fights.simulation.headless.Simulador", self.FakeSimulator):
             HeadlessMatchRunner(
                 {"p1_nome": "A", "p2_nome": "B"},
                 max_frames=3,
@@ -184,7 +236,7 @@ class HeadlessRunnerContractTests(unittest.TestCase):
             "max_frames": 5,
             "seed": 2026,
         }
-        with patch("simulation.headless.Simulador", RandomSimulator):
+        with patch("neural_fights.simulation.headless.Simulador", RandomSimulator):
             first = HeadlessMatchRunner(
                 {"p1_nome": "A", "p2_nome": "B"},
                 **options,
@@ -214,7 +266,7 @@ class HeadlessRunnerContractTests(unittest.TestCase):
             def close(self):
                 raise RuntimeError("cleanup failed")
 
-        with patch("simulation.headless.Simulador", CleanupBrokenSimulator):
+        with patch("neural_fights.simulation.headless.Simulador", CleanupBrokenSimulator):
             result = HeadlessMatchRunner(
                 {"p1_nome": "A", "p2_nome": "B"},
                 max_frames=3,
@@ -228,7 +280,7 @@ class HeadlessRunnerContractTests(unittest.TestCase):
             def __init__(self, **_kwargs):
                 raise RuntimeError("falha de bootstrap")
 
-        with patch("simulation.headless.Simulador", BrokenSimulator):
+        with patch("neural_fights.simulation.headless.Simulador", BrokenSimulator):
             result = HeadlessMatchRunner(
                 {"p1_nome": "A", "p2_nome": "B"},
                 max_frames=1,
@@ -239,24 +291,38 @@ class HeadlessRunnerContractTests(unittest.TestCase):
         self.assertIn("falha de bootstrap", result.error)
 
     def test_real_engine_can_advance_headlessly_without_match_file(self) -> None:
-        roster = database.carregar_personagens()
-        self.assertGreaterEqual(len(roster), 2)
-        config = {
-            "p1_nome": roster[0].nome,
-            "p2_nome": roster[1].nome,
-            "cenario": "Arena",
-        }
-        with patch.object(
-            database,
-            "carregar_match_config",
-            side_effect=AssertionError("runner tentou ler match_config"),
-        ):
-            result = HeadlessMatchRunner(
-                config,
-                fixed_dt=1.0 / 60.0,
-                max_frames=2,
-                seed=123,
-            ).run()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime_dir = Path(temp_dir) / "database"
+            with (
+                patch.object(
+                    database,
+                    "ARQUIVO_ARMAS_RUNTIME",
+                    str(runtime_dir / "armas.json"),
+                ),
+                patch.object(
+                    database,
+                    "ARQUIVO_CHARS_RUNTIME",
+                    str(runtime_dir / "personagens.json"),
+                ),
+            ):
+                roster = database.carregar_personagens()
+                self.assertGreaterEqual(len(roster), 2)
+                config = {
+                    "p1_nome": roster[0].nome,
+                    "p2_nome": roster[1].nome,
+                    "cenario": "Arena",
+                }
+                with patch.object(
+                    database,
+                    "carregar_match_config",
+                    side_effect=AssertionError("runner tentou ler match_config"),
+                ):
+                    result = HeadlessMatchRunner(
+                        config,
+                        fixed_dt=1.0 / 60.0,
+                        max_frames=2,
+                        seed=123,
+                    ).run()
 
         self.assertTrue(result.success, result.error)
         self.assertEqual(result.frames, 2)
@@ -289,7 +355,7 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
         engine_result = self._engine_result()
 
         with patch(
-            "simulation.headless.run_headless_match",
+            "neural_fights.simulation.headless.run_headless_match",
             return_value=engine_result,
         ) as run_engine:
             result = runner.run_single_match(match)
@@ -306,7 +372,7 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
         runner = TournamentRunner(Tournament())
         match = TournamentMatch(1, 1, "A", "B")
         with patch(
-            "simulation.headless.run_headless_match",
+            "neural_fights.simulation.headless.run_headless_match",
             return_value=self._engine_result(success=False, error="engine failed"),
         ):
             result = runner.run_single_match(match)
@@ -323,7 +389,7 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
         victory = self._engine_result(winner="B", seed=108)
 
         with patch(
-            "simulation.headless.run_headless_match",
+            "neural_fights.simulation.headless.run_headless_match",
             side_effect=[draw, victory],
         ) as run_engine:
             result = runner.run_single_match(match)
@@ -341,7 +407,7 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
         draw = self._engine_result(winner=None, reason="double_ko")
 
         with patch(
-            "simulation.headless.run_headless_match",
+            "neural_fights.simulation.headless.run_headless_match",
             return_value=draw,
         ) as run_engine:
             result = runner.run_single_match(match)
@@ -360,7 +426,7 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
         failure = self._engine_result(success=False, error="engine failed")
 
         with patch(
-            "simulation.headless.run_headless_match",
+            "neural_fights.simulation.headless.run_headless_match",
             return_value=failure,
         ) as run_engine:
             result = runner.run_single_match(match)
@@ -404,7 +470,7 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
         self.assertIs(returned_process, process)
         self.assertEqual(
             popen.call_args.args[0],
-            [sys.executable, "-m", "simulation.simulacao"],
+            [sys.executable, "-m", "neural_fights.simulation.simulacao"],
         )
         child_env = popen.call_args.kwargs["env"]
         self.assertEqual(
@@ -414,6 +480,30 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
         self.assertEqual(child_env[DELETE_MATCH_CONFIG_ENV], "1")
         thread.assert_called_once_with(target=cleanup_target, daemon=True)
         remove_config.assert_called_once_with(runner.match_config_path)
+
+    def test_consecutive_visual_launches_keep_their_own_config_paths(self) -> None:
+        runner = TournamentRunner(Tournament())
+        process = Mock()
+        process.wait.return_value = 0
+        with (
+            patch.object(
+                database,
+                "salvar_match_config",
+                side_effect=lambda _config, **kwargs: kwargs["arquivo"],
+            ),
+            patch("subprocess.Popen", return_value=process) as popen,
+            patch("threading.Thread"),
+        ):
+            first_path = runner.setup_match_config("A", "B")
+            second_path = runner.setup_match_config("C", "D")
+            runner.launch_simulation(first_path)
+            runner.launch_simulation(second_path)
+
+        self.assertNotEqual(first_path, second_path)
+        first_env = popen.call_args_list[0].kwargs["env"]
+        second_env = popen.call_args_list[1].kwargs["env"]
+        self.assertEqual(first_env[database.MATCH_CONFIG_ENV], first_path)
+        self.assertEqual(second_env[database.MATCH_CONFIG_ENV], second_path)
 
 
 class HeadlessCliContractTests(unittest.TestCase):
@@ -470,6 +560,63 @@ class HeadlessCliContractTests(unittest.TestCase):
         payload = json.loads(raw.getvalue().decode("cp1252"))
         self.assertEqual(payload["winner"], "Fogo🔥")
         self.assertNotIn("NaN", raw.getvalue().decode("cp1252"))
+
+    def test_subprocess_stdout_is_one_rfc_json_document_under_cp1252(self) -> None:
+        project_dir = Path(__file__).resolve().parents[1]
+        roster = database.carregar_personagens(
+            arquivo_armas=database.ARQUIVO_ARMAS,
+            arquivo_personagens=database.ARQUIVO_CHARS,
+        )
+        unicode_names = [fighter.nome for fighter in roster if not fighter.nome.isascii()]
+        self.assertGreaterEqual(len(unicode_names), 2)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    database.RUNTIME_DATA_DIR_ENV: str(Path(temp_dir) / "runtime"),
+                    "PYGAME_HIDE_SUPPORT_PROMPT": "1",
+                    "PYTHONIOENCODING": "cp1252:strict",
+                    "SDL_AUDIODRIVER": "dummy",
+                    "SDL_VIDEODRIVER": "dummy",
+                }
+            )
+            environment.pop(database.MATCH_CONFIG_ENV, None)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    "-m",
+                    "neural_fights.cli.headless",
+                    "--mode",
+                    "rapido",
+                    "--p1",
+                    unicode_names[0],
+                    "--p2",
+                    unicode_names[1],
+                    "--max-frames",
+                    "1",
+                ],
+                cwd=project_dir,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+                check=False,
+            )
+
+        stderr = completed.stderr.decode("cp1252", errors="replace")
+        self.assertEqual(completed.returncode, 0, stderr)
+        stdout = completed.stdout.decode("ascii")
+        self.assertEqual(len(stdout.splitlines()), 1, stdout)
+
+        def reject_nonfinite(token: str):
+            raise ValueError(f"constante JSON nao permitida: {token}")
+
+        payload = json.loads(stdout, parse_constant=reject_nonfinite)
+        self.assertEqual(payload["p1_name"], unicode_names[0])
+        self.assertEqual(payload["p2_name"], unicode_names[1])
+        self.assertTrue(payload["success"], payload.get("error"))
 
 
 if __name__ == "__main__":

@@ -8,10 +8,10 @@ import types
 import unittest
 from unittest.mock import patch
 
-import run as entrypoint
-import run_tournament as tournament_entrypoint
-from data import database
-from simulation.simulacao import Simulador
+from neural_fights.cli import main as entrypoint
+from neural_fights.cli import tournament as tournament_entrypoint
+from neural_fights.data import database
+from neural_fights.simulation.simulacao import Simulador
 
 
 class EntrypointRegressionTests(unittest.TestCase):
@@ -38,11 +38,11 @@ class EntrypointRegressionTests(unittest.TestCase):
             def run(self) -> None:
                 self.run_called = True
 
-        fake_simulation = types.ModuleType("simulation")
+        fake_simulation = types.ModuleType("neural_fights.simulation")
         fake_simulation.Simulador = FakeSimulador
 
         with (
-            patch.dict(sys.modules, {"simulation": fake_simulation}),
+            patch.dict(sys.modules, {"neural_fights.simulation": fake_simulation}),
             patch.object(sys, "argv", ["run.py", "--sim"]),
         ):
             exit_code = entrypoint.main()
@@ -79,11 +79,11 @@ class EntrypointRegressionTests(unittest.TestCase):
             def criar_match_config_padrao():
                 raise RuntimeError("São necessários pelo menos 2 personagens")
 
-        fake_simulation = types.ModuleType("simulation")
+        fake_simulation = types.ModuleType("neural_fights.simulation")
         fake_simulation.Simulador = InsufficientRosterSimulator
         stderr = io.StringIO()
         with (
-            patch.dict(sys.modules, {"simulation": fake_simulation}),
+            patch.dict(sys.modules, {"neural_fights.simulation": fake_simulation}),
             patch.object(sys, "argv", ["run.py", "--sim"]),
             patch.object(sys, "stderr", stderr),
         ):
@@ -161,6 +161,28 @@ class EntrypointRegressionTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertIn("MODO TORNEIO", rendered_help)
         self.assertIn("--help", rendered_help)
+
+    def test_unknown_unicode_argument_is_cp1252_safe(self) -> None:
+        for module in (entrypoint, tournament_entrypoint):
+            raw_error = io.BytesIO()
+            console = io.TextIOWrapper(
+                raw_error,
+                encoding="cp1252",
+                errors="strict",
+            )
+            try:
+                with (
+                    self.subTest(module=module.__name__),
+                    patch.object(sys, "stderr", console),
+                    patch.object(sys, "stdout", io.StringIO()),
+                ):
+                    result = module.main(["--😀"])
+                    console.flush()
+            finally:
+                console.detach()
+
+            self.assertEqual(result, 2)
+            self.assertIn("Argumento desconhecido", raw_error.getvalue().decode("cp1252"))
 
 
 if __name__ == "__main__":

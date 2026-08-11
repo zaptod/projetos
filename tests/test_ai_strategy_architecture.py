@@ -5,10 +5,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from ai.brain import AIBrain, _obter_brain
-from ai.choreographer import CombatChoreographer
-from ai.combat_tactics import CombatTacticsSystem
-from ai.skill_strategy import (
+from neural_fights.ai.brain import AIBrain, _obter_brain
+from neural_fights.ai.choreographer import CombatChoreographer
+from neural_fights.ai.combat_tactics import CombatTacticsSystem
+from neural_fights.ai.skill_strategy import (
     BattlePlan,
     CombatSituation,
     SkillProfile,

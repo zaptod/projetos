@@ -4,10 +4,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import ai.brain as brain_module
-from ai.brain import AIBrain
-from core.combat import AreaEffect
-from simulation.simulacao import Simulador
+import neural_fights.ai.brain as brain_module
+from neural_fights.ai.brain import AIBrain
+from neural_fights.core.combat import AreaEffect
+from neural_fights.simulation.simulacao import Simulador
 
 
 class TwinDaggersAIRegressionTests(unittest.TestCase):

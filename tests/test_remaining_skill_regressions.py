@@ -7,17 +7,17 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import simulation.simulacao as simulation_module
-from core.combat import (
+import neural_fights.simulation.simulacao as simulation_module
+from neural_fights.core.combat import (
     ArmaProjetil,
     AreaEffect,
     Buff,
     Projetil,
     criar_metadata_impacto,
 )
-from core.entities import Lutador
-from core.skills import get_skill_data
-from simulation.simulacao import Simulador
+from neural_fights.core.entities import Lutador
+from neural_fights.core.skills import get_skill_data
+from neural_fights.simulation.simulacao import Simulador
 
 
 class RemainingSkillRegressionTests(unittest.TestCase):
@@ -35,7 +35,7 @@ class RemainingSkillRegressionTests(unittest.TestCase):
             nome_arma="",
             arma_obj=None,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             fighter = Lutador(data, x, y)
         fighter.vida_max = 1000.0
         fighter.vida = fighter.vida_max
@@ -101,7 +101,7 @@ class RemainingSkillRegressionTests(unittest.TestCase):
         self._add_class_skill(caster, "Conjuração Perfeita")
         self._add_class_skill(caster, "Disparo de Mana")
 
-        with patch("effects.audio.AudioManager.get_instance", return_value=None):
+        with patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=None):
             self.assertTrue(caster.usar_skill_classe("Conjuração Perfeita"))
             mana_antes = caster.mana
             self.assertTrue(caster.usar_skill_classe("Disparo de Mana"))
@@ -123,7 +123,7 @@ class RemainingSkillRegressionTests(unittest.TestCase):
         caster.mana = 100.0
         caster._registrar_estado_historico()
 
-        with patch("effects.audio.AudioManager.get_instance", return_value=None):
+        with patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=None):
             self.assertTrue(caster.usar_skill_classe("Reverter"))
 
         self.assertEqual(caster.vida, 900.0)
@@ -173,9 +173,11 @@ class RemainingSkillRegressionTests(unittest.TestCase):
         aerial = AreaEffect("Tempestade", fighter.pos[0], fighter.pos[1], None)
         result = fighter.resolver_impacto(
             10.0,
+            0.0,
+            0.0,
             metadata_impacto=criar_metadata_impacto(aerial),
         )
-        self.assertGreater(result.dano_vida, 0.0)
+        self.assertGreater(result.dano, 0.0)
 
         fighter._atualizar_buffs(levitation.duracao + 0.1)
         height_before_fall = fighter.z
@@ -265,7 +267,7 @@ class RemainingSkillRegressionTests(unittest.TestCase):
         caster = self._fighter("Portalista", x=0.0)
         self._add_class_skill(caster, "Portal Arcano")
         caster.angulo_olhar = 0.0
-        with patch("effects.audio.AudioManager.get_instance", return_value=None):
+        with patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=None):
             self.assertTrue(caster.usar_skill_classe("Portal Arcano"))
 
         self.assertEqual(caster.pos[0], 10.0)

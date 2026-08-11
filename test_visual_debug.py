@@ -71,11 +71,11 @@ def log_header(title: str):
 
 def gerar_arma_aleatoria(nome: str = None, raridade: str = None) -> dict:
     """Gera uma arma completamente aleatória"""
-    from models.constants import (
+    from neural_fights.models.constants import (
         LISTA_RARIDADES, TIPOS_ARMA, 
         LISTA_ENCANTAMENTOS, PASSIVAS_ARMA, get_raridade_data
     )
-    from core.skills import SKILL_DB
+    from neural_fights.core.skills import SKILL_DB
     
     if raridade is None:
         raridade = random.choice(LISTA_RARIDADES)
@@ -139,7 +139,7 @@ def gerar_arma_aleatoria(nome: str = None, raridade: str = None) -> dict:
 
 def gerar_arma_com_skill(skill_nome: str, raridade: str = "Épico") -> dict:
     """Gera uma arma especificamente com uma skill desejada"""
-    from core.skills import SKILL_DB
+    from neural_fights.core.skills import SKILL_DB
     
     arma = gerar_arma_aleatoria(raridade=raridade)
     skill_data = SKILL_DB.get(skill_nome, {})
@@ -155,8 +155,8 @@ def gerar_arma_com_skill(skill_nome: str, raridade: str = "Épico") -> dict:
 
 def gerar_personagem_aleatorio(nome: str = None, classe: str = None, arma: dict = None) -> dict:
     """Gera um personagem completamente aleatório"""
-    from models.constants import LISTA_CLASSES
-    from ai.personalities import LISTA_PERSONALIDADES
+    from neural_fights.models.constants import LISTA_CLASSES
+    from neural_fights.ai.personalities import LISTA_PERSONALIDADES
     
     nomes = ["Kael", "Luna", "Draven", "Aria", "Zed", "Nova", "Riven", "Sylas",
              "Ahri", "Darius", "Lux", "Talon", "Jinx", "Sett", "Akali", "Yasuo"]
@@ -209,9 +209,9 @@ class VisualDebugSimulator:
         }
         
         # Imports necessários
-        from utils.config import PPM, FPS
-        from effects import Câmera
-        from core.arena import set_arena
+        from neural_fights.utils.config import PPM, FPS
+        from neural_fights.effects import Câmera
+        from neural_fights.core.arena import set_arena
         
         self.PPM = PPM
         self.FPS = FPS
@@ -228,7 +228,7 @@ class VisualDebugSimulator:
     
     def _criar_arma(self, arma_data: dict):
         """Cria objeto Arma a partir dos dados"""
-        from models import Arma
+        from neural_fights.models import Arma
         
         return Arma(
             nome=arma_data["nome"], tipo=arma_data.get("tipo", "Reta"),
@@ -255,7 +255,7 @@ class VisualDebugSimulator:
     
     def _criar_personagem(self, char_data: dict):
         """Cria objeto Personagem a partir dos dados"""
-        from models import Personagem
+        from neural_fights.models import Personagem
         
         return Personagem(
             nome=char_data["nome"], tamanho=char_data.get("tamanho", 1.8),
@@ -270,7 +270,7 @@ class VisualDebugSimulator:
     
     def _criar_lutador(self, char_data: dict, arma_data: dict, x: float, y: float):
         """Cria um Lutador completo"""
-        from core.entities import Lutador
+        from neural_fights.core.entities import Lutador
         
         personagem = self._criar_personagem(char_data)
         arma = self._criar_arma(arma_data)
@@ -352,9 +352,9 @@ class VisualDebugSimulator:
     
     def testar_skill(self, skill_nome: str, skill_data: dict) -> dict:
         """Testa uma skill específica e retorna resultado"""
-        from utils.config import PPM
-        from ai import CombatChoreographer
-        from core.game_feel import GameFeelManager
+        from neural_fights.utils.config import PPM
+        from neural_fights.ai import CombatChoreographer
+        from neural_fights.core.game_feel import GameFeelManager
         
         resultado = {
             "skill": skill_nome,
@@ -521,7 +521,7 @@ class VisualDebugSimulator:
     
     def testar_todas_skills(self, filtro_tipo: str = None):
         """Testa todas as skills (ou apenas um tipo)"""
-        from core.skills import SKILL_DB
+        from neural_fights.core.skills import SKILL_DB
         
         log_header(f"TESTE VISUAL DE SKILLS {'('+filtro_tipo+')' if filtro_tipo else '(TODAS)'}")
         
@@ -573,7 +573,7 @@ class VisualDebugSimulator:
     
     def testar_skill_especifica(self, skill_nome: str):
         """Testa uma skill específica com visualização prolongada"""
-        from core.skills import SKILL_DB
+        from neural_fights.core.skills import SKILL_DB
         
         log_header(f"TESTE VISUAL: {skill_nome}")
         
@@ -712,7 +712,7 @@ def main():
                 sim.testar_skill_especifica(skill)
             elif opcao == "4":
                 # Teste rápido
-                from core.skills import SKILL_DB
+                from neural_fights.core.skills import SKILL_DB
                 skills_validas = [k for k, v in SKILL_DB.items() if v.get("tipo", "NADA") != "NADA" and k != "Nenhuma"]
                 sample = random.sample(skills_validas, min(10, len(skills_validas)))
                 for skill_nome in sample:

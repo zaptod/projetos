@@ -4,9 +4,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from models import Arma
-import ui.view_armas as view_armas
-from ui.view_armas import TelaArmas
+from neural_fights.models import Arma
+import neural_fights.ui.view_armas as view_armas
+from neural_fights.ui.view_armas import TelaArmas
 
 
 class WeaponEditRegressionTests(unittest.TestCase):

@@ -12,7 +12,7 @@ import time
 def main() -> int:
     import pygame
 
-    from effects.audio import AudioManager
+    from neural_fights.effects.audio import AudioManager
 
     pygame.init()
     pygame.mixer.init()

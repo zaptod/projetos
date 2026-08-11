@@ -30,7 +30,7 @@ customtkinter>=5.2,<6
 #   pip install -r requirements.txt
 #
 # Ou instalação mínima:
-#   pip install pygame customtkinter
+#   pip install pygame-ce customtkinter
 #
 # Executar o jogo:
 #   python run.py
@@ -39,4 +39,4 @@ customtkinter>=5.2,<6
 #   python run_tournament.py
 #
 # Gerar e salvar uma nova database validada:
-#   python -m scripts.gerar_roster --modo completo --seed 42
+#   python -m neural_fights.cli.roster --modo completo --seed 42

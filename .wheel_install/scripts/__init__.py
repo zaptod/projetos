@@ -1,3 +1,0 @@
-"""
-NEURAL FIGHTS - Scripts Package
-"""

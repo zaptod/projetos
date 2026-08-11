@@ -1,443 +1,115 @@
-"""
-EXEMPLO: Como adicionar seus próprios sons ao Neural Fights
-"""
+"""Instala e testa overrides locais de áudio sem alterar assets do pacote.
 
-from audio import AudioManager
-
-# =============================================================================
-# MÉTODO 1: Usar Arquivos de Som
-# =============================================================================
-
-"""
-1. Crie a pasta 'sounds' na raiz do projeto (se não existe)
-2. Adicione seus arquivos de som:
-
-neural/
-├── sounds/
-│   ├── punch_light.wav       # Som de soco leve
-│   ├── punch_medium.wav      # Som de soco médio
-│   ├── punch_heavy.wav       # Som de soco pesado
-│   ├── fireball_cast.ogg     # Som de cast de bola de fogo
-│   ├── fireball_impact.mp3   # Som de impacto de bola de fogo
-│   └── ...
-
-3. O AudioManager carregará automaticamente!
-
-Formatos suportados: .wav, .ogg, .mp3
+Execute depois de instalar o projeto, por exemplo com ``pip install -e .``.
 """
 
-# =============================================================================
-# MÉTODO 2: Adicionar Novos Grupos de Sons
-# =============================================================================
+from __future__ import annotations
 
-def exemplo_adicionar_grupo():
-    """Adiciona um novo grupo de sons ao sistema"""
+import argparse
+import os
+import shutil
+from pathlib import Path
+
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
+from neural_fights.effects.audio_paths import (
+    SUPPORTED_SOUND_EXTENSIONS,
+    get_runtime_sound_dir,
+    load_sound_config,
+    remove_runtime_sound_overrides,
+    save_sound_config,
+)
+
+
+def _validar_evento(event_id: str) -> str:
+    if not event_id or Path(event_id).name != event_id:
+        raise ValueError("o identificador do evento deve ser um nome simples")
+    return event_id
+
+
+def instalar_override(event_id: str, arquivo: str | Path) -> Path:
+    """Copia um arquivo para o runtime e associa-o ao evento."""
+
+    event_id = _validar_evento(event_id)
+    origem = Path(arquivo).expanduser().resolve(strict=True)
+    if not origem.is_file():
+        raise ValueError(f"a origem não é um arquivo: {origem}")
+
+    extensao = origem.suffix.lower()
+    if extensao not in SUPPORTED_SOUND_EXTENSIONS:
+        formatos = ", ".join(SUPPORTED_SOUND_EXTENSIONS)
+        raise ValueError(f"formato não suportado: {extensao or '(sem extensão)'}; use {formatos}")
+
+    runtime_dir = get_runtime_sound_dir()
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    destino = (runtime_dir / f"{event_id}{extensao}").resolve()
+
+    if origem != destino:
+        remove_runtime_sound_overrides(event_id)
+        shutil.copy2(origem, destino)
+
+    config = load_sound_config()
+    config[event_id] = destino.name
+    save_sound_config(config)
+    return destino
+
+
+def remover_override(event_id: str) -> int:
+    """Remove a associação e os arquivos locais, preservando o pacote."""
+
+    event_id = _validar_evento(event_id)
+    removidos = remove_runtime_sound_overrides(event_id)
+    config = load_sound_config()
+    config.pop(event_id, None)
+    save_sound_config(config)
+    return removidos
+
+
+def tocar_evento(event_id: str) -> None:
+    """Recarrega a configuração e toca um evento pela API pública."""
+
+    from neural_fights.effects.audio import AudioManager
+
+    event_id = _validar_evento(event_id)
     audio = AudioManager.get_instance()
-    
-    # Registra novo grupo com variações
-    audio._register_sound_group("explosao", [
-        "explosao_pequena",
-        "explosao_media", 
-        "explosao_grande"
-    ])
-    
-    # Agora pode usar:
-    audio.play("explosao")  # Toca variação aleatória
+    audio.reload_sounds()
+    audio.play(event_id)
 
 
-# =============================================================================
-# MÉTODO 3: Sons Procedurais Customizados
-# =============================================================================
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="comando", required=True)
 
-def exemplo_som_procedural():
-    """
-    Adicione sua própria síntese em audio.py na função
-    _generate_procedural_sound()
-    """
-    
-    # No arquivo audio.py, adicione:
-    """
-    elif "meu_som" in name:
-        import numpy as np
-        duration = 0.2
-        sample_rate = 44100
-        t = np.linspace(0, duration, int(sample_rate * duration))
-        
-        # Gere sua onda sonora
-        freq = 440  # Lá (A4)
-        wave = np.sin(2 * np.pi * freq * t)
-        
-        # Adicione envelope
-        envelope = np.exp(-t * 10)
-        wave = wave * envelope
-        
-        # Converta para int16
-        wave = (wave / np.max(np.abs(wave)) * 0.7 * 32767).astype(np.int16)
-        stereo = np.column_stack((wave, wave))
-        
-        return pygame.sndarray.make_sound(stereo)
-    """
+    subparsers.add_parser("caminho", help="mostra o diretório local de áudio")
+
+    instalar = subparsers.add_parser("instalar", help="instala um override local")
+    instalar.add_argument("evento", help="identificador, por exemplo slash_light")
+    instalar.add_argument("arquivo", help="arquivo WAV, OGG ou MP3")
+
+    remover = subparsers.add_parser("remover", help="remove um override local")
+    remover.add_argument("evento")
+
+    tocar = subparsers.add_parser("tocar", help="toca um evento configurado")
+    tocar.add_argument("evento")
+    return parser
 
 
-# =============================================================================
-# MÉTODO 4: Sons por Personagem
-# =============================================================================
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        if args.comando == "caminho":
+            print(get_runtime_sound_dir())
+        elif args.comando == "instalar":
+            print(f"Override instalado em: {instalar_override(args.evento, args.arquivo)}")
+        elif args.comando == "remover":
+            print(f"Arquivos locais removidos: {remover_override(args.evento)}")
+        elif args.comando == "tocar":
+            tocar_evento(args.evento)
+    except (OSError, TypeError, ValueError) as exc:
+        parser = build_parser()
+        parser.error(str(exc))
+    return 0
 
-def exemplo_sons_por_personagem():
-    """Cria sons específicos para cada personagem"""
-    
-    # Estrutura de pastas sugerida:
-    """
-    sounds/
-    ├── characters/
-    │   ├── ninja/
-    │   │   ├── attack_1.wav
-    │   │   ├── attack_2.wav
-    │   │   └── skill_kunai.wav
-    │   ├── mago/
-    │   │   ├── attack_staff.wav
-    │   │   ├── skill_fireball.wav
-    │   │   └── skill_ice.wav
-    │   └── guerreiro/
-    │       ├── attack_sword.wav
-    │       └── skill_charge.wav
-    """
-    
-    # No código do personagem:
-    audio = AudioManager.get_instance()
-    classe = "ninja"
-    
-    # Carrega som específico
-    som_path = f"characters/{classe}/attack_1"
-    audio._register_sound(som_path)
-    audio.play(som_path)
-
-
-# =============================================================================
-# MÉTODO 5: Sistema de Vozes (Voice Acting)
-# =============================================================================
-
-def exemplo_sistema_vozes():
-    """Sistema de vozes para personagens"""
-    
-    # Estrutura sugerida:
-    """
-    sounds/
-    ├── voices/
-    │   ├── ninja/
-    │   │   ├── grunt_1.wav
-    │   │   ├── grunt_2.wav
-    │   │   ├── grunt_3.wav
-    │   │   ├── skill_cast.wav
-    │   │   ├── damage_light.wav
-    │   │   ├── damage_heavy.wav
-    │   │   └── death.wav
-    │   └── mago/
-    │       └── ...
-    """
-    
-    # Adicione ao AudioManager:
-    audio = AudioManager.get_instance()
-    
-    # Registra grupo de vozes
-    audio._register_sound_group("ninja_grunt", [
-        "voices/ninja/grunt_1",
-        "voices/ninja/grunt_2",
-        "voices/ninja/grunt_3"
-    ])
-    
-    # Use no combate:
-    # Quando ataca
-    audio.play("ninja_grunt")
-    
-    # Quando toma dano
-    audio.play("voices/ninja/damage_light")
-    
-    # Quando morre
-    audio.play("voices/ninja/death")
-
-
-# =============================================================================
-# MÉTODO 6: Música Ambiente
-# =============================================================================
-
-def exemplo_musica_ambiente():
-    """Sistema de música para arenas"""
-    
-    """
-    sounds/
-    ├── music/
-    │   ├── arena_theme.ogg
-    │   ├── coliseum_theme.ogg
-    │   ├── forest_theme.ogg
-    │   ├── boss_theme.ogg
-    │   └── victory_theme.ogg
-    """
-    
-    import pygame
-    
-    # Carrega música (separado de SFX)
-    pygame.mixer.music.load("sounds/music/arena_theme.ogg")
-    pygame.mixer.music.set_volume(0.5)
-    pygame.mixer.music.play(-1)  # Loop infinito
-    
-    # Para trocar música
-    pygame.mixer.music.fadeout(1000)  # 1 segundo
-    pygame.mixer.music.load("sounds/music/boss_theme.ogg")
-    pygame.mixer.music.play(-1)
-
-
-# =============================================================================
-# MÉTODO 7: Sons de UI
-# =============================================================================
-
-def exemplo_sons_ui():
-    """Adiciona sons para interface"""
-    
-    """
-    sounds/
-    ├── ui/
-    │   ├── button_hover.wav
-    │   ├── button_click.wav
-    │   ├── menu_open.wav
-    │   ├── menu_close.wav
-    │   ├── selection.wav
-    │   └── error.wav
-    """
-    
-    # No código da UI:
-    audio = AudioManager.get_instance()
-    
-    # Ao passar mouse sobre botão
-    audio.play("ui/button_hover", volume=0.3)
-    
-    # Ao clicar
-    audio.play("ui/button_click", volume=0.5)
-    
-    # Menu abrindo
-    audio.play("ui/menu_open", volume=0.4)
-
-
-# =============================================================================
-# MÉTODO 8: Efeitos de Reverb/Echo
-# =============================================================================
-
-def exemplo_reverb():
-    """Adiciona reverb baseado no ambiente"""
-    
-    # Requer processamento de áudio adicional
-    # Sugestão: use biblioteca como pydub
-    
-    """
-    from pydub import AudioSegment
-    from pydub.effects import reverb
-    
-    # Carrega som
-    sound = AudioSegment.from_file("sounds/punch.wav")
-    
-    # Adiciona reverb baseado na arena
-    if arena == "Caverna":
-        sound = reverb(sound, room_size=0.8)
-    elif arena == "Arena":
-        sound = reverb(sound, room_size=0.3)
-    
-    # Salva temporário
-    sound.export("temp_reverb.wav", format="wav")
-    
-    # Carrega no pygame
-    reverb_sound = pygame.mixer.Sound("temp_reverb.wav")
-    reverb_sound.play()
-    """
-
-
-# =============================================================================
-# MÉTODO 9: Sistema de Layers (Camadas de Som)
-# =============================================================================
-
-def exemplo_layers():
-    """Sistema de camadas de som para complexidade"""
-    
-    # Para beams/lasers, use camadas:
-    audio = AudioManager.get_instance()
-    
-    # Layer 1: Charge up
-    audio.play("beam_charge", volume=0.7)
-    
-    # Layer 2: Continuous fire (após 0.5s)
-    # Use um loop channel
-    import pygame
-    channel = pygame.mixer.Channel(10)  # Canal dedicado
-    loop_sound = pygame.mixer.Sound("sounds/beam_loop.wav")
-    channel.play(loop_sound, loops=-1)  # Loop infinito
-    
-    # Layer 3: End sound (quando para)
-    channel.stop()
-    audio.play("beam_end", volume=0.8)
-
-
-# =============================================================================
-# MÉTODO 10: Sons Dinâmicos (Muda com Velocidade)
-# =============================================================================
-
-def exemplo_sons_dinamicos():
-    """Sons que mudam baseado em game state"""
-    
-    audio = AudioManager.get_instance()
-    
-    # Som de dash muda com velocidade
-    velocidade = 15.0  # m/s
-    max_vel = 20.0
-    
-    # Volume proporcional
-    volume = min(1.0, velocidade / max_vel)
-    audio.play("dash_whoosh", volume=volume)
-    
-    # Pitch shift (requer processamento)
-    # sound.set_pitch(1.0 + velocidade/50)  # Não nativo pygame
-
-
-# =============================================================================
-# MÉTODO 11: Pool de Sons para Performance
-# =============================================================================
-
-def exemplo_pool_sons():
-    """
-    Para sons muito frequentes (passos), use pool
-    """
-    
-    class SoundPool:
-        def __init__(self, sound_name, pool_size=5):
-            self.sounds = []
-            for i in range(pool_size):
-                sound = pygame.mixer.Sound(f"sounds/{sound_name}.wav")
-                self.sounds.append(sound)
-            self.index = 0
-        
-        def play(self):
-            self.sounds[self.index].play()
-            self.index = (self.index + 1) % len(self.sounds)
-    
-    # Uso:
-    footstep_pool = SoundPool("footstep", pool_size=8)
-    
-    # A cada passo
-    footstep_pool.play()
-
-
-# =============================================================================
-# MÉTODO 12: Mixer de Volumes por Categoria
-# =============================================================================
-
-def exemplo_mixer():
-    """Sistema de mixer para controle fino"""
-    
-    class AudioMixer:
-        def __init__(self):
-            self.volumes = {
-                "master": 1.0,
-                "sfx": 0.8,
-                "voice": 0.9,
-                "music": 0.6,
-                "ui": 0.5
-            }
-        
-        def get_volume(self, category):
-            return self.volumes["master"] * self.volumes.get(category, 1.0)
-        
-        def set_volume(self, category, volume):
-            self.volumes[category] = max(0.0, min(1.0, volume))
-    
-    # Uso:
-    mixer = AudioMixer()
-    
-    # Toca som com volume do mixer
-    audio = AudioManager.get_instance()
-    volume = mixer.get_volume("sfx")
-    audio.play("punch", volume=volume)
-
-
-# =============================================================================
-# MÉTODO 13: Sons com Delay (Eco)
-# =============================================================================
-
-def exemplo_echo():
-    """Cria efeito de eco"""
-    
-    import time
-    
-    audio = AudioManager.get_instance()
-    
-    # Som original
-    audio.play("explosion", volume=1.0)
-    
-    # Ecos (em thread separada ou timer)
-    delays = [0.1, 0.2, 0.3]
-    volumes = [0.6, 0.4, 0.2]
-    
-    for delay, vol in zip(delays, volumes):
-        # Em produção, use threading.Timer ou pygame.time
-        time.sleep(delay)
-        audio.play("explosion", volume=vol)
-
-
-# =============================================================================
-# DICA: Testando Seus Sons
-# =============================================================================
-
-def testar_sons():
-    """Script de teste para verificar todos os sons"""
-    
-    audio = AudioManager.get_instance()
-    
-    print("🎵 Testando Sistema de Áudio...")
-    
-    # Lista todos os sons carregados
-    print(f"\n📦 Sons em cache: {len(audio.sounds)}")
-    for nome in sorted(audio.sounds.keys()):
-        print(f"  - {nome}")
-    
-    # Lista grupos
-    print(f"\n🎭 Grupos de sons: {len(audio.sound_groups)}")
-    for nome in sorted(audio.sound_groups.keys()):
-        print(f"  - {nome} ({len(audio.sound_groups[nome])} variações)")
-    
-    # Testa cada categoria
-    print("\n🎮 Testando categorias...")
-    
-    categorias = {
-        "Golpes": ["punch", "kick", "slash"],
-        "Magias": ["fireball_cast", "ice_impact", "lightning_bolt"],
-        "Skills": ["dash_whoosh", "buff_activate", "heal_cast"],
-        "Eventos": ["ko_impact", "perfect_block", "wall_hit"]
-    }
-    
-    for categoria, sons in categorias.items():
-        print(f"\n🔊 {categoria}:")
-        for som in sons:
-            print(f"  Testando: {som}...")
-            audio.play(som)
-            # time.sleep(0.5)  # Pausa entre testes
-
-
-# =============================================================================
-# EXECUTAR EXEMPLOS
-# =============================================================================
 
 if __name__ == "__main__":
-    print("=" * 70)
-    print("EXEMPLOS DE CUSTOMIZAÇÃO DE ÁUDIO - NEURAL FIGHTS")
-    print("=" * 70)
-    
-    # Inicializa pygame e audio
-    import pygame
-    pygame.init()
-    pygame.mixer.init()
-    
-    # Descomente para testar:
-    # testar_sons()
-    # exemplo_adicionar_grupo()
-    # exemplo_sons_por_personagem()
-    
-    print("\n✅ Exemplos carregados!")
-    print("📖 Leia os comentários no código para mais detalhes")
-    print("🎵 Boa customização!")
+    raise SystemExit(main())

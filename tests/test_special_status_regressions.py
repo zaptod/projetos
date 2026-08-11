@@ -6,11 +6,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import simulation.simulacao as simulation_module
-from core.combat import AreaEffect, DotEffect, Projetil
-from core.entities import Lutador
-from core.skills import get_skill_data
-from simulation.simulacao import Simulador
+import neural_fights.simulation.simulacao as simulation_module
+from neural_fights.core.combat import AreaEffect, DotEffect, Projetil
+from neural_fights.core.entities import Lutador
+from neural_fights.core.skills import get_skill_data
+from neural_fights.simulation.simulacao import Simulador
 
 
 class SpecialStatusRegressionTests(unittest.TestCase):
@@ -28,7 +28,7 @@ class SpecialStatusRegressionTests(unittest.TestCase):
             nome_arma="",
             arma_obj=None,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             fighter = Lutador(data, x, 5.0)
         fighter.vida_max = 1000.0
         fighter.vida = 1000.0
@@ -229,7 +229,7 @@ class SpecialStatusRegressionTests(unittest.TestCase):
         self._add_class_skill(caster, "Troca de Almas")
         mana_before = caster.mana
 
-        with patch("effects.audio.AudioManager.get_instance", return_value=None):
+        with patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=None):
             self.assertTrue(caster.usar_skill_classe("Troca de Almas", alvo=target))
 
         self.assertEqual(caster.pos[:2], [9.0, 7.0])

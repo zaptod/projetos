@@ -4,8 +4,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import ui.view_luta as view_luta
-from ui.view_luta import TelaLuta
+import neural_fights.ui.view_luta as view_luta
+from neural_fights.ui.view_luta import TelaLuta
 
 
 class BestOfUIRegressionTests(unittest.TestCase):
@@ -54,6 +54,9 @@ class BestOfUIRegressionTests(unittest.TestCase):
         )
 
         class FakeSimulator:
+            def __init__(self, *, match_config):
+                events.append(("config", match_config))
+
             def run(self):
                 events.append("run")
 
@@ -65,7 +68,10 @@ class BestOfUIRegressionTests(unittest.TestCase):
 
         salvar.assert_called_once()
         self.assertEqual(salvar.call_args.args[0]["best_of"], 5)
-        self.assertEqual(events, ["withdraw", "run", "deiconify"])
+        self.assertEqual(events[0], "withdraw")
+        self.assertEqual(events[1][0], "config")
+        self.assertEqual(events[1][1]["best_of"], 5)
+        self.assertEqual(events[2:], ["run", "deiconify"])
 
 
 if __name__ == "__main__":

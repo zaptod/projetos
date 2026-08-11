@@ -17,6 +17,7 @@ jobs:
       SDL_AUDIODRIVER: dummy
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
+      NEURAL_FIGHTS_RUNTIME_DIR: ${{ runner.temp }}/neural-fights-runtime
 
     steps:
       - uses: actions/checkout@v4
@@ -28,12 +29,123 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - run: python -m pip check
       - run: python -m ruff check .
-      - run: python -m compileall -q ai core data effects models simulation tournament ui utils
+      - run: python -m compileall -q neural_fights
       - run: python -m unittest discover -s tests -p "test_*.py" -v
-      - run: python -m tools.auditoria_skills --strict
-      - run: python -m tools.analise_armas --strict
-      - run: python -m tools.diagnostico_hitbox --strict
+      - run: python -m neural_fights.tools.auditoria_skills --strict --verify-evidence-sources
+      - run: python -m neural_fights.tools.analise_armas --strict
+      - run: python -m neural_fights.tools.diagnostico_hitbox --strict
       - run: python -m pip wheel --no-deps --wheel-dir dist .
+      - name: Wheel contem somente o namespace publico
+        run: >-
+          python -c "from pathlib import Path; import zipfile;
+          wheel=next(Path('dist').glob('neural_fights-*.whl'));
+          names=zipfile.ZipFile(wheel).namelist();
+          unexpected=[name for name in names if '.dist-info/' not in name and not name.startswith('neural_fights/')];
+          assert not unexpected, unexpected;
+          top=next(name for name in names if name.endswith('.dist-info/top_level.txt'));
+          assert zipfile.ZipFile(wheel).read(top).decode().split() == ['neural_fights']"
       - run: python -m pip install --force-reinstall --no-deps dist/*.whl
-      - run: neural-fights-audit-skills --strict
+      - name: Smoke dos seis entrypoints instalados
         working-directory: ${{ runner.temp }}
+        run: |
+          python -m pip check
+          neural-fights --help
+          neural-fights-tournament --help
+          neural-fights-headless --help
+          neural-fights-roster --help
+          neural-fights-migrate-database --help
+          neural-fights-audit-skills --help
+      - name: Gates da wheel instalada
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m neural_fights.tools.auditoria_skills --strict
+          python -m neural_fights.tools.analise_armas --strict
+          python -m neural_fights.tools.diagnostico_hitbox --strict
+      - name: Assets empacotados e separacao do runtime
+        working-directory: ${{ runner.temp }}
+        env:
+          NEURAL_FIGHTS_RUNTIME_DIR: ${{ runner.temp }}/wheel-smoke-runtime-${{ matrix.python-version }}
+        run: >-
+          python -c "import os; from pathlib import Path;
+          from neural_fights.data import database as db;
+          from neural_fights.effects.audio_paths import PACKAGE_SOUND_DIR;
+          installed_root=Path(db.__file__).resolve().parents[1];
+          assert installed_root != Path(os.environ['GITHUB_WORKSPACE']).resolve();
+          pa=Path(db.ARQUIVO_ARMAS); pc=Path(db.ARQUIVO_CHARS);
+          ra=Path(db.ARQUIVO_ARMAS_RUNTIME); rc=Path(db.ARQUIVO_CHARS_RUNTIME);
+          fixture=Path(db.ARQUIVO_MATCH_DEFAULT);
+          assert pa.is_file() and pc.is_file() and fixture.is_file();
+          assert (PACKAGE_SOUND_DIR / 'sound_config.json').is_file();
+          assert any(PACKAGE_SOUND_DIR.glob('*.mp3'));
+          assert any(PACKAGE_SOUND_DIR.glob('*.wav'));
+          assert pa.parent != ra.parent and pc.parent != rc.parent;
+          assert not ra.exists() and not rc.exists();
+          before=(pa.read_bytes(), pc.read_bytes()); data=db.carregar_database();
+          assert not ra.exists() and not rc.exists(); db.salvar_database(*data);
+          assert ra.is_file() and rc.is_file();
+          assert before == (pa.read_bytes(), pc.read_bytes())"
+
+  wheel-smoke-windows:
+    runs-on: windows-latest
+
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+      NEURAL_FIGHTS_RUNTIME_DIR: ${{ runner.temp }}/neural-fights-runtime
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip wheel --no-deps --wheel-dir dist .
+      - name: Wheel contem somente o namespace publico
+        run: >-
+          python -c "from pathlib import Path; import zipfile;
+          wheel=next(Path('dist').glob('neural_fights-*.whl'));
+          names=zipfile.ZipFile(wheel).namelist();
+          unexpected=[name for name in names if '.dist-info/' not in name and not name.startswith('neural_fights/')];
+          assert not unexpected, unexpected;
+          top=next(name for name in names if name.endswith('.dist-info/top_level.txt'));
+          assert zipfile.ZipFile(wheel).read(top).decode().split() == ['neural_fights']"
+      - run: |
+          $wheel = (Get-ChildItem -Path dist -Filter "neural_fights-*.whl" | Select-Object -First 1).FullName
+          python -m pip install --force-reinstall $wheel
+      - name: Smoke da wheel instalada no Windows
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m pip check
+          neural-fights --help
+          neural-fights-tournament --help
+          neural-fights-headless --help
+          neural-fights-roster --help
+          neural-fights-migrate-database --help
+          neural-fights-audit-skills --help
+          python -m neural_fights.tools.auditoria_skills --strict
+          python -m neural_fights.tools.analise_armas --strict
+          python -m neural_fights.tools.diagnostico_hitbox --strict
+      - name: Verifica assets e runtime no Windows
+        working-directory: ${{ runner.temp }}
+        env:
+          NEURAL_FIGHTS_RUNTIME_DIR: ${{ runner.temp }}/wheel-smoke-runtime-windows
+        run: >-
+          python -c "import os; from pathlib import Path;
+          from neural_fights.data import database as db;
+          from neural_fights.effects.audio_paths import PACKAGE_SOUND_DIR;
+          installed_root=Path(db.__file__).resolve().parents[1];
+          assert installed_root != Path(os.environ['GITHUB_WORKSPACE']).resolve();
+          pa=Path(db.ARQUIVO_ARMAS); pc=Path(db.ARQUIVO_CHARS);
+          ra=Path(db.ARQUIVO_ARMAS_RUNTIME); rc=Path(db.ARQUIVO_CHARS_RUNTIME);
+          assert pa.is_file() and pc.is_file() and Path(db.ARQUIVO_MATCH_DEFAULT).is_file();
+          assert (PACKAGE_SOUND_DIR / 'sound_config.json').is_file();
+          assert any(PACKAGE_SOUND_DIR.glob('*.mp3')) and any(PACKAGE_SOUND_DIR.glob('*.wav'));
+          assert pa.parent != ra.parent and pc.parent != rc.parent;
+          assert not ra.exists() and not rc.exists();
+          before=(pa.read_bytes(), pc.read_bytes()); data=db.carregar_database();
+          assert not ra.exists() and not rc.exists(); db.salvar_database(*data);
+          assert ra.is_file() and rc.is_file();
+          assert before == (pa.read_bytes(), pc.read_bytes())"

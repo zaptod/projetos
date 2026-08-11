@@ -4,9 +4,9 @@ from unittest.mock import Mock, patch
 
 import pygame
 
-from core.match_series import BestOfSeries
-from simulation.simulacao import Simulador
-from tournament.tournament_mode import Tournament, TournamentRunner
+from neural_fights.core.match_series import BestOfSeries
+from neural_fights.simulation.simulacao import Simulador
+from neural_fights.tournament.tournament_mode import Tournament, TournamentRunner
 
 
 class BestOfSeriesTests(unittest.TestCase):
@@ -204,7 +204,7 @@ class SimulatorBestOfIntegrationTests(unittest.TestCase):
         runner = TournamentRunner(Tournament())
 
         with patch(
-            "tournament.tournament_mode.database.salvar_match_config"
+            "neural_fights.tournament.tournament_mode.database.salvar_match_config"
         ) as save_config:
             runner.setup_match_config("A", "B")
 

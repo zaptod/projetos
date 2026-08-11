@@ -11,6 +11,3 @@ build/
 dist/
 *.egg-info/
 *.log
-
-# Estado local de execucao. Fixtures versionadas permanecem em data/fixtures/.
-data/runtime/

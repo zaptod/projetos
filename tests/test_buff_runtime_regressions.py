@@ -6,11 +6,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.combat import Buff, Channel, DotEffect
-from core.entities import Lutador
-from core.magic_system import STATUS_EFFECTS_DB, criar_status_effect, verificar_condicao
-from core.skills import get_skill_data
-from core.status_runtime import STATUS_RUNTIME
+from neural_fights.core.combat import Buff, Channel, DotEffect
+from neural_fights.core.entities import Lutador
+from neural_fights.core.magic_system import STATUS_EFFECTS_DB, criar_status_effect, verificar_condicao
+from neural_fights.core.skills import get_skill_data
+from neural_fights.core.status_runtime import STATUS_RUNTIME
 
 
 class BuffRuntimeRegressionTests(unittest.TestCase):
@@ -28,7 +28,7 @@ class BuffRuntimeRegressionTests(unittest.TestCase):
             nome_arma="",
             arma_obj=None,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             return Lutador(data, 5.0, 5.0)
 
     @staticmethod
@@ -57,7 +57,7 @@ class BuffRuntimeRegressionTests(unittest.TestCase):
         fury = Buff("Grito de Guerra", fighter)
         fighter.buffs_ativos.append(fury)
 
-        with patch("core.entities.random.random", return_value=1.0):
+        with patch("neural_fights.core.entities.random.random", return_value=1.0):
             damage, critical = fighter.calcular_dano_ataque(10.0)
         self.assertFalse(critical)
         self.assertAlmostEqual(damage, 10.0 * fighter.mod_dano * 1.8)
@@ -117,7 +117,7 @@ class BuffRuntimeRegressionTests(unittest.TestCase):
         determined.buffs_ativos.append(Buff("Determina\u00e7\u00e3o", determined))
         self._add_class_skill(determined, "Cura Menor", cost=0.0)
         determined.vida -= 30.0
-        with patch("effects.audio.AudioManager.get_instance", return_value=None):
+        with patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=None):
             self.assertTrue(determined.usar_skill_classe("Cura Menor"))
         self.assertAlmostEqual(determined.cd_skills["Cura Menor"], 7.5)
 

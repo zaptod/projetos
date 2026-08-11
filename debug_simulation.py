@@ -4,8 +4,8 @@ Run this instead of run.py
 """
 import pygame
 
-from simulation.simulacao import Simulador
-from utils.config import PPM, LARGURA
+from neural_fights.simulation.simulacao import Simulador
+from neural_fights.utils.config import PPM, LARGURA
 
 # Store original desenhar
 original_desenhar = Simulador.desenhar

@@ -15,13 +15,16 @@
 
 ## 🗂️ Estrutura do Projeto
 
+Todo módulo distribuído pertence ao namespace `neural_fights`. `tests/` e os
+wrappers da raiz existem apenas no checkout e não são empacotados.
+
 ```
 neural-fights/
 ├── run.py                    # Entry point principal
 ├── run_tournament.py         # Entry point do modo torneio
 ├── requirements.txt          # Dependências Python
 │
-├── ai/                       # Sistema de Inteligência Artificial
+├── neural_fights/ai/                       # Sistema de Inteligência Artificial
 │   ├── brain.py              # Cérebro principal da IA (4000+ linhas)
 │   ├── personalities.py      # Traços, arquétipos, estilos de luta
 │   ├── choreographer.py      # Coreografia de combate
@@ -30,7 +33,7 @@ neural-fights/
 │   ├── combat_tactics.py     # Táticas de combate
 │   └── skill_strategy.py     # Estratégia de uso de skills
 │
-├── core/                     # Núcleo do jogo
+├── neural_fights/core/                     # Núcleo do jogo
 │   ├── entities.py           # Classe Lutador (personagem)
 │   ├── combat.py             # Sistema de combate, projéteis
 │   ├── physics.py            # Física (colisões, movimento)
@@ -40,21 +43,22 @@ neural-fights/
 │   ├── magic_system.py       # Sistema de magia elementar
 │   └── game_feel.py          # Hit stop, screen shake
 │
-├── simulation/               # Simulador visual
+├── neural_fights/simulation/               # Simulador visual
 │   └── simulacao.py          # Renderização Pygame (3000+ linhas)
 │
-├── models/                   # Modelos de dados
+├── neural_fights/models/                   # Modelos de dados
 │   ├── characters.py         # Classe Personagem
 │   ├── weapons.py            # Classe Arma
 │   └── constants.py          # Constantes (classes, raridades)
 │
-├── data/                     # Dados persistentes
+├── neural_fights/data/                     # Catálogo e fixtures empacotados
 │   ├── database.py           # Funções de carregar/salvar
 │   ├── armas.json            # Database de armas
 │   ├── personagens.json      # Database de personagens
-│   └── match_config.json     # Configuração de lutas
+│   └── fixtures/
+│       └── default_match_config.json  # Configuração padrão imutável
 │
-├── effects/                  # Efeitos visuais e sonoros
+├── neural_fights/effects/                  # Efeitos visuais e sonoros
 │   ├── particles.py          # Sistema de partículas
 │   ├── camera.py             # Câmera com zoom/shake
 │   ├── impact.py             # Efeitos de impacto
@@ -62,7 +66,7 @@ neural-fights/
 │   ├── magic_vfx.py          # VFX de magias
 │   └── audio.py              # Sistema de áudio
 │
-├── ui/                       # Interface gráfica (Tkinter)
+├── neural_fights/ui/                       # Interface gráfica (Tkinter)
 │   ├── main.py               # Janela principal
 │   ├── view_armas.py         # Editor de armas
 │   ├── view_chars.py         # Editor de personagens
@@ -70,18 +74,21 @@ neural-fights/
 │   ├── view_torneio.py       # Interface do torneio
 │   └── theme.py              # Cores e estilos
 │
-├── tournament/               # Sistema de torneio
+├── neural_fights/tournament/               # Sistema de torneio
 │   └── tournament_mode.py    # Brackets e gestão de torneio
 │
-├── tools/                    # Ferramentas auxiliares
+├── neural_fights/tools/                    # Ferramentas auxiliares
 │   ├── gerador_database.py   # Gerador procedural de armas/chars
 │   ├── diagnostico_hitbox.py # Debug de hitboxes
 │   └── analise_armas.py      # Análise de balanceamento
 │
-└── utils/                    # Utilitários
-    ├── config.py             # Configurações globais
-    └── helpers.py            # Funções auxiliares
+└── neural_fights/utils/                    # Utilitários
+    └── config.py             # Configurações globais
 ```
+
+Os arquivos versionados em `neural_fights/data/` são defaults imutáveis. Dados editados e
+configurações de luta são gravados fora do checkout, no diretório de runtime do
+usuário (configurável por `NEURAL_FIGHTS_RUNTIME_DIR`).
 
 ---
 
@@ -259,10 +266,10 @@ python run.py
 python run_tournament.py
 
 # Gerar nova database
-python -m scripts.gerar_roster --modo completo --seed 42
+python -m neural_fights.cli.roster --modo completo --seed 42
 
 # Testar batalha headless
-python test_headless_battle.py
+python -m neural_fights.cli.headless
 
 # Testar VFX
 python test_vfx.py
@@ -285,12 +292,12 @@ python test_vfx.py
 
 ### Hitbox Visual
 ```python
-# Em core/hitbox.py
+# Em neural_fights/core/hitbox.py
 DEBUG_HITBOX = False  # Prints verbosos
 DEBUG_VISUAL = True   # Mostra hitboxes na tela
 ```
 
-### Configurações em utils/config.py
+### Configurações em neural_fights/utils/config.py
 ```python
 PPM = 50              # Pixels por metro
 LARGURA = 1280        # Largura da janela
@@ -315,13 +322,13 @@ FPS = 60              # Frames por segundo
 
 | Objetivo | Arquivo |
 |----------|---------|
-| Adicionar nova arma | `tools/gerador_database.py`, `data/armas.json` |
-| Novo tipo de arma | `core/hitbox.py`, `simulation/simulacao.py` |
-| Nova personalidade | `ai/personalities.py` |
-| Novo comportamento IA | `ai/brain.py` |
-| Nova skill | `core/skills.py` |
-| Novo efeito visual | `effects/` |
-| Nova classe | `models/constants.py`, `models/characters.py` |
+| Adicionar nova arma | `neural_fights/tools/gerador_database.py`, `neural_fights/data/armas.json` |
+| Novo tipo de arma | `neural_fights/core/hitbox.py`, `neural_fights/simulation/simulacao.py` |
+| Nova personalidade | `neural_fights/ai/personalities.py` |
+| Novo comportamento IA | `neural_fights/ai/brain.py` |
+| Nova skill | `neural_fights/core/skills.py` |
+| Novo efeito visual | `neural_fights/effects/` |
+| Nova classe | `neural_fights/models/constants.py`, `neural_fights/models/characters.py` |
 
 ---
 

@@ -9,8 +9,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from data import database
-from models import Arma, Personagem
+from neural_fights.data import database
+from neural_fights.models import Arma, Personagem
 
 
 class JsonPersistenceRegressionTests(unittest.TestCase):
@@ -77,6 +77,18 @@ class JsonPersistenceRegressionTests(unittest.TestCase):
         self.assertEqual(loaded["p2_nome"], "Novo B")
         self.assertEqual(loaded["best_of"], 5)
         self.assertEqual(loaded["custom_option"], "keep-me")
+
+    def test_explicit_missing_match_config_never_falls_back_to_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing = Path(temp_dir) / "missing.json"
+            with (
+                patch.dict(
+                    os.environ,
+                    {database.MATCH_CONFIG_ENV: str(missing)},
+                ),
+                self.assertRaises(FileNotFoundError),
+            ):
+                database.carregar_match_config()
 
     def test_character_reload_uses_effective_weapon_weight(self) -> None:
         """Rarity modifiers must not change character speed after a round-trip."""

@@ -7,21 +7,24 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
-from effects.audio import AudioManager
-from effects.audio_paths import (
+from neural_fights.effects.audio import AudioManager
+from neural_fights.effects.audio_paths import (
+    PACKAGE_SOUND_DIR,
     SOUND_RUNTIME_DIR_ENV,
     load_sound_config,
     remove_runtime_sound_overrides,
     resolve_sound_file,
     save_sound_config,
 )
+from neural_fights.ui.view_sons import TelaSons
 
 
 class AudioContractTests(unittest.TestCase):
     def test_every_configured_event_has_an_asset_or_a_valid_fallback(self) -> None:
-        sound_dir = Path(__file__).resolve().parents[1] / "sounds"
+        sound_dir = PACKAGE_SOUND_DIR
         config = json.loads((sound_dir / "sound_config.json").read_text(encoding="utf-8"))
 
         unresolved = []
@@ -60,7 +63,7 @@ class AudioContractTests(unittest.TestCase):
                 current = AudioManager.SOUND_FALLBACKS[current]
 
     def test_runtime_overrides_do_not_modify_packaged_sound_assets(self) -> None:
-        package_config = Path(__file__).resolve().parents[1] / "sounds" / "sound_config.json"
+        package_config = PACKAGE_SOUND_DIR / "sound_config.json"
         original_text = package_config.read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch.dict(os.environ, {SOUND_RUNTIME_DIR_ENV: temp_dir}):
@@ -102,6 +105,63 @@ class AudioContractTests(unittest.TestCase):
             runtime.mkdir()
             with patch.dict(os.environ, {SOUND_RUNTIME_DIR_ENV: str(runtime)}):
                 self.assertIsNone(resolve_sound_file("../secret.wav"))
+
+    def test_ui_save_keeps_slider_values_when_audio_singleton_reloads(self) -> None:
+        screen = object.__new__(TelaSons)
+        screen.sound_config = {"slash_light": "slash_light.mp3"}
+        screen.sound_widgets = {}
+        screen.volume_sliders = {
+            "master": {"var": SimpleNamespace(get=lambda: 25)},
+            "golpes": {"var": SimpleNamespace(get=lambda: 40)},
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            observed_volumes = {}
+            audio = Mock()
+
+            def reload_from_saved_snapshot() -> None:
+                observed_volumes.update(load_sound_config()["_volumes"])
+
+            audio.reload_sounds.side_effect = reload_from_saved_snapshot
+            audio.save_volume_config.side_effect = AssertionError(
+                "singleton obsoleto nao deve regravar os sliders"
+            )
+            with (
+                patch.dict(os.environ, {SOUND_RUNTIME_DIR_ENV: temp_dir}),
+                patch("neural_fights.effects.audio.AudioManager.get_instance", return_value=audio),
+                patch("neural_fights.ui.view_sons.messagebox.showinfo"),
+            ):
+                screen._salvar_tudo()
+                persisted = load_sound_config()["_volumes"]
+
+        self.assertEqual(persisted, {"master": 0.25, "golpes": 0.4})
+        self.assertEqual(observed_volumes, persisted)
+        audio.reload_sounds.assert_called_once_with()
+        audio.save_volume_config.assert_not_called()
+
+    def test_ui_clear_removes_override_and_restores_packaged_fallback(self) -> None:
+        screen = object.__new__(TelaSons)
+        screen.sound_config = {"slash_light": "slash_light.mp3"}
+        file_var = Mock()
+        status_label = Mock()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            override = Path(temp_dir) / "slash_light.mp3"
+            override.write_bytes(b"custom override")
+            with (
+                patch.dict(os.environ, {SOUND_RUNTIME_DIR_ENV: temp_dir}),
+                patch.object(screen, "_atualizar_status") as update_status,
+            ):
+                self.assertEqual(resolve_sound_file("slash_light.mp3"), override)
+                screen._limpar_som("slash_light", file_var, status_label)
+                resolved = resolve_sound_file("slash_light.mp3")
+
+            self.assertFalse(override.exists())
+
+        self.assertEqual(resolved, PACKAGE_SOUND_DIR / "slash_light.mp3")
+        self.assertNotIn("slash_light", screen.sound_config)
+        file_var.set.assert_called_once_with("")
+        update_status.assert_called_once_with("slash_light", "", status_label)
 
 
 if __name__ == "__main__":

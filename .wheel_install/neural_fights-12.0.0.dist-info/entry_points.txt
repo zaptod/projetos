@@ -1,7 +1,0 @@
-[console_scripts]
-neural-fights = run:main
-neural-fights-audit-skills = tools.auditoria_skills:main
-neural-fights-headless = test_headless_battle:main
-neural-fights-migrate-database = tools.migrar_database:main
-neural-fights-roster = scripts.gerar_roster:main
-neural-fights-tournament = run_tournament:main

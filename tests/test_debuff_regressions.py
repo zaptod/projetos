@@ -6,8 +6,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.combat import DotEffect
-from core.entities import Lutador
+from neural_fights.core.combat import DotEffect
+from neural_fights.core.entities import Lutador
 
 
 class DamageDebuffRegressionTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class DamageDebuffRegressionTests(unittest.TestCase):
             nome_arma="",
             arma_obj=None,
         )
-        with patch("ai.AIBrain", return_value=None):
+        with patch("neural_fights.ai.AIBrain", return_value=None):
             return Lutador(data, 5.0, 5.0)
 
     @staticmethod

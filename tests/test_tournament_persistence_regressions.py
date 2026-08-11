@@ -1,3 +1,4 @@
+import copy
 import io
 import json
 import os
@@ -7,9 +8,9 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-import tournament.tournament_mode as tournament_module
+import neural_fights.tournament.tournament_mode as tournament_module
 
-from tournament.tournament_mode import (
+from neural_fights.tournament.tournament_mode import (
     Tournament,
     TournamentMatch,
     TournamentRound,
@@ -154,7 +155,7 @@ class TournamentPersistenceRegressionTests(unittest.TestCase):
     def test_default_state_uses_ignored_runtime_path_independent_of_cwd(self):
         tournament = Tournament("Estado local")
         with tempfile.TemporaryDirectory() as temp_dir:
-            runtime_path = Path(temp_dir) / "runtime" / "tournament.json"
+            runtime_path = Path(temp_dir) / "runtime" / "neural_fights.tournament.json"
             other_cwd = Path(temp_dir) / "other"
             other_cwd.mkdir()
             with (
@@ -206,6 +207,78 @@ class TournamentPersistenceRegressionTests(unittest.TestCase):
                 os.chdir(previous_cwd)
 
         self.assertEqual(Path(resolved), Path(temp_dir).resolve() / "save.json")
+
+    def test_console_output_escapes_names_unsupported_by_cp1252(self):
+        tournament = Tournament("Torneio 🔥")
+        tournament.participants = ["Fogo🔥", "Gelo❄"]
+        with redirect_stdout(io.StringIO()):
+            self.assertTrue(tournament.generate_bracket())
+
+        raw = io.BytesIO()
+        console = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+        try:
+            with patch.object(tournament_module.sys, "stdout", console):
+                tournament_module._console_print(tournament.get_bracket_display())
+                console.flush()
+        finally:
+            console.detach()
+
+        rendered = raw.getvalue().decode("cp1252")
+        self.assertIn("Torneio", rendered)
+        self.assertIn("\\U0001f525", rendered)
+
+    def test_corrupt_nested_state_is_rejected_without_partial_mutation(self):
+        match = TournamentMatch(
+            match_id=0,
+            round_num=0,
+            fighter1_name="A",
+            fighter2_name="B",
+            winner_name="A",
+            loser_name="B",
+            duration=3.0,
+            ko_type="KO",
+            fight_log=["fim"],
+            completed=True,
+        )
+        source = Tournament("Valido")
+        source.participants = ["A", "B"]
+        source.bracket = [
+            TournamentRound(0, "Final", matches=[match], completed=True)
+        ]
+        source.fight_history = [match]
+        source.state = TournamentState.FINISHED
+        source.champion = "A"
+        source.current_round = 1
+        source.stats["total_fights"] = 1
+        source.stats["total_kos"] = 1
+        valid = self._save_to_dict(source)
+
+        cases = {}
+        invalid_stats = copy.deepcopy(valid)
+        invalid_stats["stats"]["total_fights"] = "um"
+        cases["stats"] = invalid_stats
+        invalid_log = copy.deepcopy(valid)
+        invalid_log["bracket"][0]["matches"][0]["fight_log"] = "abc"
+        cases["fight_log"] = invalid_log
+        invalid_pointer = copy.deepcopy(valid)
+        invalid_pointer["current_round"] = 0
+        invalid_pointer["current_match"] = 1
+        cases["pointer"] = invalid_pointer
+
+        for label, state in cases.items():
+            target = Tournament("Intacto")
+            target.participants = ["X", "Y"]
+            snapshot = (target.name, list(target.participants), target.state)
+            with tempfile.TemporaryDirectory() as temp_dir:
+                path = Path(temp_dir) / "state.json"
+                path.write_text(json.dumps(state), encoding="utf-8")
+                with self.subTest(case=label), redirect_stdout(io.StringIO()):
+                    self.assertFalse(target.load_state(str(path)))
+
+            self.assertEqual(
+                snapshot,
+                (target.name, target.participants, target.state),
+            )
 
 
 if __name__ == "__main__":

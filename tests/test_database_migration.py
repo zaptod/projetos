@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from tools.migrar_database import migrar_documentos
+from neural_fights.tools.migrar_database import migrar_documentos
 
 
 class DatabaseMigrationTests(unittest.TestCase):
