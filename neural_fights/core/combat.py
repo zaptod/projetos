@@ -4,7 +4,7 @@ import math
 import random
 from neural_fights.utils.config import BRANCO
 from neural_fights.core.skills import get_skill_data
-from neural_fights.core.status_runtime import BUFF_EFFECT_RUNTIME
+from neural_fights.core.status_runtime import BUFF_EFFECT_RUNTIME, normalizar_efeito
 
 
 PERFIS_MUTACAO = (
@@ -186,6 +186,7 @@ class ArmaProjetil:
         self.rouba_buff = False
         self.reflexoes = 0
         self.refletido = False
+        self.rng_runtime = getattr(dono, "rng_runtime", random)
         
         self.dano = dano
         self.vel = velocidade
@@ -442,7 +443,7 @@ class Projetil:
     Projétil genérico que carrega dados do SKILL_DB
     v2.0 COLOSSAL - Suporta todos os novos tipos de projéteis
     """
-    def __init__(self, nome_skill, x, y, angulo, dono):
+    def __init__(self, nome_skill, x, y, angulo, dono, *, habilitar_split=True):
         self.nome = nome_skill
         data = get_skill_data(nome_skill)
         
@@ -457,6 +458,7 @@ class Projetil:
         self.rouba_buff = bool(data.get("rouba_buff", False))
         self.reflexoes = 0
         self.refletido = False
+        self.rng_runtime = getattr(dono, "rng_runtime", random)
         mod_dano_magico, mod_area_magica = capturar_modificadores_magicos(
             dono,
             data,
@@ -506,6 +508,12 @@ class Projetil:
         
         # Explosão com delay
         self.delay_explosao = data.get("delay_explosao", 0)
+        self.explosion_timer = (
+            max(0.0, float(self.delay_explosao))
+            if self.delay_explosao > 0 and self.tipo_efeito != "BOMBA_RELOGIO"
+            else None
+        )
+        self.aguardando_explosao = False
         self.explodiu = False
 
         # Metadados do status viajam com a fonte; o alvo não reconstrói a skill.
@@ -526,20 +534,34 @@ class Projetil:
         self.duplicado = False
         
         # Split aleatório (Caos)
-        self.split_aleatorio = data.get("split_aleatorio", False)
+        self.split_aleatorio = bool(
+            habilitar_split and data.get("split_aleatorio", False)
+        )
         self.max_splits = data.get("max_splits", 0)
         self.splits_feitos = 0
+        # Preserva aproximadamente os 5% por frame do runtime antigo a
+        # 60 FPS, mas amostra o evento no tempo contínuo, não por update.
+        self.taxa_split = -60.0 * math.log1p(-0.05)
+        self.tempo_ate_split = (
+            self._sortear_tempo_split()
+            if self.split_aleatorio and self.max_splits > 0
+            else None
+        )
         
         # Backfire chance (Caos)
         self.chance_backfire = data.get("chance_backfire", 0)
-        if self.chance_backfire > 0 and random.random() < self.chance_backfire:
+        self.backfire = bool(
+            self.chance_backfire > 0
+            and self.rng_runtime.random() < self.chance_backfire
+        )
+        if self.backfire:
             # Reverte direção!
             self.angulo += 180
         
         # Elemento aleatório (Caos)
         if data.get("elemento_aleatorio", False):
             elementos = ["FOGO", "GELO", "RAIO", "TREVAS", "LUZ", "NATUREZA", "ARCANO"]
-            self.elemento = random.choice(elementos)
+            self.elemento = self.rng_runtime.choice(elementos)
             # Ajusta cor baseado no elemento
             cores_elemento = {
                 "FOGO": (255, 100, 0), "GELO": (150, 220, 255), "RAIO": (255, 255, 100),
@@ -551,13 +573,13 @@ class Projetil:
         # Dano variável (Caos)
         dano_var = data.get("dano_variavel", None)
         if dano_var:
-            multiplier = random.uniform(dano_var[0], dano_var[1])
+            multiplier = self.rng_runtime.uniform(dano_var[0], dano_var[1])
             self.dano *= multiplier
         
         # Efeito aleatório (Caos)
         if data.get("efeito_aleatorio", False):
             efeitos = data.get("efeitos_possiveis", ["NORMAL"])
-            self.tipo_efeito = random.choice(efeitos)
+            self.tipo_efeito = self.rng_runtime.choice(efeitos)
         
         # Condições de dano extra
         self.condicao = data.get("condicao", None)
@@ -615,8 +637,11 @@ class Projetil:
             dir_y = self.dono.pos[1] - self.y
             self.angulo = math.degrees(math.atan2(dir_y, dir_x))
             dist_dono = math.hypot(dir_x, dir_y)
-            if dist_dono < 0.5:
+            if dist_dono <= max(0.5, self.vel * max(0.0, float(dt))):
+                self.x = float(self.dono.pos[0])
+                self.y = float(self.dono.pos[1])
                 self.ativo = False
+                return None
         
         # === MOVIMENTO ===
         # Cones sao volumes ancorados no ponto e angulo originais do cast.
@@ -637,30 +662,68 @@ class Projetil:
                 self.duplicado = True
                 # Retorna dados para criar duplicata
                 return {"duplicar": True, "x": self.x, "y": self.y, 
-                        "angulo": self.angulo + random.uniform(-30, 30)}
+                        "angulo": self.angulo + self.rng_runtime.uniform(-30, 30)}
         
+        evento_split = None
         # === SPLIT ALEATÓRIO ===
         if self.split_aleatorio and self.splits_feitos < self.max_splits:
-            if random.random() < 0.05:  # 5% chance por frame
+            self.tempo_ate_split -= max(0.0, float(dt))
+            angulos_split = []
+            while (
+                self.tempo_ate_split <= 1e-12
+                and self.splits_feitos < self.max_splits
+            ):
+                atraso = max(0.0, -self.tempo_ate_split)
                 self.splits_feitos += 1
-                return {"split": True, "x": self.x, "y": self.y,
-                        "angulo": self.angulo + random.choice([-45, 45])}
+                angulos_split.append(
+                    self.angulo + self.rng_runtime.choice((-45, 45))
+                )
+                if self.splits_feitos < self.max_splits:
+                    self.tempo_ate_split = self._sortear_tempo_split() - atraso
+                else:
+                    self.tempo_ate_split = None
+                    break
+            if angulos_split:
+                evento_split = {
+                    "split": True,
+                    "x": self.x,
+                    "y": self.y,
+                    "angulo": angulos_split[0],
+                    "angulos": tuple(angulos_split),
+                }
         
+        if self.explosion_timer is not None and not self.explodiu:
+            self.explosion_timer = max(0.0, self.explosion_timer - dt)
+            if self.explosion_timer <= 1e-12:
+                self.explodiu = True
+                self.ativo = False
+                return {
+                    "explodir": True,
+                    "x": self.x,
+                    "y": self.y,
+                    "raio": self.raio_explosao or 2.0,
+                }
+
         # === VIDA ===
-        self.vida -= dt
-        if self.vida <= 0:
+        self.vida = max(0.0, self.vida - dt)
+        if self.vida <= 1e-12:
+            self.vida = 0.0
             if self.tipo_efeito == "BOMBA_RELOGIO":
                 self.ativo = False
                 return None
             # Explosão com delay
-            if self.delay_explosao > 0 and not self.explodiu:
-                self.explodiu = True
-                self.ativo = False
-                return {"explodir": True, "x": self.x, "y": self.y, 
-                        "raio": self.raio_explosao or 2.0}
             self.ativo = False
         
-        return None
+        return evento_split
+
+    def _sortear_tempo_split(self):
+        """Sorteia o próximo evento de um processo de Poisson homogêneo."""
+
+        uniforme = min(
+            1.0 - 1e-15,
+            max(1e-15, float(self.rng_runtime.random())),
+        )
+        return -math.log1p(-uniforme) / self.taxa_split
 
     def criar_duplicata(self, evento):
         """Materializa o unico filho temporal, incapaz de duplicar novamente."""
@@ -694,7 +757,14 @@ class Projetil:
 
     def colidir(self, alvo):
         """Testa a colisão circular padrão ou o volume angular de um cone."""
-        if alvo is self.dono or not _alvo_esta_ativo(alvo) or not self.ativo:
+        if (
+            (alvo is self.dono and not self.backfire)
+            or (alvo is not self.dono and self.backfire)
+            or (self.retorna and self.retornando)
+            or self.aguardando_explosao
+            or not _alvo_esta_ativo(alvo)
+            or not self.ativo
+        ):
             return False
 
         pos_alvo = _posicao_alvo(alvo)
@@ -760,13 +830,21 @@ class Projetil:
                 return False
             self.alvos_perfurados.add(id(alvo))
         return True
+
+    def iniciar_retorno(self):
+        """Converte o primeiro impacto de um projétil retornável em retorno."""
+
+        if not self.retorna or self.retornando or not self.ativo:
+            return False
+        self.retornando = True
+        return True
     
 class AreaEffect:
     """
     Efeito de área (explosões, nuvens, campos, etc)
     v2.0 COLOSSAL - Suporta campos persistentes, vórtices, e mais
     """
-    def __init__(self, nome_skill, x, y, dono):
+    def __init__(self, nome_skill, x, y, dono, *, subefeito=False):
         self.nome = nome_skill
         data = get_skill_data(nome_skill)
         mod_dano_magico, mod_area_magica = capturar_modificadores_magicos(
@@ -790,6 +868,8 @@ class AreaEffect:
         self.afeta_caster = bool(data.get("afeta_caster", False))
         self.rouba_buff = False
         self.refletido = False
+        self.ignorar_invencibilidade = False
+        self.rng_runtime = getattr(dono, "rng_runtime", random)
         
         self.raio = data.get("raio_area", 2.0) * mod_area_magica
         self.dano = data.get("dano", 10.0) * mod_dano_magico
@@ -797,6 +877,11 @@ class AreaEffect:
         self.cor = data.get("cor", BRANCO)
         self.duracao = data.get("duracao", 0.5)
         self.tipo_efeito = data.get("efeito", "NORMAL")
+        self.efeito_aleatorio = bool(data.get("efeito_aleatorio", False))
+        self.efeitos_possiveis = tuple(data.get("efeitos_possiveis", ("NORMAL",)))
+        if self.efeito_aleatorio and self.efeitos_possiveis:
+            self.tipo_efeito = self.rng_runtime.choice(self.efeitos_possiveis)
+        self.lifesteal = max(0.0, float(data.get("lifesteal", 0.0)))
         
         # Elemento
         self.elemento = data.get("elemento", None)
@@ -806,9 +891,10 @@ class AreaEffect:
         )
         
         # Delay antes de ativar
-        self.delay = data.get("delay", 0)
+        self.delay = max(0.0, float(data.get("delay", 0)))
+        self.delay_total = self.delay
         self.ativado = self.delay <= 0
-        self.aviso_visual = data.get("aviso_visual", self.delay > 0)
+        self.aviso_visual = bool(data.get("aviso_visual", self.delay > 0))
         
         # Garante que duração é suficiente após o delay
         if self.delay > 0 and self.duracao < 0.5:
@@ -816,6 +902,7 @@ class AreaEffect:
         
         self.vida = self.duracao
         self.ativo = True
+        self.teve_tempo_ativo_no_frame = False
         self.alvos_atingidos = set()  # Evita hit múltiplo inicial
         
         # Animação
@@ -840,19 +927,30 @@ class AreaEffect:
         self.puxa_para_centro = data.get("puxa_para_centro", False)
         self.puxa_continuo = data.get("puxa_continuo", False)
         self.forca_empurrao = data.get("forca_empurrao", 0)
-        self.forca_puxar = 5.0 if self.puxa_para_centro else 0
+        self.forca_puxar = (
+            5.0
+            if self.puxa_para_centro or self.puxa_continuo
+            or data.get("efeito") == "VORTEX"
+            else 0.0
+        )
         
         # Gravidade aumentada
         self.gravidade_aumentada = data.get("gravidade_aumentada", 1.0)
         
         # Ondas (múltiplas explosões)
-        self.ondas = data.get("ondas", 1)
-        self.onda_atual = 0
-        self.intervalo_onda = 0.5
-        self.timer_onda = 0
+        self.ondas = 1 if subefeito else max(1, int(data.get("ondas", 1)))
+        # A própria área é a primeira onda; as demais são emitidas como
+        # impactos filhos independentes ao longo da duração ativa.
+        self.onda_atual = 1
+        self.intervalo_onda = (
+            max(1e-6, self.duracao / (self.ondas - 1))
+            if self.ondas > 1
+            else 0.0
+        )
+        self.timer_onda = 0.0
         
         # Pilares (múltiplos pontos)
-        self.pilares = data.get("pilares", 0)
+        self.pilares = 0 if subefeito else data.get("pilares", 0)
         self.raio_pilar = (
             max(0.1, float(data.get("raio_pilar", 0.75)))
             * mod_area_magica
@@ -861,8 +959,8 @@ class AreaEffect:
         self.posicoes_pilares = []
         if self.pilares > 0:
             for i in range(self.pilares):
-                ang = (360 / self.pilares) * i + random.uniform(-20, 20)
-                dist = random.uniform(1.0, self.raio)
+                ang = (360 / self.pilares) * i + self.rng_runtime.uniform(-20, 20)
+                dist = self.rng_runtime.uniform(1.0, self.raio)
                 px = self.x + math.cos(math.radians(ang)) * dist
                 py = self.y + math.sin(math.radians(ang)) * dist
                 self.posicoes_pilares.append((px, py))
@@ -871,9 +969,37 @@ class AreaEffect:
         self.vortex = data.get("efeito") == "VORTEX" or self.puxa_continuo
         
         # Meteoros aleatórios (Caos)
-        self.meteoros = data.get("meteoros_aleatorios", 0)
+        self.meteoros = (
+            0 if subefeito else max(0, int(data.get("meteoros_aleatorios", 0)))
+        )
         self.meteoros_spawned = 0
-        self.timer_meteoro = 0
+        self.timer_meteoro = 0.0
+        self.intervalo_meteoro = (
+            max(1e-6, self.duracao / self.meteoros)
+            if self.meteoros > 0
+            else 0.0
+        )
+        self.dano_meteoro = max(
+            0.0,
+            float(data.get("dano_meteoro", 30.0)) * mod_dano_magico,
+        )
+        self.raio_meteoro = max(
+            0.1,
+            float(data.get("raio_meteoro", 3.0)) * mod_area_magica,
+        )
+        sortear_uniforme = self.rng_runtime.uniform
+        # Posições pertencem ao cast, não ao ritmo dos frames. Sorteá-las
+        # aqui impede que RNG de partículas/VFX altere a chuva no gameplay.
+        self.posicoes_meteoros = []
+        for _ in range(self.meteoros):
+            ang = sortear_uniforme(0, 360)
+            dist = sortear_uniforme(0, self.raio)
+            self.posicoes_meteoros.append(
+                (
+                    self.x + math.cos(math.radians(ang)) * dist,
+                    self.y + math.sin(math.radians(ang)) * dist,
+                )
+            )
         
         # Efeito secundário
         self.efeito2 = data.get("efeito2", None)
@@ -883,7 +1009,11 @@ class AreaEffect:
         self.duracao_fear = data.get("duracao_fear", 0)
         self.duracao_charme = data.get("duracao_charme", 0)
         self.duracao_stop = data.get("duracao_stop", 0)
-        self.chance_stun = data.get("chance_stun", 1.0)  # 100% por padrão
+        self.chance_stun = min(1.0, max(0.0, float(data.get("chance_stun", 1.0))))
+        self.efeito_principal_probabilistico = (
+            "chance_stun" in data
+            and normalizar_efeito(self.tipo_efeito) in {"ATORDOADO", "PARALISIA"}
+        )
         
         # Taunt
         self.taunt = data.get("taunt", False)
@@ -899,6 +1029,7 @@ class AreaEffect:
         """Atualiza efeito de área com todos os novos comportamentos"""
         resultados = []
         dt = max(0.0, float(dt))
+        self.teve_tempo_ativo_no_frame = False
         
         # === DELAY ===
         if not self.ativado:
@@ -910,6 +1041,10 @@ class AreaEffect:
             dt = max(0.0, -self.delay)
             self.delay = 0.0
             self.ativado = True
+            if self.aviso_visual:
+                # O volume avisado é exatamente o volume que impacta; ele
+                # não pode colapsar no instante de ativação.
+                self.raio_atual = self.raio
             self.alvos_atingidos.clear()  # Reset para aplicar dano
 
         if self.pilares > 0 and not self.pilares_spawned:
@@ -928,7 +1063,10 @@ class AreaEffect:
             return resultados
 
         tempo_ativo = min(dt, max(0.0, self.vida))
+        self.teve_tempo_ativo_no_frame = tempo_ativo > 0.0
         self.vida = max(0.0, self.vida - dt)
+        if self.vida <= 1e-12:
+            self.vida = 0.0
         
         # === EXPANSÃO DO RAIO ===
         if self.raio_atual < self.raio:
@@ -940,32 +1078,45 @@ class AreaEffect:
         # === ONDAS ===
         if self.ondas > 1 and self.onda_atual < self.ondas:
             self.timer_onda += tempo_ativo
-            if self.timer_onda >= self.intervalo_onda:
-                self.timer_onda = 0
+            while (
+                self.onda_atual < self.ondas
+                and self.timer_onda + 1e-9 >= self.intervalo_onda
+            ):
+                self.timer_onda = max(0.0, self.timer_onda - self.intervalo_onda)
                 self.onda_atual += 1
-                self.alvos_atingidos.clear()  # Nova onda = novo dano
                 resultados.append({
                     "nova_onda": True,
                     "x": self.x,
                     "y": self.y,
                     "raio": self.raio * 1.5,
+                    "dano": self.dano * 0.7,
+                    "fonte_impacto": object(),
                 })
         
         # === METEOROS ALEATÓRIOS ===
         if self.meteoros > 0 and self.meteoros_spawned < self.meteoros:
             self.timer_meteoro += tempo_ativo
-            if self.timer_meteoro >= 0.3:  # 1 meteoro a cada 0.3s
-                self.timer_meteoro = 0
+            while (
+                self.meteoros_spawned < self.meteoros
+                and self.timer_meteoro + 1e-9 >= self.intervalo_meteoro
+            ):
+                self.timer_meteoro = max(
+                    0.0,
+                    self.timer_meteoro - self.intervalo_meteoro,
+                )
                 self.meteoros_spawned += 1
-                # Posição aleatória dentro da área
-                ang = random.uniform(0, 360)
-                dist = random.uniform(0, self.raio)
-                mx = self.x + math.cos(math.radians(ang)) * dist
-                my = self.y + math.sin(math.radians(ang)) * dist
-                resultados.append({"meteoro": True, "x": mx, "y": my})
+                mx, my = self.posicoes_meteoros[self.meteoros_spawned - 1]
+                resultados.append({
+                    "meteoro": True,
+                    "x": mx,
+                    "y": my,
+                    "raio": self.raio_meteoro,
+                    "dano": self.dano_meteoro,
+                    "fonte_impacto": object(),
+                })
         
         # === VÓRTEX / PUXAR ===
-        if (self.vortex or self.puxa_continuo) and alvos:
+        if (self.vortex or self.puxa_continuo or self.puxa_para_centro) and alvos:
             for alvo in alvos:
                 if (alvo == self.dono and not self.afeta_caster) or alvo.morto:
                     continue
@@ -985,24 +1136,28 @@ class AreaEffect:
                     0.0,
                     self.tick_timer - ticks * self.tick_interval,
                 )
-                fonte_tick = object()
-                for alvo in alvos:
-                    if (alvo == self.dono and not self.afeta_caster) or alvo.morto:
-                        continue
-                    imune_ground = getattr(alvo, "esta_imune_ground", None)
-                    if self.ground and callable(imune_ground) and imune_ground():
-                        continue
-                    dist = math.hypot(alvo.pos[0] - self.x, alvo.pos[1] - self.y)
-                    if dist < self.raio_atual:
-                        resultados.append({
-                            "dot_tick": True,
-                            "alvo": alvo,
-                            "dano": self.dano_por_segundo * self.tick_interval * ticks,
-                            # Dano periodico nao reaplica o status principal.
-                            "tipo": "NORMAL",
-                            "elemento": self.elemento,
-                            "fonte_impacto": fonte_tick,
-                        })
+                for _ in range(ticks):
+                    # Cada intervalo é um impacto lógico. Não agregar
+                    # preserva crítico, esquiva, escudo e efeitos on-hit quando
+                    # o frame atravessa mais de um tick.
+                    fonte_tick = object()
+                    for alvo in alvos:
+                        if (alvo == self.dono and not self.afeta_caster) or alvo.morto:
+                            continue
+                        imune_ground = getattr(alvo, "esta_imune_ground", None)
+                        if self.ground and callable(imune_ground) and imune_ground():
+                            continue
+                        dist = math.hypot(alvo.pos[0] - self.x, alvo.pos[1] - self.y)
+                        if dist < self.raio_atual:
+                            resultados.append({
+                                "dot_tick": True,
+                                "alvo": alvo,
+                                "dano": self.dano_por_segundo * self.tick_interval,
+                                # Dano periódico não reaplica o status principal.
+                                "tipo": "NORMAL",
+                                "elemento": self.elemento,
+                                "fonte_impacto": fonte_tick,
+                            })
 
         if self.stacks_por_segundo > 0 and alvos:
             for alvo in alvos:
@@ -1054,7 +1209,7 @@ class AreaEffect:
                 alvo.slow_fator = min(alvo.slow_fator, self.slow_fator)
         
         # Stun
-        if self.duracao_stun > 0 and random.random() < self.chance_stun:
+        if self.duracao_stun > 0 and self.rng_runtime.random() < self.chance_stun:
             if usa_runtime_status:
                 alvo._aplicar_efeito_status("ATORDOADO", duracao=self.duracao_stun)
             else:
@@ -1074,6 +1229,9 @@ class AreaEffect:
         if self.gravidade_aumentada > 1.0:
             # Impede pulo e causa slow
             alvo.vel_z = min(alvo.vel_z, 0)
+            impedir_pulo = getattr(alvo, "impedir_pulo", None)
+            if callable(impedir_pulo):
+                impedir_pulo(self.duracao)
             fator_gravidade = 1.0 / self.gravidade_aumentada
             if usa_runtime_status:
                 alvo._aplicar_efeito_status(
@@ -1116,6 +1274,24 @@ class AreaEffect:
         if self.executa:
             return True, 10.0
         return True, self.dano_bonus_condicao
+
+    def get_raio_visual(self):
+        """Retorna o raio desenhável, incluindo o aviso antes do impacto."""
+
+        if not self.ativo:
+            return 0.0
+        if not self.ativado:
+            return self.raio if self.aviso_visual else 0.0
+        return self.raio_atual
+
+    def sortear_efeito_principal(self):
+        """Resolve a chance explícita do controle principal uma única vez."""
+
+        if not self.efeito_principal_probabilistico:
+            return self.tipo_efeito
+        if self.rng_runtime.random() < self.chance_stun:
+            return self.tipo_efeito
+        return "NORMAL"
     
     def calcular_puxar(self, alvo_pos):
         """Calcula força de puxar para o centro"""
@@ -1321,6 +1497,9 @@ class Buff:
         )
         self.ve_ataques = bool(data.get("ve_ataques", False))
         self.dano_contato = max(0.0, float(data.get("dano_contato", 0.0)))
+        self.consome_ao_causar_dano = bool(
+            data.get("consome_ao_causar_dano", False)
+        )
 
         self.perfil_stats = None
         self.modificadores_stats = {}
@@ -1505,17 +1684,29 @@ class Summon:
         self.x = x
         self.y = y
         self.dono = dono
+        self.tipo_fonte = "summon_skill"
+        self.eh_skill = True
+        self.eh_projetil = False
+        self.ground = False
+        self.rouba_buff = False
+        self.refletido = False
         
         # Stats da criatura
         self.vida_max = data.get("summon_vida", 50.0)
         self.vida = self.vida_max
         self.dano = data.get("summon_dano", 10.0) * mod_dano_magico
         self.cor = data.get("cor", (200, 200, 200))
+        self.tipo_efeito = data.get("efeito", "NORMAL")
+        self.elemento = data.get("elemento")
+        self.bonus_vs_trevas = max(
+            1.0,
+            float(data.get("bonus_vs_trevas", 1.0)),
+        )
         self.duracao = data.get("duracao", 10.0)
         self.vida_timer = self.duracao
         
         # Tipo de summon
-        self.summon_tipo = data.get("summon_tipo", "BASICO")
+        self.summon_tipo = str(data.get("summon_tipo", "BASICO")).upper()
         self.copia_caster = data.get("copia_caster", False)
         self._ultimo_ataque_copiado = getattr(dono, "ataque_id", 0)
         
@@ -1524,6 +1715,17 @@ class Summon:
         self.raio_ataque = 1.5
         self.velocidade = 4.0
         self.cooldown_ataque = 1.5
+        self.protetor = False
+        self.raio_protecao = 0.0
+        self.reducao_dano_protegido = 0.0
+        if self.summon_tipo == "TREANT":
+            self.raio_agressao = 4.0
+            self.raio_ataque = 1.8
+            self.velocidade = 2.5
+            self.cooldown_ataque = 1.2
+            self.protetor = True
+            self.raio_protecao = 2.5
+            self.reducao_dano_protegido = 0.25
         self.cd_timer = 0
         
         # Estado
@@ -1533,7 +1735,7 @@ class Summon:
         self.angulo = 0
         
         # Habilidades especiais
-        self.revive_count = 1 if "fenix" in nome_skill.lower() else 0
+        self.revive_count = 1 if self.summon_tipo == "FENIX" else 0
         self.aura_dano = data.get("aura_dano", 0) * mod_dano_magico
         self.aura_raio = data.get("aura_raio", 0) * mod_area_magica
         
@@ -1589,6 +1791,8 @@ class Summon:
                     "tipo": "ataque",
                     "alvo": self.alvo,
                     "dano": self._calcular_dano_copiado(),
+                    "dano_precalculado": True,
+                    "fonte_impacto": object(),
                     "x": self.x,
                     "y": self.y,
                 })
@@ -1604,6 +1808,7 @@ class Summon:
                     "tipo": "ataque",
                     "alvo": self.alvo,
                     "dano": self.dano,
+                    "fonte_impacto": object(),
                     "x": self.x,
                     "y": self.y
                 })
@@ -1627,7 +1832,8 @@ class Summon:
                     resultados.append({
                         "tipo": "aura",
                         "alvo": alvo,
-                        "dano": self.aura_dano * dt
+                        "dano": self.aura_dano * dt,
+                        "fonte_impacto": object(),
                     })
         
         return resultados
@@ -1639,6 +1845,26 @@ class Summon:
         modificar = getattr(self.dono, "get_dano_modificado", None)
         return modificar(dano_base) if callable(modificar) else dano_base
     
+    def protege(self, alvo):
+        """Indica se o Treant está cobrindo explicitamente um aliado próximo."""
+
+        if (
+            not self.ativo
+            or not self.protetor
+            or alvo is None
+            or getattr(alvo, "morto", False)
+        ):
+            return False
+        aliado = alvo is self.dono or getattr(alvo, "dono", None) is self.dono
+        if not aliado:
+            return False
+        pos = getattr(alvo, "pos", None)
+        if pos is None:
+            pos = (getattr(alvo, "x", math.inf), getattr(alvo, "y", math.inf))
+        return math.hypot(float(pos[0]) - self.x, float(pos[1]) - self.y) <= (
+            self.raio_protecao
+        )
+
     def tomar_dano(self, dano):
         """Summon recebe dano"""
         self.vida -= dano
@@ -1650,6 +1876,7 @@ class Summon:
                 return {"revive": True, "x": self.x, "y": self.y}
             else:
                 self.ativo = False
+                self.vida = 0.0
                 return {"morreu": True}
         return None
 
@@ -1692,7 +1919,12 @@ class Trap:
         # Comportamento
         self.bloqueia_movimento = data.get("bloqueia_movimento", True)
         self.bloqueia_projeteis = data.get("bloqueia_projeteis", False)
-        self.dano_contato = data.get("dano_contato", 0) * mod_dano_magico
+        # Em TRAP, ``dano`` e o payload ofensivo canonico do catalogo; o nome
+        # ``dano_contato`` continua aceito apenas como alias explicito.
+        self.dano_contato = data.get(
+            "dano_contato",
+            data.get("dano", 0),
+        ) * mod_dano_magico
         self.efeito_contato = data.get("efeito_contato", None)
         
         self.ativo = True
@@ -1765,6 +1997,13 @@ class Transform:
         )
 
         self.alvo = alvo
+        self.dono = alvo
+        self.tipo_fonte = "transform_skill"
+        self.eh_skill = True
+        self.eh_projetil = False
+        self.ground = False
+        self.rouba_buff = False
+        self.refletido = False
         self.duracao = data.get("duracao", 10.0)
         self.vida = self.duracao
         self.cor = data.get("cor", (200, 200, 255))
@@ -1874,7 +2113,8 @@ class Transform:
                     resultados.append({
                         "tipo": "contato",
                         "alvo": alvo,
-                        "dano": self.dano_contato * tempo_ativo
+                        "dano": self.dano_contato * tempo_ativo,
+                        "fonte_impacto": object(),
                     })
 
         # Aura de slow
@@ -1888,7 +2128,10 @@ class Transform:
                     resultados.append({
                         "tipo": "slow",
                         "alvo": alvo,
-                        "fator": self.aura_slow
+                        "fator": self.aura_slow,
+                        # O status e atualizado antes do movimento do alvo;
+                        # precisa sobreviver pelo menos ao passo seguinte.
+                        "duracao": max(0.2, tempo_ativo * 2.0),
                     })
         
         if self.vida <= 0:
@@ -1932,7 +2175,9 @@ class Channel:
         )
         
         # Restricoes
-        self.imobiliza = data.get("imobiliza", False)
+        # CanalizaÃ§Ãµes historicamente imobilizam; o campo permite declarar
+        # explicitamente uma canalizaÃ§Ã£o mÃ³vel sem relaxar esse padrÃ£o.
+        self.imobiliza = bool(data.get("imobiliza", False))
         
         # Estado
         self.ativo = True
@@ -1955,7 +2200,7 @@ class Channel:
         dono.tempo_canalizacao = 0.0
         dono.atacando = False
         dono.usando_skill = False
-        if hasattr(dono, "vel"):
+        if self.imobiliza and hasattr(dono, "vel"):
             dono.vel[0] = 0.0
             dono.vel[1] = 0.0
 
@@ -1992,6 +2237,9 @@ class Channel:
                 continue
 
             dano = self.dano_por_segundo * self.tick_interval
+            modificar_dano = getattr(self.dono, "get_dano_modificado", None)
+            if callable(modificar_dano):
+                dano = modificar_dano(dano)
             direcao_x = dx / dist if dist > 0.0 else 0.0
             direcao_y = dy / dist if dist > 0.0 else 0.0
             resolver = getattr(alvo, "resolver_impacto", None)
@@ -2002,7 +2250,8 @@ class Channel:
                     direcao_y,
                     self.tipo_efeito,
                     atacante=self.dono,
-                    ignorar_invencibilidade=True,
+                    ignorar_recuperacao_impacto=True,
+                    gerar_recuperacao_impacto=False,
                     ignorar_escudo=self.penetra_escudo,
                     metadata_impacto=criar_metadata_impacto(self),
                 )
@@ -2017,7 +2266,8 @@ class Channel:
                             direcao_y,
                             self.tipo_efeito,
                             atacante=self.dono,
-                            ignorar_invencibilidade=True,
+                            ignorar_recuperacao_impacto=True,
+                            gerar_recuperacao_impacto=False,
                             ignorar_escudo=self.penetra_escudo,
                             metadata_impacto=criar_metadata_impacto(self),
                         )
@@ -2059,7 +2309,7 @@ class Channel:
             self.interromper()
             return resultados
 
-        if hasattr(self.dono, "vel"):
+        if self.imobiliza and hasattr(self.dono, "vel"):
             self.dono.vel[0] = 0.0
             self.dono.vel[1] = 0.0
 

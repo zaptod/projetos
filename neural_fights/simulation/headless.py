@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Mapping
 
 from neural_fights.simulation.simulacao import Simulador
@@ -192,10 +192,17 @@ class HeadlessMatchRunner:
                 try:
                     simulator.close()
                 except Exception as exc:
-                    result = self._failure_result(
-                        frames,
-                        RuntimeError(f"falha ao liberar simulador: {exc}"),
-                    )
+                    cleanup_error = f"falha ao liberar simulador: {exc}"
+                    if result is not None and not result.success:
+                        result = replace(
+                            result,
+                            error=f"{result.error}; {cleanup_error}",
+                        )
+                    else:
+                        result = self._failure_result(
+                            frames,
+                            RuntimeError(cleanup_error),
+                        )
 
         if result is None:  # pragma: no cover - defesa contra fluxo impossivel
             return self._failure_result(frames, RuntimeError("resultado ausente"))

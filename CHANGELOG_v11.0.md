@@ -154,7 +154,7 @@ garantindo que o jogo sempre tenha feedback sonoro mesmo sem assets.
 ### No Código:
 ```python
 # Obter instância do manager
-from effects import MagicVFXManager
+from neural_fights.effects import MagicVFXManager
 vfx = MagicVFXManager.get_instance()
 
 # Spawnar efeitos

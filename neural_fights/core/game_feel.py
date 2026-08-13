@@ -818,7 +818,8 @@ class ChannelingSystem:
         if "Mago" in self.classe_nome:
             chance_base *= 0.7
         
-        if random.random() < chance_base:
+        rng = getattr(self.lutador, "rng_runtime", random)
+        if rng.random() < chance_base:
             self.channel_data.estado = ChannelState.INTERRUPTED
             self.channel_data.interrompido = True
             

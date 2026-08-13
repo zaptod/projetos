@@ -58,6 +58,127 @@ class DataContractTests(unittest.TestCase):
         self.assertIn("linha", str(raised.exception))
         self.assertIn(str(path), str(raised.exception))
 
+    def test_json_rejeita_constantes_numericas_fora_do_rfc(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "constante-invalida.json"
+            for numero_invalido in (
+                "NaN",
+                "Infinity",
+                "-Infinity",
+                "1e999",
+                "-1e999",
+            ):
+                with self.subTest(numero_invalido=numero_invalido):
+                    path.write_text(
+                        f'{{"valor": {numero_invalido}}}',
+                        encoding="utf-8",
+                    )
+
+                    with self.assertRaises(database.DataValidationError) as raised:
+                        database.carregar_json(str(path))
+
+                    self.assertIn(numero_invalido, str(raised.exception))
+
+    def test_personagens_rejeitam_numeros_nao_finitos_e_dominios_invalidos(self):
+        casos = (
+            ("tamanho", float("nan")),
+            ("tamanho", float("inf")),
+            ("tamanho", 0),
+            ("forca", -1),
+            ("mana", -0.01),
+            ("cor_r", -1),
+            ("cor_g", 256),
+            ("cor_b", 1.5),
+        )
+
+        for campo, valor in casos:
+            with self.subTest(campo=campo, valor=valor):
+                personagem = personagem_valido()
+                personagem[campo] = valor
+
+                with self.assertRaises(database.DataValidationError) as raised:
+                    database.validar_personagens(
+                        [personagem],
+                        nomes_armas={"Arma de teste"},
+                        personalidades_validas=set(PERSONALIDADES_PRESETS),
+                    )
+
+                self.assertIn(campo, str(raised.exception))
+
+    def test_armas_rejeitam_campos_fora_do_dominio(self):
+        casos = (
+            ({"comp_corrente": float("nan")}, "comp_corrente"),
+            ({"quantidade": 1.5}, "quantidade"),
+            ({"r": -1}, "r"),
+            ({"g": 256}, "g"),
+            ({"b": 1.5}, "b"),
+            ({"custo_mana": float("inf")}, "custo_mana"),
+            ({"custo_mana": -1}, "custo_mana"),
+            ({"velocidade_ataque": 0}, "velocidade_ataque"),
+            ({"velocidade_ataque": float("nan")}, "velocidade_ataque"),
+            ({"critico": -1}, "critico"),
+            ({"critico": 101}, "critico"),
+            ({"encantamentos": "Chamas"}, "encantamentos"),
+            ({"encantamentos": ["Inventado"]}, "encantamentos"),
+            ({"encantamentos": ["Chamas", "Chamas"]}, "encantamentos"),
+            ({"encantamentos": ["Chamas", "Gelo"]}, "slot"),
+            (
+                {"habilidades": [{"nome": "Bola de Fogo", "custo": -1}]},
+                "custo",
+            ),
+            (
+                {"habilidades": [{"nome": "Bola de Fogo", "custo": "10"}]},
+                "custo",
+            ),
+            ({"habilidades": "Bola de Fogo"}, "habilidades"),
+            ({"habilidades": ["Bola de Fogo", "Provocar"]}, "slot"),
+            ({"afinidade_elemento": 123}, "afinidade_elemento"),
+            ({"durabilidade": 101, "durabilidade_max": 100}, "durabilidade"),
+            ({"passiva": "Afiada"}, "passiva"),
+            (
+                {
+                    "passiva": {
+                        "nome": "Custom",
+                        "efeito": "custom",
+                        "valor": float("inf"),
+                    }
+                },
+                "passiva.valor",
+            ),
+        )
+
+        for alteracoes, campo_esperado in casos:
+            with self.subTest(alteracoes=alteracoes):
+                arma = arma_valida()
+                arma.update(alteracoes)
+
+                with self.assertRaises(database.DataValidationError) as raised:
+                    database.validar_armas([arma], skills_validas=set(SKILL_DB))
+
+                self.assertIn(campo_esperado, str(raised.exception))
+
+    def test_arma_aceita_limites_canonicos_de_cor_critico_e_custo(self):
+        arma = arma_valida()
+        arma.update(
+            {
+                "r": 0,
+                "g": 255,
+                "b": 128,
+                "critico": 6.0,
+                "velocidade_ataque": 0.8,
+                "custo_mana": 0,
+                "encantamentos": ["Chamas"],
+                "habilidades": [{"nome": "Bola de Fogo", "custo": 10.0}],
+                "afinidade_elemento": "FOGO",
+                "passiva": {"nome": "Legado", "efeito": "custom", "valor": 7},
+            }
+        )
+
+        self.assertEqual(
+            [arma],
+            database.validar_armas([arma], skills_validas=set(SKILL_DB)),
+        )
+
     def test_referencias_e_nomes_invalidos_sao_relacionados(self):
         armas = [arma_valida(), arma_valida()]
         armas[0]["habilidades"] = ["Skill que nao existe"]

@@ -8,6 +8,8 @@ from unittest.mock import Mock
 from neural_fights.ai.brain import AIBrain, _obter_brain
 from neural_fights.ai.choreographer import CombatChoreographer
 from neural_fights.ai.combat_tactics import CombatTacticsSystem
+from neural_fights.ai.emotions import EmotionSystem
+from neural_fights.ai.spatial import SpatialAwarenessSystem
 from neural_fights.ai.skill_strategy import (
     BattlePlan,
     CombatSituation,
@@ -15,14 +17,28 @@ from neural_fights.ai.skill_strategy import (
     SkillPurpose,
     SkillStrategySystem,
 )
+from neural_fights.core.skills import get_skill_data
 
 
-def _situacao(*, distancia=4.0, meu_hp=0.8, inimigo_hp=0.8):
+def _situacao(
+    *,
+    distancia=4.0,
+    meu_hp=0.8,
+    inimigo_hp=0.8,
+    inimigo_debuffado=False,
+    inimigo_stunado=False,
+    inimigo_queimando=False,
+    inimigo_congelado=False,
+):
     return CombatSituation(
         distancia=distancia,
         meu_hp_percent=meu_hp,
         inimigo_hp_percent=inimigo_hp,
         meu_mana_percent=1.0,
+        inimigo_debuffado=inimigo_debuffado,
+        inimigo_stunado=inimigo_stunado,
+        inimigo_queimando=inimigo_queimando,
+        inimigo_congelado=inimigo_congelado,
         tempo_combate=10.0,
     )
 
@@ -138,6 +154,16 @@ class BrainContractTests(unittest.TestCase):
         self.assertAlmostEqual(current.excitacao, 0.3)
         self.assertAlmostEqual(legacy.excitacao, 0.3)
 
+    def test_choreographer_uses_registered_fighter_runtime_rng(self):
+        rng = random.Random(19)
+        first = SimpleNamespace(rng_runtime=rng)
+        second = SimpleNamespace(rng_runtime=random.Random(23))
+        choreographer = CombatChoreographer()
+
+        choreographer.registrar_lutadores(first, second)
+
+        self.assertIs(choreographer.rng, rng)
+
     def test_combat_tactics_reads_current_enemy_brain_contract(self):
         tactics = CombatTacticsSystem(
             SimpleNamespace(vida=100.0, vida_max=100.0),
@@ -155,6 +181,103 @@ class BrainContractTests(unittest.TestCase):
         tactics.atualizar_leitura(1.0 / 60.0, 2.0, enemy)
 
         self.assertTrue(tactics.leitura_oponente["ataque_iminente"])
+
+    def test_auxiliary_ai_systems_honor_injected_rng(self):
+        parent = SimpleNamespace(vida=100.0, vida_max=100.0)
+        tactics_a = CombatTacticsSystem(
+            parent,
+            tracos=[],
+            estilo_luta="BALANCED",
+            rng=random.Random(31),
+        )
+        tactics_b = CombatTacticsSystem(
+            parent,
+            tracos=[],
+            estilo_luta="BALANCED",
+            rng=random.Random(31),
+        )
+        emotion_a = EmotionSystem(parent, [], rng=random.Random(37))
+        emotion_b = EmotionSystem(parent, [], rng=random.Random(37))
+        emotion_a.frustracao = emotion_b.frustracao = 0.8
+
+        emotion_a.atualizar_humor()
+        emotion_b.atualizar_humor()
+
+        self.assertEqual(tactics_a.tempo_reacao_base, tactics_b.tempo_reacao_base)
+        self.assertEqual(tactics_a.variacao_timing, tactics_b.variacao_timing)
+        self.assertEqual(emotion_a.humor, emotion_b.humor)
+        self.assertEqual(emotion_a.cd_mudanca_humor, emotion_b.cd_mudanca_humor)
+
+    def test_spatial_lateral_shuffle_mutates_the_actual_priority(self):
+        rng = Mock()
+        rng.shuffle.side_effect = lambda values: values.reverse()
+        spatial = SpatialAwarenessSystem(SimpleNamespace(), rng=rng)
+        awareness = {
+            "caminho_livre": {
+                "frente": False,
+                "esquerda": True,
+                "direita": True,
+                "tras": True,
+            }
+        }
+
+        spatial._calcular_rota_alternativa(None, None, awareness, None)
+
+        rng.shuffle.assert_called_once()
+        self.assertEqual(spatial.tatica["rota_alternativa"], "direita")
+
+    def test_emergency_reaction_recognizes_healing_channel(self):
+        brain = object.__new__(AIBrain)
+        brain.skills_por_tipo = {
+            "BUFF": [],
+            "CHANNEL": [
+                {
+                    "nome": "Fotossíntese",
+                    "data": get_skill_data("Fotossíntese"),
+                    "fonte": "classe",
+                }
+            ],
+        }
+        brain.tracos = []
+        brain.cd_reagir = 0.0
+        brain._usar_skill = Mock(return_value=True)
+
+        self.assertTrue(brain._tentar_cura_emergencia(0.3))
+        brain._usar_skill.assert_called_once()
+        self.assertEqual(brain.cd_reagir, 0.3)
+
+    def test_legacy_skill_gate_checks_life_cost_and_stationary_range(self):
+        cast = Mock(return_value=True)
+        brain = object.__new__(AIBrain)
+        brain.parent = SimpleNamespace(
+            mana=100.0,
+            vida=30.0,
+            vida_max=100.0,
+            usar_skill_classe=cast,
+        )
+        pact = {
+            "nome": "Pacto de Sangue",
+            "data": get_skill_data("Pacto de Sangue"),
+            "fonte": "classe",
+        }
+
+        self.assertFalse(brain._usar_skill(pact))
+        cast.assert_not_called()
+        brain.parent.vida = 30.01
+        self.assertTrue(brain._usar_skill(pact))
+
+        combustion = get_skill_data("Combustão Espontânea")
+        clean_enemy = SimpleNamespace(dots_ativos=[])
+        burning_enemy = SimpleNamespace(
+            dots_ativos=[SimpleNamespace(tipo="QUEIMANDO", ativo=True, vida=2.0)]
+        )
+        poisoned_enemy = SimpleNamespace(
+            dots_ativos=[SimpleNamespace(tipo="ENVENENADO", ativo=True, vida=2.0)]
+        )
+        self.assertFalse(brain._avaliar_uso_skill(combustion, 1.0, clean_enemy))
+        self.assertFalse(brain._avaliar_uso_skill(combustion, 1.0, poisoned_enemy))
+        self.assertFalse(brain._avaliar_uso_skill(combustion, 4.0, burning_enemy))
+        self.assertTrue(brain._avaliar_uso_skill(combustion, 1.0, burning_enemy))
 
 
 class SkillStrategyContractTests(unittest.TestCase):
@@ -178,6 +301,29 @@ class SkillStrategyContractTests(unittest.TestCase):
         strategy.ultima_skill = None
         strategy.skills_usadas = []
         return strategy
+
+    def _analyzed_strategy(self, *skill_names):
+        skills = [
+            {
+                "nome": name,
+                "data": get_skill_data(name),
+                "custo": get_skill_data(name).get("custo", 15.0),
+            }
+            for name in skill_names
+        ]
+        parent = SimpleNamespace(
+            skills_arma=[],
+            skills_classe=skills,
+            mana=100.0,
+            mana_max=100.0,
+            vida=100.0,
+            vida_max=100.0,
+            cd_skills={},
+        )
+        return SkillStrategySystem(
+            parent,
+            SimpleNamespace(rng=random.Random(7)),
+        )
 
     def test_range_conditions_participate_in_rotation_selection(self):
         close = _perfil("Close", "PROJETIL", distancia_min=2.0, distancia_max=3.0)
@@ -236,6 +382,122 @@ class SkillStrategyContractTests(unittest.TestCase):
         second_selection = strategy.obter_melhor_skill(situation)
 
         self.assertEqual(second_selection[0].nome, "Payoff")
+
+    def test_healing_channel_is_sustain_and_only_selected_when_hurt(self):
+        strategy = self._analyzed_strategy("Fotossíntese")
+        profile = strategy.skills["Fotossíntese"]
+
+        self.assertEqual(profile.dano_total, 0.0)
+        self.assertEqual(profile.proposito_principal, SkillPurpose.SUSTAIN)
+        self.assertNotIn(SkillPurpose.BURST, profile.propositos)
+        self.assertNotIn(SkillPurpose.POKE, profile.propositos)
+        self.assertIn("Fotossíntese", strategy.plano.rotacao_critical)
+
+        self.assertIsNone(strategy.obter_melhor_skill(_situacao(meu_hp=0.9)))
+        strategy.parent.vida = 20.0
+        selected = strategy.obter_melhor_skill(_situacao(meu_hp=0.2))
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected[0].nome, "Fotossíntese")
+
+    def test_buff_aliases_drive_semantic_purposes_and_opening_rotation(self):
+        strategy = self._analyzed_strategy(
+            "Pacto de Sangue",
+            "Regeneração",
+            "Benção",
+            "Acelerar",
+            "Grito de Guerra",
+            "Determinação",
+        )
+
+        self.assertIn(SkillPurpose.BURST, strategy.skills["Pacto de Sangue"].propositos)
+        self.assertIn(SkillPurpose.SUSTAIN, strategy.skills["Regeneração"].propositos)
+        self.assertIn(SkillPurpose.SUSTAIN, strategy.skills["Benção"].propositos)
+        self.assertIn(SkillPurpose.ESCAPE, strategy.skills["Acelerar"].propositos)
+        self.assertIn(SkillPurpose.BURST, strategy.skills["Grito de Guerra"].propositos)
+        self.assertIn(SkillPurpose.UTILITY, strategy.skills["Determinação"].propositos)
+        self.assertIn("Pacto de Sangue", strategy.plano.rotacao_opening)
+        self.assertIn("Grito de Guerra", strategy.plano.rotacao_opening)
+
+    def test_damage_estimate_accounts_for_composite_runtime_mechanics(self):
+        strategy = self._analyzed_strategy(
+            "Espinhos",
+            "Mísseis Arcanos",
+            "Wrath of Nature",
+            "Apocalipse",
+            "Corrente em Cadeia",
+        )
+
+        self.assertEqual(strategy.skills["Espinhos"].dano_total, 36.0)
+        self.assertEqual(strategy.skills["Mísseis Arcanos"].dano_total, 40.0)
+        self.assertEqual(strategy.skills["Wrath of Nature"].dano_total, 180.0)
+        self.assertEqual(strategy.skills["Apocalipse"].dano_total, 380.0)
+        chain_expected = 18.0 * sum(0.8**jump for jump in range(5))
+        self.assertAlmostEqual(
+            strategy.skills["Corrente em Cadeia"].dano_total,
+            chain_expected,
+        )
+
+        inert_base = SkillProfile(
+            nome="Canal declarativo",
+            tipo="CHANNEL",
+            custo=10.0,
+            cooldown=2.0,
+            data={
+                "tipo": "CHANNEL",
+                "dano": 999.0,
+                "dano_por_segundo": 10.0,
+                "duracao_max": 4.0,
+            },
+            fonte="classe",
+        )
+        strategy._calcular_metricas(inert_base)
+        self.assertEqual(inert_base.dano_total, 40.0)
+
+    def test_life_costs_are_checked_with_runtime_precedence_and_strict_limit(self):
+        strategy = self._analyzed_strategy("Pacto de Sangue", "Sacrifício")
+        situation = _situacao(distancia=1.0)
+
+        strategy.parent.vida = 30.0
+        self.assertFalse(strategy._pode_usar_skill("Pacto de Sangue", situation))
+        strategy.parent.vida = 30.01
+        self.assertTrue(strategy._pode_usar_skill("Pacto de Sangue", situation))
+
+        strategy.parent.vida = 50.0
+        self.assertFalse(strategy._pode_usar_skill("Sacrifício", situation))
+        strategy.parent.vida = 50.01
+        self.assertTrue(strategy._pode_usar_skill("Sacrifício", situation))
+
+    def test_stationary_projectile_requires_contact_range_and_burning_target(self):
+        strategy = self._analyzed_strategy("Combustão Espontânea")
+        profile = strategy.skills["Combustão Espontânea"]
+        close_burning = _situacao(
+            distancia=1.0,
+            inimigo_debuffado=True,
+            inimigo_queimando=True,
+        )
+
+        self.assertEqual(profile.alcance_efetivo, 1.25)
+        self.assertFalse(
+            strategy._pode_usar_skill(
+                "Combustão Espontânea",
+                _situacao(
+                    distancia=4.0,
+                    inimigo_debuffado=True,
+                    inimigo_queimando=True,
+                ),
+            )
+        )
+        self.assertFalse(
+            strategy._pode_usar_skill(
+                "Combustão Espontânea",
+                _situacao(distancia=1.0, inimigo_debuffado=True),
+            )
+        )
+        self.assertTrue(strategy._pode_usar_skill("Combustão Espontânea", close_burning))
+        selected = strategy.obter_melhor_skill(close_burning)
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected[0].nome, "Combustão Espontânea")
 
 
 if __name__ == "__main__":

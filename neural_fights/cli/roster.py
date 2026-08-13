@@ -7,9 +7,8 @@ aqui.
 
 from __future__ import annotations
 
-import argparse
-
 from neural_fights.tools.gerador_database import gerar_database_completa, salvar_database
+from neural_fights.utils.console import SafeArgumentParser
 
 
 def _gerar_e_salvar(quantidade: int, estrategia: str, *, seed=None):
@@ -41,7 +40,7 @@ def gerar_roster_torneio_16(*, seed=None):
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Gerador de roster Neural Fights")
+    parser = SafeArgumentParser(description="Gerador de roster Neural Fights")
     parser.add_argument(
         "--modo",
         choices=("completo", "64", "16"),

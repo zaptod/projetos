@@ -156,6 +156,7 @@ class Simulador:
         self.match_config = dict(match_config)
         self.headless = bool(headless)
         self.seed = seed
+        self._rng_generation = 0
         if seed is not None:
             self._random_state_before_seed = random.getstate()
             random.seed(seed)
@@ -262,6 +263,25 @@ class Simulador:
 
     def _recarregar_tudo_owned(self):
         self.p1, self.p2, self.cenario, _ = self.carregar_luta_dados()
+        self._configurar_partida_atual()
+
+    def _configurar_partida_atual(self):
+        """Reinicia entidades e managers para os lutadores ja atribuidos."""
+
+        generation = self._rng_generation
+        self._rng_generation += 1
+        if self.seed is None:
+            base_seed = random.getrandbits(128)
+        else:
+            base_seed = self.seed
+        self.p1.configurar_rng_runtime(
+            random.Random(f"neural-fights:{base_seed}:{generation}:p1")
+        )
+        self.p2.configurar_rng_runtime(
+            random.Random(f"neural-fights:{base_seed}:{generation}:p2")
+        )
+        sistema_hitbox.limpar_historico()
+
         self.particulas = []; self.decals = []; self.textos = []; self.shockwaves = []; self.projeteis = []
         self.impact_flashes = []; self.magic_clashes = []; self.block_effects = []
         self.dash_trails = []; self.hit_sparks = []
@@ -498,7 +518,113 @@ class Simulador:
         if len(getattr(self, "decals", [])) > 100:
             self.decals.pop(0)
 
+    def _aplicar_resultado_periodico_area(self, area, resultado):
+        """Aplica ticks/status depois do impacto inicial da mesma área."""
+
+        alvo = resultado["alvo"]
+        if resultado.get("dot_tick"):
+            dano_dot = resultado.get("dano", 5)
+            modificar_dano = getattr(area.dono, "get_dano_modificado", None)
+            if callable(modificar_dano):
+                dano_dot = modificar_dano(dano_dot)
+            tipo_dot = resultado.get("tipo", "NORMAL")
+            fonte_tick = resultado.get("fonte_impacto", object())
+            metadata_tick = criar_metadata_impacto(
+                area,
+                dot_tick=True,
+                elemento=resultado.get("elemento", area.elemento),
+            )
+            resolver_impacto = getattr(alvo, "resolver_impacto", None)
+            if callable(resolver_impacto):
+                impacto = resolver_impacto(
+                    dano_dot,
+                    0,
+                    0,
+                    tipo_dot,
+                    atacante=area.dono,
+                    fonte_impacto=fonte_tick,
+                    ignorar_recuperacao_impacto=True,
+                    gerar_recuperacao_impacto=False,
+                    metadata_impacto=metadata_tick,
+                )
+                morreu = impacto.morreu
+                dano_aplicado = impacto.dano
+                impacto_aplicado = impacto.atingiu
+            else:
+                morreu = alvo.tomar_dano(
+                    dano_dot,
+                    0,
+                    0,
+                    tipo_dot,
+                    atacante=area.dono,
+                    fonte_impacto=fonte_tick,
+                    ignorar_recuperacao_impacto=True,
+                    gerar_recuperacao_impacto=False,
+                    metadata_impacto=metadata_tick,
+                )
+                dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano_dot)
+                impacto_aplicado = True
+            if morreu:
+                self.textos.append(FloatingText(
+                    alvo.pos[0] * PPM,
+                    alvo.pos[1] * PPM - 50,
+                    "FATAL!",
+                    VERMELHO_SANGUE,
+                    40,
+                ))
+            elif impacto_aplicado:
+                cor_dot = self._get_cor_efeito(
+                    resultado.get("elemento") or tipo_dot
+                )
+                self.textos.append(FloatingText(
+                    alvo.pos[0] * PPM,
+                    alvo.pos[1] * PPM - 30,
+                    int(dano_aplicado),
+                    cor_dot,
+                    14,
+                ))
+            return
+
+        resolver_impacto = getattr(alvo, "resolver_impacto", None)
+        if callable(resolver_impacto):
+            resolver_impacto(
+                0.0,
+                0.0,
+                0.0,
+                resultado["efeito"],
+                atacante=area.dono,
+                fonte_impacto=resultado.get("fonte_impacto", object()),
+                ignorar_recuperacao_impacto=True,
+                gerar_recuperacao_impacto=False,
+                metadata_impacto=criar_metadata_impacto(
+                    area,
+                    status_stack=True,
+                ),
+            )
+
     def update(self, dt):
+        """Avança o mundo em passos limitados para preservar determinismo."""
+
+        dt = float(dt)
+        if not math.isfinite(dt):
+            raise ValueError("dt da simulacao precisa ser finito")
+        dt = max(0.0, dt)
+        if dt == 0.0:
+            return self._update_step(0.0)
+
+        # 100 ms e o maior passo logico aceito pelo runtime. Esse limite
+        # preserva expiracoes sem transformar um frame de 100 ms em duas
+        # chamadas observaveis aos gerenciadores visuais.
+        max_step = 0.1
+        remaining = dt
+        while remaining > 1e-12:
+            step = min(max_step, remaining)
+            self._update_step(step)
+            remaining = max(0.0, remaining - step)
+            if remaining <= 1e-12:
+                remaining = 0.0
+
+    def _update_step(self, dt):
         if getattr(self, "round_finalizado", False):
             self._atualizar_visuais_round_finalizado(dt)
             return
@@ -659,10 +785,20 @@ class Simulador:
                 elif resultado.get("split"):
                     # Split aleatório (Caos)
                     from neural_fights.core.combat import Projetil
-                    novo = Projetil(proj.nome, resultado["x"], resultado["y"], resultado["angulo"], proj.dono)
-                    novo.dano = proj.dano * 0.5
-                    novo.split_aleatorio = False  # Não continua splitando
-                    novos_projeteis.append(novo)
+                    for angulo_split in resultado.get(
+                        "angulos",
+                        (resultado["angulo"],),
+                    ):
+                        novo = Projetil(
+                            proj.nome,
+                            resultado["x"],
+                            resultado["y"],
+                            angulo_split,
+                            proj.dono,
+                            habilitar_split=False,
+                        )
+                        novo.dano = proj.dano * 0.5
+                        novos_projeteis.append(novo)
                 
                 elif resultado.get("explodir"):
                     # Cria efeito de área na posição
@@ -681,9 +817,27 @@ class Simulador:
             
             alvo = getattr(proj, "alvo_forcado", None)
             if alvo is None:
-                alvo = self.p2 if proj.dono == self.p1 else self.p1
-            if self._alvo_em_transicao_sombria(alvo):
+                if getattr(proj, "backfire", False):
+                    alvos_projeteis = [proj.dono]
+                elif getattr(proj, "perfura", False):
+                    alvos_projeteis = self._obter_alvos_hostis(
+                        proj.dono,
+                        incluir_summons=True,
+                    )
+                else:
+                    alvos_projeteis = [
+                        self.p2 if proj.dono == self.p1 else self.p1
+                    ]
+            else:
+                alvos_projeteis = [alvo]
+            alvos_projeteis = [
+                candidato
+                for candidato in alvos_projeteis
+                if not self._alvo_em_transicao_sombria(candidato)
+            ]
+            if not alvos_projeteis:
                 continue
+            alvo = alvos_projeteis[0]
             alvos_cone_secundarios = []
             colisao_cone = None
             if getattr(proj, "cone", False):
@@ -696,6 +850,17 @@ class Simulador:
                 if alvos_no_cone:
                     alvo = alvos_no_cone[0]
                     alvos_cone_secundarios = alvos_no_cone[1:]
+            elif getattr(proj, "perfura", False):
+                alvos_perfurados_no_frame = [
+                    candidato
+                    for candidato in alvos_projeteis
+                    if proj.colidir(candidato)
+                    and proj.pode_atingir(candidato)
+                ]
+                colisao_cone = bool(alvos_perfurados_no_frame)
+                if alvos_perfurados_no_frame:
+                    alvo = alvos_perfurados_no_frame[0]
+                    alvos_cone_secundarios = alvos_perfurados_no_frame[1:]
             
             # === SISTEMA DE BLOQUEIO/DESVIO v7.0 ===
             bloqueado = self._verificar_bloqueio_projetil(proj, alvo)
@@ -711,12 +876,14 @@ class Simulador:
                 colidiu = proj.colidir(alvo)
             else:
                 # Projéteis de skill (antigo)
-                dx = alvo.pos[0] - proj.x
-                dy = alvo.pos[1] - proj.y
+                alvo_x, alvo_y = self._posicao_alvo_combate(alvo)
+                dx = alvo_x - proj.x
+                dy = alvo_y - proj.y
                 dist = math.hypot(dx, dy)
                 colidiu = dist < (alvo.raio_fisico + proj.raio) and proj.ativo
             
             if colidiu and proj.ativo:
+                alvo_x, alvo_y = self._posicao_alvo_combate(alvo)
                 refletir = getattr(alvo, "tentar_refletir_projetil", None)
                 if callable(refletir) and refletir(proj):
                     continue
@@ -781,6 +948,7 @@ class Simulador:
                 # Aplica dano com efeito
                 dano_base = proj.dono.get_dano_modificado(proj.dano) if hasattr(proj.dono, 'get_dano_modificado') else proj.dano
                 dano_final = dano_base * bonus_condicao
+                dano_final *= self._modificador_protecao_summon(alvo)
                 tipo_efeito = proj.tipo_efeito if hasattr(proj, 'tipo_efeito') else "NORMAL"
                 
                 # Camera shake proporcional ao dano
@@ -790,11 +958,18 @@ class Simulador:
                 
                 # === v11.0: PERFURAÇÃO - não desativa projétil ===
                 if hasattr(proj, 'perfura') and proj.perfura:
-                    if hasattr(proj, 'pode_atingir') and not proj.pode_atingir(alvo):
-                        continue  # Já atingiu esse alvo
+                    if id(alvo) not in proj.alvos_perfurados:
+                        if hasattr(proj, 'pode_atingir') and not proj.pode_atingir(alvo):
+                            continue
                     # Não desativa - continua voando
                 else:
-                    proj.ativo = False
+                    if getattr(proj, "iniciar_retorno", lambda: False)():
+                        pass
+                    elif getattr(proj, "explosion_timer", None) is not None:
+                        proj.aguardando_explosao = True
+                        proj.vel = 0.0
+                    else:
+                        proj.ativo = False
                 
                 kwargs_impacto = {
                     "atacante": proj.dono,
@@ -826,31 +1001,33 @@ class Simulador:
                     dano_aplicado = impacto.dano
                     impacto_aplicado = impacto.atingiu
                 else:
-                    morreu = alvo.tomar_dano(
-                        dano_final,
-                        dx/dist,
-                        dy/dist,
-                        tipo_efeito,
-                        **kwargs_impacto,
+                    vida_antes = float(getattr(alvo, "vida", 0.0))
+                    resultado_dano = alvo.tomar_dano(dano_final)
+                    dano_aplicado = max(
+                        0.0,
+                        vida_antes - float(getattr(alvo, "vida", vida_antes)),
                     )
-                    dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano_final)
-                    impacto_aplicado = getattr(alvo, "invencivel_timer", 0.0) > 0.0
+                    impacto_aplicado = dano_aplicado > 0.0
+                    morreu = bool(
+                        isinstance(resultado_dano, Mapping)
+                        and resultado_dano.get("morreu")
+                    ) or not getattr(alvo, "ativo", True)
                 if morreu:
-                    self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
+                    self.textos.append(FloatingText(alvo_x*PPM, alvo_y*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
                 else:
                     # Texto especial para execução
                     if bonus_condicao >= 5.0:
-                        self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "EXECUÇÃO!", (200, 50, 50), 32))
+                        self.textos.append(FloatingText(alvo_x*PPM, alvo_y*PPM - 50, "EXECUÇÃO!", (200, 50, 50), 32))
                     
                     # Cor do texto baseado no efeito ou tipo de projétil
                     if hasattr(proj, 'tipo') and proj.tipo in ["faca", "shuriken", "chakram", "flecha"]:
                         cor_txt = proj.cor if hasattr(proj, 'cor') else BRANCO
                     else:
                         cor_txt = self._get_cor_efeito(tipo_efeito)
-                    self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor_txt))
+                    self.textos.append(FloatingText(alvo_x*PPM, alvo_y*PPM - 30, int(dano_aplicado), cor_txt))
                     
                     # Partículas baseadas no efeito
-                    self._spawn_particulas_efeito(alvo.pos[0]*PPM, alvo.pos[1]*PPM, tipo_efeito)
+                    self._spawn_particulas_efeito(alvo_x*PPM, alvo_y*PPM, tipo_efeito)
                 
                 # === v11.0: LIFESTEAL ===
                 if hasattr(proj, 'lifesteal') and proj.lifesteal > 0:
@@ -881,12 +1058,16 @@ class Simulador:
                     hasattr(proj, 'raio_explosao')
                     and proj.raio_explosao > 0
                     and tipo_efeito != "BOMBA_RELOGIO"
+                    and getattr(proj, "delay_explosao", 0.0) <= 0.0
                 ):
                     from neural_fights.core.combat import AreaEffect
                     explosao = AreaEffect(proj.nome + " Explosão", proj.x, proj.y, proj.dono)
                     explosao.raio = proj.raio_explosao
+                    explosao.raio_atual = explosao.raio
                     explosao.dano = proj.dano * 0.5  # Dano de área é 50% do projétil
                     explosao.tipo_efeito = tipo_efeito
+                    explosao.fonte_impacto = object()
+                    explosao.ignorar_invencibilidade = True
                     if hasattr(self, 'areas'):
                         self.areas.append(explosao)
                     self.impact_flashes.append(ImpactFlash(proj.x * PPM, proj.y * PPM, cor_impacto, 2.0, "explosion"))
@@ -905,29 +1086,51 @@ class Simulador:
                     bonus_cone = proj.verificar_condicao(alvo_cone)
                     dano_cone = proj.dono.get_dano_modificado(proj.dano)
                     dano_cone *= bonus_cone
-                    dx_cone = alvo_cone.pos[0] - proj.origem_cone[0]
-                    dy_cone = alvo_cone.pos[1] - proj.origem_cone[1]
+                    origem_secundaria = getattr(
+                        proj,
+                        "origem_cone",
+                        None,
+                    ) or (proj.x, proj.y)
+                    alvo_cone_x, alvo_cone_y = self._posicao_alvo_combate(alvo_cone)
+                    dx_cone = alvo_cone_x - origem_secundaria[0]
+                    dy_cone = alvo_cone_y - origem_secundaria[1]
                     dist_cone = math.hypot(dx_cone, dy_cone) or 1.0
-                    impacto_cone = alvo_cone.resolver_impacto(
-                        dano_cone,
-                        dx_cone / dist_cone,
-                        dy_cone / dist_cone,
-                        proj.tipo_efeito,
-                        atacante=proj.dono,
-                        fonte_impacto=proj.fonte_impacto,
-                        ignorar_invencibilidade=proj.multi_shot > 1,
-                        metadata_impacto=criar_metadata_impacto(proj),
+                    resolver_secundario = getattr(
+                        alvo_cone,
+                        "resolver_impacto",
+                        None,
                     )
-                    if impacto_cone.atingiu:
+                    if callable(resolver_secundario):
+                        impacto_cone = resolver_secundario(
+                            dano_cone,
+                            dx_cone / dist_cone,
+                            dy_cone / dist_cone,
+                            proj.tipo_efeito,
+                            atacante=proj.dono,
+                            fonte_impacto=proj.fonte_impacto,
+                            ignorar_invencibilidade=proj.multi_shot > 1,
+                            metadata_impacto=criar_metadata_impacto(proj),
+                        )
+                        atingiu_secundario = impacto_cone.atingiu
+                        dano_secundario = impacto_cone.dano
+                    else:
+                        vida_antes = float(getattr(alvo_cone, "vida", 0.0))
+                        alvo_cone.tomar_dano(dano_cone)
+                        dano_secundario = max(
+                            0.0,
+                            vida_antes - float(getattr(alvo_cone, "vida", vida_antes)),
+                        )
+                        atingiu_secundario = dano_secundario > 0.0
+                    if atingiu_secundario:
                         self.textos.append(FloatingText(
-                            alvo_cone.pos[0] * PPM,
-                            alvo_cone.pos[1] * PPM - 30,
-                            int(impacto_cone.dano),
+                            alvo_cone_x * PPM,
+                            alvo_cone_y * PPM - 30,
+                            int(dano_secundario),
                             self._get_cor_efeito(proj.tipo_efeito),
                         ))
                         self._spawn_particulas_efeito(
-                            alvo_cone.pos[0] * PPM,
-                            alvo_cone.pos[1] * PPM,
+                            alvo_cone_x * PPM,
+                            alvo_cone_y * PPM,
                             proj.tipo_efeito,
                         )
 
@@ -993,6 +1196,7 @@ class Simulador:
         if hasattr(self, 'areas'):
             novas_areas = []  # Para ondas adicionais, meteoros, etc.
             for area in self.areas:
+                resultados_periodicos = []
                 # Passa lista de alvos para suportar pull, vortex, etc.
                 alvos_area = [
                     alvo
@@ -1014,21 +1218,64 @@ class Simulador:
                 if resultado:
                     for res in resultado:
                         if res.get("nova_onda"):
-                            # Cria nova onda expandindo
+                            # Cada pulso é uma área de impacto isolada, mas
+                            # preserva o contrato da skill original.
                             from neural_fights.core.combat import AreaEffect
-                            nova = AreaEffect(area.nome + " Onda", res["x"], res["y"], area.dono)
+
+                            nova = AreaEffect(
+                                area.nome,
+                                res["x"],
+                                res["y"],
+                                area.dono,
+                                subefeito=True,
+                            )
+                            nova.ondas = 1
+                            nova.onda_atual = 1
+                            nova.meteoros = 0
+                            nova.pilares = 0
+                            nova.pilares_spawned = True
+                            nova.delay = 0.0
+                            nova.delay_total = 0.0
+                            nova.ativado = True
                             nova.raio = res.get("raio", area.raio * 1.5)
-                            nova.dano = area.dano * 0.7
+                            nova.raio_atual = nova.raio
+                            nova.dano = res.get("dano", area.dano * 0.7)
+                            nova.dano_por_segundo = 0.0
                             nova.tipo_efeito = area.tipo_efeito
+                            nova.efeito2 = area.efeito2
+                            nova.ground = area.ground
+                            nova.fonte_impacto = res.get("fonte_impacto", object())
+                            nova.ignorar_invencibilidade = True
                             novas_areas.append(nova)
                         
                         elif res.get("meteoro"):
                             # Cria meteoro caindo
                             from neural_fights.core.combat import AreaEffect
-                            meteoro = AreaEffect("Meteoro", res["x"], res["y"], area.dono)
-                            meteoro.raio = res.get("raio", 3.0)
-                            meteoro.dano = res.get("dano", 30)
-                            meteoro.tipo_efeito = "FOGO"
+                            meteoro = AreaEffect(
+                                area.nome,
+                                res["x"],
+                                res["y"],
+                                area.dono,
+                                subefeito=True,
+                            )
+                            meteoro.ondas = 1
+                            meteoro.onda_atual = 1
+                            meteoro.meteoros = 0
+                            meteoro.pilares = 0
+                            meteoro.pilares_spawned = True
+                            meteoro.delay = 0.0
+                            meteoro.delay_total = 0.0
+                            meteoro.ativado = True
+                            meteoro.raio = res.get("raio", area.raio_meteoro)
+                            meteoro.raio_atual = meteoro.raio
+                            meteoro.dano = res.get("dano", area.dano_meteoro)
+                            meteoro.dano_por_segundo = 0.0
+                            meteoro.tipo_efeito = area.tipo_efeito
+                            meteoro.efeito2 = area.efeito2
+                            meteoro.elemento = area.elemento
+                            meteoro.ground = area.ground
+                            meteoro.fonte_impacto = res.get("fonte_impacto", object())
+                            meteoro.ignorar_invencibilidade = True
                             novas_areas.append(meteoro)
                             # Efeito visual
                             self.impact_flashes.append(ImpactFlash(res["x"] * PPM, res["y"] * PPM, (255, 100, 50), 2.0, "explosion"))
@@ -1043,6 +1290,7 @@ class Simulador:
                                 res["x"],
                                 res["y"],
                                 area.dono,
+                                subefeito=True,
                             )
                             pilar.pilares = 0
                             pilar.pilares_spawned = True
@@ -1080,75 +1328,13 @@ class Simulador:
                                 alvo.vel[0] += (dx / dist) * forca * dt
                                 alvo.vel[1] += (dy / dist) * forca * dt
                         
-                        elif res.get("dot_tick"):
-                            # Aplica dano de DoT (Damage over Time)
-                            alvo = res["alvo"]
-                            dano_dot = res.get("dano", 5)
-                            tipo_dot = res.get("tipo", "NORMAL")
-                            fonte_tick = res.get("fonte_impacto", object())
-                            metadata_tick = criar_metadata_impacto(
-                                area,
-                                dot_tick=True,
-                                elemento=res.get("elemento", area.elemento),
-                            )
-                            resolver_impacto = getattr(alvo, "resolver_impacto", None)
-                            if callable(resolver_impacto):
-                                impacto = resolver_impacto(
-                                    dano_dot,
-                                    0,
-                                    0,
-                                    tipo_dot,
-                                    atacante=area.dono,
-                                    fonte_impacto=fonte_tick,
-                                    aplicar_modificadores_debuff=False,
-                                    metadata_impacto=metadata_tick,
-                                )
-                                morreu = impacto.morreu
-                                dano_aplicado = impacto.dano
-                                impacto_aplicado = impacto.atingiu
-                            else:
-                                morreu = alvo.tomar_dano(
-                                    dano_dot,
-                                    0,
-                                    0,
-                                    tipo_dot,
-                                    atacante=area.dono,
-                                    fonte_impacto=fonte_tick,
-                                    aplicar_modificadores_debuff=False,
-                                    metadata_impacto=metadata_tick,
-                                )
-                                dano_aplicado = getattr(
-                                    alvo,
-                                    "ultimo_dano_recebido",
-                                    dano_dot,
-                                )
-                                impacto_aplicado = True
-                            if morreu:
-                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
-                            elif impacto_aplicado:
-                                cor_dot = self._get_cor_efeito(
-                                    res.get("elemento") or tipo_dot
-                                )
-                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor_dot, 14))
-
-                        elif res.get("status_stack"):
-                            alvo = res["alvo"]
-                            resolver_impacto = getattr(alvo, "resolver_impacto", None)
-                            if callable(resolver_impacto):
-                                resolver_impacto(
-                                    0.0,
-                                    0.0,
-                                    0.0,
-                                    res["efeito"],
-                                    atacante=area.dono,
-                                    fonte_impacto=res.get("fonte_impacto", object()),
-                                    metadata_impacto=criar_metadata_impacto(
-                                        area,
-                                        status_stack=True,
-                                    ),
-                                )
+                        elif res.get("dot_tick") or res.get("status_stack"):
+                            resultados_periodicos.append(res)
                 
-                if area.ativo and getattr(area, 'ativado', True):
+                if (
+                    area.ativo
+                    or getattr(area, "teve_tempo_ativo_no_frame", False)
+                ) and getattr(area, 'ativado', True):
                     # Verifica colisão com alvos
                     for alvo in [self.p1, self.p2]:
                         if (
@@ -1160,10 +1346,11 @@ class Simulador:
                         imune_ground = getattr(alvo, "esta_imune_ground", None)
                         if area.ground and callable(imune_ground) and imune_ground():
                             continue
-                        dx = alvo.pos[0] - area.x
-                        dy = alvo.pos[1] - area.y
+                        alvo_x, alvo_y = self._posicao_alvo_combate(alvo)
+                        dx = alvo_x - area.x
+                        dy = alvo_y - area.y
                         dist = math.hypot(dx, dy)
-                        if dist < area.raio_atual + alvo.raio_fisico:
+                        if self._area_colide_alvo(area, alvo):
                             area.alvos_atingidos.add(alvo)
                             
                             # === ÁUDIO v10.0 - SOM DE ÁREA ===
@@ -1178,15 +1365,21 @@ class Simulador:
                                 dano = area.dono.get_dano_modificado(area.dano) if hasattr(area.dono, 'get_dano_modificado') else area.dano
                             condicao_cumprida, bonus_condicao = area.verificar_condicao(alvo)
                             dano *= bonus_condicao
+                            tipo_impacto = area.sortear_efeito_principal()
                             kwargs_impacto = {
                                 "atacante": area.dono,
                                 "fonte_impacto": area.fonte_impacto,
                                 "metadata_impacto": criar_metadata_impacto(area),
+                                "ignorar_invencibilidade": getattr(
+                                    area,
+                                    "ignorar_invencibilidade",
+                                    False,
+                                ),
                                 "duracao_efeito": (
                                     area.duracao_charme or None
-                                    if area.tipo_efeito == "CHARME"
+                                    if tipo_impacto == "CHARME"
                                     else area.duracao_stop or None
-                                    if area.tipo_efeito == "TEMPO_PARADO"
+                                    if tipo_impacto == "TEMPO_PARADO"
                                     else None
                                 ),
                             }
@@ -1196,7 +1389,7 @@ class Simulador:
                                     dano,
                                     dx/(dist or 1),
                                     dy/(dist or 1),
-                                    area.tipo_efeito,
+                                    tipo_impacto,
                                     **kwargs_impacto,
                                 )
                                 morreu = impacto.morreu
@@ -1207,7 +1400,7 @@ class Simulador:
                                     dano,
                                     dx/(dist or 1),
                                     dy/(dist or 1),
-                                    area.tipo_efeito,
+                                    tipo_impacto,
                                     **kwargs_impacto,
                                 )
                                 dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
@@ -1220,6 +1413,24 @@ class Simulador:
                                     alvo,
                                     aplicar_efeito_principal=False,
                                 )
+                                if area.lifesteal > 0.0 and dano_aplicado > 0.0:
+                                    receber_cura = getattr(
+                                        area.dono,
+                                        "receber_cura",
+                                        None,
+                                    )
+                                    if callable(receber_cura):
+                                        cura_real = receber_cura(
+                                            dano_aplicado * area.lifesteal
+                                        )
+                                        if cura_real > 0.0:
+                                            self.textos.append(FloatingText(
+                                                area.dono.pos[0] * PPM,
+                                                area.dono.pos[1] * PPM - 30,
+                                                f"+{int(cura_real)}",
+                                                (200, 100, 200),
+                                                16,
+                                            ))
                                 if area.remove_congelamento and condicao_cumprida:
                                     remover_congelamento = getattr(
                                         alvo,
@@ -1240,8 +1451,11 @@ class Simulador:
                             if morreu:
                                 self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
                             elif impacto_aplicado:
-                                cor_txt = self._get_cor_efeito(area.tipo_efeito)
+                                cor_txt = self._get_cor_efeito(tipo_impacto)
                                 self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor_txt))
+
+                for res in resultados_periodicos:
+                    self._aplicar_resultado_periodico_area(area, res)
             
             # Adiciona novas áreas criadas por ondas/meteoros
             self.areas.extend(novas_areas)
@@ -1324,8 +1538,22 @@ class Simulador:
                     if res.get("tipo") == "ataque":
                         alvo = res["alvo"]
                         dano = res["dano"]
+                        if not res.get("dano_precalculado", False):
+                            modificar = getattr(
+                                summon.dono,
+                                "get_dano_modificado",
+                                None,
+                            )
+                            if callable(modificar):
+                                dano = modificar(dano)
                         morreu = alvo.tomar_dano(
-                            dano, 0, 0, "NORMAL", atacante=summon.dono
+                            dano,
+                            0,
+                            0,
+                            summon.tipo_efeito,
+                            atacante=summon.dono,
+                            fonte_impacto=res.get("fonte_impacto", object()),
+                            metadata_impacto=criar_metadata_impacto(summon),
                         )
                         dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
                         if morreu:
@@ -1336,7 +1564,24 @@ class Simulador:
                     elif res.get("tipo") == "aura":
                         alvo = res["alvo"]
                         dano = res["dano"]
-                        alvo.tomar_dano(dano, 0, 0, "NORMAL", atacante=summon.dono)
+                        modificar = getattr(
+                            summon.dono,
+                            "get_dano_modificado",
+                            None,
+                        )
+                        if callable(modificar):
+                            dano = modificar(dano)
+                        alvo.tomar_dano(
+                            dano,
+                            0,
+                            0,
+                            summon.tipo_efeito,
+                            atacante=summon.dono,
+                            fonte_impacto=res.get("fonte_impacto", object()),
+                            ignorar_recuperacao_impacto=True,
+                            gerar_recuperacao_impacto=False,
+                            metadata_impacto=criar_metadata_impacto(summon),
+                        )
                     
                     elif res.get("revive"):
                         # Fenix reviveu!
@@ -1370,13 +1615,23 @@ class Simulador:
                             
                             # Dano de contato
                             if trap.dano_contato > 0:
+                                dano_trap = trap.dano_contato * dt
+                                modificar = getattr(
+                                    trap.dono,
+                                    "get_dano_modificado",
+                                    None,
+                                )
+                                if callable(modificar):
+                                    dano_trap = modificar(dano_trap)
                                 lutador.tomar_dano(
-                                    trap.dano_contato * dt,
+                                    dano_trap,
                                     0,
                                     0,
                                     trap.efeito_contato or "NORMAL",
                                     atacante=trap.dono,
-                                    fonte_impacto=trap,
+                                    fonte_impacto=object(),
+                                    ignorar_recuperacao_impacto=True,
+                                    gerar_recuperacao_impacto=False,
                                     metadata_impacto=criar_metadata_impacto(trap),
                                 )
             
@@ -1397,13 +1652,30 @@ class Simulador:
                     if res.get("tipo") == "contato":
                         alvo = res["alvo"]
                         dano = res["dano"]
-                        alvo.tomar_dano(dano, 0, 0, "NORMAL", atacante=lutador)
+                        modificar = getattr(
+                            lutador,
+                            "get_dano_modificado",
+                            None,
+                        )
+                        if callable(modificar):
+                            dano = modificar(dano)
+                        alvo.tomar_dano(
+                            dano,
+                            0,
+                            0,
+                            "NORMAL",
+                            atacante=lutador,
+                            fonte_impacto=res.get("fonte_impacto", object()),
+                            ignorar_recuperacao_impacto=True,
+                            gerar_recuperacao_impacto=False,
+                            metadata_impacto=criar_metadata_impacto(transform),
+                        )
                     elif res.get("tipo") == "slow":
                         alvo = res["alvo"]
                         fator = max(0.01, res["fator"])
                         alvo._aplicar_efeito_status(
                             "LENTO",
-                            duracao=0.1,
+                            duracao=res.get("duracao", 0.2),
                             intensidade=0.5 / fator,
                         )
                 
@@ -1426,6 +1698,29 @@ class Simulador:
                         valor = res["valor"]
                         self.textos.append(FloatingText(lutador.pos[0]*PPM, lutador.pos[1]*PPM - 30, f"+{int(valor)}", (100, 255, 150), 14))
                     
+                    elif res.get("tipo") == "impacto":
+                        impacto = res.get("impacto")
+                        if impacto is None or not impacto.atingiu:
+                            continue
+                        alvo = res["alvo"]
+                        if impacto.morreu:
+                            self.textos.append(FloatingText(
+                                alvo.pos[0] * PPM,
+                                alvo.pos[1] * PPM - 50,
+                                "FATAL!",
+                                VERMELHO_SANGUE,
+                                40,
+                            ))
+                        else:
+                            cor = self._get_cor_efeito(res.get("efeito", "NORMAL"))
+                            self.textos.append(FloatingText(
+                                alvo.pos[0] * PPM,
+                                alvo.pos[1] * PPM - 30,
+                                int(impacto.dano),
+                                cor,
+                                12,
+                            ))
+
                     elif res.get("tipo") == "dano":
                         alvo = res["alvo"]
                         dano = res["dano"]
@@ -1800,6 +2095,28 @@ class Simulador:
             return float(pos[0]), float(pos[1])
         return float(alvo.x), float(alvo.y)
 
+    @classmethod
+    def _area_colide_alvo(cls, area, alvo):
+        """Aceita volumes circulares e o corredor varrido por um dash."""
+
+        alvo_x, alvo_y = cls._posicao_alvo_combate(alvo)
+        raio_alvo = float(getattr(alvo, "raio_fisico", 0.5))
+        segmento = getattr(area, "segmento_impacto", None)
+        if segmento is not None:
+            raio = raio_alvo + float(getattr(area, "raio_segmento", 0.5))
+            if intersect_line_circle(segmento[0], segmento[1], (alvo_x, alvo_y), raio):
+                return True
+            # ``intersect_line_circle`` não considera um segmento degenerado.
+            if segmento[0] == segmento[1]:
+                return math.hypot(
+                    alvo_x - segmento[0][0],
+                    alvo_y - segmento[0][1],
+                ) <= raio
+            return False
+        return math.hypot(alvo_x - area.x, alvo_y - area.y) < (
+            area.raio_atual + raio_alvo
+        )
+
     def _obter_alvos_hostis(self, dono, incluir_summons=False):
         """Lista alvos disponíveis para chain/contágio sem duplicar entidades."""
         candidatos = [self.p1, self.p2]
@@ -1821,6 +2138,19 @@ class Simulador:
             vistos.add(id(candidato))
             hostis.append(candidato)
         return hostis
+
+    def _modificador_protecao_summon(self, alvo):
+        """Retorna a maior proteção explícita de uma invocação aliada."""
+
+        reducao = 0.0
+        for summon in getattr(self, "summons", ()):
+            protege = getattr(summon, "protege", None)
+            if callable(protege) and protege(alvo):
+                reducao = max(
+                    reducao,
+                    float(getattr(summon, "reducao_dano_protegido", 0.0)),
+                )
+        return max(0.0, min(1.0, 1.0 - reducao))
 
     def _beam_colide_alvo(self, beam, alvo):
         """Verifica se um beam colide com um alvo"""
@@ -2140,6 +2470,9 @@ class Simulador:
     def _verificar_bloqueio_projetil(self, proj, alvo):
         """Verifica se o alvo pode bloquear ou desviar do projétil"""
         if not proj.ativo:
+            return False
+        # Invocações não executam ações defensivas nem possuem equipamento.
+        if not hasattr(alvo, "dados"):
             return False
         
         # Distância do projétil ao alvo
@@ -2733,7 +3066,13 @@ class Simulador:
             for area in self.areas:
                 if area.ativo:
                     ax, ay = self.cam.converter(area.x * PPM, area.y * PPM)
-                    ar = self.cam.converter_tam(area.raio_atual * PPM)
+                    obter_raio_visual = getattr(area, "get_raio_visual", None)
+                    raio_visual = (
+                        obter_raio_visual()
+                        if callable(obter_raio_visual)
+                        else area.raio_atual
+                    )
+                    ar = self.cam.converter_tam(raio_visual * PPM)
                     if ar > 0:
                         # Pulso baseado no tempo
                         pulse_time = pygame.time.get_ticks() / 1000.0

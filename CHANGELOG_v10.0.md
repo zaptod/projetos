@@ -68,7 +68,7 @@
 #### simulacao.py
 **Linha 17:** Adicionado import do AudioManager
 ```python
-from audio import AudioManager  # v10.0 Sistema de Áudio
+from neural_fights.effects.audio import AudioManager  # v10.0 Sistema de Áudio
 ```
 
 **Linha 60:** Adicionado atributo de áudio
@@ -144,12 +144,12 @@ if self.audio:
 #### core/entities.py
 **Linha 27:** Import do AudioManager no __init__
 ```python
-from audio import AudioManager
+from neural_fights.effects.audio import AudioManager
 ```
 
 **Linha 258:** Import em usar_skill_arma
 ```python
-from audio import AudioManager
+from neural_fights.effects.audio import AudioManager
 ```
 
 **Linha 304:** Som de projétil (skill de arma)
@@ -189,7 +189,7 @@ if audio:
 
 **Linha 392:** Import em usar_skill_classe
 ```python
-from audio import AudioManager
+from neural_fights.effects.audio import AudioManager
 ```
 
 **Linha 427:** Som de projétil (skill de classe)

@@ -869,7 +869,8 @@ def calcular_dano_magico(dano_base: float, caster, alvo, elemento: Elemento = No
                 
                 # Crítico mágico
                 if "crit_chance" in mod:
-                    if random.random() < mod["crit_chance"]:
+                    rng = getattr(caster, "rng_runtime", random)
+                    if rng.random() < mod["crit_chance"]:
                         is_critico = True
                         dano *= mod.get("crit_mult", 2.0)
                 

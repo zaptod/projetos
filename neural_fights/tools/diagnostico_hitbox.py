@@ -23,6 +23,7 @@ from typing import Any, Mapping, Sequence, TextIO
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
 from neural_fights.data import database
+from neural_fights.utils.console import SafeArgumentParser
 from neural_fights.models.constants import LISTA_TIPOS_ARMA, TIPOS_ARMA
 
 
@@ -558,7 +559,7 @@ def _write_output(text: str, stream: TextIO) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = SafeArgumentParser(description=__doc__)
     parser.add_argument("--arquivo", type=Path, default=DEFAULT_WEAPONS)
     parser.add_argument("--hitbox-source", type=Path, default=DEFAULT_HITBOX_SOURCE)
     parser.add_argument("--json", action="store_true", help="emite JSON ASCII")

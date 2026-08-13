@@ -10,6 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pygame
+
 from neural_fights.effects.audio import AudioManager
 from neural_fights.effects.audio_paths import (
     PACKAGE_SOUND_DIR,
@@ -23,6 +25,27 @@ from neural_fights.ui.view_sons import TelaSons
 
 
 class AudioContractTests(unittest.TestCase):
+    def test_every_packaged_audio_asset_can_be_decoded(self) -> None:
+        assets = sorted(
+            path
+            for extension in ("*.wav", "*.ogg", "*.mp3")
+            for path in PACKAGE_SOUND_DIR.glob(extension)
+        )
+        self.assertTrue(assets)
+
+        mixer_was_initialized = pygame.mixer.get_init() is not None
+        with patch.dict(os.environ, {"SDL_AUDIODRIVER": "dummy"}):
+            if not mixer_was_initialized:
+                pygame.mixer.init()
+            try:
+                for asset in assets:
+                    with self.subTest(asset=asset.name):
+                        sound = pygame.mixer.Sound(str(asset))
+                        self.assertGreater(sound.get_length(), 0.0)
+            finally:
+                if not mixer_was_initialized:
+                    pygame.mixer.quit()
+
     def test_every_configured_event_has_an_asset_or_a_valid_fallback(self) -> None:
         sound_dir = PACKAGE_SOUND_DIR
         config = json.loads((sound_dir / "sound_config.json").read_text(encoding="utf-8"))

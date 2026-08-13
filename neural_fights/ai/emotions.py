@@ -12,9 +12,10 @@ class EmotionSystem:
     Gerencia estados emocionais, humor e reações emocionais.
     """
     
-    def __init__(self, parent, tracos):
+    def __init__(self, parent, tracos, rng=None):
         self.parent = parent
         self.tracos = tracos
+        self.rng = rng if rng is not None else getattr(parent, "rng_runtime", random)
         
         # === EMOÇÕES (0.0 a 1.0) ===
         self.medo = 0.0
@@ -139,7 +140,7 @@ class EmotionSystem:
         elif self.confianca > 0.7:
             novo_humor = "CONFIANTE"
         elif self.frustracao > 0.5:
-            novo_humor = "FURIOSO" if random.random() < 0.5 else "NERVOSO"
+            novo_humor = "FURIOSO" if self.rng.random() < 0.5 else "NERVOSO"
         elif self.excitacao > 0.6:
             novo_humor = "ANIMADO"
         elif self.tedio > 0.5:
@@ -153,7 +154,7 @@ class EmotionSystem:
         
         if novo_humor != self.humor:
             self.humor = novo_humor
-            self.cd_mudanca_humor = random.uniform(2.0, 5.0)
+            self.cd_mudanca_humor = self.rng.uniform(2.0, 5.0)
     
     def reagir_ao_dano(self, dano):
         """Reações emocionais ao dano recebido"""

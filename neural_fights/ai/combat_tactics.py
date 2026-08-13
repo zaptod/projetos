@@ -15,10 +15,11 @@ class CombatTacticsSystem:
     Gerencia leitura do oponente, janelas de ataque, baiting e momentum.
     """
     
-    def __init__(self, parent, tracos, estilo_luta):
+    def __init__(self, parent, tracos, estilo_luta, rng=None):
         self.parent = parent
         self.tracos = tracos
         self.estilo_luta = estilo_luta
+        self.rng = rng if rng is not None else getattr(parent, "rng_runtime", random)
         
         # Leitura do oponente
         self.leitura_oponente = {
@@ -65,8 +66,8 @@ class CombatTacticsSystem:
         }
         
         # Timing humano
-        self.tempo_reacao_base = random.uniform(0.12, 0.25)
-        self.variacao_timing = random.uniform(0.05, 0.15)
+        self.tempo_reacao_base = self.rng.uniform(0.12, 0.25)
+        self.variacao_timing = self.rng.uniform(0.05, 0.15)
     
     def atualizar_leitura(self, dt, distancia, inimigo):
         """Lê e antecipa os movimentos do oponente como um humano faria"""
@@ -228,10 +229,10 @@ class CombatTacticsSystem:
         if self.estilo_luta in ["TECHNICAL", "MIND_GAMES"]:
             chance_bait *= 2.0
         
-        if pode_bait and random.random() < chance_bait:
+        if pode_bait and self.rng.random() < chance_bait:
             bait["ativo"] = True
-            bait["tipo"] = random.choice(["recuo_falso", "abertura_falsa"])
-            bait["timer"] = random.uniform(0.3, 0.6)
+            bait["tipo"] = self.rng.choice(["recuo_falso", "abertura_falsa"])
+            bait["timer"] = self.rng.uniform(0.3, 0.6)
             return True  # Indica que está em modo bait
         
         # Processa bait ativo

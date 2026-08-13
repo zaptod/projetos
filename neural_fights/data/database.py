@@ -12,11 +12,16 @@ import math
 import os
 import shutil
 import tempfile
+import threading
+import time
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import contextmanager
+from functools import wraps
 from typing import Any
 
 from neural_fights.models import Arma, Personagem, get_raridade_data
 from neural_fights.models.constants import (
+    ENCANTAMENTOS,
     LISTA_CLASSES,
     LISTA_RARIDADES,
     LISTA_TIPOS_ARMA,
@@ -56,10 +61,103 @@ ARQUIVO_ARMAS_RUNTIME = os.path.join(RUNTIME_DIR, "armas.json")
 ARQUIVO_MATCH_DEFAULT = os.path.join(DATA_DIR, "fixtures", "default_match_config.json")
 ARQUIVO_MATCH = os.path.join(RUNTIME_DIR, "match_config.json")
 MATCH_CONFIG_ENV = "NEURAL_FIGHTS_MATCH_CONFIG"
+_CAMPOS_GEOMETRIA_ARMA = frozenset(
+    campo
+    for dados_tipo in TIPOS_ARMA.values()
+    for campo in dados_tipo["geometria"]
+)
+_CAMPOS_INTEIROS_GEOMETRIA = frozenset({"quantidade", "quantidade_orbitais"})
+
+
+# Um unico lock reentrante protege, dentro do processo, tanto snapshots de
+# varios arquivos quanto operacoes de leitura-modificacao-escrita. O RLock e
+# necessario porque as APIs de alto nivel se compoem (por exemplo,
+# ``renomear_arma`` chama ``carregar_database`` e ``salvar_database``).
+_PERSISTENCE_LOCK = threading.RLock()
+_INTERPROCESS_STATE = threading.local()
+_INTERPROCESS_LOCK_TIMEOUT = 30.0
+
+
+@contextmanager
+def _bloqueio_persistencia_interprocesso():
+    """Serializa snapshots e read-modify-write tambem entre processos.
+
+    O arquivo de lock fica no diretorio temporario do usuario, que e gravavel
+    mesmo quando a wheel esta instalada em modo somente leitura. Ele e mantido
+    depois do uso: remover um lock desbloqueado abriria uma corrida entre um
+    processo que ainda segura o inode antigo e outro que criasse um novo.
+    """
+
+    caminho = os.path.join(tempfile.gettempdir(), "neural-fights.persistence.lock")
+    arquivo = open(caminho, "a+b")
+    adquirido = False
+    try:
+        arquivo.seek(0, os.SEEK_END)
+        if arquivo.tell() == 0:
+            arquivo.write(b"\0")
+            arquivo.flush()
+        arquivo.seek(0)
+
+        if os.name == "nt":
+            import msvcrt
+
+            limite = time.monotonic() + _INTERPROCESS_LOCK_TIMEOUT
+            while True:
+                try:
+                    msvcrt.locking(arquivo.fileno(), msvcrt.LK_NBLCK, 1)
+                    adquirido = True
+                    break
+                except OSError as exc:
+                    if time.monotonic() >= limite:
+                        raise TimeoutError(
+                            "tempo esgotado aguardando o lock de persistencia"
+                        ) from exc
+                    time.sleep(0.01)
+        else:
+            import fcntl
+
+            fcntl.flock(arquivo.fileno(), fcntl.LOCK_EX)
+            adquirido = True
+
+        yield
+    finally:
+        if adquirido:
+            arquivo.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(arquivo.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(arquivo.fileno(), fcntl.LOCK_UN)
+        arquivo.close()
+
+
+def _serializar_persistencia(func):
+    @wraps(func)
+    def protegida(*args, **kwargs):
+        with _PERSISTENCE_LOCK:
+            profundidade = getattr(_INTERPROCESS_STATE, "depth", 0)
+            if profundidade:
+                _INTERPROCESS_STATE.depth = profundidade + 1
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    _INTERPROCESS_STATE.depth = profundidade
+
+            with _bloqueio_persistencia_interprocesso():
+                _INTERPROCESS_STATE.depth = 1
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    _INTERPROCESS_STATE.depth = 0
+
+    return protegida
 
 
 class DataValidationError(ValueError):
-    """Indica que um documento e valido como JSON, mas viola o contrato."""
+    """Indica JSON invalido ou um documento que viola o contrato de dados."""
 
     def __init__(self, erros: str | Iterable[str]):
         if isinstance(erros, str):
@@ -69,6 +167,7 @@ class DataValidationError(ValueError):
         super().__init__("Dados invalidos:\n- " + "\n- ".join(self.erros))
 
 
+@_serializar_persistencia
 def resolver_database_paths(
     *,
     arquivo_armas: str | None = None,
@@ -108,6 +207,27 @@ def resolver_database_paths(
     return os.path.abspath(ARQUIVO_ARMAS), os.path.abspath(ARQUIVO_CHARS)
 
 
+def _rejeitar_constante_json(valor: str) -> None:
+    raise ValueError(f"constante numerica nao permitida pelo JSON: {valor}")
+
+
+def _parse_float_json_finito(valor: str) -> float:
+    numero = float(valor)
+    if not math.isfinite(numero):
+        raise ValueError(f"numero nao finito nao permitido pelo JSON: {valor}")
+    return numero
+
+
+def _objeto_json_sem_chaves_duplicadas(pares):
+    resultado = {}
+    for chave, valor in pares:
+        if chave in resultado:
+            raise ValueError(f"chave JSON duplicada: {chave!r}")
+        resultado[chave] = valor
+    return resultado
+
+
+@_serializar_persistencia
 def carregar_json(arquivo: str, padrao: Any = None) -> Any:
     """Carrega JSON sem converter corrupcao ou erro de permissao em lista vazia.
 
@@ -120,11 +240,20 @@ def carregar_json(arquivo: str, padrao: Any = None) -> Any:
 
     try:
         with open(arquivo, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return json.load(
+                f,
+                parse_constant=_rejeitar_constante_json,
+                parse_float=_parse_float_json_finito,
+                object_pairs_hook=_objeto_json_sem_chaves_duplicadas,
+            )
     except json.JSONDecodeError as exc:
         raise DataValidationError(
             f"JSON invalido em {os.path.abspath(arquivo)} "
             f"(linha {exc.lineno}, coluna {exc.colno}): {exc.msg}"
+        ) from exc
+    except ValueError as exc:
+        raise DataValidationError(
+            f"JSON invalido em {os.path.abspath(arquivo)}: {exc}"
         ) from exc
 
 
@@ -144,7 +273,13 @@ def _escrever_temporario(destino: str, dados: Any, *, indent: int = 4) -> str:
             delete=False,
         ) as f:
             temporario = f.name
-            json.dump(dados, f, indent=indent, ensure_ascii=False)
+            json.dump(
+                dados,
+                f,
+                indent=indent,
+                ensure_ascii=False,
+                allow_nan=False,
+            )
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
@@ -155,6 +290,7 @@ def _escrever_temporario(destino: str, dados: Any, *, indent: int = 4) -> str:
         raise
 
 
+@_serializar_persistencia
 def salvar_json(arquivo: str, dados: Any) -> None:
     """Salva um documento atomicamente, mantendo o anterior em caso de falha."""
 
@@ -168,6 +304,7 @@ def salvar_json(arquivo: str, dados: Any) -> None:
             os.unlink(temporario)
 
 
+@_serializar_persistencia
 def salvar_jsons_coerentes(documentos: Mapping[str, Any]) -> None:
     """Substitui varios JSONs como uma transacao com rollback em caso de erro.
 
@@ -266,14 +403,79 @@ def _nome_obrigatorio(item: Mapping[str, Any], caminho: str, erros: list[str]) -
     return nome.strip()
 
 
-def _nomes_habilidades(arma: Mapping[str, Any], caminho: str, erros: list[str]) -> set[str]:
+def _validar_numero(
+    item: Mapping[str, Any],
+    campo: str,
+    caminho: str,
+    erros: list[str],
+    *,
+    obrigatorio: bool = False,
+    minimo: float | None = None,
+    maximo: float | None = None,
+    minimo_exclusivo: bool = False,
+    inteiro: bool = False,
+) -> float | None:
+    if campo not in item:
+        if obrigatorio:
+            erros.append(f"{caminho}.{campo} e obrigatorio")
+        return None
+
+    valor = item[campo]
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        sufixo = " inteiro" if inteiro else " numerico"
+        erros.append(f"{caminho}.{campo} deve ser{sufixo}")
+        return None
+    if inteiro and not isinstance(valor, int):
+        erros.append(f"{caminho}.{campo} deve ser inteiro")
+        return None
+    try:
+        numero = float(valor)
+    except (OverflowError, ValueError):
+        erros.append(f"{caminho}.{campo} deve ser finito")
+        return None
+    if not math.isfinite(numero):
+        erros.append(f"{caminho}.{campo} deve ser finito")
+        return None
+    if minimo is not None:
+        fora_do_minimo = numero <= minimo if minimo_exclusivo else numero < minimo
+        if fora_do_minimo:
+            operador = "maior que" if minimo_exclusivo else "maior ou igual a"
+            erros.append(f"{caminho}.{campo} deve ser {operador} {minimo:g}")
+    if maximo is not None and numero > maximo:
+        erros.append(f"{caminho}.{campo} deve ser menor ou igual a {maximo:g}")
+    return numero
+
+
+def _validar_cores(
+    item: Mapping[str, Any],
+    campos: Sequence[str],
+    caminho: str,
+    erros: list[str],
+) -> None:
+    for campo in campos:
+        if campo not in item:
+            continue
+        valor = item[campo]
+        if isinstance(valor, bool) or not isinstance(valor, int):
+            erros.append(f"{caminho}.{campo} deve ser inteiro entre 0 e 255")
+        elif not 0 <= valor <= 255:
+            erros.append(f"{caminho}.{campo} deve estar entre 0 e 255")
+
+
+def _nomes_habilidades(
+    arma: Mapping[str, Any],
+    caminho: str,
+    erros: list[str],
+) -> set[str]:
     nomes: set[str] = set()
-    habilidade = arma.get("habilidade")
-    if habilidade not in (None, ""):
-        if not isinstance(habilidade, str):
+    habilidade_legada = arma.get("habilidade")
+    if habilidade_legada not in (None, ""):
+        if not isinstance(habilidade_legada, str):
             erros.append(f"{caminho}.habilidade deve ser uma string")
+        elif not habilidade_legada.strip():
+            erros.append(f"{caminho}.habilidade deve ser uma string nao vazia")
         else:
-            nomes.add(habilidade)
+            nomes.add(habilidade_legada)
 
     habilidades = arma.get("habilidades", [])
     if habilidades is None:
@@ -282,18 +484,107 @@ def _nomes_habilidades(arma: Mapping[str, Any], caminho: str, erros: list[str]) 
         erros.append(f"{caminho}.habilidades deve ser uma lista")
         return nomes
 
+    nomes_lista: list[str] = []
     for indice, habilidade_item in enumerate(habilidades):
+        caminho_item = f"{caminho}.habilidades[{indice}]"
         if isinstance(habilidade_item, str):
             nome = habilidade_item
-        elif isinstance(habilidade_item, dict):
+        elif isinstance(habilidade_item, Mapping):
             nome = habilidade_item.get("nome")
+            _validar_numero(
+                habilidade_item,
+                "custo",
+                caminho_item,
+                erros,
+                minimo=0,
+            )
         else:
             nome = None
         if not isinstance(nome, str) or not nome.strip():
-            erros.append(f"{caminho}.habilidades[{indice}] nao possui nome valido")
+            erros.append(f"{caminho_item} nao possui nome valido")
         else:
             nomes.add(nome)
+            if nome in nomes_lista:
+                erros.append(f"{caminho}.habilidades possui nome duplicado: {nome!r}")
+            nomes_lista.append(nome)
+
+    if "habilidades" in arma and isinstance(habilidade_legada, str):
+        habilidade_efetiva = nomes_lista[0] if nomes_lista else "Nenhuma"
+        if habilidade_legada not in ("", habilidade_efetiva):
+            erros.append(
+                f"{caminho}.habilidade diverge da primeira habilidade da lista"
+            )
     return nomes
+
+
+def _validar_encantamentos(
+    arma: Mapping[str, Any],
+    caminho: str,
+    erros: list[str],
+    raridade: str,
+) -> None:
+    encantamentos = arma.get("encantamentos", [])
+    if encantamentos is None:
+        return
+    if not isinstance(encantamentos, list):
+        erros.append(f"{caminho}.encantamentos deve ser uma lista")
+        return
+
+    vistos: set[str] = set()
+    for indice, encantamento in enumerate(encantamentos):
+        caminho_item = f"{caminho}.encantamentos[{indice}]"
+        if not isinstance(encantamento, str) or not encantamento.strip():
+            erros.append(f"{caminho_item} deve ser uma string nao vazia")
+            continue
+        if encantamento not in ENCANTAMENTOS:
+            erros.append(f"{caminho_item} desconhecido: {encantamento!r}")
+        if encantamento in vistos:
+            erros.append(
+                f"{caminho}.encantamentos possui valor duplicado: {encantamento!r}"
+            )
+        vistos.add(encantamento)
+
+    if raridade in LISTA_RARIDADES:
+        # O catalogo historico possui um encantamento-base inclusive em armas
+        # comuns, embora elas nao tenham slots *adicionais*.
+        max_encantamentos = max(
+            1,
+            get_raridade_data(raridade)["max_encantamentos"],
+        )
+        if len(encantamentos) > max_encantamentos:
+            erros.append(
+                f"{caminho}.encantamentos excede os {max_encantamentos} "
+                f"slot(s) da raridade {raridade!r}"
+            )
+
+
+def _validar_passiva(
+    arma: Mapping[str, Any],
+    caminho: str,
+    erros: list[str],
+) -> None:
+    passiva = arma.get("passiva")
+    if passiva is None:
+        return
+    if not isinstance(passiva, Mapping):
+        erros.append(f"{caminho}.passiva deve ser um objeto ou null")
+        return
+
+    nome = passiva.get("nome")
+    efeito = passiva.get("efeito")
+    if not isinstance(nome, str) or not nome.strip():
+        erros.append(f"{caminho}.passiva.nome deve ser uma string nao vazia")
+    if not isinstance(efeito, str) or not efeito.strip():
+        erros.append(f"{caminho}.passiva.efeito deve ser uma string nao vazia")
+    _validar_numero(
+        passiva,
+        "valor",
+        f"{caminho}.passiva",
+        erros,
+        obrigatorio=True,
+    )
+    if "descricao" in passiva and not isinstance(passiva["descricao"], str):
+        erros.append(f"{caminho}.passiva.descricao deve ser uma string")
 
 
 def _validar_geometria_arma(
@@ -304,19 +595,19 @@ def _validar_geometria_arma(
 ) -> None:
     """Valida os campos fisicos usados pelo tipo, sem impor balanceamento."""
 
-    campos_inteiros = {"quantidade", "quantidade_orbitais"}
-    for campo in TIPOS_ARMA[tipo]["geometria"]:
-        valor = arma.get(campo)
-        if isinstance(valor, bool) or not isinstance(valor, (int, float)):
-            erros.append(f"{caminho}.{campo} deve ser numerico e maior que zero")
-            continue
-        if not math.isfinite(float(valor)):
-            erros.append(f"{caminho}.{campo} deve ser finito")
-            continue
-        if valor <= 0:
+    campos_obrigatorios = set(TIPOS_ARMA[tipo]["geometria"])
+    for campo in _CAMPOS_GEOMETRIA_ARMA:
+        numero = _validar_numero(
+            arma,
+            campo,
+            caminho,
+            erros,
+            obrigatorio=campo in campos_obrigatorios,
+            minimo=0,
+            inteiro=campo in _CAMPOS_INTEIROS_GEOMETRIA,
+        )
+        if campo in campos_obrigatorios and numero == 0:
             erros.append(f"{caminho}.{campo} deve ser maior que zero")
-        if campo in campos_inteiros and not isinstance(valor, int):
-            erros.append(f"{caminho}.{campo} deve ser inteiro")
 
 
 def validar_armas(
@@ -344,23 +635,90 @@ def validar_armas(
             erros.append(f"{caminho}.tipo desconhecido: {tipo!r}")
         else:
             _validar_geometria_arma(arma, caminho, tipo, erros)
-        if arma.get("raridade", "Comum") not in LISTA_RARIDADES:
-            erros.append(f"{caminho}.raridade desconhecida: {arma.get('raridade')!r}")
+        raridade = arma.get("raridade", "Comum")
+        if raridade not in LISTA_RARIDADES:
+            erros.append(f"{caminho}.raridade desconhecida: {raridade!r}")
 
         for campo in ("dano", "peso"):
-            valor = arma.get(campo)
-            if isinstance(valor, bool) or not isinstance(valor, (int, float)):
-                erros.append(f"{caminho}.{campo} deve ser numerico")
-            elif not math.isfinite(float(valor)):
-                erros.append(f"{caminho}.{campo} deve ser finito")
-            elif valor < 0:
-                erros.append(f"{caminho}.{campo} nao pode ser negativo")
+            _validar_numero(
+                arma,
+                campo,
+                caminho,
+                erros,
+                obrigatorio=True,
+                minimo=0,
+            )
+
+        _validar_cores(arma, ("r", "g", "b"), caminho, erros)
+        _validar_numero(arma, "custo_mana", caminho, erros, minimo=0)
+        _validar_numero(
+            arma,
+            "critico",
+            caminho,
+            erros,
+            minimo=0,
+            maximo=100,
+        )
+        _validar_numero(
+            arma,
+            "velocidade_ataque",
+            caminho,
+            erros,
+            minimo=0,
+            minimo_exclusivo=True,
+        )
+        durabilidade = _validar_numero(
+            arma,
+            "durabilidade",
+            caminho,
+            erros,
+            minimo=0,
+        )
+        durabilidade_max = _validar_numero(
+            arma,
+            "durabilidade_max",
+            caminho,
+            erros,
+            minimo=0,
+            minimo_exclusivo=True,
+        )
+        durabilidade_efetiva = 100.0 if durabilidade is None else durabilidade
+        durabilidade_max_efetiva = (
+            100.0 if durabilidade_max is None else durabilidade_max
+        )
+        if durabilidade_efetiva > durabilidade_max_efetiva:
+            erros.append(f"{caminho}.durabilidade nao pode exceder durabilidade_max")
+
+        if "cabo_dano" in arma and not isinstance(arma["cabo_dano"], bool):
+            erros.append(f"{caminho}.cabo_dano deve ser booleano")
+        if "estilo" in arma and (
+            not isinstance(arma["estilo"], str) or not arma["estilo"].strip()
+        ):
+            erros.append(f"{caminho}.estilo deve ser uma string nao vazia")
+        afinidade = arma.get("afinidade_elemento")
+        if afinidade is not None and (
+            not isinstance(afinidade, str) or not afinidade.strip()
+        ):
+            erros.append(
+                f"{caminho}.afinidade_elemento deve ser uma string nao vazia ou null"
+            )
+
+        _validar_encantamentos(arma, caminho, erros, raridade)
+        _validar_passiva(arma, caminho, erros)
 
         desconhecidas = _nomes_habilidades(arma, caminho, erros) - skills_validas
         if desconhecidas:
             erros.append(
                 f"{caminho} referencia skills inexistentes: {', '.join(sorted(desconhecidas))}"
             )
+        habilidades = arma.get("habilidades")
+        if isinstance(habilidades, list) and raridade in LISTA_RARIDADES:
+            max_habilidades = get_raridade_data(raridade)["slots_habilidade"]
+            if len(habilidades) > max_habilidades:
+                erros.append(
+                    f"{caminho}.habilidades excede os {max_habilidades} "
+                    f"slot(s) da raridade {raridade!r}"
+                )
 
     if erros:
         raise DataValidationError(erros)
@@ -388,16 +746,47 @@ def validar_personagens(
             erros.append(f"nome de personagem duplicado: {nome!r}")
         nomes_vistos.add(nome)
 
-        for campo in ("tamanho", "forca", "mana"):
-            valor = personagem.get(campo)
-            if isinstance(valor, bool) or not isinstance(valor, (int, float)):
-                erros.append(f"{caminho}.{campo} deve ser numerico")
+        _validar_numero(
+            personagem,
+            "tamanho",
+            caminho,
+            erros,
+            obrigatorio=True,
+            minimo=0,
+            minimo_exclusivo=True,
+        )
+        _validar_numero(
+            personagem,
+            "forca",
+            caminho,
+            erros,
+            obrigatorio=True,
+            minimo=0,
+            minimo_exclusivo=True,
+        )
+        _validar_numero(
+            personagem,
+            "mana",
+            caminho,
+            erros,
+            obrigatorio=True,
+            minimo=0,
+        )
+        _validar_cores(
+            personagem,
+            ("cor_r", "cor_g", "cor_b"),
+            caminho,
+            erros,
+        )
 
         nome_arma = personagem.get("nome_arma")
-        if nome_arma not in nomes_armas:
+        if not isinstance(nome_arma, str) or nome_arma not in nomes_armas:
             erros.append(f"{caminho}.nome_arma inexistente: {nome_arma!r}")
         personalidade = personagem.get("personalidade", "Aleatório")
-        if personalidade not in personalidades_validas:
+        if (
+            not isinstance(personalidade, str)
+            or personalidade not in personalidades_validas
+        ):
             erros.append(f"{caminho}.personalidade inexistente: {personalidade!r}")
         if personagem.get("classe") not in LISTA_CLASSES:
             erros.append(f"{caminho}.classe desconhecida: {personagem.get('classe')!r}")
@@ -419,6 +808,7 @@ def validar_database(armas: Any, personagens: Any) -> None:
     )
 
 
+@_serializar_persistencia
 def carregar_database(
     *,
     arquivo_armas: str | None = None,
@@ -436,6 +826,7 @@ def carregar_database(
     return raw_armas, raw_chars
 
 
+@_serializar_persistencia
 def salvar_database(
     armas: Sequence[Mapping[str, Any]],
     personagens: Sequence[Mapping[str, Any]],
@@ -463,6 +854,7 @@ def salvar_database(
     )
 
 
+@_serializar_persistencia
 def atualizar_arma(
     nome_atual: str,
     arma_atualizada: Mapping[str, Any] | Arma,
@@ -522,6 +914,7 @@ def atualizar_arma(
     return afetados
 
 
+@_serializar_persistencia
 def renomear_arma(
     nome_atual: str,
     novo_nome: str,
@@ -566,6 +959,7 @@ def renomear_arma(
     return afetados
 
 
+@_serializar_persistencia
 def remover_arma(
     nome: str,
     *,
@@ -613,6 +1007,7 @@ def remover_arma(
     return afetados
 
 
+@_serializar_persistencia
 def resolver_match_config_path(arquivo: str | None = None) -> str:
     """Resolve o estado local, permitindo isolamento por processo/teste."""
 
@@ -620,6 +1015,7 @@ def resolver_match_config_path(arquivo: str | None = None) -> str:
     return os.path.abspath(caminho)
 
 
+@_serializar_persistencia
 def carregar_match_config(arquivo: str | None = None) -> dict[str, Any]:
     """Carrega a configuracao compartilhada por todos os pontos de entrada."""
 
@@ -634,6 +1030,7 @@ def carregar_match_config(arquivo: str | None = None) -> dict[str, Any]:
     return config
 
 
+@_serializar_persistencia
 def salvar_match_config(
     config: Mapping[str, Any],
     preservar_existente: bool = True,
@@ -654,6 +1051,7 @@ def salvar_match_config(
     return caminho
 
 
+@_serializar_persistencia
 def carregar_armas(
     *,
     arquivo_armas: str | None = None,
@@ -666,6 +1064,7 @@ def carregar_armas(
     return [Arma(**item) for item in raw]
 
 
+@_serializar_persistencia
 def carregar_personagens(
     *,
     arquivo_armas: str | None = None,
@@ -702,18 +1101,21 @@ def carregar_personagens(
     return lista
 
 
+@_serializar_persistencia
 def salvar_lista_armas(lista: Sequence[Arma]) -> None:
     armas = [arma.to_dict() for arma in lista]
     _, personagens = carregar_database()
     salvar_database(armas, personagens)
 
 
+@_serializar_persistencia
 def salvar_lista_chars(lista: Sequence[Personagem]) -> None:
     armas, _ = carregar_database()
     personagens = [personagem.to_dict() for personagem in lista]
     salvar_database(armas, personagens)
 
 
+@_serializar_persistencia
 def carregar_arma_por_nome(nome_arma: str) -> Arma | None:
     """Carrega uma arma especifica pelo nome."""
 

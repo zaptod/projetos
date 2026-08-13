@@ -4,14 +4,7 @@ from __future__ import annotations
 
 import sys
 
-
-def _console_print(value, *, file=None) -> None:
-    destination = file or sys.stdout
-    encoding = getattr(destination, "encoding", None)
-    text = str(value)
-    if encoding:
-        text = text.encode(encoding, "backslashreplace").decode(encoding)
-    print(text, file=destination)
+from neural_fights.utils.console import safe_print as _console_print
 
 
 def mostrar_ajuda() -> None:

@@ -18,6 +18,8 @@ from neural_fights.effects import AttackAnimationManager, MagicVFXManager, Movem
 from neural_fights.effects.audio import AudioManager
 from neural_fights.simulation.simulacao import Simulador, _SilentAudioManager
 from neural_fights.simulation.manual import SimuladorManual
+from neural_fights.core.entities import Lutador
+from neural_fights.models.characters import Personagem
 
 
 MANAGERS = (
@@ -128,6 +130,57 @@ class SimulatorLifecycleRegressionTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "frame manual quebrado"):
                     manual.executar()
             manual.close.assert_called_once_with()
+
+    def test_manual_preserves_loop_error_when_cleanup_also_fails(self) -> None:
+        manual = object.__new__(SimuladorManual)
+        manual._executar_loop_manual = Mock(side_effect=ValueError("frame manual"))
+        manual.close = Mock(side_effect=RuntimeError("cleanup manual"))
+
+        with self.assertRaisesRegex(ValueError, "frame manual") as raised:
+            manual.executar()
+
+        notes = getattr(raised.exception, "__notes__", [])
+        self.assertTrue(any("cleanup manual" in note for note in notes))
+
+    def test_manual_reset_recreates_clean_fighters_and_preserves_edited_slots(self):
+        p1_data = Personagem("P1", 1.7, 5.0, 5.0)
+        p2_data = Personagem("P2", 1.7, 5.0, 5.0)
+        p1_data.arma_obj = None
+        p2_data.arma_obj = None
+        with patch("neural_fights.ai.AIBrain", return_value=None):
+            old_p1 = Lutador(p1_data, 4.0, 3.0)
+            old_p2 = Lutador(p2_data, 12.0, 3.0)
+        old_p2.skills_classe = [
+            {"nome": "Disparo de Mana", "custo": 8.0, "data": {"tipo": "PROJETIL"}}
+        ]
+        old_p2.invencivel_timer = 1.0
+        old_p2.invulnerabilidade_skill_timer = 1.0
+        old_p2.buffs_ativos.append(object())
+        old_p2.morto = True
+
+        manual = object.__new__(SimuladorManual)
+        manual.p1 = old_p1
+        manual.p2 = old_p2
+        manual.controlando = old_p2
+        manual.modo_oponente = "IA"
+        manual.best_of_series = Mock()
+        manual._configurar_partida_atual = Mock()
+        manual.atualizar_skills_disponiveis = Mock()
+
+        with patch("neural_fights.ai.AIBrain", return_value=None):
+            manual.resetar_luta()
+
+        self.assertIsNot(manual.p1, old_p1)
+        self.assertIsNot(manual.p2, old_p2)
+        self.assertIs(manual.controlando, manual.p2)
+        self.assertEqual(manual.p2.invencivel_timer, 0.0)
+        self.assertEqual(manual.p2.invulnerabilidade_skill_timer, 0.0)
+        self.assertEqual(manual.p2.buffs_ativos, [])
+        self.assertFalse(manual.p2.morto)
+        self.assertEqual(manual.p2.skills_classe[0]["nome"], "Disparo de Mana")
+        self.assertEqual(manual.p2.cd_skills["Disparo de Mana"], 0.0)
+        manual.best_of_series.reset_series.assert_called_once_with()
+        manual._configurar_partida_atual.assert_called_once_with()
 
     def test_seeded_instance_restores_random_state_on_close_and_init_failure(self) -> None:
         random.seed(918273)

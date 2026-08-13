@@ -90,6 +90,10 @@ Depois de instalar o projeto pelo `pyproject.toml`, o mesmo comando fica disponi
 
 `neural_fights/data/armas.json`, `neural_fights/data/personagens.json` e `neural_fights/data/fixtures/` são o catálogo e as fixtures imutáveis distribuídos com a aplicação. Enquanto não existir uma cópia local completa, as leituras usam esse catálogo empacotado. A primeira gravação cria, em uma única transação, `armas.json` e `personagens.json` no diretório de dados do usuário; a partir daí, as leituras usam o par local. Se apenas um dos dois arquivos locais existir, a aplicação acusa o snapshot incompleto em vez de misturar versões.
 
+As operações de persistência usam escrita temporária, substituição
+atômica, rollback do par e lock entre threads e processos. JSON com números
+não finitos ou chaves duplicadas é recusado na fronteira de leitura.
+
 Por padrão, os dados de execução ficam em `%LOCALAPPDATA%\neural-fights` no Windows ou `$XDG_STATE_HOME/neural-fights` no Linux. Use `NEURAL_FIGHTS_RUNTIME_DIR` para isolar esse estado, por exemplo em testes ou automações. Configurações de luta e overrides de áudio também ficam nessa área gravável; nenhum fluxo normal modifica os assets em `neural_fights/data/` ou `neural_fights/sounds/`.
 
 Os arquivos `test_sound.py`, `test_jump_sound.py` e demais demonstracoes na raiz sao diagnosticos manuais. Eles sao seguros para importacao, mas recursos de audio ou janela so devem ser iniciados executando esses arquivos diretamente.

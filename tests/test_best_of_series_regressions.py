@@ -204,7 +204,8 @@ class SimulatorBestOfIntegrationTests(unittest.TestCase):
         runner = TournamentRunner(Tournament())
 
         with patch(
-            "neural_fights.tournament.tournament_mode.database.salvar_match_config"
+            "neural_fights.tournament.tournament_mode.database.salvar_match_config",
+            side_effect=lambda _config, **kwargs: kwargs["arquivo"],
         ) as save_config:
             runner.setup_match_config("A", "B")
 

@@ -211,6 +211,22 @@ class AdvancedSkillRegressionTests(unittest.TestCase):
         self.assertEqual(len(fighter.buffer_areas), 1)
         self.assertEqual(fighter.buffer_areas[0].dano, 15.0)
         self.assertEqual(fighter.invencivel_timer, 0.3)
+        self.assertEqual(fighter.invulnerabilidade_skill_timer, 0.3)
+
+        attacker = self._fighter("Attacker")
+        bypass_attempt = fighter.resolver_impacto(
+            10.0,
+            0.0,
+            0.0,
+            atacante=attacker,
+            fonte_impacto=object(),
+            ignorar_invencibilidade=True,
+        )
+        self.assertFalse(bypass_attempt.atingiu)
+        self.assertEqual(
+            bypass_attempt.bloqueado_por,
+            "invulnerabilidade_skill",
+        )
 
     def test_shatter_rewards_and_consumes_freeze_once(self) -> None:
         owner = self._fighter("Caster", x=5.0)

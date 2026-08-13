@@ -1017,6 +1017,7 @@ class SistemaHitbox:
     def limpar_historico(self):
         """Limpa histórico de hits"""
         self.hits_registrados.clear()
+        self.ultimo_ataque_info.clear()
 
 
 # Instância global do sistema

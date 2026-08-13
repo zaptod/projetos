@@ -88,6 +88,7 @@ class Lutador:
         self.vel = [0.0, 0.0]
         self.z = 0.0
         self.vel_z = 0.0
+        self.pulo_bloqueado_timer = 0.0
         self.raio_fisico = (self.dados.tamanho / 4.0)
         
         # Carrega dados da classe
@@ -210,6 +211,10 @@ class Lutador:
         # Estado de combate
         self.morto = False
         self.invencivel_timer = 0.0
+        # Invulnerabilidade concedida por uma skill é diferente do curto
+        # intervalo anti-hit gerado por impactos. Fontes multi-hit podem
+        # ignorar apenas o segundo, nunca atravessar a primeira.
+        self.invulnerabilidade_skill_timer = 0.0
         self.flash_timer = 0.0
         self.flash_cor = (255, 255, 255)  # Cor do flash de dano
         self.stun_timer = 0.0
@@ -311,6 +316,17 @@ class Lutador:
         self.brain = AIBrain(self)
         self._inimigo_atual = None
 
+    def configurar_rng_runtime(self, rng):
+        """Injeta o fluxo pseudoaleatorio exclusivo deste lutador e de sua IA."""
+
+        self.rng_runtime = rng
+        brain = getattr(self, "brain", None)
+        if brain is not None:
+            brain.rng = rng
+            strategy = getattr(brain, "skill_strategy", None)
+            if strategy is not None:
+                strategy.rng = rng
+
     def _calcular_vida_max(self):
         """Usa o contrato canônico do modelo, preservando fixtures legadas."""
         calcular = getattr(self.dados, "get_vida_max", None)
@@ -380,6 +396,23 @@ class Lutador:
         """Itera apenas buffs ainda ativos, inclusive entre dois updates."""
         return (buff for buff in self.buffs_ativos if getattr(buff, "ativo", True))
 
+    def _consumir_buffs_de_proximo_dano(self):
+        """Consome apenas gatilhos one-shot depois de dano realmente aceito."""
+
+        consumidos = 0
+        for buff in tuple(self._buffs_validos()):
+            if not getattr(buff, "consome_ao_causar_dano", False):
+                continue
+            buff.ativo = False
+            consumidos += 1
+        if consumidos:
+            self.buffs_ativos = [
+                buff
+                for buff in self.buffs_ativos
+                if getattr(buff, "ativo", True)
+            ]
+        return consumidos
+
     def _registrar_estado_historico(self):
         """Guarda o estado reversivel sem incluir recursos ou cooldowns."""
         snapshot = {
@@ -444,6 +477,16 @@ class Lutador:
             bool(getattr(buff, "imune_ground", False))
             for buff in self._buffs_validos()
         )
+
+    def impedir_pulo(self, duracao):
+        """Bloqueia novas impulsões verticais enquanto o campo estiver ativo."""
+
+        duracao = max(0.0, float(duracao))
+        self.pulo_bloqueado_timer = max(self.pulo_bloqueado_timer, duracao)
+        self.vel_z = min(self.vel_z, 0.0)
+
+    def pode_pular(self):
+        return self.z == 0 and self.pulo_bloqueado_timer <= 0.0
 
     def _altura_voo_ativa(self):
         alturas = [
@@ -905,7 +948,7 @@ class Lutador:
         if "Assassino" in self.classe_nome:
             critico_chance += 0.20  # Reduzido de 0.25
         
-        is_critico = random.random() < critico_chance
+        is_critico = self.rng_runtime.random() < critico_chance
         if is_critico:
             dano *= 1.5  # Reduzido de 2.0
         
@@ -944,7 +987,7 @@ class Lutador:
                 metadata={"tipo_fonte": "encantamento"},
             )
             
-            if random.random() > 0.5:
+            if self.rng_runtime.random() > 0.5:
                 continue
             
             if efeito == "burn":
@@ -985,6 +1028,16 @@ class Lutador:
         return bool(
             (channel is not None and getattr(channel, "ativo", False))
             or getattr(self, "canalizando", False)
+        )
+
+    def canalizacao_imobiliza(self):
+        """Separa bloqueio de acoes do bloqueio opcional de movimento."""
+
+        channel = getattr(self, "channel_ativo", None)
+        return bool(
+            channel is not None
+            and getattr(channel, "ativo", False)
+            and getattr(channel, "imobiliza", False)
         )
 
     def pode_iniciar_acao(self, *, permitir_medo=False):
@@ -1130,9 +1183,17 @@ class Lutador:
             area = AreaEffect(nome_skill, destino[0], destino[1], self)
             area.dano = dano * mod_dano_magico
             area.raio = 1.5 * mod_area_magica
+            area.raio_atual = area.raio
+            if nome_skill == "Avanço Brutal":
+                area.segmento_impacto = (inicio, destino)
+                area.raio_segmento = max(0.5, self.raio_fisico)
             self.buffer_areas.append(area)
         if data.get("invencivel"):
             self.invencivel_timer = max(self.invencivel_timer, 0.3)
+            self.invulnerabilidade_skill_timer = max(
+                self.invulnerabilidade_skill_timer,
+                0.3,
+            )
 
     def _executar_dash_skill(self, nome_skill, data, efeito, alvo_troca, rad):
         if efeito == "TROCAR_POS":
@@ -1188,7 +1249,7 @@ class Lutador:
 
     def usar_skill_arma(self, skill_idx=None, alvo=None):
         """Usa a skill equipada na arma"""
-        if self.silenciado_timer > 0 or not self.pode_iniciar_acao():
+        if self.silenciado_timer > 0:
             return False
 
         from neural_fights.core.combat import (
@@ -1218,6 +1279,10 @@ class Lutador:
             return False
         
         data = skill_info["data"]
+        if not self.pode_iniciar_acao(
+            permitir_medo=bool(data.get("remove_todos_debuffs", False)),
+        ):
+            return False
         if self._skill_eh_passiva_de_morte(data):
             return False
         if data.get("reverte_estado") is not None and not self.pode_reverter_estado(
@@ -1239,7 +1304,7 @@ class Lutador:
         
         if self.arma_passiva and self.arma_passiva.get("efeito") == "no_mana_cost":
             chance = self.arma_passiva.get("valor", 0) / 100.0
-            if random.random() < chance:
+            if self.rng_runtime.random() < chance:
                 custo_real = 0
         
         custo_vida = data.get("custo_vida", 0) or data.get("custo_vida_percent", 0) * self.vida_max
@@ -1676,6 +1741,11 @@ class Lutador:
         
         if self.invencivel_timer > 0:
             self.invencivel_timer -= dt
+        if self.invulnerabilidade_skill_timer > 0:
+            self.invulnerabilidade_skill_timer = max(
+                0.0,
+                self.invulnerabilidade_skill_timer - dt,
+            )
         if self._fontes_impacto_recentes:
             self._fontes_impacto_recentes = {
                 fonte: restante - dt
@@ -1780,6 +1850,11 @@ class Lutador:
             tempo_restante = getattr(self, timer_debuff, 0.0)
             if tempo_restante > 0:
                 setattr(self, timer_debuff, max(0.0, tempo_restante - dt))
+        if self.pulo_bloqueado_timer > 0.0:
+            self.pulo_bloqueado_timer = max(
+                0.0,
+                self.pulo_bloqueado_timer - dt,
+            )
         self._sincronizar_modificadores_debuff()
         self._atualizar_efeitos_especiais(dt)
         
@@ -1845,7 +1920,7 @@ class Lutador:
         vel_giro = 20.0 if "Assassino" in self.classe_nome or "Ninja" in self.classe_nome else 10.0
         self.angulo_olhar += diff * vel_giro * dt
 
-        if self.dormindo or self.esta_canalizando():
+        if self.dormindo or self.canalizacao_imobiliza():
             self.vel[0] = 0.0
             self.vel[1] = 0.0
         elif self.stun_timer <= 0:
@@ -1978,7 +2053,7 @@ class Lutador:
 
     def executar_movimento(self, dt, distancia):
         """Executa movimento baseado na ação da IA - v8.0 com comportamento humano"""
-        if self.dormindo or self.esta_canalizando():
+        if self.dormindo or self.canalizacao_imobiliza():
             self.vel[0] = 0.0
             self.vel[1] = 0.0
             return
@@ -2013,17 +2088,17 @@ class Lutador:
             
             # v8.0: Micro-ajustes durante ataques para parecer mais humano
             if hasattr(self.brain, 'micro_ajustes'):
-                mx += random.uniform(-0.05, 0.05)
-                my += random.uniform(-0.05, 0.05)
+                mx += self.rng_runtime.uniform(-0.05, 0.05)
+                my += self.rng_runtime.uniform(-0.05, 0.05)
             
         elif acao == "COMBATE":
             mx = math.cos(rad) * 0.6
             my = math.sin(rad) * 0.6
             # v8.0: Mais variação no combate
             chance_strafe = 0.35 if "ESPACAMENTO_MESTRE" in self.brain.tracos else 0.3
-            if random.random() < chance_strafe:
+            if self.rng_runtime.random() < chance_strafe:
                 strafe_rad = math.radians(self.angulo_olhar + (90 * self.brain.dir_circular))
-                strafe_mult = random.uniform(0.25, 0.4)
+                strafe_mult = self.rng_runtime.uniform(0.25, 0.4)
                 mx += math.cos(strafe_rad) * strafe_mult
                 my += math.sin(strafe_rad) * strafe_mult
                 
@@ -2034,8 +2109,8 @@ class Lutador:
                 mx *= 1.3
                 my *= 1.3
             # v8.0: Desvio diagonal ao fugir para parecer mais esperto
-            if random.random() < 0.3:
-                lateral = random.choice([-1, 1]) * self.brain.dir_circular
+            if self.rng_runtime.random() < 0.3:
+                lateral = self.rng_runtime.choice([-1, 1]) * self.brain.dir_circular
                 rad_lat = math.radians(self.angulo_olhar + (30 * lateral))
                 mx += math.cos(rad_lat) * 0.3
                 my += math.sin(rad_lat) * 0.3
@@ -2066,7 +2141,7 @@ class Lutador:
             
         elif acao == "FLANQUEAR":
             # v8.0: Flanqueio mais dinâmico
-            angulo_flank = 50 + random.uniform(-10, 10)  # Variação humana
+            angulo_flank = 50 + self.rng_runtime.uniform(-10, 10)
             rad_f = math.radians(self.angulo_olhar + (angulo_flank * self.brain.dir_circular))
             mx = math.cos(rad_f)
             my = math.sin(rad_f)
@@ -2075,14 +2150,16 @@ class Lutador:
             mx = math.cos(rad) * 0.55
             my = math.sin(rad) * 0.55
             # v8.0: Pequenos movimentos laterais ao aproximar
-            if random.random() < 0.2:
-                rad_lat = math.radians(self.angulo_olhar + (90 * random.choice([-1, 1])))
+            if self.rng_runtime.random() < 0.2:
+                rad_lat = math.radians(
+                    self.angulo_olhar + (90 * self.rng_runtime.choice([-1, 1]))
+                )
                 mx += math.cos(rad_lat) * 0.15
                 my += math.sin(rad_lat) * 0.15
             
         elif acao == "POKE":
             # v8.0: Poke mais inteligente
-            if random.random() < 0.6:
+            if self.rng_runtime.random() < 0.6:
                 mx = math.cos(rad) * 0.8
                 my = math.sin(rad) * 0.8
             else:
@@ -2091,7 +2168,7 @@ class Lutador:
                 my = -math.sin(rad) * 0.4
                 
         elif acao == "BLOQUEAR":
-            if random.random() < 0.4 and distancia > 2.5:
+            if self.rng_runtime.random() < 0.4 and distancia > 2.5:
                 strafe_rad = math.radians(self.angulo_olhar + (90 * self.brain.dir_circular))
                 mx = math.cos(strafe_rad) * 0.2
                 my = math.sin(strafe_rad) * 0.2
@@ -2105,40 +2182,44 @@ class Lutador:
             mx = math.cos(rad) * 1.1
             my = math.sin(rad) * 1.1
             # Pequenos ajustes laterais
-            if random.random() < 0.25:
+            if self.rng_runtime.random() < 0.25:
                 rad_lat = math.radians(self.angulo_olhar + (30 * self.brain.dir_circular))
                 mx += math.cos(rad_lat) * 0.2
                 my += math.sin(rad_lat) * 0.2
             
         # Sistema de pulos
-        if "SALTADOR" in self.brain.tracos and self.z == 0:
+        if "SALTADOR" in self.brain.tracos and self.pode_pular():
             chance_pulo = 0.08
             if distancia < 3.0:
                 chance_pulo = 0.12
             if acao in ["RECUAR", "FUGIR"]:
                 chance_pulo = 0.15
-            if random.random() < chance_pulo:
-                self.vel_z = random.uniform(10.0, 14.0)
+            if self.rng_runtime.random() < chance_pulo:
+                self.vel_z = self.rng_runtime.uniform(10.0, 14.0)
         
-        elif acao in ["RECUAR", "FUGIR"] and self.z == 0:
+        elif acao in ["RECUAR", "FUGIR"] and self.pode_pular():
             chance = 0.03
             if self.brain is not None and self.brain.medo > 0.5:
                 chance = 0.06
-            if random.random() < chance:
-                self.vel_z = random.uniform(9.0, 12.0)
+            if self.rng_runtime.random() < chance:
+                self.vel_z = self.rng_runtime.uniform(9.0, 12.0)
         
         # v8.0: Pulo ofensivo mais inteligente
         ofensivos = ["MATAR", "ESMAGAR", "ATAQUE_RAPIDO", "CONTRA_ATAQUE"]
-        if acao in ofensivos and 3.5 < distancia < 7.0 and self.z == 0:
+        if acao in ofensivos and 3.5 < distancia < 7.0 and self.pode_pular():
             chance = 0.025
             if "ACROBATA" in self.brain.tracos:
                 chance = 0.05
-            if random.random() < chance:
-                self.vel_z = random.uniform(12.0, 15.0)
+            if self.rng_runtime.random() < chance:
+                self.vel_z = self.rng_runtime.uniform(12.0, 15.0)
                 self.modo_ataque_aereo = True
         
-        if self.z == 0 and distancia < 5.0 and random.random() < 0.005:
-            self.vel_z = random.uniform(8.0, 11.0)
+        if (
+            self.pode_pular()
+            and distancia < 5.0
+            and self.rng_runtime.random() < 0.005
+        ):
+            self.vel_z = self.rng_runtime.uniform(8.0, 11.0)
 
         self.vel[0] += mx * acc * dt
         self.vel[1] += my * acc * dt
@@ -2251,7 +2332,7 @@ class Lutador:
             if arma_tipo in ["Arremesso", "Arco"] and distancia < alcance_ataque:
                 # Arqueiros atiram mesmo fugindo (desde que não esteja em cooldown)
                 if self.brain.acao_atual in ["RECUAR", "FUGIR", "APROXIMAR"]:
-                    if random.random() < 0.7:  # 70% chance de atirar mesmo recuando
+                    if self.rng_runtime.random() < 0.7:  # 70% chance de atirar mesmo recuando
                         deve_atacar = True
 
             if deve_atacar and abs(self.z - inimigo.z) < 1.5:
@@ -2275,11 +2356,11 @@ class Lutador:
                 elif arma_tipo == "Mágica":
                     self._disparar_orbes(inimigo)
                 
-                base_cd = 0.5 + random.random() * 0.5
+                base_cd = 0.5 + self.rng_runtime.random() * 0.5
                 if arma_tipo in ["Arremesso", "Arco"]:
-                    base_cd = 0.8 + random.random() * 0.4
+                    base_cd = 0.8 + self.rng_runtime.random() * 0.4
                 elif arma_tipo == "Mágica":
-                    base_cd = 1.0 + random.random() * 0.5
+                    base_cd = 1.0 + self.rng_runtime.random() * 0.5
                 if "Assassino" in self.classe_nome or "Ninja" in self.classe_nome:
                     base_cd *= 0.7
                 elif "Colosso" in self.brain.arquetipo:
@@ -2378,7 +2459,7 @@ class Lutador:
         angulo_mira = self.get_angulo_mira(angulo_mira)
         
         # Imprecisão pequena (arqueiro é preciso!)
-        angulo_mira += random.uniform(-2, 2)
+        angulo_mira += self.rng_runtime.uniform(-2, 2)
         
         # === SPAWN DA FLECHA: Sai do CORPO do arqueiro (não do range!) ===
         # A flecha nasce na beirada do corpo do arqueiro, na direção da mira
@@ -2452,9 +2533,18 @@ class Lutador:
         compartilhar_link=True,
         flash_cor=(255, 100, 255),
         contexto_dano=None,
+        ignorar_invulnerabilidade_skill=False,
     ):
-        """Reduz HP sem defesa/i-frame; usado por DoT, reflexo e Link."""
-        if self.morto or dano <= 0.0:
+        """Reduz HP sem defesa/recovery; invulnerabilidade segue absoluta."""
+        if (
+            self.morto
+            or dano <= 0.0
+            or (
+                self.invulnerabilidade_skill_timer > 0.0
+                and not ignorar_invulnerabilidade_skill
+            )
+        ):
+            self.ultimo_dano_recebido = 0.0
             return 0.0
 
         dano_proprio = max(0.0, dano)
@@ -2500,10 +2590,17 @@ class Lutador:
         percentual_efeito=None,
         fonte_impacto=None,
         ignorar_invencibilidade=False,
+        gerar_invencibilidade=True,
         ignorar_escudo=False,
         metadata_impacto=None,
+        ignorar_recuperacao_impacto=None,
+        gerar_recuperacao_impacto=None,
     ):
         """Aplica um impacto e retorna seu resultado sem depender de timers."""
+        if ignorar_recuperacao_impacto is None:
+            ignorar_recuperacao_impacto = ignorar_invencibilidade
+        if gerar_recuperacao_impacto is None:
+            gerar_recuperacao_impacto = gerar_invencibilidade
         self.tomar_dano(
             dano,
             empurrao_x,
@@ -2516,8 +2613,11 @@ class Lutador:
             percentual_efeito=percentual_efeito,
             fonte_impacto=fonte_impacto,
             ignorar_invencibilidade=ignorar_invencibilidade,
+            gerar_invencibilidade=gerar_invencibilidade,
             ignorar_escudo=ignorar_escudo,
             metadata_impacto=metadata_impacto,
+            ignorar_recuperacao_impacto=ignorar_recuperacao_impacto,
+            gerar_recuperacao_impacto=gerar_recuperacao_impacto,
         )
         return self.ultimo_resultado_impacto
 
@@ -2534,10 +2634,18 @@ class Lutador:
         percentual_efeito=None,
         fonte_impacto=None,
         ignorar_invencibilidade=False,
+        gerar_invencibilidade=True,
         ignorar_escudo=False,
         metadata_impacto=None,
+        ignorar_recuperacao_impacto=None,
+        gerar_recuperacao_impacto=None,
     ):
         """Recebe dano com suporte a efeitos e reflexão"""
+
+        if ignorar_recuperacao_impacto is None:
+            ignorar_recuperacao_impacto = ignorar_invencibilidade
+        if gerar_recuperacao_impacto is None:
+            gerar_recuperacao_impacto = gerar_invencibilidade
 
         metadata_impacto = dict(metadata_impacto or {})
         contexto_dano = DamageContext.de_impacto(
@@ -2573,7 +2681,13 @@ class Lutador:
                 bloqueado_por="fonte_duplicada",
             )
             return False
-        if self.invencivel_timer > 0 and not ignorar_invencibilidade:
+        if self.invulnerabilidade_skill_timer > 0:
+            self.ultimo_resultado_impacto = ImpactResult(
+                False,
+                bloqueado_por="invulnerabilidade_skill",
+            )
+            return False
+        if self.invencivel_timer > 0 and not ignorar_recuperacao_impacto:
             self.ultimo_resultado_impacto = ImpactResult(
                 False,
                 bloqueado_por="invencibilidade",
@@ -2611,6 +2725,8 @@ class Lutador:
                     percentual_efeito=percentual_efeito,
                     fonte_impacto=object(),
                     metadata_impacto=metadata_refletida,
+                    ignorar_recuperacao_impacto=ignorar_recuperacao_impacto,
+                    gerar_recuperacao_impacto=gerar_recuperacao_impacto,
                 )
             self.ultimo_resultado_impacto = ImpactResult(
                 False,
@@ -2695,7 +2811,7 @@ class Lutador:
 
         dano_final *= max(0.0, float(getattr(self, "mod_defesa", 1.0)))
         
-        if "Ladino" in self.classe_nome and random.random() < 0.2:
+        if "Ladino" in self.classe_nome and self.rng_runtime.random() < 0.2:
             self.ultimo_resultado_impacto = ImpactResult(False, bloqueado_por="esquiva")
             return False
         
@@ -2743,6 +2859,14 @@ class Lutador:
             flash_cor=(255, 255, 255),
             contexto_dano=contexto_dano,
         )
+        if dano_final > 0.0 and atacante is not None and atacante is not self:
+            consumir_buff = getattr(
+                atacante,
+                "_consumir_buffs_de_proximo_dano",
+                None,
+            )
+            if callable(consumir_buff):
+                consumir_buff()
         if marca_ativa and dano_final > 0.0:
             self._consumir_marca()
         
@@ -2774,7 +2898,8 @@ class Lutador:
             if atacante.vida <= 0:
                 atacante.morrer(contexto_dano=contexto_reflexo)
 
-        self.invencivel_timer = 0.3
+        if gerar_recuperacao_impacto:
+            self.invencivel_timer = 0.3
 
         if atacante is not None and dano_final > 0.0 and not atacante.morto:
             get_buffs_atacante = getattr(atacante, "_buffs_validos", None)
@@ -3353,7 +3478,7 @@ class Lutador:
             hp_pct = self.vida / self.vida_max
             dano *= 1.0 + (1.0 - hp_pct) * 0.5
         
-        if "Assassino" in self.classe_nome and random.random() < 0.25:
+        if "Assassino" in self.classe_nome and self.rng_runtime.random() < 0.25:
             dano *= 2.0
         
         return dano

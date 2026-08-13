@@ -74,6 +74,7 @@ SKILL_DB = {
         "tipo": "SUMMON", "dano": 25.0, "cor": (255, 180, 50), 
         "custo": 60.0, "cooldown": 30.0, "elemento": "FOGO",
         "duracao": 15.0, "summon_vida": 80.0, "summon_dano": 15.0,
+        "summon_tipo": "FENIX",
         "descricao": "Invoca uma fênix que ataca e revive uma vez"
     },
     "Combustão Espontânea": {
@@ -419,7 +420,7 @@ SKILL_DB = {
         "dano": 60.0, "raio_area": 6.0, "cor": (100, 200, 50),
         "custo": 65.0, "cooldown": 40.0, "elemento": "NATUREZA",
         "efeito": "ENRAIZADO", "efeito2": "ENVENENADO",
-        "delay": 1.0, "ondas": 3,
+        "delay": 1.0, "duracao": 0.5, "ondas": 3,
         "descricao": "3 ondas de natureza devastadora"
     },
     
@@ -612,6 +613,7 @@ SKILL_DB = {
         "tipo": "AREA", "dano": 80.0, "raio_area": 6.0, "cor": (255, 0, 150),
         "custo": 70.0, "cooldown": 60.0, "elemento": "CAOS",
         "delay": 3.0, "meteoros_aleatorios": 10,
+        "dano_meteoro": 30.0, "raio_meteoro": 3.0,
         "descricao": "Chuva de meteoros caóticos"
     },
     
@@ -636,6 +638,7 @@ SKILL_DB = {
     "Golpe do Executor": {
         "tipo": "BUFF", "cor": (150, 0, 0), "custo": 20.0, "cooldown": 15.0,
         "duracao": 3.0, "buff_dano": 2.0,
+        "consome_ao_causar_dano": True,
         "descricao": "Próximo ataque causa dano dobrado"
     },
     "Grito de Guerra": {
@@ -653,6 +656,7 @@ SKILL_DB = {
         "tipo": "AREA", "ground": True,
         "dano": 45.0, "raio_area": 4.0, "cor": (150, 100, 50),
         "custo": 35.0, "cooldown": 15.0, "efeito": "KNOCK_UP",
+        "duracao": 0.5,
         "descricao": "Abala o chão derrubando inimigos"
     },
     "Provocar": {
@@ -707,7 +711,8 @@ SKILL_DB = {
     },
     "Cópia Sombria": {
         "tipo": "SUMMON", "cor": (100, 100, 100), "custo": 45.0, "cooldown": 30.0,
-        "duracao": 8.0, "copia_caster": True,
+        "duracao": 8.0, "summon_vida": 50.0, "summon_dano": 10.0,
+        "copia_caster": True,
         "descricao": "Cria uma cópia que repete seus ataques básicos"
     },
     "Link de Vida": {

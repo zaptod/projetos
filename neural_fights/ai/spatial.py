@@ -23,8 +23,9 @@ class SpatialAwarenessSystem:
     Gerencia awareness de paredes, obstáculos e posicionamento tático.
     """
     
-    def __init__(self, parent):
+    def __init__(self, parent, rng=None):
         self.parent = parent
+        self.rng = rng if rng is not None else getattr(parent, "rng_runtime", random)
         
         # Estado de consciência espacial
         self.consciencia = {
@@ -320,7 +321,9 @@ class SpatialAwarenessSystem:
         
         # Procura melhor direção alternativa
         prioridade = ["esquerda", "direita", "tras"]
-        random.shuffle(prioridade[:2])  # Randomiza esq/dir
+        laterais = prioridade[:2]
+        self.rng.shuffle(laterais)
+        prioridade[:2] = laterais
         
         for direcao in prioridade:
             if esp["caminho_livre"][direcao]:

@@ -24,7 +24,7 @@ class SkillAuditCLITests(unittest.TestCase):
     def _empty_evidence_mapping():
         return {
             field_name: ()
-            for field_name in auditoria_skills.RUNTIME_EVIDENCE_FIELDS
+            for field_name in auditoria_skills.RUNTIME_EVIDENCE_KEYS
         }
 
     @staticmethod
@@ -99,6 +99,14 @@ class SkillAuditCLITests(unittest.TestCase):
         self.assertIn("Warnings: 0", output)
         self.assertNotIn("UnicodeEncodeError", result.stderr.decode("cp1252"))
 
+    def test_unicode_argument_error_is_cp1252_safe(self):
+        result = self._run_cli("--opcao-漢字", cp1252=True)
+
+        self.assertEqual(result.returncode, 2)
+        output = result.stderr.decode("cp1252")
+        self.assertIn("\\u6f22\\u5b57", output)
+        self.assertNotIn("UnicodeEncodeError", output)
+
     def test_checkout_mode_explicitly_verifies_evidence_sources(self):
         result = self._run_cli(
             "--json",
@@ -111,7 +119,7 @@ class SkillAuditCLITests(unittest.TestCase):
         self.assertTrue(report["evidence_sources_verified"])
         self.assertEqual(
             set(report["verified_runtime_evidence"]),
-            set(auditoria_skills.RUNTIME_EVIDENCE_FIELDS),
+            set(auditoria_skills.RUNTIME_EVIDENCE_KEYS),
         )
 
     def test_strict_mode_still_fails_when_runtime_evidence_is_missing(self):
@@ -153,6 +161,24 @@ class SkillAuditCLITests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertGreater(report["errors"], 0)
         self.assertEqual(stderr.getvalue(), "")
+
+    def test_duplicate_literal_keys_are_an_input_error_instead_of_last_write_wins(self):
+        duplicate_catalog = '''SKILL_DB = {
+    "Nenhuma": {"tipo": "NADA", "custo": 0, "cooldown": 0},
+    "Duplicada": {
+        "tipo": "BUFF", "custo": 1, "cooldown": 1,
+        "descricao": "primeira", "descricao": "segunda", "cor": (1, 2, 3),
+    },
+}
+'''
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            catalog_path = Path(temporary_directory) / "skills.py"
+            catalog_path.write_text(duplicate_catalog, encoding="utf-8")
+            result = self._run_cli("--catalog", str(catalog_path), "--json")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, b"")
+        self.assertIn(b"chave literal duplicada", result.stderr)
 
     def test_text_report_does_not_claim_runtime_functionality(self):
         result = self._run_cli()
@@ -243,26 +269,79 @@ class SkillAuditCLITests(unittest.TestCase):
             )
         )
 
+    def test_evidence_is_partitioned_when_a_field_has_distinct_runtime_paths(self):
+        self.assertNotIn("dano_contato", auditoria_skills.RUNTIME_EVIDENCE_KEYS)
+        self.assertLessEqual(
+            {
+                "dano_contato@BUFF",
+                "dano_contato@TRAP",
+                "dano_contato@TRANSFORM",
+            },
+            auditoria_skills.RUNTIME_EVIDENCE_KEYS,
+        )
+
+        mapping = self._empty_evidence_mapping()
+        mapping["dano_contato"] = ()
+        _, findings = auditoria_skills.validate_runtime_evidence(mapping)
+        self.assertTrue(
+            any(
+                finding.code == "unknown-evidence-field"
+                and "dano_contato" in finding.message
+                for finding in findings
+            )
+        )
+
+    def test_trap_contact_branch_requires_its_own_runtime_evidence(self):
+        catalog, contracts, evidence = auditoria_skills.load_sources(
+            auditoria_skills.DEFAULT_CATALOG,
+            auditoria_skills.DEFAULT_STATUS_CONTRACT,
+            auditoria_skills.DEFAULT_EVIDENCE_MANIFEST,
+        )
+        evidence = dict(evidence)
+        evidence["dano_contato@TRAP"] = ()
+        report = auditoria_skills.audit_catalog(
+            catalog,
+            contracts,
+            evidence,
+            verify_evidence_sources=True,
+        )
+
+        self.assertTrue(
+            any(
+                finding.code == "runtime-evidence-required"
+                and finding.skill == "Muralha de Gelo"
+                and "dano_contato@TRAP" in finding.message
+                for finding in report.findings
+            )
+        )
+
     def test_recent_runtime_contracts_have_explicit_verified_evidence(self):
         expected_references = {
             "afeta_caster": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_time_stop_consumes_duration_and_caster_targeting_contracts",
             "ativa_ao_morrer": "tests.test_death_skill_regressions:DeathSkillRegressionTests.test_last_breath_has_priority_then_resurrection_spends_real_resources",
+            "aviso_visual": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_delayed_area_exposes_visual_warning_before_activation",
             "bloqueia_projeteis": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_ice_wall_intercepts_fast_hostile_projectiles_until_destroyed",
             "bonus_area": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_amplification_is_a_cast_snapshot_for_magic_damage_and_area",
             "bonus_dano_magico": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_amplification_is_a_cast_snapshot_for_magic_damage_and_area",
-            "bonus_vs_trevas": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_holy_bonuses_apply_only_to_explicit_dark_affinity",
+            "bonus_vs_trevas@BEAM": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_holy_bonuses_apply_only_to_explicit_dark_affinity",
+            "bonus_vs_trevas@PROJETIL": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_holy_bonuses_apply_only_to_explicit_dark_affinity",
+            "chance_stun": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_area_chance_stun_controls_primary_paralysis",
             "cura_percent": "tests.test_death_skill_regressions:DeathSkillRegressionTests.test_last_breath_has_priority_then_resurrection_spends_real_resources",
             "cura_por_morte": "tests.test_death_skill_regressions:DeathSkillRegressionTests.test_harvest_heals_flat_amount_only_after_a_terminal_owned_kill",
-            "dano_contato": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_ember_shield_retaliates_once_per_accepted_melee_source",
+            "dano_contato@BUFF": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_ember_shield_retaliates_once_per_accepted_melee_source",
+            "dano_meteoro": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_meteor_shower_emits_every_configured_meteor_with_explicit_payload",
             "delay_saida": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_shadow_portal_has_delayed_untargetable_exit_and_cast_parity",
             "duracao_stop": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_time_stop_consumes_duration_and_caster_targeting_contracts",
             "esquiva_garantida": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_prediction_consumes_only_two_accepted_hostile_impacts",
             "forca_empurrao": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_repulsion_consumes_configured_force_without_changing_damage",
             "invisivel_durante": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_shadow_portal_has_delayed_untargetable_exit_and_cast_parity",
+            "meteoros_aleatorios": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_meteor_shower_emits_every_configured_meteor_with_explicit_payload",
+            "ondas": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_area_waves_emit_every_configured_wave_with_step_independence",
             "pilares": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_celestial_pillars_share_one_impact_identity",
             "raio_pilar": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_celestial_pillars_share_one_impact_identity",
+            "raio_meteoro": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_meteor_shower_emits_every_configured_meteor_with_explicit_payload",
             "revive_hp_percent": "tests.test_death_skill_regressions:DeathSkillRegressionTests.test_last_breath_has_priority_then_resurrection_spends_real_resources",
-            "stacks_por_segundo": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_toxic_cloud_stacks_only_for_each_targets_exposure",
+            "stacks_por_segundo": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_area_status_stacks_ignore_only_hit_recovery_with_coarse_steps",
             "ve_ataques": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_prediction_consumes_only_two_accepted_hostile_impacts",
             "vida_estrutura": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_ice_wall_intercepts_fast_hostile_projectiles_until_destroyed",
         }
@@ -280,7 +359,7 @@ class SkillAuditCLITests(unittest.TestCase):
         )
         self.assertLessEqual(
             set(expected_references),
-            auditoria_skills.RUNTIME_EVIDENCE_FIELDS,
+            auditoria_skills.RUNTIME_EVIDENCE_KEYS,
         )
         for field_name, reference in expected_references.items():
             with self.subTest(field=field_name):
@@ -292,6 +371,19 @@ class SkillAuditCLITests(unittest.TestCase):
             auditoria_skills.DEFAULT_STATUS_CONTRACT,
             auditoria_skills.DEFAULT_EVIDENCE_MANIFEST,
         )
+        skill_with = {
+            field_name: next(
+                name for name, record in catalog.items() if field_name in record
+            )
+            for field_name in (
+                "aviso_visual",
+                "chance_stun",
+                "dano_meteoro",
+                "meteoros_aleatorios",
+                "ondas",
+                "raio_meteoro",
+            )
+        }
         cases = (
             ("Último Suspiro", "cura_percent", 1.5, "invalid-fraction"),
             (
@@ -319,6 +411,28 @@ class SkillAuditCLITests(unittest.TestCase):
             ("Portal Sombrio", "delay_saida", 0.0, "invalid-invisible-exit-delay"),
             ("Previsão", "esquiva_garantida", 0, "invalid-dodge-charges"),
             ("Previsão", "ve_ataques", "yes", "invalid-boolean"),
+            (skill_with["aviso_visual"], "aviso_visual", "yes", "invalid-boolean"),
+            (skill_with["chance_stun"], "chance_stun", 0.0, "invalid-fraction"),
+            (skill_with["chance_stun"], "chance_stun", 1.1, "invalid-fraction"),
+            (skill_with["ondas"], "ondas", True, "invalid-wave-count"),
+            (
+                skill_with["meteoros_aleatorios"],
+                "meteoros_aleatorios",
+                1.5,
+                "invalid-meteor-count",
+            ),
+            (
+                skill_with["dano_meteoro"],
+                "dano_meteoro",
+                0.0,
+                "non-positive-number",
+            ),
+            (
+                skill_with["raio_meteoro"],
+                "raio_meteoro",
+                False,
+                "invalid-number",
+            ),
         )
 
         for skill, field, value, expected_code in cases:
@@ -337,12 +451,154 @@ class SkillAuditCLITests(unittest.TestCase):
                     )
                 )
 
+    def test_area_runtime_fields_reject_non_area_skill_types(self):
+        catalog, contracts, evidence = auditoria_skills.load_sources(
+            auditoria_skills.DEFAULT_CATALOG,
+            auditoria_skills.DEFAULT_STATUS_CONTRACT,
+            auditoria_skills.DEFAULT_EVIDENCE_MANIFEST,
+        )
+        valid_values = {
+            "aviso_visual": False,
+            "chance_stun": 0.5,
+            "dano_meteoro": 1.0,
+            "meteoros_aleatorios": 1,
+            "ondas": 2,
+            "raio_meteoro": 1.0,
+        }
+
+        for field_name, value in valid_values.items():
+            with self.subTest(field=field_name):
+                invalid_catalog = copy.deepcopy(catalog)
+                invalid_catalog["Nenhuma"][field_name] = value
+                report = auditoria_skills.audit_catalog(
+                    invalid_catalog,
+                    contracts,
+                    evidence,
+                )
+
+                self.assertTrue(
+                    any(
+                        finding.code == "invalid-advanced-field-type"
+                        and finding.skill == "Nenhuma"
+                        and field_name in finding.message
+                        for finding in report.findings
+                    )
+                )
+
+    def test_closed_inventory_validates_every_catalog_field_and_rejects_typos(self):
+        catalog, contracts, evidence = auditoria_skills.load_sources(
+            auditoria_skills.DEFAULT_CATALOG,
+            auditoria_skills.DEFAULT_STATUS_CONTRACT,
+            auditoria_skills.DEFAULT_EVIDENCE_MANIFEST,
+        )
+        catalog_fields = {
+            field_name
+            for record in catalog.values()
+            for field_name in record
+        }
+
+        self.assertEqual(len(auditoria_skills.BASIC_FIELDS), 16)
+        self.assertEqual(len(auditoria_skills.MECHANICAL_FIELDS), 115)
+        self.assertEqual(catalog_fields, auditoria_skills.KNOWN_FIELDS)
+        self.assertEqual(
+            set().union(*auditoria_skills.TYPE_ALLOWED_FIELDS.values()),
+            auditoria_skills.KNOWN_FIELDS,
+        )
+
+        typo_catalog = copy.deepcopy(catalog)
+        typo_catalog["Bola de Fogo"]["danp"] = 35.0
+        report = auditoria_skills.audit_catalog(typo_catalog, contracts, evidence)
+        self.assertTrue(
+            any(
+                finding.code == "unknown-field"
+                and finding.skill == "Bola de Fogo"
+                for finding in report.findings
+            )
+        )
+
+    def test_every_mechanical_field_has_type_and_value_validation(self):
+        catalog, contracts, evidence = auditoria_skills.load_sources(
+            auditoria_skills.DEFAULT_CATALOG,
+            auditoria_skills.DEFAULT_STATUS_CONTRACT,
+            auditoria_skills.DEFAULT_EVIDENCE_MANIFEST,
+        )
+        skill_for_field = {
+            field_name: next(
+                name for name, record in catalog.items() if field_name in record
+            )
+            for field_name in auditoria_skills.MECHANICAL_FIELDS
+        }
+
+        for field_name, skill_name in skill_for_field.items():
+            with self.subTest(field=field_name, contract="allowed-type"):
+                invalid_catalog = copy.deepcopy(catalog)
+                invalid_catalog[skill_name]["tipo"] = "NADA"
+                report = auditoria_skills.audit_catalog(
+                    invalid_catalog,
+                    contracts,
+                    evidence,
+                )
+                self.assertTrue(
+                    any(
+                        finding.code == "invalid-advanced-field-type"
+                        and finding.skill == skill_name
+                        and field_name in finding.message
+                        for finding in report.findings
+                    )
+                )
+
+            if field_name in auditoria_skills.NUMERIC_FIELDS:
+                invalid_value = float("nan")
+                expected_code = "invalid-number"
+            elif field_name in auditoria_skills.BOOLEAN_CONTRACT_FIELDS:
+                invalid_value = 1
+                expected_code = "invalid-boolean"
+            elif field_name in auditoria_skills.NON_EMPTY_TEXT_FIELDS:
+                invalid_value = ""
+                expected_code = "invalid-text"
+            elif field_name == "dano_variavel":
+                invalid_value = (2.0, 1.0)
+                expected_code = "invalid-damage-range"
+            elif field_name == "efeitos_possiveis":
+                invalid_value = []
+                expected_code = "invalid-effect-list"
+            else:
+                self.fail(f"campo mecanico sem validador de valor: {field_name}")
+
+            with self.subTest(field=field_name, contract="value"):
+                invalid_catalog = copy.deepcopy(catalog)
+                invalid_catalog[skill_name][field_name] = invalid_value
+                report = auditoria_skills.audit_catalog(
+                    invalid_catalog,
+                    contracts,
+                    evidence,
+                )
+                self.assertTrue(
+                    any(
+                        finding.code == expected_code
+                        and finding.skill == skill_name
+                        for finding in report.findings
+                    ),
+                    report.findings,
+                )
+
     def test_advanced_cross_field_coherence_is_structurally_validated(self):
         catalog, contracts, evidence = auditoria_skills.load_sources(
             auditoria_skills.DEFAULT_CATALOG,
             auditoria_skills.DEFAULT_STATUS_CONTRACT,
             auditoria_skills.DEFAULT_EVIDENCE_MANIFEST,
         )
+        skill_with = {
+            field_name: next(
+                name for name, record in catalog.items() if field_name in record
+            )
+            for field_name in (
+                "aviso_visual",
+                "chance_stun",
+                "meteoros_aleatorios",
+                "ondas",
+            )
+        }
         cases = (
             (
                 "Último Suspiro",
@@ -383,6 +639,36 @@ class SkillAuditCLITests(unittest.TestCase):
                 "Nuvem Tóxica",
                 lambda record: record.pop("duracao"),
                 "missing-stacking-area-duration",
+            ),
+            (
+                skill_with["ondas"],
+                lambda record: record.update(duracao=0.0),
+                "invalid-wave-duration",
+            ),
+            (
+                skill_with["meteoros_aleatorios"],
+                lambda record: record.update(duracao=0.0),
+                "invalid-meteor-duration",
+            ),
+            (
+                skill_with["meteoros_aleatorios"],
+                lambda record: record.pop("dano_meteoro"),
+                "incomplete-meteor-contract",
+            ),
+            (
+                skill_with["meteoros_aleatorios"],
+                lambda record: record.pop("meteoros_aleatorios"),
+                "orphan-meteor-payload",
+            ),
+            (
+                skill_with["aviso_visual"],
+                lambda record: record.update(delay=0.0),
+                "invalid-area-warning-delay",
+            ),
+            (
+                skill_with["chance_stun"],
+                lambda record: record.update(efeito="NORMAL"),
+                "invalid-stun-chance-effect",
             ),
             (
                 "Nenhuma",

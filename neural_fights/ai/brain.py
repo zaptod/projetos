@@ -66,6 +66,14 @@ from neural_fights.core.skills import get_skill_data
 from neural_fights.models import get_class_data
 from neural_fights.ai.choreographer import CombatChoreographer
 from neural_fights.ai.contracts import obter_brain as _obter_brain
+from neural_fights.ai.skill_contracts import (
+    alvo_tem_efeito,
+    calcular_custo_vida,
+    tem_buff_dano,
+    tem_buff_velocidade,
+    tem_cura,
+    tem_defesa,
+)
 from neural_fights.ai.personalities import (
     TODOS_TRACOS, TRACOS_AGRESSIVIDADE, TRACOS_DEFENSIVO, TRACOS_MOBILIDADE,
     TRACOS_SKILLS, TRACOS_MENTAL, TRACOS_ESPECIAIS,
@@ -88,7 +96,7 @@ except ImportError:
 
 # Importação do sistema de estratégia de skills v1.0
 try:
-    from neural_fights.ai.skill_strategy import SkillStrategySystem, CombatSituation
+    from neural_fights.ai.skill_strategy import CombatSituation, SkillStrategySystem
     SKILL_STRATEGY_AVAILABLE = True
 except ImportError:
     SKILL_STRATEGY_AVAILABLE = False
@@ -3033,11 +3041,14 @@ class AIBrain:
 
     def _tentar_cura_emergencia(self, hp_pct):
         """Cura de emergência"""
-        buff_skills = self.skills_por_tipo.get("BUFF", [])
+        skills_cura = [
+            *self.skills_por_tipo.get("BUFF", []),
+            *self.skills_por_tipo.get("CHANNEL", []),
+        ]
         
-        for skill in buff_skills:
+        for skill in skills_cura:
             data = skill["data"]
-            if data.get("cura"):
+            if tem_cura(data):
                 threshold = 0.5 if "CAUTELOSO" in self.tracos else 0.35
                 if "IMPRUDENTE" in self.tracos:
                     threshold = 0.2
@@ -3125,6 +3136,8 @@ class AIBrain:
             tenho_traps_ativos=self._contar_traps_ativos(),
             tenho_buffs_ativos=len(getattr(p, 'buffs_ativos', [])),
             inimigo_debuffado=self._verificar_inimigo_debuffado(inimigo),
+            inimigo_queimando=alvo_tem_efeito(inimigo, "QUEIMANDO"),
+            inimigo_congelado=alvo_tem_efeito(inimigo, "CONGELADO"),
             momentum=self.momentum,
             tempo_combate=self.tempo_combate
         )
@@ -3238,17 +3251,19 @@ class AIBrain:
             # Transformado = agressivo
             self.acao_atual = "MATAR"
         elif tipo == "BUFF":
-            if skill_profile.data.get("buff_velocidade"):
+            if tem_buff_velocidade(skill_profile.data):
                 # Com velocidade, pode aproximar ou fugir
                 if self.medo > 0.4:
                     self.acao_atual = "FUGIR"
                 else:
                     self.acao_atual = "APROXIMAR"
-            elif skill_profile.data.get("cura"):
+            elif tem_cura(skill_profile.data):
                 # Após cura, manter distância
                 self.acao_atual = "CIRCULAR"
             else:
                 self.acao_atual = "PRESSIONAR"
+        elif tipo == "CHANNEL" and tem_cura(skill_profile.data):
+            self.acao_atual = "CIRCULAR"
         elif tipo in ["PROJETIL", "BEAM"]:
             # Skills de distância, manter range
             if self.estilo_luta in ["KITE", "RANGED", "HIT_RUN"]:
@@ -3341,23 +3356,23 @@ class AIBrain:
             data = skill["data"]
             usar = False
             
-            if data.get("cura"):
+            if tem_cura(data):
                 threshold = 0.55 if "CAUTELOSO" in self.tracos else 0.40
                 if hp_pct < threshold:
                     usar = True
-            elif data.get("escudo"):
+            elif tem_defesa(data):
                 if distancia < 5.0 and hp_pct > 0.6 and self.rng.random() < 0.1:
                     usar = True
                 if self.hits_recebidos_recente >= 2:
                     usar = True
-            elif data.get("buff_dano"):
+            elif tem_buff_dano(data):
                 if distancia < 4.0 and self.confianca > 0.5:
                     usar = self.rng.random() < 0.15
                 if "EXPLOSIVO" in self.tracos and inimigo.vida < inimigo.vida_max * 0.4:
                     usar = True
                 if self.modo_burst:
                     usar = True
-            elif data.get("buff_velocidade"):
+            elif tem_buff_velocidade(data):
                 if distancia > 6.0 and "PERSEGUIDOR" in self.tracos:
                     usar = True
                 if hp_pct < 0.35 and distancia < 4.0:
@@ -3390,12 +3405,17 @@ class AIBrain:
         for skill in self.skills_por_tipo.get("PROJETIL", []):
             data = skill["data"]
             alcance = data.get("vida", 1.5) * data.get("velocidade", 8.0) * 0.8
+            projetil_estacionario = (
+                data.get("velocidade", 8.0) <= 0.0
+                or data.get("vida", 1.5) <= 0.0
+            )
+            contrato_valido = self._avaliar_uso_skill(data, distancia, inimigo)
             
-            usar = False
-            if self.arquetipo in ["MAGO", "MAGO_AGRESSIVO", "ARQUEIRO", "INVOCADOR", "PIROMANTE", "CRIOMANTE"]:
+            usar = contrato_valido if projetil_estacionario else False
+            if not projetil_estacionario and self.arquetipo in ["MAGO", "MAGO_AGRESSIVO", "ARQUEIRO", "INVOCADOR", "PIROMANTE", "CRIOMANTE"]:
                 if distancia > 2.5 and distancia < alcance:
                     usar = True
-            elif distancia > 1.5 and distancia < alcance * 0.8:
+            elif not projetil_estacionario and distancia > 1.5 and distancia < alcance * 0.8:
                 usar = True
             
             if "SNIPER" in self.tracos and distancia > 5.0:
@@ -3404,6 +3424,10 @@ class AIBrain:
                 usar = False
             if "SPAMMER" in self.tracos:
                 usar = usar or self.rng.random() < 0.3
+
+            # Traços alteram a vontade de usar a skill, não seu contrato de
+            # alcance nem a pré-condição declarada pelo catálogo.
+            usar = usar and contrato_valido
             
             if usar and self._usar_skill(skill):
                 self._pos_uso_skill_ofensiva(data)
@@ -3601,6 +3625,9 @@ class AIBrain:
         
         if p.mana < custo:
             return False
+        custo_vida = calcular_custo_vida(data, getattr(p, "vida_max", 0.0))
+        if custo_vida > 0.0 and getattr(p, "vida", 0.0) <= custo_vida:
+            return False
         
         if skill_info["fonte"] == "arma":
             if hasattr(p, 'usar_skill_arma'):
@@ -3619,8 +3646,18 @@ class AIBrain:
         p = self.parent
         
         if tipo == "PROJETIL":
-            alcance = dados.get("vida", 1.5) * dados.get("velocidade", 8.0) * 0.8
-            return distancia < alcance and distancia > 1.0
+            velocidade = max(0.0, float(dados.get("velocidade", 8.0)))
+            vida = max(0.0, float(dados.get("vida", 1.5)))
+            if velocidade <= 0.0 or vida <= 0.0:
+                alcance = max(1.25, float(dados.get("alcance", 0.0)))
+                no_alcance = distancia <= alcance * 1.2
+            else:
+                alcance = vida * velocidade * 0.8
+                no_alcance = 1.0 < distancia < alcance
+            if dados.get("condicao") == "ALVO_QUEIMANDO":
+                if not alvo_tem_efeito(inimigo, "QUEIMANDO"):
+                    return False
+            return no_alcance
         elif tipo == "BEAM":
             return distancia < dados.get("alcance", 5.0)
         elif tipo == "AREA":
@@ -3633,7 +3670,7 @@ class AIBrain:
             dist = dados.get("distancia", 3.0)
             return distancia > 4.0 and distancia < dist + 2.0
         elif tipo == "BUFF":
-            if dados.get("cura"):
+            if tem_cura(dados):
                 return p.vida < p.vida_max * 0.45
             return distancia < 5.0
         

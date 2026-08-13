@@ -38,7 +38,8 @@ class CombatChoreographer:
     def reset(cls):
         cls._instance = None
     
-    def __init__(self):
+    def __init__(self, rng=None):
+        self.rng = rng if rng is not None else random
         # Estado do confronto
         self.momento_atual = "NEUTRO"
         self.timer_momento = 0.0
@@ -93,6 +94,7 @@ class CombatChoreographer:
         """Registra os dois lutadores"""
         self.lutador1 = l1
         self.lutador2 = l2
+        self.rng = getattr(l1, "rng_runtime", self.rng)
         self.l1_ultimo_ataque_tempo = 999.0
         self.l2_ultimo_ataque_tempo = 999.0
     
@@ -196,7 +198,7 @@ class CombatChoreographer:
         
         if novo_ritmo != self.ritmo_atual:
             self.ritmo_atual = novo_ritmo
-            self.ritmo_timer = random.uniform(2.0, 5.0)
+            self.ritmo_timer = self.rng.uniform(2.0, 5.0)
             
             # Notifica IAs sobre mudança de ritmo
             self._notificar_mudanca_ritmo(novo_ritmo)
@@ -312,22 +314,22 @@ class CombatChoreographer:
         # === STANDOFF (Confronto visual) ===
         if self._pode_momento("STANDOFF"):
             if 4.0 < distancia < 7.0 and self.tempo_sem_hit > 3.0:
-                if self.intensidade > 0.4 or random.random() < 0.02:
-                    self._iniciar_momento("STANDOFF", random.uniform(1.5, 3.0))
+                if self.intensidade > 0.4 or self.rng.random() < 0.02:
+                    self._iniciar_momento("STANDOFF", self.rng.uniform(1.5, 3.0))
                     return
         
         # === FACE_OFF (Ambos param e se encaram) ===
         if self._pode_momento("FACE_OFF"):
             if hp1_pct < 0.5 and hp2_pct < 0.5 and self.intensidade > 0.5:
-                if 3.0 < distancia < 6.0 and random.random() < 0.03:
-                    self._iniciar_momento("FACE_OFF", random.uniform(2.0, 4.0))
+                if 3.0 < distancia < 6.0 and self.rng.random() < 0.03:
+                    self._iniciar_momento("FACE_OFF", self.rng.uniform(2.0, 4.0))
                     return
         
         # === CLIMAX_CHARGE (Ambos preparam ataque final) ===
         if self._pode_momento("CLIMAX_CHARGE"):
             if self.climax_atingido and self.intensidade > 0.7:
-                if random.random() < 0.05:
-                    self._iniciar_momento("CLIMAX_CHARGE", random.uniform(2.0, 3.5))
+                if self.rng.random() < 0.05:
+                    self._iniciar_momento("CLIMAX_CHARGE", self.rng.uniform(2.0, 3.5))
                     return
         
         # === PURSUIT (Perseguição cinematográfica) ===
@@ -335,36 +337,36 @@ class CombatChoreographer:
             if distancia > 8.0 and self.tempo_sem_hit > 2.0:
                 # Detecta quem está fugindo
                 if hp1_pct < hp2_pct * 0.7 or hp2_pct < hp1_pct * 0.7:
-                    if random.random() < 0.04:
-                        self._iniciar_momento("PURSUIT", random.uniform(2.0, 4.0))
+                    if self.rng.random() < 0.04:
+                        self._iniciar_momento("PURSUIT", self.rng.uniform(2.0, 4.0))
                         return
         
         # === EXCHANGE (Troca rápida de golpes) ===
         if self._pode_momento("EXCHANGE"):
             if distancia < 3.0 and self.trocas_seguidas >= 3:
-                if random.random() < 0.1:
-                    self._iniciar_momento("EXCHANGE", random.uniform(1.5, 2.5))
+                if self.rng.random() < 0.1:
+                    self._iniciar_momento("EXCHANGE", self.rng.uniform(1.5, 2.5))
                     return
         
         # === BREATHER (Pausa para respirar) ===
         if self._pode_momento("BREATHER"):
             if self.trocas_seguidas >= 5 and distancia > 4.0:
-                if random.random() < 0.06:
-                    self._iniciar_momento("BREATHER", random.uniform(1.0, 2.0))
+                if self.rng.random() < 0.06:
+                    self._iniciar_momento("BREATHER", self.rng.uniform(1.0, 2.0))
                     return
         
         # === CIRCLE_DANCE (Circulam um ao outro) ===
         if self._pode_momento("CIRCLE_DANCE"):
             if 3.0 < distancia < 6.0 and self.intensidade > 0.3:
-                if random.random() < 0.025:
-                    self._iniciar_momento("CIRCLE_DANCE", random.uniform(2.0, 4.0))
+                if self.rng.random() < 0.025:
+                    self._iniciar_momento("CIRCLE_DANCE", self.rng.uniform(2.0, 4.0))
                     return
         
         # === FINAL_SHOWDOWN (Momento final) ===
         if self._pode_momento("FINAL_SHOWDOWN"):
             if (hp1_pct < 0.15 or hp2_pct < 0.15) and self.climax_atingido:
-                if random.random() < 0.08:
-                    self._iniciar_momento("FINAL_SHOWDOWN", random.uniform(2.5, 4.0))
+                if self.rng.random() < 0.08:
+                    self._iniciar_momento("FINAL_SHOWDOWN", self.rng.uniform(2.5, 4.0))
                     return
         
         # === NOVOS MOMENTOS v6.0 ===
@@ -372,15 +374,15 @@ class CombatChoreographer:
         # === PRESSURE (Um lado pressionando o outro) ===
         if self._pode_momento("PRESSURE"):
             if abs(self.fluxo_direcao) > 0.5 and self.tempo_em_range > 2.0:
-                if random.random() < 0.08:
-                    self._iniciar_momento("PRESSURE", random.uniform(2.0, 4.0))
+                if self.rng.random() < 0.08:
+                    self._iniciar_momento("PRESSURE", self.rng.uniform(2.0, 4.0))
                     return
         
         # === RESET (Ambos se afastam para respirar) ===
         if self._pode_momento("RESET"):
             if self.trocas_seguidas >= 6 and distancia < 3.0:
-                if random.random() < 0.1:
-                    self._iniciar_momento("RESET", random.uniform(1.0, 2.0))
+                if self.rng.random() < 0.1:
+                    self._iniciar_momento("RESET", self.rng.uniform(1.0, 2.0))
                     self.trocas_seguidas = 0
                     return
         
@@ -393,8 +395,8 @@ class CombatChoreographer:
                 if brain1 and brain2:
                     a1 = brain1.acao_atual in ["COMBATE", "CIRCULAR", "FLANQUEAR"]
                     a2 = brain2.acao_atual in ["COMBATE", "CIRCULAR", "FLANQUEAR"]
-                    if a1 and a2 and random.random() < 0.06:
-                        self._iniciar_momento("FEINT_DANCE", random.uniform(1.5, 3.0))
+                    if a1 and a2 and self.rng.random() < 0.06:
+                        self._iniciar_momento("FEINT_DANCE", self.rng.uniform(1.5, 3.0))
                         return
     
     def _pode_momento(self, tipo):
@@ -485,8 +487,8 @@ class CombatChoreographer:
         
         # Detecta troca rápida de golpes
         if self.trocas_seguidas >= 3 and self._pode_momento("RAPID_EXCHANGE"):
-            if random.random() < 0.3:
-                self._iniciar_momento("RAPID_EXCHANGE", random.uniform(1.0, 2.0))
+            if self.rng.random() < 0.3:
+                self._iniciar_momento("RAPID_EXCHANGE", self.rng.uniform(1.0, 2.0))
     
     def registrar_esquiva(self, esquivador, atacante):
         """Registra quando alguém desvia de um ataque"""
@@ -495,8 +497,8 @@ class CombatChoreographer:
             brain_esquivador.on_esquiva_sucesso()
         
         # Pode criar momento de tensão
-        if self._pode_momento("NEAR_MISS") and random.random() < 0.15:
-            self._iniciar_momento("NEAR_MISS", random.uniform(0.5, 1.0))
+        if self._pode_momento("NEAR_MISS") and self.rng.random() < 0.15:
+            self._iniciar_momento("NEAR_MISS", self.rng.uniform(0.5, 1.0))
     
     def get_acao_sincronizada(self, lutador):
         """Retorna ação sincronizada para o lutador (se houver)"""

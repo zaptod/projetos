@@ -9,13 +9,16 @@ import random
 import math
 import os
 import sys
+import tempfile
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 from enum import Enum
 
 from neural_fights.data import database
 from neural_fights.data.database import carregar_personagens
+from neural_fights.utils.console import safe_print as _console_print
 
 
 TOURNAMENT_STATE_ENV = "NEURAL_FIGHTS_TOURNAMENT_STATE"
@@ -25,19 +28,45 @@ DEFAULT_TOURNAMENT_STATE = os.path.join(
 )
 
 
-def _console_print(*values, sep=" ", end="\n", file=None, flush=False):
-    """Imprime dados livres sem quebrar consoles de encoding limitado."""
+_VISUAL_CONFIG_PREFIX = "neural-fights-match-"
+_VISUAL_CONFIG_SUFFIX = ".json"
 
-    destination = file or sys.stdout
-    encoding = getattr(destination, "encoding", None)
-    if encoding:
-        safe_values = [
-            str(value).encode(encoding, "backslashreplace").decode(encoding)
-            for value in values
-        ]
-    else:
-        safe_values = [str(value) for value in values]
-    print(*safe_values, sep=sep, end=end, file=destination, flush=flush)
+
+def _validated_generated_visual_config_path(path) -> str | None:
+    """Resolve apenas nomes UUID criados diretamente no diretório temporário."""
+
+    if not isinstance(path, (str, os.PathLike)):
+        return None
+    try:
+        raw_path = os.fspath(path)
+        if not isinstance(raw_path, str) or not raw_path:
+            return None
+        resolved = os.path.realpath(os.path.abspath(raw_path))
+        temp_dir = os.path.realpath(tempfile.gettempdir())
+    except (OSError, TypeError, ValueError):
+        return None
+
+    if os.path.normcase(os.path.dirname(resolved)) != os.path.normcase(temp_dir):
+        return None
+
+    basename = os.path.basename(resolved)
+    if not (
+        basename.startswith(_VISUAL_CONFIG_PREFIX)
+        and basename.endswith(_VISUAL_CONFIG_SUFFIX)
+    ):
+        return None
+    token = basename[
+        len(_VISUAL_CONFIG_PREFIX) : -len(_VISUAL_CONFIG_SUFFIX)
+    ]
+    if len(token) != 32 or any(char not in "0123456789abcdef" for char in token):
+        return None
+    return resolved
+
+
+def _is_generated_visual_config(path) -> bool:
+    """Indica se o caminho possui o formato isolado aceito para cleanup."""
+
+    return _validated_generated_visual_config_path(path) is not None
 
 
 def _resolver_caminho_estado(filename=None):
@@ -150,6 +179,7 @@ class Tournament:
     
     def _adjust_to_power_of_two(self):
         """Ajusta número de participantes para potência de 2"""
+        self._generated_byes.intersection_update(self.participants)
         n = len(self.participants)
         if n < 2:
             return
@@ -161,7 +191,6 @@ class Tournament:
         
         # Se já é potência de 2, ok
         if power == n:
-            self._generated_byes.intersection_update(self.participants)
             return
         
         # Precisa adicionar byes ou truncar
@@ -203,16 +232,31 @@ class Tournament:
         self.participants = [name for pair in pairs for name in pair]
     
     def generate_bracket(self) -> bool:
-        """Gera as chaves do torneio"""
+        """Gera uma chave nova e descarta todo progresso da chave anterior."""
         if len(self.participants) < 2:
             _console_print("ERRO: Minimo de 2 participantes necessario!")
             return False
+
+        # Regenerar é uma nova competição com os mesmos participantes. Nenhum
+        # resultado derivado da chave anterior pode sobreviver à operação.
+        self.bracket = []
+        self.state = TournamentState.WAITING
+        self.champion = None
+        self.current_round = 0
+        self.current_match = 0
+        self.fight_history = []
+        self.stats = {
+            "total_fights": 0,
+            "total_kos": 0,
+            "fastest_ko": None,
+            "longest_fight": None,
+            "most_aggressive": None,
+        }
         
         self._adjust_to_power_of_two()
         self.shuffle_participants()
         
         n = len(self.participants)
-        self.bracket = []
         
         # Calcula número de rodadas
         num_rounds = 0
@@ -263,10 +307,6 @@ class Tournament:
             
             self.bracket.append(tournament_round)
             matches_in_round //= 2
-        
-        self.state = TournamentState.WAITING
-        self.current_round = 0
-        self.current_match = 0
         
         _console_print(
             f"OK: Bracket gerado: {len(self.participants)} participantes, "
@@ -564,6 +604,10 @@ class Tournament:
             raise database.DataValidationError(
                 "luta pendente nao pode possuir vencedor ou perdedor"
             )
+        elif duration != 0 or ko_type or fight_log:
+            raise database.DataValidationError(
+                "luta pendente nao pode possuir resultado parcial"
+            )
 
         return TournamentMatch(
             match_id=match_id,
@@ -589,6 +633,7 @@ class Tournament:
             "champion": self.champion,
             "current_round": self.current_round,
             "current_match": self.current_match,
+            "generated_byes": sorted(self._generated_byes),
             "bracket": [],
             "fight_history": [
                 self._serialize_match(match) for match in self.fight_history
@@ -634,6 +679,32 @@ class Tournament:
                 raise database.DataValidationError("participants deve conter somente nomes")
             if len(participants) != len(set(participants)):
                 raise database.DataValidationError("participants contem nomes duplicados")
+
+            has_explicit_generated_byes = "generated_byes" in state
+            generated_byes_data = state.get("generated_byes", [])
+            if not isinstance(generated_byes_data, list) or not all(
+                isinstance(name, str) and name for name in generated_byes_data
+            ):
+                raise database.DataValidationError(
+                    "generated_byes deve ser uma lista de nomes"
+                )
+            if len(generated_byes_data) != len(set(generated_byes_data)):
+                raise database.DataValidationError(
+                    "generated_byes contem nomes duplicados"
+                )
+            explicit_generated_byes = set(generated_byes_data)
+            for bye_name in explicit_generated_byes:
+                suffix = bye_name.removeprefix("BYE_")
+                if (
+                    bye_name not in participants
+                    or not bye_name.startswith("BYE_")
+                    or not suffix.isdigit()
+                    or int(suffix) < 1
+                    or str(int(suffix)) != suffix
+                ):
+                    raise database.DataValidationError(
+                        "generated_byes deve referenciar sentinelas BYE_N validas"
+                    )
 
             tournament_state = TournamentState(state["state"])
             champion = state.get("champion")
@@ -702,6 +773,7 @@ class Tournament:
                 raise database.DataValidationError("bracket deve ser uma lista")
             bracket = []
             matches_by_id = {}
+            next_match_id = 0
             for expected_round_num, round_data in enumerate(bracket_data):
                 if not isinstance(round_data, dict) or not isinstance(
                     round_data.get("matches"), list
@@ -739,8 +811,13 @@ class Tournament:
                         raise database.DataValidationError(
                             f"match_id duplicado: {match.match_id}"
                         )
+                    if match.match_id != next_match_id:
+                        raise database.DataValidationError(
+                            "match_id deve ser sequencial na ordem do bracket"
+                        )
                     round_obj.matches.append(match)
                     matches_by_id[match.match_id] = match
+                    next_match_id += 1
                 if round_obj.completed != all(
                     match.completed for match in round_obj.matches
                 ):
@@ -749,16 +826,178 @@ class Tournament:
                     )
                 bracket.append(round_obj)
 
+            bracket_generated_byes = set()
+            if bracket:
+                participant_count = len(participants)
+                if (
+                    participant_count < 2
+                    or participant_count & (participant_count - 1)
+                ):
+                    raise database.DataValidationError(
+                        "bracket exige uma quantidade de participantes "
+                        "que seja potencia de dois"
+                    )
+
+                expected_rounds = participant_count.bit_length() - 1
+                if len(bracket) != expected_rounds:
+                    raise database.DataValidationError(
+                        "quantidade de rodadas diverge dos participantes"
+                    )
+
+                expected_matches = participant_count // 2
+                for round_obj in bracket:
+                    if len(round_obj.matches) != expected_matches:
+                        raise database.DataValidationError(
+                            "quantidade de lutas da rodada diverge do bracket"
+                        )
+                    expected_matches //= 2
+
+                first_round_names = [
+                    fighter_name
+                    for match in bracket[0].matches
+                    for fighter_name in (
+                        match.fighter1_name,
+                        match.fighter2_name,
+                    )
+                ]
+                if len(first_round_names) != len(participants) or set(
+                    first_round_names
+                ) != set(participants):
+                    raise database.DataValidationError(
+                        "primeira rodada diverge da lista de participantes"
+                    )
+
+                for round_index, round_obj in enumerate(bracket):
+                    for match in round_obj.matches:
+                        fighters_and_flags = (
+                            (match.fighter1_name, match.fighter1_is_bye),
+                            (match.fighter2_name, match.fighter2_is_bye),
+                        )
+                        if round_index > 0 and any(
+                            is_bye for _, is_bye in fighters_and_flags
+                        ):
+                            raise database.DataValidationError(
+                                "flags de BYE so podem existir na primeira rodada"
+                            )
+
+                        for fighter_name, is_bye in fighters_and_flags:
+                            if is_bye:
+                                suffix = fighter_name.removeprefix("BYE_")
+                                if (
+                                    not fighter_name.startswith("BYE_")
+                                    or not suffix.isdigit()
+                                    or int(suffix) < 1
+                                    or str(int(suffix)) != suffix
+                                ):
+                                    raise database.DataValidationError(
+                                        "flag de BYE exige sentinela BYE_N valida"
+                                    )
+                                bracket_generated_byes.add(fighter_name)
+                            elif (
+                                round_index > 0
+                                and fighter_name not in participants
+                                and fighter_name != "TBD"
+                            ):
+                                raise database.DataValidationError(
+                                    "bracket referencia lutador desconhecido"
+                                )
+
+                        has_bye = any(
+                            is_bye for _, is_bye in fighters_and_flags
+                        )
+                        if has_bye and sum(
+                            bool(is_bye) for _, is_bye in fighters_and_flags
+                        ) != 1:
+                            raise database.DataValidationError(
+                                "luta de BYE exige exatamente uma sentinela"
+                            )
+                        if match.completed and "TBD" in (
+                            match.fighter1_name,
+                            match.fighter2_name,
+                        ):
+                            raise database.DataValidationError(
+                                "luta concluida nao pode conter vaga TBD"
+                            )
+                        if has_bye:
+                            bye_name = next(
+                                fighter_name
+                                for fighter_name, is_bye in fighters_and_flags
+                                if is_bye
+                            )
+                            real_name = next(
+                                fighter_name
+                                for fighter_name, is_bye in fighters_and_flags
+                                if not is_bye
+                            )
+                            if match.completed and (
+                                match.winner_name != real_name
+                                or match.loser_name != bye_name
+                                or match.ko_type != "BYE"
+                            ):
+                                raise database.DataValidationError(
+                                    "resultado de BYE diverge de sua sentinela"
+                                )
+                        elif match.ko_type == "BYE":
+                            raise database.DataValidationError(
+                                "ko_type BYE exige uma sentinela marcada"
+                            )
+
+                for round_index in range(1, len(bracket)):
+                    previous_round = bracket[round_index - 1]
+                    current = bracket[round_index]
+                    for match_index, match in enumerate(current.matches):
+                        predecessors = previous_round.matches[
+                            match_index * 2 : match_index * 2 + 2
+                        ]
+                        expected_fighters = tuple(
+                            predecessor.winner_name
+                            if predecessor.completed
+                            else "TBD"
+                            for predecessor in predecessors
+                        )
+                        actual_fighters = (
+                            match.fighter1_name,
+                            match.fighter2_name,
+                        )
+                        if actual_fighters != expected_fighters:
+                            raise database.DataValidationError(
+                                "propagacao de vencedores diverge entre rodadas"
+                            )
+
+            if has_explicit_generated_byes:
+                if bracket and explicit_generated_byes != bracket_generated_byes:
+                    raise database.DataValidationError(
+                        "generated_byes diverge das flags de BYE do bracket"
+                    )
+                generated_byes = explicit_generated_byes
+            else:
+                # Saves legados com bracket permitem inferência pelas flags
+                # canônicas. Sem bracket, BYE_N pode ser um nome real e não é
+                # promovido implicitamente a sentinela.
+                generated_byes = bracket_generated_byes
+
+            if generated_byes and not bracket:
+                participant_count = len(participants)
+                if (
+                    participant_count < 2
+                    or participant_count & (participant_count - 1)
+                    or len(generated_byes) >= participant_count // 2
+                ):
+                    raise database.DataValidationError(
+                        "generated_byes pre-bracket exige padding valido"
+                    )
+
             history_data = state.get("fight_history")
+            completed_real_matches = [
+                match
+                for round_obj in bracket
+                for match in round_obj.matches
+                if match.completed and match.ko_type != "BYE"
+            ]
             if history_data is None:
                 # Saves antigos não persistiam o histórico. Reconstrói as
                 # lutas reais concluídas, sem incluir avanços automáticos.
-                fight_history = [
-                    match
-                    for round_obj in bracket
-                    for match in round_obj.matches
-                    if match.completed and match.ko_type != "BYE"
-                ]
+                fight_history = completed_real_matches
             else:
                 if not isinstance(history_data, list):
                     raise database.DataValidationError("fight_history deve ser uma lista")
@@ -767,28 +1006,16 @@ class Tournament:
                 for match_data in history_data:
                     if not isinstance(match_data, dict):
                         raise database.DataValidationError("historico contem luta invalida")
-                    match = matches_by_id.get(match_data["match_id"])
+                    history_match = self._deserialize_match(match_data)
+                    match = matches_by_id.get(history_match.match_id)
                     if match is None:
-                        match = self._deserialize_match(match_data)
-                    else:
-                        history_match = self._deserialize_match(match_data)
-                        identity = (
-                            "round_num",
-                            "fighter1_name",
-                            "fighter2_name",
-                            "winner_name",
-                            "loser_name",
-                            "completed",
+                        raise database.DataValidationError(
+                            "historico referencia luta ausente do bracket"
                         )
-                        if any(
-                            getattr(history_match, field_name)
-                            != getattr(match, field_name)
-                            for field_name in identity
-                        ):
-                            raise database.DataValidationError(
-                                "historico diverge da luta no bracket"
-                            )
-                        match.fight_log = list(history_match.fight_log)
+                    if history_match != match:
+                        raise database.DataValidationError(
+                            "historico diverge da luta no bracket"
+                        )
                     if match.match_id in history_ids:
                         raise database.DataValidationError(
                             f"historico repete match_id: {match.match_id}"
@@ -799,6 +1026,12 @@ class Tournament:
                         )
                     history_ids.add(match.match_id)
                     fight_history.append(match)
+                if [match.match_id for match in fight_history] != [
+                    match.match_id for match in completed_real_matches
+                ]:
+                    raise database.DataValidationError(
+                        "fight_history nao corresponde as lutas concluidas do bracket"
+                    )
 
             if current_round > len(bracket):
                 raise database.DataValidationError("current_round esta fora do bracket")
@@ -810,10 +1043,45 @@ class Tournament:
                 raise database.DataValidationError(
                     "current_match deve ser zero ao final do bracket"
                 )
-            if tournament_state == TournamentState.FINISHED:
-                if current_round != len(bracket) or champion not in participants:
+            pending_positions = [
+                (round_index, match_index)
+                for round_index, round_obj in enumerate(bracket)
+                for match_index, match in enumerate(round_obj.matches)
+                if not match.completed
+            ]
+            if tournament_state == TournamentState.WAITING:
+                if (
+                    any(match.completed for match in matches_by_id.values())
+                    or fight_history
+                    or current_round != 0
+                    or current_match != 0
+                ):
                     raise database.DataValidationError(
-                        "torneio finalizado precisa de ponteiro final e campeao valido"
+                        "torneio aguardando nao pode conter progresso"
+                    )
+            elif tournament_state in {
+                TournamentState.IN_PROGRESS,
+                TournamentState.ROUND_COMPLETE,
+            }:
+                if (
+                    not bracket
+                    or not pending_positions
+                    or (current_round, current_match) != pending_positions[0]
+                ):
+                    raise database.DataValidationError(
+                        "ponteiro ativo deve indicar a primeira luta pendente"
+                    )
+            if tournament_state == TournamentState.FINISHED:
+                if (
+                    not bracket
+                    or current_round != len(bracket)
+                    or champion not in participants
+                    or not all(round_obj.completed for round_obj in bracket)
+                    or not bracket[-1].matches[0].completed
+                    or champion != bracket[-1].matches[0].winner_name
+                ):
+                    raise database.DataValidationError(
+                        "torneio finalizado precisa de final e campeao coerentes"
                     )
             elif (bracket and current_round == len(bracket)) or champion is not None:
                 raise database.DataValidationError(
@@ -822,6 +1090,11 @@ class Tournament:
             if stats["total_fights"] != len(fight_history):
                 raise database.DataValidationError(
                     "stats.total_fights diverge do fight_history"
+                )
+            expected_kos = sum("KO" in match.ko_type for match in fight_history)
+            if stats["total_kos"] != expected_kos:
+                raise database.DataValidationError(
+                    "stats.total_kos diverge do fight_history"
                 )
 
             # Commit em memoria: nenhuma validacao posterior pode deixar o
@@ -835,16 +1108,7 @@ class Tournament:
             self.stats = stats
             self.bracket = bracket
             self.fight_history = fight_history
-            self._generated_byes = {
-                name
-                for round_obj in bracket[:1]
-                for match in round_obj.matches
-                for name, is_bye in (
-                    (match.fighter1_name, match.fighter1_is_bye),
-                    (match.fighter2_name, match.fighter2_is_bye),
-                )
-                if is_bye
-            }
+            self._generated_byes = generated_byes
             
             _console_print(f"OK: Estado carregado de {filepath}")
             return True
@@ -866,6 +1130,7 @@ class TournamentRunner:
         self.tournament = tournament
         self.match_config_path = match_config_path
         self._isolated_visual_config = match_config_path is None
+        self._generated_visual_configs: set[str] = set()
         self.simulation_config = {
             "max_duration": 120.0,
             "fixed_dt": 1.0 / 60.0,
@@ -878,13 +1143,7 @@ class TournamentRunner:
         """Configura o match_config.json para a próxima luta"""
         config_path = self.match_config_path
         if self._isolated_visual_config:
-            import tempfile
-            import uuid
-
-            config_path = os.path.join(
-                tempfile.gettempdir(),
-                f"neural-fights-match-{uuid.uuid4().hex}.json",
-            )
+            config_path = self._reserve_visual_config()
         config = {
             "p1_nome": fighter1_name,
             "p2_nome": fighter2_name,
@@ -899,21 +1158,71 @@ class TournamentRunner:
                 preservar_existente=False,
                 arquivo=config_path,
             )
-        except Exception:
-            if self._isolated_visual_config and config_path:
+        except BaseException:
+            if self._owns_visual_config(config_path):
                 self._remove_visual_config(config_path)
             raise
 
-        self.match_config_path = saved_path
+        if self._isolated_visual_config:
+            expected_path = _validated_generated_visual_config_path(config_path)
+            returned_path = _validated_generated_visual_config_path(saved_path)
+            if returned_path != expected_path:
+                self._remove_visual_config(config_path)
+                raise RuntimeError(
+                    "salvar_match_config retornou caminho diferente do temporario reservado"
+                )
+            self.match_config_path = expected_path
+        else:
+            self.match_config_path = saved_path
 
         return self.match_config_path
 
-    @staticmethod
-    def _remove_visual_config(config_path: str) -> None:
+    def _reserve_visual_config(self) -> str:
+        """Reserva exclusivamente um caminho temporário pertencente ao runner."""
+
+        for _ in range(16):
+            candidate = os.path.join(
+                tempfile.gettempdir(),
+                f"{_VISUAL_CONFIG_PREFIX}{uuid.uuid4().hex}{_VISUAL_CONFIG_SUFFIX}",
+            )
+            normalized = _validated_generated_visual_config_path(candidate)
+            if normalized is None:
+                raise RuntimeError("diretorio temporario gerou caminho inseguro")
+            try:
+                descriptor = os.open(
+                    normalized,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                    0o600,
+                )
+            except FileExistsError:
+                continue
+            os.close(descriptor)
+            self._generated_visual_configs.add(normalized)
+            return normalized
+        raise RuntimeError("nao foi possivel reservar match config temporaria")
+
+    def _owns_visual_config(self, config_path) -> bool:
+        normalized = _validated_generated_visual_config_path(config_path)
+        return (
+            normalized is not None
+            and normalized in self._generated_visual_configs
+        )
+
+    def _remove_visual_config(self, config_path) -> bool:
+        normalized = _validated_generated_visual_config_path(config_path)
+        if (
+            normalized is None
+            or normalized not in self._generated_visual_configs
+        ):
+            return False
         try:
-            os.remove(config_path)
+            os.remove(normalized)
         except FileNotFoundError:
             pass
+        except OSError:
+            return False
+        self._generated_visual_configs.discard(normalized)
+        return True
     
     def launch_simulation(self, config_path: str | None = None):
         """Lança o simulador Pygame"""
@@ -927,9 +1236,16 @@ class TournamentRunner:
         config_path = config_path or self.match_config_path
 
         env = os.environ.copy()
+        env.pop(database.MATCH_CONFIG_ENV, None)
+        env.pop(self._DELETE_MATCH_CONFIG_ENV, None)
         if config_path:
             env[database.MATCH_CONFIG_ENV] = config_path
-        if self._isolated_visual_config and config_path:
+        owned_config_path = (
+            _validated_generated_visual_config_path(config_path)
+            if self._owns_visual_config(config_path)
+            else None
+        )
+        if owned_config_path:
             env[self._DELETE_MATCH_CONFIG_ENV] = "1"
 
         # Usa o mesmo interpretador e o mesmo estado isolado do processo pai.
@@ -939,12 +1255,12 @@ class TournamentRunner:
                 cwd=base_dir,
                 env=env,
             )
-        except Exception:
-            if self._isolated_visual_config and config_path:
-                self._remove_visual_config(config_path)
+        except BaseException:
+            if owned_config_path:
+                self._remove_visual_config(owned_config_path)
             raise
 
-        if self._isolated_visual_config and config_path:
+        if owned_config_path:
             import threading
 
             def cleanup_config():
@@ -954,7 +1270,7 @@ class TournamentRunner:
                     # A remoção continua obrigatória mesmo se wait() falhar.
                     pass
                 finally:
-                    self._remove_visual_config(config_path)
+                    self._remove_visual_config(owned_config_path)
 
             threading.Thread(target=cleanup_config, daemon=True).start()
         return process

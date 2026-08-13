@@ -6,7 +6,6 @@ par de JSONs por meio da transacao atomica de :mod:`neural_fights.data.database`
 
 from __future__ import annotations
 
-import argparse
 import copy
 from collections.abc import Mapping
 from typing import Any
@@ -14,6 +13,7 @@ from typing import Any
 from neural_fights.ai.personalities import PERSONALIDADES_PRESETS
 from neural_fights.core.skills import SKILL_DB
 from neural_fights.data import database
+from neural_fights.utils.console import SafeArgumentParser, safe_print
 
 
 SKILL_ALIASES = {
@@ -130,7 +130,7 @@ def migrar_documentos(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = SafeArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="grava o resultado validado")
     args = parser.parse_args(argv)
 
@@ -138,23 +138,23 @@ def main(argv: list[str] | None = None) -> int:
         armas, personagens = database.carregar_database()
         armas_novas, personagens_novos, alteracoes = migrar_documentos(armas, personagens)
     except (OSError, database.DataValidationError, TypeError, ValueError) as exc:
-        print(f"ERRO: {exc}")
+        safe_print(f"ERRO: {exc}")
         return 1
 
     if not alteracoes:
-        print("Banco ja esta no contrato atual; nenhuma migracao necessaria.")
+        safe_print("Banco ja esta no contrato atual; nenhuma migracao necessaria.")
         return 0
 
-    print(f"Alteracoes validadas: {len(alteracoes)}")
+    safe_print(f"Alteracoes validadas: {len(alteracoes)}")
     for alteracao in alteracoes:
-        print(f"  - {alteracao}")
+        safe_print(f"  - {alteracao}")
 
     if not args.apply:
-        print("Dry-run concluido. Execute novamente com --apply para gravar.")
+        safe_print("Dry-run concluido. Execute novamente com --apply para gravar.")
         return 0
 
     database.salvar_database(armas_novas, personagens_novos)
-    print("Migracao aplicada atomicamente.")
+    safe_print("Migracao aplicada atomicamente.")
     return 0
 
 

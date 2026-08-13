@@ -22,6 +22,7 @@ from neural_fights.cli import headless as headless_cli
 from neural_fights.data import database
 from neural_fights.simulation.headless import HeadlessMatchResult, HeadlessMatchRunner
 from neural_fights.simulation.simulacao import DELETE_MATCH_CONFIG_ENV, Simulador
+import neural_fights.tournament.tournament_mode as tournament_module
 from neural_fights.tournament.tournament_mode import Tournament, TournamentMatch, TournamentRunner
 
 
@@ -275,6 +276,27 @@ class HeadlessRunnerContractTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("falha ao liberar simulador", result.error)
 
+    def test_headless_preserves_frame_error_when_cleanup_also_fails(self) -> None:
+        class BrokenSimulator(self.FakeSimulator):
+            def update(self, _dt):
+                raise ValueError("frame original")
+
+            def close(self):
+                raise RuntimeError("cleanup secundario")
+
+        with patch(
+            "neural_fights.simulation.headless.Simulador",
+            BrokenSimulator,
+        ):
+            result = HeadlessMatchRunner(
+                {"p1_nome": "A", "p2_nome": "B"},
+                max_frames=1,
+            ).run()
+
+        self.assertFalse(result.success)
+        self.assertIn("ValueError: frame original", result.error)
+        self.assertIn("cleanup secundario", result.error)
+
     def test_initialization_error_becomes_an_explicit_failed_result(self) -> None:
         class BrokenSimulator:
             def __init__(self, **_kwargs):
@@ -436,74 +458,169 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
         self.assertEqual(result["reason"], "engine_error")
 
     def test_visual_setup_removes_partial_isolated_file_when_save_fails(self) -> None:
-        runner = TournamentRunner(Tournament())
-        with (
-            patch.object(
-                database,
-                "salvar_match_config",
-                side_effect=OSError("disco indisponível"),
-            ) as save_config,
-            patch.object(runner, "_remove_visual_config") as remove_config,
-        ):
-            with self.assertRaisesRegex(OSError, "disco indisponível"):
-                runner.setup_match_config("A", "B")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runner = TournamentRunner(Tournament())
+            with (
+                patch.object(
+                    tournament_module.tempfile,
+                    "gettempdir",
+                    return_value=temp_dir,
+                ),
+                patch.object(
+                    database,
+                    "salvar_match_config",
+                    side_effect=OSError("disco indisponível"),
+                ) as save_config,
+            ):
+                with self.assertRaisesRegex(OSError, "disco indisponível"):
+                    runner.setup_match_config("A", "B")
+                generated_path = save_config.call_args.kwargs["arquivo"]
+                self.assertTrue(
+                    tournament_module._is_generated_visual_config(generated_path)
+                )
 
-        generated_path = save_config.call_args.kwargs["arquivo"]
-        self.assertIn("neural-fights-match-", generated_path)
-        remove_config.assert_called_once_with(generated_path)
+            self.assertFalse(Path(generated_path).exists())
+            self.assertEqual(set(), runner._generated_visual_configs)
 
     def test_visual_launch_uses_module_and_has_child_and_parent_cleanup(self) -> None:
-        runner = TournamentRunner(Tournament())
-        runner.match_config_path = os.path.abspath("isolated-visual-match.json")
-        process = Mock()
-        process.wait.side_effect = OSError("wait indisponível")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runner = TournamentRunner(Tournament())
+            with patch.object(
+                tournament_module.tempfile,
+                "gettempdir",
+                return_value=temp_dir,
+            ):
+                config_path = runner.setup_match_config("A", "B")
+                process = Mock()
+                process.wait.side_effect = OSError("wait indisponível")
 
-        with (
-            patch("subprocess.Popen", return_value=process) as popen,
-            patch("threading.Thread") as thread,
-            patch.object(runner, "_remove_visual_config") as remove_config,
-        ):
-            returned_process = runner.launch_simulation()
-            cleanup_target = thread.call_args.kwargs["target"]
-            cleanup_target()
+                with (
+                    patch("subprocess.Popen", return_value=process) as popen,
+                    patch("threading.Thread") as thread,
+                ):
+                    returned_process = runner.launch_simulation()
+                    cleanup_target = thread.call_args.kwargs["target"]
+                    self.assertTrue(Path(config_path).exists())
+                    cleanup_target()
 
-        self.assertIs(returned_process, process)
-        self.assertEqual(
-            popen.call_args.args[0],
-            [sys.executable, "-m", "neural_fights.simulation.simulacao"],
-        )
-        child_env = popen.call_args.kwargs["env"]
-        self.assertEqual(
-            child_env[database.MATCH_CONFIG_ENV],
-            runner.match_config_path,
-        )
-        self.assertEqual(child_env[DELETE_MATCH_CONFIG_ENV], "1")
-        thread.assert_called_once_with(target=cleanup_target, daemon=True)
-        remove_config.assert_called_once_with(runner.match_config_path)
+            self.assertIs(returned_process, process)
+            self.assertEqual(
+                popen.call_args.args[0],
+                [sys.executable, "-m", "neural_fights.simulation.simulacao"],
+            )
+            child_env = popen.call_args.kwargs["env"]
+            self.assertEqual(child_env[database.MATCH_CONFIG_ENV], config_path)
+            self.assertEqual(child_env[DELETE_MATCH_CONFIG_ENV], "1")
+            thread.assert_called_once_with(target=cleanup_target, daemon=True)
+            self.assertFalse(Path(config_path).exists())
+            self.assertEqual(set(), runner._generated_visual_configs)
+
+    def test_visual_runner_never_cleans_an_unowned_path_or_exports_delete_flag(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            arbitrary_path = Path(temp_dir) / (
+                "neural-fights-match-" + "a" * 32 + ".json"
+            )
+            arbitrary_path.write_text("important", encoding="utf-8")
+            runner = TournamentRunner(Tournament())
+
+            with (
+                patch.object(
+                    tournament_module.tempfile,
+                    "gettempdir",
+                    return_value=temp_dir,
+                ),
+                patch.dict(
+                    os.environ,
+                    {DELETE_MATCH_CONFIG_ENV: "1"},
+                ),
+                patch("subprocess.Popen", return_value=Mock()) as popen,
+                patch("threading.Thread") as thread,
+            ):
+                runner.launch_simulation(str(arbitrary_path))
+
+            child_env = popen.call_args.kwargs["env"]
+            self.assertEqual(
+                child_env[database.MATCH_CONFIG_ENV],
+                str(arbitrary_path),
+            )
+            self.assertNotIn(DELETE_MATCH_CONFIG_ENV, child_env)
+            thread.assert_not_called()
+            self.assertFalse(runner._remove_visual_config(arbitrary_path))
+            self.assertEqual("important", arbitrary_path.read_text(encoding="utf-8"))
+
+    def test_visual_launch_failure_cleans_only_the_owned_reserved_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runner = TournamentRunner(Tournament())
+            with patch.object(
+                tournament_module.tempfile,
+                "gettempdir",
+                return_value=temp_dir,
+            ):
+                config_path = runner.setup_match_config("A", "B")
+                with patch(
+                    "subprocess.Popen",
+                    side_effect=OSError("processo indisponível"),
+                ):
+                    with self.assertRaisesRegex(OSError, "processo indisponível"):
+                        runner.launch_simulation(config_path)
+
+            self.assertFalse(Path(config_path).exists())
+            self.assertEqual(set(), runner._generated_visual_configs)
+
+    def test_visual_setup_rejects_a_different_returned_path_without_deleting_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            arbitrary_path = Path(temp_dir) / "important.json"
+            arbitrary_path.write_text("keep", encoding="utf-8")
+            runner = TournamentRunner(Tournament())
+            with (
+                patch.object(
+                    tournament_module.tempfile,
+                    "gettempdir",
+                    return_value=temp_dir,
+                ),
+                patch.object(
+                    database,
+                    "salvar_match_config",
+                    return_value=str(arbitrary_path),
+                ) as save_config,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "caminho diferente"):
+                    runner.setup_match_config("A", "B")
+
+            reserved_path = Path(save_config.call_args.kwargs["arquivo"])
+            self.assertFalse(reserved_path.exists())
+            self.assertEqual("keep", arbitrary_path.read_text(encoding="utf-8"))
+            self.assertEqual(set(), runner._generated_visual_configs)
 
     def test_consecutive_visual_launches_keep_their_own_config_paths(self) -> None:
-        runner = TournamentRunner(Tournament())
-        process = Mock()
-        process.wait.return_value = 0
-        with (
-            patch.object(
-                database,
-                "salvar_match_config",
-                side_effect=lambda _config, **kwargs: kwargs["arquivo"],
-            ),
-            patch("subprocess.Popen", return_value=process) as popen,
-            patch("threading.Thread"),
-        ):
-            first_path = runner.setup_match_config("A", "B")
-            second_path = runner.setup_match_config("C", "D")
-            runner.launch_simulation(first_path)
-            runner.launch_simulation(second_path)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runner = TournamentRunner(Tournament())
+            process = Mock()
+            process.wait.return_value = 0
+            with (
+                patch.object(
+                    tournament_module.tempfile,
+                    "gettempdir",
+                    return_value=temp_dir,
+                ),
+                patch.object(
+                    database,
+                    "salvar_match_config",
+                    side_effect=lambda _config, **kwargs: kwargs["arquivo"],
+                ),
+                patch("subprocess.Popen", return_value=process) as popen,
+                patch("threading.Thread"),
+            ):
+                first_path = runner.setup_match_config("A", "B")
+                second_path = runner.setup_match_config("C", "D")
+                runner.launch_simulation(first_path)
+                runner.launch_simulation(second_path)
 
-        self.assertNotEqual(first_path, second_path)
-        first_env = popen.call_args_list[0].kwargs["env"]
-        second_env = popen.call_args_list[1].kwargs["env"]
-        self.assertEqual(first_env[database.MATCH_CONFIG_ENV], first_path)
-        self.assertEqual(second_env[database.MATCH_CONFIG_ENV], second_path)
+            self.assertNotEqual(first_path, second_path)
+            first_env = popen.call_args_list[0].kwargs["env"]
+            second_env = popen.call_args_list[1].kwargs["env"]
+            self.assertEqual(first_env[database.MATCH_CONFIG_ENV], first_path)
+            self.assertEqual(second_env[database.MATCH_CONFIG_ENV], second_path)
 
 
 class HeadlessCliContractTests(unittest.TestCase):

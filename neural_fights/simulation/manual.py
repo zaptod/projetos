@@ -38,10 +38,12 @@ OUTROS:
 """
 
 import pygame
+import copy
 import math
 import sys
 
 from neural_fights.simulation.simulacao import Simulador
+from neural_fights.utils.console import safe_print as print
 from neural_fights.utils.config import LARGURA, ALTURA
 from neural_fights.core.skills import SKILL_DB
 from neural_fights.data.database import carregar_personagens
@@ -224,10 +226,13 @@ class SimuladorManual(Simulador):
         pos_atual = self.controlando.pos.copy()
         eh_p1 = self.controlando == self.p1
         
-        # Cria novo lutador
-        arma = self.controlando.arma  # Mantém a arma atual
-        novo = Lutador(dados_personagem, arma)
-        novo.pos = pos_atual
+        # Cria o personagem escolhido com a arma atual sem mutar o registro
+        # compartilhado do catálogo.
+        dados_novos = copy.copy(dados_personagem)
+        arma = getattr(self.controlando.dados, "arma_obj", None)
+        dados_novos.arma_obj = arma
+        dados_novos.nome_arma = getattr(arma, "nome", "") if arma else ""
+        novo = Lutador(dados_novos, pos_atual[0], pos_atual[1])
         
         if eh_p1:
             self.p1 = novo
@@ -235,13 +240,10 @@ class SimuladorManual(Simulador):
         else:
             self.p2 = novo
             self.controlando = self.p2
-        
-        # Desativa IA se for dummy
-        if self.modo_oponente == "DUMMY":
-            oponente = self.p2 if eh_p1 else self.p1
-            oponente.brain = None
-        
-        self.atualizar_skills_disponiveis()
+
+        # Uma troca de personagem também inicia uma luta limpa e registra os
+        # novos objetos em todos os managers do simulador.
+        self.resetar_luta()
         print(f"Personagem trocado para: {dados_personagem.nome}")
     
     def processar_input_manual(self, dt):
@@ -571,39 +573,36 @@ class SimuladorManual(Simulador):
         return True
     
     def resetar_luta(self):
-        """Reseta a luta para o estado inicial"""
-        self.p1.pos = [4.0, 3.0]
-        self.p2.pos = [12.0, 3.0]
-        
-        self.p1.vida = self.p1.vida_max
-        self.p2.vida = self.p2.vida_max
-        self.p1.mana = self.p1.mana_max
-        self.p2.mana = self.p2.mana_max
-        
-        self.p1.cd_skills = {}
-        self.p2.cd_skills = {}
-        
-        self.p1.morto = False
-        self.p2.morto = False
-        self.p1.vivo = True
-        self.p2.vivo = True
-        
-        self.projeteis = []
-        if hasattr(self, 'areas'):
-            self.areas = []
-        if hasattr(self, 'beams'):
-            self.beams = []
-        if hasattr(self, 'summons'):
-            self.summons = []
-        if hasattr(self, 'traps'):
-            self.traps = []
-        if hasattr(self, 'channels'):
-            self.channels = []
-        if hasattr(self, 'transforms'):
-            self.transforms = []
-        
-        self.textos = []
-        self.vencedor = None
+        """Inicia uma luta limpa preservando personagens e slots editados."""
+
+        from neural_fights.core.entities import Lutador
+
+        controlava_p1 = self.controlando is self.p1
+
+        def recriar(anterior, x, y):
+            skills_classe = copy.deepcopy(anterior.skills_classe)
+            novo = Lutador(anterior.dados, x, y)
+            novo.skills_classe = skills_classe
+            novo.cd_skills = {
+                skill["nome"]: 0.0
+                for skill in (*novo.skills_arma, *novo.skills_classe)
+                if skill.get("nome") not in {None, "", "Vazio", "Nenhuma"}
+            }
+            novo.cd_skill_arma = 0.0
+            return novo
+
+        self.p1 = recriar(self.p1, 4.0, 3.0)
+        self.p2 = recriar(self.p2, 12.0, 3.0)
+        self.controlando = self.p1 if controlava_p1 else self.p2
+
+        self.best_of_series.reset_series()
+        self._configurar_partida_atual()
+
+        if self.modo_oponente == "DUMMY":
+            oponente = self.p2 if self.controlando is self.p1 else self.p1
+            oponente.brain = None
+
+        self.atualizar_skills_disponiveis()
     
     def desenhar_menu_skills(self, surface):
         """Desenha o menu de seleção de skills"""
@@ -928,7 +927,15 @@ class SimuladorManual(Simulador):
 
         try:
             self._executar_loop_manual()
-        finally:
+        except BaseException as exc:
+            try:
+                self.close()
+            except BaseException as cleanup_error:
+                exc.add_note(
+                    f"Falha adicional ao limpar modo manual: {cleanup_error}"
+                )
+            raise
+        else:
             self.close()
 
     def _executar_loop_manual(self):
@@ -991,10 +998,10 @@ def main():
 
     try:
         sim = SimuladorManual()
-    except RuntimeError as exc:
+        sim.executar()
+    except Exception as exc:
         print(f"Erro: {exc}", file=sys.stderr)
         return 1
-    sim.executar()
     return 0
 
 

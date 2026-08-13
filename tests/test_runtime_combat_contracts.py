@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import random
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from neural_fights.core.combat import Channel, Transform
+from neural_fights.core.combat import Channel, DotEffect, Transform
 from neural_fights.core.entities import Lutador
 from neural_fights.core.skills import get_skill_data
 from neural_fights.core.status_runtime import STATUS_RUNTIME
@@ -95,6 +96,23 @@ class RuntimeCombatContractTests(unittest.TestCase):
 
         self.assertGreater(light.vel[0], heavy.vel[0])
         self.assertGreater(light.pos[0], heavy.pos[0])
+
+    def test_gameplay_rng_is_isolated_from_global_visual_randomness(self) -> None:
+        first = self._fighter("Assassino A")
+        second = self._fighter("Assassino B")
+        first.classe_nome = second.classe_nome = "Assassino"
+        first.configurar_rng_runtime(random.Random(4242))
+        second.configurar_rng_runtime(random.Random(4242))
+
+        expected = [first.get_dano_modificado(10.0) for _ in range(12)]
+        observed = []
+        for _ in range(12):
+            # Particulas, camera shake e audio podem consumir o fluxo global.
+            for _ in range(37):
+                random.random()
+            observed.append(second.get_dano_modificado(10.0))
+
+        self.assertEqual(expected, observed)
 
     def test_blindness_is_deterministic_and_fear_forces_fleeing(self) -> None:
         blinded = self._fighter("Cego")
@@ -273,6 +291,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
     def test_channel_ticks_are_dt_independent_and_penetrate_shields(self) -> None:
         def run(chunks: list[float]) -> tuple[float, float, list[dict]]:
             owner = self._fighter("Canalizador")
+            owner.mod_dano = 2.0
             target = self._fighter("Alvo", x=5.0)
             shield = _Shield(100.0)
             target.buffs_ativos.append(shield)
@@ -286,13 +305,65 @@ class RuntimeCombatContractTests(unittest.TestCase):
         one_step_life, one_step_shield, results = run([0.3])
         split_life, split_shield, _ = run([0.1, 0.1, 0.1])
 
-        self.assertAlmostEqual(one_step_life, 985.0)
+        self.assertAlmostEqual(one_step_life, 970.0)
         self.assertAlmostEqual(split_life, one_step_life)
         self.assertEqual(one_step_shield, 100.0)
         self.assertEqual(split_shield, 100.0)
         self.assertEqual(len(results), 3)
         self.assertTrue(all(result["tipo"] == "impacto" for result in results))
         self.assertTrue(all(result["impacto"].atingiu for result in results))
+
+    def test_channel_respects_skill_invulnerability_and_grants_no_hit_recovery(self):
+        owner = self._fighter("Canalizador")
+        target = self._fighter("Alvo", x=5.0)
+        owner.angulo_olhar = 0.0
+        channel = Channel("Desintegrar", owner)
+
+        target.invencivel_timer = 1.0
+        target.invulnerabilidade_skill_timer = 1.0
+        blocked = channel.atualizar(0.1, [target])
+        self.assertEqual(target.vida, target.vida_max)
+        self.assertFalse(blocked[0]["impacto"].atingiu)
+        self.assertEqual(
+            blocked[0]["impacto"].bloqueado_por,
+            "invulnerabilidade_skill",
+        )
+
+        target.invencivel_timer = 0.0
+        target.invulnerabilidade_skill_timer = 0.0
+        accepted = channel.atualizar(0.1, [target])
+        self.assertTrue(accepted[0]["impacto"].atingiu)
+        self.assertEqual(target.invencivel_timer, 0.0)
+
+        external = target.resolver_impacto(
+            10.0,
+            0.0,
+            0.0,
+            atacante=owner,
+            fonte_impacto=object(),
+        )
+        self.assertTrue(external.atingiu)
+
+    def test_existing_dot_respects_explicit_skill_invulnerability(self):
+        target = self._fighter("Alvo")
+        target.invencivel_timer = 1.0
+        target.invulnerabilidade_skill_timer = 1.0
+        dot = DotEffect("ENVENENADO", target, 20.0, 1.0, (0, 255, 0))
+
+        dot.atualizar(0.5)
+        self.assertEqual(target.vida, target.vida_max)
+
+        target.invencivel_timer = 0.0
+        target.invulnerabilidade_skill_timer = 0.0
+        dot.atualizar(0.5)
+        self.assertEqual(target.vida, target.vida_max - 10.0)
+
+        target.invulnerabilidade_skill_timer = 1.0
+        bypassed = target.aplicar_dano_direto(
+            5.0,
+            ignorar_invulnerabilidade_skill=True,
+        )
+        self.assertEqual(bypassed, 5.0)
 
     def test_channel_cast_blocks_actions_and_interruption_clears_owner(self) -> None:
         owner = self._fighter("Canalizador")
@@ -308,8 +379,8 @@ class RuntimeCombatContractTests(unittest.TestCase):
         self.assertIsInstance(channel, Channel)
         self.assertFalse(owner.pode_iniciar_acao())
         owner.vel = [8.0, -3.0]
-        owner.executar_movimento(0.1, 5.0)
-        self.assertEqual(owner.vel, [0.0, 0.0])
+        channel.atualizar(0.1, [target])
+        self.assertEqual(owner.vel, [8.0, -3.0])
         owner.atacando = True
         owner.executar_ataques(0.1, 5.0, target)
         self.assertFalse(owner.atacando)
@@ -323,6 +394,19 @@ class RuntimeCombatContractTests(unittest.TestCase):
         self.assertFalse(owner.canalizando)
         self.assertIsNone(owner.skill_canalizando)
         self.assertEqual(owner.tempo_canalizacao, 0.0)
+
+
+    def test_channel_honors_explicit_movement_lock(self) -> None:
+        owner = self._fighter("Canalizador imovel")
+        target = self._fighter("Alvo", x=5.0)
+        owner.vel = [8.0, -3.0]
+
+        channel = Channel("Fotoss\u00edntese", owner)
+        channel.atualizar(0.1, [target])
+
+        self.assertTrue(channel.imobiliza)
+        self.assertEqual(owner.vel, [0.0, 0.0])
+        channel.interromper()
 
 
 if __name__ == "__main__":

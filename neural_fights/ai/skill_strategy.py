@@ -22,6 +22,17 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
 from neural_fights.core.skills import get_skill_data
+from neural_fights.ai.skill_contracts import (
+    calcular_custo_vida as _custo_vida,
+    efeito_buff as _efeito_buff,
+    numero_finito as _numero_finito,
+    tem_buff_dano as _tem_buff_dano,
+    tem_buff_velocidade as _tem_buff_velocidade,
+    tem_cura as _tem_cura,
+    tem_defesa as _tem_defesa,
+    tem_reflexao as _tem_reflexao,
+    valor_positivo as _valor_positivo,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -168,6 +179,8 @@ class CombatSituation:
     tenho_traps_ativos: int = 0
     tenho_buffs_ativos: int = 0
     inimigo_debuffado: bool = False
+    inimigo_queimando: bool = False
+    inimigo_congelado: bool = False
     momentum: float = 0.0
     tempo_combate: float = 0.0
     fase: CombatPhase = CombatPhase.NEUTRAL
@@ -301,31 +314,87 @@ class SkillStrategySystem:
         """Calcula métricas numéricas da skill"""
         data = perfil.data
         tipo = perfil.tipo
-        
-        # Dano total
-        perfil.dano_total = data.get("dano", 0)
-        if data.get("dano_tick"):
-            duracao = data.get("duracao", 3.0)
-            perfil.dano_total += data["dano_tick"] * duracao
-        if data.get("dano_por_segundo"):
-            duracao = data.get("duracao_max", 3.0)
-            perfil.dano_total += data["dano_por_segundo"] * duracao
+
+        # Potencial ofensivo declarado. CHANNEL consome somente DPS no runtime;
+        # seu eventual campo ``dano`` é inerte e não pode inflar o plano da IA.
+        dano_base = max(0.0, _numero_finito(data.get("dano")))
+        if tipo == "CHANNEL":
+            duracao = max(0.0, _numero_finito(data.get("duracao_max"), 3.0))
+            perfil.dano_total = (
+                max(0.0, _numero_finito(data.get("dano_por_segundo"))) * duracao
+            )
+        else:
+            perfil.dano_total = dano_base
+            duracao = max(0.0, _numero_finito(data.get("duracao"), 3.0))
+            perfil.dano_total += (
+                max(0.0, _numero_finito(data.get("dano_tick"))) * duracao
+            )
+            perfil.dano_total += (
+                max(0.0, _numero_finito(data.get("dano_por_segundo"))) * duracao
+            )
+
+            multi_shot = max(1, int(_numero_finito(data.get("multi_shot"), 1)))
+            ondas = max(1, int(_numero_finito(data.get("ondas"), 1)))
+            perfil.dano_total *= multi_shot * ondas
+
+            meteoros = max(
+                0,
+                int(_numero_finito(data.get("meteoros_aleatorios"))),
+            )
+            if meteoros:
+                dano_meteoro = max(
+                    0.0,
+                    _numero_finito(data.get("dano_meteoro"), dano_base),
+                )
+                perfil.dano_total += meteoros * dano_meteoro
+
+            # ``chain`` representa saltos adicionais no runtime. Cada salto
+            # herda o dano já decaído do segmento anterior.
+            saltos = max(0, int(_numero_finito(data.get("chain"))))
+            decay = max(0.0, _numero_finito(data.get("chain_decay"), 0.8))
+            dano_salto = dano_base
+            for _ in range(saltos):
+                dano_salto *= decay
+                perfil.dano_total += dano_salto
+
         if tipo == "SUMMON":
-            duracao = data.get("duracao", 10)
-            summon_dano = data.get("summon_dano", 10)
+            duracao = max(0.0, _numero_finito(data.get("duracao"), 10))
+            summon_dano = max(0.0, _numero_finito(data.get("summon_dano"), 10))
             perfil.dano_total = summon_dano * duracao * 0.5  # Estimativa
         
         # Alcance efetivo
         if tipo == "PROJETIL":
-            vel = data.get("velocidade", 10)
-            vida = data.get("vida", 1.5)
-            perfil.alcance_efetivo = vel * vida * 0.8
+            vel = max(0.0, _numero_finito(data.get("velocidade"), 10))
+            vida = max(0.0, _numero_finito(data.get("vida"), 1.5))
+            if vel > 0.0 and vida > 0.0:
+                perfil.alcance_efetivo = vel * vida * 0.8
+            else:
+                # Projéteis estacionários nascem à frente do conjurador e só
+                # atingem em contato. Zero não significa alcance ilimitado.
+                perfil.alcance_efetivo = max(
+                    1.25,
+                    _numero_finito(data.get("alcance")),
+                )
         elif tipo == "BEAM":
-            perfil.alcance_efetivo = data.get("alcance", 6.0)
+            perfil.alcance_efetivo = max(
+                0.0,
+                _numero_finito(data.get("alcance"), 6.0),
+            )
         elif tipo == "AREA":
-            perfil.alcance_efetivo = data.get("raio_area", 3.0)
+            perfil.alcance_efetivo = max(
+                0.0,
+                _numero_finito(data.get("raio_area"), 3.0),
+            )
         elif tipo == "DASH":
-            perfil.alcance_efetivo = data.get("distancia", 4.0)
+            perfil.alcance_efetivo = max(
+                0.0,
+                _numero_finito(data.get("distancia"), 4.0),
+            )
+        elif tipo == "CHANNEL" and perfil.dano_total > 0.0:
+            perfil.alcance_efetivo = max(
+                0.0,
+                _numero_finito(data.get("alcance"), 6.0),
+            )
         else:
             perfil.alcance_efetivo = 0  # Self-cast
         
@@ -334,11 +403,21 @@ class SkillStrategySystem:
             perfil.dano_por_mana = perfil.dano_total / perfil.custo
         
         # Duração do efeito
-        perfil.tempo_efeito = data.get("duracao", 0)
+        perfil.tempo_efeito = max(
+            0.0,
+            _numero_finito(
+                data.get("duracao_max") if tipo == "CHANNEL" else data.get("duracao"),
+            ),
+        )
         
         # Condições de distância
-        if tipo in ["PROJETIL", "BEAM"]:
-            perfil.distancia_min = 2.0
+        if tipo in ["PROJETIL", "BEAM", "CHANNEL"] and perfil.alcance_efetivo > 0:
+            perfil.distancia_min = (
+                0.0
+                if tipo == "PROJETIL"
+                and _numero_finito(data.get("velocidade"), 10) <= 0.0
+                else 2.0
+            )
             perfil.distancia_max = perfil.alcance_efetivo
         elif tipo == "AREA":
             perfil.distancia_min = 0
@@ -355,20 +434,32 @@ class SkillStrategySystem:
         
         # BUFFS
         if tipo == "BUFF":
-            if data.get("cura") or data.get("cura_por_segundo"):
+            if _tem_cura(data):
                 propositos.append(SkillPurpose.SUSTAIN)
                 perfil.hp_proprio_max = 0.7  # Usar quando HP < 70%
-            if data.get("escudo"):
+            if _valor_positivo(data, "escudo"):
                 propositos.append(SkillPurpose.SUSTAIN)
                 propositos.append(SkillPurpose.OPENER)
-            if data.get("buff_dano"):
+            if _tem_buff_dano(data):
                 propositos.append(SkillPurpose.OPENER)
                 propositos.append(SkillPurpose.BURST)
-            if data.get("buff_velocidade"):
+            if _tem_buff_velocidade(data):
                 propositos.append(SkillPurpose.ESCAPE)
                 propositos.append(SkillPurpose.ENGAGE)
-            if data.get("refletir"):
+            if _tem_defesa(data):
                 propositos.append(SkillPurpose.SUSTAIN)
+            if data.get("efeito_buff") or any(
+                bool(data.get(campo))
+                for campo in (
+                    "sem_cooldown",
+                    "custo_mana_metade",
+                    "remove_todos_debuffs",
+                    "reverte_estado",
+                    "stats_aleatorios",
+                )
+            ):
+                propositos.append(SkillPurpose.UTILITY)
+                propositos.append(SkillPurpose.OPENER)
         
         # SUMMON
         elif tipo == "SUMMON":
@@ -431,15 +522,19 @@ class SkillStrategySystem:
         
         # CHANNEL
         elif tipo == "CHANNEL":
-            propositos.append(SkillPurpose.BURST)
-            propositos.append(SkillPurpose.POKE)
+            if _tem_cura(data):
+                propositos.append(SkillPurpose.SUSTAIN)
+                perfil.hp_proprio_max = 0.7
+            if perfil.dano_total > 0.0:
+                propositos.append(SkillPurpose.BURST)
+                propositos.append(SkillPurpose.POKE)
         
         # Default
         if not propositos:
             propositos.append(SkillPurpose.UTILITY)
         
-        perfil.propositos = propositos
-        perfil.proposito_principal = propositos[0]
+        perfil.propositos = list(dict.fromkeys(propositos))
+        perfil.proposito_principal = perfil.propositos[0]
     
     def _calcular_scores(self, perfil: SkillProfile):
         """Calcula scores de ofensivo/defensivo/utilidade"""
@@ -451,13 +546,13 @@ class SkillStrategySystem:
             perfil.score_ofensivo += 0.2
         
         # Defensivo
-        if data.get("cura") or data.get("escudo"):
+        if _tem_cura(data) or _valor_positivo(data, "escudo"):
             perfil.score_defensivo = 0.8
-        if data.get("refletir"):
+        if _tem_reflexao(data):
             perfil.score_defensivo = 0.7
         if perfil.tipo == "DASH":
             perfil.score_defensivo = 0.5
-        if data.get("invencivel"):
+        if data.get("invencivel") or _efeito_buff(data) == "IMORTAL":
             perfil.score_defensivo = 0.9
         
         # Utilidade
@@ -541,7 +636,7 @@ class SkillStrategySystem:
         
         # Prioridade: Buffs > Summons > Traps
         for s in self.skills_por_proposito[SkillPurpose.OPENER]:
-            if s.tipo == "BUFF" and s.data.get("buff_dano"):
+            if s.tipo == "BUFF" and _tem_buff_dano(s.data):
                 rotacao.insert(0, s.nome)  # Buff de dano primeiro
             elif s.tipo == "SUMMON":
                 rotacao.append(s.nome)
@@ -625,7 +720,7 @@ class SkillStrategySystem:
         
         # Curas primeiro!
         for s in self.skills.values():
-            if s.data.get("cura") or s.data.get("cura_por_segundo"):
+            if _tem_cura(s.data):
                 rotacao.insert(0, s.nome)
             elif s.data.get("escudo"):
                 rotacao.append(s.nome)
@@ -703,8 +798,7 @@ class SkillStrategySystem:
                 burn.pode_combo_apos.append(det.nome)
         
         # Buff + Burst
-        buff_dano = [s for s in self.skills.values() 
-                     if s.data.get("buff_dano")]
+        buff_dano = [s for s in self.skills.values() if _tem_buff_dano(s.data)]
         bursts = [s for s in self.skills_por_proposito[SkillPurpose.BURST]]
         for buff in buff_dano:
             for burst in bursts[:2]:  # Top 2 bursts
@@ -851,6 +945,12 @@ class SkillStrategySystem:
         # Mana
         if p.mana < skill.custo:
             return False
+
+        # Custos de vida usam a mesma precedência e o mesmo limite estrito do
+        # runtime: o cast não pode consumir toda a vida restante.
+        custo_vida = _custo_vida(skill.data, getattr(p, "vida_max", 0.0))
+        if custo_vida > 0.0 and getattr(p, "vida", 0.0) <= custo_vida:
+            return False
         
         # Cooldown do jogo
         if nome in p.cd_skills and p.cd_skills[nome] > 0:
@@ -887,6 +987,12 @@ class SkillStrategySystem:
         if sit.inimigo_hp_percent < skill.hp_inimigo_min:
             return False
         if sit.inimigo_hp_percent > skill.hp_inimigo_max:
+            return False
+
+        condicao = skill.data.get("condicao")
+        if condicao == "ALVO_QUEIMANDO" and not sit.inimigo_queimando:
+            return False
+        if condicao == "ALVO_CONGELADO" and not sit.inimigo_congelado:
             return False
         
         # Skills que não dependem de distância (BUFF, SUMMON, TRANSFORM)

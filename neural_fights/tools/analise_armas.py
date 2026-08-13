@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence, TextIO
 
+from neural_fights.utils.console import SafeArgumentParser
 from neural_fights.tools.diagnostico_hitbox import (
     DEFAULT_WEAPONS,
     HitboxGateReport,
@@ -44,7 +45,7 @@ def analisar_relatorio(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = SafeArgumentParser(description=__doc__)
     parser.add_argument("--arquivo", type=Path, default=DEFAULT_WEAPONS)
     parser.add_argument("--json", action="store_true", help="emite JSON ASCII")
     parser.add_argument(

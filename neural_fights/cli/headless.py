@@ -8,7 +8,6 @@ canônico de ``neural_fights.simulation.headless``.
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import random
@@ -18,6 +17,7 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
 from neural_fights.data import database
 from neural_fights.simulation.headless import HeadlessMatchResult, HeadlessMatchRunner
+from neural_fights.utils.console import SafeArgumentParser
 
 
 class HeadlessBattle:
@@ -142,7 +142,7 @@ def _print_result(result: HeadlessMatchResult) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
+    parser = SafeArgumentParser(
         description="Neural Fights - runner headless do motor real"
     )
     parser.add_argument("--mode", choices=("rapido", "stress", "all"), default="rapido")
