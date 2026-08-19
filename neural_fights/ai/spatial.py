@@ -80,8 +80,7 @@ class SpatialAwarenessSystem:
         
         # Importa arena (com cache)
         try:
-            from neural_fights.core.arena import get_arena
-            self._arena_cache = get_arena()
+            self._arena_cache = p.arena
         except Exception:
             LOGGER.debug("Falha ao obter arena para consciência espacial", exc_info=True)
             return

@@ -16,7 +16,7 @@ Catálogo expandido de habilidades com:
 # CATÁLOGO MASTER DE HABILIDADES v2.0
 # ============================================================================
 # Tipos: PROJETIL, BUFF, AREA, DASH, SUMMON, BEAM, CHANNEL, TRAP, TRANSFORM
-# Efeitos: Ver magic_system.py para lista completa de status effects
+# Efeitos: Ver core/status_runtime.py para a lista canonica de status effects
 # Elementos: FOGO, GELO, RAIO, TREVAS, LUZ, NATUREZA, ARCANO, CAOS, VOID, 
 #            SANGUE, TEMPO, GRAVITACAO
 # ============================================================================

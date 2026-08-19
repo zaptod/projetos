@@ -73,6 +73,24 @@ class _SilentAudioManager:
 
 
 class Simulador:
+    """Motor de uma partida. Exclusivo por processo, por dependência real.
+
+    Os lutadores e seus brains recebem áudio, arena e coreógrafo por injeção
+    (``Lutador.configurar_contexto_partida``), então o domínio não alcança mais
+    estado de módulo. O que continua global ao processo é infraestrutura que
+    não admite duas cópias:
+
+    * ``pygame.init()``/``pygame.quit()`` — SDL tem um subsistema por processo;
+    * os managers com ``_instance`` de classe (áudio, VFX, animações, game
+      feel, hit stop, coreografia), que este simulador reseta e assume;
+    * a semente do ``random`` de módulo, salva e restaurada em ``close()``.
+
+    Por isso o lock abaixo permanece: ele serializa construção, reload e
+    encerramento para que um simulador nunca destrua a infraestrutura de
+    outro. Paralelismo real de partidas é por processo — é o que o modo
+    torneio já faz ao lançar cada luta via ``subprocess``.
+    """
+
     _lifecycle_lock = threading.RLock()
     _active_owner_token = None
 
@@ -335,6 +353,15 @@ class Simulador:
             self.audio = AudioManager.get_instance()
         self._prev_stagger = {self.p1: False, self.p2: False}
         self._prev_dash = {self.p1: 0, self.p2: 0}
+
+        # Os lutadores (e seus brains) recebem os colaboradores desta partida
+        # em vez de alcançarem os singletons de módulo.
+        for lutador in (self.p1, self.p2):
+            lutador.configurar_contexto_partida(
+                audio=self.audio,
+                arena=self.arena,
+                choreographer=self.choreographer,
+            )
 
         MagicVFXManager.reset()
         self.magic_vfx = MagicVFXManager.get_instance()
@@ -642,7 +669,27 @@ class Simulador:
         for s in self.shockwaves: s.update(dt)
         self.shockwaves = [s for s in self.shockwaves if s.vida > 0]
 
-        # === GAME FEEL v8.0 - HIT STOP GERENCIADO ===
+        if self._processar_hit_stop(dt):
+            return
+
+        self._coletar_buffers_dos_lutadores(dt)
+        self._atualizar_efeitos_visuais(dt)
+        self._atualizar_projeteis(dt)
+        self._atualizar_orbes_magicos(dt)
+        self._atualizar_areas(dt)
+        self._atualizar_beams(dt)
+        self._atualizar_summons(dt)
+        self._atualizar_traps(dt)
+        self._atualizar_transformacoes(dt)
+        self._atualizar_canalizacoes(dt)
+        self._atualizar_animacoes(dt)
+
+    def _processar_hit_stop(self, dt):
+        """Aplica o hit stop do frame.
+
+        Retorna ``True`` quando o frame foi consumido pelo hit stop e o
+        restante do passo deve ser pulado.
+        """
         # O Game Feel Manager pode zerar o dt durante hit stop
         dt_efetivo = dt
         if self.game_feel:
@@ -652,14 +699,17 @@ class Simulador:
                 # Atualiza apenas efeitos visuais durante hit stop
                 for ef in self.impact_flashes: ef.update(dt * 0.3)  # Slow mo nos efeitos
                 for ef in self.hit_sparks: ef.update(dt * 0.3)
-                return
+                return True
         else:
             # Fallback para sistema antigo de hit stop
             if self.hit_stop_timer > 0: 
                 self.hit_stop_timer -= dt
-                return
+                return True
+        return False
 
-        # === COLETA OBJETOS DOS LUTADORES ===
+    def _coletar_buffers_dos_lutadores(self, dt):
+        """Move projeteis, areas, beams, summons, traps e portais dos lutadores
+        para as listas do simulador e atualiza os portais ativos."""
         for p in [self.p1, self.p2]:
             # Projéteis
             if p.buffer_projeteis:
@@ -735,7 +785,8 @@ class Simulador:
             portal for portal in getattr(self, "portais", ()) if portal.ativo
         ]
 
-        # === ATUALIZA NOVOS EFEITOS v7.0 ===
+    def _atualizar_efeitos_visuais(self, dt):
+        """Avanca os efeitos puramente visuais do frame e resolve clashes."""
         for ef in self.impact_flashes: ef.update(dt)
         self.impact_flashes = [ef for ef in self.impact_flashes if ef.vida > 0]
         for ef in self.magic_clashes: ef.update(dt)
@@ -754,7 +805,9 @@ class Simulador:
         # === CLASH DE PROJÉTEIS (v7.0) ===
         self._verificar_clash_projeteis()
 
-        # === ATUALIZA PROJÉTEIS v2.0 - Suporte a novas mecânicas ===
+    def _atualizar_projeteis(self, dt):
+        """Move projeteis, resolve colisoes e aplica as mecanicas derivadas
+        (split, ricochete, contagio, retorno)."""
         novos_projeteis = []  # Para projéteis criados por split/duplicação
         for proj in self.projeteis:
             origem_proj = (getattr(proj, "x", 0.0), getattr(proj, "y", 0.0))
@@ -1138,7 +1191,8 @@ class Simulador:
         self.projeteis.extend(novos_projeteis)
         self.projeteis = [p for p in self.projeteis if p.ativo]
 
-        # === ATUALIZA ORBES MÁGICOS (colisões) ===
+    def _atualizar_orbes_magicos(self, dt):
+        """Resolve as colisoes dos orbes que orbitam cada lutador."""
         for p in [self.p1, self.p2]:
             if hasattr(p, 'buffer_orbes'):
                 for orbe in p.buffer_orbes:
@@ -1192,7 +1246,8 @@ class Simulador:
                                 # Partículas mágicas
                                 self._spawn_particulas_efeito(alvo.pos[0]*PPM, alvo.pos[1]*PPM, "NORMAL")
 
-        # === ATUALIZA ÁREAS v2.0 - Suporte a novas mecânicas ===
+    def _atualizar_areas(self, dt):
+        """Atualiza areas de efeito e aplica dano/status por tick."""
         if hasattr(self, 'areas'):
             novas_areas = []  # Para ondas adicionais, meteoros, etc.
             for area in self.areas:
@@ -1461,7 +1516,8 @@ class Simulador:
             self.areas.extend(novas_areas)
             self.areas = [a for a in self.areas if a.ativo]
 
-        # === ATUALIZA BEAMS ===
+    def _atualizar_beams(self, dt):
+        """Atualiza beams instantaneos e encadeamentos."""
         if hasattr(self, 'beams'):
             novos_beams = []
             for beam in self.beams:
@@ -1524,7 +1580,8 @@ class Simulador:
             self.beams.extend(novos_beams)
             self.beams = [b for b in self.beams if b.ativo]
 
-        # === ATUALIZA SUMMONS (Invocações) v2.0 ===
+    def _atualizar_summons(self, dt):
+        """Atualiza invocacoes e resolve seus ataques."""
         if hasattr(self, 'summons'):
             for summon in self.summons:
                 alvos = [
@@ -1589,8 +1646,9 @@ class Simulador:
                         self._spawn_particulas_efeito(res["x"]*PPM, res["y"]*PPM, "FOGO")
             
             self.summons = [s for s in self.summons if s.ativo]
-        
-        # === ATUALIZA TRAPS (Estruturas) v2.0 ===
+
+    def _atualizar_traps(self, dt):
+        """Atualiza armadilhas e estruturas posicionadas na arena."""
         if hasattr(self, 'traps'):
             for trap in self.traps:
                 trap.atualizar(dt)
@@ -1636,8 +1694,9 @@ class Simulador:
                                 )
             
             self.traps = [t for t in self.traps if t.ativo]
-        
-        # === ATUALIZA TRANSFORMAÇÕES v2.0 ===
+
+    def _atualizar_transformacoes(self, dt):
+        """Atualiza transformacoes ativas dos lutadores."""
         for lutador in [self.p1, self.p2]:
             if hasattr(lutador, 'transformacao_ativa') and lutador.transformacao_ativa:
                 transform = lutador.transformacao_ativa
@@ -1681,8 +1740,9 @@ class Simulador:
                 
                 if not transform.ativo:
                     lutador.transformacao_ativa = None
-        
-        # === ATUALIZA CANALIZAÇÕES v2.0 ===
+
+    def _atualizar_canalizacoes(self, dt):
+        """Avanca canalizacoes, aplica seus efeitos e sincroniza a vida visual."""
         for lutador in [self.p1, self.p2]:
             if hasattr(lutador, 'channel_ativo') and lutador.channel_ativo:
                 channel = lutador.channel_ativo
@@ -1802,8 +1862,9 @@ class Simulador:
             
             # === DETECTA EVENTOS DE MOVIMENTO v8.0 ===
             self._detectar_eventos_movimento()
-        
-        # === ATUALIZA ANIMAÇÕES DE MOVIMENTO v8.0 ===
+
+    def _atualizar_animacoes(self, dt):
+        """Dispara animacoes de movimento/ataque e mantem os decals sob limite."""
         if self.movement_anims:
             self.movement_anims.update(dt)
         
@@ -1818,6 +1879,7 @@ class Simulador:
                     self.decals.append(Decal(p.x, p.y, p.tamanho * 2, SANGUE_ESCURO))
                 self.particulas.remove(p)
         if len(self.decals) > 100: self.decals.pop(0)
+
 
     def _criar_efeito_colisao_parede(self, lutador, intensidade_colisao: float):
         """

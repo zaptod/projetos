@@ -8,9 +8,12 @@ from unittest.mock import patch
 
 from neural_fights.core.combat import Buff, Channel, DotEffect
 from neural_fights.core.entities import Lutador
-from neural_fights.core.magic_system import STATUS_EFFECTS_DB, criar_status_effect, verificar_condicao
 from neural_fights.core.skills import get_skill_data
-from neural_fights.core.status_runtime import STATUS_RUNTIME
+from neural_fights.core.status_runtime import (
+    BUFF_EFFECT_RUNTIME,
+    STATUS_RUNTIME,
+    normalizar_efeito,
+)
 
 
 class BuffRuntimeRegressionTests(unittest.TestCase):
@@ -134,28 +137,21 @@ class BuffRuntimeRegressionTests(unittest.TestCase):
         restored = channel.atualizar(0.1)
         self.assertAlmostEqual(restored[0]["valor"], 1.5)
 
-    def test_legacy_catalog_is_a_synced_compatibility_view(self) -> None:
-        self.assertEqual(
-            STATUS_EFFECTS_DB["FRACO"]["mod_dano_causado"],
-            STATUS_RUNTIME["FRACO"]["mod_dano_causado"],
-        )
-        self.assertEqual(STATUS_EFFECTS_DB["EXPOSTO"]["duracao"], 4.0)
-        self.assertNotIn("mod_dano_causado", STATUS_EFFECTS_DB["MALDITO"])
-        self.assertEqual(STATUS_EFFECTS_DB["MALDITO"]["mod_dano_recebido"], 1.3)
+    def test_status_runtime_is_the_only_balance_source(self) -> None:
+        """Numeros de balanceamento vivem so em ``status_runtime``."""
+        self.assertEqual(STATUS_RUNTIME["FRACO"]["mod_dano_causado"], 0.7)
+        self.assertEqual(STATUS_RUNTIME["EXPOSTO"]["duracao"], 4.0)
+        self.assertNotIn("mod_dano_causado", STATUS_RUNTIME["MALDITO"])
+        self.assertEqual(STATUS_RUNTIME["MALDITO"]["mod_dano_recebido"], 1.3)
+        self.assertEqual(BUFF_EFFECT_RUNTIME["REGENERANDO"]["cura_por_segundo"], 8.0)
 
-        overridden = criar_status_effect("FRACO", duracao_override=9.0)
-        self.assertEqual(overridden.duracao, 9.0)
-        self.assertEqual(overridden.tempo_restante, 9.0)
-
-        regeneration = criar_status_effect("REGENERANDO")
-        active, value = regeneration.update(1.0, None)
-        self.assertTrue(active)
-        self.assertEqual(value, -8.0)
+    def test_transport_aliases_resolve_to_runtime_ids(self) -> None:
+        """O alias do catalogo chega ao runtime como o ID canonico."""
+        self.assertEqual(normalizar_efeito("VENENO"), "ENVENENADO")
 
         runtime_target = self._fighter("Runtime condition")
         runtime_target._aplicar_efeito_status("VENENO")
-        self.assertTrue(verificar_condicao("ALVO_ENVENENADO", None, runtime_target))
-        self.assertTrue(verificar_condicao("ALVO_DEBUFFADO", None, runtime_target))
+        self.assertIn("ENVENENADO", runtime_target._tipos_dot_ativos())
 
 
 if __name__ == "__main__":

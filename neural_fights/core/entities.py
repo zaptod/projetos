@@ -8,6 +8,8 @@ import random
 from dataclasses import dataclass, field
 from neural_fights.core.status_runtime import (
     DEBUFF_FAMILY_ORDER,
+    STATUS_TIMER_ATTRS,
+    StatusTimers,
     efeito_bloqueado_por_imunidade,
     get_duracao_padrao,
     get_status_runtime,
@@ -68,6 +70,49 @@ class DamageContext:
             return False
         self._vitimas_creditadas.add(chave)
         return True
+
+
+# Familia de debuff -> atributo de timer usado na limpeza. O bloco vive aqui
+# porque ``PROVOCADO`` e mecanica de aggro, nao um status do catalogo; as demais
+# familias resolvem pelo container em ``status_timers``.
+_TIMERS_POR_FAMILIA = {
+    "FRACO": "fraco_timer",
+    "VULNERAVEL": "vulneravel_timer",
+    "MALDITO": "maldito_timer",
+    "CORROENDO": "corroendo_timer",
+    "EXPOSTO": "exposto_timer",
+    "ENRAIZADO": "enraizado_timer",
+    "SILENCIADO": "silenciado_timer",
+    "EXAUSTO": "exausto_timer",
+    "CEGO": "cego_timer",
+    "MEDO": "medo_timer",
+    "CHARME": "charme_timer",
+    "POSSESSO": "possesso_timer",
+    "LINK_ALMA": "link_alma_timer",
+    "BOMBA_RELOGIO": "bomba_relogio_timer",
+    "PROVOCADO": "provocacao_timer",
+}
+
+
+# Debuffs que so alteram numeros: expiram sem efeito colateral no runtime.
+_DEBUFFS_NUMERICOS = ("FRACO", "VULNERAVEL", "MALDITO", "CORROENDO", "EXPOSTO")
+
+
+class _StatusTimerAttr:
+    """Expoe um status do container como o atributo ``*_timer`` historico."""
+
+    __slots__ = ("status_id",)
+
+    def __init__(self, status_id: str) -> None:
+        self.status_id = status_id
+
+    def __get__(self, obj, owner=None):
+        if obj is None:
+            return self
+        return obj.status_timers.get(self.status_id)
+
+    def __set__(self, obj, valor):
+        obj.status_timers.set(self.status_id, valor)
 
 
 class Lutador:
@@ -210,6 +255,14 @@ class Lutador:
 
         # Estado de combate
         self.morto = False
+        # Todo status do catálogo vive neste container; os atributos ``*_timer``
+        # continuam disponíveis como visão sobre ele.
+        self.status_timers = StatusTimers()
+        # Colaboradores da partida, injetados pelo dono do combate. Enquanto
+        # ninguém injeta, as properties abaixo caem no singleton histórico.
+        self._audio = None
+        self._arena = None
+        self._choreographer = None
         self.invencivel_timer = 0.0
         # Invulnerabilidade concedida por uma skill é diferente do curto
         # intervalo anti-hit gerado por impactos. Fontes multi-hit podem
@@ -217,50 +270,27 @@ class Lutador:
         self.invulnerabilidade_skill_timer = 0.0
         self.flash_timer = 0.0
         self.flash_cor = (255, 255, 255)  # Cor do flash de dano
-        self.stun_timer = 0.0
-        self.slow_timer = 0.0
         self.slow_fator = 1.0
-        self.enraizado_timer = 0.0
-        self.congelado_timer = 0.0
         self.congelado = False
-        self.tempo_parado_timer = 0.0
         self.tempo_parado = False
-        self.silenciado_timer = 0.0
-        self.exausto_timer = 0.0
-        self.cego_timer = 0.0
-        self.medo_timer = 0.0
-        self.sono_timer = 0.0
         self.dormindo = False
-        self.marcado_timer = 0.0
         self.marcado = False
         self.marcado_multiplicador = get_status_runtime("MARCADO").get(
             "mod_proximo_dano_recebido",
             1.5,
         )
-        self.fraco_timer = 0.0
-        self.vulneravel_timer = 0.0
-        self.maldito_timer = 0.0
-        self.corroendo_timer = 0.0
-        self.exposto_timer = 0.0
         self.cura_bloqueada_timer = 0.0
-        self.cura_bloqueada = 0.0  # Alias legado usado por integrações antigas.
         self.imune_debuffs_timer = 0.0
-        self.charme_timer = 0.0
         self.charme_origem = None
-        self.possesso_timer = 0.0
         self.possesso_origem = None
-        self.bomba_relogio_timer = 0.0
         self.bomba_relogio_dano = 0.0
         self.bomba_relogio_raio = 0.0
         self.bomba_relogio_origem = None
-        self.link_alma_timer = 0.0
         self.link_alma_alvo = None
         self.link_alma_percentual = 0.0
         self.provocacao_timer = 0.0
         self.provocacao_origem = None
         self._fontes_impacto_recentes = {}
-        self.dano_reduzido = 1.0
-        self.vulnerabilidade = 1.0
         self.ultimo_dano_recebido = 0.0
         self.ultimo_resultado_impacto = ImpactResult(False, bloqueado_por="inicial")
         self._slow_fator_antes_enraizado = 1.0
@@ -588,10 +618,7 @@ class Lutador:
         tipos_dot = self._tipos_dot_ativos()
         modificadores_debuff = [1.0]
 
-        bloqueio_legado = max(
-            self.cura_bloqueada_timer,
-            getattr(self, "cura_bloqueada", 0.0),
-        )
+        bloqueio_legado = self.cura_bloqueada_timer
         if bloqueio_legado > 0.0:
             modificadores_debuff.append(0.0)
 
@@ -747,30 +774,10 @@ class Lutador:
         return dano
 
     def _familia_debuff_ativa(self, familia, tipos_dot):
-        timers = {
-            "FRACO": "fraco_timer",
-            "VULNERAVEL": "vulneravel_timer",
-            "MALDITO": "maldito_timer",
-            "CORROENDO": "corroendo_timer",
-            "EXPOSTO": "exposto_timer",
-            "ENRAIZADO": "enraizado_timer",
-            "SILENCIADO": "silenciado_timer",
-            "EXAUSTO": "exausto_timer",
-            "CEGO": "cego_timer",
-            "MEDO": "medo_timer",
-            "CHARME": "charme_timer",
-            "POSSESSO": "possesso_timer",
-            "LINK_ALMA": "link_alma_timer",
-            "BOMBA_RELOGIO": "bomba_relogio_timer",
-            "PROVOCADO": "provocacao_timer",
-        }
         if familia in tipos_dot:
             return True
         if familia == "NECROSE":
-            return max(
-                self.cura_bloqueada_timer,
-                getattr(self, "cura_bloqueada", 0.0),
-            ) > 0.0
+            return self.cura_bloqueada_timer > 0.0
         if familia == "CONGELADO":
             return self.congelado_timer > 0.0 or self.congelado
         if familia == "TEMPO_PARADO":
@@ -792,7 +799,7 @@ class Lutador:
             )
         if familia == "MARCADO":
             return self.marcado_timer > 0.0 or self.marcado
-        timer = timers.get(familia)
+        timer = _TIMERS_POR_FAMILIA.get(familia)
         return bool(timer and getattr(self, timer, 0.0) > 0.0)
 
     def _recalcular_movimento_apos_limpeza(self):
@@ -816,35 +823,17 @@ class Lutador:
             self.slow_fator = 1.0
 
     def _remover_familia_debuff(self, familia):
-        timers = {
-            "FRACO": "fraco_timer",
-            "VULNERAVEL": "vulneravel_timer",
-            "MALDITO": "maldito_timer",
-            "CORROENDO": "corroendo_timer",
-            "EXPOSTO": "exposto_timer",
-            "ENRAIZADO": "enraizado_timer",
-            "SILENCIADO": "silenciado_timer",
-            "EXAUSTO": "exausto_timer",
-            "CEGO": "cego_timer",
-            "MEDO": "medo_timer",
-            "CHARME": "charme_timer",
-            "POSSESSO": "possesso_timer",
-            "LINK_ALMA": "link_alma_timer",
-            "BOMBA_RELOGIO": "bomba_relogio_timer",
-            "PROVOCADO": "provocacao_timer",
-        }
         self.dots_ativos = [
             dot
             for dot in self.dots_ativos
             if normalizar_efeito(getattr(dot, "tipo", "")) != familia
         ]
 
-        timer = timers.get(familia)
+        timer = _TIMERS_POR_FAMILIA.get(familia)
         if timer:
             setattr(self, timer, 0.0)
         if familia == "NECROSE":
             self.cura_bloqueada_timer = 0.0
-            self.cura_bloqueada = 0.0
         elif familia == "CONGELADO":
             self.congelado_timer = 0.0
             self.congelado = False
@@ -893,7 +882,6 @@ class Lutador:
             self._remover_familia_debuff(familia)
 
         self._recalcular_movimento_apos_limpeza()
-        self._sincronizar_modificadores_debuff()
         return selecionadas
 
     def _aplicar_buff_skill(self, nome_skill, data, classe_buff):
@@ -1262,7 +1250,6 @@ class Lutador:
             Trap,
             Transform,
         )
-        from neural_fights.effects.audio import AudioManager
         
         if skill_idx is not None and skill_idx < len(self.skills_arma):
             skill_info = self.skills_arma[skill_idx]
@@ -1328,7 +1315,7 @@ class Lutador:
         
         if tipo == "PROJETIL":
             # === ÁUDIO v10.0 - SOM DE CAST DE PROJÉTIL ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("PROJETIL", nome_skill, self.pos[0], phase="cast")
             
@@ -1349,7 +1336,7 @@ class Lutador:
         
         elif tipo == "AREA":
             # === ÁUDIO v10.0 - SOM DE ÁREA ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("AREA", nome_skill, self.pos[0], phase="cast")
             
@@ -1358,7 +1345,7 @@ class Lutador:
         
         elif tipo == "DASH":
             # === ÁUDIO v10.0 - SOM DE DASH ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("DASH", nome_skill, self.pos[0], phase="cast")
             
@@ -1372,7 +1359,7 @@ class Lutador:
         
         elif tipo == "BUFF":
             # === ÁUDIO v10.0 - SOM DE BUFF ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("BUFF", nome_skill, self.pos[0], phase="cast")
             
@@ -1380,7 +1367,7 @@ class Lutador:
         
         elif tipo == "BEAM":
             # === ÁUDIO v10.0 - SOM DE BEAM ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("BEAM", nome_skill, self.pos[0], phase="cast")
             
@@ -1396,7 +1383,7 @@ class Lutador:
         
         # === TIPOS ADICIONAIS (v2.0) ===
         elif tipo == "SUMMON":
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("SUMMON", nome_skill, self.pos[0], phase="cast")
             
@@ -1409,7 +1396,7 @@ class Lutador:
             self.buffer_summons.append(summon)
         
         elif tipo == "TRAP":
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("TRAP", nome_skill, self.pos[0], phase="cast")
             
@@ -1422,14 +1409,14 @@ class Lutador:
             self.buffer_traps.append(trap)
         
         elif tipo == "TRANSFORM":
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("TRANSFORM", nome_skill, self.pos[0], phase="cast")
             
             Transform(nome_skill, self)
         
         elif tipo == "CHANNEL":
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("CHANNEL", nome_skill, self.pos[0], phase="cast")
             
@@ -1452,7 +1439,6 @@ class Lutador:
             Trap,
             Transform,
         )
-        from neural_fights.effects.audio import AudioManager
         
         skill_info = None
         for sk in self.skills_classe:
@@ -1508,7 +1494,7 @@ class Lutador:
         
         if tipo == "PROJETIL":
             # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("PROJETIL", skill_nome, self.pos[0], phase="cast")
             
@@ -1525,7 +1511,7 @@ class Lutador:
         
         elif tipo == "AREA":
             # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("AREA", skill_nome, self.pos[0], phase="cast")
             
@@ -1534,7 +1520,7 @@ class Lutador:
         
         elif tipo == "DASH":
             # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("DASH", skill_nome, self.pos[0], phase="cast")
             
@@ -1548,7 +1534,7 @@ class Lutador:
         
         elif tipo == "BUFF":
             # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("BUFF", skill_nome, self.pos[0], phase="cast")
             
@@ -1556,7 +1542,7 @@ class Lutador:
         
         elif tipo == "BEAM":
             # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("BEAM", skill_nome, self.pos[0], phase="cast")
             
@@ -1572,7 +1558,7 @@ class Lutador:
         
         # === NOVOS TIPOS v2.0 ===
         elif tipo == "SUMMON":
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("SUMMON", skill_nome, self.pos[0], phase="cast")
             
@@ -1586,7 +1572,7 @@ class Lutador:
             self.buffer_summons.append(summon)
         
         elif tipo == "TRAP":
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("TRAP", skill_nome, self.pos[0], phase="cast")
             
@@ -1600,14 +1586,14 @@ class Lutador:
             self.buffer_traps.append(trap)
         
         elif tipo == "TRANSFORM":
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("TRANSFORM", skill_nome, self.pos[0], phase="cast")
             
             Transform(skill_nome, self)
         
         elif tipo == "CHANNEL":
-            audio = AudioManager.get_instance()
+            audio = self.audio
             if audio:
                 audio.play_skill("CHANNEL", skill_nome, self.pos[0], phase="cast")
             
@@ -1762,14 +1748,8 @@ class Lutador:
                 self.provocacao_origem = None
         if self.flash_timer > 0:
             self.flash_timer -= dt
-        bloqueio_cura = max(
-            self.cura_bloqueada_timer,
-            getattr(self, "cura_bloqueada", 0.0),
-        )
-        if bloqueio_cura > 0.0:
-            bloqueio_cura = max(0.0, bloqueio_cura - dt)
-            self.cura_bloqueada_timer = bloqueio_cura
-            self.cura_bloqueada = bloqueio_cura
+        if self.cura_bloqueada_timer > 0.0:
+            self.cura_bloqueada_timer = max(0.0, self.cura_bloqueada_timer - dt)
         if self.imune_debuffs_timer > 0.0:
             self.imune_debuffs_timer = max(0.0, self.imune_debuffs_timer - dt)
         if self.stun_timer > 0:
@@ -1843,19 +1823,16 @@ class Lutador:
             if self.exausto_timer <= 0:
                 self.regen_mana_base = self.regen_mana_base_normal
 
-        for timer_debuff in (
-            'fraco_timer', 'vulneravel_timer', 'maldito_timer',
-            'corroendo_timer', 'exposto_timer',
-        ):
-            tempo_restante = getattr(self, timer_debuff, 0.0)
-            if tempo_restante > 0:
-                setattr(self, timer_debuff, max(0.0, tempo_restante - dt))
+        # Debuffs puramente numéricos expiram sem efeito colateral.
+        for status_numerico in _DEBUFFS_NUMERICOS:
+            restante = self.status_timers.get(status_numerico)
+            if restante > 0.0:
+                self.status_timers.set(status_numerico, restante - dt)
         if self.pulo_bloqueado_timer > 0.0:
             self.pulo_bloqueado_timer = max(
                 0.0,
                 self.pulo_bloqueado_timer - dt,
             )
-        self._sincronizar_modificadores_debuff()
         self._atualizar_efeitos_especiais(dt)
         
         for skill_nome in list(self.cd_skills.keys()):
@@ -1988,36 +1965,72 @@ class Lutador:
 
     def _get_modificador_dano_causado_debuff(self):
         """Retorna apenas o modificador temporário de dano causado."""
-        if self.fraco_timer > 0:
-            return get_status_runtime("FRACO").get("mod_dano_causado", 0.7)
-        return 1.0
+        return self.status_timers.modificador("mod_dano_causado", combinar=min)
 
     def _get_modificador_dano_recebido_debuff(self):
         """Debuffs recebidos não multiplicam entre si; prevalece o maior."""
-        modificadores = [1.0]
-        if self.vulneravel_timer > 0:
-            modificadores.append(
-                get_status_runtime("VULNERAVEL").get("mod_dano_recebido", 1.5)
-            )
-        if self.maldito_timer > 0:
-            modificadores.append(
-                get_status_runtime("MALDITO").get("mod_dano_recebido", 1.3)
-            )
-        if self.corroendo_timer > 0:
-            modificadores.append(
-                get_status_runtime("CORROENDO").get("mod_dano_recebido", 1.2)
-            )
-        if self.exposto_timer > 0:
-            modificadores.append(
-                get_status_runtime("EXPOSTO").get("mod_dano_recebido", 2.0)
-            )
-        return max(modificadores)
+        return self.status_timers.modificador("mod_dano_recebido", combinar=max)
 
-    def _sincronizar_modificadores_debuff(self):
-        """Mantém os atributos legados coerentes com os timers ativos."""
-        self.dano_reduzido = self._get_modificador_dano_causado_debuff()
-        self.vulnerabilidade = self._get_modificador_dano_recebido_debuff()
-    
+    def configurar_contexto_partida(self, *, audio=None, arena=None, choreographer=None):
+        """Injeta os colaboradores que antes eram lidos de singletons globais.
+
+        O dono da partida (``Simulador``) chama isto ao montar cada round, de
+        modo que o lutador nunca precise alcançar estado de módulo.
+        """
+        self._audio = audio
+        self._arena = arena
+        self._choreographer = choreographer
+
+    @property
+    def audio(self):
+        """Canal de áudio da partida; cai no singleton se ninguém injetou."""
+        if self._audio is not None:
+            return self._audio
+        from neural_fights.effects.audio import AudioManager
+
+        return AudioManager.get_instance()
+
+    @property
+    def arena(self):
+        """Arena da partida; cai na instância de módulo se ninguém injetou."""
+        if self._arena is not None:
+            return self._arena
+        from neural_fights.core.arena import get_arena
+
+        return get_arena()
+
+    @property
+    def choreographer(self):
+        """Coreógrafo da partida; cai no singleton se ninguém injetou."""
+        if self._choreographer is not None:
+            return self._choreographer
+        from neural_fights.ai.choreographer import CombatChoreographer
+
+        return CombatChoreographer.get_instance()
+
+    @property
+    def dano_reduzido(self):
+        """Modificador de dano causado, derivado dos debuffs ativos."""
+        return self._get_modificador_dano_causado_debuff()
+
+    @property
+    def vulnerabilidade(self):
+        """Modificador de dano recebido, derivado dos debuffs ativos."""
+        return self._get_modificador_dano_recebido_debuff()
+
+    @property
+    def cura_bloqueada(self):
+        """Alias histórico: espelha ``cura_bloqueada_timer``."""
+        return self.cura_bloqueada_timer
+
+    @cura_bloqueada.setter
+    def cura_bloqueada(self, valor):
+        try:
+            restante = float(valor)
+        except (TypeError, ValueError):
+            restante = 0.0
+        self.cura_bloqueada_timer = max(0.0, restante)
+
     def _atualizar_dash_trail(self, dt):
         """Fade do trail de dash"""
         for i, (x, y, alpha) in enumerate(self.dash_trail):
@@ -3104,8 +3117,7 @@ class Lutador:
                 contexto_dano=contexto_dano,
             )
             self.corroendo_timer = max(self.corroendo_timer, duracao_corrosao)
-            self._sincronizar_modificadores_debuff()
-            
+                
         elif efeito == "NECROSE":
             # Necrose: DoT que impede cura
             duracao_necrose = duracao or duracao_padrao
@@ -3120,7 +3132,6 @@ class Lutador:
                 self.cura_bloqueada_timer,
                 duracao_necrose,
             )
-            self.cura_bloqueada = self.cura_bloqueada_timer
             
         elif efeito == "MALDITO":
             # Maldição: DoT + dano recebido aumentado
@@ -3133,8 +3144,7 @@ class Lutador:
                 contexto_dano=contexto_dano,
             )
             self.maldito_timer = max(self.maldito_timer, duracao_maldicao)
-            self._sincronizar_modificadores_debuff()
-        
+            
         # =================================================================
         # CONTROLE DE GRUPO (CC)
         # =================================================================
@@ -3247,13 +3257,11 @@ class Lutador:
         elif efeito == "FRACO":
             # Fraco: Dano reduzido
             self.fraco_timer = max(self.fraco_timer, duracao or duracao_padrao)
-            self._sincronizar_modificadores_debuff()
-            
+                
         elif efeito == "VULNERAVEL":
             # Vulnerável: Dano recebido aumentado
             self.vulneravel_timer = max(self.vulneravel_timer, duracao or duracao_padrao)
-            self._sincronizar_modificadores_debuff()
-            
+                
         elif efeito == "EXAUSTO":
             duracao_exaustao = duracao if duracao is not None else duracao_padrao
             if duracao_exaustao <= 0.0:
@@ -3278,8 +3286,7 @@ class Lutador:
         elif efeito == "EXPOSTO":
             # Exposto: Ignora parte da defesa
             self.exposto_timer = max(self.exposto_timer, duracao or duracao_padrao)
-            self._sincronizar_modificadores_debuff()
-        
+            
         # =================================================================
         # EFEITOS DE EMPURRÃO/MOVIMENTO
         # =================================================================
@@ -3564,3 +3571,11 @@ class Lutador:
         }.get(self.classe_nome, 1.5)
         
         return min(1.0, getattr(self, 'tempo_canalizacao', 0.0) / tempo_base)
+
+
+# Os atributos ``*_timer`` historicos sao uma visao sobre ``status_timers``.
+# Instalar por descritor evita 20 pares de property manuais e garante que
+# leitura e escrita passem sempre pelo container.
+for _timer_attr, _status_id in STATUS_TIMER_ATTRS.items():
+    setattr(Lutador, _timer_attr, _StatusTimerAttr(_status_id))
+del _timer_attr, _status_id

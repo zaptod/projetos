@@ -64,7 +64,6 @@ from neural_fights.utils.config import PPM
 from neural_fights.core.physics import normalizar_angulo
 from neural_fights.core.skills import get_skill_data
 from neural_fights.models import get_class_data
-from neural_fights.ai.choreographer import CombatChoreographer
 from neural_fights.ai.contracts import obter_brain as _obter_brain
 from neural_fights.ai.skill_contracts import (
     alvo_tem_efeito,
@@ -870,7 +869,7 @@ class AIBrain:
         # Sistema de Coreografia
         self._observar_oponente(inimigo, distancia)
         
-        choreographer = CombatChoreographer.get_instance()
+        choreographer = p.choreographer
         acao_sync = choreographer.get_acao_sincronizada(p)
         
         if acao_sync:
@@ -1673,8 +1672,7 @@ class AIBrain:
         
         # Importa arena
         try:
-            from neural_fights.core.arena import get_arena
-            arena = get_arena()
+            arena = p.arena
         except Exception:
             LOGGER.debug("Falha ao obter arena para consciência espacial", exc_info=True)
             return  # Se arena não disponível, ignora
@@ -2005,8 +2003,7 @@ class AIBrain:
         
         # Verifica se a direção está bloqueada
         try:
-            from neural_fights.core.arena import get_arena
-            arena = get_arena()
+            arena = p.arena
             
             # Testa ponto à frente
             test_dist = 1.5

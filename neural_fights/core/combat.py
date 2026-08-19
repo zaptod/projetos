@@ -276,6 +276,7 @@ class OrbeMagico:
         self.x = x
         self.y = y
         self.dono = dono
+        self.rng_runtime = getattr(dono, "rng_runtime", random)
         self.tipo_fonte = "orbe_arma"
         self.eh_skill = False
         self.eh_projetil = True
@@ -343,10 +344,10 @@ class OrbeMagico:
             self._atualizar_disparo(dt)
         
         # Partículas mágicas
-        if random.random() < 0.3:
+        if self.rng_runtime.random() < 0.3:
             self.particulas.append({
-                'x': self.x + random.uniform(-0.1, 0.1),
-                'y': self.y + random.uniform(-0.1, 0.1),
+                'x': self.x + self.rng_runtime.uniform(-0.1, 0.1),
+                'y': self.y + self.rng_runtime.uniform(-0.1, 0.1),
                 'vida': 0.3,
                 'cor': self.cor
             })
@@ -1320,6 +1321,7 @@ class Beam:
         self.x1, self.y1 = x_origem, y_origem
         self.x2, self.y2 = x_destino, y_destino
         self.dono = dono
+        self.rng_runtime = getattr(dono, "rng_runtime", random)
         self.tipo_fonte = "beam_skill"
         self.eh_skill = True
         self.eh_projetil = False
@@ -1371,8 +1373,8 @@ class Beam:
         num_segs = int(dist / 0.5) + 1
         for i in range(1, num_segs):
             t = i / num_segs
-            px = self.x1 + dx * t + random.uniform(-0.3, 0.3)
-            py = self.y1 + dy * t + random.uniform(-0.3, 0.3)
+            px = self.x1 + dx * t + self.rng_runtime.uniform(-0.3, 0.3)
+            py = self.y1 + dy * t + self.rng_runtime.uniform(-0.3, 0.3)
             segments.append((px, py))
         
         segments.append((self.x2, self.y2))

@@ -1,12 +1,12 @@
 """Contrato canônico dos efeitos executados pelo runtime de combate.
 
-``neural_fights.core.magic_system`` preserva o catálogo/engine experimental antigo para
-compatibilidade. O estado real de uma luta, porém, vive em ``Lutador``. Este
-módulo pequeno concentra apenas IDs, aliases e números que o runtime realmente
-consome, evitando que os dois modelos sejam ligados em paralelo.
+Este é o catálogo único de status do projeto: IDs, aliases e números que o
+runtime de combate realmente consome. O estado por luta vive em ``Lutador``.
 """
 
 from __future__ import annotations
+
+import math
 
 
 STATUS_ALIASES = {
@@ -162,6 +162,117 @@ DEBUFF_FAMILY_ORDER = (
 )
 
 
+# Timers de status mantidos por lutador. A chave e o atributo historico que
+# ``Lutador`` continua expondo; o valor e o ID canonico deste modulo. Timers de
+# mecanica (dash, flash, invencibilidade, provocacao, bloqueio de cura) ficam
+# fora do container por nao serem status do catalogo.
+STATUS_TIMER_ATTRS = {
+    "stun_timer": "ATORDOADO",
+    "slow_timer": "LENTO",
+    "enraizado_timer": "ENRAIZADO",
+    "congelado_timer": "CONGELADO",
+    "tempo_parado_timer": "TEMPO_PARADO",
+    "silenciado_timer": "SILENCIADO",
+    "exausto_timer": "EXAUSTO",
+    "cego_timer": "CEGO",
+    "medo_timer": "MEDO",
+    "sono_timer": "SONO",
+    "marcado_timer": "MARCADO",
+    "fraco_timer": "FRACO",
+    "vulneravel_timer": "VULNERAVEL",
+    "maldito_timer": "MALDITO",
+    "corroendo_timer": "CORROENDO",
+    "exposto_timer": "EXPOSTO",
+    "charme_timer": "CHARME",
+    "possesso_timer": "POSSESSO",
+    "bomba_relogio_timer": "BOMBA_RELOGIO",
+    "link_alma_timer": "LINK_ALMA",
+}
+
+
+STATUS_TIMER_BY_ID = {status: attr for attr, status in STATUS_TIMER_ATTRS.items()}
+
+
+class StatusTimers:
+    """Tempo restante de cada status ativo, indexado pelo ID canonico.
+
+    Substitui os campos ``*_timer`` soltos do ``Lutador``: um status ausente do
+    mapa simplesmente nao esta ativo, entao nao existe estado espelhado para
+    sincronizar a mao.
+    """
+
+    __slots__ = ("_restante",)
+
+    def __init__(self) -> None:
+        self._restante: dict[str, float] = {}
+
+    def get(self, status_id: str) -> float:
+        return self._restante.get(status_id, 0.0)
+
+    def set(self, status_id: str, valor: object) -> float:
+        """Grava o tempo restante; valores nao positivos removem o status."""
+        try:
+            restante = float(valor)
+        except (TypeError, ValueError):
+            restante = 0.0
+        if not math.isfinite(restante) or restante <= 0.0:
+            self._restante.pop(status_id, None)
+            return 0.0
+        self._restante[status_id] = restante
+        return restante
+
+    def estender(self, status_id: str, duracao: object) -> float:
+        """Renova o status mantendo a maior duracao, como o runtime ja fazia."""
+        try:
+            nova = float(duracao)
+        except (TypeError, ValueError):
+            return self.get(status_id)
+        return self.set(status_id, max(self.get(status_id), nova))
+
+    def ativo(self, status_id: str) -> bool:
+        return self._restante.get(status_id, 0.0) > 0.0
+
+    def ativos(self) -> frozenset:
+        return frozenset(self._restante)
+
+    def limpar(self, *status_ids: str) -> None:
+        if not status_ids:
+            self._restante.clear()
+            return
+        for status_id in status_ids:
+            self._restante.pop(status_id, None)
+
+    def tick(self, dt: float, *, exceto=()) -> tuple:
+        """Desconta ``dt`` e devolve os IDs que expiraram neste passo."""
+        if dt <= 0.0 or not self._restante:
+            return ()
+        ignorados = frozenset(exceto)
+        expirados = []
+        for status_id in tuple(self._restante):
+            if status_id in ignorados:
+                continue
+            restante = self._restante[status_id] - dt
+            if restante > 0.0:
+                self._restante[status_id] = restante
+            else:
+                del self._restante[status_id]
+                expirados.append(status_id)
+        return tuple(expirados)
+
+    def modificador(self, campo: str, *, combinar=max, padrao: float = 1.0) -> float:
+        """Agrega ``campo`` de ``STATUS_RUNTIME`` sobre os status ativos.
+
+        Debuffs da mesma familia nao se multiplicam: ``combinar`` escolhe um
+        unico valor entre os ativos, preservando a regra historica.
+        """
+        valores = [padrao]
+        for status_id in self._restante:
+            definicao = STATUS_RUNTIME.get(status_id)
+            if definicao is not None and campo in definicao:
+                valores.append(float(definicao[campo]))
+        return combinar(valores)
+
+
 def normalizar_efeito(efeito: object) -> str:
     """Converte aliases de transporte/catálogo no ID usado pelo runtime."""
     nome = str(efeito or "NORMAL").upper()
@@ -192,6 +303,9 @@ __all__ = [
     "EFEITOS_TRATADOS_FORA_DO_STATUS",
     "STATUS_ALIASES",
     "STATUS_RUNTIME",
+    "STATUS_TIMER_ATTRS",
+    "STATUS_TIMER_BY_ID",
+    "StatusTimers",
     "efeito_bloqueado_por_imunidade",
     "get_duracao_padrao",
     "get_status_runtime",
