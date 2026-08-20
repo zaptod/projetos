@@ -210,6 +210,13 @@ class WeaponAnalyzer:
         tamanho_base = self._calcular_tamanho_arma(arma)
         
         alcance_max = tamanho_base * base_data["alcance_mult"]
+        # Onda 4: a percepção de armas ranged usa a MESMA fonte de onde o
+        # motor dispara — a estimativa por tamanho de sprite distorcia o
+        # perigo real do inimigo ranged (e o vantagem_alcance derivado).
+        from neural_fights.models.constants import alcance_ranged_m
+        _alc_cat = alcance_ranged_m(tipo)
+        if _alc_cat is not None:
+            alcance_max = _alc_cat
         zona_morta = tamanho_base * base_data["zona_morta_mult"]
         alcance_ideal = (alcance_max + zona_morta) / 2
         alcance_min = zona_morta * 1.2

@@ -59,7 +59,7 @@ class AreaStructureSkillRegressionTests(unittest.TestCase):
 
         coarse_damage = sum(item.get("dano", 0.0) for item in coarse_results)
         fine_damage = sum(item.get("dano", 0.0) for item in fine_results)
-        self.assertAlmostEqual(coarse_damage, 50.0)
+        self.assertAlmostEqual(coarse_damage, 100.0)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertAlmostEqual(fine_damage, coarse_damage)
         self.assertTrue(all(item.get("tipo") == "NORMAL" for item in coarse_results))
         self.assertFalse(coarse.ativo)
@@ -102,7 +102,7 @@ class AreaStructureSkillRegressionTests(unittest.TestCase):
             simulation.update(0.0)
 
         self.assertEqual(len(target._fontes_impacto_recentes), 3)
-        expected = owner.get_dano_modificado(60.0 + 2 * 60.0 * 0.7)
+        expected = owner.get_dano_modificado(120.0 + 2 * 120.0 * 0.7)  # re-pino O6f2: escala x2
         self.assertAlmostEqual(target.vida, target.vida_max - expected)
 
     def test_meteor_shower_emits_every_configured_meteor_with_explicit_payload(self):
@@ -125,7 +125,7 @@ class AreaStructureSkillRegressionTests(unittest.TestCase):
         self.assertEqual(fine.meteoros_spawned, fine.meteoros)
         self.assertEqual(len(coarse_meteors), 10)
         self.assertEqual(len(fine_meteors), 10)
-        self.assertTrue(all(item["dano"] == 30.0 for item in coarse_meteors))
+        self.assertTrue(all(item["dano"] == 60.0 for item in coarse_meteors))
         self.assertTrue(all(item["raio"] == 3.0 for item in coarse_meteors))
         self.assertEqual(
             len({id(item["fonte_impacto"]) for item in coarse_meteors}),
@@ -145,7 +145,7 @@ class AreaStructureSkillRegressionTests(unittest.TestCase):
 
         self.assertEqual(len(simulation.areas), 10)
         self.assertTrue(all(child.elemento == "CAOS" for child in simulation.areas))
-        self.assertTrue(all(child.dano == 30.0 for child in simulation.areas))
+        self.assertTrue(all(child.dano == 60.0 for child in simulation.areas))  # re-pino O6f2: escala x2
         self.assertTrue(all(child.raio == 3.0 for child in simulation.areas))
         self.assertEqual(owner.rng_runtime.getstate(), state_after_cast)
 
@@ -262,7 +262,7 @@ class AreaStructureSkillRegressionTests(unittest.TestCase):
         with self._floating_text_patch():
             simulation.update(0.1)
 
-        self.assertAlmostEqual(target.vida, target.vida_max - 10.0)
+        self.assertAlmostEqual(target.vida, target.vida_max - 20)  # re-pino O6f2
 
     def test_area_base_and_periodic_damage_are_step_independent_end_to_end(self):
         def run(chunks):
@@ -281,7 +281,7 @@ class AreaStructureSkillRegressionTests(unittest.TestCase):
         fine_damage = run([0.1] * 50)
 
         self.assertAlmostEqual(coarse_damage, fine_damage)
-        self.assertAlmostEqual(coarse_damage, 55.25)
+        self.assertAlmostEqual(coarse_damage, 110.5)  # re-pino O6f2: escala de dano/cura de skill x2
 
     def test_periodic_area_cannot_bypass_skill_invulnerability(self):
         owner = self._fighter("Caster", x=0.0)

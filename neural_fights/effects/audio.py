@@ -22,6 +22,21 @@ from neural_fights.effects.audio_paths import (
 logger = logging.getLogger(__name__)
 
 
+# Cache de Sound por caminho resolvido, compartilhado entre instancias.
+#
+# ``Simulador._configurar_partida_atual`` reseta o AudioManager a cada partida,
+# e sem cache isso relia e redecodificava todos os assets do disco: medido em
+# ~1,03 s por troca de partida, 95% do custo total do reload. Numa transmissao
+# continua isso e um congelamento visivel entre lutas.
+#
+# Compartilhar o objeto ``Sound`` e seguro porque ``play`` define o volume
+# imediatamente antes de tocar (ver ``AudioManager.play``); nada depende de um
+# volume persistido no objeto. O cache e descartado em ``descartar_cache``,
+# chamado antes de o mixer ser encerrado -- um ``Sound`` nao sobrevive a
+# ``pygame.mixer.quit()``.
+_CACHE_DE_SONS: dict[str, "pygame.mixer.Sound"] = {}
+
+
 class AudioManager:
     """
     Gerenciador central de áudio do jogo.
@@ -399,23 +414,19 @@ class AudioManager:
             configured_file = self.sound_config[name]
             filepath = resolve_sound_file(configured_file)
             if filepath is not None:
-                try:
-                    sound = pygame.mixer.Sound(str(filepath))
+                sound = self._carregar_do_cache(filepath)
+                if sound is not None:
                     logger.debug("Loaded configured sound %s -> %s", name, filepath)
                     return sound
-                except pygame.error as exc:
-                    logger.warning("Falha ao carregar %s: %s", filepath, exc)
         
         # Tenta carregar arquivo com nome padrão
         for ext in ['.wav', '.ogg', '.mp3']:
             filepath = resolve_sound_file(f"{name}{ext}")
             if filepath is not None:
-                try:
-                    sound = pygame.mixer.Sound(str(filepath))
+                sound = self._carregar_do_cache(filepath)
+                if sound is not None:
                     logger.debug("Loaded sound %s -> %s", name, filepath)
                     return sound
-                except pygame.error as exc:
-                    logger.warning("Falha ao carregar %s: %s", filepath, exc)
 
         fallback = self.SOUND_FALLBACKS.get(name)
         if fallback and fallback != name:
@@ -423,6 +434,31 @@ class AudioManager:
         
         # SEM som configurado = não toca nada (sem sons procedurais)
         return None
+
+    @staticmethod
+    def _carregar_do_cache(filepath) -> Optional[pygame.mixer.Sound]:
+        """Decodifica o arquivo uma vez por processo e reusa o buffer."""
+        chave = str(filepath)
+        som = _CACHE_DE_SONS.get(chave)
+        if som is not None:
+            return som
+        try:
+            som = pygame.mixer.Sound(chave)
+        except pygame.error as exc:
+            logger.warning("Falha ao carregar %s: %s", chave, exc)
+            return None
+        _CACHE_DE_SONS[chave] = som
+        return som
+
+    @classmethod
+    def descartar_cache(cls):
+        """Esvazia o cache de assets.
+
+        Precisa ser chamado antes de ``pygame.mixer.quit()``: um ``Sound``
+        criado sob um mixer nao sobrevive ao encerramento dele, e reusa-lo
+        depois seria usar memoria liberada.
+        """
+        _CACHE_DE_SONS.clear()
     
     # =========================================================================
     # API PÚBLICA

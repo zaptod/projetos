@@ -13,6 +13,8 @@ CHANGELOG v2.0:
 
 import math
 import pygame
+
+from neural_fights.utils.config import PPM
 import random
 from dataclasses import dataclass, field
 from typing import List, Tuple
@@ -1208,7 +1210,7 @@ class SlashEffect:
                 pts.append((center + math.cos(a)*current_width*0.25, center + math.sin(a)*current_width*0.25))
             if len(pts) > 2:
                 pygame.draw.polygon(s, (*self.color, alpha), pts)
-            sp = camera.mundo_para_tela(self.x, self.y)
+            sp = camera.converter(self.x * PPM, self.y * PPM)
             surface.blit(s, (sp[0]-center, sp[1]-center))
         except DRAW_ERRORS:
             pass
@@ -1231,8 +1233,8 @@ class ThrustEffect:
         rad = math.radians(self.angle)
         end_x = self.x + math.cos(rad) * current_length
         end_y = self.y + math.sin(rad) * current_length
-        start = camera.mundo_para_tela(self.x, self.y)
-        end = camera.mundo_para_tela(end_x, end_y)
+        start = camera.converter(self.x * PPM, self.y * PPM)
+        end = camera.converter(end_x * PPM, end_y * PPM)
         width = max(2, int(9 * (1 - progress)))
         blend = alpha / 255
         final = tuple(min(255, int(c*blend + 100*blend)) for c in self.color)
@@ -1248,7 +1250,7 @@ class BowDrawEffect:
 
     def draw(self, surface, camera, radius):
         if self.draw_amount < 0.1: return
-        sp = camera.mundo_para_tela(self.x, self.y)
+        sp = camera.converter(self.x * PPM, self.y * PPM)
         gr = int(radius * 0.55 * self.draw_amount)
         if gr > 2:
             try:
@@ -1303,6 +1305,11 @@ class WeaponAnimationManager:
 
     def update(self, dt):
         self.active_effects = [e for e in self.active_effects if e.update(dt)]
+        # Passe 2 (arte): teto duro — este manager ficou anos sem update()
+        # em runtime e a lista crescia sem limite; o cap protege contra
+        # qualquer regressão de chamada.
+        if len(self.active_effects) > 64:
+            self.active_effects = self.active_effects[-64:]
 
     def get_weapon_transform(self, fighter_id, weapon_type, base_angle, weapon_tip, dt, weapon_style=""):
         state = self.animator.update(dt, fighter_id, weapon_type, base_angle, weapon_tip, weapon_style)
@@ -1324,11 +1331,20 @@ class WeaponAnimationManager:
             "combo_count": state.combo_count,
         }
 
-    def draw_trails(self, surface, fighter_id, weapon_color, weapon_type, weapon_style=""):
+    def draw_trails(self, surface, fighter_id, weapon_color, weapon_type,
+                    weapon_style="", converter=None):
         state = self.animator.get_state(fighter_id)
         profile = get_animation_profile(weapon_type, weapon_style)
-        if state.trail_positions:
-            self.trail_renderer.draw_trail(surface, state.trail_positions,
+        positions = state.trail_positions
+        # As posições da trilha vivem em METROS de mundo (weapon_tip do
+        # lutador); os renderers desenham pixel cru — quem tem câmera
+        # passa o converter dela.
+        if converter and positions:
+            positions = [
+                (*converter(p[0] * PPM, p[1] * PPM), p[2]) for p in positions
+            ]
+        if positions:
+            self.trail_renderer.draw_trail(surface, positions,
                                            weapon_color, weapon_type, profile, weapon_style)
 
     def draw_effects(self, surface, camera):

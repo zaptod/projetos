@@ -11,3 +11,9 @@ build/
 dist/
 *.egg-info/
 *.log
+
+# Estado e credenciais de transmissao ao vivo
+youtube_credentials.json
+*.sqlite3
+*.jsonl
+!tests/fixtures/*.jsonl

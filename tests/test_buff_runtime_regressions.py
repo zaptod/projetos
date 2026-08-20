@@ -135,7 +135,7 @@ class BuffRuntimeRegressionTests(unittest.TestCase):
 
         fighter.remover_debuffs()
         restored = channel.atualizar(0.1)
-        self.assertAlmostEqual(restored[0]["valor"], 1.5)
+        self.assertAlmostEqual(restored[0]["valor"], 3.0)  # re-pino O6f2: escala de dano/cura de skill x2
 
     def test_status_runtime_is_the_only_balance_source(self) -> None:
         """Numeros de balanceamento vivem so em ``status_runtime``."""

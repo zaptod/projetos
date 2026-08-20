@@ -47,6 +47,8 @@ class HeadlessMatchRunner:
         max_frames: int | None = None,
         max_duration: float = 120.0,
         seed: int = 0,
+        probe=None,
+        roster_provider=None,
     ) -> None:
         if not isinstance(match_config, Mapping):
             raise TypeError("match_config precisa ser um mapeamento")
@@ -74,6 +76,13 @@ class HeadlessMatchRunner:
         self.fixed_dt = fixed_dt
         self.max_frames = int(max_frames)
         self.seed = int(seed)
+        # Sonda de qualidade de luta (ver ``simulation.probes``): recebe o
+        # simulador apos a criacao e a cada frame. ``None`` preserva o
+        # comportamento historico byte a byte.
+        self.probe = probe
+        # Resolvedor de lutador injetado (mesma costura do Simulador); usado
+        # pelo harness para rodar corpora com dados congelados.
+        self.roster_provider = roster_provider
 
     @staticmethod
     def _fighter_snapshot(fighter) -> tuple[str, float, float]:
@@ -163,13 +172,24 @@ class HeadlessMatchRunner:
             # O proprio Simulador adquire ownership e controla o RNG global de
             # forma atomica. Semear antes desse lock criaria uma race entre
             # runners simultaneos.
+            # ``roster_provider`` so entra na chamada quando existe: o kwarg
+            # ausente mantem a assinatura historica intacta para adaptadores e
+            # fakes que embrulham o Simulador.
+            extras = {}
+            if self.roster_provider is not None:
+                extras["roster_provider"] = self.roster_provider
             simulator = Simulador(
                 match_config=self.match_config,
                 headless=True,
                 seed=self.seed,
+                **extras,
             )
+            if self.probe is not None:
+                self.probe.on_inicio(simulator)
             for frames in range(1, self.max_frames + 1):
                 simulator.update(self.fixed_dt)
+                if self.probe is not None:
+                    self.probe.on_frame(simulator, self.fixed_dt)
                 if simulator.round_finalizado:
                     reason = (
                         "double_ko"

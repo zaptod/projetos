@@ -117,8 +117,8 @@ class AdvancedSkillRegressionTests(unittest.TestCase):
         with self._floating_text_patch():
             simulation.update(0.01)
 
-        self.assertAlmostEqual(primary.vida, 980.0)
-        self.assertAlmostEqual(secondary.vida, 980.0)
+        self.assertAlmostEqual(primary.vida, 960.0)  # re-pino O6f2: escala de dano/cura de skill x2
+        self.assertAlmostEqual(secondary.vida, 960.0)  # re-pino O6f2: escala de dano/cura de skill x2
 
     def test_plague_contagion_selects_nearest_and_never_reinfects(self) -> None:
         owner = SimpleNamespace(pos=[0.0, 0.0], morto=False)
@@ -171,7 +171,7 @@ class AdvancedSkillRegressionTests(unittest.TestCase):
 
         self.assertIsNotNone(jump)
         self.assertIs(jump.alvo_forcado, second)
-        self.assertAlmostEqual(jump.dano, 18.0 * 0.8)
+        self.assertAlmostEqual(jump.dano, 36.0 * 0.8)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertEqual(jump.chain_count, 1)
         self.assertIn(id(first), jump.chain_targets)
 
@@ -191,7 +191,7 @@ class AdvancedSkillRegressionTests(unittest.TestCase):
         self.assertEqual(len(simulation.beams), 2)
         jump = simulation.beams[1]
         self.assertIs(jump.alvo_forcado, enemy_summon)
-        self.assertAlmostEqual(jump.dano, 18.0 * 0.8)
+        self.assertAlmostEqual(jump.dano, 36.0 * 0.8)  # re-pino O6f2: escala de dano/cura de skill x2
 
     def test_lightning_teleport_applies_arrival_damage_contract(self) -> None:
         fighter = self._fighter("Teleporter")
@@ -209,7 +209,7 @@ class AdvancedSkillRegressionTests(unittest.TestCase):
         self.assertTrue(used)
         self.assertAlmostEqual(fighter.pos[0], 5.0)
         self.assertEqual(len(fighter.buffer_areas), 1)
-        self.assertEqual(fighter.buffer_areas[0].dano, 15.0)
+        self.assertEqual(fighter.buffer_areas[0].dano, 30.0)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertEqual(fighter.invencivel_timer, 0.3)
         self.assertEqual(fighter.invulnerabilidade_skill_timer, 0.3)
 
@@ -240,8 +240,8 @@ class AdvancedSkillRegressionTests(unittest.TestCase):
         with self._floating_text_patch():
             simulation.update(0.1)
 
-        self.assertAlmostEqual(target.ultimo_resultado_impacto.dano, 90.0)
-        self.assertAlmostEqual(target.vida, 910.0)
+        self.assertAlmostEqual(target.ultimo_resultado_impacto.dano, 180.0)  # re-pino O6f2: escala de dano/cura de skill x2
+        self.assertAlmostEqual(target.vida, 820.0)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertFalse(target.congelado)
         self.assertEqual(target.congelado_timer, 0.0)
         self.assertGreater(target.vulneravel_timer, 0.0)
@@ -298,7 +298,7 @@ class AdvancedSkillRegressionTests(unittest.TestCase):
         with self._floating_text_patch():
             simulation.update(0.001)
 
-        self.assertAlmostEqual(target.vida, 1000.0 - 36.0)
+        self.assertAlmostEqual(target.vida, 1000.0 - 72.0)  # re-pino O6f2: escala x2
 
         target.invencivel_timer = 0.0
         source_a = object()

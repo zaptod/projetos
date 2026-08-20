@@ -8,6 +8,13 @@ from neural_fights.models.constants import get_class_data
 
 BASE_VIDA = 80.0
 VIDA_POR_RESISTENCIA = 5.0
+
+# Onda 4: escala global de TTK, varrida no harness. A medicao mostrou que
+# cadencia sozinha nao alcanca o corredor de 20-40s: com ~4-5 acertos para
+# matar, nem um Arco a 2,5s de cooldown chegaria la — o dial real de pacing
+# e acertos-para-matar. Knob GLOBAL e neutro por classe (nao contamina a
+# atribuicao da O5); a O6 faz o ajuste por classe/tipo em cima desta escala.
+ESCALA_VIDA_GLOBAL = 2.8
 BASE_MANA = 50.0
 MANA_POR_PONTO = 10.0
 ESCALA_VELOCIDADE_MOVIMENTO = 3.0
@@ -64,7 +71,7 @@ class Personagem:
     def get_vida_max(self):
         """Retorna vida máxima calculada"""
         base = BASE_VIDA + (self.resistencia_base * VIDA_POR_RESISTENCIA)
-        return base * self.class_data.get("mod_vida", 1.0)
+        return base * self.class_data.get("mod_vida", 1.0) * ESCALA_VIDA_GLOBAL
     
     def get_mana_max(self):
         """Retorna mana máxima calculada"""

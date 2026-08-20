@@ -137,7 +137,11 @@ class Arma:
             self.passiva = passiva
         
         # === STATS EXTRAS ===
-        self.critico = float(critico) + rar_data["mod_critico"]
+        # Critico em PONTOS PERCENTUAIS: a arma contribui 2-6 pontos e a
+        # raridade 0-15 (mod_critico 0.00-0.15 foi desenhado como
+        # probabilidade; x100 recompoe na mesma unidade da arma, senao o
+        # bonus de raridade fica invisivel). O consumo divide por 100.
+        self.critico = float(critico) + rar_data["mod_critico"] * 100.0
         self.velocidade_ataque = float(velocidade_ataque) * rar_data["mod_velocidade_ataque"]
         self.afinidade_elemento = afinidade_elemento
         
@@ -237,7 +241,7 @@ class Arma:
             "habilidades": self.habilidades,
             "encantamentos": self.encantamentos,
             "passiva": self.passiva,
-            "critico": self.critico - get_raridade_data(self.raridade)["mod_critico"],
+            "critico": self.critico - get_raridade_data(self.raridade)["mod_critico"] * 100.0,
             "velocidade_ataque": self.velocidade_ataque / get_raridade_data(self.raridade)["mod_velocidade_ataque"],
             "afinidade_elemento": self.afinidade_elemento,
             "durabilidade": self.durabilidade,

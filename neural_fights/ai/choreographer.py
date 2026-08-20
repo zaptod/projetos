@@ -364,8 +364,11 @@ class CombatChoreographer:
         
         # === FINAL_SHOWDOWN (Momento final) ===
         if self._pode_momento("FINAL_SHOWDOWN"):
-            if (hp1_pct < 0.15 or hp2_pct < 0.15) and self.climax_atingido:
-                if self.rng.random() < 0.08:
+            # Onda 5D (item puxado da 5E): o gate de climax nunca chegava a
+            # ser atingido — FINAL_SHOWDOWN jamais disparou em medição. O
+            # plano manda o trigger honesto: AMBOS abaixo de 30%.
+            if hp1_pct < 0.30 and hp2_pct < 0.30:
+                if self.rng.random() < 0.12:
                     self._iniciar_momento("FINAL_SHOWDOWN", self.rng.uniform(2.5, 4.0))
                     return
         

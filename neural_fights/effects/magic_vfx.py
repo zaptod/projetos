@@ -19,117 +19,13 @@ from typing import List, Tuple
 # CORES E PALETAS DE ELEMENTOS
 # =============================================================================
 
-ELEMENT_PALETTES = {
-    "FOGO": {
-        "core": (255, 255, 200),
-        "mid": [(255, 180, 50), (255, 120, 0), (255, 80, 0)],
-        "outer": [(255, 50, 0), (200, 30, 0), (150, 20, 0)],
-        "spark": (255, 255, 100),
-        "glow": (255, 100, 0, 100),
-    },
-    "GELO": {
-        "core": (255, 255, 255),
-        "mid": [(200, 240, 255), (150, 220, 255), (100, 200, 255)],
-        "outer": [(80, 180, 255), (50, 150, 220), (30, 120, 200)],
-        "spark": (220, 250, 255),
-        "glow": (100, 200, 255, 100),
-    },
-    "RAIO": {
-        "core": (255, 255, 255),
-        "mid": [(255, 255, 150), (255, 255, 100), (200, 200, 255)],
-        "outer": [(150, 150, 255), (100, 100, 255), (80, 80, 200)],
-        "spark": (255, 255, 255),
-        "glow": (150, 150, 255, 120),
-    },
-    "TREVAS": {
-        "core": (150, 100, 200),
-        "mid": [(100, 0, 150), (80, 0, 120), (60, 0, 100)],
-        "outer": [(40, 0, 80), (30, 0, 60), (20, 0, 40)],
-        "spark": (200, 150, 255),
-        "glow": (100, 0, 150, 80),
-    },
-    "LUZ": {
-        "core": (255, 255, 255),
-        "mid": [(255, 255, 220), (255, 255, 180), (255, 240, 150)],
-        "outer": [(255, 220, 100), (255, 200, 50), (255, 180, 0)],
-        "spark": (255, 255, 255),
-        "glow": (255, 255, 200, 150),
-    },
-    "NATUREZA": {
-        "core": (200, 255, 200),
-        "mid": [(100, 255, 100), (80, 220, 80), (60, 200, 60)],
-        "outer": [(50, 180, 50), (40, 150, 40), (30, 120, 30)],
-        "spark": (180, 255, 180),
-        "glow": (100, 255, 100, 100),
-    },
-    "ARCANO": {
-        "core": (255, 200, 255),
-        "mid": [(220, 150, 255), (200, 100, 255), (180, 80, 255)],
-        "outer": [(150, 50, 200), (120, 30, 180), (100, 20, 150)],
-        "spark": (255, 200, 255),
-        "glow": (200, 100, 255, 100),
-    },
-    "CAOS": {
-        "core": (255, 255, 255),
-        "mid": [(255, 100, 100), (100, 255, 100), (100, 100, 255)],
-        "outer": [(255, 50, 200), (200, 50, 255), (50, 200, 255)],
-        "spark": (255, 255, 255),
-        "glow": (255, 100, 255, 100),
-    },
-    "SANGUE": {
-        "core": (255, 200, 200),
-        "mid": [(220, 50, 50), (200, 30, 30), (180, 20, 20)],
-        "outer": [(150, 0, 0), (120, 0, 0), (100, 0, 0)],
-        "spark": (255, 150, 150),
-        "glow": (200, 0, 0, 100),
-    },
-    "VOID": {
-        "core": (100, 50, 150),
-        "mid": [(50, 0, 100), (30, 0, 80), (20, 0, 60)],
-        "outer": [(10, 0, 40), (5, 0, 30), (0, 0, 20)],
-        "spark": (150, 100, 200),
-        "glow": (50, 0, 100, 80),
-    },
-    "DEFAULT": {
-        "core": (255, 255, 255),
-        "mid": [(200, 200, 200), (180, 180, 180), (150, 150, 150)],
-        "outer": [(120, 120, 120), (100, 100, 100), (80, 80, 80)],
-        "spark": (255, 255, 255),
-        "glow": (200, 200, 200, 100),
-    },
-}
-
-
-def get_element_from_skill(skill_nome: str, skill_data: dict) -> str:
-    """Determina o elemento de uma skill pelo nome ou dados"""
-    # Primeiro verifica se tem elemento definido
-    if "elemento" in skill_data:
-        return skill_data["elemento"]
-    
-    # Tenta detectar pelo nome
-    nome_lower = skill_nome.lower()
-    if any(w in nome_lower for w in ["fogo", "fire", "chama", "meteoro", "inferno", "brasas"]):
-        return "FOGO"
-    if any(w in nome_lower for w in ["gelo", "ice", "glacial", "nevasca", "congelar"]):
-        return "GELO"
-    if any(w in nome_lower for w in ["raio", "lightning", "thunder", "relâmpago", "elétric"]):
-        return "RAIO"
-    if any(w in nome_lower for w in ["trevas", "shadow", "dark", "sombr", "necro"]):
-        return "TREVAS"
-    if any(w in nome_lower for w in ["luz", "light", "holy", "sagrado", "divino", "celestial"]):
-        return "LUZ"
-    if any(w in nome_lower for w in ["natureza", "nature", "veneno", "poison", "planta", "espin"]):
-        return "NATUREZA"
-    if any(w in nome_lower for w in ["arcano", "arcane", "mana", "magia"]):
-        return "ARCANO"
-    if any(w in nome_lower for w in ["caos", "chaos", "random"]):
-        return "CAOS"
-    if any(w in nome_lower for w in ["sangue", "blood", "vampir"]):
-        return "SANGUE"
-    if any(w in nome_lower for w in ["void", "vazio", "tentáculo"]):
-        return "VOID"
-    
-    return "DEFAULT"
+# Passe 2 (arte): a paleta e a heurística de elemento moveram para a
+# fonte única em utils/palette.py (com TEMPO e GRAVITACAO, que
+# faltavam). Reexportadas aqui para os consumidores existentes.
+from neural_fights.utils.palette import (  # noqa: F401
+    ELEMENT_PALETTES,
+    get_element_from_skill,
+)
 
 
 # =============================================================================
@@ -797,12 +693,18 @@ class MagicVFXManager:
     
     _instance = None
     
+    TETO_POR_LISTA = 24  # Passe 2: nenhuma lista de VFX tinha teto
+
     def __init__(self):
         self.explosions: List[DramaticExplosion] = []
         self.beams: List[DramaticBeam] = []
         self.auras: List[DramaticAura] = []
         self.summons: List[DramaticSummon] = []
         self.trails: dict = {}  # {proj_id: DramaticProjectileTrail}
+
+    def _capar(self, lista):
+        if len(lista) > self.TETO_POR_LISTA:
+            del lista[: len(lista) - self.TETO_POR_LISTA]
     
     @classmethod
     def get_instance(cls):
@@ -817,20 +719,24 @@ class MagicVFXManager:
     def spawn_explosion(self, x: float, y: float, elemento: str = "DEFAULT",
                        tamanho: float = 1.0, dano: float = 0):
         """Cria uma explosão dramática"""
+        self._capar(self.explosions)
         self.explosions.append(DramaticExplosion(x, y, elemento, tamanho, dano))
     
     def spawn_beam(self, x1: float, y1: float, x2: float, y2: float,
                   elemento: str = "DEFAULT", largura: float = 8):
         """Cria um beam dramático"""
+        self._capar(self.beams)
         self.beams.append(DramaticBeam(x1, y1, x2, y2, elemento, largura))
     
     def spawn_aura(self, x: float, y: float, raio: float,
                   elemento: str = "DEFAULT", intensidade: float = 1.0):
         """Cria uma aura dramática"""
+        self._capar(self.auras)
         self.auras.append(DramaticAura(x, y, raio, elemento, intensidade))
     
     def spawn_summon(self, x: float, y: float, elemento: str = "DEFAULT"):
         """Cria efeito de invocação"""
+        self._capar(self.summons)
         self.summons.append(DramaticSummon(x, y, elemento))
     
     def get_or_create_trail(self, proj_id: int, elemento: str = "DEFAULT") -> DramaticProjectileTrail:

@@ -19,40 +19,21 @@ COR_DANGER = "#e74c3c"
 # ============================================================================
 # CORES DAS RARIDADES
 # ============================================================================
-CORES_RARIDADE = {
-    "Comum": "#B4B4B4",
-    "Incomum": "#64C864",
-    "Raro": "#508CFF",
-    "Épico": "#B450DC",
-    "Lendário": "#FFB432",
-    "Mítico": "#FF6464"
-}
+# Passe 2 (arte): fonte única em RGB vive em utils/palette.py; o tema
+# Tkinter consome a MESMA verdade convertida para hex.
+from neural_fights.utils.palette import (
+    CORES_CLASSE as _CORES_CLASSE_RGB,
+    CORES_RARIDADE as _CORES_RARIDADE_RGB,
+    rgb_to_hex,
+)
+
+CORES_RARIDADE = {k: rgb_to_hex(v) for k, v in _CORES_RARIDADE_RGB.items()}
 
 # ============================================================================
 # CORES DAS CLASSES POR CATEGORIA
 # ============================================================================
-CORES_CLASSE = {
-    # Físicos
-    "Guerreiro (Força Bruta)": "#cd7f32",
-    "Berserker (Fúria)": "#ff4444",
-    "Gladiador (Combate)": "#b8860b",
-    "Cavaleiro (Defesa)": "#4682b4",
-    # Ágeis
-    "Assassino (Crítico)": "#800080",
-    "Ladino (Evasão)": "#505050",
-    "Ninja (Velocidade)": "#2f2f2f",
-    "Duelista (Precisão)": "#ffd700",
-    # Mágicos
-    "Mago (Arcano)": "#6495ed",
-    "Piromante (Fogo)": "#ff6600",
-    "Criomante (Gelo)": "#87ceeb",
-    "Necromante (Trevas)": "#4b0082",
-    # Híbridos
-    "Paladino (Sagrado)": "#ffcc00",
-    "Druida (Natureza)": "#228b22",
-    "Feiticeiro (Caos)": "#9932cc",
-    "Monge (Chi)": "#f5f5dc",
-}
+CORES_CLASSE = {k: rgb_to_hex(v) for k, v in _CORES_CLASSE_RGB.items()}
+
 
 # Cores específicas para a tela de luta
 COR_P1 = "#3498db"

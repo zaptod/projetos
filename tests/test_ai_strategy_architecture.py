@@ -7,7 +7,6 @@ from unittest.mock import Mock
 
 from neural_fights.ai.brain import AIBrain, _obter_brain
 from neural_fights.ai.choreographer import CombatChoreographer
-from neural_fights.ai.combat_tactics import CombatTacticsSystem
 from neural_fights.ai.emotions import EmotionSystem
 from neural_fights.ai.spatial import SpatialAwarenessSystem
 from neural_fights.ai.skill_strategy import (
@@ -164,47 +163,25 @@ class BrainContractTests(unittest.TestCase):
 
         self.assertIs(choreographer.rng, rng)
 
-    def test_combat_tactics_reads_current_enemy_brain_contract(self):
-        tactics = CombatTacticsSystem(
-            SimpleNamespace(vida=100.0, vida_max=100.0),
-            tracos=[],
-            estilo_luta="BALANCED",
-        )
-        enemy = SimpleNamespace(
-            atacando=False,
-            cooldown_ataque=1.0,
-            vel=[0.0, 0.0],
-            z=0.0,
-            brain=SimpleNamespace(acao_atual="MATAR"),
-        )
-
-        tactics.atualizar_leitura(1.0 / 60.0, 2.0, enemy)
-
-        self.assertTrue(tactics.leitura_oponente["ataque_iminente"])
-
     def test_auxiliary_ai_systems_honor_injected_rng(self):
         parent = SimpleNamespace(vida=100.0, vida_max=100.0)
-        tactics_a = CombatTacticsSystem(
-            parent,
-            tracos=[],
-            estilo_luta="BALANCED",
-            rng=random.Random(31),
+        # Re-pino Onda 5C: o motor único lê identidade (rng/traços/
+        # perfil) AO VIVO do brain — não guarda cópia que envelhece. O
+        # contrato de determinismo agora é "mesmo rng no brain, mesmo
+        # humor", injetado pelo dono.
+        cerebro_a = SimpleNamespace(
+            rng=random.Random(37), tracos=[], parent=parent
         )
-        tactics_b = CombatTacticsSystem(
-            parent,
-            tracos=[],
-            estilo_luta="BALANCED",
-            rng=random.Random(31),
+        cerebro_b = SimpleNamespace(
+            rng=random.Random(37), tracos=[], parent=parent
         )
-        emotion_a = EmotionSystem(parent, [], rng=random.Random(37))
-        emotion_b = EmotionSystem(parent, [], rng=random.Random(37))
+        emotion_a = EmotionSystem(cerebro_a)
+        emotion_b = EmotionSystem(cerebro_b)
         emotion_a.frustracao = emotion_b.frustracao = 0.8
 
         emotion_a.atualizar_humor()
         emotion_b.atualizar_humor()
 
-        self.assertEqual(tactics_a.tempo_reacao_base, tactics_b.tempo_reacao_base)
-        self.assertEqual(tactics_a.variacao_timing, tactics_b.variacao_timing)
         self.assertEqual(emotion_a.humor, emotion_b.humor)
         self.assertEqual(emotion_a.cd_mudanca_humor, emotion_b.cd_mudanca_humor)
 
@@ -246,7 +223,12 @@ class BrainContractTests(unittest.TestCase):
         brain._usar_skill.assert_called_once()
         self.assertEqual(brain.cd_reagir, 0.3)
 
-    def test_legacy_skill_gate_checks_life_cost_and_stationary_range(self):
+    def test_skill_gate_checks_life_cost(self):
+        # Re-pino Onda 5E: o avaliador legado (_avaliar_uso_skill) morreu
+        # junto do caminho legado de skills; o contrato da Combustão
+        # (exige alvo QUEIMANDO) vive no caminho estratégico via
+        # CombatSituation.inimigo_queimando. Aqui fica o gate VIVO de
+        # custo de vida em _usar_skill.
         cast = Mock(return_value=True)
         brain = object.__new__(AIBrain)
         brain.parent = SimpleNamespace(
@@ -265,19 +247,6 @@ class BrainContractTests(unittest.TestCase):
         cast.assert_not_called()
         brain.parent.vida = 30.01
         self.assertTrue(brain._usar_skill(pact))
-
-        combustion = get_skill_data("Combustão Espontânea")
-        clean_enemy = SimpleNamespace(dots_ativos=[])
-        burning_enemy = SimpleNamespace(
-            dots_ativos=[SimpleNamespace(tipo="QUEIMANDO", ativo=True, vida=2.0)]
-        )
-        poisoned_enemy = SimpleNamespace(
-            dots_ativos=[SimpleNamespace(tipo="ENVENENADO", ativo=True, vida=2.0)]
-        )
-        self.assertFalse(brain._avaliar_uso_skill(combustion, 1.0, clean_enemy))
-        self.assertFalse(brain._avaliar_uso_skill(combustion, 1.0, poisoned_enemy))
-        self.assertFalse(brain._avaliar_uso_skill(combustion, 4.0, burning_enemy))
-        self.assertTrue(brain._avaliar_uso_skill(combustion, 1.0, burning_enemy))
 
 
 class SkillStrategyContractTests(unittest.TestCase):
@@ -428,11 +397,11 @@ class SkillStrategyContractTests(unittest.TestCase):
             "Corrente em Cadeia",
         )
 
-        self.assertEqual(strategy.skills["Espinhos"].dano_total, 36.0)
-        self.assertEqual(strategy.skills["Mísseis Arcanos"].dano_total, 40.0)
-        self.assertEqual(strategy.skills["Wrath of Nature"].dano_total, 180.0)
-        self.assertEqual(strategy.skills["Apocalipse"].dano_total, 380.0)
-        chain_expected = 18.0 * sum(0.8**jump for jump in range(5))
+        self.assertEqual(strategy.skills["Espinhos"].dano_total, 72.0)  # re-pino O6f2: escala de dano/cura de skill x2
+        self.assertEqual(strategy.skills["Mísseis Arcanos"].dano_total, 80.0)  # re-pino O6f2: escala de dano/cura de skill x2
+        self.assertEqual(strategy.skills["Wrath of Nature"].dano_total, 360.0)  # re-pino O6f2: escala de dano/cura de skill x2
+        self.assertEqual(strategy.skills["Apocalipse"].dano_total, 760.0)  # re-pino O6f2: escala de dano/cura de skill x2
+        chain_expected = 36.0 * sum(0.8**jump for jump in range(5))  # re-pino O6f2: escala x2
         self.assertAlmostEqual(
             strategy.skills["Corrente em Cadeia"].dano_total,
             chain_expected,

@@ -651,13 +651,16 @@ def validar_armas(
 
         _validar_cores(arma, ("r", "g", "b"), caminho, erros)
         _validar_numero(arma, "custo_mana", caminho, erros, minimo=0)
+        # Critico do catalogo e a chance BASE em pontos percentuais; a
+        # raridade soma ate +15. Acima de 15 de base o critico deixa de ser
+        # evento raro e volta a ser o estado permanente que ja foi bug.
         _validar_numero(
             arma,
             "critico",
             caminho,
             erros,
             minimo=0,
-            maximo=100,
+            maximo=15,
         )
         _validar_numero(
             arma,

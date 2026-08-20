@@ -9,17 +9,38 @@ from neural_fights.utils.config import PRETO
 
 class FloatingText:
     """Texto flutuante para dano e notificações"""
+    TIERS = (
+        (25, 18, None),              # leve: cor do chamador
+        (60, 24, (255, 235, 140)),   # medio: amarelo
+        (110, 33, (255, 165, 70)),   # pesado: laranja
+        (10**9, 44, (255, 80, 60)),  # devastador: vermelho
+    )
+
     def __init__(self, x, y, texto, cor, tamanho=20):
+        # Passe de arte 1: o NUMERO carrega o peso do golpe — tamanho e
+        # cor escalam com o valor (um 13 sussurra, um 140 grita).
         self.x = x
         self.y = y
-        self.texto = str(int(texto)) if isinstance(texto, (int, float)) else texto
+        numerico = isinstance(texto, (int, float))
+        self.texto = str(int(texto)) if numerico else texto
         self.cor = cor
-        self.fonte = pygame.font.SysFont("Impact", tamanho)
+        if numerico:
+            valor = abs(float(texto))
+            for teto, tam, cor_tier in self.TIERS:
+                if valor < teto:
+                    tamanho = tam
+                    if cor_tier is not None:
+                        self.cor = cor_tier
+                    break
+        from neural_fights.utils.fonts import get_fonte_impact
+        self.fonte = get_fonte_impact(tamanho)  # cache (Passe 2)
         self.vel_y = -1.0
         self.vida = 1.0
         self.alpha = 255
+        self.idade = 0.0
 
     def update(self, dt):
+        self.idade += dt
         self.y += self.vel_y * dt * 60
         self.vel_y += 0.05 
         self.vida -= dt
@@ -31,10 +52,19 @@ class FloatingText:
             return
         sx, sy = cam.converter(self.x, self.y)
         surf = self.fonte.render(self.texto, True, self.cor)
+        contorno = self.fonte.render(self.texto, True, PRETO)
+        # pop de entrada: nasce 35% maior e assenta em ~0,12s
+        if self.idade < 0.12:
+            fator = 1.35 - (self.idade / 0.12) * 0.35
+            w, h = surf.get_size()
+            surf = pygame.transform.smoothscale(surf, (int(w * fator), int(h * fator)))
+            contorno = pygame.transform.smoothscale(contorno, (int(w * fator), int(h * fator)))
         surf.set_alpha(self.alpha)
-        sombra = self.fonte.render(self.texto, True, PRETO)
-        sombra.set_alpha(self.alpha)
-        tela.blit(sombra, (sx+2, sy+2))
+        contorno.set_alpha(self.alpha)
+        sx -= surf.get_width() // 2  # centrado no impacto
+        # contorno em 4 direcoes + sombra: legivel sobre qualquer fundo
+        for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2), (2, 2)):
+            tela.blit(contorno, (sx + dx, sy + dy))
         tela.blit(surf, (sx, sy))
 
 

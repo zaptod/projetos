@@ -68,16 +68,15 @@ from neural_fights.ai.contracts import obter_brain as _obter_brain
 from neural_fights.ai.skill_contracts import (
     alvo_tem_efeito,
     calcular_custo_vida,
-    tem_buff_dano,
     tem_buff_velocidade,
     tem_cura,
-    tem_defesa,
 )
 from neural_fights.ai.personalities import (
     TODOS_TRACOS, TRACOS_AGRESSIVIDADE, TRACOS_DEFENSIVO, TRACOS_MOBILIDADE,
     TRACOS_SKILLS, TRACOS_MENTAL, TRACOS_ESPECIAIS,
     ARQUETIPO_DATA, ESTILOS_LUTA, QUIRKS, FILOSOFIAS, HUMORES,
-    PERSONALIDADES_PRESETS, INSTINTOS, RITMOS, RITMO_MODIFICADORES
+    PERSONALIDADES_PRESETS, INSTINTOS, RITMOS, RITMO_MODIFICADORES,
+    perfil_de_tracos
 )
 
 
@@ -101,6 +100,18 @@ except ImportError:
     SKILL_STRATEGY_AVAILABLE = False
 
 
+def _delegado_emocional(nome):
+    """Property que delega um campo emocional ao EmotionSystem (Onda 5C)."""
+
+    def fget(self):
+        return getattr(self._motor_emocional(), nome)
+
+    def fset(self, valor):
+        setattr(self._motor_emocional(), nome, valor)
+
+    return property(fget, fset)
+
+
 class AIBrain:
     """
     Cérebro da IA v10.0 WEAPON PERCEPTION EDITION - Sistema de personalidade procedural com
@@ -115,34 +126,29 @@ class AIBrain:
         self.rng = rng if rng is not None else random
         self._dt_atual = 1.0 / 60.0
         self.timer_decisao = 0.0
-        self.acao_atual = "NEUTRO"
+        # Onda 5B: acao_atual e property; o rascunho fica em _acao_atual e
+        # TODA escrita passa pelo escritor unico (_definir_acao) com min-hold.
+        self._acao_atual = "NEUTRO"
+        self._acao_fonte = "init"
+        self._acao_hold_ate = 0.0
+        self._acao_hold_prio = 9
+        self._modo_proposta = False
+        self._contexto_escrita = 2
+        self.tell_atual = None
         self.dir_circular = self.rng.choice([-1, 1])
         
-        # === EMOÇÕES (0.0 a 1.0) ===
-        self.medo = 0.0
-        self.raiva = 0.0
-        self.confianca = 0.5
-        self.frustracao = 0.0
-        self.adrenalina = 0.0
-        self.excitacao = 0.0
-        self.tedio = 0.0
-        
-        # === HUMOR ATUAL ===
-        self.humor = "CALMO"
+        # === EMOÇÕES: MOTOR ÚNICO (Onda 5C) ===
+        # O estado emocional vive no EmotionSystem; o brain delega
+        # leitura/escrita via properties, então os escritores
+        # espalhados (quirks, presets, reações) seguem funcionando.
+        from neural_fights.ai.emotions import EmotionSystem
+        self.emocoes = EmotionSystem(self)
         self.humor_timer = 0.0
         
-        # === MEMÓRIA DE COMBATE ===
-        self.hits_recebidos_total = 0
-        self.hits_dados_total = 0
-        self.hits_recebidos_recente = 0
-        self.hits_dados_recente = 0
-        self.tempo_desde_dano = 5.0
-        self.tempo_desde_hit = 5.0
+        # === MEMÓRIA DE COMBATE (estado do brain, não-emocional) ===
         self.ultimo_dano_recebido = 0.0  # Valor do último dano recebido
         self.vezes_que_fugiu = 0
         self.ultimo_hp = parent.vida
-        self.combo_atual = 0
-        self.max_combo = 0
         self.tempo_combate = 0.0
         
         # === PERSONALIDADE GERADA ===
@@ -151,10 +157,20 @@ class AIBrain:
         self.filosofia = "EQUILIBRIO"
         self.tracos = []
         self.quirks = []
+        self._perfil_chave = None
+        self._perfil_cache = {}
+        self._direcao_avaliada = None
+        self._direcao_aceita = True
+        # Telemetria: quantas decisoes de movimento aconteceram e em
+        # quantas a pilha de personalidade chegou a rodar (alvo V1).
+        self.contadores = {"decisoes": 0, "pilha_completa": 0, "escritas_aceitas": 0, "escritas_seguradas": 0}
         self.agressividade_base = 0.5
         
         # === NOVOS SISTEMAS v11.0 ===
         self.instintos = []  # Lista de instintos ativos
+        self.cd_instintos = {}  # Onda 5D: cooldown POR instinto (tempo abs)
+        self.cd_hesitacao = 0.0  # portao de hesitacao tambem paga cooldown
+        self.ultimo_bloqueio = 99.0  # s desde o ultimo hit absorvido em guarda
         self.ritmo = None    # Ritmo de batalha atual
         self.ritmo_fase_atual = 0  # Índice da fase atual
         self.ritmo_timer = 0.0     # Timer para mudança de fase
@@ -338,6 +354,23 @@ class AIBrain:
     @rng.setter
     def rng(self, value):
         self._rng = value if value is not None else random
+
+    @property
+    def perfil(self):
+        """Posição do lutador nos eixos de comportamento, derivada dos traços.
+
+        O código de decisão consulta o eixo, não o nome do traço. É o que faz
+        os 162 traços declarados valerem por construção, em vez de só os que
+        alguém lembrou de citar num ``in self.tracos``.
+
+        Recalcula quando a lista muda: o cérebro adiciona traços durante a luta
+        ao evoluir, e o perfil precisa acompanhar.
+        """
+        chave = tuple(self.tracos)
+        if chave != self._perfil_chave:
+            self._perfil_chave = chave
+            self._perfil_cache = perfil_de_tracos(chave)
+        return self._perfil_cache
 
     def _chance_temporal(self, chance_60fps, dt=None):
         """Sorteia um evento preservando sua taxa por segundo entre FPS distintos.
@@ -541,6 +574,14 @@ class AIBrain:
         # Calcula alcance REAL em metros: raio do personagem * multiplicador da arma
         raio = p.raio_fisico if hasattr(p, 'raio_fisico') else 0.4
         alcance_max = raio * range_mult
+
+        # Onda 4: ranged usa a fonte única do catálogo — a MESMA distância
+        # de onde o motor dispara. Antes a IA se posicionava por
+        # raio*range_mult (~8,5m para Arco) enquanto o motor atirava de 20m.
+        from neural_fights.models.constants import alcance_ranged_m
+        _alcance_cat = alcance_ranged_m(tipo)
+        if _alcance_cat is not None:
+            alcance_max = _alcance_cat
         
         # Define arquétipo e alcance IDEAL (onde a IA quer ficar)
         if "Orbital" in tipo:
@@ -550,9 +591,8 @@ class AIBrain:
             
         elif "Arco" in tipo:
             self.arquetipo = "ARQUEIRO"
-            # Arco tem range_mult = 20.0, então alcance_max = raio * 20 = ~8.5m
-            # Arqueiro quer ficar BEM LONGE - usa 60% do alcance máximo
-            # Isso coloca ele a ~5m do inimigo, seguro mas efetivo
+            # Onda 4: alcance_max = 14m (catálogo, mesmo valor do motor).
+            # Arqueiro quer ficar BEM LONGE - 60% do máximo (~8,4m)
             p.alcance_ideal = alcance_max * 0.6
             p.alcance_efetivo = alcance_max  # Pode acertar em todo o alcance
             
@@ -802,26 +842,40 @@ class AIBrain:
         self.skills_por_tipo[tipo].append(info)
 
     def _aplicar_modificadores_iniciais(self):
-        """Aplica modificadores baseados na personalidade"""
+        """Define espaçamento e emoção inicial a partir do perfil.
+
+        Era uma sequência de ``if "NOME" in self.tracos`` com multiplicadores
+        fixos, o que fazia apenas sete traços terem efeito e tornava dois traços
+        opostos aplicarem os dois multiplicadores em sequência. Lendo os eixos,
+        todo traço contribui na proporção da sua intensidade e opostos se
+        cancelam antes de virar número.
+
+        Os coeficientes estão calibrados para reproduzir os valores antigos nos
+        traços que já funcionavam: IMPRUDENTE mantinha alcance ~0,8, AGRESSIVO
+        ~0,85, COVARDE ~1,35 e CAUTELOSO ~1,20.
+        """
         p = self.parent
-        
-        if "IMPRUDENTE" in self.tracos:
-            p.alcance_ideal *= 0.7
-            self.confianca = 0.8
-        if "COVARDE" in self.tracos or "MEDROSO" in self.tracos:
-            p.alcance_ideal *= 1.3
-            self.medo = 0.2
-        if "AGRESSIVO" in self.tracos:
-            p.alcance_ideal *= 0.85
-        if "CAUTELOSO" in self.tracos or "PRUDENTE" in self.tracos:
-            p.alcance_ideal *= 1.2
-        if "BERSERKER" in self.tracos:
-            self.raiva = 0.3
-        if "FURIOSO" in self.tracos:
-            self.raiva = 0.4
-        if "FRIO" in self.tracos:
-            self.medo = 0.0
-            self.raiva = 0.0
+        perfil = self.perfil
+
+        espacamento = (
+            1.0
+            - perfil["agressao"] * 0.25
+            + perfil["cautela"] * 0.20
+            + perfil["medo"] * 0.25
+        )
+        p.alcance_ideal *= max(0.5, espacamento)
+
+        # Frieza é o freio das duas emoções: quem é frio não entra quente.
+        self.raiva = max(0.0, perfil["agressao"] * 0.35 - perfil["frieza"] * 0.35)
+        # Frieza so *suprime* medo; ser esquentado (frieza negativa) nao cria
+        # medo do nada -- criaria covardia em quem e furioso.
+        self.medo = max(
+            0.0, perfil["medo"] * 0.25 - max(0.0, perfil["frieza"]) * 0.25
+        )
+        self.confianca = min(
+            1.0,
+            max(0.0, 0.5 + perfil["agressao"] * 0.30 - perfil["medo"] * 0.30),
+        )
 
     # =========================================================================
     # PROCESSAMENTO PRINCIPAL v10.0
@@ -859,11 +913,21 @@ class AIBrain:
         
         # === NOVOS SISTEMAS v11.0 ===
         self._atualizar_ritmo(dt)
-        if self._processar_instintos(dt, distancia, inimigo):
-            return  # Instinto tomou controle
-        
+        # Onda 5B: instinto escreve com prioridade 1 (interrompe qualquer
+        # hold) e emite tell — dado puro que o renderer consome.
+        self._contexto_escrita = 1
+        try:
+            if self._processar_instintos(dt, distancia, inimigo):
+                self.tell_atual = {"tipo": "instinto",
+                                   "ate": self.tempo_combate + 0.4}
+                return  # Instinto tomou controle
+        finally:
+            self._contexto_escrita = 2
+
         # Hesitação humana - às vezes congela brevemente
         if self._verificar_hesitacao(dt, distancia, inimigo):
+            self.tell_atual = {"tipo": "hesitacao",
+                               "ate": self.tempo_combate + 0.35}
             return
         
         # Sistema de Coreografia
@@ -872,7 +936,7 @@ class AIBrain:
         choreographer = p.choreographer
         acao_sync = choreographer.get_acao_sincronizada(p)
         
-        if acao_sync:
+        if acao_sync and self._aceita_direcao(acao_sync):
             if self._executar_acao_sincronizada(acao_sync, distancia, inimigo):
                 return
         
@@ -1254,6 +1318,10 @@ class AIBrain:
             if janela["duracao"] <= 0:
                 janela["aberta"] = False
                 janela["tipo"] = None
+                # Sem zerar a qualidade, uma janela boa (stun, 1.0) travava
+                # para sempre todas as janelas futuras de qualidade menor: o
+                # filtro compara com a MELHOR qualidade ja vista.
+                janela["qualidade"] = 0.0
         
         # Detecta novas janelas
         nova_janela = False
@@ -1615,19 +1683,25 @@ class AIBrain:
         # - Você recua
         # - Seu HP cai
         
-        # Decay natural para o neutro
-        self.momentum *= 0.995
-        
-        # Baseado em hits recentes
+        # === ONDA 5C: momentum com dt e meia-vida ~4s ===
+        # Antes: decay POR FRAME (x0.995) e bombas POR FRAME (diff_hits
+        # x0.05 = -6/s com déficit de 2; hp_diff x0.02) — saturava em -1
+        # em 70% dos frames. Agora: derivas por SEGUNDO; os empurrões de
+        # EVENTO (+0.15 ao acertar / -0.1 ao apanhar) continuam.
+        self.momentum *= 0.5 ** (dt / 4.0)
+
         diff_hits = self.hits_dados_recente - self.hits_recebidos_recente
-        self.momentum += diff_hits * 0.05
-        
-        # Baseado em HP
+        # 0,05/s por hit de vantagem: equilibrio ~0,6 com deficit de 2 e
+        # ~0,87 em dominacao total com os empurroes de evento — o medidor
+        # so crava no teto em blowout de verdade (alvo: <=10% dos frames;
+        # com 0,15 o equilibrio passava de 1,7 e cravava em 42%).
+        self.momentum += diff_hits * 0.05 * dt
+
         p = self.parent
         meu_hp = p.vida / p.vida_max
         ini_hp = inimigo.vida / inimigo.vida_max
         hp_diff = meu_hp - ini_hp
-        self.momentum += hp_diff * 0.02
+        self.momentum += hp_diff * 0.06 * dt
         
         # Baseado em pressão
         if distancia < 3.0:
@@ -2371,27 +2445,47 @@ class AIBrain:
     
     def _verificar_hesitacao(self, dt, distancia, inimigo):
         """Verifica se a IA hesita neste frame"""
+        # Onda 5B: hesitação é PORTÃO (como instinto) — escreve com
+        # prioridade 1 e interrompe qualquer hold; o momento humano não
+        # pode ser engolido pelo min-hold de uma decisão anterior.
         # Descanso forçado
         if self.descanso_timer > 0:
             self.descanso_timer = max(0.0, self.descanso_timer - dt)
-            self.acao_atual = "CIRCULAR"
+            self._definir_acao("CIRCULAR", fonte="hesitacao", prioridade=1)
             return True
+
+        # Fechamento da O5: o portão rolava QUATRO chances POR FRAME sem
+        # cooldown — a sonda de segmentos mostrou impulso+hesitação
+        # iniciando 44% dos segmentos de ação (a decisão iniciava 6%: os
+        # commits P3 morriam nos holds P1 da metralhadora). Hesitar a cada
+        # segundo não é humano; mesmo remédio dos instintos da 5D.
+        if self.tempo_combate < getattr(self, "cd_hesitacao", 0.0):
+            return False
         
         # Congelamento sob pressão
         if self._chance_temporal(self.congelamento * 0.1, dt):
-            self.acao_atual = "BLOQUEAR"
+            self._definir_acao("BLOQUEAR", fonte="hesitacao", prioridade=1)
+            self.cd_hesitacao = self.tempo_combate + self.rng.uniform(2.5, 5.0)
             return True
         
         # Hesitação
         if self._chance_temporal(self.hesitacao * 0.05, dt):
             # Hesita - faz algo defensivo
-            self.acao_atual = self.rng.choice(["CIRCULAR", "BLOQUEAR", "RECUAR"])
+            self._definir_acao(
+                self.rng.choice(["CIRCULAR", "BLOQUEAR", "RECUAR"]),
+                fonte="hesitacao", prioridade=1,
+            )
+            self.cd_hesitacao = self.tempo_combate + self.rng.uniform(2.5, 5.0)
             return True
         
         # Impulso pode cancelar hesitação
         if self._chance_temporal(self.impulso * 0.1, dt):
-            self.acao_atual = self.rng.choice(["MATAR", "APROXIMAR", "PRESSIONAR"])
+            self._definir_acao(
+                self.rng.choice(["MATAR", "APROXIMAR", "PRESSIONAR"]),
+                fonte="impulso", prioridade=1,
+            )
             self.burst_counter += 1
+            self.cd_hesitacao = self.tempo_combate + self.rng.uniform(2.5, 5.0)
             return True
         
         return False
@@ -2536,6 +2630,74 @@ class AIBrain:
         
         return False
     
+    #: Natureza de cada marcação do diretor, para saber o que a contraria.
+    NATUREZA_DA_DIRECAO = {
+        "CIRCULAR_LENTO": "passiva",
+        "CIRCULAR_SINCRONIZADO": "passiva",
+        "ENCARAR": "passiva",
+        "PREPARAR_ATAQUE": "passiva",
+        "RESISTIR_PRESSAO": "passiva",
+        "SEPARAR": "recuo",
+        "RECUPERAR": "recuo",
+        "FUGIR_DRAMATICO": "recuo",
+        "CLASH": "agressiva",
+        "ATAQUE_FINAL": "agressiva",
+        "TROCAR_GOLPES": "agressiva",
+        "TROCAR_RAPIDO": "agressiva",
+        "PRESSIONAR_CONTINUO": "agressiva",
+        "PERSEGUIR": "agressiva",
+    }
+
+    def _aceita_direcao(self, acao):
+        """Decide se o lutador segue a marcação do diretor nesta batida.
+
+        O ``CombatChoreographer`` existe para dar ritmo cinematográfico à luta, e
+        isso é desejável -- mas até aqui a marcação dele era um override
+        incondicional: em 53% dos frames a personalidade do lutador não era
+        sequer consultada. Por mais rica que a personalidade fique, metade da
+        luta continuaria igual para todo mundo.
+
+        Aqui o perfil decide se o lutador *obedece*. Quem quebra da marcação é
+        quem tem motivo para quebrar: um berserker não circula devagar, um
+        cauteloso não entra num clash, e um caótico improvisa em qualquer beat.
+
+        A decisão é tomada **uma vez por batida** e mantida. Sortear a cada frame
+        faria o lutador oscilar entre roteiro e improviso dezenas de vezes por
+        segundo, o que na tela vira tremor, não personalidade.
+        """
+        if acao != self._direcao_avaliada:
+            self._direcao_avaliada = acao
+            self._direcao_aceita = self._sortear_aceitacao(acao)
+        return self._direcao_aceita
+
+    def _sortear_aceitacao(self, acao):
+        """Chance de obedecer, reduzida pelo que contraria a natureza do lutador."""
+        perfil = self.perfil
+        natureza = self.NATUREZA_DA_DIRECAO.get(acao, "neutra")
+
+        # Base alta: o padrão continua sendo seguir o diretor.
+        aceitacao = 0.85
+
+        if natureza == "passiva":
+            # Esperar contraria quem só sabe avançar.
+            aceitacao -= max(0.0, perfil["agressao"]) * 0.55
+        elif natureza == "recuo":
+            aceitacao -= max(0.0, perfil["agressao"]) * 0.45
+            # Quem não sente medo não recua de forma convincente.
+            aceitacao -= max(0.0, -perfil["medo"]) * 0.30
+        elif natureza == "agressiva":
+            aceitacao -= max(0.0, perfil["cautela"]) * 0.40
+            aceitacao -= max(0.0, perfil["medo"]) * 0.35
+
+        # Caos improvisa em qualquer marcação; frieza segura o plano.
+        aceitacao -= max(0.0, perfil["caos"]) * 0.25
+        aceitacao += max(0.0, perfil["frieza"]) * 0.15
+
+        # Piso e teto: o diretor nunca perde a luta inteira, e nunca a controla
+        # por completo.
+        aceitacao = max(0.15, min(0.98, aceitacao))
+        return self.rng.random() < aceitacao
+
     def _executar_acao_sincronizada(self, acao, distancia, inimigo):
         """Executa ação sincronizada de momento cinematográfico v8.0"""
         acoes = {
@@ -2686,90 +2848,40 @@ class AIBrain:
         self.cd_mudanca_humor = max(0, self.cd_mudanca_humor - dt)
         self.tempo_desde_dano += dt
         self.tempo_desde_hit += dt
+        self.ultimo_bloqueio = min(99.0, self.ultimo_bloqueio + dt)
 
     def _detectar_dano(self):
-        """Detecta dano recebido"""
+        """Detecta dano recebido pelo delta de vida.
+
+        Onda 5C: tick de DoT não é "ser acertado" — queimar não quebra
+        combo, não alimenta susto/medo nem o momentum (os ticks poluíam
+        os contadores e ajudavam a saturar o momentum em -1). O motor
+        carimba ``ultimo_tipo_fonte_dano`` no ponto de aplicação; os
+        contadores agora vivem em ``EmotionSystem.reagir_ao_dano``.
+        """
         p = self.parent
-        
+
         if p.vida < self.ultimo_hp:
             dano = self.ultimo_hp - p.vida
-            self.hits_recebidos_total += 1
-            self.hits_recebidos_recente += 1
-            self.tempo_desde_dano = 0.0
             self.ultimo_dano_recebido = dano  # Salva o valor do dano
-            self.combo_atual = 0
-            self._reagir_ao_dano(dano)
-        
+            if getattr(p, "ultimo_tipo_fonte_dano", None) != "dot_encanto":
+                if getattr(self, "_acao_atual", None) == "BLOQUEAR":
+                    # Sinal real para CONTRA_REFLEXO (Onda 5D): levou o
+                    # golpe de guarda fechada — a janela de contra abre.
+                    self.ultimo_bloqueio = 0.0
+                self._reagir_ao_dano(dano)
+
         self.ultimo_hp = p.vida
 
     def _reagir_ao_dano(self, dano):
-        """Reações emocionais ao dano"""
-        if "VINGATIVO" in self.tracos:
-            self.raiva = min(1.0, self.raiva + 0.25)
-        if "BERSERKER" in self.tracos or "BERSERKER_RAGE" in self.tracos:
-            self.raiva = min(1.0, self.raiva + 0.15)
-            self.adrenalina = min(1.0, self.adrenalina + 0.2)
-        if "FURIOSO" in self.tracos:
-            self.raiva = min(1.0, self.raiva + 0.2)
-        if "COVARDE" in self.tracos or "MEDROSO" in self.tracos:
-            self.medo = min(1.0, self.medo + 0.2)
-        if "PARANOICO" in self.tracos:
-            self.medo = min(1.0, self.medo + 0.15)
-        if "FRIO" not in self.tracos:
-            self.raiva = min(1.0, self.raiva + 0.05)
-        self.frustracao = min(1.0, self.frustracao + 0.1)
+        """Reações emocionais ao dano (motor único — 5C, por eixos)."""
+        self._motor_emocional().reagir_ao_dano(dano)
 
     def _atualizar_emocoes(self, dt, distancia, inimigo):
-        """Atualiza estado emocional"""
-        p = self.parent
-        hp_pct = p.vida / p.vida_max
-        inimigo_hp_pct = inimigo.vida / inimigo.vida_max if inimigo.vida_max > 0 else 1.0
-        
-        decay = 0.005 if "FRIO" in self.tracos else 0.015
-        if "EMOTIVO" in self.tracos:
-            decay *= 0.5
-        
-        self.raiva = max(0, self.raiva - decay * dt * 60)
-        self.medo = max(0, self.medo - decay * dt * 60)
-        self.frustracao = max(0, self.frustracao - 0.005 * dt * 60)
-        self.adrenalina = max(0, self.adrenalina - 0.01 * dt * 60)
-        self.excitacao = max(0, self.excitacao - 0.008 * dt * 60)
-        self.tedio = max(0, self.tedio - 0.01 * dt * 60)
-        
-        if self.tempo_desde_dano > 3.0:
-            self.hits_recebidos_recente = max(0, self.hits_recebidos_recente - 1)
-        if self.tempo_desde_hit > 3.0:
-            self.hits_dados_recente = max(0, self.hits_dados_recente - 1)
-        
-        # Medo
-        if "DETERMINADO" not in self.tracos and "FRIO" not in self.tracos:
-            if hp_pct < 0.15:
-                self.medo = min(1.0, self.medo + 0.08 * dt * 60)
-            elif hp_pct < 0.3:
-                self.medo = min(0.8, self.medo + 0.03 * dt * 60)
-            if self.hits_recebidos_recente >= 3:
-                self.medo = min(1.0, self.medo + 0.15)
-        
-        # Confiança
-        hp_diff = hp_pct - inimigo_hp_pct
-        target_conf = 0.5 + hp_diff * 0.4
-        self.confianca += (target_conf - self.confianca) * 0.05 * dt * 60
-        self.confianca = max(0.1, min(1.0, self.confianca))
-        
-        # Excitação
-        if distancia < 3.0:
-            self.excitacao = min(1.0, self.excitacao + 0.02 * dt * 60)
-        if self.combo_atual > 2:
-            self.excitacao = min(1.0, self.excitacao + 0.05)
-        
-        # Tédio
-        if distancia > 8.0 and self.tempo_combate > 10.0:
-            self.tedio = min(1.0, self.tedio + 0.01 * dt * 60)
-        
-        # Adrenalina
-        if hp_pct < 0.2 or (distancia < 2.0 and self.raiva > 0.5):
-            self.adrenalina = min(1.0, self.adrenalina + 0.04 * dt * 60)
-        
+        """Física emocional no motor único (5C); troca de direção é
+        movimento e fica no brain. Timers/cds ticam no passo de cooldowns."""
+        self._motor_emocional().atualizar(dt, distancia, inimigo, self.tempo_combate)
+
         # Mudança de direção
         if self.cd_mudanca_direcao <= 0:
             chance = 0.15 if "ERRATICO" in self.tracos or "CAOTICO" in self.tracos else 0.08
@@ -2778,38 +2890,9 @@ class AIBrain:
                 self.cd_mudanca_direcao = self.rng.uniform(0.5, 2.0)
 
     def _atualizar_humor(self, dt):
-        """Atualiza humor baseado nas emoções"""
-        if self.cd_mudanca_humor > 0:
-            return
-        
-        novo_humor = self.humor
-        
-        if self.raiva > 0.7:
-            novo_humor = "FURIOSO"
-        elif self.medo > 0.6:
-            novo_humor = "ASSUSTADO"
-        elif self.medo > 0.4 and self.confianca < 0.3:
-            novo_humor = "NERVOSO"
-        elif self.adrenalina > 0.6:
-            novo_humor = "DETERMINADO"
-        elif self.confianca > 0.7:
-            novo_humor = "CONFIANTE"
-        elif self.frustracao > 0.5:
-            novo_humor = "FURIOSO" if self.rng.random() < 0.5 else "NERVOSO"
-        elif self.excitacao > 0.6:
-            novo_humor = "ANIMADO"
-        elif self.tedio > 0.5:
-            novo_humor = "ENTEDIADO"
-        elif self.confianca > 0.4 and self.raiva < 0.3 and self.medo < 0.3:
-            novo_humor = "CALMO"
-        elif self.parent.vida < self.parent.vida_max * 0.2:
-            novo_humor = "DESESPERADO"
-        else:
-            novo_humor = "FOCADO"
-        
-        if novo_humor != self.humor:
-            self.humor = novo_humor
-            self.cd_mudanca_humor = self.rng.uniform(2.0, 5.0)
+        """Escada de humor no motor único (5C): DESESPERADO no topo,
+        BERSERK/EUFORICO/GLACIAL com produtores reais."""
+        self._motor_emocional().atualizar_humor()
 
     def _processar_modos_especiais(self, dt, distancia, inimigo):
         """Processa modos especiais de combate"""
@@ -2838,177 +2921,6 @@ class AIBrain:
     # =========================================================================
     # QUIRKS
     # =========================================================================
-    
-    def _processar_quirks(self, dt, distancia, inimigo):
-        """Processa quirks únicos"""
-        if self.cd_quirk > 0 or not self.quirks:
-            return False
-        
-        p = self.parent
-        hp_pct = p.vida / p.vida_max
-        inimigo_hp_pct = inimigo.vida / inimigo.vida_max
-        
-        for quirk in self.quirks:
-            if self._executar_quirk(quirk, distancia, hp_pct, inimigo_hp_pct, inimigo):
-                self.cd_quirk = self.rng.uniform(3.0, 8.0)
-                return True
-        
-        return False
-
-    def _executar_quirk(self, quirk, distancia, hp_pct, inimigo_hp_pct, inimigo):
-        """Executa um quirk específico"""
-        p = self.parent
-        
-        quirk_handlers = {
-            "GRITO_GUERRA": lambda: distancia < 5.0 and self.rng.random() < 0.05 and
-                (setattr(self, 'raiva', min(1.0, self.raiva + 0.3)), setattr(self, 'acao_atual', "MATAR")),
-            "DANCA_MORTE": lambda: self.tempo_combate > 15.0 and distancia < 4.0 and self.rng.random() < 0.08 and
-                (setattr(self, 'acao_atual', "CIRCULAR"), setattr(self, 'dir_circular', self.dir_circular * -1)),
-            "SEGUNDO_FOLEGO": lambda: hp_pct < 0.2 and p.estamina < 20 and
-                (setattr(p, 'estamina', min(p.estamina + 30, 100)), setattr(self, 'adrenalina', 1.0)),
-            "FINALIZADOR": lambda: inimigo_hp_pct < 0.25 and distancia < 4.0 and self.rng.random() < 0.15 and
-                (setattr(self, 'modo_burst', True), setattr(self, 'acao_atual', "MATAR")),
-            "FURIA_CEGA": lambda: self.raiva > 0.9 and
-                (setattr(self, 'modo_berserk', True), setattr(self, 'modo_defensivo', False), setattr(self, 'acao_atual', "MATAR")),
-            "PROVOCADOR": lambda: distancia > 3.0 and self.rng.random() < 0.02 and setattr(self, 'acao_atual', "BLOQUEAR"),
-            "INSTINTO_ANIMAL": lambda: distancia < 2.0 and self.tempo_desde_dano < 1.0 and setattr(self, 'acao_atual', "RECUAR"),
-        }
-        
-        if quirk == "ESQUIVA_REFLEXA":
-            if self.tempo_desde_dano < 0.5 and p.z == 0 and self.cd_pulo <= 0:
-                p.vel_z = 12.0
-                self.cd_pulo = 1.5
-                return True
-            return False
-        
-        if quirk == "EXPLOSAO_FINAL":
-            if hp_pct < 0.1 and p.mana > p.mana_max * 0.5:
-                self.modo_burst = True
-                for tipo in ["AREA", "BEAM", "PROJETIL"]:
-                    for skill in self.skills_por_tipo.get(tipo, []):
-                        self._usar_skill(skill)
-                return True
-            return False
-        
-        if quirk == "REGENERADOR":
-            if self.tempo_desde_dano > 5.0 and hp_pct < 0.9:
-                p.receber_cura(0.5)
-            return False
-        
-        if quirk in quirk_handlers:
-            result = quirk_handlers[quirk]()
-            return bool(result)
-        
-        return False
-
-    # =========================================================================
-    # REAÇÕES
-    # =========================================================================
-    
-    def _processar_reacoes(self, dt, distancia, inimigo):
-        """Processa reações imediatas"""
-        if self.cd_reagir > 0:
-            return False
-        
-        p = self.parent
-        hp_pct = p.vida / p.vida_max
-        
-        if self._tentar_pulo_evasivo(distancia, hp_pct):
-            return True
-        if self._tentar_dash_emergencia(distancia, hp_pct, inimigo):
-            return True
-        if self._tentar_cura_emergencia(hp_pct):
-            return True
-        if self._tentar_contra_ataque(distancia, inimigo):
-            return True
-        
-        return False
-
-    def _tentar_pulo_evasivo(self, distancia, hp_pct):
-        """Pulo evasivo"""
-        p = self.parent
-        
-        if p.z != 0 or self.cd_pulo > 0:
-            return False
-        
-        chance = 0.03
-        if "SALTADOR" in self.tracos:
-            chance = 0.12
-        if "ACROBATA" in self.tracos:
-            chance = 0.10
-        if "EVASIVO" in self.tracos:
-            chance = 0.08
-        if "ESTATICO" in self.tracos:
-            chance = 0.01
-        
-        if distancia < 2.0:
-            chance *= 2.5
-        if hp_pct < 0.3:
-            chance *= 2.0
-        if self.medo > 0.5:
-            chance *= 1.8
-        if self.modo_berserk:
-            chance *= 0.3
-        
-        if self.rng.random() < chance:
-            p.vel_z = self.rng.uniform(10.0, 14.0)
-            self.cd_pulo = self.rng.uniform(0.8, 2.0)
-            
-            if self.arquetipo in ["ASSASSINO", "NINJA", "BERSERKER", "ACROBATA", "SOMBRA"]:
-                self.acao_atual = "ATAQUE_AEREO"
-            else:
-                self.acao_atual = "RECUAR"
-            
-            self.cd_reagir = 0.3
-            return True
-        
-        return False
-
-    def _tentar_dash_emergencia(self, distancia, hp_pct, inimigo):
-        """Dash de emergência v7.0 com detecção de projéteis"""
-        if self.cd_dash > 0:
-            return False
-        
-        dash_skills = self.skills_por_tipo.get("DASH", [])
-        if not dash_skills:
-            return False
-        
-        emergencia = False
-        projetil_vindo = self._detectar_projetil_vindo(inimigo)
-        
-        if projetil_vindo and self.rng.random() < 0.6:
-            emergencia = True
-        if hp_pct < 0.2 and distancia < 3.0:
-            emergencia = True
-        if self.medo > 0.7 and distancia < 4.0:
-            emergencia = True
-        if self.hits_recebidos_recente >= 4:
-            emergencia = True
-        
-        if "EVASIVO" in self.tracos and projetil_vindo:
-            emergencia = True
-        if "ACROBATA" in self.tracos and projetil_vindo and self.rng.random() < 0.75:
-            emergencia = True
-        if "REATIVO" in self.tracos and projetil_vindo and self.rng.random() < 0.5:
-            emergencia = True
-        if "COVARDE" in self.tracos and hp_pct < 0.4:
-            emergencia = True
-        if "MEDROSO" in self.tracos and self.medo > 0.5:
-            emergencia = True
-        
-        if "IMPLACAVEL" in self.tracos or "KAMIKAZE" in self.tracos or self.modo_berserk:
-            emergencia = False
-        
-        if emergencia:
-            for skill in dash_skills:
-                if self._usar_skill(skill):
-                    self.acao_atual = "FUGIR"
-                    self.cd_dash = 2.5
-                    self.cd_reagir = 0.5
-                    self.vezes_que_fugiu += 1
-                    return True
-        
-        return False
     
     def _detectar_projetil_vindo(self, inimigo):
         """Detecta se há projéteis vindo na direção do personagem"""
@@ -3102,17 +3014,10 @@ class AIBrain:
         # === USA SISTEMA DE ESTRATÉGIA SE DISPONÍVEL ===
         if self.skill_strategy is not None:
             return self._processar_skills_estrategico(dt, distancia, inimigo)
-        
-        # === FALLBACK: Sistema legado ===
-        if self._tentar_dash_ofensivo(distancia, inimigo):
-            return True
-        if self._tentar_usar_buff(distancia, inimigo):
-            return True
-        if self._tentar_usar_ofensiva(distancia, inimigo):
-            return True
-        if self._tentar_usar_summon(distancia, inimigo):
-            return True
-        
+
+        # Onda 5E: o "sistema legado" de skills morreu (6 metodos _tentar_*
+        # + 2 orfaos, ~400 linhas inalcancaveis com a estrategia ativa).
+        # Sem estrategia (falha de init, coberta por teste), nao ha skills.
         return False
     
     def _processar_skills_estrategico(self, dt, distancia, inimigo):
@@ -3160,6 +3065,10 @@ class AIBrain:
                 chance_usar = 0.85  # Magos: 85% de chance base
             else:
                 chance_usar = 0.6   # Melee: 60% de chance base
+            # Onda 5A: o eixo skill_uso (órfão desde a migração dos 162
+            # traços) modula o portão — antes era só o hard-code por role.
+            chance_usar *= 1.0 + 0.35 * self.perfil.get("skill_uso", 0.0)
+            chance_usar = max(0.25, min(0.98, chance_usar))
             
             # Modificadores de personalidade
             if "SPAMMER" in self.tracos:
@@ -3296,322 +3205,6 @@ class AIBrain:
             return True
         return False
 
-    def _tentar_dash_ofensivo(self, distancia, inimigo):
-        """Dash ofensivo"""
-        if self.cd_dash > 0:
-            return False
-        
-        dash_skills = self.skills_por_tipo.get("DASH", [])
-        if not dash_skills:
-            return False
-        
-        for skill in dash_skills:
-            data = skill["data"]
-            dist_dash = data.get("distancia", 3.0)
-            
-            usar = False
-            
-            if self.arquetipo in ["ASSASSINO", "NINJA", "ACROBATA", "SOMBRA"]:
-                if distancia > 4.0 and distancia < dist_dash + 3.5:
-                    if self.confianca > 0.35 or self.raiva > 0.4:
-                        usar = True
-            
-            if self.modo_berserk or "BERSERKER" in self.tracos:
-                if distancia > 3.0:
-                    usar = True
-            
-            if "FLANQUEADOR" in self.tracos and self.rng.random() < 0.08:
-                if self._usar_skill(skill):
-                    self.dir_circular *= -1
-                    self.acao_atual = "FLANQUEAR"
-                    self.cd_dash = 2.0
-                    return True
-            
-            if "ACROBATA" in self.tracos and self.rng.random() < 0.06:
-                usar = True
-            
-            if usar and self._usar_skill(skill):
-                self.acao_atual = "MATAR"
-                self.cd_dash = 2.5
-                return True
-        
-        return False
-
-    def _tentar_usar_buff(self, distancia, inimigo):
-        """Usa buffs"""
-        if self.cd_buff > 0:
-            return False
-        
-        buff_skills = self.skills_por_tipo.get("BUFF", [])
-        if not buff_skills:
-            return False
-        
-        p = self.parent
-        hp_pct = p.vida / p.vida_max
-        
-        for skill in buff_skills:
-            data = skill["data"]
-            usar = False
-            
-            if tem_cura(data):
-                threshold = 0.55 if "CAUTELOSO" in self.tracos else 0.40
-                if hp_pct < threshold:
-                    usar = True
-            elif tem_defesa(data):
-                if distancia < 5.0 and hp_pct > 0.6 and self.rng.random() < 0.1:
-                    usar = True
-                if self.hits_recebidos_recente >= 2:
-                    usar = True
-            elif tem_buff_dano(data):
-                if distancia < 4.0 and self.confianca > 0.5:
-                    usar = self.rng.random() < 0.15
-                if "EXPLOSIVO" in self.tracos and inimigo.vida < inimigo.vida_max * 0.4:
-                    usar = True
-                if self.modo_burst:
-                    usar = True
-            elif tem_buff_velocidade(data):
-                if distancia > 6.0 and "PERSEGUIDOR" in self.tracos:
-                    usar = True
-                if hp_pct < 0.35 and distancia < 4.0:
-                    usar = True
-            
-            if usar and self._usar_skill(skill):
-                self.cd_buff = 3.0
-                return True
-        
-        return False
-
-    def _tentar_usar_ofensiva(self, distancia, inimigo):
-        """Usa skills ofensivas"""
-        p = self.parent
-        
-        chance = self.agressividade_base
-        if "SPAMMER" in self.tracos:
-            chance += 0.25
-        if self.raiva > 0.6:
-            chance += 0.15
-        if self.modo_burst:
-            chance += 0.3
-        if "CALCULISTA" in self.tracos:
-            chance -= 0.1
-        
-        if self.rng.random() > chance:
-            return False
-        
-        # Projéteis
-        for skill in self.skills_por_tipo.get("PROJETIL", []):
-            data = skill["data"]
-            alcance = data.get("vida", 1.5) * data.get("velocidade", 8.0) * 0.8
-            projetil_estacionario = (
-                data.get("velocidade", 8.0) <= 0.0
-                or data.get("vida", 1.5) <= 0.0
-            )
-            contrato_valido = self._avaliar_uso_skill(data, distancia, inimigo)
-            
-            usar = contrato_valido if projetil_estacionario else False
-            if not projetil_estacionario and self.arquetipo in ["MAGO", "MAGO_AGRESSIVO", "ARQUEIRO", "INVOCADOR", "PIROMANTE", "CRIOMANTE"]:
-                if distancia > 2.5 and distancia < alcance:
-                    usar = True
-            elif not projetil_estacionario and distancia > 1.5 and distancia < alcance * 0.8:
-                usar = True
-            
-            if "SNIPER" in self.tracos and distancia > 5.0:
-                usar = True
-            if "CLOSE_RANGE" in self.tracos and distancia > 4.0:
-                usar = False
-            if "SPAMMER" in self.tracos:
-                usar = usar or self.rng.random() < 0.3
-
-            # Traços alteram a vontade de usar a skill, não seu contrato de
-            # alcance nem a pré-condição declarada pelo catálogo.
-            usar = usar and contrato_valido
-            
-            if usar and self._usar_skill(skill):
-                self._pos_uso_skill_ofensiva(data)
-                return True
-        
-        # Beams
-        for skill in self.skills_por_tipo.get("BEAM", []):
-            data = skill["data"]
-            alcance = data.get("alcance", 5.0)
-            if distancia < alcance and self._usar_skill(skill):
-                self._pos_uso_skill_ofensiva(data)
-                return True
-        
-        # Área
-        for skill in self.skills_por_tipo.get("AREA", []):
-            data = skill["data"]
-            raio = data.get("raio_area", 2.5)
-            
-            usar = distancia < raio + 0.5
-            if "AREA_DENIAL" in self.tracos and distancia < raio + 2.0:
-                usar = True
-            if self.modo_berserk and distancia < raio + 2.0:
-                usar = True
-            
-            if usar and self._usar_skill(skill):
-                self._pos_uso_skill_ofensiva(data)
-                return True
-        
-        # Skill da arma fallback
-        if hasattr(p, 'skill_arma_nome') and p.skill_arma_nome and p.skill_arma_nome != "Nenhuma":
-            if hasattr(p, 'usar_skill_arma') and p.mana >= p.custo_skill_arma:
-                dados = get_skill_data(p.skill_arma_nome)
-                if self._avaliar_uso_skill(dados, distancia, inimigo):
-                    if p.usar_skill_arma():
-                        self._pos_uso_skill_ofensiva(dados)
-                        return True
-        
-        return False
-
-    def _tentar_usar_summon(self, distancia, inimigo):
-        """Usa summons com lógica melhorada (fallback do sistema estratégico)"""
-        summon_skills = self.skills_por_tipo.get("SUMMON", [])
-        if not summon_skills:
-            return False
-        
-        p = self.parent
-        hp_pct = p.vida / p.vida_max if p.vida_max > 0 else 1.0
-        inimigo_hp_pct = inimigo.vida / inimigo.vida_max if inimigo.vida_max > 0 else 1.0
-        
-        # Conta summons ativos
-        summons_ativos = self._contar_summons_ativos()
-        
-        for skill in summon_skills:
-            data = skill["data"]
-            custo = skill.get("custo", data.get("custo", 15))
-            
-            if p.mana < custo:
-                continue
-            
-            nome = skill["nome"]
-            if nome in p.cd_skills and p.cd_skills[nome] > 0:
-                continue
-            
-            usar = False
-            
-            # Sem summons = prioridade alta
-            if summons_ativos == 0:
-                # HP baixo = invocar para distrair
-                if hp_pct < 0.4:
-                    usar = True
-                # Distância segura = invocar
-                elif distancia > 4.0:
-                    usar = True
-                # Início do combate
-                elif self.tempo_combate < 5.0:
-                    usar = True
-                # Chance base
-                elif self.rng.random() < 0.25:
-                    usar = True
-            
-            # Tem vantagem = reforçar
-            elif summons_ativos == 1 and inimigo_hp_pct < 0.5:
-                if self.rng.random() < 0.3:
-                    usar = True
-            
-            # Medo = invocar ajuda
-            if self.medo > 0.4:
-                usar = True
-            
-            # Arquétipo INVOCADOR sempre tenta invocar
-            if self.arquetipo == "INVOCADOR" and self.rng.random() < 0.4:
-                usar = True
-            
-            if usar and self._usar_skill(skill):
-                # Após invocar, recuar para deixar summon lutar
-                self.acao_atual = "RECUAR" if self.rng.random() < 0.6 else "CIRCULAR"
-                return True
-        
-        return False
-    
-    def _tentar_usar_trap(self, distancia, inimigo):
-        """Usa armadilhas estrategicamente"""
-        trap_skills = self.skills_por_tipo.get("TRAP", [])
-        if not trap_skills:
-            return False
-        
-        p = self.parent
-        traps_ativos = self._contar_traps_ativos()
-        
-        # Limite de traps
-        if traps_ativos >= 3:
-            return False
-        
-        for skill in trap_skills:
-            data = skill["data"]
-            custo = skill.get("custo", data.get("custo", 15))
-            
-            if p.mana < custo:
-                continue
-            
-            nome = skill["nome"]
-            if nome in p.cd_skills and p.cd_skills[nome] > 0:
-                continue
-            
-            usar = False
-            
-            # Encurralado = trap para escapar
-            if self.consciencia_espacial.get("encurralado", False):
-                usar = True
-            
-            # Inimigo se aproximando
-            elif self.leitura_oponente.get("ataque_iminente", False) and distancia < 4.0:
-                usar = True
-            
-            # Controle de área
-            elif traps_ativos < 2 and distancia > 3.0:
-                if self.rng.random() < 0.15:
-                    usar = True
-            
-            if usar and self._usar_skill(skill):
-                self.acao_atual = "RECUAR"
-                return True
-        
-        return False
-    
-    def _tentar_usar_transform(self, distancia, inimigo):
-        """Usa transformações estrategicamente"""
-        transform_skills = self.skills_por_tipo.get("TRANSFORM", [])
-        if not transform_skills:
-            return False
-        
-        p = self.parent
-        hp_pct = p.vida / p.vida_max if p.vida_max > 0 else 1.0
-        inimigo_hp_pct = inimigo.vida / inimigo.vida_max if inimigo.vida_max > 0 else 1.0
-        
-        for skill in transform_skills:
-            data = skill["data"]
-            custo = skill.get("custo", data.get("custo", 15))
-            
-            if p.mana < custo:
-                continue
-            
-            nome = skill["nome"]
-            if nome in p.cd_skills and p.cd_skills[nome] > 0:
-                continue
-            
-            usar = False
-            
-            # Transform defensivo se HP baixo
-            if data.get("bonus_resistencia", 0) > 0.3 and hp_pct < 0.4:
-                usar = True
-            
-            # Transform ofensivo para finalizar
-            elif data.get("bonus_dano") and inimigo_hp_pct < 0.5 and hp_pct > 0.4:
-                usar = True
-            
-            # Início do combate
-            elif self.tempo_combate < 8.0 and hp_pct > 0.7:
-                if self.rng.random() < 0.2:
-                    usar = True
-            
-            if usar and self._usar_skill(skill):
-                self.acao_atual = "MATAR"
-                return True
-        
-        return False
-
     def _usar_skill(self, skill_info):
         """Usa uma skill"""
         p = self.parent
@@ -3635,67 +3228,15 @@ class AIBrain:
         
         return False
 
-    def _avaliar_uso_skill(self, dados, distancia, inimigo):
-        """Avalia uso de skill"""
-        if dados.get("ativa_ao_morrer") or dados.get("revive_hp_percent"):
-            return False
-        tipo = dados.get("tipo", "NADA")
-        p = self.parent
-        
-        if tipo == "PROJETIL":
-            velocidade = max(0.0, float(dados.get("velocidade", 8.0)))
-            vida = max(0.0, float(dados.get("vida", 1.5)))
-            if velocidade <= 0.0 or vida <= 0.0:
-                alcance = max(1.25, float(dados.get("alcance", 0.0)))
-                no_alcance = distancia <= alcance * 1.2
-            else:
-                alcance = vida * velocidade * 0.8
-                no_alcance = 1.0 < distancia < alcance
-            if dados.get("condicao") == "ALVO_QUEIMANDO":
-                if not alvo_tem_efeito(inimigo, "QUEIMANDO"):
-                    return False
-            return no_alcance
-        elif tipo == "BEAM":
-            return distancia < dados.get("alcance", 5.0)
-        elif tipo == "AREA":
-            return distancia < dados.get("raio_area", 2.5) + 1.0
-        elif tipo == "DASH":
-            if dados.get("efeito") == "TROCAR_POS":
-                return inimigo is not None and not inimigo.morto
-            if self.medo > 0.5:
-                return True
-            dist = dados.get("distancia", 3.0)
-            return distancia > 4.0 and distancia < dist + 2.0
-        elif tipo == "BUFF":
-            if tem_cura(dados):
-                return p.vida < p.vida_max * 0.45
-            return distancia < 5.0
-        
-        return False
+    def _propor_movimento(self, distancia, inimigo, roll, hp_pct, inimigo_hp_pct):
+        """Blocos por arma/zona/traço geram a PROPOSTA de movimento.
 
-    def _pos_uso_skill_ofensiva(self, dados):
-        """Ação pós-skill ofensiva"""
-        tipo = dados.get("tipo", "NADA")
-        
-        if tipo == "DASH":
-            self.acao_atual = "MATAR"
-        elif self.estilo_luta in ["KITE", "RANGED", "HIT_RUN"]:
-            self.acao_atual = "RECUAR"
-        elif self.estilo_luta in ["BERSERK", "AGGRO", "BURST"]:
-            self.acao_atual = "MATAR"
-        elif "COVARDE" in self.tracos:
-            self.acao_atual = "RECUAR"
-
-    # =========================================================================
-    # MOVIMENTO v8.0 COM INTELIGÊNCIA HUMANA
-    # =========================================================================
-    
-    def _decidir_movimento(self, distancia, inimigo):
-        """Decide ação de movimento com inteligência humana avançada v12.2"""
+        Onda 5A: antes cada bloco escrevia acao_atual e dava return,
+        pulando a pilha de personalidade — que rodava em 0,04-0,9% das
+        decisões. Agora todo bloco devolve True (propôs) e a pilha roda
+        em 100% das decisões, em _decidir_movimento.
+        """
         p = self.parent
-        roll = self.rng.random()
-        hp_pct = p.vida / p.vida_max
-        inimigo_hp_pct = inimigo.vida / inimigo.vida_max if inimigo.vida_max > 0 else 1.0
         
         # Calcula alcance real baseado no hitbox
         alcance_efetivo = self._calcular_alcance_efetivo()
@@ -3711,19 +3252,16 @@ class AIBrain:
         # Condições especiais de alta prioridade
         if hasattr(p, 'modo_adrenalina') and p.modo_adrenalina:
             self.acao_atual = "MATAR"
-            return
-        
+            return True
         if hasattr(p, 'estamina') and p.estamina < 15:
             if no_alcance and roll < 0.4:
                 self.acao_atual = "ATAQUE_RAPIDO"
             else:
                 self.acao_atual = "RECUAR"
-            return
-        
+            return True
         if self.modo_berserk:
             self.acao_atual = "MATAR"
-            return
-        
+            return True
         if self.modo_defensivo:
             if no_alcance and roll < 0.3:
                 self.acao_atual = "CONTRA_ATAQUE"
@@ -3731,15 +3269,13 @@ class AIBrain:
                 self.acao_atual = "RECUAR"
             else:
                 self.acao_atual = "COMBATE"
-            return
-        
+            return True
         if self.medo > 0.75 and "DETERMINADO" not in self.tracos and "FRIO" not in self.tracos:
             if no_alcance and roll < 0.25:
                 self.acao_atual = "ATAQUE_RAPIDO"
             else:
                 self.acao_atual = "FUGIR"
-            return
-        
+            return True
         # === COMPORTAMENTO POR TIPO DE ARMA ===
         arma = p.dados.arma_obj if hasattr(p.dados, 'arma_obj') else None
         arma_tipo = arma.tipo if arma else ""
@@ -3772,8 +3308,7 @@ class AIBrain:
             else:
                 # Fallback
                 self.acao_atual = "MATAR"
-            return
-        
+            return True
         # ── CORRENTE / MANGUAL (zona morta!) ──
         # v2.0: lógica separada para Mangual vs outras correntes
         if arma_tipo == "Corrente":
@@ -3880,8 +3415,7 @@ class AIBrain:
                         self.acao_atual = self.rng.choice(["FLANQUEAR", "CIRCULAR"])
                 else:
                     self.acao_atual = self.rng.choice(["APROXIMAR", "PRESSIONAR"])
-            return
-        
+            return True
         # ── ADAGAS GÊMEAS (Dupla) - combo agressivo ──
         # v2.0: IA adaptada para o sistema de combo L/R das Adagas
         if arma_tipo == "Dupla":
@@ -3984,15 +3518,13 @@ class AIBrain:
                         self.acao_atual = self.rng.choice(["FLANQUEAR", "CIRCULAR"])
                 else:
                     self.acao_atual = self.rng.choice(["APROXIMAR", "PRESSIONAR"])
-            return
-        
+            return True
         # === LÓGICA PADRÃO PARA OUTRAS ARMAS ===
         
         # Finalização de inimigo com pouca vida
         if inimigo_hp_pct < 0.25 and no_alcance:
             self.acao_atual = self.rng.choice(["MATAR", "ESMAGAR", "MATAR"])
-            return
-        
+            return True
         # Dentro do alcance - ataca
         if no_alcance:
             if inimigo_hp_pct < 0.3:
@@ -4003,21 +3535,18 @@ class AIBrain:
                 self.acao_atual = self.rng.choice(["FLANQUEAR", "CIRCULAR", "PRESSIONAR"])
             else:
                 self.acao_atual = "CONTRA_ATAQUE"
-            return
-        
+            return True
         # Quase no alcance - pressiona
         if quase_no_alcance:
             if roll < 0.65:
                 self.acao_atual = self.rng.choice(["APROXIMAR", "PRESSIONAR", "FLANQUEAR"])
             else:
                 self.acao_atual = self.rng.choice(["COMBATE", "POKE", "CIRCULAR"])
-            return
-        
+            return True
         # Longe - aproxima
         if longe or muito_longe:
             self.acao_atual = self.rng.choice(["APROXIMAR", "PRESSIONAR", "APROXIMAR"])
-            return
-        
+            return True
         # Traços especiais
         if "COVARDE" in self.tracos and hp_pct < 0.35:
             self.vezes_que_fugiu += 1
@@ -4026,45 +3555,215 @@ class AIBrain:
                 self.raiva = 0.9
             else:
                 self.acao_atual = "FUGIR"
-            return
-        
+            return True
         if "BERSERKER" in self.tracos and hp_pct < 0.45:
             self.acao_atual = "MATAR"
-            return
-        
+            return True
         if "SANGUINARIO" in self.tracos and inimigo_hp_pct < 0.3:
             self.acao_atual = "MATAR"
-            return
-        
+            return True
         if "PREDADOR" in self.tracos and inimigo_hp_pct < 0.4:
             self.acao_atual = "APROXIMAR"
-            return
-        
+            return True
         if "PERSEGUIDOR" in self.tracos and distancia > 5.0:
             self.acao_atual = "APROXIMAR"
-            return
-        
+            return True
         if "KAMIKAZE" in self.tracos:
             self.acao_atual = "MATAR"
+            return True
+
+        return False
+
+    def _decidir_movimento(self, distancia, inimigo):
+        self.contadores["decisoes"] += 1
+        """Proposta + pipeline (Onda 5A): a pilha roda em TODA decisão."""
+        p = self.parent
+        roll = self.rng.random()
+        hp_pct = p.vida / p.vida_max
+        inimigo_hp_pct = inimigo.vida / inimigo.vida_max if inimigo.vida_max > 0 else 1.0
+
+        acao_antes = self._acao_atual
+        self._modo_proposta = True
+        try:
+            if not self._propor_movimento(distancia, inimigo, roll, hp_pct, inimigo_hp_pct):
+                # Sem proposta de bloco: o estilo de luta é a base.
+                self._comportamento_estilo(distancia, roll, hp_pct, inimigo_hp_pct)
+
+            # === A PILHA (roda sempre — era o coração morto da IA) ===
+            self.contadores["pilha_completa"] += 1
+            self._aplicar_agressividade_efetiva()
+            self._aplicar_eixos_orfaos(distancia, inimigo)
+            self._aplicar_modificadores_movimento(distancia, roll)
+            self._aplicar_modificadores_humor()
+            self._aplicar_modificadores_filosofia()
+            self._aplicar_modificadores_momentum(distancia, inimigo_hp_pct)
+            self._aplicar_modificadores_leitura(distancia, inimigo)
+            self._evitar_repeticao_excessiva()
+            self._aplicar_modificadores_espaciais(distancia, inimigo)
+            self._aplicar_modificadores_armas(distancia, inimigo)
+        finally:
+            proposta = self._acao_atual
+            self._acao_atual = acao_antes
+            self._modo_proposta = False
+
+        # Persistência de intenção (fechamento da O5): churn sem urgência
+        # não é decisão — 25% das trocas propostas mantêm a intenção
+        # corrente. Instintos (P1) e reações seguem interrompendo na hora,
+        # e o próximo tick re-avalia de qualquer forma. Com tick base 0,5,
+        # a mediana de ação era matematicamente limitada a ~0,43s se toda
+        # decisão trocasse de ação; é isto que separa "mudou de ideia" de
+        # "tremeu" (V2: intenção legível >= 0,5s).
+        if proposta != acao_antes and self.rng.random() < 0.25:
+            proposta = acao_antes
+
+        # Commit único da decisão: prioridade 3, segura até o próximo tick.
+        self._definir_acao(proposta, fonte="decisao", prioridade=3)
+
+    def agressividade_efetiva(self):
+        """f(agressividade_base, eixo agressao, humor) — Onda 5A.
+
+        É aqui que agressividade_base (e o agressividade_mod dos 26
+        presets, no-op até agora) ganha leitor vivo, somado ao eixo dos
+        162 traços e ao humor do momento.
+        """
+        base = self.agressividade_base
+        eixo = self.perfil.get("agressao", 0.0) * 0.25
+        humor = {
+            "FURIOSO": 0.2, "ANIMADO": 0.1, "CONFIANTE": 0.1,
+            "DESESPERADO": 0.15, "CAUTELOSO": -0.15, "ENTEDIADO": -0.05,
+            "ASSUSTADO": -0.25, "BERSERK": 0.3, "EUFORICO": 0.15,
+            "GLACIAL": -0.1,
+        }.get(self.humor, 0.0)
+        # Onda 5E: o ritmo de batalha VIVE — o plano previa deletar
+        # ritmo_modificadores se D6 fechasse sem ele (fechou, 0,895), mas
+        # D1 nao fecha: fases ciclicas de agressao (+-0,3 a cada 4-5s) sao
+        # variancia MECANICA de meio de luta — exatamente o que troca
+        # lideranca. O leitor antigo (get_agressividade_efetiva) era morto;
+        # este e o consumidor real.
+        ritmo = getattr(self, "ritmo_modificadores", {}).get("agressividade", 0)
+        return max(0.05, min(0.98, base + eixo + humor + ritmo * 0.6))
+
+    def _aplicar_agressividade_efetiva(self):
+        """Estágio da pilha: a proposta escala/desescala pela agressividade."""
+        agg = self.agressividade_efetiva()
+        r = self.rng.random()
+        if agg > 0.6 and self.acao_atual in ("COMBATE", "POKE", "CIRCULAR", "RECUAR"):
+            if r < (agg - 0.6) * 0.9:
+                self.acao_atual = self.rng.choice(["PRESSIONAR", "MATAR", "APROXIMAR"])
+        elif agg < 0.4 and self.acao_atual in ("MATAR", "ESMAGAR", "PRESSIONAR"):
+            if r < (0.4 - agg) * 0.9:
+                self.acao_atual = self.rng.choice(["COMBATE", "POKE", "FLANQUEAR"])
+
+    def _aplicar_eixos_orfaos(self, distancia, inimigo):
+        """Consumidores dos eixos órfãos (Onda 5A): mobilidade e perseguicao.
+
+        Os 162 traços declaram posições nesses eixos desde a migração e
+        nenhum código as lia. mobilidade pesa reposicionamento; perseguicao
+        decide a resposta a um inimigo fugindo. (skill_uso vive no portão
+        de skills.)
+        """
+        mob = self.perfil.get("mobilidade", 0.0)
+        if mob > 0.2 and self.acao_atual in ("COMBATE", "POKE", "BLOQUEAR"):
+            if self.rng.random() < mob * 0.35:
+                self.acao_atual = self.rng.choice(["CIRCULAR", "FLANQUEAR"])
+
+        pers = self.perfil.get("perseguicao", 0.0)
+        acao_inimiga = getattr(getattr(inimigo, "brain", None), "acao_atual", "")
+        if acao_inimiga in ("FUGIR", "RECUAR"):
+            if pers > 0.0 and self.rng.random() < 0.3 + pers * 0.5:
+                self.acao_atual = self.rng.choice(["PRESSIONAR", "APROXIMAR"])
+            elif pers < -0.3 and self.rng.random() < -pers * 0.4:
+                self.acao_atual = self.rng.choice(["POKE", "COMBATE"])
+
+    def _motor_emocional(self):
+        """Motor emocional, com criação preguiçosa para fakes de contrato
+        (object.__new__ sem __init__ — mesmo padrão do escritor único)."""
+        motor = self.__dict__.get("emocoes")
+        if motor is None:
+            from neural_fights.ai.emotions import EmotionSystem
+
+            motor = EmotionSystem(self)
+            self.emocoes = motor
+        return motor
+
+    medo = _delegado_emocional("medo")
+    raiva = _delegado_emocional("raiva")
+    confianca = _delegado_emocional("confianca")
+    frustracao = _delegado_emocional("frustracao")
+    adrenalina = _delegado_emocional("adrenalina")
+    excitacao = _delegado_emocional("excitacao")
+    tedio = _delegado_emocional("tedio")
+    humor = _delegado_emocional("humor")
+    cd_mudanca_humor = _delegado_emocional("cd_mudanca_humor")
+    hits_recebidos_total = _delegado_emocional("hits_recebidos_total")
+    hits_dados_total = _delegado_emocional("hits_dados_total")
+    hits_recebidos_recente = _delegado_emocional("hits_recebidos_recente")
+    hits_dados_recente = _delegado_emocional("hits_dados_recente")
+    tempo_desde_dano = _delegado_emocional("tempo_desde_dano")
+    tempo_desde_hit = _delegado_emocional("tempo_desde_hit")
+    combo_atual = _delegado_emocional("combo_atual")
+    max_combo = _delegado_emocional("max_combo")
+
+    @property
+    def acao_atual(self):
+        return self._acao_atual
+
+    @acao_atual.setter
+    def acao_atual(self, valor):
+        # Onda 5B: os ~214 escritores legados passam TODOS por aqui. Durante
+        # a proposta (_decidir_movimento) o rascunho é livre; fora dela, a
+        # escrita respeita o min-hold do escritor único.
+        # getattr defensivo: testes de contrato constroem AIBrain via
+        # object.__new__ sem __init__ (mesmo padrao de hits_ecoados na O3).
+        if getattr(self, "_modo_proposta", False):
+            self._acao_atual = valor
             return
-        
-        # Comportamento por estilo
-        self._comportamento_estilo(distancia, roll, hp_pct, inimigo_hp_pct)
-        self._aplicar_modificadores_movimento(distancia, roll)
-        self._aplicar_modificadores_humor()
-        self._aplicar_modificadores_filosofia()
-        
-        # === MODIFICADORES v8.0+ ===
-        self._aplicar_modificadores_momentum(distancia, inimigo_hp_pct)
-        self._aplicar_modificadores_leitura(distancia, inimigo)
-        self._evitar_repeticao_excessiva()
-        
-        # === MODIFICADORES ESPACIAIS v9.0 ===
-        self._aplicar_modificadores_espaciais(distancia, inimigo)
-        
-        # === MODIFICADORES DE ARMAS v10.0 ===
-        self._aplicar_modificadores_armas(distancia, inimigo)
-    
+        self._definir_acao(valor, fonte="legado",
+                           prioridade=getattr(self, "_contexto_escrita", 2))
+
+    def _definir_acao(self, acao, fonte="legado", prioridade=2, hold_s=None):
+        """Escritor único de acao_atual com min-hold por prioridade (5B).
+
+        P1 instinto (segura 0,3-0,5s), P2 reação/legado (0,4s), P3 decisão
+        (segura até o próximo tick). Escrita da mesma ação é no-op — não
+        renova hold nem conta troca. Prioridade mais forte (menor) sempre
+        interrompe; a decisão agendada (P3) pode substituir a própria P3.
+        A ação mediana era 16,7ms com 66% das trocas em <=2 frames — tremor,
+        não intenção.
+        """
+        if acao == getattr(self, "_acao_atual", None):
+            return True
+        agora = getattr(self, "tempo_combate", 0.0)
+        hold_prio = getattr(self, "_acao_hold_prio", 9)
+        segurando = agora < getattr(self, "_acao_hold_ate", 0.0)
+        if segurando and prioridade >= hold_prio and not (
+            prioridade == 3 and hold_prio == 3
+        ):
+            contadores = getattr(self, "contadores", None)
+            if contadores is not None:
+                contadores["escritas_seguradas"] = contadores.get(
+                    "escritas_seguradas", 0) + 1
+            return False
+        self._acao_atual = acao
+        self._acao_fonte = fonte
+        if hold_s is None:
+            if prioridade == 1:
+                rng = getattr(self, "rng", None)
+                hold_s = rng.uniform(0.3, 0.5) if rng is not None else 0.4
+            elif prioridade == 3:
+                hold_s = 0.55
+            else:
+                # P2 e a restricao vinculante da mediana de acao: reacoes/
+                # coreografo commitam na cadencia do proprio hold (V2).
+                hold_s = 0.55
+        self._acao_hold_ate = agora + hold_s
+        self._acao_hold_prio = prioridade
+        contadores = getattr(self, "contadores", None)
+        if contadores is not None:
+            contadores["escritas_aceitas"] = contadores.get(
+                "escritas_aceitas", 0) + 1
+        return True
+
     def _aplicar_modificadores_momentum(self, distancia, inimigo_hp_pct):
         """Aplica modificadores baseados no momentum da luta"""
         # Momentum positivo = mais agressivo
@@ -4185,17 +3884,12 @@ class AIBrain:
             # Retorna distância ideal (entre zona morta e máximo)
             return (alcance_base + zona_morta) / 2 + comp * 0.2
         
-        elif tipo == "Arremesso":
-            # Projéteis: mantém distância média
-            return alcance_base * 0.7
-        
-        elif tipo == "Arco":
-            # Arco: ALCANCE TOTAL - flechas voam longe!
-            return alcance_base * 1.0
-        
-        elif tipo == "Mágica":
-            # Magia: distância média
-            return alcance_base * 0.7
+        elif tipo in ("Arremesso", "Arco", "Mágica"):
+            # Onda 4: o alcance de DECISÃO é o mesmo alcance de DISPARO do
+            # motor (fonte única no catálogo). Os fatores 0,7/1,0 daqui
+            # compensavam a estimativa raio*range_mult, que divergia do motor.
+            from neural_fights.models.constants import alcance_ranged_m
+            return alcance_ranged_m(tipo)
         
         elif tipo == "Orbital":
             # Orbitais: fica perto
@@ -4355,26 +4049,30 @@ class AIBrain:
             self.acao_atual = self.rng.choice(preferencias)
 
     def _calcular_timer_decisao(self):
-        """Calcula timer para próxima decisão"""
-        base = 0.3
-        
+        """Calcula timer para próxima decisão.
+
+        Onda 5B: escada reescalada ~x1,67 (base 0,3->0,5). A 0,3 com humores
+        rápidos o tick caía a 60-140ms — intenção ilegível por construção.
+        """
+        base = 0.5
+
         if "ERRATICO" in self.tracos or "CAOTICO" in self.tracos:
-            base = 0.15
+            base = 0.25
         if "PACIENTE" in self.tracos:
-            base = 0.45
+            base = 0.75
         if "METODICO" in self.tracos:
-            base = 0.4
+            base = 0.65
         if self.modo_berserk:
-            base = 0.1
+            base = 0.22
         if self.humor == "ENTEDIADO":
-            base = 0.5
+            base = 0.8
         if self.humor == "ANIMADO":
-            base = 0.18
+            base = 0.38
         if self.humor == "FURIOSO":
-            base = 0.12
+            base = 0.3
         if self.humor == "DESESPERADO":
-            base = 0.15
-        
+            base = 0.32
+
         self.timer_decisao = self.rng.uniform(base * 0.5, base * 1.2)
 
     # =========================================================================
@@ -4383,16 +4081,10 @@ class AIBrain:
     
     def on_hit_dado(self):
         """Quando acerta um golpe - integrado com sistema de combos"""
-        self.hits_dados_total += 1
-        self.hits_dados_recente += 1
-        self.tempo_desde_hit = 0.0
-        self.combo_atual += 1
-        self.max_combo = max(self.max_combo, self.combo_atual)
-        
-        self.confianca = min(1.0, self.confianca + 0.05)
-        self.frustracao = max(0, self.frustracao - 0.1)
-        self.excitacao = min(1.0, self.excitacao + 0.1)
-        
+        # Contadores e emoções no motor único (5C): acertar alivia
+        # frustração (-0,25) e tédio (-0,3) — a seca ofensiva é que os cria.
+        self._motor_emocional().on_hit_dado()
+
         # Sistema de combo
         combo = self.combo_state
         combo["em_combo"] = True
@@ -4401,8 +4093,9 @@ class AIBrain:
         combo["pode_followup"] = True
         combo["timer_followup"] = 0.5  # Janela para continuar combo
         
-        # Momentum positivo
-        self.momentum = min(1.0, self.momentum + 0.15)
+        # Momentum positivo (empurrao de evento, calibrado com a meia-vida
+        # de 4s para nao cravar o medidor em sequencias normais)
+        self.momentum = min(1.0, self.momentum + 0.06)
         self.burst_counter += 1
         
         if "SEDE_SANGUE" in self.quirks:
@@ -4415,7 +4108,7 @@ class AIBrain:
     def on_hit_recebido(self, dano):
         """Quando recebe dano"""
         # Momentum negativo
-        self.momentum = max(-1.0, self.momentum - 0.1)
+        self.momentum = max(-1.0, self.momentum - 0.05)
         
         # Quebra combo
         self.combo_state["em_combo"] = False
@@ -4497,150 +4190,163 @@ class AIBrain:
             self.ritmo_modificadores = {"agressividade": 0, "defesa": 0, "mobilidade": 0}
     
     def _processar_instintos(self, dt, distancia, inimigo):
-        """Processa instintos de combate - reações automáticas"""
+        """Reações automáticas (Onda 5D: sinais reais + prioridade + cd).
+
+        Antes: 8/15 triggers referenciavam sinais que não existiam (o
+        catálogo prometia reflexos mortos) e as condições de nível sem
+        cooldown faziam RECUAR ser 98,7% dos disparos — o primeiro da
+        lista vencia todo frame. Agora: candidatos são coletados, o de
+        prioridade mais forte rola a chance, e quem dispara paga cooldown.
+        """
         if not self.instintos:
             return False
-        
+
         p = self.parent
         hp_pct = p.vida / p.vida_max if p.vida_max > 0 else 1.0
-        inimigo_hp_pct = inimigo.vida / inimigo.vida_max if inimigo.vida_max > 0 else 1.0
-        
-        for instinto_nome in self.instintos:
-            if instinto_nome not in INSTINTOS:
+        inimigo_hp_pct = (
+            inimigo.vida / inimigo.vida_max if inimigo.vida_max > 0 else 1.0
+        )
+
+        candidatos = []
+        for nome in self.instintos:
+            dados = INSTINTOS.get(nome)
+            if not dados:
                 continue
-            
-            instinto = INSTINTOS[instinto_nome]
-            trigger = instinto["trigger"]
-            chance = instinto["chance"]
-            acao = instinto["acao"]
-            
-            # Verifica se o trigger está ativo
-            triggered = False
-            
-            if trigger == "hp_critico" and hp_pct < 0.2:
-                triggered = True
-            elif trigger == "hp_baixo" and hp_pct < 0.4:
-                triggered = True
-            elif trigger == "oponente_fraco" and inimigo_hp_pct < 0.3:
-                triggered = True
-            elif trigger == "oponente_whiff" and self.janela_ataque.get("tipo") == "whiff":
-                triggered = True
-            elif trigger == "oponente_recuando" and getattr(inimigo, 'acao_atual', None) in ["RECUAR", "FUGIR"]:
-                triggered = True
-            elif trigger == "vantagem_hp" and hp_pct > inimigo_hp_pct + 0.2:
-                triggered = True
-            elif trigger == "dano_alto" and self.tempo_desde_dano < 0.3 and self.ultimo_dano_recebido > p.vida_max * 0.15:
-                triggered = True
-            elif trigger == "em_combo" and self.combo_state.get("sendo_combo", False):
-                triggered = True
-            elif trigger == "pos_combo" and self.tempo_desde_dano < 0.5 and self.tempo_desde_dano > 0.3:
-                triggered = True
-            elif trigger == "bloqueio_sucesso" and hasattr(self, 'ultimo_bloqueio') and self.ultimo_bloqueio < 0.3:
-                triggered = True
-            elif trigger == "perdendo_trocas" and self.hits_recebidos_recente > self.hits_dados_recente + 2:
-                triggered = True
-            elif trigger == "ataque_previsivel" and self.leitura_oponente.get("padrao_detectado", False):
-                triggered = True
-            
-            # Executa o instinto se triggado e passar no check de chance
-            if triggered and self._chance_temporal(chance, dt):
-                return self._executar_instinto(acao, distancia, inimigo)
-        
-        return False
-    
-    def _executar_instinto(self, acao, distancia, inimigo):
-        """Executa uma ação instintiva"""
+            if self.tempo_combate < self.cd_instintos.get(nome, 0.0):
+                continue
+            if self._avaliar_trigger_instinto(
+                dados["trigger"], distancia, inimigo, hp_pct, inimigo_hp_pct
+            ):
+                candidatos.append((dados.get("prioridade", 2), nome, dados))
+
+        if not candidatos:
+            return False
+
+        candidatos.sort(key=lambda item: item[0])
+        _, nome, dados = candidatos[0]
+        if not self._chance_temporal(dados["chance"], dt):
+            return False
+
+        self.cd_instintos[nome] = self.tempo_combate + dados.get("cooldown", 3.0)
+        return self._executar_instinto(dados["acao"], distancia, inimigo)
+
+    def _avaliar_trigger_instinto(
+        self, trigger, distancia, inimigo, hp_pct, inimigo_hp_pct
+    ):
+        """Um trigger, um sinal REAL do runtime (auditado por AST nos dois
+        sentidos pela auditoria_personalidades)."""
         p = self.parent
-        
+
+        if trigger == "hp_critico":
+            return hp_pct < 0.2
+        if trigger == "hp_baixo":
+            return hp_pct < 0.4
+        if trigger == "oponente_fraco":
+            return inimigo_hp_pct < 0.3
+        if trigger == "vantagem_hp":
+            return hp_pct > inimigo_hp_pct + 0.2
+        if trigger == "dano_alto":
+            return (
+                self.tempo_desde_dano < 0.3
+                and self.ultimo_dano_recebido > p.vida_max * 0.15
+            )
+        if trigger == "pos_combo":
+            return 0.3 < self.tempo_desde_dano < 0.5
+        if trigger == "perdendo_trocas":
+            return self.hits_recebidos_recente > self.hits_dados_recente + 2
+        if trigger == "sendo_comboado":
+            # A versão antiga lia combo_state["sendo_combo"] — chave que
+            # nunca existiu (o dict rastreia o MEU combo ofensivo, e a
+            # chave real é "em_combo"). Ser comboado é levar hits em
+            # sequência curta.
+            return self.hits_recebidos_recente >= 3 and self.tempo_desde_dano < 0.8
+        if trigger == "bloqueio_sucesso":
+            return self.ultimo_bloqueio < 0.4
+        if trigger == "janela_punicao":
+            # Era "oponente_whiff" comparado com tipo "whiff", que não
+            # existe no vocabulário de janelas do runtime.
+            return bool(self.janela_ataque.get("aberta")) and self.janela_ataque.get(
+                "tipo"
+            ) in ("pos_ataque", "recuperando", "pos_esquiva")
+        if trigger == "oponente_recuando":
+            # A versão antiga lia acao_atual do LUTADOR (é do brain).
+            brain_inimigo = _obter_brain(inimigo)
+            return getattr(brain_inimigo, "acao_atual", None) in ("RECUAR", "FUGIR")
+        if trigger == "oponente_previsivel":
+            return self.leitura_oponente.get("previsibilidade", 0.0) > 0.7
+        if trigger == "ataque_iminente_perto":
+            return (
+                bool(self.leitura_oponente.get("ataque_iminente"))
+                and distancia < 3.5
+            )
+        if trigger == "projetil_vindo":
+            return bool(self._detectar_projetil_vindo(inimigo))
+        if trigger == "ataque_traseiro":
+            if not getattr(inimigo, "atacando", False):
+                return False
+            ang_para_inimigo = math.atan2(
+                inimigo.pos[1] - p.pos[1], inimigo.pos[0] - p.pos[0]
+            )
+            delta = abs(
+                (ang_para_inimigo - p.angulo_olhar + math.pi) % (2 * math.pi)
+                - math.pi
+            )
+            return delta > 2.2
+        return False
+
+    def _executar_instinto(self, acao, distancia, inimigo):
+        """Executa uma ação instintiva com verbos REAIS do motor.
+
+        Onda 5D: as versões antigas chamavam ``p.iniciar_dash()``/
+        ``p.pular()`` (métodos que nunca existiram) e escreviam
+        ``p.movimento_x`` (que o motor nunca leu) — o instinto "disparava"
+        e nada acontecia na tela. O poder do instinto agora é o commit P1
+        do escritor único: a ação interrompe qualquer hold e gruda.
+        """
         if acao == "panic_dash":
-            # Dash de pânico para longe
-            if self.cd_dash <= 0:
-                ang = math.atan2(p.pos[1] - inimigo.pos[1], p.pos[0] - inimigo.pos[0])
-                p.movimento_x = math.cos(ang) * 0.5
-                if hasattr(p, 'iniciar_dash'):
-                    p.iniciar_dash()
-                self.cd_dash = 0.8
-                return True
-        
-        elif acao == "rage_trigger":
-            # Entra em modo de fúria
-            self.raiva = min(1.0, self.raiva + 0.5)
-            self.medo = max(0, self.medo - 0.3)
-            self.agressividade_base = min(1.0, self.agressividade_base + 0.3)
-            return False  # Não consome o turno
-        
-        elif acao == "auto_chase":
-            # Persegue automaticamente
-            self.acao_atual = "APROXIMAR"
-            self._executar_aproximar(distancia, inimigo)
+            self.acao_atual = "FUGIR"
             return True
-        
-        elif acao == "defensive_mode":
-            # Modo defensivo
+        if acao in ("dodge_back", "dodge_projetil", "combo_break"):
+            self.acao_atual = "DESVIO"
+            return True
+        if acao in ("guarda_reflexa", "auto_block"):
+            self.acao_atual = "BLOQUEAR"
+            return True
+        if acao == "instant_counter":
+            self.acao_atual = "CONTRA_ATAQUE"
+            return True
+        if acao == "auto_chase":
+            self.acao_atual = "PRESSIONAR"
+            return True
+        if acao == "punish_attack":
+            self.acao_atual = "MATAR"
+            return True
+        if acao == "execute_mode":
+            self.acao_atual = "ESMAGAR"
+            self.agressividade_base = min(1.0, self.agressividade_base + 0.2)
+            return True
+        if acao == "tactical_retreat":
+            self.acao_atual = "RECUAR"
+            return True
+        if acao == "defensive_mode":
             self.acao_atual = "RECUAR"
             self.agressividade_base = max(0.1, self.agressividade_base - 0.2)
-            return False
-        
-        elif acao == "punish_attack":
-            # Ataque de punição
-            self.acao_atual = "MATAR"
-            self._executar_ataque(distancia, inimigo)
             return True
-        
-        elif acao == "execute_mode":
-            # Modo execução - all in
-            self.acao_atual = "ESMAGAR"
-            self.agressividade_base = min(1.0, self.agressividade_base + 0.4)
-            self._executar_ataque(distancia, inimigo)
-            return True
-        
-        elif acao == "tactical_retreat":
-            # Recuo tático
-            self.acao_atual = "RECUAR"
-            if self.cd_dash <= 0:
-                if hasattr(p, 'iniciar_dash'):
-                    p.iniciar_dash()
-                self.cd_dash = 0.6
-            return True
-        
-        elif acao == "pressure_increase":
-            # Aumenta pressão
+        if acao == "rage_trigger":
+            self.raiva = min(1.0, self.raiva + 0.5)
+            self.medo = max(0.0, self.medo - 0.3)
+            self.agressividade_base = min(1.0, self.agressividade_base + 0.3)
+            return False  # estado, não consome o frame
+        if acao == "pressure_increase":
             self.agressividade_base = min(1.0, self.agressividade_base + 0.15)
             self.pressao_aplicada = min(1.0, self.pressao_aplicada + 0.2)
             return False
-        
-        elif acao == "style_switch":
-            # Muda de estilo temporariamente
-            estilos_alternativos = ["AGGRO", "DEFENSIVE", "MOBILE", "COUNTER"]
-            novo_estilo = self.rng.choice([e for e in estilos_alternativos if e != self.estilo_luta])
-            self.estilo_luta = novo_estilo
+        if acao == "style_switch":
+            alternativos = [
+                e
+                for e in ("AGGRO", "DEFENSIVE", "MOBILE", "COUNTER")
+                if e != self.estilo_luta
+            ]
+            self.estilo_luta = self.rng.choice(alternativos)
             return False
-        
-        elif acao == "combo_break":
-            # Tenta quebrar combo
-            if self.cd_dash <= 0 and self.rng.random() < 0.5:
-                if hasattr(p, 'iniciar_dash'):
-                    p.iniciar_dash()
-                self.cd_dash = 0.5
-                return True
-        
-        elif acao == "instant_counter":
-            # Contra-ataque instantâneo
-            self.acao_atual = "CONTRA_ATAQUE"
-            self._executar_ataque(distancia, inimigo)
-            return True
-        
-        elif acao == "auto_jump":
-            # Pulo automático
-            if self.cd_pulo <= 0 and hasattr(p, 'pular'):
-                p.pular()
-                self.cd_pulo = 0.3
-                return True
-        
         return False
-    
-    def get_agressividade_efetiva(self):
-        """Retorna agressividade com modificadores de ritmo"""
-        base = self.agressividade
-        ritmo_mod = self.ritmo_modificadores.get("agressividade", 0)
-        return max(0.0, min(1.0, base + ritmo_mod))

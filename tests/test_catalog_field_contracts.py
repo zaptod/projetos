@@ -177,7 +177,7 @@ class CatalogFieldContractTests(unittest.TestCase):
         projectile = Projetil("Chama Caótica", 0.0, 5.0, 0.0, owner)
         self.assertEqual(projectile.elemento, "RAIO")
         self.assertEqual(projectile.cor, (255, 255, 100))
-        self.assertAlmostEqual(projectile.dano, 60.0)
+        self.assertAlmostEqual(projectile.dano, 120.0)  # re-pino O6f2: escala de dano/cura de skill x2
 
     def test_area_catalog_durations_and_slow_reach_target_runtime(self):
         _, frozen, absolute_zero = self._resolve_area("Zero Absoluto")

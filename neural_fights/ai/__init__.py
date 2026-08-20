@@ -26,7 +26,6 @@ _EXPORTS = {
     "HUMORES": ("neural_fights.ai.personalities", "HUMORES"),
     "SpatialAwarenessSystem": ("neural_fights.ai.spatial", "SpatialAwarenessSystem"),
     "EmotionSystem": ("neural_fights.ai.emotions", "EmotionSystem"),
-    "CombatTacticsSystem": ("neural_fights.ai.combat_tactics", "CombatTacticsSystem"),
     "SkillStrategySystem": ("neural_fights.ai.skill_strategy", "SkillStrategySystem"),
     "CombatSituation": ("neural_fights.ai.skill_strategy", "CombatSituation"),
     "SkillPriority": ("neural_fights.ai.skill_strategy", "SkillPriority"),

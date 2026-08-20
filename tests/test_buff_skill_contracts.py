@@ -29,15 +29,15 @@ class BuffSkillContractTests(unittest.TestCase):
         with patch("neural_fights.core.entities.random.random", return_value=1.0):
             physical_damage, _ = caster.calcular_dano_ataque(10.0)
 
-        self.assertAlmostEqual(projectile.dano, 15.0)
-        self.assertAlmostEqual(area.dano, 52.5)
+        self.assertAlmostEqual(projectile.dano, 30.0)  # re-pino O6f2: escala de dano/cura de skill x2
+        self.assertAlmostEqual(area.dano, 105.0)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertAlmostEqual(area.raio, 3.25)
-        self.assertAlmostEqual(persistent_area.dano_por_segundo, 12.0)
+        self.assertAlmostEqual(persistent_area.dano_por_segundo, 24.0)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertAlmostEqual(physical_damage, physical_baseline)
 
         caster.buffs_ativos.clear()
-        self.assertAlmostEqual(projectile.dano, 15.0)
-        self.assertAlmostEqual(area.dano, 52.5)
+        self.assertAlmostEqual(projectile.dano, 30.0)  # re-pino O6f2: escala de dano/cura de skill x2
+        self.assertAlmostEqual(area.dano, 105.0)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertAlmostEqual(area.raio, 3.25)
 
     def test_prediction_consumes_only_two_accepted_hostile_impacts(self):
@@ -46,13 +46,18 @@ class BuffSkillContractTests(unittest.TestCase):
         prediction = Buff("Previsão", defender)
         defender.buffs_ativos.append(prediction)
 
+        # Onda 2: a invencibilidade bloqueia o RE-IMPACTO do mesmo golpe, nao
+        # qualquer fonte. O andaime agora reproduz exatamente isso: a mesma
+        # fonte tenta bater de novo dentro da janela.
+        fonte_repetida = object()
         defender.invencivel_timer = 1.0
+        defender._invencivel_chave = ("fonte", fonte_repetida)
         rejected = defender.resolver_impacto(
             10.0,
             0.0,
             0.0,
             atacante=attacker,
-            fonte_impacto=object(),
+            fonte_impacto=fonte_repetida,
         )
         self.assertEqual(rejected.bloqueado_por, "invencibilidade")
         self.assertEqual(prediction.esquivas_restantes, 2)
@@ -169,7 +174,7 @@ class BuffSkillContractTests(unittest.TestCase):
             0.0,
         )
         physical_area = physical_caster.buffer_areas[-1]
-        self.assertAlmostEqual(physical_area.dano, 25.0)
+        self.assertAlmostEqual(physical_area.dano, 50.0)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertAlmostEqual(physical_area.raio, 1.5)
 
     def test_holy_bonuses_apply_only_to_explicit_dark_affinity(self):
@@ -237,7 +242,7 @@ class BuffSkillContractTests(unittest.TestCase):
         )
         self.assertTrue(first.atingiu)
         self.assertEqual(first.dano, 0.0)
-        self.assertAlmostEqual(attacker.vida, life_before - 10.0)
+        self.assertAlmostEqual(attacker.vida, life_before - 20.0)  # re-pino O6f2: escala x2
 
         defender.invencivel_timer = 0.0
         defender.resolver_impacto(
@@ -248,7 +253,7 @@ class BuffSkillContractTests(unittest.TestCase):
             fonte_impacto=source,
             metadata_impacto={"eh_corpo_a_corpo": True},
         )
-        self.assertAlmostEqual(attacker.vida, life_before - 10.0)
+        self.assertAlmostEqual(attacker.vida, life_before - 20.0)  # re-pino O6f2: escala x2
 
         defender.invencivel_timer = 0.0
         defender.resolver_impacto(
@@ -259,7 +264,7 @@ class BuffSkillContractTests(unittest.TestCase):
             fonte_impacto=object(),
             metadata_impacto={"eh_skill": True, "eh_projetil": True},
         )
-        self.assertAlmostEqual(attacker.vida, life_before - 10.0)
+        self.assertAlmostEqual(attacker.vida, life_before - 20.0)  # re-pino O6f2: escala x2
 
     def test_instant_buffs_are_not_persisted_or_stealable(self):
         healer = self._fighter("Healer")

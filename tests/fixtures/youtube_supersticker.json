@@ -1,0 +1,27 @@
+{
+  "kind": "youtube#liveChatMessage",
+  "id": "LCC.MSG003",
+  "snippet": {
+    "type": "superStickerEvent",
+    "liveChatId": "CHAT1",
+    "publishedAt": "2026-08-19T14:06:00Z",
+    "superStickerDetails": {
+      "amountMicros": "5000000",
+      "currency": "BRL",
+      "amountDisplayString": "R$5.00",
+      "tier": 1,
+      "superStickerMetadata": {
+        "stickerId": "abc",
+        "altText": "coracao"
+      }
+    }
+  },
+  "authorDetails": {
+    "channelId": "UCcaio",
+    "displayName": "Caio",
+    "isChatModerator": false,
+    "isChatOwner": false,
+    "isChatSponsor": false,
+    "profileImageUrl": "https://yt3.example/photo.jpg"
+  }
+}

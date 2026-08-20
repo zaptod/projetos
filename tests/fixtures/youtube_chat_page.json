@@ -1,0 +1,93 @@
+{
+  "kind": "youtube#liveChatMessageListResponse",
+  "nextPageToken": "TOKEN_PAGINA_2",
+  "pollingIntervalMillis": 5000,
+  "pageInfo": {
+    "totalResults": 3,
+    "resultsPerPage": 3
+  },
+  "items": [
+    {
+      "kind": "youtube#liveChatMessage",
+      "id": "LCC.MSG001",
+      "snippet": {
+        "type": "textMessageEvent",
+        "liveChatId": "CHAT1",
+        "publishedAt": "2026-08-19T14:03:11.123456Z",
+        "displayMessage": "!entrar",
+        "textMessageDetails": {
+          "messageText": "!entrar"
+        }
+      },
+      "authorDetails": {
+        "channelId": "UCabc123",
+        "displayName": "Ana Clara",
+        "isChatModerator": false,
+        "isChatOwner": false,
+        "isChatSponsor": false,
+        "profileImageUrl": "https://yt3.example/photo.jpg"
+      }
+    },
+    {
+      "kind": "youtube#liveChatMessage",
+      "id": "LCC.MSG002",
+      "snippet": {
+        "type": "superChatEvent",
+        "liveChatId": "CHAT1",
+        "publishedAt": "2026-08-19T14:05:00Z",
+        "displayMessage": "!meteoro",
+        "superChatDetails": {
+          "amountMicros": "19900000",
+          "currency": "BRL",
+          "amountDisplayString": "R$19.90",
+          "userComment": "!meteoro",
+          "tier": 3
+        }
+      },
+      "authorDetails": {
+        "channelId": "UCbeto",
+        "displayName": "Beto",
+        "isChatModerator": false,
+        "isChatOwner": false,
+        "isChatSponsor": false,
+        "profileImageUrl": "https://yt3.example/photo.jpg"
+      }
+    },
+    {
+      "id": "LCC.SYS",
+      "snippet": {
+        "type": "chatEndedEvent",
+        "liveChatId": "CHAT1"
+      },
+      "authorDetails": {
+        "channelId": "UCsys",
+        "displayName": "Sistema",
+        "isChatModerator": false,
+        "isChatOwner": false,
+        "isChatSponsor": false,
+        "profileImageUrl": "https://yt3.example/photo.jpg"
+      }
+    },
+    {
+      "kind": "youtube#liveChatMessage",
+      "id": "LCC.MSG005",
+      "snippet": {
+        "type": "textMessageEvent",
+        "liveChatId": "CHAT1",
+        "publishedAt": "2026-08-19T14:08:00Z",
+        "displayMessage": "!curar p1",
+        "textMessageDetails": {
+          "messageText": "!curar p1"
+        }
+      },
+      "authorDetails": {
+        "channelId": "UCmod",
+        "displayName": "Mod",
+        "isChatModerator": true,
+        "isChatOwner": true,
+        "isChatSponsor": false,
+        "profileImageUrl": "https://yt3.example/photo.jpg"
+      }
+    }
+  ]
+}

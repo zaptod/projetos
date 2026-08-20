@@ -83,12 +83,14 @@ class StatusRuntimeRegressionTests(unittest.TestCase):
 
     def test_regeneration_buff_accepts_cura_tick_alias(self) -> None:
         fighter = self._fighter("Regenerating target")
-        fighter.vida = fighter.vida_max - 20.0
+        # Re-pino O6f2 (escala x2): o tick de regeneração dobrou (8→16),
+        # e o déficit sobe junto para o contrato do alias seguir parcial.
+        fighter.vida = fighter.vida_max - 40.0
         buff = Buff("Regeneração", fighter)
 
         buff.atualizar(1.0)
 
-        self.assertAlmostEqual(fighter.vida, fighter.vida_max - 12.0)
+        self.assertAlmostEqual(fighter.vida, fighter.vida_max - 24.0)
 
     def test_purify_clears_debuff_families_and_grants_immunity(self) -> None:
         fighter = self._fighter("Purified target")
@@ -137,13 +139,15 @@ class StatusRuntimeRegressionTests(unittest.TestCase):
         fighter = self._fighter("Major heal versus necrosis")
         fighter._aplicar_efeito_status("NECROSE")
         fighter._aplicar_efeito_status("FRACO")
-        fighter.vida = fighter.vida_max - 70.0
+        # Re-pino O6f2 (escala x2): a Cura Maior cura 120 agora — o déficit
+        # sobe junto para o contrato seguir testando cura PARCIAL.
+        fighter.vida = fighter.vida_max - 150.0
 
         self._cast_class_buff(fighter, "Cura Maior")
 
         self.assertEqual(fighter.cura_bloqueada_timer, 0.0)
         self.assertFalse(any(dot.tipo == "NECROSE" for dot in fighter.dots_ativos))
-        self.assertAlmostEqual(fighter.vida, fighter.vida_max - 10.0)
+        self.assertAlmostEqual(fighter.vida, fighter.vida_max - 30.0)
 
     def test_immunity_blocks_status_and_area_metadata_but_not_damage(self) -> None:
         fighter = self._fighter("Immune target")

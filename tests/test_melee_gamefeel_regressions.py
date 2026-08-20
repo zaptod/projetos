@@ -67,8 +67,16 @@ class MeleeGameFeelRegressionTests(unittest.TestCase):
         attacker.calcular_dano_ataque = Mock(return_value=(damage, False))
 
         # Berserker e Guerreiro ativam armor nesta janela de ataque pesado.
+        # O progresso e derivado do total_time REAL do perfil da arma do
+        # defensor (correcao da Onda 1: o divisor fixo de 0.25 nao
+        # correspondia a nenhum perfil e este setup dependia dele). 25% de
+        # progresso cai dentro das janelas de Berserker (10-40%) e
+        # Guerreiro (15-35%).
+        from neural_fights.effects.weapon_animations import WEAPON_PROFILES
+
+        total_anim = WEAPON_PROFILES["Reta"].total_time
         defender.atacando = True
-        defender.timer_animacao = 0.20
+        defender.timer_animacao = total_anim * 0.75
         defender.brain = SimpleNamespace(acao_atual="MATAR", raiva=0.0)
 
         manager = GameFeelManager.get_instance()
@@ -137,7 +145,11 @@ class MeleeGameFeelRegressionTests(unittest.TestCase):
 
     def test_rejected_impact_applies_neither_knockback_nor_impact_vfx(self) -> None:
         simulator, attacker, defender, _manager = self._combat("Berserker (Fúria)")
-        defender.invencivel_timer = 0.2
+        # Onda 2: o contrato deste teste e "impacto rejeitado nao gera efeito
+        # colateral", nao a mecanica especifica do i-frame (que virou
+        # por-golpe). A invulnerabilidade de skill segue absoluta e produz o
+        # mesmo impacto rejeitado.
+        defender.invulnerabilidade_skill_timer = 0.2
         life_before = defender.vida
 
         with (

@@ -232,16 +232,18 @@ class AfterImageTrail:
             s = pygame.Surface((tam * 2 + 4, tam * 2 + 4), pygame.SRCALPHA)
             
             # Glow externo
-            glow_alpha = max(0, min(255, int(img.alpha * 0.3)))
+            # Passe de arte 1: fantasma sussurra (0,3->0,10) — copias
+            # quase solidas viravam lagarta em vez de velocidade.
+            glow_alpha = max(0, min(255, int(img.alpha * 0.10)))
             pygame.draw.circle(s, (r, g, b, glow_alpha), (tam + 2, tam + 2), tam + 2)
             
             # Corpo principal
-            main_alpha = max(0, min(255, int(img.alpha * 0.7)))
+            main_alpha = max(0, min(255, int(img.alpha * 0.25)))
             pygame.draw.circle(s, (r, g, b, main_alpha), (tam + 2, tam + 2), tam)
             
             # Centro mais brilhante
             if tam > 4:
-                center_alpha = max(0, min(255, int(img.alpha * 0.5)))
+                center_alpha = max(0, min(255, int(img.alpha * 0.18)))
                 pygame.draw.circle(s, (r2, g2, b2, center_alpha), (tam + 2, tam + 2), tam // 2)
             
             tela.blit(s, (sx - tam - 2, sy - tam - 2))

@@ -12,8 +12,11 @@ from typing import Optional, Tuple, List, Dict
 from neural_fights.utils.config import PPM
 
 # === CONFIGURAÇÃO DE DEBUG ===
+# Ambos ficam desligados por padrão: a partida é material de transmissão, e um
+# overlay de diagnóstico ligado por engano vai ao ar junto com ela. Para ligar
+# em desenvolvimento use a tecla H ou o bloco ``overlays`` do match config.
 DEBUG_HITBOX = False  # Ativar/desativar prints de debug (MUITO VERBOSO)
-DEBUG_VISUAL = True  # Mostrar hitboxes visuais no jogo
+DEBUG_VISUAL = False  # Mostrar hitboxes visuais no jogo
 logger = logging.getLogger(__name__)
 
 

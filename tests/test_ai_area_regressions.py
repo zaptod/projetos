@@ -32,6 +32,11 @@ class TwinDaggersAIRegressionTests(unittest.TestCase):
         }
         brain.confianca = 0.5
         brain.tracos = []
+        # Re-pino Onda 5B: _aplicar_modificadores_armas é um ESTÁGIO da
+        # pilha — em produção roda dentro do modo-proposta de
+        # _decidir_movimento (rascunho livre, sem min-hold). O scaffold
+        # reproduz esse contexto.
+        brain._modo_proposta = True
         brain.acao_atual = "COMBATE"
 
         with (

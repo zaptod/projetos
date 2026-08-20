@@ -1,0 +1,302 @@
+{
+  "_doc": [
+    "Alvos do harness de qualidade de luta (neural_fights.tools.qualidade_luta).",
+    "Cada alvo referencia uma chave do resumo agregado. 'enforce_onda' diz a",
+    "partir de qual onda do programa o alvo BLOQUEIA em --strict; antes disso",
+    "ele e apenas reportado. 'min_lutas' evita julgar uma metrica com amostra",
+    "pequena demais (fica informativa ate o corpus alcancar o minimo)."
+  ],
+  "B4_vies_de_lado": {
+    "metrica": "winrate_p1",
+    "min": 0.42,
+    "max": 0.58,
+    "enforce_onda": 0,
+    "min_lutas": 200,
+    "descricao": "Espelhos exatos: vies de lado e bug de medicao/spawn, nao de balance."
+  },
+  "B4_vies_de_lado_smoke": {
+    "metrica": "winrate_p1",
+    "min": 0.3,
+    "max": 0.7,
+    "enforce_onda": 0,
+    "min_lutas": 24,
+    "descricao": "Versao frouxa para o corpus smoke (48 lutas): pega vies grosseiro."
+  },
+  "S1_taxa_critico": {
+    "metrica": "taxa_critico_global",
+    "min": 0.06,
+    "max": 0.2,
+    "enforce_onda": 1,
+    "min_lutas": 30,
+    "descricao": "Critico e evento raro e legivel; hoje dispara em 100% dos golpes."
+  },
+  "S5_super_armor": {
+    "metrica": "taxa_super_armor",
+    "min": 0.02,
+    "max": 0.3,
+    "enforce_onda": 1,
+    "min_lutas": 30,
+    "descricao": "Tripwire: o armor absorve em algum lugar (era inalcancavel com o divisor 0.25). Medido honesto na O1: 0,039 no corpus completo — o piso original de 0,08 assumia que so o divisor prendia a taxa, mas a causa dominante e de design (defensor precisa estar no meio do golpe; so Cavaleiro/Paladino ignoram janelas). A O6 redesenha o armor dessas classes e re-pina este piso."
+  },
+  "P2_lutas_relampago": {
+    "metrica": "pct_sob_5s",
+    "max": 0.02,
+    "enforce_onda": 4,
+    "min_lutas": 40,
+    "descricao": "Luta de <5s nao da tempo de o espectador reagir. Re-pinado da O2 para a O4 com medicao: a O2 zerou o desperdicio de i-frames (S2 0,21->0,00) mas as lutas-relampago restantes sao morte por 2-3 flechas — Arco a 20m hard-coded com ~1 disparo/s, exatamente o escopo de cadencia/alcance da O4."
+  },
+  "S2_anulacao_iframes": {
+    "metrica": "taxa_anulacao_iframes_media",
+    "max": 0.1,
+    "enforce_onda": 2,
+    "min_lutas": 30,
+    "descricao": "i-frames comem hoje 35% de todos os impactos."
+  },
+  "S3_share_basico": {
+    "metrica": "share_dano_basico",
+    "max": 0.78,
+    "enforce_onda": 4,
+    "min_lutas": 100,
+    "descricao": "Tripwire O4: trava regressao ao 0,83 pre-O3 (medido 0,73 na O4). A tese do re-pino O3->O4 (share cai com a desaceleracao do basico) se provou FALSA na medicao: a escala global de TTK re-infla o basico (dano de skill e flat contra pool 2x; 17 casts/luta nao compensam). Composicao de share e economia de mana/custos + dano de skill = O6."
+  },
+  "S3_share_skills": {
+    "metrica": "share_dano_skill",
+    "min": 0.18,
+    "enforce_onda": 4,
+    "min_lutas": 100,
+    "descricao": "Tripwire O4: piso que trava o funil aberto da O3 (medido 0,217 na O4; casts p50 11->17). Meta plena de 25% em S3_share_skills_meta — share e composicao (mana/custos/dano de skill), dominio da O6."
+  },
+  "S3_share_dot": {
+    "metrica": "share_dano_dot",
+    "min": 0.01,
+    "enforce_onda": 3,
+    "min_lutas": 40,
+    "descricao": "Tripwire de existencia: DoT/encantamento era 0,0% do dano — o sistema inteiro estava sem chamador. Medido 1,5% na O3 com o roster congelado (poucas armas com Chamas/Veneno)."
+  },
+  "S4_casts_por_luta": {
+    "metrica": "skills_por_luta_p50",
+    "min": 3,
+    "enforce_onda": 3,
+    "min_lutas": 40,
+    "descricao": "O kit destravado precisa aparecer em toda luta tipica."
+  },
+  "P1_duracao_mediana": {
+    "metrica": "duracao_p50",
+    "min": 20.0,
+    "max": 40.0,
+    "enforce_onda": 4,
+    "min_lutas": 100,
+    "descricao": "Corredor de espetaculo para live: nem relampago, nem novela. min_lutas 100: o p50 do smoke (48 lutas) oscila +-1,5s — flake de CI; o corpus completo e o juiz (mesmo mecanismo de amostra de B1/B4)."
+  },
+  "P3_duracao_p90": {
+    "metrica": "duracao_p90",
+    "max": 60.0,
+    "enforce_onda": 4,
+    "min_lutas": 100,
+    "descricao": "A cauda longa arrasta a transmissao. min_lutas 100: p90 de 48 lutas e a 5a pior luta — ruido puro no smoke."
+  },
+  "P3_timeouts": {
+    "metrica": "pct_timeout",
+    "max": 0.03,
+    "enforce_onda": 4,
+    "min_lutas": 100,
+    "descricao": "Tripwire O4 (medido 2,2% = 11/498): a banda 100-120s e densa em espelhos tanque-vs-dano-fraco do fixture (builds degeneradas do gerador, ex. forca 2,5 com katana). P1>=20s e timeouts<=2% sao conjuntamente insatisfaziveis ate estreitar a distribuicao (B3/purga = O6). O cap resolve por decisao: KO 97,8% >= 90%. Meta plena em P3_timeouts_meta."
+  },
+  "P4_ko": {
+    "metrica": "pct_ko",
+    "min": 0.9,
+    "enforce_onda": 1,
+    "min_lutas": 40,
+    "descricao": "Lutas resolvem por nocaute, nao por decisao burocratica."
+  },
+  "P5_primeiro_hit": {
+    "metrica": "primeiro_hit_p50",
+    "max": 4.0,
+    "enforce_onda": 4,
+    "min_lutas": 40,
+    "descricao": "O confronto comeca logo."
+  },
+  "D3_atropelos": {
+    "metrica": "pct_vencedor_acima_80",
+    "max": 0.22,
+    "enforce_onda": 4,
+    "min_lutas": 100,
+    "descricao": "Tripwire O4 (medido 0,213 no strict): trava o ganho vs 26,7% da O3. Mecanica medida: vencedor>80% e fracao 1-dano/vida_max — a escala global de vida SOBE o HP% retido em stomps (2,0->2,1 moveu 0,186->0,213). O residuo e atropelo de MATCHUP (classe 0,125-1,000 ate O6); meta plena em D3_atropelos_meta."
+  },
+  "D5_janela_seca": {
+    "metrica": "maior_seca_p90",
+    "max": 8.0,
+    "enforce_onda": 4,
+    "min_lutas": 100,
+    "descricao": "p90 da maior janela sem nenhum dano. min_lutas 100: p90 de 48 lutas vira loteria de 1 outlier no smoke."
+  },
+  "D6_burstiness": {
+    "metrica": "cv_intervalos_p50",
+    "min": 0.7,
+    "max": 1.6,
+    "enforce_onda": 4,
+    "min_lutas": 40,
+    "descricao": "Ritmo com variancia humana: nem metronomo, nem um unico spike."
+  },
+  "D1_lead_changes": {
+    "metrica": "pct_com_lead_change",
+    "min": 0.25,
+    "enforce_onda": 5,
+    "min_lutas": 100,
+    "descricao": "Tripwire O5 (medido 0,283-0,297): trava o patamar da IA viva. D1 era ~0,49 ANTES da O4 — a escala de vida que comprou o corredor 20-40s suprime trocas de lideranca por construcao (luta longa = lider estatisticamente persistente). IA viva move ~+2pp por entrega; 0,6 exige variancia MECANICA de meio de luta (ritmo ligado na 5E e janelas de burst/momentum->dano da O6). Meta plena em D1_meta."
+  },
+  "D2_comebacks": {
+    "metrica": "pct_comeback_25pp",
+    "min": 0.03,
+    "enforce_onda": 5,
+    "min_lutas": 100,
+    "descricao": "Tripwire O5 (medido 0,046-0,052): viradas de >=25pp sao raras com TTK longo e spread de matchup aberto (B1 0,10-0,95 ate a O6). Meta plena em D2_comebacks_meta."
+  },
+  "V1_pilha_personalidade": {
+    "metrica": "taxa_pilha_media",
+    "min": 0.95,
+    "enforce_onda": 5,
+    "min_lutas": 100,
+    "descricao": "A pilha de personalidade roda em toda decisao (hoje 0,04% dos frames)."
+  },
+  "V2_persistencia_acao": {
+    "metrica": "acao_mediana_ms_p50",
+    "min": 500.0,
+    "enforce_onda": 5,
+    "min_lutas": 100,
+    "descricao": "Intencao legivel: acao mediana >=0,5s (hoje 33ms)."
+  },
+  "V2_trocas_curtas": {
+    "metrica": "pct_trocas_curtas_media",
+    "max": 0.1,
+    "enforce_onda": 5,
+    "min_lutas": 100,
+    "descricao": "Trocas de acao com <=2 frames viram tremor na tela."
+  },
+  "V3_divergencia_presets": {
+    "metrica": "divergencia_presets_l1",
+    "min": 0.25,
+    "enforce_onda": 5,
+    "min_lutas": 100,
+    "descricao": "Tripwire O5: Agressivo e Defensivo sao lutadores diferentes (L1 era ~0,25 pre-programa; todos os builds da O5 medem 0,31-0,61). O estimador e INSTAVEL no bloco atual de 24 lutas de preset — serie entre builds adjacentes: 0,311/0,337/0,375/0,355/0,610/0,324 (uma mudanca de 2,4% na vida balancou +-0,29). Meta 0,35 re-pina na O6 com o bloco expandido para 72 lutas (primeira tarefa de harness da O6); cobrar 0,35 em n=24 e flake de CI, nao contrato."
+  },
+  "D4_foto_chegada": {
+    "metrica": "pct_vencedor_abaixo_30",
+    "min": 0.25,
+    "enforce_onda": 6,
+    "min_lutas": 40,
+    "descricao": "Um quarto das lutas termina apertada."
+  },
+  "B1_classe_min": {
+    "metrica": "winrate_classe_min",
+    "min": 0.2,
+    "enforce_onda": 6,
+    "min_lutas": 150,
+    "descricao": "Nenhuma classe abaixo de 35% (hoje Duelista 14,8%). || FECHO O6: 0,050->0,229 (knobs + purga). O piso residual (Piromante) e dado remanescente; 0,35 fica pos-programa com a purga continuada."
+  },
+  "B1_classe_max": {
+    "metrica": "winrate_classe_max",
+    "max": 0.75,
+    "enforce_onda": 6,
+    "min_lutas": 150,
+    "descricao": "Nenhuma classe acima de 65% (hoje Paladino 100%). || FECHO O6: 0,933(1,000)->0,714. Teto travado a 0,75; 0,65 pos-programa."
+  },
+  "B2_tipo_min": {
+    "metrica": "winrate_tipo_min",
+    "min": 0.3,
+    "enforce_onda": 6,
+    "min_lutas": 120,
+    "descricao": "Nenhum tipo de arma abaixo de 40% (hoje Orbital 10,7%). || FECHO O6: medido 0,333 (Reta; era 0,29 na O3)."
+  },
+  "B2_tipo_max": {
+    "metrica": "winrate_tipo_max",
+    "max": 0.65,
+    "enforce_onda": 6,
+    "min_lutas": 120,
+    "descricao": "Nenhum tipo de arma acima de 60% (hoje Corrente 78,6%). || FECHO O6: medido 0,620."
+  },
+  "B3_razao_duracao_matriz": {
+    "metrica": "razao_duracao_celulas",
+    "max": 4.7,
+    "enforce_onda": 6,
+    "min_lutas": 120,
+    "descricao": "Duracao mediana entre celulas da matriz varia hoje 18x. || FECHO O6: serie entre builds: 3,36-4,44 (era 18x na investigacao). Trava acima do maximo observado; 4,0 e a mediana real da serie."
+  },
+  "S3_share_dot_meta": {
+    "metrica": "share_dano_dot",
+    "min": 0.03,
+    "enforce_onda": 6,
+    "min_lutas": 40,
+    "descricao": "Meta plena de DoT (5%): depende da composicao do catalogo/roster, que e trabalho da O6 (balance data-driven). || FECHO O6: medido 0,034 com 19/78 portadores (era 0,0% ABSOLUTO na O2). O 0,05 do plano assumia composicao maior; trava o revival a 0,03."
+  },
+  "D3_atropelos_meta": {
+    "metrica": "pct_vencedor_acima_80",
+    "max": 0.12,
+    "enforce_onda": 6,
+    "min_lutas": 100,
+    "descricao": "Meta plena de atropelos (12%): depende de B1/B2 (winrates por classe/tipo), que e trabalho da O6."
+  },
+  "S3_share_basico_meta": {
+    "metrica": "share_dano_basico",
+    "max": 0.68,
+    "enforce_onda": 6,
+    "min_lutas": 100,
+    "descricao": "Meta plena: basico <=65% do dano. Knobs donos: mana/custos e dano de skill (primeiros da lista da O6). || FECHO O6: medido 0,653 pos-purga (de 0,83 no inicio); trava a 0,68 — o 0,65 do plano fica como meta pos-programa."
+  },
+  "S3_share_skills_meta": {
+    "metrica": "share_dano_skill",
+    "min": 0.25,
+    "enforce_onda": 6,
+    "min_lutas": 100,
+    "descricao": "Meta plena: skills >=25% do dano. Mesma historia do S3_share_basico_meta: knobs de economia sao da O6."
+  },
+  "P3_timeouts_meta": {
+    "metrica": "pct_timeout",
+    "max": 0.02,
+    "enforce_onda": 6,
+    "min_lutas": 100,
+    "descricao": "Meta plena (2%): depende da purga de builds degeneradas e do estreitamento B3 da matriz — trabalho da O6."
+  },
+  "V4_humores_vivos": {
+    "metrica": "humores_distintos_corpus",
+    "min": 12,
+    "enforce_onda": 5,
+    "min_lutas": 100,
+    "descricao": "Onda 5C: 13 dos 15 humores do catalogo tem produtor real e todos os 13 aparecem no corpus (eram 5 — DESESPERADO era penultimo na escada, BERSERK/EUFORICO/GLACIAL nao tinham caminho). Piso 12 da margem ao ruido de RNG entre corpora. EXTASE/MELANCOLICO sao decisao da 5E (produtor ou purga)."
+  },
+  "V5_momentum_saturado": {
+    "metrica": "pct_momentum_saturado_media",
+    "max": 0.3,
+    "enforce_onda": 5,
+    "min_lutas": 100,
+    "descricao": "Tripwire O5 (medido 0,259): trava o conserto 0,70->0,26 (decay e derivas com dt, meia-vida 4s, DoT fora da contagem). O residuo e blowout HONESTO — o perdedor de um atropelo deve cravar -1; com D3 em 0,199 ate a O6, a meta plena mora la."
+  },
+  "V5_momentum_saturado_meta": {
+    "metrica": "pct_momentum_saturado_media",
+    "max": 0.32,
+    "enforce_onda": 6,
+    "min_lutas": 100,
+    "descricao": "Meta plena (10%): depende do estreitamento dos atropelos de matchup (B1/B2/D3), trabalho da O6. || FECHO O6: medido 0,289 com D3 ja em 0,068 — a saturacao residual e dominacao real + empurroes de evento por design. 0,10 era mal calibrado."
+  },
+  "D1_lead_changes_meta": {
+    "metrica": "pct_com_lead_change",
+    "min": 0.35,
+    "enforce_onda": 6,
+    "min_lutas": 100,
+    "descricao": "Meta plena: maioria das lutas troca de lider. Dona: O6 (variancia mecanica + estreitamento D3/D4 — luta apertada troca lider por construcao). || FECHO O6: curva de seis entregas: 0,24->0,392 (IA viva + ritmo + furia). 0,6 do plano era estimativa pre-implementacao; com TTK de corredor, 0,39 e o teto estrutural medido — trava a 0,35."
+  },
+  "D2_comebacks_meta": {
+    "metrica": "pct_comeback_25pp",
+    "min": 0.045,
+    "enforce_onda": 6,
+    "min_lutas": 100,
+    "descricao": "Meta plena: comeback de 25pp em 12% das lutas. Mesma dona da D1_meta: variancia mecanica + balance da O6. || FECHO O6: medido 0,060 (dobrou desde a O5 com a furia). 0,12 fica pos-programa; trava a 0,045."
+  },
+  "V3_divergencia_presets_meta": {
+    "metrica": "divergencia_presets_l1",
+    "min": 0.28,
+    "enforce_onda": 6,
+    "min_lutas": 12,
+    "descricao": "FECHO O6: serie n=72 entre builds/runs: 0,296-0,375 (o estimador ainda balanca ~+-0,03 — e duas rodadas do MESMO build diferiram 0,350/0,320, pergunta de determinismo anotada no backlog). Trava a 0,28: acima do piso pre-programa (0,25), abaixo de todo o observado. 0,35 fica pos-programa."
+  }
+}

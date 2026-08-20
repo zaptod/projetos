@@ -1,0 +1,21 @@
+{
+  "kind": "youtube#liveChatMessage",
+  "id": "LCC.MSG004",
+  "snippet": {
+    "type": "newSponsorEvent",
+    "liveChatId": "CHAT1",
+    "publishedAt": "2026-08-19T14:07:00Z",
+    "newSponsorDetails": {
+      "memberLevelName": "Apoiador",
+      "isUpgrade": false
+    }
+  },
+  "authorDetails": {
+    "channelId": "UCduda",
+    "displayName": "Duda",
+    "isChatModerator": false,
+    "isChatOwner": false,
+    "isChatSponsor": false,
+    "profileImageUrl": "https://yt3.example/photo.jpg"
+  }
+}

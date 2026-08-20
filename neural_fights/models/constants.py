@@ -117,6 +117,7 @@ TIPOS_ARMA = {
         "mod_dano": 1.0,
         "mod_velocidade": 1.0,
         "alcance_base": 1.5,
+        "cadencia_base_s": 1.2,
     },
     "Dupla": {
         "categoria": "Melee",
@@ -126,6 +127,7 @@ TIPOS_ARMA = {
         "mod_dano": 0.7,
         "mod_velocidade": 1.5,
         "alcance_base": 1.0,
+        "cadencia_base_s": 1.2,
         "hits_por_ataque": 2,
     },
     "Corrente": {
@@ -136,6 +138,7 @@ TIPOS_ARMA = {
         "mod_dano": 1.1,
         "mod_velocidade": 0.8,
         "alcance_base": 3.0,
+        "cadencia_base_s": 1.2,
         "physics": "chain",
     },
     "Arremesso": {
@@ -145,7 +148,8 @@ TIPOS_ARMA = {
         "geometria": ["tamanho_projetil", "largura", "quantidade"],
         "mod_dano": 0.9,
         "mod_velocidade": 1.2,
-        "alcance_base": 8.0,
+        "alcance_base": 10.0,
+        "cadencia_base_s": 1.35,
         "retorna": False,
     },
     "Arco": {
@@ -155,7 +159,8 @@ TIPOS_ARMA = {
         "geometria": ["tamanho_arco", "forca_arco", "tamanho_flecha"],
         "mod_dano": 1.2,
         "mod_velocidade": 0.7,
-        "alcance_base": 12.0,
+        "alcance_base": 14.0,
+        "cadencia_base_s": 1.7,
         "requer_municao": True,
     },
     "Orbital": {
@@ -166,6 +171,7 @@ TIPOS_ARMA = {
         "mod_dano": 0.5,
         "mod_velocidade": 1.0,
         "alcance_base": 2.0,
+        "cadencia_base_s": 1.2,
         "bloqueia_projeteis": True,
     },
     "Mágica": {
@@ -175,7 +181,8 @@ TIPOS_ARMA = {
         "geometria": ["quantidade", "tamanho", "distancia_max"],
         "mod_dano": 1.3,
         "mod_velocidade": 1.1,
-        "alcance_base": 4.0,
+        "alcance_base": 8.0,
+        "cadencia_base_s": 1.6,
         "usa_mana": True,
         "escala_com_mana": True,
     },
@@ -187,11 +194,38 @@ TIPOS_ARMA = {
         "mod_dano": 1.15,
         "mod_velocidade": 1.0,
         "alcance_base": 2.0,
+        "cadencia_base_s": 1.2,
         "formas": 2,
     },
 }
 
 LISTA_TIPOS_ARMA = list(TIPOS_ARMA.keys())
+
+
+def alcance_ranged_m(tipo_arma):
+    """Fonte única (Onda 4) do alcance máximo absoluto, em metros, dos
+    tipos de arma que atacam à distância. Retorna None para tipos melee —
+    o alcance melee é geométrico (perfil de hitbox + comprimento da arma).
+
+    Antes da Onda 4 havia três verdades divergentes: o motor disparava de
+    20/12/8m hard-coded, a IA se posicionava por raio*range_mult (~8,5m
+    para Arco) e a percepção estimava pelo tamanho do sprite. O arqueiro
+    mirava ficar a ~5m podendo atirar de 20m.
+    """
+    dados = TIPOS_ARMA.get(tipo_arma) or {}
+    if dados.get("categoria") not in ("Ranged", "Magic"):
+        return None
+    return float(dados["alcance_base"])
+
+
+def cadencia_base_s(tipo_arma):
+    """Cadência-base do golpe básico por tipo, em segundos (Onda 4).
+
+    O cooldown real é ``cadencia / velocidade_ataque`` da arma (runtime
+    0,81–1,56, raridade já composta em weapons.py) — o knob existia em
+    100% das armas do catálogo e nunca tinha sido lido.
+    """
+    return float((TIPOS_ARMA.get(tipo_arma) or {}).get("cadencia_base_s", 1.0))
 
 
 # ============================================================================
@@ -296,6 +330,15 @@ ENCANTAMENTOS = {
     },
 }
 
+# Onda 6 (fase 2): mesma correcao de escala do mundo dos skills — os DoTs
+# e bonus flat dos encantamentos (Veneno 1,5/s; Chamas +2) eram
+# microscopicos contra pools 2,8x. Escala uma vez no import.
+_ESCALA_DOT_ENCANTO = 2.0
+for _enc in ENCANTAMENTOS.values():
+    for _campo in ("dot_dano", "dano_bonus"):
+        if _campo in _enc and isinstance(_enc[_campo], (int, float)):
+            _enc[_campo] = _enc[_campo] * _ESCALA_DOT_ENCANTO
+
 LISTA_ENCANTAMENTOS = list(ENCANTAMENTOS.keys())
 
 
@@ -341,6 +384,11 @@ PASSIVAS_ARMA = {
 
 LISTA_CLASSES = [
     # === FÍSICOS ===
+# Onda 6 (fase 3): knobs de classe — rodada 1 da varredura B1 medida no
+# harness (piso 0,35 / teto 0,65): porao sobe (Feiticeiro/Piromante/Monge/
+# Duelista/Necromante — poder bruto 0,63-0,83 num mundo onde Berserker tem
+# 1,80), teto apara por vida/sustain (Cavaleiro 2,5->2,05; Druida; Paladino
+# — o poço e a postura ja limitam por contrato). Centro intocado.
     "Guerreiro (Força Bruta)",
     "Berserker (Fúria)",
     "Gladiador (Combate)",
@@ -402,7 +450,7 @@ CLASSES_DATA = {
         "passiva": "Recebe 30% menos dano",
         "mod_forca": 0.7,
         "mod_mana": 0.8,
-        "mod_vida": 2.5,
+        "mod_vida": 1.65,
         "mod_velocidade": 0.85,
         "regen_mana": 3.0,
         "skills_afinidade": ["Escudo Arcano", "Reflexo Espelhado", "Fúria Giratória", "Cura Menor"],
@@ -445,7 +493,7 @@ CLASSES_DATA = {
     "Duelista (Precisão)": {
         "descricao": "Cada golpe conta",
         "passiva": "Ataques nunca erram, +10% dano em 1v1",
-        "mod_forca": 0.75,
+        "mod_forca": 0.9,
         "mod_mana": 0.85,
         "mod_vida": 1.6,
         "mod_velocidade": 1.15,
@@ -468,9 +516,9 @@ CLASSES_DATA = {
     "Piromante (Fogo)": {
         "descricao": "Destruição pelo fogo",
         "passiva": "Magias de fogo causam 15% mais dano",
-        "mod_forca": 0.55,
+        "mod_forca": 0.9,
         "mod_mana": 1.4,
-        "mod_vida": 1.35,
+        "mod_vida": 1.6,
         "mod_velocidade": 0.95,
         "regen_mana": 6.0,
         "skills_afinidade": ["Bola de Fogo", "Meteoro", "Lança de Fogo", "Explosão Nova"],
@@ -490,7 +538,7 @@ CLASSES_DATA = {
     "Necromante (Trevas)": {
         "descricao": "Poder sobre vida e morte",
         "passiva": "Drena 10% do dano causado como vida",
-        "mod_forca": 0.55,
+        "mod_forca": 0.65,
         "mod_mana": 1.4,
         "mod_vida": 1.5,
         "mod_velocidade": 0.85,
@@ -504,7 +552,7 @@ CLASSES_DATA = {
         "passiva": "Cura 1% da vida máxima por segundo",
         "mod_forca": 0.7,
         "mod_mana": 1.0,
-        "mod_vida": 2.0,
+        "mod_vida": 1.65,
         "mod_velocidade": 0.95,
         "regen_mana": 4.0,
         "skills_afinidade": ["Cura Menor", "Escudo Arcano", "Avanço Brutal", "Relâmpago"],
@@ -515,18 +563,18 @@ CLASSES_DATA = {
         "passiva": "Venenos duram 50% mais",
         "mod_forca": 0.65,
         "mod_mana": 1.2,
-        "mod_vida": 1.7,
+        "mod_vida": 1.45,
         "mod_velocidade": 1.0,
-        "regen_mana": 5.0,
+        "regen_mana": 4.5,
         "skills_afinidade": ["Dardo Venenoso", "Nuvem Tóxica", "Espinhos", "Raízes"],
         "cor_aura": (100, 200, 50),
     },
     "Feiticeiro (Caos)": {
         "descricao": "Magia imprevisível e poderosa",
         "passiva": "Magias têm 15% chance de lançar duas vezes",
-        "mod_forca": 0.5,
+        "mod_forca": 0.9,
         "mod_mana": 1.6,
-        "mod_vida": 1.25,
+        "mod_vida": 1.6,
         "mod_velocidade": 0.95,
         "regen_mana": 7.0,
         "skills_afinidade": ["Bola de Fogo", "Tempestade", "Maldição", "Invocação: Espírito"],
@@ -535,9 +583,9 @@ CLASSES_DATA = {
     "Monge (Chi)": {
         "descricao": "Artes marciais místicas",
         "passiva": "Ataques desarmados causam dano mágico",
-        "mod_forca": 0.75,
+        "mod_forca": 0.85,
         "mod_mana": 1.1,
-        "mod_vida": 1.6,
+        "mod_vida": 1.75,
         "mod_velocidade": 1.2,
         "regen_mana": 6.0,
         "skills_afinidade": ["Velocidade Arcana", "Teleporte Relâmpago", "Cura Menor", "Fúria Giratória"],

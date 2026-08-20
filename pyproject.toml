@@ -17,9 +17,13 @@ dependencies = [
 neural-fights = "neural_fights.cli.main:main"
 neural-fights-tournament = "neural_fights.cli.tournament:main"
 neural-fights-headless = "neural_fights.cli.headless:main"
+neural-fights-live = "neural_fights.cli.live:main"
 neural-fights-roster = "neural_fights.cli.roster:main"
 neural-fights-migrate-database = "neural_fights.tools.migrar_database:main"
 neural-fights-audit-skills = "neural_fights.tools.auditoria_skills:main"
+neural-fights-audit-commands = "neural_fights.tools.auditoria_comandos:main"
+neural-fights-audit-personalities = "neural_fights.tools.auditoria_personalidades:main"
+neural-fights-fight-quality = "neural_fights.tools.qualidade_luta:main"
 
 [tool.setuptools]
 include-package-data = false
@@ -35,6 +39,10 @@ namespaces = false
 "neural_fights.sounds" = ["*.json", "*.mp3", "*.wav", "*.ogg"]
 
 [project.optional-dependencies]
+# A integracao com o YouTube usa apenas a biblioteca padrao (urllib + json).
+# O extra existe como ponto de extensao declarado: se um dia um provedor exigir
+# um SDK, ele entra aqui sem engordar a instalacao basica.
+live = []
 dev = [
     "pytest>=8,<9",
     "pytest-cov>=5,<7",

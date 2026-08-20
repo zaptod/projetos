@@ -118,6 +118,9 @@ class DataContractTests(unittest.TestCase):
             ({"velocidade_ataque": float("nan")}, "velocidade_ataque"),
             ({"critico": -1}, "critico"),
             ({"critico": 101}, "critico"),
+            # Onda 1: critico base em pontos percentuais, teto 15 — acima
+            # disso o critico deixa de ser evento raro (ja foi bug de 100%).
+            ({"critico": 16}, "critico"),
             ({"encantamentos": "Chamas"}, "encantamentos"),
             ({"encantamentos": ["Inventado"]}, "encantamentos"),
             ({"encantamentos": ["Chamas", "Chamas"]}, "encantamentos"),

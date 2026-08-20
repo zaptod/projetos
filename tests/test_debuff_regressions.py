@@ -156,13 +156,26 @@ class DamageDebuffRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(area_dot_target.ultimo_dano_recebido, 10.0)
 
     def test_knight_reduction_keeps_the_same_ratio_under_vulnerability(self) -> None:
+        # Re-pino Onda 6: a reducao do Cavaleiro virou POSTURA opt-in —
+        # o contrato deste teste (a razao 0,75 atravessa a vulnerabilidade
+        # sem dupla contagem) exige o escudo ATIVO, entao os cavaleiros do
+        # scaffold entram em postura defensiva.
+        class _BrainPostura:
+            def __init__(self, acao):
+                self.acao_atual = acao
+
+            def __getattr__(self, nome):
+                return 0.0
+
         warrior = self._fighter("Warrior")
         knight = self._fighter("Knight", classe="Cavaleiro")
+        knight.brain = _BrainPostura("BLOQUEAR")
         baseline_warrior = self._damage_taken(warrior, 40.0)
         baseline_knight = self._damage_taken(knight, 40.0)
 
         vulnerable_warrior = self._fighter("Vulnerable warrior")
         vulnerable_knight = self._fighter("Vulnerable knight", classe="Cavaleiro")
+        vulnerable_knight.brain = _BrainPostura("BLOQUEAR")
         vulnerable_warrior._aplicar_efeito_status("VULNERAVEL")
         vulnerable_knight._aplicar_efeito_status("VULNERAVEL")
         amplified_warrior = self._damage_taken(vulnerable_warrior, 40.0)

@@ -107,7 +107,7 @@ SKILL_DB = {
         "descricao": "Lança perfurante de gelo puro"
     },
     "Nevasca": {
-        "tipo": "AREA", "dano": 8.0, "raio_area": 4.0, "cor": (200, 230, 255),
+        "tipo": "AREA", "dano": 8.0, "raio_area": 4.0, "cor": (80, 180, 255),
         "custo": 30.0, "cooldown": 15.0, "efeito": "LENTO", "elemento": "GELO",
         "duracao": 3.0, "slow_fator": 0.4,
         "descricao": "Área de gelo que causa slow contínuo"
@@ -133,14 +133,14 @@ SKILL_DB = {
         "descricao": "Cria uma parede de gelo bloqueadora"
     },
     "Shatter": {
-        "tipo": "AREA", "dano": 60.0, "raio_area": 2.5, "cor": (200, 240, 255),
+        "tipo": "AREA", "dano": 60.0, "raio_area": 2.5, "cor": (30, 120, 200),
         "custo": 25.0, "cooldown": 10.0, "efeito": "VULNERAVEL", "elemento": "GELO",
         "condicao": "ALVO_CONGELADO", "dano_bonus_condicao": 1.5,
         "remove_congelamento": True,
         "descricao": "Estilhaça alvos congelados - dano massivo"
     },
     "Zero Absoluto": {
-        "tipo": "AREA", "dano": 30.0, "raio_area": 3.5, "cor": (220, 240, 255),
+        "tipo": "AREA", "dano": 30.0, "raio_area": 3.5, "cor": (57, 136, 206),
         "custo": 55.0, "cooldown": 25.0, "efeito": "CONGELADO", "elemento": "GELO",
         "duracao_stun": 3.0,
         "descricao": "Congela todos em grande área"
@@ -153,7 +153,7 @@ SKILL_DB = {
     },
     "Morte Glacial": {
         "tipo": "PROJETIL", "dano": 150.0, "velocidade": 10.0, "raio": 0.5,
-        "vida": 2.0, "cor": (200, 230, 255), "custo": 70.0, "cooldown": 40.0,
+        "vida": 2.0, "cor": (50, 150, 220), "custo": 70.0, "cooldown": 40.0,
         "efeito": "CONGELADO", "elemento": "GELO",
         "condicao": "ALVO_BAIXA_VIDA", "executa": True,
         "descricao": "Executa alvos com pouca vida - congela o cadáver"
@@ -169,17 +169,17 @@ SKILL_DB = {
     },
     "Corrente Elétrica": {
         "tipo": "PROJETIL", "dano": 12.0, "velocidade": 30.0, "raio": 0.2,
-        "vida": 0.8, "cor": (255, 255, 150), "custo": 8.0, "cooldown": 1.0,
+        "vida": 0.8, "cor": (80, 80, 200), "custo": 8.0, "cooldown": 1.0,
         "efeito": "NORMAL", "elemento": "RAIO",
         "descricao": "Disparo elétrico ultra-rápido"
     },
     "Tempestade": {
-        "tipo": "AREA", "dano": 40.0, "raio_area": 5.0, "cor": (200, 200, 255),
+        "tipo": "AREA", "dano": 40.0, "raio_area": 5.0, "cor": (100, 140, 255),
         "custo": 45.0, "cooldown": 18.0, "efeito": "PARALISIA", "elemento": "RAIO",
         "descricao": "Devastação elétrica em grande área"
     },
     "Teleporte Relâmpago": {
-        "tipo": "DASH", "distancia": 5.0, "cor": (255, 255, 200),
+        "tipo": "DASH", "distancia": 5.0, "cor": (101, 101, 206),
         "custo": 20.0, "cooldown": 6.0, "efeito": "NORMAL", "elemento": "RAIO",
         "invencivel": True, "dano_chegada": 15.0,
         "descricao": "Teleporta instantaneamente, causa dano na chegada"
@@ -198,25 +198,25 @@ SKILL_DB = {
         "descricao": "Acelera drasticamente mas recebe mais dano"
     },
     "Campo Elétrico": {
-        "tipo": "AREA", "dano": 5.0, "raio_area": 3.0, "cor": (200, 200, 255),
+        "tipo": "AREA", "dano": 5.0, "raio_area": 3.0, "cor": (118, 118, 255),
         "custo": 30.0, "cooldown": 12.0, "efeito": "PARALISIA", "elemento": "RAIO",
         "duracao": 4.0, "chance_stun": 0.3,
         "descricao": "Campo que causa stun aleatório"
     },
     "Mjolnir": {
         "tipo": "PROJETIL", "dano": 70.0, "velocidade": 15.0, "raio": 0.6,
-        "vida": 2.0, "cor": (255, 255, 150), "custo": 45.0, "cooldown": 15.0,
+        "vida": 2.0, "cor": (255, 240, 60), "custo": 45.0, "cooldown": 15.0,
         "efeito": "KNOCK_UP", "elemento": "RAIO", "retorna": True,
         "descricao": "Martelo de raio que retorna"
     },
     "Julgamento de Thor": {
-        "tipo": "AREA", "dano": 100.0, "raio_area": 2.0, "cor": (255, 255, 200),
+        "tipo": "AREA", "dano": 100.0, "raio_area": 2.0, "cor": (250, 250, 90),
         "custo": 60.0, "cooldown": 30.0, "efeito": "PARALISIA", "elemento": "RAIO",
         "delay": 1.5, "aviso_visual": True,
         "descricao": "Raio massivo do céu após 1.5s"
     },
     "Forma Relâmpago": {
-        "tipo": "TRANSFORM", "cor": (255, 255, 150), "custo": 45.0, "cooldown": 40.0,
+        "tipo": "TRANSFORM", "cor": (162, 162, 255), "custo": 45.0, "cooldown": 40.0,
         "duracao": 8.0, "elemento": "RAIO",
         "bonus_velocidade": 2.0, "intangivel": True, "dano_contato": 20.0,
         "descricao": "Transforma em raio puro - atravessa inimigos"
@@ -227,68 +227,68 @@ SKILL_DB = {
     # =========================================================================
     "Esfera Sombria": {
         "tipo": "PROJETIL", "dano": 18.0, "velocidade": 12.0, "raio": 0.45,
-        "vida": 2.5, "cor": (80, 0, 120), "custo": 14.0, "cooldown": 3.0,
+        "vida": 2.5, "cor": (183, 133, 236), "custo": 14.0, "cooldown": 3.0,
         "efeito": "DRENAR", "elemento": "TREVAS", "lifesteal": 0.3,
         "descricao": "Drena vida do alvo"
     },
     "Lâmina de Sangue": {
         "tipo": "PROJETIL", "dano": 25.0, "velocidade": 16.0, "raio": 0.4,
-        "vida": 0.6, "cor": (180, 0, 30), "custo": 15.0, "cooldown": 4.5,
+        "vida": 0.6, "cor": (200, 30, 30), "custo": 15.0, "cooldown": 4.5,
         "efeito": "SANGRANDO", "elemento": "SANGUE",
         "descricao": "Corte que causa sangramento"
     },
     "Maldição": {
         "tipo": "PROJETIL", "dano": 8.0, "velocidade": 10.0, "raio": 0.5,
-        "vida": 3.0, "cor": (100, 0, 100), "custo": 20.0, "cooldown": 10.0,
+        "vida": 3.0, "cor": (160, 110, 211), "custo": 20.0, "cooldown": 10.0,
         "efeito": "MALDITO", "elemento": "TREVAS",
         "descricao": "Maldição que enfraquece e causa DoT"
     },
     "Explosão Necrótica": {
-        "tipo": "AREA", "dano": 30.0, "raio_area": 2.5, "cor": (60, 0, 80),
+        "tipo": "AREA", "dano": 30.0, "raio_area": 2.5, "cor": (171, 121, 223),
         "custo": 28.0, "cooldown": 9.0, "efeito": "DRENAR", "elemento": "TREVAS",
         "lifesteal": 0.25,
         "descricao": "Explosão que drena vida de todos ao redor"
     },
     "Medo Profundo": {
-        "tipo": "AREA", "dano": 0.0, "raio_area": 4.0, "cor": (50, 0, 80),
+        "tipo": "AREA", "dano": 0.0, "raio_area": 4.0, "cor": (154, 104, 204),
         "custo": 22.0, "cooldown": 12.0, "efeito": "MEDO", "elemento": "TREVAS",
         "duracao_fear": 2.5,
         "descricao": "Causa medo em todos próximos"
     },
     "Tentáculos do Vazio": {
         "tipo": "AREA", "ground": True,
-        "dano": 15.0, "raio_area": 3.0, "cor": (30, 0, 50),
+        "dano": 15.0, "raio_area": 3.0, "cor": (144, 94, 194),
         "custo": 30.0, "cooldown": 10.0, "efeito": "ENRAIZADO", "elemento": "VOID",
         "duracao": 3.0, "dano_tick": 8.0,
         "descricao": "Tentáculos que prendem e causam dano"
     },
     "Portal Sombrio": {
-        "tipo": "DASH", "distancia": 8.0, "cor": (60, 0, 100),
+        "tipo": "DASH", "distancia": 8.0, "cor": (150, 100, 200),
         "custo": 25.0, "cooldown": 10.0, "elemento": "TREVAS",
         "invisivel_durante": True, "delay_saida": 0.5,
         "descricao": "Teleporta através das sombras, invisível durante"
     },
     "Pacto de Sangue": {
-        "tipo": "BUFF", "cor": (150, 0, 50), "custo": 0, "cooldown": 30.0,
+        "tipo": "BUFF", "cor": (220, 50, 50), "custo": 0, "cooldown": 30.0,
         "custo_vida": 30.0, "elemento": "SANGUE",
         "duracao": 10.0, "bonus_dano": 1.8, "lifesteal": 0.2,
         "descricao": "Sacrifica HP por poder - lifesteal e dano"
     },
     "Necrose": {
         "tipo": "PROJETIL", "dano": 20.0, "velocidade": 8.0, "raio": 0.5,
-        "vida": 3.0, "cor": (30, 30, 30), "custo": 35.0, "cooldown": 15.0,
+        "vida": 3.0, "cor": (151, 101, 201), "custo": 35.0, "cooldown": 15.0,
         "efeito": "NECROSE", "elemento": "TREVAS",
         "descricao": "Causa necrose - sem cura possível"
     },
     "Possessão": {
         "tipo": "PROJETIL", "dano": 0.0, "velocidade": 12.0, "raio": 0.4,
-        "vida": 2.0, "cor": (100, 0, 100), "custo": 50.0, "cooldown": 35.0,
+        "vida": 2.0, "cor": (170, 115, 230), "custo": 50.0, "cooldown": 35.0,
         "efeito": "POSSESSO", "elemento": "TREVAS",
         "duracao_controle": 3.0,
         "descricao": "Controla a mente do inimigo brevemente"
     },
     "Colheita de Almas": {
-        "tipo": "AREA", "dano": 50.0, "raio_area": 5.0, "cor": (80, 0, 100),
+        "tipo": "AREA", "dano": 50.0, "raio_area": 5.0, "cor": (200, 150, 255),
         "custo": 60.0, "cooldown": 45.0, "efeito": "DRENAR", "elemento": "TREVAS",
         "cura_por_morte": 50.0,
         "descricao": "Dano em área - cura massiva se matar"
@@ -298,7 +298,7 @@ SKILL_DB = {
     # ✨ LUZ - Cura, purify, dano a mortos-vivos
     # =========================================================================
     "Raio Sagrado": {
-        "tipo": "BEAM", "dano": 25.0, "alcance": 10.0, "cor": (255, 255, 220),
+        "tipo": "BEAM", "dano": 25.0, "alcance": 10.0, "cor": (255, 240, 130),
         "custo": 18.0, "cooldown": 5.0, "efeito": "CEGO", "elemento": "LUZ",
         "bonus_vs_trevas": 2.0,
         "descricao": "Raio de luz que cega"
@@ -314,13 +314,13 @@ SKILL_DB = {
         "descricao": "Cura massiva + remove 2 debuffs"
     },
     "Benção": {
-        "tipo": "BUFF", "cor": (255, 255, 200), "custo": 20.0, "cooldown": 20.0,
+        "tipo": "BUFF", "cor": (255, 217, 117), "custo": 20.0, "cooldown": 20.0,
         "duracao": 10.0, "elemento": "LUZ",
         "efeito_buff": "ABENÇOADO",
         "descricao": "Bênção que aumenta cura e regenera"
     },
     "Purificar": {
-        "tipo": "BUFF", "cor": (255, 255, 255), "custo": 30.0, "cooldown": 12.0,
+        "tipo": "BUFF", "cor": (255, 230, 166), "custo": 30.0, "cooldown": 12.0,
         "elemento": "LUZ", "remove_todos_debuffs": True, "imune_debuffs": 3.0,
         "descricao": "Remove TODOS debuffs + imunidade"
     },
@@ -332,25 +332,25 @@ SKILL_DB = {
     },
     "Smite": {
         "tipo": "PROJETIL", "dano": 40.0, "velocidade": 25.0, "raio": 0.3,
-        "vida": 1.0, "cor": (255, 255, 150), "custo": 22.0, "cooldown": 6.0,
+        "vida": 1.0, "cor": (255, 210, 40), "custo": 22.0, "cooldown": 6.0,
         "efeito": "EXPOSTO", "elemento": "LUZ",
         "bonus_vs_trevas": 1.5,
         "descricao": "Castigo divino - extra contra trevas"
     },
     "Anjo Guardião": {
-        "tipo": "BUFF", "cor": (255, 255, 220), "custo": 60.0, "cooldown": 60.0,
+        "tipo": "BUFF", "cor": (255, 206, 74), "custo": 60.0, "cooldown": 60.0,
         "duracao": 15.0, "elemento": "LUZ",
         "efeito_buff": "IMORTAL", "duracao_imortal": 3.0,
         "descricao": "Previne morte uma vez (HP mínimo 1)"
     },
     "Julgamento Celestial": {
-        "tipo": "AREA", "dano": 80.0, "raio_area": 3.0, "cor": (255, 255, 200),
+        "tipo": "AREA", "dano": 80.0, "raio_area": 3.0, "cor": (255, 220, 100),
         "custo": 55.0, "cooldown": 30.0, "efeito": "CEGO", "elemento": "LUZ",
         "delay": 2.0, "pilares": 5, "raio_pilar": 0.75,
         "descricao": "5 pilares de luz caem do céu"
     },
     "Ressurreição": {
-        "tipo": "BUFF", "cor": (255, 255, 255), "custo": 80.0, "cooldown": 120.0,
+        "tipo": "BUFF", "cor": (255, 225, 140), "custo": 80.0, "cooldown": 120.0,
         "elemento": "LUZ", "revive_hp_percent": 0.3,
         "descricao": "Revive aliado com 30% HP (ou self se morrer)"
     },
@@ -404,7 +404,7 @@ SKILL_DB = {
         "descricao": "Veneno que se espalha entre inimigos"
     },
     "Esporos Alucinógenos": {
-        "tipo": "AREA", "dano": 0.0, "raio_area": 3.0, "cor": (200, 150, 255),
+        "tipo": "AREA", "dano": 0.0, "raio_area": 3.0, "cor": (40, 150, 40),
         "custo": 28.0, "cooldown": 15.0, "efeito": "CHARME", "elemento": "NATUREZA",
         "duracao_charme": 2.0,
         "descricao": "Confunde inimigos - eles te seguem"
@@ -458,7 +458,7 @@ SKILL_DB = {
     },
     "Roubar Magia": {
         "tipo": "PROJETIL", "dano": 15.0, "velocidade": 20.0, "raio": 0.3,
-        "vida": 1.5, "cor": (200, 150, 255), "custo": 20.0, "cooldown": 10.0,
+        "vida": 1.5, "cor": (150, 50, 200), "custo": 20.0, "cooldown": 10.0,
         "elemento": "ARCANO", "rouba_buff": True,
         "descricao": "Rouba um buff aleatório do alvo"
     },
@@ -482,7 +482,7 @@ SKILL_DB = {
         "descricao": "Raio que ignora escudos"
     },
     "Conjuração Perfeita": {
-        "tipo": "BUFF", "cor": (255, 200, 255), "custo": 50.0, "cooldown": 60.0,
+        "tipo": "BUFF", "cor": (206, 112, 255), "custo": 50.0, "cooldown": 60.0,
         "duracao": 10.0, "elemento": "ARCANO",
         "sem_cooldown": True, "custo_mana_metade": True,
         "descricao": "Skills sem cooldown por 10s"
@@ -504,12 +504,12 @@ SKILL_DB = {
         "descricao": "Acelera muito o movimento"
     },
     "Reverter": {
-        "tipo": "BUFF", "cor": (200, 150, 255), "custo": 40.0, "cooldown": 30.0,
+        "tipo": "BUFF", "cor": (95, 85, 160), "custo": 40.0, "cooldown": 30.0,
         "elemento": "TEMPO", "reverte_estado": 3.0,
         "descricao": "Volta ao estado de 3s atrás (HP, posição)"
     },
     "Parar o Tempo": {
-        "tipo": "AREA", "dano": 0.0, "raio_area": 5.0, "cor": (220, 200, 255),
+        "tipo": "AREA", "dano": 0.0, "raio_area": 5.0, "cor": (120, 110, 190),
         "custo": 50.0, "cooldown": 45.0, "efeito": "TEMPO_PARADO", "elemento": "TEMPO",
         "duracao_stop": 2.0, "afeta_caster": False,
         "descricao": "Para o tempo para inimigos"
@@ -543,32 +543,32 @@ SKILL_DB = {
         "descricao": "Puxa inimigos para o centro"
     },
     "Repulsão": {
-        "tipo": "AREA", "dano": 15.0, "raio_area": 2.5, "cor": (150, 100, 200),
+        "tipo": "AREA", "dano": 15.0, "raio_area": 2.5, "cor": (145, 120, 250),
         "custo": 18.0, "cooldown": 6.0, "efeito": "EMPURRAO", "elemento": "GRAVITACAO",
         "forca_empurrao": 2.0,
         "descricao": "Empurra todos para longe"
     },
     "Campo de Gravidade": {
-        "tipo": "AREA", "dano": 5.0, "raio_area": 4.0, "cor": (80, 40, 120),
+        "tipo": "AREA", "dano": 5.0, "raio_area": 4.0, "cor": (130, 90, 220),
         "custo": 30.0, "cooldown": 15.0, "efeito": "LENTO", "elemento": "GRAVITACAO",
         "duracao": 5.0, "gravidade_aumentada": 3.0,
         "descricao": "Área com gravidade tripla - slow e sem pulo"
     },
     "Levitar": {
-        "tipo": "BUFF", "cor": (150, 100, 200), "custo": 15.0, "cooldown": 10.0,
+        "tipo": "BUFF", "cor": (175, 160, 250), "custo": 15.0, "cooldown": 10.0,
         "duracao": 6.0, "elemento": "GRAVITACAO",
         "voo": True, "imune_ground": True,
         "descricao": "Flutua no ar - imune a efeitos terrestres"
     },
     "Buraco Negro": {
-        "tipo": "AREA", "dano": 10.0, "raio_area": 4.0, "cor": (20, 0, 40),
+        "tipo": "AREA", "dano": 10.0, "raio_area": 4.0, "cor": (110, 80, 230),
         "custo": 50.0, "cooldown": 30.0, "efeito": "VORTEX", "elemento": "GRAVITACAO",
         "duracao": 3.0, "dano_por_segundo": 25.0, "puxa_continuo": True,
         "descricao": "Buraco negro que suga e causa dano"
     },
     "Colapso": {
         "tipo": "PROJETIL", "dano": 60.0, "velocidade": 8.0, "raio": 0.3,
-        "vida": 3.0, "cor": (50, 20, 80), "custo": 40.0, "cooldown": 18.0,
+        "vida": 3.0, "cor": (120, 93, 233), "custo": 40.0, "cooldown": 18.0,
         "efeito": "KNOCK_UP", "elemento": "GRAVITACAO",
         "delay_explosao": 2.0, "raio_explosao": 2.5,
         "descricao": "Esfera que implode após 2s"
@@ -622,7 +622,7 @@ SKILL_DB = {
     # =========================================================================
     "Impacto Sônico": {
         "tipo": "PROJETIL", "dano": 18.0, "velocidade": 20.0, "raio": 0.6,
-        "vida": 0.35, "cor": (200, 200, 255), "custo": 12.0, "cooldown": 3.0,
+        "vida": 0.35, "cor": (120, 225, 255), "custo": 12.0, "cooldown": 3.0,
         "efeito": "EMPURRAO", "descricao": "Onda de choque curta mas poderosa"
     },
     "Avanço Brutal": {
@@ -636,7 +636,7 @@ SKILL_DB = {
         "descricao": "Gira a arma atingindo todos ao redor"
     },
     "Golpe do Executor": {
-        "tipo": "BUFF", "cor": (150, 0, 0), "custo": 20.0, "cooldown": 15.0,
+        "tipo": "BUFF", "cor": (235, 45, 45), "custo": 20.0, "cooldown": 15.0,
         "duracao": 3.0, "buff_dano": 2.0,
         "consome_ao_causar_dano": True,
         "descricao": "Próximo ataque causa dano dobrado"
@@ -670,12 +670,12 @@ SKILL_DB = {
     # 🛡️ DEFESA/SUPORTE
     # =========================================================================
     "Reflexo Espelhado": {
-        "tipo": "BUFF", "cor": (200, 200, 255), "custo": 30.0, "cooldown": 20.0,
+        "tipo": "BUFF", "cor": (160, 215, 255), "custo": 30.0, "cooldown": 20.0,
         "duracao": 3.0, "refletir": 0.5,
         "descricao": "Reflete 50% do dano recebido"
     },
     "Velocidade Arcana": {
-        "tipo": "BUFF", "cor": (255, 255, 150), "custo": 15.0, "cooldown": 10.0,
+        "tipo": "BUFF", "cor": (225, 130, 255), "custo": 15.0, "cooldown": 10.0,
         "duracao": 4.0, "buff_velocidade": 1.5,
         "descricao": "Aumenta velocidade de movimento"
     },
@@ -699,7 +699,7 @@ SKILL_DB = {
         "descricao": "Invoca um espírito aliado"
     },
     "Troca de Almas": {
-        "tipo": "DASH", "distancia": 0.0, "cor": (150, 0, 150),
+        "tipo": "DASH", "distancia": 0.0, "cor": (230, 90, 230),
         "custo": 40.0, "cooldown": 30.0, "efeito": "TROCAR_POS",
         "descricao": "Troca de posição com o alvo"
     },
@@ -710,7 +710,7 @@ SKILL_DB = {
         "descricao": "Marca o alvo - explode após 3s"
     },
     "Cópia Sombria": {
-        "tipo": "SUMMON", "cor": (100, 100, 100), "custo": 45.0, "cooldown": 30.0,
+        "tipo": "SUMMON", "cor": (194, 144, 248), "custo": 45.0, "cooldown": 30.0,
         "duracao": 8.0, "summon_vida": 50.0, "summon_dano": 10.0,
         "copia_caster": True,
         "descricao": "Cria uma cópia que repete seus ataques básicos"
@@ -727,6 +727,28 @@ SKILL_DB = {
         "descricao": "Sacrifica 50% HP para dano massivo"
     },
 }
+
+
+# =============================================================================
+# Onda 6 (fase 2): correcao de escala do mundo para skills. A O4 escalou a
+# vida global e as ARMAS mantiveram paridade via acertos-para-matar; o dano
+# de skill ficou flat no catalogo: um cast valia ~METADE de um golpe basico
+# (skills 20% do dano em ~19 casts vs basico 73% em ~40 golpes). x2,0
+# devolve o cast como EVENTO e fecha a matematica do share: skills
+# 0,40/(0,73+0,40) ~ 0,35 e basico ~0,65 — as metas S3. Curas flat entram
+# pela mesma razao (cura de skill contra pool 2,8x era cosmetica).
+# Escala UMA vez no import; a auditoria AST le os literais (estrutura),
+# nao os valores — segue valida.
+ESCALA_DANO_SKILL = 2.0
+_CAMPOS_ESCALADOS = (
+    "dano", "dano_chegada", "dano_contato", "dano_meteoro",
+    "dano_por_segundo", "dano_tick", "dano_variavel",
+    "cura", "cura_por_morte", "cura_por_segundo", "cura_tick",
+)
+for _dados_skill in SKILL_DB.values():
+    for _campo in _CAMPOS_ESCALADOS:
+        if _campo in _dados_skill and isinstance(_dados_skill[_campo], (int, float)):
+            _dados_skill[_campo] = _dados_skill[_campo] * ESCALA_DANO_SKILL
 
 
 def get_skill_data(nome):

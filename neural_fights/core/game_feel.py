@@ -473,9 +473,13 @@ class SuperArmorSystem:
         tipo_ativacao = self.config["ativacao"]
         
         if tipo_ativacao == "sempre_ativo":
-            # Cavaleiros sempre têm armor passiva
-            self.data.ativo = True
-            return True
+            # Onda 6 (v2): armor OPT-IN — só em intenção explicitamente
+            # defensiva (mesma lista da redução em entities.tomar_dano).
+            # A v1 (dormir só no golpe) manteve uptime ~85-90%: passiva.
+            self.data.ativo = acao_atual in (
+                "BLOQUEAR", "RECUAR", "CIRCULAR", "COMBATE", "CONTRA_ATAQUE",
+            )
+            return self.data.ativo
         
         elif tipo_ativacao == "ataque":
             # Ativa durante qualquer ataque
@@ -1024,8 +1028,11 @@ class CameraFeel:
                 shake_x = self.shake_acumulado * (random.uniform(-1, 1) * 0.7 + self.shake_dir_x * dir_factor)
                 shake_y = self.shake_acumulado * (random.uniform(-1, 1) * 0.7 + self.shake_dir_y * dir_factor)
                 
-                self.camera.offset_x = shake_x
-                self.camera.offset_y = shake_y
+                # Passe 2 (arte): Camera.atualizar tambem escreve estes
+                # offsets no mesmo frame — sobrescrever apagava um dos
+                # shakes. O CameraFeel agora COMPOE (soma) o impacto.
+                self.camera.offset_x += shake_x
+                self.camera.offset_y += shake_y
         
         # Decay da direção
         self.shake_dir_x *= (1.0 - dt * 5.0)
@@ -1179,6 +1186,10 @@ class GameFeelManager:
             )
             kb_final = (kb_x, kb_y)
             super_armor_ativa = True
+            # Telemetria S5 do harness: absorcao real, nao apenas ativacao.
+            contadores = getattr(alvo, "contadores_luta", None)
+            if contadores is not None and dano_final < dano:
+                contadores["super_armor_absorcoes"] += 1
         
         # Verifica interrupção de Channeling do alvo
         channeling_system = self.channeling_systems.get(alvo)
@@ -1241,6 +1252,39 @@ class GameFeelManager:
                 "EPICO", False, (100, 100, 255)
             )
     
+    def registrar_feedback_projetil(self, atacante, alvo, dano, posicao,
+                                    is_critico: bool = False):
+        """Peso do golpe para dano que nao passa por ``processar_hit``.
+
+        45,5% do dano do jogo (projeteis e orbes de arma) e 13,6% (skills)
+        nao geravam NENHUM hit stop nem shake do CameraFeel: a flecha que
+        mata em 1,1s era muda. Este caminho entrega so o feedback — armor e
+        stagger continuam exclusivos do melee ate a O6 decidir o contrato de
+        super armor contra ranged.
+        """
+        if dano <= 0:
+            return
+        if dano >= 45:
+            tipo_golpe = "DEVASTADOR"
+        elif dano >= 20:
+            tipo_golpe = "PESADO"
+        elif dano >= 8:
+            tipo_golpe = "MEDIO"
+        else:
+            tipo_golpe = "LEVE"
+
+        cor_flash = (255, 50, 50) if is_critico else (255, 255, 255)
+        self.hit_stop.registrar_hit(
+            atacante, alvo, dano, posicao, tipo_golpe, is_critico, cor_flash
+        )
+        if self.camera_feel:
+            self.camera_feel.aplicar_impacto(
+                dano,
+                getattr(atacante, "classe_nome", "Guerreiro (Força Bruta)"),
+                posicao,
+                tipo_golpe,
+            )
+
     def verificar_super_armor(self, lutador, progresso_animacao: float = 0.0,
                               acao_atual: str = "") -> bool:
         """Verifica e atualiza super armor de um lutador"""

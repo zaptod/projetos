@@ -1,0 +1,21 @@
+{
+  "kind": "youtube#liveChatMessage",
+  "id": "LCC.MSG005",
+  "snippet": {
+    "type": "textMessageEvent",
+    "liveChatId": "CHAT1",
+    "publishedAt": "2026-08-19T14:08:00Z",
+    "displayMessage": "!curar p1",
+    "textMessageDetails": {
+      "messageText": "!curar p1"
+    }
+  },
+  "authorDetails": {
+    "channelId": "UCmod",
+    "displayName": "Mod",
+    "isChatModerator": true,
+    "isChatOwner": true,
+    "isChatSponsor": false,
+    "profileImageUrl": "https://yt3.example/photo.jpg"
+  }
+}

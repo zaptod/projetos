@@ -1,0 +1,21 @@
+{
+  "kind": "youtube#liveChatMessage",
+  "id": "LCC.MSG001",
+  "snippet": {
+    "type": "textMessageEvent",
+    "liveChatId": "CHAT1",
+    "publishedAt": "2026-08-19T14:03:11.123456Z",
+    "displayMessage": "!entrar",
+    "textMessageDetails": {
+      "messageText": "!entrar"
+    }
+  },
+  "authorDetails": {
+    "channelId": "UCabc123",
+    "displayName": "Ana Clara",
+    "isChatModerator": false,
+    "isChatOwner": false,
+    "isChatSponsor": false,
+    "profileImageUrl": "https://yt3.example/photo.jpg"
+  }
+}

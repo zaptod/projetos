@@ -224,6 +224,222 @@ TODOS_TRACOS = (TRACOS_AGRESSIVIDADE + TRACOS_DEFENSIVO + TRACOS_MOBILIDADE +
 
 
 # =============================================================================
+# EIXOS DE COMPORTAMENTO
+# =============================================================================
+# Um traço sozinho não faz nada: ele declara *para onde puxa* o comportamento.
+# Quem lê é o código de decisão, que consulta o eixo e não o nome.
+#
+# Antes disto, um traço só existia se alguém tivesse escrito
+# ``"NOME" in self.tracos`` em algum ponto do ``brain.py``. Como consequência,
+# 107 dos 162 traços declarados não tinham nenhum consumidor: um lutador
+# "Artista Marcial, Criativo, Dançarino, Stylist, Zen" se comportava exatamente
+# como um lutador sem traço algum.
+#
+# Declarando por eixo, todo traço passa a valer por construção, e combinações se
+# somam em vez de se anularem: BERSERKER + CAUTELOSO produz um meio-termo, e não
+# só o primeiro ramo de um ``elif``.
+#
+# Faixa: [-1, 1]. Eixo ausente = o traço não opina sobre ele.
+
+EIXOS_COMPORTAMENTO = (
+    "agressao",     # avança e troca golpes em vez de esperar
+    "cautela",      # mantém espaçamento, usa cobertura, escolhe a hora
+    "medo",         # recua e foge quando a vida cai
+    "frieza",       # resiste a tilt; segue o plano sob pressão
+    "caos",         # imprevisibilidade de movimento e decisão
+    "mobilidade",   # reposiciona, corre, muda de ângulo
+    "perseguicao",  # persegue quem recua em vez de deixar ir
+    "skill_uso",    # gasta mana em habilidade em vez de guardar
+)
+
+
+TRACO_EIXOS = {
+    # --- TRACOS_AGRESSIVIDADE ---
+    'IMPRUDENTE': {"agressao": 0.8, "cautela": -0.7, "medo": -0.4},
+    'AGRESSIVO': {"agressao": 0.7, "cautela": -0.3},
+    'BERSERKER': {"agressao": 0.9, "cautela": -0.6, "medo": -0.5},
+    'OPORTUNISTA': {"agressao": 0.4, "frieza": 0.3},
+    'SANGUINARIO': {"agressao": 0.7, "perseguicao": 0.5},
+    'PREDADOR': {"agressao": 0.5, "perseguicao": 0.8},
+    'SELVAGEM': {"agressao": 0.7, "cautela": -0.4, "caos": 0.4},
+    'IMPLACAVEL': {"agressao": 0.8, "medo": -0.4, "perseguicao": 0.6},
+    'FURIOSO': {"agressao": 0.7, "frieza": -0.5},
+    'BRUTAL': {"agressao": 0.6, "cautela": -0.3},
+    'PRESSAO_CONSTANTE': {"agressao": 0.6, "perseguicao": 0.4},
+    'FINALIZADOR_NATO': {"agressao": 0.5, "perseguicao": 0.5},
+    'ENCURRALADOR': {"agressao": 0.5, "mobilidade": 0.3, "perseguicao": 0.6},
+    'DOMINADOR': {"agressao": 0.6, "medo": -0.3},
+    'CARRASCO': {"agressao": 0.6, "perseguicao": 0.5},
+    'DESTRUIDOR': {"agressao": 0.7, "cautela": -0.4},
+    'INCANSAVEL': {"agressao": 0.5, "perseguicao": 0.4},
+    'EXPLOSIVO': {"agressao": 0.6, "caos": 0.3},
+    'ALPHA': {"agressao": 0.5, "medo": -0.5},
+    'SEDENTO': {"agressao": 0.6, "perseguicao": 0.4},
+    'PROVOCADOR': {"agressao": 0.4, "caos": 0.3},
+    'TOURO': {"agressao": 0.7, "cautela": -0.5, "mobilidade": -0.2},
+    'MARTELO': {"agressao": 0.6, "mobilidade": -0.3},
+    'TRITURADOR': {"agressao": 0.7, "cautela": -0.3},
+    'DEVORADOR': {"agressao": 0.6, "perseguicao": 0.4},
+    # --- TRACOS_DEFENSIVO ---
+    'COVARDE': {"agressao": -0.6, "medo": 0.8},
+    'CAUTELOSO': {"agressao": -0.3, "cautela": 0.7},
+    'PACIENTE': {"agressao": -0.2, "cautela": 0.6, "frieza": 0.4},
+    'REATIVO': {"cautela": 0.4, "frieza": 0.3},
+    'TANQUE': {"cautela": 0.3, "medo": -0.4, "mobilidade": -0.3},
+    'PROTETOR': {"cautela": 0.5},
+    'EVASIVO': {"agressao": -0.2, "cautela": 0.4, "mobilidade": 0.6},
+    'PARANOICO': {"cautela": 0.6, "medo": 0.5},
+    'MEDROSO': {"agressao": -0.5, "medo": 0.8},
+    'PRUDENTE': {"cautela": 0.7, "frieza": 0.3},
+    'LEITURA_PERFEITA': {"cautela": 0.3, "frieza": 0.5},
+    'TIMING_PRECISO': {"frieza": 0.5},
+    'COBERTURA_MESTRE': {"cautela": 0.7},
+    'BLINDADO': {"medo": -0.4, "mobilidade": -0.3},
+    'INABALAVEL': {"medo": -0.5, "frieza": 0.7},
+    'MURALHA': {"cautela": 0.5, "medo": -0.3, "mobilidade": -0.5},
+    'TARTARUGA': {"agressao": -0.5, "cautela": 0.8, "mobilidade": -0.4},
+    'ABSORVEDOR': {"cautela": 0.3, "medo": -0.3},
+    'PREVISOR': {"cautela": 0.4, "frieza": 0.5},
+    'FANTASMA': {"cautela": 0.4, "mobilidade": 0.6},
+    'RESILIENTE': {"medo": -0.4, "frieza": 0.4},
+    'ESPELHO': {"cautela": 0.3, "frieza": 0.4},
+    'SENTINEL': {"cautela": 0.6, "mobilidade": -0.4},
+    'ARMADILHEIRO': {"cautela": 0.5, "frieza": 0.3},
+    'SOBREVIVENTE': {"cautela": 0.5, "medo": 0.3},
+    # --- TRACOS_MOBILIDADE ---
+    'SALTADOR': {"mobilidade": 0.6},
+    'ACROBATA': {"cautela": 0.2, "mobilidade": 0.8},
+    'ERRATICO': {"caos": 0.8, "mobilidade": 0.4},
+    'FLANQUEADOR': {"mobilidade": 0.6, "perseguicao": 0.3},
+    'PERSEGUIDOR': {"mobilidade": 0.4, "perseguicao": 0.8},
+    'VELOZ': {"mobilidade": 0.7},
+    'ESTATICO': {"mobilidade": -0.8},
+    'DESLIZANTE': {"mobilidade": 0.6},
+    'TELEGRAFICO': {"caos": -0.5, "mobilidade": -0.2},
+    'CAOTICO': {"caos": 0.8},
+    'ESPACAMENTO_MESTRE': {"cautela": 0.5, "mobilidade": 0.4},
+    'MICRO_AJUSTES': {"frieza": 0.3, "mobilidade": 0.4},
+    'NAVEGADOR': {"mobilidade": 0.5},
+    'ARENA_MASTER': {"frieza": 0.4, "mobilidade": 0.4},
+    'DANÇARINO': {"caos": 0.3, "mobilidade": 0.7},
+    'RELAMPAGO': {"mobilidade": 0.8},
+    'BORBOLETA': {"caos": 0.3, "mobilidade": 0.7},
+    'SERPENTE': {"caos": 0.2, "mobilidade": 0.6},
+    'TELEPORTER': {"mobilidade": 0.8},
+    'ORBITA': {"mobilidade": 0.5},
+    'ZIGZAG': {"caos": 0.4, "mobilidade": 0.5},
+    'PIVOTADOR': {"mobilidade": 0.4},
+    'RASTREADOR': {"perseguicao": 0.7},
+    'KITER': {"agressao": -0.3, "cautela": 0.5, "mobilidade": 0.6},
+    'COLADO': {"agressao": 0.4, "cautela": -0.4, "perseguicao": 0.5},
+    'IOIO': {"caos": 0.3, "mobilidade": 0.5},
+    # --- TRACOS_SKILLS ---
+    'SPAMMER': {"frieza": -0.3, "skill_uso": 0.8},
+    'CALCULISTA': {"frieza": 0.7, "skill_uso": 0.3},
+    'CONSERVADOR': {"cautela": 0.4, "skill_uso": -0.6},
+    'EXPLOSIVO_SKILLS': {"caos": 0.3, "skill_uso": 0.6},
+    'COMBO_MASTER': {"frieza": 0.4, "skill_uso": 0.5},
+    'SNIPER': {"agressao": -0.2, "cautela": 0.5, "skill_uso": 0.4},
+    'CLOSE_RANGE': {"agressao": 0.4, "cautela": -0.4},
+    'AREA_DENIAL': {"cautela": 0.3, "skill_uso": 0.5},
+    'DEBUFFER': {"skill_uso": 0.5},
+    'SUPPORT': {"agressao": -0.3, "skill_uso": 0.5},
+    'SETUP_ARTIST': {"frieza": 0.4, "skill_uso": 0.4},
+    'ZONE_CONTROLLER': {"cautela": 0.4, "skill_uso": 0.5},
+    'TECNICO': {"frieza": 0.5, "skill_uso": 0.3},
+    'DESPERDICADOR': {"frieza": -0.4, "skill_uso": 0.7},
+    'CANALIZADOR': {"cautela": 0.2, "skill_uso": 0.5},
+    'INSTANT_CAST': {"mobilidade": 0.2, "skill_uso": 0.5},
+    'CHAIN_CASTER': {"skill_uso": 0.7},
+    'FINISHER': {"perseguicao": 0.5, "skill_uso": 0.4},
+    'OPENER': {"agressao": 0.4, "skill_uso": 0.4},
+    'MANA_BURNER': {"skill_uso": 0.8},
+    'COOLDOWN_WATCHER': {"frieza": 0.5, "skill_uso": 0.3},
+    'SKILL_BAITER': {"frieza": 0.4, "caos": 0.3},
+    'CANCELADOR': {"frieza": 0.4, "mobilidade": 0.3},
+    'ZONER': {"agressao": -0.2, "cautela": 0.5, "skill_uso": 0.4},
+    # --- TRACOS_MENTAL ---
+    'VINGATIVO': {"agressao": 0.5, "frieza": -0.4, "perseguicao": 0.4},
+    'DETERMINADO': {"medo": -0.4, "frieza": 0.7},
+    'ADAPTAVEL': {"frieza": 0.4, "caos": 0.2},
+    'FRIO': {"frieza": 0.8},
+    'EMOTIVO': {"frieza": -0.6},
+    'FOCADO': {"frieza": 0.6, "caos": -0.4},
+    'DISPERSO': {"frieza": -0.4, "caos": 0.4},
+    'TEIMOSO': {"frieza": 0.3, "caos": -0.5},
+    'CRIATIVO': {"caos": 0.5, "mobilidade": 0.3},
+    'METODICO': {"frieza": 0.6, "caos": -0.5},
+    'CLUTCH_PLAYER': {"medo": -0.5, "frieza": 0.5},
+    'TILTER': {"agressao": 0.3, "frieza": -0.7},
+    'AWARENESS_ALTO': {"cautela": 0.4, "frieza": 0.4},
+    'PSICOPATA': {"agressao": 0.4, "medo": -0.6, "frieza": 0.6},
+    'ANALITICO': {"cautela": 0.3, "frieza": 0.6},
+    'INSTINTIVO': {"frieza": -0.2, "caos": 0.4},
+    'CEREBRAL': {"cautela": 0.3, "frieza": 0.6},
+    'IMPULSIVO': {"agressao": 0.4, "frieza": -0.5, "caos": 0.5},
+    'RESILIENTE_MENTAL': {"medo": -0.4, "frieza": 0.6},
+    'TRAUMATIZADO': {"medo": 0.6, "frieza": -0.4},
+    'CONFIANTE': {"agressao": 0.3, "medo": -0.5},
+    'INSEGURO': {"agressao": -0.3, "medo": 0.5},
+    'ZEN': {"frieza": 0.8, "caos": -0.3},
+    'CAOS_MENTAL': {"frieza": -0.5, "caos": 0.7},
+    'PREDITOR': {"cautela": 0.4, "frieza": 0.5},
+    'REATIVO_MENTAL': {"cautela": 0.3, "frieza": 0.3},
+    'OBSESSIVO': {"frieza": -0.2, "perseguicao": 0.6},
+    # --- TRACOS_ESPECIAIS ---
+    'SHOWMAN': {"agressao": 0.3, "caos": 0.4},
+    'ASSASSINO_NATO': {"agressao": 0.5, "mobilidade": 0.3, "perseguicao": 0.5},
+    'BERSERKER_RAGE': {"agressao": 0.9, "cautela": -0.6, "frieza": -0.4},
+    'PHOENIX': {"medo": -0.5, "frieza": 0.4},
+    'VAMPIRO': {"agressao": 0.5, "perseguicao": 0.3},
+    'KAMIKAZE': {"agressao": 0.9, "cautela": -0.8, "medo": -0.7},
+    'TRICKSTER': {"caos": 0.6, "mobilidade": 0.4},
+    'HONORAVEL': {"frieza": 0.4, "caos": -0.4},
+    'COVARDE_TATICO': {"cautela": 0.6, "medo": 0.5, "frieza": 0.3},
+    'ULTIMO_SUSPIRO': {"agressao": 0.4, "medo": -0.4},
+    'MOMENTUM_RIDER': {"agressao": 0.3, "frieza": -0.3},
+    'UNDERDOG': {"medo": -0.3, "frieza": 0.4},
+    'BAITER_NATO': {"frieza": 0.5, "caos": 0.3},
+    'WALL_FIGHTER': {"cautela": 0.4, "mobilidade": -0.2},
+    'PILLAR_DANCER': {"cautela": 0.3, "mobilidade": 0.6},
+    'METAMORFO': {"caos": 0.5, "mobilidade": 0.3},
+    'DUPLA_PERSONALIDADE': {"frieza": -0.4, "caos": 0.7},
+    'GLUTTON': {"agressao": 0.4, "skill_uso": 0.4},
+    'PERFECCIONISTA': {"frieza": 0.6, "caos": -0.4},
+    'STYLIST': {"caos": 0.4, "mobilidade": 0.4},
+    'EFICIENTE': {"frieza": 0.5, "skill_uso": -0.3},
+    'CAÇADOR_GLORIA': {"agressao": 0.5, "medo": -0.3, "perseguicao": 0.4},
+    'MINIMALISTA': {"frieza": 0.4, "skill_uso": -0.5},
+    'MAXIMALISTA': {"agressao": 0.3, "skill_uso": 0.7},
+    'SÁDICO': {"agressao": 0.5, "perseguicao": 0.5},
+    'MASOQUISTA': {"cautela": -0.4, "medo": -0.6},
+    'APOSTADOR': {"cautela": -0.4, "caos": 0.6},
+    'SEGURO': {"cautela": 0.6, "caos": -0.4},
+    'LENDARIO': {"medo": -0.4, "frieza": 0.5},
+    'PRÁTICO': {"frieza": 0.5, "caos": -0.3},
+    'ARTISTA_MARCIAL': {"frieza": 0.5, "mobilidade": 0.4},
+    'GLADIADOR': {"agressao": 0.5, "caos": 0.3},
+    'SAMURAI': {"frieza": 0.7, "caos": -0.4},
+    'VIKING': {"agressao": 0.7, "medo": -0.4},
+    'NINJA_MENTAL': {"frieza": 0.5, "caos": 0.3, "mobilidade": 0.5},
+}
+
+
+def perfil_de_tracos(tracos):
+    """Soma as contribuições dos traços e limita cada eixo a [-1, 1].
+
+    Traço desconhecido é ignorado em silêncio: o perfil é consultado no caminho
+    quente do combate, e uma personalidade malformada não pode derrubar a luta.
+    A auditoria de catálogo é quem recusa traço sem eixo, fora do runtime.
+    """
+    perfil = dict.fromkeys(EIXOS_COMPORTAMENTO, 0.0)
+    for traco in tracos or ():
+        for eixo, valor in TRACO_EIXOS.get(traco, {}).items():
+            perfil[eixo] += valor
+    return {eixo: max(-1.0, min(1.0, valor)) for eixo, valor in perfil.items()}
+
+
+# =============================================================================
 # ARQUÉTIPOS DE COMBATE (35+)
 # =============================================================================
 
@@ -971,95 +1187,135 @@ HUMORES = {
 # =============================================================================
 
 INSTINTOS = {
+    # Onda 5D: TODO trigger e TODA acao referenciam sinais/verbos REAIS do
+    # runtime (a auditoria AST cobra isso nos dois sentidos). Antes, 8/15
+    # instintos apontavam para coisas inexistentes (ataque_baixo/alto num
+    # jogo top-down, p.iniciar_dash/p.pular que nunca existiram,
+    # combo_state["sendo_combo"] com a chave errada).
+    #
+    # prioridade: 1 = reflexo de sobrevivência (interrompe qualquer hold),
+    # 2 = punição/oportunidade, 3 = postura. cooldown em segundos — sem
+    # ele, condições de NÍVEL (hp_baixo é verdadeiro por metade da luta)
+    # monopolizavam o loop: RECUAR era 98,7% dos disparos.
     "ESQUIVA_SOMBRA": {
-        "descricao": "Esquiva automaticamente de ataques por trás",
+        "descricao": "Esquiva reflexa de ataque vindo das costas",
         "trigger": "ataque_traseiro",
         "chance": 0.7,
         "acao": "dodge_back",
+        "prioridade": 1,
+        "cooldown": 2.5,
     },
     "CONTRA_REFLEXO": {
-        "descricao": "Contra-ataca automaticamente após bloqueio",
+        "descricao": "Contra-ataca logo após absorver um golpe na guarda",
         "trigger": "bloqueio_sucesso",
         "chance": 0.6,
         "acao": "instant_counter",
+        "prioridade": 2,
+        "cooldown": 3.0,
     },
     "PULO_PERIGO": {
-        "descricao": "Pula quando detecta ataque baixo",
-        "trigger": "ataque_baixo",
+        "descricao": "Esquiva reflexa de projétil vindo (era 'pulo', que não existe no motor)",
+        "trigger": "projetil_vindo",
         "chance": 0.65,
-        "acao": "auto_jump",
+        "acao": "dodge_projetil",
+        "prioridade": 1,
+        "cooldown": 2.0,
     },
     "AGACHAR_REFLEXO": {
-        "descricao": "Agacha quando detecta ataque alto",
-        "trigger": "ataque_alto",
+        "descricao": "Fecha a guarda quando o ataque inimigo é iminente e perto",
+        "trigger": "ataque_iminente_perto",
         "chance": 0.6,
-        "acao": "auto_duck",
+        "acao": "guarda_reflexa",
+        "prioridade": 1,
+        "cooldown": 2.5,
     },
     "DASH_PANICO": {
-        "descricao": "Dash para longe quando HP crítico",
+        "descricao": "Fuga desesperada quando HP crítico",
         "trigger": "hp_critico",
         "chance": 0.8,
         "acao": "panic_dash",
+        "prioridade": 1,
+        "cooldown": 5.0,
     },
     "FURIA_INSTANTANEA": {
         "descricao": "Entra em fúria ao levar muito dano de uma vez",
         "trigger": "dano_alto",
         "chance": 0.5,
         "acao": "rage_trigger",
+        "prioridade": 1,
+        "cooldown": 4.0,
     },
     "PERSEGUICAO_AUTOMATICA": {
         "descricao": "Persegue automaticamente oponentes fugindo",
         "trigger": "oponente_recuando",
         "chance": 0.7,
         "acao": "auto_chase",
+        "prioridade": 3,
+        "cooldown": 3.0,
     },
     "DEFESA_FINAL": {
         "descricao": "Muda para modo defensivo com HP baixo",
         "trigger": "hp_baixo",
         "chance": 0.6,
         "acao": "defensive_mode",
+        "prioridade": 2,
+        "cooldown": 6.0,
     },
     "ATAQUE_OPORTUNIDADE": {
-        "descricao": "Ataca automaticamente quando oponente erra",
-        "trigger": "oponente_whiff",
+        "descricao": "Pune janelas reais (pós-ataque, recuperação, pós-esquiva)",
+        "trigger": "janela_punicao",
         "chance": 0.75,
         "acao": "punish_attack",
+        "prioridade": 2,
+        "cooldown": 2.5,
     },
     "EVASAO_COMBO": {
-        "descricao": "Tenta escapar de combos longos",
-        "trigger": "em_combo",
+        "descricao": "Tenta escapar quando está SENDO comboado",
+        "trigger": "sendo_comboado",
         "chance": 0.4,
         "acao": "combo_break",
+        "prioridade": 1,
+        "cooldown": 3.0,
     },
     "INSTINTO_ASSASSINO": {
         "descricao": "Ataca agressivamente quando oponente está fraco",
         "trigger": "oponente_fraco",
         "chance": 0.85,
         "acao": "execute_mode",
+        "prioridade": 2,
+        "cooldown": 4.0,
     },
     "RECUO_ESTRATEGICO": {
         "descricao": "Recua automaticamente após receber combo",
         "trigger": "pos_combo",
         "chance": 0.7,
         "acao": "tactical_retreat",
+        "prioridade": 2,
+        "cooldown": 4.0,
     },
     "PRESSAO_INSTINTIVA": {
         "descricao": "Aumenta pressão quando ganhando",
         "trigger": "vantagem_hp",
         "chance": 0.65,
         "acao": "pressure_increase",
+        "prioridade": 3,
+        "cooldown": 5.0,
     },
     "ADAPTACAO_RAPIDA": {
         "descricao": "Muda tática após perder várias trocas",
         "trigger": "perdendo_trocas",
         "chance": 0.6,
         "acao": "style_switch",
+        "prioridade": 3,
+        "cooldown": 8.0,
     },
     "BLOQUEIO_INSTINTIVO": {
-        "descricao": "Bloqueia automaticamente ataques previsíveis",
-        "trigger": "ataque_previsivel",
+        "descricao": "Fecha a guarda contra oponente previsível",
+        "trigger": "oponente_previsivel",
         "chance": 0.55,
         "acao": "auto_block",
+        "prioridade": 2,
+        "cooldown": 3.5,
     },
 }
 

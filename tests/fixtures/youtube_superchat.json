@@ -1,0 +1,25 @@
+{
+  "kind": "youtube#liveChatMessage",
+  "id": "LCC.MSG002",
+  "snippet": {
+    "type": "superChatEvent",
+    "liveChatId": "CHAT1",
+    "publishedAt": "2026-08-19T14:05:00Z",
+    "displayMessage": "!meteoro",
+    "superChatDetails": {
+      "amountMicros": "19900000",
+      "currency": "BRL",
+      "amountDisplayString": "R$19.90",
+      "userComment": "!meteoro",
+      "tier": 3
+    }
+  },
+  "authorDetails": {
+    "channelId": "UCbeto",
+    "displayName": "Beto",
+    "isChatModerator": false,
+    "isChatOwner": false,
+    "isChatSponsor": false,
+    "profileImageUrl": "https://yt3.example/photo.jpg"
+  }
+}

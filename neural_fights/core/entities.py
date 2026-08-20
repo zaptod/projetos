@@ -72,6 +72,19 @@ class DamageContext:
         return True
 
 
+# Periodo de re-contato do Orbital contra o mesmo alvo. Knob de cadencia:
+# sem rearme, o alvo entrava em ``alvos_atingidos_neste_ataque`` no primeiro
+# toque e nunca saia (o clear vive atras de ``not is_orbital``) — medido:
+# 1 hit de melee POR LUTA INTEIRA e winrate de 10,7%.
+REARME_ORBITAL_S = 0.7
+
+# Recuperacao de conjuracao: intervalo minimo entre skills QUAISQUER do mesmo
+# lutador. Nao confundir com o cooldown da skill (que continua por-skill em
+# ``cd_skills``): antes, ``cd_skill_arma`` recebia o cooldown inteiro da skill
+# lancada e trancava o KIT TODO — uma skill de 30s calava as outras por 30s,
+# matando 71% das tentativas de uso.
+RECUPERACAO_CONJURACAO_S = 1.0
+
 # Familia de debuff -> atributo de timer usado na limpeza. O bloco vive aqui
 # porque ``PROVOCADO`` e mecanica de aggro, nao um status do catalogo; as demais
 # familias resolvem pelo container em ``status_timers``.
@@ -255,6 +268,10 @@ class Lutador:
 
         # Estado de combate
         self.morto = False
+        # A invencibilidade pos-impacto e por GOLPE, nao global: guarda a chave
+        # da salva/golpe que a gerou e so bloqueia re-impactos dessa chave.
+        self._invencivel_chave = None
+        self._rearme_orbital = 0.0
         # Todo status do catálogo vive neste container; os atributos ``*_timer``
         # continuam disponíveis como visão sobre ele.
         self.status_timers = StatusTimers()
@@ -293,6 +310,19 @@ class Lutador:
         self._fontes_impacto_recentes = {}
         self.ultimo_dano_recebido = 0.0
         self.ultimo_resultado_impacto = ImpactResult(False, bloqueado_por="inicial")
+        # Telemetria de combate para o harness de qualidade de luta. Sempre
+        # ligada porque incrementos de dict sao baratos; o registro de eventos
+        # de dano fica em ``None`` ate uma sonda instalar uma lista, entao o
+        # caminho quente paga apenas um teste de identidade por dano aplicado.
+        self.contadores_luta = {
+            "golpes_melee": 0,
+            "criticos_melee": 0,
+            "skills_lancadas": 0,
+            "anulados_invencibilidade": 0,
+            "anulados_invuln_skill": 0,
+            "super_armor_absorcoes": 0,
+        }
+        self.registro_eventos_dano = None
         self._slow_fator_antes_enraizado = 1.0
         self._slow_fator_antes_congelado = 1.0
         self._slow_fator_antes_tempo_parado = 1.0
@@ -356,6 +386,20 @@ class Lutador:
             strategy = getattr(brain, "skill_strategy", None)
             if strategy is not None:
                 strategy.rng = rng
+
+    def _regenerar_cura_passiva(self, dt):
+        """Cura passiva do Paladino com TETO visível (Onda 6, contrato).
+
+        O poço sagrado regenera até 25% da vida por luta e SECA. Regen
+        infinita de 0,5%/s com o pool 2,15x era imortalidade de fato
+        (winrate 0,714; espelhos Paladino x Paladino arrastavam a cauda).
+        """
+        if not hasattr(self, "_cura_passiva_restante"):
+            self._cura_passiva_restante = self.vida_max * 0.15  # (0,25->0,18->0,15 r3)
+        cura = min(self.vida_max * 0.005 * dt, self._cura_passiva_restante)
+        if cura > 0.0:
+            self._cura_passiva_restante -= cura
+            self.receber_cura(cura)
 
     def _calcular_vida_max(self):
         """Usa o contrato canônico do modelo, preservando fixtures legadas."""
@@ -731,7 +775,7 @@ class Lutador:
                 self.mana = max(0.0, self.mana - custo)
                 self.cd_skills[nome] = cooldown
                 if origem == "arma" and nome == self.skill_arma_nome:
-                    self.cd_skill_arma = cooldown
+                    self.cd_skill_arma = RECUPERACAO_CONJURACAO_S
                 self.vida = min(self.vida_max, self.vida_max * percentual_vida)
                 self.morto = False
                 return True
@@ -932,13 +976,29 @@ class Lutador:
         for buff in self._buffs_validos():
             dano *= getattr(buff, "buff_dano", 1.0)
         
-        critico_chance = self.arma_critico
+        # ``arma_critico`` esta em pontos percentuais (2-6 da arma + 0-15 da
+        # raridade). Comparar os pontos direto contra random() era o bug que
+        # tornava TODO golpe critico (78/78 armas >= 1.0): o x1.5 permanente
+        # apagava a variancia do dano e colapsava o game feel em DEVASTADOR.
+        critico_chance = self.arma_critico / 100.0
+        mult_critico = 1.5
+        if "Crítico" in self.arma_encantamentos:
+            enc_crit = ENCANTAMENTOS.get("Crítico", {})
+            critico_chance += enc_crit.get("crit_chance_bonus", 0) / 100.0
+            mult_critico += enc_crit.get("crit_damage_bonus", 0) / 100.0
         if "Assassino" in self.classe_nome:
             critico_chance += 0.20  # Reduzido de 0.25
         
         is_critico = self.rng_runtime.random() < critico_chance
+        # Onda 6 (contrato do Duelista): a passiva declarada "+10% dano em
+        # 1v1" nunca existiu em código (winrate 0,327). O modo É 1v1.
+        if "Duelista" in self.classe_nome:
+            dano *= 1.10
+
+        self.contadores_luta["golpes_melee"] += 1
         if is_critico:
-            dano *= 1.5  # Reduzido de 2.0
+            self.contadores_luta["criticos_melee"] += 1
+            dano *= mult_critico
         
         for enc_nome in self.arma_encantamentos:
             if enc_nome in ENCANTAMENTOS:
@@ -955,10 +1015,28 @@ class Lutador:
                         float(enc.get("bonus_vs_trevas", 0.0)),
                     ) / 100.0
         
+        # Execucao: o catalogo promete "executa alvos abaixo de 20%" desde
+        # sempre, mas o campo nunca foi lido. O golpe garante dano suficiente
+        # para atravessar a maior reducao de classe (Cavaleiro x0,75);
+        # escudos de buff ainda seguram — e devem: escudo e a resposta certa
+        # a um executor.
+        if alvo is not None and "Execução" in self.arma_encantamentos:
+            limiar = ENCANTAMENTOS.get("Execução", {}).get("execute_threshold", 20) / 100.0
+            vida_max_alvo = max(1e-9, getattr(alvo, "vida_max", 0.0))
+            if getattr(alvo, "vida", 0.0) / vida_max_alvo <= limiar:
+                dano = max(dano, getattr(alvo, "vida", 0.0) / 0.7)
+
         return dano, is_critico
     
-    def aplicar_efeitos_encantamento(self, alvo):
-        """Aplica efeitos de encantamentos no alvo"""
+    def aplicar_efeitos_encantamento(self, alvo, dano_causado=0.0):
+        """Aplica os efeitos on-hit dos encantamentos da arma no alvo.
+
+        Ligado na Onda 3: a funcao existia completa (DoT de Chamas/Veneno,
+        LENTO de Gelo, lifesteal) mas nao tinha NENHUM chamador — DoT era
+        0,0% de todo o dano do jogo. ``dano_causado`` alimenta o lifesteal,
+        que antes drenava um percentual da vida atual do alvo (semantica
+        errada: quanto mais ferido o alvo, menos curava).
+        """
         from neural_fights.models import ENCANTAMENTOS
         from neural_fights.core.combat import DotEffect
         
@@ -1004,8 +1082,9 @@ class Lutador:
                     alvo.dots_ativos.append(dot)
             elif efeito == "lifesteal":
                 percent = enc.get("lifesteal_percent", 10) / 100.0
-                cura = alvo.vida * 0.1 * percent
-                self.receber_cura(cura)
+                cura = max(0.0, float(dano_causado)) * percent
+                if cura > 0.0:
+                    self.receber_cura(cura)
 
     def esta_sob_controle_mental(self):
         """Indica se o lutador perdeu temporariamente o controle ofensivo."""
@@ -1307,7 +1386,8 @@ class Lutador:
             cd *= (1 - self.arma_passiva.get("valor", 0) / 100.0)
         
         self.cd_skills[nome_skill] = cd
-        self.cd_skill_arma = cd
+        self.cd_skill_arma = RECUPERACAO_CONJURACAO_S
+        self.contadores_luta["skills_lancadas"] += 1
         
         rad = math.radians(self.angulo_olhar)
         spawn_x = self.pos[0] + math.cos(rad) * 0.6
@@ -1424,7 +1504,19 @@ class Lutador:
         
         return True
 
-    def usar_skill_classe(self, skill_nome, alvo=None):
+    def _bonus_piromante(self, objeto):
+        """+15% de dano de fogo (Onda 6): escala os campos de dano do objeto
+        de skill ja construido — os construtores releem o catalogo, entao a
+        unica costura honesta e pos-construcao."""
+        for campo in (
+            "dano", "dano_por_segundo", "dano_tick",
+            "dano_meteoro", "dano_contato", "dano_chegada",
+        ):
+            valor = getattr(objeto, campo, None)
+            if isinstance(valor, (int, float)):
+                setattr(objeto, campo, valor * 1.25)  # (1,15->1,25 na rodada 2)
+
+    def usar_skill_classe(self, skill_nome, alvo=None, _eco_caos=False):
         """Usa uma skill de classe específica"""
         if self.silenciado_timer > 0:
             return False
@@ -1453,6 +1545,15 @@ class Lutador:
             return False
         
         data = skill_info["data"]
+        # Onda 6 (contrato do Piromante): "magias de fogo causam 15% mais
+        # dano" — passiva declarada sem NENHUMA implementacao (0,103 de
+        # winrate). Os construtores (Projetil/AreaEffect/...) releem o
+        # catalogo por dentro, entao o bonus e aplicado POS-construcao nos
+        # objetos buffados (_bonus_piromante). Catalogo nunca e mutado.
+        bonus_fogo = (
+            "Piromante" in self.classe_nome
+            and str(data.get("elemento", "")).upper() == "FOGO"
+        )
         if self._skill_eh_passiva_de_morte(data):
             return False
         if data.get("reverte_estado") is not None and not self.pode_reverter_estado(
@@ -1481,12 +1582,28 @@ class Lutador:
         if self.mana < custo or (custo_vida > 0 and self.vida <= custo_vida):
             return False
         
-        if custo_vida > 0:
-            self.vida -= custo_vida
-        self.mana -= custo
-        
-        cd = data.get("cooldown", 5.0) * self._get_modificador_cooldown_buff()
-        self.cd_skills[skill_nome] = cd
+        if not _eco_caos:
+            # Onda 6 (contrato do Feiticeiro): "magias tem 15% de chance de
+            # lancar DUAS VEZES" — passiva declarada sem implementacao
+            # (2/40 de winrate, imovel por tres medicoes). O eco roda o
+            # dispatch completo de novo SEM custo/cd/contador, e roda ANTES
+            # dos writes: rolado depois, quicaria no proprio cooldown.
+            if (
+                "Feiticeiro" in self.classe_nome
+                and self.rng_runtime.random() < 0.22
+            ):
+                # (0,15 -> 0,22 na rodada 2: o Feiticeiro da fixture e
+                # data-capado — identidade rende mais que músculo)
+                self.usar_skill_classe(skill_nome, alvo, _eco_caos=True)
+
+            if custo_vida > 0:
+                self.vida -= custo_vida
+            self.mana -= custo
+            
+            cd = data.get("cooldown", 5.0) * self._get_modificador_cooldown_buff()
+            self.cd_skills[skill_nome] = cd
+            self.cd_skill_arma = RECUPERACAO_CONJURACAO_S
+            self.contadores_luta["skills_lancadas"] += 1
         
         rad = math.radians(self.angulo_olhar)
         spawn_x = self.pos[0] + math.cos(rad) * 0.6
@@ -1504,9 +1621,13 @@ class Lutador:
                 for i in range(multi):
                     ang_offset = -spread/2 + (spread / (multi-1)) * i
                     p = Projetil(skill_nome, spawn_x, spawn_y, self.angulo_olhar + ang_offset, self)
+                    if bonus_fogo:
+                        self._bonus_piromante(p)
                     self.buffer_projeteis.append(p)
             else:
                 p = Projetil(skill_nome, spawn_x, spawn_y, self.angulo_olhar, self)
+                if bonus_fogo:
+                    self._bonus_piromante(p)
                 self.buffer_projeteis.append(p)
         
         elif tipo == "AREA":
@@ -1516,6 +1637,8 @@ class Lutador:
                 audio.play_skill("AREA", skill_nome, self.pos[0], phase="cast")
             
             area = AreaEffect(skill_nome, self.pos[0], self.pos[1], self)
+            if bonus_fogo:
+                self._bonus_piromante(area)
             self.buffer_areas.append(area)
         
         elif tipo == "DASH":
@@ -1875,7 +1998,7 @@ class Lutador:
         self.mana = min(self.mana_max, self.mana + mana_regen * dt)
         
         if "Paladino" in self.classe_nome:
-            self.receber_cura(self.vida_max * 0.005 * dt)  # Reduzido de 2% para 0.5%
+            self._regenerar_cura_passiva(dt)
         
         origem_charme = (
             self.charme_origem
@@ -2251,6 +2374,13 @@ class Lutador:
         
         arma_tipo = self.dados.arma_obj.tipo if self.dados.arma_obj else "Reta"
         is_orbital = self.dados.arma_obj and "Orbital" in arma_tipo
+        if is_orbital:
+            # Re-arma o contato do orbital contra alvos ja atingidos.
+            self._rearme_orbital -= dt
+            if self._rearme_orbital <= 0.0:
+                if self.alvos_atingidos_neste_ataque:
+                    self.alvos_atingidos_neste_ataque.clear()
+                self._rearme_orbital = REARME_ORBITAL_S
         
         # Obtém gerenciador de animações
         anim_manager = get_weapon_animation_manager()
@@ -2264,8 +2394,14 @@ class Lutador:
         )
         
         # Atualiza animação
+        # Passe 4 (arte): weapon_style destrava os STYLE_PROFILES — ~25
+        # perfis de animação por estilo de arma (Katana, Martelo com shake
+        # 14, Foice...) que ficaram anos inalcançáveis porque este
+        # argumento nunca era passado. Toda "Reta" animava igual.
+        estilo_arma = getattr(self.dados.arma_obj, "estilo", "") if self.dados.arma_obj else ""
         transform = anim_manager.get_weapon_transform(
-            id(self), arma_tipo, self.angulo_olhar, weapon_tip, dt
+            id(self), arma_tipo, self.angulo_olhar, weapon_tip, dt,
+            weapon_style=estilo_arma,
         )
         
         # Aplica transformações
@@ -2289,6 +2425,18 @@ class Lutador:
             if self.timer_animacao <= 0:
                 self.atacando = False
                 self.angulo_arma_visual = self.angulo_olhar
+                # Onda 5E: swing terminou sem tocar NINGUEM = whiff. Se o
+                # inimigo estava perto o bastante para ser a intencao do
+                # golpe, ele ESQUIVOU — alimenta a cadeia que tinha zero
+                # produtores: registrar_esquiva -> on_esquiva_sucesso
+                # (janela pos_esquiva) + momento NEAR_MISS do coreografo.
+                if not getattr(self, "alvos_atingidos_neste_ataque", True) and inimigo is not None:
+                    dx = inimigo.pos[0] - self.pos[0]
+                    dy = inimigo.pos[1] - self.pos[1]
+                    if (dx * dx + dy * dy) < 16.0:  # <4m: estava na jogada
+                        coreografo = getattr(self, "choreographer", None)
+                        if coreografo is not None:
+                            coreografo.registrar_esquiva(inimigo, self)
             else:
                 # Aplica offset do animador
                 self.angulo_arma_visual = self.angulo_olhar + transform["angle_offset"]
@@ -2325,12 +2473,14 @@ class Lutador:
                 alcance_ataque = self.raio_fisico * 3.0  # Fallback generoso
             
             # Ajustes APENAS para armas ranged (não sobrescreve corpo-a-corpo!)
-            if arma_tipo == "Arco":
-                alcance_ataque = 20.0  # Arco: MUITO alcance (20 metros!)
-            elif arma_tipo == "Arremesso":
-                alcance_ataque = 12.0  # Arremesso: alcance médio
-            elif arma_tipo == "Mágica":
-                alcance_ataque = 8.0
+            # Onda 4: fonte única no catálogo de tipos. O motor disparava de
+            # 20/12/8m hard-coded enquanto a IA se posicionava por
+            # raio*range_mult (~8,5m p/ Arco) — o arqueiro mirava 5m podendo
+            # atirar de 20m. Arco 20→14m devolve o drama de aproximação.
+            from neural_fights.models.constants import alcance_ranged_m
+            _alcance_cat = alcance_ranged_m(arma_tipo)
+            if _alcance_cat is not None:
+                alcance_ataque = _alcance_cat
             # Para armas corpo-a-corpo (incluindo Dupla), usa o cálculo baseado no profile
             
             # Verifica se deve atacar
@@ -2360,8 +2510,32 @@ class Lutador:
                 self.timer_animacao = profile.total_time
                 
                 # Inicia animação no gerenciador
-                anim_manager.start_attack(id(self), arma_tipo, tuple(self.pos), self.angulo_olhar)
-                
+                anim_manager.start_attack(
+                    id(self), arma_tipo, tuple(self.pos), self.angulo_olhar,
+                    weapon_style=getattr(self.dados.arma_obj, "estilo", "") if self.dados.arma_obj else "",
+                    weapon_color=(
+                        getattr(self.dados.arma_obj, "r", 255),
+                        getattr(self.dados.arma_obj, "g", 255),
+                        getattr(self.dados.arma_obj, "b", 255),
+                    ) if self.dados.arma_obj else (255, 255, 255),
+                )
+
+                # Passe 4 (arte): telegraph de golpe pesado — o manager de
+                # attack.py é singleton, então este é o MESMO attack_anims
+                # que o Simulador desenha. criar_anticipation já filtra
+                # forca < 12; só nasce quando há tela (headless não tem
+                # display e não deve pagar nem os draws de random visual).
+                try:
+                    import pygame
+
+                    if pygame.display.get_surface() is not None:
+                        from neural_fights.effects.attack import (
+                            AttackAnimationManager,
+                        )
+                        AttackAnimationManager().criar_anticipation(self)
+                except Exception:
+                    pass
+
                 if arma_tipo == "Arremesso":
                     self._disparar_arremesso(inimigo)
                 elif arma_tipo == "Arco":
@@ -2369,11 +2543,22 @@ class Lutador:
                 elif arma_tipo == "Mágica":
                     self._disparar_orbes(inimigo)
                 
-                base_cd = 0.5 + self.rng_runtime.random() * 0.5
-                if arma_tipo in ["Arremesso", "Arco"]:
-                    base_cd = 0.8 + self.rng_runtime.random() * 0.4
-                elif arma_tipo == "Mágica":
-                    base_cd = 1.0 + self.rng_runtime.random() * 0.5
+                # === ONDA 4: velocidade_ataque dirige a cadência ===
+                # O knob existia em 100% das armas (runtime 0,81–1,56, com
+                # raridade composta em weapons.py) e nunca era lido — a
+                # cadência era um sorteio fixo por tipo. Um único draw do
+                # RNG (jitter ±10%) mantém variância humana sem apagar a
+                # identidade da arma.
+                from neural_fights.models.constants import cadencia_base_s
+                jitter = 0.9 + self.rng_runtime.random() * 0.2
+                va = getattr(self, "arma_vel_ataque", 1.0) or 1.0
+                base_cd = cadencia_base_s(arma_tipo) * jitter / max(0.5, va)
+                if "Velocidade" in self.arma_encantamentos:
+                    # Onda 3: ataque_speed_bonus existia no catalogo e nunca
+                    # era lido.
+                    from neural_fights.models import ENCANTAMENTOS as _ENC
+                    _bonus = _ENC.get("Velocidade", {}).get("ataque_speed_bonus", 20)
+                    base_cd *= max(0.5, 1.0 - _bonus / 100.0)
                 if "Assassino" in self.classe_nome or "Ninja" in self.classe_nome:
                     base_cd *= 0.7
                 elif "Colosso" in self.brain.arquetipo:
@@ -2569,6 +2754,20 @@ class Lutador:
         dano_proprio = self._limitar_dano_letal_por_imortalidade(dano_proprio)
         self.vida -= dano_proprio
         self.ultimo_dano_recebido = dano_proprio
+        # Onda 5C: a IA precisa saber SE o dano foi um golpe ou um tick de
+        # DoT — queimar nao e ser acertado (nao quebra combo nem alimenta
+        # susto/momentum). O brain le este carimbo em _detectar_dano.
+        self.ultimo_tipo_fonte_dano = (
+            getattr(contexto_dano, "metadata", None) or {}
+        ).get("tipo_fonte")
+        if self.registro_eventos_dano is not None and dano_proprio > 0.0:
+            # A sonda drena esta lista a cada frame e carimba tempo/slot; o
+            # motor so anota valor e categoria da fonte.
+            metadata = getattr(contexto_dano, "metadata", None) or {}
+            categoria = metadata.get("tipo_fonte") or getattr(
+                getattr(contexto_dano, "fonte", None), "tipo_fonte", None
+            ) or "direto"
+            self.registro_eventos_dano.append((float(dano_proprio), str(categoria)))
         if dano_proprio > 0.0:
             self._quebrar_sono()
         self.flash_timer = min(0.25, 0.1 + dano_proprio * 0.005)
@@ -2699,12 +2898,33 @@ class Lutador:
                 False,
                 bloqueado_por="invulnerabilidade_skill",
             )
+            self.contadores_luta["anulados_invuln_skill"] += 1
             return False
-        if self.invencivel_timer > 0 and not ignorar_recuperacao_impacto:
+        # A chave identifica o GOLPE INDIVIDUAL: para projeteis e a propria
+        # fonte (cada faca de uma salva e um golpe distinto e todas aplicam);
+        # para melee, (atacante, ataque_id) — o mesmo swing nao bate 2x. A
+        # janela de 0,3s volta a fazer so o seu trabalho original. Antes ela
+        # bloqueava QUALQUER fonte e comia 35% de todos os impactos (67% dos
+        # projeteis de uma salva de Arremesso morriam na invencibilidade
+        # gerada pela primeira faca).
+        if chave_fonte is not None:
+            chave_golpe = ("fonte", chave_fonte)
+        elif metadata_impacto.get("fonte_dano") is not None:
+            chave_golpe = ("fonte_id", id(metadata_impacto["fonte_dano"]))
+        elif atacante is not None:
+            chave_golpe = ("atk", id(atacante), getattr(atacante, "ataque_id", -1))
+        else:
+            chave_golpe = None
+        if (
+            self.invencivel_timer > 0
+            and not ignorar_recuperacao_impacto
+            and (chave_golpe is None or chave_golpe == self._invencivel_chave)
+        ):
             self.ultimo_resultado_impacto = ImpactResult(
                 False,
                 bloqueado_por="invencibilidade",
             )
+            self.contadores_luta["anulados_invencibilidade"] += 1
             return False
         pode_atacar = getattr(atacante, "pode_causar_dano", None)
         if atacante is not None and atacante is not self and callable(pode_atacar):
@@ -2805,6 +3025,20 @@ class Lutador:
         
         dano_final = dano
 
+        # === ONDA 6: FÚRIA DO ENCURRALADO (variância mecânica p/ D1/D2) ===
+        # Quem está 25pp+ atrás no HP bate 15% mais forte. Viradas (D2) e
+        # trocas de liderança (D1) precisam de FÍSICA, não só de vontade da
+        # IA: a curva de D1 subiu de 0,24 a 0,37 em cinco entregas de IA
+        # viva, e o teto estrutural é este — luta longa preserva o líder
+        # sem um dente mecânico do lado de quem apanha. Convenção honesta
+        # do gênero (comeback mechanics), visível na tela.
+        if atacante is not None and atacante is not self:
+            vida_max_atk = getattr(atacante, "vida_max", 0.0)
+            if vida_max_atk > 0 and self.vida_max > 0:
+                deficit = self.vida / self.vida_max - atacante.vida / vida_max_atk
+                if deficit >= 0.25:
+                    dano_final *= 1.15
+
         # O dano recebido é o ponto comum entre golpes básicos e skills.
         # Modificadores de classe/buff já vieram calculados no valor de dano.
         if aplicar_modificadores_debuff:
@@ -2816,16 +3050,61 @@ class Lutador:
                     dano_final *= 0.7
             dano_final *= self._get_modificador_dano_recebido_debuff()
 
+        # Onda 6: snapshot pre-reducoes DEFENSIVAS (buffs de mitigacao,
+        # postura do Cavaleiro, mod_defesa) — a Penetracao recupera uma
+        # fracao do que ESTA secao tirar.
+        dano_antes_defesas = dano_final
+
         for buff in self._buffs_validos():
             dano_final *= max(0.0, getattr(buff, "mod_dano_recebido", 1.0))
         
         if "Cavaleiro" in self.classe_nome:
-            dano_final *= 0.75
+            # Onda 6 (contrato, v2): postura OPT-IN. A v1 (dormia só no
+            # próprio golpe) manteve uptime ~85-90% e o Cavaleiro seguiu
+            # 0,978 — janela de swing de 0,5s num mundo de intenções de
+            # 583ms ainda é passiva. O escudo agora existe apenas em
+            # intenção explicitamente DEFENSIVA; fora dela, é um lutador
+            # comum de vida alta.
+            acao_defensor = getattr(
+                getattr(self, "brain", None), "acao_atual", ""
+            )
+            if not self.atacando and acao_defensor in (
+                "BLOQUEAR", "RECUAR", "CIRCULAR", "COMBATE", "CONTRA_ATAQUE",
+            ):
+                dano_final *= 0.75
 
         dano_final *= max(0.0, float(getattr(self, "mod_defesa", 1.0)))
+
+        if (
+            atacante is not None
+            and "Penetração" in getattr(atacante, "arma_encantamentos", ())
+            and dano_final < dano_antes_defesas
+        ):
+            # Onda 6: Penetração era o encantamento MAIS COMUM do catálogo
+            # e nunca foi lida (deferida da O3, que se recusou a fingir).
+            # "Ignora 30% da defesa inimiga": recupera 30% do que as
+            # reduções defensivas tiraram — semântica exata, sem refatorar
+            # o pipeline.
+            from neural_fights.models import ENCANTAMENTOS as _ENC
+            _pen = _ENC.get("Penetração", {}).get("armor_ignore", 30) / 100.0
+            dano_final += (dano_antes_defesas - dano_final) * _pen
         
-        if "Ladino" in self.classe_nome and self.rng_runtime.random() < 0.2:
+        if (
+            "Ladino" in self.classe_nome
+            and not (
+                atacante is not None
+                and "Duelista" in getattr(atacante, "classe_nome", "")
+            )
+            and self.rng_runtime.random() < 0.12
+        ):
+            # (0,20 -> 0,15 -> 0,12 nas rodadas de knobs da O6: Ladino no B1)
+            # Onda 6 (contrato do Duelista): "ataques nunca erram" — a
+            # esquiva do Ladino é o único errar do motor, e o Duelista a
+            # atravessa. (Guard antes do draw: sem sorteio contra Duelista.)
             self.ultimo_resultado_impacto = ImpactResult(False, bloqueado_por="esquiva")
+            # Passe 6 (arte): contador consumido pelo feedback visual da
+            # esquiva (burst de afterimages + ESQUIVA! no renderer).
+            self.esquivas_visuais = getattr(self, "esquivas_visuais", 0) + 1
             return False
         
         if not ignorar_escudo:
@@ -2885,6 +3164,12 @@ class Lutador:
         
         # Reflexo de dano (Reflexo Espelhado)
         dano_refletido = 0
+        # Encantamento Espelhamento da arma do defensor (Onda 3: o campo
+        # reflect_percent existia no catalogo e nunca era lido).
+        if "Espelhamento" in self.arma_encantamentos:
+            from neural_fights.models import ENCANTAMENTOS as _ENC
+            _pct = _ENC.get("Espelhamento", {}).get("reflect_percent", 25) / 100.0
+            dano_refletido += dano_final * _pct
         for buff in self._buffs_validos():
             if hasattr(buff, 'refletir') and buff.refletir > 0:
                 dano_refletido += dano_final * buff.refletir
@@ -2913,6 +3198,7 @@ class Lutador:
 
         if gerar_recuperacao_impacto:
             self.invencivel_timer = 0.3
+            self._invencivel_chave = chave_golpe
 
         if atacante is not None and dano_final > 0.0 and not atacante.morto:
             get_buffs_atacante = getattr(atacante, "_buffs_validos", None)
@@ -3007,6 +3293,10 @@ class Lutador:
         # Knockback proporcional ao dano e vida restante
         kb = 15.0 + (1.0 - (self.vida/self.vida_max)) * 10.0
         kb += dano_final * 0.2  # Dano alto = mais knockback
+        # Paridade com o melee: calcular_knockback_com_forca clampa em 25,
+        # mas este caminho (projeteis) era ilimitado — uma flecha de 138
+        # empurrava com 52,7, mais que o dobro do teto do corpo a corpo.
+        kb = min(kb, 25.0)
         self.vel[0] += empurrao_x * kb
         self.vel[1] += empurrao_y * kb
         

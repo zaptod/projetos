@@ -804,11 +804,28 @@ class Arena:
         cor = self.config.cor_chao
         
         if self.config.formato == "circular":
-            # Chão circular
+            # Chão circular com profundidade (passe de arte 1): vinheta
+            # radial em anéis + borda dupla que lê como parede. Um círculo
+            # chapado não dá palco; o olho precisa de centro e limite.
             cx, cy = camera.converter(self.centro_x * PPM, self.centro_y * PPM)
             raio = camera.converter_tam(self.raio * PPM)
             if raio > 0:
-                pygame.draw.circle(surface, cor, (cx, cy), raio)
+                escuro = tuple(max(0, int(c * 0.72)) for c in cor)
+                meio = tuple(max(0, int(c * 0.88)) for c in cor)
+                claro = tuple(min(255, int(c * 1.18) + 6) for c in cor)
+                pygame.draw.circle(surface, escuro, (cx, cy), raio)
+                pygame.draw.circle(surface, meio, (cx, cy), int(raio * 0.86))
+                pygame.draw.circle(surface, cor, (cx, cy), int(raio * 0.62))
+                pygame.draw.circle(surface, claro, (cx, cy), int(raio * 0.30))
+                # borda-parede: traço escuro grosso + fio de luz interno
+                pygame.draw.circle(
+                    surface, tuple(max(0, c - 26) for c in escuro),
+                    (cx, cy), raio, max(3, raio // 90),
+                )
+                pygame.draw.circle(
+                    surface, tuple(min(255, c + 46) for c in cor),
+                    (cx, cy), raio - max(3, raio // 90), 2,
+                )
         else:
             # Chão retangular
             min_px = camera.converter(self.min_x * PPM, self.min_y * PPM)
@@ -818,16 +835,36 @@ class Arena:
             altura = max_px[1] - min_px[1]
             
             if largura > 0 and altura > 0:
+                # Passe 7 (arte): o retangular ganha o tratamento do
+                # circular - vinheta em camadas + borda que le parede.
                 rect = pygame.Rect(min_px[0], min_px[1], largura, altura)
-                pygame.draw.rect(surface, cor, rect)
+                escuro = tuple(max(0, int(c * 0.72)) for c in cor)
+                meio = tuple(max(0, int(c * 0.88)) for c in cor)
+                claro = tuple(min(255, int(c * 1.18) + 6) for c in cor)
+                pygame.draw.rect(surface, escuro, rect)
+                pygame.draw.rect(surface, meio, rect.inflate(-int(largura * 0.10), -int(altura * 0.10)))
+                pygame.draw.rect(surface, cor, rect.inflate(-int(largura * 0.30), -int(altura * 0.30)))
+                pygame.draw.rect(surface, claro, rect.inflate(-int(largura * 0.62), -int(altura * 0.62)))
+                borda = max(3, int(min(largura, altura)) // 90)
+                pygame.draw.rect(
+                    surface, tuple(max(0, c - 26) for c in escuro), rect, borda
+                )
+                pygame.draw.rect(
+                    surface, tuple(min(255, c + 46) for c in cor),
+                    rect.inflate(-borda * 2, -borda * 2), 2,
+                )
         
-        # Grid no chão
-        self._desenhar_grid(surface, camera)
+        # Grid no chão — só no formato retangular: nas arenas circulares e
+        # octogonais as linhas vazavam para fora do disco (Passe 2), e a
+        # vinheta em anéis já dá textura ao chão redondo.
+        if self.config.formato == "retangular":
+            self._desenhar_grid(surface, camera)
     
     def _desenhar_grid(self, surface: pygame.Surface, camera):
         """Desenha grid no chão"""
         grid_size = 2.0  # Metros
-        cor_grid = tuple(min(255, c + 10) for c in self.config.cor_chao)
+        # grid quase subliminar: textura, nao informacao (passe de arte 1)
+        cor_grid = tuple(min(255, c + 5) for c in self.config.cor_chao)
         
         # Linhas verticais
         x = math.ceil(self.min_x / grid_size) * grid_size
@@ -858,7 +895,16 @@ class Arena:
             
             rect = pygame.Rect(cx - half_w, cy - half_h, half_w * 2, half_h * 2)
             cor = obs.cor
-            
+
+            # Passe 7 (arte): sombra de contato achatada - obstaculo sem
+            # sombra flutua; com ela pertence ao chao (planos nao tem).
+            if obs.tipo not in ("tapete", "lava", "fogo", "gelo"):
+                sw = int(half_w * 2.2)
+                sh = max(3, int(half_h * 0.7))
+                s_sombra = pygame.Surface((sw, sh), pygame.SRCALPHA)
+                pygame.draw.ellipse(s_sombra, (0, 0, 0, 80), (0, 0, sw, sh))
+                surface.blit(s_sombra, (cx - sw // 2, cy + half_h - sh // 2))
+
             # Desenho especial baseado no tipo
             if obs.tipo in ["pilar", "pilar_quebrado"]:
                 # Pilar cilíndrico
@@ -976,10 +1022,137 @@ class Arena:
                 # Centro brilhante
                 pygame.draw.circle(surface, (255, 255, 255), (cx, cy), max(3, raio // 3))
             
-            else:
-                # Obstáculo genérico
+            elif obs.tipo in ("rocha", "pedra"):
+                # Poligono irregular deterministico da posicao
+                semente = obs.x * 13.7 + obs.y * 7.3
+                pontos = []
+                for i in range(7):
+                    a = i * math.tau / 7
+                    fator = 0.75 + 0.25 * abs(math.sin(semente + i * 2.1))
+                    pontos.append((
+                        cx + math.cos(a) * half_w * fator,
+                        cy + math.sin(a) * half_h * fator,
+                    ))
+                pygame.draw.polygon(surface, cor, pontos)
+                pygame.draw.polygon(
+                    surface, tuple(max(0, c - 30) for c in cor), pontos, 2
+                )
+                pygame.draw.circle(
+                    surface, tuple(min(255, c + 25) for c in cor),
+                    (int(cx - half_w * 0.25), int(cy - half_h * 0.3)),
+                    max(2, int(half_w * 0.3)),
+                )
+
+            elif obs.tipo == "caixa":
                 pygame.draw.rect(surface, cor, rect)
-                # Borda
+                pygame.draw.rect(
+                    surface, tuple(max(0, c - 35) for c in cor), rect, 2
+                )
+                pygame.draw.line(
+                    surface, tuple(max(0, c - 25) for c in cor),
+                    (cx - half_w, cy), (cx + half_w, cy), 1,
+                )
+                pygame.draw.line(
+                    surface, tuple(max(0, c - 25) for c in cor),
+                    (cx, cy - half_h), (cx, cy + half_h), 1,
+                )
+
+            elif obs.tipo == "barril":
+                pygame.draw.ellipse(surface, cor, rect)
+                for frac_b in (-0.35, 0.35):
+                    y_aro = int(cy + half_h * frac_b)
+                    pygame.draw.line(
+                        surface, tuple(max(0, c - 45) for c in cor),
+                        (int(cx - half_w * 0.9), y_aro),
+                        (int(cx + half_w * 0.9), y_aro), 2,
+                    )
+                pygame.draw.ellipse(
+                    surface, tuple(max(0, c - 35) for c in cor), rect, 2
+                )
+
+            elif obs.tipo == "parede":
+                pygame.draw.rect(surface, cor, rect)
+                cor_junta = tuple(max(0, c - 30) for c in cor)
+                n_fiadas = max(2, half_h // 6)
+                for fi in range(1, n_fiadas):
+                    y_f = cy - half_h + (half_h * 2 * fi) // n_fiadas
+                    pygame.draw.line(surface, cor_junta,
+                                     (cx - half_w, y_f), (cx + half_w, y_f), 1)
+                pygame.draw.rect(surface, cor_junta, rect, 2)
+
+            elif obs.tipo == "altar":
+                base = rect.inflate(int(half_w * 0.6), int(half_h * 0.6))
+                pygame.draw.rect(surface, tuple(max(0, c - 30) for c in cor), base)
+                pygame.draw.rect(surface, cor, rect)
+                topo = rect.inflate(-int(half_w * 0.7), -int(half_h * 0.7))
+                pygame.draw.rect(
+                    surface, tuple(min(255, c + 40) for c in cor), topo
+                )
+                pygame.draw.rect(surface, (220, 200, 140), rect, 2)
+
+            elif obs.tipo == "cripta":
+                pygame.draw.rect(surface, cor, rect)
+                pygame.draw.ellipse(
+                    surface, cor,
+                    pygame.Rect(cx - half_w, cy - int(half_h * 1.6),
+                                half_w * 2, half_h),
+                )
+                pygame.draw.rect(
+                    surface, tuple(max(0, c - 35) for c in cor), rect, 2
+                )
+                cruz_c = tuple(min(255, c + 50) for c in cor)
+                pygame.draw.line(surface, cruz_c,
+                                 (cx, cy - int(half_h * 0.6)),
+                                 (cx, cy + int(half_h * 0.4)), 2)
+                pygame.draw.line(surface, cruz_c,
+                                 (int(cx - half_w * 0.35), cy - int(half_h * 0.25)),
+                                 (int(cx + half_w * 0.35), cy - int(half_h * 0.25)), 2)
+
+            elif obs.tipo == "ossos":
+                cor_osso = (225, 220, 200)
+                semente = obs.x * 5.1 + obs.y * 3.3
+                for i in range(3):
+                    a = semente + i * 2.2
+                    x1 = cx + math.cos(a) * half_w * 0.6
+                    y1 = cy + math.sin(a) * half_h * 0.6
+                    x2 = cx - math.cos(a) * half_w * 0.6
+                    y2 = cy - math.sin(a) * half_h * 0.6
+                    pygame.draw.line(surface, cor_osso,
+                                     (int(x1), int(y1)), (int(x2), int(y2)), 3)
+                    for px_o, py_o in ((x1, y1), (x2, y2)):
+                        pygame.draw.circle(surface, cor_osso,
+                                           (int(px_o), int(py_o)), 3)
+
+            elif obs.tipo in ("console", "painel"):
+                import time as _t
+                pygame.draw.rect(surface, cor, rect)
+                pygame.draw.rect(
+                    surface, tuple(min(255, c + 35) for c in cor), rect, 2
+                )
+                if obs.tipo == "console":
+                    for i in range(3):
+                        aceso = (_t.time() * 2 + obs.x + i * 0.7) % 2.0 < 1.0
+                        cor_led = (90, 255, 140) if aceso else (30, 70, 45)
+                        pygame.draw.circle(
+                            surface, cor_led,
+                            (int(cx - half_w * 0.5 + i * half_w * 0.5),
+                             int(cy - half_h * 0.4)), max(2, half_w // 8),
+                        )
+                else:
+                    linha_y = cy - half_h + int(
+                        ((_t.time() * 0.8 + obs.y) % 1.0) * half_h * 2
+                    )
+                    pygame.draw.rect(
+                        surface, (60, 130, 180), rect.inflate(-6, -6)
+                    )
+                    pygame.draw.line(
+                        surface, (140, 220, 255),
+                        (cx - half_w + 3, linha_y), (cx + half_w - 3, linha_y), 1,
+                    )
+
+            else:
+                # Obstaculo generico (fallback de verdade agora)
+                pygame.draw.rect(surface, cor, rect)
                 cor_borda = tuple(max(0, c - 30) for c in cor)
                 pygame.draw.rect(surface, cor_borda, rect, 2)
     
@@ -1031,8 +1204,18 @@ class Arena:
                     nx, ny = 0, 0
                 pontos_ext.append(camera.converter((p[0] + nx * esp) * PPM, (p[1] + ny * esp) * PPM))
             
-            pygame.draw.polygon(surface, cor, pontos_ext)
-            pygame.draw.polygon(surface, self.config.cor_chao, pontos_tela)
+            # Passe 2 (arte): a parede octogonal era desenhada como
+            # poligono cheio + REPINTURA do interior com cor_chao — o que
+            # apagava obstaculos e grid ja desenhados (Templo ficava sem
+            # altar e pilares). Agora e um ANEL de verdade: um trapezio
+            # por aresta, sem tocar o interior.
+            n = len(pontos_tela)
+            for i in range(n):
+                j = (i + 1) % n
+                pygame.draw.polygon(
+                    surface, cor,
+                    (pontos_tela[i], pontos_tela[j], pontos_ext[j], pontos_ext[i]),
+                )
             pygame.draw.polygon(surface, cor_borda, pontos_tela, max(3, camera.converter_tam(5)))
         
         else:

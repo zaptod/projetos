@@ -360,10 +360,27 @@ class Câmera:
             if self.zoom > zoom_min_necessario:
                 self.zoom = zoom_min_necessario
 
+        # === PASSO 6: ZOOM PUNCH (depois de TODOS os clamps) ===
+        # Transiente de <=0,15s; decai linearmente e não realimenta o lerp
+        # de forma permanente.
+        if getattr(self, "_punch_timer", 0.0) > 0.0:
+            self._punch_timer -= dt
+            frac = max(0.0, self._punch_timer / max(self._punch_dur, 1e-6))
+            self.zoom += self._punch_mag * frac
+            if self._punch_timer <= 0.0:
+                self._punch_mag = 0.0
+
     def zoom_punch(self, intensidade=0.1, duracao=0.1):
-        """Efeito de zoom punch para impactos"""
-        # Apenas aumenta um pouco - o sistema vai corrigir
-        self.target_zoom = min(self.target_zoom + intensidade, self.zoom_max)
+        """Efeito de zoom punch para impactos.
+
+        Passe 4 (arte): somar no target_zoom era invisível — a
+        "VERIFICAÇÃO FINAL DE SEGURANÇA" do frame seguinte clampava o
+        target de volta antes do zoom suave (3*dt) sair do lugar. O punch
+        agora é um bump DECADENTE aplicado depois dos clamps do update.
+        """
+        self._punch_mag = max(getattr(self, "_punch_mag", 0.0), intensidade)
+        self._punch_timer = max(duracao, 0.01)
+        self._punch_dur = self._punch_timer
     
     def lerp_pos(self, tx, ty, dt, velocidade=5.0):
         """Interpola suavemente a posição da câmera"""

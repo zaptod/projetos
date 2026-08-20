@@ -108,6 +108,50 @@ STATUS_RUNTIME = {
 }
 
 
+# Passe 6 (arte): metadata VISUAL de cada status — um vocabulário, não 30
+# desenhos. ``estilo``: "anel" (padrão), "tint" (tinge o corpo) ou
+# "particula" (brasa/bolha/pingo baratos no renderer). ``prioridade``
+# decide o anel dominante (CC duro > controle > especiais > debuffs >
+# dots > transporte). Glifos conferidos contra a fonte (Arial cobre
+# todos). O merge abaixo grava em STATUS_RUNTIME[id]["visual"].
+STATUS_VISUAL = {
+    "ENVENENADO": {"cor": (100, 255, 100), "glifo": "☠", "prioridade": 3, "estilo": "particula"},
+    "SANGRANDO": {"cor": (220, 50, 50), "glifo": "▽", "prioridade": 3, "estilo": "particula"},
+    "QUEIMANDO": {"cor": (255, 120, 0), "glifo": "✹", "prioridade": 3, "estilo": "particula"},
+    "CORROENDO": {"cor": (180, 220, 40), "glifo": "≈", "prioridade": 3, "estilo": "anel"},
+    "NECROSE": {"cor": (150, 100, 200), "glifo": "◆", "prioridade": 4, "estilo": "anel"},
+    "MALDITO": {"cor": (160, 60, 220), "glifo": "✖", "prioridade": 4, "estilo": "anel"},
+    "CONGELADO": {"cor": (120, 210, 255), "glifo": "❄", "prioridade": 9, "estilo": "tint"},
+    "LENTO": {"cor": (150, 200, 230), "glifo": "↓", "prioridade": 5, "estilo": "anel"},
+    "ATORDOADO": {"cor": (255, 230, 90), "glifo": "⚡", "prioridade": 9, "estilo": "anel"},
+    "PARALISIA": {"cor": (255, 255, 120), "glifo": "~", "prioridade": 9, "estilo": "anel"},
+    "ENRAIZADO": {"cor": (110, 190, 80), "glifo": "✿", "prioridade": 7, "estilo": "particula"},
+    "SILENCIADO": {"cor": (170, 170, 200), "glifo": "⛔", "prioridade": 6, "estilo": "anel"},
+    "CEGO": {"cor": (90, 90, 110), "glifo": "◐", "prioridade": 6, "estilo": "anel"},
+    "MEDO": {"cor": (140, 80, 200), "glifo": "!", "prioridade": 8, "estilo": "anel"},
+    "CHARME": {"cor": (255, 120, 200), "glifo": "♥", "prioridade": 8, "estilo": "anel"},
+    "SONO": {"cor": (180, 180, 255), "glifo": "☾", "prioridade": 8, "estilo": "anel"},
+    "KNOCK_UP": {"cor": (255, 200, 120), "glifo": "↑", "prioridade": 7, "estilo": "anel"},
+    "TEMPO_PARADO": {"cor": (210, 195, 255), "glifo": "⌛", "prioridade": 10, "estilo": "tint"},
+    "FRACO": {"cor": (200, 160, 120), "glifo": "○", "prioridade": 4, "estilo": "anel"},
+    "VULNERAVEL": {"cor": (255, 140, 140), "glifo": "⚠", "prioridade": 5, "estilo": "anel"},
+    "EXAUSTO": {"cor": (190, 190, 150), "glifo": "▤", "prioridade": 4, "estilo": "anel"},
+    "MARCADO": {"cor": (255, 90, 90), "glifo": "⊕", "prioridade": 4, "estilo": "anel"},
+    "EXPOSTO": {"cor": (255, 170, 90), "glifo": "△", "prioridade": 5, "estilo": "anel"},
+    "BOMBA_RELOGIO": {"cor": (255, 80, 40), "glifo": "⊗", "prioridade": 10, "estilo": "anel"},
+    "LINK_ALMA": {"cor": (230, 90, 230), "glifo": "✦", "prioridade": 6, "estilo": "anel"},
+    "POSSESSO": {"cor": (170, 115, 230), "glifo": "★", "prioridade": 8, "estilo": "tint"},
+    "TROCAR_POS": {"cor": (200, 150, 255), "glifo": "◎", "prioridade": 1, "estilo": "anel"},
+    "PUXADO": {"cor": (145, 120, 250), "glifo": "●", "prioridade": 1, "estilo": "anel"},
+    "VORTEX": {"cor": (110, 80, 230), "glifo": "@", "prioridade": 1, "estilo": "anel"},
+}
+
+for _status_id, _vis in STATUS_VISUAL.items():
+    if _status_id in STATUS_RUNTIME:
+        STATUS_RUNTIME[_status_id]["visual"] = _vis
+del _status_id, _vis
+
+
 BUFF_EFFECT_RUNTIME = {
     "ABENÇOADO": {
         "mod_cura_recebida": 1.5,

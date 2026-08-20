@@ -117,7 +117,12 @@ class AreaEffectRegressionTests(unittest.TestCase):
         target = self._fighter("Target", x=5.1)
         area = AreaEffect("Wrath of Nature", owner.pos[0], owner.pos[1], owner)
         self.assertEqual(area.atualizar(area.delay, [owner, target]), [])
+        # Onda 2: a invencibilidade bloqueia o re-impacto do MESMO golpe. O
+        # contrato deste teste (dano bloqueado nunca aplica efeito secundario)
+        # continua o mesmo; o andaime agora casa a chave com a fonte real que
+        # a area envia no impacto.
         target.invencivel_timer = 1.0
+        target._invencivel_chave = ("fonte", area)
         simulation = self._simulation(owner, target, area)
 
         with patch.object(

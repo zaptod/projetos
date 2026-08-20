@@ -1,0 +1,7250 @@
+{
+  "config": {
+    "corpus": "completo",
+    "dados": "engine",
+    "onda": 6
+  },
+  "resumo": {
+    "lutas": 546,
+    "lutas_ok": 546,
+    "falhas": 0,
+    "duracao_p50": 22.208333333333332,
+    "duracao_p90": 39.03333333333333,
+    "pct_sob_5s": 0.0,
+    "pct_timeout": 0.0,
+    "pct_ko": 1.0,
+    "primeiro_hit_p50": 1.4999999999999996,
+    "humores_distintos_corpus": 13,
+    "pct_momentum_saturado_media": 0.2903697244400753,
+    "pct_vencedor_acima_80": 0.06776556776556776,
+    "pct_vencedor_abaixo_30": 0.31684981684981683,
+    "pct_com_lead_change": 0.39377289377289376,
+    "pct_comeback_25pp": 0.06043956043956044,
+    "maior_seca_p90": 4.974999999999763,
+    "cv_intervalos_p50": 0.8683362192512187,
+    "taxa_anulacao_iframes_media": 0.0,
+    "skills_por_luta_p50": 17.0,
+    "taxa_pilha_media": 1.0,
+    "acao_mediana_ms_p50": 583.3333333333334,
+    "pct_trocas_curtas_media": 0.03402059746635254,
+    "winrate_p1": 0.4666666666666667,
+    "lutas_espelho": 120,
+    "taxa_critico_global": 0.13609040634767974,
+    "taxa_super_armor": 0.021880259677807164,
+    "share_dano_basico": 0.6531742726320099,
+    "share_dano_skill": 0.27214416097914373,
+    "share_dano_dot": 0.03415782866713439,
+    "winrate_classe_min": 0.22857142857142856,
+    "winrate_classe_max": 0.7142857142857143,
+    "winrate_tipo_min": 0.3333333333333333,
+    "winrate_tipo_max": 0.61,
+    "divergencia_presets_l1": 0.3203772041831999,
+    "razao_duracao_celulas": 3.489494605337876
+  },
+  "quadros": {
+    "classes": {
+      "Ladino (Evasão)": {
+        "lutas": 108,
+        "vitorias": 67
+      },
+      "Ninja (Velocidade)": {
+        "lutas": 78,
+        "vitorias": 31
+      },
+      "Cavaleiro (Defesa)": {
+        "lutas": 49,
+        "vitorias": 35
+      },
+      "Duelista (Precisão)": {
+        "lutas": 109,
+        "vitorias": 44
+      },
+      "Feiticeiro (Caos)": {
+        "lutas": 37,
+        "vitorias": 17
+      },
+      "Gladiador (Combate)": {
+        "lutas": 132,
+        "vitorias": 75
+      },
+      "Guerreiro (Força Bruta)": {
+        "lutas": 86,
+        "vitorias": 51
+      },
+      "Berserker (Fúria)": {
+        "lutas": 99,
+        "vitorias": 41
+      },
+      "Assassino (Crítico)": {
+        "lutas": 75,
+        "vitorias": 33
+      },
+      "Monge (Chi)": {
+        "lutas": 53,
+        "vitorias": 23
+      },
+      "Mago (Arcano)": {
+        "lutas": 51,
+        "vitorias": 27
+      },
+      "Criomante (Gelo)": {
+        "lutas": 69,
+        "vitorias": 27
+      },
+      "Druida (Natureza)": {
+        "lutas": 53,
+        "vitorias": 33
+      },
+      "Necromante (Trevas)": {
+        "lutas": 19,
+        "vitorias": 8
+      },
+      "Piromante (Fogo)": {
+        "lutas": 35,
+        "vitorias": 8
+      },
+      "Paladino (Sagrado)": {
+        "lutas": 39,
+        "vitorias": 26
+      }
+    },
+    "tipos": {
+      "Corrente": {
+        "lutas": 158,
+        "vitorias": 66
+      },
+      "Mágica": {
+        "lutas": 148,
+        "vitorias": 87
+      },
+      "Orbital": {
+        "lutas": 88,
+        "vitorias": 52
+      },
+      "Dupla": {
+        "lutas": 66,
+        "vitorias": 22
+      },
+      "Arco": {
+        "lutas": 234,
+        "vitorias": 122
+      },
+      "Transformável": {
+        "lutas": 144,
+        "vitorias": 82
+      },
+      "Reta": {
+        "lutas": 100,
+        "vitorias": 61
+      },
+      "Arremesso": {
+        "lutas": 154,
+        "vitorias": 54
+      }
+    }
+  },
+  "alvos": [
+    {
+      "alvo": "B1_classe_max",
+      "metrica": "winrate_classe_max",
+      "valor": 0.7142857142857143,
+      "faixa": {
+        "max": 0.75
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "B1_classe_min",
+      "metrica": "winrate_classe_min",
+      "valor": 0.22857142857142856,
+      "faixa": {
+        "min": 0.2
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "B2_tipo_max",
+      "metrica": "winrate_tipo_max",
+      "valor": 0.61,
+      "faixa": {
+        "max": 0.65
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "B2_tipo_min",
+      "metrica": "winrate_tipo_min",
+      "valor": 0.3333333333333333,
+      "faixa": {
+        "min": 0.3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "B3_razao_duracao_matriz",
+      "metrica": "razao_duracao_celulas",
+      "valor": 3.489494605337876,
+      "faixa": {
+        "max": 4.7
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "B4_vies_de_lado",
+      "metrica": "winrate_p1",
+      "valor": 0.4666666666666667,
+      "faixa": {
+        "min": 0.42,
+        "max": 0.58
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "B4_vies_de_lado_smoke",
+      "metrica": "winrate_p1",
+      "valor": 0.4666666666666667,
+      "faixa": {
+        "min": 0.3,
+        "max": 0.7
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D1_lead_changes",
+      "metrica": "pct_com_lead_change",
+      "valor": 0.39377289377289376,
+      "faixa": {
+        "min": 0.25
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D1_lead_changes_meta",
+      "metrica": "pct_com_lead_change",
+      "valor": 0.39377289377289376,
+      "faixa": {
+        "min": 0.35
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D2_comebacks",
+      "metrica": "pct_comeback_25pp",
+      "valor": 0.06043956043956044,
+      "faixa": {
+        "min": 0.03
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D2_comebacks_meta",
+      "metrica": "pct_comeback_25pp",
+      "valor": 0.06043956043956044,
+      "faixa": {
+        "min": 0.045
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D3_atropelos",
+      "metrica": "pct_vencedor_acima_80",
+      "valor": 0.06776556776556776,
+      "faixa": {
+        "max": 0.22
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D3_atropelos_meta",
+      "metrica": "pct_vencedor_acima_80",
+      "valor": 0.06776556776556776,
+      "faixa": {
+        "max": 0.12
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D4_foto_chegada",
+      "metrica": "pct_vencedor_abaixo_30",
+      "valor": 0.31684981684981683,
+      "faixa": {
+        "min": 0.25
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D5_janela_seca",
+      "metrica": "maior_seca_p90",
+      "valor": 4.974999999999763,
+      "faixa": {
+        "max": 8.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D6_burstiness",
+      "metrica": "cv_intervalos_p50",
+      "valor": 0.8683362192512187,
+      "faixa": {
+        "min": 0.7,
+        "max": 1.6
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "P1_duracao_mediana",
+      "metrica": "duracao_p50",
+      "valor": 22.208333333333332,
+      "faixa": {
+        "min": 20.0,
+        "max": 40.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "P2_lutas_relampago",
+      "metrica": "pct_sob_5s",
+      "valor": 0.0,
+      "faixa": {
+        "max": 0.02
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "P3_duracao_p90",
+      "metrica": "duracao_p90",
+      "valor": 39.03333333333333,
+      "faixa": {
+        "max": 60.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "P3_timeouts",
+      "metrica": "pct_timeout",
+      "valor": 0.0,
+      "faixa": {
+        "max": 0.03
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "P3_timeouts_meta",
+      "metrica": "pct_timeout",
+      "valor": 0.0,
+      "faixa": {
+        "max": 0.02
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "P4_ko",
+      "metrica": "pct_ko",
+      "valor": 1.0,
+      "faixa": {
+        "min": 0.9
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "P5_primeiro_hit",
+      "metrica": "primeiro_hit_p50",
+      "valor": 1.4999999999999996,
+      "faixa": {
+        "max": 4.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S1_taxa_critico",
+      "metrica": "taxa_critico_global",
+      "valor": 0.13609040634767974,
+      "faixa": {
+        "min": 0.06,
+        "max": 0.2
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S2_anulacao_iframes",
+      "metrica": "taxa_anulacao_iframes_media",
+      "valor": 0.0,
+      "faixa": {
+        "max": 0.1
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S3_share_basico",
+      "metrica": "share_dano_basico",
+      "valor": 0.6531742726320099,
+      "faixa": {
+        "max": 0.78
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S3_share_basico_meta",
+      "metrica": "share_dano_basico",
+      "valor": 0.6531742726320099,
+      "faixa": {
+        "max": 0.68
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S3_share_dot",
+      "metrica": "share_dano_dot",
+      "valor": 0.03415782866713439,
+      "faixa": {
+        "min": 0.01
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S3_share_dot_meta",
+      "metrica": "share_dano_dot",
+      "valor": 0.03415782866713439,
+      "faixa": {
+        "min": 0.03
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S3_share_skills",
+      "metrica": "share_dano_skill",
+      "valor": 0.27214416097914373,
+      "faixa": {
+        "min": 0.18
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S3_share_skills_meta",
+      "metrica": "share_dano_skill",
+      "valor": 0.27214416097914373,
+      "faixa": {
+        "min": 0.25
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S4_casts_por_luta",
+      "metrica": "skills_por_luta_p50",
+      "valor": 17.0,
+      "faixa": {
+        "min": 3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S5_super_armor",
+      "metrica": "taxa_super_armor",
+      "valor": 0.021880259677807164,
+      "faixa": {
+        "min": 0.02,
+        "max": 0.3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V1_pilha_personalidade",
+      "metrica": "taxa_pilha_media",
+      "valor": 1.0,
+      "faixa": {
+        "min": 0.95
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V2_persistencia_acao",
+      "metrica": "acao_mediana_ms_p50",
+      "valor": 583.3333333333334,
+      "faixa": {
+        "min": 500.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V2_trocas_curtas",
+      "metrica": "pct_trocas_curtas_media",
+      "valor": 0.03402059746635254,
+      "faixa": {
+        "max": 0.1
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V3_divergencia_presets",
+      "metrica": "divergencia_presets_l1",
+      "valor": 0.3203772041831999,
+      "faixa": {
+        "min": 0.25
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V3_divergencia_presets_meta",
+      "metrica": "divergencia_presets_l1",
+      "valor": 0.3203772041831999,
+      "faixa": {
+        "min": 0.28
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V4_humores_vivos",
+      "metrica": "humores_distintos_corpus",
+      "valor": 13,
+      "faixa": {
+        "min": 12
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V5_momentum_saturado",
+      "metrica": "pct_momentum_saturado_media",
+      "valor": 0.2903697244400753,
+      "faixa": {
+        "max": 0.3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V5_momentum_saturado_meta",
+      "metrica": "pct_momentum_saturado_media",
+      "valor": 0.2903697244400753,
+      "faixa": {
+        "max": 0.32
+      },
+      "enforced": true,
+      "status": "ok"
+    }
+  ],
+  "lutas": [
+    {
+      "spec": {
+        "p1": "Gloria a Valente",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 21000,
+        "bloco": "espelho"
+      },
+      "duracao": 15.6,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Marcus o Amaldiçoado",
+        "p2": "Gloria a Valente",
+        "seed": 21000,
+        "bloco": "espelho"
+      },
+      "duracao": 17.016666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Marcus o Amaldiçoado",
+        "p2": "Sigrid a Sábia",
+        "seed": 21001,
+        "bloco": "espelho"
+      },
+      "duracao": 26.983333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Sigrid a Sábia",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 21001,
+        "bloco": "espelho"
+      },
+      "duracao": 31.083333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki a Lendária",
+        "p2": "Leoric a Impiedosa",
+        "seed": 21002,
+        "bloco": "espelho"
+      },
+      "duracao": 14.049999999999999,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Yuki a Lendária",
+        "seed": 21002,
+        "bloco": "espelho"
+      },
+      "duracao": 17.633333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brutus #2",
+        "p2": "Octavia a Eterna",
+        "seed": 21003,
+        "bloco": "espelho"
+      },
+      "duracao": 18.116666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Brutus #2",
+        "seed": 21003,
+        "bloco": "espelho"
+      },
+      "duracao": 9.033333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Nyx a Impiedosa",
+        "p2": "Fenrir a Implacável",
+        "seed": 21004,
+        "bloco": "espelho"
+      },
+      "duracao": 10.583333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Nyx a Impiedosa",
+        "seed": 21004,
+        "bloco": "espelho"
+      },
+      "duracao": 12.483333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Viktor a Furiosa",
+        "seed": 21005,
+        "bloco": "espelho"
+      },
+      "duracao": 15.533333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Viktor a Furiosa",
+        "p2": "Octavia o Lendário",
+        "seed": 21005,
+        "bloco": "espelho"
+      },
+      "duracao": 8.816666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki o Protetor",
+        "p2": "Athena o Protetor",
+        "seed": 21006,
+        "bloco": "espelho"
+      },
+      "duracao": 26.266666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Yuki o Protetor",
+        "seed": 21006,
+        "bloco": "espelho"
+      },
+      "duracao": 23.75,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Tyr o Nobre",
+        "seed": 21007,
+        "bloco": "espelho"
+      },
+      "duracao": 35.53333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Takeshi o Destruidor",
+        "seed": 21007,
+        "bloco": "espelho"
+      },
+      "duracao": 40.0,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 21008,
+        "bloco": "espelho"
+      },
+      "duracao": 16.566666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Winter a Sombria",
+        "p2": "Tyr o Nobre",
+        "seed": 21008,
+        "bloco": "espelho"
+      },
+      "duracao": 20.78333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brutus",
+        "p2": "Achilles a Lendária",
+        "seed": 21009,
+        "bloco": "espelho"
+      },
+      "duracao": 32.21666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Brutus",
+        "seed": 21009,
+        "bloco": "espelho"
+      },
+      "duracao": 32.96666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Baldur",
+        "p2": "Zephyr o Nobre",
+        "seed": 21010,
+        "bloco": "espelho"
+      },
+      "duracao": 17.966666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Baldur",
+        "seed": 21010,
+        "bloco": "espelho"
+      },
+      "duracao": 19.583333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brunhilde",
+        "p2": "Freya a Implacável",
+        "seed": 21011,
+        "bloco": "espelho"
+      },
+      "duracao": 16.966666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Freya a Implacável",
+        "p2": "Brunhilde",
+        "seed": 21011,
+        "bloco": "espelho"
+      },
+      "duracao": 15.666666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucius",
+        "p2": "Viktor a Furiosa",
+        "seed": 21012,
+        "bloco": "espelho"
+      },
+      "duracao": 9.766666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Viktor a Furiosa",
+        "p2": "Lucius",
+        "seed": 21012,
+        "bloco": "espelho"
+      },
+      "duracao": 9.633333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Crixus o Amaldiçoado",
+        "seed": 21013,
+        "bloco": "espelho"
+      },
+      "duracao": 35.8,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus o Amaldiçoado",
+        "p2": "Odin o Nobre",
+        "seed": 21013,
+        "bloco": "espelho"
+      },
+      "duracao": 39.666666666666664,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Lucia o Implacável",
+        "seed": 21014,
+        "bloco": "espelho"
+      },
+      "duracao": 15.483333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucia o Implacável",
+        "p2": "Kenji o Nobre",
+        "seed": 21014,
+        "bloco": "espelho"
+      },
+      "duracao": 8.85,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Seraphina a Justa",
+        "seed": 21015,
+        "bloco": "espelho"
+      },
+      "duracao": 17.0,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Seraphina a Justa",
+        "p2": "Odin o Nobre",
+        "seed": 21015,
+        "bloco": "espelho"
+      },
+      "duracao": 15.9,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Thor o Nobre",
+        "p2": "Raven a Vidente",
+        "seed": 21016,
+        "bloco": "espelho"
+      },
+      "duracao": 7.8999999999999995,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Thor o Nobre",
+        "seed": 21016,
+        "bloco": "espelho"
+      },
+      "duracao": 11.25,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Genevieve do Gelo",
+        "p2": "Silas o Invicto",
+        "seed": 21017,
+        "bloco": "espelho"
+      },
+      "duracao": 25.53333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Silas o Invicto",
+        "p2": "Genevieve do Gelo",
+        "seed": 21017,
+        "bloco": "espelho"
+      },
+      "duracao": 31.383333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus o Amaldiçoado",
+        "p2": "Octavia a Eterna",
+        "seed": 21018,
+        "bloco": "espelho"
+      },
+      "duracao": 33.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Crixus o Amaldiçoado",
+        "seed": 21018,
+        "bloco": "espelho"
+      },
+      "duracao": 30.766666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Brutus #2",
+        "seed": 21019,
+        "bloco": "espelho"
+      },
+      "duracao": 12.083333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brutus #2",
+        "p2": "Zephyr o Nobre",
+        "seed": 21019,
+        "bloco": "espelho"
+      },
+      "duracao": 19.4,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Nyx a Impiedosa",
+        "p2": "Caesar o Protetor",
+        "seed": 21020,
+        "bloco": "espelho"
+      },
+      "duracao": 21.8,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Protetor",
+        "p2": "Nyx a Impiedosa",
+        "seed": 21020,
+        "bloco": "espelho"
+      },
+      "duracao": 20.166666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Ingrid do Gelo",
+        "seed": 21021,
+        "bloco": "espelho"
+      },
+      "duracao": 25.35,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ingrid do Gelo",
+        "p2": "Ajax",
+        "seed": 21021,
+        "bloco": "espelho"
+      },
+      "duracao": 30.066666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Protetor",
+        "p2": "Lucia o Implacável",
+        "seed": 21022,
+        "bloco": "espelho"
+      },
+      "duracao": 13.516666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucia o Implacável",
+        "p2": "Caesar o Protetor",
+        "seed": 21022,
+        "bloco": "espelho"
+      },
+      "duracao": 12.4,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brutus #2",
+        "p2": "Titus a Invicta",
+        "seed": 21023,
+        "bloco": "espelho"
+      },
+      "duracao": 9.683333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Titus a Invicta",
+        "p2": "Brutus #2",
+        "seed": 21023,
+        "bloco": "espelho"
+      },
+      "duracao": 12.616666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Raven a Vidente",
+        "seed": 21024,
+        "bloco": "espelho"
+      },
+      "duracao": 28.849999999999998,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Ajax",
+        "seed": 21024,
+        "bloco": "espelho"
+      },
+      "duracao": 23.366666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Achilles a Lendária",
+        "seed": 21025,
+        "bloco": "espelho"
+      },
+      "duracao": 36.38333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Takeshi o Destruidor",
+        "seed": 21025,
+        "bloco": "espelho"
+      },
+      "duracao": 34.1,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aurora o Bravo",
+        "p2": "Jin a Protetora",
+        "seed": 21026,
+        "bloco": "espelho"
+      },
+      "duracao": 37.483333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Jin a Protetora",
+        "p2": "Aurora o Bravo",
+        "seed": 21026,
+        "bloco": "espelho"
+      },
+      "duracao": 17.016666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Titus a Invicta",
+        "seed": 21027,
+        "bloco": "espelho"
+      },
+      "duracao": 39.766666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Titus a Invicta",
+        "p2": "Raven o Lendário",
+        "seed": 21027,
+        "bloco": "espelho"
+      },
+      "duracao": 30.433333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus o Amaldiçoado",
+        "p2": "Silas o Invicto",
+        "seed": 21028,
+        "bloco": "espelho"
+      },
+      "duracao": 20.78333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Silas o Invicto",
+        "p2": "Perseus o Amaldiçoado",
+        "seed": 21028,
+        "bloco": "espelho"
+      },
+      "duracao": 17.28333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Titus a Invicta",
+        "p2": "Aldric",
+        "seed": 21029,
+        "bloco": "espelho"
+      },
+      "duracao": 13.783333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aldric",
+        "p2": "Titus a Invicta",
+        "seed": 21029,
+        "bloco": "espelho"
+      },
+      "duracao": 19.583333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Kenji o Nobre",
+        "seed": 21030,
+        "bloco": "espelho"
+      },
+      "duracao": 44.11666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Zephyr",
+        "seed": 21030,
+        "bloco": "espelho"
+      },
+      "duracao": 19.45,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Thor o Nobre",
+        "p2": "Freya a Implacável",
+        "seed": 21031,
+        "bloco": "espelho"
+      },
+      "duracao": 17.78333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Freya a Implacável",
+        "p2": "Thor o Nobre",
+        "seed": 21031,
+        "bloco": "espelho"
+      },
+      "duracao": 15.216666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Silas o Invicto",
+        "seed": 21032,
+        "bloco": "espelho"
+      },
+      "duracao": 12.1,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Silas o Invicto",
+        "p2": "Fenrir a Implacável",
+        "seed": 21032,
+        "bloco": "espelho"
+      },
+      "duracao": 26.516666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Elara o Lendário",
+        "seed": 21033,
+        "bloco": "espelho"
+      },
+      "duracao": 28.733333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Elara o Lendário",
+        "p2": "Athena o Protetor",
+        "seed": 21033,
+        "bloco": "espelho"
+      },
+      "duracao": 31.683333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus o Amaldiçoado",
+        "p2": "Lucius",
+        "seed": 21034,
+        "bloco": "espelho"
+      },
+      "duracao": 36.36666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucius",
+        "p2": "Perseus o Amaldiçoado",
+        "seed": 21034,
+        "bloco": "espelho"
+      },
+      "duracao": 20.116666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Gloria a Valente",
+        "seed": 21035,
+        "bloco": "espelho"
+      },
+      "duracao": 26.433333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Gloria a Valente",
+        "p2": "Octavia a Eterna",
+        "seed": 21035,
+        "bloco": "espelho"
+      },
+      "duracao": 38.016666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi",
+        "p2": "Brunhilde",
+        "seed": 21036,
+        "bloco": "espelho"
+      },
+      "duracao": 39.53333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brunhilde",
+        "p2": "Takeshi",
+        "seed": 21036,
+        "bloco": "espelho"
+      },
+      "duracao": 21.233333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi",
+        "p2": "Zephyr a Valente",
+        "seed": 21037,
+        "bloco": "espelho"
+      },
+      "duracao": 15.799999999999999,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Takeshi",
+        "seed": 21037,
+        "bloco": "espelho"
+      },
+      "duracao": 13.85,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tempest o Bravo",
+        "p2": "Perseus",
+        "seed": 21038,
+        "bloco": "espelho"
+      },
+      "duracao": 33.71666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus",
+        "p2": "Tempest o Bravo",
+        "seed": 21038,
+        "bloco": "espelho"
+      },
+      "duracao": 25.0,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Gloria a Valente",
+        "p2": "Athena o Protetor",
+        "seed": 21039,
+        "bloco": "espelho"
+      },
+      "duracao": 23.25,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Gloria a Valente",
+        "seed": 21039,
+        "bloco": "espelho"
+      },
+      "duracao": 12.366666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Artemis a Eterna",
+        "p2": "Yuki o Protetor",
+        "seed": 21040,
+        "bloco": "espelho"
+      },
+      "duracao": 55.96666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki o Protetor",
+        "p2": "Artemis a Eterna",
+        "seed": 21040,
+        "bloco": "espelho"
+      },
+      "duracao": 56.483333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Viktor a Furiosa",
+        "p2": "Thor o Nobre",
+        "seed": 21041,
+        "bloco": "espelho"
+      },
+      "duracao": 7.883333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Thor o Nobre",
+        "p2": "Viktor a Furiosa",
+        "seed": 21041,
+        "bloco": "espelho"
+      },
+      "duracao": 7.316666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Nyx a Impiedosa",
+        "seed": 21042,
+        "bloco": "espelho"
+      },
+      "duracao": 17.53333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Nyx a Impiedosa",
+        "p2": "Zephyr o Nobre",
+        "seed": 21042,
+        "bloco": "espelho"
+      },
+      "duracao": 19.466666666666665,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Thor o Nobre",
+        "seed": 21043,
+        "bloco": "espelho"
+      },
+      "duracao": 41.916666666666664,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Thor o Nobre",
+        "p2": "Achilles a Lendária",
+        "seed": 21043,
+        "bloco": "espelho"
+      },
+      "duracao": 20.55,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Takeshi",
+        "seed": 21044,
+        "bloco": "espelho"
+      },
+      "duracao": 79.08333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi",
+        "p2": "Octavia o Lendário",
+        "seed": 21044,
+        "bloco": "espelho"
+      },
+      "duracao": 61.63333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Silas o Invicto",
+        "p2": "Cassius o Cruel",
+        "seed": 21045,
+        "bloco": "espelho"
+      },
+      "duracao": 25.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cassius o Cruel",
+        "p2": "Silas o Invicto",
+        "seed": 21045,
+        "bloco": "espelho"
+      },
+      "duracao": 24.53333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tempest o Bravo",
+        "p2": "Thor o Nobre",
+        "seed": 21046,
+        "bloco": "espelho"
+      },
+      "duracao": 26.066666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Thor o Nobre",
+        "p2": "Tempest o Bravo",
+        "seed": 21046,
+        "bloco": "espelho"
+      },
+      "duracao": 22.766666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Baldur",
+        "seed": 21047,
+        "bloco": "espelho"
+      },
+      "duracao": 18.733333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Baldur",
+        "p2": "Athena o Protetor",
+        "seed": 21047,
+        "bloco": "espelho"
+      },
+      "duracao": 16.666666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Yuki a Lendária",
+        "seed": 21048,
+        "bloco": "espelho"
+      },
+      "duracao": 27.583333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki a Lendária",
+        "p2": "Achilles a Lendária",
+        "seed": 21048,
+        "bloco": "espelho"
+      },
+      "duracao": 18.216666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Sigrid a Sábia",
+        "seed": 21049,
+        "bloco": "espelho"
+      },
+      "duracao": 25.116666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Sigrid a Sábia",
+        "p2": "Hera o Profeta",
+        "seed": 21049,
+        "bloco": "espelho"
+      },
+      "duracao": 26.466666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Invicta",
+        "p2": "Raven",
+        "seed": 21050,
+        "bloco": "espelho"
+      },
+      "duracao": 19.45,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven",
+        "p2": "Zephyr a Invicta",
+        "seed": 21050,
+        "bloco": "espelho"
+      },
+      "duracao": 18.616666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aurora o Bravo",
+        "p2": "Zephyr o Nobre",
+        "seed": 21051,
+        "bloco": "espelho"
+      },
+      "duracao": 22.466666666666665,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Aurora o Bravo",
+        "seed": 21051,
+        "bloco": "espelho"
+      },
+      "duracao": 18.03333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Marcus o Amaldiçoado",
+        "p2": "Tempest o Bravo",
+        "seed": 21052,
+        "bloco": "espelho"
+      },
+      "duracao": 13.266666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tempest o Bravo",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 21052,
+        "bloco": "espelho"
+      },
+      "duracao": 18.233333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Gloria a Valente",
+        "p2": "Zephyr a Lendária",
+        "seed": 21053,
+        "bloco": "espelho"
+      },
+      "duracao": 40.93333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Gloria a Valente",
+        "seed": 21053,
+        "bloco": "espelho"
+      },
+      "duracao": 12.516666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Raven a Vidente",
+        "seed": 21054,
+        "bloco": "espelho"
+      },
+      "duracao": 13.416666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Athena o Protetor",
+        "seed": 21054,
+        "bloco": "espelho"
+      },
+      "duracao": 17.116666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Crixus o Amaldiçoado",
+        "seed": 21055,
+        "bloco": "espelho"
+      },
+      "duracao": 27.53333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus o Amaldiçoado",
+        "p2": "Takeshi o Destruidor",
+        "seed": 21055,
+        "bloco": "espelho"
+      },
+      "duracao": 23.6,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki a Lendária",
+        "p2": "Zephyr a Invicta",
+        "seed": 21056,
+        "bloco": "espelho"
+      },
+      "duracao": 16.366666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Invicta",
+        "p2": "Yuki a Lendária",
+        "seed": 21056,
+        "bloco": "espelho"
+      },
+      "duracao": 20.0,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Adelaide a Justa",
+        "seed": 21057,
+        "bloco": "espelho"
+      },
+      "duracao": 21.516666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Cedric da Luz",
+        "seed": 21057,
+        "bloco": "espelho"
+      },
+      "duracao": 38.13333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki a Lendária",
+        "p2": "Zephyr",
+        "seed": 21058,
+        "bloco": "espelho"
+      },
+      "duracao": 26.65,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Yuki a Lendária",
+        "seed": 21058,
+        "bloco": "espelho"
+      },
+      "duracao": 27.433333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Jin a Protetora",
+        "seed": 21059,
+        "bloco": "espelho"
+      },
+      "duracao": 11.85,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Jin a Protetora",
+        "p2": "Leoric a Impiedosa",
+        "seed": 21059,
+        "bloco": "espelho"
+      },
+      "duracao": 11.1,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Selene das Chamas",
+        "p2": "Viktor a Furiosa",
+        "seed": 30000,
+        "bloco": "matriz"
+      },
+      "duracao": 17.9,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Fenrir a Implacável",
+        "seed": 30001,
+        "bloco": "matriz"
+      },
+      "duracao": 17.233333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Thor o Nobre",
+        "seed": 30002,
+        "bloco": "matriz"
+      },
+      "duracao": 10.716666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Yuki o Protetor",
+        "seed": 30003,
+        "bloco": "matriz"
+      },
+      "duracao": 24.5,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Brutus",
+        "seed": 30010,
+        "bloco": "matriz"
+      },
+      "duracao": 23.633333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Freya a Implacável",
+        "seed": 30011,
+        "bloco": "matriz"
+      },
+      "duracao": 14.799999999999999,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Protetor",
+        "p2": "Hera o Profeta",
+        "seed": 30012,
+        "bloco": "matriz"
+      },
+      "duracao": 36.4,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Artemis a Eterna",
+        "p2": "Freya a Implacável",
+        "seed": 30013,
+        "bloco": "matriz"
+      },
+      "duracao": 48.55,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Adelaide a Justa",
+        "seed": 30020,
+        "bloco": "matriz"
+      },
+      "duracao": 14.016666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Selene das Chamas",
+        "seed": 30021,
+        "bloco": "matriz"
+      },
+      "duracao": 32.53333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Selene das Chamas",
+        "p2": "Nyx a Impiedosa",
+        "seed": 30022,
+        "bloco": "matriz"
+      },
+      "duracao": 21.883333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Gloria a Valente",
+        "p2": "Lucia o Implacável",
+        "seed": 30023,
+        "bloco": "matriz"
+      },
+      "duracao": 9.216666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Selene das Chamas",
+        "p2": "Akemi a Valente",
+        "seed": 30030,
+        "bloco": "matriz"
+      },
+      "duracao": 26.849999999999998,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Lendária",
+        "p2": "Yuki o Protetor",
+        "seed": 30031,
+        "bloco": "matriz"
+      },
+      "duracao": 15.45,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Sábio",
+        "p2": "Raven a Lendária",
+        "seed": 30032,
+        "bloco": "matriz"
+      },
+      "duracao": 28.099999999999998,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Lendária",
+        "p2": "Lucius",
+        "seed": 30033,
+        "bloco": "matriz"
+      },
+      "duracao": 24.966666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucius",
+        "p2": "Brunhilde",
+        "seed": 30040,
+        "bloco": "matriz"
+      },
+      "duracao": 20.133333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi",
+        "p2": "Selene das Chamas",
+        "seed": 30041,
+        "bloco": "matriz"
+      },
+      "duracao": 33.0,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Baldur",
+        "seed": 30042,
+        "bloco": "matriz"
+      },
+      "duracao": 24.4,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brutus #2",
+        "p2": "Viktor a Furiosa",
+        "seed": 30043,
+        "bloco": "matriz"
+      },
+      "duracao": 11.966666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucius",
+        "p2": "Titus a Invicta",
+        "seed": 30050,
+        "bloco": "matriz"
+      },
+      "duracao": 9.483333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Viktor a Furiosa",
+        "seed": 30051,
+        "bloco": "matriz"
+      },
+      "duracao": 17.633333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Zephyr a Invicta",
+        "seed": 30052,
+        "bloco": "matriz"
+      },
+      "duracao": 33.483333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Selene das Chamas",
+        "seed": 30053,
+        "bloco": "matriz"
+      },
+      "duracao": 12.816666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Sábio",
+        "p2": "Aldric",
+        "seed": 30060,
+        "bloco": "matriz"
+      },
+      "duracao": 19.466666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Athena o Protetor",
+        "seed": 30061,
+        "bloco": "matriz"
+      },
+      "duracao": 36.416666666666664,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Viktor a Furiosa",
+        "p2": "Cedric da Luz",
+        "seed": 30062,
+        "bloco": "matriz"
+      },
+      "duracao": 20.416666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Seraphina a Justa",
+        "p2": "Takeshi o Destruidor",
+        "seed": 30063,
+        "bloco": "matriz"
+      },
+      "duracao": 46.86666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Viktor a Furiosa",
+        "p2": "Ingrid do Gelo",
+        "seed": 30070,
+        "bloco": "matriz"
+      },
+      "duracao": 9.383333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cassius o Cruel",
+        "p2": "Lucia o Implacável",
+        "seed": 30071,
+        "bloco": "matriz"
+      },
+      "duracao": 16.9,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Selene das Chamas",
+        "p2": "Zephyr",
+        "seed": 30072,
+        "bloco": "matriz"
+      },
+      "duracao": 38.416666666666664,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Odin o Nobre",
+        "seed": 30073,
+        "bloco": "matriz"
+      },
+      "duracao": 25.333333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Tempest o Bravo",
+        "seed": 30080,
+        "bloco": "matriz"
+      },
+      "duracao": 26.066666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Raven",
+        "seed": 30081,
+        "bloco": "matriz"
+      },
+      "duracao": 22.0,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Elara o Lendário",
+        "seed": 30082,
+        "bloco": "matriz"
+      },
+      "duracao": 30.333333333333332,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Artemis a Eterna",
+        "seed": 30083,
+        "bloco": "matriz"
+      },
+      "duracao": 32.516666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus o Amaldiçoado",
+        "p2": "Gloria a Valente",
+        "seed": 30090,
+        "bloco": "matriz"
+      },
+      "duracao": 26.133333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Silas o Invicto",
+        "p2": "Zephyr o Nobre",
+        "seed": 30091,
+        "bloco": "matriz"
+      },
+      "duracao": 24.333333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Artemis a Eterna",
+        "p2": "Octavia o Lendário",
+        "seed": 30092,
+        "bloco": "matriz"
+      },
+      "duracao": 45.333333333333336,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Tempest o Bravo",
+        "seed": 30093,
+        "bloco": "matriz"
+      },
+      "duracao": 33.63333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kai o Nobre",
+        "p2": "Raven a Lendária",
+        "seed": 30100,
+        "bloco": "matriz"
+      },
+      "duracao": 15.466666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Jin a Protetora",
+        "p2": "Kai o Nobre",
+        "seed": 30101,
+        "bloco": "matriz"
+      },
+      "duracao": 16.716666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kai o Nobre",
+        "p2": "Octavia a Eterna",
+        "seed": 30102,
+        "bloco": "matriz"
+      },
+      "duracao": 42.416666666666664,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Akemi a Valente",
+        "p2": "Tempest o Bravo",
+        "seed": 30103,
+        "bloco": "matriz"
+      },
+      "duracao": 16.75,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 30110,
+        "bloco": "matriz"
+      },
+      "duracao": 19.933333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brunhilde",
+        "p2": "Artemis a Eterna",
+        "seed": 30111,
+        "bloco": "matriz"
+      },
+      "duracao": 23.2,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kai o Nobre",
+        "p2": "Raven a Vidente",
+        "seed": 30112,
+        "bloco": "matriz"
+      },
+      "duracao": 12.15,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Sigrid a Sábia",
+        "p2": "Perseus o Amaldiçoado",
+        "seed": 30113,
+        "bloco": "matriz"
+      },
+      "duracao": 28.416666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kai o Nobre",
+        "p2": "Ajax",
+        "seed": 30120,
+        "bloco": "matriz"
+      },
+      "duracao": 26.4,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Raven",
+        "seed": 30121,
+        "bloco": "matriz"
+      },
+      "duracao": 31.849999999999998,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven",
+        "p2": "Zephyr a Invicta",
+        "seed": 30122,
+        "bloco": "matriz"
+      },
+      "duracao": 18.53333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Crixus o Amaldiçoado",
+        "seed": 30123,
+        "bloco": "matriz"
+      },
+      "duracao": 29.316666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Winter a Sombria",
+        "seed": 30130,
+        "bloco": "matriz"
+      },
+      "duracao": 11.7,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aldric",
+        "p2": "Raven o Lendário",
+        "seed": 30131,
+        "bloco": "matriz"
+      },
+      "duracao": 14.566666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 30132,
+        "bloco": "matriz"
+      },
+      "duracao": 30.333333333333332,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aldric",
+        "p2": "Crixus o Amaldiçoado",
+        "seed": 30133,
+        "bloco": "matriz"
+      },
+      "duracao": 21.0,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven",
+        "p2": "Achilles a Lendária",
+        "seed": 30140,
+        "bloco": "matriz"
+      },
+      "duracao": 17.966666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cassius o Cruel",
+        "p2": "Raven",
+        "seed": 30141,
+        "bloco": "matriz"
+      },
+      "duracao": 31.15,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Artemis a Eterna",
+        "p2": "Ingrid do Gelo",
+        "seed": 30142,
+        "bloco": "matriz"
+      },
+      "duracao": 17.166666666666668,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus a Sábia",
+        "p2": "Tempest o Bravo",
+        "seed": 30143,
+        "bloco": "matriz"
+      },
+      "duracao": 14.783333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Adelaide a Justa",
+        "seed": 30150,
+        "bloco": "matriz"
+      },
+      "duracao": 25.75,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki a Lendária",
+        "p2": "Zephyr a Valente",
+        "seed": 30151,
+        "bloco": "matriz"
+      },
+      "duracao": 13.533333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Gloria a Valente",
+        "seed": 30152,
+        "bloco": "matriz"
+      },
+      "duracao": 55.06666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Octavia o Lendário",
+        "seed": 30153,
+        "bloco": "matriz"
+      },
+      "duracao": 23.916666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Gloria a Valente",
+        "p2": "Octavia a Eterna",
+        "seed": 30160,
+        "bloco": "matriz"
+      },
+      "duracao": 22.216666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Jin a Protetora",
+        "p2": "Silas o Invicto",
+        "seed": 30161,
+        "bloco": "matriz"
+      },
+      "duracao": 16.216666666666665,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Silas o Invicto",
+        "p2": "Akemi a Valente",
+        "seed": 30162,
+        "bloco": "matriz"
+      },
+      "duracao": 21.35,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Jin a Protetora",
+        "p2": "Adelaide a Justa",
+        "seed": 30163,
+        "bloco": "matriz"
+      },
+      "duracao": 19.8,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Brutus #2",
+        "seed": 30170,
+        "bloco": "matriz"
+      },
+      "duracao": 14.433333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Sigrid a Sábia",
+        "p2": "Nyx a Impiedosa",
+        "seed": 30171,
+        "bloco": "matriz"
+      },
+      "duracao": 25.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Gloria a Valente",
+        "p2": "Sigrid a Sábia",
+        "seed": 30172,
+        "bloco": "matriz"
+      },
+      "duracao": 43.35,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Sigrid a Sábia",
+        "p2": "Aurora o Bravo",
+        "seed": 30173,
+        "bloco": "matriz"
+      },
+      "duracao": 48.86666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Titus a Invicta",
+        "seed": 30180,
+        "bloco": "matriz"
+      },
+      "duracao": 29.28333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Invicta",
+        "p2": "Yuki a Lendária",
+        "seed": 30181,
+        "bloco": "matriz"
+      },
+      "duracao": 24.433333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Gloria a Valente",
+        "p2": "Titus a Invicta",
+        "seed": 30182,
+        "bloco": "matriz"
+      },
+      "duracao": 24.933333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Titus a Invicta",
+        "p2": "Zephyr a Valente",
+        "seed": 30183,
+        "bloco": "matriz"
+      },
+      "duracao": 36.1,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Silas o Invicto",
+        "p2": "Aldric",
+        "seed": 30190,
+        "bloco": "matriz"
+      },
+      "duracao": 30.416666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Winter a Sombria",
+        "p2": "Silas o Invicto",
+        "seed": 30191,
+        "bloco": "matriz"
+      },
+      "duracao": 36.166666666666664,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Silas o Invicto",
+        "p2": "Phoenix",
+        "seed": 30192,
+        "bloco": "matriz"
+      },
+      "duracao": 15.45,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Phoenix",
+        "p2": "Gloria a Valente",
+        "seed": 30193,
+        "bloco": "matriz"
+      },
+      "duracao": 13.816666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Zephyr",
+        "seed": 30200,
+        "bloco": "matriz"
+      },
+      "duracao": 28.8,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Aurora o Bravo",
+        "seed": 30201,
+        "bloco": "matriz"
+      },
+      "duracao": 37.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Zephyr a Lendária",
+        "seed": 30202,
+        "bloco": "matriz"
+      },
+      "duracao": 13.233333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Yuki a Lendária",
+        "seed": 30203,
+        "bloco": "matriz"
+      },
+      "duracao": 36.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Raven a Lendária",
+        "seed": 30210,
+        "bloco": "matriz"
+      },
+      "duracao": 20.233333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Jin a Protetora",
+        "seed": 30211,
+        "bloco": "matriz"
+      },
+      "duracao": 18.133333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Lendária",
+        "p2": "Octavia a Eterna",
+        "seed": 30212,
+        "bloco": "matriz"
+      },
+      "duracao": 19.1,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Lendária",
+        "p2": "Octavia a Eterna",
+        "seed": 30213,
+        "bloco": "matriz"
+      },
+      "duracao": 18.28333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Jin a Protetora",
+        "p2": "Brunhilde",
+        "seed": 30220,
+        "bloco": "matriz"
+      },
+      "duracao": 10.333333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Jin a Protetora",
+        "seed": 30221,
+        "bloco": "matriz"
+      },
+      "duracao": 21.1,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Baldur",
+        "seed": 30222,
+        "bloco": "matriz"
+      },
+      "duracao": 16.433333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Raven a Lendária",
+        "seed": 30223,
+        "bloco": "matriz"
+      },
+      "duracao": 17.183333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Lendária",
+        "p2": "Leoric a Impiedosa",
+        "seed": 30230,
+        "bloco": "matriz"
+      },
+      "duracao": 13.616666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Akemi a Valente",
+        "seed": 30231,
+        "bloco": "matriz"
+      },
+      "duracao": 22.383333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Lendária",
+        "p2": "Ajax",
+        "seed": 30232,
+        "bloco": "matriz"
+      },
+      "duracao": 28.166666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Jin a Protetora",
+        "seed": 30233,
+        "bloco": "matriz"
+      },
+      "duracao": 25.35,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Akemi a Valente",
+        "p2": "Phoenix",
+        "seed": 30240,
+        "bloco": "matriz"
+      },
+      "duracao": 10.633333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aldric",
+        "p2": "Octavia a Eterna",
+        "seed": 30241,
+        "bloco": "matriz"
+      },
+      "duracao": 23.633333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Lendária",
+        "p2": "Cedric da Luz",
+        "seed": 30242,
+        "bloco": "matriz"
+      },
+      "duracao": 20.183333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Octavia a Eterna",
+        "seed": 30243,
+        "bloco": "matriz"
+      },
+      "duracao": 65.76666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Jin a Protetora",
+        "p2": "Tyr o Nobre",
+        "seed": 30250,
+        "bloco": "matriz"
+      },
+      "duracao": 21.466666666666665,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Raven a Lendária",
+        "seed": 30251,
+        "bloco": "matriz"
+      },
+      "duracao": 22.816666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Zephyr",
+        "seed": 30252,
+        "bloco": "matriz"
+      },
+      "duracao": 32.81666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus a Sábia",
+        "p2": "Jin a Protetora",
+        "seed": 30253,
+        "bloco": "matriz"
+      },
+      "duracao": 15.25,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus",
+        "p2": "Baldur",
+        "seed": 30260,
+        "bloco": "matriz"
+      },
+      "duracao": 16.683333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Genevieve do Gelo",
+        "p2": "Kenji o Nobre",
+        "seed": 30261,
+        "bloco": "matriz"
+      },
+      "duracao": 51.61666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Marcus o Amaldiçoado",
+        "p2": "Baldur",
+        "seed": 30262,
+        "bloco": "matriz"
+      },
+      "duracao": 19.78333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brunhilde",
+        "p2": "Sigrid a Sábia",
+        "seed": 30263,
+        "bloco": "matriz"
+      },
+      "duracao": 28.4,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Ajax",
+        "seed": 30270,
+        "bloco": "matriz"
+      },
+      "duracao": 38.8,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 30271,
+        "bloco": "matriz"
+      },
+      "duracao": 25.183333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Marcus o Amaldiçoado",
+        "p2": "Titus a Invicta",
+        "seed": 30272,
+        "bloco": "matriz"
+      },
+      "duracao": 21.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Invicta",
+        "p2": "Genevieve do Gelo",
+        "seed": 30273,
+        "bloco": "matriz"
+      },
+      "duracao": 8.816666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi",
+        "p2": "Winter a Sombria",
+        "seed": 30280,
+        "bloco": "matriz"
+      },
+      "duracao": 21.15,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Seraphina a Justa",
+        "p2": "Kenji o Nobre",
+        "seed": 30281,
+        "bloco": "matriz"
+      },
+      "duracao": 43.03333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi",
+        "p2": "Seraphina a Justa",
+        "seed": 30282,
+        "bloco": "matriz"
+      },
+      "duracao": 78.78333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Phoenix",
+        "p2": "Takeshi",
+        "seed": 30283,
+        "bloco": "matriz"
+      },
+      "duracao": 23.616666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brutus #2",
+        "p2": "Tyr o Nobre",
+        "seed": 30290,
+        "bloco": "matriz"
+      },
+      "duracao": 15.799999999999999,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus a Sábia",
+        "p2": "Perseus",
+        "seed": 30291,
+        "bloco": "matriz"
+      },
+      "duracao": 30.466666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus",
+        "p2": "Cassius o Cruel",
+        "seed": 30292,
+        "bloco": "matriz"
+      },
+      "duracao": 32.63333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cassius o Cruel",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 30293,
+        "bloco": "matriz"
+      },
+      "duracao": 35.083333333333336,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Invicta",
+        "p2": "Titus a Invicta",
+        "seed": 30300,
+        "bloco": "matriz"
+      },
+      "duracao": 12.05,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Titus a Invicta",
+        "p2": "Zephyr a Invicta",
+        "seed": 30301,
+        "bloco": "matriz"
+      },
+      "duracao": 13.416666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Invicta",
+        "p2": "Titus a Invicta",
+        "seed": 30302,
+        "bloco": "matriz"
+      },
+      "duracao": 18.5,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Leoric a Impiedosa",
+        "seed": 30303,
+        "bloco": "matriz"
+      },
+      "duracao": 15.933333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Aldric",
+        "seed": 30310,
+        "bloco": "matriz"
+      },
+      "duracao": 42.166666666666664,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Titus a Invicta",
+        "seed": 30311,
+        "bloco": "matriz"
+      },
+      "duracao": 44.166666666666664,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Seraphina a Justa",
+        "seed": 30312,
+        "bloco": "matriz"
+      },
+      "duracao": 43.233333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Phoenix",
+        "p2": "Leoric a Impiedosa",
+        "seed": 30313,
+        "bloco": "matriz"
+      },
+      "duracao": 16.016666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Tyr o Nobre",
+        "seed": 30320,
+        "bloco": "matriz"
+      },
+      "duracao": 28.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Leoric a Impiedosa",
+        "seed": 30321,
+        "bloco": "matriz"
+      },
+      "duracao": 31.65,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Cassius o Cruel",
+        "seed": 30322,
+        "bloco": "matriz"
+      },
+      "duracao": 51.18333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cassius o Cruel",
+        "p2": "Ajax",
+        "seed": 30323,
+        "bloco": "matriz"
+      },
+      "duracao": 61.483333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Phoenix",
+        "p2": "Winter a Sombria",
+        "seed": 30330,
+        "bloco": "matriz"
+      },
+      "duracao": 31.683333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Winter a Sombria",
+        "seed": 30331,
+        "bloco": "matriz"
+      },
+      "duracao": 32.06666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Seraphina a Justa",
+        "seed": 30332,
+        "bloco": "matriz"
+      },
+      "duracao": 78.38333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aldric",
+        "p2": "Seraphina a Justa",
+        "seed": 30333,
+        "bloco": "matriz"
+      },
+      "duracao": 30.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Phoenix",
+        "p2": "Achilles a Lendária",
+        "seed": 30340,
+        "bloco": "matriz"
+      },
+      "duracao": 26.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Phoenix",
+        "seed": 30341,
+        "bloco": "matriz"
+      },
+      "duracao": 22.55,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Crixus a Sábia",
+        "seed": 30342,
+        "bloco": "matriz"
+      },
+      "duracao": 35.583333333333336,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Winter a Sombria",
+        "seed": 30343,
+        "bloco": "matriz"
+      },
+      "duracao": 31.45,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Tyr o Nobre",
+        "seed": 30350,
+        "bloco": "matriz"
+      },
+      "duracao": 44.8,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Cassius o Cruel",
+        "seed": 30351,
+        "bloco": "matriz"
+      },
+      "duracao": 64.26666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Cassius o Cruel",
+        "seed": 30352,
+        "bloco": "matriz"
+      },
+      "duracao": 57.61666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Crixus a Sábia",
+        "seed": 30353,
+        "bloco": "matriz"
+      },
+      "duracao": 21.7,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Celeste",
+        "seed": 12000,
+        "bloco": "classes"
+      },
+      "duracao": 24.65,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Phoenix",
+        "seed": 12001,
+        "bloco": "classes"
+      },
+      "duracao": 14.799999999999999,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Brutus #2",
+        "seed": 12002,
+        "bloco": "classes"
+      },
+      "duracao": 9.866666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Crixus a Sábia",
+        "seed": 12003,
+        "bloco": "classes"
+      },
+      "duracao": 20.78333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Kai o Nobre",
+        "seed": 12004,
+        "bloco": "classes"
+      },
+      "duracao": 18.516666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Kenji o Nobre",
+        "seed": 12005,
+        "bloco": "classes"
+      },
+      "duracao": 47.15,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Winter a Sombria",
+        "p2": "Zephyr a Lendária",
+        "seed": 12006,
+        "bloco": "classes"
+      },
+      "duracao": 34.18333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Thor o Nobre",
+        "seed": 12007,
+        "bloco": "classes"
+      },
+      "duracao": 9.8,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Athena o Protetor",
+        "seed": 12008,
+        "bloco": "classes"
+      },
+      "duracao": 21.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Zephyr o Nobre",
+        "seed": 12009,
+        "bloco": "classes"
+      },
+      "duracao": 13.783333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Phoenix",
+        "p2": "Nyx a Impiedosa",
+        "seed": 12010,
+        "bloco": "classes"
+      },
+      "duracao": 14.533333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Celeste",
+        "seed": 12011,
+        "bloco": "classes"
+      },
+      "duracao": 28.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Lendária",
+        "p2": "Baldur",
+        "seed": 12012,
+        "bloco": "classes"
+      },
+      "duracao": 12.583333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Tyr o Nobre",
+        "seed": 12013,
+        "bloco": "classes"
+      },
+      "duracao": 38.9,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aurora o Bravo",
+        "p2": "Freya a Implacável",
+        "seed": 12014,
+        "bloco": "classes"
+      },
+      "duracao": 17.983333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Akemi a Valente",
+        "seed": 12015,
+        "bloco": "classes"
+      },
+      "duracao": 13.6,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Seraphina a Justa",
+        "p2": "Icarus",
+        "seed": 12016,
+        "bloco": "classes"
+      },
+      "duracao": 36.25,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Akemi a Valente",
+        "seed": 12017,
+        "bloco": "classes"
+      },
+      "duracao": 33.416666666666664,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Perseus o Amaldiçoado",
+        "seed": 12018,
+        "bloco": "classes"
+      },
+      "duracao": 77.68333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Sigrid a Sábia",
+        "seed": 12019,
+        "bloco": "classes"
+      },
+      "duracao": 46.71666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Athena o Protetor",
+        "seed": 12020,
+        "bloco": "classes"
+      },
+      "duracao": 5.4,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus",
+        "p2": "Genevieve do Gelo",
+        "seed": 12021,
+        "bloco": "classes"
+      },
+      "duracao": 22.25,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus",
+        "p2": "Aurora o Bravo",
+        "seed": 12022,
+        "bloco": "classes"
+      },
+      "duracao": 46.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Titus a Invicta",
+        "p2": "Athena o Protetor",
+        "seed": 12023,
+        "bloco": "classes"
+      },
+      "duracao": 10.533333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Fenrir a Implacável",
+        "seed": 12024,
+        "bloco": "classes"
+      },
+      "duracao": 24.5,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Ingrid do Gelo",
+        "seed": 12025,
+        "bloco": "classes"
+      },
+      "duracao": 22.95,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Invicta",
+        "p2": "Brutus #2",
+        "seed": 12026,
+        "bloco": "classes"
+      },
+      "duracao": 9.883333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cassius o Cruel",
+        "p2": "Zephyr a Lendária",
+        "seed": 12027,
+        "bloco": "classes"
+      },
+      "duracao": 31.3,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Marcus o Amaldiçoado",
+        "p2": "Caesar o Protetor",
+        "seed": 12028,
+        "bloco": "classes"
+      },
+      "duracao": 13.766666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Aldric",
+        "seed": 12029,
+        "bloco": "classes"
+      },
+      "duracao": 23.333333333333332,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Kenji o Nobre",
+        "seed": 12030,
+        "bloco": "classes"
+      },
+      "duracao": 13.0,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Brunhilde",
+        "seed": 12031,
+        "bloco": "classes"
+      },
+      "duracao": 16.65,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Achilles a Lendária",
+        "seed": 12032,
+        "bloco": "classes"
+      },
+      "duracao": 43.68333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucia o Implacável",
+        "p2": "Adelaide a Justa",
+        "seed": 12033,
+        "bloco": "classes"
+      },
+      "duracao": 6.083333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tempest o Bravo",
+        "p2": "Crixus a Sábia",
+        "seed": 12034,
+        "bloco": "classes"
+      },
+      "duracao": 22.116666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Hera o Profeta",
+        "seed": 12035,
+        "bloco": "classes"
+      },
+      "duracao": 30.25,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Celeste",
+        "p2": "Silas o Invicto",
+        "seed": 12036,
+        "bloco": "classes"
+      },
+      "duracao": 26.833333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Artemis a Eterna",
+        "p2": "Phoenix",
+        "seed": 12037,
+        "bloco": "classes"
+      },
+      "duracao": 16.216666666666665,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Phoenix",
+        "seed": 12038,
+        "bloco": "classes"
+      },
+      "duracao": 12.183333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Sábio",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 12039,
+        "bloco": "classes"
+      },
+      "duracao": 19.083333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Titus a Invicta",
+        "p2": "Lucius",
+        "seed": 12040,
+        "bloco": "classes"
+      },
+      "duracao": 24.65,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 12041,
+        "bloco": "classes"
+      },
+      "duracao": 15.266666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Fenrir a Implacável",
+        "seed": 12042,
+        "bloco": "classes"
+      },
+      "duracao": 16.0,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aldric",
+        "p2": "Kai o Nobre",
+        "seed": 12043,
+        "bloco": "classes"
+      },
+      "duracao": 26.333333333333332,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Ingrid do Gelo",
+        "seed": 12044,
+        "bloco": "classes"
+      },
+      "duracao": 18.95,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Zephyr a Lendária",
+        "seed": 12045,
+        "bloco": "classes"
+      },
+      "duracao": 19.65,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus a Sábia",
+        "p2": "Winter a Sombria",
+        "seed": 12046,
+        "bloco": "classes"
+      },
+      "duracao": 27.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Leoric a Impiedosa",
+        "seed": 12047,
+        "bloco": "classes"
+      },
+      "duracao": 20.15,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Baldur",
+        "p2": "Raven",
+        "seed": 12048,
+        "bloco": "classes"
+      },
+      "duracao": 19.75,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Brunhilde",
+        "seed": 12049,
+        "bloco": "classes"
+      },
+      "duracao": 32.06666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aurora o Bravo",
+        "p2": "Titus a Invicta",
+        "seed": 12050,
+        "bloco": "classes"
+      },
+      "duracao": 23.45,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Protetor",
+        "p2": "Kenji o Nobre",
+        "seed": 12051,
+        "bloco": "classes"
+      },
+      "duracao": 26.53333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ingrid do Gelo",
+        "p2": "Tempest o Bravo",
+        "seed": 12052,
+        "bloco": "classes"
+      },
+      "duracao": 17.766666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Viktor a Furiosa",
+        "seed": 12053,
+        "bloco": "classes"
+      },
+      "duracao": 11.766666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Viktor a Furiosa",
+        "p2": "Seraphina a Justa",
+        "seed": 12054,
+        "bloco": "classes"
+      },
+      "duracao": 11.533333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Sábio",
+        "p2": "Yuki a Lendária",
+        "seed": 12055,
+        "bloco": "classes"
+      },
+      "duracao": 15.366666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Titus a Invicta",
+        "seed": 12056,
+        "bloco": "classes"
+      },
+      "duracao": 38.0,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Crixus o Amaldiçoado",
+        "seed": 12057,
+        "bloco": "classes"
+      },
+      "duracao": 27.766666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Tyr o Nobre",
+        "seed": 12058,
+        "bloco": "classes"
+      },
+      "duracao": 22.633333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tempest o Bravo",
+        "p2": "Phoenix",
+        "seed": 12059,
+        "bloco": "classes"
+      },
+      "duracao": 12.8,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Thor o Nobre",
+        "p2": "Ajax",
+        "seed": 12060,
+        "bloco": "classes"
+      },
+      "duracao": 31.233333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Titus a Invicta",
+        "p2": "Yuki a Lendária",
+        "seed": 12061,
+        "bloco": "classes"
+      },
+      "duracao": 20.766666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Akemi a Valente",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 12062,
+        "bloco": "classes"
+      },
+      "duracao": 11.166666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Invicta",
+        "p2": "Perseus",
+        "seed": 12063,
+        "bloco": "classes"
+      },
+      "duracao": 23.066666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus",
+        "p2": "Zephyr o Nobre",
+        "seed": 12064,
+        "bloco": "classes"
+      },
+      "duracao": 20.5,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Nyx a Impiedosa",
+        "seed": 12065,
+        "bloco": "classes"
+      },
+      "duracao": 58.733333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Cedric da Luz",
+        "seed": 12066,
+        "bloco": "classes"
+      },
+      "duracao": 22.2,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Marcus o Amaldiçoado",
+        "p2": "Silas o Invicto",
+        "seed": 12067,
+        "bloco": "classes"
+      },
+      "duracao": 11.25,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aurora o Bravo",
+        "p2": "Artemis a Eterna",
+        "seed": 12068,
+        "bloco": "classes"
+      },
+      "duracao": 18.75,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Caesar o Sábio",
+        "seed": 12069,
+        "bloco": "classes"
+      },
+      "duracao": 38.11666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Yuki a Lendária",
+        "seed": 12070,
+        "bloco": "classes"
+      },
+      "duracao": 33.46666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Protetor",
+        "p2": "Icarus",
+        "seed": 12071,
+        "bloco": "classes"
+      },
+      "duracao": 35.11666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Ingrid do Gelo",
+        "seed": 12072,
+        "bloco": "classes"
+      },
+      "duracao": 18.483333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Athena o Protetor",
+        "seed": 12073,
+        "bloco": "classes"
+      },
+      "duracao": 23.03333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aldric",
+        "p2": "Achilles a Lendária",
+        "seed": 12074,
+        "bloco": "classes"
+      },
+      "duracao": 34.75,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Tempest o Bravo",
+        "seed": 12075,
+        "bloco": "classes"
+      },
+      "duracao": 17.85,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Winter a Sombria",
+        "seed": 12076,
+        "bloco": "classes"
+      },
+      "duracao": 23.816666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Artemis a Eterna",
+        "p2": "Sigrid a Sábia",
+        "seed": 12077,
+        "bloco": "classes"
+      },
+      "duracao": 29.433333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Viktor a Furiosa",
+        "p2": "Caesar o Sábio",
+        "seed": 12078,
+        "bloco": "classes"
+      },
+      "duracao": 19.333333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Jin a Protetora",
+        "seed": 12079,
+        "bloco": "classes"
+      },
+      "duracao": 20.516666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Raven o Lendário",
+        "seed": 12080,
+        "bloco": "classes"
+      },
+      "duracao": 15.2,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brunhilde",
+        "p2": "Adelaide a Justa",
+        "seed": 12081,
+        "bloco": "classes"
+      },
+      "duracao": 28.833333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Odin o Nobre",
+        "seed": 12082,
+        "bloco": "classes"
+      },
+      "duracao": 10.3,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brutus #2",
+        "p2": "Selene das Chamas",
+        "seed": 12083,
+        "bloco": "classes"
+      },
+      "duracao": 20.5,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Zephyr o Nobre",
+        "seed": 12084,
+        "bloco": "classes"
+      },
+      "duracao": 19.6,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Caesar o Protetor",
+        "seed": 12085,
+        "bloco": "classes"
+      },
+      "duracao": 12.8,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki a Lendária",
+        "p2": "Athena o Protetor",
+        "seed": 12086,
+        "bloco": "classes"
+      },
+      "duracao": 10.633333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Perseus o Amaldiçoado",
+        "seed": 12087,
+        "bloco": "classes"
+      },
+      "duracao": 10.366666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Caesar o Protetor",
+        "seed": 12088,
+        "bloco": "classes"
+      },
+      "duracao": 23.916666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Protetor",
+        "p2": "Raven o Lendário",
+        "seed": 12089,
+        "bloco": "classes"
+      },
+      "duracao": 23.7,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Viktor a Furiosa",
+        "p2": "Winter a Sombria",
+        "seed": 12090,
+        "bloco": "classes"
+      },
+      "duracao": 18.15,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Sábio",
+        "p2": "Raven a Vidente",
+        "seed": 12091,
+        "bloco": "classes"
+      },
+      "duracao": 18.633333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Selene das Chamas",
+        "p2": "Akemi a Valente",
+        "seed": 12092,
+        "bloco": "classes"
+      },
+      "duracao": 20.85,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brutus #2",
+        "p2": "Caesar o Protetor",
+        "seed": 12093,
+        "bloco": "classes"
+      },
+      "duracao": 6.8999999999999995,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Marcus o Amaldiçoado",
+        "p2": "Zephyr",
+        "seed": 12094,
+        "bloco": "classes"
+      },
+      "duracao": 17.883333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Freya a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 12095,
+        "bloco": "classes"
+      },
+      "duracao": 33.88333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cassius o Cruel",
+        "p2": "Octavia o Lendário",
+        "seed": 12096,
+        "bloco": "classes"
+      },
+      "duracao": 55.63333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Protetor",
+        "p2": "Akemi a Valente",
+        "seed": 12097,
+        "bloco": "classes"
+      },
+      "duracao": 20.65,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Lucius",
+        "seed": 12098,
+        "bloco": "classes"
+      },
+      "duracao": 31.516666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 12099,
+        "bloco": "classes"
+      },
+      "duracao": 13.283333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brunhilde",
+        "p2": "Titus a Invicta",
+        "seed": 12100,
+        "bloco": "classes"
+      },
+      "duracao": 32.016666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Seraphina a Justa",
+        "p2": "Baldur",
+        "seed": 12101,
+        "bloco": "classes"
+      },
+      "duracao": 19.983333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Celeste",
+        "p2": "Akemi a Valente",
+        "seed": 12102,
+        "bloco": "classes"
+      },
+      "duracao": 16.433333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Zephyr a Valente",
+        "seed": 12103,
+        "bloco": "classes"
+      },
+      "duracao": 20.833333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Yuki a Lendária",
+        "seed": 12104,
+        "bloco": "classes"
+      },
+      "duracao": 29.55,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Tyr o Nobre",
+        "seed": 12105,
+        "bloco": "classes"
+      },
+      "duracao": 20.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucius",
+        "p2": "Freya a Implacável",
+        "seed": 12106,
+        "bloco": "classes"
+      },
+      "duracao": 23.866666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Silas o Invicto",
+        "p2": "Cedric da Luz",
+        "seed": 12107,
+        "bloco": "classes"
+      },
+      "duracao": 27.816666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Viktor a Furiosa",
+        "seed": 12108,
+        "bloco": "classes"
+      },
+      "duracao": 15.566666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kai o Nobre",
+        "p2": "Takeshi o Destruidor",
+        "seed": 12109,
+        "bloco": "classes"
+      },
+      "duracao": 39.166666666666664,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Gloria a Valente",
+        "seed": 12110,
+        "bloco": "classes"
+      },
+      "duracao": 22.03333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Baldur",
+        "seed": 12111,
+        "bloco": "classes"
+      },
+      "duracao": 20.65,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Freya a Implacável",
+        "p2": "Nyx a Impiedosa",
+        "seed": 12112,
+        "bloco": "classes"
+      },
+      "duracao": 21.516666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Lendária",
+        "p2": "Genevieve do Gelo",
+        "seed": 12113,
+        "bloco": "classes"
+      },
+      "duracao": 6.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Ajax",
+        "seed": 12114,
+        "bloco": "classes"
+      },
+      "duracao": 37.333333333333336,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Brutus",
+        "p2": "Ajax",
+        "seed": 12115,
+        "bloco": "classes"
+      },
+      "duracao": 21.183333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Titus a Invicta",
+        "seed": 12116,
+        "bloco": "classes"
+      },
+      "duracao": 23.416666666666668,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Elara o Lendário",
+        "p2": "Perseus o Amaldiçoado",
+        "seed": 12117,
+        "bloco": "classes"
+      },
+      "duracao": 57.25,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ingrid do Gelo",
+        "p2": "Adelaide a Justa",
+        "seed": 12118,
+        "bloco": "classes"
+      },
+      "duracao": 26.95,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Freya a Implacável",
+        "seed": 12119,
+        "bloco": "classes"
+      },
+      "duracao": 19.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi",
+        "p2": "Winter a Sombria",
+        "seed": 12120,
+        "bloco": "classes"
+      },
+      "duracao": 32.35,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Icarus",
+        "seed": 12121,
+        "bloco": "classes"
+      },
+      "duracao": 22.85,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Gloria a Valente",
+        "p2": "Lucius",
+        "seed": 12122,
+        "bloco": "classes"
+      },
+      "duracao": 16.85,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Brutus #2",
+        "seed": 12123,
+        "bloco": "classes"
+      },
+      "duracao": 8.8,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Icarus",
+        "p2": "Leoric a Impiedosa",
+        "seed": 12124,
+        "bloco": "classes"
+      },
+      "duracao": 27.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Cassius o Cruel",
+        "seed": 12125,
+        "bloco": "classes"
+      },
+      "duracao": 45.95,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Freya a Implacável",
+        "p2": "Perseus o Amaldiçoado",
+        "seed": 12126,
+        "bloco": "classes"
+      },
+      "duracao": 21.3,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Raven a Lendária",
+        "seed": 12127,
+        "bloco": "classes"
+      },
+      "duracao": 28.116666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Caesar o Protetor",
+        "p2": "Zephyr o Nobre",
+        "seed": 12128,
+        "bloco": "classes"
+      },
+      "duracao": 14.85,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Icarus",
+        "p2": "Winter a Sombria",
+        "seed": 12129,
+        "bloco": "classes"
+      },
+      "duracao": 42.333333333333336,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Icarus",
+        "p2": "Selene das Chamas",
+        "seed": 12130,
+        "bloco": "classes"
+      },
+      "duracao": 31.416666666666668,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Valente",
+        "p2": "Odin o Nobre",
+        "seed": 12131,
+        "bloco": "classes"
+      },
+      "duracao": 17.9,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Genevieve do Gelo",
+        "seed": 12132,
+        "bloco": "classes"
+      },
+      "duracao": 22.016666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Seraphina a Justa",
+        "p2": "Phoenix",
+        "seed": 12133,
+        "bloco": "classes"
+      },
+      "duracao": 24.683333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Aldric",
+        "seed": 12134,
+        "bloco": "classes"
+      },
+      "duracao": 25.78333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Nyx a Impiedosa",
+        "p2": "Takeshi o Destruidor",
+        "seed": 12135,
+        "bloco": "classes"
+      },
+      "duracao": 25.2,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Invicta",
+        "p2": "Lucius",
+        "seed": 12136,
+        "bloco": "classes"
+      },
+      "duracao": 24.016666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Perseus",
+        "seed": 12137,
+        "bloco": "classes"
+      },
+      "duracao": 25.25,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Viktor a Furiosa",
+        "p2": "Caesar o Protetor",
+        "seed": 12138,
+        "bloco": "classes"
+      },
+      "duracao": 8.616666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Brutus #2",
+        "seed": 12139,
+        "bloco": "classes"
+      },
+      "duracao": 15.6,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cedric da Luz",
+        "p2": "Artemis a Eterna",
+        "seed": 12140,
+        "bloco": "classes"
+      },
+      "duracao": 86.45,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Brutus #2",
+        "seed": 12141,
+        "bloco": "classes"
+      },
+      "duracao": 11.666666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Artemis a Eterna",
+        "seed": 12142,
+        "bloco": "classes"
+      },
+      "duracao": 37.68333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Elara o Lendário",
+        "p2": "Aldric",
+        "seed": 12143,
+        "bloco": "classes"
+      },
+      "duracao": 39.2,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi",
+        "p2": "Thor o Nobre",
+        "seed": 12144,
+        "bloco": "classes"
+      },
+      "duracao": 34.28333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Elara o Lendário",
+        "seed": 12145,
+        "bloco": "classes"
+      },
+      "duracao": 39.333333333333336,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Achilles a Lendária",
+        "seed": 12146,
+        "bloco": "classes"
+      },
+      "duracao": 53.56666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Titus a Invicta",
+        "p2": "Caesar o Sábio",
+        "seed": 12147,
+        "bloco": "classes"
+      },
+      "duracao": 17.883333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Seraphina a Justa",
+        "seed": 12148,
+        "bloco": "classes"
+      },
+      "duracao": 21.616666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Fenrir a Implacável",
+        "seed": 12149,
+        "bloco": "classes"
+      },
+      "duracao": 27.75,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Brutus #2",
+        "seed": 31000,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 22.116666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Brutus #2",
+        "seed": 31000,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 10.4,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia o Lendário",
+        "p2": "Brutus #2",
+        "seed": 31000,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 43.766666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucius",
+        "p2": "Zephyr a Lendária",
+        "seed": 31001,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 19.25,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucius",
+        "p2": "Zephyr a Lendária",
+        "seed": 31001,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 18.25,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucius",
+        "p2": "Zephyr a Lendária",
+        "seed": 31001,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 27.4,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Winter a Sombria",
+        "seed": 31002,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 20.433333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Winter a Sombria",
+        "seed": 31002,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 14.4,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Winter a Sombria",
+        "seed": 31002,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 29.066666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Lucius",
+        "seed": 31003,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 27.116666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Lucius",
+        "seed": 31003,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 26.55,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Lucius",
+        "seed": 31003,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 79.76666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Adelaide a Justa",
+        "seed": 31004,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 33.983333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Adelaide a Justa",
+        "seed": 31004,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 24.816666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Adelaide a Justa",
+        "seed": 31004,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 28.483333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Zephyr o Nobre",
+        "seed": 31005,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 25.683333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Zephyr o Nobre",
+        "seed": 31005,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 17.483333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Zephyr o Nobre",
+        "seed": 31005,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 28.066666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Adelaide a Justa",
+        "seed": 31006,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 24.3,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Adelaide a Justa",
+        "seed": 31006,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 25.866666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Adelaide a Justa",
+        "seed": 31006,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 56.4,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Raven o Lendário",
+        "seed": 31007,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 48.31666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Raven o Lendário",
+        "seed": 31007,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 20.883333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Raven o Lendário",
+        "seed": 31007,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 28.333333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Ingrid do Gelo",
+        "seed": 31008,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 33.5,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Ingrid do Gelo",
+        "seed": 31008,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 23.066666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Achilles a Lendária",
+        "p2": "Ingrid do Gelo",
+        "seed": 31008,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 53.61666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Lucia o Implacável",
+        "seed": 31009,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 9.433333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Lucia o Implacável",
+        "seed": 31009,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 8.5,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Lucia o Implacável",
+        "seed": 31009,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 19.666666666666668,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Genevieve do Gelo",
+        "seed": 31010,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 8.233333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Genevieve do Gelo",
+        "seed": 31010,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 7.716666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Genevieve do Gelo",
+        "seed": 31010,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 10.016666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Ajax",
+        "seed": 31011,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 22.416666666666668,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Ajax",
+        "seed": 31011,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 19.983333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Ajax",
+        "seed": 31011,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 40.1,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ingrid do Gelo",
+        "p2": "Brunhilde",
+        "seed": 31012,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 27.016666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ingrid do Gelo",
+        "p2": "Brunhilde",
+        "seed": 31012,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 14.666666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ingrid do Gelo",
+        "p2": "Brunhilde",
+        "seed": 31012,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 36.016666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Jin a Protetora",
+        "seed": 31013,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 14.1,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Jin a Protetora",
+        "seed": 31013,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 11.333333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr a Lendária",
+        "p2": "Jin a Protetora",
+        "seed": 31013,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 35.266666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tempest o Bravo",
+        "p2": "Ingrid do Gelo",
+        "seed": 31014,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 13.916666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tempest o Bravo",
+        "p2": "Ingrid do Gelo",
+        "seed": 31014,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 10.833333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tempest o Bravo",
+        "p2": "Ingrid do Gelo",
+        "seed": 31014,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 24.1,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 31015,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 18.483333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 31015,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 11.8,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 31015,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 22.7,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Zephyr a Invicta",
+        "seed": 31016,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 20.516666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Zephyr a Invicta",
+        "seed": 31016,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 20.966666666666665,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Hera o Profeta",
+        "p2": "Zephyr a Invicta",
+        "seed": 31016,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 23.716666666666665,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Selene das Chamas",
+        "seed": 31017,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 37.55,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Selene das Chamas",
+        "seed": 31017,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 29.083333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Octavia a Eterna",
+        "p2": "Selene das Chamas",
+        "seed": 31017,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 34.31666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Ingrid do Gelo",
+        "seed": 31018,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 29.316666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Ingrid do Gelo",
+        "seed": 31018,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 22.55,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Ingrid do Gelo",
+        "seed": 31018,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 41.68333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Cassius o Cruel",
+        "seed": 31019,
+        "cenario": "Arena",
+        "bloco": "arenas"
+      },
+      "duracao": 48.56666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Cassius o Cruel",
+        "seed": 31019,
+        "cenario": "Arena Pequena",
+        "bloco": "arenas"
+      },
+      "duracao": 47.18333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi o Destruidor",
+        "p2": "Cassius o Cruel",
+        "seed": 31019,
+        "cenario": "Labirinto",
+        "bloco": "arenas"
+      },
+      "duracao": 34.61666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32000,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 20.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32001,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 18.45,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32002,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 21.433333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32003,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 20.333333333333332,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32004,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 22.183333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32005,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 20.916666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32000,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 19.2,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32001,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 23.266666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32002,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 24.416666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32003,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 22.65,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32004,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 20.583333333333332,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32005,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 24.133333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32000,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 20.816666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32001,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 19.03333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32002,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 22.6,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32003,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 20.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32004,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 22.866666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32005,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 21.28333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32000,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 21.716666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32001,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 22.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32002,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 24.183333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32003,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 20.966666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32004,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 19.6,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Octavia o Lendário",
+        "seed": 32005,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 27.233333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32100,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 25.05,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32101,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 21.9,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32102,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 27.28333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32103,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 22.1,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32104,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 22.316666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32105,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 29.2,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32100,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 27.733333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32101,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 25.35,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32102,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 27.849999999999998,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32103,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 19.666666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32104,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 30.366666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32105,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 26.433333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32100,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 24.75,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32101,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 25.666666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32102,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 23.016666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32103,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 27.28333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32104,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 23.15,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32105,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 22.65,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32100,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 25.05,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32101,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 27.016666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32102,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 26.75,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32103,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 32.7,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32104,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 27.416666666666668,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Odin o Nobre",
+        "p2": "Zephyr",
+        "seed": 32105,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 33.21666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32200,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 11.15,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32201,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 18.05,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32202,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 15.733333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32203,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 12.483333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32204,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 12.55,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32205,
+        "bloco": "presets",
+        "preset_p1": "Agressivo"
+      },
+      "duracao": 25.366666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32200,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 9.55,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32201,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 10.95,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32202,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 21.316666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32203,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 11.816666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32204,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 17.183333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32205,
+        "bloco": "presets",
+        "preset_p1": "Defensivo"
+      },
+      "duracao": 18.2,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32200,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 9.433333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32201,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 17.083333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32202,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 15.583333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32203,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 10.4,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32204,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 11.216666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32205,
+        "bloco": "presets",
+        "preset_p1": "Berserker"
+      },
+      "duracao": 13.166666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32200,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 16.683333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32201,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 14.133333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32202,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 11.166666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32203,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 24.616666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32204,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 23.35,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 32205,
+        "bloco": "presets",
+        "preset_p1": "Artista Marcial"
+      },
+      "duracao": 17.316666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    }
+  ]
+}

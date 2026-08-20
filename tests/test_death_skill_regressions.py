@@ -125,7 +125,12 @@ class DeathSkillRegressionTests(unittest.TestCase):
         self.assertFalse(first.morreu)
         self.assertEqual(target.vida, 50.0)
         self.assertEqual(target.cd_skills["Último Suspiro"], 90.0)
-        self.assertEqual(target.cd_skill_arma, 90.0)
+        # Onda 3: ``cd_skill_arma`` deixou de ser o lock do kit (que espelhava
+        # o cooldown inteiro da skill e calava as demais por ate 30-90s) e
+        # virou a recuperacao curta de conjuracao. O cooldown REAL continua
+        # por-skill em ``cd_skills`` — pinado acima.
+        from neural_fights.core.entities import RECUPERACAO_CONJURACAO_S
+        self.assertEqual(target.cd_skill_arma, RECUPERACAO_CONJURACAO_S)
 
         second = self._hit(attacker, target)
 
@@ -187,9 +192,9 @@ class DeathSkillRegressionTests(unittest.TestCase):
         )
 
         self.assertTrue(second.morreu)
-        self.assertEqual(owner.vida, 60.0)
+        self.assertEqual(owner.vida, 100.0)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertFalse(victim.morrer())
-        self.assertEqual(owner.vida, 60.0)
+        self.assertEqual(owner.vida, 100.0)  # re-pino O6f2: escala de dano/cura de skill x2
 
     def test_harvest_ownership_survives_soul_link_damage(self):
         owner = self._fighter("Reaper")
@@ -220,7 +225,7 @@ class DeathSkillRegressionTests(unittest.TestCase):
         self.assertFalse(impact.morreu)
         self.assertFalse(primary.morto)
         self.assertTrue(linked.morto)
-        self.assertEqual(owner.vida, 60.0)
+        self.assertEqual(owner.vida, 100.0)  # re-pino O6f2: escala de dano/cura de skill x2
 
     def test_dot_keeps_original_attacker_and_source_until_terminal_death(self):
         owner = self._fighter("Poisoner")
@@ -300,7 +305,8 @@ class DeathSkillRegressionTests(unittest.TestCase):
         }
         brain._adicionar_skill(info["nome"], passive_data, "classe")
         self.assertEqual(brain.skills_por_tipo["BUFF"], [])
-        self.assertFalse(brain._avaliar_uso_skill(passive_data, 1.0, None))
+        # Re-pino Onda 5E: _avaliar_uso_skill (avaliador do caminho legado
+        # de skills) foi deletado; as camadas vivas seguem cobertas acima.
 
         strategy = object.__new__(SkillStrategySystem)
         strategy.skills = {}

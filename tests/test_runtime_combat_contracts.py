@@ -154,7 +154,10 @@ class RuntimeCombatContractTests(unittest.TestCase):
         self.assertEqual(sleeper.stun_timer, 3.0)
         self.assertFalse(sleeper.pode_iniciar_acao())
 
+        # Onda 2: a invencibilidade e por golpe. Para o andaime produzir um
+        # impacto rejeitado, a chave precisa casar com o golpe que chega.
         sleeper.invencivel_timer = 1.0
+        sleeper._invencivel_chave = ("atk", id(attacker), attacker.ataque_id)
         rejected = sleeper.resolver_impacto(10.0, 0.0, 0.0, atacante=attacker)
         self.assertFalse(rejected.atingiu)
         self.assertTrue(sleeper.dormindo)
@@ -305,7 +308,7 @@ class RuntimeCombatContractTests(unittest.TestCase):
         one_step_life, one_step_shield, results = run([0.3])
         split_life, split_shield, _ = run([0.1, 0.1, 0.1])
 
-        self.assertAlmostEqual(one_step_life, 970.0)
+        self.assertAlmostEqual(one_step_life, 940.0)  # re-pino O6f2: escala de dano/cura de skill x2
         self.assertAlmostEqual(split_life, one_step_life)
         self.assertEqual(one_step_shield, 100.0)
         self.assertEqual(split_shield, 100.0)
