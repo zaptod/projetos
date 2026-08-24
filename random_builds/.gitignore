@@ -1,0 +1,15 @@
+outputs/
+__pycache__/
+*.pyc
+assets/reactions/**/*.mp4
+assets/music/*
+assets/sfx/*
+!assets/**/.gitkeep
+
+# Provedores externos (Digen, PicassoIA): perfis de browser e credenciais.
+# O curinga vale para provedor novo que apareca depois - credencial nao pode
+# depender de alguem lembrar de editar este arquivo.
+.browser_profile/
+*_credentials.json
+digen_credentials.json
+picasso_credentials.json

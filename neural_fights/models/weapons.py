@@ -9,11 +9,21 @@ from neural_fights.models.constants import (
 )
 
 
-def gerar_passiva_arma(raridade):
-    """Gera uma passiva aleatória baseada na raridade"""
+def gerar_passiva_arma(raridade, *, chave=None):
+    """Gera uma passiva baseada na raridade.
+
+    Com ``chave`` (ex.: o nome da arma) o sorteio é DETERMINÍSTICO e não
+    toca o random global — carregar o catálogo nunca pode perturbar o
+    stream que o Simulador semeia para reproduzir partidas, nem dar uma
+    passiva diferente a cada load (o vazamento de determinismo caçado
+    no fim do programa de qualidade).
+    """
     rar_data = get_raridade_data(raridade)
     tipo_passiva = rar_data.get("passiva")
     if tipo_passiva and tipo_passiva in PASSIVAS_ARMA:
+        if chave is not None:
+            rng = random.Random(f"neural-fights:passiva:{chave}:{raridade}")
+            return rng.choice(PASSIVAS_ARMA[tipo_passiva])
         return random.choice(PASSIVAS_ARMA[tipo_passiva])
     return None
 
@@ -132,7 +142,10 @@ class Arma:
         
         # === PASSIVA ===
         if passiva is None and rar_data.get("passiva"):
-            self.passiva = gerar_passiva_arma(raridade)
+            # Fallback p/ dados legados sem passiva persistida: sorteio
+            # DETERMINÍSTICO pelo nome — carregar o catálogo não toca o
+            # random global nem muda a arma entre loads.
+            self.passiva = gerar_passiva_arma(raridade, chave=nome)
         else:
             self.passiva = passiva
         

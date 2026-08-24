@@ -642,6 +642,11 @@ def build_parser() -> SafeArgumentParser:
     parser.add_argument("--out", help="grava o relatorio completo em JSON")
     parser.add_argument("--progresso", action="store_true")
     parser.add_argument(
+        "--vfx",
+        action="store_true",
+        help="mede o volume visual (objetos de VFX por frame) e avalia os alvos de limpeza da luta",
+    )
+    parser.add_argument(
         "--dump-timeline",
         type=int,
         metavar="SEED",
@@ -651,6 +656,63 @@ def build_parser() -> SafeArgumentParser:
     parser.add_argument("--p2")
     parser.add_argument("--cenario", default=CENARIO_PADRAO)
     return parser
+
+
+def medir_vfx(fonte: FonteDeDados, pares: int = 3, segundos: float = 25.0
+              ) -> dict[str, Any]:
+    """Mede o VOLUME VISUAL da luta (reforma "luta limpa").
+
+    O corpus normal roda headless — e o Simulador pula todo o VFX nesse
+    modo. Este passe roda partidas COM render (SDL dummy) e conta os
+    objetos vivos por frame, com a mesma sonda usada na reforma.
+    """
+    import os
+
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    from neural_fights.simulation.simulacao import Simulador
+    from neural_fights.simulation.vfx_probe import VFXCountProbe
+
+    nomes = list(fonte.nomes)
+    casters = [n for n in nomes if fonte.classe_de(n) and any(
+        c in fonte.classe_de(n)
+        for c in ("Mago", "Piromante", "Necromante", "Feiticeiro", "Criomante")
+    )]
+    melee = [n for n in nomes if n not in casters]
+    duplas = []
+    if len(casters) >= 2:
+        duplas.append((casters[0], casters[1]))     # magia pesada
+    if len(melee) >= 2:
+        duplas.append((melee[0], melee[1]))         # corpo a corpo
+    if casters and melee:
+        duplas.append((casters[-1], melee[-1]))     # misto
+    duplas = duplas[:pares] or [(nomes[0], nomes[1])]
+
+    probe = VFXCountProbe()
+    for p1, p2 in duplas:
+        sim = Simulador(
+            match_config={
+                "p1_nome": p1, "p2_nome": p2,
+                "cenario": CENARIO_PADRAO, "best_of": 1,
+            },
+            # mesmo roster do corpus (a fixture congelada em --dados engine)
+            roster_provider=fonte.provider(None),
+        )
+        try:
+            t = 0.0
+            while sim.rodando and t < segundos:
+                dt = 1 / 60
+                t += dt
+                sim.processar_inputs()
+                sim.avancar_relogio(dt)
+                sim.update(dt)
+                sim.desenhar()
+                probe.amostrar(sim)
+                if getattr(sim, "round_finalizado", False):
+                    break
+        finally:
+            sim.close()
+    return probe.resumo()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -669,6 +731,10 @@ def main(argv: list[str] | None = None) -> int:
     duracao_execucao = time.perf_counter() - inicio
 
     resumo = agregar(lutas)
+    if args.vfx:
+        # Passe visual: o corpus roda headless e não gera VFX nenhum.
+        vfx = medir_vfx(fonte)
+        resumo.update(vfx)
     avaliacoes = avaliar(resumo, carregar_alvos(), args.onda)
     imprimir_relatorio(resumo, avaliacoes)
     safe_print("")

@@ -618,7 +618,8 @@ class WeaponAnimationState:
     attack_timer: float = 0.0
     current_phase: AttackPhase = AttackPhase.RECOVERY
     angle_offset: float = 0.0
-    scale: float = 1.0
+    scale: float = 1.0  # morto no render (rework: design fixo); mantido p/ compat
+    lunge: float = 0.0  # translação da EMPUNHADURA em frações do raio (rework)
     shake_offset: Tuple = (0.0, 0.0)
     trail_positions: List = field(default_factory=list)
     attack_pattern: int = 0
@@ -731,6 +732,35 @@ class WeaponAnimator:
             elapsed += duration
         return AttackPhase.RECOVERY, 1.0
 
+    # Coreografia RECRIADA (rework total): cada estilo luta de um jeito.
+    # Os TEMPOS de fase vem do profile (contrato de gameplay/hitbox);
+    # o MOVIMENTO (curvas de angulo e lunge) e autoral por arquetipo.
+    ARQUETIPO_POR_ESTILO = {
+        # estocada: quase sem arco - recuo fundo e avanco explosivo
+        "Lança": "estocada", "Espada Curta": "estocada", "Sai": "estocada",
+        "Facas Táticas": "estocada", "Kunai": "estocada",
+        "Rope Dart": "estocada", "Lanças de Mana": "estocada",
+        # esmagamento: levanta devagar, despenca acelerando, congela
+        "Martelo": "esmagamento", "Maça": "esmagamento",
+        "Machado": "esmagamento", "Meteor Hammer": "esmagamento",
+        "Corrente com Peso": "esmagamento", "Montante": "esmagamento",
+        # chicote: o arco passa do alvo e volta (elastico)
+        "Chicote": "chicote", "Kusarigama": "chicote", "Foice": "chicote",
+        # puxada: arcos/bestas - carrega na antecipacao, solta seco
+        "Arco Curto": "puxada", "Arco Longo": "puxada",
+        "Arco Composto": "puxada", "Besta Leve": "puxada",
+        "Besta Pesada": "puxada", "Arco Élfico": "puxada",
+    }  # default: "corte" (sweep classico)
+
+    @staticmethod
+    def _lunge_de(scale_valor):
+        """Rework (animação rígida): os campos *_scale dos perfis não
+        escalam mais a arma — viram intensidade de TRANSLAÇÃO da
+        empunhadura (lunge = (scale-1)*0.7, clamp [-0.30, +0.45]).
+        Wind-up recua a mão, golpe avança, impacto trava — a arma tem
+        tamanho FIXO e o peso vem do movimento."""
+        return max(-0.30, min(0.45, (scale_valor - 1.0) * 0.7))
+
     def _update_attack_animation(self, state, profile, base_angle, weapon_type="", weapon_style=""):
         current_phase, phase_progress = self._get_phase(state, profile)
         state.current_phase = current_phase
@@ -743,20 +773,32 @@ class WeaponAnimator:
             return
 
         direction = 1 if state.attack_pattern % 2 == 0 else -1
+
+        arquetipo = self.ARQUETIPO_POR_ESTILO.get(weapon_style, "corte")
+        if arquetipo != "corte":
+            self._update_arquetipo(
+                state, profile, current_phase, phase_progress, direction,
+                arquetipo,
+            )
+            return
+
         if current_phase == AttackPhase.ANTICIPATION:
             prog = self.easings.get(profile.anticipation_easing, Easing.ease_out_quad)(phase_progress)
             state.angle_offset = profile.anticipation_angle * prog * direction
-            state.scale = 1.0 + (profile.anticipation_scale - 1.0) * prog
+            state.lunge = self._lunge_de(profile.anticipation_scale) * prog
+            state.scale = 1.0
         elif current_phase == AttackPhase.ATTACK:
             prog = self.easings.get(profile.attack_easing, Easing.ease_out_back)(phase_progress)
             start = profile.anticipation_angle * direction
             end = profile.attack_angle * direction
             state.angle_offset = start + (end - start) * prog
-            scale_prog = math.sin(phase_progress * math.pi)
-            state.scale = 1.0 + (profile.attack_scale - 1.0) * scale_prog
+            lunge_prog = math.sin(phase_progress * math.pi)
+            state.lunge = self._lunge_de(profile.attack_scale) * lunge_prog
+            state.scale = 1.0
         elif current_phase == AttackPhase.IMPACT:
             state.angle_offset = profile.attack_angle * direction
-            state.scale = profile.impact_scale
+            state.lunge = self._lunge_de(profile.impact_scale)
+            state.scale = 1.0
             if profile.shake_on_impact:
                 shake = profile.shake_intensity * (1 - phase_progress)
                 state.shake_offset = (random.uniform(-shake, shake), random.uniform(-shake, shake))
@@ -765,16 +807,128 @@ class WeaponAnimator:
         elif current_phase == AttackPhase.FOLLOW_THROUGH:
             prog = Easing.ease_out_quad(phase_progress)
             state.angle_offset = profile.attack_angle * direction + profile.follow_through_angle * direction * (1 - prog)
-            state.scale = profile.impact_scale + (1.0 - profile.impact_scale) * prog
+            state.lunge = self._lunge_de(profile.impact_scale) * (1.0 - prog)
+            state.scale = 1.0
             state.shake_offset = (0, 0)
         elif current_phase == AttackPhase.RECOVERY:
             prog = self.easings.get(profile.recovery_easing, Easing.ease_in_out_quad)(phase_progress)
             start = (profile.attack_angle + profile.follow_through_angle) * direction
             state.angle_offset = start * (1 - prog)
+            state.lunge = 0.0
             state.scale = 1.0
             if phase_progress >= 1.0:
                 state.is_attacking = False
                 state.angle_offset = 0
+
+    def _update_arquetipo(self, state, profile, current_phase,
+                          phase_progress, direction, arquetipo):
+        """Coreografias autorais (rework): estocada, esmagamento,
+        chicote e puxada. Mesmo relogio de fases do profile."""
+        AP = AttackPhase
+        t = phase_progress
+        state.scale = 1.0
+        if arquetipo == "estocada":
+            if current_phase == AP.ANTICIPATION:
+                prog = Easing.ease_out_quad(t)
+                state.angle_offset = 6 * direction * prog
+                state.lunge = -0.26 * prog
+            elif current_phase == AP.ATTACK:
+                prog = Easing.ease_out_quad(t)
+                state.angle_offset = 6 * direction * (1 - prog)
+                state.lunge = -0.26 + 0.71 * prog
+            elif current_phase == AP.IMPACT:
+                state.angle_offset = 0.0
+                state.lunge = 0.42
+                if profile.shake_on_impact:
+                    sh = profile.shake_intensity * (1 - t)
+                    state.shake_offset = (random.uniform(-sh, sh),
+                                          random.uniform(-sh, sh))
+                if profile.spark_on_impact and t < 0.1:
+                    self._spawn_sparks(state, profile)
+            elif current_phase == AP.FOLLOW_THROUGH:
+                state.lunge = 0.42 * (1 - Easing.ease_out_quad(t))
+                state.angle_offset = 0.0
+                state.shake_offset = (0, 0)
+            else:
+                state.lunge = 0.0
+                state.angle_offset = 0.0
+                if t >= 1.0:
+                    state.is_attacking = False
+        elif arquetipo == "esmagamento":
+            alto = abs(profile.anticipation_angle) * 1.25
+            queda = profile.attack_angle * 0.7
+            if current_phase == AP.ANTICIPATION:
+                prog = Easing.ease_in_out_quad(t)
+                state.angle_offset = -alto * direction * prog
+                state.lunge = -0.14 * prog
+            elif current_phase == AP.ATTACK:
+                prog = t * t * t
+                state.angle_offset = (-alto + (alto + queda) * prog) * direction
+                state.lunge = -0.14 + 0.5 * prog
+            elif current_phase == AP.IMPACT:
+                state.angle_offset = queda * direction
+                state.lunge = 0.34
+                if profile.shake_on_impact:
+                    sh = profile.shake_intensity * 1.4 * (1 - t)
+                    state.shake_offset = (random.uniform(-sh, sh),
+                                          random.uniform(-sh, sh))
+                if profile.spark_on_impact and t < 0.15:
+                    self._spawn_sparks(state, profile)
+            elif current_phase == AP.FOLLOW_THROUGH:
+                quique = math.sin(t * math.pi) * 0.05
+                state.angle_offset = queda * direction
+                state.lunge = 0.34 * (1 - Easing.ease_out_quad(t)) + quique
+                state.shake_offset = (0, 0)
+            else:
+                prog = Easing.ease_in_out_quad(t)
+                state.angle_offset = queda * direction * (1 - prog)
+                state.lunge = 0.0
+                if t >= 1.0:
+                    state.is_attacking = False
+        elif arquetipo == "chicote":
+            alvo = profile.attack_angle * 1.25
+            armado = profile.anticipation_angle * 1.1
+            if current_phase == AP.ANTICIPATION:
+                prog = Easing.ease_in_quad(t)
+                state.angle_offset = armado * prog * direction
+                state.lunge = -0.1 * prog
+            elif current_phase == AP.ATTACK:
+                over = math.sin(min(1.0, t * 1.15) * math.pi * 0.62)
+                state.angle_offset = (armado + (alvo - armado) * over) * direction
+                state.lunge = 0.22 * math.sin(t * math.pi)
+            elif current_phase == AP.IMPACT:
+                state.angle_offset = alvo * direction
+                state.lunge = 0.1
+                if profile.spark_on_impact and t < 0.1:
+                    self._spawn_sparks(state, profile)
+            elif current_phase == AP.FOLLOW_THROUGH:
+                rebote = math.sin(t * math.pi) * 14
+                state.angle_offset = (alvo - rebote) * direction
+                state.lunge = 0.0
+            else:
+                prog = Easing.ease_in_out_quad(t)
+                state.angle_offset = alvo * direction * (1 - prog)
+                state.lunge = 0.0
+                if t >= 1.0:
+                    state.is_attacking = False
+        else:  # puxada (arcos e bestas)
+            if current_phase == AP.ANTICIPATION:
+                state.draw_amount = Easing.ease_out_quad(t)
+                state.angle_offset = 0.0
+                state.lunge = -0.06 * t
+            elif current_phase == AP.ATTACK:
+                state.draw_amount = max(0.0, 1.0 - t * 3.0)
+                state.angle_offset = 0.0
+                state.lunge = -0.06 + 0.16 * Easing.ease_out_quad(t)
+            elif current_phase == AP.IMPACT:
+                state.draw_amount = 0.0
+                state.lunge = 0.1 * (1 - t)
+            else:
+                state.draw_amount = 0.0
+                state.lunge = 0.0
+                state.angle_offset = 0.0
+                if current_phase == AP.RECOVERY and t >= 1.0:
+                    state.is_attacking = False
 
     def _update_mangual(self, state, profile, current_phase, phase_progress):
         """v3.1 - Heavy Slam & Ground Pound
@@ -814,7 +968,8 @@ class WeaponAnimator:
             prog = Easing.ease_in_back(phase_progress)
             state.angle_offset = wind_up_ang * prog * slam_dir
             # Squash no corpo do personagem durante o levantamento
-            state.scale = 1.0 + (profile.anticipation_scale - 1.0) * Easing.ease_in_quad(phase_progress)
+            state.lunge = self._lunge_de(profile.anticipation_scale) * Easing.ease_in_quad(phase_progress)
+            state.scale = 1.0
             state.mangual_spin_speed = 0.2  # Quase parado - está se preparando
 
         elif current_phase == AttackPhase.ATTACK:
@@ -823,14 +978,16 @@ class WeaponAnimator:
             prog = Easing.ease_in_expo(phase_progress)
             state.angle_offset = wind_up_ang * slam_dir + crash_ang * prog * slam_dir
             # Stretch da corrente na direção do golpe (whip effect)
-            state.scale = 1.0 + (profile.attack_scale - 1.0) * math.sin(phase_progress * math.pi * 0.8)
+            state.lunge = self._lunge_de(profile.attack_scale) * math.sin(phase_progress * math.pi * 0.8)
+            state.scale = 1.0
             state.mangual_spin_speed = 0.5 + 2.5 * prog  # acelera na descida
 
         elif current_phase == AttackPhase.IMPACT:
             # IMPACTO: bola toca o alvo/chão. Tudo congela por um frame.
             total = wind_up_ang * slam_dir + crash_ang * slam_dir
             state.angle_offset = total
-            state.scale = profile.impact_scale  # squash no impacto
+            state.lunge = self._lunge_de(profile.impact_scale)  # recuo no impacto
+            state.scale = 1.0
             
             # Camera shake PESADO e assimétrico (sente como vibração de chão)
             if profile.shake_on_impact:
@@ -866,7 +1023,8 @@ class WeaponAnimator:
             total = wind_up_ang * slam_dir + crash_ang * slam_dir
             state.angle_offset = total + follow_ang * slam_dir * prog
             # Escala volta ao normal com um leve bounce
-            state.scale = profile.impact_scale + (1.0 - profile.impact_scale) * Easing.ease_out_bounce(phase_progress)
+            state.lunge = self._lunge_de(profile.impact_scale) * (1.0 - Easing.ease_out_bounce(phase_progress))
+            state.scale = 1.0
             # Shake residual que vai morrendo
             if profile.shake_on_impact and phase_progress < 0.4:
                 residual = profile.shake_intensity * 0.25 * (1.0 - phase_progress / 0.4)
@@ -920,7 +1078,8 @@ class WeaponAnimator:
                 state.angle_offset = profile.anticipation_angle * prog * ant_factor + cross_pull * 30
             else:
                 state.angle_offset = profile.anticipation_angle * prog * side_dir * ant_factor
-            state.scale = 1.0 + (profile.anticipation_scale - 1.0) * prog * ant_factor
+            state.lunge = self._lunge_de(profile.anticipation_scale) * prog * ant_factor
+            state.scale = 1.0
 
         elif current_phase == AttackPhase.ATTACK:
             prog = Easing.ease_out_expo(phase_progress)
@@ -936,12 +1095,14 @@ class WeaponAnimator:
             # Scale: stretch na direção do corte
             scale_prog = math.sin(phase_progress * math.pi)
             speed_scale_bonus = min(state.combo_count, 8) * 0.018
-            state.scale = 1.0 + (profile.attack_scale + speed_scale_bonus - 1.0) * scale_prog
+            state.lunge = self._lunge_de(profile.attack_scale + speed_scale_bonus) * scale_prog
+            state.scale = 1.0
 
         elif current_phase == AttackPhase.IMPACT:
             # Impacto instantâneo (lâmina reversa tem snap natural)
             state.angle_offset = profile.attack_angle * side_dir
-            state.scale = profile.impact_scale
+            state.lunge = self._lunge_de(profile.impact_scale)
+            state.scale = 1.0
             impact_decay = 1.0 - Easing.ease_out_quad(phase_progress)
             shake_mult = 1.5 if cross_mode else 1.0
             if profile.shake_on_impact:
@@ -958,7 +1119,8 @@ class WeaponAnimator:
             follow_factor = 0.4 if in_frenzy else 1.0
             state.angle_offset = (profile.attack_angle * side_dir +
                                   follow_ang * (1.0 - prog) * follow_factor)
-            state.scale = profile.impact_scale + (1.0 - profile.impact_scale) * prog
+            state.lunge = self._lunge_de(profile.impact_scale) * (1.0 - prog)
+            state.scale = 1.0
             state.shake_offset = (0, 0)
 
         elif current_phase == AttackPhase.RECOVERY:
@@ -1000,9 +1162,11 @@ class WeaponAnimator:
     def _update_idle_animation(self, state, weapon_type, weapon_style, dt):
         state.pulse_phase += dt * 2.0
         if weapon_type == "Orbital":
-            state.scale = 1.0 + 0.04 * math.sin(state.pulse_phase * 2.0)
+            state.lunge = 0.02 * math.sin(state.pulse_phase * 2.0)
+            state.scale = 1.0
         elif weapon_type in ["Mágica", "Magica"]:
-            state.scale = 1.0 + 0.07 * math.sin(state.pulse_phase * 1.5)
+            state.lunge = 0.03 * math.sin(state.pulse_phase * 1.5)
+            state.scale = 1.0
             state.angle_offset = 4 * math.sin(state.pulse_phase * 0.9)
         elif weapon_style == "Mangual":
             # v3.0: Bola pendula em figura-8 com spin contínuo lento
@@ -1011,7 +1175,8 @@ class WeaponAnimator:
             pendulum2 = math.sin(state.pulse_phase * 1.1) * 4
             state.angle_offset = pendulum1 + pendulum2
             # Scale pulsa levemente (corrente esticando/contraindo)
-            state.scale = 1.0 + 0.04 * math.sin(state.pulse_phase * 0.9)
+            state.lunge = 0.02 * math.sin(state.pulse_phase * 0.9)
+            state.scale = 1.0
             # Spin residual decai suavemente
             if state.mangual_spin_speed > 0.05:
                 state.mangual_spin_speed *= (1.0 - dt * 0.4)
@@ -1020,16 +1185,19 @@ class WeaponAnimator:
             # Micro-vibração de prontidão
             state.angle_offset = (3.5 * math.sin(state.pulse_phase * 3.5) +
                                   1.2 * math.sin(state.pulse_phase * 7.0))
-            state.scale = 1.0 + 0.025 * abs(math.sin(state.pulse_phase * 2.8))
+            state.lunge = 0.015 * abs(math.sin(state.pulse_phase * 2.8))
+            state.scale = 1.0
             # Decai combo no idle (karambit precisa de contato contínuo)
             decay_interval = 2 * math.pi
             if (state.pulse_phase % decay_interval) < dt * 2.2:
                 state.combo_count = max(0, state.combo_count - 1)
         elif weapon_type == "Corrente":
             state.angle_offset = 7 * math.sin(state.pulse_phase * 0.5)
-            state.scale = 1.0 + 0.02 * math.cos(state.pulse_phase * 0.8)
+            state.lunge = 0.012 * math.cos(state.pulse_phase * 0.8)
+            state.scale = 1.0
         else:
-            state.scale = 1.0 + 0.025 * math.sin(state.pulse_phase)
+            state.lunge = 0.015 * math.sin(state.pulse_phase)
+            state.scale = 1.0
             state.angle_offset = 1.5 * math.sin(state.pulse_phase * 0.7)
 
 
@@ -1316,7 +1484,9 @@ class WeaponAnimationManager:
         profile = get_animation_profile(weapon_type, weapon_style)
         return {
             "angle_offset": state.angle_offset,
-            "scale": state.scale,
+            "scale": 1.0,  # morto: design fixo (rework); leitores migram p/ lunge
+            "lunge": state.lunge,
+            "draw_amount": state.draw_amount,
             "shake": state.shake_offset,
             "trail_positions": state.trail_positions,
             "is_attacking": state.is_attacking,

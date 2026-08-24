@@ -298,5 +298,40 @@
     "enforce_onda": 6,
     "min_lutas": 12,
     "descricao": "FECHO O6: serie n=72 entre builds/runs: 0,296-0,375 (o estimador ainda balanca ~+-0,03 — e duas rodadas do MESMO build diferiram 0,350/0,320, pergunta de determinismo anotada no backlog). Trava a 0,28: acima do piso pre-programa (0,25), abaixo de todo o observado. 0,35 fica pos-programa."
+  },
+  "V6_vfx_mediana": {
+    "metrica": "vfx_p50",
+    "max": 26,
+    "enforce_onda": 7,
+    "min_lutas": 0,
+    "descricao": "Volume visual mediano. Medido em 80 objetos por frame antes da reforma dos efeitos (4 sistemas de faisca por golpe, 11 listas sem teto); alvo do corte FORTE escolhido pelo dono."
+  },
+  "V6_vfx_picos": {
+    "metrica": "vfx_p90",
+    "max": 70,
+    "enforce_onda": 7,
+    "min_lutas": 0,
+    "descricao": "Picos de volume visual (p90). Era 166 antes da reforma dos efeitos. TRIPWIRE no nivel MEDIDO (61-66 em tres rodadas na fixture congelada, que tem dois casters pesados; o roster VIVO mede 42). O residuo e estrutural: com teto de 3 explosoes simultaneas e ~15 objetos cada, um duelo de casters ocupa esse volume, e cortar mais tiraria a leitura da skill. META pos-reforma: 55."
+  },
+  "V6_vfx_extremos": {
+    "metrica": "vfx_p99",
+    "max": 110,
+    "enforce_onda": 7,
+    "min_lutas": 0,
+    "descricao": "Extremos (p99): explosoes simultaneas. Era 321 antes da reforma."
+  },
+  "V6_textos_simultaneos": {
+    "metrica": "textos_max",
+    "max": 3,
+    "enforce_onda": 7,
+    "min_lutas": 0,
+    "descricao": "Textos flutuantes coexistindo. Eram ate 10 (ticks de canalizacao a 10/s + 24 strings diferentes); a reforma deixou 5 strings, teto de 3 e acumulador por alvo."
+  },
+  "V6_vfx_picos_meta": {
+    "metrica": "vfx_p90",
+    "max": 55,
+    "enforce_onda": 99,
+    "min_lutas": 0,
+    "descricao": "Meta aspiracional do corte FORTE (p90 <= 55). Depende de repensar a explosao de skill como leitura unica (silhueta + 1 onda) em vez de nuvem de particulas."
   }
 }

@@ -34,14 +34,54 @@ class GeometriaHonestaTests(unittest.TestCase):
         # proporção cabo:lamina preservada
         self.assertAlmostEqual(c_px / l_px, cabo / lamina, places=6)
 
-    def test_anim_scale_estica_apenas_a_lamina(self) -> None:
+    def test_grip_encurta_a_arma_mas_nao_move_a_ponta(self) -> None:
+        """Rework Fase 1: a arma nasce na EMPUNHADURA — grip + cabo +
+        lâmina = raio*range_mult. A ponta cai no mesmo alcance de antes;
+        o que muda é onde a arma começa."""
         fake = SimpleNamespace()
-        c1, l1 = Simulador._comprimentos_honestos(fake, "Reta", 40.0, 20, 60)
-        c2, l2 = Simulador._comprimentos_honestos(
-            fake, "Reta", 40.0, 20, 60, anim_scale=1.5
+        raio_char = 40.0
+        grip = raio_char * 0.90
+        c_px, l_px = Simulador._comprimentos_honestos(
+            fake, "Reta", raio_char, 20, 60, grip_dist_px=grip
         )
-        self.assertAlmostEqual(c1, c2, places=6)
-        self.assertAlmostEqual(l2, l1 * 1.5, places=6)
+        alvo = raio_char * get_hitbox_profile("Reta")["range_mult"]
+        self.assertAlmostEqual(grip + c_px + l_px, alvo, places=6)
+
+    def test_grip_profiles_cobrem_os_tipos_de_lamina(self) -> None:
+        """Os tipos que nasciam no CENTRO do corpo têm grip; os que já
+        orbitam fora (Arremesso/Orbital/Mágica) não ganham."""
+        for tipo in ("Reta", "Dupla", "Corrente", "Arco", "Transformável"):
+            self.assertIn(tipo, Simulador.GRIP_PROFILES)
+        for tipo in ("Arremesso", "Orbital", "Mágica"):
+            self.assertNotIn(tipo, Simulador.GRIP_PROFILES)
+
+
+class AnimacaoRigidaTests(unittest.TestCase):
+    def test_transform_nunca_escala_e_lunge_e_limitado(self) -> None:
+        """Rework Fase 2: design FIXO — o transform exporta scale=1.0
+        SEMPRE; o movimento é lunge da empunhadura, clampado."""
+        from neural_fights.effects.weapon_animations import (
+            WeaponAnimationManager,
+        )
+
+        mgr = WeaponAnimationManager()
+        fid = 424242
+        mgr.start_attack(fid, "Reta", (1.0, 1.0), 0.0, weapon_style="Martelo")
+        for _ in range(40):  # varre todas as fases do golpe
+            tf = mgr.get_weapon_transform(
+                fid, "Reta", 0.0, (2.0, 1.0), 1 / 60, weapon_style="Martelo"
+            )
+            self.assertEqual(tf["scale"], 1.0)
+            self.assertGreaterEqual(tf["lunge"], -0.30)
+            self.assertLessEqual(tf["lunge"], 0.45)
+
+    def test_conversao_escala_para_lunge(self) -> None:
+        from neural_fights.effects.weapon_animations import WeaponAnimator
+
+        self.assertAlmostEqual(WeaponAnimator._lunge_de(1.5), 0.35)
+        self.assertAlmostEqual(WeaponAnimator._lunge_de(0.8), -0.14)
+        self.assertAlmostEqual(WeaponAnimator._lunge_de(2.0), 0.45)  # clamp
+        self.assertAlmostEqual(WeaponAnimator._lunge_de(0.3), -0.30)  # clamp
 
 
 class ZoomPunchTests(unittest.TestCase):

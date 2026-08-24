@@ -3601,6 +3601,9 @@ class AIBrain:
             self._evitar_repeticao_excessiva()
             self._aplicar_modificadores_espaciais(distancia, inimigo)
             self._aplicar_modificadores_armas(distancia, inimigo)
+            # ÚLTIMO estágio de propósito: sobreviver vence qualquer
+            # preferência de arma/estilo quando o perigo é real.
+            self._aplicar_instinto_sobrevivencia(distancia, hp_pct)
         finally:
             proposta = self._acao_atual
             self._acao_atual = acao_antes
@@ -3653,6 +3656,44 @@ class AIBrain:
         elif agg < 0.4 and self.acao_atual in ("MATAR", "ESMAGAR", "PRESSIONAR"):
             if r < (0.4 - agg) * 0.9:
                 self.acao_atual = self.rng.choice(["COMBATE", "POKE", "FLANQUEAR"])
+
+    def _aplicar_instinto_sobrevivencia(self, distancia, hp_pct):
+        """O medo tem CONSEQUÊNCIA de movimento (pedido do dono: 'quero
+        que o personagem tenha medo de tomar os danos e realmente queira
+        sobreviver, não ficar colado').
+
+        perigo = medo (contínuo do motor emocional, já modulado pela
+        coragem/frieza do lutador) + ferida real. Acima do limiar, as
+        intenções de risco viram RECUAR/CIRCULAR/FUGIR com probabilidade
+        crescente — corajoso ferido ainda avança; covarde ferido corre.
+        Último estágio da pilha: sobreviver não é preferência, é veto.
+        """
+        # Dial medido (sonda de 6 lutas): medo p50 quando ferido é ~0,29
+        # — com limiar 0,5 o estágio disparava só ~20%/decisão e MATAR
+        # seguia dominando a agonia. Ferida pesa mais que pânico puro; o
+        # meio de luta saudável (hp 0,5, medo 0,3 → 0,42) continua
+        # abaixo do limiar.
+        perigo = self.medo * 0.55 + (1.0 - hp_pct) * 0.5
+        if hp_pct < 0.3:
+            perigo += 0.2
+        if perigo < 0.45:
+            return
+        acoes_de_risco = (
+            "MATAR", "ESMAGAR", "PRESSIONAR", "APROXIMAR",
+            "COMBATE", "POKE", "BLOQUEAR",
+        )
+        if self.acao_atual not in acoes_de_risco:
+            return
+        if self.rng.random() >= (perigo - 0.45) * 1.6:
+            return
+        if hp_pct < 0.25 and self.medo > 0.35:
+            self.acao_atual = "FUGIR"
+        elif distancia < 3.0:
+            # colado no perigo: abre distância AGORA (2/3) ou sai de
+            # linha (1/3) — o "desviar" que o espectador lê.
+            self.acao_atual = self.rng.choice(["RECUAR", "RECUAR", "CIRCULAR"])
+        else:
+            self.acao_atual = self.rng.choice(["CIRCULAR", "POKE", "RECUAR"])
 
     def _aplicar_eixos_orfaos(self, distancia, inimigo):
         """Consumidores dos eixos órfãos (Onda 5A): mobilidade e perseguicao.
@@ -4223,8 +4264,15 @@ class AIBrain:
             return False
 
         candidatos.sort(key=lambda item: item[0])
-        _, nome, dados = candidatos[0]
-        if not self._chance_temporal(dados["chance"], dt):
+        prioridade, nome, dados = candidatos[0]
+        chance = dados["chance"]
+        if prioridade == 1:
+            # Adrenalina: o medo AFIA os reflexos de sobrevivência
+            # (esquiva de projétil, reação a golpe iminente) — quem está
+            # assustado desvia MAIS, não menos. Só prioridade 1: punição
+            # e postura não ganham nada com pânico.
+            chance = min(0.98, chance * (1.0 + self.medo))
+        if not self._chance_temporal(chance, dt):
             return False
 
         self.cd_instintos[nome] = self.tempo_combate + dados.get("cooldown", 3.0)

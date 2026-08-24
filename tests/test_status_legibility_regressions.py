@@ -114,13 +114,12 @@ class FeedbackDeDefesaTests(unittest.TestCase):
         self.assertEqual(sim.textos, [])
         p1.brain.ultimo_bloqueio = 0.0  # absorveu em guarda AGORA
         Simulador._atualizar_feedback_defesa(sim)
-        blocks = [t for t in sim.textos if getattr(t, "texto", "") == "BLOCK!"]
-        self.assertEqual(len(blocks), 1)
+        # Re-pino (reforma "luta limpa"): o texto "BLOCK!" saiu — o
+        # contrato agora é o ARCO do BlockEffect, que já era a leitura.
         self.assertEqual(len(sim.block_effects), 1)
         p1.brain.ultimo_bloqueio = 0.016  # mesmo bloqueio envelhecendo
         Simulador._atualizar_feedback_defesa(sim)
-        blocks = [t for t in sim.textos if getattr(t, "texto", "") == "BLOCK!"]
-        self.assertEqual(len(blocks), 1)  # não re-dispara
+        self.assertEqual(len(sim.block_effects), 1)  # não re-dispara
 
     def test_escudo_quebrado_estilhaca_uma_vez(self) -> None:
         p1, p2 = self._lut(), self._lut()
@@ -130,17 +129,11 @@ class FeedbackDeDefesaTests(unittest.TestCase):
         Simulador._atualizar_feedback_defesa(sim)
         escudo.escudo_atual = 0.0
         Simulador._atualizar_feedback_defesa(sim)
-        quebras = [
-            t for t in sim.textos
-            if getattr(t, "texto", "") == "ESCUDO QUEBROU!"
-        ]
-        self.assertEqual(len(quebras), 1)
+        # Re-pino (reforma): o texto saiu; o contrato são os ESTILHAÇOS.
+        estilhacos = len(sim.particulas)
+        self.assertGreater(estilhacos, 0)
         Simulador._atualizar_feedback_defesa(sim)
-        quebras = [
-            t for t in sim.textos
-            if getattr(t, "texto", "") == "ESCUDO QUEBROU!"
-        ]
-        self.assertEqual(len(quebras), 1)
+        self.assertEqual(len(sim.particulas), estilhacos)  # não re-dispara
 
     def test_esquiva_dispara_por_incremento(self) -> None:
         p1, p2 = self._lut(), self._lut()
@@ -148,10 +141,8 @@ class FeedbackDeDefesaTests(unittest.TestCase):
         Simulador._atualizar_feedback_defesa(sim)
         p1.esquivas_visuais = 1
         Simulador._atualizar_feedback_defesa(sim)
-        esquivas = [
-            t for t in sim.textos if getattr(t, "texto", "") == "ESQUIVA!"
-        ]
-        self.assertEqual(len(esquivas), 1)
+        # Re-pino (reforma): o texto saiu; o contrato é o BURST de
+        # afterimages (DashTrail), que já contava a esquiva sozinho.
         self.assertEqual(len(sim.dash_trails), 1)
 
 

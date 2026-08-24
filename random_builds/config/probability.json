@@ -1,0 +1,30 @@
+{
+    "presets": {
+        "stat_default": {
+            "kind": "rare_extremes",
+            "mid_mean_pct": 0.5,
+            "mid_std_pct": 0.16,
+            "uniform_chance": 0.2,
+            "low_extreme_chance": 0.05,
+            "high_extreme_chance": 0.05,
+            "extreme_band_pct": 0.06
+        },
+        "stat_generous": {
+            "kind": "rare_extremes",
+            "mid_mean_pct": 0.58,
+            "mid_std_pct": 0.15,
+            "uniform_chance": 0.18,
+            "low_extreme_chance": 0.04,
+            "high_extreme_chance": 0.08,
+            "extreme_band_pct": 0.06
+        },
+        "uniform": {
+            "kind": "uniform"
+        },
+        "body_normal": {
+            "kind": "normal",
+            "mean_pct": 0.35,
+            "std_pct": 0.18
+        }
+    }
+}

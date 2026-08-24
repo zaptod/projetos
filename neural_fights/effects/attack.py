@@ -126,8 +126,8 @@ class CraterMark:
     raio: float
     intensidade: float
     cor: Tuple[int, int, int]
-    vida: float = 8.0  # Dura bastante
-    max_vida: float = 8.0
+    vida: float = 4.0  # reforma: era 8.0 (~16s reais com o fade)
+    max_vida: float = 4.0
     cracks: List[dict] = field(default_factory=list)
     
     def __post_init__(self):
@@ -170,8 +170,8 @@ class GroundCrack:
         self.y = y
         self.direcao = direcao
         self.forca = forca
-        self.vida = 5.0
-        self.max_vida = 5.0
+        self.vida = 3.0  # reforma: era 5.0
+        self.max_vida = 3.0
         
         # Comprimento máximo baseado na força
         self.comp_max = 50 + forca * 8
@@ -665,8 +665,8 @@ class AttackAnimationManager:
         self.MAX_TRAILS = 10
         self.MAX_SHOCKWAVES = 8
         self.MAX_SPARKS = 15
-        self.MAX_CRATERS = 20
-        self.MAX_CRACKS = 10
+        self.MAX_CRATERS = 6
+        self.MAX_CRACKS = 3
         
         # PPM
         self.ppm = 50
@@ -697,16 +697,11 @@ class AttackAnimationManager:
         # Multiplicador de crítico
         crit_mult = 1.5 if is_critico else 1.0
         
-        # === FAÍSCAS ===
-        if len(self.sparks) < self.MAX_SPARKS:
-            sparks = ImpactSparks(px, py, direcao, forca * crit_mult, tipo_dano)
-            self.sparks.append(sparks)
-        
-        # === SHOCKWAVE ===
-        if len(self.shockwaves) < self.MAX_SHOCKWAVES:
-            cores = IMPACT_COLORS.get(tipo_dano, IMPACT_COLORS["physical"])
-            wave = ImpactShockwave(px, py, forca * crit_mult, random.choice(cores))
-            self.shockwaves.append(wave)
+        # Reforma "luta limpa": as FAÍSCAS e a ONDA deste manager morreram.
+        # Um único hit disparava QUATRO sistemas de faísca no mesmo ponto
+        # e frame (HitSpark + ImpactSparks + sparks do animador de arma +
+        # burst de encantamento) e DUAS ondas de choque. Sobrevivem o
+        # HitSpark e o Shockwave do simulador — um evento, uma leitura.
         
         # === SCREEN FLASH (só para ataques fortes) ===
         if tier['screen_flash'] and (is_critico or forca >= 18):
@@ -733,7 +728,11 @@ class AttackAnimationManager:
         
         # Retorna dados para camera shake
         return {
-            'shake_intensity': 5 + dano * 0.5 * tier['shake_mult'],
+            # Recalibrado (pedido do dono: "a tela treme muito"): as
+            # formulas usavam dano ABSOLUTO e nunca foram re-escaladas
+            # depois que a escala de vida/dano do programa dobrou os
+            # numeros — todo golpe saturava o teto.
+            'shake_intensity': 2 + dano * 0.18 * tier['shake_mult'],
             'shake_duration': 0.1 + forca * 0.005,
             'zoom_punch': 0.05 + forca * 0.005 if forca >= 12 else 0,
         }

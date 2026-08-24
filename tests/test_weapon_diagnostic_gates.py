@@ -37,8 +37,10 @@ class WeaponGeometryContractTests(unittest.TestCase):
 
         arremessos = [arma for arma in armas if arma["tipo"] == "Arremesso"]
         transformaveis = [arma for arma in armas if arma["tipo"] == "Transformável"]
-        self.assertEqual(9, len(arremessos))
-        self.assertEqual(9, len(transformaveis))
+        # Re-pino (regen curada): 6 variantes por tipo, sem as
+        # rodadas extras de Epico+ que inflavam para 9.
+        self.assertEqual(6, len(arremessos))
+        self.assertEqual(6, len(transformaveis))
         self.assertTrue(
             all(arma["largura"] == arma["tamanho_projetil"] for arma in arremessos)
         )
@@ -174,7 +176,7 @@ class WeaponGateCLITests(unittest.TestCase):
                 report = json.loads(result.stdout.decode("ascii"))
                 self.assertEqual(0, report["errors"])
                 self.assertEqual(0, report["warnings"])
-                self.assertEqual(9, report["accepted_infos"])
+                self.assertEqual(6, report["accepted_infos"])
 
     def test_default_paths_do_not_depend_on_current_working_directory(self):
         previous = Path.cwd()
@@ -191,7 +193,7 @@ class WeaponGateCLITests(unittest.TestCase):
                             stderr=stderr,
                         )
                         self.assertEqual(exit_code, 0, stderr.getvalue())
-                        self.assertEqual(78, json.loads(stdout.getvalue())["total"])
+                        self.assertEqual(54, json.loads(stdout.getvalue())["total"])
             finally:
                 os.chdir(previous)
 

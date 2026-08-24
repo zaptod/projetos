@@ -1,0 +1,13 @@
+{
+    "assets": [
+        {
+            "id": "reaction_example_disabled",
+            "file": "reactions/terrible/exemplo_nao_existe.mp4",
+            "kind": "reaction",
+            "sentiment": "negative",
+            "intensity": 0.9,
+            "tags": ["disbelief", "failure"],
+            "duration": 1.4
+        }
+    ]
+}

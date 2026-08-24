@@ -1,0 +1,299 @@
+{
+  "_comment": "Identidade visual do personagem via Digen. O template e editavel sem tocar em codigo: os placeholders {MAIUSCULOS} sao preenchidos por src/identity/prompt.py. Texto em ingles de proposito - modelos de video respondem muito melhor.",
+  "modelo": "Real Motion 3.5",
+  "aspect": "9:16",
+  "duracao": "max",
+  "resolucao": "max",
+  "prompt_max_chars": {
+    "character": 1400,
+    "weapon": 1200,
+    "character_weapon": 1900,
+    "default": 1400
+  },
+  "navigation_timeout": 60,
+  "login_timeout": 60,
+  "manual_login_timeout": 180,
+  "render_timeout": 1800,
+  "poll_interval": 5,
+  "download_timeout": 120,
+  "max_attempts": 3,
+  "min_interval": 45,
+  "watch_interval": 30,
+  "prompt_template": "Cinematic character reveal of {NOME}, {ARTIGO} {PORTE} {CLASSE} in a dark fantasy arena. {FISICO}, {ALTURA} m tall, with {ARTIGO_PERS} {PERSONALIDADE} presence. Their signature color is {COR} ({COR_HEX}), glowing through the armor trim and the aura around them. They fight with {ARMA_ESTILO} - {RARIDADE}-grade {ARMA_TIPO} weapons charged with {ELEMENTO}, {AURA}. Slow push-in, dramatic rim lighting, volumetric haze, embers and dust in the air. The character lifts the weapon and it flares to life. Photorealistic, high detail, cinematic color grade, shallow depth of field. No text, no watermark, no subtitles, no user interface.",
+  "traducoes": {
+    "classe": {
+      "Guerreiro (Força Bruta)": "brute-force warrior",
+      "Berserker (Fúria)": "raging berserker",
+      "Gladiador (Combate)": "arena gladiator",
+      "Cavaleiro (Defesa)": "armored knight",
+      "Assassino (Crítico)": "lethal assassin",
+      "Ladino (Evasão)": "evasive rogue",
+      "Ninja (Velocidade)": "swift ninja",
+      "Duelista (Precisão)": "precise duelist",
+      "Mago (Arcano)": "arcane mage",
+      "Piromante (Fogo)": "fire pyromancer",
+      "Criomante (Gelo)": "ice cryomancer",
+      "Necromante (Trevas)": "dark necromancer",
+      "Paladino (Sagrado)": "holy paladin",
+      "Druida (Natureza)": "nature druid",
+      "Feiticeiro (Caos)": "chaos sorcerer",
+      "Monge (Chi)": "chi monk"
+    },
+    "personalidade": {
+      "Aleatório": "unpredictable",
+      "Agressivo": "aggressive",
+      "Defensivo": "guarded",
+      "Berserker": "furious",
+      "Tático": "calculating",
+      "Assassino": "cold and lethal",
+      "Acrobático": "acrobatic",
+      "Equilibrado": "composed",
+      "Showman": "theatrical",
+      "Sombrio": "grim",
+      "Perseguidor": "relentless",
+      "Protetor": "protective",
+      "Viking": "savage northern",
+      "Samurai": "honorable",
+      "Capoeirista": "fluid and rhythmic",
+      "Pugilista": "brawling",
+      "Psicopata": "unhinged",
+      "Fantasma": "ghostly",
+      "Destruidor": "destructive",
+      "Tempestade": "storming",
+      "Predador Alfa": "apex-predator",
+      "Masoquista": "pain-hungry",
+      "Artista Marcial": "disciplined",
+      "Zerg Rush": "swarming",
+      "Contemplativo": "meditative",
+      "Caótico": "chaotic"
+    },
+    "tipo_arma": {
+      "Reta": "straight-bladed",
+      "Dupla": "dual-wielded",
+      "Corrente": "chained",
+      "Arremesso": "thrown",
+      "Arco": "ranged bow",
+      "Orbital": "orbiting",
+      "Mágica": "conjured magic",
+      "Transformável": "shapeshifting"
+    },
+    "raridade": {
+      "Comum": "common",
+      "Incomum": "uncommon",
+      "Raro": "rare",
+      "Épico": "epic",
+      "Lendário": "legendary",
+      "Mítico": "mythic"
+    },
+    "elemento": {
+      "FOGO": "fire",
+      "GELO": "ice",
+      "RAIO": "lightning",
+      "TREVAS": "shadow",
+      "LUZ": "holy light",
+      "NATUREZA": "nature",
+      "ARCANO": "arcane",
+      "CAOS": "chaos",
+      "SANGUE": "blood",
+      "VOID": "void",
+      "TEMPO": "time",
+      "GRAVITACAO": "gravity",
+      "FISICO": "raw steel",
+      "DEFAULT": "raw steel"
+    },
+    "estilo": {
+      "Espada Longa": "longsword",
+      "Espada Curta": "short sword",
+      "Montante": "two-handed montante",
+      "Katana": "katana",
+      "Sabre": "curved sabre",
+      "Lança": "long spear",
+      "Alabarda": "halberd",
+      "Machado": "battle axe",
+      "Martelo": "war hammer",
+      "Maça": "spiked mace",
+      "Foice": "war scythe",
+      "Claymore": "greatsword claymore",
+      "Adagas Gêmeas": "twin daggers",
+      "Sai": "sai forks",
+      "Kamas": "kama sickles",
+      "Garras": "claw blades",
+      "Tonfas": "tonfa batons",
+      "Facas Táticas": "tactical knives",
+      "Kusarigama": "kusarigama chain-sickle",
+      "Mangual": "flail",
+      "Chicote": "bladed whip",
+      "Corrente com Peso": "weighted chain",
+      "Meteor Hammer": "meteor hammer",
+      "Rope Dart": "rope dart",
+      "Facas de Arremesso": "throwing knives",
+      "Shuriken": "shuriken",
+      "Chakram": "chakram rings",
+      "Machados de Arremesso": "throwing axes",
+      "Kunai": "kunai",
+      "Bumerangue": "boomerang",
+      "Arco Curto": "short bow",
+      "Arco Longo": "longbow",
+      "Arco Composto": "compound bow",
+      "Besta Leve": "light crossbow",
+      "Besta Pesada": "heavy crossbow",
+      "Arco Élfico": "elven bow",
+      "Escudo Orbital": "orbiting shield",
+      "Drones de Combate": "combat drones",
+      "Orbes Místicos": "mystic orbs",
+      "Lâminas Orbitais": "orbiting blades",
+      "Cristais Flutuantes": "floating crystals",
+      "Sentinelas": "sentinel constructs",
+      "Espadas Espectrais": "spectral swords",
+      "Runas Flutuantes": "floating runes",
+      "Tentáculos Sombrios": "shadow tendrils",
+      "Cristais Arcanos": "arcane crystals",
+      "Lanças de Mana": "mana lances",
+      "Chamas Espirituais": "spirit flames",
+      "Espada-Lança": "sword-spear",
+      "Espada Extensível": "extending sword",
+      "Chicote-Espada": "whip-sword",
+      "Arco-Lâminas": "bow-blades",
+      "Bastão Segmentado": "segmented staff",
+      "Machado-Martelo": "axe-hammer"
+    }
+  },
+  "aura": {
+    "FOGO": "trailing orange embers and heat distortion",
+    "GELO": "pale blue frost crystals drifting off the blade",
+    "RAIO": "arcs of white electricity snapping outward",
+    "TREVAS": "violet shadow smoke pouring downward",
+    "LUZ": "warm golden god-rays",
+    "NATUREZA": "green spores and creeping vines",
+    "ARCANO": "floating magenta runes",
+    "CAOS": "unstable prismatic flickers",
+    "SANGUE": "crimson mist clinging to the edge",
+    "VOID": "a halo of pure darkness swallowing the light",
+    "TEMPO": "silver clock-hands of light orbiting slowly",
+    "GRAVITACAO": "indigo distortion bending the air inward",
+    "FISICO": "cold sparks struck off raw steel",
+    "DEFAULT": "cold sparks struck off raw steel"
+  },
+  "porte": [
+    [
+      1.55,
+      "small and wiry"
+    ],
+    [
+      1.7,
+      "average-height"
+    ],
+    [
+      1.85,
+      "tall"
+    ],
+    [
+      2.05,
+      "towering"
+    ],
+    [
+      9.99,
+      "giant"
+    ]
+  ],
+  "fisico": [
+    [
+      4.0,
+      "lean and underpowered"
+    ],
+    [
+      5.5,
+      "athletic"
+    ],
+    [
+      7.0,
+      "strongly built"
+    ],
+    [
+      8.5,
+      "heavily muscled"
+    ],
+    [
+      9.9,
+      "monstrously powerful"
+    ]
+  ],
+  "cores": [
+    [
+      15,
+      "crimson red"
+    ],
+    [
+      45,
+      "burnt orange"
+    ],
+    [
+      70,
+      "golden yellow"
+    ],
+    [
+      160,
+      "vivid green"
+    ],
+    [
+      200,
+      "cyan"
+    ],
+    [
+      255,
+      "deep blue"
+    ],
+    [
+      290,
+      "violet"
+    ],
+    [
+      330,
+      "magenta"
+    ],
+    [
+      360,
+      "crimson red"
+    ]
+  ],
+  "hydration_timeout": 60,
+  "watch_backoff_max": 600,
+  "prompts": {
+    "character": "Cinematic full-body reveal of {NOME}, {ARTIGO} {PORTE} {CLASSE}, {FISICO}, {ALTURA} m tall, with {ARTIGO_PERS} {PERSONALIDADE} presence, signature color {COR} ({COR_HEX}) running through the armor trim, the cloth and the aura. Vertical 9:16 framing, three-quarter view, the whole body in frame from head to feet. The character is alive: breathing, shifting weight, hair and cloth reacting to the wind of the arena. Slow push-in, dramatic rim lighting, volumetric haze, embers and dust in the air, dark fantasy arena behind them. Photorealistic, high detail, cinematic color grade, shallow depth of field. Empty hands - no weapon in frame. No text, no watermark, no subtitles, no user interface, no logo.",
+    "weapon": "Cinematic product shot of a single weapon alone in frame: {ARTIGO_RARIDADE} {RARIDADE}-grade {ARMA_ESTILO}, {ARMA_TIPO} weapon, charged with {ELEMENTO}, {AURA}. Vertical 9:16 framing. The weapon floats at the center of a dark arena, rotating slowly while the camera orbits in close on the edge and the material. It is a real physical object inside the scene, catching the light of the room, with reflections, sparks and floating particles around it, not a flat image pasted over a background. Macro detail on the blade and the grip, volumetric light, drifting dust, shallow depth of field, cinematic color grade. No character, no hands, no arms in frame. No text, no watermark, no subtitles, no user interface, no logo.",
+    "character_weapon": "Cinematic hero shot: the SAME character holding the SAME weapon. The character is {NOME}, {ARTIGO} {PORTE} {CLASSE}, {FISICO}, {ALTURA} m tall, with {ARTIGO_PERS} {PERSONALIDADE} presence, signature color {COR} ({COR_HEX}) running through the armor trim, the cloth and the aura. The weapon is {ARTIGO_RARIDADE} {RARIDADE}-grade {ARMA_ESTILO}, {ARMA_TIPO} weapon, charged with {ELEMENTO}, {AURA}. Keep both identities exactly as described: same face, same hair, same skin, same armor and clothing, same colors, same height and proportions for the character; same shape, same material, same colors, same effects and same scale for the weapon. Vertical 9:16 framing, full body or three-quarter shot, the character raising and wielding the weapon, the weapon flaring to life in their hands and lighting their face and armor from below. Slow orbit around them, dramatic rim lighting, volumetric haze, embers and dust, dark fantasy arena. Photorealistic, high detail, cinematic color grade, shallow depth of field. No text, no watermark, no subtitles, no user interface, no logo."
+  },
+  "duracao_por_slot": {
+    "character": [
+      "5s",
+      "8s",
+      "3s",
+      "max"
+    ],
+    "weapon": [
+      "3s",
+      "5s",
+      "max"
+    ],
+    "character_weapon": [
+      "5s",
+      "8s",
+      "3s",
+      "max"
+    ]
+  },
+  "_comment_prompts": "Um template por slot (secoes 4, 6 e 7). O de character_weapon repete as DUAS identidades por inteiro de proposito: gerar o payoff a partir de um resumo e o que faz o modelo entregar outro rosto e outra lamina (secao 16).",
+  "_comment_prompt_template_legado": "Formato anterior, de um clipe so. Mantido como fallback de prompts[slot].",
+  "espaco_por_geracao": true,
+  "_comment_espaco": "Os tres clipes da mesma build nascem no MESMO space do Digen: menos navegacao e o space vira o dossie daquela geracao. O video novo e reconhecido por diferenca contra a foto dos cards de antes do envio; se os cards existentes nao forem distinguiveis, aquele clipe ganha um space proprio em vez de arriscar baixar o errado. false volta ao space por clipe.",
+  "_comment_duracao": "duracao_por_slot manda mais que `duracao`; a global fica como queda para slot sem entrada. As janelas da edicao vivem em config/editing.json -> identity_slots.",
+  "referencias": {
+    "_comment": "O payoff espera as duas imagens para anexa-las como referencia. `espera_referencias_s` e o prazo maximo: vencido ele vai ao ar so com texto, que e exatamente o video que sai hoje. `habilitado: false` gera as imagens e usa como cena, mas nao tenta anexar (rollback sem perder o resto).",
+    "habilitado": true,
+    "espera_referencias_s": 900,
+    "ordem": [
+      "character",
+      "weapon"
+    ]
+  }
+}

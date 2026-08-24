@@ -1,0 +1,5 @@
+{
+    "_comment": "Regras extras editaveis a mao. As regras de dependencia derivadas dos catalogos do neural_fights (estilo por tipo, dano por raridade, peso por estilo, skill por encantamento) sao geradas em src/nf_bridge/roulette_factory.py e mescladas com estas.",
+    "rules": [],
+    "validations": []
+}

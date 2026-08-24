@@ -20,6 +20,7 @@ from neural_fights.models.constants import (
     LISTA_ENCANTAMENTOS, ENCANTAMENTOS
 )
 from neural_fights.ai.personalities import PERSONALIDADES_PRESETS
+from neural_fights.models.weapons import gerar_passiva_arma
 from neural_fights.core.skills import SKILL_DB
 from neural_fights.data import database
 
@@ -337,8 +338,13 @@ def gerar_arma(tipo, raridade, variante_idx=None, encantamento=None, skill=None)
     nome = gerar_nome_arma(tipo, raridade, variante["nome"], encantamento)
     cor = gerar_cor_por_raridade(raridade)
     
-    dano_base = {"Comum": 5, "Incomum": 7, "Raro": 10, "Épico": 13, "Lendário": 17, "Mítico": 22}
-    dano = dano_base.get(raridade, 5) + random.uniform(-1, 2)
+    # Recalibrado na regen curada: o corredor de TTK 20-40s do programa
+    # de qualidade foi conquistado com dano EQUIPADO p50 ~16 (roster 65%
+    # Épico+). A pirâmide de raridade derrubou o p50 para 8 e as lutas
+    # dobraram de duração — a curva sobe ~1,6x mantendo a proporção
+    # entre raridades (medido no corpus roster).
+    dano_base = {"Comum": 9, "Incomum": 12, "Raro": 16, "Épico": 20, "Lendário": 25, "Mítico": 31}
+    dano = dano_base.get(raridade, 9) + random.uniform(-1.5, 2.5)
     
     critico = 2.0 + random.uniform(0, 3) + (1.0 if raridade in ["Épico", "Lendário", "Mítico"] else 0)
     velocidade = 0.8 + random.uniform(0, 0.4)
@@ -360,7 +366,11 @@ def gerar_arma(tipo, raridade, variante_idx=None, encantamento=None, skill=None)
         "habilidades": [skill] if skill else [],
         "custo_mana": random.uniform(10, 25) if skill else 0,
         "cabo_dano": random.choice([True, False]),
-        "passiva": None,
+        # Passiva rolada NA GERACAO e persistida: passiva=None numa
+        # raridade que concede fazia Arma.__init__ sortear com random
+        # GLOBAL na carga — cada load dava uma arma diferente (o
+        # vazamento de determinismo do backlog do programa).
+        "passiva": gerar_passiva_arma(raridade),
         "afinidade_elemento": encantamento,
         "durabilidade": 100.0,
         "durabilidade_max": 100.0,

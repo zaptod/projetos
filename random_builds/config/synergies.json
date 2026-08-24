@@ -1,0 +1,23 @@
+{
+    "compatibility": {
+        "forca_base_necessaria": 1.2,
+        "forca_por_kg": 0.75,
+        "weights": {
+            "peso_forca": 0.30,
+            "classe_arma": 0.22,
+            "elemento_classe": 0.20,
+            "mana_habilidade": 0.16,
+            "alcance_tamanho": 0.12
+        }
+    },
+    "special_synergies": [
+        {"id": "arma_da_classe",     "label": "A classe dele PREFERE esse tipo de arma", "bonus": 8},
+        {"id": "elemento_da_classe", "label": "O encantamento e do MESMO elemento da classe", "bonus": 12}
+    ],
+    "special_conflicts": [
+        {"id": "elemento_oposto",   "label": "O encantamento e o elemento OPOSTO da classe", "penalty": 12},
+        {"id": "mana_insuficiente", "label": "Ele nao tem mana para usar a habilidade da arma", "penalty": 14},
+        {"id": "nao_levanta",       "label": "Ele mal consegue levantar a propria arma", "penalty": 22},
+        {"id": "arma_gigante",      "label": "A arma e maior que o proprio personagem", "penalty": 8}
+    ]
+}

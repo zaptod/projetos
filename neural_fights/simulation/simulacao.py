@@ -32,6 +32,9 @@ from neural_fights.effects import (Particula, FloatingText, Decal, Shockwave, C�
                      MovementAnimationManager, MovementType,  # v8.0 Movement Animations
                      AttackAnimationManager, calcular_knockback_com_forca, get_impact_tier,  # v8.0 Attack Animations
                      MagicVFXManager)  # v11.0 Magic VFX
+from neural_fights.effects.budget import (
+    FrameBudget, PRIORIDADE_IMPACTO, PRIORIDADE_SKILL, PRIORIDADE_AMBIENTE,
+)
 from neural_fights.effects.audio import AudioManager  # v10.0 Sistema de Áudio
 from neural_fights.core.entities import Lutador
 from neural_fights.core.combat import criar_metadata_impacto
@@ -91,6 +94,13 @@ class Simulador:
     outro. Paralelismo real de partidas é por processo — é o que o modo
     torneio já faz ao lançar cada luta via ``subprocess``.
     """
+
+    # Defaults de CLASSE do funil de efeitos: os scaffolds de contrato
+    # constroem o Simulador sem __init__ (object.__new__) e precisam de um
+    # orçamento válido para os helpers de spawn.
+    budget = FrameBudget()
+    tempo_visual = 0.0
+    _texto_por_alvo = {}
 
     _lifecycle_lock = threading.RLock()
     _active_owner_token = None
@@ -230,6 +240,9 @@ class Simulador:
         self.rodando = True
         
         self.cam = Câmera(self.screen_width, self.screen_height)
+        self.budget = FrameBudget()
+        self._texto_por_alvo = {}
+        self.tempo_visual = 0.0
         self.particulas = [] 
         self.decals = [] 
         self.textos = [] 
@@ -382,6 +395,14 @@ class Simulador:
             self.arena.largura,
             self.arena.altura,
         )
+        # Enquadramento pedido pelo match_config. Ausente = ARENA (o padrao,
+        # que mostra a arena inteira). Serve a quem grava video em 9:16, onde
+        # a arena inteira deixaria os lutadores minusculos: "AUTO" enquadra os
+        # LUTADORES. Nao afeta o combate — a IA usa rng proprio, e o modo de
+        # camera so muda o que a tela mostra.
+        camera_modo = self.match_config.get("camera_modo")
+        if camera_modo:
+            self.cam.modo = str(camera_modo).upper()
 
         spawn1, spawn2 = self.arena.get_spawn_points()
         self.p1.pos[0], self.p1.pos[1] = spawn1
@@ -535,9 +556,12 @@ class Simulador:
                 if event.key == pygame.K_2: 
                     if self.audio: self.audio.play_ui("select")
                     self.cam.modo = "P2"
-                if event.key == pygame.K_3: 
+                if event.key == pygame.K_3:
                     if self.audio: self.audio.play_ui("select")
                     self.cam.modo = "AUTO"
+                if event.key == pygame.K_0:
+                    if self.audio: self.audio.play_ui("select")
+                    self.cam.modo = "ARENA"
             if event.type == pygame.MOUSEWHEEL:
                 self.cam.target_zoom += event.y * 0.1
                 self.cam.target_zoom = max(0.5, min(self.cam.target_zoom, 3.0))
@@ -580,6 +604,18 @@ class Simulador:
                 efeito.update(dt)
             setattr(self, nome_lista, [efeito for efeito in efeitos if efeito.vida > 0])
 
+        # Relógio VISUAL único (reforma): acumula o dt JÁ escalado — para
+        # no pause/hit-stop e desacelera no slow-mo. Antes cada efeito
+        # lia get_ticks()/time.time() e continuava animando com o jogo
+        # congelado.
+        self.tempo_visual += dt
+        # Camada C (atmosfera) congela no hit-stop e no letterbox.
+        gf = getattr(self, "game_feel", None)
+        self.budget.congelado = bool(
+            (gf is not None and gf.hit_stop.em_hitstop)
+            or getattr(self, "letterbox_timer", 0.0) > 0.0
+        )
+
         if getattr(self, "magic_vfx", None):
             self.magic_vfx.update(dt)
             # Passe 5 (arte): TRANSFORM com aura CHEIA — a DramaticAura
@@ -591,19 +627,20 @@ class Simulador:
                 from neural_fights.utils.palette import resolver_elemento
                 for lut in (self.p1, self.p2):
                     trans = getattr(lut, "transformacao_ativa", None)
-                    if trans is None or not getattr(trans, "ativo", True):
+                    ativo = trans is not None and getattr(trans, "ativo", True)
+                    if not ativo:
+                        self.magic_vfx.remover_aura_persistente(id(lut))
                         continue
-                    trans._vfx_timer = getattr(trans, "_vfx_timer", 0.0) - dt
-                    if trans._vfx_timer <= 0.0:
-                        trans._vfx_timer = 0.7
-                        elem_tr = resolver_elemento(
-                            trans, getattr(trans, "nome", ""), None
-                        )
-                        self.magic_vfx.spawn_aura(
-                            lut.pos[0] * PPM, lut.pos[1] * PPM,
-                            lut.raio_fisico * 1.8 * PPM, elem_tr,
-                            intensidade=1.2,
-                        )
+                    # Aura ÚNICA reposicionada (o re-spawn de 0,7s com
+                    # vida 2,0s empilhava três — reforma "luta limpa").
+                    elem_tr = resolver_elemento(
+                        trans, getattr(trans, "nome", ""), None
+                    )
+                    self.magic_vfx.aura_persistente(
+                        id(lut), lut.pos[0] * PPM, lut.pos[1] * PPM,
+                        lut.raio_fisico * 1.8 * PPM, elem_tr,
+                        intensidade=1.0,
+                    )
         if getattr(self, "movement_anims", None):
             self.movement_anims.update(dt)
         if getattr(self, "attack_anims", None):
@@ -677,24 +714,24 @@ class Simulador:
                 dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano_dot)
                 impacto_aplicado = True
             if morreu:
-                self.textos.append(FloatingText(
+                self._push_texto(
                     alvo.pos[0] * PPM,
                     alvo.pos[1] * PPM - 50,
                     "FATAL!",
                     VERMELHO_SANGUE,
                     40,
-                ))
+                )
             elif impacto_aplicado:
                 cor_dot = self._get_cor_efeito(
                     resultado.get("elemento") or tipo_dot
                 )
-                self.textos.append(FloatingText(
+                self._push_texto(
                     alvo.pos[0] * PPM,
                     alvo.pos[1] * PPM - 30,
                     int(dano_aplicado),
                     cor_dot,
                     14,
-                ))
+                )
             return
 
         resolver_impacto = getattr(alvo, "resolver_impacto", None)
@@ -1163,18 +1200,19 @@ class Simulador:
                         and resultado_dano.get("morreu")
                     ) or not getattr(alvo, "ativo", True)
                 if morreu:
-                    self.textos.append(FloatingText(alvo_x*PPM, alvo_y*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
+                    self._texto_fatal(alvo_x*PPM, alvo_y*PPM - 50)
                 else:
-                    # Texto especial para execução
-                    if bonus_condicao >= 5.0:
-                        self.textos.append(FloatingText(alvo_x*PPM, alvo_y*PPM - 50, "EXECUÇÃO!", (200, 50, 50), 32))
-                    
+                    # Reforma "luta limpa": o texto "EXECUÇÃO!" saiu — a
+                    # execução vira a COR do número (roxo), sem 2ª palavra.
                     # Cor do texto baseado no efeito ou tipo de projétil
                     if hasattr(proj, 'tipo') and proj.tipo in ["faca", "shuriken", "chakram", "flecha"]:
                         cor_txt = proj.cor if hasattr(proj, 'cor') else BRANCO
                     else:
                         cor_txt = self._get_cor_efeito(tipo_efeito)
-                    self.textos.append(FloatingText(alvo_x*PPM, alvo_y*PPM - 30, int(dano_aplicado), cor_txt))
+                    if bonus_condicao >= 5.0:
+                        cor_txt = (200, 110, 255)  # execução
+                    self._push_texto(alvo_x*PPM, alvo_y*PPM - 30, int(dano_aplicado), cor_txt,
+                                     alvo=alvo)
                     
                     # Partículas baseadas no efeito
                     self._spawn_particulas_efeito(alvo_x*PPM, alvo_y*PPM, tipo_efeito)
@@ -1183,13 +1221,13 @@ class Simulador:
                 if hasattr(proj, 'lifesteal') and proj.lifesteal > 0:
                     cura = dano_aplicado * proj.lifesteal
                     cura_real = proj.dono.receber_cura(cura)
-                    self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura_real)}", (200, 100, 200), 16))
+                    self._push_texto(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura_real)}", (200, 100, 200), 16)
                 
                 # Efeito DRENAR recupera vida do atacante
                 elif tipo_efeito == "DRENAR":
                     cura = dano_aplicado * 0.15
                     cura_real = proj.dono.receber_cura(cura)
-                    self.textos.append(FloatingText(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura_real)}", (100, 255, 150), 16))
+                    self._push_texto(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura_real)}", (100, 255, 150), 16)
 
                 # Praga se propaga somente para outro lutador hostil disponível
                 # dentro do raio, carregando o histórico para não reinfectar.
@@ -1272,12 +1310,12 @@ class Simulador:
                         )
                         atingiu_secundario = dano_secundario > 0.0
                     if atingiu_secundario:
-                        self.textos.append(FloatingText(
+                        self._push_texto(
                             alvo_cone_x * PPM,
                             alvo_cone_y * PPM - 30,
                             int(dano_secundario),
                             self._get_cor_efeito(proj.tipo_efeito),
-                        ))
+                        )
                         self._spawn_particulas_efeito(
                             alvo_cone_x * PPM,
                             alvo_cone_y * PPM,
@@ -1301,7 +1339,7 @@ class Simulador:
                 if getattr(proj_t, "cone", False) or getattr(proj_t, "ground", False):
                     continue
                 pid = id(proj_t)
-                if pid not in self.magic_vfx.trails and len(self.magic_vfx.trails) >= 32:
+                if pid not in self.magic_vfx.trails and len(self.magic_vfx.trails) >= 6:
                     continue  # teto de salva: não nascem trilhas novas
                 vivos_trail.add(pid)
                 elem_t = resolver_elemento(proj_t, getattr(proj_t, "nome", ""), None)
@@ -1373,10 +1411,10 @@ class Simulador:
                                     alvo, dano_aplicado
                                 )
                             if morreu:
-                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
+                                self._texto_fatal(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50)
                             else:
                                 # Texto mágico colorido
-                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), orbe.cor))
+                                self._push_texto(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), orbe.cor, alvo=alvo)
                                 # Partículas mágicas
                                 self._spawn_particulas_efeito(alvo.pos[0]*PPM, alvo.pos[1]*PPM, "NORMAL")
 
@@ -1625,13 +1663,13 @@ class Simulador:
                                             dano_aplicado * area.lifesteal
                                         )
                                         if cura_real > 0.0:
-                                            self.textos.append(FloatingText(
+                                            self._push_texto(
                                                 area.dono.pos[0] * PPM,
                                                 area.dono.pos[1] * PPM - 30,
                                                 f"+{int(cura_real)}",
                                                 (200, 100, 200),
                                                 16,
-                                            ))
+                                            )
                                 if area.remove_congelamento and condicao_cumprida:
                                     remover_congelamento = getattr(
                                         alvo,
@@ -1639,21 +1677,21 @@ class Simulador:
                                         None,
                                     )
                                     if callable(remover_congelamento) and remover_congelamento():
-                                        self.textos.append(FloatingText(
+                                        self._push_texto(
                                             alvo.pos[0] * PPM,
                                             alvo.pos[1] * PPM - 60,
                                             "SHATTER!",
                                             (180, 220, 255),
                                             24,
-                                        ))
+                                        )
                                 if area.forca_empurrao > 0 and hasattr(alvo, "vel"):
                                     alvo.vel[0] += dx / (dist or 1) * area.forca_empurrao
                                     alvo.vel[1] += dy / (dist or 1) * area.forca_empurrao
                             if morreu:
-                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
+                                self._texto_fatal(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50)
                             elif impacto_aplicado:
                                 cor_txt = self._get_cor_efeito(tipo_impacto)
-                                self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor_txt))
+                                self._push_texto(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor_txt, alvo=alvo)
 
                 for res in resultados_periodicos:
                     self._aplicar_resultado_periodico_area(area, res)
@@ -1667,33 +1705,10 @@ class Simulador:
         if hasattr(self, 'beams'):
             novos_beams = []
             for beam in self.beams:
-                if beam.ativo and beam.segments and random.random() < 0.3:
-                    bx, by = beam.segments[random.randint(0, len(beam.segments) - 1)]
-                    self.particulas.append(Particula(
-                        bx * PPM + random.uniform(-10, 10),
-                        by * PPM + random.uniform(-10, 10),
-                        beam.cor,
-                        random.uniform(-30, 30),
-                        random.uniform(-30, 30),
-                        random.randint(2, 4),
-                        0.4,
-                    ))
+                # Reforma "luta limpa": as partículas por frame do beam e o
+                # re-spawn de DramaticBeam a cada 0,15s (que empilhava 3-4
+                # camadas sobre um beam nativo já completo) foram removidos.
                 beam.atualizar(dt)
-                # Passe 5 (arte): DramaticBeam SUSTENTADO — o spawn_beam do
-                # MagicVFXManager (zigzag + partículas por elemento) não
-                # tinha chamador. Enquanto o beam vive, re-spawna a cada
-                # 0,15s: camadas com vida 0,5s = tremulação viva.
-                if beam.ativo and not getattr(self, "headless", True) and getattr(self, "magic_vfx", None):
-                    beam._vfx_timer = getattr(beam, "_vfx_timer", 0.0) - dt
-                    if beam._vfx_timer <= 0.0:
-                        beam._vfx_timer = 0.15
-                        from neural_fights.utils.palette import resolver_elemento
-                        elem_b = resolver_elemento(beam, getattr(beam, "nome", ""), None)
-                        self.magic_vfx.spawn_beam(
-                            beam.x1 * PPM, beam.y1 * PPM,
-                            beam.x2 * PPM, beam.y2 * PPM,
-                            elem_b, largura=8,
-                        )
                 if beam.ativo and not beam.hit_aplicado:
                     alvo = getattr(beam, "alvo_forcado", None)
                     if alvo is None:
@@ -1735,16 +1750,16 @@ class Simulador:
                             dano_aplicado = dano
                             impacto_aplicado = True
                         if morreu:
-                            self.textos.append(FloatingText(pos_alvo[0]*PPM, pos_alvo[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
+                            self._texto_fatal(pos_alvo[0]*PPM, pos_alvo[1]*PPM - 50)
                         elif impacto_aplicado:
-                            self.textos.append(FloatingText(pos_alvo[0]*PPM, pos_alvo[1]*PPM - 30, int(dano_aplicado), (255, 255, 100)))
+                            self._push_texto(pos_alvo[0]*PPM, pos_alvo[1]*PPM - 30, int(dano_aplicado), (255, 255, 100), alvo=alvo)
                             if self.game_feel:
                                 self.game_feel.registrar_feedback_projetil(
                                     beam.dono, alvo, dano_aplicado,
                                     (pos_alvo[0] * PPM, pos_alvo[1] * PPM),
                                 )
                             else:
-                                self.cam.aplicar_shake(8.0, 0.1)
+                                self.cam.aplicar_shake(4.0, 0.1)
                         if impacto_aplicado:
                             salto = beam.criar_salto(
                                 alvo,
@@ -1798,9 +1813,9 @@ class Simulador:
                                 (texto_x * PPM, texto_y * PPM),
                             )
                         if morreu:
-                            self.textos.append(FloatingText(texto_x*PPM, texto_y*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
+                            self._texto_fatal(texto_x*PPM, texto_y*PPM - 50)
                         else:
-                            self.textos.append(FloatingText(texto_x*PPM, texto_y*PPM - 30, int(dano_aplicado), summon.cor))
+                            self._push_texto(texto_x*PPM, texto_y*PPM - 30, int(dano_aplicado), summon.cor, alvo=alvo)
                     
                     elif res.get("tipo") == "aura":
                         alvo = res["alvo"]
@@ -1826,7 +1841,7 @@ class Simulador:
                     
                     elif res.get("revive"):
                         # Fenix reviveu!
-                        self.textos.append(FloatingText(res["x"]*PPM, res["y"]*PPM - 30, "REVIVE!", (255, 200, 50), 28))
+                        self._push_texto(res["x"]*PPM, res["y"]*PPM - 30, "REVIVE!", (255, 200, 50), 28)
                         self._spawn_particulas_efeito(res["x"]*PPM, res["y"]*PPM, "FOGO")
                         # cicatriz da Fênix: o elemento é do SUMMON (este
                         # loop é de summons, não de áreas)
@@ -1948,7 +1963,7 @@ class Simulador:
                 for res in resultados:
                     if res.get("tipo") == "cura":
                         valor = res["valor"]
-                        self.textos.append(FloatingText(lutador.pos[0]*PPM, lutador.pos[1]*PPM - 30, f"+{int(valor)}", (100, 255, 150), 14))
+                        self._push_texto(lutador.pos[0]*PPM, lutador.pos[1]*PPM - 30, f"+{int(valor)}", (100, 255, 150), 14)
                     
                     elif res.get("tipo") == "impacto":
                         impacto = res.get("impacto")
@@ -1956,22 +1971,22 @@ class Simulador:
                             continue
                         alvo = res["alvo"]
                         if impacto.morreu:
-                            self.textos.append(FloatingText(
+                            self._push_texto(
                                 alvo.pos[0] * PPM,
                                 alvo.pos[1] * PPM - 50,
                                 "FATAL!",
                                 VERMELHO_SANGUE,
                                 40,
-                            ))
+                            )
                         else:
                             cor = self._get_cor_efeito(res.get("efeito", "NORMAL"))
-                            self.textos.append(FloatingText(
+                            self._push_texto(
                                 alvo.pos[0] * PPM,
                                 alvo.pos[1] * PPM - 30,
                                 int(impacto.dano),
                                 cor,
                                 12,
-                            ))
+                            )
 
                     elif res.get("tipo") == "dano":
                         alvo = res["alvo"]
@@ -1983,10 +1998,10 @@ class Simulador:
                         )
                         dano_aplicado = getattr(alvo, "ultimo_dano_recebido", dano)
                         if morreu:
-                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50, "FATAL!", VERMELHO_SANGUE, 40))
+                            self._texto_fatal(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 50)
                         else:
                             cor = self._get_cor_efeito(efeito)
-                            self.textos.append(FloatingText(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor, 12))
+                            self._push_texto(alvo.pos[0]*PPM, alvo.pos[1]*PPM - 30, int(dano_aplicado), cor, alvo=alvo)
                 
                 if not channel.ativo:
                     lutador.channel_ativo = None
@@ -2081,15 +2096,19 @@ class Simulador:
         for p in self.particulas[:]:
             p.atualizar(dt)
             if p.vida <= 0: 
-                if p.cor == VERMELHO_SANGUE and random.random() < 0.3:
-                    self.decals.append(Decal(p.x, p.y, p.tamanho * 2, SANGUE_ESCURO))
+                if p.cor == VERMELHO_SANGUE and random.random() < 0.12:
+                    self._push_vfx(
+                        "decals", Decal(p.x, p.y, p.tamanho * 2, SANGUE_ESCURO),
+                        PRIORIDADE_AMBIENTE,
+                    )
                 self.particulas.remove(p)
-        from neural_fights.effects.particles import TETO_DECALS, TETO_PARTICULAS
-        if len(self.decals) > TETO_DECALS: self.decals.pop(0)
-        # Passe 2 (arte): teto global de particulas — derruba as MAIS
-        # ANTIGAS; sem isso a lista so podava por vida<=0.
-        if len(self.particulas) > TETO_PARTICULAS:
-            del self.particulas[: len(self.particulas) - TETO_PARTICULAS]
+        # Reforma "luta limpa": decals FAZEM FADE e morrem (eram 40
+        # Surfaces alpha-fixo desenhadas para sempre); teto único vem do
+        # orçamento (havia dois tetos conflitantes, 100 e 40).
+        self.decals = [d for d in self.decals if d.update(dt)]
+        teto_particulas = self.budget.teto
+        if len(self.particulas) > teto_particulas:
+            del self.particulas[: len(self.particulas) - teto_particulas]
 
 
     def _agendar_eco_melee(self, atacante, defensor, dano_original):
@@ -2272,7 +2291,7 @@ class Simulador:
         
         # Shake da câmera proporcional à intensidade
         if intensidade > 0.5:
-            self.cam.aplicar_shake(intensidade * 8, 0.1)
+            self.cam.aplicar_shake(intensidade * 4, 0.1)
         
         # Flash de impacto se muito forte
         if intensidade > 0.7:
@@ -2361,6 +2380,78 @@ class Simulador:
         }
         return cores.get(efeito, BRANCO)
     
+    # =====================================================================
+    # FUNIL DE EFEITOS (reforma "luta limpa") — TODO spawn passa por aqui.
+    # A doutrina: A=leitura (nunca orçada) / B=pontuação (um evento, uma
+    # leitura por canal) / C=atmosfera (primeira a morrer, congela no
+    # hit-stop). Sem funil, 11 listas cresciam sem teto e um único hit
+    # disparava 4 sistemas de faísca no mesmo ponto.
+    # =====================================================================
+
+    def _spawn_part(self, x, y, cor, vel_x, vel_y, tamanho, vida=1.0, *,
+                    prioridade=PRIORIDADE_SKILL, quantidade=1):
+        """Cria partículas respeitando o orçamento por prioridade."""
+        cabem = self.budget.permitidas(
+            len(self.particulas), quantidade, prioridade
+        )
+        for _ in range(cabem):
+            self.particulas.append(
+                Particula(x() if callable(x) else x,
+                          y() if callable(y) else y,
+                          cor() if callable(cor) else cor,
+                          vel_x() if callable(vel_x) else vel_x,
+                          vel_y() if callable(vel_y) else vel_y,
+                          tamanho() if callable(tamanho) else tamanho,
+                          vida)
+            )
+        return cabem
+
+    def _push_vfx(self, nome_lista, obj, prioridade=PRIORIDADE_IMPACTO):
+        """Empurra um objeto de VFX numa lista com TETO. Ao estourar,
+        descarta o MAIS ANTIGO: o evento recente é o relevante."""
+        lista = getattr(self, nome_lista, None)
+        if lista is None:
+            return False
+        if self.budget.congelado and prioridade >= PRIORIDADE_SKILL:
+            return False
+        teto = self.budget.teto_de(nome_lista)
+        lista.append(obj)
+        while len(lista) > teto:
+            del lista[0]
+        return True
+
+    def _push_texto(self, x, y, conteudo, cor, tamanho=None, *,
+                    alvo=None, prioridade=PRIORIDADE_IMPACTO):
+        """Texto flutuante com política: teto de 3 e ACUMULADOR por alvo
+        (hit novo no mesmo alvo em <0,35s soma no texto existente em vez
+        de nascer outro — é o que matava a tela com ticks de canalização
+        a 10/s)."""
+        agora = getattr(self, "tempo_visual", 0.0)
+        numerico = isinstance(conteudo, (int, float))
+        if numerico and alvo is not None:
+            marca = self._texto_por_alvo.get(id(alvo))
+            if marca is not None:
+                texto, nascido = marca
+                acumular = getattr(texto, "acumular", None)
+                if (agora - nascido < 0.35 and texto in self.textos
+                        and callable(acumular)):
+                    acumular(conteudo)
+                    return texto
+        novo = FloatingText(x, y, conteudo, cor, tamanho)
+        self._push_vfx("textos", novo, prioridade)
+        if numerico and alvo is not None:
+            self._texto_por_alvo[id(alvo)] = (novo, agora)
+        return novo
+
+    def _texto_fatal(self, x, y, *, execucao=False):
+        """FATAL! ÚNICO por morte (nasciam DOIS duplicados e sobrepostos
+        no caminho melee)."""
+        for t in self.textos:
+            if getattr(t, "texto", None) == "FATAL!":
+                return t
+        cor = (190, 90, 255) if execucao else (255, 40, 40)
+        return self._push_texto(x, y, "FATAL!", cor, 46)
+
     def _spawn_particulas_efeito(self, x, y, efeito):
         """Spawna partículas específicas do efeito - v2.0 COLOSSAL"""
         cores_part = {
@@ -2614,7 +2705,13 @@ class Simulador:
             vel_magnitude = math.hypot(lutador.vel[0], lutador.vel[1])
             if vel_magnitude > 12.0 and z_atual <= 0.1 and self.movement_anims:
                 # Correndo rápido no chão
-                if random.random() < 0.15:  # Não spammar efeitos
+                # Reforma "luta limpa": cooldown por lutador. 15% de chance
+                # POR FRAME saturava permanentemente speed-lines e poeira
+                # em qualquer perseguição.
+                self._sprint_cd = getattr(self, "_sprint_cd", {})
+                prox = self._sprint_cd.get(id(lutador), 0.0)
+                if self.tempo_visual >= prox and random.random() < 0.15:
+                    self._sprint_cd[id(lutador)] = self.tempo_visual + 0.45
                     direcao = math.atan2(lutador.vel[1], lutador.vel[0])
                     self.movement_anims.criar_sprint_effect(lutador, direcao)
             
@@ -2694,14 +2791,14 @@ class Simulador:
         self.shockwaves.append(Shockwave(mx * PPM, my * PPM, BRANCO, tamanho=2.0))
         
         # Texto de CLASH
-        self.textos.append(FloatingText(mx * PPM, my * PPM - 40, "CLASH!", AMARELO_FAISCA, 35))
+        self._push_texto(mx * PPM, my * PPM - 40, "CLASH!", AMARELO_FAISCA, 35)
         
         # SOM DE CLASH
         listener_x = (self.p1.pos[0] + self.p2.pos[0]) / 2
         self.audio.play_positional("clash_magic", mx, listener_x, volume=1.0)
         
         # Camera shake e hit stop dramáticos
-        self.cam.aplicar_shake(25.0, 0.25)
+        self.cam.aplicar_shake(11.0, 0.22)
         
         # Partículas extras
         for _ in range(30):
@@ -2735,10 +2832,6 @@ class Simulador:
         mx = (self.p1.pos[0] + self.p2.pos[0]) / 2
         my = (self.p1.pos[1] + self.p2.pos[1]) / 2
         
-        # Cores das armas/lutadores
-        cor1 = self.p1.dados.cor if hasattr(self.p1, 'dados') and hasattr(self.p1.dados, 'cor') else (255, 180, 80)
-        cor2 = self.p2.dados.cor if hasattr(self.p2, 'dados') and hasattr(self.p2.dados, 'cor') else (80, 180, 255)
-        
         # === EFEITOS VISUAIS ===
         # Flash de impacto principal
         self.impact_flashes.append(ImpactFlash(mx * PPM, my * PPM, AMARELO_FAISCA, 2.0, "clash"))
@@ -2747,31 +2840,21 @@ class Simulador:
         self.shockwaves.append(Shockwave(mx * PPM, my * PPM, BRANCO, tamanho=2.5))
         
         # Texto épico
-        textos_clash = ["CLASH!", "CLANG!", "⚔ CLASH ⚔", "STEEL!", "IMPACTO!"]
-        texto = random.choice(textos_clash)
-        self.textos.append(FloatingText(mx * PPM, my * PPM - 50, texto, AMARELO_FAISCA, 40))
+        # Reforma: string FIXA — palavra sorteada é ruído, não drama.
+        texto = "CLASH!"
+        self._push_texto(mx * PPM, my * PPM - 50, texto, AMARELO_FAISCA, 40)
         
         if self.audio:
             self.audio.play("clash_swords", volume=1.0)
         
         # === CAMERA SHAKE E HIT STOP DRAMÁTICOS ===
-        self.cam.aplicar_shake(20.0, 0.3)
+        self.cam.aplicar_shake(9.0, 0.25)
         
-        # === PARTÍCULAS DE FAÍSCAS ===
-        for _ in range(40):
-            ang = random.uniform(0, math.pi * 2)
-            vel = random.uniform(100, 250)
-            cor = random.choice([AMARELO_FAISCA, BRANCO, cor1, cor2, (255, 200, 100)])
-            self.particulas.append(Particula(
-                mx * PPM, my * PPM, cor,
-                math.cos(ang) * vel / 60, math.sin(ang) * vel / 60,
-                random.randint(3, 7), random.uniform(0.3, 0.6)
-            ))
-        
-        # === EFEITO ADICIONAL - Hit Sparks nas armas ===
-        # Direção aleatória para as faíscas
+        # Reforma "luta limpa": as 40 partículas soltas do sword clash
+        # saíram — a faísca direcional abaixo é a leitura do choque.
         direcao_faiscas = random.uniform(0, math.pi * 2)
-        self.hit_sparks.append(HitSpark(mx * PPM, my * PPM, AMARELO_FAISCA, direcao_faiscas, 1.5))
+        self._push_vfx("hit_sparks", HitSpark(
+            mx * PPM, my * PPM, AMARELO_FAISCA, direcao_faiscas, 1.2))
         
         logger.debug("Clash de espadas em (%.1f, %.1f)", mx, my)
     
@@ -2894,7 +2977,7 @@ class Simulador:
         self.block_effects.append(BlockEffect(proj.x * PPM, proj.y * PPM, cor, ang))
         
         # Texto
-        self.textos.append(FloatingText(proj.x * PPM, proj.y * PPM - 30, "BLOCK!", (100, 200, 255), 22))
+        # Reforma "luta limpa": texto removido — o arco do BlockEffect logo abaixo já é a leitura.
         
         # Partículas metálicas
         for _ in range(12):
@@ -2903,7 +2986,7 @@ class Simulador:
             self.particulas.append(Particula(proj.x * PPM, proj.y * PPM, AMARELO_FAISCA, vx, vy, 3, 0.3))
         
         # Shake leve
-        self.cam.aplicar_shake(8.0, 0.1)
+        self.cam.aplicar_shake(4.0, 0.1)
     
     def _efeito_desvio_dash(self, proj, desviador):
         """Efeito visual de desvio com dash"""
@@ -2914,7 +2997,7 @@ class Simulador:
             self.dash_trails.append(DashTrail(posicoes, cor))
         
         # Texto
-        self.textos.append(FloatingText(desviador.pos[0] * PPM, desviador.pos[1] * PPM - 50, "DODGE!", (150, 255, 150), 24))
+        # Reforma "luta limpa": texto removido — as afterimages do dash já são a leitura.
         
         # Pequeno slow-mo para drama
         self.time_scale = 0.5
@@ -2926,7 +3009,7 @@ class Simulador:
         self.impact_flashes.append(ImpactFlash(proj.x * PPM, proj.y * PPM, AMARELO_FAISCA, 1.8, "clash"))
         
         # Texto PARRY!
-        self.textos.append(FloatingText(proj.x * PPM, proj.y * PPM - 40, "PARRY!", AMARELO_FAISCA, 28))
+        # Reforma "luta limpa": texto removido — o flash de clash já é a leitura.
         
         # Shockwave dourada
         self.shockwaves.append(Shockwave(proj.x * PPM, proj.y * PPM, AMARELO_FAISCA, tamanho=1.5))
@@ -2936,7 +3019,7 @@ class Simulador:
         self.hit_sparks.append(HitSpark(proj.x * PPM, proj.y * PPM, AMARELO_FAISCA, ang, 1.5))
         
         # Camera e timing
-        self.cam.aplicar_shake(15.0, 0.15)
+        self.cam.aplicar_shake(7.0, 0.15)
 
     def atualizar_rastros(self):
         for p in [self.p1, self.p2]:
@@ -2979,8 +3062,12 @@ class Simulador:
             if dist > 0.001:
                 nx, ny = dx / dist, dy / dist
             else:
-                # Se estiverem exatamente no mesmo ponto, escolhe direção aleatória
-                ang = random.uniform(0, math.pi * 2)
+                # Se estiverem exatamente no mesmo ponto, escolhe direção
+                # aleatória. RNG DO MOTOR (não o global): este é o único
+                # sorteio de FÍSICA que usava `random` — com ele isolado,
+                # cortar/alterar VFX não pode deslocar o stream que
+                # reproduz as lutas (pré-requisito da reforma de efeitos).
+                ang = self.p1.rng_runtime.uniform(0, math.pi * 2)
                 nx, ny = math.cos(ang), math.sin(ang)
             
             # === SEPARAÇÃO FÍSICA INSTANTÂNEA ===
@@ -3029,26 +3116,19 @@ class Simulador:
         mx = (p1.pos[0] + p2.pos[0]) / 2 * PPM
         my = (p1.pos[1] + p2.pos[1]) / 2 * PPM
         
-        # === PARTÍCULAS DE FAÍSCA EM TODAS DIREÇÕES ===
-        for _ in range(35):
-            ang = random.uniform(0, math.pi * 2)
-            vel = random.uniform(80, 180)
-            vx = math.cos(ang) * vel / 60
-            vy = math.sin(ang) * vel / 60
-            self.particulas.append(Particula(mx, my, AMARELO_FAISCA, vx, vy, random.randint(3, 7), 0.5))
+        # Reforma "luta limpa": as 35 partículas soltas saíram — o
+        # MagicClash + 1 HitSpark já contam o choque de armas.
         
         # Cores das armas para o efeito
         cor1 = (p1.dados.arma_obj.r, p1.dados.arma_obj.g, p1.dados.arma_obj.b) if hasattr(p1.dados.arma_obj, 'r') else (255, 255, 255)
         cor2 = (p2.dados.arma_obj.r, p2.dados.arma_obj.g, p2.dados.arma_obj.b) if hasattr(p2.dados.arma_obj, 'r') else (255, 255, 255)
         
         # === EFEITOS VISUAIS ESPECIAIS ===
-        self.magic_clashes.append(MagicClash(mx, my, cor1, cor2, tamanho=1.2))
-        self.impact_flashes.append(ImpactFlash(mx, my, AMARELO_FAISCA, 1.5, "clash"))
-        
-        # Hit sparks em ambas direções
+        self._push_vfx("magic_clashes", MagicClash(mx, my, cor1, cor2, tamanho=1.0))
+
+        # UMA faísca (eram duas, sobrepostas no mesmo ponto)
         ang_p1_p2 = math.atan2(p2.pos[1] - p1.pos[1], p2.pos[0] - p1.pos[0])
-        self.hit_sparks.append(HitSpark(mx, my, cor1, ang_p1_p2, 1.5))
-        self.hit_sparks.append(HitSpark(mx, my, cor2, ang_p1_p2 + math.pi, 1.5))
+        self._push_vfx("hit_sparks", HitSpark(mx, my, cor1, ang_p1_p2, 1.2))
         
         # Empurra ambos para trás
         vec_x = p1.pos[0] - p2.pos[0]
@@ -3058,14 +3138,14 @@ class Simulador:
         p2.tomar_clash(-vec_x/mag, -vec_y/mag)
         
         # === EFEITOS DE CÂMERA DRAMÁTICOS ===
-        self.cam.aplicar_shake(25.0, 0.25)
+        self.cam.aplicar_shake(11.0, 0.22)
         self.cam.zoom_punch(0.15, 0.15)
         
         # Shockwave grande
         self.shockwaves.append(Shockwave(mx, my, BRANCO, 1.5))
         
         # Texto CLASH! maior
-        self.textos.append(FloatingText(mx, my - 60, "CLASH!", AMARELO_FAISCA, 38))
+        self._push_texto(mx, my - 60, "CLASH!", AMARELO_FAISCA, 38)
 
     def checar_clash_geral(self, p1, p2):
         if "Reta" in p1.dados.arma_obj.tipo and "Reta" in p2.dados.arma_obj.tipo:
@@ -3281,13 +3361,11 @@ class Simulador:
             # Passe 4 (arte): KILL-DRAMA — o golpe que MATA é cinematográfico:
             # FATAL! em tier próprio, letterbox e hold de 0,5s no congelamento.
             if morreu:
-                self.textos.append(
-                    FloatingText(dx, dy - 80, "FATAL!", (255, 40, 40), 52)
-                )
-                self.letterbox_timer = 1.6
+                self._texto_fatal(dx, dy - 80)
+                self.letterbox_timer = 0.9  # reforma: era 1.6
                 if self.game_feel:
                     hs = self.game_feel.hit_stop
-                    hs.timer_ativo = max(hs.timer_ativo, 0.5)
+                    hs.timer_ativo = max(hs.timer_ativo, 0.28)  # reforma: era 0.5
 
             # === ONDA 3: EFEITOS ON-HIT DA ARMA ===
             # ``aplicar_efeitos_encantamento`` existia completa (DoT, LENTO,
@@ -3298,27 +3376,14 @@ class Simulador:
 
             # Passe 4 (arte): o encantamento é VISÍVEL no hit — burst nas
             # cores do encantamento (CORES_ENCANTAMENTOS ficou anos sem
-            # leitor no caminho de impacto; o espectador não via a arma
-            # de Chamas botar fogo em nada).
-            for enc_nome in list(getattr(atacante, "arma_encantamentos", []))[:2]:
+            # Reforma "luta limpa": o BURST de encantamento (6-12
+            # partículas por hit) virou a COR do HitSpark — a arma de
+            # Chamas continua botando fogo, com 1 objeto em vez de 12.
+            cor_encanto = None
+            for enc_nome in list(getattr(atacante, "arma_encantamentos", []))[:1]:
                 cores_enc = CORES_ENCANTAMENTOS.get(enc_nome)
-                if not cores_enc:
-                    continue
-                for _ in range(6):
-                    ang = random.uniform(0, math.pi * 2)
-                    vel = random.uniform(2, 7)
-                    self.particulas.append(Particula(
-                        dx, dy, random.choice(cores_enc),
-                        math.cos(ang) * vel, math.sin(ang) * vel - 2,
-                        random.randint(3, 6), 0.5
-                    ))
-
-            # === ONDA 3: GOLPE DUPLO (Dupla / passiva Eco) ===
-            # ``hits_por_ataque`` do catalogo e a passiva "Eco" (20% de golpe
-            # duplo) eram knobs mortos. O eco e um SEGUNDO impacto real com
-            # atraso visivel — um split no mesmo frame seria indistinguivel
-            # de um golpe unico.
-            self._agendar_eco_melee(atacante, defensor, dano)
+                if cores_enc:
+                    cor_encanto = cores_enc[0]
 
             kb_x, kb_y = knockback_final
             defensor.vel[0] += kb_x
@@ -3332,7 +3397,7 @@ class Simulador:
 
             # === FEEDBACK VISUAL DE SUPER ARMOR ===
             if resultado_hit and resultado_hit["super_armor_ativa"]:
-                self.textos.append(FloatingText(dx, dy - 60, "ARMOR!", (255, 200, 50), 22))
+                # Reforma "luta limpa": texto removido — o anel dourado de super armor já é a leitura.
                 for _ in range(8):
                     ang = random.uniform(0, math.pi * 2)
                     vel = random.uniform(3, 8)
@@ -3343,7 +3408,8 @@ class Simulador:
                     ))
 
             # === EFEITOS DE IMPACTO MELHORADOS v8.0 IMPACT EDITION ===
-            self.hit_sparks.append(HitSpark(dx, dy, AMARELO_FAISCA, direcao_vfx, 1.2))
+            self._push_vfx("hit_sparks", HitSpark(
+                dx, dy, cor_encanto or AMARELO_FAISCA, direcao_vfx, 1.0))
             cor_arma = (arma.r, arma.g, arma.b) if hasattr(arma, 'r') else BRANCO
             self.impact_flashes.append(ImpactFlash(dx, dy, cor_arma, 1.0, "normal"))
 
@@ -3381,15 +3447,16 @@ class Simulador:
                 
                 # Game Feel já processou camera shake para morte
                 if not self.game_feel:
-                    self.cam.aplicar_shake(35.0, 0.5)
+                    self.cam.aplicar_shake(14.0, 0.4)
                     self.cam.zoom_punch(0.3, 0.2)
                     self.hit_stop_timer = 0.4
                 else:
                     # Efeitos adicionais de morte
-                    self.cam.zoom_punch(0.35, 0.25)
+                    self.cam.zoom_punch(0.20, 0.22)  # reforma: era 0.35
                 
                 self.shockwaves.append(Shockwave(dx, dy, VERMELHO_SANGUE, 2.0))
-                self.textos.append(FloatingText(dx, dy - 50, "FATAL!", VERMELHO_SANGUE, 45))
+                # Reforma "luta limpa": este era o SEGUNDO "FATAL!" do mesmo
+                # evento (52px e 45px sobrepostos a 30px de distância).
                 return True
             else:
                 # === ÁUDIO v10.0 - SOM DE IMPACTO ===
@@ -3421,25 +3488,26 @@ class Simulador:
                 
                 # Shockwave para ataques fortes
                 tier = get_impact_tier(forca_atacante)
-                if dano_aplicado > 10 or forca_atacante >= 14:
-                    self.shockwaves.append(Shockwave(dx, dy, BRANCO, 0.6 * tier['shockwave_size']))
+                # Reforma "luta limpa": gate por dano RELATIVO. O gate
+                # absoluto (>10) saturava desde que a escala de vida
+                # dobrou — toda pancada virava onda de choque.
+                dano_rel = dano_aplicado / max(1.0, getattr(defensor, "vida_max", 100.0))
+                if dano_rel >= 0.18:
+                    self._push_vfx("shockwaves", Shockwave(
+                        dx, dy, BRANCO, 0.6 * tier['shockwave_size']))
                 
                 # === TEXTO DE DANO ESTILIZADO ===
                 if is_critico:
                     cor_txt = (255, 50, 50)  # Vermelho intenso - crítico
-                    tamanho_txt = 32
-                    self.textos.append(FloatingText(dx, dy - 50, "CRÍTICO!", (255, 200, 0), 24))
+                    self._push_texto(dx, dy - 50, "CRÍTICO!", (255, 200, 0), 24)
                 elif dano_aplicado > 25:
                     cor_txt = (255, 100, 100)  # Vermelho claro - dano alto
-                    tamanho_txt = 28
                 elif dano_aplicado > 15:
                     cor_txt = (255, 200, 100)  # Laranja - dano médio
-                    tamanho_txt = 24
                 else:
                     cor_txt = BRANCO
-                    tamanho_txt = 20
                 
-                self.textos.append(FloatingText(dx, dy - 30, int(dano_aplicado), cor_txt, tamanho_txt))
+                self._push_texto(dx, dy - 30, int(dano_aplicado), cor_txt, alvo=defensor)
         return False
 
     def spawn_particulas(self, x, y, dir_x, dir_y, cor, qtd):
@@ -3449,7 +3517,7 @@ class Simulador:
             self.particulas.append(Particula(x*PPM, y*PPM, cor, vx, vy, random.randint(3, 8)))
 
     def ativar_slow_motion(self):
-        self.time_scale = 0.2; self.slow_mo_timer = 2.0
+        self.time_scale = 0.25; self.slow_mo_timer = 1.2  # reforma: era 0.2/2.0
         # Som de slow motion
         if getattr(self, "audio", None):
             self.audio.play_special("slowmo_start", 0.6)
@@ -3652,7 +3720,7 @@ class Simulador:
 
         # === SUMMONS ===
         if hasattr(self, 'summons'):
-            tempo_s = pygame.time.get_ticks() / 1000.0
+            tempo_s = self.tempo_visual
             for summon in self.summons:
                 if not getattr(summon, 'ativo', True):
                     continue
@@ -4012,10 +4080,17 @@ class Simulador:
         sx, sy = self.cam.converter(px, py); off_y = self.cam.converter_tam(l.z * PPM); raio = self.cam.converter_tam((l.dados.tamanho / 2) * PPM)
         if l.morto:
             pygame.draw.ellipse(self.tela, COR_CORPO, (sx-raio, sy-raio, raio*2, raio*2))
+            # rosto de nocaute (X X) — o cadáver também conta a história
+            from neural_fights.effects.character_flair import desenhar_rosto
+            desenhar_rosto(
+                self.tela, (sx, sy), raio,
+                getattr(l, "angulo_olhar", 0.0), 1.0, 1.0, "morto",
+                pygame.time.get_ticks() / 1000.0, id(l),
+            )
             if l.dados.arma_obj:
                 ax = l.arma_droppada_pos[0]*PPM; ay = l.arma_droppada_pos[1]*PPM
                 asx, asy = self.cam.converter(ax, ay)
-                self.desenhar_arma(l.dados.arma_obj, (asx, asy), l.arma_droppada_ang, l.dados.tamanho, raio)
+                self.desenhar_arma(l.dados.arma_obj, (asx, asy), l.arma_droppada_ang, l.dados.tamanho, raio, no_chao=True)
             return
         # Sombra de contato achatada (passe de arte 1): gruda o lutador no
         # chão — a elipse cheia dava disco; a achatada dá peso.
@@ -4061,17 +4136,15 @@ class Simulador:
             class_data = getattr(l, "class_data", None)
             if isinstance(class_data, dict):
                 cor_aura = class_data.get("cor_aura")
-        if cor_aura:
-            # Aura CLAREADA (lerp com branco): cor_aura escura sobre chão
-            # escuro vira mancha suja; luz precisa de luminância.
-            aura_luz = tuple(min(255, int(c * 0.6 + 255 * 0.4)) for c in cor_aura[:3])
-            r_aura = int(raio * 1.35)
-            s_aura = pygame.Surface((r_aura * 2, r_aura * 2), pygame.SRCALPHA)
-            pygame.draw.circle(s_aura, (*aura_luz, 20), (r_aura, r_aura), r_aura)
+        # Rework Fase 3: a AURA DE CLASSE saiu ("muita informação") — a
+        # identidade migra para o PROP (Fase 4). Exceção: Transform
+        # (l.cor_aura escrito pela skill) mantém um halo FINO — é estado
+        # de gameplay, não decoração.
+        if getattr(l, "cor_aura", None):
+            aura_luz = tuple(min(255, int(c * 0.6 + 255 * 0.4)) for c in l.cor_aura[:3])
             pygame.draw.circle(
-                s_aura, (*aura_luz, 34), (r_aura, r_aura), int(raio * 1.12)
+                self.tela, aura_luz, centro, int(raio * 1.14), 2
             )
-            self.tela.blit(s_aura, (centro[0] - r_aura, centro[1] - r_aura))
 
         # Corpo em camadas: base escura (borda), cor plena, highlight
         # deslocado — três círculos que leem como esfera iluminada de cima.
@@ -4084,77 +4157,33 @@ class Simulador:
             if escalas:
                 esc_x, esc_y = escalas
 
-        def _elipse(cor_e, cx, cy, r):
-            rx = max(1, int(r * esc_x)); ry = max(1, int(r * esc_y))
-            pygame.draw.ellipse(
-                self.tela, cor_e, (int(cx) - rx, int(cy) - ry, rx * 2, ry * 2)
-            )
-
-        cor_escura = tuple(max(0, int(c * 0.55)) for c in cor)
-        cor_alta = tuple(min(255, int(c * 1.30) + 24) for c in cor)
-        _elipse(cor_escura, centro[0], centro[1], raio)
-        _elipse(
-            cor, centro[0] - int(raio * 0.08), centro[1] - int(raio * 0.10),
-            int(raio * 0.86),
-        )
-        _elipse(
-            cor_alta, centro[0] - int(raio * 0.22), centro[1] - int(raio * 0.26),
-            int(raio * 0.42),
+        # Direção do dono (rework de identidade v2): corpo CHAPADO — uma
+        # cor sólida, sem as camadas de luz que liam como esfera 3D. A
+        # personalidade inteira vive no ROSTO.
+        rx_c = max(1, int(raio * esc_x)); ry_c = max(1, int(raio * esc_y))
+        pygame.draw.ellipse(
+            self.tela, cor,
+            (int(centro[0]) - rx_c, int(centro[1]) - ry_c, rx_c * 2, ry_c * 2),
         )
 
-        # Passe 7 (arte, pedido do dono): OLHINHOS — dois olhos que miram
-        # o oponente o tempo todo (angulo_olhar já é a verdade do motor).
-        # Pupila deslocada na direção do olhar + piscada periódica
-        # determinística por lutador. De repente eles têm ALMA.
-        ang_olho = math.radians(getattr(l, "angulo_olhar", 0.0))
-        t_olho = pygame.time.get_ticks() / 1000.0
-        piscando = ((t_olho + (id(l) % 10) * 0.37) % 3.4) < 0.12
-        r_olho = max(2, int(raio * 0.22 * min(esc_x, esc_y)))
-        r_pupila = max(1, int(r_olho * 0.5))
-        base_x = centro[0] + math.cos(ang_olho) * raio * 0.34 * esc_x
-        base_y = centro[1] + math.sin(ang_olho) * raio * 0.34 * esc_y
-        perp_olho = ang_olho + math.pi / 2
-        for lado_olho in (-1, 1):
-            ox = base_x + math.cos(perp_olho) * raio * 0.30 * lado_olho * esc_x
-            oy = base_y + math.sin(perp_olho) * raio * 0.30 * lado_olho * esc_y
-            if piscando:
-                pygame.draw.line(
-                    self.tela, (20, 20, 30),
-                    (int(ox - r_olho * 0.8), int(oy)),
-                    (int(ox + r_olho * 0.8), int(oy)), 2,
-                )
-                continue
-            pygame.draw.circle(self.tela, (245, 245, 250), (int(ox), int(oy)), r_olho)
-            pygame.draw.circle(
-                self.tela, (25, 25, 40),
-                (int(ox + math.cos(ang_olho) * r_olho * 0.45),
-                 int(oy + math.sin(ang_olho) * r_olho * 0.45)),
-                r_pupila,
-            )
+        # Identidade v2 (direção do dono): PROPS ABANDONADOS — toda a
+        # expressividade vive nos OLHOS e na BOCA. O resolvedor lê o
+        # estado real do lutador (dano, stun, golpe, canal, tells,
+        # adrenalina) e cai no humor da IA — 24 expressões distintas.
+        from neural_fights.effects.character_flair import (
+            desenhar_rosto,
+            resolver_expressao,
+        )
+        t_flair = pygame.time.get_ticks() / 1000.0
+        expressao = resolver_expressao(l, t_flair)
+        desenhar_rosto(
+            self.tela, centro, raio, getattr(l, "angulo_olhar", 0.0),
+            esc_x, esc_y, expressao, t_flair, id(l), cor_corpo=cor,
+        )
 
-        # Passe 5 (arte): BUFF VISÍVEL — 26 buffs rodavam sem nenhum
-        # pixel. Aura fraca na cor do buff dominante + ANEL DE DURAÇÃO
-        # (arco que esvazia): o espectador vê que há um poder ativo e
-        # QUANTO dele resta.
-        buffs_vivos = [
-            b for b in getattr(l, "buffs_ativos", ())
-            if getattr(b, "ativo", True) and getattr(b, "duracao", 0) > 0
-        ]
-        if buffs_vivos:
-            dominante = max(buffs_vivos, key=lambda b: getattr(b, "vida", 0.0))
-            cor_b = tuple(getattr(dominante, "cor", (200, 200, 255))[:3])
-            frac_b = max(0.0, min(1.0, getattr(dominante, "vida", 0.0)
-                                  / max(getattr(dominante, "duracao", 1.0), 1e-6)))
-            r_anel = int(raio * 1.30)
-            s_b = pygame.Surface((r_anel * 2 + 6, r_anel * 2 + 6), pygame.SRCALPHA)
-            c_b = (r_anel + 3, r_anel + 3)
-            pygame.draw.circle(s_b, (*cor_b, 24), c_b, r_anel)
-            rect_b = (3, 3, r_anel * 2, r_anel * 2)
-            pygame.draw.arc(
-                s_b, (*cor_b, 220), rect_b,
-                math.pi / 2, math.pi / 2 + math.tau * frac_b, 3,
-            )
-            self.tela.blit(s_b, (centro[0] - r_anel - 3, centro[1] - r_anel - 3))
+        # Rework Fase 3: o anel de buff virou candidato do SLOT ÚNICO em
+        # _desenhar_status_e_defesa (prioridade escudo > status > armor >
+        # buff) — eram 7 anéis concêntricos competindo em 5 raios.
 
         # Passe 6 (arte): status, defesa e mente legíveis — renderer único
         self._desenhar_status_e_defesa(l, centro, raio)
@@ -4180,23 +4209,8 @@ class Simulador:
         self.tela.blit(sombra_rot, (rx + 1, ry + 1))
         self.tela.blit(surf_rotulo, (rx, ry))
 
-        # Facing legível: cunha na direção do olhar.
-        ang_olhar = math.radians(getattr(l, "angulo_olhar", 0.0))
-        ponta = (
-            centro[0] + math.cos(ang_olhar) * raio * 1.02,
-            centro[1] + math.sin(ang_olhar) * raio * 1.02,
-        )
-        lado = raio * 0.32
-        perp = ang_olhar + math.pi / 2
-        base_a = (
-            centro[0] + math.cos(ang_olhar) * raio * 0.55 + math.cos(perp) * lado,
-            centro[1] + math.sin(ang_olhar) * raio * 0.55 + math.sin(perp) * lado,
-        )
-        base_b = (
-            centro[0] + math.cos(ang_olhar) * raio * 0.55 - math.cos(perp) * lado,
-            centro[1] + math.sin(ang_olhar) * raio * 0.55 - math.sin(perp) * lado,
-        )
-        pygame.draw.polygon(self.tela, cor_escura, (ponta, base_a, base_b))
+        # Rework Fase 3: a cunha de facing SAIU — a arma na mão (borda do
+        # lado do olhar) e os olhos que miram já contam a direção 2x.
         
         # === CONTORNO APRIMORADO ===
         if l.stun_timer > 0:
@@ -4209,20 +4223,18 @@ class Simulador:
             # Contorno vermelho durante dano
             contorno = (255, 100, 100)
             largura = max(2, self.cam.converter_tam(4))
+        elif getattr(l, "modo_adrenalina", False):
+            pulso_adr = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 150)
+            contorno = (int(120 + 135 * pulso_adr), 40, 40)
+            largura = max(2, self.cam.converter_tam(3))
         else:
             contorno = (50, 50, 50)
             largura = max(1, self.cam.converter_tam(2))
         
         pygame.draw.circle(self.tela, contorno, centro, raio, largura)
         
-        # === EFEITO DE GLOW EM VIDA BAIXA (ADRENALINA) ===
-        if l.modo_adrenalina and not l.morto:
-            pulso = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 150)
-            glow_size = int(raio * 1.3)
-            s = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
-            glow_alpha = int(60 * pulso)
-            pygame.draw.circle(s, (255, 50, 50, glow_alpha), (glow_size, glow_size), glow_size)
-            self.tela.blit(s, (centro[0] - glow_size, centro[1] - glow_size))
+        # Rework Fase 3: adrenalina virou pulso vermelho no CONTORNO (a
+        # Surface de glow por frame saiu — mesma informação, zero custo).
         
         # === RENDERIZA ARMA COM ANIMAÇÕES APRIMORADAS ===
         if l.dados.arma_obj:
@@ -4255,9 +4267,12 @@ class Simulador:
             except Exception:
                 pass  # trilha nunca derruba o frame
             
-            # Desenha arma com escala
+            # Desenha arma (design fixo; anima a empunhadura via lunge)
             self.desenhar_arma(l.dados.arma_obj, centro_ajustado, l.angulo_arma_visual,
-                             l.dados.tamanho, raio, anim_scale)
+                             l.dados.tamanho, raio, anim_scale,
+                             anim_lunge=getattr(l, 'weapon_anim_lunge', 0.0),
+                             em_ataque=bool(getattr(l, 'atacando', False)),
+                             puxada=getattr(l, 'weapon_draw_amount', 0.0))
 
             # Passe 4: faíscas de impacto do animador (spark_list era
             # computada e nunca desenhada) + arco carregando no Arco.
@@ -4265,16 +4280,10 @@ class Simulador:
                 from neural_fights.effects.weapon_animations import (
                     BowDrawEffect,
                     WEAPON_PROFILES,
-                    get_weapon_animation_manager,
                 )
-                rad_p = math.radians(l.angulo_olhar)
-                ponta_tela = (
-                    centro[0] + math.cos(rad_p) * raio * 2.2,
-                    centro[1] + math.sin(rad_p) * raio * 2.2,
-                )
-                get_weapon_animation_manager().draw_sparks(
-                    self.tela, id(l), ponta_tela
-                )
+                # Reforma "luta limpa": as faíscas do animador de arma
+                # (5-64 por golpe) saíram — o HitSpark do impacto é a
+                # ÚNICA fonte de faísca do jogo agora.
                 arma_l = l.dados.arma_obj
                 if arma_l.tipo == "Arco" and l.atacando and l.timer_animacao > 0:
                     perfil_arco = WEAPON_PROFILES.get("Arco", WEAPON_PROFILES["Reta"])
@@ -4307,8 +4316,11 @@ class Simulador:
         timer = lutador.timer_animacao
         
         # Perfil da arma para saber a duração total
-        from neural_fights.effects.weapon_animations import WEAPON_PROFILES
-        profile = WEAPON_PROFILES.get(arma.tipo, WEAPON_PROFILES["Reta"])
+        # Rework: perfil POR ESTILO (o timer do lutador roda no perfil do
+        # estilo; usar o do tipo dava progresso negativo p/ estilos longos
+        # e o alpha do telegraph saía da faixa).
+        from neural_fights.effects.weapon_animations import get_animation_profile
+        profile = get_animation_profile(arma.tipo, getattr(arma, "estilo", ""))
         total_time = profile.total_time
         
         # Progresso normalizado (0-1)
@@ -4325,7 +4337,7 @@ class Simulador:
         # crescendo em brilho até o golpe soltar. O espectador vê o golpe
         # vindo (antes, esta fase era simplesmente pulada).
         if prog < antecipation_end:
-            carga = prog / max(antecipation_end, 0.01)
+            carga = max(0.0, min(1.0, prog / max(antecipation_end, 0.01)))
             raio_tell = raio * 2.5 * anim_scale
             ang_tell = math.radians(lutador.angulo_olhar + profile.anticipation_angle)
             s_tell = pygame.Surface(
@@ -4483,7 +4495,7 @@ class Simulador:
             return
         self.decals.append(Decal(x_px, y_px, max(8, int(tamanho_px)), cor))
 
-    TETO_AMBIENTE = 120  # partículas de clima (prioridade mínima do plano)
+    TETO_AMBIENTE = 28  # reforma "luta limpa": era 120
 
     def _atualizar_ambiente(self, dt):
         """Passe 7: clima das arenas — 9 arenas declaravam efeitos_
@@ -4494,7 +4506,9 @@ class Simulador:
         if arena is None:
             return
         fx = set(getattr(arena.config, "efeitos_especiais", ()) or ())
-        tipos = [t for t in ("neve", "chuva", "neblina", "poeira") if t in fx]
+        # Reforma: NEBLINA fora — era 120 Surfaces/frame sozinha e o
+        # tipo menos informativo (o tint cacheado já dá a atmosfera).
+        tipos = [t for t in ("neve", "chuva", "poeira") if t in fx]
         if "particulas_fogo" in fx or "chamas" in fx:
             tipos.append("brasa")
         if not tipos:
@@ -4569,13 +4583,13 @@ class Simulador:
         if "neon" in fx or "luzes_piscando" in fx:
             t = pygame.time.get_ticks() / 1000.0
             cores_neon = [(255, 60, 180), (60, 220, 255), (170, 90, 255)]
-            for i in range(8):
-                frac = i / 8.0
+            # Reforma: 6 pontos FIXOS (piscar disputava atenção com o
+            # flash do impacto).
+            for i in range(6):
+                frac = i / 6.0
                 lx = arena.min_x + (arena.max_x - arena.min_x) * frac
                 for ly in (arena.min_y, arena.max_y):
-                    aceso = 0.5 + 0.5 * math.sin(t * 3 + i * 1.9 + ly)
-                    if aceso < 0.35:
-                        continue
+                    aceso = 0.8
                     sx, sy = self.cam.converter(lx * PPM, ly * PPM)
                     cor_n = cores_neon[i % 3]
                     pygame.draw.circle(
@@ -4626,8 +4640,8 @@ class Simulador:
             # bloqueio em guarda: BLOCK! + faíscas + arco
             ub = getattr(getattr(l, "brain", None), "ultimo_bloqueio", 99.0)
             if ub < marca["bloqueio"] and ub < 0.1:
-                self.textos.append(FloatingText(
-                    px_l, py_l - 55, "BLOCK!", (255, 220, 90), 24))
+                # Reforma "luta limpa": o texto "BLOCK!" saiu — o BlockEffect
+                # (arco + faíscas) logo abaixo já é a leitura do bloqueio.
                 ang_b = math.radians(getattr(l, "angulo_olhar", 0.0))
                 self.block_effects.append(BlockEffect(
                     px_l + math.cos(ang_b) * 18,
@@ -4646,8 +4660,7 @@ class Simulador:
             buffs_l = list(getattr(l, "_buffs_validos", lambda: [])())
             esc = sum(getattr(b, "escudo_atual", 0.0) for b in buffs_l)
             if marca["escudo"] > 0 and esc <= 0:
-                self.textos.append(FloatingText(
-                    px_l, py_l - 55, "ESCUDO QUEBROU!", (170, 225, 255), 22))
+                # Reforma "luta limpa": texto removido — os estilhaços + o anel sumindo já são a leitura.
                 for i in range(8):
                     a = i * math.pi / 4 + random.uniform(-0.2, 0.2)
                     v = random.uniform(5, 11)
@@ -4660,8 +4673,7 @@ class Simulador:
             # esquiva do Ladino: burst de afterimages + ESQUIVA!
             esq = getattr(l, "esquivas_visuais", 0)
             if esq > marca["esquivas"]:
-                self.textos.append(FloatingText(
-                    px_l, py_l - 55, "ESQUIVA!", (150, 255, 150), 24))
+                # Reforma "luta limpa": texto removido — o burst de afterimages já é a leitura.
                 cor_l = (getattr(l.dados, "cor_r", 200) or 200,
                          getattr(l.dados, "cor_g", 200) or 200,
                          getattr(l.dados, "cor_b", 200) or 200)
@@ -4703,7 +4715,15 @@ class Simulador:
                 self.tela.blit(s_tint, (cx - raio, cy - raio))
                 break
 
-        # --- bolha de escudo hexagonal (alpha ∝ HP do escudo) ---
+        # --- SLOT ÚNICO DE ANEL (Rework Fase 3) ---
+        # Eram 7 anéis concêntricos em 5 raios diferentes competindo pelo
+        # mesmo espaço. Agora UM anel por vez, raio padrão 1.18r,
+        # prioridade por importância de combate: escudo (HP real) >
+        # status dominante > super armor > duração de buff.
+        anel_desenhado = False
+        r_anel = int(raio * 1.18)
+
+        # candidato 1: escudo hexagonal (mantém o vocabulário hex)
         buffs_validos = list(getattr(l, "_buffs_validos", lambda: [])())
         esc_atual = sum(getattr(b, "escudo_atual", 0.0) for b in buffs_validos)
         esc_max = sum(
@@ -4712,7 +4732,7 @@ class Simulador:
         )
         if esc_atual > 0 and esc_max > 0:
             frac_esc = max(0.15, min(1.0, esc_atual / esc_max))
-            r_esc = int(raio * 1.45)
+            r_esc = int(raio * 1.22)
             s_esc = pygame.Surface((r_esc * 2 + 4, r_esc * 2 + 4), pygame.SRCALPHA)
             giro_esc = t * 0.6
             pontos_hex = [
@@ -4724,19 +4744,22 @@ class Simulador:
             pygame.draw.polygon(s_esc, (140, 210, 255, alpha_esc // 3), pontos_hex)
             pygame.draw.polygon(s_esc, (170, 225, 255, alpha_esc), pontos_hex, 2)
             self.tela.blit(s_esc, (cx - r_esc - 2, cy - r_esc - 2))
+            anel_desenhado = True
 
-        # --- anel do status dominante (arco que esvazia) ---
-        if infos:
+        # candidato 2: status dominante (arco que esvazia)
+        if not anel_desenhado and infos:
             vis_dom, s_dom = infos[0]
             dur = max(float(STATUS_RUNTIME[s_dom].get("duracao", 1.0) or 1.0), 1e-6)
             frac = max(0.0, min(1.0, timers.get(s_dom) / dur))
-            r_st = int(raio * 1.16)
-            s_anel = pygame.Surface((r_st * 2 + 6, r_st * 2 + 6), pygame.SRCALPHA)
+            s_anel = pygame.Surface((r_anel * 2 + 6, r_anel * 2 + 6), pygame.SRCALPHA)
             pygame.draw.arc(
-                s_anel, (*vis_dom["cor"], 230), (3, 3, r_st * 2, r_st * 2),
+                s_anel, (*vis_dom["cor"], 230), (3, 3, r_anel * 2, r_anel * 2),
                 math.pi / 2, math.pi / 2 + math.tau * frac, 3,
             )
-            self.tela.blit(s_anel, (cx - r_st - 3, cy - r_st - 3))
+            self.tela.blit(s_anel, (cx - r_anel - 3, cy - r_anel - 3))
+            anel_desenhado = True
+
+        # candidato 4 (buff) entra depois do super armor, mais abaixo
 
         # --- badges (até 3, com glifo, acima do nome) ---
         for i, (vis, s) in enumerate(infos[:3]):
@@ -4749,7 +4772,10 @@ class Simulador:
                                     by - surf_g.get_height() // 2))
 
         # --- especiais baratos (determinísticos do relógio, sem estado) ---
-        for vis, s in infos:
+        # Reforma "luta limpa": só o status DOMINANTE ganha partícula (os
+        # badges já listam os outros; eram 8-10 primitivas duplicando
+        # informação já desenhada).
+        for vis, s in infos[:1]:
             if vis["estilo"] != "particula":
                 continue
             if s == "QUEIMANDO":
@@ -4784,16 +4810,34 @@ class Simulador:
                                      (int(bx0), int(by0)),
                                      (int(bx0 + math.cos(a) * 5), int(topo)), 2)
 
-        # --- super armor: anel dourado grosso (mesmo vocabulário) ---
-        if self.game_feel:
+        # candidato 3: super armor (anel dourado grosso)
+        if not anel_desenhado and self.game_feel:
             armor = self.game_feel.super_armor_systems.get(l)
             if armor is not None and getattr(getattr(armor, "data", None), "ativo", False):
-                r_ar = int(raio * 1.08)
-                s_ar = pygame.Surface((r_ar * 2 + 6, r_ar * 2 + 6), pygame.SRCALPHA)
+                s_ar = pygame.Surface((r_anel * 2 + 6, r_anel * 2 + 6), pygame.SRCALPHA)
                 pulso_ar = int(150 + 70 * math.sin(t * 9))
                 pygame.draw.circle(s_ar, (255, 200, 60, pulso_ar),
-                                   (r_ar + 3, r_ar + 3), r_ar, 4)
-                self.tela.blit(s_ar, (cx - r_ar - 3, cy - r_ar - 3))
+                                   (r_anel + 3, r_anel + 3), r_anel, 4)
+                self.tela.blit(s_ar, (cx - r_anel - 3, cy - r_anel - 3))
+                anel_desenhado = True
+
+        # candidato 4: duração do buff dominante (arco fino, sem aura)
+        if not anel_desenhado:
+            buffs_dur = [
+                b for b in buffs_validos if getattr(b, "duracao", 0) > 0
+            ]
+            if buffs_dur:
+                dom_b = max(buffs_dur, key=lambda b: getattr(b, "vida", 0.0))
+                cor_b = tuple(getattr(dom_b, "cor", (200, 200, 255))[:3])
+                frac_b = max(0.0, min(1.0, getattr(dom_b, "vida", 0.0)
+                                      / max(getattr(dom_b, "duracao", 1.0), 1e-6)))
+                s_b = pygame.Surface((r_anel * 2 + 6, r_anel * 2 + 6), pygame.SRCALPHA)
+                pygame.draw.arc(
+                    s_b, (*cor_b, 200), (3, 3, r_anel * 2, r_anel * 2),
+                    math.pi / 2, math.pi / 2 + math.tau * frac_b, 3,
+                )
+                self.tela.blit(s_b, (cx - r_anel - 3, cy - r_anel - 3))
+                anel_desenhado = True
 
         # --- i-frames: blink de contorno (janela pós-impacto) ---
         if getattr(l, "invencivel_timer", 0.0) > 0.0 and int(t * 18) % 2 == 0:
@@ -5054,725 +5098,132 @@ class Simulador:
         efeito = getattr(arma, 'efeito_visual', None)
         if not efeito:
             return
-        pulso = 0.5 + 0.5 * math.sin(tempo / 200)
         bx, by = base; px, py = ponta
-        if efeito == 'brilho_leve':
+        # Reforma "luta limpa": 2 tiers ESTÁTICOS. As 3-5 cintilas
+        # correndo pela lâmina e o glow pulsante saíram — enfeite em
+        # movimento sobre a ponta, que é justamente o que precisa de
+        # leitura estável (ponta = alcance real da hitbox).
+        if efeito in ('brilho_leve', 'brilho_medio'):
             pygame.draw.circle(self.tela, cor_rar, (int(px), int(py)),
-                               max(2, int(larg * 0.6)))
+                               max(2, int(larg * 0.55)))
             return
-        # brilho_medio+: ponta pulsante
-        glow_r = max(3, int(larg * 0.8 * (1 + pulso * 0.3)))
-        pygame.draw.circle(self.tela, cor_rar, (int(px), int(py)), glow_r)
-        if efeito == 'brilho_medio':
-            return
-        # particulas (Épico) / aura_dourada (Lendário) / chamas_miticas
-        # (Mítico): cintilas ao longo da lâmina, determinísticas do tempo
-        # (sem estado, sem RNG do jogo).
-        n_pontos = {'particulas': 3, 'aura_dourada': 4, 'chamas_miticas': 5}.get(efeito, 3)
-        for i in range(n_pontos):
-            fase = (tempo / 320.0 + i * 0.618) % 1.0
-            fx = bx + (px - bx) * fase
-            fy = by + (py - by) * fase
-            r_c = max(1, int(larg * 0.4 * (1.0 - abs(fase - 0.5))))
-            if efeito == 'chamas_miticas':
-                cor_c = (255, int(120 + 100 * ((math.sin(tempo / 90 + i) + 1) / 2)), 40)
-                fy -= int(larg * 0.6 * fase)
-            elif efeito == 'aura_dourada':
-                cor_c = (255, 215, int(60 + 80 * pulso))
-            else:
-                cor_c = tuple(min(255, c + 70) for c in cor_rar)
-            pygame.draw.circle(self.tela, cor_c, (int(fx), int(fy)), r_c)
-        if efeito in ('aura_dourada', 'chamas_miticas'):
-            # filete contínuo na lâmina — a arma inteira declara o tier
-            pygame.draw.line(self.tela, cor_rar, (int(bx), int(by)),
-                             (int(px), int(py)), 1)
+        # Épico+: ponta marcada + filete discreto na lâmina
+        pygame.draw.circle(self.tela, cor_rar, (int(px), int(py)),
+                           max(2, int(larg * 0.7)))
+        pygame.draw.line(self.tela, cor_rar, (int(bx), int(by)),
+                         (int(px), int(py)), 1)
 
-    def _comprimentos_honestos(self, tipo, raio_char, cabo, lamina, anim_scale=1.0):
+    def _comprimentos_honestos(self, tipo, raio_char, cabo, lamina,
+                               anim_scale=1.0, grip_dist_px=0.0):
         """Passe 4: geometria honesta — a ponta visual da arma cai onde a
         hitbox realmente alcança. Mesma fórmula de core/hitbox.py
-        (_calcular_hitbox_lamina): cabo+lamina normalizados para
-        raio_char*range_mult. Antes, cada branch tinha multiplicadores
-        soltos e a espada desenhada mentia o alcance."""
+        (_calcular_hitbox_lamina): normalizados para raio_char*range_mult.
+        Rework Fase 1: a arma agora nasce na EMPUNHADURA — o contrato
+        vira grip + cabo + lâmina = alcance (a ponta não se move)."""
         try:
             from neural_fights.core.hitbox import get_hitbox_profile
             mult = get_hitbox_profile(tipo)["range_mult"]
         except Exception:
             mult = 2.0
-        escala = (raio_char * mult) / max(cabo + lamina, 1)
+        alvo = max(raio_char * 0.35, raio_char * mult - grip_dist_px)
+        escala = alvo / max(cabo + lamina, 1)
         return cabo * escala, lamina * escala * anim_scale
 
-    def desenhar_arma(self, arma, centro, angulo, tam_char, raio_char, anim_scale=1.0):
+    # Rework de armas (Fase 1): EMPUNHADURA — a arma nasce na MÃO, na
+    # borda do círculo do lado do olhar, e nunca atravessa o corpo.
+    # offset_r = avanço ao longo do olhar; lateral_r = deslocamento
+    # perpendicular (frações do raio_char). Arremesso/Orbital/Mágica já
+    # orbitam FORA do corpo e ficam sem grip.
+    GRIP_PROFILES = {
+        "Reta": {"offset_r": 0.90, "lateral_r": 0.0},
+        "Dupla": {"offset_r": 0.62, "lateral_r": 0.0},
+        "Corrente": {"offset_r": 0.90, "lateral_r": 0.15},
+        "Arco": {"offset_r": 1.05, "lateral_r": 0.0},
+        "Transformável": {"offset_r": 0.90, "lateral_r": 0.0},
+        "Transformavel": {"offset_r": 0.90, "lateral_r": 0.0},
+    }
+
+    def desenhar_arma(self, arma, centro, angulo, tam_char, raio_char,
+                      anim_scale=1.0, no_chao=False, anim_lunge=0.0,
+                      em_ataque=False, puxada=0.0):
+        """RECRIADO DO ZERO (pedido do dono): delega ao weapon_render v2 —
+        54 silhuetas próprias, uma por estilo do catálogo. Este wrapper
+        guarda os contratos: empunhadura (GRIP_PROFILES), geometria
+        honesta (grip+arma = alcance da hitbox), design FIXO (nada escala
+        em runtime; o movimento é o lunge da mão) e efeitos de raridade.
         """
-        Renderiza a arma do lutador - VERSÃO APRIMORADA v3.0
-        Visual muito mais bonito com gradientes, brilhos e detalhes.
-        """
+        if arma is None:
+            return
+        from neural_fights.effects import weapon_render
+        from neural_fights.core.hitbox import get_hitbox_profile
+
         cx, cy = centro
         rad = math.radians(angulo)
-        
-        # Cores da arma com validação
-        cor_r = getattr(arma, 'r', 180) or 180
-        cor_g = getattr(arma, 'g', 180) or 180
-        cor_b = getattr(arma, 'b', 180) or 180
-        cor = (int(cor_r), int(cor_g), int(cor_b))
-        
-        # Cor mais clara para highlights
-        cor_clara = tuple(min(255, c + 60) for c in cor)
-        # Cor mais escura para sombras
-        cor_escura = tuple(max(0, c - 40) for c in cor)
-        
-        # Cor de raridade para efeitos especiais
-        raridade = getattr(arma, 'raridade', 'Comum')
-        # Passe 4: paleta central (utils/palette.py) — o dict local morreu.
-        from neural_fights.utils.palette import cor_raridade as _cor_rar
-        cor_raridade = _cor_rar(raridade)
-        
         tipo = getattr(arma, 'tipo', 'Reta')
-        
-        # Escala base da arma
-        base_scale = raio_char * 0.025  # Escala relativa ao personagem
-        
-        # Largura da arma proporcional
-        larg_base = max(3, int(raio_char * 0.12 * anim_scale))
-        
-        # Flag de ataque ativo (para efeitos especiais)
-        atacando = anim_scale > 1.05
-        tempo = pygame.time.get_ticks()
-        
-        # === RETA (Espadas, Lanças, Machados) ===
-        if tipo == "Reta":
-            cabo_len, lamina_len = self._comprimentos_honestos(
-                tipo, raio_char,
-                getattr(arma, 'comp_cabo', 20), getattr(arma, 'comp_lamina', 60),
-                anim_scale,
-            )
-            larg = max(4, int(larg_base * 1.2))
-            
-            # Pontos
-            cabo_end_x = cx + math.cos(rad) * cabo_len
-            cabo_end_y = cy + math.sin(rad) * cabo_len
-            lamina_end_x = cx + math.cos(rad) * (cabo_len + lamina_len)
-            lamina_end_y = cy + math.sin(rad) * (cabo_len + lamina_len)
-            
-            # === CABO ===
-            # Guarda (oval)
-            guarda_x = cabo_end_x + math.cos(rad) * 2
-            guarda_y = cabo_end_y + math.sin(rad) * 2
-            pygame.draw.ellipse(self.tela, (80, 60, 40), 
-                              (int(guarda_x - larg*1.5), int(guarda_y - larg*0.8), larg*3, larg*1.6))
-            
-            # Cabo com gradiente simulado; Passe 4: tingido pela raridade
-            # (Raro+ — o cabo de uma Mítica não é a mesma madeira do Comum).
-            tinge = 0.35 if raridade not in ('Comum', 'Incomum') else 0.0
-            for i in range(3):
-                offset = i - 1
-                base_cabo = (90 - i*15, 50 - i*10, 20 - i*5)
-                cor_cabo = tuple(
-                    int(c * (1 - tinge) + cr * tinge)
-                    for c, cr in zip(base_cabo, cor_raridade)
-                )
-                pygame.draw.line(self.tela, cor_cabo, 
-                               (int(cx) + offset, int(cy) + offset), 
-                               (int(cabo_end_x) + offset, int(cabo_end_y) + offset), 
-                               max(2, larg - i))
-            
-            # === LÂMINA ===
-            # Forma da lâmina (polígono para visual mais interessante)
-            perp_x = math.cos(rad + math.pi/2) * larg * 0.6
-            perp_y = math.sin(rad + math.pi/2) * larg * 0.6
-            
-            # Pontos da lâmina (forma de espada)
-            lamina_pts = [
-                (int(cabo_end_x - perp_x), int(cabo_end_y - perp_y)),  # Base esquerda
-                (int(cabo_end_x + perp_x), int(cabo_end_y + perp_y)),  # Base direita
-                (int(lamina_end_x - perp_x*0.3), int(lamina_end_y - perp_y*0.3)),  # Ponta esquerda
-                (int(lamina_end_x), int(lamina_end_y)),  # Ponta
-                (int(lamina_end_x + perp_x*0.3), int(lamina_end_y + perp_y*0.3)),  # Ponta direita
-            ]
-            
-            # Lâmina principal
-            if len(lamina_pts) >= 3:
-                pygame.draw.polygon(self.tela, cor, lamina_pts)
-                pygame.draw.polygon(self.tela, cor_escura, lamina_pts, 1)
-            
-            # Highlight central (fio da espada)
-            mid_x = (cabo_end_x + lamina_end_x) / 2
-            mid_y = (cabo_end_y + lamina_end_y) / 2
-            pygame.draw.line(self.tela, cor_clara, 
-                           (int(cabo_end_x), int(cabo_end_y)), 
-                           (int(mid_x), int(mid_y)), max(1, larg//3))
-            
-            # Efeito de brilho durante ataque
-            if atacando:
-                glow_surface = pygame.Surface((int(lamina_len*2), int(lamina_len*2)), pygame.SRCALPHA)
-                for r in range(3, 0, -1):
-                    alpha = 50 // r
-                    pygame.draw.line(glow_surface, (*cor_clara, alpha),
-                                   (lamina_len, lamina_len),
-                                   (lamina_len + math.cos(rad)*lamina_len*0.8, 
-                                    lamina_len + math.sin(rad)*lamina_len*0.8), larg + r*2)
-                self.tela.blit(glow_surface, (int(cabo_end_x - lamina_len), int(cabo_end_y - lamina_len)))
-            
-            # Efeito de raridade: tiers do efeito_visual do catálogo
-            self._efeito_visual_raridade(
-                arma, (cabo_end_x, cabo_end_y), (lamina_end_x, lamina_end_y),
-                cor_raridade, larg, tempo,
-            )
-        
-        # === DUPLA - ADAGAS GÊMEAS v3.0 (Karambit Reverse-Grip) ===
-        elif tipo == "Dupla":
-            estilo_arma = getattr(arma, 'estilo', '')
-            sep = getattr(arma, 'separacao', 25) * base_scale * 1.6
-            larg = max(4, int(larg_base * 1.1))
 
-            if estilo_arma == "Adagas Gêmeas":
-                # ── ADAGAS GÊMEAS v3.1: Laterais do corpo, empunhadura normal apontando à frente ──
-                # Cada daga fica na mão do personagem (lateral), lâmina apontando na direção do ataque
-                cabo_len, lamina_len = self._comprimentos_honestos(
-                    tipo, raio_char,
-                    getattr(arma, 'comp_cabo', 8), getattr(arma, 'comp_lamina', 50),
-                    anim_scale,
-                )
-                pulso = 0.5 + 0.5 * math.sin(tempo / 180)
-                glow_alpha_base = int(100 + 70 * pulso) if atacando else int(35 + 20 * pulso)
+        _grip = None if no_chao else self.GRIP_PROFILES.get(tipo)
+        grip_dist_px = 0.0
+        gx, gy = cx, cy
+        if _grip:
+            grip_dist_px = raio_char * _grip["offset_r"]
+            desloc = grip_dist_px + anim_lunge * raio_char
+            gx += math.cos(rad) * desloc
+            gy += math.sin(rad) * desloc
+            lat = raio_char * _grip["lateral_r"]
+            if lat:
+                gx += math.cos(rad + math.pi / 2) * lat
+                gy += math.sin(rad + math.pi / 2) * lat
 
-                for i, lado_sinal in enumerate([-1, 1]):
-                    # ── Posição da mão: lateral ao corpo, fora do centro ──
-                    # sep já dá a separação lateral adequada
-                    hand_x = cx + math.cos(rad + math.pi/2) * sep * lado_sinal * 0.85
-                    hand_y = cy + math.sin(rad + math.pi/2) * sep * lado_sinal * 0.85
-
-                    # Ângulo da daga: aponta para frente com leve abertura lateral
-                    spread_deg = 18 * lado_sinal  # abertura: esquerda vai -18°, direita vai +18°
-                    daga_ang = rad + math.radians(spread_deg)
-
-                    # ── Cabo (handle) ──
-                    cabo_ex = hand_x + math.cos(daga_ang) * cabo_len
-                    cabo_ey = hand_y + math.sin(daga_ang) * cabo_len
-                    # Sombra
-                    pygame.draw.line(self.tela, (30, 18, 8),
-                                     (int(hand_x)+1, int(hand_y)+1),
-                                     (int(cabo_ex)+1, int(cabo_ey)+1), larg + 3)
-                    # Madeira/grip
-                    pygame.draw.line(self.tela, (60, 38, 18),
-                                     (int(hand_x), int(hand_y)),
-                                     (int(cabo_ex), int(cabo_ey)), larg + 2)
-                    pygame.draw.line(self.tela, (100, 65, 30),
-                                     (int(hand_x), int(hand_y)),
-                                     (int(cabo_ex), int(cabo_ey)), max(1, larg))
-                    # Faixas de grip
-                    for gi in range(1, 4):
-                        gt = gi / 4
-                        gx = int(hand_x + (cabo_ex - hand_x) * gt)
-                        gy = int(hand_y + (cabo_ey - hand_y) * gt)
-                        gp_x = math.cos(daga_ang + math.pi/2) * (larg + 1)
-                        gp_y = math.sin(daga_ang + math.pi/2) * (larg + 1)
-                        pygame.draw.line(self.tela, (45, 28, 10),
-                                         (int(gx-gp_x), int(gy-gp_y)),
-                                         (int(gx+gp_x), int(gy+gp_y)), 1)
-
-                    # ── Guarda cruzada (finger guard) ──
-                    grd_x = math.cos(daga_ang + math.pi/2) * (larg + 3)
-                    grd_y = math.sin(daga_ang + math.pi/2) * (larg + 3)
-                    pygame.draw.line(self.tela, (150, 155, 165),
-                                     (int(cabo_ex - grd_x), int(cabo_ey - grd_y)),
-                                     (int(cabo_ex + grd_x), int(cabo_ey + grd_y)), max(2, larg))
-
-                    # ── Lâmina: reta com ponta levemente curvada para dentro ──
-                    # Divide em dois segmentos: corpo reto + curva terminal
-                    corpo_pct = 0.72  # 72% da lâmina é reta
-                    curva_pct = 0.28  # 28% final curva levemente
-
-                    corpo_end_x = cabo_ex + math.cos(daga_ang) * lamina_len * corpo_pct
-                    corpo_end_y = cabo_ey + math.sin(daga_ang) * lamina_len * corpo_pct
-
-                    # Curva da ponta (gira ligeiramente para o centro)
-                    curva_deg = -12 * lado_sinal  # curva para dentro
-                    curva_ang = daga_ang + math.radians(curva_deg)
-                    tip_x = corpo_end_x + math.cos(curva_ang) * lamina_len * curva_pct
-                    tip_y = corpo_end_y + math.sin(curva_ang) * lamina_len * curva_pct
-
-                    # Largura da lâmina (afunila até a ponta)
-                    lam_w_base = max(3, larg - 1)
-                    lam_w_tip  = max(1, larg // 3)
-
-                    # Sombra da lâmina
-                    pygame.draw.line(self.tela, (20, 20, 25),
-                                     (int(cabo_ex)+1, int(cabo_ey)+1),
-                                     (int(tip_x)+1,   int(tip_y)+1), lam_w_base + 2)
-
-                    # Corpo da lâmina (parte reta)
-                    perp_bx = math.cos(daga_ang + math.pi/2)
-                    perp_by = math.sin(daga_ang + math.pi/2)
-                    lam_poly = [
-                        (int(cabo_ex - perp_bx * lam_w_base), int(cabo_ey - perp_by * lam_w_base)),
-                        (int(cabo_ex + perp_bx * lam_w_base), int(cabo_ey + perp_by * lam_w_base)),
-                        (int(corpo_end_x + perp_bx * lam_w_tip), int(corpo_end_y + perp_by * lam_w_tip)),
-                        (int(tip_x), int(tip_y)),
-                        (int(corpo_end_x - perp_bx * lam_w_tip), int(corpo_end_y - perp_by * lam_w_tip)),
-                    ]
-                    try:
-                        pygame.draw.polygon(self.tela, cor_escura, lam_poly)
-                        pygame.draw.polygon(self.tela, cor, lam_poly, 1)
-                    except (pygame.error, TypeError, ValueError, OverflowError): pass
-                    # Fio da lâmina (highlight central)
-                    pygame.draw.line(self.tela, cor_clara,
-                                     (int(cabo_ex), int(cabo_ey)),
-                                     (int(corpo_end_x), int(corpo_end_y)), 1)
-
-                    # ── Glow de energia durante ataque ──
-                    if atacando or glow_alpha_base > 50:
-                        try:
-                            sz = max(8, int(lamina_len * 2))
-                            gs = pygame.Surface((sz * 2, sz * 2), pygame.SRCALPHA)
-                            mid_x = int((cabo_ex + tip_x) / 2) - sz
-                            mid_y = int((cabo_ey + tip_y) / 2) - sz
-                            local_s = (sz - int(cabo_ex - mid_x - sz), sz - int(cabo_ey - mid_y - sz))
-                            local_e = (sz - int(cabo_ex - mid_x - sz) + int(tip_x - cabo_ex),
-                                       sz - int(cabo_ey - mid_y - sz) + int(tip_y - cabo_ey))
-                            pygame.draw.line(gs, (*cor, glow_alpha_base),
-                                             (max(0,min(sz*2-1,local_s[0])), max(0,min(sz*2-1,local_s[1]))),
-                                             (max(0,min(sz*2-1,local_e[0])), max(0,min(sz*2-1,local_e[1]))),
-                                             max(4, lam_w_base + 3))
-                            self.tela.blit(gs, (mid_x, mid_y))
-                        except (pygame.error, TypeError, ValueError, OverflowError): pass
-
-                    # ── Runa na lâmina (raridade) ──
-                    if raridade not in ['Comum', 'Incomum']:
-                        rune_x = int((cabo_ex + corpo_end_x) / 2)
-                        rune_y = int((cabo_ey + corpo_end_y) / 2)
-                        rune_a = int(160 + 80 * math.sin(tempo / 120 + i * math.pi))
-                        try:
-                            rs = pygame.Surface((8, 8), pygame.SRCALPHA)
-                            pygame.draw.circle(rs, (*cor_raridade, rune_a), (4, 4), 3)
-                            self.tela.blit(rs, (rune_x - 4, rune_y - 4))
-                        except (pygame.error, TypeError, ValueError, OverflowError): pass
-
-                    # ── Ponta brilhante ──
-                    tip_r = max(2, larg - 1)
-                    tip_a = int(160 + 80 * math.sin(tempo / 90 + i))
-                    try:
-                        ts = pygame.Surface((tip_r * 5, tip_r * 5), pygame.SRCALPHA)
-                        pygame.draw.circle(ts, (*cor_clara, tip_a), (tip_r*2, tip_r*2), tip_r * 2)
-                        self.tela.blit(ts, (int(tip_x) - tip_r*2, int(tip_y) - tip_r*2))
-                    except (pygame.error, TypeError, ValueError, OverflowError): pass
-                    tip_cor = cor_raridade if raridade not in ['Comum'] else cor_clara
-                    pygame.draw.circle(self.tela, tip_cor, (int(tip_x), int(tip_y)), tip_r)
-
-            else:
-                # Outras armas Dupla (Sai, Garras, etc.)
-                cabo_len, lamina_len = self._comprimentos_honestos(
-                    tipo, raio_char,
-                    getattr(arma, 'comp_cabo', 20), getattr(arma, 'comp_lamina', 55),
-                    anim_scale,
-                )
-                for i, offset_deg in enumerate([-35, 35]):
-                    r = rad + math.radians(offset_deg)
-                    lado = math.cos(rad + math.pi/2) * sep * (1 if i == 0 else -1)
-                    lado_y = math.sin(rad + math.pi/2) * sep * (1 if i == 0 else -1)
-                    bx = cx + lado * 0.5; by = cy + lado_y * 0.5
-                    cex = bx + math.cos(r) * cabo_len; cey = by + math.sin(r) * cabo_len
-                    lex = bx + math.cos(r) * (cabo_len + lamina_len)
-                    ley = by + math.sin(r) * (cabo_len + lamina_len)
-                    pygame.draw.line(self.tela, (80, 50, 30), (int(bx), int(by)), (int(cex), int(cey)), larg)
-                    px2 = math.cos(r + math.pi/2) * larg * 0.5; py2 = math.sin(r + math.pi/2) * larg * 0.5
-                    pts2 = [(int(cex-px2),int(cey-py2)),(int(cex+px2),int(cey+py2)),(int(lex),int(ley))]
-                    pygame.draw.polygon(self.tela, cor, pts2)
-                    pygame.draw.polygon(self.tela, cor_clara, pts2, 1)
-                    pygame.draw.circle(self.tela, cor_raridade, (int(lex), int(ley)), max(2, larg//2))
-        
-        # === CORRENTE - MANGUAL v3.0 (Heavy Flail com Física de Elos) ===
-        elif tipo == "Corrente":
-            estilo_arma = getattr(arma, 'estilo', '')
-
-            if estilo_arma == "Mangual":
-                # ── MANGUAL v3.0: Cabo pesado + Elos de ferro fundido + Bola espigada ──
-                cabo_tam  = getattr(arma, 'comp_cabo', 18) * base_scale * 1.0
-                corrente_comp = getattr(arma, 'comp_corrente', 60) * base_scale * 1.15 * anim_scale
-                ponta_tam = max(6, int(raio_char * 0.20 * anim_scale))
-                num_elos = 6
-                pulso = 0.5 + 0.5 * math.sin(tempo / 200)
-
-                # ── Cabo de madeira grossa ──
-                cabo_ex = cx + math.cos(rad) * cabo_tam
-                cabo_ey = cy + math.sin(rad) * cabo_tam
-                # Sombra do cabo
-                pygame.draw.line(self.tela, (30, 20, 10),
-                                 (int(cx)+2, int(cy)+2), (int(cabo_ex)+2, int(cabo_ey)+2), max(6, larg_base + 4))
-                # Madeira do cabo
-                pygame.draw.line(self.tela, (90, 55, 25),
-                                 (int(cx), int(cy)), (int(cabo_ex), int(cabo_ey)), max(6, larg_base + 4))
-                pygame.draw.line(self.tela, (130, 85, 40),
-                                 (int(cx), int(cy)), (int(cabo_ex), int(cabo_ey)), max(3, larg_base))
-                # Faixas de couro no cabo
-                for fi in range(1, 5):
-                    ft = fi / 5
-                    fx = int(cx + (cabo_ex - cx) * ft)
-                    fy = int(cy + (cabo_ey - cy) * ft)
-                    fperp_x = math.cos(rad + math.pi/2) * (larg_base + 2)
-                    fperp_y = math.sin(rad + math.pi/2) * (larg_base + 2)
-                    pygame.draw.line(self.tela, (55, 30, 10),
-                                     (int(fx - fperp_x), int(fy - fperp_y)),
-                                     (int(fx + fperp_x), int(fy + fperp_y)), 2)
-
-                # ── Argola de conexão ──
-                anel_r = max(4, larg_base + 1)
-                pygame.draw.circle(self.tela, (80, 80, 90), (int(cabo_ex), int(cabo_ey)), anel_r + 2)
-                pygame.draw.circle(self.tela, (160, 165, 175), (int(cabo_ex), int(cabo_ey)), anel_r, 3)
-                pygame.draw.circle(self.tela, (200, 205, 215), (int(cabo_ex), int(cabo_ey)), max(2, anel_r - 2), 1)
-
-                # ── Corrente com elos fundidos (pendular arc) ──
-                chain_pts = []
-                sag = corrente_comp * 0.08 * (1 + 0.08 * math.sin(tempo / 200))  # Sag gravitacional (reduzido v3.1)
-                for ei in range(num_elos + 1):
-                    t = ei / num_elos
-                    # Catenary approximation: arco para baixo
-                    base_px = cabo_ex + math.cos(rad) * corrente_comp * t
-                    base_py = cabo_ey + math.sin(rad) * corrente_comp * t
-                    # Curvatura gravitacional + ondulação de momentum
-                    gravity_y = sag * math.sin(t * math.pi) * math.sin(rad + math.pi/2) * -1
-                    wave = math.sin(t * math.pi * 2 + tempo / 200) * raio_char * 0.03 * (1 - t * 0.4)
-                    wave_x = math.cos(rad + math.pi/2) * wave
-                    wave_y = math.sin(rad + math.pi/2) * wave + gravity_y
-                    chain_pts.append((base_px + wave_x, base_py + wave_y))
-
-                # Sombra da corrente
-                shadow_chain = [(int(p[0]+3), int(p[1]+3)) for p in chain_pts]
-                if len(shadow_chain) > 1:
-                    try: pygame.draw.lines(self.tela, (20, 20, 22), False, shadow_chain, max(4, larg_base + 2))
-                    except (pygame.error, TypeError, ValueError, OverflowError): pass
-
-                # Elos individuais (alternando horizontal/vertical)
-                elo_w = max(5, larg_base + 2)
-                elo_h = max(3, larg_base - 1)
-                for ei in range(len(chain_pts)):
-                    ex, ey = chain_pts[ei]
-                    elo_ang = rad + math.pi/2 if ei % 2 == 0 else rad
-                    # Elo como elipse/retângulo rotacionado
-                    elo_perp_x = math.cos(elo_ang) * elo_w
-                    elo_perp_y = math.sin(elo_ang) * elo_w
-                    elo_fwd_x = math.cos(elo_ang + math.pi/2) * elo_h
-                    elo_fwd_y = math.sin(elo_ang + math.pi/2) * elo_h
-                    elo_pts = [
-                        (int(ex - elo_perp_x - elo_fwd_x), int(ey - elo_perp_y - elo_fwd_y)),
-                        (int(ex + elo_perp_x - elo_fwd_x), int(ey + elo_perp_y - elo_fwd_y)),
-                        (int(ex + elo_perp_x + elo_fwd_x), int(ey + elo_perp_y + elo_fwd_y)),
-                        (int(ex - elo_perp_x + elo_fwd_x), int(ey - elo_perp_y + elo_fwd_y)),
-                    ]
-                    try:
-                        pygame.draw.polygon(self.tela, (90, 92, 100), elo_pts)
-                        pygame.draw.polygon(self.tela, (145, 148, 160), elo_pts, 1)
-                    except (pygame.error, TypeError, ValueError, OverflowError): pass
-
-                # ── Bola espigada (iron flail head) ──
-                if chain_pts:
-                    end_x, end_y = chain_pts[-1]
-                    ball_r = ponta_tam
-
-                    # Glow de impacto (quando atacando)
-                    if atacando:
-                        glow_r = int(ball_r * 2.2)
-                        try:
-                            gs = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
-                            glow_a = int(120 * anim_scale)
-                            pygame.draw.circle(gs, (*cor, min(255, glow_a)), (glow_r, glow_r), glow_r)
-                            self.tela.blit(gs, (int(end_x) - glow_r, int(end_y) - glow_r))
-                        except (pygame.error, TypeError, ValueError, OverflowError): pass
-
-                    # Sombra da bola
-                    pygame.draw.circle(self.tela, (15, 15, 18), (int(end_x) + 3, int(end_y) + 3), ball_r + 1)
-
-                    # Bola principal (esfera fundida)
-                    pygame.draw.circle(self.tela, cor_escura, (int(end_x), int(end_y)), ball_r)
-                    pygame.draw.circle(self.tela, cor, (int(end_x), int(end_y)), ball_r - 1)
-                    # Highlight da esfera
-                    hl_x = int(end_x - ball_r * 0.3)
-                    hl_y = int(end_y - ball_r * 0.3)
-                    pygame.draw.circle(self.tela, cor_clara, (hl_x, hl_y), max(2, ball_r // 3))
-
-                    # Spikes (6 espinhos fundidos)
-                    num_spikes = 6
-                    spike_len = ball_r * 0.7
-                    spike_base_w = max(2, ball_r // 4)
-                    spike_rot = tempo / 80  # Lenta rotação visual
-                    for si in range(num_spikes):
-                        s_ang = spike_rot + (si * math.pi * 2 / num_spikes)
-                        # Base do spike na superfície da bola
-                        s_base_x = end_x + math.cos(s_ang) * (ball_r - 1)
-                        s_base_y = end_y + math.sin(s_ang) * (ball_r - 1)
-                        # Ponta do spike
-                        s_tip_x = end_x + math.cos(s_ang) * (ball_r + spike_len)
-                        s_tip_y = end_y + math.sin(s_ang) * (ball_r + spike_len)
-                        # Spike como triângulo
-                        perp_sx = math.cos(s_ang + math.pi/2) * spike_base_w
-                        perp_sy = math.sin(s_ang + math.pi/2) * spike_base_w
-                        spike_pts = [
-                            (int(s_base_x - perp_sx), int(s_base_y - perp_sy)),
-                            (int(s_base_x + perp_sx), int(s_base_y + perp_sy)),
-                            (int(s_tip_x), int(s_tip_y)),
-                        ]
-                        try:
-                            pygame.draw.polygon(self.tela, cor, spike_pts)
-                            pygame.draw.polygon(self.tela, cor_clara, spike_pts, 1)
-                        except (pygame.error, TypeError, ValueError, OverflowError): pass
-
-                    # Anel de reforço na bola
-                    pygame.draw.circle(self.tela, (70, 72, 80), (int(end_x), int(end_y)), ball_r, 2)
-
-                    # Glow de raridade
-                    if raridade not in ['Comum']:
-                        rar_alpha = int(100 + 80 * pulso)
-                        try:
-                            rs = pygame.Surface((ball_r * 4, ball_r * 4), pygame.SRCALPHA)
-                            pygame.draw.circle(rs, (*cor_raridade, rar_alpha),
-                                               (ball_r * 2, ball_r * 2), ball_r + 4)
-                            self.tela.blit(rs, (int(end_x) - ball_r * 2, int(end_y) - ball_r * 2))
-                        except (pygame.error, TypeError, ValueError, OverflowError): pass
-
-            else:
-                # Outras correntes (Chicote, Kusarigama, etc.)
-                comp_total = getattr(arma, 'comp_corrente', 80) * base_scale * 2.5 * anim_scale
-                ponta_tam = max(6, int(raio_char * 0.25))
-                num_segs = 15
-                pts = []
-                for i in range(num_segs + 1):
-                    t = i / num_segs
-                    wave_amp = raio_char * 0.15 * (1 - t * 0.5)
-                    wave = math.sin(t * math.pi * 4 + tempo / 150) * wave_amp
-                    px2 = cx + math.cos(rad) * (comp_total * t)
-                    py2 = cy + math.sin(rad) * (comp_total * t)
-                    perp_x = math.cos(rad + math.pi/2) * wave
-                    perp_y = math.sin(rad + math.pi/2) * wave
-                    pts.append((int(px2 + perp_x), int(py2 + perp_y)))
-                if len(pts) > 1:
-                    shadow_pts = [(p[0]+2, p[1]+2) for p in pts]
-                    try: pygame.draw.lines(self.tela, (30, 30, 30), False, shadow_pts, max(3, larg_base))
-                    except (pygame.error, TypeError, ValueError, OverflowError): pass
-                    try: pygame.draw.lines(self.tela, (120, 120, 130), False, pts, max(3, larg_base))
-                    except (pygame.error, TypeError, ValueError, OverflowError): pass
-                    for i, (px2, py2) in enumerate(pts):
-                        if i % 2 == 0:
-                            pygame.draw.circle(self.tela, (90, 90, 100), (px2, py2), max(2, larg_base//2))
-                if pts:
-                    end_x, end_y = pts[-1]
-                    pygame.draw.circle(self.tela, cor, (end_x, end_y), ponta_tam)
-                    pygame.draw.circle(self.tela, cor_escura, (end_x, end_y), ponta_tam, 2)
-                    for spike_ang in range(0, 360, 45):
-                        spike_r = math.radians(spike_ang + tempo/50)
-                        sx = end_x + math.cos(spike_r) * ponta_tam * 1.4
-                        sy = end_y + math.sin(spike_r) * ponta_tam * 1.4
-                        pygame.draw.line(self.tela, cor_clara, (end_x, end_y), (int(sx), int(sy)), max(2, larg_base//2))
-                    if raridade not in ['Comum']:
-                        pygame.draw.circle(self.tela, cor_raridade, (end_x, end_y), ponta_tam + 3, 2)
-        
-        # === ARREMESSO (Facas, Chakram, Shuriken) ===
-        elif tipo == "Arremesso":
-            tam_proj = max(8, int(raio_char * 0.35))
-            qtd = min(5, int(getattr(arma, 'quantidade', 3)))
-            
-            for i in range(qtd):
-                offset_ang = (i - (qtd-1)/2) * 18
-                r = rad + math.radians(offset_ang)
-                
-                dist = raio_char * 1.1 + tam_proj * 0.5
-                px = cx + math.cos(r) * dist
-                py = cy + math.sin(r) * dist
-                
-                # Rotação individual
-                rot = tempo / 100 + i * 60
-                
-                # Desenha shuriken/chakram
-                num_pontas = 4 if i % 2 == 0 else 6
-                pontas = []
-                
-                for j in range(num_pontas * 2):
-                    ang = rot + (j * math.pi / num_pontas)
-                    raio = tam_proj if j % 2 == 0 else tam_proj * 0.4
-                    pontas.append((
-                        int(px + math.cos(ang) * raio),
-                        int(py + math.sin(ang) * raio)
-                    ))
-                
-                if len(pontas) >= 3:
-                    pygame.draw.polygon(self.tela, cor, pontas)
-                    pygame.draw.polygon(self.tela, cor_clara, pontas, 1)
-                
-                # Centro
-                pygame.draw.circle(self.tela, cor_escura, (int(px), int(py)), max(2, tam_proj//3))
-        
-        # === ARCO ===
-        elif tipo == "Arco":
-            tam_arco = raio_char * 1.4 * anim_scale
-            tam_flecha = raio_char * 2.0 * anim_scale
-            
-            # Desenha arco curvado
-            arco_pts = []
-            for i in range(13):
-                ang = rad + math.radians(-50 + i * (100/12))
-                # Curva do arco
-                curva = math.sin((i / 12) * math.pi) * tam_arco * 0.15
-                raio = tam_arco * 0.5 + curva
-                arco_pts.append((
-                    int(cx + math.cos(ang) * raio),
-                    int(cy + math.sin(ang) * raio)
-                ))
-            
-            if len(arco_pts) > 1:
-                # Corpo do arco (madeira)
-                pygame.draw.lines(self.tela, cor, False, arco_pts, max(4, larg_base))
-                pygame.draw.lines(self.tela, cor_escura, False, arco_pts, 1)
-                
-                # Corda
-                pygame.draw.line(self.tela, (200, 180, 140), arco_pts[0], arco_pts[-1], 2)
-            
-            # Flecha
-            flecha_start_x = cx
-            flecha_start_y = cy
-            flecha_end_x = cx + math.cos(rad) * tam_flecha
-            flecha_end_y = cy + math.sin(rad) * tam_flecha
-            
-            # Corpo da flecha
-            pygame.draw.line(self.tela, (139, 90, 43), 
-                           (int(flecha_start_x), int(flecha_start_y)), 
-                           (int(flecha_end_x), int(flecha_end_y)), max(2, larg_base//2))
-            
-            # Ponta da flecha
-            ponta_len = tam_flecha * 0.15
-            perp = math.pi/2
-            ponta_pts = [
-                (int(flecha_end_x), int(flecha_end_y)),
-                (int(flecha_end_x - math.cos(rad)*ponta_len + math.cos(rad+perp)*ponta_len*0.4),
-                 int(flecha_end_y - math.sin(rad)*ponta_len + math.sin(rad+perp)*ponta_len*0.4)),
-                (int(flecha_end_x - math.cos(rad)*ponta_len - math.cos(rad+perp)*ponta_len*0.4),
-                 int(flecha_end_y - math.sin(rad)*ponta_len - math.sin(rad+perp)*ponta_len*0.4)),
-            ]
-            pygame.draw.polygon(self.tela, cor_raridade, ponta_pts)
-            
-            # Penas da flecha
-            for pena_off in [-1, 1]:
-                pena_x = flecha_start_x + math.cos(rad) * tam_flecha * 0.15
-                pena_y = flecha_start_y + math.sin(rad) * tam_flecha * 0.15
-                pena_end_x = pena_x + math.cos(rad + pena_off * 0.5) * tam_flecha * 0.1
-                pena_end_y = pena_y + math.sin(rad + pena_off * 0.5) * tam_flecha * 0.1
-                pygame.draw.line(self.tela, (200, 50, 50), 
-                               (int(pena_x), int(pena_y)), (int(pena_end_x), int(pena_end_y)), 2)
-        
-        # === ORBITAL (Escudo, Drone, Orbes) ===
-        elif tipo == "Orbital":
-            # Passe 4: orbe no raio REAL da hitbox (1.5 — hitbox.py)
-            dist_orbit = raio_char * 1.5
-            qtd = max(1, min(5, int(getattr(arma, 'quantidade_orbitais', 2))))
-            tam_orbe = max(6, int(raio_char * 0.3))
-            
-            rot_speed = tempo / 800
-            
-            for i in range(qtd):
-                ang = rot_speed + (2 * math.pi / qtd) * i
-                ox = cx + math.cos(ang) * dist_orbit
-                oy = cy + math.sin(ang) * dist_orbit
-                
-                # Linha conectora sutil
-                pygame.draw.line(self.tela, (60, 60, 80), (int(cx), int(cy)), (int(ox), int(oy)), 1)
-                
-                # Orbe com glow
-                for glow_r in range(3, 0, -1):
-                    alpha_cor = tuple(min(255, c + glow_r * 20) for c in cor)
-                    pygame.draw.circle(self.tela, alpha_cor, (int(ox), int(oy)), tam_orbe + glow_r)
-                
-                pygame.draw.circle(self.tela, cor, (int(ox), int(oy)), tam_orbe)
-                pygame.draw.circle(self.tela, cor_clara, (int(ox), int(oy)), tam_orbe//2)
-                pygame.draw.circle(self.tela, cor_raridade, (int(ox), int(oy)), tam_orbe, 2)
-        
-        # === MÁGICA (Espadas espectrais, Runas) ===
-        elif tipo == "Mágica":
-            qtd = min(5, int(getattr(arma, 'quantidade', 3)))
-            tam_espada = max(12, int(raio_char * 0.7))
-            dist_base = raio_char * 1.4
-            
-            float_offset = math.sin(tempo / 250) * raio_char * 0.1
-            rot_offset = tempo / 1500
-            
-            for i in range(qtd):
-                offset_ang = (i - (qtd-1)/2) * 22 + math.degrees(rot_offset)
-                r = rad + math.radians(offset_ang)
-                
-                dist = dist_base + float_offset * (1 + i * 0.2)
-                px = cx + math.cos(r) * dist
-                py = cy + math.sin(r) * dist
-                
-                # Espada espectral
-                sword_end_x = px + math.cos(r) * tam_espada
-                sword_end_y = py + math.sin(r) * tam_espada
-                
-                # Glow da espada
-                for glow in range(4, 0, -1):
-                    pygame.draw.line(self.tela, cor, 
-                                   (int(px), int(py)), (int(sword_end_x), int(sword_end_y)), 
-                                   max(2, larg_base//2) + glow)
-                
-                # Espada principal
-                pygame.draw.line(self.tela, cor_clara, 
-                               (int(px), int(py)), (int(sword_end_x), int(sword_end_y)), 
-                               max(3, larg_base//2))
-                
-                # Ponta brilhante
-                pygame.draw.circle(self.tela, cor_raridade, (int(sword_end_x), int(sword_end_y)), 3)
-                
-                # Runa flutuante no centro
-                runa_pulso = 0.7 + 0.3 * math.sin(tempo / 200 + i)
-                pygame.draw.circle(self.tela, cor_raridade, (int(px), int(py)), int(4 * runa_pulso), 1)
-        
-        # === TRANSFORMÁVEL ===
-        elif tipo == "Transformável":
-            forma = getattr(arma, 'forma_atual', 1)
-            
-            if forma == 1:
-                cabo_len, lamina_len = self._comprimentos_honestos(
-                    tipo, raio_char,
-                    getattr(arma, 'forma1_cabo', 20), getattr(arma, 'forma1_lamina', 50),
-                    anim_scale,
-                )
-            else:
-                cabo_len, lamina_len = self._comprimentos_honestos(
-                    tipo, raio_char,
-                    getattr(arma, 'forma2_cabo', 30), getattr(arma, 'forma2_lamina', 80),
-                    anim_scale,
-                )
-            
-            cabo_end_x = cx + math.cos(rad) * cabo_len
-            cabo_end_y = cy + math.sin(rad) * cabo_len
-            lamina_end_x = cx + math.cos(rad) * (cabo_len + lamina_len)
-            lamina_end_y = cy + math.sin(rad) * (cabo_len + lamina_len)
-            
-            larg = max(4, int(larg_base * 1.1))
-            
-            # Mecanismo de transformação
-            pygame.draw.circle(self.tela, (100, 100, 110), (int(cabo_end_x), int(cabo_end_y)), larg)
-            
-            # Cabo
-            pygame.draw.line(self.tela, (80, 50, 30), (int(cx), int(cy)), (int(cabo_end_x), int(cabo_end_y)), larg)
-            
-            # Lâmina
-            pygame.draw.line(self.tela, cor, (int(cabo_end_x), int(cabo_end_y)), (int(lamina_end_x), int(lamina_end_y)), larg)
-            pygame.draw.line(self.tela, cor_clara, (int(cabo_end_x), int(cabo_end_y)), (int(lamina_end_x), int(lamina_end_y)), larg//2)
-            
-            # Indicador de forma
-            pygame.draw.circle(self.tela, cor_raridade, (int(lamina_end_x), int(lamina_end_y)), max(4, larg//2))
-        
-        # === FALLBACK ===
+        try:
+            mult = get_hitbox_profile(tipo)["range_mult"]
+        except Exception:
+            mult = 2.0
+        # comprimento honesto grip→ponta (Arco/Arremesso/Orbital/Mágica
+        # têm alcance por projétil/órbita; o L deles é presença visual)
+        if tipo == "Arco":
+            L = raio_char * 1.15
+        elif tipo in ("Arremesso", "Orbital", "Mágica"):
+            L = raio_char
         else:
-            cabo_len, lamina_len = self._comprimentos_honestos(
-                tipo, raio_char,
-                getattr(arma, 'comp_cabo', 20), getattr(arma, 'comp_lamina', 50),
-                anim_scale,
+            L = max(raio_char * 0.35, raio_char * mult - grip_dist_px)
+        w = max(2.5, raio_char * 0.10)
+        # Reforma "luta limpa": o prop só anima quando o dono ATACA. Com
+        # `t` sempre correndo, ~20 animações idle giravam para sempre
+        # (dobradiça, espinhos do mangual, LED do drone, olho da
+        # sentinela, tentáculos) — movimento sem informação.
+        tempo_s = self.tempo_visual if em_ataque else 0.0
+
+        if tipo == "Arco":
+            arma._puxada_visual = max(0.0, min(1.0, puxada))
+
+        if tipo == "Dupla":
+            # duas mãos: espelha o renderer nos "ombros" frontais
+            sep = raio_char * 0.55
+            for lado in (-1, 1):
+                hx = gx + math.cos(rad + math.pi / 2) * sep * lado
+                hy = gy + math.sin(rad + math.pi / 2) * sep * lado
+                weapon_render.desenhar(
+                    self.tela, arma, (hx, hy),
+                    rad + math.radians(10) * lado, raio_char,
+                    max(raio_char * 0.3, raio_char * mult - grip_dist_px - sep * 0.3),
+                    w * 0.85, tempo_s + lado * 0.13, em_ataque,
+                )
+        else:
+            weapon_render.desenhar(
+                self.tela, arma, (gx, gy), rad, raio_char, L, w,
+                tempo_s, em_ataque, angulo_orbita=rad,
             )
-            
-            cabo_end_x = cx + math.cos(rad) * cabo_len
-            cabo_end_y = cy + math.sin(rad) * cabo_len
-            lamina_end_x = cx + math.cos(rad) * (cabo_len + lamina_len)
-            lamina_end_y = cy + math.sin(rad) * (cabo_len + lamina_len)
-            
-            pygame.draw.line(self.tela, (80, 50, 30), (int(cx), int(cy)), (int(cabo_end_x), int(cabo_end_y)), larg_base)
-            pygame.draw.line(self.tela, cor, (int(cabo_end_x), int(cabo_end_y)), (int(lamina_end_x), int(lamina_end_y)), larg_base)
+
+        # efeitos de raridade na lâmina (tiers do efeito_visual — Passe 4)
+        if tipo in ("Reta", "Transformável", "Transformavel") and not no_chao:
+            from neural_fights.utils.palette import cor_raridade as _cor_rar
+            self._efeito_visual_raridade(
+                arma,
+                (gx, gy),
+                (gx + math.cos(rad) * L, gy + math.sin(rad) * L),
+                _cor_rar(getattr(arma, 'raridade', 'Comum')),
+                int(w), pygame.time.get_ticks(),
+            )
 
     def desenhar_hitbox_debug(self):
         """Desenha visualização de debug das hitboxes"""
@@ -6028,7 +5479,10 @@ class Simulador:
             off_y += 16
 
     def desenhar_analise(self):
-        s = pygame.Surface((300, self.screen_height, pygame.SRCALPHA)); s.fill(COR_UI_BG); self.tela.blit(s, (0,0))
+        # O parentese estava no lugar errado: pygame.Surface recebe (largura,
+        # altura) e a flag como SEGUNDO argumento. Com a tupla de 3 elementos
+        # o painel de analise (tecla TAB) levantava excecao ao abrir.
+        s = pygame.Surface((300, self.screen_height), pygame.SRCALPHA); s.fill(COR_UI_BG); self.tela.blit(s, (0,0))
         ft = get_fonte_mono(14)
         lines = [
             "--- ANÁLISE ---", f"FPS: {int(self.clock.get_fps())}", f"Cam: {self.cam.modo}", "",

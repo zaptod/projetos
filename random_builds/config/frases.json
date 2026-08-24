@@ -1,0 +1,239 @@
+{
+    "_comment": "Banco combinatorio de legendas shitposter. legenda = prefixo(tier) + nucleo(roleta+banda) + sufixo(tier). Cada combinacao (roleta x tier) gera 500+ frases possiveis distintas. Placeholders: {VALUE} e {CATEGORY}.",
+    "prefixos": {
+        "negativo_forte": ["", "MANO...", "KKKKKKK", "socorro,", "pelo amor de deus,", "nao acredito,", "gente,", "vei,", "F,", "sinceramente?", "olha isso:", "alerta de vergonha:", "breaking news:", "plot twist:", "atencao:", "certidao de obito:", "vish maria,"],
+        "negativo": ["", "eita,", "hmm,", "mano,", "vish,", "poxa,", "olha...", "sendo sincero,", "infelizmente,", "aviso:", "kkk", "tenso,", "complicado,", "vei,"],
+        "neutro": ["", "ok,", "anotado:", "segue o jogo:", "informativo:", "hmm,", "certo,", "beleza,", "registro:", "fato:", "spoiler:", "detalhe:", "tabelinha:"],
+        "positivo": ["", "boa,", "opa,", "ai sim,", "olha ele,", "respeito,", "confia,", "papo reto,", "sem mentira,", "agora vai,", "anota ai:", "alerta de buff:", "kkk boa,", "finalmente,"],
+        "hype": ["", "MANO.", "PERA.", "QUE?!", "SOCORRO,", "NAO ACREDITO,", "CHAMA O IBAMA,", "ALERTA VERMELHO:", "EMERGENCIA:", "KKKKK IMPOSSIVEL,", "SEM CONDICOES,", "CINEMA:", "AVISEM TODOS:", "URGENTE:", "É OFICIAL:"]
+    },
+    "sufixos": {
+        "negativo_forte": ["", "💀", "💀💀💀", "kkkkkkk", "F", "deleta isso", "nao tem como", "vergonha alheia", "certeza que é bug", "aura -1000", "GG", "recomeca tudo", "isso é crime", "😭", "pior gacha da historia", "nem o estagiario salva"],
+        "negativo": ["", "kkkk", "😬", "F", "segue o baile", "tenso", "aura baixa", "😭", "complicado", "nao ta facil", "podia ser pior... sera?"],
+        "neutro": ["", "ok", "segue", "sem hype sem choro", "mid", "kkk", "aceitavel", "vida que segue", "🤝", "nota 5"],
+        "positivo": ["", "👍", "🔥", "boa", "kkk brabo", "aura subiu", "respeita", "ta jogavel", "buffado", "vamo que vamo", "✅"],
+        "hype": ["", "🔥🔥🔥", "😱", "APELAO", "BROKEN", "SEM NERF NAO", "CHAMA A NASA", "AURA INFINITA", "GIGACHAD", "CINEMA PURO", "kkkkk IMPOSSIVEL", "banido em 3 paises", "isso deveria ser ilegal", "DIRETORIA"]
+    },
+    "_default": {
+        "negativo": ["{CATEGORY}: {VALUE}... doeu de ver", "caiu {VALUE} em {CATEGORY}", "{CATEGORY} {VALUE}, gacha punindo", "{VALUE} de {CATEGORY}, roleta sem do", "{CATEGORY} {VALUE}, build chorando", "{VALUE} em {CATEGORY}, rng vilao", "esse {VALUE} de {CATEGORY} veio com raiva", "{CATEGORY}: {VALUE}, aceita e segue"],
+        "mediano": ["{CATEGORY}: {VALUE}", "{VALUE} de {CATEGORY}, na media", "{CATEGORY} {VALUE}, sem susto", "{VALUE} em {CATEGORY}, honesto", "{CATEGORY}: {VALUE}, padraozinho", "caiu {VALUE} de {CATEGORY}, segue", "{CATEGORY} em modo economia: {VALUE}", "{VALUE} de {CATEGORY}, nem doeu nem curou"],
+        "positivo": ["{CATEGORY}: {VALUE}, boa", "{VALUE} em {CATEGORY}, respeita", "{CATEGORY} {VALUE}, subiu o nivel", "caiu {VALUE} de {CATEGORY}, bonito", "{CATEGORY}: {VALUE}, o gacha sorriu", "{VALUE} de {CATEGORY}, build agradece", "{CATEGORY} {VALUE}, ta ficando serio", "{VALUE} em {CATEGORY}, rng do bem"],
+        "insano": ["{CATEGORY} {VALUE}?!", "{VALUE} DE {CATEGORY}, APELAO", "{CATEGORY}: {VALUE}!!! sem explicacao", "{VALUE} EM {CATEGORY}, RIGGED", "{CATEGORY} {VALUE}, historico", "caiu {VALUE} de {CATEGORY} e o chat surtou", "{VALUE} DE {CATEGORY}: recorde da roleta", "{CATEGORY} {VALUE}, o admin ta logado"]
+    },
+    "por_roleta": {
+        "classe": {
+            "mediano": ["caiu {VALUE}, aceita que doi menos", "{VALUE} na roleta, rp na veia", "build de {VALUE}, la vamos nos", "{VALUE}: escolha do destino", "a roleta decretou: {VALUE}", "nasceu {VALUE}, vai morrer {VALUE}", "{VALUE} caiu, o main foi escolhido", "classe {VALUE}, que a lore comece", "{VALUE}? o elenco ta montado", "virou {VALUE} sem nem ser consultado"]
+        },
+        "personalidade": {
+            "mediano": ["personalidade {VALUE}, ja to com medo", "{VALUE}... terapia nele", "caiu {VALUE}, o rp vai ser cinema", "{VALUE}: red flag ou green flag?", "personalidade {VALUE}, combina com o caos", "{VALUE}, esse vai dar trabalho", "o juiz decretou: {VALUE}", "{VALUE} é diagnostico, nao personalidade", "personalidade {VALUE}, o grupo ta avisado", "{VALUE}?! esse lutador tem historia"]
+        },
+        "tamanho": {
+            "mediano": ["{VALUE} de altura, ta registrado", "mediu {VALUE}, tamanho é documento?", "altura {VALUE}, o hitbox agradece", "{VALUE}: altura de personagem de anime", "tamanho {VALUE}, serve pra build", "altura {VALUE}, nem buffa nem nerfa", "{VALUE} na fita metrica, confirmado", "veio de fabrica com {VALUE}", "{VALUE} de altura, cabe no elevador", "altura oficial: {VALUE}, sem tirar o tenis"]
+        },
+        "forca": {
+            "negativo": ["essa forca nao abre nem pote de palmito", "{VALUE} de forca... perde no braco pra um gatinho", "forca de miojo cru", "treina so o dedo de dar like", "o empurrao dele é brisa de ventilador", "forca patrocinada pelo modo economia de energia", "nem a sacola do mercado ele carrega", "biceps de barbante", "o soco dele faz cocega", "forca {VALUE}: derrota no bracinho garantida", "nao carrega nem o proprio ego", "forca de quem pede ajuda pra abrir refrigerante"],
+            "mediano": ["forca na media, academia de segunda a nunca", "{VALUE} de forca, o basicao", "forca padrao npc", "nem forte nem fraco, so existe", "forca de quem ajuda na mudanca mas reclama", "treina sim, mas so em janeiro", "{VALUE} de forca: shape de boleto pago", "forca mediana, ego enorme"],
+            "positivo": ["forca {VALUE}, ta carregando a build", "abre pote de azeitona de primeira", "esse ajuda na mudanca inteira sozinho", "braco pesado, respeita", "forca de quem toma creatina no cafe", "ta forte, o shape condiz", "socao homologado pelo inmetro", "forca {VALUE}: pode chamar pro bracinho", "levanta a geladeira e o astral", "forca {VALUE}, buff natural"],
+            "insano": ["{VALUE} DE FORCA, ISSO É DOPING", "forca de trocar pneu sem macaco", "o aperto de mao dele é golpe de estado", "FORCA {VALUE}?! chama o guinness", "o soco desse ai sai no jornal", "forca ilegal em 12 estados", "ele nao abre porta, abre PAREDE", "briga com a gravidade e ganha", "forca {VALUE}: a fisica pediu demissao", "monstro absoluto do bracinho"]
+        },
+        "mana": {
+            "negativo": ["mana {VALUE}, nao solta nem faisca", "mana de isqueiro falhando", "essa mana nao carrega nem lanterna de celular", "mago de fantasia de festa", "a mana acabou no tutorial", "{VALUE} de mana: magia de festa infantil", "puxa mana do powerbank", "conjura no maximo um leve constrangimento", "mana em modo aviao", "a unica magia dele é sumir quando precisa", "mana {VALUE}, feitico com marca dagua"],
+            "mediano": ["mana na media, feitico basico", "{VALUE} de mana, da pro gasto", "mana de plano gratuito", "conjura, mas com anuncio no meio", "mana suficiente pra impressionar ninguem", "nivel de mana: estagiario da magia", "{VALUE} de mana, arcano de segunda"],
+            "positivo": ["mana {VALUE}, wizard de respeito", "bateria arcana carregada", "mana sobrando, pode gastar a vontade", "esse conjura de olho fechado", "mana premium sem anuncio", "{VALUE} de mana: a magia flui", "reserva arcana saudavel", "mago assinante do plano plus", "mana {VALUE}, grimorio feliz"],
+            "insano": ["MANA {VALUE}, USINA ARCANA AMBULANTE", "esse ai é 5G de mana", "mana infinita, nerfa esse mago", "{VALUE} DE MANA?! reator nuclear de vestido", "conjura big bang no aquecimento", "mana pra revender e ainda sobra", "a mana dele paga a conta de luz da cidade", "arcano nivel diretoria", "MANA {VALUE}: o conselho dos magos ta em panico"]
+        },
+        "tipo": {
+            "mediano": ["caiu {VALUE}, respeita a categoria", "{VALUE} na mao, perigo dobrado", "tipo {VALUE}: vai ter estilo", "a roleta escolheu {VALUE}, boa sorte ai", "{VALUE}?! ok, isso vai ser interessante", "arma tipo {VALUE}, o meta agradece", "{VALUE} saiu do forno", "tipo {VALUE}, main confirmado", "{VALUE}: a fisica que se prepare", "armamento {VALUE} liberado"]
+        },
+        "estilo": {
+            "mediano": ["{VALUE}, arma de gente chique", "caiu {VALUE}, estiloso demais", "{VALUE}?! isso existe mesmo kkk", "estilo {VALUE}, drip de combate", "{VALUE}: escolha de conhecedor", "a roleta tem bom gosto: {VALUE}", "{VALUE}, o inimigo nem vai entender o que houve", "estilo {VALUE} habilitado", "{VALUE}, item de colecionador", "forjaram um(a) {VALUE}, respeita o ferreiro"]
+        },
+        "raridade": {
+            "negativo": ["raridade {VALUE}, item de bau de tutorial", "{VALUE}... prateleira de 1,99", "caiu {VALUE}, drop de slime nivel 1", "{VALUE}: encontrada literalmente no chao", "raridade {VALUE}, ate npc tem duas", "gacha sem sorte: {VALUE}", "{VALUE}, presente de tia no natal", "raridade {VALUE} kkk cade o reroll", "{VALUE}: o ferreiro nem assinou essa", "drop {VALUE}, o bau bocejou"],
+            "mediano": ["{VALUE}, comecando a ficar serio", "raridade {VALUE}, respeitavel", "{VALUE}: nem lixo nem lenda", "drop {VALUE}, da pra trabalhar", "raridade {VALUE}, meio termo honesto", "{VALUE}, o gacha foi educado"],
+            "positivo": ["caiu {VALUE}!! o gacha pagou", "{VALUE}, agora é pay to win", "raridade {VALUE}, brilha ate no escuro", "{VALUE}: o sorteio ta generoso hoje", "drop {VALUE}, salvou o video", "raridade {VALUE}, inventario chique", "{VALUE}! guarda no banco isso", "drop {VALUE}, inveja no servidor inteiro"],
+            "insano": ["{VALUE}?!?! CHANCE DE 0.1%", "CAIU {VALUE}, COMPRA LOTERIA HOJE", "{VALUE}!!! o admin ta logado", "raridade {VALUE}, rigged so pode", "DROP {VALUE}, CRIA O CLIPE AGORA", "{VALUE}: sorte emprestada de outra vida", "RARIDADE {VALUE}, o servidor vai cair", "{VALUE}! deletaram o drop rate"]
+        },
+        "encantamento": {
+            "negativo": ["encantamento {VALUE}, enfeite de bolo", "{VALUE}... faz nem cocega magica", "encantaram com {VALUE} e economizaram no orcamento", "{VALUE}: brilhinho decorativo", "encantamento {VALUE}, feitico de amostra gratis"],
+            "mediano": ["{VALUE} no encantamento, funciona", "encantamento {VALUE}, o basico bem feito", "{VALUE}: efeitinho honesto", "vem com {VALUE}, ta valendo", "encantamento {VALUE}, tempero na medida"],
+            "positivo": ["encantamento {VALUE}, arma com tempero", "{VALUE} embutido, o inimigo odeia", "brilhou: {VALUE} na lamina", "encantamento {VALUE}, dlc gratis", "{VALUE} de fabrica, chique demais", "vem com {VALUE}?? presentao"],
+            "insano": ["{VALUE} NO TALO, ARMA POSSUIDA", "encantamento {VALUE} apelando demais", "{VALUE}: a arma tem alma propria", "ENCANTAMENTO {VALUE}, isso é vantagem ilegal", "{VALUE} nivel boss final"]
+        },
+        "habilidade": {
+            "negativo": ["habilidade {VALUE}, golpe de festa junina", "{VALUE}... skill de tutorial", "a skill é {VALUE}, especial de vergonha", "{VALUE}: ult que pede desculpa", "skill {VALUE}, cooldown maior que o hype"],
+            "mediano": ["skill {VALUE} equipada", "{VALUE}: da pro combo", "habilidade {VALUE}, kit honesto", "vem com {VALUE}, usavel", "skill {VALUE}, o arroz com feijao"],
+            "positivo": ["skill {VALUE}, kit perigoso", "{VALUE} na arma? respeita", "habilidade {VALUE}, ult de respeito", "{VALUE} pronta pro clipe", "skill {VALUE}, o inimigo ja era"],
+            "insano": ["{VALUE}?! SKILL DE BOSS FINAL", "essa {VALUE} deveria ser banida", "HABILIDADE {VALUE}, GG ANTECIPADO", "{VALUE}: apertou o botao, acabou o jogo", "skill {VALUE}, isso nem é luta mais"]
+        },
+        "dano": {
+            "negativo": ["dano {VALUE}, cocega premium", "{VALUE} de dano kkk arma de espuma", "bate {VALUE}... o inimigo pede desculpa POR VOCE", "dano {VALUE}: mosquito bate mais forte", "essa arma negocia em vez de machucar", "{VALUE} de dano, hit de travesseiro", "dps de brinquedo de bebe", "dano {VALUE}, nem tira poeira", "arma pacifista, dialogo em vez de dano", "o hit marker é de deboche"],
+            "mediano": ["dano {VALUE}, honesto", "{VALUE} de dano, mata mas demora", "dps de meio de tabela", "dano {VALUE}: trabalho formal, sem hora extra", "machuca o suficiente pra constranger", "{VALUE} de dano, servico feito"],
+            "positivo": ["dano {VALUE}, isso ja assusta", "{VALUE} de dano, hit respeitavel", "essa arma conversa grosso", "dano {VALUE}: rende clipe", "dps saudavel, inimigo triste", "bateu {VALUE}, o boss sentiu", "dano {VALUE}, o hospital agradece a preferencia"],
+            "insano": ["DANO {VALUE}?! ARMA DE GUERRA", "{VALUE} de dano, hitkill filosofico", "essa arma deleta a linhagem inteira", "dano {VALUE}: o inimigo respawna chorando", "DPS ILEGAL, CHAMA A ONU", "bateu {VALUE}, apagou o save do inimigo", "dano {VALUE}, isso descadastra o oponente"]
+        },
+        "peso": {
+            "negativo": ["peso {VALUE}, mais pesada que consciencia suja", "{VALUE}... academia inclusa na build", "carregar isso ja é o treino do dia", "peso {VALUE}: vem com hernia gratis", "{VALUE} na balanca, o ombro protesta"],
+            "mediano": ["peso {VALUE}, da pra levar", "{VALUE}, peso de mochila de segunda-feira", "balanca marcou {VALUE}, segue o jogo", "peso {VALUE}, nada demais", "{VALUE} na balanca, ta dentro do padrao"],
+            "positivo": ["peso {VALUE}, encaixou certinho", "{VALUE} bem distribuido, empunhadura suave", "peso ideal, ergonomia de respeito", "balanca amiga: {VALUE}", "peso {VALUE}, feita sob medida"],
+            "insano": ["peso {VALUE} PERFEITO pra essa build", "balanca abencoou: {VALUE}", "{VALUE} de peso: casou com o braco", "peso {VALUE}, engenharia divina"]
+        },
+        "critico": {
+            "negativo": ["critico {VALUE}, sorte de segunda-feira", "{VALUE} de crit... nunca vai acertar", "chance de critico menor que a de responderem seu zap", "crit {VALUE}: acontece so em ano bissexto", "critico {VALUE}, o rng riu e foi embora"],
+            "mediano": ["crit {VALUE}, de vez em quando brilha", "{VALUE} de critico, honesto", "critico padrao, zero emocao", "crit {VALUE}, aparece quando quer"],
+            "positivo": ["crit {VALUE}, o dado gosta dele", "{VALUE} de critico, rng amigo", "critico frequente, inimigo paranoico", "crit {VALUE}, numero amarelo toda hora"],
+            "insano": ["CRIT {VALUE}?! TODO HIT É HEADSHOT", "{VALUE} de critico, o rng é funcionario dele", "critico garantido, cassino faliu", "CRIT {VALUE}, o dado é viciado MESMO"]
+        },
+        "velocidade_ataque": {
+            "negativo": ["vel. {VALUE}, ataca em camera lenta", "{VALUE} de velocidade... o inimigo almoca entre um golpe e outro", "attack speed de preguica com sono", "golpeia uma vez por fase da lua", "o golpe chega por carta registrada", "vel {VALUE}: da pra esquivar por email", "buffering no meio do combo", "ping alto na propria mao", "{VALUE} de velocidade, o replay é em tempo real", "ataque agendado pra proxima terca"],
+            "mediano": ["vel. {VALUE}, ritmo de trabalho", "{VALUE} de velocidade, cumpre tabela", "ataca no ritmo de reparticao publica", "vel {VALUE}, combo de expediente", "{VALUE} de attack speed, normalzinho"],
+            "positivo": ["vel. {VALUE}, metralhando na espada", "{VALUE} de velocidade, combo fluido", "attack speed gostosinho", "golpe rapido, inimigo confuso", "vel {VALUE}, mao leve", "{VALUE} de velocidade, o combo canta"],
+            "insano": ["VEL {VALUE}?! MAOS INVISIVEIS", "{VALUE} de attack speed, isso é macro", "ataca antes do inimigo nascer", "combo mais rapido que fofoca em grupo de familia", "VEL {VALUE}: a camera nao acompanha", "{VALUE} de velocidade, denuncia por uso de hack"]
+        }
+    },
+    "torneio": {
+        "hook": [
+            "{N} PERSONAGENS ALEATORIOS. SO UM SOBRA.",
+            "TORNEIO DE {N} BUILDS ALEATORIAS",
+            "COLOQUEI {N} PERSONAGENS GERADOS PRA SE MATAR",
+            "{N} LUTADORES, 1 CAMPEAO, ZERO EQUILIBRIO",
+            "MATA-MATA COM {N} BUILDS DA ROLETA",
+            "{N} ENTRAM, 1 SAI ANDANDO"
+        ],
+        "card": [
+            "{P1} vs {P2}",
+            "{P1} contra {P2}, valendo tudo",
+            "chegou a hora: {P1} x {P2}",
+            "{P1} encara {P2}",
+            "aposta ai: {P1} ou {P2}?",
+            "{P1} x {P2}. um deles vai pra casa",
+            "briga de rua: {P1} vs {P2}",
+            "{P1} e {P2} nao se gostam",
+            "{P1} x {P2}: alguem vai chorar",
+            "quem leva? {P1} ou {P2}"
+        ],
+        "card_favorito": [
+            "os numeros apontam {FAV}",
+            "no papel, {FAV} passeia nessa",
+            "{FAV} tem os numeros a favor",
+            "todo mundo aposta em {FAV}",
+            "{FAV} chega com tudo",
+            "a aposta segura aqui e {FAV}",
+            "{FAV} parte na frente segundo a ficha"
+        ],
+        "resultado": {
+            "negativo": [
+                "{VENCEDOR} venceu... mas que luta sem graca",
+                "{VENCEDOR} passou de fase no sono",
+                "{VENCEDOR} ganhou e ninguem se importou",
+                "luta morna, {VENCEDOR} leva",
+                "{VENCEDOR} venceu no cansaco, nem KO teve",
+                "isso ai foi um cochilo com {VENCEDOR} de pe no final",
+                "{VENCEDOR} avanca, a plateia dormiu",
+                "{VENCEDOR} ganhou no muido"
+            ],
+            "mediano": [
+                "{VENCEDOR} venceu em {DURACAO}s",
+                "{VENCEDOR} resolveu e seguiu",
+                "vitoria de {VENCEDOR}, servico feito",
+                "{VENCEDOR} passa de fase",
+                "{VENCEDOR} leva essa, honesto",
+                "deu {VENCEDOR}, sem novidade"
+            ],
+            "positivo": [
+                "{VENCEDOR} DESTRUIU geral",
+                "{VENCEDOR} passou por cima e nem olhou pra tras",
+                "vitoria limpa de {VENCEDOR}, respeita",
+                "{VENCEDOR} mostrou servico",
+                "{VENCEDOR} venceu e ainda deu show",
+                "{PERDEDOR} nao teve chance contra {VENCEDOR}",
+                "{VENCEDOR} avanca em grande estilo"
+            ],
+            "insano": [
+                "{VENCEDOR} FEZ O IMPOSSIVEL",
+                "ISSO FOI CINEMA. {VENCEDOR} LEVOU",
+                "{VENCEDOR} venceu e quebrou a fisica no processo",
+                "LUTA DO ANO. {VENCEDOR} SOBREVIVEU",
+                "{VENCEDOR}?! NINGUEM ESPERAVA ISSO",
+                "clipa isso: {VENCEDOR} x {PERDEDOR}",
+                "{VENCEDOR} entrou pra historia do torneio"
+            ]
+        },
+        "marcas": {
+            "ZEBRA": [
+                "ZEBRA! {VENCEDOR} derrubou o favorito {PERDEDOR}",
+                "{PERDEDOR} era favorito e tomou de {VENCEDOR} kkkkk",
+                "quebrou a banca: {VENCEDOR} eliminou {PERDEDOR}",
+                "{VENCEDOR} nao leu o roteiro e venceu {PERDEDOR}",
+                "os numeros diziam {PERDEDOR}. a arena disse {VENCEDOR}",
+                "favoritismo nao ganha luta: {VENCEDOR} provou"
+            ],
+            "virada no fio de vida": [
+                "{VENCEDOR} ganhou com {HP}% DE VIDA",
+                "{HP}% de HP restante, {VENCEDOR} escapou",
+                "{VENCEDOR} venceu no ultimo pixel de vida",
+                "mais perto que isso impossivel: {HP}% pro {VENCEDOR}",
+                "{VENCEDOR} escapou por teimosia ({HP}% de HP)"
+            ],
+            "atropelou sem tomar dano": [
+                "{VENCEDOR} terminou com {HP}% de vida. PERFEITO",
+                "{PERDEDOR} nem encostou: {VENCEDOR} com {HP}% de HP",
+                "atropelamento puro, {VENCEDOR} saiu inteiro",
+                "{VENCEDOR} venceu sem despentear ({HP}% de HP)",
+                "flawless victory pro {VENCEDOR}"
+            ],
+            "DUPLO KO": [
+                "DUPLO KO?! os dois caem juntos",
+                "morreram juntos e o juiz teve que decidir",
+                "duplo nocaute, isso nem devia ser possivel",
+                "os dois apagaram na mesma hora KKKK"
+            ],
+            "speedrun": [
+                "{DURACAO}s de luta. SPEEDRUN",
+                "acabou em {DURACAO}s, mal deu pra piscar",
+                "{VENCEDOR} resolveu em {DURACAO}s",
+                "{DURACAO} SEGUNDOS. proximo!"
+            ],
+            "maratona": [
+                "{DURACAO}s de porrada, os dois ja pediram agua",
+                "maratona de {DURACAO}s, isso virou novela",
+                "{DURACAO}s depois... {VENCEDOR} ainda de pe"
+            ],
+            "decisao por pontos": [
+                "acabou o tempo, foi pros pontos",
+                "ninguem caiu, decidiram na calculadora",
+                "decisao por HP, que anticlimax"
+            ]
+        },
+        "campeao": {
+            "gerado": [
+                "CAMPEAO: {CAMPEAO}, criado na roleta 🏆",
+                "{CAMPEAO} saiu da roleta e levou o torneio inteiro",
+                "a build aleatoria {CAMPEAO} é CAMPEA",
+                "{CAMPEAO} nasceu de sorteio e terminou de coroa"
+            ],
+            "banco": [
+                "CAMPEAO: {CAMPEAO} 🏆",
+                "{CAMPEAO} levou tudo",
+                "acabou. {CAMPEAO} é o campeao",
+                "coroa pro {CAMPEAO}"
+            ],
+            "dominante": [
+                "{CAMPEAO} levou o titulo sem nem suar ({HP}% de HP medio)",
+                "{CAMPEAO} passeou no torneio inteiro",
+                "ninguem encostou em {CAMPEAO} o torneio inteiro",
+                "{CAMPEAO} terminou com {HP}% de HP medio. absurdo"
+            ],
+            "sofrido": [
+                "{CAMPEAO} sobreviveu no sufoco e levou ({HP}% de HP medio)",
+                "{CAMPEAO} ganhou no grito",
+                "{CAMPEAO} ganhou apanhando, mas ganhou",
+                "{HP}% de HP medio: {CAMPEAO} venceu na raca"
+            ]
+        }
+    },
+    "contextual": {
+        "cant_lift": ["ELE NAO LEVANTA NEM A AUTOESTIMA, IMAGINA {VALUE}", "{VALUE} DE ARMA PRA ESSA FORCA? KKKKKK", "vai arrastar a arma igual mala de rodinha", "a arma usa ELE como acessorio", "precisa de 3 amigos pra equipar", "{VALUE} pro braco de barbante... boa sorte", "a arma ganhou o personagem de brinde", "equipou? nao. foi equipado.", "fisioterapia inclusa no drop", "o verdadeiro boss é levantar a arma", "{VALUE} de arma, forca de guardanapo", "vai lutar ou vai pedir ajuda pra segurar?"],
+        "perfect_fit": ["encaixou igual peca de lego", "arma sob medida, alfaiataria de guerra", "peso e braco em harmonia, CINEMA", "match perfeito, casem logo", "a arma foi claramente forjada pra ele", "ergonomia abencoada", "combo peso x forca aprovado no teste", "a arma reconheceu o dono", "pega na mao e vira extensao do braco", "esse casamento a roleta acertou"]
+    }
+}

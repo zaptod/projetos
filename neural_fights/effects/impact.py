@@ -84,7 +84,7 @@ class MagicClash:
         self.particulas = []
         self.ondas = []
         
-        for _ in range(25):
+        for _ in range(10):  # reforma: era 25
             ang = random.uniform(0, math.pi * 2)
             vel = random.uniform(100, 300) * tamanho
             cor = random.choice([cor1, cor2])
@@ -97,7 +97,7 @@ class MagicClash:
                 'vida': random.uniform(0.3, 0.5)
             })
         
-        for i in range(3):
+        for i in range(1):  # reforma: era 3
             self.ondas.append({
                 'raio': 0,
                 'cor': cor1 if i % 2 == 0 else cor2,

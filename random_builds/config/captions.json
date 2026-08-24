@@ -1,0 +1,133 @@
+{
+    "hook": [
+        "VAMOS CRIAR UM PERSONAGEM ALEATORIO",
+        "CRIANDO UM PERSONAGEM 100% ALEATORIO",
+        "PERSONAGEM ALEATORIO + ARMA ALEATORIA. VAI DAR RUIM?"
+    ],
+    "by_tier": {
+        "TERRIBLE": [
+            "{CATEGORY}: {VALUE}... 💀",
+            "{VALUE} DE {CATEGORY}?! KKKKK",
+            "{CATEGORY} {VALUE}. JA ERA.",
+            "NAO ACREDITO... {CATEGORY}: {VALUE}"
+        ],
+        "BAD": [
+            "{CATEGORY}: {VALUE}... ruim demais",
+            "so {VALUE} de {CATEGORY}",
+            "{CATEGORY}: {VALUE} 😬"
+        ],
+        "WEAK": [
+            "{CATEGORY}: {VALUE}... fraquinho",
+            "{CATEGORY}: {VALUE}, podia ser pior"
+        ],
+        "AVERAGE": [
+            "{CATEGORY}: {VALUE}",
+            "{CATEGORY}: {VALUE}, na media"
+        ],
+        "GOOD": [
+            "{CATEGORY}: {VALUE} 👍",
+            "{CATEGORY}: {VALUE}, bom!"
+        ],
+        "GREAT": [
+            "{CATEGORY}: {VALUE}!!",
+            "OLHA ESSE {CATEGORY}: {VALUE}!",
+            "{CATEGORY}: {VALUE} 🔥"
+        ],
+        "INSANE": [
+            "{VALUE} DE {CATEGORY}?!?!",
+            "{CATEGORY} {VALUE}... ISSO E BROKEN",
+            "IMPOSSIVEL. {CATEGORY}: {VALUE} 😱",
+            "{CATEGORY}: {VALUE}!!! APELAO"
+        ]
+    },
+    "contextual": {
+        "cant_lift": [
+            "ELE NAO CONSEGUE NEM LEVANTAR A ARMA 💀",
+            "COMO ELE VAI LEVANTAR {VALUE}?!",
+            "{VALUE} DE ARMA COM ESSA FORCA?! KKKK"
+        ],
+        "perfect_fit": [
+            "A ARMA FOI FEITA PRA ELE",
+            "ISSO COMBINA PERFEITAMENTE",
+            "ENCAIXOU DEMAIS"
+        ]
+    },
+    "synergy": {
+        "positive": [
+            "ISSO COMBINA PERFEITAMENTE.",
+            "SINERGIA ABSURDA!",
+            "A BUILD FECHOU"
+        ],
+        "negative": [
+            "ELE NEM CONSEGUE USAR ISSO.",
+            "PIOR COMBINACAO POSSIVEL",
+            "A ARMA E BOA... MAS NAO PRA ELE"
+        ],
+        "neutral": [
+            "COMBINACAO OK.",
+            "DA PRA USAR."
+        ]
+    },
+    "reveal_character": [
+        "PERSONAGEM CRIADO: {NAME}",
+        "ESSE E {NAME}"
+    ],
+    "reveal_weapon": [
+        "ARMA CRIADA: {NAME}",
+        "A ARMA: {NAME}"
+    ],
+    "final_by_verdict": {
+        "DESASTRE_TOTAL": [
+            "NOTA FINAL: {SCORE}/100 💀💀💀",
+            "ISSO FOI UM DESASTRE. {SCORE}/100"
+        ],
+        "BUILD_TRASH": [
+            "NOTA FINAL: {SCORE}/100... lixo",
+            "BUILD LIXO: {SCORE}/100"
+        ],
+        "BUILD_FRACA": [
+            "NOTA FINAL: {SCORE}/100",
+            "BUILD FRACA: {SCORE}/100"
+        ],
+        "BUILD_MEDIANA": [
+            "NOTA FINAL: {SCORE}/100",
+            "MEDIANO: {SCORE}/100"
+        ],
+        "BUILD_SOLIDA": [
+            "NOTA FINAL: {SCORE}/100 👍",
+            "BUILD SOLIDA: {SCORE}/100"
+        ],
+        "BUILD_FORTE": [
+            "NOTA FINAL: {SCORE}/100 🔥",
+            "BUILD FORTE DEMAIS: {SCORE}/100"
+        ],
+        "BROKEN": [
+            "BUILD BROKEN. {SCORE}/100 😱",
+            "NOTA FINAL: {SCORE}/100. APELAO DEMAIS"
+        ]
+    },
+    "outro": [
+        "QUAL SEED VOCE QUER VER? COMENTA!",
+        "SEGUE PRA MAIS BUILDS ALEATORIAS"
+    ],
+    "identity": [
+        "ELE EXISTE. OLHA O {NAME}",
+        "ASSIM QUE O {NAME} SERIA DE VERDADE",
+        "{NAME} FORA DA ROLETA",
+        "A CARA DO {NAME}",
+        "{CLASSE} DO CAOS: {NAME}",
+        "ISSO E O {NAME} NA VIDA REAL",
+        "IMAGINA ENCONTRAR O {NAME}"
+    ],
+    "stinger": {
+        "weapon": [
+            "AGORA A ARMA",
+            "FALTA A ARMA",
+            "PROXIMO: A ARMA"
+        ],
+        "character": [
+            "AGORA O PERSONAGEM",
+            "COMECA O PERSONAGEM"
+        ]
+    }
+}

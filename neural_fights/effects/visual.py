@@ -9,11 +9,14 @@ from neural_fights.utils.config import PRETO
 
 class FloatingText:
     """Texto flutuante para dano e notificações"""
+    # Reforma "luta limpa": 3 degraus (eram 4 — em movimento os degraus
+    # intermediários não se distinguiam). Os TIERS mandam no tamanho de
+    # todo texto NUMÉRICO: o argumento `tamanho` dos call sites numéricos
+    # era silenciosamente ignorado, então a hierarquia agora é oficial.
     TIERS = (
-        (25, 18, None),              # leve: cor do chamador
-        (60, 24, (255, 235, 140)),   # medio: amarelo
-        (110, 33, (255, 165, 70)),   # pesado: laranja
-        (10**9, 44, (255, 80, 60)),  # devastador: vermelho
+        (40, 18, None),              # leve: cor do chamador
+        (110, 28, (255, 205, 90)),   # médio: âmbar
+        (10**9, 40, (255, 80, 60)),  # pesado: vermelho
     )
 
     def __init__(self, x, y, texto, cor, tamanho=20):
@@ -32,12 +35,36 @@ class FloatingText:
                     if cor_tier is not None:
                         self.cor = cor_tier
                     break
+        self.valor = float(texto) if numerico else None
+        self.cor_base = cor
         from neural_fights.utils.fonts import get_fonte_impact
         self.fonte = get_fonte_impact(tamanho)  # cache (Passe 2)
         self.vel_y = -1.0
         self.vida = 1.0
         self.alpha = 255
         self.idade = 0.0
+
+    def acumular(self, valor):
+        """Soma no MESMO texto em vez de nascer outro (reforma "luta
+        limpa"): ticks de canalização/DoT enchiam a tela a 10 textos/s.
+        Reinicia a vida e re-resolve o tier pelo total."""
+        if self.valor is None:
+            return
+        self.valor += float(valor)
+        self.texto = str(int(self.valor))
+        tamanho = 18
+        self.cor = self.cor_base
+        for teto, tam, cor_tier in self.TIERS:
+            if abs(self.valor) < teto:
+                tamanho = tam
+                if cor_tier is not None:
+                    self.cor = cor_tier
+                break
+        from neural_fights.utils.fonts import get_fonte_impact
+        self.fonte = get_fonte_impact(tamanho)
+        self.vida = max(self.vida, 0.75)
+        self.idade = 0.0
+        self.alpha = 255
 
     def update(self, dt):
         self.idade += dt
@@ -75,9 +102,21 @@ class Decal:
         self.y = y
         self.raio = raio
         self.cor = cor
-        self.alpha = 200
+        self.alpha = 160
+        # Reforma "luta limpa": decal FAZ FADE. O alpha era fixo em 200 e
+        # a única poda era FIFO — 40 Surfaces desenhadas para sempre.
+        self.vida = 6.0
+        self.vida_max = 6.0
+
+    def update(self, dt):
+        self.vida -= dt
+        if self.vida < 2.0:
+            self.alpha = max(0, int(160 * (self.vida / 2.0)))
+        return self.vida > 0
 
     def draw(self, tela, cam):
+        if self.vida <= 0:
+            return
         sx, sy = cam.converter(self.x, self.y)
         r = cam.converter_tam(self.raio)
         if r < 1:

@@ -1,0 +1,48 @@
+{
+    "tiers": [
+        {"name": "TERRIBLE", "label": "HORRIVEL", "min": 0,  "max": 15,  "color": "#ff3b3b", "sentiment": "negative", "intensity": 0.9},
+        {"name": "BAD",      "label": "RUIM",     "min": 16, "max": 30,  "color": "#ff7a45", "sentiment": "negative", "intensity": 0.6},
+        {"name": "WEAK",     "label": "FRACO",    "min": 31, "max": 45,  "color": "#ffb347", "sentiment": "negative", "intensity": 0.35},
+        {"name": "AVERAGE",  "label": "MEDIANO",  "min": 46, "max": 60,  "color": "#d9d9d9", "sentiment": "neutral",  "intensity": 0.15},
+        {"name": "GOOD",     "label": "BOM",      "min": 61, "max": 75,  "color": "#7ed957", "sentiment": "positive", "intensity": 0.4},
+        {"name": "GREAT",    "label": "OTIMO",    "min": 76, "max": 90,  "color": "#3ddc84", "sentiment": "positive", "intensity": 0.7},
+        {"name": "INSANE",   "label": "INSANO",   "min": 91, "max": 100, "color": "#b26bff", "sentiment": "positive", "intensity": 0.95}
+    ],
+    "build_weights": {
+        "character_score": 0.30,
+        "weapon_score": 0.32,
+        "compatibility_score": 0.38
+    },
+    "weakness_penalty_weight": 0.06,
+    "final_spread": 1.7,
+    "_comment_drama": "Limiares calibrados sobre 28 lutas reais do motor headless: HP restante do vencedor p10=6 p25=24 mediana=34 p75=57 p90=72 max=79; duracao p10=19 mediana=31 p90=59 max=80.",
+    "tournament_drama": {
+        "hp_clutch": 15,
+        "hp_flawless": 70,
+        "hp_mediana": 34,
+        "duracao_speedrun": 20,
+        "duracao_maratona": 60,
+        "bonus": {
+            "clutch": 32,
+            "flawless": 22,
+            "speedrun": 14,
+            "maratona": 10,
+            "duplo_ko": 45,
+            "decisao": -18,
+            "final": 8
+        },
+        "gradiente_max": 10,
+        "zebra_por_ponto": 4,
+        "zebra_max": 25,
+        "zebra_surpresa": 30
+    },
+    "build_verdicts": [
+        {"min": 0,  "max": 15,  "name": "DESASTRE_TOTAL", "label": "DESASTRE TOTAL",  "sentiment": "negative", "intensity": 0.95},
+        {"min": 16, "max": 30,  "name": "BUILD_TRASH",    "label": "BUILD LIXO",      "sentiment": "negative", "intensity": 0.75},
+        {"min": 31, "max": 45,  "name": "BUILD_FRACA",    "label": "BUILD FRACA",     "sentiment": "negative", "intensity": 0.4},
+        {"min": 46, "max": 60,  "name": "BUILD_MEDIANA",  "label": "BUILD MEDIANA",   "sentiment": "neutral",  "intensity": 0.2},
+        {"min": 61, "max": 75,  "name": "BUILD_SOLIDA",   "label": "BUILD SOLIDA",    "sentiment": "positive", "intensity": 0.45},
+        {"min": 76, "max": 90,  "name": "BUILD_FORTE",    "label": "BUILD FORTE",     "sentiment": "positive", "intensity": 0.75},
+        {"min": 91, "max": 100, "name": "BROKEN",         "label": "BUILD BROKEN",    "sentiment": "positive", "intensity": 1.0}
+    ]
+}

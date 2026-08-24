@@ -132,6 +132,9 @@ class MagicParticle:
 
 class DramaticProjectileTrail:
     """Trail dramático para projéteis mágicos"""
+
+    MAX_PARTICULAS = 16
+
     def __init__(self, elemento: str = "DEFAULT"):
         self.particulas: List[MagicParticle] = []
         self.palette = ELEMENT_PALETTES.get(elemento, ELEMENT_PALETTES["DEFAULT"])
@@ -140,51 +143,25 @@ class DramaticProjectileTrail:
     
     def update(self, dt: float, x: float, y: float, velocidade: float = 1.0):
         """Atualiza trail, spawna novas partículas"""
+        # Reforma "luta limpa": esta era a MAIOR fonte de poluição do jogo
+        # (140-420 partículas/s POR projétil, sem teto, ×32 trilhas). Uma
+        # camada só, spawn 3x mais lento e teto interno.
         self.spawn_timer += dt
-        
-        # Spawna partículas mais frequentemente para projéteis rápidos
-        spawn_rate = 0.02 / max(0.5, velocidade)
-        
+        spawn_rate = 0.06 / max(0.5, velocidade)
+
         while self.spawn_timer > spawn_rate:
             self.spawn_timer -= spawn_rate
-            
-            # Partícula principal (core)
-            cor = self.palette["core"]
-            self.particulas.append(MagicParticle(
-                x + random.uniform(-3, 3), y + random.uniform(-3, 3),
-                cor, random.uniform(-20, 20), random.uniform(-20, 20),
-                tamanho=8, vida=0.3, arrasto=0.95, pulsar=True
-            ))
-            
-            # Partículas de cor média
             cor = random.choice(self.palette["mid"])
             self.particulas.append(MagicParticle(
-                x + random.uniform(-8, 8), y + random.uniform(-8, 8),
-                cor, random.uniform(-40, 40), random.uniform(-40, 40),
-                tamanho=5, vida=0.4, arrasto=0.92
+                x + random.uniform(-4, 4), y + random.uniform(-4, 4),
+                cor, random.uniform(-25, 25), random.uniform(-25, 25),
+                tamanho=5, vida=0.32, arrasto=0.93
             ))
-            
-            # Partículas externas (mais dispersas)
-            if random.random() < 0.5:
-                cor = random.choice(self.palette["outer"])
-                self.particulas.append(MagicParticle(
-                    x + random.uniform(-12, 12), y + random.uniform(-12, 12),
-                    cor, random.uniform(-60, 60), random.uniform(-60, 60),
-                    tamanho=3, vida=0.5, arrasto=0.9
-                ))
-            
-            # Faíscas (sparks)
-            if random.random() < 0.3:
-                cor = self.palette["spark"]
-                ang = random.uniform(0, math.pi * 2)
-                vel = random.uniform(50, 100)
-                self.particulas.append(MagicParticle(
-                    x, y, cor, math.cos(ang) * vel, math.sin(ang) * vel,
-                    tamanho=2, vida=0.15, arrasto=0.85, trail=True
-                ))
-        
+
         # Atualiza partículas
         self.particulas = [p for p in self.particulas if p.update(dt)]
+        if len(self.particulas) > self.MAX_PARTICULAS:
+            del self.particulas[: len(self.particulas) - self.MAX_PARTICULAS]
     
     def draw(self, tela: pygame.Surface, cam):
         """Desenha todas as partículas"""
@@ -202,12 +179,12 @@ class DramaticExplosion:
         self.palette = ELEMENT_PALETTES.get(elemento, ELEMENT_PALETTES["DEFAULT"])
         self.elemento = elemento
         
-        self.vida = 0.8
-        self.vida_max = 0.8
+        self.vida = 0.55  # reforma: era 0.8
+        self.vida_max = 0.55
         
         # Ondas de choque
         self.ondas = []
-        for i in range(3):
+        for i in range(1):
             self.ondas.append({
                 "raio": 0,
                 "raio_max": (50 + i * 30) * tamanho,
@@ -220,7 +197,7 @@ class DramaticExplosion:
         self.particulas: List[MagicParticle] = []
         
         # Spawn inicial de partículas
-        num_particulas = int(30 * tamanho + dano * 0.5)
+        num_particulas = min(10, int(6 * tamanho + dano * 0.08))
         for _ in range(num_particulas):
             ang = random.uniform(0, math.pi * 2)
             vel = random.uniform(100, 300) * tamanho
@@ -484,10 +461,11 @@ class DramaticAura:
         
         self.vida = 2.0
         self.vida_max = 2.0
-        
+        self.persistente = False
+
         # Anéis
         self.aneis = []
-        for i in range(3):
+        for i in range(1):
             self.aneis.append({
                 "raio": raio * (0.5 + i * 0.3),
                 "fase": random.uniform(0, math.pi * 2),
@@ -497,7 +475,7 @@ class DramaticAura:
         
         # Partículas orbitantes
         self.particulas: List[MagicParticle] = []
-        for _ in range(int(10 * intensidade)):
+        for _ in range(min(4, int(4 * intensidade))):
             ang = random.uniform(0, math.pi * 2)
             dist = random.uniform(raio * 0.5, raio * 1.2)
             self.particulas.append({
@@ -515,10 +493,11 @@ class DramaticAura:
         if y is not None:
             self.y = y
         
-        self.vida -= dt
-        if self.vida <= 0:
-            return False
-        
+        if not self.persistente:
+            self.vida -= dt
+            if self.vida <= 0:
+                return False
+
         # Atualiza anéis
         for anel in self.aneis:
             anel["fase"] += anel["velocidade"] * dt
@@ -694,6 +673,11 @@ class MagicVFXManager:
     _instance = None
     
     TETO_POR_LISTA = 24  # Passe 2: nenhuma lista de VFX tinha teto
+    # Reforma "luta limpa": teto POR TIPO. Explosões sobrepostas viram
+    # uma leitura só (doutrina: um evento = uma leitura por canal); 24
+    # explosões coexistindo eram a fonte dominante dos picos.
+    TETO_EXPLOSOES = 3
+    TETO_SUMMONS = 4
 
     def __init__(self):
         self.explosions: List[DramaticExplosion] = []
@@ -701,10 +685,12 @@ class MagicVFXManager:
         self.auras: List[DramaticAura] = []
         self.summons: List[DramaticSummon] = []
         self.trails: dict = {}  # {proj_id: DramaticProjectileTrail}
+        self._auras_persistentes: dict = {}  # {dono_id: DramaticAura}
 
-    def _capar(self, lista):
-        if len(lista) > self.TETO_POR_LISTA:
-            del lista[: len(lista) - self.TETO_POR_LISTA]
+    def _capar(self, lista, teto=None):
+        teto = self.TETO_POR_LISTA if teto is None else teto
+        if len(lista) > teto:
+            del lista[: len(lista) - teto]
     
     @classmethod
     def get_instance(cls):
@@ -719,7 +705,7 @@ class MagicVFXManager:
     def spawn_explosion(self, x: float, y: float, elemento: str = "DEFAULT",
                        tamanho: float = 1.0, dano: float = 0):
         """Cria uma explosão dramática"""
-        self._capar(self.explosions)
+        self._capar(self.explosions, self.TETO_EXPLOSOES - 1)
         self.explosions.append(DramaticExplosion(x, y, elemento, tamanho, dano))
     
     def spawn_beam(self, x1: float, y1: float, x2: float, y2: float,
@@ -733,10 +719,30 @@ class MagicVFXManager:
         """Cria uma aura dramática"""
         self._capar(self.auras)
         self.auras.append(DramaticAura(x, y, raio, elemento, intensidade))
+
+    def aura_persistente(self, dono_id, x: float, y: float, raio: float,
+                         elemento: str = "DEFAULT", intensidade: float = 1.0):
+        """Aura de transformação: UMA por dono, criada uma vez e apenas
+        reposicionada. O re-spawn a cada 0,7s com vida 2,0s empilhava
+        TRÊS auras (45 Surfaces/frame) — reforma "luta limpa"."""
+        aura = self._auras_persistentes.get(dono_id)
+        if aura is None:
+            aura = DramaticAura(x, y, raio, elemento, intensidade)
+            aura.persistente = True
+            self._auras_persistentes[dono_id] = aura
+            self.auras.append(aura)
+        else:
+            aura.x, aura.y = x, y
+        return aura
+
+    def remover_aura_persistente(self, dono_id):
+        aura = self._auras_persistentes.pop(dono_id, None)
+        if aura is not None and aura in self.auras:
+            self.auras.remove(aura)
     
     def spawn_summon(self, x: float, y: float, elemento: str = "DEFAULT"):
         """Cria efeito de invocação"""
-        self._capar(self.summons)
+        self._capar(self.summons, self.TETO_SUMMONS - 1)
         self.summons.append(DramaticSummon(x, y, elemento))
     
     def get_or_create_trail(self, proj_id: int, elemento: str = "DEFAULT") -> DramaticProjectileTrail:

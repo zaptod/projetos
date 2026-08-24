@@ -1,0 +1,1265 @@
+"""VideoRenderer: edit_plan.json -> final_celular.mp4 (9:16) e
+final_normal.mp4 (16:9).
+
+Cada evento da timeline vira um segmento mp4 normalizado (frames PIL via pipe
+para o ffmpeg, ou clipe de reacao real transcodificado em crop-para-preencher
+mantendo o audio), depois os segmentos sao concatenados. O renderer nao toma
+NENHUMA decisao criativa — so executa o plano, no layout do perfil escolhido.
+"""
+from __future__ import annotations
+
+import math
+import random
+import subprocess
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+
+from ..visualization.draw_common import (fit_font, fit_font_wrap, gradient,
+                                         hex_rgb, load_font, stat_bar)
+
+# nao abrir janelas de console para os processos ffmpeg no Windows
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+class VideoRenderer:
+    def __init__(self, render_config: dict, profile: str = "celular",
+                 preview: bool = False):
+        prof = render_config["profiles"][profile]
+        scale = render_config.get("preview", {}).get("scale", 0.5) if preview else 1.0
+        self.profile = profile
+        self.horizontal = prof.get("layout") == "horizontal"
+        self.width = int(prof["width"] * scale) // 2 * 2
+        self.height = int(prof["height"] * scale) // 2 * 2
+        base = {k: render_config[k] for k in ("fps", "crf", "preset")}
+        if preview:
+            base.update({k: v for k, v in render_config.get("preview", {}).items()
+                         if k in ("fps", "crf", "preset")})
+        self.fps = base["fps"]
+        self.crf = base["crf"]
+        self.preset = base["preset"]
+        self.colors = render_config["colors"]
+        self.fonts = render_config["fonts"]
+        self.audio_cfg = render_config.get("audio", {})
+        self.ref = min(self.width, self.height)   # base para fontes nos 2 layouts
+        self._bg_cache: Image.Image | None = None
+
+    # ------------------------------------------------------------------ public
+    def render(self, edit_plan: dict, generation: dict, out_dir: Path,
+               music_asset: dict | None = None,
+               out_name: str | None = None) -> Path:
+        seg_dir = out_dir / f"_segments_{self.profile}"
+        seg_dir.mkdir(parents=True, exist_ok=True)
+        segments: list[Path] = []
+
+        total = len(edit_plan["events"])
+        for i, event in enumerate(edit_plan["events"]):
+            seg = seg_dir / f"seg_{i:03d}.mp4"
+            # Teste de CAPACIDADE, nao de tipo: qualquer evento que aponte para
+            # um arquivo de video no disco entra por aqui (reacao, gameplay, o
+            # que vier). Antes isso era um `if type == "reaction"` e por isso
+            # nenhum outro tipo conseguia usar video real.
+            if self._asset_de_video(event):
+                self._transcode_asset(event, seg)
+            else:
+                self._encode_frames(self._frames_for(event, generation, out_dir), seg)
+            segments.append(seg)
+            print(f"[progresso] {self.profile} {i + 1}/{total}", flush=True)
+
+        concat = seg_dir / "concat.mp4"
+        self._concat(segments, concat)
+        final = out_dir / (out_name or f"final_{self.profile}.mp4")
+        if music_asset:
+            self._mix_music(concat, Path(music_asset["path"]), final)
+        else:
+            final.write_bytes(concat.read_bytes())
+        return final
+
+    # ------------------------------------------------------------------ ffmpeg
+    def _encode_frames(self, frames, out_path: Path) -> None:
+        cmd = ["ffmpeg", "-y", "-loglevel", "error",
+               "-f", "rawvideo", "-pix_fmt", "rgb24",
+               "-s", f"{self.width}x{self.height}", "-r", str(self.fps), "-i", "pipe:",
+               "-f", "lavfi", "-i",
+               f"anullsrc=r={self.audio_cfg.get('sample_rate', 44100)}:cl=stereo",
+               "-shortest", "-c:v", "libx264", "-preset", self.preset,
+               "-crf", str(self.crf), "-pix_fmt", "yuv420p",
+               "-c:a", "aac", "-b:a", "128k", str(out_path)]
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, creationflags=NO_WINDOW)
+        try:
+            for frame in frames:
+                proc.stdin.write(frame.tobytes())
+        finally:
+            proc.stdin.close()
+            proc.wait()
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg falhou no segmento {out_path.name}")
+
+    def _asset_de_video(self, event: dict) -> bool:
+        """O evento aponta para um arquivo de VIDEO utilizavel?
+
+        A ausencia da chave `media` continua significando video: e o que
+        mantem a doutrina de capacidade valendo para todo asset que existia
+        antes de existir imagem (reacao, gameplay, clipe de geracao antiga).
+        Uma imagem tem que sair por aqui com False, senao ela iria parar no
+        ffmpeg como se fosse filme.
+        """
+        asset = event.get("asset")
+        if not isinstance(asset, dict) or asset.get("synthetic", True):
+            return False
+        if (asset.get("media") or "video") != "video":
+            return False
+        caminho = self._caminho_do_asset(event)
+        return bool(caminho) and Path(caminho).is_file()
+
+    def _caminho_do_asset(self, event: dict) -> str | None:
+        """Caminho do video para ESTE perfil.
+
+        Gameplay e gravado uma vez em paisagem e serve aos dois formatos, mas
+        o contrato aceita um arquivo por perfil (`path_celular`/`path_normal`)
+        para quando valer a pena gravar enquadramentos diferentes.
+        """
+        asset = event.get("asset") or {}
+        especifico = asset.get(f"path_{self.profile}")
+        return especifico or asset.get("path")
+
+    def _fade_da_placa(self, duration: float) -> str:
+        """Filtro da placa: entra, fica pouco, sai. Nunca o clipe inteiro.
+
+        Texto parado sobre o personagem durante os 5 s do clipe e exatamente o
+        que a secao 15 pede para nao fazer - a informacao passa, o personagem
+        fica.
+        """
+        saida = max(0.9, min(duration - 0.6, 2.6))
+        return ("format=rgba,fade=in:st=0.25:d=0.35:alpha=1,"
+                f"fade=out:st={saida:.2f}:d=0.4:alpha=1")
+
+    def _placa_png(self, event: dict, out_path: Path) -> Path | None:
+        """A placa gravada em disco, para o ffmpeg sobrepor no clipe de video.
+
+        Desenhar com PIL e sobrepor como imagem evita `drawtext`, que no
+        Windows exige escapar o caminho da fonte e nao sabe compor emoji.
+        """
+        img = self._placa_imagem(event)
+        if img is None:
+            return None
+        destino = out_path.with_name(out_path.stem + "_placa.png")
+        img.save(destino)
+        return destino
+
+    def _placa_imagem(self, event: dict):
+        """RGBA do tamanho do quadro com nome e linha de dado, ou None.
+
+        A still compoe esta imagem quadro a quadro em PIL; o clipe de video
+        manda a mesma imagem para o ffmpeg. Uma fonte so para os dois: a
+        revelacao tem que parecer a mesma, venha de imagem ou de video.
+        """
+        placa = event.get("nameplate")
+        if not placa or event.get("type") != "identity":
+            return None
+        img = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+
+        # Cortina de baixo: sem ela, texto claro sobre um clipe claro some.
+        altura = int(self.height * 0.34)
+        cortina = Image.new("RGBA", (1, altura))
+        pixels = cortina.load()
+        for y in range(altura):
+            pixels[0, y] = (15, 12, 30, int(205 * (y / max(1, altura - 1)) ** 1.6))
+        img.alpha_composite(cortina.resize((self.width, altura)),
+                            (0, self.height - altura))
+
+        draw = ImageDraw.Draw(img)
+        accent = self.colors["accent_weapon"] if event.get("slot") == "weapon"             else self.colors["accent_character"]
+        largura = int(self.width * (0.55 if self.horizontal else 0.86))
+        titulo_font = fit_font_wrap(placa["titulo"], self.fonts["black"],
+                                    largura, int(self.ref * 0.072))
+        self._wrapped_center(draw, placa["titulo"], titulo_font,
+                             self.height * 0.845, fill=(245, 242, 255),
+                             stroke=4, max_width=largura)
+        if placa.get("subtitulo"):
+            sub_font = fit_font(placa["subtitulo"], self.fonts["bold"],
+                                largura, int(self.ref * 0.04))
+            draw.text((self.width / 2, self.height * 0.895), placa["subtitulo"],
+                      font=sub_font, fill=hex_rgb(accent), anchor="mm",
+                      stroke_width=3, stroke_fill=(15, 12, 30))
+
+        return img
+
+    def _transcode_asset(self, event: dict, out_path: Path) -> None:
+        """Clipe de video real (reacao ou gameplay) normalizado para o perfil.
+
+        `fit: "contain"` encaixa o clipe inteiro sobre o fundo do video (usado
+        pelo gameplay no formato vertical, onde recortar 1200x800 em 9:16
+        comeria ~62% da largura). O padrao continua sendo crop-para-preencher.
+        """
+        duration = event["duration"]
+        sr = self.audio_cfg.get("sample_rate", 44100)
+        caminho = self._caminho_do_asset(event)
+        # Recorte fixo pedido pelo asset (gameplay: apara as faixas vazias que
+        # sobram porque a camera fica travada na arena). Vem antes do scale.
+        recorte = event.get(f"crop_{self.profile}") or event.get("crop")
+        pre = ""
+        if recorte and len(recorte) == 4:
+            x, y, largura, altura = (int(v) for v in recorte)
+            pre = f"crop={largura}:{altura}:{x}:{y},"
+        if event.get("fit") == "contain":
+            fundo = self.colors["bg_bottom"].lstrip("#")
+            vf = (f"{pre}scale={self.width}:{self.height}:"
+                  f"force_original_aspect_ratio=decrease:flags=lanczos,"
+                  f"pad={self.width}:{self.height}:(ow-iw)/2:(oh-ih)/2:color=0x{fundo},"
+                  f"fps={self.fps},setsar=1")
+        else:
+            vf = (f"{pre}scale={self.width}:{self.height}:"
+                  f"force_original_aspect_ratio=increase:flags=lanczos,"
+                  f"crop={self.width}:{self.height},fps={self.fps},setsar=1")
+        # -ss ANTES do -i: seek rapido, necessario para pegar so os melhores
+        # momentos de uma luta longa.
+        seek = ["-ss", str(event["start_offset"])] if event.get("start_offset") else []
+        saida = ["-c:v", "libx264", "-preset", self.preset, "-crf", str(self.crf),
+                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", str(sr), "-ac", "2",
+                 "-b:a", "128k", str(out_path)]
+
+        # Nome sobre o clipe (secao 15): entra e sai sozinho, sem cobrir o
+        # personagem. Sem placa, o caminho continua sendo o -vf simples de
+        # sempre - reacao e gameplay nao pagam nada por isto existir.
+        placa = self._placa_png(event, out_path)
+        if placa is None:
+            entrada, filtro, mapas = ["-i", caminho], ["-vf", vf], []
+            entrada_muda = ["-i", caminho, "-f", "lavfi",
+                            "-i", f"anullsrc=r={sr}:cl=stereo"]
+            filtro_mudo, mapas_mudo = ["-vf", vf], ["-map", "0:v", "-map", "1:a"]
+        else:
+            complexo = (f"[1:v]{self._fade_da_placa(duration)}[placa];"
+                        f"[0:v]{vf}[base];[base][placa]overlay=0:0[v]")
+            entrada = ["-i", caminho, "-loop", "1", "-i", str(placa)]
+            filtro, mapas = ["-filter_complex", complexo], ["-map", "[v]", "-map", "0:a"]
+            entrada_muda = ["-i", caminho, "-loop", "1", "-i", str(placa),
+                            "-f", "lavfi", "-i", f"anullsrc=r={sr}:cl=stereo"]
+            filtro_mudo = ["-filter_complex", complexo]
+            mapas_mudo = ["-map", "[v]", "-map", "2:a"]
+
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", *seek, *entrada,
+               "-t", str(duration), *filtro, *mapas,
+               "-af", f"aresample={sr},apad", "-shortest", *saida]
+        result = subprocess.run(cmd, capture_output=True, text=True, creationflags=NO_WINDOW)
+        if result.returncode != 0:
+            # clipe sem audio? tenta com trilha silenciosa
+            cmd_noaudio = ["ffmpeg", "-y", "-loglevel", "error", *seek,
+                           *entrada_muda, "-t", str(duration),
+                           *filtro_mudo, *mapas_mudo, "-shortest", *saida]
+            result = subprocess.run(cmd_noaudio, capture_output=True, text=True, creationflags=NO_WINDOW)
+            if result.returncode != 0:
+                # nunca derruba o render inteiro por um arquivo ruim
+                event["asset"]["synthetic"] = True
+                if event.get("type") == "gameplay":
+                    fallback = self._gameplay_indisponivel_frames(event)
+                elif event.get("type") in ("identity", "nameplate"):
+                    # Clipe ilegivel: cai no nameplate, nunca num cartao de
+                    # reacao no lugar da revelacao do personagem.
+                    fallback = self._nameplate_frames(event)
+                else:
+                    fallback = self._reaction_frames(event)
+                self._encode_frames(fallback, out_path)
+
+    def _concat(self, segments: list[Path], out_path: Path) -> None:
+        list_file = out_path.with_suffix(".txt")
+        list_file.write_text(
+            "".join(f"file '{s.as_posix()}'\n" for s in segments), encoding="utf-8")
+        base = ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+                "-i", str(list_file)]
+        result = subprocess.run(base + ["-c", "copy", str(out_path)],
+                                capture_output=True, text=True, creationflags=NO_WINDOW)
+        if result.returncode != 0:
+            result = subprocess.run(
+                base + ["-c:v", "libx264", "-preset", self.preset, "-crf", str(self.crf),
+                        "-pix_fmt", "yuv420p", "-c:a", "aac", str(out_path)],
+                capture_output=True, text=True, creationflags=NO_WINDOW)
+            if result.returncode != 0:
+                raise RuntimeError(f"Concat falhou: {result.stderr[-800:]}")
+
+    def _mix_music(self, video: Path, music: Path, out_path: Path) -> None:
+        volume = self.audio_cfg.get("music_volume", 0.22)
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(video),
+               "-stream_loop", "-1", "-i", str(music),
+               "-filter_complex",
+               f"[1:a]volume={volume}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0",
+               "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", str(out_path)]
+        result = subprocess.run(cmd, capture_output=True, text=True, creationflags=NO_WINDOW)
+        if result.returncode != 0:
+            out_path.write_bytes(video.read_bytes())
+
+    # ------------------------------------------------------------------ frames
+    def _bg(self) -> Image.Image:
+        if self._bg_cache is None:
+            self._bg_cache = gradient(self.width, self.height,
+                                      self.colors["bg_top"], self.colors["bg_bottom"])
+        return self._bg_cache
+
+    def _frames_for(self, event: dict, generation: dict, out_dir: Path):
+        kind = event["type"]
+        if kind == "roulette":
+            return self._roulette_frames(event)
+        if kind == "reaction":
+            return self._reaction_frames(event)
+        if kind == "identity" and (event.get("asset") or {}).get("media") == "imagem":
+            return self._still_frames(event)
+        if kind in ("nameplate", "identity"):
+            # `identity` so chega aqui quando o mp4 do clipe faltou ou nao pode
+            # ser lido: o caminho normal dele e o transcode, nao o desenho.
+            return self._nameplate_frames(event)
+        if kind == "stinger":
+            return self._stinger_frames(event)
+        if kind in ("reveal_character", "reveal_weapon"):
+            # Formato antigo. Continua desenhavel para `--rerender` sem
+            # `--refazer-edicao` conseguir refazer um plano ja gravado.
+            return self._reveal_frames(event, out_dir)
+        if kind == "synergy":
+            return self._synergy_frames(event, generation)
+        if kind == "final":
+            return self._final_frames(event)
+        # --- telas de torneio ---
+        if kind == "participantes":
+            return self._participantes_frames(event)
+        if kind == "round_title":
+            return self._round_title_frames(event)
+        if kind == "fight_card":
+            return self._fight_card_frames(event)
+        if kind == "fight_result":
+            return self._fight_result_frames(event)
+        if kind == "gameplay":
+            # so chega aqui se o mp4 da luta faltou ou nao pode ser lido
+            return self._gameplay_indisponivel_frames(event)
+        if kind == "champion":
+            return self._champion_frames(event)
+        if kind == "tournament_stats":
+            return self._tournament_stats_frames(event)
+        return self._caption_frames(event)  # hook / outro
+
+    def _n_frames(self, duration: float) -> int:
+        return max(1, round(duration * self.fps))
+
+    def _caption_frames(self, event: dict):
+        total = self._n_frames(event["duration"])
+        caption = event.get("caption", "")
+        font = fit_font_wrap(caption, self.fonts["black"], int(self.width * 0.9),
+                             int(self.ref * 0.085), max_lines=3)
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            pulse = 1 + 0.03 * math.sin(i / self.fps * 6)
+            self._wrapped_center(draw, caption, font, self.height * 0.5,
+                                 fill=(245, 242, 255), stroke=4, scale=pulse)
+            yield img
+        return
+
+    # ------------------------------------------------------------ wheel frames
+    def _roulette_frames(self, event: dict):
+        """Roleta visual: roda com TODOS os resultados possiveis, girando com
+        desaceleracao ate o ponteiro parar no vencedor. Layout vertical (roda
+        em cima, resultado embaixo) ou horizontal (roda a esquerda, resultado
+        a direita)."""
+        roll = event["roll"]
+        wheel_data = roll.get("wheel") or {"labels": [str(roll["display_value"])], "winner": 0}
+        labels, encurtou = self._curtos(wheel_data["labels"])
+        # O numerao e a roda mostram a MESMA forma do resultado: se a roda
+        # precisou manter o nome longo, ele fica longo em cima tambem.
+        valor = (self._curto(roll["display_value"]) if encurtou
+                 else str(roll["display_value"]))
+        winner = wheel_data["winner"]
+        total = self._n_frames(event["duration"])
+        spin_frames = min(total - 1, self._n_frames(event["spin_duration"]))
+        accent = self.colors["accent_character"] if roll["entity"] == "character" \
+            else self.colors["accent_weapon"]
+        tier_rgb = hex_rgb(roll["tier_color"])
+        effects = event.get("effects", [])
+        rng = random.Random(f"{roll['entity']}:{roll['roulette_id']}:anim")
+
+        # Secao 1: TITULO CURTO -> RESULTADO -> ROLETA GRANDE, e o resto da
+        # tela limpo. Saiu a barra de atributo e saiu o rotulo de tier: eram
+        # eles que faziam cada rolagem virar uma tela de interface (secao 2).
+        # Quem carrega a qualidade do resultado agora e a cor do numero.
+        if self.horizontal:
+            # No 16:9 a roda vive a esquerda e o texto a direita; a coluna de
+            # texto para antes da roda para a legenda nao cair em cima dela.
+            radius = int(self.height * 0.40)
+            cx, cy = int(self.width * 0.24), int(self.height * 0.52)
+            px_info = self.width * 0.70
+            info_max_w = int(self.width * 0.44)
+            y_header, y_value = self.height * 0.24, self.height * 0.46
+            y_caption = self.height * 0.74
+        else:
+            radius = int(self.width * 0.46)
+            cx, cy = self.width // 2, int(self.height * 0.575)
+            px_info = self.width / 2
+            info_max_w = int(self.width * 0.88)
+            y_header, y_value = self.height * 0.085, self.height * 0.185
+            # Acima do rodape: no celular o app cobre a faixa de baixo com
+            # legenda e botoes, e a piada nao pode nascer atras deles.
+            y_caption = self.height * 0.895
+
+        n = len(labels)
+        seg = 360.0 / n
+        winner_center = winner * seg + seg / 2
+        final_angle = (winner_center - 270.0) % 360.0
+        spins = 3 + (winner % 3)
+        total_rotation = final_angle + 360.0 * spins
+
+        # A roda inteira e girada por `total_rotation` na hora de colar, entao
+        # a orientacao de cada rotulo precisa ser decidida contra o angulo em
+        # que ele vai PARAR - nao contra a posicao dele no desenho. As duas
+        # imagens usam a mesma orientacao de proposito: orientacoes diferentes
+        # fariam metade dos rotulos virar de cabeca para baixo no exato frame
+        # em que a roda para.
+        wheel_img = self._build_wheel(labels, radius, accent,
+                                      offset_giro=total_rotation)
+        highlight_img = self._build_wheel(labels, radius, accent,
+                                          highlight=winner,
+                                          offset_giro=total_rotation)
+
+        header_font = load_font(self.fonts["black"], int(self.ref * 0.075))
+        value_font = fit_font_wrap(valor, self.fonts["black"], info_max_w,
+                                   int(self.ref * 0.145))
+        caption_font = fit_font_wrap(event.get("caption", ""), self.fonts["bold"],
+                                     info_max_w, int(self.ref * 0.046))
+
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            self._wrapped_center(draw, roll["category"], header_font, y_header,
+                                 fill=hex_rgb(accent), stroke=3,
+                                 center_x=px_info, max_width=info_max_w)
+
+            if i < spin_frames:
+                t = i / max(1, spin_frames)
+                angle = total_rotation * (1 - (1 - t) ** 3)
+                frame_wheel, stopped = wheel_img, False
+            else:
+                angle, frame_wheel, stopped = total_rotation, highlight_img, True
+
+            rotated = frame_wheel.rotate(angle, resample=Image.BILINEAR)
+            img.paste(rotated, (cx - radius, cy - radius), rotated)
+
+            hub_r = int(radius * 0.22)
+            draw.ellipse([cx - hub_r, cy - hub_r, cx + hub_r, cy + hub_r],
+                         fill=(24, 20, 44), outline=hex_rgb(accent), width=6)
+            pw = int(radius * 0.09)
+            draw.polygon([(cx - pw, cy - radius - pw), (cx + pw, cy - radius - pw),
+                          (cx, cy - radius + int(pw * 1.4))],
+                         fill=(255, 255, 255), outline=(15, 12, 30))
+
+            if not stopped:
+                draw.text((cx, cy), "?", font=load_font(self.fonts["black"], hub_r),
+                          fill=(200, 195, 230), anchor="mm")
+                # O lugar do resultado ja existe durante o giro, marcado com
+                # "?": a expectativa mora nesse espaco reservado.
+                draw.text((px_info, y_value), "?", font=value_font,
+                          fill=(96, 90, 126), anchor="mm")
+            else:
+                j = i - spin_frames
+                dx = dy = 0
+                if "screen_shake" in effects or "shake_small" in effects:
+                    amp = (10 if "screen_shake" in effects else 4) * max(0.0, 1 - j / (self.fps * 0.5))
+                    dx, dy = rng.randint(-1, 1) * amp, rng.randint(-1, 1) * amp
+                scale = 1.0
+                if "punch_zoom" in effects:
+                    scale = 1.25 - 0.25 * min(1.0, j / (self.fps * 0.25))
+                self._wrapped_center(draw, valor, value_font,
+                                     y_value + dy, fill=tier_rgb, stroke=5,
+                                     scale=scale, x_offset=dx,
+                                     center_x=px_info, max_width=info_max_w)
+                self._wrapped_center(draw, event.get("caption", ""), caption_font,
+                                     y_caption, fill=(245, 242, 255), stroke=3,
+                                     center_x=px_info, max_width=info_max_w)
+                if "flash" in effects and j < self.fps * 0.12:
+                    white = Image.new("RGB", img.size, (255, 255, 255))
+                    img = Image.blend(img, white, 0.55 * (1 - j / (self.fps * 0.12)))
+                if "desaturate" in effects and roll["tier"] == "TERRIBLE":
+                    img = ImageEnhance.Color(img).enhance(0.35)
+            yield img
+        return
+
+    def _build_wheel(self, labels: list[str], radius: int, accent: str,
+                     highlight: int | None = None,
+                     offset_giro: float = 0.0) -> Image.Image:
+        size = radius * 2
+        wheel = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(wheel)
+        n = len(labels)
+        seg = 360.0 / n
+        accent_rgb = hex_rgb(accent)
+        shades = [
+            tuple(int(c * 0.32) for c in accent_rgb) + (255,),
+            tuple(int(c * 0.55) for c in accent_rgb) + (255,),
+            tuple(min(255, int(c * 0.42 + 30)) for c in accent_rgb) + (255,),
+        ]
+        box = [0, 0, size - 1, size - 1]
+        for i in range(n):
+            start = i * seg
+            fill = shades[i % 2] if n % 2 == 0 or i < n - 1 else shades[2]
+            if highlight is not None and i == highlight:
+                fill = tuple(min(255, int(c * 1.6 + 60)) for c in accent_rgb) + (255,)
+            draw.pieslice(box, start, start + seg, fill=fill,
+                          outline=(15, 12, 30, 255), width=3)
+        draw.ellipse(box, outline=accent_rgb + (255,), width=8)
+
+        label_len = int(radius * 0.62)
+        label_h = max(20, min(int(2 * math.pi * radius * 0.6 / n * 0.72),
+                              int(radius * 0.13)))
+        for i, label in enumerate(labels):
+            text = label if len(label) <= 16 else label[:15] + "…"
+            font = fit_font(text, self.fonts["bold"], label_len - 8, label_h)
+            strip = Image.new("RGBA", (label_len, label_h * 2), (0, 0, 0, 0))
+            sdraw = ImageDraw.Draw(strip)
+            center_angle = i * seg + seg / 2
+            # Na metade esquerda da roda, girar o rotulo pelo mesmo angulo o
+            # deixa de cabeca para baixo. La ele e escrito para o outro lado e
+            # girado 180 graus a menos - o texto sai do centro para fora nos
+            # dois lados, sempre legivel.
+            # Angulo em que este rotulo vai aparecer na tela depois do giro.
+            na_tela = (center_angle - offset_giro) % 360.0
+            invertido = 90 < na_tela < 270
+            ancora, x_texto = ("lm", 4) if invertido else ("rm", label_len - 4)
+            sdraw.text((x_texto, label_h), text, font=font,
+                       fill=(245, 242, 255, 255), anchor=ancora,
+                       stroke_width=2, stroke_fill=(15, 12, 30, 200))
+            giro = (180 - center_angle) if invertido else -center_angle
+
+            rotated = strip.rotate(giro, expand=True, resample=Image.BICUBIC)
+            rad = math.radians(center_angle)
+            px = radius + math.cos(rad) * radius * 0.60 - rotated.width / 2
+            py = radius + math.sin(rad) * radius * 0.60 - rotated.height / 2
+            wheel.paste(rotated, (int(px), int(py)), rotated)
+        return wheel
+
+    def _reaction_frames(self, event: dict):
+        """Cartao sintetico usado quando nao ha clipe real na categoria."""
+        total = self._n_frames(event["duration"])
+        positive = event["sentiment"] == "positive"
+        intensity = event.get("intensity", 0.5)
+        base_color = (36, 120, 66) if positive else (130, 34, 34)
+        rng = random.Random(event["asset"]["id"])
+        label = "INSANO!!!" if positive and intensity > 0.8 else \
+            "MUITO BOM!" if positive else \
+            "DESASTRE..." if intensity > 0.7 else "RUIM DEMAIS"
+        font = load_font(self.fonts["black"], int(self.ref * 0.11))
+        for i in range(total):
+            t = i / self.fps
+            pulse = 0.5 + 0.5 * math.sin(t * (10 if intensity > 0.7 else 5))
+            color = tuple(min(255, round(c * (0.8 + 0.4 * pulse))) for c in base_color)
+            img = Image.new("RGB", (self.width, self.height), color)
+            draw = ImageDraw.Draw(img)
+            cx, cy = self.width / 2, self.height * 0.40
+            r = self.ref * (0.16 + 0.02 * pulse)
+            dx = rng.randint(-6, 6) * intensity if intensity > 0.6 else 0
+            draw.ellipse([cx - r + dx, cy - r, cx + r + dx, cy + r],
+                         fill=(255, 224, 130), outline=(40, 30, 10), width=8)
+            eye_dy = -r * 0.25
+            for side in (-1, 1):
+                draw.ellipse([cx + side * r * 0.4 - r * 0.09 + dx, cy + eye_dy - r * 0.12,
+                              cx + side * r * 0.4 + r * 0.09 + dx, cy + eye_dy + r * 0.12],
+                             fill=(40, 30, 10))
+            mouth_y = cy + r * 0.30
+            if positive:
+                draw.arc([cx - r * 0.5 + dx, mouth_y - r * 0.35, cx + r * 0.5 + dx, mouth_y + r * 0.25],
+                         start=10, end=170, fill=(40, 30, 10), width=14)
+            else:
+                draw.arc([cx - r * 0.5 + dx, mouth_y, cx + r * 0.5 + dx, mouth_y + r * 0.6],
+                         start=190, end=350, fill=(40, 30, 10), width=14)
+            draw.text((self.width / 2, self.height * 0.72), label, font=font,
+                      fill=(255, 255, 255), anchor="mm", stroke_width=6,
+                      stroke_fill=(20, 15, 10))
+            yield img
+        return
+
+    def _nameplate_frames(self, event: dict):
+        """Nome grande e uma linha de dado. Sem avatar, sem cartao, sem barra.
+
+        E o que ocupa o lugar de um clipe que ainda nao chegou, e tambem o que
+        aparece por cima do clipe quando ele chega (secao 15). Tipografia pura:
+        a regra de nao usar boneco generico (secao 3) vale nos dois casos.
+        """
+        placa = event.get("nameplate") or {"titulo": event.get("caption", ""),
+                                           "subtitulo": ""}
+        total = self._n_frames(event["duration"])
+        accent = self.colors["accent_weapon"] if event.get("slot") == "weapon"             else self.colors["accent_character"]
+        largura = int(self.width * (0.5 if self.horizontal else 0.9))
+        titulo_font = fit_font_wrap(placa["titulo"], self.fonts["black"],
+                                    largura, int(self.ref * 0.12))
+        sub_font = fit_font(placa["subtitulo"], self.fonts["bold"],
+                            int(largura * 0.9), int(self.ref * 0.052))
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            t = min(1.0, i / max(1, self.fps * 0.22))
+            escala = 0.9 + 0.1 * (1 - (1 - t) ** 3)
+            self._wrapped_center(draw, placa["titulo"], titulo_font,
+                                 self.height * 0.46, fill=(245, 242, 255),
+                                 stroke=5, scale=escala)
+            if placa.get("subtitulo"):
+                draw.text((self.width / 2, self.height * 0.56),
+                          placa["subtitulo"], font=sub_font,
+                          fill=hex_rgb(accent), anchor="mm",
+                          stroke_width=3, stroke_fill=(15, 12, 30))
+            yield img
+        return
+
+    # ------------------------------------------------------- imagem que anda
+    @staticmethod
+    def _interp(inicio, fim, t: float):
+        return inicio + (fim - inicio) * t
+
+    def _still_frames(self, event: dict):
+        """Imagem de recompensa como CENA, nunca como cartao parado.
+
+        Imagem sem movimento num video vertical e morte por retencao (secoes 9
+        e 20): a cena inteira vira um card estatico no meio de uma sequencia de
+        rolagens de 2 s. Entao a camera anda por cima dela.
+
+        Feito em PIL, e nao com o `zoompan` do ffmpeg, por tres motivos: o
+        recorte pode ser FRACIONARIO (`Image.resize(box=...)` amostra em
+        subpixel, e o pan nao treme como o zoompan em passo de pixel inteiro),
+        a placa e composta aqui mesmo com o resto do desenho, e o caminho de
+        saida passa a ser o mesmo `_encode_frames` que ja renderiza a roleta.
+        """
+        total = self._n_frames(event["duration"])
+        caminho = self._caminho_do_asset(event)
+        try:
+            fonte = Image.open(caminho)
+            fonte.load()
+            fonte = fonte.convert("RGB")
+        except Exception:
+            # Imagem ilegivel (download truncado, formato exotico) nunca
+            # derruba o render: a revelacao cai na placa tipografica, que e o
+            # mesmo lugar onde ela cai quando o arquivo nem existe.
+            event.setdefault("asset", {})["synthetic"] = True
+            yield from self._nameplate_frames(event)
+            return
+
+        movimento = event.get("motion") or {}
+        zoom_ini, zoom_fim = (movimento.get("zoom") or [1.0, 1.08])[:2]
+        centros = movimento.get("centro") or [[0.5, 0.5], [0.5, 0.5]]
+        (cx0, cy0), (cx1, cy1) = centros[0], centros[-1]
+
+        # Encaixe "contain": a imagem inteira aparece. O que sobra e preenchido
+        # com ela mesma, borrada e escurecida — tarja preta ao lado do
+        # personagem entrega que o video foi montado, e o borrado nao.
+        escala = min(self.width / fonte.width, self.height / fonte.height)
+        destino = (max(1, int(fonte.width * escala)),
+                   max(1, int(fonte.height * escala)))
+        canto = ((self.width - destino[0]) // 2, (self.height - destino[1]) // 2)
+        fundo = self._fundo_da_still(fonte) if destino != (self.width, self.height)             else None
+
+        placa = self._placa_imagem(event)
+        estalo = int(event.get("flash_frames", 2))
+        duracao = float(event["duration"])
+        entra, sai = 0.25, max(0.9, min(duracao - 0.6, 2.6))
+
+        for i in range(total):
+            t = i / max(1, total - 1)
+            suave = t * t * (3 - 2 * t)          # smoothstep: sem solavanco nas pontas
+            zoom = max(1.0, self._interp(zoom_ini, zoom_fim, suave))
+            cx = self._interp(cx0, cx1, suave)
+            cy = self._interp(cy0, cy1, suave)
+
+            # Recorte em FLOAT: e daqui que vem o movimento liso.
+            largura, altura = fonte.width / zoom, fonte.height / zoom
+            x0 = min(max(cx * fonte.width - largura / 2, 0.0), fonte.width - largura)
+            y0 = min(max(cy * fonte.height - altura / 2, 0.0), fonte.height - altura)
+            quadro = fonte.resize(destino, Image.LANCZOS,
+                                  box=(x0, y0, x0 + largura, y0 + altura))
+
+            img = fundo.copy() if fundo is not None else self._bg().copy()
+            img.paste(quadro, canto)
+
+            if placa is not None:
+                alfa = self._alfa_da_placa(i / self.fps, entra, sai)
+                if alfa > 0:
+                    camada = placa if alfa >= 1 else self._com_alfa(placa, alfa)
+                    img = Image.alpha_composite(img.convert("RGBA"), camada).convert("RGB")
+
+            # Estalo de entrada: marca o corte, do mesmo jeito que o efeito
+            # `flash` marca uma rolagem extrema. Quantos quadros e decisao do
+            # plano (config/editing.json), nao do renderer.
+            if i < estalo:
+                branco = Image.new("RGB", img.size, (255, 255, 255))
+                img = Image.blend(img, branco, 0.35 * (1 - i / max(1, estalo)))
+            yield img
+        return
+
+    def _fundo_da_still(self, fonte: Image.Image) -> Image.Image:
+        """A propria imagem, cobrindo o quadro, borrada e escurecida."""
+        escala = max(self.width / fonte.width, self.height / fonte.height)
+        tamanho = (max(1, int(fonte.width * escala)), max(1, int(fonte.height * escala)))
+        coberto = fonte.resize(tamanho, Image.BILINEAR)
+        x = (tamanho[0] - self.width) // 2
+        y = (tamanho[1] - self.height) // 2
+        recorte = coberto.crop((x, y, x + self.width, y + self.height))
+        borrado = recorte.filter(ImageFilter.GaussianBlur(int(self.ref * 0.05)))
+        return ImageEnhance.Brightness(borrado).enhance(0.45)
+
+    @staticmethod
+    def _alfa_da_placa(segundos: float, entra: float, sai: float) -> float:
+        """Mesma curva do fade que o ffmpeg aplica no clipe de video."""
+        if segundos < entra:
+            return 0.0
+        if segundos < entra + 0.35:
+            return (segundos - entra) / 0.35
+        if segundos < sai:
+            return 1.0
+        if segundos < sai + 0.4:
+            return max(0.0, 1 - (segundos - sai) / 0.4)
+        return 0.0
+
+    @staticmethod
+    def _com_alfa(camada: Image.Image, alfa: float) -> Image.Image:
+        copia = camada.copy()
+        canal = copia.getchannel("A").point(lambda v: int(v * alfa))
+        copia.putalpha(canal)
+        return copia
+
+    def _stinger_frames(self, event: dict):
+        """Batida de virada: uma linha, na cor da metade que comeca."""
+        total = self._n_frames(event["duration"])
+        accent = self.colors["accent_weapon"] if event.get("entity") == "weapon"             else self.colors["accent_character"]
+        texto = event.get("caption", "")
+        font = fit_font_wrap(texto, self.fonts["black"],
+                             int(self.width * (0.6 if self.horizontal else 0.92)),
+                             int(self.ref * 0.095))
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            t = min(1.0, i / max(1, self.fps * 0.18))
+            self._wrapped_center(draw, texto, font, self.height * 0.5,
+                                 fill=hex_rgb(accent), stroke=5,
+                                 scale=1.18 - 0.18 * (1 - (1 - t) ** 3))
+            yield img
+        return
+
+    def _reveal_frames(self, event: dict, out_dir: Path):
+        total = self._n_frames(event["duration"])
+        card_path = out_dir / event["image"]
+        card = Image.open(card_path).convert("RGB") if card_path.exists() else None
+        if card is not None:
+            if self.horizontal:
+                target_h = int(self.height * 0.82)
+                card = card.resize((int(card.width * target_h / card.height), target_h))
+                card_x = int(self.width * 0.08)
+                final_y = int(self.height * 0.09)
+            else:
+                target_w = int(self.width * 0.88)
+                card = card.resize((target_w, int(card.height * target_w / card.width)))
+                card_x = int((self.width - card.width) / 2)
+                final_y = int(self.height * 0.16)
+        caption_font = fit_font(event.get("caption", ""), self.fonts["black"],
+                                int((self.width * 0.42) if self.horizontal
+                                    else (self.width * 0.9)),
+                                int(self.ref * 0.06))
+        for i in range(total):
+            img = self._bg().copy()
+            t = min(1.0, i / (self.fps * 0.4))
+            ease = 1 - (1 - t) ** 3
+            if card is not None:
+                y = int(self.height - (self.height - final_y) * ease)
+                img.paste(card, (card_x, y))
+            draw = ImageDraw.Draw(img)
+            if self.horizontal:
+                self._wrapped_center(draw, event.get("caption", ""), caption_font,
+                                     self.height * 0.45, fill=(245, 242, 255), stroke=4,
+                                     center_x=self.width * 0.70,
+                                     max_width=int(self.width * 0.44))
+            else:
+                self._wrapped_center(draw, event.get("caption", ""), caption_font,
+                                     self.height * 0.09, fill=(245, 242, 255), stroke=4)
+            yield img
+        return
+
+    def _synergy_frames(self, event: dict, generation: dict):
+        total = self._n_frames(event["duration"])
+        compat = event["compatibility"]
+        score = compat["compatibility_score"]
+        tier_color = compat.get("tier_color", "#d9d9d9")
+        tier_rgb = hex_rgb(tier_color)
+        bar_x = int(self.width * (0.30 if self.horizontal else 0.15))
+        bar_w = int(self.width * (0.40 if self.horizontal else 0.70))
+        line_max = int(self.width * (0.60 if self.horizontal else 0.86))
+        header_font = load_font(self.fonts["black"], int(self.ref * 0.07))
+        score_font = load_font(self.fonts["black"], int(self.ref * 0.16))
+        caption_font = fit_font(event.get("caption", ""), self.fonts["black"],
+                                int(self.width * 0.9), int(self.ref * 0.055))
+        lines = ([("+ " + s["label"], (126, 217, 87)) for s in compat.get("synergies", [])]
+                 + [("- " + c["label"], (255, 99, 99)) for c in compat.get("conflicts", [])])[:5]
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            draw.text((self.width / 2, self.height * 0.12), "COMPATIBILIDADE",
+                      font=header_font, fill=(245, 242, 255), anchor="mm",
+                      stroke_width=3, stroke_fill=(15, 12, 30))
+            t = min(1.0, i / (self.fps * 1.2))
+            shown = round(score * (1 - (1 - t) ** 2))
+            draw.text((self.width / 2, self.height * 0.28), f"{shown}/100",
+                      font=score_font, fill=tier_rgb, anchor="mm", stroke_width=5,
+                      stroke_fill=(15, 12, 30))
+            stat_bar(draw, bar_x, int(self.height * 0.38), bar_w,
+                     max(14, int(self.ref * 0.024)), shown, tier_color)
+            y = self.height * 0.48
+            for text, color in lines:
+                font = fit_font(text, self.fonts["bold"], line_max, int(self.ref * 0.038))
+                draw.text((self.width / 2, y), text, font=font, fill=color, anchor="mm")
+                y += self.height * 0.055
+            self._wrapped_center(draw, event.get("caption", ""), caption_font,
+                                 self.height * 0.85, fill=(245, 242, 255), stroke=3)
+            yield img
+        return
+
+    def _final_frames(self, event: dict):
+        total = self._n_frames(event["duration"])
+        build = event["build"]
+        score = build["final_score"]
+        color = "#b26bff" if score >= 76 else "#7ed957" if score >= 61 else \
+            "#d9d9d9" if score >= 46 else "#ff7a45" if score >= 16 else "#ff3b3b"
+        # Secao 8: a nota passa RAPIDO. As tres barras de subnota saiam com a
+        # tela de estatisticas: elas repetiam, paradas, o que o video acabou de
+        # mostrar rolando. Sobrou o que e novidade - o numero e o veredito.
+        header_font = load_font(self.fonts["black"], int(self.ref * 0.062))
+        score_font = load_font(self.fonts["black"], int(self.ref * 0.28))
+        verdict_font = fit_font(build["verdict_label"], self.fonts["black"],
+                                int(self.width * 0.88), int(self.ref * 0.1))
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            draw.text((self.width / 2, self.height * 0.29), "NOTA FINAL",
+                      font=header_font, fill=(154, 147, 184), anchor="mm")
+            # Contagem em ~0,5 s: no ritmo novo a cena inteira dura 1,7 s.
+            t = min(1.0, i / (self.fps * 0.5))
+            shown = round(score * (1 - (1 - t) ** 3))
+            draw.text((self.width / 2, self.height * 0.44), str(shown),
+                      font=score_font, fill=hex_rgb(color), anchor="mm",
+                      stroke_width=6, stroke_fill=(15, 12, 30))
+            self._wrapped_center(draw, build["verdict_label"], verdict_font,
+                                 self.height * 0.62, fill=hex_rgb(color),
+                                 stroke=4)
+            yield img
+        return
+
+    # ============================================================== TORNEIO ==
+    @staticmethod
+    def _cor_lutador(ficha: dict, padrao=(155, 89, 255)) -> tuple:
+        if not ficha:
+            return padrao
+        return (ficha.get("cor_r", padrao[0]), ficha.get("cor_g", padrao[1]),
+                ficha.get("cor_b", padrao[2]))
+
+    def _cores_do_confronto(self, luta: dict) -> tuple[tuple, tuple]:
+        """Cores dos dois lados COM contraste garantido.
+
+        As cores vem do banco e podem cair quase iguais (dois verdes, por
+        exemplo) — ai o card de luta fica ilegivel. Quando isso acontece,
+        o segundo lado assume o laranja do ecossistema.
+        """
+        cor1 = self._cor_lutador(luta["p1_ficha"])
+        cor2 = self._cor_lutador(luta["p2_ficha"], hex_rgb(self.colors["accent_weapon"]))
+        distancia = sum(abs(a - b) for a, b in zip(cor1, cor2))
+        if distancia < 140:
+            alternativa = hex_rgb(self.colors["accent_weapon"])
+            if sum(abs(a - b) for a, b in zip(cor1, alternativa)) < 140:
+                alternativa = hex_rgb(self.colors["accent_character"])
+            cor2 = alternativa
+        return cor1, cor2
+
+    def _participantes_frames(self, event: dict):
+        total = self._n_frames(event["duration"])
+        nomes = event["participantes"]
+        colunas = 2 if (len(nomes) > 6 and not self.horizontal) else (
+            4 if self.horizontal else 1)
+        titulo_font = load_font(self.fonts["black"], int(self.ref * 0.07))
+        nome_font = load_font(self.fonts["bold"], int(self.ref * 0.036))
+        linhas = (len(nomes) + colunas - 1) // colunas
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            draw.text((self.width / 2, self.height * 0.12), "OS PARTICIPANTES",
+                      font=titulo_font, fill=hex_rgb(self.colors["accent_character"]),
+                      anchor="mm", stroke_width=3, stroke_fill=(15, 12, 30))
+            aparecendo = min(len(nomes), int((i / max(1, total * 0.6)) * len(nomes)) + 1)
+            area_top = self.height * 0.22
+            area_h = self.height * 0.66
+            cel_h = area_h / max(1, linhas)
+            for idx, nome in enumerate(nomes[:aparecendo]):
+                col, lin = idx % colunas, idx // colunas
+                cx = self.width * (col + 0.5) / colunas
+                cy = area_top + cel_h * (lin + 0.5)
+                largura = self.width / colunas * 0.86
+                draw.rounded_rectangle(
+                    [cx - largura / 2, cy - cel_h * 0.34,
+                     cx + largura / 2, cy + cel_h * 0.34],
+                    radius=14, fill=(35, 32, 64),
+                    outline=hex_rgb(self.colors["accent_character"]), width=3)
+                texto = nome if len(nome) <= 22 else nome[:21] + "…"
+                fonte = fit_font(texto, self.fonts["bold"], int(largura * 0.9),
+                                 nome_font.size)
+                draw.text((cx, cy), texto, font=fonte, fill=(245, 242, 255),
+                          anchor="mm")
+            yield img
+        return
+
+    def _round_title_frames(self, event: dict):
+        total = self._n_frames(event["duration"])
+        titulo = event["titulo"]
+        accent = hex_rgb(self.colors["accent_weapon"])
+        font = fit_font(titulo, self.fonts["black"], int(self.width * 0.9),
+                        int(self.ref * 0.14))
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            t = min(1.0, i / max(1, self.fps * 0.3))
+            escala = 1.3 - 0.3 * (1 - (1 - t) ** 3)
+            largura_linha = int(self.width * 0.7 * t)
+            draw.rectangle([self.width / 2 - largura_linha / 2, self.height * 0.42,
+                            self.width / 2 + largura_linha / 2, self.height * 0.425],
+                           fill=accent)
+            self._wrapped_center(draw, titulo, font, self.height * 0.5,
+                                 fill=(245, 242, 255), stroke=5, scale=escala)
+            draw.rectangle([self.width / 2 - largura_linha / 2, self.height * 0.575,
+                            self.width / 2 + largura_linha / 2, self.height * 0.58],
+                           fill=accent)
+            yield img
+        return
+
+    def _fight_card_frames(self, event: dict):
+        total = self._n_frames(event["duration"])
+        luta = event["luta"]
+        cor1, cor2 = self._cores_do_confronto(luta)
+        nome_font_size = int(self.ref * 0.062)
+        info_font = load_font(self.fonts["bold"], int(self.ref * 0.032))
+        vs_font = load_font(self.fonts["black"], int(self.ref * 0.13))
+        caption_font = fit_font(event.get("caption", ""), self.fonts["bold"],
+                                int(self.width * 0.9), int(self.ref * 0.042))
+        rodada_font = load_font(self.fonts["bold"], int(self.ref * 0.04))
+
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            t = min(1.0, i / max(1, self.fps * 0.35))
+            desliza = (1 - (1 - t) ** 3)
+            draw.text((self.width / 2, self.height * 0.08), luta["rodada_nome"],
+                      font=rodada_font, fill=(154, 147, 184), anchor="mm")
+
+            if self.horizontal:
+                centros = [(self.width * 0.26, self.height * 0.48),
+                           (self.width * 0.74, self.height * 0.48)]
+                deslocamentos = [(-self.width * (1 - desliza), 0),
+                                 (self.width * (1 - desliza), 0)]
+            else:
+                centros = [(self.width / 2, self.height * 0.30),
+                           (self.width / 2, self.height * 0.68)]
+                deslocamentos = [(-self.width * (1 - desliza), 0),
+                                 (self.width * (1 - desliza), 0)]
+
+            for lado, (nome, ficha, cor) in enumerate((
+                    (luta["p1"], luta["p1_ficha"], cor1),
+                    (luta["p2"], luta["p2_ficha"], cor2))):
+                cx = centros[lado][0] + deslocamentos[lado][0]
+                cy = centros[lado][1] + deslocamentos[lado][1]
+                caixa_w = self.width * (0.42 if self.horizontal else 0.86)
+                caixa_h = self.height * (0.5 if self.horizontal else 0.26)
+                draw.rounded_rectangle(
+                    [cx - caixa_w / 2, cy - caixa_h / 2,
+                     cx + caixa_w / 2, cy + caixa_h / 2],
+                    radius=20, fill=(30, 27, 56), outline=cor, width=5)
+                fonte_nome = fit_font(nome, self.fonts["black"],
+                                      int(caixa_w * 0.9), nome_font_size)
+                draw.text((cx, cy - caixa_h * 0.28), nome, font=fonte_nome,
+                          fill=cor, anchor="mm", stroke_width=3,
+                          stroke_fill=(15, 12, 30))
+                classe = ficha.get("classe", "?")
+                fonte_classe = fit_font(classe, self.fonts["bold"],
+                                        int(caixa_w * 0.9), info_font.size)
+                draw.text((cx, cy - caixa_h * 0.05), classe, font=fonte_classe,
+                          fill=(200, 195, 230), anchor="mm")
+                barra_w = int(caixa_w * 0.6)
+                for j, (rotulo, valor) in enumerate((
+                        ("FORCA", ficha.get("forca", 0)),
+                        ("MANA", ficha.get("mana", 0)))):
+                    by = cy + caixa_h * (0.14 + j * 0.16)
+                    draw.text((cx - barra_w / 2 - self.ref * 0.008, by), rotulo,
+                              font=info_font, fill=(154, 147, 184), anchor="rm")
+                    stat_bar(draw, int(cx - barra_w / 2), int(by - self.ref * 0.011),
+                             barra_w, max(10, int(self.ref * 0.022)),
+                             round(valor * 10), "#%02x%02x%02x" % cor)
+                    draw.text((cx + barra_w / 2 + self.ref * 0.008, by), str(valor),
+                              font=info_font, fill=(245, 242, 255), anchor="lm")
+
+            if t >= 1.0:
+                pulso = 1 + 0.08 * math.sin(i / self.fps * 8)
+                vs_y = self.height * (0.48 if self.horizontal else 0.49)
+                self._wrapped_center(draw, "VS", vs_font, vs_y,
+                                     fill=(255, 255, 255), stroke=6, scale=pulso)
+            self._wrapped_center(draw, event.get("caption", ""), caption_font,
+                                 self.height * 0.93, fill=(245, 242, 255), stroke=3)
+            yield img
+        return
+
+    def _fight_result_frames(self, event: dict):
+        total = self._n_frames(event["duration"])
+        luta = event["luta"]
+        vencedor_e_p1 = luta["vencedor"] == luta["p1"]
+        cor1, cor2 = self._cores_do_confronto(luta)
+        cor = cor1 if vencedor_e_p1 else cor2
+        tier_rgb = hex_rgb(luta["tier_color"])
+        nome_font = fit_font(luta["vencedor"], self.fonts["black"],
+                             int(self.width * 0.9), int(self.ref * 0.1))
+        rotulo_font = load_font(self.fonts["black"], int(self.ref * 0.05))
+        info_font = load_font(self.fonts["bold"], int(self.ref * 0.038))
+        marca_font = load_font(self.fonts["black"], int(self.ref * 0.042))
+        caption_font = fit_font(event.get("caption", ""), self.fonts["bold"],
+                                int(self.width * 0.9), int(self.ref * 0.044))
+        rng = random.Random(f"resultado:{luta['match_id']}")
+        extremo = luta["tier"] in ("INSANE", "GREAT", "TERRIBLE")
+
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            dx = 0
+            if extremo and i < self.fps * 0.4:
+                amp = 8 * max(0.0, 1 - i / (self.fps * 0.4))
+                dx = rng.randint(-1, 1) * amp
+            draw.text((self.width / 2 + dx, self.height * 0.16), "VENCEDOR",
+                      font=rotulo_font, fill=(154, 147, 184), anchor="mm")
+            escala = 1.0
+            if i < self.fps * 0.25:
+                escala = 1.3 - 0.3 * (i / (self.fps * 0.25))
+            self._wrapped_center(draw, luta["vencedor"], nome_font,
+                                 self.height * 0.27, fill=cor, stroke=5,
+                                 scale=escala, x_offset=dx)
+
+            info = f"{luta['ko_type']}  •  {luta['duracao']}s"
+            draw.text((self.width / 2, self.height * 0.40), info,
+                      font=info_font, fill=(245, 242, 255), anchor="mm")
+
+            draw.text((self.width * 0.5, self.height * 0.47),
+                      f"HP restante: {luta['hp_vencedor']}%",
+                      font=info_font, fill=(154, 147, 184), anchor="mm")
+            barra_w = int(self.width * 0.5)
+            stat_bar(draw, int((self.width - barra_w) / 2), int(self.height * 0.50),
+                     barra_w, max(12, int(self.ref * 0.02)),
+                     luta["hp_vencedor"], "#%02x%02x%02x" % cor)
+
+            marcas = luta.get("marcas", [])[:3]
+            y = self.height * 0.58
+            for marca in marcas:
+                cor_marca = (255, 214, 90) if marca in ("ZEBRA", "DUPLO KO") else tier_rgb
+                fonte = fit_font(marca.upper(), self.fonts["black"],
+                                 int(self.width * 0.8), marca_font.size)
+                draw.text((self.width / 2, y), marca.upper(), font=fonte,
+                          fill=cor_marca, anchor="mm", stroke_width=3,
+                          stroke_fill=(15, 12, 30))
+                y += self.height * 0.06
+
+            # sem marcas o bloco sobe: nada de vao vazio no meio da tela
+            y_eliminado = max(y + self.height * 0.02, self.height * 0.60)
+            draw.text((self.width / 2, y_eliminado),
+                      f"eliminado: {luta['perdedor']}", font=info_font,
+                      fill=(255, 122, 122), anchor="mm")
+            self._wrapped_center(draw, event.get("caption", ""), caption_font,
+                                 self.height * 0.90, fill=(245, 242, 255), stroke=3)
+            yield img
+        return
+
+    def _gameplay_indisponivel_frames(self, event: dict):
+        """Cartao usado quando o mp4 da luta nao existe ou nao pode ser lido.
+
+        O video precisa continuar de pe: uma luta sem gravacao vira um aviso
+        curto, e o resultado (que sempre existe) e mostrado logo em seguida.
+        """
+        total = self._n_frames(event["duration"])
+        luta = event.get("luta") or {}
+        titulo_font = load_font(self.fonts["black"], int(self.ref * 0.055))
+        nome_font = fit_font(f"{luta.get('p1', '?')} vs {luta.get('p2', '?')}",
+                             self.fonts["bold"], int(self.width * 0.86),
+                             int(self.ref * 0.05))
+        for _ in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            self._wrapped_center(draw, "LUTA NAO GRAVADA", titulo_font,
+                                 self.height * 0.45, fill=(154, 147, 184), stroke=3)
+            self._wrapped_center(draw, f"{luta.get('p1', '?')} vs {luta.get('p2', '?')}",
+                                 nome_font, self.height * 0.53,
+                                 fill=(245, 242, 255), stroke=2)
+            yield img
+        return
+
+    def _champion_frames(self, event: dict):
+        total = self._n_frames(event["duration"])
+        torneio = event["torneio"]
+        ficha = torneio.get("campeao_ficha", {})
+        cor = self._cor_lutador(ficha, (255, 214, 90))
+        campeao = str(torneio.get("campeao", "???"))
+        titulo_font = load_font(self.fonts["black"], int(self.ref * 0.06))
+        nome_font = fit_font(campeao, self.fonts["black"], int(self.width * 0.88),
+                             int(self.ref * 0.13))
+        info_font = load_font(self.fonts["bold"], int(self.ref * 0.038))
+        caption_font = fit_font(event.get("caption", ""), self.fonts["black"],
+                                int(self.width * 0.9), int(self.ref * 0.05))
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            t = i / self.fps
+            # raios de luz girando atras do campeao
+            cx, cy = self.width / 2, self.height * 0.36
+            raio = self.ref * 0.42
+            for k in range(12):
+                ang = math.radians(k * 30 + t * 25)
+                draw.line([cx, cy, cx + math.cos(ang) * raio,
+                           cy + math.sin(ang) * raio],
+                          fill=(46, 40, 80), width=max(2, int(self.ref * 0.012)))
+            self._wrapped_center(draw, "🏆 CAMPEAO", titulo_font,
+                                 self.height * 0.14, fill=(255, 214, 90), stroke=3)
+            pulso = 1 + 0.04 * math.sin(t * 5)
+            self._wrapped_center(draw, campeao, nome_font, self.height * 0.36,
+                                 fill=cor, stroke=6, scale=pulso)
+            if ficha:
+                sub = f"{ficha.get('classe', '?')}  •  {ficha.get('personalidade', '?')}"
+                draw.text((self.width / 2, self.height * 0.52), sub,
+                          font=info_font, fill=(200, 195, 230), anchor="mm")
+                draw.text((self.width / 2, self.height * 0.58),
+                          f"arma: {ficha.get('nome_arma', '?')}",
+                          font=info_font, fill=(154, 147, 184), anchor="mm")
+            if torneio.get("campeao_gerado"):
+                draw.text((self.width / 2, self.height * 0.66),
+                          "CRIADO NA ROLETA", font=info_font,
+                          fill=(126, 217, 87), anchor="mm")
+            self._wrapped_center(draw, event.get("caption", ""), caption_font,
+                                 self.height * 0.82, fill=(245, 242, 255), stroke=4)
+            yield img
+        return
+
+    def _tournament_stats_frames(self, event: dict):
+        total = self._n_frames(event["duration"])
+        stats = event.get("estatisticas", {})
+        titulo_font = load_font(self.fonts["black"], int(self.ref * 0.06))
+        rotulo_font = load_font(self.fonts["bold"], int(self.ref * 0.034))
+        valor_font = load_font(self.fonts["black"], int(self.ref * 0.038))
+        melhor = stats.get("melhor_luta", {})
+        linhas = [
+            ("LUTAS", str(stats.get("total_lutas", 0))),
+            ("NOCAUTES", str(stats.get("kos", 0))),
+            ("ZEBRAS", str(stats.get("zebras", 0))),
+            ("MAIS RAPIDA", f"{stats.get('mais_rapida', {}).get('duracao', 0)}s"),
+            ("MAIS LONGA", f"{stats.get('mais_longa', {}).get('duracao', 0)}s"),
+            ("LUTA DO TORNEIO", str(melhor.get("luta", "-"))),
+        ]
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            draw.text((self.width / 2, self.height * 0.14), "RESUMO DO TORNEIO",
+                      font=titulo_font, fill=hex_rgb(self.colors["accent_weapon"]),
+                      anchor="mm", stroke_width=3, stroke_fill=(15, 12, 30))
+            y = self.height * 0.30
+            aparecendo = min(len(linhas), int(i / max(1, self.fps * 0.18)) + 1)
+            for rotulo, valor in linhas[:aparecendo]:
+                draw.text((self.width * 0.12, y), rotulo, font=rotulo_font,
+                          fill=(154, 147, 184), anchor="lm")
+                texto = valor if len(valor) <= 30 else valor[:29] + "…"
+                fonte = fit_font(texto, self.fonts["black"],
+                                 int(self.width * 0.42), valor_font.size)
+                draw.text((self.width * 0.88, y), texto, font=fonte,
+                          fill=(245, 242, 255), anchor="rm")
+                y += self.height * 0.085
+            yield img
+        return
+
+    # ------------------------------------------------------------------- utils
+    @staticmethod
+    def _curto(texto) -> str:
+        """'Cavaleiro (Defesa)' -> 'Cavaleiro'.
+
+        O parenteses e do catalogo do jogo e nao acrescenta nada na tela: ele
+        so obriga a fonte a encolher para caber (secao 13). O dado gravado
+        continua completo - isto e so o que aparece no video.
+        """
+        curto = str(texto).split(" (")[0].strip()
+        return curto or str(texto)
+
+    def _curtos(self, rotulos: list[str]) -> tuple[list[str], bool]:
+        """Encurta a roda inteira - mas so se ela continuar distinguivel.
+
+        Um catalogo com 'Mago (Fogo)' e 'Mago (Gelo)' viraria duas fatias
+        escritas 'Mago', e dois rotulos iguais na roda sao piores que dois
+        rotulos longos.
+        """
+        curtos = [self._curto(rotulo) for rotulo in rotulos]
+        if len(set(curtos)) != len(set(rotulos)):
+            return [str(r) for r in rotulos], False
+        return curtos, True
+
+    @staticmethod
+    def _is_emoji(char: str) -> bool:
+        code = ord(char)
+        return (code >= 0x1F000 or 0x2600 <= code <= 0x27BF
+                or code in (0xFE0F, 0x200D, 0x2B50))
+
+    def _emoji_font(self, size: int):
+        try:
+            return load_font(self.fonts.get("emoji", ""), size)
+        except OSError:
+            return None
+
+    def _runs(self, text: str) -> list[tuple[str, bool]]:
+        """Divide o texto em trechos (texto, eh_emoji) para fontes mistas."""
+        runs: list[tuple[str, bool]] = []
+        for char in text:
+            emoji = self._is_emoji(char)
+            if runs and runs[-1][1] == emoji:
+                runs[-1] = (runs[-1][0] + char, emoji)
+            else:
+                runs.append((char, emoji))
+        return runs
+
+    def _mixed_length(self, text: str, font, emoji_font) -> float:
+        total = 0.0
+        for trecho, emoji in self._runs(text):
+            usada = emoji_font if (emoji and emoji_font) else font
+            total += usada.getlength(trecho)
+        return total
+
+    def _draw_mixed(self, draw, cx: float, y: float, text: str, font, fill,
+                    stroke: int, emoji_font) -> None:
+        """Desenha uma linha centralizada com Arial + Segoe UI Emoji colorido."""
+        largura = self._mixed_length(text, font, emoji_font)
+        x = cx - largura / 2
+        for trecho, emoji in self._runs(text):
+            if emoji and emoji_font:
+                draw.text((x, y), trecho, font=emoji_font, anchor="lm",
+                          embedded_color=True)
+                x += emoji_font.getlength(trecho)
+            else:
+                draw.text((x, y), trecho, font=font, fill=fill, anchor="lm",
+                          stroke_width=stroke, stroke_fill=(15, 12, 30))
+                x += font.getlength(trecho)
+
+    def _wrapped_center(self, draw: ImageDraw.ImageDraw, text: str, font, y: float,
+                        fill, stroke: int = 0, scale: float = 1.0,
+                        x_offset: float = 0.0, center_x: float | None = None,
+                        max_width: int | None = None) -> None:
+        if not text:
+            return
+        cx = center_x if center_x is not None else self.width / 2
+        limit = max_width if max_width is not None else self.width * 0.92
+        size = font.size if hasattr(font, "size") else 40
+        emoji_font = self._emoji_font(int(size))
+        words = text.split()
+        lines, current = [], ""
+        for word in words:
+            trial = f"{current} {word}".strip()
+            if self._mixed_length(trial, font, emoji_font) <= limit or not current:
+                current = trial
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
+        line_h = size * 1.15 * scale
+        start_y = y - line_h * (len(lines) - 1) / 2
+        for line in lines:
+            self._draw_mixed(draw, cx + x_offset, start_y, line, font, fill,
+                             stroke, emoji_font)
+            start_y += line_h

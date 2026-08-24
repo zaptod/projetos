@@ -2405,7 +2405,11 @@ class Lutador:
         )
         
         # Aplica transformações
-        self.weapon_anim_scale = transform["scale"]
+        # Rework (animação rígida): a arma tem tamanho FIXO — o que anima
+        # é a EMPUNHADURA (lunge: recua no wind-up, avança no golpe).
+        self.weapon_anim_scale = 1.0
+        self.weapon_anim_lunge = transform.get("lunge", 0.0)
+        self.weapon_draw_amount = transform.get("draw_amount", 0.0)
         self.weapon_anim_shake = transform["shake"]
         self.weapon_trail_positions = transform["trail_positions"]
         

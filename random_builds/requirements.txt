@@ -1,0 +1,17 @@
+# random_builds — gerador procedural de builds + edicao automatica de video.
+# Instale com:  pip install -r requirements.txt
+#
+# Fora do pip (obrigatorio): FFmpeg e FFprobe no PATH.
+#   winget install Gyan.FFmpeg
+#
+# Este arquivo e SEPARADO do pyproject.toml da raiz de proposito: o pacote
+# neural_fights tem politica de minimalismo de dependencias (so pygame-ce e
+# customtkinter, validada por `pip check` e pela checagem de conteudo da wheel
+# no CI). Nada daqui pode vazar para la.
+
+Pillow>=10,<13
+
+# Automacao do Digen (`python main.py identity ...`). Opcional: sem ele o
+# generate-video roda normalmente, so nao gera o clipe de identidade.
+# Depois de instalar, rode uma vez:  patchright install chrome
+patchright>=1.50

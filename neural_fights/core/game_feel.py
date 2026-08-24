@@ -324,7 +324,7 @@ class HitStopManager:
         # Camera shake proporcional - força > velocidade
         # Classes de força causam shake MUITO maior
         shake_mult = CLASS_HITSTOP_MULT.get(classe_atacante, 1.0)
-        camera_shake = 5.0 + (dano * 0.3 * shake_mult)
+        camera_shake = 3.0 + (dano * 0.1 * shake_mult)
         
         # Zoom punch para impactos pesados
         camera_zoom = 0.0
@@ -913,7 +913,7 @@ class CameraFeel:
         
         # Shake acumulado (permite empilhar múltiplos hits)
         self.shake_acumulado = 0.0
-        self.shake_decay = 15.0  # Velocidade que shake diminui
+        self.shake_decay = 24.0  # Velocidade que shake diminui (recalibrado)
         
         # Direção do shake (baseado no golpe)
         self.shake_dir_x = 0.0
@@ -945,22 +945,25 @@ class CameraFeel:
         mult_classe = CLASS_HITSTOP_MULT.get(classe_atacante, 1.0)
         
         # Base de shake
+        # Recalibrado junto do teto global (tremor e tempero): os
+        # valores antigos (ate 30) somados ao shake da Camera davam
+        # +-50px por frame em golpe pesado.
         shake_base = {
-            "LEVE": 3.0,
-            "MEDIO": 6.0,
-            "PESADO": 12.0,
-            "DEVASTADOR": 20.0,
-            "EPICO": 30.0
-        }.get(tipo_golpe, 6.0)
+            "LEVE": 1.5,
+            "MEDIO": 3.0,
+            "PESADO": 6.0,
+            "DEVASTADOR": 10.0,
+            "EPICO": 14.0
+        }.get(tipo_golpe, 3.0)
         
         # Escala com dano
-        shake_dano = math.sqrt(dano) * 0.5
+        shake_dano = math.sqrt(dano) * 0.3
         
         # Shake final
         shake_final = (shake_base + shake_dano) * mult_classe
         
         # Acumula shake (com cap)
-        self.shake_acumulado = min(40.0, self.shake_acumulado + shake_final)
+        self.shake_acumulado = min(18.0, self.shake_acumulado + shake_final)
         
         # Direção do shake (golpe empurra câmera na direção oposta brevemente)
         if direcao != (0, 0):
@@ -989,12 +992,12 @@ class CameraFeel:
         """
         if carga >= 1.0:
             # Magia completa = efeito máximo
-            self.shake_acumulado = 35.0
+            self.shake_acumulado = 16.0
             self._iniciar_zoom_punch(0.3)
             self._iniciar_focus(posicao, 0.25)
         else:
             # Magia parcial = efeito proporcional
-            self.shake_acumulado = min(25.0, 10.0 + carga * 15.0)
+            self.shake_acumulado = min(12.0, 5.0 + carga * 7.0)
             if carga > 0.5:
                 self._iniciar_zoom_punch(carga * 0.2)
     
@@ -1025,8 +1028,8 @@ class CameraFeel:
                 # Shake com direção (empurra na direção do golpe, depois randomiza)
                 dir_factor = max(0, 1.0 - self.shake_acumulado / 20.0)
                 
-                shake_x = self.shake_acumulado * (random.uniform(-1, 1) * 0.7 + self.shake_dir_x * dir_factor)
-                shake_y = self.shake_acumulado * (random.uniform(-1, 1) * 0.7 + self.shake_dir_y * dir_factor)
+                shake_x = self.shake_acumulado * (random.uniform(-1, 1) * 0.45 + self.shake_dir_x * dir_factor)
+                shake_y = self.shake_acumulado * (random.uniform(-1, 1) * 0.45 + self.shake_dir_y * dir_factor)
                 
                 # Passe 2 (arte): Camera.atualizar tambem escreve estes
                 # offsets no mesmo frame — sobrescrever apagava um dos

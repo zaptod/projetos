@@ -37,9 +37,13 @@ class Câmera:
         # Zoom atual e alvo
         self.zoom = 0.8  # Começa mais afastado
         self.target_zoom = 0.8
-        
+
         # Modo de câmera
-        self.modo = "AUTO"  # AUTO, P1, P2, FIXO, MANUAL
+        # ARENA (padrão): enquadra a arena inteira, sem seguir lutadores.
+        # AUTO: zoom dinâmico seguindo os lutadores. P1/P2: segue um lado.
+        # MANUAL: WASD. (tecla 0 volta para ARENA, tecla 3 liga AUTO)
+        self.modo = "ARENA"  # ARENA, AUTO, P1, P2, FIXO, MANUAL
+        self.zoom_arena = None  # calculado em set_arena_bounds
         self.shake_timer = 0.0
         self.shake_magnitude = 0.0
         self.offset_x = 0
@@ -84,6 +88,8 @@ class Câmera:
         zoom_y = (self.screen_height - self.margem_segura * 2) / (altura * PPM)
         self.zoom = min(zoom_x, zoom_y, 1.0)
         self.target_zoom = self.zoom
+        # Zoom que enquadra a arena inteira — alvo permanente do modo ARENA
+        self.zoom_arena = self.zoom
 
     def aplicar_shake(self, forca, duracao=0.2):
         """Aplica efeito de shake na câmera"""
@@ -235,12 +241,29 @@ class Câmera:
 
     def atualizar(self, dt, p1, p2):
         """Atualiza a câmera baseado nos lutadores"""
-        
+
+        # === MODO ARENA (padrão): quadro TRAVADO, nem tremor ===
+        # O tremor de impacto é ótimo para quem joga, mas aqui a promessa é
+        # outra: o enquadramento não se mexe. Consumimos os timers assim mesmo
+        # para que trocar de modo no meio da luta não herde um tremor velho.
+        if self.modo == "ARENA":
+            self.shake_timer = max(0.0, self.shake_timer - dt)
+            self.shake_magnitude = 0
+            self.offset_x = 0
+            self.offset_y = 0
+            self._punch_mag = 0.0
+            self._punch_timer = 0.0
+            self._atualizar_modo_arena(dt, p1, p2)
+            return
+
         # === SHAKE ===
         if self.shake_timer > 0:
             self.shake_timer -= dt
             decay = min(1.0, self.shake_timer / 0.3)
-            shake_atual = self.shake_magnitude * decay * decay
+            # Teto DURO no aplicador central: nao importa quantas fontes
+            # empilhem magnitude, o tremor visivel e tempero (<=12px),
+            # nao prato ("a tela treme muito" — recalibragem global).
+            shake_atual = min(12.0, self.shake_magnitude * 0.6) * decay * decay
             self.offset_x = random.uniform(-shake_atual, shake_atual)
             self.offset_y = random.uniform(-shake_atual, shake_atual)
         else:
@@ -251,7 +274,7 @@ class Câmera:
         # === MODO MANUAL (teclas WASD) ===
         if self.modo == "MANUAL":
             return
-        
+
         # === PASSO 1: VERIFICAÇÃO DE EMERGÊNCIA ===
         # Se algum lutador estiver fora da tela, AÇÃO IMEDIATA
         if p1 is None or p2 is None:
@@ -361,6 +384,29 @@ class Câmera:
                 self.zoom = zoom_min_necessario
 
         # === PASSO 6: ZOOM PUNCH (depois de TODOS os clamps) ===
+        self._aplicar_punch(dt)
+
+    def _atualizar_modo_arena(self, dt, p1, p2):
+        """Enquadramento TRAVADO na arena inteira (modo padrão).
+
+        A câmera não segue lutador, não faz pan e não muda de zoom: a cena é
+        a arena, e a arena não se mexe. Quem assiste acompanha a LUTA, não a
+        câmera — uma câmera que persegue os lutadores num quadro pequeno vira
+        um enjoo, e é justamente o que este modo evita.
+
+        Consequência aceita de propósito: um knockback que jogue alguém para
+        fora dos limites da arena o tira do quadro por um instante. Preferimos
+        isso a mexer o enquadramento.
+        """
+        if self.arena_centro is None:
+            return
+
+        self.x = self.arena_centro[0] * PPM
+        self.y = self.arena_centro[1] * PPM
+        if self.zoom_arena:
+            self.zoom = self.zoom_arena
+
+    def _aplicar_punch(self, dt):
         # Transiente de <=0,15s; decai linearmente e não realimenta o lerp
         # de forma permanente.
         if getattr(self, "_punch_timer", 0.0) > 0.0:

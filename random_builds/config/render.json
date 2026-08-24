@@ -1,0 +1,34 @@
+{
+    "profiles": {
+        "celular": {"width": 1080, "height": 1920, "layout": "vertical"},
+        "normal":  {"width": 1920, "height": 1080, "layout": "horizontal"}
+    },
+    "fps": 30,
+    "crf": 20,
+    "preset": "medium",
+    "preview": {
+        "scale": 0.5,
+        "fps": 24,
+        "crf": 30,
+        "preset": "ultrafast"
+    },
+    "colors": {
+        "bg_top": "#12101f",
+        "bg_bottom": "#1f1a35",
+        "accent_character": "#9b59ff",
+        "accent_weapon": "#ff8c42",
+        "text": "#f5f2ff",
+        "text_dim": "#9a93b8"
+    },
+    "audio": {
+        "sample_rate": 44100,
+        "music_volume": 0.22,
+        "sfx_volume": 0.9
+    },
+    "fonts": {
+        "bold": "C:/Windows/Fonts/arialbd.ttf",
+        "regular": "C:/Windows/Fonts/arial.ttf",
+        "black": "C:/Windows/Fonts/ariblk.ttf",
+        "emoji": "C:/Windows/Fonts/seguiemj.ttf"
+    }
+}
