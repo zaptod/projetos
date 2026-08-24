@@ -206,27 +206,29 @@ class InconsistenciaTests(unittest.TestCase):
         self._gerar("generation_00001", clipe_bytes=50_000, no_plano=True)
         identity_queue.enqueue("generation_00001", "prompt")
 
-        resolvidos, restante = worker._resolver_no_disco(
-            max_attempts=3, rerender=False, preview=True)
+        resolvidos = worker._resolver_no_disco(rerender=False, preview=True)
 
         self.assertEqual(1, resolvidos)
-        self.assertIsNone(restante, "nao deveria sobrar job para o browser")
         self.assertEqual(identity_queue.PRONTO,
                          identity_queue.listar()[0]["status"])
 
-    def test_job_que_precisa_gerar_chega_ao_browser(self):
-        """O pre-passe nao pode engolir trabalho de verdade."""
+    def test_job_que_precisa_gerar_sobrevive_ao_pre_passe(self):
+        """O pre-passe nao pode engolir trabalho de verdade.
+
+        Ele nao reivindica nada: um job que ainda precisa ser gerado tem que
+        sair de la intacto e `pending`, para a passada do provedor pega-lo.
+        """
         from src.identity import worker
 
-        self._gerar("generation_00001", no_plano=False)   # sem clipe
+        self._gerar("generation_00001", no_plano=False)   # sem artefato
         identity_queue.enqueue("generation_00001", "prompt")
 
-        resolvidos, restante = worker._resolver_no_disco(
-            max_attempts=3, rerender=False, preview=True)
-
-        self.assertEqual(0, resolvidos)
-        self.assertIsNotNone(restante)
-        self.assertEqual("generation_00001", restante["generation_id"])
+        self.assertEqual(0, worker._resolver_no_disco(rerender=False,
+                                                      preview=True))
+        restante = identity_queue.listar()[0]
+        self.assertEqual(identity_queue.PENDENTE, restante["status"])
+        self.assertEqual(0, restante["attempts"],
+                         "o pre-passe gastou uma tentativa sem gerar nada")
 
     def test_diferenca_de_milissegundos_nao_e_alarme(self):
         """Alarme falso e o que faz monitoramento ser ignorado.
@@ -411,13 +413,15 @@ class DoctorTests(unittest.TestCase):
         from src.identity import worker
 
         self.assertTrue(issubclass(BrowserMorreu, EsperaEstourou))
-        corpo = inspect.getsource(worker._drenar)
+        # O laco de jobs vive em `_passada` (uma por provedor); `_drenar` so
+        # orquestra as passadas.
+        corpo = inspect.getsource(worker._passada)
         self.assertLess(corpo.index("except BrowserMorreu"),
                         corpo.index("except EsperaEstourou"),
                         "BrowserMorreu precisa ser capturado ANTES do pai")
 
     def test_seletor_quebrado_aborta_a_rodada(self):
-        """Deploy do Digen nao pode virar falha em looping.
+        """Deploy de qualquer um dos dois sites nao pode virar falha em looping.
 
         Sem abortar, `--watch` repetiria a mesma falha a cada 30 s e queimaria
         as tentativas de TODOS os jobs da fila em silencio — o pior desfecho
@@ -427,9 +431,9 @@ class DoctorTests(unittest.TestCase):
         import inspect
         from src.identity import worker
 
-        drenar = inspect.getsource(worker._drenar)
-        self.assertIn("SeletorNaoEncontrado", drenar)
-        self.assertIn("raise DeployDoDigen", drenar)
+        # Quem detecta a quebra e a passada; quem sobe o erro e a rodada.
+        self.assertIn("SeletorNaoEncontrado", inspect.getsource(worker._passada))
+        self.assertIn("raise DeployDoDigen", inspect.getsource(worker._drenar))
         self.assertIn("DeployDoDigen", inspect.getsource(worker.observar))
         self.assertTrue(issubclass(worker.DeployDoDigen, RuntimeError))
 

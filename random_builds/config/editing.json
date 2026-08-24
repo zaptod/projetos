@@ -1,18 +1,18 @@
 {
-    "_comment_ritmo": "Duracoes calibradas para TikTok (secoes 8, 9 e 20 do prompt de edicao): a roleta e o elemento dominante, o resultado aparece e o video SEGUE. Antes: giro 3.0 + resultado 1.9 = 4.9 s por rolagem, 69 s so de roleta num video de 101 s. Agora: 1.15 + 0.8 = ~2 s, e o tempo economizado vai para os tres clipes de recompensa (personagem, arma, personagem+arma).",
+    "_comment_ritmo": "Duracoes calibradas para TikTok, com uma correcao pedida depois de ver o video pronto: giro de 1,15 s nao dava tempo de ler o resultado nem de sentir a roleta desacelerar. Agora o giro dura 1,8 s e o resultado fica 1,5 s na tela (2,1 s nos extremos). A roleta continua sendo o elemento dominante — e agora da para acompanhar.",
     "durations": {
-        "hook": 1.4,
-        "roulette_spin": 1.15,
-        "roulette_result": 0.8,
-        "roulette_result_extreme": 1.3,
+        "hook": 1.8,
+        "roulette_spin": 1.8,
+        "roulette_result": 1.5,
+        "roulette_result_extreme": 2.1,
         "reaction": 1.0,
         "reaction_min": 0.5,
         "reaction_max": 2.0,
-        "stinger": 0.9,
-        "nameplate": 1.5,
+        "stinger": 1.2,
+        "nameplate": 1.8,
         "synergy": 1.6,
-        "final": 1.7,
-        "outro": 1.5,
+        "final": 2.2,
+        "outro": 1.8,
         "reveal": 3.6,
         "identity": 6.0,
         "participantes": 3.6,
@@ -39,7 +39,7 @@
         },
         "character_weapon": {
             "min": 3.0,
-            "max": 6.0
+            "max": 8.0
         }
     },
     "_comment_classificacao": "Secao 11: a classe editorial de cada rolagem decide se entra reacao e de que categoria. Faixas em score 0-100.",
@@ -205,5 +205,9 @@
             }
         },
         "flash_frames": 2
+    },
+    "identity_som": {
+        "_comment": "O clipe do payoff vem com audio proprio do site, que briga com a trilha do video. Mudo por padrao.",
+        "payoff_mudo": true
     }
 }

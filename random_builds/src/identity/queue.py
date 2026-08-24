@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import artefato, config, slots
+from .config import settings
 
 ARQUIVO_FILA = config.IDENTITY_DIR / "queue.json"
 LOCK = Path(tempfile.gettempdir()) / "random-builds.identity.lock"
@@ -205,15 +206,37 @@ def enqueue(generation_id: str, prompt: str, aspect: str = "9:16",
     }
     with _bloqueio():
         jobs = _ler()
+        # Um `pending` com as tentativas no teto NAO esta em andamento: esta
+        # travado, e `claim` nunca mais vai pega-lo. Devolve-lo intacto por
+        # "idempotencia" deixava o unico comando capaz de destravar sem efeito
+        # nenhum — reenfileirar dizia OK e nada mudava.
+        maximo = int(settings().get("max_attempts", 3))
         for job in jobs:
             if job["job_id"] == identificador:
-                if job["status"] in (PENDENTE, RODANDO):
+                em_andamento = job["status"] == RODANDO or (
+                    job["status"] == PENDENTE
+                    and job.get("attempts", 0) < maximo)
+                if em_andamento:
                     return job
                 # O grafo e reescrito TAMBEM aqui: sem isto um job ressuscitado
                 # por `identity run` voltaria sem dependencia e o payoff seria
                 # gerado antes das imagens existirem.
+                #
+                # E `enviado` e ZERADO: reenfileirar um job ja concluido quer
+                # dizer "faca de novo". Sem zerar, o worker via o `space_url`
+                # antigo, tomava o caminho de RETOMADA e rebaixava exatamente o
+                # mesmo video — silenciosamente, sem gerar nada. Foi o que
+                # aconteceu ao tentar refazer um payoff: byte por byte igual.
+                # `attempts` ZERADO junto: reenfileirar quer dizer "tente de
+                # novo do zero". Sem isso um job que falhou tres vezes voltava
+                # como `pending` com as tentativas no teto — `claim` nunca mais
+                # o pegava e ele ficava na fila sem rodar e sem aparecer como
+                # falha, que e o pior estado possivel (o mesmo que `reabrir`
+                # existe para evitar).
                 job.update({"status": PENDENTE, "prompt": prompt,
-                            "aspect": aspect, "error": None,
+                            "aspect": aspect, "error": None, "attempts": 0,
+                            "enviado": False, "videos_antes": None,
+                            "referencias": None,
                             "updated_at": _agora(), **grafo})
                 _gravar(jobs)
                 return job

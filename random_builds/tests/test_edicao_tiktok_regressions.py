@@ -46,7 +46,12 @@ EDICAO = load_config("editing.json")
 # Cenas sem movimento proprio: elas so mostram texto. A roleta gira e os
 # clipes sao video, entao os dois tem licenca para durar mais.
 CENAS_PARADAS = ("hook", "stinger", "nameplate", "synergy", "final", "outro")
-TETO_CENA_PARADA = 2.0
+
+# Subiu de 2,0 para 2,5 s depois de ver o video pronto: 2 s nao davam tempo de
+# LER. O teto continua existindo porque sem ele a tela parada volta a crescer
+# sem limite — o que a secao 20 manda evitar. O que mudou foi o numero, nao a
+# regra.
+TETO_CENA_PARADA = 2.5
 
 
 def _gerar(seed: int):
@@ -180,7 +185,12 @@ class RitmoTests(unittest.TestCase):
                 total = _plano(_gerar(seed))["total_duration"]
                 # o plano sem clipe ja tem 3 nameplates no lugar deles
                 cheio = total + extra - 3 * EDICAO["durations"]["nameplate"]
-                self.assertLess(cheio, 75, "video longo demais para o formato")
+                # Teto subiu de 75 para 95 s quando a roleta foi alongada de
+                # proposito (giro de 1,8 s, resultado de 1,5 s) para dar tempo
+                # de LER. O teto segue existindo para pegar crescimento
+                # acidental — 14 rolagens que dobrassem de duracao passariam
+                # dele e apareceriam aqui.
+                self.assertLess(cheio, 95, "video longo demais para o formato")
                 self.assertGreater(cheio, 30, "video curto demais para a build")
 
     def test_metade_do_video_e_roleta(self):
@@ -203,8 +213,9 @@ class PromptSlotTests(unittest.TestCase):
         cls.ajustes = identity_prompt.config.settings()
         cls.valores = identity_prompt.campos(cls.generation, cls.ajustes)
 
-    def test_existe_um_prompt_por_slot(self):
-        self.assertEqual(sorted(slots.SLOTS), sorted(self.prompts))
+    def test_existe_um_prompt_por_job(self):
+        """Inclui a juncao, que e trabalho sem ser cena."""
+        self.assertEqual(sorted(slots.JOBS), sorted(self.prompts))
         for slot, texto in self.prompts.items():
             self.assertTrue(texto.strip(), slot)
             self.assertEqual([], identity_prompt.PLACEHOLDER.findall(texto), slot)
@@ -220,6 +231,17 @@ class PromptSlotTests(unittest.TestCase):
         self.assertNotIn(self.valores["NOME"].lower(), texto.lower())
         self.assertNotIn(self.valores["CLASSE"].lower(), texto.lower())
         self.assertIn("no character", texto.lower())
+
+    def test_a_juncao_manda_seguir_as_DUAS_referencias(self):
+        """A imagem composta so presta se ela preservar os dois lados."""
+        texto = self.prompts[slots.REFERENCIA].lower()
+        self.assertIn("reference", texto)
+        self.assertIn("holding", texto)
+        for exigencia in ("same face", "same shape", "single continuous scene"):
+            self.assertIn(exigencia, texto, exigencia)
+        # colagem e o modo de falha classico do editor: precisa ser proibida
+        for proibido in ("no collage", "no split frame", "no side-by-side"):
+            self.assertIn(proibido, texto, proibido)
 
     def test_o_payoff_carrega_as_duas_identidades_inteiras(self):
         """Gerar o terceiro de um resumo e o que troca o rosto e a lamina."""

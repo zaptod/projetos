@@ -92,6 +92,35 @@ def presta(caminho_do_arquivo: Path, midia: str | None = None) -> bool:
     return tamanho >= BYTES_MINIMOS_VIDEO
 
 
+def duplicado_de(caminho: Path, generation_id: str, slot: str) -> str | None:
+    """Este arquivo e identico ao artefato de OUTRO slot da mesma build?
+
+    Guarda final contra o provedor devolver a imagem errada. Aconteceu de
+    verdade: a imagem do personagem carregou no historico da conta depois da
+    foto de referencia, o job da arma a viu como "nova", ela era retrato como
+    qualquer outra, e a arma foi gravada como copia byte a byte do personagem.
+    Nenhuma checagem de tela pega isso — so comparar o conteudo.
+    """
+    if not caminho.is_file():
+        return None
+    try:
+        alvo = caminho.read_bytes()
+    except OSError:
+        return None
+    for outro in slots.JOBS:
+        if outro == slot:
+            continue
+        vizinho = config.build_dir(generation_id) / slots.ARQUIVO[outro]
+        if not vizinho.is_file() or vizinho == caminho:
+            continue
+        try:
+            if vizinho.stat().st_size == len(alvo) and vizinho.read_bytes() == alvo:
+                return outro
+        except OSError:
+            continue
+    return None
+
+
 def utilizavel(generation_id: str, slot: str) -> bool:
     """Existe artefato que presta para este slot?"""
     encontrado = caminho(generation_id, slot)

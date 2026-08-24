@@ -19,7 +19,8 @@ import re
 
 from ..nf_bridge.loader import elemento_do_encantamento
 from . import config
-from .slots import CHARACTER_WEAPON, SLOTS, valido
+from .slots import (CHARACTER, CHARACTER_WEAPON, IMAGEM, SLOTS,
+                    WEAPON, midia, valido)
 
 PLACEHOLDER = re.compile(r"\{[A-Z_]+\}")
 
@@ -131,10 +132,22 @@ def campos(generation: dict, ajustes: dict | None = None) -> dict:
     }
 
 
-def template(ajustes: dict, slot: str) -> str:
-    """Template daquele slot, com queda para o formato antigo de um clipe so."""
+def template(ajustes: dict, slot: str, tipo: str = "video") -> str:
+    """Template daquele slot e daquela MIDIA.
+
+    Prompt de imagem nao e o de video sem movimento: sai a camera e entra
+    composicao. Por isso sao bancos separados (`prompts_imagem` x `prompts`),
+    e nao um texto so com adaptacao no meio.
+    """
+    valido(slot)
+    if tipo == IMAGEM:
+        modelo = (ajustes.get("prompts_imagem") or {}).get(slot)
+        if modelo:
+            return modelo
+        # Sem banco de imagem, o de video ainda descreve o mesmo personagem:
+        # pior enquadramento, nunca personagem errado.
     modelos = ajustes.get("prompts") or {}
-    modelo = modelos.get(valido(slot))
+    modelo = modelos.get(slot)
     if modelo:
         return modelo
     legado = ajustes.get("prompt_template")
@@ -145,25 +158,31 @@ def template(ajustes: dict, slot: str) -> str:
         f"Slots esperados: {', '.join(SLOTS)}.")
 
 
-def limite_de_chars(ajustes: dict, slot: str) -> int:
-    """Teto de caracteres do slot.
+def limite_de_chars(ajustes: dict, slot: str, tipo: str = "video") -> int:
+    """Teto de caracteres do slot, por midia.
 
     `prompt_max_chars` aceita numero (mesmo teto para todos) ou objeto por
     slot — o prompt de personagem+arma carrega as duas identidades inteiras e
-    e naturalmente o maior dos tres.
+    e naturalmente o maior dos tres. Imagem tem teto proprio e menor: modelo
+    de imagem dispersa quando a lista de exigencias fica longa.
     """
     limite = ajustes.get("prompt_max_chars", 1400)
-    if isinstance(limite, dict):
-        return int(limite.get(slot, limite.get("default", 1400)))
-    return int(limite)
+    if not isinstance(limite, dict):
+        return int(limite)
+    if tipo == IMAGEM and isinstance(limite.get(IMAGEM), dict):
+        por_imagem = limite[IMAGEM]
+        return int(por_imagem.get(slot, por_imagem.get("default", 950)))
+    return int(limite.get(slot, limite.get("default", 1400)))
 
 
 def build_prompt(generation: dict, ajustes: dict | None = None,
-                 slot: str = CHARACTER_WEAPON) -> str:
+                 slot: str = CHARACTER_WEAPON, tipo: str | None = None) -> str:
+    """O prompt daquele slot. `tipo` omitido = o que o slot pede hoje."""
     ajustes = ajustes if ajustes is not None else config.settings()
     valores = campos(generation, ajustes)
+    tipo = tipo or midia(slot)
 
-    texto = template(ajustes, slot)
+    texto = template(ajustes, slot, tipo)
     for chave, valor in valores.items():
         texto = texto.replace("{" + chave + "}", str(valor))
 
@@ -174,7 +193,7 @@ def build_prompt(generation: dict, ajustes: dict | None = None,
             f"{sorted(set(sobrando))}. Disponiveis: {sorted(valores)}")
 
     texto = " ".join(texto.split())
-    limite = limite_de_chars(ajustes, slot)
+    limite = limite_de_chars(ajustes, slot, tipo)
     if len(texto) > limite:
         # corta em fronteira de frase para nao entregar um prompt truncado no meio
         corte = texto.rfind(".", 0, limite)
@@ -182,7 +201,50 @@ def build_prompt(generation: dict, ajustes: dict | None = None,
     return texto
 
 
-def build_prompts(generation: dict, ajustes: dict | None = None) -> dict:
-    """{slot: prompt} dos tres videos da geracao."""
+def para_payoff(generation: dict, ajustes: dict | None = None,
+                com_referencia=()) -> str:
+    """O prompt do payoff para as referencias que DERAM CERTO de anexar.
+
+    Escolhido no envio, e nao no enfileiramento, porque so ali se sabe quantas
+    imagens existem e se o anexo funcionou. A regra que nao pode ser quebrada:
+    o texto carrega em palavras o lado que a imagem nao carregou em pixels —
+    a variante parcial nunca encurta o lado sem imagem, e a variante de zero
+    referencia e o texto completo de sempre.
+    """
     ajustes = ajustes if ajustes is not None else config.settings()
-    return {slot: build_prompt(generation, ajustes, slot) for slot in SLOTS}
+    presentes = {s for s in com_referencia if s}
+    variantes = ajustes.get("prompts_payoff") or {}
+    tem_personagem = CHARACTER in presentes
+    tem_arma = WEAPON in presentes
+
+    if tem_personagem and tem_arma:
+        chave = "ambas"
+    elif tem_personagem:
+        chave = "so_personagem"
+    elif tem_arma:
+        chave = "so_arma"
+    else:
+        # Sem imagem nenhuma: o texto de sempre, inteiro.
+        return build_prompt(generation, ajustes, CHARACTER_WEAPON, tipo="video")
+
+    modelo = variantes.get(chave)
+    if not modelo:
+        return build_prompt(generation, ajustes, CHARACTER_WEAPON, tipo="video")
+
+    valores = campos(generation, ajustes)
+    texto = modelo
+    for chave_campo, valor in valores.items():
+        texto = texto.replace("{" + chave_campo + "}", str(valor))
+    sobrando = PLACEHOLDER.findall(texto)
+    if sobrando:
+        raise KeyError(
+            f"a variante de payoff {chave!r} usa placeholders que ninguem "
+            f"preenche: {sorted(set(sobrando))}. Disponiveis: {sorted(valores)}")
+    return " ".join(texto.split())
+
+
+def build_prompts(generation: dict, ajustes: dict | None = None) -> dict:
+    """{slot: prompt} de TODO job da geracao, inclusive o de juncao."""
+    from .slots import JOBS
+    ajustes = ajustes if ajustes is not None else config.settings()
+    return {slot: build_prompt(generation, ajustes, slot) for slot in JOBS}

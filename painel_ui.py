@@ -334,7 +334,7 @@ class Painel(tk.Tk):
             linha, "Inserir no banco", ligado=True)
         caixa_inserir.pack(side="left")
         caixa_ident, self.var_identidade = self._check(
-            linha, "Identidade (Digen)", ligado=True)
+            linha, "Identidade (imagens + video)", ligado=True)
         caixa_ident.pack(side="left", padx=8)
         linha2 = tk.Frame(gerar, bg=CARD)
         linha2.pack(anchor="w", pady=(8, 2))
@@ -359,16 +359,22 @@ class Painel(tk.Tk):
         self._botao(linha2, "Re-renderizar", self._rerender).pack(side="left")
 
         identidade = self._card(
-            pai, "IDENTIDADE VISUAL (Digen) — clipe real do personagem no fim do video")
+            pai, "IDENTIDADE VISUAL (PicassoIA + Digen) — 2 imagens e 1 video")
         identidade.pack(fill="x", padx=20, pady=(8, 0))
         tk.Label(identidade,
-                 text="A roleta so ENFILEIRA o clipe e termina na hora. O worker "
-                      "baixa depois e refaz o video com ele dentro.",
+                 text="A roleta so ENFILEIRA e termina na hora. O worker gera as "
+                      "imagens do personagem e da arma no PicassoIA, anexa as duas "
+                      "no Digen para o video final e refaz o video com tudo dentro. "
+                      "Cada site tem seu proprio login: faca uma vez em cada.",
                  bg=CARD, fg=DIM, font=FONT, justify="left").pack(anchor="w")
+        linha_login = tk.Frame(identidade, bg=CARD)
+        linha_login.pack(anchor="w", pady=(8, 2))
+        self._botao(linha_login, "🔑  Login no PicassoIA",
+                    self._picasso_login).pack(side="left")
+        self._botao(linha_login, "🔑  Login no Digen",
+                    self._digen_login).pack(side="left", padx=8)
         linha_ident = tk.Frame(identidade, bg=CARD)
-        linha_ident.pack(anchor="w", pady=(8, 2))
-        self._botao(linha_ident, "🔑  Login no Digen",
-                    self._digen_login).pack(side="left")
+        linha_ident.pack(anchor="w", pady=(2, 2))
         self._botao_primario(linha_ident, "⬇  Processar fila",
                              self._digen_worker).pack(side="left", padx=8)
         self._botao(linha_ident, "Ver fila", self._digen_fila).pack(side="left")
@@ -521,8 +527,20 @@ class Painel(tk.Tk):
 
     # -------------------------------------------------- identidade (Digen)
     def _digen_login(self):
-        self._rodar([PY, "-u", "-X", "utf8", "main.py", "identity", "login"],
+        self._rodar([PY, "-u", "-X", "utf8", "main.py", "identity", "login",
+                     "--provedor", "digen"],
                     RANDOM_BUILDS, rotulo="digen login")
+
+    def _picasso_login(self):
+        """Login separado de proposito: cada site tem seu perfil de Chrome.
+
+        Nao e so cookie — o Chrome trava o diretorio de perfil, e o projeto
+        encerra processos filtrando por ele. Com perfil unico, abrir um site
+        derrubaria o browser que esta esperando geracao no outro.
+        """
+        self._rodar([PY, "-u", "-X", "utf8", "main.py", "identity", "login",
+                     "--provedor", "picasso"],
+                    RANDOM_BUILDS, rotulo="picasso login")
 
     def _digen_worker(self):
         extras = ["--watch"] if self.var_digen_watch.get() else []

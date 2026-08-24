@@ -158,3 +158,69 @@ class RitmoTests(unittest.TestCase):
                 self.assertIn(slot, motion)
                 self.assertEqual(2, len(motion[slot]["zoom"]))
                 self.assertEqual(2, len(motion[slot]["centro"]))
+
+
+class SomDaRoletaTests(unittest.TestCase):
+    """O estalo sai da MESMA curva que gira a imagem.
+
+    Nao e efeito solto por cima: se as duas curvas divergirem, o som fica fora
+    do lugar e a roleta deixa de parecer roleta. Por isso `_giro` e a unica
+    fonte dos dois.
+    """
+
+    def setUp(self):
+        from src.video import roleta_som
+        self.som = roleta_som
+        self.renderer = _renderer()
+
+    def _evento(self, fatias=16, giro=1.8, total=3.3):
+        return {"type": "roulette", "duration": total, "spin_duration": giro,
+                "roll": {"wheel": {"labels": [str(i) for i in range(fatias)],
+                                   "winner": 3}}}
+
+    def test_os_estalos_rareiam_conforme_ela_desacelera(self):
+        """E isso que faz soar como roleta de verdade."""
+        evento = self._evento()
+        giro = self.renderer._giro(evento, evento["roll"]["wheel"]["labels"], 3)
+        tempos = self.som.tempos_de_estalo(giro["angulo_em"], giro["duracao"],
+                                           giro["fatias"])
+        self.assertGreater(len(tempos), 8)
+        intervalos = [b - a for a, b in zip(tempos, tempos[1:])]
+        primeiros = sum(intervalos[:3]) / 3
+        ultimos = sum(intervalos[-3:]) / 3
+        self.assertGreater(ultimos, primeiros * 2,
+                           "o som nao acompanhou a freada")
+
+    def test_nenhum_estalo_vira_zumbido(self):
+        """No inicio a roda cruza fatias rapido demais para cada pino soar."""
+        evento = self._evento()
+        giro = self.renderer._giro(evento, evento["roll"]["wheel"]["labels"], 3)
+        tempos = self.som.tempos_de_estalo(giro["angulo_em"], giro["duracao"],
+                                           giro["fatias"])
+        for a, b in zip(tempos, tempos[1:]):
+            self.assertGreaterEqual(b - a, self.som.INTERVALO_MINIMO - 1e-6)
+
+    def test_a_trilha_cobre_a_cena_inteira(self):
+        import tempfile
+        import wave
+        evento = self._evento()
+        with tempfile.TemporaryDirectory() as tmp:
+            destino = self.renderer._audio_da_roleta(evento, Path(tmp) / "s.mp4")
+            self.assertIsNotNone(destino)
+            with wave.open(str(destino)) as w:
+                segundos = w.getnframes() / w.getframerate()
+            self.assertAlmostEqual(evento["duration"], segundos, places=1)
+
+    def test_evento_que_nao_e_roleta_nao_ganha_trilha(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(self.renderer._audio_da_roleta(
+                {"type": "hook", "duration": 1.8}, Path(tmp) / "s.mp4"))
+
+    def test_a_imagem_e_o_som_leem_o_MESMO_giro(self):
+        """Duas contas separadas divergem no dia em que uma mudar."""
+        import inspect
+        from src.video.renderer import VideoRenderer
+        for metodo in (VideoRenderer._roulette_frames,
+                       VideoRenderer._audio_da_roleta):
+            self.assertIn("_giro(", inspect.getsource(metodo))

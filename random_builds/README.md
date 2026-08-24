@@ -175,20 +175,50 @@ substitui a tela de reação sintética daquele tier no vídeo final
 Requisitos: Python 3.11+, Pillow, FFmpeg no PATH, repositório `neural_fights`
 ao lado desta pasta (`e:\projetos`).
 
-## Os três vídeos (Digen)
+## Duas imagens e um vídeo (PicassoIA + Digen)
 
-Cada geração enfileira **três** clipes, um por slot:
+Cada geração enfileira **três** artefatos, um por slot — e só um deles é vídeo:
 
-| slot | arquivo | duração | o que mostra |
-|---|---|---|---|
-| `character` | `character_video.mp4` | 2-5 s | só o personagem, corpo inteiro, sem arma |
-| `weapon` | `weapon_video.mp4` | 2-4 s | só a arma, girando, com o efeito do elemento |
-| `character_weapon` | `character_weapon_video.mp4` | 3-6 s | os dois juntos — o payoff |
+| job | provedor | arquivo | tela | o que é |
+|---|---|---|---|---|
+| `character` | PicassoIA | `character_image.png` | 2,6 s | só o personagem, corpo inteiro, sem arma |
+| `weapon` | PicassoIA | `weapon_image.png` | 2,1 s | só a arma, sem mãos, com o efeito do elemento |
+| `character_weapon_ref` | PicassoIA **Editor Pro** | `character_weapon_reference.png` | — | o personagem **segurando** a arma |
+| `character_weapon` | Digen | `character_weapon_video.mp4` | 3-6 s | o payoff, animando a imagem acima |
+
+O terceiro **não é cena**: é insumo. Ele existe porque o composer do Digen
+aceita **um** arquivo, e a segunda imagem entregue **substitui** a primeira
+(verificado na tela). Então quem junta personagem e arma é o Editor Pro do
+PicassoIA, que aceita várias entradas — e o Digen recebe uma imagem que já é o
+payoff, bastando animá-la.
+
+```
+character ──┐
+            ├──→ character_weapon_ref ──→ character_weapon
+weapon   ───┘        (Editor Pro)              (Digen)
+```
+
+A corrente se resolve sozinha numa rodada: as duas imagens e a junção saem na
+mesma passada do PicassoIA (assim que elas ficam prontas o portão libera a
+junção), e a passada do Digen já encontra a referência no disco.
+
+**Por que as revelações viraram imagem.** Pedir três vídeos é caro, lento e — o pior —
+inconsistente: em `generation_00020` o mesmo personagem saiu de cabelo branco
+no clipe dele e de cabelo preto no payoff, com os mesmos campos de identidade
+nos dois prompts. Gerar o personagem **uma vez**, como imagem, e mandar essa
+imagem como referência para o vídeo ataca a inconsistência na raiz. E a
+geração de imagem no PicassoIA é ilimitada e gratuita, então o custo por build
+cai de três vídeos para um.
+
+As imagens têm uso **duplo**: são a referência visual do vídeo final e são o
+conteúdo das duas revelações do vídeo da roleta — animadas com câmera
+(push-in no personagem, pull-back na arma), nunca paradas. Imagem estática num
+vertical é morte por retenção.
 
 A chave da fila é `generation_id#slot`: os três são jobs independentes, e o
 payoff pode falhar sem levar junto o clipe de personagem que já deu certo.
 
-**Os três nascem no MESMO space** (`espaco_por_geracao`, ligado por padrão): o
+**Os clipes de vídeo nascem no MESMO space** (`espaco_por_geracao`, ligado por padrão): o
 primeiro slot cria o space, os outros dois entram nele. Menos navegação, menos
 space solto na conta, e o space vira o dossiê daquela build — personagem, arma
 e os dois juntos lado a lado.
@@ -213,8 +243,87 @@ rosto e outra lâmina. O prompt do personagem diz explicitamente *no weapon*, e
 o da arma diz *no character*: o payoff é a primeira vez que os dois aparecem
 juntos.
 
-O prompt de cada slot fica em `config/identity.json` (`prompts.character`,
-`prompts.weapon`, `prompts.character_weapon`), editável sem tocar em código.
+Os prompts ficam em `config/identity.json`, editáveis sem tocar em código:
+`prompts_imagem` (personagem e arma), `prompts.character_weapon` (o payoff sem
+referência) e `prompts_payoff` (as variantes com uma ou duas referências).
+
+**O prompt do payoff é decidido no envio, não no enfileiramento.** Só ali se
+sabe quantas imagens existem e se o anexo funcionou. A regra que não se quebra:
+*o texto carrega em palavras o lado que a imagem não carregou em pixels* — com
+as duas referências ele encurta e fala de ação e câmera; com uma só, o lado sem
+imagem continua descrito por inteiro; sem nenhuma, sai o texto completo de
+sempre, que é exatamente o vídeo que já saía antes desta mudança.
+
+## O modelo importa mais que o anexo
+
+Anexar a imagem ao composer do Digen **funciona** — a miniatura aparece, o
+formulário aceita. Mas o `Real Motion` é o text-to-video da casa e **ignora a
+referência**: com ele o anexo dá certo mecanicamente e o vídeo sai com outro
+personagem. Medido em `generation_00021`: a referência era um guerreiro
+barbudo de túnica azul e brilho ciano, e o payoff entregou um elfo de cabelo
+branco com armadura vermelha.
+
+Por isso o modelo troca junto com o texto — os dois dependem do mesmo fato:
+
+```
+sem referência anexada  →  Real Motion 3.5  +  texto com as duas identidades
+com referência anexada  →  Kling 3.0        +  "siga a imagem anexada"
+```
+
+`referencias.modelo` em `config/identity.json` escolhe qual image-to-video usar
+(o menu do Digen oferece Kling, Runway, Veo, Seedance e Sora). Um teste garante
+que ele nunca seja igual ao modelo de texto — se fosse, a troca não estaria
+fazendo nada.
+
+**O composer do Digen aceita UMA referência** (`multiple: false`, confirmado
+pelo próprio diálogo) e a segunda entrega substitui a primeira — o que fazia o
+vídeo sair condicionado só na arma. É exatamente por isso que a junção acontece
+antes, no PicassoIA: a imagem que sobe já contém os dois.
+
+### Nada aqui confia em "não deu erro"
+
+Toda a automação segue a mesma doutrina, e cada item dela veio de um bug real:
+
+| ação | prova exigida |
+|---|---|
+| anexar imagem | miniatura nova no composer |
+| trocar modelo | reler o botão e comparar |
+| trocar duração/proporção | reler o controle e comparar |
+| imagem pronta | URL nova **e** retrato **e** dimensão já conhecida |
+| rodada sem produzir | dizer por quê (fila vazia? tentativas? dependência?) |
+
+`set_input_files` num `input` escondido não levanta exceção e não anexa nada —
+foi assim que uma rodada inteira reportou "1 referência anexada" com o composer
+vazio. O caminho que funciona é o diálogo nativo que o item "Upload Image" abre.
+
+## Como o worker roda
+
+```
+pré-passe (sem browser)   fecha pelo disco o que já está pronto
+passada PicassoIA         perfil próprio, gera as duas imagens
+passada Digen             perfil próprio, anexa as imagens, gera o payoff
+```
+
+As passadas são **sequenciais e irmãs, nunca aninhadas**:
+`contexto_persistente` abre o próprio `sync_playwright` por dentro, e dois no
+mesmo thread levantam *"Playwright Sync API inside the asyncio loop"*. Cada
+provedor tem seu **perfil de Chrome separado** — não por causa de cookie, mas
+porque o Chrome trava o `user_data_dir` e `_liberar_perfil` mata processos
+filtrando por essa string: com perfil único, abrir o PicassoIA mataria o Chrome
+que está esperando um vídeo no Digen.
+
+Ser sequencial dá de graça a ordem do grafo: quando a passada do Digen começa,
+as duas imagens já estão no disco e o payoff passa no portão da fila. Falha de
+um provedor **não** leva o outro junto.
+
+**O portão da fila.** O job do payoff declara `depends_on` das duas imagens e um
+prazo absoluto. Ele sai da fila quando cada dependência está *satisfeita* — e
+satisfeita tem cinco caminhos, cada um fechando um buraco real: artefato no
+**disco** (porque `queue --limpar` apaga as linhas `done` e uma limpeza de
+rotina não pode travar o payoff para sempre), linha ausente (`identity run` de
+um slot solto), linha `done`, linha `failed` (não se espera defunto — e falha
+**não** se propaga para o dependente, senão morreria o único vídeo que restou)
+e, por fim, o prazo vencido.
 
 **Instalação (uma vez):**
 

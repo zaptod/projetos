@@ -15,6 +15,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
+from . import roleta_som
 from ..visualization.draw_common import (fit_font, fit_font_wrap, gradient,
                                          hex_rgb, load_font, stat_bar)
 
@@ -62,7 +63,8 @@ class VideoRenderer:
             if self._asset_de_video(event):
                 self._transcode_asset(event, seg)
             else:
-                self._encode_frames(self._frames_for(event, generation, out_dir), seg)
+                self._encode_frames(self._frames_for(event, generation, out_dir),
+                                    seg, self._audio_da_roleta(event, seg))
             segments.append(seg)
             print(f"[progresso] {self.profile} {i + 1}/{total}", flush=True)
 
@@ -76,12 +78,17 @@ class VideoRenderer:
         return final
 
     # ------------------------------------------------------------------ ffmpeg
-    def _encode_frames(self, frames, out_path: Path) -> None:
+    def _encode_frames(self, frames, out_path: Path, audio: Path | None = None) -> None:
+        taxa = self.audio_cfg.get("sample_rate", 44100)
+        # Sem trilha o segmento continua nascendo com silencio: o concat exige
+        # que TODOS tenham faixa de audio, senao ele descarta a dos outros.
+        entrada_audio = (["-i", str(audio)] if audio is not None
+                         else ["-f", "lavfi", "-i",
+                               f"anullsrc=r={taxa}:cl=stereo"])
         cmd = ["ffmpeg", "-y", "-loglevel", "error",
                "-f", "rawvideo", "-pix_fmt", "rgb24",
                "-s", f"{self.width}x{self.height}", "-r", str(self.fps), "-i", "pipe:",
-               "-f", "lavfi", "-i",
-               f"anullsrc=r={self.audio_cfg.get('sample_rate', 44100)}:cl=stereo",
+               *entrada_audio,
                "-shortest", "-c:v", "libx264", "-preset", self.preset,
                "-crf", str(self.crf), "-pix_fmt", "yuv420p",
                "-c:a", "aac", "-b:a", "128k", str(out_path)]
@@ -202,6 +209,11 @@ class VideoRenderer:
         if recorte and len(recorte) == 4:
             x, y, largura, altura = (int(v) for v in recorte)
             pre = f"crop={largura}:{altura}:{x}:{y},"
+        # O clipe do payoff vem com o audio que o site gerou, e ele briga com
+        # a trilha do video. Silenciar aqui, e nao no fim, evita ter que baixar
+        # o volume da musica so por causa de 8 s.
+        mudo = bool(event.get("sem_som"))
+
         if event.get("fit") == "contain":
             fundo = self.colors["bg_bottom"].lstrip("#")
             vf = (f"{pre}scale={self.width}:{self.height}:"
@@ -238,6 +250,8 @@ class VideoRenderer:
             filtro_mudo = ["-filter_complex", complexo]
             mapas_mudo = ["-map", "[v]", "-map", "2:a"]
 
+        if mudo:
+            entrada, filtro, mapas = entrada_muda, filtro_mudo, mapas_mudo
         cmd = ["ffmpeg", "-y", "-loglevel", "error", *seek, *entrada,
                "-t", str(duration), *filtro, *mapas,
                "-af", f"aresample={sr},apad", "-shortest", *saida]
@@ -397,12 +411,9 @@ class VideoRenderer:
             # legenda e botoes, e a piada nao pode nascer atras deles.
             y_caption = self.height * 0.895
 
-        n = len(labels)
-        seg = 360.0 / n
-        winner_center = winner * seg + seg / 2
-        final_angle = (winner_center - 270.0) % 360.0
-        spins = 3 + (winner % 3)
-        total_rotation = final_angle + 360.0 * spins
+        giro = self._giro(event, labels, winner)
+        n, seg = giro["fatias"], giro["angulo_da_fatia"]
+        total_rotation = giro["rotacao_total"]
 
         # A roda inteira e girada por `total_rotation` na hora de colar, entao
         # a orientacao de cada rotulo precisa ser decidida contra o angulo em
@@ -430,13 +441,14 @@ class VideoRenderer:
                                  center_x=px_info, max_width=info_max_w)
 
             if i < spin_frames:
-                t = i / max(1, spin_frames)
-                angle = total_rotation * (1 - (1 - t) ** 3)
+                angle = giro["angulo_em"](i / self.fps)
                 frame_wheel, stopped = wheel_img, False
             else:
                 angle, frame_wheel, stopped = total_rotation, highlight_img, True
 
-            rotated = frame_wheel.rotate(angle, resample=Image.BILINEAR)
+            # BICUBIC: com BILINEAR o texto das fatias cintila a cada quadro,
+            # que e o que faz o giro parecer "picotado" mesmo a 30 fps.
+            rotated = frame_wheel.rotate(angle, resample=Image.BICUBIC)
             img.paste(rotated, (cx - radius, cy - radius), rotated)
 
             hub_r = int(radius * 0.22)
@@ -477,6 +489,49 @@ class VideoRenderer:
                     img = ImageEnhance.Color(img).enhance(0.35)
             yield img
         return
+
+    # Expoente da desaceleracao. Quanto maior, mais a roda RASTEJA no fim —
+    # e o rastejo e o que da suspense. 4 foi escolhido olhando: com 3 ela
+    # ainda chega rapido demais na fatia vencedora.
+    EXPOENTE_DA_FREADA = 4
+
+    def _giro(self, event: dict, labels: list[str], winner: int) -> dict:
+        """Tudo que descreve o giro. Imagem e SOM leem daqui, nunca cada um do
+        seu jeito: se as duas curvas divergirem, o estalo sai fora do lugar."""
+        fatias = max(1, len(labels))
+        angulo_da_fatia = 360.0 / fatias
+        centro = winner * angulo_da_fatia + angulo_da_fatia / 2
+        final = (centro - 270.0) % 360.0
+        voltas = 3 + (winner % 3)
+        rotacao = final + 360.0 * voltas
+        duracao = float(event.get("spin_duration") or 1.0)
+        expoente = self.EXPOENTE_DA_FREADA
+
+        def angulo_em(segundos: float) -> float:
+            t = min(1.0, max(0.0, segundos / duracao))
+            return rotacao * (1 - (1 - t) ** expoente)
+
+        return {"fatias": fatias, "angulo_da_fatia": angulo_da_fatia,
+                "rotacao_total": rotacao, "duracao": duracao,
+                "angulo_em": angulo_em}
+
+    def _audio_da_roleta(self, event: dict, destino: Path) -> Path | None:
+        """Trilha de estalos deste giro, ou None se o evento nao e roleta."""
+        if event.get("type") != "roulette":
+            return None
+        roll = event.get("roll") or {}
+        roda = roll.get("wheel") or {}
+        rotulos = roda.get("labels") or [""]
+        giro = self._giro(event, rotulos, int(roda.get("winner", 0)))
+        tempos = roleta_som.tempos_de_estalo(
+            giro["angulo_em"], giro["duracao"], giro["fatias"])
+        if not tempos:
+            return None
+        return roleta_som.gravar(
+            destino.with_suffix(".wav"), float(event["duration"]), tempos,
+            taxa=int(self.audio_cfg.get("sample_rate", 44100)),
+            volume=float(self.audio_cfg.get("sfx_volume", 0.9)) * 0.55,
+            clack_em=giro["duracao"])
 
     def _build_wheel(self, labels: list[str], radius: int, accent: str,
                      highlight: int | None = None,

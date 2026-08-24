@@ -8,6 +8,12 @@
     "character": 1400,
     "weapon": 1200,
     "character_weapon": 1900,
+    "imagem": {
+      "character": 950,
+      "weapon": 850,
+      "default": 950,
+      "character_weapon_ref": 1100
+    },
     "default": 1400
   },
   "navigation_timeout": 60,
@@ -276,17 +282,17 @@
       "max"
     ],
     "character_weapon": [
-      "5s",
+      "max",
       "8s",
-      "3s",
-      "max"
+      "5s",
+      "3s"
     ]
   },
   "_comment_prompts": "Um template por slot (secoes 4, 6 e 7). O de character_weapon repete as DUAS identidades por inteiro de proposito: gerar o payoff a partir de um resumo e o que faz o modelo entregar outro rosto e outra lamina (secao 16).",
   "_comment_prompt_template_legado": "Formato anterior, de um clipe so. Mantido como fallback de prompts[slot].",
   "espaco_por_geracao": true,
   "_comment_espaco": "Os tres clipes da mesma build nascem no MESMO space do Digen: menos navegacao e o space vira o dossie daquela geracao. O video novo e reconhecido por diferenca contra a foto dos cards de antes do envio; se os cards existentes nao forem distinguiveis, aquele clipe ganha um space proprio em vez de arriscar baixar o errado. false volta ao space por clipe.",
-  "_comment_duracao": "duracao_por_slot manda mais que `duracao`; a global fica como queda para slot sem entrada. As janelas da edicao vivem em config/editing.json -> identity_slots.",
+  "_comment_duracao": "O payoff pede `max`: e o unico clipe da build e ele merece o maior tempo que o modelo oferecer (no Real Motion, 8s). Antes a lista comecava em '5s' e ganhava por ser a primeira, entregando 5s com 8s disponivel. As janelas da edicao vivem em config/editing.json -> identity_slots.",
   "referencias": {
     "_comment": "O payoff espera as duas imagens para anexa-las como referencia. `espera_referencias_s` e o prazo maximo: vencido ele vai ao ar so com texto, que e exatamente o video que sai hoje. `habilitado: false` gera as imagens e usa como cena, mas nao tenta anexar (rollback sem perder o resto).",
     "habilitado": true,
@@ -294,6 +300,51 @@
     "ordem": [
       "character",
       "weapon"
-    ]
-  }
+    ],
+    "_comment_modelo": "null = nao troca de modelo. Os image-to-video do menu (Kling, Runway, Veo, Seedance, Sora) sao PAGOS e estao fora da lista branca. Consequencia medida: com Real Motion o anexo funciona mecanicamente mas a imagem nao prende a identidade — ver a secao do README sobre isso.",
+    "modelo": null,
+    "max_anexos": 1,
+    "folha_unica": false,
+    "_comment_folha": "A juncao NAO e mais feita colando as duas imagens localmente: quem junta e o Editor Pro do PicassoIA, que aceita varias imagens de entrada e devolve o personagem SEGURANDO a arma. O Digen recebe essa imagem unica."
+  },
+  "prompts_imagem": {
+    "character": "Full-body character sheet portrait of {NOME}, {ARTIGO} {PORTE} {CLASSE}, {FISICO}, {ALTURA} m tall, with {ARTIGO_PERS} {PERSONALIDADE} presence, signature color {COR} ({COR_HEX}) running through the armor trim, the cloth and the aura. Vertical 9:16 composition, the entire body in frame from head to feet with headroom to spare, three-quarter front view, face clearly visible and evenly lit, neutral standing pose with arms at the sides. Dark fantasy arena behind them, softly out of focus so the silhouette reads clean. Cinematic rim lighting, volumetric haze, fine material detail on metal, leather and cloth. Photorealistic, high detail, sharp focus on the character, cinematic color grade. Empty hands - no weapon, no props. No text, no watermark, no logo, no user interface, no border, no collage, single character alone in frame.",
+    "weapon": "Product shot of a single weapon alone in frame: {ARTIGO_RARIDADE} {RARIDADE}-grade {ARMA_ESTILO}, {ARMA_TIPO} weapon, charged with {ELEMENTO}, {AURA}. Vertical 9:16 composition, the whole weapon in frame from tip to pommel, held at a three-quarter angle against a dark uncluttered backdrop. It is a real physical object catching the light of the room: reflections on the material, wear on the edge, sparks and floating particles around it - not a flat icon. Macro-level detail on the blade and the grip, volumetric light, drifting dust, cinematic color grade, sharp focus. No character, no hands, no arms. No text, no watermark, no logo, no user interface, no border, no collage, a single weapon alone in frame.",
+    "character_weapon_ref": "Combine the two reference images into one single scene: the character from the first image is holding the weapon from the second image in their right hand, raised and ready. Keep the character exactly as in the reference - same face, same hair, same armor and clothing, same colors and proportions. Keep the weapon exactly as in the reference - same shape, same material, same colors, same glow, same scale. Full body, vertical 9:16 framing, dark fantasy arena, cinematic rim lighting, photorealistic, high detail. No text, no watermark, no logo, no collage, no split frame, no side-by-side panels - a single continuous scene."
+  },
+  "_comment_prompts_imagem": "Prompt de imagem nao e o de video sem movimento: sai a camera e entra composicao. O de personagem pede corpo inteiro, rosto visivel e pose neutra porque essa imagem tem um segundo dever - ela vira a REFERENCIA anexada no video final, e referencia com o rosto escondido nao serve.",
+  "provedores": {
+    "_comment": "Ajustes que valem SO para aquele site. `settings()` sem argumento continua devolvendo a raiz inteira, como sempre; `settings('picasso')` devolve a raiz com estes por cima.",
+    "digen": {},
+    "picasso": {
+      "modelo": "PicassoIA Image",
+      "aspect": "9:16",
+      "quantidade": 1,
+      "render_timeout": 300,
+      "poll_interval": 3,
+      "download_timeout": 60,
+      "hydration_timeout": 30,
+      "navigation_timeout": 60,
+      "min_interval": 8,
+      "max_attempts": 3
+    }
+  },
+  "prompts_payoff": {
+    "ambas": "Cinematic hero shot built from the attached reference images: the character shown in the reference, holding the weapon shown in the reference. Keep the character exactly as in the reference: same face, same hair, same skin, same armor and clothing, same colors and proportions. Keep the weapon exactly as in the reference: same shape, same material, same colors, same effects and same scale. The character raises and wields the weapon; it flares to life in their hands and lights their face and armor from below. Slow orbit around them, dramatic rim lighting, volumetric haze, embers and dust, dark fantasy arena. Vertical 9:16 framing, full body or three-quarter shot. Photorealistic, cinematic color grade. No text, no watermark, no subtitles, no user interface, no logo.",
+    "so_personagem": "Cinematic hero shot: the character shown in the attached reference image, holding a weapon. Keep the character exactly as in the reference: same face, same hair, same skin, same armor and clothing, same colors and proportions. The weapon is {ARTIGO_RARIDADE} {RARIDADE}-grade {ARMA_ESTILO}, {ARMA_TIPO} weapon, charged with {ELEMENTO}, {AURA}. The character raises and wields the weapon; it flares to life in their hands and lights their face and armor from below. Slow orbit around them, dramatic rim lighting, volumetric haze, embers and dust, dark fantasy arena. Vertical 9:16 framing, full body or three-quarter shot. Photorealistic, cinematic color grade. No text, no watermark, no subtitles, no user interface, no logo.",
+    "so_arma": "Cinematic hero shot: a character holding the weapon shown in the attached reference image. Keep the weapon exactly as in the reference: same shape, same material, same colors, same effects and same scale. The character is {NOME}, {ARTIGO} {PORTE} {CLASSE}, {FISICO}, {ALTURA} m tall, with {ARTIGO_PERS} {PERSONALIDADE} presence, signature color {COR} ({COR_HEX}) running through the armor trim, the cloth and the aura. The character raises and wields the weapon; it flares to life in their hands and lights their face and armor from below. Slow orbit around them, dramatic rim lighting, volumetric haze, embers and dust, dark fantasy arena. Vertical 9:16 framing, full body or three-quarter shot. Photorealistic, cinematic color grade. No text, no watermark, no subtitles, no user interface, no logo."
+  },
+  "_comment_prompts_payoff": "Variantes do payoff por quantidade de referencia anexada. `prompts.character_weapon` continua sendo a variante de ZERO referencia — e ela que vai ao ar quando o anexo nao acontece, e por isso ela nunca pode encurtar: sem imagem, o texto e a unica trava contra o modelo entregar outro rosto.",
+  "modelos_permitidos": [
+    "Real Motion 3.5 Turbo",
+    "Real Motion 3.5",
+    "Real Motion 3.1 Turbo",
+    "Real Motion 3.1",
+    "Real Motion 3.2",
+    "Real Motion Turbo",
+    "Real Motion 2.6",
+    "Real Motion 3.2 Remix",
+    "Real Motion 2.6 Remix"
+  ],
+  "_comment_modelos_permitidos": "Lista branca. O cliente RECUSA selecionar qualquer modelo fora dela, e a recusa acontece ANTES de gastar geracao. Existe porque o menu do Digen mistura o Real Motion (incluso) com modelos pagos por geracao."
 }

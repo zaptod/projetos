@@ -105,13 +105,13 @@ class PipelineController:
             # nao vem. Vencido, ele vai ao ar so com texto.
             prazo = (datetime.now(timezone.utc) + timedelta(seconds=espera)
                      ).isoformat(timespec="seconds")
-            for slot in slots.SLOTS:
+            for slot in slots.JOBS:
                 queue.enqueue(generation["generation_id"], prompts[slot],
                               slot=slot,
                               aguardar_ate=prazo if slots.depende_de(slot) else None)
-            print(f"[identity] enfileirados {len(slots.SLOTS)} artefatos de "
+            print(f"[identity] enfileirados {len(slots.JOBS)} artefatos de "
                   f"{generation['generation_id']}: "
-                  + ", ".join(f"{s} ({slots.midia(s)})" for s in slots.SLOTS))
+                  + ", ".join(f"{s} ({slots.midia(s)})" for s in slots.JOBS))
         except Exception as exc:
             # Identidade e um extra: nunca pode derrubar uma geracao que deu certo.
             print(f"[identity] nao enfileirado ({exc})")

@@ -41,6 +41,19 @@ JS_COLETA = """() => {
       ...attrs(e, ['type', 'name', 'id', 'placeholder', 'aria-label',
                    'data-testid', 'role']),
     })),
+
+    // <select> SEM filtro de visibilidade, e com as opcoes. O controle pode
+    // ser um select nativo escondido atras de um botao estilizado — foi o
+    // caso da proporcao no PicassoIA, e como `pega()` filtra por visibilidade
+    // ele nao aparecia em lugar nenhum do despejo. Opcao de select nunca e
+    // "visivel" para o Playwright: quem mexe nela e `select_option`, nao
+    // clique.
+    selects: Array.from(document.querySelectorAll('select')).map(e => ({
+      ...attrs(e, ['name', 'id', 'aria-label', 'data-testid', 'class']),
+      escondido: !(e.getBoundingClientRect().width > 0),
+      valor: e.value,
+      opcoes: Array.from(e.options).map(o => o.value).slice(0, 30),
+    })),
     botoes: pega('button, [role=button], a[href]', e => {
       // O `d` do icone e a ancora que este projeto usa para botao sem texto
       // (download, modelo, anexo). Sem ele no despejo, um botao mudo aparece
@@ -172,7 +185,12 @@ def run(headless: bool = False, url: str | None = None,
     print(f"[probe] {destino}")
     print(f"[probe] {len(dados['entradas'])} entradas, "
           f"{len(dados['botoes'])} botoes, {len(dados['videos'])} videos, "
-          f"{len(dados['arquivos'])} input(s) de arquivo")
+          f"{len(dados['arquivos'])} input(s) de arquivo, "
+          f"{len(dados['selects'])} select(s)")
+    for select in dados["selects"]:
+        print(f"[probe]   select: id={select.get('id')!r} "
+              f"name={select.get('name')!r} valor={select.get('valor')!r} "
+              f"opcoes={select.get('opcoes')}")
     for arquivo in dados["arquivos"]:
         print(f"[probe]   arquivo: accept={arquivo.get('accept')!r} "
               f"multiple={arquivo.get('multiple')!r} "

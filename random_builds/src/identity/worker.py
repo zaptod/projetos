@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import artefato, config, history, queue, slots
+from . import artefato, config, history, provedores, queue, slots
 from .browser import contexto_persistente, pagina, pausa_humana
 from .client import BrowserMorreu, DigenClient, EsperaEstourou, GeracaoFalhou
 from .selectors import SeletorNaoEncontrado
@@ -40,6 +40,109 @@ def _rerender(generation_id: str, preview: bool = False) -> None:
     print(f"[identity] re-renderizando {generation_id} com o clipe...")
     PipelineController().rerender(generation_id, preview=preview,
                                   refazer_edicao=True)
+
+
+def _generation(generation_id: str) -> dict | None:
+    """O generation.json daquela build, ou None se sumiu."""
+    caminho = config.build_dir(generation_id) / "generation.json"
+    if not caminho.is_file():
+        return None
+    try:
+        with open(caminho, encoding="utf-8-sig") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _preparar_juncao(client, job: dict):
+    """Abre o Editor Pro e sobe as duas imagens que serao compostas.
+
+    O prompt ja esta na fila (e o de juncao); o que muda aqui e a PAGINA e as
+    imagens de entrada. Sem as duas no disco a juncao nao tem o que fazer, mas
+    ela nao levanta: o job falha limpo e o payoff cai no texto.
+    """
+    from . import picasso_selectors, referencias
+    gid = job["generation_id"]
+    antes = client.preparar_espaco(picasso_selectors.URL_EDITOR)
+    entradas = referencias.entradas_do_editor(gid)
+    if len(entradas) < 2:
+        raise GeracaoFalhou(
+            f"a juncao precisa das duas imagens e achei {len(entradas)} "
+            f"em {gid}.")
+    anexadas = client.anexar_referencias(entradas)
+    if len(anexadas) < 2:
+        raise GeracaoFalhou(
+            f"o editor recebeu {len(anexadas)} de 2 imagens; sem as duas a "
+            "juncao sairia errada.")
+    return antes
+
+
+def _texto_com_referencias(client, job: dict, ajustes: dict,
+                           espaco: str | None) -> tuple[str, list, str | None]:
+    """Prepara o espaco, ANEXA as imagens e so entao decide o texto.
+
+    Esta e a ordem que importa. O prompt do payoff depende de quantas imagens
+    deram para anexar, e isso so se sabe depois de tentar; decidir antes seria
+    chutar. E o texto e gravado na fila ANTES do envio, para manter a
+    propriedade de que a retomada reusa exatamente o que foi enviado — senao
+    ela mandaria outro texto para o video que ja esta em voo.
+    """
+    from . import prompt as prompt_mod
+    from . import referencias
+
+    gid, job_id = job["generation_id"], job["job_id"]
+    # ESPACO NOVO quando ha referencia a anexar, mesmo com o space da build
+    # disponivel: o composer GUARDA o anexo entre envios (visto na tela em
+    # 24/08), e uma miniatura sobrando de uma tentativa anterior condicionaria
+    # o video na imagem errada sem nada acusar. Perder a companhia dos outros
+    # clipes no mesmo space e barato; gerar o payoff a partir da imagem de
+    # outra build nao e.
+    from . import referencias as _ref
+    tem_referencia = bool(_ref.disponiveis(
+        gid, (ajustes.get("referencias") or {}).get("ordem")))
+    antes = client.preparar_espaco(None if tem_referencia else espaco)
+
+    generation = _generation(gid)
+    if generation is None:
+        # Sem o generation.json nao da para montar variante nenhuma: vai o
+        # texto que ja estava na fila, que e o completo.
+        return job["prompt"], antes, None
+
+    ajustes_ref = ajustes.get("referencias") or {}
+    ordem = ajustes_ref.get("ordem")
+
+    # UMA folha com as duas identidades, porque o composer aceita uma imagem
+    # e a segunda substitui a primeira. Sem as duas no disco, vai a que ha.
+    folha = (referencias.folha_de_referencia(gid, ordem)
+             if ajustes_ref.get("folha_unica", True) else None)
+    if folha is not None:
+        anexadas = client.anexar_referencias([folha])
+        com_referencia = ([slots.CHARACTER, slots.WEAPON] if anexadas else [])
+    else:
+        anexadas = client.anexar_referencias(referencias.disponiveis(gid, ordem))
+        com_referencia = [referencias.slot_do_arquivo(a) for a in anexadas]
+
+    texto = prompt_mod.para_payoff(generation, ajustes, com_referencia)
+    queue.registrar_prompt(job_id, texto, [str(a) for a in anexadas])
+    reconhecidos = [s for s in com_referencia if s]
+    print(f"[identity] payoff com {len(anexadas)} referencia(s) "
+          f"[{', '.join(reconhecidos) or 'nenhuma reconhecida'}] "
+          f"({len(texto)} chars de prompt)")
+    # O MODELO muda junto com o texto, e pelo mesmo motivo: os dois dependem
+    # de ter entrado imagem. Real Motion e text-to-video e ignora a referencia
+    # — com ele o anexo "funciona" e o video sai com outro personagem, que foi
+    # exatamente o que aconteceu em generation_00021.
+    modelo = ajustes_ref.get("modelo") if anexadas else None
+    if modelo:
+        print(f"[identity] payoff com referencia -> modelo {modelo}")
+
+    if len(reconhecidos) != len(anexadas):
+        # Anexou e nao soube de qual slot era: o texto cai numa variante mais
+        # longa do que precisava. Nao e fatal, mas e sintoma de nome de arquivo
+        # fora do padrao — e ficar mudo aqui foi o que escondeu o bug.
+        print("[identity] AVISO: nem toda referencia anexada foi reconhecida; "
+              "o prompt usou a variante mais conservadora.")
+    return texto, antes, modelo
 
 
 def preset_do_slot(ajustes: dict, chave: str, slot: str):
@@ -113,7 +216,11 @@ def processar(client: DigenClient, job: dict, ajustes: dict,
     destino = artefato.caminho(generation_id, slot)
     aspecto = job.get("aspect") or ajustes.get("aspect", "9:16")
     espaco = job.get("space_url")
-    junto = bool(ajustes.get("espaco_por_geracao", True))
+    # Space compartilhado e conceito do Digen: no PicassoIA cada geracao e uma
+    # pagina so, e herdar a URL de um job irmao mandaria o editor para a tela
+    # do criador.
+    junto = (bool(ajustes.get("espaco_por_geracao", True))
+             and slots.provedor(slot) == slots.DIGEN)
     if junto and not espaco:
         # Os tres clipes da build no MESMO espaco: o slot que chega depois
         # entra no espaco que o primeiro criou.
@@ -143,11 +250,17 @@ def processar(client: DigenClient, job: dict, ajustes: dict,
                           space_url=espaco, tentativa=job.get("attempts"))
     else:
         print(f"[identity] {job_id}: gerando {slots.rotulo(slot)} ({aspecto})")
+        texto, preparado, modelo = job["prompt"], None, None
+        if slot == slots.REFERENCIA:
+            preparado = _preparar_juncao(client, job)
+        elif slot == slots.CHARACTER_WEAPON:
+            texto, preparado, modelo = _texto_com_referencias(
+                client, job, ajustes, espaco if junto else None)
         antes = client.submit_prompt(
-            job["prompt"], aspecto,
+            texto, aspecto, modelo=modelo,
             duracao=preset_do_slot(ajustes, "duracao", slot),
             resolucao=preset_do_slot(ajustes, "resolucao", slot),
-            espaco=espaco if junto else None)
+            espaco=espaco if junto else None, antes=preparado)
         queue.registrar_envio(job_id, client.url_do_espaco, antes)
         history.registrar(generation_id, history.ENVIADO, slot=slot, aspecto=aspecto,
                           space_url=client.url_do_espaco,
@@ -179,6 +292,24 @@ def processar(client: DigenClient, job: dict, ajustes: dict,
         raise
 
     client.download(video, destino)
+
+    # Guarda final: o provedor pode ter devolvido o artefato de OUTRO slot.
+    # Falhar aqui e barato (a proxima tentativa gera de novo); aceitar seria
+    # gravar a arma como copia do personagem e levar o erro para a juncao e
+    # para o video.
+    gemeo = artefato.duplicado_de(destino, generation_id, slot)
+    if gemeo:
+        destino.unlink(missing_ok=True)
+        raise GeracaoFalhou(
+            f"o arquivo baixado para {slot} e identico ao de {gemeo}: o site "
+            "devolveu a imagem errada. Descartado.")
+
+    if slot == slots.REFERENCIA:
+        # O Editor Pro carimba texto no rodape mesmo proibido no prompt, e
+        # essa imagem vira video: o carimbo iria junto.
+        from . import referencias as _ref
+        _ref.aparar_rodape(destino)
+
     history.registrar(generation_id, history.BAIXADO, slot=slot,
                       bytes=destino.stat().st_size if destino.is_file() else 0)
 
@@ -194,14 +325,16 @@ class DeployDoDigen(RuntimeError):
     """Um seletor parou de casar: a rodada inteira e inutil ate ajustar."""
 
 
-def _alertar_seletor() -> None:
+def _alertar_seletor(provedor: str = "digen") -> None:
+    arquivo = ("src/identity/selectors.py" if provedor == "digen"
+               else "src/identity/picasso_selectors.py")
     print("")
     print("=" * 66)
-    print("  O DIGEN MUDOU: um seletor parou de casar com a pagina.")
+    print(f"  O SITE MUDOU ({provedor}): um seletor parou de casar.")
     print("  Nada vai andar ate isso ser ajustado. Rode, nesta ordem:")
     print("     python main.py identity doctor --online   (mostra qual quebrou)")
-    print("     python main.py identity probe             (despeja o DOM novo)")
-    print("  e atualize a lista em src/identity/selectors.py.")
+    print(f"     python main.py identity probe --provedor {provedor}")
+    print(f"  e atualize a lista em {arquivo}.")
     print("=" * 66)
     print("")
 
@@ -221,20 +354,24 @@ def drenar(headless: bool = False, rerender: bool = True,
         return _drenar(headless, rerender, preview, limite)
 
 
-def _resolver_no_disco(max_attempts: int, rerender: bool,
-                       preview: bool) -> tuple[int, dict | None]:
-    """Fecha os jobs cujo trabalho ja existe e devolve o primeiro que falta.
+def _resolver_no_disco(rerender: bool, preview: bool) -> int:
+    """Fecha, SEM abrir browser, todo job cujo trabalho ja esta no disco.
 
-    Roda ANTES de abrir o Chrome: marcar um job como feito nao precisa de
-    browser, e abrir um so para descobrir isso e o que fazia a janela piscar.
+    Roda ANTES das passadas: marcar um job como feito nao precisa de browser, e
+    abrir um so para descobrir isso e o que fazia a janela piscar. E e tambem o
+    que LIBERA o payoff na mesma rodada — as duas imagens fecham aqui, e a
+    passada do Digen ja encontra a dependencia satisfeita.
+
+    Nao reivindica nada de proposito: reivindicar marcaria `running` um job que
+    talvez nao fosse processado, e devolver depois custaria uma tentativa.
+    Rodamos sob `instancia_unica`, entao ler e fechar em duas etapas e seguro.
     """
     from . import status
 
     resolvidos = 0
-    while True:
-        job = queue.claim(max_attempts)
-        if job is None:
-            return resolvidos, None
+    for job in queue.listar():
+        if job["status"] != queue.PENDENTE:
+            continue
         gid = job["generation_id"]
         slot = job.get("slot", slots.CHARACTER)
         job_id = job.get("job_id") or slots.job_id(gid, slot)
@@ -242,74 +379,145 @@ def _resolver_no_disco(max_attempts: int, rerender: bool,
             print(f"[identity] {job_id}: ja completo no disco; so fechando.")
             queue.concluir(job_id, str(artefato.caminho(gid, slot)))
             resolvidos += 1
-            continue
-        if status.clipe_utilizavel(gid, slot):
-            print(f"[identity] {job_id}: clipe ja baixado; refazendo o video "
-                  "sem abrir o browser.")
+        elif status.clipe_utilizavel(gid, slot):
+            print(f"[identity] {job_id}: artefato ja baixado; refazendo o "
+                  "video sem abrir o browser.")
             destino = registrar(gid, slot, artefato.caminho(gid, slot),
                                 job["prompt"], job.get("aspect") or "9:16",
-                                rerender=rerender, preview=preview, job_id=job_id)
+                                rerender=rerender, preview=preview,
+                                job_id=job_id)
             queue.concluir(job_id, str(destino))
             resolvidos += 1
-            continue
-        return resolvidos, job
+    return resolvidos
 
 
 def _drenar(headless: bool, rerender: bool, preview: bool,
             limite: int | None) -> int:
-    ajustes = config.settings()
-    max_attempts = int(ajustes.get("max_attempts", 3))
-    min_interval = float(ajustes.get("min_interval", 45))
-    rng = random.Random()
+    """Uma rodada: pre-passe no disco e depois UMA passada por provedor.
 
+    As passadas sao SEQUENCIAIS e irmas, nunca aninhadas: `contexto_persistente`
+    abre o proprio `sync_playwright` por dentro, e dois no mesmo thread
+    levantam "Playwright Sync API inside the asyncio loop". Sequencial tambem
+    da de graca a ordem do grafo — quando a passada do Digen comeca, as imagens
+    do PicassoIA ja estao no disco e o payoff passa no portao da fila.
+    """
     reabertos = queue.reabrir()
     if reabertos:
         print(f"[identity] {reabertos} job(s) orfao(s) devolvido(s) a fila.")
 
-    # Jobs adiados nesta rodada: voltaram para `pending` porque o video ainda
-    # esta sendo gerado, e repesca-los agora so gastaria a rodada em ping-pong.
-    adiados: set[str] = set()
-
-    # PRE-PASSE SEM BROWSER: resolve tudo que ja esta pronto no disco antes de
-    # abrir o Chrome. Sem isso, um job que so precisava ser marcado como feito
-    # abria e fechava o browser a toa — em `--watch` isso vira um ciclo visivel
-    # de janelas piscando.
-    resolvidos, job = _resolver_no_disco(max_attempts, rerender, preview)
-    if job is None:
-        if resolvidos:
-            print(f"[identity] {resolvidos} job(s) fechado(s) pelo disco, "
-                  "sem abrir o browser.")
-        else:
-            print("[identity] fila vazia.")
-        return resolvidos
+    resolvidos = _resolver_no_disco(rerender, preview)
+    if resolvidos:
+        print(f"[identity] {resolvidos} job(s) fechado(s) pelo disco, "
+              "sem abrir o browser.")
 
     concluidos = resolvidos
     quebrou: Exception | None = None
-    with contexto_persistente(headless=headless) as ctx:
-        page = pagina(ctx)
-        ensure_logged_in(page, ajustes, rng)
+    for provedor in provedores.TODOS:
+        if limite is not None and concluidos >= limite:
+            break
+        restante = None if limite is None else limite - concluidos
+        try:
+            feitos, erro = _passada(provedor, headless, rerender, preview,
+                                    restante)
+        except Exception as exc:
+            # Falha de UM provedor nao leva o outro junto: a imagem pode ter
+            # dado certo e o video ainda valer a tentativa, e vice-versa.
+            print(f"[identity] passada de {provedores.rotulo(provedor)} "
+                  f"falhou: {type(exc).__name__} {str(exc)[:160]}")
+            continue
+        concluidos += feitos
+        quebrou = quebrou or erro
 
-        # O browser abre uma vez e serve todos os jobs, entao o client nao sabe
-        # de qual geracao e o espaco que acabou de aparecer: o loop mantem essa
-        # informacao aqui e o callback so consulta.
+    if not concluidos:
+        # Sair calado com job parado na fila e como nao ter rodado: quem olha
+        # nao sabe se nao havia trabalho, se as tentativas acabaram ou se uma
+        # dependencia esta segurando. Cada caso pede uma acao diferente.
+        _explicar_parada()
+    if quebrou is not None:
+        raise DeployDoDigen(str(quebrou))
+    return concluidos
+
+
+def _explicar_parada() -> None:
+    """Diz POR QUE a rodada nao produziu nada."""
+    jobs = queue.listar()
+    if not jobs:
+        print("[identity] fila vazia.")
+        return
+    pendentes = [j for j in jobs if j["status"] == queue.PENDENTE]
+    if not pendentes:
+        estados = {}
+        for job in jobs:
+            estados[job["status"]] = estados.get(job["status"], 0) + 1
+        print("[identity] nada pendente ("
+              + ", ".join(f"{v} {k}" for k, v in sorted(estados.items())) + ").")
+        return
+
+    maximo = int(config.settings().get("max_attempts", 3))
+    esgotados = [j for j in pendentes if j.get("attempts", 0) >= maximo]
+    esperando = [j for j in pendentes if j.get("depends_on")
+                 and j.get("attempts", 0) < maximo]
+    print(f"[identity] {len(pendentes)} job(s) pendente(s) e nenhum "
+          "reivindicavel agora.")
+    for job in esgotados:
+        print(f"[identity]   {job['job_id']}: tentativas esgotadas "
+              f"({job['attempts']}/{maximo}) - reenfileire com "
+              f"`identity run {job['generation_id']}` para zerar.")
+    for job in esperando:
+        faltam = [d for d in job["depends_on"]
+                  if not artefato.utilizavel(*slots.partes(d))]
+        if faltam:
+            print(f"[identity]   {job['job_id']}: esperando "
+                  + ", ".join(slots.partes(d)[1] for d in faltam)
+                  + f" (prazo ate {job.get('aguardar_ate')})")
+
+
+def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
+             limite: int | None) -> tuple[int, Exception | None]:
+    """Um browser, um perfil, um login: todos os jobs daquele provedor."""
+    sel = provedores.seletores(provedor)
+    ajustes = config.settings(provedor)
+    max_attempts = int(ajustes.get("max_attempts", 3))
+    min_interval = float(ajustes.get("min_interval", 45))
+    rng = random.Random()
+
+    # Jobs adiados NESTA passada: voltaram para `pending` porque a geracao
+    # ainda esta em voo, e repesca-los agora so gastaria a rodada em ping-pong.
+    adiados: set[str] = set()
+
+    job = queue.claim(max_attempts, provedor=provedor)
+    if job is None:
+        return 0, None
+
+    concluidos = 0
+    quebrou: Exception | None = None
+    print(f"[identity] --- passada: {provedores.rotulo(provedor)} ---")
+    with contexto_persistente(headless=headless,
+                              profile=config.profile_dir(provedor)) as ctx:
+        page = pagina(ctx)
+        ensure_logged_in(page, ajustes, rng, sel=sel, provedor=provedor)
+
+        # O browser abre uma vez e serve todos os jobs da passada, entao o
+        # client nao sabe de qual job e o espaco que acabou de aparecer: o loop
+        # mantem essa informacao aqui e o callback so consulta.
         atual: dict[str, str | None] = {"job_id": None}
 
         def _guardar_espaco(url: str) -> None:
             if atual["job_id"]:
                 queue.registrar_espaco(atual["job_id"], url)
 
-        client = DigenClient(ctx, page, ajustes, rng,
-                             ao_descobrir_espaco=_guardar_espaco)
+        client = provedores.cliente(provedor, ctx, page, ajustes, rng,
+                                    ao_descobrir_espaco=_guardar_espaco)
 
         saldo = client.creditos()
         if saldo is not None:
-            print(f"[identity] creditos disponiveis: {saldo}")
+            print(f"[identity] creditos em {provedor}: {saldo}")
             if saldo <= 0:
                 queue.falhar(job["job_id"],
-                             "conta sem creditos no Digen", max_attempts=0)
-                print("[identity] sem creditos: nada a fazer. Os jobs seguem "
-                      "na fila para quando houver saldo.")
-                return 0
+                             f"conta sem creditos em {provedor}", max_attempts=0)
+                print(f"[identity] {provedor} sem creditos: os jobs seguem na "
+                      "fila para quando houver saldo.")
+                return 0, None
 
         while job is not None:
             atual["job_id"] = job["job_id"]
@@ -320,18 +528,17 @@ def _drenar(headless: bool, rerender: bool, preview: bool,
                 print(f"[identity] {job['job_id']}: OK -> {destino}")
             except BrowserMorreu as exc:
                 # A aba morreu: o `page` que o client guarda esta morto para
-                # SEMPRE, e todo job seguinte falharia em segundos contra ele
-                # (visto em 22/08: loop de 50 em 50 s sem sair do lugar).
-                # Encerrar a rodada faz o `with` fechar tudo; a proxima abre um
-                # browser limpo e retoma o mesmo espaco.
+                # SEMPRE, e todo job seguinte falharia em segundos contra ele.
+                # Encerrar a passada faz o `with` fechar tudo; a proxima abre um
+                # browser limpo e retoma de onde parou.
                 queue.reagendar(job["job_id"], str(exc))
                 print(f"[identity] {job['job_id']}: {exc}")
-                print("[identity] encerrando a rodada para abrir um browser "
-                      "novo; o video continua sendo gerado no Digen.")
+                print("[identity] encerrando a passada para abrir um browser "
+                      "novo; a geracao continua acontecendo no site.")
                 break
             except EsperaEstourou as exc:
-                # Nao conta como falha: o video segue na fila do Digen e a
-                # proxima passada retoma o mesmo espaco.
+                # Nao conta como falha: a geracao segue na fila do site e a
+                # proxima passada retoma.
                 queue.reagendar(job["job_id"], str(exc))
                 adiados.add(job["job_id"])
                 print(f"[identity] {job['job_id']}: ainda gerando; "
@@ -340,29 +547,28 @@ def _drenar(headless: bool, rerender: bool, preview: bool,
                 atualizado = queue.falhar(job["job_id"], str(exc), max_attempts)
                 estado = (atualizado or {}).get("status", "?")
                 history.registrar(job["generation_id"], history.FALHOU,
-                                  slot=job.get("slot"), erro=str(exc)[:200],
-                                  estado=estado, tipo=type(exc).__name__)
+                                  slot=job.get("slot"), provedor=provedor,
+                                  erro=str(exc)[:200], estado=estado,
+                                  tipo=type(exc).__name__)
                 print(f"[identity] {job['job_id']}: FALHOU ({estado}) {exc}")
                 if isinstance(exc, SeletorNaoEncontrado):
-                    # Assinatura de deploy do Digen. Em --watch isso se
-                    # repetiria em silencio para sempre; melhor parar a rodada
+                    # Assinatura de deploy do site. Em --watch isso se
+                    # repetiria em silencio para sempre; melhor parar a passada
                     # e dizer o que fazer do que queimar a fila inteira.
-                    _alertar_seletor()
+                    _alertar_seletor(provedor)
                     quebrou = exc
                     break
 
             if limite is not None and concluidos >= limite:
                 break
-            job = queue.claim(max_attempts, adiados)
+            job = queue.claim(max_attempts, adiados, provedor=provedor)
             if job is not None:
                 espera = min_interval + rng.uniform(0, min_interval * 0.3)
                 print(f"[identity] proximo job em {espera:.0f}s...")
                 time.sleep(espera)
                 pausa_humana(rng)
 
-    if quebrou is not None:
-        raise DeployDoDigen(str(quebrou))
-    return concluidos
+    return concluidos, quebrou
 
 
 def _tem_pendente() -> bool:

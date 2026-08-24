@@ -56,9 +56,20 @@ def _do_provedor(provedor: str | None) -> dict:
     return PROVEDORES[nome]
 
 
-def settings() -> dict:
-    """config/identity.json (prompt, timeouts, pacing, seletores de fluxo)."""
-    return load_config("identity.json")
+def settings(provedor: str | None = None) -> dict:
+    """config/identity.json (prompts, timeouts, pacing, seletores de fluxo).
+
+    Sem argumento devolve a RAIZ inteira, exatamente como sempre devolveu — o
+    diagnostico, o cliente do Digen e os testes leem modelo/duracao/resolucao
+    de la. Com provedor, a raiz vem com o bloco daquele site por cima: o que
+    e comum fica escrito uma vez so, e o que e do site sobrescreve.
+    """
+    base = load_config("identity.json")
+    if provedor is None:
+        return base
+    especifico = (base.get("provedores") or {}).get(provedor) or {}
+    return {**base, **{k: v for k, v in especifico.items()
+                       if not k.startswith("_")}}
 
 
 def profile_dir(provedor: str | None = None) -> Path:

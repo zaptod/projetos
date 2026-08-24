@@ -181,6 +181,11 @@ def _checar_presets() -> list[dict]:
 
     linhas, problemas = [], []
     for slot in slots.SLOTS:
+        if slots.midia(slot) != slots.VIDEO:
+            # Imagem nao tem duracao. Reportar "character=5s" para um slot que
+            # virou PNG e ruido que ensina a ignorar o diagnostico.
+            linhas.append(f"{slot}=imagem")
+            continue
         preferencia = preset_do_slot(ajustes, "duracao", slot)
         primeiro = (preferencia[0] if isinstance(preferencia, list)
                     else preferencia)
@@ -199,9 +204,14 @@ def _checar_presets() -> list[dict]:
             problemas.append(f"{slot}: pede {primeiro} e a montagem corta em "
                              f"{janela['max']}s")
 
-    checks = [_check("duracao por slot", AVISO if problemas else OK,
+    checks = [_check("midia e duracao por slot", AVISO if problemas else OK,
                      ("; ".join(problemas) if problemas
                       else " ".join(linhas))[:120])]
+    from . import provedores
+    checks.append(_check(
+        "provedores", OK,
+        " ".join(f"{p}:{'+'.join(provedores.slots_de(p)) or 'nenhum'}"
+                 for p in provedores.TODOS)))
     junto = bool(config.settings().get("espaco_por_geracao", True))
     checks.append(_check(
         "space por build", OK,

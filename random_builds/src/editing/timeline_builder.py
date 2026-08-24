@@ -194,6 +194,12 @@ class TimelineBuilder:
             "caption": "",
         }
 
+        if midia == identity_slots.VIDEO:
+            # Decisao do PLANO, nao do renderer: quem sabe que existe trilha
+            # de fundo e a edicao.
+            evento["sem_som"] = bool(
+                (self.config.get("identity_som") or {}).get("payoff_mudo", True))
+
         if midia == identity_slots.IMAGEM:
             # Imagem nao tem duracao para medir: quem decide e a direcao. E ela
             # NAO fica o teto da janela — parada, ela vira o cartao que a
@@ -234,9 +240,19 @@ class TimelineBuilder:
         classe = str(personagem.get("classe", "")).split(" (")[0]
         altura = f"{personagem.get('tamanho', 0):.2f}".replace(".", ",")
         if slot == identity_slots.WEAPON:
+            # O nome da arma JA carrega estilo e raridade ("Lancas de Mana
+            # Comum"), entao repeti-los embaixo e ruido: a segunda linha custa
+            # o mesmo tempo de tela e nao acrescenta nada. Quem entra sao o
+            # encantamento e a habilidade — o que a arma FAZ, que nao esta no
+            # nome e e o que o espectador ainda nao sabe.
+            encantamentos = arma.get("encantamentos") or []
+            encantamento = (arma.get("afinidade_elemento")
+                            or (encantamentos[0] if encantamentos else ""))
+            detalhes = [str(d) for d in (encantamento, arma.get("habilidade"))
+                        if d]
             return {"titulo": str(arma.get("nome", "")).upper(),
-                    "subtitulo": f"{arma.get('raridade', '')} - "
-                                 f"{arma.get('estilo') or arma.get('tipo', '')}"}
+                    "subtitulo": " - ".join(detalhes)
+                                 or str(arma.get("raridade", ""))}
         if slot == identity_slots.CHARACTER_WEAPON:
             return {"titulo": str(personagem.get("nome", "")).upper(),
                     "subtitulo": f"+ {arma.get('nome', '')}"}

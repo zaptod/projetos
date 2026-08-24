@@ -17,6 +17,10 @@ from __future__ import annotations
 import re
 import time
 
+# Marca do provedor. O `session.ensure_logged_in` usa para o prefixo do log e
+# para achar a credencial certa quando recebe so o modulo de seletores.
+PROVEDOR = "digen"
+
 BASE_URL = "https://digen.ai"
 # O composer vive na PROPRIA pagina de Spaces: nao existe rota separada de
 # criacao. `/create` e outra ferramenta.
@@ -185,11 +189,49 @@ JS_SRC_DO_CARD = """([icone, alvo]) => {
       card = card.parentElement;
       if (card.querySelector('video, a[download]')) break;
     }
+    const v = card.querySelector('video');
+    if (v && (v.currentSrc || v.src)) return v.currentSrc || v.src;
     const midia = card.querySelector('video[src], video source[src], a[download]');
     return midia ? (midia.getAttribute('src') || midia.getAttribute('href')) : null;
   }
   return null;
 }"""
+
+
+# Fazer o <video> revelar a fonte. Ele nasce sem `src` (lazy) e so ganha
+# `currentSrc` quando TOCA — entao a leitura pede para tocar antes de olhar.
+# Sem isto, o plano B do download nao tem o que baixar e o video gerado fica
+# preso no site.
+JS_ACORDAR_VIDEO = """([icone, alvo]) => {
+  const vis = e => { const r = e.getBoundingClientRect();
+                     return r.width > 0 && r.height > 0; };
+  let n = 0;
+  for (const botao of document.querySelectorAll('button')) {
+    const path = botao.querySelector('svg path');
+    if (!path) continue;
+    if (!(path.getAttribute('d') || '').startsWith(icone)) continue;
+    if (!vis(botao)) continue;
+    if (n++ !== alvo) continue;
+    let card = botao;
+    for (let i = 0; i < 8 && card.parentElement; i++) {
+      card = card.parentElement;
+      if (card.querySelector('video')) break;
+    }
+    const v = card.querySelector('video');
+    if (!v) return false;
+    try { v.muted = true; v.load(); const p = v.play(); if (p) p.catch(() => {}); }
+    catch (e) {}
+    return true;
+  }
+  return false;
+}"""
+
+
+def acordar_video(page, indice: int = 0) -> bool:
+    try:
+        return bool(page.evaluate(JS_ACORDAR_VIDEO, [ICONE_DOWNLOAD, indice]))
+    except Exception:
+        return False
 
 
 def src_do_card(page, indice: int = 0) -> str | None:
@@ -202,6 +244,88 @@ def src_do_card(page, indice: int = 0) -> str | None:
         return page.evaluate(JS_SRC_DO_CARD, [ICONE_DOWNLOAD, indice])
     except Exception:
         return None
+
+
+JS_CARD_NA_TELA = """([icone, alvo]) => {
+  const vis = e => { const r = e.getBoundingClientRect(); return r.width>0 && r.height>0; };
+  let n = 0;
+  for (const botao of document.querySelectorAll('button')) {
+    const path = botao.querySelector('svg path');
+    if (!path) continue;
+    if (!(path.getAttribute('d') || '').startsWith(icone)) continue;
+    if (!vis(botao)) continue;
+    if (n++ !== alvo) continue;
+    let card = botao;
+    for (let i = 0; i < 8 && card.parentElement; i++) {
+      card = card.parentElement;
+      if (card.querySelector('video')) break;
+    }
+    card.scrollIntoView({block: 'center'});
+    const r = card.getBoundingClientRect();
+    return {x: r.x + r.width / 2, y: r.y + r.height / 2};
+  }
+  return null;
+}"""
+
+
+def hover_no_card(page, indice: int = 0) -> bool:
+    """Rola o card para a tela e passa o mouse por cima dele.
+
+    Os controles do card (download, apagar) so aparecem no HOVER. Sem isso o
+    botao de download simplesmente NAO EXISTE no DOM na hora de procurar — e o
+    sintoma nao e "nao achei", e "achei e o clique estourou", porque o
+    elemento nasce e some enquanto o Playwright tenta.
+    """
+    try:
+        centro = page.evaluate(JS_CARD_NA_TELA, [ICONE_DOWNLOAD, indice])
+        if not centro:
+            # Sem card visivel ainda: passar o mouse no meio da tela costuma
+            # revelar o primeiro, que e o caso comum de um espaco com um video.
+            page.mouse.move(page.viewport_size["width"] / 2,
+                            page.viewport_size["height"] / 2)
+            return False
+        page.mouse.move(centro["x"], centro["y"])
+        return True
+    except Exception:
+        return False
+
+
+# Esvaziar o composer: tirar a imagem anexada e o texto. Com eles a caixa fica
+# alta e a barra flutuante do rodape (RealDance / Lip Gen, `pointer-events`
+# numa div z-30) cobre o botao de download do card — o Playwright recusa
+# clicar em elemento coberto, e forcar o clique acerta a barra, nao o botao.
+JS_ESVAZIAR_COMPOSER = """() => {
+  const vis = e => { const r = e.getBoundingClientRect(); return r.width>0 && r.height>0; };
+  const campo = document.querySelector(
+    'div[contenteditable="true"][role="textbox"], textarea, [aria-placeholder]');
+  if (!campo) return {achou: false};
+  let caixa = campo;
+  for (let i = 0; i < 6 && caixa.parentElement; i++) {
+    caixa = caixa.parentElement;
+    if (caixa.querySelector('img')) break;
+  }
+  let removidas = 0;
+  caixa.querySelectorAll('img').forEach(img => {
+    const r = img.getBoundingClientRect();
+    if (r.width < 20) return;
+    let alvo = img;
+    for (let i = 0; i < 3 && alvo.parentElement; i++) {
+      alvo = alvo.parentElement;
+      const x = alvo.querySelector('button');
+      if (x && vis(x)) { x.click(); removidas++; return; }
+    }
+  });
+  return {achou: true, removidas: removidas};
+}"""
+
+
+def esvaziar_composer(page) -> int:
+    """Remove as miniaturas anexadas. Devolve quantas sairam."""
+    try:
+        resultado = page.evaluate(JS_ESVAZIAR_COMPOSER) or {}
+        return int(resultado.get("removidas") or 0)
+    except Exception:
+        return 0
 
 
 def botao_download(page, indice: int = 0):
@@ -257,11 +381,14 @@ BOTAO_ANEXO = [
 # identifica esta no MEIO do path.
 SETA_PARA_CIMA = "M93.66,77.66,120,51.31V144"
 
+# Rotulo EXATO visto no menu em 24/08/2026: "Upload Image". O menu tem ainda
+# "Select from Gallery" e "Character Library" — nenhum dos dois serve, e por
+# isso a ancora nao pode ser "o primeiro item do popover".
 OPCAO_ENVIAR_IMAGEM = [
+    ("role", "button|Upload Image"),
+    ("text", "Upload Image"),
     ("role", "button|Enviar imagem"),
-    ("role", "button|Upload image"),
     ("text", "Enviar imagem"),
-    ("text", "Upload image"),
     ("css", f'button:has(svg path[d*="{SETA_PARA_CIMA}"])'),
 ]
 
@@ -284,8 +411,44 @@ def entrada_de_arquivo(page, indice: int = 0):
 # Miniatura da referencia ja anexada e o "x" que a remove. VAZIAS: nada foi
 # observado no DOM ainda. Lista vazia significa "nao levantado", e e isso que
 # o `identity doctor` conta e reporta — nunca um seletor inventado.
-MINIATURA_REFERENCIA: list[tuple[str, str]] = []
-REMOVER_REFERENCIA: list[tuple[str, str]] = []
+# A PROVA de que o anexo pegou: o composer passa a mostrar a miniatura, e ela
+# e um `blob:` criado pelo proprio navegador. Contar antes e depois e a unica
+# checagem honesta — `set_input_files` nao levantar excecao nao prova nada, e
+# foi assim que uma rodada inteira reportou "1 referencia anexada" com o
+# composer vazio.
+# As miniaturas sao contadas DENTRO do composer, ancorando no campo de prompt
+# e subindo ate o bloco que o contem. Contar por `blob:` na pagina inteira nao
+# serve: a miniatura nem sempre e blob (as vezes ja e a URL do CDN), e ai a
+# contagem dava zero com a imagem visivel na tela — foi assim que uma
+# substituicao passou por "recusa".
+JS_MINIATURAS = """() => {
+  const campo = document.querySelector(
+    'div[contenteditable="true"][role="textbox"], textarea, [aria-placeholder]');
+  if (!campo) return [];
+  let caixa = campo;
+  for (let i = 0; i < 6 && caixa.parentElement; i++) {
+    caixa = caixa.parentElement;
+    if (caixa.querySelector('img')) break;
+  }
+  return Array.from(caixa.querySelectorAll('img'))
+    .filter(i => { const r = i.getBoundingClientRect();
+                   return r.width > 20 && r.height > 20; })
+    .map(i => i.currentSrc || i.src || '');
+}"""
+
+
+def miniaturas(page) -> list[str]:
+    """As miniaturas de referencia que o composer esta mostrando agora."""
+    try:
+        return [str(s) for s in page.evaluate(JS_MINIATURAS)]
+    except Exception:
+        return []
+
+
+REMOVER_REFERENCIA = [
+    ("role", "button|Remove"),
+    ("css", 'button[aria-label*="emove"]'),
+]
 
 # As tres listas acima descrevem um fluxo de anexo que e o mesmo nos dois
 # sites que este projeto automatiza (mesmos tokens de tema, mesmos icones
@@ -424,11 +587,21 @@ def maior_opcao(page, conhecidos: tuple[str, ...]) -> str | None:
 # seletor por texto pararia de casar.
 ICONE_MODELO = "M14.019 10.5c0-3.065-1.417-4.43-2.697-5.15"
 
+# Familias de modelo, para ler o botao SEJA QUAL FOR o modelo escolhido.
+#
+# O icone acima e o "D" da Digen e so aparece nos Real Motion. Ancorar apenas
+# nele (e em "RM"/"Real Motion", que era o resto da lista) fazia o botao ficar
+# ILEGIVEL depois de trocar para Kling: a troca acontecia e a conferencia
+# devolvia None, derrubando o job com "ficou em None". A conferencia estava
+# certa; a lista e que so enxergava a casa.
+FAMILIAS_DE_MODELO = ("RM", "Real Motion", "Kling", "Runway", "Sora", "Veo",
+                      "Seedance", "MiniMax", "FLUX", "Grok", "Gemini",
+                      "HappyHorse")
+
 BOTAO_MODELO = [
     ("css", f'button:has(svg path[d^="{ICONE_MODELO}"])'),
-    ("css", "button[aria-haspopup='dialog']:has-text('RM')"),
-    ("css", "button:has-text('Real Motion')"),
-]
+] + [("css", f"button[aria-haspopup='dialog']:has-text('{familia}')")
+     for familia in FAMILIAS_DE_MODELO]
 
 ASPECTOS_CONHECIDOS = ("9:16", "16:9", "1:1", "4:3", "3:4", "Auto")
 

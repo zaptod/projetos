@@ -171,13 +171,29 @@ class DigenClient:
         """Espaco vazio serve; com video dentro, cada um precisa de marca propria."""
         return all(fotos) and len(set(fotos)) == len(fotos)
 
+    @staticmethod
+    def _canonico(texto: str, conhecidos) -> str | None:
+        """O nome catalogado que corresponde ao que o botao MOSTRA.
+
+        Compara sem espaco e sem caixa: o pill mostra "720p" e o catalogo tem
+        "720P", e a igualdade literal devolvia None — o que fazia o controle
+        parecer inexistente e a resolucao nunca ser ajustada. Mesmo defeito do
+        "Kling3.0" contra "Kling 3.0".
+        """
+        alvo = "".join((texto or "").split()).lower()
+        if not alvo:
+            return None
+        for conhecido in conhecidos:
+            if "".join(conhecido.split()).lower() == alvo:
+                return conhecido
+        return None
+
     def _valor_do_controle(self, candidatos, conhecidos) -> str | None:
         """Valor atual mostrado no proprio botao do rodape."""
         botao = selectors.encontrar(self.page, candidatos, timeout=2.0)
         if botao is None:
             return None
-        texto = " ".join((botao.inner_text() or "").split())
-        return texto if texto in conhecidos else None
+        return self._canonico(botao.inner_text() or "", conhecidos)
 
     @staticmethod
     def _preferencias(valor) -> list[str]:
@@ -357,6 +373,19 @@ class DigenClient:
         self._ajustar_controle("resolucao", selectors.BOTAO_RESOLUCAO,
                                selectors.RESOLUCOES_CONHECIDAS, preferencias)
 
+    @staticmethod
+    def _mesmo_modelo(a: str | None, b: str | None) -> bool:
+        """Compara nome de modelo ignorando espacos e caixa.
+
+        O menu lista "Kling 3.0" e o botao mostra "Kling3.0" — sem o espaco.
+        Comparar literal fazia a conferencia falhar DEPOIS de uma troca que
+        deu certo, e o job caia repetindo "ficou em None"/"nao esta no menu"
+        com o modelo ja correto na tela.
+        """
+        if a is None or b is None:
+            return False
+        return "".join(a.split()).lower() == "".join(b.split()).lower()
+
     def _modelo_atual(self) -> str | None:
         """Texto do botao de modelo (abreviado: "RM3.2"), ou None."""
         botao = selectors.encontrar(self.page, selectors.BOTAO_MODELO, timeout=2.0)
@@ -377,9 +406,17 @@ class DigenClient:
         """
         if not modelo:
             return
+        permitidos = self.ajustes.get("modelos_permitidos") or []
+        if permitidos and modelo not in permitidos:
+            # Recusa ANTES de gastar: o menu mistura o modelo incluso com
+            # modelos cobrados por geracao, e escolher errado custa dinheiro.
+            raise GeracaoFalhou(
+                f"o modelo {modelo!r} nao esta na lista branca "
+                f"(`modelos_permitidos` em config/identity.json). "
+                f"Permitidos: {', '.join(permitidos[:4])}...")
         esperado = selectors.abreviar_modelo(modelo)
         atual = self._modelo_atual()
-        if atual == esperado:
+        if self._mesmo_modelo(atual, esperado):
             print(f"[digen] modelo ja em {modelo} ({atual}).")
             return
         if atual is None:
@@ -404,15 +441,44 @@ class DigenClient:
         # Conferir e obrigatorio: um clique que caiu no item errado (ou nao
         # registrou) so apareceria depois, no video pronto.
         virou = self._modelo_atual()
-        if virou != esperado:
+        if not self._mesmo_modelo(virou, esperado):
             raise GeracaoFalhou(
                 f"pedi {modelo!r} (esperava o botao mostrar {esperado!r}) mas "
                 f"ele ficou em {virou!r}. Nao vou gerar com o modelo errado.")
         print(f"[digen] modelo {atual} -> {virou}")
 
+    def anexar_referencias(self, caminhos) -> list:
+        """Anexa as imagens de referencia. NUNCA levanta.
+
+        Devolve o que CONSEGUIU anexar — possivelmente nada. Quem chama decide
+        o texto do prompt a partir disso: hoje esse video sai, e fazer o payoff
+        falhar por causa de um controle de upload que pode nao existir seria
+        trocar um video imperfeito por nenhum video.
+
+        Roda depois do espaco pronto e ANTES de escrever o prompt e de clicar
+        em enviar: falhar aqui custa zero credito.
+        """
+        if not caminhos:
+            return []
+        ajustes_ref = self.ajustes.get("referencias") or {}
+        if not ajustes_ref.get("habilitado", True):
+            print("[digen] anexo de referencia desligado no config.")
+            return []
+        from . import referencias, selectors as sel
+        prontos = [referencias.para_upload(Path(c)) for c in caminhos]
+        anexadas = referencias.anexar(self.page, prontos, sel, self.rng)
+        if anexadas:
+            print(f"[digen] {len(anexadas)} referencia(s) anexada(s): "
+                  + ", ".join(Path(a).name for a in anexadas))
+        else:
+            print("[digen] nenhuma referencia anexada; o prompt vai carregar "
+                  "as duas identidades por escrito.")
+        return anexadas
+
     def submit_prompt(self, prompt: str, aspect: str = "9:16",
                       modelo: str | None = None, duracao=None,
-                      resolucao=None, espaco: str | None = None) -> list[str]:
+                      resolucao=None, espaco: str | None = None,
+                      antes: list[str] | None = None) -> list[str]:
         """Envia o prompt e devolve a FOTO dos cards que ja existiam no espaco.
 
         A foto e o que permite reconhecer o video novo depois: com os tres
@@ -420,7 +486,11 @@ class DigenClient:
         mais o nosso.
         """
         page = self.page
-        antes = self.preparar_espaco(espaco)
+        # `antes` ja preenchido = o espaco foi preparado por quem chamou (o
+        # worker prepara antes para poder ANEXAR e so entao decidir o texto).
+        # Preparar de novo aqui limparia o composer e perderia o anexo.
+        if antes is None:
+            antes = self.preparar_espaco(espaco)
 
         campo = selectors.resolver(page, selectors.CAMPO_PROMPT,
                                    "o campo de prompt")
@@ -616,29 +686,114 @@ class DigenClient:
             f"fila do Digen em {self.url_do_espaco}).")
 
     # --------------------------------------------------------------- download
-    def download(self, indice: int, dest: Path) -> Path:
-        """Baixa o card `indice` — o que `wait_for_render` identificou.
+    def _liberar_botao_de_download(self, indice: int) -> None:
+        """Tira o composer da frente do botao de baixar.
+
+        A barra flutuante do rodape (RealDance / Lip Gen) fica POR CIMA do
+        botao de download do card. Com imagem anexada e texto escrito a caixa
+        do composer cresce e empurra tudo, e o botao vira inalcancavel — o
+        Playwright acusa "subtree intercepts pointer events" e forcar o clique
+        so acerta a barra.
+
+        A sequencia que funciona (observada na tela): tirar a imagem, apagar o
+        texto, rolar um pouco e so entao passar o mouse no card.
+        """
+        removidas = selectors.esvaziar_composer(self.page)
+        try:
+            self._limpar_composer()
+        except Exception:
+            pass
+        try:
+            self.page.mouse.wheel(0, 320)
+        except Exception:
+            pass
+        time.sleep(1.0)
+        selectors.hover_no_card(self.page, indice)
+        time.sleep(1.0)
+        if removidas:
+            print(f"[digen] composer esvaziado ({removidas} miniatura(s)) "
+                  "para liberar o botao de baixar.")
+
+    def _url_por_rede(self, indice: int, segundos: float = 15.0) -> str | None:
+        """Manda o video tocar e pega a URL do mp4 que passar pela rede.
+
+        E o caminho que sobra quando o DOM nao entrega nada: o player pode
+        montar a fonte por JS ou por MSE, mas o arquivo tem que trafegar.
+        """
+        capturadas: list[str] = []
+
+        def ao_responder(resposta):
+            try:
+                url = resposta.url
+                tipo = (resposta.headers or {}).get("content-type", "")
+            except Exception:
+                return
+            if ".mp4" in url.lower() or "video/" in tipo.lower():
+                capturadas.append(url)
+
+        self.page.on("response", ao_responder)
+        try:
+            selectors.acordar_video(self.page, indice)
+            fim = time.monotonic() + segundos
+            while time.monotonic() < fim and not capturadas:
+                time.sleep(0.5)
+        except Exception:
+            pass
+        finally:
+            try:
+                self.page.remove_listener("response", ao_responder)
+            except Exception:
+                pass
+        if capturadas:
+            print(f"[digen] URL do video capturada na rede "
+                  f"({len(capturadas)} resposta(s) de video).")
+        return capturadas[-1] if capturadas else None
+
+    def download(self, alvo, dest: Path) -> Path:
+        """Baixa o que `wait_for_render` identificou. Aqui, o INDICE do card.
+
+        O parametro se chama `alvo` porque este e o contrato compartilhado
+        entre os provedores: "baixe o que a espera devolveu". No Digen isso e
+        um indice de card; no PicassoIA e a URL da imagem. Nomear diferente nos
+        dois foi o que um teste de conformidade pegou — e e o tipo de
+        divergencia que so aparece no dia em que alguem chama por keyword.
 
         Duas estrategias, nessa ordem: botao de download real, depois o src.
         A segunda usa `ctx.request`, que reusa cookies e headers da propria
         sessao do browser — por isso o projeto nao precisa de `requests`.
         """
+        indice = int(alvo)
         dest.parent.mkdir(parents=True, exist_ok=True)
 
+        self._liberar_botao_de_download(indice)
         botao = selectors.botao_download(self.page, indice)
         if botao is not None:
-            try:
-                with self.page.expect_download(
-                        timeout=float(self.ajustes.get("download_timeout", 120)) * 1000
-                ) as info:
-                    botao.click()
-                info.value.save_as(str(dest))
-                print(f"[digen] baixado via botao -> {dest}")
-                return dest
-            except Exception as exc:
-                print(f"[digen] botao de download falhou ({exc}); tentando pelo src.")
+            # `force` porque a pagina tem uma barra flutuante (`pointer-events`
+            # numa div z-30 no rodape) que INTERCEPTA o clique: o Playwright
+            # recusa clicar em elemento coberto, e sem forcar o download nunca
+            # comeca — o video fica pronto no site e preso la.
+            for forcar in (False, True):
+                try:
+                    with self.page.expect_download(
+                            timeout=float(self.ajustes.get("download_timeout", 120)) * 1000
+                    ) as info:
+                        botao.click(force=forcar, timeout=15000)
+                    info.value.save_as(str(dest))
+                    print(f"[digen] baixado via botao{' (forcado)' if forcar else ''}"
+                          f" -> {dest}")
+                    return dest
+                except Exception as exc:
+                    print(f"[digen] botao de download falhou"
+                          f"{' mesmo forcado' if forcar else ''} "
+                          f"({type(exc).__name__}: {str(exc)[:90]}).")
 
-        src = selectors.src_do_card(self.page, indice)
+        # Plano B: OUVIR A REDE. O <video> do card nao tem `src` nem `<source>`
+        # nem depois de tocar (verificado no DOM), entao nao existe URL para
+        # ler — mas ela passa pela rede quando o player busca o arquivo. Isto
+        # nao depende de nenhum seletor, que e a parte que mais quebra.
+        src = self._url_por_rede(indice)
+        if not src:
+            src = selectors.src_do_card(self.page, indice)
         if not src:
             raise GeracaoFalhou(
                 f"card {indice + 1} sem `src` e sem botao de download utilizavel.")
