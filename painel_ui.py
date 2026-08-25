@@ -9,8 +9,10 @@ Uso:  python painel_ui.py   (ou dois cliques em painel.bat)
 """
 from __future__ import annotations
 
+import ctypes
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
@@ -21,10 +23,13 @@ from tkinter import filedialog, messagebox, ttk
 RAIZ = Path(__file__).resolve().parent
 RANDOM_BUILDS = RAIZ / "random_builds"
 PY = sys.executable
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 sys.path.insert(0, str(RANDOM_BUILDS))
 from src.assets import importer as reacoes_importer  # noqa: E402
 from src.assets.catalog import CATEGORIES  # noqa: E402
+from src.assets.reaction_cli import CATEGORY_DESC  # noqa: E402
+from src.assets.triagem import SessaoTriagem  # noqa: E402
 
 # ------------------------------------------------------------------ tema
 BG = "#14121f"
@@ -580,6 +585,8 @@ class Painel(tk.Tk):
                              self._importar_arquivos).pack(side="left", padx=8)
         self._botao(topo, "＋ Importar pasta inteira…",
                     self._importar_pasta).pack(side="left")
+        self._botao(topo, "🎬 Categorizar assistindo…",
+                    self._categorizar_assistindo).pack(side="left", padx=8)
 
         corpo = tk.Frame(pai, bg=BG)
         corpo.pack(fill="both", expand=True, padx=20, pady=10)
@@ -605,6 +612,14 @@ class Painel(tk.Tk):
         self._botao(rodape, "Recategorizar", self._recategorizar).pack(side="left", padx=4)
         self._botao(rodape, "Remover", self._remover_reacoes, cor=RED).pack(side="left", padx=4)
         self._botao(rodape, "🔄 Atualizar lista", self._atualizar_reacoes).pack(side="right")
+
+    def _categorizar_assistindo(self):
+        janela = getattr(self, "_janela_triagem", None)
+        if janela is not None and janela.winfo_exists():
+            janela.lift()
+            janela.focus_force()
+            return
+        self._janela_triagem = JanelaTriagem(self)
 
     def _atualizar_reacoes(self):
         if not hasattr(self, "tabela"):
@@ -1315,6 +1330,346 @@ class Painel(tk.Tk):
         self._log(f"{removidos} arquivo(s) de override removidos; "
                   "configuracao local resetada.", "fim")
         self._atualizar_audio()
+
+
+class JanelaTriagem(tk.Toplevel):
+    """Categorizar assistindo: os videos do pack tocam um a um DENTRO da
+    janela, e um clique (ou tecla 1-9) importa na categoria clicada.
+
+    O ffplay abre com um titulo unico, a janela dele e adotada como filha do
+    frame preto (SetParent) e o input dela e desligado — os atalhos ficam
+    sempre com o painel; espaco e as setas sao repassados ao player via
+    PostMessage. Sem ffplay no PATH, cada video abre no player padrao do
+    sistema e os botoes continuam valendo. A fila, a importacao e o desfazer
+    vivem em SessaoTriagem (random_builds/src/assets/triagem.py).
+    """
+
+    GWL_STYLE = -16
+    WS_CHILD = 0x40000000
+    WS_VISIBLE = 0x10000000
+    WM_KEYDOWN = 0x0100
+    WM_KEYUP = 0x0101
+    VK_SPACE = 0x20
+    VK_LEFT = 0x25
+    VK_RIGHT = 0x27
+
+    def __init__(self, painel: Painel):
+        super().__init__(painel)
+        self.painel = painel
+        self.title("Categorizar assistindo — biblioteca de reações")
+        self.geometry("1080x800")
+        self.minsize(900, 660)
+        self.configure(bg=BG)
+        self.sessao = SessaoTriagem(RANDOM_BUILDS / "assets")
+        self.fila: list[str] = []
+        self.idx = 0
+        self.importados_sessao = 0
+        self._player: subprocess.Popen | None = None
+        self._hwnd = 0
+        self._geracao = 0     # invalida callbacks (embed/sonda) de video antigo
+        self._dims = None     # (largura, altura) do video atual, para o letterbox
+        self._ocupado = False
+        self._ffplay = shutil.which("ffplay")
+        self._montar()
+        self._atalhos()
+        self.protocol("WM_DELETE_WINDOW", self._fechar)
+        if not self._ffplay:
+            self.painel._log("[triagem] ffplay não encontrado no PATH — os "
+                             "vídeos vão abrir no player padrão do sistema.", "erro")
+
+    # ------------------------------------------------------------ interface
+    def _montar(self):
+        topo = tk.Frame(self, bg=BG)
+        topo.pack(fill="x", padx=14, pady=(12, 6))
+        self.painel._botao_primario(topo, "📂 Escolher pasta do pack…",
+                                    self._escolher_pasta).pack(side="left")
+        self.var_mover = tk.BooleanVar(value=False)
+        tk.Checkbutton(topo, text="mover em vez de copiar",
+                       variable=self.var_mover, bg=BG, fg=DIM,
+                       selectcolor=CARD_HL, activebackground=BG,
+                       activeforeground=TEXT, font=FONT,
+                       takefocus=0).pack(side="left", padx=12)
+        self.lbl_contador = tk.Label(topo, text="", bg=BG, fg=DIM, font=FONT_B)
+        self.lbl_contador.pack(side="right")
+
+        self.lbl_pasta = tk.Label(self, text="", bg=BG, fg=DIM, font=FONT,
+                                  anchor="w")
+        self.lbl_pasta.pack(fill="x", padx=16)
+
+        self.frame_video = tk.Frame(self, bg="#000000")
+        self.frame_video.pack(fill="both", expand=True, padx=14, pady=8)
+        self.frame_video.bind("<Configure>", lambda e: self._ajustar_video())
+        self.lbl_msg = tk.Label(self.frame_video,
+                                text="Escolha a pasta do pack para começar.",
+                                bg="#000000", fg=DIM, font=FONT_TITLE)
+        self.lbl_msg.place(relx=0.5, rely=0.5, anchor="center")
+
+        info = tk.Frame(self, bg=BG)
+        info.pack(fill="x", padx=16)
+        self.lbl_nome = tk.Label(info, text="", bg=BG, fg=TEXT, font=FONT_B,
+                                 anchor="w")
+        self.lbl_nome.pack(side="left")
+        self.lbl_detalhes = tk.Label(info, text="", bg=BG, fg=DIM, font=FONT)
+        self.lbl_detalhes.pack(side="right")
+
+        grade = tk.Frame(self, bg=BG)
+        grade.pack(fill="x", padx=14, pady=6)
+        self.botoes_categoria: dict[str, tk.Button] = {}
+        contagens = self.sessao.contagens()
+        for i, cat in enumerate(CATEGORIES):
+            botao = tk.Button(
+                grade, text=self._texto_botao(i, cat, contagens[cat]),
+                command=lambda c=cat: self._categorizar(c), bd=0, bg=PANEL,
+                fg=TEXT, activebackground=ACCENT_DARK, activeforeground=TEXT,
+                font=FONT, justify="left", anchor="w", padx=12, pady=8,
+                cursor="hand2", takefocus=0)
+            botao.grid(row=i // 3, column=i % 3, sticky="nsew", padx=3, pady=3)
+            self.botoes_categoria[cat] = botao
+        for coluna in range(3):
+            grade.grid_columnconfigure(coluna, weight=1)
+
+        rodape = tk.Frame(self, bg=BG)
+        rodape.pack(fill="x", padx=14, pady=(0, 12))
+        self.painel._botao(rodape, "Pular  (S)", self._pular).pack(side="left", padx=3)
+        self.painel._botao(rodape, "Desfazer último  (Z)",
+                           self._desfazer_ultimo).pack(side="left", padx=3)
+        self.painel._botao(rodape, "⏯ Pausar  (Espaço)",
+                           self._pausar).pack(side="left", padx=3)
+        self.painel._botao(rodape, "Abrir no player do sistema",
+                           self._abrir_externo).pack(side="right", padx=3)
+        tk.Label(rodape, text="1–9 categoriza · ←/→ ±10s", bg=BG, fg=DIM,
+                 font=("Segoe UI", 8)).pack(side="right", padx=10)
+
+    def _texto_botao(self, indice: int, categoria: str, contagem: int) -> str:
+        return (f"{indice + 1}  {categoria}  ·  {contagem} na biblioteca\n"
+                f"{CATEGORY_DESC[categoria]}")
+
+    def _atualizar_contagens(self, contagens: dict):
+        for i, cat in enumerate(CATEGORIES):
+            self.botoes_categoria[cat].configure(
+                text=self._texto_botao(i, cat, contagens[cat]))
+
+    def _atalhos(self):
+        for i in range(1, 10):
+            self.bind(str(i), lambda e, n=i: self._categoria_por_numero(n))
+        self.bind("<s>", lambda e: self._pular())
+        self.bind("<S>", lambda e: self._pular())
+        self.bind("<z>", lambda e: self._desfazer_ultimo())
+        self.bind("<Z>", lambda e: self._desfazer_ultimo())
+        self.bind("<space>", lambda e: self._pausar())
+        self.bind("<Left>", lambda e: self._seek(self.VK_LEFT))
+        self.bind("<Right>", lambda e: self._seek(self.VK_RIGHT))
+
+    def _categoria_por_numero(self, numero: int):
+        if numero <= len(CATEGORIES):
+            self._categorizar(CATEGORIES[numero - 1])
+
+    # ----------------------------------------------------------------- fila
+    def _atual(self) -> str | None:
+        return self.fila[self.idx] if self.fila else None
+
+    def _escolher_pasta(self):
+        inicial = self.sessao.ultima_pasta() or str(RAIZ)
+        pasta = filedialog.askdirectory(title="Pasta com o pack de vídeos",
+                                        initialdir=inicial, parent=self)
+        if not pasta:
+            return
+        try:
+            resultado = self.sessao.carregar_pasta(pasta)
+        except (OSError, ValueError) as erro:
+            messagebox.showerror("Carregar pasta", str(erro), parent=self)
+            return
+        self.fila = resultado["fila"]
+        self.idx = 0
+        self.importados_sessao = 0
+        self.lbl_pasta.configure(text=resultado["raiz"])
+        aviso = (f" ({resultado['ja_importados']} já estavam na biblioteca)"
+                 if resultado["ja_importados"] else "")
+        self.painel._log(f"[triagem] {len(self.fila)} vídeo(s) na fila{aviso}")
+        if not self.fila:
+            messagebox.showinfo(
+                "Carregar pasta",
+                "Nenhum vídeo novo nessa pasta." +
+                (aviso and f"\n{resultado['ja_importados']} já estava(m) "
+                           "na biblioteca."), parent=self)
+        self._mostrar_atual()
+
+    def _mostrar_atual(self):
+        self._parar_player()
+        nome = self._atual()
+        if nome is None:
+            self.lbl_nome.configure(text="")
+            self.lbl_detalhes.configure(text="")
+            self.lbl_contador.configure(text="")
+            if self.importados_sessao:
+                self.lbl_msg.configure(
+                    text=f"✔ Pack concluído — {self.importados_sessao} "
+                         "importado(s) nesta sessão.", fg=OK)
+            self.focus_set()
+            return
+        self.lbl_msg.configure(text="")
+        self.lbl_nome.configure(text=nome)
+        self.lbl_detalhes.configure(text="…")
+        self.lbl_contador.configure(
+            text=f"{self.idx + 1} de {len(self.fila)} restantes")
+        caminho = self.sessao.resolver(nome)
+        self._dims = None
+        self._tocar(caminho)
+        geracao = self._geracao
+        threading.Thread(target=self._sondar, args=(caminho, geracao),
+                         daemon=True).start()
+        self.focus_set()
+
+    def _sondar(self, caminho: Path, geracao: int):
+        info = reacoes_importer.probe_info(caminho)
+        self.after(0, lambda: self._aplicar_sonda(info, geracao))
+
+    def _aplicar_sonda(self, info: dict, geracao: int):
+        if geracao != self._geracao or not self.winfo_exists():
+            return
+        duracao = f"{info['duration']}s" if info["duration"] else "?s"
+        resolucao = (f"{info['width']}x{info['height']}"
+                     if info["width"] else "resolução desconhecida")
+        self.lbl_detalhes.configure(text=f"{duracao} · {resolucao}")
+        if info["width"] and info["height"]:
+            self._dims = (info["width"], info["height"])
+            self._ajustar_video()
+
+    # --------------------------------------------------------------- player
+    def _tocar(self, caminho: Path):
+        self._geracao += 1
+        if not self._ffplay:
+            os.startfile(str(caminho))
+            self.lbl_msg.configure(
+                text="Tocando no player do sistema…", fg=DIM)
+            return
+        titulo = f"nf_triagem_{os.getpid()}_{self._geracao}"
+        self._player = subprocess.Popen(
+            [self._ffplay, "-loop", "0", "-v", "error", "-nostats",
+             "-volume", "85", "-window_title", titulo, str(caminho)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=NO_WINDOW)
+        self.after(120, lambda: self._embutir(titulo, self._geracao, 0))
+
+    def _embutir(self, titulo: str, geracao: int, tentativa: int):
+        if geracao != self._geracao or not self.winfo_exists():
+            return
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, titulo)
+        if not hwnd:
+            if self._player is None or self._player.poll() is not None:
+                # ffplay morreu sem abrir janela: formato que ele nao le
+                self.lbl_msg.configure(
+                    text="⚠ Não consegui tocar este vídeo.\n"
+                         "Use “Abrir no player do sistema” — os botões "
+                         "de categoria continuam valendo.", fg=RED)
+                return
+            if tentativa >= 50:
+                self.painel._log("[triagem] não consegui embutir o player; "
+                                 "ele segue em janela separada.", "erro")
+                return
+            self.after(100, lambda: self._embutir(titulo, geracao,
+                                                  tentativa + 1))
+            return
+        user32.SetWindowLongW(hwnd, self.GWL_STYLE,
+                              self.WS_CHILD | self.WS_VISIBLE)
+        user32.SetParent(hwnd, self.frame_video.winfo_id())
+        user32.EnableWindow(hwnd, False)
+        self._hwnd = hwnd
+        self._ajustar_video()
+
+    def _ajustar_video(self):
+        if not self._hwnd:
+            return
+        larg = self.frame_video.winfo_width()
+        alt = self.frame_video.winfo_height()
+        w, h = larg, alt
+        if self._dims:
+            aspecto = self._dims[0] / self._dims[1]
+            if larg / max(alt, 1) > aspecto:
+                w, h = int(alt * aspecto), alt
+            else:
+                w, h = larg, int(larg / aspecto)
+        ctypes.windll.user32.MoveWindow(
+            self._hwnd, (larg - w) // 2, (alt - h) // 2, w, h, True)
+
+    def _parar_player(self):
+        self._geracao += 1
+        self._hwnd = 0
+        if self._player is not None and self._player.poll() is None:
+            self._player.kill()
+            try:
+                self._player.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                pass
+        self._player = None
+
+    def _tecla_para_player(self, vk: int):
+        if not self._hwnd:
+            return
+        user32 = ctypes.windll.user32
+        user32.PostMessageW(self._hwnd, self.WM_KEYDOWN, vk, 0)
+        user32.PostMessageW(self._hwnd, self.WM_KEYUP, vk, 0)
+
+    def _pausar(self):
+        self._tecla_para_player(self.VK_SPACE)
+
+    def _seek(self, vk: int):
+        self._tecla_para_player(vk)
+
+    # ---------------------------------------------------------------- acoes
+    def _categorizar(self, categoria: str):
+        nome = self._atual()
+        if nome is None or self._ocupado:
+            return
+        self._ocupado = True
+        self._parar_player()  # solta o arquivo antes de copiar/mover
+        try:
+            resultado = self.sessao.categorizar(nome, categoria,
+                                                self.var_mover.get())
+        except (OSError, ValueError) as erro:
+            self._ocupado = False
+            messagebox.showerror("Categorizar", str(erro), parent=self)
+            self._mostrar_atual()
+            return
+        self._ocupado = False
+        entrada = resultado["entrada"]
+        self.importados_sessao += 1
+        del self.fila[self.idx]
+        self._atualizar_contagens(resultado["contagens"])
+        self.painel._log(f"[triagem] ID {entrada['id']} <- "
+                         f"{entrada['source']} ({categoria})")
+        self.painel._atualizar_reacoes()
+        self._mostrar_atual()
+
+    def _pular(self):
+        if self.fila:
+            self.idx = (self.idx + 1) % len(self.fila)
+            self._mostrar_atual()
+
+    def _desfazer_ultimo(self):
+        if self._ocupado:
+            return
+        try:
+            resultado = self.sessao.desfazer()
+        except (OSError, ValueError) as erro:
+            messagebox.showinfo("Desfazer", str(erro), parent=self)
+            return
+        self.fila.insert(self.idx, resultado["arquivo"])
+        self.importados_sessao = max(0, self.importados_sessao - 1)
+        self._atualizar_contagens(resultado["contagens"])
+        self.painel._log(f"[triagem] desfeito: {resultado['arquivo']}")
+        self.painel._atualizar_reacoes()
+        self._mostrar_atual()
+
+    def _abrir_externo(self):
+        nome = self._atual()
+        if nome is not None:
+            os.startfile(str(self.sessao.resolver(nome)))
+
+    def _fechar(self):
+        self._parar_player()
+        self.destroy()
 
 
 def main():

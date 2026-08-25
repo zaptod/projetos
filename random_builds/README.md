@@ -62,6 +62,18 @@ categoria numerada, copia ou move) e modo LOTE (pasta inteira: mesma
 categoria para todos, ou escolhendo vídeo por vídeo com `s` para pular e `q`
 para encerrar). Também lista, recategoriza e remove por ID.
 
+**Categorizar assistindo (janela do painel):** para triar um pack grande sem
+abrir cada arquivo na mão. Na aba Reações do painel, o botão
+**🎬 Categorizar assistindo…** abre uma janela que **toca os vídeos da pasta
+um a um, embutidos na própria janela** (via ffplay); cada clique (ou tecla
+1–9) importa na categoria escolhida pelo mesmo importador do
+`import-reactions` — com pular (`s`), desfazer de verdade (`z` — remove do
+catálogo e devolve o arquivo se ele foi movido) e contador por categoria em
+cada botão. Vídeo cujo nome já consta como origem no catálogo não volta à
+fila, então recarregar a mesma pasta nunca importa duas vezes. A lógica da
+sessão vive em `src/assets/triagem.py`; sem ffplay no PATH, cada vídeo abre
+no player padrão do sistema e os botões continuam valendo.
+
 **Toda geração produz DOIS vídeos:** `final_celular.mp4` (1080x1920, 9:16,
 título e resultado em cima, roda grande embaixo) e `final_normal.mp4`
 (1920x1080, 16:9, roda à esquerda/resultado à direita). Os perfis ficam em
