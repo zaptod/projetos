@@ -1,10 +1,29 @@
 # config.py
 
 # FÍSICA
-PPM = 50 
-GRAVIDADE_Z = 35.0 
-ATRITO = 8.0 
+PPM = 50
+GRAVIDADE_Z = 35.0
+ATRITO = 8.0
 ALTURA_PADRAO = 1.70
+
+# === ONDA 8B: MECÂNICAS DEFENSIVAS ===
+# Estamina é o recurso defensivo: dash e bloqueio consomem, o tempo
+# devolve. Segurar a guarda quase congela a regen — guarda permanente
+# não é grátis.
+ESTAMINA_REGEN_S = 12.0
+ESTAMINA_REGEN_GUARDA_S = 4.0
+CUSTO_ESTAMINA_DASH = 25.0
+CUSTO_ESTAMINA_BLOQUEIO = 15.0
+CUSTO_ESTAMINA_PARRY = 10.0
+COOLDOWN_DASH_S = 1.6
+# Bloqueio direcional: só cobre o arco frontal; parry é o bloqueio
+# recém-erguido (timing, não sorteio).
+ARCO_BLOQUEIO_RAD = 1.0472          # ±60°
+JANELA_PARRY_S = 0.18
+FATOR_DANO_BLOQUEIO = 0.35          # bloqueio reduz 65% do dano
+FATOR_DANO_BLOQUEIO_CAVALEIRO = 0.20
+FATOR_KNOCKBACK_BLOQUEIO = 0.5
+STAGGER_PARRY_S = 0.4
 
 # VISUAL
 LARGURA, ALTURA = 1200, 800

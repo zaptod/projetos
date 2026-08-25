@@ -56,9 +56,19 @@ class PipelineController:
     # ---------------------------------------------------------------- generate
     def generate(self, seed: int | None = None, generation_only: bool = False,
                  preview: bool = False, insert: bool = True,
-                 identity: bool = True) -> Path:
+                 identity: bool = True, nome_pedido: str | None = None,
+                 autor_pedido: str | None = None) -> Path:
+        """nome_pedido/autor_pedido: o nome escolhido num comentario.
+
+        Vem cru do CLI e nao e validado aqui de proposito - quem decide se o
+        pedido e aceitavel e src.character.nomes, que tambem grava o motivo da
+        recusa no generation.json. Recusado, a geracao segue com o nome
+        gerado e o video volta a apenas convidar.
+        """
         generation_id = _next_generation_id()
-        generation = self.session.generate(seed=seed, generation_id=generation_id)
+        generation = self.session.generate(seed=seed, generation_id=generation_id,
+                                           nome_pedido=nome_pedido,
+                                           autor_pedido=autor_pedido)
         out_dir = OUTPUTS / generation_id
         self._write_data(out_dir, generation)
         self._build_edit_plan(out_dir, generation)
@@ -116,13 +126,17 @@ class PipelineController:
             # Identidade e um extra: nunca pode derrubar uma geracao que deu certo.
             print(f"[identity] nao enfileirado ({exc})")
 
-    def batch(self, count: int, seed_start: int | None = None) -> None:
+    def batch(self, count: int, seed_start: int | None = None,
+              nome_pedido: str | None = None,
+              autor_pedido: str | None = None) -> None:
         scores = []
         for i in range(count):
             seed = None if seed_start is None else seed_start + i
             # identity=False: um batch de balanceamento faz milhares de builds
-            # e nenhuma delas vira video — enfileirar todas entupiria a fila.
-            out_dir = self.generate(seed=seed, generation_only=True, identity=False)
+            # e nenhuma delas vira video - enfileirar todas entupiria a fila.
+            out_dir = self.generate(seed=seed, generation_only=True,
+                                    identity=False, nome_pedido=nome_pedido,
+                                    autor_pedido=autor_pedido)
             with open(out_dir / "build.json", encoding="utf-8") as fh:
                 scores.append(json.load(fh)["final_score"])
         avg = round(sum(scores) / len(scores), 1)

@@ -6,6 +6,66 @@
     "ele e apenas reportado. 'min_lutas' evita julgar uma metrica com amostra",
     "pequena demais (fica informativa ate o corpus alcancar o minimo)."
   ],
+  "A1_percepcao_projetil": {
+    "metrica": "taxa_percepcao_projetil_media",
+    "min": 0.95,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8A: em frames com projetil hostil no ar, o defensor precisa ve-lo pela janela de mundo (percepcao). Antes da 8A a IA lia buffer_projeteis drenado pelo Simulador — taxa efetiva ~0%. Medido na entrega: 100% (luta arqueiro vs melee, seed 42)."
+  },
+  "A2_desvios_por_luta": {
+    "metrica": "desvios_por_luta_p50",
+    "min": 2,
+    "max": 24,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8C: o desvio inteligente existe (religado do codigo morto). Uma avaliacao por swing inimigo + cooldown 0.8-2.0s por personalidade limitam o teto; medido 18 no smoke (matchups ranged saturam o gate legitimamente — desviar de flecha e o trabalho)."
+  },
+  "A2c_parries_no_corpus": {
+    "metrica": "parries_por_luta_media",
+    "min": 0.02,
+    "max": 2.0,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8B/8C: parry existe no corpus e segue raro. A guarda REATIVA (erguida no wind-up) cai na janela de parry por design; bloqueio ESTABELECIDO (guarda sustentada) vira alvo proprio quando os planos defensivos da 8E existirem — ate la bloqueios_por_luta_media e so reportado."
+  },
+  "A3_antecipacao": {
+    "metrica": "taxa_antecipacao_desvios",
+    "min": 0.1,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8D: fatia dos desvios iniciada na fase de WIND-UP do golpe inimigo (lida de timer_animacao + perfil da arma) — o momento visivel 'ela leu o golpe'. O resto reage a projetil/golpe ja ativo."
+  },
+  "A4_punicao_whiff": {
+    "metrica": "punicoes_por_luta_media",
+    "min": 0.5,
+    "max": 8,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8D: punicao deliberada de recovery lido no corpo do oponente (ou janela pos-esquiva/pos-parry), UMA avaliacao por swing. Medido 3,7 no smoke (a v1 sem gate por swing dava 12 e derrubava V2 ao limite). Ativa WHIFF_PUNISHER/LEITURA_CORPORAL/MESTRE_DISTANCIA, antes strings inertes."
+  },
+  "A5_planos_vivos": {
+    "metrica": "pct_frames_com_plano_media",
+    "min": 0.9,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8E: o lutador tem intencao tatica persistente (PlanoDeLuta 2-6s) em praticamente todo frame. Medido 1,0 no smoke."
+  },
+  "A5_rotatividade_planos": {
+    "metrica": "planos_por_luta_p50",
+    "min": 6,
+    "max": 24,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8E: planos trocam (interrupcao por dano + expiracao 2-6s) sem virar ruido por tick. Soma p1+p2; medido 16 no smoke (~8 por lutador em luta de ~29s)."
+  },
+  "A6_decisoes_melee": {
+    "metrica": "taxa_decisoes_melee_media",
+    "min": 0.25,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8E: fracao das decisoes de movimento tomadas em range de melee. Antes do fix, _avaliar_e_executar_ataque consumia o frame mesmo com o golpe em cooldown e a pilha de personalidade congelava em close quarters (~0). Medido 0,43 no smoke."
+  },
   "B4_vies_de_lado": {
     "metrica": "winrate_p1",
     "min": 0.42,

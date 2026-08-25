@@ -1,8 +1,16 @@
 {
     "hook": [
         "VAMOS CRIAR UM PERSONAGEM ALEATORIO",
-        "CRIANDO UM PERSONAGEM 100% ALEATORIO",
-        "PERSONAGEM ALEATORIO + ARMA ALEATORIA. VAI DAR RUIM?"
+        "CRIANDO UM PERSONAGEM 100% ALEATORIO"
+    ],
+    "hook_pedido": [
+        "CRIANDO {NOME_PEDIDO}",
+        "PEDIRAM {NOME_PEDIDO}. BORA",
+        "{NOME_PEDIDO} FOI PEDIDO. VAMOS VER",
+        "NOME DO COMENTARIO: {NOME_PEDIDO}",
+        "HOJE O NOME VEIO DE VOCES",
+        "VOCES PEDIRAM, EU ROLEI",
+        "{NOME_PEDIDO}, PEDIDO NOS COMENTARIOS"
     ],
     "by_tier": {
         "TERRIBLE": [
@@ -107,8 +115,33 @@
         ]
     },
     "outro": [
-        "QUAL SEED VOCE QUER VER? COMENTA!",
-        "SEGUE PRA MAIS BUILDS ALEATORIAS"
+        "COMO SERIA O SEU PERSONAGEM?",
+        "COMENTA O NOME DO SEU PERSONAGEM",
+        "QUER VER O SEU? COMENTA O NOME",
+        "COMENTA UM NOME. EU ROLO A ROLETA",
+        "O PROXIMO NOME SAI DOS COMENTARIOS",
+        "DEIXA UM NOME NOS COMENTARIOS",
+        "COMENTA E EU CRIO O SEU",
+        "QUAL SERIA A SUA BUILD? COMENTA",
+        "MANDA UM NOME PRO PROXIMO VIDEO",
+        "SEU NOME NOS COMENTARIOS VIRA BUILD"
+    ],
+    "outro_pedido": [
+        "{NOME_PEDIDO} SAIU DO COMENTARIO",
+        "{NOME_PEDIDO} FOI PEDIDO AQUI",
+        "ESSE FOI PEDIDO. QUAL O PROXIMO?",
+        "VALEU PELO NOME. COMENTA OUTRO",
+        "O PROXIMO NOME PODE SER O SEU",
+        "PEDIU, VIROU BUILD. COMENTA",
+        "FEITO A PEDIDO. MANDA MAIS NOMES",
+        "COMENTA E O SEU E O PROXIMO"
+    ],
+    "outro_pedido_autor": [
+        "{AUTOR} PEDIU, TA AQUI",
+        "VALEU {AUTOR}! MANDA OUTRO",
+        "NOME DE {AUTOR}. COMENTA O SEU",
+        "PEDIDO DE {AUTOR}. E O SEU?",
+        "SUGESTAO DE {AUTOR}"
     ],
     "identity": [
         "ELE EXISTE. OLHA O {NAME}",
@@ -118,6 +151,18 @@
         "{CLASSE} DO CAOS: {NAME}",
         "ISSO E O {NAME} NA VIDA REAL",
         "IMAGINA ENCONTRAR O {NAME}"
+    ],
+    "identity_pedido": [
+        "{NOME_PEDIDO} EXISTE AGORA",
+        "VOCES PEDIRAM {NOME_PEDIDO}",
+        "ESSE E O {NOME_PEDIDO} DE VOCES",
+        "O {NOME_PEDIDO} DO COMENTARIO",
+        "SAIU DO COMENTARIO: {NOME_PEDIDO}"
+    ],
+    "nameplate_pedido": [
+        "PEDIDO NOS COMENTARIOS",
+        "NOME DE UM COMENTARIO",
+        "VOCES ESCOLHERAM O NOME"
     ],
     "stinger": {
         "weapon": [

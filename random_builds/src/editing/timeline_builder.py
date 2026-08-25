@@ -29,7 +29,7 @@ from pathlib import Path
 
 from .editing_director import EditingDirector
 from ..assets.selector import AssetSelector
-from ..content.caption_generator import CaptionGenerator
+from ..content.caption_generator import CaptionGenerator, pedido_de
 from ..identity import artefato as identity_artefato
 from ..identity import slots as identity_slots
 
@@ -48,6 +48,9 @@ class TimelineBuilder:
         beats = self.config.get("beats", {})
         events_out: list[dict] = []
         cursor = 0.0
+        # Nome escolhido nos comentarios, quando existe. Lido uma vez: gancho,
+        # placa do personagem e CTA precisam falar do MESMO pedido.
+        pedido = pedido_de(generation)
 
         def push(event: dict, duration: float) -> None:
             nonlocal cursor
@@ -56,7 +59,7 @@ class TimelineBuilder:
             events_out.append(event)
             cursor += duration
 
-        push({"type": "hook", "caption": self.captions.hook(rng)},
+        push({"type": "hook", "caption": self.captions.hook(rng, pedido)},
              durations["hook"])
 
         rolls = generation["rolls"]
@@ -64,7 +67,7 @@ class TimelineBuilder:
 
         self._push_rolls(push, rng, rolls, decisions, "character", durations)
         self._push_reveal(push, generation, out_dir, durations,
-                          identity_slots.CHARACTER)
+                          identity_slots.CHARACTER, rng, pedido)
 
         if beats.get("stinger_between_sections", True):
             push({"type": "stinger", "entity": "weapon",
@@ -73,17 +76,17 @@ class TimelineBuilder:
 
         self._push_rolls(push, rng, rolls, decisions, "weapon", durations)
         self._push_reveal(push, generation, out_dir, durations,
-                          identity_slots.WEAPON)
+                          identity_slots.WEAPON, rng, pedido)
 
         self._push_synergy(push, rng, generation, durations, beats)
         self._push_reveal(push, generation, out_dir, durations,
-                          identity_slots.CHARACTER_WEAPON)
+                          identity_slots.CHARACTER_WEAPON, rng, pedido)
 
         build = generation["build"]
         push({"type": "final", "build": build,
               "caption": self.captions.for_final(rng, build)},
              durations["final"])
-        push({"type": "outro", "caption": self.captions.outro(rng)},
+        push({"type": "outro", "caption": self.captions.outro(rng, pedido)},
              durations["outro"])
 
         return {
@@ -164,7 +167,8 @@ class TimelineBuilder:
 
     # ------------------------------------------------------------- recompensa
     def _push_reveal(self, push, generation: dict, out_dir: Path | None,
-                     durations: dict, slot: str) -> None:
+                     durations: dict, slot: str, rng: random.Random,
+                     pedido: dict | None = None) -> None:
         """O clipe daquele slot; sem ele, o nameplate no lugar.
 
         O renderer decide por CAPACIDADE, nao por tipo (`_asset_de_video`):
@@ -173,7 +177,7 @@ class TimelineBuilder:
         `fit: "contain"` porque os clipes sao gerados em 9:16 - no perfil
         `normal` (16:9) o crop-para-preencher comeria as laterais.
         """
-        placa = self._nameplate(generation, slot)
+        placa = self._nameplate(generation, slot, rng, pedido)
         achado = self._artefato(out_dir, slot)
         if achado is None:
             push({"type": "nameplate", "slot": slot, "nameplate": placa,
@@ -202,7 +206,7 @@ class TimelineBuilder:
 
         if midia == identity_slots.IMAGEM:
             # Imagem nao tem duracao para medir: quem decide e a direcao. E ela
-            # NAO fica o teto da janela — parada, ela vira o cartao que a
+            # NAO fica o teto da janela - parada, ela vira o cartao que a
             # secao 15 mandou tirar do video.
             duracao = float(janela.get("still", janela["min"]))
             direcao = self.config.get("identity_still", {})
@@ -232,8 +236,8 @@ class TimelineBuilder:
                     return caminho, midia
         return None
 
-    @staticmethod
-    def _nameplate(generation: dict, slot: str) -> dict:
+    def _nameplate(self, generation: dict, slot: str,
+                   rng: random.Random, pedido: dict | None = None) -> dict:
         """Duas linhas, curtas: o que identifica, nao o que descreve."""
         personagem = generation["character"]
         arma = generation["weapon"]
@@ -243,7 +247,7 @@ class TimelineBuilder:
             # O nome da arma JA carrega estilo e raridade ("Lancas de Mana
             # Comum"), entao repeti-los embaixo e ruido: a segunda linha custa
             # o mesmo tempo de tela e nao acrescenta nada. Quem entra sao o
-            # encantamento e a habilidade — o que a arma FAZ, que nao esta no
+            # encantamento e a habilidade - o que a arma FAZ, que nao esta no
             # nome e e o que o espectador ainda nao sabe.
             encantamentos = arma.get("encantamentos") or []
             encantamento = (arma.get("afinidade_elemento")
@@ -256,5 +260,15 @@ class TimelineBuilder:
         if slot == identity_slots.CHARACTER_WEAPON:
             return {"titulo": str(personagem.get("nome", "")).upper(),
                     "subtitulo": f"+ {arma.get('nome', '')}"}
+        if (pedido or {}).get("nome"):
+            # O titulo JA e o nome que veio do comentario, entao classe e
+            # altura embaixo dele nao dizem de onde ele veio - e essa e a
+            # unica linha que aparece por cima do clipe do personagem. O
+            # credito rende mais comentario do que o dado da ficha, que as
+            # roletas de classe e tamanho ja mostraram.
+            credito = self.captions.nameplate_pedido(rng)
+            if credito:
+                return {"titulo": str(personagem.get("nome", "")).upper(),
+                        "subtitulo": credito}
         return {"titulo": str(personagem.get("nome", "")).upper(),
                 "subtitulo": f"{classe} - {altura} m"}

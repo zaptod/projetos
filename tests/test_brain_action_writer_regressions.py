@@ -132,11 +132,17 @@ class EixosOrfaosTests(unittest.TestCase):
         self.assertIn(brain.acao_atual, ("CIRCULAR", "FLANQUEAR"))
 
     def test_eixo_perseguicao_responde_a_fuga(self) -> None:
+        """Onda 8A: a fuga é OBSERVADA (velocidade se afastando), não
+        lida do acao_atual do brain adversário."""
         brain = brain_minimo()
+        brain.parent = SimpleNamespace(pos=[0.0, 0.0])
         brain._modo_proposta = True
         brain.acao_atual = "COMBATE"
         injetar_perfil(brain, mobilidade=0.0, perseguicao=1.0)
-        inimigo = SimpleNamespace(brain=SimpleNamespace(acao_atual="FUGIR"))
+        inimigo = SimpleNamespace(
+            pos=[6.0, 0.0], vel=[3.0, 0.0], z=0.0,
+            vida=100.0, vida_max=100.0, atacando=False,
+        )
         brain._aplicar_eixos_orfaos(6.0, inimigo)
         self.assertIn(brain.acao_atual, ("PRESSIONAR", "APROXIMAR"))
 

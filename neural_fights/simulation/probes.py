@@ -101,6 +101,13 @@ class FightQualityProbe:
         self._humores: dict[str, set] = {"p1": set(), "p2": set()}
         self._momentum_sat = {"p1": 0, "p2": 0}
         self._frames_ia = 0
+        # Onda 8A: percepcao de projeteis. Vigia a janela de mundo — se a
+        # percepcao for desplugada (ou voltar a ler buffer drenado), a taxa
+        # despenca e o alvo A1 acusa.
+        self._proj_frames = {"p1": 0, "p2": 0}
+        self._proj_vistos = {"p1": 0, "p2": 0}
+        # Onda 8E: cobertura do plano de luta (alvo A5).
+        self._frames_com_plano = 0
         for slot in ("p1", "p2"):
             lutador = getattr(sim, slot)
             lista: list[tuple[float, str]] = []
@@ -127,8 +134,28 @@ class FightQualityProbe:
                     self._humores[slot].add(humor)
                 if abs(getattr(brain, "momentum", 0.0)) >= 0.95:
                     self._momentum_sat[slot] += 1
+                if getattr(brain, "plano", None) is not None:
+                    self._frames_com_plano += 1
 
         self._frames_ia += 1
+
+        # Onda 8A: em frames com projétil hostil no ar, o defensor deve
+        # enxergá-lo pela janela de mundo (alvo A1).
+        projeteis = getattr(sim, "projeteis", None)
+        if projeteis:
+            for slot in ("p1", "p2"):
+                lutador = getattr(sim, slot)
+                tem_hostil = any(
+                    getattr(pr, "ativo", True)
+                    and getattr(pr, "dono", None) is not lutador
+                    for pr in projeteis
+                )
+                if not tem_hostil:
+                    continue
+                self._proj_frames[slot] += 1
+                percep = getattr(lutador, "percepcao", None)
+                if percep is not None and percep.projeteis_hostis(lutador):
+                    self._proj_vistos[slot] += 1
 
         if self.t >= self._proxima_amostra_hp:
             self._amostrar_hp(sim)
@@ -175,6 +202,14 @@ class FightQualityProbe:
         met["pct_momentum_saturado"] = (
             self._momentum_sat["p1"] + self._momentum_sat["p2"]
         ) / (2 * frames)
+
+        # Onda 8A: taxa de percepcao de projeteis (None sem projeteis).
+        proj_frames = self._proj_frames["p1"] + self._proj_frames["p2"]
+        met["taxa_percepcao_projetil"] = (
+            (self._proj_vistos["p1"] + self._proj_vistos["p2"]) / proj_frames
+            if proj_frames
+            else None
+        )
         return met
 
     def _metricas_drama(self, vencedor, resultado) -> dict[str, Any]:
@@ -273,8 +308,16 @@ class FightQualityProbe:
             "anulados_invencibilidade": 0,
             "anulados_invuln_skill": 0,
             "super_armor_absorcoes": 0,
+            # Onda 8B/8C: defesa ativa (alvos A2).
+            "bloqueios": 0,
+            "parries": 0,
+            "dashes": 0,
+            "desvios_ia": 0,
+            # Onda 8D: antecipação e punição (alvos A3/A4).
+            "desvios_antecipados": 0,
+            "punicoes": 0,
         }
-        decisoes = pilha = 0
+        decisoes = pilha = decisoes_melee = planos = 0
         sim = self._sim
         if sim is not None:
             for slot in ("p1", "p2"):
@@ -285,6 +328,8 @@ class FightQualityProbe:
                 if brain is not None and hasattr(brain, "contadores"):
                     decisoes += brain.contadores.get("decisoes", 0)
                     pilha += brain.contadores.get("pilha_completa", 0)
+                    decisoes_melee += brain.contadores.get("decisoes_melee", 0)
+                    planos += brain.contadores.get("planos", 0)
 
         anulados = soma["anulados_invencibilidade"]
         hits = len(self._eventos)
@@ -301,6 +346,16 @@ class FightQualityProbe:
             "decisoes_movimento": decisoes,
             "pilha_completa": pilha,
             "taxa_pilha": (pilha / decisoes) if decisoes else None,
+            # Onda 8E (alvo A6): a personalidade decide TAMBÉM em melee.
+            "decisoes_melee": decisoes_melee,
+            "taxa_decisoes_melee": (
+                (decisoes_melee / decisoes) if decisoes else None
+            ),
+            # Onda 8E (alvo A5): plano de luta vivo.
+            "planos_luta": planos,
+            "pct_frames_com_plano": (
+                self._frames_com_plano / (2 * max(1, self._frames_ia))
+            ),
         }
 
     def _metricas_acoes(self) -> dict[str, Any]:

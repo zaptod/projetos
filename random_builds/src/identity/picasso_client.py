@@ -21,6 +21,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from . import config as iconfig
 from . import picasso_selectors as selectors
 from .browser import esperar_hidratacao, pausa_humana
 from .client import BrowserMorreu, EsperaEstourou, GeracaoFalhou
@@ -191,6 +192,8 @@ class PicassoClient:
                 "no textarea. Rode `python main.py identity probe --provedor "
                 "picasso --url ...` para conferir o seletor.")
 
+        prompt = self._aprimorar(campo, botao, prompt)
+
         self._ajustar_select("proporcao", aspect)
         quantidade = str(self.ajustes.get("quantidade", 1))
         if quantidade in selectors.OPCOES_QUANTIDADE:
@@ -209,11 +212,158 @@ class PicassoClient:
         # foi assim que o job da arma baixou a imagem do personagem.
         antes = self._esperar_estabilizar()
         pausa_humana(self.rng)
-        botao.click()
+        try:
+            botao.click(timeout=10000)
+        except Exception:
+            # O clique interceptado pelo modal de auth e a unica retomada
+            # legitima; qualquer outra causa deve estourar como sempre.
+            if not self._resolver_dialogo_de_auth():
+                raise
+            botao.click()
         self.url_do_espaco = self.page.url
         print(f"[picasso] prompt enviado ({len(prompt)} chars), "
               f"{len(antes)} imagem(ns) ja na tela")
         return antes
+
+
+
+    def _resolver_dialogo_de_auth(self) -> bool:
+        """Se o modal de login abriu no meio do fluxo, loga por ele.
+
+        O cookie do Picasso expira, mas o criador continua aparecendo para
+        visitante anonimo - entao `sessao_viva` diz "valida" e o fluxo segue
+        ate o PRIMEIRO clique que exige conta (o aprimorador, o gerar), quando
+        um dialogo de auth cobre a pagina e intercepta todo clique. Detectar
+        aqui e logar pelo proprio modal e o unico ponto que ve a expiracao.
+        """
+        campo = self.page.locator("#auth-card-email")
+        try:
+            if not campo.count() or not campo.first.is_visible():
+                return False
+        except Exception:
+            return False
+        credenciais = iconfig.load_credentials("picasso")
+        if credenciais is None:
+            raise GeracaoFalhou(
+                "o Picasso pediu login no meio do fluxo e nao ha "
+                "picasso_credentials.json para responder.")
+        print("[picasso] a sessao expirou no meio do fluxo; "
+              "logando pelo modal...")
+        campo.first.fill(credenciais["email"])
+        pausa_humana(self.rng, 0.3, 0.8)
+        senha = self.page.locator("div[role='dialog'] input[type='password']")
+        senha.first.fill(credenciais["password"])
+        pausa_humana(self.rng, 0.3, 0.8)
+        botao = self.page.locator("div[role='dialog'] button[type='submit']")
+        if not botao.count():
+            botao = self.page.get_by_role("button", name="Entrar")
+        botao.first.click()
+        limite = time.monotonic() + 30
+        while time.monotonic() < limite:
+            time.sleep(0.5)
+            try:
+                if not campo.count() or not campo.first.is_visible():
+                    print("[picasso] login pelo modal concluido.")
+                    time.sleep(1.5)
+                    return True
+            except Exception:
+                return True
+        raise GeracaoFalhou(
+            "o modal de login do Picasso nao fechou depois de preencher as "
+            "credenciais; provavel senha rejeitada ou desafio anti-bot.")
+
+    def _aprimorar(self, campo, botao_gerar, original: str) -> str:
+        """Roda o Aprimorador de Prompt e devolve o texto que valeu.
+
+        O botao NAO mexe no textarea: ele abre um painel "PROMPT ANTIGO ->
+        NOVO PROMPT" com o texto novo chegando em streaming, e a aplicacao
+        depende de um botao que vive coberto por popup de promocao. Por isso
+        o caminho aqui e outro: esperar o streaming ESTABILIZAR, colher o
+        texto do painel e preencher o campo por conta propria - nenhum clique
+        em botao tapado. Se o painel nao abrir ou vier vazio, segue com o
+        original: aprimorar e otimizacao, nao pode derrubar o job.
+        """
+        if not self.ajustes.get("aprimorar_prompt", False):
+            return original
+        try:
+            botao = selectors.resolver(self.page, selectors.BOTAO_APRIMORAR,
+                                       "o aprimorador de prompt")
+        except Exception:
+            print("[picasso] aprimorador de prompt nao encontrado; "
+                  "seguindo com o prompt original")
+            return original
+        botao.click()
+        pausa_humana(self.rng, 1.0, 2.0)
+        if self._resolver_dialogo_de_auth():
+            botao.click()
+
+        rotulo = self.page.get_by_text("NOVO PROMPT", exact=False)
+        try:
+            rotulo.first.wait_for(state="visible", timeout=15000)
+        except Exception:
+            print("[picasso] o painel do aprimorador nao abriu; "
+                  "seguindo com o prompt original")
+            return original
+
+        painel = rotulo.first.locator("xpath=..")
+        limite = time.monotonic() + float(
+            self.ajustes.get("aprimorar_timeout", 60))
+        texto, estaveis = "", 0
+        while time.monotonic() < limite:
+            time.sleep(1.0)
+            self._checar_vivo()
+            try:
+                atual = painel.inner_text()
+            except Exception:
+                atual = ""
+            if atual == texto and len(atual) > 60:
+                estaveis += 1
+                if estaveis >= 2:
+                    break
+            else:
+                texto, estaveis = atual, 0
+
+        # O painel trunca a exibicao; "Mostrar mais" revela o resto.
+        try:
+            mais = self.page.get_by_text("Mostrar mais", exact=False)
+            if mais.count() and mais.first.is_visible():
+                mais.first.click()
+                time.sleep(0.5)
+                texto = painel.inner_text()
+        except Exception:
+            pass
+
+        novo = self._texto_do_painel(texto)
+        if len(novo) < 60:
+            print("[picasso] o aprimorador nao entregou texto no prazo; "
+                  "seguindo com o prompt original")
+            return original
+
+        # Fecha o painel antes de mexer no campo; ele nao pode ficar por cima.
+        try:
+            cancelar = self.page.get_by_text("Cancelar", exact=False)
+            if cancelar.count() and cancelar.first.is_visible():
+                cancelar.first.click()
+                time.sleep(0.5)
+        except Exception:
+            pass
+        campo.fill(novo)
+        print(f"[picasso] prompt aprimorado ({len(original)} -> "
+              f"{len(novo)} chars)")
+        return novo
+
+    @staticmethod
+    def _texto_do_painel(bruto: str) -> str:
+        """Tira do innerText do painel so o prompt: fora rotulos e botoes."""
+        rotulos = {"novo prompt:", "prompt antigo:", "mostrar mais",
+                   "mostrar menos", "copiar", "cancelar", "usar este prompt"}
+        linhas = []
+        for linha in (bruto or "").splitlines():
+            limpa = linha.strip()
+            if not limpa or limpa.lower() in rotulos:
+                continue
+            linhas.append(limpa)
+        return " ".join(" ".join(linhas).split())
 
     # ----------------------------------------------------------------- espera
     def _checar_vivo(self) -> None:

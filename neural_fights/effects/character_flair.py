@@ -56,6 +56,11 @@ def resolver_expressao(l, tempo_s):
             return "alerta"
         if tell.get("tipo") == "hesitacao":
             return "confuso"
+        # Onda 8F: a vida interior nova também aparece no rosto.
+        if tell.get("tipo") in ("desvio", "parry"):
+            return "alerta"
+        if tell.get("tipo") == "punicao":
+            return "determinado"
     if getattr(l, "atacando", False):
         return "esforco"
     if getattr(brain, "acao_atual", "") == "BLOQUEAR":

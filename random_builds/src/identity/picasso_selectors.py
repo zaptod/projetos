@@ -115,6 +115,13 @@ JS_IMAGENS = """() => Array.from(document.images).map(i => ({
 # e o Digen. Vazias de proposito, e o diagnostico conta lista vazia como "nao
 # levantado" em vez de fingir cobertura.
 BOTAO_ANEXO: list[tuple[str, str]] = []
+
+# "Aprimorador de Prompt": reescreve o texto DENTRO do proprio textarea. O id
+# e estavel; o fallback pega pelo texto caso o id mude de nome.
+BOTAO_APRIMORAR = [
+    ("css", "#promptEnhancerRealtime"),
+    ("text", "Aprimorador de Prompt"),
+]
 OPCAO_ENVIAR_IMAGEM: list[tuple[str, str]] = []
 MINIATURA_REFERENCIA: list[tuple[str, str]] = []
 REMOVER_REFERENCIA: list[tuple[str, str]] = []
@@ -191,5 +198,6 @@ LISTAS_ONLINE = (
     ("campo de prompt", "CAMPO_PROMPT", "erro"),
     ("botao de gerar", "BOTAO_GERAR", "erro"),
     ("proporcao", "BOTAO_ASPECTO", "aviso"),
+    ("aprimorador de prompt", "BOTAO_APRIMORAR", "aviso"),
     ("quantidade", "BOTAO_QUANTIDADE", "aviso"),
 )

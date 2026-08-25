@@ -65,8 +65,19 @@ class BrainContractTests(unittest.TestCase):
         self.assertIs(_obter_brain(SimpleNamespace(ai=legacy)), legacy)
         self.assertIsNone(_obter_brain(SimpleNamespace()))
 
-    def test_opponent_observation_reads_the_current_brain_attribute(self):
+    def test_opponent_observation_is_honest_and_works_without_enemy_brain(self):
+        """Onda 8A: a memória do oponente conta o que se VÊ (velocidade,
+        animação), sem ler o acao_atual do brain adversário — inclusive
+        contra um lutador sem brain nenhum."""
         brain = object.__new__(AIBrain)
+        brain.parent = SimpleNamespace(pos=[0.0, 0.0])
+        brain.rng = random.Random(7)
+        brain.tempo_combate = 1.0
+        brain.habilidade_leitura = 0.95
+        brain._obs_cache = None
+        brain._obs_cache_tempo = -1.0
+        brain._obs_ataque_id_visto = -1
+        brain._obs_ataque_mal_lido = False
         brain.memoria_oponente = {
             "ultima_acao": None,
             "vezes_atacou": 0,
@@ -75,12 +86,20 @@ class BrainContractTests(unittest.TestCase):
             "ameaca_nivel": 0.5,
         }
         brain._gerar_reacao_inteligente = Mock()
-        enemy = SimpleNamespace(brain=SimpleNamespace(acao_atual="MATAR"))
+        # Sem atributo brain: dummy físico avançando na minha direção.
+        enemy = SimpleNamespace(
+            pos=[2.0, 0.0], vel=[-3.0, 0.0], z=0.0,
+            vida=100.0, vida_max=100.0, atacando=False,
+            pos_historico=[(2.0, 0.0)] * 15,
+            dados=SimpleNamespace(arma_obj=SimpleNamespace(tipo="Reta")),
+        )
 
         brain._observar_oponente(enemy, distancia=2.0)
 
         self.assertEqual(brain.memoria_oponente["vezes_atacou"], 1)
-        brain._gerar_reacao_inteligente.assert_called_once_with("MATAR", 2.0, enemy)
+        brain._gerar_reacao_inteligente.assert_called_once()
+        obs = brain._gerar_reacao_inteligente.call_args[0][0]
+        self.assertEqual(obs.intencao, "avancando")
 
     def test_strategy_clock_receives_real_dt_even_when_instinct_ends_frame(self):
         brain = object.__new__(AIBrain)
@@ -102,6 +121,7 @@ class BrainContractTests(unittest.TestCase):
             "_atualizar_consciencia_espacial",
             "_atualizar_percepcao_armas",
             "_atualizar_ritmo",
+            "_atualizar_plano",
         )
         for method_name in no_op_methods:
             setattr(brain, method_name, Mock())

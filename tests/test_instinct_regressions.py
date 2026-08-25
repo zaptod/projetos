@@ -81,17 +81,20 @@ def inimigo_parado():
 class TriggersReaisTests(unittest.TestCase):
     """Cada trigger consertado avalia True sob o estado real que o gera."""
 
-    def test_oponente_recuando_le_o_brain_do_inimigo(self) -> None:
-        """A versão antiga lia acao_atual do LUTADOR — sempre None."""
+    def test_oponente_recuando_e_observado_pela_velocidade(self) -> None:
+        """Onda 8A: o trigger dispara pelo recuo OBSERVADO (velocidade
+        se afastando), não pelo acao_atual telepático do brain inimigo."""
         brain = brain_minimo()
         inimigo = inimigo_parado()
-        inimigo.brain = SimpleNamespace(acao_atual="FUGIR")
+        inimigo.vel = [3.0, 0.0]  # em x=3, +x afasta do observador em (0,0)
+        inimigo.z = 0.0
         self.assertTrue(
             brain._avaliar_trigger_instinto(
                 "oponente_recuando", 5.0, inimigo, 1.0, 1.0
             )
         )
-        inimigo.brain = SimpleNamespace(acao_atual="MATAR")
+        brain._obs_cache = None  # novo frame de observação
+        inimigo.vel = [-3.0, 0.0]  # avançando na minha direção
         self.assertFalse(
             brain._avaliar_trigger_instinto(
                 "oponente_recuando", 5.0, inimigo, 1.0, 1.0

@@ -360,6 +360,22 @@ class Simulador:
         self.dash_trails = []; self.hit_sparks = []
         self.summons = []; self.traps = []; self.beams = []; self.areas = []; self.portais = []
         self.hits_ecoados = []
+
+        # Onda 8F: cache de aridade de Projetil.atualizar por classe
+        # (ver _atualizar_projeteis). Reset por partida por higiene.
+        self._aridade_atualizar_cache = {}
+
+        # === ONDA 8A: percepção honesta ===
+        # Os buffers dos lutadores são drenados para as listas do mundo
+        # ANTES do tick das IAs — o brain que lia inimigo.buffer_projeteis
+        # via sempre lista vazia. A PercepcaoMundo é uma janela
+        # somente-leitura sobre as listas vivas do Simulador (por property,
+        # então sobrevive às reatribuições acima), compartilhada pelos dois
+        # lutadores: mesma visão de mundo, sem assimetria p1/p2.
+        from neural_fights.ai.percepcao import PercepcaoMundo
+        percepcao = PercepcaoMundo(self)
+        self.p1.percepcao = percepcao
+        self.p2.percepcao = percepcao
         self.time_scale = 1.0; self.slow_mo_timer = 0.0; self.hit_stop_timer = 0.0
         self.letterbox_timer = 0.0
         self._slow_mo_ended = False  # re-arma o som de vitória por partida (live)
@@ -935,12 +951,24 @@ class Simulador:
                 if not self._alvo_em_transicao_sombria(alvo)
             ]
             resultado = None
-            
-            # Verifica se o método atualizar aceita alvos
+
+            # Verifica se o método atualizar aceita alvos. Onda 8F:
+            # inspect.signature rodava POR PROJÉTIL POR FRAME (~6% do
+            # custo do frame headless no profile) — a aridade é fixa por
+            # classe, então cacheia por tipo.
             if hasattr(proj, 'atualizar'):
-                import inspect
-                sig = inspect.signature(proj.atualizar)
-                if len(sig.parameters) > 1:
+                # setdefault tolera fakes de contrato (object.__new__).
+                cache_aridade = self.__dict__.setdefault(
+                    "_aridade_atualizar_cache", {}
+                )
+                classe_proj = type(proj)
+                aceita_alvos = cache_aridade.get(classe_proj)
+                if aceita_alvos is None:
+                    import inspect
+                    sig = inspect.signature(proj.atualizar)
+                    aceita_alvos = len(sig.parameters) > 1
+                    cache_aridade[classe_proj] = aceita_alvos
+                if aceita_alvos:
                     resultado = proj.atualizar(dt, alvos)
                 else:
                     proj.atualizar(dt)
@@ -2998,10 +3026,13 @@ class Simulador:
         
         # Texto
         # Reforma "luta limpa": texto removido — as afterimages do dash já são a leitura.
-        
-        # Pequeno slow-mo para drama
-        self.time_scale = 0.5
-        self.slow_mo_timer = 0.3
+
+        # Onda 8C: o slow-mo daqui foi REMOVIDO. Com o dash universal a
+        # IA desvia de projéteis com frequência, e time_scale != 1.0 no
+        # MEIO da luta fazia a gravação (que honra o relógio de drama em
+        # avancar_relogio) divergir do motor headless (que não honra) —
+        # a mesma seed produzia duas lutas. Estado de jogo mid-fight
+        # precisa ser invariante a VFX; slow-mo dramático fica para o KO.
     
     def _efeito_parry(self, proj, parryer):
         """Efeito visual de parry (defesa com ataque)"""
@@ -4863,6 +4894,28 @@ class Simulador:
                 surf_q.set_alpha(140)
                 self.tela.blit(surf_q, (cx - surf_q.get_width() // 2 + int(wob),
                                         cy - raio - 52))
+            elif tell.get("tipo") == "desvio":
+                # Onda 8F: linhas de velocidade na lateral — leu e saiu.
+                vx, vy = getattr(l, "vel", (0.0, 0.0))[:2]
+                mag = math.hypot(vx, vy) or 1.0
+                ux, uy = -vx / mag, -vy / mag
+                for i in range(3):
+                    off = (i - 1) * 6
+                    x1 = cx + ux * raio * 1.15 - uy * off
+                    y1 = cy + uy * raio * 1.15 + ux * off
+                    pygame.draw.line(
+                        self.tela, (150, 220, 255),
+                        (int(x1), int(y1)),
+                        (int(x1 + ux * 10), int(y1 + uy * 10)), 2)
+            elif tell.get("tipo") == "punicao":
+                surf_e = get_fonte(18, negrito=True).render("!", True, (255, 180, 90))
+                surf_e.set_alpha(200)
+                self.tela.blit(surf_e, (cx - surf_e.get_width() // 2,
+                                        cy - raio - 52))
+            elif tell.get("tipo") == "parry":
+                # Anel dourado curto: o instante do aço lido no tempo certo.
+                pygame.draw.circle(self.tela, (255, 230, 120), (cx, cy),
+                                   int(raio * 1.25), 2)
 
     def _desenhar_canalizacao(self, l, canal, centro, raio):
         """Passe 5: ritual de canalização por elemento (5 padrões:

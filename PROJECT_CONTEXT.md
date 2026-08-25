@@ -206,16 +206,46 @@ adrenalina: float  # Aumenta em momentos críticos
 "CONTRA_ATAQUE", "BLOQUEAR", "USAR_SKILL", "COMBATE"
 ```
 
-### Fluxo de Decisão
-1. `atualizar()` - Chamado a cada frame
-2. `_analisar_situacao()` - Coleta dados do combate
-3. `_decidir_acao()` - Escolhe ação baseado em personalidade
-4. `_executar_acao()` - Move e ataca
+### Fluxo de Decisão (Onda 8)
+O ponto de entrada é `AIBrain.processar(dt, distancia, inimigo)`, chamado
+todo frame por `Lutador.update`:
+
+1. **Sensores** — cooldowns, emoções, humor, observação HONESTA do
+   oponente (`_observar` → `ObservacaoInimigo`: posição, velocidade e a
+   fase da animação de ataque; a telepatia `inimigo.brain.acao_atual` foi
+   removida na 8A), leitura/hábitos, momentum, espacial
+   (`SpatialAwarenessSystem`, religado na 8C), percepção de armas, ritmo
+   e o **PlanoDeLuta** (8E: intenção tática de 2-6s).
+2. **Gates com early-return**, em ordem de prioridade:
+   instintos (P1) → **desvio inteligente** (8C: projéteis/áreas/golpes
+   via `percepcao` do mundo; executa guarda/dash/pulo/impulso) →
+   **punição de whiff** (8D: recovery lido do corpo) → hesitação →
+   coreógrafo (com veto por personalidade) → baiting → reação →
+   ataque/skills (o roll com golpe em cooldown NÃO consome mais o frame
+   — fix 8E) → decisão de movimento em timer (~250-600ms).
+3. **`_decidir_movimento`** — proposta por arma/zona → pilha: plano de
+   luta (estágio 0) → agressividade → eixos → traços → humor → filosofia
+   → momentum → leitura → anti-repetição (consistente com o plano) →
+   espacial → armas → veto de sobrevivência. Escrita única via
+   `_definir_acao` com min-hold (alvo V2 ≥ 500ms).
+
+### Percepção e defesa (Ondas 8A-8B)
+- `Lutador.percepcao` (`ai/percepcao.py`) — janela somente-leitura sobre
+  as listas do Simulador; os buffers antigos são drenados antes do tick.
+- `habilidade_leitura` (0-1, derivada dos eixos/quirks) — latência de
+  observação, chance de má-leitura por golpe, precisão de antecipação.
+- Estamina é o recurso defensivo: dash universal
+  (`Lutador.iniciar_dash`), bloqueio direcional (±60°, ×0.35; Cavaleiro
+  ×0.20) e parry (guarda erguida há <0.18s nega golpe físico e cambaleia
+  o atacante). Ver constantes em `utils/config.py`.
 
 ### Valores Importantes
 - `alcance_ideal` - Distância que a IA quer manter
 - `alcance_efetivo` - Alcance real de ataque da arma
-- `acao_atual` - Ação sendo executada agora
+- `acao_atual` - Ação sendo executada agora (escritor único, min-hold)
+- `plano` - Intenção tática atual ({tipo, expira_em, compromisso})
+- `tell_atual` - Sinal legível para o renderer (instinto/desvio/punição/
+  parry/troca de plano)
 
 ---
 

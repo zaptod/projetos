@@ -148,6 +148,9 @@ class Lutador:
         self.vel_z = 0.0
         self.pulo_bloqueado_timer = 0.0
         self.raio_fisico = (self.dados.tamanho / 4.0)
+        # Onda 8A: janela somente-leitura sobre o mundo (projéteis/áreas/
+        # beams), injetada pelo Simulador. None fora de partida (testes).
+        self.percepcao = None
         
         # Carrega dados da classe
         self.classe_nome = getattr(self.dados, 'classe', "Guerreiro (Força Bruta)")
@@ -156,8 +159,16 @@ class Lutador:
         # Status calculados com modificadores de classe
         self.vida_max = self._calcular_vida_max()
         self.vida = self.vida_max
+        # Onda 8B: estamina deixa de ser número morto e vira o recurso
+        # defensivo — dash e bloqueio consomem, o tempo devolve.
         self.estamina = 100.0
         self.estamina_max = 100.0
+        self.tempo_bloqueando = 0.0   # há quanto tempo segura a guarda
+        self.dash_cooldown = 0.0      # cooldown do dash universal
+        # Onda 8E (bug #5): o combo de slam do Mangual era guardado por
+        # hasattr que nunca era verdadeiro (o atributo só nascia no
+        # caminho de arquétipo-por-arma, que classes mapeadas não usam).
+        self.mangual_slam_combo = 0
         self.mana_max = self._calcular_mana_max()
         self.mana = self.mana_max
         self.velocidade_movimento_base = self._calcular_velocidade_movimento()
@@ -321,6 +332,14 @@ class Lutador:
             "anulados_invencibilidade": 0,
             "anulados_invuln_skill": 0,
             "super_armor_absorcoes": 0,
+            # Onda 8B/8C: defesa ativa (alvos A2).
+            "bloqueios": 0,
+            "parries": 0,
+            "dashes": 0,
+            "desvios_ia": 0,
+            # Onda 8D: antecipação e punição (alvos A3/A4).
+            "desvios_antecipados": 0,
+            "punicoes": 0,
         }
         self.registro_eventos_dano = None
         self._slow_fator_antes_enraizado = 1.0
@@ -561,6 +580,48 @@ class Lutador:
 
     def pode_pular(self):
         return self.z == 0 and self.pulo_bloqueado_timer <= 0.0
+
+    def pode_dash(self):
+        """Onda 8B: dash universal disponível (recurso + cooldown + estado)."""
+        from neural_fights.utils.config import CUSTO_ESTAMINA_DASH
+        return (
+            not self.morto
+            and self.dash_cooldown <= 0.0
+            and self.estamina >= CUSTO_ESTAMINA_DASH
+            and self.stun_timer <= 0.0
+            and self.slow_fator > 0.0
+        )
+
+    def iniciar_dash(self, angulo, forca=16.0):
+        """Onda 8B: dash universal — verbo de primeira classe do motor.
+
+        Impulso direcional com 0.25s de ``dash_timer`` (janela em que
+        projéteis passam reto — mesma regra das skills de DASH), pago em
+        estamina e cooldown. As skills de DASH continuam sendo as versões
+        maiores (teleporte, i-frames, invisibilidade). Antes da Onda 8
+        este método era citado por instintos antigos sem nunca existir.
+        """
+        if not self.pode_dash():
+            return False
+        from neural_fights.utils.config import (
+            COOLDOWN_DASH_S,
+            CUSTO_ESTAMINA_DASH,
+        )
+        # Knob B2 (fechamento da Onda 8): Dupla vive de entrar e sair —
+        # num mundo que agora desvia e bloqueia avanços, as adagas
+        # pagaram o pato (winrate 0,29 no corpus). Dash é a identidade
+        # delas: 30% mais barato e mais frequente.
+        arma_tipo = getattr(getattr(self.dados, "arma_obj", None), "tipo", "")
+        fator_mobilidade = 0.7 if arma_tipo == "Dupla" else 1.0
+        self.estamina -= CUSTO_ESTAMINA_DASH * fator_mobilidade
+        self.dash_cooldown = COOLDOWN_DASH_S * fator_mobilidade
+        self.dash_timer = max(self.dash_timer, 0.25)
+        self.vel[0] += math.cos(angulo) * forca
+        self.vel[1] += math.sin(angulo) * forca
+        self.contadores_luta["dashes"] = (
+            self.contadores_luta.get("dashes", 0) + 1
+        )
+        return True
 
     def _altura_voo_ativa(self):
         alturas = [
@@ -1879,6 +1940,27 @@ class Lutador:
             self.stun_timer -= dt
         if self.cd_skill_arma > 0:
             self.cd_skill_arma -= dt
+
+        # === ONDA 8B: recursos defensivos ===
+        if self.dash_cooldown > 0:
+            self.dash_cooldown -= dt
+        acao_defensiva = (
+            getattr(self.brain, "acao_atual", "") if self.brain is not None else ""
+        )
+        em_guarda = acao_defensiva == "BLOQUEAR" and not self.atacando
+        if em_guarda:
+            self.tempo_bloqueando += dt
+        else:
+            self.tempo_bloqueando = 0.0
+        from neural_fights.utils.config import (
+            ESTAMINA_REGEN_GUARDA_S,
+            ESTAMINA_REGEN_S,
+        )
+        regen_estamina = ESTAMINA_REGEN_GUARDA_S if em_guarda else ESTAMINA_REGEN_S
+        if self.estamina < self.estamina_max:
+            self.estamina = min(
+                self.estamina_max, self.estamina + regen_estamina * dt
+            )
         if self.slow_timer > 0:
             self.slow_timer -= dt
             if self.slow_timer <= 0:
@@ -2334,26 +2416,28 @@ class Lutador:
                 self.vel_z = self.rng_runtime.uniform(10.0, 14.0)
         
         elif acao in ["RECUAR", "FUGIR"] and self.pode_pular():
-            chance = 0.03
+            # Onda 8B: pulos anônimos demovidos (÷2) — pular vira DECISÃO
+            # da IA (desvio deliberado), não tique estocástico do motor.
+            chance = 0.015
             if self.brain is not None and self.brain.medo > 0.5:
-                chance = 0.06
+                chance = 0.03
             if self.rng_runtime.random() < chance:
                 self.vel_z = self.rng_runtime.uniform(9.0, 12.0)
-        
+
         # v8.0: Pulo ofensivo mais inteligente
         ofensivos = ["MATAR", "ESMAGAR", "ATAQUE_RAPIDO", "CONTRA_ATAQUE"]
         if acao in ofensivos and 3.5 < distancia < 7.0 and self.pode_pular():
-            chance = 0.025
+            chance = 0.012
             if "ACROBATA" in self.brain.tracos:
-                chance = 0.05
+                chance = 0.05  # traço é identidade: acrobata segue saltando
             if self.rng_runtime.random() < chance:
                 self.vel_z = self.rng_runtime.uniform(12.0, 15.0)
                 self.modo_ataque_aereo = True
-        
+
         if (
             self.pode_pular()
             and distancia < 5.0
-            and self.rng_runtime.random() < 0.005
+            and self.rng_runtime.random() < 0.002
         ):
             self.vel_z = self.rng_runtime.uniform(8.0, 11.0)
 
@@ -2793,6 +2877,45 @@ class Lutador:
         """Compatibilidade: recebe a parcela compartilhada sem nova partilha."""
         return self.aplicar_dano_direto(dano, compartilhar_link=False)
 
+    def _avaliar_bloqueio(self, atacante):
+        """Onda 8B: guarda direcional. Retorna None, "bloqueio" ou "parry".
+
+        Bloqueia só o que vem do arco frontal (±60° do olhar), com a
+        guarda erguida (intenção BLOQUEAR), sem estar no meio do próprio
+        golpe e com estamina para pagar. Parry é a guarda RECÉM-erguida
+        — recompensa de timing, não sorteio.
+        """
+        if atacante is None or atacante is self or self.morto or self.atacando:
+            return None
+        if self.stun_timer > 0:
+            return None
+        acao = getattr(self.brain, "acao_atual", "") if self.brain is not None else ""
+        if acao != "BLOQUEAR" or self.tempo_bloqueando <= 0.0:
+            return None
+        from neural_fights.utils.config import (
+            ARCO_BLOQUEIO_RAD,
+            CUSTO_ESTAMINA_PARRY,
+            JANELA_PARRY_S,
+        )
+        if self.estamina < CUSTO_ESTAMINA_PARRY:
+            return None  # guarda quebrada: sem fôlego não há bloqueio
+        pos_atk = getattr(atacante, "pos", None)
+        if pos_atk is None:
+            return None
+        ang_ameaca = math.atan2(
+            pos_atk[1] - self.pos[1], pos_atk[0] - self.pos[0]
+        )
+        delta = abs(
+            (ang_ameaca - self.angulo_olhar + math.pi) % (2 * math.pi) - math.pi
+        )
+        if delta > ARCO_BLOQUEIO_RAD:
+            return None
+        # Onda 8C: FRAME_PERFECT (quirk) amplia a janela via brain.
+        janela = JANELA_PARRY_S * float(
+            getattr(self.brain, "mult_janela_parry", 1.0) or 1.0
+        )
+        return "parry" if self.tempo_bloqueando <= janela else "bloqueio"
+
     def resolver_impacto(
         self,
         dano,
@@ -3062,20 +3185,81 @@ class Lutador:
         for buff in self._buffs_validos():
             dano_final *= max(0.0, getattr(buff, "mod_dano_recebido", 1.0))
         
-        if "Cavaleiro" in self.classe_nome:
-            # Onda 6 (contrato, v2): postura OPT-IN. A v1 (dormia só no
-            # próprio golpe) manteve uptime ~85-90% e o Cavaleiro seguiu
-            # 0,978 — janela de swing de 0,5s num mundo de intenções de
-            # 583ms ainda é passiva. O escudo agora existe apenas em
-            # intenção explicitamente DEFENSIVA; fora dela, é um lutador
-            # comum de vida alta.
-            acao_defensor = getattr(
-                getattr(self, "brain", None), "acao_atual", ""
+        # === ONDA 8B: BLOQUEIO DIRECIONAL / PARRY ===
+        # Substitui a postura ×0.75 do Cavaleiro (Onda 6): agora TODO
+        # lutador tem guarda real — direcional, paga em estamina e com
+        # recompensa de timing (parry). O Cavaleiro vira o mestre da
+        # guarda (reduz mais, paga menos) em vez de dono do único
+        # desconto defensivo do motor.
+        guarda = self._avaliar_bloqueio(atacante)
+        if guarda is not None:
+            from neural_fights.utils.config import (
+                CUSTO_ESTAMINA_BLOQUEIO,
+                CUSTO_ESTAMINA_PARRY,
+                FATOR_DANO_BLOQUEIO,
+                FATOR_DANO_BLOQUEIO_CAVALEIRO,
+                FATOR_KNOCKBACK_BLOQUEIO,
+                JANELA_PARRY_S,
+                STAGGER_PARRY_S,
             )
-            if not self.atacando and acao_defensor in (
-                "BLOQUEAR", "RECUAR", "CIRCULAR", "COMBATE", "CONTRA_ATAQUE",
-            ):
-                dano_final *= 0.75
+            eh_cavaleiro = "Cavaleiro" in self.classe_nome
+            if guarda == "parry" and metadata_impacto.get("eh_corpo_a_corpo"):
+                # Guarda recém-erguida contra golpe físico: negação total
+                # e o atacante cambaleia — a janela de punição do gênero.
+                self.estamina = max(0.0, self.estamina - CUSTO_ESTAMINA_PARRY)
+                # Um parry por guarda erguida: sai da janela de timing
+                # (×2 cobre a janela ampliada de FRAME_PERFECT).
+                self.tempo_bloqueando = JANELA_PARRY_S * 2.0 + 0.01
+                atacante.stun_timer = max(
+                    getattr(atacante, "stun_timer", 0.0), STAGGER_PARRY_S
+                )
+                atacante.atacando = False
+                atacante.cooldown_ataque = max(
+                    getattr(atacante, "cooldown_ataque", 0.0), 0.9
+                )
+                dx_p = atacante.pos[0] - self.pos[0]
+                dy_p = atacante.pos[1] - self.pos[1]
+                dist_p = math.hypot(dx_p, dy_p) or 1.0
+                atacante.vel[0] += (dx_p / dist_p) * 8.0
+                atacante.vel[1] += (dy_p / dist_p) * 8.0
+                if self.brain is not None:
+                    self.brain.ultimo_bloqueio = 0.0
+                    on_parry = getattr(self.brain, "on_parry_sucesso", None)
+                    if callable(on_parry):
+                        on_parry()
+                coreografo = getattr(self, "choreographer", None)
+                if coreografo is not None:
+                    registrar = getattr(coreografo, "registrar_parry", None)
+                    if callable(registrar):
+                        registrar(self, atacante)
+                # Passe de arte: contador consumido pelo feedback visual.
+                self.parries_visuais = getattr(self, "parries_visuais", 0) + 1
+                self.contadores_luta["parries"] = (
+                    self.contadores_luta.get("parries", 0) + 1
+                )
+                self.flash_timer = 0.15
+                self.flash_cor = (200, 230, 255)
+                self.ultimo_resultado_impacto = ImpactResult(
+                    False, bloqueado_por="parry"
+                )
+                return False
+
+            fator = (
+                FATOR_DANO_BLOQUEIO_CAVALEIRO
+                if eh_cavaleiro
+                else FATOR_DANO_BLOQUEIO
+            )
+            dano_final *= fator
+            empurrao_x *= FATOR_KNOCKBACK_BLOQUEIO
+            empurrao_y *= FATOR_KNOCKBACK_BLOQUEIO
+            custo = CUSTO_ESTAMINA_BLOQUEIO * (0.5 if eh_cavaleiro else 1.0)
+            self.estamina = max(0.0, self.estamina - custo)
+            if self.brain is not None:
+                self.brain.ultimo_bloqueio = 0.0
+            self.bloqueios_visuais = getattr(self, "bloqueios_visuais", 0) + 1
+            self.contadores_luta["bloqueios"] = (
+                self.contadores_luta.get("bloqueios", 0) + 1
+            )
 
         dano_final *= max(0.0, float(getattr(self, "mod_defesa", 1.0)))
 

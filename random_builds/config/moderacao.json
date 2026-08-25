@@ -1,0 +1,27 @@
+{
+    "_comentario": "Bloqueio de nome vindo de comentario. O nome e a UNICA entrada do sistema controlada por um estranho e vai desenhada na placa de um video publico. Editavel sem tocar em codigo.",
+    "palavra_inteira": [
+        "cu", "cus", "cuzao", "cuzudo", "puta", "putas", "puto", "putos", "putinha",
+        "viado", "viados", "veado", "bicha", "bichas", "traveco", "sapatao",
+        "merda", "merdas", "bosta", "porra", "foda", "fodase", "fode", "fuder", "fudido",
+        "corno", "cornos", "otario", "babaca", "escroto", "arrombado", "arrombada",
+        "vagabunda", "vadia", "piranha", "rapariga", "prostituta", "gozo", "tesao",
+        "penis", "anus", "pinto", "rola", "saco", "peito", "peitos", "bunda",
+        "macaco", "macacos", "crioulo", "criolo", "judiado",
+        "nazi", "nazista", "hitler", "genocida", "estupro", "estuprador", "pedofilo",
+        "fuck", "fucker", "shit", "bitch", "cunt", "dick", "cock", "pussy", "whore",
+        "slut", "nigga", "nigger", "faggot", "fag", "retard", "rape", "rapist", "nazi"
+    ],
+    "trecho": [
+        "caralho", "carai", "buceta", "boceta", "xoxota", "xereca", "piroca", "pica",
+        "punheta", "boquete", "chupada", "filhadaputa", "filhodaputa", "fdp",
+        "vaitomarno", "vsf", "vtnc", "pqp", "krl", "porravcs",
+        "cacete", "desgraca", "safado", "safada", "putaria", "puteiro",
+        "fuckyou", "motherfuck", "cocksuck", "dumbass", "asshole", "bullshit",
+        "kkkporra", "seximbecil"
+    ],
+    "leet": {
+        "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b",
+        "@": "a", "$": "s", "!": "i", "|": "i", "*": "", "+": "t"
+    }
+}

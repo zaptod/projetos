@@ -505,6 +505,24 @@ class Arena:
         # Efeitos especiais ativos
         self.efeitos_ativos = list(config.efeitos_especiais) if config.efeitos_especiais else []
     
+    def ponto_dentro(self, x: float, y: float, margem: float = 0.3) -> bool:
+        """Onda 8C: um ponto está dentro dos limites jogáveis da arena?
+
+        O SpatialAwarenessSystem sempre assumiu este método (um dos
+        motivos de nunca ter sido ligado). Circular usa o raio; octógono
+        aproxima pelo círculo inscrito; retangular usa os limites.
+        """
+        if self.config.formato == "circular":
+            dist = math.hypot(x - self.centro_x, y - self.centro_y)
+            return dist + margem <= (self.raio or 0.0)
+        if self.config.formato == "octogono":
+            raio_inscrito = min(self.largura, self.altura) / 2 - margem
+            return math.hypot(x - self.centro_x, y - self.centro_y) <= raio_inscrito
+        return (
+            self.min_x + margem <= x <= self.max_x - margem
+            and self.min_y + margem <= y <= self.max_y - margem
+        )
+
     def colide_obstaculo(self, x: float, y: float, raio: float) -> Optional[Obstaculo]:
         """
         Verifica se uma posição colide com algum obstáculo sólido.

@@ -498,10 +498,19 @@ class CombatChoreographer:
         brain_esquivador = obter_brain(esquivador)
         if brain_esquivador and hasattr(brain_esquivador, 'on_esquiva_sucesso'):
             brain_esquivador.on_esquiva_sucesso()
-        
+
         # Pode criar momento de tensão
         if self._pode_momento("NEAR_MISS") and self.rng.random() < 0.15:
             self._iniciar_momento("NEAR_MISS", self.rng.uniform(0.5, 1.0))
+
+    def registrar_parry(self, defensor, atacante):
+        """Onda 8B: parry conectou — momento dramático por natureza.
+
+        O brain do defensor já abriu a janela pos_parry pelo hook do
+        motor; aqui o diretor só amplifica o drama do instante.
+        """
+        if self._pode_momento("NEAR_MISS") and self.rng.random() < 0.35:
+            self._iniciar_momento("NEAR_MISS", self.rng.uniform(0.6, 1.2))
     
     def get_acao_sincronizada(self, lutador):
         """Retorna ação sincronizada para o lutador (se houver)"""

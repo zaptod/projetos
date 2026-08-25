@@ -156,10 +156,15 @@ class DamageDebuffRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(area_dot_target.ultimo_dano_recebido, 10.0)
 
     def test_knight_reduction_keeps_the_same_ratio_under_vulnerability(self) -> None:
-        # Re-pino Onda 6: a reducao do Cavaleiro virou POSTURA opt-in —
-        # o contrato deste teste (a razao 0,75 atravessa a vulnerabilidade
-        # sem dupla contagem) exige o escudo ATIVO, entao os cavaleiros do
-        # scaffold entram em postura defensiva.
+        # Re-pino Onda 8B: a guarda virou DIRECIONAL e universal — todo
+        # mundo bloqueando reduz (x0.35) e o Cavaleiro reduz mais (x0.20).
+        # O contrato deste teste segue o mesmo: a vantagem relativa do
+        # Cavaleiro atravessa a vulnerabilidade sem dupla contagem.
+        from neural_fights.utils.config import (
+            FATOR_DANO_BLOQUEIO,
+            FATOR_DANO_BLOQUEIO_CAVALEIRO,
+        )
+
         class _BrainPostura:
             def __init__(self, acao):
                 self.acao_atual = acao
@@ -167,22 +172,36 @@ class DamageDebuffRegressionTests(unittest.TestCase):
             def __getattr__(self, nome):
                 return 0.0
 
-        warrior = self._fighter("Warrior")
-        knight = self._fighter("Knight", classe="Cavaleiro")
-        knight.brain = _BrainPostura("BLOQUEAR")
-        baseline_warrior = self._damage_taken(warrior, 40.0)
-        baseline_knight = self._damage_taken(knight, 40.0)
+        def _em_guarda(alvo):
+            alvo.brain = _BrainPostura("BLOQUEAR")
+            alvo.tempo_bloqueando = 1.0  # guarda estabelecida (sem parry)
+            alvo.angulo_olhar = 0.0      # de frente para o atacante
+            return alvo
 
-        vulnerable_warrior = self._fighter("Vulnerable warrior")
-        vulnerable_knight = self._fighter("Vulnerable knight", classe="Cavaleiro")
-        vulnerable_knight.brain = _BrainPostura("BLOQUEAR")
+        atacante = self._fighter("Ameaca")
+        atacante.pos = [8.0, 5.0]
+
+        warrior = _em_guarda(self._fighter("Warrior"))
+        knight = _em_guarda(self._fighter("Knight", classe="Cavaleiro"))
+        baseline_warrior = self._damage_taken(warrior, 40.0, attacker=atacante)
+        baseline_knight = self._damage_taken(knight, 40.0, attacker=atacante)
+
+        vulnerable_warrior = _em_guarda(self._fighter("Vulnerable warrior"))
+        vulnerable_knight = _em_guarda(
+            self._fighter("Vulnerable knight", classe="Cavaleiro")
+        )
         vulnerable_warrior._aplicar_efeito_status("VULNERAVEL")
         vulnerable_knight._aplicar_efeito_status("VULNERAVEL")
-        amplified_warrior = self._damage_taken(vulnerable_warrior, 40.0)
-        amplified_knight = self._damage_taken(vulnerable_knight, 40.0)
+        amplified_warrior = self._damage_taken(
+            vulnerable_warrior, 40.0, attacker=atacante
+        )
+        amplified_knight = self._damage_taken(
+            vulnerable_knight, 40.0, attacker=atacante
+        )
 
-        self.assertAlmostEqual(baseline_knight / baseline_warrior, 0.75)
-        self.assertAlmostEqual(amplified_knight / amplified_warrior, 0.75)
+        razao = FATOR_DANO_BLOQUEIO_CAVALEIRO / FATOR_DANO_BLOQUEIO
+        self.assertAlmostEqual(baseline_knight / baseline_warrior, razao)
+        self.assertAlmostEqual(amplified_knight / amplified_warrior, razao)
 
 
 if __name__ == "__main__":

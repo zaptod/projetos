@@ -399,6 +399,17 @@ def agregar(lutas: list[dict[str, Any]]) -> dict[str, Any]:
         "pct_momentum_saturado_media": (
             sum(luta.get("pct_momentum_saturado", 0.0) for luta in ok) / len(ok)
         ) if ok else None,
+        # Onda 8A: media da taxa de percepcao de projeteis nas lutas em
+        # que houve projetil hostil no ar (None nas demais).
+        "taxa_percepcao_projetil_media": (
+            (lambda taxas: sum(taxas) / len(taxas) if taxas else None)(
+                [
+                    luta["taxa_percepcao_projetil"]
+                    for luta in ok
+                    if luta.get("taxa_percepcao_projetil") is not None
+                ]
+            )
+        ) if ok else None,
         "pct_vencedor_acima_80": (
             sum(1 for luta in com_vencedor if luta["hp_final_vencedor"] > 0.8)
             / len(com_vencedor)
@@ -436,7 +447,54 @@ def agregar(lutas: list[dict[str, Any]]) -> dict[str, Any]:
         "skills_por_luta_p50": percentil(
             [float(luta["skills_lancadas"]) for luta in ok], 0.5
         ),
+        # Onda 8B/8C: defesa ativa por luta (soma dos dois lutadores).
+        "desvios_por_luta_p50": percentil(
+            [float(luta.get("desvios_ia", 0)) for luta in ok], 0.5
+        ),
+        "bloqueios_por_luta_p50": percentil(
+            [float(luta.get("bloqueios", 0)) for luta in ok], 0.5
+        ),
+        "parries_por_luta_p50": percentil(
+            [float(luta.get("parries", 0)) for luta in ok], 0.5
+        ),
+        # Eventos raros: p50 zera num corpus misto; a média captura
+        # "presente no corpus" sem exigir presença em toda luta.
+        "parries_por_luta_media": _media(
+            [float(luta.get("parries", 0)) for luta in ok]
+        ),
+        "bloqueios_por_luta_media": _media(
+            [float(luta.get("bloqueios", 0)) for luta in ok]
+        ),
+        "dashes_por_luta_p50": percentil(
+            [float(luta.get("dashes", 0)) for luta in ok], 0.5
+        ),
+        # Onda 8D: antecipação (share de desvios iniciados no wind-up do
+        # oponente, agregado no corpus) e punições de whiff por luta.
+        "taxa_antecipacao_desvios": (
+            (lambda ant, tot: ant / tot if tot else None)(
+                sum(float(luta.get("desvios_antecipados", 0)) for luta in ok),
+                sum(float(luta.get("desvios_ia", 0)) for luta in ok),
+            )
+        ),
+        "punicoes_por_luta_media": _media(
+            [float(luta.get("punicoes", 0)) for luta in ok]
+        ),
         "taxa_pilha_media": _media([luta["taxa_pilha"] for luta in ok]),
+        # Onda 8E (alvo A6): fração das decisões de movimento tomadas em
+        # range de melee — antes do fix do early-return era ~0.
+        "taxa_decisoes_melee_media": _media(
+            [luta.get("taxa_decisoes_melee") for luta in ok
+             if luta.get("taxa_decisoes_melee") is not None]
+        ),
+        # Onda 8E (alvo A5): plano de luta vivo — cobertura de frames e
+        # rotatividade de planos por luta (soma p1+p2).
+        "pct_frames_com_plano_media": _media(
+            [luta.get("pct_frames_com_plano") for luta in ok
+             if luta.get("pct_frames_com_plano") is not None]
+        ),
+        "planos_por_luta_p50": percentil(
+            [float(luta.get("planos_luta", 0)) for luta in ok], 0.5
+        ),
         "acao_mediana_ms_p50": percentil(
             [luta["acao_mediana_ms"] for luta in ok], 0.5
         ),

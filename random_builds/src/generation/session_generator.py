@@ -55,7 +55,16 @@ class SessionGenerator:
             roulette_factory.weapon_roulettes(), self.probability,
             self.rules, self.validation, self.evaluator)
 
-    def generate(self, seed: int | None = None, generation_id: str = "generated_00001") -> dict:
+    def generate(self, seed: int | None = None,
+                 generation_id: str = "generated_00001",
+                 nome_pedido: str | None = None,
+                 autor_pedido: str | None = None) -> dict:
+        """nome_pedido: nome escolhido no comentario; vence o nome gerado.
+
+        O sorteio inteiro roda igual com ou sem pedido -- o nome de fora so
+        substitui o gerado no fim, entao a mesma seed continua reproduzindo a
+        mesma build. autor_pedido e so credito de tela, nao entra em sorteio.
+        """
         seed = seed if seed is not None else RandomEngine.new_seed()
         engine = RandomEngine(seed)
 
@@ -66,10 +75,13 @@ class SessionGenerator:
             engine.fork, extra_context={"character": char_entity})
         weapon_entity = finalize_weapon(weapon_entity, weapon_events)
 
-        # registros canonicos do NF: nome, cor, geometria e passiva vem das
-        # fabricas oficiais; os campos rolados sao aplicados por cima
-        arma, personagem = exporter.build_records(
-            char_entity, weapon_entity, engine.fork("nf:records"))
+        # registros canonicos do NF: cor, geometria e passiva vem das fabricas
+        # oficiais; os campos rolados sao aplicados por cima e o nome vem da
+        # camada propria (src.character.nomes), que tambem aceita o nome pedido
+        # no comentario
+        arma, personagem, naming = exporter.build_records(
+            char_entity, weapon_entity, engine.fork("nf:records"),
+            nome_pedido=nome_pedido)
 
         compatibility = self.synergy.evaluate(
             {**personagem, **{k: char_entity[k] for k in
@@ -86,11 +98,12 @@ class SessionGenerator:
         build["build_surprise"] = self.surprise.score_build(
             char_entity, weapon_entity, compatibility)
 
-        return {
+        saida = {
             "generation_id": generation_id,
             "seed": seed,
             "character": personagem,
             "weapon": arma,
+            "naming": naming,
             "character_rolls": char_entity,
             "weapon_rolls": weapon_entity,
             "compatibility": compatibility,
@@ -98,3 +111,13 @@ class SessionGenerator:
             "rolls": events,
             "final_score": build["final_score"],
         }
+        # Chave separada e no formato que a CTA le (src/content/caption_generator
+        # .pedido_de). So existe quando o nome de fora foi ACEITO: creditar um
+        # comentarista que nao mandou nada e pior do que so convidar.
+        if naming["requested_name_accepted"]:
+            saida["nome_pedido"] = {
+                "nome": naming["character_name"],
+                "autor": (autor_pedido or "").strip(),
+                "origem": "comentario",
+            }
+        return saida

@@ -58,13 +58,29 @@ class BrainPostura:
 
 class CavaleiroPosturaTests(unittest.TestCase):
     def test_reducao_vale_quando_defende(self) -> None:
+        """Onda 8B: a postura virou GUARDA DIRECIONAL universal e o
+        Cavaleiro é o mestre dela (×0.20 e meio custo de estamina). A
+        guarda agora exige ameaça REAL no arco frontal — sem atacante,
+        não há o que bloquear."""
+        from neural_fights.utils.config import FATOR_DANO_BLOQUEIO_CAVALEIRO
+
         cavaleiro = lutador("Cavaleiro (Defesa)")
-        # Postura v2 e OPT-IN: escudo so em intencao defensiva explicita.
+        atacante = lutador()
+        atacante.pos = [8.0, 5.0]
         cavaleiro.brain = BrainPostura("BLOQUEAR")
         cavaleiro.atacando = False
+        cavaleiro.tempo_bloqueando = 1.0  # guarda estabelecida (sem parry)
+        cavaleiro.angulo_olhar = 0.0      # de frente para a ameaça
         vida_antes = cavaleiro.vida
-        cavaleiro.tomar_dano(100.0, 0.0, 0.0)
-        self.assertAlmostEqual(vida_antes - cavaleiro.vida, 75.0, delta=1.0)
+        cavaleiro.tomar_dano(
+            100.0, 0.0, 0.0, atacante=atacante,
+            metadata_impacto={"eh_corpo_a_corpo": True},
+        )
+        self.assertAlmostEqual(
+            vida_antes - cavaleiro.vida,
+            100.0 * FATOR_DANO_BLOQUEIO_CAVALEIRO,
+            delta=1.0,
+        )
 
     def test_reducao_dorme_durante_o_proprio_golpe(self) -> None:
         """Invicto 21/21 com a redução sempre-ativa: agora ataque = janela."""

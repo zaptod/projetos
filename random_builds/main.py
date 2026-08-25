@@ -7,6 +7,9 @@ Uso:
   python main.py generate-video --generation-only      # so dados (sem video)
   python main.py generate-video --generation-only --count 1000   # balanceamento
   python main.py generate-video --rerender generation_00001      # re-render puro
+  python main.py generate-video --nome-pedido "Kaelen" --autor-pedido "@zeca"
+
+  python main.py cobertura             # o que o banco tem e o video nao descreve
 
   python main.py identity login       # 1o login no Digen (janela visivel)
   python main.py identity worker      # baixa os clipes da fila e re-renderiza
@@ -41,6 +44,12 @@ def main() -> None:
                           "de identidade que tiver chegado depois)")
     gen.add_argument("--no-identity", action="store_true",
                      help="nao enfileirar o clipe de identidade visual (Digen)")
+    gen.add_argument("--nome-pedido", metavar="NOME", default=None,
+                     help="nome escolhido num comentario; vence o nome gerado "
+                          "e o video credita quem pediu")
+    gen.add_argument("--autor-pedido", metavar="ARROBA", default=None,
+                     help="quem pediu o nome; so credito de tela, nao entra "
+                          "em sorteio nenhum")
 
     tor = sub.add_parser("tournament",
                          help="roda um torneio e gera o video (2 formatos)")
@@ -136,6 +145,17 @@ def main() -> None:
     irun.add_argument("--no-rerender", action="store_true")
     irun.add_argument("--preview", action="store_true")
 
+    cob = sub.add_parser(
+        "cobertura",
+        help="o que o banco do jogo ja tem e a camada de video ainda nao "
+             "sabe descrever (prompt, legenda, reacao)")
+    cob.add_argument("--apenas-faltando", action="store_true",
+                     help="esconde os grupos que ja estao completos")
+    cob.add_argument("--limite", type=int, default=None, metavar="N",
+                     help="mostra so os N primeiros itens de cada grupo")
+    cob.add_argument("--json", action="store_true",
+                     help="despeja o dado estruturado em vez do texto")
+
     sub.add_parser("list-reactions", help="lista a biblioteca de reacoes")
     sub.add_parser("reactions",
                    help="assistente interativo: inserir/categorizar videos "
@@ -166,23 +186,52 @@ def main() -> None:
     if args.command == "identity":
         _identity(args, controller)
         return
+    if args.command == "cobertura":
+        _cobertura(args)
+        return
 
     if args.rerender:
         controller.rerender(args.rerender, preview=args.preview,
                             refazer_edicao=args.refazer_edicao)
     elif args.generation_only and args.count > 1:
-        controller.batch(args.count, seed_start=args.seed)
+        controller.batch(args.count, seed_start=args.seed,
+                         nome_pedido=args.nome_pedido,
+                         autor_pedido=args.autor_pedido)
     else:
         controller.generate(seed=args.seed, generation_only=args.generation_only,
                             preview=args.preview, insert=not args.no_insert,
-                            identity=not args.no_identity)
+                            identity=not args.no_identity,
+                            nome_pedido=args.nome_pedido,
+                            autor_pedido=args.autor_pedido)
+
+
+def _cobertura(args) -> None:
+    """Relatorio de cobertura do banco -> camada de video.
+
+    Import tardio como o resto: o modulo puxa o pacote neural_fights inteiro,
+    e quem so quer `--help` nao precisa pagar por isso. O codigo de saida
+    existe para agendador/CI: 0 nada pendente, 1 tem item para cadastrar,
+    2 alguma fonte nao pode nem ser lida.
+    """
+    import json as _json
+
+    from src.nf_bridge import cobertura as cob
+    dados = cob.cobertura()
+    if args.json:
+        print(_json.dumps(dados, ensure_ascii=False, indent=2))
+    else:
+        print(cob.relatorio(dados, limite=args.limite,
+                            apenas_faltando=args.apenas_faltando), end="")
+    if any(g["erro"] for g in dados["grupos"]):
+        raise SystemExit(2)
+    raise SystemExit(0 if dados["ok"] else 1)
 
 
 def _identity(args, controller) -> None:
     """Subcomandos de identidade.
 
     Import tardio: `src.identity` puxa patchright, que so quem usa o Digen
-    precisa ter instalado — `generate-video` continua rodando sem ele.
+    precisa ter instalado - `generate-video` continua rodando sem ele.
     """
     from src.identity import queue
 

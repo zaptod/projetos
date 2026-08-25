@@ -65,6 +65,12 @@ from neural_fights.core.physics import normalizar_angulo
 from neural_fights.core.skills import get_skill_data
 from neural_fights.models import get_class_data
 from neural_fights.ai.contracts import obter_brain as _obter_brain
+from neural_fights.ai.percepcao import (
+    FASE_GOLPEANDO,
+    FASE_PREPARANDO,
+    FASE_RECUPERANDO,
+    construir_observacao,
+)
 from neural_fights.ai.skill_contracts import (
     alvo_tem_efeito,
     calcular_custo_vida,
@@ -180,6 +186,8 @@ class AIBrain:
         # === COOLDOWNS INTERNOS ===
         self.cd_dash = 0.0
         self.cd_pulo = 0.0
+        self.cd_desvio = 0.0   # Onda 8C: gate do desvio inteligente
+        self.cd_punicao = 0.0  # Onda 8D: gate da punição de whiff
         self.cd_mudanca_direcao = 0.0
         self.cd_reagir = 0.0
         self.cd_buff = 0.0
@@ -269,6 +277,35 @@ class AIBrain:
         self.tempo_reacao_base = self.rng.uniform(0.12, 0.25)  # Varia por personalidade
         self.variacao_timing = self.rng.uniform(0.05, 0.15)    # Inconsistência humana
         self.micro_ajustes = 0  # Pequenos ajustes de posição
+
+        # === ONDA 8A: OBSERVAÇÃO HONESTA ===
+        # Substitui a telepatia (ler inimigo.brain.acao_atual). A leitura
+        # do oponente vira habilidade: latência, má-leitura e memória
+        # escalam com habilidade_leitura (derivada dos eixos no
+        # _aplicar_modificadores_iniciais).
+        self.habilidade_leitura = 0.5
+        self.disciplina_tatica = 0.5     # consumida pela Onda 8E (planos)
+        self._obs_cache = None
+        self._obs_cache_tempo = -1.0
+        self._obs_ataque_id_visto = -1
+        self._obs_ataque_mal_lido = False
+
+        # === ONDA 8C: SISTEMA ESPACIAL REAL ===
+        # SpatialAwarenessSystem (arena circular, LOS, rotas) substitui a
+        # cópia retangular inline. Criação preguiçosa via _sistema_espacial.
+        self._espacial = None
+        self._timer_taticas = 0.0
+        self.mult_janela_parry = 1.0  # FRAME_PERFECT amplia (ver 8B)
+        self._ataque_id_avaliado_desvio = -1   # um desvio avaliado por swing
+        self._ataque_id_avaliado_punicao = -1  # uma punição avaliada por swing
+
+        # === ONDA 8E: PLANO DE LUTA ===
+        # Intenção tática persistente (2-6s). NÃO substitui a pilha de
+        # personalidade: entra como viés logo após a proposta e os
+        # estágios seguintes continuam perturbando. dict simples:
+        # {"tipo", "expira_em", "compromisso"}.
+        self.plano = None
+        self._plano_hp_inicial = 1.0
         
         # Sistema de combos e follow-ups
         self.combo_state = {
@@ -380,7 +417,10 @@ class AIBrain:
         frequência temporal do comportamento.
         """
         chance = max(0.0, min(1.0, float(chance_60fps)))
-        intervalo = self._dt_atual if dt is None else max(0.0, float(dt))
+        if dt is None:
+            intervalo = getattr(self, "_dt_atual", 1.0 / 60.0)
+        else:
+            intervalo = max(0.0, float(dt))
         if chance <= 0.0 or intervalo <= 0.0:
             return False
         if chance >= 1.0:
@@ -444,6 +484,7 @@ class AIBrain:
             instintos_disponiveis = [i for i in INSTINTOS.keys() if i not in self.instintos]
             if instintos_disponiveis:
                 self.instintos.append(self.rng.choice(instintos_disponiveis))
+        self._garantir_instinto_evasivo()  # Onda 8F
         
         # Aplica ritmo do preset ou seleciona aleatoriamente
         ritmo_fixo = preset.get("ritmo_fixo")
@@ -485,7 +526,11 @@ class AIBrain:
             # Ajusta estratégia baseado na arma
             if hasattr(self.parent.dados, 'arma_obj') and self.parent.dados.arma_obj:
                 arma = self.parent.dados.arma_obj
-                alcance_arma = getattr(arma, 'alcance', 2.0)
+                # Onda 8A: Arma nunca teve atributo `alcance` — o getattr
+                # devolvia 2.0 para TODA arma e a estratégia de skills era
+                # ajustada como se tudo fosse espada curta. Usa o mesmo
+                # modelo de alcance do resto do brain.
+                alcance_arma = self._calcular_alcance_efetivo()
                 vel_arma = getattr(arma, 'velocidade_ataque', 1.0)
                 self.skill_strategy.ajustar_para_arma(alcance_arma, vel_arma)
                 
@@ -499,10 +544,23 @@ class AIBrain:
         else:
             self.skill_strategy = None
     
+    # Onda 8F: todo lutador precisa de pelo menos UM reflexo evasivo —
+    # antes, o sorteio de 2-4 entre 15 deixava a maioria sem nenhum e a
+    # cadeia de desvio por instinto órfã na prática.
+    _INSTINTOS_EVASIVOS = (
+        "PULO_PERIGO", "AGACHAR_REFLEXO", "ESQUIVA_SOMBRA", "EVASAO_COMBO",
+    )
+
+    def _garantir_instinto_evasivo(self):
+        disponiveis = [i for i in self._INSTINTOS_EVASIVOS if i in INSTINTOS]
+        if disponiveis and not any(i in self.instintos for i in disponiveis):
+            self.instintos.append(self.rng.choice(disponiveis))
+
     def _gerar_instintos(self):
         """Gera instintos aleatórios para a IA"""
         num_instintos = self.rng.randint(2, 4)
         self.instintos = self.rng.sample(list(INSTINTOS.keys()), min(num_instintos, len(INSTINTOS)))
+        self._garantir_instinto_evasivo()
     
     def _gerar_ritmo(self):
         """Seleciona um ritmo de batalha aleatório"""
@@ -523,30 +581,43 @@ class AIBrain:
         p = self.parent
         classe = p.classe_nome.lower() if p.classe_nome else ""
         
+        # Onda 8E (bug #2): "duelista" não existia (só "espadachim") —
+        # "Duelista (Precisão)" caía no fallback por arma e era a classe
+        # de pior winrate do ledger (14,8%). "necromante" apontava para
+        # INVOCADOR e "feiticeiro" para MAGO, sombreando os arquétipos
+        # NECROMANTE/ARCANO que existiam sem produtor.
         arquetipo_map = {
             "mago": "MAGO", "piromante": "PIROMANTE", "criomante": "CRIOMANTE",
-            "eletromante": "ELETROMANTE", "necromante": "INVOCADOR", "feiticeiro": "MAGO",
+            "eletromante": "ELETROMANTE", "necromante": "NECROMANTE",
+            "feiticeiro": "ARCANO",
             "bruxo": "MAGO_CONTROLE", "assassino": "ASSASSINO", "ninja": "NINJA",
             "sombra": "SOMBRA", "berserker": "BERSERKER", "bárbaro": "BERSERKER",
             "cavaleiro": "SENTINELA", "paladino": "PALADINO", "ladino": "LADINO",
             "druida": "DRUIDA", "monge": "MONGE", "arqueiro": "ARQUEIRO",
             "caçador": "ARQUEIRO", "guerreiro": "GUERREIRO", "samurai": "SAMURAI",
-            "ronin": "RONIN", "espadachim": "DUELISTA", "gladiador": "GLADIADOR",
-            "guardião": "GUARDIAO", "templário": "PALADINO",
+            "ronin": "RONIN", "espadachim": "DUELISTA", "duelista": "DUELISTA",
+            "gladiador": "GLADIADOR",
+            "guardião": "GUARDIAO", "templário": "TEMPLARIO",
         }
-        
+
+        arquetipo_via_arma = False
         for key, arq in arquetipo_map.items():
             if key in classe:
                 self.arquetipo = arq
                 break
         else:
             self._definir_arquetipo_por_arma()
-        
+            arquetipo_via_arma = True
+
         if self.arquetipo in ARQUETIPO_DATA:
             data = ARQUETIPO_DATA[self.arquetipo]
-            p.alcance_ideal = data["alcance"]
             self.estilo_luta = data["estilo"]
             self.agressividade_base = data["agressividade"]
+            # Onda 8E (bug #1): o caminho por arma calcula alcance_ideal
+            # afinado por tipo/estilo/peso — a constante do arquétipo o
+            # sobrescrevia e ~120 linhas de tuning eram letra morta.
+            if not arquetipo_via_arma:
+                p.alcance_ideal = data["alcance"]
 
     def _definir_arquetipo_por_arma(self):
         """Define arquétipo pela arma se classe não mapeada - v12.2 CORRIGIDO"""
@@ -877,6 +948,40 @@ class AIBrain:
             max(0.0, 0.5 + perfil["agressao"] * 0.30 - perfil["medo"] * 0.30),
         )
 
+        # === ONDA 8A: habilidade de leitura e disciplina tática ===
+        # Frieza e cautela leem melhor; caos e medo leem pior. Traços e
+        # quirks de leitura (que eram strings inertes) agora pagam aqui.
+        hab = (
+            0.5
+            + perfil["frieza"] * 0.25
+            + perfil["cautela"] * 0.15
+            - perfil["caos"] * 0.20
+            - max(0.0, perfil["medo"]) * 0.10
+        )
+        for traco_leitura in ("LEITURA_PERFEITA", "PREVISOR", "TIMING_PRECISO"):
+            if traco_leitura in self.tracos:
+                hab += 0.15
+        if "LEITURA_CORPORAL" in self.quirks:
+            hab += 0.20
+        self.habilidade_leitura = max(0.05, min(0.95, hab))
+
+        self.disciplina_tatica = max(0.05, min(0.95, (
+            0.5
+            + perfil["frieza"] * 0.30
+            + perfil["cautela"] * 0.20
+            - perfil["caos"] * 0.35
+        )))
+
+        # Quem lê bem reage mais rápido: escala o sorteio base (0.12-0.25s)
+        # em ±30% mantendo a variância individual já sorteada.
+        self.tempo_reacao_base *= 1.3 - self.habilidade_leitura * 0.6
+
+        # Onda 8C: quirks de reflexo saem da lista de strings inertes e
+        # viram parâmetros — FRAME_PERFECT amplia a janela de parry que o
+        # motor (8B) consulta via mult_janela_parry.
+        if "FRAME_PERFECT" in self.quirks:
+            self.mult_janela_parry = 1.6
+
     # =========================================================================
     # PROCESSAMENTO PRINCIPAL v10.0
     # =========================================================================
@@ -913,6 +1018,9 @@ class AIBrain:
         
         # === NOVOS SISTEMAS v11.0 ===
         self._atualizar_ritmo(dt)
+
+        # === ONDA 8E: PLANO DE LUTA ===
+        self._atualizar_plano(dt, distancia, inimigo)
         # Onda 5B: instinto escreve com prioridade 1 (interrompe qualquer
         # hold) e emite tell — dado puro que o renderer consome.
         self._contexto_escrita = 1
@@ -921,6 +1029,53 @@ class AIBrain:
                 self.tell_atual = {"tipo": "instinto",
                                    "ate": self.tempo_combate + 0.4}
                 return  # Instinto tomou controle
+
+            # === ONDA 8C: DESVIO INTELIGENTE (religado) ===
+            # O subsistema v8.0 completo (trajetória+ETA, direção
+            # perpendicular, timing humano) existia morto desde a v8.
+            # Roda ANTES do coreógrafo: desviar de uma bola de fogo
+            # vence qualquer momento cinematográfico. O cooldown por
+            # personalidade (0.8-2.0s) protege o alvo V2 — desvio é
+            # evento de urgência, não opção por tick.
+            if self.cd_desvio <= 0 and self._processar_desvio_inteligente(
+                dt, distancia, inimigo
+            ):
+                mob = max(0.0, self.perfil.get("mobilidade", 0.0))
+                cd = 2.0 - 0.6 * mob - 0.6 * self.habilidade_leitura
+                if "ESQUIVA_REFLEXA" in self.quirks:
+                    cd *= 0.7  # quirk inerte ativado: reflexo de esquiva
+                self.cd_desvio = max(0.8, cd)
+                contadores_luta = getattr(p, "contadores_luta", None)
+                if contadores_luta is not None:
+                    contadores_luta["desvios_ia"] = (
+                        contadores_luta.get("desvios_ia", 0) + 1
+                    )
+                    # Onda 8D: desvio iniciado no WIND-UP do oponente —
+                    # o momento visível "ela leu o golpe" (alvo A3).
+                    if self._observar(inimigo).fase_ataque == FASE_PREPARANDO:
+                        contadores_luta["desvios_antecipados"] = (
+                            contadores_luta.get("desvios_antecipados", 0) + 1
+                        )
+                self.tell_atual = {"tipo": "desvio",
+                                   "ate": self.tempo_combate + 0.4}
+                return
+
+            # === ONDA 8D: PUNIÇÃO DE WHIFF ===
+            # Recovery lido no corpo do oponente (ou janela pós-esquiva/
+            # pós-parry) → castigo deliberado. Prioridade logo abaixo do
+            # desvio: primeiro não morrer, depois punir.
+            if self.cd_punicao <= 0 and self._processar_punicao_whiff(
+                dt, distancia, inimigo
+            ):
+                self.cd_punicao = 2.5
+                contadores_luta = getattr(p, "contadores_luta", None)
+                if contadores_luta is not None:
+                    contadores_luta["punicoes"] = (
+                        contadores_luta.get("punicoes", 0) + 1
+                    )
+                self.tell_atual = {"tipo": "punicao",
+                                   "ate": self.tempo_combate + 0.4}
+                return
         finally:
             self._contexto_escrita = 2
 
@@ -978,23 +1133,63 @@ class AIBrain:
     # SISTEMA DE LEITURA DO OPONENTE v8.0
     # =========================================================================
     
+    def _observar(self, inimigo):
+        """Funil único de observação HONESTA do oponente (Onda 8A).
+
+        Substitui a telepatia (ler ``inimigo.brain.acao_atual``): tudo
+        aqui vem de estado fisicamente observável — posição, velocidade
+        e a fase da animação de ataque. A habilidade de leitura da
+        personalidade paga em dois lugares:
+
+        - latência: amostra o histórico 0-3 frames atrás;
+        - má-leitura: um sorteio POR GOLPE (``ataque_id`` é público e
+          incrementa a cada swing) — quem lê mal não enxerga o wind-up
+          e só percebe o golpe quando ele já está ativo.
+
+        Cache por frame: vários subsistemas consultam no mesmo tick.
+        Fakes de contrato (object.__new__ sem __init__) são tolerados
+        via acesso preguiçoso — mesmo padrão do motor emocional.
+        """
+        tempo = getattr(self, "tempo_combate", 0.0)
+        if (
+            self.__dict__.get("_obs_cache") is not None
+            and self.__dict__.get("_obs_cache_tempo") == tempo
+        ):
+            return self._obs_cache
+        habilidade = getattr(self, "habilidade_leitura", 0.5)
+        atraso = int(round((1.0 - habilidade) * 3.0))
+        obs = construir_observacao(
+            getattr(self, "parent", None), inimigo, atraso_frames=atraso
+        )
+        if obs.atacando and obs.ataque_id != self.__dict__.get("_obs_ataque_id_visto", -1):
+            self._obs_ataque_id_visto = obs.ataque_id
+            self._obs_ataque_mal_lido = (
+                self.rng.random() < (1.0 - habilidade) * 0.35
+            )
+        if self.__dict__.get("_obs_ataque_mal_lido") and obs.fase_ataque == FASE_PREPARANDO:
+            obs.fase_ataque = None
+            obs.tempo_para_impacto = None
+            obs.intencao = (
+                "parado" if math.hypot(obs.vel[0], obs.vel[1]) < 0.8 else "avancando"
+            )
+        self._obs_cache = obs
+        self._obs_cache_tempo = tempo
+        return obs
+
     def _atualizar_leitura_oponente(self, dt, distancia, inimigo):
         """Lê e antecipa os movimentos do oponente como um humano faria"""
         leitura = self.leitura_oponente
-        
-        # Detecta se oponente está preparando ataque
-        ataque_prep = False
-        if hasattr(inimigo, 'atacando') and inimigo.atacando:
-            ataque_prep = True
-        if hasattr(inimigo, 'cooldown_ataque') and inimigo.cooldown_ataque < 0.2:
-            ataque_prep = True
-        brain_inimigo = _obter_brain(inimigo)
-        if brain_inimigo:
-            ai_ini = brain_inimigo
-            if ai_ini.acao_atual in ["MATAR", "ESMAGAR", "ATAQUE_RAPIDO", "CONTRA_ATAQUE"]:
-                ataque_prep = True
-        
-        leitura["ataque_iminente"] = ataque_prep
+        obs = self._observar(inimigo)
+
+        # Onda 8A: "ataque iminente" agora é o telegraph REAL da animação
+        # (wind-up/golpe ativo), não mais o proxy cooldown_ataque < 0.2
+        # que era verdadeiro quase sempre, nem a intenção telepática.
+        leitura["ataque_iminente"] = obs.fase_ataque in (
+            FASE_PREPARANDO, FASE_GOLPEANDO
+        )
+        # Campo declarado desde a v8.0 e nunca escrito: segundos até o
+        # centro da janela de impacto do golpe em curso (0.0 sem golpe).
+        leitura["tempo_para_ataque"] = obs.tempo_para_impacto or 0.0
         
         # Calcula direção provável do ataque
         if inimigo.vel[0] != 0 or inimigo.vel[1] != 0:
@@ -1030,13 +1225,31 @@ class AIBrain:
             media_var = sum(variacoes) / len(variacoes) if variacoes else 1.0
             leitura["previsibilidade"] = max(0.1, min(0.9, 1.0 - (media_var / 20.0)))
         
-        # Percebe agressividade do oponente
-        if brain_inimigo:
-            ai_ini = brain_inimigo
-            if ai_ini.acao_atual in ["MATAR", "ESMAGAR", "PRESSIONAR", "APROXIMAR"]:
-                leitura["agressividade_percebida"] = min(1.0, leitura["agressividade_percebida"] + 0.03)
-            elif ai_ini.acao_atual in ["RECUAR", "FUGIR", "BLOQUEAR"]:
-                leitura["agressividade_percebida"] = max(0.0, leitura["agressividade_percebida"] - 0.02)
+        # Percebe agressividade do oponente pelo que ele FAZ (Onda 8A):
+        # avanço/golpe sobe o medidor, recuo desce.
+        if obs.agressivo:
+            leitura["agressividade_percebida"] = min(1.0, leitura["agressividade_percebida"] + 0.03)
+        elif obs.intencao == "recuando":
+            leitura["agressividade_percebida"] = max(0.0, leitura["agressividade_percebida"] - 0.02)
+
+        # Onda 8D: ritmo de golpes por EMA de intervalos entre swings
+        # (evento: ataque_id incrementa por golpe — nada por frame).
+        # Alimenta memoria_oponente["padrao_detectado"], escrito desde a
+        # v8 e nunca preenchido: oponente rítmico é oponente punível.
+        if obs.atacando and obs.ataque_id != leitura.get("_ultimo_swing_id"):
+            leitura["_ultimo_swing_id"] = obs.ataque_id
+            t_anterior = leitura.get("_t_ultimo_swing")
+            leitura["_t_ultimo_swing"] = self.tempo_combate
+            if t_anterior is not None:
+                intervalo = self.tempo_combate - t_anterior
+                ema = leitura.get("ritmo_golpes_s")
+                if ema is None:
+                    leitura["ritmo_golpes_s"] = intervalo
+                else:
+                    leitura["ritmo_golpes_s"] = ema * 0.7 + intervalo * 0.3
+                    self.memoria_oponente["padrao_detectado"] = (
+                        "ritmico" if abs(intervalo - ema) < 0.3 else "erratico"
+                    )
     
     # =========================================================================
     # SISTEMA DE DESVIO INTELIGENTE v8.0
@@ -1056,12 +1269,18 @@ class AIBrain:
         desvio_necessario = False
         tipo_desvio = None
         urgencia = 0.0
-        
-        # 1. Ataque físico iminente
+
+        # 1. Ataque físico iminente — Onda 8C: UMA avaliação por golpe
+        # inimigo (ataque_id é público e incrementa por swing). Sem isso
+        # o gate rolava todo frame do wind-up e o desvio virava spam
+        # (~21/luta no smoke) em vez de reação pontual ao golpe.
         if leitura["ataque_iminente"] and distancia < 3.5:
-            desvio_necessario = True
-            tipo_desvio = "ATAQUE_FISICO"
-            urgencia = 1.0 - (distancia / 3.5)
+            ataque_id = getattr(inimigo, "ataque_id", 0)
+            if ataque_id != getattr(self, "_ataque_id_avaliado_desvio", -1):
+                self._ataque_id_avaliado_desvio = ataque_id
+                desvio_necessario = True
+                tipo_desvio = "ATAQUE_FISICO"
+                urgencia = 1.0 - (distancia / 3.5)
         
         # 2. Projéteis vindo
         projetil_info = self._analisar_projeteis_vindo(inimigo)
@@ -1095,6 +1314,9 @@ class AIBrain:
                 tempo_reacao *= 0.7
             if "ESTATICO" in self.tracos:
                 tempo_reacao *= 1.5
+            if "REFLEXOS_DIVINOS" in self.quirks:
+                # Onda 8C: quirk inerte ativado — reflexo sobre-humano.
+                tempo_reacao *= 0.4
             if self.adrenalina > 0.6:
                 tempo_reacao *= 0.8
             if self.medo > 0.5:
@@ -1113,7 +1335,10 @@ class AIBrain:
             if "IMPRUDENTE" in self.tracos:
                 chance_reagir -= 0.15
 
-            if self.rng.random() > chance_reagir:
+            # Onda 8C: normalizado por dt (norma do projeto) — o roll era
+            # por frame no código morto e ficaria mais frequente em FPS
+            # maior.
+            if not self._chance_temporal(chance_reagir):
                 return False
         
         # Decide direção do desvio
@@ -1122,17 +1347,85 @@ class AIBrain:
         # Executa o desvio
         return self._executar_desvio(tipo_desvio, direcao_desvio, urgencia, distancia, inimigo)
     
+    def _processar_punicao_whiff(self, dt, distancia, inimigo):
+        """Onda 8D: pune o golpe errado — antecipação virando ofensa.
+
+        Duas fontes de oportunidade, ambas OBSERVÁVEIS:
+        - o oponente está na fase de recovery do próprio golpe (lido do
+          corpo via timer_animacao + perfil da arma, nunca da mente);
+        - a janela pós-esquiva/pós-parry aberta pelos eventos do motor.
+
+        A chance escala com habilidade_leitura e ativa os quirks de
+        punição que eram strings inertes (WHIFF_PUNISHER,
+        LEITURA_CORPORAL, MESTRE_DISTANCIA). Oponente rítmico
+        (padrao_detectado da 8D) é mais punível.
+        """
+        obs = self._observar(inimigo)
+        janela = self.janela_ataque
+        janela_boa = bool(janela.get("aberta")) and janela.get("tipo") in (
+            "pos_esquiva", "pos_parry"
+        )
+        # Recovery punível = golpe que NÃO me acertou (whiff de verdade,
+        # tempo_desde_dano guarda isso) com tempo restante para o step-in.
+        # UMA avaliação por swing (ataque_id), como no gate de desvio —
+        # sem isso a punição rolava todo frame do recovery e virava spam
+        # (12/luta no smoke, V2 no limite).
+        # 0.12s é o mínimo humano para o step-in: pune espadas/correntes/
+        # arcos; adagas (recovery 0.065s) seguem seguras por design.
+        recovery_lido = (
+            obs.fase_ataque == FASE_RECUPERANDO
+            and (obs.tempo_para_fim or 0.0) > 0.12
+            and self.tempo_desde_dano > 0.5
+        )
+        if recovery_lido:
+            if obs.ataque_id == getattr(self, "_ataque_id_avaliado_punicao", -1):
+                recovery_lido = False
+            else:
+                self._ataque_id_avaliado_punicao = obs.ataque_id
+        if not (janela_boa or recovery_lido):
+            return False
+
+        alcance = self._calcular_alcance_efetivo()
+        if distancia > alcance * 1.2 + 1.0:
+            return False  # longe demais para chegar dentro da janela
+
+        chance = 0.15 + 0.35 * self.habilidade_leitura
+        if "WHIFF_PUNISHER" in self.quirks or "LEITURA_CORPORAL" in self.quirks:
+            chance += 0.2
+        if "MESTRE_DISTANCIA" in self.quirks:
+            chance += 0.1
+        if self.memoria_oponente.get("padrao_detectado") == "ritmico":
+            chance += 0.1
+        if self.medo > 0.7:
+            chance *= 0.5  # apavorado não dá step-in
+
+        # Recovery é avaliado uma vez por swing (roll seco); a janela
+        # pós-esquiva/parry persiste frames (roll normalizado por dt).
+        if recovery_lido:
+            passou = self.rng.random() < min(0.95, chance)
+        else:
+            passou = self._chance_temporal(min(0.95, chance))
+        if not passou:
+            return False
+
+        self.acao_atual = "CONTRA_ATAQUE"
+        return True
+
     def _analisar_projeteis_vindo(self, inimigo):
-        """Analisa projéteis vindo em direção ao lutador"""
+        """Analisa projéteis vindo em direção ao lutador.
+
+        Onda 8A: lia os buffers do inimigo (drenados pelo Simulador antes
+        do tick das IAs — sempre vazios). Agora lê a janela de mundo
+        compartilhada (``percepcao``); orbes seguem no lutador porque o
+        buffer deles não é drenado.
+        """
         p = self.parent
         resultado = {"vindo": False, "urgencia": 0.0, "direcao": 0.0, "tempo_impacto": 999.0}
-        
+        percepcao = getattr(p, "percepcao", None)
+
         # Verifica projéteis
-        if hasattr(inimigo, 'buffer_projeteis'):
-            for proj in inimigo.buffer_projeteis:
-                if not proj.ativo:
-                    continue
-                
+        if percepcao is not None:
+            for proj in percepcao.projeteis_hostis(p):
                 dx = p.pos[0] - proj.x
                 dy = p.pos[1] - proj.y
                 dist = math.hypot(dx, dy)
@@ -1171,29 +1464,25 @@ class AIBrain:
                     resultado["direcao"] = math.degrees(math.atan2(-dy, -dx))
         
         # Verifica beams
-        if hasattr(inimigo, 'buffer_beams'):
-            for beam in inimigo.buffer_beams:
-                if not beam.ativo:
-                    continue
+        if percepcao is not None:
+            for beam in percepcao.beams_hostis(p):
                 # Simplificação: se beam está ativo e perto, é perigo
                 dist = math.hypot(p.pos[0] - beam.x1, p.pos[1] - beam.y1)
                 alcance = math.hypot(beam.x2 - beam.x1, beam.y2 - beam.y1)
                 if dist < alcance + 1.0:
                     resultado["vindo"] = True
                     resultado["urgencia"] = max(resultado["urgencia"], 0.9)
-        
+
         return resultado
-    
+
     def _analisar_areas_perigo(self, inimigo):
-        """Analisa áreas de dano próximas"""
+        """Analisa áreas de dano próximas (Onda 8A: via percepção de mundo)."""
         p = self.parent
         resultado = {"perigo": False, "urgencia": 0.0}
-        
-        if hasattr(inimigo, 'buffer_areas'):
-            for area in inimigo.buffer_areas:
-                if not area.ativo:
-                    continue
-                
+        percepcao = getattr(p, "percepcao", None)
+
+        if percepcao is not None:
+            for area in percepcao.areas_hostis(p):
                 dist = math.hypot(p.pos[0] - area.x, p.pos[1] - area.y)
                 raio = getattr(area, 'raio', 2.0)
                 
@@ -1220,41 +1509,67 @@ class AIBrain:
         # Perpendicular: +90 ou -90
         opcao1 = ang_ataque + 90
         opcao2 = ang_ataque - 90
-        
-        # Escolhe direção baseado em fatores
-        escolha = opcao1 if self.rng.random() < 0.5 else opcao2
-        
-        # Leitura do oponente influencia
+
+        # Onda 8C: ordem consertada — na versão morta o dir_circular
+        # SEMPRE sobrescrevia a leitura do oponente (o código acima dele
+        # era letra morta). Agora o hábito próprio é o ponto de partida
+        # e a LEITURA (para onde o oponente tende a ir) o corrige.
+        escolha = opcao1 if self.dir_circular > 0 else opcao2
         if leitura["tendencia_esquerda"] > 0.6:
-            escolha = opcao2  # Oponente tende a ir pra esquerda, vou pra direita
+            escolha = opcao2  # Oponente tende à esquerda: vou pra direita
         elif leitura["tendencia_esquerda"] < 0.4:
             escolha = opcao1
-        
-        # Usa direção circular estabelecida
-        if self.dir_circular > 0:
-            escolha = opcao1
-        else:
-            escolha = opcao2
-        
+
         # Adiciona variação humana
         escolha += self.rng.uniform(-20, 20)
-        
+
         # Se HP baixo, prioriza recuar
         hp_pct = p.vida / p.vida_max
         if hp_pct < 0.3:
             # Mistura desvio com recuo
             ang_recuo = math.degrees(math.atan2(
-                p.pos[1] - inimigo.pos[1], 
+                p.pos[1] - inimigo.pos[1],
                 p.pos[0] - inimigo.pos[0]
             ))
             escolha = (escolha + ang_recuo) / 2
-        
+
+        # Onda 8C: ninguém desvia para DENTRO da parede — o sistema
+        # espacial testa a direção e busca alternativa (12 ângulos).
+        espacial = self._sistema_espacial()
+        if espacial is not None:
+            escolha = espacial.ajustar_direcao(escolha, self.tracos)
+
         return escolha
     
     def _executar_desvio(self, tipo_desvio, direcao, urgencia, distancia, inimigo):
-        """Executa o desvio escolhido"""
+        """Executa o desvio escolhido.
+
+        Onda 8C: além dos caminhos originais (skill de dash, pulo,
+        impulso lateral), o desvio agora escolhe entre as mecânicas da
+        Onda 8B — ERGUER A GUARDA contra golpe físico (arma pesada e
+        personalidade cautelosa preferem bloquear; o motor decide se o
+        timing valeu um parry) e o DASH UNIVERSAL como escape rápido.
+        """
         p = self.parent
-        
+
+        # Guarda como desvio: ameaça física de frente + estilo defensivo.
+        if tipo_desvio == "ATAQUE_FISICO":
+            arma = getattr(getattr(p, "dados", None), "arma_obj", None)
+            peso_arma = float(getattr(arma, "peso", 3.0) or 3.0)
+            prefere_guarda = (
+                peso_arma >= 5.0
+                or self.perfil.get("cautela", 0.0) > 0.15
+                or self.perfil.get("agressao", 0.0) < -0.2
+                or "FRAME_PERFECT" in self.quirks
+            )
+            if (
+                prefere_guarda
+                and getattr(p, "estamina", 0.0) >= 20.0
+                and self.rng.random() < 0.75
+            ):
+                self.acao_atual = "BLOQUEAR"
+                return True
+
         # Tipo de desvio baseado na urgência e situação
         if urgencia > 0.8 or tipo_desvio == "AREA":
             # Desvio urgente - dash se disponível
@@ -1270,7 +1585,13 @@ class AIBrain:
                         self.acao_atual = "DESVIO"
                         return True
                     p.angulo_olhar = ang_original
-            
+
+            # Onda 8C: dash universal (8B) — o escape de todo lutador.
+            iniciar_dash = getattr(p, "iniciar_dash", None)
+            if callable(iniciar_dash) and iniciar_dash(math.radians(direcao)):
+                self.acao_atual = "DESVIO"
+                return True
+
             # Sem dash, tenta pulo
             if p.z == 0 and self.cd_pulo <= 0:
                 p.vel_z = self.rng.uniform(10.0, 14.0)
@@ -1297,11 +1618,11 @@ class AIBrain:
             
             return True
         
-        # Desvio sutil - apenas ajuste de posição
-        if self.rng.random() < urgencia:
+        # Desvio sutil - apenas ajuste de posição (normalizado por dt, 8C)
+        if self._chance_temporal(urgencia):
             self.acao_atual = "CIRCULAR"
             return True
-        
+
         return False
     
     # =========================================================================
@@ -1365,14 +1686,13 @@ class AIBrain:
             qualidade = 0.7
             duracao = 1.5
         
-        # 6. Oponente recuando (costas viradas parcialmente)
-        brain_inimigo = _obter_brain(inimigo)
-        if brain_inimigo:
-            if brain_inimigo.acao_atual in ["RECUAR", "FUGIR"]:
-                nova_janela = True
-                tipo_janela = "recuando"
-                qualidade = 0.75
-                duracao = 0.8
+        # 6. Oponente recuando (costas viradas parcialmente) — Onda 8A:
+        # observado pela velocidade real, não pela intenção telepática.
+        if self._observar(inimigo).intencao == "recuando":
+            nova_janela = True
+            tipo_janela = "recuando"
+            qualidade = 0.75
+            duracao = 0.8
         
         # 7. Oponente usou skill de mana alta (esperando cooldown)
         if hasattr(inimigo, 'cd_skill_arma') and inimigo.cd_skill_arma > 2.0:
@@ -1415,6 +1735,10 @@ class AIBrain:
             # Aumenta chance se inimigo com pouca vida
             if inimigo.vida / inimigo.vida_max < 0.3:
                 chance_base = 0.85
+                # Onda 8F: CALCULO_MORTAL sai da lista de quirks inertes —
+                # quem calcula o abate não deixa a janela letal passar.
+                if "CALCULO_MORTAL" in self.quirks:
+                    chance_base = 0.98
             
             # Modificadores de personalidade
             if "AGRESSIVO" in self.tracos or "BERSERKER" in self.tracos:
@@ -1426,10 +1750,20 @@ class AIBrain:
             
             # Momentum
             chance_base += self.momentum * 0.15
-            
+
             if self.rng.random() < chance_base:
                 self._executar_ataque(distancia, inimigo)
-                return True
+                # Onda 8E (fix do melee): consome o frame só quando o
+                # golpe pode DE FATO sair agora. Com o cooldown rolando,
+                # a intenção ofensiva fica escrita (o motor golpeia
+                # quando ela abrir) mas a decisão de movimento continua
+                # viva — antes, este return incondicional congelava a
+                # pilha de personalidade durante TODO o tempo em range
+                # de melee, e o lutador virava um loop de rolagem de
+                # ataque sem espaçamento, flanco ou recuo.
+                if p.cooldown_ataque <= 0 and not p.atacando:
+                    return True
+                return False
         
         # Verifica se tem janela de oportunidade
         if janela["aberta"]:
@@ -1618,8 +1952,15 @@ class AIBrain:
                 chance_bait += 0.1
             if self.leitura_oponente["agressividade_percebida"] > 0.7:
                 chance_bait += 0.1  # Oponente agressivo, fácil de baitar
-            
-            if 3.0 < distancia < 6.0 and self.rng.random() < chance_bait:
+
+            # Onda 8D: o bait aprende — sucesso_count/falha_count eram
+            # incrementados desde a v8 e nunca lidos. Quem cai no truque
+            # vê mais truques; quem lê a finta faz o lutador parar de
+            # repeti-la.
+            bait_saldo = bait["sucesso_count"] - bait["falha_count"]
+            chance_bait *= max(0.3, min(1.8, 1.0 + 0.2 * bait_saldo))
+
+            if 3.0 < distancia < 6.0 and self._chance_temporal(chance_bait):
                 tipo_bait = self.rng.choice(["recuo_falso", "abertura_falsa", "hesitacao_falsa"])
                 bait["ativo"] = True
                 bait["tipo"] = tipo_bait
@@ -1642,13 +1983,9 @@ class AIBrain:
         bait = self.bait_state
         bait["ativo"] = False
         
-        # Verifica se oponente caiu no bait
-        oponente_caiu = False
-        brain_inimigo = _obter_brain(inimigo)
-        if brain_inimigo:
-            ai_ini = brain_inimigo
-            if ai_ini.acao_atual in ["APROXIMAR", "MATAR", "ESMAGAR", "PRESSIONAR"]:
-                oponente_caiu = True
+        # Verifica se oponente caiu no bait — Onda 8A: caiu se está
+        # visivelmente vindo pra cima (avanço/golpe), não pela intenção.
+        oponente_caiu = self._observar(inimigo).agressivo
         
         if oponente_caiu and distancia < 5.0:
             bait["sucesso_count"] += 1
@@ -1712,14 +2049,12 @@ class AIBrain:
         else:
             self.pressao_aplicada = max(0.0, self.pressao_aplicada - dt * 0.5)
         
-        # Pressão recebida
-        brain_inimigo = _obter_brain(inimigo)
-        if brain_inimigo:
-            ai_ini = brain_inimigo
-            if distancia < 3.0 and ai_ini.acao_atual in ["MATAR", "PRESSIONAR", "ESMAGAR"]:
-                self.pressao_recebida = min(1.0, self.pressao_recebida + dt * 0.5)
-            else:
-                self.pressao_recebida = max(0.0, self.pressao_recebida - dt * 0.3)
+        # Pressão recebida — Onda 8A: pressão é o que se SENTE (oponente
+        # perto avançando/golpeando), não a intenção interna dele.
+        if distancia < 3.0 and self._observar(inimigo).agressivo:
+            self.pressao_recebida = min(1.0, self.pressao_recebida + dt * 0.5)
+        else:
+            self.pressao_recebida = max(0.0, self.pressao_recebida - dt * 0.3)
         
         # Clamp momentum
         self.momentum = max(-1.0, min(1.0, self.momentum))
@@ -1728,143 +2063,50 @@ class AIBrain:
     # SISTEMA DE RECONHECIMENTO ESPACIAL v9.0
     # =========================================================================
     
+    def _sistema_espacial(self):
+        """Onda 8C: SpatialAwarenessSystem com criação preguiçosa.
+
+        As 521 linhas de spatial.py (arena CIRCULAR, line-of-sight,
+        rotas alternativas, steering, predição de colisão) existiam
+        prontas desde a v10 e nunca foram instanciadas — a cópia inline
+        do brain só entendia retângulos. Ao criar, os dicts
+        ``consciencia_espacial``/``tatica_espacial`` passam a SER os do
+        sistema espacial, então todos os consumidores existentes seguem
+        lendo os mesmos objetos (agora alimentados pelo produtor bom).
+        """
+        if self._espacial is None:
+            try:
+                from neural_fights.ai.spatial import SpatialAwarenessSystem
+            except ImportError:
+                return None
+            self._espacial = SpatialAwarenessSystem(self.parent, rng=self.rng)
+            self.consciencia_espacial = self._espacial.consciencia
+            self.tatica_espacial = self._espacial.tatica
+        return self._espacial
+
     def _atualizar_consciencia_espacial(self, dt, distancia, inimigo):
         """
         Atualiza awareness de paredes, obstáculos e posicionamento tático.
-        Chamado no processar() principal.
+        Chamado no processar() principal. Onda 8C: delega ao
+        SpatialAwarenessSystem (que se auto-limita a 0.08-0.15s); a
+        análise tática de traços mantém o throttle próprio de 0.2s para
+        não amplificar os empurrões emocionais por frame.
         """
-        tatica = self.tatica_espacial
-        
-        # Otimização: só checa a cada 0.2s
-        tatica["last_check_time"] += dt
-        if tatica["last_check_time"] < 0.2:
+        espacial = self._sistema_espacial()
+        if espacial is None:
             return
-        tatica["last_check_time"] = 0.0
-        
-        p = self.parent
-        esp = self.consciencia_espacial
-        
-        # Importa arena
         try:
-            arena = p.arena
+            espacial.atualizar(dt, distancia, inimigo)
         except Exception:
-            LOGGER.debug("Falha ao obter arena para consciência espacial", exc_info=True)
-            return  # Se arena não disponível, ignora
-        
-        # === DETECÇÃO DE PAREDES ===
-        dist_norte = p.pos[1] - arena.min_y
-        dist_sul = arena.max_y - p.pos[1]
-        dist_oeste = p.pos[0] - arena.min_x
-        dist_leste = arena.max_x - p.pos[0]
-        
-        # Encontra parede mais próxima
-        paredes = [
-            ("norte", dist_norte),
-            ("sul", dist_sul),
-            ("oeste", dist_oeste),
-            ("leste", dist_leste),
-        ]
-        parede_mais_proxima = min(paredes, key=lambda x: x[1])
-        
-        esp["parede_proxima"] = parede_mais_proxima[0]
-        esp["distancia_parede"] = parede_mais_proxima[1]
-        
-        # === DETECÇÃO DE OBSTÁCULOS ===
-        obs_mais_proximo = None
-        dist_obs_min = 999.0
-        
-        if hasattr(arena, 'obstaculos'):
-            for obs in arena.obstaculos:
-                if not obs.solido:
-                    continue
-                
-                dx = p.pos[0] - obs.x
-                dy = p.pos[1] - obs.y
-                dist = math.hypot(dx, dy) - (obs.largura + obs.altura) / 4
-                
-                if dist < dist_obs_min:
-                    dist_obs_min = dist
-                    obs_mais_proximo = obs
-        
-        esp["obstaculo_proxima"] = obs_mais_proximo
-        esp["distancia_obstaculo"] = dist_obs_min
-        
-        # === ANÁLISE DE CAMINHOS LIVRES ===
-        # Verifica se há obstáculos bloqueando cada direção
-        check_dist = 2.0  # Distância de checagem
-        
-        # Frente (em direção ao inimigo)
-        ang_inimigo = math.atan2(inimigo.pos[1] - p.pos[1], inimigo.pos[0] - p.pos[0])
-        check_x_frente = p.pos[0] + math.cos(ang_inimigo) * check_dist
-        check_y_frente = p.pos[1] + math.sin(ang_inimigo) * check_dist
-        esp["caminho_livre"]["frente"] = not arena.colide_obstaculo(
-            check_x_frente, check_y_frente, p.raio_fisico
-        )
-        
-        # Trás (oposto ao inimigo)
-        check_x_tras = p.pos[0] - math.cos(ang_inimigo) * check_dist
-        check_y_tras = p.pos[1] - math.sin(ang_inimigo) * check_dist
-        esp["caminho_livre"]["tras"] = not arena.colide_obstaculo(
-            check_x_tras, check_y_tras, p.raio_fisico
-        )
-        
-        # Esquerda (perpendicular)
-        ang_esq = ang_inimigo + math.pi / 2
-        check_x_esq = p.pos[0] + math.cos(ang_esq) * check_dist
-        check_y_esq = p.pos[1] + math.sin(ang_esq) * check_dist
-        esp["caminho_livre"]["esquerda"] = not arena.colide_obstaculo(
-            check_x_esq, check_y_esq, p.raio_fisico
-        )
-        
-        # Direita
-        ang_dir = ang_inimigo - math.pi / 2
-        check_x_dir = p.pos[0] + math.cos(ang_dir) * check_dist
-        check_y_dir = p.pos[1] + math.sin(ang_dir) * check_dist
-        esp["caminho_livre"]["direita"] = not arena.colide_obstaculo(
-            check_x_dir, check_y_dir, p.raio_fisico
-        )
-        
-        # === AVALIAÇÃO DE POSIÇÃO TÁTICA ===
-        # Encurralado = parede atrás E sem caminhos laterais
-        parede_atras = (
-            (esp["parede_proxima"] == "norte" and p.pos[1] < inimigo.pos[1]) or
-            (esp["parede_proxima"] == "sul" and p.pos[1] > inimigo.pos[1]) or
-            (esp["parede_proxima"] == "oeste" and p.pos[0] < inimigo.pos[0]) or
-            (esp["parede_proxima"] == "leste" and p.pos[0] > inimigo.pos[0])
-        )
-        
-        sem_saidas = (
-            not esp["caminho_livre"]["esquerda"] and 
-            not esp["caminho_livre"]["direita"] and
-            not esp["caminho_livre"]["tras"]
-        )
-        
-        esp["encurralado"] = (
-            parede_atras and sem_saidas and 
-            esp["distancia_parede"] < 2.0
-        )
-        
-        # Oponente contra parede
-        dist_ini_parede = min(
-            inimigo.pos[1] - arena.min_y,
-            arena.max_y - inimigo.pos[1],
-            inimigo.pos[0] - arena.min_x,
-            arena.max_x - inimigo.pos[0]
-        )
-        esp["oponente_contra_parede"] = dist_ini_parede < 2.5
-        
-        # Posição geral
-        if esp["encurralado"]:
-            esp["posicao_tatica"] = "encurralado"
-        elif esp["distancia_parede"] < 2.0:
-            esp["posicao_tatica"] = "perto_parede"
-        elif esp["oponente_contra_parede"]:
-            esp["posicao_tatica"] = "vantagem"
-        else:
-            esp["posicao_tatica"] = "centro"
-        
-        # === ANÁLISE TÁTICA ===
-        self._avaliar_taticas_espaciais(distancia, inimigo)
+            LOGGER.debug(
+                "Falha na consciência espacial", exc_info=True
+            )
+            return
+
+        self._timer_taticas += dt
+        if self._timer_taticas >= 0.2:
+            self._timer_taticas = 0.0
+            self._avaliar_taticas_espaciais(distancia, inimigo)
     
     def _avaliar_taticas_espaciais(self, distancia, inimigo):
         """
@@ -2322,7 +2564,9 @@ class AIBrain:
                 # v2.0 CONTRA MANGUAL: o Mangual tem zona morta enorme
                 # Estratégia: entrar NA ZONA MORTA (muito perto) para anular o spin
                 # OU ficar MUITO LONGE fora do alcance total
-                alcance_mangual = perc.get("arma_inimigo_alcance", 4.0)
+                # Onda 8A: a chave era "arma_inimigo_alcance", que nunca
+                # foi escrita — o anti-Mangual usava sempre o fallback 4.0.
+                alcance_mangual = perc.get("alcance_inimigo", 4.0)
                 zona_morta_estimada = alcance_mangual * 0.40  # v3.0: zona morta 40%
                 
                 if distancia > alcance_mangual * 0.9:
@@ -2512,24 +2756,24 @@ class AIBrain:
     # =========================================================================
     
     def _observar_oponente(self, inimigo, distancia):
-        """Observa o que o oponente está fazendo"""
-        brain_inimigo = _obter_brain(inimigo)
-        if not brain_inimigo:
-            return
-        
-        ai_ini = brain_inimigo
+        """Observa o que o oponente está fazendo (Onda 8A: sem telepatia).
+
+        A memória agora conta TRANSIÇÕES de intenção aparente — o que um
+        espectador registraria ("ele partiu pra cima de novo") — em vez
+        de transições do acao_atual interno do brain adversário.
+        """
+        obs = self._observar(inimigo)
         mem = self.memoria_oponente
-        
-        acao_oponente = ai_ini.acao_atual
-        
-        if acao_oponente != mem["ultima_acao"]:
-            mem["ultima_acao"] = acao_oponente
-            
-            if acao_oponente in ["MATAR", "ESMAGAR", "ATAQUE_RAPIDO", "APROXIMAR"]:
+
+        intencao = obs.intencao
+        if intencao != mem["ultima_acao"]:
+            mem["ultima_acao"] = intencao
+
+            if intencao in ("avancando", "armando_golpe"):
                 mem["vezes_atacou"] += 1
-            elif acao_oponente in ["FUGIR", "RECUAR"]:
+            elif intencao == "recuando":
                 mem["vezes_fugiu"] += 1
-        
+
         if mem["vezes_atacou"] > mem["vezes_fugiu"] * 2:
             mem["estilo_percebido"] = "AGRESSIVO"
             mem["ameaca_nivel"] = min(1.0, mem["ameaca_nivel"] + 0.02)
@@ -2538,12 +2782,13 @@ class AIBrain:
             mem["ameaca_nivel"] = max(0.2, mem["ameaca_nivel"] - 0.01)
         else:
             mem["estilo_percebido"] = "EQUILIBRADO"
-        
-        self._gerar_reacao_inteligente(acao_oponente, distancia, inimigo)
-    
-    def _gerar_reacao_inteligente(self, acao_oponente, distancia, inimigo):
-        """Gera uma reação inteligente ao oponente"""
-        if acao_oponente == "MATAR" and distancia < 4.0:
+
+        self._gerar_reacao_inteligente(obs, distancia, inimigo)
+
+    def _gerar_reacao_inteligente(self, obs, distancia, inimigo):
+        """Gera uma reação inteligente ao que se VÊ do oponente (Onda 8A)."""
+        if obs.intencao == "armando_golpe" and distancia < 4.0:
+            # Wind-up real detectado perto: a reação clássica ao MATAR.
             if "REATIVO" in self.tracos or "OPORTUNISTA" in self.tracos:
                 self.reacao_pendente = "CONTRA_ATAQUE"
             elif "COVARDE" in self.tracos or self.medo > 0.6:
@@ -2552,8 +2797,8 @@ class AIBrain:
                 self.reacao_pendente = "CONTRA_MATAR"
             elif self.rng.random() < 0.3:
                 self.reacao_pendente = "ESQUIVAR"
-        
-        elif acao_oponente == "FUGIR":
+
+        elif obs.intencao == "recuando":
             if "PERSEGUIDOR" in self.tracos or "PREDADOR" in self.tracos:
                 self.reacao_pendente = "PERSEGUIR"
                 self.confianca = min(1.0, self.confianca + 0.1)
@@ -2561,14 +2806,15 @@ class AIBrain:
                 self.reacao_pendente = "ESPERAR"
             elif self.rng.random() < 0.4:
                 self.reacao_pendente = "PRESSIONAR"
-        
-        elif acao_oponente == "CIRCULAR":
+
+        elif obs.intencao == "circulando":
             if "FLANQUEADOR" in self.tracos:
                 self.reacao_pendente = "CONTRA_CIRCULAR"
             elif self.rng.random() < 0.3:
                 self.reacao_pendente = "INTERCEPTAR"
-        
-        elif acao_oponente == "BLOQUEAR":
+
+        elif obs.intencao == "parado" and distancia < 4.0:
+            # Parado em guarda a curta distância: postura defensiva visível.
             if "CALCULISTA" in self.tracos:
                 self.reacao_pendente = "ESPERAR_ABERTURA"
             elif "IMPRUDENTE" in self.tracos or "AGRESSIVO" in self.tracos:
@@ -2616,9 +2862,11 @@ class AIBrain:
             return True
         
         if reacao == "CONTRA_CIRCULAR":
-            brain_inimigo = _obter_brain(inimigo)
-            if brain_inimigo:
-                self.dir_circular = -brain_inimigo.dir_circular
+            # Onda 8A: circula CONTRA o lado que o oponente visivelmente
+            # está estrafando, não contra o dir_circular interno dele.
+            lado = self._observar(inimigo).lado_circular
+            if lado:
+                self.dir_circular = -lado
             self.acao_atual = "CIRCULAR"
             return True
         
@@ -2722,9 +2970,10 @@ class AIBrain:
             return True
         
         if acao == "CIRCULAR_SINCRONIZADO":
-            brain_inimigo = _obter_brain(inimigo)
-            if brain_inimigo:
-                self.dir_circular = brain_inimigo.dir_circular
+            # Onda 8A: acompanha o lado observado do strafe do oponente.
+            lado = self._observar(inimigo).lado_circular
+            if lado:
+                self.dir_circular = lado
             self.acao_atual = "CIRCULAR"
             return True
         
@@ -2841,6 +3090,8 @@ class AIBrain:
         """Atualiza cooldowns"""
         self.cd_dash = max(0, self.cd_dash - dt)
         self.cd_pulo = max(0, self.cd_pulo - dt)
+        self.cd_desvio = max(0, self.cd_desvio - dt)
+        self.cd_punicao = max(0, self.cd_punicao - dt)
         self.cd_mudanca_direcao = max(0, self.cd_mudanca_direcao - dt)
         self.cd_reagir = max(0, self.cd_reagir - dt)
         self.cd_buff = max(0, self.cd_buff - dt)
@@ -2923,19 +3174,34 @@ class AIBrain:
     # =========================================================================
     
     def _detectar_projetil_vindo(self, inimigo):
-        """Detecta se há projéteis vindo na direção do personagem"""
+        """Detecta projéteis REALMENTE vindo na minha direção (Onda 8A).
+
+        A versão antiga lia ``inimigo.buffer_projeteis`` — que o Simulador
+        drena para as listas do mundo ANTES do tick das IAs (a lista
+        estava sempre vazia) — e, quando via algo, era um teste de raio
+        4m sem direção (disparava para projétil se AFASTANDO). Agora lê
+        a janela de mundo (``percepcao``) com o teste de ângulo + tempo
+        de impacto que existia pronto no subsistema de desvio morto.
+        """
         p = self.parent
-        
-        if hasattr(inimigo, 'buffer_projeteis'):
-            for proj in inimigo.buffer_projeteis:
-                if not proj.ativo:
-                    continue
+
+        percepcao = getattr(p, "percepcao", None)
+        if percepcao is not None:
+            for proj in percepcao.projeteis_hostis(p):
                 dx = p.pos[0] - proj.x
                 dy = p.pos[1] - proj.y
                 dist = math.hypot(dx, dy)
-                if dist < 4.0:
-                    return True
-        
+                if dist > 8.0:
+                    continue
+                ang_para_mim = math.degrees(math.atan2(dy, dx))
+                ang_proj = getattr(proj, 'angulo', 0)
+                if abs(normalizar_angulo(ang_para_mim - ang_proj)) < 45:
+                    vel_proj = max(1.0, getattr(proj, 'vel', 10.0))
+                    if dist / vel_proj < 1.0:  # impacto em < 1s
+                        return True
+
+        # Orbes moram no próprio lutador (buffer NÃO é drenado) e só
+        # ameaçam quando mudam para o estado de disparo.
         if hasattr(inimigo, 'buffer_orbes'):
             for orbe in inimigo.buffer_orbes:
                 if not orbe.ativo or orbe.estado != "disparando":
@@ -3077,6 +3343,16 @@ class AIBrain:
                 chance_usar *= 0.85
             if self.modo_burst:
                 chance_usar = 0.95
+
+            # Onda 8E: o plano decide QUANDO a rotação dispara, não só o
+            # quê — caçar janela de skill escancara o portão; baitar
+            # segura a mão (skill entrega a finta).
+            plano = self.plano
+            if plano is not None:
+                if plano["tipo"] == "CACAR_JANELA_SKILL":
+                    chance_usar = max(chance_usar, 0.95)
+                elif plano["tipo"] == "BAITAR_E_PUNIR":
+                    chance_usar *= 0.7
             
             # Summons/Traps são mais estratégicos
             if skill_profile.tipo in ["SUMMON", "TRAP", "TRANSFORM"]:
@@ -3445,7 +3721,10 @@ class AIBrain:
                 em_dash        = pressao < distancia <= dash_curto
                 muito_longe    = distancia > dash_curto
 
-                combo_hits   = getattr(self.parent, 'combo_atual', 0)
+                # Onda 8E (bug #5): combo_atual vive no BRAIN (delegado ao
+                # EmotionSystem) — lido no Lutador era sempre 0 e os
+                # ramos de frenesi das Adagas eram inalcançáveis.
+                combo_hits = getattr(self, 'combo_atual', 0)
                 combo_ativo  = combo_hits > 2
                 combo_frenzy = combo_hits > 5
 
@@ -3574,8 +3853,163 @@ class AIBrain:
 
         return False
 
+    # =========================================================================
+    # PLANO DE LUTA (Onda 8E)
+    # =========================================================================
+
+    def _atualizar_plano(self, dt, distancia, inimigo):
+        """Mantém a intenção tática viva: escolhe na expiração e
+        interrompe em spike de dano (>12% do HP desde a escolha, com o
+        compromisso da personalidade decidindo se o plano sobrevive)."""
+        p = self.parent
+        hp = p.vida / p.vida_max if p.vida_max else 1.0
+        plano = self.plano
+
+        if plano is not None:
+            spike = (
+                self._plano_hp_inicial - hp > 0.12
+                and self.tempo_desde_dano < 0.3
+            )
+            if spike and self.rng.random() > plano["compromisso"]:
+                plano = None  # o soco mudou a conversa
+            elif self.tempo_combate >= plano["expira_em"]:
+                plano = None
+
+        if plano is None:
+            anterior = self.plano["tipo"] if self.plano else None
+            self.plano = self._escolher_plano(distancia, inimigo)
+            self._plano_hp_inicial = hp
+            self.contadores["planos"] = self.contadores.get("planos", 0) + 1
+            # Onda 8F: troca de plano é legível — tell só quando o TIPO
+            # muda (renovar o mesmo plano não é notícia).
+            if self.plano["tipo"] != anterior:
+                self.tell_atual = {"tipo": "plano",
+                                   "plano": self.plano["tipo"],
+                                   "ate": self.tempo_combate + 0.6}
+
+    def _escolher_plano(self, distancia, inimigo):
+        """Escolhe a intenção tática pelo que o lutador TEM: eixos de
+        personalidade × arma (própria e do oponente, via os campos do
+        WeaponProfile que eram calculados e nunca lidos) × leitura do
+        oponente × contexto espacial."""
+        p = self.parent
+        perfil = self.perfil
+        hp = p.vida / p.vida_max if p.vida_max else 1.0
+        esp = self.consciencia_espacial
+        percep = self.percepcao_arma
+        perfil_inimigo = percep.get("arma_inimigo_perfil")
+        recovery_inimigo = getattr(perfil_inimigo, "tempo_recovery", 0.0) or 0.0
+        zona_morta_inimigo = getattr(perfil_inimigo, "zona_morta", 0.0) or 0.0
+
+        agress = self.agressividade_efetiva()
+        scores = {
+            "PRESSIONAR": 0.3 + agress * 0.6 + max(0.0, self.momentum) * 0.3,
+            "BAITAR_E_PUNIR": (
+                0.15
+                + max(0.0, perfil.get("cautela", 0.0)) * 0.3
+                + self.habilidade_leitura * 0.35
+                + (0.25 if recovery_inimigo > 0.18 else 0.0)
+            ),
+            "MANTER_ZONA_MORTA": (
+                0.5 + max(0.0, perfil.get("frieza", 0.0)) * 0.2
+                if zona_morta_inimigo > 0.8
+                else 0.0
+            ),
+            "LEVAR_PARA_PAREDE": (
+                0.2
+                + max(0.0, perfil.get("perseguicao", 0.0)) * 0.4
+                + (0.35 if esp.get("oponente_contra_parede") else 0.0)
+            ),
+            "CACAR_JANELA_SKILL": 0.0,
+            "RECUPERAR": (
+                0.0
+                if hp > 0.55
+                else (0.75 - hp) + max(0.0, perfil.get("medo", 0.0)) * 0.4
+                + self.medo * 0.3
+            ),
+        }
+        if self.skill_strategy is not None:
+            role = self.skill_strategy.role_principal.value
+            if role in ("artillery", "burst_mage", "control_mage",
+                        "summoner", "buffer", "channeler"):
+                scores["CACAR_JANELA_SKILL"] = (
+                    0.4 + max(0.0, perfil.get("skill_uso", 0.0)) * 0.3
+                )
+
+        # Ruído de personalidade: caos alarga a loteria, frieza estreita.
+        ruido = 0.25 * (1.0 + max(0.0, perfil.get("caos", 0.0)))
+        for tipo in scores:
+            scores[tipo] += self.rng.uniform(0.0, ruido)
+
+        escolhido = max(scores, key=scores.get)
+        disciplina = getattr(self, "disciplina_tatica", 0.5)
+        duracao = self.rng.uniform(2.0, 4.0) + disciplina * 2.0
+        return {
+            "tipo": escolhido,
+            "expira_em": self.tempo_combate + duracao,
+            "compromisso": 0.4 + disciplina * 0.5,
+        }
+
+    def _aplicar_plano_de_luta(self, distancia, inimigo):
+        """Estágio 0 da pilha: o plano enviesa a proposta; os estágios de
+        personalidade seguintes continuam perturbando (plano ≠ script)."""
+        plano = self.plano
+        if plano is None:
+            return
+        if self.rng.random() > plano["compromisso"]:
+            return  # hoje a personalidade fala mais alto que o plano
+
+        tipo = plano["tipo"]
+        acao = self.acao_atual
+        if tipo == "PRESSIONAR":
+            if acao in ("COMBATE", "CIRCULAR", "POKE", "APROXIMAR_LENTO",
+                        "BLOQUEAR"):
+                self.acao_atual = self.rng.choice(
+                    ["PRESSIONAR", "APROXIMAR", "MATAR"]
+                )
+        elif tipo == "BAITAR_E_PUNIR":
+            # Fica na borda do alcance convidando o whiff — a punição em
+            # si vem do gate da 8D quando o recovery aparecer.
+            if distancia < 4.5 and acao in ("MATAR", "ESMAGAR",
+                                            "ATAQUE_RAPIDO", "PRESSIONAR"):
+                self.acao_atual = self.rng.choice(["POKE", "CIRCULAR", "RECUAR"])
+        elif tipo == "MANTER_ZONA_MORTA":
+            zona = getattr(
+                self.percepcao_arma.get("arma_inimigo_perfil"),
+                "zona_morta", 0.0,
+            ) or 0.0
+            if zona > 0.0:
+                if distancia > zona * 0.9:
+                    self.acao_atual = self.rng.choice(
+                        ["APROXIMAR", "PRESSIONAR"]
+                    )
+                else:
+                    self.acao_atual = self.rng.choice(["MATAR", "COMBATE"])
+        elif tipo == "LEVAR_PARA_PAREDE":
+            if acao in ("COMBATE", "CIRCULAR", "POKE"):
+                self.acao_atual = self.rng.choice(["PRESSIONAR", "FLANQUEAR"])
+        elif tipo == "CACAR_JANELA_SKILL":
+            # Caster: mantém a distância da rotação, sem trocação à toa.
+            if distancia < self.parent.alcance_ideal * 0.7:
+                self.acao_atual = self.rng.choice(["RECUAR", "CIRCULAR"])
+            elif acao in ("MATAR", "ESMAGAR"):
+                self.acao_atual = "COMBATE"
+        elif tipo == "RECUPERAR":
+            hp = self.parent.vida / self.parent.vida_max
+            if hp < 0.25 and self.medo > 0.4:
+                self.acao_atual = "FUGIR"
+            elif acao in ("MATAR", "ESMAGAR", "PRESSIONAR", "APROXIMAR",
+                          "COMBATE"):
+                self.acao_atual = self.rng.choice(["RECUAR", "CIRCULAR"])
+
     def _decidir_movimento(self, distancia, inimigo):
         self.contadores["decisoes"] += 1
+        # Onda 8E (alvo A6): decisões tomadas em range de melee — o fix
+        # do early-return de ataque existe para esta fração não ser ~0.
+        if distancia <= self._calcular_alcance_efetivo() * 1.3:
+            self.contadores["decisoes_melee"] = (
+                self.contadores.get("decisoes_melee", 0) + 1
+            )
         """Proposta + pipeline (Onda 5A): a pilha roda em TODA decisão."""
         p = self.parent
         roll = self.rng.random()
@@ -3591,6 +4025,9 @@ class AIBrain:
 
             # === A PILHA (roda sempre — era o coração morto da IA) ===
             self.contadores["pilha_completa"] += 1
+            # Estágio 0 (Onda 8E): o plano de luta enviesa a proposta;
+            # todos os estágios de personalidade abaixo seguem valendo.
+            self._aplicar_plano_de_luta(distancia, inimigo)
             self._aplicar_agressividade_efetiva()
             self._aplicar_eixos_orfaos(distancia, inimigo)
             self._aplicar_modificadores_movimento(distancia, roll)
@@ -3709,8 +4146,9 @@ class AIBrain:
                 self.acao_atual = self.rng.choice(["CIRCULAR", "FLANQUEAR"])
 
         pers = self.perfil.get("perseguicao", 0.0)
-        acao_inimiga = getattr(getattr(inimigo, "brain", None), "acao_atual", "")
-        if acao_inimiga in ("FUGIR", "RECUAR"):
+        # Onda 8A: "inimigo fugindo" é a velocidade observada, não o verbo
+        # interno do brain adversário.
+        if self._observar(inimigo).intencao == "recuando":
             if pers > 0.0 and self.rng.random() < 0.3 + pers * 0.5:
                 self.acao_atual = self.rng.choice(["PRESSIONAR", "APROXIMAR"])
             elif pers < -0.3 and self.rng.random() < -pers * 0.4:
@@ -3865,23 +4303,40 @@ class AIBrain:
                 if self.rng.random() < 0.15:
                     self.dir_circular = -1
     
+    # Onda 8E (bug #6): a variação anti-repetição escolhe entre ações que
+    # SERVEM ao plano atual — antes era um sorteio uniforme sobre 7 verbos
+    # que sabotava qualquer estratégia em curso (ruído anti-estratégia).
+    _VARIACOES_POR_PLANO = {
+        "PRESSIONAR": ["MATAR", "PRESSIONAR", "FLANQUEAR", "ATAQUE_RAPIDO"],
+        "BAITAR_E_PUNIR": ["POKE", "CIRCULAR", "COMBATE", "RECUAR"],
+        "MANTER_ZONA_MORTA": ["COMBATE", "MATAR", "PRESSIONAR", "CIRCULAR"],
+        "LEVAR_PARA_PAREDE": ["PRESSIONAR", "FLANQUEAR", "APROXIMAR"],
+        "CACAR_JANELA_SKILL": ["CIRCULAR", "COMBATE", "RECUAR", "POKE"],
+        "RECUPERAR": ["RECUAR", "CIRCULAR", "POKE", "BLOQUEAR"],
+    }
+
     def _evitar_repeticao_excessiva(self):
         """Evita repetir a mesma ação muitas vezes seguidas"""
         if len(self.historico_acoes) < 3:
             return
-        
+
         # Verifica repetição
         ultimas_3 = self.historico_acoes[-3:]
         if ultimas_3.count(self.acao_atual) >= 2:
-            # Está repetindo muito, varia
+            # Está repetindo muito, varia — dentro do plano em curso.
             if self.rng.random() < 0.4:
-                acoes_alternativas = [
-                    "MATAR", "CIRCULAR", "FLANQUEAR", "COMBATE", 
-                    "APROXIMAR", "ATAQUE_RAPIDO", "PRESSIONAR"
-                ]
+                plano = self.plano
+                acoes_alternativas = self._VARIACOES_POR_PLANO.get(
+                    plano["tipo"] if plano else None,
+                    ["MATAR", "CIRCULAR", "FLANQUEAR", "COMBATE",
+                     "APROXIMAR", "ATAQUE_RAPIDO", "PRESSIONAR"],
+                )
                 # Remove a ação atual das alternativas
-                acoes_alternativas = [a for a in acoes_alternativas if a != self.acao_atual]
-                self.acao_atual = self.rng.choice(acoes_alternativas)
+                acoes_alternativas = [
+                    a for a in acoes_alternativas if a != self.acao_atual
+                ]
+                if acoes_alternativas:
+                    self.acao_atual = self.rng.choice(acoes_alternativas)
     
     def _calcular_alcance_efetivo(self):
         """Calcula alcance real de ataque baseado na arma e hitbox profile v12.2"""
@@ -4193,6 +4648,28 @@ class AIBrain:
         if "CONTRA_ATAQUE_PERFEITO" in self.quirks:
             self.reacao_pendente = "CONTRA_MATAR"
 
+    def on_parry_sucesso(self):
+        """Onda 8B: parry conectou — o atacante está cambaleando.
+
+        A melhor janela de punição do motor: qualidade acima da esquiva
+        (o oponente está em stagger de 0.4s, não só recuperando o swing).
+        """
+        self.confianca = min(1.0, self.confianca + 0.15)
+        self.excitacao = min(1.0, self.excitacao + 0.2)
+
+        self.janela_ataque["aberta"] = True
+        self.janela_ataque["tipo"] = "pos_parry"
+        self.janela_ataque["qualidade"] = 0.95
+        self.janela_ataque["duracao"] = 0.9
+        # Onda 8F: tell do parry — o renderer mostra a leitura do momento.
+        self.tell_atual = {"tipo": "parry",
+                           "ate": getattr(self, "tempo_combate", 0.0) + 0.5}
+
+        if "CONTRA_ATAQUE_PERFEITO" in self.quirks:
+            self.reacao_pendente = "CONTRA_MATAR"
+        else:
+            self.reacao_pendente = "CONTRA_ATAQUE"
+
     # =========================================================================
     # NOVOS SISTEMAS v11.0 - RITMOS E INSTINTOS
     # =========================================================================
@@ -4315,11 +4792,11 @@ class AIBrain:
             # existe no vocabulário de janelas do runtime.
             return bool(self.janela_ataque.get("aberta")) and self.janela_ataque.get(
                 "tipo"
-            ) in ("pos_ataque", "recuperando", "pos_esquiva")
+            ) in ("pos_ataque", "recuperando", "pos_esquiva", "pos_parry")
         if trigger == "oponente_recuando":
-            # A versão antiga lia acao_atual do LUTADOR (é do brain).
-            brain_inimigo = _obter_brain(inimigo)
-            return getattr(brain_inimigo, "acao_atual", None) in ("RECUAR", "FUGIR")
+            # Onda 8A: recuo OBSERVADO (velocidade se afastando), não o
+            # acao_atual telepático do brain adversário.
+            return self._observar(inimigo).intencao == "recuando"
         if trigger == "oponente_previsivel":
             return self.leitura_oponente.get("previsibilidade", 0.0) > 0.7
         if trigger == "ataque_iminente_perto":
@@ -4330,8 +4807,16 @@ class AIBrain:
         if trigger == "projetil_vindo":
             return bool(self._detectar_projetil_vindo(inimigo))
         if trigger == "ataque_traseiro":
+            # Onda 8A: o teste geométrico puro era inalcançável — o motor
+            # gira angulo_olhar para o inimigo a 10-20 rad/s todo frame,
+            # então nunca há "costas viradas" em condição normal. O
+            # sentido honesto de "golpe que não vi chegar": atacado
+            # enquanto atordoado/canalizando (mira travada), ou no caso
+            # geométrico raro que sobrou (transições, CC).
             if not getattr(inimigo, "atacando", False):
                 return False
+            if getattr(p, "stun_timer", 0.0) > 0 or getattr(p, "canalizando", False):
+                return True
             ang_para_inimigo = math.atan2(
                 inimigo.pos[1] - p.pos[1], inimigo.pos[0] - p.pos[0]
             )
@@ -4345,11 +4830,12 @@ class AIBrain:
     def _executar_instinto(self, acao, distancia, inimigo):
         """Executa uma ação instintiva com verbos REAIS do motor.
 
-        Onda 5D: as versões antigas chamavam ``p.iniciar_dash()``/
-        ``p.pular()`` (métodos que nunca existiram) e escreviam
-        ``p.movimento_x`` (que o motor nunca leu) — o instinto "disparava"
-        e nada acontecia na tela. O poder do instinto agora é o commit P1
-        do escritor único: a ação interrompe qualquer hold e gruda.
+        Onda 5D: as versões antigas escreviam ``p.movimento_x`` (que o
+        motor nunca leu) e chamavam métodos inexistentes — o instinto
+        "disparava" e nada acontecia na tela. O poder do instinto é o
+        commit P1 do escritor único: a ação interrompe qualquer hold e
+        gruda. (Onda 8B criou ``p.iniciar_dash`` de verdade; o desvio
+        físico deliberado vive no gate de desvio inteligente da 8C.)
         """
         if acao == "panic_dash":
             self.acao_atual = "FUGIR"
