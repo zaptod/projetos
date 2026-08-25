@@ -169,6 +169,12 @@ class Lutador:
         # hasattr que nunca era verdadeiro (o atributo só nascia no
         # caminho de arquétipo-por-arma, que classes mapeadas não usam).
         self.mangual_slam_combo = 0
+        # Onda 8H: combo SOFRIDO — quantos hits o mesmo autor emendou em
+        # mim dentro da janela. Estado físico público: a IA atacante lê
+        # para decidir o followup, a defensora para escapar.
+        self.combo_contra = 0
+        self.combo_contra_timer = 0.0
+        self.combo_contra_autor = None
         self.mana_max = self._calcular_mana_max()
         self.mana = self.mana_max
         self.velocidade_movimento_base = self._calcular_velocidade_movimento()
@@ -340,6 +346,12 @@ class Lutador:
             # Onda 8D: antecipação e punição (alvos A3/A4).
             "desvios_antecipados": 0,
             "punicoes": 0,
+            # Onda 8G: clinches resolvidos por este lutador (iniciador).
+            "clinches": 0,
+            # Onda 8H: combos (dados) e bursts de escape (sofridos).
+            "combos_2mais": 0,
+            "maior_combo": 0,
+            "bursts": 0,
         }
         self.registro_eventos_dano = None
         self._slow_fator_antes_enraizado = 1.0
@@ -1944,6 +1956,12 @@ class Lutador:
         # === ONDA 8B: recursos defensivos ===
         if self.dash_cooldown > 0:
             self.dash_cooldown -= dt
+        # Onda 8H: janela de combo sofrido expira sem novo hit.
+        if self.combo_contra_timer > 0:
+            self.combo_contra_timer -= dt
+            if self.combo_contra_timer <= 0:
+                self.combo_contra = 0
+                self.combo_contra_autor = None
         acao_defensiva = (
             getattr(self.brain, "acao_atual", "") if self.brain is not None else ""
         )
@@ -2301,6 +2319,12 @@ class Lutador:
                 "MATAR": 1.0, "ESMAGAR": 0.85, "ATAQUE_RAPIDO": 1.25,
                 "APROXIMAR": 1.0, "CONTRA_ATAQUE": 1.4, "PRESSIONAR": 1.1
             }.get(acao, 1.0)
+            # Onda 8G: já em cima do alvo, o verbo ofensivo para de
+            # PRENSAR o corpo do oponente — ataca do lugar em vez de
+            # empurrar (era o principal fabricante de clinch).
+            zona_contato = max(0.9, self.alcance_ideal * 0.45)
+            if distancia < zona_contato:
+                mult *= 0.2
             mx *= mult
             my *= mult
             
@@ -2651,6 +2675,21 @@ class Lutador:
                     base_cd *= 0.7
                 elif "Colosso" in self.brain.arquetipo:
                     base_cd *= 1.3
+                # Onda 8H (combo flow): golpe iniciado com o alvo em
+                # hitstun sai da cadência mais rápido — é o que
+                # transforma hits soltos em strings de 2-4 golpes.
+                # MESTRE_COMBO (quirk) emenda ainda melhor.
+                if getattr(inimigo, "stun_timer", 0.0) > 0.0:
+                    from neural_fights.utils.config import COMBO_FLOW_CADENCIA
+                    # Dupla é a MESTRA do combo por identidade: emenda
+                    # ainda mais rápido sobre alvo atordoado (knob B2 —
+                    # as adagas eram as que menos lucravam com hitstun).
+                    if arma_tipo == "Dupla":
+                        base_cd *= 0.7
+                    else:
+                        base_cd *= COMBO_FLOW_CADENCIA
+                    if "MESTRE_COMBO" in getattr(self.brain, "quirks", ()):
+                        base_cd *= 0.85
                 self.cooldown_ataque = (
                     base_cd / self._get_modificador_velocidade_ataque_buff()
                 )
@@ -2905,8 +2944,11 @@ class Lutador:
         ang_ameaca = math.atan2(
             pos_atk[1] - self.pos[1], pos_atk[0] - self.pos[0]
         )
+        # angulo_olhar é em GRAUS (o lerp de mira usa math.degrees) —
+        # converter antes de comparar, senão o arco vira ruído.
+        ang_olhar = math.radians(self.angulo_olhar)
         delta = abs(
-            (ang_ameaca - self.angulo_olhar + math.pi) % (2 * math.pi) - math.pi
+            (ang_ameaca - ang_olhar + math.pi) % (2 * math.pi) - math.pi
         )
         if delta > ARCO_BLOQUEIO_RAD:
             return None
@@ -3485,9 +3527,145 @@ class Lutador:
         # mas este caminho (projeteis) era ilimitado — uma flecha de 138
         # empurrava com 52,7, mais que o dobro do teto do corpo a corpo.
         kb = min(kb, 25.0)
+        # Onda 8H: o pushback CRESCE com o combo sofrido — o anti-stunlock
+        # orgânico do gênero: strings longas se encerram porque o alvo sai
+        # voando para fora do alcance, não por regra arbitrária.
+        # (combo_contra aqui ainda é o valor dos hits ANTERIORES.)
+        kb *= 1.0 + 0.15 * min(6, self.combo_contra)
+        kb = min(kb, 40.0)
         self.vel[0] += empurrao_x * kb
         self.vel[1] += empurrao_y * kb
-        
+
+        # === ONDA 8H: HITSTUN + COMBO SOFRIDO + BURST DE ESCAPE ===
+        # Quem apanha perde a resposta por um instante — a fundação
+        # mecânica de combos. Regras: só golpe real (DoT/retaliação não
+        # atordoam), golpe BLOQUEADO não atordoa (a guarda é o
+        # quebra-combo universal), o stun DECRESCE a cada hit do mesmo
+        # combo (anti-stunlock) e tanques resistem.
+        tipo_fonte_hit = str(metadata_impacto.get("tipo_fonte", ""))
+        # Hitstun é para GOLPES DISCRETOS (melee, projétil, orbe). Dano
+        # contínuo/de zona (área, beam, trap, contato de transformação,
+        # DoT) fica de fora — senão toda zona vira stunlock e os ticks
+        # deixam de ser step-independent.
+        # (orbe_arma FORA: o orbe em órbita é dano de contato contínuo
+        # com hitbox always_active — hitstun ali era stun de graça em
+        # loop e levou Orbital a 0.69 de winrate no corpus.)
+        fonte_discreta = (
+            bool(metadata_impacto.get("eh_corpo_a_corpo"))
+            or tipo_fonte_hit in ("projetil_arma", "projetil_skill")
+        )
+        golpe_real = (
+            fonte_discreta
+            and dano_final > 2.0
+            and not self.morto
+            and atacante is not None
+            and atacante is not self
+            and guarda is None
+            and "retaliacao" not in tipo_fonte_hit
+        )
+        if golpe_real:
+            from neural_fights.utils.config import (
+                BURST_INVULN_S,
+                BURST_PUSHBACK,
+                CUSTO_ESTAMINA_BURST,
+                HITSTUN_BASE_S,
+                HITSTUN_MAX_S,
+                HITSTUN_MIN_S,
+                HITSTUN_POR_DANO,
+                HITSTUN_SCALING_COMBO,
+                JANELA_COMBO_S,
+            )
+            if (
+                self.combo_contra_autor is atacante
+                and self.combo_contra_timer > 0.0
+            ):
+                self.combo_contra += 1
+            else:
+                self.combo_contra = 1
+                self.combo_contra_autor = atacante
+            # A janela do combo é o hitstun DESTE hit + o tempo de emenda
+            # (setada abaixo, junto do stun): hit em quem já recuperou a
+            # agência é troca nova, não continuação de combo.
+            contadores_atk = getattr(atacante, "contadores_luta", None)
+            if contadores_atk is not None:
+                if self.combo_contra == 2:
+                    contadores_atk["combos_2mais"] = (
+                        contadores_atk.get("combos_2mais", 0) + 1
+                    )
+                contadores_atk["maior_combo"] = max(
+                    contadores_atk.get("maior_combo", 0),
+                    self.combo_contra,
+                )
+
+            # Burst de escape: no 3º hit em diante, o defensor pode pagar
+            # fôlego para EMPURRAR o agressor e ganhar um respiro com
+            # invulnerabilidade curta. A chance vem da personalidade
+            # (teimoso tanka, cauteloso escapa); o sorteio é no stream
+            # do próprio defensor — replays não desviam.
+            chance_burst = float(getattr(
+                getattr(self, "brain", None), "chance_burst_combo", 0.35
+            ) or 0.0)
+            if (
+                self.combo_contra >= 3
+                and self.estamina >= CUSTO_ESTAMINA_BURST
+                and self.rng_runtime.random() < chance_burst
+            ):
+                self.estamina -= CUSTO_ESTAMINA_BURST
+                self.invulnerabilidade_skill_timer = max(
+                    self.invulnerabilidade_skill_timer, BURST_INVULN_S
+                )
+                dx_b = atacante.pos[0] - self.pos[0]
+                dy_b = atacante.pos[1] - self.pos[1]
+                dist_b = math.hypot(dx_b, dy_b) or 1.0
+                vel_atk = getattr(atacante, "vel", None)
+                if vel_atk is not None:
+                    vel_atk[0] += (dx_b / dist_b) * BURST_PUSHBACK
+                    vel_atk[1] += (dy_b / dist_b) * BURST_PUSHBACK
+                self.vel[0] -= (dx_b / dist_b) * 5.0
+                self.vel[1] -= (dy_b / dist_b) * 5.0
+                self.combo_contra = 0
+                self.combo_contra_autor = None
+                self.combo_contra_timer = 0.0
+                self.contadores_luta["bursts"] = (
+                    self.contadores_luta.get("bursts", 0) + 1
+                )
+                self.bursts_visuais = getattr(self, "bursts_visuais", 0) + 1
+                if self.brain is not None:
+                    self.brain.tell_atual = {
+                        "tipo": "burst",
+                        "ate": getattr(self.brain, "tempo_combate", 0.0) + 0.5,
+                    }
+            else:
+                # Hitstun escalonado: tanques (Cavaleiro/Colosso) sentem
+                # 30% menos; ágeis sentem um pouco mais mas escapam por
+                # dash barato/burst.
+                mod_classe = 1.0
+                if "Cavaleiro" in self.classe_nome:
+                    mod_classe = 0.7
+                elif "Colosso" in str(getattr(self.brain, "arquetipo", "")):
+                    mod_classe = 0.7
+                elif any(k in self.classe_nome
+                         for k in ("Assassino", "Ladino", "Ninja")):
+                    mod_classe = 1.1
+                escala = HITSTUN_SCALING_COMBO ** (self.combo_contra - 1)
+                hitstun = min(
+                    HITSTUN_MAX_S,
+                    HITSTUN_BASE_S + dano_final * HITSTUN_POR_DANO,
+                ) * escala * mod_classe
+                hitstun = max(HITSTUN_MIN_S, hitstun)
+                # Teto de segurança: do 8º hit em diante o alvo "acorda"
+                # (stun zero) — nenhuma mão segura para sempre. O smoke
+                # sem este teto registrou combo de 18 hits (stunlock).
+                if self.combo_contra < 8:
+                    self.stun_timer = max(self.stun_timer, hitstun)
+                    self.combo_contra_timer = min(
+                        JANELA_COMBO_S, hitstun + 0.45
+                    )
+                else:
+                    # Pós-acordar (8º+): sem stun, continuar a contagem
+                    # exige quase-encadeamento — a janela encolhe.
+                    self.combo_contra_timer = 0.3
+
         efeito_aplicado = False
         if not self.morto:
             efeito_aplicado = self._aplicar_efeito_status(

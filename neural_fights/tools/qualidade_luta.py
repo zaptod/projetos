@@ -479,12 +479,39 @@ def agregar(lutas: list[dict[str, Any]]) -> dict[str, Any]:
         "punicoes_por_luta_media": _media(
             [float(luta.get("punicoes", 0)) for luta in ok]
         ),
+        # Onda 8H: combos reais (2+ hits em janela de hitstun) e o teto
+        # anti-stunlock do corpus.
+        "combos_por_luta_p50": percentil(
+            [float(luta.get("combos_2mais", 0)) for luta in ok], 0.5
+        ),
+        "combos_por_luta_media": _media(
+            [float(luta.get("combos_2mais", 0)) for luta in ok]
+        ),
+        "maior_combo_corpus": max(
+            (int(luta.get("maior_combo", 0)) for luta in ok), default=None
+        ),
+        "bursts_por_luta_media": _media(
+            [float(luta.get("bursts", 0)) for luta in ok]
+        ),
         "taxa_pilha_media": _media([luta["taxa_pilha"] for luta in ok]),
         # Onda 8E (alvo A6): fração das decisões de movimento tomadas em
         # range de melee — antes do fix do early-return era ~0.
         "taxa_decisoes_melee_media": _media(
             [luta.get("taxa_decisoes_melee") for luta in ok
              if luta.get("taxa_decisoes_melee") is not None]
+        ),
+        # Onda 8G (alvo R1): tempo colado — média da fração de frames em
+        # contato corpo-a-corpo; alto = ritmo irreal de "empurra-empurra".
+        "pct_tempo_colado_media": _media(
+            [luta.get("pct_tempo_colado") for luta in ok
+             if luta.get("pct_tempo_colado") is not None]
+        ),
+        "pct_tempo_colado_p90": percentil(
+            [luta["pct_tempo_colado"] for luta in ok
+             if luta.get("pct_tempo_colado") is not None], 0.9
+        ),
+        "clinches_por_luta_media": _media(
+            [float(luta.get("clinches", 0)) for luta in ok]
         ),
         # Onda 8E (alvo A5): plano de luta vivo — cobertura de frames e
         # rotatividade de planos por luta (soma p1+p2).

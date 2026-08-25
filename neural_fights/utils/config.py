@@ -25,6 +25,26 @@ FATOR_DANO_BLOQUEIO_CAVALEIRO = 0.20
 FATOR_KNOCKBACK_BLOQUEIO = 0.5
 STAGGER_PARRY_S = 0.4
 
+# === ONDA 8H: HITSTUN E COMBOS ===
+# Quem apanha perde a resposta por um instante — a fundação de combo do
+# gênero. O stun escala com o dano, DECRESCE a cada hit do mesmo combo
+# (anti-stunlock) e tanques resistem. Golpe BLOQUEADO não atordoa: a
+# guarda é o quebra-combo universal.
+HITSTUN_BASE_S = 0.14
+HITSTUN_POR_DANO = 0.004            # +4ms por ponto de dano final
+HITSTUN_MAX_S = 0.40
+HITSTUN_SCALING_COMBO = 0.85        # hit N do combo atordoa 15% menos
+HITSTUN_MIN_S = 0.08
+JANELA_COMBO_S = 1.2                # sem novo hit nessa janela, combo morre
+# Combo flow: o próximo swing sai mais rápido sobre alvo em hitstun —
+# é o que transforma hits soltos em strings de 2-4 golpes.
+COMBO_FLOW_CADENCIA = 0.8
+# Burst de escape: no 3º hit do combo, o defensor pode gastar fôlego num
+# empurrão com invulnerabilidade curta (a chance vem da personalidade).
+CUSTO_ESTAMINA_BURST = 40.0
+BURST_PUSHBACK = 14.0
+BURST_INVULN_S = 0.25
+
 # VISUAL
 LARGURA, ALTURA = 1200, 800
 LARGURA_PORTRAIT, ALTURA_PORTRAIT = 540, 960  # 9:16 para filmagem vertical

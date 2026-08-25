@@ -365,6 +365,14 @@ class Simulador:
         # (ver _atualizar_projeteis). Reset por partida por higiene.
         self._aridade_atualizar_cache = {}
 
+        # === ONDA 8G: CLINCH ===
+        # Corpos encostados por mais de ~0.9s = clinch — quebra o ritmo
+        # e parece irreal. O resolvedor escolhe uma saída DIVERSA por
+        # personalidade/força/arma (empurrão, golpe de cabo, backstep,
+        # pivô, separação múta) em vez de deixar os dois se prensando.
+        self._tempo_clinch = 0.0
+        self._clinch_cooldown = 0.0
+
         # === ONDA 8A: percepção honesta ===
         # Os buffers dos lutadores são drenados para as listas do mundo
         # ANTES do tick das IAs — o brain que lia inimigo.buffer_projeteis
@@ -3116,14 +3124,194 @@ class Simulador:
         dy = p2.pos[1] - p1.pos[1]
         dist = math.hypot(dx, dy)
         
-        # Se ainda estiverem muito próximos, aplica repulsão
+        # Se ainda estiverem muito próximos, aplica repulsão. Onda 8G:
+        # a repulsão CRESCE com o tempo de contato — clinch prolongado
+        # deriva naturalmente para fora mesmo sem decisão da IA.
         if dist < soma_raios * 1.2 and dist > 0.001:
             nx, ny = dx / dist, dy / dist
-            fator_repulsao = 6.0
+            # _tempo_clinch é DENSIDADE de contato (0-1, EMA ~2s). A
+            # escalada é branda de propósito: física demais resolveria o
+            # clinch invisivelmente e roubaria a cena do RESOLVEDOR — o
+            # empurrão/pivô/backstep é que deve ser visto.
+            fator_repulsao = 6.0 * (1.0 + min(1.0, self._tempo_clinch))
             p1.vel[0] -= nx * fator_repulsao
             p1.vel[1] -= ny * fator_repulsao
             p2.vel[0] += nx * fator_repulsao
             p2.vel[1] += ny * fator_repulsao
+
+        # === ONDA 8G: DETECÇÃO E RESOLUÇÃO DE CLINCH ===
+        if self._clinch_cooldown > 0.0:
+            self._clinch_cooldown -= dt
+        em_contato = (
+            dist < soma_raios * 1.35
+            and abs(p1.z - p2.z) < 1.0
+        )
+        # DENSIDADE de contato (EMA, janela ~2s): o clinch real raramente
+        # é um abraço contínuo — é o esbarra-descola-esbarra. A EMA mede
+        # "que fração dos últimos ~2s passamos encostados"; acima de 35%
+        # o ritmo virou empurra-empurra e o resolvedor age. Um esbarrão
+        # isolado dilui sem disparar nada. Stun não apaga a densidade,
+        # mas ADIA o disparo (quem cambaleia já foi separado pelo golpe).
+        alpha = min(1.0, dt / 2.0)
+        alvo_densidade = 1.0 if em_contato else 0.0
+        self._tempo_clinch += (alvo_densidade - self._tempo_clinch) * alpha
+        if (
+            self._tempo_clinch >= 0.22
+            and self._clinch_cooldown <= 0.0
+            and p1.stun_timer <= 0
+            and p2.stun_timer <= 0
+        ):
+            self._resolver_clinch(dist, dx, dy)
+
+    def _resolver_clinch(self, dist, dx, dy):
+        """Onda 8G: quebra o clinch de um jeito DIVERSO e com autor.
+
+        O 'iniciador' é quem tem mais iniciativa no momento
+        (agressividade + fôlego + sorteio no stream do MOTOR); o modo sai
+        de uma roleta pesada pela personalidade, força e arma dele:
+
+        - EMPURRAO: o bruto abre espaço na marra (knockback + micro-stun);
+        - GOLPE_DE_CABO: pancada curta com o cabo da arma — consome o
+          campo cabo_dano, que existia no modelo e nunca foi lido;
+        - BACKSTEP: o ágil salta/dá dash para trás e reseta o spacing;
+        - PIVO: os dois giram trocando de lado (a dança de esgrima);
+        - SEPARACAO_MUTUA: o reset clássico de boxe, ambos recuam.
+        """
+        p1, p2 = self.p1, self.p2
+        rng = p1.rng_runtime  # stream do motor: replays não desviam
+        if dist > 0.001:
+            nx, ny = dx / dist, dy / dist  # normal p1 -> p2
+        else:
+            ang = rng.uniform(0, math.pi * 2)
+            nx, ny = math.cos(ang), math.sin(ang)
+
+        def _iniciativa(p):
+            brain = getattr(p, "brain", None)
+            base = 0.5
+            if brain is not None and hasattr(brain, "agressividade_efetiva"):
+                try:
+                    base = brain.agressividade_efetiva()
+                except Exception:
+                    base = 0.5
+            return base + p.estamina / 500.0 + rng.uniform(0.0, 0.2)
+
+        if _iniciativa(p1) >= _iniciativa(p2):
+            ini, alvo, sinal = p1, p2, 1.0
+        else:
+            ini, alvo, sinal = p2, p1, -1.0
+        # Normal apontando do iniciador para o alvo.
+        ex, ey = nx * sinal, ny * sinal
+
+        brain_ini = getattr(ini, "brain", None)
+        perfil = getattr(brain_ini, "perfil", {}) if brain_ini else {}
+        arma = getattr(ini.dados, "arma_obj", None)
+        peso_arma = float(getattr(arma, "peso", 3.0) or 3.0)
+        cabo_dano = float(getattr(arma, "cabo_dano", 0.0) or 0.0)
+        arma_melee = getattr(arma, "tipo", "") not in (
+            "Arco", "Arremesso", "Mágica",
+        )
+
+        pesos = {
+            "EMPURRAO": (
+                0.25
+                + float(getattr(ini.dados, "forca", 5.0)) * 0.04
+                + max(0.0, perfil.get("agressao", 0.0)) * 0.3
+                + (0.15 if peso_arma >= 6.0 else 0.0)
+            ),
+            "GOLPE_DE_CABO": (
+                0.1 + max(0.0, perfil.get("agressao", 0.0)) * 0.35
+                if cabo_dano > 0.0 and arma_melee
+                else 0.0
+            ),
+            "BACKSTEP": (
+                0.2
+                + max(0.0, perfil.get("mobilidade", 0.0)) * 0.35
+                + max(0.0, perfil.get("cautela", 0.0)) * 0.25
+            ),
+            "PIVO": 0.15 + max(0.0, perfil.get("mobilidade", 0.0)) * 0.4,
+            "SEPARACAO_MUTUA": 0.2 + max(0.0, perfil.get("cautela", 0.0)) * 0.3,
+        }
+        total = sum(pesos.values())
+        sorteio = rng.uniform(0.0, total)
+        modo = "SEPARACAO_MUTUA"
+        for nome, peso in pesos.items():
+            sorteio -= peso
+            if sorteio <= 0.0:
+                modo = nome
+                break
+
+        brain_alvo = getattr(alvo, "brain", None)
+        if modo == "EMPURRAO":
+            alvo.vel[0] += ex * 14.0
+            alvo.vel[1] += ey * 14.0
+            alvo.stun_timer = max(alvo.stun_timer, 0.25)
+            ini.vel[0] -= ex * 4.0
+            ini.vel[1] -= ey * 4.0
+            ini.estamina = max(0.0, ini.estamina - 10.0)
+        elif modo == "GOLPE_DE_CABO":
+            alvo.resolver_impacto(
+                min(cabo_dano, 10.0), ex, ey,
+                atacante=ini,
+                metadata_impacto={"eh_corpo_a_corpo": True,
+                                  "tipo_fonte": "golpe_cabo"},
+            )
+            alvo.vel[0] += ex * 8.0
+            alvo.vel[1] += ey * 8.0
+        elif modo == "BACKSTEP":
+            ang_recuo = math.atan2(-ey, -ex)
+            if not (callable(getattr(ini, "iniciar_dash", None))
+                    and ini.iniciar_dash(ang_recuo)):
+                ini.vel[0] -= ex * 12.0
+                ini.vel[1] -= ey * 12.0
+            if brain_ini is not None:
+                brain_ini.acao_atual = "RECUAR"
+        elif modo == "PIVO":
+            px, py = -ey, ex  # perpendicular
+            ini.vel[0] += px * 10.0
+            ini.vel[1] += py * 10.0
+            alvo.vel[0] -= px * 10.0
+            alvo.vel[1] -= py * 10.0
+            for brain, direcao in ((brain_ini, 1), (brain_alvo, -1)):
+                if brain is not None:
+                    brain.dir_circular = direcao
+                    brain.acao_atual = "CIRCULAR"
+        else:  # SEPARACAO_MUTUA
+            ini.vel[0] -= ex * 8.0
+            ini.vel[1] -= ey * 8.0
+            alvo.vel[0] += ex * 8.0
+            alvo.vel[1] += ey * 8.0
+            for brain in (brain_ini, brain_alvo):
+                if brain is not None:
+                    brain.acao_atual = "RECUAR"
+
+        # Telemetria + leitura visual (leve, no espírito "luta limpa").
+        ini.contadores_luta["clinches"] = (
+            ini.contadores_luta.get("clinches", 0) + 1
+        )
+        if brain_ini is not None:
+            brain_ini.tell_atual = {
+                "tipo": "clinch", "modo": modo,
+                "ate": getattr(brain_ini, "tempo_combate", 0.0) + 0.4,
+            }
+        # Onda 8G (passe de legibilidade): o rompimento do corpo-a-corpo
+        # é um EVENTO — shockwave visível, poeira do arrasto e shake.
+        mx = (p1.pos[0] + p2.pos[0]) / 2 * PPM
+        my = (p1.pos[1] + p2.pos[1]) / 2 * PPM
+        self.shockwaves.append(Shockwave(mx, my, (210, 210, 220), 1.1))
+        for i in range(8):
+            # VFX sorteia no RANDOM GLOBAL (doutrina): o stream do motor
+            # (rng_runtime) fica só com física/decisão.
+            a = i * math.pi / 4 + random.uniform(-0.2, 0.2)
+            v = random.uniform(3.0, 7.0)
+            self.particulas.append(Particula(
+                mx, my, (160, 160, 170),
+                math.cos(a) * v, math.sin(a) * v, 3, 0.4))
+        self.cam.aplicar_shake(7.0, 0.15)
+
+        # Reset parcial da densidade: o resolvedor abriu espaço, mas se o
+        # empurra-empurra voltar logo, o próximo disparo vem mais rápido.
+        self._tempo_clinch *= 0.4
+        self._clinch_cooldown = 2.5
 
     def verificar_colisoes_combate(self):
         if (
@@ -4717,6 +4905,58 @@ class Simulador:
                 self.dash_trails.append(DashTrail(posicoes, cor_l))
             marca["esquivas"] = esq
 
+            # === ONDA 8G (passe de legibilidade) ===
+            # A auditoria visual mostrou que desvio deliberado e parry
+            # disparavam fartamente (7-33 desvios, 4-5 parries por luta)
+            # mas com sinais de 1-2px que somem nos VFX de combate — o
+            # espectador não RECONHECIA os eventos. Cada um ganha a
+            # assinatura do vocabulário existente.
+
+            # Desvio deliberado da IA: mesmo burst de afterimages da
+            # esquiva do Ladino, na direção real do deslocamento.
+            # (getattr com default: fakes de contrato não têm contadores.)
+            desv = (getattr(l, "contadores_luta", None) or {}).get(
+                "desvios_ia", 0
+            )
+            if desv > marca.setdefault("desvios", desv):
+                cor_l = (getattr(l.dados, "cor_r", 200) or 200,
+                         getattr(l.dados, "cor_g", 200) or 200,
+                         getattr(l.dados, "cor_b", 200) or 200)
+                vel_l = getattr(l, "vel", (0.0, 0.0))
+                vx, vy = vel_l[0], vel_l[1]
+                mag_v = math.hypot(vx, vy) or 1.0
+                ux, uy = vx / mag_v, vy / mag_v
+                posicoes = [
+                    ((l.pos[0] - ux * 0.3 * k) * PPM,
+                     (l.pos[1] - uy * 0.3 * k) * PPM)
+                    for k in range(1, 5)
+                ]
+                self.dash_trails.append(DashTrail(posicoes, cor_l))
+            marca["desvios"] = desv
+
+            # Parry: o evento mais raro do motor (guarda no tempo exato)
+            # merece o pacote de drama do CLASH — shockwave dourada,
+            # faíscas radiais, shake e zoom punch.
+            par = getattr(l, "parries_visuais", 0)
+            if par > marca.setdefault("parries", par):
+                self.shockwaves.append(
+                    Shockwave(px_l, py_l, AMARELO_FAISCA, 1.4))
+                for i in range(10):
+                    a = i * math.pi / 5
+                    self._push_vfx("hit_sparks", HitSpark(
+                        px_l, py_l, AMARELO_FAISCA, a, 1.3))
+                self.cam.aplicar_shake(8.0, 0.18)
+                self.cam.zoom_punch(0.12, 0.12)
+            marca["parries"] = par
+
+            # Onda 8H: burst de escape — explosão ciana de "chega!".
+            bur = getattr(l, "bursts_visuais", 0)
+            if bur > marca.setdefault("bursts", bur):
+                self.shockwaves.append(
+                    Shockwave(px_l, py_l, (150, 220, 255), 1.3))
+                self.cam.aplicar_shake(6.0, 0.14)
+            marca["bursts"] = bur
+
     def _desenhar_status_e_defesa(self, l, centro, raio):
         """Passe 6: A LUTA É LEGÍVEL — renderer ÚNICO de status (anel do
         dominante + até 3 badges com glifo + especiais baratos), bolha de
@@ -4908,14 +5148,33 @@ class Simulador:
                         (int(x1), int(y1)),
                         (int(x1 + ux * 10), int(y1 + uy * 10)), 2)
             elif tell.get("tipo") == "punicao":
-                surf_e = get_fonte(18, negrito=True).render("!", True, (255, 180, 90))
-                surf_e.set_alpha(200)
+                # Onda 8G: "!" no mesmo peso visual do "?" da hesitação —
+                # maior e mais quente, senão some no meio dos VFX.
+                surf_e = get_fonte(26, negrito=True).render("!", True, (255, 170, 60))
+                surf_e.set_alpha(235)
                 self.tela.blit(surf_e, (cx - surf_e.get_width() // 2,
-                                        cy - raio - 52))
+                                        cy - raio - 56))
             elif tell.get("tipo") == "parry":
                 # Anel dourado curto: o instante do aço lido no tempo certo.
                 pygame.draw.circle(self.tela, (255, 230, 120), (cx, cy),
                                    int(raio * 1.25), 2)
+            elif tell.get("tipo") == "clinch":
+                # Onda 8G: arco duplo de separação — o corpo-a-corpo
+                # acabou de ser quebrado por decisão de alguém.
+                for r_mult in (1.15, 1.35):
+                    pygame.draw.circle(self.tela, (210, 210, 220), (cx, cy),
+                                       int(raio * r_mult), 1)
+
+        # === ONDA 8H: CONTADOR DE COMBO SOFRIDO ===
+        # A leitura clássica do gênero: "x3" crescendo ao lado de quem
+        # está sendo comboado — esquenta de âmbar para vermelho.
+        n_combo = getattr(l, "combo_contra", 0)
+        if n_combo >= 2 and getattr(l, "combo_contra_timer", 0.0) > 0:
+            cor_combo = (255, 200, 80) if n_combo < 4 else (255, 120, 60)
+            surf_c = get_fonte(
+                20 + min(10, n_combo * 2), negrito=True
+            ).render(f"x{n_combo}", True, cor_combo)
+            self.tela.blit(surf_c, (cx + raio + 8, cy - raio - 30))
 
     def _desenhar_canalizacao(self, l, canal, centro, raio):
         """Passe 5: ritual de canalização por elemento (5 padrões:

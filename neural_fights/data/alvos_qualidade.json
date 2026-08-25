@@ -66,6 +66,35 @@
     "min_lutas": 30,
     "descricao": "Onda 8E: fracao das decisoes de movimento tomadas em range de melee. Antes do fix, _avaliar_e_executar_ataque consumia o frame mesmo com o golpe em cooldown e a pilha de personalidade congelava em close quarters (~0). Medido 0,43 no smoke."
   },
+  "C1_combos_existem": {
+    "metrica": "combos_por_luta_p50",
+    "min": 2,
+    "max": 20,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8H: strings de 2+ hits em janela de hitstun acontecem em toda luta tipica (medido p50=8 no smoke). Combo = pressao de vantagem: hit conectado enquanto o alvo nao recuperou a agencia (janela = hitstun do hit + 0.45s de emenda)."
+  },
+  "C2_anti_stunlock": {
+    "metrica": "maior_combo_corpus",
+    "max": 9,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8H: teto do maior combo do corpus. Tres freios: hitstun decresce 15% por hit, pushback cresce com o combo (a string se encerra espacialmente), e do 8o hit em diante o alvo acorda (stun zero). Sem eles o smoke registrou combo de 18 hits. Burst de escape (estamina + chance por personalidade) e o contra-jogo ativo; guarda bloqueada nao toma hitstun (quebra-combo universal)."
+  },
+  "R1_tempo_colado": {
+    "metrica": "pct_tempo_colado_media",
+    "max": 0.08,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8G: fracao media da luta com os corpos praticamente encostados (dist < 1.35x soma dos raios). Baseline pre-8G: 0,077 media / 0,144 p90; com amortecimento de prensa + repulsao por densidade + resolvedor de clinch: 0,055/0,127. Matchups de alcance curto (Orbital/Dupla) colavam 25% e agora tem 3-10 resolucoes DIVERSAS por luta (empurrao/golpe de cabo/backstep/pivo/separacao)."
+  },
+  "R1_tempo_colado_p90": {
+    "metrica": "pct_tempo_colado_p90",
+    "max": 0.16,
+    "enforce_onda": 8,
+    "min_lutas": 30,
+    "descricao": "Onda 8G: teto do pior caso — nenhuma luta vira empurra-empurra permanente."
+  },
   "B4_vies_de_lado": {
     "metrica": "winrate_p1",
     "min": 0.42,

@@ -229,6 +229,27 @@ todo frame por `Lutador.update`:
    espacial → armas → veto de sobrevivência. Escrita única via
    `_definir_acao` com min-hold (alvo V2 ≥ 500ms).
 
+### Hitstun e combos (Onda 8H)
+- Golpe DISCRETO que conecta (melee, projétil, orbe — nunca área/beam/
+  trap/DoT) aplica **hitstun**: `stun_timer` de 0.14-0.40s escalando com
+  o dano. Golpe **bloqueado não atordoa** (a guarda é o quebra-combo).
+- **Combo sofrido** é estado físico do alvo: `combo_contra` (hits do
+  mesmo autor), janela = hitstun do hit + 0.45s de emenda. O atacante lê
+  para o followup; o defensor para escapar; o renderer mostra o "xN".
+- **Anti-stunlock em três freios**: hitstun decresce 15% por hit;
+  pushback cresce com o combo (a string se encerra espacialmente); do 8º
+  hit o alvo "acorda" (stun zero). Tanques (Cavaleiro/Colosso) sentem
+  30% menos stun; ágeis (Assassino/Ladino/Ninja) 10% mais.
+- **Combo flow**: swing iniciado com o alvo em hitstun tem cadência
+  ×0.8 (MESTRE_COMBO ×0.85 adicional) — é o que forma strings de 2-4.
+- **Burst de escape**: no 3º hit do combo, o defensor pode pagar 40 de
+  estamina por pushback + 0.25s de invulnerabilidade. A chance vem da
+  personalidade (`chance_burst_combo`: cauteloso/medroso escapa, teimoso
+  e berserker tankam). Sorteio no stream do próprio defensor.
+- IA: `_tentar_followup` lê o estado real (stun/combo ativo) e a arma
+  pesada fecha a string com ESMAGAR; alvo em hitstun eleva a chance de
+  ataque a 0.95; o instinto `sendo_comboado` lê `combo_contra`.
+
 ### Percepção e defesa (Ondas 8A-8B)
 - `Lutador.percepcao` (`ai/percepcao.py`) — janela somente-leitura sobre
   as listas do Simulador; os buffers antigos são drenados antes do tick.

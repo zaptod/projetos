@@ -296,6 +296,7 @@ class AIBrain:
         self._espacial = None
         self._timer_taticas = 0.0
         self.mult_janela_parry = 1.0  # FRAME_PERFECT amplia (ver 8B)
+        self.chance_burst_combo = 0.35  # Onda 8H: o motor consulta no 3º hit
         self._ataque_id_avaliado_desvio = -1   # um desvio avaliado por swing
         self._ataque_id_avaliado_punicao = -1  # uma punição avaliada por swing
 
@@ -981,6 +982,23 @@ class AIBrain:
         # motor (8B) consulta via mult_janela_parry.
         if "FRAME_PERFECT" in self.quirks:
             self.mult_janela_parry = 1.6
+
+        # Onda 8H: chance de BURST de escape quando comboado (o motor
+        # consulta no 3º hit). Cauteloso/medroso compra a saída; teimoso
+        # e berserker tankam por orgulho.
+        burst = (
+            0.35
+            + max(0.0, perfil["cautela"]) * 0.3
+            + max(0.0, perfil["medo"]) * 0.2
+            - max(0.0, perfil["agressao"]) * 0.15
+        )
+        if "TEIMOSO" in self.tracos:
+            burst -= 0.2
+        if "BERSERKER" in self.tracos or "KAMIKAZE" in self.tracos:
+            burst -= 0.25
+        if "EVASIVO" in self.tracos or "REATIVO" in self.tracos:
+            burst += 0.15
+        self.chance_burst_combo = max(0.05, min(0.9, burst))
 
     # =========================================================================
     # PROCESSAMENTO PRINCIPAL v10.0
@@ -1751,6 +1769,11 @@ class AIBrain:
             # Momentum
             chance_base += self.momentum * 0.15
 
+            # Onda 8H: alvo em HITSTUN é a janela de combo — pressiona.
+            # (stun é estado físico visível, não telepatia.)
+            if getattr(inimigo, "stun_timer", 0.0) > 0.0:
+                chance_base = max(chance_base, 0.95)
+
             if self.rng.random() < chance_base:
                 self._executar_ataque(distancia, inimigo)
                 # Onda 8E (fix do melee): consome o frame só quando o
@@ -1886,11 +1909,29 @@ class AIBrain:
             combo["pode_followup"] = False
             return False
         
+        # Onda 8H: a string agora LÊ o estado mecânico — alvo em hitstun
+        # ou com o MEU combo ativo nele é alvo vulnerável de verdade
+        # (antes o followup era uma cadeia de Markov cega).
+        p = self.parent
+        alvo_vulneravel = (
+            getattr(inimigo, "stun_timer", 0.0) > 0.0
+            or (
+                getattr(inimigo, "combo_contra_autor", None) is p
+                and getattr(inimigo, "combo_contra_timer", 0.0) > 0.0
+            )
+        )
+
         # Determina próximo ataque do combo
         ultimo = combo["ultimo_tipo_ataque"]
         proximo = None
-        
-        if ultimo == "ATAQUE_RAPIDO":
+
+        arma = getattr(getattr(p, "dados", None), "arma_obj", None)
+        peso_arma = float(getattr(arma, "peso", 3.0) or 3.0)
+        if peso_arma >= 6.0 and combo["hits_combo"] >= 2 and alvo_vulneravel:
+            # Arma pesada fecha a string com o finisher — identidade de
+            # classe: o bruto não emenda quatro golpes, ele TERMINA.
+            proximo = "ESMAGAR"
+        elif ultimo == "ATAQUE_RAPIDO":
             proximo = self.rng.choice(["ATAQUE_RAPIDO", "MATAR"])
         elif ultimo == "MATAR":
             proximo = self.rng.choice(["ESMAGAR", "ATAQUE_RAPIDO"])
@@ -1898,16 +1939,18 @@ class AIBrain:
             proximo = self.rng.choice(["MATAR", "FLANQUEAR"])
         else:
             proximo = "ATAQUE_RAPIDO"
-        
+
         # Verifica distância
-        if distancia > self.parent.alcance_ideal + 1.5:
+        if distancia > p.alcance_ideal + 1.5:
             combo["em_combo"] = False
             return False
-        
+
         self.acao_atual = proximo
         combo["hits_combo"] += 1
         combo["ultimo_tipo_ataque"] = proximo
-        combo["timer_followup"] = 0.4  # Janela para próximo hit
+        # Janela para o próximo hit: maior quando o alvo está de fato
+        # sem resposta (hitstun/combo ativo).
+        combo["timer_followup"] = 0.4 + (0.25 if alvo_vulneravel else 0.0)
         
         return True
     
@@ -4581,25 +4624,29 @@ class AIBrain:
         # frustração (-0,25) e tédio (-0,3) — a seca ofensiva é que os cria.
         self._motor_emocional().on_hit_dado()
 
-        # Sistema de combo
+        # Sistema de combo — Onda 8H: a janela de followup agora tem base
+        # MECÂNICA: cobre o hitstun real que o golpe causou no alvo (o
+        # tempo em que ele não responde) mais o tempo de emendar.
         combo = self.combo_state
         combo["em_combo"] = True
         combo["hits_combo"] += 1
         combo["ultimo_tipo_ataque"] = self.acao_atual
         combo["pode_followup"] = True
-        combo["timer_followup"] = 0.5  # Janela para continuar combo
-        
+        inimigo_atual = getattr(self.parent, "_inimigo_atual", None)
+        stun_alvo = min(0.4, getattr(inimigo_atual, "stun_timer", 0.0) or 0.0)
+        combo["timer_followup"] = 0.5 + stun_alvo
+
         # Momentum positivo (empurrao de evento, calibrado com a meia-vida
         # de 4s para nao cravar o medidor em sequencias normais)
         self.momentum = min(1.0, self.momentum + 0.06)
         self.burst_counter += 1
-        
+
         if "SEDE_SANGUE" in self.quirks:
             self.adrenalina = min(1.0, self.adrenalina + 0.2)
-        
+
         # Combo master continua pressionando
         if "COMBO_MASTER" in self.tracos or "MESTRE_COMBO" in self.quirks:
-            combo["timer_followup"] = 0.7
+            combo["timer_followup"] = 0.7 + stun_alvo
     
     def on_hit_recebido(self, dano):
         """Quando recebe dano"""
@@ -4780,10 +4827,13 @@ class AIBrain:
         if trigger == "perdendo_trocas":
             return self.hits_recebidos_recente > self.hits_dados_recente + 2
         if trigger == "sendo_comboado":
-            # A versão antiga lia combo_state["sendo_combo"] — chave que
-            # nunca existiu (o dict rastreia o MEU combo ofensivo, e a
-            # chave real é "em_combo"). Ser comboado é levar hits em
-            # sequência curta.
+            # Onda 8H: o combo sofrido agora é ESTADO MECÂNICO do motor
+            # (combo_contra), não inferência por contadores de hits.
+            if (
+                getattr(p, "combo_contra", 0) >= 2
+                and getattr(p, "combo_contra_timer", 0.0) > 0.0
+            ):
+                return True
             return self.hits_recebidos_recente >= 3 and self.tempo_desde_dano < 0.8
         if trigger == "bloqueio_sucesso":
             return self.ultimo_bloqueio < 0.4
@@ -4820,8 +4870,11 @@ class AIBrain:
             ang_para_inimigo = math.atan2(
                 inimigo.pos[1] - p.pos[1], inimigo.pos[0] - p.pos[0]
             )
+            # Onda 8: angulo_olhar é em GRAUS — a versão antiga comparava
+            # em radianos e o teste geométrico era ruído.
             delta = abs(
-                (ang_para_inimigo - p.angulo_olhar + math.pi) % (2 * math.pi)
+                (ang_para_inimigo - math.radians(p.angulo_olhar) + math.pi)
+                % (2 * math.pi)
                 - math.pi
             )
             return delta > 2.2

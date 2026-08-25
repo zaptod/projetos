@@ -63,7 +63,7 @@ class BloqueioDirecionalTests(unittest.TestCase):
         defensor, atacante = _par_de_lutadores()
         defensor.brain = _brain_guarda()
         defensor.tempo_bloqueando = 1.0
-        defensor.angulo_olhar = 3.14159  # de costas para o atacante
+        defensor.angulo_olhar = 180.0  # de costas para o atacante (GRAUS)
         defensor.resolver_impacto(
             100.0, 1.0, 0.0, atacante=atacante, metadata_impacto=dict(MELEE)
         )

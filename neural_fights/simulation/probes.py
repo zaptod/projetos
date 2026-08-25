@@ -108,6 +108,8 @@ class FightQualityProbe:
         self._proj_vistos = {"p1": 0, "p2": 0}
         # Onda 8E: cobertura do plano de luta (alvo A5).
         self._frames_com_plano = 0
+        # Onda 8G: tempo "colado" (corpos em contato) — alvo R1.
+        self._frames_contato = 0
         for slot in ("p1", "p2"):
             lutador = getattr(sim, slot)
             lista: list[tuple[float, str]] = []
@@ -138,6 +140,16 @@ class FightQualityProbe:
                     self._frames_com_plano += 1
 
         self._frames_ia += 1
+
+        # Onda 8G: fração da luta em que os corpos estão praticamente
+        # encostados (clinch) — ritmo irreal quando fica alto.
+        p1, p2 = sim.p1, sim.p2
+        if not p1.morto and not p2.morto:
+            dx_c = p2.pos[0] - p1.pos[0]
+            dy_c = p2.pos[1] - p1.pos[1]
+            soma_raios = p1.raio_fisico + p2.raio_fisico
+            if (dx_c * dx_c + dy_c * dy_c) < (soma_raios * 1.35) ** 2:
+                self._frames_contato += 1
 
         # Onda 8A: em frames com projétil hostil no ar, o defensor deve
         # enxergá-lo pela janela de mundo (alvo A1).
@@ -202,6 +214,9 @@ class FightQualityProbe:
         met["pct_momentum_saturado"] = (
             self._momentum_sat["p1"] + self._momentum_sat["p2"]
         ) / (2 * frames)
+
+        # Onda 8G: pct do tempo de luta com os corpos colados.
+        met["pct_tempo_colado"] = self._frames_contato / frames
 
         # Onda 8A: taxa de percepcao de projeteis (None sem projeteis).
         proj_frames = self._proj_frames["p1"] + self._proj_frames["p2"]
@@ -316,6 +331,12 @@ class FightQualityProbe:
             # Onda 8D: antecipação e punição (alvos A3/A4).
             "desvios_antecipados": 0,
             "punicoes": 0,
+            # Onda 8G: clinches resolvidos.
+            "clinches": 0,
+            # Onda 8H: combos e bursts de escape.
+            "combos_2mais": 0,
+            "maior_combo": 0,
+            "bursts": 0,
         }
         decisoes = pilha = decisoes_melee = planos = 0
         sim = self._sim
@@ -330,6 +351,13 @@ class FightQualityProbe:
                     pilha += brain.contadores.get("pilha_completa", 0)
                     decisoes_melee += brain.contadores.get("decisoes_melee", 0)
                     planos += brain.contadores.get("planos", 0)
+
+        # maior_combo é MÁXIMO da luta, não soma dos dois lutadores.
+        if sim is not None:
+            soma["maior_combo"] = max(
+                sim.p1.contadores_luta.get("maior_combo", 0),
+                sim.p2.contadores_luta.get("maior_combo", 0),
+            )
 
         anulados = soma["anulados_invencibilidade"]
         hits = len(self._eventos)
