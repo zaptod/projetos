@@ -66,6 +66,13 @@
     "min_lutas": 30,
     "descricao": "Onda 8E: fracao das decisoes de movimento tomadas em range de melee. Antes do fix, _avaliar_e_executar_ataque consumia o frame mesmo com o golpe em cooldown e a pilha de personalidade congelava em close quarters (~0). Medido 0,43 no smoke."
   },
+  "_nota_B2_pos_8H": [
+    "Onda 8H: B2 segue informativo com Orbital 0,736 e Dupla 0,288. A subida de",
+    "Orbital NAO veio do hitstun (remover o stun dos orbes em orbita nao o moveu:",
+    "0,693->0,736, ruido de n=87) e sim do meta 8B-8H acumulado (escudo orbital +",
+    "guarda direcional + spin passivo imune ao anti-prensa do clinch). Precisa de",
+    "rodada de knobs B2 dedicada, como a O6 fez para classes."
+  ],
   "C1_combos_existem": {
     "metrica": "combos_por_luta_p50",
     "min": 2,

@@ -3602,8 +3602,10 @@ class Lutador:
             # invulnerabilidade curta. A chance vem da personalidade
             # (teimoso tanka, cauteloso escapa); o sorteio é no stream
             # do próprio defensor — replays não desviam.
+            # Sem brain (dummy/manual), sem burst automático: o burst é
+            # decisão de personalidade, não reflexo do motor.
             chance_burst = float(getattr(
-                getattr(self, "brain", None), "chance_burst_combo", 0.35
+                getattr(self, "brain", None), "chance_burst_combo", 0.0
             ) or 0.0)
             if (
                 self.combo_contra >= 3
