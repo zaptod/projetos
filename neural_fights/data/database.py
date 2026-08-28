@@ -22,6 +22,8 @@ from typing import Any
 from neural_fights.models import Arma, Personagem, get_raridade_data
 from neural_fights.models.constants import (
     ENCANTAMENTOS,
+    KIT_PAPEIS,
+    KIT_POOLS,
     LISTA_CLASSES,
     LISTA_RARIDADES,
     LISTA_TIPOS_ARMA,
@@ -794,6 +796,29 @@ def validar_personagens(
         if personagem.get("classe") not in LISTA_CLASSES:
             erros.append(f"{caminho}.classe desconhecida: {personagem.get('classe')!r}")
 
+        # Onda 11C: kit sorteado é OPCIONAL (registros antigos não têm), mas
+        # quando presente precisa ser 1 opção válida por papel do KIT_POOLS.
+        kit = personagem.get("kit_skills")
+        if kit is not None:
+            pools = KIT_POOLS.get(personagem.get("classe"), {})
+            if (
+                not isinstance(kit, list)
+                or len(kit) != len(KIT_PAPEIS)
+                or not all(isinstance(nome, str) and nome for nome in kit)
+            ):
+                erros.append(
+                    f"{caminho}.kit_skills deve listar "
+                    f"{len(KIT_PAPEIS)} skills (uma por papel)"
+                )
+            else:
+                for papel, nome in zip(KIT_PAPEIS, kit):
+                    opcoes = pools.get(papel, ())
+                    if nome not in opcoes:
+                        erros.append(
+                            f"{caminho}.kit_skills[{papel}] fora do pool "
+                            f"da classe: {nome!r}"
+                        )
+
     if erros:
         raise DataValidationError(erros)
     return lista
@@ -1086,21 +1111,23 @@ def carregar_personagens(
     lista = []
     for item in raw_chars:
         nome_arma = item["nome_arma"]
-        lista.append(
-            Personagem(
-                item["nome"],
-                item["tamanho"],
-                item["forca"],
-                item["mana"],
-                nome_arma,
-                pesos_por_nome[nome_arma],
-                item.get("cor_r", 200),
-                item.get("cor_g", 50),
-                item.get("cor_b", 50),
-                item.get("classe", "Guerreiro (Força Bruta)"),
-                item.get("personalidade", "Aleatório"),
-            )
+        personagem = Personagem(
+            item["nome"],
+            item["tamanho"],
+            item["forca"],
+            item["mana"],
+            nome_arma,
+            pesos_por_nome[nome_arma],
+            item.get("cor_r", 200),
+            item.get("cor_g", 50),
+            item.get("cor_b", 50),
+            item.get("classe", "Guerreiro (Força Bruta)"),
+            item.get("personalidade", "Aleatório"),
         )
+        # Onda 11C: o kit sorteado na criação viaja com o personagem
+        # (ausente em registros antigos => o Lutador usa o kit da classe).
+        personagem.kit_skills = item.get("kit_skills")
+        lista.append(personagem)
     return lista
 
 

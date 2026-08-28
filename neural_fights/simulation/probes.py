@@ -25,6 +25,10 @@ JANELA_SECA = 4.0
 # 0,25s so adiciona ruido; o drama acontece em escala de segundos.
 PASSO_HP = 0.25
 
+# Onda 10A: corrida na faixa de confronto sem hit real que conta como
+# standoff (mesmo valor de STANDOFF_JANELA_S: a partir dali o motor age).
+JANELA_STANDOFF = 1.5
+
 # Histerese da lideranca: so conta troca quando a vantagem cruza +-5pp de HP.
 HISTERESE_LIDERANCA = 0.05
 
@@ -108,8 +112,25 @@ class FightQualityProbe:
         self._proj_vistos = {"p1": 0, "p2": 0}
         # Onda 8E: cobertura do plano de luta (alvo A5).
         self._frames_com_plano = 0
+        # Onda 10C: coerencia acao/plano (alvo A7).
+        self._frames_coerentes = 0
         # Onda 8G: tempo "colado" (corpos em contato) — alvo R1.
         self._frames_contato = 0
+        # Onda 10A: standoff (faixa de confronto sem hit real) — alvo R2.
+        # Conta os frames de corridas que passaram de JANELA_STANDOFF.
+        self._frames_standoff = 0
+        self._standoff_run = 0
+        self._standoff_prev_t = 0.0
+        self._standoff_max_t = 0.0
+        # Onda 10B: velocidade real, distancia percorrida e 'parado em range'.
+        self._vel_soma = {"p1": 0.0, "p2": 0.0}
+        self._dist_soma = {"p1": 0.0, "p2": 0.0}
+        self._frames_vivo = {"p1": 0, "p2": 0}
+        self._parado_em_range = {"p1": 0, "p2": 0}
+        self._classes = {
+            slot: str(getattr(getattr(sim, slot), "classe_nome", "") or "").split(" (")[0]
+            for slot in ("p1", "p2")
+        }
         for slot in ("p1", "p2"):
             lutador = getattr(sim, slot)
             lista: list[tuple[float, str]] = []
@@ -136,8 +157,12 @@ class FightQualityProbe:
                     self._humores[slot].add(humor)
                 if abs(getattr(brain, "momentum", 0.0)) >= 0.95:
                     self._momentum_sat[slot] += 1
-                if getattr(brain, "plano", None) is not None:
+                plano = getattr(brain, "plano", None)
+                if plano is not None:
                     self._frames_com_plano += 1
+                    verbos = getattr(plano, "verbos", None)
+                    if verbos and getattr(brain, "acao_atual", "") in verbos:
+                        self._frames_coerentes += 1
 
         self._frames_ia += 1
 
@@ -148,8 +173,55 @@ class FightQualityProbe:
             dx_c = p2.pos[0] - p1.pos[0]
             dy_c = p2.pos[1] - p1.pos[1]
             soma_raios = p1.raio_fisico + p2.raio_fisico
-            if (dx_c * dx_c + dy_c * dy_c) < (soma_raios * 1.35) ** 2:
+            em_agarrao = (
+                getattr(p1, "agarrao_timer", 0.0) > 0.0
+                or getattr(p2, "agarrao_timer", 0.0) > 0.0
+                # Onda 10D: puxao (PUXADO/VORTEX) e corpo lancado tambem encostam
+                # por desenho — contato de consequencia, nao de estagnacao.
+                or getattr(p1, "puxao", None) is not None
+                or getattr(p2, "puxao", None) is not None
+                or getattr(p1, "lancado_timer", 0.0) > 0.0
+                or getattr(p2, "lancado_timer", 0.0) > 0.0
+            )
+            # Onda 10A: o agarrão encosta os corpos por desenho — não é clinch.
+            if not em_agarrao and (dx_c * dx_c + dy_c * dy_c) < (soma_raios * 1.35) ** 2:
                 self._frames_contato += 1
+
+        # Onda 10B: velocidade media, distancia e frames parado em range.
+        if not p1.morto and not p2.morto:
+            dist_pp = math.hypot(p2.pos[0] - p1.pos[0], p2.pos[1] - p1.pos[1])
+            for slot, lutador in (("p1", p1), ("p2", p2)):
+                v = math.hypot(lutador.vel[0], lutador.vel[1])
+                self._dist_soma[slot] += v * dt
+                # Velocidade PROPRIA: frames sem stun/lancamento/dash/agarrao —
+                # knockback e arremesso nao sao 'andar'.
+                proprio = (
+                    getattr(lutador, "stun_timer", 0.0) <= 0.0
+                    and getattr(lutador, "lancado_timer", 0.0) <= 0.0
+                    and getattr(lutador, "dash_timer", 0.0) <= 0.0
+                    and getattr(lutador, "agarrao_timer", 0.0) <= 0.0
+                )
+                if proprio:
+                    self._vel_soma[slot] += v
+                    self._frames_vivo[slot] += 1
+                if (
+                    v < 0.5 and dist_pp < 3.0
+                    and not getattr(lutador, "atacando", False)
+                    and getattr(lutador, "stun_timer", 0.0) <= 0.0
+                    and getattr(lutador, "agarrao_timer", 0.0) <= 0.0
+                ):
+                    self._parado_em_range[slot] += 1
+
+        # Onda 10A: corrida de standoff lida do estado publico do Simulador.
+        est = getattr(sim, "standoff_estado", None)
+        if isinstance(est, dict):
+            t_run = float(est.get("t", 0.0) or 0.0)
+            if t_run > 0.0:
+                self._standoff_run += 1
+                self._standoff_max_t = max(self._standoff_max_t, t_run)
+            elif self._standoff_prev_t > 0.0:
+                self._fechar_corrida_standoff()
+            self._standoff_prev_t = t_run
 
         # Onda 8A: em frames com projétil hostil no ar, o defensor deve
         # enxergá-lo pela janela de mundo (alvo A1).
@@ -172,6 +244,12 @@ class FightQualityProbe:
         if self.t >= self._proxima_amostra_hp:
             self._amostrar_hp(sim)
             self._proxima_amostra_hp += PASSO_HP
+
+    def _fechar_corrida_standoff(self) -> None:
+        if self._standoff_max_t >= JANELA_STANDOFF:
+            self._frames_standoff += self._standoff_run
+        self._standoff_run = 0
+        self._standoff_max_t = 0.0
 
     def _amostrar_hp(self, sim) -> None:
         def razao(lutador) -> float:
@@ -217,6 +295,20 @@ class FightQualityProbe:
 
         # Onda 8G: pct do tempo de luta com os corpos colados.
         met["pct_tempo_colado"] = self._frames_contato / frames
+        # Onda 10A: pct do tempo em standoff (corridas >= JANELA_STANDOFF).
+        self._fechar_corrida_standoff()
+        met["pct_tempo_standoff"] = self._frames_standoff / frames
+        # Onda 10B: movimento real por lutador.
+        for slot in ("p1", "p2"):
+            vivo = max(1, self._frames_vivo[slot])
+            met[f"velocidade_media_ms_{slot}"] = self._vel_soma[slot] / vivo
+            met[f"distancia_por_s_{slot}"] = (
+                self._dist_soma[slot] / max(1e-9, frames * self._fixed_dt)
+            )
+            met[f"classe_{slot}"] = self._classes[slot]
+        met["pct_frames_parado_em_range"] = (
+            self._parado_em_range["p1"] + self._parado_em_range["p2"]
+        ) / (2 * frames)
 
         # Onda 8A: taxa de percepcao de projeteis (None sem projeteis).
         proj_frames = self._proj_frames["p1"] + self._proj_frames["p2"]
@@ -333,12 +425,31 @@ class FightQualityProbe:
             "punicoes": 0,
             # Onda 8G: clinches resolvidos.
             "clinches": 0,
+            # Onda 10A: agarroes (por desfecho), wall-splats e iniciativas.
+            "agarroes": 0,
+            "agarrao_arremesso": 0,
+            "agarrao_joelhada": 0,
+            "agarrao_empurrao": 0,
+            "agarrao_escape": 0,
+            "agarrao_reversao": 0,
+            "wall_splats": 0,
+            "iniciativas": 0,
+            "hits_sofridos": 0,
+            # Onda 10B: dashes taticos (gap-close/hit-and-run/flanco).
+            "dashes_taticos": 0,
+            "dashes_ofensivos": 0,
+            # Onda 10D: casts com consequencia (status/terreno/deslocamento/
+            # summon/estrutura), CC aplicados e obstaculos destruidos.
+            "casts_com_consequencia": 0,
+            "status_cc_aplicados": 0,
+            "obstaculos_destruidos": 0,
             # Onda 8H: combos e bursts de escape.
             "combos_2mais": 0,
             "maior_combo": 0,
             "bursts": 0,
         }
         decisoes = pilha = decisoes_melee = planos = 0
+        planos_fim = {"adaptativos": 0, "sucesso": 0, "falha": 0, "expirado": 0, "dano": 0}
         sim = self._sim
         if sim is not None:
             for slot in ("p1", "p2"):
@@ -351,12 +462,20 @@ class FightQualityProbe:
                     pilha += brain.contadores.get("pilha_completa", 0)
                     decisoes_melee += brain.contadores.get("decisoes_melee", 0)
                     planos += brain.contadores.get("planos", 0)
+                    for chave in planos_fim:
+                        planos_fim[chave] += brain.contadores.get("planos_" + chave, 0)
 
         # maior_combo é MÁXIMO da luta, não soma dos dois lutadores.
         if sim is not None:
             soma["maior_combo"] = max(
                 sim.p1.contadores_luta.get("maior_combo", 0),
                 sim.p2.contadores_luta.get("maior_combo", 0),
+            )
+            # Onda 11C (alvo S6): variedade REAL — skills distintas que os
+            # dois lutadores castaram nesta luta (o pool saiu do papel?).
+            soma["skills_distintas"] = len(
+                set(getattr(sim.p1, "skills_castadas_luta", ()) or ())
+                | set(getattr(sim.p2, "skills_castadas_luta", ()) or ())
             )
 
         anulados = soma["anulados_invencibilidade"]
@@ -384,6 +503,15 @@ class FightQualityProbe:
             "pct_frames_com_plano": (
                 self._frames_com_plano / (2 * max(1, self._frames_ia))
             ),
+            # Onda 10C (alvos A7-A9): coerencia, adaptativos e fins por objetivo.
+            "pct_frames_acao_coerente": (
+                self._frames_coerentes / max(1, self._frames_com_plano)
+            ),
+            "planos_adaptativos": planos_fim["adaptativos"],
+            "planos_sucesso": planos_fim["sucesso"],
+            "planos_falha": planos_fim["falha"],
+            "planos_expirados": planos_fim["expirado"],
+            "planos_dano": planos_fim["dano"],
         }
 
     def _metricas_acoes(self) -> dict[str, Any]:
@@ -439,6 +567,7 @@ __all__ = [
     "FightQualityProbe",
     "HISTERESE_LIDERANCA",
     "JANELA_SECA",
+    "JANELA_STANDOFF",
     "grupo_da_fonte",
     "percentil",
 ]

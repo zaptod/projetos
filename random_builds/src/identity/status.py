@@ -157,6 +157,17 @@ def inconsistencias(linhas: list[dict] | None = None) -> list[str]:
         if tem_clipe and linha["no_plano"] and not all(linha["finais"].values()):
             faltam = [p for p, existe in linha["finais"].items() if not existe]
             problemas.append(f"{gid}: sem final_{'/'.join(faltam)}.mp4")
+    # Origem: as contas sao compartilhadas, e um artefato que "ficou pronto"
+    # rapido demais nao foi gerado - ja estava la, e era de outra pessoa.
+    try:
+        from . import auditoria
+        for linha in auditoria.classificar():
+            if linha["estado"] == auditoria.SUSPEITO:
+                problemas.append(
+                    f"{linha['generation_id']}[{linha['slot']}]: origem SUSPEITA "
+                    f"({linha['detalhe']}) - `identity auditar`")
+    except Exception:
+        pass
     return problemas
 
 
@@ -242,6 +253,19 @@ def imprimir() -> int:
                   f"maior {resumo['espera_max_s']:.0f}s "
                   f"({resumo['espera_amostras']} amostra(s))")
         print(f"  ultimo evento: ha {_idade(resumo['ultimo_evento_em'])}")
+
+    print("\nORIGEM (contas compartilhadas)")
+    print("------------------------------")
+    try:
+        from . import auditoria
+        contagem = auditoria.resumo(auditoria.classificar())
+        print(f"  comprovados: {contagem[auditoria.OK]} | sem prova (anteriores): "
+              f"{contagem[auditoria.SEM_PROVA]} | SUSPEITOS: "
+              f"{contagem[auditoria.SUSPEITO]} | em quarentena: "
+              f"{contagem[auditoria.QUARENTENA]}")
+        print("  detalhe por slot: `python main.py identity auditar`")
+    except Exception as exc:
+        print(f"  (auditoria indisponivel: {type(exc).__name__}: {str(exc)[:80]})")
 
     problemas = inconsistencias(linhas)
     print("\nINCONSISTENCIAS")

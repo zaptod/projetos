@@ -85,6 +85,12 @@ def criar_metadata_impacto(fonte=None, **overrides):
             1.0,
             float(getattr(fonte, "bonus_vs_trevas", 1.0)),
         ),
+        # Onda 10D: EMPURRAO/PUXADO reais leem a forca e a origem da fonte.
+        "forca_empurrao": float(getattr(fonte, "forca_empurrao", 0.0) or 0.0),
+        "origem_puxao": (
+            (getattr(fonte, "x", None), getattr(fonte, "y", None))
+            if getattr(fonte, "x", None) is not None else None
+        ),
     }
     metadata.update(overrides)
     return metadata
@@ -143,14 +149,18 @@ def _alvo_esta_ativo(alvo):
     return getattr(alvo, "ativo", True) and _posicao_alvo(alvo) is not None
 
 
-def alvo_cumpre_condicao(alvo, condicao):
-    """Avalia as condicoes ofensivas declaradas no ``SKILL_DB``."""
+def alvo_cumpre_condicao(alvo, condicao, limiar=0.3):
+    """Avalia as condicoes ofensivas declaradas no ``SKILL_DB``.
+
+    ``limiar`` é o ``condicao_limiar`` declarado no catálogo (Onda 11A) —
+    a fração de vida abaixo da qual ALVO_BAIXA_VIDA é verdadeira.
+    """
     if not condicao:
         return True
 
     if condicao == "ALVO_BAIXA_VIDA":
         vida_max = max(0.0001, float(getattr(alvo, "vida_max", 0.0)))
-        return float(getattr(alvo, "vida", 0.0)) / vida_max < 0.3
+        return float(getattr(alvo, "vida", 0.0)) / vida_max < float(limiar)
 
     if condicao == "ALVO_QUEIMANDO":
         return any(
@@ -504,8 +514,13 @@ class Projetil:
         self.retornando = False
         self.dist_max_retorno = 8.0
         
-        # Explosão no impacto
+        # Explosão no impacto — Onda 10D: efeito EXPLOSAO sem raio declarado
+        # ganha raio = 2x o do projétil (antes era só a cor do número de dano).
         self.raio_explosao = data.get("raio_explosao", 0) * mod_area_magica
+        self._explosao_padrao = False
+        if not self.raio_explosao and self.tipo_efeito == "EXPLOSAO":
+            self.raio_explosao = self.raio * 2.0 * mod_area_magica
+            self._explosao_padrao = True   # splash so em volta: o alvo direto ja levou
         
         # Explosão com delay
         self.delay_explosao = data.get("delay_explosao", 0)
@@ -584,6 +599,9 @@ class Projetil:
         
         # Condições de dano extra
         self.condicao = data.get("condicao", None)
+        self.condicao_limiar = min(
+            1.0, max(0.0, float(data.get("condicao_limiar", 0.3)))
+        )
         self.dano_bonus_condicao = data.get("dano_bonus_condicao", 1.0)
         self.executa = data.get("executa", False)  # Executa alvos com baixa vida
         
@@ -656,15 +674,22 @@ class Projetil:
         if len(self.trail) > 10:
             self.trail.pop(0)
         
+        # Onda 11B: os eventos do frame são ACUMULADOS num dict único — o
+        # return prematuro da duplicação pulava split, timer de explosão e o
+        # decremento de vida daquele frame (S12), e um split que coincidisse
+        # com a explosão era descartado (S13).
+        eventos = {}
+
         # === DUPLICAÇÃO TEMPORAL ===
         if self.duplica_apos > 0 and not self.duplicado:
             self.duplica_apos -= dt
             if self.duplica_apos <= 0:
                 self.duplicado = True
-                # Retorna dados para criar duplicata
-                return {"duplicar": True, "x": self.x, "y": self.y, 
-                        "angulo": self.angulo + self.rng_runtime.uniform(-30, 30)}
-        
+                eventos.update({
+                    "duplicar": True, "x": self.x, "y": self.y,
+                    "angulo": self.angulo + self.rng_runtime.uniform(-30, 30),
+                })
+
         evento_split = None
         # === SPLIT ALEATÓRIO ===
         if self.split_aleatorio and self.splits_feitos < self.max_splits:
@@ -692,30 +717,29 @@ class Projetil:
                     "angulo": angulos_split[0],
                     "angulos": tuple(angulos_split),
                 }
-        
+        if evento_split:
+            eventos.update(evento_split)
+
         if self.explosion_timer is not None and not self.explodiu:
             self.explosion_timer = max(0.0, self.explosion_timer - dt)
             if self.explosion_timer <= 1e-12:
                 self.explodiu = True
                 self.ativo = False
-                return {
+                eventos.update({
                     "explodir": True,
                     "x": self.x,
                     "y": self.y,
                     "raio": self.raio_explosao or 2.0,
-                }
+                })
+                return eventos
 
         # === VIDA ===
         self.vida = max(0.0, self.vida - dt)
         if self.vida <= 1e-12:
             self.vida = 0.0
-            if self.tipo_efeito == "BOMBA_RELOGIO":
-                self.ativo = False
-                return None
-            # Explosão com delay
             self.ativo = False
-        
-        return evento_split
+
+        return eventos or None
 
     def _sortear_tempo_split(self):
         """Sorteia o próximo evento de um processo de Poisson homogêneo."""
@@ -749,9 +773,10 @@ class Projetil:
         if not self.condicao:
             return 1.0
 
-        if alvo_cumpre_condicao(alvo, self.condicao):
+        if alvo_cumpre_condicao(alvo, self.condicao, self.condicao_limiar):
             if self.executa:
-                return 10.0
+                from neural_fights.utils.config import EXECUTA_MULTIPLICADOR
+                return EXECUTA_MULTIPLICADOR
             return self.dano_bonus_condicao
 
         return 1.0
@@ -848,10 +873,16 @@ class AreaEffect:
     def __init__(self, nome_skill, x, y, dono, *, subefeito=False):
         self.nome = nome_skill
         data = get_skill_data(nome_skill)
-        mod_dano_magico, mod_area_magica = capturar_modificadores_magicos(
-            dono,
-            data,
-        )
+        if subefeito:
+            # Impactos filhos (onda/meteoro/pilar) herdam o snapshot do cast
+            # pelo payload do spawner; re-capturar buffs aqui divergiria da
+            # mãe quando um buff expira durante o delay.
+            mod_dano_magico = mod_area_magica = 1.0
+        else:
+            mod_dano_magico, mod_area_magica = capturar_modificadores_magicos(
+                dono,
+                data,
+            )
 
         self.x = x
         self.y = y
@@ -880,7 +911,9 @@ class AreaEffect:
         self.tipo_efeito = data.get("efeito", "NORMAL")
         self.efeito_aleatorio = bool(data.get("efeito_aleatorio", False))
         self.efeitos_possiveis = tuple(data.get("efeitos_possiveis", ("NORMAL",)))
-        if self.efeito_aleatorio and self.efeitos_possiveis:
+        if self.efeito_aleatorio and self.efeitos_possiveis and not subefeito:
+            # O sorteio pertence ao cast; o filho herda o efeito do spawner
+            # (re-sortear consumiria RNG do motor fora do cast).
             self.tipo_efeito = self.rng_runtime.choice(self.efeitos_possiveis)
         self.lifesteal = max(0.0, float(data.get("lifesteal", 0.0)))
         
@@ -917,7 +950,9 @@ class AreaEffect:
             data.get("dano_por_segundo", 0) or data.get("dano_tick", 0)
         ) * mod_dano_magico
         self.tick_timer = 0
-        self.tick_interval = 0.5
+        # Onda 11B: ritmo do tick é identidade da skill (campo declarado),
+        # não mais um 0,5 escondido no motor.
+        self.tick_interval = max(0.05, float(data.get("tick_interval", 0.5)))
         self.stacks_por_segundo = max(0.0, float(data.get("stacks_por_segundo", 0)))
         self.stack_progresso = {}
         
@@ -928,11 +963,16 @@ class AreaEffect:
         self.puxa_para_centro = data.get("puxa_para_centro", False)
         self.puxa_continuo = data.get("puxa_continuo", False)
         self.forca_empurrao = data.get("forca_empurrao", 0)
-        self.forca_puxar = (
-            5.0
+        # Onda 10D: 5,0 era imperceptível contra ATRITO 8 — o vórtice puxa.
+        # Onda 11B: a força virou campo declarável; 30,0 é o default.
+        forca_puxar_padrao = (
+            30.0
             if self.puxa_para_centro or self.puxa_continuo
             or data.get("efeito") == "VORTEX"
             else 0.0
+        )
+        self.forca_puxar = max(
+            0.0, float(data.get("forca_puxar", forca_puxar_padrao))
         )
         
         # Gravidade aumentada
@@ -959,9 +999,13 @@ class AreaEffect:
         self.pilares_spawned = False
         self.posicoes_pilares = []
         if self.pilares > 0:
-            for i in range(self.pilares):
+            # O primeiro pilar cai na âncora do cast (o alvo previsto de
+            # _ponto_alvo_area): a skill mira alguém — o pagamento mínimo é
+            # um pilar honesto no centro. Os demais cobrem do centro à borda.
+            self.posicoes_pilares.append((self.x, self.y))
+            for i in range(1, self.pilares):
                 ang = (360 / self.pilares) * i + self.rng_runtime.uniform(-20, 20)
-                dist = self.rng_runtime.uniform(1.0, self.raio)
+                dist = self.rng_runtime.uniform(0.0, self.raio)
                 px = self.x + math.cos(math.radians(ang)) * dist
                 py = self.y + math.sin(math.radians(ang)) * dist
                 self.posicoes_pilares.append((px, py))
@@ -1022,6 +1066,9 @@ class AreaEffect:
 
         # Condições ofensivas também pertencem ao contrato de AREA.
         self.condicao = data.get("condicao")
+        self.condicao_limiar = min(
+            1.0, max(0.0, float(data.get("condicao_limiar", 0.3)))
+        )
         self.dano_bonus_condicao = data.get("dano_bonus_condicao", 1.0)
         self.executa = data.get("executa", False)
         self.remove_congelamento = data.get("remove_congelamento", False)
@@ -1051,6 +1098,10 @@ class AreaEffect:
         if self.pilares > 0 and not self.pilares_spawned:
             self.pilares_spawned = True
             self.ativo = False
+            # Cada pilar é um golpe distinto (doutrina da salva); o dano por
+            # pilar é a metade do orçamento para que hits múltiplos sejam
+            # payoff de acerto, não multiplicação grátis do cast.
+            dano_pilar = self.dano * (0.5 if self.pilares > 1 else 1.0)
             for px, py in self.posicoes_pilares:
                 resultados.append(
                     {
@@ -1058,7 +1109,8 @@ class AreaEffect:
                         "x": px,
                         "y": py,
                         "raio": self.raio_pilar,
-                        "dano": self.dano,
+                        "dano": dano_pilar,
+                        "fonte_impacto": object(),
                     }
                 )
             return resultados
@@ -1269,11 +1321,12 @@ class AreaEffect:
         """Retorna ``(cumprida, multiplicador)`` para a resolução da área."""
         if not self.condicao:
             return True, 1.0
-        cumprida = alvo_cumpre_condicao(alvo, self.condicao)
+        cumprida = alvo_cumpre_condicao(alvo, self.condicao, self.condicao_limiar)
         if not cumprida:
             return False, 1.0
         if self.executa:
-            return True, 10.0
+            from neural_fights.utils.config import EXECUTA_MULTIPLICADOR
+            return True, EXECUTA_MULTIPLICADOR
         return True, self.dano_bonus_condicao
 
     def get_raio_visual(self):
@@ -1285,6 +1338,26 @@ class AreaEffect:
             return self.raio if self.aviso_visual else 0.0
         return self.raio_atual
 
+    def get_avisos_visuais(self):
+        """Volumes desenháveis (x, y, raio). O aviso mostra ONDE o dano cai:
+        uma área com pilares avisa os pilares reais, não o raio de sorteio."""
+
+        if not self.ativo:
+            return []
+        if (
+            not self.ativado
+            and self.pilares > 0
+            and self.posicoes_pilares
+        ):
+            if not self.aviso_visual:
+                return []
+            return [
+                (px, py, self.raio_pilar)
+                for px, py in self.posicoes_pilares
+            ]
+        raio = self.get_raio_visual()
+        return [(self.x, self.y, raio)] if raio > 0 else []
+
     def sortear_efeito_principal(self):
         """Resolve a chance explícita do controle principal uma única vez."""
 
@@ -1294,21 +1367,6 @@ class AreaEffect:
             return self.tipo_efeito
         return "NORMAL"
     
-    def calcular_puxar(self, alvo_pos):
-        """Calcula força de puxar para o centro"""
-        if not (self.puxa_para_centro or self.vortex):
-            return (0, 0)
-        
-        dx = self.x - alvo_pos[0]
-        dy = self.y - alvo_pos[1]
-        dist = math.hypot(dx, dy)
-        
-        if dist < 0.1:
-            return (0, 0)
-        
-        # Normaliza e aplica força
-        forca = self.forca_puxar * (1.0 - dist / self.raio)  # Mais forte no centro
-        return (dx / dist * forca, dy / dist * forca)
 
 
 class Beam:
@@ -1346,12 +1404,11 @@ class Beam:
         self.chain_targets = set()
         self.alvo_forcado = None
         
-        # Canalização
-        self.canalizavel = data.get("canalizavel", False)
-        self.dano_por_segundo = data.get("dano_por_segundo", 0)
-        self.duracao_max = data.get("duracao_max", 0)
-        self.penetra_escudo = data.get("penetra_escudo", False)
-        
+        # Onda 11B: os campos de canalização (canalizavel/dano_por_segundo/
+        # duracao_max/penetra_escudo) NÃO vivem no Beam — uma skill BEAM
+        # canalizável vira ``Channel`` no despachante (entities), e o Beam
+        # instantâneo só decrementa vida. Guardá-los aqui era ramo morto.
+
         self.vida = 0.15  # Curta duração visual
         self.ativo = True
         self.hit_aplicado = False
@@ -1467,9 +1524,10 @@ class Buff:
         )
         self.buff_velocidade_ataque = data.get("bonus_velocidade_ataque", 1.0)
         self.refletir = data.get("refletir", data.get("reflete_dano", 0))
+        # Onda 11B: "regen" nunca foi campo declarável — a fonte é cura_tick
+        # do catálogo ou o default do efeito nomeado (REGENERANDO etc.).
         self.cura_por_segundo = data.get(
-            "regen",
-            data.get("cura_tick", defaults.get("cura_por_segundo", 0)),
+            "cura_tick", defaults.get("cura_por_segundo", 0)
         )
         self.mod_dano_recebido = data.get(
             "dano_recebido_bonus",
@@ -1738,8 +1796,10 @@ class Summon:
         
         # Habilidades especiais
         self.revive_count = 1 if self.summon_tipo == "FENIX" else 0
-        self.aura_dano = data.get("aura_dano", 0) * mod_dano_magico
-        self.aura_raio = data.get("aura_raio", 0) * mod_area_magica
+        # Onda 11B: o bloco de "aura de summon" saiu — ``aura_dano`` nunca
+        # foi campo declarável e nenhum SUMMON tem ``aura_raio``; era ramo
+        # morto por construção. Se um summon com aura nascer um dia, os
+        # campos entram pelo rito da auditoria.
         
         # Projectile buffer (para summons que atiram)
         self.buffer_projeteis = []
@@ -1823,20 +1883,6 @@ class Summon:
             if dist > 2.0:
                 self.x += (dx / dist) * self.velocidade * dt
                 self.y += (dy / dist) * self.velocidade * dt
-        
-        # Aura de dano
-        if self.aura_dano > 0 and self.aura_raio > 0:
-            for alvo in alvos:
-                if alvo == self.dono or alvo.morto:
-                    continue
-                dist = math.hypot(alvo.pos[0] - self.x, alvo.pos[1] - self.y)
-                if dist < self.aura_raio:
-                    resultados.append({
-                        "tipo": "aura",
-                        "alvo": alvo,
-                        "dano": self.aura_dano * dt,
-                        "fonte_impacto": object(),
-                    })
         
         return resultados
 

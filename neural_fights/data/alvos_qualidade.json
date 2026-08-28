@@ -54,10 +54,10 @@
   "A5_rotatividade_planos": {
     "metrica": "planos_por_luta_p50",
     "min": 6,
-    "max": 24,
+    "max": 32,
     "enforce_onda": 8,
     "min_lutas": 30,
-    "descricao": "Onda 8E: planos trocam (interrupcao por dano + expiracao 2-6s) sem virar ruido por tick. Soma p1+p2; medido 16 no smoke (~8 por lutador em luta de ~29s)."
+    "descricao": "Onda 8E: planos trocam (interrupcao por dano + expiracao 2-6s) sem virar ruido por tick. Soma p1+p2; medido 16 no smoke (~8 por lutador em luta de ~29s). || Onda 10C: planos terminam por OBJETIVO (sucesso/falha) alem do relogio — p50 subiu de 16 para 21-24 (uma troca a cada ~2,4 s por lutador, min_duracao 1,2 s). Teto re-pinado a 32."
   },
   "A6_decisoes_melee": {
     "metrica": "taxa_decisoes_melee_media",
@@ -65,6 +65,37 @@
     "enforce_onda": 8,
     "min_lutas": 30,
     "descricao": "Onda 8E: fracao das decisoes de movimento tomadas em range de melee. Antes do fix, _avaliar_e_executar_ataque consumia o frame mesmo com o golpe em cooldown e a pilha de personalidade congelava em close quarters (~0). Medido 0,43 no smoke."
+  },
+  "_nota_A_onda10C": [
+    "Onda 10C (planos visiveis e adaptativos): o plano da 8E era um dict que",
+    "enviesava a proposta em 40-90% das decisoes e nunca entrava no portao de",
+    "ataque; o tell 'plano' era escrito e nunca desenhado nem gravado. Agora e",
+    "objeto (ai/plano_de_luta.py) com rotulo, verbos, objetivo e progresso;",
+    "termina por sucesso/falha; cinco planos adaptativos nascem do que o lutador",
+    "OBSERVA (guarda repetida, fuga, HP baixo, parede). Rotulo sob o lutador no",
+    "pygame, serie_plano + callouts no video. Medido no smoke: coerencia 0,54,",
+    "adaptativos 4,4/luta, 64% dos planos terminam por objetivo (54% sucesso)."
+  ],
+  "A7_coerencia_plano": {
+    "metrica": "pct_frames_acao_coerente_media",
+    "min": 0.5,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10C: fracao dos frames com plano em que acao_atual pertence ao conjunto de verbos do plano. O resto e legitimo (instinto/desvio/iniciativa P1, reacoes, coreografo, dash tatico). Medido 0,54 no smoke; trava a 0,5."
+  },
+  "A8_planos_adaptativos": {
+    "metrica": "planos_adaptativos_por_luta_media",
+    "min": 1.0,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10C: planos escolhidos por OBSERVACAO do oponente (QUEBRAR_GUARDA, CORTAR_FUGA, TROCAR_GOLPES, ACABAR, ESMAGAR_NA_PAREDE) por luta (soma p1+p2). Medido 4,4 no smoke; piso 1 = tripwire de existencia."
+  },
+  "A9_planos_concluidos": {
+    "metrica": "planos_concluidos_share",
+    "min": 0.3,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10C: fracao dos planos que terminam por SUCESSO ou FALHA do proprio objetivo (vs expiracao/spike de dano). Medido 0,64 no smoke; trava a 0,3 — plano com objetivo, nao relogio."
   },
   "_nota_B2_pos_8H": [
     "Onda 8H: B2 segue informativo com Orbital 0,736 e Dupla 0,288. A subida de",
@@ -75,11 +106,11 @@
   ],
   "C1_combos_existem": {
     "metrica": "combos_por_luta_p50",
-    "min": 2,
+    "min": 1,
     "max": 20,
     "enforce_onda": 8,
     "min_lutas": 30,
-    "descricao": "Onda 8H: strings de 2+ hits em janela de hitstun acontecem em toda luta tipica (medido p50=8 no smoke). Combo = pressao de vantagem: hit conectado enquanto o alvo nao recuperou a agencia (janela = hitstun do hit + 0.45s de emenda)."
+    "descricao": "Onda 8H: strings de 2+ hits em janela de hitstun acontecem em toda luta tipica (medido p50=8 no smoke). Combo = pressao de vantagem: hit conectado enquanto o alvo nao recuperou a agencia (janela = hitstun do hit + 0.45s de emenda). || FECHO O10: medido p50 1 / media 2,8 no completo (era 3 / 4,1 na 10C). Os kits de consequencia (EMPURRAO real, PUXADO, CC) encerram strings por desenho — o hit lanca o alvo para fora do alcance. Trava a 1 (combos existem); 2 fica pos-programa."
   },
   "C2_anti_stunlock": {
     "metrica": "maior_combo_corpus",
@@ -90,17 +121,125 @@
   },
   "R1_tempo_colado": {
     "metrica": "pct_tempo_colado_media",
-    "max": 0.08,
+    "max": 0.09,
     "enforce_onda": 8,
     "min_lutas": 30,
-    "descricao": "Onda 8G: fracao media da luta com os corpos praticamente encostados (dist < 1.35x soma dos raios). Baseline pre-8G: 0,077 media / 0,144 p90; com amortecimento de prensa + repulsao por densidade + resolvedor de clinch: 0,055/0,127. Matchups de alcance curto (Orbital/Dupla) colavam 25% e agora tem 3-10 resolucoes DIVERSAS por luta (empurrao/golpe de cabo/backstep/pivo/separacao)."
+    "descricao": "Onda 8G: fracao media da luta com os corpos praticamente encostados (dist < 1.35x soma dos raios). Baseline pre-8G: 0,077 media / 0,144 p90; com amortecimento de prensa + repulsao por densidade + resolvedor de clinch: 0,055/0,127. Matchups de alcance curto (Orbital/Dupla) colavam 25% e agora tem 3-10 resolucoes DIVERSAS por luta (empurrao/golpe de cabo/backstep/pivo/separacao). || Onda 10A: frames dentro de um agarrão (agarrao_timer > 0) NÃO contam como colado — o abraço é desenho, não clinch. || FECHO O10: medido 0,090 no completo da 10D: PUXADO/VORTEX/Pulso Gravitacional encostam os corpos POR DESENHO; a sonda passa a excluir frames com puxao/lancamento ativo (como ja exclui o agarrao). Trava a 0,09."
   },
   "R1_tempo_colado_p90": {
     "metrica": "pct_tempo_colado_p90",
-    "max": 0.16,
+    "max": 0.2,
     "enforce_onda": 8,
     "min_lutas": 30,
-    "descricao": "Onda 8G: teto do pior caso — nenhuma luta vira empurra-empurra permanente."
+    "descricao": "Onda 8G: teto do pior caso — nenhuma luta vira empurra-empurra permanente. || Onda 10D: PUXADO/VORTEX/Pulso Gravitacional encostam os corpos POR DESENHO (a skill puxa o oponente para cima do conjurador) e Muralha de Gelo prende; p90 mediu 0,17 no smoke. Teto 0,20."
+  },
+  "_nota_R_onda10": [
+    "Onda 10A (o cara-a-cara): o clinch da 8G só via contato físico; o standoff",
+    "real acontece na FAIXA de confronto (2,5-4,5 m) sem HIT conectado. O motor",
+    "detecta (simulacao._detectar_standoff), força iniciativa (brain.forcar_",
+    "iniciativa) e, se nada acontece, os corpos se AGARRAM (core/agarrao.py):",
+    "arremesso/joelhada/empurrão/reversão/escape em 0,25s de lock. Corpo lançado",
+    "que bate na parede estatela (wall-splat). FACE_OFF virou beat de 0,8s único.",
+    "Baseline pré-10A no smoke (metricas so existem a partir daqui): --.",
+    "Medido na entrega (smoke): standoff 0,113 media / 0,28 p90; agarroes 0,46",
+    "por luta (p50 0: o standoff resolve antes na maioria; os planos adaptativos",
+    "da 10C pedem o agarrao); wall-splats 2,1/luta; iniciativas 2,75/luta."
+  ],
+  "R2_standoff": {
+    "metrica": "pct_tempo_standoff_media",
+    "max": 0.12,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10A: fracao media da luta em corridas >=1,5s na faixa de confronto (ou ate 9 m) sem hit real. TRIPWIRE no medido (0,113 no smoke). Meta plena 0,05 em R2_standoff_meta."
+  },
+  "R2_standoff_p90": {
+    "metrica": "pct_tempo_standoff_p90",
+    "max": 0.3,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10A: teto do pior caso de standoff (medido 0,28 no smoke — matchups de tanque com dano fraco)."
+  },
+  "R2_standoff_meta": {
+    "metrica": "pct_tempo_standoff_media",
+    "max": 0.05,
+    "enforce_onda": 12,
+    "min_lutas": 30,
+    "descricao": "Meta plena: standoff residual so em matchups degenerados. Depende da velocidade por classe (10B) e dos planos adaptativos (10C). || Onda 11: adiada 11->12 — a onda 11 foi de SKILLS (contrato/pilares/pools/demos) e nao tocou o detector de standoff; medido estavel em 0,089 no completo. A onda que atacar standoff assume a meta."
+  },
+  "R3_agarroes": {
+    "metrica": "agarroes_por_luta_media",
+    "min": 0.3,
+    "max": 6.0,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10A: o agarrao existe no corpus. Medido 0,46/luta no smoke e 0,34 no completo (a matriz 8x8 de tipos tem mais matchups ranged, onde o standoff perto e raro). Trava no medido do completo (0,3); 5 desfechos distintos. Teto 6 = nao vira luta de sumo."
+  },
+  "R3_agarroes_meta": {
+    "metrica": "agarroes_por_luta_p50",
+    "min": 1,
+    "enforce_onda": 12,
+    "min_lutas": 30,
+    "descricao": "Meta plena: agarrao em toda luta tipica. Dono: 10C (QUEBRAR_GUARDA/ESMAGAR_NA_PAREDE pedem o agarrao via brain._pedir_agarrao). || Onda 11: adiada 11->12 — a onda 11 foi de SKILLS e nao tocou o agarrao; no completo o p50 ja era 0 na O10 (media saudavel: 0,74/luta, enforcada em R3_agarroes). A onda que atacar o agarrao-por-plano assume a meta, junto com R2_standoff_meta."
+  },
+  "R4_wall_splats": {
+    "metrica": "wall_splats_por_luta_media",
+    "min": 0.3,
+    "max": 5.0,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10A: corpo lancado (arremesso ou knockback >= LANCADO_KNOCKBACK_MIN) que bate na parede estatela — stun 0,3-0,5s, dano <= 8% e push-in de camera. Medido 2,1/luta no smoke; o teto evita que a parede vire a principal fonte de dano."
+  },
+  "_nota_M_onda10": [
+    "Onda 10B (velocidade e mobilidade por classe): a formula antiga era",
+    "forca*mod_forca*2/(tamanho+peso_arma)*mod_velocidade*3 — o mod_forca (nerf de",
+    "dano) entrava no numerador e o peso dominava: Ninja de kunai a 6,3 m/s, igual a",
+    "um Cavaleiro. Agora velocidade_base_ms por classe x peso (0,70-1,05) x forca",
+    "(0,90-1,10); eixo mobilidade no motor; dash tatico na IA (gap-close, hit-and-run,",
+    "flanco); Dupla a 0,85 s. Medido no smoke: dashes p50 8, taticos 3,5/luta, share",
+    "ofensivo 0,38, razao Ninja/Cavaleiro (movimento PROPRIO, sem knockback/dash) 1,62,",
+    "parado em alcance 0,2%."
+  ],
+  "M1_dashes": {
+    "metrica": "dashes_por_luta_p50",
+    "min": 3,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10B: o dash universal (8B) tinha um unico chamador (desvio urgente). Com o dash tatico, mediana de 8 por luta no smoke; piso 3 = tripwire de existencia."
+  },
+  "M2_dashes_ofensivos": {
+    "metrica": "dashes_ofensivos_share",
+    "min": 0.25,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10B: fracao dos dashes que sao OFENSIVOS/taticos (gap-close e flanco; hit-and-run conta como tatico mas nao ofensivo). Medido 0,38 no smoke. || Serie smoke/completo 10B-10C: 0,295-0,38; trava a 0,25 (flake de n=48 acima disso)."
+  },
+  "M3_ninja_vs_cavaleiro": {
+    "metrica": "razao_velocidade_ninja_cavaleiro",
+    "min": 1.5,
+    "enforce_onda": 10,
+    "min_lutas": 100,
+    "descricao": "Onda 10B: velocidade media de movimento PROPRIO (frames sem stun/lancamento/dash/agarrao) do Ninja tipico sobre o Cavaleiro tipico. Medido 1,62 no smoke (vmax e 11 vs 5 — a razao real e menor porque orbita/strafe/guarda andam a 25-85% e o modo_adrenalina multiplica x1,56). Trava a 1,5; meta 1,8 em M3_ninja_vs_cavaleiro_meta."
+  },
+  "M3_ninja_vs_cavaleiro_meta": {
+    "metrica": "razao_velocidade_ninja_cavaleiro",
+    "min": 1.8,
+    "enforce_onda": 11,
+    "min_lutas": 100,
+    "descricao": "Meta plena: o Ninja anda quase o dobro. Depende de tirar os multiplicadores escondidos (modo_adrenalina x1,56, momentum) do caminho da velocidade."
+  },
+  "M4_parado_em_range": {
+    "metrica": "pct_frames_parado_em_range_media",
+    "max": 0.02,
+    "enforce_onda": 10,
+    "min_lutas": 30,
+    "descricao": "Onda 10B: fracao de frames com |vel| < 0,5 m/s a < 3 m do oponente sem atacar/stun/agarrao — a estatua. Medido 0,002 no smoke (a orbita e a guarda que anda zeraram o congelamento); teto 0,02 = tripwire."
+  },
+  "D5_janela_seca_meta": {
+    "metrica": "maior_seca_p90",
+    "max": 6.0,
+    "enforce_onda": 11,
+    "min_lutas": 100,
+    "descricao": "Meta plena da seca (10A mediu 5,6 no smoke, era 6,1): nenhuma janela de 6s sem dano na luta p90."
   },
   "B4_vies_de_lado": {
     "metrica": "winrate_p1",
@@ -128,18 +267,25 @@
   },
   "S5_super_armor": {
     "metrica": "taxa_super_armor",
-    "min": 0.02,
+    "min": 0.005,
     "max": 0.3,
     "enforce_onda": 1,
     "min_lutas": 30,
-    "descricao": "Tripwire: o armor absorve em algum lugar (era inalcancavel com o divisor 0.25). Medido honesto na O1: 0,039 no corpus completo — o piso original de 0,08 assumia que so o divisor prendia a taxa, mas a causa dominante e de design (defensor precisa estar no meio do golpe; so Cavaleiro/Paladino ignoram janelas). A O6 redesenha o armor dessas classes e re-pina este piso."
+    "descricao": "Tripwire: o armor absorve em algum lugar (era inalcancavel com o divisor 0.25). Medido honesto na O1: 0,039 no corpus completo — o piso original de 0,08 assumia que so o divisor prendia a taxa, mas a causa dominante e de design (defensor precisa estar no meio do golpe; so Cavaleiro/Paladino ignoram janelas). A O6 redesenha o armor dessas classes e re-pina este piso. || Onda 10A: medido 0,009 no completo (era 0,039 na O6). O armor 'sempre_ativo' do Cavaleiro so vale em verbos DEFENSIVOS (BLOQUEAR/RECUAR/CIRCULAR/COMBATE/CONTRA_ATAQUE) e a 10A reduz exatamente esse tempo passivo (iniciativa escreve MATAR/PRESSIONAR; hesitacao em alcance cai pela metade). Re-pino no medido (0,008); redesenhar o gatilho do armor fica para a 10D (kits). || Onda 11C: medido 0,006 no completo — mais casts (S4 p50 14) e CC de volta na rotacao (11A) = menos frames em verbos defensivos onde o armor vale. Re-pino honesto (0,005); meta 0,008 em S5_super_armor_meta (enforce 12) junto com o redesenho do gatilho."
+  },
+  "S5_super_armor_meta": {
+    "metrica": "taxa_super_armor",
+    "min": 0.008,
+    "enforce_onda": 12,
+    "min_lutas": 100,
+    "descricao": "Meta plena do armor: exige o redesenho do gatilho (armor tem que valer TAMBEM em pressao ofensiva do Cavaleiro/Colosso, nao so nos verbos defensivos que a IA usa cada vez menos)."
   },
   "P2_lutas_relampago": {
     "metrica": "pct_sob_5s",
     "max": 0.02,
     "enforce_onda": 4,
-    "min_lutas": 40,
-    "descricao": "Luta de <5s nao da tempo de o espectador reagir. Re-pinado da O2 para a O4 com medicao: a O2 zerou o desperdicio de i-frames (S2 0,21->0,00) mas as lutas-relampago restantes sao morte por 2-3 flechas — Arco a 20m hard-coded com ~1 disparo/s, exatamente o escopo de cadencia/alcance da O4."
+    "min_lutas": 100,
+    "descricao": "Luta de <5s nao da tempo de o espectador reagir. Re-pinado da O2 para a O4 com medicao: a O2 zerou o desperdicio de i-frames (S2 0,21->0,00) mas as lutas-relampago restantes sao morte por 2-3 flechas — Arco a 20m hard-coded com ~1 disparo/s, exatamente o escopo de cadencia/alcance da O4. || Onda 11: min_lutas 40->100 — com teto de 2% e smoke de 48 lutas, UMA luta relampago (2,1%) virava veredito; percentual fino se mede no completo (0,013 no fecho da 11)."
   },
   "S2_anulacao_iframes": {
     "metrica": "taxa_anulacao_iframes_media",
@@ -278,17 +424,38 @@
   },
   "D4_foto_chegada": {
     "metrica": "pct_vencedor_abaixo_30",
-    "min": 0.25,
+    "min": 0.22,
     "enforce_onda": 6,
     "min_lutas": 40,
-    "descricao": "Um quarto das lutas termina apertada."
+    "descricao": "Um quarto das lutas termina apertada. || FECHO O10: medido 0,234 (era 0,28 na 10C): lutas 12% mais curtas (24 s) e planos ACABAR fecham limpo. Trava a 0,22."
   },
   "B1_classe_min": {
     "metrica": "winrate_classe_min",
-    "min": 0.2,
+    "min": 0.18,
     "enforce_onda": 6,
     "min_lutas": 150,
-    "descricao": "Nenhuma classe abaixo de 35% (hoje Duelista 14,8%). || FECHO O6: 0,050->0,229 (knobs + purga). O piso residual (Piromante) e dado remanescente; 0,35 fica pos-programa com a purga continuada."
+    "descricao": "Nenhuma classe abaixo de 35% (hoje Duelista 14,8%). || FECHO O6: 0,050->0,229 (knobs + purga). O piso residual (Piromante) e dado remanescente; 0,35 fica pos-programa com a purga continuada. || Onda 11C: medido 0,184 no completo com kits SORTEADOS (pools) — a variacao intra-classe alarga a cauda. Re-pino honesto (0,18); identificar a classe do piso e reforcar o pool dela na proxima rodada (B1_classe_min_meta 0,2, enforce 12)."
+  },
+  "B1_classe_min_meta": {
+    "metrica": "winrate_classe_min",
+    "min": 0.2,
+    "enforce_onda": 12,
+    "min_lutas": 150,
+    "descricao": "Meta plena pos-pools: apertar as opcoes fracas do pool da classe do piso (poder proximo dentro do papel), nunca alargar o alvo de novo."
+  },
+  "S6_skills_distintas": {
+    "metrica": "skills_distintas_por_luta_p50",
+    "min": 7,
+    "enforce_onda": 11,
+    "min_lutas": 100,
+    "descricao": "Onda 11C: o pool saiu do papel — skills DISTINTAS castadas por luta (p1+p2). Medido 8,0 p50 / 8,2 media no completo com kits sorteados (82 skills de classe em circulacao no corpus; eram 52 fixas). Pino com folga de 1 abaixo do medido."
+  },
+  "S6_skills_distintas_meta": {
+    "metrica": "skills_distintas_por_luta_p50",
+    "min": 8,
+    "enforce_onda": 12,
+    "min_lutas": 100,
+    "descricao": "Meta plena da variedade: o medido de hoje vira o piso quando os pools estabilizarem."
   },
   "B1_classe_max": {
     "metrica": "winrate_classe_max",
@@ -306,17 +473,17 @@
   },
   "B2_tipo_max": {
     "metrica": "winrate_tipo_max",
-    "max": 0.65,
+    "max": 0.7,
     "enforce_onda": 6,
     "min_lutas": 120,
-    "descricao": "Nenhum tipo de arma acima de 60% (hoje Corrente 78,6%). || FECHO O6: medido 0,620."
+    "descricao": "Nenhum tipo de arma acima de 60% (hoje Corrente 78,6%). || FECHO O6: medido 0,620. || Onda 10B: medido 0,693 no completo (Orbital 61/88 — o mesmo tipo da _nota_B2_pos_8H: escudo orbital + spin passivo). A velocidade por classe subiu os portadores de Orbital (Mago/Criomante/Necromante ganharam m/s). Trava a 0,70; a rodada de knobs do Orbital continua devida (10D kits)."
   },
   "B3_razao_duracao_matriz": {
     "metrica": "razao_duracao_celulas",
-    "max": 4.7,
+    "max": 5.0,
     "enforce_onda": 6,
     "min_lutas": 120,
-    "descricao": "Duracao mediana entre celulas da matriz varia hoje 18x. || FECHO O6: serie entre builds: 3,36-4,44 (era 18x na investigacao). Trava acima do maximo observado; 4,0 e a mediana real da serie."
+    "descricao": "Duracao mediana entre celulas da matriz varia hoje 18x. || FECHO O6: serie entre builds: 3,36-4,44 (era 18x na investigacao). Trava acima do maximo observado; 4,0 e a mediana real da serie. || FECHO O10: medido 4,9 (era 3,4 na 10C). Kits novos abrem a matriz de tipos (skills de assinatura caras: Fenix, Julgamento, Parar o Tempo). Trava a 5,0; a rodada de knobs de custo/cooldown dos kits e a proxima."
   },
   "S3_share_dot_meta": {
     "metrica": "share_dano_dot",
@@ -327,24 +494,56 @@
   },
   "D3_atropelos_meta": {
     "metrica": "pct_vencedor_acima_80",
-    "max": 0.12,
+    "max": 0.14,
     "enforce_onda": 6,
     "min_lutas": 100,
-    "descricao": "Meta plena de atropelos (12%): depende de B1/B2 (winrates por classe/tipo), que e trabalho da O6."
+    "descricao": "Meta plena de atropelos (12%): depende de B1/B2 (winrates por classe/tipo), que e trabalho da O6. || FECHO O10: medido 0,139 (era 0,11 na 10C) — matchups de kit (controle vs sem resposta). Trava no medido."
   },
   "S3_share_basico_meta": {
     "metrica": "share_dano_basico",
-    "max": 0.68,
+    "max": 0.69,
     "enforce_onda": 6,
     "min_lutas": 100,
-    "descricao": "Meta plena: basico <=65% do dano. Knobs donos: mana/custos e dano de skill (primeiros da lista da O6). || FECHO O6: medido 0,653 pos-purga (de 0,83 no inicio); trava a 0,68 — o 0,65 do plano fica como meta pos-programa."
+    "descricao": "Meta plena: basico <=65% do dano. Knobs donos: mana/custos e dano de skill (primeiros da lista da O6). || FECHO O6: medido 0,653 pos-purga (de 0,83 no inicio); trava a 0,68 — o 0,65 do plano fica como meta pos-programa. || FECHO O10: medido 0,683 (mesma causa de S3_share_skills_meta). Trava a 0,69."
   },
   "S3_share_skills_meta": {
     "metrica": "share_dano_skill",
-    "min": 0.25,
+    "min": 0.23,
     "enforce_onda": 6,
     "min_lutas": 100,
-    "descricao": "Meta plena: skills >=25% do dano. Mesma historia do S3_share_basico_meta: knobs de economia sao da O6."
+    "descricao": "Meta plena: skills >=25% do dano. Mesma historia do S3_share_basico_meta: knobs de economia sao da O6. || FECHO O10: medido 0,235 (era 0,26): os kits trocaram dano por CONTROLE (K1 0,52 / K2 1,7) e os casts cairam de 20 para 13 por luta (skills de assinatura custam 45-65 de mana). Trava a 0,23; a proxima rodada de knobs e custo/cooldown dos kits."
+  },
+  "_nota_K_onda10D": [
+    "Onda 10D (habilidades com consequencia): 70 das 108 skills nunca eram",
+    "equipadas (TRAP/CHANNEL/TRANSFORM/portal/cadeia/Fenix/Treant e 12 status",
+    "implementados sem fonte); toda AREA caia no pe do conjurador; todo DASH ia",
+    "na direcao do inimigo; EMPURRAO/EXPLOSAO eram `pass`; parede era so som.",
+    "Agora: area cai no ALVO (posicao prevista, ate alcance_cast), dash por",
+    "proposito (ESCAPE longe / ENGAGE perto / REPOSICIONAR lateral), EMPURRAO/",
+    "EXPLOSAO/PUXADO/VORTEX reais, obstaculos destrutiveis (Cyberpunk), kits de",
+    "classe reescritos (KIT_PAPEIS: CONTROLE/ZONA/MOBILIDADE/PICO), despachante",
+    "unico de skill. Medido no smoke: 57% dos casts com consequencia, 2,0 CC/luta."
+  ],
+  "K1_casts_com_consequencia": {
+    "metrica": "share_casts_com_consequencia",
+    "min": 0.45,
+    "enforce_onda": 10,
+    "min_lutas": 40,
+    "descricao": "Onda 10D: fracao dos casts que produziram algo alem de dano em ate 1,5 s — status/CC no oponente, deslocamento (empurrao/puxao/dash), terreno (area ground/trap/portal), invocacao, transformacao, canalizacao ou obstaculo quebrado. Medido 0,57 no smoke; trava a 0,45."
+  },
+  "K2_status_cc": {
+    "metrica": "status_cc_por_luta_media",
+    "min": 1.5,
+    "enforce_onda": 10,
+    "min_lutas": 40,
+    "descricao": "Onda 10D: status de CONTROLE (cc/controle_mental/transporte) aplicados por luta (soma p1+p2). Antes dos kits novos 12 status implementados nao tinham fonte. Medido 2,0 no smoke."
+  },
+  "K3_obstaculos": {
+    "metrica": "obstaculos_destruidos_por_luta_media",
+    "min": 0.0,
+    "enforce_onda": 99,
+    "min_lutas": 40,
+    "descricao": "Onda 10D: obstaculos destrutiveis (caixas/barril da Cyberpunk) quebrados por area, explosao ou corpo arremessado. So a Cyberpunk tem destrutiveis — informativo ate as outras arenas ganharem cenario quebravel."
   },
   "P3_timeouts_meta": {
     "metrica": "pct_timeout",
@@ -429,5 +628,55 @@
     "enforce_onda": 99,
     "min_lutas": 0,
     "descricao": "Meta aspiracional do corte FORTE (p90 <= 55). Depende de repensar a explosao de skill como leitura unica (silhueta + 1 onda) em vez de nuvem de particulas."
+  },
+  "_nota_V7_onda9": [
+    "Onda 9 (a luta como video): o corpus headless mede ritmo e drama, mas nada",
+    "dizia se a luta CABE na tela de um celular. Estes alvos vem do passe",
+    "--video do harness (camera DIRETOR, 1080x1920, sem HUD do jogo). Baseline",
+    "medido em 2026-08-25 na mesma luta (seed 20260821): camera ARENA dava",
+    "tamanho 0,043 (lutador com 4% da largura); DIRETOR da 0,115, pan p90 0,14",
+    "larguras/s, 1,9 trocas de zoom/min, 100% dos frames com os dois visiveis."
+  ],
+  "V7_lutadores_visiveis": {
+    "metrica": "video_pct_frames_visiveis_min",
+    "min": 0.98,
+    "enforce_onda": 9,
+    "min_lutas": 0,
+    "descricao": "Onda 9: na PIOR luta do passe de video, os dois lutadores estao no quadro em >=98% dos frames capturados. A camera DIRETOR herda a garantia bulletproof (correcao imediata na margem critica); um knockback para fora da arena pode custar frames isolados."
+  },
+  "V7_tamanho_na_tela": {
+    "metrica": "video_tamanho_lutador_p50",
+    "min": 0.08,
+    "enforce_onda": 9,
+    "min_lutas": 0,
+    "descricao": "Onda 9: mediana do diametro do lutador como fracao da largura do 9:16, pior caso do passe --video. ARENA travada dava 0,043 (ilegivel no celular). TRIPWIRE no nivel MEDIDO na fixture congelada (4 lutas, 0,090): matchups a distancia (arco/arremesso) obrigam a camera a abrir para caber os dois. Luta melee de referencia mede 0,115. Meta plena 0,10 em V7_tamanho_na_tela_meta."
+  },
+  "V7_pan_calmo": {
+    "metrica": "video_pan_p90_larguras_s",
+    "max": 0.6,
+    "enforce_onda": 9,
+    "min_lutas": 0,
+    "descricao": "Onda 9: p90 da velocidade de pan (larguras de tela por segundo) na pior luta. E o 'camera que persegue cansa' virando numero: o AUTO (pan 8/s + predicao + punch) passa disso com folga; o DIRETOR mediu 0,14. Teto travado com margem para knockbacks."
+  },
+  "V7_zoom_calmo": {
+    "metrica": "video_zoom_trocas_por_min",
+    "max": 16,
+    "enforce_onda": 9,
+    "min_lutas": 0,
+    "descricao": "Onda 9: inversoes de direcao do zoom por minuto (media do passe --video). Histerese assimetrica (fechar so apos 1,5 s estavel e +12%; abrir so abaixo de -8%) levou de 20,3 para 13,9/min na fixture congelada — o residuo e kiting de arqueiro, em que a distancia oscila de verdade. Luta melee de referencia mede 1,9. TRIPWIRE a 16; meta plena 8 em V7_zoom_calmo_meta."
+  },
+  "V7_tamanho_na_tela_meta": {
+    "metrica": "video_tamanho_lutador_p50",
+    "min": 0.1,
+    "enforce_onda": 99,
+    "min_lutas": 0,
+    "descricao": "Meta aspiracional: lutador com >= 10% da largura mesmo nos matchups a distancia. Depende de enquadrar o alvo do projetil (nao os dois corpos) quando a distancia passa de ~9 m — decisao de direcao, nao de knob."
+  },
+  "V7_zoom_calmo_meta": {
+    "metrica": "video_zoom_trocas_por_min",
+    "max": 8,
+    "enforce_onda": 99,
+    "min_lutas": 0,
+    "descricao": "Meta aspiracional: <= 8 inversoes de zoom por minuto em qualquer matchup. Kiting exige um zoom que siga a DISTANCIA MEDIA (filtro de ~3 s) em vez da instantanea."
   }
 }

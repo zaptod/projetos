@@ -1,0 +1,698 @@
+{
+  "Acelerar": {
+    "duration": 7.5,
+    "file": "acelerar.mp4",
+    "hash": "332603b43c0996a1eeebebf860cb4601792ce78f",
+    "seed": 411
+  },
+  "Amplificar Magia": {
+    "duration": 8.0,
+    "file": "amplificar-magia.mp4",
+    "hash": "5a810fb64b348246474e5a7c41a4bff6dbe51b39",
+    "seed": 411
+  },
+  "Anjo Guardi\u00e3o": {
+    "duration": 8.0,
+    "file": "anjo-guardiao.mp4",
+    "hash": "d7f3945a430cc259defec0a5e0d64f148fbd129c",
+    "seed": 411
+  },
+  "Apocalipse": {
+    "duration": 7.0,
+    "file": "apocalipse.mp4",
+    "hash": "5027dc011c8ed3eba22b852c405b56c4f8d44d5f",
+    "seed": 411
+  },
+  "Avan\u00e7o Brutal": {
+    "duration": 4.0,
+    "file": "avanco-brutal.mp4",
+    "hash": "973a1b4a0b690cc72b75aaece95ba4869199cf62",
+    "seed": 411
+  },
+  "Avatar de Gelo": {
+    "duration": 8.0,
+    "file": "avatar-de-gelo.mp4",
+    "hash": "43c4ae07eb48791c9420c3c86e0e9d2650387d2c",
+    "seed": 411
+  },
+  "Barreira Divina": {
+    "duration": 7.5,
+    "file": "barreira-divina.mp4",
+    "hash": "8e0e522f19c41ff3150b41a69255f484d99e77b1",
+    "seed": 411
+  },
+  "Barreira de Espinhos": {
+    "duration": 8.0,
+    "file": "barreira-de-espinhos.mp4",
+    "hash": "e47cf91d3c34ac268448743ade0541c9f903f2d1",
+    "seed": 411
+  },
+  "Ben\u00e7\u00e3o": {
+    "duration": 8.0,
+    "file": "bencao.mp4",
+    "hash": "7aa558094059cc8b876ae691ad0272e340716462",
+    "seed": 411
+  },
+  "Bola de Fogo": {
+    "duration": 4.0,
+    "file": "bola-de-fogo.mp4",
+    "hash": "335b908ff316cfbb03a6ea0ef160c2b833c875f8",
+    "seed": 411
+  },
+  "Bomba Rel\u00f3gio": {
+    "duration": 4.0,
+    "file": "bomba-relogio.mp4",
+    "hash": "d8d0918fd60704c606e010bdfc34332b08189750",
+    "seed": 411
+  },
+  "Buraco Negro": {
+    "duration": 5.5,
+    "file": "buraco-negro.mp4",
+    "hash": "f075f858f9dbe4ac60ad52da40f4e56964a6f01b",
+    "seed": 411
+  },
+  "Campo El\u00e9trico": {
+    "duration": 6.5,
+    "file": "campo-eletrico.mp4",
+    "hash": "8c63b903aeb9c386454ca3724daf1bb98fd1b6a8",
+    "seed": 411
+  },
+  "Campo de Gravidade": {
+    "duration": 7.5,
+    "file": "campo-de-gravidade.mp4",
+    "hash": "070285a0f58f0792af77a390a19fef9603543c59",
+    "seed": 411
+  },
+  "Chama Ca\u00f3tica": {
+    "duration": 4.0,
+    "file": "chama-caotica.mp4",
+    "hash": "c1dd750278027f2341e1110fe09b820e72d87709",
+    "seed": 411
+  },
+  "Chamas do Drag\u00e3o": {
+    "duration": 4.0,
+    "file": "chamas-do-dragao.mp4",
+    "hash": "09bf690a7267d6ffa89a8580696bce5d2c18da0c",
+    "seed": 411
+  },
+  "Colapso": {
+    "duration": 4.0,
+    "file": "colapso.mp4",
+    "hash": "08876494e3a949ca98fa9f2a17e864e6bbbd4d99",
+    "seed": 411
+  },
+  "Colheita de Almas": {
+    "duration": 4.0,
+    "file": "colheita-de-almas.mp4",
+    "hash": "175b8e046b83ddcde580564c6af7a7e193325b1a",
+    "seed": 411
+  },
+  "Combust\u00e3o Espont\u00e2nea": {
+    "duration": 4.0,
+    "file": "combustao-espontanea.mp4",
+    "hash": "0ec752a04dca5d818acac0e805387ce249aaeea5",
+    "seed": 411
+  },
+  "Cone de Gelo": {
+    "duration": 4.0,
+    "file": "cone-de-gelo.mp4",
+    "hash": "a27ddb968f9bf68a50cfea22f290a56f55de6f8b",
+    "seed": 411
+  },
+  "Conjura\u00e7\u00e3o Perfeita": {
+    "duration": 8.0,
+    "file": "conjuracao-perfeita.mp4",
+    "hash": "13297709c0e18069dce0406c41aeb81225cf6caf",
+    "seed": 411
+  },
+  "Contrafeiti\u00e7o": {
+    "duration": 4.5,
+    "file": "contrafeitico.mp4",
+    "hash": "1afe23924906980aa3a83a08410df1d65c276db2",
+    "seed": 411
+  },
+  "Corrente El\u00e9trica": {
+    "duration": 4.0,
+    "file": "corrente-eletrica.mp4",
+    "hash": "39298e7424fbad0dbd1ef1931548bd83cfe07bf2",
+    "seed": 411
+  },
+  "Corrente em Cadeia": {
+    "duration": 4.0,
+    "file": "corrente-em-cadeia.mp4",
+    "hash": "299c4bdc99ebdeca7e49d3fe1668e3f4e46b3a12",
+    "seed": 411
+  },
+  "Cura Maior": {
+    "duration": 4.0,
+    "file": "cura-maior.mp4",
+    "hash": "552499327bd5845b108ba9c3b8393ec4d744a394",
+    "seed": 411
+  },
+  "Cura Menor": {
+    "duration": 4.0,
+    "file": "cura-menor.mp4",
+    "hash": "0cfb8d0848acc469bdd99e7cde06efc11815d70c",
+    "seed": 411
+  },
+  "C\u00f3pia Sombria": {
+    "duration": 8.0,
+    "file": "copia-sombria.mp4",
+    "hash": "70abb7ddbf041c92f5800eec001930c6eafd1a23",
+    "seed": 411
+  },
+  "Dardo Venenoso": {
+    "duration": 4.0,
+    "file": "dardo-venenoso.mp4",
+    "hash": "ab38b3ed54d10bdfd1859285027fbcce432175fc",
+    "seed": 411
+  },
+  "Desintegrar": {
+    "duration": 4.0,
+    "file": "desintegrar.mp4",
+    "hash": "033a2cce4b6d42a8fbe660feebdd02783feb3140",
+    "seed": 411
+  },
+  "Determina\u00e7\u00e3o": {
+    "duration": 8.0,
+    "file": "determinacao.mp4",
+    "hash": "bef16450af0026563d7c450ea73dbb26a7259d4a",
+    "seed": 411
+  },
+  "Disparo de Mana": {
+    "duration": 4.0,
+    "file": "disparo-de-mana.mp4",
+    "hash": "4eb0f12ab09ebd080e2a90e3b76ba891997f2e25",
+    "seed": 411
+  },
+  "Eco Temporal": {
+    "duration": 4.0,
+    "file": "eco-temporal.mp4",
+    "hash": "b7a7c5634ac0ab8dc09c75ab15d8ee8e3a259e3d",
+    "seed": 411
+  },
+  "Escudo Arcano": {
+    "duration": 7.5,
+    "file": "escudo-arcano.mp4",
+    "hash": "5182654599db54c871545682114c080c51dea56b",
+    "seed": 411
+  },
+  "Escudo de Brasas": {
+    "duration": 8.0,
+    "file": "escudo-de-brasas.mp4",
+    "hash": "5273ed379374a4da5f9a35814e44bbffaa004cb0",
+    "seed": 411
+  },
+  "Esfera Sombria": {
+    "duration": 4.0,
+    "file": "esfera-sombria.mp4",
+    "hash": "0e14fa3079c7dbe89ed37568b5ecccd5f15510f1",
+    "seed": 411
+  },
+  "Espinhos": {
+    "duration": 4.0,
+    "file": "espinhos.mp4",
+    "hash": "d5a4e0acd7d011c6de618ea3373d39a3730ac00a",
+    "seed": 411
+  },
+  "Esporos Alucin\u00f3genos": {
+    "duration": 4.0,
+    "file": "esporos-alucinogenos.mp4",
+    "hash": "26b0a512002e6fd29153a4c83aea52e6824c6e95",
+    "seed": 411
+  },
+  "Estilha\u00e7o Vermelho": {
+    "duration": 4.0,
+    "file": "estilhaco-vermelho.mp4",
+    "hash": "cd7f58ce4075c004855e84ede1170d4c9514b219",
+    "seed": 411
+  },
+  "Estilha\u00e7o de Gelo": {
+    "duration": 4.0,
+    "file": "estilhaco-de-gelo.mp4",
+    "hash": "d4eb7a72a524ca78e58bdc44984ad23cc737bdf0",
+    "seed": 411
+  },
+  "Execu\u00e7\u00e3o": {
+    "duration": 4.0,
+    "file": "execucao.mp4",
+    "hash": "60dd077dc327085b5dc885fc05e2a505b5440697",
+    "seed": 411
+  },
+  "Explos\u00e3o Arcana": {
+    "duration": 4.0,
+    "file": "explosao-arcana.mp4",
+    "hash": "b8e1c7a9d47570154f1a660b37e32887f5ae70cc",
+    "seed": 411
+  },
+  "Explos\u00e3o Necr\u00f3tica": {
+    "duration": 4.0,
+    "file": "explosao-necrotica.mp4",
+    "hash": "a4d9da9ec3cb463e4a2d250f7c99fa731380506a",
+    "seed": 411
+  },
+  "Explos\u00e3o Nova": {
+    "duration": 4.0,
+    "file": "explosao-nova.mp4",
+    "hash": "fc6f9774d66993876ecbd8ae596ecbeeabafe82d",
+    "seed": 411
+  },
+  "Explos\u00e3o do Caos": {
+    "duration": 4.0,
+    "file": "explosao-do-caos.mp4",
+    "hash": "e7946705e5830dbcfeccc1d3cdf4470ce38e4bf3",
+    "seed": 411
+  },
+  "Fenda do Vazio": {
+    "duration": 5.0,
+    "file": "fenda-do-vazio.mp4",
+    "hash": "bb2f647cb161148b28437476976af4f7bb2586f1",
+    "seed": 411
+  },
+  "Forma Rel\u00e2mpago": {
+    "duration": 8.0,
+    "file": "forma-relampago.mp4",
+    "hash": "ac346297e22021ec56c6d51692c3175aaaeaf061",
+    "seed": 411
+  },
+  "Forma Sanguin\u00e1ria": {
+    "duration": 8.0,
+    "file": "forma-sanguinaria.mp4",
+    "hash": "7a8ec73592efecb86a8ba42544797e0cbf90ba0a",
+    "seed": 411
+  },
+  "Fotoss\u00edntese": {
+    "duration": 6.5,
+    "file": "fotossintese.mp4",
+    "hash": "132c03df76bcd6b3b53a312d971387ae4b4fcbcd",
+    "seed": 411
+  },
+  "F\u00eanix": {
+    "duration": 8.0,
+    "file": "fenix.mp4",
+    "hash": "9560bed74fe937b3999c3425af8c988a2bff9089",
+    "seed": 411
+  },
+  "F\u00faria Girat\u00f3ria": {
+    "duration": 4.0,
+    "file": "furia-giratoria.mp4",
+    "hash": "4a91908036065b3a9e494fcb294346324f8f95d4",
+    "seed": 411
+  },
+  "F\u00faria do Trov\u00e3o": {
+    "duration": 5.0,
+    "file": "furia-do-trovao.mp4",
+    "hash": "0979d20149bac4998f88299da6c7d1d2210e30d8",
+    "seed": 411
+  },
+  "Golpe do Executor": {
+    "duration": 5.5,
+    "file": "golpe-do-executor.mp4",
+    "hash": "88f793f2d15452cd26af739df3fc176bbf1b4b4c",
+    "seed": 411
+  },
+  "Grito de Guerra": {
+    "duration": 8.0,
+    "file": "grito-de-guerra.mp4",
+    "hash": "ac578e984424b1a9cd35989e6f0d043145bd78c0",
+    "seed": 411
+  },
+  "Idade Acelerada": {
+    "duration": 4.0,
+    "file": "idade-acelerada.mp4",
+    "hash": "4c3ff42aabd907fd52b8f1a132e8e1ef36790ec5",
+    "seed": 411
+  },
+  "Impacto S\u00f4nico": {
+    "duration": 4.0,
+    "file": "impacto-sonico.mp4",
+    "hash": "148808b97752ac013cb1b23689df42d617dfb3b2",
+    "seed": 411
+  },
+  "Inferno": {
+    "duration": 7.5,
+    "file": "inferno.mp4",
+    "hash": "36dc59cef0795903003e77ca0d6fa814e6818ff0",
+    "seed": 411
+  },
+  "Instabilidade": {
+    "duration": 4.0,
+    "file": "instabilidade.mp4",
+    "hash": "ba7f7206be08cf29a6d3753852b80df39e9e58b4",
+    "seed": 411
+  },
+  "Invoca\u00e7\u00e3o: Esp\u00edrito": {
+    "duration": 8.0,
+    "file": "invocacao-espirito.mp4",
+    "hash": "dae76ceaf8f6c8af7fe7fb54a64496ddff92a574",
+    "seed": 411
+  },
+  "Ira da Floresta": {
+    "duration": 8.0,
+    "file": "ira-da-floresta.mp4",
+    "hash": "a4f66f681ff2b9be07ea8aab5d9c80f982f8a61c",
+    "seed": 411
+  },
+  "Julgamento Celestial": {
+    "duration": 6.0,
+    "file": "julgamento-celestial.mp4",
+    "hash": "b6a0c4acbbbf12e79e2bd798ce6085d68b79a7f3",
+    "seed": 411
+  },
+  "Julgamento de Thor": {
+    "duration": 5.5,
+    "file": "julgamento-de-thor.mp4",
+    "hash": "725aac612984360b973bec136abdd40879b0efa0",
+    "seed": 411
+  },
+  "Lan\u00e7a de Fogo": {
+    "duration": 4.0,
+    "file": "lanca-de-fogo.mp4",
+    "hash": "550b7fc70b4cd65d56e20d78432540871cbfee6e",
+    "seed": 411
+  },
+  "Lan\u00e7a de Gelo": {
+    "duration": 4.0,
+    "file": "lanca-de-gelo.mp4",
+    "hash": "76d96232b02b1e2b97fea545abe1716051bb0be4",
+    "seed": 411
+  },
+  "Lan\u00e7a do Vazio": {
+    "duration": 4.0,
+    "file": "lanca-do-vazio.mp4",
+    "hash": "90b4e286ab65ee31b6de76a252a02e126e68ce1a",
+    "seed": 411
+  },
+  "Levitar": {
+    "duration": 8.0,
+    "file": "levitar.mp4",
+    "hash": "530af504da1b4b5deb2afb7ffb9dc4c16f0afbec",
+    "seed": 411
+  },
+  "Link de Vida": {
+    "duration": 4.0,
+    "file": "link-de-vida.mp4",
+    "hash": "6851674c0c91c6fa919b590dac89bd6d3623e06c",
+    "seed": 411
+  },
+  "L\u00e2mina de Sangue": {
+    "duration": 4.0,
+    "file": "lamina-de-sangue.mp4",
+    "hash": "62c9b95ea0fb14ad19b7e35689f01f68c76a1a16",
+    "seed": 411
+  },
+  "Maldi\u00e7\u00e3o": {
+    "duration": 4.0,
+    "file": "maldicao.mp4",
+    "hash": "4b8b4796f00b4fb18f7e183794f36734555f666c",
+    "seed": 411
+  },
+  "Medo Profundo": {
+    "duration": 4.0,
+    "file": "medo-profundo.mp4",
+    "hash": "7960800357ba3fa5be90e60591a34beb2e6ef79a",
+    "seed": 411
+  },
+  "Meteoro": {
+    "duration": 4.0,
+    "file": "meteoro.mp4",
+    "hash": "fc3cdff117bc9bd9f8a48087a8295d3b77dae062",
+    "seed": 411
+  },
+  "Mjolnir": {
+    "duration": 4.0,
+    "file": "mjolnir.mp4",
+    "hash": "c9ddfd68419be9d7b1bb57edcce44c2e22205e9a",
+    "seed": 411
+  },
+  "Morte Glacial": {
+    "duration": 1.77,
+    "file": "morte-glacial.mp4",
+    "hash": "21e44778e1a15ba3ce672e08c37a41099119b27b",
+    "seed": 411
+  },
+  "Muralha de Gelo": {
+    "duration": 8.0,
+    "file": "muralha-de-gelo.mp4",
+    "hash": "9347813aed5c2d6ef3d18c36c5a24e735f85b65a",
+    "seed": 411
+  },
+  "Muro Ardente": {
+    "duration": 7.5,
+    "file": "muro-ardente.mp4",
+    "hash": "786f0402b4f876b642250513cf49a4a1476759db",
+    "seed": 411
+  },
+  "Muta\u00e7\u00e3o": {
+    "duration": 8.0,
+    "file": "mutacao.mp4",
+    "hash": "b1e1ed51d09be44be40606391e780ce7e435c92d",
+    "seed": 411
+  },
+  "M\u00edsseis Arcanos": {
+    "duration": 4.0,
+    "file": "misseis-arcanos.mp4",
+    "hash": "8259d0fc1231bd1f42772caaaca991b5d056a424",
+    "seed": 411
+  },
+  "Necrose": {
+    "duration": 4.0,
+    "file": "necrose.mp4",
+    "hash": "38a759e9a08a30c3de3bf55e1d94eb906c340ba2",
+    "seed": 411
+  },
+  "Nevasca": {
+    "duration": 5.5,
+    "file": "nevasca.mp4",
+    "hash": "b498840c2c37e964473c55da905a3634e9d6b9a4",
+    "seed": 411
+  },
+  "Nuvem T\u00f3xica": {
+    "duration": 6.5,
+    "file": "nuvem-toxica.mp4",
+    "hash": "6865ced753d8ac9b8c321e4ba70aeb0beb110321",
+    "seed": 411
+  },
+  "Pacto de Sangue": {
+    "duration": 8.0,
+    "file": "pacto-de-sangue.mp4",
+    "hash": "a930e221c19e7566792bd4531b81ce954377f1f4",
+    "seed": 411
+  },
+  "Parar o Tempo": {
+    "duration": 4.0,
+    "file": "parar-o-tempo.mp4",
+    "hash": "e944a36d604c2d73e685b29d70f5f67a320cc702",
+    "seed": 411
+  },
+  "Passo do Vazio": {
+    "duration": 4.0,
+    "file": "passo-do-vazio.mp4",
+    "hash": "6c631afd571c4e438ea02d5422c70611eabad6e8",
+    "seed": 411
+  },
+  "Pilar de Fogo": {
+    "duration": 4.8,
+    "file": "pilar-de-fogo.mp4",
+    "hash": "8c9ccf39ad9e703d58104979e153456ddc83c9d3",
+    "seed": 411
+  },
+  "Portal Arcano": {
+    "duration": 4.0,
+    "file": "portal-arcano.mp4",
+    "hash": "e7af5cd72a832451a1cd2813953164be9af8d3ae",
+    "seed": 411
+  },
+  "Portal Sombrio": {
+    "duration": 4.0,
+    "file": "portal-sombrio.mp4",
+    "hash": "eb3bcdb2cd52a79bef696280ecb4d7d8bf904c72",
+    "seed": 411
+  },
+  "Possess\u00e3o": {
+    "duration": 4.0,
+    "file": "possessao.mp4",
+    "hash": "a14908e5fdc1b568a1be58d0ff4cb3b5045fd969",
+    "seed": 411
+  },
+  "Praga": {
+    "duration": 4.0,
+    "file": "praga.mp4",
+    "hash": "67af0b086eda8270a3f7ec2fe01d69c75cccd397",
+    "seed": 411
+  },
+  "Previs\u00e3o": {
+    "duration": 6.5,
+    "file": "previsao.mp4",
+    "hash": "d43eccecd65ad13dd1db3308e45ed283c7566710",
+    "seed": 411
+  },
+  "Pris\u00e3o de Gelo": {
+    "duration": 4.0,
+    "file": "prisao-de-gelo.mp4",
+    "hash": "d00cd90b8daec092bb5fce037294ecc6da39f369",
+    "seed": 411
+  },
+  "Provocar": {
+    "duration": 4.0,
+    "file": "provocar.mp4",
+    "hash": "a0f9954d86a47e1a4bd91fb5688751235f633f2f",
+    "seed": 411
+  },
+  "Pulso Gravitacional": {
+    "duration": 4.0,
+    "file": "pulso-gravitacional.mp4",
+    "hash": "176dc9251676fb6577484664c97aad9274fe3773",
+    "seed": 411
+  },
+  "Purificar": {
+    "duration": 4.0,
+    "file": "purificar.mp4",
+    "hash": "f326441007fbc05e9ef3c2663e6a2f3661f122e6",
+    "seed": 411
+  },
+  "Raio Sagrado": {
+    "duration": 4.0,
+    "file": "raio-sagrado.mp4",
+    "hash": "48c5a35b81cabeb24aff1590933c5d050c4dc63d",
+    "seed": 411
+  },
+  "Ra\u00edzes": {
+    "duration": 5.0,
+    "file": "raizes.mp4",
+    "hash": "46029caac4b96e764cef71848d9936cd912cc05c",
+    "seed": 411
+  },
+  "Reflexo Espelhado": {
+    "duration": 5.5,
+    "file": "reflexo-espelhado.mp4",
+    "hash": "0bc024f2f7600362eeea895aa1a2867cee0c91e9",
+    "seed": 411
+  },
+  "Regenera\u00e7\u00e3o": {
+    "duration": 8.0,
+    "file": "regeneracao.mp4",
+    "hash": "f14afa2e6258cdf971ec1ca6e2e5fbb2e033f6c8",
+    "seed": 411
+  },
+  "Rel\u00e2mpago": {
+    "duration": 4.0,
+    "file": "relampago.mp4",
+    "hash": "06c9c536d1995ab3b994b48752978391d9b3379a",
+    "seed": 411
+  },
+  "Repuls\u00e3o": {
+    "duration": 4.0,
+    "file": "repulsao.mp4",
+    "hash": "343858f898cba830aa82e3c5ba9b457753113ee0",
+    "seed": 411
+  },
+  "Reverter": {
+    "duration": 4.0,
+    "file": "reverter.mp4",
+    "hash": "fa775e47e76237af472535aa2cd8bc505f3f46fd",
+    "seed": 411
+  },
+  "Ritual Carmesim": {
+    "duration": 4.0,
+    "file": "ritual-carmesim.mp4",
+    "hash": "44e839970c66be8b958fcaf985de199f881a2a68",
+    "seed": 411
+  },
+  "Roleta Russa": {
+    "duration": 4.0,
+    "file": "roleta-russa.mp4",
+    "hash": "421022f2685fa8c7561043d2fe30de3b341bc94f",
+    "seed": 411
+  },
+  "Roubar Magia": {
+    "duration": 4.0,
+    "file": "roubar-magia.mp4",
+    "hash": "518558469880a38b5a5ba4512fd16a4a73de9f88",
+    "seed": 411
+  },
+  "Sacrif\u00edcio": {
+    "duration": 4.0,
+    "file": "sacrificio.mp4",
+    "hash": "c741e845d75740763160256869e3f55480611e2c",
+    "seed": 411
+  },
+  "Shatter": {
+    "duration": 4.0,
+    "file": "shatter.mp4",
+    "hash": "5aa1448592ce336c25123da8fd73beb2ef721854",
+    "seed": 411
+  },
+  "Slow Motion": {
+    "duration": 5.5,
+    "file": "slow-motion.mp4",
+    "hash": "1ab507978fb0e97cfecc94eca7c142a4e5ea5dee",
+    "seed": 411
+  },
+  "Smite": {
+    "duration": 4.0,
+    "file": "smite.mp4",
+    "hash": "e1792352ecf0ff4875ea88e6d0ed4c4ead761718",
+    "seed": 411
+  },
+  "Sobrecarga": {
+    "duration": 8.0,
+    "file": "sobrecarga.mp4",
+    "hash": "b67e545b0a9795c8de25c3a934d8d5fba60f0cd3",
+    "seed": 411
+  },
+  "Teleporte Rel\u00e2mpago": {
+    "duration": 4.0,
+    "file": "teleporte-relampago.mp4",
+    "hash": "debfa77638c8e4d17f6059f4a6aa76675d38a0c4",
+    "seed": 411
+  },
+  "Tempestade": {
+    "duration": 4.0,
+    "file": "tempestade.mp4",
+    "hash": "93445aae6b04468a57fe3b80a23539a8b34d1d33",
+    "seed": 411
+  },
+  "Tent\u00e1culos do Vazio": {
+    "duration": 5.5,
+    "file": "tentaculos-do-vazio.mp4",
+    "hash": "fc4a2581d12f4f68435b9297ec1c6232da7cb9e7",
+    "seed": 411
+  },
+  "Terremoto": {
+    "duration": 4.0,
+    "file": "terremoto.mp4",
+    "hash": "d5fac28a40546ab2f12ce62cf2514e2a3e78ffe3",
+    "seed": 411
+  },
+  "Transfus\u00e3o": {
+    "duration": 5.5,
+    "file": "transfusao.mp4",
+    "hash": "421e944701b14ae2a880b83e74a639ea873fe7e9",
+    "seed": 411
+  },
+  "Troca de Almas": {
+    "duration": 4.0,
+    "file": "troca-de-almas.mp4",
+    "hash": "3a0714d55d895304281608052bb7ec1ff636a166",
+    "seed": 411
+  },
+  "Velocidade Arcana": {
+    "duration": 6.5,
+    "file": "velocidade-arcana.mp4",
+    "hash": "d85aab04e418f2df223a387c54f0f8e490dfeea4",
+    "seed": 411
+  },
+  "Wrath of Nature": {
+    "duration": 5.0,
+    "file": "wrath-of-nature.mp4",
+    "hash": "e8eacbed1cdea79552e2671f91a338dc245ef166",
+    "seed": 411
+  },
+  "Zero Absoluto": {
+    "duration": 4.0,
+    "file": "zero-absoluto.mp4",
+    "hash": "d6adc40294f0c1dc99a6e82f38b6c2a1fd2fdbde",
+    "seed": 411
+  }
+}

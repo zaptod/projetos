@@ -577,8 +577,10 @@ class InterfaceDeProvedorTests(unittest.TestCase):
 
     # O que o worker chama num cliente, seja ele qual for.
     METODOS = ("preparar_espaco", "abrir_espaco", "submit_prompt",
-               "wait_for_render", "download", "creditos", "presets_atuais")
-    ATRIBUTOS = ("url_do_espaco", "presets_aplicados")
+               "wait_for_render", "comprovar_origem", "download", "creditos",
+               "presets_atuais")
+    ATRIBUTOS = ("url_do_espaco", "presets_aplicados", "prompt_enviado",
+                 "enviado_em")
 
     def setUp(self):
         from src.identity.client import DigenClient
@@ -1007,9 +1009,13 @@ class CaminhoDeAnexoPorProvedorTests(unittest.TestCase):
         self.assertTrue(selectors.BOTAO_ANEXO)
         self.assertTrue(selectors.OPCAO_ENVIAR_IMAGEM)
 
-    def test_picasso_nao_declara_menu(self):
+    def test_picasso_declara_botao_direto_sem_menu(self):
+        """Desde 26/08/2026 o Editor Pro tem botao "Carregar imagem" que abre
+        o seletor de arquivo DIRETO: BOTAO_ANEXO declarado, OPCAO (menu)
+        vazia de proposito — clicar no botao encerra o caminho."""
         from src.identity import picasso_selectors
-        self.assertEqual([], picasso_selectors.BOTAO_ANEXO)
+        self.assertTrue(picasso_selectors.BOTAO_ANEXO)
+        self.assertEqual([], picasso_selectors.OPCAO_ENVIAR_IMAGEM)
 
     def test_sem_menu_nao_espera_dialogo(self):
         """A guarda: lista vazia significa "va direto ao input"."""

@@ -3,11 +3,14 @@ CRIADOR DE CAMPEÕES - NEURAL FIGHTS
 Sistema de criação de personagens com Wizard guiado
 Padrão visual alinhado com a Forja de Armas
 """
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 import math
 
 from neural_fights.models import Personagem, get_class_data
+from neural_fights.models.constants import KIT_PAPEIS, sortear_kit
+from neural_fights.core.skills import get_skill_data
 from neural_fights.data import salvar_lista_chars
 from neural_fights.ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS, 
@@ -40,8 +43,9 @@ class TelaPersonagens(tk.Frame):
             "cor_r": 200,
             "cor_g": 50,
             "cor_b": 50,
+            "kit_skills": None,
         }
-        
+
         self.setup_ui()
 
     def setup_ui(self):
@@ -226,13 +230,19 @@ class TelaPersonagens(tk.Frame):
         # Info da classe selecionada
         self.frame_classe_info = tk.Frame(self.frame_centro, bg=COR_BG_SECUNDARIO)
         self.frame_classe_info.pack(fill="x", padx=10, pady=5)
-        
+
         self.lbl_classe_passiva = tk.Label(
             self.frame_classe_info, text="",
             font=("Arial", 10), bg=COR_BG_SECUNDARIO, fg=COR_SUCCESS,
             wraplength=280
         )
         self.lbl_classe_passiva.pack(pady=5)
+
+        # Onda 11D: painel do KIT — nome, papel, custo/cd e DESCRIÇÃO de
+        # cada skill (primeira vez que descricao/cor do catálogo aparecem
+        # na UI). Clique numa skill abre a demo em vídeo, se gerada.
+        self.frame_kit = tk.Frame(self.frame_centro, bg=COR_BG_SECUNDARIO)
+        self.frame_kit.pack(fill="x", padx=10, pady=(0, 10))
 
     def criar_resumo_stats(self):
         """Cria o resumo de stats do personagem"""
@@ -508,11 +518,21 @@ class TelaPersonagens(tk.Frame):
                 tk.Label(
                     frame, text=f">> {dados.get('passiva', '')}",
                     font=("Arial", 8), bg=COR_BG, fg=COR_SUCCESS, wraplength=370
+                ).pack(anchor="w", padx=8, pady=(0, 1))
+
+                # Onda 11D: o kit padrão da classe, visível já na escolha.
+                kit_padrao = " · ".join(dados.get("skills_afinidade", []))
+                tk.Label(
+                    frame, text=f"Kit: {kit_padrao}",
+                    font=("Arial", 8), bg=COR_BG, fg=COR_TEXTO_DIM,
+                    wraplength=370, justify="left",
                 ).pack(anchor="w", padx=8, pady=(0, 3))
 
     def _selecionar_classe(self, classe):
         """Atualiza a classe selecionada"""
         self.dados_char["classe"] = classe
+        # Onda 11C: trocar de classe re-sorteia o kit dos pools da classe.
+        self.dados_char["kit_skills"] = sortear_kit(classe)
         self.criar_resumo_stats()
         self.atualizar_preview()
         self.atualizar_info_classe()
@@ -522,6 +542,92 @@ class TelaPersonagens(tk.Frame):
         dados = get_class_data(self.dados_char["classe"])
         passiva = dados.get("passiva", "")
         self.lbl_classe_passiva.config(text=f">> {passiva}")
+        self._montar_painel_kit()
+
+    def _kit_atual(self):
+        """Kit do personagem em edição (sorteado ou o fixo da classe)."""
+        kit = self.dados_char.get("kit_skills")
+        if not kit:
+            kit = list(
+                get_class_data(self.dados_char["classe"]).get(
+                    "skills_afinidade", []
+                )
+            )
+        return kit
+
+    def _montar_painel_kit(self):
+        frame = getattr(self, "frame_kit", None)
+        if frame is None:
+            return
+        for widget in frame.winfo_children():
+            widget.destroy()
+
+        header = tk.Frame(frame, bg=COR_BG_SECUNDARIO)
+        header.pack(fill="x")
+        tk.Label(
+            header, text="KIT DE CLASSE",
+            font=("Arial", 10, "bold"), bg=COR_BG_SECUNDARIO, fg=COR_ACCENT,
+        ).pack(side="left")
+        tk.Button(
+            header, text="🎲 re-sortear", font=("Arial", 8),
+            bg=COR_BG, fg=COR_TEXTO, relief="flat",
+            command=self._resortear_kit,
+        ).pack(side="right")
+
+        for papel, nome in zip(KIT_PAPEIS, self._kit_atual()):
+            data = get_skill_data(nome)
+            cor_rgb = tuple(data.get("cor", (255, 255, 255)))[:3]
+            cor_hex = "#%02x%02x%02x" % cor_rgb
+            linha = tk.Frame(frame, bg=COR_BG_SECUNDARIO)
+            linha.pack(fill="x", anchor="w", pady=(4, 0))
+            swatch = tk.Label(
+                linha, text="■", font=("Arial", 10),
+                bg=COR_BG_SECUNDARIO, fg=cor_hex,
+            )
+            swatch.pack(side="left")
+            titulo = tk.Label(
+                linha,
+                text=(
+                    f"{nome}  ·  {papel.title()}  ·  "
+                    f"{data.get('custo', 0):.0f}mp / "
+                    f"{data.get('cooldown', 0):.0f}s"
+                ),
+                font=("Arial", 9, "bold"), bg=COR_BG_SECUNDARIO,
+                fg=COR_TEXTO, cursor="hand2",
+            )
+            titulo.pack(side="left", padx=(4, 0))
+            descricao = tk.Label(
+                frame, text="    " + str(data.get("descricao", "")),
+                font=("Arial", 8), bg=COR_BG_SECUNDARIO, fg=COR_TEXTO_DIM,
+                wraplength=280, justify="left",
+            )
+            descricao.pack(anchor="w")
+            for widget in (swatch, titulo, descricao):
+                widget.bind(
+                    "<Button-1>",
+                    lambda _evento, n=nome: self._abrir_demo_skill(n),
+                )
+
+    def _resortear_kit(self):
+        self.dados_char["kit_skills"] = sortear_kit(self.dados_char["classe"])
+        self._montar_painel_kit()
+
+    def _abrir_demo_skill(self, nome):
+        """Abre o mp4 de demonstração da skill no player do sistema."""
+        caminho = None
+        try:
+            from neural_fights.recording.skill_demo import caminho_da_demo
+            caminho = caminho_da_demo(nome)
+        except Exception:
+            caminho = None
+        if caminho is not None and hasattr(os, "startfile"):
+            os.startfile(str(caminho))
+        else:
+            messagebox.showinfo(
+                "Demo",
+                f"Demo de '{nome}' ainda não gerada.\n\nGere com:\n"
+                f'python -m neural_fights.recording.skill_demo --skill "{nome}"',
+            )
 
     # -------------------------------------------------------------------------
     # PASSO 3: PERSONALIDADE
@@ -1223,7 +1329,12 @@ class TelaPersonagens(tk.Frame):
                 self.dados_char["classe"],
                 self.dados_char["personalidade"]
             )
-            
+            # Onda 11C: o kit sorteado (ou o herdado na edição) persiste.
+            p.kit_skills = (
+                self.dados_char.get("kit_skills")
+                or sortear_kit(self.dados_char["classe"])
+            )
+
             if self.indice_em_edicao is None:
                 self.controller.lista_personagens.append(p)
                 msg = f"Campeão '{nome}' criado com sucesso!"
@@ -1277,6 +1388,7 @@ class TelaPersonagens(tk.Frame):
             "cor_r": p.cor_r,
             "cor_g": p.cor_g,
             "cor_b": p.cor_b,
+            "kit_skills": list(getattr(p, "kit_skills", None) or []) or None,
         }
         
         # Atualiza UI
@@ -1307,8 +1419,9 @@ class TelaPersonagens(tk.Frame):
             "cor_r": 200,
             "cor_g": 50,
             "cor_b": 50,
+            "kit_skills": None,
         }
-        
+
         # Limpa seleção
         self.tree.selection_remove(self.tree.selection())
         

@@ -161,6 +161,49 @@ class RitmoTests(unittest.TestCase):
                 for anterior, seguinte in zip(indices, indices[1:]):
                     self.assertGreater(seguinte - anterior, minimo)
 
+    def test_reacao_cabe_inteira_na_tela_sem_ser_recortada(self):
+        """A reacao e video de OUTRO formato (deitado): `fit: contain`.
+
+        Sem isso o renderer cai no crop-para-preencher e come ~62% da largura
+        de um 16:9 num quadro 9:16 — some justamente o rosto, que e o que a
+        reacao tem para mostrar.
+        """
+        for seed in self.SEEDS:
+            with self.subTest(seed=seed):
+                for evento in _plano(_gerar(seed))["events"]:
+                    if evento["type"] == "reaction":
+                        self.assertEqual("contain", evento.get("fit"))
+
+    def test_reacao_toca_ate_o_fim_dentro_do_orcamento(self):
+        """O clipe toca INTEIRO ate o teto; quem segura o video e o orcamento.
+
+        O teto de 2 s cortava 96% da biblioteca (mediana 6,5 s) e a piada
+        morria antes do punchline. As duas garantias que substituem o corte:
+        nenhuma reacao entra como flash, e a soma delas respeita o orcamento
+        do video.
+        """
+        orcamento = EDICAO["reaction_budget"]
+        teto_clipe = EDICAO["durations"]["reaction_max"]
+        util = orcamento["min_util_segundos"]
+        for seed in self.SEEDS:
+            with self.subTest(seed=seed):
+                reacoes = [e for e in _plano(_gerar(seed))["events"]
+                           if e["type"] == "reaction"]
+                soma = 0.0
+                for evento in reacoes:
+                    duracao = evento["duration"]
+                    soma += duracao
+                    if (evento.get("asset") or {}).get("synthetic", True):
+                        continue  # cartão desenhado tem duração própria
+                    self.assertGreaterEqual(duracao, util,
+                                            "reacao virou flash")
+                    self.assertLessEqual(duracao, teto_clipe + 0.01)
+                    clipe = float((evento.get("asset") or {}).get("duration") or 0)
+                    if clipe and clipe + 0.05 <= teto_clipe:
+                        # Coube no teto: tem que ter tocado INTEIRO.
+                        self.assertGreaterEqual(duracao, min(clipe, teto_clipe))
+                self.assertLessEqual(soma, orcamento["max_segundos"] + 0.01)
+
     def test_nenhuma_cena_parada_passa_de_dois_segundos(self):
         for seed in self.SEEDS:
             with self.subTest(seed=seed):

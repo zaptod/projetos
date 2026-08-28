@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "onda": 11,
+    "descricao": "Triagem da auditoria de comportamento skill-a-skill (Onda 11B). Cada suspeito tem um veredito: fix-11B (corrigido nesta onda), ledger (dívida declarada para onda futura) ou wontfix-declarado (comportamento aceito e documentado). A checagem 1-a-1 (tools/skill_check.py + tests/test_skill_one_by_one.py) é a prova de runtime: 108/108 skills com a consequência declarada observada no motor.",
+    "data": "2026-08-26"
+  },
+  "suspeitos": [
+    {"id": "S1", "campo": "pilares", "sintoma": "buraco morto no centro: uniform(1.0, raio) nunca cobria a âncora do cast", "veredito": "fix-11B", "fix": "primeiro pilar garantido na âncora; demais em uniform(0.0, raio) (combat.py)"},
+    {"id": "S2", "campo": "pilares", "sintoma": "5 filhos compartilhavam fonte_impacto com janela de dedup 1s > vida 0.5s: máx 1 hit por cast", "veredito": "fix-11B", "fix": "fonte própria por pilar (doutrina da salva) + dano/2 por pilar"},
+    {"id": "S3", "campo": "pilares", "sintoma": "filho sem ignorar_invencibilidade (ondas/meteoros têm)", "veredito": "fix-11B", "fix": "pilar ganha ignorar_invencibilidade=True no spawn"},
+    {"id": "S4", "campo": "pilares", "sintoma": "telegraph desenhava raio 3.0 no centro; dano caía em círculos de 0.75", "veredito": "fix-11B", "fix": "get_avisos_visuais desenha os pilares reais (display-only)"},
+    {"id": "S5", "campo": "pilares", "sintoma": "filho não normalizava dps/efeito2 e re-capturava modificadores/re-sorteava efeito", "veredito": "fix-11B", "fix": "subefeito=True não re-captura nem re-sorteia; spawn copia o snapshot"},
+    {"id": "S6", "campo": "pilares", "sintoma": "mãe inerte (ativo=False) ainda destruía obstáculos no raio 3.0", "veredito": "fix-11B", "fix": "gate de obstáculo exige area.ativo"},
+    {"id": "S7", "campo": "pilares", "sintoma": "IA não conhecia pilares no dano estimado", "veredito": "fix-11B", "fix": "SkillContract.dano_estimado modela dano/2 por pilar (âncora + 1 esperado)"},
+    {"id": "S8", "campo": "dano_por_segundo@BEAM", "sintoma": "Beam instantâneo guardava canalizavel/dps/duracao_max/penetra_escudo sem consumir", "veredito": "fix-11B", "fix": "leituras mortas removidas do Beam; skill BEAM canalizável vira Channel no despachante (é lá que os campos vivem)"},
+    {"id": "S9", "campo": "manifesto dano_por_segundo@BEAM", "sintoma": "evidência apontava para teste de CHANNEL", "veredito": "wontfix-declarado", "nota": "o consumo REAL de dps numa skill tipo BEAM é via canalizavel->Channel; a evidência de Channel é o caminho verdadeiro. O ramo morto no objeto Beam foi removido (S8)."},
+    {"id": "S10", "campo": "cura_por_segundo@BUFF", "sintoma": "Buff lia 'regen' (campo inexistente no inventário)", "veredito": "fix-11B", "fix": "leitura morta de 'regen' removida; fonte é cura_tick ou o default do efeito nomeado"},
+    {"id": "S11", "campo": "aura_dano@SUMMON", "sintoma": "bloco de aura nunca executava (campo indeclarável + nenhum SUMMON com aura_raio)", "veredito": "fix-11B", "fix": "bloco removido; se um summon com aura nascer, os campos entram pelo rito"},
+    {"id": "S12", "campo": "duplica_apos", "sintoma": "return prematuro pulava split, timer de explosão e decremento de vida no frame", "veredito": "fix-11B", "fix": "eventos acumulados num dict único"},
+    {"id": "S13", "campo": "split_aleatorio", "sintoma": "evento de split descartado quando a explosão disparava no mesmo frame", "veredito": "fix-11B", "fix": "eventos coexistem; consumidor trocou elif por if"},
+    {"id": "S14", "campo": "raio_explosao", "sintoma": "explosão de impacto nascia como 'Nome Explosão' e caía no registro 'Nenhuma' (perdia elemento/cor/ground)", "veredito": "fix-11B", "fix": "usa proj.nome + subefeito=True"},
+    {"id": "S15", "campo": "lifesteal@PROJETIL", "sintoma": "gating divergente de AREA (sem impacto_aplicado)", "veredito": "fix-11B", "fix": "gate por impacto_aplicado no projétil"},
+    {"id": "S16", "campo": "canalizacao", "sintoma": "Channel não acompanha o giro do caster (ângulo capturado no cast; cone ±15° fixo)", "veredito": "wontfix-declarado", "nota": "decisão de design: canalizar é COMPROMISSO com uma direção; o contrato declara imobiliza_caster e a IA sabe"},
+    {"id": "S17", "campo": "knobs indeclaráveis", "sintoma": "forca_puxar=30, tick_interval=0.5 (AREA/CHANNEL), largura/altura/efeito_contato (TRAP), altura_voo, roubavel", "veredito": "fix-11B parcial", "fix": "forca_puxar e tick_interval promovidos a campos com default; largura/altura/efeito_contato/altura_voo/roubavel ficam como defaults de motor (nenhuma skill precisa deles hoje) — entram pelo rito quando alguma precisar"},
+    {"id": "S18", "campo": "cura_por_morte", "sintoma": "amarrado ao nome literal 'Colheita de Almas'", "veredito": "fix-11B", "fix": "gatilho generalizado para o CAMPO da skill que matou"},
+    {"id": "S19", "campo": "gerador de armas W1", "sintoma": "mismatch de caixa (Title-case vs UPPER) colapsava todas as armas em 12 skills FISICO", "veredito": "fix-11C"},
+    {"id": "S20", "campo": "gerador de armas W2", "sintoma": "duas rotas de sorteio com fallbacks divergentes", "veredito": "fix-11C"},
+    {"id": "S21", "campo": "gerador de armas W3", "sintoma": "SKILLS_DEFENSIVAS/UTILIDADE calculadas e nunca usadas", "veredito": "fix-11C"},
+    {"id": "S22", "campo": "calcular_puxar", "sintoma": "método completo sem nenhum chamador", "veredito": "fix-11B", "fix": "removido"},
+    {"id": "S23", "campo": "verificar_condicao", "sintoma": "assinaturas divergentes AREA(tupla)×PROJETIL(escalar) e executa=10.0 literal duplicado", "veredito": "fix-11B parcial", "fix": "limiar declarado (condicao_limiar) flui nos dois; multiplicador virou EXECUTA_MULTIPLICADOR em config. As assinaturas seguem distintas (chamadores diferentes) — ledger"},
+    {"id": "S24", "campo": "imune_debuffs", "sintoma": "duplo papel: duração da imunidade E fallback de duracao do Buff", "veredito": "wontfix-declarado", "nota": "comportamento histórico estável; skills novas devem declarar duracao explícita"},
+    {"id": "S25", "campo": "tick_interval AREA", "sintoma": "hard-coded 0.5", "veredito": "fix-11B", "fix": "ver S17"},
+    {"id": "S26", "campo": "dano_variavel", "sintoma": "listado em _CAMPOS_ESCALADOS mas guard rejeitava a tupla", "veredito": "fix-11B", "fix": "removido da lista COM razão: é par MULTIPLICADOR, não dano absoluto — escalá-lo seria bug"},
+    {"id": "S27", "campo": "teste de pilar", "sintoma": "sobrescrevia posições sorteadas e afirmava o bug como contrato", "veredito": "fix-11B", "fix": "reescrito: âncora garantida, N fontes distintas, alvo no centro é atingido, payload herdado"},
+    {"id": "S28", "campo": "auditoria pré-escala", "sintoma": "AST valida literais antes de ESCALA_DANO_SKILL x2", "veredito": "wontfix-declarado", "nota": "por desenho: a auditoria valida ESTRUTURA; o rodapé do relatório já declara o escopo"}
+  ]
+}

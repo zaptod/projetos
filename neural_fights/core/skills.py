@@ -48,13 +48,14 @@ SKILL_DB = {
         "descricao": "Projétil rápido que causa queimadura"
     },
     "Explosão Nova": {
-        "tipo": "AREA", "dano": 45.0, "raio_area": 3.0, "cor": (255, 200, 50),
+        "tipo": "AREA", "centrado_no_caster": True, "dano": 45.0, "raio_area": 3.0, "cor": (255, 200, 50),
         "custo": 35.0, "cooldown": 12.0, "efeito": "EMPURRAO", "elemento": "FOGO",
         "descricao": "Explosão ao redor do conjurador"
     },
     "Inferno": {
         "tipo": "AREA", "ground": True,
         "dano": 15.0, "raio_area": 4.0, "cor": (255, 80, 0),
+        "tick_interval": 0.5,
         "custo": 45.0, "cooldown": 15.0, "efeito": "QUEIMANDO", "elemento": "FOGO",
         "duracao": 5.0, "dano_tick": 10.0,
         "descricao": "Campo de fogo persistente"
@@ -82,6 +83,7 @@ SKILL_DB = {
         "vida": 0.1, "cor": (255, 50, 50), "custo": 50.0, "cooldown": 20.0,
         "efeito": "EXPLOSAO", "elemento": "FOGO",
         "condicao": "ALVO_QUEIMANDO", "dano_bonus_condicao": 2.0,
+        "combo_apos": ["Lança de Fogo", "Inferno"],
         "descricao": "Detona queimaduras no alvo - dano massivo se queimando"
     },
     "Escudo de Brasas": {
@@ -137,6 +139,7 @@ SKILL_DB = {
         "custo": 25.0, "cooldown": 10.0, "efeito": "VULNERAVEL", "elemento": "GELO",
         "condicao": "ALVO_CONGELADO", "dano_bonus_condicao": 1.5,
         "remove_congelamento": True,
+        "combo_apos": ["Zero Absoluto"],
         "descricao": "Estilhaça alvos congelados - dano massivo"
     },
     "Zero Absoluto": {
@@ -155,7 +158,7 @@ SKILL_DB = {
         "tipo": "PROJETIL", "dano": 150.0, "velocidade": 10.0, "raio": 0.5,
         "vida": 2.0, "cor": (50, 150, 220), "custo": 70.0, "cooldown": 40.0,
         "efeito": "CONGELADO", "elemento": "GELO",
-        "condicao": "ALVO_BAIXA_VIDA", "executa": True,
+        "condicao": "ALVO_BAIXA_VIDA", "condicao_limiar": 0.3, "executa": True,
         "descricao": "Executa alvos com pouca vida - congela o cadáver"
     },
     
@@ -244,13 +247,13 @@ SKILL_DB = {
         "descricao": "Maldição que enfraquece e causa DoT"
     },
     "Explosão Necrótica": {
-        "tipo": "AREA", "dano": 30.0, "raio_area": 2.5, "cor": (171, 121, 223),
+        "tipo": "AREA", "centrado_no_caster": True, "dano": 30.0, "raio_area": 2.5, "cor": (171, 121, 223),
         "custo": 28.0, "cooldown": 9.0, "efeito": "DRENAR", "elemento": "TREVAS",
         "lifesteal": 0.25,
         "descricao": "Explosão que drena vida de todos ao redor"
     },
     "Medo Profundo": {
-        "tipo": "AREA", "dano": 0.0, "raio_area": 4.0, "cor": (154, 104, 204),
+        "tipo": "AREA", "centrado_no_caster": True, "dano": 0.0, "raio_area": 4.0, "cor": (154, 104, 204),
         "custo": 22.0, "cooldown": 12.0, "efeito": "MEDO", "elemento": "TREVAS",
         "duracao_fear": 2.5,
         "descricao": "Causa medo em todos próximos"
@@ -288,7 +291,7 @@ SKILL_DB = {
         "descricao": "Controla a mente do inimigo brevemente"
     },
     "Colheita de Almas": {
-        "tipo": "AREA", "dano": 50.0, "raio_area": 5.0, "cor": (200, 150, 255),
+        "tipo": "AREA", "centrado_no_caster": True, "dano": 50.0, "raio_area": 5.0, "cor": (200, 150, 255),
         "custo": 60.0, "cooldown": 45.0, "efeito": "DRENAR", "elemento": "TREVAS",
         "cura_por_morte": 50.0,
         "descricao": "Dano em área - cura massiva se matar"
@@ -344,7 +347,7 @@ SKILL_DB = {
         "descricao": "Previne morte uma vez (HP mínimo 1)"
     },
     "Julgamento Celestial": {
-        "tipo": "AREA", "dano": 80.0, "raio_area": 3.0, "cor": (255, 220, 100),
+        "tipo": "AREA", "alcance_cast": 8.0, "dano": 80.0, "raio_area": 3.0, "cor": (255, 220, 100),
         "custo": 55.0, "cooldown": 30.0, "efeito": "CEGO", "elemento": "LUZ",
         "delay": 2.0, "pilares": 5, "raio_pilar": 0.75,
         "descricao": "5 pilares de luz caem do céu"
@@ -543,9 +546,9 @@ SKILL_DB = {
         "descricao": "Puxa inimigos para o centro"
     },
     "Repulsão": {
-        "tipo": "AREA", "dano": 15.0, "raio_area": 2.5, "cor": (145, 120, 250),
+        "tipo": "AREA", "centrado_no_caster": True, "dano": 15.0, "raio_area": 2.5, "cor": (145, 120, 250),
         "custo": 18.0, "cooldown": 6.0, "efeito": "EMPURRAO", "elemento": "GRAVITACAO",
-        "forca_empurrao": 2.0,
+        "forca_empurrao": 20.0,
         "descricao": "Empurra todos para longe"
     },
     "Campo de Gravidade": {
@@ -564,6 +567,7 @@ SKILL_DB = {
         "tipo": "AREA", "dano": 10.0, "raio_area": 4.0, "cor": (110, 80, 230),
         "custo": 50.0, "cooldown": 30.0, "efeito": "VORTEX", "elemento": "GRAVITACAO",
         "duracao": 3.0, "dano_por_segundo": 25.0, "puxa_continuo": True,
+        "forca_puxar": 30.0,
         "descricao": "Buraco negro que suga e causa dano"
     },
     "Colapso": {
@@ -631,7 +635,7 @@ SKILL_DB = {
         "descricao": "Avança causando dano no caminho"
     },
     "Fúria Giratória": {
-        "tipo": "AREA", "dano": 20.0, "raio_area": 2.0, "cor": (200, 150, 150),
+        "tipo": "AREA", "centrado_no_caster": True, "dano": 20.0, "raio_area": 2.0, "cor": (200, 150, 150),
         "custo": 18.0, "cooldown": 6.0, "efeito": "NORMAL",
         "descricao": "Gira a arma atingindo todos ao redor"
     },
@@ -649,18 +653,20 @@ SKILL_DB = {
     "Execução": {
         "tipo": "PROJETIL", "dano": 100.0, "velocidade": 8.0, "raio": 0.3,
         "vida": 1.5, "cor": (255, 0, 0), "custo": 50.0, "cooldown": 30.0,
-        "condicao": "ALVO_BAIXA_VIDA", "dano_bonus_condicao": 2.0,
+        "condicao": "ALVO_BAIXA_VIDA", "condicao_limiar": 0.3,
+        "dano_bonus_condicao": 2.0,
+        "combo_apos": ["Medo Profundo"],
         "descricao": "Dano massivo contra alvos com pouca vida"
     },
     "Terremoto": {
-        "tipo": "AREA", "ground": True,
+        "tipo": "AREA", "centrado_no_caster": True, "ground": True,
         "dano": 45.0, "raio_area": 4.0, "cor": (150, 100, 50),
         "custo": 35.0, "cooldown": 15.0, "efeito": "KNOCK_UP",
         "duracao": 0.5,
         "descricao": "Abala o chão derrubando inimigos"
     },
     "Provocar": {
-        "tipo": "AREA", "dano": 0.0, "raio_area": 5.0, "cor": (255, 50, 50),
+        "tipo": "AREA", "centrado_no_caster": True, "dano": 0.0, "raio_area": 5.0, "cor": (255, 50, 50),
         "custo": 10.0, "cooldown": 10.0,
         "taunt": True, "duracao_taunt": 3.0,
         "descricao": "Força inimigos a te atacarem"
@@ -722,9 +728,84 @@ SKILL_DB = {
         "descricao": "Conecta almas - dano dividido 50/50"
     },
     "Sacrifício": {
-        "tipo": "AREA", "dano": 150.0, "raio_area": 3.0, "cor": (255, 0, 0),
+        "tipo": "AREA", "centrado_no_caster": True, "dano": 150.0, "raio_area": 3.0, "cor": (255, 0, 0),
         "custo": 0, "cooldown": 120.0, "custo_vida_percent": 0.5,
         "descricao": "Sacrifica 50% HP para dano massivo"
+    },
+
+    # ==================== SANGUE (Onda 11C) ====================
+    "Estilhaço Vermelho": {
+        "tipo": "PROJETIL", "dano": 28.0, "velocidade": 14.0, "raio": 0.3,
+        "vida": 1.5, "cor": (200, 30, 45), "custo": 0, "custo_vida": 12.0,
+        "cooldown": 6.0, "perfura": True, "efeito": "SANGRANDO",
+        "elemento": "SANGUE",
+        "descricao": "Estilhaço do próprio sangue que perfura e faz sangrar"
+    },
+    "Transfusão": {
+        "tipo": "CHANNEL", "canalizavel": True, "dano_por_segundo": 12.0,
+        "cura_por_segundo": 8.0, "duracao_max": 3.0, "alcance": 5.0,
+        "cor": (225, 45, 75), "custo": 30.0, "cooldown": 14.0,
+        "elemento": "SANGUE",
+        "descricao": "Dreno canalizado - fere o alvo e cura o conjurador"
+    },
+    "Ritual Carmesim": {
+        "tipo": "AREA", "centrado_no_caster": True, "dano": 45.0,
+        "raio_area": 3.5, "cor": (190, 25, 60), "custo": 0,
+        "custo_vida_percent": 0.1, "cooldown": 16.0, "efeito": "VULNERAVEL",
+        "elemento": "SANGUE",
+        "descricao": "Círculo de sangue que expõe todos os atingidos"
+    },
+    "Forma Sanguinária": {
+        "tipo": "TRANSFORM", "duracao": 8.0, "bonus_resistencia": 0.25,
+        "dano_contato": 7.0, "bonus_velocidade": 1.25, "cor": (215, 50, 65),
+        "custo": 45.0, "cooldown": 35.0, "elemento": "SANGUE",
+        "descricao": "Forma predadora: rápida, resistente e que fere ao toque"
+    },
+
+    # ==================== VOID (Onda 11C) ====================
+    "Fenda do Vazio": {
+        "tipo": "AREA", "dano": 20.0, "raio_area": 3.0,
+        "puxa_para_centro": True, "forca_puxar": 30.0, "duracao": 2.5,
+        "efeito": "SILENCIADO", "cor": (145, 75, 225), "custo": 40.0,
+        "cooldown": 22.0, "elemento": "VOID",
+        "descricao": "Fenda que suga para o centro e cala os engolidos"
+    },
+    "Passo do Vazio": {
+        "tipo": "DASH", "distancia": 5.0, "invisivel_durante": True,
+        "delay_saida": 0.35, "dano_chegada": 25.0, "cor": (155, 95, 235),
+        "custo": 25.0, "cooldown": 12.0, "elemento": "VOID",
+        "descricao": "Some no vazio e reaparece ferindo na chegada"
+    },
+    "Lança do Vazio": {
+        "tipo": "BEAM", "dano": 34.0, "alcance": 7.0, "efeito": "SILENCIADO",
+        "cor": (120, 60, 200), "custo": 30.0, "cooldown": 10.0,
+        "elemento": "VOID",
+        "descricao": "Lança instantânea de vazio que silencia o alvo"
+    },
+
+    # ==================== ESTRUTURAS (Onda 11C) ====================
+    "Barreira de Espinhos": {
+        "tipo": "TRAP", "dano": 12.0, "dano_contato": 8.0,
+        "bloqueia_movimento": True, "vida_estrutura": 40.0, "duracao": 6.0,
+        "cor": (80, 160, 60), "custo": 30.0, "cooldown": 15.0,
+        "elemento": "NATUREZA",
+        "descricao": "Muro de espinhos que bloqueia o caminho e fere ao toque"
+    },
+    "Muro Ardente": {
+        "tipo": "TRAP", "dano": 10.0, "dano_contato": 10.0,
+        "bloqueia_projeteis": True, "vida_estrutura": 30.0, "duracao": 5.0,
+        "cor": (255, 110, 30), "custo": 28.0, "cooldown": 14.0,
+        "elemento": "FOGO",
+        "descricao": "Parede de fogo que consome projéteis e queima o toque"
+    },
+
+    # ==================== RAIO (Onda 11C) ====================
+    "Fúria do Trovão": {
+        "tipo": "CHANNEL", "canalizavel": True, "dano_por_segundo": 20.0,
+        "duracao_max": 2.5, "alcance": 6.0, "imobiliza": True,
+        "cor": (255, 230, 90), "custo": 35.0, "cooldown": 16.0,
+        "elemento": "RAIO",
+        "descricao": "Descarga contínua de trovões - imóvel enquanto canaliza"
     },
 }
 
@@ -741,8 +822,10 @@ SKILL_DB = {
 # nao os valores — segue valida.
 ESCALA_DANO_SKILL = 2.0
 _CAMPOS_ESCALADOS = (
+    # dano_variavel fica FORA: é um PAR MULTIPLICADOR (0.5, 2.0), não dano
+    # absoluto — escalá-lo dobraria o multiplicador, não o dano (Onda 11B).
     "dano", "dano_chegada", "dano_contato", "dano_meteoro",
-    "dano_por_segundo", "dano_tick", "dano_variavel",
+    "dano_por_segundo", "dano_tick",
     "cura", "cura_por_morte", "cura_por_segundo", "cura_tick",
 )
 for _dados_skill in SKILL_DB.values():

@@ -68,6 +68,9 @@ BASIC_FIELDS = {
 }
 
 MECHANICAL_FIELDS = {
+    # Onda 10D: geometria de cast
+    "alcance_cast",
+    "centrado_no_caster",
     "afeta_caster",
     "alcance_cone",
     "angulo_cone",
@@ -93,7 +96,10 @@ MECHANICAL_FIELDS = {
     "chain_range",
     "chance_backfire",
     "chance_stun",
+    # Onda 11A: grafo de combo declarado + limiar declarado de ALVO_BAIXA_VIDA
+    "combo_apos",
     "condicao",
+    "condicao_limiar",
     "cone",
     "consome_ao_causar_dano",
     "contagioso",
@@ -136,6 +142,7 @@ MECHANICAL_FIELDS = {
     "esquiva_garantida",
     "executa",
     "forca_empurrao",
+    "forca_puxar",  # Onda 11B: knob do vórtice promovido a campo
     "gravidade_aumentada",
     "ground",
     "homing",
@@ -180,6 +187,7 @@ MECHANICAL_FIELDS = {
     "summon_tipo",
     "summon_vida",
     "taunt",
+    "tick_interval",  # Onda 11B: ritmo do tick promovido a campo
     "ve_ataques",
     "vida_estrutura",
     "voo",
@@ -191,7 +199,8 @@ TYPE_ALLOWED_FIELDS = {
     "NADA": {"cooldown", "custo", "tipo"},
     "PROJETIL": {
         "alcance_cone", "angulo_cone", "bonus_vs_trevas", "chance_backfire",
-        "condicao", "cone", "contagioso", "cooldown", "cor", "custo", "dano",
+        "combo_apos", "condicao", "condicao_limiar", "cone", "contagioso",
+        "cooldown", "cor", "custo", "custo_vida", "dano",
         "dano_bonus_condicao", "dano_variavel", "delay_explosao", "descricao",
         "duplica_apos", "duracao_controle", "efeito", "elemento",
         "elemento_aleatorio", "executa", "homing", "lifesteal", "link_percent",
@@ -200,16 +209,18 @@ TYPE_ALLOWED_FIELDS = {
         "velocidade", "vida",
     },
     "AREA": {
-        "afeta_caster", "aviso_visual", "chance_stun", "condicao", "cooldown",
+        "afeta_caster", "alcance_cast", "aviso_visual", "centrado_no_caster",
+        "chance_stun", "combo_apos", "condicao", "condicao_limiar", "cooldown",
         "cor", "cura_por_morte", "custo", "custo_vida_percent", "dano",
         "dano_bonus_condicao", "dano_meteoro", "dano_por_segundo", "dano_tick",
         "delay", "descricao", "duracao", "duracao_charme", "duracao_fear",
         "duracao_stop", "duracao_stun", "duracao_taunt", "efeito", "efeito2",
         "efeito_aleatorio", "efeitos_possiveis", "elemento", "forca_empurrao",
-        "gravidade_aumentada", "ground", "lifesteal", "meteoros_aleatorios",
+        "forca_puxar", "gravidade_aumentada", "ground", "lifesteal",
+        "meteoros_aleatorios",
         "ondas", "pilares", "puxa_continuo", "puxa_para_centro", "raio_area",
         "raio_meteoro", "raio_pilar", "remove_congelamento", "slow_fator",
-        "stacks_por_segundo", "taunt", "tipo",
+        "stacks_por_segundo", "taunt", "tick_interval", "tipo",
     },
     "DASH": {
         "cooldown", "cor", "cria_portal", "custo", "dano", "dano_chegada",
@@ -249,8 +260,9 @@ TYPE_ALLOWED_FIELDS = {
         "elemento", "intangivel", "tipo",
     },
     "CHANNEL": {
-        "canalizavel", "cooldown", "cor", "cura_por_segundo", "custo", "descricao",
-        "duracao_max", "elemento", "imobiliza", "tipo",
+        "alcance", "canalizavel", "cooldown", "cor", "cura_por_segundo",
+        "custo", "dano_por_segundo", "descricao",
+        "duracao_max", "elemento", "imobiliza", "tick_interval", "tipo",
     },
 }
 
@@ -287,6 +299,10 @@ NUMERIC_FIELDS = {
     "raio_meteoro", "raio_pilar", "reflete_dano", "refletir", "remove_debuffs",
     "reverte_estado", "revive_hp_percent", "slow_fator", "stacks_por_segundo",
     "summon_dano", "summon_vida", "velocidade", "vida", "vida_estrutura",
+    "alcance_cast",  # Onda 10D
+    "condicao_limiar",  # Onda 11A
+    "forca_puxar",  # Onda 11B
+    "tick_interval",  # Onda 11B
 }
 
 ZERO_ALLOWED_NUMBER_FIELDS = {
@@ -342,6 +358,7 @@ PERSISTENT_BUFF_FIELDS = {
 }
 
 BOOLEAN_CONTRACT_FIELDS = {
+    "centrado_no_caster",  # Onda 10D
     "afeta_caster", "ativa_ao_morrer", "aviso_visual", "bloqueia_movimento",
     "bloqueia_projeteis", "canalizavel", "cone", "consome_ao_causar_dano",
     "contagioso", "copia_caster", "cria_portal", "custo_mana_metade",
@@ -359,6 +376,7 @@ FRACTION_FIELDS = {
     "chain_decay",
     "chance_backfire",
     "chance_stun",
+    "condicao_limiar",
     "cura_percent",
     "custo_vida_percent",
     "lifesteal",
@@ -413,7 +431,7 @@ RUNTIME_EVIDENCE_VARIANTS = {
     "condicao": {"AREA", "PROJETIL"},
     "dano_bonus_condicao": {"AREA", "PROJETIL"},
     "dano_contato": {"BUFF", "TRAP", "TRANSFORM"},
-    "dano_por_segundo": {"AREA", "BEAM"},
+    "dano_por_segundo": {"AREA", "BEAM", "CHANNEL"},
     "lifesteal": {"AREA", "BUFF", "PROJETIL"},
 }
 
@@ -426,7 +444,7 @@ RUNTIME_EVIDENCE_KEYS = (
     }
 )
 
-if len(BASIC_FIELDS) != 16 or len(MECHANICAL_FIELDS) != 115:
+if len(BASIC_FIELDS) != 16 or len(MECHANICAL_FIELDS) != 121:  # Onda 11B: +forca_puxar, +tick_interval
     raise RuntimeError("inventario de campos do SKILL_DB ficou incompleto")
 if BASIC_FIELDS & MECHANICAL_FIELDS:
     raise RuntimeError("campos basicos e mecanicos nao podem se sobrepor")
@@ -1006,6 +1024,40 @@ def audit_catalog(
                     )
                 )
 
+        if "combo_apos" in raw:
+            setups = raw["combo_apos"]
+            valid_setups = (
+                isinstance(setups, (tuple, list))
+                and bool(setups)
+                and all(
+                    isinstance(setup_name, str)
+                    and setup_name.strip()
+                    and setup_name != skill_name
+                    and setup_name in catalog
+                    for setup_name in setups
+                )
+                and len(set(setups)) == len(setups)
+            )
+            if not valid_setups:
+                findings.append(
+                    _finding(
+                        "error",
+                        "invalid-combo-reference",
+                        "combo_apos deve listar skills existentes, sem repeticao e sem auto-referencia",
+                        skill_name,
+                    )
+                )
+
+        if "condicao_limiar" in raw and raw.get("condicao") != "ALVO_BAIXA_VIDA":
+            findings.append(
+                _finding(
+                    "error",
+                    "orphan-condition-threshold",
+                    "condicao_limiar exige condicao ALVO_BAIXA_VIDA",
+                    skill_name,
+                )
+            )
+
         paired_contracts = (
             ("cone", {"alcance_cone", "angulo_cone"}, "incomplete-cone-contract"),
             ("chain", {"chain_decay", "chain_range"}, "incomplete-chain-contract"),
@@ -1121,7 +1173,10 @@ def audit_catalog(
                 )
 
         if "dano_por_segundo" in raw:
-            required_duration = "duracao_max" if skill_type == "BEAM" else "duracao"
+            # BEAM/CHANNEL medem a janela por duracao_max (canalização).
+            required_duration = (
+                "duracao_max" if skill_type in ("BEAM", "CHANNEL") else "duracao"
+            )
             if required_duration not in raw:
                 findings.append(
                     _finding(

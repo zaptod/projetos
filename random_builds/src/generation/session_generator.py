@@ -14,6 +14,7 @@ from .probability_engine import ProbabilityEngine
 from .rule_engine import RuleEngine
 from .validation_engine import ValidationEngine
 from .entity_generator import EntityGenerator
+from . import escolhas as mod_escolhas
 from ..evaluation.roll_evaluator import RollEvaluator
 from ..evaluation.synergy_engine import SynergyEngine
 from ..evaluation.surprise_engine import SurpriseEngine
@@ -58,21 +59,29 @@ class SessionGenerator:
     def generate(self, seed: int | None = None,
                  generation_id: str = "generated_00001",
                  nome_pedido: str | None = None,
-                 autor_pedido: str | None = None) -> dict:
+                 autor_pedido: str | None = None,
+                 escolhas: dict | None = None) -> dict:
         """nome_pedido: nome escolhido no comentario; vence o nome gerado.
 
         O sorteio inteiro roda igual com ou sem pedido -- o nome de fora so
         substitui o gerado no fim, entao a mesma seed continua reproduzindo a
         mesma build. autor_pedido e so credito de tela, nao entra em sorteio.
+
+        `escolhas` (de `generation.escolhas.interpretar`): atributos FIXADOS
+        em vez de sorteados. Mesma doutrina do nome pedido — cada roleta
+        continua girando e consumindo o rng dela, e so o valor final e
+        trocado, entao fixar a altura nao muda a arma que teria saido.
         """
         seed = seed if seed is not None else RandomEngine.new_seed()
         engine = RandomEngine(seed)
 
-        char_entity, char_events = self.character_gen.generate(engine.fork)
+        char_entity, char_events = self.character_gen.generate(
+            engine.fork, escolhas=mod_escolhas.por_entidade(escolhas, "character"))
         char_entity = finalize_character(char_entity, char_events)
 
         weapon_entity, weapon_events = self.weapon_gen.generate(
-            engine.fork, extra_context={"character": char_entity})
+            engine.fork, extra_context={"character": char_entity},
+            escolhas=mod_escolhas.por_entidade(escolhas, "weapon"))
         weapon_entity = finalize_weapon(weapon_entity, weapon_events)
 
         # registros canonicos do NF: cor, geometria e passiva vem das fabricas
@@ -81,7 +90,7 @@ class SessionGenerator:
         # no comentario
         arma, personagem, naming = exporter.build_records(
             char_entity, weapon_entity, engine.fork("nf:records"),
-            nome_pedido=nome_pedido)
+            nome_pedido=nome_pedido, genero=(escolhas or {}).get("genero"))
 
         compatibility = self.synergy.evaluate(
             {**personagem, **{k: char_entity[k] for k in
@@ -119,5 +128,15 @@ class SessionGenerator:
                 "nome": naming["character_name"],
                 "autor": (autor_pedido or "").strip(),
                 "origem": "comentario",
+            }
+        # O que foi ESCOLHIDO em vez de sorteado. So existe quando houve
+        # escolha: e esta chave que faz o video parar de dizer "tudo sorteado".
+        if mod_escolhas.houve(escolhas):
+            saida["escolhas"] = {
+                "genero": escolhas.get("genero"),
+                "roletas": dict(escolhas.get("roletas") or {}),
+                "tela": dict(escolhas.get("tela") or {}),
+                "sorteado": {e["roulette_id"]: e["sorteado"]
+                             for e in events if e.get("escolhido")},
             }
         return saida

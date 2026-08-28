@@ -36,11 +36,16 @@ def _variante_do_tipo(weapon_entity: dict) -> int:
 
 def build_records(char_entity: dict, weapon_entity: dict,
                   rng: random.Random,
-                  nome_pedido: str | None = None) -> tuple[dict, dict, dict]:
+                  nome_pedido: str | None = None,
+                  genero: str | None = None) -> tuple[dict, dict, dict]:
     """Devolve (arma, personagem, naming).
 
     naming carrega a procedencia do nome do personagem para o generation.json:
     quem viu o video precisa saber que aquele nome veio de um comentario.
+
+    `genero` ("m"/"f") fixa o pool de nomes em vez de sortear. Nao e roleta de
+    tela; e coerencia do desenho — e por isso da para escolher sem que o video
+    fique devendo uma cena.
     """
     estado = random.getstate()
     random.seed(rng.randrange(2**31))
@@ -91,6 +96,7 @@ def build_records(char_entity: dict, weapon_entity: dict,
             elemento=elemento,
             raridade=weapon_entity["raridade"],
             nome_pedido=nome_pedido,
+            genero=genero,
         )
         nome_oficial_personagem = personagem["nome"]
         personagem["nome"] = procedencia["name"]
@@ -109,6 +115,7 @@ def build_records(char_entity: dict, weapon_entity: dict,
         "character_name": personagem["nome"],
         "character_name_origin": procedencia["origin"],
         "character_gender": procedencia["gender"],
+        "generated_character_gender": procedencia["generated_gender"],
         "generated_character_name": procedencia["generated_name"],
         "requested_name": procedencia["requested_name"],
         "requested_name_accepted": procedencia["requested_accepted"],

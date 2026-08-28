@@ -7,6 +7,7 @@ Sistema expandido com múltiplos mapas temáticos.
 import math
 import pygame
 from neural_fights.utils.config import PPM
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Tuple, List, Optional
 
@@ -493,8 +494,16 @@ class Arena:
         else:
             self.raio = None
         
-        # Obstáculos
-        self.obstaculos = list(config.obstaculos) if config.obstaculos else []
+        # Obstáculos — Onda 10D: cópia POR INSTÂNCIA. `list(...)` copiava a
+        # lista mas não os objetos: quebrar um pilar numa luta quebraria o
+        # catálogo ARENAS para todas as seguintes.
+        self.obstaculos = (
+            [dataclasses.replace(o) for o in config.obstaculos] if config.obstaculos else []
+        )
+        # Onda 10D: último obstáculo em que cada lutador bateu (wall-splat em
+        # obstáculo destrutível quebra) e fila de destruições para o Simulador.
+        self.ultimo_obstaculo_colidido: dict = {}
+        self.eventos_obstaculo: list = []
         
         # Histórico de colisões para efeitos
         self.colisoes_recentes: List[Tuple[float, float, float]] = []  # (x, y, intensidade)
@@ -548,6 +557,40 @@ class Arena:
         
         return None
     
+    def obstaculos_no_raio(self, x: float, y: float, raio: float) -> list:
+        """Onda 10D: obstáculos SÓLIDOS tocados por um círculo (área/explosão)."""
+        tocados = []
+        for obs in self.obstaculos:
+            if not obs.solido:
+                continue
+            half_w = obs.largura / 2
+            half_h = obs.altura / 2
+            closest_x = max(obs.x - half_w, min(x, obs.x + half_w))
+            closest_y = max(obs.y - half_h, min(y, obs.y + half_h))
+            if math.hypot(x - closest_x, y - closest_y) < raio:
+                tocados.append(obs)
+        return tocados
+
+    def danificar_obstaculo(self, obs, dano: float, autor=None) -> bool:
+        """Onda 10D: `destrutivel`/`hp` existiam no modelo e nunca eram lidos.
+        Devolve True se o obstáculo QUEBROU (vira passável, `tipo` +
+        "_quebrado", entra em `eventos_obstaculo`)."""
+        if obs is None or not getattr(obs, "destrutivel", False) or not obs.solido:
+            return False
+        try:
+            obs.hp = int(obs.hp) - int(max(0.0, float(dano)))
+        except (TypeError, ValueError):
+            return False
+        if obs.hp > 0:
+            return False
+        obs.hp = 0
+        obs.solido = False
+        if not obs.tipo.endswith("_quebrado"):
+            obs.tipo = obs.tipo + "_quebrado"
+        obs.cor = tuple(max(0, int(c * 0.55)) for c in obs.cor)
+        self.eventos_obstaculo.append((obs, autor))
+        return True
+
     def esta_em_zona_perigo(self, x: float, y: float) -> Optional[str]:
         """
         Verifica se está em zona de perigo (lava, fogo, etc.)
@@ -575,6 +618,8 @@ class Arena:
         
         # Atualiza cooldown de som
         lutador_id = id(lutador)
+        # Onda 10D: a memória do obstáculo batido vale só para este frame.
+        self.ultimo_obstaculo_colidido.pop(lutador_id, None)
         if lutador_id in self.wall_sound_cooldown:
             self.wall_sound_cooldown[lutador_id] = max(0, self.wall_sound_cooldown[lutador_id] - dt)
         
@@ -692,6 +737,8 @@ class Arena:
             px, py = lutador.pos[0], lutador.pos[1]
             
             if left < px < right and top < py < bottom:
+                # Onda 10D: registra o obstáculo (wall-splat destrutível).
+                self.ultimo_obstaculo_colidido[id(lutador)] = obs
                 # Determina lado de colisão
                 dist_left = px - left
                 dist_right = right - px
@@ -913,6 +960,19 @@ class Arena:
             
             rect = pygame.Rect(cx - half_w, cy - half_h, half_w * 2, half_h * 2)
             cor = obs.cor
+
+            # Onda 10D: obstáculo QUEBRADO vira entulho achatado com rachaduras
+            # (pilar_quebrado do catálogo mantém o desenho próprio abaixo).
+            if obs.tipo.endswith("_quebrado") and obs.tipo != "pilar_quebrado":
+                alt = max(2, int(half_h * 0.8))
+                entulho = pygame.Rect(cx - half_w, cy + half_h - alt, half_w * 2, alt)
+                pygame.draw.rect(surface, cor, entulho)
+                cor_esc = tuple(max(0, c - 25) for c in cor)
+                pygame.draw.line(surface, cor_esc, (entulho.left + 2, entulho.top + alt // 2),
+                                 (entulho.right - 2, entulho.top + 1), 2)
+                pygame.draw.line(surface, cor_esc, (cx - half_w // 2, entulho.top),
+                                 (cx + half_w // 3, entulho.bottom - 1), 1)
+                continue
 
             # Passe 7 (arte): sombra de contato achatada - obstaculo sem
             # sombra flutua; com ela pertence ao chao (planos nao tem).

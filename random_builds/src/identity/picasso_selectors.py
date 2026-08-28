@@ -111,10 +111,16 @@ PADRAO_RESULTADO = re.compile(
 JS_IMAGENS = """() => Array.from(document.images).map(i => ({
   src: i.currentSrc || i.src, w: i.naturalWidth, h: i.naturalHeight}))"""
 
-# Nao ha ponto de anexo aqui: PicassoIA gera a imagem, quem recebe referencia
-# e o Digen. Vazias de proposito, e o diagnostico conta lista vazia como "nao
-# levantado" em vez de fingir cobertura.
-BOTAO_ANEXO: list[tuple[str, str]] = []
+# A zona de upload do Editor Pro. Sondada de novo em 26/08/2026: o site
+# TROCOU o formulario — o input perdeu o `multiple` ("Carregar imagem" no
+# singular) e a segunda imagem passou a SUBSTITUIR a primeira. O botao abre o
+# seletor de arquivo DIRETO (nao ha menu no meio — OPCAO_ENVIAR_IMAGEM segue
+# vazia de proposito, e `_abrir_menu_de_anexo` trata lista vazia como "o
+# proprio botao e o gatilho").
+BOTAO_ANEXO = [
+    ("css", "button[aria-label='Carregar imagem']"),
+    ("text", "Arraste e solte"),
+]
 
 # "Aprimorador de Prompt": reescreve o texto DENTRO do proprio textarea. O id
 # e estavel; o fallback pega pelo texto caso o id mude de nome.
@@ -158,22 +164,17 @@ def select_com_opcao(page, valor: str):
     return None
 
 
-# Miniaturas do que foi ENVIADO (nao do que foi gerado), contadas dentro do
-# painel do composer. Ancora no campo de prompt e sobe: contar `img` da pagina
-# inteira pegaria a galeria de exemplos.
-JS_MINIATURAS = """() => {
-  const campo = document.querySelector('textarea#prompt, textarea[name=prompt]');
-  if (!campo) return [];
-  let caixa = campo;
-  for (let i = 0; i < 8 && caixa.parentElement; i++) {
-    caixa = caixa.parentElement;
-    if (caixa.querySelectorAll('img').length) break;
-  }
-  return Array.from(caixa.querySelectorAll('img'))
-    .filter(i => { const r = i.getBoundingClientRect();
-                   return r.width > 20 && r.height > 20; })
-    .map(i => i.currentSrc || i.src || '');
-}"""
+# O que prova que uma imagem ENTROU no editor: o botao "Remover imagem N" que
+# o proprio site cria para ela. Medido no DOM em 27/08/2026 — anexar duas em
+# sequencia no mesmo input deixa 'Remover imagem 1' e 'Remover imagem 2'.
+#
+# Contar <img> nao servia nas duas pontas: `blob:`/`data:` NAO aparece (o
+# site monta a miniatura de outro jeito) e `img` solto pegava o historico
+# carregando tarde. Foi o detector errado que fez o worker concluir que a
+# segunda imagem substituia a primeira e que a juncao so podia receber uma.
+JS_MINIATURAS = """() => Array.from(document.querySelectorAll('button'))
+  .map(b => b.getAttribute('aria-label') || '')
+  .filter(l => /^remover imagem/i.test(l))"""
 
 
 def miniaturas(page) -> list[str]:
@@ -201,3 +202,84 @@ LISTAS_ONLINE = (
     ("aprimorador de prompt", "BOTAO_APRIMORAR", "aviso"),
     ("quantidade", "BOTAO_QUANTIDADE", "aviso"),
 )
+
+
+# ------------------------------------------------------------- historico
+# A aba "Historico" (`?tab=history`, painel `#generations`) lista as geracoes
+# DA CONTA — de todo mundo que a compartilha — com o PROMPT inteiro, a data
+# ("25 DE AGO. DE 2026, 22:26") e a imagem. E a unica tela do site que liga
+# um resultado ao texto que o pediu, e por isso e ela que prova a origem: o
+# card com o NOSSO prompt e o nosso, e a imagem DELE e a que se baixa. Vale
+# igual para o criador e para o Editor Pro (mesma casca). Levantado do DOM
+# real em 25/08/2026.
+#
+# A imagem do card e LAZY: so ganha `src` quando o card entra na tela. Por
+# isso `cards_do_historico` aceita `revelar`, que rola aquele card para o
+# centro antes de ler.
+PARAMETRO_HISTORICO = "tab=history"
+
+PAINEL_HISTORICO = [
+    ("css", "#generations[role='tabpanel']"),
+    ("css", "[data-slot='tabs-content']#generations"),
+    ("css", "button[aria-label='Copiar prompt']"),
+]
+
+JS_CARDS_HISTORICO = """([limite, revelar]) => {
+  const painel = document.querySelector('#generations') || document;
+  const botoes = Array.from(painel.querySelectorAll('button[aria-label="Copiar prompt"]'));
+  const out = [];
+  botoes.slice(0, limite).forEach((botao, indice) => {
+    // O card e o MAIOR ancestral que ainda contem SO este botao de copiar.
+    // A ancora antiga ("subir ate ter <img>") estourava para o painel
+    // inteiro quando a imagem do card ainda nao tinha carregado — e ai o
+    // texto/data/imagens vinham do card ERRADO (visto em 26/08/2026: todos
+    // os cards devolviam o innerText do painel e as imagens do topo).
+    let card = botao;
+    for (let i = 0; i < 12 && card.parentElement; i++) {
+      const pai = card.parentElement;
+      if (pai.querySelectorAll('button[aria-label="Copiar prompt"]').length > 1) break;
+      card = pai;
+    }
+    if (revelar === indice) card.scrollIntoView({block: 'center'});
+    const bloco = botao.parentElement ? botao.parentElement.parentElement : null;
+    const p = bloco ? bloco.querySelector('p') : null;
+    out.push({
+      indice: indice,
+      prompt: p ? (p.innerText || p.textContent || '') : '',
+      texto: (card.innerText || '').slice(0, 3000),
+      imagens: Array.from(card.querySelectorAll('img'))
+        .map(i => i.currentSrc || i.getAttribute('src') || '').filter(Boolean),
+    });
+  });
+  return out;
+}"""
+
+
+def url_historico(url: str | None) -> str:
+    """A aba de historico da MESMA pagina (criador ou Editor Pro)."""
+    base = (url or URL_CRIACAO).split("?", 1)[0].split("#", 1)[0]
+    return f"{base}?{PARAMETRO_HISTORICO}"
+
+
+def cards_do_historico(page, limite: int = 12, revelar: int | None = None) -> list[dict]:
+    """Os `limite` cards do topo (mais novo primeiro), ja filtrados.
+
+    Cada card: {indice, prompt, texto, imagens} — `imagens` so com URLs de
+    resultado deste modelo (bucket r2), nunca miniatura de exemplo.
+    """
+    try:
+        bruto = page.evaluate(JS_CARDS_HISTORICO,
+                              [int(limite), -1 if revelar is None else int(revelar)])
+    except Exception:
+        return []
+    cards = []
+    for item in bruto or []:
+        imagens: list[str] = []
+        for src in item.get("imagens") or []:
+            if src and PADRAO_RESULTADO.match(src) and src not in imagens:
+                imagens.append(src)
+        cards.append({"indice": item.get("indice"),
+                      "prompt": item.get("prompt") or "",
+                      "texto": item.get("texto") or "",
+                      "imagens": imagens})
+    return cards

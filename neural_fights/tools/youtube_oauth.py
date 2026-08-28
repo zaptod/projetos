@@ -32,6 +32,11 @@ from neural_fights.utils.console import SafeArgumentParser, safe_print
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 ESCOPO = "https://www.googleapis.com/auth/youtube.readonly"
+# Publicar exige escrita. Pedir os DOIS de uma vez mantem o mesmo arquivo de
+# credenciais servindo a live (le o chat) e a publicacao (sobe o video): um
+# token so de upload quebraria a live, e vice-versa.
+ESCOPO_UPLOAD = "https://www.googleapis.com/auth/youtube.upload"
+ESCOPO_COMPLETO = f"{ESCOPO} {ESCOPO_UPLOAD}"
 
 
 def _caminho_padrao() -> Path:
@@ -82,6 +87,12 @@ def build_parser() -> SafeArgumentParser:
         "--out",
         help="destino do JSON (padrao: youtube_credentials.json no runtime)",
     )
+    parser.add_argument(
+        "--com-upload",
+        action="store_true",
+        help="pede tambem o escopo de UPLOAD (publicar video), alem da "
+             "leitura do chat. Necessario uma unica vez, antes de publicar.",
+    )
     return parser
 
 
@@ -94,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
             "client_id": args.client_id,
             "redirect_uri": redirect,
             "response_type": "code",
-            "scope": ESCOPO,
+            "scope": ESCOPO_COMPLETO if args.com_upload else ESCOPO,
             "access_type": "offline",
             "prompt": "consent",
         }
@@ -137,6 +148,10 @@ def main(argv: list[str] | None = None) -> int:
                 "client_id": args.client_id,
                 "client_secret": args.client_secret,
                 "refresh_token": refresh,
+                # Fica gravado o que este token PODE fazer: quem for publicar
+                # confere aqui em vez de descobrir com um 403 no meio do
+                # upload de 30 MB.
+                "escopo": ESCOPO_COMPLETO if args.com_upload else ESCOPO,
             },
             indent=2,
         )
@@ -144,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     safe_print(f"Credenciais gravadas em: {destino}")
+    if args.com_upload:
+        safe_print("Escopo com UPLOAD: da para publicar pelo painel.")
     safe_print("Pronto: neural-fights-live --source youtube")
     return 0
 

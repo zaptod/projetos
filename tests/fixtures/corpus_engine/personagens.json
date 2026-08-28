@@ -9,7 +9,13 @@
     "cor_g": 30,
     "cor_b": 216,
     "classe": "Guerreiro (Força Bruta)",
-    "personalidade": "Aleatório"
+    "personalidade": "Aleatório",
+    "kit_skills": [
+      "Mjolnir",
+      "Sacrifício",
+      "Avanço Brutal",
+      "Golpe do Executor"
+    ]
   },
   {
     "nome": "Octavia o Lendário",
@@ -21,7 +27,13 @@
     "cor_g": 234,
     "cor_b": 2,
     "classe": "Berserker (Fúria)",
-    "personalidade": "Agressivo"
+    "personalidade": "Agressivo",
+    "kit_skills": [
+      "Impacto Sônico",
+      "Explosão Nova",
+      "Avanço Brutal",
+      "Pacto de Sangue"
+    ]
   },
   {
     "nome": "Odin o Nobre",
@@ -33,7 +45,13 @@
     "cor_g": 73,
     "cor_b": 244,
     "classe": "Gladiador (Combate)",
-    "personalidade": "Defensivo"
+    "personalidade": "Defensivo",
+    "kit_skills": [
+      "Impacto Sônico",
+      "Fúria Giratória",
+      "Velocidade Arcana",
+      "Determinação"
+    ]
   },
   {
     "nome": "Zephyr",
@@ -45,7 +63,13 @@
     "cor_g": 137,
     "cor_b": 206,
     "classe": "Cavaleiro (Defesa)",
-    "personalidade": "Berserker"
+    "personalidade": "Berserker",
+    "kit_skills": [
+      "Provocar",
+      "Sacrifício",
+      "Avanço Brutal",
+      "Determinação"
+    ]
   },
   {
     "nome": "Zephyr o Nobre",
@@ -57,7 +81,13 @@
     "cor_g": 16,
     "cor_b": 239,
     "classe": "Assassino (Crítico)",
-    "personalidade": "Tático"
+    "personalidade": "Tático",
+    "kit_skills": [
+      "Medo Profundo",
+      "Tentáculos do Vazio",
+      "Passo do Vazio",
+      "Execução"
+    ]
   },
   {
     "nome": "Winter a Sombria",
@@ -69,7 +99,13 @@
     "cor_g": 0,
     "cor_b": 190,
     "classe": "Ladino (Evasão)",
-    "personalidade": "Assassino"
+    "personalidade": "Assassino",
+    "kit_skills": [
+      "Esporos Alucinógenos",
+      "Nuvem Tóxica",
+      "Teleporte Relâmpago",
+      "Bomba Relógio"
+    ]
   },
   {
     "nome": "Zephyr a Invicta",
@@ -81,7 +117,13 @@
     "cor_g": 224,
     "cor_b": 47,
     "classe": "Ninja (Velocidade)",
-    "personalidade": "Acrobático"
+    "personalidade": "Acrobático",
+    "kit_skills": [
+      "Corrente em Cadeia",
+      "Julgamento de Thor",
+      "Teleporte Relâmpago",
+      "Corrente Elétrica"
+    ]
   },
   {
     "nome": "Hera o Profeta",
@@ -93,7 +135,13 @@
     "cor_g": 234,
     "cor_b": 58,
     "classe": "Duelista (Precisão)",
-    "personalidade": "Equilibrado"
+    "personalidade": "Equilibrado",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Golpe do Executor"
+    ]
   },
   {
     "nome": "Athena o Protetor",
@@ -105,7 +153,13 @@
     "cor_g": 205,
     "cor_b": 216,
     "classe": "Mago (Arcano)",
-    "personalidade": "Showman"
+    "personalidade": "Showman",
+    "kit_skills": [
+      "Explosão Arcana",
+      "Buraco Negro",
+      "Portal Arcano",
+      "Desintegrar"
+    ]
   },
   {
     "nome": "Caesar o Protetor",
@@ -117,7 +171,13 @@
     "cor_g": 28,
     "cor_b": 216,
     "classe": "Piromante (Fogo)",
-    "personalidade": "Sombrio"
+    "personalidade": "Sombrio",
+    "kit_skills": [
+      "Pilar de Fogo",
+      "Inferno",
+      "Avanço Brutal",
+      "Bola de Fogo"
+    ]
   },
   {
     "nome": "Akemi a Valente",
@@ -129,7 +189,13 @@
     "cor_g": 156,
     "cor_b": 53,
     "classe": "Criomante (Gelo)",
-    "personalidade": "Perseguidor"
+    "personalidade": "Perseguidor",
+    "kit_skills": [
+      "Prisão de Gelo",
+      "Muralha de Gelo",
+      "Velocidade Arcana",
+      "Shatter"
+    ]
   },
   {
     "nome": "Kenji o Nobre",
@@ -141,7 +207,13 @@
     "cor_g": 71,
     "cor_b": 24,
     "classe": "Necromante (Trevas)",
-    "personalidade": "Protetor"
+    "personalidade": "Protetor",
+    "kit_skills": [
+      "Possessão",
+      "Explosão Necrótica",
+      "Portal Sombrio",
+      "Maldição"
+    ]
   },
   {
     "nome": "Crixus a Sábia",
@@ -153,7 +225,13 @@
     "cor_g": 241,
     "cor_b": 41,
     "classe": "Paladino (Sagrado)",
-    "personalidade": "Viking"
+    "personalidade": "Viking",
+    "kit_skills": [
+      "Raio Sagrado",
+      "Julgamento Celestial",
+      "Avanço Brutal",
+      "Cura Maior"
+    ]
   },
   {
     "nome": "Perseus",
@@ -165,7 +243,13 @@
     "cor_g": 51,
     "cor_b": 232,
     "classe": "Druida (Natureza)",
-    "personalidade": "Samurai"
+    "personalidade": "Samurai",
+    "kit_skills": [
+      "Raízes",
+      "Barreira de Espinhos",
+      "Levitar",
+      "Espinhos"
+    ]
   },
   {
     "nome": "Lucius",
@@ -177,7 +261,13 @@
     "cor_g": 231,
     "cor_b": 26,
     "classe": "Feiticeiro (Caos)",
-    "personalidade": "Capoeirista"
+    "personalidade": "Capoeirista",
+    "kit_skills": [
+      "Parar o Tempo",
+      "Apocalipse",
+      "Troca de Almas",
+      "Instabilidade"
+    ]
   },
   {
     "nome": "Lucia o Implacável",
@@ -189,7 +279,13 @@
     "cor_g": 55,
     "cor_b": 211,
     "classe": "Monge (Chi)",
-    "personalidade": "Pugilista"
+    "personalidade": "Pugilista",
+    "kit_skills": [
+      "Colapso",
+      "Campo de Gravidade",
+      "Acelerar",
+      "Link de Vida"
+    ]
   },
   {
     "nome": "Caesar o Sábio",
@@ -201,7 +297,13 @@
     "cor_g": 156,
     "cor_b": 239,
     "classe": "Mago (Arcano)",
-    "personalidade": "Berserker"
+    "personalidade": "Berserker",
+    "kit_skills": [
+      "Explosão Arcana",
+      "Buraco Negro",
+      "Portal Arcano",
+      "Mísseis Arcanos"
+    ]
   },
   {
     "nome": "Adelaide a Justa",
@@ -213,7 +315,13 @@
     "cor_g": 237,
     "cor_b": 225,
     "classe": "Criomante (Gelo)",
-    "personalidade": "Psicopata"
+    "personalidade": "Psicopata",
+    "kit_skills": [
+      "Prisão de Gelo",
+      "Muralha de Gelo",
+      "Velocidade Arcana",
+      "Cone de Gelo"
+    ]
   },
   {
     "nome": "Takeshi o Destruidor",
@@ -225,7 +333,13 @@
     "cor_g": 24,
     "cor_b": 123,
     "classe": "Criomante (Gelo)",
-    "personalidade": "Viking"
+    "personalidade": "Viking",
+    "kit_skills": [
+      "Zero Absoluto",
+      "Nevasca",
+      "Velocidade Arcana",
+      "Cone de Gelo"
+    ]
   },
   {
     "nome": "Crixus o Amaldiçoado",
@@ -237,7 +351,13 @@
     "cor_g": 22,
     "cor_b": 166,
     "classe": "Mago (Arcano)",
-    "personalidade": "Berserker"
+    "personalidade": "Berserker",
+    "kit_skills": [
+      "Explosão Arcana",
+      "Buraco Negro",
+      "Portal Arcano",
+      "Desintegrar"
+    ]
   },
   {
     "nome": "Thor o Nobre",
@@ -249,7 +369,13 @@
     "cor_g": 193,
     "cor_b": 239,
     "classe": "Assassino (Crítico)",
-    "personalidade": "Capoeirista"
+    "personalidade": "Capoeirista",
+    "kit_skills": [
+      "Medo Profundo",
+      "Tentáculos do Vazio",
+      "Passo do Vazio",
+      "Esfera Sombria"
+    ]
   },
   {
     "nome": "Gloria a Valente",
@@ -261,7 +387,13 @@
     "cor_g": 39,
     "cor_b": 252,
     "classe": "Ladino (Evasão)",
-    "personalidade": "Contemplativo"
+    "personalidade": "Contemplativo",
+    "kit_skills": [
+      "Esporos Alucinógenos",
+      "Nuvem Tóxica",
+      "Teleporte Relâmpago",
+      "Bomba Relógio"
+    ]
   },
   {
     "nome": "Artemis a Eterna",
@@ -273,7 +405,13 @@
     "cor_g": 224,
     "cor_b": 201,
     "classe": "Ladino (Evasão)",
-    "personalidade": "Caótico"
+    "personalidade": "Caótico",
+    "kit_skills": [
+      "Esporos Alucinógenos",
+      "Nuvem Tóxica",
+      "Teleporte Relâmpago",
+      "Espinhos"
+    ]
   },
   {
     "nome": "Octavia a Eterna",
@@ -285,7 +423,13 @@
     "cor_g": 226,
     "cor_b": 22,
     "classe": "Gladiador (Combate)",
-    "personalidade": "Destruidor"
+    "personalidade": "Destruidor",
+    "kit_skills": [
+      "Impacto Sônico",
+      "Terremoto",
+      "Avanço Brutal",
+      "Determinação"
+    ]
   },
   {
     "nome": "Phoenix",
@@ -297,7 +441,13 @@
     "cor_g": 232,
     "cor_b": 48,
     "classe": "Duelista (Precisão)",
-    "personalidade": "Caótico"
+    "personalidade": "Caótico",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Golpe do Executor"
+    ]
   },
   {
     "nome": "Ajax",
@@ -309,7 +459,13 @@
     "cor_g": 6,
     "cor_b": 107,
     "classe": "Gladiador (Combate)",
-    "personalidade": "Acrobático"
+    "personalidade": "Acrobático",
+    "kit_skills": [
+      "Repulsão",
+      "Terremoto",
+      "Velocidade Arcana",
+      "Determinação"
+    ]
   },
   {
     "nome": "Ingrid do Gelo",
@@ -321,7 +477,13 @@
     "cor_g": 67,
     "cor_b": 214,
     "classe": "Druida (Natureza)",
-    "personalidade": "Caótico"
+    "personalidade": "Caótico",
+    "kit_skills": [
+      "Raízes",
+      "Ira da Floresta",
+      "Levitar",
+      "Praga"
+    ]
   },
   {
     "nome": "Leoric a Impiedosa",
@@ -333,7 +495,13 @@
     "cor_g": 64,
     "cor_b": 12,
     "classe": "Duelista (Precisão)",
-    "personalidade": "Masoquista"
+    "personalidade": "Masoquista",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Eco Temporal"
+    ]
   },
   {
     "nome": "Elara o Lendário",
@@ -345,7 +513,13 @@
     "cor_g": 11,
     "cor_b": 0,
     "classe": "Guerreiro (Força Bruta)",
-    "personalidade": "Sombrio"
+    "personalidade": "Sombrio",
+    "kit_skills": [
+      "Mjolnir",
+      "Terremoto",
+      "Avanço Brutal",
+      "Golpe do Executor"
+    ]
   },
   {
     "nome": "Tyr o Nobre",
@@ -357,7 +531,13 @@
     "cor_g": 216,
     "cor_b": 210,
     "classe": "Berserker (Fúria)",
-    "personalidade": "Assassino"
+    "personalidade": "Assassino",
+    "kit_skills": [
+      "Mjolnir",
+      "Sacrifício",
+      "Avanço Brutal",
+      "Pacto de Sangue"
+    ]
   },
   {
     "nome": "Nyx a Impiedosa",
@@ -369,7 +549,13 @@
     "cor_g": 4,
     "cor_b": 211,
     "classe": "Duelista (Precisão)",
-    "personalidade": "Tempestade"
+    "personalidade": "Tempestade",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Reverter"
+    ]
   },
   {
     "nome": "Tempest o Bravo",
@@ -381,7 +567,13 @@
     "cor_g": 11,
     "cor_b": 232,
     "classe": "Guerreiro (Força Bruta)",
-    "personalidade": "Perseguidor"
+    "personalidade": "Perseguidor",
+    "kit_skills": [
+      "Mjolnir",
+      "Terremoto",
+      "Avanço Brutal",
+      "Golpe do Executor"
+    ]
   },
   {
     "nome": "Cedric da Luz",
@@ -393,7 +585,13 @@
     "cor_g": 249,
     "cor_b": 67,
     "classe": "Monge (Chi)",
-    "personalidade": "Acrobático"
+    "personalidade": "Acrobático",
+    "kit_skills": [
+      "Pulso Gravitacional",
+      "Campo de Gravidade",
+      "Acelerar",
+      "Link de Vida"
+    ]
   },
   {
     "nome": "Raven",
@@ -405,7 +603,13 @@
     "cor_g": 66,
     "cor_b": 244,
     "classe": "Monge (Chi)",
-    "personalidade": "Destruidor"
+    "personalidade": "Destruidor",
+    "kit_skills": [
+      "Pulso Gravitacional",
+      "Campo de Gravidade",
+      "Acelerar",
+      "Fotossíntese"
+    ]
   },
   {
     "nome": "Aldric",
@@ -417,7 +621,13 @@
     "cor_g": 242,
     "cor_b": 12,
     "classe": "Ninja (Velocidade)",
-    "personalidade": "Equilibrado"
+    "personalidade": "Equilibrado",
+    "kit_skills": [
+      "Relâmpago",
+      "Julgamento de Thor",
+      "Teleporte Relâmpago",
+      "Forma Relâmpago"
+    ]
   },
   {
     "nome": "Icarus",
@@ -429,7 +639,13 @@
     "cor_g": 188,
     "cor_b": 232,
     "classe": "Criomante (Gelo)",
-    "personalidade": "Pugilista"
+    "personalidade": "Pugilista",
+    "kit_skills": [
+      "Zero Absoluto",
+      "Muralha de Gelo",
+      "Velocidade Arcana",
+      "Avatar de Gelo"
+    ]
   },
   {
     "nome": "Sigrid a Sábia",
@@ -441,7 +657,13 @@
     "cor_g": 79,
     "cor_b": 17,
     "classe": "Cavaleiro (Defesa)",
-    "personalidade": "Artista Marcial"
+    "personalidade": "Artista Marcial",
+    "kit_skills": [
+      "Provocar",
+      "Sacrifício",
+      "Avanço Brutal",
+      "Determinação"
+    ]
   },
   {
     "nome": "Aurora o Bravo",
@@ -453,7 +675,13 @@
     "cor_g": 7,
     "cor_b": 211,
     "classe": "Piromante (Fogo)",
-    "personalidade": "Equilibrado"
+    "personalidade": "Equilibrado",
+    "kit_skills": [
+      "Pilar de Fogo",
+      "Muro Ardente",
+      "Avanço Brutal",
+      "Combustão Espontânea"
+    ]
   },
   {
     "nome": "Kai o Nobre",
@@ -465,7 +693,13 @@
     "cor_g": 255,
     "cor_b": 30,
     "classe": "Duelista (Precisão)",
-    "personalidade": "Perseguidor"
+    "personalidade": "Perseguidor",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Golpe do Executor"
+    ]
   },
   {
     "nome": "Zephyr a Valente",
@@ -477,7 +711,13 @@
     "cor_g": 234,
     "cor_b": 0,
     "classe": "Guerreiro (Força Bruta)",
-    "personalidade": "Samurai"
+    "personalidade": "Samurai",
+    "kit_skills": [
+      "Mjolnir",
+      "Sacrifício",
+      "Avanço Brutal",
+      "Determinação"
+    ]
   },
   {
     "nome": "Perseus o Amaldiçoado",
@@ -489,7 +729,13 @@
     "cor_g": 249,
     "cor_b": 37,
     "classe": "Ninja (Velocidade)",
-    "personalidade": "Masoquista"
+    "personalidade": "Masoquista",
+    "kit_skills": [
+      "Corrente em Cadeia",
+      "Tempestade",
+      "Teleporte Relâmpago",
+      "Fúria do Trovão"
+    ]
   },
   {
     "nome": "Raven a Lendária",
@@ -501,7 +747,13 @@
     "cor_g": 232,
     "cor_b": 69,
     "classe": "Paladino (Sagrado)",
-    "personalidade": "Perseguidor"
+    "personalidade": "Perseguidor",
+    "kit_skills": [
+      "Raio Sagrado",
+      "Julgamento Celestial",
+      "Avanço Brutal",
+      "Anjo Guardião"
+    ]
   },
   {
     "nome": "Brunhilde",
@@ -513,7 +765,13 @@
     "cor_g": 8,
     "cor_b": 221,
     "classe": "Duelista (Precisão)",
-    "personalidade": "Assassino"
+    "personalidade": "Assassino",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Eco Temporal"
+    ]
   },
   {
     "nome": "Raven a Vidente",
@@ -525,7 +783,13 @@
     "cor_g": 216,
     "cor_b": 28,
     "classe": "Duelista (Precisão)",
-    "personalidade": "Tempestade"
+    "personalidade": "Tempestade",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Previsão"
+    ]
   },
   {
     "nome": "Takeshi",
@@ -537,7 +801,13 @@
     "cor_g": 247,
     "cor_b": 66,
     "classe": "Monge (Chi)",
-    "personalidade": "Masoquista"
+    "personalidade": "Masoquista",
+    "kit_skills": [
+      "Pulso Gravitacional",
+      "Campo de Gravidade",
+      "Acelerar",
+      "Link de Vida"
+    ]
   },
   {
     "nome": "Selene das Chamas",
@@ -549,7 +819,13 @@
     "cor_g": 19,
     "cor_b": 249,
     "classe": "Mago (Arcano)",
-    "personalidade": "Predador Alfa"
+    "personalidade": "Predador Alfa",
+    "kit_skills": [
+      "Explosão Arcana",
+      "Buraco Negro",
+      "Portal Arcano",
+      "Desintegrar"
+    ]
   },
   {
     "nome": "Jin a Protetora",
@@ -561,7 +837,13 @@
     "cor_g": 242,
     "cor_b": 10,
     "classe": "Ninja (Velocidade)",
-    "personalidade": "Tático"
+    "personalidade": "Tático",
+    "kit_skills": [
+      "Corrente em Cadeia",
+      "Campo Elétrico",
+      "Teleporte Relâmpago",
+      "Forma Relâmpago"
+    ]
   },
   {
     "nome": "Viktor a Furiosa",
@@ -573,7 +855,13 @@
     "cor_g": 14,
     "cor_b": 206,
     "classe": "Assassino (Crítico)",
-    "personalidade": "Berserker"
+    "personalidade": "Berserker",
+    "kit_skills": [
+      "Medo Profundo",
+      "Colheita de Almas",
+      "Portal Sombrio",
+      "Esfera Sombria"
+    ]
   },
   {
     "nome": "Cassius o Cruel",
@@ -585,7 +873,13 @@
     "cor_g": 56,
     "cor_b": 207,
     "classe": "Paladino (Sagrado)",
-    "personalidade": "Assassino"
+    "personalidade": "Assassino",
+    "kit_skills": [
+      "Raio Sagrado",
+      "Julgamento Celestial",
+      "Avanço Brutal",
+      "Ressurreição"
+    ]
   },
   {
     "nome": "Titus a Invicta",
@@ -597,7 +891,13 @@
     "cor_g": 216,
     "cor_b": 67,
     "classe": "Berserker (Fúria)",
-    "personalidade": "Contemplativo"
+    "personalidade": "Contemplativo",
+    "kit_skills": [
+      "Mjolnir",
+      "Sacrifício",
+      "Avanço Brutal",
+      "Forma Sanguinária"
+    ]
   },
   {
     "nome": "Zephyr a Lendária",
@@ -609,7 +909,13 @@
     "cor_g": 255,
     "cor_b": 73,
     "classe": "Gladiador (Combate)",
-    "personalidade": "Aleatório"
+    "personalidade": "Aleatório",
+    "kit_skills": [
+      "Repulsão",
+      "Fúria Giratória",
+      "Velocidade Arcana",
+      "Golpe do Executor"
+    ]
   },
   {
     "nome": "Genevieve do Gelo",
@@ -621,7 +927,13 @@
     "cor_g": 213,
     "cor_b": 229,
     "classe": "Piromante (Fogo)",
-    "personalidade": "Masoquista"
+    "personalidade": "Masoquista",
+    "kit_skills": [
+      "Pilar de Fogo",
+      "Inferno",
+      "Avanço Brutal",
+      "Meteoro"
+    ]
   },
   {
     "nome": "Achilles a Lendária",
@@ -633,7 +945,13 @@
     "cor_g": 67,
     "cor_b": 239,
     "classe": "Druida (Natureza)",
-    "personalidade": "Defensivo"
+    "personalidade": "Defensivo",
+    "kit_skills": [
+      "Raízes",
+      "Ira da Floresta",
+      "Levitar",
+      "Praga"
+    ]
   },
   {
     "nome": "Marcus o Amaldiçoado",
@@ -645,7 +963,13 @@
     "cor_g": 19,
     "cor_b": 183,
     "classe": "Ninja (Velocidade)",
-    "personalidade": "Sombrio"
+    "personalidade": "Sombrio",
+    "kit_skills": [
+      "Corrente em Cadeia",
+      "Tempestade",
+      "Teleporte Relâmpago",
+      "Forma Relâmpago"
+    ]
   },
   {
     "nome": "Yuki o Protetor",
@@ -657,7 +981,13 @@
     "cor_g": 242,
     "cor_b": 156,
     "classe": "Monge (Chi)",
-    "personalidade": "Sombrio"
+    "personalidade": "Sombrio",
+    "kit_skills": [
+      "Pulso Gravitacional",
+      "Campo de Gravidade",
+      "Acelerar",
+      "Link de Vida"
+    ]
   },
   {
     "nome": "Brutus",
@@ -669,7 +999,13 @@
     "cor_g": 125,
     "cor_b": 206,
     "classe": "Criomante (Gelo)",
-    "personalidade": "Berserker"
+    "personalidade": "Berserker",
+    "kit_skills": [
+      "Zero Absoluto",
+      "Muralha de Gelo",
+      "Velocidade Arcana",
+      "Lança de Gelo"
+    ]
   },
   {
     "nome": "Baldur",
@@ -681,7 +1017,13 @@
     "cor_g": 177,
     "cor_b": 219,
     "classe": "Berserker (Fúria)",
-    "personalidade": "Fantasma"
+    "personalidade": "Fantasma",
+    "kit_skills": [
+      "Mjolnir",
+      "Explosão Nova",
+      "Avanço Brutal",
+      "Grito de Guerra"
+    ]
   },
   {
     "nome": "Raven o Lendário",
@@ -693,7 +1035,13 @@
     "cor_g": 150,
     "cor_b": 31,
     "classe": "Gladiador (Combate)",
-    "personalidade": "Berserker"
+    "personalidade": "Berserker",
+    "kit_skills": [
+      "Repulsão",
+      "Fúria Giratória",
+      "Velocidade Arcana",
+      "Determinação"
+    ]
   },
   {
     "nome": "Seraphina a Justa",
@@ -705,7 +1053,13 @@
     "cor_g": 252,
     "cor_b": 92,
     "classe": "Guerreiro (Força Bruta)",
-    "personalidade": "Fantasma"
+    "personalidade": "Fantasma",
+    "kit_skills": [
+      "Impacto Sônico",
+      "Sacrifício",
+      "Avanço Brutal",
+      "Determinação"
+    ]
   },
   {
     "nome": "Celeste",
@@ -717,7 +1071,13 @@
     "cor_g": 242,
     "cor_b": 46,
     "classe": "Ladino (Evasão)",
-    "personalidade": "Caótico"
+    "personalidade": "Caótico",
+    "kit_skills": [
+      "Esporos Alucinógenos",
+      "Nuvem Tóxica",
+      "Teleporte Relâmpago",
+      "Praga"
+    ]
   },
   {
     "nome": "Brutus #2",
@@ -729,7 +1089,13 @@
     "cor_g": 8,
     "cor_b": 66,
     "classe": "Feiticeiro (Caos)",
-    "personalidade": "Equilibrado"
+    "personalidade": "Equilibrado",
+    "kit_skills": [
+      "Parar o Tempo",
+      "Apocalipse",
+      "Troca de Almas",
+      "Instabilidade"
+    ]
   },
   {
     "nome": "Yuki a Lendária",
@@ -741,7 +1107,13 @@
     "cor_g": 75,
     "cor_b": 206,
     "classe": "Ladino (Evasão)",
-    "personalidade": "Psicopata"
+    "personalidade": "Psicopata",
+    "kit_skills": [
+      "Esporos Alucinógenos",
+      "Nuvem Tóxica",
+      "Teleporte Relâmpago",
+      "Bomba Relógio"
+    ]
   },
   {
     "nome": "Silas o Invicto",
@@ -753,7 +1125,13 @@
     "cor_g": 204,
     "cor_b": 125,
     "classe": "Ladino (Evasão)",
-    "personalidade": "Aleatório"
+    "personalidade": "Aleatório",
+    "kit_skills": [
+      "Esporos Alucinógenos",
+      "Nuvem Tóxica",
+      "Teleporte Relâmpago",
+      "Praga"
+    ]
   },
   {
     "nome": "Freya a Implacável",
@@ -765,6 +1143,12 @@
     "cor_g": 58,
     "cor_b": 177,
     "classe": "Duelista (Precisão)",
-    "personalidade": "Berserker"
+    "personalidade": "Berserker",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Reverter"
+    ]
   }
 ]

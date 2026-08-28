@@ -369,12 +369,14 @@ class AreaStructureSkillRegressionTests(unittest.TestCase):
                     run([0.1, 0.1, 0.1], source),
                 )
 
-    def test_celestial_pillars_share_one_impact_identity(self):
+    def test_celestial_pillars_are_distinct_blows(self):
         owner = self._fighter("Caster", x=0.0)
         target = self._fighter("Target", x=0.1)
         area = AreaEffect("Julgamento Celestial", 0.0, 5.0, owner)
         area.delay = 0.0
         area.ativado = True
+        # Geometria controlada é legítima AQUI: o contrato testado é a
+        # identidade de impacto, não o sorteio das posições.
         area.posicoes_pilares = [tuple(target.pos)] * area.pilares
         simulation = self._simulation(owner, target)
         simulation.areas = [area]
@@ -384,11 +386,68 @@ class AreaStructureSkillRegressionTests(unittest.TestCase):
             simulation.update(0.0)
             self.assertEqual(len(simulation.areas), 5)
             sources = {id(child.fonte_impacto) for child in simulation.areas}
-            self.assertEqual(sources, {id(area)})
+            self.assertEqual(len(sources), 5)
+            for child in simulation.areas:
+                self.assertTrue(child.ignorar_invencibilidade)
+                self.assertEqual(child.dano_por_segundo, 0.0)
+                self.assertFalse(child.aviso_visual)
             simulation.update(0.01)
 
         self.assertLess(target.vida, life_before)
-        self.assertEqual(len(target._fontes_impacto_recentes), 1)
+        # Cada pilar registra a própria fonte: cinco golpes distintos.
+        self.assertEqual(len(target._fontes_impacto_recentes), 5)
+
+    def test_celestial_first_pillar_lands_on_the_cast_anchor(self):
+        owner = self._fighter("Caster", x=0.0)
+        target = self._fighter("Target", x=0.1)
+        area = AreaEffect(
+            "Julgamento Celestial", target.pos[0], target.pos[1], owner
+        )
+        area.delay = 0.0
+        area.ativado = True
+        simulation = self._simulation(owner, target)
+        simulation.areas = [area]
+        life_before = target.vida
+
+        # O primeiro pilar cai na âncora do cast (o alvo previsto).
+        self.assertEqual(
+            area.posicoes_pilares[0], (target.pos[0], target.pos[1])
+        )
+        with self._floating_text_patch():
+            simulation.update(0.0)
+            simulation.update(0.01)
+
+        # Alvo parado na âncora É atingido: o "buraco morto" morreu.
+        self.assertLess(target.vida, life_before)
+
+    def test_celestial_pillar_damage_splits_the_cast_budget(self):
+        owner = self._fighter("Caster", x=0.0)
+        target = self._fighter("Target", x=8.0)
+        area = AreaEffect("Julgamento Celestial", 0.0, 5.0, owner)
+        area.delay = 0.0
+        area.ativado = True
+        simulation = self._simulation(owner, target)
+        simulation.areas = [area]
+
+        with self._floating_text_patch():
+            simulation.update(0.0)
+
+        for child in simulation.areas:
+            self.assertAlmostEqual(child.dano, area.dano * 0.5)
+
+    def test_celestial_warning_shows_the_real_pillar_volumes(self):
+        owner = self._fighter("Caster", x=0.0)
+        area = AreaEffect("Julgamento Celestial", 0.0, 5.0, owner)
+
+        self.assertFalse(area.ativado)
+        avisos = area.get_avisos_visuais()
+        # O aviso desenha os pilares reais, não o raio de sorteio.
+        self.assertEqual(len(avisos), area.pilares)
+        self.assertEqual(
+            [(x, y) for x, y, _ in avisos], area.posicoes_pilares
+        )
+        for _, _, raio in avisos:
+            self.assertAlmostEqual(raio, area.raio_pilar)
 
     def test_repulsion_consumes_configured_force_without_changing_damage(self):
         def resolve(force):

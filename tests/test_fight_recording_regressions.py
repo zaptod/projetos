@@ -129,6 +129,40 @@ class GravacaoDeLutaTests(unittest.TestCase):
             "faltou cauda apos o KO")
 
     @unittest.skipIf(GATE_PESADO, "gate pesado; ligue com NF_RECORDING_GATE=1")
+    def test_camera_diretor_e_resolucao_nativa_nao_alteram_a_luta(self) -> None:
+        """Onda 9: o video e gravado em 1080x1920 com a camera DIRETOR e sem
+        o HUD do jogo. Nada disso pode mudar o combate — e o gravador
+        precisa devolver o material da edicao no relogio do video."""
+        import tempfile
+        from pathlib import Path
+
+        referencia = self._gravar(portrait=False, camera=None, nome="ref")
+        with tempfile.TemporaryDirectory() as pasta:
+            destino = Path(pasta) / "diretor.mp4"
+            diretor = gravar_luta(
+                p1=self.p1, p2=self.p2, saida=destino, seed=self.SEED,
+                cenario=self.CENARIO, camera_modo="DIRETOR",
+                resolucao=(1080, 1920), hud=False,
+                preset="ultrafast", crf=30)
+            self.assertTrue(destino.is_file())
+        self.assertEqual(_assinatura(referencia), _assinatura(diretor))
+        self.assertEqual([1080, 1920], diretor["resolucao"])
+        self.assertEqual("DIRETOR", diretor["camera_modo"])
+        self.assertIsNone(diretor["recorte_util"], "camera movel nao tem recorte fixo")
+        self.assertTrue(diretor["serie_hp"])
+        self.assertEqual(diretor["serie_hp"][-1][1], diretor["hp_final"]["p1"])
+        self.assertEqual(diretor["serie_hp"][-1][2], diretor["hp_final"]["p2"])
+        for t, *_ in diretor["serie_hp"]:
+            self.assertLessEqual(t, diretor["duracao_video"] + 0.1)
+        tipos = {e["tipo"] for e in diretor["eventos_narrativos"]}
+        self.assertIn("ko", tipos)
+        self.assertIn("primeiro_sangue", tipos)
+        metricas = diretor["metricas_video"]
+        self.assertGreaterEqual(metricas["pct_frames_visiveis"], 0.98)
+        self.assertGreaterEqual(metricas["tamanho_lutador_p50"], 0.10)
+        self.assertLessEqual(metricas["pan_p90_larguras_s"], 0.6)
+
+    @unittest.skipIf(GATE_PESADO, "gate pesado; ligue com NF_RECORDING_GATE=1")
     def test_eventos_de_dano_tem_tempo_de_video(self) -> None:
         """Os timestamps servem para cortar o mp4: precisam caber nele."""
         gravado = self._gravar(portrait=False, camera=None, nome="eventos")

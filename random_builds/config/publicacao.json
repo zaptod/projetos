@@ -1,0 +1,32 @@
+{
+    "_comment": "Textos e destinos da publicação. Editável sem tocar em código: o painel e a CLI (`main.py publicar`) leem daqui. {campos} entre chaves são preenchidos por src/publicar/catalogo.py — o que não existir naquele vídeo some da frase, então dá para escrever títulos ricos sem quebrar quando um dado falta.",
+    "pasta_export": "outputs/_publicar",
+    "_comment_export": "Para onde 'Exportar' copia o mp4 com nome legível, junto de um .txt com título/descrição/hashtags prontos para colar. Caminho relativo à raiz do random_builds, ou absoluto (ex.: 'C:/Users/adrian/Desktop/publicar').",
+    "titulos": {
+        "build": "{personagem}, {classe} — build {nota}/100 {veredito}",
+        "estreia": "{personagem} estreia contra {adversario} — {desfecho}",
+        "torneio": "Torneio de {participantes} — campeão: {campeao}"
+    },
+    "descricoes": {
+        "build": "Personagem {sorteio}: {classe}, {arma}.\nForça {forca} · Mana {mana} · {altura} m\nCompatibilidade {compatibilidade}/100 — nota final {nota}/100 ({veredito}).\n\n{escolhas}\nSorteado por roleta e simulado no motor do Neural Fights.",
+        "estreia": "A estreia de {personagem} ({classe}) na arena, contra {adversario}.\nMelhor de {melhor_de} — {desfecho}.\n\nLutas simuladas no motor do Neural Fights: sem roteiro, sem script.",
+        "torneio": "Torneio com {participantes} lutadores gerados por roleta.\nCampeão: {campeao}.\n\nTodas as lutas simuladas no motor do Neural Fights."
+    },
+    "hashtags": {
+        "build": ["#shorts", "#rpg", "#gamedev", "#aleatorio", "#build"],
+        "estreia": ["#shorts", "#rpg", "#gamedev", "#luta", "#ia"],
+        "torneio": ["#shorts", "#rpg", "#gamedev", "#torneio", "#ia"]
+    },
+    "youtube": {
+        "visibilidade": "private",
+        "_comment_visibilidade": "private | unlisted | public. O padrão é PRIVADO de propósito: o vídeo sobe pronto e quem decide torná-lo público é você, no YouTube Studio. Mudar aqui muda o padrão do painel.",
+        "categoria": "20",
+        "_comment_categoria": "20 = Gaming (lista oficial da YouTube Data API).",
+        "para_criancas": false
+    },
+    "tiktok": {
+        "postar_automatico": false,
+        "_comment_postar": "false = o painel sobe o arquivo, escreve a legenda e PARA com a janela aberta para você conferir e clicar em Publicar. true = clica sozinho (o TikTok não tem API aberta de post; isso é automação de navegador na SUA conta e pode quebrar quando o site mudar).",
+        "url_upload": "https://www.tiktok.com/tiktokstudio/upload"
+    }
+}

@@ -118,7 +118,8 @@ class RitmoDeLutaTests(unittest.TestCase):
             sim.close()
 
     def test_verbo_ofensivo_nao_prensa_a_curta_distancia(self):
-        """Onda 8G: MATAR colado no alvo quase não empurra o corpo."""
+        """Onda 8G/10A: MATAR colado no alvo quase não EMPURRA o corpo
+        (componente radial), mas o corpo não congela — orbita (lateral)."""
         p1, p2 = _par()
         brain = SimpleNamespace(
             acao_atual="MATAR", tracos=[], medo=0.0,
@@ -126,14 +127,16 @@ class RitmoDeLutaTests(unittest.TestCase):
         )
         p1.brain = brain
         p1.alcance_ideal = 2.0
-        p1.angulo_olhar = 0.0
+        p1.angulo_olhar = 0.0   # olha para +x: radial = vel[0], lateral = vel[1]
 
         p1.executar_movimento(1 / 60, distancia=0.5)   # colado
-        vel_colado = math.hypot(p1.vel[0], p1.vel[1])
+        radial_colado = p1.vel[0]
+        lateral_colado = abs(p1.vel[1])
         p1.vel = [0.0, 0.0]
         p1.executar_movimento(1 / 60, distancia=3.0)   # aproximando
-        vel_longe = math.hypot(p1.vel[0], p1.vel[1])
-        self.assertLess(vel_colado, vel_longe * 0.5)
+        radial_longe = p1.vel[0]
+        self.assertLess(radial_colado, radial_longe * 0.3)
+        self.assertGreater(lateral_colado, 0.0)
 
 
 if __name__ == "__main__":

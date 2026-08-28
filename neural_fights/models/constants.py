@@ -127,7 +127,9 @@ TIPOS_ARMA = {
         "mod_dano": 0.7,
         "mod_velocidade": 1.5,
         "alcance_base": 1.0,
-        "cadencia_base_s": 1.2,
+        # Onda 10B: adagas atacam mais rapido que a espada pesada (era 1.2, igual
+        # a Reta) — a identidade "entra e sai" vem da cadencia + dash barato.
+        "cadencia_base_s": 0.85,
         "hits_por_ataque": 2,
     },
     "Corrente": {
@@ -410,6 +412,185 @@ LISTA_CLASSES = [
     "Monge (Chi)",
 ]
 
+# Onda 10D: todo kit de classe segue a ordem KIT_PAPEIS — 1 CONTROLE (status/
+# CC), 1 ZONA/TERRENO (campo, estrutura, invocacao), 1 MOBILIDADE (dash/buff de
+# velocidade), 1 PICO (burst/finisher/sustain). Os kits antigos deixavam 70 das
+# 108 skills fora do jogo (TRAP/CHANNEL/TRANSFORM/portal/cadeia nunca equipadas).
+KIT_PAPEIS = ("CONTROLE", "ZONA", "MOBILIDADE", "PICO")
+
+# Onda 11C: cada papel virou um POOL por classe — o personagem sorteia 1 opção
+# por papel NA CRIAÇÃO e persiste ``kit_skills`` no registro (dois lutadores da
+# mesma classe deixam de ser idênticos). A PRIMEIRA opção de cada papel é a
+# skill do kit fixo da Onda 10 (``skills_afinidade``), o default de
+# compatibilidade para registros antigos. Toda opção respeita a regra do papel
+# (CONTROLE = efeito de CC/taunt/chain; ZONA = AREA/TRAP/SUMMON; MOBILIDADE =
+# DASH/velocidade/voo; PICO = livre) — o contrato vive em
+# tests/test_catalog_reachability.py.
+KIT_POOLS = {
+    "Guerreiro (Força Bruta)": {
+        "CONTROLE": ["Impacto Sônico", "Mjolnir"],
+        "ZONA": ["Terremoto", "Sacrifício"],
+        "MOBILIDADE": ["Avanço Brutal"],
+        "PICO": ["Golpe do Executor", "Determinação"],
+    },
+    "Berserker (Fúria)": {
+        "CONTROLE": ["Impacto Sônico", "Mjolnir"],
+        "ZONA": ["Explosão Nova", "Sacrifício", "Ritual Carmesim"],
+        "MOBILIDADE": ["Avanço Brutal"],
+        "PICO": [
+            "Grito de Guerra", "Pacto de Sangue", "Estilhaço Vermelho",
+            "Forma Sanguinária",
+        ],
+    },
+    "Gladiador (Combate)": {
+        "CONTROLE": ["Repulsão", "Impacto Sônico"],
+        "ZONA": ["Fúria Giratória", "Terremoto"],
+        "MOBILIDADE": ["Velocidade Arcana", "Avanço Brutal"],
+        "PICO": ["Golpe do Executor", "Determinação"],
+    },
+    "Cavaleiro (Defesa)": {
+        "CONTROLE": ["Provocar", "Impacto Sônico"],
+        "ZONA": ["Terremoto", "Sacrifício"],
+        "MOBILIDADE": ["Avanço Brutal"],
+        "PICO": ["Reflexo Espelhado", "Barreira Divina", "Determinação"],
+    },
+    "Assassino (Crítico)": {
+        "CONTROLE": ["Medo Profundo", "Fenda do Vazio"],
+        "ZONA": ["Tentáculos do Vazio", "Colheita de Almas", "Cópia Sombria"],
+        "MOBILIDADE": ["Portal Sombrio", "Passo do Vazio"],
+        "PICO": ["Execução", "Esfera Sombria", "Maldição", "Lança do Vazio"],
+    },
+    "Ladino (Evasão)": {
+        "CONTROLE": ["Esporos Alucinógenos"],
+        "ZONA": ["Nuvem Tóxica"],
+        "MOBILIDADE": ["Teleporte Relâmpago"],
+        "PICO": [
+            "Lâmina de Sangue", "Dardo Venenoso", "Espinhos", "Praga",
+            "Bomba Relógio",
+        ],
+    },
+    "Ninja (Velocidade)": {
+        "CONTROLE": ["Corrente em Cadeia", "Relâmpago"],
+        "ZONA": ["Campo Elétrico", "Tempestade", "Julgamento de Thor"],
+        "MOBILIDADE": ["Teleporte Relâmpago"],
+        "PICO": [
+            "Forma Relâmpago", "Corrente Elétrica", "Sobrecarga",
+            "Fúria do Trovão",
+        ],
+    },
+    "Duelista (Precisão)": {
+        "CONTROLE": ["Idade Acelerada"],
+        "ZONA": ["Slow Motion"],
+        "MOBILIDADE": ["Velocidade Arcana"],
+        "PICO": ["Golpe do Executor", "Eco Temporal", "Previsão", "Reverter"],
+    },
+    "Mago (Arcano)": {
+        "CONTROLE": ["Explosão Arcana"],
+        "ZONA": ["Buraco Negro"],
+        "MOBILIDADE": ["Portal Arcano"],
+        "PICO": [
+            "Desintegrar", "Mísseis Arcanos", "Escudo Arcano",
+            "Amplificar Magia", "Contrafeitiço",
+        ],
+    },
+    "Piromante (Fogo)": {
+        "CONTROLE": ["Pilar de Fogo"],
+        "ZONA": ["Inferno", "Muro Ardente"],
+        "MOBILIDADE": ["Avanço Brutal"],
+        "PICO": [
+            "Fênix", "Combustão Espontânea", "Meteoro", "Bola de Fogo",
+            "Lança de Fogo",
+        ],
+    },
+    "Criomante (Gelo)": {
+        "CONTROLE": ["Zero Absoluto", "Prisão de Gelo"],
+        "ZONA": ["Muralha de Gelo", "Nevasca"],
+        "MOBILIDADE": ["Velocidade Arcana"],
+        "PICO": [
+            "Shatter", "Morte Glacial", "Lança de Gelo", "Cone de Gelo",
+            "Avatar de Gelo",
+        ],
+    },
+    "Necromante (Trevas)": {
+        "CONTROLE": ["Possessão"],
+        "ZONA": ["Invocação: Espírito", "Explosão Necrótica", "Colheita de Almas"],
+        "MOBILIDADE": ["Portal Sombrio"],
+        "PICO": [
+            "Necrose", "Esfera Sombria", "Maldição", "Último Suspiro",
+            "Transfusão",
+        ],
+    },
+    "Paladino (Sagrado)": {
+        "CONTROLE": ["Raio Sagrado"],
+        "ZONA": ["Julgamento Celestial"],
+        "MOBILIDADE": ["Avanço Brutal"],
+        "PICO": [
+            "Smite", "Cura Maior", "Barreira Divina", "Anjo Guardião",
+            "Ressurreição",
+        ],
+    },
+    "Druida (Natureza)": {
+        "CONTROLE": ["Raízes"],
+        "ZONA": ["Ira da Floresta", "Barreira de Espinhos"],
+        "MOBILIDADE": ["Levitar"],
+        "PICO": [
+            "Wrath of Nature", "Regeneração", "Dardo Venenoso", "Praga",
+            "Espinhos",
+        ],
+    },
+    "Feiticeiro (Caos)": {
+        "CONTROLE": ["Parar o Tempo"],
+        "ZONA": ["Explosão do Caos", "Apocalipse"],
+        "MOBILIDADE": ["Troca de Almas"],
+        "PICO": [
+            "Roleta Russa", "Chama Caótica", "Instabilidade", "Mutação",
+            "Eco Temporal",
+        ],
+    },
+    "Monge (Chi)": {
+        "CONTROLE": ["Pulso Gravitacional", "Colapso"],
+        "ZONA": ["Campo de Gravidade"],
+        "MOBILIDADE": ["Acelerar"],
+        "PICO": ["Fotossíntese", "Link de Vida"],
+    },
+}
+
+# Skills do catálogo conscientemente SEM slot de kit nesta onda (nenhum pool
+# as sorteia; seguem cobertas pela checagem 1-a-1 e disponíveis para armas).
+# Candidatas naturais aos pools de ondas futuras.
+SKILLS_FORA_DE_ROTACAO = frozenset({
+    "Benção",            # Cura Maior ocupa o slot de sustain do Paladino
+    "Chamas do Dragão",  # canal de fogo; Piromante já tem 5 picos
+    "Conjuração Perfeita",
+    "Cura Menor",        # substituída pela Cura Maior
+    "Disparo de Mana",
+    "Escudo de Brasas",
+    "Estilhaço de Gelo",  # Cone de Gelo cobre o nicho no pool do Criomante
+    "Purificar",
+    "Roubar Magia",
+})
+
+
+def sortear_kit(classe, rng=None):
+    """Sorteia 1 skill por papel do ``KIT_POOLS`` da classe (Onda 11C).
+
+    Usado na CRIAÇÃO do personagem (gerador, UI, roleta) — nunca por luta:
+    o kit sorteado persiste em ``kit_skills`` no registro para que ficha,
+    vídeo e harness vejam o mesmo lutador.
+    """
+    import random as _random
+
+    sorteador = rng if rng is not None else _random
+    pools = KIT_POOLS.get(classe)
+    if not pools:
+        dados = CLASSES_DATA.get(classe, {})
+        return list(dados.get("skills_afinidade", []))
+    return [sorteador.choice(pools[papel]) for papel in KIT_PAPEIS]
+
+# Onda 10B: velocidade_base_ms (m/s), mod_cadencia (multiplica o cooldown do
+# golpe basico; 1,0 = neutro) e vel_giro (velocidade de giro do olhar, 1/s)
+# sao a identidade de movimento de cada classe. mod_velocidade fica so como
+# rotulo legado da UI (view_chars) — o runtime nao o le mais.
 CLASSES_DATA = {
     # === FÍSICOS ===
     "Guerreiro (Força Bruta)": {
@@ -419,8 +600,11 @@ CLASSES_DATA = {
         "mod_mana": 0.6,
         "mod_vida": 1.8,
         "mod_velocidade": 1.0,
+        "velocidade_base_ms": 7.0,
+        "mod_cadencia": 1.0,
+        "vel_giro": 10.0,
         "regen_mana": 2.0,
-        "skills_afinidade": ["Impacto Sônico", "Avanço Brutal", "Fúria Giratória", "Golpe do Executor"],
+        "skills_afinidade": ["Impacto Sônico", "Terremoto", "Avanço Brutal", "Golpe do Executor"],
         "cor_aura": (200, 150, 100),
     },
     "Berserker (Fúria)": {
@@ -430,8 +614,11 @@ CLASSES_DATA = {
         "mod_mana": 0.4,
         "mod_vida": 2.0,
         "mod_velocidade": 1.1,
+        "velocidade_base_ms": 7.5,
+        "mod_cadencia": 0.95,
+        "vel_giro": 12.0,
         "regen_mana": 1.5,
-        "skills_afinidade": ["Avanço Brutal", "Fúria Giratória", "Explosão Nova", "Golpe do Executor"],
+        "skills_afinidade": ["Impacto Sônico", "Explosão Nova", "Avanço Brutal", "Grito de Guerra"],
         "cor_aura": (255, 50, 50),
     },
     "Gladiador (Combate)": {
@@ -441,8 +628,11 @@ CLASSES_DATA = {
         "mod_mana": 0.7,
         "mod_vida": 1.9,
         "mod_velocidade": 1.05,
+        "velocidade_base_ms": 7.5,
+        "mod_cadencia": 1.0,
+        "vel_giro": 12.0,
         "regen_mana": 2.5,
-        "skills_afinidade": ["Impacto Sônico", "Reflexo Espelhado", "Fúria Giratória", "Velocidade Arcana"],
+        "skills_afinidade": ["Repulsão", "Fúria Giratória", "Velocidade Arcana", "Golpe do Executor"],
         "cor_aura": (180, 130, 80),
     },
     "Cavaleiro (Defesa)": {
@@ -452,8 +642,11 @@ CLASSES_DATA = {
         "mod_mana": 0.8,
         "mod_vida": 1.65,
         "mod_velocidade": 0.85,
+        "velocidade_base_ms": 5.0,
+        "mod_cadencia": 1.2,
+        "vel_giro": 8.0,
         "regen_mana": 3.0,
-        "skills_afinidade": ["Escudo Arcano", "Reflexo Espelhado", "Fúria Giratória", "Cura Menor"],
+        "skills_afinidade": ["Provocar", "Terremoto", "Avanço Brutal", "Reflexo Espelhado"],
         "cor_aura": (150, 150, 200),
     },
     # === ÁGEIS ===
@@ -464,8 +657,11 @@ CLASSES_DATA = {
         "mod_mana": 0.8,
         "mod_vida": 1.4,
         "mod_velocidade": 1.3,
+        "velocidade_base_ms": 10.0,
+        "mod_cadencia": 0.75,
+        "vel_giro": 20.0,
         "regen_mana": 3.0,
-        "skills_afinidade": ["Lâmina de Sangue", "Teleporte Relâmpago", "Avanço Brutal", "Execução"],
+        "skills_afinidade": ["Medo Profundo", "Tentáculos do Vazio", "Portal Sombrio", "Execução"],
         "cor_aura": (100, 0, 100),
     },
     "Ladino (Evasão)": {
@@ -475,8 +671,11 @@ CLASSES_DATA = {
         "mod_mana": 0.9,
         "mod_vida": 1.5,
         "mod_velocidade": 1.25,
+        "velocidade_base_ms": 9.5,
+        "mod_cadencia": 0.9,
+        "vel_giro": 18.0,
         "regen_mana": 3.5,
-        "skills_afinidade": ["Dardo Venenoso", "Teleporte Relâmpago", "Velocidade Arcana", "Espinhos"],
+        "skills_afinidade": ["Esporos Alucinógenos", "Nuvem Tóxica", "Teleporte Relâmpago", "Lâmina de Sangue"],
         "cor_aura": (80, 80, 80),
     },
     "Ninja (Velocidade)": {
@@ -486,8 +685,11 @@ CLASSES_DATA = {
         "mod_mana": 0.9,
         "mod_vida": 1.3,
         "mod_velocidade": 1.4,
+        "velocidade_base_ms": 11.0,
+        "mod_cadencia": 0.7,
+        "vel_giro": 20.0,
         "regen_mana": 4.0,
-        "skills_afinidade": ["Teleporte Relâmpago", "Corrente Elétrica", "Espinhos", "Avanço Brutal"],
+        "skills_afinidade": ["Corrente em Cadeia", "Campo Elétrico", "Teleporte Relâmpago", "Forma Relâmpago"],
         "cor_aura": (50, 50, 50),
     },
     "Duelista (Precisão)": {
@@ -497,8 +699,11 @@ CLASSES_DATA = {
         "mod_mana": 0.85,
         "mod_vida": 1.6,
         "mod_velocidade": 1.15,
+        "velocidade_base_ms": 8.0,
+        "mod_cadencia": 0.9,
+        "vel_giro": 14.0,
         "regen_mana": 3.0,
-        "skills_afinidade": ["Lança de Gelo", "Relâmpago", "Impacto Sônico", "Golpe do Executor"],
+        "skills_afinidade": ["Idade Acelerada", "Slow Motion", "Velocidade Arcana", "Golpe do Executor"],
         "cor_aura": (255, 215, 0),
     },
     # === MÁGICOS ===
@@ -509,8 +714,11 @@ CLASSES_DATA = {
         "mod_mana": 1.5,
         "mod_vida": 1.3,
         "mod_velocidade": 0.9,
+        "velocidade_base_ms": 6.0,
+        "mod_cadencia": 1.0,
+        "vel_giro": 10.0,
         "regen_mana": 8.0,
-        "skills_afinidade": ["Disparo de Mana", "Bola de Fogo", "Relâmpago", "Escudo Arcano"],
+        "skills_afinidade": ["Explosão Arcana", "Buraco Negro", "Portal Arcano", "Desintegrar"],
         "cor_aura": (100, 150, 255),
     },
     "Piromante (Fogo)": {
@@ -520,8 +728,11 @@ CLASSES_DATA = {
         "mod_mana": 1.4,
         "mod_vida": 1.6,
         "mod_velocidade": 0.95,
+        "velocidade_base_ms": 6.5,
+        "mod_cadencia": 1.0,
+        "vel_giro": 10.0,
         "regen_mana": 6.0,
-        "skills_afinidade": ["Bola de Fogo", "Meteoro", "Lança de Fogo", "Explosão Nova"],
+        "skills_afinidade": ["Pilar de Fogo", "Inferno", "Avanço Brutal", "Fênix"],
         "cor_aura": (255, 100, 0),
     },
     "Criomante (Gelo)": {
@@ -531,8 +742,11 @@ CLASSES_DATA = {
         "mod_mana": 1.35,
         "mod_vida": 1.4,
         "mod_velocidade": 0.9,
+        "velocidade_base_ms": 6.0,
+        "mod_cadencia": 1.05,
+        "vel_giro": 10.0,
         "regen_mana": 6.5,
-        "skills_afinidade": ["Estilhaço de Gelo", "Lança de Gelo", "Nevasca", "Prisão de Gelo"],
+        "skills_afinidade": ["Zero Absoluto", "Muralha de Gelo", "Velocidade Arcana", "Shatter"],
         "cor_aura": (150, 220, 255),
     },
     "Necromante (Trevas)": {
@@ -542,8 +756,11 @@ CLASSES_DATA = {
         "mod_mana": 1.4,
         "mod_vida": 1.5,
         "mod_velocidade": 0.85,
+        "velocidade_base_ms": 5.5,
+        "mod_cadencia": 1.05,
+        "vel_giro": 10.0,
         "regen_mana": 5.0,
-        "skills_afinidade": ["Esfera Sombria", "Lâmina de Sangue", "Maldição", "Explosão Necrótica"],
+        "skills_afinidade": ["Possessão", "Invocação: Espírito", "Portal Sombrio", "Necrose"],
         "cor_aura": (80, 0, 120),
     },
     # === HÍBRIDOS ===
@@ -554,8 +771,11 @@ CLASSES_DATA = {
         "mod_mana": 1.0,
         "mod_vida": 1.65,
         "mod_velocidade": 0.95,
+        "velocidade_base_ms": 6.0,
+        "mod_cadencia": 1.0,
+        "vel_giro": 10.0,
         "regen_mana": 4.0,
-        "skills_afinidade": ["Cura Menor", "Escudo Arcano", "Avanço Brutal", "Relâmpago"],
+        "skills_afinidade": ["Raio Sagrado", "Julgamento Celestial", "Avanço Brutal", "Smite"],
         "cor_aura": (255, 215, 100),
     },
     "Druida (Natureza)": {
@@ -565,8 +785,11 @@ CLASSES_DATA = {
         "mod_mana": 1.2,
         "mod_vida": 1.45,
         "mod_velocidade": 1.0,
+        "velocidade_base_ms": 6.5,
+        "mod_cadencia": 1.0,
+        "vel_giro": 10.0,
         "regen_mana": 4.5,
-        "skills_afinidade": ["Dardo Venenoso", "Nuvem Tóxica", "Espinhos", "Raízes"],
+        "skills_afinidade": ["Raízes", "Ira da Floresta", "Levitar", "Wrath of Nature"],
         "cor_aura": (100, 200, 50),
     },
     "Feiticeiro (Caos)": {
@@ -576,8 +799,11 @@ CLASSES_DATA = {
         "mod_mana": 1.6,
         "mod_vida": 1.6,
         "mod_velocidade": 0.95,
+        "velocidade_base_ms": 6.5,
+        "mod_cadencia": 1.0,
+        "vel_giro": 10.0,
         "regen_mana": 7.0,
-        "skills_afinidade": ["Bola de Fogo", "Tempestade", "Maldição", "Invocação: Espírito"],
+        "skills_afinidade": ["Parar o Tempo", "Explosão do Caos", "Troca de Almas", "Roleta Russa"],
         "cor_aura": (200, 50, 200),
     },
     "Monge (Chi)": {
@@ -587,8 +813,11 @@ CLASSES_DATA = {
         "mod_mana": 1.1,
         "mod_vida": 1.75,
         "mod_velocidade": 1.2,
+        "velocidade_base_ms": 9.5,
+        "mod_cadencia": 0.8,
+        "vel_giro": 16.0,
         "regen_mana": 6.0,
-        "skills_afinidade": ["Velocidade Arcana", "Teleporte Relâmpago", "Cura Menor", "Fúria Giratória"],
+        "skills_afinidade": ["Pulso Gravitacional", "Campo de Gravidade", "Acelerar", "Fotossíntese"],
         "cor_aura": (255, 255, 200),
     },
 }

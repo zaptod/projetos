@@ -19,9 +19,11 @@ metodos por dentro, nao os nomes.
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config as iconfig
+from . import proveniencia
 from . import picasso_selectors as selectors
 from .browser import esperar_hidratacao, pausa_humana
 from .client import BrowserMorreu, EsperaEstourou, GeracaoFalhou
@@ -44,6 +46,10 @@ class PicassoClient:
         # sempre a mesma. O atributo existe porque o worker o consulta.
         self.url_do_espaco: str | None = None
         self.presets_aplicados: dict = {}
+        # O texto que ENTROU no campo e quando: e contra isso que o historico
+        # e conferido na prova de origem (o aprimorador pode reescrever).
+        self.prompt_enviado: str | None = None
+        self.enviado_em: datetime | None = None
         self._ao_descobrir_espaco = ao_descobrir_espaco
 
     # -------------------------------------------------------------- creditos
@@ -70,10 +76,24 @@ class PicassoClient:
         """Volta para o criador. Retomada aqui e so recarregar a pagina."""
         alvo = url or selectors.URL_CRIACAO
         self.url_do_espaco = alvo
+        # Page/contexto morto tem que virar BrowserMorreu AQUI: deixado para
+        # o goto, o erro generico do Playwright ("Target ... has been
+        # closed") caia no handler comum do worker e QUEIMAVA as tentativas
+        # de todos os jobs seguintes contra uma aba defunta (26/08/2026:
+        # 00044 e 00055 esgotaram assim em segundos). BrowserMorreu encerra
+        # a passada e a proxima abre um Chrome limpo sem contar falha.
+        self._checar_vivo()
         if self.page.url != alvo:
-            self.page.goto(alvo, wait_until="domcontentloaded",
-                           timeout=int(float(
-                               self.ajustes.get("navigation_timeout", 60)) * 1000))
+            try:
+                self.page.goto(alvo, wait_until="domcontentloaded",
+                               timeout=int(float(
+                                   self.ajustes.get("navigation_timeout", 60)) * 1000))
+            except Exception as exc:
+                if "closed" in str(exc).lower():
+                    raise BrowserMorreu(
+                        "a aba/contexto do Chrome morreu ao navegar: "
+                        f"{str(exc)[:120]}")
+                raise
             esperar_hidratacao(self.page,
                                float(self.ajustes.get("hydration_timeout", 45)))
             pausa_humana(self.rng, 1.0, 2.0)
@@ -220,6 +240,8 @@ class PicassoClient:
             if not self._resolver_dialogo_de_auth():
                 raise
             botao.click()
+        self.prompt_enviado = prompt
+        self.enviado_em = datetime.now(timezone.utc)
         self.url_do_espaco = self.page.url
         print(f"[picasso] prompt enviado ({len(prompt)} chars), "
               f"{len(antes)} imagem(ns) ja na tela")
@@ -417,6 +439,120 @@ class PicassoClient:
 
         raise EsperaEstourou(
             f"a imagem nao ficou pronta em {timeout:.0f}s.")
+
+    # ----------------------------------------------------------------- origem
+    def comprovar_origem(self, alvo, prompt: str, enviado_em=None) -> dict:
+        """Prova FORTE: o card do Historico que traz o NOSSO prompt.
+
+        `alvo` e o que `wait_for_render` devolveu - a primeira imagem nova em
+        retrato. Numa conta compartilhada isso nao basta: em generation_00044
+        essa "nova" era a foto de outra pessoa, que entrou no historico 0,1 s
+        depois do clique. O Historico (`?tab=history`) mostra cada geracao da
+        conta com o prompt inteiro e a data; o card com o prompt que enviamos
+        e o nosso, e a imagem DELE e a que vale - se for outra que nao `alvo`,
+        `alvo` e descartado. Se o card existe mas ainda esta sem imagem, e a
+        nossa geracao que nao terminou: espera-se por ela, nao pela primeira
+        que aparecer.
+
+        Devolve sempre um dict (ver proveniencia.py); falta de prova nao
+        levanta. Levanta SeletorNaoEncontrado se o painel do historico sumiu:
+        isso e deploy do site, e a passada tem que parar e avisar.
+        """
+        ajustes = proveniencia.ajustes(self.ajustes)
+        limite = int(ajustes["cards_inspecionados"])
+        tolerancia = float(ajustes["tolerancia_data_min"])
+        intervalo = max(2.0, float(self.ajustes.get("poll_interval", 3)))
+        url = selectors.url_historico(self.url_do_espaco or self.page.url)
+        # O historico abre numa ABA PROPRIA e a pagina do EDITOR fica parada
+        # onde esta: navegar a aba do editor ~2 s depois do clique MATAVA a
+        # geracao em voo (o anexo e um blob daquela pagina), o card nunca
+        # nascia e a prova esperava 240 s por nada — visto em 26/08/2026: a
+        # mesma cena, observada sem navegar, gerou e cardou em ~105 s.
+        try:
+            aba = self.ctx.new_page()
+        except Exception as exc:
+            if "closed" in str(exc).lower():
+                raise BrowserMorreu(
+                    f"o contexto do Chrome morreu ao abrir a aba do "
+                    f"historico: {str(exc)[:120]}")
+            raise
+        try:
+            aba.goto(url, wait_until="domcontentloaded",
+                     timeout=int(float(
+                         self.ajustes.get("navigation_timeout", 60)) * 1000))
+            esperar_hidratacao(aba,
+                               float(self.ajustes.get("hydration_timeout", 45)))
+            selectors.resolver(aba, selectors.PAINEL_HISTORICO,
+                               "o painel do historico (?tab=history)")
+            return self._vigiar_historico(aba, ajustes, limite, tolerancia,
+                                          intervalo, alvo, prompt, enviado_em)
+        finally:
+            try:
+                aba.close()
+            except Exception:
+                pass
+
+    def _vigiar_historico(self, aba, ajustes, limite, tolerancia, intervalo,
+                          alvo, prompt, enviado_em) -> dict:
+        """O loop da prova, rodando numa aba dedicada ao historico."""
+
+        # Os cards do Editor Pro nao mostram DATA (conferido no DOM em
+        # 26/08/2026), e o prompt da juncao e o MESMO entre tentativas da
+        # mesma build — sem esta guarda, o card de ONTEM da propria build
+        # (inclusive um ja quarentenado) casaria de novo e a prova baixaria
+        # a imagem velha. Imagem ja reivindicada (origens.jsonl, por QUALQUER
+        # build) nunca prova de novo: a tentativa atual exige imagem nova.
+        vetadas = set(proveniencia.reivindicadas())
+
+        def _cards_sem_vetadas():
+            brutos = selectors.cards_do_historico(aba, limite)
+            return [dict(card_bruto,
+                         imagens=[u for u in card_bruto["imagens"]
+                                  if u not in vetadas])
+                    for card_bruto in brutos]
+
+        fim = time.monotonic() + float(ajustes["espera_historico_s"])
+        motivo = "o historico nao carregou"
+        avisou = time.monotonic()
+        while True:
+            self._checar_vivo()
+            if aba.is_closed():
+                raise BrowserMorreu("a aba do historico foi fechada.")
+            cards = _cards_sem_vetadas()
+            escolha = proveniencia.escolher_card(cards, prompt, enviado_em,
+                                                 tolerancia)
+            card = escolha["card"]
+            if card is not None and not card["imagens"]:
+                # Imagem lazy: so ganha URL quando o card entra na tela.
+                selectors.cards_do_historico(aba, limite,
+                                             revelar=card["indice"])
+                time.sleep(1.0)
+                cards = _cards_sem_vetadas()
+                escolha = proveniencia.escolher_card(cards, prompt, enviado_em,
+                                                     tolerancia)
+                card = escolha["card"]
+            if card is not None and card["imagens"]:
+                prova = proveniencia.prova_forte(
+                    selectors.PROVEDOR, card, card["imagens"][0], alvo,
+                    prompt, enviado_em)
+                if prova["candidato_descartado"]:
+                    print("[picasso] a imagem que apareceu primeiro NAO e a do "
+                          "nosso prompt; vale a do card do historico.")
+                else:
+                    print(f"[picasso] origem comprovada: o card "
+                          f"{card['indice'] + 1} do historico traz o prompt.")
+                return prova
+            motivo = (escolha["motivo"] if card is None
+                      else "o card com o nosso prompt ainda esta sem imagem")
+            if time.monotonic() >= fim:
+                break
+            if time.monotonic() - avisou >= 20:
+                avisou = time.monotonic()
+                print(f"[picasso] esperando o historico confirmar a origem... "
+                      f"({motivo})", flush=True)
+            time.sleep(intervalo)
+        return proveniencia.sem_prova(selectors.PROVEDOR, motivo, alvo, prompt,
+                                      enviado_em)
 
     # --------------------------------------------------------------- download
     def download(self, alvo: str, dest: Path) -> Path:

@@ -124,6 +124,9 @@ class FonteDeDados:
                 overrides.get(nome, bruto.get("personalidade", "Aleatório")),
             )
             personagem.arma_obj = arma
+            # Onda 11C: kit sorteado viaja com o registro (fixtures antigas
+            # sem o campo caem no kit fixo da classe).
+            personagem.kit_skills = bruto.get("kit_skills")
             return personagem
 
         return resolver
@@ -357,6 +360,34 @@ def _razao_duracao_matriz(lutas) -> float | None:
     return max(medianas) / min(medianas)
 
 
+def _velocidade_por_classe(ok: list[dict[str, Any]]) -> dict[str, float]:
+    """Onda 10B: velocidade media real (m/s) por classe, somando os dois slots."""
+    soma: dict[str, float] = {}
+    n: dict[str, int] = {}
+    for luta in ok:
+        for slot in ("p1", "p2"):
+            classe = luta.get(f"classe_{slot}")
+            vel = luta.get(f"velocidade_media_ms_{slot}")
+            if not classe or vel is None:
+                continue
+            # O harness grava o nome completo ("Ninja (Velocidade)"); a
+            # chave e a classe curta.
+            classe = str(classe).split(" (")[0]
+            soma[classe] = soma.get(classe, 0.0) + float(vel)
+            n[classe] = n.get(classe, 0) + 1
+    return {c: soma[c] / n[c] for c in sorted(soma)}
+
+
+def _razao_ninja_cavaleiro(ok: list[dict[str, Any]]) -> float | None:
+    """Onda 10B (alvo M3): o Ninja tipico anda quanto mais que o Cavaleiro tipico?"""
+    por_classe = _velocidade_por_classe(ok)
+    ninja = por_classe.get("Ninja")
+    cavaleiro = por_classe.get("Cavaleiro")
+    if not ninja or not cavaleiro:
+        return None
+    return ninja / cavaleiro
+
+
 def agregar(lutas: list[dict[str, Any]]) -> dict[str, Any]:
     ok = [luta for luta in lutas if luta.get("success")]
     falhas = [luta for luta in lutas if not luta.get("success")]
@@ -513,6 +544,71 @@ def agregar(lutas: list[dict[str, Any]]) -> dict[str, Any]:
         "clinches_por_luta_media": _media(
             [float(luta.get("clinches", 0)) for luta in ok]
         ),
+        # Onda 10A (alvos R2-R4): standoff, agarroes, wall-splats, iniciativas.
+        "pct_tempo_standoff_media": _media(
+            [luta.get("pct_tempo_standoff") for luta in ok
+             if luta.get("pct_tempo_standoff") is not None]
+        ),
+        "pct_tempo_standoff_p90": percentil(
+            [luta["pct_tempo_standoff"] for luta in ok
+             if luta.get("pct_tempo_standoff") is not None], 0.9
+        ),
+        "agarroes_por_luta_p50": percentil(
+            [float(luta.get("agarroes", 0)) for luta in ok], 0.5
+        ),
+        "agarroes_por_luta_media": _media(
+            [float(luta.get("agarroes", 0)) for luta in ok]
+        ),
+        # Onda 11C (alvo S6): o pool saiu do papel? skills DISTINTAS por luta.
+        "skills_distintas_por_luta_p50": percentil(
+            [float(luta.get("skills_distintas", 0)) for luta in ok], 0.5
+        ),
+        "skills_distintas_por_luta_media": _media(
+            [float(luta.get("skills_distintas", 0)) for luta in ok]
+        ),
+        "agarroes_desfechos": {
+            chave: sum(int(luta.get("agarrao_" + chave, 0)) for luta in ok)
+            for chave in ("arremesso", "joelhada", "empurrao", "escape", "reversao")
+        },
+        "wall_splats_por_luta_media": _media(
+            [float(luta.get("wall_splats", 0)) for luta in ok]
+        ),
+        "iniciativas_por_luta_media": _media(
+            [float(luta.get("iniciativas", 0)) for luta in ok]
+        ),
+        # Onda 10B (alvos M1-M4): mobilidade real.
+        "dashes_taticos_por_luta_media": _media(
+            [float(luta.get("dashes_taticos", 0)) for luta in ok]
+        ),
+        # Onda 10D (alvos K1-K3): a skill FAZ algo alem de dano.
+        "share_casts_com_consequencia": (
+            (lambda c, t: c / t if t else None)(
+                sum(float(luta.get("casts_com_consequencia", 0)) for luta in ok),
+                sum(float(luta.get("skills_lancadas", 0)) for luta in ok),
+            )
+        ),
+        "status_cc_por_luta_media": _media(
+            [float(luta.get("status_cc_aplicados", 0)) for luta in ok]
+        ),
+        "obstaculos_destruidos_por_luta_media": _media(
+            [float(luta.get("obstaculos_destruidos", 0)) for luta in ok]
+        ),
+        "dashes_ofensivos_share": (
+            (lambda ofe, tot: ofe / tot if tot else None)(
+                sum(float(luta.get("dashes_ofensivos", 0)) for luta in ok),
+                sum(float(luta.get("dashes", 0)) for luta in ok),
+            )
+        ),
+        "velocidade_media_ms_por_classe": _velocidade_por_classe(ok),
+        "razao_velocidade_ninja_cavaleiro": _razao_ninja_cavaleiro(ok),
+        "distancia_percorrida_por_s_media": _media(
+            [(luta.get("distancia_por_s_p1", 0.0) + luta.get("distancia_por_s_p2", 0.0)) / 2.0
+             for luta in ok if luta.get("distancia_por_s_p1") is not None]
+        ),
+        "pct_frames_parado_em_range_media": _media(
+            [luta.get("pct_frames_parado_em_range") for luta in ok
+             if luta.get("pct_frames_parado_em_range") is not None]
+        ),
         # Onda 8E (alvo A5): plano de luta vivo — cobertura de frames e
         # rotatividade de planos por luta (soma p1+p2).
         "pct_frames_com_plano_media": _media(
@@ -521,6 +617,28 @@ def agregar(lutas: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "planos_por_luta_p50": percentil(
             [float(luta.get("planos_luta", 0)) for luta in ok], 0.5
+        ),
+        # Onda 10C (alvos A7-A9): o plano manda e termina por objetivo.
+        "pct_frames_acao_coerente_media": _media(
+            [luta.get("pct_frames_acao_coerente") for luta in ok
+             if luta.get("pct_frames_acao_coerente") is not None]
+        ),
+        "planos_adaptativos_por_luta_media": _media(
+            [float(luta.get("planos_adaptativos", 0)) for luta in ok]
+        ),
+        "planos_concluidos_share": (
+            (lambda fim, tot: fim / tot if tot else None)(
+                sum(float(luta.get("planos_sucesso", 0) + luta.get("planos_falha", 0)) for luta in ok),
+                sum(float(luta.get("planos_sucesso", 0) + luta.get("planos_falha", 0)
+                          + luta.get("planos_expirados", 0) + luta.get("planos_dano", 0)) for luta in ok),
+            )
+        ),
+        "planos_sucesso_share": (
+            (lambda fim, tot: fim / tot if tot else None)(
+                sum(float(luta.get("planos_sucesso", 0)) for luta in ok),
+                sum(float(luta.get("planos_sucesso", 0) + luta.get("planos_falha", 0)
+                          + luta.get("planos_expirados", 0) + luta.get("planos_dano", 0)) for luta in ok),
+            )
         ),
         "acao_mediana_ms_p50": percentil(
             [luta["acao_mediana_ms"] for luta in ok], 0.5
@@ -575,9 +693,13 @@ def agregar(lutas: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def carregar_alvos() -> dict[str, Any]:
+    """Alvos do ledger; chaves `_*` sao notas de programa (listas), nao alvos."""
     dados = json.loads(ARQUIVO_ALVOS.read_text(encoding="utf-8"))
-    dados.pop("_doc", None)
-    return dados
+    return {
+        nome: alvo
+        for nome, alvo in dados.items()
+        if not nome.startswith("_") and isinstance(alvo, dict) and "metrica" in alvo
+    }
 
 
 def avaliar(
@@ -732,6 +854,17 @@ def build_parser() -> SafeArgumentParser:
         help="mede o volume visual (objetos de VFX por frame) e avalia os alvos de limpeza da luta",
     )
     parser.add_argument(
+        "--video",
+        action="store_true",
+        help="mede quanto da luta cabe na tela com a camera DIRETOR em 9:16 (Onda 9, alvos V7)",
+    )
+    parser.add_argument(
+        "--video-lutas",
+        type=int,
+        default=4,
+        help="quantas lutas do corpus smoke entram na medicao de video (padrao 4)",
+    )
+    parser.add_argument(
         "--dump-timeline",
         type=int,
         metavar="SEED",
@@ -800,6 +933,58 @@ def medir_vfx(fonte: FonteDeDados, pares: int = 3, segundos: float = 25.0
     return probe.resumo()
 
 
+ARENAS_DE_VIDEO = ("Arena Pequena", "Ringue", "Dojo", "Cyberpunk")
+
+
+def medir_video(fonte: FonteDeDados, lutas: int = 4,
+                resolucao: tuple[int, int] = (1080, 1920)) -> dict[str, Any]:
+    """Quanto da luta cabe na tela do celular (Onda 9, alvos V7).
+
+    Grava — sem codificar — N lutas do corpus smoke em 9:16 nativo com a
+    camera DIRETOR, nas arenas que os videos usam, e agrega as metricas de
+    camera do gravador (`recording.fight_recorder.SondaCamera`):
+
+    - ``video_pct_frames_visiveis_min``  pior luta: fracao de frames com os
+      dois lutadores no quadro (a camera nunca pode perder alguem);
+    - ``video_tamanho_lutador_p50``      mediana do diametro do lutador como
+      fracao da largura (legibilidade no celular);
+    - ``video_pan_p90_larguras_s``       pior p90 de velocidade de pan, em
+      larguras de tela por segundo ("camera que cansa" vira numero);
+    - ``video_zoom_trocas_por_min``      media de inversoes de zoom por minuto.
+    """
+    from neural_fights.recording.fight_recorder import gravar_luta
+
+    specs = corpus_smoke(fonte)[: max(1, lutas) * 2 : 2]  # um lado de cada espelho
+    visiveis: list[float] = []
+    tamanhos: list[float] = []
+    pans: list[float] = []
+    trocas: list[float] = []
+    for indice, spec in enumerate(specs):
+        resultado = gravar_luta(
+            p1=spec["p1"], p2=spec["p2"], saida=None, seed=spec["seed"],
+            cenario=ARENAS_DE_VIDEO[indice % len(ARENAS_DE_VIDEO)],
+            camera_modo="DIRETOR", resolucao=resolucao, hud=False,
+            roster_provider=fonte.provider(None),
+        )
+        metricas = resultado.get("metricas_video") or {}
+        if metricas.get("pct_frames_visiveis") is not None:
+            visiveis.append(float(metricas["pct_frames_visiveis"]))
+        if metricas.get("tamanho_lutador_p50") is not None:
+            tamanhos.append(float(metricas["tamanho_lutador_p50"]))
+        if metricas.get("pan_p90_larguras_s") is not None:
+            pans.append(float(metricas["pan_p90_larguras_s"]))
+        if metricas.get("zoom_trocas_por_min") is not None:
+            trocas.append(float(metricas["zoom_trocas_por_min"]))
+    return {
+        "video_lutas": len(specs),
+        "video_resolucao": f"{resolucao[0]}x{resolucao[1]}",
+        "video_pct_frames_visiveis_min": min(visiveis) if visiveis else None,
+        "video_tamanho_lutador_p50": percentil(tamanhos, 0.5) if tamanhos else None,
+        "video_pan_p90_larguras_s": max(pans) if pans else None,
+        "video_zoom_trocas_por_min": _media(trocas),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     fonte = FonteDeDados(args.dados)
@@ -820,6 +1005,10 @@ def main(argv: list[str] | None = None) -> int:
         # Passe visual: o corpus roda headless e não gera VFX nenhum.
         vfx = medir_vfx(fonte)
         resumo.update(vfx)
+    if args.video:
+        # Onda 9: o corpus headless nao tem camera; este passe grava (sem
+        # codificar) com a camera DIRETOR e mede o que o espectador ve.
+        resumo.update(medir_video(fonte, lutas=args.video_lutas))
     avaliacoes = avaliar(resumo, carregar_alvos(), args.onda)
     imprimir_relatorio(resumo, avaliacoes)
     safe_print("")

@@ -7,7 +7,7 @@
         "roulette_result_extreme": 2.1,
         "reaction": 1.0,
         "reaction_min": 0.5,
-        "reaction_max": 2.0,
+        "reaction_max": 8.0,
         "stinger": 1.2,
         "nameplate": 1.8,
         "synergy": 1.6,
@@ -23,8 +23,20 @@
         "fight_result_com_clipe": 2.8,
         "gameplay_alvo": 10.0,
         "champion": 4.6,
-        "tournament_stats": 4.0
+        "tournament_stats": 4.0,
+        "fight_card_luta": 2.2,
+        "fight_result_luta": 2.8,
+        "round_result": 2.4,
+        "skill_card": 2.4
     },
+    "_comment_comentario": "O print do comentario que pediu o nome. Opcional: largue a imagem como `comentario.png` (ou .jpg/.jpeg/.webp) DENTRO da pasta da geracao e ela entra logo depois do gancho — `--print-pedido` faz essa copia por voce. Zoom quase parado de proposito: a tela existe para ser lida, e Ken Burns em texto pequeno atrapalha. Sem placa embaixo, que cobriria o proprio comentario; o credito vai na etiqueta do topo.",
+    "comentario": {
+        "duracao": 3.2,
+        "etiqueta": "PEDIDO NOS COMENTARIOS",
+        "motion": {"zoom": [1.0, 1.03], "centro": [[0.5, 0.5], [0.5, 0.5]]}
+    },
+    "_comment_estreia":"A estreia e melhor de 3: um round so decidia a carreira do personagem numa luta que pode virar por um crítico. A serie para em 2 x 0 (o terceiro round nem e gravado), e cada round entra no video com titulo, gameplay e placar. Voltar para 1 devolve o video de luta unica sem mais nada mudar.",
+    "estreia_melhor_de": 3,
     "_comment_clipes": "Janelas dos tres artefatos de recompensa (secoes 4, 6 e 7). Video real toca inteiro ate `max`. `still` e a duracao de uma IMAGEM: ela nao dura o teto porque nada novo acontece depois que a placa sai (~2,6 s), e 5 s parados valem duas rolagens e meia.",
     "identity_slots": {
         "character": {
@@ -86,8 +98,11 @@
         "GOOD": 0.1,
         "NORMAL": 0.02
     },
+    "_comment_reaction_budget": "O que protege o ritmo do video NAO e cortar cada reacao, e o orcamento total. `reaction_max` (8 s) e o teto de UM clipe — antes era 2 s e cortava 96% da biblioteca (mediana 6,5 s), a piada era arrancada antes do punchline. `max_segundos` e quanto de reacao cabe no video INTEIRO: as primeiras tocam inteiras e, quando acaba, a proxima nao entra (nunca vira flash). `max_total` e o teto por contagem; `min_gap_rolls` a distancia minima entre duas.",
     "reaction_budget": {
         "max_total": 5,
+        "max_segundos": 14,
+        "min_util_segundos": 2.5,
         "min_gap_rolls": 2
     },
     "max_consecutive_reactions": 1,
@@ -209,5 +224,128 @@
     "identity_som": {
         "_comment": "O clipe do payoff vem com audio proprio do site, que briga com a trilha do video. Mudo por padrao.",
         "payoff_mudo": true
+    },
+    "_comment_gameplay": "Onda 9: a luta e o elemento dominante do video de luta, entao ela entra QUASE inteira. So saem as janelas secas (> seca s sem dano), com contexto em cada ponta, nunca nos ultimos protecao_ko s. max_total e o teto do clipe; passando dele a regra de seca aperta em degraus. gameplay_alvo (10 s) e o formato antigo de melhores momentos, mantido para --rerender de torneios ja gravados.",
+    "gameplay": {
+        "max_total": 45.0,
+        "seca": 4.0,
+        "contexto": 1.0,
+        "protecao_ko": 8.0,
+        "abertura": 0.8,
+        "camera": "DIRETOR",
+        "sem_hud": true
+    },
+    "_comment_callouts": "Legendas sincronizadas com o motor: os eventos narrativos que a gravacao coleta (tells da Onda 8, combos, viradas, KO) viram texto grande por cima do gameplay. Orcamento: no maximo por_10s callouts a cada 10 s, gap_min entre dois, e prioridade decide quem fica quando disputam o mesmo instante.",
+    "fight_callouts": {
+        "duracao": 0.9,
+        "gap_min": 1.2,
+        "por_10s": 3,
+        "combo_minimo": 3,
+        "prioridade": {
+            "ko": 100,
+            "virada": 90,
+            "combo": 70,
+            "parry": 60,
+            "punicao": 50,
+            "primeiro_sangue": 45,
+            "instinto": 35,
+            "desvio": 25,
+            "clinch": 15,
+            "wall_splat": 65,
+            "agarrao": 55,
+            "iniciativa": 30,
+            "plano": 10,
+            "obstaculo": 20
+        },
+        "textos": {
+            "ko": [
+                "K.O.",
+                "NOCAUTE",
+                "ACABOU"
+            ],
+            "virada": [
+                "VIROU!",
+                "VIRADA!",
+                "TROCOU O LIDER"
+            ],
+            "combo": [
+                "COMBO x{N}",
+                "x{N} COMBO",
+                "{N} HITS"
+            ],
+            "parry": [
+                "PARRY!",
+                "APARO PERFEITO",
+                "LEU O GOLPE"
+            ],
+            "punicao": [
+                "PUNIU!",
+                "ERROU E PAGOU",
+                "CASTIGO"
+            ],
+            "primeiro_sangue": [
+                "PRIMEIRO SANGUE",
+                "ABRIU O PLACAR"
+            ],
+            "instinto": [
+                "INSTINTO!",
+                "REFLEXO"
+            ],
+            "desvio": [
+                "ESQUIVOU",
+                "DESVIOU"
+            ],
+            "clinch": [
+                "SEPAROU",
+                "QUEBROU O CLINCH"
+            ],
+            "wall_splat": [
+                "NA PAREDE!",
+                "ESTATELOU",
+                "COMEU PAREDE"
+            ],
+            "agarrao": [
+                "AGARROU!",
+                "ARREMESSO!",
+                "JOGOU LONGE"
+            ],
+            "iniciativa": [
+                "TOMOU A INICIATIVA",
+                "FOI PRA CIMA"
+            ],
+            "plano": [
+                "{ROTULO}",
+                "PLANO: {ROTULO}"
+            ],
+            "obstaculo": [
+                "QUEBROU!",
+                "DESTRUIU O CENÁRIO"
+            ]
+        },
+        "cores": {
+            "ko": "#ffd65a",
+            "virada": "#00d9ff",
+            "combo": "#ff8c42",
+            "parry": "#ffe678",
+            "punicao": "#ff5c5c",
+            "primeiro_sangue": "#ff3b3b",
+            "instinto": "#fff08a",
+            "desvio": "#96dcff",
+            "clinch": "#d2d2dc",
+            "wall_splat": "#ffe6b4",
+            "agarrao": "#ffd9a0",
+            "iniciativa": "#ffc85a",
+            "plano": "#cfd8ff",
+            "obstaculo": "#d9c9a8"
+        },
+        "plano": {
+            "gap_min_por_lutador": 4.0,
+            "cede_se_maior_em": 1.5
+        }
+    },
+    "fight_hud": {
+        "barras": true,
+        "nomes": true,
+        "plano": true
     }
 }

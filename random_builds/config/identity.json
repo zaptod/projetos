@@ -246,9 +246,19 @@
             "Tempestade": "Thunderstorm",
             "Tentáculos do Vazio": "Void Tendrils",
             "Terremoto": "Earthquake",
+            "Transfusão": "Transfusion",
             "Troca de Almas": "Soul Swap",
             "Wrath of Nature": "Wrath of Nature",
-            "Zero Absoluto": "Absolute Zero"
+            "Zero Absoluto": "Absolute Zero",
+            "Estilhaço Vermelho": "Crimson Shard",
+            "Ritual Carmesim": "Crimson Ritual",
+            "Forma Sanguinária": "Sanguine Form",
+            "Fenda do Vazio": "Void Rift",
+            "Passo do Vazio": "Void Step",
+            "Lança do Vazio": "Void Lance",
+            "Barreira de Espinhos": "Thorn Barrier",
+            "Muro Ardente": "Burning Wall",
+            "Fúria do Trovão": "Thunder Fury"
         },
         "encantamento": {
             "Chamas": "Flame",
@@ -424,14 +434,21 @@
         "modelo": null,
         "max_anexos": 1,
         "folha_unica": false,
-        "_comment_folha": "A juncao NAO e mais feita colando as duas imagens localmente: quem junta e o Editor Pro do PicassoIA, que aceita varias imagens de entrada e devolve o personagem SEGURANDO a arma. O Digen recebe essa imagem unica."
+        "_comment_folha": "Quem junta e o Editor Pro do PicassoIA, que devolve o personagem SEGURANDO a arma; o Digen recebe essa imagem unica. O editor aceita as DUAS imagens no mesmo campo, uma apos a outra (medido no DOM em 27/08/2026: ficam 'Remover imagem 1' e 'Remover imagem 2') — entao a juncao manda personagem e arma limpos, sem folha colada. O que fazia parecer que a segunda substituia a primeira era o detector de anexo procurando miniatura `blob:`, que este site nao cria."
     },
     "prompts_imagem": {
         "character": "Full-body character sheet portrait of {NOME}, {ARTIGO} {PORTE} {GENERO} {CLASSE}, {FISICO} at {FORCA} strength, {ALTURA} m tall, with {ARTIGO_PERS} {PERSONALIDADE} presence and {MANA_DESC} at {MANA} mana. Signature color {COR} ({COR_HEX}) runs through the armor trim, the cloth and the aura. Vertical 9:16, the entire body from head to feet with headroom, three-quarter front view, face clearly visible and evenly lit, neutral stance with arms at the sides. Behind them {CENARIO}, softly out of focus so the silhouette reads clean; {LUZ}; {CLIMA}. Fine material detail on metal, leather and cloth, photorealistic, sharp focus, cinematic color grade. Empty hands - no weapon, no props. No text, no watermark, no logo, no user interface, no border, no collage. One character alone.",
         "weapon": "Product shot of one weapon alone in frame: {SILHUETA} - {ARTIGO_RARIDADE} {RARIDADE}-grade {ARMA_ESTILO}, {ARMA_TIPO} weapon. Build: {PESO} kg, {PESO_DESC}; {CRITICO_DESC}; {DANO_DESC} at {DANO} damage. {ENCANTAMENTO} enchant: {ENCANTAMENTO_VFX}; charged with {ELEMENTO}, {AURA}. Vertical 9:16, the whole weapon in frame at three-quarters on a dark uncluttered backdrop; {LUZ}. A real object catching the light: reflections, wear on its surfaces, sparks around it - not a flat icon. Macro detail on its materials and mechanisms, volumetric light, cinematic color grade, sharp focus. No character, no hands, no arms. No text, no watermark, no logo, no user interface, no border, no collage. One weapon alone in frame.",
-        "character_weapon_ref": "Combine the two reference images into one single scene: the character from the first image is holding the weapon from the second image in their right hand, raised and ready. Keep the character exactly as in the reference - same face, same hair, same armor and clothing, same colors and proportions. Keep the weapon exactly as in the reference - same shape, same material, same colors, same glow, same scale. Full body, vertical 9:16. Setting: {CENARIO}; {LUZ}; {CLIMA}. Photorealistic, high detail, cinematic color grade. No text, no watermark, no logo, no collage, no split frame, no side-by-side panels - a single continuous scene."
+        "character_weapon_ref": "Combine the two reference images into one single scene: the character from the first image is holding the weapon from the second image in their right hand, raised and ready. Keep the character exactly as in the first reference - same face, same hair, same armor and clothing, same colors and proportions. Keep the weapon exactly as in the second reference - same shape, same material, same colors, same glow, same scale. Full body, vertical 9:16. Setting: {CENARIO}; {LUZ}; {CLIMA}. Photorealistic, high detail, cinematic color grade. No text, no watermark, no logo, no collage, no split frame, no side-by-side panels - a single continuous scene."
     },
     "_comment_prompts_imagem": "Prompt de imagem nao e o de video sem movimento: sai a camera e entra composicao. O de personagem pede corpo inteiro, rosto visivel e pose neutra porque essa imagem tem um segundo dever - ela vira a REFERENCIA anexada no video final, e referencia com o rosto escondido nao serve.",
+    "proveniencia": {
+        "_comment": "As contas do PicassoIA e do Digen sao COMPARTILHADAS com outras pessoas, entao 'apareceu na tela depois do meu clique' nao prova que o resultado e nosso: generation_00044 gravou como referencia uma foto de outra pessoa que entrou no historico 0,1 s depois do envio, e o payoff foi ao Digen com ela anexada. Com `exigir: true` o worker so baixa o que consegue PROVAR que nasceu do proprio prompt - no PicassoIA, o card da aba Historico que traz o prompt enviado (prova forte; se a imagem que apareceu primeiro for outra, ela e descartada); no Digen, o card novo no espaco criado pelo worker com os presets aplicados (prova media). Sem prova nada e gravado e a tentativa conta como falha. `exigir: false` e rollback: registra a prova mas nao barra. `espera_historico_s` e quanto tempo o worker espera o Historico mostrar o card com o prompt (e a propria geracao, se a imagem que apareceu primeiro era alheia); `cards_inspecionados` quantos cards do topo ele le; `tolerancia_data_min` a folga entre o relogio do site e o da maquina ao recusar card anterior ao envio. Auditoria do que ja esta no disco: `python main.py identity auditar`.",
+        "exigir": true,
+        "espera_historico_s": 240,
+        "cards_inspecionados": 12,
+        "tolerancia_data_min": 3
+    },
     "provedores": {
         "_comment": "Ajustes que valem SO para aquele site. `settings()` sem argumento continua devolvendo a raiz inteira, como sempre; `settings('picasso')` devolve a raiz com estes por cima.",
         "digen": {},
@@ -547,9 +564,19 @@
         "Tempestade": "a storm of bolts hammering a wide stretch of arena",
         "Tentáculos do Vazio": "black tendrils rising out of nothing and holding fast",
         "Terremoto": "the floor cracking open, slabs lifting",
+        "Transfusão": "a dark red thread of life pulled from one body into another",
         "Troca de Almas": "two figures trading places in a flash of pale light",
         "Wrath of Nature": "three advancing waves of thorns and green light",
         "Zero Absoluto": "everything in a wide radius flash-frozen white",
+        "Estilhaço Vermelho": "a crystallized shard of blood punching clean through",
+        "Ritual Carmesim": "a circle of blood sigils flaring around the caster",
+        "Forma Sanguinária": "the body dissolving into a lunging shape of living blood",
+        "Fenda do Vazio": "a black tear in the air dragging everything toward it",
+        "Passo do Vazio": "a silhouette dissolving and reappearing behind the target",
+        "Lança do Vazio": "a spear of pure darkness fired in a straight line",
+        "Barreira de Espinhos": "a wall of living thorns erupting from the ground",
+        "Muro Ardente": "a curtain of fire swallowing arrows mid-flight",
+        "Fúria do Trovão": "continuous lightning pouring from raised hands",
         "DEFAULT": "a decisive strike, the air torn open behind it"
     },
     "_comment_encantamento_vfx": "O encantamento gravado NA ARMA, nao o elemento derivado dele. Velocidade, Critico, Penetracao e Execucao colapsam todos em FISICO no elemento; sem esta tabela as quatro armas sairiam identicas.",

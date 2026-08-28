@@ -1,0 +1,925 @@
+{
+  "next_id": 93,
+  "reactions": [
+    {
+      "id": "0001",
+      "file": "0001.mp4",
+      "category": "good",
+      "sentiment": "positive",
+      "intensity": 0.5,
+      "duration": 5.73,
+      "source": "003c20d9ae88eac897b3e0ee41dda589_540w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0002",
+      "file": "0002.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 30.76,
+      "source": "003e7a39f8d26ea7408ddc1864d56e6c (1).mp4",
+      "tags": []
+    },
+    {
+      "id": "0003",
+      "file": "0003.mp4",
+      "category": "neutral",
+      "sentiment": "neutral",
+      "intensity": 0.3,
+      "duration": 10.15,
+      "source": "00cece3016ac0c047e6c9b7dde700c25_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0004",
+      "file": "0004.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 5.23,
+      "source": "0291b7950d2052c8b2963f12dc6d6253_360w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0005",
+      "file": "0005.mp4",
+      "category": "rare",
+      "sentiment": "positive",
+      "intensity": 0.85,
+      "duration": 5.22,
+      "source": "02d536a1a4b7a8d58dbd41fcdf91866c.mp4",
+      "tags": []
+    },
+    {
+      "id": "0006",
+      "file": "0006.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 6.34,
+      "source": "03ae00a604e92f78619167d2d4245e7c_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0007",
+      "file": "0007.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 1.3,
+      "source": "0869c15e2fc6cbaa690c04a8b3884484.mp4",
+      "tags": []
+    },
+    {
+      "id": "0008",
+      "file": "0008.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 9.1,
+      "source": "0a2010ed99bb9440223646dc27ec4938.mp4",
+      "tags": []
+    },
+    {
+      "id": "0009",
+      "file": "0009.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 5.24,
+      "source": "0b1532e8ff0d22a01154f9b9db99d807.mp4",
+      "tags": []
+    },
+    {
+      "id": "0010",
+      "file": "0010.mp4",
+      "category": "good",
+      "sentiment": "positive",
+      "intensity": 0.5,
+      "duration": 4.43,
+      "source": "0cbc4d2697ed64a4a1502a82c72893d4_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0011",
+      "file": "0011.mp4",
+      "category": "contradictory",
+      "sentiment": "negative",
+      "intensity": 0.7,
+      "duration": 2.7,
+      "source": "10c73d0de903512169378df102cf6680.mp4",
+      "tags": []
+    },
+    {
+      "id": "0012",
+      "file": "0012.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 5.82,
+      "source": "11e60359790ce72c1c6e7a71292130bd.mp4",
+      "tags": []
+    },
+    {
+      "id": "0013",
+      "file": "0013.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 4.57,
+      "source": "127443250e3e5db151155a6791bc7283.mp4",
+      "tags": []
+    },
+    {
+      "id": "0014",
+      "file": "0014.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 6.2,
+      "source": "1285f8f90cdc3431daaccb6207701f80.mp4",
+      "tags": []
+    },
+    {
+      "id": "0015",
+      "file": "0015.mp4",
+      "category": "rare",
+      "sentiment": "positive",
+      "intensity": 0.85,
+      "duration": 9.64,
+      "source": "16873c9d1a3e00c6f47a51992ebc6b51.mp4",
+      "tags": []
+    },
+    {
+      "id": "0016",
+      "file": "0016.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 1.6,
+      "source": "171eea28ffb45130d9db1460ce00d1e8.mp4",
+      "tags": []
+    },
+    {
+      "id": "0017",
+      "file": "0017.mp4",
+      "category": "good",
+      "sentiment": "positive",
+      "intensity": 0.5,
+      "duration": 9.36,
+      "source": "1ae0ff51d5f795e0101562ddb629e857.mp4",
+      "tags": []
+    },
+    {
+      "id": "0018",
+      "file": "0018.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 5.87,
+      "source": "1d4807f74c9706975ffb4d2b3f5760f1.mp4",
+      "tags": []
+    },
+    {
+      "id": "0019",
+      "file": "0019.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 10.43,
+      "source": "24832ca4406de15550dedf82ff41ca14_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0020",
+      "file": "0020.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 6.41,
+      "source": "2c00e62e9263e8203cb91c4f9c74817e_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0021",
+      "file": "0021.mp4",
+      "category": "neutral",
+      "sentiment": "neutral",
+      "intensity": 0.3,
+      "duration": 14.42,
+      "source": "2c246c440bf165a1e3f64c0ff9206960_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0022",
+      "file": "0022.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 13.33,
+      "source": "2c646dbf36fa0bf390c2706dd5af9e3b.mp4",
+      "tags": []
+    },
+    {
+      "id": "0023",
+      "file": "0023.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 8.03,
+      "source": "3212b309bf929a9205ee1aee1dd2c35f_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0024",
+      "file": "0024.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 12.2,
+      "source": "32779a1fcc01b59a1727123f2d4de5a6.mp4",
+      "tags": []
+    },
+    {
+      "id": "0025",
+      "file": "0025.mp4",
+      "category": "funny",
+      "sentiment": "positive",
+      "intensity": 0.8,
+      "duration": 7.5,
+      "source": "34dfa187cdd8fac2bf1bddddf7086c31.mp4",
+      "tags": []
+    },
+    {
+      "id": "0026",
+      "file": "0026.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 28.58,
+      "source": "3842596f3caf8e116cd01419171c69e6_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0027",
+      "file": "0027.mp4",
+      "category": "neutral",
+      "sentiment": "neutral",
+      "intensity": 0.3,
+      "duration": 9.83,
+      "source": "39c2c6915a940670655061c3657b1708.mp4",
+      "tags": []
+    },
+    {
+      "id": "0028",
+      "file": "0028.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 11.87,
+      "source": "413f597e6753519313b10a48a398fd85_540w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0029",
+      "file": "0029.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 4.94,
+      "source": "4244cbf4adcfb50d43d9b6e71321cbe0.mp4",
+      "tags": []
+    },
+    {
+      "id": "0030",
+      "file": "0030.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 17.35,
+      "source": "44395c7a5de469afe0d3c6bc57b56c4b_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0031",
+      "file": "0031.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 8.54,
+      "source": "4d73e9a773fc579ea0144ee1b41e9023.mp4",
+      "tags": []
+    },
+    {
+      "id": "0032",
+      "file": "0032.mp4",
+      "category": "good",
+      "sentiment": "positive",
+      "intensity": 0.5,
+      "duration": 8.93,
+      "source": "4daa81a3d689b065a0fe63dbf951aaca_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0033",
+      "file": "0033.mp4",
+      "category": "rare",
+      "sentiment": "positive",
+      "intensity": 0.85,
+      "duration": 10.17,
+      "source": "4fa5c64697c2056ce38d35ed44ee74ba.mp4",
+      "tags": []
+    },
+    {
+      "id": "0034",
+      "file": "0034.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 3.41,
+      "source": "50214e8432c456bc79542eba44882791.mp4",
+      "tags": []
+    },
+    {
+      "id": "0035",
+      "file": "0035.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 5.17,
+      "source": "50dfbfc7d7dc96cd15dd451853773a45.mp4",
+      "tags": []
+    },
+    {
+      "id": "0036",
+      "file": "0036.mp4",
+      "category": "rare",
+      "sentiment": "positive",
+      "intensity": 0.85,
+      "duration": 5.87,
+      "source": "520f153c258686427615d78d8c9fcc1d.mp4",
+      "tags": []
+    },
+    {
+      "id": "0037",
+      "file": "0037.mp4",
+      "category": "neutral",
+      "sentiment": "neutral",
+      "intensity": 0.3,
+      "duration": 2.1,
+      "source": "530d5bdf795697bbd856c613a65a2d5b.mp4",
+      "tags": []
+    },
+    {
+      "id": "0038",
+      "file": "0038.mp4",
+      "category": "neutral",
+      "sentiment": "neutral",
+      "intensity": 0.3,
+      "duration": 6.94,
+      "source": "53e54cc0a4ed79b97e8d4abf456faba2.mp4",
+      "tags": []
+    },
+    {
+      "id": "0039",
+      "file": "0039.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 1.5,
+      "source": "5e7b4abdf4453c92c2fabe0571f4a903_t2.mp4",
+      "tags": []
+    },
+    {
+      "id": "0040",
+      "file": "0040.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 4.2,
+      "source": "5e836cc1b2ff55a7ec79b48c713a4b70.mp4",
+      "tags": []
+    },
+    {
+      "id": "0041",
+      "file": "0041.mp4",
+      "category": "good",
+      "sentiment": "positive",
+      "intensity": 0.5,
+      "duration": 7.2,
+      "source": "6429aaf70074e1568ff0b6f2f6dcc231.mp4",
+      "tags": []
+    },
+    {
+      "id": "0042",
+      "file": "0042.mp4",
+      "category": "contradictory",
+      "sentiment": "negative",
+      "intensity": 0.7,
+      "duration": 11.5,
+      "source": "681b75702148242279cb96eeac37f421.mp4",
+      "tags": []
+    },
+    {
+      "id": "0043",
+      "file": "0043.mp4",
+      "category": "contradictory",
+      "sentiment": "negative",
+      "intensity": 0.7,
+      "duration": 17.18,
+      "source": "6a904e1a2fdb42c0aa83886ad9e74b44.mp4",
+      "tags": []
+    },
+    {
+      "id": "0044",
+      "file": "0044.mp4",
+      "category": "funny",
+      "sentiment": "positive",
+      "intensity": 0.8,
+      "duration": 6.22,
+      "source": "6e35f52aad8ec38f745dc45983a29eb6.mp4",
+      "tags": []
+    },
+    {
+      "id": "0045",
+      "file": "0045.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 6.84,
+      "source": "712fcc7ae08543552856a59ffacf8d27.mp4",
+      "tags": []
+    },
+    {
+      "id": "0046",
+      "file": "0046.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 15.37,
+      "source": "714a1f77f72b8824ee6270894280c103.mp4",
+      "tags": []
+    },
+    {
+      "id": "0047",
+      "file": "0047.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 5.72,
+      "source": "718f332395a940a9dc91e16d8540e298.mp4",
+      "tags": []
+    },
+    {
+      "id": "0048",
+      "file": "0048.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 16.87,
+      "source": "7432756b1df6931ab3740e3ae65ffefd.mp4",
+      "tags": []
+    },
+    {
+      "id": "0049",
+      "file": "0049.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 5.73,
+      "source": "7a1ce3feae54702e2b049b81f1d4bc14.mp4",
+      "tags": []
+    },
+    {
+      "id": "0050",
+      "file": "0050.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 5.07,
+      "source": "7c695859a24a48845330e43285a3d4b6_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0051",
+      "file": "0051.mp4",
+      "category": "neutral",
+      "sentiment": "neutral",
+      "intensity": 0.3,
+      "duration": 5.03,
+      "source": "7e262d4fe1ad3a52a979ce464295c19f.mp4",
+      "tags": []
+    },
+    {
+      "id": "0052",
+      "file": "0052.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 11.8,
+      "source": "81b562f133451cc405960b7849cabcdb_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0053",
+      "file": "0053.mp4",
+      "category": "neutral",
+      "sentiment": "neutral",
+      "intensity": 0.3,
+      "duration": 7.33,
+      "source": "823a54f78dd544e7e3d3898d1972bbec.mp4",
+      "tags": []
+    },
+    {
+      "id": "0054",
+      "file": "0054.mp4",
+      "category": "good",
+      "sentiment": "positive",
+      "intensity": 0.5,
+      "duration": 6.1,
+      "source": "87e92431b5b49f122e0549739541a20f.mp4",
+      "tags": []
+    },
+    {
+      "id": "0055",
+      "file": "0055.mp4",
+      "category": "funny",
+      "sentiment": "positive",
+      "intensity": 0.8,
+      "duration": 13.77,
+      "source": "91c8ba2b8f6dfbf3e5f6939681569738.mp4",
+      "tags": []
+    },
+    {
+      "id": "0056",
+      "file": "0056.mp4",
+      "category": "contradictory",
+      "sentiment": "negative",
+      "intensity": 0.7,
+      "duration": 9.63,
+      "source": "932ece82bc4bdcbba1c50490c2c99b93_540w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0057",
+      "file": "0057.mp4",
+      "category": "rare",
+      "sentiment": "positive",
+      "intensity": 0.85,
+      "duration": 6.86,
+      "source": "95a88eacb643a15bd9c7d61d1a2dc204.mp4",
+      "tags": []
+    },
+    {
+      "id": "0058",
+      "file": "0058.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 8.52,
+      "source": "9d621f4df5547670a6b6f08827895de0_540w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0059",
+      "file": "0059.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 6.2,
+      "source": "9e49fa3dfec76ec559c2edc28beec617_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0060",
+      "file": "0060.mp4",
+      "category": "rare",
+      "sentiment": "positive",
+      "intensity": 0.85,
+      "duration": 6.57,
+      "source": "a125c73e55363dec9a1f86103ca53dde_t4.mp4",
+      "tags": []
+    },
+    {
+      "id": "0061",
+      "file": "0061.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 5.4,
+      "source": "a63dcd0d9d12dbf3a2147848ee5ea882.mp4",
+      "tags": []
+    },
+    {
+      "id": "0062",
+      "file": "0062.mp4",
+      "category": "funny",
+      "sentiment": "positive",
+      "intensity": 0.8,
+      "duration": 5.1,
+      "source": "aa53da29e86ac4666b3817c6ab482d48_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0063",
+      "file": "0063.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 6.2,
+      "source": "ac81d47f5f9044f955d201a516902424_720w (1).mp4",
+      "tags": []
+    },
+    {
+      "id": "0064",
+      "file": "0064.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 0.15,
+      "source": "angy-cat.mp4",
+      "tags": []
+    },
+    {
+      "id": "0065",
+      "file": "0065.mp4",
+      "category": "funny",
+      "sentiment": "positive",
+      "intensity": 0.8,
+      "duration": 3.96,
+      "source": "b0b2ac28ac9c452b0659cc2ed9a494de.mp4",
+      "tags": []
+    },
+    {
+      "id": "0066",
+      "file": "0066.mp4",
+      "category": "funny",
+      "sentiment": "positive",
+      "intensity": 0.8,
+      "duration": 6.2,
+      "source": "b59e64e7ff95c1649c087f925c553cde_360w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0067",
+      "file": "0067.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 6.12,
+      "source": "bdb26fa035aace940b497483a71610c5.mp4",
+      "tags": []
+    },
+    {
+      "id": "0068",
+      "file": "0068.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 8.87,
+      "source": "be73bf233d6b422c39b53727fb02e8e9_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0069",
+      "file": "0069.mp4",
+      "category": "contradictory",
+      "sentiment": "negative",
+      "intensity": 0.7,
+      "duration": 9.97,
+      "source": "bf81a13b1780ebd2347c74c9ef565d5b.mp4",
+      "tags": []
+    },
+    {
+      "id": "0070",
+      "file": "0070.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 6.4,
+      "source": "black-man-crying-cry.mp4",
+      "tags": []
+    },
+    {
+      "id": "0071",
+      "file": "0071.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 4.83,
+      "source": "c00c116908854b6ecf7084f5116079d0.mp4",
+      "tags": []
+    },
+    {
+      "id": "0072",
+      "file": "0072.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 4.2,
+      "source": "c1578906ecb75822ae749e7cdc7f244a.mp4",
+      "tags": []
+    },
+    {
+      "id": "0073",
+      "file": "0073.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 4.76,
+      "source": "c1d578bd9089d498ebea2505d2152dc9.mp4",
+      "tags": []
+    },
+    {
+      "id": "0074",
+      "file": "0074.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 4.6,
+      "source": "c647da52a8de530ec1068827c7b0ce1d.mp4",
+      "tags": []
+    },
+    {
+      "id": "0075",
+      "file": "0075.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 12.4,
+      "source": "cac69a77036f232c789f2a03a54e1bd9.mp4",
+      "tags": []
+    },
+    {
+      "id": "0076",
+      "file": "0076.mp4",
+      "category": "funny",
+      "sentiment": "positive",
+      "intensity": 0.8,
+      "duration": 5.34,
+      "source": "d0095fdfe87f90abd971cf7e11ac2144_540w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0077",
+      "file": "0077.mp4",
+      "category": "insane",
+      "sentiment": "positive",
+      "intensity": 0.95,
+      "duration": 10.16,
+      "source": "d4cba1ace145b75f19d05b16ffe42d38.mp4",
+      "tags": []
+    },
+    {
+      "id": "0078",
+      "file": "0078.mp4",
+      "category": "neutral",
+      "sentiment": "neutral",
+      "intensity": 0.3,
+      "duration": 9.17,
+      "source": "dd5275ac6a404c0035ff616b72854e94_360w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0079",
+      "file": "0079.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 5.4,
+      "source": "e22dbf55b1bb2cb894fa771006b99fac_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0080",
+      "file": "0080.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 14.99,
+      "source": "e3810e05dfc63c35f74b1f03a7f3d4fb.mp4",
+      "tags": []
+    },
+    {
+      "id": "0081",
+      "file": "0081.mp4",
+      "category": "good",
+      "sentiment": "positive",
+      "intensity": 0.5,
+      "duration": 2.24,
+      "source": "e4e759bed09d03941cb2ae5d270aea8a.mp4",
+      "tags": []
+    },
+    {
+      "id": "0082",
+      "file": "0082.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 7.02,
+      "source": "e69bed7d3fd4a78f6a5787e1bf9c905b.mp4",
+      "tags": []
+    },
+    {
+      "id": "0083",
+      "file": "0083.mp4",
+      "category": "neutral",
+      "sentiment": "neutral",
+      "intensity": 0.3,
+      "duration": 14.97,
+      "source": "e7c5414c9f7850d83313e962dbd8e2a0.mp4",
+      "tags": []
+    },
+    {
+      "id": "0084",
+      "file": "0084.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 10.23,
+      "source": "ec8b4321cefa20cfa433960592a786b1_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0085",
+      "file": "0085.mp4",
+      "category": "funny",
+      "sentiment": "positive",
+      "intensity": 0.8,
+      "duration": 8.22,
+      "source": "efb653bc76527640883deef41a655717_720w.mp4",
+      "tags": []
+    },
+    {
+      "id": "0086",
+      "file": "0086.mp4",
+      "category": "good",
+      "sentiment": "positive",
+      "intensity": 0.5,
+      "duration": 12.9,
+      "source": "f05233a8985cf745ba6965488ed9a650.mp4",
+      "tags": []
+    },
+    {
+      "id": "0087",
+      "file": "0087.mp4",
+      "category": "great",
+      "sentiment": "positive",
+      "intensity": 0.75,
+      "duration": 22.7,
+      "source": "f545df8ac2f3ba80315e8ce2f81acba5.mp4",
+      "tags": []
+    },
+    {
+      "id": "0088",
+      "file": "0088.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 5.9,
+      "source": "f5c41e1f7e5fab7a2d241597eafee960.mp4",
+      "tags": []
+    },
+    {
+      "id": "0089",
+      "file": "0089.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 26.03,
+      "source": "fa626e53514e1931c56c6b5020126925.mp4",
+      "tags": []
+    },
+    {
+      "id": "0090",
+      "file": "0090.mp4",
+      "category": "bad",
+      "sentiment": "negative",
+      "intensity": 0.6,
+      "duration": 7.97,
+      "source": "mèo-troll.mp4",
+      "tags": []
+    },
+    {
+      "id": "0091",
+      "file": "0091.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 4.05,
+      "source": "ohno-meme-monkey-ohno.mp4",
+      "tags": []
+    },
+    {
+      "id": "0092",
+      "file": "0092.mp4",
+      "category": "terrible",
+      "sentiment": "negative",
+      "intensity": 0.9,
+      "duration": 4.17,
+      "source": "ohno.mp4",
+      "tags": []
+    }
+  ]
+}

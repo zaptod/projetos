@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import artefato, config, history, provedores, queue, slots
+from . import artefato, config, history, provedores, proveniencia, queue, slots
 from .browser import contexto_persistente, pagina, pausa_humana
 from .client import BrowserMorreu, DigenClient, EsperaEstourou, GeracaoFalhou
 from .selectors import SeletorNaoEncontrado
@@ -55,11 +55,20 @@ def _generation(generation_id: str) -> dict | None:
 
 
 def _preparar_juncao(client, job: dict):
-    """Abre o Editor Pro e sobe as duas imagens que serao compostas.
+    """Abre o Editor Pro e sobe as DUAS imagens que serao compostas.
+
+    O editor aceita as duas no mesmo campo, uma apos a outra (medido no DOM
+    em 27/08/2026: ficam 'Remover imagem 1' e 'Remover imagem 2'). O que
+    fazia parecer que a segunda substituia a primeira era o detector de
+    anexo, que procurava miniatura `blob:` e nunca a encontrava — o worker
+    desistia depois da primeira.
+
+    Mandar as duas SEPARADAS e melhor que uma folha colada: o modelo recebe
+    personagem e arma limpos, em vez de uma imagem com um painel no canto que
+    o prompt ainda precisa pedir para remover.
 
     O prompt ja esta na fila (e o de juncao); o que muda aqui e a PAGINA e as
-    imagens de entrada. Sem as duas no disco a juncao nao tem o que fazer, mas
-    ela nao levanta: o job falha limpo e o payoff cai no texto.
+    imagens de entrada. Sem as duas no disco a juncao nao tem o que fazer.
     """
     from . import picasso_selectors, referencias
     gid = job["generation_id"]
@@ -72,8 +81,8 @@ def _preparar_juncao(client, job: dict):
     anexadas = client.anexar_referencias(entradas)
     if len(anexadas) < 2:
         raise GeracaoFalhou(
-            f"o editor recebeu {len(anexadas)} de 2 imagens; sem as duas a "
-            "juncao sairia errada.")
+            f"o editor confirmou {len(anexadas)} de 2 imagens; sem as duas a "
+            "juncao sairia sem uma das identidades. Nada foi enviado.")
     return antes
 
 
@@ -172,7 +181,8 @@ def _falta_algum_slot(generation_id: str, job_id: str) -> bool:
 
 def registrar(generation_id: str, slot: str, destino: Path, prompt: str,
               aspecto: str, rerender: bool = True, preview: bool = False,
-              job_id: str | None = None, presets: dict | None = None) -> Path:
+              job_id: str | None = None, presets: dict | None = None,
+              origem: dict | None = None) -> Path:
     """Grava os metadados do clipe e refaz o video da roleta com ele dentro.
 
     Separado de `processar` para poder ser chamado sobre um mp4 que ja esta no
@@ -182,19 +192,30 @@ def registrar(generation_id: str, slot: str, destino: Path, prompt: str,
     meta_dir = config.identity_dir(generation_id)
     meta_dir.mkdir(parents=True, exist_ok=True)
     (meta_dir / f"{slot}.prompt.txt").write_text(prompt, encoding="utf-8")
+    anterior = artefato.metadados(generation_id, slot) or {}
+    registro = {
+        "generation_id": generation_id,
+        "slot": slot,
+        "arquivo": destino.name,
+        "aspecto": aspecto,
+        "duracao": _duracao(destino),
+        # O que os controles do Digen MOSTRAVAM no envio. Sem registro,
+        # "esse clipe saiu com 3 s" vira discussao em vez de consulta.
+        "presets": presets or {},
+        "prompt": prompt,
+        "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    # A prova de origem e do DOWNLOAD, nao deste registro: um re-registro
+    # feito do disco (retomada, resolucao sem browser) carrega a que ja
+    # existia em vez de apaga-la.
+    if origem is not None:
+        registro["origem"] = origem
+    else:
+        for chave in ("origem", "quarentena"):
+            if anterior.get(chave):
+                registro[chave] = anterior[chave]
     with open(meta_dir / f"{slot}.json", "w", encoding="utf-8") as fh:
-        json.dump({
-            "generation_id": generation_id,
-            "slot": slot,
-            "arquivo": destino.name,
-            "aspecto": aspecto,
-            "duracao": _duracao(destino),
-            # O que os controles do Digen MOSTRAVAM no envio. Sem registro,
-            # "esse clipe saiu com 3 s" vira discussao em vez de consulta.
-            "presets": presets or {},
-            "prompt": prompt,
-            "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        }, fh, ensure_ascii=False, indent=2)
+        json.dump(registro, fh, ensure_ascii=False, indent=2)
 
     if rerender:
         if _falta_algum_slot(generation_id,
@@ -246,6 +267,8 @@ def processar(client: DigenClient, job: dict, ajustes: dict,
         # espaco pode existir so porque OUTRO slot da mesma build o criou.
         client.abrir_espaco(espaco)
         antes = job.get("videos_antes") or []
+        texto = job["prompt"]
+        enviado_em = _de_iso(job.get("enviado_em"))
         history.registrar(generation_id, history.RETOMADO, slot=slot,
                           space_url=espaco, tentativa=job.get("attempts"))
     else:
@@ -256,12 +279,18 @@ def processar(client: DigenClient, job: dict, ajustes: dict,
         elif slot == slots.CHARACTER_WEAPON:
             texto, preparado, modelo = _texto_com_referencias(
                 client, job, ajustes, espaco if junto else None)
+        enviado_em = datetime.now(timezone.utc)
         antes = client.submit_prompt(
             texto, aspecto, modelo=modelo,
             duracao=preset_do_slot(ajustes, "duracao", slot),
             resolucao=preset_do_slot(ajustes, "resolucao", slot),
             espaco=espaco if junto else None, antes=preparado)
-        queue.registrar_envio(job_id, client.url_do_espaco, antes)
+        # O texto que vale e o que ENTROU no campo (o aprimorador do
+        # PicassoIA pode reescrever): e ele que o historico vai mostrar.
+        texto = getattr(client, "prompt_enviado", None) or texto
+        enviado_em = getattr(client, "enviado_em", None) or enviado_em
+        queue.registrar_envio(job_id, client.url_do_espaco, antes,
+                              enviado_em=enviado_em.isoformat(timespec="seconds"))
         history.registrar(generation_id, history.ENVIADO, slot=slot, aspecto=aspecto,
                           space_url=client.url_do_espaco,
                           prompt_chars=len(job["prompt"]),
@@ -291,7 +320,33 @@ def processar(client: DigenClient, job: dict, ajustes: dict,
                           espera_s=round(time.monotonic() - inicio, 1))
         raise
 
-    client.download(video, destino)
+    # PROVA DE ORIGEM, antes de baixar qualquer byte. As contas sao
+    # compartilhadas com outras pessoas: "apareceu depois do meu clique" nao
+    # quer dizer "e meu" (generation_00044 gravou como referencia a foto de
+    # outra pessoa, que entrou no historico 0,1 s depois do envio). Sem prova
+    # nada e gravado; a tentativa conta como falha e a proxima gera de novo.
+    prova = proveniencia.comprovar(client, generation_id, slot, texto,
+                                   enviado_em, video, ajustes)
+    if not prova.get("comprovada"):
+        if proveniencia.exigida(ajustes):
+            queue.esquecer_envio(job_id)
+            history.registrar(generation_id, history.ORIGEM_RECUSADA, slot=slot,
+                              motivo=str(prova.get("motivo"))[:200],
+                              candidato=str(prova.get("candidato"))[:160])
+            raise GeracaoFalhou(
+                f"sem prova de origem para {slots.rotulo(slot)}: "
+                f"{prova.get('motivo')}. Nada foi baixado; a proxima tentativa "
+                "gera de novo.")
+        print(f"[identity] AVISO: sem prova de origem ({prova.get('motivo')}); "
+              "seguindo porque proveniencia.exigir=false.")
+    alvo = prova.get("alvo") if prova.get("comprovada") else video
+    if alvo is None:
+        alvo = video
+    if prova.get("candidato_descartado"):
+        print(f"[identity] {job_id}: o resultado que apareceu primeiro nao era "
+              "o nosso; baixando o que o historico atribui ao nosso prompt.")
+
+    client.download(alvo, destino)
 
     # Guarda final: o provedor pode ter devolvido o artefato de OUTRO slot.
     # Falhar aqui e barato (a proxima tentativa gera de novo); aceitar seria
@@ -310,15 +365,28 @@ def processar(client: DigenClient, job: dict, ajustes: dict,
         from . import referencias as _ref
         _ref.aparar_rodape(destino)
 
+    proveniencia.reivindicar(prova, generation_id, slot)
     history.registrar(generation_id, history.BAIXADO, slot=slot,
-                      bytes=destino.stat().st_size if destino.is_file() else 0)
+                      bytes=destino.stat().st_size if destino.is_file() else 0,
+                      origem=prova.get("forca"))
 
     caminho = registrar(generation_id, slot, destino, job["prompt"], aspecto,
                         rerender=rerender, preview=preview, job_id=job_id,
-                        presets=client.presets_aplicados)
+                        presets=client.presets_aplicados, origem=prova)
     history.registrar(generation_id, history.CONCLUIDO, slot=slot,
                       rerender=rerender, duracao_s=_duracao(destino))
     return caminho
+
+
+def _de_iso(texto) -> datetime | None:
+    """ISO gravado na fila -> datetime aware, ou None."""
+    if not texto:
+        return None
+    try:
+        quando = datetime.fromisoformat(str(texto))
+    except ValueError:
+        return None
+    return quando if quando.tzinfo else quando.replace(tzinfo=timezone.utc)
 
 
 class DeployDoDigen(RuntimeError):

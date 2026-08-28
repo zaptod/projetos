@@ -767,8 +767,9 @@ class TelaArmas(tk.Frame):
         frame_skills.pack(fill="x")
         
         lista_skills = ["Nenhuma"] + list(SKILL_DB.keys())
-        
+
         self.combos_skill = []
+        self.lbls_skill_info = []
         for i in range(max_slots):
             frame = tk.Frame(frame_skills, bg=COR_BG_SECUNDARIO)
             frame.pack(fill="x", pady=2)
@@ -794,13 +795,28 @@ class TelaArmas(tk.Frame):
             
             combo.bind("<<ComboboxSelected>>", lambda e, idx=i: self.atualizar_skill_slot(idx))
             self.combos_skill.append(combo)
-            
-            # Label de custo
+
+            # Onda 11D: a vaga (criada vazia na origem) agora mostra swatch
+            # de cor + custo/cd; a linha de baixo, a DESCRIÇÃO do catálogo.
             lbl_custo = tk.Label(
-                frame, text="", 
+                frame, text="",
                 bg=COR_BG_SECUNDARIO, fg=COR_SUCCESS, font=("Arial", 9)
             )
             lbl_custo.pack(side="left", padx=5)
+            lbl_custo.bind(
+                "<Button-1>",
+                lambda e, idx=i: self._abrir_demo_slot(idx),
+            )
+
+            lbl_descricao = tk.Label(
+                frame_skills, text="",
+                bg=COR_BG_SECUNDARIO, fg=COR_TEXTO_DIM, font=("Arial", 8),
+                wraplength=430, justify="left",
+            )
+            lbl_descricao.pack(fill="x", anchor="w", padx=60)
+
+            self.lbls_skill_info.append((lbl_custo, lbl_descricao))
+            self._atualizar_info_slot(i)
         
         # === ENCANTAMENTOS ===
         if max_enc > 0:
@@ -846,9 +862,50 @@ class TelaArmas(tk.Frame):
             if skill_nome != "Nenhuma":
                 custo = SKILL_DB.get(skill_nome, {}).get("custo", 0)
                 habilidades.append({"nome": skill_nome, "custo": custo})
-        
+
         self.dados_arma["habilidades"] = habilidades
+        self._atualizar_info_slot(idx)
         self.criar_resumo_stats()
+
+    def _atualizar_info_slot(self, idx):
+        """Onda 11D: custo/cd + descrição da skill escolhida no slot."""
+        infos = getattr(self, "lbls_skill_info", None)
+        if not infos or idx >= len(infos) or idx >= len(self.combos_skill):
+            return
+        lbl_custo, lbl_descricao = infos[idx]
+        nome = self.combos_skill[idx].get()
+        dados = SKILL_DB.get(nome)
+        if not dados or nome == "Nenhuma":
+            lbl_custo.config(text="", fg=COR_SUCCESS)
+            lbl_descricao.config(text="")
+            return
+        cor_rgb = tuple(dados.get("cor", (255, 255, 255)))[:3]
+        lbl_custo.config(
+            text=(
+                f"■ {dados.get('custo', 0):.0f}mp / "
+                f"{dados.get('cooldown', 0):.0f}s"
+            ),
+            fg="#%02x%02x%02x" % cor_rgb,
+        )
+        lbl_descricao.config(text=str(dados.get("descricao", "")))
+
+    def _abrir_demo_slot(self, idx):
+        """Clique no custo abre a demo da skill do slot, se gerada."""
+        import os as _os
+
+        if idx >= len(self.combos_skill):
+            return
+        nome = self.combos_skill[idx].get()
+        if not nome or nome == "Nenhuma":
+            return
+        caminho = None
+        try:
+            from neural_fights.recording.skill_demo import caminho_da_demo
+            caminho = caminho_da_demo(nome)
+        except Exception:
+            caminho = None
+        if caminho is not None and hasattr(_os, "startfile"):
+            _os.startfile(str(caminho))
 
     def toggle_encantamento(self, nome):
         """Toggle de encantamento"""

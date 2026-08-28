@@ -337,8 +337,8 @@ class SkillAuditCLITests(unittest.TestCase):
             "invisivel_durante": "tests.test_buff_skill_contracts:BuffSkillContractTests.test_shadow_portal_has_delayed_untargetable_exit_and_cast_parity",
             "meteoros_aleatorios": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_meteor_shower_emits_every_configured_meteor_with_explicit_payload",
             "ondas": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_area_waves_emit_every_configured_wave_with_step_independence",
-            "pilares": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_celestial_pillars_share_one_impact_identity",
-            "raio_pilar": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_celestial_pillars_share_one_impact_identity",
+            "pilares": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_celestial_pillars_are_distinct_blows",
+            "raio_pilar": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_celestial_warning_shows_the_real_pillar_volumes",
             "raio_meteoro": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_meteor_shower_emits_every_configured_meteor_with_explicit_payload",
             "revive_hp_percent": "tests.test_death_skill_regressions:DeathSkillRegressionTests.test_last_breath_has_priority_then_resurrection_spends_real_resources",
             "stacks_por_segundo": "tests.test_area_structure_skill_regressions:AreaStructureSkillRegressionTests.test_area_status_stacks_ignore_only_hit_recovery_with_coarse_steps",
@@ -498,7 +498,7 @@ class SkillAuditCLITests(unittest.TestCase):
         }
 
         self.assertEqual(len(auditoria_skills.BASIC_FIELDS), 16)
-        self.assertEqual(len(auditoria_skills.MECHANICAL_FIELDS), 115)
+        self.assertEqual(len(auditoria_skills.MECHANICAL_FIELDS), 121)  # Onda 11B: +forca_puxar, +tick_interval
         self.assertEqual(catalog_fields, auditoria_skills.KNOWN_FIELDS)
         self.assertEqual(
             set().union(*auditoria_skills.TYPE_ALLOWED_FIELDS.values()),
@@ -562,6 +562,9 @@ class SkillAuditCLITests(unittest.TestCase):
             elif field_name == "efeitos_possiveis":
                 invalid_value = []
                 expected_code = "invalid-effect-list"
+            elif field_name == "combo_apos":
+                invalid_value = []
+                expected_code = "invalid-combo-reference"
             else:
                 self.fail(f"campo mecanico sem validador de valor: {field_name}")
 

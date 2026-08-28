@@ -63,6 +63,7 @@ import math
 from neural_fights.utils.config import PPM
 from neural_fights.core.physics import normalizar_angulo
 from neural_fights.core.skills import get_skill_data
+from neural_fights.core.skill_contract import derivar_contrato
 from neural_fights.models import get_class_data
 from neural_fights.ai.contracts import obter_brain as _obter_brain
 from neural_fights.ai.percepcao import (
@@ -70,6 +71,13 @@ from neural_fights.ai.percepcao import (
     FASE_PREPARANDO,
     FASE_RECUPERANDO,
     construir_observacao,
+)
+from collections import deque
+from neural_fights.ai.plano_de_luta import (
+    DEFINICOES as DEFINICOES_PLANO,
+    ContextoPlano,
+    avaliar as avaliar_plano,
+    criar_plano,
 )
 from neural_fights.ai.skill_contracts import (
     alvo_tem_efeito,
@@ -318,7 +326,9 @@ class AIBrain:
         }
         
         # Respiração e ritmo
-        self.ritmo_combate = self.rng.uniform(0.8, 1.2)  # Personalidade do ritmo
+        # Onda 10B: era uniform(0.8, 1.2) — um +-20% PERMANENTE e invisível na
+        # velocidade de cada lutador; a identidade agora vem da classe.
+        self.ritmo_combate = self.rng.uniform(0.92, 1.08)  # Personalidade do ritmo
         self.burst_counter = 0  # Conta explosões de ação
         self.descanso_timer = 0.0  # Micro-pausas naturais
         
@@ -380,7 +390,20 @@ class AIBrain:
             "last_analysis_time": 0.0,          # Quando última análise foi feita
             "enemy_weapon_changed": False,      # Se arma do inimigo mudou
         }
-        
+
+        # === ONDA 11A: PERCEPÇÃO DO KIT DE SKILLS DO INIMIGO ===
+        # Espelha percepcao_arma: o kit equipado é informação pública (como a
+        # arma na mão). Lê os CONTRATOS (core/skill_contract), nunca o estado
+        # interno do brain adversário. Consumo mínimo nesta onda: espaçamento
+        # e cautela contra execute.
+        self.percepcao_kit = {
+            "alcance_perigo_skill": 0.0,  # maior alcance_perigo do kit inimigo
+            "tem_telegraph": False,       # alguma skill avisa antes de cair
+            "tem_gap_closer": False,      # dash ofensivo no kit inimigo
+            "tem_execute": False,         # finisher de HP baixo no kit
+            "last_analysis_time": 0.0,
+        }
+
         # Gera personalidade única
         self._gerar_personalidade()
 
@@ -882,13 +905,18 @@ class AIBrain:
                 data = skill_info.get("data", get_skill_data(nome))
                 self._adicionar_skill(nome, data, "arma")
         
-        # Skills da classe
-        if hasattr(p, 'classe_nome') and p.classe_nome:
+        # Skills da classe: a fonte da verdade é o kit CARREGADO no lutador
+        # (Onda 11C: pode ser um kit sorteado do KIT_POOLS). O kit fixo da
+        # classe entra só como fallback para fakes sem skills_classe.
+        if (
+            not getattr(p, "skills_classe", None)
+            and hasattr(p, 'classe_nome') and p.classe_nome
+        ):
             class_data = get_class_data(p.classe_nome)
             for skill_nome in class_data.get("skills_afinidade", []):
                 data = get_skill_data(skill_nome)
                 self._adicionar_skill(skill_nome, data, "classe")
-        
+
         # Skills da classe (novo sistema com lista)
         for skill_info in getattr(p, 'skills_classe', []):
             nome = skill_info.get("nome", "Nenhuma")
@@ -1033,6 +1061,7 @@ class AIBrain:
         
         # === SISTEMA DE PERCEPÇÃO DE ARMAS v10.0 ===
         self._atualizar_percepcao_armas(dt, distancia, inimigo)
+        self._atualizar_percepcao_kit(dt, inimigo)
         
         # === NOVOS SISTEMAS v11.0 ===
         self._atualizar_ritmo(dt)
@@ -1141,11 +1170,113 @@ class AIBrain:
             if self._processar_skills(dt, distancia, inimigo):
                 return
         
+        # === ONDA 10B: DASH TÁTICO ===
+        # Dash deixa de ser só esquiva: gap-close com plano ofensivo, hit-and-
+        # run após acertar, flanco sobre guarda erguida. Evento com cooldown.
+        if self._considerar_dash_tatico(dt, distancia, inimigo):
+            return
+
         self.timer_decisao -= dt
         if self.timer_decisao <= 0:
             self._decidir_movimento(distancia, inimigo)
             self._calcular_timer_decisao()
             self._registrar_acao()
+
+    def _considerar_dash_tatico(self, dt, distancia, inimigo):
+        """Onda 10B: o dash universal (8B) tinha um único chamador — o desvio
+        urgente. Aqui ele vira verbo OFENSIVO/tático, lido só de estado
+        observável (plano próprio, intenção/fase do oponente, guarda física
+        `tempo_bloqueando`). Sorteio no stream do brain via _chance_temporal.
+
+        - GAP_CLOSE: plano ofensivo + 2,5-5,5 m + oponente recuando/em
+          recovery → dash rumo ao alvo e PRESSIONAR.
+        - HIT_AND_RUN: acabou de acertar, perto, estilo HIT_RUN ou mobilidade
+          alta → dash para trás e RECUAR (cancela a recuperação do swing).
+        - FLANK: oponente com a guarda erguida ou plano LEVAR_PARA_PAREDE →
+          dash lateral e FLANQUEAR.
+        """
+        p = self.parent
+        if self.__dict__.get("cd_dash_tatico", 0.0) > 0.0:
+            return False
+        pode = getattr(p, "pode_dash", None)
+        dash = getattr(p, "iniciar_dash", None)
+        if not (callable(pode) and callable(dash)) or not pode():
+            return False
+        if getattr(p, "stun_timer", 0.0) > 0.0 or getattr(p, "agarrao_timer", 0.0) > 0.0:
+            return False
+        from neural_fights.utils.config import CD_DASH_TATICO_S
+
+        try:
+            mob = max(0.0, float(self.perfil.get("mobilidade", 0.0) or 0.0))
+        except Exception:
+            mob = 0.0
+        try:
+            obs = self._observar(inimigo)
+        except Exception:
+            obs = None
+        plano = getattr(self, "plano", None)
+        tipo_plano = plano.get("tipo") if plano else None
+        try:
+            dx = inimigo.pos[0] - p.pos[0]
+            dy = inimigo.pos[1] - p.pos[1]
+        except (AttributeError, TypeError, IndexError):
+            return False
+        ang = math.atan2(dy, dx)
+        atacando = bool(getattr(p, "atacando", False))
+        acabou_de_acertar = (
+            self.tempo_combate - self.__dict__.get("_t_ultimo_hit_dado", -9.0) < 0.45
+        )
+
+        tipo = None
+        if (
+            not atacando
+            and tipo_plano in ("PRESSIONAR", "LEVAR_PARA_PAREDE", "ACABAR", "CORTAR_FUGA")
+            and 2.5 < distancia < 5.5
+            and obs is not None
+            and not getattr(obs, "atacando", False)
+            and (obs.intencao in ("recuando", "recuperando", "parado", "circulando")
+                 or obs.fase_ataque == FASE_RECUPERANDO)
+            and self._chance_temporal(0.06 * (0.6 + self.agressividade_efetiva()), dt)
+        ):
+            tipo, ang_d, acao = "GAP_CLOSE", ang, "PRESSIONAR"
+        elif (
+            acabou_de_acertar
+            and distancia < 2.5
+            and (getattr(self, "estilo_luta", "") == "HIT_RUN" or mob > 0.5)
+            and self._chance_temporal(0.05, dt)
+        ):
+            tipo, ang_d, acao = "HIT_AND_RUN", ang + math.pi, "RECUAR"
+        elif (
+            not atacando
+            and distancia < 3.5
+            and (
+                getattr(inimigo, "tempo_bloqueando", 0.0) > 0.2
+                or tipo_plano == "LEVAR_PARA_PAREDE"
+            )
+            and self._chance_temporal(0.04, dt)
+        ):
+            lado = getattr(self, "dir_circular", 1) or 1
+            tipo, ang_d, acao = "FLANK", ang + lado * math.pi / 2, "FLANQUEAR"
+        if tipo is None:
+            return False
+        if not dash(ang_d, forca=18.0):
+            return False
+        if tipo == "HIT_AND_RUN":
+            # Dash-cancel: a recuperação do swing é abandonada.
+            p.atacando = False
+            p.timer_animacao = 0.0
+        self._definir_acao(acao, fonte="dash_tatico", prioridade=2, hold_s=0.5)
+        self.cd_dash_tatico = max(1.0, CD_DASH_TATICO_S - mob)
+        contadores_luta = getattr(p, "contadores_luta", None)
+        if contadores_luta is not None:
+            contadores_luta["dashes_taticos"] = contadores_luta.get("dashes_taticos", 0) + 1
+            if tipo != "HIT_AND_RUN":
+                contadores_luta["dashes_ofensivos"] = (
+                    contadores_luta.get("dashes_ofensivos", 0) + 1
+                )
+        self.tell_atual = {"tipo": "dash_tatico", "modo": tipo,
+                           "ate": self.tempo_combate + 0.35}
+        return True
 
     # =========================================================================
     # SISTEMA DE LEITURA DO OPONENTE v8.0
@@ -1747,8 +1878,35 @@ class AIBrain:
         
         # === ATAQUE DIRETO SE NO ALCANCE E NÃO ATACANDO ===
         if no_alcance and not p.atacando:
+            # Onda 10A: teto de passividade EM ALCANCE — 0,6s segurando um
+            # verbo passivo sem ameaça vindo (oponente não está atacando) e
+            # com vida para arriscar vira golpe (P1, com tell). É o
+            # micro-detector local; o do Simulador cuida do par.
+            ofensiva = self.acao_atual in self._ACOES_OFENSIVAS_MOTOR
+            t_passivo = self.__dict__.get("tempo_sem_intencao_ofensiva", 0.0)
+            t_passivo = 0.0 if ofensiva else t_passivo + dt
+            self.tempo_sem_intencao_ofensiva = t_passivo
+            hp_pct = p.vida / p.vida_max if p.vida_max else 1.0
+            if (
+                t_passivo >= 0.6
+                and not getattr(inimigo, "atacando", False)
+                and hp_pct > 0.25
+            ):
+                self.tempo_sem_intencao_ofensiva = 0.0
+                self._definir_acao(
+                    "MATAR" if distancia <= alcance_efetivo else "ATAQUE_RAPIDO",
+                    fonte="iniciativa", prioridade=1, hold_s=0.5,
+                )
+                self.tell_atual = {"tipo": "iniciativa",
+                                   "ate": self.tempo_combate + 0.4}
+                contadores_luta = getattr(p, "contadores_luta", None)
+                if contadores_luta is not None:
+                    contadores_luta["iniciativas"] = (
+                        contadores_luta.get("iniciativas", 0) + 1
+                    )
+                return p.cooldown_ataque <= 0 and not p.atacando
             # Chance base de atacar quando no alcance
-            chance_base = 0.6
+            chance_base = 0.75
             
             # Aumenta chance se inimigo com pouca vida
             if inimigo.vida / inimigo.vida_max < 0.3:
@@ -1768,6 +1926,10 @@ class AIBrain:
             
             # Momentum
             chance_base += self.momentum * 0.15
+
+            # Onda 10C: o plano governa o portão (ACABAR escancara, ISCA
+            # segura fora de janela, QUEBRAR_GUARDA pede o pesado/agarrão).
+            chance_base = self._aplicar_plano_ao_portao(chance_base, distancia, janela)
 
             # Onda 8H: alvo em HITSTUN é a janela de combo — pressiona.
             # (stun é estado físico visível, não telepatia.)
@@ -1873,6 +2035,11 @@ class AIBrain:
         # Usa alcance efetivo calculado
         alcance_efetivo = self._calcular_alcance_efetivo()
         
+        # Onda 10C: QUEBRAR_GUARDA / ESMAGAR_NA_PAREDE pedem o golpe pesado.
+        if self.__dict__.get("_preferir_esmagar", False) and distancia <= alcance_efetivo:
+            self.acao_atual = "ESMAGAR"
+            return
+
         # Escolhe tipo de ataque baseado na distância relativa ao alcance
         if distancia <= alcance_efetivo * 0.5:
             # Muito perto - ataque rápido
@@ -2399,6 +2566,48 @@ class AIBrain:
     # SISTEMA DE PERCEPÇÃO DE ARMAS v10.0
     # =========================================================================
     
+    def _atualizar_percepcao_kit(self, dt, inimigo):
+        """Onda 11A: lê o kit do INIMIGO pelos contratos (core/skill_contract).
+
+        Informação pública como a arma equipada — nada de cooldowns nem estado
+        interno do brain adversário. Mesma cadência da percepção de armas.
+        """
+        perc = self.__dict__.get("percepcao_kit")
+        if perc is None:
+            return
+        perc["last_analysis_time"] += dt
+        if perc["last_analysis_time"] < 0.5:
+            return
+        perc["last_analysis_time"] = 0.0
+
+        alcance = 0.0
+        telegraph = False
+        gap_closer = False
+        execute = False
+        kit = list(getattr(inimigo, "skills_classe", None) or [])
+        kit += list(getattr(inimigo, "skills_arma", None) or [])
+        for skill_info in kit:
+            nome = (
+                skill_info.get("nome") if isinstance(skill_info, dict) else None
+            )
+            if not nome or nome == "Nenhuma":
+                continue
+            contrato = derivar_contrato(nome)
+            if contrato.tipo == "NADA":
+                continue
+            alcance = max(alcance, contrato.alcance_perigo)
+            telegraph = telegraph or contrato.delay > 0.0
+            gap_closer = gap_closer or (
+                contrato.tipo == "DASH" and "dano" in contrato.consequencias
+            )
+            execute = execute or contrato.executa or (
+                contrato.condicao == "ALVO_BAIXA_VIDA"
+            )
+        perc["alcance_perigo_skill"] = alcance
+        perc["tem_telegraph"] = telegraph
+        perc["tem_gap_closer"] = gap_closer
+        perc["tem_execute"] = execute
+
     def _atualizar_percepcao_armas(self, dt, distancia, inimigo):
         """
         Atualiza percepção da arma inimiga e calcula estratégias.
@@ -2480,6 +2689,17 @@ class AIBrain:
             
             # Calcula distâncias táticas
             perc["distancia_segura"] = get_safe_distance(minha_arma, arma_inimigo)
+            # Onda 11A: o kit inimigo também define perigo — um conjurador
+            # com área de 6 m redefine "distância segura" para quem faz kite,
+            # e um kit com execute pede mais folga quando estou executável.
+            kit = self.__dict__.get("percepcao_kit") or {}
+            perigo_skill = float(kit.get("alcance_perigo_skill", 0.0) or 0.0)
+            if perigo_skill > 0.0 and self.estilo_luta in ("KITE", "RANGED"):
+                perc["distancia_segura"] = max(
+                    perc["distancia_segura"], min(perigo_skill * 0.6, 7.0)
+                )
+            if kit.get("tem_execute") and p.vida < p.vida_max * 0.35:
+                perc["distancia_segura"] += 1.0
             if meu_perfil.alcance_ideal:
                 perc["distancia_ataque"] = meu_perfil.alcance_ideal
             
@@ -2755,8 +2975,15 @@ class AIBrain:
             self.cd_hesitacao = self.tempo_combate + self.rng.uniform(2.5, 5.0)
             return True
         
-        # Hesitação
-        if self._chance_temporal(self.hesitacao * 0.05, dt):
+        # Hesitação — Onda 10A: em alcance, hesitar é metade do raro (o
+        # "congela na cara do outro" era o cara-a-cara fabricado pela IA).
+        fator_hesitacao = 0.05
+        try:
+            if distancia <= self._calcular_alcance_efetivo() * 1.1:
+                fator_hesitacao = 0.025
+        except Exception:
+            pass
+        if self._chance_temporal(self.hesitacao * fator_hesitacao, dt):
             # Hesita - faz algo defensivo
             self._definir_acao(
                 self.rng.choice(["CIRCULAR", "BLOQUEAR", "RECUAR"]),
@@ -2992,10 +3219,12 @@ class AIBrain:
     def _executar_acao_sincronizada(self, acao, distancia, inimigo):
         """Executa ação sincronizada de momento cinematográfico v8.0"""
         acoes = {
-            "CIRCULAR_LENTO": lambda: setattr(self, 'timer_decisao', 0.5) or "CIRCULAR",
+            # Onda 10A: sem esticar timer_decisao — o beat do diretor não
+            # pode virar lentidão da IA.
+            "CIRCULAR_LENTO": lambda: "CIRCULAR",
             "ENCARAR": lambda: "BLOQUEAR",
             "TROCAR_GOLPES": lambda: self.rng.choice(["MATAR", "ATAQUE_RAPIDO", "COMBATE"]),
-            "RECUPERAR": lambda: setattr(self, 'timer_decisao', 0.8) or "RECUAR",
+            "RECUPERAR": lambda: "RECUAR",
             "PERSEGUIR": lambda: "APROXIMAR",
         }
         
@@ -3132,6 +3361,8 @@ class AIBrain:
     def _atualizar_cooldowns(self, dt):
         """Atualiza cooldowns"""
         self.cd_dash = max(0, self.cd_dash - dt)
+        # Onda 10B: dash tático (fechar distância / bater-e-sair / flanquear).
+        self.cd_dash_tatico = max(0.0, self.__dict__.get("cd_dash_tatico", 0.0) - dt)
         self.cd_pulo = max(0, self.cd_pulo - dt)
         self.cd_desvio = max(0, self.cd_desvio - dt)
         self.cd_punicao = max(0, self.cd_punicao - dt)
@@ -3396,13 +3627,17 @@ class AIBrain:
                     chance_usar = max(chance_usar, 0.95)
                 elif plano["tipo"] == "BAITAR_E_PUNIR":
                     chance_usar *= 0.7
+                elif plano["tipo"] == "ACABAR":
+                    chance_usar = max(chance_usar, 0.9)
             
             # Summons/Traps são mais estratégicos
             if skill_profile.tipo in ["SUMMON", "TRAP", "TRANSFORM"]:
                 chance_usar *= 0.9  # Menos redução que antes
             
             if self._chance_temporal(chance_usar, dt):
-                if self._executar_skill_por_nome(skill_profile.nome):
+                proposito = self._proposito_do_cast(skill_profile, strategy, p)
+                if self._executar_skill_por_nome(skill_profile.nome, alvo=inimigo,
+                                                 proposito=proposito):
                     # Registra uso
                     strategy.registrar_uso_skill(skill_profile.nome)
                     
@@ -3422,15 +3657,16 @@ class AIBrain:
         
         return False
     
-    def _executar_skill_por_nome(self, nome_skill):
-        """Executa uma skill pelo nome"""
+    def _executar_skill_por_nome(self, nome_skill, alvo=None, proposito=None):
+        """Executa uma skill pelo nome (Onda 10D: leva ALVO e PROPÓSITO — área
+        cai no alvo, dash sai na direção do propósito)."""
         p = self.parent
         
         # Verifica nas skills da arma (COM ÍNDICE!)
         for idx, skill_info in enumerate(getattr(p, 'skills_arma', [])):
             if skill_info.get("nome") == nome_skill:
                 if hasattr(p, 'usar_skill_arma'):
-                    resultado = p.usar_skill_arma(skill_idx=idx)
+                    resultado = p.usar_skill_arma(skill_idx=idx, alvo=alvo, proposito=proposito)
                     if resultado:
                         LOGGER.debug("%s usou skill de arma: %s", p.dados.nome, nome_skill)
                     return resultado
@@ -3439,7 +3675,7 @@ class AIBrain:
         for skill_info in getattr(p, 'skills_classe', []):
             if skill_info.get("nome") == nome_skill:
                 if hasattr(p, 'usar_skill_classe'):
-                    resultado = p.usar_skill_classe(nome_skill)
+                    resultado = p.usar_skill_classe(nome_skill, alvo=alvo, proposito=proposito)
                     if resultado:
                         LOGGER.debug("%s usou skill de classe: %s", p.dados.nome, nome_skill)
                     return resultado
@@ -3454,6 +3690,24 @@ class AIBrain:
         
         return False
     
+    @staticmethod
+    def _proposito_do_cast(skill_profile, strategy, p):
+        """Onda 10D: propósito do cast a partir dos propósitos da skill e da
+        fase — o DASH de fuga sai para longe; o de engajar, rumo ao alvo."""
+        props = set()
+        for prop in getattr(skill_profile, "propositos", None) or ():
+            props.add(str(getattr(prop, "value", prop)).upper())
+        fase = str(getattr(getattr(strategy, "fase_atual", None), "value", "") or "").lower()
+        vida_max = float(getattr(p, "vida_max", 0.0) or 0.0)
+        hp = float(getattr(p, "vida", 0.0)) / vida_max if vida_max else 1.0
+        if "ESCAPE" in props and (fase in ("disadvantage", "critical") or hp < 0.35):
+            return "ESCAPE"
+        if props & {"ENGAGE", "BURST", "OPENER", "FINISHER"}:
+            return "ENGAGE"
+        if "ESCAPE" in props:
+            return "ESCAPE"
+        return "REPOSICIONAR"
+
     def _pos_uso_skill_estrategica(self, skill_profile):
         """Define ação após usar uma skill baseada na estratégia"""
         tipo = skill_profile.tipo
@@ -3901,21 +4155,45 @@ class AIBrain:
     # =========================================================================
 
     def _atualizar_plano(self, dt, distancia, inimigo):
-        """Mantém a intenção tática viva: escolhe na expiração e
-        interrompe em spike de dano (>12% do HP desde a escolha, com o
-        compromisso da personalidade decidindo se o plano sobrevive)."""
+        """Mantém a intenção tática viva (Onda 8E → 10C).
+
+        O plano termina por SUCESSO/FALHA (objetivo do próprio plano), por
+        expiração (2-6s) ou por spike de dano (>12% do HP desde a escolha,
+        com o compromisso da personalidade decidindo). A troca é legível:
+        tell ``plano`` com rótulo, contadores por tipo de fim.
+        """
         p = self.parent
         hp = p.vida / p.vida_max if p.vida_max else 1.0
         plano = self.plano
+        self._observar_para_planos(dt, inimigo)
 
+        fim = None
         if plano is not None:
             spike = (
                 self._plano_hp_inicial - hp > 0.12
                 and self.tempo_desde_dano < 0.3
             )
             if spike and self.rng.random() > plano["compromisso"]:
-                plano = None  # o soco mudou a conversa
-            elif self.tempo_combate >= plano["expira_em"]:
+                fim = "dano"  # o soco mudou a conversa
+            else:
+                # Onda 10C: o plano julga a si mesmo (progresso + fim) ANTES
+                # do relógio — cumprir o objetivo no último segundo é sucesso.
+                ctx = self._contexto_plano(distancia, inimigo, plano, hp)
+                fim = avaliar_plano(plano, ctx)
+                if fim is None and self.tempo_combate >= plano["expira_em"]:
+                    fim = "expirado"
+                elif fim is None and self._baitar_sem_isca(plano, inimigo):
+                    # Onda 10A: dois BAITAR_E_PUNIR espelhados = ninguém
+                    # ataca. Isca sem punição contra passivo vira pressão.
+                    fim = "falha"
+                    self._forcar_plano = "PRESSIONAR"
+            if fim:
+                try:
+                    plano.encerrado_por = fim
+                except Exception:
+                    pass
+                chave = "planos_" + fim
+                self.contadores[chave] = self.contadores.get(chave, 0) + 1
                 plano = None
 
         if plano is None:
@@ -3923,12 +4201,113 @@ class AIBrain:
             self.plano = self._escolher_plano(distancia, inimigo)
             self._plano_hp_inicial = hp
             self.contadores["planos"] = self.contadores.get("planos", 0) + 1
-            # Onda 8F: troca de plano é legível — tell só quando o TIPO
-            # muda (renovar o mesmo plano não é notícia).
+            if getattr(self.plano, "adaptativo", False):
+                self.contadores["planos_adaptativos"] = (
+                    self.contadores.get("planos_adaptativos", 0) + 1
+                )
+            self._preferir_esmagar = False
+            # Onda 8F/10C: troca de plano é legível — tell só quando o TIPO
+            # muda (renovar o mesmo plano não é notícia); leva o rótulo.
             if self.plano["tipo"] != anterior:
+                self._plano_trocado_em = self.tempo_combate
                 self.tell_atual = {"tipo": "plano",
                                    "plano": self.plano["tipo"],
+                                   "rotulo": getattr(self.plano, "rotulo", ""),
+                                   "adaptativo": getattr(self.plano, "adaptativo", False),
                                    "ate": self.tempo_combate + 0.6}
+
+    def _observar_para_planos(self, dt, inimigo):
+        """Onda 10C: leituras HONESTAS que alimentam os planos adaptativos —
+        guarda erguida nos meus últimos swings (estado físico
+        ``tempo_bloqueando``) e tempo em que o oponente é visto recuando."""
+        p = self.parent
+        aid = getattr(p, "ataque_id", 0)
+        if aid != self.__dict__.get("_ultimo_ataque_id_obs"):
+            self._ultimo_ataque_id_obs = aid
+            guardas = self.__dict__.get("_guardas_observadas")
+            if guardas is None:
+                guardas = self._guardas_observadas = deque(maxlen=4)
+            guardas.append(bool(getattr(inimigo, "tempo_bloqueando", 0.0) > 0.0))
+        try:
+            intencao = self._observar(inimigo).intencao
+        except Exception:
+            intencao = None
+        if intencao == "recuando":
+            self._t_inimigo_recuando = self.__dict__.get("_t_inimigo_recuando", 0.0) + dt
+        else:
+            self._t_inimigo_recuando = 0.0
+
+    def _contexto_plano(self, distancia, inimigo, plano, hp):
+        p = self.parent
+        m = getattr(plano, "marcadores", None) or {}
+        cl = getattr(p, "contadores_luta", None) or {}
+        ci = getattr(inimigo, "contadores_luta", None) or {}
+        try:
+            alcance = float(self._calcular_alcance_efetivo())
+        except Exception:
+            alcance = float(getattr(p, "alcance_ideal", 1.5) or 1.5)
+        vida_max_i = float(getattr(inimigo, "vida_max", 0.0) or 0.0)
+        hp_inimigo = (
+            float(getattr(inimigo, "vida", 0.0)) / vida_max_i if vida_max_i else 1.0
+        )
+        esp = getattr(self, "consciencia_espacial", None) or {}
+        return ContextoPlano(
+            tempo=self.tempo_combate - float(getattr(plano, "inicio", self.tempo_combate)),
+            distancia=float(distancia),
+            alcance=alcance,
+            hp=hp,
+            hp_inimigo=hp_inimigo,
+            hp_delta=hp - float(m.get("hp", hp)),
+            medo=float(getattr(self, "medo", 0.0) or 0.0),
+            hits_dados=int(ci.get("hits_sofridos", 0)) - int(m.get("hits_dados", 0)),
+            punicoes=int(cl.get("punicoes", 0)) - int(m.get("punicoes", 0)),
+            agarroes=int(cl.get("agarroes", 0)) - int(m.get("agarroes", 0)),
+            wall_splats=int(cl.get("wall_splats", 0)) - int(m.get("wall_splats", 0)),
+            skills=int(cl.get("skills_lancadas", 0)) - int(m.get("skills", 0)),
+            oponente_contra_parede=bool(esp.get("oponente_contra_parede")),
+            inimigo_morto=bool(getattr(inimigo, "morto", False)),
+        )
+
+    def _aplicar_plano_ao_portao(self, chance, distancia, janela):
+        """Onda 10C: o plano governa o portão de ataque, não só o movimento."""
+        plano = self.__dict__.get("plano")
+        self._preferir_esmagar = False
+        if plano is None:
+            return chance
+        tipo = plano["tipo"]
+        if tipo == "ACABAR":
+            return max(chance, 0.9)
+        if tipo == "TROCAR_GOLPES":
+            return chance + 0.2
+        if tipo == "PRESSIONAR":
+            return chance + 0.1
+        if tipo in ("QUEBRAR_GUARDA", "ESMAGAR_NA_PAREDE"):
+            self._preferir_esmagar = True
+            from neural_fights.utils.config import AGARRAO_DIST_MAX
+            if distancia < AGARRAO_DIST_MAX * 0.8:
+                self._pedir_agarrao = True  # o Simulador consome (10A)
+            return chance + 0.1
+        if tipo == "BAITAR_E_PUNIR" and not (janela or {}).get("aberta"):
+            return chance - 0.25
+        if tipo == "RECUPERAR":
+            return chance - 0.15
+        return chance
+
+    def _baitar_sem_isca(self, plano, inimigo):
+        """Onda 10A: BAITAR_E_PUNIR há >1,5s, sem punição nova, contra um
+        oponente observado passivo (recuando/parado/circulando)."""
+        if plano.get("tipo") != "BAITAR_E_PUNIR":
+            return False
+        if self.tempo_combate - plano.get("inicio", self.tempo_combate) <= 1.5:
+            return False
+        contadores_luta = getattr(self.parent, "contadores_luta", None) or {}
+        if contadores_luta.get("punicoes", 0) > plano.get("punicoes_inicio", 0):
+            return False
+        try:
+            intencao = self._observar(inimigo).intencao
+        except Exception:
+            return False
+        return intencao in ("recuando", "parado", "circulando")
 
     def _escolher_plano(self, distancia, inimigo):
         """Escolhe a intenção tática pelo que o lutador TEM: eixos de
@@ -3971,6 +4350,36 @@ class AIBrain:
                 + self.medo * 0.3
             ),
         }
+        # === ONDA 10C: PLANOS ADAPTATIVOS (nascem do que se OBSERVA) ===
+        guardas = sum(1 for g in (self.__dict__.get("_guardas_observadas") or ()) if g)
+        t_recuando = float(self.__dict__.get("_t_inimigo_recuando", 0.0) or 0.0)
+        vida_max_i = float(getattr(inimigo, "vida_max", 0.0) or 0.0)
+        hp_inimigo = (
+            float(getattr(inimigo, "vida", 0.0)) / vida_max_i if vida_max_i else 1.0
+        )
+        contra_parede = bool(esp.get("oponente_contra_parede"))
+        anterior = self.plano["tipo"] if self.plano else None
+        tracos = getattr(self, "tracos", ()) or ()
+        # Gatilho observado DOMINA o ruído (0,25 × (1 + caos)): o plano
+        # adaptativo é a resposta ao que o oponente fez, não uma opção a mais.
+        scores["QUEBRAR_GUARDA"] = (
+            0.9 + agress * 0.2 if guardas >= 2 else 0.0
+        )
+        scores["CORTAR_FUGA"] = (
+            0.85 + max(0.0, perfil.get("perseguicao", 0.0)) * 0.3
+            if t_recuando >= 0.6 and distancia > 3.0 else 0.0
+        )
+        scores["TROCAR_GOLPES"] = (
+            0.45 + agress * 0.4
+            if (agress > 0.65 or "BERSERKER" in tracos or "AGRESSIVO" in tracos)
+            and distancia < 4.0 else 0.0
+        )
+        # 1,2 domina o ruído (0,25 × (1 + caos)): sangue na água é sangue.
+        scores["ACABAR"] = 1.2 if hp_inimigo < 0.25 else 0.0
+        scores["ESMAGAR_NA_PAREDE"] = (
+            0.9 + (0.3 if anterior == "LEVAR_PARA_PAREDE" else 0.0)
+            if contra_parede and distancia < 4.0 else 0.0
+        )
         if self.skill_strategy is not None:
             role = self.skill_strategy.role_principal.value
             if role in ("artillery", "burst_mage", "control_mage",
@@ -3985,65 +4394,75 @@ class AIBrain:
             scores[tipo] += self.rng.uniform(0.0, ruido)
 
         escolhido = max(scores, key=scores.get)
+        # Onda 10A: um plano forçado (ex.: isca sem oponente) fura a loteria.
+        forcado = self.__dict__.get("_forcar_plano")
+        if forcado in scores:
+            escolhido = forcado
+        self._forcar_plano = None
         disciplina = getattr(self, "disciplina_tatica", 0.5)
         duracao = self.rng.uniform(2.0, 4.0) + disciplina * 2.0
-        return {
-            "tipo": escolhido,
-            "expira_em": self.tempo_combate + duracao,
-            "compromisso": 0.4 + disciplina * 0.5,
+        contadores_luta = getattr(p, "contadores_luta", None) or {}
+        contadores_inimigo = getattr(inimigo, "contadores_luta", None) or {}
+        marcadores = {
+            "hits_dados": int(contadores_inimigo.get("hits_sofridos", 0)),
+            "punicoes": int(contadores_luta.get("punicoes", 0)),
+            "agarroes": int(contadores_luta.get("agarroes", 0)),
+            "wall_splats": int(contadores_luta.get("wall_splats", 0)),
+            "skills": int(contadores_luta.get("skills_lancadas", 0)),
+            "hp": hp,
+            "hp_inimigo": hp_inimigo,
+            "distancia": float(distancia),
         }
+        return criar_plano(
+            escolhido, self.tempo_combate, duracao, 0.4 + disciplina * 0.5,
+            marcadores=marcadores,
+            punicoes_inicio=contadores_luta.get("punicoes", 0),
+        )
 
     def _aplicar_plano_de_luta(self, distancia, inimigo):
-        """Estágio 0 da pilha: o plano enviesa a proposta; os estágios de
-        personalidade seguintes continuam perturbando (plano ≠ script)."""
+        """Estágio 0 da pilha (Onda 8E → 10C): o plano MANDA — se a proposta
+        já serve ao plano (está no conjunto de verbos dele) fica; senão, com
+        max(0,6, compromisso) ela vira um verbo do plano. Os estágios de
+        personalidade seguintes continuam perturbando dentro desse conjunto
+        (plano ≠ script). Regras de distância especiais (zona morta, caster,
+        pânico) continuam."""
         plano = self.plano
         if plano is None:
             return
-        if self.rng.random() > plano["compromisso"]:
-            return  # hoje a personalidade fala mais alto que o plano
-
         tipo = plano["tipo"]
         acao = self.acao_atual
-        if tipo == "PRESSIONAR":
-            if acao in ("COMBATE", "CIRCULAR", "POKE", "APROXIMAR_LENTO",
-                        "BLOQUEAR"):
-                self.acao_atual = self.rng.choice(
-                    ["PRESSIONAR", "APROXIMAR", "MATAR"]
-                )
-        elif tipo == "BAITAR_E_PUNIR":
-            # Fica na borda do alcance convidando o whiff — a punição em
-            # si vem do gate da 8D quando o recovery aparecer.
-            if distancia < 4.5 and acao in ("MATAR", "ESMAGAR",
-                                            "ATAQUE_RAPIDO", "PRESSIONAR"):
-                self.acao_atual = self.rng.choice(["POKE", "CIRCULAR", "RECUAR"])
-        elif tipo == "MANTER_ZONA_MORTA":
+        definicao = DEFINICOES_PLANO.get(tipo)
+        verbos = tuple(plano.get("verbos") or (definicao.verbos if definicao else ()))
+
+        if tipo == "MANTER_ZONA_MORTA":
             zona = getattr(
                 self.percepcao_arma.get("arma_inimigo_perfil"),
                 "zona_morta", 0.0,
             ) or 0.0
             if zona > 0.0:
                 if distancia > zona * 0.9:
-                    self.acao_atual = self.rng.choice(
-                        ["APROXIMAR", "PRESSIONAR"]
-                    )
+                    self.acao_atual = self.rng.choice(["APROXIMAR", "PRESSIONAR"])
                 else:
                     self.acao_atual = self.rng.choice(["MATAR", "COMBATE"])
-        elif tipo == "LEVAR_PARA_PAREDE":
-            if acao in ("COMBATE", "CIRCULAR", "POKE"):
-                self.acao_atual = self.rng.choice(["PRESSIONAR", "FLANQUEAR"])
+                return
         elif tipo == "CACAR_JANELA_SKILL":
             # Caster: mantém a distância da rotação, sem trocação à toa.
             if distancia < self.parent.alcance_ideal * 0.7:
                 self.acao_atual = self.rng.choice(["RECUAR", "CIRCULAR"])
-            elif acao in ("MATAR", "ESMAGAR"):
+                return
+            if acao in ("MATAR", "ESMAGAR"):
                 self.acao_atual = "COMBATE"
+                return
         elif tipo == "RECUPERAR":
             hp = self.parent.vida / self.parent.vida_max
             if hp < 0.25 and self.medo > 0.4:
                 self.acao_atual = "FUGIR"
-            elif acao in ("MATAR", "ESMAGAR", "PRESSIONAR", "APROXIMAR",
-                          "COMBATE"):
-                self.acao_atual = self.rng.choice(["RECUAR", "CIRCULAR"])
+                return
+
+        if not verbos or acao in verbos:
+            return
+        if self.rng.random() < max(0.6, plano["compromisso"]):
+            self.acao_atual = self.rng.choice(list(verbos))
 
     def _decidir_movimento(self, distancia, inimigo):
         self.contadores["decisoes"] += 1
@@ -4113,7 +4532,7 @@ class AIBrain:
         eixo = self.perfil.get("agressao", 0.0) * 0.25
         humor = {
             "FURIOSO": 0.2, "ANIMADO": 0.1, "CONFIANTE": 0.1,
-            "DESESPERADO": 0.15, "CAUTELOSO": -0.15, "ENTEDIADO": -0.05,
+            "DESESPERADO": 0.15, "CAUTELOSO": -0.15, "ENTEDIADO": 0.10,
             "ASSUSTADO": -0.25, "BERSERK": 0.3, "EUFORICO": 0.15,
             "GLACIAL": -0.1,
         }.get(self.humor, 0.0)
@@ -4349,13 +4768,10 @@ class AIBrain:
     # Onda 8E (bug #6): a variação anti-repetição escolhe entre ações que
     # SERVEM ao plano atual — antes era um sorteio uniforme sobre 7 verbos
     # que sabotava qualquer estratégia em curso (ruído anti-estratégia).
+    # Onda 10C: derivado das definições — um só lugar diz o que serve a cada
+    # plano (verbos), para a proposta, a variação e o HUD.
     _VARIACOES_POR_PLANO = {
-        "PRESSIONAR": ["MATAR", "PRESSIONAR", "FLANQUEAR", "ATAQUE_RAPIDO"],
-        "BAITAR_E_PUNIR": ["POKE", "CIRCULAR", "COMBATE", "RECUAR"],
-        "MANTER_ZONA_MORTA": ["COMBATE", "MATAR", "PRESSIONAR", "CIRCULAR"],
-        "LEVAR_PARA_PAREDE": ["PRESSIONAR", "FLANQUEAR", "APROXIMAR"],
-        "CACAR_JANELA_SKILL": ["CIRCULAR", "COMBATE", "RECUAR", "POKE"],
-        "RECUPERAR": ["RECUAR", "CIRCULAR", "POKE", "BLOQUEAR"],
+        tipo: list(definicao.verbos) for tipo, definicao in DEFINICOES_PLANO.items()
     }
 
     def _evitar_repeticao_excessiva(self):
@@ -4604,7 +5020,7 @@ class AIBrain:
         if self.modo_berserk:
             base = 0.22
         if self.humor == "ENTEDIADO":
-            base = 0.8
+            base = 0.3  # Onda 10A: tédio acelera a decisão (era 0,8: seca→tédio→lento→seca)
         if self.humor == "ANIMADO":
             base = 0.38
         if self.humor == "FURIOSO":
@@ -4620,6 +5036,8 @@ class AIBrain:
     
     def on_hit_dado(self):
         """Quando acerta um golpe - integrado com sistema de combos"""
+        # Onda 10B: o hit-and-run lê "acabei de acertar" daqui.
+        self._t_ultimo_hit_dado = getattr(self, "tempo_combate", 0.0)
         # Contadores e emoções no motor único (5C): acertar alivia
         # frustração (-0,25) e tédio (-0,3) — a seca ofensiva é que os cria.
         self._motor_emocional().on_hit_dado()
@@ -4879,6 +5297,51 @@ class AIBrain:
             )
             return delta > 2.2
         return False
+
+    # Verbos que o motor (executar_ataques) trata como intenção ofensiva.
+    _ACOES_OFENSIVAS_MOTOR = (
+        "MATAR", "ESMAGAR", "COMBATE", "ATAQUE_RAPIDO", "FLANQUEAR",
+        "POKE", "PRESSIONAR", "CONTRA_ATAQUE", "PRESSIONAR_CONTINUO",
+    )
+
+    def forcar_iniciativa(self, distancia, inimigo, *, permitir_dash=True, hold_s=0.6):
+        """Onda 10A: o detector de standoff (ou o fim do FACE_OFF) manda
+        este lutador TOMAR A INICIATIVA — dash de aproximação se está a
+        2,5-5 m, senão golpe. Escrita P1 (fura qualquer hold) com tell
+        legível; a mesma coisa que o instinto faz, com autor externo."""
+        p = self.parent
+        try:
+            dx = inimigo.pos[0] - p.pos[0]
+            dy = inimigo.pos[1] - p.pos[1]
+        except (AttributeError, TypeError, IndexError):
+            dx, dy = 1.0, 0.0
+        try:
+            alcance = float(self._calcular_alcance_efetivo())
+        except Exception:
+            alcance = float(getattr(p, "alcance_ideal", 1.5) or 1.5)
+
+        deu_dash = False
+        if permitir_dash and 1.8 < distancia < 5.0:
+            pode = getattr(p, "pode_dash", None)
+            dash = getattr(p, "iniciar_dash", None)
+            if callable(pode) and callable(dash) and pode():
+                deu_dash = bool(dash(math.atan2(dy, dx), forca=18.0))
+        if deu_dash:
+            acao = "PRESSIONAR"
+        elif distancia <= alcance * 1.1:
+            acao = "MATAR"
+        else:
+            acao = "ATAQUE_RAPIDO"
+        self._definir_acao(acao, fonte="iniciativa", prioridade=1, hold_s=hold_s)
+        self.tempo_sem_intencao_ofensiva = 0.0
+        self.tell_atual = {
+            "tipo": "iniciativa",
+            "ate": getattr(self, "tempo_combate", 0.0) + 0.4,
+        }
+        contadores_luta = getattr(p, "contadores_luta", None)
+        if contadores_luta is not None:
+            contadores_luta["iniciativas"] = contadores_luta.get("iniciativas", 0) + 1
+        return True
 
     def _executar_instinto(self, acao, distancia, inimigo):
         """Executa uma ação instintiva com verbos REAIS do motor.

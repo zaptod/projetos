@@ -77,10 +77,18 @@ class EntityGenerator:
         self.validation = validation
         self.evaluator = evaluator
 
-    def generate(self, fork, extra_context: dict | None = None) -> tuple[dict, list[dict]]:
+    def generate(self, fork, extra_context: dict | None = None,
+                 escolhas: dict | None = None) -> tuple[dict, list[dict]]:
+        """`escolhas`: {roulette_id: valor} que vence o sorteio daquela roleta.
+
+        A roleta escolhida AINDA gira e consome o rng dela — trocar o valor
+        depois e o que mantem "mesma seed, mesma build" para todo o resto (e
+        guarda no evento o que teria saido).
+        """
         entity: dict[str, Any] = {"modifiers": []}
         events: list[dict] = []
         extra = extra_context or {}
+        self._escolhas = dict(escolhas or {})
 
         for index, roulette in enumerate(self.roulettes):
             rng = fork(f"{self.entity_name}:{roulette['id']}")
@@ -119,6 +127,18 @@ class EntityGenerator:
         else:
             raise ValueError(f"Tipo de roleta desconhecido: {adjusted['type']}")
 
+        sorteado = None
+        escolhido = getattr(self, "_escolhas", {}).get(roulette["id"])
+        if escolhido is not None:
+            sorteado = format_value(adjusted, value, option)
+            value, option, rarity = self._fixar(adjusted, escolhido, lo, hi)
+            # A roda continua sendo a roda inteira, so que parando no valor
+            # escolhido: uma roda de UM segmento denunciaria a escolha na tela
+            # e transformaria a cena de roleta num cartao.
+            wheel = (_wheel_for_categorical(adjusted["options"], value)
+                     if adjusted["type"] == "categorical"
+                     else _wheel_for_numeric(adjusted, lo, hi, value))
+
         set_path(entity, adjusted["target"], value)
         if option is not None:
             set_path(entity, adjusted["target"] + "_meta", {
@@ -142,9 +162,40 @@ class EntityGenerator:
             "target": adjusted["target"],
             "wheel": wheel,
         }
+        if sorteado is not None:
+            # Doutrina do nome pedido: o que TERIA saido fica registrado, e a
+            # legenda deixa de afirmar que a roleta decidiu.
+            event["escolhido"] = True
+            event["sorteado"] = sorteado
         if option is not None and "severity" in option:
             event["severity"] = option["severity"]
         return self.evaluator.decorate(event)
+
+    def _fixar(self, adjusted: dict, escolhido: Any, lo, hi):
+        """Valor escolhido no lugar do sorteado, validado contra as REGRAS.
+
+        A validacao acontece aqui, e nao so na entrada da CLI, porque a faixa
+        e as opcoes mudam com o que ja saiu: raridade alta estreita o dano,
+        o tipo da arma restringe o estilo. Escolha impossivel para ALTO — um
+        valor silenciosamente ignorado viraria um sorteio que o dono acha que
+        escolheu.
+        """
+        if adjusted["type"] == "categorical":
+            option = next((o for o in adjusted["options"]
+                           if o["value"] == escolhido), None)
+            if option is None:
+                disponivel = ", ".join(o["label"] for o in adjusted["options"])
+                raise ValueError(
+                    f"{adjusted['id']}: '{escolhido}' nao esta disponivel depois "
+                    f"do que ja foi sorteado. Agora vale: {disponivel}")
+            return option["value"], option, 0.0
+        if not (lo <= escolhido <= hi):
+            raise ValueError(
+                f"{adjusted['id']}: {escolhido} fora da faixa {lo}..{hi} "
+                "depois das regras (raridade e estilo estreitam a faixa)")
+        rarity = self.probability.numeric_rarity(escolhido, lo, hi,
+                                                 adjusted.get("distribution"))
+        return escolhido, None, rarity
 
     # -------------------------------------------------------------- validation
     def _validate(self, entity: dict, events: list[dict], fork, extra: dict) -> None:
@@ -153,6 +204,12 @@ class EntityGenerator:
             if violation is None:
                 return
             target_id = violation["reroll"]
+            if target_id in getattr(self, "_escolhas", {}):
+                # Re-rolar uma roleta fixada devolveria o mesmo valor 12 vezes
+                # e morreria em "nao convergiu", escondendo a causa real.
+                raise ValueError(
+                    f"a escolha de '{target_id}' cria uma combinacao proibida "
+                    "com o resto da build; escolha outro valor ou outra seed")
             roulette = next(r for r in self.roulettes if r["id"] == target_id)
             rng = fork(f"{self.entity_name}:{target_id}:reroll:{attempt}")
             old = next((e for e in events if e["roulette_id"] == target_id), None)

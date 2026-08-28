@@ -22,15 +22,19 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
 from neural_fights.core.skills import get_skill_data
+from neural_fights.core.skill_contract import (
+    CATEGORIAS_CONTROLE,
+    SkillContract,
+    custo_efetivo as _custo_efetivo,
+    derivar_contrato,
+    derivar_contrato_de_data,
+)
 from neural_fights.ai.skill_contracts import (
     calcular_custo_vida as _custo_vida,
-    efeito_buff as _efeito_buff,
-    numero_finito as _numero_finito,
     tem_buff_dano as _tem_buff_dano,
     tem_buff_velocidade as _tem_buff_velocidade,
     tem_cura as _tem_cura,
     tem_defesa as _tem_defesa,
-    tem_reflexao as _tem_reflexao,
     valor_positivo as _valor_positivo,
 )
 
@@ -112,7 +116,6 @@ class SkillProfile:
     # Métricas calculadas
     dano_total: float = 0.0
     alcance_efetivo: float = 0.0
-    tempo_efeito: float = 0.0
     dano_por_mana: float = 0.0  # Eficiência
     
     # Condições ideais de uso
@@ -122,16 +125,9 @@ class SkillProfile:
     hp_proprio_max: float = 1.0
     hp_inimigo_min: float = 0.0
     hp_inimigo_max: float = 1.0
-    
-    # Flags especiais
-    requer_setup: bool = False
-    setup_skill: Optional[str] = None  # Skill que prepara esta
-    pode_combo_apos: List[str] = field(default_factory=list)
-    
-    # Scores
-    score_ofensivo: float = 0.0
-    score_defensivo: float = 0.0
-    score_utilidade: float = 0.0
+
+    # Onda 11A: o contrato derivado é a fonte das métricas (core/skill_contract).
+    contrato: Optional[SkillContract] = None
 
 
 @dataclass
@@ -293,145 +289,82 @@ class SkillStrategySystem:
             custo=custo,
             cooldown=cooldown,
             data=data,
-            fonte=fonte
+            fonte=fonte,
+            contrato=derivar_contrato(nome),
         )
-        
+
         # Calcula métricas
         self._calcular_metricas(perfil)
-        
+
         # Determina propósitos
         self._determinar_propositos(perfil)
-        
-        # Calcula scores
-        self._calcular_scores(perfil)
-        
+
         # Armazena
         self.skills[nome] = perfil
         if tipo in self.skills_por_tipo:
             self.skills_por_tipo[tipo].append(perfil)
     
     def _calcular_metricas(self, perfil: SkillProfile):
-        """Calcula métricas numéricas da skill"""
-        data = perfil.data
+        """Métricas vêm do CONTRATO derivado (core/skill_contract) — a conta
+        que espelha o runtime, não a heurística local antiga."""
+        contrato = perfil.contrato
+        if contrato is None:
+            # Perfis construídos com registro explícito (fora do catálogo)
+            # derivam o contrato do próprio ``data``.
+            contrato = derivar_contrato_de_data(perfil.nome, perfil.data)
+            perfil.contrato = contrato
         tipo = perfil.tipo
 
-        # Potencial ofensivo declarado. CHANNEL consome somente DPS no runtime;
-        # seu eventual campo ``dano`` é inerte e não pode inflar o plano da IA.
-        dano_base = max(0.0, _numero_finito(data.get("dano")))
-        if tipo == "CHANNEL":
-            duracao = max(0.0, _numero_finito(data.get("duracao_max"), 3.0))
-            perfil.dano_total = (
-                max(0.0, _numero_finito(data.get("dano_por_segundo"))) * duracao
-            )
+        perfil.dano_total = contrato.dano_estimado
+
+        # Alcance efetivo = até onde a AMEAÇA chega.
+        if tipo == "AREA":
+            # A área cai no alvo previsto até alcance_cast e ainda cobre o
+            # raio ao aterrissar (o antigo ``raio + 1`` subestimava por 2x).
+            perfil.alcance_efetivo = contrato.alcance_perigo
+        elif tipo == "CHANNEL" and perfil.dano_total <= 0.0:
+            perfil.alcance_efetivo = 0.0  # canal de cura é self-cast
         else:
-            perfil.dano_total = dano_base
-            duracao = max(0.0, _numero_finito(data.get("duracao"), 3.0))
-            perfil.dano_total += (
-                max(0.0, _numero_finito(data.get("dano_tick"))) * duracao
-            )
-            perfil.dano_total += (
-                max(0.0, _numero_finito(data.get("dano_por_segundo"))) * duracao
-            )
+            perfil.alcance_efetivo = contrato.alcance_lancamento
 
-            multi_shot = max(1, int(_numero_finito(data.get("multi_shot"), 1)))
-            ondas = max(1, int(_numero_finito(data.get("ondas"), 1)))
-            perfil.dano_total *= multi_shot * ondas
-
-            meteoros = max(
-                0,
-                int(_numero_finito(data.get("meteoros_aleatorios"))),
-            )
-            if meteoros:
-                dano_meteoro = max(
-                    0.0,
-                    _numero_finito(data.get("dano_meteoro"), dano_base),
-                )
-                perfil.dano_total += meteoros * dano_meteoro
-
-            # ``chain`` representa saltos adicionais no runtime. Cada salto
-            # herda o dano já decaído do segmento anterior.
-            saltos = max(0, int(_numero_finito(data.get("chain"))))
-            decay = max(0.0, _numero_finito(data.get("chain_decay"), 0.8))
-            dano_salto = dano_base
-            for _ in range(saltos):
-                dano_salto *= decay
-                perfil.dano_total += dano_salto
-
-        if tipo == "SUMMON":
-            duracao = max(0.0, _numero_finito(data.get("duracao"), 10))
-            summon_dano = max(0.0, _numero_finito(data.get("summon_dano"), 10))
-            perfil.dano_total = summon_dano * duracao * 0.5  # Estimativa
-        
-        # Alcance efetivo
-        if tipo == "PROJETIL":
-            vel = max(0.0, _numero_finito(data.get("velocidade"), 10))
-            vida = max(0.0, _numero_finito(data.get("vida"), 1.5))
-            if vel > 0.0 and vida > 0.0:
-                perfil.alcance_efetivo = vel * vida * 0.8
-            else:
-                # Projéteis estacionários nascem à frente do conjurador e só
-                # atingem em contato. Zero não significa alcance ilimitado.
-                perfil.alcance_efetivo = max(
-                    1.25,
-                    _numero_finito(data.get("alcance")),
-                )
-        elif tipo == "BEAM":
-            perfil.alcance_efetivo = max(
-                0.0,
-                _numero_finito(data.get("alcance"), 6.0),
-            )
-        elif tipo == "AREA":
-            perfil.alcance_efetivo = max(
-                0.0,
-                _numero_finito(data.get("raio_area"), 3.0),
-            )
-        elif tipo == "DASH":
-            perfil.alcance_efetivo = max(
-                0.0,
-                _numero_finito(data.get("distancia"), 4.0),
-            )
-        elif tipo == "CHANNEL" and perfil.dano_total > 0.0:
-            perfil.alcance_efetivo = max(
-                0.0,
-                _numero_finito(data.get("alcance"), 6.0),
-            )
-        else:
-            perfil.alcance_efetivo = 0  # Self-cast
-        
         # Eficiência de mana
         if perfil.custo > 0:
             perfil.dano_por_mana = perfil.dano_total / perfil.custo
-        
-        # Duração do efeito
-        perfil.tempo_efeito = max(
-            0.0,
-            _numero_finito(
-                data.get("duracao_max") if tipo == "CHANNEL" else data.get("duracao"),
-            ),
-        )
-        
+
         # Condições de distância
         if tipo in ["PROJETIL", "BEAM", "CHANNEL"] and perfil.alcance_efetivo > 0:
             perfil.distancia_min = (
                 0.0
-                if tipo == "PROJETIL"
-                and _numero_finito(data.get("velocidade"), 10) <= 0.0
+                if tipo == "PROJETIL" and contrato.velocidade_projetil <= 0.0
                 else 2.0
             )
             perfil.distancia_max = perfil.alcance_efetivo
         elif tipo == "AREA":
             perfil.distancia_min = 0
-            perfil.distancia_max = perfil.alcance_efetivo + 1.0
+            perfil.distancia_max = perfil.alcance_efetivo
         elif tipo == "DASH":
             perfil.distancia_min = 3.0
             perfil.distancia_max = perfil.alcance_efetivo + 3.0
     
     def _determinar_propositos(self, perfil: SkillProfile):
-        """Determina os propósitos estratégicos da skill"""
+        """Determina os propósitos estratégicos da skill.
+
+        Onda 11A: CONTROLE vem da CATEGORIA canônica do efeito (STATUS_RUNTIME
+        via contrato), nunca de listas literais — as 11 skills de CC que as
+        listas antigas perdiam (SILENCIADO, ENRAIZADO, KNOCK_UP, TEMPO_PARADO,
+        SONO, CHARME, POSSESSO...) voltam à rotação. FINISHER vem do gate
+        ALVO_BAIXA_VIDA declarado, em QUALQUER tipo.
+        """
         data = perfil.data
         tipo = perfil.tipo
+        contrato = perfil.contrato
         propositos = []
-        
+        eh_controle = (
+            contrato.categoria_efeito in CATEGORIAS_CONTROLE
+            or contrato.categoria_efeito2 in CATEGORIAS_CONTROLE
+            or "deslocamento:puxa" in contrato.consequencias
+        )
+
         # BUFFS
         if tipo == "BUFF":
             if _tem_cura(data):
@@ -497,29 +430,26 @@ class SkillStrategySystem:
                 propositos.append(SkillPurpose.POKE)
             if perfil.dano_total > 40:
                 propositos.append(SkillPurpose.BURST)
-            if data.get("efeito") in ["LENTO", "PARALISIA", "CONGELADO", "ENRAIZADO"]:
+            if eh_controle:
                 propositos.append(SkillPurpose.CONTROL)
-            if data.get("condicao") == "ALVO_BAIXA_VIDA" or data.get("executa"):
-                propositos.append(SkillPurpose.FINISHER)
-                perfil.hp_inimigo_max = 0.3
-        
+
         # BEAM
         elif tipo == "BEAM":
             propositos.append(SkillPurpose.POKE)
             if perfil.dano_total > 30:
                 propositos.append(SkillPurpose.BURST)
-            if data.get("efeito") in ["PARALISIA", "CEGO"]:
+            if eh_controle:
                 propositos.append(SkillPurpose.CONTROL)
-        
+
         # AREA
         elif tipo == "AREA":
             if perfil.dano_total > 40:
                 propositos.append(SkillPurpose.BURST)
-            if data.get("duracao", 0) > 2:
+            if contrato.duracao > 2 or "terreno" in contrato.consequencias:
                 propositos.append(SkillPurpose.ZONING)
-            if data.get("efeito") in ["LENTO", "PARALISIA", "CONGELADO", "MEDO"]:
+            if eh_controle:
                 propositos.append(SkillPurpose.CONTROL)
-        
+
         # CHANNEL
         elif tipo == "CHANNEL":
             if _tem_cura(data):
@@ -528,38 +458,22 @@ class SkillStrategySystem:
             if perfil.dano_total > 0.0:
                 propositos.append(SkillPurpose.BURST)
                 propositos.append(SkillPurpose.POKE)
-        
+            if eh_controle:
+                propositos.append(SkillPurpose.CONTROL)
+
+        # FINISHER: o gate declarado vale para QUALQUER tipo (a heurística
+        # antiga só olhava PROJETIL); o limiar vem do catálogo, não de 0.3
+        # literal.
+        if contrato.condicao == "ALVO_BAIXA_VIDA" or contrato.executa:
+            propositos.append(SkillPurpose.FINISHER)
+            perfil.hp_inimigo_max = contrato.condicao_limiar
+
         # Default
         if not propositos:
             propositos.append(SkillPurpose.UTILITY)
-        
+
         perfil.propositos = list(dict.fromkeys(propositos))
         perfil.proposito_principal = perfil.propositos[0]
-    
-    def _calcular_scores(self, perfil: SkillProfile):
-        """Calcula scores de ofensivo/defensivo/utilidade"""
-        data = perfil.data
-        
-        # Ofensivo
-        perfil.score_ofensivo = min(1.0, perfil.dano_total / 60)
-        if perfil.proposito_principal in [SkillPurpose.BURST, SkillPurpose.POKE, SkillPurpose.FINISHER]:
-            perfil.score_ofensivo += 0.2
-        
-        # Defensivo
-        if _tem_cura(data) or _valor_positivo(data, "escudo"):
-            perfil.score_defensivo = 0.8
-        if _tem_reflexao(data):
-            perfil.score_defensivo = 0.7
-        if perfil.tipo == "DASH":
-            perfil.score_defensivo = 0.5
-        if data.get("invencivel") or _efeito_buff(data) == "IMORTAL":
-            perfil.score_defensivo = 0.9
-        
-        # Utilidade
-        if perfil.tipo in ["BUFF", "SUMMON", "TRAP"]:
-            perfil.score_utilidade = 0.7
-        if data.get("efeito") in ["LENTO", "PARALISIA", "CONGELADO"]:
-            perfil.score_utilidade = 0.6
     
     def _categorizar_por_proposito(self):
         """Organiza skills por propósito"""
@@ -772,52 +686,49 @@ class SkillStrategySystem:
     # =========================================================================
     
     def _descobrir_combos(self):
-        """Descobre combos e sinergias entre skills"""
+        """Grafo de combo: derivação status→condição (efeitos NORMALIZADOS —
+        as comparações cruas antigas perdiam aliases) + ``combo_apos``
+        declarado no catálogo."""
         combos = []
-        
-        # Congelamento + Shatter
-        freeze_skills = [s for s in self.skills.values() 
-                        if s.data.get("efeito") == "CONGELADO"]
-        shatter_skills = [s for s in self.skills.values() 
-                         if s.data.get("condicao") == "ALVO_CONGELADO"]
-        for freeze in freeze_skills:
-            for shatter in shatter_skills:
-                combos.append((freeze.nome, shatter.nome, "freeze_shatter"))
-                freeze.pode_combo_apos.append(shatter.nome)
-                shatter.requer_setup = True
-                shatter.setup_skill = freeze.nome
-        
-        # Queimadura + Combustão
-        burn_skills = [s for s in self.skills.values() 
-                       if s.data.get("efeito") == "QUEIMANDO"]
-        detonate_skills = [s for s in self.skills.values() 
-                          if s.data.get("condicao") == "ALVO_QUEIMANDO"]
-        for burn in burn_skills:
-            for det in detonate_skills:
-                combos.append((burn.nome, det.nome, "burn_detonate"))
-                burn.pode_combo_apos.append(det.nome)
-        
-        # Buff + Burst
+        vistos = set()
+
+        def _add(setup, payoff, razao):
+            chave = (setup, payoff)
+            if setup != payoff and chave not in vistos:
+                vistos.add(chave)
+                combos.append((setup, payoff, razao))
+
+        # Quem aplica cada status (efeito e efeito2, já normalizados).
+        aplicadores = {}
+        for s in self.skills.values():
+            for status in (s.contrato.efeito, s.contrato.efeito2):
+                if status:
+                    aplicadores.setdefault(status, []).append(s.nome)
+
+        for s in self.skills.values():
+            requer = s.contrato.condicao_status
+            if requer:
+                for setup_nome in aplicadores.get(requer, []):
+                    _add(setup_nome, s.nome, f"prepara_{requer.lower()}")
+            for setup_nome in s.contrato.combo_apos:
+                if setup_nome in self.skills:
+                    _add(setup_nome, s.nome, "combo_declarado")
+
+        # Buff de dano antes do pico; controle antes do pico.
         buff_dano = [s for s in self.skills.values() if _tem_buff_dano(s.data)]
         bursts = [s for s in self.skills_por_proposito[SkillPurpose.BURST]]
         for buff in buff_dano:
             for burst in bursts[:2]:  # Top 2 bursts
-                if buff.nome != burst.nome:
-                    combos.append((buff.nome, burst.nome, "buff_burst"))
-        
-        # Summon + Buff
-        summons = self.skills_por_tipo["SUMMON"]
-        for summon in summons:
+                _add(buff.nome, burst.nome, "buff_burst")
+
+        for summon in self.skills_por_tipo["SUMMON"]:
             for buff in buff_dano:
-                combos.append((buff.nome, summon.nome, "buff_summon"))
-        
-        # Control + Burst
-        controls = self.skills_por_proposito[SkillPurpose.CONTROL]
-        for ctrl in controls:
+                _add(buff.nome, summon.nome, "buff_summon")
+
+        for ctrl in self.skills_por_proposito[SkillPurpose.CONTROL]:
             for burst in bursts[:2]:
-                if ctrl.nome != burst.nome:
-                    combos.append((ctrl.nome, burst.nome, "control_burst"))
-        
+                _add(ctrl.nome, burst.nome, "control_burst")
+
         self.plano.combos = combos
     
     # =========================================================================
@@ -941,9 +852,11 @@ class SkillStrategySystem:
 
         if self.cd_global > 0:
             return False
-        
-        # Mana
-        if p.mana < skill.custo:
+
+        # Mana: compara com o custo que o runtime REALMENTE cobra (Mago ×0,8,
+        # modificador de buff) — o gate antigo comparava o custo cru e vetava
+        # casts que o lutador podia pagar.
+        if p.mana < _custo_efetivo(skill.custo, p, origem=skill.fonte):
             return False
 
         # Custos de vida usam a mesma precedência e o mesmo limite estrito do

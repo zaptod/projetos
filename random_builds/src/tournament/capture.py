@@ -31,8 +31,14 @@ RAIZ_PROJETOS = Path(__file__).resolve().parents[3]
 def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path, cenario: str,
                portrait: bool = False, camera_modo: str | None = None,
                fps: int = 30, max_duracao: float = 120.0,
-               timeout: float = 600.0) -> dict:
-    """Roda o gravador oficial num subprocesso e devolve o resultado da luta."""
+               timeout: float = 600.0, resolucao: tuple[int, int] | None = None,
+               sem_hud: bool = False) -> dict:
+    """Roda o gravador oficial num subprocesso e devolve o resultado da luta.
+
+    `resolucao` grava em tamanho nativo (1080x1920 para o celular) — sem o
+    upscale 2x que borrava o gameplay. `sem_hud` tira as barras do jogo: o
+    HUD do video e desenhado pelo renderer a partir da `serie_hp`.
+    """
     saida = Path(saida)
     comando = [
         sys.executable, "-X", "utf8",
@@ -41,10 +47,14 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path, cenario: str,
         "--saida", str(saida), "--cenario", cenario,
         "--fps", str(fps), "--max-duracao", str(max_duracao),
     ]
-    if portrait:
+    if resolucao:
+        comando += ["--resolucao", f"{int(resolucao[0])}x{int(resolucao[1])}"]
+    elif portrait:
         comando.append("--portrait")
     if camera_modo:
         comando += ["--camera", camera_modo]
+    if sem_hud:
+        comando.append("--sem-hud")
 
     ambiente = dict(os.environ)
     ambiente.setdefault("SDL_VIDEODRIVER", "dummy")

@@ -41,9 +41,43 @@ class Câmera:
         # Modo de câmera
         # ARENA (padrão): enquadra a arena inteira, sem seguir lutadores.
         # AUTO: zoom dinâmico seguindo os lutadores. P1/P2: segue um lado.
+        # DIRETOR: câmera de transmissão para VÍDEO (ver _atualizar_modo_diretor).
         # MANUAL: WASD. (tecla 0 volta para ARENA, tecla 3 liga AUTO)
-        self.modo = "ARENA"  # ARENA, AUTO, P1, P2, FIXO, MANUAL
+        self.modo = "ARENA"  # ARENA, AUTO, DIRETOR, P1, P2, FIXO, MANUAL
         self.zoom_arena = None  # calculado em set_arena_bounds
+
+        # === MODO DIRETOR (Onda 9: a luta como vídeo) ===
+        # O AUTO é câmera de JOGO: pan a 8/s, predição, punch, zoom de
+        # emergência a cada knockback — no celular isso enjoa ("câmera que
+        # persegue cansa"). O ARENA é o oposto: quadro travado, lutadores com
+        # 5% da largura no 9:16. O DIRETOR fica no meio, como uma câmera de
+        # transmissão esportiva: zona morta (o centro pode oscilar sem a
+        # câmera mexer), pan lento, zoom-in só depois de 1 s de estabilidade,
+        # zoom-out rápido (nunca perde ninguém), sem tremor e sem punch.
+        # Só LÊ posições: não toca em nada que altere o combate.
+        self.diretor_deadzone = 0.06          # fração da menor dimensão
+        self.diretor_pan = 2.4                # lerp/s do pan (AUTO usa 8)
+        self.diretor_pan_urgente = 7.0        # lerp/s com alguém na borda
+        self.diretor_zoom_in = 1.1            # lerp/s fechando o quadro
+        self.diretor_zoom_out = 6.0           # lerp/s abrindo o quadro
+        self.diretor_espera_zoom_in = 1.5     # s de estabilidade antes de fechar
+        self.diretor_histerese_zoom = 0.12    # fecha só se o alvo passa de +12%
+        # Abre só se o alvo cai abaixo de -8%: `necessario` já embute a margem
+        # segura (12%), então 8% de folga ainda deixa os dois no quadro — e a
+        # correção de emergência cobre o resto. Com 3% um arqueiro em kiting
+        # fazia a câmera respirar 20 vezes por minuto.
+        self.diretor_histerese_zoom_out = 0.08
+        # O teto de zoom é em METROS, não em fator: o lado menor da tela
+        # nunca mostra menos que `largura_min_m`. Em 1080x1920 isso dá zoom
+        # ~3,1 (o 1,6 do AUTO foi calibrado para 1200x800 e deixava o
+        # lutador com 6% da largura no vertical). `zoom_max` é o freio
+        # absoluto para telas gigantes.
+        self.diretor_largura_min_m = 7.0
+        self.diretor_zoom_max = 4.0
+        self.diretor_push_ko = 1.25           # push-in no nocaute
+        self.diretor_fora_arena = 0.35        # fração da janela que pode sair da arena
+        self._diretor_t = 0.0
+        self._diretor_estavel_desde = None
         self.shake_timer = 0.0
         self.shake_magnitude = 0.0
         self.offset_x = 0
@@ -157,11 +191,14 @@ class Câmera:
         
         return min_x, min_y, max_x, max_y
     
-    def _calcular_zoom_necessario(self, p1, p2) -> float:
+    def _calcular_zoom_necessario(self, p1, p2, zoom_max: float | None = None) -> float:
         """
         Calcula o zoom NECESSÁRIO para manter ambos os lutadores visíveis.
         Este é o zoom MÍNIMO - não podemos ter zoom MAIOR que isso.
+        `zoom_max` sobrepõe o teto da classe (o DIRETOR usa o teto em metros).
         """
+        if zoom_max is None:
+            zoom_max = self.zoom_max
         # Bounding box dos lutadores
         min_x, min_y, max_x, max_y = self._calcular_bounding_box(p1, p2)
         
@@ -186,9 +223,15 @@ class Câmera:
         
         # Usa o MENOR zoom (para garantir que tudo caiba)
         zoom_necessario = min(zoom_x, zoom_y)
-        
+
         # Clamp aos limites
-        return max(self.zoom_min, min(self.zoom_max, zoom_necessario))
+        return max(self.zoom_min, min(zoom_max, zoom_necessario))
+
+    def _diretor_teto_zoom(self) -> float:
+        """Zoom em que o lado menor da tela mostra `diretor_largura_min_m`."""
+        menor = min(self.screen_width, self.screen_height)
+        return max(self.zoom_min,
+                   min(self.diretor_zoom_max, menor / (self.diretor_largura_min_m * PPM)))
     
     def _calcular_centro_ideal(self, p1, p2) -> tuple:
         """
@@ -254,6 +297,17 @@ class Câmera:
             self._punch_mag = 0.0
             self._punch_timer = 0.0
             self._atualizar_modo_arena(dt, p1, p2)
+            return
+
+        # === MODO DIRETOR (vídeo): mesma promessa do ARENA quanto a tremor ===
+        if self.modo == "DIRETOR":
+            self.shake_timer = max(0.0, self.shake_timer - dt)
+            self.shake_magnitude = 0
+            self.offset_x = 0
+            self.offset_y = 0
+            self._punch_mag = 0.0
+            self._punch_timer = 0.0
+            self._atualizar_modo_diretor(dt, p1, p2)
             return
 
         # === SHAKE ===
@@ -405,6 +459,139 @@ class Câmera:
         self.y = self.arena_centro[1] * PPM
         if self.zoom_arena:
             self.zoom = self.zoom_arena
+
+    # ------------------------------------------------------------ DIRETOR
+
+    def _limitar_centro_a_arena(self, cx, cy):
+        """Clamp MACIO à arena: os lutadores ficam no centro, não a arena.
+
+        A arena é o palco, mas quem manda no quadro é a luta. A janela pode
+        avançar além da borda da arena até `diretor_fora_arena` da própria
+        dimensão (35%): dois lutadores encostados na parede de cima aparecem
+        a ~1/3 do topo, não colados nele. Só quando nem isso basta (janela
+        muito maior que a arena naquele eixo) o eixo centraliza na arena.
+        """
+        if self.arena_centro is None or self.arena_tamanho is None or self.zoom <= 0:
+            return cx, cy
+        meia_w = (self.screen_width / 2) / self.zoom
+        meia_h = (self.screen_height / 2) / self.zoom
+        fora_w = self.diretor_fora_arena * 2 * meia_w
+        fora_h = self.diretor_fora_arena * 2 * meia_h
+        ax, ay = self.arena_centro[0] * PPM, self.arena_centro[1] * PPM
+        meia_aw = self.arena_tamanho[0] * PPM / 2
+        meia_ah = self.arena_tamanho[1] * PPM / 2
+        lo_x = ax - meia_aw + meia_w - fora_w
+        hi_x = ax + meia_aw - meia_w + fora_w
+        lo_y = ay - meia_ah + meia_h - fora_h
+        hi_y = ay + meia_ah - meia_h + fora_h
+        cx = ax if lo_x > hi_x else max(lo_x, min(hi_x, cx))
+        cy = ay if lo_y > hi_y else max(lo_y, min(hi_y, cy))
+        return cx, cy
+
+    def aplicar_momento(self, duracao=0.4):
+        """Onda 10A: push-in curto para um momento (wall-splat, arremesso).
+
+        Só o DIRETOR reage (fecha o quadro ~10% enquanto dura) e sem punch
+        nem tremor — a promessa "câmera calma" da Onda 9 fica de pé. É um
+        sinal só de leitura: quem chama é o motor, e o resultado da luta não
+        depende dele (mesma doutrina do aplicar_shake).
+        """
+        try:
+            duracao = float(duracao)
+        except (TypeError, ValueError):
+            duracao = 0.4
+        self._momento_timer = max(getattr(self, "_momento_timer", 0.0), duracao)
+
+    def _atualizar_modo_diretor(self, dt, p1, p2):
+        """Câmera de transmissão: enquadra os dois sem perseguir cada passo.
+
+        1. ZOOM com histerese assimétrica: abrir é urgente (alguém saindo do
+           quadro), fechar só depois de `diretor_espera_zoom_in` s de
+           estabilidade e só quando o alvo passa de +12% — senão a luta vira
+           sanfona. No nocaute (alguém `morto`) o quadro fecha um pouco.
+        2. PAN com zona morta: o ponto médio pode oscilar `deadzone` sem a
+           câmera reagir; fora dela o movimento é um lerp lento.
+        3. SEGURANÇA: lutador na margem crítica → correção imediata mínima.
+        """
+        if p1 is None or p2 is None or dt <= 0:
+            return
+        self._diretor_t += dt
+
+        # --- 1. zoom ---
+        teto = self._diretor_teto_zoom()
+        necessario = self._calcular_zoom_necessario(p1, p2, zoom_max=teto)
+        # Onda 10A: o zoom-in segue a distância FILTRADA (~2 s) — arremessos,
+        # dash-ins e kiting mudam a distância de verdade e o quadro virava
+        # sanfona (V7_zoom_calmo). Abrir continua imediato (segurança).
+        tau = getattr(self, "diretor_zoom_tau", 2.0)
+        suave = getattr(self, "_diretor_zoom_suave", None)
+        if suave is None:
+            suave = necessario
+        suave += (necessario - suave) * min(1.0, dt / max(tau, 1e-6))
+        self._diretor_zoom_suave = suave
+        morto = bool(getattr(p1, "morto", False) or getattr(p2, "morto", False))
+        push = self.diretor_push_ko if morto else 1.0
+        desejado_abrir = min(teto, necessario * push)
+        desejado = min(teto, min(necessario, suave) * push)
+        # Onda 10A: momento (wall-splat/arremesso) fecha o quadro um pouco,
+        # pelo mesmo caminho suave do push-in do KO.
+        momento = getattr(self, "_momento_timer", 0.0)
+        if momento > 0.0:
+            self._momento_timer = momento - dt
+            desejado = min(teto, desejado * getattr(self, "diretor_push_momento", 1.10))
+        if desejado_abrir < self.zoom * (1.0 - self.diretor_histerese_zoom_out):
+            self._diretor_estavel_desde = None
+            self.zoom += (desejado_abrir - self.zoom) * min(1.0, self.diretor_zoom_out * dt)
+        elif desejado > self.zoom * (1.0 + self.diretor_histerese_zoom):
+            if self._diretor_estavel_desde is None:
+                self._diretor_estavel_desde = self._diretor_t
+            estavel = self._diretor_t - self._diretor_estavel_desde
+            if morto or estavel >= self.diretor_espera_zoom_in:
+                self.zoom += (desejado - self.zoom) * min(1.0, self.diretor_zoom_in * dt)
+        else:
+            self._diretor_estavel_desde = None
+        self.zoom = max(self.zoom_min, min(teto, self.zoom))
+
+        # --- 2. pan com zona morta (histerese) ---
+        # Começa a mover só quando o centro sai da zona; uma vez movendo, vai
+        # até perto do centro (40% da zona) e para. Sem a histerese a câmera
+        # estacionava exatamente na borda da zona e qualquer passo de 4 cm a
+        # acordava — o "tremor de deriva" que a zona morta existe para matar.
+        cx, cy = self._calcular_centro_ideal(p1, p2)
+        cx, cy = self._limitar_centro_a_arena(cx, cy)
+        dx_px = (cx - self.x) * self.zoom
+        dy_px = (cy - self.y) * self.zoom
+        dist = math.hypot(dx_px, dy_px)
+        zona = self.diretor_deadzone * min(self.screen_width, self.screen_height)
+        urgente = (not self._lutador_na_zona_segura(p1)
+                   or not self._lutador_na_zona_segura(p2))
+        movendo = getattr(self, "_diretor_movendo", False)
+        if dist > zona:
+            movendo = True
+        elif dist < zona * 0.4:
+            movendo = False
+        self._diretor_movendo = movendo
+        if urgente:
+            self.lerp_pos(cx, cy, dt, self.diretor_pan_urgente)
+        elif movendo:
+            self.lerp_pos(cx, cy, dt, self.diretor_pan)
+
+        # --- 3. segurança: ninguém sai do quadro ---
+        for lutador in (p1, p2):
+            if self._lutador_visivel(lutador):
+                continue
+            if self.zoom > necessario:
+                self.zoom = necessario
+            sx, sy = self._get_posicao_tela(lutador)
+            margem = self.margem_segura
+            if sx < margem:
+                self.x -= (margem - sx) / self.zoom
+            elif sx > self.screen_width - margem:
+                self.x += (sx - (self.screen_width - margem)) / self.zoom
+            if sy < margem:
+                self.y -= (margem - sy) / self.zoom
+            elif sy > self.screen_height - margem:
+                self.y += (sy - (self.screen_height - margem)) / self.zoom
 
     def _aplicar_punch(self, dt):
         # Transiente de <=0,15s; decai linearmente e não realimenta o lerp

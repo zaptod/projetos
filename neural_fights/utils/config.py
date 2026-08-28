@@ -33,7 +33,8 @@ STAGGER_PARRY_S = 0.4
 HITSTUN_BASE_S = 0.14
 HITSTUN_POR_DANO = 0.004            # +4ms por ponto de dano final
 HITSTUN_MAX_S = 0.40
-HITSTUN_SCALING_COMBO = 0.85        # hit N do combo atordoa 15% menos
+HITSTUN_SCALING_COMBO = 0.80        # hit N do combo atordoa 20% menos (Onda 10A: era 15%; a órbita
+                                    # que segue reto sobre alvo atordoado levou o maior combo ao teto C2)
 HITSTUN_MIN_S = 0.08
 JANELA_COMBO_S = 1.2                # sem novo hit nessa janela, combo morre
 # Combo flow: o próximo swing sai mais rápido sobre alvo em hitstun —
@@ -68,3 +69,56 @@ COR_P2 = (231, 76, 60)
 COR_UI_BG = (0, 0, 0, 150)
 COR_TEXTO_TITULO = (255, 215, 0)
 COR_TEXTO_INFO = (200, 200, 200)
+# === ONDA 10A: AGARRÃO, STANDOFF E WALL-SPLAT ===
+# O cara-a-cara sem golpe é o assassino do ritmo. O motor detecta o
+# standoff (em alcance, ninguém ataca), força iniciativa e, se nada
+# acontece, os corpos se AGARRAM: 0,25s travados e um desfecho rápido
+# (arremesso/joelhada/empurrão/reversão/escape). Corpo lançado que bate
+# na parede estatela (wall-splat).
+AGARRAO_LOCK_S = 0.25
+AGARRAO_COOLDOWN_S = 3.0
+CUSTO_ESTAMINA_AGARRAO = 15.0
+FORCA_ARREMESSO = 30.0               # com ATRITO 8 → ~3,75 m de deslize
+DANO_ARREMESSO_PCT = (0.04, 0.08)    # fração da vida_max, escala com força
+AGARRAO_DIST_MAX = 2.4               # distância máxima para agarrar (lunge durante o lock)
+STANDOFF_JANELA_S = 1.5              # na faixa de confronto sem HIT → iniciativa
+STANDOFF_ESCALADA_S = 1.0            # ainda sem hit → agarrão / 2ª dose
+STANDOFF_COOLDOWN_S = 3.0
+WALL_SPLAT_INTENSIDADE_MIN = 8.0     # velocidade perpendicular mínima
+WALL_SPLAT_DANO_MAX = 0.08           # fração da vida_max
+WALL_SPLAT_STUN_S = (0.3, 0.5)
+LANCADO_KNOCKBACK_MIN = 24.0         # knockback que arma o estado "lançado" (golpe forte)
+
+# === ONDA 10B: MOBILIDADE NO MOTOR ===
+# O eixo 'mobilidade' da personalidade (0-1) passa a existir no corpo: dash
+# mais barato/frequente/forte, giro mais rapido, um pouco mais de velocidade.
+DASH_MOB_CD_FATOR = 0.47      # cd 1,6 s -> 1,0 s em mob 0,8
+DASH_MOB_CUSTO_FATOR = 0.35   # custo 25 -> 18 em mob 0,8
+DASH_MOB_FORCA_FATOR = 0.31   # forca 16 -> 20 em mob 0,8
+VEL_MOB_FATOR = 0.08          # +8% de velocidade em mob 1,0
+CD_DASH_TATICO_S = 2.5        # cooldown do dash tatico da IA (menos mob)
+
+# === ONDA 10D: HABILIDADES COM CONSEQUÊNCIA ===
+# Área cai no ALVO (posição prevista, até ALCANCE_CAST_PADRAO); EMPURRAO
+# empurra de verdade; PUXADO/VORTEX puxam; obstáculos destrutíveis quebram.
+FORCA_EMPURRAO_PADRAO = 14.0
+FORCA_PUXAO = 20.0
+PUXAO_DURACAO_S = 0.3
+ALCANCE_CAST_PADRAO = 6.0
+OBSTACULO_DANO_ARREMESSO = 999.0
+
+# === ONDA 10 (ajuste de fluxo): HIT-STOP SO PARA PANCADA GRANDE ===
+# O congelamento por hit em TODO golpe (2-18 frames x multiplicador de
+# classe ate 1,8) quebrava o fluxo da luta no ritmo novo. So congela quando
+# o dano e GRANDE relativo a vida do alvo; o feedback dos golpes comuns
+# fica com shake, particulas e knockback. O slow-motion de KO nao muda.
+# Varredura em 6 lutas: 5% = 3,7 congelamentos/luta; 6% = 1,5; 8% = 0,5;
+# 10% = 0,3. Sem portao eram ~44/luta (~4,3 s de tela parada por luta).
+HITSTOP_DANO_MIN_PCT = 0.06   # fracao da vida_max do ALVO
+
+# ============================================================
+# ONDA 11B: qualidade 1-a-1 das skills
+# ============================================================
+# Multiplicador de um EXECUTE bem-sucedido (condicao ALVO_BAIXA_VIDA com
+# ``executa``). Era 10.0 literal duplicado em Projetil/AreaEffect.
+EXECUTA_MULTIPLICADOR = 10.0

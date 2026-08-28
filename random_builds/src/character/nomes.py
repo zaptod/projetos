@@ -213,8 +213,14 @@ def resolver_nome_personagem(rng, classe=None, personalidade=None,
     O nome gerado sai SEMPRE, mesmo quando o comentario manda um: assim a
     mesma seed produz a mesma build com ou sem pedido, e o generation.json
     guarda o que teria saido.
+
+    `genero` fixado tambem NAO pula o sorteio: o mesmo rng batiza a arma e
+    alimenta as fabricas do jogo logo depois, entao economizar um `choice`
+    aqui deslocaria a corrente e escolher o genero mudaria a arma e a cor do
+    personagem -- coisas que ninguem pediu para mudar.
     """
-    genero = genero or sortear_genero(rng)
+    genero_sorteado = sortear_genero(rng)
+    genero = genero or genero_sorteado
     gerado = gerar_nome_personagem(
         rng, classe=classe, personalidade=personalidade,
         encantamento=encantamento, elemento=elemento, raridade=raridade,
@@ -235,6 +241,7 @@ def resolver_nome_personagem(rng, classe=None, personalidade=None,
         "origin": "comment" if escolhido else "generated",
         "generated_name": gerado,
         "gender": genero,
+        "generated_gender": genero_sorteado,
         "requested_name": pedido_bruto,
         "requested_accepted": bool(escolhido),
         "requested_reason": motivo,

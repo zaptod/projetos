@@ -224,3 +224,61 @@ class SomDaRoletaTests(unittest.TestCase):
         for metodo in (VideoRenderer._roulette_frames,
                        VideoRenderer._audio_da_roleta):
             self.assertIn("_giro(", inspect.getsource(metodo))
+
+
+def _luta_de_teste(**extra) -> dict:
+    luta = {
+        "match_id": 1, "rodada_nome": "ROUND 2",
+        "p1": "Kael", "p2": "Lyra",
+        "p1_ficha": {"cor_r": 50, "cor_g": 200, "cor_b": 255},
+        "p2_ficha": {"cor_r": 255, "cor_g": 90, "cor_b": 60},
+        "vencedor": "Kael", "perdedor": "Lyra",
+        "ko_type": "KO", "duracao": 31.2, "hp_vencedor": 22,
+        "marcas": ["ZEBRA"], "tier": "GREAT", "tier_color": "#7ed957",
+    }
+    luta.update(extra)
+    return luta
+
+
+class TelasDeSerieTests(unittest.TestCase):
+    """As telas de melhor-de-3 precisam DESENHAR, nao so entrar no plano.
+
+    Um placar que so aparece no edit_plan quebraria na hora do render, que e
+    onde ninguem esta olhando.
+    """
+
+    def setUp(self):
+        self.renderer = _renderer()
+
+    def _desenhar(self, evento: dict) -> list:
+        return list(self.renderer._frames_for(evento, {}, Path(".")))
+
+    def test_placar_do_round_desenha(self):
+        frames = self._desenhar({
+            "type": "round_result", "duration": 0.2,
+            "luta": _luta_de_teste(), "placar": [1, 1],
+            "caption": "Kael empatou a serie"})
+        self.assertTrue(frames)
+        self.assertEqual((self.renderer.width, self.renderer.height),
+                         frames[0].size)
+
+    def test_veredito_da_serie_desenha_com_placar(self):
+        frames = self._desenhar({
+            "type": "fight_result", "duration": 0.2,
+            "luta": _luta_de_teste(), "placar": [2, 1], "melhor_de": 3,
+            "caption": "Kael levou a serie"})
+        self.assertTrue(frames)
+
+    def test_veredito_sem_placar_continua_desenhando(self):
+        """Luta unica nao passa `placar` — o formato antigo nao pode quebrar."""
+        frames = self._desenhar({
+            "type": "fight_result", "duration": 0.2,
+            "luta": _luta_de_teste(), "caption": "Kael venceu"})
+        self.assertTrue(frames)
+
+    def test_card_com_rotulo_longo_de_serie_desenha(self):
+        frames = self._desenhar({
+            "type": "fight_card", "duration": 0.2,
+            "luta": _luta_de_teste(rodada_nome="ESTREIA • MELHOR DE 3"),
+            "caption": "Kael vs Lyra"})
+        self.assertTrue(frames)

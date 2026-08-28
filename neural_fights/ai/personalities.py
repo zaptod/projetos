@@ -1169,7 +1169,9 @@ HUMORES = {
     "CALMO": {"mod_agressividade": 0.0, "mod_defesa": 0.0},
     "DESESPERADO": {"mod_agressividade": 0.3, "mod_defesa": -0.3},
     "FOCADO": {"mod_agressividade": 0.1, "mod_defesa": 0.1},
-    "ENTEDIADO": {"mod_agressividade": -0.2, "mod_defesa": -0.1},
+    # Onda 10A: o entediado TENTA algo — tédio nasce da seca e antes
+    # realimentava a seca (menos agressão, decisão mais lenta).
+    "ENTEDIADO": {"mod_agressividade": 0.1, "mod_defesa": -0.1},
     "ANIMADO": {"mod_agressividade": 0.15, "mod_defesa": 0.0},
     "ASSUSTADO": {"mod_agressividade": -0.3, "mod_defesa": 0.2},
     "DETERMINADO": {"mod_agressividade": 0.1, "mod_defesa": 0.15},

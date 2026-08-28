@@ -97,6 +97,8 @@ class CombatChoreographer:
         self.rng = getattr(l1, "rng_runtime", self.rng)
         self.l1_ultimo_ataque_tempo = 999.0
         self.l2_ultimo_ataque_tempo = 999.0
+        # Onda 10A: o encarar acontece UMA vez por luta e curto.
+        self._face_off_usado = False
     
     def update(self, dt):
         """Atualiza o sistema de coreografia"""
@@ -315,14 +317,21 @@ class CombatChoreographer:
         if self._pode_momento("STANDOFF"):
             if 4.0 < distancia < 7.0 and self.tempo_sem_hit > 3.0:
                 if self.intensidade > 0.4 or self.rng.random() < 0.02:
-                    self._iniciar_momento("STANDOFF", self.rng.uniform(1.5, 3.0))
+                    # Onda 10A: beat curto — o standoff longo realimentava
+                    # a seca que o disparou.
+                    self._iniciar_momento("STANDOFF", self.rng.uniform(1.0, 1.5))
                     return
         
         # === FACE_OFF (Ambos param e se encaram) ===
-        if self._pode_momento("FACE_OFF"):
+        if self._pode_momento("FACE_OFF") and not getattr(self, "_face_off_usado", False):
             if hp1_pct < 0.5 and hp2_pct < 0.5 and self.intensidade > 0.5:
                 if 3.0 < distancia < 6.0 and self.rng.random() < 0.03:
-                    self._iniciar_momento("FACE_OFF", self.rng.uniform(2.0, 4.0))
+                    # Onda 10A: os dois se encaram por 0,8s, UMA vez por
+                    # luta, e o beat termina com alguém tomando a
+                    # iniciativa (ver _explodir_face_off). Antes: 2-4s de
+                    # BLOQUEAR nos dois — o "cara a cara" fabricado.
+                    self._face_off_usado = True
+                    self._iniciar_momento("FACE_OFF", 0.8)
                     return
         
         # === CLIMAX_CHARGE (Ambos preparam ataque final) ===
@@ -350,7 +359,13 @@ class CombatChoreographer:
         
         # === BREATHER (Pausa para respirar) ===
         if self._pode_momento("BREATHER"):
-            if self.trocas_seguidas >= 5 and distancia > 4.0:
+            sem_folego = (
+                getattr(l1, "estamina", 100.0) < 30.0
+                and getattr(l2, "estamina", 100.0) < 30.0
+            )
+            # Onda 10A: respiro só quando os DOIS estão sem fôlego — parar
+            # a luta por decisão de diretor é o que o espectador odeia.
+            if self.trocas_seguidas >= 5 and distancia > 4.0 and sem_folego:
                 if self.rng.random() < 0.06:
                     self._iniciar_momento("BREATHER", self.rng.uniform(1.0, 2.0))
                     return
@@ -447,6 +462,37 @@ class CombatChoreographer:
         
         # Notifica as IAs
         self._notificar_momento_finalizado(tipo_anterior)
+        if tipo_anterior == "FACE_OFF":
+            self._explodir_face_off()
+
+    def _explodir_face_off(self):
+        """Onda 10A: o encarar acaba em ação — o lado mais agressivo toma a
+        iniciativa (dash-in ou golpe, via ``AIBrain.forcar_iniciativa``)."""
+        l1, l2 = self.lutador1, self.lutador2
+        if l1 is None or l2 is None:
+            return
+        if getattr(l1, "morto", False) or getattr(l2, "morto", False):
+            return
+
+        def _agressao(l):
+            brain = obter_brain(l)
+            fn = getattr(brain, "agressividade_efetiva", None)
+            if callable(fn):
+                try:
+                    return float(fn())
+                except Exception:
+                    return 0.5
+            return 0.5
+
+        ini, outro = (l1, l2) if _agressao(l1) >= _agressao(l2) else (l2, l1)
+        brain = obter_brain(ini)
+        forcar = getattr(brain, "forcar_iniciativa", None)
+        if not callable(forcar):
+            return
+        distancia = math.hypot(
+            outro.pos[0] - ini.pos[0], outro.pos[1] - ini.pos[1]
+        )
+        forcar(distancia, outro, permitir_dash=True)
     
     def _notificar_momento_iniciado(self, tipo):
         """Notifica IAs sobre momento iniciado"""

@@ -23,7 +23,7 @@ GATE_LIGADO = os.environ.get("NF_QUALITY_GATE") == "1"
 
 # A onda atual do programa "lutas vivas". Sobe junto com cada onda entregue —
 # e o unico lugar do repositorio que declara em que onda estamos.
-ONDA_ATUAL = 6
+ONDA_ATUAL = 11
 
 
 @unittest.skipUnless(GATE_LIGADO, "gate pesado; ligue com NF_QUALITY_GATE=1")

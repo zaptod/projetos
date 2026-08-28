@@ -314,6 +314,15 @@ class HitStopManager:
         
         Chamado pelo sistema de combate quando um golpe conecta.
         """
+        # Onda 10 (fluxo): congelar a cada golpe atrapalhava o ritmo — o
+        # hit stop virou pontuação de PANCADA GRANDE (>= HITSTOP_DANO_MIN_PCT
+        # da vida do alvo). Golpes comuns seguem com shake/partículas.
+        # `alvo is None` é a magia carregada (épico por natureza): mantém.
+        if alvo is not None:
+            from neural_fights.utils.config import HITSTOP_DANO_MIN_PCT
+            vida_max_alvo = float(getattr(alvo, "vida_max", 0.0) or 0.0)
+            if vida_max_alvo > 0.0 and dano < HITSTOP_DANO_MIN_PCT * vida_max_alvo:
+                return
         classe_atacante = getattr(atacante, 'classe_nome', "Guerreiro (Força Bruta)")
         
         duracao = self.calcular_duracao_hitstop(dano, classe_atacante, tipo_golpe, is_critico)

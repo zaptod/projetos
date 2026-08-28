@@ -77,8 +77,13 @@ DESAFIO = [
 # Space novo = pasta vazia. E o que torna a espera possivel: se o espaco tem
 # zero videos, o primeiro que aparecer e o NOSSO, sem heuristica nenhuma.
 # Clicar aqui nao navega: ele reseta o composer para um espaco limpo.
+# 26/08/2026: o nome ACESSIVEL do botao parou de casar com o role-locator
+# (o <button> com texto "New Space" segue no DOM — sondado na propria pagina
+# de space); os fallbacks por texto/css cobrem o proximo rebatismo do aria.
 BOTAO_NOVO_ESPACO = [
     ("role", "button|New Space"),
+    ("css", 'button:has-text("New Space")'),
+    ("text", "New Space"),
 ]
 
 # Nao e <textarea>: e um contenteditable com role=textbox. `get_by_placeholder`
@@ -765,3 +770,37 @@ def resolver(page, candidatos: list[tuple[str, str]], descricao: str,
             "    python main.py identity probe\n"
             "e atualize a lista em src/identity/selectors.py.")
     return loc
+
+
+# O card do Digen NAO mostra o prompt (verificado no DOM em 25/08/2026): so o
+# titulo do espaco e os presets, "RM3.5 / 3s / 480P". E o que existe para a
+# prova de origem conferir contra os presets que o worker aplicou — pouco,
+# mas e evidencia positiva quando NAO bate.
+JS_TEXTO_DO_CARD = """([icone, alvo]) => {
+  const visivel = e => { const r = e.getBoundingClientRect();
+                         return r.width > 0 && r.height > 0; };
+  let n = 0;
+  for (const botao of document.querySelectorAll('button')) {
+    const path = botao.querySelector('svg path');
+    if (!path) continue;
+    if (!(path.getAttribute('d') || '').startsWith(icone)) continue;
+    if (!visivel(botao)) continue;
+    if (n++ !== alvo) continue;
+    let card = botao;
+    for (let i = 0; i < 8 && card.parentElement; i++) {
+      card = card.parentElement;
+      if (card.querySelector('video, img')) break;
+    }
+    return (card.innerText || '').slice(0, 400);
+  }
+  return null;
+}"""
+
+
+def texto_do_card(page, indice: int = 0) -> str | None:
+    """Texto visivel do card `indice` (presets), ou None se nao der para ler."""
+    try:
+        texto = page.evaluate(JS_TEXTO_DO_CARD, [ICONE_DOWNLOAD, indice])
+    except Exception:
+        return None
+    return str(texto) if texto else None

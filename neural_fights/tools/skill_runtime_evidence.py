@@ -15,6 +15,14 @@ SKILL_RUNTIME_EVIDENCE = {
             "test_time_stop_consumes_duration_and_caster_targeting_contracts",
         ),
     ),
+    # Onda 10D: area cai no ALVO ate alcance_cast (clamp testado).
+    "alcance_cast": (
+        (
+            "tests.test_area_alvo_regressions",
+            "PontoAlvoAreaTests",
+            "test_clamp_no_alcance_de_cast",
+        ),
+    ),
     "ativa_ao_morrer": (
         (
             "tests.test_death_skill_regressions",
@@ -62,6 +70,14 @@ SKILL_RUNTIME_EVIDENCE = {
             "tests.test_buff_skill_contracts",
             "BuffSkillContractTests",
             "test_holy_bonuses_apply_only_to_explicit_dark_affinity",
+        ),
+    ),
+    # Onda 10D: skill centrada no conjurador fica no pe (nova/aura).
+    "centrado_no_caster": (
+        (
+            "tests.test_area_alvo_regressions",
+            "PontoAlvoAreaTests",
+            "test_centrado_no_caster_fica_no_pe",
         ),
     ),
     "chance_stun": (
@@ -221,14 +237,19 @@ SKILL_RUNTIME_EVIDENCE = {
         (
             "tests.test_area_structure_skill_regressions",
             "AreaStructureSkillRegressionTests",
-            "test_celestial_pillars_share_one_impact_identity",
+            "test_celestial_pillars_are_distinct_blows",
+        ),
+        (
+            "tests.test_area_structure_skill_regressions",
+            "AreaStructureSkillRegressionTests",
+            "test_celestial_first_pillar_lands_on_the_cast_anchor",
         ),
     ),
     "raio_pilar": (
         (
             "tests.test_area_structure_skill_regressions",
             "AreaStructureSkillRegressionTests",
-            "test_celestial_pillars_share_one_impact_identity",
+            "test_celestial_warning_shows_the_real_pillar_volumes",
         ),
     ),
     "raio_meteoro": (
@@ -448,11 +469,46 @@ SKILL_RUNTIME_EVIDENCE = {
             "test_russian_roulette_backfire_targets_owner_end_to_end",
         ),
     ),
+    "combo_apos": (
+        (
+            "tests.test_skill_contract",
+            "SkillContractTests",
+            "test_combo_declarado_entra_no_contrato",
+        ),
+    ),
+    "forca_puxar": (
+        (
+            "tests.test_skill_contract",
+            "KnobsDeclaradosTests",
+            "test_forca_de_puxar_declarada_flui_para_a_area",
+        ),
+    ),
+    "tick_interval": (
+        (
+            "tests.test_skill_contract",
+            "KnobsDeclaradosTests",
+            "test_ritmo_de_tick_declarado_flui_para_a_area",
+        ),
+    ),
     "condicao@AREA": (
         (
             "tests.test_advanced_skill_regressions",
             "AdvancedSkillRegressionTests",
             "test_shatter_rewards_and_consumes_freeze_once",
+        ),
+    ),
+    "condicao_limiar": (
+        (
+            "tests.test_skill_contract",
+            "CondicaoLimiarRuntimeTests",
+            "test_limiar_declarado_e_consumido_pelo_runtime",
+        ),
+    ),
+    "dano_por_segundo@CHANNEL": (
+        (
+            "tests.test_runtime_combat_contracts",
+            "RuntimeCombatContractTests",
+            "test_channel_ticks_are_dt_independent_and_penetrate_shields",
         ),
     ),
     "condicao@PROJETIL": (

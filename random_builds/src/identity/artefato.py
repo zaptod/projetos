@@ -12,6 +12,9 @@ Por isso a regra e dura: este modulo importa `config` e `slots`, e mais nada.
 """
 from __future__ import annotations
 
+import json
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config, slots
@@ -125,3 +128,60 @@ def utilizavel(generation_id: str, slot: str) -> bool:
     """Existe artefato que presta para este slot?"""
     encontrado = caminho(generation_id, slot)
     return presta(encontrado, midia_do_arquivo(encontrado))
+
+
+# ------------------------------------------------------------- metadados
+def metadados(generation_id: str, slot: str) -> dict | None:
+    """identity/<slot>.json (prompt, presets, origem, quarentena), ou None."""
+    caminho = config.identity_dir(generation_id) / f"{slots.valido(slot)}.json"
+    if not caminho.is_file():
+        return None
+    try:
+        with open(caminho, encoding="utf-8-sig") as fh:
+            dados = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return dados if isinstance(dados, dict) else None
+
+
+def quarentenar(generation_id: str, slot: str, motivo: str) -> list[Path]:
+    """Tira o artefato do slot da build SEM apagar nada.
+
+    O arquivo (e a copia de upload `<nome>_ref.jpg`, que e o que subiu para o
+    provedor) vai para identity/quarentena/ com carimbo de hora e um JSON ao
+    lado dizendo por que. Apagar seria perder a evidencia; deixar no lugar
+    seria continuar publicando imagem que nao e nossa.
+    """
+    slot = slots.valido(slot)
+    base = config.build_dir(generation_id)
+    pasta = config.identity_dir(generation_id) / "quarentena"
+    carimbo = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    movidos: list[Path] = []
+    for nome in slots.nomes_aceitos(slot):
+        origem = base / nome
+        if not origem.is_file():
+            continue
+        pasta.mkdir(parents=True, exist_ok=True)
+        for arquivo in (origem, origem.with_name(f"{origem.stem}_ref.jpg")):
+            if not arquivo.is_file():
+                continue
+            destino = pasta / f"{carimbo}_{arquivo.name}"
+            shutil.move(str(arquivo), str(destino))
+            movidos.append(destino)
+    if not movidos:
+        return []
+    registro = {"generation_id": generation_id, "slot": slot, "motivo": motivo,
+                "quando": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "arquivos": [p.name for p in movidos]}
+    try:
+        with open(pasta / f"{carimbo}_{slot}.json", "w", encoding="utf-8") as fh:
+            json.dump(registro, fh, ensure_ascii=False, indent=2)
+        meta = metadados(generation_id, slot) or {}
+        meta["quarentena"] = registro
+        meta.pop("origem", None)
+        pasta.parent.mkdir(parents=True, exist_ok=True)
+        with open(pasta.parent / f"{slot}.json", "w", encoding="utf-8") as fh:
+            json.dump(meta, fh, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
+    return movidos

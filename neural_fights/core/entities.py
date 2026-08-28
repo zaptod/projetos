@@ -256,8 +256,13 @@ class Lutador:
             self.arma_passiva = None
             self.arma_tipo = None
         
-        # Carrega skills de afinidade da classe
-        for skill_nome in self.class_data.get("skills_afinidade", []):
+        # Carrega o kit de classe. Onda 11C: o registro do personagem pode
+        # trazer o kit SORTEADO na criação (``kit_skills``); sem ele, vale o
+        # kit fixo da classe (compatibilidade com registros antigos e fakes).
+        kit = list(getattr(self.dados, "kit_skills", None) or []) or list(
+            self.class_data.get("skills_afinidade", [])
+        )
+        for skill_nome in kit:
             skill_data = get_skill_data(skill_nome)
             if skill_data["tipo"] != "NADA":
                 self.skills_classe.append({
@@ -352,6 +357,12 @@ class Lutador:
             "combos_2mais": 0,
             "maior_combo": 0,
             "bursts": 0,
+            # Onda 10A: hits reais sofridos (sem DoT), agarrões iniciados,
+            # wall-splats causados e iniciativas forçadas.
+            "hits_sofridos": 0,
+            "agarroes": 0,
+            "wall_splats": 0,
+            "iniciativas": 0,
         }
         self.registro_eventos_dano = None
         self._slow_fator_antes_enraizado = 1.0
@@ -394,6 +405,20 @@ class Lutador:
         
         # Sistema de dash evasivo v7.0
         self.dash_timer = 0.0
+        # === ONDA 10A: agarrão e lançamento ===
+        # agarrao_timer > 0 = travado no agarrão (sem IA, movimento ou cast);
+        # lancado_por/lancado_timer = janela em que bater na parede estatela.
+        self.agarrao_timer = 0.0
+        self.agarrao_papel = None
+        # === ONDA 10D: habilidades com consequência ===
+        self.arena_ref = None            # injetado pelo Simulador (clamp de cast/dash)
+        self.puxao = None                # {"origem": (x, y), "restante": s, "forca": a}
+        self._cast_pendente = None       # {"nome", "frames", "consequencia"}
+        self.buffer_summons = []
+        self.buffer_traps = []
+        self.agarrao_interrompido = False
+        self.lancado_por = None
+        self.lancado_timer = 0.0
         self._transicao_sombria = None
         self.pos_historico = []
         # RNG injetavel para efeitos aleatorios do runtime. Por padrao ele
@@ -470,9 +495,32 @@ class Lutador:
                 return valor
         return max(0.0, float(getattr(self.dados, "velocidade", 5.0)))
 
+    def _mobilidade_perfil(self):
+        """Onda 10B: eixo 'mobilidade' da personalidade (0-1), lido do brain.
+
+        Defensivo por contrato: sem brain (dummy/manual) ou sem perfil, o
+        corpo é neutro (0).
+        """
+        brain = getattr(self, "brain", None)
+        if brain is None:
+            return 0.0
+        try:
+            perfil = brain.perfil
+        except Exception:
+            return 0.0
+        if not isinstance(perfil, dict):
+            return 0.0
+        try:
+            return max(0.0, min(1.0, float(perfil.get("mobilidade", 0.0) or 0.0)))
+        except (TypeError, ValueError):
+            return 0.0
+
     def get_velocidade_movimento(self):
         """Velocidade-alvo atual, incluindo apenas modificadores temporários."""
+        from neural_fights.utils.config import VEL_MOB_FATOR
         velocidade = self.velocidade_movimento_base * self.mod_velocidade_transformacao
+        # Onda 10B: o ágil (eixo mobilidade) anda um pouco mais.
+        velocidade *= 1.0 + VEL_MOB_FATOR * self._mobilidade_perfil()
         for buff in self._buffs_validos():
             velocidade *= max(0.0, getattr(buff, "buff_velocidade", 1.0))
         return max(0.0, velocidade)
@@ -604,7 +652,7 @@ class Lutador:
             and self.slow_fator > 0.0
         )
 
-    def iniciar_dash(self, angulo, forca=16.0):
+    def iniciar_dash(self, angulo, forca=16.0, ignorar_custo=False):
         """Onda 8B: dash universal — verbo de primeira classe do motor.
 
         Impulso direcional com 0.25s de ``dash_timer`` (janela em que
@@ -613,7 +661,13 @@ class Lutador:
         maiores (teleporte, i-frames, invisibilidade). Antes da Onda 8
         este método era citado por instintos antigos sem nunca existir.
         """
-        if not self.pode_dash():
+        if ignorar_custo:
+            # Onda 10A: escape/reversão do agarrão — pula cooldown e piso
+            # de estamina (cobra o que tiver), mas ninguém dasha morto,
+            # atordoado ou enraizado.
+            if self.morto or self.stun_timer > 0.0 or self.slow_fator <= 0.0:
+                return False
+        elif not self.pode_dash():
             return False
         from neural_fights.utils.config import (
             COOLDOWN_DASH_S,
@@ -625,9 +679,19 @@ class Lutador:
         # delas: 30% mais barato e mais frequente.
         arma_tipo = getattr(getattr(self.dados, "arma_obj", None), "tipo", "")
         fator_mobilidade = 0.7 if arma_tipo == "Dupla" else 1.0
-        self.estamina -= CUSTO_ESTAMINA_DASH * fator_mobilidade
-        self.dash_cooldown = COOLDOWN_DASH_S * fator_mobilidade
+        # Onda 10B: o eixo mobilidade da personalidade entra no corpo — o
+        # ágil dasha mais barato, mais frequente e mais longe.
+        from neural_fights.utils.config import (
+            DASH_MOB_CD_FATOR,
+            DASH_MOB_CUSTO_FATOR,
+            DASH_MOB_FORCA_FATOR,
+        )
+        mob = self._mobilidade_perfil()
+        custo = CUSTO_ESTAMINA_DASH * fator_mobilidade * (1.0 - DASH_MOB_CUSTO_FATOR * mob)
+        self.estamina = max(0.0, self.estamina - custo)
+        self.dash_cooldown = COOLDOWN_DASH_S * fator_mobilidade * (1.0 - DASH_MOB_CD_FATOR * mob)
         self.dash_timer = max(self.dash_timer, 0.25)
+        forca = forca * (1.0 + DASH_MOB_FORCA_FATOR * mob)
         self.vel[0] += math.cos(angulo) * forca
         self.vel[1] += math.sin(angulo) * forca
         self.contadores_luta["dashes"] = (
@@ -855,11 +919,26 @@ class Lutador:
         return False
 
     def _notificar_morte_causada(self, vitima, contexto_dano):
-        """Apply source-owned, terminal-kill rewards exactly once."""
+        """Apply source-owned, terminal-kill rewards exactly once.
+
+        Onda 11B: o gatilho é o CAMPO ``cura_por_morte`` da skill que matou,
+        não mais o nome literal "Colheita de Almas" — qualquer AREA com o
+        campo declarado paga a colheita.
+        """
 
         if contexto_dano is None or contexto_dano.atacante is not self:
             return 0.0
-        if contexto_dano.nome_skill != "Colheita de Almas":
+        nome_skill = contexto_dano.nome_skill
+        if not nome_skill:
+            return 0.0
+
+        from neural_fights.core.skills import get_skill_data
+
+        cura = max(
+            0.0,
+            float(get_skill_data(nome_skill).get("cura_por_morte", 0.0)),
+        )
+        if cura <= 0.0:
             return 0.0
 
         fonte = contexto_dano.fonte
@@ -867,16 +946,10 @@ class Lutador:
             fonte is None
             or getattr(fonte, "dono", None) is not self
             or getattr(fonte, "tipo_fonte", None) != "area_skill"
-            or getattr(fonte, "nome", None) != "Colheita de Almas"
+            or getattr(fonte, "nome", None) != nome_skill
         ):
             return 0.0
 
-        from neural_fights.core.skills import get_skill_data
-
-        cura = max(
-            0.0,
-            float(get_skill_data("Colheita de Almas").get("cura_por_morte", 0.0)),
-        )
         return self.receber_cura(cura)
 
     def _limitar_dano_letal_por_imortalidade(self, dano):
@@ -1189,6 +1262,7 @@ class Lutador:
             or self.esta_sob_controle_mental()
             or self.esta_canalizando()
             or self.em_transicao_sombria()
+            or self.__dict__.get("agarrao_timer", 0.0) > 0.0
         )
 
     def get_angulo_mira(self, angulo_real):
@@ -1335,16 +1409,19 @@ class Lutador:
                 0.3,
             )
 
-    def _executar_dash_skill(self, nome_skill, data, efeito, alvo_troca, rad):
+    def _executar_dash_skill(self, nome_skill, data, efeito, alvo_troca, rad, distancia=None):
         if efeito == "TROCAR_POS":
             return self._trocar_posicoes(alvo_troca)
 
         inicio = tuple(self.pos[:2])
-        distancia = float(data.get("distancia", 4.0))
+        if distancia is None:
+            distancia = float(data.get("distancia", 4.0))
         destino = (
             inicio[0] + math.cos(rad) * distancia,
             inicio[1] + math.sin(rad) * distancia,
         )
+        # Onda 10D: dash nunca atravessa parede/obstáculo.
+        destino = self._destino_dash_valido(inicio, destino)
         delay_saida = max(0.0, float(data.get("delay_saida", 0.0)))
         if data.get("invisivel_durante") and delay_saida > 0.0:
             self._interromper_acoes_ofensivas()
@@ -1387,36 +1464,25 @@ class Lutador:
         )
         return False
 
-    def usar_skill_arma(self, skill_idx=None, alvo=None):
+    def usar_skill_arma(self, skill_idx=None, alvo=None, proposito=None):
         """Usa a skill equipada na arma"""
         if self.silenciado_timer > 0:
             return False
 
-        from neural_fights.core.combat import (
-            AreaEffect,
-            Beam,
-            Buff,
-            Channel,
-            Projetil,
-            Summon,
-            Trap,
-            Transform,
-        )
-        
         if skill_idx is not None and skill_idx < len(self.skills_arma):
             skill_info = self.skills_arma[skill_idx]
         elif self.skills_arma:
             skill_info = self.skills_arma[self.skill_atual_idx]
         else:
             return False
-        
+
         nome_skill = skill_info["nome"]
         if nome_skill == "Nenhuma":
             return False
-        
+
         if self.cd_skills.get(nome_skill, 0) > 0:
             return False
-        
+
         data = skill_info["data"]
         if not self.pode_iniciar_acao(
             permitir_medo=bool(data.get("remove_todos_debuffs", False)),
@@ -1428,153 +1494,247 @@ class Lutador:
             data["reverte_estado"]
         ):
             return False
-        tipo = data.get("tipo", "NADA")
         efeito = normalizar_efeito(data.get("efeito"))
         alvo_troca = None
         if efeito == "TROCAR_POS":
             alvo_troca = self._resolver_alvo_troca(alvo)
             if alvo_troca is None:
                 return False
-        
+
         custo_real = skill_info["custo"]
         if "Mago" in self.classe_nome:
             custo_real *= 0.8
         custo_real *= self._get_modificador_mana_custo_buff()
-        
+
         if self.arma_passiva and self.arma_passiva.get("efeito") == "no_mana_cost":
             chance = self.arma_passiva.get("valor", 0) / 100.0
             if self.rng_runtime.random() < chance:
                 custo_real = 0
-        
+
         custo_vida = data.get("custo_vida", 0) or data.get("custo_vida_percent", 0) * self.vida_max
         if self.mana < custo_real or (custo_vida > 0 and self.vida <= custo_vida):
             return False
-        
+
         if custo_vida > 0:
             self.vida -= custo_vida
         self.mana -= custo_real
-        
+
         cd = data["cooldown"] * self._get_modificador_cooldown_buff()
         if self.arma_passiva and self.arma_passiva.get("efeito") == "cooldown":
             cd *= (1 - self.arma_passiva.get("valor", 0) / 100.0)
-        
+
         self.cd_skills[nome_skill] = cd
         self.cd_skill_arma = RECUPERACAO_CONJURACAO_S
         self.contadores_luta["skills_lancadas"] += 1
-        
+
+        return self._executar_skill(
+            nome_skill, data, origem="arma", alvo=alvo, proposito=proposito,
+            efeito=efeito, alvo_troca=alvo_troca,
+        )
+
+    # ------------------------------------------------------------------
+    # ONDA 10D: geometria de cast (área no alvo, dash por propósito)
+    # ------------------------------------------------------------------
+    def _ponto_dentro_da_arena(self, x, y, margem=0.3):
+        arena = getattr(self, "arena_ref", None)
+        if arena is None:
+            return True
+        dentro = getattr(arena, "ponto_dentro", None)
+        if callable(dentro) and not dentro(x, y, margem):
+            return False
+        colide = getattr(arena, "colide_obstaculo", None)
+        if callable(colide) and colide(x, y, max(0.3, self.raio_fisico)) is not None:
+            return False
+        return True
+
+    def _recuar_ate_ponto_valido(self, origem, destino, passos=8):
+        """Volta ao longo do segmento origem→destino até um ponto válido."""
+        if self._ponto_dentro_da_arena(destino[0], destino[1]):
+            return destino
+        ox, oy = origem
+        dx, dy = destino[0] - ox, destino[1] - oy
+        for k in range(passos - 1, -1, -1):
+            f = k / float(passos)
+            px, py = ox + dx * f, oy + dy * f
+            if self._ponto_dentro_da_arena(px, py):
+                return (px, py)
+        return (ox, oy)
+
+    def _destino_dash_valido(self, inicio, destino):
+        return self._recuar_ate_ponto_valido(inicio, destino)
+
+    def _ponto_alvo_area(self, data, alvo):
+        """Onde uma AREA cai: no ALVO (posição prevista), não no pé do
+        conjurador — salvo skills `centrado_no_caster` (auras, novas)."""
+        from neural_fights.utils.config import ALCANCE_CAST_PADRAO
+        if data.get("centrado_no_caster") or alvo is None or getattr(alvo, "morto", False):
+            return (self.pos[0], self.pos[1])
+        try:
+            ax, ay = float(alvo.pos[0]), float(alvo.pos[1])
+        except (AttributeError, TypeError, IndexError):
+            return (self.pos[0], self.pos[1])
+        vel = getattr(alvo, "vel", (0.0, 0.0))
+        delay = float(data.get("delay", 0.0) or 0.0) + 0.15
+        px = ax + float(vel[0]) * delay
+        py = ay + float(vel[1]) * delay
+        alcance = float(data.get("alcance_cast", ALCANCE_CAST_PADRAO))
+        dx, dy = px - self.pos[0], py - self.pos[1]
+        d = math.hypot(dx, dy)
+        if d > alcance and d > 1e-6:
+            px = self.pos[0] + dx / d * alcance
+            py = self.pos[1] + dy / d * alcance
+        return self._recuar_ate_ponto_valido((self.pos[0], self.pos[1]), (px, py))
+
+    def _direcao_dash(self, data, proposito, alvo, rad_olhar):
+        """(rad, distância) de um DASH de skill pelo PROPÓSITO: fugir = para
+        longe (a direção com mais arena), engajar = rumo ao alvo parando no
+        alcance, reposicionar = lateral."""
+        distancia = float(data.get("distancia", 4.0))
+        if alvo is None or proposito is None:
+            return rad_olhar, distancia
+        try:
+            dx = float(alvo.pos[0]) - self.pos[0]
+            dy = float(alvo.pos[1]) - self.pos[1]
+        except (AttributeError, TypeError, IndexError):
+            return rad_olhar, distancia
+        d = math.hypot(dx, dy)
+        ang_alvo = math.atan2(dy, dx) if d > 1e-6 else rad_olhar
+        prop = str(proposito).upper()
+        if prop == "ESCAPE":
+            base = ang_alvo + math.pi
+            for desvio in (0.0, math.pi / 4, -math.pi / 4, math.pi / 2, -math.pi / 2):
+                ang = base + desvio
+                px = self.pos[0] + math.cos(ang) * distancia
+                py = self.pos[1] + math.sin(ang) * distancia
+                if self._ponto_dentro_da_arena(px, py, margem=0.6):
+                    return ang, distancia
+            return base, distancia
+        if prop in ("ENGAGE", "BURST", "OPENER", "FINISHER", "POKE", "CONTROL"):
+            ideal = float(getattr(self, "alcance_ideal", 1.5) or 1.5) * 0.8
+            return ang_alvo, max(0.5, min(distancia, d - ideal))
+        lado = getattr(getattr(self, "brain", None), "dir_circular", 1) or 1
+        return ang_alvo + lado * math.pi / 2, distancia
+
+    # ------------------------------------------------------------------
+    # ONDA 10D: sonda "cast com consequência"
+    # ------------------------------------------------------------------
+    def _registrar_cast(self, nome_skill):
+        self._fechar_cast_pendente()
+        self._cast_pendente = {"nome": nome_skill, "frames": 0, "consequencia": False}
+        # Onda 11C (alvo S6): variedade real de skills castadas na luta.
+        self.__dict__.setdefault("skills_castadas_luta", set()).add(nome_skill)
+
+    def _fechar_cast_pendente(self):
+        cast = self.__dict__.get("_cast_pendente")
+        if cast is None:
+            return
+        if cast.get("consequencia"):
+            self.contadores_luta["casts_com_consequencia"] = (
+                self.contadores_luta.get("casts_com_consequencia", 0) + 1
+            )
+        self._cast_pendente = None
+
+    def _marcar_consequencia_cast(self):
+        cast = self.__dict__.get("_cast_pendente")
+        if cast is not None:
+            cast["consequencia"] = True
+
+    def _executar_skill(self, nome_skill, data, *, origem, alvo=None, proposito=None,
+                        efeito=None, alvo_troca=None, bonus_fogo=False):
+        """Onda 10D: UM despachante para skills de arma e de classe (eram duas
+        cópias divergentes). As diferenças por origem ficam explícitas: recoil
+        e passivas só na arma; bônus do Piromante só na classe."""
+        from neural_fights.core.combat import (
+            AreaEffect,
+            Beam,
+            Buff,
+            Channel,
+            Projetil,
+            Summon,
+            Trap,
+            Transform,
+        )
+        tipo = data.get("tipo", "NADA")
+        if efeito is None:
+            efeito = normalizar_efeito(data.get("efeito"))
+        if alvo is None:
+            alvo = getattr(self, "_inimigo_atual", None)
         rad = math.radians(self.angulo_olhar)
         spawn_x = self.pos[0] + math.cos(rad) * 0.6
         spawn_y = self.pos[1] + math.sin(rad) * 0.6
-        
+        audio = self.audio
+        if audio and tipo in ("PROJETIL", "AREA", "DASH", "BUFF", "BEAM",
+                              "SUMMON", "TRAP", "TRANSFORM", "CHANNEL"):
+            audio.play_skill(tipo, nome_skill, self.pos[0], phase="cast")
+        self._registrar_cast(nome_skill)
+
         if tipo == "PROJETIL":
-            # === ÁUDIO v10.0 - SOM DE CAST DE PROJÉTIL ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("PROJETIL", nome_skill, self.pos[0], phase="cast")
-            
             multi = data.get("multi_shot", 1)
             if multi > 1:
                 spread = 30
                 for i in range(multi):
                     ang_offset = -spread/2 + (spread / (multi-1)) * i
                     p = Projetil(nome_skill, spawn_x, spawn_y, self.angulo_olhar + ang_offset, self)
+                    if bonus_fogo:
+                        self._bonus_piromante(p)
                     self.buffer_projeteis.append(p)
             else:
                 p = Projetil(nome_skill, spawn_x, spawn_y, self.angulo_olhar, self)
+                if bonus_fogo:
+                    self._bonus_piromante(p)
                 self.buffer_projeteis.append(p)
-            
-            if data["dano"] > 20:
+            if origem == "arma" and data.get("dano", 0) > 20:
                 self.vel[0] -= math.cos(rad) * 5.0
                 self.vel[1] -= math.sin(rad) * 5.0
-        
+
         elif tipo == "AREA":
-            # === ÁUDIO v10.0 - SOM DE ÁREA ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("AREA", nome_skill, self.pos[0], phase="cast")
-            
-            area = AreaEffect(nome_skill, self.pos[0], self.pos[1], self)
+            cx, cy = self._ponto_alvo_area(data, alvo)
+            area = AreaEffect(nome_skill, cx, cy, self)
+            if bonus_fogo:
+                self._bonus_piromante(area)
             self.buffer_areas.append(area)
-        
+            if data.get("ground") or data.get("taunt"):
+                self._marcar_consequencia_cast()   # terreno/controle é consequência
+
         elif tipo == "DASH":
-            # === ÁUDIO v10.0 - SOM DE DASH ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("DASH", nome_skill, self.pos[0], phase="cast")
-            
-            self._executar_dash_skill(
-                nome_skill,
-                data,
-                efeito,
-                alvo_troca,
-                rad,
-            )
-        
+            rad_d, dist_d = self._direcao_dash(data, proposito, alvo, rad)
+            self._executar_dash_skill(nome_skill, data, efeito, alvo_troca, rad_d, distancia=dist_d)
+            self._marcar_consequencia_cast()
+
         elif tipo == "BUFF":
-            # === ÁUDIO v10.0 - SOM DE BUFF ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("BUFF", nome_skill, self.pos[0], phase="cast")
-            
             self._aplicar_buff_skill(nome_skill, data, Buff)
-        
+
         elif tipo == "BEAM":
-            # === ÁUDIO v10.0 - SOM DE BEAM ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("BEAM", nome_skill, self.pos[0], phase="cast")
-            
             if data.get("canalizavel", False):
                 Channel(nome_skill, self)
+                self._marcar_consequencia_cast()
             else:
                 alcance = data.get("alcance", 8.0)
                 end_x = self.pos[0] + math.cos(rad) * alcance
                 end_y = self.pos[1] + math.sin(rad) * alcance
-
                 beam = Beam(nome_skill, self.pos[0], self.pos[1], end_x, end_y, self)
                 self.buffer_beams.append(beam)
-        
-        # === TIPOS ADICIONAIS (v2.0) ===
+
         elif tipo == "SUMMON":
-            audio = self.audio
-            if audio:
-                audio.play_skill("SUMMON", nome_skill, self.pos[0], phase="cast")
-            
             summon_x = self.pos[0] + math.cos(rad) * 1.5
             summon_y = self.pos[1] + math.sin(rad) * 1.5
-            
-            summon = Summon(nome_skill, summon_x, summon_y, self)
-            if not hasattr(self, 'buffer_summons'):
-                self.buffer_summons = []
-            self.buffer_summons.append(summon)
-        
+            self.buffer_summons.append(Summon(nome_skill, summon_x, summon_y, self))
+            self._marcar_consequencia_cast()
+
         elif tipo == "TRAP":
-            audio = self.audio
-            if audio:
-                audio.play_skill("TRAP", nome_skill, self.pos[0], phase="cast")
-            
             trap_x = self.pos[0] + math.cos(rad) * 2.0
             trap_y = self.pos[1] + math.sin(rad) * 2.0
-            
-            trap = Trap(nome_skill, trap_x, trap_y, self)
-            if not hasattr(self, 'buffer_traps'):
-                self.buffer_traps = []
-            self.buffer_traps.append(trap)
-        
+            self.buffer_traps.append(Trap(nome_skill, trap_x, trap_y, self))
+            self._marcar_consequencia_cast()
+
         elif tipo == "TRANSFORM":
-            audio = self.audio
-            if audio:
-                audio.play_skill("TRANSFORM", nome_skill, self.pos[0], phase="cast")
-            
             Transform(nome_skill, self)
-        
+            self._marcar_consequencia_cast()
+
         elif tipo == "CHANNEL":
-            audio = self.audio
-            if audio:
-                audio.play_skill("CHANNEL", nome_skill, self.pos[0], phase="cast")
-            
             Channel(nome_skill, self)
-        
+            self._marcar_consequencia_cast()
+
         return True
 
     def _bonus_piromante(self, objeto):
@@ -1589,34 +1749,23 @@ class Lutador:
             if isinstance(valor, (int, float)):
                 setattr(objeto, campo, valor * 1.25)  # (1,15->1,25 na rodada 2)
 
-    def usar_skill_classe(self, skill_nome, alvo=None, _eco_caos=False):
+    def usar_skill_classe(self, skill_nome, alvo=None, _eco_caos=False, proposito=None):
         """Usa uma skill de classe específica"""
         if self.silenciado_timer > 0:
             return False
 
-        from neural_fights.core.combat import (
-            AreaEffect,
-            Beam,
-            Buff,
-            Channel,
-            Projetil,
-            Summon,
-            Trap,
-            Transform,
-        )
-        
         skill_info = None
         for sk in self.skills_classe:
             if sk["nome"] == skill_nome:
                 skill_info = sk
                 break
-        
+
         if not skill_info:
             return False
-        
+
         if self.cd_skills.get(skill_nome, 0) > 0:
             return False
-        
+
         data = skill_info["data"]
         # Onda 6 (contrato do Piromante): "magias de fogo causam 15% mais
         # dano" — passiva declarada sem NENHUMA implementacao (0,103 de
@@ -1637,7 +1786,6 @@ class Lutador:
             permitir_medo=bool(data.get("remove_todos_debuffs", False)),
         ):
             return False
-        tipo = data.get("tipo", "NADA")
         efeito = normalizar_efeito(data.get("efeito"))
         alvo_troca = None
         if efeito == "TROCAR_POS":
@@ -1645,16 +1793,16 @@ class Lutador:
             if alvo_troca is None:
                 return False
         custo = skill_info["custo"]
-        
+
         if "Mago" in self.classe_nome:
             custo *= 0.8
         custo *= self._get_modificador_mana_custo_buff()
-        
+
         # Custo em vida (Pacto de Sangue, Sacrifício)
         custo_vida = data.get("custo_vida", 0) or data.get("custo_vida_percent", 0) * self.vida_max
         if self.mana < custo or (custo_vida > 0 and self.vida <= custo_vida):
             return False
-        
+
         if not _eco_caos:
             # Onda 6 (contrato do Feiticeiro): "magias tem 15% de chance de
             # lancar DUAS VEZES" — passiva declarada sem implementacao
@@ -1667,135 +1815,21 @@ class Lutador:
             ):
                 # (0,15 -> 0,22 na rodada 2: o Feiticeiro da fixture e
                 # data-capado — identidade rende mais que músculo)
-                self.usar_skill_classe(skill_nome, alvo, _eco_caos=True)
+                self.usar_skill_classe(skill_nome, alvo, _eco_caos=True, proposito=proposito)
 
             if custo_vida > 0:
                 self.vida -= custo_vida
             self.mana -= custo
-            
+
             cd = data.get("cooldown", 5.0) * self._get_modificador_cooldown_buff()
             self.cd_skills[skill_nome] = cd
             self.cd_skill_arma = RECUPERACAO_CONJURACAO_S
             self.contadores_luta["skills_lancadas"] += 1
-        
-        rad = math.radians(self.angulo_olhar)
-        spawn_x = self.pos[0] + math.cos(rad) * 0.6
-        spawn_y = self.pos[1] + math.sin(rad) * 0.6
-        
-        if tipo == "PROJETIL":
-            # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("PROJETIL", skill_nome, self.pos[0], phase="cast")
-            
-            multi = data.get("multi_shot", 1)
-            if multi > 1:
-                spread = 30
-                for i in range(multi):
-                    ang_offset = -spread/2 + (spread / (multi-1)) * i
-                    p = Projetil(skill_nome, spawn_x, spawn_y, self.angulo_olhar + ang_offset, self)
-                    if bonus_fogo:
-                        self._bonus_piromante(p)
-                    self.buffer_projeteis.append(p)
-            else:
-                p = Projetil(skill_nome, spawn_x, spawn_y, self.angulo_olhar, self)
-                if bonus_fogo:
-                    self._bonus_piromante(p)
-                self.buffer_projeteis.append(p)
-        
-        elif tipo == "AREA":
-            # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("AREA", skill_nome, self.pos[0], phase="cast")
-            
-            area = AreaEffect(skill_nome, self.pos[0], self.pos[1], self)
-            if bonus_fogo:
-                self._bonus_piromante(area)
-            self.buffer_areas.append(area)
-        
-        elif tipo == "DASH":
-            # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("DASH", skill_nome, self.pos[0], phase="cast")
-            
-            self._executar_dash_skill(
-                skill_nome,
-                data,
-                efeito,
-                alvo_troca,
-                rad,
-            )
-        
-        elif tipo == "BUFF":
-            # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("BUFF", skill_nome, self.pos[0], phase="cast")
-            
-            self._aplicar_buff_skill(skill_nome, data, Buff)
-        
-        elif tipo == "BEAM":
-            # === ÁUDIO v10.0 - SOM DE SKILL DE CLASSE ===
-            audio = self.audio
-            if audio:
-                audio.play_skill("BEAM", skill_nome, self.pos[0], phase="cast")
-            
-            if data.get("canalizavel", False):
-                Channel(skill_nome, self)
-            else:
-                alcance = data.get("alcance", 8.0)
-                end_x = self.pos[0] + math.cos(rad) * alcance
-                end_y = self.pos[1] + math.sin(rad) * alcance
 
-                beam = Beam(skill_nome, self.pos[0], self.pos[1], end_x, end_y, self)
-                self.buffer_beams.append(beam)
-        
-        # === NOVOS TIPOS v2.0 ===
-        elif tipo == "SUMMON":
-            audio = self.audio
-            if audio:
-                audio.play_skill("SUMMON", skill_nome, self.pos[0], phase="cast")
-            
-            # Spawn na frente do caster
-            summon_x = self.pos[0] + math.cos(rad) * 1.5
-            summon_y = self.pos[1] + math.sin(rad) * 1.5
-            
-            summon = Summon(skill_nome, summon_x, summon_y, self)
-            if not hasattr(self, 'buffer_summons'):
-                self.buffer_summons = []
-            self.buffer_summons.append(summon)
-        
-        elif tipo == "TRAP":
-            audio = self.audio
-            if audio:
-                audio.play_skill("TRAP", skill_nome, self.pos[0], phase="cast")
-            
-            # Spawn na frente do caster
-            trap_x = self.pos[0] + math.cos(rad) * 2.0
-            trap_y = self.pos[1] + math.sin(rad) * 2.0
-            
-            trap = Trap(skill_nome, trap_x, trap_y, self)
-            if not hasattr(self, 'buffer_traps'):
-                self.buffer_traps = []
-            self.buffer_traps.append(trap)
-        
-        elif tipo == "TRANSFORM":
-            audio = self.audio
-            if audio:
-                audio.play_skill("TRANSFORM", skill_nome, self.pos[0], phase="cast")
-            
-            Transform(skill_nome, self)
-        
-        elif tipo == "CHANNEL":
-            audio = self.audio
-            if audio:
-                audio.play_skill("CHANNEL", skill_nome, self.pos[0], phase="cast")
-            
-            Channel(skill_nome, self)
-        
-        return True
+        return self._executar_skill(
+            skill_nome, data, origem="classe", alvo=alvo, proposito=proposito,
+            efeito=efeito, alvo_troca=alvo_troca, bonus_fogo=bonus_fogo,
+        )
 
     def _atualizar_efeitos_especiais(self, dt):
         """Atualiza vínculos/status que precisam de origem e ação na expiração."""
@@ -2070,6 +2104,33 @@ class Lutador:
         
         if self.dash_timer > 0:
             self.dash_timer -= dt
+        # Onda 10D: puxão (PUXADO/VORTEX) e fechamento do cast pendente.
+        puxao = self.__dict__.get("puxao")
+        if puxao is not None and not self.morto:
+            ox, oy = puxao["origem"]
+            dx_p, dy_p = ox - self.pos[0], oy - self.pos[1]
+            d_p = math.hypot(dx_p, dy_p)
+            if d_p > 0.3:
+                self.vel[0] += dx_p / d_p * puxao["forca"] * dt * 60.0 / 60.0 * 10.0
+                self.vel[1] += dy_p / d_p * puxao["forca"] * dt * 60.0 / 60.0 * 10.0
+            puxao["restante"] -= dt
+            if puxao["restante"] <= 0.0 or d_p <= 0.3:
+                self.puxao = None
+        cast = self.__dict__.get("_cast_pendente")
+        if cast is not None:
+            cast["frames"] += 1
+            if cast["frames"] >= 90:
+                self._fechar_cast_pendente()
+        # Onda 10A: relógios do agarrão e do lançamento.
+        if self.__dict__.get("agarrao_timer", 0.0) > 0.0:
+            self.agarrao_timer = max(0.0, self.agarrao_timer - dt)
+        if self.__dict__.get("wall_splat_cooldown", 0.0) > 0.0:
+            self.wall_splat_cooldown = max(0.0, self.wall_splat_cooldown - dt)
+        if self.__dict__.get("lancado_timer", 0.0) > 0.0:
+            self.lancado_timer -= dt
+            if self.lancado_timer <= 0.0:
+                self.lancado_timer = 0.0
+                self.lancado_por = None
         
         self.pos_historico.append((self.pos[0], self.pos[1]))
         if len(self.pos_historico) > 15:
@@ -2117,10 +2178,18 @@ class Lutador:
         angulo_alvo = self.get_angulo_mira(math.degrees(math.atan2(dy, dx)))
         diff = normalizar_angulo(angulo_alvo - self.angulo_olhar)
         
-        vel_giro = 20.0 if "Assassino" in self.classe_nome or "Ninja" in self.classe_nome else 10.0
+        # Onda 10B: giro por classe (vel_giro em CLASSES_DATA) + mobilidade —
+        # antes era um `if "Ninja" in nome`.
+        vel_giro = float(self.class_data.get("vel_giro", 10.0)) * (1.0 + 0.3 * self._mobilidade_perfil())
         self.angulo_olhar += diff * vel_giro * dt
 
         if self.dormindo or self.canalizacao_imobiliza():
+            self.vel[0] = 0.0
+            self.vel[1] = 0.0
+        elif self.__dict__.get("agarrao_timer", 0.0) > 0.0:
+            # Onda 10A: no agarrão os dois corpos ficam travados — sem
+            # decisão, movimento ou golpe até o desfecho (o Simulador
+            # é o dono do relógio; timers/DoTs continuam correndo).
             self.vel[0] = 0.0
             self.vel[1] = 0.0
         elif self.stun_timer <= 0:
@@ -2322,11 +2391,21 @@ class Lutador:
             # Onda 8G: já em cima do alvo, o verbo ofensivo para de
             # PRENSAR o corpo do oponente — ataca do lugar em vez de
             # empurrar (era o principal fabricante de clinch).
-            zona_contato = max(0.9, self.alcance_ideal * 0.45)
-            if distancia < zona_contato:
-                mult *= 0.2
-            mx *= mult
-            my *= mult
+            # Onda 10A: em cima do alvo o verbo ofensivo ORBITA em vez de
+            # congelar — o freio x0.2 da 8G parava o corpo, e o cara-a-cara
+            # era isso. A componente lateral domina; sobra 10% de avanço.
+            zona_contato = max(0.9, self.alcance_ideal * 0.8)
+            alvo_atordoado = (
+                getattr(getattr(self, "_inimigo_atual", None), "stun_timer", 0.0) or 0.0
+            ) > 0.0
+            if distancia < zona_contato and not alvo_atordoado:
+                dir_c = getattr(self.brain, "dir_circular", 1) or 1
+                rad_lat = math.radians(self.angulo_olhar + 90 * dir_c)
+                mx = math.cos(rad_lat) * mult * 0.6 + mx * mult * 0.1
+                my = math.sin(rad_lat) * mult * 0.6 + my * mult * 0.1
+            else:
+                mx *= mult
+                my *= mult
             
             # v8.0: Micro-ajustes durante ataques para parecer mais humano
             if hasattr(self.brain, 'micro_ajustes'):
@@ -2377,9 +2456,8 @@ class Lutador:
             elif distancia > 4.0:
                 mx += math.cos(rad) * 0.2  # Aproxima um pouco
                 my += math.sin(rad) * 0.2
-            else:
-                mx += math.cos(rad) * 0.25
-                my += math.sin(rad) * 0.25
+            # Onda 10A: no meio-alcance circular é circular — aproximar é
+            # decisão do plano, não efeito colateral do verbo.
             
         elif acao == "FLANQUEAR":
             # v8.0: Flanqueio mais dinâmico
@@ -2410,10 +2488,17 @@ class Lutador:
                 my = -math.sin(rad) * 0.4
                 
         elif acao == "BLOQUEAR":
-            if self.rng_runtime.random() < 0.4 and distancia > 2.5:
-                strafe_rad = math.radians(self.angulo_olhar + (90 * self.brain.dir_circular))
-                mx = math.cos(strafe_rad) * 0.2
-                my = math.sin(strafe_rad) * 0.2
+            # Onda 10A: guarda que ANDA — strafe lento em qualquer distância
+            # (antes: velocidade zero abaixo de 2,5 m, uma estátua).
+            dir_c = getattr(self.brain, "dir_circular", 1) or 1
+            if distancia > 3.0:
+                # Guarda erguida a 5 m é estátua: anda para dentro devagar.
+                mx = math.cos(rad) * 0.45
+                my = math.sin(rad) * 0.45
+            else:
+                strafe_rad = math.radians(self.angulo_olhar + (90 * dir_c))
+                mx = math.cos(strafe_rad) * 0.25
+                my = math.sin(strafe_rad) * 0.25
         
         elif acao == "ATAQUE_AEREO":
             mx = math.cos(rad) * 0.8
@@ -2671,10 +2756,11 @@ class Lutador:
                     from neural_fights.models import ENCANTAMENTOS as _ENC
                     _bonus = _ENC.get("Velocidade", {}).get("ataque_speed_bonus", 20)
                     base_cd *= max(0.5, 1.0 - _bonus / 100.0)
-                if "Assassino" in self.classe_nome or "Ninja" in self.classe_nome:
-                    base_cd *= 0.7
-                elif "Colosso" in self.brain.arquetipo:
-                    base_cd *= 1.3
+                # Onda 10B: cadência por classe é knob de dados (mod_cadencia),
+                # não `if "Ninja" in nome`; Colosso segue por arquétipo.
+                base_cd *= float(self.class_data.get("mod_cadencia", 1.0))
+                if "Colosso" in str(getattr(self.brain, "arquetipo", "")):
+                    base_cd *= 1.2
                 # Onda 8H (combo flow): golpe iniciado com o alvo em
                 # hitstun sai da cadência mais rápido — é o que
                 # transforma hits soltos em strings de 2-4 golpes.
@@ -2895,6 +2981,14 @@ class Lutador:
                 getattr(contexto_dano, "fonte", None), "tipo_fonte", None
             ) or "direto"
             self.registro_eventos_dano.append((float(dano_proprio), str(categoria)))
+        # Onda 10A: hit REAL sofrido (golpe, projétil, skill) — o detector de
+        # standoff lê este contador; tick de DoT/encanto não é troca de golpes.
+        if dano_proprio > 0.5:
+            _cat = str(self.ultimo_tipo_fonte_dano or "")
+            if not any(t in _cat for t in ("dot", "encant", "retaliacao")):
+                self.contadores_luta["hits_sofridos"] = (
+                    self.contadores_luta.get("hits_sofridos", 0) + 1
+                )
         if dano_proprio > 0.0:
             self._quebrar_sono()
         self.flash_timer = min(0.25, 0.1 + dano_proprio * 0.005)
@@ -3535,6 +3629,57 @@ class Lutador:
         kb = min(kb, 40.0)
         self.vel[0] += empurrao_x * kb
         self.vel[1] += empurrao_y * kb
+        # Onda 10A: knockback forte LANÇA o corpo — se bater na parede
+        # dentro da janela, é wall-splat (o payoff de encurralar).
+        from neural_fights.utils.config import LANCADO_KNOCKBACK_MIN
+        # Só golpe FORTE lança (>= 5% da vida): com a vida baixa o knockback
+        # sobe sozinho e qualquer kunai virava wall-splat (12 numa luta).
+        # E uma vítima só volta a ser lançável 2 s depois do último splat.
+        if (
+            kb >= LANCADO_KNOCKBACK_MIN
+            and dano_final >= 0.05 * self.vida_max
+            and (empurrao_x or empurrao_y)
+            and atacante is not None
+            and atacante is not self
+            and self.__dict__.get("wall_splat_cooldown", 0.0) <= 0.0
+        ):
+            self.lancado_por = atacante
+            self.lancado_timer = max(self.__dict__.get("lancado_timer", 0.0), 0.45)
+        # Onda 10D: EMPURRAO era `pass` (identico a NORMAL). Agora empurra de
+        # verdade (forca_empurrao da fonte ou padrao) e LANCA — na parede vira
+        # wall-splat. PUXADO/VORTEX puxam para a origem por 0,3 s.
+        # Áreas/armadilhas/beams aplicam o próprio empurrão (forca_empurrao no
+        # objeto); aqui só as fontes discretas (projétil, melee, dash).
+        _fonte_emp = str(metadata_impacto.get("tipo_fonte", "") or "")
+        _fonte_faz_push = any(t in _fonte_emp for t in ("area", "trap", "beam"))
+        if tipo_efeito == "EMPURRAO" and not self.morto and not _fonte_faz_push:
+            from neural_fights.utils.config import FORCA_EMPURRAO_PADRAO
+            forca_emp = float(metadata_impacto.get("forca_empurrao") or 0.0) or FORCA_EMPURRAO_PADRAO
+            ex_, ey_ = float(empurrao_x or 0.0), float(empurrao_y or 0.0)
+            mag_ = math.hypot(ex_, ey_)
+            if mag_ < 1e-6 and atacante is not None and atacante is not self:
+                ex_, ey_ = self.pos[0] - atacante.pos[0], self.pos[1] - atacante.pos[1]
+                mag_ = math.hypot(ex_, ey_)
+            if mag_ > 1e-6:
+                self.vel[0] += ex_ / mag_ * forca_emp
+                self.vel[1] += ey_ / mag_ * forca_emp
+                if atacante is not None and atacante is not self:
+                    self.lancado_por = atacante
+                    self.lancado_timer = max(self.__dict__.get("lancado_timer", 0.0), 0.5)
+                    marcar = getattr(atacante, "_marcar_consequencia_cast", None)
+                    if callable(marcar):
+                        marcar()
+        elif tipo_efeito in ("PUXADO", "VORTEX") and not self.morto:
+            from neural_fights.utils.config import FORCA_PUXAO, PUXAO_DURACAO_S
+            origem_px = metadata_impacto.get("origem_puxao")
+            if not origem_px and atacante is not None and atacante is not self:
+                origem_px = (atacante.pos[0], atacante.pos[1])
+            if origem_px and origem_px[0] is not None:
+                self.puxao = {"origem": (float(origem_px[0]), float(origem_px[1])),
+                              "restante": PUXAO_DURACAO_S, "forca": FORCA_PUXAO}
+                marcar = getattr(atacante, "_marcar_consequencia_cast", None)
+                if callable(marcar):
+                    marcar()
 
         # === ONDA 8H: HITSTUN + COMBO SOFRIDO + BURST DE ESCAPE ===
         # Quem apanha perde a resposta por um instante — a fundação
@@ -3543,6 +3688,10 @@ class Lutador:
         # quebra-combo universal), o stun DECRESCE a cada hit do mesmo
         # combo (anti-stunlock) e tanques resistem.
         tipo_fonte_hit = str(metadata_impacto.get("tipo_fonte", ""))
+        # Onda 10A: dano real interrompe o agarrão (o lock não dá i-frames).
+        if self.__dict__.get("agarrao_timer", 0.0) > 0.0 and dano_final > 2.0:
+            self.agarrao_timer = 0.0
+            self.agarrao_interrompido = True
         # Hitstun é para GOLPES DISCRETOS (melee, projétil, orbe). Dano
         # contínuo/de zona (área, beam, trap, contato de transformação,
         # DoT) fica de fora — senão toda zona vira stunlock e os ticks
@@ -3666,7 +3815,9 @@ class Lutador:
                 else:
                     # Pós-acordar (8º+): sem stun, continuar a contagem
                     # exige quase-encadeamento — a janela encolhe.
-                    self.combo_contra_timer = 0.3
+                    # Onda 10A: 0,3 → 0,15 s (só o eco do MESMO swing conta;
+                    # o completo registrou combo de 10 com a janela larga).
+                    self.combo_contra_timer = 0.15
 
         efeito_aplicado = False
         if not self.morto:
@@ -3677,6 +3828,24 @@ class Lutador:
                 percentual_efeito=percentual_efeito,
                 contexto_dano=contexto_dano,
             )
+        # Onda 10D (sonda K1/K2): status aplicado por OUTRO lutador conta
+        # como consequência do cast dele; CC/controle/transporte contam à parte.
+        if efeito_aplicado and atacante is not None and atacante is not self:
+            try:
+                from neural_fights.core.status_runtime import get_status_runtime
+                categoria = str(get_status_runtime(tipo_efeito).get("categoria", ""))
+            except Exception:
+                categoria = ""
+            if categoria in ("cc", "debuff", "dot", "controle_mental", "transporte", "especial"):
+                marcar = getattr(atacante, "_marcar_consequencia_cast", None)
+                if callable(marcar):
+                    marcar()
+            if categoria in ("cc", "controle_mental", "transporte"):
+                contadores_atk = getattr(atacante, "contadores_luta", None)
+                if contadores_atk is not None:
+                    contadores_atk["status_cc_aplicados"] = (
+                        contadores_atk.get("status_cc_aplicados", 0) + 1
+                    )
         
         if self.vida < self.vida_max * 0.3:
             self.modo_adrenalina = True

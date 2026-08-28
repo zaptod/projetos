@@ -161,6 +161,9 @@ def _normalizar(jobs: list[dict]) -> list[dict]:
         # `space_url` gravado JA significava "o prompt foi enviado".
         job.setdefault("enviado", bool(job.get("space_url")))
         job.setdefault("videos_antes", None)
+        # Quando o prompt foi enviado: a prova de origem compara com a data
+        # do card, e uma retomada precisa saber isso sem o client.
+        job.setdefault("enviado_em", None)
     return jobs
 
 
@@ -380,7 +383,8 @@ def concluir(job_id: str, arquivo: str) -> dict | None:
 
 
 def registrar_envio(job_id: str, url: str | None,
-                    videos_antes: list | None) -> dict | None:
+                    videos_antes: list | None,
+                    enviado_em: str | None = None) -> dict | None:
     """Marca que o prompt DESTE slot foi enviado, e guarda o contexto.
 
     Gravado logo apos o envio, antes da espera: se o worker morrer (ou a espera
@@ -388,7 +392,7 @@ def registrar_envio(job_id: str, url: str | None,
     geracao pedindo o mesmo clipe.
     """
     mudancas = {"enviado": True, "videos_antes": list(videos_antes or []),
-                "updated_at": _agora()}
+                "enviado_em": enviado_em or _agora(), "updated_at": _agora()}
     if url:
         mudancas["space_url"] = url
     return _atualizar(job_id, mudancas)
@@ -403,7 +407,7 @@ def esquecer_envio(job_id: str) -> dict | None:
     dentro dele.
     """
     return _atualizar(job_id, {"enviado": False, "videos_antes": None,
-                               "updated_at": _agora()})
+                               "enviado_em": None, "updated_at": _agora()})
 
 
 def espaco_da_geracao(generation_id: str) -> str | None:

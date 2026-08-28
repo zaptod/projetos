@@ -17,7 +17,14 @@ VIDA_POR_RESISTENCIA = 5.0
 ESCALA_VIDA_GLOBAL = 2.8
 BASE_MANA = 50.0
 MANA_POR_PONTO = 10.0
-ESCALA_VELOCIDADE_MOVIMENTO = 3.0
+# Onda 10B: a velocidade e IDENTIDADE DE CLASSE. A base por classe ja e em
+# m/s (CLASSES_DATA[...]["velocidade_base_ms"]); peso da arma e forca so
+# modulam +-30%. A escala global fica como knob do harness (era 3.0 quando a
+# base era forca*2/massa — um Ninja de kunai andava a 6,3 m/s, igual a um
+# Cavaleiro, porque mod_forca entrava no numerador e o peso dominava).
+ESCALA_VELOCIDADE_MOVIMENTO = 1.0
+VELOCIDADE_BASE_PADRAO_MS = 7.0
+PESO_ARMA_FATOR_MIN = 0.70
 
 
 class Personagem:
@@ -54,15 +61,14 @@ class Personagem:
         cd = self.class_data
         self.peso_arma = max(0.0, float(peso_arma))
         
-        # Força efetiva com modificador de classe
-        forca_eff = self.forca * cd.get("mod_forca", 1.0)
-        
-        massa_total = self.tamanho + self.peso_arma
-        if massa_total > 0:
-            base_vel = (forca_eff * 2) / massa_total
-            self.velocidade = base_vel * cd.get("mod_velocidade", 1.0)
-        else:
-            self.velocidade = 0
+        # Onda 10B: base por classe (m/s) x fator de peso da arma (0,70-1,05)
+        # x fator de forca (0,90-1,10). Garantia de identidade: o Ninja mais
+        # pesado e fraco (11,0 x 0,70 x 0,90 = 6,93) anda mais que o Cavaleiro
+        # mais leve e forte (5,0 x 1,05 x 1,10 = 5,78).
+        base_ms = float(cd.get("velocidade_base_ms", VELOCIDADE_BASE_PADRAO_MS))
+        fator_peso = max(PESO_ARMA_FATOR_MIN, min(1.05, 1.10 - 0.05 * self.peso_arma))
+        fator_forca = max(0.90, min(1.10, 0.90 + 0.02 * self.forca))
+        self.velocidade = base_ms * fator_peso * fator_forca
         
         # Resistência base * modificador de vida
         self.resistencia_base = self.tamanho * self.forca
@@ -91,15 +97,20 @@ class Personagem:
         return self.class_data.get("cor_aura", (200, 200, 200))
 
     def to_dict(self):
-        return {
+        dados = {
             "nome": self.nome,
             "tamanho": self.tamanho,
             "forca": self.forca,
             "mana": self.mana,
             "nome_arma": self.nome_arma,
-            "cor_r": self.cor_r, 
-            "cor_g": self.cor_g, 
+            "cor_r": self.cor_r,
+            "cor_g": self.cor_g,
             "cor_b": self.cor_b,
             "classe": self.classe,
             "personalidade": self.personalidade
         }
+        # Onda 11C: kit sorteado na criação viaja com o registro.
+        kit = getattr(self, "kit_skills", None)
+        if kit:
+            dados["kit_skills"] = list(kit)
+        return dados

@@ -189,6 +189,17 @@ class CaptionGenerator:
                 nucleo = self._pick(rng, self.frases["contextual"]["perfect_fit"])
                 return self._compor(rng, nucleo, "INSANE")
 
+        # Atributo ESCOLHIDO nao usa o banco por tier: as frases de la reagem
+        # ao sorteio ("a roleta escolheu", "isso ja e sorte") e o `_compor`
+        # ainda empilha um "olha isso!" por cima. Comemorar sorte num valor
+        # que foi digitado e mentira — e a frase diz que foi escolha.
+        if event.get("escolhido"):
+            pool = self.frases.get("escolhido")
+            if pool:
+                return (self._pick(rng, pool)
+                        .replace("{CATEGORY}", event["category"])
+                        .replace("{VALUE}", event["display_value"]))
+
         nucleo = self._pick(rng, self._nucleos(event["roulette_id"],
                                                BAND_BY_TIER[event["tier"]]))
         nucleo = (nucleo
@@ -225,6 +236,106 @@ class CaptionGenerator:
                   .replace("{HP}", str(luta["hp_vencedor"])))
         return self._compor(rng, nucleo, luta["tier"])
 
+    # ------------------------------------------------------------- luta
+    @staticmethod
+    def _sub_luta(texto: str, luta: dict) -> str:
+        nome = str(luta.get("estreia_de") or luta.get("p1") or "")
+        return (texto
+                .replace("{P1}", str(luta.get("p1", "")))
+                .replace("{P2}", str(luta.get("p2", "")))
+                .replace("{NOME}", nome)
+                .replace("{VENCEDOR}", str(luta.get("vencedor", "")))
+                .replace("{PERDEDOR}", str(luta.get("perdedor", "")))
+                .replace("{R1}", str(luta.get("p1_cartel", "")))
+                .replace("{R2}", str(luta.get("p2_cartel", ""))))
+
+    def luta_hook(self, rng: random.Random, luta: dict) -> str:
+        """Gancho do video de luta unica: estreia, revanche, titulo ou duelo.
+
+        A luta carrega o proprio contexto (`origem`, `revanche`, `titulo`);
+        o banco `luta` em frases.json tem um pool por contexto e cai no pool
+        generico quando o contexto nao tem frase.
+        """
+        banco = self.frases.get("luta") or {}
+        generico = banco.get("hook") or self.frases["torneio"]["card"]
+        if luta.get("origem") == "estreia" and luta.get("estreia_de"):
+            pool = banco.get("hook_estreia") or generico
+        elif luta.get("titulo") and banco.get("hook_titulo"):
+            pool = banco["hook_titulo"]
+        elif luta.get("revanche") and banco.get("hook_revanche"):
+            pool = banco["hook_revanche"]
+        else:
+            pool = generico
+        return self._sub_luta(self._pick(rng, pool), luta)
+
+    def luta_card(self, rng: random.Random, luta: dict) -> str:
+        """Card VS: com cartel dos dois quando existe carreira registrada."""
+        banco = self.frases.get("luta") or {}
+        tem_cartel = luta.get("p1_cartel") and luta.get("p2_cartel")
+        if tem_cartel and banco.get("card_recorde") and rng.random() < 0.6:
+            return self._sub_luta(self._pick(rng, banco["card_recorde"]), luta)
+        return self.torneio_card(rng, luta)
+
+    @staticmethod
+    def _placar(valores) -> str:
+        valores = list(valores or [])
+        return " x ".join(str(v) for v in valores) if len(valores) == 2 else ""
+
+    def _sub_serie(self, texto: str, luta: dict, placar=None) -> str:
+        return (self._sub_luta(texto, luta)
+                .replace("{PLACAR}", self._placar(
+                    placar if placar is not None else luta.get("placar")))
+                .replace("{ROUND}", str(luta.get("round", "")))
+                .replace("{DURACAO}", str(luta.get("duracao", "")))
+                .replace("{HP}", str(luta.get("hp_vencedor", ""))))
+
+    def luta_round(self, rng: random.Random, luta: dict,
+                   usados: set | None = None) -> str:
+        """Resultado de UM round da serie.
+
+        Voz propria de proposito: com tres rounds, reusar o pool de resultado
+        do torneio faria o mesmo video dizer "vitoria de X" tres vezes.
+
+        `usados` guarda as FRASES-MODELO ja sorteadas nesta serie e sai daqui
+        atualizado: num pool pequeno, tres sorteios independentes repetem com
+        facilidade, e a repeticao aparece porque as telas ficam a segundos uma
+        da outra. Esgotado o pool, o sorteio volta a ser livre.
+        """
+        pool = (self.frases.get("luta") or {}).get("resultado_round")
+        if not pool:
+            return self.torneio_resultado(rng, luta)
+        livres = [f for f in pool if f not in (usados or ())] or list(pool)
+        escolhido = self._pick(rng, livres)
+        if usados is not None:
+            usados.add(escolhido)
+        return self._sub_serie(escolhido, luta)
+
+    def luta_serie(self, rng: random.Random, luta: dict, placar) -> str:
+        """Veredito da serie: o placar decide a frase, nao o ultimo round."""
+        banco = (self.frases.get("luta") or {}).get("resultado_serie") or {}
+        valores = sorted(placar or [], reverse=True)
+        varreu = len(valores) == 2 and valores[1] == 0
+        pool = banco.get("varreu" if varreu else "apertada") or banco.get("apertada")
+        if not pool:
+            return self.torneio_resultado(rng, luta)
+        return self._sub_serie(self._pick(rng, pool), luta, placar)
+
+    def luta_outro(self, rng: random.Random, luta: dict) -> str:
+        banco = self.frases.get("luta") or {}
+        if luta.get("origem") == "estreia" and luta.get("estreia_de"):
+            pool = banco.get("outro_estreia") or banco.get("outro") or self.config["outro"]
+        else:
+            pool = banco.get("outro") or self.config["outro"]
+        return self._sub_luta(self._pick(rng, pool), luta)
+
+    def callout(self, rng: random.Random, tipo: str, textos: dict,
+                n: int | None = None, rotulo: str | None = None) -> str:
+        """Texto curto sincronizado com um evento narrativo do motor."""
+        pool = textos.get(tipo) or [tipo.upper()]
+        texto = self._pick(rng, pool).replace("{N}", str(n if n is not None else ""))
+        # Onda 10C: {ROTULO} e o rotulo do plano ("PRESSAO", "ISCA"...).
+        return texto.replace("{ROTULO}", str(rotulo or "PLANO"))
+
     def torneio_campeao(self, rng: random.Random, torneio: dict) -> str:
         banco = self.frases["torneio"]["campeao"]
         hp_medio = torneio.get("estatisticas", {}).get("hp_medio_campeao", 0)
@@ -239,13 +350,25 @@ class CaptionGenerator:
                 .replace("{HP}", str(hp_medio)))
 
     # ------------------------------------------------------- demais telas
-    def hook(self, rng: random.Random, pedido: dict | None = None) -> str:
-        """Gancho de abertura; anuncia o nome pedido quando existe um."""
+    def hook(self, rng: random.Random, pedido: dict | None = None,
+             escolhas: dict | None = None) -> str:
+        """Gancho de abertura; anuncia o nome pedido quando existe um.
+
+        Com atributo ESCOLHIDO em vez de sorteado, o pool neutro sai de cena:
+        as frases dele afirmam "100% aleatorio" e "nada escolhido", e abrir um
+        video com isso depois de fixar a classe seria mentira dita na primeira
+        linha. O pool `hook_escolhido` conta a verdade — parte foi escolhida,
+        o resto a roleta decide.
+        """
         nome = (pedido or {}).get("nome") or ""
-        if not nome:
-            return self._pick(rng, self.config["hook"])
-        return self._pick_pedido(rng, "hook_pedido", self.config["hook"],
-                                 {"{NOME_PEDIDO}": nome})
+        if nome:
+            return self._pick_pedido(rng, "hook_pedido", self.config["hook"],
+                                     {"{NOME_PEDIDO}": nome})
+        if escolhas:
+            pool = self.config.get("hook_escolhido")
+            if pool:
+                return self._pick(rng, pool)
+        return self._pick(rng, self.config["hook"])
 
     def stinger(self, rng: random.Random, entity: str) -> str:
         """Batida curta de virada entre as roletas do personagem e as da arma.

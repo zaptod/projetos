@@ -1,162 +1,156 @@
 {
     "hook": [
-        "VAMOS CRIAR UM PERSONAGEM ALEATORIO",
-        "CRIANDO UM PERSONAGEM 100% ALEATORIO"
+        "UM PERSONAGEM 100% ALEATORIO",
+        "TUDO SORTEADO. NADA ESCOLHIDO.",
+        "A ROLETA DECIDE TUDO AQUI",
+        "VAMOS VER O QUE A SORTE FAZ"
+    ],
+    "hook_escolhido": [
+        "PARTE ESCOLHIDA, PARTE SORTEADA",
+        "UMA ESCOLHA. O RESTO E A ROLETA",
+        "NEM TUDO FOI SORTEADO HOJE",
+        "ESCOLHI O COMECO. O RESTO E SORTE"
     ],
     "hook_pedido": [
-        "CRIANDO {NOME_PEDIDO}",
-        "PEDIRAM {NOME_PEDIDO}. BORA",
-        "{NOME_PEDIDO} FOI PEDIDO. VAMOS VER",
-        "NOME DO COMENTARIO: {NOME_PEDIDO}",
-        "HOJE O NOME VEIO DE VOCES",
-        "VOCES PEDIRAM, EU ROLEI",
-        "{NOME_PEDIDO}, PEDIDO NOS COMENTARIOS"
+        "{NOME_PEDIDO}, PEDIDO DE VOCES",
+        "HOJE O NOME VEIO DOS COMENTARIOS",
+        "VOCES PEDIRAM {NOME_PEDIDO}",
+        "{NOME_PEDIDO} SAIU DO COMENTARIO",
+        "O NOME E DE VOCES: {NOME_PEDIDO}"
     ],
     "by_tier": {
         "TERRIBLE": [
-            "{CATEGORY}: {VALUE}... 💀",
-            "{VALUE} DE {CATEGORY}?! KKKKK",
-            "{CATEGORY} {VALUE}. JA ERA.",
-            "NAO ACREDITO... {CATEGORY}: {VALUE}"
+            "{CATEGORY}: {VALUE}. essa doeu.",
+            "{VALUE} de {CATEGORY}. complicado.",
+            "{CATEGORY} veio {VALUE}. da pra virar?"
         ],
         "BAD": [
-            "{CATEGORY}: {VALUE}... ruim demais",
-            "so {VALUE} de {CATEGORY}",
-            "{CATEGORY}: {VALUE} 😬"
+            "{CATEGORY}: {VALUE}. abaixo da media.",
+            "so {VALUE} de {CATEGORY}.",
+            "{CATEGORY}: {VALUE}. tem que virar."
         ],
         "WEAK": [
-            "{CATEGORY}: {VALUE}... fraquinho",
-            "{CATEGORY}: {VALUE}, podia ser pior"
+            "{CATEGORY}: {VALUE}. fraquinho.",
+            "{CATEGORY}: {VALUE}. podia ser pior."
         ],
         "AVERAGE": [
-            "{CATEGORY}: {VALUE}",
-            "{CATEGORY}: {VALUE}, na media"
+            "{CATEGORY}: {VALUE}.",
+            "{CATEGORY}: {VALUE}, na media."
         ],
         "GOOD": [
-            "{CATEGORY}: {VALUE} 👍",
-            "{CATEGORY}: {VALUE}, bom!"
+            "{CATEGORY}: {VALUE}. boa.",
+            "{CATEGORY}: {VALUE}, isso ajuda."
         ],
         "GREAT": [
-            "{CATEGORY}: {VALUE}!!",
-            "OLHA ESSE {CATEGORY}: {VALUE}!",
+            "{CATEGORY}: {VALUE}. muito bom.",
+            "olha esse {CATEGORY}: {VALUE}.",
             "{CATEGORY}: {VALUE} 🔥"
         ],
         "INSANE": [
-            "{VALUE} DE {CATEGORY}?!?!",
-            "{CATEGORY} {VALUE}... ISSO E BROKEN",
-            "IMPOSSIVEL. {CATEGORY}: {VALUE} 😱",
-            "{CATEGORY}: {VALUE}!!! APELAO"
+            "{VALUE} de {CATEGORY}. isso e raro.",
+            "{CATEGORY}: {VALUE}. o teto da roleta.",
+            "{CATEGORY}: {VALUE}. build abencoada."
         ]
     },
     "contextual": {
         "cant_lift": [
-            "ELE NAO CONSEGUE NEM LEVANTAR A ARMA 💀",
-            "COMO ELE VAI LEVANTAR {VALUE}?!",
-            "{VALUE} DE ARMA COM ESSA FORCA?! KKKK"
+            "ele nao consegue levantar essa arma.",
+            "como ele vai usar {VALUE}?",
+            "{VALUE} de arma. ele vai arrastar."
         ],
         "perfect_fit": [
-            "A ARMA FOI FEITA PRA ELE",
-            "ISSO COMBINA PERFEITAMENTE",
-            "ENCAIXOU DEMAIS"
+            "a arma foi feita pra ele.",
+            "isso combina perfeitamente.",
+            "encaixou."
         ]
     },
     "synergy": {
         "positive": [
-            "ISSO COMBINA PERFEITAMENTE.",
-            "SINERGIA ABSURDA!",
-            "A BUILD FECHOU"
+            "personagem e arma combinam.",
+            "a build fechou.",
+            "isso encaixou muito bem."
         ],
         "negative": [
-            "ELE NEM CONSEGUE USAR ISSO.",
-            "PIOR COMBINACAO POSSIVEL",
-            "A ARMA E BOA... MAS NAO PRA ELE"
+            "ele nem consegue usar isso direito.",
+            "a arma e boa — mas nao pra ele.",
+            "personagem e arma se atrapalham."
         ],
         "neutral": [
-            "COMBINACAO OK.",
-            "DA PRA USAR."
+            "combinacao ok.",
+            "da pra usar."
         ]
     },
     "reveal_character": [
-        "PERSONAGEM CRIADO: {NAME}",
-        "ESSE E {NAME}"
+        "ELE EXISTE: {NAME}",
+        "ESSE E {NAME}",
+        "{NAME}, EM CARNE E OSSO"
     ],
     "reveal_weapon": [
-        "ARMA CRIADA: {NAME}",
-        "A ARMA: {NAME}"
+        "A ARMA: {NAME}",
+        "{NAME}",
+        "E ESSA E A ARMA DELE"
     ],
     "final_by_verdict": {
         "DESASTRE_TOTAL": [
-            "NOTA FINAL: {SCORE}/100 💀💀💀",
-            "ISSO FOI UM DESASTRE. {SCORE}/100"
+            "nota final: {SCORE}/100. um desastre.",
+            "{SCORE}/100. a roleta nao colaborou."
         ],
         "BUILD_TRASH": [
-            "NOTA FINAL: {SCORE}/100... lixo",
-            "BUILD LIXO: {SCORE}/100"
+            "nota final: {SCORE}/100.",
+            "{SCORE}/100. dificil defender essa."
         ],
         "BUILD_FRACA": [
-            "NOTA FINAL: {SCORE}/100",
-            "BUILD FRACA: {SCORE}/100"
+            "nota final: {SCORE}/100. build fraca.",
+            "{SCORE}/100. tem o que melhorar."
         ],
         "BUILD_MEDIANA": [
-            "NOTA FINAL: {SCORE}/100",
-            "MEDIANO: {SCORE}/100"
+            "nota final: {SCORE}/100.",
+            "{SCORE}/100. mediana, honesta."
         ],
         "BUILD_SOLIDA": [
-            "NOTA FINAL: {SCORE}/100 👍",
-            "BUILD SOLIDA: {SCORE}/100"
+            "nota final: {SCORE}/100. build solida.",
+            "{SCORE}/100. essa presta."
         ],
         "BUILD_FORTE": [
-            "NOTA FINAL: {SCORE}/100 🔥",
-            "BUILD FORTE DEMAIS: {SCORE}/100"
+            "nota final: {SCORE}/100. build forte.",
+            "{SCORE}/100. essa assusta 🔥"
         ],
         "BROKEN": [
-            "BUILD BROKEN. {SCORE}/100 😱",
-            "NOTA FINAL: {SCORE}/100. APELAO DEMAIS"
+            "nota final: {SCORE}/100. apelacao.",
+            "{SCORE}/100. build quebrada."
         ]
     },
     "outro": [
-        "COMO SERIA O SEU PERSONAGEM?",
-        "COMENTA O NOME DO SEU PERSONAGEM",
-        "QUER VER O SEU? COMENTA O NOME",
+        "QUAL SERIA A SUA BUILD?",
         "COMENTA UM NOME. EU ROLO A ROLETA",
         "O PROXIMO NOME SAI DOS COMENTARIOS",
-        "DEIXA UM NOME NOS COMENTARIOS",
-        "COMENTA E EU CRIO O SEU",
-        "QUAL SERIA A SUA BUILD? COMENTA",
-        "MANDA UM NOME PRO PROXIMO VIDEO",
-        "SEU NOME NOS COMENTARIOS VIRA BUILD"
+        "COMENTA E O PROXIMO E O SEU",
+        "DEIXA UM NOME PRO PROXIMO VIDEO",
+        "QUEM VOCE QUER VER NA ARENA?"
     ],
     "outro_pedido": [
-        "{NOME_PEDIDO} SAIU DO COMENTARIO",
-        "{NOME_PEDIDO} FOI PEDIDO AQUI",
-        "ESSE FOI PEDIDO. QUAL O PROXIMO?",
-        "VALEU PELO NOME. COMENTA OUTRO",
+        "{NOME_PEDIDO} FOI PEDIDO. E AGORA?",
+        "PEDIU, VIROU BUILD. COMENTA OUTRO",
         "O PROXIMO NOME PODE SER O SEU",
-        "PEDIU, VIROU BUILD. COMENTA",
-        "FEITO A PEDIDO. MANDA MAIS NOMES",
-        "COMENTA E O SEU E O PROXIMO"
+        "VALEU PELO NOME. MANDA MAIS"
     ],
     "outro_pedido_autor": [
         "{AUTOR} PEDIU, TA AQUI",
-        "VALEU {AUTOR}! MANDA OUTRO",
+        "{AUTOR}, QUEM E O PROXIMO?",
         "NOME DE {AUTOR}. COMENTA O SEU",
-        "PEDIDO DE {AUTOR}. E O SEU?",
         "SUGESTAO DE {AUTOR}"
     ],
     "identity": [
-        "ELE EXISTE. OLHA O {NAME}",
-        "ASSIM QUE O {NAME} SERIA DE VERDADE",
+        "ELE EXISTE: {NAME}",
+        "ASSIM SERIA {NAME} DE VERDADE",
         "{NAME} FORA DA ROLETA",
-        "A CARA DO {NAME}",
-        "{CLASSE} DO CAOS: {NAME}",
-        "ISSO E O {NAME} NA VIDA REAL",
-        "IMAGINA ENCONTRAR O {NAME}"
+        "A CARA DE {NAME}",
+        "IMAGINA ENCONTRAR {NAME}"
     ],
     "identity_pedido": [
         "{NOME_PEDIDO} EXISTE AGORA",
         "VOCES PEDIRAM {NOME_PEDIDO}",
         "ESSE E O {NOME_PEDIDO} DE VOCES",
-        "O {NOME_PEDIDO} DO COMENTARIO",
         "SAIU DO COMENTARIO: {NOME_PEDIDO}"
     ],
     "nameplate_pedido": [
@@ -168,7 +162,7 @@
         "weapon": [
             "AGORA A ARMA",
             "FALTA A ARMA",
-            "PROXIMO: A ARMA"
+            "E A ARMA?"
         ],
         "character": [
             "AGORA O PERSONAGEM",

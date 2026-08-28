@@ -273,6 +273,29 @@ def grupo_da_skill(skill: str) -> str | None:
     return None
 
 
+def kit_do_personagem(registro: dict) -> list[dict]:
+    """Kit visível na ficha (Onda 11D): o ``kit_skills`` sorteado na criação
+    ou, em registro antigo, o kit fixo da classe — com papel, elemento, cor e
+    a DESCRIÇÃO do catálogo (o que o card e o showcase mostram)."""
+    from neural_fights.models.constants import CLASSES_DATA, KIT_PAPEIS
+
+    nomes = list(registro.get("kit_skills") or [])
+    if not nomes:
+        classe = registro.get("classe", "")
+        nomes = list(CLASSES_DATA.get(classe, {}).get("skills_afinidade", []))
+    kit = []
+    for idx, nome in enumerate(nomes):
+        dados = SKILL_DB.get(nome, {})
+        kit.append({
+            "nome": nome,
+            "papel": KIT_PAPEIS[idx] if idx < len(KIT_PAPEIS) else "",
+            "elemento": dados.get("elemento") or "",
+            "descricao": dados.get("descricao") or "",
+            "cor": list(dados.get("cor", (255, 255, 255)))[:3],
+        })
+    return kit
+
+
 # ------------------------------------------------------------------- classes
 def classe_base(classe: str) -> str:
     return classe.split(" (")[0]

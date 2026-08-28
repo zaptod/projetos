@@ -345,6 +345,301 @@ FOGO, GELO, RAIO, TREVAS, LUZ, NATUREZA, ARCANO, CAOS, VOID, SANGUE, TEMPO, GRAV
 
 ---
 
+### A luta como vídeo (Onda 9)
+- **Câmera `DIRETOR`** (`effects/camera.py`, `match_config["camera_modo"]`):
+  câmera de transmissão para vídeo. Zona morta com histerese, pan lento
+  (2,4/s), zoom-in só após 1 s estável e +12 %, zoom-out rápido, push-in no
+  KO, sem shake/punch. Teto de zoom em **metros** (`diretor_largura_min_m`:
+  o lado menor nunca mostra menos de 7 m) e clamp macio à arena
+  (`diretor_fora_arena`). Só lê posições — nunca toca `time_scale`; medido:
+  não altera o resultado da luta.
+- **`match_config["resolucao"]`** (`[largura, altura]`) sobrepõe o par do
+  modo: gravação nativa em 1080×1920. A proporção decide `portrait_mode`.
+- **Gravador** (`recording/fight_recorder.py`): além do mp4 e dos
+  `eventos_dano`, devolve `serie_hp` (0,25 s), `eventos_narrativos`
+  (tells `instinto/desvio/punicao/parry/clinch`, `combo` com `n`,
+  `primeiro_sangue`, `virada`, `ko`) e `metricas_video` (visibilidade,
+  tamanho do lutador, pan p90 em larguras/s, trocas de zoom/min). Tudo em
+  tempo de VÍDEO. `saida=None` mede sem codificar.
+- **Harness** `python -m neural_fights.tools.qualidade_luta --video`:
+  alvos `V7_*` em `alvos_qualidade.json` (enforce_onda 9).
+- Consumidor: `random_builds` (fight/estreia/torneio) — ver README de lá.
+
+### O cara-a-cara (Onda 10A)
+- **Diagnóstico**: o clinch da 8G só via contato físico (`dist < 1,35×
+  raios`); o standoff real acontece na FAIXA de confronto (2,5–4,5 m)
+  sem hit conectado — e o coreógrafo fabricava o momento (`FACE_OFF` =
+  2–4 s de `BLOQUEAR` nos dois; `STANDOFF`/tédio alongavam o timer de
+  decisão).
+- **Detector de standoff** (`Simulador._detectar_standoff`): mede o tempo
+  sem HIT REAL (`contadores_luta["hits_sofridos"]`, sem DoT) em duas
+  bandas — PERTO (faixa de confronto) e LONGE (≤ 9 m). Perto: 1,5 s →
+  `AIBrain.forcar_iniciativa` (P1: dash-in a 1,8–5 m ou golpe; tell
+  `iniciativa`); +1,0 s → **agarrão**. Longe: 3 s → iniciativa; +1 s → os
+  dois aproximam. Se o relógio expira já colado (< 2 m), agarra de
+  primeira. Estado público `sim.standoff_estado` (a sonda lê).
+- **Agarrão** (`core/agarrao.py`, funções puras; ciclo em
+  `Simulador._iniciar_agarrao/_atualizar_agarrao`): lock de
+  `AGARRAO_LOCK_S` (0,25 s, com lunge até o contato), desfecho sorteado
+  JÁ no `rng_runtime` do iniciador: ARREMESSO (voa ~3,75 m, stun 0,45,
+  4–8 % de vida, arma `lancado_por`), JOELHADA (corpo a corpo, conta
+  combo), EMPURRAO, REVERSAO (troca papéis uma vez) e ESCAPE (dash
+  `ignorar_custo=True` + 0,3 s de janela no iniciador). Dano real
+  interrompe o lock. Clinch de contato também agarra (o resolvedor da 8G
+  fica de reserva no cooldown). `brain._pedir_agarrao` é o gancho para os
+  planos da 10C.
+- **Wall-splat** (`Simulador._processar_wall_splat`): corpo LANÇADO
+  (arremesso ou knockback ≥ `LANCADO_KNOCKBACK_MIN`) que bate na parede
+  com intensidade ≥ 8 → stun 0,3–0,5 s, dano ≤ 8 %, tell `wall_splat`,
+  `cam.aplicar_momento` (push-in do DIRETOR, sem punch).
+- **Coreógrafo**: `FACE_OFF` uma vez por luta, 0,8 s, termina em
+  `forcar_iniciativa` do mais agressivo; `STANDOFF` 1,0–1,5 s;
+  `BREATHER` só com estamina < 30 nos dois; `CIRCULAR_LENTO`/`RECUPERAR`
+  não esticam `timer_decisao`. Humor ENTEDIADO acelera a decisão (base
+  0,3) e sobe agressividade.
+- **Corpo vivo** (`executar_movimento`): verbo ofensivo em cima do alvo
+  ORBITA (lateral ×0,6) em vez de congelar — exceto com o alvo em hitstun
+  (combo segue reto); `BLOQUEAR` anda (strafe perto, avanço lento a > 3 m);
+  `CIRCULAR` no meio-alcance não reaproxima sozinho.
+- **Portão de ataque**: `chance_base` 0,75; 0,6 s de verbo passivo em
+  alcance sem ameaça vira golpe P1 (tell `iniciativa`); hesitação em
+  alcance é metade do raro; `BAITAR_E_PUNIR` sem isca contra oponente
+  passivo vira `PRESSIONAR` (`_forcar_plano`).
+- **Harness**: `pct_tempo_standoff`, `agarroes` (por desfecho),
+  `wall_splats`, `iniciativas`; R1 exclui frames de agarrão. Alvos
+  `R2_standoff` (≤ 0,12), `R2_standoff_p90`, `R3_agarroes` (≥ 0,4/luta),
+  `R4_wall_splats`, metas em `_meta` (enforce 11). Tells `agarrao`
+  (com `modo`), `wall_splat`, `iniciativa` viram `eventos_narrativos`.
+- Testes: `test_agarrao_regressions`, `test_standoff_regressions`,
+  `test_wall_splat_regressions`, `test_choreographer_retune_regressions`,
+  `test_portao_ataque_regressions`.
+
+### Velocidade e mobilidade por classe (Onda 10B)
+- **Fórmula** (`models/characters.py`): `velocidade = velocidade_base_ms
+  (classe) × clamp(1,10 − 0,05·peso_arma, 0,70, 1,05) × clamp(0,90 +
+  0,02·força, 0,90, 1,10)`; `ESCALA_VELOCIDADE_MOVIMENTO = 1,0` (a base
+  já é m/s). `mod_forca` saiu da velocidade. Garantia testada: o pior
+  Ninja (6,93) anda mais que o melhor Cavaleiro (5,78).
+- **`CLASSES_DATA`** ganhou `velocidade_base_ms` (Ninja 11 · Assassino 10
+  · Monge/Ladino 9,5 · Duelista 8 · Gladiador/Berserker 7,5 · Guerreiro 7
+  · casters 5,5–6,5 · Cavaleiro 5), `mod_cadencia` (Ninja 0,70 …
+  Cavaleiro 1,20; substitui o `if "Ninja" in nome`) e `vel_giro`.
+  `mod_velocidade` é só rótulo da UI. Dupla `cadencia_base_s` 1,2 → 0,85.
+- **Mobilidade no motor** (`Lutador._mobilidade_perfil`, eixo 0–1 da
+  personalidade): +8 % de velocidade, dash com cooldown ×(1 − 0,47·mob),
+  custo ×(1 − 0,35·mob), força ×(1 + 0,31·mob), giro ×(1 + 0,3·mob).
+  `ritmo_combate` (±20 % permanente) virou ±8 %.
+- **Dash tático** (`AIBrain._considerar_dash_tatico`, antes da decisão de
+  movimento; cooldown `cd_dash_tatico` 1,0–2,5 s): GAP_CLOSE (plano
+  ofensivo, 2,5–5,5 m, oponente observado não atacando) → PRESSIONAR;
+  HIT_AND_RUN (acertou há < 0,45 s, estilo HIT_RUN ou mob > 0,5) → dash
+  para trás + RECUAR com dash-cancel do swing; FLANK (guarda física
+  `tempo_bloqueando` > 0,2 ou LEVAR_PARA_PAREDE) → FLANQUEAR. Tell
+  `dash_tatico` com `modo`.
+- **Harness**: `velocidade_media_ms_por_classe` (só movimento PRÓPRIO —
+  sem stun/lançado/dash/agarrão), `razao_velocidade_ninja_cavaleiro`,
+  `distancia_percorrida_por_s_media`, `pct_frames_parado_em_range_media`,
+  `dashes_taticos_por_luta_media`, `dashes_ofensivos_share`. Alvos `M1_*`
+  a `M4_*` (enforce 10).
+- Testes: `test_velocidade_classes_regressions`,
+  `test_mobilidade_motor_regressions`, `test_dash_tatico_regressions`.
+
+### Hit-stop só para pancada grande (ajuste de fluxo pós-O10)
+- O congelamento por hit (`core/game_feel.py::HitStopManager.registrar_hit`,
+  2–18 frames × multiplicador de classe até 1,8, em TODO golpe) quebrava
+  o fluxo no ritmo novo (~44 congelamentos ≈ 4,3 s de tela parada por
+  luta). Agora só congela quando `dano >= HITSTOP_DANO_MIN_PCT` (0,06 ≈
+  1,5 momentos/luta; varredura no próprio knob) da vida_max do ALVO — em
+  `utils/config.py`. Golpes comuns mantêm shake/partículas/knockback;
+  magia carregada (alvo None) segue épica; o slow-motion de KO
+  (`ativar_slow_motion`, só no fim do round) não muda. Display-only:
+  headless não congela (doutrina da Onda 9). Teste:
+  `test_hitstop_fluxo_regressions`.
+
+### Planos visíveis e adaptativos (Onda 10C)
+- **`ai/plano_de_luta.py`**: `PlanoDeLuta` (objeto compatível com o dict
+  da 8E: `plano["tipo"]`, `.get`, `in`) com `rotulo`, `verbos`, `objetivo`,
+  `progresso` 0–1, `adaptativo`, `marcadores` (snapshot de contadores no
+  início); `DEFINICOES` (11 tipos) com `sucesso`/`falha`/`progresso`
+  puros sobre um `ContextoPlano` (deltas desde o início: hits dados,
+  punições, agarrões, wall-splats, skills, hp, distância, parede);
+  `min_duracao` 1,2 s segura fim precoce.
+- **Adaptativos** (nascem do que o lutador OBSERVA, sem telepatia):
+  `QUEBRAR_GUARDA` (guarda física `tempo_bloqueando` em ≥ 2 dos meus
+  últimos 4 swings → pesado/agarrão), `CORTAR_FUGA` (oponente visto
+  recuando ≥ 0,6 s a > 3 m), `TROCAR_GOLPES` (agressivo, < 4 m),
+  `ACABAR` (hp do oponente < 25 %: score 1,2 domina o ruído),
+  `ESMAGAR_NA_PAREDE` (oponente contra a parede; +0,3 vindo de
+  `LEVAR_PARA_PAREDE`). Gatilho dispara com score ≥ 0,85 (acima do ruído
+  0,25×(1+caos)).
+- **Ciclo** (`_atualizar_plano`): spike de dano → objetivo
+  (sucesso/falha, ANTES do relógio) → expiração → isca sem oponente
+  (10A). Contadores `planos_sucesso|falha|expirado|dano|adaptativos`.
+- **O plano manda**: `_aplicar_plano_de_luta` mantém a proposta se ela já
+  está em `verbos`, senão troca por um verbo do plano com
+  `max(0,6, compromisso)`; `_aplicar_plano_ao_portao` entra no portão de
+  ataque (ACABAR ≥ 0,9; TROCAÇÃO +0,2; PRESSÃO +0,1; ISCA −0,25 fora de
+  janela; RECUPERAR −0,15; QUEBRAR_GUARDA/ESMAGAR → `_preferir_esmagar` e
+  `_pedir_agarrao` a < 1,9 m — o Simulador agarra). `_VARIACOES_POR_PLANO`
+  deriva das definições.
+- **Visível**: rótulo na cor do lado sob o corpo + barra de progresso +
+  flash de 0,6 s na troca (`simulacao.py`, knob `match_config["rotulo_plano"]`);
+  tell `plano` (seta/arco) e `dash_tatico` desenhados; rosto reage
+  (`character_flair`). Gravador: `plano` ∈ `TELLS_NARRATIVOS` (evento com
+  `rotulo`/`plano`/`adaptativo`, throttle `PLANO_GAP_MIN_S` = 4 s por
+  lutador) e **`serie_plano`** `(t, rotulo_p1, prog_p1, rotulo_p2, prog_p2)`
+  na cadência de `serie_hp`. `random_builds`: `remapear_gravacao` e
+  `gravar_confronto` carregam `serie_plano`; `planejar_callouts` aceita
+  `plano` (throttle por lutador, cede a evento maior a < 1,5 s,
+  `{ROTULO}` em `captions.callout`); o HUD em PIL desenha o rótulo e a
+  barrinha sob a barra de vida (`fight_hud.plano`).
+- **Harness**: `pct_frames_acao_coerente_media`,
+  `planos_adaptativos_por_luta_media`, `planos_concluidos_share`,
+  `planos_sucesso_share`; alvos `A7_coerencia_plano` (≥ 0,5),
+  `A8_planos_adaptativos` (≥ 1), `A9_planos_concluidos` (≥ 0,3).
+- Testes: `test_plano_adaptativo_regressions`,
+  `test_plano_de_luta_regressions` (compat), `test_camera_diretor_regressions`
+  (plano vira evento com throttle), `random_builds/tests/test_luta_video_regressions`
+  (callouts de plano).
+
+### Habilidades com consequência (Onda 10D)
+- **Despachante único** (`Lutador._executar_skill(nome, data, *, origem,
+  alvo, proposito, ...)`): `usar_skill_arma`/`usar_skill_classe` só pagam
+  e gatilham; recoil e passivas de arma só em `origem="arma"`, bônus do
+  Piromante e eco do Feiticeiro só em `"classe"`. `buffer_summons`/
+  `buffer_traps` nascem no `__init__`.
+- **Geometria de cast**: `_ponto_alvo_area` (AREA cai na posição
+  PREVISTA do alvo, `pos + vel×(delay+0,15)`, até `alcance_cast`
+  (6 m; Julgamento Celestial 8), recuando até ponto válido da arena —
+  `centrado_no_caster: True` mantém no pé: Explosão Nova, Fúria
+  Giratória, Repulsão, Medo Profundo, Provocar, Explosão Necrótica,
+  Colheita de Almas, Sacrifício, Terremoto); `_direcao_dash` por
+  PROPÓSITO (`AIBrain._proposito_do_cast`: ESCAPE em desvantagem/hp<35 %
+  → direção com mais arena; ENGAGE → rumo ao alvo parando em
+  `alcance_ideal×0,8`; REPOSICIONAR → lateral); `_destino_dash_valido`
+  nunca atravessa parede/obstáculo. O Simulador injeta
+  `lutador.arena_ref`.
+- **Efeitos que eram `pass`**: EMPURRAO empurra (`forca_empurrao` da
+  fonte ou `FORCA_EMPURRAO_PADRAO` 14 — só fontes discretas; áreas/traps
+  empurram por conta própria) e LANÇA (wall-splat); EXPLOSAO sem
+  `raio_explosao` ganha `raio×2` (splash em volta, sem repetir o alvo
+  direto); PUXADO/VORTEX puxam para a origem por 0,3 s
+  (`Lutador.puxao`); `AreaEffect.forca_puxar` 5 → 30; Repulsão
+  `forca_empurrao` 2 → 20.
+- **Obstáculos destrutíveis** (`core/arena.py`): `Arena` copia os
+  `Obstaculo` por instância (o catálogo `ARENAS` nunca muta);
+  `obstaculos_no_raio`, `danificar_obstaculo` (hp → 0: `solido=False`,
+  `tipo += "_quebrado"`, entulho desenhado), `ultimo_obstaculo_colidido`
+  (corpo lançado que bate numa caixa quebra-a e o splat é mais leve),
+  `eventos_obstaculo` drenados pelo Simulador (`_drenar_eventos_obstaculo`:
+  contador, tell `obstaculo`, destroços). Áreas ativas danificam uma vez.
+  Só a Cyberpunk tem destrutíveis.
+- **Kits** (`CLASSES_DATA[...]["skills_afinidade"]`, ordem `KIT_PAPEIS` =
+  CONTROLE/ZONA/MOBILIDADE/PICO): 16×4 alcançando TRAP (Muralha de Gelo),
+  CHANNEL (Fotossíntese), TRANSFORM (Forma Relâmpago), portal (Portal
+  Arcano), cadeia (Corrente em Cadeia), Fênix, Treant e os 12 status
+  órfãos. Auditoria: `alcance_cast`/`centrado_no_caster` no inventário e
+  no manifesto (`tools/skill_runtime_evidence.py`).
+- **Harness**: `share_casts_com_consequencia`, `status_cc_por_luta_media`,
+  `obstaculos_destruidos_por_luta_media`; alvos `K1` (≥ 0,45), `K2`
+  (≥ 1,5), `K3` (reportado). Re-pinos honestos no fecho da O10 (completo
+  546 lutas): `A5_rotatividade` max 32 (planos terminam por objetivo),
+  `R1_tempo_colado` 0,09 / p90 0,20 (PUXADO/VORTEX encostam por desenho;
+  a sonda exclui frames de puxão/lançamento), `B2_tipo_max` 0,70
+  (Orbital), `S5` 0,008, `C1` min 1 (pushes/CC encerram strings),
+  `B3` 5,0, `D3_meta` 0,14, `D4` 0,22, `S3_share_skills_meta` 0,23 /
+  `S3_share_basico_meta` 0,69 (kits trocaram dano por controle; casts
+  por luta 20 → 13 porque as skills de assinatura custam 45–65 de mana —
+  a próxima rodada de knobs é custo/cooldown dos kits).
+- Testes: `test_area_alvo_regressions`, `test_empurrao_puxao_regressions`,
+  `test_obstaculo_destrutivel_regressions`, `test_kits_de_classe_regressions`,
+  `test_skill_dispatch_unificado_regressions`.
+
+## 🧬 CONTRATO DE SKILLS — o "MCP interno" (Onda 11A)
+
+- **`core/skill_contract.py`**: cada skill deriva um `SkillContract`
+  self-describing de `SKILL_DB` + `STATUS_RUNTIME` + `CLASSES_DATA` (funções
+  puras, import-safe, zero literal novo por skill). Declara: geometria REAL
+  (`alcance_lancamento` = alcance_cast p/ AREA, raio, ancoragem no alvo,
+  pilares), tempos (delay/telegraph/duracao), efeito com `categoria_efeito`
+  canônica (nunca listas literais), custos efetivos (`custo_efetivo` espelha
+  Mago ×0,8 + buffs; paridade garantida por teste), gates
+  (`condicao`/`condicao_limiar`), grafo de combo (`combo_apos` + derivação
+  status→condição) e `consequencia_esperada` — o oráculo do harness 1-a-1.
+- **A estratégia delega ao contrato** (`ai/skill_strategy.py`):
+  `_determinar_propositos` usa categoria (11 skills de CC voltaram à rotação:
+  SILENCIADO/ENRAIZADO/KNOCK_UP/TEMPO_PARADO...), FINISHER vale para QUALQUER
+  tipo com limiar declarado, `_pode_usar_skill` compara custo EFETIVO,
+  `_descobrir_combos` lê o grafo com efeitos normalizados. Estado morto
+  removido (scores, setup/pode_combo_apos).
+- **`percepcao_kit`** (`ai/brain.py`): o brain lê o kit do INIMIGO pelos
+  contratos (informação pública, como a arma) — `alcance_perigo_skill`,
+  `tem_telegraph`, `tem_gap_closer`, `tem_execute`; consumo em
+  `distancia_segura` (kite + cautela contra execute).
+- **Inspetor**: `python -m neural_fights.tools.skill_inspector
+  listar|explicar|exportar|cobertura|checar|demos` — a interface humana do
+  contrato (import-safe; `checar` roda o motor).
+- Campos novos pelo rito da auditoria: `combo_apos`, `condicao_limiar`,
+  `forca_puxar`, `tick_interval` (MECHANICAL_FIELDS 117 → 121).
+
+## 🔬 QUALIDADE 1-A-1 (Onda 11B)
+
+- **Pilares consertados** (Julgamento Celestial): 1º pilar GARANTIDO na
+  âncora do cast (era `uniform(1.0, raio)` — buraco morto no centro, ~37% de
+  acertar alvo parado); cada pilar é um golpe distinto (`fonte_impacto`
+  próprio + `ignorar_invencibilidade`; era 1 hit máx por cast) com dano/2;
+  telegraph desenha os 5 círculos REAIS (`get_avisos_visuais`); filho herda
+  snapshot do cast (subefeito não re-captura buffs nem re-sorteia efeito);
+  mãe inerte não destrói mais obstáculos.
+- **Checagem 1-a-1**: `tools/skill_check.py` casta CADA skill num cenário
+  determinístico do motor real e exige a `consequencia_esperada` do contrato.
+  118/118 skills verdes. Regressão: `tests/test_skill_one_by_one.py`
+  (representantes por padrão; catálogo inteiro com `NF_SKILL_GATE=1`).
+- Triagem completa dos 28 suspeitos em
+  `neural_fights/data/triagem_skills_onda11.json` (fixados: eventos de
+  projétil que se engoliam, explosão que perdia a identidade da skill,
+  lifesteal sem gating, cura_por_morte por nome literal, ramos mortos de
+  Beam/Buff/Summon, dano_variavel fora da escala ×2 por ser MULTIPLICADOR).
+
+## 🎲 POOLS DE KIT (Onda 11C)
+
+- **`KIT_POOLS`** (`models/constants.py`): por classe e papel, 1-5 opções (a
+  1ª = kit fixo da O10, default de registros antigos). O personagem SORTEIA
+  1 por papel NA CRIAÇÃO (`sortear_kit`) e persiste em `kit_skills` no
+  registro — gerador, UI e roleta sorteiam; ficha/vídeo/harness veem o mesmo
+  lutador. Fallback sem o campo = kit fixo. Validação em
+  `database.validar_personagens`.
+- **10 skills novas** (só mecânica provada): SANGUE (Estilhaço Vermelho,
+  Transfusão, Ritual Carmesim, Forma Sanguinária), VOID (Fenda/Passo/Lança
+  do Vazio), TRAPs (Barreira de Espinhos, Muro Ardente), Fúria do Trovão
+  (CHANNEL/RAIO). Catálogo 108 → 118 skills.
+- **W1 consertado** (`tools/gerador_database.py`): encantamento Title-case
+  vs bucket UPPER fazia TODAS as armas sortearem de 12 skills FISICO;
+  `_skills_para_elemento` normaliza + aliases declarados (Morte→TREVAS...).
+- Alcançabilidade é CONTRATO: `tests/test_catalog_reachability.py` — toda
+  skill tem slot em pool OU está em `SKILLS_FORA_DE_ROTACAO` declarada.
+- Corpus engine migrado (kits sorteados, seed 1101): 82 skills de classe em
+  circulação (eram 52). Alvo novo `S6_skills_distintas` (p50 ≥ 7; medido 8).
+  Re-pinos honestos: B1_classe_min 0,18, S5_super_armor 0,005 (metas plenas
+  em `_meta`, enforce 12). Ledger da O10 FECHADO sem knob de custo: S4 casts
+  p50 13 → 14-18 e S3_share_skills 0,274 ≥ meta 0,23 vieram do custo efetivo
+  (11A) + pools.
+
+## 🎬 DESCRIÇÃO E DEMOS (Onda 11D)
+
+- **Biblioteca de demos**: `python -m neural_fights.recording.skill_demo
+  --todas` — cena encenada (caster + boneco, geometria do contrato, arena
+  limpa, HUD off) grava mp4 LIMPO por skill em `outputs/skill_demos/` +
+  `manifest.json` com hash do contrato (regrava só o que mudou). 116 demos.
+- **UI**: criação de personagem mostra o KIT com swatch de cor, papel,
+  custo/cd e DESCRIÇÃO (1ª vez que `descricao`/`cor` do catálogo aparecem na
+  UI); botão 🎲 re-sorteia; clique abre a demo (`os.startfile`). A forja
+  preenche a vaga órfã `lbl_custo` + descrição por slot.
+- **Vídeo**: fichas (`runner.fichas_do_banco`) carregam `kit` com descrição;
+  o `fight_card` lista os nomes; na ESTREIA (só nela — teto de 95 s da
+  roleta) entram até 4 eventos `skill_card` entre o card e o gameplay: demo
+  mp4 com placa (nome + descrição na cor da skill) ou card sintético.
+
 ## 🎨 RENDERIZAÇÃO (neural_fights/simulation/simulacao.py)
 
 ### Classe Simulacao

@@ -87,6 +87,24 @@ que nao inclui `tests/`. No checkout, `--verify-evidence-sources` tambem confere
 via AST se cada evidencia aponta para uma classe e um teste existentes. Erros
 retornam `1`; em `--strict`, warnings tambem bloqueiam com codigo `2`.
 
+Consulte os CONTRATOS derivados (o "MCP interno" da Onda 11) e rode a
+checagem 1-a-1 no motor real com o inspetor:
+
+```powershell
+python -m neural_fights.tools.skill_inspector listar --tipo AREA
+python -m neural_fights.tools.skill_inspector explicar "Julgamento Celestial"
+python -m neural_fights.tools.skill_inspector exportar --saida skills.json
+python -m neural_fights.tools.skill_inspector cobertura
+python -m neural_fights.tools.skill_inspector checar --todas
+```
+
+E gere/atualize a biblioteca de demos por skill (mp4 limpo por cena
+roteirizada; o manifest com hash regrava so o que mudou):
+
+```powershell
+python -m neural_fights.recording.skill_demo --todas
+```
+
 Depois de instalar o projeto pelo `pyproject.toml`, o mesmo comando fica disponivel como `neural-fights-audit-skills`.
 
 ## Sessao de live

@@ -16,8 +16,8 @@ import random
 import logging
 
 from neural_fights.models.constants import (
-    LISTA_CLASSES, LISTA_RARIDADES, LISTA_TIPOS_ARMA, 
-    LISTA_ENCANTAMENTOS, ENCANTAMENTOS
+    LISTA_CLASSES, LISTA_RARIDADES, LISTA_TIPOS_ARMA,
+    LISTA_ENCANTAMENTOS, ENCANTAMENTOS, sortear_kit
 )
 from neural_fights.ai.personalities import PERSONALIDADES_PRESETS
 from neural_fights.models.weapons import gerar_passiva_arma
@@ -48,11 +48,29 @@ SKILLS_OFENSIVAS = _agrupar_skills(
     lambda dados: dados.get("tipo")
     in {"PROJETIL", "AREA", "BEAM", "DASH", "CHANNEL", "TRAP", "SUMMON"}
 )
-SKILLS_DEFENSIVAS = _agrupar_skills(lambda dados: dados.get("tipo") == "BUFF")
-SKILLS_UTILIDADE = _agrupar_skills(
-    lambda dados: dados.get("tipo") in {"TRANSFORM"}
-)
 TODAS_SKILLS = sorted(nome for nome in SKILL_DB if nome != "Nenhuma")
+
+# Onda 11C (W1): os encantamentos declaram elemento em Title-case ("Fogo") e
+# os buckets do catálogo são UPPER ("FOGO") — TODO lookup caía no default e
+# TODAS as 54 armas sorteavam do mesmo balde FISICO de 12 nomes. O helper
+# normaliza a caixa e declara os aliases dos encantamentos sem elemento de
+# skill próprio. (W3: SKILLS_DEFENSIVAS/UTILIDADE nunca tiveram consumidor —
+# arma é ofensiva por contrato; defesa vive nos kits de classe.)
+_ALIAS_ELEMENTO_ENCANTAMENTO = {
+    "MORTE": "TREVAS",
+    "VENTO": "FISICO",
+    "FORÇA": "FISICO",
+    "FORCA": "FISICO",
+    "PRECISÃO": "FISICO",
+    "PRECISAO": "FISICO",
+}
+
+
+def _skills_para_elemento(elemento):
+    """Bucket ofensivo do elemento (caixa normalizada + aliases declarados)."""
+    chave = str(elemento or "FISICO").upper()
+    chave = _ALIAS_ELEMENTO_ENCANTAMENTO.get(chave, chave)
+    return SKILLS_OFENSIVAS.get(chave, SKILLS_OFENSIVAS["FISICO"])
 
 # =============================================================================
 # ESTILOS E VARIAÇÕES POR TIPO DE ARMA
@@ -494,9 +512,13 @@ def gerar_personagem(classe, personalidade, arma_nome, cor=None):
         "cor_g": cor[1],
         "cor_b": cor[2],
         "classe": classe,
-        "personalidade": personalidade
+        "personalidade": personalidade,
+        # Onda 11C: o kit é SORTEADO na criação (1 opção por papel do
+        # KIT_POOLS) e persiste — dois lutadores da mesma classe deixam de
+        # ser idênticos, e ficha/vídeo/harness veem o mesmo kit.
+        "kit_skills": sortear_kit(classe),
     }
-    
+
     return personagem
 
 
@@ -562,8 +584,7 @@ def gerar_database_diversa(num_personagens=64):
             encantamento = LISTA_ENCANTAMENTOS[enc_idx]
             
             elemento = ENCANTAMENTOS.get(encantamento, {}).get("elemento", "FISICO")
-            skills_elem = SKILLS_OFENSIVAS.get(elemento, SKILLS_OFENSIVAS["FISICO"])
-            skill = random.choice(skills_elem)
+            skill = random.choice(_skills_para_elemento(elemento))
             
             arma = gerar_arma(tipo, raridade, var_idx, encantamento, skill)
             
@@ -573,8 +594,10 @@ def gerar_database_diversa(num_personagens=64):
     for raridade in ["Épico", "Lendário", "Mítico"]:
         for tipo in LISTA_TIPOS_ARMA:
             enc = random.choice(LISTA_ENCANTAMENTOS)
-            elemento = ENCANTAMENTOS.get(enc, {}).get("elemento", "ARCANO")
-            skill = random.choice(SKILLS_OFENSIVAS.get(elemento, TODAS_SKILLS))
+            elemento = ENCANTAMENTOS.get(enc, {}).get("elemento", "FISICO")
+            # W2: mesma rota de sorteio das armas comuns (o fallback antigo
+            # sorteava de TODAS_SKILLS, incluindo BUFF/TRANSFORM).
+            skill = random.choice(_skills_para_elemento(elemento))
             
             arma = gerar_arma(tipo, raridade, None, enc, skill)
             

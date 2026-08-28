@@ -23,6 +23,9 @@ ARQUIVO = config.IDENTITY_DIR / "history.jsonl"
 ENVIADO, RETOMADO = "enviado", "retomado"
 PRONTO, BAIXADO, CONCLUIDO = "pronto", "baixado", "concluido"
 ESTOUROU, FALHOU = "estourou", "falhou"
+# Origem nao comprovada (nada baixado) e artefato tirado da build depois.
+ORIGEM_RECUSADA, QUARENTENA = "origem_recusada", "quarentena"
+APROVADO = "aprovado"
 
 ABERTURA = (ENVIADO, RETOMADO)
 FECHAMENTO = (CONCLUIDO, ESTOUROU, FALHOU)
@@ -117,3 +120,35 @@ def resumo(eventos: list[dict] | None = None) -> dict:
         "espera_max_s": round(max(tempos), 1) if tempos else None,
         "ultimo_evento_em": ultimo.isoformat(timespec="seconds") if ultimo else None,
     }
+
+
+def ultima_espera_por_slot(eventos: list[dict] | None = None) -> dict[tuple[str, str], float]:
+    """{(generation_id, slot): espera_s do ULTIMO `pronto`}.
+
+    O artefato no disco veio da ultima tentativa que ficou pronta, entao e a
+    espera dela que diz se houve geracao de verdade ou so algo que ja estava
+    na tela (auditoria de origem).
+    """
+    eventos = ler() if eventos is None else eventos
+    saida: dict[tuple[str, str], float] = {}
+    # Como a tentativa abriu. Depois de `retomado` o video ja podia estar
+    # pronto no espaco: 4 s ali e retomada, nao geracao - e nao mede nada.
+    abertura: dict[tuple[str, str], str] = {}
+    for evento in eventos:
+        gid, slot = evento.get("generation_id"), evento.get("slot")
+        if not gid or not slot:
+            continue
+        chave = (gid, slot)
+        nome = evento.get("evento")
+        if nome in ABERTURA:
+            abertura[chave] = nome
+            continue
+        if nome != PRONTO:
+            continue
+        espera = evento.get("espera_s")
+        if abertura.get(chave) == RETOMADO or not isinstance(espera, (int, float)):
+            # O ultimo `pronto` manda: sem medida valida, a anterior nao vale.
+            saida.pop(chave, None)
+            continue
+        saida[chave] = float(espera)
+    return saida

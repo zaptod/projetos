@@ -10,10 +10,16 @@ Uso:
   python main.py generate-video --nome-pedido "Kaelen" --autor-pedido "@zeca"
 
   python main.py cobertura             # o que o banco tem e o video nao descreve
+  python main.py fluxo                 # onde cada build esta e o proximo passo
+  python main.py publicar              # lista os videos prontos, com texto pronto
+  python main.py publicar <id> --exportar   # copia com nome legivel + .txt
+  python main.py publicar <id> --youtube    # sobe pela API (privado por padrao)
+  python main.py publicar <id> --tiktok     # abre o navegador e sobe (nao publica)
 
   python main.py identity login       # 1o login no Digen (janela visivel)
   python main.py identity worker      # baixa os clipes da fila e re-renderiza
   python main.py identity queue       # estado da fila
+  python main.py identity auditar     # prova de origem (contas compartilhadas)
 
 Cada geracao rende TRES clipes (personagem, arma, personagem+arma), gerados
 pelo worker e montados no video pelo re-render.
@@ -24,6 +30,70 @@ import argparse
 
 from src.identity.config import PROVEDORES as PROVEDORES_LOGIN
 from src.pipeline.controller import PipelineController
+
+
+def _publicar(args) -> int:
+    """Listar / exportar / enviar. Sem id, lista tudo o que existe pronto."""
+    from src.publicar import catalogo
+
+    videos = catalogo.listar()
+    if args.origem:
+        videos = [v for v in videos if v.origem == args.origem]
+
+    if not args.video_id:
+        if not videos:
+            print("nenhum video pronto ainda.")
+            return 0
+        print(f"{len(videos)} video(s) prontos "
+              f"(exporte com: main.py publicar <id> --exportar)\n")
+        for video in videos:
+            print(f"  {video.id}")
+            print(f"      {video.titulo}")
+            print(f"      {video.bytes / 1e6:.1f} MB · {video.perfil} · "
+                  f"{video.caminho}")
+        print(f"\npasta de exportacao: {catalogo.pasta_export()}")
+        return 0
+
+    video = catalogo.por_id(args.video_id)
+    if video is None:
+        print(f"video nao encontrado: {args.video_id}")
+        print("rode `python main.py publicar` para ver os ids.")
+        return 1
+
+    feito = False
+    if args.exportar:
+        destino = catalogo.exportar(video)
+        print(f"exportado: {destino}")
+        print(f"texto:     {destino.with_suffix('.txt')}")
+        feito = True
+    if args.youtube:
+        from src.publicar import youtube
+        try:
+            url = youtube.publicar(
+                video, visibilidade=args.visibilidade,
+                progresso=lambda e, t: print(
+                    f"  {e / 1e6:6.1f} / {t / 1e6:.1f} MB", flush=True))
+        except youtube.PublicacaoFalhou as exc:
+            print(f"YouTube FALHOU: {exc}")
+            return 1
+        print(f"YouTube: {url}")
+        feito = True
+    if args.tiktok:
+        from src.publicar import tiktok
+        try:
+            print(f"TikTok: {tiktok.publicar(video, postar=args.postar or None)}")
+        except tiktok.TikTokFalhou as exc:
+            print(f"TikTok FALHOU: {exc}")
+            return 1
+        feito = True
+
+    if not feito:
+        print(video.titulo)
+        print()
+        print(video.descricao_completa)
+        print()
+        print(f"arquivo: {video.caminho}")
+    return 0
 
 
 def main() -> None:
@@ -50,6 +120,50 @@ def main() -> None:
     gen.add_argument("--autor-pedido", metavar="ARROBA", default=None,
                      help="quem pediu o nome; so credito de tela, nao entra "
                           "em sorteio nenhum")
+    gen.add_argument("--print-pedido", metavar="IMAGEM", default=None,
+                     help="print do comentario (png/jpg/webp): entra como tela "
+                          "logo depois do gancho. Funciona junto com --rerender "
+                          "para colocar a prova num video ja gerado")
+    gen.add_argument("--genero", metavar="M_OU_F", default=None,
+                     help="fixa o genero do personagem (masculino|feminino) "
+                          "em vez de sortear")
+    gen.add_argument("--fixar", metavar="ATRIBUTO=VALOR", action="append",
+                     default=None,
+                     help="escolhe um atributo em vez de sortear (repetivel): "
+                          "--fixar classe=Mago --fixar tamanho=1,90. "
+                          "Veja --atributos")
+    gen.add_argument("--atributos", action="store_true",
+                     help="lista o que da para escolher com --fixar e sai")
+    gen.add_argument("--no-estreia", action="store_true",
+                     help="nao gravar a primeira luta do personagem "
+                          "(outputs/<geracao>/estreia/)")
+
+    fig = sub.add_parser("fight",
+                         help="grava UMA luta e gera o video dela (2 formatos)")
+    fig.add_argument("--p1", default=None,
+                     help="lutador 1 (padrao: o ultimo criado na roleta)")
+    fig.add_argument("--p2", default=None,
+                     help="lutador 2 (padrao: adversario por continuidade/poder)")
+    fig.add_argument("--seed", type=int, default=None, help="seed deterministica")
+    fig.add_argument("--arena", default=None,
+                     help="cenario (padrao: sorteado entre as arenas de video)")
+    fig.add_argument("--preview", action="store_true", help="render rapido")
+    fig.add_argument("--melhor-de", type=int, default=1, metavar="N",
+                     help="serie melhor de N (impar; padrao 1 = luta unica). "
+                          "A serie para assim que alguem fecha o placar")
+    fig.add_argument("--generation-only", action="store_true",
+                     help="so simula (headless) e grava o fight.json, sem video")
+    fig.add_argument("--rerender", metavar="FIGHT_ID", default=None,
+                     help="re-renderiza uma luta existente (fight_00001 ou "
+                          "generation_00037/estreia) reaproveitando o gameplay")
+    fig.add_argument("--refazer-edicao", action="store_true",
+                     help="com --rerender, remonta a timeline (legendas, "
+                          "callouts e reacao novos) sobre o mesmo gameplay")
+
+    are = sub.add_parser("arena", help="carreira dos personagens entre videos")
+    asub = are.add_subparsers(dest="arena_command", required=True)
+    arank = asub.add_parser("ranking", help="ranking por vitorias do ledger")
+    arank.add_argument("-n", type=int, default=10, help="quantos mostrar")
 
     tor = sub.add_parser("tournament",
                          help="roda um torneio e gera o video (2 formatos)")
@@ -145,6 +259,37 @@ def main() -> None:
     irun.add_argument("--no-rerender", action="store_true")
     irun.add_argument("--preview", action="store_true")
 
+    from src.identity.slots import JOBS
+    iaud = isub.add_parser(
+        "auditar",
+        help="prova de origem de cada artefato (as contas dos sites sao "
+             "compartilhadas; o que 'ficou pronto' rapido demais e suspeito)")
+    iaud.add_argument("generation_id", nargs="?", default=None,
+                      help="so esta geracao (padrao: todas)")
+    iaud.add_argument("--quarentenar-suspeitos", action="store_true",
+                      help="tira da build os artefatos SUSPEITOS e reenfileira "
+                           "os slots para gerar de novo, com prova")
+    iaud.add_argument("--sem-rerender", action="store_true",
+                      help="nao refaz o video das geracoes que perderem clipe")
+    iqua = isub.add_parser(
+        "quarentenar",
+        help="tira um artefato da build (imagem/video que nao e nosso) e "
+             "reenfileira o slot; nada e apagado (identity/quarentena/)")
+    iqua.add_argument("generation_id")
+    iqua.add_argument("slot", choices=list(JOBS))
+    iqua.add_argument("--motivo", default="quarentena manual")
+    iqua.add_argument("--sem-reenfileirar", action="store_true",
+                      help="so tira da build, sem mandar gerar de novo")
+    iqua.add_argument("--sem-rerender", action="store_true")
+
+    iapr = isub.add_parser(
+        "aprovar",
+        help="voce abriu a imagem e ela e sua: registra a verificacao humana "
+             "e o slot sai da lista de suspeitos")
+    iapr.add_argument("generation_id")
+    iapr.add_argument("slot", choices=list(JOBS))
+    iapr.add_argument("--motivo", default="conferido visualmente")
+
     cob = sub.add_parser(
         "cobertura",
         help="o que o banco do jogo ja tem e a camada de video ainda nao "
@@ -154,6 +299,32 @@ def main() -> None:
     cob.add_argument("--limite", type=int, default=None, metavar="N",
                      help="mostra so os N primeiros itens de cada grupo")
     cob.add_argument("--json", action="store_true",
+                     help="despeja o dado estruturado em vez do texto")
+
+    pub = sub.add_parser(
+        "publicar",
+        help="lista/exporta/envia os videos prontos (YouTube e TikTok)")
+    pub.add_argument("video_id", nargs="?",
+                     help="id do catalogo (sem nada: lista tudo)")
+    pub.add_argument("--exportar", action="store_true",
+                     help="copia o mp4 com nome legivel + .txt com o texto")
+    pub.add_argument("--youtube", action="store_true",
+                     help="envia pela API oficial (privado por padrao)")
+    pub.add_argument("--tiktok", action="store_true",
+                     help="abre o navegador e sobe; NAO publica sozinho")
+    pub.add_argument("--postar", action="store_true",
+                     help="no TikTok, clica em publicar no fim")
+    pub.add_argument("--visibilidade", choices=("private", "unlisted", "public"),
+                     default=None, help="visibilidade no YouTube")
+    pub.add_argument("--origem", choices=("build", "estreia", "torneio"),
+                     default=None, help="filtra a listagem")
+
+    flu = sub.add_parser(
+        "fluxo",
+        help="onde cada build esta na pipeline e o proximo passo de cada uma")
+    flu.add_argument("--limite", type=int, default=12, metavar="N",
+                     help="quantas builds mais novas mostrar (0 = todas)")
+    flu.add_argument("--json", action="store_true",
                      help="despeja o dado estruturado em vez do texto")
 
     sub.add_parser("list-reactions", help="lista a biblioteca de reacoes")
@@ -174,6 +345,18 @@ def main() -> None:
                            generation_only=args.generation_only,
                            preview=args.preview)
         return
+    if args.command == "fight":
+        if args.rerender:
+            controller.rerender_luta(args.rerender, preview=args.preview,
+                                     refazer_edicao=args.refazer_edicao)
+            return
+        controller.luta(p1=args.p1, p2=args.p2, seed=args.seed, cenario=args.arena,
+                        generation_only=args.generation_only, preview=args.preview,
+                        melhor_de=args.melhor_de)
+        return
+    if args.command == "arena":
+        controller.arena_ranking(limite=args.n)
+        return
     if args.command == "import-reactions":
         controller.import_reactions(args.source, args.categoria, move=args.move)
         return
@@ -189,20 +372,54 @@ def main() -> None:
     if args.command == "cobertura":
         _cobertura(args)
         return
+    if args.command == "publicar":
+        raise SystemExit(_publicar(args))
+    if args.command == "fluxo":
+        import json as _json
+
+        from src.pipeline import fluxo
+        dados = fluxo.snapshot(limite=args.limite or None)
+        if args.json:
+            print(_json.dumps(dados, ensure_ascii=False, indent=2, default=str))
+            raise SystemExit(0)
+        # Codigo de saida para agendador: 1 quando ha alerta esperando acao.
+        raise SystemExit(1 if fluxo.imprimir(dados) else 0)
+
+    from src.generation import escolhas as mod_escolhas
+
+    if args.atributos:
+        print("Atributos que dao para escolher (--fixar atributo=valor):\n")
+        print("\n".join(mod_escolhas.descrever()))
+        print("\nExemplo: --genero feminino --fixar classe=Mago --fixar tamanho=1,90")
+        return
+    # Escolha invalida para AQUI, antes de gastar geracao: um atributo
+    # ignorado em silencio viraria um sorteio que voce acha que escolheu.
+    pares = list(args.fixar or [])
+    if args.genero:
+        pares.append(f"genero={args.genero}")
+    try:
+        escolhidos = mod_escolhas.interpretar(pares)
+    except ValueError as erro:
+        raise SystemExit(f"[escolha] {erro}") from None
 
     if args.rerender:
         controller.rerender(args.rerender, preview=args.preview,
-                            refazer_edicao=args.refazer_edicao)
+                            refazer_edicao=args.refazer_edicao,
+                            print_pedido=args.print_pedido)
     elif args.generation_only and args.count > 1:
         controller.batch(args.count, seed_start=args.seed,
                          nome_pedido=args.nome_pedido,
-                         autor_pedido=args.autor_pedido)
+                         autor_pedido=args.autor_pedido,
+                         escolhas=escolhidos)
     else:
         controller.generate(seed=args.seed, generation_only=args.generation_only,
                             preview=args.preview, insert=not args.no_insert,
                             identity=not args.no_identity,
                             nome_pedido=args.nome_pedido,
-                            autor_pedido=args.autor_pedido)
+                            autor_pedido=args.autor_pedido,
+                            estreia=not args.no_estreia,
+                            print_pedido=args.print_pedido,
+                            escolhas=escolhidos)
 
 
 def _cobertura(args) -> None:
@@ -290,6 +507,32 @@ def _identity(args, controller) -> None:
                   f"{job['status']:<8} tentativas={job.get('attempts', 0)}{erro}")
         print(f"Total: {len(jobs)} job(s)")
         return
+
+    if args.identity_command == "auditar":
+        from src.identity import auditoria
+        linhas = auditoria.classificar(args.generation_id)
+        suspeitos = auditoria.imprimir(linhas)
+        if args.quarentenar_suspeitos:
+            for linha in linhas:
+                if linha["estado"] == auditoria.SUSPEITO:
+                    auditoria.quarentenar(
+                        linha["generation_id"], linha["slot"],
+                        f"auditoria: {linha['detalhe']}",
+                        rerender=not args.sem_rerender)
+        raise SystemExit(1 if suspeitos else 0)
+
+    if args.identity_command == "aprovar":
+        from src.identity import auditoria
+        raise SystemExit(0 if auditoria.aprovar(
+            args.generation_id, args.slot, args.motivo) else 1)
+
+    if args.identity_command == "quarentenar":
+        from src.identity import auditoria
+        movidos = auditoria.quarentenar(
+            args.generation_id, args.slot, args.motivo,
+            reenfileirar=not args.sem_reenfileirar,
+            rerender=not args.sem_rerender)
+        raise SystemExit(0 if movidos else 1)
 
     if args.identity_command == "login":
         from src.identity import config as icfg

@@ -226,7 +226,15 @@ class Simulador:
         else:
             self.screen_width = LARGURA
             self.screen_height = ALTURA
-        
+        # Onda 9 (vídeo): resolução explícita no match_config sobrepõe o par
+        # do modo — a gravação nativa em 1080x1920 sai daqui. A proporção
+        # decide o layout (retrato = mais alto que largo). Não muda o
+        # combate: câmera e HUD só leem a tela.
+        resolucao = self._resolver_resolucao(self.match_config.get("resolucao"))
+        if resolucao:
+            self.screen_width, self.screen_height = resolucao
+            self.portrait_mode = self.screen_height > self.screen_width
+
         if self.headless:
             self.tela = pygame.Surface((self.screen_width, self.screen_height))
         else:
@@ -298,6 +306,23 @@ class Simulador:
             or Simulador._active_owner_token is not self._lifecycle_token
         ):
             raise RuntimeError("Esta instância de Simulador não está mais ativa")
+
+    @staticmethod
+    def _resolver_resolucao(valor) -> tuple[int, int] | None:
+        """[largura, altura] válidos (>= 64, pares — exigência do yuv420p)."""
+        if not valor:
+            return None
+        try:
+            if isinstance(valor, str):
+                partes = valor.lower().replace("x", " ").split()
+            else:
+                partes = list(valor)
+            largura, altura = int(partes[0]), int(partes[1])
+        except (TypeError, ValueError, IndexError):
+            return None
+        if largura < 64 or altura < 64:
+            return None
+        return largura // 2 * 2, altura // 2 * 2
 
     def _check_portrait_mode(self) -> bool:
         """Verifica se o modo retrato está ativado no config"""
@@ -373,6 +398,24 @@ class Simulador:
         self._tempo_clinch = 0.0
         self._clinch_cooldown = 0.0
 
+        # === ONDA 10A: AGARRÃO + DETECTOR DE STANDOFF ===
+        # O cara-a-cara real acontece EM ALCANCE sem ninguém golpear (a
+        # 1,5-4 m) — o clinch de contato nunca o via. O detector mede o
+        # tempo em alcance sem golpe iniciado, força iniciativa e, se
+        # nada acontece, os corpos se agarram (core/agarrao.py).
+        self._agarrao = None
+        self._agarrao_cooldown = 0.0
+        self._standoff_t = 0.0
+        self._standoff_t_fase = 0.0
+        self._standoff_fase = 0
+        self._standoff_fora = 0.0
+        self._standoff_cooldown = 0.0
+        self._standoff_ids = (0, 0)
+        self._standoff_hp_ant = None
+        self.standoff_estado = {
+            "em_range": False, "ninguem_atacando": False, "fase": 0, "t": 0.0,
+        }
+
         # === ONDA 8A: percepção honesta ===
         # Os buffers dos lutadores são drenados para as listas do mundo
         # ANTES do tick das IAs — o brain que lia inimigo.buffer_projeteis
@@ -384,6 +427,10 @@ class Simulador:
         percepcao = PercepcaoMundo(self)
         self.p1.percepcao = percepcao
         self.p2.percepcao = percepcao
+        # Onda 10D: o lutador conhece a arena para clampar área/dash de skill
+        # (nunca cai fora do quadro nem dentro de um pilar).
+        self.p1.arena_ref = self.arena
+        self.p2.arena_ref = self.arena
         self.time_scale = 1.0; self.slow_mo_timer = 0.0; self.hit_stop_timer = 0.0
         self.letterbox_timer = 0.0
         self._slow_mo_ended = False  # re-arma o som de vitória por partida (live)
@@ -981,14 +1028,15 @@ class Simulador:
                 else:
                     proj.atualizar(dt)
             
-            # Processa resultados especiais
+            # Processa resultados especiais (Onda 11B: eventos coexistem no
+            # mesmo frame — duplicar/split/explodir não são mais exclusivos)
             if resultado:
                 if resultado.get("duplicar"):
                     novo = proj.criar_duplicata(resultado)
                     if novo is not None:
                         novos_projeteis.append(novo)
-                
-                elif resultado.get("split"):
+
+                if resultado.get("split"):
                     # Split aleatório (Caos)
                     from neural_fights.core.combat import Projetil
                     for angulo_split in resultado.get(
@@ -1005,8 +1053,8 @@ class Simulador:
                         )
                         novo.dano = proj.dano * 0.5
                         novos_projeteis.append(novo)
-                
-                elif resultado.get("explodir"):
+
+                if resultado.get("explodir"):
                     # Cria efeito de área na posição
                     from neural_fights.core.combat import AreaEffect
                     area = AreaEffect(proj.nome, resultado["x"], resultado["y"], proj.dono)
@@ -1254,7 +1302,12 @@ class Simulador:
                     self._spawn_particulas_efeito(alvo_x*PPM, alvo_y*PPM, tipo_efeito)
                 
                 # === v11.0: LIFESTEAL ===
-                if hasattr(proj, 'lifesteal') and proj.lifesteal > 0:
+                # Onda 11B: mesmo gating da AREA — só cura quando o impacto
+                # foi de fato aplicado (i-frames/fonte duplicada não pagam).
+                if (
+                    hasattr(proj, 'lifesteal') and proj.lifesteal > 0
+                    and impacto_aplicado
+                ):
                     cura = dano_aplicado * proj.lifesteal
                     cura_real = proj.dono.receber_cura(cura)
                     self._push_texto(proj.dono.pos[0]*PPM, proj.dono.pos[1]*PPM - 30, f"+{int(cura_real)}", (200, 100, 200), 16)
@@ -1285,13 +1338,27 @@ class Simulador:
                     and getattr(proj, "delay_explosao", 0.0) <= 0.0
                 ):
                     from neural_fights.core.combat import AreaEffect
-                    explosao = AreaEffect(proj.nome + " Explosão", proj.x, proj.y, proj.dono)
+                    # Onda 11B: a explosão herda a IDENTIDADE da skill
+                    # (elemento/cor/ground) — o sufixo " Explosão" caía no
+                    # registro "Nenhuma". subefeito=True: snapshot do cast.
+                    explosao = AreaEffect(
+                        proj.nome, proj.x, proj.y, proj.dono, subefeito=True
+                    )
+                    explosao.delay = 0.0
+                    explosao.delay_total = 0.0
+                    explosao.aviso_visual = False
+                    explosao.ativado = True
+                    explosao.dano_por_segundo = 0.0
                     explosao.raio = proj.raio_explosao
                     explosao.raio_atual = explosao.raio
                     explosao.dano = proj.dano * 0.5  # Dano de área é 50% do projétil
                     explosao.tipo_efeito = tipo_efeito
                     explosao.fonte_impacto = object()
                     explosao.ignorar_invencibilidade = True
+                    # Onda 10D: a explosao PADRAO (efeito EXPLOSAO sem raio
+                    # declarado) e splash em volta — o alvo direto ja levou.
+                    if getattr(proj, "_explosao_padrao", False):
+                        explosao.alvos_atingidos.add(alvo)
                     if hasattr(self, 'areas'):
                         self.areas.append(explosao)
                     self.impact_flashes.append(ImpactFlash(proj.x * PPM, proj.y * PPM, cor_impacto, 2.0, "explosion"))
@@ -1477,6 +1544,21 @@ class Simulador:
                     else:
                         area.atualizar(dt)
                 
+                # Onda 10D: área ATIVA (delay passado) danifica obstáculos
+                # destrutíveis que toca — uma vez por área.
+                arena_obs = getattr(self, "arena", None)
+                if (
+                    arena_obs is not None
+                    and getattr(area, "ativado", True)
+                    and getattr(area, "ativo", True)
+                    and not getattr(area, "_obstaculos_processados", False)
+                    and float(getattr(area, "dano", 0.0) or 0.0) > 0.0
+                ):
+                    area._obstaculos_processados = True
+                    raio_obs = float(getattr(area, "raio_atual", None) or getattr(area, "raio", 0.0) or 0.0)
+                    for obs in arena_obs.obstaculos_no_raio(area.x, area.y, raio_obs):
+                        arena_obs.danificar_obstaculo(obs, float(area.dano), getattr(area, "dono", None))
+
                 # Processa resultados especiais
                 if resultado:
                     for res in resultado:
@@ -1565,15 +1647,22 @@ class Simulador:
                             pilar.pilares_spawned = True
                             pilar.posicoes_pilares = []
                             pilar.delay = 0.0
+                            pilar.delay_total = 0.0
+                            pilar.aviso_visual = False
                             pilar.ativado = True
                             pilar.ativo = True
                             pilar.raio = res["raio"]
                             pilar.raio_atual = res["raio"]
                             pilar.dano = res["dano"]
+                            pilar.dano_por_segundo = 0.0
                             pilar.tipo_efeito = area.tipo_efeito
+                            pilar.efeito2 = area.efeito2
                             pilar.elemento = area.elemento
                             pilar.ground = area.ground
-                            pilar.fonte_impacto = area.fonte_impacto
+                            # Cada pilar é um golpe distinto: identidade de
+                            # impacto própria e sem i-frames de outro pilar.
+                            pilar.fonte_impacto = res.get("fonte_impacto", object())
+                            pilar.ignorar_invencibilidade = True
                             novas_areas.append(pilar)
                             self.impact_flashes.append(
                                 ImpactFlash(
@@ -2056,6 +2145,9 @@ class Simulador:
                 if self.choreographer.momento_atual == "CLASH" and momento_anterior != "CLASH":
                     self._executar_sword_clash()
             
+            # Onda 10A: o agarrão resolve ANTES do tick dos lutadores —
+            # o lock zera a IA no mesmo frame em que começa.
+            self._atualizar_agarrao(dt)
             self._atualizar_lutadores(dt)
             
             # === ATUALIZA COOLDOWNS DE SOM DE PAREDE ===
@@ -2088,9 +2180,12 @@ class Simulador:
                 
                 # Efeitos visuais de colisão com parede (apenas impactos reais)
                 if p1_impacto > 0:
+                    self._processar_wall_splat(self.p1, p1_impacto)
                     self._criar_efeito_colisao_parede(self.p1, p1_impacto)
                 if p2_impacto > 0:
+                    self._processar_wall_splat(self.p2, p2_impacto)
                     self._criar_efeito_colisao_parede(self.p2, p2_impacto)
+                self._drenar_eventos_obstaculo()
                 
                 # Limpa colisões antigas da arena
                 # Passe 2 (arte): limpar AQUI (fim do update) esvaziava a
@@ -2099,6 +2194,7 @@ class Simulador:
                 pass
             
             self.resolver_fisica_corpos(dt)
+            self._detectar_standoff(dt)
             self.verificar_colisoes_combate()
             if self._detectar_resultado_round():
                 return
@@ -3118,6 +3214,11 @@ class Simulador:
             p2.pos[0] += nx * separacao
             p2.pos[1] += ny * separacao
         
+        # Onda 10A: com agarrão ativo os corpos estão travados por
+        # desenho — nem repulsão nem resolvedor de clinch.
+        if self.__dict__.get("_agarrao") is not None:
+            return
+
         # === VELOCIDADE DE REPULSÃO (aplica uma vez) ===
         # Recalcula distância após separação
         dx = p2.pos[0] - p1.pos[0]
@@ -3161,7 +3262,480 @@ class Simulador:
             and p1.stun_timer <= 0
             and p2.stun_timer <= 0
         ):
-            self._resolver_clinch(dist, dx, dy)
+            # Onda 10A: o clinch de contato AGARRA; o resolvedor da 8G
+            # fica de reserva enquanto o agarrão está em cooldown.
+            if (
+                self.__dict__.get("_agarrao_cooldown", 0.0) <= 0.0
+                and self._pode_agarrar(p1, p2)
+            ):
+                ini, alvo = self._escolher_iniciador_agarrao(p1, p2)
+                self._iniciar_agarrao(ini, alvo, "contato")
+            else:
+                self._resolver_clinch(dist, dx, dy)
+
+    # =====================================================================
+    # ONDA 10A: AGARRÃO, STANDOFF E WALL-SPLAT
+    # =====================================================================
+
+    @staticmethod
+    def _alcance_standoff(lutador):
+        brain = getattr(lutador, "brain", None)
+        calc = getattr(brain, "_calcular_alcance_efetivo", None)
+        if callable(calc):
+            try:
+                return float(calc())
+            except Exception:
+                pass
+        return float(getattr(lutador, "alcance_ideal", 1.5) or 1.5)
+
+    def _pode_agarrar(self, p1, p2):
+        for p in (p1, p2):
+            if getattr(p, "morto", False):
+                return False
+            if getattr(p, "stun_timer", 0.0) > 0.0:
+                return False
+            if getattr(p, "agarrao_timer", 0.0) > 0.0:
+                return False
+            if self._alvo_em_transicao_sombria(p):
+                return False
+        if abs(getattr(p1, "z", 0.0) - getattr(p2, "z", 0.0)) >= 1.0:
+            return False
+        return True
+
+    def _escolher_iniciador_agarrao(self, p1, p2):
+        from neural_fights.core import agarrao as _ag
+        rng = p1.rng_runtime  # stream do motor: replays não desviam
+        if _ag.iniciativa(p1, rng) >= _ag.iniciativa(p2, rng):
+            return p1, p2
+        return p2, p1
+
+    def _iniciar_agarrao(self, ini, alvo, origem):
+        """Trava os dois corpos por AGARRAO_LOCK_S e sorteia o desfecho JÁ
+        (no stream do iniciador) — o resultado não depende de quantos
+        frames o renderer roda durante o lock."""
+        from neural_fights.core import agarrao as _ag
+        from neural_fights.utils.config import (
+            AGARRAO_COOLDOWN_S,
+            AGARRAO_LOCK_S,
+            CUSTO_ESTAMINA_AGARRAO,
+        )
+        ini.estamina = max(0.0, ini.estamina - CUSTO_ESTAMINA_AGARRAO)
+
+        dx = alvo.pos[0] - ini.pos[0]
+        dy = alvo.pos[1] - ini.pos[1]
+        dist = math.hypot(dx, dy)
+        if dist > 0.001:
+            ex, ey = dx / dist, dy / dist
+        else:
+            ang = ini.rng_runtime.uniform(0, math.pi * 2)
+            ex, ey = math.cos(ang), math.sin(ang)
+
+        # Lunge: o excedente até o contato é vencido DURANTE o lock (os
+        # dois se puxam para o abraço), não num teleporte de um frame.
+        soma_raios = ini.raio_fisico + alvo.raio_fisico
+        excedente = max(0.0, dist - soma_raios - 0.02)
+        ang_ini = math.degrees(math.atan2(ey, ex))
+        ini.angulo_olhar = ang_ini
+        alvo.angulo_olhar = ang_ini + 180.0
+
+        for lutador, papel in ((ini, "iniciador"), (alvo, "alvo")):
+            lutador.agarrao_timer = AGARRAO_LOCK_S
+            lutador.agarrao_papel = papel
+            lutador.agarrao_interrompido = False
+            lutador.vel[0] = 0.0
+            lutador.vel[1] = 0.0
+            lutador.atacando = False
+            lutador.timer_animacao = 0.0
+            brain = getattr(lutador, "brain", None)
+            if brain is not None:
+                brain.tell_atual = {
+                    "tipo": "agarrao", "papel": papel, "modo": None,
+                    "ate": getattr(brain, "tempo_combate", 0.0) + 0.7,
+                }
+
+        desfecho = _ag.sortear_desfecho(
+            _ag.pesos_desfecho(ini, alvo), ini.rng_runtime
+        )
+        self._agarrao = {
+            "ini": ini, "alvo": alvo, "restante": AGARRAO_LOCK_S,
+            "desfecho": desfecho, "origem": origem,
+            "lunge": (ex, ey, excedente / 2.0, AGARRAO_LOCK_S),
+        }
+        ini.contadores_luta["agarroes"] = ini.contadores_luta.get("agarroes", 0) + 1
+        if origem == "contato":
+            ini.contadores_luta["clinches"] = ini.contadores_luta.get("clinches", 0) + 1
+        self._agarrao_cooldown = AGARRAO_COOLDOWN_S
+        self._clinch_cooldown = 2.5
+        self._tempo_clinch *= 0.4
+        # Standoff resolvido por definição.
+        self._standoff_fase = 0
+        self._standoff_t = 0.0
+        self._standoff_t_fase = 0.0
+
+    def _cancelar_agarrao(self):
+        ag = self._agarrao
+        self._agarrao = None
+        if not ag:
+            return
+        for lutador in (ag["ini"], ag["alvo"]):
+            lutador.agarrao_timer = 0.0
+            lutador.agarrao_papel = None
+
+    def _consumir_pedidos_agarrao(self):
+        """Onda 10C: o plano pode PEDIR o agarrão (QUEBRAR_GUARDA/ESMAGAR)."""
+        from neural_fights.utils.config import AGARRAO_DIST_MAX
+        p1, p2 = self.p1, self.p2
+        for ini, alvo in ((p1, p2), (p2, p1)):
+            brain = getattr(ini, "brain", None)
+            if brain is None or not brain.__dict__.get("_pedir_agarrao", False):
+                continue
+            brain._pedir_agarrao = False
+            if self._agarrao_cooldown > 0.0 or not self._pode_agarrar(ini, alvo):
+                continue
+            dist = math.hypot(alvo.pos[0] - ini.pos[0], alvo.pos[1] - ini.pos[1])
+            if dist <= AGARRAO_DIST_MAX:
+                self._iniciar_agarrao(ini, alvo, "pedido")
+                return
+
+    def _atualizar_agarrao(self, dt):
+        from neural_fights.core import agarrao as _ag
+        if self.__dict__.get("_agarrao_cooldown", 0.0) > 0.0:
+            self._agarrao_cooldown -= dt
+        ag = self.__dict__.get("_agarrao")
+        if ag is None:
+            self._consumir_pedidos_agarrao()
+            return
+        ini, alvo = ag["ini"], ag["alvo"]
+        if (
+            ini.morto or alvo.morto
+            or getattr(ini, "agarrao_interrompido", False)
+            or getattr(alvo, "agarrao_interrompido", False)
+        ):
+            self._cancelar_agarrao()
+            return
+        ag["restante"] -= dt
+        # Lunge: fecha o excedente proporcionalmente ao tempo do lock.
+        lunge = ag.get("lunge")
+        if lunge and lunge[2] > 0.0:
+            ex, ey, meio, lock_s = lunge
+            passo = meio * min(1.0, dt / max(lock_s, 1e-6))
+            ini.pos[0] += ex * passo
+            ini.pos[1] += ey * passo
+            alvo.pos[0] -= ex * passo
+            alvo.pos[1] -= ey * passo
+        if ag["restante"] > 0.0:
+            # O Simulador é o dono do relógio: re-afirma o lock nos corpos.
+            for lutador in (ini, alvo):
+                lutador.agarrao_timer = max(lutador.agarrao_timer, ag["restante"])
+                lutador.vel[0] = 0.0
+                lutador.vel[1] = 0.0
+            return
+
+        dx = alvo.pos[0] - ini.pos[0]
+        dy = alvo.pos[1] - ini.pos[1]
+        dist = math.hypot(dx, dy)
+        if dist > 0.001:
+            ex, ey = dx / dist, dy / dist
+        else:
+            rad = math.radians(ini.angulo_olhar)
+            ex, ey = math.cos(rad), math.sin(rad)
+        modo, revertido, ini_f, alvo_f = _ag.aplicar_desfecho(
+            ini, alvo, ag["desfecho"], ex, ey
+        )
+        self._agarrao = None
+
+        chave = "agarrao_" + modo.lower()
+        ini_f.contadores_luta[chave] = ini_f.contadores_luta.get(chave, 0) + 1
+        if revertido:
+            ini_f.contadores_luta["agarrao_reversao"] = (
+                ini_f.contadores_luta.get("agarrao_reversao", 0) + 1
+            )
+        for lutador, papel in ((ini_f, "iniciador"), (alvo_f, "alvo")):
+            brain = getattr(lutador, "brain", None)
+            if brain is not None:
+                brain.tell_atual = {
+                    "tipo": "agarrao", "modo": modo, "papel": papel,
+                    "revertido": revertido,
+                    "ate": getattr(brain, "tempo_combate", 0.0) + 0.45,
+                }
+
+        # Leitura visual (VFX no random GLOBAL — doutrina da 8G).
+        mx = (ini_f.pos[0] + alvo_f.pos[0]) / 2 * PPM
+        my = (ini_f.pos[1] + alvo_f.pos[1]) / 2 * PPM
+        self.shockwaves.append(Shockwave(mx, my, (230, 220, 200), 1.3))
+        for i in range(8):
+            a = i * math.pi / 4 + random.uniform(-0.2, 0.2)
+            v = random.uniform(3.0, 8.0)
+            self.particulas.append(Particula(
+                mx, my, (180, 170, 160),
+                math.cos(a) * v, math.sin(a) * v, 3, 0.4))
+        self.cam.aplicar_shake(8.0, 0.15)
+        if modo == "ARREMESSO":
+            momento = getattr(self.cam, "aplicar_momento", None)
+            if callable(momento):
+                momento(0.35)
+
+    def _forcar_iniciativa(self, ini, alvo, distancia, permitir_dash=True, hold_s=0.6):
+        brain = getattr(ini, "brain", None)
+        fn = getattr(brain, "forcar_iniciativa", None)
+        if not callable(fn):
+            return False
+        return bool(fn(distancia, alvo, permitir_dash=permitir_dash, hold_s=hold_s))
+
+    def _detectar_standoff(self, dt):
+        """Cara-a-cara em duas bandas, medido por HIT REAL (golpe/projétil/
+        skill que conectou — tick de DoT não conta):
+
+        - PERTO (faixa de confronto, ~2,5-4,5 m para melee): sem hit por
+          STANDOFF_JANELA_S → o mais afoito toma a iniciativa (dash-in ou
+          golpe); mais STANDOFF_ESCALADA_S sem hit → agarrão (se perto) ou
+          segunda dose.
+        - LONGE (até 9 m): sem hit por 2×STANDOFF_JANELA_S → iniciativa
+          (aproximar); mais STANDOFF_ESCALADA_S → o OUTRO também aproxima.
+
+        Swing que erra NÃO zera o relógio: whiff-dance é standoff também.
+        """
+        from neural_fights.utils.config import (
+            AGARRAO_DIST_MAX,
+            STANDOFF_COOLDOWN_S,
+            STANDOFF_ESCALADA_S,
+            STANDOFF_JANELA_S,
+        )
+        p1, p2 = self.p1, self.p2
+        est = self.standoff_estado
+        if self._standoff_cooldown > 0.0:
+            self._standoff_cooldown -= dt
+
+        hits = (
+            p1.contadores_luta.get("hits_sofridos", 0)
+            + p2.contadores_luta.get("hits_sofridos", 0)
+        )
+        anterior = self._standoff_hp_ant
+        houve_hit = anterior is not None and hits > anterior
+        self._standoff_hp_ant = hits
+
+        if self._agarrao is not None or p1.morto or p2.morto:
+            self._standoff_t = 0.0
+            self._standoff_fase = 0
+            est["em_range"] = False
+            est["banda"] = None
+            est["ninguem_atacando"] = False
+            est["hit"] = houve_hit
+            est["t"] = 0.0
+            return
+
+        dx = p2.pos[0] - p1.pos[0]
+        dy = p2.pos[1] - p1.pos[1]
+        dist = math.hypot(dx, dy)
+
+        ids = (p1.ataque_id, p2.ataque_id)
+        atacou = ids != self._standoff_ids or p1.atacando or p2.atacando
+        self._standoff_ids = ids
+
+        ranged = False
+        for p in (p1, p2):
+            tipo = getattr(getattr(p.dados, "arma_obj", None), "tipo", "")
+            if tipo in ("Arco", "Arremesso", "Mágica"):
+                ranged = True
+        if ranged:
+            limite = 3.0
+        else:
+            alc_golpe = max(self._alcance_standoff(p1), self._alcance_standoff(p2))
+            alc_ideal = max(
+                float(getattr(p1, "alcance_ideal", 1.5) or 1.5),
+                float(getattr(p2, "alcance_ideal", 1.5) or 1.5),
+            )
+            limite = min(4.5, max(2.5, 1.3 * alc_golpe, 1.4 * alc_ideal))
+        livres = (
+            getattr(p1, "agarrao_timer", 0.0) <= 0.0
+            and getattr(p2, "agarrao_timer", 0.0) <= 0.0
+            and abs(p1.z - p2.z) < 1.0
+            and not self._alvo_em_transicao_sombria(p1)
+            and not self._alvo_em_transicao_sombria(p2)
+        )
+        if not livres:
+            banda = None
+        elif dist <= limite:
+            banda = "perto"
+        elif dist <= 9.0:
+            banda = "longe"
+        else:
+            banda = None
+        em_range = banda == "perto"
+        est["em_range"] = em_range
+        est["banda"] = banda
+        est["ninguem_atacando"] = not atacou
+        est["hit"] = houve_hit
+
+        if houve_hit:
+            # Alguém acertou: o confronto está vivo.
+            self._standoff_t = 0.0
+            self._standoff_fase = 0
+            self._standoff_t_fase = 0.0
+            self._standoff_fora = 0.0
+        elif banda is not None:
+            self._standoff_t += dt
+            self._standoff_fora = 0.0
+        else:
+            self._standoff_fora += dt
+            if self._standoff_fora > 0.5:
+                self._standoff_t = 0.0
+                self._standoff_fase = 0
+                self._standoff_t_fase = 0.0
+        est["t"] = self._standoff_t
+        est["fase"] = self._standoff_fase
+        if banda is None:
+            return
+
+        janela = STANDOFF_JANELA_S if banda == "perto" else STANDOFF_JANELA_S * 2.0
+        if self._standoff_fase == 0:
+            if (
+                self._standoff_t >= janela
+                and self._standoff_cooldown <= 0.0
+                and p1.stun_timer <= 0.0 and p2.stun_timer <= 0.0
+            ):
+                ini, alvo = self._escolher_iniciador_agarrao(p1, p2)
+                soma_raios = p1.raio_fisico + p2.raio_fisico
+                if (
+                    banda == "perto"
+                    and dist < max(2.0, soma_raios * 2.0)
+                    and self._agarrao_cooldown <= 0.0
+                    and self._pode_agarrar(p1, p2)
+                ):
+                    # Já na cara do outro sem golpe: agarra de primeira.
+                    self._iniciar_agarrao(ini, alvo, "standoff")
+                    self._standoff_cooldown = STANDOFF_COOLDOWN_S
+                    return
+                self._standoff_iniciador = ini
+                self._forcar_iniciativa(
+                    ini, alvo, dist, permitir_dash=True,
+                    hold_s=0.6 if banda == "perto" else 1.0,
+                )
+                self._standoff_fase = 1
+                self._standoff_t_fase = 0.0
+                self._standoff_cooldown = STANDOFF_COOLDOWN_S
+            return
+
+        self._standoff_t_fase += dt
+        if self._standoff_t_fase < STANDOFF_ESCALADA_S:
+            return
+        if self._standoff_t > 0.0:
+            soma_raios = p1.raio_fisico + p2.raio_fisico
+            ini, alvo = self._escolher_iniciador_agarrao(p1, p2)
+            if (
+                banda == "perto"
+                and dist < max(AGARRAO_DIST_MAX, soma_raios * 2.2)
+                and self._agarrao_cooldown <= 0.0
+                and self._pode_agarrar(p1, p2)
+            ):
+                self._iniciar_agarrao(ini, alvo, "standoff")
+            elif banda == "perto":
+                self._forcar_iniciativa(ini, alvo, dist, permitir_dash=True)
+            else:
+                # Longe: quem ainda não foi convocado também aproxima.
+                primeiro = getattr(self, "_standoff_iniciador", None)
+                outro = p2 if primeiro is p1 else p1
+                alvo_outro = p1 if outro is p2 else p2
+                self._forcar_iniciativa(outro, alvo_outro, dist, permitir_dash=True, hold_s=1.0)
+                self._forcar_iniciativa(alvo_outro, outro, dist, permitir_dash=True, hold_s=1.0)
+        self._standoff_fase = 0
+        self._standoff_t_fase = 0.0
+        self._standoff_t *= 0.3
+
+    def _drenar_eventos_obstaculo(self):
+        """Onda 10D: obstáculo quebrado = contador no autor, tell e destroços."""
+        arena = getattr(self, "arena", None)
+        eventos = getattr(arena, "eventos_obstaculo", None)
+        if not eventos:
+            return
+        for obs, autor in list(eventos):
+            dono = autor if autor is not None else None
+            contadores = getattr(dono, "contadores_luta", None)
+            if contadores is not None:
+                contadores["obstaculos_destruidos"] = contadores.get("obstaculos_destruidos", 0) + 1
+                marcar = getattr(dono, "_marcar_consequencia_cast", None)
+                if callable(marcar):
+                    marcar()
+            brain = getattr(dono, "brain", None)
+            if brain is not None:
+                brain.tell_atual = {
+                    "tipo": "obstaculo",
+                    "ate": getattr(brain, "tempo_combate", 0.0) + 0.5,
+                }
+            ox, oy = obs.x * PPM, obs.y * PPM
+            self.shockwaves.append(Shockwave(ox, oy, (200, 190, 170), 1.2))
+            for i in range(8):
+                a = i * math.pi / 4 + random.uniform(-0.3, 0.3)
+                v = random.uniform(2.0, 6.0)
+                self.particulas.append(Particula(
+                    ox, oy, obs.cor,
+                    math.cos(a) * v, math.sin(a) * v, 4, 0.5))
+            self.cam.aplicar_shake(6.0, 0.15)
+        eventos.clear()
+
+    def _processar_wall_splat(self, lutador, impacto):
+        """Corpo LANÇADO (arremesso/knockback forte) que bate na parede
+        estatela: stun extra, dano e um momento de câmera. Só estado de
+        combate aqui; o efeito visual/sonoro continua em
+        _criar_efeito_colisao_parede."""
+        from neural_fights.utils.config import (
+            WALL_SPLAT_DANO_MAX,
+            WALL_SPLAT_INTENSIDADE_MIN,
+            WALL_SPLAT_STUN_S,
+        )
+        if lutador.__dict__.get("lancado_timer", 0.0) <= 0.0:
+            return False
+        if impacto < WALL_SPLAT_INTENSIDADE_MIN:
+            return False
+        autor = lutador.__dict__.get("lancado_por")
+        lutador.lancado_timer = 0.0
+        lutador.lancado_por = None
+        lutador.wall_splat_cooldown = 2.0
+
+        stun_min, stun_max = WALL_SPLAT_STUN_S
+        stun = stun_min + min(stun_max - stun_min, (impacto - WALL_SPLAT_INTENSIDADE_MIN) * 0.02)
+        vida_max = float(getattr(lutador, "vida_max", 0.0) or 0.0)
+        dano = min(vida_max * WALL_SPLAT_DANO_MAX, vida_max * 0.02 + impacto * 0.25)
+
+        # Onda 10D: obstáculo destrutível absorve parte do impacto.
+        obstaculo = None
+        arena = getattr(self, "arena", None)
+        registro = getattr(arena, "ultimo_obstaculo_colidido", None)
+        if isinstance(registro, dict):
+            obstaculo = registro.get(id(lutador))
+        if obstaculo is not None and getattr(obstaculo, "destrutivel", False):
+            quebrar = getattr(arena, "danificar_obstaculo", None)
+            if callable(quebrar) and quebrar(obstaculo, 999.0, autor):
+                stun *= 0.6
+                dano *= 0.5
+
+        lutador.stun_timer = max(lutador.stun_timer, stun)
+        if dano > 0.0 and callable(getattr(lutador, "tomar_dano", None)):
+            lutador.tomar_dano(
+                dano, 0.0, 0.0, "NORMAL",
+                atacante=autor if autor is not lutador else None,
+                metadata_impacto={"tipo_fonte": "wall_splat"},
+                ignorar_invencibilidade=True,
+                gerar_invencibilidade=False,
+            )
+        dono = autor if autor is not None else lutador
+        contadores = getattr(dono, "contadores_luta", None)
+        if contadores is not None:
+            contadores["wall_splats"] = contadores.get("wall_splats", 0) + 1
+        brain = getattr(lutador, "brain", None)
+        if brain is not None:
+            brain.tell_atual = {
+                "tipo": "wall_splat",
+                "ate": getattr(brain, "tempo_combate", 0.0) + 0.5,
+            }
+
+        px, py = lutador.pos[0] * PPM, lutador.pos[1] * PPM
+        self.shockwaves.append(Shockwave(px, py, (255, 240, 200), 1.6))
+        self.cam.aplicar_shake(10.0, 0.2)
+        momento = getattr(self.cam, "aplicar_momento", None)
+        if callable(momento):
+            momento(0.4)
+        return True
 
     def _resolver_clinch(self, dist, dx, dy):
         """Onda 8G: quebra o clinch de um jeito DIVERSO e com autor.
@@ -3741,6 +4315,64 @@ class Simulador:
         if getattr(self, "audio", None):
             self.audio.play_special("slowmo_start", 0.6)
 
+    def _desenhar_volume_area(self, area, ax, ay, ar):
+        """Desenha UM volume de área (halo, interior, anel, borda, core).
+
+        O chamador decide QUAIS volumes desenhar (`get_avisos_visuais`):
+        uma área comum tem um; uma área com pilares avisa cada pilar.
+        """
+        # Pulso baseado no tempo
+        pulse_time = pygame.time.get_ticks() / 1000.0
+        # Passe 2: pulso contido em [0.94r, r] — a borda
+        # e informacao de alcance e nao pode mentir.
+        pulse = 0.97 + 0.03 * math.sin(pulse_time * 6)
+        ar_pulsing = int(ar * pulse)
+
+        # Passe de arte 1: o glow de 2x o raio virava um
+        # disco gigante lavado que dominava o palco. O halo
+        # agora abraça a borda (1,12x) — a BORDA é a
+        # informação (raio real de gameplay); o resto é
+        # atmosfera discreta.
+        # Interior escala INVERSO ao raio: area pequena tem
+        # presenca, area de 5m vira contorno (senao pinta
+        # metade do palco).
+        # Passe 2: fade-out REAL — area.alpha (calculado
+        # no combat) nunca era lido; areas sumiam de golpe.
+        fade = max(0.0, min(1.0, getattr(area, "alpha", 255) / 255.0))
+        r_halo = int(ar * 1.10)
+        s_glow = pygame.Surface((r_halo*2, r_halo*2), pygame.SRCALPHA)
+        glow_alpha = int(max(6, min(22, 2200 / max(1, ar))) * fade)
+        pygame.draw.circle(s_glow, (*area.cor[:3], glow_alpha), (r_halo, r_halo), r_halo)
+        self.tela.blit(s_glow, (ax - r_halo, ay - r_halo))
+
+        # Interior sutil: presença, não parede de cor.
+        s = pygame.Surface((ar*2, ar*2), pygame.SRCALPHA)
+        alpha_interior = int(max(5, min(28, 1800 / max(1, ar))) * fade)
+        cor_com_alpha = (*area.cor[:3], alpha_interior)
+        pygame.draw.circle(s, cor_com_alpha, (ar, ar), ar_pulsing)
+        self.tela.blit(s, (ax - ar, ay - ar))
+
+        # Um anel pulsante só: ritmo sem poluição.
+        for i in range(1):
+            ring_phase = pulse_time * (3 + i) + i * 0.5
+            ring_pulse = 0.5 + 0.5 * ((ring_phase % 1.0))
+            ring_r = int(ar * ring_pulse)
+            if ring_r > 2 and ring_r < ar:
+                ring_alpha = int(150 * (1 - ring_pulse))
+                s_ring = pygame.Surface((ring_r*2+4, ring_r*2+4), pygame.SRCALPHA)
+                pygame.draw.circle(s_ring, (*area.cor[:3], ring_alpha), (ring_r+2, ring_r+2), ring_r, 2)
+                self.tela.blit(s_ring, (ax - ring_r - 2, ay - ring_r - 2))
+
+        # Borda principal (brilhante)
+        pygame.draw.circle(self.tela, area.cor, (ax, ay), ar_pulsing, 3)
+        # Core: ponto de origem FIXO e pequeno (0,3x de
+        # uma area de 5m era um disco branco de 1,5m).
+        inner_r = min(int(ar * 0.3), 14)
+        if inner_r > 2:
+            s_core = pygame.Surface((inner_r*2+4, inner_r*2+4), pygame.SRCALPHA)
+            pygame.draw.circle(s_core, (255, 255, 255, 46), (inner_r+2, inner_r+2), inner_r)
+            self.tela.blit(s_core, (ax - inner_r - 2, ay - inner_r - 2))
+
     def desenhar(self):
         self.tela.fill(COR_FUNDO)
         
@@ -3761,67 +4393,26 @@ class Simulador:
         # === DESENHA ÁREAS COM EFEITOS DRAMÁTICOS v11.0 ===
         if hasattr(self, 'areas'):
             for area in self.areas:
-                if area.ativo:
-                    ax, ay = self.cam.converter(area.x * PPM, area.y * PPM)
+                if not area.ativo:
+                    continue
+                # O aviso é a lista de volumes REAIS de impacto: uma área
+                # com pilares avisa os pilares, não o raio de sorteio.
+                obter_volumes = getattr(area, "get_avisos_visuais", None)
+                if callable(obter_volumes):
+                    volumes = obter_volumes()
+                else:
                     obter_raio_visual = getattr(area, "get_raio_visual", None)
                     raio_visual = (
                         obter_raio_visual()
                         if callable(obter_raio_visual)
                         else area.raio_atual
                     )
+                    volumes = [(area.x, area.y, raio_visual)]
+                for vol_x, vol_y, raio_visual in volumes:
+                    ax, ay = self.cam.converter(vol_x * PPM, vol_y * PPM)
                     ar = self.cam.converter_tam(raio_visual * PPM)
                     if ar > 0:
-                        # Pulso baseado no tempo
-                        pulse_time = pygame.time.get_ticks() / 1000.0
-                        # Passe 2: pulso contido em [0.94r, r] — a borda
-                        # e informacao de alcance e nao pode mentir.
-                        pulse = 0.97 + 0.03 * math.sin(pulse_time * 6)
-                        ar_pulsing = int(ar * pulse)
-                        
-                        # Passe de arte 1: o glow de 2x o raio virava um
-                        # disco gigante lavado que dominava o palco. O halo
-                        # agora abraça a borda (1,12x) — a BORDA é a
-                        # informação (raio real de gameplay); o resto é
-                        # atmosfera discreta.
-                        # Interior escala INVERSO ao raio: area pequena tem
-                        # presenca, area de 5m vira contorno (senao pinta
-                        # metade do palco).
-                        # Passe 2: fade-out REAL — area.alpha (calculado
-                        # no combat) nunca era lido; areas sumiam de golpe.
-                        fade = max(0.0, min(1.0, getattr(area, "alpha", 255) / 255.0))
-                        r_halo = int(ar * 1.10)
-                        s_glow = pygame.Surface((r_halo*2, r_halo*2), pygame.SRCALPHA)
-                        glow_alpha = int(max(6, min(22, 2200 / max(1, ar))) * fade)
-                        pygame.draw.circle(s_glow, (*area.cor[:3], glow_alpha), (r_halo, r_halo), r_halo)
-                        self.tela.blit(s_glow, (ax - r_halo, ay - r_halo))
-                        
-                        # Interior sutil: presença, não parede de cor.
-                        s = pygame.Surface((ar*2, ar*2), pygame.SRCALPHA)
-                        alpha_interior = int(max(5, min(28, 1800 / max(1, ar))) * fade)
-                        cor_com_alpha = (*area.cor[:3], alpha_interior)
-                        pygame.draw.circle(s, cor_com_alpha, (ar, ar), ar_pulsing)
-                        self.tela.blit(s, (ax - ar, ay - ar))
-                        
-                        # Um anel pulsante só: ritmo sem poluição.
-                        for i in range(1):
-                            ring_phase = pulse_time * (3 + i) + i * 0.5
-                            ring_pulse = 0.5 + 0.5 * ((ring_phase % 1.0))
-                            ring_r = int(ar * ring_pulse)
-                            if ring_r > 2 and ring_r < ar:
-                                ring_alpha = int(150 * (1 - ring_pulse))
-                                s_ring = pygame.Surface((ring_r*2+4, ring_r*2+4), pygame.SRCALPHA)
-                                pygame.draw.circle(s_ring, (*area.cor[:3], ring_alpha), (ring_r+2, ring_r+2), ring_r, 2)
-                                self.tela.blit(s_ring, (ax - ring_r - 2, ay - ring_r - 2))
-                        
-                        # Borda principal (brilhante)
-                        pygame.draw.circle(self.tela, area.cor, (ax, ay), ar_pulsing, 3)
-                        # Core: ponto de origem FIXO e pequeno (0,3x de
-                        # uma area de 5m era um disco branco de 1,5m).
-                        inner_r = min(int(ar * 0.3), 14)
-                        if inner_r > 2:
-                            s_core = pygame.Surface((inner_r*2+4, inner_r*2+4), pygame.SRCALPHA)
-                            pygame.draw.circle(s_core, (255, 255, 255, 46), (inner_r+2, inner_r+2), inner_r)
-                            self.tela.blit(s_core, (ax - inner_r - 2, ay - inner_r - 2))
+                        self._desenhar_volume_area(area, ax, ay, ar)
         
         # Portais precisam ser visiveis nas duas extremidades do teleporte.
         for portal in getattr(self, "portais", ()):
@@ -4427,6 +5018,28 @@ class Simulador:
         ry = centro[1] - raio - 22
         self.tela.blit(sombra_rot, (rx + 1, ry + 1))
         self.tela.blit(surf_rotulo, (rx, ry))
+
+        # Onda 10C: o PLANO é visível — rótulo curto sob o corpo (na cor do
+        # lado), barrinha de progresso e um flash de 0,6 s na troca. Relógio
+        # do combate, nunca pygame.time (headless == gravação).
+        brain_pl = getattr(l, "brain", None)
+        plano = getattr(brain_pl, "plano", None) if brain_pl is not None else None
+        rotulo_plano = getattr(plano, "rotulo", None) if plano is not None else None
+        if rotulo_plano and self.match_config.get("rotulo_plano", True):
+            t_troca = getattr(brain_pl, "_plano_trocado_em", -9.0)
+            flash = (getattr(brain_pl, "tempo_combate", 0.0) - t_troca) < 0.6
+            surf_pl = get_fonte(14 if flash else 11, negrito=True).render(
+                str(rotulo_plano), True, (255, 255, 255) if flash else cor_lado)
+            surf_pl.set_alpha(255 if flash else 185)
+            px_ = centro[0] - surf_pl.get_width() // 2
+            py_ = centro[1] + raio + 6
+            self.tela.blit(surf_pl, (px_, py_))
+            prog = max(0.0, min(1.0, float(getattr(plano, "progresso", 0.0) or 0.0)))
+            bx = centro[0] - 15
+            by = py_ + surf_pl.get_height() + 1
+            pygame.draw.rect(self.tela, (40, 40, 50), (bx, by, 30, 3))
+            if prog > 0.0:
+                pygame.draw.rect(self.tela, cor_lado, (bx, by, int(30 * prog), 3))
 
         # Rework Fase 3: a cunha de facing SAIU — a arma na mão (borda do
         # lado do olhar) e os olhos que miram já contam a direção 2x.
@@ -5164,6 +5777,71 @@ class Simulador:
                 for r_mult in (1.15, 1.35):
                     pygame.draw.circle(self.tela, (210, 210, 220), (cx, cy),
                                        int(raio * r_mult), 1)
+            elif tell.get("tipo") == "agarrao":
+                # Onda 10A: braços fechados (lock) → no desfecho o rótulo
+                # do modo sobe (ARREMESSO! / JOELHADA / ESCAPE...).
+                modo = tell.get("modo")
+                cor_ag = (255, 220, 150) if tell.get("papel") == "iniciador" else (220, 220, 235)
+                for lado in (-1, 1):
+                    a0 = math.radians(l.angulo_olhar) + lado * 0.9
+                    x1 = cx + math.cos(a0) * raio * 1.05
+                    y1 = cy + math.sin(a0) * raio * 1.05
+                    a1 = math.radians(l.angulo_olhar) + lado * 0.35
+                    x2 = cx + math.cos(a1) * raio * 1.6
+                    y2 = cy + math.sin(a1) * raio * 1.6
+                    pygame.draw.line(self.tela, cor_ag, (int(x1), int(y1)),
+                                     (int(x2), int(y2)), 3)
+                if modo and tell.get("papel") == "iniciador":
+                    rotulo = {"ARREMESSO": "ARREMESSO!", "JOELHADA": "JOELHADA",
+                              "EMPURRAO": "EMPURRÃO", "ESCAPE": "ESCAPOU"}.get(str(modo), str(modo))
+                    if tell.get("revertido"):
+                        rotulo = "REVERSÃO! " + rotulo
+                    surf_a = get_fonte(20, negrito=True).render(rotulo, True, (255, 230, 160))
+                    self.tela.blit(surf_a, (cx - surf_a.get_width() // 2, cy - raio - 58))
+            elif tell.get("tipo") == "wall_splat":
+                # Onda 10A: estrela de impacto — estatelou na parede.
+                for i in range(8):
+                    a = i * math.pi / 4 + t * 2
+                    x1 = cx + math.cos(a) * raio * 1.2
+                    y1 = cy + math.sin(a) * raio * 1.2
+                    pygame.draw.line(self.tela, (255, 235, 180), (int(x1), int(y1)),
+                                     (int(x1 + math.cos(a) * 12), int(y1 + math.sin(a) * 12)), 3)
+            elif tell.get("tipo") == "plano":
+                # Onda 10C: troca de plano — seta curta na direção do olhar
+                # (planos ofensivos) ou arco (passivos).
+                ofensivo = tell.get("plano") in (
+                    "PRESSIONAR", "ACABAR", "TROCAR_GOLPES", "ESMAGAR_NA_PAREDE",
+                    "QUEBRAR_GUARDA", "CORTAR_FUGA", "LEVAR_PARA_PAREDE",
+                    "MANTER_ZONA_MORTA")
+                cor_pl = (255, 210, 120) if ofensivo else (170, 200, 255)
+                if ofensivo:
+                    a = math.radians(l.angulo_olhar)
+                    x1 = cx + math.cos(a) * raio * 1.2
+                    y1 = cy + math.sin(a) * raio * 1.2
+                    pygame.draw.line(self.tela, cor_pl, (int(x1), int(y1)),
+                                     (int(x1 + math.cos(a) * 14), int(y1 + math.sin(a) * 14)), 3)
+                else:
+                    pygame.draw.circle(self.tela, cor_pl, (cx, cy), int(raio * 1.3), 1)
+            elif tell.get("tipo") == "dash_tatico":
+                # Onda 10B: linhas de velocidade âmbar — dash com intenção.
+                vx, vy = getattr(l, "vel", (0.0, 0.0))[:2]
+                mag = math.hypot(vx, vy) or 1.0
+                ux, uy = -vx / mag, -vy / mag
+                for i in range(3):
+                    off = (i - 1) * 6
+                    x1 = cx + ux * raio * 1.15 - uy * off
+                    y1 = cy + uy * raio * 1.15 + ux * off
+                    pygame.draw.line(self.tela, (255, 200, 110), (int(x1), int(y1)),
+                                     (int(x1 + ux * 12), int(y1 + uy * 12)), 2)
+            elif tell.get("tipo") == "iniciativa":
+                # Onda 10A: chevron para a frente — "vou eu".
+                a = math.radians(l.angulo_olhar)
+                px_ = cx + math.cos(a) * raio * 1.45
+                py_ = cy + math.sin(a) * raio * 1.45
+                for lado in (-1, 1):
+                    ab = a + math.pi + lado * 0.6
+                    pygame.draw.line(self.tela, (255, 200, 90), (int(px_), int(py_)),
+                                     (int(px_ + math.cos(ab) * 10), int(py_ + math.sin(ab) * 10)), 3)
 
         # === ONDA 8H: CONTADOR DE COMBO SOFRIDO ===
         # A leitura clássica do gênero: "x3" crescendo ao lado de quem

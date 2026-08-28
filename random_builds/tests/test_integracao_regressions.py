@@ -29,6 +29,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -185,6 +186,95 @@ class CosturaDoNomePedido(unittest.TestCase):
                                 nome_pedido="Kaelen", autor_pedido="@zeca")
         self.assertEqual("Kaelen", visto["nome_pedido"])
         self.assertEqual("@zeca", visto["autor_pedido"])
+
+
+class CosturaEstreiaMelhorDeTests(unittest.TestCase):
+    """A estreia pede a SERIE, registra todo round e resume o placar.
+
+    Sem esta costura o `estreia_melhor_de` do editing.json existiria e nao
+    chegaria ao `FightSession` — e o cartel contaria uma luta so.
+    """
+
+    def _rodar(self, vencedores: tuple[str, ...]) -> dict:
+        from src.pipeline import controller as mod
+
+        pedido = {}
+        registrados = []
+
+        class FalsaSessao:
+            def __init__(self, *a, **k):
+                pass
+
+            def gerar(self, **kwargs):
+                pedido.update(kwargs)
+                melhor_de = kwargs["melhor_de"]
+                placar = {"Novo": 0, "Rival": 0}
+                rounds = []
+                for indice, vencedor in enumerate(vencedores[:melhor_de]):
+                    placar[vencedor] += 1
+                    rounds.append({
+                        "match_id": indice, "round": indice + 1,
+                        "vencedor": vencedor, "seed": 100 + indice,
+                        "ko_type": "KO", "duracao": 20.0, "hp_vencedor": 40,
+                        "marcas": [], "tier": "GOOD", "p1": "Novo",
+                        "p2": "Rival", "placar": [placar["Novo"], placar["Rival"]]})
+                    if placar[vencedor] >= melhor_de // 2 + 1:
+                        break
+                campeao = max(placar, key=placar.get)
+                return {"seed": 1, "melhor_de": melhor_de, "lutas": rounds,
+                        "luta": rounds[-1], "vencedor": campeao,
+                        "placar": [placar["Novo"], placar["Rival"]],
+                        "cenario": "Dojo"}
+
+        class FalsoLedger:
+            def registrar(self, luta, **kwargs):
+                registrados.append(luta["match_id"])
+
+            def cartel(self, nome):
+                return "1V-0D"
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        controller = PipelineController()
+        with mock.patch.object(mod, "FightSession", FalsaSessao, create=True), \
+                mock.patch.object(mod.PipelineController, "_entregar_luta",
+                                  lambda *a, **k: None), \
+                mock.patch("src.arena.ledger.Ledger", lambda *a, **k: FalsoLedger()), \
+                mock.patch("src.arena.ledger.escolher_adversario",
+                           lambda *a, **k: "Rival"), \
+                mock.patch("src.tournament.runner.FightSession", FalsaSessao), \
+                mock.patch("src.tournament.runner.fichas_do_banco",
+                           lambda: {"Novo": {}, "Rival": {}}), \
+                mock.patch("src.tournament.runner.personagens_gerados",
+                           lambda: ["Novo", "Rival"]):
+            pasta = controller._gravar_estreia(
+                tmp, {"seed": 5, "generation_id": "generation_09999"},
+                "Novo", preview=True)
+        self.assertIsNotNone(pasta, "a estreia nao foi gravada")
+        with open(tmp / "estreia.json", encoding="utf-8") as fh:
+            resumo = json.load(fh)
+        return {"pedido": pedido, "registrados": registrados, "resumo": resumo}
+
+    def test_o_formato_do_config_chega_a_sessao_de_luta(self):
+        saida = self._rodar(("Novo", "Rival", "Novo"))
+        self.assertEqual(3, saida["pedido"]["melhor_de"])
+        self.assertEqual("estreia", saida["pedido"]["origem"])
+
+    def test_cada_round_vira_uma_linha_no_ledger(self):
+        saida = self._rodar(("Novo", "Rival", "Novo"))
+        self.assertEqual([0, 1, 2], saida["registrados"])
+
+    def test_o_resumo_guarda_placar_e_rounds(self):
+        resumo = self._rodar(("Novo", "Rival", "Novo"))["resumo"]
+        self.assertEqual([2, 1], resumo["placar"])
+        self.assertEqual(3, resumo["melhor_de"])
+        self.assertEqual("Novo", resumo["vencedor"])
+        self.assertEqual([1, 2, 3], [r["round"] for r in resumo["rounds"]])
+
+    def test_serie_varrida_nao_grava_o_terceiro_round(self):
+        saida = self._rodar(("Novo", "Novo", "Novo"))
+        self.assertEqual([0, 1], saida["registrados"])
+        self.assertEqual([2, 0], saida["resumo"]["placar"])
 
 
 class CosturaTraducaoCobertura(unittest.TestCase):

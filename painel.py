@@ -72,10 +72,28 @@ def menu_videos() -> None:
             ("6", "Re-renderizar uma geracao existente"),
             ("7", "Biblioteca de reacoes (assistente interativo)"),
             ("8", "Identidade visual do personagem (Digen)"),
+            ("9", "Luta unica -> video (a luta e o elemento dominante)"),
+            ("r", "Ranking da arena (cartel dos personagens)"),
         ])
         base = [PY, "-u", "-X", "utf8", "main.py", "generate-video"]
         if opcao in ("", "0"):
             return
+        elif opcao == "9":
+            extras = []
+            p1 = perguntar("P1 (vazio = ultimo criado na roleta)")
+            p2 = perguntar("P2 (vazio = adversario por continuidade/poder)")
+            if p1:
+                extras += ["--p1", p1]
+            if p2:
+                extras += ["--p2", p2]
+            seed = perguntar("Seed (vazio = aleatoria)")
+            if seed:
+                extras += ["--seed", seed]
+            if confirmar("Preview rapido?"):
+                extras.append("--preview")
+            rodar([PY, "-u", "-X", "utf8", "main.py", "fight"] + extras, RANDOM_BUILDS)
+        elif opcao == "r":
+            rodar([PY, "-u", "-X", "utf8", "main.py", "arena", "ranking"], RANDOM_BUILDS)
         elif opcao == "1":
             rodar(base, RANDOM_BUILDS)
         elif opcao == "2":
@@ -129,6 +147,7 @@ def menu_identidade() -> None:
             ("8", "Diagnostico rapido (sem abrir o browser)"),
             ("9", "Status: fila, clipes, videos finais e inconsistencias"),
             ("h", "Historico de geracoes"),
+            ("a", "Auditar origem dos artefatos (as contas dos sites sao compartilhadas)"),
         ])
         base = [PY, "-u", "-X", "utf8", "main.py", "identity"]
         if opcao in ("", "0"):
@@ -153,6 +172,8 @@ def menu_identidade() -> None:
             rodar(base + ["status"], RANDOM_BUILDS)
         elif opcao.lower() == "h":
             rodar(base + ["history", "-n", "40"], RANDOM_BUILDS)
+        elif opcao.lower() == "a":
+            rodar(base + ["auditar"], RANDOM_BUILDS)
 
 
 # --------------------------------------------------------- [2] simulacao

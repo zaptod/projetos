@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import random
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
+from . import proveniencia
 from . import selectors
 from .browser import escrever, esperar_hidratacao, pausa_humana
 
@@ -75,6 +77,10 @@ class DigenClient:
         # grava isso no metadado do clipe: sem registro, "o video saiu com 3 s"
         # vira discussao em vez de consulta.
         self.presets_aplicados: dict = {}
+        # O prompt como foi enviado e quando: a prova de origem registra os
+        # dois, e o worker os grava no metadado do clipe.
+        self.prompt_enviado: str | None = None
+        self.enviado_em: datetime | None = None
         # Chamado assim que a URL do espaco aparece. O worker usa para gravar
         # na fila NA HORA: a navegacao para /en/space/<id> costuma acontecer
         # depois do envio, ja durante a espera, e sem isso um worker morto no
@@ -521,6 +527,8 @@ class DigenClient:
         self._conferir_presets()
         pausa_humana(self.rng)
         botao.click()
+        self.prompt_enviado = prompt
+        self.enviado_em = datetime.now(timezone.utc)
 
         # O app so navega para /en/space/<id> alguns segundos depois do clique;
         # ler `page.url` na hora devolvia ainda /en/space.
@@ -684,6 +692,47 @@ class DigenClient:
         raise EsperaEstourou(
             f"o video nao ficou pronto em {timeout:.0f}s (ainda pode estar na "
             f"fila do Digen em {self.url_do_espaco}).")
+
+    # ----------------------------------------------------------------- origem
+    def comprovar_origem(self, alvo, prompt: str, enviado_em=None) -> dict:
+        """Prova MEDIA: card novo no espaco deste worker, com os presets dele.
+
+        O card do Digen nao mostra o prompt (DOM de 25/08/2026: so o titulo do
+        espaco e `modelo / duracao / resolucao`), entao nao ha texto para
+        casar como no PicassoIA. O que existe e o isolamento por espaco: o
+        video de outra pessoa nasce no espaco DELA, e so cairia no nosso se
+        ela abrisse o nosso - a lista "All Spaces" e da conta inteira, entao
+        isso nao e impossivel. Por isso os presets do card sao conferidos: um
+        card com 5s/720P quando pedimos 3s/480P nao e nosso, e e recusado.
+        Card ilegivel nao recusa (seria queimar credito por deploy do site);
+        fica registrado como prova FRACA para a auditoria ver.
+        """
+        indice = int(alvo)
+        espaco = self.url_do_espaco or ""
+        if "/space/" not in espaco:
+            return proveniencia.sem_prova(
+                selectors.PROVEDOR,
+                "o espaco do video nao foi identificado (URL sem /space/)",
+                alvo, prompt, enviado_em)
+        texto = selectors.texto_do_card(self.page, indice)
+        presets = {k: v for k, v in (self.presets_aplicados or {}).items()
+                   if k in ("modelo", "duracao", "resolucao") and v}
+        batem = proveniencia.presets_batem(texto, presets)
+        resumo = " ".join(str(texto or "").split())
+        if batem is False:
+            return proveniencia.sem_prova(
+                selectors.PROVEDOR,
+                f"o card {indice + 1} mostra {resumo!r}, que nao bate com os "
+                f"presets aplicados {presets}",
+                alvo, prompt, enviado_em)
+        if batem is None:
+            print("[digen] AVISO: nao li os presets do card; a prova de origem "
+                  "fica so no espaco proprio (fraca).")
+        else:
+            print(f"[digen] origem: card {indice + 1} no espaco proprio, presets "
+                  f"conferem ({resumo}).")
+        return proveniencia.prova_media(selectors.PROVEDOR, indice, espaco,
+                                        presets, texto, batem, prompt, enviado_em)
 
     # --------------------------------------------------------------- download
     def _liberar_botao_de_download(self, indice: int) -> None:

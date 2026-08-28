@@ -161,8 +161,15 @@ class VideoRenderer:
         manda a mesma imagem para o ffmpeg. Uma fonte so para os dois: a
         revelacao tem que parecer a mesma, venha de imagem ou de video.
         """
+        # O print do comentario nao leva placa: a cortina do terco de baixo
+        # cobriria justamente o texto que a tela existe para mostrar. O
+        # credito vira uma etiqueta pequena no topo.
+        if event.get("type") == "comentario":
+            return self._etiqueta_imagem(event)
         placa = event.get("nameplate")
-        if not placa or event.get("type") != "identity":
+        # Onda 11D: o skill_card da estreia usa a MESMA placa da revelação —
+        # nome grande + descrição — sobre o clipe de demonstração.
+        if not placa or event.get("type") not in ("identity", "skill_card"):
             return None
         img = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
 
@@ -176,7 +183,12 @@ class VideoRenderer:
                             (0, self.height - altura))
 
         draw = ImageDraw.Draw(img)
-        accent = self.colors["accent_weapon"] if event.get("slot") == "weapon"             else self.colors["accent_character"]
+        accent = self.colors["accent_weapon"] if event.get("slot") == "weapon" \
+            else self.colors["accent_character"]
+        if event.get("type") == "skill_card":
+            cor_skill = (event.get("skill") or {}).get("cor")
+            if cor_skill:
+                accent = "#%02x%02x%02x" % tuple(int(c) for c in cor_skill[:3])
         largura = int(self.width * (0.55 if self.horizontal else 0.86))
         titulo_font = fit_font_wrap(placa["titulo"], self.fonts["black"],
                                     largura, int(self.ref * 0.072))
@@ -192,6 +204,34 @@ class VideoRenderer:
 
         return img
 
+    def _etiqueta_imagem(self, event: dict):
+        """Pilula pequena no topo: de quem veio o pedido. RGBA, ou None.
+
+        Fica em cima, e nao embaixo como a placa da revelacao, porque o que
+        esta sob ela e um print de comentario: qualquer cortina no rodape
+        engoliria o texto. Largura pela FONTE, nao fixa, senao um @ longo
+        estoura a pilula.
+        """
+        texto = str(event.get("badge") or "").strip()
+        if not texto:
+            return None
+        img = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        fonte = fit_font(texto, self.fonts["black"],
+                         int(self.width * 0.78), int(self.ref * 0.036))
+        caixa = draw.textbbox((0, 0), texto, font=fonte)
+        largura, altura = caixa[2] - caixa[0], caixa[3] - caixa[1]
+        folga_x, folga_y = int(self.ref * 0.03), int(self.ref * 0.022)
+        cx, cy = self.width / 2, self.height * 0.085
+        draw.rounded_rectangle(
+            [cx - largura / 2 - folga_x, cy - altura / 2 - folga_y,
+             cx + largura / 2 + folga_x, cy + altura / 2 + folga_y],
+            radius=int(altura / 2 + folga_y), fill=(15, 12, 30, 225),
+            outline=hex_rgb(self.colors["accent_character"]) + (255,), width=3)
+        draw.text((cx, cy), texto, font=fonte,
+                  fill=hex_rgb(self.colors["accent_character"]), anchor="mm")
+        return img
+
     def _transcode_asset(self, event: dict, out_path: Path) -> None:
         """Clipe de video real (reacao ou gameplay) normalizado para o perfil.
 
@@ -202,6 +242,16 @@ class VideoRenderer:
         duration = event["duration"]
         sr = self.audio_cfg.get("sample_rate", 44100)
         caminho = self._caminho_do_asset(event)
+        # Onda 9: gameplay com HUD do video e callouts e COMPOSTO quadro a
+        # quadro em PIL (o clipe vem sem o HUD do jogo). Qualquer falha cai no
+        # transcode simples de sempre — a luta nunca deixa de entrar.
+        if event.get("type") == "gameplay" and (event.get("hud") or event.get("callouts")):
+            try:
+                self._encode_frames(self._gameplay_frames_compostos(event), out_path)
+                return
+            except Exception as exc:
+                print(f"[render] gameplay composto falhou ({exc}); transcode simples",
+                      flush=True)
         # Recorte fixo pedido pelo asset (gameplay: apara as faixas vazias que
         # sobram porque a camera fica travada na arena). Vem antes do scale.
         recorte = event.get(f"crop_{self.profile}") or event.get("crop")
@@ -271,9 +321,225 @@ class VideoRenderer:
                     # Clipe ilegivel: cai no nameplate, nunca num cartao de
                     # reacao no lugar da revelacao do personagem.
                     fallback = self._nameplate_frames(event)
+                elif event.get("type") == "skill_card":
+                    fallback = self._skill_card_frames(event)
                 else:
                     fallback = self._reaction_frames(event)
                 self._encode_frames(fallback, out_path)
+
+    # ------------------------------------------------------ gameplay composto
+    def _gameplay_frames_compostos(self, event: dict):
+        """Frames do clipe da luta com HUD e callouts desenhados por cima.
+
+        O gameplay chega SEM o HUD do jogo (gravado com --sem-hud): as barras
+        de vida sao desenhadas aqui, na tipografia do canal, a partir da serie
+        de HP que a gravacao exportou. Os callouts (PARRY!, COMBO x4, K.O.)
+        entram no instante do evento, com pop-in e fade — a mesma linguagem
+        das rolagens extremas.
+
+        O mp4 e decodificado em rgb24 por pipe, ja no tamanho do perfil; a
+        composicao e em PIL e a saida volta pelo `_encode_frames` de sempre.
+        """
+        caminho = self._caminho_do_asset(event)
+        duracao = float(event["duration"])
+        total = self._n_frames(duracao)
+        fundo = self.colors["bg_bottom"].lstrip("#")
+        recorte = event.get(f"crop_{self.profile}") or event.get("crop")
+        pre = ""
+        if recorte and len(recorte) == 4:
+            x, y, largura, altura = (int(v) for v in recorte)
+            pre = f"crop={largura}:{altura}:{x}:{y},"
+        vf = (f"{pre}scale={self.width}:{self.height}:"
+              f"force_original_aspect_ratio=decrease:flags=lanczos,"
+              f"pad={self.width}:{self.height}:(ow-iw)/2:(oh-ih)/2:color=0x{fundo},"
+              f"fps={self.fps},setsar=1")
+        cmd = ["ffmpeg", "-loglevel", "error", "-i", str(caminho), "-t", str(duracao),
+               "-vf", vf, "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:"]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, creationflags=NO_WINDOW)
+        tamanho = self.width * self.height * 3
+        hud = self._hud_preparado(event)
+        callouts = self._callouts_preparados(event)
+        ultimo: bytes | None = None
+        try:
+            for i in range(total):
+                raw = proc.stdout.read(tamanho)
+                if len(raw) == tamanho:
+                    ultimo = raw
+                elif ultimo is None:
+                    raise RuntimeError("clipe de gameplay vazio ou ilegivel")
+                img = Image.frombytes("RGB", (self.width, self.height), ultimo)
+                t = i / self.fps
+                if hud is not None:
+                    self._desenhar_hud(img, hud, t)
+                for callout in callouts:
+                    self._desenhar_callout(img, callout, t)
+                yield img
+        finally:
+            try:
+                proc.stdout.close()
+            except OSError:
+                pass
+            proc.wait()
+
+    def _hud_preparado(self, event: dict) -> dict | None:
+        """Camada estatica (nomes + molduras) e a serie de HP para consulta."""
+        hud = event.get("hud") or {}
+        serie_bruta = hud.get("serie_hp") or []
+        if not serie_bruta:
+            return None
+        luta = event.get("luta") or {}
+        if luta.get("p1_ficha") is not None and luta.get("p2_ficha") is not None:
+            cor1, cor2 = self._cores_do_confronto(luta)
+        else:
+            cor1, cor2 = (0, 217, 255), (233, 69, 96)
+        serie = sorted((float(a[0]), float(a[1]), float(a[2])) for a in serie_bruta)
+
+        if self.horizontal:
+            largura = int(self.width * 0.30)
+            y = int(self.height * 0.055)
+            x1 = int(self.width * 0.035)
+        else:
+            largura = int(self.width * 0.43)
+            y = int(self.height * 0.052)
+            x1 = int(self.width * 0.04)
+        x2 = self.width - x1 - largura
+        altura = max(14, int(self.ref * 0.026))
+        raio = altura // 2
+
+        camada = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(camada)
+        for x, nome, cor, ancora in ((x1, hud.get("p1", ""), cor1, "ls"),
+                                     (x2 + largura, hud.get("p2", ""), cor2, "rs")):
+            draw.rounded_rectangle([x - 4 if ancora == "ls" else x - largura - 4, y - 4,
+                                    x + largura + 4 if ancora == "ls" else x + 4,
+                                    y + altura + 4],
+                                   radius=raio + 4, fill=(12, 10, 24, 210))
+            if hud.get("nomes", True) and nome:
+                fonte = fit_font(str(nome), self.fonts["black"], largura,
+                                 int(self.ref * 0.036))
+                draw.text((x, y - int(self.ref * 0.012)), str(nome), font=fonte,
+                          fill=cor, anchor=ancora, stroke_width=3,
+                          stroke_fill=(15, 12, 30))
+        # Onda 10C: serie do plano (t, rotulo_p1, prog_p1, rotulo_p2, prog_p2).
+        serie_plano = sorted(
+            (float(a[0]), str(a[1] or ""), float(a[2] or 0.0), str(a[3] or ""), float(a[4] or 0.0))
+            for a in (hud.get("serie_plano") or []) if len(a) >= 5
+        )
+        return {
+            "camada": camada,
+            "serie": serie,
+            "tempos": [a[0] for a in serie],
+            "barras": ((x1, y, largura, altura, cor1, "esq"),
+                       (x2, y, largura, altura, cor2, "dir")),
+            "serie_plano": serie_plano,
+            "tempos_plano": [a[0] for a in serie_plano],
+            "fonte_plano": fit_font("QUEBRAR GUARDA", self.fonts["black"], largura,
+                                    int(self.ref * 0.024)),
+        }
+
+    @staticmethod
+    def _plano_em(hud: dict, t: float) -> tuple[str, float, str, float]:
+        import bisect
+        tempos = hud.get("tempos_plano") or []
+        if not tempos:
+            return "", 0.0, "", 0.0
+        indice = bisect.bisect_right(tempos, t) - 1
+        amostra = hud["serie_plano"][max(0, indice)]
+        return amostra[1], amostra[2], amostra[3], amostra[4]
+
+    @staticmethod
+    def _hp_em(hud: dict, t: float) -> tuple[float, float]:
+        import bisect
+        indice = bisect.bisect_right(hud["tempos"], t) - 1
+        amostra = hud["serie"][max(0, indice)]
+        return amostra[1], amostra[2]
+
+    def _desenhar_hud(self, img: Image.Image, hud: dict, t: float) -> None:
+        img.paste(hud["camada"], (0, 0), hud["camada"])
+        draw = ImageDraw.Draw(img)
+        hp1, hp2 = self._hp_em(hud, t)
+        for (x, y, largura, altura, cor, lado), hp in zip(hud["barras"], (hp1, hp2)):
+            raio = altura // 2
+            draw.rounded_rectangle([x, y, x + largura, y + altura], radius=raio,
+                                   fill=(40, 36, 60))
+            pct = max(0.0, min(100.0, float(hp)))
+            if pct <= 0:
+                continue
+            cheio = max(altura, int(largura * pct / 100))
+            caixa = ([x, y, x + cheio, y + altura] if lado == "esq"
+                     else [x + largura - cheio, y, x + largura, y + altura])
+            draw.rounded_rectangle(caixa, radius=raio, fill=cor)
+            if pct <= 25:
+                # vida critica pisca: o mesmo sinal que o jogo da
+                if int(t * 6) % 2 == 0:
+                    draw.rounded_rectangle(caixa, radius=raio, outline=(255, 255, 255),
+                                           width=3)
+        # Onda 10C: o PLANO de cada lado, vivo, sob a barra — o espectador ve
+        # a intencao mudar ("PRESSAO" -> "PRA PAREDE" -> "ACABAR").
+        if hud.get("tempos_plano"):
+            r1, g1, r2, g2 = self._plano_em(hud, t)
+            fonte = hud["fonte_plano"]
+            for (x, y, largura, altura, cor, lado), rotulo, prog in zip(
+                hud["barras"], (r1, r2), (g1, g2)
+            ):
+                if not rotulo:
+                    continue
+                yy = y + altura + int(self.ref * 0.008)
+                xx = x if lado == "esq" else x + largura
+                draw.text((xx, yy), rotulo, font=fonte, fill=(245, 240, 255),
+                          anchor="la" if lado == "esq" else "ra",
+                          stroke_width=2, stroke_fill=(15, 12, 30))
+                # barrinha de progresso do objetivo do plano
+                bw = int(largura * 0.35)
+                by = yy + int(self.ref * 0.024) + 3
+                bx = x if lado == "esq" else x + largura - bw
+                draw.rounded_rectangle([bx, by, bx + bw, by + 4], radius=2, fill=(40, 36, 60))
+                cheio = int(bw * max(0.0, min(1.0, prog)))
+                if cheio > 0:
+                    cx0 = bx if lado == "esq" else bx + bw - cheio
+                    draw.rounded_rectangle([cx0, by, cx0 + cheio, by + 4], radius=2, fill=cor)
+
+    def _callouts_preparados(self, event: dict) -> list[dict]:
+        saida = []
+        stroke = max(3, int(self.ref * 0.006))
+        for callout in event.get("callouts") or []:
+            texto = str(callout.get("texto") or "").strip()
+            if not texto:
+                continue
+            cor_hex = str(callout.get("cor") or "#ffffff")
+            cor = hex_rgb(cor_hex) if cor_hex.startswith("#") and len(cor_hex) == 7 \
+                else (255, 255, 255)
+            fonte = fit_font(texto, self.fonts["black"], int(self.width * 0.9),
+                             int(self.ref * 0.115))
+            caixa = fonte.getbbox(texto, stroke_width=stroke)
+            largura = caixa[2] - caixa[0] + stroke * 2 + 8
+            altura = caixa[3] - caixa[1] + stroke * 2 + 8
+            camada = Image.new("RGBA", (max(1, largura), max(1, altura)), (0, 0, 0, 0))
+            ImageDraw.Draw(camada).text((largura / 2, altura / 2), texto, font=fonte,
+                                        fill=cor, anchor="mm", stroke_width=stroke,
+                                        stroke_fill=(15, 12, 30))
+            saida.append({"t": float(callout.get("t", 0.0)),
+                          "dur": float(callout.get("duracao", 0.9)),
+                          "camada": camada})
+        return saida
+
+    def _desenhar_callout(self, img: Image.Image, callout: dict, t: float) -> None:
+        idade = t - callout["t"]
+        if idade < 0 or idade > callout["dur"]:
+            return
+        escala = 1.0 + 0.35 * max(0.0, 1.0 - idade / 0.12)      # pop-in
+        alfa = 1.0 if idade < callout["dur"] - 0.25 \
+            else max(0.0, (callout["dur"] - idade) / 0.25)        # fade-out
+        camada = callout["camada"]
+        if abs(escala - 1.0) > 0.01:
+            camada = camada.resize((max(1, int(camada.width * escala)),
+                                    max(1, int(camada.height * escala))),
+                                   Image.BILINEAR)
+        if alfa < 1.0:
+            camada = self._com_alfa(camada, alfa)
+        cx = self.width // 2
+        cy = int(self.height * (0.20 if self.horizontal else 0.22))
+        img.paste(camada, (cx - camada.width // 2, cy - camada.height // 2), camada)
 
     def _concat(self, segments: list[Path], out_path: Path) -> None:
         list_file = out_path.with_suffix(".txt")
@@ -315,8 +581,12 @@ class VideoRenderer:
             return self._roulette_frames(event)
         if kind == "reaction":
             return self._reaction_frames(event)
-        if kind == "identity" and (event.get("asset") or {}).get("media") == "imagem":
+        if kind in ("identity", "comentario") and \
+                (event.get("asset") or {}).get("media") == "imagem":
             return self._still_frames(event)
+        if kind == "comentario":
+            # Print ilegivel: o video segue sem a prova, nunca quebra por ela.
+            return self._caption_frames(event)
         if kind in ("nameplate", "identity"):
             # `identity` so chega aqui quando o mp4 do clipe faltou ou nao pode
             # ser lido: o caminho normal dele e o transcode, nao o desenho.
@@ -338,6 +608,11 @@ class VideoRenderer:
             return self._round_title_frames(event)
         if kind == "fight_card":
             return self._fight_card_frames(event)
+        if kind == "skill_card":
+            # so chega aqui sem demo gravada: o card sintético fala sozinho
+            return self._skill_card_frames(event)
+        if kind == "round_result":
+            return self._round_result_frames(event)
         if kind == "fight_result":
             return self._fight_result_frames(event)
         if kind == "gameplay":
@@ -685,9 +960,14 @@ class VideoRenderer:
         except Exception:
             # Imagem ilegivel (download truncado, formato exotico) nunca
             # derruba o render: a revelacao cai na placa tipografica, que e o
-            # mesmo lugar onde ela cai quando o arquivo nem existe.
+            # mesmo lugar onde ela cai quando o arquivo nem existe. O print do
+            # comentario nao tem placa — cai no texto da etiqueta.
             event.setdefault("asset", {})["synthetic"] = True
-            yield from self._nameplate_frames(event)
+            if event.get("type") == "comentario":
+                yield from self._caption_frames(
+                    {**event, "caption": event.get("badge", "")})
+            else:
+                yield from self._nameplate_frames(event)
             return
 
         movimento = event.get("motion") or {}
@@ -989,7 +1269,10 @@ class VideoRenderer:
         vs_font = load_font(self.fonts["black"], int(self.ref * 0.13))
         caption_font = fit_font(event.get("caption", ""), self.fonts["bold"],
                                 int(self.width * 0.9), int(self.ref * 0.042))
-        rodada_font = load_font(self.fonts["bold"], int(self.ref * 0.04))
+        # rotulo de rodada pode ser longo ("ESTREIA • MELHOR DE 3"): encolhe
+        # para caber em vez de vazar pelas bordas.
+        rodada_font = fit_font(luta["rodada_nome"], self.fonts["bold"],
+                               int(self.width * 0.9), int(self.ref * 0.04))
 
         for i in range(total):
             img = self._bg().copy()
@@ -1043,6 +1326,19 @@ class VideoRenderer:
                              round(valor * 10), "#%02x%02x%02x" % cor)
                     draw.text((cx + barra_w / 2 + self.ref * 0.008, by), str(valor),
                               font=info_font, fill=(245, 242, 255), anchor="lm")
+                # Onda 11D: os nomes do kit, discretos, sob as barras — quem
+                # descreve é o showcase da estreia, não o card do confronto.
+                kit = ficha.get("kit") or []
+                if kit:
+                    linha_kit = "  ·  ".join(
+                        s.get("nome", "") for s in kit if s.get("nome")
+                    )
+                    fonte_kit = fit_font(linha_kit, self.fonts["regular"],
+                                         int(caixa_w * 0.92),
+                                         int(self.ref * 0.024))
+                    draw.text((cx, cy + caixa_h * 0.42), linha_kit,
+                              font=fonte_kit, fill=(154, 147, 184),
+                              anchor="mm")
 
             if t >= 1.0:
                 pulso = 1 + 0.08 * math.sin(i / self.fps * 8)
@@ -1051,6 +1347,111 @@ class VideoRenderer:
                                      fill=(255, 255, 255), stroke=6, scale=pulso)
             self._wrapped_center(draw, event.get("caption", ""), caption_font,
                                  self.height * 0.93, fill=(245, 242, 255), stroke=3)
+            yield img
+        return
+
+    def _skill_card_frames(self, event: dict):
+        """Onda 11D: card sintético do showcase de kit (sem demo gravada, o
+        card fala sozinho: nome na COR da skill, papel e descrição)."""
+        total = self._n_frames(event["duration"])
+        skill = event.get("skill") or {}
+        placa = event.get("nameplate") or {}
+        nome = str(skill.get("nome") or placa.get("titulo") or "")
+        descricao = str(skill.get("descricao") or placa.get("subtitulo") or "")
+        papel = str(skill.get("papel") or "").title()
+        lutador = str(event.get("lutador") or "")
+        cor = skill.get("cor") or [245, 242, 255]
+        accent = tuple(int(c) for c in cor[:3])
+        rotulo = f"KIT DE {lutador}".upper() if lutador else "KIT"
+        font_rotulo = fit_font(rotulo, self.fonts["bold"],
+                               int(self.width * 0.8), int(self.ref * 0.03))
+        font_nome = fit_font_wrap(nome, self.fonts["black"],
+                                  int(self.width * 0.86),
+                                  int(self.ref * 0.095))
+        font_meta = fit_font(papel or " ", self.fonts["bold"],
+                             int(self.width * 0.8), int(self.ref * 0.036))
+        font_desc = fit_font_wrap(descricao or " ", self.fonts["regular"],
+                                  int(self.width * 0.8),
+                                  int(self.ref * 0.042), max_lines=3)
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            t = min(1.0, i / max(1, self.fps * 0.25))
+            draw.text((self.width / 2, self.height * 0.2), rotulo,
+                      font=font_rotulo, fill=(154, 147, 184), anchor="mm")
+            pulse = 1 + 0.02 * math.sin(i / self.fps * 5)
+            self._wrapped_center(draw, nome, font_nome, self.height * 0.38,
+                                 fill=accent, stroke=5, scale=pulse)
+            if papel:
+                draw.text((self.width / 2, self.height * 0.5), papel,
+                          font=font_meta, fill=(245, 242, 255), anchor="mm",
+                          stroke_width=2, stroke_fill=(15, 12, 30))
+            if descricao:
+                self._wrapped_center(draw, descricao, font_desc,
+                                     self.height * 0.62,
+                                     fill=(210, 205, 230), stroke=2,
+                                     max_width=int(self.width * 0.8))
+            largura_linha = int(self.width * 0.5 * t)
+            draw.rectangle(
+                [self.width / 2 - largura_linha / 2, self.height * 0.72,
+                 self.width / 2 + largura_linha / 2, self.height * 0.723],
+                fill=accent)
+            yield img
+        return
+
+    def _round_result_frames(self, event: dict):
+        """Placar entre rounds de uma serie: quem levou, e como esta.
+
+        Tela deliberadamente mais leve que o veredito da serie — ninguem foi
+        eliminado ainda, entao o que importa e o numero grande no meio.
+        """
+        total = self._n_frames(event["duration"])
+        luta = event["luta"]
+        placar = list(event.get("placar") or [0, 0])
+        cor1, cor2 = self._cores_do_confronto(luta)
+        cor = cor1 if luta["vencedor"] == luta["p1"] else cor2
+        rotulo_font = load_font(self.fonts["black"], int(self.ref * 0.045))
+        vencedor_font = fit_font(luta["vencedor"], self.fonts["black"],
+                                 int(self.width * 0.9), int(self.ref * 0.075))
+        placar_font = load_font(self.fonts["black"], int(self.ref * 0.16))
+        nome_font = load_font(self.fonts["bold"], int(self.ref * 0.03))
+        info_font = load_font(self.fonts["bold"], int(self.ref * 0.034))
+        caption_font = fit_font(event.get("caption", ""), self.fonts["bold"],
+                                int(self.width * 0.9), int(self.ref * 0.042))
+
+        for i in range(total):
+            img = self._bg().copy()
+            draw = ImageDraw.Draw(img)
+            draw.text((self.width / 2, self.height * 0.20),
+                      f"{luta['rodada_nome']} PARA", font=rotulo_font,
+                      fill=(154, 147, 184), anchor="mm")
+            escala = 1.0
+            if i < self.fps * 0.25:
+                escala = 1.25 - 0.25 * (i / (self.fps * 0.25))
+            self._wrapped_center(draw, luta["vencedor"], vencedor_font,
+                                 self.height * 0.30, fill=cor, stroke=5,
+                                 scale=escala)
+
+            # o placar da serie, grande, com os nomes pequenos sob cada lado
+            y_placar = self.height * 0.50
+            for lado, (x, valor, nome, cor_lado) in enumerate((
+                    (self.width * 0.32, placar[0], luta["p1"], cor1),
+                    (self.width * 0.68, placar[1], luta["p2"], cor2))):
+                draw.text((x, y_placar), str(valor), font=placar_font,
+                          fill=cor_lado, anchor="mm", stroke_width=4,
+                          stroke_fill=(15, 12, 30))
+                fonte = fit_font(nome, self.fonts["bold"],
+                                 int(self.width * 0.3), nome_font.size)
+                draw.text((x, y_placar + self.height * 0.09), nome, font=fonte,
+                          fill=(154, 147, 184), anchor="mm")
+            draw.text((self.width / 2, y_placar), "x", font=placar_font,
+                      fill=(90, 84, 122), anchor="mm")
+
+            draw.text((self.width / 2, self.height * 0.68),
+                      f"{luta['ko_type']}  •  {luta['duracao']}s",
+                      font=info_font, fill=(245, 242, 255), anchor="mm")
+            self._wrapped_center(draw, event.get("caption", ""), caption_font,
+                                 self.height * 0.90, fill=(245, 242, 255), stroke=3)
             yield img
         return
 
@@ -1070,6 +1471,23 @@ class VideoRenderer:
                                 int(self.width * 0.9), int(self.ref * 0.044))
         rng = random.Random(f"resultado:{luta['match_id']}")
         extremo = luta["tier"] in ("INSANE", "GREAT", "TERRIBLE")
+        # Numa serie o veredito e da SERIE, nao do round que fechou: o placar
+        # entra sob o nome para o 2 x 1 nao virar "venceu por pouco".
+        placar = list(event.get("placar") or [])
+        rotulo = "VENCEDOR DA SERIE" if placar else "VENCEDOR"
+        rotulo_font = fit_font(rotulo, self.fonts["black"],
+                               int(self.width * 0.9), rotulo_font.size)
+        linha_serie = ""
+        info_decisivo = f"{luta['ko_type']}  •  {luta['duracao']}s"
+        rotulo_hp = f"HP restante: {luta['hp_vencedor']}%"
+        if placar:
+            formato = event.get("melhor_de")
+            linha_serie = (f"MELHOR DE {formato}  •  " if formato else "")
+            linha_serie += " x ".join(str(v) for v in placar)
+            round_ = luta.get("round")
+            decidiu = f"round {round_} decidiu" if round_ else "round decisivo"
+            info_decisivo = f"{decidiu}: {luta['ko_type']}, {luta['duracao']}s"
+            rotulo_hp = f"HP no fim: {luta['hp_vencedor']}%"
 
         for i in range(total):
             img = self._bg().copy()
@@ -1078,7 +1496,7 @@ class VideoRenderer:
             if extremo and i < self.fps * 0.4:
                 amp = 8 * max(0.0, 1 - i / (self.fps * 0.4))
                 dx = rng.randint(-1, 1) * amp
-            draw.text((self.width / 2 + dx, self.height * 0.16), "VENCEDOR",
+            draw.text((self.width / 2 + dx, self.height * 0.16), rotulo,
                       font=rotulo_font, fill=(154, 147, 184), anchor="mm")
             escala = 1.0
             if i < self.fps * 0.25:
@@ -1087,12 +1505,16 @@ class VideoRenderer:
                                  self.height * 0.27, fill=cor, stroke=5,
                                  scale=escala, x_offset=dx)
 
-            info = f"{luta['ko_type']}  •  {luta['duracao']}s"
-            draw.text((self.width / 2, self.height * 0.40), info,
+            if linha_serie:
+                draw.text((self.width / 2, self.height * 0.365), linha_serie,
+                          font=marca_font, fill=tier_rgb, anchor="mm",
+                          stroke_width=3, stroke_fill=(15, 12, 30))
+            # Numa serie, KO e duracao sao do round que FECHOU: sem dizer isso
+            # a tela parece afirmar que a serie inteira durou 21 s.
+            draw.text((self.width / 2, self.height * 0.40), info_decisivo,
                       font=info_font, fill=(245, 242, 255), anchor="mm")
 
-            draw.text((self.width * 0.5, self.height * 0.47),
-                      f"HP restante: {luta['hp_vencedor']}%",
+            draw.text((self.width * 0.5, self.height * 0.47), rotulo_hp,
                       font=info_font, fill=(154, 147, 184), anchor="mm")
             barra_w = int(self.width * 0.5)
             stat_bar(draw, int((self.width - barra_w) / 2), int(self.height * 0.50),

@@ -230,7 +230,7 @@ def _miniaturas(page, sel) -> list:
         return []
 
 
-def _esperar_miniatura(page, sel, quantas_antes: int,
+def _esperar_miniatura(page, sel, antes: list,
                        timeout: float = ESPERA_MINIATURA) -> bool:
     """Esperou aparecer uma miniatura NOVA no composer?
 
@@ -238,10 +238,15 @@ def _esperar_miniatura(page, sel, quantas_antes: int,
     levantar excecao nao prova nada: numa rodada real ele "funcionou" contra um
     input escondido que o app nem escuta, e o video saiu sem referencia
     nenhuma enquanto o log dizia que tinha anexado.
+
+    A comparacao e por CONJUNTO de URLs, nao por contagem: num formulario de
+    imagem unica a segunda SUBSTITUI a primeira e a contagem fica em 1 — o
+    blob novo e o que prova que ESTE arquivo entrou.
     """
+    ja_vistas = set(antes)
     fim = time.monotonic() + timeout
     while time.monotonic() < fim:
-        if len(_miniaturas(page, sel)) > quantas_antes:
+        if any(src not in ja_vistas for src in _miniaturas(page, sel)):
             return True
         time.sleep(0.5)
     return False
@@ -260,6 +265,9 @@ def _abrir_menu_de_anexo(page, sel, rng=None) -> bool:
 
     O menu tem outros itens ("Select from Gallery", "Character Library") que
     NAO servem, entao a opcao e achada pelo rotulo, nunca por posicao.
+
+    Sem `OPCAO_ENVIAR_IMAGEM` declarada (Editor Pro do PicassoIA), o BOTAO e
+    o proprio gatilho do seletor de arquivo: clicar nele encerra o caminho.
     """
     botao = sel.encontrar(page, sel.BOTAO_ANEXO, timeout=2.0)
     if botao is None:
@@ -268,6 +276,8 @@ def _abrir_menu_de_anexo(page, sel, rng=None) -> bool:
         botao.click()
     except Exception:
         return False
+    if not getattr(sel, "OPCAO_ENVIAR_IMAGEM", None):
+        return True
     if rng is not None:
         from .browser import pausa_humana
         pausa_humana(rng, 0.4, 1.0)
@@ -334,7 +344,7 @@ def anexar(page, caminhos, sel, rng=None, timeout: float = 15.0,
 
     anexadas = []
     for caminho in caminhos[:max(1, int(maximo))]:
-        antes = len(_miniaturas(page, sel))
+        antes = _miniaturas(page, sel)
         # Sem menu de anexo declarado nao ha dialogo para esperar: e o caso do
         # PicassoIA, cuja zona de "arraste e solte" e um input de verdade. Sem
         # esta guarda, cada imagem custava o timeout inteiro do `expect_file_

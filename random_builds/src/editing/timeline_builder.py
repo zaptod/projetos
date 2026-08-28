@@ -27,6 +27,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
+from . import comentario
 from .editing_director import EditingDirector
 from ..assets.selector import AssetSelector
 from ..content.caption_generator import CaptionGenerator, pedido_de
@@ -48,9 +49,16 @@ class TimelineBuilder:
         beats = self.config.get("beats", {})
         events_out: list[dict] = []
         cursor = 0.0
+        # Orcamento de reacao do VIDEO (segundos), zerado a cada build: e ele
+        # que segura o teto de duracao agora que cada clipe toca inteiro.
+        self._reacao_restante_s = float(
+            (self.config.get("reaction_budget") or {}).get("max_segundos", 14.0))
         # Nome escolhido nos comentarios, quando existe. Lido uma vez: gancho,
         # placa do personagem e CTA precisam falar do MESMO pedido.
         pedido = pedido_de(generation)
+        # Atributos escolhidos em vez de sorteados: o gancho precisa saber
+        # para nao abrir o video afirmando que a roleta decidiu tudo.
+        escolhas = generation.get("escolhas") or None
 
         def push(event: dict, duration: float) -> None:
             nonlocal cursor
@@ -59,8 +67,10 @@ class TimelineBuilder:
             events_out.append(event)
             cursor += duration
 
-        push({"type": "hook", "caption": self.captions.hook(rng, pedido)},
+        push({"type": "hook",
+              "caption": self.captions.hook(rng, pedido, escolhas)},
              durations["hook"])
+        self._push_comentario(push, out_dir, durations, pedido)
 
         rolls = generation["rolls"]
         decisions = director.decide_rolls(rng, rolls)
@@ -118,27 +128,58 @@ class TimelineBuilder:
 
     def _push_reaction(self, push, rng: random.Random, decision: dict,
                        durations: dict) -> None:
-        """REACTION_CLIP: 0,5 a 2 s (secao 10).
+        """REACTION_CLIP: o clipe toca INTEIRO enquanto o video tiver espaco.
 
-        O clipe real tocava INTEIRO, e um meme de 6 s parava o video no meio de
-        uma sequencia de roletas de 2 s. Agora ele e cortado no teto: a reacao
-        interrompe, nao assume.
+        O teto de 2 s cortava 96% da biblioteca (mediana de 6,5 s): a piada
+        entrava e era arrancada antes do punchline. O que protege o formato
+        agora nao e o corte de cada clipe, e o ORCAMENTO do video inteiro
+        (`reaction_budget.max_segundos`): as primeiras reacoes tocam inteiras
+        e, quando o orcamento acaba, a proxima simplesmente nao entra. Assim
+        o teto de duracao do video continua valendo sem que nenhuma reacao
+        vire um flash de 2 s.
         """
         asset = self.selector.select_reaction(
             rng, decision["tier"], decision["sentiment"], decision["intensity"],
             category=decision.get("reaction_category"))
+        minimo = float(durations.get("reaction_min", 0.5))
+        util = float((self.config.get("reaction_budget") or {})
+                     .get("min_util_segundos", 2.5))
         if asset.get("synthetic", True):
+            # Cartão desenhado: não é clipe, tem duração própria e curta.
             duracao = durations["reaction"]
         else:
             duracao = asset.get("duration")
             if not duracao:
                 from ..assets.importer import _probe_duration
                 duracao = _probe_duration(Path(asset["path"])) or durations["reaction"]
-            duracao = min(float(duracao) + 0.05, durations.get("reaction_max", 2.0))
-            duracao = max(duracao, durations.get("reaction_min", 0.5))
+            duracao = min(float(duracao) + 0.05, durations.get("reaction_max", 8.0))
+            if duracao < util:
+                # A biblioteca tem clipes de fração de segundo (import torto,
+                # corte errado). Esticar um clipe de 0,1 s até o piso só
+                # produz um tranco na tela: melhor não ter reação.
+                return
+            duracao = max(duracao, minimo)
+
+        restante = getattr(self, "_reacao_restante_s", None)
+        if restante is not None:
+            if duracao > restante:
+                # Sem espaco para a reacao inteira: ela entra pelo que sobrou
+                # SE o resto ainda der uma reacao — abaixo disso e flash, e
+                # flash e pior que nao ter reacao nenhuma (o espectador ve um
+                # tranco sem entender o que passou).
+                util = float((self.config.get("reaction_budget") or {})
+                             .get("min_util_segundos", 2.5))
+                if restante < max(minimo, util):
+                    return
+                duracao = restante
+            self._reacao_restante_s = max(0.0, restante - duracao)
+
         push({
             "type": "reaction",
             "asset": asset,
+            # Reacao e video de OUTRO formato (quase sempre deitado): cabe
+            # inteiro na tela, com barras, em vez de ser recortado no meio.
+            "fit": "contain",
             "category": asset.get("category"),
             "classification": decision["classification"],
             "reason": decision.get("reason"),
@@ -217,6 +258,44 @@ class TimelineBuilder:
             duracao = _probe_duration(arquivo) or float(janela["max"])
             duracao = min(duracao + 0.05, float(janela["max"]))
         push(evento, duracao)
+
+    def _push_comentario(self, push, out_dir: Path | None, durations: dict,
+                         pedido: dict | None) -> None:
+        """O print do comentario, logo depois do gancho — quando existe.
+
+        E a PROVA do pedido: o gancho acabou de dizer que o nome veio de
+        voces, e a tela seguinte mostra o comentario de verdade. Vem cedo de
+        proposito; no fim do video ninguem mais precisa ser convencido.
+
+        O arquivo e opcional e vive na propria pasta da geracao
+        (`comentario.png|jpg|jpeg|webp`): largar o print ali e re-render com
+        `--refazer-edicao` basta para ele entrar, sem regerar nada.
+
+        Sem placa por cima: uma cortina no terco de baixo cobriria justamente
+        o texto do comentario, que e a unica coisa que a tela tem para
+        mostrar. O credito vai numa etiqueta pequena no topo.
+        """
+        arquivo = comentario.encontrar(out_dir)
+        if arquivo is None:
+            return
+        direcao = self.config.get("comentario", {})
+        autor = str((pedido or {}).get("autor") or "").strip()
+        evento = {
+            "type": "comentario",
+            "asset": {"path": str(arquivo), "synthetic": False,
+                      "media": identity_slots.IMAGEM},
+            "fit": "contain",
+            "badge": (f"PEDIDO DE {autor}" if autor
+                      else str(direcao.get("etiqueta", "PEDIDO NOS COMENTARIOS"))),
+            "caption": "",
+            # Zoom quase parado: texto pequeno com Ken Burns de revelacao
+            # fica ilegivel, e aqui a tela existe para ser LIDA.
+            "motion": direcao.get("motion", {"zoom": [1.0, 1.03],
+                                             "centro": [[0.5, 0.5], [0.5, 0.5]]}),
+            "flash_frames": int(
+                self.config.get("identity_still", {}).get("flash_frames", 2)),
+        }
+        push(evento, float(direcao.get("duracao", 3.2)))
 
     @staticmethod
     def _artefato(out_dir: Path | None, slot: str) -> tuple[Path, str] | None:

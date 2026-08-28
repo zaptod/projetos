@@ -61,6 +61,23 @@ def resolver_expressao(l, tempo_s):
             return "alerta"
         if tell.get("tipo") == "punicao":
             return "determinado"
+        # Onda 10A-C: o corpo mostra o momento — iniciativa/plano ofensivo
+        # determinam, agarrão é esforço, estatelar dói, isca é confiança.
+        if tell.get("tipo") in ("iniciativa", "dash_tatico"):
+            return "determinado"
+        if tell.get("tipo") == "agarrao":
+            return "esforco"
+        if tell.get("tipo") == "wall_splat":
+            return "dor"
+        if tell.get("tipo") == "plano":
+            plano = tell.get("plano")
+            if plano in ("PRESSIONAR", "ACABAR", "TROCAR_GOLPES", "ESMAGAR_NA_PAREDE",
+                         "QUEBRAR_GUARDA", "CORTAR_FUGA"):
+                return "determinado"
+            if plano == "BAITAR_E_PUNIR":
+                return "confiante"
+            if plano == "RECUPERAR":
+                return "alerta"
     if getattr(l, "atacando", False):
         return "esforco"
     if getattr(brain, "acao_atual", "") == "BLOQUEAR":
