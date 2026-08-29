@@ -65,8 +65,15 @@ def _estalo(amostras: int, taxa: int, agudo: float, rng: random.Random) -> list:
 
 def gravar(destino: Path, duracao: float, tempos: list[float],
            taxa: int = 44100, volume: float = 0.5,
-           clack_em: float | None = None, semente: int = 7) -> Path:
-    """Trilha com um estalo em cada tempo, e um `clack` mais grave no fim."""
+           clack_em: float | None = None, semente: int = 7,
+           camadas: list | None = None) -> Path:
+    """Trilha com um estalo em cada tempo, e um `clack` mais grave no fim.
+
+    `camadas`: efeitos por cima dos estalos, como (instante, amostras,
+    ganho) — o som do resultado, um riser, um hit. Os estalos sao
+    normalizados sozinhos (como sempre foram) e as camadas entram DEPOIS
+    com o proprio ganho: um bass hit nao pode abaixar os estalos da roda.
+    """
     rng = random.Random(semente)
     total = max(1, int(duracao * taxa))
     trilha = [0.0] * total
@@ -92,7 +99,19 @@ def gravar(destino: Path, duracao: float, tempos: list[float],
                 trilha[pos] += amostra * 1.3
 
     pico = max((abs(v) for v in trilha), default=0.0)
-    escala = (volume / pico) if pico > 0 else 0.0
+    if pico > 0:
+        trilha = [v * (volume / pico) for v in trilha]
+    # daqui em diante a trilha ja esta na escala final (com ou sem estalo)
+    escala = 1.0
+
+    for quando, amostras, ganho in (camadas or []):
+        inicio = int(float(quando) * taxa)
+        for j, amostra in enumerate(amostras):
+            pos = inicio + j
+            if pos >= total:
+                break
+            if pos >= 0:
+                trilha[pos] += float(amostra) * ganho
 
     destino.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(destino), "wb") as arquivo:

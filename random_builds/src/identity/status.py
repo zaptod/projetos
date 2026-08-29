@@ -127,7 +127,7 @@ def esta_completo(generation_id: str, slot: str = slots.CHARACTER) -> bool:
 
 def slots_faltando(generation_id: str) -> list[str]:
     """Slots sem clipe utilizavel - o que ainda falta gerar."""
-    return [slot for slot in slots.SLOTS
+    return [slot for slot in config.slots_ativos()
             if not clipe_utilizavel(generation_id, slot)]
 
 

@@ -1,18 +1,18 @@
 {
-    "_comment_ritmo": "Duracoes calibradas para TikTok, com uma correcao pedida depois de ver o video pronto: giro de 1,15 s nao dava tempo de ler o resultado nem de sentir a roleta desacelerar. Agora o giro dura 1,8 s e o resultado fica 1,5 s na tela (2,1 s nos extremos). A roleta continua sendo o elemento dominante — e agora da para acompanhar.",
+    "_comment_ritmo": "Duracoes calibradas para retencao (revisao 29/08/2026): o video saia com 73 s de media e 14 roletas identicas de 3,3 s. Agora a roleta CHEIA (classe, personalidade, tipo, estilo, raridade, encantamento, habilidade) gira 1,4 s e mostra o resultado 1,1 s (1,6 s nos extremos); os atributos numericos em `roletas_rapidas` viram roleta-relampago (0,6 s + 0,45 s) quando o peso editorial e baixo (NORMAL/GOOD/BAD) - tempo de tela proporcional ao peso, que a secao 11 ja calcula. Alvo: 35-45 s com payoff e luta no fim.",
     "durations": {
-        "hook": 1.8,
-        "roulette_spin": 1.8,
-        "roulette_result": 1.5,
-        "roulette_result_extreme": 2.1,
+        "hook": 1.6,
+        "roulette_spin": 1.4,
+        "roulette_result": 1.1,
+        "roulette_result_extreme": 1.6,
         "reaction": 1.0,
         "reaction_min": 0.5,
         "reaction_max": 8.0,
-        "stinger": 1.2,
-        "nameplate": 1.8,
-        "synergy": 1.6,
-        "final": 2.2,
-        "outro": 1.8,
+        "stinger": 1.0,
+        "nameplate": 1.4,
+        "synergy": 1.5,
+        "final": 1.8,
+        "outro": 1.6,
         "reveal": 3.6,
         "identity": 6.0,
         "participantes": 3.6,
@@ -27,31 +27,95 @@
         "fight_card_luta": 2.2,
         "fight_result_luta": 2.8,
         "round_result": 2.4,
-        "skill_card": 2.4
+        "skill_card": 2.4,
+        "roulette_spin_fast": 0.6,
+        "roulette_result_fast": 0.45,
+        "luta_stinger": 1.0
+    },
+    "_comment_narracao": "Roteiro solido (29/08): as duracoes acima sao o MINIMO visual; a fala e medida antes e cada cena cresce ate a narracao dela terminar. `margem` e o respiro depois do comentario do resultado (e das outras falas); `margem_giro` o respiro depois da pergunta feita durante o giro. Roleta-relampago fica muda.",
+    "narracao": {
+        "margem": 0.3,
+        "margem_giro": 0.15
+    },
+    "_comment_roletas_rapidas": "Roletas que so mostram um numero: passam em ritmo relampago quando o peso editorial da rolagem (secao 11) fica em `roletas_rapidas_peso_max` ou abaixo - NORMAL (0), GOOD (25) e BAD (45). VERY_GOOD, RARE, FUNNY, CONTRADICTORY e ABSURD, um atributo escolhido a dedo ou uma rolagem que ganhou reacao devolvem o giro cheio e a legenda de tensao.",
+    "roletas_rapidas": [
+        "tamanho",
+        "forca",
+        "mana",
+        "dano",
+        "peso",
+        "critico",
+        "velocidade_ataque"
+    ],
+    "_comment_gancho": "Gancho (secao 8, revisao 29/08): `payoff` abre o video com a IMAGEM do personagem pronto (referencia personagem+arma > personagem > arma) por cima do texto, em vez de um cartao de texto; sem imagem, abre pela rolagem de maior peso (ABSURD/CONTRADICTORY) e, sem isso, pelo texto de sempre. `ab` gera tambem o gancho alternativo (final_<perfil>_ganchoB.mp4) para medir qual retem mais.",
+    "gancho": {
+        "payoff": true,
+        "ab": true,
+        "motion": {
+            "zoom": [
+                1.0,
+                1.14
+            ],
+            "centro": [
+                [
+                    0.5,
+                    0.45
+                ],
+                [
+                    0.5,
+                    0.38
+                ]
+            ]
+        }
+    },
+    "_comment_revelacao_cedo": "Com a imagem do personagem no disco, ele aparece logo depois de CLASSE e PERSONALIDADE (~8 s) em vez de depois das cinco roletas: rosto na tela cedo segura quem esta decidindo se fica. Sem imagem, o nameplate continua no fim da secao (mostrar a altura antes da roleta de TAMANHO seria spoiler).",
+    "revelacao_cedo": true,
+    "_comment_luta_no_build": "O loop que faltava: criamos -> ele luta. Com a estreia gravada (outputs/<id>/estreia/fight.json), o round decisivo entra no FIM do video de build: `segundos` terminando `depois_do_ko` s apos o nocaute, com HUD e callouts no relogio do trecho. A estreia completa continua sendo video proprio - o outro convida para ela.",
+    "luta_no_build": {
+        "ativa": true,
+        "segundos": 6.5,
+        "depois_do_ko": 1.2,
+        "stinger": true
     },
     "_comment_comentario": "O print do comentario que pediu o nome. Opcional: largue a imagem como `comentario.png` (ou .jpg/.jpeg/.webp) DENTRO da pasta da geracao e ela entra logo depois do gancho — `--print-pedido` faz essa copia por voce. Zoom quase parado de proposito: a tela existe para ser lida, e Ken Burns em texto pequeno atrapalha. Sem placa embaixo, que cobriria o proprio comentario; o credito vai na etiqueta do topo.",
     "comentario": {
         "duracao": 3.2,
         "etiqueta": "PEDIDO NOS COMENTARIOS",
-        "motion": {"zoom": [1.0, 1.03], "centro": [[0.5, 0.5], [0.5, 0.5]]}
+        "motion": {
+            "zoom": [
+                1.0,
+                1.03
+            ],
+            "centro": [
+                [
+                    0.5,
+                    0.5
+                ],
+                [
+                    0.5,
+                    0.5
+                ]
+            ]
+        }
     },
-    "_comment_estreia":"A estreia e melhor de 3: um round so decidia a carreira do personagem numa luta que pode virar por um crítico. A serie para em 2 x 0 (o terceiro round nem e gravado), e cada round entra no video com titulo, gameplay e placar. Voltar para 1 devolve o video de luta unica sem mais nada mudar.",
+    "_comment_estreia": "A estreia e melhor de 3: um round so decidia a carreira do personagem numa luta que pode virar por um crítico. A serie para em 2 x 0 (o terceiro round nem e gravado), e cada round entra no video com titulo, gameplay e placar. Voltar para 1 devolve o video de luta unica sem mais nada mudar.",
     "estreia_melhor_de": 3,
     "_comment_clipes": "Janelas dos tres artefatos de recompensa (secoes 4, 6 e 7). Video real toca inteiro ate `max`. `still` e a duracao de uma IMAGEM: ela nao dura o teto porque nada novo acontece depois que a placa sai (~2,6 s), e 5 s parados valem duas rolagens e meia.",
     "identity_slots": {
         "character": {
             "min": 2.0,
             "max": 5.0,
-            "still": 2.6
+            "still": 2.0
         },
         "weapon": {
             "min": 2.0,
             "max": 4.0,
-            "still": 2.1
+            "still": 2.0
         },
         "character_weapon": {
             "min": 3.0,
-            "max": 8.0
+            "max": 8.0,
+            "still": 3.2
         }
     },
     "_comment_classificacao": "Secao 11: a classe editorial de cada rolagem decide se entra reacao e de que categoria. Faixas em score 0-100.",
@@ -98,10 +162,10 @@
         "GOOD": 0.1,
         "NORMAL": 0.02
     },
-    "_comment_reaction_budget": "O que protege o ritmo do video NAO e cortar cada reacao, e o orcamento total. `reaction_max` (8 s) e o teto de UM clipe — antes era 2 s e cortava 96% da biblioteca (mediana 6,5 s), a piada era arrancada antes do punchline. `max_segundos` e quanto de reacao cabe no video INTEIRO: as primeiras tocam inteiras e, quando acaba, a proxima nao entra (nunca vira flash). `max_total` e o teto por contagem; `min_gap_rolls` a distancia minima entre duas.",
+    "_comment_reaction_budget": "O que protege o ritmo do video NAO e cortar cada reacao, e o orcamento total. `reaction_max` (8 s) e o teto de UM clipe — antes era 2 s e cortava 96% da biblioteca (mediana 6,5 s), a piada era arrancada antes do punchline. `max_segundos` e quanto de reacao cabe no video INTEIRO: as primeiras tocam inteiras e, quando acaba, a proxima nao entra (nunca vira flash). `max_total` e o teto por contagem; `min_gap_rolls` a distancia minima entre duas. Revisao 29/08: max_segundos 14 -> 8 e max_total 5 -> 3, porque o video encolheu para ~40 s.",
     "reaction_budget": {
-        "max_total": 5,
-        "max_segundos": 14,
+        "max_total": 3,
+        "max_segundos": 8,
         "min_util_segundos": 2.5,
         "min_gap_rolls": 2
     },
@@ -347,5 +411,6 @@
         "barras": true,
         "nomes": true,
         "plano": true
-    }
+    },
+    "roletas_rapidas_peso_max": 45
 }

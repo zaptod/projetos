@@ -10,6 +10,8 @@ Uso:
   python main.py generate-video --nome-pedido "Kaelen" --autor-pedido "@zeca"
 
   python main.py cobertura             # o que o banco tem e o video nao descreve
+  python main.py trilha                # trilha sintetizada em assets/music (gratis)
+  python main.py metricas --atualizar  # retencao dos publicados x timeline (YouTube API)
   python main.py fluxo                 # onde cada build esta e o proximo passo
   python main.py publicar              # lista os videos prontos, com texto pronto
   python main.py publicar <id> --exportar   # copia com nome legivel + .txt
@@ -51,6 +53,8 @@ def _publicar(args) -> int:
             print(f"      {video.titulo}")
             print(f"      {video.bytes / 1e6:.1f} MB · {video.perfil} · "
                   f"{video.caminho}")
+            for pendencia in video.pendencias:
+                print(f"      ! {pendencia}")
         print(f"\npasta de exportacao: {catalogo.pasta_export()}")
         return 0
 
@@ -58,6 +62,13 @@ def _publicar(args) -> int:
     if video is None:
         print(f"video nao encontrado: {args.video_id}")
         print("rode `python main.py publicar` para ver os ids.")
+        return 1
+
+    if video.pendencias and not args.forcar:
+        print(f"{video.id} ainda nao esta completo:")
+        for pendencia in video.pendencias:
+            print(f"  ! {pendencia}")
+        print("resolva (ou repita com --forcar para publicar assim mesmo).")
         return 1
 
     feito = False
@@ -314,6 +325,9 @@ def main() -> None:
                      help="abre o navegador e sobe; NAO publica sozinho")
     pub.add_argument("--postar", action="store_true",
                      help="no TikTok, clica em publicar no fim")
+    pub.add_argument("--forcar", action="store_true",
+                     help="exporta/publica mesmo com pendencia (sem payoff, "
+                          "sem luta, mp4 velho)")
     pub.add_argument("--visibilidade", choices=("private", "unlisted", "public"),
                      default=None, help="visibilidade no YouTube")
     pub.add_argument("--origem", choices=("build", "estreia", "torneio"),
@@ -326,6 +340,20 @@ def main() -> None:
                      help="quantas builds mais novas mostrar (0 = todas)")
     flu.add_argument("--json", action="store_true",
                      help="despeja o dado estruturado em vez do texto")
+
+    tri = sub.add_parser("trilha",
+                         help="gera a trilha sintetizada em assets/music "
+                              "(so quando a pasta esta vazia, ou com --regerar)")
+    tri.add_argument("--regerar", action="store_true",
+                     help="regrava a trilha sintetizada mesmo que ja exista")
+    tri.add_argument("--seed", type=int, default=7, help="variacao da trilha")
+
+    met = sub.add_parser("metricas",
+                         help="retencao e numeros dos videos publicados no YouTube "
+                              "(API gratuita), cruzados com a timeline de cada um")
+    met.add_argument("--atualizar", action="store_true",
+                     help="consulta a API agora (sem isso, mostra o ultimo dado salvo)")
+    met.add_argument("--json", action="store_true", help="despeja o dado bruto")
 
     sub.add_parser("list-reactions", help="lista a biblioteca de reacoes")
     sub.add_parser("reactions",
@@ -363,6 +391,12 @@ def main() -> None:
     if args.command == "list-reactions":
         controller.list_reactions()
         return
+    if args.command == "trilha":
+        controller.gerar_trilha(regerar=args.regerar, seed=args.seed)
+        return
+    if args.command == "metricas":
+        from src.publicar import metricas
+        raise SystemExit(metricas.cli(atualizar=args.atualizar, como_json=args.json))
     if args.command == "reactions":
         controller.reactions_cli()
         return
@@ -553,6 +587,7 @@ def _identity(args, controller) -> None:
     if args.identity_command == "run":
         import json
         from pathlib import Path
+        from src.identity import config as icfg
         from src.identity import slots
         from src.identity.identity_model import gravar
         from src.identity.prompt import build_prompts
@@ -563,7 +598,7 @@ def _identity(args, controller) -> None:
             generation = json.load(fh)
         gravar(generation)
         prompts = build_prompts(generation)
-        alvos = [args.slot] if args.slot else list(slots.SLOTS)
+        alvos = [args.slot] if args.slot else list(icfg.jobs_ativos())
         for slot in alvos:
             queue.enqueue(args.generation_id, prompts[slot], slot=slot)
         print(f"[identity] {args.generation_id} enfileirado: "

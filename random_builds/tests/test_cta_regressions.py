@@ -335,7 +335,18 @@ class PlanoCompletoTests(unittest.TestCase):
     def test_plano_sem_pedido_usa_o_banco_de_convite(self):
         plano = _plano(self.base)
         self.assertIn(_evento(plano, "outro")["caption"], CAPTIONS["outro"])
-        self.assertIn(_evento(plano, "hook")["caption"], CAPTIONS["hook"])
+        # Revisao 29/08: sem pedido o gancho pode abrir pela imagem do payoff
+        # ou pela rolagem absurda (variantes `payoff`/`absurdo`); o cartao de
+        # texto continua vindo do banco neutro. O que NUNCA pode acontecer e
+        # creditar um comentario que nao existe.
+        gancho = _evento(plano, "hook")
+        if gancho.get("variante", "texto") == "texto":
+            self.assertIn(gancho["caption"], CAPTIONS["hook"])
+        else:
+            self.assertIn(gancho["variante"], ("payoff", "absurdo"))
+        for banco in ("hook_pedido", "outro_pedido", "outro_pedido_autor"):
+            for frase in CAPTIONS.get(banco, []):
+                self.assertNotEqual(gancho["caption"], frase)
 
     def test_plano_com_pedido_muda_gancho_e_cta(self):
         plano = _plano(self._com_pedido({"nome": "Kaelen",

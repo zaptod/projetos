@@ -15,3 +15,10 @@ Pillow>=10,<13
 # generate-video roda normalmente, so nao gera o clipe de identidade.
 # Depois de instalar, rode uma vez:  patchright install chrome
 patchright>=1.50
+
+# Som (revisao 29/08/2026). numpy sintetiza a trilha e os efeitos
+# (src/video/trilha.py) e monta a faixa de voz; sem ele o video sai so com os
+# estalos da roleta. edge-tts e a voz neural gratuita da Microsoft (precisa de
+# internet); sem ele a narracao cai na voz do Windows (Microsoft Maria).
+numpy>=1.26
+edge-tts>=6.1

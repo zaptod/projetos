@@ -114,16 +114,22 @@ class PipelineController:
         self._build_edit_plan(out_dir, generation)
         print(f"[gen] {generation_id} seed={generation['seed']} "
               f"final={generation['final_score']} ({generation['build']['verdict_label']})")
-        if not generation_only:
-            self._render_media(out_dir, generation, preview)
         if insert and not generation_only:
+            # Inserir e gravar a estreia ANTES do render: o round decisivo da
+            # estreia entra no fim do video de build (`luta_no_build`), e o
+            # plano precisa encontrar o clipe no disco para isso.
             resultado = exporter.insert_into_database(
                 generation["weapon"], generation["character"])
             _write_json(out_dir / "insercao.json", resultado)
             print(f"[db] inserido no neural_fights: {resultado['personagem']} "
                   f"+ {resultado['arma']}")
             if estreia:
-                self._gravar_estreia(out_dir, generation, resultado["personagem"], preview)
+                gravada = self._gravar_estreia(out_dir, generation,
+                                               resultado["personagem"], preview)
+                if gravada is not None:
+                    self._build_edit_plan(out_dir, generation)
+        if not generation_only:
+            self._render_media(out_dir, generation, preview)
         if identity:
             self._enfileirar_identidade(generation)
         return out_dir
@@ -157,13 +163,13 @@ class PipelineController:
             # nao vem. Vencido, ele vai ao ar so com texto.
             prazo = (datetime.now(timezone.utc) + timedelta(seconds=espera)
                      ).isoformat(timespec="seconds")
-            for slot in slots.JOBS:
+            for slot in icfg.jobs_ativos(ajustes):
                 queue.enqueue(generation["generation_id"], prompts[slot],
                               slot=slot,
                               aguardar_ate=prazo if slots.depende_de(slot) else None)
-            print(f"[identity] enfileirados {len(slots.JOBS)} artefatos de "
+            print(f"[identity] enfileirados {len(icfg.jobs_ativos(ajustes))} artefatos de "
                   f"{generation['generation_id']}: "
-                  + ", ".join(f"{s} ({slots.midia(s)})" for s in slots.JOBS))
+                  + ", ".join(f"{s} ({slots.midia(s)})" for s in icfg.jobs_ativos(ajustes)))
         except Exception as exc:
             # Identidade e um extra: nunca pode derrubar uma geracao que deu certo.
             print(f"[identity] nao enfileirado ({exc})")
@@ -339,7 +345,7 @@ class PipelineController:
         else:
             with open(out_dir / "edit_plan.json", encoding="utf-8") as fh:
                 edit_plan = json.load(fh)
-        music = selector.select_music(engine.fork("music"))
+        music = self._musica(engine)
         for profile in self.perfis:
             renderer = VideoRenderer(self.render_config, profile, preview)
             final = renderer.render(edit_plan, fight, out_dir, music)
@@ -389,7 +395,7 @@ class PipelineController:
             for e in edit_plan["events"] if e.get("caption")])
 
         if not generation_only:
-            music = selector.select_music(engine.fork("music"))
+            music = self._musica(engine)
             for profile in self.perfis:
                 renderer = VideoRenderer(self.render_config, profile, preview)
                 final = renderer.render(edit_plan, torneio, out_dir, music)
@@ -452,7 +458,7 @@ class PipelineController:
 
         engine = RandomEngine(torneio["seed"])
         selector = AssetSelector(AssetCatalog(ASSETS))
-        music = selector.select_music(engine.fork("music"))
+        music = self._musica(engine)
         for profile in self.perfis:
             renderer = VideoRenderer(self.render_config, profile, preview)
             final = renderer.render(edit_plan, torneio, out_dir, music)
@@ -503,6 +509,54 @@ class PipelineController:
         self._render_media(out_dir, generation, preview)
         return out_dir
 
+    # ------------------------------------------------------------------- som
+    def _musica(self, engine: RandomEngine) -> dict | None:
+        """A trilha do catalogo; com assets/music vazio, a sintetizada.
+
+        Uma musica colocada a mao sempre vence: a procedural so nasce numa
+        pasta vazia (src/video/trilha.py) e fica la para os proximos renders.
+        """
+        selector = AssetSelector(AssetCatalog(ASSETS))
+        music = selector.select_music(engine.fork("music"))
+        if music is None and self.render_config.get("audio", {}).get(
+                "trilha_procedural", True):
+            from ..video import trilha
+            criada = trilha.garantir_trilha(ASSETS / "music")
+            if criada is not None:
+                print(f"[trilha] {criada.name} (sintetizada em assets/music)")
+                selector = AssetSelector(AssetCatalog(ASSETS))
+                music = selector.select_music(engine.fork("music"))
+        return music
+
+    def _medir_falas(self, linhas: list[dict]) -> dict:
+        """Duracao real de cada fala (cache), ou {} sem voz disponivel."""
+        from ..content import voz
+        cfg_audio = self.render_config.get("audio", {})
+        cfg = voz.config(cfg_audio.get("voz"))
+        if not cfg.get("ativa", True):
+            return {}
+        try:
+            return voz.medir(linhas, cfg, taxa=int(cfg_audio.get("sample_rate", 44100)),
+                             log=print)
+        except Exception as exc:  # nunca derruba a montagem por causa da voz
+            print(f"[roteiro] nao medi as falas ({exc}); plano segue sem ajuste")
+            return {}
+
+    def _voz(self, out_dir: Path) -> Path | None:
+        """`voz.wav` da geracao (narration.json falado), ou None."""
+        from ..content import voz
+        cfg = self.render_config.get("audio", {})
+        return voz.gerar(out_dir, cfg.get("voz"),
+                         taxa=int(cfg.get("sample_rate", 44100)))
+
+    def gerar_trilha(self, regerar: bool = False, seed: int = 7) -> None:
+        from ..video import trilha
+        if not trilha.disponivel():
+            print("[trilha] numpy nao instalado (pip install numpy)")
+            return
+        caminho = trilha.garantir_trilha(ASSETS / "music", seed=seed, regerar=regerar)
+        print(f"[trilha] {caminho}")
+
     # ---------------------------------------------------------------- internal
     def _write_data(self, out_dir: Path, generation: dict) -> None:
         _write_json(out_dir / "generation.json", generation)
@@ -517,6 +571,19 @@ class PipelineController:
         selector = AssetSelector(AssetCatalog(ASSETS))
         builder = TimelineBuilder(self.editing_config, self.captions, selector)
         edit_plan = builder.build(engine.fork("editing"), generation, out_dir)
+        # Roteiro solido: a fala e sintetizada e MEDIDA antes de o plano ser
+        # cronometrado; cada cena cresce ate a narracao dela terminar. Sem
+        # voz (desligada, sem rede), o plano fica como a direcao montou.
+        script = self.narration.build_script(engine.fork("narration"), edit_plan, generation)
+        medidas = self._medir_falas(script["lines"])
+        if medidas:
+            from ..editing.timeline_builder import ajustar_ao_roteiro
+            edit_plan = ajustar_ao_roteiro(edit_plan, script["lines"], medidas,
+                                           self.editing_config)
+            script = self.narration.build_script(engine.fork("narration"), edit_plan,
+                                                 generation)
+            print(f"[roteiro] {len(medidas)} fala(s) medidas; plano ajustado para "
+                  f"{edit_plan['total_duration']}s")
         _write_json(out_dir / "edit_plan.json", edit_plan)
         _write_json(out_dir / "captions.json", [
             {"start": e["start"], "duration": e["duration"], "text": e["caption"]}
@@ -528,7 +595,6 @@ class PipelineController:
                     artifacts.evaluation(generation, edit_plan, self.editing_config))
         (out_dir / "subtitles.srt").write_text(artifacts.srt(edit_plan),
                                                encoding="utf-8")
-        script = self.narration.build_script(engine.fork("narration"), edit_plan, generation)
         _write_json(out_dir / "narration.json", script)
 
     def _render_media(self, out_dir: Path, generation: dict, preview: bool) -> None:
@@ -540,9 +606,18 @@ class PipelineController:
             edit_plan = json.load(fh)
         engine = RandomEngine(generation["seed"])
         selector = AssetSelector(AssetCatalog(ASSETS))
-        music = selector.select_music(engine.fork("music"))
+        music = self._musica(engine)
         # sempre dois videos: celular (9:16) e normal (16:9)
+        voz_track = self._voz(out_dir)
+        palavras = None
+        if voz_track is not None:
+            from ..content.voz import caminho_palavras
+            palavras = caminho_palavras(voz_track)
         for profile in self.perfis:
             renderer = VideoRenderer(self.render_config, profile, preview)
-            final = renderer.render(edit_plan, generation, out_dir, music)
+            final = renderer.render(edit_plan, generation, out_dir, music,
+                                    voz=voz_track, gancho_b=edit_plan.get("gancho_b"),
+                                    palavras=palavras)
             print(f"[render:{profile}] {final} ({edit_plan['total_duration']}s)")
+            if getattr(renderer, "ultimo_gancho_b", None):
+                print(f"[render:{profile}] gancho B -> {renderer.ultimo_gancho_b.name}")

@@ -127,3 +127,34 @@ def artefato_path(generation_id: str, slot: str = slots.CHARACTER) -> Path:
 # a fila precisa dessas respostas de DENTRO do lock dela, e um modulo que so
 # depende de config e slots e o unico que pode ser chamado de la sem risco de
 # reentrancia. Este arquivo ficou so com caminhos.
+
+
+# ----------------------------------------------------------- payoff em video
+def payoff_video_ativo(ajustes: dict | None = None) -> bool:
+    """O video do Digen (slot character_weapon) esta ligado?
+
+    `payoff_video: false` em config/identity.json desliga o gerador de video:
+    o job nao e enfileirado, o worker nao abre o Digen, e a montagem usa a
+    IMAGEM do personagem com a arma como payoff. Existe porque o gerador
+    de video quebra (fila do site estourando, conta sem credito) e a build
+    nao pode ficar refem dele - as imagens sozinhas ja fazem o video.
+    """
+    if ajustes is None:
+        ajustes = settings()
+    return bool(ajustes.get("payoff_video", True))
+
+
+def jobs_ativos(ajustes: dict | None = None) -> tuple[str, ...]:
+    """Os jobs de identidade a enfileirar/processar com a config atual."""
+    from . import slots
+    if payoff_video_ativo(ajustes):
+        return tuple(slots.JOBS)
+    return tuple(s for s in slots.JOBS if s != slots.CHARACTER_WEAPON)
+
+
+def slots_ativos(ajustes: dict | None = None) -> tuple[str, ...]:
+    """Os slots de entrega (sem a referencia intermediaria) ativos."""
+    from . import slots
+    if payoff_video_ativo(ajustes):
+        return tuple(slots.SLOTS)
+    return tuple(s for s in slots.SLOTS if s != slots.CHARACTER_WEAPON)

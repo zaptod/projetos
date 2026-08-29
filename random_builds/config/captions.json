@@ -167,6 +167,29 @@
         "character": [
             "AGORA O PERSONAGEM",
             "COMECA O PERSONAGEM"
+        ],
+        "luta": [
+            "HORA DA VERDADE",
+            "AGORA ELE LUTA",
+            "PRA ARENA"
         ]
-    }
+    },
+    "hook_payoff": [
+        "ESSE CARA SAIU 100% DA ROLETA",
+        "A SORTE MONTOU ESSE AQUI",
+        "OLHA O QUE A ROLETA CRIOU",
+        "NINGUEM ESCOLHEU NADA. SAIU ISSO",
+        "ELE NASCEU DE 14 ROLETAS"
+    ],
+    "hook_absurdo": [
+        "{VALUE} DE {CATEGORY}. ISSO E REAL",
+        "{CATEGORY}: {VALUE}. PASSOU DO PONTO",
+        "{VALUE} DE {CATEGORY}? A ROLETA SURTOU"
+    ],
+    "outro_com_estreia": [
+        "A ESTREIA COMPLETA TA NO PROXIMO VIDEO",
+        "ELE SOBREVIVE A ARENA? PROXIMO VIDEO",
+        "A LUTA INTEIRA SAI NO PROXIMO",
+        "QUER VER A LUTA INTEIRA? SEGUE"
+    ]
 }

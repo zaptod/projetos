@@ -34,6 +34,19 @@ from .client import BrowserMorreu, EsperaEstourou, GeracaoFalhou
 TOLERANCIA_RETRATO = 1.02
 
 
+# O X do modal de login do Picasso (icone lucide-x dentro do dialogo). Desde
+# 29/08/2026 o site abre esse modal com a sessao do perfil VALIDA - e so um
+# aviso que precisa ser fechado. Tentar logar por ele (o caminho antigo)
+# quebrava: "o modal nao fechou depois de preencher as credenciais".
+FECHAR_MODAL = [
+    "div[role='dialog'] button:has(svg.lucide-x)",
+    "[role='dialog'] button:has(svg.lucide-x)",
+    "div[role='dialog'] button[aria-label*='lose' i]",
+    "div[role='dialog'] button[aria-label*='echar' i]",
+    "button:has(svg.lucide-x)",
+]
+
+
 class PicassoClient:
     def __init__(self, ctx, page, ajustes: dict, rng=None,
                  ao_descobrir_espaco=None):
@@ -51,6 +64,10 @@ class PicassoClient:
         self.prompt_enviado: str | None = None
         self.enviado_em: datetime | None = None
         self._ao_descobrir_espaco = ao_descobrir_espaco
+        # Quantas vezes o modal de login foi FECHADO nesta pagina: na
+        # primeira ele e so aviso; se voltar depois de fechado, a sessao
+        # expirou de verdade e o caminho e logar por ele.
+        self._modal_fechado = 0
 
     # -------------------------------------------------------------- creditos
     def creditos(self, espera: float = 0.0) -> int | None:
@@ -97,6 +114,53 @@ class PicassoClient:
             esperar_hidratacao(self.page,
                                float(self.ajustes.get("hydration_timeout", 45)))
             pausa_humana(self.rng, 1.0, 2.0)
+            self._modal_fechado = 0
+        # O aviso de login aparece logo que a pagina carrega: fechar aqui
+        # evita que o primeiro clique util seja interceptado por ele.
+        self._fechar_modal_de_login()
+
+    def _modal_de_login_visivel(self) -> bool:
+        try:
+            campo = self.page.locator("#auth-card-email")
+            if campo.count() and campo.first.is_visible():
+                return True
+            dialogo = self.page.locator("div[role='dialog']:has(svg.lucide-x)")
+            return bool(dialogo.count() and dialogo.first.is_visible())
+        except Exception:
+            return False
+
+    def _fechar_modal_de_login(self, espera: float = 6.0) -> bool:
+        """Fecha o aviso de login pelo X. True se ele estava aberto e fechou.
+
+        Nao loga: o perfil do Chrome ja tem a sessao. O modal e um aviso que
+        o site passou a mostrar (29/08/2026) e que so precisa ser fechado.
+        """
+        if not self._modal_de_login_visivel():
+            return False
+        for seletor in FECHAR_MODAL:
+            try:
+                botao = self.page.locator(seletor)
+                if not botao.count():
+                    continue
+                alvo = botao.first
+                if not alvo.is_visible():
+                    continue
+                pausa_humana(self.rng, 0.3, 0.8)
+                alvo.click(timeout=5000)
+            except Exception:
+                continue
+            limite = time.monotonic() + espera
+            while time.monotonic() < limite:
+                time.sleep(0.4)
+                if not self._modal_de_login_visivel():
+                    self._modal_fechado += 1
+                    print("[picasso] modal de login fechado pelo X "
+                          "(a sessao do perfil continua valendo).")
+                    time.sleep(0.6)
+                    return True
+        print("[picasso] o modal de login esta aberto e nenhum X respondeu; "
+              "tentando logar por ele.")
+        return False
 
     def preparar_espaco(self, espaco: str | None) -> list[str]:
         """Mesma assinatura do Digen. Devolve a foto do que ja esta na tela."""
@@ -264,6 +328,10 @@ class PicassoClient:
                 return False
         except Exception:
             return False
+        # Primeiro o X: o modal costuma ser so aviso com a sessao valida. Se
+        # ele voltar DEPOIS de fechado, ai sim e login de verdade.
+        if self._modal_fechado == 0 and self._fechar_modal_de_login():
+            return True
         credenciais = iconfig.load_credentials("picasso")
         if credenciais is None:
             raise GeracaoFalhou(

@@ -626,11 +626,15 @@ class Painel(tk.Tk):
         caixa_auto.pack(side="right", padx=8)
 
         colunas = ("build", "personagem") + tuple(
-            chave for chave, _r, _s in fluxo.ETAPAS) + ("passo",)
+            chave for chave, _r, _s in fluxo.ETAPAS) + tuple(
+            f"ret_{chave}" for chave, _r in fluxo.RETENCAO) + ("dur", "passo")
         self.tabela_fluxo = ttk.Treeview(pai, columns=colunas, show="headings",
                                          height=11)
         cabecalhos = {"build": ("BUILD", 120), "personagem": ("PERSONAGEM", 150),
-                      "passo": ("PRÓXIMO PASSO", 420)}
+                      "dur": ("DUR", 52), "passo": ("PRÓXIMO PASSO", 420)}
+        # Revisao de retencao (29/08): voz narrada, luta no video, gancho A/B.
+        for chave, rotulo in fluxo.RETENCAO:
+            cabecalhos[f"ret_{chave}"] = (rotulo, 50)
         for coluna in colunas:
             titulo, largura = cabecalhos.get(
                 coluna, (fluxo.CURTOS.get(coluna, coluna.upper()), 62))
@@ -668,7 +672,8 @@ class Painel(tk.Tk):
         self.fluxo_legenda = tk.Label(
             pai, bg=BG, fg=DIM, font=("Segoe UI", 8), justify="left", anchor="w",
             text="✓ pronto    ▶ gerando agora    … na fila    ✕ falhou    · não começou"
-                 "        (as etapas seguem a ordem em que acontecem)")
+                 "        VOZ = narração no vídeo · LUTA = round da estreia no fim "
+                 "· A/B = gancho alternativo renderizado")
         self.fluxo_legenda.pack(fill="x", padx=20, pady=(0, 8))
 
     _FLUXO_SIMBOLO = {"ok": "✓", "rodando": "▶", "fila": "…",
@@ -732,10 +737,13 @@ class Painel(tk.Tk):
                 tag = "andando"
             else:
                 tag = "neutra"
+            ret = geracao.get("retencao") or {}
+            extras = ["✓" if ret.get(chave) else "·" for chave, _r in fluxo.RETENCAO]
+            dur = f"{ret['duracao']:.0f}s" if ret.get("duracao") else ""
             self.tabela_fluxo.insert(
                 "", "end", iid=geracao["generation_id"], tags=(tag,),
                 values=(geracao["generation_id"], geracao["personagem"],
-                        *simbolos, geracao["proximo_passo"]))
+                        *simbolos, *extras, dur, geracao["proximo_passo"]))
         if selecionado and self.tabela_fluxo.exists(selecionado[0]):
             self.tabela_fluxo.selection_set(selecionado)
 
@@ -922,6 +930,12 @@ class Painel(tk.Tk):
         tk.Label(setup, text="uma vez só:", bg=BG, fg=DIM, font=FONT).pack(side="left")
         self._botao(setup, "🔑  Autorizar upload no YouTube",
                     self._oauth_upload).pack(side="left", padx=6)
+        self._botao(setup, "🔑  Autorizar analytics (retenção)",
+                    lambda: self._oauth_upload(com_analytics=True)).pack(side="left")
+        self._botao(setup, "📊  Atualizar métricas",
+                    lambda: self._metricas(True)).pack(side="left", padx=6)
+        self._botao(setup, "📈  Ver métricas",
+                    lambda: self._metricas(False)).pack(side="left")
         self._botao(setup, "🔑  Login no TikTok",
                     self._tiktok_login).pack(side="left")
         self._botao(setup, "🧪  Sondar tela do TikTok",
@@ -951,9 +965,14 @@ class Painel(tk.Tk):
         self.tabela_pub.delete(*self.tabela_pub.get_children())
         for video in self._pub_videos.values():
             quando = datetime.datetime.fromtimestamp(video.quando)
+            # Pendencia (sem payoff, sem luta, mp4 velho) aparece no titulo:
+            # e o que impede publicar build incompleta sem perceber.
+            titulo = video.titulo
+            if getattr(video, "pendencias", None):
+                titulo = "⚠ " + titulo
             self.tabela_pub.insert(
                 "", "end", iid=video.id,
-                values=(video.titulo, video.origem,
+                values=(titulo, video.origem,
                         f"{video.bytes / 1e6:.0f}", quando.strftime("%d/%m %H:%M")))
         if selecionado and self.tabela_pub.exists(selecionado[0]):
             self.tabela_pub.selection_set(selecionado)
@@ -973,6 +992,8 @@ class Painel(tk.Tk):
             (self.tabela_pub.selection() or [None])[0])
         if video is None:
             return
+        for pendencia in getattr(video, "pendencias", None) or []:
+            self._log(f"[publicar] {video.id}: {pendencia}", "erro")
         self.texto_pub_titulo.delete("1.0", "end")
         self.texto_pub_titulo.insert("1.0", video.titulo)
         self.texto_pub_desc.delete("1.0", "end")
@@ -1075,8 +1096,9 @@ class Painel(tk.Tk):
             return atual
         return salvas.client_id, salvas.client_secret
 
-    def _oauth_upload(self):
-        """Re-autoriza o YouTube pedindo TAMBÉM o escopo de upload."""
+    def _oauth_upload(self, com_analytics: bool = False):
+        """Re-autoriza o YouTube pedindo TAMBÉM o escopo de upload (e, com
+        `com_analytics`, o do YouTube Analytics — a curva de retenção)."""
         cliente, segredo = self._credenciais_youtube()
         if not (cliente and segredo):
             messagebox.showinfo(
@@ -1095,10 +1117,13 @@ class Painel(tk.Tk):
             "Acessar (o app é seu)\n"
             "3. marque a permissão de gerenciar/enviar vídeos\n\n"
             "A janela avisa quando terminar; o console mostra o resultado.")
+        extras = ["--com-analytics"] if com_analytics else []
         self._rodar([PY, "-m", "neural_fights.tools.youtube_oauth",
                      "--client-id", cliente, "--client-secret", segredo,
-                     "--com-upload"],
-                    rotulo="youtube_oauth --com-upload (credenciais ocultas)")
+                     "--com-upload", *extras],
+                    rotulo="youtube_oauth --com-upload"
+                           + (" --com-analytics" if com_analytics else "")
+                           + " (credenciais ocultas)")
 
     def _tiktok_login(self):
         self._rodar([PY, "-m", "src.publicar.tiktok", "--login"],
@@ -1232,6 +1257,8 @@ class Painel(tk.Tk):
         caixa_watch, self.var_digen_watch = self._check(linha_ident, "Ficar em pe")
         caixa_watch.pack(side="left", padx=8)
 
+        self._card_retencao(pai)
+
         # galeria de videos prontos
         galeria_topo = tk.Frame(pai, bg=BG)
         galeria_topo.pack(fill="x", padx=20, pady=(10, 2))
@@ -1247,13 +1274,14 @@ class Painel(tk.Tk):
 
         corpo = tk.Frame(pai, bg=BG)
         corpo.pack(fill="both", expand=True, padx=20, pady=(2, 10))
-        cols = ("geracao", "nota", "duracao", "formatos")
+        cols = ("geracao", "nota", "duracao", "formatos", "retencao")
         self.tabela_videos = ttk.Treeview(corpo, columns=cols, show="headings",
                                           selectmode="browse")
         for coluna, texto, largura in (("geracao", "Geração", 170),
                                        ("nota", "Nota final", 210),
                                        ("duracao", "Duração", 90),
-                                       ("formatos", "Formatos prontos", 200)):
+                                       ("formatos", "Formatos prontos", 200),
+                                       ("retencao", "Voz · luta · A/B", 150)):
             self.tabela_videos.heading(coluna, text=texto)
             self.tabela_videos.column(coluna, width=largura, anchor="w")
         self.tabela_videos.pack(side="left", fill="both", expand=True)
@@ -1410,6 +1438,176 @@ class Painel(tk.Tk):
         self._rodar([PY, "-u", "-X", "utf8", "main.py", "generate-video",
                      "--generation-only", "--count", quantidade], RANDOM_BUILDS)
 
+    # ------------------------------------------------- retencao (29/08/2026)
+    _VOZES = ("pt-BR-AntonioNeural", "pt-BR-FranciscaNeural",
+              "pt-BR-ThalitaMultilingualNeural")
+
+    def _card_retencao(self, pai):
+        """Os ajustes da revisao de retencao, editaveis sem abrir JSON.
+
+        Cada caixa e uma chave de config/editing.json ou config/render.json;
+        `Salvar ajustes` grava os dois arquivos preservando o formato. O que
+        muda de verdade o video e o proximo render — por isso o card fica ao
+        lado de GERAR e RE-RENDERIZAR, nao numa tela de configuracao.
+        """
+        card = self._card(pai, "RETENÇÃO — som, gancho, luta no fim, métricas")
+        card.pack(fill="x", padx=20, pady=(8, 0))
+        self.lbl_retencao = tk.Label(card, text="lendo...", bg=CARD, fg=DIM,
+                                     font=FONT, justify="left", anchor="w")
+        self.lbl_retencao.pack(anchor="w")
+
+        linha1 = tk.Frame(card, bg=CARD)
+        linha1.pack(anchor="w", pady=(6, 0))
+        self.var_ret: dict[str, tk.BooleanVar] = {}
+        for chave, rotulo in (("gancho_payoff", "Gancho com a imagem do personagem"),
+                              ("gancho_ab", "Gancho B (A/B)"),
+                              ("revelacao_cedo", "Personagem cedo"),
+                              ("luta", "Luta no fim")):
+            caixa, var = self._check(linha1, rotulo)
+            caixa.pack(side="left", padx=(0, 8))
+            self.var_ret[chave] = var
+        linha2 = tk.Frame(card, bg=CARD)
+        linha2.pack(anchor="w", pady=(2, 0))
+        for chave, rotulo in (("voz", "Voz narrada"),
+                              ("trilha", "Trilha sintetizada"),
+                              ("ducking", "Abaixar música sob a fala"),
+                              ("payoff_video", "Vídeo do payoff (Digen)")):
+            caixa, var = self._check(linha2, rotulo)
+            caixa.pack(side="left", padx=(0, 8))
+            self.var_ret[chave] = var
+        tk.Label(linha2, text="voz:", bg=CARD, fg=DIM, font=FONT).pack(side="left")
+        self.combo_voz = ttk.Combobox(linha2, width=30, state="readonly",
+                                      values=self._VOZES + ("sapi (voz do Windows)",))
+        self.combo_voz.pack(side="left", padx=4)
+
+        linha3 = tk.Frame(card, bg=CARD)
+        linha3.pack(anchor="w", pady=(8, 2))
+        self._botao_primario(linha3, "💾  Salvar ajustes",
+                             self._salvar_ajustes_retencao).pack(side="left")
+        self._botao(linha3, "🎵  Gerar trilha", self._gerar_trilha).pack(side="left", padx=8)
+        self._botao(linha3, "🔈  Testar voz", self._testar_voz).pack(side="left")
+        self._botao(linha3, "📊  Atualizar métricas",
+                    lambda: self._metricas(True)).pack(side="left", padx=8)
+        self._botao(linha3, "📈  Ver métricas",
+                    lambda: self._metricas(False)).pack(side="left")
+        self._dica(linha3, "As métricas vêm da API do YouTube; a curva de retenção "
+                           "exige 'Autorizar analytics' na página Publicar")
+        self._carregar_ajustes_retencao()
+
+    @staticmethod
+    def _ler_config_rb(nome: str) -> tuple[dict, bool]:
+        import json
+        bruto = (RANDOM_BUILDS / "config" / nome).read_bytes()
+        return json.loads(bruto.decode("utf-8-sig")), b"\r\n" in bruto
+
+    @staticmethod
+    def _gravar_config_rb(nome: str, dados: dict, crlf: bool) -> None:
+        import json
+        texto = json.dumps(dados, ensure_ascii=False, indent=4) + "\n"
+        if crlf:
+            texto = texto.replace("\n", "\r\n")
+        (RANDOM_BUILDS / "config" / nome).write_bytes(texto.encode("utf-8"))
+
+    def _carregar_ajustes_retencao(self):
+        try:
+            edicao, _ = self._ler_config_rb("editing.json")
+            render, _ = self._ler_config_rb("render.json")
+            identidade, _ = self._ler_config_rb("identity.json")
+        except (OSError, ValueError) as erro:
+            self.lbl_retencao.configure(text=f"não li a config: {erro}", fg=RED)
+            return
+        self.var_ret["payoff_video"].set(bool(identidade.get("payoff_video", True)))
+        gancho = edicao.get("gancho") or {}
+        audio = render.get("audio") or {}
+        voz = audio.get("voz") or {}
+        self.var_ret["gancho_payoff"].set(bool(gancho.get("payoff", True)))
+        self.var_ret["gancho_ab"].set(bool(gancho.get("ab", True)))
+        self.var_ret["revelacao_cedo"].set(bool(edicao.get("revelacao_cedo", True)))
+        self.var_ret["luta"].set(bool((edicao.get("luta_no_build") or {}).get("ativa", True)))
+        self.var_ret["voz"].set(bool(voz.get("ativa", True)))
+        self.var_ret["trilha"].set(bool(audio.get("trilha_procedural", True)))
+        self.var_ret["ducking"].set(bool(audio.get("ducking", True)))
+        if voz.get("motor") == "sapi":
+            self.combo_voz.set("sapi (voz do Windows)")
+        else:
+            self.combo_voz.set(voz.get("voz") or self._VOZES[0])
+
+        musicas = [p.name for p in (RANDOM_BUILDS / "assets" / "music").glob("*")
+                   if p.suffix.lower() in (".mp3", ".wav", ".ogg", ".m4a", ".flac")]
+        cache = RANDOM_BUILDS / "outputs" / "_voz_cache"
+        falas = len(list(cache.glob("*"))) if cache.is_dir() else 0
+        payoff = ("vídeo (Digen)" if identidade.get("payoff_video", True)
+                  else "imagem personagem+arma (Digen desligado)")
+        self.lbl_retencao.configure(
+            fg=DIM,
+            text=(f"payoff: {payoff}   ·   "
+                  f"trilha: {', '.join(musicas) if musicas else 'nenhuma (clique Gerar trilha)'}"
+                  f"   ·   voz: {voz.get('motor', 'edge')} / {voz.get('voz', '')}"
+                  f" ({falas} fala(s) em cache)   ·   loudness alvo {audio.get('loudnorm', -14)} LUFS"))
+
+    def _salvar_ajustes_retencao(self):
+        try:
+            edicao, crlf_e = self._ler_config_rb("editing.json")
+            render, crlf_r = self._ler_config_rb("render.json")
+            edicao.setdefault("gancho", {})["payoff"] = self.var_ret["gancho_payoff"].get()
+            edicao["gancho"]["ab"] = self.var_ret["gancho_ab"].get()
+            edicao["revelacao_cedo"] = self.var_ret["revelacao_cedo"].get()
+            edicao.setdefault("luta_no_build", {})["ativa"] = self.var_ret["luta"].get()
+            audio = render.setdefault("audio", {})
+            voz = audio.setdefault("voz", {})
+            voz["ativa"] = self.var_ret["voz"].get()
+            escolha = self.combo_voz.get()
+            if escolha.startswith("sapi"):
+                voz["motor"] = "sapi"
+            else:
+                voz["motor"] = "edge"
+                voz["voz"] = escolha
+            audio["trilha_procedural"] = self.var_ret["trilha"].get()
+            audio["ducking"] = self.var_ret["ducking"].get()
+            identidade, crlf_i = self._ler_config_rb("identity.json")
+            identidade["payoff_video"] = self.var_ret["payoff_video"].get()
+            self._gravar_config_rb("editing.json", edicao, crlf_e)
+            self._gravar_config_rb("render.json", render, crlf_r)
+            self._gravar_config_rb("identity.json", identidade, crlf_i)
+        except (OSError, ValueError) as erro:
+            messagebox.showerror("Retenção", f"não consegui salvar: {erro}")
+            return
+        self._log("[retenção] ajustes salvos em config/editing.json, render.json e "
+                  "identity.json — valem a partir do próximo render; o worker de "
+                  "identidade precisa ser reiniciado para ver o payoff ligado/desligado.",
+                  "fim")
+        self._carregar_ajustes_retencao()
+
+    def _gerar_trilha(self):
+        self._rodar([PY, "-u", "-X", "utf8", "main.py", "trilha"], RANDOM_BUILDS,
+                    rotulo="gerar trilha sintetizada")
+        self.after(4000, self._carregar_ajustes_retencao)
+
+    def _testar_voz(self):
+        """Sintetiza uma fala com a voz configurada e toca no player padrão."""
+        def tarefa():
+            try:
+                from src.content import voz as voz_mod
+                render, _ = self._ler_config_rb("render.json")
+                cfg = voz_mod.config((render.get("audio") or {}).get("voz"))
+                caminho = voz_mod.sintetizar(
+                    "Vamos criar um personagem completamente aleatório. Classe? "
+                    "Berserker. Agora sim.", cfg,
+                    log=lambda t: self._fila.put(("linha", t)))
+                os.startfile(str(caminho))
+                self._fila.put(("fim", f"voz ok: {cfg['motor']} ({caminho.name})", 0))
+            except Exception as erro:
+                self._fila.put(("fim", f"teste de voz falhou: {erro}", 1))
+        self._log(">>> testar voz", "cmd")
+        threading.Thread(target=tarefa, daemon=True).start()
+
+    def _metricas(self, atualizar: bool):
+        args = [PY, "-u", "-X", "utf8", "main.py", "metricas"]
+        if atualizar:
+            args.append("--atualizar")
+        self._rodar(args, RANDOM_BUILDS,
+                    rotulo="métricas" + (" --atualizar" if atualizar else ""))
+
     def _atualizar_geracoes(self):
         if not hasattr(self, "combo_geracao"):
             return
@@ -1446,10 +1644,16 @@ class Painel(tk.Tk):
                 formatos.append("celular")
             if (pasta / "final_normal.mp4").exists():
                 formatos.append("normal")
+            ret = fluxo.retencao_de(pasta)
+            marcas = " · ".join(
+                ("voz" if ret["voz"] else "sem voz",
+                 "luta" if ret["luta"] else "sem luta",
+                 "A/B" if ret["gancho_b"] else "só A"))
             self.tabela_videos.insert(
                 "", "end", iid=nome,
                 values=(nome, nota, duracao,
-                        " + ".join(formatos) if formatos else "(sem video)"))
+                        " + ".join(formatos) if formatos else "(sem video)",
+                        marcas if formatos else ""))
         if selecionado and self.tabela_videos.exists(selecionado[0]):
             self.tabela_videos.selection_set(selecionado)
 

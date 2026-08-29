@@ -29,17 +29,63 @@ def _duracao(caminho: Path) -> float | None:
     return _probe_duration(caminho)
 
 
+def modelo_em_uso(ajustes: dict) -> str:
+    """O modelo que o payoff vai pedir: o de referencia quando configurado,
+    senao o de texto."""
+    referencias = ajustes.get("referencias") or {}
+    return str(referencias.get("modelo") or ajustes.get("modelo") or "")
+
+
+def credito_bloqueia(ajustes: dict, provedor: str = "digen") -> bool:
+    """Saldo zero impede de gerar? So quando o modelo em uso e PAGO.
+
+    O contador do Digen mostra 0 para o plano Free, mas o Real Motion (a
+    lista branca `modelos_permitidos`) e incluso no plano e continua
+    gerando — o payoff nao custa credito. Abortar a passada por "sem
+    creditos" deixava 27 de 64 builds sem payoff a toa. Um modelo fora da
+    lista branca (Kling, Runway...) e cobrado por geracao: ai o saldo
+    manda. `creditos_obrigatorios: true` na config forca o bloqueio antigo.
+    """
+    if ajustes.get("creditos_obrigatorios"):
+        return True
+    if provedor != "digen":
+        return False
+    permitidos = {str(m) for m in (ajustes.get("modelos_permitidos") or [])}
+    modelo = modelo_em_uso(ajustes)
+    return bool(permitidos) and modelo not in permitidos
+
+
 def _rerender(generation_id: str, preview: bool = False) -> None:
     """Reconstroi o video da roleta agora que o clipe existe.
 
     `rerender` nunca re-rola a roleta: reusa o generation.json gravado. Com
     `refazer_edicao` a timeline e remontada de `RandomEngine(seed)` — sai
     identica, mais o evento `identity`.
+
+    Roda em SUBPROCESSO, nao neste processo, por dois motivos medidos em
+    29/08: (1) o worker em `--watch` fica dias de pe e um render em memoria
+    usa o codigo de quando ele subiu — depois de uma atualizacao ele
+    misturava modulos novos e velhos e entregava um plano antigo; (2) um
+    render que estoura nao pode derrubar o worker nem travar a fila. O
+    subprocesso le o codigo do disco e falha sozinho.
     """
-    from ..pipeline.controller import PipelineController
-    print(f"[identity] re-renderizando {generation_id} com o clipe...")
-    PipelineController().rerender(generation_id, preview=preview,
-                                  refazer_edicao=True)
+    import subprocess
+    import sys
+    raiz = Path(__file__).resolve().parents[2]
+    comando = [sys.executable, "-u", "-X", "utf8", "main.py", "generate-video",
+               "--rerender", generation_id, "--refazer-edicao"]
+    if preview:
+        comando.append("--preview")
+    print(f"[identity] re-renderizando {generation_id} com o clipe...", flush=True)
+    try:
+        resultado = subprocess.run(comando, cwd=str(raiz), timeout=3600,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"[identity] re-render de {generation_id} nao rodou: {exc}", flush=True)
+        return
+    if resultado.returncode != 0:
+        print(f"[identity] re-render de {generation_id} terminou com codigo "
+              f"{resultado.returncode} (veja as linhas acima).", flush=True)
 
 
 def _generation(generation_id: str) -> dict | None:
@@ -173,7 +219,12 @@ def _falta_algum_slot(generation_id: str, job_id: str) -> bool:
     ultimo slot que fecha paga o render; os anteriores so gravam o arquivo.
     """
     try:
-        return bool(queue.em_aberto_da_geracao(generation_id, ignorar_job=job_id))
+        # Job de um slot DESLIGADO (payoff_video=false) nao segura o render:
+        # ele nunca vai fechar.
+        ativos = set(config.jobs_ativos())
+        return any(job.get("slot") in ativos
+                   for job in queue.em_aberto_da_geracao(generation_id,
+                                                         ignorar_job=job_id))
     except Exception:
         # Fila ilegivel nao pode impedir o render: melhor renderizar a mais.
         return False
@@ -545,6 +596,11 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
     """Um browser, um perfil, um login: todos os jobs daquele provedor."""
     sel = provedores.seletores(provedor)
     ajustes = config.settings(provedor)
+    if provedor == "digen" and not config.payoff_video_ativo(ajustes):
+        print("[identity] payoff em video DESLIGADO (payoff_video=false em "
+              "config/identity.json): o Digen nao e aberto; a montagem usa a "
+              "imagem personagem+arma.", flush=True)
+        return 0, None
     max_attempts = int(ajustes.get("max_attempts", 3))
     min_interval = float(ajustes.get("min_interval", 45))
     rng = random.Random()
@@ -580,12 +636,16 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
         saldo = client.creditos()
         if saldo is not None:
             print(f"[identity] creditos em {provedor}: {saldo}")
-            if saldo <= 0:
+            if saldo <= 0 and credito_bloqueia(ajustes, provedor):
                 queue.falhar(job["job_id"],
                              f"conta sem creditos em {provedor}", max_attempts=0)
                 print(f"[identity] {provedor} sem creditos: os jobs seguem na "
                       "fila para quando houver saldo.")
                 return 0, None
+            if saldo <= 0:
+                print(f"[identity] {provedor} com saldo 0, mas o modelo em uso e "
+                      "incluso no plano: segue gerando (se o site recusar, o job "
+                      "falha sozinho).")
 
         while job is not None:
             atual["job_id"] = job["job_id"]

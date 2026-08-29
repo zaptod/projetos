@@ -8,6 +8,7 @@ NENHUMA decisao criativa — so executa o plano, no layout do perfil escolhido.
 """
 from __future__ import annotations
 
+import json
 import math
 import random
 import subprocess
@@ -15,7 +16,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
-from . import roleta_som
+from . import roleta_som, trilha
 from ..visualization.draw_common import (fit_font, fit_font_wrap, gradient,
                                          hex_rgb, load_font, stat_bar)
 
@@ -48,10 +49,18 @@ class VideoRenderer:
     # ------------------------------------------------------------------ public
     def render(self, edit_plan: dict, generation: dict, out_dir: Path,
                music_asset: dict | None = None,
-               out_name: str | None = None) -> Path:
+               out_name: str | None = None, voz: Path | None = None,
+               gancho_b: dict | None = None, palavras: Path | None = None) -> Path:
+        """Executa o plano. `voz` e a trilha falada (voz.wav) e `gancho_b` o
+        evento alternativo de abertura: quando existe, sai tambem um
+        `final_<perfil>_ganchoB.mp4` que so difere no primeiro segmento."""
         seg_dir = out_dir / f"_segments_{self.profile}"
         seg_dir.mkdir(parents=True, exist_ok=True)
         segments: list[Path] = []
+        # Camada por cima de toda cena desenhada: avatar do personagem
+        # (depois de revelado) e a legenda karaoke da voz.
+        self._palavras = self._carregar_palavras(palavras)
+        self._avatar_cache: dict[str, Image.Image] = {}
 
         total = len(edit_plan["events"])
         for i, event in enumerate(edit_plan["events"]):
@@ -63,18 +72,33 @@ class VideoRenderer:
             if self._asset_de_video(event):
                 self._transcode_asset(event, seg)
             else:
-                self._encode_frames(self._frames_for(event, generation, out_dir),
-                                    seg, self._audio_da_roleta(event, seg))
+                self._encode_frames(
+                    self._com_overlay(self._frames_for(event, generation, out_dir), event),
+                    seg, self._audio_do_evento(event, seg))
             segments.append(seg)
             print(f"[progresso] {self.profile} {i + 1}/{total}", flush=True)
 
         concat = seg_dir / "concat.mp4"
         self._concat(segments, concat)
         final = out_dir / (out_name or f"final_{self.profile}.mp4")
-        if music_asset:
-            self._mix_music(concat, Path(music_asset["path"]), final)
-        else:
-            final.write_bytes(concat.read_bytes())
+        musica = Path(music_asset["path"]) if music_asset else None
+        self._mix_final(concat, musica, voz, final)
+        self.ultimo_gancho_b = None
+        if gancho_b and segments:
+            # Gancho alternativo (A/B): so o PRIMEIRO segmento muda; o resto
+            # do video e a mixagem sao os mesmos. Custa um segmento e um
+            # concat, e da o dado que decide qual abertura segura mais.
+            seg_b = seg_dir / "seg_000_ganchoB.mp4"
+            evento_b = dict(gancho_b)
+            evento_b.setdefault("duration", edit_plan["events"][0]["duration"])
+            self._encode_frames(
+                self._com_overlay(self._frames_for(evento_b, generation, out_dir), evento_b),
+                seg_b, self._audio_do_evento(evento_b, seg_b))
+            concat_b = seg_dir / "concat_ganchoB.mp4"
+            self._concat([seg_b, *segments[1:]], concat_b)
+            final_b = final.with_name(f"{final.stem}_ganchoB{final.suffix}")
+            self._mix_final(concat_b, musica, voz, final_b)
+            self.ultimo_gancho_b = final_b
         return final
 
     # ------------------------------------------------------------------ ffmpeg
@@ -166,6 +190,8 @@ class VideoRenderer:
         # credito vira uma etiqueta pequena no topo.
         if event.get("type") == "comentario":
             return self._etiqueta_imagem(event)
+        if event.get("type") == "reaction":
+            return self._etiqueta_imagem(event) if event.get("badge") else None
         placa = event.get("nameplate")
         # Onda 11D: o skill_card da estreia usa a MESMA placa da revelação —
         # nome grande + descrição — sobre o clipe de demonstração.
@@ -247,7 +273,9 @@ class VideoRenderer:
         # transcode simples de sempre — a luta nunca deixa de entrar.
         if event.get("type") == "gameplay" and (event.get("hud") or event.get("callouts")):
             try:
-                self._encode_frames(self._gameplay_frames_compostos(event), out_path)
+                self._encode_frames(
+                    self._com_overlay(self._gameplay_frames_compostos(event), event),
+                    out_path)
                 return
             except Exception as exc:
                 print(f"[render] gameplay composto falhou ({exc}); transcode simples",
@@ -265,11 +293,18 @@ class VideoRenderer:
         mudo = bool(event.get("sem_som"))
 
         if event.get("fit") == "contain":
-            fundo = self.colors["bg_bottom"].lstrip("#")
-            vf = (f"{pre}scale={self.width}:{self.height}:"
-                  f"force_original_aspect_ratio=decrease:flags=lanczos,"
-                  f"pad={self.width}:{self.height}:(ow-iw)/2:(oh-ih)/2:color=0x{fundo},"
-                  f"fps={self.fps},setsar=1")
+            # O que sobra ao redor do clipe e o PROPRIO clipe, coberto,
+            # borrado e escurecido — a mesma regra da still (secao 15):
+            # barra chapada ao lado de um meme entrega que o video foi
+            # montado; o borrado nao.
+            vf = (f"{pre}split[bgi][fgi];"
+                  f"[bgi]scale={self.width}:{self.height}:"
+                  f"force_original_aspect_ratio=increase:flags=bilinear,"
+                  f"crop={self.width}:{self.height},gblur=sigma=28,"
+                  f"eq=brightness=-0.22:saturation=0.85[bg];"
+                  f"[fgi]scale={self.width}:{self.height}:"
+                  f"force_original_aspect_ratio=decrease:flags=lanczos[fg];"
+                  f"[bg][fg]overlay=(W-w)/2:(H-h)/2,fps={self.fps},setsar=1")
         else:
             vf = (f"{pre}scale={self.width}:{self.height}:"
                   f"force_original_aspect_ratio=increase:flags=lanczos,"
@@ -353,8 +388,12 @@ class VideoRenderer:
               f"force_original_aspect_ratio=decrease:flags=lanczos,"
               f"pad={self.width}:{self.height}:(ow-iw)/2:(oh-ih)/2:color=0x{fundo},"
               f"fps={self.fps},setsar=1")
-        cmd = ["ffmpeg", "-loglevel", "error", "-i", str(caminho), "-t", str(duracao),
-               "-vf", vf, "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:"]
+        # -ss ANTES do -i (seek rapido): a luta no fim do video de build entra
+        # so pelo trecho decisivo, com HUD e callouts ja no relogio dele.
+        seek = ["-ss", str(event["start_offset"])] if event.get("start_offset") else []
+        cmd = ["ffmpeg", "-loglevel", "error", *seek, "-i", str(caminho),
+               "-t", str(duracao), "-vf", vf, "-f", "rawvideo", "-pix_fmt", "rgb24",
+               "pipe:"]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, creationflags=NO_WINDOW)
         tamanho = self.width * self.height * 3
         hud = self._hud_preparado(event)
@@ -557,15 +596,65 @@ class VideoRenderer:
             if result.returncode != 0:
                 raise RuntimeError(f"Concat falhou: {result.stderr[-800:]}")
 
-    def _mix_music(self, video: Path, music: Path, out_path: Path) -> None:
-        volume = self.audio_cfg.get("music_volume", 0.22)
-        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(video),
-               "-stream_loop", "-1", "-i", str(music),
-               "-filter_complex",
-               f"[1:a]volume={volume}[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0",
-               "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", str(out_path)]
+    def _mix_final(self, video: Path, music: Path | None, voz: Path | None,
+                   out_path: Path) -> None:
+        """Mixagem final: som dos segmentos + trilha (em loop) + voz, normalizado.
+
+        A trilha e ABAIXADA sob a fala (sidechain): sem isso a voz briga com
+        a musica e o espectador sobe o volume para entender. `loudnorm` no
+        fim poe o arquivo no nivel que as plataformas esperam (-14 LUFS): o
+        video saia a -30 dB de media, que no celular e "mudo". Qualquer
+        falha do ffmpeg entrega o concat como esta — o video nunca deixa de
+        existir por causa da mixagem.
+        """
+        sr = int(self.audio_cfg.get("sample_rate", 44100))
+        alvo = float(self.audio_cfg.get("loudnorm", -14))
+        tem_voz = voz is not None and Path(voz).is_file()
+        tem_musica = music is not None and Path(music).is_file()
+        ducking = tem_voz and tem_musica and bool(self.audio_cfg.get("ducking", True))
+
+        entradas = ["-i", str(video)]
+        cadeia = [f"[0:a]aresample={sr},aformat=channel_layouts=stereo[base]"]
+        mix = ["[base]"]
+        indice = 1
+        if tem_voz:
+            vv = float((self.audio_cfg.get("voz") or {}).get("volume", 1.0))
+            entradas += ["-i", str(voz)]
+            if ducking:
+                cadeia.append(f"[{indice}:a]aresample={sr},volume={vv},asplit=2[v1][v2]")
+            else:
+                cadeia.append(f"[{indice}:a]aresample={sr},volume={vv}[v1]")
+            indice += 1
+        if tem_musica:
+            mv = float(self.audio_cfg.get("music_volume", 0.22))
+            entradas += ["-stream_loop", "-1", "-i", str(music)]
+            cadeia.append(f"[{indice}:a]aresample={sr},volume={mv}[m]")
+            if ducking:
+                cadeia.append("[m][v2]sidechaincompress=threshold=0.03:ratio=6:"
+                              "attack=40:release=400:makeup=1[md]")
+                mix.append("[md]")
+            else:
+                mix.append("[m]")
+            indice += 1
+        if tem_voz:
+            mix.append("[v1]")
+
+        if len(mix) > 1:
+            cadeia.append("".join(mix) + f"amix=inputs={len(mix)}:duration=first:"
+                          "dropout_transition=0:normalize=0[mx]")
+            ultimo = "[mx]"
+        else:
+            ultimo = "[base]"
+        cadeia.append(f"{ultimo}alimiter=limit=0.97,loudnorm=I={alvo}:TP=-1.5:LRA=11,"
+                      f"aresample={sr}[out]")
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", *entradas,
+               "-filter_complex", ";".join(cadeia),
+               "-map", "0:v", "-map", "[out]", "-c:v", "copy",
+               "-c:a", "aac", "-b:a", "160k", "-ar", str(sr), str(out_path)]
         result = subprocess.run(cmd, capture_output=True, text=True, creationflags=NO_WINDOW)
         if result.returncode != 0:
+            print(f"[render] mixagem final falhou ({result.stderr[-300:]}); "
+                  "o video sai sem trilha/voz", flush=True)
             out_path.write_bytes(video.read_bytes())
 
     # ------------------------------------------------------------------ frames
@@ -577,6 +666,8 @@ class VideoRenderer:
 
     def _frames_for(self, event: dict, generation: dict, out_dir: Path):
         kind = event["type"]
+        if kind == "hook" and (event.get("asset") or {}).get("media") == "imagem":
+            return self._hook_frames(event)
         if kind == "roulette":
             return self._roulette_frames(event)
         if kind == "reaction":
@@ -701,25 +792,43 @@ class VideoRenderer:
         highlight_img = self._build_wheel(labels, radius, accent,
                                           highlight=winner,
                                           offset_giro=total_rotation)
+        # Brilho na cor do tier atras da roda quando ela para: o olho le a
+        # qualidade do resultado antes de ler o numero.
+        brilho = self._brilho_do_tier(radius, tier_rgb, roll.get("tier", "AVERAGE"))
 
         header_font = load_font(self.fonts["black"], int(self.ref * 0.075))
+        header_max_w = info_max_w
+        if event.get("avatares") and not self.horizontal:
+            # Com os avatares nos cantos, o titulo cabe entre eles: encolhe a
+            # fonte em vez de deixar o "E" de ENCANTAMENTO atras do rosto.
+            header_max_w = int(self.width * 0.58)
+            header_font = fit_font(roll["category"], self.fonts["black"],
+                                   header_max_w, int(self.ref * 0.075))
         value_font = fit_font_wrap(valor, self.fonts["black"], info_max_w,
                                    int(self.ref * 0.145))
         caption_font = fit_font_wrap(event.get("caption", ""), self.fonts["bold"],
                                      info_max_w, int(self.ref * 0.046))
+        caption_spin = str(event.get("caption_spin") or "")
+        spin_font = (fit_font_wrap(caption_spin, self.fonts["black"], info_max_w,
+                                   int(self.ref * 0.05)) if caption_spin else None)
 
         for i in range(total):
             img = self._bg().copy()
             draw = ImageDraw.Draw(img)
             self._wrapped_center(draw, roll["category"], header_font, y_header,
                                  fill=hex_rgb(accent), stroke=3,
-                                 center_x=px_info, max_width=info_max_w)
+                                 center_x=px_info, max_width=header_max_w)
 
             if i < spin_frames:
                 angle = giro["angulo_em"](i / self.fps)
                 frame_wheel, stopped = wheel_img, False
             else:
                 angle, frame_wheel, stopped = total_rotation, highlight_img, True
+                if brilho is not None:
+                    entrada = min(1.0, (i - spin_frames + 1) / (self.fps * 0.2))
+                    camada = brilho if entrada >= 1 else self._com_alfa(brilho, entrada)
+                    img.paste(camada, (cx - camada.width // 2, cy - camada.height // 2),
+                              camada)
 
             # BICUBIC: com BILINEAR o texto das fatias cintila a cada quadro,
             # que e o que faz o giro parecer "picotado" mesmo a 30 fps.
@@ -741,13 +850,21 @@ class VideoRenderer:
                 # "?": a expectativa mora nesse espaco reservado.
                 draw.text((px_info, y_value), "?", font=value_font,
                           fill=(96, 90, 126), anchor="mm")
+                if spin_font is not None:
+                    # A tensao ANTES do resultado: o que esta em jogo nesta
+                    # roda, no lugar onde a legenda vai aparecer depois.
+                    self._wrapped_center(draw, caption_spin, spin_font, y_caption,
+                                         fill=(214, 208, 240), stroke=3,
+                                         center_x=px_info, max_width=info_max_w)
             else:
                 j = i - spin_frames
                 dx = dy = 0
                 if "screen_shake" in effects or "shake_small" in effects:
                     amp = (10 if "screen_shake" in effects else 4) * max(0.0, 1 - j / (self.fps * 0.5))
                     dx, dy = rng.randint(-1, 1) * amp, rng.randint(-1, 1) * amp
-                scale = 1.0
+                # Todo resultado "cai" na tela (pop curto); os extremos
+                # ganham o soco maior de sempre.
+                scale = 1.0 + 0.16 * max(0.0, 1 - j / (self.fps * 0.16))
                 if "punch_zoom" in effects:
                     scale = 1.25 - 0.25 * min(1.0, j / (self.fps * 0.25))
                 self._wrapped_center(draw, valor, value_font,
@@ -764,6 +881,164 @@ class VideoRenderer:
                     img = ImageEnhance.Color(img).enhance(0.35)
             yield img
         return
+
+    def _brilho_do_tier(self, radius: int, cor, tier: str):
+        """RGBA borrado na cor do tier, ou None para resultado mediano."""
+        if tier in ("AVERAGE", "WEAK"):
+            return None
+        forte = tier in ("INSANE", "TERRIBLE")
+        # Maior que a roda de proposito: o que aparece e o HALO em volta dela.
+        lado = int(radius * 2.8)
+        base = Image.new("RGBA", (lado, lado), (0, 0, 0, 0))
+        d = ImageDraw.Draw(base)
+        margem = int(radius * 0.22)
+        d.ellipse([margem, margem, lado - margem, lado - margem],
+                  fill=(*cor, 150 if forte else 95))
+        return base.filter(ImageFilter.GaussianBlur(int(radius * 0.22)))
+
+    # ------------------------------------------------------- camada de overlay
+    KARAOKE_Y = {"roulette": 0.238, "hook": 0.62, "identity": 0.15,
+                 "comentario": None, "gameplay": 0.17, "nameplate": 0.72,
+                 "stinger": 0.72, "final": 0.74, "outro": 0.72, "synergy": 0.74}
+
+    @staticmethod
+    def _carregar_palavras(caminho: Path | None) -> list[dict]:
+        if caminho is None or not Path(caminho).is_file():
+            return []
+        try:
+            with open(caminho, encoding="utf-8") as fh:
+                dados = json.load(fh)
+        except (OSError, ValueError):
+            return []
+        return sorted((d for d in dados if d.get("texto")), key=lambda d: float(d["t0"]))
+
+    def _com_overlay(self, frames, event: dict):
+        """Avatar do personagem/arma e legenda karaoke sobre cada quadro.
+
+        E uma camada, nao um tipo de evento: qualquer cena desenhada ganha
+        as duas sem saber que elas existem. O tempo absoluto vem do plano
+        (`start` + quadro/fps) — e o que casa a legenda com a voz.
+        """
+        avatares = event.get("avatares") or {}
+        y_karaoke = self.KARAOKE_Y.get(event.get("type"), 0.72)
+        if self.horizontal and event.get("type") == "roulette":
+            # no 16:9 a coluna de texto fica a direita: entre o valor e a legenda
+            y_karaoke = 0.615
+        tem_palavras = bool(self._palavras) and y_karaoke is not None
+        if not avatares and not tem_palavras:
+            yield from frames
+            return
+        inicio = float(event.get("start") or 0.0)
+        for i, img in enumerate(frames):
+            if avatares:
+                self._desenhar_avatares(img, avatares)
+            if tem_palavras:
+                self._desenhar_karaoke(img, event, inicio + i / self.fps, y_karaoke)
+            yield img
+
+    def _avatar(self, caminho: str, diametro: int, cor) -> Image.Image | None:
+        chave = f"{caminho}|{diametro}"
+        if chave in self._avatar_cache:
+            return self._avatar_cache[chave]
+        try:
+            fonte = Image.open(caminho)
+            fonte.load()
+            fonte = fonte.convert("RGB")
+        except Exception:
+            self._avatar_cache[chave] = None
+            return None
+        # recorte quadrado pelo terco de cima (onde fica o rosto), circular
+        lado = min(fonte.width, fonte.height)
+        x0 = (fonte.width - lado) // 2
+        y0 = int((fonte.height - lado) * 0.15)
+        quadrado = fonte.crop((x0, y0, x0 + lado, y0 + lado)).resize(
+            (diametro, diametro), Image.LANCZOS)
+        mascara = Image.new("L", (diametro, diametro), 0)
+        ImageDraw.Draw(mascara).ellipse([0, 0, diametro - 1, diametro - 1], fill=255)
+        anel = int(max(3, diametro * 0.05))
+        saida = Image.new("RGBA", (diametro + anel * 2, diametro + anel * 2), (0, 0, 0, 0))
+        ImageDraw.Draw(saida).ellipse([0, 0, saida.width - 1, saida.height - 1],
+                                      fill=(*cor, 255))
+        saida.paste(quadrado, (anel, anel), mascara)
+        self._avatar_cache[chave] = saida
+        return saida
+
+    def _desenhar_avatares(self, img: Image.Image, avatares: dict) -> None:
+        diametro = int(self.ref * 0.15)
+        margem_x = int(self.width * 0.035)
+        margem_y = int(self.height * (0.03 if self.horizontal else 0.022))
+        fonte = load_font(self.fonts["bold"], int(self.ref * 0.026))
+        draw = ImageDraw.Draw(img)
+        for slot, lado in (("character", "esq"), ("weapon", "dir")):
+            dado = avatares.get(slot)
+            if not dado:
+                continue
+            cor = hex_rgb(self.colors["accent_character" if slot == "character"
+                                      else "accent_weapon"])
+            avatar = self._avatar(dado.get("path", ""), diametro, cor)
+            if avatar is None:
+                continue
+            x = margem_x if lado == "esq" else self.width - margem_x - avatar.width
+            img.paste(avatar, (x, margem_y), avatar)
+            nome = str(dado.get("nome") or "").split(" ")[0].upper()
+            if nome:
+                draw.text((x + avatar.width / 2, margem_y + avatar.height + 4), nome,
+                          font=fonte, fill=(235, 230, 250), anchor="ma",
+                          stroke_width=2, stroke_fill=(15, 12, 30))
+
+    def _linha_ativa(self, t: float) -> list[dict] | None:
+        """As palavras da fala que esta soando em `t` (ou acabou de soar)."""
+        atual = None
+        for palavra in self._palavras:
+            if float(palavra["t0"]) - 0.05 <= t:
+                atual = palavra
+            else:
+                break
+        if atual is None:
+            return None
+        linha = [p for p in self._palavras if p.get("linha") == atual.get("linha")]
+        fim = max(float(p["t1"]) for p in linha)
+        if t > fim + 0.35:
+            return None
+        return linha
+
+    def _desenhar_karaoke(self, img: Image.Image, event: dict, t: float,
+                          y_rel: float) -> None:
+        linha = self._linha_ativa(t)
+        if not linha:
+            return
+        entidade = (event.get("roll") or {}).get("entity") or event.get("entity")
+        accent = hex_rgb(self.colors["accent_weapon" if entidade == "weapon"
+                                     else "accent_character"])
+        if self.horizontal and event.get("type") == "roulette":
+            cx, largura_max = self.width * 0.70, int(self.width * 0.44)
+        else:
+            cx, largura_max = self.width / 2, int(self.width * 0.9)
+        tamanho = int(self.ref * 0.046)
+        espaco = int(tamanho * 0.45)
+        palavras = [str(p["texto"]) for p in linha]
+        while tamanho > int(self.ref * 0.028):
+            fonte = load_font(self.fonts["black"], tamanho)
+            larguras = [fonte.getlength(p) for p in palavras]
+            total = sum(larguras) + espaco * (len(palavras) - 1)
+            if total <= largura_max:
+                break
+            tamanho = int(tamanho * 0.9)
+        draw = ImageDraw.Draw(img)
+        x = cx - total / 2
+        y = self.height * y_rel
+        stroke = max(2, tamanho // 12)
+        for palavra, largura, dado in zip(palavras, larguras, linha):
+            ativa = float(dado["t0"]) <= t < float(dado["t1"]) + 0.05
+            passada = t >= float(dado["t1"]) + 0.05
+            if ativa:
+                caixa = [x - espaco * 0.4, y - tamanho * 0.15,
+                         x + largura + espaco * 0.4, y + tamanho * 1.05]
+                draw.rounded_rectangle(caixa, radius=int(tamanho * 0.25), fill=accent)
+            cor = (255, 255, 255) if (ativa or passada) else (200, 195, 230)
+            draw.text((x, y), palavra, font=fonte, fill=cor, anchor="la",
+                      stroke_width=0 if ativa else stroke, stroke_fill=(15, 12, 30))
+            x += largura + espaco
 
     # Expoente da desaceleracao. Quanto maior, mais a roda RASTEJA no fim —
     # e o rastejo e o que da suspense. 4 foi escolhido olhando: com 3 ela
@@ -790,23 +1065,45 @@ class VideoRenderer:
                 "rotacao_total": rotacao, "duracao": duracao,
                 "angulo_em": angulo_em}
 
-    def _audio_da_roleta(self, event: dict, destino: Path) -> Path | None:
-        """Trilha de estalos deste giro, ou None se o evento nao e roleta."""
+    def _audio_do_evento(self, event: dict, destino: Path) -> Path | None:
+        """Trilha de efeitos deste evento, ou None se ele nao tem som proprio.
+
+        Roleta: os estalos do giro mais o som do resultado (`_audio_da_roleta`).
+        Gancho, stinger, nota final e revelacoes ganham riser/hit/whoosh
+        sintetizados (src/video/trilha.py). Sem numpy, sobra o que sempre
+        houve: os estalos.
+        """
+        taxa = int(self.audio_cfg.get("sample_rate", 44100))
+        volume = float(self.audio_cfg.get("sfx_volume", 0.9))
+        camadas = trilha.sfx_do_evento(event, taxa)
+        if event.get("type") == "roulette":
+            return self._audio_da_roleta(event, destino, camadas)
+        if not camadas:
+            return None
+        return trilha.gravar_mono(destino.with_suffix(".wav"),
+                                  float(event["duration"]), camadas, taxa,
+                                  volume=volume * 0.8)
+
+    def _audio_da_roleta(self, event: dict, destino: Path,
+                         camadas: list | None = None) -> Path | None:
+        """Trilha de estalos deste giro (+ o som do resultado), ou None se o
+        evento nao e roleta. Som e imagem leem da MESMA curva (`_giro`)."""
         if event.get("type") != "roulette":
             return None
+        taxa = int(self.audio_cfg.get("sample_rate", 44100))
+        volume = float(self.audio_cfg.get("sfx_volume", 0.9))
         roll = event.get("roll") or {}
         roda = roll.get("wheel") or {}
         rotulos = roda.get("labels") or [""]
         giro = self._giro(event, rotulos, int(roda.get("winner", 0)))
         tempos = roleta_som.tempos_de_estalo(
             giro["angulo_em"], giro["duracao"], giro["fatias"])
-        if not tempos:
+        if not tempos and not camadas:
             return None
         return roleta_som.gravar(
             destino.with_suffix(".wav"), float(event["duration"]), tempos,
-            taxa=int(self.audio_cfg.get("sample_rate", 44100)),
-            volume=float(self.audio_cfg.get("sfx_volume", 0.9)) * 0.55,
-            clack_em=giro["duracao"])
+            taxa=taxa, volume=volume * 0.55, clack_em=giro["duracao"],
+            camadas=[(q, a, g * volume) for q, a, g in (camadas or [])])
 
     def _build_wheel(self, labels: list[str], radius: int, accent: str,
                      highlight: int | None = None,
@@ -937,6 +1234,74 @@ class VideoRenderer:
     @staticmethod
     def _interp(inicio, fim, t: float):
         return inicio + (fim - inicio) * t
+
+    def _hook_frames(self, event: dict):
+        """Gancho por cima da IMAGEM do personagem pronto (cold open).
+
+        O primeiro segundo do video decidia tudo e mostrava um cartao de
+        texto sobre fundo liso. Agora ele mostra o que o espectador vai
+        ganhar: a imagem do payoff com push-in, uma cortina escura embaixo e
+        o gancho em cima dela. Imagem ilegivel cai no cartao de texto de
+        sempre — o video nunca abre com tela preta.
+        """
+        total = self._n_frames(event["duration"])
+        caminho = self._caminho_do_asset(event)
+        try:
+            fonte = Image.open(caminho)
+            fonte.load()
+            fonte = fonte.convert("RGB")
+        except Exception:
+            yield from self._caption_frames(event)
+            return
+
+        movimento = event.get("motion") or {}
+        zoom_ini, zoom_fim = (movimento.get("zoom") or [1.0, 1.14])[:2]
+        centros = movimento.get("centro") or [[0.5, 0.45], [0.5, 0.38]]
+        (cx0, cy0), (cx1, cy1) = centros[0], centros[-1]
+        escala = min(self.width / fonte.width, self.height / fonte.height)
+        destino = (max(1, int(fonte.width * escala)), max(1, int(fonte.height * escala)))
+        canto = ((self.width - destino[0]) // 2, (self.height - destino[1]) // 2)
+        fundo = (self._fundo_da_still(fonte) if destino != (self.width, self.height)
+                 else None)
+
+        # Cortina: escurece o terco de baixo para o texto nascer legivel
+        # sobre qualquer imagem, sem tarja chapada.
+        cortina = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        faixa = ImageDraw.Draw(cortina)
+        topo = int(self.height * (0.5 if self.horizontal else 0.55))
+        for y in range(topo, self.height):
+            alfa = int(205 * ((y - topo) / max(1, self.height - topo)) ** 0.8)
+            faixa.line([(0, y), (self.width, y)], fill=(8, 6, 16, alfa))
+
+        caption = str(event.get("caption") or "")
+        font = fit_font_wrap(caption, self.fonts["black"],
+                             int(self.width * (0.6 if self.horizontal else 0.9)),
+                             int(self.ref * 0.11), max_lines=3)
+        y_texto = self.height * (0.78 if self.horizontal else 0.8)
+
+        for i in range(total):
+            t = i / max(1, total - 1)
+            suave = t * t * (3 - 2 * t)
+            zoom = max(1.0, self._interp(zoom_ini, zoom_fim, suave))
+            cx = self._interp(cx0, cx1, suave)
+            cy = self._interp(cy0, cy1, suave)
+            largura, altura = fonte.width / zoom, fonte.height / zoom
+            x0 = min(max(cx * fonte.width - largura / 2, 0.0), fonte.width - largura)
+            y0 = min(max(cy * fonte.height - altura / 2, 0.0), fonte.height - altura)
+            quadro = fonte.resize(destino, Image.LANCZOS,
+                                  box=(x0, y0, x0 + largura, y0 + altura))
+            img = fundo.copy() if fundo is not None else self._bg().copy()
+            img.paste(quadro, canto)
+            img = Image.alpha_composite(img.convert("RGBA"), cortina).convert("RGB")
+            draw = ImageDraw.Draw(img)
+            # o texto "cai" na tela nos primeiros quadros e fica pulsando leve
+            entrada = min(1.0, i / max(1.0, self.fps * 0.15))
+            escala_txt = 1.3 - 0.3 * (1 - (1 - entrada) ** 3)
+            escala_txt *= 1 + 0.02 * math.sin(i / self.fps * 6)
+            self._wrapped_center(draw, caption, font, y_texto,
+                                 fill=(245, 242, 255), stroke=6, scale=escala_txt)
+            yield img
+        return
 
     def _still_frames(self, event: dict):
         """Imagem de recompensa como CENA, nunca como cartao parado.

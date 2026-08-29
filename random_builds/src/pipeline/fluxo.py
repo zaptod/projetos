@@ -53,6 +53,37 @@ ROTULOS = {chave: rotulo for chave, rotulo, _ in ETAPAS}
 CURTOS = {"build": "BUILD", "personagem": "PERSON.", "arma": "ARMA",
           "juncao": "JUNÇÃO", "payoff": "VÍDEO", "estreia": "ESTREIA"}
 
+# O que a revisão de retenção (29/08/2026) entrega em cada build, além das
+# etapas: a voz narrada entrou? o round decisivo da estreia está NO vídeo?
+# saiu o gancho alternativo para medir? Colunas do painel e do `fluxo`.
+RETENCAO = (("voz", "VOZ"), ("luta", "LUTA"), ("gancho_b", "A/B"))
+
+
+def retencao_de(out_dir: Path) -> dict:
+    """Leitura pura da pasta da build: voz, luta no vídeo, gancho A/B.
+
+    `estreia_fora_do_video` é o caso que ninguém reporta sozinho: a estreia
+    foi gravada (fight.json existe) mas o plano do vídeo publicável não tem o
+    evento `gameplay` — o vídeo foi montado antes da luta existir e precisa
+    de `--rerender --refazer-edicao`.
+    """
+    out_dir = Path(out_dir)
+    plano = _ler_json(out_dir / "edit_plan.json") or {}
+    eventos = plano.get("events") or []
+    tem_luta = any(e.get("type") == "gameplay" for e in eventos)
+    gancho = None
+    if eventos:
+        gancho = eventos[0].get("variante") or "texto"
+    return {
+        "voz": _arquivo_util(out_dir / "voz.wav"),
+        "luta": tem_luta,
+        "gancho_b": _arquivo_util(out_dir / "final_celular_ganchoB.mp4"),
+        "gancho": gancho,
+        "duracao": float(plano.get("total_duration") or 0.0),
+        "estreia_fora_do_video": bool(
+            (out_dir / "estreia" / "fight.json").is_file() and eventos and not tem_luta),
+    }
+
 
 def _ler_json(caminho: Path):
     try:
@@ -111,8 +142,9 @@ def _estado_do_slot(gid: str, slot: str, jobs: dict) -> dict:
     return {"estado": estado, "detalhe": detalhe}
 
 
-def _proximo_passo(gid: str, etapas: dict) -> str:
+def _proximo_passo(gid: str, etapas: dict, retencao: dict | None = None) -> str:
     """UMA frase: o que destrava esta build agora."""
+    retencao = retencao or {}
     if etapas["build"]["estado"] != OK:
         return f"vídeo da build não saiu — rode: generate-video --rerender {gid}"
 
@@ -132,6 +164,9 @@ def _proximo_passo(gid: str, etapas: dict) -> str:
     if etapas["build"].get("desatualizado"):
         return (f"clipe novo fora do vídeo — rode: generate-video --rerender "
                 f"{gid} --refazer-edicao")
+    if retencao.get("estreia_fora_do_video"):
+        return (f"estreia gravada mas fora do vídeo — rode: generate-video "
+                f"--rerender {gid} --refazer-edicao")
     if etapas["estreia"]["estado"] != OK:
         return "identidade completa — falta a estreia (a primeira luta)"
     return "completa: build, identidade e estreia prontas"
@@ -155,6 +190,15 @@ def _geracao(out_dir: Path, jobs_por_gid: dict) -> dict:
     for chave, _rotulo, slot in ETAPAS:
         if slot is not None:
             etapas[chave] = _estado_do_slot(gid, slot, jobs)
+    if not config.payoff_video_ativo():
+        # Video do Digen desligado: a etapa "payoff" e cumprida pela IMAGEM
+        # personagem+arma, que e o que a montagem usa no lugar do clipe.
+        referencia = artefato.caminho(gid, slots.REFERENCIA)
+        if _arquivo_util(referencia):
+            etapas["payoff"] = {"estado": OK, "detalhe": "imagem (vídeo desligado)"}
+        else:
+            etapas["payoff"] = {"estado": AUSENTE,
+                                "detalhe": "vídeo desligado; falta a imagem da junção"}
 
     # O vídeo publicável está mais VELHO que o último clipe? Então o clipe
     # existe mas não entrou no vídeo — o caso que ninguém reporta sozinho.
@@ -189,16 +233,18 @@ def _geracao(out_dir: Path, jobs_por_gid: dict) -> dict:
 
     personagem = _ler_json(out_dir / "character.json") or {}
     feitas = sum(1 for chave in ROTULOS if etapas[chave]["estado"] == OK)
+    retencao = retencao_de(out_dir)
     return {
         "generation_id": gid,
         "personagem": personagem.get("nome") or "?",
         "classe": personagem.get("classe") or "",
         "arma": personagem.get("nome_arma") or "",
         "etapas": etapas,
+        "retencao": retencao,
         "feitas": feitas,
         "total": len(ETAPAS),
         "completa": feitas == len(ETAPAS),
-        "proximo_passo": _proximo_passo(gid, etapas),
+        "proximo_passo": _proximo_passo(gid, etapas, retencao),
         "quando": out_dir.stat().st_mtime,
     }
 
@@ -317,6 +363,10 @@ def snapshot(limite: int | None = 12) -> dict:
         if geracao["etapas"]["build"].get("desatualizado"):
             alertas.append(f"{geracao['generation_id']}: o vídeo publicável "
                            "não tem o clipe que já foi baixado.")
+        if geracao.get("retencao", {}).get("estreia_fora_do_video"):
+            alertas.append(f"{geracao['generation_id']}: a estreia foi gravada "
+                           "mas a luta não está no vídeo — re-renderize com "
+                           "--refazer-edicao.")
 
     return {
         "geracoes": geracoes,
@@ -342,13 +392,18 @@ def imprimir(dados: dict | None = None) -> int:
     print("\nFLUXO DA PIPELINE")
     print("=" * largura)
     cabecalho = f"  {'build':<17}" + "".join(
-        f"{CURTOS[chave]:<10}" for chave, _r, _s in ETAPAS)
+        f"{CURTOS[chave]:<10}" for chave, _r, _s in ETAPAS) + "".join(
+        f"{rotulo:<6}" for _c, rotulo in RETENCAO) + "DUR"
     print(cabecalho)
     print("-" * largura)
     for geracao in dados["geracoes"]:
         colunas = "".join(f"{_SIMBOLO[geracao['etapas'][c]['estado']]:<10}"
                           for c, _r, _s in ETAPAS)
-        print(f"  {geracao['generation_id']:<17}{colunas}")
+        ret = geracao.get("retencao", {})
+        extras = "".join(f"{('OK ' if ret.get(c) else ' - '):<6}"
+                         for c, _r in RETENCAO)
+        dur = f"{ret['duracao']:.0f}s" if ret.get("duracao") else ""
+        print(f"  {geracao['generation_id']:<17}{colunas}{extras}{dur}")
         print(f"    {geracao['personagem']} — {geracao['proximo_passo']}")
     fila = dados["fila"]
     print(f"\nFILA: {fila[queue.PENDENTE]} na fila | {fila[queue.RODANDO]} "

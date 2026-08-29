@@ -180,7 +180,16 @@ def publicar(video, *, visibilidade: str | None = None,
                 if not video_id:
                     raise PublicacaoFalhou(
                         f"upload terminou sem id: {resposta.text[:180]}")
-                return f"https://youtu.be/{video_id}"
+                url = f"https://youtu.be/{video_id}"
+                # Registro do que subiu: e o que liga o mp4 a metrica depois
+                # (`main.py metricas`). Falhar aqui nao desfaz o upload.
+                try:
+                    from . import metricas
+                    metricas.registrar_publicacao(video, url, "youtube",
+                                                  {"visibilidade": visibilidade})
+                except Exception as exc:  # pragma: no cover - so log
+                    print(f"[publicar] registro falhou: {exc}")
+                return url
             if resposta.status_code != 308:  # 308 = continue
                 raise PublicacaoFalhou(
                     f"falha no envio ({resposta.status_code}): "

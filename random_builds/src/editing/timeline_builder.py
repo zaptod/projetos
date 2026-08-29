@@ -3,28 +3,33 @@
 O plano e uma lista plana de eventos com tempo (secao 47). O renderer so le o
 plano - ele nunca redecide nada.
 
-A ESTRUTURA (secao 8) e:
+A ESTRUTURA (secao 8, revisada em 29/08/2026 para retencao) e:
 
-    gancho curto
-    roletas do personagem      (com reacao onde vale a pena)
-    CHARACTER_VIDEO            primeira recompensa
+    gancho COM O PAYOFF        a imagem do personagem pronto por cima do texto
+    CLASSE, PERSONALIDADE      roletas cheias, com a tensao durante o giro
+    CHARACTER_IMAGE            rosto na tela cedo (~8 s), quando existe
+    TAMANHO, FORCA, MANA       roleta-relampago se a rolagem for NORMAL
     "agora a arma"             batida curta de virada
-    roletas da arma
-    WEAPON_VIDEO               segunda recompensa
+    roletas da arma            cheias onde ha noticia, relampago onde e so numero
+    WEAPON_IMAGE               segunda recompensa
     [sinergia, so se extrema]
     CHARACTER_WEAPON_VIDEO     payoff final
+    "hora da verdade" + LUTA   o round decisivo da estreia, com HUD e callouts
     nota final curta
-    outro
+    outro                      convida para a estreia completa
 
-O que saiu: a ficha de personagem, a ficha da arma, a tela longa de
-compatibilidade e a tela de estatisticas do fim (secoes 2 e 15). No lugar delas
-entram os tres clipes. Enquanto um clipe nao existe, o lugar dele e ocupado por
-um `nameplate`: nome grande e uma linha de dado, sem avatar e sem cartao
-(secao 3) - o video da roleta nunca espera o Digen.
+O que mudou e por que: o video tinha 73 s de media com 14 roletas identicas
+de 3,3 s, o melhor material (as imagens) aparecia aos 62 s e 40 de 64 videos
+nao tinham nenhuma reacao real. O tempo de tela agora e proporcional ao PESO
+editorial que a secao 11 ja calcula, e o payoff abre o video em vez de
+fecha-lo. Enquanto um clipe nao existe, o lugar dele e ocupado por um
+`nameplate` (secao 3) - o video da roleta nunca espera o Digen.
 """
 from __future__ import annotations
 
+import json
 import random
+import re
 from pathlib import Path
 
 from . import comentario
@@ -33,6 +38,88 @@ from ..assets.selector import AssetSelector
 from ..content.caption_generator import CaptionGenerator, pedido_de
 from ..identity import artefato as identity_artefato
 from ..identity import slots as identity_slots
+
+# Roletas de "abertura" do personagem: as duas que dizem QUEM ele e. Com a
+# imagem no disco, a revelacao entra logo depois delas.
+ROLETAS_DE_ABERTURA = ("classe", "personalidade")
+
+# Eventos cuja duracao PODE crescer para a fala caber. Clipe de video real
+# (reacao, gameplay, payoff em mp4) tem o tamanho do arquivo e fica de fora.
+ESTICAVEIS = ("hook", "roulette", "stinger", "synergy", "final", "outro",
+              "nameplate", "identity", "comentario")
+
+
+def ajustar_ao_roteiro(plano: dict, linhas: list[dict], medidas: dict,
+                       config: dict | None = None) -> dict:
+    """A cena espera a fala: estica cada evento ate a narracao dele caber.
+
+    Antes a cena era cronometrada primeiro e a voz espremida no que sobrava
+    — medido em 29/08: ~29 de 33 falas por video nao cabiam nem acelerando
+    1,35x, e saiam cortadas no meio da palavra. Aqui a ordem inverte:
+    `medidas` traz a duracao real de cada linha (indice -> segundos, na
+    velocidade natural) e o evento cresce ate ela terminar com folga.
+
+    Roleta: a pergunta cabe no GIRO (`spin_duration` cresce se precisar) e
+    o comentario cabe no RESULTADO. Clipe de video nao estica (o arquivo
+    tem o tamanho que tem); a fala dele continua como estava.
+    Os `start` sao recomputados em cadeia e as linhas voltam a ser geradas
+    pelo chamador a partir do plano ajustado.
+    """
+    cfg = (config or {}).get("narracao") or {}
+    margem = float(cfg.get("margem", 0.3))
+    margem_giro = float(cfg.get("margem_giro", 0.15))
+    eventos = plano["events"]
+    if not eventos or not medidas:
+        return plano
+
+    # Linhas por evento: a linha pertence ao evento em cujo intervalo comeca.
+    por_evento: dict[int, list[tuple[float, float]]] = {}
+    inicios = [float(e["start"]) for e in eventos]
+    for indice, linha in enumerate(linhas):
+        dur = medidas.get(indice)
+        if dur is None:
+            continue
+        t = float(linha["start"])
+        alvo = None
+        for i, ini in enumerate(inicios):
+            if ini <= t + 1e-6:
+                alvo = i
+            else:
+                break
+        if alvo is None:
+            continue
+        por_evento.setdefault(alvo, []).append((round(t - inicios[alvo], 3), float(dur)))
+
+    cursor = 0.0
+    for i, evento in enumerate(eventos):
+        duracao = float(evento["duration"])
+        falas = por_evento.get(i, [])
+        asset = evento.get("asset") or {}
+        esticavel = (evento["type"] in ESTICAVEIS
+                     and not (evento["type"] == "identity"
+                              and asset.get("media", "video") == "video"))
+        if falas and esticavel:
+            if evento["type"] == "roulette":
+                spin = float(evento.get("spin_duration") or 0.0)
+                resultado = duracao - spin
+                for offset, dur in falas:
+                    if offset < spin - 1e-6:          # pergunta, durante o giro
+                        spin = max(spin, offset + dur + margem_giro)
+                for offset, dur in falas:
+                    if offset >= float(evento.get("spin_duration") or 0.0) - 1e-6:
+                        resultado = max(resultado, dur + margem)
+                evento["spin_duration"] = round(spin, 3)
+                duracao = round(spin + resultado, 3)
+            else:
+                for offset, dur in falas:
+                    duracao = max(duracao, offset + dur + margem)
+        evento["start"] = round(cursor, 3)
+        evento["duration"] = round(duracao, 3)
+        cursor += duracao
+    plano["total_duration"] = round(cursor, 3)
+    if plano.get("gancho_b"):
+        plano["gancho_b"]["duration"] = eventos[0]["duration"]
+    return plano
 
 
 class TimelineBuilder:
@@ -67,17 +154,28 @@ class TimelineBuilder:
             events_out.append(event)
             cursor += duration
 
-        push({"type": "hook",
-              "caption": self.captions.hook(rng, pedido, escolhas)},
-             durations["hook"])
-        self._push_comentario(push, out_dir, durations, pedido)
-
         rolls = generation["rolls"]
         decisions = director.decide_rolls(rng, rolls)
 
-        self._push_rolls(push, rng, rolls, decisions, "character", durations)
-        self._push_reveal(push, generation, out_dir, durations,
-                          identity_slots.CHARACTER, rng, pedido)
+        gancho_a, gancho_b = self._ganchos(rng, generation, out_dir, rolls,
+                                          decisions, pedido, escolhas)
+        push(gancho_a, durations["hook"])
+        self._push_comentario(push, out_dir, durations, pedido)
+
+        # Personagem: rosto na tela cedo quando a imagem existe.
+        revelar_cedo = (self.config.get("revelacao_cedo", True)
+                        and self._artefato(out_dir, identity_slots.CHARACTER) is not None)
+        if revelar_cedo:
+            self._push_rolls(push, rng, rolls, decisions, "character", durations,
+                             apenas=set(ROLETAS_DE_ABERTURA))
+            self._push_reveal(push, generation, out_dir, durations,
+                              identity_slots.CHARACTER, rng, pedido, cedo=True)
+            self._push_rolls(push, rng, rolls, decisions, "character", durations,
+                             exceto=set(ROLETAS_DE_ABERTURA))
+        else:
+            self._push_rolls(push, rng, rolls, decisions, "character", durations)
+            self._push_reveal(push, generation, out_dir, durations,
+                              identity_slots.CHARACTER, rng, pedido)
 
         if beats.get("stinger_between_sections", True):
             push({"type": "stinger", "entity": "weapon",
@@ -92,37 +190,168 @@ class TimelineBuilder:
         self._push_reveal(push, generation, out_dir, durations,
                           identity_slots.CHARACTER_WEAPON, rng, pedido)
 
+        luta = self._push_luta(push, rng, generation, out_dir, durations)
+
         build = generation["build"]
         push({"type": "final", "build": build,
               "caption": self.captions.for_final(rng, build)},
              durations["final"])
-        push({"type": "outro", "caption": self.captions.outro(rng, pedido)},
+        push({"type": "outro",
+              "caption": (self.captions.outro_com_estreia(rng, pedido) if luta
+                          else self.captions.outro(rng, pedido))},
              durations["outro"])
 
-        return {
+        self._marcar_avatares(events_out, generation)
+        plano = {
             "generation_id": generation["generation_id"],
             "seed": generation["seed"],
             "total_duration": round(cursor, 3),
             "events": events_out,
         }
+        if gancho_b is not None:
+            gancho_b["start"], gancho_b["duration"] = 0.0, gancho_a["duration"]
+            plano["gancho_b"] = gancho_b
+        return plano
+
+    # --------------------------------------------------------------- avatares
+    EVENTOS_COM_AVATAR = ("roulette", "stinger", "synergy", "final", "outro",
+                          "nameplate")
+
+    @staticmethod
+    def _marcar_avatares(eventos: list[dict], generation: dict) -> None:
+        """Depois de revelado, o personagem NAO some da tela.
+
+        A imagem dele (e depois a da arma) vira um avatar de canto em toda
+        cena desenhada que vem depois — a roleta continua girando com o rosto
+        de quem ela esta montando. Sem imagem no disco, nada e marcado.
+        """
+        atual: dict[str, dict] = {}
+        nomes = {identity_slots.CHARACTER: generation.get("character", {}).get("nome", ""),
+                 identity_slots.WEAPON: generation.get("weapon", {}).get("nome", "")}
+        for evento in eventos:
+            asset = evento.get("asset") or {}
+            if (evento.get("type") == "identity"
+                    and asset.get("media") == identity_slots.IMAGEM
+                    and evento.get("slot") in nomes):
+                atual[evento["slot"]] = {"path": asset["path"],
+                                         "nome": str(nomes[evento["slot"]])}
+                continue
+            if atual and evento.get("type") in TimelineBuilder.EVENTOS_COM_AVATAR:
+                evento["avatares"] = {slot: dict(dado) for slot, dado in atual.items()}
+
+    # ----------------------------------------------------------------- gancho
+    def _ganchos(self, rng: random.Random, generation: dict, out_dir: Path | None,
+                 rolls: list[dict], decisions: list[dict], pedido: dict | None,
+                 escolhas: dict | None) -> tuple[dict, dict | None]:
+        """O gancho (A) e, quando `gancho.ab` esta ligado, o alternativo (B).
+
+        A prioridade e conteudo antes de slogan: a IMAGEM do personagem
+        pronto (payoff), depois a rolagem de maior peso quando e absurda, e so
+        entao o cartao de texto de sempre. B e sempre de OUTRO tipo que A —
+        dois textos diferentes nao medem nada.
+        """
+        cfg = self.config.get("gancho") or {}
+        candidatos: list[dict] = []
+
+        imagem = self._imagem_do_gancho(out_dir) if cfg.get("payoff", True) else None
+        if imagem is not None:
+            candidatos.append({
+                "type": "hook", "variante": "payoff",
+                "caption": self.captions.hook_payoff(rng, pedido, escolhas),
+                "asset": {"path": str(imagem), "synthetic": False,
+                          "media": identity_slots.IMAGEM},
+                "fit": "contain",
+                "motion": cfg.get("motion") or {"zoom": [1.0, 1.14],
+                                                 "centro": [[0.5, 0.45], [0.5, 0.38]]},
+                "flash_frames": 0,
+            })
+
+        absurda = self._rolagem_mais_pesada(rolls, decisions)
+        if absurda is not None and not (pedido or {}).get("nome"):
+            candidatos.append({"type": "hook", "variante": "absurdo",
+                               "caption": self.captions.hook_absurdo(rng, absurda),
+                               "destaque": {"category": absurda["category"],
+                                            "value": absurda["display_value"]}})
+
+        candidatos.append({"type": "hook", "variante": "texto",
+                           "caption": self.captions.hook(rng, pedido, escolhas)})
+
+        gancho_a = candidatos[0]
+        gancho_b = candidatos[1] if cfg.get("ab", False) and len(candidatos) > 1 else None
+        return gancho_a, (dict(gancho_b) if gancho_b else None)
+
+    def _imagem_do_gancho(self, out_dir: Path | None) -> Path | None:
+        """Referencia (personagem COM a arma) > personagem > arma — a menos que
+        a referencia va ser o proprio payoff (sem video do Digen): ai o gancho
+        abre pelo personagem, para a mesma imagem nao abrir E fechar o video."""
+        tem_video = self._artefato(out_dir, identity_slots.CHARACTER_WEAPON) is not None
+        ordem = ((identity_slots.REFERENCIA, identity_slots.CHARACTER, identity_slots.WEAPON)
+                 if tem_video else
+                 (identity_slots.CHARACTER, identity_slots.REFERENCIA, identity_slots.WEAPON))
+        for slot in ordem:
+            achado = self._artefato(out_dir, slot)
+            if achado is not None and achado[1] == identity_slots.IMAGEM:
+                return achado[0]
+        return None
+
+    @staticmethod
+    def _rolagem_mais_pesada(rolls: list[dict], decisions: list[dict]) -> dict | None:
+        """A rolagem ABSURD/CONTRADICTORY de maior peso, se houver."""
+        melhor, peso = None, 0
+        for roll, decision in zip(rolls, decisions):
+            if decision["classification"] in ("ABSURD", "CONTRADICTORY") \
+                    and decision["weight"] > peso:
+                melhor, peso = roll, decision["weight"]
+        return melhor
 
     # ---------------------------------------------------------------- roletas
+    def _duracoes_da_roleta(self, roll: dict, decision: dict,
+                            durations: dict) -> tuple[float, float, bool]:
+        """(giro, resultado, rapida): tempo de tela proporcional ao peso.
+
+        Roleta-relampago so para atributo numerico (`roletas_rapidas`) cujo
+        peso editorial e baixo (`roletas_rapidas_peso_max`), que nao foi
+        escolhido a dedo e nao ganhou reacao: tudo que e noticia volta ao
+        giro cheio, com a tensao durante o giro.
+        """
+        rapidas = set(self.config.get("roletas_rapidas") or [])
+        peso_max = float(self.config.get("roletas_rapidas_peso_max", 0))
+        rapida = (roll.get("roulette_id") in rapidas
+                  and float(decision.get("weight", 0)) <= peso_max
+                  and not roll.get("escolhido")
+                  and not decision["reaction"]
+                  and "roulette_spin_fast" in durations)
+        if rapida:
+            return (float(durations["roulette_spin_fast"]),
+                    float(durations.get("roulette_result_fast", 0.55)), True)
+        chave = "roulette_result_extreme" if decision["extreme"] else "roulette_result"
+        return float(durations["roulette_spin"]), float(durations[chave]), False
+
     def _push_rolls(self, push, rng: random.Random, rolls: list[dict],
-                    decisions: list[dict], entity: str, durations: dict) -> None:
+                    decisions: list[dict], entity: str, durations: dict,
+                    apenas: set | None = None, exceto: set | None = None) -> None:
         for indice, roll in enumerate(rolls):
             if roll["entity"] != entity:
                 continue
+            if apenas is not None and roll.get("roulette_id") not in apenas:
+                continue
+            if exceto is not None and roll.get("roulette_id") in exceto:
+                continue
             decision = decisions[indice]
-            chave = ("roulette_result_extreme" if decision["extreme"]
-                     else "roulette_result")
-            push({
+            spin, resultado, rapida = self._duracoes_da_roleta(roll, decision, durations)
+            evento = {
                 "type": "roulette",
                 "roll": roll,
-                "spin_duration": durations["roulette_spin"],
+                "spin_duration": spin,
+                "rapida": rapida,
                 "effects": decision["effects"],
                 "classification": decision["classification"],
                 "caption": self.captions.for_event(rng, roll),
-            }, durations["roulette_spin"] + durations[chave])
+            }
+            if not rapida:
+                # Tensao ANTES do resultado: o que esta em jogo nesta roda.
+                evento["caption_spin"] = self.captions.stakes(rng, roll)
+            push(evento, spin + resultado)
             if decision["reaction"]:
                 self._push_reaction(push, rng, decision, durations)
 
@@ -162,16 +391,13 @@ class TimelineBuilder:
 
         restante = getattr(self, "_reacao_restante_s", None)
         if restante is not None:
-            if duracao > restante:
-                # Sem espaco para a reacao inteira: ela entra pelo que sobrou
-                # SE o resto ainda der uma reacao — abaixo disso e flash, e
-                # flash e pior que nao ter reacao nenhuma (o espectador ve um
-                # tranco sem entender o que passou).
-                util = float((self.config.get("reaction_budget") or {})
-                             .get("min_util_segundos", 2.5))
-                if restante < max(minimo, util):
-                    return
-                duracao = restante
+            if duracao > restante + 1e-6:
+                # Sem espaco para a reacao INTEIRA, ela nao entra: uma piada
+                # cortada no meio e pior que nenhuma (o espectador ve um
+                # tranco sem entender o que passou). Com o orcamento de ~10 s
+                # de um video de 40 s isso significa uma ou duas reacoes
+                # por video, tocando ate o punchline.
+                return
             self._reacao_restante_s = max(0.0, restante - duracao)
 
         push({
@@ -185,7 +411,38 @@ class TimelineBuilder:
             "reason": decision.get("reason"),
             "sentiment": decision["sentiment"],
             "intensity": decision["intensity"],
+            # Por que este meme entrou: "RARO · 5% de chance" numa pilula no
+            # topo. Sem isso a reacao parece aleatoria; com isso ela e a
+            # piada explicada em tres palavras.
+            "badge": self._badge_da_reacao(decision),
         }, duracao)
+
+    _ROTULO_CLASSE = {"ABSURD": "ABSURDO", "CONTRADICTORY": "CONTRADITÓRIO",
+                      "RARE": "RARO", "FUNNY": "ENGRAÇADO", "VERY_GOOD": "MUITO BOM",
+                      "GOOD": "BOM", "BAD": "RUIM", "NORMAL": ""}
+
+    @classmethod
+    def _badge_da_reacao(cls, decision: dict) -> str:
+        rotulo = cls._ROTULO_CLASSE.get(str(decision.get("classification")), "")
+        motivo = str(decision.get("reason") or "").strip()
+        m = re.match(r"probabilidade\s+([0-9.,]+)", motivo)
+        if m:
+            try:
+                motivo = f"{round(float(m.group(1).replace(',', '.')) * 100)}% de chance"
+            except ValueError:
+                pass
+        m = re.match(r"surpresa\s+(\d+)", motivo)
+        if m:
+            motivo = f"surpresa {m.group(1)}/100"
+        m = re.match(r"score\s+(\d+)\s+no extremo", motivo)
+        if m:
+            motivo = f"{m.group(1)} de 100"
+        if motivo.startswith("resultado briga"):
+            motivo = "briga com o resto da build"
+        if motivo.startswith("score "):
+            motivo = motivo.replace("score ", "") + " de 100"
+        partes = [p for p in (rotulo, motivo) if p]
+        return " · ".join(partes)
 
     # --------------------------------------------------------------- sinergia
     def _push_synergy(self, push, rng: random.Random, generation: dict,
@@ -206,10 +463,109 @@ class TimelineBuilder:
               "caption": self.captions.for_synergy(rng, compat)},
              durations["synergy"])
 
+    # ------------------------------------------------------------------- luta
+    def _push_luta(self, push, rng: random.Random, generation: dict,
+                   out_dir: Path | None, durations: dict) -> dict | None:
+        """O round decisivo da estreia no FIM do video de build.
+
+        E o loop que faltava: a roleta cria, a arena responde. O trecho e
+        `segundos` terminando `depois_do_ko` s apos o nocaute (ou a janela
+        mais quente, se a gravacao nao marcou o KO); HUD e callouts sao
+        levados para o relogio do trecho, como o torneio faz com o corte de
+        tedio. Sem estreia gravada, nada entra — nunca um cartao no lugar.
+        """
+        cfg = self.config.get("luta_no_build") or {}
+        if not cfg.get("ativa", True) or out_dir is None:
+            return None
+        caminho = Path(out_dir) / "estreia" / "fight.json"
+        if not caminho.is_file():
+            return None
+        try:
+            with open(caminho, encoding="utf-8-sig") as fh:
+                fight = json.load(fh)
+        except (OSError, ValueError):
+            return None
+        rounds = list(fight.get("lutas") or ([fight["luta"]] if fight.get("luta") else []))
+        if not rounds:
+            return None
+        luta = rounds[-1]
+        clipes = luta.get("clipes") or {}
+        if not clipes or not any(Path(c.get("path", "")).is_file() for c in clipes.values()):
+            return None
+
+        from ..tournament.highlights import janela_mais_quente
+        from ..tournament.timeline import evento_gameplay
+        evento = evento_gameplay(rng, luta, self.config, self.captions)
+        if evento is None:
+            return None
+
+        janela = float(cfg.get("segundos", 7.0))
+        total = max(float(c.get("duracao") or 0.0) for c in clipes.values())
+        if total <= 0:
+            return None
+        ko = luta.get("ko_em_clipe")
+        if ko:
+            fim = min(total, float(ko) + float(cfg.get("depois_do_ko", 1.2)))
+            inicio = max(0.0, fim - janela)
+        else:
+            inicio, _ = janela_mais_quente(luta.get("eventos_dano") or [], janela)
+            inicio = max(0.0, min(float(inicio), max(0.0, total - janela)))
+            fim = min(total, inicio + janela)
+        duracao = round(fim - inicio, 2)
+        if duracao < 2.0:
+            return None
+
+        evento["start_offset"] = round(inicio, 2)
+        evento["recorte_no_build"] = [round(inicio, 2), duracao]
+        hud = evento.get("hud")
+        if hud:
+            hud["serie_hp"] = self._deslocar_serie(hud.get("serie_hp"), inicio, fim)
+            if hud.get("serie_plano"):
+                hud["serie_plano"] = self._deslocar_serie(hud["serie_plano"], inicio, fim)
+        evento["callouts"] = [
+            {**c, "t": round(float(c["t"]) - inicio, 2)}
+            for c in (evento.get("callouts") or [])
+            if inicio <= float(c.get("t", 0.0)) <= fim - 0.3]
+        nome = generation["character"].get("nome", "")
+        adversario = luta.get("p2") if luta.get("p1") == nome else luta.get("p1")
+        evento["narracao"] = (f"Agora {nome} luta de verdade, contra {adversario}."
+                              if adversario else f"Agora {nome} luta de verdade.")
+        evento["caption"] = ""
+
+        if cfg.get("stinger", True):
+            push({"type": "stinger", "entity": "character",
+                  "caption": self.captions.stinger(rng, "luta")},
+                 float(durations.get("luta_stinger", 1.0)))
+        push(evento, duracao)
+        return luta
+
+    @staticmethod
+    def _deslocar_serie(serie, inicio: float, fim: float) -> list:
+        """Amostras (t, ...) para o relogio do trecho [inicio, fim].
+
+        A ultima amostra ANTES do inicio entra em t=0: e ela que diz quanto
+        HP cada um tinha quando o trecho comeca.
+        """
+        ordenada = sorted((tuple(a) for a in (serie or []) if len(a) >= 2),
+                          key=lambda a: float(a[0]))
+        saida = []
+        anterior = None
+        for amostra in ordenada:
+            t = float(amostra[0])
+            if t < inicio:
+                anterior = amostra
+                continue
+            if t > fim:
+                break
+            saida.append((round(t - inicio, 3), *amostra[1:]))
+        if anterior is not None and (not saida or saida[0][0] > 0.0):
+            saida.insert(0, (0.0, *anterior[1:]))
+        return saida
+
     # ------------------------------------------------------------- recompensa
     def _push_reveal(self, push, generation: dict, out_dir: Path | None,
                      durations: dict, slot: str, rng: random.Random,
-                     pedido: dict | None = None) -> None:
+                     pedido: dict | None = None, cedo: bool = False) -> None:
         """O clipe daquele slot; sem ele, o nameplate no lugar.
 
         O renderer decide por CAPACIDADE, nao por tipo (`_asset_de_video`):
@@ -217,9 +573,18 @@ class TimelineBuilder:
 
         `fit: "contain"` porque os clipes sao gerados em 9:16 - no perfil
         `normal` (16:9) o crop-para-preencher comeria as laterais.
+
+        `cedo`: a revelacao do personagem antes das roletas de atributo. A
+        placa nao pode entregar a altura que a roleta de TAMANHO ainda vai
+        sortear, entao a segunda linha fica so com a classe.
         """
-        placa = self._nameplate(generation, slot, rng, pedido)
+        placa = self._nameplate(generation, slot, rng, pedido, cedo=cedo)
         achado = self._artefato(out_dir, slot)
+        if achado is None and slot == identity_slots.CHARACTER_WEAPON:
+            # Sem o video do Digen (desligado, ou ainda nao chegou), o payoff
+            # e a IMAGEM do personagem com a arma, com camera — a mesma cena,
+            # em vez de um nameplate. A recompensa nao depende do site.
+            achado = self._artefato(out_dir, identity_slots.REFERENCIA)
         if achado is None:
             push({"type": "nameplate", "slot": slot, "nameplate": placa,
                   "caption": placa["titulo"]}, durations["nameplate"])
@@ -316,7 +681,8 @@ class TimelineBuilder:
         return None
 
     def _nameplate(self, generation: dict, slot: str,
-                   rng: random.Random, pedido: dict | None = None) -> dict:
+                   rng: random.Random, pedido: dict | None = None,
+                   cedo: bool = False) -> dict:
         """Duas linhas, curtas: o que identifica, nao o que descreve."""
         personagem = generation["character"]
         arma = generation["weapon"]
@@ -349,5 +715,8 @@ class TimelineBuilder:
             if credito:
                 return {"titulo": str(personagem.get("nome", "")).upper(),
                         "subtitulo": credito}
+        if cedo:
+            return {"titulo": str(personagem.get("nome", "")).upper(),
+                    "subtitulo": classe}
         return {"titulo": str(personagem.get("nome", "")).upper(),
                 "subtitulo": f"{classe} - {altura} m"}

@@ -1,6 +1,8 @@
 {
     "_comment": "Identidade visual do personagem via Digen. O template e editavel sem tocar em codigo: os placeholders {MAIUSCULOS} sao preenchidos por src/identity/prompt.py. Texto em ingles de proposito - modelos de video respondem muito melhor.",
     "modelo": "Real Motion 3.5",
+    "_comment_payoff_video": "false desliga o gerador de VIDEO (Digen, slot character_weapon): o job nao e enfileirado, o worker nao abre o site e o payoff do video passa a ser a imagem personagem+arma (PicassoIA) com camera. Liga/desliga tambem no card RETENCAO do painel. As imagens continuam sendo geradas normalmente.",
+    "payoff_video": true,
     "aspect": "9:16",
     "duracao": "max",
     "resolucao": "max",

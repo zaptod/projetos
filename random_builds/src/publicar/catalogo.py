@@ -90,6 +90,13 @@ class Video:
     rotulo: str = ""            # o que aparece na lista do painel
     bytes: int = 0
     quando: float = 0.0
+    variante: str = "A"          # gancho A (payoff) ou B (alternativo)
+    pendencias: list[str] = field(default_factory=list)
+
+    @property
+    def pronto(self) -> bool:
+        """Sem pendencia: tem payoff, tem luta e o mp4 e mais novo que eles."""
+        return not self.pendencias
 
     @property
     def vertical(self) -> bool:
@@ -99,7 +106,8 @@ class Video:
     @property
     def nome_export(self) -> str:
         data = datetime.fromtimestamp(self.quando).strftime("%Y%m%d")
-        return f"{data}_{self.fonte_id}_{self.perfil}_{slug(self.titulo)}.mp4"
+        sufixo = "" if self.variante == "A" else f"_gancho{self.variante}"
+        return f"{data}_{self.fonte_id}_{self.perfil}{sufixo}_{slug(self.titulo)}.mp4"
 
     @property
     def descricao_completa(self) -> str:
@@ -111,7 +119,44 @@ class Video:
                 "caminho": str(self.caminho), "titulo": self.titulo,
                 "descricao": self.descricao, "hashtags": list(self.hashtags),
                 "fonte_id": self.fonte_id, "rotulo": self.rotulo,
-                "bytes": self.bytes, "quando": self.quando}
+                "bytes": self.bytes, "quando": self.quando,
+                "variante": self.variante, "pendencias": list(self.pendencias)}
+
+
+def pendencias_da_build(pasta: Path, perfil: str) -> list[str]:
+    """O que falta para o video de build estar COMPLETO.
+
+    27 de 64 builds saiam sem o clipe de payoff e iam para a plataforma com
+    um nameplate no lugar do personagem. Publicar incompleto e decisao de
+    gente, nao de ferramenta: a lista aparece no catalogo, o `publicar`
+    recusa sem `--forcar`.
+    """
+    from ..identity import config as identity_config
+    pasta = Path(pasta)
+    final = pasta / f"final_{perfil}.mp4"
+    lista: list[str] = []
+    if identity_config.payoff_video_ativo():
+        payoff = pasta / "character_weapon_video.mp4"
+        falta_payoff = "sem payoff (clipe do Digen): `identity worker`"
+    else:
+        # Video do Digen desligado: o payoff e a imagem personagem+arma.
+        payoff = pasta / "character_weapon_reference.png"
+        falta_payoff = "sem imagem personagem+arma (PicassoIA): `identity worker`"
+    imagem = pasta / "character_image.png"
+    estreia = pasta / "estreia" / "fight.json"
+    if not payoff.is_file():
+        lista.append(falta_payoff)
+    if not imagem.is_file():
+        lista.append("sem imagem do personagem (PicassoIA)")
+    if not estreia.is_file():
+        lista.append("sem luta no fim (estreia nao gravada)")
+    if final.is_file():
+        mais_novo = max((c.stat().st_mtime for c in (payoff, imagem, estreia)
+                         if c.is_file()), default=0.0)
+        if mais_novo and final.stat().st_mtime + 5 < mais_novo:
+            lista.append("mp4 mais velho que os clipes: "
+                         "`generate-video --rerender <id> --refazer-edicao`")
+    return lista
 
 
 def _campos_build(pasta: Path) -> dict:
@@ -193,14 +238,21 @@ def _videos_de(pasta: Path, origem: str, fonte_id: str, campos: dict,
     hashtags = list(config.get("hashtags", {}).get(origem, []))
     saida = []
     for perfil in PERFIS:
-        caminho = pasta / f"final_{perfil}.mp4"
-        if not caminho.is_file() or caminho.stat().st_size < BYTES_MINIMOS:
-            continue
-        saida.append(Video(
-            id=f"{fonte_id}:{origem}:{perfil}", origem=origem, perfil=perfil,
-            caminho=caminho, titulo=titulo or fonte_id, descricao=descricao,
-            hashtags=hashtags, fonte_id=fonte_id, rotulo=rotulo,
-            bytes=caminho.stat().st_size, quando=caminho.stat().st_mtime))
+        pendencias = pendencias_da_build(pasta, perfil) if origem == BUILD else []
+        for variante, nome in (("A", f"final_{perfil}.mp4"),
+                               ("B", f"final_{perfil}_ganchoB.mp4")):
+            caminho = pasta / nome
+            if not caminho.is_file() or caminho.stat().st_size < BYTES_MINIMOS:
+                continue
+            sufixo_id = "" if variante == "A" else f":{variante}"
+            sufixo_rotulo = "" if variante == "A" else f" (gancho {variante})"
+            saida.append(Video(
+                id=f"{fonte_id}:{origem}:{perfil}{sufixo_id}", origem=origem,
+                perfil=perfil, caminho=caminho, titulo=titulo or fonte_id,
+                descricao=descricao, hashtags=hashtags, fonte_id=fonte_id,
+                rotulo=rotulo + sufixo_rotulo, bytes=caminho.stat().st_size,
+                quando=caminho.stat().st_mtime, variante=variante,
+                pendencias=list(pendencias)))
     return saida
 
 
@@ -302,5 +354,5 @@ def exportar(video: Video, destino: Path | None = None,
 
 
 __all__ = ["BUILD", "ESTREIA", "TORNEIO", "Video", "carregar_config",
-           "exportar", "listar", "pasta_export", "por_id", "salvar_texto",
-           "slug"]
+           "exportar", "listar", "pasta_export", "pendencias_da_build", "por_id",
+           "salvar_texto", "slug"]

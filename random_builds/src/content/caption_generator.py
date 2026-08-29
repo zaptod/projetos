@@ -370,6 +370,54 @@ class CaptionGenerator:
                 return self._pick(rng, pool)
         return self._pick(rng, self.config["hook"])
 
+    def hook_payoff(self, rng: random.Random, pedido: dict | None = None,
+                    escolhas: dict | None = None) -> str:
+        """Gancho por cima da IMAGEM do personagem pronto.
+
+        O nome pedido continua vencendo (e o credito que rende comentario);
+        sem pedido, o pool `hook_payoff` fala do que a tela mostra — um
+        personagem que a roleta montou — em vez de um slogan sobre a roleta.
+        """
+        nome = (pedido or {}).get("nome") or ""
+        if nome:
+            return self._pick_pedido(rng, "hook_pedido", self.config["hook"],
+                                     {"{NOME_PEDIDO}": nome})
+        pool = self.config.get("hook_payoff") or None
+        if pool:
+            return self._pick(rng, pool)
+        return self.hook(rng, pedido, escolhas)
+
+    def hook_absurdo(self, rng: random.Random, roll: dict) -> str:
+        """Gancho pela rolagem mais absurda: abre pelo que vai dar assunto."""
+        pool = self.config.get("hook_absurdo") or ["SAIU {VALUE} DE {CATEGORY}"]
+        return (self._pick(rng, pool)
+                .replace("{CATEGORY}", str(roll.get("category", "")).upper())
+                .replace("{VALUE}", str(roll.get("display_value", ""))))
+
+    def stakes(self, rng: random.Random, roll: dict) -> str:
+        """O que esta em jogo nesta roleta, mostrado DURANTE o giro.
+
+        Tensao antes do resultado: sem isso a roda gira sobre um "?" e o
+        espectador nao sabe por que deveria se importar com o que vai cair.
+        """
+        banco = self.frases.get("stakes") or {}
+        pool = banco.get(roll.get("roulette_id")) or banco.get("_default")
+        if not pool:
+            return ""
+        return self._pick(rng, pool)
+
+    def outro_com_estreia(self, rng: random.Random,
+                          pedido: dict | None = None) -> str:
+        """CTA do fim quando a luta apareceu: convida para a estreia inteira.
+
+        Com nome pedido, o credito de sempre vence — e o que rende o proximo
+        comentario.
+        """
+        if (pedido or {}).get("nome"):
+            return self.outro(rng, pedido)
+        pool = self.config.get("outro_com_estreia")
+        return self._pick(rng, pool) if pool else self.outro(rng, pedido)
+
     def stinger(self, rng: random.Random, entity: str) -> str:
         """Batida curta de virada entre as roletas do personagem e as da arma.
 
@@ -378,7 +426,7 @@ class CaptionGenerator:
         segundo para entender que comecou outra metade.
         """
         banco = self.config.get("stinger", {})
-        pool = banco.get(entity) or ["AGORA A ARMA"]
+        pool = banco.get(entity) or {"luta": ["HORA DA VERDADE"]}.get(entity) or ["AGORA A ARMA"]
         return self._pick(rng, pool)
 
     def outro(self, rng: random.Random, pedido: dict | None = None) -> str:

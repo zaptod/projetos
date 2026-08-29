@@ -64,7 +64,12 @@ class FluxoTests(unittest.TestCase):
             self._arquivo(f"final_{perfil}.mp4")
 
     def _snapshot(self, jobs=()):
+        # Estes contratos descrevem a pipeline com o video do Digen LIGADO; a
+        # config real pode desliga-lo (payoff_video=false), e ai a etapa
+        # "payoff" passa a ser cumprida pela imagem - caso coberto em
+        # test_retencao_regressions.PayoffImagemTests.
         with patch.object(fluxo.config, "OUTPUTS", self.outputs), \
+             patch.object(fluxo.config, "payoff_video_ativo", lambda ajustes=None: True), \
              patch.object(fluxo.queue, "listar", lambda: list(jobs)), \
              patch.object(fluxo, "_arena", lambda: {"lutas": 0, "campeao": None,
                                                     "ranking": []}), \

@@ -329,9 +329,19 @@ def checar_online(headless: bool = False) -> list[dict]:
             saldo = cliente.creditos(espera=25)
             if saldo is None:
                 checks.append(_check("creditos", AVISO, "contador ilegivel"))
+            elif saldo <= 0:
+                from .worker import credito_bloqueia, modelo_em_uso
+                if credito_bloqueia(ajustes, "digen"):
+                    checks.append(_check("creditos", ERRO,
+                                         f"0 e o modelo {modelo_em_uso(ajustes)} e pago"))
+                else:
+                    # Plano Free mostra 0, mas o Real Motion e incluso: nao e
+                    # erro, e informacao - o payoff continua saindo.
+                    checks.append(_check("creditos", OK,
+                                         f"0 (modelo {modelo_em_uso(ajustes)} incluso "
+                                         "no plano: segue gerando)"))
             else:
-                checks.append(_check("creditos", ERRO if saldo <= 0 else OK,
-                                     f"{saldo} disponivel(is)"))
+                checks.append(_check("creditos", OK, f"{saldo} disponivel(is)"))
 
             for rotulo, atributo, gravidade in LISTAS_ONLINE:
                 candidatos = getattr(selectors, atributo)

@@ -1,18 +1,101 @@
 {
     "_comment": "Banco combinatorio de legendas. legenda = prefixo(tier) + nucleo(roleta+banda) + sufixo(tier). Placeholders: {VALUE} e {CATEGORY}. TOM (revisao 27/08/2026): limpo e convidativo. Antes o banco empilhava tres pedacos e saia 'spoiler: a roleta decretou: Assassino aceitavel' — dois-pontos duplos e uma palavra solta no fim. Agora: prefixo quase sempre VAZIO (so conector natural, nunca 'informativo:'), sufixo quase sempre VAZIO (e quando existe, ja vem com a pontuacao que fecha a frase), e o nucleo e uma frase inteira com UMA ideia. Sem CAPS no meio da frase, sem 'kkkk', no maximo um emoji. A graca continua no nucleo; o que saiu foi o ruido em volta.",
     "prefixos": {
-        "negativo_forte": ["", "", "", "", "", "olha isso.", "confesso que doeu.", "eu vi acontecer."],
-        "negativo": ["", "", "", "", "", "poxa.", "quase.", "fica pra proxima."],
-        "neutro": ["", "", "", "", "", "", "certo."],
-        "positivo": ["", "", "", "", "", "gostei disso.", "agora sim."],
-        "hype": ["", "", "", "", "para tudo.", "eu nao esperava isso.", "olha o que saiu."]
+        "negativo_forte": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "olha isso.",
+            "confesso que doeu.",
+            "eu vi acontecer."
+        ],
+        "negativo": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "poxa.",
+            "quase.",
+            "fica pra proxima."
+        ],
+        "neutro": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "certo."
+        ],
+        "positivo": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "gostei disso.",
+            "agora sim."
+        ],
+        "hype": [
+            "",
+            "",
+            "",
+            "",
+            "para tudo.",
+            "eu nao esperava isso.",
+            "olha o que saiu."
+        ]
     },
     "sufixos": {
-        "negativo_forte": ["", "", "", "", "", "", "💀", "e a build ainda nem comecou."],
-        "negativo": ["", "", "", "", "", "", "😬"],
-        "neutro": ["", "", "", "", "", "", ""],
-        "positivo": ["", "", "", "", "", "", "✨"],
-        "hype": ["", "", "", "", "", "🔥", "isso muda a build inteira."]
+        "negativo_forte": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "💀",
+            "e a build ainda nem comecou."
+        ],
+        "negativo": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "😬"
+        ],
+        "neutro": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+        ],
+        "positivo": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "✨"
+        ],
+        "hype": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "🔥",
+            "isso muda a build inteira."
+        ]
     },
     "_default": {
         "negativo": [
@@ -24,12 +107,11 @@
             "caiu {VALUE} de {CATEGORY}. vamos ver o resto."
         ],
         "mediano": [
-            "{CATEGORY}: {VALUE}.",
-            "{VALUE} de {CATEGORY} — na media.",
-            "{CATEGORY} ficou em {VALUE}.",
-            "{VALUE} em {CATEGORY}. nem bom nem ruim.",
-            "{CATEGORY}: {VALUE}. serve.",
-            "saiu {VALUE} de {CATEGORY}."
+            "na média. o resto precisa compensar.",
+            "nem bom nem ruim — segue o jogo.",
+            "serve. sem festa.",
+            "mediano, mas dá pra trabalhar.",
+            "não decide nada sozinho."
         ],
         "positivo": [
             "{CATEGORY}: {VALUE}. isso ajuda muito.",
@@ -50,32 +132,25 @@
     "por_roleta": {
         "classe": {
             "mediano": [
-                "a roleta escolheu: {VALUE}.",
-                "ele nasce {VALUE}.",
-                "classe definida: {VALUE}.",
-                "vamos de {VALUE}.",
-                "{VALUE}. o resto vai ter que combinar com isso.",
-                "saiu {VALUE} — e isso muda tudo o que vem."
+                "a roleta escolheu. o resto vai ter que combinar com isso.",
+                "boa base. agora a arma precisa casar.",
+                "clássica — dá pra fazer muita coisa com essa.",
+                "não é a mais forte, mas tem teto alto."
             ]
         },
         "personalidade": {
             "mediano": [
-                "personalidade: {VALUE}.",
-                "e {VALUE} — vai lutar do jeito dele.",
-                "{VALUE}. isso aparece na luta.",
-                "temperamento {VALUE}.",
-                "a IA dele e {VALUE}.",
-                "{VALUE}: guarda essa, faz diferenca no ringue."
+                "isso aparece na luta: temperamento define a IA.",
+                "vai lutar do jeito dele.",
+                "guarda essa — faz diferença no ringue.",
+                "define se ele ataca ou espera."
             ]
         },
         "tamanho": {
             "mediano": [
-                "{VALUE} de altura.",
-                "mede {VALUE}.",
-                "altura: {VALUE}.",
-                "{VALUE} — tamanho muda alcance e velocidade.",
-                "com {VALUE}, ele se move assim mesmo.",
-                "{VALUE}. anota, isso pesa na arma."
+                "altura normal, alcance normal.",
+                "nem gigante nem anão — mobilidade padrão.",
+                "anota: isso pesa na hora da arma."
             ]
         },
         "forca": {
@@ -88,12 +163,9 @@
                 "so {VALUE} de forca. a build precisa compensar."
             ],
             "mediano": [
-                "forca {VALUE} — da pro gasto.",
-                "{VALUE} de forca. equilibrado.",
-                "forca na media: {VALUE}.",
-                "{VALUE}. aguenta quase qualquer arma.",
-                "forca {VALUE}, sem drama.",
-                "com {VALUE} de forca ele tem opcoes."
+                "dá pro gasto. aguenta a maioria das armas.",
+                "força equilibrada, sem drama.",
+                "com isso ele tem opções de arma."
             ],
             "positivo": [
                 "forca {VALUE}. agora da pra pensar grande.",
@@ -119,11 +191,9 @@
                 "mana {VALUE}: ele vai lutar no braco."
             ],
             "mediano": [
-                "mana {VALUE} — da pra usar as habilidades.",
-                "{VALUE} de mana. suficiente.",
-                "mana na media: {VALUE}.",
-                "{VALUE}. sem sobra, sem falta.",
-                "mana {VALUE}, joga com cuidado."
+                "dá pra usar as habilidades. sem sobra.",
+                "mana suficiente, joga com cuidado.",
+                "sem sobra, sem falta."
             ],
             "positivo": [
                 "mana {VALUE}. as habilidades vao aparecer.",
@@ -141,22 +211,16 @@
         },
         "tipo": {
             "mediano": [
-                "a arma e {VALUE}.",
-                "tipo: {VALUE}.",
-                "veio uma {VALUE}.",
-                "{VALUE} — muda o alcance dele.",
-                "saiu {VALUE}. combina com a classe?",
-                "{VALUE}. o estilo de luta ja mudou."
+                "muda o alcance dele inteiro.",
+                "combina com a classe? vamos ver.",
+                "o estilo de luta já mudou."
             ]
         },
         "estilo": {
             "mediano": [
-                "e uma {VALUE}.",
-                "o modelo: {VALUE}.",
-                "{VALUE} — essa e a arma dele.",
-                "saiu {VALUE}.",
-                "{VALUE}. agora e ver se ele consegue usar.",
-                "a peca e uma {VALUE}."
+                "essa é a arma dele. agora é ver se ele consegue usar.",
+                "modelo comum, mas é o encantamento que manda.",
+                "a peça está definida."
             ]
         },
         "raridade": {
@@ -167,10 +231,9 @@
                 "{VALUE}. arma simples, luta honesta."
             ],
             "mediano": [
-                "raridade {VALUE}.",
-                "{VALUE} — meio do caminho.",
-                "arma {VALUE}, sem exagero.",
-                "{VALUE}. serve bem."
+                "meio do caminho. sem bônus, sem castigo.",
+                "serve bem — não é o jackpot.",
+                "fica pra próxima o lendário."
             ],
             "positivo": [
                 "raridade {VALUE}. boa peca.",
@@ -193,10 +256,9 @@
                 "{VALUE}: bonito, mas nao decide luta."
             ],
             "mediano": [
-                "encantamento: {VALUE}.",
-                "{VALUE} — efeito ok.",
-                "a arma sai com {VALUE}.",
-                "{VALUE}. combina com o resto?"
+                "efeito ok. combina com o resto?",
+                "não é o mais forte, mas tem uso.",
+                "isso define as skills dele."
             ],
             "positivo": [
                 "encantamento {VALUE}. isso e util.",
@@ -219,10 +281,9 @@
                 "{VALUE}: nao e a estrela da build."
             ],
             "mediano": [
-                "habilidade: {VALUE}.",
-                "{VALUE} — confiavel.",
-                "ele leva {VALUE}.",
-                "{VALUE}. boa pra manter pressao."
+                "confiável. boa pra manter pressão.",
+                "não decide luta sozinha.",
+                "útil em poucos momentos."
             ],
             "positivo": [
                 "habilidade {VALUE}. forte.",
@@ -246,11 +307,9 @@
                 "dano {VALUE}: cada acerto vale pouco."
             ],
             "mediano": [
-                "dano {VALUE}.",
-                "{VALUE} de dano — na media.",
-                "dano ok: {VALUE}.",
-                "{VALUE}. resolve com dois ou tres acertos.",
-                "dano {VALUE}, sem susto."
+                "resolve com dois ou três acertos.",
+                "na média. sem susto.",
+                "cada acerto vale o normal."
             ],
             "positivo": [
                 "dano {VALUE}. machuca de verdade.",
@@ -274,10 +333,9 @@
                 "arma de {VALUE}. quase sem inercia."
             ],
             "mediano": [
-                "peso {VALUE}.",
-                "{VALUE} — equilibrada na mao.",
-                "arma de {VALUE}, bem distribuida.",
-                "{VALUE} de peso. da pra girar."
+                "equilibrada na mão. dá pra girar.",
+                "bem distribuída.",
+                "ele levanta sem esforço."
             ],
             "positivo": [
                 "peso {VALUE}. impacto garantido.",
@@ -299,9 +357,9 @@
                 "{VALUE}. o dano vai ser sempre o basico."
             ],
             "mediano": [
-                "critico {VALUE}.",
-                "{VALUE} de critico — de vez em quando.",
-                "{VALUE}. vai aparecer uma ou duas vezes."
+                "vai aparecer uma ou duas vezes.",
+                "de vez em quando.",
+                "cada troca pode virar o jogo."
             ],
             "positivo": [
                 "critico {VALUE}. isso muda lutas.",
@@ -321,9 +379,9 @@
                 "{VALUE} de velocidade: cada erro custa caro."
             ],
             "mediano": [
-                "velocidade {VALUE}.",
-                "{VALUE} — ritmo normal de troca.",
-                "{VALUE} de velocidade. previsivel, mas serve."
+                "ritmo normal de troca.",
+                "previsível, mas serve.",
+                "golpe no tempo certo."
             ],
             "positivo": [
                 "velocidade {VALUE}. golpe rapido.",
@@ -547,5 +605,73 @@
             "comenta contra quem {NOME} devia lutar.",
             "a carreira de {NOME} comeca aqui."
         ]
-    }
+    },
+    "_comment_stakes": "Tensao ANTES do resultado (revisao 29/08/2026): uma linha curta durante o giro dizendo o que esta em jogo naquela roleta. So nas roletas cheias. Caixa alta de proposito: e titulo, nao legenda.",
+    "stakes": {
+        "classe": [
+            "16 CLASSES. UMA MUDA TUDO",
+            "SE CAIR MAGO, A ARMA TEM QUE COMBINAR",
+            "A CLASSE DECIDE COMO ELE LUTA"
+        ],
+        "personalidade": [
+            "26 JEITOS DE LUTAR",
+            "PSICOPATA OU COVARDE?",
+            "ISSO MUDA A IA DELE"
+        ],
+        "tamanho": [
+            "ABAIXO DE 1,50 ELE NAO ALCANCA NINGUEM",
+            "GIGANTE OU ANAO?"
+        ],
+        "forca": [
+            "ABAIXO DE 4 ELE NEM LEVANTA A ARMA",
+            "FORCA DECIDE QUAL ARMA ELE USA"
+        ],
+        "mana": [
+            "SEM MANA NAO TEM HABILIDADE",
+            "MANA ALTA LIBERA O KIT INTEIRO"
+        ],
+        "tipo": [
+            "8 TIPOS. ARCO OU ESPADA MUDA A LUTA INTEIRA",
+            "SE CAIR ORBITAL, PREPARA",
+            "A ARMA DEFINE O ALCANCE"
+        ],
+        "estilo": [
+            "O MODELO DEFINE PESO E ALCANCE",
+            "CADA ESTILO LUTA DIFERENTE"
+        ],
+        "raridade": [
+            "SE CAIR MITICO, QUEBRA O JOGO",
+            "COMUM OU LENDARIO?",
+            "MITICO E 1 EM 100"
+        ],
+        "encantamento": [
+            "O ELEMENTO DECIDE AS SKILLS",
+            "TREVAS OU SAGRADO?"
+        ],
+        "habilidade": [
+            "A SKILL QUE ELE VAI USAR NA ARENA",
+            "PODE SAIR A MELHOR DO JOGO"
+        ],
+        "dano": [
+            "ACIMA DE 14 E UM CANHAO",
+            "DANO BAIXO E LUTA LONGA"
+        ],
+        "peso": [
+            "PESADA DEMAIS E ELE NAO LEVANTA",
+            "O PESO TEM QUE CABER NA FORCA"
+        ],
+        "critico": [
+            "CRITICO ALTO VIRA LUTA",
+            "CRITICO E SORTE DENTRO DA SORTE"
+        ],
+        "velocidade_ataque": [
+            "LENTO DEMAIS E ELE APANHA",
+            "VELOCIDADE DECIDE QUEM BATE PRIMEIRO"
+        ],
+        "_default": [
+            "A ROLETA DECIDE",
+            "TUDO PODE SAIR AQUI"
+        ]
+    },
+    "_comment_mediano": "Banco NORMAL reescrito (29/08/2026): 66% das rolagens sao medianas e a legenda era literal ('mede 2,01m.'). Agora ela tem OPINIAO e nunca repete o numero que a tela ja mostra - o tom continua limpo (sem caixa alta, no maximo um emoji)."
 }

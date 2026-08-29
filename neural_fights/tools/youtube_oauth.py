@@ -37,6 +37,18 @@ ESCOPO = "https://www.googleapis.com/auth/youtube.readonly"
 # token so de upload quebraria a live, e vice-versa.
 ESCOPO_UPLOAD = "https://www.googleapis.com/auth/youtube.upload"
 ESCOPO_COMPLETO = f"{ESCOPO} {ESCOPO_UPLOAD}"
+# Retencao por segundo (curva de audiencia) vive em OUTRA API, com escopo
+# proprio. Sem ele o `main.py metricas` mostra so views/likes.
+ESCOPO_ANALYTICS = "https://www.googleapis.com/auth/yt-analytics.readonly"
+
+
+def escopos(com_upload: bool, com_analytics: bool = False) -> str:
+    partes = [ESCOPO]
+    if com_upload:
+        partes.append(ESCOPO_UPLOAD)
+    if com_analytics:
+        partes.append(ESCOPO_ANALYTICS)
+    return " ".join(partes)
 
 
 def _caminho_padrao() -> Path:
@@ -93,6 +105,12 @@ def build_parser() -> SafeArgumentParser:
         help="pede tambem o escopo de UPLOAD (publicar video), alem da "
              "leitura do chat. Necessario uma unica vez, antes de publicar.",
     )
+    parser.add_argument(
+        "--com-analytics",
+        action="store_true",
+        help="pede tambem o escopo do YouTube Analytics (curva de retencao "
+             "para `random_builds/main.py metricas`).",
+    )
     return parser
 
 
@@ -105,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
             "client_id": args.client_id,
             "redirect_uri": redirect,
             "response_type": "code",
-            "scope": ESCOPO_COMPLETO if args.com_upload else ESCOPO,
+            "scope": escopos(args.com_upload, getattr(args, "com_analytics", False)),
             "access_type": "offline",
             "prompt": "consent",
         }
@@ -151,7 +169,8 @@ def main(argv: list[str] | None = None) -> int:
                 # Fica gravado o que este token PODE fazer: quem for publicar
                 # confere aqui em vez de descobrir com um 403 no meio do
                 # upload de 30 MB.
-                "escopo": ESCOPO_COMPLETO if args.com_upload else ESCOPO,
+                "escopo": escopos(args.com_upload,
+                                  getattr(args, "com_analytics", False)),
             },
             indent=2,
         )

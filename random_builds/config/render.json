@@ -1,7 +1,15 @@
 {
     "profiles": {
-        "celular": {"width": 1080, "height": 1920, "layout": "vertical"},
-        "normal":  {"width": 1920, "height": 1080, "layout": "horizontal"}
+        "celular": {
+            "width": 1080,
+            "height": 1920,
+            "layout": "vertical"
+        },
+        "normal": {
+            "width": 1920,
+            "height": 1080,
+            "layout": "horizontal"
+        }
     },
     "fps": 30,
     "crf": 20,
@@ -22,8 +30,25 @@
     },
     "audio": {
         "sample_rate": 44100,
-        "music_volume": 0.22,
-        "sfx_volume": 0.9
+        "music_volume": 0.24,
+        "sfx_volume": 0.9,
+        "_comment": "Som (revisao 29/08/2026): trilha e efeitos sao SINTETIZADOS (src/video/trilha.py) quando assets/music esta vazio; voz vem do edge-tts (gratis) com a voz do Windows como reserva offline (src/content/voz.py). `ducking` abaixa a musica sob a fala; `loudnorm` e o alvo LUFS do arquivo final (padrao das plataformas: -14).",
+        "trilha_procedural": true,
+        "ducking": true,
+        "loudnorm": -14,
+        "voz": {
+            "ativa": true,
+            "motor": "edge",
+            "voz": "pt-BR-AntonioNeural",
+            "taxa": "+0%",
+            "tom": "+0Hz",
+            "voz_sapi": "Maria",
+            "taxa_sapi": 2,
+            "volume": 1.0,
+            "max_atempo": 1.1,
+            "folga": 0.15
+        },
+        "_comment_voz": "Velocidade NATURAL (+0%): a cena e que espera a fala (editing.json -> narracao), nao a fala que corre atras da cena. max_atempo 1.1 e so ajuste fino; folga e o quanto uma fala pode passar do evento quando o proximo nao tem voz."
     },
     "fonts": {
         "bold": "C:/Windows/Fonts/arialbd.ttf",

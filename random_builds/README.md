@@ -76,6 +76,9 @@ python main.py publicar <id> --youtube --visibilidade public   # publico (confir
 python main.py publicar <id> --tiktok                          # navegador: sobe e PARA antes de postar
 python -m src.publicar.tiktok --login                          # login do TikTok (uma vez)
 
+python main.py trilha                                          # trilha sintetizada em assets/music (gratis)
+python main.py metricas --atualizar                            # retencao dos publicados x timeline (YouTube API)
+
 python main.py reactions                                       # assistente interativo
 python main.py import-reactions <pasta> --categoria insane     # importa direto (scripts)
 python main.py import-reactions clip.mp4 --categoria terrible --move
@@ -220,37 +223,93 @@ título e resultado em cima, roda grande embaixo) e `final_normal.mp4`
 (1920x1080, 16:9, roda à esquerda/resultado à direita). Os perfis ficam em
 `config/render.json`.
 
-## A montagem
+## A montagem (revisão de retenção, 29/08/2026)
 
 ```
-gancho (1,4 s)
-roletas do personagem        giro 1,15 s + resultado 0,8 s (2,45 s nos extremos)
-CHARACTER_VIDEO              2-5 s      primeira recompensa
-"agora a arma"               0,9 s
-roletas da arma
-WEAPON_VIDEO                 2-4 s      segunda recompensa
-[compatibilidade]            1,6 s      SÓ quando o número surpreende
-CHARACTER_WEAPON_VIDEO       3-6 s      payoff final
-nota final (1,7 s) + outro (1,5 s)
+gancho COM O PAYOFF          1,6 s   a imagem do personagem pronto + texto (+ riser)
+CLASSE, PERSONALIDADE        2,5 s   giro 1,4 s com a TENSÃO na tela + resultado 1,1 s
+CHARACTER_IMAGE              2,0 s   rosto na tela aos ~7 s (quando a imagem existe)
+TAMANHO, FORÇA, MANA         1,05 s  roleta-relâmpago quando o peso editorial é baixo
+"agora a arma"               1,0 s   stinger (hit)
+roletas da arma                      cheias onde há notícia, relâmpago onde é só número
+WEAPON_IMAGE                 2,0 s
+[compatibilidade]            1,5 s   SÓ quando o número surpreende
+CHARACTER_WEAPON_VIDEO       3-8 s   payoff
+"hora da verdade" + LUTA     1 + 6,5 s   o round decisivo da estreia, com HUD e callouts
+nota final (1,8 s) + outro (1,6 s)   o outro convida para a estreia completa
 ```
 
-Enquanto um clipe não chegou, o lugar dele é ocupado por um **nameplate**:
-nome grande e uma linha de dado, tipografia pura — nunca um avatar genérico
-nem uma ficha. Com o clipe, o mesmo texto vira uma placa discreta que entra e
-sai por cima do vídeo.
+O que motivou a revisão, medido em 64 gerações: **73 s de média**, 14 roletas
+idênticas de 3,3 s, vídeo praticamente **mudo** (`assets/music` e `sfx`
+vazios, `narration.json` com `tts: null`), gancho de texto sobre fundo liso,
+payoff aos 62 s e 40 vídeos sem nenhuma reação real. Cada mudança ataca um
+desses pontos:
 
-O que saiu do formato anterior: a ficha de personagem, a ficha da arma, a tela
-longa de compatibilidade e a tela de estatísticas do fim. Um vídeo que durava
-**101 s** (69 s só de roleta parada em telas de interface) agora dura ~**42 s**
-sem os clipes e ~**55 s** com os três.
+- **Som.** Trilha e efeitos são **sintetizados** (`src/video/trilha.py`,
+  numpy): um loop escuro em tom menor nasce em `assets/music/` na primeira
+  vez que a pasta está vazia (`python main.py trilha`), e cada evento ganha
+  o seu som — riser no gancho, chime/womp/bass hit no resultado conforme o
+  tier, hit no stinger, rufar na nota. A **voz** vem do `edge-tts` (vozes
+  neurais da Microsoft, grátis, `pt-BR-AntonioNeural`) com a voz do Windows
+  (Microsoft Maria) como reserva offline (`src/content/voz.py`); cada fala é
+  sintetizada uma vez e guardada em `outputs/_voz_cache/`. A mixagem final
+  abaixa a música sob a fala (sidechain) e normaliza em **-14 LUFS**
+  (`config/render.json → audio`).
+- **Gancho.** Abre com a **imagem do personagem pronto** (referência
+  personagem+arma > personagem > arma) por cima do texto; sem imagem, pela
+  rolagem ABSURD/CONTRADICTORY de maior peso; e só então pelo cartão de
+  texto. Com `gancho.ab` ligado sai também `final_<perfil>_ganchoB.mp4`,
+  que difere só no primeiro segmento — para medir qual abertura retém.
+- **Tempo de tela proporcional ao peso.** Os sete atributos numéricos
+  (`roletas_rapidas`) passam em relâmpago quando o peso editorial da
+  rolagem é baixo (NORMAL/GOOD/BAD); qualquer notícia (VERY_GOOD, RARE,
+  FUNNY, CONTRADICTORY, ABSURD, atributo escolhido, reação) devolve o giro
+  cheio. Durante o giro cheio aparece a **tensão** — o que está em jogo
+  naquela roda (`frases.json → stakes`).
+- **Rosto cedo.** Com a imagem no disco, o personagem aparece logo depois
+  de CLASSE e PERSONALIDADE (a placa não entrega a altura ainda não
+  sorteada). Sem imagem, o nameplate continua no fim da seção.
+- **Copy com opinião.** O banco NORMAL (66% das rolagens) foi reescrito:
+  opinião curta, sem repetir o número que a tela mostra, tom limpo.
+- **A luta fecha o loop.** A estreia é gravada **antes** do render e o
+  round decisivo entra no fim do build (`luta_no_build`: 6,5 s terminando
+  1,2 s depois do KO, HUD e callouts no relógio do trecho). O outro convida
+  para a estreia completa, que continua sendo vídeo próprio.
+- **Não publicar incompleto.** O catálogo (`main.py publicar`) marca
+  pendências — sem payoff, sem estreia, mp4 mais velho que os clipes — e
+  recusa exportar/publicar sem `--forcar`.
+- **Medir.** `main.py publicar <id> --youtube` registra o upload em
+  `outputs/_publicar/publicados.jsonl`; `main.py metricas --atualizar`
+  busca views/likes (Data API) e a **curva de retenção** (Analytics API) e
+  diz em qual evento da timeline as pessoas saem, além de comparar gancho
+  A × B. A curva exige o escopo de analytics uma vez:
+  `neural-fights youtube-oauth --com-upload --com-analytics`.
+
+**A cena espera a fala (roteiro sólido, 29/08 à noite).** Medido nos vídeos 66–71: ~29 de 33 falas por vídeo não cabiam no tempo da cena nem acelerando 1,35x — saíam cortadas. A ordem inverteu: o controller sintetiza e **mede** cada linha (`voz.medir`, cache) e `timeline_builder.ajustar_ao_roteiro` estica cada evento até a narração dele terminar (`editing.json → narracao.margem`); a pergunta cabe no giro, o comentário no resultado, clipe de vídeo não estica. A voz voltou à velocidade natural (+0%), a roleta-relâmpago ficou muda, e a fala não lê o parêntese da classe nem "1 metros e 97" (agora "1 e 97").
+
+**Segunda remessa (mesmo dia):** legenda **karaoke** sincronizada com a voz (os limites de palavra vêm do próprio edge-tts; com a voz do Windows o texto é repartido no tempo), o **avatar** do personagem (e depois o da arma) fica nos cantos de toda cena depois da revelação, cada reação leva uma **etiqueta** dizendo por que entrou ("RARO · 5% de chance"), os clipes em `contain` (reação, payoff) ganham fundo **desfocado** do próprio clipe em vez de barra chapada, e todo resultado da roleta tem pop de entrada e um brilho na cor do tier atrás da roda. Tudo é uma camada do renderer (`_com_overlay`) sobre as cenas desenhadas — nenhum evento novo no plano.
+
+**Gerador de vídeo desligado = só imagens.** `payoff_video: false` em `config/identity.json` (ou a caixa *Vídeo do payoff (Digen)* no card RETENÇÃO) faz o pipeline não enfileirar o job do Digen, o worker não abrir o site, e o payoff do vídeo passar a ser a **imagem personagem+arma** com câmera (o gancho então abre pelo personagem, para a mesma imagem não abrir e fechar o vídeo). Fluxo e Publicar tratam a imagem como payoff cumprido. Mesmo com o vídeo ligado, se o clipe não chegou a montagem usa a imagem em vez de nameplate.
+
+**Sem créditos no Digen o payoff continua saindo.** O contador mostra 0 no plano Free, mas o Real Motion (lista branca `modelos_permitidos`) é incluso no plano e não gasta crédito. O worker só aborta por saldo quando o modelo em uso é pago (fora da lista) ou com `creditos_obrigatorios: true` em `config/identity.json`; se o site recusar, o job falha sozinho, sem travar a fila.
+
+**Worker e código novo:** o `identity worker --watch` fica dias de pé; desde 29/08 ele re-renderiza em **subprocesso** (`generate-video --rerender <id> --refazer-edicao`), então sempre usa o código que está no disco e um render que estoura não derruba a fila. Mesmo assim, depois de atualizar o código, reinicie o worker (Parar processos → Processar fila) para o próprio worker carregar as mudanças.
+
+**No painel:** o card **RETENÇÃO** (página Vídeos de Build) liga/desliga gancho com imagem, gancho B, personagem cedo, luta no fim, voz, trilha e ducking, escolhe a voz, gera a trilha, testa a voz e abre as métricas; a página **Fluxo** ganhou as colunas VOZ · LUTA · A/B · DUR e o alerta "estreia gravada mas fora do vídeo"; a página **Publicar** marca ⚠ as builds com pendência e tem os botões *Autorizar analytics* e *Métricas*.
+
+A duração do vídeo passou a ser **consequência da fala**: com a narração inteira na velocidade natural, um build completo fica em torno de 60–70 s (a roleta cheia espera o comentário; a relâmpago é muda). Antes da correção o vídeo era mais curto porque a voz estava sendo cortada.
+
+Um vídeo de build ficava em **~40 s sem os clipes e ~55 s completo** (payoff
+de 8 s + luta de 6,5 s são recompensa, não espera) — contra 73 s de média
+antes, sem som e sem rosto.
 
 **Reação não sai depois de toda roleta.** Cada rolagem é classificada
 (`ABSURD`, `CONTRADICTORY`, `RARE`, `FUNNY`, `VERY_GOOD`, `GOOD`, `NORMAL`,
 `BAD`) a partir do score, da probabilidade da opção e do método de avaliação;
 a chance de reação vem da classe, com teto por vídeo, distância mínima entre
-duas e nunca duas seguidas. Um resultado mediano improvável rende mais tela
-que um bom comum, e uma arma que o personagem não levanta é *contraditória*,
-não *ruim* — e pede outra reação. Tudo em `config/editing.json`.
+duas e nunca duas seguidas. Uma reação toca **inteira ou não entra**: o
+orçamento do vídeo (`reaction_budget`, 8 s) é o que segura a duração.
+Tudo em `config/editing.json`.
 
 ## As lutas são o produto (Onda 9)
 
