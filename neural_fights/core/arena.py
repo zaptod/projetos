@@ -439,14 +439,90 @@ ARENAS = {
             Obstaculo("pilar", 15.0, 18.0, 1.2, 1.2, (100, 95, 85)),
         ],
     ),
+
+    # === ARENAS VERTICAIS (9:16) — DESENHADAS PARA O VIDEO DE CELULAR ===
+    # Toda arena acima e paisagem ou quadrada. Com a camera presa em 1080x1920
+    # o quadro encaixa pela LARGURA e sobra faixa morta em cima e embaixo, o
+    # que espreme o lutador: medido, o Templo (26 m) deixava o corpo com 3,1%
+    # da largura e o Ringue (14 m) com 5,0%. Estas tres tem proporcao 9:16
+    # exata, entao a arena INTEIRA enche a tela vertical sem faixa morta.
+    # As TRES tem o MESMO tamanho (10,125 x 18 m, 182 m2 — a faixa das
+    # compactas: Arena Pequena 192, Ringue 196). Tamanho unico e deliberado:
+    # com a camera presa o corpo na tela e proporcional ao zoom, entao arenas
+    # de tamanhos diferentes dariam legibilidade diferente a cada estreia. A
+    # variedade mora no tema, nas cores e nos obstaculos. 10,125 m e o ponto
+    # otimo: pede zoom 1,62 e o teto da camera e `zoom_max` 1,6 — arena menor
+    # nao renderia mais nada, so comprimiria a luta.
+    # O corredor central fica livre; os obstaculos moram nas laterais, porque
+    # num palco estreito qualquer coisa no meio vira parede.
+    "Duto": ArenaConfig(
+        nome="Duto de Servico",
+        largura=10.125,
+        altura=18.0,
+        cor_chao=(22, 26, 38),
+        cor_parede=(30, 90, 110),
+        cor_borda=(0, 200, 230),
+        formato="retangular",
+        tema="cyberpunk",
+        descricao="Corredor vertical de neon",
+        icone="🧪",
+        cor_ambiente=(20, 40, 60),
+        obstaculos=[
+            Obstaculo("caixa", 1.7, 5.5, 1.2, 1.2, (60, 80, 100), destrutivel=True),
+            Obstaculo("caixa", 8.4, 12.5, 1.2, 1.2, (60, 80, 100), destrutivel=True),
+        ],
+    ),
+
+    "Poco": ArenaConfig(
+        nome="Poco do Templo",
+        largura=10.125,
+        altura=18.0,
+        cor_chao=(46, 50, 42),
+        cor_parede=(66, 76, 58),
+        cor_borda=(104, 124, 84),
+        formato="retangular",
+        tema="ruinas",
+        descricao="Fenda funda entre ruinas",
+        icone="🗿",
+        obstaculos=[
+            Obstaculo("pilar_quebrado", 1.8, 5.5, 1.3, 1.3, (90, 100, 80)),
+            Obstaculo("pilar_quebrado", 8.3, 12.5, 1.3, 1.3, (90, 100, 80)),
+        ],
+        efeitos_especiais=["poeira"],
+    ),
+
+    "Torre": ArenaConfig(
+        nome="Salao da Torre",
+        largura=10.125,
+        altura=18.0,
+        cor_chao=(38, 32, 30),
+        cor_parede=(78, 62, 48),
+        cor_borda=(150, 118, 70),
+        formato="retangular",
+        tema="castelo",
+        descricao="Salao alto e estreito",
+        icone="🏰",
+        cor_ambiente=(30, 22, 16),
+        obstaculos=[
+            Obstaculo("pilar", 1.8, 5.5, 1.2, 1.2, (100, 95, 85)),
+            Obstaculo("pilar", 8.3, 12.5, 1.2, 1.2, (100, 95, 85)),
+        ],
+    ),
 }
+
+# As arenas 9:16, na ordem em que o sorteio de video as ve. O random_builds
+# importa DAQUI em vez de repetir os nomes: arena nova entra no sorteio ao
+# ser adicionada nesta tupla, e em nenhum outro lugar.
+ARENAS_VERTICAIS = ("Duto", "Poco", "Torre")
 
 # Lista ordenada de mapas para seleção
 LISTA_MAPAS = [
     "Arena", "Arena Pequena", "Ringue", "Coliseu", "Dojo",
     "Castelo", "Templo", "Floresta", "Caverna", "Gelo",
     "Vulcao", "Inferno", "Cemiterio", "Praia", "Espacial",
-    "Cyberpunk", "Labirinto"
+    "Cyberpunk", "Labirinto",
+    # 9:16, para o video vertical (ver ARENAS_VERTICAIS)
+    "Duto", "Poco", "Torre"
 ]
 
 def get_mapa_info(nome: str) -> dict:

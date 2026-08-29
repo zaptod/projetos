@@ -30,7 +30,31 @@ OUTPUTS = Path(__file__).resolve().parents[2] / "outputs"
 # visual como a live ja tem. ATENCAO: a arena MUDA o resultado da luta (o
 # terreno e diferente), entao ela e decidida uma vez e vale para os dois
 # formatos de video. So resolucao e modo de camera podem variar entre eles.
-ARENAS_DE_VIDEO = ("Arena Pequena", "Ringue", "Cyberpunk", "Dojo", "Templo")
+# As arenas do video sao as VERTICAIS (9:16), desenhadas no motor para este
+# uso — ver `ARENAS_VERTICAIS` em neural_fights/core/arena.py. Elas encaixam
+# exatamente no quadro do celular: com a camera presa a arena inteira enche a
+# tela sem faixa morta, e o lutador sai com ~8-10% da largura contra 3,1% do
+# Templo e 5,0% do Ringue (medido em 1080x1920).
+#
+# A MESMA arena vale para os dois formatos, e isso e obrigatorio: a arena
+# muda o terreno e portanto o RESULTADO da luta, e `gravar_confronto` aborta
+# se os formatos divergirem no vencedor. Nao custa nada ao 16:9 porque la a
+# camera e a DIRETOR, que enquadra os lutadores e nao a arena — o formato do
+# palco lhe e indiferente.
+#
+# As paisagens antigas ficam registradas para re-render de video ja gravado
+# (o cenario vem do fight.json) e para quem quiser o catalogo antigo.
+# Os nomes sao repetidos aqui em vez de importados de `core.arena` de
+# proposito: importar o motor no topo puxaria pygame para dentro de quem so
+# gera DADOS (`--generation-only`, os lotes de balanceamento), que hoje roda
+# sem ele. O contrato — nomes existem no motor, sao 9:16 e tem o mesmo
+# tamanho — e garantido por teste (test_arenas_verticais_regressions.py).
+ARENAS_DE_VIDEO = ("Duto", "Poco", "Torre")
+ARENAS_DE_VIDEO_LEGADO = ("Arena Pequena", "Ringue", "Cyberpunk", "Dojo", "Templo")
+
+# A estreia usa o mesmo catalogo vertical; a constante fica porque a estreia
+# e o formato de camera presa e pode querer um subconjunto proprio depois.
+ARENAS_DE_ESTREIA = ARENAS_DE_VIDEO
 
 # Enquadramento de VIDEO (Onda 9): a camera DIRETOR — zona morta, pan lento,
 # zoom-in so apos estabilidade, zoom-out rapido, sem tremor. O ARENA (quadro
@@ -42,10 +66,32 @@ CAMERA_DE_VIDEO = "DIRETOR"
 RESOLUCAO_POR_PERFIL = {"celular": (1080, 1920), "normal": (1920, 1080)}
 PORTRAIT_POR_PERFIL = {"celular": True, "normal": False}
 
+# Excecoes ao CAMERA_DE_VIDEO, por origem e por perfil. Decisao do Adrian:
+# na ESTREIA vertical a camera fica PRESA na arena — a luta de apresentacao
+# mostra o palco inteiro, nao persegue os corpos. Como o quadro e fixo, o
+# gravador ainda devolve `recorte_util`, que apara so a faixa morta embaixo
+# (a largura fica inteira): arena toda, sem tarja.
+# Origem ausente aqui, ou perfil ausente na origem, cai no `camera` de cima.
+CAMERA_POR_ORIGEM = {
+    "estreia": {"celular": "ARENA"},
+}
+
 GAMEPLAY_PADRAO = {
     "max_total": 45.0, "seca": 4.0, "contexto": 1.0, "protecao_ko": 8.0,
     "abertura": 0.8, "camera": CAMERA_DE_VIDEO, "sem_hud": True,
+    "camera_por_origem": CAMERA_POR_ORIGEM,
 }
+
+
+def camera_do_perfil(gameplay: dict, origem: str, perfil: str) -> str:
+    """Modo de camera desta gravacao. Varia por perfil de proposito.
+
+    A arena e a seed sao as mesmas nos dois formatos — so o enquadramento
+    muda, e enquadramento comprovadamente nao altera o resultado da luta
+    (`gravar_confronto` ainda checa que os formatos concordam no vencedor).
+    """
+    por_origem = (gameplay.get("camera_por_origem") or {}).get(str(origem)) or {}
+    return por_origem.get(perfil) or gameplay.get("camera") or CAMERA_DE_VIDEO
 
 
 def config_gameplay(editing_config: dict | None) -> dict:
@@ -143,7 +189,8 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
                      pasta: Path, prefixo: str,
                      perfis: tuple[str, ...] = ("celular", "normal"), *,
                      gameplay: dict | None = None,
-                     resolucoes: dict | None = None) -> dict:
+                     resolucoes: dict | None = None,
+                     origem: str = "luta") -> dict:
     """Grava a luta (um mp4 por formato), corta o tedio e devolve o bruto.
 
     A gravacao e a fonte da verdade do resultado: a luta e simulada uma vez
@@ -167,7 +214,7 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
             "p1": p1, "p2": p2, "seed": semente, "cenario": cenario,
             "saida": pasta / f"bruto_{prefixo}_{perfil}.mp4",
             "portrait": PORTRAIT_POR_PERFIL.get(perfil, False),
-            "camera_modo": gameplay.get("camera"),
+            "camera_modo": camera_do_perfil(gameplay, origem, perfil),
             "resolucao": resolucoes.get(perfil),
             "sem_hud": bool(gameplay.get("sem_hud", True)),
         } for perfil in perfis]
@@ -219,8 +266,14 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
         "ko_em_clipe": remap["ko_em_video"],
         "duracao_clipe": remap["duracao"],
         "duracao_gravacao": referencia.get("duracao_video"),
+        # A camera pode DIVERGIR entre os formatos (estreia vertical grava
+        # em ARENA). `camera`/`metricas_video` continuam sendo os da
+        # referencia, para quem so sabe ler uma luta; o dicionario por perfil
+        # e o registro honesto de quem gravou o que.
         "camera": referencia.get("camera_modo"),
         "metricas_video": referencia.get("metricas_video"),
+        "camera_por_perfil": {perfil: g.get("camera_modo")
+                              for perfil, g in zip(perfis, gravacoes)},
     }
 
 
@@ -424,7 +477,7 @@ class TournamentSession:
             bruto = gravar_confronto(p1, p2, cenario, base_seed,
                                      self._gravar_em / "gameplay",
                                      f"{match.match_id:02d}", self._perfis,
-                                     gameplay=self.gameplay)
+                                     gameplay=self.gameplay, origem="torneio")
         else:
             bruto = simular_luta(p1, p2, cenario, base_seed)
 
@@ -499,7 +552,11 @@ class FightSession:
             raise ValueError(f"melhor_de precisa ser impar e >= 1: {melhor_de}")
         seed = seed if seed is not None else RandomEngine.new_seed()
         engine = RandomEngine(seed)
-        cenario = cenario or engine.fork("luta:arena").choice(ARENAS_DE_VIDEO)
+        # A estreia tem catalogo proprio (hoje igual ao de video) porque e o
+        # formato de camera presa: se um dia so um subconjunto das verticais
+        # servir para ela, muda aqui. Um `cenario` explicito continua mandando.
+        catalogo = (ARENAS_DE_ESTREIA if origem == "estreia" else ARENAS_DE_VIDEO)
+        cenario = cenario or engine.fork("luta:arena").choice(catalogo)
         fichas = fichas_do_banco()
         for nome in (p1, p2):
             if nome not in fichas:
@@ -518,7 +575,7 @@ class FightSession:
                 bruto = gravar_confronto(p1, p2, cenario, semente,
                                          Path(gravar_em) / "gameplay",
                                          f"{indice:02d}", tuple(perfis),
-                                         gameplay=self.gameplay)
+                                         gameplay=self.gameplay, origem=origem)
             else:
                 bruto = simular_luta(p1, p2, cenario, semente)
 

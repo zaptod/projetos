@@ -120,7 +120,15 @@ class Câmera:
         # Ajusta zoom inicial para ver a arena toda
         zoom_x = (self.screen_width - self.margem_segura * 2) / (largura * PPM)
         zoom_y = (self.screen_height - self.margem_segura * 2) / (altura * PPM)
-        self.zoom = min(zoom_x, zoom_y, 1.0)
+        # O teto era 1.0, e isso QUEBRAVA a promessa do modo ARENA ("enquadra
+        # a arena inteira"): arena menor que a tela nao era ampliada, ficava
+        # pequena no meio dela. Medido em 1080x1920: Ringue e as verticais
+        # 9:16 travavam todas em zoom 1.0 e o corpo saia com os mesmos 5% da
+        # largura — o palco menor nao chegava na tela, so encolhia a arena.
+        # O teto agora e `zoom_max`, o mesmo do combate proximo. Nada borra:
+        # os corpos e o cenario sao desenhados por vetor (pygame.draw) na
+        # escala da camera, nao sao bitmaps esticados.
+        self.zoom = min(zoom_x, zoom_y, self.zoom_max)
         self.target_zoom = self.zoom
         # Zoom que enquadra a arena inteira — alvo permanente do modo ARENA
         self.zoom_arena = self.zoom

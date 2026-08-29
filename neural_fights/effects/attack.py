@@ -905,14 +905,21 @@ def calcular_knockback_com_forca(atacante, alvo, direcao: float, dano: float) ->
     - Alvos pesados sejam empurrados menos
     - Dano maior = knockback maior
     """
+    from neural_fights.utils.config import (KNOCKBACK_MELEE_ESCALA,
+                                            KNOCKBACK_MELEE_MAX,
+                                            KNOCKBACK_MELEE_MIN)
+
     forca = atacante.dados.forca
     massa_alvo = alvo.dados.tamanho
-    
+
     # Base do knockback
     base = (forca * 0.8 + dano * 0.3) / (massa_alvo + 5)
-    
-    # Escala para valores razoáveis (5-25 unidades)
-    magnitude = max(5, min(25, base * 3))
+
+    # Escala e limites vêm do config: a fórmula foi calibrada para força
+    # 10-20 e o banco entrega 4,5-7,7, então o melee saía com metade do
+    # empurrão de um projétil. Ver KNOCKBACK_MELEE_* em utils/config.py.
+    magnitude = max(KNOCKBACK_MELEE_MIN,
+                    min(KNOCKBACK_MELEE_MAX, base * KNOCKBACK_MELEE_ESCALA))
     
     # Vetor
     kx = math.cos(direcao) * magnitude

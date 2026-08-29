@@ -89,6 +89,16 @@ WALL_SPLAT_DANO_MAX = 0.08           # fração da vida_max
 WALL_SPLAT_STUN_S = (0.3, 0.5)
 LANCADO_KNOCKBACK_MIN = 24.0         # knockback que arma o estado "lançado" (golpe forte)
 
+# === KNOCKBACK DO CORPO A CORPO ===
+# A formula de `calcular_knockback_com_forca` foi escrita para uma escala de
+# forca 10-20; o banco tem forca 4,5-7,7 (mediana 6,5). Medido em 3 lutas
+# reais, o melee saia com mediana 8,3 contra 19,5 dos projeteis: um soco
+# empurrava menos da metade de uma flecha, ~52 px numa arena de 1200. Estes
+# fatores recolocam o golpe na escala do resto do jogo.
+KNOCKBACK_MELEE_ESCALA = 5.0   # era 3.0 embutido na formula
+KNOCKBACK_MELEE_MIN = 8.0      # piso: ate o golpe fraco move o corpo (~1 m)
+KNOCKBACK_MELEE_MAX = 40.0     # teto: mesmo do caminho de projetil/skill
+
 # === ONDA 10B: MOBILIDADE NO MOTOR ===
 # O eixo 'mobilidade' da personalidade (0-1) passa a existir no corpo: dash
 # mais barato/frequente/forte, giro mais rapido, um pouco mais de velocidade.
