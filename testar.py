@@ -133,15 +133,33 @@ def ferramentas() -> dict:
             "falhas": faltando, "segundos": 0.0, "saida": ""}
 
 
+# Onde procurar byte de controle. Os `.bat` entraram em 01/09/2026 porque o
+# defeito aconteceu num deles: o heredoc do shell comeu a barra invertida do
+# caminho `ferramentas\abrir.py`, a sequencia barra-a virou o byte 0x07 (BEL)
+# e o lancador passou a dizer "Invalid argument" com um nome de arquivo
+# impossivel de ler. A checagem so olhava .py e nao viu nada.
+#
+# (Escrever este comentario introduziu o mesmo byte, e a propria checagem
+#  acusou. E o melhor argumento possivel a favor dela.)
+EXTENSOES_VIGIADAS = ("*.py", "*.bat")
+
+
 def integridade() -> dict:
     """Byte de controle no fonte — o defeito que não aparece em teste nenhum."""
     permitidos = {9, 10, 13}
     sujos = []
+    alvos = []
     for projeto in (RAIZ / "random_builds", RAIZ / "historias",
-                    RAIZ / "remoto"):
-        if not projeto.is_dir():
-            continue
-        for arquivo in projeto.rglob("*.py"):
+                    RAIZ / "remoto", RAIZ / "painel", RAIZ / "visao",
+                    RAIZ / "vila", RAIZ / "ferramentas"):
+        if projeto.is_dir():
+            for padrao in EXTENSOES_VIGIADAS:
+                alvos += list(projeto.rglob(padrao))
+    # Os lancadores moram na raiz e sao justamente onde o defeito bateu.
+    alvos += list(RAIZ.glob("*.bat")) + list(RAIZ.glob("*.py"))
+
+    for _ in (1,):
+        for arquivo in alvos:
             if "__pycache__" in str(arquivo):
                 continue
             bruto = arquivo.read_bytes()

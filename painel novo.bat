@@ -1,6 +1,6 @@
 @echo off
 rem ===================================================================
-rem  Neural Fights - Painel
+rem  Neural Fights - Painel novo (previa)
 rem
 rem  Toda a logica esta em ferramentas/abrir.py, de proposito: batch nao e
 rem  lugar para decisao, e la o codigo pode ser testado. Aqui so se acha o
@@ -13,7 +13,7 @@ rem ===================================================================
 setlocal
 chcp 65001 >nul 2>nul
 cd /d "%~dp0"
-title Neural Fights - Painel
+title Neural Fights - Painel novo (previa)
 
 rem O `py` (lancador oficial do Windows) e mais confiavel que `python`, que
 rem pode ser o atalho vazio da Microsoft Store.
@@ -32,7 +32,7 @@ if not defined PY (
     exit /b 1
 )
 
-%PY% -X utf8 ferramentas/abrir.py painel
+%PY% -X utf8 ferramentas/abrir.py novo
 if errorlevel 1 (
     echo.
     echo  --- deu problema. A mensagem acima diz o que foi. ---
