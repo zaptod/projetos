@@ -90,7 +90,7 @@ SUITES = (
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
       "-p", "test_*.py"]),
 )
-SMOKE = ("painel (12 páginas)", RAIZ, [PY, "-X", "utf8", "painel_ui.py",
+SMOKE = ("painel (12 páginas)", RAIZ, [PY, "-X", "utf8", "-m", "painel",
                                        "--smoke"])
 
 VERDE, VERMELHO, AMARELO, FIM = "\033[92m", "\033[91m", "\033[93m", "\033[0m"

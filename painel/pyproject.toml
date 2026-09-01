@@ -1,0 +1,27 @@
+# O painel de controle, instalavel como os outros pacotes.
+#
+# Aqui o PACOTE E O PROPRIO DIRETORIO (`painel/` na raiz do monorepo), e nao
+# um subdiretorio de um container -- por isso o `package-dir` aponta para
+# ".". Nao ha sombreamento porque o diretorio da raiz E o pacote: a regra do
+# repositorio proibe pacote com o nome de um diretorio da raiz que NAO seja
+# ele mesmo.
+#
+#     pip install -e ./painel
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "painel-neural-fights"
+version = "1.0.0"
+description = "Painel de controle: a Vila e as janelas de trabalho"
+requires-python = ">=3.10"
+dependencies = ["panorama", "random-builds"]
+
+[tool.setuptools]
+packages = ["painel", "painel.paginas"]
+
+[tool.setuptools.package-dir]
+painel = "."
+"painel.paginas" = "paginas"

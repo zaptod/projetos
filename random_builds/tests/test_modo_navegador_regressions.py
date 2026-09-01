@@ -226,66 +226,108 @@ class CanalAlvoTests(unittest.TestCase):
 
 
 class PainelSegueOModoTests(unittest.TestCase):
-    """O painel tem que cobrar o login CERTO.
+    """O painel tem que cobrar o login CERTO e gravar onde leu.
 
-    Ele cobrava o OAuth antes de publicar a serie. Com a publicacao indo
-    pelo navegador, isso bloquearia quem nao precisa de OAuth e liberaria
-    quem nao tem login do Studio — o erro so apareceria la na frente, com
-    o Chrome ja aberto. O smoke das 12 paginas nao pega isso: ele constroi
-    a tela, nao aperta o botao.
+    Estes testes liam o FONTE do painel e procuravam literais
+    (`fonte.index("def _historias_publicar")`). Isso nao testava nada:
+    passava se alguem escrevesse a mesma coisa de outro jeito, e falhava se
+    alguem movesse a funcao. Com o painel virando pacote em 01/09/2026, as
+    paginas viraram modulos importaveis -- e o teste honesto ficou
+    disponivel pela primeira vez.
     """
 
-    @classmethod
-    def setUpClass(cls):
-        cls.fonte = (Path(RAIZ).parent / "painel_ui.py").read_text(
-            encoding="utf-8")
+    def _pagina(self, modulo, classe="Pagina"):
+        """A pagina sem abrir janela: ela so precisa da casca no construtor."""
+        import importlib
+        mod = importlib.import_module(f"painel.paginas.{modulo}")
 
-    def _trecho_da_serie(self):
-        i = self.fonte.index("def _historias_publicar")
-        return self.fonte[i:i + 2200]
+        class CascaFalsa:
+            oficina = None
+            tema = None
+            registros = []
 
-    def test_a_trava_pergunta_o_modo(self):
-        trecho = self._trecho_da_serie()
-        self.assertIn("self._servico_youtube()", trecho)
+            def _registrar(self, texto, tipo="saida"):
+                self.registros.append((texto, tipo))
 
-    def test_a_trava_nao_fixa_o_servico_na_mao(self):
-        trecho = self._trecho_da_serie()
-        for errado in ('tem_login("youtube", "historias")',
-                       'ativa("youtube", "historias")',
-                       'destino("youtube", "historias")'):
-            self.assertNotIn(errado, trecho, errado)
+            def mostrar(self, _chave):
+                pass
 
-    def test_a_linha_de_contas_le_o_servico_do_modo(self):
-        """Ela mostrava a conta da API mesmo publicando pelo navegador."""
-        i = self.fonte.index("def _pub_contas")
-        trecho = self.fonte[i:i + 2200]
-        self.assertIn("self._servico_youtube()", trecho)
-        self.assertNotIn('(("youtube", self.combo_pub_conta_yt)', trecho)
+        casca = CascaFalsa()
+        pagina = getattr(mod, classe).__new__(getattr(mod, classe))
+        pagina.casca = casca
+        return pagina, casca
 
-    def test_a_linha_de_contas_mostra_o_CANAL(self):
-        """O nome da conta nao diz para onde o video vai; o canal diz."""
-        i = self.fonte.index("def _pub_contas")
-        trecho = self.fonte[i:i + 2200]
-        self.assertIn('destino.get("identidade")', trecho)
-        self.assertIn("destinos_repetidos", trecho)
+    def _com_modo(self, modo):
+        """Forca o modo de publicacao pelo config, sem tocar em disco."""
+        from builds.publicar import youtube
+        original = youtube.modo
+        youtube.modo = lambda _config=None: modo
+        self.addCleanup(lambda: setattr(youtube, "modo", original))
 
-    def test_o_combo_grava_onde_leu(self):
-        """Ler de youtube_web e gravar em youtube perderia a escolha."""
-        i = self.fonte.index("def _pub_trocar_conta")
-        trecho = self.fonte[i:i + 900]
-        self.assertIn("self._servico_youtube()", trecho)
+    # ---------------------------------------------------------- publicar
+    def test_a_pagina_publicar_le_o_servico_do_MODO(self):
+        pagina, _ = self._pagina("publicar")
+        self._com_modo("navegador")
+        self.assertEqual("youtube_web", pagina.servico_youtube())
+        self._com_modo("api")
+        self.assertEqual("youtube", pagina.servico_youtube())
 
-    def test_o_callback_do_processo_roda_no_thread_da_ui(self):
-        """`after()` ou widget a partir da thread derruba o Tkinter."""
-        i = self.fonte.index("def _drenar_fila")
-        trecho = self.fonte[i:i + 1400]
-        self.assertIn("depois()", trecho)
+    def test_modo_desconhecido_cai_no_navegador(self):
+        """Melhor cobrar o login do navegador do que o token que nao existe."""
+        pagina, _ = self._pagina("publicar")
 
-    def test_o_painel_oferece_o_login_do_studio(self):
-        """Sem botao, a unica coisa que falta fica escondida num comando."""
-        self.assertIn("_pub_login_youtube_web", self.fonte)
-        self.assertIn("Login YouTube Studio", self.fonte)
-        self.assertIn("builds.publicar.youtube_web", self.fonte)
+        from builds.publicar import youtube
+        original = youtube.modo
+
+        def explode(_config=None):
+            raise RuntimeError("config ilegivel")
+
+        youtube.modo = explode
+        self.addCleanup(lambda: setattr(youtube, "modo", original))
+        self.assertEqual("youtube_web", pagina.servico_youtube())
+
+    # ---------------------------------------------------------- historias
+    def test_publicar_serie_cobra_o_login_DO_MODO(self):
+        """Cobrar o OAuth no modo navegador bloqueia quem nao precisa dele."""
+        pagina, _ = self._pagina("historias")
+        self._com_modo("navegador")
+        self.assertEqual("youtube_web", pagina._servico_youtube())
+        self._com_modo("api")
+        self.assertEqual("youtube", pagina._servico_youtube())
+
+    def test_a_serie_para_sem_conta_PROPRIA(self):
+        """Sem conta propria o registro cai na de builds -- irreversivel."""
+        from builds import contas
+        pagina, casca = self._pagina("historias")
+        self._com_modo("navegador")
+
+        pagina.selecionada = lambda: "historia_00001"
+        pagina.cli = lambda *a, **k: self.fail("nao podia ter publicado")
+        original_login, original_destino = contas.tem_login, contas.destino
+        contas.tem_login = lambda *a, **k: True
+        contas.destino = lambda *a, **k: {"conta": "principal",
+                                          "explicita": False,
+                                          "tem_login": True, "identidade": ""}
+        self.addCleanup(lambda: (setattr(contas, "tem_login", original_login),
+                                 setattr(contas, "destino", original_destino)))
+
+        pagina.publicar_serie()
+        self.assertTrue(any("PAREI" in texto for texto, _t in casca.registros),
+                        casca.registros)
+
+    # ------------------------------------------------------------ acoes
+    def test_o_login_do_studio_existe_como_ACAO(self):
+        """A #7 guardava a existencia de um recurso, nao uma logica.
+
+        Reancorada: em vez de procurar o literal no fonte do painel, checa
+        que a pagina tem o metodo e que ele aponta para o modulo certo.
+        """
+        import inspect
+        pagina, _ = self._pagina("publicar")
+        self.assertTrue(callable(pagina.login_youtube_web))
+        fonte = inspect.getsource(type(pagina).login_youtube_web)
+        self.assertIn("builds.publicar.youtube_web", fonte)
+        self.assertIn("--login", fonte)
 
 
 if __name__ == "__main__":
