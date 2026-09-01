@@ -7,11 +7,12 @@ from __future__ import annotations
 import sys
 
 from .app import Casca
-from .paginas import fluxo, jogo, publicar
+from .paginas import contas, fluxo, historias, jogo, publicar, vila
 
 
 # A ordem aqui e a ordem do menu.
-PAGINAS = [fluxo.Pagina, publicar.Pagina,
+PAGINAS = [vila.Pagina, fluxo.Pagina, publicar.Pagina,
+           historias.Pagina, contas.Pagina,
            jogo.Simulacao, jogo.Database, jogo.Live]
 
 
