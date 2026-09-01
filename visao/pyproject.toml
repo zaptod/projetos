@@ -1,0 +1,31 @@
+# Pacote `panorama` — as quatro familias de numero, num dicionario so.
+#
+# Ele fica ACIMA de `builds` e `contos` porque le os dois. Nao e o nucleo
+# compartilhado (esse e o `builds`, de quem todos dependem): e a camada de
+# LEITURA que existe para o painel, a Vila e o bot do Telegram nao
+# reimplementarem contagem cada um do seu jeito -- que e exatamente o que
+# acontecia. A Vila contava linha de arquivo na mao, o painel rodava um CLI e
+# jogava o texto num log, e o bot tinha a terceira versao.
+#
+# O diretorio se chama `visao` e o pacote se chama `panorama` de proposito:
+# um diretorio da raiz com o mesmo nome do pacote vira um namespace vazio que
+# SOMBREIA a instalacao (foi o que aconteceu com `historias`).
+#
+#     pip install -e ./visao
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "panorama"
+version = "1.0.0"
+description = "Leitura unificada do estado: producao agora, desempenho, estoque e qualidade"
+requires-python = ">=3.10"
+dependencies = ["random-builds"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["panorama*"]
+exclude = ["tests*"]
+namespaces = false

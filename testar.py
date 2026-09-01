@@ -6,7 +6,7 @@
     python testar.py --lista     o que existe, sem executar
 
 Por que existe: o projeto virou cinco bases de código (neural_fights,
-random_builds, historias, vila, remoto) mais o painel, cada uma com o seu
+random_builds, historias, vila, remoto), o agregador de métricas mais o painel, cada uma com o seu
 jeito de rodar teste. "Testar tudo" virava cinco comandos em cinco pastas —
 e, na prática, ou se esquecia um ou não se testava. Um comando que falha em
 vermelho é a diferença entre confiar e torcer.
@@ -78,6 +78,9 @@ SUITES = (
      [PY, "-X", "utf8", "-m", "unittest", "remoto.test_remoto"]),
     ("vila (sprites)", RAIZ,
      [PY, "-X", "utf8", "-m", "unittest", "vila.test_motor"]),
+    ("panorama (metricas)", RAIZ,
+     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "visao/tests",
+      "-p", "test_*.py"]),
     # A maior suite do repositorio, e a que ninguem rodava aqui: `testar.py`
     # cobria tres projetos e o CI cobria so este, em conjuntos DISJUNTOS.
     # Nenhum comando rodava tudo. Vem por ultimo por ser a mais cara.
