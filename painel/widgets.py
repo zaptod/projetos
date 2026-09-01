@@ -74,12 +74,22 @@ class Oficina:
         fora = tk.Frame(pai, bg=self.tema.borda)
         dentro = tk.Frame(fora, bg=self.tema.superficie)
         dentro.pack(fill="both", expand=True, padx=BORDA, pady=BORDA)
+
+        # O TITULO FICA FORA DO CORPO de proposito. Enquanto ele era
+        # empacotado dentro, `corpo` ficava "gerenciado por pack" e qualquer
+        # pagina que quisesse `grid()` ali estourava com "cannot use geometry
+        # manager grid ... which already has slaves managed by pack". O corpo
+        # tem que chegar limpo para quem for usar.
+        if titulo:
+            faixa = tk.Frame(dentro, bg=self.tema.superficie)
+            faixa.pack(fill="x", padx=ESPACO["normal"],
+                       pady=(ESPACO["normal"], 0))
+            self.secao(faixa, titulo).pack(anchor="w")
+
         corpo = tk.Frame(dentro, bg=self.tema.superficie)
         corpo.pack(fill="both", expand=True, padx=ESPACO["normal"],
-                   pady=ESPACO["normal"])
-        if titulo:
-            self.secao(corpo, titulo).pack(anchor="w",
-                                           pady=(0, ESPACO["meio"]))
+                   pady=(ESPACO["meio"] if titulo else ESPACO["normal"],
+                         ESPACO["normal"]))
         fora.corpo = corpo          # noqa: SLF001 — quem empacota usa isto
         return fora
 
@@ -111,8 +121,66 @@ class Oficina:
         alvo.bind("<Leave>", lambda _e: alvo.configure(bg=fundo))
         return alvo
 
+    # ------------------------------------------------------ entrada
+    def campo(self, pai, rotulo: str, largura: int = 12):
+        """Rotulo + caixa de texto. Devolve (moldura, variavel)."""
+        fundo = pai.cget("bg")
+        moldura = tk.Frame(pai, bg=fundo)
+        self.rotulo(moldura, rotulo, cor="texto_fraco", bg=fundo).pack(
+            side="left", padx=(0, ESPACO["meio"]))
+        variavel = tk.StringVar()
+        tk.Entry(moldura, textvariable=variavel, width=largura,
+                 bg=self.tema.superficie_alta, fg=self.tema.texto,
+                 insertbackground=self.tema.texto, relief="flat",
+                 font=self.tema.letra("corpo"),
+                 highlightthickness=1, highlightbackground=self.tema.borda,
+                 highlightcolor=self.tema.acento).pack(side="left", ipady=3)
+        return moldura, variavel
+
+    def combo(self, pai, valores: list, inicial: str = "", largura: int = 12):
+        alvo = ttk.Combobox(pai, values=list(valores), width=largura,
+                            state="readonly", font=self.tema.letra("corpo"))
+        alvo.set(inicial or (valores[0] if valores else ""))
+        return alvo
+
+    def marcador(self, pai, texto: str):
+        """Caixa de marcar. Devolve (widget, variavel)."""
+        fundo = pai.cget("bg")
+        variavel = tk.BooleanVar()
+        alvo = tk.Checkbutton(
+            pai, text=texto, variable=variavel, bg=fundo, fg=self.tema.texto,
+            selectcolor=self.tema.superficie_alta,
+            activebackground=fundo, activeforeground=self.tema.texto,
+            font=self.tema.letra("corpo"), relief="flat", bd=0,
+            highlightthickness=0, cursor="hand2")
+        return alvo, variavel
+
+    def zona_de_perigo(self, pai, aviso: str):
+        """Bloco vermelho para o que NAO tem volta.
+
+        Cor propria, e nao so um botao vermelho no meio dos outros: apagar o
+        banco do jogo perde os personagens que os videos criaram, e isso
+        merece uma area que se le como area, nao como mais um botao.
+        """
+        fora = tk.Frame(pai, bg=self.tema.erro)
+        dentro = tk.Frame(fora, bg=self.tema.erro_fundo)
+        dentro.pack(fill="both", expand=True, padx=BORDA, pady=BORDA)
+        corpo = tk.Frame(dentro, bg=self.tema.erro_fundo)
+        corpo.pack(fill="both", expand=True, padx=ESPACO["normal"],
+                   pady=ESPACO["normal"])
+        self.rotulo(corpo, "ZONA DE PERIGO", papel="secao", peso="bold",
+                    cor="erro", bg=self.tema.erro_fundo).pack(anchor="w")
+        self.rotulo(corpo, aviso, cor="texto_fraco",
+                    bg=self.tema.erro_fundo, wraplength=760,
+                    justify="left").pack(anchor="w",
+                                         pady=(ESPACO["pouco"],
+                                               ESPACO["meio"]))
+        fora.corpo = corpo          # noqa: SLF001
+        return fora
+
     # ---------------------------------------------------------- tabela
-    def tabela(self, pai, colunas: list, altura: int = 12):
+    def tabela(self, pai, colunas: list, altura: int = 12,
+               estica: str | None = None):
         """Treeview a partir de [(id, titulo, largura, alinhamento)].
 
         RECUSA ID REPETIDO. O Tk nao reclama: ele cria as colunas e depois
@@ -134,10 +202,12 @@ class Oficina:
             alvo.heading(identificador, text=titulo, anchor=alinhamento)
             alvo.column(identificador, width=largura, anchor=alinhamento,
                         stretch=False)
-        # A ultima estica: sobra de espaco vai para ela em vez de virar uma
-        # faixa morta a direita.
+        # UMA coluna absorve a sobra de espaco, senao ela vira faixa morta a
+        # direita. Qual delas e escolha de quem monta: na lista de publicar a
+        # que precisa e o TITULO, e deixar a ultima esticando truncava o
+        # nome do video enquanto sobrava espaco na coluna do TikTok.
         if colunas:
-            alvo.column(colunas[-1][0], stretch=True)
+            alvo.column(estica or colunas[-1][0], stretch=True)
         return alvo
 
     def largura_cabe(self, colunas: list, disponivel: int) -> bool:

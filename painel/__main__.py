@@ -7,11 +7,12 @@ from __future__ import annotations
 import sys
 
 from .app import Casca
-from .paginas import fluxo
+from .paginas import fluxo, jogo, publicar
 
 
 # A ordem aqui e a ordem do menu.
-PAGINAS = [fluxo.Pagina]
+PAGINAS = [fluxo.Pagina, publicar.Pagina,
+           jogo.Simulacao, jogo.Database, jogo.Live]
 
 
 def main(argv=None) -> int:
