@@ -1,0 +1,147 @@
+# -*- coding: utf-8 -*-
+"""Seletores do ChatGPT e do Gemini, na doutrina da casa.
+
+Cada alvo e uma LISTA de candidatos, tentados em ordem, e nao um seletor
+unico: os dois sites mudam de classe com frequencia e um seletor solto
+quebra a automacao inteira sem dizer o que quebrou. Quando quebrar mesmo
+assim, o conserto e `python main.py llm probe --provedor chatgpt`, que
+despeja o DOM real da tela — nenhum outro arquivo precisa mudar.
+
+O que NUNCA se confia aqui (mesma licao do Digen): "nao deu erro" nao e
+prova. O envio so e dado como feito quando o campo esvazia ou o botao de
+parar aparece; a resposta so e dada como pronta quando o texto PARA de
+crescer.
+"""
+from __future__ import annotations
+
+PROVEDORES = ("chatgpt", "gemini")
+
+CHATGPT = {
+    "url": "https://chatgpt.com/",
+    "url_novo_chat": "https://chatgpt.com/?model=auto",
+    "campo": [
+        "#prompt-textarea",
+        "div[contenteditable='true'][id='prompt-textarea']",
+        "div.ProseMirror[contenteditable='true']",
+        "textarea[data-id='root']",
+        "div[contenteditable='true']",
+    ],
+    "enviar": [
+        "button[data-testid='send-button']",
+        "button[aria-label*='Send' i]",
+        "button[aria-label*='Enviar' i]",
+        "button#composer-submit-button",
+    ],
+    "parar": [
+        "button[data-testid='stop-button']",
+        "button[aria-label*='Stop' i]",
+        "button[aria-label*='Parar' i]",
+    ],
+    "resposta": [
+        "div[data-message-author-role='assistant']",
+        "article[data-testid^='conversation-turn'] div.markdown",
+        "div.agent-turn div.markdown",
+    ],
+    "logado": [
+        "#prompt-textarea",
+        "div[contenteditable='true'][id='prompt-textarea']",
+        "nav[aria-label*='Chat' i]",
+    ],
+    "login": [
+        "button[data-testid='login-button']",
+        "a[href*='/auth/login']",
+        "button:has-text('Log in')",
+        "button:has-text('Entrar')",
+    ],
+}
+
+GEMINI = {
+    "url": "https://gemini.google.com/app",
+    "url_novo_chat": "https://gemini.google.com/app",
+    "campo": [
+        "rich-textarea div.ql-editor[contenteditable='true']",
+        "div.ql-editor[contenteditable='true']",
+        "div[contenteditable='true'][role='textbox']",
+        "textarea[aria-label*='prompt' i]",
+    ],
+    "enviar": [
+        "button.send-button",
+        "button[aria-label*='Send' i]",
+        "button[aria-label*='Enviar' i]",
+        "button[mattooltip*='Enviar' i]",
+    ],
+    "parar": [
+        "button[aria-label*='Stop' i]",
+        "button[aria-label*='Parar' i]",
+        "button.stop-icon",
+        "mat-icon[fonticon='stop']",
+    ],
+    "resposta": [
+        "model-response message-content .markdown",
+        "message-content.model-response-text",
+        "div.model-response-text",
+        "model-response",
+    ],
+    "logado": [
+        "rich-textarea div.ql-editor[contenteditable='true']",
+        "div.ql-editor[contenteditable='true']",
+    ],
+    "login": [
+        "a[href*='accounts.google.com']",
+        "a[aria-label*='Sign in' i]",
+        "a:has-text('Fazer login')",
+    ],
+}
+
+MAPA = {"chatgpt": CHATGPT, "gemini": GEMINI}
+
+
+def do_provedor(provedor: str) -> dict:
+    chave = str(provedor or "").strip().lower()
+    if chave not in MAPA:
+        raise ValueError(
+            f"provedor de LLM desconhecido: {provedor!r}. "
+            f"Use um de: {', '.join(PROVEDORES)}")
+    return MAPA[chave]
+
+
+def encontrar(page, candidatos, timeout: float = 3.0):
+    """O primeiro candidato VISIVEL, ou None.
+
+    Varre em vez de olhar so o `.first` porque os dois sites renderizam a
+    versao mobile escondida antes da desktop — pegar a primeira do DOM
+    devolveria um elemento invisivel, e o clique estouraria em timeout.
+    """
+    import time
+    fim = time.monotonic() + float(timeout)
+    while True:
+        for seletor in candidatos:
+            try:
+                alvos = page.locator(seletor)
+                total = min(alvos.count(), 8)
+            except Exception:
+                continue
+            for i in range(total):
+                alvo = alvos.nth(i)
+                try:
+                    if alvo.is_visible():
+                        return alvo
+                except Exception:
+                    continue
+        if time.monotonic() >= fim:
+            return None
+        time.sleep(0.25)
+
+
+def resolver(page, candidatos, descricao: str, timeout: float = 15.0):
+    alvo = encontrar(page, candidatos, timeout)
+    if alvo is None:
+        raise SeletorNaoEncontrado(
+            f"nao achei {descricao}.\nCandidatos tentados: {candidatos}\n"
+            "O site provavelmente mudou. Rode: python main.py llm probe "
+            "--provedor <chatgpt|gemini> e ajuste src/llm/seletores.py.")
+    return alvo
+
+
+class SeletorNaoEncontrado(RuntimeError):
+    """O site mudou: diz o que se procurava e como consertar."""

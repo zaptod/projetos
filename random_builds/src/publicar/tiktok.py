@@ -25,6 +25,24 @@ from ..identity.browser import contexto_persistente, pagina
 
 RAIZ = Path(__file__).resolve().parents[2]
 PERFIL = RAIZ / ".browser_profile" / "tiktok"
+
+# Quanto esperar a tela de login montar antes de acusar o perfil de
+# degradado. A home do TikTok e pesada: com 6 s a checagem acusava
+# pagina que so estava lenta (medido em 31/08/2026).
+PACIENCIA_LOGIN_S = 40
+
+
+def perfil_da_conta(canal: str = "builds"):
+    """A pasta de Chrome da conta de TikTok ATIVA naquele canal.
+
+    Existe porque os canais deixaram de compartilhar conta: publicar a
+    historia no perfil do canal de builds e irreversivel.
+    """
+    try:
+        from ..contas import perfil
+        return perfil("tiktok", canal)
+    except Exception:
+        return PERFIL
 URL_UPLOAD = "https://www.tiktok.com/tiktokstudio/upload"
 
 # Espera o input de arquivo aparecer (a página é uma SPA pesada).
@@ -46,6 +64,47 @@ BOTAO_POSTAR = (
     'button:has-text("Publicar")',
     'button:has-text("Post")',
 )
+# A SEGUNDA confirmação. O TikTok abre um modal "Publicar agora" quando o
+# fluxo vai rápido demais (relatado pelo Adrian em 31/08/2026, com o DOM:
+# `<div class="TUXButton-label">Publicar agora</div>`). Sem clicar aqui, o
+# vídeo NÃO sobe — e a automação achava que tinha publicado.
+#
+# O rótulo é um `div` DENTRO do botão (design system TUX), então o seletor
+# precisa pegar o botão ancestral; clicar no rótulo também funciona porque o
+# clique sobe, e por isso os dois estão na lista.
+BOTAO_CONFIRMAR = (
+    '[data-e2e="post_video_confirm"]',
+    'button:has-text("Publicar agora")',
+    'button:has-text("Post now")',
+    'div.TUXButton-label:has-text("Publicar agora")',
+    'div.TUXButton-label:has-text("Post now")',
+)
+
+# O que prova que o vídeo foi mesmo publicado. Nenhum destes é garantido
+# sozinho, por isso são vários — e por isso, quando NENHUM aparece, a função
+# diz que não conseguiu confirmar em vez de inventar sucesso.
+SINAIS_DE_SUCESSO = (
+    "seu video esta sendo enviado", "seu video foi publicado",
+    "video publicado", "publicado com sucesso",
+    "gerenciar publicacoes", "gerenciar posts", "seus videos",
+    "your video is being uploaded", "your video has been posted",
+    "video published", "posted successfully",
+    "manage your posts", "your videos", "view profile", "ver perfil",
+)
+ESPERA_CONFIRMAR_S = 90.0
+
+# Toda frase de sucesso comeca com isto, e `confirmado()` e como quem chama
+# pergunta. Sem um marcador, o chamador teria que adivinhar pelo texto — e
+# `serie.py` registrava como publicado QUALQUER coisa que voltasse, inclusive
+# um "nao consegui confirmar".
+SUCESSO = "publicado no TikTok"
+
+
+def confirmado(estado: str) -> bool:
+    """O TikTok confirmou a publicacao? (a unica pergunta que vale)"""
+    return str(estado or "").startswith(SUCESSO)
+
+
 # Sinais de que o vídeo terminou de subir e a página está pronta para postar.
 SINAIS_PRONTO = (
     'button[data-e2e="post_video_button"]:not([disabled])',
@@ -70,13 +129,72 @@ def _primeiro(page, seletores, timeout: float = 5.0):
     return None
 
 
+def _sem_acento(texto: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(texto or ""))
+                   if unicodedata.category(c) != "Mn").lower()
+
+
+def _publicou(page, url_antes: str) -> bool:
+    """Ha PROVA de que o video foi publicado? (nunca 'provavelmente')"""
+    try:
+        url = page.url
+        if url != url_antes and "/upload" not in url:
+            return True
+        texto = _sem_acento(page.evaluate(
+            "() => document.body ? document.body.innerText : ''"))
+    except Exception:
+        return False
+    return any(sinal in texto for sinal in SINAIS_DE_SUCESSO)
+
+
+def _confirmar_publicacao(page, passo, espera: float = ESPERA_CONFIRMAR_S) -> str:
+    """Clica "Publicar agora" se o modal aparecer, e so entao confere.
+
+    Antes daqui a funcao dormia 15 s e devolvia "publicado no TikTok" sem
+    olhar a tela — uma promessa, nao um fato. Com o modal aberto, o video
+    ficava parado e o painel dizia que tinha subido.
+    """
+    url_antes = page.url
+    confirmou = False
+    fim = time.time() + espera
+    while time.time() < fim:
+        # A prova vem ANTES da cacada ao modal: `_primeiro` gasta ate 1 s por
+        # seletor e, no fluxo normal (sem modal), isso atrasaria em varios
+        # segundos o reconhecimento de um sucesso que ja esta na tela.
+        if _publicou(page, url_antes):
+            return (SUCESSO
+                    + (" (com a confirmacao extra)" if confirmou else ""))
+        if not confirmou:
+            botao = _primeiro(page, BOTAO_CONFIRMAR, timeout=1.0)
+            if botao is not None:
+                try:
+                    botao.click()
+                    confirmou = True
+                    passo('o TikTok pediu confirmacao: cliquei em "Publicar '
+                          'agora".')
+                    time.sleep(2.0)
+                    continue
+                except Exception as exc:
+                    passo(f"achei a confirmacao mas nao consegui clicar "
+                          f"({type(exc).__name__}).")
+        time.sleep(1.5)
+
+    if confirmou:
+        return ("cliquei em publicar e na confirmacao, mas o TikTok nao "
+                "mostrou o aviso de sucesso. Confira o perfil antes de "
+                "publicar de novo.")
+    return ("cliquei em publicar, mas o TikTok nao confirmou. A janela ficou "
+            "aberta: confira se o video subiu.")
+
+
 def _abrir(ctx, url: str):
     page = pagina(ctx)
     page.goto(url, wait_until="domcontentloaded", timeout=90_000)
     return page
 
 
-def sondar(saida: Path | None = None) -> Path:
+def sondar(*, canal: str = "builds", saida: Path | None = None) -> Path:
     """Despeja o DOM da tela de upload (para ajustar seletor quando quebrar).
 
     Mesmo espírito do `identity probe`: quando o site muda, ninguém adivinha
@@ -87,7 +205,7 @@ def sondar(saida: Path | None = None) -> Path:
     saida = saida or (RAIZ / "outputs" / "_identity" /
                       f"probe_tiktok_{time.strftime('%Y%m%d_%H%M%S')}.json")
     saida.parent.mkdir(parents=True, exist_ok=True)
-    with contexto_persistente(headless=False, profile=PERFIL) as ctx:
+    with contexto_persistente(headless=False, profile=perfil_da_conta(canal)) as ctx:
         page = _abrir(ctx, URL_UPLOAD)
         time.sleep(8)
         dados = page.evaluate("""() => ({
@@ -114,26 +232,94 @@ def sondar(saida: Path | None = None) -> Path:
     return saida
 
 
-def login() -> None:
-    """Abre a janela para o login manual. Uma vez por perfil."""
-    with contexto_persistente(headless=False, profile=PERFIL) as ctx:
-        _abrir(ctx, "https://www.tiktok.com/login")
-        print("[tiktok] faça o login nesta janela; ela fecha sozinha em 3 min "
-              "(ou feche depois de entrar).")
-        limite = time.time() + 180
+def login(*, canal: str = "builds", limpar: bool = False) -> None:
+    """Abre a janela para o login manual, e CONSERTA o perfil se preciso.
+
+    Duas coisas que faltavam e custaram uma tarde (31/08/2026):
+
+    1. Se a sessao ja existe, a URL de login redireciona para o feed — a janela
+       parecia travada quando na verdade nao havia nada a fazer. Agora isso
+       e dito em voz alta.
+    2. Um perfil velho de automacao acumula cache e service worker quebrados
+       e o TikTok abre BRANCO (so o esqueleto cinza, zero texto). Nao parece
+       cache, parece bloqueio. Quando a pagina nao monta, o cache e limpo
+       (sem tocar no login) e a janela recarrega sozinha.
+    """
+    from ..identity.browser import limpar_cache
+
+    perfil = perfil_da_conta(canal)
+    if limpar:
+        pastas, mb = limpar_cache(perfil)
+        print(f"[tiktok] cache do perfil limpo: {len(pastas)} pasta(s), "
+              f"{mb} MB. O login foi preservado.")
+
+    if not _janela_de_login(perfil):
+        return
+    # A pagina nao montou. A limpeza e a segunda janela precisam acontecer
+    # FORA do contexto anterior: `sync_playwright` nao pode ser aberto dentro
+    # de outro (o erro e "Sync API inside the asyncio loop"), e o cache so
+    # pode ser apagado com o Chrome ja fechado.
+    if limpar:
+        print("[tiktok] a pagina continua sem carregar mesmo com o cache "
+              "limpo. Pode ser rede/VPN, ou o site fora do ar.")
+        return
+    print("[tiktok] a pagina abriu BRANCA (so o esqueleto cinza). Isso e "
+          "perfil degradado, nao bloqueio: vou limpar o cache — o login e "
+          "preservado — e abrir de novo.")
+    time.sleep(1.0)
+    login(canal=canal, limpar=True)
+
+
+def _janela_de_login(perfil: Path) -> bool:
+    """A janela do login. Devolve True se a pagina NAO montou (precisa reparo)."""
+    from ..identity.browser import montou
+
+    with contexto_persistente(headless=False, profile=perfil) as ctx:
+        page = _abrir(ctx, "https://www.tiktok.com/login")
+
+        # Esperar de VERDADE antes de acusar o perfil: a home do TikTok e
+        # pesada e leva dezenas de segundos numa maquina ocupada. Seis
+        # segundos declaravam "degradado" uma pagina que so estava lenta.
+        montada, saiu_do_login = False, False
+        fim = time.time() + PACIENCIA_LOGIN_S
+        while time.time() < fim:
+            time.sleep(2)
+            try:
+                if "/login" not in page.url:
+                    saiu_do_login = True
+                    break
+                if montou(page, minimo=120):
+                    montada = True
+                    break
+            except Exception:
+                break
+        if not (montada or saiu_do_login):
+            return True
+
+        if saiu_do_login:
+            print(f"[tiktok] esta conta JA esta logada (o site foi direto para "
+                  f"{page.url}). Nao ha nada a fazer aqui.")
+            time.sleep(2)
+            return False
+
+        print(f"[tiktok] faça o login nesta janela ({perfil.name}); ela fecha "
+              "sozinha em 5 min (ou feche depois de entrar).")
+        limite = time.time() + 300
         while time.time() < limite:
             time.sleep(2)
             try:
                 if "login" not in pagina(ctx).url:
-                    print("[tiktok] sessão iniciada; perfil salvo em "
-                          f"{PERFIL}")
+                    print(f"[tiktok] sessão iniciada; perfil salvo em {perfil}")
                     time.sleep(3)
-                    return
+                    return False
             except Exception:
-                return
+                return False
+        print("[tiktok] tempo esgotado sem login.")
+        return False
 
 
 def publicar(video, *, postar: bool | None = None, config: dict | None = None,
+             canal: str = "builds",
              progresso=None) -> str:
     """Sobe o vídeo e escreve a legenda. Só posta se `postar` for True.
 
@@ -161,7 +347,7 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         if progresso:
             progresso(texto)
 
-    with contexto_persistente(headless=False, profile=PERFIL) as ctx:
+    with contexto_persistente(headless=False, profile=perfil_da_conta(canal)) as ctx:
         page = _abrir(ctx, url_upload)
         passo("abrindo o estúdio de upload...")
 
@@ -229,8 +415,9 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
                 "não achei o botão de publicar (a janela segue aberta).")
         botao.click()
         passo("publicar clicado; confirmando...")
-        time.sleep(15)
-        return "publicado no TikTok"
+        estado = _confirmar_publicacao(page, passo)
+        passo(estado)
+        return estado
 
 
 def main(argv=None) -> int:
@@ -241,6 +428,10 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Publica um vídeo do catálogo no TikTok (navegador)")
     parser.add_argument("video_id", nargs="?")
+    parser.add_argument("--limpar", action="store_true",
+                        help="limpa o cache do perfil antes (mantem o login)")
+    parser.add_argument("--canal", default="builds",
+                        help="de qual canal e a conta (builds|historias)")
     parser.add_argument("--login", action="store_true",
                         help="abre a janela para o login manual (uma vez)")
     parser.add_argument("--sondar", action="store_true",
@@ -250,10 +441,10 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if args.login:
-        login()
+        login(canal=args.canal, limpar=args.limpar)
         return 0
     if args.sondar:
-        sondar()
+        sondar(canal=args.canal)
         return 0
     if not args.video_id:
         parser.error("informe o video_id, --login ou --sondar")
@@ -263,7 +454,7 @@ def main(argv=None) -> int:
         print(f"vídeo não encontrado: {args.video_id}")
         return 1
     try:
-        print(publicar(video, postar=args.postar or None))
+        print(publicar(video, postar=args.postar or None, canal=args.canal))
     except TikTokFalhou as exc:
         print(f"FALHOU: {exc}")
         return 1

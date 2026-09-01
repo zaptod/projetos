@@ -18,6 +18,13 @@ Uso:
   python main.py publicar <id> --youtube    # sobe pela API (privado por padrao)
   python main.py publicar <id> --tiktok     # abre o navegador e sobe (nao publica)
 
+  python main.py pausar               # PARA de pegar trabalho (conta compartilhada)
+  python main.py pausar --minutos 60  # volta sozinho depois de 1h
+  python main.py pausar --provedor digen --motivo "video em uso"
+  python main.py retomar              # volta a trabalhar
+  python main.py parar                # encerra o worker DEPOIS do job atual
+  python main.py controle             # rodando? pausado? parando?
+
   python main.py identity login       # 1o login no Digen (janela visivel)
   python main.py identity worker      # baixa os clipes da fila e re-renderiza
   python main.py identity queue       # estado da fila
@@ -78,16 +85,22 @@ def _publicar(args) -> int:
         print(f"texto:     {destino.with_suffix('.txt')}")
         feito = True
     if args.youtube:
-        from src.publicar import youtube
-        try:
-            url = youtube.publicar(
-                video, visibilidade=args.visibilidade,
-                progresso=lambda e, t: print(
-                    f"  {e / 1e6:6.1f} / {t / 1e6:.1f} MB", flush=True))
-        except youtube.PublicacaoFalhou as exc:
-            print(f"YouTube FALHOU: {exc}")
-            return 1
-        print(f"YouTube: {url}")
+        from src.publicar import cortes, youtube
+        # Passou dos 3 min, o YouTube tira o video da esteira de Shorts. O
+        # corte acontece AQUI, na hora de publicar, e nas trocas de cena.
+        pedacos = cortes.preparar(video, limite=cortes.limite(), log=print)
+        for pedaco in pedacos:
+            try:
+                url = youtube.publicar_como_configurado(
+                    pedaco, visibilidade=args.visibilidade,
+                    log=lambda linha: print(linha, flush=True))
+            except youtube.CotaEsgotada as exc:
+                print(f"YouTube: {exc}")
+                return 2
+            except Exception as exc:
+                print(f"YouTube FALHOU: {exc}")
+                return 1
+            print(f"YouTube: {url}")
         feito = True
     if args.tiktok:
         from src.publicar import tiktok
@@ -214,6 +227,8 @@ def main() -> None:
     ilogin.add_argument("--provedor", choices=sorted(PROVEDORES_LOGIN),
                         default="digen",
                         help="qual site logar (perfis sao separados)")
+    ilogin.add_argument("--canal", default="builds",
+                        help="de qual canal e a conta (builds|historias|geral)")
     iprobe = isub.add_parser(
         "probe", help="despeja o DOM da tela atual (manutencao e descoberta)")
     iprobe.add_argument("--url", default=None,
@@ -247,6 +262,28 @@ def main() -> None:
                            "seletores ainda casam com a pagina real")
     idoc.add_argument("--headless", action="store_true",
                       help="com --online, sem janela")
+
+    ipausar = isub.add_parser(
+        "pausar", help="para de pegar trabalho novo (o job atual termina). "
+                       "Use quando a conta do site estiver em uso por outra pessoa")
+    ipausar.add_argument("--provedor", choices=("tudo", "digen", "picasso"),
+                         default="tudo",
+                         help="pausar so um site (padrao: tudo)")
+    ipausar.add_argument("--minutos", type=float, default=None, metavar="N",
+                         help="volta sozinho depois de N minutos")
+    ipausar.add_argument("--motivo", default="", help="fica anotado no status")
+
+    iretomar = isub.add_parser("retomar", help="tira a pausa e volta a pegar trabalho")
+    iretomar.add_argument("--provedor", choices=("tudo", "digen", "picasso"),
+                          default=None, help="retomar so um site (padrao: tudo)")
+
+    iparar = isub.add_parser(
+        "parar", help="encerra o worker DEPOIS do job atual (parada limpa, "
+                      "sem matar processo no meio)")
+    iparar.add_argument("--motivo", default="", help="fica anotado no status")
+
+    isub.add_parser("controle", help="mostra se a pipeline esta rodando, "
+                                     "pausada ou parando")
 
     isub.add_parser("status",
                     help="visao operacional: fila, clipes, videos finais e "
@@ -355,6 +392,27 @@ def main() -> None:
                      help="consulta a API agora (sem isso, mostra o ultimo dado salvo)")
     met.add_argument("--json", action="store_true", help="despeja o dado bruto")
 
+    # --- controle da pipeline, no TOPO: e o freio de mao, tem que ser a
+    # coisa mais facil de achar na CLI (tambem em `identity ...`).
+    tpausar = sub.add_parser(
+        "pausar", help="para de pegar trabalho novo; o job atual termina "
+                       "(use quando a conta do site estiver com outra pessoa)")
+    tpausar.add_argument("--provedor", choices=("tudo", "digen", "picasso"),
+                         default="tudo", help="pausar so um site (padrao: tudo)")
+    tpausar.add_argument("--minutos", type=float, default=None, metavar="N",
+                         help="volta sozinho depois de N minutos")
+    tpausar.add_argument("--motivo", default="", help="fica anotado no status")
+
+    tretomar = sub.add_parser("retomar", help="tira a pausa e volta a trabalhar")
+    tretomar.add_argument("--provedor", choices=("tudo", "digen", "picasso"),
+                          default=None, help="retomar so um site (padrao: tudo)")
+
+    tparar = sub.add_parser(
+        "parar", help="encerra o worker depois do job atual (parada limpa)")
+    tparar.add_argument("--motivo", default="", help="fica anotado no status")
+
+    sub.add_parser("controle", help="a pipeline esta rodando, pausada ou parando?")
+
     sub.add_parser("list-reactions", help="lista a biblioteca de reacoes")
     sub.add_parser("reactions",
                    help="assistente interativo: inserir/categorizar videos "
@@ -388,6 +446,8 @@ def main() -> None:
     if args.command == "import-reactions":
         controller.import_reactions(args.source, args.categoria, move=args.move)
         return
+    if args.command in ("pausar", "retomar", "parar", "controle"):
+        raise SystemExit(_controle(args.command, args))
     if args.command == "list-reactions":
         controller.list_reactions()
         return
@@ -456,6 +516,34 @@ def main() -> None:
                             escolhas=escolhidos)
 
 
+def _controle(acao: str, args) -> int:
+    """pausar / retomar / parar / controle — o freio de mao da pipeline.
+
+    Mesma funcao para `main.py pausar` e `main.py identity pausar`: um
+    comportamento so, dois caminhos de digitacao.
+    """
+    from src.identity import controle
+
+    if acao == "pausar":
+        estado = controle.pausar(getattr(args, "provedor", None) or controle.TUDO,
+                                 getattr(args, "motivo", ""),
+                                 getattr(args, "minutos", None))
+    elif acao == "retomar":
+        estado = controle.retomar(getattr(args, "provedor", None))
+    elif acao == "parar":
+        estado = controle.pedir_parada(getattr(args, "motivo", ""))
+    else:
+        estado = controle.estado()
+    print(f"[pipeline] {estado['resumo']}")
+    if acao == "pausar":
+        print("[pipeline] o job em andamento termina; nenhum novo comeca. "
+              "Volte com `main.py retomar`.")
+    elif acao == "parar":
+        print("[pipeline] o worker sai assim que terminar o job atual. "
+              "Volte com `main.py retomar`.")
+    return 0
+
+
 def _cobertura(args) -> None:
     """Relatorio de cobertura do banco -> camada de video.
 
@@ -504,6 +592,10 @@ def _identity(args, controller) -> None:
         print(f"RESULTADO: {pior.upper()}")
         # Codigo de saida serve para agendador/CI: 0 ok, 1 aviso, 2 erro.
         raise SystemExit({health.OK: 0, health.AVISO: 1, health.ERRO: 2}[pior])
+
+    if args.identity_command in ("pausar", "retomar", "parar", "controle"):
+        _controle(args.identity_command, args)
+        return
 
     if args.identity_command == "status":
         from src.identity import status
@@ -570,13 +662,58 @@ def _identity(args, controller) -> None:
 
     if args.identity_command == "login":
         from src.identity import config as icfg
-        from src.identity.browser import contexto_persistente, pagina
+        from src.identity.browser import contexto_persistente, montou, pagina
         from src.identity.session import ensure_logged_in
         provedor = getattr(args, "provedor", "digen")
-        with contexto_persistente(profile=icfg.profile_dir(provedor)) as ctx:
+        canal = getattr(args, "canal", "builds")
+        if provedor == "dreamface":
+            # Login MANUAL: a janela abre no site e espera voce entrar. E o
+            # mesmo caminho do primeiro login do TikTok — nao ha automacao de
+            # credencial aqui, e nao deveria haver: quem digita a senha e
+            # voce, e o perfil guarda a sessao daí em diante.
+            import time as _t
+            from src.identity import dreamface_selectors as dsel
+            perfil = icfg.profile_dir(provedor, canal=canal)
+            with contexto_persistente(profile=perfil) as ctx:
+                page = pagina(ctx)
+                page.goto(dsel.URL_LOGIN, wait_until="domcontentloaded",
+                          timeout=90_000)
+                # O app e pesado: 5 s davam "pagina em branco" numa pagina
+                # que so estava carregando.
+                for _ in range(12):
+                    _t.sleep(3)
+                    if montou(page):
+                        break
+                print("[identity] a janela e SUA: preencha e-mail, senha e o "
+                      "captcha com calma. Ela fica aberta 15 minutos e eu nao "
+                      "encosto nela — na tentativa anterior eu fechei o "
+                      "navegador no meio da sua digitacao.")
+                # A sessao e detectada pelo SUMICO da tela de login, nao pela
+                # URL: o modal abre e fecha sem mudar de endereco.
+                from src.identity import selectors as _sel
+                limite = _t.time() + 900
+                while _t.time() < limite:
+                    _t.sleep(5)
+                    try:
+                        if page.is_closed():
+                            print("[identity] janela fechada por voce.")
+                            break
+                        logado = _sel.encontrar(page, dsel.TELA_LOGIN,
+                                                timeout=1.0) is None
+                        if logado:
+                            print(f"[identity] sessao iniciada ({page.url}).")
+                            _t.sleep(4)
+                            break
+                    except Exception:
+                        break
+            print(f"[identity] perfil de {provedor} ({canal}) salvo em "
+                  f"{perfil}")
+            return
+        with contexto_persistente(
+                profile=icfg.profile_dir(provedor, canal=canal)) as ctx:
             ensure_logged_in(pagina(ctx), icfg.settings())
-        print(f"[identity] perfil de {provedor} salvo em "
-              f"{icfg.profile_dir(provedor)}")
+        print(f"[identity] perfil de {provedor} ({canal}) salvo em "
+              f"{icfg.profile_dir(provedor, canal=canal)}")
         return
 
     if args.identity_command == "probe":

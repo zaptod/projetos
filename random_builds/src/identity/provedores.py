@@ -5,7 +5,8 @@ CLI. Quem quiser saber algo de um provedor pergunta aqui.
 """
 from __future__ import annotations
 
-from . import picasso_selectors, selectors, slots
+from . import (dreamface_selectors, picasso_selectors, selectors,
+               slots)
 
 # A ORDEM E A ORDEM DAS PASSADAS DA RODADA, e nao e alfabetica por acaso:
 # picasso antes de digen e o que faz as duas imagens ja estarem no disco
@@ -16,6 +17,7 @@ TODOS = (slots.PICASSO, slots.DIGEN)
 _SELETORES = {
     slots.DIGEN: selectors,
     slots.PICASSO: picasso_selectors,
+    slots.DREAMFACE: dreamface_selectors,
 }
 
 
@@ -48,7 +50,8 @@ def cliente(provedor: str, ctx, page, ajustes: dict, rng=None,
 
 def rotulo(provedor: str) -> str:
     return {slots.DIGEN: "Digen (video)",
-            slots.PICASSO: "PicassoIA (imagem)"}.get(provedor, provedor)
+            slots.PICASSO: "PicassoIA (imagem)",
+            slots.DREAMFACE: "DreamFace (imagem)"}.get(provedor, provedor)
 
 
 def slots_de(provedor: str) -> tuple[str, ...]:

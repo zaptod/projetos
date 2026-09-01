@@ -1,0 +1,6 @@
+GANCHO (1 cena): a frase mais chocante da historia, dita no meio da acao, sem nenhum contexto.
+CONTEXTO MINIMO (2 cenas): so o que faz a historia fazer sentido - quem sou eu e quem e a outra pessoa.
+ESCALADA (4 cenas): cada cena piora a situacao e entrega um detalhe concreto novo.
+VIRADA (2 cenas): a informacao que muda o sentido de tudo o que veio antes.
+DESFECHO (2 cenas): como terminou de verdade, entregando o que o gancho prometeu.
+CTA (1 cena): uma pergunta direta sobre a decisao tomada.

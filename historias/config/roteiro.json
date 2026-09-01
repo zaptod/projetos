@@ -1,0 +1,104 @@
+{
+    "_comment": "O modelo de roteiro e as regras que fazem o video prender. `modelos` sao ESTRUTURAS (o que deve sair, cena a cena) e nao ideias: a ideia e o LLM que inventa. `regras` valem para todo modelo e sao o que separa uma historia que prende de um texto lido em voz alta. `contrato` e o formato exato que o parser sabe ler.",
+    "modelo_padrao": "reddit",
+    "modelos": {
+        "reddit": {
+            "rotulo": "Reddit (relato em 1a pessoa)",
+            "duracao_alvo": 70,
+            "cenas_alvo": 12,
+            "estrutura": [
+                "GANCHO (1 cena): a frase mais chocante da historia, no meio da acao. Sem contexto, sem apresentacao. Quem ouve tem que precisar saber o que aconteceu.",
+                "SITUACAO (2 cenas): quem sou, quem e a outra pessoa, o que estava em jogo. So o minimo para a historia fazer sentido.",
+                "ESCALADA (4-5 cenas): cada cena piora a situacao e entrega um detalhe novo. Nenhuma repete a anterior.",
+                "VIRADA (2 cenas): a informacao que muda o sentido de tudo o que veio antes.",
+                "PAYOFF (2 cenas): como terminou de verdade. Entrega o que o gancho prometeu.",
+                "CTA (1 cena): a duvida que ficou pra propria pessoa, perguntando a opiniao de quem le - 'eu errei?', 'voces teriam contado?' - nunca um pedido de like."
+            ]
+        },
+        "confissao": {
+            "rotulo": "Confissao (segredo guardado por anos)",
+            "duracao_alvo": 65,
+            "cenas_alvo": 11,
+            "estrutura": [
+                "GANCHO (1 cena): o segredo dito de uma vez, sem rodeio, com o tempo que ficou guardado.",
+                "POR QUE GUARDEI (2 cenas): o que aconteceria se alguem soubesse.",
+                "O DIA (4 cenas): a noite/o dia em que aconteceu, em ordem, com detalhe concreto.",
+                "QUASE DESCOBERTO (2 cenas): o momento em que quase veio a tona.",
+                "HOJE (1 cena): como isso mudou quem eu sou.",
+                "CTA (1 cena): pergunta se quem assiste teria contado."
+            ]
+        },
+        "vinganca": {
+            "rotulo": "Vinganca lenta (malicious compliance)",
+            "duracao_alvo": 70,
+            "cenas_alvo": 12,
+            "estrutura": [
+                "GANCHO (1 cena): o resultado final da vinganca, sem explicar como.",
+                "O ABUSO (3 cenas): o que a pessoa fez comigo, escalando.",
+                "A REGRA (2 cenas): a regra/ordem que ela me deu e que eu decidi seguir ao pe da letra.",
+                "A EXECUCAO (3 cenas): eu obedecendo exatamente, e o estrago crescendo.",
+                "O ESTRAGO (2 cenas): a hora em que ela percebe.",
+                "CTA (1 cena): pergunta se foi longe demais."
+            ]
+        }
+    },
+    "_comment_regras": "Estas regras entram em TODO prompt. A revisao de 31/08 muda o alvo: nao e 'roteiro bem escrito', e DESABAFO DE GENTE. O video ja e artificial nas imagens e na voz; o texto e o unico lugar onde da para soar humano - e proximidade e o que segura.",
+    "regras": {
+        "narracao": [
+            "Escreva como um DESABAFO postado num forum por uma pessoa real - nao como roteiro. Ela conta porque precisa contar, nao porque quer entreter.",
+            "Primeira pessoa, tempo passado, lingua falada de verdade: 'pra', 'to', 'ne', 'tipo', 'a gente'. Contracao sempre que um brasileiro usaria.",
+            "A primeira frase e o momento mais chocante, dito seco, como quem finalmente admite em voz alta. Sem cenario, sem apresentacao, sem aquecimento.",
+            "Frases de tamanhos DESIGUAIS: uma longa e corrida quando a memoria vem inteira, depois uma curtinha. Simetria demais soa roteirizado.",
+            "Deixe a pessoa hesitar ou se corrigir de vez em quando: 'acho que era terca. nao, quarta.', 'na real nao foi bem assim'. No maximo uma por cena, senao vira tique.",
+            "Memoria imperfeita e detalhe mundano vendem verdade: o valor exato do boleto, o cheiro do corredor, o que passava na TV. Um detalhe assim por cena, no meio da frase, nunca como lista.",
+            "Fale com quem le so de vez em quando: 'sei la se isso faz sentido', 'juro que nao to inventando'. No MAXIMO duas vezes na parte inteira.",
+            "Proibido frase de efeito, metafora literaria, moral da historia e fechamento redondo. Pessoa real nao termina paragrafo com punchline.",
+            "Informacao NOVA em cada cena, sem reexplicar nada. A curiosidade nasce do que a pessoa ainda nao contou - nunca de pergunta retorica.",
+            "Proibido: 'hoje eu vou contar', 'era uma vez', 'pessoal', 'voces nao vao acreditar', 'e ai que a coisa fica interessante' e qualquer frase que soe abertura de video.",
+            "Uma virada no meio que muda o sentido do comeco - contada NA ORDEM em que a pessoa descobriu, com a reacao dela junto.",
+            "O desfecho so no fim, e imperfeito como a vida: pode sobrar duvida, pode nao ter justica. Feche com a pergunta que a PROPRIA pessoa se faz, pedindo opiniao.",
+            "Nomes e situacoes ficticios. Nada identificavel, ninguem famoso, nenhuma marca real acusada de algo.",
+            "Cada NARRACAO cabe em duas ou tres frases curtas, no maximo 220 caracteres: e o que cabe em ~10 segundos de fala. Narracao mais longa que isso estica a cena, deixa a imagem parada tempo demais e faz o video arrastar."
+        ],
+        "imagem": [
+            "Escreva o prompt de imagem em INGLES, uma frase densa, sem lista.",
+            "Descreva a ACAO daquela cena: quem esta em quadro, fazendo o que, em que lugar, com que luz.",
+            "Consistencia entre cenas vem do TEXTO: repita a mesma descricao fisica curta do protagonista (idade aparente, cabelo, roupa) em toda cena em que ele aparece.",
+            "Enquadramento vertical, cinematografico, foto realista, luz coerente com a hora da cena.",
+            "Proibido na imagem: qualquer texto, letra, legenda, marca d'agua, colagem, moldura, imagem deitada.",
+            "A imagem passa por um filtro de conteudo automatico: descreva a cena SEM sangue, ferimento, arma, nudez, criancas em perigo ou autolesao. Mostre o ANTES ou o DEPOIS (a mao tremendo, a porta fechada, a mancha no chao), nunca o ato - alem de passar no filtro, sugerir assusta mais que mostrar."
+        ],
+        "tempo": [
+            "`TEMPO` e uma estimativa em segundos do tempo de tela daquela cena (3 a 8).",
+            "O sistema MEDE a narracao depois e estica a cena se a fala for mais longa - nunca corte a frase para caber no tempo."
+        ]
+    },
+    "_comment_contrato": "Formato de saida. Pedimos blocos de texto simples, nao JSON: o LLM erra menos e o parser aqui aceita os dois.",
+    "contrato": [
+        "TITULO: uma linha, em primeira pessoa, que ja entrega o conflito e provoca curiosidade. Sem hashtag, sem emoji.",
+        "Depois, um bloco por cena, nesta ordem exata e com estes rotulos:",
+        "",
+        "CENA 1",
+        "IMAGEM: <prompt em ingles>",
+        "TEMPO: <segundos, so o numero>",
+        "NARRACAO: <o que o narrador fala nesta cena>",
+        "",
+        "Repita para todas as cenas, numeradas em sequencia.",
+        "Nao escreva mais nada: nem comentario, nem explicacao, nem markdown de titulo."
+    ],
+    "_comment_narracao_tecnica": "Margem entre a fala e o corte da cena. A cena ESPERA a fala (licao medida no outro projeto: cronometrar a cena antes de medir a voz corta a frase no meio).",
+    "narracao": {
+        "margem": 0.35,
+        "minimo_cena": 2.5,
+        "maximo_cena": 14.0,
+        "respiro_final": 0.6
+    },
+    "_comment_limites": "Guarda-corpo do parser: fora disto o roteiro e recusado com o motivo, em vez de virar um video quebrado.",
+    "limites": {
+        "cenas_min": 4,
+        "cenas_max": 40,
+        "titulo_max_chars": 110,
+        "narracao_max_chars": 220,
+        "imagem_min_chars": 25
+    }
+}

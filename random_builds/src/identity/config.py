@@ -38,6 +38,15 @@ PROVEDORES = {
         "env_perfil": "PICASSO_PROFILE_DIR",
         "perfil": ROOT / ".browser_profile" / "picasso",
     },
+    # O segundo gerador de imagem. Perfil proprio pelo mesmo motivo mecanico
+    # dos outros: o Chrome trava o `user_data_dir`, entao dois sites no mesmo
+    # perfil nunca rodam juntos — e rodar junto e exatamente o objetivo dele.
+    "dreamface": {
+        "credenciais": "dreamface_credentials.json",
+        "env_credenciais": "DREAMFACE_CREDENTIALS",
+        "env_perfil": "DREAMFACE_PROFILE_DIR",
+        "perfil": ROOT / ".browser_profile" / "dreamface",
+    },
 }
 PADRAO = "digen"
 
@@ -72,11 +81,27 @@ def settings(provedor: str | None = None) -> dict:
                        if not k.startswith("_")}}
 
 
-def profile_dir(provedor: str | None = None) -> Path:
+def profile_dir(provedor: str | None = None, canal: str = "builds") -> Path:
+    """A pasta de Chrome daquele provedor, na conta ATIVA do canal.
+
+    A variavel de ambiente continua vencendo (e o jeito de apontar para um
+    perfil fora do padrao numa rodada); sem ela, quem decide e o registro de
+    contas — e a conta `principal` cai no caminho antigo, entao nenhum login
+    ja feito se perde.
+    """
     dados = _do_provedor(provedor)
-    caminho = Path(os.environ.get(dados["env_perfil"]) or dados["perfil"])
-    caminho.mkdir(parents=True, exist_ok=True)
-    return caminho
+    forcado = os.environ.get(dados["env_perfil"])
+    if forcado:
+        caminho = Path(forcado)
+        caminho.mkdir(parents=True, exist_ok=True)
+        return caminho
+    try:
+        from ..contas import perfil
+        return perfil(provedor or PADRAO, canal)
+    except Exception:
+        caminho = Path(dados["perfil"])
+        caminho.mkdir(parents=True, exist_ok=True)
+        return caminho
 
 
 def credentials_path(provedor: str | None = None) -> Path:

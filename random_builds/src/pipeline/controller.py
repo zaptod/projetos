@@ -208,6 +208,8 @@ class PipelineController:
         construcao. Falhar aqui nunca derruba a geracao: a estreia e
         recompensa, nao obrigacao.
         """
+        from .. import atividade
+        atividade.registrar("arena", "inicio", f"estreia de {nome}", "builds")
         try:
             from ..arena.ledger import Ledger, escolher_adversario
             from ..tournament.runner import (FightSession, fichas_do_banco,
@@ -258,9 +260,13 @@ class PipelineController:
                       else f"{luta['ko_type']}, {luta['duracao']}s")
             print(f"[estreia] {nome} vs {adversario}: {fight['vencedor']} venceu "
                   f"({resumo}) -> {pasta}")
+            atividade.registrar("arena", "ok", f"{nome} vs {adversario} ({resumo})",
+                                "builds")
             return pasta
         except Exception as exc:
             print(f"[estreia] nao gravada ({exc})")
+            atividade.registrar("arena", "erro",
+                                f"estreia de {nome}: {str(exc)[:160]}", "builds")
             return None
 
     # ------------------------------------------------------------------- luta
@@ -608,6 +614,8 @@ class PipelineController:
         selector = AssetSelector(AssetCatalog(ASSETS))
         music = self._musica(engine)
         # sempre dois videos: celular (9:16) e normal (16:9)
+        from .. import atividade
+        atividade.registrar("estudio", "inicio", out_dir.name, "builds")
         voz_track = self._voz(out_dir)
         palavras = None
         if voz_track is not None:
@@ -621,3 +629,4 @@ class PipelineController:
             print(f"[render:{profile}] {final} ({edit_plan['total_duration']}s)")
             if getattr(renderer, "ultimo_gancho_b", None):
                 print(f"[render:{profile}] gancho B -> {renderer.ultimo_gancho_b.name}")
+        atividade.registrar("estudio", "ok", out_dir.name, "builds")

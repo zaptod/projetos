@@ -25,6 +25,7 @@ import hashlib
 import json
 import re
 import shutil
+import unicodedata
 import subprocess
 import sys
 from pathlib import Path
@@ -410,6 +411,228 @@ def montar(linhas: list[dict], destino: Path, cfg: dict, taxa: int = 44100,
     with open(caminho_palavras(destino), "w", encoding="utf-8") as fh:
         json.dump(palavras_no_video, fh, ensure_ascii=False)
     return gravar_wav(destino, np.clip(buf, -1, 1), taxa)
+
+
+# ------------------------------------------------------- leitura continua
+# O "robotico" nao vinha da voz: vinha do RECORTE. Cada cena era uma sintese
+# separada, entao a entonacao reiniciava a cada ~14 s — o narrador tomava
+# folego do zero, terminava em cadencia de ponto final e recomecava, catorze
+# vezes. Medido em 01/09/2026 numa parte de 206 s: 97% de fala, so 5,5 s de
+# silencio total. Nao era falta de audio; era falta de CONTINUIDADE.
+#
+# Aqui o texto inteiro da parte vai numa sintese so. A prosodia atravessa as
+# cenas, as pausas nascem da pontuacao, e o video passa a seguir o audio (e
+# nao o contrario): os limites de palavra dizem onde cada cena comeca.
+def _normalizar_palavra(texto: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", str(texto or ""))
+                   if unicodedata.category(c) != "Mn").lower().strip(
+                       ".,!?…:;\"'()[]—–-")
+
+
+def _marcos_das_falas(linhas: list, palavras: list, duracao: float,
+                      com_indices: bool = False):
+    """Onde cada fala COMECA dentro da leitura continua.
+
+    Anda pelas palavras do audio na ordem, consumindo as palavras esperadas
+    de cada fala. Quando o motor divide diferente do `split()` (contracao,
+    numero por extenso), o passo tolera: procura a proxima palavra que casa
+    dentro de uma janela curta, e se nao achar segue em frente — perder o
+    alinhamento de uma palavra desloca a cena em decimos, nao quebra nada.
+    """
+    ditas = [_normalizar_palavra(p.get("texto")) for p in palavras]
+    marcos, indices, cursor = [], [], 0
+    for linha in linhas:
+        esperadas = [w for w in (_normalizar_palavra(x) for x
+                                 in falavel(linha.get("text", "")).split()) if w]
+        if not esperadas:
+            marcos.append(marcos[-1] if marcos else 0.0)
+            indices.append(indices[-1] if indices else 0)
+            continue
+        indices.append(min(cursor, max(0, len(palavras) - 1)))
+        marcos.append(float(palavras[min(cursor, len(palavras) - 1)]["t0"])
+                      if palavras else 0.0)
+        # CONSOME o fluxo palavra a palavra em vez de pular um bloco do
+        # tamanho da frase. O motor fala numero por extenso ("R$ 1.200" vira
+        # cinco palavras, "17 de setembro de 2009" vira seis), entao contar
+        # `split()` desalinha — e o erro ACUMULA: na parte de 206 s a ultima
+        # cena chegava 9 s atrasada e ficava sem tempo para a propria fala.
+        for esperada in esperadas:
+            janela = min(cursor + 8, len(ditas))
+            achou = next((k for k in range(cursor, janela)
+                          if ditas[k] == esperada), None)
+            # Nao achou = essa palavra nao foi FALADA como esta escrita
+            # ("R$", "17"). Avancar mesmo assim comeria uma palavra da cena
+            # seguinte, e o erro acumularia ate a ultima cena ficar sem
+            # tempo — foi o que aconteceu na primeira tentativa.
+            if achou is not None:
+                cursor = achou + 1
+            if cursor >= len(ditas):
+                break
+    # a primeira cena sempre abre o video, mesmo que a voz demore um instante
+    if marcos:
+        marcos[0] = 0.0
+    # nunca andar para tras (um desalinhamento nao pode inverter cenas)
+    for i in range(1, len(marcos)):
+        marcos[i] = max(marcos[i], marcos[i - 1] + 0.4)
+        marcos[i] = min(marcos[i], max(0.0, duracao - 0.4))
+    return (marcos, indices) if com_indices else marcos
+
+
+# ------------------------------------------------------------- o respiro
+# Medido em 01/09/2026 na leitura continua de uma parte de 210 s: 66 pausas,
+# das quais 54 entre 0,88 e 0,98 s e 12 entre 0,26 e 0,30 s. ZERO entre 0,40
+# e 0,80 s, ZERO acima de 1 s. Isso nao e respiracao — e uma grade. O motor
+# neural aplica a mesma pausa em todo ponto final, e a regularidade e o que
+# sobra de robotico depois que a entonacao ja parou de reiniciar.
+#
+# Aqui as pausas sao REESCRITAS pelo que veio antes delas: virgula pede um
+# suspiro, ponto pede uma parada, fim de paragrafo pede ar, e de vez em
+# quando uma frase merece um silencio que faz a pessoa esperar. O jitter e
+# deterministico (indice da palavra), senao trocariamos uma grade por outra.
+# As faixas para onde cada pausa e levada. Elas se sobrepoem de proposito:
+# o objetivo nao e criar tres tamanhos novos, e espalhar o que era um valor
+# unico por uma faixa continua.
+PAUSAS = {
+    "curta": (0.18, 0.42),        # respiro de virgula
+    "frase": (0.55, 0.95),        # fim de frase
+    "cena": (1.00, 1.45),         # a imagem trocou: o olho precisa de tempo
+    "dramatica": (1.70, 2.30),    # o silencio que faz a pessoa esperar
+}
+# Abaixo disto e transicao entre palavras, nao pausa: nao se mexe.
+PAUSA_MINIMA_S = 0.15
+# O motor deixa a MESMA pausa em todo ponto final. Acima deste valor a
+# pausa e tratada como fim de frase; abaixo, como respiro de virgula.
+PAUSA_LONGA_S = 0.55
+# Uma parada dramatica a cada N pausas de frase.
+DRAMATICA_A_CADA = 11
+
+
+def _sorteio(indice: int, faixa: tuple) -> float:
+    """Valor deterministico dentro da faixa (mesma entrada, mesmo audio)."""
+    passo = ((indice * 2654435761) % 997) / 997.0
+    return faixa[0] + (faixa[1] - faixa[0]) * passo
+
+
+def respirar(pcm, palavras: list, taxa: int, paragrafos=None, log=None):
+    """Varia o TAMANHO das pausas que ja existem. Devolve (pcm, palavras).
+
+    Por que existe: medido em 01/09/2026 numa parte de 210 s, das 66 pausas
+    54 tinham entre 0,88 e 0,98 s e 12 entre 0,26 e 0,30 s — ZERO entre 0,40
+    e 0,80 s e ZERO acima de 1 s. O motor neural aplica a mesma pausa em
+    todo ponto final, e essa regularidade e o que sobra de robotico depois
+    que a entonacao ja parou de reiniciar.
+
+    O que este codigo NAO faz: decidir onde ha pausa. Quem decide isso e a
+    pontuacao, e o motor ja aplicou — os limites de palavra dele, porem, nao
+    trazem pontuacao nenhuma, entao tentar reconstruir isso pelo texto
+    apagou 43 s de silencio na primeira tentativa. Aqui a pausa existente e
+    o sinal: ela so muda de tamanho.
+
+    A voz nao e tocada. Apenas o que existe entre as palavras muda.
+    """
+    if np is None or not palavras or len(palavras) < 2:
+        return pcm, palavras
+
+    paragrafos = set(paragrafos or ())
+    pedacos, novas = [], []
+    cursor, frases, mexidas = 0.0, 0, 0
+    for i, palavra in enumerate(palavras):
+        t0, t1 = float(palavra["t0"]), float(palavra["t1"])
+        trecho = pcm[int(t0 * taxa):int(t1 * taxa)]
+        if not len(trecho):
+            continue
+        pedacos.append(trecho)
+        novas.append({**palavra, "t0": round(cursor, 3),
+                      "t1": round(cursor + len(trecho) / taxa, 3)})
+        cursor += len(trecho) / taxa
+        if i + 1 >= len(palavras):
+            break
+
+        natural = max(0.0, float(palavras[i + 1]["t0"]) - t1)
+        if natural < PAUSA_MINIMA_S:
+            # transicao entre palavras da mesma frase: fica como esta
+            silencio = natural
+        else:
+            if i + 1 in paragrafos:
+                tipo = "cena"
+            elif natural >= PAUSA_LONGA_S:
+                frases += 1
+                tipo = ("dramatica" if frases % DRAMATICA_A_CADA == 0
+                        else "frase")
+            else:
+                tipo = "curta"
+            silencio = _sorteio(i, PAUSAS[tipo])
+            mexidas += 1
+        if silencio > 0:
+            pedacos.append(np.zeros(int(silencio * taxa), dtype=pcm.dtype))
+            cursor += silencio
+
+    if not pedacos:
+        return pcm, palavras
+    novo = np.concatenate(pedacos)
+    if log:
+        log(f"[voz] respiro: {mexidas} pausa(s) redistribuida(s); "
+            f"{len(pcm) / taxa:.1f}s -> {cursor:.1f}s")
+    return novo, novas
+
+
+def narrar_continuo(linhas: list, destino: Path, cfg: dict, taxa: int = 44100,
+                    cache: Path = CACHE_PADRAO, log=None) -> dict | None:
+    """Le a parte INTEIRA de uma vez. Devolve wav, marcos e palavras.
+
+    `marcos[i]` e o segundo em que a fala `i` comeca — e com isso o plano de
+    edicao passa a ser consequencia do audio, nao uma previsao dele.
+    """
+    if np is None or not shutil.which("ffmpeg"):
+        return None
+    textos = [falavel(linha.get("text", "")) for linha in linhas]
+    inteiro = " ".join(t for t in textos if t).strip()
+    if not inteiro:
+        return None
+    try:
+        arquivo = sintetizar(inteiro, cfg, cache, log)
+        pcm = _pcm(arquivo, taxa)
+    except VozIndisponivel as exc:
+        if log:
+            log(f"[voz] leitura continua indisponivel ({exc})")
+        return None
+
+    duracao = len(pcm) / float(taxa)
+    palavras = _palavras_da_fala(arquivo, inteiro, duracao)
+    if cfg.get("respiro", True):
+        # Alinha uma vez so para descobrir em que PALAVRA cada cena comeca —
+        # e ali que entra a respirada longa. Depois do respiro os tempos
+        # mudaram, entao o alinhamento e refeito sobre o audio novo.
+        _antes, indices = _marcos_das_falas(linhas, palavras, duracao,
+                                            com_indices=True)
+        pcm, palavras = respirar(pcm, palavras, taxa,
+                                 paragrafos=set(indices[1:]), log=log)
+        duracao = len(pcm) / float(taxa)
+    marcos = _marcos_das_falas(linhas, palavras, duracao)
+
+    destino = Path(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    from ..video.trilha import gravar_wav
+    pico = float(np.max(np.abs(pcm))) if len(pcm) else 0.0
+    if pico > 1e-6:
+        pcm = pcm * (min(1.0, 0.92 / pico) * float(cfg.get("volume", 1.0)))
+    gravar_wav(destino, np.clip(pcm, -1.0, 1.0), taxa)
+    # Cada palavra leva o indice da CENA em que ela cai. A legenda usa isso
+    # para nao juntar num mesmo grupo o fim de uma cena e o comeco da outra.
+    def cena_de(t: float) -> int:
+        for i in range(len(marcos) - 1, -1, -1):
+            if t >= marcos[i] - 1e-6:
+                return i
+        return 0
+
+    with open(caminho_palavras(destino), "w", encoding="utf-8") as fh:
+        json.dump([{**palavra, "linha": cena_de(float(palavra["t0"]))}
+                   for palavra in palavras], fh, ensure_ascii=False)
+    if log:
+        log(f"[voz] leitura continua: {duracao:.1f}s numa sintese so "
+            f"({len(linhas)} cena(s), {len(palavras)} palavras)")
+    return {"wav": destino, "marcos": marcos, "palavras": palavras,
+            "duracao": duracao}
 
 
 def caminho_palavras(voz_wav: Path) -> Path:

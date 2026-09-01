@@ -223,6 +223,167 @@ título e resultado em cima, roda grande embaixo) e `final_normal.mp4`
 (1920x1080, 16:9, roda à esquerda/resultado à direita). Os perfis ficam em
 `config/render.json`.
 
+## Onda 13 — o que o diagnóstico de 31/08 mediu (e o que mudou)
+
+Medição sobre **33 planos e 65 mp4**, não sobre teoria:
+
+| sintoma medido | antes | depois |
+| --- | --- | --- |
+| duração do vídeo | 73,1 s (73,7 s nos 20 últimos) | **57,9 s** (`generation_00080` re-renderizada) |
+| tempo de roda roxa | 40,4 s = **55%** do vídeo | **26,8 s = 46%** |
+| giros cheios | 11,8 por vídeo | **4** (`roletas_cheias_max`) |
+| rosto do personagem entra | 13,5 s em média | **3,96 s** |
+| pedidos de like no projeto inteiro | **zero** | **100% dos CTAs** |
+| texto na tela | cartão + karaokê repetindo a MESMA frase | um texto só |
+| última tela do vídeo | cartão de texto no vazio | o build pronto atrás do CTA |
+
+**A regra da roleta inverteu.** Era "relâmpago só para número de peso baixo"
+e só 16% passavam rápido; agora o giro cheio é um **orçamento**
+(`roletas_cheias_max: 4`) gasto no que é notícia — rolagem escolhida a dedo,
+com reação, ou de maior peso editorial. O resto passa em 1,05 s em vez de
+3,43 s, e **nada se perde da build**: o resultado continua na tela.
+
+**O like.** Um `grep` por like/curtir/joinha em `src/` e `config/` não
+retornava nada: os 10 CTAs pediam comentário ou follow. Agora todo `outro`
+pede o like junto da pergunta, e o cartão final tem a **imagem do build
+atrás** — a decisão de curtir acontece olhando para o que o vídeo prometeu,
+não para um fundo preto.
+
+**O texto duplicado.** Em `hook`, `stinger`, `outro`, `final` e `nameplate` a
+narração É o `caption` — o karaokê escrevia a mesma frase de novo, logo
+abaixo. `KARAOKE_Y = None` nesses tipos; a roleta mantém o karaokê (lá a fala
+é a pergunta, não o cartão).
+
+**Ainda em aberto:** `outputs/_metricas/` não existe. São **29 vídeos
+publicados**, 8 deles variante B de um teste A/B de gancho, e nenhum
+resultado coletado. `main.py metricas --atualizar` (depois de *Autorizar
+analytics*) troca este diagnóstico por dados do público real.
+
+## A página Publicar (reformulada em 31/08/2026)
+
+Uma lista só, com **tudo** que está pronto — builds, estreias, torneios **e as
+partes das histórias**. Cada linha responde as três perguntas que faltavam:
+
+| coluna | responde |
+| --- | --- |
+| O QUE É | 🎮 build · ⚔ estreia · 🏆 torneio · 📖 história |
+| VÍDEO | título (e `parte 2/10` quando é série) |
+| FORMATO | 9:16 ou 16:9 |
+| YOUTUBE / TIKTOK | `✓ 30/08` se já subiu, `—` se não — lido dos dois `publicados.jsonl` |
+
+A caixa **ONDE POSTAR** torna o destino explícito antes do clique: marca
+YouTube e/ou TikTok, mostra a **conta de cada um** (e se ela é própria do
+canal ou herdada, e se tem login), e o botão diz o que vai fazer —
+`🚀 PUBLICAR NO YOUTUBE + TIKTOK`. Trocar a conta no combo grava a escolha
+para aquele canal.
+
+O rodapé separa o que é **ARQUIVO** (assistir, pasta, exportar) do que é
+**CONFIGURAÇÃO** (autorizar, login, métricas) — e os botões de configuração
+carregam o canal no rótulo (`Autorizar YouTube (historias)`), porque antes
+eles autorizavam sempre o de builds mesmo com uma história selecionada.
+
+## Vídeo comprido demais para Shorts
+
+O YouTube só trata um vídeo vertical como **Short** até **3 minutos**.
+Passou disso ele vira vídeo normal: sai da esteira de Shorts, perde o feed
+vertical, e nada avisa. Medido em 31/08/2026, as três partes prontas da
+`historia_00003` tinham **206 s, 191 s e 189 s** — todas fora do formato.
+
+`src/publicar/cortes.py` resolve na hora de publicar, e o detalhe que
+importa é **onde** ele corta:
+
+- **Na troca de cena, nunca no relógio.** O `edit_plan.json` guarda o início
+  de cada cena; o corte vai para a fronteira mais próxima do ponto ideal.
+  Verificado na parte 1: o corte caiu em 100 s, a última palavra antes dele
+  termina em 94,99 s e a primeira depois começa em 109,77 s — **nenhuma
+  palavra partida ao meio**.
+- **Pedaços equilibrados.** 206 s viram 100 s + 106 s, não 180 s + 26 s. Um
+  rabinho de 26 segundos não segura ninguém.
+- **Recodifica de propósito**: `-c copy` cortaria no keyframe mais próximo,
+  até 2 s longe do pedido — o bastante para comer o começo de uma frase.
+
+Vale nos dois projetos e em todos os caminhos de publicação. Desligar:
+`youtube.cortar_para_shorts: false` (ou `shorts_max_s: 0`) no
+`config/publicacao.json`.
+
+Os pedaços saem como `final_celular_p01_corte01.mp4` e são **ignorados pelo
+catálogo** — senão apareceriam na lista como se fossem partes novas, e
+poderiam ser publicados duas vezes.
+
+## O TikTok pede DUAS confirmações
+
+Quando o fluxo vai rápido, o TikTok abre um segundo botão depois do
+"Publicar" — `<div class="TUXButton-label">Publicar agora</div>` — e **sem
+clicar nele o vídeo não sobe**. O código antigo clicava em Publicar, dormia
+15 s e devolvia `"publicado no TikTok"` **sem olhar a tela**: uma promessa,
+não um fato. O vídeo ficava parado no modal e o painel registrava sucesso.
+
+Agora `_confirmar_publicacao` clica a confirmação quando ela aparece (pt e
+en, e pelo rótulo TUX, que é um `div` dentro do botão) e só declara sucesso
+com **prova**: a URL saiu de `/upload` ou a tela mostra um dos
+`SINAIS_DE_SUCESSO`. Sem prova, a frase de volta diz exatamente isso — *"não
+consegui confirmar, confira se o vídeo subiu"*.
+
+Quem chama pergunta com `tiktok.confirmado(estado)`, nunca lendo o texto na
+mão: a série de histórias registra o retorno como se fosse a URL da
+publicação, e sem esse marcador um "não confirmei" entraria no
+`publicados.jsonl` como sucesso — e a parte nunca mais seria tentada.
+
+## Quando o site abre BRANCO (perfil degradado)
+
+Sintoma real (31/08/2026): a tela de login do TikTok abria com o **esqueleto
+cinza e nada mais** — parecia bloqueio do site ou detecção de bot. Não era.
+
+O que a medição mostrou, no mesmo momento e no mesmo site:
+
+| | perfil de automação (1,1 GB) | perfil novo |
+| --- | --- | --- |
+| texto na página | **0** | 738 |
+| QR code | ausente | **renderizado** |
+| caixas brancas vazias | 2 | 0 |
+
+Era **cache e service worker podres** acumulados por semanas de automação.
+`browser.limpar_cache(perfil)` apaga só o cache — `Network/Cookies` e
+`Login Data` nunca são tocados, e há teste travando isso, porque o conserto
+não pode custar um login novo. `browser.montou(page)` distingue página viva
+de esqueleto: o esqueleto tem centenas de nós e **zero texto**.
+
+`main.py`/`--login` do TikTok agora **se cura sozinho**: se a página não
+montar em 40 s, ele fecha, limpa o cache e reabre. E se a conta já estiver
+logada, ele diz isso em vez de deixar uma tela de login parada na sua frente.
+
+Quando limpar o cache não basta, `browser.resetar_perfil(perfil)` guarda a
+pasta velha como `<nome>.quebrado-<data>` e deixa o Chrome criar uma nova.
+Isso **custa o login** — por isso é a única ação da página Publicar que
+pergunta antes. Nada é apagado: para voltar atrás, é só renomear.
+
+### Três hipóteses que a medição derrubou
+
+O caminho até a causa passou por três suspeitos errados, e todos foram
+descartados com número, não com opinião:
+
+1. **`--no-sandbox`.** Um A/B apontou a flag; invertendo a ordem das
+   variantes o resultado inverteu junto — era ruído. (A flag saiu assim
+   mesmo: o topo deste módulo diz que não a usamos, mas o Playwright a
+   adicionava por padrão via `chromium_sandbox=False`.)
+2. **DNS sequestrado.** Um `nslookup` parecia mostrar todos os domínios da
+   TikTok no mesmo IP — era a linha do *servidor* DNS, erro de leitura. Cada
+   host resolve para um CDN diferente, corretamente.
+3. **Bloqueio de rede/extensão.** O `curl` alcança os mesmos endpoints
+   (`check_qrconnect` responde 200), o perfil não tem extensão nenhuma, e as
+   requisições `ERR_FAILED` do console são **telemetria** — elas falham
+   igual no perfil que funciona.
+
+## O ffmpeg mente sobre o concat
+
+`src/video/medidas.py`. Com um segmento ilegível no meio da lista, o
+`concat` imprime *"Error during demuxing"* e **sai com código 0**, entregando
+um vídeo que começa certo e acaba cedo. Descoberto em 31/08/2026 no projeto
+de histórias (11,8 s no lugar de 193 s, com o log dizendo "pronto") — a
+montagem daqui tinha exatamente o mesmo furo. Agora `_concat` confere os
+segmentos antes (dizendo **qual** está quebrado) e mede a duração do
+resultado depois: `returncode == 0` não prova que o arquivo está inteiro.
+
 ## A montagem (revisão de retenção, 29/08/2026)
 
 ```
@@ -292,6 +453,32 @@ desses pontos:
 **Gerador de vídeo desligado = só imagens.** `payoff_video: false` em `config/identity.json` (ou a caixa *Vídeo do payoff (Digen)* no card RETENÇÃO) faz o pipeline não enfileirar o job do Digen, o worker não abrir o site, e o payoff do vídeo passar a ser a **imagem personagem+arma** com câmera (o gancho então abre pelo personagem, para a mesma imagem não abrir e fechar o vídeo). Fluxo e Publicar tratam a imagem como payoff cumprido. Mesmo com o vídeo ligado, se o clipe não chegou a montagem usa a imagem em vez de nameplate.
 
 **Sem créditos no Digen o payoff continua saindo.** O contador mostra 0 no plano Free, mas o Real Motion (lista branca `modelos_permitidos`) é incluso no plano e não gasta crédito. O worker só aborta por saldo quando o modelo em uso é pago (fora da lista) ou com `creditos_obrigatorios: true` em `config/identity.json`; se o site recusar, o job falha sozinho, sem travar a fila.
+
+**Controle da pipeline (a conta dos sites é compartilhada).** Quando outra
+pessoa está usando o Digen/PicassoIA, a pipeline tem que sair da frente — e
+matar o processo no meio de um job é a pior forma de fazer isso (perde a
+geração já paga e deixa o job órfão). O interruptor:
+
+```bash
+python main.py pausar                      # para de pegar trabalho novo
+python main.py pausar --minutos 60         # volta sozinho depois de 1h
+python main.py pausar --provedor digen     # pausa só o vídeo; as imagens seguem
+python main.py retomar                     # volta a trabalhar
+python main.py parar                       # encerra o worker DEPOIS do job atual
+python main.py controle                    # rodando? pausado? parando?
+```
+
+O job em andamento **sempre termina** — o que a pausa impede é pegar trabalho
+novo (`queue.claim` devolve nada). A pausa com prazo expira sozinha, então
+"empresta por uma hora" não depende de ninguém lembrar de retomar. O estado
+mora em `outputs/_identity/controle.json` e vale para todos os processos.
+
+**No painel:** a faixa **PIPELINE**, sempre visível no rodapé de qualquer
+página, mostra o estado ao vivo (● rodando / ⏸ pausado / ⏹ parando) e tem os
+botões *Pausar tudo*, *Pausar 1h*, *Parar worker* e *Retomar*, com um seletor
+de alvo (tudo/digen/picasso). Nada de digitar comando.
+
+**Um worker por vez.** A fila tem trava de instância única, então um segundo `identity worker --watch` não processa nada — antes ele ficava vivo em loop cedendo a trava (cinco processos ociosos em 29/08). Agora o extra **sai** com aviso, e o painel avisa em vez de subir outro. Para trocar de worker: Parar processos → Processar fila.
 
 **Worker e código novo:** o `identity worker --watch` fica dias de pé; desde 29/08 ele re-renderiza em **subprocesso** (`generate-video --rerender <id> --refazer-edicao`), então sempre usa o código que está no disco e um render que estoura não derruba a fila. Mesmo assim, depois de atualizar o código, reinicie o worker (Parar processos → Processar fila) para o próprio worker carregar as mudanças.
 
@@ -564,6 +751,168 @@ as duas referências ele encurta e fala de ação e câmera; com uma só, o lado
 imagem continua descrito por inteiro; sem nenhuma, sai o texto completo de
 sempre, que é exatamente o vídeo que já saía antes desta mudança.
 
+## Quando o gerador RECUSA o prompt
+
+`src/identity/moderacao.py`. O PicassoIA tem filtro de conteúdo, e até 31/08
+uma cena barrada custava três coisas: a recusa **não era detectada** (esperava
+os 300 s do timeout e morria dizendo "a imagem não ficou pronta"), a cena
+nunca gerava (reenviava o texto idêntico) e a fila parecia travada.
+
+- **Detecção rápida**: `wait_for_render` levanta `ConteudoRecusado` em
+  segundos. A prova principal é o **ícone** — o escudo `lucide shield-alert`
+  pintado de `text-destructive`, que é como o site realmente avisa (a
+  detecção só por frase deixou passar um bloqueio em 31/08). Um
+  `text-destructive` sem escudo é só "deu ruim" (falta de crédito, rede) e
+  NÃO conta como recusa: ali reescrever o prompt não adiantaria.
+- **Detecção por texto**: `wait_for_render` também lê o texto visível. As frases de recusa são propositalmente
+  compridas — um `blocked` solto pegaria menu e rodapé, e um falso positivo é
+  pior (faria desistir de imagem que só estava demorando).
+- **Escalonamento**: nível 1 troca o notório (`blood` → `dark red stains`);
+  nível 2 troca o sensível por contexto (menores, armas, autolesão) e apaga a
+  cláusula que ainda tiver risco; nível 3 fica só com o **ambiente** — sem
+  gente, mas resgatando o LUGAR (`a girl in the kitchen` → `empty kitchen`),
+  senão toda cena barrada viraria a mesma imagem genérica.
+- **Prevenção de graça**: prompt que já chega com termo notório sai suavizado
+  na primeira tentativa, sem gastar uma recusa para descobrir o óbvio.
+- **Nunca para a fila**: esgotados os níveis, a cena fica marcada em
+  `imagens.json` com o motivo e a geração **segue**.
+
+## Publicar é sempre por navegador
+
+Decisão de 01/09/2026, tomada com medição: a API recusou por cota
+(`uploadLimitExceeded`) num canal de **um dia de vida com 11 uploads**, e
+continuou recusando **depois de o dia virar no Pacífico** — enquanto subir
+pelo YouTube Studio funcionava normalmente. São baldes de cota separados, e o
+do navegador é muito mais folgado.
+
+```
+config/publicacao.json → youtube.modo = "navegador"   (padrão)
+                                      = "api"          (volta atrás)
+```
+
+Os dois destinos passaram a ser iguais: **TikTok e YouTube, ambos por Chrome
+de verdade, perfil persistente, login manual feito uma vez.**
+
+**A API não foi arrancada** — ela continua fazendo o que o navegador não faz:
+métricas de retenção, contagem de views e a identidade do canal
+(`identificar_canal`, `canais_da_conta`). O que mudou é que ela não publica.
+
+Duas coisas que o modo navegador precisou resolver, e resolve:
+
+- **Agendar.** A série solta as partes de 24 em 24 h, e isso era um recurso
+  da API (`publishAt`). O Studio agenda na etapa de visibilidade, e é isso
+  que `_agendar` preenche. Se não conseguir, ele **falha** em vez de publicar
+  na hora — soltar oito partes no mesmo minuto mata a série, e perder o
+  agendamento em silêncio seria pior do que não ter.
+- **Mirar o canal.** Ver a seção abaixo.
+
+## A tela de envio não é a que parece
+
+`studio.youtube.com/channel/<UC…>/videos/upload` **não é** a tela de envio —
+ela só filtra a lista de vídeos do canal. Medido em 01/09/2026: campo de
+arquivo **0** ali, e **1** depois de clicar em `Criar → Enviar vídeos`. Sem
+esses dois passos o robô procurava para sempre um campo que nunca ia existir.
+
+Dois caminhos, os dois testados no navegador de verdade:
+
+- **`?d=ud` na URL** abre o diálogo direto, sem clique nenhum. É o caminho
+  normal.
+- **Criar → Enviar vídeos**, que é o que uma pessoa faz, fica de reserva —
+  `d=ud` não é documentado e pode sumir.
+
+Um detalhe que parece bobo e não é: em `MENU_ENVIAR_VIDEOS` o seletor **por
+texto vem antes** do `#text-item-0`. O `#text-item-1` do mesmo menu é
+"Transmitir ao vivo". Se o YouTube trocar a ordem, um seletor posicional
+abriria uma **live** em vez de um upload — errar assim é muito pior do que
+não achar o botão.
+
+## Um login, vários canais
+
+Os canais do Adrian são **todos da mesma conta Google**. Uma sessão do Studio
+já enxerga os três:
+
+```
+UCA3Y1SaahhDsMj4JKGLbQ-Q  @Neural_fights        Neural fights   <- builds
+UC2S8Z85XCotBNFdstIXpeJw  @BemfacilDverdade     historinhas     <- historias
+UC1IrqhQZJhaiYGT_0bQJcFA  @adrianoliveira9418   Adrian Oliveira
+```
+
+Isso tem duas consequências, e as duas estão no código:
+
+- **O perfil é compartilhado** (`sessao_unica` no serviço `youtube_web`). Dar
+  uma pasta de Chrome por conta obrigaria a logar três vezes para trocar de
+  destino — e o destino não depende do login. Login uma vez, só.
+- **O que separa um canal do outro é o ID**, que vai na URL de upload
+  (`/channel/<UC…>/videos/upload`). Verificado em 01/09/2026 abrindo builds →
+  histórias → builds na mesma sessão: o Studio obedece a URL nas três.
+
+```
+python -m src.publicar.youtube_web --canais
+python -m src.publicar.youtube_web --usar-canal @Neural_fights --canal builds
+```
+
+No painel: **🎯 Canais do YouTube** descobre e cadastra; o combo de conta da
+página Publicar passa a ser o seletor de canal, mostrando o nome de verdade
+(`youtube: neural_fights → Neural fights ✓`).
+
+**A trava que faltava.** Antes de enviar um byte, `publicar()` compara o id
+que pediu com o id que a página realmente carregou, e para se divergirem. Com
+vários canais na mesma conta o Studio abre no último usado quando a URL não
+manda — e história no canal de builds não tem desfazer. Até esta mudança
+`builds` e `historias` apontavam os **dois** para o canal pessoal, porque
+nenhum tinha escolhido e a queda padrão leva os dois ao mesmo lugar;
+`contas.destinos_repetidos()` existe para esse estado ficar visível.
+
+## Conta, canal e perfil: o que é o quê
+
+Três coisas diferentes que o projeto tratava como uma só — e essa confusão
+custou um dia de diagnóstico em 01/09/2026:
+
+| conceito | o que é | onde vive |
+| --- | --- | --- |
+| **login** | a conta do site (Google, TikTok…) | perfil de Chrome, ou token OAuth |
+| **canal** | para ONDE o vídeo vai | `UC...` do YouTube, `@perfil` do TikTok |
+| **perfil** | a sessão do navegador | `.browser_profile/<serviço>` |
+
+O caso que expôs o problema: `principal` e `bem_facil_d_verdade` eram dois
+nomes de conta diferentes que apontavam para **o mesmo canal**
+(`historinhas`) — e nada no sistema conseguia dizer isso. Um "nome de conta"
+não é identidade; é apelido.
+
+Agora cada conta guarda **quem ela é**:
+
+```python
+contas.identificar("youtube", "principal",
+                   rotulo="historinhas", identificador="UC2S8Z...")
+contas.identidade("youtube", "principal")   # {'rotulo': 'historinhas', ...}
+contas.colisoes("youtube")   # {'UC2S8Z...': ['bem_facil_d_verdade', 'principal']}
+```
+
+`contas.destino(serviço, canal)` passa a responder **para onde isto publica**,
+não só qual pasta usa. E `youtube.identificar_canal()` pergunta ao próprio
+YouTube em vez de confiar em memória.
+
+### Vários canais numa conta Google só
+
+É o caso real aqui. O login não distingue nada — o que separa um canal do
+outro é **qual está selecionado no Studio**. Depender do "selecionado" é
+depender de memória de navegador, e um dia o vídeo vai para o canal errado,
+de forma irreversível.
+
+Por isso o uploader de navegador mira o canal na URL:
+
+```
+studio.youtube.com/channel/<UC...>/videos/upload
+```
+
+O id é gravado no login (`youtube_web --login` lê da URL do Studio) e usado
+em todo upload. Sem id, ele cai na URL genérica e avisa.
+
+Uma limitação que vale saber: **um token OAuth só enxerga o canal escolhido
+na hora da autorização**. Se você tem cinco canais e autorizou um, a API vê
+um. O navegador vê todos — mais um motivo para o caminho de navegador
+existir.
+
 ## Contas compartilhadas: prova de origem
 
 As contas do PicassoIA e do Digen são usadas por **outras pessoas** ao mesmo
@@ -670,6 +1019,14 @@ provedor tem seu **perfil de Chrome separado** — não por causa de cookie, mas
 porque o Chrome trava o `user_data_dir` e `_liberar_perfil` mata processos
 filtrando por essa string: com perfil único, abrir o PicassoIA mataria o Chrome
 que está esperando um vídeo no Digen.
+
+Desde 31/08 cada passada segura uma **trava por conta** (`src/travas.py`,
+nome `servico__conta`) em vez de uma trava global: PicassoIA, Digen e o
+ChatGPT das histórias rodam **em paralelo**; só duas coisas na MESMA conta
+se enfileiram (a passada devolve o job e tenta na rodada seguinte). Cada
+passada também registra início/ok/erro no diário `atividade.jsonl`
+(`src/atividade.py`) — é o que alimenta a página **🏭 Vila** do painel, onde
+cada etapa é uma fábrica e um problema em qualquer uma vira log na hora.
 
 Ser sequencial dá de graça a ordem do grafo: quando a passada do Digen começa,
 as duas imagens já estão no disco e o payoff passa no portão da fila. Falha de

@@ -121,12 +121,12 @@
         ]
     },
     "outro": [
-        "QUAL SERIA A SUA BUILD?",
-        "COMENTA UM NOME. EU ROLO A ROLETA",
-        "O PROXIMO NOME SAI DOS COMENTARIOS",
-        "COMENTA E O PROXIMO E O SEU",
-        "DEIXA UM NOME PRO PROXIMO VIDEO",
-        "QUEM VOCE QUER VER NA ARENA?"
+        "DEIXA O LIKE E COMENTA UM NOME",
+        "LIKE SE A ROLETA ACERTOU",
+        "GOSTOU? LIKE. COMENTA O PROXIMO",
+        "UM LIKE E EU ROLO OUTRA AGORA",
+        "COMENTA UM NOME. DEIXA O LIKE",
+        "LIKE SE ELE MERECE A ARENA"
     ],
     "outro_pedido": [
         "{NOME_PEDIDO} FOI PEDIDO. E AGORA?",
@@ -179,7 +179,12 @@
         "A SORTE MONTOU ESSE AQUI",
         "OLHA O QUE A ROLETA CRIOU",
         "NINGUEM ESCOLHEU NADA. SAIU ISSO",
-        "ELE NASCEU DE 14 ROLETAS"
+        "ELE NASCEU DE 14 ROLETAS",
+        "A ULTIMA ROLETA QUEBROU ELE",
+        "ESPERA ATE VER A ARMA DELE",
+        "A ROLETA NAO DEVIA FAZER ISSO",
+        "COMECOU DO ZERO. TERMINA MONSTRO",
+        "NINGUEM ESPERAVA O FINAL"
     ],
     "hook_absurdo": [
         "{VALUE} DE {CATEGORY}. ISSO E REAL",
@@ -187,9 +192,10 @@
         "{VALUE} DE {CATEGORY}? A ROLETA SURTOU"
     ],
     "outro_com_estreia": [
-        "A ESTREIA COMPLETA TA NO PROXIMO VIDEO",
-        "ELE SOBREVIVE A ARENA? PROXIMO VIDEO",
-        "A LUTA INTEIRA SAI NO PROXIMO",
-        "QUER VER A LUTA INTEIRA? SEGUE"
-    ]
+        "DEIXA O LIKE. A LUTA E NO PROXIMO",
+        "LIKE SE ACHA QUE ELE SOBREVIVE",
+        "O LIKE LIBERA A ESTREIA. SEGUE",
+        "ELE SOBREVIVE? LIKE PRA VER"
+    ],
+    "_comment_like": "Ate 31/08/2026 NENHUMA copy pedia like - os CTAs pediam comentario ou follow. Agora todo outro pede o like JUNTO com a pergunta: o like e a acao mais barata para quem assiste, e e o sinal que mais pesa no algoritmo de Shorts. A pergunta continua ali porque comentario segura o video na recomendacao."
 }

@@ -39,6 +39,15 @@ class EsperaEstourou(GeracaoFalhou):
     """
 
 
+class ConteudoRecusado(GeracaoFalhou):
+    """O filtro de conteudo barrou o PROMPT — nao adianta tentar de novo igual.
+
+    Separada de `GeracaoFalhou` porque a resposta certa e outra: reescrever
+    o prompt mais suave (`identity/moderacao.py`) e so entao reenviar.
+    Repetir o mesmo texto seria recusado de novo, para sempre.
+    """
+
+
 class BrowserMorreu(EsperaEstourou):
     """O Chrome caiu no meio da espera.
 

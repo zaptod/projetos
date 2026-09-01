@@ -1,0 +1,13 @@
+outputs/
+assets/music/*
+!assets/music/.gitkeep
+__pycache__/
+*.pyc
+
+# Provedores externos (ChatGPT, Gemini): perfis de browser e credenciais.
+# Sem esta regra, 379 arquivos do perfil do Chrome - incluindo os cookies de
+# sessao - entram num `git add -A`. O curinga vale para provedor novo que
+# apareca depois: credencial nao pode depender de alguem lembrar de editar
+# este arquivo.
+.browser_profile/
+*_credentials.json

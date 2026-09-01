@@ -32,6 +32,197 @@ BLOCO = 8 * 1024 * 1024
 VISIBILIDADES = ("private", "unlisted", "public")
 
 
+def canais_da_conta(canal: str = "builds") -> list:
+    """TODOS os canais que este login controla (id, nome, videos).
+
+    Existe porque a pergunta "quais canais eu tenho?" nao tinha resposta
+    dentro do projeto — e sem ela nao da para mapear canal do YouTube ->
+    canal do projeto sem abrir o navegador e olhar.
+    """
+    import requests
+
+    credenciais = carregar_credenciais(caminho_credenciais(canal), canal)
+    token = token_de_acesso(credenciais)
+    saida, pagina = [], None
+    while True:
+        resposta = requests.get(
+            "https://www.googleapis.com/youtube/v3/channels",
+            params={"part": "snippet,statistics", "mine": "true",
+                    "maxResults": 50, "pageToken": pagina},
+            headers={"Authorization": f"Bearer {token}"}, timeout=30)
+        if not resposta.ok:
+            raise PublicacaoFalhou(
+                f"nao consegui listar os canais ({resposta.status_code}): "
+                f"{resposta.text[:200]}")
+        dados = resposta.json()
+        for item in dados.get("items") or []:
+            saida.append({
+                "id": item.get("id"),
+                "nome": item.get("snippet", {}).get("title", ""),
+                "criado": item.get("snippet", {}).get("publishedAt", "")[:10],
+                "videos": item.get("statistics", {}).get("videoCount"),
+                "inscritos": item.get("statistics", {}).get("subscriberCount"),
+            })
+        pagina = dados.get("nextPageToken")
+        if not pagina:
+            break
+    return saida
+
+
+def modo(config: dict | None = None) -> str:
+    """"navegador" (padrao) ou "api" — como este projeto PUBLICA no YouTube.
+
+    Decisao do Adrian em 01/09/2026, depois de a API recusar por cota
+    enquanto o Studio aceitava: publicar e sempre por navegador. A API
+    continua aqui, e continua util, mas so para LER — metricas de retencao,
+    views e a identidade do canal, que o navegador nao entrega.
+    """
+    if config is None:
+        try:
+            from . import catalogo
+            config = catalogo.carregar_config()
+        except Exception:
+            config = {}
+    # O `or` antes do str() importa: `str(None)` e a string "none", que e
+    # verdadeira e passaria como se fosse um modo valido.
+    escolhido = ((config or {}).get("youtube") or {}).get("modo") or "navegador"
+    return str(escolhido).strip().lower() or "navegador"
+
+
+def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
+    """Publica pelo caminho escolhido no config. E a porta que todos usam.
+
+    O que ela resolve, alem de escolher o caminho: os dois lados FALAM
+    DIFERENTE. A API reporta bytes (`progresso(enviado, total)`) e o
+    navegador reporta passos (`progresso(texto)`). Adaptar isso aqui e o
+    que permite quem chama nao precisar saber por onde o video foi — ela
+    recebe `log(texto)`, uma linha por vez, e pronto.
+    """
+    fala = log or (lambda _linha: None)
+    caminho = modo(config)
+    fala(f"[youtube] publicando por {caminho.upper()}")
+    if caminho == "api":
+        return publicar(
+            video, config=config,
+            progresso=lambda enviado, total: fala(
+                f"  {enviado / 1e6:6.1f} / {total / 1e6:.1f} MB"),
+            **kw)
+    from . import youtube_web
+    return youtube_web.publicar(
+        video, config=config, postar=True,
+        progresso=lambda texto: fala(f"  {texto}"), **kw)
+
+
+def identificar_canal(canal: str = "builds") -> dict:
+    """Pergunta ao YouTube QUAL canal este token controla, e grava.
+
+    Sem isto, duas contas com nomes diferentes podem apontar para o mesmo
+    canal por meses sem ninguem perceber — foi o que aconteceu.
+    """
+    import requests
+
+    from .. import contas
+
+    credenciais = carregar_credenciais(caminho_credenciais(canal), canal)
+    token = token_de_acesso(credenciais)
+    resposta = requests.get(
+        "https://www.googleapis.com/youtube/v3/channels",
+        params={"part": "snippet,statistics", "mine": "true"},
+        headers={"Authorization": f"Bearer {token}"}, timeout=30)
+    if not resposta.ok:
+        raise PublicacaoFalhou(
+            f"nao consegui identificar o canal ({resposta.status_code}): "
+            f"{resposta.text[:200]}")
+    itens = resposta.json().get("items") or []
+    if not itens:
+        raise PublicacaoFalhou("este token nao controla canal nenhum.")
+    canal_api = itens[0]
+    nome = contas.ativa("youtube", canal)
+    return contas.identificar(
+        "youtube", nome,
+        rotulo=canal_api.get("snippet", {}).get("title", ""),
+        identificador=canal_api.get("id", ""),
+        extra={"videos": canal_api.get("statistics", {}).get("videoCount")})
+
+
+def cota_disponivel(canal: str = "builds", config: dict | None = None):
+    """(True/False, motivo): da para subir video AGORA?
+
+    Pergunta ao YouTube em vez de adivinhar. O 400 de cota chega na hora dos
+    METADADOS, antes de qualquer byte — entao abrir uma sessao de upload e
+    NAO enviar nada responde a pergunta sem criar video nenhum.
+
+    Existe porque descobrir o teto no meio de uma serie e caro: a publicacao
+    ja gastou minutos de vistoria e render, e as partes seguintes cairiam no
+    mesmo erro uma a uma.
+    """
+    import requests
+
+    try:
+        credenciais = carregar_credenciais(caminho_credenciais(canal), canal)
+        token = token_de_acesso(credenciais)
+    except Exception as exc:
+        return False, f"nao consegui autenticar: {exc}"
+
+    corpo = {"snippet": {"title": "sonda de cota", "categoryId": "24"},
+             "status": {"privacyStatus": "private",
+                        "selfDeclaredMadeForKids": False}}
+    try:
+        r = requests.post(
+            "https://www.googleapis.com/upload/youtube/v3/videos",
+            params={"part": "snippet,status", "uploadType": "resumable"},
+            headers={"Authorization": f"Bearer {token}",
+                     "Content-Type": "application/json; charset=UTF-8",
+                     "X-Upload-Content-Length": "1048576",
+                     "X-Upload-Content-Type": "video/mp4"},
+            data=json.dumps(corpo).encode("utf-8"), timeout=60)
+    except Exception as exc:
+        return False, f"rede: {exc}"
+    if r.ok:
+        # A sessao aberta e abandonada: sem bytes, nenhum video nasce.
+        return True, "ha cota"
+    bruto = r.text or ""
+    if "exceeded the number of videos" in bruto or "uploadLimitExceeded" in bruto:
+        return False, MENSAGEM_COTA
+    return False, f"o YouTube recusou ({r.status_code}): {bruto[:200]}"
+
+
+class CotaEsgotada(RuntimeError):
+    """A conta bateu o teto DIARIO de uploads do YouTube.
+
+    Nao e defeito nem recusa do video: e um limite por conta, que zera
+    sozinho em algumas horas. Merece excecao propria porque a resposta e
+    diferente de qualquer outro erro — nao adianta tentar de novo agora, e
+    NAO adianta tentar a proxima parte da serie (ela cairia no mesmo teto).
+    """
+
+
+# A unica coisa que o dono ve quando isso acontece. Fica aqui, e nao dentro
+# da funcao, para ser lida por teste — e para nao virar duas mensagens
+# diferentes no dia em que outro caminho precisar dela.
+MENSAGEM_COTA = (
+    "a conta bateu o teto de uploads POR API do YouTube.\n"
+    "\n"
+    "O que foi MEDIDO em 01/09/2026, e vale saber antes de tentar de novo:\n"
+    "  - o teto da API e um balde SEPARADO do upload pelo navegador. Subir "
+    "video pelo YouTube Studio continua funcionando enquanto a API recusa;\n"
+    "  - ele NAO zera na virada do dia: o dia ja tinha virado no horario do "
+    "Pacifico e a API continuava recusando;\n"
+    "  - canal novo e o caso classico. O canal em uso tinha UM dia de vida e "
+    "11 uploads por API quando o teto apareceu.\n"
+    "\n"
+    "O que fazer:\n"
+    "  - verificar o canal (YouTube Studio > Configuracoes > Canal > "
+    "Verificacao por telefone) — e o que mais aumenta o limite;\n"
+    "  - esperar (horas, as vezes um dia) e rodar de novo: o que ja subiu "
+    "esta registrado e a serie continua de onde parou, sem republicar;\n"
+    "  - enquanto isso, `main.py publicar <id> --exportar` deixa o mp4 com "
+    "nome legivel e o texto pronto para subir na mao;\n"
+    "  - cortar para Shorts DOBRA os uploads (uma parte longa vira dois "
+    "videos). `shorts_max_s: 0` em config/publicacao.json gasta metade."
+)
+
+
 class PublicacaoFalhou(RuntimeError):
     """Erro que o painel mostra como está: sem traceback, com o motivo."""
 
@@ -54,14 +245,19 @@ class Credenciais:
         return ESCOPO_UPLOAD in (self.escopo or "")
 
 
-def caminho_credenciais() -> Path:
-    from neural_fights.data.database import RUNTIME_DIR
+def caminho_credenciais(canal: str = "builds") -> Path:
+    """O arquivo de credencial da conta de YouTube ATIVA naquele canal."""
+    try:
+        from ..contas import credencial_youtube
+        return credencial_youtube(canal)
+    except Exception:
+        from neural_fights.data.database import RUNTIME_DIR
+        return Path(RUNTIME_DIR) / "youtube_credentials.json"
 
-    return Path(RUNTIME_DIR) / "youtube_credentials.json"
 
-
-def carregar_credenciais(caminho: Path | None = None) -> Credenciais | None:
-    caminho = caminho or caminho_credenciais()
+def carregar_credenciais(caminho: Path | None = None,
+                         canal: str = "builds") -> Credenciais | None:
+    caminho = caminho or caminho_credenciais(canal)
     try:
         with open(caminho, encoding="utf-8-sig") as fh:
             dados = json.load(fh)
@@ -93,9 +289,14 @@ def token_de_acesso(credenciais: Credenciais) -> str:
     return token
 
 
-def _corpo(video, config: dict, visibilidade: str) -> dict:
+def _corpo(video, config: dict, visibilidade: str,
+           agendar_para: str | None = None) -> dict:
     ajustes = config.get("youtube", {})
-    return {
+    if agendar_para:
+        # O YouTube so agenda o que esta privado: com qualquer outra
+        # visibilidade ele ignora o publishAt em silencio.
+        visibilidade = "private"
+    corpo = {
         "snippet": {
             # 100 caracteres é o teto do YouTube; cortar aqui evita o 400.
             "title": video.titulo[:100],
@@ -108,11 +309,20 @@ def _corpo(video, config: dict, visibilidade: str) -> dict:
             "selfDeclaredMadeForKids": bool(ajustes.get("para_criancas", False)),
         },
     }
+    if agendar_para:
+        corpo["status"]["publishAt"] = agendar_para
+    return corpo
 
 
 def publicar(video, *, visibilidade: str | None = None,
-             config: dict | None = None, progresso=None) -> str:
-    """Sobe o vídeo e devolve a URL. `progresso(enviado, total)` é opcional."""
+             config: dict | None = None, progresso=None,
+             canal: str = "builds", agendar_para: str | None = None) -> str:
+    """Sobe o vídeo e devolve a URL. `progresso(enviado, total)` é opcional.
+
+    `canal` escolhe a CONTA (o registro de contas guarda qual é a ativa).
+    `agendar_para` (ISO 8601, UTC) publica sozinho naquele instante: numa
+    série, soltar oito partes no mesmo minuto mata a sequência.
+    """
     import requests
 
     from . import catalogo
@@ -125,11 +335,11 @@ def publicar(video, *, visibilidade: str | None = None,
             f"visibilidade inválida: {visibilidade!r} "
             f"(use {', '.join(VISIBILIDADES)})")
 
-    credenciais = carregar_credenciais()
+    credenciais = carregar_credenciais(canal=canal)
     if credenciais is None:
         raise PublicacaoFalhou(
-            "sem credenciais do YouTube. No painel: Live/YouTube -> "
-            "Configurar OAuth (marque 'com upload').")
+            f"sem credenciais do YouTube para o canal '{canal}'. No painel: "
+            "pagina Contas -> escolha a conta e clique em Autorizar.")
     if not credenciais.tem_upload:
         raise PublicacaoFalhou(
             "as credenciais atuais são só de LEITURA (chat da live). Rode o "
@@ -150,11 +360,19 @@ def publicar(video, *, visibilidade: str | None = None,
                  "Content-Type": "application/json; charset=UTF-8",
                  "X-Upload-Content-Length": str(total),
                  "X-Upload-Content-Type": "video/mp4"},
-        data=json.dumps(_corpo(video, config, visibilidade)).encode("utf-8"))
+        data=json.dumps(_corpo(video, config, visibilidade,
+                               agendar_para)).encode("utf-8"))
     if not inicio.ok:
+        bruto = inicio.text or ""
+        if "exceeded the number of videos" in bruto or (
+                "uploadLimitExceeded" in bruto):
+            # O YouTube devolve isto como 400, junto de erros de metadado —
+            # mas a causa e outra e a acao tambem. Sem separar, a mensagem
+            # que chegava era um JSON cru de 200 caracteres.
+            raise CotaEsgotada(MENSAGEM_COTA)
         raise PublicacaoFalhou(
             f"o YouTube recusou os metadados ({inicio.status_code}): "
-            f"{inicio.text[:200]}")
+            f"{bruto[:200]}")
     sessao = inicio.headers.get("Location")
     if not sessao:
         raise PublicacaoFalhou("o YouTube não devolveu a URL de upload.")
@@ -183,12 +401,25 @@ def publicar(video, *, visibilidade: str | None = None,
                 url = f"https://youtu.be/{video_id}"
                 # Registro do que subiu: e o que liga o mp4 a metrica depois
                 # (`main.py metricas`). Falhar aqui nao desfaz o upload.
+                if canal == "builds":
+                    # So o canal de builds tem metrica aqui. Histórias reusa
+                    # este módulo pela ponte `rb` e tem registro próprio — sem
+                    # esta guarda, todo upload de história entrava no
+                    # `publicados.jsonl` de builds e a métrica ia buscar
+                    # retenção de um vídeo que não é deste canal.
+                    try:
+                        from . import metricas
+                        metricas.registrar_publicacao(
+                            video, url, "youtube",
+                            {"visibilidade": visibilidade})
+                    except Exception as exc:  # pragma: no cover - so log
+                        print(f"[publicar] registro falhou: {exc}")
                 try:
-                    from . import metricas
-                    metricas.registrar_publicacao(video, url, "youtube",
-                                                  {"visibilidade": visibilidade})
-                except Exception as exc:  # pragma: no cover - so log
-                    print(f"[publicar] registro falhou: {exc}")
+                    from .. import atividade
+                    atividade.registrar("publicacao", "ok",
+                                        f"YouTube: {video.titulo[:70]}", canal)
+                except Exception:
+                    pass
                 return url
             if resposta.status_code != 308:  # 308 = continue
                 raise PublicacaoFalhou(

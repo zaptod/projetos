@@ -111,6 +111,65 @@ PADRAO_RESULTADO = re.compile(
 JS_IMAGENS = """() => Array.from(document.images).map(i => ({
   src: i.currentSrc || i.src, w: i.naturalWidth, h: i.naturalHeight}))"""
 
+# Texto VISIVEL da pagina. Serve para achar o aviso de conteudo recusado sem
+# depender de seletor (o site mostra isso em toast, banner ou modal conforme
+# o caso). `innerText` ja ignora o que esta escondido, e o valor do textarea
+# nao entra — importante, senao o proprio prompt daria falso positivo.
+JS_TEXTO_VISIVEL = """() => document.body ? document.body.innerText : ''"""
+
+
+def texto_visivel(page) -> str:
+    try:
+        return page.evaluate(JS_TEXTO_VISIVEL) or ""
+    except Exception:
+        return ""
+
+
+# O bloqueio de conteudo do PicassoIA e um ICONE, nao uma frase: um escudo
+# com exclamacao (lucide `shield-alert`, pintado de `text-destructive`).
+# Visto na tela do Adrian em 31/08/2026 — por isso a deteccao por texto
+# passou batido e a cena voltou a queimar o timeout inteiro.
+#
+# Duas forcas, e a diferenca importa: o ESCUDO e bloqueio de conteudo (a
+# resposta e reescrever o prompt); `text-destructive` sozinho e so "deu
+# ruim" — pode ser falta de credito, rede, qualquer coisa — e ai reescrever
+# nao adianta. Devolver as duas coisas separadas deixa quem chama decidir.
+JS_BLOQUEIO = """() => {
+  const visivel = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const textoPerto = (el) => {
+    let no = el;
+    for (let i = 0; i < 5 && no; i++) {
+      no = no.parentElement;
+      const t = no && no.innerText ? no.innerText.trim() : '';
+      if (t) return t.slice(0, 300);
+    }
+    return '';
+  };
+  const classe = (el) => (el.getAttribute('class') || '') + ' ' +
+                         (el.className && el.className.baseVal || '');
+  for (const el of document.querySelectorAll('svg, [class*="shield"]')) {
+    if (!visivel(el)) continue;
+    if (/shield[-_]?alert|shield[-_]?ban|shield[-_]?x/i.test(classe(el))) {
+      return {escudo: true, texto: textoPerto(el)};
+    }
+  }
+  for (const el of document.querySelectorAll('[class*="text-destructive"]')) {
+    if (visivel(el)) return {escudo: false, texto: textoPerto(el)};
+  }
+  return null;
+}"""
+
+
+def bloqueio_na_tela(page) -> dict | None:
+    """{escudo: bool, texto: str} quando ha sinal de bloqueio/erro na tela."""
+    try:
+        return page.evaluate(JS_BLOQUEIO)
+    except Exception:
+        return None
+
 # A zona de upload do Editor Pro. Sondada de novo em 26/08/2026: o site
 # TROCOU o formulario — o input perdeu o `multiple` ("Carregar imagem" no
 # singular) e a segunda imagem passou a SUBSTITUIR a primeira. O botao abre o

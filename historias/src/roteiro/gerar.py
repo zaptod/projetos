@@ -1,0 +1,154 @@
+# -*- coding: utf-8 -*-
+"""Gera a historia inteira sozinho: abre o LLM no browser e conduz a conversa.
+
+E o passo que era manual (montar prompt, colar no site, copiar a resposta)
+virando automatico. O ganho nao e so de cliques: como as duas etapas
+acontecem no MESMO chat, a parte 7 e escrita com a biblia e as seis partes
+anteriores ainda no contexto — coisa que copiar e colar nao dava.
+
+Tres cuidados que vieram da experiencia com os outros sites:
+
+  SALVA A CADA PARTE. Uma serie de 8 partes leva muitos minutos; se o site
+  cair na parte 6, as cinco anteriores continuam no disco e a retomada
+  comeca de onde parou.
+  RESPOSTA CORTADA E NORMAL. Os sites cortam mensagem longa. Quando vem
+  menos cena do que se pediu, o proximo turno e "continue da cena N" — e
+  nao uma tentativa nova do zero.
+  NADA E DADO COMO FEITO SEM PROVA. Biblia sem protagonista ou parte sem
+  cena viram erro com o motivo, nao um roteiro pela metade.
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+
+from . import roteiro as R
+from . import serie as S
+from .modelo import carregar_config
+
+RAIZ = Path(__file__).resolve().parents[2]
+OUTPUTS = RAIZ / "outputs"
+
+
+class GeracaoFalhou(RuntimeError):
+    """Erro humano: o que aconteceu e o que fazer."""
+
+
+def _gravar(caminho: Path, dados) -> None:
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    with open(caminho, "w", encoding="utf-8") as fh:
+        json.dump(dados, fh, ensure_ascii=False, indent=2)
+
+
+def _guardar_conversa(pasta: Path, nome: str, texto: str) -> None:
+    destino = pasta / "conversa"
+    destino.mkdir(parents=True, exist_ok=True)
+    (destino / nome).write_text(texto, encoding="utf-8")
+
+
+def _completar_parte(cliente, texto: str, numero: int, cenas_alvo: int,
+                     pasta: Path, log) -> dict:
+    """A parte parseada, pedindo continuacao enquanto vier cortada."""
+    parcial = R.parse(texto)
+    tentativas = 0
+    while len(parcial["cenas"]) < cenas_alvo and tentativas < 3:
+        tentativas += 1
+        ultima = len(parcial["cenas"])
+        log(f"[serie] parte {numero}: vieram {ultima}/{cenas_alvo} cenas; "
+            f"pedindo continuacao ({tentativas}/3)")
+        extra = cliente.perguntar(
+            S.prompt_continuar(numero, ultima, cenas_alvo))
+        _guardar_conversa(pasta, f"parte_{numero:02d}_cont{tentativas}.txt", extra)
+        novas = R.parse(extra)["cenas"]
+        if not novas:
+            break
+        parcial["cenas"].extend(novas)
+        for ordem, cena in enumerate(parcial["cenas"], 1):
+            cena["n"] = ordem
+    return parcial
+
+
+def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
+                cenas_por_parte: int = S.CENAS_POR_PARTE,
+                tema: str | None = None, historia_id: str | None = None,
+                headless: bool = False, config: dict | None = None,
+                log=print) -> dict:
+    """Conduz a conversa inteira e devolve {historia_id, partes, cenas}."""
+    from ..llm.cliente import abrir_cliente
+
+    config = config or carregar_config()
+    historia_id = historia_id or R.proximo_id()
+    pasta = OUTPUTS / historia_id
+    pasta.mkdir(parents=True, exist_ok=True)
+    log(f"[serie] {historia_id}: {partes} parte(s) de {cenas_por_parte} cenas "
+        f"via {provedor}")
+
+    with abrir_cliente(provedor, headless=headless, log=log) as cliente:
+        cliente.abrir(novo_chat=True)
+
+        # --- etapa 1: a biblia
+        log("[serie] etapa 1: planejando a historia inteira...")
+        texto = cliente.perguntar(
+            S.prompt_biblia(partes=partes, cenas_por_parte=cenas_por_parte,
+                            tema=tema, config=config))
+        _guardar_conversa(pasta, "biblia.txt", texto)
+        biblia = S.parse_biblia(texto, partes)
+        problemas = S.problemas_da_biblia(biblia)
+        if problemas:
+            log(f"[serie] a biblia veio incompleta ({'; '.join(problemas)}); "
+                "pedindo de novo no formato.")
+            texto = cliente.perguntar(
+                "A resposta nao seguiu o formato pedido: "
+                + "; ".join(problemas) +
+                ". Reescreva a BIBLIA inteira exatamente no formato solicitado, "
+                "sem texto fora dele.")
+            _guardar_conversa(pasta, "biblia_2.txt", texto)
+            biblia = S.parse_biblia(texto, partes)
+            problemas = S.problemas_da_biblia(biblia)
+            if not biblia.get("partes"):
+                raise GeracaoFalhou(
+                    "o modelo nao devolveu a biblia no formato mesmo depois de "
+                    f"corrigir ({'; '.join(problemas)}). O texto cru esta em "
+                    f"{pasta / 'conversa'}.")
+        _gravar(pasta / "biblia.json", biblia)
+        log(f"[serie] biblia pronta: {biblia['titulo'] or '(sem titulo)'} "
+            f"- {len(biblia['partes'])} parte(s)")
+
+        # --- etapa 2: uma parte por vez, salvando a cada uma
+        total = len(biblia["partes"]) or partes
+        partes_prontas = []
+        for numero in range(1, total + 1):
+            log(f"[serie] etapa 2: escrevendo a parte {numero}/{total}...")
+            texto = cliente.perguntar(
+                S.prompt_parte(biblia, numero, cenas=cenas_por_parte,
+                               config=config))
+            _guardar_conversa(pasta, f"parte_{numero:02d}.txt", texto)
+            parcial = _completar_parte(cliente, texto, numero, cenas_por_parte,
+                                       pasta, log)
+            if not parcial["cenas"]:
+                raise GeracaoFalhou(
+                    f"a parte {numero} voltou sem nenhuma cena legivel. O texto "
+                    f"cru esta em {pasta / 'conversa'}; as partes anteriores "
+                    "ja estao salvas.")
+            plano = next((p for p in biblia["partes"] if p["n"] == numero), {})
+            partes_prontas.append({
+                "n": numero,
+                "titulo": parcial["titulo"] or plano.get("titulo") or "",
+                "cliffhanger": plano.get("cliffhanger", ""),
+                "cta": parcial["cta"],
+                "cenas": parcial["cenas"],
+            })
+            R.salvar_serie(biblia, partes_prontas, historia_id, tema=tema or "",
+                           provedor=provedor)
+            log(f"[serie] parte {numero}/{total} pronta: "
+                f"{len(parcial['cenas'])} cenas")
+
+    caminho = R.salvar_serie(biblia, partes_prontas, historia_id,
+                             tema=tema or "", provedor=provedor)
+    cenas = sum(len(p["cenas"]) for p in partes_prontas)
+    log(f"[serie] {historia_id} completa: {len(partes_prontas)} parte(s), "
+        f"{cenas} cenas -> {caminho}")
+    return {"historia_id": historia_id, "titulo": biblia["titulo"],
+            "partes": len(partes_prontas), "cenas": cenas,
+            "gerado_em": datetime.now().isoformat(timespec="seconds")}

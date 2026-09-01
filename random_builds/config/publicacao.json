@@ -13,16 +13,39 @@
         "torneio": "Torneio com {participantes} lutadores gerados por roleta.\nCampeão: {campeao}.\n\nTodas as lutas simuladas no motor do Neural Fights."
     },
     "hashtags": {
-        "build": ["#shorts", "#rpg", "#gamedev", "#aleatorio", "#build"],
-        "estreia": ["#shorts", "#rpg", "#gamedev", "#luta", "#ia"],
-        "torneio": ["#shorts", "#rpg", "#gamedev", "#torneio", "#ia"]
+        "build": [
+            "#shorts",
+            "#rpg",
+            "#gamedev",
+            "#aleatorio",
+            "#build"
+        ],
+        "estreia": [
+            "#shorts",
+            "#rpg",
+            "#gamedev",
+            "#luta",
+            "#ia"
+        ],
+        "torneio": [
+            "#shorts",
+            "#rpg",
+            "#gamedev",
+            "#torneio",
+            "#ia"
+        ]
     },
     "youtube": {
         "visibilidade": "private",
         "_comment_visibilidade": "private | unlisted | public. O padrão é PRIVADO de propósito: o vídeo sobe pronto e quem decide torná-lo público é você, no YouTube Studio. Mudar aqui muda o padrão do painel.",
         "categoria": "20",
         "_comment_categoria": "20 = Gaming (lista oficial da YouTube Data API).",
-        "para_criancas": false
+        "para_criancas": false,
+        "_comment_shorts": "O YouTube so trata video vertical como SHORT ate 3 min (180 s). Passou disso ele vira video normal e sai da esteira de Shorts. Com `cortar_para_shorts`, a publicacao corta sozinha em partes equilibradas, sempre numa TROCA DE CENA (nunca no meio de uma fala). Para desligar: false, ou shorts_max_s = 0.",
+        "cortar_para_shorts": true,
+        "shorts_max_s": 180,
+        "_comment_modo": "COMO publicar: 'navegador' (padrao) sobe pelo YouTube Studio com o perfil de Chrome; 'api' usa o OAuth. Medido em 01/09/2026: a API recusou por cota (uploadLimitExceeded) num canal de um dia enquanto o Studio aceitava normalmente — sao baldes separados. A API continua sendo usada para LER (metricas, identidade do canal), so nao para publicar.",
+        "modo": "navegador"
     },
     "tiktok": {
         "postar_automatico": false,

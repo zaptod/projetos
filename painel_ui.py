@@ -22,16 +22,22 @@ from tkinter import filedialog, messagebox, ttk
 
 RAIZ = Path(__file__).resolve().parent
 RANDOM_BUILDS = RAIZ / "random_builds"
+HISTORIAS = RAIZ / "historias"
 PY = sys.executable
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 sys.path.insert(0, str(RANDOM_BUILDS))
+from src import atividade as atividade_reg  # noqa: E402
+from src import travas as travas_reg  # noqa: E402
+from src import contas as contas_reg  # noqa: E402
 from src.assets import importer as reacoes_importer  # noqa: E402
+from src.identity import controle as pipeline_controle  # noqa: E402
 from src.assets.catalog import CATEGORIES  # noqa: E402
 from src.assets.reaction_cli import CATEGORY_DESC  # noqa: E402
 from src.assets.triagem import SessaoTriagem  # noqa: E402
 from src.pipeline import fluxo  # noqa: E402
 from src.publicar import catalogo as publicar_catalogo  # noqa: E402
+from src.publicar import youtube as youtube_reg  # noqa: E402
 
 # ------------------------------------------------------------------ tema
 BG = "#14121f"
@@ -92,6 +98,7 @@ class Painel(tk.Tk):
 
         self._estilo_ttk()
         self._montar_layout()
+        self._pipeline_estado()
         self._aplicar_modo(self._modo, salvar=False)
         self.bind("<Configure>", self._ao_redimensionar)
         self.bind("<F11>", lambda e: self._alternar_cheia())
@@ -319,6 +326,33 @@ class Painel(tk.Tk):
         conteudo = tk.Frame(self, bg=BG)
         conteudo.pack(side="right", fill="both", expand=True)
 
+        # --- FREIO DE MAO: controle da pipeline, visivel de qualquer pagina.
+        # A conta dos sites de video e COMPARTILHADA: quando outra pessoa esta
+        # usando, tem que dar para parar sem caçar processo nem digitar comando.
+        controle_frame = tk.Frame(conteudo, bg=CARD_HL)
+        controle_frame.pack(side="bottom", fill="x")
+        faixa = tk.Frame(controle_frame, bg=CARD_HL)
+        faixa.pack(fill="x", padx=10, pady=6)
+        tk.Label(faixa, text="PIPELINE", bg=CARD_HL, fg=DIM,
+                 font=FONT_B).pack(side="left")
+        self.lbl_pipeline = tk.Label(faixa, text="lendo...", bg=CARD_HL, fg=TEXT,
+                                     font=FONT_B, anchor="w")
+        self.lbl_pipeline.pack(side="left", padx=10)
+        self._botao(faixa, "▶  Retomar", self._pipeline_retomar,
+                    cor=OK).pack(side="right", padx=3)
+        self._botao(faixa, "⏹  Parar worker", self._pipeline_parar,
+                    cor=RED).pack(side="right", padx=3)
+        self._botao(faixa, "⏸  Pausar 1h",
+                    lambda: self._pipeline_pausar(minutos=60)).pack(side="right", padx=3)
+        self._botao(faixa, "⏸  Pausar tudo",
+                    lambda: self._pipeline_pausar()).pack(side="right", padx=3)
+        self.combo_pausa_alvo = ttk.Combobox(
+            faixa, values=("tudo", "digen", "picasso"), width=9, state="readonly")
+        self.combo_pausa_alvo.set("tudo")
+        self.combo_pausa_alvo.pack(side="right", padx=(12, 3))
+        tk.Label(faixa, text="alvo:", bg=CARD_HL, fg=DIM,
+                 font=FONT).pack(side="right")
+
         # console embutido (parte de baixo)
         console_frame = tk.Frame(conteudo, bg=PANEL)
         self.console_frame = console_frame
@@ -354,9 +388,12 @@ class Painel(tk.Tk):
         self.area.pack(side="top", fill="both", expand=True)
 
         paginas = [
+            ("vila", "🏭  Vila", self._pagina_vila),
             ("fluxo", "🧭  Fluxo", self._pagina_fluxo),
             ("publicar", "📤  Publicar", self._pagina_publicar),
             ("videos", "🎬  Vídeos de Build", self._pagina_videos),
+            ("historias", "📖  Histórias", self._pagina_historias),
+            ("contas", "🔑  Contas", self._pagina_contas),
             ("reacoes", "😂  Reações", self._pagina_reacoes),
             ("torneio", "🏆  Torneio", self._pagina_torneio),
             ("simulacao", "⚔️  Simulação", self._pagina_simulacao),
@@ -437,6 +474,14 @@ class Painel(tk.Tk):
             self._atualizar_fluxo()
         if chave == "publicar":
             self._atualizar_publicar()
+        if chave == "historias":
+            self._atualizar_historias()
+        if chave == "contas":
+            self._atualizar_contas()
+        self._vila_visivel = chave == "vila"
+        if self._vila_visivel:
+            self._vila_dados()
+            self._vila_tick()
         if chave == "videos":
             self._atualizar_geracoes()
         if chave == "reacoes":
@@ -502,7 +547,13 @@ class Painel(tk.Tk):
         self.console.delete("1.0", "end")
         self.console.configure(state="disabled")
 
-    def _rodar(self, args, cwd=RAIZ, rotulo=None):
+    def _rodar(self, args, cwd=RAIZ, rotulo=None, ao_terminar=None):
+        """`ao_terminar` roda NO THREAD DA UI, quando o processo acaba.
+
+        Ele existe porque a thread do processo nao pode tocar em widget nem
+        chamar `after()` — isso derruba o Tkinter. A volta e pela fila, que
+        `_drenar_fila` ja consome no lugar certo.
+        """
         mostrado = rotulo or " ".join(str(a) for a in args)
         self._log(f">>> {mostrado}", "cmd")
         try:
@@ -517,13 +568,15 @@ class Painel(tk.Tk):
         self._processos.append(proc)
         self._atualizar_status()
         threading.Thread(target=self._ler_processo,
-                         args=(proc, mostrado), daemon=True).start()
+                         args=(proc, mostrado, ao_terminar),
+                         daemon=True).start()
 
-    def _ler_processo(self, proc, rotulo):
+    def _ler_processo(self, proc, rotulo, ao_terminar=None):
         for linha in proc.stdout:
             self._fila.put(("linha", linha.rstrip()))
         codigo = proc.wait()
-        self._fila.put(("fim", f"({rotulo}) terminou com codigo {codigo}", codigo))
+        self._fila.put(("fim", f"({rotulo}) terminou com codigo {codigo}",
+                        codigo, ao_terminar))
 
     def _drenar_fila(self):
         try:
@@ -541,6 +594,12 @@ class Painel(tk.Tk):
                     self._atualizar_status()
                     self._atualizar_geracoes()
                     self._atualizar_torneios()
+                    depois = item[3] if len(item) > 3 else None
+                    if depois is not None:
+                        try:
+                            depois()
+                        except Exception as erro:
+                            self._log(f"[painel] {erro}", "erro")
         except queue.Empty:
             pass
         self.after(120, self._drenar_fila)
@@ -572,6 +631,53 @@ class Painel(tk.Tk):
             if hasattr(self, "barra_video"):
                 self.barra_video.configure(value=0)
                 self.label_progresso.configure(text="", fg=DIM)
+
+    # ------------------------------------------------ controle da pipeline
+    def _pipeline_estado(self):
+        """Le o interruptor e pinta a faixa. Roda sozinho a cada 3 s."""
+        if not hasattr(self, "lbl_pipeline"):
+            return
+        try:
+            estado = pipeline_controle.estado()
+        except Exception as erro:
+            self.lbl_pipeline.configure(text=f"não li o controle: {erro}", fg=RED)
+            self.after(5000, self._pipeline_estado)
+            return
+        cor = {pipeline_controle.RODANDO: OK,
+               pipeline_controle.PAUSADO: ORANGE,
+               pipeline_controle.PARANDO: RED}[estado["situacao"]]
+        simbolo = {pipeline_controle.RODANDO: "●",
+                   pipeline_controle.PAUSADO: "⏸",
+                   pipeline_controle.PARANDO: "⏹"}[estado["situacao"]]
+        self.lbl_pipeline.configure(text=f"{simbolo}  {estado['resumo']}", fg=cor)
+        self.after(3000, self._pipeline_estado)
+
+    def _pipeline_pausar(self, minutos=None):
+        alvo = self.combo_pausa_alvo.get() or pipeline_controle.TUDO
+        motivo = ("ferramenta em uso por outra pessoa" if minutos is None
+                  else f"pausa de {minutos:.0f} min pelo painel")
+        estado = pipeline_controle.pausar(alvo, motivo, minutos)
+        self._log(f"[pipeline] {estado['resumo']}", "fim")
+        self._log("[pipeline] o job em andamento termina; nenhum novo começa.")
+        self._pipeline_estado()
+
+    def _pipeline_retomar(self):
+        estado = pipeline_controle.retomar()
+        self._log(f"[pipeline] {estado['resumo']}", "fim")
+        self._pipeline_estado()
+
+    def _pipeline_parar(self):
+        """Parada LIMPA: o worker termina o job atual, fecha o browser e sai."""
+        if not messagebox.askyesno(
+                "Parar worker",
+                "Parar a pipeline de forma limpa?\n\n"
+                "O job que está em andamento TERMINA (nada é perdido) e o "
+                "worker encerra em seguida. Nenhum job novo é pego.\n\n"
+                "Para voltar depois: ▶ Retomar."):
+            return
+        estado = pipeline_controle.pedir_parada("parado pelo painel")
+        self._log(f"[pipeline] {estado['resumo']}", "erro")
+        self._pipeline_estado()
 
     def _parar_processos(self):
         ativos = [p for p in self._processos if p.poll() is None]
@@ -822,183 +928,679 @@ class Painel(tk.Tk):
     # =====================================================================
     # PAGINA: PUBLICAR — todos os videos num lugar, um clique para enviar
     # =====================================================================
+    # Emoji + rotulo por origem: a primeira coluna responde "o que e isto?"
+    # antes de o titulo ser lido. Era a duvida do Adrian em 31/08 — a lista
+    # misturava build, estreia e torneio sem dizer qual era qual, e as
+    # historias nem apareciam.
+    PUB_ORIGENS = {
+        "build": ("\U0001f3ae", "build"),
+        "estreia": ("\u2694", "estreia"),
+        "torneio": ("\U0001f3c6", "torneio"),
+        "historia": ("\U0001f4d6", "história"),
+    }
+
     def _pagina_publicar(self, pai):
-        """Todo mp4 pronto (build, estreia, torneio) com texto e envio.
+        """TUDO que esta pronto para ir ao ar, e para onde cada coisa vai.
 
-        O atrito nunca foi o render: era achar o arquivo. Os mp4 nascem em
-        tres lugares diferentes, todos com o mesmo nome (`final_celular.mp4`)
-        e nada dizendo de quem sao. Aqui eles aparecem juntos, com titulo e
-        descricao ja escritos a partir dos dados da build — da para exportar
-        com nome legivel ou mandar direto para o YouTube/TikTok.
+        Antes esta pagina so mostrava os mp4 do random_builds, e as historias
+        tinham um botao proprio em outra pagina — nao dava para ver num lugar
+        so o que existe nem escolher o destino. Agora a lista junta as duas
+        fontes, cada linha diz se JA foi para o YouTube e para o TikTok, e a
+        caixa ONDE POSTAR mostra a conta de destino antes do clique.
         """
-        self._titulo(pai, "Publicar — todos os vídeos prontos")
+        self._titulo(pai, "Publicar — tudo que está pronto, e para onde vai")
 
+        # ---------------------------------------------------------- filtros
         filtros = tk.Frame(pai, bg=BG)
         filtros.pack(fill="x", padx=20)
-        tk.Label(filtros, text="Mostrar:", bg=BG, fg=DIM, font=FONT).pack(side="left")
+        tk.Label(filtros, text="Mostrar:", bg=BG, fg=DIM,
+                 font=FONT).pack(side="left")
         self.combo_pub_origem = ttk.Combobox(
-            filtros, width=12, state="readonly",
-            values=("todos", "build", "estreia", "torneio"))
-        self.combo_pub_origem.set("todos")
+            filtros, width=16, state="readonly",
+            values=("tudo", "\U0001f3ae builds", "\U0001f4d6 histórias",
+                    "\u2694 estreias", "\U0001f3c6 torneios"))
+        self.combo_pub_origem.set("tudo")
         self.combo_pub_origem.pack(side="left", padx=6)
         self.combo_pub_perfil = ttk.Combobox(
-            filtros, width=14, state="readonly",
-            values=("todos", "celular (9:16)", "normal (16:9)"))
+            filtros, width=16, state="readonly",
+            values=("todos os formatos", "celular (9:16)", "normal (16:9)"))
         self.combo_pub_perfil.set("celular (9:16)")
         self.combo_pub_perfil.pack(side="left")
+        self.var_pub_pendentes = tk.BooleanVar(value=False)
+        tk.Checkbutton(filtros, text="só o que ainda não publiquei",
+                       variable=self.var_pub_pendentes, bg=BG, fg=TEXT,
+                       selectcolor=CARD, activebackground=BG, font=FONT,
+                       command=self._atualizar_publicar).pack(side="left",
+                                                              padx=(10, 0))
         for combo in (self.combo_pub_origem, self.combo_pub_perfil):
             combo.bind("<<ComboboxSelected>>",
                        lambda e: self._atualizar_publicar())
-        self._botao(filtros, "↻  Atualizar", self._atualizar_publicar).pack(side="right")
-        self._botao(filtros, "📂  Pasta de exportação",
+        self._botao(filtros, "\u21bb  Atualizar",
+                    self._atualizar_publicar).pack(side="right")
+        self._botao(filtros, "\U0001f4c2  Pasta de exportação",
                     self._abrir_pasta_export).pack(side="right", padx=6)
 
         corpo = tk.Frame(pai, bg=BG)
         corpo.pack(fill="both", expand=True, padx=20, pady=(8, 0))
 
-        # lista dos videos
+        # ------------------------------------------------------------ lista
         esquerda = tk.Frame(corpo, bg=BG)
         esquerda.pack(side="left", fill="both", expand=True)
         self.tabela_pub = ttk.Treeview(
-            esquerda, columns=("titulo", "origem", "tamanho", "quando"),
+            esquerda, columns=("onde", "titulo", "formato", "yt", "tt"),
             show="headings", height=12)
-        for coluna, titulo, largura in (("titulo", "VÍDEO", 330),
-                                        ("origem", "TIPO", 70),
-                                        ("tamanho", "MB", 55),
-                                        ("quando", "QUANDO", 80)):
+        for coluna, titulo, largura, ancora in (
+                ("onde", "O QUE É", 92, "w"),
+                ("titulo", "VÍDEO", 300, "w"),
+                ("formato", "FORMATO", 72, "center"),
+                ("yt", "YOUTUBE", 88, "center"),
+                ("tt", "TIKTOK", 80, "center")):
             self.tabela_pub.heading(coluna, text=titulo)
-            self.tabela_pub.column(coluna, width=largura,
-                                   anchor="w" if largura > 100 else "center",
+            self.tabela_pub.column(coluna, width=largura, anchor=ancora,
                                    stretch=coluna == "titulo")
+        self.tabela_pub.tag_configure("publicado", foreground=OK)
+        self.tabela_pub.tag_configure("pendente", foreground=ORANGE)
         self.tabela_pub.pack(fill="both", expand=True)
         self.tabela_pub.bind("<<TreeviewSelect>>",
                              lambda e: self._mostrar_texto_publicar())
-        self.tabela_pub.bind("<Double-1>", lambda e: self._publicar_acao("assistir"))
+        self.tabela_pub.bind("<Double-1>",
+                             lambda e: self._publicar_arquivo("assistir"))
+        self.lbl_pub_conta = tk.Label(esquerda, text="", bg=BG, fg=DIM,
+                                      font=("Segoe UI", 8), anchor="w")
+        self.lbl_pub_conta.pack(fill="x", pady=(3, 0))
 
-        # texto que vai junto com o video
+        # ------------------------------------------------------- texto
         direita = tk.Frame(corpo, bg=CARD, padx=12, pady=10)
         direita.pack(side="left", fill="both", padx=(10, 0))
         tk.Label(direita, text="TÍTULO", bg=CARD, fg=ACCENT,
                  font=FONT_B).pack(anchor="w")
-        self.texto_pub_titulo = tk.Text(direita, height=2, width=44, bg=CARD_HL,
+        self.texto_pub_titulo = tk.Text(direita, height=2, width=40, bg=CARD_HL,
                                         fg=TEXT, insertbackground=TEXT, bd=0,
                                         font=FONT, wrap="word")
         self.texto_pub_titulo.pack(fill="x", pady=(2, 8))
         tk.Label(direita, text="DESCRIÇÃO (com as hashtags)", bg=CARD, fg=ACCENT,
                  font=FONT_B).pack(anchor="w")
-        self.texto_pub_desc = tk.Text(direita, height=11, width=44, bg=CARD_HL,
+        self.texto_pub_desc = tk.Text(direita, height=9, width=40, bg=CARD_HL,
                                       fg=TEXT, insertbackground=TEXT, bd=0,
                                       font=FONT, wrap="word")
         self.texto_pub_desc.pack(fill="both", expand=True, pady=(2, 6))
         linha_texto = tk.Frame(direita, bg=CARD)
         linha_texto.pack(fill="x")
-        self._botao(linha_texto, "💾  Salvar texto",
+        self._botao(linha_texto, "\U0001f4be  Salvar texto",
                     self._salvar_texto_publicar).pack(side="left")
-        self._botao(linha_texto, "📋  Copiar",
+        self._botao(linha_texto, "\U0001f4cb  Copiar",
                     self._copiar_texto_publicar).pack(side="left", padx=6)
-        tk.Label(direita, text="o texto salvo vale nos dois envios",
-                 bg=CARD, fg=DIM, font=("Segoe UI", 8)).pack(anchor="w", pady=(6, 0))
+        self.lbl_pub_texto = tk.Label(direita, text="", bg=CARD, fg=DIM,
+                                      font=("Segoe UI", 8), wraplength=300,
+                                      justify="left")
+        self.lbl_pub_texto.pack(anchor="w", pady=(6, 0))
 
-        # acoes
-        acoes = tk.Frame(pai, bg=BG)
-        acoes.pack(fill="x", padx=20, pady=(10, 4))
-        self._botao(acoes, "▶  Assistir",
-                    lambda: self._publicar_acao("assistir")).pack(side="left")
-        self._botao(acoes, "📁  Pasta",
-                    lambda: self._publicar_acao("pasta")).pack(side="left", padx=6)
-        self._botao_primario(acoes, "📤  EXPORTAR",
-                             lambda: self._publicar_acao("exportar")).pack(side="left")
-        tk.Frame(acoes, bg=BG, width=20).pack(side="left")
-        self._botao(acoes, "▶  Enviar ao YouTube",
-                    lambda: self._publicar_acao("youtube"),
-                    cor="#c4302b").pack(side="left")
-        tk.Label(acoes, text="visibilidade:", bg=BG, fg=DIM,
-                 font=FONT).pack(side="left", padx=(8, 2))
+        # ------------------------------------------------- ONDE POSTAR
+        destino = tk.Frame(pai, bg=CARD, padx=12, pady=8)
+        destino.pack(fill="x", padx=20, pady=(10, 4))
+        tk.Label(destino, text="ONDE POSTAR", bg=CARD, fg=ACCENT,
+                 font=FONT_B).grid(row=0, column=0, columnspan=6, sticky="w")
+
+        self.var_pub_yt = tk.BooleanVar(value=True)
+        tk.Checkbutton(destino, text="YouTube", variable=self.var_pub_yt,
+                       bg=CARD, fg=TEXT, selectcolor=CARD_HL,
+                       activebackground=CARD, font=FONT_B,
+                       command=self._pub_atualizar_botao).grid(
+                           row=1, column=0, sticky="w", pady=2)
+        tk.Label(destino, text="conta:", bg=CARD, fg=DIM,
+                 font=FONT).grid(row=1, column=1, sticky="e", padx=(10, 2))
+        self.combo_pub_conta_yt = ttk.Combobox(destino, width=16,
+                                               state="readonly")
+        self.combo_pub_conta_yt.grid(row=1, column=2, sticky="w")
+        self.combo_pub_conta_yt.bind(
+            "<<ComboboxSelected>>", lambda e: self._pub_trocar_conta("youtube"))
+        tk.Label(destino, text="visibilidade:", bg=CARD, fg=DIM,
+                 font=FONT).grid(row=1, column=3, sticky="e", padx=(12, 2))
         self.combo_pub_vis = ttk.Combobox(
-            acoes, width=11, state="readonly",
-            values=("private", "unlisted", "public"))
+            destino, width=10, state="readonly",
+            values=("public", "unlisted", "private"))
         self.combo_pub_vis.set(
             (publicar_catalogo.carregar_config().get("youtube") or {})
             .get("visibilidade", "private"))
-        self.combo_pub_vis.pack(side="left")
-        self._botao(acoes, "▶  Enviar ao TikTok",
-                    lambda: self._publicar_acao("tiktok"),
-                    cor="#25252d").pack(side="left", padx=8)
+        self.combo_pub_vis.grid(row=1, column=4, sticky="w")
 
-        setup = tk.Frame(pai, bg=BG)
-        setup.pack(fill="x", padx=20, pady=(0, 8))
-        tk.Label(setup, text="uma vez só:", bg=BG, fg=DIM, font=FONT).pack(side="left")
-        self._botao(setup, "🔑  Autorizar upload no YouTube",
-                    self._oauth_upload).pack(side="left", padx=6)
-        self._botao(setup, "🔑  Autorizar analytics (retenção)",
-                    lambda: self._oauth_upload(com_analytics=True)).pack(side="left")
-        self._botao(setup, "📊  Atualizar métricas",
-                    lambda: self._metricas(True)).pack(side="left", padx=6)
-        self._botao(setup, "📈  Ver métricas",
-                    lambda: self._metricas(False)).pack(side="left")
-        self._botao(setup, "🔑  Login no TikTok",
-                    self._tiktok_login).pack(side="left")
-        self._botao(setup, "🧪  Sondar tela do TikTok",
-                    self._tiktok_sondar).pack(side="left", padx=6)
-        tk.Label(pai, bg=BG, fg=DIM, font=("Segoe UI", 8), justify="left",
-                 text="O YouTube usa a API oficial (o vídeo sobe como PRIVADO por padrão — "
-                      "você publica no Studio). O TikTok não tem API aberta: o painel abre o "
-                      "navegador na SUA conta, sobe o arquivo, escreve a legenda e PARA antes "
-                      "de publicar.").pack(anchor="w", padx=20, pady=(0, 8))
+        self.var_pub_tt = tk.BooleanVar(value=False)
+        tk.Checkbutton(destino, text="TikTok", variable=self.var_pub_tt,
+                       bg=CARD, fg=TEXT, selectcolor=CARD_HL,
+                       activebackground=CARD, font=FONT_B,
+                       command=self._pub_atualizar_botao).grid(
+                           row=2, column=0, sticky="w", pady=2)
+        tk.Label(destino, text="conta:", bg=CARD, fg=DIM,
+                 font=FONT).grid(row=2, column=1, sticky="e", padx=(10, 2))
+        self.combo_pub_conta_tt = ttk.Combobox(destino, width=16,
+                                               state="readonly")
+        self.combo_pub_conta_tt.grid(row=2, column=2, sticky="w")
+        self.combo_pub_conta_tt.bind(
+            "<<ComboboxSelected>>", lambda e: self._pub_trocar_conta("tiktok"))
+        tk.Label(destino, text="o TikTok posta de verdade (sem confirmação)",
+                 bg=CARD, fg=DIM,
+                 font=("Segoe UI", 8)).grid(row=2, column=3, columnspan=2,
+                                            sticky="w", padx=(12, 0))
 
-    def _publicar_filtrados(self) -> list:
-        origem = self.combo_pub_origem.get()
-        perfil = self.combo_pub_perfil.get().split()[0]
-        videos = publicar_catalogo.listar()
-        if origem != "todos":
-            videos = [v for v in videos if v.origem == origem]
-        if perfil != "todos":
-            videos = [v for v in videos if v.perfil == perfil]
-        return videos
+        self.btn_pub_enviar = self._botao_primario(
+            destino, "\U0001f680  PUBLICAR", self._publicar_enviar)
+        self.btn_pub_enviar.grid(row=1, column=5, rowspan=2, padx=(18, 0),
+                                 sticky="nsew")
+        destino.columnconfigure(5, weight=1)
+
+        # ------------------------------------- arquivo x configuracao
+        rodape = tk.Frame(pai, bg=BG)
+        rodape.pack(fill="x", padx=20, pady=(2, 10))
+        arquivo = tk.Frame(rodape, bg=BG)
+        arquivo.pack(side="left")
+        tk.Label(arquivo, text="ARQUIVO", bg=BG, fg=DIM,
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w")
+        linha_arq = tk.Frame(arquivo, bg=BG)
+        linha_arq.pack()
+        self._botao(linha_arq, "\u25b6  Assistir",
+                    lambda: self._publicar_arquivo("assistir")).pack(side="left")
+        self._botao(linha_arq, "\U0001f4c1  Pasta",
+                    lambda: self._publicar_arquivo("pasta")).pack(side="left",
+                                                                  padx=6)
+        self._botao(linha_arq, "\U0001f4e4  Exportar",
+                    lambda: self._publicar_arquivo("exportar")).pack(side="left")
+
+        config = tk.Frame(rodape, bg=BG)
+        config.pack(side="right")
+        tk.Label(config, text="CONFIGURAÇÃO (uma vez só)", bg=BG, fg=DIM,
+                 font=("Segoe UI", 8, "bold")).pack(anchor="e")
+        linha_cfg = tk.Frame(config, bg=BG)
+        linha_cfg.pack()
+        # O rotulo carrega o CANAL: autorizar "o YouTube" sem dizer qual
+        # conta era metade da confusao — o login ia sempre para o de builds,
+        # mesmo com uma historia selecionada.
+        self.btn_pub_oauth = self._botao(
+            linha_cfg, "\U0001f511  Autorizar YouTube",
+            self._pub_autorizar_youtube)
+        self.btn_pub_oauth.pack(side="left")
+        self.btn_pub_tiktok = self._botao(
+            linha_cfg, "\U0001f511  Login TikTok", self._pub_login_tiktok)
+        self.btn_pub_tiktok.pack(side="left", padx=6)
+        # Desde 01/09 o YouTube tambem sobe por navegador, entao ele precisa
+        # do MESMO login manual que o TikTok — e o botao ao lado deixa isso
+        # obvio. "Autorizar YouTube" (OAuth) continua ali, mas hoje serve so
+        # para LER metricas.
+        self.btn_pub_yt_web = self._botao(
+            linha_cfg, "\U0001f511  Login YouTube Studio",
+            self._pub_login_youtube_web)
+        self.btn_pub_yt_web.pack(side="left", padx=(0, 6))
+        self._botao(linha_cfg, "\U0001f3af  Canais do YouTube",
+                    self._pub_canais_youtube).pack(side="left", padx=(0, 6))
+        self._botao(linha_cfg, "\U0001f9f9  Reparar perfil",
+                    self._pub_reparar_perfil).pack(side="left")
+        self._botao(linha_cfg, "♻  Recomeçar perfil",
+                    self._pub_recomecar_perfil).pack(side="left", padx=(6, 0))
+        self._botao(linha_cfg, "\U0001f4ca  Métricas",
+                    lambda: self._metricas(False)).pack(side="left", padx=(6, 0))
+
+        self._pub_itens = {}
+        self._pub_lendo = False
+
+    # ------------------------------------------------------- dados da lista
+    def _pub_publicados(self) -> dict:
+        """{(video_id, plataforma): linha} dos DOIS registros.
+
+        E o que faz a lista dizer "ja subiu" sem abrir o navegador: cada
+        upload deixa uma linha em `outputs/_publicar/publicados.jsonl`.
+        """
+        import json as _json
+        mapa = {}
+        for caminho in (RANDOM_BUILDS / "outputs" / "_publicar" / "publicados.jsonl",
+                        HISTORIAS / "outputs" / "_publicar" / "publicados.jsonl"):
+            try:
+                bruto = caminho.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            for linha in bruto.splitlines():
+                linha = linha.strip()
+                if not linha:
+                    continue
+                try:
+                    dado = _json.loads(linha)
+                except ValueError:
+                    continue
+                chave = (dado.get("video_id"),
+                         dado.get("plataforma") or "youtube")
+                if dado.get("url"):
+                    mapa[chave] = dado
+        return mapa
+
+    def _pub_historias(self) -> list:
+        """Os videos de historia, lidos por um python DE DENTRO daquele projeto.
+
+        Importar aqui nao da: os dois projetos tem um pacote chamado `src`.
+        """
+        import json as _json
+        import subprocess as sp
+        try:
+            saida = sp.run(
+                [PY, "-X", "utf8", "-c",
+                 "import sys, json; sys.path.insert(0, '.');"
+                 "from src.publicar import catalogo;"
+                 "print(json.dumps(catalogo.resumo()))"],
+                cwd=str(HISTORIAS), capture_output=True, text=True,
+                encoding="utf-8", timeout=90, creationflags=NO_WINDOW)
+            return _json.loads((saida.stdout or "[]").strip().splitlines()[-1])
+        except Exception:
+            return []
 
     def _atualizar_publicar(self):
-        if not hasattr(self, "tabela_pub"):
+        """Le as duas fontes FORA da thread da UI (uma delas e subprocesso)."""
+        if not hasattr(self, "tabela_pub") or getattr(self, "_pub_lendo", False):
             return
+        self._pub_lendo = True
+        self._pub_fila = getattr(self, "_pub_fila", queue.Queue())
+
+        def trabalho():
+            try:
+                builds = [{"id": v.id, "fonte": "builds", "origem": v.origem,
+                           "titulo": v.titulo, "perfil": v.perfil,
+                           "bytes": v.bytes, "quando": v.quando,
+                           "caminho": str(v.caminho),
+                           "descricao": v.descricao_completa,
+                           "pendencias": list(v.pendencias or []),
+                           "parte": 1, "partes": 1}
+                          for v in publicar_catalogo.listar()]
+                historias = [{**h, "fonte": "historias", "pendencias": []}
+                             for h in self._pub_historias()]
+                dados = {"itens": builds + historias,
+                         "publicados": self._pub_publicados()}
+            except Exception as erro:
+                dados = {"erro": f"{type(erro).__name__}: {erro}"}
+            self._pub_fila.put(dados)
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        self.after(200, self._colher_publicar)
+
+    def _colher_publicar(self):
+        try:
+            dados = self._pub_fila.get_nowait()
+        except queue.Empty:
+            if self._pub_lendo:
+                self.after(200, self._colher_publicar)
+            return
+        self._pub_lendo = False
+        if dados.get("erro"):
+            self._log(f"[publicar] não li a lista: {dados['erro']}", "erro")
+            return
+        self._pub_pub = dados["publicados"]
+        self._pub_render(dados["itens"])
+
+    def _pub_render(self, itens):
         import datetime
+        alvo = self.combo_pub_origem.get()
+        formato = self.combo_pub_perfil.get()
+        so_pendentes = self.var_pub_pendentes.get()
+
+        def cabe(item):
+            origem = item.get("origem") or ""
+            if alvo != "tudo":
+                if "builds" in alvo and origem != "build":
+                    return False
+                if "histórias" in alvo and origem != "historia":
+                    return False
+                if "estreias" in alvo and origem != "estreia":
+                    return False
+                if "torneios" in alvo and origem != "torneio":
+                    return False
+            if not formato.startswith("todos"):
+                if item.get("perfil") != formato.split()[0]:
+                    return False
+            if so_pendentes and (self._pub_estado(item, "youtube")
+                                 or self._pub_estado(item, "tiktok")):
+                return False
+            return True
+
         selecionado = self.tabela_pub.selection()
-        self._pub_videos = {v.id: v for v in self._publicar_filtrados()}
+        visiveis = [i for i in itens if cabe(i)]
+        visiveis.sort(key=lambda i: (i.get("quando") or 0), reverse=True)
+        self._pub_itens = {i["id"]: i for i in visiveis}
         self.tabela_pub.delete(*self.tabela_pub.get_children())
-        for video in self._pub_videos.values():
-            quando = datetime.datetime.fromtimestamp(video.quando)
-            # Pendencia (sem payoff, sem luta, mp4 velho) aparece no titulo:
-            # e o que impede publicar build incompleta sem perceber.
-            titulo = video.titulo
-            if getattr(video, "pendencias", None):
-                titulo = "⚠ " + titulo
+        for item in visiveis:
+            emoji, rotulo = self.PUB_ORIGENS.get(item.get("origem"),
+                                                 ("\u2022", item.get("origem", "?")))
+            titulo = item["titulo"]
+            if item.get("partes", 1) > 1:
+                titulo = f"{titulo}  ·  parte {item['parte']}/{item['partes']}"
+            if item.get("pendencias"):
+                titulo = "\u26a0 " + titulo
+            yt = self._pub_marca(item, "youtube")
+            tt = self._pub_marca(item, "tiktok")
+            tags = ("publicado",) if (yt != "\u2014" and tt != "\u2014") else (
+                ("pendente",) if item.get("pendencias") else ())
             self.tabela_pub.insert(
-                "", "end", iid=video.id,
-                values=(titulo, video.origem,
-                        f"{video.bytes / 1e6:.0f}", quando.strftime("%d/%m %H:%M")))
+                "", "end", iid=item["id"],
+                values=(f"{emoji} {rotulo}", titulo,
+                        "9:16" if item.get("perfil") == "celular" else "16:9",
+                        yt, tt), tags=tags)
         if selecionado and self.tabela_pub.exists(selecionado[0]):
             self.tabela_pub.selection_set(selecionado)
-        elif self._pub_videos:
-            primeiro = next(iter(self._pub_videos))
-            self.tabela_pub.selection_set(primeiro)
+        elif visiveis:
+            self.tabela_pub.selection_set(visiveis[0]["id"])
+        else:
+            self._mostrar_texto_publicar()
 
+    def _pub_estado(self, item, plataforma):
+        return getattr(self, "_pub_pub", {}).get((item["id"], plataforma))
+
+    def _pub_marca(self, item, plataforma) -> str:
+        linha = self._pub_estado(item, plataforma)
+        if not linha:
+            return "\u2014"
+        quando = str(linha.get("quando") or "")[:10]
+        try:
+            dia = f"{quando[8:10]}/{quando[5:7]}"
+        except Exception:
+            dia = "sim"
+        return f"\u2713 {dia}"
+
+    # ------------------------------------------------------------ selecao
     def _publicar_selecionado(self):
         selecionado = self.tabela_pub.selection()
         if not selecionado:
             messagebox.showwarning("Publicar", "Selecione um vídeo na lista.")
             return None
-        return getattr(self, "_pub_videos", {}).get(selecionado[0])
+        return getattr(self, "_pub_itens", {}).get(selecionado[0])
+
+    def _pub_canal(self, item) -> str:
+        return "historias" if item.get("fonte") == "historias" else "builds"
 
     def _mostrar_texto_publicar(self):
-        video = getattr(self, "_pub_videos", {}).get(
+        item = getattr(self, "_pub_itens", {}).get(
             (self.tabela_pub.selection() or [None])[0])
-        if video is None:
-            return
-        for pendencia in getattr(video, "pendencias", None) or []:
-            self._log(f"[publicar] {video.id}: {pendencia}", "erro")
         self.texto_pub_titulo.delete("1.0", "end")
-        self.texto_pub_titulo.insert("1.0", video.titulo)
         self.texto_pub_desc.delete("1.0", "end")
-        self.texto_pub_desc.insert("1.0", video.descricao_completa)
+        if item is None:
+            self.lbl_pub_texto.configure(text="")
+            self.lbl_pub_conta.configure(text="")
+            self._pub_atualizar_botao()
+            return
+        for pendencia in item.get("pendencias") or []:
+            self._log(f"[publicar] {item['id']}: {pendencia}", "erro")
+        self.texto_pub_titulo.insert("1.0", item["titulo"])
+        self.texto_pub_desc.insert("1.0", item.get("descricao") or "")
+        de_historia = item.get("fonte") == "historias"
+        estado = "disabled" if de_historia else "normal"
+        self.texto_pub_titulo.configure(state=estado)
+        self.texto_pub_desc.configure(state=estado)
+        self.lbl_pub_texto.configure(
+            text=("o texto da história vem do roteiro — para mudar, edite o "
+                  "roteiro e gere o vídeo de novo.\n\nAqui você publica UMA "
+                  "parte. Para subir a série inteira já agendada de 24 em "
+                  "24 h, use 🚀 Publicar série na página Histórias."
+                  if de_historia else "o texto salvo vale nos dois envios"))
+        self._pub_contas(item)
+        self._pub_atualizar_botao()
 
+    def _pub_contas(self, item):
+        """Mostra (e deixa trocar) a conta de destino DAQUELE canal."""
+        canal = self._pub_canal(item)
+        partes = []
+        # O servico do YouTube depende do MODO: no navegador o que vale e o
+        # perfil (`youtube_web`), nao o token da API.
+        servico_yt = self._servico_youtube()
+        for servico, combo in ((servico_yt, self.combo_pub_conta_yt),
+                               ("tiktok", self.combo_pub_conta_tt)):
+            contas = contas_reg.contas(servico)
+            combo.configure(values=contas)
+            destino = contas_reg.destino(servico, canal)
+            combo.set(destino["conta"])
+            marca = "\u2713" if destino["tem_login"] else "\u2717 sem login"
+            proprio = "" if destino["explicita"] else " (herdada)"
+            # O NOME DA CONTA nao diz para onde o video vai. O canal, sim —
+            # e e o canal que nao tem desfazer.
+            quem = destino.get("identidade") or ""
+            onde = f" \u2192 {quem}" if quem else " \u2192 canal ?"
+            rotulo = "youtube" if servico.startswith("youtube") else servico
+            partes.append(
+                f"{rotulo}: {destino['conta']}{proprio}{onde} {marca}")
+        aviso = ""
+        repetidos = contas_reg.destinos_repetidos(servico_yt)
+        if repetidos:
+            juntos = "; ".join(" e ".join(c) for c in repetidos.values())
+            aviso = f"   \u26a0 {juntos} publicam NO MESMO canal"
+        self.lbl_pub_conta.configure(
+            text=f"canal {canal}  ·  " + "   ·   ".join(partes)
+                 + aviso)
+        if hasattr(self, "btn_pub_oauth"):
+            self.btn_pub_oauth.configure(
+                text=f"\U0001f511  Autorizar YouTube ({canal})")
+            self.btn_pub_tiktok.configure(
+                text=f"\U0001f511  Login TikTok ({canal})")
+
+    def _pub_trocar_conta(self, servico: str):
+        item = self._publicar_selecionado()
+        if item is None:
+            return
+        if servico == "youtube":
+            servico = self._servico_youtube()
+        combo = (self.combo_pub_conta_tt if servico == "tiktok"
+                 else self.combo_pub_conta_yt)
+        canal = self._pub_canal(item)
+        contas_reg.escolher(servico, canal, combo.get())
+        self._log(f"[contas] {servico} do canal {canal}: {combo.get()}", "fim")
+        self._pub_contas(item)
+
+    def _pub_atualizar_botao(self):
+        alvos = []
+        if getattr(self, "var_pub_yt", None) and self.var_pub_yt.get():
+            alvos.append("YOUTUBE")
+        if getattr(self, "var_pub_tt", None) and self.var_pub_tt.get():
+            alvos.append("TIKTOK")
+        texto = ("\U0001f680  PUBLICAR NO " + " + ".join(alvos) if alvos
+                 else "escolha YouTube e/ou TikTok")
+        self.btn_pub_enviar.configure(text=texto,
+                                      state="normal" if alvos else "disabled")
+
+    # ------------------------------------------------- configuracao do canal
+    def _pub_canal_atual(self) -> str:
+        item = getattr(self, "_pub_itens", {}).get(
+            (self.tabela_pub.selection() or [None])[0])
+        return self._pub_canal(item) if item else "builds"
+
+    def _pub_autorizar_youtube(self):
+        """Autoriza a conta DAQUELE canal, no arquivo DAQUELE canal.
+
+        Sem o `--out`, o token do canal de historias sobrescreveria o de
+        builds — os dois moram em arquivos diferentes justamente para nao
+        publicar no canal errado.
+        """
+        canal = self._pub_canal_atual()
+        cliente, segredo = self._credenciais_youtube()
+        if not (cliente and segredo):
+            messagebox.showinfo(
+                "Autorizar YouTube",
+                "Não achei o client-id/client-secret do YouTube.\n\n"
+                "Preencha os dois na página Live / YouTube (card CREDENCIAIS "
+                "DO YOUTUBE) e clique aqui de novo.")
+            self._mostrar("live")
+            return
+        conta = contas_reg.ativa("youtube", canal)
+        destino = contas_reg.credencial_youtube(canal)
+        messagebox.showinfo(
+            "Autorizar YouTube",
+            f"Vou abrir o navegador no login do Google.\n\n"
+            f"Canal: {canal}   ·   conta: {conta}\n\n"
+            "IMPORTANTE: entre com a conta do Google DESTE canal — é ela que "
+            "vai receber os vídeos. Marque as permissões de enviar vídeo e de "
+            "estatísticas.")
+        self._rodar([PY, "-m", "neural_fights.tools.youtube_oauth",
+                     "--client-id", cliente, "--client-secret", segredo,
+                     "--com-upload", "--com-analytics",
+                     "--out", str(destino)],
+                    rotulo=f"autorizar YouTube {canal}/{conta} "
+                           "(credenciais ocultas)")
+
+    def _pub_reparar_perfil(self):
+        """Limpa o cache do perfil de Chrome daquele canal (mantém o login).
+
+        O sintoma que isto resolve não parece cache: a página do site abre
+        BRANCA, só o esqueleto cinza, como se estivesse bloqueada. Medido em
+        31/08/2026 — o perfil do TikTok tinha 1,1 GB acumulados.
+        """
+        from src.identity.browser import limpar_cache
+        canal = self._pub_canal_atual()
+        achou = False
+        for servico in ("tiktok", "picasso", "digen"):
+            try:
+                perfil = contas_reg.perfil(servico, canal)
+            except Exception:
+                continue
+            pastas, mb = limpar_cache(perfil)
+            if pastas:
+                achou = True
+                self._log(f"[perfil] {servico}/{canal}: {len(pastas)} pasta(s) "
+                          f"de cache, {mb} MB liberados (login preservado).",
+                          "fim")
+        if not achou:
+            self._log("[perfil] nada de cache para limpar (ou o Chrome está "
+                      "aberto segurando os arquivos — feche e tente de novo).")
+        self._log("[perfil] se a página do site AINDA abrir em branco, o "
+                  "estrago está no storage do perfil: use ♻ Recomeçar perfil "
+                  "(aí o login precisa ser refeito).")
+
+    def _pub_recomecar_perfil(self):
+        """Guarda o perfil quebrado de lado e começa um novo.
+
+        Isto CUSTA o login — por isso pergunta antes, ao contrário do resto
+        da página. A pasta antiga não é apagada: vira `.quebrado-<data>`.
+        """
+        from src.identity.browser import resetar_perfil
+        canal = self._pub_canal_atual()
+        conta = contas_reg.ativa("tiktok", canal)
+        if not messagebox.askyesno(
+                "Recomeçar perfil",
+                f"Começar um perfil de Chrome NOVO para o TikTok do canal "
+                f"'{canal}' (conta {conta})?\n\n"
+                "Use quando a página do TikTok abre em branco mesmo depois de "
+                "limpar o cache.\n\n"
+                "O login DESSA conta terá que ser refeito. A pasta antiga não "
+                "é apagada — fica ao lado como '.quebrado-<data>'."):
+            return
+        perfil = contas_reg.perfil("tiktok", canal)
+        guardado = resetar_perfil(perfil)
+        if guardado is None:
+            self._log("[perfil] não havia perfil para recomeçar.", "erro")
+            return
+        self._log(f"[perfil] perfil novo em {perfil}; o antigo ficou em "
+                  f"{guardado.name}. Agora clique em 🔑 Login TikTok.", "fim")
+
+    def _servico_youtube(self) -> str:
+        """Qual login vale HOJE: o perfil do navegador ou o OAuth da API.
+
+        Depende do modo de publicacao. Cobrar o OAuth no modo navegador
+        bloquearia justamente o caminho que nao precisa dele.
+        """
+        try:
+            return ("youtube" if youtube_reg.modo() == "api"
+                    else "youtube_web")
+        except Exception:
+            return "youtube_web"
+
+    def _pub_canais_youtube(self):
+        """Lista os canais que o login enxerga e cadastra cada um.
+
+        Depois disso o combo de conta vira o seletor de CANAL: os canais
+        aparecem la pelo nome de verdade, e escolher um muda para onde este
+        canal do projeto publica.
+        """
+        self._log("[canais] abrindo o YouTube para ver os canais desta "
+                  "sessao — leva uns 30 s.")
+        self._rodar([PY, "-m", "src.publicar.youtube_web", "--canais"],
+                    cwd=RANDOM_BUILDS, rotulo="canais do YouTube",
+                    ao_terminar=self._pub_recarregar_contas)
+
+    def _pub_recarregar_contas(self):
+        """Redesenha a linha de contas depois que a lista mudou."""
+        item = self._publicar_selecionado()
+        if item is not None:
+            self._pub_contas(item)
+
+    def _pub_login_youtube_web(self):
+        canal = self._pub_canal_atual()
+        self._rodar([PY, "-m", "src.publicar.youtube_web", "--login",
+                     "--canal", canal],
+                    cwd=RANDOM_BUILDS,
+                    rotulo=f"login no YouTube Studio ({canal})")
+
+    def _pub_login_tiktok(self):
+        canal = self._pub_canal_atual()
+        self._rodar([PY, "-m", "src.publicar.tiktok", "--login",
+                     "--canal", canal],
+                    cwd=RANDOM_BUILDS,
+                    rotulo=f"login no TikTok ({canal})")
+
+    # ------------------------------------------------------------- acoes
+    def _publicar_arquivo(self, acao: str):
+        item = self._publicar_selecionado()
+        if item is None:
+            return
+        caminho = Path(item["caminho"])
+        if acao == "assistir":
+            os.startfile(caminho)
+        elif acao == "pasta":
+            os.startfile(caminho.parent)
+        elif acao == "exportar":
+            if item.get("fonte") == "historias":
+                self._historias_cli(["publicar", item["id"], "--exportar"],
+                                    f"exportar {item['titulo'][:30]}")
+                return
+            if self._salvar_texto_publicar(silencioso=True) is None:
+                return
+            destino = publicar_catalogo.exportar(
+                publicar_catalogo.por_id(item["id"]))
+            self._log(f"[exportar] {destino}\n", "fim")
+            os.startfile(destino.parent)
+
+    def _publicar_enviar(self):
+        """UM clique, com o destino que esta na tela."""
+        item = self._publicar_selecionado()
+        if item is None:
+            return
+        quer_yt, quer_tt = self.var_pub_yt.get(), self.var_pub_tt.get()
+        if not (quer_yt or quer_tt):
+            return
+        canal = self._pub_canal(item)
+        for servico, quer in (("youtube", quer_yt), ("tiktok", quer_tt)):
+            if quer and not contas_reg.tem_login(servico, canal):
+                self._log(f"[publicar] {servico} do canal {canal} sem login — "
+                          "use CONFIGURAÇÃO aqui embaixo.", "erro")
+                return
+        ja = [p for p in ("youtube", "tiktok")
+              if self._pub_estado(item, p) and
+              (quer_yt if p == "youtube" else quer_tt)]
+        if ja:
+            self._log(f"[publicar] atenção: já subiu em {', '.join(ja)} — "
+                      "vai virar um segundo vídeo lá.", "erro")
+
+        if item.get("fonte") == "historias":
+            args = ["publicar", item["id"]]
+            if quer_yt:
+                args += ["--youtube", "--visibilidade", self.combo_pub_vis.get()]
+            if quer_tt:
+                args.append("--tiktok")
+            self._historias_cli(args, f"publicar {item['titulo'][:34]}")
+        else:
+            if self._salvar_texto_publicar(silencioso=True) is None:
+                return
+            args = [PY, "main.py", "publicar", item["id"]]
+            if quer_yt:
+                args += ["--youtube", "--visibilidade", self.combo_pub_vis.get()]
+            if quer_tt:
+                args += ["--tiktok", "--postar"]
+            self._rodar(args, cwd=RANDOM_BUILDS,
+                        rotulo=f"publicar {item['titulo'][:34]}")
+        if quer_yt and self.combo_pub_vis.get() == "private":
+            self._log("[publicar] visibilidade 'private': o vídeo sobe mas NÃO "
+                      "fica visível.", "erro")
+        self.after(4000, self._atualizar_publicar)
+
+    # ------------------------------------------------------------- texto
     def _texto_editado(self) -> tuple[str, str]:
         return (self.texto_pub_titulo.get("1.0", "end").strip(),
                 self.texto_pub_desc.get("1.0", "end").strip())
@@ -1009,18 +1611,25 @@ class Painel(tk.Tk):
         Salvar antes de enviar é o que faz o envio usar o que está na tela —
         o subprocesso lê do catálogo, não da janela.
         """
-        video = self._publicar_selecionado()
-        if video is None:
+        item = self._publicar_selecionado()
+        if item is None:
             return None
+        if item.get("fonte") == "historias":
+            if not silencioso:
+                messagebox.showinfo(
+                    "Texto da história",
+                    "O título e a descrição de uma história vêm do roteiro.\n\n"
+                    "Para mudar, edite o roteiro e gere o vídeo de novo.")
+            return item["id"]
         titulo, descricao = self._texto_editado()
         if not titulo:
             messagebox.showwarning("Publicar", "O título não pode ficar vazio.")
             return None
-        publicar_catalogo.salvar_texto(video.id, titulo, descricao)
-        self._atualizar_publicar()
+        publicar_catalogo.salvar_texto(item["id"], titulo, descricao)
         if not silencioso:
-            self._log(f"[texto] salvo para {video.id}\n", "fim")
-        return video.id
+            self._log(f"[texto] salvo para {item['id']}\n", "fim")
+            self._atualizar_publicar()
+        return item["id"]
 
     def _copiar_texto_publicar(self):
         titulo, descricao = self._texto_editado()
@@ -1032,47 +1641,6 @@ class Painel(tk.Tk):
         pasta = publicar_catalogo.pasta_export()
         pasta.mkdir(parents=True, exist_ok=True)
         os.startfile(pasta)
-
-    def _publicar_acao(self, acao: str):
-        video = self._publicar_selecionado()
-        if video is None:
-            return
-        if acao == "assistir":
-            os.startfile(video.caminho)
-            return
-        if acao == "pasta":
-            os.startfile(video.caminho.parent)
-            return
-
-        # Qualquer coisa que ESCREVA usa o texto que está na tela.
-        if self._salvar_texto_publicar(silencioso=True) is None:
-            return
-
-        if acao == "exportar":
-            destino = publicar_catalogo.exportar(
-                publicar_catalogo.por_id(video.id) or video)
-            self._log(f"[exportar] {destino}\n", "fim")
-            os.startfile(destino.parent)
-            return
-        if acao == "youtube":
-            visibilidade = self.combo_pub_vis.get()
-            if visibilidade == "public" and not messagebox.askyesno(
-                    "Publicar no YouTube",
-                    f"Enviar '{video.titulo}' como PÚBLICO?\n\n"
-                    "Ele fica visível para todo mundo assim que terminar de "
-                    "processar. Cancelar manda como privado."):
-                return
-            self._rodar([PY, "main.py", "publicar", video.id, "--youtube",
-                         "--visibilidade", visibilidade],
-                        cwd=RANDOM_BUILDS, rotulo=f"YouTube: {video.titulo[:40]}")
-            return
-        if acao == "tiktok":
-            if not video.vertical and not messagebox.askyesno(
-                    "TikTok", "Este é o corte 16:9 (normal). O TikTok espera "
-                              "o 9:16 (celular).\n\nEnviar assim mesmo?"):
-                return
-            self._rodar([PY, "main.py", "publicar", video.id, "--tiktok"],
-                        cwd=RANDOM_BUILDS, rotulo=f"TikTok: {video.titulo[:40]}")
 
     def _credenciais_youtube(self) -> tuple[str, str]:
         """client-id/secret: dos campos da tela ou do arquivo que a live já usa.
@@ -1731,6 +2299,25 @@ class Painel(tk.Tk):
                     RANDOM_BUILDS, rotulo="picasso login")
 
     def _digen_worker(self):
+        # Um worker por vez: subir outro so cria processo ocioso (a fila tem
+        # trava de instancia unica) e confunde quem esta de fato trabalhando.
+        try:
+            import sys as _sys
+            if str(RANDOM_BUILDS) not in _sys.path:
+                _sys.path.insert(0, str(RANDOM_BUILDS))
+            from src.identity import queue as identity_queue
+            if identity_queue.ha_worker():
+                self._log("[identity] já existe um worker de pé — use "
+                          "'Parar processos' antes de subir outro.", "erro")
+                messagebox.showinfo(
+                    "Processar fila",
+                    "Já existe um worker de identidade rodando.\n\n"
+                    "Ele continua drenando a fila sozinho. Para reiniciá-lo "
+                    "(por exemplo, depois de mudar o código), clique em "
+                    "'Parar processos' e depois aqui de novo.")
+                return
+        except Exception as erro:      # a checagem nunca impede o worker
+            self._log(f"[identity] não consegui checar worker existente: {erro}")
         extras = ["--watch"] if self.var_digen_watch.get() else []
         self._rodar([PY, "-u", "-X", "utf8", "main.py", "identity", "worker"] + extras,
                     RANDOM_BUILDS, rotulo="digen worker")
@@ -1753,6 +2340,1054 @@ class Painel(tk.Tk):
         """Prova de origem de cada artefato (ver README, 'Contas compartilhadas')."""
         self._rodar([PY, "-u", "-X", "utf8", "main.py", "identity", "auditar"],
                     RANDOM_BUILDS, rotulo="auditoria de origem")
+
+    # -------------------------------------------------------- pagina: vila
+    # A fabrica de conteudo como um jogo: cada bot e um "criador" que anda da
+    # casa ate a fabrica quando aquela etapa esta trabalhando de verdade. O
+    # dado vem do diario de atividade (src/atividade.py), que TODAS as etapas
+    # das duas pipelines alimentam — o que aparece aqui aconteceu mesmo.
+    VILA_PREDIOS = {
+        "chatgpt": (90, 70, "#10a37f"),
+        "gemini": (240, 52, "#4e8cf7"),
+        "picasso": (420, 60, "#c05be3"),
+        "digen": (600, 52, "#e35b8f"),
+        "arena": (760, 90, "#d9483b"),
+        "estudio": (150, 210, "#e0a63b"),
+        "publicacao": (700, 215, "#3ba55d"),
+    }
+    VILA_CASA = (430, 250)
+
+    def _pagina_vila(self, pai):
+        self._titulo(pai, "Vila — os bots trabalhando nas fábricas, ao vivo")
+
+        topo = tk.Frame(pai, bg=BG)
+        topo.pack(fill="x", padx=20)
+        self.lbl_vila_placar = tk.Label(topo, text="…", bg=BG, fg=TEXT,
+                                        font=FONT_B)
+        self.lbl_vila_placar.pack(side="left")
+        self._botao(topo, "↻", self._vila_dados).pack(side="right")
+        self._botao(topo, "➕", lambda: self._vila_zoom(1)).pack(
+            side="right", padx=(0, 6))
+        self._botao(topo, "➖", lambda: self._vila_zoom(-1)).pack(side="right")
+        self._botao(topo, "🎨 Oficina", self._vila_oficina).pack(
+            side="right", padx=(0, 10))
+        self._botao(topo, "🤖 Bot do celular", self._vila_bot).pack(
+            side="right", padx=(0, 6))
+
+        self.canvas_vila = tk.Canvas(pai, width=880, height=330,
+                                     bg="#17251a", highlightthickness=0)
+        self.canvas_vila.pack(padx=20, pady=(8, 4))
+
+        rodape = tk.Frame(pai, bg=BG)
+        rodape.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+        cab = tk.Frame(rodape, bg=BG)
+        cab.pack(fill="x")
+        self.lbl_vila_filtro = tk.Label(cab, text="DIÁRIO  (clique numa fábrica "
+                                        "para filtrar)", bg=BG, fg=DIM, font=FONT_B)
+        self.lbl_vila_filtro.pack(side="left")
+        self._botao(cab, "todas", self._vila_sem_filtro).pack(side="right")
+        self.texto_vila = tk.Text(rodape, height=7, bg="#0e0c18", fg=TEXT,
+                                  font=FONT_MONO, bd=0, state="disabled",
+                                  wrap="word")
+        self.texto_vila.pack(fill="both", expand=True, pady=(4, 0))
+        self.texto_vila.tag_configure("erro", foreground=RED)
+        self.texto_vila.tag_configure("ok", foreground=OK)
+        self.texto_vila.tag_configure("inicio", foreground=ORANGE)
+
+        # PARALELISMO: duas coisas so rodam juntas se usarem CONTAS
+        # diferentes — a trava e por conta, nao por tarefa. Sem esta tabela,
+        # descobrir que dois canais compartilham a mesma conta do PicassoIA
+        # exigia ler codigo; o unico sintoma era um "em uso" no meio de uma
+        # geracao, horas depois.
+        paralelo = tk.Frame(pai, bg=BG)
+        paralelo.pack(fill="x", padx=20, pady=(6, 0))
+        cabeca = tk.Frame(paralelo, bg=BG)
+        cabeca.pack(fill="x")
+        tk.Label(cabeca, text="PARALELISMO  (uma conta = uma fila)", bg=BG,
+                 fg=DIM, font=("Segoe UI", 8, "bold")).pack(side="left")
+        self.lbl_paralelo = tk.Label(cabeca, text="", bg=BG, fg=DIM,
+                                     font=("Segoe UI", 8))
+        self.lbl_paralelo.pack(side="right")
+        self.tabela_paralelo = ttk.Treeview(
+            paralelo, columns=("conta", "servico", "canais", "estado"),
+            show="headings", height=4)
+        for coluna, titulo, largura in (("conta", "CONTA (trava)", 210),
+                                        ("servico", "SERVIÇO", 100),
+                                        ("canais", "USADA POR", 150),
+                                        ("estado", "AGORA", 90)):
+            self.tabela_paralelo.heading(coluna, text=titulo)
+            self.tabela_paralelo.column(coluna, width=largura, anchor="w")
+        self.tabela_paralelo.tag_configure("ocupada", foreground=ORANGE)
+        self.tabela_paralelo.tag_configure("dividida", foreground=RED)
+        self.tabela_paralelo.pack(fill="x", pady=(3, 0))
+
+        self._vila_filtro = None
+        self._vila_estado = {}
+        self._vila_bots = {}
+        self._vila_visivel = False
+        self._vila_lendo = False
+        self._vila_modo = "vetor"
+        self._vila_fotos = {}
+        self._vila_escala = None
+        self._vila_montar_cenario()
+        self.after(3500, self._vila_auto)
+
+    # -------------------------------------------------- cenario (sprites)
+    # A Vila bonita: o mundo vem de vila/config.json (folhas de sprites +
+    # mapa montados na Oficina). O mundo ESTATICO vira UMA imagem so — e o
+    # que faz um mapa grande rodar liso num canvas Tk; so bots e efeitos
+    # sao itens animados por cima. Sem config (ou sem Pillow), cai no
+    # desenho vetorial de sempre: a Vila nunca fica em branco.
+    def _vila_montar_cenario(self):
+        c = self.canvas_vila
+        c.delete("all")
+        self._vila_bots = {}
+        self._vila_fotos = {}
+        if self._vila_sprites_iniciar():
+            self._vila_modo = "sprites"
+        else:
+            self._vila_modo = "vetor"
+            c.configure(scrollregion=(0, 0, 880, 330))
+            self._vila_desenhar_mapa()
+        if self._vila_estado:
+            self._vila_aplicar_estado()
+
+    def _vila_sprites_iniciar(self) -> bool:
+        try:
+            from PIL import ImageTk
+            from vila import motor
+        except Exception:
+            return False
+        try:
+            cfg = motor.carregar()
+            if not motor.pronto(cfg):
+                return False
+            if self._vila_escala is None:
+                self._vila_escala = int(cfg.get("escala", 2))
+            atlas = motor.Atlas(cfg)
+            mundo = motor.compor_mundo(cfg, atlas, self._vila_escala)
+        except Exception as erro:
+            self._log(f"[vila] cenário em sprites quebrou ({erro}); "
+                      "usando o desenho simples.", "erro")
+            return False
+        self._vila_motor = (motor, cfg, atlas, ImageTk)
+        c = self.canvas_vila
+        self._vila_fotos["mundo"] = ImageTk.PhotoImage(mundo)
+        c.create_image(0, 0, anchor="nw", image=self._vila_fotos["mundo"])
+        c.configure(scrollregion=(0, 0, mundo.width, mundo.height))
+        ts = int(cfg["tile"]) * self._vila_escala
+        self._vila_ts = ts
+        mapa = cfg["mapa"]
+        casa = mapa.get("casa") or {"x": mapa["larg"] // 2,
+                                    "y": mapa["alt"] // 2}
+        larg_casa, alt_casa = motor.tamanho(cfg, "predio.casa")
+        porta = ((casa["x"] + larg_casa / 2) * ts,
+                 (casa["y"] + alt_casa) * ts + 4)
+
+        for i, nome in enumerate(motor.FABRICAS):
+            pos = (mapa.get("predios") or {}).get(nome)
+            base = [porta[0] + (i - 3) * ts * 0.9, porta[1] + ts * 0.6]
+            if pos:
+                larg, alt = motor.tamanho(cfg, f"predio.{nome}")
+                trabalho = [(pos["x"] + larg / 2) * ts,
+                            (pos["y"] + alt) * ts + 4]
+                c.create_text(trabalho[0], pos["y"] * ts - 10, text="",
+                              font=("Segoe UI", 11, "bold"), fill=RED,
+                              tags=(f"alerta_{nome}",))
+                c.create_text(trabalho[0], trabalho[1] + 12, text="",
+                              font=("Segoe UI", 8), fill="#ffe9a8",
+                              tags=(f"legenda_{nome}",))
+            else:
+                trabalho = list(base)
+            item = c.create_image(base[0], base[1], anchor="s")
+            foto = self._vila_foto_bot(nome, "baixo", 0)
+            if foto is not None:
+                c.itemconfigure(item, image=foto)
+            balao = c.create_text(base[0], base[1] - ts * 1.5, text="",
+                                  font=("Segoe UI", 10))
+            self._vila_bots[nome] = {"tipo": "sprite", "itens": (item, balao),
+                                     "pos": list(base), "alvo": list(base),
+                                     "casa": list(base), "trabalho": trabalho,
+                                     "direcao": "baixo", "fase": i * 1.3}
+        c.bind("<Button-1>", self._vila_clique_sprites)
+        c.bind("<ButtonPress-3>", lambda e: c.scan_mark(e.x, e.y))
+        c.bind("<B3-Motion>", lambda e: c.scan_dragto(e.x, e.y, gain=1))
+        c.bind("<MouseWheel>",
+               lambda e: c.yview_scroll(-1 if e.delta > 0 else 1, "units"))
+        c.bind("<Shift-MouseWheel>",
+               lambda e: c.xview_scroll(-1 if e.delta > 0 else 1, "units"))
+        return True
+
+    def _vila_foto(self, papel, quadro=0, fabrica=None):
+        """PhotoImage cacheada de um papel (None se nao atribuido)."""
+        if not hasattr(self, "_vila_motor"):
+            return None
+        _motor, _cfg, atlas, ImageTk = self._vila_motor
+        chave = (papel, fabrica, int(quadro), self._vila_escala)
+        if chave in self._vila_fotos:
+            return self._vila_fotos[chave]
+        try:
+            img = atlas.sprite(papel, int(quadro), self._vila_escala,
+                               fabrica=fabrica)
+            foto = ImageTk.PhotoImage(img)
+        except Exception:
+            foto = None
+        self._vila_fotos[chave] = foto
+        return foto
+
+    def _vila_foto_bot(self, fabrica, direcao, quadro):
+        return self._vila_foto(f"bot.{direcao}", quadro, fabrica=fabrica)
+
+    def _vila_clique_sprites(self, evento):
+        """Clique no predio filtra o diario (mapa em coordenadas de tile)."""
+        if self._vila_modo != "sprites":
+            return
+        motor, cfg, _atlas, _ = self._vila_motor
+        c = self.canvas_vila
+        tx = int(c.canvasx(evento.x) // self._vila_ts)
+        ty = int(c.canvasy(evento.y) // self._vila_ts)
+        for nome, pos in (cfg["mapa"].get("predios") or {}).items():
+            larg, alt = motor.tamanho(cfg, f"predio.{nome}")
+            if pos["x"] <= tx < pos["x"] + larg                     and pos["y"] <= ty < pos["y"] + alt:
+                self._vila_filtrar(nome)
+                return
+
+    def _vila_zoom(self, passo):
+        if self._vila_modo != "sprites":
+            self._log("[vila] o zoom é do cenário em sprites — gere um com "
+                      "python -m vila.gerar_base ou monte o seu na 🎨 Oficina.")
+            return
+        novo = max(1, min(4, (self._vila_escala or 2) + passo))
+        if novo != self._vila_escala:
+            self._vila_escala = novo
+            self._vila_montar_cenario()
+
+    def _vila_bot(self):
+        """Liga o bot de Telegram, que é o painel no bolso.
+
+        Sobe como processo separado de propósito: se o painel fechar, o bot
+        continua avisando — e é justamente quando você não está na frente do
+        PC que um erro precisa chegar até você.
+        """
+        self._log("[remoto] ligando o bot… o código de emparelhamento aparece "
+                  "aqui embaixo (mande-o para o seu bot no Telegram).")
+        self._rodar([PY, "-u", "-X", "utf8", "-m", "remoto"], RAIZ,
+                    rotulo="bot do Telegram")
+
+    def _vila_oficina(self):
+        """A ferramenta de atribuir tudo: folhas, papeis e o mapa."""
+        try:
+            from vila import editor as vila_editor
+        except Exception as erro:
+            messagebox.showerror("Oficina", f"não abriu: {erro}")
+            return
+        vila_editor.Oficina(self, ao_salvar=self._vila_montar_cenario)
+
+    # ------------------------------------------------------------- desenho
+    def _vila_desenhar_mapa(self):
+        c = self.canvas_vila
+        c.delete("all")
+        # gramado quadriculado + caminhos de terra ate a casa
+        for x in range(0, 880, 40):
+            for y in range(0, 330, 40):
+                if (x + y) % 80 == 0:
+                    c.create_rectangle(x, y, x + 40, y + 40, fill="#1b2b1e",
+                                       outline="")
+        cx, cy = self.VILA_CASA
+        for nome, (x, y, _cor) in self.VILA_PREDIOS.items():
+            c.create_line(x + 40, y + 46, cx + 30, cy + 20, fill="#4a3f2c",
+                          width=7, capstyle="round")
+        # a casa (estudio central, onde os bots moram)
+        c.create_rectangle(cx, cy, cx + 62, cy + 44, fill="#6b4a2f",
+                           outline="#2c1f13", width=2)
+        c.create_polygon(cx - 6, cy, cx + 68, cy, cx + 31, cy - 24,
+                         fill="#8a5a36", outline="#2c1f13", width=2)
+        c.create_rectangle(cx + 24, cy + 18, cx + 38, cy + 44, fill="#2c1f13",
+                           outline="")
+        c.create_text(cx + 31, cy + 56, text="🏠 base", fill="#cfc7b8",
+                      font=("Segoe UI", 8, "bold"))
+        # as fabricas
+        for nome, (x, y, cor) in self.VILA_PREDIOS.items():
+            dados = atividade_reg.FABRICAS.get(nome, {})
+            tag = f"predio_{nome}"
+            c.create_rectangle(x, y, x + 80, y + 46, fill=cor, outline="#101010",
+                               width=2, tags=(tag,))
+            c.create_polygon(x - 5, y, x + 85, y, x + 40, y - 20, fill=cor,
+                             outline="#101010", width=2, tags=(tag,))
+            c.create_text(x + 40, y + 16,
+                          text=f"{dados.get('emoji', '?')} {dados.get('rotulo', nome)}",
+                          fill="#0e0e0e", font=("Segoe UI", 8, "bold"), tags=(tag,))
+            c.create_text(x + 40, y + 33, text="", fill="#0e0e0e",
+                          font=("Segoe UI", 7), tags=(tag, f"legenda_{nome}"))
+            c.create_text(x + 40, y - 30, text="", font=("Segoe UI", 12, "bold"),
+                          fill="#ff5c5c", tags=(f"alerta_{nome}",))
+            c.tag_bind(tag, "<Button-1>",
+                       lambda e, alvo=nome: self._vila_filtrar(alvo))
+        # um bot por fabrica, morando na base
+        for i, (nome, (_x, _y, cor)) in enumerate(self.VILA_PREDIOS.items()):
+            bx = cx + 31 + (i - 3) * 14
+            by = cy + 52
+            corpo = c.create_oval(bx - 7, by - 7, bx + 7, by + 7, fill=cor,
+                                  outline="#101010", width=2)
+            olho1 = c.create_oval(bx - 4, by - 3, bx - 1, by, fill="#101010",
+                                  outline="")
+            olho2 = c.create_oval(bx + 1, by - 3, bx + 4, by, fill="#101010",
+                                  outline="")
+            balao = c.create_text(bx, by - 15, text="", font=("Segoe UI", 9))
+            px, py, _cor = self.VILA_PREDIOS[nome]
+            self._vila_bots[nome] = {"tipo": "vetor",
+                                     "itens": (corpo, olho1, olho2, balao),
+                                     "pos": [bx, by], "alvo": [bx, by],
+                                     "casa": [bx, by],
+                                     "trabalho": [px + 40, py + 58],
+                                     "fase": i * 1.3}
+
+    # --------------------------------------------------------------- dados
+    def _vila_dados(self):
+        """Le o diario FORA da thread da UI (mexe em disco)."""
+        if getattr(self, "_vila_lendo", False) or not hasattr(self, "canvas_vila"):
+            return
+        self._vila_lendo = True
+        self._vila_fila = getattr(self, "_vila_fila", queue.Queue())
+
+        def trabalho():
+            try:
+                estado = atividade_reg.estado_das_fabricas()
+                eventos = atividade_reg.recentes(40, self._vila_filtro)
+                publicados = 0
+                for caminho in (RANDOM_BUILDS / "outputs" / "_publicar" / "publicados.jsonl",
+                                HISTORIAS / "outputs" / "_publicar" / "publicados.jsonl"):
+                    try:
+                        publicados += sum(1 for l in
+                                          caminho.read_text(encoding="utf-8").splitlines()
+                                          if l.strip())
+                    except OSError:
+                        pass
+                dados = {"estado": estado, "eventos": eventos,
+                         "publicados": publicados}
+            except Exception as erro:
+                dados = {"erro": f"{type(erro).__name__}: {erro}"}
+            self._vila_fila.put(dados)
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        self.after(200, self._vila_colher)
+
+    def _vila_colher(self):
+        try:
+            dados = self._vila_fila.get_nowait()
+        except queue.Empty:
+            if self._vila_lendo:
+                self.after(200, self._vila_colher)
+            return
+        self._vila_lendo = False
+        if dados.get("erro"):
+            self.lbl_vila_placar.configure(text=f"não li o diário: {dados['erro']}")
+            return
+        self._vila_estado = dados["estado"]
+        ativos = sum(1 for e in dados["estado"].values()
+                     if e["status"] == "trabalhando")
+        erros = sum(1 for e in dados["estado"].values() if e["status"] == "erro")
+        self.lbl_vila_placar.configure(
+            text=f"📤 {dados['publicados']} publicados   ·   "
+                 f"⚙ {ativos} fábrica(s) trabalhando   ·   "
+                 f"{'⚠ ' + str(erros) + ' com problema' if erros else '✓ sem problemas'}")
+        self._vila_aplicar_estado()
+        self._vila_paralelo()
+        self._vila_log(dados["eventos"])
+
+    def _vila_paralelo(self):
+        """Quem divide conta com quem — e o que esta preso agora."""
+        if not hasattr(self, "tabela_paralelo"):
+            return
+        try:
+            linhas = travas_reg.estado()
+        except Exception as erro:
+            self.lbl_paralelo.configure(text=f"não li as travas: {erro}")
+            return
+        self.tabela_paralelo.delete(*self.tabela_paralelo.get_children())
+        dividindo = 0
+        for linha in linhas:
+            compartilhada = len(linha["canais"]) > 1
+            dividindo += compartilhada
+            tags = ("ocupada",) if linha["ocupada"] else (
+                ("dividida",) if compartilhada else ())
+            self.tabela_paralelo.insert(
+                "", "end", iid=linha["trava"],
+                values=(linha["trava"], linha["servico"],
+                        " + ".join(linha["canais"]),
+                        "⚙ em uso" if linha["ocupada"] else "livre"),
+                tags=tags)
+        ocupadas = sum(1 for linha in linhas if linha["ocupada"])
+        self.lbl_paralelo.configure(
+            text=(f"{ocupadas} em uso   ·   {dividindo} conta(s) usada(s) por "
+                  "DOIS canais (essas não rodam juntas)"))
+
+    def _vila_aplicar_estado(self):
+        c = self.canvas_vila
+        for nome, info in self._vila_estado.items():
+            bot = self._vila_bots.get(nome)
+            if not bot:
+                continue
+            bot["status"] = info["status"]
+            if info["status"] in ("trabalhando", "erro"):
+                bot["alvo"] = list(bot["trabalho"])
+                bot["balao"] = "⚙" if info["status"] == "trabalhando" else "❗"
+            else:
+                bot["alvo"] = list(bot["casa"])
+                bot["balao"] = ""
+            c.itemconfigure(f"alerta_{nome}",
+                            text="❗" if info["status"] == "erro" else "")
+            detalhe = (info.get("detalhe") or "")[:20]
+            c.itemconfigure(f"legenda_{nome}",
+                            text=detalhe if info["status"] != "ocioso" else "")
+
+    def _vila_tick(self):
+        """Animacao: os bots andam. So roda com a pagina visivel."""
+        if not getattr(self, "_vila_visivel", False):
+            return
+        import math as _math
+        import time as _time
+        c = self.canvas_vila
+        agora = _time.monotonic()
+        for nome, bot in self._vila_bots.items():
+            px, py = bot["pos"]
+            ax, ay = bot["alvo"]
+            dx, dy = ax - px, ay - py
+            distancia = (dx * dx + dy * dy) ** 0.5
+            andando = distancia > 2
+            if andando:
+                passo = min(3.2, distancia)
+                px += dx / distancia * passo
+                py += dy / distancia * passo
+            # respiracao/caminhada: um balancinho vivo
+            bob = _math.sin(agora * 6 + bot["fase"]) * (2 if andando else 0.8)
+            bot["pos"] = [px, py]
+            if bot["tipo"] == "vetor":
+                corpo, olho1, olho2, balao = bot["itens"]
+                c.coords(corpo, px - 7, py - 7 + bob, px + 7, py + 7 + bob)
+                c.coords(olho1, px - 4, py - 3 + bob, px - 1, py + bob)
+                c.coords(olho2, px + 1, py - 3 + bob, px + 4, py + bob)
+                c.coords(balao, px, py - 15 + bob)
+                c.itemconfigure(balao, text=bot.get("balao", ""))
+                continue
+            # sprite: direcao pelo eixo dominante + caminhada de 2 quadros
+            if andando:
+                bot["direcao"] = (("dir" if dx > 0 else "esq")
+                                  if abs(dx) > abs(dy)
+                                  else ("baixo" if dy > 0 else "cima"))
+            quadro = int(agora * 6) % 2 if andando else 0
+            foto = self._vila_foto_bot(nome, bot["direcao"], quadro)
+            item, balao = bot["itens"]
+            if foto is not None:
+                c.itemconfigure(item, image=foto)
+            c.coords(item, px, py + bob)
+            c.coords(balao, px, py - self._vila_ts * 1.5 + bob)
+            c.itemconfigure(balao, text=bot.get("balao", ""))
+        self.after(60, self._vila_tick)
+
+    def _vila_auto(self):
+        """Recarrega o diario sozinho enquanto a pagina esta aberta."""
+        if getattr(self, "_vila_visivel", False):
+            self._vila_dados()
+        self.after(3500, self._vila_auto)
+
+    # ----------------------------------------------------------------- log
+    def _vila_filtrar(self, fabrica: str):
+        self._vila_filtro = fabrica
+        rotulo = atividade_reg.FABRICAS.get(fabrica, {}).get("rotulo", fabrica)
+        self.lbl_vila_filtro.configure(text=f"DIÁRIO — {rotulo}")
+        self._vila_dados()
+
+    def _vila_sem_filtro(self):
+        self._vila_filtro = None
+        self.lbl_vila_filtro.configure(text="DIÁRIO  (clique numa fábrica "
+                                            "para filtrar)")
+        self._vila_dados()
+
+    def _vila_log(self, eventos):
+        self.texto_vila.configure(state="normal")
+        self.texto_vila.delete("1.0", "end")
+        for evento in eventos:
+            hora = str(evento.get("ts", ""))[11:19]
+            fabrica = atividade_reg.FABRICAS.get(evento.get("fabrica"), {})
+            rotulo = fabrica.get("rotulo", evento.get("fabrica", "?"))
+            status = evento.get("status", "")
+            linha = (f"{hora}  {rotulo:<11} {evento.get('canal', ''):<10} "
+                     f"{status:<7} {evento.get('detalhe', '')}\n")
+            self.texto_vila.insert("end", linha,
+                                   status if status in ("erro", "ok", "inicio")
+                                   else ())
+        if not eventos:
+            self.texto_vila.insert("end", "nada registrado ainda — rode qualquer "
+                                          "geração e os bots aparecem aqui.\n")
+        self.texto_vila.configure(state="disabled")
+
+    # ------------------------------------------------------ pagina: contas
+    def _pagina_contas(self, pai):
+        """Todos os logins do ecossistema num lugar só, por CANAL.
+
+        Existe porque os dois canais deixaram de compartilhar conta: publicar
+        a história no canal de builds é irreversível. Cada serviço tem uma
+        lista de contas e uma conta ATIVA por canal; quem precisa de perfil
+        ou credencial pergunta ao registro, nunca monta o caminho na mão.
+        """
+        self._titulo(pai, "Contas — quem publica o quê, e onde cada login mora")
+
+        cred = self._card(pai, "CREDENCIAIS DO YOUTUBE  (do Google Cloud Console; "
+                               "as mesmas para todas as contas)")
+        cred.pack(fill="x", padx=20, pady=(6, 0))
+        linha = tk.Frame(cred, bg=CARD)
+        linha.pack(anchor="w")
+        campo_ci, self.var_contas_ci = self._campo(linha, "client-id:", 30)
+        campo_ci.pack(side="left")
+        campo_cs, self.var_contas_cs = self._campo(linha, "client-secret:", 22)
+        campo_cs.pack(side="left", padx=8)
+        tk.Label(cred, bg=CARD, fg=DIM, font=("Segoe UI", 8), justify="left",
+                 text="O client-id/secret é do PROJETO no Google Cloud e vale para "
+                      "qualquer canal; o que muda por conta é o token, criado no "
+                      "Autorizar.").pack(anchor="w", pady=(4, 0))
+
+        topo = tk.Frame(pai, bg=BG)
+        topo.pack(fill="x", padx=20, pady=(12, 2))
+        tk.Label(topo, text="SERVIÇOS  ·  uma linha por canal", bg=BG, fg=DIM,
+                 font=FONT_B).pack(side="left")
+        self._botao(topo, "↻  Atualizar", self._atualizar_contas).pack(side="right")
+
+        colunas = ("servico", "canal", "conta", "login", "onde")
+        self.tabela_contas = ttk.Treeview(pai, columns=colunas, show="headings",
+                                          height=12)
+        for coluna, texto, largura in (("servico", "SERVIÇO", 110),
+                                       ("canal", "CANAL", 100),
+                                       ("conta", "CONTA ATIVA", 150),
+                                       ("login", "LOGIN", 70),
+                                       ("onde", "ONDE FICA", 420)):
+            self.tabela_contas.heading(coluna, text=texto)
+            self.tabela_contas.column(coluna, width=largura,
+                                      anchor="w" if largura > 90 else "center",
+                                      stretch=coluna == "onde")
+        self.tabela_contas.pack(fill="both", expand=True, padx=20, pady=(0, 6))
+        self.tabela_contas.tag_configure("ok", foreground=OK)
+        self.tabela_contas.tag_configure("falta", foreground=ORANGE)
+        self.tabela_contas.bind("<<TreeviewSelect>>",
+                                lambda e: self._contas_selecao())
+
+        acoes = tk.Frame(pai, bg=BG)
+        acoes.pack(fill="x", padx=20, pady=(0, 6))
+        tk.Label(acoes, text="Conta:", bg=BG, fg=DIM, font=FONT).pack(side="left")
+        self.combo_conta = ttk.Combobox(acoes, width=18, state="readonly")
+        self.combo_conta.pack(side="left", padx=6)
+        self._botao(acoes, "✓  Usar esta conta",
+                    self._contas_usar).pack(side="left")
+        self._botao(acoes, "➕  Nova conta",
+                    self._contas_nova).pack(side="left", padx=6)
+        self._botao_primario(acoes, "🔑  Entrar / Autorizar",
+                             self._contas_entrar).pack(side="left", padx=6)
+        self._botao(acoes, "🗑  Esquecer", self._contas_esquecer,
+                    cor=RED).pack(side="right")
+
+        self.lbl_contas = tk.Label(pai, bg=BG, fg=DIM, font=("Segoe UI", 8),
+                                   justify="left", anchor="w", wraplength=900)
+        self.lbl_contas.pack(fill="x", padx=20, pady=(0, 10))
+
+    def _contas_linha(self):
+        selecao = self.tabela_contas.selection()
+        if not selecao:
+            messagebox.showwarning("Contas", "Selecione um serviço na lista.")
+            return None
+        servico, canal = selecao[0].split("|", 1)
+        return servico, canal
+
+    def _contas_selecao(self):
+        selecao = self.tabela_contas.selection()
+        if not selecao:
+            return
+        servico, canal = selecao[0].split("|", 1)
+        self.combo_conta["values"] = contas_reg.contas(servico)
+        self.combo_conta.set(contas_reg.ativa(servico, canal))
+        dados = contas_reg.SERVICOS.get(servico, {})
+        self.lbl_contas.configure(
+            text=f"{dados.get('rotulo', servico)} · canal {canal}: "
+                 f"{dados.get('ajuda', '')}")
+
+    def _contas_usar(self):
+        alvo = self._contas_linha()
+        if alvo is None:
+            return
+        servico, canal = alvo
+        conta = self.combo_conta.get()
+        if not conta:
+            return
+        contas_reg.escolher(servico, canal, conta)
+        self._log(f"[contas] {servico} do canal {canal}: agora usa '{conta}'.", "fim")
+        self._atualizar_contas()
+
+    def _contas_nova(self):
+        alvo = self._contas_linha()
+        if alvo is None:
+            return
+        servico, canal = alvo
+        from tkinter import simpledialog
+        nome = simpledialog.askstring(
+            "Nova conta",
+            f"Nome da nova conta de {contas_reg.SERVICOS[servico]['rotulo']}\n"
+            f"(só para você identificar: 'historias', 'canal2'...)", parent=self)
+        if not nome:
+            return
+        limpo = contas_reg.adicionar(servico, nome)
+        contas_reg.escolher(servico, canal, limpo)
+        self._log(f"[contas] conta '{limpo}' criada em {servico} e ativada no "
+                  f"canal {canal}. Clique em Entrar/Autorizar para fazer o login.",
+                  "fim")
+        self._atualizar_contas()
+
+    def _contas_esquecer(self):
+        alvo = self._contas_linha()
+        if alvo is None:
+            return
+        servico, _canal = alvo
+        conta = self.combo_conta.get()
+        if conta == contas_reg.PADRAO:
+            messagebox.showinfo("Contas", "A conta 'principal' não pode ser removida.")
+            return
+        if not messagebox.askyesno(
+                "Esquecer conta",
+                f"Tirar '{conta}' da lista de {servico}?\n\n"
+                "O login em disco NÃO é apagado — dá para readicionar depois."):
+            return
+        contas_reg.remover(servico, conta)
+        self._atualizar_contas()
+
+    def _contas_entrar(self):
+        """Dispara o login certo para o serviço e a conta selecionados."""
+        alvo = self._contas_linha()
+        if alvo is None:
+            return
+        servico, canal = alvo
+        conta = self.combo_conta.get() or contas_reg.ativa(servico, canal)
+        if conta != contas_reg.ativa(servico, canal):
+            contas_reg.escolher(servico, canal, conta)
+
+        if servico == "youtube":
+            cliente = self.var_contas_ci.get().strip()
+            segredo = self.var_contas_cs.get().strip()
+            if not (cliente and segredo):
+                cliente, segredo = self._credenciais_youtube()
+            if not (cliente and segredo):
+                messagebox.showinfo(
+                    "Autorizar YouTube",
+                    "Preencha o client-id e o client-secret no card de cima "
+                    "(são os dados do seu projeto no Google Cloud Console).")
+                return
+            destino = contas_reg.credencial_youtube(canal, conta)
+            messagebox.showinfo(
+                "Autorizar YouTube",
+                f"Vou abrir o navegador para autorizar a conta '{conta}'.\n\n"
+                "IMPORTANTE: entre com a conta do Google DESTE canal — é ela "
+                "que vai receber os vídeos.\n\n"
+                "Marque as permissões de enviar vídeo e de estatísticas.")
+            self._rodar([PY, "-m", "neural_fights.tools.youtube_oauth",
+                         "--client-id", cliente, "--client-secret", segredo,
+                         "--com-upload", "--com-analytics",
+                         "--out", str(destino)],
+                        rotulo=f"autorizar YouTube ({conta}) (credenciais ocultas)")
+        elif servico in ("chatgpt", "gemini"):
+            if not HISTORIAS.is_dir():
+                messagebox.showinfo("Contas", "A pasta historias/ não existe.")
+                return
+            messagebox.showinfo(
+                "Login no LLM",
+                f"Vou abrir o {servico} numa janela do Chrome.\n\n"
+                "Entre na sua conta. Quando o chat aparecer, o login fica "
+                "salvo e vale para qualquer parte do projeto que use esse LLM.")
+            self._rodar([PY, "-u", "-X", "utf8", "main.py", "llm", "login",
+                         "--provedor", servico], HISTORIAS,
+                        rotulo=f"login no {servico} ({conta})")
+        elif servico == "tiktok":
+            messagebox.showinfo(
+                "Login no TikTok",
+                f"Vou abrir o TikTok numa janela do Chrome para a conta "
+                f"'{conta}' do canal {canal}.\n\nEntre na conta CERTA: é ela "
+                "que vai receber os vídeos desse canal.")
+            self._rodar([PY, "-u", "-X", "utf8", "-m", "src.publicar.tiktok",
+                         "--login", "--canal", canal], RANDOM_BUILDS,
+                        rotulo=f"login no TikTok ({conta}/{canal})")
+        else:  # picasso, digen
+            self._rodar([PY, "-u", "-X", "utf8", "main.py", "identity", "login",
+                         "--provedor", servico, "--canal", canal], RANDOM_BUILDS,
+                        rotulo=f"login no {servico} ({conta}/{canal})")
+        self.after(4000, self._atualizar_contas)
+
+    def _atualizar_contas(self):
+        if not hasattr(self, "tabela_contas"):
+            return
+        if not self.var_contas_ci.get().strip():
+            cliente, segredo = self._credenciais_youtube()
+            if cliente:
+                self.var_contas_ci.set(cliente)
+            if segredo:
+                self.var_contas_cs.set(segredo)
+        selecionado = self.tabela_contas.selection()
+        self.tabela_contas.delete(*self.tabela_contas.get_children())
+        for linha in contas_reg.resumo():
+            iid = f"{linha['servico']}|{linha['canal']}"
+            marca = "sim" if linha["logado"] else "FALTA"
+            self.tabela_contas.insert(
+                "", "end", iid=iid,
+                tags=("ok" if linha["logado"] else "falta",),
+                values=(linha["rotulo"], linha["canal"], linha["conta"],
+                        marca, linha["onde"]))
+        if selecionado and self.tabela_contas.exists(selecionado[0]):
+            self.tabela_contas.selection_set(selecionado)
+        self._contas_selecao()
+
+    # ---------------------------------------------------- pagina: historias
+    def _pagina_historias(self, pai):
+        """O canal de historias por IA: roteiro -> imagens -> video.
+
+        Projeto separado (pasta `historias/`), controlado daqui. O fluxo tem
+        um passo que NAO e automatico de proposito: o roteiro nasce no LLM
+        que voce usa. O painel monta o prompt, voce cola la, copia a resposta
+        e clica em importar - o resto (imagens, narracao, video) e um botao.
+        """
+        self._titulo(pai, "Histórias por IA — roteiro, imagens, narração e vídeo")
+
+        if not HISTORIAS.is_dir():
+            tk.Label(pai, text="A pasta historias/ não existe ao lado do painel.",
+                     bg=BG, fg=RED, font=FONT_B).pack(anchor="w", padx=20)
+            return
+
+        # --- 1) geracao automatica: o browser conversa com o LLM sozinho
+        card = self._card(pai, "1. ROTEIRO AUTOMÁTICO  —  o browser abre o LLM, "
+                               "planeja a série e escreve cada parte")
+        card.pack(fill="x", padx=20, pady=(6, 0))
+        linha = tk.Frame(card, bg=CARD)
+        linha.pack(anchor="w", fill="x")
+        tk.Label(linha, text="LLM:", bg=CARD, fg=DIM, font=FONT).pack(side="left")
+        self.combo_hllm = ttk.Combobox(linha, width=9, state="readonly",
+                                       values=("chatgpt", "gemini"))
+        self.combo_hllm.current(0)
+        self.combo_hllm.pack(side="left", padx=(4, 10))
+        tk.Label(linha, text="Partes:", bg=CARD, fg=DIM, font=FONT).pack(side="left")
+        self.var_hpartes = tk.StringVar(value="6")
+        tk.Spinbox(linha, from_=1, to=30, width=4, textvariable=self.var_hpartes,
+                   bg=CARD_HL, fg=TEXT, buttonbackground=CARD, relief="flat",
+                   font=FONT).pack(side="left", padx=(4, 10))
+        tk.Label(linha, text="Cenas/parte:", bg=CARD, fg=DIM,
+                 font=FONT).pack(side="left")
+        self.var_hcenas = tk.StringVar(value="14")
+        tk.Spinbox(linha, from_=4, to=40, width=4, textvariable=self.var_hcenas,
+                   bg=CARD_HL, fg=TEXT, buttonbackground=CARD, relief="flat",
+                   font=FONT).pack(side="left", padx=(4, 10))
+        tk.Label(linha, text="Tema (opcional):", bg=CARD, fg=DIM,
+                 font=FONT).pack(side="left")
+        self.var_htema = tk.StringVar()
+        tk.Entry(linha, textvariable=self.var_htema, width=26, bg=CARD_HL,
+                 fg=TEXT, insertbackground=TEXT, relief="flat",
+                 font=FONT).pack(side="left", padx=4)
+        self._botao_primario(linha, "🤖  Gerar história",
+                             self._historias_gerar).pack(side="left", padx=8)
+        self._botao(linha, "🔑  Login no LLM",
+                    self._historias_login).pack(side="left")
+        self.lbl_hauto = tk.Label(
+            card, bg=CARD, fg=DIM, font=("Segoe UI", 8), justify="left",
+            text="Cada parte vira um vídeo. Uma janela do Chrome abre e conduz a "
+                 "conversa: primeiro a bíblia da história, depois cada parte. "
+                 "Faça o login uma vez por LLM.")
+        self.lbl_hauto.pack(anchor="w", pady=(4, 0))
+
+        # --- 1b) o caminho manual, para quando quiser escolher o LLM na mao
+        card2 = self._card(pai, "1b. ROTEIRO MANUAL  —  monte o prompt, cole no "
+                                "LLM que quiser, traga a resposta")
+        card2.pack(fill="x", padx=20, pady=(8, 0))
+        linha2 = tk.Frame(card2, bg=CARD)
+        linha2.pack(anchor="w", fill="x")
+        tk.Label(linha2, text="Modelo:", bg=CARD, fg=DIM, font=FONT).pack(side="left")
+        self.combo_hmodelo = ttk.Combobox(linha2, width=14, state="readonly",
+                                          values=self._historias_modelos())
+        if self.combo_hmodelo["values"]:
+            self.combo_hmodelo.current(0)
+        self.combo_hmodelo.pack(side="left", padx=6)
+        self._botao(linha2, "📋  Gerar prompt e copiar",
+                    self._historias_prompt).pack(side="left", padx=10)
+        self._botao(linha2, "📥  Importar resposta (clipboard)",
+                    self._historias_importar).pack(side="left")
+        tk.Label(card2, bg=CARD, fg=DIM, font=("Segoe UI", 8), justify="left",
+                 text="O modelo dita só a ESTRUTURA; a ideia é do LLM. Modelo próprio: "
+                      "um .txt em historias/modelos/.").pack(anchor="w", pady=(4, 0))
+
+        # --- 2) as historias
+        topo = tk.Frame(pai, bg=BG)
+        topo.pack(fill="x", padx=20, pady=(12, 2))
+        tk.Label(topo, text="2. HISTÓRIAS  (duplo-clique assiste)", bg=BG, fg=DIM,
+                 font=FONT_B).pack(side="left")
+        self._botao(topo, "↻  Atualizar", self._atualizar_historias).pack(side="right")
+
+        colunas = ("id", "titulo", "partes", "cenas", "imagens", "videos",
+                   "dur", "passo")
+        self.tabela_hist = ttk.Treeview(pai, columns=colunas, show="headings",
+                                        height=9)
+        for coluna, texto, largura in (
+                ("id", "HISTÓRIA", 130), ("titulo", "TÍTULO", 300),
+                ("partes", "PARTES", 60), ("cenas", "CENAS", 55),
+                ("imagens", "IMAGENS", 75), ("videos", "VÍDEOS", 60),
+                ("dur", "DUR", 50), ("passo", "PRÓXIMO PASSO", 300)):
+            self.tabela_hist.heading(coluna, text=texto)
+            self.tabela_hist.column(coluna, width=largura,
+                                    anchor="w" if largura > 100 else "center",
+                                    stretch=coluna == "passo")
+        self.tabela_hist.pack(fill="both", expand=True, padx=20, pady=(0, 6))
+        self.tabela_hist.tag_configure("pronta", foreground=OK)
+        self.tabela_hist.tag_configure("faltando", foreground=ORANGE)
+        self.tabela_hist.bind("<Double-1>", lambda e: self._historias_acao("assistir"))
+
+        acoes = tk.Frame(pai, bg=BG)
+        acoes.pack(fill="x", padx=20, pady=(0, 12))
+        self._botao_primario(acoes, "▶  Gerar tudo (imagens + vídeo)",
+                             lambda: self._historias_acao("tudo")).pack(side="left")
+        self._botao(acoes, "🖼  Só imagens",
+                    lambda: self._historias_acao("imagens")).pack(side="left", padx=6)
+        self._botao(acoes, "🎬  Só vídeo",
+                    lambda: self._historias_acao("video")).pack(side="left")
+        self._botao(acoes, "▶  Assistir",
+                    lambda: self._historias_acao("assistir")).pack(side="left", padx=6)
+        self._botao(acoes, "📁  Pasta",
+                    lambda: self._historias_acao("pasta")).pack(side="left")
+        self._botao_primario(acoes, "🚀  Publicar série",
+                             self._historias_publicar).pack(side="right", padx=6)
+        self._botao(acoes, "🩺  Vistoriar",
+                    lambda: self._historias_acao("vistoriar")).pack(side="right")
+        self._botao(acoes, "📤  Exportar",
+                    lambda: self._historias_acao("exportar")).pack(side="right", padx=6)
+        self._botao(acoes, "🩺  Probe LLM",
+                    self._historias_probe).pack(side="right", padx=6)
+        tk.Label(pai, bg=BG, fg=DIM, font=("Segoe UI", 8), justify="left",
+                 text="As imagens usam a MESMA conta do PicassoIA da outra pipeline: "
+                      "os dois workers nunca rodam juntos (a trava é compartilhada). "
+                      "Se estiver pausado na faixa PIPELINE, retome antes."
+                 ).pack(anchor="w", padx=20, pady=(0, 8))
+
+    @staticmethod
+    def _historias_modelos():
+        try:
+            import json
+            with open(HISTORIAS / "config" / "roteiro.json", encoding="utf-8-sig") as fh:
+                config = json.load(fh)
+            nomes = list(config["modelos"])
+            proprios = sorted(p.stem for p in (HISTORIAS / "modelos").glob("*.txt")) \
+                if (HISTORIAS / "modelos").is_dir() else []
+            return nomes + proprios
+        except (OSError, ValueError, KeyError):
+            return ["reddit"]
+
+    def _historias_cli(self, args, rotulo):
+        self._rodar([PY, "-u", "-X", "utf8", "main.py", *args], HISTORIAS,
+                    rotulo=rotulo)
+
+    def _historias_gerar(self):
+        """Dispara a serie inteira: biblia + cada parte, no browser."""
+        try:
+            partes = max(1, int(self.var_hpartes.get() or 6))
+            cenas = max(4, int(self.var_hcenas.get() or 14))
+        except ValueError:
+            messagebox.showwarning("Histórias", "Partes e cenas precisam ser números.")
+            return
+        # Sem dialogo (decisao do Adrian, 31/08: um clique). O aviso vai
+        # para o log; a trava por conta impede duas geracoes na mesma conta.
+        self._log(f"[histórias] abrindo o {self.combo_hllm.get()} para escrever "
+                  f"{partes} parte(s) de {cenas} cenas — leva vários minutos; "
+                  "não mexa na janela do Chrome.")
+        args = ["gerar", "--provedor", self.combo_hllm.get(),
+                "--partes", str(partes), "--cenas", str(cenas)]
+        tema = self.var_htema.get().strip()
+        if tema:
+            args += ["--tema", tema]
+        self._historias_cli(args, f"gerar história ({self.combo_hllm.get()})")
+        self.after(8000, self._atualizar_historias)
+
+    def _historias_login(self):
+        provedor = self.combo_hllm.get()
+        messagebox.showinfo(
+            "Login no LLM",
+            f"Vou abrir o {provedor} numa janela do Chrome.\n\n"
+            "Entre na sua conta normalmente. Quando o chat aparecer, o login "
+            "fica salvo no perfil e a geração automática passa a funcionar.")
+        self._historias_cli(["llm", "login", "--provedor", provedor],
+                            f"login no {provedor}")
+
+    def _historias_probe(self):
+        self._historias_cli(["llm", "probe", "--provedor", self.combo_hllm.get()],
+                            f"probe do {self.combo_hllm.get()}")
+
+    def _historias_prompt(self):
+        args = ["prompt", self.combo_hmodelo.get() or "reddit", "--copiar"]
+        tema = self.var_htema.get().strip()
+        if tema:
+            args += ["--tema", tema]
+        self._historias_cli(args, "montar prompt-mestre")
+        self._log("[histórias] o prompt vai para o clipboard: cole no seu LLM, "
+                  "copie a resposta e clique em 'Importar resposta'.", "fim")
+
+    def _historias_importar(self):
+        self._historias_cli(["roteiro", "--colar", "--modelo",
+                             self.combo_hmodelo.get() or "reddit"],
+                            "importar roteiro do clipboard")
+        self.after(2500, self._atualizar_historias)
+
+    def _historias_selecionada(self):
+        selecao = self.tabela_hist.selection()
+        if not selecao:
+            messagebox.showwarning("Histórias", "Selecione uma história na lista.")
+            return None
+        return selecao[0]
+
+    def _historias_acao(self, acao: str):
+        historia = self._historias_selecionada()
+        if historia is None:
+            return
+        pasta = HISTORIAS / "outputs" / historia
+        if acao == "pasta":
+            os.startfile(str(pasta))
+            return
+        if acao == "assistir":
+            for nome in ("final_celular.mp4", "final_normal.mp4"):
+                if (pasta / nome).is_file():
+                    os.startfile(str(pasta / nome))
+                    return
+            messagebox.showinfo("Assistir", "Esta história ainda não tem vídeo.")
+            return
+        if acao == "exportar":
+            self._historias_cli(["publicar", historia, "--exportar"],
+                                f"exportar {historia}")
+            return
+        if acao == "vistoriar":
+            self._historias_cli(["publicar", historia, "--vistoriar"],
+                                f"vistoriar {historia}")
+            return
+        comandos = {"tudo": ["tudo", historia], "imagens": ["imagens", historia],
+                    "video": ["video", historia]}
+        self._historias_cli(comandos[acao], f"{acao} {historia}")
+        self.after(3000, self._atualizar_historias)
+
+    def _historias_publicar(self):
+        """Um clique: vistoria, sobe as partes na ordem e agenda a sequência."""
+        historia = self._historias_selecionada()
+        if historia is None:
+            return
+        # QUAL login importa depende de por onde se publica. Desde 01/09 o
+        # padrao e navegador: cobrar o OAuth aqui bloquearia justamente o
+        # caminho que nao precisa dele — e liberar por ele deixaria o erro
+        # aparecer so la na frente, com o Chrome ja aberto.
+        servico = self._servico_youtube()
+        conta = contas_reg.ativa(servico, "historias")
+        if not contas_reg.tem_login(servico, "historias"):
+            if servico == "youtube_web":
+                messagebox.showinfo(
+                    "Publicar série",
+                    f"O YouTube Studio do canal Histórias ('{conta}') ainda "
+                    "não tem login neste computador.\n\nVá na "
+                    "página Publicar e clique em Login YouTube Studio — é "
+                    "uma vez só, igual ao TikTok.")
+                self._mostrar("publicar")
+            else:
+                messagebox.showinfo(
+                    "Publicar série",
+                    f"A conta de YouTube do canal Histórias ('{conta}') ainda "
+                    "não foi autorizada.\n\nVá na página Contas, "
+                    "selecione YouTube / historias e clique em Entrar / "
+                    "Autorizar.")
+                self._mostrar("contas")
+            return
+        # UM clique, sem dialogo (decisao do Adrian, 31/08): a vistoria e o
+        # freio — parte com problema nao sobe. YouTube agendado; TikTok posta
+        # a proxima parte pendente quando a conta do canal tem login.
+        # Destino ANTES de subir: sem conta própria, o registro cai na conta
+        # `principal` — que é a de builds. Um vídeo de história no canal de
+        # builds é irreversível, e nada avisaria.
+        args = ["publicar", historia, "--serie"]
+        yt = contas_reg.destino(servico, "historias")
+        if not yt["explicita"]:
+            self._log(
+                f"[histórias] PAREI: o canal historias não tem conta de "
+                f"YouTube própria — subiria em '{yt['conta']}', a de builds. "
+                "Vá em 🔑 Contas → youtube → historias e escolha (ou "
+                "cadastre) a conta certa. Se for pra usar a mesma mesmo, "
+                "clique 'Usar esta conta' lá que eu paro de reclamar.", "erro")
+            self._mostrar("contas")
+            return
+        tt = contas_reg.destino("tiktok", "historias")
+        if tt["explicita"] and tt["tem_login"]:
+            args.append("--tiktok")
+        elif not tt["explicita"]:
+            self._log("[histórias] TikTok: canal historias sem conta própria "
+                      "(usaria a de builds) — só YouTube desta vez. Escolha a "
+                      "conta em 🔑 Contas.", "erro")
+        else:
+            self._log("[histórias] TikTok sem login no canal historias: só "
+                      "YouTube desta vez (página Contas → Entrar).", "erro")
+        self._log(f"[histórias] publicando {historia}: YouTube agendado de 24 "
+                  "em 24 h" + (" + TikTok (posta a próxima parte)"
+                               if "--tiktok" in args else "") + ".")
+        self._historias_cli(args, f"publicar série {historia}")
+
+    def _atualizar_historias(self):
+        """Le o estado das historias FORA da thread da UI (toca disco)."""
+        if not hasattr(self, "tabela_hist"):
+            return
+        if getattr(self, "_hist_lendo", False):
+            return
+        self._hist_lendo = True
+        self._hist_fila = getattr(self, "_hist_fila", queue.Queue())
+
+        def trabalho():
+            try:
+                import subprocess as sp
+                saida = sp.run([PY, "-X", "utf8", "-c",
+                                "import sys, json; sys.path.insert(0, '.');"
+                                "from src.pipeline.controller import Pipeline;"
+                                "print(json.dumps(Pipeline().listar()))"],
+                               cwd=str(HISTORIAS), capture_output=True, text=True,
+                               encoding="utf-8", timeout=120,
+                               creationflags=NO_WINDOW)
+                import json as _json
+                dados = _json.loads((saida.stdout or "[]").strip().splitlines()[-1])
+            except Exception as erro:
+                dados = {"erro": f"{type(erro).__name__}: {erro}"}
+            self._hist_fila.put(dados)
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        self.after(200, self._colher_historias)
+
+    def _colher_historias(self):
+        try:
+            dados = self._hist_fila.get_nowait()
+        except queue.Empty:
+            if getattr(self, "_hist_lendo", False):
+                self.after(200, self._colher_historias)
+            return
+        self._hist_lendo = False
+        if not hasattr(self, "tabela_hist"):
+            return
+        if isinstance(dados, dict):
+            self._log(f"[histórias] não consegui ler: {dados.get('erro')}", "erro")
+            return
+        selecionado = self.tabela_hist.selection()
+        self.tabela_hist.delete(*self.tabela_hist.get_children())
+        for status in dados:
+            imagens = f"{status['imagens']['prontas']}/{status['imagens']['total']}"
+            videos = f"{status['videos_prontos']}/{status['n_partes']}"
+            completa = (status["imagens"]["completa"]
+                        and status["videos_prontos"] == status["n_partes"])
+            self.tabela_hist.insert(
+                "", "end", iid=status["historia_id"],
+                tags=("pronta" if completa else "faltando",),
+                values=(status["historia_id"], status["titulo"],
+                        status["n_partes"], status["cenas"], imagens, videos,
+                        f"{status['duracao']:.0f}s" if status["duracao"] else "-",
+                        status["proximo_passo"]))
+        if selecionado and self.tabela_hist.exists(selecionado[0]):
+            self.tabela_hist.selection_set(selecionado)
+        elif dados:
+            self.tabela_hist.selection_set(dados[0]["historia_id"])
 
     # ------------------------------------------------------ pagina: reacoes
     def _pagina_reacoes(self, pai):

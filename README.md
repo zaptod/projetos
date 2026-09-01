@@ -284,3 +284,19 @@ para obter o mesmo roster em qualquer execucao:
 ```powershell
 python -m neural_fights.cli.roster --modo completo --seed 42
 ```
+
+## Testar tudo
+
+```bash
+python testar.py            # 882 testes + smoke do painel, ~60s
+python testar.py --rapido   # só as suítes
+python testar.py --verboso  # com a saída de quem falhou
+```
+
+Um comando para os três projetos (`random_builds`, `historias`, `remoto`)
+mais o smoke do painel. Ele também confere duas coisas que teste nenhum
+pega: se `ffmpeg`/`ffprobe` existem, e se algum fonte tem **byte de
+controle** — o defeito silencioso em que `` vira 0x08 num heredoc de
+shell, a regex nunca casa e nada acusa.
+
+Sai com código 1 quando algo falha, então serve em agendador.

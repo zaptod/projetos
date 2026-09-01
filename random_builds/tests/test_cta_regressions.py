@@ -78,6 +78,8 @@ def _frases(objeto, caminho=""):
     """Toda string folha do captions.json, com o caminho ate ela."""
     if isinstance(objeto, dict):
         for chave, valor in objeto.items():
+            if str(chave).startswith("_"):
+                continue      # `_comment_*` explica o banco, nao vai na tela
             yield from _frases(valor, caminho + "/" + chave)
     elif isinstance(objeto, list):
         for indice, valor in enumerate(objeto):

@@ -112,32 +112,84 @@ def _estreia_falsa(pasta: Path, duracao_clipe: float = 24.0, ko: float = 20.0) -
 
 
 # ------------------------------------------------------------------ 1. ritmo
+def _peso(evento: dict) -> float:
+    """Peso editorial da rolagem daquele evento (0 quando o plano nao traz)."""
+    return float((evento.get("roll") or {}).get("weight")
+                 or evento.get("weight") or 0)
+
+
 class RitmoPorPesoTests(unittest.TestCase):
-    def test_roleta_rapida_so_para_numero_normal(self):
-        rapidas = set(EDICAO["roletas_rapidas"])
+    def test_o_giro_cheio_e_um_orcamento(self):
+        """Relampago e o PADRAO; o giro cheio e caro e tem teto.
+
+        A regra antiga era o contrario ("relampago so para numero de peso
+        baixo") e so 16% das roletas passavam rapido: sobravam 11,8 giros
+        cheios = 40,4 s da MESMA roda roxa por video, 55% do tempo de tela.
+        Medido em 31/08/2026 sobre 33 planos.
+        """
+        teto = EDICAO["roletas_cheias_max"]
         d = EDICAO["durations"]
         for seed in SEEDS:
             with self.subTest(seed=seed):
-                eventos = [e for e in _plano(_gerar(seed))["events"] if e["type"] == "roulette"]
-                self.assertTrue(any(e["rapida"] for e in eventos), "nenhuma roleta rapida")
-                self.assertTrue(any(not e["rapida"] for e in eventos))
+                eventos = [e for e in _plano(_gerar(seed))["events"]
+                           if e["type"] == "roulette"]
+                cheias = [e for e in eventos if not e["rapida"]]
+                self.assertTrue(any(e["rapida"] for e in eventos),
+                                "nenhuma roleta rapida")
+                self.assertTrue(cheias, "todas relampago: o video perde o ritmo")
+                self.assertLessEqual(
+                    len(cheias), teto + 2,
+                    f"{len(cheias)} giros cheios: a roda volta a dominar a tela")
+                self.assertLess(len(cheias), len(eventos) / 2,
+                                "o giro cheio tem que ser a excecao")
                 for e in eventos:
                     if e["rapida"]:
-                        self.assertIn(e["roll"]["roulette_id"], rapidas)
-                        self.assertIn(e["classification"], ("NORMAL", "GOOD", "BAD"))
-                        self.assertAlmostEqual(d["roulette_spin_fast"], e["spin_duration"])
+                        self.assertAlmostEqual(d["roulette_spin_fast"],
+                                               e["spin_duration"])
                         self.assertNotIn("caption_spin", e)
                     else:
-                        self.assertAlmostEqual(d["roulette_spin"], e["spin_duration"])
-                        self.assertTrue(e["caption_spin"], "roleta cheia sem tensao no giro")
+                        self.assertAlmostEqual(d["roulette_spin"],
+                                               e["spin_duration"])
+                        self.assertTrue(e["caption_spin"],
+                                        "roleta cheia sem tensao no giro")
 
-    def test_noticia_devolve_o_giro_cheio(self):
-        """Um atributo numerico com peso editorial alto nunca passa em relampago."""
+    def test_o_giro_cheio_vai_para_a_maior_noticia(self):
+        """O orcamento e gasto no que TEM noticia, nunca no que sobrou.
+
+        Nao da mais para exigir giro cheio de TODA rolagem pesada (o teto
+        pode ser menor que o numero delas), mas a ordem tem que valer:
+        nenhuma relampago pode pesar mais que uma cheia.
+        """
         for seed in SEEDS:
-            for e in _plano(_gerar(seed))["events"]:
-                if e["type"] == "roulette" and e["classification"] in (
-                        "ABSURD", "CONTRADICTORY", "RARE", "FUNNY", "VERY_GOOD"):
-                    self.assertFalse(e["rapida"], e["roll"]["roulette_id"])
+            with self.subTest(seed=seed):
+                eventos = [e for e in _plano(_gerar(seed))["events"]
+                           if e["type"] == "roulette"]
+                # `escolhido`/com reacao sao obrigatorias e nao entram na ordem
+                def opcional(e):
+                    return not e["roll"].get("escolhido")
+                pesos_cheios = [_peso(e) for e in eventos
+                                if not e["rapida"] and opcional(e)]
+                pesos_rapidos = [_peso(e) for e in eventos if e["rapida"]]
+                if pesos_cheios and pesos_rapidos:
+                    self.assertGreaterEqual(
+                        min(pesos_cheios), max(pesos_rapidos),
+                        "uma rolagem mais fraca ficou com o giro caro")
+
+    def test_a_roda_nao_domina_mais_a_tela(self):
+        """O sintoma que originou a onda 13, em SEGUNDOS.
+
+        Medido em 31/08/2026 sobre 33 planos reais: 11,8 giros cheios =
+        40,4 s de roda por video. Aqui o plano e seco (sem imagem, reacao
+        nem luta), entao a roleta e quase todo o conteudo e a PROPORCAO nao
+        diz nada — o que importa e o tempo absoluto que ela ocupa.
+        """
+        for seed in SEEDS:
+            with self.subTest(seed=seed):
+                plano = _plano(_gerar(seed))
+                roleta = sum(e["duration"] for e in plano["events"]
+                             if e["type"] == "roulette")
+                self.assertLess(roleta, 26,
+                                f"{roleta:.1f}s de roleta (antes eram 40,4s)")
 
     def test_o_video_encolheu(self):
         """Sem clipes, o plano fica bem abaixo dos 73 s de media de antes."""
@@ -149,6 +201,63 @@ class RitmoPorPesoTests(unittest.TestCase):
     def test_tensao_existe_para_toda_roleta(self):
         for roleta in FRASES["por_roleta"]:
             self.assertTrue(FRASES["stakes"].get(roleta), roleta)
+
+
+class LikeECtaTests(unittest.TestCase):
+    """O CTA: ate 31/08/2026 NENHUMA copy pedia like (grep em src/ e config/).
+
+    Os 10 CTAs pediam comentario ou follow, e o cartao final era texto branco
+    sobre fundo quase preto — a ultima coisa do video era uma tela morta, e e
+    exatamente nela que a decisao de curtir acontece.
+    """
+
+    def test_todo_cta_pede_like(self):
+        for banco in ("outro", "outro_com_estreia"):
+            frases = CAPTIONS[banco]
+            self.assertTrue(frases, banco)
+            for frase in frases:
+                self.assertIn("LIKE", frase.upper(), f"{banco}: {frase}")
+
+    def test_o_cta_tem_imagem_atras_quando_ela_existe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp)
+            _png(pasta / "character_weapon_reference.png")
+            _png(pasta / "character_image.png")
+            plano = _plano(_gerar(SEEDS[0]), pasta)
+            outro = [e for e in plano["events"] if e["type"] == "outro"][0]
+            self.assertEqual("imagem", (outro.get("asset") or {}).get("media"),
+                             "o CTA voltou a ser cartao de texto no vazio")
+
+    def test_sem_imagem_o_cta_nao_quebra(self):
+        outro = [e for e in _plano(_gerar(SEEDS[0]))["events"]
+                 if e["type"] == "outro"][0]
+        self.assertNotIn("asset", outro)
+        self.assertTrue(outro["caption"])
+
+    def test_o_gancho_tem_variedade_suficiente(self):
+        """5 frases repetiam entre videos consecutivos (medido em 20 planos)."""
+        self.assertGreaterEqual(len(CAPTIONS["hook_payoff"]), 9)
+
+
+class TextoDuplicadoTests(unittest.TestCase):
+    """O karaoke escrevia a MESMA frase que o cartao ja mostrava.
+
+    Nestes eventos a narracao E o `caption` (veja `build_script`), entao a
+    legenda karaoke repetia palavra por palavra o texto grande logo acima —
+    ocupava tela, nao acrescentava nada e fazia o video parecer amador.
+    Visto nos frames de gen_00080/76/82 em 31/08/2026.
+    """
+
+    def test_eventos_cuja_fala_e_a_legenda_nao_tem_karaoke(self):
+        from src.video.renderer import VideoRenderer
+        for tipo in ("hook", "stinger", "outro", "final", "nameplate"):
+            self.assertIsNone(VideoRenderer.KARAOKE_Y.get(tipo, "faltando"),
+                              f"{tipo} voltou a escrever duas vezes")
+
+    def test_a_roleta_mantem_o_karaoke(self):
+        """Na roleta a fala e a pergunta/comentario, nao o cartao: nao duplica."""
+        from src.video.renderer import VideoRenderer
+        self.assertIsNotNone(VideoRenderer.KARAOKE_Y["roulette"])
 
 
 # ---------------------------------------------------------------- 2. gancho
@@ -883,6 +992,158 @@ class PicassoModalTests(unittest.TestCase):
             with self.assertRaises(picasso_client.GeracaoFalhou):
                 cliente._resolver_dialogo_de_auth()
         self.assertEqual([1], chamado)
+
+
+# ------------------------------------------------------ 17. um worker so
+class WorkerUnicoTests(unittest.TestCase):
+    """Cinco `identity worker --watch` vivos ao mesmo tempo (29/08/2026): a
+    trava impedia o estrago, mas os extras ficavam em loop eterno cedendo a
+    trava — memoria a toa e imprevisibilidade sobre QUAL processo assume
+    quando o dono morre. Agora o extra sai."""
+
+    def test_ha_worker_ve_a_trava_sem_segurar(self):
+        from unittest.mock import patch
+        from src.identity import queue
+        # Lock proprio: a maquina pode ter um worker de verdade de pe.
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(queue, "LOCK_WORKER", Path(tmp) / "worker.lock"):
+                self.assertFalse(queue.ha_worker())      # ninguem segurando
+                with queue.instancia_unica() as sozinho:
+                    self.assertTrue(sozinho)
+                    self.assertTrue(queue.ha_worker())   # agora ha
+                self.assertFalse(queue.ha_worker())      # e soltou
+
+    def _sem_pausa(self):
+        """Controle isolado: a maquina pode estar com a pipeline pausada de
+        verdade, e ai `observar` entraria no loop de espera para sempre."""
+        from unittest.mock import patch
+        from src.identity import controle
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        alvo = patch.object(controle, "ARQUIVO", Path(tmp.name) / "controle.json")
+        alvo.start()
+        self.addCleanup(alvo.stop)
+
+    def test_watch_extra_sai_em_vez_de_ficar_em_loop(self):
+        from unittest.mock import patch
+        from src.identity import worker
+        self._sem_pausa()
+        chamadas = []
+        with patch.object(worker.queue, "ha_worker", lambda: True), \
+             patch.object(worker, "drenar", lambda **k: chamadas.append(1)):
+            worker.observar()
+        self.assertEqual([], chamadas, "o watch extra nao pode drenar")
+
+    def test_watch_sozinho_roda_normalmente(self):
+        from unittest.mock import patch
+        from src.identity import worker
+        self._sem_pausa()
+        chamadas = []
+
+        def _drenar(**kwargs):
+            chamadas.append(1)
+            raise KeyboardInterrupt        # sai do loop como o Ctrl+C faria
+
+        with patch.object(worker.queue, "ha_worker", lambda: False), \
+             patch.object(worker, "_tem_pendente", lambda: True), \
+             patch.object(worker, "drenar", _drenar):
+            worker.observar()
+        self.assertEqual([1], chamadas)
+
+    def test_watch_pausado_espera_sem_drenar(self):
+        """Pausado, o watch NAO chama drenar — e nao infla o backoff."""
+        from unittest.mock import patch
+        from src.identity import controle, worker
+        self._sem_pausa()
+        controle.pausar(motivo="conta emprestada")
+        chamadas, dormidas = [], []
+
+        def _sleep(segundos):
+            dormidas.append(segundos)
+            raise KeyboardInterrupt        # um ciclo basta para o contrato
+
+        with patch.object(worker.queue, "ha_worker", lambda: False), \
+             patch.object(worker, "drenar", lambda **k: chamadas.append(1)), \
+             patch.object(worker.time, "sleep", _sleep):
+            worker.observar()
+        self.assertEqual([], chamadas, "pausado nao pode drenar")
+        self.assertEqual(1, len(dormidas))
+
+
+# ------------------------------------------------- 18. controle da pipeline
+class ControleTests(unittest.TestCase):
+    """A ferramenta de video e conta COMPARTILHADA: quando outra pessoa esta
+    usando, a pipeline tem que parar de pegar trabalho — sem matar processo
+    no meio de um job (foi assim que a generation_00075 ficou pela metade)."""
+
+    def setUp(self):
+        from unittest.mock import patch
+        from src.identity import controle
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        alvo = patch.object(controle, "ARQUIVO", Path(self._tmp.name) / "controle.json")
+        alvo.start()
+        self.addCleanup(alvo.stop)
+        self.controle = controle
+
+    def test_comeca_rodando(self):
+        estado = self.controle.estado()
+        self.assertEqual(self.controle.RODANDO, estado["situacao"])
+        self.assertFalse(self.controle.pausado_para("digen"))
+
+    def test_pausar_tudo_bloqueia_todos_os_provedores(self):
+        estado = self.controle.pausar(motivo="conta emprestada")
+        self.assertEqual(self.controle.PAUSADO, estado["situacao"])
+        self.assertIn("conta emprestada", estado["resumo"])
+        self.assertTrue(self.controle.pausado_para("digen"))
+        self.assertTrue(self.controle.pausado_para("picasso"))
+
+    def test_pausar_so_um_provedor_deixa_o_outro_trabalhando(self):
+        self.controle.pausar("digen", motivo="video em uso")
+        self.assertTrue(self.controle.pausado_para("digen"))
+        self.assertFalse(self.controle.pausado_para("picasso"))
+
+    def test_retomar_libera(self):
+        self.controle.pausar("digen")
+        self.controle.retomar("digen")
+        self.assertFalse(self.controle.pausado_para("digen"))
+        self.assertEqual(self.controle.RODANDO, self.controle.estado()["situacao"])
+
+    def test_pausa_com_prazo_vence_sozinha(self):
+        from datetime import datetime, timedelta, timezone
+        from unittest.mock import patch
+        self.controle.pausar("digen", "emprestada", minutos=60)
+        self.assertTrue(self.controle.pausado_para("digen"))
+        depois = datetime.now(timezone.utc) + timedelta(minutes=61)
+        with patch.object(self.controle, "_agora", lambda: depois):
+            self.assertFalse(self.controle.pausado_para("digen"))
+            self.assertEqual(self.controle.RODANDO,
+                             self.controle.estado()["situacao"])
+
+    def test_parada_limpa_bloqueia_e_e_consumida(self):
+        estado = self.controle.pedir_parada("fim do dia")
+        self.assertEqual(self.controle.PARANDO, estado["situacao"])
+        self.assertTrue(self.controle.parada_pedida())
+        self.assertTrue(self.controle.pausado_para("picasso"))
+        self.controle.limpar_parada()
+        self.assertFalse(self.controle.parada_pedida())
+
+    def test_a_fila_obedece_a_pausa(self):
+        from unittest.mock import patch
+        from src.identity import queue
+        job = {"job_id": "g#character", "generation_id": "g", "slot": "character",
+               "status": queue.PENDENTE, "attempts": 0, "provider": "picasso",
+               "prompt": "x", "depends_on": []}
+        # copia a cada leitura: `claim` MUTA o job (pending -> running), e sem
+        # ela a segunda chamada nao acharia mais nada pendente.
+        with patch.object(queue, "_ler", lambda: [dict(job)]), \
+             patch.object(queue, "_gravar", lambda _: None):
+            self.assertIsNotNone(queue.claim(3))          # rodando: pega
+            self.controle.pausar(motivo="ocupada")
+            self.assertIsNone(queue.claim(3))             # pausado: nao pega
+            self.assertFalse(queue.tem_reivindicavel(3))
+            self.controle.retomar()
+            self.assertIsNotNone(queue.claim(3))          # retomado: volta
 
 
 if __name__ == "__main__":

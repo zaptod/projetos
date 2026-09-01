@@ -23,6 +23,8 @@ from ..visualization.draw_common import (fit_font, fit_font_wrap, gradient,
 # nao abrir janelas de console para os processos ffmpeg no Windows
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
+from . import medidas  # noqa: E402  (depois de NO_WINDOW)
+
 
 class VideoRenderer:
     def __init__(self, render_config: dict, profile: str = "celular",
@@ -581,20 +583,49 @@ class VideoRenderer:
         img.paste(camada, (cx - camada.width // 2, cy - camada.height // 2), camada)
 
     def _concat(self, segments: list[Path], out_path: Path) -> None:
+        """Junta os segmentos e CONFERE que juntou todos.
+
+        O `returncode` do ffmpeg mente aqui: com um segmento ilegivel no meio
+        da lista ele imprime "Error during demuxing" e sai **0**, entregando
+        um video que comeca certo e acaba cedo. Descoberto em 31/08/2026 no
+        projeto de historias (11,8 s no lugar de 193 s, com o log dizendo
+        "pronto"); a montagem daqui tinha exatamente o mesmo furo.
+        """
+        ruins = medidas.quebrados(segments)
+        if ruins:
+            raise RuntimeError(
+                "segmento(s) ilegivel(is) antes de juntar: "
+                + ", ".join(p.name for p in ruins)
+                + ". Apague a pasta _segments_* e renderize de novo.")
+        esperado = sum(medidas.duracao(s) or 0.0 for s in segments)
+
         list_file = out_path.with_suffix(".txt")
         list_file.write_text(
             "".join(f"file '{s.as_posix()}'\n" for s in segments), encoding="utf-8")
         base = ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
                 "-i", str(list_file)]
-        result = subprocess.run(base + ["-c", "copy", str(out_path)],
-                                capture_output=True, text=True, creationflags=NO_WINDOW)
-        if result.returncode != 0:
-            result = subprocess.run(
-                base + ["-c:v", "libx264", "-preset", self.preset, "-crf", str(self.crf),
-                        "-pix_fmt", "yuv420p", "-c:a", "aac", str(out_path)],
-                capture_output=True, text=True, creationflags=NO_WINDOW)
-            if result.returncode != 0:
-                raise RuntimeError(f"Concat falhou: {result.stderr[-800:]}")
+        tentativas = (
+            base + ["-c", "copy", str(out_path)],
+            base + ["-c:v", "libx264", "-preset", self.preset,
+                    "-crf", str(self.crf), "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", str(out_path)],
+        )
+        erro = ""
+        for cmd in tentativas:
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    creationflags=NO_WINDOW)
+            saiu = medidas.duracao(out_path)
+            if result.returncode == 0 and saiu is not None \
+                    and saiu >= esperado - 0.5:
+                return
+            erro = (result.stderr or "")[-400:] or (
+                f"saiu com {saiu:.1f}s de {esperado:.1f}s esperados"
+                if saiu else "o arquivo nao abre")
+            print(f"[render] concat incompleto ({erro}); tentando recodificar",
+                  flush=True)
+        raise RuntimeError(
+            f"Concat falhou: {erro}. Esperava {esperado:.1f}s de "
+            f"{len(segments)} segmento(s).")
 
     def _mix_final(self, video: Path, music: Path | None, voz: Path | None,
                    out_path: Path) -> None:
@@ -645,7 +676,7 @@ class VideoRenderer:
             ultimo = "[mx]"
         else:
             ultimo = "[base]"
-        cadeia.append(f"{ultimo}alimiter=limit=0.97,loudnorm=I={alvo}:TP=-1.5:LRA=11,"
+        cadeia.append(f"{ultimo}alimiter=limit=0.89,loudnorm=I={alvo}:TP=-1.5:LRA=11,"
                       f"aresample={sr}[out]")
         cmd = ["ffmpeg", "-y", "-loglevel", "error", *entradas,
                "-filter_complex", ";".join(cadeia),
@@ -666,7 +697,12 @@ class VideoRenderer:
 
     def _frames_for(self, event: dict, generation: dict, out_dir: Path):
         kind = event["type"]
-        if kind == "hook" and (event.get("asset") or {}).get("media") == "imagem":
+        if kind in ("hook", "outro") and                 (event.get("asset") or {}).get("media") == "imagem":
+            # O outro entra aqui pelo mesmo caminho do gancho: e nele que a
+            # pessoa decide curtir, e ate 31/08 ele era um cartao de texto
+            # sobre fundo quase preto — a ULTIMA coisa do video era uma tela
+            # morta. Com a imagem do build atras, o pedido de like acontece
+            # olhando para o que o video prometeu.
             return self._hook_frames(event)
         if kind == "roulette":
             return self._roulette_frames(event)
@@ -897,9 +933,15 @@ class VideoRenderer:
         return base.filter(ImageFilter.GaussianBlur(int(radius * 0.22)))
 
     # ------------------------------------------------------- camada de overlay
-    KARAOKE_Y = {"roulette": 0.238, "hook": 0.62, "identity": 0.15,
-                 "comentario": None, "gameplay": 0.17, "nameplate": 0.72,
-                 "stinger": 0.72, "final": 0.74, "outro": 0.72, "synergy": 0.74}
+    # None = SEM karaoke naquele tipo. Nestes eventos a narracao E a legenda
+    # grande da tela (`build_script` fala o proprio `caption`), entao o
+    # karaoke escrevia a mesma frase duas vezes, uma embaixo da outra —
+    # ocupava tela, nao acrescentava informacao e fazia o video parecer
+    # amador. Medido em 31/08 nos frames de gen_00080/76/82.
+    KARAOKE_Y = {"roulette": 0.238, "hook": None, "identity": 0.15,
+                 "comentario": None, "gameplay": 0.17, "nameplate": None,
+                 "stinger": None, "final": None, "outro": None,
+                 "synergy": 0.74}
 
     @staticmethod
     def _carregar_palavras(caminho: Path | None) -> list[dict]:

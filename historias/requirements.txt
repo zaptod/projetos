@@ -1,0 +1,16 @@
+# Canal de historias por IA.
+#
+# Fora do pip (obrigatorio): FFmpeg e FFprobe no PATH.
+#   winget install Gyan.FFmpeg
+#
+# E a pasta `random_builds` ao lado desta: o narrador, a trilha e o cliente
+# do PicassoIA vem de la (ver src/compartilhado.py). Instalar os requisitos
+# daquele projeto ja cobre este.
+
+Pillow>=10,<13
+numpy>=1.26
+edge-tts>=6.1
+
+# So para gerar as imagens das cenas (`main.py imagens`). Depois de instalar:
+#   patchright install chrome
+patchright>=1.50

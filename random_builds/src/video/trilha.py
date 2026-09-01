@@ -212,6 +212,70 @@ def trilha(seed: int = 7, bpm: float = 142.0, compassos: int = 16,
     return st.astype(np.float32)
 
 
+def ambiente(seed: int = 21, compassos: int = 16, taxa: int = TAXA,
+             bpm: float = 62.0):
+    """Cama ambiente para HISTORIA: sem bateria, sem arpejo, sem 808.
+
+    A trilha do canal de builds e uma batida trap — bumbo, caixa, chimbal e
+    808. Debaixo de um desabafo em primeira pessoa, isso vira videoclipe: o
+    ritmo compete com a fala e desmente o tom. Medido em 01/09/2026, era
+    exatamente essa a trilha das historias.
+
+    Aqui sobra o que sustenta sem chamar atencao: acordes longos, um sub
+    grave respirando e um brilho ocasional bem no fundo. Nada marca tempo,
+    porque quem marca o tempo e a voz.
+    """
+    rng = np.random.default_rng(seed)
+    compasso = (60.0 / bpm) * 4
+    total = int(compassos * compasso * taxa)
+    esq, dir_ = np.zeros(total), np.zeros(total)
+
+    def por(x, quando: float, ganho: float = 1.0, pan: float = 0.0):
+        ini = int(quando * taxa)
+        fim = min(total, ini + len(x))
+        if fim <= ini:
+            return
+        seg = x[:fim - ini] * ganho
+        esq[ini:fim] += seg * (1 - max(0.0, pan))
+        dir_[ini:fim] += seg * (1 + min(0.0, pan))
+
+    for c in range(compassos):
+        t0 = c * compasso
+        raiz, acorde, _arpejo = PROGRESSAO[c % len(PROGRESSAO)]
+        # Acordes que se sobrepoem: cada um dura MAIS que o compasso, entao a
+        # troca e um esmaecimento, nao um corte. E o que faz a cama parecer
+        # continua debaixo de uma narracao de tres minutos.
+        for nota in acorde:
+            por(pad(NOTAS[nota], compasso * 1.6, taxa), t0,
+                0.30 / len(acorde), pan=0.12)
+        # oitava acima, bem baixa: da ar sem clarear demais
+        por(pad(NOTAS[acorde[0]] * 2, compasso * 1.4, taxa), t0 + compasso * 0.1,
+            0.07, pan=-0.15)
+        # sub grave longo, sem ataque percussivo
+        grave = bass808(NOTAS[raiz] / 2, compasso * 0.9, taxa)
+        por(grave * np.linspace(0.0, 1.0, len(grave)) ** 0.5, t0, 0.34)
+        # um brilho esparso, longe do centro (onde a voz mora)
+        if rng.random() < 0.4:
+            por(pluck(NOTAS[acorde[-1]] * 2, compasso * 0.5, taxa),
+                t0 + compasso * rng.uniform(0.3, 0.7), 0.06,
+                pan=-0.4 if c % 2 else 0.4)
+
+    st = _lowpass(np.stack([esq, dir_], axis=1), taxa, 4200.0)
+    st = _norm(st, 0.9)
+    # Mais baixo que a trilha de builds (-22 vs -17 dBFS): aqui ela e cama,
+    # nao musica — quem tem que ser ouvido e o narrador.
+    rms = float(np.sqrt(np.mean(st ** 2)))
+    alvo = 10 ** (-22 / 20)
+    if rms > 1e-6:
+        st = np.clip(st * (alvo / rms), -0.98, 0.98)
+    # esmaecimento nas pontas para o loop emendar sem clique
+    n = int(0.6 * taxa)
+    if total > 2 * n:
+        st[:n] *= np.linspace(0, 1, n)[:, None]
+        st[-n:] *= np.linspace(1, 0, n)[:, None]
+    return st.astype(np.float32)
+
+
 def gravar_wav(destino: Path, amostras, taxa: int = TAXA) -> Path:
     """Mono (n,) ou estereo (n,2) float -> WAV 16-bit estereo."""
     destino = Path(destino)

@@ -123,6 +123,19 @@ def instancia_unica():
         arquivo.close()
 
 
+def ha_worker() -> bool:
+    """Ja existe um worker de pe? (testa a trava sem segurar).
+
+    Quem pergunta: o `--watch` antes de entrar no loop e o painel antes de
+    subir mais um. Sem isso cada clique em "Processar fila" deixava um
+    processo vivo cedendo a trava para sempre — cinco deles rodando em
+    29/08/2026, consumindo memoria e tornando imprevisivel QUAL processo (e
+    qual versao do codigo) assume quando o dono morre.
+    """
+    with instancia_unica() as sozinho:
+        return not sozinho
+
+
 def _ler() -> list[dict]:
     if not ARQUIVO_FILA.is_file():
         return []
@@ -324,7 +337,7 @@ def _reivindicavel(job: dict, jobs: list[dict], max_attempts: int,
             and _dependencias_satisfeitas(job, jobs, agora))
 
 
-def tem_reivindicavel(max_attempts: int = 3) -> bool:
+def tem_reivindicavel(max_attempts: int = 3, provedor: str | None = None) -> bool:
     """Ha job que o worker CONSEGUE pegar agora?
 
     Usa o MESMO predicado do claim de proposito. O modo `--watch` decide o
@@ -332,16 +345,23 @@ def tem_reivindicavel(max_attempts: int = 3) -> bool:
     contasse como trabalho, toda rodada seria improdutiva, o backoff subiria
     ate o teto e o Chrome ficaria abrindo e fechando a toa.
     """
+    from . import controle
+    if controle.pausado_para(provedor):
+        return False
     agora = _agora()
     with _bloqueio():
         jobs = _ler()
-        return any(_reivindicavel(j, jobs, max_attempts, None, agora)
+        return any(_reivindicavel(j, jobs, max_attempts, provedor, agora)
                    for j in jobs)
 
 
 def claim(max_attempts: int = 3, ignorar: set[str] | None = None,
           provedor: str | None = None) -> dict | None:
     """Pega o proximo job pendente e ja o marca como rodando.
+
+    Respeita o interruptor de `controle`: com a pipeline pausada (a conta do
+    site esta emprestada, por exemplo) NADA e reivindicado — o job em
+    andamento termina, mas nenhum novo comeca.
 
     Marcar dentro do mesmo lock e o que impede dois workers de pegarem o mesmo
     job. Jobs `running` orfaos (worker morto) sao retomados por `reabrir`.
@@ -351,6 +371,9 @@ def claim(max_attempts: int = 3, ignorar: set[str] | None = None,
     vira ping-pong: o mesmo job a cada ~50 s, sem nunca dar tempo do Digen
     terminar.
     """
+    from . import controle
+    if controle.pausado_para(provedor):
+        return None
     ignorar = ignorar or set()
     agora = _agora()
     with _bloqueio():

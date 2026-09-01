@@ -96,6 +96,100 @@ def _liberar_perfil(user_data_dir: str) -> int:
     return len(pids)
 
 
+# Pastas de CACHE do perfil. Apagar qualquer uma delas e seguro: o Chrome
+# refaz sozinho, e o login NAO mora aqui (cookies ficam em `Network/Cookies`
+# e as senhas em `Login Data`, que esta lista nunca toca).
+CACHES = (
+    "Cache", "Code Cache", "GPUCache", "DawnCache", "DawnGraphiteCache",
+    "DawnWebGPUCache", "ShaderCache", "GrShaderCache", "Service Worker",
+    "Storage/ext", "optimization_guide_model_store",
+    "component_crx_cache", "extensions_crx_cache",
+)
+
+
+def limpar_cache(profile: Path) -> tuple:
+    """Apaga so o cache do perfil. Devolve (pastas, megabytes).
+
+    Por que existe: um perfil que roda automacao ha semanas acumula cache e
+    service workers quebrados, e o sintoma nao parece cache — a pagina do
+    site abre BRANCA (so o esqueleto, sem texto), como se estivesse
+    bloqueada. Medido em 31/08/2026 no perfil do TikTok: 1,1 GB, feed
+    travado no esqueleto; com o perfil limpo a mesma pagina montou inteira.
+
+    O login sobrevive de proposito: refazer o login e o custo que a gente
+    esta tentando evitar.
+    """
+    import shutil
+
+    profile = Path(profile)
+    apagadas, bytes_livres = [], 0
+    for base in (profile, profile / "Default"):
+        for nome in CACHES:
+            alvo = base / nome
+            if not alvo.is_dir():
+                continue
+            try:
+                tamanho = sum(f.stat().st_size for f in alvo.rglob("*")
+                              if f.is_file())
+            except OSError:
+                tamanho = 0
+            try:
+                shutil.rmtree(alvo, ignore_errors=True)
+            except OSError:
+                continue
+            if not alvo.exists():
+                apagadas.append(nome)
+                bytes_livres += tamanho
+    # 2 casas: apagar 10 pastas e imprimir "0.0 MB" parece defeito.
+    return apagadas, round(bytes_livres / 1e6, 2)
+
+
+def resetar_perfil(profile: Path) -> Path | None:
+    """Comeca um perfil NOVO, guardando o velho ao lado (nao apaga nada).
+
+    Quando `limpar_cache` nao basta, o estrago esta em storage/IndexedDB/
+    service worker registrados — e ai so um perfil limpo resolve. Medido em
+    31/08/2026: o perfil antigo do TikTok abria o feed em branco (texto=0,
+    zero QR) enquanto um perfil novo, no mesmo minuto e na mesma rede,
+    mostrava a tela de login inteira (texto=738, QR renderizado).
+
+    O CUSTO e o login: o perfil novo comeca deslogado. Por isso isto nunca
+    acontece sozinho — quem chama pergunta antes.
+
+    A pasta velha vira `<nome>.quebrado-<data>`: se algo der errado, e so
+    renomear de volta.
+    """
+    profile = Path(profile)
+    if not profile.exists():
+        return None
+    carimbo = time.strftime("%Y%m%d_%H%M%S")
+    destino = profile.with_name(f"{profile.name}.quebrado-{carimbo}")
+    # Dois resets no mesmo segundo dariam o mesmo nome, e no Windows o
+    # `rename` para cima de pasta existente levanta FileExistsError — o
+    # conserto morreria justamente na segunda tentativa de quem esta tentando
+    # consertar.
+    sufixo = 2
+    while destino.exists():
+        destino = profile.with_name(f"{profile.name}.quebrado-{carimbo}-{sufixo}")
+        sufixo += 1
+    profile.rename(destino)
+    return destino
+
+
+def montou(page, minimo: int = 200) -> bool:
+    """A pagina virou aplicativo, ou parou no esqueleto branco?
+
+    `innerText` e a medida certa: o esqueleto tem centenas de nos (as barras
+    cinzas) e ZERO texto — foi exatamente o que a tela travada mostrou.
+    """
+    try:
+        return int(page.evaluate(
+            "() => document.body ? document.body.innerText.trim().length : 0"
+        )) >= minimo
+    except Exception:
+        return False
+
+
 @contextlib.contextmanager
 def contexto_persistente(headless: bool = False, profile: Path | None = None):
     """Contexto logado e persistente. Fecha tudo no fim, com ou sem excecao.
@@ -113,6 +207,11 @@ def contexto_persistente(headless: bool = False, profile: Path | None = None):
             headless=headless,
             no_viewport=True,
             args=ARGS_PADRAO,
+            # O padrao do Playwright e `chromium_sandbox=False`, que ADICIONA
+            # `--no-sandbox` — a flag que este modulo diz, logo acima, que nao
+            # usa (e que faz o Chrome exibir a tarja de "sinalizador nao
+            # suportado"). Ligar o sandbox alinha o codigo ao que esta escrito.
+            chromium_sandbox=True,
         )
 
     with sync_playwright() as p:

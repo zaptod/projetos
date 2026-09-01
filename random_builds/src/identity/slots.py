@@ -20,6 +20,8 @@ PROVEDOR de cada um.
 """
 from __future__ import annotations
 
+DREAMFACE = "dreamface"
+
 CHARACTER = "character"
 WEAPON = "weapon"
 CHARACTER_WEAPON = "character_weapon"

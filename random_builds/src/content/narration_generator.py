@@ -77,6 +77,7 @@ class NarrationGenerator:
                 lines.append(self._line(event, event.get("caption") or "Agora a arma."))
             elif tipo in ("identity", "nameplate"):
                 lines.append(self._line(event, self._revelacao(event, personagem, arma)))
+                lines.extend(self._preencher_payoff(rng, event))
             elif tipo in ("reveal_character", "reveal_weapon"):
                 entidade = "character" if tipo == "reveal_character" else "weapon"
                 lines.append(self._line(event, f"{generation[entidade]['nome']}."))
@@ -94,6 +95,30 @@ class NarrationGenerator:
             elif tipo == "outro":
                 lines.append(self._line(event, event.get("caption") or ""))
         return {"tts": "voz.py", "lines": [l for l in lines if l["text"]]}
+
+    # O payoff em video dura 8 s e toca MUDO (o clipe do Digen nao tem audio
+    # util). Media de 31/08: 66% de cobertura de voz no video, e o maior
+    # buraco — 10 s — caia justamente aos 70-83%, onde a retencao ja e
+    # fragil. Uma segunda fala no meio do clipe fecha o buraco sem tocar no
+    # video: e so voz por cima.
+    FALAS_DE_PAYOFF = (
+        "Esse e o resultado de todas as roletas juntas.",
+        "Ninguem escolheu nada disso. Saiu tudo no sorteio.",
+        "Olha esse conjunto. Personagem e arma, do zero.",
+        "Foi a roleta que montou isso, do comeco ao fim.",
+    )
+    PAYOFF_MINIMO_S = 4.5
+
+    def _preencher_payoff(self, rng: random.Random, event: dict) -> list:
+        """Segunda fala no meio do payoff longo (senao ele fica mudo)."""
+        asset = event.get("asset") or {}
+        duracao = float(event.get("duration") or 0.0)
+        if asset.get("media") != "video" or duracao < self.PAYOFF_MINIMO_S:
+            return []
+        return [{"start": round(float(event["start"]) + duracao * 0.45, 3),
+                 "duration": round(duracao * 0.55, 3),
+                 "text": rng.choice(self.FALAS_DE_PAYOFF),
+                 "evento": event["type"]}]
 
     # ---------------------------------------------------------------- roleta
     def _roleta(self, rng: random.Random, event: dict) -> list[dict]:

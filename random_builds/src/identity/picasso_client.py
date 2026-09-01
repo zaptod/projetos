@@ -24,9 +24,10 @@ from pathlib import Path
 
 from . import config as iconfig
 from . import proveniencia
+from . import moderacao
 from . import picasso_selectors as selectors
 from .browser import esperar_hidratacao, pausa_humana
-from .client import BrowserMorreu, EsperaEstourou, GeracaoFalhou
+from .client import ConteudoRecusado, BrowserMorreu, EsperaEstourou, GeracaoFalhou
 
 # Uma imagem de recompensa e vertical. Se o que apareceu e deitado, e quase
 # certo que seja miniatura do historico carregada tarde — e nao a nossa
@@ -460,6 +461,29 @@ class PicassoClient:
         if self.page.is_closed():
             raise BrowserMorreu("a aba do Chrome foi fechada durante a espera.")
 
+    def _recusou(self) -> str | None:
+        """O filtro de conteudo barrou? (falhar em 3 s, nao em 300)
+
+        Sem isto, um prompt recusado esperava o timeout inteiro e morria
+        dizendo "a imagem nao ficou pronta" — motivo errado, cinco minutos
+        perdidos por cena, e a fila parecendo travada.
+
+        Duas provas, nesta ordem: o ICONE de escudo (como o site avisa de
+        verdade — descoberto em 31/08/2026, depois de a deteccao por frase
+        deixar passar um bloqueio) e so entao o texto. O escudo nao precisa
+        de frase nenhuma junto; a frase sozinha tambem vale.
+        """
+        sinal = selectors.bloqueio_na_tela(self.page)
+        if sinal and sinal.get("escudo"):
+            texto = " ".join((sinal.get("texto") or "").split())
+            return texto or "o site marcou o conteudo como bloqueado (escudo)"
+        recusa = moderacao.parece_recusa(selectors.texto_visivel(self.page))
+        if recusa:
+            return recusa
+        if sinal and moderacao.parece_recusa(sinal.get("texto") or ""):
+            return " ".join(sinal["texto"].split())
+        return None
+
     def wait_for_render(self, timeout: float | None = None,
                         antes: list[str] | None = None) -> str:
         """Espera a imagem nova aparecer e devolve a URL dela.
@@ -481,6 +505,10 @@ class PicassoClient:
 
         while time.monotonic() < fim:
             self._checar_vivo()
+            recusa = self._recusou()
+            if recusa:
+                raise ConteudoRecusado(
+                    f"o PicassoIA recusou o prompt: {recusa}")
             for imagem in selectors.resultados_na_tela(self.page):
                 if imagem["src"] in conhecidas:
                     continue

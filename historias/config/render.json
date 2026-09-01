@@ -1,0 +1,108 @@
+{
+    "_comment": "Perfis, tipografia e som do video de historia. Paleta propria: este canal e outro produto, nao a roleta.",
+    "profiles": {
+        "celular": {
+            "width": 1080,
+            "height": 1920,
+            "layout": "vertical"
+        },
+        "normal": {
+            "width": 1920,
+            "height": 1080,
+            "layout": "horizontal"
+        }
+    },
+    "perfis_ativos": [
+        "celular"
+    ],
+    "_comment_perfis": "So o vertical por padrao: historia e conteudo de Shorts/TikTok/Reels. Ponha 'normal' aqui para sair tambem em 16:9.",
+    "fps": 30,
+    "crf": 20,
+    "preset": "medium",
+    "preview": {
+        "scale": 0.5,
+        "fps": 24,
+        "crf": 30,
+        "preset": "ultrafast"
+    },
+    "colors": {
+        "bg_top": "#0d0b12",
+        "bg_bottom": "#191320",
+        "accent": "#ffb703",
+        "accent_alt": "#e63946",
+        "text": "#f7f3ea",
+        "text_dim": "#a99f92"
+    },
+    "fonts": {
+        "bold": "C:/Windows/Fonts/arialbd.ttf",
+        "regular": "C:/Windows/Fonts/arial.ttf",
+        "black": "C:/Windows/Fonts/ariblk.ttf",
+        "emoji": "C:/Windows/Fonts/seguiemj.ttf"
+    },
+    "_comment_camera": "Ken Burns: imagem parada em video vertical e morte por retencao. Cada cena alterna push-in e pull-back para o corte nao ficar mecanico.",
+    "camera": {
+        "zoom": [
+            1.0,
+            1.15
+        ],
+        "alternar": true,
+        "fundo_borrado": true,
+        "flash_frames": 2,
+        "vinheta": 0.35,
+        "_comment_corte": "corte_visual_s: cena mais longa que isto vira DOIS (ou tres) planos da mesma imagem, com enquadramentos diferentes. Medido em 01/09/2026: a historia trocava de imagem a cada 14,7 s contra 2,5 s do video de build — foto parada por quinze segundos e slideshow. 0 desliga.",
+        "corte_visual_s": 5.0,
+        "plano_minimo_s": 3.0,
+        "corte_aperto": 1.22,
+        "_comment_zoom": "As imagens saem em 1088x1920 — so 0,7% acima da tela. Medido em 01/09/2026: no zoom 1.37 o detalhe caia 23% (laplaciano 2.22 -> 1.71), porque 796px viravam 1080. Com teto 1.15 a perda fica desprezivel."
+    },
+    "_comment_legenda": "Legenda karaoke: a palavra falada acende. E o que segura quem assiste no mudo - a maior parte do publico de Shorts.",
+    "legenda": {
+        "ativa": true,
+        "y": 0.74,
+        "tamanho": 0.055,
+        "palavras_por_linha": 4,
+        "cor_ativa": "#ffb703",
+        "cor_dita": "#f7f3ea",
+        "cor_futura": "#e9e4d8",
+        "_comment_contraste": "cor_futura era #8b8378: medido em 01/09/2026, isso dava razao de contraste ~2.3:1 sobre a imagem (o minimo legivel para texto grande e 3:1) e METADE de cada legenda sumia. A enfase ja e feita pela caixa amarela da palavra falada — as outras so precisam ser lidas.",
+        "_comment_margem": "margem_lateral: fracao da largura livre de cada lado. O trilho de curtir/comentar/enviar do TikTok cobre o lado direito na altura da legenda; sem margem, as ultimas palavras ficam ATRAS dos botoes (medido: caixa chegando a x=1017 de 1080).",
+        "margem_lateral": 0.17
+    },
+    "titulo": {
+        "duracao": 2.2,
+        "y": 0.42,
+        "tamanho": 0.085
+    },
+    "audio": {
+        "sample_rate": 44100,
+        "music_volume": 0.26,
+        "sfx_volume": 0.6,
+        "trilha_procedural": true,
+        "ducking": true,
+        "loudnorm": -14,
+        "_comment_voz": "Narrador de historia e mais lento que o da roleta: taxa 0% e uma pausa entre cenas. O motor e o mesmo (edge-tts gratis, voz do Windows como reserva offline).",
+        "voz": {
+            "ativa": true,
+            "motor": "edge",
+            "voz": "pt-BR-AntonioNeural",
+            "taxa": "+0%",
+            "tom": "+0Hz",
+            "voz_sapi": "Maria",
+            "taxa_sapi": 0,
+            "volume": 1.0,
+            "max_atempo": 1.0,
+            "folga": 0.0,
+            "atraso": 0.12,
+            "_comment_continua": "leitura_continua: a parte inteira e narrada numa sintese so, e as cenas sao recortadas do audio pelos limites de palavra. E o que tira o som 'cortado': antes cada cena era uma sintese separada e a entonacao reiniciava a cada ~14 s. Desligue (false) para voltar a medir cena a cena.",
+            "leitura_continua": true,
+            "_comment_narrador": "A voz sai do ROTEIRO: `por_narrador` liga a escolha pela descricao do protagonista (a mesma frase em ingles que mantem as imagens parecidas). O motor gratuito so tem tres vozes em pt-BR; escolher bem entre elas ja resolve. Desligue com false para usar sempre `voz`.",
+            "por_narrador": true,
+            "vozes": {
+                "homem": "pt-BR-AntonioNeural",
+                "mulher": "pt-BR-FranciscaNeural"
+            },
+            "_comment_taxa": "taxa = velocidade da fala. As historias saem em +0% (medido, o padrao do motor) e os videos de build em +12%. Se a leitura parecer arrastada, +6% costuma soar mais conversado sem virar pressa — e encurta o video, o que ajuda no teto de 3 min do Shorts. Mude e ouca: isto e ouvido, nao medicao."
+        },
+        "_comment_musica": "music_volume era 0.16: medido em 01/09/2026, a cama ficava 27-31 dB abaixo da voz durante a fala (inaudivel) e so aparecia nos buracos, inchando. Com 0.26 + o ducking suave, ela fica ~17 dB sob a voz de forma constante: presente sem competir."
+    }
+}

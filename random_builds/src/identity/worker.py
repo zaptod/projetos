@@ -17,7 +17,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import artefato, config, history, provedores, proveniencia, queue, slots
+from . import (artefato, config, controle, history, provedores, proveniencia,
+               queue, slots)
 from .browser import contexto_persistente, pagina, pausa_humana
 from .client import BrowserMorreu, DigenClient, EsperaEstourou, GeracaoFalhou
 from .selectors import SeletorNaoEncontrado
@@ -596,6 +597,12 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
     """Um browser, um perfil, um login: todos os jobs daquele provedor."""
     sel = provedores.seletores(provedor)
     ajustes = config.settings(provedor)
+    if controle.pausado_para(provedor):
+        # Pausado: nem abre o browser. A conta do site pode estar em uso por
+        # outra pessoa — o pior que a pipeline pode fazer e entrar no meio.
+        print(f"[identity] {provedor} PAUSADO ({controle.estado()['resumo']}); "
+              "nenhum job novo sera pego.", flush=True)
+        return 0, None
     if provedor == "digen" and not config.payoff_video_ativo(ajustes):
         print("[identity] payoff em video DESLIGADO (payoff_video=false em "
               "config/identity.json): o Digen nao e aberto; a montagem usa a "
@@ -616,7 +623,21 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
     concluidos = 0
     quebrou: Exception | None = None
     print(f"[identity] --- passada: {provedores.rotulo(provedor)} ---")
-    with contexto_persistente(headless=headless,
+    from contextlib import ExitStack
+
+    from .. import atividade, travas
+    nome_trava = travas.do_perfil(provedor, "builds")
+    pilha = ExitStack()
+    if not pilha.enter_context(travas.trava(nome_trava, esperar=15.0)):
+        pilha.close()
+        queue.reagendar(job["job_id"], f"perfil {nome_trava} em uso")
+        print(f"[identity] {provedores.rotulo(provedor)}: o perfil "
+              f"({nome_trava}) esta em uso por outro processo; esta passada "
+              "fica para a proxima rodada.")
+        return 0, None
+    pilha.enter_context(atividade.fabrica(
+        provedor, f"fila de {provedores.rotulo(provedor)}"))
+    with pilha, contexto_persistente(headless=headless,
                               profile=config.profile_dir(provedor)) as ctx:
         page = pagina(ctx)
         ensure_logged_in(page, ajustes, rng, sel=sel, provedor=provedor)
@@ -648,6 +669,11 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
                       "falha sozinho).")
 
         while job is not None:
+            if controle.parada_pedida():
+                print("[identity] parada pedida: encerrando depois deste job.",
+                      flush=True)
+                queue.reagendar(job["job_id"], "parada pedida pelo operador")
+                break
             atual["job_id"] = job["job_id"]
             try:
                 destino = processar(client, job, ajustes, rerender, preview)
@@ -723,13 +749,37 @@ def observar(headless: bool = False, rerender: bool = True,
     vazia mantem o intervalo normal, senao um job novo demoraria minutos para
     ser notado.
     """
+    if queue.ha_worker():
+        # Sair, e nao ficar em loop cedendo a trava: o processo ocioso nao
+        # ajuda em nada e ainda esconde qual worker esta realmente de pe.
+        print("[identity] JA existe um worker de pe; este nao vai subir. "
+              "(Para trocar de worker, pare o outro primeiro.)")
+        return
     ajustes = config.settings()
     intervalo = float(ajustes.get("watch_interval", 30))
     teto = float(ajustes.get("watch_backoff_max", 600))
     improdutivas = 0
     print(f"[identity] modo watch (poll a cada {intervalo:.0f}s). Ctrl+C para sair.")
+    atual = controle.estado()
+    if atual["situacao"] != controle.RODANDO:
+        print(f"[identity] atencao: a pipeline esta {atual['resumo']}.")
     try:
+        anunciado = None
         while True:
+            if controle.parada_pedida():
+                print("[identity] parada pedida: o watch vai encerrar.")
+                controle.limpar_parada()
+                break
+            situacao = controle.estado()
+            if situacao["situacao"] == controle.PAUSADO:
+                # Pausado nao e rodada improdutiva: nao infla o recuo, so
+                # espera o intervalo normal e avisa UMA vez por mudanca.
+                if situacao["resumo"] != anunciado:
+                    print(f"[identity] {situacao['resumo']} — esperando.")
+                    anunciado = situacao["resumo"]
+                time.sleep(intervalo)
+                continue
+            anunciado = None
             havia = _tem_pendente()
             feitos = drenar(headless=headless, rerender=rerender, preview=preview)
             if feitos or not havia:

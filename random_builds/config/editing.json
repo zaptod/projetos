@@ -412,5 +412,7 @@
         "nomes": true,
         "plano": true
     },
-    "roletas_rapidas_peso_max": 45
+    "roletas_rapidas_peso_max": 45,
+    "_comment_roletas_cheias": "Orcamento de giros CHEIOS por video (o resto passa em relampago). Medido em 31/08: com a regra antiga sobravam 11,8 giros cheios = 40,4 s da mesma roda roxa, 55% do video. Ficam cheias as rolagens que sao noticia (escolhida a dedo, com reacao, ou de maior peso ate o teto).",
+    "roletas_cheias_max": 4
 }

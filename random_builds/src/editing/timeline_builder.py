@@ -157,6 +157,7 @@ class TimelineBuilder:
         rolls = generation["rolls"]
         decisions = director.decide_rolls(rng, rolls)
 
+        self._marcar_cheias(rolls, decisions)
         gancho_a, gancho_b = self._ganchos(rng, generation, out_dir, rolls,
                                           decisions, pedido, escolhas)
         push(gancho_a, durations["hook"])
@@ -196,10 +197,18 @@ class TimelineBuilder:
         push({"type": "final", "build": build,
               "caption": self.captions.for_final(rng, build)},
              durations["final"])
-        push({"type": "outro",
-              "caption": (self.captions.outro_com_estreia(rng, pedido) if luta
-                          else self.captions.outro(rng, pedido))},
-             durations["outro"])
+        outro = {"type": "outro",
+                 "caption": (self.captions.outro_com_estreia(rng, pedido) if luta
+                             else self.captions.outro(rng, pedido))}
+        final_img = self._imagem_do_final(out_dir)
+        if final_img is not None:
+            outro["asset"] = {"path": str(final_img), "synthetic": False,
+                              "media": identity_slots.IMAGEM}
+            outro["fit"] = "contain"
+            outro["motion"] = {"zoom": [1.06, 1.0],
+                               "centro": [[0.5, 0.42], [0.5, 0.42]]}
+            outro["flash_frames"] = 0
+        push(outro, durations["outro"])
 
         self._marcar_avatares(events_out, generation)
         plano = {
@@ -280,6 +289,22 @@ class TimelineBuilder:
         gancho_b = candidatos[1] if cfg.get("ab", False) and len(candidatos) > 1 else None
         return gancho_a, (dict(gancho_b) if gancho_b else None)
 
+    def _imagem_do_final(self, out_dir: Path | None) -> Path | None:
+        """A imagem que fica atras do CTA: o build PRONTO, de preferencia.
+
+        Ao contrario do gancho, aqui a referencia (personagem COM a arma) e
+        a melhor escolha mesmo quando ela ja apareceu: e a foto do produto
+        acabado, e o CTA pede o like justamente sobre ela.
+        """
+        for slot in (identity_slots.REFERENCIA, identity_slots.CHARACTER,
+                     identity_slots.WEAPON):
+            achado = self._artefato(out_dir, slot)
+            # `_artefato` devolve (arquivo, midia) — a midia vem da EXTENSAO,
+            # entao um slot de imagem pode trazer mp4 de geracao antiga.
+            if achado is not None and achado[1] == identity_slots.IMAGEM:
+                return achado[0]
+        return None
+
     def _imagem_do_gancho(self, out_dir: Path | None) -> Path | None:
         """Referencia (personagem COM a arma) > personagem > arma — a menos que
         a referencia va ser o proprio payoff (sem video do Digen): ai o gancho
@@ -305,15 +330,52 @@ class TimelineBuilder:
         return melhor
 
     # ---------------------------------------------------------------- roletas
+    def _marcar_cheias(self, rolls: list, decisions: list) -> None:
+        """Decide QUAIS roletas merecem o giro cheio. As outras passam voando.
+
+        A regra antiga era ao contrario ("relampago se for numero de peso
+        baixo") e so 16% das roletas passavam rapido: sobravam 11,8 giros
+        cheios por video, 40,4 s da MESMA roda roxa — 55% do tempo de tela,
+        em blocos de ate 31 s seguidos. O espectador nao abandona porque a
+        roleta e ruim; abandona porque a decima roleta e identica a primeira.
+
+        Agora o giro cheio e um ORCAMENTO (`roletas_cheias_max`): ficam com
+        ele as rolagens que sao NOTICIA — as escolhidas a dedo, as que
+        ganharam reacao, e as de maior peso editorial ate o teto. O resto e
+        relampago, que continua mostrando o resultado (nada se perde da
+        build) em 1,05 s em vez de 3,43 s.
+        """
+        teto = int(self.config.get("roletas_cheias_max", 4))
+        obrigatorias, candidatas = set(), []
+        for roll, decision in zip(rolls, decisions):
+            chave = (roll.get("entity"), roll.get("roulette_id"))
+            if roll.get("escolhido") or decision.get("reaction"):
+                obrigatorias.add(chave)
+            else:
+                candidatas.append((float(decision.get("weight", 0)), chave))
+        # maior peso primeiro; empate resolve pela ordem de rolagem (estavel)
+        candidatas.sort(key=lambda par: -par[0])
+        sobra = max(0, teto - len(obrigatorias))
+        self._cheias = obrigatorias | {c for _p, c in candidatas[:sobra]}
+
     def _duracoes_da_roleta(self, roll: dict, decision: dict,
                             durations: dict) -> tuple[float, float, bool]:
         """(giro, resultado, rapida): tempo de tela proporcional ao peso.
 
-        Roleta-relampago so para atributo numerico (`roletas_rapidas`) cujo
-        peso editorial e baixo (`roletas_rapidas_peso_max`), que nao foi
-        escolhido a dedo e nao ganhou reacao: tudo que e noticia volta ao
-        giro cheio, com a tensao durante o giro.
+        O giro cheio e o que `_marcar_cheias` escolheu; todo o resto passa
+        em relampago. Sem a marcacao (chamada fora do fluxo normal), cai na
+        regra antiga para nao mudar o comportamento de quem chama direto.
         """
+        cheias = getattr(self, "_cheias", None)
+        if cheias is not None:
+            rapida = ((roll.get("entity"), roll.get("roulette_id")) not in cheias
+                      and "roulette_spin_fast" in durations)
+            if rapida:
+                return (float(durations["roulette_spin_fast"]),
+                        float(durations.get("roulette_result_fast", 0.55)), True)
+            chave = ("roulette_result_extreme" if decision["extreme"]
+                     else "roulette_result")
+            return float(durations["roulette_spin"]), float(durations[chave]), False
         rapidas = set(self.config.get("roletas_rapidas") or [])
         peso_max = float(self.config.get("roletas_rapidas_peso_max", 0))
         rapida = (roll.get("roulette_id") in rapidas

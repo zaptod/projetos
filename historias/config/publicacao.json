@@ -1,0 +1,35 @@
+{
+    "pasta_export": "outputs/_publicar",
+    "titulos": {
+        "historia": "{titulo}",
+        "parte": "{titulo}"
+    },
+    "descricoes": {
+        "historia": "{titulo}\n\nHistoria ficticia, narrada por IA. Nomes e situacoes sao invencao.\n\nO que voce faria?",
+        "parte": "{serie}\n\nParte {parte} de {partes}.\n\nHistoria ficticia, narrada por IA. Nomes e situacoes sao invencao.\n\nO que voce faria?"
+    },
+    "hashtags": {
+        "historia": [
+            "#historias",
+            "#relatos",
+            "#reddit",
+            "#storytime",
+            "#shorts"
+        ]
+    },
+    "youtube": {
+        "categoria": "24",
+        "visibilidade": "private",
+        "para_criancas": false,
+        "_comment_shorts": "O YouTube so trata video vertical como SHORT ate 3 min (180 s). Passou disso ele vira video normal e sai da esteira de Shorts. Com `cortar_para_shorts`, a publicacao corta sozinha em partes equilibradas, sempre numa TROCA DE CENA (nunca no meio de uma fala). Para desligar: false, ou shorts_max_s = 0.",
+        "cortar_para_shorts": true,
+        "shorts_max_s": 180,
+        "_comment_modo": "COMO publicar: 'navegador' (padrao) sobe pelo YouTube Studio com o perfil de Chrome; 'api' usa o OAuth. Medido em 01/09/2026: a API recusou por cota (uploadLimitExceeded) num canal de um dia enquanto o Studio aceitava normalmente — sao baldes separados. A API continua sendo usada para LER (metricas, identidade do canal), so nao para publicar.",
+        "modo": "navegador"
+    },
+    "um_clique": {
+        "_comment": "O botao Publicar serie do painel. YouTube sobe TODAS as partes agendadas; o TikTok POSTA de verdade (sem parada de seguranca - decisao de 31/08), uma parte por clique, porque nao ha agendamento na automacao e despejar a serie de uma vez mata a sequencia.",
+        "tiktok": true,
+        "tiktok_partes_por_clique": 1
+    }
+}

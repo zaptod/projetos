@@ -210,10 +210,19 @@ class YouTubeTests(unittest.TestCase):
         self.assertIn("--com-upload", str(erro.exception))
 
     def test_sem_credencial_diz_o_que_fazer(self):
+        """A mensagem tem que dizer ONDE resolver, e em QUAL canal.
+
+        Desde que cada canal tem a propria conta, "configure o OAuth" nao
+        basta: o mesmo erro pode ser da conta de builds ou da de historias,
+        e sao arquivos de credencial diferentes.
+        """
         with patch.object(youtube, "carregar_credenciais", lambda *a, **k: None):
             with self.assertRaises(youtube.PublicacaoFalhou) as erro:
                 youtube.publicar(self._video(), config=CONFIG)
-        self.assertIn("OAuth", str(erro.exception))
+        mensagem = str(erro.exception)
+        self.assertIn("Contas", mensagem)
+        self.assertIn("Autorizar", mensagem)
+        self.assertIn("builds", mensagem)
 
     def test_visibilidade_invalida_nao_chega_na_rede(self):
         with self.assertRaises(youtube.PublicacaoFalhou):
