@@ -31,8 +31,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.roteiro import narrador                                # noqa: E402
-from src.video import timeline                                  # noqa: E402
+from contos.roteiro import narrador                                # noqa: E402
+from contos.video import timeline                                  # noqa: E402
 
 RENDER = timeline.carregar_config("render.json")
 
@@ -201,7 +201,7 @@ class RitmoVisualTests(unittest.TestCase):
 class TrilhaTests(unittest.TestCase):
     def test_a_cama_da_historia_nao_tem_bateria(self):
         """A trilha de builds é trap; sob um desabafo ela vira videoclipe."""
-        from src import compartilhado
+        from contos import compartilhado
         trilha = compartilhado.trilha()
         if not trilha.disponivel():
             self.skipTest("numpy ausente")

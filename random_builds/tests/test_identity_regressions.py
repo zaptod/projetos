@@ -28,17 +28,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.assets.catalog import AssetCatalog                         # noqa: E402
-from src.assets.selector import AssetSelector                       # noqa: E402
-from src.content.caption_generator import CaptionGenerator          # noqa: E402
-from src.editing.timeline_builder import TimelineBuilder            # noqa: E402
-from src.generation.random_engine import RandomEngine               # noqa: E402
-from src.generation.session_generator import SessionGenerator, load_config  # noqa: E402
-from src.identity import prompt as identity_prompt                  # noqa: E402
-from src.identity import slots as identity_slots                    # noqa: E402
-from src.identity import queue as identity_queue                    # noqa: E402
-from src.identity import selectors                                  # noqa: E402
-from src.video.renderer import VideoRenderer                        # noqa: E402
+from builds.assets.catalog import AssetCatalog                         # noqa: E402
+from builds.assets.selector import AssetSelector                       # noqa: E402
+from builds.content.caption_generator import CaptionGenerator          # noqa: E402
+from builds.editing.timeline_builder import TimelineBuilder            # noqa: E402
+from builds.generation.random_engine import RandomEngine               # noqa: E402
+from builds.generation.session_generator import SessionGenerator, load_config  # noqa: E402
+from builds.identity import prompt as identity_prompt                  # noqa: E402
+from builds.identity import slots as identity_slots                    # noqa: E402
+from builds.identity import queue as identity_queue                    # noqa: E402
+from builds.identity import selectors                                  # noqa: E402
+from builds.video.renderer import VideoRenderer                        # noqa: E402
 
 SEED = 20260822
 
@@ -85,7 +85,7 @@ class PromptTests(unittest.TestCase):
 
     def test_todo_encantamento_do_catalogo_tem_elemento_e_aura(self):
         """Encantamento sem aura mapeada geraria prompt com descricao vazia."""
-        from src.nf_bridge.loader import LISTA_ENCANTAMENTOS
+        from builds.nf_bridge.loader import LISTA_ENCANTAMENTOS
         for encantamento in LISTA_ENCANTAMENTOS:
             elemento = identity_prompt.elemento_da_arma(
                 {"afinidade_elemento": encantamento})
@@ -95,7 +95,7 @@ class PromptTests(unittest.TestCase):
 
     def test_toda_categoria_canonica_esta_traduzida(self):
         """Categoria nova no neural_fights sem traducao vazaria portugues."""
-        from src.nf_bridge import loader
+        from builds.nf_bridge import loader
         traducoes = self.ajustes["traducoes"]
         for classe in loader.LISTA_CLASSES:
             self.assertIn(classe, traducoes["classe"])
@@ -585,7 +585,7 @@ class ModeloTests(unittest.TestCase):
         foi configurado antes e o video sai com os padroes do modelo.
         """
         import inspect
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
         corpo = inspect.getsource(DigenClient.submit_prompt)
         ordem = [corpo.index(f"self._ajustar_{c}(")
                  for c in ("modelo", "duracao", "resolucao", "aspecto")]
@@ -604,7 +604,7 @@ class ModeloTests(unittest.TestCase):
                              f"{chave} deveria pedir o maximo")
 
     def test_config_de_controle_aceita_string_ou_lista(self):
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
         self.assertEqual(["max"], DigenClient._preferencias("max"))
         self.assertEqual(["8s", "5s"], DigenClient._preferencias(["8s", "5s"]))
         self.assertEqual([], DigenClient._preferencias(None))

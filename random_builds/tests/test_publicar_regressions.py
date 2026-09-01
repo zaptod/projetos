@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.publicar import catalogo, youtube                    # noqa: E402
+from builds.publicar import catalogo, youtube                    # noqa: E402
 
 CONFIG = {
     "titulos": {"build": "{personagem}, {classe} — build {nota}/100",

@@ -32,8 +32,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.assets.importer import list_reactions  # noqa: E402
-from src.assets.triagem import SessaoTriagem  # noqa: E402
+from builds.assets.importer import list_reactions  # noqa: E402
+from builds.assets.triagem import SessaoTriagem  # noqa: E402
 
 
 class TriagemTestCase(unittest.TestCase):

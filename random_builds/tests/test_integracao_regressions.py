@@ -35,21 +35,21 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.assets.catalog import AssetCatalog                            # noqa: E402
-from src.assets.selector import AssetSelector                          # noqa: E402
-from src.character import nomes                                        # noqa: E402
-from src.content import caption_generator as cg                        # noqa: E402
-from src.content.caption_generator import CaptionGenerator, pedido_de  # noqa: E402
-from src.editing.timeline_builder import TimelineBuilder               # noqa: E402
-from src.generation.random_engine import RandomEngine                  # noqa: E402
-from src.generation.session_generator import (SessionGenerator,        # noqa: E402
+from builds.assets.catalog import AssetCatalog                            # noqa: E402
+from builds.assets.selector import AssetSelector                          # noqa: E402
+from builds.character import nomes                                        # noqa: E402
+from builds.content import caption_generator as cg                        # noqa: E402
+from builds.content.caption_generator import CaptionGenerator, pedido_de  # noqa: E402
+from builds.editing.timeline_builder import TimelineBuilder               # noqa: E402
+from builds.generation.random_engine import RandomEngine                  # noqa: E402
+from builds.generation.session_generator import (SessionGenerator,        # noqa: E402
                                               load_config)
-from src.identity import prompt as P                                   # noqa: E402
-from src.nf_bridge import cobertura as cob                             # noqa: E402
-from src.nf_bridge import exporter                                     # noqa: E402
-from src.nf_bridge import loader as nf                                 # noqa: E402
-from src.nf_bridge import roulette_factory as rf                       # noqa: E402
-from src.pipeline.controller import PipelineController                 # noqa: E402
+from builds.identity import prompt as P                                   # noqa: E402
+from builds.nf_bridge import cobertura as cob                             # noqa: E402
+from builds.nf_bridge import exporter                                     # noqa: E402
+from builds.nf_bridge import loader as nf                                 # noqa: E402
+from builds.nf_bridge import roulette_factory as rf                       # noqa: E402
+from builds.pipeline.controller import PipelineController                 # noqa: E402
 
 SEED = 4242
 # Escapado de proposito: o fonte deste projeto e ASCII puro (console cp1252).
@@ -196,7 +196,7 @@ class CosturaEstreiaMelhorDeTests(unittest.TestCase):
     """
 
     def _rodar(self, vencedores: tuple[str, ...]) -> dict:
-        from src.pipeline import controller as mod
+        from builds.pipeline import controller as mod
 
         pedido = {}
         registrados = []
@@ -239,13 +239,13 @@ class CosturaEstreiaMelhorDeTests(unittest.TestCase):
         with mock.patch.object(mod, "FightSession", FalsaSessao, create=True), \
                 mock.patch.object(mod.PipelineController, "_entregar_luta",
                                   lambda *a, **k: None), \
-                mock.patch("src.arena.ledger.Ledger", lambda *a, **k: FalsoLedger()), \
-                mock.patch("src.arena.ledger.escolher_adversario",
+                mock.patch("builds.arena.ledger.Ledger", lambda *a, **k: FalsoLedger()), \
+                mock.patch("builds.arena.ledger.escolher_adversario",
                            lambda *a, **k: "Rival"), \
-                mock.patch("src.tournament.runner.FightSession", FalsaSessao), \
-                mock.patch("src.tournament.runner.fichas_do_banco",
+                mock.patch("builds.tournament.runner.FightSession", FalsaSessao), \
+                mock.patch("builds.tournament.runner.fichas_do_banco",
                            lambda: {"Novo": {}, "Rival": {}}), \
-                mock.patch("src.tournament.runner.personagens_gerados",
+                mock.patch("builds.tournament.runner.personagens_gerados",
                            lambda: ["Novo", "Rival"]):
             pasta = controller._gravar_estreia(
                 tmp, {"seed": 5, "generation_id": "generation_09999"},

@@ -29,17 +29,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.assets.catalog import CATEGORIES, AssetCatalog                 # noqa: E402
-from src.assets.selector import FALLBACKS, AssetSelector                # noqa: E402
-from src.content.caption_generator import CaptionGenerator              # noqa: E402
-from src.editing import artifacts                                       # noqa: E402
-from src.editing.timeline_builder import TimelineBuilder                # noqa: E402
-from src.evaluation import reaction_classifier as rc                    # noqa: E402
-from src.generation.random_engine import RandomEngine                   # noqa: E402
-from src.generation.session_generator import (SessionGenerator,         # noqa: E402
+from builds.assets.catalog import CATEGORIES, AssetCatalog                 # noqa: E402
+from builds.assets.selector import FALLBACKS, AssetSelector                # noqa: E402
+from builds.content.caption_generator import CaptionGenerator              # noqa: E402
+from builds.editing import artifacts                                       # noqa: E402
+from builds.editing.timeline_builder import TimelineBuilder                # noqa: E402
+from builds.evaluation import reaction_classifier as rc                    # noqa: E402
+from builds.generation.random_engine import RandomEngine                   # noqa: E402
+from builds.generation.session_generator import (SessionGenerator,         # noqa: E402
                                               load_config)
-from src.identity import identity_model, slots                          # noqa: E402
-from src.identity import prompt as identity_prompt                      # noqa: E402
+from builds.identity import identity_model, slots                          # noqa: E402
+from builds.identity import prompt as identity_prompt                      # noqa: E402
 
 EDICAO = load_config("editing.json")
 
@@ -414,7 +414,7 @@ class EspacoCompartilhadoTests(unittest.TestCase):
 
     @staticmethod
     def _client(cards):
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
         cliente = DigenClient.__new__(DigenClient)
         cliente.page = _PaginaFake(cards)
         return cliente
@@ -438,7 +438,7 @@ class EspacoCompartilhadoTests(unittest.TestCase):
 
     def test_ambiguidade_persistente_vira_erro_em_vez_de_palpite(self):
         """Dois cards novos para um video pedido: baixar no chute e pior."""
-        from src.identity.client import GeracaoFalhou
+        from builds.identity.client import GeracaoFalhou
         cliente = self._client(["x", "y"])
         self.assertIsNone(cliente._indice_do_novo([]))
         self.assertIsNone(cliente._indice_do_novo([]))
@@ -446,7 +446,7 @@ class EspacoCompartilhadoTests(unittest.TestCase):
             cliente._indice_do_novo([])
 
     def test_espaco_so_e_reaproveitado_se_der_para_distinguir(self):
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
         self.assertTrue(DigenClient._distinguiveis([]))
         self.assertTrue(DigenClient._distinguiveis(["a", "b"]))
         self.assertFalse(DigenClient._distinguiveis(["a", "a"]))
@@ -457,18 +457,18 @@ class PresetsTests(unittest.TestCase):
     """Duracao e resolucao sao pedidas POR SLOT - e conferidas."""
 
     def setUp(self):
-        from src.identity import config as icfg
+        from builds.identity import config as icfg
         self.ajustes = icfg.settings()
 
     def test_todo_slot_tem_duracao_declarada(self):
-        from src.identity.worker import preset_do_slot
+        from builds.identity.worker import preset_do_slot
         for slot in slots.SLOTS:
             self.assertTrue(preset_do_slot(self.ajustes, "duracao", slot), slot)
 
     def test_duracao_pedida_cabe_na_janela_da_montagem(self):
         """Pedir 15 s para um slot que a edicao corta em 4 e gerar para o lixo."""
-        from src.identity.selectors import valor_numerico
-        from src.identity.worker import preset_do_slot
+        from builds.identity.selectors import valor_numerico
+        from builds.identity.worker import preset_do_slot
         janelas = EDICAO["identity_slots"]
         for slot in slots.SLOTS:
             preferencia = preset_do_slot(self.ajustes, "duracao", slot)
@@ -484,16 +484,16 @@ class PresetsTests(unittest.TestCase):
 
     def test_max_vale_em_qualquer_posicao_da_lista(self):
         """'max' no fim da lista era texto de menu que nunca existe."""
-        from src.identity import selectors
+        from builds.identity import selectors
         for slot in slots.SLOTS:
-            from src.identity.worker import preset_do_slot
+            from builds.identity.worker import preset_do_slot
             preferencia = preset_do_slot(self.ajustes, "duracao", slot)
             if isinstance(preferencia, list) and selectors.MAXIMO in preferencia:
                 self.assertNotEqual(selectors.MAXIMO, preferencia[-1:][0:1],
                                     "lista so com max nao e lista")
 
     def test_proporcao_deitada_e_reconhecida(self):
-        from src.identity import selectors
+        from builds.identity import selectors
         self.assertTrue(selectors.valor_deitado("16:9"))
         self.assertTrue(selectors.valor_deitado("4:3"))
         self.assertFalse(selectors.valor_deitado("9:16"))
@@ -519,7 +519,7 @@ class ConferenciaDePresetTests(unittest.TestCase):
 
     def setUp(self):
         import random as _random
-        from src.identity import client as client_mod
+        from builds.identity import client as client_mod
         self.mod = client_mod
         self._pausa = client_mod.pausa_humana
         client_mod.pausa_humana = lambda *a, **k: None

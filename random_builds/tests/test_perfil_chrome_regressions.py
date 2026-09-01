@@ -28,7 +28,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.identity import browser                                # noqa: E402
+from builds.identity import browser                                # noqa: E402
 
 # O que NUNCA pode ser apagado: e aqui que mora a sessao.
 SAGRADOS = ("Network/Cookies", "Login Data", "Preferences",

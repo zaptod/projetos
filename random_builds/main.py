@@ -37,13 +37,13 @@ from __future__ import annotations
 
 import argparse
 
-from src.identity.config import PROVEDORES as PROVEDORES_LOGIN
-from src.pipeline.controller import PipelineController
+from builds.identity.config import PROVEDORES as PROVEDORES_LOGIN
+from builds.pipeline.controller import PipelineController
 
 
 def _publicar(args) -> int:
     """Listar / exportar / enviar. Sem id, lista tudo o que existe pronto."""
-    from src.publicar import catalogo
+    from builds.publicar import catalogo
 
     videos = catalogo.listar()
     if args.origem:
@@ -85,7 +85,7 @@ def _publicar(args) -> int:
         print(f"texto:     {destino.with_suffix('.txt')}")
         feito = True
     if args.youtube:
-        from src.publicar import cortes, youtube
+        from builds.publicar import cortes, youtube
         # Passou dos 3 min, o YouTube tira o video da esteira de Shorts. O
         # corte acontece AQUI, na hora de publicar, e nas trocas de cena.
         pedacos = cortes.preparar(video, limite=cortes.limite(), log=print)
@@ -103,7 +103,7 @@ def _publicar(args) -> int:
             print(f"YouTube: {url}")
         feito = True
     if args.tiktok:
-        from src.publicar import tiktok
+        from builds.publicar import tiktok
         try:
             print(f"TikTok: {tiktok.publicar(video, postar=args.postar or None)}")
         except tiktok.TikTokFalhou as exc:
@@ -211,7 +211,7 @@ def main() -> None:
     imp = sub.add_parser("import-reactions",
                          help="importa videos de reacao com ID sequencial")
     imp.add_argument("source", help="pasta (ou arquivo) com os videos")
-    from src.assets.catalog import CATEGORIES
+    from builds.assets.catalog import CATEGORIES
     imp.add_argument("--categoria", required=True, choices=CATEGORIES,
                      help="categoria que esses videos substituem")
     imp.add_argument("--move", action="store_true",
@@ -235,7 +235,7 @@ def main() -> None:
                         help="despeja QUALQUER pagina, sem conferir seletor "
                              "conhecido (para site que o projeto ainda nao "
                              "conhece)")
-    from src.identity.config import PROVEDORES
+    from builds.identity.config import PROVEDORES
     iprobe.add_argument("--provedor", choices=sorted(PROVEDORES), default=None,
                         help="qual perfil de browser usar (padrao: digen)")
     iprobe.add_argument("--esperar", type=float, default=0.0, metavar="SEGUNDOS",
@@ -300,14 +300,14 @@ def main() -> None:
     irun = isub.add_parser("run",
                            help="enfileira os clipes de UMA geracao e processa agora")
     irun.add_argument("generation_id", help="ex.: generation_00011")
-    from src.identity.slots import SLOTS
+    from builds.identity.slots import SLOTS
     irun.add_argument("--slot", choices=SLOTS, default=None,
                       help="so este clipe (padrao: os tres)")
     irun.add_argument("--headless", action="store_true")
     irun.add_argument("--no-rerender", action="store_true")
     irun.add_argument("--preview", action="store_true")
 
-    from src.identity.slots import JOBS
+    from builds.identity.slots import JOBS
     iaud = isub.add_parser(
         "auditar",
         help="prova de origem de cada artefato (as contas dos sites sao "
@@ -455,7 +455,7 @@ def main() -> None:
         controller.gerar_trilha(regerar=args.regerar, seed=args.seed)
         return
     if args.command == "metricas":
-        from src.publicar import metricas
+        from builds.publicar import metricas
         raise SystemExit(metricas.cli(atualizar=args.atualizar, como_json=args.json))
     if args.command == "reactions":
         controller.reactions_cli()
@@ -471,7 +471,7 @@ def main() -> None:
     if args.command == "fluxo":
         import json as _json
 
-        from src.pipeline import fluxo
+        from builds.pipeline import fluxo
         dados = fluxo.snapshot(limite=args.limite or None)
         if args.json:
             print(_json.dumps(dados, ensure_ascii=False, indent=2, default=str))
@@ -479,7 +479,7 @@ def main() -> None:
         # Codigo de saida para agendador: 1 quando ha alerta esperando acao.
         raise SystemExit(1 if fluxo.imprimir(dados) else 0)
 
-    from src.generation import escolhas as mod_escolhas
+    from builds.generation import escolhas as mod_escolhas
 
     if args.atributos:
         print("Atributos que dao para escolher (--fixar atributo=valor):\n")
@@ -522,7 +522,7 @@ def _controle(acao: str, args) -> int:
     Mesma funcao para `main.py pausar` e `main.py identity pausar`: um
     comportamento so, dois caminhos de digitacao.
     """
-    from src.identity import controle
+    from builds.identity import controle
 
     if acao == "pausar":
         estado = controle.pausar(getattr(args, "provedor", None) or controle.TUDO,
@@ -554,7 +554,7 @@ def _cobertura(args) -> None:
     """
     import json as _json
 
-    from src.nf_bridge import cobertura as cob
+    from builds.nf_bridge import cobertura as cob
     dados = cob.cobertura()
     if args.json:
         print(_json.dumps(dados, ensure_ascii=False, indent=2))
@@ -569,13 +569,13 @@ def _cobertura(args) -> None:
 def _identity(args, controller) -> None:
     """Subcomandos de identidade.
 
-    Import tardio: `src.identity` puxa patchright, que so quem usa o Digen
+    Import tardio: `builds.identity` puxa patchright, que so quem usa o Digen
     precisa ter instalado - `generate-video` continua rodando sem ele.
     """
-    from src.identity import queue
+    from builds.identity import queue
 
     if args.identity_command == "doctor":
-        from src.identity import health
+        from builds.identity import health
         locais = health.checar_local()
         health.imprimir(locais, "DIAGNOSTICO LOCAL")
         estados = [health.pior_estado(locais)]
@@ -598,11 +598,11 @@ def _identity(args, controller) -> None:
         return
 
     if args.identity_command == "status":
-        from src.identity import status
+        from builds.identity import status
         raise SystemExit(1 if status.imprimir() else 0)
 
     if args.identity_command == "history":
-        from src.identity import history
+        from builds.identity import history
         eventos = history.ler(limite=args.n)
         if not eventos:
             print("Sem historico ainda.")
@@ -635,7 +635,7 @@ def _identity(args, controller) -> None:
         return
 
     if args.identity_command == "auditar":
-        from src.identity import auditoria
+        from builds.identity import auditoria
         linhas = auditoria.classificar(args.generation_id)
         suspeitos = auditoria.imprimir(linhas)
         if args.quarentenar_suspeitos:
@@ -648,12 +648,12 @@ def _identity(args, controller) -> None:
         raise SystemExit(1 if suspeitos else 0)
 
     if args.identity_command == "aprovar":
-        from src.identity import auditoria
+        from builds.identity import auditoria
         raise SystemExit(0 if auditoria.aprovar(
             args.generation_id, args.slot, args.motivo) else 1)
 
     if args.identity_command == "quarentenar":
-        from src.identity import auditoria
+        from builds.identity import auditoria
         movidos = auditoria.quarentenar(
             args.generation_id, args.slot, args.motivo,
             reenfileirar=not args.sem_reenfileirar,
@@ -661,9 +661,9 @@ def _identity(args, controller) -> None:
         raise SystemExit(0 if movidos else 1)
 
     if args.identity_command == "login":
-        from src.identity import config as icfg
-        from src.identity.browser import contexto_persistente, montou, pagina
-        from src.identity.session import ensure_logged_in
+        from builds.identity import config as icfg
+        from builds.identity.browser import contexto_persistente, montou, pagina
+        from builds.identity.session import ensure_logged_in
         provedor = getattr(args, "provedor", "digen")
         canal = getattr(args, "canal", "builds")
         if provedor == "dreamface":
@@ -672,7 +672,7 @@ def _identity(args, controller) -> None:
             # credencial aqui, e nao deveria haver: quem digita a senha e
             # voce, e o perfil guarda a sessao daí em diante.
             import time as _t
-            from src.identity import dreamface_selectors as dsel
+            from builds.identity import dreamface_selectors as dsel
             perfil = icfg.profile_dir(provedor, canal=canal)
             with contexto_persistente(profile=perfil) as ctx:
                 page = pagina(ctx)
@@ -690,7 +690,7 @@ def _identity(args, controller) -> None:
                       "navegador no meio da sua digitacao.")
                 # A sessao e detectada pelo SUMICO da tela de login, nao pela
                 # URL: o modal abre e fecha sem mudar de endereco.
-                from src.identity import selectors as _sel
+                from builds.identity import selectors as _sel
                 limite = _t.time() + 900
                 while _t.time() < limite:
                     _t.sleep(5)
@@ -717,17 +717,17 @@ def _identity(args, controller) -> None:
         return
 
     if args.identity_command == "probe":
-        from src.identity import probe
+        from builds.identity import probe
         probe.run(url=args.url, provedor=args.provedor, esperar=args.esperar)
         return
 
     if args.identity_command == "run":
         import json
         from pathlib import Path
-        from src.identity import config as icfg
-        from src.identity import slots
-        from src.identity.identity_model import gravar
-        from src.identity.prompt import build_prompts
+        from builds.identity import config as icfg
+        from builds.identity import slots
+        from builds.identity.identity_model import gravar
+        from builds.identity.prompt import build_prompts
         caminho = Path("outputs") / args.generation_id / "generation.json"
         if not caminho.is_file():
             raise SystemExit(f"{caminho} nao existe.")
@@ -741,7 +741,7 @@ def _identity(args, controller) -> None:
         print(f"[identity] {args.generation_id} enfileirado: "
               + ", ".join(alvos))
 
-    from src.identity import worker
+    from builds.identity import worker
     alvo = worker.observar if getattr(args, "watch", False) else worker.drenar
     try:
         alvo(headless=args.headless, rerender=not args.no_rerender,

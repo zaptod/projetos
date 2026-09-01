@@ -8,7 +8,7 @@ mana) sao aplicados por cima. A insercao usa salvar_database
 
 O NOME nao vem mais das fabricas: elas colam adjetivo no fim ("Katana Comum",
 "Lucius a Sombria") e nao sabem do nome pedido no comentario. O nome oficial e
-gerado, depois sobrescrito pela camada src.character.nomes -- o jogo continua
+gerado, depois sobrescrito pela camada builds.character.nomes -- o jogo continua
 recebendo um registro identico em estrutura, so com outro texto na chave.
 """
 from __future__ import annotations

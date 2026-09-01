@@ -99,8 +99,8 @@ def cmd_roteiro(args, pipeline) -> int:
 
 
 def cmd_gerar(args, pipeline) -> int:
-    from src.roteiro.gerar import GeracaoFalhou
-    from src.llm.cliente import LLMFalhou
+    from contos.roteiro.gerar import GeracaoFalhou
+    from contos.llm.cliente import LLMFalhou
     try:
         resultado = pipeline.gerar(provedor=args.provedor, partes=args.partes,
                                    cenas_por_parte=args.cenas, tema=args.tema,
@@ -116,7 +116,7 @@ def cmd_gerar(args, pipeline) -> int:
 
 
 def cmd_llm(args, pipeline) -> int:
-    from src.llm import probe
+    from contos.llm import probe
     if args.acao == "login":
         probe.login(args.provedor)
         return 0
@@ -125,7 +125,7 @@ def cmd_llm(args, pipeline) -> int:
 
 
 def cmd_imagens(args, pipeline) -> int:
-    from src.imagens.worker import NaoRodou
+    from contos.imagens.worker import NaoRodou
     try:
         resultado = pipeline.imagens(args.historia_id, limite=args.limite,
                                      headless=args.headless, parte=args.parte)
@@ -151,7 +151,7 @@ def cmd_tudo(args, pipeline) -> int:
 
 
 def cmd_modelos(args, pipeline) -> int:
-    from src.roteiro import modelo
+    from contos.roteiro import modelo
     for dados in modelo.listar(pipeline.roteiro_config):
         cenas = f"{dados['cenas']} cenas" if dados["cenas"] else "estrutura propria"
         print(f"  {dados['nome']:<14} {dados['rotulo']:<38} {cenas}")
@@ -188,7 +188,7 @@ def cmd_status(args, pipeline) -> int:
 
 
 def cmd_publicar(args, pipeline) -> int:
-    from src.publicar import catalogo
+    from contos.publicar import catalogo
     if args.serie or args.vistoriar:
         return _publicar_serie(args)
     videos = catalogo.listar()
@@ -240,7 +240,7 @@ def cmd_publicar(args, pipeline) -> int:
 def _publicar_serie(args) -> int:
     """A serie inteira: vistoria, sobe na ordem e agenda a sequencia."""
     from datetime import datetime
-    from src.publicar.serie import NaoPublicou, publicar as publicar_serie
+    from contos.publicar.serie import NaoPublicou, publicar as publicar_serie
     if not args.historia_id:
         print("diga qual historia: main.py publicar historia_00002 --serie")
         return 1
@@ -361,7 +361,7 @@ def main() -> int:
                      help="publica mesmo com problema na vistoria")
 
     args = parser.parse_args()
-    from src.pipeline.controller import Pipeline
+    from contos.pipeline.controller import Pipeline
     pipeline = Pipeline()
     acoes = {"prompt": cmd_prompt, "roteiro": cmd_roteiro, "gerar": cmd_gerar,
              "llm": cmd_llm, "imagens": cmd_imagens,

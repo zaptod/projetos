@@ -33,8 +33,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.character import lexico, nomes  # noqa: E402
-from src.nf_bridge import loader as nf  # noqa: E402
+from builds.character import lexico, nomes  # noqa: E402
+from builds.nf_bridge import loader as nf  # noqa: E402
 
 
 def _elemento(encantamento):
@@ -460,7 +460,7 @@ class Pipeline(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from src.generation.session_generator import SessionGenerator
+        from builds.generation.session_generator import SessionGenerator
         cls.session = SessionGenerator()
 
     def test_generation_traz_naming_e_nome_bom(self):
@@ -506,7 +506,7 @@ class Pipeline(unittest.TestCase):
         self.assertEqual(a["weapon"], b["weapon"])
 
     def test_cta_le_o_pedido(self):
-        from src.content.caption_generator import pedido_de
+        from builds.content.caption_generator import pedido_de
         g = self.session.generate(seed=99, nome_pedido="lyra",
                                   autor_pedido="@zeca")
         self.assertEqual(pedido_de(g)["nome"], "LYRA")
@@ -514,7 +514,7 @@ class Pipeline(unittest.TestCase):
 
 class Unicidade(unittest.TestCase):
     def test_nome_unico_continua_desambiguando(self):
-        from src.nf_bridge.exporter import _nome_unico
+        from builds.nf_bridge.exporter import _nome_unico
         usados = {"Erik Brasurro", "Erik Brasurro #2"}
         self.assertEqual(_nome_unico("Erik Brasurro", usados),
                          "Erik Brasurro #3")
@@ -536,7 +536,7 @@ class SemCiclo(unittest.TestCase):
     def test_nomes_nao_importa_identity_nem_editing(self):
         """Ciclo de import: nomes e chamado la de baixo, no exporter."""
         import ast
-        fonte = (RAIZ / "src" / "character" / "nomes.py").read_text()
+        fonte = (RAIZ / "builds" / "character" / "nomes.py").read_text()
         for no in ast.walk(ast.parse(fonte)):
             if isinstance(no, ast.ImportFrom):
                 self.assertNotIn("identity", no.module or "")
@@ -547,7 +547,7 @@ class SemCiclo(unittest.TestCase):
                     self.assertNotIn("editing", alias.name)
 
     def test_modulo_e_ascii_puro(self):
-        fonte = (RAIZ / "src" / "character" / "nomes.py").read_bytes()
+        fonte = (RAIZ / "builds" / "character" / "nomes.py").read_bytes()
         fonte.decode("ascii")
 
 

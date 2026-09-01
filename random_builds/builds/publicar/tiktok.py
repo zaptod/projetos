@@ -369,7 +369,7 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         if entrada is None:
             raise TikTokFalhou(
                 "não achei o campo de arquivo na página de upload. Rode "
-                "`python -m src.publicar.tiktok --sondar` para ver a tela.")
+                "`python -m builds.publicar.tiktok --sondar` para ver a tela.")
 
         entrada.set_input_files(str(caminho))
         passo(f"arquivo entregue ({caminho.name}); o TikTok está processando...")

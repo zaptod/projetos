@@ -27,17 +27,17 @@ PY = sys.executable
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 sys.path.insert(0, str(RANDOM_BUILDS))
-from src import atividade as atividade_reg  # noqa: E402
-from src import travas as travas_reg  # noqa: E402
-from src import contas as contas_reg  # noqa: E402
-from src.assets import importer as reacoes_importer  # noqa: E402
-from src.identity import controle as pipeline_controle  # noqa: E402
-from src.assets.catalog import CATEGORIES  # noqa: E402
-from src.assets.reaction_cli import CATEGORY_DESC  # noqa: E402
-from src.assets.triagem import SessaoTriagem  # noqa: E402
-from src.pipeline import fluxo  # noqa: E402
-from src.publicar import catalogo as publicar_catalogo  # noqa: E402
-from src.publicar import youtube as youtube_reg  # noqa: E402
+from builds import atividade as atividade_reg  # noqa: E402
+from builds import travas as travas_reg  # noqa: E402
+from builds import contas as contas_reg  # noqa: E402
+from builds.assets import importer as reacoes_importer  # noqa: E402
+from builds.identity import controle as pipeline_controle  # noqa: E402
+from builds.assets.catalog import CATEGORIES  # noqa: E402
+from builds.assets.reaction_cli import CATEGORY_DESC  # noqa: E402
+from builds.assets.triagem import SessaoTriagem  # noqa: E402
+from builds.pipeline import fluxo  # noqa: E402
+from builds.publicar import catalogo as publicar_catalogo  # noqa: E402
+from builds.publicar import youtube as youtube_reg  # noqa: E402
 
 # ------------------------------------------------------------------ tema
 BG = "#14121f"
@@ -695,7 +695,7 @@ class Painel(tk.Tk):
 
         As outras paginas sao FERRAMENTAS (cada uma faz uma coisa); esta e o
         MAPA. Ela nao roda nada por conta propria: le o disco e a fila (via
-        `src.pipeline.fluxo`, o mesmo do `main.py fluxo`) e, para cada build,
+        `builds.pipeline.fluxo`, o mesmo do `main.py fluxo`) e, para cada build,
         mostra o proximo passo com o botao que o executa.
         """
         self._titulo(pai, "Fluxo da pipeline — o que já saiu e o que falta")
@@ -1181,7 +1181,7 @@ class Painel(tk.Tk):
             saida = sp.run(
                 [PY, "-X", "utf8", "-c",
                  "import sys, json; sys.path.insert(0, '.');"
-                 "from src.publicar import catalogo;"
+                 "from contos.publicar import catalogo;"
                  "print(json.dumps(catalogo.resumo()))"],
                 cwd=str(HISTORIAS), capture_output=True, text=True,
                 encoding="utf-8", timeout=90, creationflags=NO_WINDOW)
@@ -1443,7 +1443,7 @@ class Painel(tk.Tk):
         BRANCA, só o esqueleto cinza, como se estivesse bloqueada. Medido em
         31/08/2026 — o perfil do TikTok tinha 1,1 GB acumulados.
         """
-        from src.identity.browser import limpar_cache
+        from builds.identity.browser import limpar_cache
         canal = self._pub_canal_atual()
         achou = False
         for servico in ("tiktok", "picasso", "digen"):
@@ -1470,7 +1470,7 @@ class Painel(tk.Tk):
         Isto CUSTA o login — por isso pergunta antes, ao contrário do resto
         da página. A pasta antiga não é apagada: vira `.quebrado-<data>`.
         """
-        from src.identity.browser import resetar_perfil
+        from builds.identity.browser import resetar_perfil
         canal = self._pub_canal_atual()
         conta = contas_reg.ativa("tiktok", canal)
         if not messagebox.askyesno(
@@ -1511,7 +1511,7 @@ class Painel(tk.Tk):
         """
         self._log("[canais] abrindo o YouTube para ver os canais desta "
                   "sessao — leva uns 30 s.")
-        self._rodar([PY, "-m", "src.publicar.youtube_web", "--canais"],
+        self._rodar([PY, "-m", "builds.publicar.youtube_web", "--canais"],
                     cwd=RANDOM_BUILDS, rotulo="canais do YouTube",
                     ao_terminar=self._pub_recarregar_contas)
 
@@ -1523,14 +1523,14 @@ class Painel(tk.Tk):
 
     def _pub_login_youtube_web(self):
         canal = self._pub_canal_atual()
-        self._rodar([PY, "-m", "src.publicar.youtube_web", "--login",
+        self._rodar([PY, "-m", "builds.publicar.youtube_web", "--login",
                      "--canal", canal],
                     cwd=RANDOM_BUILDS,
                     rotulo=f"login no YouTube Studio ({canal})")
 
     def _pub_login_tiktok(self):
         canal = self._pub_canal_atual()
-        self._rodar([PY, "-m", "src.publicar.tiktok", "--login",
+        self._rodar([PY, "-m", "builds.publicar.tiktok", "--login",
                      "--canal", canal],
                     cwd=RANDOM_BUILDS,
                     rotulo=f"login no TikTok ({canal})")
@@ -1656,7 +1656,7 @@ class Painel(tk.Tk):
         if all(atual):
             return atual
         try:
-            from src.publicar.youtube import carregar_credenciais
+            from builds.publicar.youtube import carregar_credenciais
             salvas = carregar_credenciais()
         except Exception:
             salvas = None
@@ -1694,11 +1694,11 @@ class Painel(tk.Tk):
                            + " (credenciais ocultas)")
 
     def _tiktok_login(self):
-        self._rodar([PY, "-m", "src.publicar.tiktok", "--login"],
+        self._rodar([PY, "-m", "builds.publicar.tiktok", "--login"],
                     cwd=RANDOM_BUILDS, rotulo="login no TikTok")
 
     def _tiktok_sondar(self):
-        self._rodar([PY, "-m", "src.publicar.tiktok", "--sondar"],
+        self._rodar([PY, "-m", "builds.publicar.tiktok", "--sondar"],
                     cwd=RANDOM_BUILDS, rotulo="sondar TikTok")
 
     def _pagina_videos(self, pai):
@@ -1881,7 +1881,7 @@ class Painel(tk.Tk):
         sozinha, do mesmo jeito que aparece na roleta. Cada atributo começa em
         "sortear" — é o padrão do formato, e sair dele é decisão consciente.
         """
-        from src.generation import escolhas as mod_escolhas
+        from builds.generation import escolhas as mod_escolhas
 
         try:
             catalogo = mod_escolhas.catalogo()
@@ -2155,7 +2155,7 @@ class Painel(tk.Tk):
         """Sintetiza uma fala com a voz configurada e toca no player padrão."""
         def tarefa():
             try:
-                from src.content import voz as voz_mod
+                from builds.content import voz as voz_mod
                 render, _ = self._ler_config_rb("render.json")
                 cfg = voz_mod.config((render.get("audio") or {}).get("voz"))
                 caminho = voz_mod.sintetizar(
@@ -2305,7 +2305,7 @@ class Painel(tk.Tk):
             import sys as _sys
             if str(RANDOM_BUILDS) not in _sys.path:
                 _sys.path.insert(0, str(RANDOM_BUILDS))
-            from src.identity import queue as identity_queue
+            from builds.identity import queue as identity_queue
             if identity_queue.ha_worker():
                 self._log("[identity] já existe um worker de pé — use "
                           "'Parar processos' antes de subir outro.", "erro")
@@ -3008,7 +3008,7 @@ class Painel(tk.Tk):
                 f"Vou abrir o TikTok numa janela do Chrome para a conta "
                 f"'{conta}' do canal {canal}.\n\nEntre na conta CERTA: é ela "
                 "que vai receber os vídeos desse canal.")
-            self._rodar([PY, "-u", "-X", "utf8", "-m", "src.publicar.tiktok",
+            self._rodar([PY, "-u", "-X", "utf8", "-m", "builds.publicar.tiktok",
                          "--login", "--canal", canal], RANDOM_BUILDS,
                         rotulo=f"login no TikTok ({conta}/{canal})")
         else:  # picasso, digen
@@ -3343,7 +3343,7 @@ class Painel(tk.Tk):
                 import subprocess as sp
                 saida = sp.run([PY, "-X", "utf8", "-c",
                                 "import sys, json; sys.path.insert(0, '.');"
-                                "from src.pipeline.controller import Pipeline;"
+                                "from contos.pipeline.controller import Pipeline;"
                                 "print(json.dumps(Pipeline().listar()))"],
                                cwd=str(HISTORIAS), capture_output=True, text=True,
                                encoding="utf-8", timeout=120,
@@ -4235,7 +4235,7 @@ class JanelaTriagem(tk.Toplevel):
     sempre com o painel; espaco e as setas sao repassados ao player via
     PostMessage. Sem ffplay no PATH, cada video abre no player padrao do
     sistema e os botoes continuam valendo. A fila, a importacao e o desfazer
-    vivem em SessaoTriagem (random_builds/src/assets/triagem.py).
+    vivem em SessaoTriagem (random_builds/builds/assets/triagem.py).
     """
 
     GWL_STYLE = -16

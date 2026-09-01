@@ -27,7 +27,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src import atividade, travas                              # noqa: E402
+from builds import atividade, travas                              # noqa: E402
 
 
 class TravasTests(unittest.TestCase):

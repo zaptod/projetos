@@ -40,16 +40,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.generation.entity_generator import EntityGenerator          # noqa: E402
-from src.generation.probability_engine import ProbabilityEngine      # noqa: E402
-from src.generation.random_engine import RandomEngine                # noqa: E402
-from src.generation.rule_engine import RuleEngine                    # noqa: E402
-from src.generation.session_generator import load_config             # noqa: E402
-from src.generation.validation_engine import ValidationEngine        # noqa: E402
-from src.evaluation.roll_evaluator import RollEvaluator              # noqa: E402
-from src.nf_bridge import cobertura as cob                           # noqa: E402
-from src.nf_bridge import loader as nf                               # noqa: E402
-from src.nf_bridge import roulette_factory as rf                     # noqa: E402
+from builds.generation.entity_generator import EntityGenerator          # noqa: E402
+from builds.generation.probability_engine import ProbabilityEngine      # noqa: E402
+from builds.generation.random_engine import RandomEngine                # noqa: E402
+from builds.generation.rule_engine import RuleEngine                    # noqa: E402
+from builds.generation.session_generator import load_config             # noqa: E402
+from builds.generation.validation_engine import ValidationEngine        # noqa: E402
+from builds.evaluation.roll_evaluator import RollEvaluator              # noqa: E402
+from builds.nf_bridge import cobertura as cob                           # noqa: E402
+from builds.nf_bridge import loader as nf                               # noqa: E402
+from builds.nf_bridge import roulette_factory as rf                     # noqa: E402
 
 RARIDADE_NOVA = "Divino"
 CLASSE_NOVA = "Tecnomante (Plasma)"
@@ -368,10 +368,10 @@ class RelatorioDeCobertura(unittest.TestCase):
     def test_relatorio_nao_arrasta_fila_de_identidade_nem_browser(self):
         codigo = (
             "import sys; sys.path.insert(0, r'%s');"
-            "from src.nf_bridge.cobertura import relatorio, cobertura;"
+            "from builds.nf_bridge.cobertura import relatorio, cobertura;"
             "relatorio(); cobertura();"
             "proibidos=[m for m in sys.modules if m in "
-            "('src.identity.queue','src.identity.browser','patchright','playwright')];"
+            "('builds.identity.queue','builds.identity.browser','patchright','playwright')];"
             "print('PROIBIDOS=' + ','.join(proibidos))" % ROOT
         )
         saida = subprocess.run([sys.executable, "-X", "utf8", "-c", codigo],

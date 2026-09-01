@@ -26,15 +26,15 @@ if str(ROOT) not in sys.path:
 
 from PIL import Image                                                    # noqa: E402
 
-from src.assets.catalog import AssetCatalog                              # noqa: E402
-from src.assets.selector import AssetSelector                            # noqa: E402
-from src.content.caption_generator import CaptionGenerator               # noqa: E402
-from src.editing import comentario                                       # noqa: E402
-from src.editing.timeline_builder import TimelineBuilder                 # noqa: E402
-from src.generation.random_engine import RandomEngine                    # noqa: E402
-from src.generation.session_generator import (SessionGenerator,          # noqa: E402
+from builds.assets.catalog import AssetCatalog                              # noqa: E402
+from builds.assets.selector import AssetSelector                            # noqa: E402
+from builds.content.caption_generator import CaptionGenerator               # noqa: E402
+from builds.editing import comentario                                       # noqa: E402
+from builds.editing.timeline_builder import TimelineBuilder                 # noqa: E402
+from builds.generation.random_engine import RandomEngine                    # noqa: E402
+from builds.generation.session_generator import (SessionGenerator,          # noqa: E402
                                               load_config)
-from src.video.renderer import VideoRenderer                             # noqa: E402
+from builds.video.renderer import VideoRenderer                             # noqa: E402
 
 EDICAO = load_config("editing.json")
 CAPTIONS = CaptionGenerator(load_config("captions.json"), load_config("frases.json"))

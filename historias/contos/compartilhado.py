@@ -8,11 +8,11 @@ limites de palavra para a legenda karaoke), a TRILHA sintetizada (sem custo,
 sem biblioteca de audio) e o cliente do PICASSOIA (browser furtivo, prova de
 origem em conta compartilhada, seletores mapeados).
 
-O problema de importar: os dois projetos tem um pacote chamado `src`, e o
-`src` daqui ganharia sempre. Entao o `src` de la e registrado com OUTRO nome
-(`rb`), como pacote de namespace — as importacoes relativas de dentro dele
-(`from ..video.trilha import ...`) continuam resolvendo, porque resolvem
-dentro de `rb`.
+Ate 01/09/2026 havia um problema de importar: os dois projetos tinham um
+pacote chamado `src`, e o daqui ganhava sempre. A volta era registrar o de la
+com OUTRO nome (`rb`), como pacote de namespace. Os pacotes foram renomeados
+para `builds` e `contos`, o nome ficou unico, e a giria acabou: aqui so se
+garante que a pasta vizinha esta no caminho e se importa `builds.*` direto.
 
 Nada aqui escreve em `random_builds`: as saidas, a fila e a config deste
 projeto sao locais. O que e compartilhado de proposito e o PERFIL do Chrome
@@ -29,7 +29,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
 RANDOM_BUILDS = RAIZ.parent / "random_builds"
-ALIAS = "rb"
+ALIAS = "builds"   # o nome de verdade do pacote, desde que ele ficou unico
 
 
 class FaltaRandomBuilds(RuntimeError):
@@ -37,27 +37,21 @@ class FaltaRandomBuilds(RuntimeError):
 
 
 def _registrar_pacote() -> None:
-    """`random_builds/src` disponivel como pacote `rb` (namespace)."""
+    """Garante que o pacote `builds` do projeto vizinho seja importavel."""
     if ALIAS in sys.modules:
         return
-    origem = RANDOM_BUILDS / "src"
+    origem = RANDOM_BUILDS / ALIAS
     if not origem.is_dir():
         raise FaltaRandomBuilds(
             f"nao achei {origem}. Este projeto usa o narrador, a trilha e o "
             "cliente do PicassoIA do random_builds, que precisa estar na "
             "pasta ao lado (e:/projetos/random_builds).")
-    spec = importlib.machinery.ModuleSpec(ALIAS, None, is_package=True)
-    spec.submodule_search_locations = [str(origem)]
-    modulo = importlib.util.module_from_spec(spec)
-    sys.modules[ALIAS] = modulo
-    # A raiz do random_builds tambem entra no path: alguns modulos de la
-    # leem `config/` pelo caminho do proprio pacote, nao pelo cwd.
     if str(RANDOM_BUILDS) not in sys.path:
         sys.path.append(str(RANDOM_BUILDS))
 
 
 def modulo(caminho: str):
-    """`modulo("content.voz")` -> o modulo de random_builds/src/content/voz.py."""
+    """`modulo("content.voz")` -> `builds.content.voz` do projeto vizinho."""
     _registrar_pacote()
     return importlib.import_module(f"{ALIAS}.{caminho}")
 
@@ -104,4 +98,4 @@ def controle():
 
 
 def disponivel() -> bool:
-    return (RANDOM_BUILDS / "src").is_dir()
+    return (RANDOM_BUILDS / ALIAS).is_dir()

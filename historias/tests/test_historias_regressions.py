@@ -32,10 +32,10 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.imagens import fila                                   # noqa: E402
-from src.roteiro import modelo                                  # noqa: E402
-from src.roteiro import roteiro as R                            # noqa: E402
-from src.video import timeline                                  # noqa: E402
+from contos.imagens import fila                                   # noqa: E402
+from contos.roteiro import modelo                                  # noqa: E402
+from contos.roteiro import roteiro as R                            # noqa: E402
+from contos.video import timeline                                  # noqa: E402
 
 CONFIG = modelo.carregar_config()
 RENDER = timeline.carregar_config("render.json")
@@ -316,14 +316,14 @@ class ImagemTests(unittest.TestCase):
 # -------------------------------------------------------------- 5. ponte
 class PonteTests(unittest.TestCase):
     def test_a_ponte_carrega_narrador_e_trilha(self):
-        from src import compartilhado
+        from contos import compartilhado
         if not compartilhado.disponivel():
             self.skipTest("random_builds nao esta ao lado")
         voz = compartilhado.voz()
         self.assertEqual("Isto e um teste.", voz.falavel("ISTO E UM TESTE"))
         self.assertTrue(hasattr(compartilhado.trilha(), "trilha"))
         # o `src` deste projeto nao pode ter sido substituido pelo de la
-        import src.roteiro.roteiro as meu
+        import contos.roteiro.roteiro as meu
         self.assertIn("historias", str(Path(meu.__file__)))
 
 

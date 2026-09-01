@@ -34,14 +34,14 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.imagens import fila                                    # noqa: E402
-from src.llm import cliente as llm_cliente                      # noqa: E402
-from src.publicar import catalogo                               # noqa: E402
-from src.roteiro import gerar                                   # noqa: E402
-from src.roteiro import roteiro as R                            # noqa: E402
-from src.roteiro import serie as S                              # noqa: E402
-from src.roteiro.modelo import carregar_config                  # noqa: E402
-from src.video import timeline                                  # noqa: E402
+from contos.imagens import fila                                    # noqa: E402
+from contos.llm import cliente as llm_cliente                      # noqa: E402
+from contos.publicar import catalogo                               # noqa: E402
+from contos.roteiro import gerar                                   # noqa: E402
+from contos.roteiro import roteiro as R                            # noqa: E402
+from contos.roteiro import serie as S                              # noqa: E402
+from contos.roteiro.modelo import carregar_config                  # noqa: E402
+from contos.video import timeline                                  # noqa: E402
 
 CONFIG = carregar_config()
 
@@ -344,7 +344,7 @@ class ClienteLLMTests(unittest.TestCase):
 
         # sem botao de parar e com o campo cheio: NAO houve envio
         cliente._parada_visivel = lambda: False
-        from src.llm import seletores
+        from contos.llm import seletores
         original = seletores.encontrar
         seletores.encontrar = lambda page, cand, timeout=0: None
         try:
@@ -365,7 +365,7 @@ class ClienteLLMTests(unittest.TestCase):
             return passos[i]
 
         cliente._resposta_atual = texto_atual
-        from src.llm import seletores
+        from contos.llm import seletores
         original = seletores.encontrar
         # "escrevendo" enquanto o texto cresce; depois o botao de parar some
         seletores.encontrar = lambda page, cand, timeout=0: (
@@ -382,14 +382,14 @@ class ClienteLLMTests(unittest.TestCase):
         self.assertTrue(llm_cliente.perfil_de("chatgpt").is_dir())
 
     def test_provedor_desconhecido_diz_quais_existem(self):
-        from src.llm import seletores
+        from contos.llm import seletores
         with self.assertRaises(ValueError) as ctx:
             seletores.do_provedor("copilot")
         self.assertIn("chatgpt", str(ctx.exception))
         self.assertIn("gemini", str(ctx.exception))
 
     def test_os_dois_provedores_tem_todos_os_alvos(self):
-        from src.llm import seletores
+        from contos.llm import seletores
         for provedor in seletores.PROVEDORES:
             alvo = seletores.do_provedor(provedor)
             for chave in ("url", "campo", "enviar", "parar", "resposta",

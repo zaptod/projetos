@@ -37,11 +37,11 @@ if str(ROOT) not in sys.path:
 
 from PIL import Image                                                # noqa: E402
 
-from src.identity import artefato, auditoria, history, proveniencia, slots  # noqa: E402
-from src.identity import config as icfg                             # noqa: E402
-from src.identity import picasso_selectors                          # noqa: E402
-from src.identity import queue as fila                              # noqa: E402
-from src.identity.client import GeracaoFalhou                       # noqa: E402
+from builds.identity import artefato, auditoria, history, proveniencia, slots  # noqa: E402
+from builds.identity import config as icfg                             # noqa: E402
+from builds.identity import picasso_selectors                          # noqa: E402
+from builds.identity import queue as fila                              # noqa: E402
+from builds.identity.client import GeracaoFalhou                       # noqa: E402
 
 GID = "generation_88888"
 PROMPT = ("Full-body character sheet portrait of Hakon Vyrpunth, a towering male "
@@ -232,7 +232,7 @@ class WorkerTests(_Isolado):
 
     def setUp(self):
         super().setUp()
-        from src.identity import worker
+        from builds.identity import worker
         self.worker = worker
         self.job = fila.enqueue(GID, PROMPT, slot=slots.CHARACTER)
 
@@ -448,7 +448,7 @@ class SeletoresDoHistoricoTests(unittest.TestCase):
         self.assertEqual([], picasso_selectors.cards_do_historico(Quebrada()))
 
     def test_painel_do_historico_tem_candidato_conhecido(self):
-        from src.identity import selectors
+        from builds.identity import selectors
         for estrategia, _ in picasso_selectors.PAINEL_HISTORICO:
             self.assertIn(estrategia, ("css", "role", "text", "placeholder"))
         self.assertTrue(callable(selectors.texto_do_card))
@@ -468,8 +468,8 @@ class ContratoTests(unittest.TestCase):
         self.assertFalse(proveniencia.exigida({"proveniencia": {"exigir": False}}))
 
     def test_os_dois_clientes_comprovam_origem_pela_mesma_porta(self):
-        from src.identity.client import DigenClient
-        from src.identity.picasso_client import PicassoClient
+        from builds.identity.client import DigenClient
+        from builds.identity.picasso_client import PicassoClient
         for classe in (DigenClient, PicassoClient):
             assinatura = list(inspect.signature(classe.comprovar_origem).parameters)
             self.assertEqual(["self", "alvo", "prompt", "enviado_em"], assinatura)

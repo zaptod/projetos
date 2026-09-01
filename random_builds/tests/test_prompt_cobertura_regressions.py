@@ -35,11 +35,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.generation.session_generator import SessionGenerator        # noqa: E402
-from src.identity import prompt as P                                 # noqa: E402
-from src.identity import slots                                       # noqa: E402
-from src.nf_bridge import loader as nf                               # noqa: E402
-from src.nf_bridge import roulette_factory as rf                     # noqa: E402
+from builds.generation.session_generator import SessionGenerator        # noqa: E402
+from builds.identity import prompt as P                                 # noqa: E402
+from builds.identity import slots                                       # noqa: E402
+from builds.nf_bridge import loader as nf                               # noqa: E402
+from builds.nf_bridge import roulette_factory as rf                     # noqa: E402
 
 # Alvo de roleta -> campos de prompt que o representam. Quem mexe nas roletas
 # mexe AQUI tambem: e esta tabela que o teste 1 cobra. Nao ha caso "esse alvo
@@ -569,7 +569,7 @@ class TraducaoTests(unittest.TestCase):
         entao o arquivo inteiro tem que ser ASCII. Um travessao colado de um
         editor passa despercebido ate alguem rodar no terminal errado.
         """
-        fonte = (ROOT / "src" / "identity" / "prompt.py").read_text(encoding="utf-8")
+        fonte = (ROOT / "builds" / "identity" / "prompt.py").read_text(encoding="utf-8")
         fora = sorted({c for c in fonte if not c.isascii()})
         self.assertFalse(fora, f"src/identity/prompt.py tem nao-ASCII: {fora}")
 

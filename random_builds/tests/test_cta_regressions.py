@@ -30,15 +30,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.assets.catalog import AssetCatalog                             # noqa: E402
-from src.assets.selector import AssetSelector                           # noqa: E402
-from src.content import caption_generator as cg                         # noqa: E402
-from src.content.caption_generator import CaptionGenerator, pedido_de   # noqa: E402
-from src.editing.timeline_builder import TimelineBuilder                # noqa: E402
-from src.generation.random_engine import RandomEngine                   # noqa: E402
-from src.generation.session_generator import (SessionGenerator,         # noqa: E402
+from builds.assets.catalog import AssetCatalog                             # noqa: E402
+from builds.assets.selector import AssetSelector                           # noqa: E402
+from builds.content import caption_generator as cg                         # noqa: E402
+from builds.content.caption_generator import CaptionGenerator, pedido_de   # noqa: E402
+from builds.editing.timeline_builder import TimelineBuilder                # noqa: E402
+from builds.generation.random_engine import RandomEngine                   # noqa: E402
+from builds.generation.session_generator import (SessionGenerator,         # noqa: E402
                                               load_config)
-from src.identity import slots as identity_slots                        # noqa: E402
+from builds.identity import slots as identity_slots                        # noqa: E402
 
 CAPTIONS = load_config("captions.json")
 FRASES = load_config("frases.json")

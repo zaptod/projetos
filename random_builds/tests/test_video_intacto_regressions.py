@@ -31,7 +31,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.video import medidas                                  # noqa: E402
+from builds.video import medidas                                  # noqa: E402
 
 TEM_FFMPEG = shutil.which("ffmpeg") is not None and \
     shutil.which("ffprobe") is not None
@@ -95,7 +95,7 @@ class ConcatTests(unittest.TestCase):
         self.pasta = Path(self._tmp.name)
 
     def _renderer(self):
-        from src.video.renderer import VideoRenderer
+        from builds.video.renderer import VideoRenderer
         r = VideoRenderer.__new__(VideoRenderer)
         r.preset, r.crf = "ultrafast", 30
         return r

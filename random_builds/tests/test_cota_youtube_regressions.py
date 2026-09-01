@@ -32,7 +32,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.publicar import youtube                                # noqa: E402
+from builds.publicar import youtube                                # noqa: E402
 
 # A resposta literal que o YouTube devolveu.
 RESPOSTA_COTA = """{

@@ -30,9 +30,9 @@ if str(ROOT) not in sys.path:
 
 from PIL import Image                                              # noqa: E402
 
-from src.generation.session_generator import load_config           # noqa: E402
-from src.identity import slots                                     # noqa: E402
-from src.video.renderer import VideoRenderer                       # noqa: E402
+from builds.generation.session_generator import load_config           # noqa: E402
+from builds.identity import slots                                     # noqa: E402
+from builds.video.renderer import VideoRenderer                       # noqa: E402
 
 EDICAO = load_config("editing.json")
 
@@ -169,7 +169,7 @@ class SomDaRoletaTests(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.video import roleta_som
+        from builds.video import roleta_som
         self.som = roleta_som
         self.renderer = _renderer()
 
@@ -220,7 +220,7 @@ class SomDaRoletaTests(unittest.TestCase):
     def test_a_imagem_e_o_som_leem_o_MESMO_giro(self):
         """Duas contas separadas divergem no dia em que uma mudar."""
         import inspect
-        from src.video.renderer import VideoRenderer
+        from builds.video.renderer import VideoRenderer
         for metodo in (VideoRenderer._roulette_frames,
                        VideoRenderer._audio_da_roleta):
             self.assertIn("_giro(", inspect.getsource(metodo))

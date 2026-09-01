@@ -42,7 +42,7 @@ class NaoLogado(LLMFalhou):
 def perfil_de(provedor: str, canal: str = "geral") -> Path:
     """A pasta de Chrome daquele LLM, na conta ativa.
 
-    Vem do registro de contas do ecossistema (`random_builds/src/contas.py`),
+    Vem do registro de contas do ecossistema (`random_builds/builds/contas.py`),
     entao o login feito aqui serve para qualquer outra coisa que precise do
     mesmo ChatGPT/Gemini depois — era o pedido: logar uma vez, reusar.
     """

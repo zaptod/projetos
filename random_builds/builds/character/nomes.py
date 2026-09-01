@@ -10,7 +10,7 @@ Existe separada do neural_fights por tres motivos concretos:
 3. o video precisa de um parametro que o jogo nao tem: o nome pedido no
    comentario.
 
-Nada aqui importa neural_fights, src.identity ou src.editing. As chaves de
+Nada aqui importa neural_fights, builds.identity ou builds.editing. As chaves de
 consulta chegam prontas de quem chamou (o que a roleta sorteou) e TODA
 consulta cai num fallback, entao classe/encantamento/raridade nova no banco
 nao quebra nada -- so nao ganha sabor ate ser mapeada aqui (pedido 2).

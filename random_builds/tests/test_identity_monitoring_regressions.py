@@ -27,12 +27,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.identity import browser                     # noqa: E402
-from src.identity import config as identity_config   # noqa: E402
-from src.identity import health                      # noqa: E402
-from src.identity import history                     # noqa: E402
-from src.identity import queue as identity_queue     # noqa: E402
-from src.identity import status                      # noqa: E402
+from builds.identity import browser                     # noqa: E402
+from builds.identity import config as identity_config   # noqa: E402
+from builds.identity import health                      # noqa: E402
+from builds.identity import history                     # noqa: E402
+from builds.identity import queue as identity_queue     # noqa: E402
+from builds.identity import status                      # noqa: E402
 
 
 class HistoricoTests(unittest.TestCase):
@@ -201,7 +201,7 @@ class InconsistenciaTests(unittest.TestCase):
         o que fazia a janela piscar em `--watch`: abre, fecha, espera, repete.
         O pre-passe resolve isso antes de qualquer navegador subir.
         """
-        from src.identity import worker
+        from builds.identity import worker
 
         self._gerar("generation_00001", clipe_bytes=50_000, no_plano=True)
         identity_queue.enqueue("generation_00001", "prompt")
@@ -218,7 +218,7 @@ class InconsistenciaTests(unittest.TestCase):
         Ele nao reivindica nada: um job que ainda precisa ser gerado tem que
         sair de la intacto e `pending`, para a passada do provedor pega-lo.
         """
-        from src.identity import worker
+        from builds.identity import worker
 
         self._gerar("generation_00001", no_plano=False)   # sem artefato
         identity_queue.enqueue("generation_00001", "prompt")
@@ -278,7 +278,7 @@ class DoctorTests(unittest.TestCase):
         durante a espera. Se so gravassemos no fim, um worker morto no meio
         perderia o espaco e mandaria gerar outro video do mesmo personagem.
         """
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
 
         class FakePage:
             url = "https://digen.ai/en/space"
@@ -300,7 +300,7 @@ class DoctorTests(unittest.TestCase):
 
     def test_callback_quebrado_nao_derruba_a_geracao(self):
         """Persistir o espaco e conveniencia; o video e o que importa."""
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
 
         class FakePage:
             url = "https://digen.ai/en/space/999"
@@ -321,7 +321,7 @@ class DoctorTests(unittest.TestCase):
         e o worker concluia que a sessao tinha caido, parando por 180 s
         esperando um login que nao era necessario.
         """
-        from src.identity import browser
+        from builds.identity import browser
 
         pedidos = []
 
@@ -357,7 +357,7 @@ class DoctorTests(unittest.TestCase):
         de `abrir_espaco`, e o `--watch` virava um ciclo de abrir e fechar o
         Chrome a cada ~50 s — exatamente o sintoma reportado.
         """
-        from src.identity.client import BrowserMorreu, DigenClient, _e_alvo_fechado
+        from builds.identity.client import BrowserMorreu, DigenClient, _e_alvo_fechado
 
         transitorios = [
             "Execution context was destroyed, most likely because of a navigation",
@@ -394,7 +394,7 @@ class DoctorTests(unittest.TestCase):
         minutos para ser notado.
         """
         import inspect
-        from src.identity import worker
+        from builds.identity import worker
 
         corpo = inspect.getsource(worker.observar)
         self.assertIn("improdutivas", corpo)
@@ -409,8 +409,8 @@ class DoctorTests(unittest.TestCase):
         50 s visto em 22/08, falhando instantaneamente em todo job seguinte.
         """
         import inspect
-        from src.identity.client import BrowserMorreu, EsperaEstourou
-        from src.identity import worker
+        from builds.identity.client import BrowserMorreu, EsperaEstourou
+        from builds.identity import worker
 
         self.assertTrue(issubclass(BrowserMorreu, EsperaEstourou))
         # O laco de jobs vive em `_passada` (uma por provedor); `_drenar` so
@@ -429,7 +429,7 @@ class DoctorTests(unittest.TestCase):
         seletor para a rodada e sobe `DeployDoDigen`, que o watch trata saindo.
         """
         import inspect
-        from src.identity import worker
+        from builds.identity import worker
 
         # Quem detecta a quebra e a passada; quem sobe o erro e a rodada.
         self.assertIn("SeletorNaoEncontrado", inspect.getsource(worker._passada))

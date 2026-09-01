@@ -28,7 +28,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.identity import moderacao                             # noqa: E402
+from builds.identity import moderacao                             # noqa: E402
 
 ESTILO = ("cinematic photography, shot on 35mm film, shallow depth of field, "
           "moody volumetric lighting, film grain, photorealistic")
@@ -63,7 +63,7 @@ class PaginaFalsa:
         self._bloqueio, self._texto = bloqueio, texto
 
     def evaluate(self, js):
-        from src.identity import picasso_selectors as sel
+        from builds.identity import picasso_selectors as sel
         if js is sel.JS_BLOQUEIO:
             return self._bloqueio
         return self._texto
@@ -74,7 +74,7 @@ class PaginaFalsa:
 
 
 def _cliente(pagina):
-    from src.identity.picasso_client import PicassoClient
+    from builds.identity.picasso_client import PicassoClient
     cli = PicassoClient.__new__(PicassoClient)
     cli.page = pagina
     return cli

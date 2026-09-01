@@ -12,7 +12,7 @@ import random
 import unicodedata
 
 # Teto do nome pedido DEPOIS de sanitizar: o MESMO de quem aceitou o pedido.
-# Import direto e de proposito - src.character.nomes so puxa unicodedata, e um
+# Import direto e de proposito - builds.character.nomes so puxa unicodedata, e um
 # teto proprio aqui produzia video incoerente: a legenda dizia "CRIANDO
 # BARTOLOMEU AGU" no segundo 1 e a placa mostrava "BARTOLOMEU AGUIAR NETO" no
 # segundo 20. Nome maior so faz `fit_font_wrap` encolher a fonte; nome errado

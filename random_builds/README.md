@@ -74,7 +74,7 @@ python main.py publicar <id> --exportar                        # copia com nome 
 python main.py publicar <id> --youtube                         # API oficial (privado por padrao)
 python main.py publicar <id> --youtube --visibilidade public   # publico (confirma no painel)
 python main.py publicar <id> --tiktok                          # navegador: sobe e PARA antes de postar
-python -m src.publicar.tiktok --login                          # login do TikTok (uma vez)
+python -m builds.publicar.tiktok --login                          # login do TikTok (uma vez)
 
 python main.py trilha                                          # trilha sintetizada em assets/music (gratis)
 python main.py metricas --atualizar                            # retencao dos publicados x timeline (YouTube API)
@@ -132,7 +132,7 @@ Daí saem três caminhos:
   verdade, perfil persistente em `.browser_profile/tiktok`, login manual uma
   vez. O painel sobe o arquivo, escreve a legenda e **para antes de
   publicar**, com a janela aberta para você conferir. Quando o site mudar,
-  `python -m src.publicar.tiktok --sondar` despeja o DOM da tela de upload
+  `python -m builds.publicar.tiktok --sondar` despeja o DOM da tela de upload
   para reajustar os seletores (mesma ideia do `identity probe`).
 
 **Nome pedido num comentário, com o print como prova:** `--nome-pedido`
@@ -847,8 +847,8 @@ Isso tem duas consequências, e as duas estão no código:
   histórias → builds na mesma sessão: o Studio obedece a URL nas três.
 
 ```
-python -m src.publicar.youtube_web --canais
-python -m src.publicar.youtube_web --usar-canal @Neural_fights --canal builds
+python -m builds.publicar.youtube_web --canais
+python -m builds.publicar.youtube_web --usar-canal @Neural_fights --canal builds
 ```
 
 No painel: **🎯 Canais do YouTube** descobre e cadastra; o combo de conta da

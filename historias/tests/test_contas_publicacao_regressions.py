@@ -35,8 +35,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src import compartilhado                                   # noqa: E402
-from src.publicar import qualidade, serie                       # noqa: E402
+from contos import compartilhado                                   # noqa: E402
+from contos.publicar import qualidade, serie                       # noqa: E402
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 TEM_FFMPEG = bool(shutil.which("ffmpeg"))
@@ -219,7 +219,7 @@ class RegistroDePublicadosTests(unittest.TestCase):
         self.addCleanup(lambda: setattr(serie, "REGISTRO", self._antes))
 
     def test_registra_e_reconhece(self):
-        from src.publicar.catalogo import Video
+        from contos.publicar.catalogo import Video
         video = Video(id="historia_00009:celular:p02", perfil="celular",
                       caminho=Path("x.mp4"), titulo="T", descricao="",
                       parte=2, partes=5, fonte_id="historia_00009")

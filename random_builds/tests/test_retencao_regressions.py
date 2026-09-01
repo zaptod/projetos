@@ -43,16 +43,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.assets.catalog import AssetCatalog                             # noqa: E402
-from src.assets.selector import AssetSelector                            # noqa: E402
-from src.content import voz                                              # noqa: E402
-from src.content.caption_generator import CaptionGenerator               # noqa: E402
-from src.content.narration_generator import NarrationGenerator           # noqa: E402
-from src.editing.timeline_builder import TimelineBuilder                 # noqa: E402
-from src.generation.random_engine import RandomEngine                    # noqa: E402
-from src.generation.session_generator import SessionGenerator, load_config  # noqa: E402
-from src.publicar import catalogo, metricas                              # noqa: E402
-from src.video import trilha                                             # noqa: E402
+from builds.assets.catalog import AssetCatalog                             # noqa: E402
+from builds.assets.selector import AssetSelector                            # noqa: E402
+from builds.content import voz                                              # noqa: E402
+from builds.content.caption_generator import CaptionGenerator               # noqa: E402
+from builds.content.narration_generator import NarrationGenerator           # noqa: E402
+from builds.editing.timeline_builder import TimelineBuilder                 # noqa: E402
+from builds.generation.random_engine import RandomEngine                    # noqa: E402
+from builds.generation.session_generator import SessionGenerator, load_config  # noqa: E402
+from builds.publicar import catalogo, metricas                              # noqa: E402
+from builds.video import trilha                                             # noqa: E402
 
 EDICAO = load_config("editing.json")
 CAPTIONS = load_config("captions.json")
@@ -249,14 +249,14 @@ class TextoDuplicadoTests(unittest.TestCase):
     """
 
     def test_eventos_cuja_fala_e_a_legenda_nao_tem_karaoke(self):
-        from src.video.renderer import VideoRenderer
+        from builds.video.renderer import VideoRenderer
         for tipo in ("hook", "stinger", "outro", "final", "nameplate"):
             self.assertIsNone(VideoRenderer.KARAOKE_Y.get(tipo, "faltando"),
                               f"{tipo} voltou a escrever duas vezes")
 
     def test_a_roleta_mantem_o_karaoke(self):
         """Na roleta a fala e a pergunta/comentario, nao o cartao: nao duplica."""
-        from src.video.renderer import VideoRenderer
+        from builds.video.renderer import VideoRenderer
         self.assertIsNotNone(VideoRenderer.KARAOKE_Y["roulette"])
 
 
@@ -485,7 +485,7 @@ class PendenciasTests(unittest.TestCase):
 
     def setUp(self):
         from unittest.mock import patch
-        from src.identity import config as icfg
+        from builds.identity import config as icfg
         ligado = patch.object(icfg, "payoff_video_ativo", lambda ajustes=None: True)
         ligado.start()
         self.addCleanup(ligado.stop)
@@ -582,7 +582,7 @@ class FluxoRetencaoTests(unittest.TestCase):
         return pasta
 
     def test_le_voz_luta_e_gancho(self):
-        from src.pipeline import fluxo
+        from builds.pipeline import fluxo
         with tempfile.TemporaryDirectory() as tmp:
             ret = fluxo.retencao_de(self._pasta(tmp, com_luta=True, com_estreia=True))
             self.assertTrue(ret["voz"])
@@ -593,7 +593,7 @@ class FluxoRetencaoTests(unittest.TestCase):
             self.assertFalse(ret["estreia_fora_do_video"])
 
     def test_estreia_gravada_fora_do_video_vira_proximo_passo(self):
-        from src.pipeline import fluxo
+        from builds.pipeline import fluxo
         with tempfile.TemporaryDirectory() as tmp:
             ret = fluxo.retencao_de(self._pasta(tmp, com_luta=False, com_estreia=True))
             self.assertTrue(ret["estreia_fora_do_video"])
@@ -701,28 +701,28 @@ class CreditoTests(unittest.TestCase):
     (incluso no plano). So um modelo pago (fora da lista branca) bloqueia."""
 
     def test_modelo_incluso_segue_sem_credito(self):
-        from src.identity import worker
+        from builds.identity import worker
         ajustes = {"modelo": "Real Motion 3.5", "referencias": {"modelo": None},
                    "modelos_permitidos": ["Real Motion 3.5", "Real Motion 3.2"]}
         self.assertFalse(worker.credito_bloqueia(ajustes, "digen"))
         self.assertEqual("Real Motion 3.5", worker.modelo_em_uso(ajustes))
 
     def test_modelo_pago_bloqueia(self):
-        from src.identity import worker
+        from builds.identity import worker
         ajustes = {"modelo": "Real Motion 3.5", "referencias": {"modelo": "Kling 3.0"},
                    "modelos_permitidos": ["Real Motion 3.5"]}
         self.assertTrue(worker.credito_bloqueia(ajustes, "digen"))
         self.assertEqual("Kling 3.0", worker.modelo_em_uso(ajustes))
 
     def test_config_pode_forcar_o_bloqueio(self):
-        from src.identity import worker
+        from builds.identity import worker
         ajustes = {"modelo": "Real Motion 3.5", "modelos_permitidos": ["Real Motion 3.5"],
                    "creditos_obrigatorios": True}
         self.assertTrue(worker.credito_bloqueia(ajustes, "digen"))
 
     def test_a_config_real_nao_bloqueia(self):
-        from src.identity import config as icfg
-        from src.identity import worker
+        from builds.identity import config as icfg
+        from builds.identity import worker
         self.assertFalse(worker.credito_bloqueia(icfg.settings(), "digen"))
 
 
@@ -760,8 +760,8 @@ class PayoffImagemTests(unittest.TestCase):
             self.assertEqual("video", payoff["asset"]["media"])
 
     def test_config_desliga_o_job_do_digen(self):
-        from src.identity import config as icfg
-        from src.identity import slots
+        from builds.identity import config as icfg
+        from builds.identity import slots
         self.assertNotIn(slots.CHARACTER_WEAPON, icfg.jobs_ativos({"payoff_video": False}))
         self.assertIn(slots.REFERENCIA, icfg.jobs_ativos({"payoff_video": False}))
         self.assertIn(slots.CHARACTER_WEAPON, icfg.jobs_ativos({"payoff_video": True}))
@@ -770,7 +770,7 @@ class PayoffImagemTests(unittest.TestCase):
 
     def test_pendencia_com_video_desligado_pede_a_imagem(self):
         from unittest.mock import patch
-        from src.identity import config as icfg
+        from builds.identity import config as icfg
         with tempfile.TemporaryDirectory() as tmp:
             pasta = Path(tmp)
             (pasta / "final_celular.mp4").write_bytes(b"0" * 10)
@@ -801,7 +801,7 @@ class RoteiroSolidoTests(unittest.TestCase):
         return generation, plano, linhas
 
     def test_evento_cresce_ate_a_fala_caber(self):
-        from src.editing.timeline_builder import ajustar_ao_roteiro
+        from builds.editing.timeline_builder import ajustar_ao_roteiro
         generation, plano, linhas = self._plano_e_linhas()
         antes = json.loads(json.dumps(plano))
         # toda fala dura 2,5 s: bem mais que qualquer slot de resultado
@@ -828,7 +828,7 @@ class RoteiroSolidoTests(unittest.TestCase):
         self.assertAlmostEqual(cursor, ajustado["total_duration"], places=2)
 
     def test_roleta_estica_giro_para_a_pergunta_e_resultado_para_o_comentario(self):
-        from src.editing.timeline_builder import ajustar_ao_roteiro
+        from builds.editing.timeline_builder import ajustar_ao_roteiro
         generation, plano, linhas = self._plano_e_linhas()
         cheia = next(i for i, e in enumerate(plano["events"])
                      if e["type"] == "roulette" and not e["rapida"])
@@ -846,7 +846,7 @@ class RoteiroSolidoTests(unittest.TestCase):
         self.assertGreater(e["duration"], dur_antes)
 
     def test_fala_curta_nao_muda_nada(self):
-        from src.editing.timeline_builder import ajustar_ao_roteiro
+        from builds.editing.timeline_builder import ajustar_ao_roteiro
         generation, plano, linhas = self._plano_e_linhas()
         antes = json.loads(json.dumps(plano))
         ajustado = ajustar_ao_roteiro(plano, linhas, {i: 0.2 for i in range(len(linhas))}, EDICAO)
@@ -854,7 +854,7 @@ class RoteiroSolidoTests(unittest.TestCase):
                          [e["duration"] for e in ajustado["events"]])
 
     def test_clipe_de_video_nao_estica(self):
-        from src.editing.timeline_builder import ajustar_ao_roteiro
+        from builds.editing.timeline_builder import ajustar_ao_roteiro
         with tempfile.TemporaryDirectory() as tmp:
             pasta = Path(tmp)
             _png(pasta / "character_image.png")
@@ -946,12 +946,12 @@ class PicassoModalTests(unittest.TestCase):
 
     def _cliente(self, pagina):
         import random
-        from src.identity.picasso_client import PicassoClient
+        from builds.identity.picasso_client import PicassoClient
         return PicassoClient(None, pagina, {"navigation_timeout": 1}, random.Random(1))
 
     def test_fecha_pelo_x_sem_credenciais(self):
         from unittest.mock import patch
-        from src.identity import picasso_client
+        from builds.identity import picasso_client
         pagina = _PaginaPicassoFake(modal_aberto=True)
         cliente = self._cliente(pagina)
         with patch.object(picasso_client, "pausa_humana", lambda *a, **k: None), \
@@ -968,7 +968,7 @@ class PicassoModalTests(unittest.TestCase):
 
     def test_resolver_dialogo_prefere_o_x_ao_login(self):
         from unittest.mock import patch
-        from src.identity import picasso_client
+        from builds.identity import picasso_client
         pagina = _PaginaPicassoFake(modal_aberto=True)
         cliente = self._cliente(pagina)
         with patch.object(picasso_client, "pausa_humana", lambda *a, **k: None), \
@@ -980,7 +980,7 @@ class PicassoModalTests(unittest.TestCase):
 
     def test_modal_que_volta_depois_de_fechado_vai_para_o_login(self):
         from unittest.mock import patch
-        from src.identity import picasso_client
+        from builds.identity import picasso_client
         pagina = _PaginaPicassoFake(modal_aberto=True)
         cliente = self._cliente(pagina)
         cliente._modal_fechado = 1          # ja foi fechado uma vez nesta pagina
@@ -1003,7 +1003,7 @@ class WorkerUnicoTests(unittest.TestCase):
 
     def test_ha_worker_ve_a_trava_sem_segurar(self):
         from unittest.mock import patch
-        from src.identity import queue
+        from builds.identity import queue
         # Lock proprio: a maquina pode ter um worker de verdade de pe.
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(queue, "LOCK_WORKER", Path(tmp) / "worker.lock"):
@@ -1017,7 +1017,7 @@ class WorkerUnicoTests(unittest.TestCase):
         """Controle isolado: a maquina pode estar com a pipeline pausada de
         verdade, e ai `observar` entraria no loop de espera para sempre."""
         from unittest.mock import patch
-        from src.identity import controle
+        from builds.identity import controle
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         alvo = patch.object(controle, "ARQUIVO", Path(tmp.name) / "controle.json")
@@ -1026,7 +1026,7 @@ class WorkerUnicoTests(unittest.TestCase):
 
     def test_watch_extra_sai_em_vez_de_ficar_em_loop(self):
         from unittest.mock import patch
-        from src.identity import worker
+        from builds.identity import worker
         self._sem_pausa()
         chamadas = []
         with patch.object(worker.queue, "ha_worker", lambda: True), \
@@ -1036,7 +1036,7 @@ class WorkerUnicoTests(unittest.TestCase):
 
     def test_watch_sozinho_roda_normalmente(self):
         from unittest.mock import patch
-        from src.identity import worker
+        from builds.identity import worker
         self._sem_pausa()
         chamadas = []
 
@@ -1053,7 +1053,7 @@ class WorkerUnicoTests(unittest.TestCase):
     def test_watch_pausado_espera_sem_drenar(self):
         """Pausado, o watch NAO chama drenar — e nao infla o backoff."""
         from unittest.mock import patch
-        from src.identity import controle, worker
+        from builds.identity import controle, worker
         self._sem_pausa()
         controle.pausar(motivo="conta emprestada")
         chamadas, dormidas = [], []
@@ -1078,7 +1078,7 @@ class ControleTests(unittest.TestCase):
 
     def setUp(self):
         from unittest.mock import patch
-        from src.identity import controle
+        from builds.identity import controle
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         alvo = patch.object(controle, "ARQUIVO", Path(self._tmp.name) / "controle.json")
@@ -1130,7 +1130,7 @@ class ControleTests(unittest.TestCase):
 
     def test_a_fila_obedece_a_pausa(self):
         from unittest.mock import patch
-        from src.identity import queue
+        from builds.identity import queue
         job = {"job_id": "g#character", "generation_id": "g", "slot": "character",
                "status": queue.PENDENTE, "attempts": 0, "provider": "picasso",
                "prompt": "x", "depends_on": []}

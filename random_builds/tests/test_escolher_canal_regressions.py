@@ -28,8 +28,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src import contas                                          # noqa: E402
-from src.publicar import youtube_web                            # noqa: E402
+from builds import contas                                          # noqa: E402
+from builds.publicar import youtube_web                            # noqa: E402
 
 
 class RegistroTemporario(unittest.TestCase):

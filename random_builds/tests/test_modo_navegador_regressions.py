@@ -29,7 +29,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.publicar import youtube, youtube_web                   # noqa: E402
+from builds.publicar import youtube, youtube_web                   # noqa: E402
 
 
 class ModoTests(unittest.TestCase):
@@ -50,7 +50,7 @@ class ModoTests(unittest.TestCase):
 
     def test_o_config_de_verdade_esta_em_navegador(self):
         """O arquivo do projeto, não um dicionário de teste."""
-        from src.publicar import catalogo
+        from builds.publicar import catalogo
         self.assertEqual("navegador", youtube.modo(catalogo.carregar_config()))
 
 
@@ -136,7 +136,7 @@ class PortaUnicaTests(unittest.TestCase):
     def test_ninguem_mais_ramifica_por_fora(self):
         """A escolha do caminho mora num lugar so."""
         for arquivo in (Path(RAIZ) / "main.py",
-                        Path(RAIZ).parent / "historias/src/publicar/catalogo.py"):
+                        Path(RAIZ).parent / "historias/contos/publicar/catalogo.py"):
             fonte = arquivo.read_text(encoding="utf-8")
             self.assertNotIn('caminho == "api"', fonte, arquivo.name)
             self.assertIn("publicar_como_configurado", fonte, arquivo.name)
@@ -200,7 +200,7 @@ class CanalAlvoTests(unittest.TestCase):
         # depender dele: quando o login gravou o id do canal, a "URL
         # generica" deixou de ser generica. Registro proprio, entao.
         import tempfile
-        from src import contas
+        from builds import contas
         pasta = tempfile.TemporaryDirectory()
         self.addCleanup(pasta.cleanup)
         anterior = contas.ARQUIVO
@@ -212,7 +212,7 @@ class CanalAlvoTests(unittest.TestCase):
                          youtube_web.url_de_upload("canal_que_nao_existe"))
 
     def test_com_id_mira_o_canal(self):
-        from src import contas
+        from builds import contas
         original = contas.identidade
 
         def falsa(servico, conta):
@@ -288,7 +288,7 @@ class PainelSegueOModoTests(unittest.TestCase):
         """Sem botao, a unica coisa que falta fica escondida num comando."""
         self.assertIn("_pub_login_youtube_web", self.fonte)
         self.assertIn("Login YouTube Studio", self.fonte)
-        self.assertIn("src.publicar.youtube_web", self.fonte)
+        self.assertIn("builds.publicar.youtube_web", self.fonte)
 
 
 if __name__ == "__main__":

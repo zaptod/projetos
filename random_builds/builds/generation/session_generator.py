@@ -86,7 +86,7 @@ class SessionGenerator:
 
         # registros canonicos do NF: cor, geometria e passiva vem das fabricas
         # oficiais; os campos rolados sao aplicados por cima e o nome vem da
-        # camada propria (src.character.nomes), que tambem aceita o nome pedido
+        # camada propria (builds.character.nomes), que tambem aceita o nome pedido
         # no comentario
         arma, personagem, naming = exporter.build_records(
             char_entity, weapon_entity, engine.fork("nf:records"),

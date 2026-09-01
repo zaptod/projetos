@@ -27,15 +27,15 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 if str(RANDOM_BUILDS) not in sys.path:
     sys.path.insert(0, str(RANDOM_BUILDS))
 
-from src import atividade                                      # noqa: E402
-from src.identity import controle                              # noqa: E402
+from builds import atividade                                      # noqa: E402
+from builds.identity import controle                              # noqa: E402
 
 MAX_LINHAS = 18          # o celular nao le mais que isso de uma vez
 
 
 # --------------------------------------------------------------- ajudantes
 def _catalogo():
-    from src.publicar import catalogo
+    from builds.publicar import catalogo
     return catalogo
 
 

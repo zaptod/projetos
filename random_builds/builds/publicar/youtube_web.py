@@ -148,7 +148,7 @@ def canais_da_sessao(canal: str = "builds", *, log=print) -> list:
         if "accounts.google" in page.url or "signin" in page.url:
             raise YouTubeWebFalhou(
                 "esta sessao nao esta logada. Rode uma vez: "
-                "`python -m src.publicar.youtube_web --login`")
+                "`python -m builds.publicar.youtube_web --login`")
 
         # A lista vem como NOME / @arroba / inscritos, uma coisa por linha.
         linhas = [l.strip() for l in texto.splitlines() if l.strip()]
@@ -206,7 +206,7 @@ def perfil_da_conta(canal: str = "builds") -> Path:
 # ---------------------------------------------------------------- seletores
 # Candidatos em ordem de especificidade; `_primeiro` usa o que existir. O
 # Studio muda de layout com frequencia: quando quebrar, rode
-#     python -m src.publicar.youtube_web --sondar
+#     python -m builds.publicar.youtube_web --sondar
 # e ajuste ESTAS listas com o que a pagina realmente tem.
 ENTRADA_ARQUIVO = 'input[type="file"]'
 CAMPO_TITULO = (
@@ -578,7 +578,7 @@ def publicar(video, *, visibilidade: str | None = None,
         if "accounts.google" in page.url or "signin" in page.url:
             raise YouTubeWebFalhou(
                 "o Google pediu login. Rode uma vez: "
-                "`python -m src.publicar.youtube_web --login`")
+                "`python -m builds.publicar.youtube_web --login`")
 
         # ONDE ISTO VAI PARAR. Com varios canais na mesma conta Google, o
         # Studio abre no ultimo usado quando a URL nao manda — e um video de
@@ -603,7 +603,7 @@ def publicar(video, *, visibilidade: str | None = None,
                 "nao consegui abrir o envio de video. A pagina do canal so "
                 "mostra a LISTA de videos: o campo de arquivo aparece depois "
                 "de Criar -> Enviar videos, e nenhum dos dois botoes "
-                "respondeu. Rode `python -m src.publicar.youtube_web "
+                "respondeu. Rode `python -m builds.publicar.youtube_web "
                 "--sondar` para ver a tela e ajustar BOTAO_CRIAR / "
                 "MENU_ENVIAR_VIDEOS.")
 
@@ -621,7 +621,7 @@ def publicar(video, *, visibilidade: str | None = None,
         if entrada is None:
             raise YouTubeWebFalhou(
                 "nao achei o campo de arquivo. Rode "
-                "`python -m src.publicar.youtube_web --sondar` para ver a tela.")
+                "`python -m builds.publicar.youtube_web --sondar` para ver a tela.")
 
         entrada.set_input_files(str(caminho))
         passo(f"arquivo entregue ({caminho.name}); o YouTube esta subindo...")
@@ -664,7 +664,7 @@ def publicar(video, *, visibilidade: str | None = None,
                     "Publicar agora no lugar disso soltaria as partes todas "
                     "no mesmo minuto, entao parei aqui — a janela esta "
                     "aberta para voce terminar na mao. Rode "
-                    "`python -m src.publicar.youtube_web --sondar` para eu "
+                    "`python -m builds.publicar.youtube_web --sondar` para eu "
                     "ajustar os seletores da tela de agendamento.")
         else:
             escolha = _primeiro(page, VISIBILIDADE[visibilidade], timeout=20.0)
@@ -732,7 +732,7 @@ def main(argv=None) -> int:
         achados = canais_da_sessao(args.canal)
         if not achados:
             print("[youtube-web] nenhum canal encontrado. Sem login? Rode "
-                  "`python -m src.publicar.youtube_web --login`")
+                  "`python -m builds.publicar.youtube_web --login`")
             return 1
 
         # Cadastrar (sem escolher) deixa os canais aparecerem no combo do
@@ -763,7 +763,7 @@ def main(argv=None) -> int:
                 print(f"  {item['id']}  @{item['arroba']:24} "
                       f"{item['nome']}{marca}")
             print()
-            print("Para escolher:  python -m src.publicar.youtube_web "
+            print("Para escolher:  python -m builds.publicar.youtube_web "
                   "--usar-canal @arroba --canal historias")
             return 0
 

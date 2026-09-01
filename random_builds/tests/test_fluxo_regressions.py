@@ -27,8 +27,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.identity import queue, slots                       # noqa: E402
-from src.pipeline import fluxo                              # noqa: E402
+from builds.identity import queue, slots                       # noqa: E402
+from builds.pipeline import fluxo                              # noqa: E402
 
 CONTEUDO = b"x" * (fluxo.BYTES_MINIMOS + 1)
 

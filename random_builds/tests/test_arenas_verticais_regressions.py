@@ -19,7 +19,7 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
-from src.tournament.runner import ARENAS_DE_ESTREIA, ARENAS_DE_VIDEO  # noqa: E402
+from builds.tournament.runner import ARENAS_DE_ESTREIA, ARENAS_DE_VIDEO  # noqa: E402
 
 # 1080x1920: a proporcao que a camera presa precisa encaixar sem faixa morta.
 RAZAO_9_16 = 9 / 16
@@ -91,12 +91,12 @@ class ArenasVerticaisTests(unittest.TestCase):
 
 class CameraPorPerfilTests(unittest.TestCase):
     def test_estreia_no_celular_e_camera_presa(self):
-        from src.tournament.runner import camera_do_perfil, config_gameplay
+        from builds.tournament.runner import camera_do_perfil, config_gameplay
         cfg = config_gameplay(None)
         self.assertEqual(camera_do_perfil(cfg, "estreia", "celular"), "ARENA")
 
     def test_o_resto_continua_no_diretor(self):
-        from src.tournament.runner import camera_do_perfil, config_gameplay
+        from builds.tournament.runner import camera_do_perfil, config_gameplay
         cfg = config_gameplay(None)
         self.assertEqual(camera_do_perfil(cfg, "estreia", "normal"), "DIRETOR")
         self.assertEqual(camera_do_perfil(cfg, "torneio", "celular"), "DIRETOR")

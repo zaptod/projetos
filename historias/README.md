@@ -138,7 +138,7 @@ login.
 
 ### Vários processos ao mesmo tempo
 
-A trava é **por conta** (`random_builds/src/travas.py`, nome
+A trava é **por conta** (`random_builds/builds/travas.py`, nome
 `servico__conta`): gerar roteiro no ChatGPT, imagens no PicassoIA e o worker
 de builds no Digen rodam **em paralelo**. Só a MESMA conta serializa — com
 uma conta de PicassoIA própria para o canal `historias` (página Contas), as

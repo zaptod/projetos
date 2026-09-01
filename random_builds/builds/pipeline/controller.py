@@ -85,7 +85,7 @@ class PipelineController:
         """nome_pedido/autor_pedido: o nome escolhido num comentario.
 
         Vem cru do CLI e nao e validado aqui de proposito - quem decide se o
-        pedido e aceitavel e src.character.nomes, que tambem grava o motivo da
+        pedido e aceitavel e builds.character.nomes, que tambem grava o motivo da
         recusa no generation.json. Recusado, a geracao segue com o nome
         gerado e o video volta a apenas convidar.
 

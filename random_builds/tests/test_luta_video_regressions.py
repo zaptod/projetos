@@ -29,14 +29,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.arena.ledger import Ledger, escolher_adversario                 # noqa: E402
-from src.assets.catalog import AssetCatalog                              # noqa: E402
-from src.assets.selector import AssetSelector                            # noqa: E402
-from src.content.caption_generator import CaptionGenerator               # noqa: E402
-from src.generation.random_engine import RandomEngine                    # noqa: E402
-from src.generation.session_generator import load_config                 # noqa: E402
-from src.tournament import highlights                                    # noqa: E402
-from src.tournament.timeline import (FightTimelineBuilder,               # noqa: E402
+from builds.arena.ledger import Ledger, escolher_adversario                 # noqa: E402
+from builds.assets.catalog import AssetCatalog                              # noqa: E402
+from builds.assets.selector import AssetSelector                            # noqa: E402
+from builds.content.caption_generator import CaptionGenerator               # noqa: E402
+from builds.generation.random_engine import RandomEngine                    # noqa: E402
+from builds.generation.session_generator import load_config                 # noqa: E402
+from builds.tournament import highlights                                    # noqa: E402
+from builds.tournament.timeline import (FightTimelineBuilder,               # noqa: E402
                                      planejar_callouts)
 
 EDICAO = load_config("editing.json")
@@ -545,7 +545,7 @@ class FightSessionSerieTests(unittest.TestCase):
     VENCEDORES: list[str] = []
 
     def setUp(self):
-        from src.tournament import runner
+        from builds.tournament import runner
 
         self.runner = runner
         self.chamadas: list[int] = []

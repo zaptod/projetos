@@ -32,7 +32,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from src.publicar import cortes                                # noqa: E402
+from builds.publicar import cortes                                # noqa: E402
 
 # As fronteiras reais da parte 1 da historia_00003 (14 cenas).
 CENAS = [0.0, 11.8, 26.7, 40.5, 54.8, 71.6, 85.3, 100.0,

@@ -435,7 +435,7 @@ def publicar(video, *, visibilidade: str | None = None,
 
 
 def main(argv=None) -> int:
-    """CLI: `python -m src.publicar.youtube <video_id> [--publico]`."""
+    """CLI: `python -m builds.publicar.youtube <video_id> [--publico]`."""
     import argparse
 
     from . import catalogo

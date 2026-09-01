@@ -27,9 +27,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.content.caption_generator import CaptionGenerator               # noqa: E402
-from src.generation import escolhas as mod                               # noqa: E402
-from src.generation.session_generator import (SessionGenerator,          # noqa: E402
+from builds.content.caption_generator import CaptionGenerator               # noqa: E402
+from builds.generation import escolhas as mod                               # noqa: E402
+from builds.generation.session_generator import (SessionGenerator,          # noqa: E402
                                               load_config)
 
 SEED = 4242
@@ -39,7 +39,7 @@ CAPTIONS = CaptionGenerator(load_config("captions.json"), load_config("frases.js
 class CatalogoTests(unittest.TestCase):
     def test_o_catalogo_vem_das_roletas(self):
         """Lista paralela divergiria no dia em que o jogo ganhasse uma classe."""
-        from src.nf_bridge import roulette_factory
+        from builds.nf_bridge import roulette_factory
 
         catalogo = mod.catalogo()
         ids_das_roletas = {r["id"] for config in

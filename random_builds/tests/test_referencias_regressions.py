@@ -31,10 +31,10 @@ if str(ROOT) not in sys.path:
 
 from PIL import Image                                              # noqa: E402
 
-from src.identity import artefato                                  # noqa: E402
-from src.identity import config as icfg                            # noqa: E402
-from src.identity import queue as fila                             # noqa: E402
-from src.identity import slots                                     # noqa: E402
+from builds.identity import artefato                                  # noqa: E402
+from builds.identity import config as icfg                            # noqa: E402
+from builds.identity import queue as fila                             # noqa: E402
+from builds.identity import slots                                     # noqa: E402
 
 GID = "generation_77777"
 LONGE = "2999-01-01T00:00:00+00:00"
@@ -105,7 +105,7 @@ class GrafoTests(unittest.TestCase):
 
     def test_a_referencia_do_payoff_e_a_imagem_COMPOSTA(self):
         """Com a juncao pronta, o Digen recebe UMA imagem, nao as duas cruas."""
-        from src.identity import referencias
+        from builds.identity import referencias
         for slot in (slots.CHARACTER, slots.WEAPON, slots.REFERENCIA):
             self._imagem(slot)
         escolhidas = referencias.disponiveis(GID)
@@ -293,7 +293,7 @@ class AnexoTests(unittest.TestCase):
     """O anexo so conta quando o COMPOSER mostra a miniatura."""
 
     def setUp(self):
-        from src.identity import referencias
+        from builds.identity import referencias
         self.referencias = referencias
         self._tmp = tempfile.TemporaryDirectory()
         self.imagens = []
@@ -420,7 +420,7 @@ class SeletorDeAnexoTests(unittest.TestCase):
     """As ancoras do fluxo "+" -> "Enviar imagem"."""
 
     def setUp(self):
-        from src.identity import selectors
+        from builds.identity import selectors
         self.sel = selectors
 
     def test_o_mais_nao_colide_com_o_download(self):
@@ -470,7 +470,7 @@ class LateBindingTests(unittest.TestCase):
     """O texto do payoff e decidido DEPOIS de saber o que foi anexado."""
 
     def setUp(self):
-        from src.identity import worker
+        from builds.identity import worker
         self.worker = worker
         self._tmp = tempfile.TemporaryDirectory()
         self.raiz = Path(self._tmp.name)
@@ -479,7 +479,7 @@ class LateBindingTests(unittest.TestCase):
         icfg.OUTPUTS = self.raiz / "outputs"
         (icfg.OUTPUTS / GID).mkdir(parents=True)
         # generation.json real, senao nao ha identidade para descrever
-        from src.generation.session_generator import SessionGenerator
+        from builds.generation.session_generator import SessionGenerator
         generation = SessionGenerator().generate(seed=7, generation_id=GID)
         (icfg.OUTPUTS / GID / "generation.json").write_text(
             json.dumps(generation, ensure_ascii=False), encoding="utf-8")
@@ -529,7 +529,7 @@ class LateBindingTests(unittest.TestCase):
             anexa=[icfg.OUTPUTS / GID / slots.ARQUIVO[slots.CHARACTER]])
         texto, _, _modelo = self.worker._texto_com_referencias(
             cliente, self.job, self.ajustes, None)
-        from src.identity.prompt import campos
+        from builds.identity.prompt import campos
         generation = json.loads(
             (icfg.OUTPUTS / GID / "generation.json").read_text(encoding="utf-8"))
         valores = campos(generation, self.ajustes)
@@ -540,7 +540,7 @@ class LateBindingTests(unittest.TestCase):
         """Degradacao = o video que ja saia antes desta mudanca."""
         texto, _, _modelo = self.worker._texto_com_referencias(
             _ClienteFake(anexa=[]), self.job, self.ajustes, None)
-        from src.identity.prompt import campos
+        from builds.identity.prompt import campos
         generation = json.loads(
             (icfg.OUTPUTS / GID / "generation.json").read_text(encoding="utf-8"))
         valores = campos(generation, self.ajustes)
@@ -583,8 +583,8 @@ class InterfaceDeProvedorTests(unittest.TestCase):
                  "enviado_em")
 
     def setUp(self):
-        from src.identity.client import DigenClient
-        from src.identity.picasso_client import PicassoClient
+        from builds.identity.client import DigenClient
+        from builds.identity.picasso_client import PicassoClient
         self.classes = {"digen": DigenClient, "picasso": PicassoClient}
 
     def test_os_dois_tem_todos_os_metodos(self):
@@ -619,7 +619,7 @@ class InterfaceDeProvedorTests(unittest.TestCase):
                                 f"{nome} nao expoe {atributo}")
 
     def test_o_registro_devolve_a_classe_certa_para_cada_slot(self):
-        from src.identity import provedores
+        from builds.identity import provedores
         for slot in slots.SLOTS:
             provedor = slots.provedor(slot)
             self.assertIn(slot, provedores.slots_de(provedor))
@@ -638,7 +638,7 @@ class MapeamentoDeReferenciaTests(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.identity import referencias
+        from builds.identity import referencias
         self.referencias = referencias
 
     def test_o_arquivo_reduzido_ainda_aponta_para_o_slot(self):
@@ -725,7 +725,7 @@ class ModeloComReferenciaTests(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.identity import worker
+        from builds.identity import worker
         self.worker = worker
         self._tmp = tempfile.TemporaryDirectory()
         self.raiz = Path(self._tmp.name)
@@ -733,7 +733,7 @@ class ModeloComReferenciaTests(unittest.TestCase):
         fila.ARQUIVO_FILA = self.raiz / "queue.json"
         icfg.OUTPUTS = self.raiz / "outputs"
         (icfg.OUTPUTS / GID).mkdir(parents=True)
-        from src.generation.session_generator import SessionGenerator
+        from builds.generation.session_generator import SessionGenerator
         generation = SessionGenerator().generate(seed=11, generation_id=GID)
         (icfg.OUTPUTS / GID / "generation.json").write_text(
             json.dumps(generation, ensure_ascii=False), encoding="utf-8")
@@ -782,7 +782,7 @@ class ModeloComReferenciaTests(unittest.TestCase):
                 self.assertNotIn(pago, nome, f"{nome} e cobrado por geracao")
 
     def test_modelo_fora_da_lista_e_recusado_antes_de_gerar(self):
-        from src.identity.client import DigenClient, GeracaoFalhou
+        from builds.identity.client import DigenClient, GeracaoFalhou
         cliente = DigenClient.__new__(DigenClient)
         cliente.ajustes = {"modelos_permitidos": ["Real Motion 3.5"]}
         with self.assertRaises(GeracaoFalhou) as ctx:
@@ -857,7 +857,7 @@ class ZumbiTests(unittest.TestCase):
     def test_o_worker_explica_por_que_parou(self):
         """Rodada muda e indistinguivel de rodada que nao teve trabalho."""
         import inspect
-        from src.identity import worker
+        from builds.identity import worker
         fonte = inspect.getsource(worker._explicar_parada)
         self.assertIn("fila vazia", fonte)
         self.assertIn("tentativas esgotadas", fonte)
@@ -875,7 +875,7 @@ class BotaoDeModeloTests(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.identity import selectors
+        from builds.identity import selectors
         self.sel = selectors
 
     def test_toda_familia_conhecida_tem_como_ser_lida(self):
@@ -894,7 +894,7 @@ class BotaoDeModeloTests(unittest.TestCase):
 
     def test_o_modelo_de_referencia_e_legivel(self):
         """Vale so quando ha troca configurada; hoje nao ha (image-to-video e pago)."""
-        from src.identity import config
+        from builds.identity import config
         nome = (config.settings().get("referencias") or {}).get("modelo")
         if not nome:
             self.skipTest("sem troca de modelo configurada")
@@ -917,7 +917,7 @@ class NomeDeModeloTests(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
         self.mesmo = DigenClient._mesmo_modelo
 
     def test_espaco_nao_faz_diferenca(self):
@@ -947,7 +947,7 @@ class FolhaDeReferenciaTests(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.identity import referencias
+        from builds.identity import referencias
         self.referencias = referencias
         self._tmp = tempfile.TemporaryDirectory()
         self._outputs = icfg.OUTPUTS
@@ -1005,7 +1005,7 @@ class CaminhoDeAnexoPorProvedorTests(unittest.TestCase):
     """
 
     def test_digen_declara_menu_de_anexo(self):
-        from src.identity import selectors
+        from builds.identity import selectors
         self.assertTrue(selectors.BOTAO_ANEXO)
         self.assertTrue(selectors.OPCAO_ENVIAR_IMAGEM)
 
@@ -1013,14 +1013,14 @@ class CaminhoDeAnexoPorProvedorTests(unittest.TestCase):
         """Desde 26/08/2026 o Editor Pro tem botao "Carregar imagem" que abre
         o seletor de arquivo DIRETO: BOTAO_ANEXO declarado, OPCAO (menu)
         vazia de proposito — clicar no botao encerra o caminho."""
-        from src.identity import picasso_selectors
+        from builds.identity import picasso_selectors
         self.assertTrue(picasso_selectors.BOTAO_ANEXO)
         self.assertEqual([], picasso_selectors.OPCAO_ENVIAR_IMAGEM)
 
     def test_sem_menu_nao_espera_dialogo(self):
         """A guarda: lista vazia significa "va direto ao input"."""
         import inspect
-        from src.identity import referencias
+        from builds.identity import referencias
         fonte = inspect.getsource(referencias.anexar)
         self.assertIn("BOTAO_ANEXO", fonte)
         self.assertIn("tem_menu", fonte)
@@ -1028,8 +1028,8 @@ class CaminhoDeAnexoPorProvedorTests(unittest.TestCase):
     def test_o_editor_recebe_as_duas_e_o_digen_uma(self):
         """Os tetos vem do que cada site aceita, nao de precaucao."""
         import inspect
-        from src.identity.client import DigenClient
-        from src.identity.picasso_client import PicassoClient
+        from builds.identity.client import DigenClient
+        from builds.identity.picasso_client import PicassoClient
         self.assertIn("maximo=len(prontos)",
                       inspect.getsource(PicassoClient.anexar_referencias))
         # o Digen usa o default (1), documentado como observacao de tela
@@ -1048,7 +1048,7 @@ class DuplicataTests(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.identity import artefato
+        from builds.identity import artefato
         self.artefato = artefato
         self._tmp = tempfile.TemporaryDirectory()
         self._outputs = icfg.OUTPUTS
@@ -1090,7 +1090,7 @@ class DuplicataTests(unittest.TestCase):
 
     def test_o_worker_descarta_e_falha_em_vez_de_aceitar(self):
         import inspect
-        from src.identity import worker
+        from builds.identity import worker
         fonte = inspect.getsource(worker.processar)
         self.assertIn("duplicado_de", fonte)
         self.assertIn("unlink", fonte, "o arquivo errado tem que sair do disco")
@@ -1106,8 +1106,8 @@ class LeituraDeControleTests(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.identity import selectors
-        from src.identity.client import DigenClient
+        from builds.identity import selectors
+        from builds.identity.client import DigenClient
         self.sel = selectors
         self.canonico = DigenClient._canonico
 
@@ -1130,20 +1130,20 @@ class TempoDoPayoffTests(unittest.TestCase):
     """O payoff e o unico clipe da build: ele merece o maior tempo possivel."""
 
     def setUp(self):
-        from src.generation.session_generator import load_config
+        from builds.generation.session_generator import load_config
         self.identidade = icfg.settings()
         self.edicao = load_config("editing.json")
 
     def test_o_payoff_pede_o_maior_tempo_do_modelo(self):
         """Lista comecando em '5s' entregava 5s com 8s disponivel."""
-        from src.identity import selectors
+        from builds.identity import selectors
         pedido = self.identidade["duracao_por_slot"][slots.CHARACTER_WEAPON]
         self.assertEqual(selectors.MAXIMO, pedido[0],
                          "a primeira preferencia ganha; `max` tem que vir antes")
 
     def test_a_janela_da_montagem_cabe_o_clipe_inteiro(self):
         """Pedir 8s e cortar em 6s joga fora dois segundos gerados."""
-        from src.identity import selectors
+        from builds.identity import selectors
         janela = self.edicao["identity_slots"][slots.CHARACTER_WEAPON]
         maior = max(selectors.valor_numerico(d) or 0
                     for d in selectors.DURACOES_CONHECIDAS[:3])
@@ -1160,7 +1160,7 @@ class RodapeTests(unittest.TestCase):
     """
 
     def setUp(self):
-        from src.identity import referencias
+        from builds.identity import referencias
         self.referencias = referencias
         self._tmp = tempfile.TemporaryDirectory()
 
@@ -1199,7 +1199,7 @@ class RodapeTests(unittest.TestCase):
     def test_so_a_imagem_COMPOSTA_e_aparada(self):
         """As imagens de origem vem limpas; aparar todas seria perda a toa."""
         import inspect
-        from src.identity import worker
+        from builds.identity import worker
         fonte = inspect.getsource(worker.processar)
         self.assertIn("slot == slots.REFERENCIA", fonte)
         self.assertIn("aparar_rodape", fonte)
@@ -1217,7 +1217,7 @@ class BotaoTapadoTests(unittest.TestCase):
 
     def test_o_cliente_esvazia_antes_de_baixar(self):
         import inspect
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
         fonte = inspect.getsource(DigenClient._liberar_botao_de_download)
         self.assertIn("esvaziar_composer", fonte)
         self.assertIn("_limpar_composer", fonte, "o texto tambem empurra a caixa")
@@ -1227,20 +1227,20 @@ class BotaoTapadoTests(unittest.TestCase):
     def test_a_ordem_importa(self):
         """Passar o mouse antes de esvaziar mira num alvo que ainda esta coberto."""
         import inspect
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
         fonte = inspect.getsource(DigenClient._liberar_botao_de_download)
         self.assertLess(fonte.index("esvaziar_composer"),
                         fonte.index("hover_no_card"))
 
     def test_baixar_chama_a_liberacao_primeiro(self):
         import inspect
-        from src.identity.client import DigenClient
+        from builds.identity.client import DigenClient
         fonte = inspect.getsource(DigenClient.download)
         self.assertLess(fonte.index("_liberar_botao_de_download"),
                         fonte.index("botao_download"))
 
     def test_esvaziar_nao_levanta_com_pagina_quebrada(self):
-        from src.identity import selectors
+        from builds.identity import selectors
 
         class _Quebrada:
             def evaluate(self, *a, **k):

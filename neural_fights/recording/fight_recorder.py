@@ -342,7 +342,7 @@ def _abrir_ffmpeg(saida: Path, largura: int, altura: int, fps: int,
                   crf: int, preset: str) -> subprocess.Popen:
     """Pipe de frames crus para o ffmpeg.
 
-    Mesmo formato de `random_builds/src/video/renderer.py::_encode_frames`,
+    Mesmo formato de `random_builds/builds/video/renderer.py::_encode_frames`,
     inclusive a trilha silenciosa: manter os segmentos com video E audio e o
     que permite o `concat -c copy` do renderer funcionar depois.
     """
