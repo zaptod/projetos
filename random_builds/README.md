@@ -1,9 +1,12 @@
 # Random Builds — Roleta Procedural do Neural Fights
 
+> Parte do monorepo `e:/projetos`. O mapa de todos os projetos, quem depende de quem e como instalar está no [README da raiz](../README.md).
+
+
 > **Painel de controle:** tudo daqui (e do neural_fights: simulação, torneio,
 > lives, database) é acessível pela interface gráfica — dois cliques em
 > `painel.bat` na raiz de `e:\projetos` (ou `python painel_ui.py`).
-> Versão de terminal: `python painel.py`.
+> Versão de terminal: `python ferramentas/painel.py`.
 
 Sistema de vídeos no estilo **"Vamos criar um personagem aleatório"**, moldado
 100% pela base de dados do **neural_fights**:
@@ -1134,7 +1137,7 @@ Duas decisões que valem saber:
   só ensina a ignorar alertas.
 
 No painel: botões **Diagnóstico** e **Status** na aba "Vídeos de Build", ou as
-opções 7–9 e `h` no menu de identidade do `painel.py`.
+opções 7–9 e `h` no menu de identidade do `ferramentas/painel.py`.
 
 **Como se encaixa no pipeline.** `generate-video` grava as duas identidades,
 monta os três prompts, enfileira em `outputs/_identity/queue.json` e termina —

@@ -1,5 +1,8 @@
 # Histórias por IA — canal de relatos narrados
 
+> Parte do monorepo `e:/projetos`. O mapa de todos os projetos, quem depende de quem e como instalar está no [README da raiz](../README.md).
+
+
 Projeto **separado** do `random_builds`, controlado pelo mesmo painel
 (`python painel_ui.py` na raiz → página **📖 Histórias**).
 

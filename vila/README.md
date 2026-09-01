@@ -1,5 +1,8 @@
 # Vila — o mundinho dos bots, em sprites
 
+> Parte do monorepo `e:/projetos`. O mapa de todos os projetos, quem depende de quem e como instalar está no [README da raiz](../README.md).
+
+
 A página **🏭 Vila** do painel mostra a fábrica de conteúdo como um jogo:
 cada etapa das pipelines (ChatGPT, Gemini, PicassoIA, Digen, estúdio, arena,
 publicação) é um prédio, e um bot mora na casa central e **anda até o prédio

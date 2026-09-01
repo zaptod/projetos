@@ -167,3 +167,41 @@ jobs:
           assert not ra.exists() and not rc.exists(); db.salvar_database(*data);
           assert ra.is_file() and rc.is_file();
           assert before == (pa.read_bytes(), pc.read_bytes())"
+
+  # ------------------------------------------------------------------
+  # O WORKSPACE INTEIRO. Ate 01/09/2026 o CI cobria SO `tests/` (o motor do
+  # jogo) e ficou vermelho por dias sem ninguem ver: os audios empacotados
+  # tinham sido apagados num commit e o `ruff` ja falhava. Os outros quatro
+  # projetos nao tinham cobertura nenhuma.
+  #
+  # Roda no Windows porque e onde o painel e as travas de perfil sao reais:
+  # `msvcrt.locking` e `pythonw` nao existem no Linux, e o smoke do painel
+  # precisa de um Tk de verdade.
+  # ------------------------------------------------------------------
+  workspace-windows:
+    runs-on: windows-latest
+
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - name: Instalar o workspace (editavel, como na maquina dele)
+        run: >-
+          python -m pip install -e . -e ./random_builds -e ./historias
+          -e ./visao -e ./painel
+      - name: Ferramentas externas
+        run: choco install ffmpeg -y --no-progress
+      - run: python -m ruff check .
+      - name: A catraca de arquitetura
+        run: python ferramentas/auditoria_arquitetura.py --strict
+      - name: Tudo, num comando so
+        run: python testar.py

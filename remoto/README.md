@@ -1,5 +1,8 @@
 # Remoto — o painel no seu bolso
 
+> Parte do monorepo `e:/projetos`. O mapa de todos os projetos, quem depende de quem e como instalar está no [README da raiz](../README.md).
+
+
 Bot de Telegram que **avisa** quando algo quebra e **aceita comandos** do
 celular. Sem dependência nova: só `urllib` da biblioteca padrão.
 
