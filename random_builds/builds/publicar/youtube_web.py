@@ -29,6 +29,7 @@ import re
 import time
 from pathlib import Path
 
+from .. import atividade
 from ..identity.browser import contexto_persistente, montou, pagina
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -567,8 +568,15 @@ def publicar(video, *, visibilidade: str | None = None,
         if progresso:
             progresso(texto)
 
-    with contexto_persistente(headless=False,
-                              profile=perfil_da_conta(canal)) as ctx:
+    # A Vila mostra o que esta acontecendo lendo o diario, e ate 01/09/2026
+    # publicar nao escrevia nada nele. Como o caminho padrao virou o
+    # navegador, a fabrica "publicacao" ficava OCIOSA durante quase todo
+    # upload de verdade -- so a API, hoje secundaria, reportava. Um painel
+    # que mostra "parado" enquanto se publica e pior do que nao ter painel.
+    with atividade.fabrica("publicacao", f"YouTube: {caminho.name}",
+                           canal=canal), \
+            contexto_persistente(headless=False,
+                                 profile=perfil_da_conta(canal)) as ctx:
         page = _abrir(ctx, url_de_upload(canal))
         if not _esperar_montar(page):
             raise YouTubeWebFalhou(

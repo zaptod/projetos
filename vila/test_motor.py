@@ -142,5 +142,27 @@ class MotorTests(unittest.TestCase):
         self.assertFalse(motor.pronto(sem_chao))
 
 
+class ListaDeFabricasTests(unittest.TestCase):
+    """A Vila e o diario nao podem ter duas listas de fabricas.
+
+    Eram duas copias mantidas a mao. Uma fabrica nova entrava no diario e
+    simplesmente nao ganhava predio na Vila, sem erro nenhum -- o mundo
+    ficava desatualizado em silencio.
+    """
+
+    def test_o_motor_usa_a_lista_do_diario(self):
+        try:
+            from builds.atividade import FABRICAS
+        except ImportError:
+            self.skipTest("random_builds nao esta instalado")
+        self.assertEqual(tuple(FABRICAS), tuple(motor.FABRICAS))
+
+    def test_todo_predio_sugerido_tem_uma_fabrica(self):
+        """`predio.<x>` sem fabrica `<x>` e um predio que ninguem habita."""
+        predios = [p.split(".", 1)[1] for p in motor.PAPEIS_SUGERIDOS
+                   if p.startswith("predio.")]
+        self.assertEqual(sorted(motor.FABRICAS + ["casa"]), sorted(predios))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,6 +20,7 @@ Regras de sobrevivencia:
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,6 +44,37 @@ _PODA_PARA = 2000
 INICIO_VELHO_S = 2 * 3600.0
 
 
+def _vivo(pid) -> bool | None:
+    """O processo ainda existe? None quando nao da para saber.
+
+    None e diferente de False de proposito: evento antigo (gravado antes de
+    haver `pid`) ou PID de outra maquina nao podem ser tratados como morte,
+    senao a Vila apagaria trabalho de verdade.
+    """
+    try:
+        numero = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if numero <= 0:
+        return None
+    try:
+        if os.name == "nt":
+            import ctypes
+            # 0x0400 = PROCESS_QUERY_INFORMATION; sem direito de abrir, o
+            # processo existe e e de outro usuario -- ainda e "vivo".
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, numero)
+            if handle:
+                ctypes.windll.kernel32.CloseHandle(handle)
+                return True
+            return ctypes.windll.kernel32.GetLastError() != 87   # 87 = sumiu
+        os.kill(numero, 0)
+        return True
+    except PermissionError:
+        return True
+    except (OSError, AttributeError):
+        return False
+
+
 def _arquivo() -> Path:
     try:
         from .contas import runtime_dir
@@ -57,6 +89,12 @@ def registrar(fabrica: str, status: str, detalhe: str = "",
     try:
         linha = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            # QUEM esta rodando. Sem isto, "trabalhando" so podia ser
+            # desmentido pelo relogio: um `inicio` sem `ok` era considerado
+            # morto depois de 2 h, o que dava as duas respostas erradas --
+            # job legitimo de 3 h aparecia ocioso, e processo derrubado
+            # ficava trabalhando na tela por duas horas.
+            "pid": os.getpid(),
             "fabrica": str(fabrica), "canal": str(canal),
             "status": str(status), "detalhe": str(detalhe)[:300],
         }
@@ -143,7 +181,7 @@ def estado_das_fabricas() -> dict:
             continue
         idade = _idade_s(evento.get("ts", ""))
         status = evento.get("status")
-        if status == TRABALHANDO and idade <= INICIO_VELHO_S:
+        if status == TRABALHANDO and _trabalhando_de_verdade(evento, idade):
             situacao = "trabalhando"
         elif status == ERRO:
             situacao = "erro"
@@ -153,6 +191,57 @@ def estado_das_fabricas() -> dict:
                           "detalhe": evento.get("detalhe", ""),
                           "canal": evento.get("canal", ""),
                           "ha_s": round(idade, 1)}
+    return saida
+
+
+def _trabalhando_de_verdade(evento: dict, idade: float) -> bool:
+    """Um `inicio` sem `ok`/`erro` depois: ainda esta acontecendo?
+
+    O PID manda quando ele diz alguma coisa: processo vivo continua
+    trabalhando por mais tempo que passe, e processo morto para de trabalhar
+    na hora. So quando o PID nao responde (evento velho, de antes de existir
+    `pid`, ou de outra maquina) e que o relogio decide, como antes.
+    """
+    vivo = _vivo(evento.get("pid"))
+    if vivo is True:
+        return True
+    if vivo is False:
+        return False
+    return idade <= INICIO_VELHO_S
+
+
+def estado_por_canal() -> dict:
+    """{(fabrica, canal): {status, detalhe, ha_s}} — dois canais, dois bots.
+
+    `estado_das_fabricas` guarda so o evento mais novo POR FABRICA, entao
+    builds e historias trabalhando no mesmo provedor viravam um so: o mais
+    recente apagava o outro. Para a Vila mostrar o mundo como ele e, a chave
+    precisa incluir o canal.
+    """
+    ultimo: dict[tuple, dict] = {}
+    for evento in recentes(600):
+        fabrica_nome = evento.get("fabrica")
+        if not fabrica_nome or evento.get("status") == LOG:
+            continue
+        chave = (fabrica_nome, evento.get("canal") or "")
+        if chave in ultimo:
+            continue
+        ultimo[chave] = evento
+
+    saida = {}
+    for chave, evento in ultimo.items():
+        idade = _idade_s(evento.get("ts", ""))
+        status = evento.get("status")
+        if status == TRABALHANDO and _trabalhando_de_verdade(evento, idade):
+            situacao = "trabalhando"
+        elif status == ERRO:
+            situacao = "erro"
+        else:
+            situacao = "ocioso"
+        saida[chave] = {"status": situacao,
+                        "detalhe": evento.get("detalhe", ""),
+                        "ha_s": round(idade, 1),
+                        "pid": evento.get("pid")}
     return saida
 
 
@@ -182,5 +271,6 @@ class fabrica:
         return False
 
 
-__all__ = ["ERRO", "FABRICAS", "LOG", "OK", "TRABALHANDO", "estado_das_fabricas",
-           "fabrica", "recentes", "registrar"]
+__all__ = ["ERRO", "FABRICAS", "LOG", "OK", "TRABALHANDO",
+           "estado_das_fabricas", "estado_por_canal", "fabrica", "recentes",
+           "registrar"]

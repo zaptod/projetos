@@ -34,8 +34,25 @@ RAIZ = Path(__file__).resolve().parent
 SPRITES = RAIZ / "sprites"
 CONFIG = RAIZ / "config.json"
 
-FABRICAS = ["chatgpt", "gemini", "picasso", "digen",
-            "estudio", "arena", "publicacao"]
+def _fabricas() -> list:
+    """A lista vem do DIARIO, que e quem de fato registra o trabalho.
+
+    Ate 01/09/2026 esta lista era escrita aqui e de novo em
+    `atividade.FABRICAS` -- duas copias mantidas a mao. Uma fabrica nova
+    entrava no diario e simplesmente nao ganhava predio, sem erro nenhum.
+    A Vila desenha o que o diario conhece; se nao conseguir importar
+    (rodando a Oficina sozinha, sem o random_builds instalado), cai na
+    lista conhecida em vez de abrir vazia.
+    """
+    try:
+        from builds.atividade import FABRICAS as do_diario
+        return list(do_diario)
+    except Exception:
+        return ["chatgpt", "gemini", "picasso", "digen",
+                "estudio", "arena", "publicacao"]
+
+
+FABRICAS = _fabricas()
 
 # O vocabulario que o painel entende. A Oficina aceita papeis novos alem
 # destes (decoracao livre), mas ESTES sao os que ganham vida:
