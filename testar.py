@@ -78,6 +78,8 @@ SUITES = (
      [PY, "-X", "utf8", "-m", "unittest", "remoto.test_remoto"]),
     ("vila (sprites)", RAIZ,
      [PY, "-X", "utf8", "-m", "unittest", "vila.test_motor"]),
+    ("painel (novo)", RAIZ,
+     [PY, "-X", "utf8", "-m", "unittest", "painel.test_painel"]),
     ("panorama (metricas)", RAIZ,
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "visao/tests",
       "-p", "test_*.py"]),

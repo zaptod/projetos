@@ -48,6 +48,17 @@ class Tema:
     def __init__(self, nome: str, cores: dict, fonte: str,
                  escala_texto: dict, densidade: int):
         self.nome = nome
+        # Uma cor com o nome de um atributo ou metodo real NUNCA seria
+        # devolvida: `__getattr__` so roda quando a busca normal falha, e o
+        # Tk recebia o objeto do metodo convertido em texto ("...texto") como
+        # se fosse cor. Melhor estourar aqui, na montagem, do que la.
+        conflitos = sorted(c for c in cores
+                           if c in dir(type(self)) or c in ("nome", "fonte",
+                                                            "densidade"))
+        if conflitos:
+            raise ValueError(
+                f"tema '{nome}': a(s) cor(es) {', '.join(conflitos)} tem o "
+                "nome de um atributo do proprio tema e nunca seriam lidas.")
         self._cores = cores
         self.fonte = fonte
         self._texto = escala_texto
@@ -64,8 +75,8 @@ class Tema:
                 f"disponiveis: {', '.join(sorted(self._cores))}") from None
 
     # ------------------------------------------------------------ texto
-    def texto(self, papel: str, peso: str = "normal") -> tuple:
-        """`tema.texto("titulo")` — pelo PAPEL, nunca pelo tamanho.
+    def letra(self, papel: str, peso: str = "normal") -> tuple:
+        """`tema.letra("titulo")` — pelo PAPEL, nunca pelo tamanho.
 
         Pedir "15pt" espalha decisao; pedir "titulo" concentra. Quando o
         titulo tiver que mudar de tamanho, muda aqui e muda em todo lugar.
