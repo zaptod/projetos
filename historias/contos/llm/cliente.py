@@ -24,6 +24,9 @@ from __future__ import annotations
 import random
 import time
 from pathlib import Path
+from builds.identity import browser as _rb_identity_browser
+import builds.contas as _rb_contas
+import builds.travas as _rb_travas
 
 from . import seletores as sel
 
@@ -47,8 +50,7 @@ def perfil_de(provedor: str, canal: str = "geral") -> Path:
     mesmo ChatGPT/Gemini depois — era o pedido: logar uma vez, reusar.
     """
     try:
-        from .. import compartilhado
-        return compartilhado.modulo("contas").perfil(str(provedor).lower(), canal)
+        return _rb_contas.perfil(str(provedor).lower(), canal)
     except Exception:
         caminho = PERFIS / str(provedor).lower()
         caminho.mkdir(parents=True, exist_ok=True)
@@ -254,9 +256,8 @@ def abrir_cliente(provedor: str, *, headless: bool = False,
 
     @contextmanager
     def _abrir():
-        from .. import compartilhado
-        browser = compartilhado.modulo("identity.browser")
-        travas = compartilhado.modulo("travas")
+        browser = _rb_identity_browser
+        travas = _rb_travas
         nome_trava = travas.do_perfil(provedor, "geral")
         with travas.trava(nome_trava, esperar=10.0) as minha:
             if not minha:

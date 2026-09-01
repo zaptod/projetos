@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from builds.identity import browser as _rb_identity_browser
 
 from . import cliente as cli
 from . import seletores as sel
@@ -22,8 +23,7 @@ DESTINO = RAIZ / "outputs" / "_llm"
 
 def run(provedor: str = "chatgpt", *, esperar: float = 0.0,
         headless: bool = False, log=print) -> Path:
-    from .. import compartilhado
-    browser = compartilhado.modulo("identity.browser")
+    browser = _rb_identity_browser
     alvo = sel.do_provedor(provedor)
 
     with browser.contexto_persistente(headless=headless,
@@ -89,8 +89,7 @@ def run(provedor: str = "chatgpt", *, esperar: float = 0.0,
 
 def login(provedor: str = "chatgpt", *, espera: float = 300.0, log=print) -> None:
     """Abre a janela e espera voce entrar na conta. O perfil guarda a sessao."""
-    from .. import compartilhado
-    browser = compartilhado.modulo("identity.browser")
+    browser = _rb_identity_browser
     alvo = sel.do_provedor(provedor)
     log(f"[login] abrindo o {provedor}. Entre na sua conta na janela que abriu.")
     log(f"[login] a janela fica aberta por ate {espera / 60:.0f} min; "

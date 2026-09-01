@@ -198,8 +198,7 @@ class RitmoVisualTests(unittest.TestCase):
 class TrilhaTests(unittest.TestCase):
     def test_a_cama_da_historia_nao_tem_bateria(self):
         """A trilha de builds é trap; sob um desabafo ela vira videoclipe."""
-        from contos import compartilhado
-        trilha = compartilhado.trilha()
+        from builds.video import trilha
         if not trilha.disponivel():
             self.skipTest("numpy ausente")
         import numpy as np

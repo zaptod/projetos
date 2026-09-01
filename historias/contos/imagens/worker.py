@@ -21,7 +21,16 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .. import compartilhado
+from builds.identity import browser as _rb_identity_browser
+from builds.identity import client as _rb_identity_client
+from builds.identity import config as _rb_identity_config
+from builds.identity import picasso_client as _rb_identity_picasso_client
+from builds.identity import session as _rb_identity_session
+from builds.identity import controle as _rb_identity_controle
+from builds.identity import moderacao as _rb_identity_moderacao
+from builds.identity import provedores as _rb_identity_provedores
+from builds.identity import proveniencia as _rb_identity_proveniencia
+import builds.travas as _rb_travas
 from . import fila
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -69,7 +78,7 @@ class NaoRodou(RuntimeError):
 def _pausado(alvo: str = "picasso"):
     """(pausado?, motivo) segundo o interruptor compartilhado."""
     try:
-        controle = compartilhado.controle()
+        controle = _rb_identity_controle
     except Exception:
         return False, ""
     try:
@@ -107,22 +116,25 @@ def gerar(historia_id: str, *, limite: int | None = None,
         pendentes = pendentes[:limite]
     protagonista = str(roteiro.get("protagonista") or "")
 
-    Cliente, contexto_persistente, pagina, ensure_logged_in, icfg = \
-        compartilhado.picasso()
+    Cliente = _rb_identity_picasso_client.PicassoClient
+    contexto_persistente = _rb_identity_browser.contexto_persistente
+    pagina = _rb_identity_browser.pagina
+    ensure_logged_in = _rb_identity_session.ensure_logged_in
+    icfg = _rb_identity_config
     ajustes = {**icfg.settings("picasso"), **{
         k: v for k, v in config.items() if not k.startswith("_")}}
 
     geradas, erros, recusadas = 0, [], []
     morreu = False
-    moderacao = compartilhado.modulo("identity.moderacao")
-    ConteudoRecusado = compartilhado.modulo("identity.client").ConteudoRecusado
+    moderacao = _rb_identity_moderacao
+    ConteudoRecusado = _rb_identity_client.ConteudoRecusado
     from .reescritor import Reescritor
     reescritor = (Reescritor(str(config.get("llm_provedor", "chatgpt")),
                              headless=headless, log=log)
                   if config.get("reescrever_com_llm", True) else None)
     log(f"[imagens] {historia_id}: {len(pendentes)} cena(s) para gerar.")
 
-    travas = compartilhado.modulo("travas")
+    travas = _rb_travas
     from contextlib import ExitStack
     pilha = ExitStack()
     nome_trava = travas.do_perfil("picasso", "historias")
@@ -134,7 +146,7 @@ def gerar(historia_id: str, *, limite: int | None = None,
             "propria para as historias (pagina Contas), os dois rodam em "
             "paralelo.")
     with pilha:
-        seletores = compartilhado.modulo("identity.provedores").seletores("picasso")
+        seletores = _rb_identity_provedores.seletores("picasso")
         # Canal `historias`: o registro de contas pode apontar para outra
         # conta do PicassoIA que nao a do canal de builds.
         with contexto_persistente(
@@ -145,7 +157,7 @@ def gerar(historia_id: str, *, limite: int | None = None,
             # ele o login abriria a pagina errada.
             ensure_logged_in(page, ajustes, sel=seletores, provedor="picasso")
             cliente = Cliente(ctx, page, ajustes)
-            proveniencia = compartilhado.modulo("identity.proveniencia")
+            proveniencia = _rb_identity_proveniencia
 
             for i, linha in enumerate(pendentes):
                 n, numero_parte = linha["n"], linha.get("parte", 1)

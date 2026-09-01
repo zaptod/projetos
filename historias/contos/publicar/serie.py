@@ -21,6 +21,9 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from builds.publicar import tiktok as _rb_publicar_tiktok
+from builds.publicar import youtube as _rb_publicar_youtube
+import builds.atividade as _rb_atividade
 
 from . import catalogo, qualidade
 
@@ -99,8 +102,7 @@ def videos_da_serie(historia_id: str, perfil: str = "celular") -> list:
 
 def _atividade():
     try:
-        from .. import compartilhado
-        return compartilhado.modulo("atividade")
+        return _rb_atividade
     except Exception:
         class _Muda:
             @staticmethod
@@ -150,8 +152,7 @@ def publicar(historia_id: str, *, perfil: str = "celular",
     # custa a vistoria inteira e deixa metade das partes no ar. A sonda abre
     # uma sessao de upload e nao envia byte nenhum — nao cria video.
     if "youtube" in plataformas and not forcar:
-        from .. import compartilhado
-        yt = compartilhado.modulo("publicar.youtube")
+        yt = _rb_publicar_youtube
         # A cota da API so manda quando a API publica. No modo navegador ela
         # e irrelevante — e bloquear por ela seria travar o caminho que
         # justamente existe para contornar o teto.
@@ -206,9 +207,7 @@ def publicar(historia_id: str, *, perfil: str = "celular",
                         # esta checagem, "cliquei mas nao confirmou" entrava
                         # no registro como publicacao boa, e a parte nunca
                         # mais seria tentada.
-                        from .. import compartilhado
-                        if not compartilhado.modulo(
-                                "publicar.tiktok").confirmado(url):
+                        if not _rb_publicar_tiktok.confirmado(url):
                             erros_envio.append(
                                 f"tiktok parte {video.parte}: {url}")
                             log(f"[publicar]   NAO confirmado: {url}")

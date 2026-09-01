@@ -32,7 +32,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
 
-from contos import compartilhado                                   # noqa: E402
+import builds.contas as _rb_contas
 from contos.publicar import qualidade, serie                       # noqa: E402
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -61,7 +61,7 @@ def _mp4(destino: Path, *, segundos: float = 12.0, com_audio: bool = True,
 # --------------------------------------------------------------- 1. contas
 class ContasTests(unittest.TestCase):
     def setUp(self):
-        self.contas = compartilhado.modulo("contas")
+        self.contas = _rb_contas
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self._registro = self.contas.ARQUIVO

@@ -18,7 +18,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .. import compartilhado
+import builds.atividade as _rb_atividade
+from builds.content import voz as _rb_content_voz
+from builds.video import trilha as _rb_video_trilha
 from ..imagens import fila
 from ..roteiro import modelo as modelo_roteiro
 from ..roteiro import roteiro as R
@@ -75,7 +77,7 @@ class Pipeline:
               headless: bool = False, log=print) -> dict:
         """Automatico: o browser abre o LLM e escreve a serie inteira."""
         from ..roteiro import gerar as gerador
-        atividade = compartilhado.modulo("atividade")
+        atividade = _rb_atividade
         atividade.registrar(provedor, "inicio",
                             f"serie de {partes} parte(s)", "historias")
         try:
@@ -96,7 +98,7 @@ class Pipeline:
                 headless: bool = False, parte: int | None = None,
                 log=print) -> dict:
         from ..imagens import worker
-        atividade = compartilhado.modulo("atividade")
+        atividade = _rb_atividade
         atividade.registrar("picasso", "inicio", historia_id, "historias")
         try:
             resultado = worker.gerar(historia_id, limite=limite,
@@ -137,7 +139,7 @@ class Pipeline:
         alvos = ([int(parte)] if parte
                  else [bloco["n"] for bloco in roteiro["partes"]])
 
-        voz_mod = compartilhado.voz()
+        voz_mod = _rb_content_voz
         # A voz sai do ROTEIRO, nao do config: quem narra em primeira pessoa
         # define o timbre. Sem isto, toda historia saia na mesma voz
         # masculina, inclusive as narradas por mulheres.
@@ -149,7 +151,7 @@ class Pipeline:
         taxa = int((self.render_config.get("audio") or {}).get("sample_rate", 44100))
         musica = self._musica(log)
         saida = []
-        atividade = compartilhado.modulo("atividade")
+        atividade = _rb_atividade
         atividade.registrar("estudio", "inicio",
                             f"{historia_id}: {len(alvos)} parte(s)", "historias")
 
@@ -312,7 +314,7 @@ class Pipeline:
                       if p.suffix.lower() in (".mp3", ".wav", ".ogg", ".m4a", ".flac")]
         if existentes:
             return existentes[0]
-        trilha = compartilhado.trilha()
+        trilha = _rb_video_trilha
         if not trilha.disponivel():
             return None
         # Semente propria: a trilha do canal de historias nao pode ser a

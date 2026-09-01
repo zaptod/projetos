@@ -59,25 +59,6 @@ FONT_B = ("Segoe UI", 10, "bold")
 FONT_TITLE = ("Segoe UI", 15, "bold")
 FONT_MONO = ("Consolas", 9)
 
-RESUMO_BANCO = """
-from neural_fights.data import database
-armas, personagens = database.carregar_database()
-print(f'{len(personagens)} personagens | {len(armas)} armas')
-print()
-print('Ultimos 5 personagens:')
-for p in personagens[-5:]:
-    print(f"  - {p['nome']} ({p['classe']}, forca {p['forca']}, arma: {p['nome_arma']})")
-print()
-print('Ultimas 5 armas:')
-for a in armas[-5:]:
-    print(f"  - {a['nome']} ({a['tipo']}/{a['estilo']}, {a['raridade']}, dano {a['dano']})")
-caminhos = database.resolver_database_paths(para_escrita=False)
-print()
-print(f'Arquivos: {caminhos[0]}')
-print(f'          {caminhos[1]}')
-"""
-
-
 class Painel(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -1170,21 +1151,16 @@ class Painel(tk.Tk):
         return mapa
 
     def _pub_historias(self) -> list:
-        """Os videos de historia, lidos por um python DE DENTRO daquele projeto.
+        """Os videos de historia.
 
-        Importar aqui nao da: os dois projetos tem um pacote chamado `src`.
+        Isto ja foi um `subprocess` rodando Python dentro de uma string, com
+        ate 90 s de espera, porque os dois projetos tinham um pacote chamado
+        `src` e este processo so conseguia enxergar um deles. Com os nomes
+        unicos (`builds` e `contos`) virou o que sempre devia ter sido.
         """
-        import json as _json
-        import subprocess as sp
         try:
-            saida = sp.run(
-                [PY, "-X", "utf8", "-c",
-                 "import sys, json; sys.path.insert(0, '.');"
-                 "from contos.publicar import catalogo;"
-                 "print(json.dumps(catalogo.resumo()))"],
-                cwd=str(HISTORIAS), capture_output=True, text=True,
-                encoding="utf-8", timeout=90, creationflags=NO_WINDOW)
-            return _json.loads((saida.stdout or "[]").strip().splitlines()[-1])
+            from contos.publicar import catalogo as catalogo_hist
+            return catalogo_hist.resumo()
         except Exception:
             return []
 
@@ -3334,17 +3310,12 @@ class Painel(tk.Tk):
         self._hist_fila = getattr(self, "_hist_fila", queue.Queue())
 
         def trabalho():
+            # Era um subprocesso com ate 120 s de espera, so porque este
+            # processo nao conseguia importar o outro projeto. Continua fora
+            # da thread da UI porque toca disco -- isso nao mudou.
             try:
-                import subprocess as sp
-                saida = sp.run([PY, "-X", "utf8", "-c",
-                                "import sys, json; sys.path.insert(0, '.');"
-                                "from contos.pipeline.controller import Pipeline;"
-                                "print(json.dumps(Pipeline().listar()))"],
-                               cwd=str(HISTORIAS), capture_output=True, text=True,
-                               encoding="utf-8", timeout=120,
-                               creationflags=NO_WINDOW)
-                import json as _json
-                dados = _json.loads((saida.stdout or "[]").strip().splitlines()[-1])
+                from contos.pipeline.controller import Pipeline
+                dados = Pipeline().listar()
             except Exception as erro:
                 dados = {"erro": f"{type(erro).__name__}: {erro}"}
             self._hist_fila.put(dados)
@@ -3878,7 +3849,8 @@ class Painel(tk.Tk):
         linha.pack(anchor="w")
         self._botao_primario(linha, "📋 Ver banco atual",
                              lambda: self._rodar(
-                                 [PY, "-u", "-X", "utf8", "-c", RESUMO_BANCO],
+                                 [PY, "-u", "-X", "utf8", "-m",
+                                  "neural_fights.tools.resumo_banco"],
                                  rotulo="resumo do banco")).pack(side="left")
         self._botao(linha, "🗡️ Análise das armas",
                     lambda: self._rodar([PY, "-m", "neural_fights.tools.analise_armas"])

@@ -14,6 +14,9 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from builds.publicar import cortes as _rb_publicar_cortes
+from builds.publicar import tiktok as _rb_publicar_tiktok
+from builds.publicar import youtube as _rb_publicar_youtube
 
 RAIZ = Path(__file__).resolve().parents[2]
 OUTPUTS = RAIZ / "outputs"
@@ -184,9 +187,8 @@ def publicar_youtube(video: Video, visibilidade: str | None = None, *,
     horario. Espalhar os pedacos ao longo de dias quebraria a leitura — eles
     sao a mesma parte, e quem assiste o primeiro quer o segundo em seguida.
     """
-    from .. import compartilhado
-    youtube = compartilhado.modulo("publicar.youtube")
-    cortes = compartilhado.modulo("publicar.cortes")
+    youtube = _rb_publicar_youtube
+    cortes = _rb_publicar_cortes
     config = carregar_config()
 
     # POR NAVEGADOR por padrao (decisao de 01/09/2026). A API continua no
@@ -202,8 +204,7 @@ def publicar_youtube(video: Video, visibilidade: str | None = None, *,
 def publicar_tiktok(video: Video, *, postar: bool = False, log=print) -> str:
     """Sobe no TikTok pela conta do canal `historias` (para antes de postar
     quando `postar` e False — publicar sozinho nao e decisao de ferramenta)."""
-    from .. import compartilhado
-    tiktok = compartilhado.modulo("publicar.tiktok")
+    tiktok = _rb_publicar_tiktok
     # `postar or None` fazia `False` virar `None`, e `None` significa "use o
     # config" — ou seja, nao dava para dizer "NAO poste" a partir daqui.
     return tiktok.publicar(video, postar=bool(postar), canal="historias")

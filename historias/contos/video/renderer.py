@@ -26,11 +26,12 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
-from .. import compartilhado
+from builds.video import medidas as _rb_video_medidas
+from builds.visualization import draw_common as _rb_visualization_draw_common
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-_desenho = compartilhado.desenho()
-medidas = compartilhado.modulo("video.medidas")
+_desenho = _rb_visualization_draw_common
+medidas = _rb_video_medidas
 fit_font = _desenho.fit_font
 fit_font_wrap = _desenho.fit_font_wrap
 gradient = _desenho.gradient

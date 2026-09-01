@@ -310,15 +310,23 @@ class ImagemTests(unittest.TestCase):
                 fila.OUTPUTS = antes
 
 
-# -------------------------------------------------------------- 5. ponte
+# ------------------------------------------- 5. o projeto vizinho importa
 class PonteTests(unittest.TestCase):
-    def test_a_ponte_carrega_narrador_e_trilha(self):
-        from contos import compartilhado
-        if not compartilhado.disponivel():
-            self.skipTest("random_builds nao esta ao lado")
-        voz = compartilhado.voz()
+    """O narrador e a trilha vem do `builds`, e sao import normal.
+
+    Ate 01/09/2026 isto passava por uma ponte que registrava o outro projeto
+    com um nome sintetico, porque os dois tinham um pacote chamado `src`.
+    Com os nomes unicos e o pacote instalado, sobrou `import`.
+    """
+
+    def test_o_narrador_e_a_trilha_vem_do_builds(self):
+        try:
+            from builds.content import voz
+            from builds.video import trilha
+        except ImportError:
+            self.skipTest("random_builds nao esta instalado")
         self.assertEqual("Isto e um teste.", voz.falavel("ISTO E UM TESTE"))
-        self.assertTrue(hasattr(compartilhado.trilha(), "trilha"))
+        self.assertTrue(hasattr(trilha, "trilha"))
         # o `src` deste projeto nao pode ter sido substituido pelo de la
         import contos.roteiro.roteiro as meu
         self.assertIn("historias", str(Path(meu.__file__)))
