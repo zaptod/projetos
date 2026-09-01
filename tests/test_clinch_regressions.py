@@ -8,7 +8,6 @@ clinch de um jeito diverso — com autor, personalidade e leitura visual.
 
 from __future__ import annotations
 
-import math
 import unittest
 from types import SimpleNamespace
 

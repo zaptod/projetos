@@ -19,15 +19,12 @@ Rode de dentro de random_builds/:
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 import unittest.mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from builds.arena.ledger import Ledger, escolher_adversario                 # noqa: E402
 from builds.assets.catalog import AssetCatalog                              # noqa: E402

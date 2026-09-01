@@ -8,9 +8,7 @@ tell) — o micro-detector local do cara-a-cara.
 
 from __future__ import annotations
 
-import random
 import unittest
-from types import SimpleNamespace
 
 from neural_fights.ai.brain import AIBrain
 from tests import test_remaining_skill_regressions as _helpers

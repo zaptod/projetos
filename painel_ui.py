@@ -26,7 +26,6 @@ HISTORIAS = RAIZ / "historias"
 PY = sys.executable
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-sys.path.insert(0, str(RANDOM_BUILDS))
 from builds import atividade as atividade_reg  # noqa: E402
 from builds import travas as travas_reg  # noqa: E402
 from builds import contas as contas_reg  # noqa: E402
@@ -1232,7 +1231,6 @@ class Painel(tk.Tk):
         self._pub_render(dados["itens"])
 
     def _pub_render(self, itens):
-        import datetime
         alvo = self.combo_pub_origem.get()
         formato = self.combo_pub_perfil.get()
         so_pendentes = self.var_pub_pendentes.get()
@@ -2302,9 +2300,6 @@ class Painel(tk.Tk):
         # Um worker por vez: subir outro so cria processo ocioso (a fila tem
         # trava de instancia unica) e confunde quem esta de fato trabalhando.
         try:
-            import sys as _sys
-            if str(RANDOM_BUILDS) not in _sys.path:
-                _sys.path.insert(0, str(RANDOM_BUILDS))
             from builds.identity import queue as identity_queue
             if identity_queue.ha_worker():
                 self._log("[identity] já existe um worker de pé — use "

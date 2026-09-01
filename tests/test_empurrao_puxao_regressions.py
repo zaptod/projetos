@@ -7,7 +7,6 @@ tem raio por padrão, PUXADO/VORTEX puxam para a origem.
 
 from __future__ import annotations
 
-import math
 import unittest
 
 from neural_fights.core.combat import AreaEffect, Projetil
@@ -52,7 +51,6 @@ class ExplosaoTests(unittest.TestCase):
 
     def test_raio_declarado_prevalece(self):
         p1, _ = _par()
-        from neural_fights.core.skills import get_skill_data
         nome = next(n for n, d in __import__("neural_fights.core.skills", fromlist=["SKILL_DB"]).SKILL_DB.items()
                     if d.get("raio_explosao") and d.get("tipo") == "PROJETIL")
         proj = Projetil(nome, 0.0, 0.0, 0.0, p1)

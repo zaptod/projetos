@@ -725,7 +725,6 @@ def _identity(args, controller) -> None:
         import json
         from pathlib import Path
         from builds.identity import config as icfg
-        from builds.identity import slots
         from builds.identity.identity_model import gravar
         from builds.identity.prompt import build_prompts
         caminho = Path("outputs") / args.generation_id / "generation.json"

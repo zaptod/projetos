@@ -13,7 +13,6 @@ Garante que:
 from __future__ import annotations
 
 import inspect
-import math
 import random
 import unittest
 from types import SimpleNamespace

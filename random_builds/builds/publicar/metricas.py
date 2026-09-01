@@ -259,6 +259,17 @@ def sparkline(curva: list, colunas: int = 40) -> str:
 
 
 # --------------------------------------------------------------- relatorio
+def _medio(d: dict) -> str:
+    """Duracao media formatada, ou tracinho.
+
+    Existe para tirar uma f-string aninhada com as MESMAS aspas de dentro do
+    relatorio: aquilo so compila no Python 3.12+, e este pacote declara
+    suportar 3.10.
+    """
+    segundos = d.get("media_segundos")
+    return f"{segundos:6.1f}" if segundos is not None else "    --"
+
+
 def relatorio(dados: list[dict]) -> str:
     if not dados:
         return ("sem metricas salvas. Publique com `main.py publicar <id> --youtube` "
@@ -269,7 +280,7 @@ def relatorio(dados: list[dict]) -> str:
         linhas.append(
             f"  {d.get('youtube_id', '?'):<12}{d.get('views', 0):>6}  {d.get('likes', 0):>6}"
             f"  {d.get('comentarios', 0):>6}  {(f'{media_pct:5.1f}' if media_pct is not None else '   --'):>6}"
-            f"  {(f'{d.get('media_segundos', 0):6.1f}' if d.get('media_segundos') is not None else '    --'):>8}"
+            f"  {_medio(d):>8}"
             f"  {str(d.get('variante') or 'A'):<8}  {d.get('fonte_id', '')}:{d.get('perfil', '')}")
     erros = {d.get("erro") for d in dados if d.get("erro")}
     for erro in erros:

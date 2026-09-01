@@ -20,13 +20,10 @@ Rode de dentro de random_builds/:
 """
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-if str(RAIZ) not in sys.path:
-    sys.path.insert(0, str(RAIZ))
 
 from builds.identity import moderacao                             # noqa: E402
 

@@ -14,27 +14,27 @@ from __future__ import annotations
 
 import ast
 import inspect
-import sys
 import textwrap
 import unicodedata
 from pathlib import Path
 
 # random_builds mora ao lado do pacote neural_fights (e:\projetos)
 _PROJETOS = Path(__file__).resolve().parents[3]
-if str(_PROJETOS) not in sys.path:
-    sys.path.insert(0, str(_PROJETOS))
 
-from neural_fights.models.constants import (  # noqa: E402
+# Re-exports DELIBERADOS: este modulo e a ponte, e quem esta de fora le o
+# catalogo do jogo por aqui (inclusive os testes, que estendem as listas).
+# Nao sao imports mortos e nao podem cair num --fix automatico.
+from neural_fights.models.constants import (  # noqa: E402,F401
     LISTA_CLASSES, LISTA_RARIDADES, LISTA_TIPOS_ARMA,
     LISTA_ENCANTAMENTOS, ENCANTAMENTOS,
 )
 from neural_fights.ai.personalities import PERSONALIDADES_PRESETS  # noqa: E402
 from neural_fights.core.skills import SKILL_DB  # noqa: E402
-from neural_fights.tools.gerador_database import (  # noqa: E402
+from neural_fights.tools.gerador_database import (  # noqa: E402,F401
     ESTILOS_ARMA, SKILLS_OFENSIVAS, gerar_arma, gerar_personagem,
     salvar_database, selecionar_arma_por_classe,
 )
-from neural_fights.data import database  # noqa: E402
+from neural_fights.data import database  # noqa: E402,F401
 
 # Snapshot do import, mantido porque teste antigo itera a constante. Codigo
 # novo usa lista_personalidades(), que le o preset vivo.

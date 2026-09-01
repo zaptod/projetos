@@ -20,7 +20,6 @@ Rode da raiz do repo:
 """
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone

@@ -25,15 +25,12 @@ import copy
 import json
 import random
 import shutil
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from builds.assets.catalog import AssetCatalog                            # noqa: E402
 from builds.assets.selector import AssetSelector                          # noqa: E402

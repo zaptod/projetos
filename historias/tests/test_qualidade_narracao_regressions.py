@@ -23,13 +23,10 @@ Rode de dentro de historias/:
 """
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-if str(RAIZ) not in sys.path:
-    sys.path.insert(0, str(RAIZ))
 
 from contos.roteiro import narrador                                # noqa: E402
 from contos.video import timeline                                  # noqa: E402

@@ -25,13 +25,10 @@ Rode de dentro de random_builds/:
     python -m pytest tests/test_nomes_regressions.py -q
 """
 import random
-import sys
 import unittest
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-if str(RAIZ) not in sys.path:
-    sys.path.insert(0, str(RAIZ))
 
 from builds.character import lexico, nomes  # noqa: E402
 from builds.nf_bridge import loader as nf  # noqa: E402

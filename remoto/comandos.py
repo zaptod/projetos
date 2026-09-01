@@ -24,8 +24,6 @@ HISTORIAS = RAIZ / "historias"
 PY = sys.executable
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-if str(RANDOM_BUILDS) not in sys.path:
-    sys.path.insert(0, str(RANDOM_BUILDS))
 
 from builds import atividade                                      # noqa: E402
 from builds.identity import controle                              # noqa: E402

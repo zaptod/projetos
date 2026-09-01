@@ -855,9 +855,9 @@ class DigenClient:
         if not src:
             raise GeracaoFalhou(
                 f"card {indice + 1} sem `src` e sem botao de download utilizavel.")
-        if builds.startswith("//"):
+        if src.startswith("//"):
             src = "https:" + src
-        elif builds.startswith("/"):
+        elif src.startswith("/"):
             src = selectors.BASE_URL + src
 
         resposta = self.ctx.request.get(

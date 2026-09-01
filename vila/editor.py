@@ -22,7 +22,6 @@ Fluxo tipico com arte de IA:
 """
 from __future__ import annotations
 
-import shutil
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 

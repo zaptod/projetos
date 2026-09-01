@@ -21,13 +21,10 @@ Rode de dentro de historias/:
 """
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-if str(RAIZ) not in sys.path:
-    sys.path.insert(0, str(RAIZ))
 
 from contos.imagens.reescritor import Reescritor, limpar          # noqa: E402
 from contos.imagens.worker import _com_reescrita                  # noqa: E402

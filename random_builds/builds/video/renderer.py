@@ -814,7 +814,6 @@ class VideoRenderer:
             y_caption = self.height * 0.895
 
         giro = self._giro(event, labels, winner)
-        n, seg = giro["fatias"], giro["angulo_da_fatia"]
         total_rotation = giro["rotacao_total"]
 
         # A roda inteira e girada por `total_rotation` na hora de colar, entao

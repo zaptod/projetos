@@ -65,7 +65,10 @@ from neural_fights.core.physics import normalizar_angulo
 from neural_fights.core.skills import get_skill_data
 from neural_fights.core.skill_contract import derivar_contrato
 from neural_fights.models import get_class_data
-from neural_fights.ai.contracts import obter_brain as _obter_brain
+# Re-export deliberado: `tests/test_ai_strategy_architecture.py` importa
+# `_obter_brain` DAQUI. Nao e import morto, e a linha nao pode ser
+# removida por um --fix automatico.
+from neural_fights.ai.contracts import obter_brain as _obter_brain  # noqa: F401
 from neural_fights.ai.percepcao import (
     FASE_GOLPEANDO,
     FASE_PREPARANDO,

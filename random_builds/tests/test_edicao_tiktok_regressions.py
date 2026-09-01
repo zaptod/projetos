@@ -21,13 +21,10 @@ Rode de dentro de random_builds/:
 """
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from builds.assets.catalog import CATEGORIES, AssetCatalog                 # noqa: E402
 from builds.assets.selector import FALLBACKS, AssetSelector                # noqa: E402

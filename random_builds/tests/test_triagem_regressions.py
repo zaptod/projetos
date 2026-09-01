@@ -23,14 +23,11 @@ O que este arquivo trava:
 Rode de dentro de random_builds/:
     python -m unittest tests.test_triagem_regressions -v
 """
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-if str(RAIZ) not in sys.path:
-    sys.path.insert(0, str(RAIZ))
 
 from builds.assets.importer import list_reactions  # noqa: E402
 from builds.assets.triagem import SessaoTriagem  # noqa: E402

@@ -1,0 +1,37 @@
+# Pacote `contos` — o canal de historias por IA (roteiro -> imagens -> video).
+#
+# O nome do pacote NAO pode ser `historias`: verificado em 01/09/2026 que
+# `import historias` a partir da raiz do monorepo devolve um namespace VAZIO
+# (`__file__ = None`), porque o PathFinder encontra o DIRETORIO
+# `e:/projetos/historias/` antes de o finder do editable install ser
+# consultado. Regra geral do repositorio: nenhum pacote de topo pode ter o
+# nome de um diretorio da raiz.
+#
+# Sobre nao entrar no pyproject da raiz: mesmo motivo do random_builds — o
+# portao de pureza da wheel no CI exige que ela contenha so `neural_fights/`.
+#
+#     pip install -e ./historias
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "contos"
+version = "1.0.0"
+description = "Canal de historias por IA: roteiro por LLM, imagens por cena, video narrado"
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow>=10,<13",
+    "numpy>=1.26",
+    "edge-tts>=6.1",
+    "patchright>=1.50",
+    # O narrador, a trilha e o cliente do PicassoIA vem do projeto vizinho.
+    "random-builds",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["contos*"]
+exclude = ["tests*", "config*", "assets*", "outputs*", "modelos*"]
+namespaces = false

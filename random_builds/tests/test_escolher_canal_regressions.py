@@ -18,15 +18,11 @@ Rode de dentro de random_builds/:
 """
 from __future__ import annotations
 
-import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-if str(RAIZ) not in sys.path:
-    sys.path.insert(0, str(RAIZ))
 
 from builds import contas                                          # noqa: E402
 from builds.publicar import youtube_web                            # noqa: E402

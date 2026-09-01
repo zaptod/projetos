@@ -104,7 +104,6 @@ def estado() -> list:
     perfis sao invisiveis, e o unico sintoma de colisao era uma mensagem de
     "em uso" no meio de uma geracao.
     """
-    from . import contas
 
     saida = []
     for servico in ("picasso", "digen", "dreamface", "chatgpt", "gemini",

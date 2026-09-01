@@ -1,0 +1,38 @@
+# Pacote `builds` — a camada de video (roleta de build -> video publicado).
+#
+# POR QUE UM pyproject PROPRIO, e nao uma entrada no da raiz: o CI tem um
+# portao de pureza da wheel (.github/workflows/ci.yml) que exige que a wheel
+# do neural_fights contenha SOMENTE `neural_fights/` e que o top_level.txt
+# seja exatamente ['neural_fights']. Acrescentar pacotes la deixa dois jobs
+# vermelhos na hora. A politica de dependencia minima daquele pacote (so
+# pygame-ce e customtkinter, validada por `pip check`) tambem seria furada
+# por Pillow/numpy/patchright. Ver o cabecalho de requirements.txt.
+#
+# Instalacao para desenvolvimento, a partir da raiz do monorepo:
+#     pip install -e ./random_builds
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "random-builds"
+version = "1.0.0"
+description = "Roleta procedural de builds do Neural Fights, de sorteio a video publicado"
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow>=10,<13",
+    "numpy>=1.26",
+    "edge-tts>=6.1",
+    # Automacao de navegador (Digen, PicassoIA, DreamFace, YouTube Studio,
+    # TikTok). Depois de instalar:  patchright install chrome
+    "patchright>=1.50",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["builds*"]
+# `config`, `assets` e `outputs` sao dados lidos por caminho relativo ao
+# pacote, nao modulos. `tests` roda pelo cwd, nao instalado.
+exclude = ["tests*", "config*", "assets*", "outputs*"]
+namespaces = false

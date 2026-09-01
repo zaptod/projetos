@@ -105,7 +105,6 @@ class DesvioReligadoTests(unittest.TestCase):
     _fighter = staticmethod(_helpers.RemainingSkillRegressionTests._fighter)
 
     def _brain_vivo(self, parent):
-        from types import SimpleNamespace
 
         brain = object.__new__(AIBrain)
         brain.parent = parent

@@ -611,7 +611,6 @@ class PipelineController:
         with open(out_dir / "edit_plan.json", encoding="utf-8") as fh:
             edit_plan = json.load(fh)
         engine = RandomEngine(generation["seed"])
-        selector = AssetSelector(AssetCatalog(ASSETS))
         music = self._musica(engine)
         # sempre dois videos: celular (9:16) e normal (16:9)
         from .. import atividade

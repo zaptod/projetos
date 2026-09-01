@@ -8,7 +8,6 @@ Sem brain (dummy/manual) o corpo é neutro.
 
 from __future__ import annotations
 
-import math
 import unittest
 from types import SimpleNamespace
 
