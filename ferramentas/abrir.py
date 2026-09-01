@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """Abre as coisas do projeto, e CONSERTA o que falta antes de abrir.
 
-    python ferramentas/abrir.py            o painel
-    python ferramentas/abrir.py novo       o painel novo (previa)
-    python ferramentas/abrir.py vila       a Oficina de sprites
+    python ferramentas/abrir.py            a Vila (o painel principal)
+    python ferramentas/abrir.py criacao    a janela de criacao de videos
+    python ferramentas/abrir.py jogo       a janela do jogo
+    python ferramentas/abrir.py oficina    a Oficina de sprites
     python ferramentas/abrir.py testar     roda todos os testes
     python ferramentas/abrir.py conferir   so diz o que esta faltando
 
@@ -33,6 +34,7 @@ PACOTES = [
     ("builds", RAIZ / "random_builds"),
     ("contos", RAIZ / "historias"),
     ("panorama", RAIZ / "visao"),
+    ("painel", RAIZ / "painel"),
 ]
 
 # O que nao e do projeto e nao da para instalar com `-e`.
@@ -100,7 +102,7 @@ def conferir(consertar: bool = True) -> int:
         print()
         print("Nao deu. Rode isto na pasta do projeto e me diga o que apareceu:")
         print(f"  {Path(sys.executable).name} -m pip install -e . "
-              "-e ./random_builds -e ./historias -e ./visao")
+              "-e ./random_builds -e ./historias -e ./visao -e ./painel")
         return 1
     print("Pronto.")
     return 0
@@ -119,9 +121,12 @@ def _abrir_solto(argumentos: list) -> int:
 
 
 ALVOS = {
-    "painel": (["painel_ui.py"], "o painel de controle"),
-    "novo": (["-m", "painel"], "o painel novo (previa)"),
-    "vila": (["-m", "vila.editor"], "a Oficina de sprites da Vila"),
+    # A Vila e o hub: dela se abrem as outras, cada uma em processo proprio.
+    "painel": (["-m", "painel"], "a Vila (o painel principal)"),
+    "criacao": (["-m", "painel", "--janela", "criacao"],
+                "a janela de criacao de videos"),
+    "jogo": (["-m", "painel", "--janela", "jogo"], "a janela do jogo"),
+    "oficina": (["-m", "vila.editor"], "a Oficina de sprites da Vila"),
 }
 
 

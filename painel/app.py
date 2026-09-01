@@ -307,6 +307,19 @@ class Casca(tk.Tk):
                         not self.attributes("-fullscreen"))
 
     def encerrar(self) -> None:
+        """Desliga TUDO, inclusive o que a pagina visivel agendou.
+
+        Sem avisar a pagina, a animacao da Vila continuava marcada e
+        disparava com a janela ja destruida ("invalid command name"). Quem
+        entra por `ao_mostrar` sai por `ao_esconder`.
+        """
+        pagina = self._paginas.get(self._atual or "")
+        sair = getattr(pagina, "ao_esconder", None) if pagina else None
+        if sair:
+            try:
+                sair()
+            except Exception:                               # noqa: BLE001
+                pass
         self._pulso.desligar()
         self.supervisor.encerrar()
 

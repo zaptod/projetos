@@ -34,7 +34,7 @@ from pathlib import Path
 
 from builds import atividade
 
-from .. import estilo
+from .. import estilo, janelas
 from ..processos import Periodico
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -80,6 +80,25 @@ class Pagina:
         self.o.botao(topo, "🎨  Oficina", self.oficina).pack(
             side="right", padx=(estilo.ESPACO["normal"], 0))
         self.o.botao(topo, "🤖  Bot do celular", self.bot).pack(side="right")
+
+        # AS OUTRAS JANELAS, cada uma em processo proprio. Uma travar nao
+        # derruba as outras -- e com Tkinter isso e mais que preferencia:
+        # duas telas pesadas no mesmo processo disputam a mesma thread, e a
+        # animacao daqui engasgaria enquanto a galeria varre o disco.
+        abrir = tk.Frame(pai, bg=self.t.fundo)
+        abrir.pack(fill="x", padx=estilo.ESPACO["secao"],
+                   pady=(0, estilo.ESPACO["meio"]))
+        for chave in ("criacao", "jogo"):
+            receita = janelas.JANELAS[chave]
+            self.o.botao(
+                abrir, f"{receita['icone']}  {receita['titulo'].split(' —')[0]}",
+                lambda c=chave: self.abrir_janela(c),
+                tipo="primario" if chave == "criacao" else "normal").pack(
+                side="left", padx=(0, estilo.ESPACO["meio"]))
+        self.o.legenda(
+            abrir, "cada uma abre numa janela própria — fechar uma não mexe "
+                   "nas outras").pack(side="left",
+                                      padx=estilo.ESPACO["meio"])
 
         self.canvas = tk.Canvas(pai, height=300, bg=self.t.superficie,
                                 highlightthickness=1,
@@ -418,6 +437,16 @@ class Pagina:
         self.casca.supervisor.rodar([PY, "-X", "utf8", "-m", "vila.editor"],
                                     cwd=RAIZ, rotulo="Oficina de sprites",
                                     depois=self.montar_cenario)
+
+    def abrir_janela(self, chave: str) -> None:
+        processo = janelas.abrir(chave)
+        nome = janelas.JANELAS[chave]["titulo"].split(" —")[0]
+        if processo is None:
+            self.casca._registrar(f"[vila] não conheço a janela {chave}.",
+                                  "erro")
+            return
+        self.casca._registrar(f"[vila] abri {nome} (processo "
+                              f"{processo.pid}).", "fim")
 
     def bot(self) -> None:
         self.casca.supervisor.rodar([PY, "-u", "-X", "utf8", "-m", "remoto"],
