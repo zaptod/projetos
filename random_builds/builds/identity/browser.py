@@ -25,6 +25,7 @@ import os
 import random
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -190,15 +191,64 @@ def montou(page, minimo: int = 200) -> bool:
         return False
 
 
+class PerfilOcupado(RuntimeError):
+    """Outra coisa esta com este perfil de Chrome aberto agora."""
+
+
+# Perfis com contexto ABERTO nesta thread agora.
+#
+# A trava de arquivo e reentrante de proposito (senao os lugares que ja a
+# pegavam antes de chamar travariam contra si mesmos). Mas o perigo real
+# continua sendo dois Chrome na mesma pasta, e reentrancia sozinha deixaria
+# um `with contexto_persistente(A): with contexto_persistente(A):` passar.
+# Entao a contagem de contextos ABERTOS e separada da contagem de travas.
+_abertos = threading.local()
+
+
+def _perfis_abertos() -> set:
+    if not hasattr(_abertos, "caminhos"):
+        _abertos.caminhos = set()
+    return _abertos.caminhos
+
+
+# Quanto esperar a pasta do perfil ficar livre antes de desistir. Publicar um
+# video demora minutos; desistir em 2 s transformaria uma fila normal em erro.
+ESPERA_PERFIL_S = 90.0
+
+
 @contextlib.contextmanager
-def contexto_persistente(headless: bool = False, profile: Path | None = None):
+def contexto_persistente(headless: bool = False, profile: Path | None = None,
+                         esperar: float | None = None):
     """Contexto logado e persistente. Fecha tudo no fim, com ou sem excecao.
 
     Nao ha `browser` separado: `launch_persistent_context` devolve o contexto
     ja ligado ao perfil. Fechar o contexto fecha o Chrome.
+
+    A TRAVA DA PASTA E PEGA AQUI, e este e o ponto do exercicio. O Chrome
+    tranca o `user_data_dir`: duas instancias na mesma pasta a corrompem, e o
+    sintoma aparece dias depois como "meu login sumiu". Havia 16 chamadas
+    deste contexto no repositorio e so 3 estavam guardadas — as 7 dos
+    publicadores (TikTok e YouTube Studio) abriam Chrome sem guarda nenhuma.
+    Guardando aqui dentro, os 13 sites restantes ficam protegidos sem que
+    nenhum deles precise mudar, e o projeto vizinho herda de graca.
+
+    A trava e reentrante por thread, entao os 3 lugares que ja a pegavam
+    antes de chamar continuam funcionando em vez de travar contra si mesmos.
     """
     sync_playwright = _sync_playwright()
     user_data_dir = str(profile or config.profile_dir())
+
+    from .. import travas
+    nome_trava = travas.do_caminho(user_data_dir)
+    paciencia = ESPERA_PERFIL_S if esperar is None else float(esperar)
+
+    abertos = _perfis_abertos()
+    chave_aberta = str(Path(user_data_dir).resolve()).lower()
+    if chave_aberta in abertos:
+        raise PerfilOcupado(
+            f"ja ha um Chrome aberto neste mesmo perfil ({user_data_dir}) "
+            "nesta mesma thread. Abrir o segundo corromperia a pasta — "
+            "reaproveite o contexto que ja esta aberto.")
 
     def abrir(p):
         return p.chromium.launch_persistent_context(
@@ -214,23 +264,40 @@ def contexto_persistente(headless: bool = False, profile: Path | None = None):
             chromium_sandbox=True,
         )
 
-    with sync_playwright() as p:
+    with travas.trava(nome_trava, esperar=paciencia) as minha, \
+            sync_playwright() as p:
+        if not minha:
+            raise PerfilOcupado(
+                f"o perfil {user_data_dir} ja esta aberto por outra coisa "
+                f"(esperei {paciencia:.0f}s). Duas janelas do Chrome na mesma "
+                "pasta corrompem o login — entao parei em vez de arriscar. "
+                "Veja a tabela de PARALELISMO no painel para saber quem esta "
+                "usando.")
+
+        # O `try` comeca ANTES de tentar abrir: se o Chrome nao subir, a
+        # marca de "perfil aberto" tem que sair do mesmo jeito. Sem isso um
+        # processo que roda o dia inteiro ficaria com a pasta marcada para
+        # sempre e recusaria todas as tentativas seguintes.
+        abertos.add(chave_aberta)
+        ctx = None
         try:
-            ctx = abrir(p)
-        except Exception as exc:
-            # Uma unica retomada, e so se havia mesmo orfao para matar: sem
-            # isso um erro de outra natureza viraria loop de tentativa.
-            if not _liberar_perfil(user_data_dir):
-                raise RuntimeError(
-                    f"nao consegui abrir o Chrome no perfil {user_data_dir}. "
-                    "Se houver uma janela aberta nesse perfil, feche-a e tente "
-                    "de novo.") from exc
-            ctx = abrir(p)
-        try:
+            try:
+                ctx = abrir(p)
+            except Exception as exc:
+                # Uma unica retomada, e so se havia mesmo orfao para matar:
+                # sem isso um erro de outra natureza viraria loop.
+                if not _liberar_perfil(user_data_dir):
+                    raise RuntimeError(
+                        f"nao consegui abrir o Chrome no perfil "
+                        f"{user_data_dir}. Se houver uma janela aberta nesse "
+                        "perfil, feche-a e tente de novo.") from exc
+                ctx = abrir(p)
             yield ctx
         finally:
-            with contextlib.suppress(Exception):
-                ctx.close()
+            abertos.discard(chave_aberta)
+            if ctx is not None:
+                with contextlib.suppress(Exception):
+                    ctx.close()
 
 
 def pagina(ctx):

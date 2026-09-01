@@ -18,6 +18,7 @@ Rode de dentro de random_builds/:
 from __future__ import annotations
 
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -43,11 +44,35 @@ class TravasTests(unittest.TestCase):
                 with travas.trava("chatgpt__principal") as c:
                     self.assertTrue(c)
 
-    def test_o_mesmo_recurso_e_exclusivo(self):
+    def test_o_mesmo_recurso_e_exclusivo_entre_threads(self):
+        """Exclusivo para QUEM NAO E DONO — a propria thread reentra.
+
+        Este teste exigia que pegar a mesma trava duas vezes falhasse, ate na
+        mesma thread. Isso mudou de proposito em 01/09/2026: a guarda passou
+        para dentro de `contexto_persistente`, e ha lugares que ja pegavam a
+        trava antes de chamar. Sem reentrancia eles travariam contra si
+        mesmos e a pipeline pararia parecendo disco lento.
+
+        O perigo que a assercao antiga protegia — dois Chrome na mesma pasta
+        — continua coberto, em dois lugares melhores: aqui, entre threads; e
+        no proprio `contexto_persistente`, que recusa abrir a mesma pasta
+        duas vezes ainda que seja a mesma thread.
+        """
+        de_fora = {}
+
+        def outra_thread():
+            with travas.trava("picasso__principal") as sua:
+                de_fora["pegou"] = sua
+
         with travas.trava("picasso__principal") as a:
             self.assertTrue(a)
             with travas.trava("picasso__principal") as b:
-                self.assertFalse(b, "o mesmo perfil aberto duas vezes = Chrome quebrado")
+                self.assertTrue(b, "a propria thread tem que reentrar")
+            t = threading.Thread(target=outra_thread)
+            t.start()
+            t.join(timeout=10)
+        self.assertFalse(de_fora.get("pegou"),
+                         "o mesmo perfil aberto duas vezes = Chrome quebrado")
         # liberou: da para pegar de novo
         with travas.trava("picasso__principal") as c:
             self.assertTrue(c)
@@ -64,10 +89,21 @@ class TravasTests(unittest.TestCase):
             self.assertTrue(travas.ocupada("digen__principal"))
         self.assertFalse(travas.ocupada("digen__principal"))
 
-    def test_nome_da_trava_vem_do_registro_de_contas(self):
+    def test_nome_da_trava_vem_da_PASTA_do_perfil(self):
+        """O nome saia da conta; passou a sair do caminho resolvido.
+
+        Motivo: `youtube_web` ganhou `sessao_unica`, e ai uma pasta atendia
+        varias contas — que ganhavam travas diferentes para o mesmo
+        `user_data_dir`. A trava tem que proteger o recurso, e o recurso e a
+        pasta.
+        """
         nome = travas.do_perfil("picasso", "builds")
-        self.assertTrue(nome.startswith("picasso__"))
+        self.assertTrue(nome.startswith("perfil__"), nome)
         self.assertNotIn("/", nome)
+        self.assertNotIn(chr(92), nome)
+        # E a mesma pasta, escrita de outro jeito, da a mesma trava.
+        pasta = travas.pasta_do_perfil("picasso", "builds")
+        self.assertEqual(nome, travas.do_caminho(str(pasta).upper()))
 
 
 class AtividadeTests(unittest.TestCase):

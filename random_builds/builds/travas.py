@@ -23,10 +23,30 @@ fila com paciencia limitada.
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
+
+# Travas que ESTA THREAD ja segura, com a profundidade de cada uma.
+#
+# Por que precisa existir: a guarda passou para dentro de
+# `contexto_persistente`, e ha lugares que ja pegam a trava antes de chamar.
+# Sem reentrancia eles travariam contra si mesmos, e o sintoma seria a
+# pipeline parada parecendo disco lento.
+#
+# Por THREAD e nao por processo, de proposito: se fosse por processo, uma
+# segunda thread veria o contador e acharia que e dona de uma trava que nao
+# pegou.
+_minhas = threading.local()
+
+
+def _seguradas() -> dict:
+    if not hasattr(_minhas, "nomes"):
+        _minhas.nomes = {}
+    return _minhas.nomes
 
 
 def _pasta() -> Path:
@@ -50,7 +70,21 @@ def trava(nome: str, esperar: float = 0.0):
     Com `esperar`, tenta de novo a cada meio segundo ate o prazo. O arquivo
     nunca e apagado (apagar lock em uso e corrida); ele e minusculo e fica.
     """
-    caminho = _pasta() / f"{_nome_seguro(nome)}.lock"
+    seguradas = _seguradas()
+    chave = _nome_seguro(nome)
+    if chave in seguradas:
+        # Ja e minha: so conta mais um nivel e devolve. Nao encosta no
+        # arquivo, senao o `finally` de dentro soltaria a trava de fora.
+        seguradas[chave] += 1
+        try:
+            yield True
+        finally:
+            seguradas[chave] -= 1
+            if seguradas[chave] <= 0:
+                seguradas.pop(chave, None)
+        return
+
+    caminho = _pasta() / f"{chave}.lock"
     arquivo = open(caminho, "a+b")
     adquirido = False
     fim = time.monotonic() + max(0.0, float(esperar))
@@ -74,9 +108,12 @@ def trava(nome: str, esperar: float = 0.0):
                 if time.monotonic() >= fim:
                     break
                 time.sleep(0.5)
+        if adquirido:
+            seguradas[chave] = 1
         yield adquirido
     finally:
         if adquirido:
+            seguradas.pop(chave, None)
             try:
                 arquivo.seek(0)
                 if os.name == "nt":
@@ -91,7 +128,14 @@ def trava(nome: str, esperar: float = 0.0):
 
 
 def ocupada(nome: str) -> bool:
-    """O recurso esta em uso agora? (testa sem segurar)."""
+    """O recurso esta em uso agora? (testa sem segurar).
+
+    Conta tambem a trava que ESTA thread ja segura. Sem essa linha, quem
+    tem a trava perguntaria "esta ocupada?" e ouviria "nao" — verdade pela
+    metade que faria um painel dizer que ha paralelismo onde nao ha.
+    """
+    if _nome_seguro(nome) in _seguradas():
+        return True
     with trava(nome) as minha:
         return not minha
 
@@ -114,11 +158,15 @@ def estado() -> list:
             except Exception:
                 continue
             if any(linha["trava"] == nome for linha in saida):
-                continue        # a mesma conta nos dois canais = uma trava so
+                continue        # a mesma pasta nos dois canais = uma trava so
             canais = [c for c in ("builds", "historias")
                       if _mesma(servico, c, nome)]
+            pasta = pasta_do_perfil(servico, canal)
             saida.append({"trava": nome, "servico": servico,
-                          "canais": canais, "ocupada": ocupada(nome)})
+                          "canais": canais, "ocupada": ocupada(nome),
+                          # O caminho e o que torna "estes dois dividem a
+                          # trava" verificavel em vez de afirmacao cega.
+                          "perfil": str(pasta) if pasta else ""})
     return sorted(saida, key=lambda linha: linha["trava"])
 
 
@@ -129,20 +177,61 @@ def _mesma(servico: str, canal: str, nome: str) -> bool:
         return False
 
 
+def pasta_do_perfil(servico: str, canal: str = "builds",
+                    conta: str | None = None) -> Path | None:
+    """Onde fica o `user_data_dir` daquele servico/canal, ou None."""
+    try:
+        from .contas import perfil
+        return perfil(servico, canal, conta)
+    except Exception:
+        return None
+
+
 def do_perfil(servico: str, canal: str = "builds",
               conta: str | None = None) -> str:
-    """O nome da trava do PERFIL de Chrome daquele servico/conta.
+    """O nome da trava do PERFIL de Chrome daquele servico/canal.
 
-    Vem do registro de contas: duas coisas na mesma conta disputam a mesma
-    trava (correto — e o mesmo user_data_dir); contas diferentes do mesmo
-    servico rodam em paralelo.
+    O nome sai do CAMINHO resolvido, nao do nome da conta. A diferenca
+    importa: o servico `youtube_web` tem `sessao_unica`, ou seja, um login do
+    Google cobre os tres canais e `contas.perfil()` devolve a MESMA pasta
+    para todos. Enquanto isto chavava por conta, `builds` e `historias`
+    ganhavam travas diferentes para o mesmo `user_data_dir` — e duas
+    instancias do Chrome na mesma pasta a corrompem. O sintoma seria "meu
+    login sumiu", dias depois, sem causa aparente.
+
+    Chavando pelo caminho, qualquer divergencia futura entre "que conta e
+    esta" e "que pasta ela usa" se resolve sozinha: a trava protege o
+    recurso, e o recurso e a pasta.
+
+    O sufixo em hexadecimal desempata pastas de mesmo nome em raizes
+    diferentes (a conta `principal` mora no caminho legado, as outras no
+    diretorio de runtime).
     """
-    try:
-        from .contas import ativa
-        nome_conta = conta or ativa(servico, canal)
-    except Exception:
-        nome_conta = conta or "principal"
-    return f"{servico}__{nome_conta}"
+    caminho = pasta_do_perfil(servico, canal, conta)
+    if caminho is None:
+        # Sem registro de contas legivel, cai no comportamento antigo: e
+        # melhor uma trava por conta do que nenhuma trava.
+        return f"{servico}__{conta or 'principal'}"
+    return do_caminho(caminho)
 
 
-__all__ = ["do_perfil", "ocupada", "trava"]
+def do_caminho(caminho) -> str:
+    """O nome da trava daquela pasta de perfil.
+
+    Existe separado de `do_perfil` porque quem abre o Chrome nem sempre sabe
+    de que servico/canal veio a pasta — `contexto_persistente` recebe so o
+    `user_data_dir`. Sendo a pasta o recurso, a pasta basta.
+    """
+    # `normcase` e o certo aqui, nao `.lower()`: no Windows ele deixa tudo
+    # minusculo (a mesma pasta escrita com outra caixa e a MESMA pasta, e
+    # tem que dar a mesma trava); no Linux ele nao mexe, porque la duas
+    # pastas que so diferem na caixa sao duas pastas mesmo.
+    import os.path
+    resolvido = os.path.normcase(str(Path(caminho).resolve()))
+    digital = hashlib.sha1(resolvido.encode("utf-8")).hexdigest()[:8]
+    legivel = _nome_seguro(os.path.normcase(Path(caminho).name))
+    return f"perfil__{legivel}__{digital}"
+
+
+__all__ = ["do_caminho", "do_perfil", "estado", "ocupada",
+           "pasta_do_perfil", "trava"]
