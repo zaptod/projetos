@@ -711,13 +711,24 @@ class Painel(tk.Tk):
         caixa_auto.configure(bg=BG, activebackground=BG)
         caixa_auto.pack(side="right", padx=8)
 
-        colunas = ("build", "personagem") + tuple(
+        # As duas primeiras colunas precisam de id PROPRIO. `fluxo.ETAPAS` ja
+        # comeca com "build" e "personagem", entao a versao antiga
+        # (`("build", "personagem") + ETAPAS`) criava a tabela com os dois
+        # ids REPETIDOS. O Tk resolve nome de coluna pela PRIMEIRA
+        # ocorrencia: as duas colunas repetidas nunca recebiam titulo nem
+        # largura e ficavam com o padrao de 200px cada -- 400px de espaco
+        # morto que empurrava o cabecalho para fora do lugar e cortava a
+        # ultima coluna. Nao dava erro nenhum; so saia errado.
+        colunas = ("id", "nome") + tuple(
             chave for chave, _r, _s in fluxo.ETAPAS) + tuple(
             f"ret_{chave}" for chave, _r in fluxo.RETENCAO) + ("dur", "passo")
         self.tabela_fluxo = ttk.Treeview(pai, columns=colunas, show="headings",
                                          height=11)
-        cabecalhos = {"build": ("BUILD", 120), "personagem": ("PERSONAGEM", 150),
-                      "dur": ("DUR", 52), "passo": ("PRÓXIMO PASSO", 420)}
+        # "GERAÇÃO" e nao "BUILD": a coluna de ETAPA tambem se chama BUILD
+        # (o video da build saiu?), e dois cabecalhos iguais na mesma tabela
+        # sao dois significados diferentes com o mesmo nome.
+        cabecalhos = {"id": ("GERAÇÃO", 120), "nome": ("PERSONAGEM", 150),
+                      "dur": ("DUR", 52), "passo": ("PRÓXIMO PASSO", 260)}
         # Revisao de retencao (29/08): voz narrada, luta no video, gancho A/B.
         for chave, rotulo in fluxo.RETENCAO:
             cabecalhos[f"ret_{chave}"] = (rotulo, 50)
