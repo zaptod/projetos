@@ -196,7 +196,13 @@ def eventos_skill_card(nome_lutador: str, ficha: dict | None,
             else None
         )
         if caminho is not None:
-            evento["asset"] = {"path": str(caminho), "media": "video"}
+            # `synthetic: False` NAO e decoracao: `renderer._asset_de_video`
+            # assume sintetico quando a chave falta, entao sem ela a demo
+            # gravada era ignorada em silencio e o card virava texto. Foram
+            # 9,6 s de cartao mudo nos primeiros 15 s de toda estreia, com
+            # as 116 demos paradas no disco.
+            evento["asset"] = {"path": str(caminho), "synthetic": False,
+                               "media": "video"}
             evento["fit"] = "contain"
             evento["sem_som"] = True
         saida.append(evento)

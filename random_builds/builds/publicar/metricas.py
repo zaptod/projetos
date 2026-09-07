@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from datetime import date, datetime
 from pathlib import Path
 
@@ -34,6 +35,13 @@ API_ANALYTICS = "https://youtubeanalytics.googleapis.com/v2/reports"
 ESCOPO_ANALYTICS = "https://www.googleapis.com/auth/yt-analytics.readonly"
 
 SPARK = "▁▂▃▄▅▆▇█"
+
+# O plano descreve o mp4 inteiro; o que subiu pode ser um PEDACO dele
+# (corte para Shorts). Fora desta folga, casar evento com segundo da
+# curva daria um numero errado com cara de certo.
+SPARK_ASCII = "._-=+*#@"
+
+TOLERANCIA_PLANO_S = 2.0
 
 
 # ------------------------------------------------------------------ registro
@@ -62,6 +70,29 @@ def registrar_publicacao(video, url: str, plataforma: str = "youtube",
     with open(REGISTRO, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
     return linha
+
+
+def registrar_publicado(video, url: str, plataforma: str = "youtube", *,
+                        canal: str = "builds", extra: dict | None = None):
+    """Porta unica de registro: guarda o canal e NUNCA derruba a publicacao.
+
+    Ela existe aqui, e nao dentro de cada backend, porque a chamada morava
+    so no caminho da API enquanto o modo padrao era o navegador: 32 videos
+    subiram e nenhum entrou no registro por conta propria. Um lugar so, e
+    todos os caminhos (API, Studio, TikTok, Kwai) passam por ele.
+
+    A guarda de canal e a mesma de antes: `contos` reusa este modulo e tem
+    registro proprio; sem ela, upload de historia entrava no
+    `publicados.jsonl` de builds e a metrica ia buscar retencao de um video
+    que nao e deste canal.
+    """
+    if canal != "builds":
+        return None
+    try:
+        return registrar_publicacao(video, url, plataforma, extra)
+    except Exception as exc:  # pragma: no cover - so log
+        print(f"[publicar] registro falhou: {exc}")
+        return None
 
 
 def publicados() -> list[dict]:
@@ -235,13 +266,109 @@ def quedas(dado: dict, eventos: list[dict], quantas: int = 3) -> list[dict]:
         return []
     tombos = []
     for (r0, w0), (r1, w1) in zip(curva, curva[1:]):
-        tombos.append({"fracao": r1, "queda": w0 - w1, "segundo": r1 * duracao})
+        # A queda aconteceu ENTRE as duas amostras, entao quem estava na
+        # tela e o evento do MEIO do intervalo. Atribuindo por `r1` (o fim),
+        # todo tombo que termina numa troca de cena era carimbado na cena
+        # SEGUINTE — o relatorio culpava a luta pelo que a roleta fez.
+        tombos.append({"fracao": r1, "queda": w0 - w1,
+                       "segundo": r1 * duracao,
+                       "_meio": (r0 + r1) / 2 * duracao})
     tombos.sort(key=lambda t: -t["queda"])
     saida = []
     for t in tombos[:quantas]:
-        evento = evento_em(eventos, t["segundo"])
+        evento = evento_em(eventos, t.pop("_meio"))
         saida.append({**t, "evento": rotulo_do_evento(evento) if evento else "?"})
     return saida
+
+
+def _valor_na_curva(curva: list, fracao: float) -> float | None:
+    """Retencao interpolada numa fracao do video (0..1)."""
+    if not curva:
+        return None
+    fracao = max(0.0, min(1.0, float(fracao)))
+    anterior = None
+    for ponto, valor in curva:
+        ponto = float(ponto)
+        if ponto >= fracao:
+            if anterior is None or ponto == anterior[0]:
+                return float(valor)
+            p0, v0 = anterior
+            peso = (fracao - p0) / (ponto - p0)
+            return float(v0) + (float(valor) - float(v0)) * peso
+        anterior = (ponto, float(valor))
+    return anterior[1] if anterior else None
+
+
+def custo_por_cena(dados: list[dict]) -> list[dict]:
+    """Quanto de audiencia cada TIPO de cena custa, somando todos os videos.
+
+    `quedas()` responde "onde caiu NESTE video". Esta responde a pergunta
+    que decide a montagem: a roleta custa mais por segundo de tela do que a
+    luta? Uma queda grande numa cena longa pode ser barata, e uma queda
+    pequena numa cena curta pode ser cara — o numero comparavel e PONTOS
+    POR SEGUNDO, nao a queda bruta.
+
+    Videos cujo plano nao bate com a duracao publicada ficam de fora (o
+    corte para Shorts parte o mp4 em pedacos e o `edit_plan` passa a
+    descrever outro video); sao contados em `_fora` para o relatorio poder
+    dizer quantos ignorou, em vez de calar.
+    """
+    somas: dict[str, dict] = {}
+    fora = 0
+    for dado in dados:
+        curva = dado.get("curva") or []
+        duracao = float(dado.get("duracao") or 0.0)
+        eventos = timeline_de(dado.get("fonte_id"), dado.get("origem"))
+        if len(curva) < 3 or duracao <= 0 or not eventos:
+            continue
+        plano = max(float(e["start"]) + float(e.get("duration") or 0)
+                    for e in eventos)
+        if abs(plano - duracao) > TOLERANCIA_PLANO_S:
+            fora += 1
+            continue
+        for evento in eventos:
+            inicio = float(evento["start"])
+            dur = float(evento.get("duration") or 0.0)
+            if dur <= 0:
+                continue
+            antes = _valor_na_curva(curva, inicio / duracao)
+            depois = _valor_na_curva(curva, (inicio + dur) / duracao)
+            if antes is None or depois is None:
+                continue
+            reg = somas.setdefault(evento.get("type") or "?", {
+                "tipo": evento.get("type") or "?", "perdido": 0.0,
+                "segundos": 0.0, "ocorrencias": 0, "videos": set()})
+            reg["perdido"] += antes - depois
+            reg["segundos"] += dur
+            reg["ocorrencias"] += 1
+            reg["videos"].add(dado.get("youtube_id"))
+    saida = []
+    for reg in somas.values():
+        segundos = reg["segundos"] or 1.0
+        saida.append({"tipo": reg["tipo"], "perdido": reg["perdido"],
+                      "segundos": reg["segundos"],
+                      "ocorrencias": reg["ocorrencias"],
+                      "videos": len(reg["videos"]),
+                      "pontos_por_s": reg["perdido"] / segundos})
+    saida.sort(key=lambda r: -r["pontos_por_s"])
+    if saida:
+        saida[0]["_fora"] = fora
+    return saida
+
+
+def _alfabeto_do_console() -> str:
+    """Blocos quando o console aguenta; ASCII quando nao.
+
+    `print(relatorio(...))` morria com UnicodeEncodeError no console cp1252
+    do Windows, e o relatorio de metricas e exatamente o que se roda no
+    terminal. Perder o desenho da curva e melhor que perder o comando.
+    """
+    codec = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        SPARK.encode(codec)
+    except (LookupError, UnicodeEncodeError):
+        return SPARK_ASCII
+    return SPARK
 
 
 def sparkline(curva: list, colunas: int = 40) -> str:
@@ -255,7 +382,8 @@ def sparkline(curva: list, colunas: int = 40) -> str:
         fatia = valores[a:b] or valores[max(0, a - 1):a + 1]
         pontos.append(sum(fatia) / len(fatia))
     teto = max(pontos) or 1.0
-    return "".join(SPARK[min(7, int(7 * p / teto))] for p in pontos)
+    alfabeto = _alfabeto_do_console()
+    return "".join(alfabeto[min(7, int(7 * p / teto))] for p in pontos)
 
 
 # --------------------------------------------------------------- relatorio
@@ -297,6 +425,23 @@ def relatorio(dados: list[dict]) -> str:
             linhas.append(f"    queda de {q['queda'] * 100:4.1f} pts aos {q['segundo']:4.1f}s "
                           f"({q['fracao'] * 100:3.0f}%): {q['evento']}")
 
+    # O agregado que decide a montagem: custo POR SEGUNDO de cada tipo de
+    # cena, somando todos os videos. E o unico numero aqui que fala do
+    # FORMATO em vez de falar de um video.
+    custos = custo_por_cena(dados)
+    if custos:
+        fora = custos[0].pop("_fora", 0)
+        linhas.append("\n  custo por tipo de cena (todos os videos)")
+        linhas.append("    cena            pts/s   perdido   tela s   vezes  videos")
+        for c in custos:
+            linhas.append(
+                f"    {c['tipo']:<14}{c['pontos_por_s'] * 100:6.2f}"
+                f"  {c['perdido'] * 100:7.1f}  {c['segundos']:7.1f}"
+                f"  {c['ocorrencias']:6}  {c['videos']:6}")
+        if fora:
+            linhas.append(f"    ({fora} video(s) fora: o plano nao bate com "
+                          f"a duracao publicada — provavel corte de Shorts)")
+
     # A/B: mesma geracao e perfil, variantes diferentes
     grupos: dict[tuple, list[dict]] = {}
     for d in dados:
@@ -335,5 +480,7 @@ def atualizar_com_log() -> list[dict]:
 
 
 __all__ = ["ESCOPO_ANALYTICS", "atualizar", "carregar_salvas", "cli", "publicados",
-           "quedas", "registrar_publicacao", "relatorio", "retencao", "sparkline",
+           "custo_por_cena", "quedas", "registrar_publicacao",
+           "registrar_publicado", "relatorio",
+           "retencao", "sparkline",
            "timeline_de"]

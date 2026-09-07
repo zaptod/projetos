@@ -85,6 +85,20 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
         "entao nao pode mudar depois. Nada de nome dentro dela.")
     add("  - Faca o mesmo para cada personagem que aparece mais de uma vez.")
     add("")
+    # O gemeo FACTUAL da consistencia visual. A descricao fisica ja e repetida
+    # em toda imagem e por isso o protagonista nao muda de cara; nada fazia o
+    # mesmo pelos NUMEROS, e eles derraparam: na historia 8 o aluguel era
+    # "tres mil e oitocentos" nas partes 1 e 6 e "cinco mil" na 2, e o casal se
+    # conheceu em 2020 na parte 2 e em 2018 na parte 4. Quem escreve a parte 4
+    # nao lembra do que disse na 2 — entao a ficha vai junto em toda pergunta.
+    add("CONSISTENCIA DE FATOS (isto e obrigatorio):")
+    add("  - Liste os numeros e datas que a historia vai citar mais de uma "
+        "vez: valores em reais, anos, idades, ha quanto tempo cada coisa dura.")
+    add("  - Escolha UM valor para cada um agora. Eles serao repetidos nas "
+        "partes exatamente como voce escrever aqui, e nao podem mudar.")
+    add("  - Confira se eles fecham entre si antes de responder (se o primeiro "
+        "pagamento foi em 2018 e faz oito anos, o presente e 2026).")
+    add("")
     add("FORMATO DA RESPOSTA (exatamente assim, sem nada em volta):")
     add("")
     add("TITULO DA SERIE: <uma linha, em primeira pessoa, que ja entrega o "
@@ -94,6 +108,9 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
     add("NARRADOR: <homem ou mulher — quem esta contando em primeira pessoa>")
     add("ELENCO: <nome> | <descricao fisica em ingles>; <nome> | <descricao>")
     add("CENARIO: <onde a historia acontece, em ingles, uma frase>")
+    add("FATOS: <nome do fato> = <valor>; <nome do fato> = <valor>  "
+        "(ex.: aluguel = R$ 3.800 por mes; primeiro pagamento = 2018; "
+        "ano em que se conheceram = 2020; idade dela = 34)")
     add("VIRADA CENTRAL: <a informacao que muda tudo, e em que parte ela sai>")
     add("")
     for i in range(1, partes + 1):
@@ -116,11 +133,11 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
 def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
     """Texto da etapa 1 -> {titulo, premissa, protagonista, elenco, partes}."""
     campos = {"titulo": "", "premissa": "", "protagonista": "", "elenco": "",
-              "cenario": "", "virada": "", "narrador": ""}
+              "cenario": "", "virada": "", "narrador": "", "fatos": ""}
     rotulos = {
         "titulo da serie": "titulo", "titulo": "titulo", "premissa": "premissa",
         "protagonista": "protagonista", "elenco": "elenco", "cenario": "cenario",
-        "virada central": "virada", "narrador": "narrador",
+        "virada central": "virada", "narrador": "narrador", "fatos": "fatos",
     }
     partes = []
     atual = None
@@ -161,6 +178,7 @@ def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
         "narrador": campos["narrador"],
         "elenco": campos["elenco"],
         "cenario": campos["cenario"],
+        "fatos": campos["fatos"],
         "virada": campos["virada"],
         "partes": partes,
         "partes_esperadas": partes_esperadas,
@@ -246,6 +264,18 @@ def prompt_parte(biblia: dict, numero: int, *,
     if biblia.get("cenario"):
         add(f"  - Cenario: {biblia['cenario']}")
     add("")
+    # A ficha vai junto em TODA parte, pelo mesmo motivo que a descricao fisica
+    # vai: o modelo nao lembra do numero que ele mesmo escreveu quatro partes
+    # atras. Sem ela, o aluguel muda de valor no meio da serie.
+    if biblia.get("fatos"):
+        add("FATOS DA HISTORIA (numeros e datas ja fixados - use EXATAMENTE "
+            "estes, nunca invente outro valor nem arredonde):")
+        for fato in [f.strip() for f in str(biblia["fatos"]).split(";")]:
+            if fato:
+                add(f"  - {fato}")
+        add("  - Se esta parte precisar de um numero ou data que nao esta "
+            "acima, escolha um que nao contradiga nenhum destes.")
+        add("")
     add("COMO ESCREVER A NARRACAO (a parte mais importante):")
     add("  Isto NAO e uma historia narrada: e um desabafo que uma pessoa real "
         "esta digitando de madrugada. Quem ouvir tem que pensar 'isso "

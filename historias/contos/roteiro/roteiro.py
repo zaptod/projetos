@@ -207,9 +207,14 @@ def validar(roteiro: dict, config: dict | None = None):
     if not roteiro.get("titulo"):
         problemas.append("sem TITULO: vou usar a primeira narracao como titulo.")
     elif len(roteiro["titulo"]) > limites["titulo_max_chars"]:
-        problemas.append(
+        # ERRO, nao aviso: o YouTube corta em 100 caracteres (`youtube_web`
+        # manda `titulo[:100]`), entao um titulo de 130 sobe truncado no meio
+        # da frase — e o titulo e metade da decisao de clicar. Aconteceu com as
+        # historias 4 (136) e 8 (130), as duas com o aviso impresso e ignorado.
+        erros.append(
             f"titulo com {len(roteiro['titulo'])} chars (limite "
-            f"{limites['titulo_max_chars']}): vai encolher na tela.")
+            f"{limites['titulo_max_chars']}): o YouTube corta em 100 e ele "
+            "subiria pela metade. Peca ao LLM um titulo mais curto.")
 
     if len(cenas) < limites["cenas_min"]:
         erros.append(f"so {len(cenas)} cena(s); o minimo e {limites['cenas_min']}. "
@@ -300,6 +305,9 @@ def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
         "protagonista_nome": biblia.get("protagonista_nome") or "",
         "elenco": biblia.get("elenco") or "",
         "cenario": biblia.get("cenario") or "",
+        # O gemeo factual do campo acima: os numeros e datas que a historia
+        # fixou. Sem ele nao ha contra o que conferir a narracao depois.
+        "fatos": biblia.get("fatos") or "",
         "cta": "",
         "partes": [dict(p) for p in partes],
     }

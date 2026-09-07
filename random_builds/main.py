@@ -210,11 +210,15 @@ def main() -> None:
 
     imp = sub.add_parser("import-reactions",
                          help="importa videos de reacao com ID sequencial")
-    imp.add_argument("source", help="pasta (ou arquivo) com os videos")
+    # nargs="+": o painel abre um seletor de MULTIPLOS arquivos e mandava
+    # todos; com um positional so, o segundo em diante virava erro.
+    imp.add_argument("source", nargs="+", help="pasta(s) ou arquivo(s) com os videos")
     from builds.assets.catalog import CATEGORIES
     imp.add_argument("--categoria", required=True, choices=CATEGORIES,
                      help="categoria que esses videos substituem")
-    imp.add_argument("--move", action="store_true",
+    # `--mover` e o nome canonico (o resto da CLI fala portugues); `--move`
+    # continua valendo para nao quebrar quem ja tinha script.
+    imp.add_argument("--mover", "--move", action="store_true", dest="move",
                      help="mover os arquivos em vez de copiar")
 
     ident = sub.add_parser(
@@ -414,9 +418,18 @@ def main() -> None:
     sub.add_parser("controle", help="a pipeline esta rodando, pausada ou parando?")
 
     sub.add_parser("list-reactions", help="lista a biblioteca de reacoes")
-    sub.add_parser("reactions",
-                   help="assistente interativo: inserir/categorizar videos "
-                        "(individual e em lote), listar, recategorizar, remover")
+    rea = sub.add_parser("reactions",
+                         help="assistente interativo: inserir/categorizar videos "
+                              "(individual e em lote), listar, recategorizar, remover")
+    # Sem flag, segue o assistente interativo de sempre. COM flag, faz a acao
+    # e sai: e o que o painel precisa, porque subprocesso do painel nao tem
+    # stdin — os botoes Recategorizar e Remover chamavam exatamente estas
+    # duas bandeiras e o parser nao aceitava nenhuma.
+    rea.add_argument("--recategorizar", metavar="CATEGORIA", choices=CATEGORIES,
+                     help="muda a categoria dos IDs informados e sai")
+    rea.add_argument("--remover", action="store_true",
+                     help="tira os IDs informados da biblioteca e sai")
+    rea.add_argument("ids", nargs="*", help="IDs da biblioteca (ex.: 0007)")
 
     args = parser.parse_args()
     controller = PipelineController()
@@ -444,7 +457,8 @@ def main() -> None:
         controller.arena_ranking(limite=args.n)
         return
     if args.command == "import-reactions":
-        controller.import_reactions(args.source, args.categoria, move=args.move)
+        for origem in args.source:
+            controller.import_reactions(origem, args.categoria, move=args.move)
         return
     if args.command in ("pausar", "retomar", "parar", "controle"):
         raise SystemExit(_controle(args.command, args))
@@ -458,6 +472,8 @@ def main() -> None:
         from builds.publicar import metricas
         raise SystemExit(metricas.cli(atualizar=args.atualizar, como_json=args.json))
     if args.command == "reactions":
+        if args.recategorizar or args.remover:
+            raise SystemExit(_reactions_em_lote(args))
         controller.reactions_cli()
         return
     if args.command == "identity":
@@ -514,6 +530,34 @@ def main() -> None:
                             estreia=not args.no_estreia,
                             print_pedido=args.print_pedido,
                             escolhas=escolhidos)
+
+
+def _reactions_em_lote(args) -> int:
+    """Recategorizar/remover sem assistente. E o caminho do painel.
+
+    O assistente de `reactions` pergunta no stdin, e subprocesso do painel
+    nao tem stdin: os botoes Recategorizar e Remover mandavam
+    `--recategorizar`/`--remover`, o parser recusava, e nada acontecia.
+    As funcoes ja existiam em `builds/assets/importer.py` — faltava a porta.
+    """
+    from builds.assets.importer import recategorize_reaction, remove_reaction
+    from builds.pipeline.controller import ASSETS
+
+    if not args.ids:
+        print("reactions: informe pelo menos um ID (ex.: `reactions --remover 0007`).")
+        return 2
+    falhas = 0
+    for asset_id in args.ids:
+        if args.recategorizar:
+            entrada = recategorize_reaction(asset_id, args.recategorizar, ASSETS)
+            print(f"[reactions] {asset_id} -> {args.recategorizar}" if entrada
+                  else f"[reactions] ID nao encontrado: {asset_id}")
+        else:
+            entrada = remove_reaction(asset_id, ASSETS)
+            print(f"[reactions] {asset_id} removido" if entrada
+                  else f"[reactions] ID nao encontrado: {asset_id}")
+        falhas += 0 if entrada else 1
+    return 1 if falhas else 0
 
 
 def _controle(acao: str, args) -> int:

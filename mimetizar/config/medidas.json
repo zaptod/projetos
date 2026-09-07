@@ -1,0 +1,25 @@
+{
+  "_comentario": "Os numeros que saem do ffmpeg, sem IA nenhuma. Sao eles que dao autoridade a biblia: um LLM diz 'o corte e agil', isto aqui diz '4,2 cortes por minuto'.",
+
+  "_comentario_cortes": "Limiar do detector de cena: 0 a 1. Abaixo de 0.25 conta movimento de camera como corte; acima de 0.45 perde corte entre planos parecidos. A largura menor e so para a comparacao ser barata — nao muda o que e corte.",
+  "cena_limiar": 0.30,
+  "cena_largura": 320,
+
+  "_comentario_transicao": "Menor intervalo entre dois cortes, em segundos. Um dissolve ou whip pan passa do limiar em varios frames seguidos e vira varios 'cortes'; abaixo deste intervalo tudo conta como UMA troca de plano.",
+  "corte_min_s": 0.4,
+
+  "_comentario_silencio": "Silencio abaixo deste volume e por pelo menos esta duracao. -35 dB pega pausa de respiracao sem contar sala barulhenta como fala.",
+  "silencio_db": -35,
+  "silencio_min_s": 0.35,
+
+  "_comentario_amostra": "Segundos analisados por video (0 = o video inteiro). A deteccao de cena decodifica tudo, entao um acervo grande fica caro; 600 da os primeiros 10 minutos, que ja definem o formato.",
+  "amostra_s": 0,
+
+  "_comentario_contato": "O mosaico de frames que sobe no chat do ChatGPT/Gemini. 4x4 cabe numa imagem legivel; mais que isso vira mosaico ilegivel.",
+  "contato_colunas": 4,
+  "contato_linhas": 4,
+  "contato_largura": 320,
+  "contato_qualidade": 4,
+
+  "timeout_por_video_s": 3600
+}

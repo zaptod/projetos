@@ -1,0 +1,30 @@
+{
+  "_comentario": "Coleta: o que o yt-dlp busca e ate onde pode ir. Numeros aqui viram argumento de linha de comando, entao mexer aqui nao exige mexer em codigo.",
+
+  "formato": "bv*[height<=1080]+ba/b[height<=1080]",
+  "container": "mp4",
+
+  "legendas": {
+    "baixar": true,
+    "automaticas": true,
+    "idiomas": ["pt", "pt-BR", "pt-PT", "en"]
+  },
+
+  "thumbnail": true,
+  "info_json": true,
+
+  "_comentario_ritmo": "O YouTube estrangula quem baixa rapido demais, e a punicao e o download inteiro travar no meio. Segundos entre requisicoes e entre videos.",
+  "espera_entre_requisicoes": 1.5,
+  "espera_entre_videos": [2, 6],
+
+  "_comentario_espaco": "Teto em gigabytes. Acima disso o comando `baixar` exige --sim, porque um acervo grande enche o disco sem avisar.",
+  "teto_gb": 50,
+  "bitrate_estimado_mbps": 2.5,
+
+  "_comentario_cookies": "Video com idade travada ou so-para-inscritos precisa de sessao. Usa o perfil de Chrome do YouTube Studio que ja existe no registro de contas.",
+  "cookies_do_perfil": true,
+  "servico_do_cookie": "youtube_web",
+
+  "tentativas": 3,
+  "timeout_por_video_s": 1800
+}

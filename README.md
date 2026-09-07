@@ -1,8 +1,8 @@
 # projetos — o mapa
 
-Cinco projetos que se alimentam: um jogo, duas fábricas de vídeo, um painel
-e um bot. Este arquivo é o mapa; cada pasta tem o seu próprio README com o
-detalhe.
+Seis projetos que se alimentam: um jogo, duas fábricas de vídeo, um estúdio
+de engenharia reversa, um painel e um bot. Este arquivo é o mapa; cada pasta
+tem o seu próprio README com o detalhe.
 
 ## Começar
 
@@ -27,11 +27,18 @@ Pela linha de comando, o equivalente é `python -m painel`.
 neural_fights/   o jogo: simulação de luta com IA, arena, torneio, live
 random_builds/   a roleta de builds -> vídeo publicado     (pacote: builds)
 historias/       o canal de histórias por IA               (pacote: contos)
+mimetizar/       canal alheio -> bíblia -> preset          (pacote: espelho)
 visao/           as quatro famílias de número              (pacote: panorama)
 painel/          o painel de controle: Vila e janelas de trabalho
 vila/            o motor de sprites da Vila + a Oficina
 remoto/          o bot de Telegram, para acompanhar do celular
 ```
+
+Os cinco primeiros **produzem**; `mimetizar/` é o único que **estuda**. Ele
+aponta para um canal que já funciona, mede o que ele faz, faz o ChatGPT e o
+Gemini lerem cada vídeo, e devolve o manual — mais um preset que o
+`historias/` consome. Foi a resposta para um problema real: todo formato aqui
+foi escolhido no olho e corrigido depois pela retenção medida.
 
 ### Quem depende de quem
 
@@ -43,9 +50,15 @@ remoto/          o bot de Telegram, para acompanhar do celular
            ▲    ▲
            │    │
        contos   panorama         (histórias reusa narrador/trilha/PicassoIA)
-              ▲
-           painel                (lê tudo, escreve nada)
+        ▲     ▲
+        │     │
+     espelho  painel             (espelho reusa o cliente de ChatGPT/Gemini;
+                                  painel lê tudo, escreve nada)
 ```
+
+`espelho` alimenta `contos` de volta — mas **por arquivo**, nunca por import:
+ele escreve um preset em `mimetizar/outputs/canal_000NN/preset/`, e quem copia
+para `historias/config/` é uma pessoa. Import de volta faria um ciclo.
 
 `remoto` e `vila` ficam de fora do desenho de propósito: os dois só leem o
 diário e o registro de contas.
@@ -53,7 +66,8 @@ diário e o registro de contas.
 **Nada é importado por acaso.** Cada projeto é um pacote instalado:
 
 ```
-pip install -e . -e ./random_builds -e ./historias -e ./visao -e ./painel
+pip install -e . -e ./random_builds -e ./historias -e ./mimetizar \
+            -e ./visao -e ./painel
 ```
 
 Duas regras que o repositório trata como invioláveis, porque quebrá-las
@@ -76,7 +90,7 @@ disputam a mesma thread.
 | janela | o que tem | cara |
 |---|---|---|
 | **Vila** | o mundo ao vivo, o diário, o paralelismo | quente, pixel art |
-| **Criação** | fluxo, publicar, vídeos, histórias, contas, reações | sóbria, densa |
+| **Criação** | fluxo, publicar, vídeos, histórias, espelho, contas, reações | sóbria, densa |
 | **Jogo** | torneio, simulação, banco, live, áudio | sóbria, densa |
 
 A Vila é o hub: dela se abrem as outras duas.

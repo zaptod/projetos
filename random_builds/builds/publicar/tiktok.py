@@ -426,6 +426,12 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         passo("publicar clicado; confirmando...")
         estado = _confirmar_publicacao(page, passo)
         passo(estado)
+        if confirmado(estado):
+            # O TikTok nao devolve URL nem id aqui; o registro vale para
+            # saber O QUE ja foi publicado e onde (a metrica de retencao
+            # segue sendo so do YouTube).
+            from . import metricas
+            metricas.registrar_publicado(video, estado, "tiktok", canal=canal)
         return estado
 
 

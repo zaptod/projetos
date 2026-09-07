@@ -110,11 +110,68 @@ def _chave(motor: str, voz: str, taxa, tom, texto: str) -> str:
     return hashlib.sha1(base).hexdigest()
 
 
+# Fala humana em pt-BR: medido em 02/09/2026 nas 30 partes boas das historias,
+# de 1,99 a 2,87 palavras por segundo. Fora dessa faixa o audio nao e a leitura
+# desse texto — foi assim que 417 palavras couberam em 21,8 s e viraram um
+# video com 14 s de imagem muda no fim.
+#
+# A FAIXA E ASSIMETRICA DE PROPOSITO. O teto e o que importa: audio cortado da
+# taxa ALTA (o defeito deu 19,1), e 4,0 ja e o dobro do que a fala real usa.
+# O piso e folgado porque reprovar por engano custa caro — `_edge` levanta, o
+# `sintetizar` cai no SAPI, e a historia inteira sai com a voz robotica sem
+# ninguem entender por que. Varrendo o cache com os limites do motor, a entrada
+# mais lenta deu 1,54; contar palavra ESCRITA (que e o que esta funcao recebe)
+# da numeros ainda menores, porque o motor fala numero por extenso — "R$ 1.200"
+# e uma palavra escrita e cinco faladas. 1,0 fica longe de tudo isso e continua
+# pegando descompasso grosseiro.
+PALAVRAS_POR_S_MIN = 1.0
+PALAVRAS_POR_S_MAX = 4.0
+# Abaixo disto a medida nao diz nada: "Sim." em 1 s da 1 palavra/s e esta certo.
+PALAVRAS_PARA_AFERIR = 12
+
+
+def taxa_de_fala(texto: str, duracao: float) -> float | None:
+    """Palavras por segundo, ou None quando o texto e curto demais para aferir."""
+    palavras = len([p for p in str(texto or "").split() if p.strip()])
+    if palavras < PALAVRAS_PARA_AFERIR or duracao <= 0:
+        return None
+    return palavras / float(duracao)
+
+
+def implausivel(texto: str, duracao: float) -> str:
+    """Por que este audio NAO pode ser a leitura deste texto ('' = pode ser).
+
+    O motor nao avisa quando o stream termina no meio: o arquivo existe, tem
+    tamanho, toca — so acaba antes da frase. Contar palavra contra segundo e a
+    unica pergunta que separa "leitura" de "pedaco de leitura".
+    """
+    taxa = taxa_de_fala(texto, duracao)
+    if taxa is None:
+        return ""
+    palavras = len(texto.split())
+    if taxa > PALAVRAS_POR_S_MAX:
+        return (f"{palavras} palavras em {duracao:.1f}s ({taxa:.1f} palavras/s): "
+                "o audio veio cortado")
+    if taxa < PALAVRAS_POR_S_MIN:
+        return (f"{palavras} palavras em {duracao:.1f}s ({taxa:.1f} palavras/s): "
+                "o audio nao corresponde ao texto")
+    return ""
+
+
 def _edge(texto: str, destino: Path, cfg: dict) -> Path:
     try:
         import edge_tts
     except ImportError as exc:
         raise VozIndisponivel("edge-tts nao instalado (pip install edge-tts)") from exc
+
+    # NADA e escrito no nome de cache antes de a sintese INTEIRA terminar. O
+    # `async for` abaixo grava o mp3 aos pedacos: se o processo morre no meio
+    # (Ctrl+C, painel parado, servico cortando o stream), o que sobra e um
+    # audio pela metade — e o `except` daqui nao roda para apagar. Foi assim
+    # que a parte 1 da historia 8 ficou com 21,8 s de uma narracao de 150 s,
+    # e o cache serviu esse pedaco em TODA re-renderizacao seguinte.
+    parcial = destino.with_name(destino.name + ".parcial")
+    parcial_palavras = destino.with_name(destino.name + ".parcial.words.json")
 
     async def _rodar():
         try:
@@ -127,7 +184,7 @@ def _edge(texto: str, destino: Path, cfg: dict) -> Path:
         # (WordBoundary ou SentenceBoundary, em unidades de 100 ns) — a base
         # da legenda karaoke sincronizada com a voz.
         limites = []
-        with open(destino, "wb") as fh:
+        with open(parcial, "wb") as fh:
             async for pedaco in com.stream():
                 if pedaco.get("type") == "audio":
                     fh.write(pedaco.get("data") or b"")
@@ -137,17 +194,30 @@ def _edge(texto: str, destino: Path, cfg: dict) -> Path:
                     limites.append({"t0": round(t0, 3), "t1": round(t0 + dur, 3),
                                     "texto": str(pedaco.get("text", "")).strip(),
                                     "tipo": str(pedaco.get("type", ""))})
-        with open(palavras_de(destino), "w", encoding="utf-8") as fh:
+        with open(parcial_palavras, "w", encoding="utf-8") as fh:
             json.dump(_em_palavras(limites), fh, ensure_ascii=False)
+
+    def _limpar():
+        parcial.unlink(missing_ok=True)
+        parcial_palavras.unlink(missing_ok=True)
 
     try:
         asyncio.run(_rodar())
     except Exception as exc:  # rede, voz inexistente, servico fora
-        destino.unlink(missing_ok=True)
+        _limpar()
         raise VozIndisponivel(f"edge-tts falhou: {exc}") from exc
-    if not destino.is_file() or destino.stat().st_size < 200:
-        destino.unlink(missing_ok=True)
+    if not parcial.is_file() or parcial.stat().st_size < 200:
+        _limpar()
         raise VozIndisponivel("edge-tts devolveu arquivo vazio")
+    motivo = implausivel(texto, _duracao(parcial))
+    if motivo:
+        _limpar()
+        raise VozIndisponivel(f"edge-tts: {motivo}")
+    # As palavras entram PRIMEIRO: se morrermos entre os dois renames, sobra um
+    # .words.json orfao (o cache erra, re-sintetiza, ninguem se machuca) em vez
+    # de um audio sem alinhamento, que e o estado que fabricava tempos falsos.
+    parcial_palavras.replace(palavras_de(destino))
+    parcial.replace(destino)
     return destino
 
 
@@ -180,7 +250,8 @@ def _em_palavras(limites: list[dict]) -> list[dict]:
     return saida
 
 
-def _palavras_da_fala(arquivo: Path, texto: str, duracao: float) -> list[dict]:
+def _palavras_da_fala(arquivo: Path, texto: str, duracao: float,
+                      log=None) -> list[dict]:
     """Limites de palavra da fala: os do motor quando existem; senao, o
     texto repartido no tempo pelo tamanho de cada palavra (SAPI nao informa
     limites — a legenda continua acompanhando, so com menos precisao)."""
@@ -191,6 +262,12 @@ def _palavras_da_fala(arquivo: Path, texto: str, duracao: float) -> list[dict]:
             return [d for d in dados if d.get("texto")]
     except (OSError, ValueError):
         pass
+    if log and Path(arquivo).suffix == ".mp3":
+        # Para o SAPI isto e o normal. Para o edge e sintoma: ele SEMPRE manda
+        # os limites, entao nao te-los significa que a sintese nao terminou, e
+        # o que sai daqui abaixo e um tempo inventado sobre um audio incompleto.
+        log(f"[voz] {Path(arquivo).name} sem limites de palavra: os tempos "
+            "abaixo sao repartidos, nao medidos.")
     palavras = [p for p in texto.split() if p.strip()]
     if not palavras or duracao <= 0:
         return []
@@ -209,6 +286,9 @@ def _sapi(texto: str, destino: Path, cfg: dict) -> Path:
     """Voz do Windows via System.Speech (sem pip, sem rede)."""
     if sys.platform != "win32":
         raise VozIndisponivel("SAPI so existe no Windows")
+    # Mesma doutrina do edge: a PowerShell escreve o wav aos poucos, entao ela
+    # escreve num nome que o cache nao procura e so no fim ele vira o definitivo.
+    parcial = destino.with_name(destino.name + ".parcial")
     txt = destino.with_suffix(".txt")
     txt.write_text(texto, encoding="utf-8")
     script = (
@@ -221,7 +301,7 @@ def _sapi(texto: str, destino: Path, cfg: dict) -> Path:
         "$s.SetOutputToWaveFile('%s'); "
         "$s.Speak([IO.File]::ReadAllText('%s', [Text.Encoding]::UTF8)); "
         "$s.Dispose()"
-    ) % (cfg["voz_sapi"], int(cfg["taxa_sapi"]), str(destino).replace("'", "''"),
+    ) % (cfg["voz_sapi"], int(cfg["taxa_sapi"]), str(parcial).replace("'", "''"),
          str(txt).replace("'", "''"))
     try:
         proc = subprocess.run(["powershell", "-NoProfile", "-NonInteractive",
@@ -229,13 +309,36 @@ def _sapi(texto: str, destino: Path, cfg: dict) -> Path:
                               capture_output=True, text=True, timeout=60,
                               creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError) as exc:
+        parcial.unlink(missing_ok=True)
         raise VozIndisponivel(f"SAPI falhou: {exc}") from exc
     finally:
         txt.unlink(missing_ok=True)
-    if proc.returncode != 0 or not destino.is_file() or destino.stat().st_size < 200:
-        destino.unlink(missing_ok=True)
+    if proc.returncode != 0 or not parcial.is_file() or parcial.stat().st_size < 200:
+        parcial.unlink(missing_ok=True)
         raise VozIndisponivel(f"SAPI falhou: {(proc.stderr or '')[-200:]}")
+    motivo = implausivel(texto, _duracao(parcial))
+    if motivo:
+        parcial.unlink(missing_ok=True)
+        raise VozIndisponivel(f"SAPI: {motivo}")
+    parcial.replace(destino)
     return destino
+
+
+def motivo_do_cache_ruim(arquivo: Path, texto: str, motor: str = "edge") -> str:
+    """Por que esta entrada do cache NAO serve para este texto ('' = serve).
+
+    Antes bastava "existe e tem mais de 200 bytes", e por isso um mp3 gravado
+    pela metade continuou sendo servido para sempre: re-renderizar nao adianta
+    quando a resposta ja esta guardada.
+    """
+    arquivo = Path(arquivo)
+    if not arquivo.is_file() or arquivo.stat().st_size < 200:
+        return "arquivo vazio"
+    if motor == "edge" and not palavras_de(arquivo).is_file():
+        # O sidecar so e escrito depois do audio inteiro: sem ele, a sintese
+        # daquele arquivo nao chegou ao fim.
+        return "sem os limites de palavra (sintese interrompida)"
+    return implausivel(texto, _duracao(arquivo))
 
 
 def sintetizar(texto: str, cfg: dict, cache: Path = CACHE_PADRAO,
@@ -252,8 +355,16 @@ def sintetizar(texto: str, cfg: dict, cache: Path = CACHE_PADRAO,
                        cfg["taxa"] if motor == "edge" else cfg["taxa_sapi"],
                        cfg["tom"] if motor == "edge" else "", texto)
         destino = cache / f"{chave}{ext}"
-        if destino.is_file() and destino.stat().st_size > 200:
-            return destino
+        if destino.is_file():
+            ruim = motivo_do_cache_ruim(destino, texto, motor)
+            if not ruim:
+                return destino
+            # Entrada envenenada se apaga sozinha: sem isso, so um rm manual
+            # tirava o video quebrado do caminho.
+            if log:
+                log(f"[voz] cache de {motor} descartado ({ruim}); re-sintetizando.")
+            destino.unlink(missing_ok=True)
+            palavras_de(destino).unlink(missing_ok=True)
         try:
             return (_edge if motor == "edge" else _sapi)(texto, destino, cfg)
         except VozIndisponivel as exc:
@@ -598,7 +709,7 @@ def narrar_continuo(linhas: list, destino: Path, cfg: dict, taxa: int = 44100,
         return None
 
     duracao = len(pcm) / float(taxa)
-    palavras = _palavras_da_fala(arquivo, inteiro, duracao)
+    palavras = _palavras_da_fala(arquivo, inteiro, duracao, log)
     if cfg.get("respiro", True):
         # Alinha uma vez so para descobrir em que PALAVRA cada cena comeca —
         # e ali que entra a respirada longa. Depois do respiro os tempos

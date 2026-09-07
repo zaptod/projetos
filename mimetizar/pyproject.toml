@@ -1,0 +1,48 @@
+# Pacote `espelho` — Absorver e Mimetizar (canal alheio -> biblia -> preset).
+#
+# O nome do pacote NAO pode ser `mimetizar`: e a regra que o repositorio trata
+# como inviolavel desde 01/09/2026. Um diretorio da raiz sem `__init__.py` vira
+# namespace package (PEP 420) e SOMBREIA a instalacao editavel em silencio —
+# `import historias` da raiz devolvia um pacote vazio. Por isso `historias/`
+# instala `contos`, `random_builds/` instala `builds`, e `mimetizar/` instala
+# `espelho`. A catraca (`ferramentas/auditoria_arquitetura.py`) mede isso.
+#
+# Sobre nao entrar no pyproject da raiz: mesmo motivo do random_builds e do
+# historias — o portao de pureza da wheel no CI exige que a wheel do
+# neural_fights contenha SO `neural_fights/`.
+#
+#     pip install -e ./mimetizar
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "espelho"
+version = "1.0.0"
+description = "Absorver e mimetizar: estuda um canal do YouTube e devolve a biblia de como ele e feito"
+requires-python = ">=3.10"
+dependencies = [
+    # O catalogo e o download do acervo. Chamado por subprocess (`-m yt_dlp`),
+    # nunca importado: e a mesma doutrina do ffmpeg, e deixa atualizar o
+    # yt-dlp sozinho quando o YouTube muda (o que acontece toda semana).
+    "yt-dlp>=2024.1",
+    # O cliente de LLM por navegador (ChatGPT/Gemini), as travas por perfil,
+    # o registro de contas e o diario vem dos projetos vizinhos. `contos`
+    # arrasta `random-builds` junto.
+    "contos",
+]
+
+[project.optional-dependencies]
+# Transcricao local, so usada quando o video nao tem legenda no YouTube.
+# Fica opcional de proposito: `torch` sozinho passa de 2 GB, e quem so quer a
+# leitura de metadados e edicao nao deveria pagar por isso.
+transcricao = ["openai-whisper>=20231117"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+# `config` e dado lido por caminho relativo, nao modulo. `tests` roda pelo
+# cwd, nao instalado. `outputs` e artefato, e nunca entra na wheel.
+include = ["espelho*"]
+exclude = ["tests*", "config*", "outputs*"]
+namespaces = false

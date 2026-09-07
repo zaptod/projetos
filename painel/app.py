@@ -36,6 +36,9 @@ from .widgets import Oficina
 # Quanto tempo entre duas leituras do `panorama`. Ele ja tem cache de 3 s;
 # aqui o intervalo e o da TELA, que pode ser mais folgado.
 INTERVALO_RESUMO_MS = 4000
+# O freio de mao pode ser puxado de outro processo (a CLI, o bot do
+# celular): a faixa le com frequencia para nao mostrar estado velho.
+INTERVALO_PIPELINE_MS = 3000
 
 LARGURA_BARRA = 196
 LARGURA_BARRA_ESTREITA = 56
@@ -48,7 +51,7 @@ class Casca(tk.Tk):
 
     @classmethod
     def criar(cls, classes: list, *, tema: str = "oficina",
-              titulo: str = "Neural Fights"):
+              titulo: str = "Neural Fights", pipeline: bool = False):
         """A porta de entrada.
 
         As paginas recebem a casca no construtor (precisam do supervisor e da
@@ -56,10 +59,10 @@ class Casca(tk.Tk):
         menu. Este metodo desata o no: cria a janela, instancia as paginas
         com ela, e so entao monta.
         """
-        return cls(classes, tema=tema, titulo=titulo)
+        return cls(classes, tema=tema, titulo=titulo, pipeline=pipeline)
 
     def __init__(self, classes: list, *, tema: str = "oficina",
-                 titulo: str = "Neural Fights"):
+                 titulo: str = "Neural Fights", pipeline: bool = False):
         super().__init__()
         self.tema = estilo.tema(tema)
         self.oficina = Oficina(self.tema)
@@ -74,6 +77,8 @@ class Casca(tk.Tk):
         self._quadros: dict = {}
         self._atual: str | None = None
         self._console_aberto = False
+        self._com_pipeline = bool(pipeline)
+        self._pulso_pipeline = None
 
         self._montar()
         self.supervisor = Supervisor(
@@ -81,6 +86,13 @@ class Casca(tk.Tk):
             ao_terminar=lambda _n, _c: self._pintar_faixa())
         self._pulso = Periodico(self, INTERVALO_RESUMO_MS, self._pedir_resumo)
         self._pulso.ligar()
+        if self._com_pipeline:
+            # Pulso proprio: o do panorama sai cedo quando a pagina visivel
+            # nao tem `atualizar`, e o freio de mao nao pode depender de qual
+            # pagina esta aberta.
+            self._pulso_pipeline = Periodico(self, INTERVALO_PIPELINE_MS,
+                                             self._pedir_pipeline)
+            self._pulso_pipeline.ligar()
 
         self.bind("<Configure>", self._ao_redimensionar)
         self.bind("<F11>", lambda _e: self._alternar_cheia())
@@ -97,6 +109,8 @@ class Casca(tk.Tk):
         # empacotado na frente, ele engolia a faixa inteira e o console
         # simplesmente nao aparecia -- sem erro nenhum.
         self._montar_console()
+        if self._com_pipeline:
+            self._montar_pipeline()
 
         corpo = tk.Frame(self, bg=t.fundo)
         corpo.pack(fill="both", expand=True)
@@ -143,6 +157,83 @@ class Casca(tk.Tk):
                 "pagina": pagina}
 
     # ----------------------------------------------------------- console
+    def _montar_pipeline(self) -> None:
+        """O freio de mao da pipeline, no rodape de QUALQUER pagina.
+
+        Existe porque as contas do PicassoIA/Digen sao compartilhadas: quando
+        alguem mais precisa da ferramenta, a pipeline tem que parar sem
+        ninguem digitar comando — e sem matar o worker no meio de um job,
+        que e o jeito de corromper o que estava sendo baixado.
+
+        Sumiu na reescrita do painel em 3 janelas (01/09) e so a CLI ficou
+        com `pausar/retomar/parar`. Voltou aqui.
+        """
+        t, o = self.tema, self.oficina
+        faixa = tk.Frame(self, bg=t.superficie)
+        faixa.pack(side="bottom", fill="x")
+        tk.Frame(faixa, bg=t.borda, height=1).pack(fill="x")
+        linha = tk.Frame(faixa, bg=t.superficie)
+        linha.pack(fill="x", padx=estilo.ESPACO["normal"], pady=3)
+
+        o.rotulo(linha, "PIPELINE", papel="legenda", peso="bold",
+                 cor="texto_apagado", bg=t.superficie).pack(side="left")
+        self._pipeline_estado = o.rotulo(linha, "lendo...", papel="legenda",
+                                         cor="texto_fraco", bg=t.superficie)
+        self._pipeline_estado.pack(side="left", padx=estilo.ESPACO["meio"])
+
+        o.botao(linha, "Retomar", lambda: self._pipeline("retomar"),
+                compacto=True).pack(side="right", padx=(estilo.ESPACO["meio"], 0))
+        o.botao(linha, "Parar worker", lambda: self._pipeline("parar"),
+                tipo="perigo", compacto=True).pack(side="right",
+                                                   padx=(estilo.ESPACO["meio"], 0))
+        o.botao(linha, "Pausar 1h", lambda: self._pipeline("pausar", minutos=60),
+                compacto=True).pack(side="right", padx=(estilo.ESPACO["meio"], 0))
+        o.botao(linha, "Pausar", lambda: self._pipeline("pausar"),
+                compacto=True).pack(side="right", padx=(estilo.ESPACO["meio"], 0))
+        self._pipeline_alvo = o.combo(linha, ["tudo", "picasso", "digen"],
+                                      "tudo", largura=8)
+        self._pipeline_alvo.pack(side="right", padx=(estilo.ESPACO["meio"], 0))
+
+    def _pedir_pipeline(self) -> None:
+        def ler():
+            from builds.identity import controle
+            return controle.estado()
+
+        self.supervisor.tarefa(ler, self._entregar_pipeline, rotulo="pipeline")
+
+    def _entregar_pipeline(self, dados) -> None:
+        if not isinstance(dados, dict) or not hasattr(self, "_pipeline_estado"):
+            return
+        situacao = dados.get("situacao") or "rodando"
+        marca = {"rodando": "●", "pausado": "⏸", "parando": "⏹"}.get(situacao, "●")
+        cor = {"rodando": self.tema.ok, "pausado": self.tema.aviso,
+               "parando": self.tema.erro}.get(situacao, self.tema.texto_fraco)
+        self._pipeline_estado.configure(
+            text=f"{marca} {dados.get('resumo') or situacao}"[:110], fg=cor)
+
+    def _pipeline(self, acao: str, minutos: float | None = None) -> None:
+        """Pausar/retomar/parar sao escritas de um JSON pequeno: direto aqui.
+
+        Nao vao para o supervisor porque nao ha processo para acompanhar, e
+        o retorno tem que aparecer na hora — o valor da faixa e a resposta
+        imediata.
+        """
+        alvo = self._pipeline_alvo.get() or "tudo"
+        try:
+            from builds.identity import controle
+            if acao == "pausar":
+                estado = controle.pausar(alvo, motivo="pelo painel",
+                                         minutos=minutos)
+            elif acao == "retomar":
+                estado = controle.retomar(None if alvo == "tudo" else alvo)
+            else:
+                estado = controle.pedir_parada("pelo painel")
+        except Exception as exc:                      # pragma: no cover
+            self._registrar(f"[pipeline] {type(exc).__name__}: {exc}", "erro")
+            return
+        self._registrar(f"[pipeline] {estado.get('resumo') or acao}", "fim")
+        self._entregar_pipeline(estado)
+
     def _montar_console(self) -> None:
         t, o = self.tema, self.oficina
         self._gaveta = tk.Frame(self, bg=t.console_fundo)

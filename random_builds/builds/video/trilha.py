@@ -392,6 +392,132 @@ def sfx_rufar(dur: float = 0.55, taxa: int = TAXA):
     return _norm(saida, 0.6)
 
 
+# Som da luta -----------------------------------------------------------
+# O portao de "pancada grande" e o MESMO do hit-stop do motor
+# (HITSTOP_DANO_MIN_PCT = 0.06), ja calibrado em 6 lutas. Reusar o numero
+# faz o som pesado cair exatamente no quadro que o jogo congela.
+DANO_PANCADA_PCT = 0.06
+# Abaixo disto o golpe nao vira som: `eventos_dano` registra TODO tique de
+# area e veneno (0,75 de dano, dezenas por luta) e cada um com um som
+# transformaria a luta em metralhadora.
+DANO_MINIMO_PCT = 0.015
+# Dois impactos mais perto que isto viram um borrao. A roleta usa 33 ms
+# porque estalo e curto; pancada precisa de espaco para o grave respirar.
+INTERVALO_IMPACTO_S = 0.12
+
+
+def _vidas_maximas(luta: dict, eventos) -> dict:
+    """Vida cheia de cada lutador, na unidade em que o dano foi gravado.
+
+    `eventos_dano` traz o golpe em HP do MOTOR — 650 numa luta, 300 noutra,
+    conforme a build — e `serie_hp` traz a vida em PORCENTO. Cruzar os dois
+    da a escala. Sem ela, "pancada grande" viraria um numero absoluto que
+    significa coisas diferentes a cada estreia.
+    """
+    somas: dict[str, float] = {}
+    for _t, slot, dano, _fonte in eventos:
+        somas[slot] = somas.get(slot, 0.0) + dano
+    serie = luta.get("serie_hp") or []
+    vidas: dict[str, float] = {}
+    if len(serie) >= 2:
+        for indice, slot in ((1, "p1"), (2, "p2")):
+            try:
+                perdido = (float(serie[0][indice]) - float(serie[-1][indice])) / 100.0
+            except (TypeError, ValueError, IndexError):
+                continue
+            # Menos de 5% de vida perdida nao da escala confiavel: um
+            # arredondamento vira divisao por quase zero.
+            if perdido > 0.05 and somas.get(slot):
+                vidas[slot] = somas[slot] / perdido
+    return vidas
+
+
+def _dano_dos_eventos(eventos_dano):
+    """`[t, slot, dano, fonte]` -> `(t, slot, dano, fonte)` so com o que vale."""
+    saida = []
+    for item in eventos_dano or []:
+        try:
+            t, slot, dano = float(item[0]), str(item[1]), float(item[2])
+            fonte = str(item[3]) if len(item) > 3 else ""
+        except (TypeError, ValueError, IndexError):
+            continue
+        if dano > 0:
+            saida.append((t, slot, dano, fonte))
+    return saida
+
+
+def sfx_da_luta(event: dict, taxa: int = TAXA) -> list[tuple[float, list, float]]:
+    """Impacto, pancada e KO a partir do que a luta REGISTROU.
+
+    O `fight_recorder` grava o mp4 com trilha `anullsrc` e o `AudioManager`
+    do jogo so toca em tempo real: ate aqui o video da luta nao tinha um
+    unico som de golpe, magia ou nocaute — so a musica de fundo. O som sai
+    dos eventos que o gravador ja devolve (`eventos_dano`,
+    `eventos_narrativos`), no relogio do clipe (`remapear_gravacao` ja os
+    trouxe). Nada e gravado no motor, entao nao ha risco de determinismo.
+    """
+    luta = event.get("luta") or {}
+    duracao = float(event.get("duration") or 0.0)
+    eventos = _dano_dos_eventos(luta.get("eventos_dano"))
+    if not eventos:
+        return []
+    vidas = _vidas_maximas(luta, eventos)
+    # Sem escala confiavel, o maior golpe do clipe vira a referencia: o
+    # video sai com som proporcional em vez de sair mudo.
+    reserva = max(dano for _t, _s, dano, _f in eventos)
+    impacto = sfx_hit(taxa).tolist()
+    pancada = sfx_bass_hit(taxa).tolist()
+    camadas: list[tuple[float, list, float]] = []
+    ultimo_som = -99.0
+    for t, slot, dano, _fonte in eventos:
+        if duracao and not (0.0 <= t <= duracao):
+            continue
+        pct = dano / (vidas.get(slot) or reserva)
+        if pct < DANO_MINIMO_PCT:
+            continue
+        if t - ultimo_som < INTERVALO_IMPACTO_S:
+            continue
+        ultimo_som = t
+        if pct >= DANO_PANCADA_PCT:
+            camadas.append((t, pancada, min(1.0, 0.7 + pct * 2)))
+            camadas.append((t, impacto, 0.5))
+        else:
+            # Ganho pelo tamanho do golpe: raspao nao soa como soco.
+            camadas.append((t, impacto, 0.35 + 0.45 * pct / DANO_PANCADA_PCT))
+    for narrativo in luta.get("eventos_narrativos") or []:
+        if not isinstance(narrativo, dict):
+            continue
+        try:
+            t = float(narrativo.get("t") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if duracao and not (0.0 <= t <= duracao):
+            continue
+        tipo = narrativo.get("tipo")
+        if tipo == "parry":
+            camadas.append((t, sfx_chime(taxa).tolist(), 0.7))
+        elif tipo in ("wall_splat", "agarrao"):
+            camadas.append((t, sfx_whoosh(0.35, taxa).tolist(), 0.6))
+            camadas.append((t + 0.18, pancada, 0.9))
+    ko = _instante_do_ko(event, luta)
+    if ko is not None and (not duracao or 0.0 <= ko <= duracao):
+        camadas.append((max(0.0, ko - 0.9), sfx_riser(0.9, taxa).tolist(), 0.8))
+        camadas.append((ko, pancada, 1.0))
+    return camadas
+
+
+def _instante_do_ko(event: dict, luta: dict) -> float | None:
+    """Quando o nocaute cai NO CLIPE (nao na gravacao original)."""
+    for callout in event.get("callouts") or []:
+        if isinstance(callout, dict) and callout.get("tipo") == "ko":
+            try:
+                return float(callout.get("t") or 0.0)
+            except (TypeError, ValueError):
+                return None
+    ko = luta.get("ko_em_clipe")
+    return float(ko) if isinstance(ko, (int, float)) else None
+
+
 def sfx_do_evento(event: dict, taxa: int = TAXA) -> list[tuple[float, list, float]]:
     """Camadas (instante, amostras, ganho) para um evento do plano.
 
@@ -430,6 +556,31 @@ def sfx_do_evento(event: dict, taxa: int = TAXA) -> list[tuple[float, list, floa
         return [(0.0, sfx_whoosh(0.45, taxa).tolist(), 0.7)]
     if tipo == "synergy":
         return [(0.0, sfx_chime(taxa).tolist(), 0.6)]
+    if tipo == "gameplay":
+        return sfx_da_luta(event, taxa)
+    # As telas da luta tambem nasciam mudas: medido em `generation_00082`,
+    # 13 dos 14 segmentos do video de estreia estavam em -70 LUFS (silencio
+    # digital) — so o gancho tinha som. O corpo inteiro do video dependia da
+    # musica de fundo para nao ser um vazio.
+    if tipo == "fight_card":
+        dur = float(event.get("duration") or 2.2)
+        return [(0.0, sfx_riser(max(0.5, dur - 0.35), taxa).tolist(), 0.7),
+                (max(0.0, dur - 0.4), sfx_hit(taxa).tolist(), 0.9)]
+    if tipo == "round_title":
+        return [(0.0, sfx_rufar(0.45, taxa).tolist(), 0.7),
+                (0.45, sfx_hit(taxa).tolist(), 0.9)]
+    if tipo == "round_result":
+        return [(0.0, sfx_hit(taxa).tolist(), 0.8)]
+    if tipo == "fight_result":
+        return [(0.0, sfx_rufar(0.5, taxa).tolist(), 0.7),
+                (0.5, sfx_bass_hit(taxa).tolist(), 1.0)]
+    if tipo == "outro":
+        return [(0.0, sfx_chime(taxa).tolist(), 0.6)]
+    if tipo == "skill_card":
+        # A demo entra muda (o gravador do jogo escreve trilha silenciosa);
+        # o card ganha a mesma entrada das revelacoes.
+        return [(0.0, sfx_whoosh(0.4, taxa).tolist(), 0.6),
+                (0.12, sfx_chime(taxa).tolist(), 0.45)]
     return []
 
 

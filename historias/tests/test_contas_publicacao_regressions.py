@@ -33,7 +33,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 
 import builds.contas as _rb_contas
-from contos.publicar import qualidade, serie                       # noqa: E402
+from contos.publicar import catalogo, qualidade, serie             # noqa: E402
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 TEM_FFMPEG = bool(shutil.which("ffmpeg"))
@@ -231,6 +231,67 @@ class RegistroDePublicadosTests(unittest.TestCase):
         serie.REGISTRO.write_text(
             json.dumps({"video_id": video.id, "url": ""}) + "\n", encoding="utf-8")
         self.assertIsNone(serie.ja_publicado(video.id))
+
+
+class HistoriaDeTesteTests(unittest.TestCase):
+    """A historia de TESTE nao pode aparecer como publicavel (02/09/2026).
+
+    A `historia_00002` tem `provedor: "fake"`, `tema: "teste"` e imagens que
+    sao cartoes roxos escritos "P1 / 1" (14-22 KB cada, contra 230 KB-1,9 MB
+    das reais). Mesmo assim o status dizia "pronta: 3 video(s) para publicar",
+    e uma parte dela ja tinha sido exportada para `outputs/_publicar/`.
+    """
+
+    def test_o_status_diz_que_e_teste_em_vez_de_pronta(self):
+        from contos.pipeline.controller import Pipeline
+        passo = Pipeline._proximo_passo(
+            {"faltam": 0}, [{"parte": 1, "videos": {"celular": True}}],
+            True, {"provedor": "fake"})
+        self.assertIn("TESTE", passo)
+        self.assertNotIn("publicar", passo.replace("nao publicar", ""))
+
+    def test_historia_de_verdade_continua_pronta(self):
+        from contos.pipeline.controller import Pipeline
+        passo = Pipeline._proximo_passo(
+            {"faltam": 0}, [{"parte": 1, "videos": {"celular": True}}],
+            True, {"provedor": "gemini"})
+        self.assertIn("publicar", passo)
+
+    def test_o_catalogo_e_a_porta_do_upload_e_ele_barra(self):
+        # O status e texto na tela; o catalogo e por onde o video sobe.
+        fonte = Path(catalogo.__file__).read_text(encoding="utf-8")
+        self.assertIn('"fake"', fonte)
+
+
+class NarracaoCobreOVideoTests(unittest.TestCase):
+    """Vistoria: a narracao chegou inteira? (02/09/2026)
+
+    A parte 1 da historia 8 tinha audio, tinha imagem, tinha 35,7 s e mais de
+    100 KB — passava em todos os cinco cheques que existiam. O que faltava era
+    comparar o video com o ROTEIRO: 417 palavras nao cabem em 36 segundos.
+    """
+
+    def test_a_faixa_esta_onde_a_fala_real_ficou(self):
+        # Medido nas 30 partes boas: 1,99 a 2,87 palavras/s.
+        self.assertLessEqual(qualidade.PALAVRAS_POR_S_MIN, 1.99)
+        self.assertGreaterEqual(qualidade.PALAVRAS_POR_S_MAX, 2.87)
+
+    def test_o_defeito_da_p01_fica_fora_da_faixa(self):
+        self.assertGreater(417 / 35.7, qualidade.PALAVRAS_POR_S_MAX)
+
+    def test_uma_parte_pela_metade_destoa_da_mediana(self):
+        # 35,7 s contra ~145 s das cinco irmas.
+        self.assertLess(35.7, 145.0 * qualidade.FRACAO_MINIMA_DA_MEDIANA)
+
+    def test_o_silencio_do_fim_e_medido_ate_o_fim_do_arquivo(self):
+        # O ffmpeg fecha o ultimo bloco no EOF: tratar "tem silence_end" como
+        # "acabou antes" zerava a medida (foi o primeiro jeito, e dava 0,0).
+        fonte = Path(qualidade.__file__).read_text(encoding="utf-8")
+        self.assertIn("duracao - 0.3", fonte)
+
+    def test_nivel_e_silencio_saem_de_UMA_decodificacao(self):
+        fonte = Path(qualidade.__file__).read_text(encoding="utf-8")
+        self.assertIn("volumedetect,silencedetect", fonte)
 
 
 if __name__ == "__main__":

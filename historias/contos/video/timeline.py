@@ -20,6 +20,10 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[2]
 
 
+class NarracaoNaoCobre(RuntimeError):
+    """A voz sintetizada e curta demais para as cenas desta parte."""
+
+
 def carregar_config(nome: str) -> dict:
     with open(RAIZ / "config" / nome, encoding="utf-8-sig") as fh:
         return json.load(fh)
@@ -147,6 +151,18 @@ def montar(roteiro: dict, medidas: dict | None = None, *, marcos=None,
         cursor += duracao
 
     from ..roteiro.roteiro import titulo_da_parte
+    # A NARRACAO TEM QUE COBRIR AS CENAS. Com `marcos`, cada cena e um recorte
+    # do audio — entao a soma delas so pode passar muito do audio se o piso
+    # `minimo_cena` estiver segurando cena que nao tem fala nenhuma, ou seja,
+    # se a voz acabou antes do roteiro. Foi o que aconteceu na parte 1 da
+    # historia 8: 21,8 s de audio para 14 cenas, todas no piso, 35,6 s de plano
+    # e 14 s de imagem muda no fim. Renderizar isso e pior do que nao renderizar.
+    if marcos and duracao_audio and cursor > float(duracao_audio) * 1.3:
+        raise NarracaoNaoCobre(
+            f"parte {parte}: a narracao tem {float(duracao_audio):.1f}s mas as "
+            f"{len(cenas)} cenas pedem {cursor:.1f}s. O audio veio incompleto — "
+            "o video sairia com a voz parando no meio. Rode "
+            "`python main.py conferir --consertar` e renderize de novo.")
     eventos = dividir_planos(eventos, config_render)
     if estourou:
         print(f"[timeline] {len(estourou)} cena(s) passaram de {maximo:.0f}s "

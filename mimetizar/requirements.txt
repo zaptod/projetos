@@ -1,0 +1,18 @@
+# Absorver e Mimetizar — estuda um canal do YouTube e escreve a biblia dele.
+#
+# Fora do pip (obrigatorio): FFmpeg e FFprobe no PATH.
+#   winget install Gyan.FFmpeg
+#
+# E as pastas `random_builds` e `historias` ao lado desta: o cliente de
+# ChatGPT/Gemini por navegador, as travas por perfil, o registro de contas e o
+# diario vem de la. Instalar os requisitos daqueles projetos ja cobre este.
+
+# O catalogo e o download do acervo. Chamado por linha de comando
+# (`python -m yt_dlp`), nunca importado — assim a versao nova conserta o que
+# o YouTube muda sem exigir mexer em codigo.
+yt-dlp>=2024.1
+
+# So quando o video nao tem legenda no YouTube. Nao esta nas dependencias
+# obrigatorias porque `torch` sozinho passa de 2 GB:
+#   pip install -e "./mimetizar[transcricao]"
+# openai-whisper>=20231117

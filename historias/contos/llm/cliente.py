@@ -242,8 +242,84 @@ class ClienteLLM:
             f"o {self.provedor} nao respondeu em {timeout:.0f}s e nao ha texto "
             "na tela. Verifique se a conta atingiu o limite de uso.")
 
-    def perguntar(self, prompt: str, timeout: float | None = None) -> str:
-        """Um turno completo: envia, espera, devolve o texto."""
+    # ------------------------------------------------------------- anexo
+    def anexar(self, caminhos, espera: float = 120.0) -> int:
+        """Anexa arquivos ao proximo prompt. Devolve quantos entraram.
+
+        Mesma doutrina do envio: nada e dado como feito sem prova na tela.
+        `set_input_files` retorna na hora, mas o arquivo ainda esta subindo —
+        mandar o prompt nesse instante faz o modelo responder sobre uma
+        imagem que ele nao recebeu, e a resposta parece plausivel. A prova e
+        a miniatura (o botao "Remover") aparecer, uma por arquivo.
+        """
+        arquivos = [Path(c) for c in (caminhos or [])]
+        faltando = [c for c in arquivos if not c.is_file()]
+        if faltando:
+            raise LLMFalhou(
+                "estes arquivos nao existem: "
+                + ", ".join(str(c) for c in faltando[:4]))
+        if not arquivos:
+            return 0
+
+        antes = self._provas_de_anexo()
+        campo = sel.encontrar_oculto(self.page, self.sel["anexo_input"],
+                                     timeout=3.0)
+        if campo is None:
+            # Alguns temas so criam o input depois de abrir o menu do clipe.
+            botao = sel.encontrar(self.page, self.sel["anexo_botao"],
+                                  timeout=5.0)
+            if botao is not None:
+                try:
+                    botao.click(timeout=8000)
+                except Exception:                              # noqa: BLE001
+                    pass
+                _pausa(self.rng, 0.4, 0.9)
+            campo = sel.encontrar_oculto(self.page, self.sel["anexo_input"],
+                                         timeout=8.0)
+        if campo is None:
+            raise LLMFalhou(
+                f"nao achei onde anexar arquivo no {self.provedor}.\n"
+                f"Rode: python main.py llm probe --provedor {self.provedor} "
+                "e confira `anexo_input` em contos/llm/seletores.py.")
+
+        campo.set_input_files([str(c) for c in arquivos])
+        alvo = antes + len(arquivos)
+        fim = time.monotonic() + float(espera)
+        while time.monotonic() < fim:
+            agora = self._provas_de_anexo()
+            if agora >= alvo:
+                self.log(f"[{self.provedor}] {len(arquivos)} anexo(s) "
+                         "confirmado(s) na tela.")
+                return len(arquivos)
+            time.sleep(0.6)
+
+        agora = self._provas_de_anexo()
+        if agora > antes:
+            self.log(f"[{self.provedor}] so {agora - antes} de "
+                     f"{len(arquivos)} anexos apareceram em {espera:.0f}s; "
+                     "sigo com o que subiu.")
+            return agora - antes
+        raise LLMFalhou(
+            f"anexei {len(arquivos)} arquivo(s) mas nenhuma miniatura apareceu "
+            f"em {espera:.0f}s. Pode ser arquivo grande demais para a conta, "
+            "ou o site mudou a tela de anexo.")
+
+    def _provas_de_anexo(self) -> int:
+        """Quantas miniaturas de anexo estao na tela agora."""
+        total = 0
+        for seletor in self.sel.get("anexo_prova") or []:
+            try:
+                total = max(total, self.page.locator(seletor).count())
+            except Exception:                                  # noqa: BLE001
+                continue
+        return total
+
+    def perguntar(self, prompt: str, timeout: float | None = None,
+                  anexos=None) -> str:
+        """Um turno completo: anexa (se houver), envia, espera, devolve."""
+        if anexos:
+            self.anexar(anexos)
+            _pausa(self.rng, 0.4, 1.0)
         self.enviar(prompt)
         _pausa(self.rng, 0.5, 1.2)
         return self.esperar_resposta(timeout)

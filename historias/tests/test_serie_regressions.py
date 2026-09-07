@@ -395,5 +395,174 @@ class ClienteLLMTests(unittest.TestCase):
                 self.assertTrue(alvo[chave], f"{provedor}.{chave} vazio")
 
 
+class FichaDeFatosTests(unittest.TestCase):
+    """Os NUMEROS tambem precisam de consistencia entre partes (02/09/2026).
+
+    A descricao fisica do protagonista ja era repetida em toda cena, e por
+    isso 84 imagens pareciam a mesma pessoa. Nada fazia o mesmo pelos numeros:
+    na historia 8 o aluguel era "tres mil e oitocentos" nas partes 1 e 6 e
+    "cinco mil" na 2. A ficha de FATOS e o gemeo factual daquela frase.
+    """
+
+    def setUp(self):
+        from contos.roteiro import serie
+        self.serie = serie
+        self.biblia = serie.parse_biblia("\n".join([
+            "TITULO DA SERIE: T",
+            "PREMISSA: P",
+            "PROTAGONISTA: Ana | a 30-year-old woman",
+            "FATOS: aluguel = R$ 3.800 por mes; se conheceram = 2020",
+            "PARTE 1",
+            "TITULO: A",
+            "RESUMO: R",
+            "GANCHO: G",
+        ]), 1)
+
+    def test_a_biblia_pede_a_ficha(self):
+        prompt = self.serie.prompt_biblia(partes=2, cenas_por_parte=4)
+        self.assertIn("FATOS:", prompt)
+        self.assertIn("CONSISTENCIA DE FATOS", prompt)
+
+    def test_a_ficha_e_lida_da_resposta(self):
+        self.assertIn("aluguel = R$ 3.800", self.biblia["fatos"])
+
+    def test_a_ficha_entra_em_TODA_parte(self):
+        # O modelo nao lembra na parte 6 do numero que escreveu na parte 1;
+        # e por isso que ela vai junto em cada pergunta, nao so na primeira.
+        for numero in (1, 2, 6):
+            prompt = self.serie.prompt_parte(self.biblia, numero, cenas=4)
+            self.assertIn("aluguel = R$ 3.800 por mes", prompt, f"parte {numero}")
+            self.assertIn("se conheceram = 2020", prompt, f"parte {numero}")
+
+    def test_sem_ficha_o_prompt_nao_inventa_secao_vazia(self):
+        biblia = dict(self.biblia, fatos="")
+        self.assertNotIn("FATOS DA HISTORIA",
+                         self.serie.prompt_parte(biblia, 1, cenas=4))
+
+    def test_a_ficha_sobrevive_ao_salvar(self):
+        from contos.roteiro import roteiro as R
+        with tempfile.TemporaryDirectory() as tmp:
+            antigo, R.OUTPUTS = R.OUTPUTS, Path(tmp)
+            try:
+                caminho = R.salvar_serie(
+                    self.biblia,
+                    [{"n": 1, "titulo": "A", "cta": "", "cenas": [
+                        {"n": 1, "imagem": "x" * 30, "tempo": 4,
+                         "narracao": "oi"}]}],
+                    "historia_00099")
+                with open(caminho, encoding="utf-8-sig") as fh:
+                    self.assertIn("3.800", json.load(fh)["fatos"])
+            finally:
+                R.OUTPUTS = antigo
+
+
+class CoerenciaDeNumerosTests(unittest.TestCase):
+    """Numero por extenso e numero em digito sao o mesmo numero."""
+
+    def setUp(self):
+        from contos.roteiro import coerencia
+        self.C = coerencia
+
+    def test_le_valor_por_extenso(self):
+        self.assertEqual(self.C._por_extenso("Tres mil e oitocentos reais."),
+                         [3800])
+
+    def test_conto_e_mil(self):
+        self.assertEqual(self.C._por_extenso("me tirava quase quatro contos"),
+                         [4000])
+
+    def test_digito_e_extenso_dao_o_mesmo(self):
+        self.assertEqual(self.C._dinheiro("um rombo de cinco mil reais"),
+                         self.C._dinheiro("um rombo de 5.000 reais"))
+
+    def _historia(self, narracao, fatos="aluguel = R$ 3.800 por mes"):
+        return {"fatos": fatos, "partes": [
+            {"n": 1, "cenas": [{"n": 1, "narracao": narracao}]}]}
+
+    def test_valor_fora_da_ficha_e_apontado_com_a_cena(self):
+        avisos = self.C.conferir(self._historia(
+            "ver um rombo de cinco mil reais todo dia dez"))
+        self.assertEqual(len(avisos), 1)
+        self.assertIn("5000", avisos[0])
+        self.assertIn("p01c01", avisos[0])
+
+    def test_valor_da_ficha_nao_acusa_nada(self):
+        self.assertEqual(
+            self.C.conferir(self._historia("Tres mil e oitocentos reais.")), [])
+
+    def test_sem_ficha_avisa_uma_vez_so(self):
+        avisos = self.C.conferir(self._historia("Tres mil reais.", fatos=""))
+        self.assertEqual(len(avisos), 1)
+        self.assertIn("FATOS", avisos[0])
+
+
+class TituloQueCabeTests(unittest.TestCase):
+    """Titulo grande demais e ERRO: o YouTube corta em 100 caracteres."""
+
+    def _roteiro(self, titulo):
+        return {"titulo": titulo, "cenas": [
+            {"n": i, "imagem": "a photo of something", "tempo": 4,
+             "narracao": "oi"} for i in range(1, 6)]}
+
+    def test_titulo_de_130_chars_e_erro(self):
+        from contos.roteiro import roteiro as R
+        _problemas, erros = R.validar(self._roteiro("M" * 130))
+        self.assertTrue(any("titulo" in e for e in erros),
+                        "as historias 4 (136) e 8 (130) passaram com aviso")
+
+    def test_titulo_no_limite_passa(self):
+        from contos.roteiro import roteiro as R
+        _problemas, erros = R.validar(self._roteiro("M" * 100))
+        self.assertEqual(erros, [])
+
+
+class CorridaQueMorreTests(unittest.TestCase):
+    """Tentativa que falha nao queima id nem deixa pasta vazia (02/09/2026).
+
+    `historia_00006` e `historia_00007` sao duas pastas VAZIAS, criadas em
+    01/09 as 18:00 e 18:01: duas corridas que morreram antes da biblia. O id
+    e a pasta eram tirados ANTES de abrir o navegador, e nenhum registro
+    sobrava para dizer por que elas falharam.
+    """
+
+    def test_o_id_so_e_alocado_depois_da_biblia(self):
+        from contos.roteiro import gerar
+        fonte = Path(gerar.__file__).read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def gerar_serie("):]
+        self.assertLess(corpo.index("S.parse_biblia("), corpo.index("R.proximo_id()"),
+                        "o id nao pode ser tirado antes de a biblia existir")
+
+    def test_a_falha_deixa_o_motivo_escrito(self):
+        from contos.roteiro import gerar
+        fonte = Path(gerar.__file__).read_text(encoding="utf-8")
+        self.assertIn("[serie] FALHOU:", fonte)
+        self.assertIn("_logs", fonte)
+
+    def test_o_diario_escreve_na_tela_e_no_arquivo(self):
+        from contos.roteiro import gerar
+        with tempfile.TemporaryDirectory() as tmp:
+            tela = []
+            diario = gerar._Diario(tela.append, Path(tmp) / "log.txt")
+            diario("primeira linha")
+            self.assertEqual(tela, ["primeira linha"])
+            self.assertIn("primeira linha",
+                          diario.destino.read_text(encoding="utf-8"))
+
+    def test_o_log_de_antes_do_id_vai_junto_para_a_pasta_da_historia(self):
+        from contos.roteiro import gerar
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            diario = gerar._Diario(lambda _: None, raiz / "_logs" / "x.txt")
+            diario("antes de existir id")
+            provisorio = diario.destino
+            diario.mudar_de_casa(raiz / "historia_00099" / "log.txt")
+            diario("depois do id")
+            texto = diario.destino.read_text(encoding="utf-8")
+            self.assertIn("antes de existir id", texto)
+            self.assertIn("depois do id", texto)
+            self.assertFalse(provisorio.exists(),
+                             "o log provisorio nao pode ficar para tras")
+
+
 if __name__ == "__main__":
     unittest.main()

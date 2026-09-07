@@ -93,11 +93,11 @@
         "maximo_cena": 14.0,
         "respiro_final": 0.6
     },
-    "_comment_limites": "Guarda-corpo do parser: fora disto o roteiro e recusado com o motivo, em vez de virar um video quebrado.",
+    "_comment_limites": "Guarda-corpo do parser: fora disto o roteiro e recusado com o motivo, em vez de virar um video quebrado. `titulo_max_chars` e 100 porque esse e o teto do YouTube (youtube_web manda titulo[:100]): acima disso o titulo sobe truncado no meio da frase, e o titulo e metade da decisao de clicar. Era 110 e so avisava; as historias 4 (136) e 8 (130) passaram assim.",
     "limites": {
         "cenas_min": 4,
         "cenas_max": 40,
-        "titulo_max_chars": 110,
+        "titulo_max_chars": 100,
         "narracao_max_chars": 220,
         "imagem_min_chars": 25
     }

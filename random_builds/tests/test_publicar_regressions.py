@@ -23,7 +23,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
-from builds.publicar import catalogo, youtube                    # noqa: E402
+from builds.publicar import catalogo, metricas, youtube          # noqa: E402
 
 CONFIG = {
     "titulos": {"build": "{personagem}, {classe} — build {nota}/100",
@@ -232,6 +232,93 @@ class YouTubeTests(unittest.TestCase):
         self.assertEqual(["um", "dois"], corpo["snippet"]["tags"])
         self.assertEqual("private", corpo["status"]["privacyStatus"])
         self.assertEqual("20", corpo["snippet"]["categoryId"])
+
+
+class RegistroDePublicacaoTests(unittest.TestCase):
+    """O elo entre o mp4 e a metrica — foi ele que faltou por um mes.
+
+    `registrar_publicacao` so era chamada dentro do caminho da API, mas o
+    modo padrao e o navegador: 32 videos subiram e nenhum entrou no
+    `publicados.jsonl` por conta propria. Sem registro nao ha `youtube_id`,
+    sem `youtube_id` nao ha curva de retencao, e sem curva toda decisao de
+    edicao volta a ser palpite.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._registro = metricas.REGISTRO
+        metricas.REGISTRO = Path(self._tmp.name) / "publicados.jsonl"
+        self.addCleanup(lambda: setattr(metricas, "REGISTRO", self._registro))
+
+    def _video(self):
+        return catalogo.Video(
+            id="generation_00099:build:celular", origem="build",
+            perfil="celular", caminho=Path(self._tmp.name) / "v.mp4",
+            titulo="Fulano, Mago", descricao="d", hashtags=["#shorts"],
+            fonte_id="generation_00099")
+
+    def _linhas(self):
+        return metricas.publicados()
+
+    def test_modo_navegador_registra_o_upload(self):
+        video = self._video()
+        with patch.object(youtube, "modo", lambda *a, **k: "navegador"):
+            with patch.dict("sys.modules"):
+                from builds.publicar import youtube_web
+                with patch.object(youtube_web, "publicar",
+                                  lambda *a, **k: "https://youtu.be/ABCdef123"):
+                    youtube.publicar_como_configurado(video, config=CONFIG)
+        linhas = self._linhas()
+        self.assertEqual(1, len(linhas))
+        self.assertEqual("ABCdef123", linhas[0]["youtube_id"])
+        self.assertEqual("navegador", linhas[0]["via"])
+        self.assertEqual("generation_00099", linhas[0]["fonte_id"])
+
+    def test_navegador_sem_link_ainda_registra_o_fato(self):
+        """O Studio nem sempre entrega a URL. "Foi publicado" nao se perde."""
+        from builds.publicar import youtube_web
+        with patch.object(youtube, "modo", lambda *a, **k: "navegador"):
+            with patch.object(youtube_web, "publicar",
+                              lambda *a, **k: youtube_web.SUCESSO):
+                youtube.publicar_como_configurado(self._video(), config=CONFIG)
+        linhas = self._linhas()
+        self.assertEqual(1, len(linhas))
+        self.assertIsNone(linhas[0]["youtube_id"])
+
+    def test_navegador_que_nao_confirmou_nao_registra(self):
+        """Registrar um "nao consegui confirmar" como publicado e pior que
+        nao registrar: o video nunca mais seria tentado."""
+        from builds.publicar import youtube_web
+        with patch.object(youtube, "modo", lambda *a, **k: "navegador"):
+            with patch.object(youtube_web, "publicar",
+                              lambda *a, **k: "cliquei em publicar, mas..."):
+                youtube.publicar_como_configurado(self._video(), config=CONFIG)
+        self.assertEqual([], self._linhas())
+
+    def test_visibilidade_gravada_e_a_que_valeu(self):
+        """Sem `--visibilidade` o backend resolve pelo config; o registro
+        precisa dizer a mesma coisa, e nao `null`."""
+        from builds.publicar import youtube_web
+        with patch.object(youtube, "modo", lambda *a, **k: "navegador"):
+            with patch.object(youtube_web, "publicar",
+                              lambda *a, **k: "https://youtu.be/ABCdef123"):
+                youtube.publicar_como_configurado(self._video(), config=CONFIG)
+        self.assertEqual("private", self._linhas()[0]["visibilidade"])
+
+    def test_canal_de_historias_nao_suja_o_registro_de_builds(self):
+        metricas.registrar_publicado(self._video(), "https://youtu.be/zzz",
+                                     canal="historias")
+        self.assertEqual([], self._linhas())
+
+    def test_registro_nunca_derruba_a_publicacao(self):
+        """Observabilidade que quebra a pipeline e pior que nenhuma."""
+        def explode(*a, **k):
+            raise OSError("disco cheio")
+
+        with patch.object(metricas, "registrar_publicacao", explode):
+            self.assertIsNone(metricas.registrar_publicado(
+                self._video(), "https://youtu.be/zzz"))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+outputs/
+__pycache__/
+*.pyc
+
+# O acervo baixado e material de TERCEIROS: os mp4, as legendas e as thumbs
+# de um canal alheio nunca entram no repositorio. `outputs/` acima ja cobre,
+# e esta linha existe para dizer por que a regra e inegociavel.
+
+# Provedores externos (ChatGPT, Gemini): perfis de browser e credenciais.
+# O curinga vale para provedor novo que apareca depois - credencial nao pode
+# depender de alguem lembrar de editar este arquivo.
+.browser_profile/
+*_credentials.json
+*_cookies.txt

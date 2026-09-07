@@ -1,0 +1,21 @@
+{
+  "_comentario": "Como o ChatGPT e o Gemini leem o acervo. O que sobe no chat e o DOSSIE de um video (ficha + numeros medidos + transcricao + mosaico de frames), nunca o mp4: nenhum dos dois engole um video de 12 minutos pelo navegador.",
+
+  "_comentario_lote": "Quantos videos compartilham o mesmo chat antes de abrir um novo. Um video por TURNO (a ficha sai melhor e nao vem truncada); o lote so evita reenviar o cabecalho do canal a cada video. Alto demais e o chat perde o fio e comeca a repetir a ficha anterior.",
+  "lote": 6,
+
+  "provedores": ["chatgpt", "gemini"],
+  "resposta_timeout_s": 600,
+  "tentativas_por_video": 2,
+
+  "_comentario_anexo": "O mosaico de frames sobe junto com o dossie. Sem ele o modelo so le a transcricao, e edicao/enquadramento/cor viram chute.",
+  "anexar_contato": true,
+
+  "_comentario_transcricao": "Teto de palavras da transcricao no dossie. Video muito longo entra recortado (comeco, meio e fim), e o dossie DIZ que foi recortado — melhor que estourar o limite do chat no meio do acervo.",
+  "transcricao_max_palavras": 1800,
+  "bloco_de_transcricao_s": 15,
+
+  "_comentario_citacao": "As citacoes na ficha sao EVIDENCIA, nao reproducao: trechos curtos com o instante em que foram ditos. O objetivo e sustentar uma afirmacao sobre o padrao, nao recontar o video.",
+  "citacao_max_palavras": 12,
+  "citacoes_por_ficha": 5
+}

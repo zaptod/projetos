@@ -278,11 +278,18 @@ class Pipeline:
             "videos_prontos": sum(1 for p in partes if all(p["videos"].values())),
             "duracao": sum(p["duracao"] or 0 for p in partes) or None,
             "pasta": str(pasta),
-            "proximo_passo": self._proximo_passo(resumo, partes, completo),
+            "proximo_passo": self._proximo_passo(resumo, partes, completo,
+                                                 roteiro),
         }
 
     @staticmethod
-    def _proximo_passo(resumo: dict, partes: list, completo: bool) -> str:
+    def _proximo_passo(resumo: dict, partes: list, completo: bool,
+                       roteiro: dict | None = None) -> str:
+        # Historia de teste nunca fica "pronta para publicar": as imagens dela
+        # sao cartoes de placeholder, e o texto verde no painel convidava a
+        # subir isso (a `historia_00002` chegou a ser exportada).
+        if str((roteiro or {}).get("provedor") or "").lower() == "fake":
+            return "historia de TESTE (provedor 'fake'): nao publicar"
         if resumo["faltam"]:
             faltando = [p["parte"] for p in partes if p["imagens"]["faltam"]]
             return (f"faltam {resumo['faltam']} imagem(ns) "

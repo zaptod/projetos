@@ -1,0 +1,42 @@
+{
+  "_comentario": "O que a stack deste monorepo JA faz hoje. E contra esta lista que o `preset` monta o diagnostico de lacuna: sem ela, o relatorio listaria como 'falta construir' coisas que ja existem ha meses. Mantenha honesto — uma capacidade listada aqui e uma que voce consegue rodar hoje, nao uma que daria para escrever.",
+
+  "capacidades": [
+    {"nome": "roteiro por LLM", "onde": "historias/ (contos.roteiro)",
+     "faz": "modelo de roteiro -> prompt -> ChatGPT/Gemini -> roteiro validado",
+     "palavras": ["roteiro", "script", "texto", "narrativa", "historia",
+                  "escrita", "copy", "legenda escrita"]},
+    {"nome": "narracao sintetica", "onde": "random_builds/ (builds.content.voz)",
+     "faz": "edge-tts com timestamps por palavra, cache e fallback SAPI",
+     "palavras": ["narracao", "voz", "locucao", "narrador", "tts",
+                  "voz em off", "voiceover"]},
+    {"nome": "imagens por cena", "onde": "historias/ (contos.imagens) + PicassoIA",
+     "faz": "um prompt por cena, consistencia de personagem, prova de origem",
+     "palavras": ["imagem", "ilustracao", "arte", "visual gerado", "b-roll",
+                  "cenario", "thumbnail", "capa"]},
+    {"nome": "render de video", "onde": "random_builds/ (builds.video.renderer)",
+     "faz": "montagem 1080p, vertical ou horizontal, com trilha e legenda",
+     "palavras": ["render", "montagem", "edicao", "corte", "video final",
+                  "timeline", "transicao"]},
+    {"nome": "legenda karaoke", "onde": "random_builds/ (caption_generator)",
+     "faz": "legenda sincronizada palavra a palavra, direto dos dados",
+     "palavras": ["legenda", "caption", "texto na tela", "subtitulo"]},
+    {"nome": "trilha e efeitos", "onde": "random_builds/ (builds.video.trilha)",
+     "faz": "musica de fundo, som sintetizado, normalizacao de loudness",
+     "palavras": ["musica", "trilha", "som", "efeito sonoro", "audio",
+                  "sound design"]},
+    {"nome": "publicacao", "onde": "random_builds/ (builds.publicar)",
+     "faz": "YouTube (API e Studio) e TikTok, com agendamento em serie",
+     "palavras": ["publicar", "upload", "postar", "agendar", "calendario",
+                  "cadencia", "frequencia"]},
+    {"nome": "metricas de retencao", "onde": "random_builds/ (publicar.metricas)",
+     "faz": "curva de retencao do YouTube cruzada com os eventos do video",
+     "palavras": ["retencao", "metrica", "analytics", "desempenho", "views"]}
+  ],
+
+  "_comentario_pessoa": "Sinais de que o item depende de um ser humano especifico. Nenhuma pipeline resolve, e fingir que resolve e o jeito de produzir um canal que parece falso.",
+  "exige_pessoa": ["rosto", "camera", "apresentador", "voz propria",
+                   "opiniao", "experiencia pessoal", "entrevista",
+                   "reacao", "carisma", "presenca", "improviso", "bastidor",
+                   "convidado", "autoridade", "credibilidade pessoal"]
+}

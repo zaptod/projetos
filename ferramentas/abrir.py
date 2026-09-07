@@ -28,11 +28,12 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 
 # (pacote, pasta que o instala). A ordem importa: `contos` depende de
-# `builds`, e `panorama` depende dos dois.
+# `builds`, `espelho` depende de `contos`, e `panorama` depende dos dois.
 PACOTES = [
     ("neural_fights", RAIZ),
     ("builds", RAIZ / "random_builds"),
     ("contos", RAIZ / "historias"),
+    ("espelho", RAIZ / "mimetizar"),
     ("panorama", RAIZ / "visao"),
     ("painel", RAIZ / "painel"),
 ]
@@ -102,7 +103,8 @@ def conferir(consertar: bool = True) -> int:
         print()
         print("Nao deu. Rode isto na pasta do projeto e me diga o que apareceu:")
         print(f"  {Path(sys.executable).name} -m pip install -e . "
-              "-e ./random_builds -e ./historias -e ./visao -e ./painel")
+              "-e ./random_builds -e ./historias -e ./mimetizar "
+              "-e ./visao -e ./painel")
         return 1
     print("Pronto.")
     return 0

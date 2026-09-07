@@ -531,6 +531,79 @@ class MetricasTests(unittest.TestCase):
         self.assertAlmostEqual(0.4, quedas[0]["queda"], places=6)
         self.assertEqual(len(metricas.sparkline(curva, 5)), 5)
 
+    def test_a_queda_nao_culpa_a_cena_seguinte(self):
+        """O tombo acontece ENTRE duas amostras da curva.
+
+        Atribuindo pelo FIM do intervalo, toda queda que termina numa troca
+        de cena era carimbada na cena seguinte: o relatorio dizia que a luta
+        perdia audiencia quando quem perdia era a roleta antes dela. Com a
+        montagem nova sendo decidida por este numero, o erro trocaria o
+        culpado justamente na comparacao que importa.
+        """
+        eventos = [{"type": "roulette", "category": "PESO",
+                    "start": 0.0, "duration": 20.0},
+                   {"type": "gameplay", "start": 20.0, "duration": 10.0}]
+        # a curva despenca DENTRO da roleta e termina exatamente na troca
+        curva = [(0.0, 1.0), (20 / 30, 0.5), (1.0, 0.48)]
+        quedas = metricas.quedas({"curva": curva, "duracao": 30.0}, eventos,
+                                 quantas=1)
+        self.assertEqual("roleta PESO", quedas[0]["evento"])
+
+    def test_custo_por_cena_compara_por_segundo_de_tela(self):
+        """Queda bruta engana: cena longa perde mais so por ser longa.
+
+        O numero que decide a montagem e PONTOS POR SEGUNDO. Aqui a roleta
+        perde 40 pts e a luta 5, mas a roleta ocupa 20 s e a luta 8 — e o
+        gancho, com 2 s e 5 pts, e o mais caro dos tres por segundo.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp) / "generation_00099"
+            pasta.mkdir(parents=True)
+            eventos = [{"type": "hook", "start": 0.0, "duration": 2.0},
+                       {"type": "roulette", "start": 2.0, "duration": 20.0},
+                       {"type": "gameplay", "start": 22.0, "duration": 8.0}]
+            (pasta / "edit_plan.json").write_text(
+                json.dumps({"events": eventos}), encoding="utf-8")
+            original = metricas.OUTPUTS
+            metricas.OUTPUTS = Path(tmp)
+            try:
+                dado = {"youtube_id": "abc", "fonte_id": "generation_00099",
+                        "origem": "build", "duracao": 30.0,
+                        "curva": [(0.0, 1.0), (2 / 30, 0.95),
+                                  (22 / 30, 0.55), (1.0, 0.50)]}
+                custos = metricas.custo_por_cena([dado])
+            finally:
+                metricas.OUTPUTS = original
+        por_tipo = {c["tipo"]: c for c in custos}
+        self.assertAlmostEqual(0.40, por_tipo["roulette"]["perdido"], places=6)
+        self.assertAlmostEqual(20.0, por_tipo["roulette"]["segundos"], places=6)
+        # ordenado do mais caro por segundo para o mais barato
+        self.assertEqual(["hook", "roulette", "gameplay"],
+                         [c["tipo"] for c in custos])
+
+    def test_video_cortado_para_shorts_fica_de_fora_do_agregado(self):
+        """O plano descreve o mp4 inteiro; o que subiu pode ser um pedaco.
+
+        Casar evento com segundo da curva nesse caso da um numero errado
+        com cara de certo — melhor contar quantos ficaram de fora.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp) / "generation_00099"
+            pasta.mkdir(parents=True)
+            (pasta / "edit_plan.json").write_text(json.dumps({"events": [
+                {"type": "roulette", "start": 0.0, "duration": 100.0}]}),
+                encoding="utf-8")
+            original = metricas.OUTPUTS
+            metricas.OUTPUTS = Path(tmp)
+            try:
+                custos = metricas.custo_por_cena([{
+                    "youtube_id": "abc", "fonte_id": "generation_00099",
+                    "origem": "build", "duracao": 40.0,   # o pedaco, nao o todo
+                    "curva": [(0.0, 1.0), (0.5, 0.7), (1.0, 0.5)]}])
+            finally:
+                metricas.OUTPUTS = original
+        self.assertEqual([], custos)
+
     def test_registro_liga_o_mp4_ao_id_da_plataforma(self):
         original = metricas.REGISTRO
         with tempfile.TemporaryDirectory() as tmp:

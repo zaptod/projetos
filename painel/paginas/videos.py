@@ -12,7 +12,7 @@ import os
 import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 
 from .. import estilo
 
@@ -88,6 +88,19 @@ class Pagina:
         self.lbl_print.pack(side="left", padx=estilo.ESPACO["meio"])
         self.o.botao(linha, "limpar", self.limpar_print, compacto=True).pack(
             side="left")
+
+        # A premissa do canal e a roleta decidir, entao escolher e excecao —
+        # mas quando ele quer um Ninja de proposito, tem que dar. Este botao
+        # SUMIU na reescrita do painel: `self.escolhas` continuava sendo lido
+        # em `_bandeiras()` e nunca era escrito, e `--fixar`/`--genero`
+        # viraram caminho morto.
+        linha = tk.Frame(card.corpo, bg=self.t.superficie)
+        linha.pack(anchor="w", pady=(estilo.ESPACO["normal"], 0))
+        self.o.botao(linha, "🎛  Escolher atributos…", self.abrir_escolhas).pack(
+            side="left")
+        self.lbl_escolhas = self.o.legenda(linha, "tudo sorteado")
+        self.lbl_escolhas.configure(bg=self.t.superficie)
+        self.lbl_escolhas.pack(side="left", padx=estilo.ESPACO["meio"])
 
         linha = tk.Frame(card.corpo, bg=self.t.superficie)
         linha.pack(anchor="w", pady=(estilo.ESPACO["normal"], 0))
@@ -351,6 +364,114 @@ class Pagina:
         self.casca.supervisor.rodar([PY, "-u", "-X", "utf8"] + argumentos,
                                     cwd=RANDOM_BUILDS, rotulo=rotulo,
                                     depois=self.recarregar)
+
+    ALEATORIO = "— sortear —"
+
+    def abrir_escolhas(self) -> None:
+        """Janela montada a partir do CATALOGO de roletas, nunca de uma lista.
+
+        Classe nova no neural_fights aparece aqui sozinha, do mesmo jeito que
+        aparece na roleta. Cada atributo comeca em "sortear": sair disso e
+        decisao consciente, e o que nao for tocado a roleta sorteia.
+        """
+        from builds.generation import escolhas as mod
+
+        try:
+            catalogo = mod.catalogo()
+        except Exception as erro:
+            messagebox.showerror("Escolher atributos", str(erro))
+            return
+
+        janela = tk.Toplevel(self.casca)
+        janela.title("Escolher atributos")
+        janela.configure(bg=self.t.fundo)
+        janela.transient(self.casca)
+        # A tela dele e 1366x768: 15 atributos nao cabem sem rolagem.
+        altura = min(int(self.casca.winfo_screenheight() * 0.8),
+                     40 * len(catalogo) + 170)
+        janela.geometry(f"580x{altura}")
+
+        corpo = self._area_rolavel(janela)
+        self.o.legenda(corpo, "O que você NÃO escolher aqui, a roleta sorteia."
+                       ).pack(anchor="w", padx=estilo.ESPACO["normal"],
+                              pady=(estilo.ESPACO["normal"], estilo.ESPACO["meio"]))
+
+        campos: dict = {}
+        for chave, entrada in catalogo.items():
+            linha = tk.Frame(corpo, bg=self.t.fundo)
+            linha.pack(fill="x", padx=estilo.ESPACO["normal"], pady=2)
+            rot = self.o.rotulo(linha, entrada["rotulo"], papel="legenda")
+            rot.configure(bg=self.t.fundo, width=18, anchor="w")
+            rot.pack(side="left")
+            atual = self.escolhas.get(chave, self.ALEATORIO)
+            if entrada["tipo"] == "categorical":
+                combo = self.o.combo(linha, [self.ALEATORIO] + list(entrada["opcoes"]),
+                                     atual, largura=32)
+                combo.pack(side="left")
+                campos[chave] = combo
+            else:
+                moldura, var = self.o.campo(linha, "", 12)
+                var.set("" if atual == self.ALEATORIO else atual)
+                moldura.pack(side="left")
+                unidade = f" {entrada['unidade']}" if entrada.get("unidade") else ""
+                faixa = self.o.legenda(
+                    linha, f"{entrada['minimo']:g} a {entrada['maximo']:g}{unidade}")
+                faixa.configure(bg=self.t.fundo)
+                faixa.pack(side="left", padx=estilo.ESPACO["meio"])
+                campos[chave] = var
+
+        def valor(alvo) -> str:
+            return (alvo.get() or "").strip()
+
+        def aplicar() -> None:
+            escolhido = {c: valor(a) for c, a in campos.items()
+                         if valor(a) not in ("", self.ALEATORIO)}
+            try:
+                # Valida AQUI: descobrir um valor fora da faixa so na geracao
+                # gastaria a rodada inteira para nada.
+                mod.interpretar([f"{c}={v}" for c, v in escolhido.items()])
+            except ValueError as erro:
+                messagebox.showerror("Escolher atributos", str(erro), parent=janela)
+                return
+            self.escolhas = escolhido
+            self._mostrar_escolhas()
+            janela.destroy()
+
+        def sortear_tudo() -> None:
+            for chave, alvo in campos.items():
+                alvo.set(self.ALEATORIO if catalogo[chave]["tipo"] == "categorical"
+                         else "")
+
+        rodape = tk.Frame(corpo, bg=self.t.fundo)
+        rodape.pack(fill="x", padx=estilo.ESPACO["normal"],
+                    pady=estilo.ESPACO["normal"])
+        self.o.botao(rodape, "Aplicar", aplicar, tipo="primario").pack(side="left")
+        self.o.botao(rodape, "Sortear tudo", sortear_tudo).pack(
+            side="left", padx=estilo.ESPACO["meio"])
+        self.o.botao(rodape, "Cancelar", janela.destroy).pack(side="left")
+
+    def _area_rolavel(self, janela):
+        """Canvas + barra: 15 atributos nao cabem em 768px de altura."""
+        quadro = tk.Frame(janela, bg=self.t.fundo)
+        quadro.pack(fill="both", expand=True)
+        tela = tk.Canvas(quadro, bg=self.t.fundo, highlightthickness=0, bd=0)
+        barra = ttk.Scrollbar(quadro, orient="vertical", command=tela.yview)
+        corpo = tk.Frame(tela, bg=self.t.fundo)
+        corpo.bind("<Configure>",
+                   lambda _e: tela.configure(scrollregion=tela.bbox("all")))
+        tela.create_window((0, 0), window=corpo, anchor="nw")
+        tela.configure(yscrollcommand=barra.set)
+        tela.pack(side="left", fill="both", expand=True)
+        barra.pack(side="right", fill="y")
+        return corpo
+
+    def _mostrar_escolhas(self) -> None:
+        if not self.escolhas:
+            self.lbl_escolhas.configure(text="tudo sorteado",
+                                        fg=self.t.texto_fraco)
+            return
+        resumo = ", ".join(f"{c}={v}" for c, v in self.escolhas.items())
+        self.lbl_escolhas.configure(text=resumo[:60], fg=self.t.acento)
 
     def _bandeiras(self) -> list:
         extras = []

@@ -28,6 +28,17 @@ DURACAO_MAXIMA = 180.0
 # o video esta praticamente mudo no celular (foi o diagnostico do outro canal).
 MEDIA_MINIMA_DB = -30.0
 BYTES_MINIMOS = 100_000
+# Fala humana em pt-BR fica entre ~1,5 e ~4,0 palavras/s (medido nas partes boas:
+# 1,99 a 2,87). Contar as palavras do ROTEIRO contra a duracao do VIDEO responde
+# a pergunta que nenhuma medida do arquivo sozinha responde: a narracao chegou
+# inteira? A parte 1 da historia 8 dava 19,1 palavras/s e passava em tudo mais.
+PALAVRAS_POR_S_MIN = 1.5
+PALAVRAS_POR_S_MAX = 4.0
+# Silencio no fim = a voz acabou antes das imagens. Um respiro de ~0,6 s e de
+# proposito (o CTA precisa de tempo de leitura); tres segundos ja e defeito.
+SILENCIO_FINAL_MAXIMO = 3.0
+# Parte que destoa das irmas: a p01 tinha 35,7 s contra ~145 s das outras cinco.
+FRACAO_MINIMA_DA_MEDIANA = 0.5
 
 
 def _ffprobe(caminho: Path) -> dict:
@@ -42,17 +53,41 @@ def _ffprobe(caminho: Path) -> dict:
         return {}
 
 
-def _volume(caminho: Path) -> float | None:
+def _audio(caminho: Path, duracao: float) -> tuple:
+    """(media em dB, segundos calados no fim) numa DECODIFICACAO SO.
+
+    Os dois filtros vao no mesmo `-af`: decodificar um video de 150 s duas
+    vezes custava o dobro para responder duas perguntas sobre as mesmas
+    amostras, e a vistoria de uma serie de 6 partes fazia isso 12 vezes.
+    """
     try:
         saida = subprocess.run(
-            ["ffmpeg", "-i", str(caminho), "-af", "volumedetect", "-f", "null", "-"],
-            capture_output=True, text=True, timeout=180, creationflags=NO_WINDOW)
-        for linha in (saida.stderr or "").splitlines():
+            ["ffmpeg", "-v", "info", "-i", str(caminho), "-af",
+             "volumedetect,silencedetect=n=-40dB:d=1.0", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return None, 0.0
+    media, inicios, fins = None, [], []
+    for linha in (saida.stderr or "").splitlines():
+        try:
             if "mean_volume:" in linha:
-                return float(linha.split("mean_volume:")[1].split("dB")[0].strip())
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return None
-    return None
+                media = float(linha.split("mean_volume:")[1].split("dB")[0].strip())
+            elif "silence_start:" in linha:
+                inicios.append(float(linha.split("silence_start:")[1].split()[0]))
+            elif "silence_end:" in linha:
+                fins.append(float(linha.split("silence_end:")[1].split()[0]))
+        except (ValueError, IndexError):
+            continue
+    if not inicios or duracao <= 0:
+        return media, 0.0
+    comeco = inicios[-1]
+    # O ffmpeg fecha o ultimo bloco no fim do arquivo, entao "tem silence_end"
+    # NAO quer dizer "o silencio acabou antes do video": e preciso olhar ONDE
+    # ele fecha. So conta o que vai ate o fim — pausa longa no meio e respiro.
+    fim = fins[-1] if fins and fins[-1] > comeco else duracao
+    if fim < duracao - 0.3:
+        return media, 0.0
+    return media, max(0.0, duracao - comeco)
 
 
 def vistoriar_arquivo(caminho: Path) -> dict:
@@ -80,12 +115,17 @@ def vistoriar_arquivo(caminho: Path) -> dict:
     elif duracao > DURACAO_MAXIMA:
         avisos.append(f"{duracao:.0f}s: longo para um Short/Reel")
 
-    media = _volume(caminho) if tem_audio else None
+    media, calado = _audio(caminho, duracao) if tem_audio else (None, 0.0)
     if media is not None and media < MEDIA_MINIMA_DB:
         erros.append(f"audio a {media:.1f} dB de media: praticamente mudo")
 
+    if calado > SILENCIO_FINAL_MAXIMO:
+        erros.append(f"os ultimos {calado:.1f}s sao mudos: a narracao acabou "
+                     "antes das imagens")
+
     return {"existe": True, "duracao": round(duracao, 2), "bytes": tamanho,
             "audio": tem_audio, "video": tem_video, "media_db": media,
+            "silencio_final": round(calado, 2),
             "erros": erros, "avisos": avisos}
 
 
@@ -94,9 +134,31 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
     """A vistoria do arquivo MAIS o que so o roteiro sabe dizer."""
     from ..imagens import fila
     from ..roteiro import roteiro as R
+    from ..video.timeline import cenas_da_parte
 
     roteiro = roteiro or R.carregar(historia_id)
     laudo = vistoriar_arquivo(caminho)
+
+    # A NARRACAO CHEGOU INTEIRA? Nenhuma medida do arquivo sozinha responde
+    # isso: um video com 85% da fala faltando tem audio, tem imagem, tem
+    # duracao e passa em tudo. O roteiro sabe quantas palavras deviam ser
+    # ditas; o arquivo sabe em quantos segundos. O resto e divisao.
+    palavras = sum(len(str(c.get("narracao") or "").split())
+                   for c in cenas_da_parte(roteiro, parte))
+    laudo["palavras"] = palavras
+    laudo["palavras_por_s"] = None
+    if palavras and laudo.get("duracao"):
+        taxa = palavras / float(laudo["duracao"])
+        laudo["palavras_por_s"] = round(taxa, 2)
+        if taxa > PALAVRAS_POR_S_MAX:
+            laudo["erros"].append(
+                f"{palavras} palavras em {laudo['duracao']:.0f}s "
+                f"({taxa:.1f} palavras/s): a narracao nao cabe no video — "
+                "o audio veio incompleto")
+        elif taxa < PALAVRAS_POR_S_MIN:
+            laudo["avisos"].append(
+                f"{taxa:.1f} palavras/s: o video esta arrastado para o texto")
+
     imagens = fila.resumo(historia_id, roteiro, parte)
     if imagens["total"] and imagens["prontas"] == 0:
         laudo["erros"].append(
@@ -126,6 +188,27 @@ def vistoriar_serie(historia_id: str, videos: list) -> dict:
     roteiro = R.carregar(historia_id)
     partes = [vistoriar_parte(historia_id, v.parte, v.caminho, roteiro)
               for v in videos]
+    # UMA PARTE FORA DA CURVA. As partes de uma serie sao escritas com o mesmo
+    # numero de cenas, entao duram quase o mesmo; a que destoa nao e estilo, e
+    # defeito. A p01 da historia 8 tinha 35,7 s contra ~145 s das cinco irmas —
+    # visivel de longe para quem olha a tabela, invisivel para quem olha um mp4.
+    duracoes = sorted(float(p.get("duracao") or 0.0) for p in partes
+                      if p.get("existe"))
+    if len(duracoes) >= 3:
+        mediana = duracoes[len(duracoes) // 2]
+        for laudo in partes:
+            atual = float(laudo.get("duracao") or 0.0)
+            if laudo.get("existe") and atual < mediana * FRACAO_MINIMA_DA_MEDIANA:
+                laudo["avisos"].append(
+                    f"{atual:.0f}s contra {mediana:.0f}s das outras partes: "
+                    "esta parte esta pela metade")
+    if str(roteiro.get("provedor") or "").lower() == "fake":
+        for laudo in partes:
+            laudo["erros"].append(
+                "historia de TESTE (provedor 'fake'): as imagens sao cartoes "
+                "de placeholder, isto nao vai ao ar")
+    for laudo in partes:
+        laudo["ok"] = not laudo["erros"]
     esperadas = len(roteiro["partes"])
     faltando = sorted({p["n"] for p in roteiro["partes"]}
                       - {v.parte for v in videos})

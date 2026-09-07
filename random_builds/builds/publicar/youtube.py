@@ -101,16 +101,49 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
     fala = log or (lambda _linha: None)
     caminho = modo(config)
     fala(f"[youtube] publicando por {caminho.upper()}")
+    canal = kw.get("canal", "builds")
     if caminho == "api":
-        return publicar(
+        estado = publicar(
             video, config=config,
             progresso=lambda enviado, total: fala(
                 f"  {enviado / 1e6:6.1f} / {total / 1e6:.1f} MB"),
             **kw)
-    from . import youtube_web
-    return youtube_web.publicar(
-        video, config=config, postar=True,
-        progresso=lambda texto: fala(f"  {texto}"), **kw)
+        publicado = True
+    else:
+        from . import youtube_web
+        estado = youtube_web.publicar(
+            video, config=config, postar=True,
+            progresso=lambda texto: fala(f"  {texto}"), **kw)
+        # O Studio nem sempre entrega o link; `confirmado` aceita a frase de
+        # sucesso tambem. Sem URL o registro entra com `youtube_id: None` e
+        # `atualizar()` o ignora — mas o "isto foi publicado" nao se perde.
+        publicado = youtube_web.confirmado(estado)
+    if publicado:
+        from . import metricas
+        metricas.registrar_publicado(
+            video, estado, "youtube", canal=canal,
+            extra={"visibilidade": _visibilidade_efetiva(kw, config),
+                   "via": caminho})
+    return estado
+
+
+def _visibilidade_efetiva(kw: dict, config: dict | None) -> str:
+    """A visibilidade que de fato valeu — nao a que veio no argumento.
+
+    Os dois backends resolvem `None` pelo config; o registro precisa da
+    mesma resposta, senao a linha do `publicados.jsonl` diz `null` para
+    todo upload feito sem `--visibilidade`.
+    """
+    if kw.get("visibilidade"):
+        return str(kw["visibilidade"]).lower()
+    if config is None:
+        try:
+            from . import catalogo
+            config = catalogo.carregar_config()
+        except Exception:
+            config = {}
+    return str(((config or {}).get("youtube") or {}).get("visibilidade")
+               or "private").lower()
 
 
 def identificar_canal(canal: str = "builds") -> dict:
@@ -399,21 +432,8 @@ def publicar(video, *, visibilidade: str | None = None,
                     raise PublicacaoFalhou(
                         f"upload terminou sem id: {resposta.text[:180]}")
                 url = f"https://youtu.be/{video_id}"
-                # Registro do que subiu: e o que liga o mp4 a metrica depois
-                # (`main.py metricas`). Falhar aqui nao desfaz o upload.
-                if canal == "builds":
-                    # So o canal de builds tem metrica aqui. Histórias reusa
-                    # este módulo pela ponte `rb` e tem registro próprio — sem
-                    # esta guarda, todo upload de história entrava no
-                    # `publicados.jsonl` de builds e a métrica ia buscar
-                    # retenção de um vídeo que não é deste canal.
-                    try:
-                        from . import metricas
-                        metricas.registrar_publicacao(
-                            video, url, "youtube",
-                            {"visibilidade": visibilidade})
-                    except Exception as exc:  # pragma: no cover - so log
-                        print(f"[publicar] registro falhou: {exc}")
+                # O registro do que subiu mora em `publicar_como_configurado`
+                # (a porta unica), para valer tambem no modo navegador.
                 try:
                     from .. import atividade
                     atividade.registrar("publicacao", "ok",

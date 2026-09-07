@@ -158,6 +158,66 @@ def cmd_modelos(args, pipeline) -> int:
     return 0
 
 
+def cmd_conferir(args, pipeline) -> int:
+    """Procura defeito no que ja existe. Sai 1 se achou algo que impede publicar."""
+    from contos.pipeline import conferir as C
+    from contos.roteiro import coerencia, roteiro as R
+
+    achou = False
+    ruins = C.cache_de_voz()
+    if ruins:
+        achou = True
+        print(f"CACHE DE VOZ: {len(ruins)} entrada(s) que nao servem")
+        for item in ruins:
+            print(f"  {item['arquivo'].name}  {item['duracao']:.1f}s  "
+                  f"{item['motivo']}")
+        if args.consertar:
+            print(f"  apagadas {C.limpar_cache(ruins)}; a proxima renderizacao "
+                  "sintetiza de novo.")
+        else:
+            print("  rode com --consertar para apaga-las.")
+    else:
+        print("CACHE DE VOZ: ok")
+
+    if args.historia_id:
+        alvos = [args.historia_id]
+    else:
+        alvos = [r["historia_id"] for r in R.listar()]
+    for historia_id in alvos:
+        try:
+            laudo = C.conferir_historia(historia_id)
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"{historia_id}: nao deu para conferir ({exc})")
+            achou = True
+            continue
+        marca = "  [TESTE]" if laudo["teste"] else ""
+        print(f"{chr(10)}{historia_id}{marca}  {laudo['titulo'][:70]}")
+        print(f"  {'parte':>5} {'palavras':>9} {'video':>9} {'pal/s':>7}")
+        for linha in laudo["partes"]:
+            taxa = ("-" if linha["palavras_por_s"] is None
+                    else f"{linha['palavras_por_s']:.2f}")
+            print(f"  {linha['parte']:>5} {linha['palavras']:>9} "
+                  f"{linha['duracao']:>8.1f}s {taxa:>7}")
+            for erro in linha["erros"]:
+                achou = True
+                print(f"        ERRO  {erro}")
+            for aviso in linha["avisos"]:
+                print(f"        aviso {aviso}")
+        # Na varredura geral a pergunta e "tem defeito?"; as historias antigas
+        # nao tem ficha de FATOS e repetir isso em todas so faz barulho. Com um
+        # id (ou --numeros) a pergunta passa a ser sobre esta historia, e ai
+        # vale dizer.
+        if args.historia_id or args.numeros:
+            for aviso in laudo["numeros"]:
+                print(f"    numeros: {aviso}")
+        if args.numeros:
+            citadas = coerencia.citacoes(R.carregar(historia_id))
+            for tipo in ("dinheiro", "ano"):
+                for valor, onde in sorted(citadas[tipo]):
+                    print(f"    {tipo:>8} {valor:>8}  {onde}")
+    return 1 if achou else 0
+
+
 def cmd_status(args, pipeline) -> int:
     alvos = [pipeline.status(args.historia_id)] if args.historia_id \
         else pipeline.listar()
@@ -336,6 +396,14 @@ def main() -> int:
     s = sub.add_parser("status", help="onde cada historia esta")
     s.add_argument("historia_id", nargs="?", default=None)
 
+    cf = sub.add_parser("conferir",
+                        help="procura defeito no que ja esta no disco")
+    cf.add_argument("historia_id", nargs="?", default=None)
+    cf.add_argument("--consertar", action="store_true",
+                    help="apaga as entradas ruins do cache de voz")
+    cf.add_argument("--numeros", action="store_true",
+                    help="lista os valores e anos que a narracao cita")
+
     pub = sub.add_parser("publicar", help="lista/exporta/envia os videos prontos")
     pub.add_argument("historia_id", nargs="?", default=None)
     pub.add_argument("--exportar", action="store_true",
@@ -364,7 +432,8 @@ def main() -> int:
     acoes = {"prompt": cmd_prompt, "roteiro": cmd_roteiro, "gerar": cmd_gerar,
              "llm": cmd_llm, "imagens": cmd_imagens,
              "video": cmd_video, "tudo": cmd_tudo, "modelos": cmd_modelos,
-             "status": cmd_status, "publicar": cmd_publicar}
+             "status": cmd_status, "publicar": cmd_publicar,
+             "conferir": cmd_conferir}
     return acoes[args.comando](args, pipeline)
 
 

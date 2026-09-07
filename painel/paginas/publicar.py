@@ -208,7 +208,8 @@ class Pagina:
         self.btn_login_tt.pack(side="left", padx=(0, estilo.ESPACO["meio"]))
         self.o.botao(config, "🎯  Canais do YouTube", self.canais).pack(
             side="left", padx=(0, estilo.ESPACO["meio"]))
-        self.o.botao(config, "📊  Métricas", self.metricas).pack(side="left")
+        self.o.botao(config, "📊  Atualizar métricas",
+                     self.metricas).pack(side="left")
 
     # ------------------------------------------------------------ dados
     def ao_mostrar(self) -> None:
@@ -514,7 +515,11 @@ class Pagina:
                  "canais do YouTube")
 
     def metricas(self) -> None:
-        self._rb(["main.py", "metricas"], "métricas")
+        # `--atualizar` NAO e opcional aqui: sem ele o comando so relê o que
+        # ja estava salvo, e o painel nao tinha nenhum caminho para BUSCAR.
+        # Ficaram 32 videos publicados e `outputs/_metricas/` sequer existia.
+        # Quando a busca funciona, ele imprime o relatorio do mesmo jeito.
+        self._rb(["main.py", "metricas", "--atualizar"], "métricas")
 
 
 __all__ = ["Pagina"]

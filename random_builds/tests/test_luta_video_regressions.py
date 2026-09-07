@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import types
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -33,6 +34,8 @@ from builds.content.caption_generator import CaptionGenerator               # no
 from builds.generation.random_engine import RandomEngine                    # noqa: E402
 from builds.generation.session_generator import load_config                 # noqa: E402
 from builds.tournament import highlights                                    # noqa: E402
+from builds.video import renderer as renderer_mod                           # noqa: E402
+from builds.video import trilha                                             # noqa: E402
 from builds.tournament.timeline import (FightTimelineBuilder,               # noqa: E402
                                      planejar_callouts)
 
@@ -274,6 +277,37 @@ class SkillCardShowcaseTests(unittest.TestCase):
         for card in cards:
             self.assertGreater(card["duration"], 0.0)
 
+    def test_card_com_demo_entra_pelo_caminho_de_video(self):
+        """A demo gravada tem que CHEGAR na tela, nao so no plano.
+
+        O evento apontava para o mp4 da demo mas omitia `synthetic: False`,
+        e `renderer._asset_de_video` assume sintetico quando a chave falta:
+        o clipe era descartado em silencio e o card virava texto. Medido em
+        `generation_00082`: 9,6 s de cartao mudo nos primeiros 15,6 s de
+        toda estreia, com as 116 demos paradas no disco.
+        """
+        from unittest.mock import patch
+
+        from builds.tournament import timeline as tl
+        from builds.video.renderer import VideoRenderer
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        demo = Path(tmp.name) / "onda-de-choque.mp4"
+        demo.write_bytes(b"m" * 1024)
+        modulo = types.ModuleType("neural_fights.recording.skill_demo")
+        modulo.caminho_da_demo = lambda nome: demo
+        with patch.dict("sys.modules",
+                        {"neural_fights.recording.skill_demo": modulo}):
+            cards = tl.eventos_skill_card(
+                "Kael", {"kit": [{"nome": "Onda de Choque", "descricao": "d"}]},
+                {"skill_card": 2.4})
+        self.assertEqual(1, len(cards))
+        self.assertIs(False, cards[0]["asset"]["synthetic"])
+        renderer = VideoRenderer.__new__(VideoRenderer)
+        renderer.profile = "celular"
+        self.assertTrue(renderer._asset_de_video(cards[0]))
+
     def test_estreia_sem_kit_na_ficha_nao_quebra(self):
         plano = _plano(self._fight_estreia(com_kit=False))
         self.assertNotIn("skill_card", [e["type"] for e in plano["events"]])
@@ -281,6 +315,130 @@ class SkillCardShowcaseTests(unittest.TestCase):
     def test_luta_comum_nunca_emite_skill_card(self):
         plano = _plano(_fight())
         self.assertNotIn("skill_card", [e["type"] for e in plano["events"]])
+
+
+class SomDaLutaTests(unittest.TestCase):
+    """A luta era MUDA no video (onda 14C1).
+
+    `fight_recorder` grava o mp4 com trilha `anullsrc` e o `AudioManager` do
+    jogo so toca em tempo real; `sfx_do_evento` nao tinha ramo para
+    `gameplay`. Resultado medido em `generation_00082`: 58,7 s de luta sem
+    um unico som de golpe, magia ou nocaute — so a musica de fundo.
+    """
+
+    @staticmethod
+    def _evento(eventos_dano, *, duracao=20.0, serie_hp=None, callouts=None,
+                narrativos=None):
+        luta = {"eventos_dano": eventos_dano,
+                "serie_hp": serie_hp if serie_hp is not None
+                else [[0.0, 100.0, 100.0], [duracao, 0.0, 100.0]],
+                "eventos_narrativos": narrativos or []}
+        evento = {"type": "gameplay", "duration": duracao, "luta": luta}
+        if callouts:
+            evento["callouts"] = callouts
+        return evento
+
+    def test_gameplay_deixou_de_sair_mudo(self):
+        golpes = [[1.0, "p1", 60.0, "ataque_corpo_a_corpo"],
+                  [4.0, "p1", 40.0, "projetil_skill"]]
+        camadas = trilha.sfx_do_evento(self._evento(golpes), 44100)
+        self.assertTrue(camadas, "gameplay voltou a nao produzir som")
+
+    def test_tique_de_area_nao_vira_metralhadora(self):
+        """`eventos_dano` registra TODO tique de area/veneno.
+
+        Em `generation_00082` eram 11 tiques de 0,75 num lutador de ~650 de
+        vida. Um som para cada, e a luta viraria estalo continuo.
+        """
+        vida = 650.0
+        tiques = [[0.5 + i * 0.5, "p1", 0.75, "area_skill"] for i in range(11)]
+        soco = [[8.0, "p1", vida * 0.5, "ataque_corpo_a_corpo"]]
+        evento = self._evento(tiques + soco, duracao=20.0,
+                              serie_hp=[[0.0, 100.0, 100.0], [20.0, 0.0, 100.0]])
+        instantes = {round(t, 2) for t, _a, _g in trilha.sfx_do_evento(evento, 44100)}
+        self.assertEqual({8.0}, instantes)
+
+    def test_a_escala_vem_da_serie_hp_nao_do_numero_cru(self):
+        """O mesmo dano absoluto e pancada num fraco e raspao num tanque.
+
+        `eventos_dano` esta em HP do motor (650 numa build, 300 noutra) e
+        `serie_hp` em porcento; sem cruzar os dois, "pancada grande" seria
+        um numero que muda de significado a cada estreia.
+        """
+        golpes = [[1.0, "p1", 30.0, "ataque_corpo_a_corpo"]]
+        # tanque: perdeu 100% levando 600 de dano -> 30 e ~5% (raspao)
+        tanque = self._evento(golpes + [[9.0, "p1", 570.0, "ataque_corpo_a_corpo"]],
+                              duracao=20.0)
+        vidas = trilha._vidas_maximas(
+            tanque["luta"], trilha._dano_dos_eventos(tanque["luta"]["eventos_dano"]))
+        self.assertAlmostEqual(600.0, vidas["p1"], delta=1.0)
+
+    def test_pancada_grande_usa_o_portao_do_hitstop(self):
+        """6% da vida — o mesmo numero que faz o motor congelar o quadro."""
+        self.assertEqual(0.06, trilha.DANO_PANCADA_PCT)
+        vida = 1000.0
+        evento = self._evento(
+            [[1.0, "p1", vida * 0.07, "ataque_corpo_a_corpo"],
+             [5.0, "p1", vida * 0.93, "ataque_corpo_a_corpo"]], duracao=20.0)
+        camadas = trilha.sfx_do_evento(evento, 44100)
+        # pancada = duas camadas no MESMO instante (grave + impacto)
+        no_instante = [c for c in camadas if abs(c[0] - 1.0) < 1e-6]
+        self.assertEqual(2, len(no_instante))
+
+    def test_ko_ganha_riser_antes_e_grave_no_golpe(self):
+        evento = self._evento([[1.0, "p1", 600.0, "ataque_corpo_a_corpo"]],
+                              duracao=20.0,
+                              callouts=[{"tipo": "ko", "t": 12.0}])
+        instantes = sorted(round(t, 2) for t, _a, _g in trilha.sfx_do_evento(evento, 44100))
+        self.assertIn(12.0, instantes)
+        self.assertIn(11.1, instantes)     # riser de 0,9 s antes do golpe
+
+    def test_sem_evento_de_dano_nao_inventa_som(self):
+        self.assertEqual([], trilha.sfx_do_evento(self._evento([]), 44100))
+
+    def test_telas_da_luta_deixaram_de_nascer_mudas(self):
+        """Medido em `generation_00082`: 13 dos 14 segmentos do video de
+        estreia estavam em -70 LUFS (silencio digital). So o gancho tinha
+        som — o corpo inteiro dependia da musica de fundo."""
+        for tipo in ("fight_card", "round_title", "round_result",
+                     "fight_result", "outro", "skill_card"):
+            with self.subTest(tipo=tipo):
+                camadas = trilha.sfx_do_evento({"type": tipo, "duration": 2.2},
+                                               44100)
+                self.assertTrue(camadas, f"{tipo} continua sem som")
+
+    def test_clipe_silenciado_recebe_o_som_da_direcao(self):
+        """`sem_som` silencia o AUDIO DO CLIPE, nao o evento.
+
+        O `anullsrc` existe so para o `concat -c copy` nao descartar a
+        faixa. Quando ha som sintetizado, e ele que ocupa aquela entrada —
+        era assim que o payoff, a luta e o CTA do video de build ficavam em
+        -70 LUFS (25,9 s dos 61,8 s so com musica).
+        """
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        wav = Path(tmp.name) / "som.wav"
+        wav.write_bytes(b"RIFF")
+        self.assertEqual(["-i", str(wav)],
+                         renderer_mod._entrada_de_som(wav, 44100))
+        # sem som sintetizado, o silencio de sempre — a faixa nao pode sumir
+        ausente = renderer_mod._entrada_de_som(None, 44100)
+        self.assertIn("anullsrc=r=44100:cl=stereo", ausente)
+        self.assertIn("anullsrc=r=44100:cl=stereo",
+                      renderer_mod._entrada_de_som(Path(tmp.name) / "nao_existe.wav",
+                                                   44100))
+
+    def test_o_renderer_passa_o_audio_no_caminho_composto(self):
+        """O ramo composto do gameplay chamava `_encode_frames` sem audio.
+
+        Era ali que o som se perdia: o clipe da luta ja vem silencioso do
+        gravador, entao sem este argumento nao havia caminho nenhum para o
+        som chegar ao segmento.
+        """
+        fonte = Path(renderer_mod.__file__).read_text(encoding="utf-8")
+        trecho = fonte[fonte.index('if event.get("type") == "gameplay" and ('):]
+        trecho = trecho[:trecho.index("return")]
+        self.assertIn("self._audio_do_evento(event, out_path)", trecho)
 
 
 class FightTimelineTests(unittest.TestCase):

@@ -53,6 +53,25 @@ CHATGPT = {
         "button:has-text('Log in')",
         "button:has-text('Entrar')",
     ],
+    # Anexo. O `input[type=file]` e SEMPRE oculto nos dois sites, entao ele
+    # se resolve por `encontrar_oculto` — `encontrar` filtra por visibilidade
+    # e nunca acharia. O botao de "+" so e clicado quando o input nao existe
+    # ainda no DOM.
+    "anexo_botao": [
+        "button[aria-label*='Attach' i]",
+        "button[aria-label*='Anexar' i]",
+        "button[data-testid='composer-plus-btn']",
+        "button[aria-label*='Add photos' i]",
+    ],
+    "anexo_input": [
+        "input[type='file']",
+    ],
+    "anexo_prova": [
+        "button[aria-label*='Remove' i]",
+        "button[aria-label*='Remover' i]",
+        "div[data-testid*='attachment' i]",
+        "img[alt*='Uploaded' i]",
+    ],
 }
 
 GEMINI = {
@@ -91,6 +110,21 @@ GEMINI = {
         "a[aria-label*='Sign in' i]",
         "a:has-text('Fazer login')",
     ],
+    "anexo_botao": [
+        "button[aria-label*='Open upload file menu' i]",
+        "button[aria-label*='Adicionar arquivos' i]",
+        "button[aria-label*='Add files' i]",
+        "button[aria-label*='Anexar' i]",
+    ],
+    "anexo_input": [
+        "input[type='file']",
+    ],
+    "anexo_prova": [
+        "button[aria-label*='Remove' i]",
+        "button[aria-label*='Remover' i]",
+        "uploader-file-preview",
+        "div.file-preview",
+    ],
 }
 
 MAPA = {"chatgpt": CHATGPT, "gemini": GEMINI}
@@ -128,6 +162,29 @@ def encontrar(page, candidatos, timeout: float = 3.0):
                         return alvo
                 except Exception:
                     continue
+        if time.monotonic() >= fim:
+            return None
+        time.sleep(0.25)
+
+
+def encontrar_oculto(page, candidatos, timeout: float = 3.0):
+    """O primeiro candidato PRESENTE no DOM, visivel ou nao.
+
+    Existe por causa do anexo: o `input[type=file]` dos dois sites e sempre
+    oculto (quem aparece e o botao de clipe), e `encontrar` — que filtra por
+    visibilidade de proposito — nunca o acharia. `set_input_files` funciona
+    em input oculto, entao presente basta.
+    """
+    import time
+    fim = time.monotonic() + float(timeout)
+    while True:
+        for seletor in candidatos:
+            try:
+                alvos = page.locator(seletor)
+                if alvos.count():
+                    return alvos.first
+            except Exception:
+                continue
         if time.monotonic() >= fim:
             return None
         time.sleep(0.25)

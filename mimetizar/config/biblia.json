@@ -1,0 +1,31 @@
+{
+  "_comentario": "A biblia: o manual de como o canal e feito. Sai em duas etapas no mesmo chat — primeiro o esqueleto (as apostas do canal), depois cada secao com o esqueleto em contexto. Mesma receita que o historias/ usa para serie longa, e pelo mesmo motivo: pedir tudo num prompt so faz o modelo perder o fio e escrever generalidade.",
+
+  "secoes": [
+    {"chave": "resumo", "titulo": "O canal em uma frase",
+     "pede": "uma frase que capture a proposta, e um paragrafo dizendo o que ele NAO e (o que um imitador preguicoso faria de errado)"},
+    {"chave": "publico", "titulo": "Para quem isto fala",
+     "pede": "quem assiste, o que ja sabe, que dor ou desejo o traz, e o que o faz ficar ate o fim"},
+    {"chave": "formula", "titulo": "A formula do video",
+     "pede": "o esqueleto com TEMPOS, bloco a bloco, na duracao mediana medida do canal. Isto vira modelo de roteiro, entao precisa ser executavel: quantos segundos cada bloco, o que entra em cada um"},
+    {"chave": "voz", "titulo": "Como essa pessoa fala",
+     "pede": "regras acionaveis de escrita (nao adjetivos): pessoa gramatical, tamanho de frase, vocabulario, o que sempre faz e o que nunca faz, e os bordoes observados"},
+    {"chave": "edicao", "titulo": "Como o video e montado",
+     "pede": "o padrao MEDIDO de corte, som, texto na tela, b-roll e cor, com os numeros do acervo"},
+    {"chave": "promessa", "titulo": "Titulos e capas",
+     "pede": "a formula do titulo com exemplos do proprio canal, e o que a capa promete"},
+    {"chave": "cadencia", "titulo": "Ritmo de publicacao",
+     "pede": "com que frequencia publica, em que formato, e como isso mudou ao longo do tempo"},
+    {"chave": "apostas", "titulo": "As apostas que fazem funcionar",
+     "pede": "as cinco decisoes que, se voce tirar, o canal deixa de funcionar. Ordenadas por importancia, cada uma com a evidencia que a sustenta"}
+  ],
+
+  "_comentario_evidencia": "Uma secao sem numero medido nem citacao com instante e opiniao, nao biblia. O validador recusa.",
+  "exige_evidencia": ["formula", "edicao", "cadencia", "apostas"],
+
+  "resposta_timeout_s": 900,
+  "tentativas_por_secao": 2,
+
+  "_comentario_amostra": "Quantas fichas entram inteiras no prompt do esqueleto. Acima disso vai a agregacao (contagens e medianas) mais uma amostra — 177 fichas cruas nao cabem num chat.",
+  "fichas_no_prompt": 12
+}

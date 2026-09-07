@@ -35,9 +35,12 @@ def _paginas_da_vila() -> list:
 
 
 def _paginas_de_criacao() -> list:
-    from .paginas import (contas, extras, fluxo, historias, publicar, videos)
+    from .paginas import (contas, extras, fluxo, historias, mimetizar,
+                          publicar, videos)
+    # `mimetizar` fica ao lado de `historias` porque e ela que ele alimenta:
+    # o preset que sai de la vira o modelo de roteiro daqui.
     return [fluxo.Pagina, publicar.Pagina, videos.Pagina, historias.Pagina,
-            contas.Pagina, extras.Reacoes]
+            mimetizar.Pagina, contas.Pagina, extras.Reacoes]
 
 
 def _paginas_do_jogo() -> list:
@@ -50,9 +53,11 @@ JANELAS = {
     "vila": {"titulo": "Vila — Neural Fights", "tema": "vila",
              "paginas": _paginas_da_vila, "icone": "🏘",
              "descricao": "o mundo e o que está acontecendo nele"},
+    # `pipeline: True` so aqui: e esta janela que roda os workers de
+    # identidade, e o freio de mao nao faz sentido na Vila nem no Jogo.
     "criacao": {"titulo": "Criação de vídeos — Neural Fights",
                 "tema": "oficina", "paginas": _paginas_de_criacao,
-                "icone": "🎬",
+                "icone": "🎬", "pipeline": True,
                 "descricao": "builds, histórias, publicação e contas"},
     "jogo": {"titulo": "Jogo — Neural Fights", "tema": "oficina",
              "paginas": _paginas_do_jogo, "icone": "🎮",
@@ -66,7 +71,8 @@ def montar(chave: str):
 
     receita = JANELAS.get(chave) or JANELAS["vila"]
     return Casca.criar(receita["paginas"](), tema=receita["tema"],
-                       titulo=receita["titulo"])
+                       titulo=receita["titulo"],
+                       pipeline=bool(receita.get("pipeline")))
 
 
 def abrir(chave: str) -> subprocess.Popen | None:

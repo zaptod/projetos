@@ -34,6 +34,8 @@ FABRICAS = {
     "estudio": {"rotulo": "Estúdio", "emoji": "🎬", "faz": "render dos vídeos"},
     "arena": {"rotulo": "Arena", "emoji": "⚔️", "faz": "lutas gravadas"},
     "publicacao": {"rotulo": "Publicação", "emoji": "📤", "faz": "YouTube/TikTok"},
+    "mimetizar": {"rotulo": "Espelho", "emoji": "🪞",
+                  "faz": "estudo de canal alheio"},
 }
 
 TRABALHANDO, OK, ERRO, LOG = "inicio", "ok", "erro", "log"

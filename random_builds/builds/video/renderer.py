@@ -23,6 +23,19 @@ from ..visualization.draw_common import (fit_font, fit_font_wrap, gradient,
 # nao abrir janelas de console para os processos ffmpeg no Windows
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
+
+def _entrada_de_som(som: Path | None, taxa: int) -> list[str]:
+    """A entrada de audio de um clipe silenciado.
+
+    O `anullsrc` existe porque o `concat -c copy` descarta a faixa de
+    audio quando um segmento nao tem nenhuma. Ele nao precisa ser
+    SILENCIO: quando a direcao sintetizou um som para o evento, e ele
+    que entra — mesma posicao, mesmo mapeamento.
+    """
+    if som is not None and Path(som).is_file():
+        return ["-i", str(som)]
+    return ["-f", "lavfi", "-i", f"anullsrc=r={taxa}:cl=stereo"]
+
 from . import medidas  # noqa: E402  (depois de NO_WINDOW)
 
 
@@ -275,9 +288,13 @@ class VideoRenderer:
         # transcode simples de sempre — a luta nunca deixa de entrar.
         if event.get("type") == "gameplay" and (event.get("hud") or event.get("callouts")):
             try:
+                # O terceiro argumento e o que faltava: o clipe da luta vem
+                # do gravador com trilha SILENCIOSA (`anullsrc`), entao ate
+                # aqui o unico caminho de som do video passava longe do
+                # gameplay — a luta inteira saia sem golpe, magia nem KO.
                 self._encode_frames(
                     self._com_overlay(self._gameplay_frames_compostos(event), event),
-                    out_path)
+                    out_path, self._audio_do_evento(event, out_path))
                 return
             except Exception as exc:
                 print(f"[render] gameplay composto falhou ({exc}); transcode simples",
@@ -293,6 +310,12 @@ class VideoRenderer:
         # a trilha do video. Silenciar aqui, e nao no fim, evita ter que baixar
         # o volume da musica so por causa de 8 s.
         mudo = bool(event.get("sem_som"))
+        # Clipe silenciado nao precisa virar SILENCIO. Medido antes desta
+        # onda: no video de build, 4 segmentos (reacao, luta, payoff e CTA)
+        # estavam em -70 LUFS — 25,9 s dos 61,8 s dependiam so da musica.
+        # Se a direcao tem um som para este evento, ele entra no lugar do
+        # `anullsrc`.
+        som = self._audio_do_evento(event, out_path) if mudo else None
 
         if event.get("fit") == "contain":
             # O que sobra ao redor do clipe e o PROPRIO clipe, coberto,
@@ -324,8 +347,7 @@ class VideoRenderer:
         placa = self._placa_png(event, out_path)
         if placa is None:
             entrada, filtro, mapas = ["-i", caminho], ["-vf", vf], []
-            entrada_muda = ["-i", caminho, "-f", "lavfi",
-                            "-i", f"anullsrc=r={sr}:cl=stereo"]
+            entrada_muda = ["-i", caminho, *_entrada_de_som(som, sr)]
             filtro_mudo, mapas_mudo = ["-vf", vf], ["-map", "0:v", "-map", "1:a"]
         else:
             complexo = (f"[1:v]{self._fade_da_placa(duration)}[placa];"
@@ -333,7 +355,7 @@ class VideoRenderer:
             entrada = ["-i", caminho, "-loop", "1", "-i", str(placa)]
             filtro, mapas = ["-filter_complex", complexo], ["-map", "[v]", "-map", "0:a"]
             entrada_muda = ["-i", caminho, "-loop", "1", "-i", str(placa),
-                            "-f", "lavfi", "-i", f"anullsrc=r={sr}:cl=stereo"]
+                            *_entrada_de_som(som, sr)]
             filtro_mudo = ["-filter_complex", complexo]
             mapas_mudo = ["-map", "[v]", "-map", "2:a"]
 

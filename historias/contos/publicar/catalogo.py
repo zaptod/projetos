@@ -95,6 +95,13 @@ def listar(config: dict | None = None) -> list:
                 dados = json.load(fh)
         except (OSError, ValueError):
             continue
+        # Historia de TESTE nao e conteudo. A `historia_00002` tem
+        # `provedor: "fake"` e imagens que sao cartoes roxos escritos "P1 / 1",
+        # e mesmo assim o status dizia "pronta: 3 video(s) para publicar" e uma
+        # parte dela ja tinha sido exportada. O catalogo e a porta do upload:
+        # ela para aqui.
+        if str(dados.get("provedor") or "").lower() == "fake":
+            continue
         from ..roteiro import roteiro as R
         dados = R.normalizar(dados)
         total_partes = len(dados["partes"])

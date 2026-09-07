@@ -5,8 +5,8 @@
     python testar.py --rapido    só os testes, sem abrir janela nem rede
     python testar.py --lista     o que existe, sem executar
 
-Por que existe: o projeto virou cinco bases de código (neural_fights,
-random_builds, historias, vila, remoto), o agregador de métricas mais o painel, cada uma com o seu
+Por que existe: o projeto virou seis bases de código (neural_fights,
+random_builds, historias, mimetizar, vila, remoto), o agregador de métricas mais o painel, cada uma com o seu
 jeito de rodar teste. "Testar tudo" virava cinco comandos em cinco pastas —
 e, na prática, ou se esquecia um ou não se testava. Um comando que falha em
 vermelho é a diferença entre confiar e torcer.
@@ -20,7 +20,7 @@ ninguém fica sabendo.
 O que ele cobre, e por que cada parte está aqui:
 
   SUÍTES        os contratos de cada projeto. É o grosso.
-  SMOKE         o painel MONTA as 12 páginas. Nenhuma suíte pega um erro de
+  SMOKE         o painel MONTA as 13 páginas. Nenhuma suíte pega um erro de
                 layout, e o painel é por onde tudo é operado.
   ARQUITETURA   os numeros da bagunca (cirurgias de sys.path, nomes de
                 pacote repetidos) subiram? Catraca: falha se PIORAR.
@@ -68,6 +68,9 @@ AMBIENTE_ISOLADO = {
 # (nome, pasta, comando). A ordem é do mais barato para o mais caro: quem
 # roda isto quer o primeiro erro rápido.
 SUITES = (
+    ("mimetizar", RAIZ / "mimetizar",
+     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
+      "-p", "test_*.py"]),
     ("random_builds", RAIZ / "random_builds",
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
       "-p", "test_*.py"]),
@@ -90,7 +93,7 @@ SUITES = (
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
       "-p", "test_*.py"]),
 )
-SMOKE = ("painel (12 páginas)", RAIZ, [PY, "-X", "utf8", "-m", "painel",
+SMOKE = ("painel (13 páginas)", RAIZ, [PY, "-X", "utf8", "-m", "painel",
                                        "--smoke"])
 
 VERDE, VERMELHO, AMARELO, FIM = "\033[92m", "\033[91m", "\033[93m", "\033[0m"
@@ -150,8 +153,8 @@ def integridade() -> dict:
     sujos = []
     alvos = []
     for projeto in (RAIZ / "random_builds", RAIZ / "historias",
-                    RAIZ / "remoto", RAIZ / "painel", RAIZ / "visao",
-                    RAIZ / "vila", RAIZ / "ferramentas"):
+                    RAIZ / "mimetizar", RAIZ / "remoto", RAIZ / "painel",
+                    RAIZ / "visao", RAIZ / "vila", RAIZ / "ferramentas"):
         if projeto.is_dir():
             for padrao in EXTENSOES_VIGIADAS:
                 alvos += list(projeto.rglob(padrao))
