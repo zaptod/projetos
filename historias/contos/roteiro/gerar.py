@@ -109,6 +109,170 @@ def _completar_parte(cliente, texto: str, numero: int, cenas_alvo: int,
     return parcial
 
 
+def _revisar_parte(cliente, parcial: dict, numero: int, cenas_alvo: int,
+                   pasta: Path, config: dict, log) -> dict:
+    """Um turno a mais: o modelo relê o que escreveu e reescreve melhor.
+
+    E a mudanca que mais levanta qualidade de texto de LLM. A primeira versao
+    e a MEDIA do que ele ja viu — clichê, frase de efeito, todas as cenas do
+    mesmo tamanho. Ele reconhece isso quando perguntado; so nao faz de gratis.
+
+    Conservadora de proposito: se a revisao vier com menos cenas do que a
+    original, ela e DESCARTADA. Uma parte pela metade e pior do que uma parte
+    mediana, e o custo de errar aqui e o video inteiro.
+    """
+    try:
+        texto = cliente.perguntar(
+            S.prompt_revisao(numero, cenas_alvo, config=config))
+    except Exception as exc:                                   # noqa: BLE001
+        log(f"[serie] a revisao da parte {numero} nao veio ({exc}); "
+            "fico com a primeira versao.")
+        return parcial
+    _guardar_conversa(pasta, f"parte_{numero:02d}_revisao.txt", texto)
+    revisada = R.parse(texto)
+    if len(revisada["cenas"]) < len(parcial["cenas"]):
+        log(f"[serie] a revisao da parte {numero} veio com "
+            f"{len(revisada['cenas'])} de {len(parcial['cenas'])} cenas; "
+            "fico com a primeira versao.")
+        return parcial
+    log(f"[serie] parte {numero} revisada ({len(revisada['cenas'])} cenas).")
+    return {"titulo": revisada["titulo"] or parcial["titulo"],
+            "cta": revisada["cta"] or parcial["cta"],
+            "cenas": revisada["cenas"]}
+
+
+TENTATIVAS_DE_TROCA = 2
+
+
+def _trocar_premissa_se_precisar(cliente, biblia: dict, partes: int,
+                                 pasta: Path, log) -> dict:
+    """Biblia que a plataforma derrubaria -> a mesma historia, sem o ponto.
+
+    Duas coisas que este passo NAO e. Nao e censura de palavra: trocar o termo
+    esconderia de quem le, nao de quem revisa, e a revisao olha do que a
+    historia trata. E nao e descarte: a premissa fica, o molde fica, as
+    alavancas ficam — muda de onde vem a pressao, que passa a ser divida,
+    poder e vergonha entre adultos. Isso prende igual ou mais.
+
+    Duas tentativas. Se o modelo insistir, a historia nao nasce — mas ai ela
+    morre custando dois turnos de chat, e nao seis partes mais 84 imagens.
+    """
+    from . import linguagem
+
+    for tentativa in range(1, TENTATIVAS_DE_TROCA + 1):
+        achados = linguagem.conferir_biblia(biblia)
+        if not achados["pare"]:
+            if tentativa > 1:
+                log("[linguagem] premissa trocada; a historia segue.")
+            return biblia
+        termos = linguagem.termos_de_pare(achados)
+        onde = ", ".join(i["onde"] for i in achados["pare"])
+        log(f"[linguagem] a biblia cai em assunto impublicavel "
+            f"({', '.join(termos)}) em: {onde}. Pedindo a troca da premissa "
+            f"({tentativa}/{TENTATIVAS_DE_TROCA}) — o molde e as alavancas "
+            "ficam, muda de onde vem a pressao.")
+        try:
+            texto = cliente.perguntar(
+                S.prompt_trocar_premissa(termos, partes))
+        except Exception as exc:                               # noqa: BLE001
+            raise GeracaoFalhou(
+                "a premissa planejada nao pode ir ao ar "
+                f"({', '.join(termos)}) e o pedido de troca nao chegou ao "
+                f"modelo ({exc}). Nenhuma parte foi escrita.") from exc
+        _guardar_conversa(pasta, f"biblia_troca{tentativa}.txt", texto)
+        nova = S.parse_biblia(texto, partes)
+        if not nova.get("partes"):
+            log(f"[linguagem] a troca {tentativa} voltou fora do formato.")
+            continue
+        biblia = nova
+
+    achados = linguagem.conferir_biblia(biblia)
+    if achados["pare"]:
+        raise GeracaoFalhou(
+            "a premissa insiste em um assunto que a plataforma remove ("
+            + ", ".join(linguagem.termos_de_pare(achados)) +
+            f") depois de {TENTATIVAS_DE_TROCA} pedidos de troca. Nenhuma "
+            f"parte foi escrita e nenhuma imagem foi gerada. O texto cru esta "
+            f"em {pasta / 'conversa'}.")
+    return biblia
+
+
+def retomar_serie(historia_id: str, *, provedor: str = "gemini",
+                  cenas_por_parte: int = S.CENAS_POR_PARTE,
+                  headless: bool = False, config: dict | None = None,
+                  log=print) -> dict:
+    """Escreve so as PARTES QUE FALTAM de uma historia que parou no meio.
+
+    Existe porque a escrita ja salva a cada parte e a biblia fica em disco: um
+    roteiro que morreu na parte 3 nao precisa nascer de novo, precisa
+    continuar. Em 10/09/2026 as 06:15 o Gemini bateu no limite de uso no meio
+    da parte 3 e a `historia_00005` ficou com 2 de 6 — recomecar do zero seria
+    jogar fora duas partes boas E o planejamento inteiro.
+
+    A diferenca em relacao a `gerar_serie` e so o contexto: aqui o chat e novo
+    e nao viu as partes anteriores. `prompt_parte` ja e auto-suficiente (leva a
+    biblia, o elenco e a ficha de FATOS), entao o que se perde e a memoria
+    fina do texto — e e por isso que ela vale como CONSERTO, nao como o jeito
+    normal de escrever.
+    """
+    from ..llm.cliente import abrir_cliente
+
+    config = config or carregar_config()
+    pasta = OUTPUTS / historia_id
+    diario = _Diario(log, pasta / "log.txt")
+    log = diario
+
+    roteiro = R.carregar(historia_id)
+    faltam = R.partes_que_faltam(roteiro)
+    if not faltam:
+        log(f"[serie] {historia_id} nao tem parte faltando.")
+        return {"historia_id": historia_id, "partes": 0, "retomada": False}
+    with open(pasta / "biblia.json", encoding="utf-8-sig") as fh:
+        biblia = json.load(fh)
+
+    partes_prontas = [dict(p) for p in (roteiro.get("partes") or [])]
+    log(f"[serie] retomando {historia_id}: faltam as partes {faltam} de "
+        f"{roteiro.get('partes_esperadas')}.")
+    with abrir_cliente(provedor, headless=headless, log=log) as cliente:
+        cliente.abrir(novo_chat=True)
+        for numero in faltam:
+            log(f"[serie] retomada: escrevendo a parte {numero}...")
+            texto = cliente.perguntar(
+                S.prompt_parte(biblia, numero, cenas=cenas_por_parte,
+                               config=config))
+            _guardar_conversa(pasta, f"parte_{numero:02d}_retomada.txt", texto)
+            parcial = _completar_parte(cliente, texto, numero, cenas_por_parte,
+                                       pasta, log)
+            if not parcial["cenas"]:
+                raise GeracaoFalhou(
+                    f"a parte {numero} voltou sem cena legivel na retomada. "
+                    f"As partes anteriores continuam salvas.")
+            parcial = _revisar_parte(cliente, parcial, numero, cenas_por_parte,
+                                     pasta, config, log)
+            plano = next((p for p in biblia["partes"] if p["n"] == numero), {})
+            partes_prontas.append({
+                "n": numero,
+                "titulo": parcial["titulo"] or plano.get("titulo") or "",
+                "cliffhanger": plano.get("cliffhanger", ""),
+                "cta": parcial["cta"],
+                "cenas": parcial["cenas"],
+            })
+            partes_prontas.sort(key=lambda p: int(p["n"]))
+            R.salvar_serie(biblia, partes_prontas, historia_id,
+                           tema=roteiro.get("tema") or "", provedor=provedor,
+                           estrutura=roteiro.get("estrutura") or "",
+                           modelo_llm=getattr(cliente, "modelo_atual", "") or "",
+                           ganchos=roteiro.get("ganchos") or [],
+                           narrador=roteiro.get("narrador") or "")
+            log(f"[serie] parte {numero} pronta na retomada "
+                f"({len(parcial['cenas'])} cenas).")
+    ainda = R.partes_que_faltam(R.carregar(historia_id))
+    log(f"[serie] {historia_id}: retomada terminou "
+        + (f"e ainda faltam {ainda}." if ainda else "COMPLETA."))
+    return {"historia_id": historia_id, "partes": len(faltam),
+            "retomada": True, "faltam": ainda}
+
+
 def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                 cenas_por_parte: int = S.CENAS_POR_PARTE,
                 tema: str | None = None, historia_id: str | None = None,
@@ -133,12 +297,48 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
     try:
         with abrir_cliente(provedor, headless=headless, log=log) as cliente:
             cliente.abrir(novo_chat=True)
+            # QUAL MODELO ESCREVEU ESTA HISTORIA. Guardado porque a qualidade
+            # mudou de patamar em 08/09/2026 (Flash -> 3.1 Pro, mais molde,
+            # revisao e alavancas) e sem isso nao da para distinguir o que e
+            # do jeito novo do que sobrou do antigo — nem na fila de postagem,
+            # nem daqui a um mes olhando para tras.
+            modelo_llm = getattr(cliente, "modelo_atual", "") or ""
+            # O QUE ESCREVEU DE VERDADE, inclusive quando deu errado. Em
+            # 09/09/2026 as 22:59 a troca de modelo estourou por timeout e a
+            # `historia_00004` inteira saiu no Flash-Lite — e `modelo_llm`
+            # gravou VAZIO, entao no dia seguinte nao havia como distinguir
+            # essa historia de uma boa sem reabrir o log. Vazio nao e
+            # ausencia de informacao: e a informacao mais importante.
+            if not getattr(cliente, "modelo_confirmado", True):
+                modelo_llm = f"NAO CONFIRMADO ({modelo_llm or 'desconhecido'})"
+                log(f"[serie] ATENCAO: a historia esta sendo escrita SEM "
+                    f"confirmar o modelo forte ({modelo_llm}). O texto tende "
+                    "a sair mais curto e mais raso.")
 
             # --- etapa 1: a biblia
-            log("[serie] etapa 1: planejando a historia inteira...")
+            estrutura = S.proxima_estrutura(R.estruturas_recentes(), config)
+            # QUEM NARRA E QUAIS ALAVANCAS, decididos AQUI e nao pelo modelo.
+            # A ordem importa: as alavancas sao de genero ("marido que nao
+            # cresce" so funciona na boca dela), entao o narrador tem que ser
+            # conhecido antes de montar o prompt.
+            narrador = S.proximo_narrador(R.narradores_recentes())
+            ganchos = S.proximos_ganchos(R.ganchos_recentes(), narrador, config)
+            log(f"[serie] etapa 1: planejando a historia inteira "
+                f"(molde: {estrutura or 'nenhum'}, narrador: {narrador}, "
+                f"alavancas: {' + '.join(ganchos) or 'nenhuma'})...")
             texto = cliente.perguntar(
                 S.prompt_biblia(partes=partes, cenas_por_parte=cenas_por_parte,
-                                tema=tema, config=config))
+                                tema=tema, config=config,
+                                # O chat e novo a cada rodada: sem esta lista o
+                                # modelo nao sabe o que o canal ja tem, e com o
+                                # tema livre ele repete o mesmo gancho.
+                                evitar=R.titulos_recentes(),
+                                # E sem MOLDE ele repete tambem a forma: a
+                                # serie nunca usou os tres de `roteiro.json`.
+                                estrutura=estrutura,
+                                # Sem estes dois ele repetia as MESMAS duas
+                                # alavancas em 5 de 5 historias.
+                                ganchos=ganchos, narrador=narrador))
             biblia = S.parse_biblia(texto, partes)
             problemas = S.problemas_da_biblia(biblia)
 
@@ -164,6 +364,13 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                         "o modelo nao devolveu a biblia no formato mesmo depois de "
                         f"corrigir ({'; '.join(problemas)}). O texto cru esta em "
                         f"{pasta / 'conversa'}.")
+            # A PREMISSA IMPUBLICAVEL SE DESCOBRE AQUI, e aqui ela ainda tem
+            # conserto. Depois desta linha vem seis turnos de escrita, 84
+            # imagens (~40 min) e ~1h de render — e a agenda so descobria no
+            # fim, jogando a historia inteira fora. Custa um turno de chat.
+            biblia = _trocar_premissa_se_precisar(
+                cliente, biblia, partes, pasta, log)
+
             _gravar(pasta / "biblia.json", biblia)
             log(f"[serie] biblia pronta: {biblia['titulo'] or '(sem titulo)'} "
                 f"- {len(biblia['partes'])} parte(s)")
@@ -184,6 +391,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                         f"a parte {numero} voltou sem nenhuma cena legivel. O texto "
                         f"cru esta em {pasta / 'conversa'}; as partes anteriores "
                         "ja estao salvas.")
+                parcial = _revisar_parte(cliente, parcial, numero,
+                                         cenas_por_parte, pasta, config, log)
                 plano = next((p for p in biblia["partes"] if p["n"] == numero), {})
                 partes_prontas.append({
                     "n": numero,
@@ -193,7 +402,12 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                     "cenas": parcial["cenas"],
                 })
                 R.salvar_serie(biblia, partes_prontas, historia_id, tema=tema or "",
-                               provedor=provedor)
+                               provedor=provedor, estrutura=estrutura,
+                               modelo_llm=modelo_llm,
+                               # NAS DUAS chamadas: esta salva a cada parte, e
+                               # uma corrida que morra na parte 3 nao pode
+                               # deixar memoria vazia para o rodizio.
+                               ganchos=ganchos, narrador=narrador)
                 log(f"[serie] parte {numero}/{total} pronta: "
                     f"{len(parcial['cenas'])} cenas")
     except Exception as exc:
@@ -204,7 +418,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
         raise
 
     caminho = R.salvar_serie(biblia, partes_prontas, historia_id,
-                             tema=tema or "", provedor=provedor)
+                             tema=tema or "", provedor=provedor,
+                             estrutura=estrutura, modelo_llm=modelo_llm,
+                             ganchos=ganchos, narrador=narrador)
     cenas = sum(len(p["cenas"]) for p in partes_prontas)
     log(f"[serie] {historia_id} completa: {len(partes_prontas)} parte(s), "
         f"{cenas} cenas -> {caminho}")

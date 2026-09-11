@@ -214,5 +214,73 @@ class TrilhaTests(unittest.TestCase):
                         "picos de bateria na cama da história")
 
 
+class LegendaCobreAFalaTests(unittest.TestCase):
+    """A legenda tem que durar o que a FALA dura (08/09/2026).
+
+    `dividir_planos` corta cena longa em 2-3 enquadramentos da mesma imagem, e
+    so o PRIMEIRO plano fica sem `continuacao`. `legenda_srt` usava a duracao
+    desse evento — que e a do primeiro plano, nao a da cena. Medido na
+    historia 9, parte 2: a fala final durava 15,1 s e a legenda sumia aos
+    5,2 s, deixando o CTA (a pergunta que segura o inscrito) sem texto na tela
+    por dez segundos.
+
+    O .srt e um arquivo separado, para subir como faixa de legenda; o karaoke
+    desenhado no quadro vem de `voz_palavras.json` e nunca teve esse defeito.
+    """
+
+    def _plano(self):
+        # `dividir_planos` so parte cena COM imagem — um cartao de texto
+        # partido ao meio nao ganharia nada. Entao o teste finge que a imagem
+        # existe, senao a cena longa nunca vira varios planos.
+        from contos.imagens import fila
+        original = fila.utilizavel
+        fila.utilizavel = lambda _a: True
+        self.addCleanup(setattr, fila, "utilizavel", original)
+
+        roteiro = {
+            "titulo": "T", "serie": True,
+            "partes": [{"n": 1, "titulo": "P1", "cenas": [
+                {"n": 1, "imagem": "a photo", "tempo": 5, "narracao": "curta"},
+                # 20 s de fala: `dividir_planos` parte esta em varios planos
+                {"n": 2, "imagem": "a photo", "tempo": 5, "narracao": "longa"},
+                {"n": 3, "imagem": "a photo", "tempo": 5, "narracao": "fim"},
+            ]}],
+        }
+        return timeline.montar(roteiro, marcos=[0.0, 8.0, 28.0],
+                               duracao_audio=40.0, parte=1,
+                               pasta=RAIZ / "outputs" / "historia_00099")
+
+    @staticmethod
+    def _fins(srt: str) -> list:
+        import re
+        saida = []
+        for m in re.finditer(r"(\d+):(\d+):(\d+),(\d+) --> "
+                             r"(\d+):(\d+):(\d+),(\d+)", srt):
+            v = list(map(int, m.groups()))
+            saida.append((v[0] * 3600 + v[1] * 60 + v[2] + v[3] / 1000,
+                          v[4] * 3600 + v[5] * 60 + v[6] + v[7] / 1000))
+        return saida
+
+    def test_a_cena_partida_em_planos_mantem_a_legenda_inteira(self):
+        plano = self._plano()
+        partidos = [e for e in plano["events"] if e.get("continuacao")]
+        self.assertTrue(partidos, "o teste precisa de uma cena partida")
+        faixas = self._fins(timeline.legenda_srt(plano))
+        # a cena 2 vai de 8 s a 28 s: a legenda dela tem que durar os 20 s
+        self.assertAlmostEqual(faixas[1][0], 8.0, places=1)
+        self.assertAlmostEqual(faixas[1][1], 28.0, places=1)
+
+    def test_a_ultima_legenda_vai_ate_o_fim_do_video(self):
+        plano = self._plano()
+        faixas = self._fins(timeline.legenda_srt(plano))
+        self.assertAlmostEqual(faixas[-1][1], plano["total_duration"], places=1)
+
+    def test_as_legendas_nao_deixam_buraco_entre_si(self):
+        """Cena termina onde a proxima comeca: legenda sem vao no meio."""
+        faixas = self._fins(timeline.legenda_srt(self._plano()))
+        for (_ini, fim), (prox, _f) in zip(faixas, faixas[1:]):
+            self.assertAlmostEqual(fim, prox, places=2)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -284,7 +284,9 @@ def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
 
 
 def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
-                 tema: str = "", provedor: str = "") -> Path:
+                 tema: str = "", provedor: str = "",
+                 estrutura: str = "", modelo_llm: str = "",
+                 ganchos: list | None = None, narrador: str = "") -> Path:
     """Grava a serie inteira (biblia + partes) em roteiro.json.
 
     Chamado a CADA parte pronta: uma serie longa leva minutos e o disco tem
@@ -297,6 +299,33 @@ def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
         "historia_id": historia_id,
         "criado_em": datetime.now().isoformat(timespec="seconds"),
         "modelo": "serie", "tema": tema, "provedor": provedor,
+        # O molde usado. Guardado para o RODIZIO ter memoria: sem ele a
+        # escolha do proximo viraria sorteio, e sorteio repete.
+        "estrutura": estrutura,
+        # AS ALAVANCAS, PELO NOME, e quem narrou. Pelo mesmo motivo do molde:
+        # sem memoria nao ha rodizio. Ate 09/09/2026 elas so existiam em
+        # `biblia.json`, que `listar()` nao le — e o resultado foi cinco
+        # historias seguidas com o MESMO par.
+        #
+        # Guardar o NOME normalizado, e nao a string livre que o LLM devolve,
+        # porque a string varia: `TRAICAO` e `TRAIÇÃO` ja aparecem as duas no
+        # disco, e nenhum rodizio casa com isso.
+        # QUANTAS PARTES A BIBLIA PLANEJOU — nao quantas foram escritas.
+        # Sem este numero o roteiro nao sabe que esta pela metade: em
+        # 10/09/2026 as 06:15 o Gemini bateu no limite de uso no meio da parte
+        # 3 e a `historia_00005` ficou com 2 de 6. Como `incompletas()` so
+        # olha as partes que EXISTEM, ela seria "terminada" como uma serie de
+        # duas partes — 28 imagens, 2 videos, publicada — e quem assistisse a
+        # parte 2 nunca receberia a 3. E o pior resultado possivel, pior que
+        # qualquer atraso.
+        "partes_esperadas": int(biblia.get("partes_esperadas")
+                                or len(biblia.get("partes") or [])
+                                or len(partes)),
+        "ganchos": [str(g) for g in (ganchos or [])],
+        "narrador": (narrador or biblia.get("narrador") or "").strip().lower(),
+        # O modelo que escreveu. Distingue o que saiu do jeito NOVO (3.1 Pro,
+        # com molde, revisao e alavancas) do estoque antigo feito no Flash.
+        "modelo_llm": modelo_llm,
         "titulo": biblia.get("titulo") or "",
         "premissa": biblia.get("premissa") or "",
         # A descricao fisica do protagonista entra em TODA imagem de TODAS as
@@ -315,6 +344,104 @@ def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
     with open(pasta / "roteiro.json", "w", encoding="utf-8") as fh:
         json.dump(dados, fh, ensure_ascii=False, indent=2)
     return pasta / "roteiro.json"
+
+
+def titulos_recentes(quantos: int = 12) -> list:
+    """Os titulos das historias ja feitas, da mais nova para a mais velha.
+
+    E o que vai no prompt da biblia para o modelo nao repetir assunto. So o
+    TITULO: ele ja carrega o gancho, e mandar a premissa inteira de doze
+    historias gastaria contexto que a biblia precisa para si.
+    """
+    saida = []
+    for dados in listar():
+        if str(dados.get("provedor") or "").lower() == "fake":
+            continue
+        titulo = (dados.get("titulo") or "").strip()
+        if titulo:
+            saida.append(titulo)
+        if len(saida) >= quantos:
+            break
+    return saida
+
+
+def estruturas_recentes(quantos: int = 12) -> list:
+    """Os moldes usados, do mais novo para o mais velho.
+
+    E o que faz o rodizio funcionar: sem saber o que veio antes, a escolha
+    seria sorteio — e sorteio repete.
+    """
+    saida = []
+    for dados in listar():
+        if str(dados.get("provedor") or "").lower() == "fake":
+            continue
+        nome = (dados.get("estrutura") or "").strip()
+        if nome:
+            saida.append(nome)
+        if len(saida) >= quantos:
+            break
+    return saida
+
+
+def partes_que_faltam(roteiro: dict) -> list:
+    """Os numeros das partes que a biblia planejou e o texto nao tem.
+
+    Uma serie truncada e o pior resultado possivel do canal — pior que atraso,
+    pior que video fraco: quem assistiu a parte 2 e nunca recebe a 3 nao
+    volta. E ela acontece de graca, porque a escrita salva a cada parte: basta
+    o LLM parar no meio (limite de uso, rede) e sobra um roteiro que PARECE
+    inteiro, so que menor.
+
+    Roteiro antigo, sem `partes_esperadas`, devolve lista vazia: nao da para
+    afirmar que falta alguma coisa, e inventar falta faria a pipeline
+    reprocessar historias que estao boas.
+    """
+    esperadas = int(roteiro.get("partes_esperadas") or 0)
+    if esperadas <= 0:
+        return []
+    tem = {int(p.get("n") or 0) for p in (roteiro.get("partes") or [])}
+    return [n for n in range(1, esperadas + 1) if n not in tem]
+
+
+def ganchos_recentes(quantos: int = 24) -> list:
+    """As alavancas usadas, da mais nova para a mais velha.
+
+    A janela e maior que a dos moldes (24 contra 12) porque sao duas por
+    historia e o catalogo tem 35: com 12 o rodizio esqueceria rapido demais e
+    voltaria a repetir.
+    """
+    saida = []
+    for dados in listar():
+        if str(dados.get("provedor") or "").lower() == "fake":
+            continue
+        for nome in (dados.get("ganchos") or []):
+            nome = str(nome).strip()
+            if nome:
+                saida.append(nome)
+        if len(saida) >= quantos:
+            break
+    return saida
+
+
+def narradores_recentes(quantos: int = 8) -> list:
+    """Quem narrou, do mais novo para o mais velho.
+
+    Existe porque o narrador derivava quando quem escolhia era o modelo: as
+    historias 12, 13, 14 e 15 sairam todas com narrador homem, quatro seguidas.
+    """
+    saida = []
+    for dados in listar():
+        if str(dados.get("provedor") or "").lower() == "fake":
+            continue
+        # O campo proprio veio em 09/09/2026; antes disso o unico registro era
+        # o texto da biblia, que nem sempre esta aqui. Historia velha sem o
+        # campo simplesmente nao conta para o rodizio.
+        nome = str(dados.get("narrador") or "").strip().lower()
+        if nome:
+            saida.append(nome)
+        if len(saida) >= quantos:
+            break
+    return saida
 
 
 def proximo_id() -> str:

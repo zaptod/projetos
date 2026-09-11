@@ -73,6 +73,203 @@
             "O sistema MEDE a narracao depois e estica a cena se a fala for mais longa - nunca corte a frase para caber no tempo."
         ]
     },
+    "_comment_ganchos": "O que PRENDE nao e a trama, e o que a trama mexe em quem assiste. A lista antiga era de EMOCOES (traicao, medo, vergonha) e por isso as historias saiam genericas: emocao abstrata vira trama abstrata. Estas sao SITUACOES com uma autoimagem em jogo - 'o medo de ter casado com um homem que nao vai crescer' prende, 'medo' nao. Tres campos por alavanca, e cada um tem funcao: `registro` (medo ou fantasia) e o que deixa o rodizio pegar UMA DE CADA, que e o que da camada - a historia segura pelo medo e recompensa pela fantasia; `mexe` e o pensamento de QUEM ASSISTE, na primeira pessoa, a frase que a pessoa nao diz em voz alta; `cena` e como isso aparece MOSTRADO, e existe para impedir o modelo de escrever 'ela tinha medo de ter escolhido errado' em vez de mostrar. Divididas por QUEM NARRA porque o gancho e de genero: 'marido imprestavel' so funciona na boca dela. QUEM ESCOLHE E O RODIZIO, nao o modelo - com escolha livre ele convergia sempre para o mesmo par (5 de 5 historias saiam com TRAICAO + DINHEIRO E STATUS, e 6 das 9 alavancas nunca foram usadas). Tudo aqui e tensao NARRATIVA: o filtro do PicassoIA recusa sexo e violencia explicita e as plataformas derrubam o video, entao a tensao mora no que a pessoa sente, nao no que a camera mostra.",
+    "ganchos": {
+        "mulher": {
+            "MARIDO_QUE_NAO_CRESCE": {
+                "registro": "medo",
+                "mexe": "e se eu tiver casado com o homem errado e ja for tarde para desfazer",
+                "cena": "ele dormindo as onze da manha; ela conferindo o saldo no celular; as contas todas no nome dela"
+            },
+            "SER_SUBSTITUIDA": {
+                "registro": "medo",
+                "mexe": "ela e eu de dez anos atras, e ele percebeu antes de mim",
+                "cena": "a foto no perfil de alguem que se parece com ela mais nova; o perfume que nao e o dela na camisa"
+            },
+            "A_ULTIMA_A_SABER": {
+                "registro": "medo",
+                "mexe": "todo mundo sabia e teve pena de mim",
+                "cena": "a conversa que para quando ela entra; a amiga que desvia o olhar; o grupo do qual ela foi tirada"
+            },
+            "TER_ESCOLHIDO_ERRADO": {
+                "registro": "medo",
+                "mexe": "o que eu recusei virou exatamente tudo o que eu queria",
+                "cena": "o nome dele numa reportagem; a mulher dele com a vida que ela imaginou para si"
+            },
+            "DEPENDER_DE_QUEM_DESPREZA": {
+                "registro": "medo",
+                "mexe": "sair custa o que eu nao tenho",
+                "cena": "o cartao recusado; ela contando moeda no estacionamento; a senha do banco que ela nunca soube"
+            },
+            "FILHO_QUE_PUXOU_O_PAI": {
+                "registro": "medo",
+                "mexe": "eu criei uma copia do homem de quem eu me arrependo",
+                "cena": "o menino repetindo a frase do pai com a mesma entonacao; o mesmo jeito de fechar a porta"
+            },
+            "DAR_OS_ANOS_E_SER_DESCARTADA": {
+                "registro": "medo",
+                "mexe": "eu dei a decada e ele levou o resultado para outra",
+                "cena": "a casa que ela ajudou a pagar recebendo a mudanca de outra pessoa"
+            },
+            "NUNCA_SER_SUFICIENTE_PRA_FAMILIA_DELE": {
+                "registro": "medo",
+                "mexe": "vinte anos e eu continuo sendo a de fora",
+                "cena": "o lugar dela na mesa de Natal; o presente com o nome errado; a foto de familia sem ela"
+            },
+            "O_CORPO_ME_ENTREGA": {
+                "registro": "medo",
+                "mexe": "eu nao consigo esconder o que sinto e todo mundo ve",
+                "cena": "a mao que treme segurando o copo; o rosto que esquenta quando ele fala o nome"
+            },
+            "ESCOLHIDA_ACIMA_DE_TODAS": {
+                "registro": "fantasia",
+                "mexe": "ele podia ter qualquer uma e quis a mim",
+                "cena": "a sala cheia e ele atravessando ela inteira; o convite que outras esperavam"
+            },
+            "SER_VISTA_POR_DENTRO": {
+                "registro": "fantasia",
+                "mexe": "alguem enxergou o que ninguem nunca viu",
+                "cena": "ele repetindo uma coisa que ela disse uma vez e achou que ninguem tinha ouvido"
+            },
+            "VINGANCA_ELEGANTE": {
+                "registro": "fantasia",
+                "mexe": "eu nao grito, eu venco - e ele assiste",
+                "cena": "ela educada, assinando o papel; ele entendendo tarde demais o que acabou de perder"
+            },
+            "O_RETORNO_TRIUNFAL": {
+                "registro": "fantasia",
+                "mexe": "eu voltei melhor e todos viram",
+                "cena": "o reencontro de turma; o silencio quando ela entra; quem ria sendo o primeiro a cumprimentar"
+            },
+            "DESEJADA_PELO_PROIBIDO": {
+                "registro": "fantasia",
+                "mexe": "o que eu nao devia querer me quer de volta",
+                "cena": "a mao que fica um segundo a mais; a porta que ninguem fecha; a conversa que para quando alguem chega"
+            },
+            "O_SEGREDO_QUE_VIRA_O_JOGO": {
+                "registro": "fantasia",
+                "mexe": "a coleira mudou de mao e ele ainda nao sabe",
+                "cena": "ela guardando o print sem dizer nada; sorrindo enquanto ele conta a versao dele"
+            },
+            "SOCORRIDA_SEM_PEDIR": {
+                "registro": "fantasia",
+                "mexe": "alguem agiu por mim sem eu ter que pedir",
+                "cena": "a divida que aparece quitada; o problema que sumiu e ninguem explica como"
+            },
+            "O_HOMEM_QUE_MUDA_POR_ELA": {
+                "registro": "fantasia",
+                "mexe": "eu sou a unica que alcanca ele",
+                "cena": "o homem que nao fala com ninguem sentando para falar com ela; o que ele parou de fazer sem ser pedido"
+            }
+        },
+        "homem": {
+            "NAO_PODER_PROVER": {
+                "registro": "medo",
+                "mexe": "eu nao consegui dar, e ela viu",
+                "cena": "o cartao recusado na frente dela; o filho pedindo e ele mudando de assunto"
+            },
+            "TRAIDO_PRA_BAIXO": {
+                "registro": "medo",
+                "mexe": "nao foi so traicao - foi por alguem que vale menos que eu",
+                "cena": "ele reconhecendo o carro velho na garagem; o cara que ele mesmo ajudou a empregar"
+            },
+            "O_FILHO_E_MEU": {
+                "registro": "medo",
+                "mexe": "e se os anos todos forem mentira",
+                "cena": "a semelhanca que nao existe; a data que nao fecha; o envelope que ele nao abre ha tres dias"
+            },
+            "TROCADO_PELO_MAIS_NOVO": {
+                "registro": "medo",
+                "mexe": "mais novo, mais rico, mais inteiro do que eu",
+                "cena": "o substituto apresentado na reuniao; o proprio cracha desativado antes do aviso"
+            },
+            "PERDER_O_RESPEITO_DO_FILHO": {
+                "registro": "medo",
+                "mexe": "ele me viu pequeno e nao esqueceu",
+                "cena": "o menino olhando para o chao enquanto o pai e destratado; e nunca mais tocando no assunto"
+            },
+            "FUI_O_CAIXA_ELETRONICO": {
+                "registro": "medo",
+                "mexe": "eu era a carteira, nunca o homem",
+                "cena": "o extrato de anos de transferencia; as mensagens que so chegavam perto do dia dez"
+            },
+            "O_RISO_PELAS_COSTAS": {
+                "registro": "medo",
+                "mexe": "riram de mim entre eles e eu era o unico que nao sabia",
+                "cena": "o audio encaminhado por engano; o apelido que ele descobre que tem"
+            },
+            "DESEJADO_POR_VARIAS": {
+                "registro": "fantasia",
+                "mexe": "disputam por mim, e eu escolho",
+                "cena": "duas mensagens ao mesmo tempo; a que espera do lado de fora enquanto a outra fala com ele"
+            },
+            "O_RECONHECIMENTO_DE_QUEM_ME_DESPREZOU": {
+                "registro": "fantasia",
+                "mexe": "os que me descartaram estao olhando agora",
+                "cena": "o ex-chefe pedindo cinco minutos; a mesma sala, os lugares trocados"
+            },
+            "VOLTAR_POR_CIMA": {
+                "registro": "fantasia",
+                "mexe": "me deram como morto e eu voltei",
+                "cena": "o nome dele de volta na porta; quem espalhou a noticia sendo o primeiro a parabenizar"
+            },
+            "SER_NECESSARIO": {
+                "registro": "fantasia",
+                "mexe": "e para mim que ela liga quando quebra",
+                "cena": "a ligacao de madrugada depois de meses; ele pegando a chave sem perguntar nada"
+            },
+            "A_QUE_NINGUEM_ALCANCA_ME_ESCOLHEU": {
+                "registro": "fantasia",
+                "mexe": "a inalcancavel me quis",
+                "cena": "ela recusando todos e sentando na mesa dele; a sala inteira notando"
+            },
+            "PROTEGER_E_SER_VISTO_PROTEGENDO": {
+                "registro": "fantasia",
+                "mexe": "ela viu que eu segurei quando desabou",
+                "cena": "ele resolvendo em silencio o que ela nem soube que estava perdido"
+            }
+        },
+        "qualquer": {
+            "SEGREDO_PRESTES_A_ESTOURAR": {
+                "registro": "medo",
+                "mexe": "o relogio correndo ate descobrirem",
+                "cena": "a mensagem que chega no aparelho errado; a pessoa que sabe e ainda nao decidiu o que fazer"
+            },
+            "O_QUE_PODERIA_TER_SIDO": {
+                "registro": "medo",
+                "mexe": "a vida que passou do meu lado e eu deixei ir",
+                "cena": "a carta nunca respondida; o endereco que ainda esta guardado na agenda"
+            },
+            "CULPA": {
+                "registro": "medo",
+                "mexe": "fui eu que causei isso e ninguem sabe",
+                "cena": "a data que a pessoa evita; o objeto que ela nao consegue jogar fora"
+            },
+            "DIVIDA_MORAL": {
+                "registro": "fantasia",
+                "mexe": "me devem, e nao sabem que eu sei",
+                "cena": "o favor que ninguem mencionou mais; a assinatura guardada numa pasta"
+            },
+            "INJUSTICA_COM_PAGAMENTO": {
+                "registro": "fantasia",
+                "mexe": "a conta ficou aberta, e ela vai ser paga",
+                "cena": "o documento que aparece anos depois; quem levou tudo perdendo na frente de quem viu"
+            }
+        }
+    },
+    "_comment_linguagem": "COMO DIZER O DURO SEM PERDER O VIDEO. O YouTube e o TikTok nao leem a historia: eles pegam PALAVRA e IMAGEM. Uma boa historia morrer por causa de um termo cru e desperdicio, e todo canal grande resolve isso do mesmo jeito - a coisa acontece, so nao e nomeada. Isto vale para o tema adulto NORMAL (traicao, violencia, morte, vicio, desejo). Nao existe versao 'suavizada' de menor em situacao sexual: essa a plataforma derruba pelo ASSUNTO, nao pela palavra, e o custo e strike no canal.",
+    "linguagem": [
+        "MORTE: 'se foi', 'nao acordou', 'o corpo dele ainda estava la'. Nunca o verbo cru.",
+        "SUICIDIO: 'ela mesma decidiu parar', 'encontraram ela'. Nunca o metodo, nunca a palavra.",
+        "VIOLENCIA: mostre o DEPOIS - a mao tremendo, a marca no braco, o barulho do outro lado da porta. Nunca o ato.",
+        "ABUSO: 'o que ele fez comigo', 'eu nao consegui dizer nao', 'ele nao aceitou ouvir nao'. A pessoa entende; o rastreador nao tem termo para pegar.",
+        "SEXO: pare na porta. 'A gente nao dormiu', 'de manha a camisa dele estava na minha cadeira'. O que a pessoa imagina prende mais.",
+        "DROGA: 'o que ele usava', 'o pacote', 'ele estava diferente de novo'. Nunca o nome da substancia.",
+        "CRIME E DINHEIRO SUJO: 'o dinheiro nao era limpo', 'ele arrumou de um jeito que eu nao quis saber'.",
+        "XINGAMENTO: corte. Raiva se mostra pelo que a pessoa FAZ, nao pelo palavrao - e palavrao no primeiro minuto derruba a monetizacao inteira.",
+        "REGRA GERAL: o leitor completa sozinho. Frase curta e um detalhe concreto entregam mais do que o termo explicito, e passam."
+    ],
+    "_comment_uso_dos_ganchos": "REGRA DE USO: o gancho e alavanca sobre QUEM ASSISTE, nao enfeite da trama. Toda parte fecha com pelo menos uma alavanca ABERTA - a pessoa continua porque precisa saber, nao porque foi pedido. E a alavanca escolhida tem que ser a mesma do comeco ao fim: trocar no meio e recomecar a historia.",
     "_comment_contrato": "Formato de saida. Pedimos blocos de texto simples, nao JSON: o LLM erra menos e o parser aqui aceita os dois.",
     "contrato": [
         "TITULO: uma linha, em primeira pessoa, que ja entrega o conflito e provoca curiosidade. Sem hashtag, sem emoji.",

@@ -39,10 +39,148 @@ def _limpar(linha: str) -> str:
 
 
 # --------------------------------------------------------------- 1. biblia
+def proxima_estrutura(usadas: list, config: dict | None = None) -> str:
+    """Qual molde usar agora: o que ficou mais tempo sem aparecer.
+
+    O fluxo automatico NUNCA usou os moldes. `config/roteiro.json` tem tres
+    (`reddit`, `confissao`, `vinganca`) e so o caminho manual os lia; a serie
+    pedia "6 partes de 14 cenas" e deixava a forma por conta do modelo — que
+    converge sempre para a mesma. Foi assim que as historias 9 e 10 sairam
+    quase iguais ("conta de luz paga no meu nome").
+
+    Rodizio pelo menos usado, e nao sorteio: sorteio repete.
+    """
+    config = config or carregar_config()
+    return _menos_usado(list((config.get("modelos") or {}).keys()), usadas)
+
+
+def _menos_usado(disponiveis: list, usadas: list) -> str:
+    """O que ficou MAIS TEMPO sem aparecer. `""` quando nao ha candidato.
+
+    `usadas` vem do mais NOVO para o mais velho, entao o indice e a idade:
+    indice 0 = usado agora, indice maior = visto ha mais tempo.
+
+    DUAS FASES. Primeiro quem nunca apareceu na janela — comecar pelo virgem
+    e o que espalha mais rapido. Depois, entre os que ja apareceram, o de
+    MAIOR indice.
+
+    A segunda fase estava errada e o erro era visivel no disco. Ela fazia
+    `for nome in reversed(usadas)`, o que pega a ocorrencia mais ANTIGA da
+    JANELA — e como a janela tem 12 e a entrada velha continua nela, o mesmo
+    nome voltava sempre: `reddit` saiu nas historias 11, 14 e 15 de cinco.
+    O que importa nao e onde o nome apareceu pela ultima vez na lista, e ha
+    quanto tempo ele foi usado pela ULTIMA vez — que e o menor indice dele.
+    """
+    disponiveis = [n for n in disponiveis if n]
+    if not disponiveis:
+        return ""
+    for nome in disponiveis:
+        if nome not in usadas:
+            return nome
+    # `usadas.index(nome)` e a ultima vez que ele foi usado (a lista vem do
+    # mais novo para o mais velho); o maior indice e o mais esquecido.
+    return max(disponiveis, key=usadas.index)
+
+
+def _fichas_dos_ganchos(nomes, narrador: str, config: dict | None) -> list:
+    """[(nome, ficha)] das alavancas pedidas, ignorando nome que nao existe.
+
+    Nome desconhecido nao levanta: um catalogo editado a mao nao pode derrubar
+    a geracao da noite. Ele so nao entra no prompt, e a historia sai com uma
+    alavanca em vez de duas — pior, mas viva.
+    """
+    catalogo = catalogo_de_ganchos(narrador, config)
+    saida = []
+    for nome in (nomes or []):
+        ficha = catalogo.get(str(nome))
+        if ficha:
+            saida.append((str(nome), ficha))
+    return saida
+
+
+NARRADORES = ("mulher", "homem")
+
+
+def proximo_narrador(usados: list) -> str:
+    """Quem conta a proxima historia — em rodizio, nao ao gosto do modelo.
+
+    Ate 09/09/2026 o narrador era decidido pelo LLM DENTRO da biblia, e ele
+    derivava: as historias 12, 13, 14 e 15 sairam todas com narrador homem,
+    quatro seguidas.
+
+    Escolher aqui resolve tambem uma ordem impossivel: as alavancas sao de
+    GENERO ("marido que nao cresce" so funciona na boca dela), entao e preciso
+    saber quem narra ANTES de montar o prompt — e nao depois de ler a resposta.
+    """
+    return _menos_usado(list(NARRADORES), usados) or NARRADORES[0]
+
+
+def catalogo_de_ganchos(narrador: str = "",
+                        config: dict | None = None) -> dict:
+    """As alavancas que servem para quem narra: as dele mais as universais."""
+    config = config or carregar_config()
+    todos = config.get("ganchos") or {}
+    if not isinstance(todos, dict):
+        return {}
+    # AS ESPECIFICAS PRIMEIRO, e a ordem nao e cosmetica: `_menos_usado`
+    # estreia na ordem do catalogo, e as universais sao as MENOS especificas
+    # do conjunto. Montando ao contrario, as tres primeiras historias saiam
+    # com CULPA, SEGREDO e DIVIDA MORAL — exatamente o generico que este
+    # catalogo existe para substituir, enquanto MARIDO QUE NAO CRESCE so
+    # apareceria na quinta.
+    saida = dict(todos.get(str(narrador).strip().lower()) or {})
+    for nome, ficha in (todos.get("qualquer") or {}).items():
+        saida.setdefault(nome, ficha)
+    return saida
+
+
+def proximos_ganchos(usados: list, narrador: str = "",
+                     config: dict | None = None) -> list:
+    """As DUAS alavancas desta historia: uma de medo, uma de fantasia.
+
+    UMA DE CADA REGISTRO de proposito. A historia segura pelo medo e recompensa
+    pela fantasia; duas do mesmo lado dao um video que so aperta (e cansa) ou
+    so afaga (e nao prende).
+
+    QUEM ESCOLHE E O RODIZIO, e essa e a mudanca que importa. Antes o prompt
+    mandava as nove e pedia "escolha DUAS" — e o modelo, com escolha livre,
+    convergia sempre: as cinco historias que nasceram com alavancas ligadas
+    (11 a 15) escolheram TODAS o mesmo par, TRAICAO + DINHEIRO E STATUS, e
+    seis das nove alavancas nunca foram usadas uma vez sequer.
+    """
+    catalogo = catalogo_de_ganchos(narrador, config)
+    if not catalogo:
+        return []
+    escolhidos = []
+    for registro in ("medo", "fantasia"):
+        candidatos = [nome for nome, ficha in catalogo.items()
+                      if (ficha or {}).get("registro") == registro]
+        nome = _menos_usado(candidatos, usados)
+        if nome:
+            escolhidos.append(nome)
+    return escolhidos
+
+
 def prompt_biblia(*, partes: int = PARTES_PADRAO,
                   cenas_por_parte: int = CENAS_POR_PARTE,
-                  tema: str | None = None, config: dict | None = None) -> str:
-    """Etapa 1: a historia inteira planejada, sem escrever nenhuma cena."""
+                  tema: str | None = None, config: dict | None = None,
+                  evitar: list | None = None, estrutura: str = "",
+                  ganchos: list | None = None, narrador: str = "") -> str:
+    """Etapa 1: a historia inteira planejada, sem escrever nenhuma cena.
+
+    `evitar` sao as historias que o canal JA tem. Sem elas o modelo se repete:
+    com o tema livre e um chat novo, o mesmo prompt converge para a mesma
+    ideia. Medido em 08/09/2026, duas rodadas seguidas da agenda automatica:
+
+        historia_00009  "conta de luz paga no meu CPF em um endereco
+                         onde nunca pisei na vida"
+        historia_00010  "conta de luz paga no meu nome numa casa
+                         onde nunca pisei na vida"
+
+    A virada de cada uma era diferente, mas o gancho era o mesmo — e num canal
+    que publica 4 a 6 por dia isso vira um so assunto repetido. O chat nao tem
+    memoria entre rodadas; a lista e a memoria.
+    """
     config = config or carregar_config()
     regras = config["regras"]
     total_cenas = partes * cenas_por_parte
@@ -65,6 +203,87 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
         add("TEMA: voce escolhe. Uma situacao especifica e incomum, que a "
             "pessoa nao consegue prever pelo titulo.")
     add("")
+    if evitar:
+        add("O CANAL JA TEM ESTAS HISTORIAS. Nao repita nenhuma delas — nem o "
+            "assunto, nem o gancho, nem o tipo de descoberta. Se a sua ideia "
+            "se parecer com alguma, troque de ideia antes de escrever:")
+        for anterior in evitar:
+            add(f"  - {str(anterior).strip()[:160]}")
+        add("")
+    molde = (config.get("modelos") or {}).get(estrutura or "") or {}
+    if molde:
+        # O MOLDE ENTRA AQUI. Sem ele a serie so pedia "N partes de M cenas" e
+        # a forma ficava por conta do modelo — que escolhe sempre a mesma.
+        add(f"MOLDE DESTA HISTORIA: {molde.get('rotulo', estrutura)}.")
+        add("A historia INTEIRA segue esta forma, distribuida entre as partes "
+            "(cada bloco abaixo pode ocupar mais de uma parte):")
+        for passo in molde.get("estrutura") or []:
+            add(f"  - {passo}")
+        add("Nao troque de forma no meio, e nao use a forma de outra historia "
+            "que voce ja tenha escrito.")
+        add("")
+    # O QUE PRENDE NAO E A TRAMA, e o que ela mexe em quem assiste. Sem isto o
+    # modelo escreve um acontecimento bem contado e a pessoa sai no meio,
+    # porque nada nela estava em jogo.
+    if narrador:
+        # QUEM NARRA VEM DECIDIDO. Antes o modelo escolhia, e derivava: as
+        # historias 12 a 15 sairam todas com narrador homem, quatro seguidas.
+        add(f"QUEM CONTA: {narrador}. A historia inteira e na primeira pessoa "
+            f"de uma {'mulher' if narrador == 'mulher' else 'homem'} adulta"
+            f"{'' if narrador == 'mulher' else ' adulto'}.")
+        add("")
+
+    # AS DUAS JA VEM ESCOLHIDAS, e essa e a mudanca que importa. O prompt
+    # antigo mandava as nove e pedia "escolha DUAS" — e o modelo, com escolha
+    # livre, convergia sempre: as cinco historias geradas com alavancas (11 a
+    # 15) escolheram TODAS o mesmo par, e seis das nove nunca foram usadas.
+    # Mandar o catalogo inteiro junto empurraria de volta para a media, que e
+    # justamente a doenca.
+    escolhidos = _fichas_dos_ganchos(ganchos, narrador, config)
+    if escolhidos:
+        add("ALAVANCAS DESTA HISTORIA (sao estas DUAS, nao escolha outras):")
+        for nome, ficha in escolhidos:
+            add(f"  - {nome.replace('_', ' ')} [{ficha.get('registro', '')}]")
+            add(f"      o que mexe em quem assiste: {ficha.get('mexe', '')}")
+            add(f"      como isso APARECE (mostre, nao diga): "
+                f"{ficha.get('cena', '')}")
+        add("  - Uma delas e MEDO e a outra e FANTASIA de proposito: a "
+            "historia segura pelo medo e recompensa pela fantasia. As duas "
+            "valem do comeco ao fim — trocar no meio e recomecar a historia.")
+        add("  - A alavanca e sobre QUEM ASSISTE, nao enfeite da trama. Toda "
+            "parte fecha com pelo menos uma ABERTA: a pessoa continua porque "
+            "precisa saber, nao porque foi pedido.")
+        add("  - NUNCA NOMEIE a alavanca no texto. Nao escreva 'ela tinha "
+            "medo de ter escolhido errado' — mostre a cena que faz quem "
+            "assiste pensar isso sozinho.")
+        add("")
+
+    # FORA DO `if` junto com o LIMITE, e pelo mesmo motivo: isto vale para a
+    # historia inteira, tenha ela alavanca escolhida ou nao. Deixar aqui
+    # dentro fazia a regra sumir do prompt quando o catalogo nao respondesse.
+    add("  - A tensao mora no que a pessoa SENTE, nao no que a camera "
+        "mostra: sugerir prende mais do que mostrar, e e o que passa no "
+        "filtro de conteudo das imagens e das plataformas.")
+    add("")
+
+    # LIMITE DURO, e FORA de qualquer `if`. Medido em 08/09/2026, na primeira
+    # historia gerada com as alavancas ligadas: o modelo foi de "desejo e
+    # vergonha" direto para a virgindade de uma menina de 17 anos comprada por
+    # R$ 50 mil. Isso nao e questao de gosto — o YouTube remove mesmo sendo
+    # ficcao, o PicassoIA recusa as imagens, e o canal publica sozinho e
+    # PUBLICO. Ate 09/09 este bloco morava DENTRO do `if ganchos:`: um
+    # catalogo vazio ou com outro formato levava o guarda-corpo junto, em
+    # silencio. Ele agora e incondicional, e com alavancas mais carnais
+    # (DESEJADA PELO PROIBIDO, DESEJADO POR VARIAS) ele importa mais.
+    add("LIMITE, e ele nao se negocia:")
+    add("  - NINGUEM menor de 18 anos em situacao sexual ou romantica — nem "
+        "agora, nem no passado da historia, nem sugerido.")
+    add("  - Nada de sexo explicito, de violencia sexual, de autolesao como "
+        "cena, nem de pessoa, marca ou crime reais.")
+    add("  - Uma historia que a plataforma derruba nao serve para nada, por "
+        "melhor que seja. Se a ideia so funciona passando desse limite, ela e "
+        "a ideia errada: troque, nao suavize.")
+    add("")
     add("REGRAS DA HISTORIA (valem para o planejamento inteiro):")
     add("  - Historia ficticia em primeira pessoa, com nomes inventados.")
     add("  - O texto final vai soar como um DESABAFO que uma pessoa real "
@@ -72,6 +291,9 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
         "alguem contaria de memoria, com detalhe mundano e ponta solta.")
     add("  - UMA pergunta central atravessa as {n} partes e so e respondida "
         "na ultima.".replace("{n}", str(partes)))
+    add("  - Cada parte entrega um FATO NOVO que muda o que se sabia ate "
+        "ali — nao basta 'avancar a acao'. Se a parte pode ser resumida sem "
+        "perder nada, ela nao existe.")
     add("  - Cada parte tem a propria mini-virada, alem da virada central.")
     add("  - Nada de enrolacao: se um acontecimento nao muda a situacao do "
         "protagonista, ele nao existe.")
@@ -105,9 +327,16 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
         "conflito e provoca curiosidade>")
     add("PREMISSA: <2 frases: a situacao e a pergunta central>")
     add("PROTAGONISTA: <nome> | <descricao fisica em ingles, uma frase>")
-    add("NARRADOR: <homem ou mulher — quem esta contando em primeira pessoa>")
+    # Continua sendo pedido de volta mesmo quando ja foi ditado: e assim que
+    # `parse_biblia` o captura, e e a confirmacao de que o modelo obedeceu.
+    add("NARRADOR: " + (f"{narrador} (ja definido acima; repita exatamente "
+                        "isto)" if narrador
+                        else "<homem ou mulher — quem esta contando em "
+                             "primeira pessoa>"))
     add("ELENCO: <nome> | <descricao fisica em ingles>; <nome> | <descricao>")
     add("CENARIO: <onde a historia acontece, em ingles, uma frase>")
+    add("ALAVANCAS: <as DUAS escolhidas> | <o que exatamente esta em jogo "
+        "para quem assiste, em uma frase>")
     add("FATOS: <nome do fato> = <valor>; <nome do fato> = <valor>  "
         "(ex.: aluguel = R$ 3.800 por mes; primeiro pagamento = 2018; "
         "ano em que se conheceram = 2020; idade dela = 34)")
@@ -133,11 +362,13 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
 def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
     """Texto da etapa 1 -> {titulo, premissa, protagonista, elenco, partes}."""
     campos = {"titulo": "", "premissa": "", "protagonista": "", "elenco": "",
-              "cenario": "", "virada": "", "narrador": "", "fatos": ""}
+              "cenario": "", "virada": "", "narrador": "", "fatos": "",
+              "alavancas": ""}
     rotulos = {
         "titulo da serie": "titulo", "titulo": "titulo", "premissa": "premissa",
         "protagonista": "protagonista", "elenco": "elenco", "cenario": "cenario",
         "virada central": "virada", "narrador": "narrador", "fatos": "fatos",
+        "alavancas": "alavancas",
     }
     partes = []
     atual = None
@@ -179,6 +410,7 @@ def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
         "elenco": campos["elenco"],
         "cenario": campos["cenario"],
         "fatos": campos["fatos"],
+        "alavancas": campos["alavancas"],
         "virada": campos["virada"],
         "partes": partes,
         "partes_esperadas": partes_esperadas,
@@ -203,6 +435,67 @@ def problemas_da_biblia(biblia: dict) -> list:
     if sem_gancho:
         faltando.append(f"partes sem GANCHO: {sem_gancho}")
     return faltando
+
+
+def prompt_trocar_premissa(termos: list, partes: int = PARTES_PADRAO) -> str:
+    """A premissa nao pode ir ao ar: troque a PRESSAO, guarde o resto.
+
+    Descartar a historia inteira aqui era jogar fora um plano que estava bom
+    em tudo menos num ponto — e, pior, deixar a agenda parada esperando a
+    proxima rodada. Mas o conserto tambem nao e trocar a PALAVRA: a revisao da
+    plataforma olha do que a historia TRATA, e um termo mais educado esconde
+    de quem le, nao de quem revisa. O preco de errar e o canal, nao o video.
+
+    O conserto que funciona e outro, e ele nem custa forca da historia: o que
+    prendia nunca foi a premissa proibida — era a DIVIDA, o PODER de um sobre
+    o outro, a VERGONHA de ter aceitado, e o sujeito reaparecendo com poder.
+    Tudo isso existe inteiro entre adultos, e fica mais dificil de adivinhar.
+
+    Um turno de chat contra uma historia perdida.
+    """
+    termos = [str(t) for t in (termos or []) if str(t).strip()]
+    citados = ", ".join(f'"{t}"' for t in termos) or "o ponto marcado"
+
+    linhas = [
+        "PARE — essa biblia nao pode virar video, e o motivo nao e a palavra.",
+        "",
+        f"O que aparece no seu plano ({citados}) coloca a historia numa "
+        "categoria que a plataforma remove mesmo sendo ficcao: menor de 18 "
+        "anos em situacao sexual ou romantica, inclusive no passado do "
+        "personagem e inclusive apenas sugerido.",
+        "",
+        "NAO tente resolver trocando o termo, censurando letra, escrevendo de "
+        "outro jeito ou deixando a idade implicita. Quem revisa le do que a "
+        "historia TRATA, nao como esta escrito — e o que esta em jogo aqui "
+        "nao e este video, e o canal inteiro.",
+        "",
+        "O CONSERTO, e ele nao enfraquece nada: o que prendia na sua ideia "
+        "nunca foi esse ponto. Era a DIVIDA, o PODER de uma pessoa sobre a "
+        "outra, a VERGONHA de ter aceitado, o segredo guardado por anos e o "
+        "sujeito reaparecendo por cima. Isso tudo funciona inteiro entre "
+        "ADULTOS — e funciona melhor, porque a pessoa escolheu, e ter "
+        "escolhido e o que corroi.",
+        "",
+        "Trocas que mantem a mesma pressao:",
+        "  - o que foi comprado deixa de ser o corpo de alguem e passa a ser "
+        "um ACORDO que a pessoa assinou adulta: divida da familia paga, "
+        "cirurgia, faculdade, o negocio do pai salvo da falencia.",
+        "  - o poder deixa de vir da idade e passa a vir do lugar: ele e "
+        "credor, chefe, dono, socio, quem tem o documento assinado.",
+        "  - a vergonha deixa de ser do que fizeram com ela e passa a ser de "
+        "ter aceitado — e de nunca ter contado a ninguem.",
+        "  - o reencontro continua igual e ainda melhor: dez anos depois, ele "
+        "e apresentado como o novo chefe dela.",
+        "",
+        "MANTENHA (isto ja estava certo): o molde, as DUAS alavancas "
+        "psicologicas, o tipo de virada, o protagonista, o elenco, o cenario "
+        "e o ritmo. Ninguem com menos de 23 anos em nada disso.",
+        "",
+        f"Agora reescreva a BIBLIA INTEIRA das {partes} partes, no mesmo "
+        "formato de antes, do TITULO DA SERIE ate a ultima PARTE. Nao comente "
+        "a mudanca, nao explique, nao escreva nada fora do formato.",
+    ]
+    return "\n".join(linhas)
 
 
 # ---------------------------------------------------------------- 2. parte
@@ -235,6 +528,13 @@ def prompt_parte(biblia: dict, numero: int, *,
         add("ABERTURA (parte 1): a primeira cena e o momento mais chocante da "
             "HISTORIA INTEIRA, dito no meio da acao, antes de qualquer "
             "contexto. Nao apresente ninguem antes disso.")
+        # O GANCHO E O SEGUNDO EM QUE A PESSOA DECIDE FICAR. Aceitar a
+        # primeira frase que vier e deixar isso na sorte; pedir tres e
+        # escolher custa o mesmo turno e melhora o unico segundo que importa.
+        add("  - Antes de escrever, pense em TRES aberturas diferentes para a "
+            "cena 1 e use a mais forte. Nao mostre as descartadas.")
+        add("  - A mais forte e a que faz quem ouve PRECISAR saber o que "
+            "aconteceu — nao a mais dramatica, nem a mais bem escrita.")
     else:
         add(f"ABERTURA (parte {numero}): a cena 1 recapitula o essencial em "
             "UMA frase que funciona como gancho novo para quem cai aqui "
@@ -267,6 +567,13 @@ def prompt_parte(biblia: dict, numero: int, *,
     # A ficha vai junto em TODA parte, pelo mesmo motivo que a descricao fisica
     # vai: o modelo nao lembra do numero que ele mesmo escreveu quatro partes
     # atras. Sem ela, o aluguel muda de valor no meio da serie.
+    if biblia.get("alavancas"):
+        # As mesmas DUAS do comeco ao fim. Sem repetir aqui, a parte 4 escreve
+        # uma historia bem contada que nao mexe em nada de quem assiste.
+        add(f"ALAVANCAS DESTA HISTORIA (mantenha as duas vivas nesta parte): "
+            f"{biblia['alavancas']}")
+        add("  - Feche esta parte com pelo menos uma delas ABERTA.")
+        add("")
     if biblia.get("fatos"):
         add("FATOS DA HISTORIA (numeros e datas ja fixados - use EXATAMENTE "
             "estes, nunca invente outro valor nem arredonde):")
@@ -275,6 +582,15 @@ def prompt_parte(biblia: dict, numero: int, *,
                 add(f"  - {fato}")
         add("  - Se esta parte precisar de um numero ou data que nao esta "
             "acima, escolha um que nao contradiga nenhum destes.")
+        add("")
+    # COMO DIZER O DURO SEM PERDER O VIDEO. O YouTube nao le a historia: ele
+    # pega PALAVRA e IMAGEM. Uma boa historia morrer por causa de um termo cru
+    # e desperdicio — a coisa acontece, so nao e nomeada.
+    linguagem = config.get("linguagem") or []
+    if linguagem:
+        add("COMO DIZER O QUE E PESADO (a historia nao suaviza; a PALAVRA sim):")
+        for regra in linguagem:
+            add(f"  - {regra}")
         add("")
     add("COMO ESCREVER A NARRACAO (a parte mais importante):")
     add("  Isto NAO e uma historia narrada: e um desabafo que uma pessoa real "
@@ -302,6 +618,51 @@ def prompt_parte(biblia: dict, numero: int, *,
     add("NARRACAO: <o que o narrador fala>")
     add("")
     add(f"... ate a CENA {cenas}. Nao escreva mais nada depois da ultima cena.")
+    return "\n".join(linhas)
+
+
+def prompt_revisao(numero: int, cenas: int, config: dict | None = None) -> str:
+    """Pede ao modelo que critique o proprio texto e reescreva.
+
+    E a mudanca que mais levanta qualidade de texto de LLM, e a razao e
+    simples: a primeira versao e a media do que ele ja viu — clichê, frase de
+    efeito, todas as cenas do mesmo tamanho. Ele SABE reconhecer isso quando
+    perguntado; so nao faz de gratis.
+
+    Custa um turno por parte. Numa serie de 6, seis turnos — contra as ~4h que
+    a historia leva depois, e barato.
+    """
+    config = config or carregar_config()
+    regras = (config.get("regras") or {}).get("narracao") or []
+    linhas = [
+        f"Agora RELEIA a parte {numero} que voce acabou de escrever, como se "
+        "fosse outra pessoa, e reescreva ela inteira melhor.",
+        "",
+        "Procure especificamente por:",
+        "  - Frase de efeito, metafora literaria e fechamento redondo. Pessoa "
+        "real nao termina paragrafo com punchline.",
+        "  - Duas cenas que comecam parecido, ou que tem o mesmo tamanho. "
+        "Gente conta desigual: uma corrida, outra de tres palavras.",
+        "  - Cena que nao entrega informacao NOVA. Se der para cortar sem "
+        "perder nada, o problema nao e a cena — e o que ela devia contar.",
+        "  - Explicacao do que ja se entendeu. Repetir e o que faz rolar o feed.",
+        "  - Palavra que essa pessoa nao usaria falando.",
+        "  - TERMO QUE DERRUBA O VIDEO. Toda vez que o texto NOMEIA a coisa "
+        "pesada em vez de mostrar, troque: a cena fica, a palavra sai. O "
+        "video nao pode morrer por causa de um substantivo.",
+        "",
+        "As regras que valem continuam as mesmas:",
+    ]
+    for regra in regras[:8]:
+        linhas.append(f"  - {regra}")
+    linhas += [
+        "",
+        f"Devolva a parte {numero} INTEIRA reescrita, as {cenas} cenas, no "
+        "mesmo formato de antes (TITULO, e CENA n com IMAGEM/TEMPO/NARRACAO). "
+        "Nao comente o que mudou, nao escreva nada fora do formato.",
+        "Se uma cena ja estava boa, devolva ela igual — reescrever o que estava "
+        "bom so para parecer trabalho piora.",
+    ]
     return "\n".join(linhas)
 
 
