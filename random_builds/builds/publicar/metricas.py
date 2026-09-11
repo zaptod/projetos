@@ -10,9 +10,9 @@ relatorio le a curva e diz EM QUAL EVENTO do video as pessoas saem —
 "queda maior: roulette PESO (38%)" — usando o `timeline.json` da geracao.
 
 Tudo pela API oficial, com o mesmo OAuth do chat da live. A curva exige o
-escopo `yt-analytics.readonly` (uma re-autorizacao:
-`neural-fights youtube-oauth --com-upload --com-analytics`); sem ele, o
-relatorio mostra views/likes e avisa o que falta, em vez de falhar.
+escopo `yt-analytics.readonly` (uma re-autorizacao: ver COMANDO_OAUTH
+abaixo); sem ele, o relatorio mostra views/likes e avisa o que falta, em vez
+de falhar.
 
 O gancho A/B fecha aqui: dois uploads da mesma geracao com `variante`
 diferente aparecem lado a lado com a retencao media de cada um.
@@ -29,6 +29,16 @@ RAIZ = Path(__file__).resolve().parents[2]
 OUTPUTS = RAIZ / "outputs"
 REGISTRO = OUTPUTS / "_publicar" / "publicados.jsonl"
 PASTA = OUTPUTS / "_metricas"
+
+# O comando que a mensagem de erro manda rodar tem que EXISTIR. Ate
+# 11/09/2026 ela dizia `neural-fights youtube-oauth --com-upload
+# --com-analytics`, e nada disso era verdade: nao ha entry point
+# `youtube-oauth` no pyproject, e a ferramenta exigia --client-id e
+# --client-secret, entao a linha so imprimia o `usage` e o navegador nunca
+# abria. `{conta}` e preenchido com a conta ATIVA do canal, porque
+# reautorizar sem --conta grava por cima do canal errado.
+COMANDO_OAUTH = ("python -m neural_fights.tools.youtube_oauth "
+                 "--conta {conta} --com-upload --com-analytics")
 
 API_VIDEOS = "https://www.googleapis.com/youtube/v3/videos"
 API_ANALYTICS = "https://youtubeanalytics.googleapis.com/v2/reports"
@@ -66,6 +76,22 @@ def registrar_publicacao(video, url: str, plataforma: str = "youtube",
         "titulo": getattr(video, "titulo", None),
     }
     linha.update(extra or {})
+    if not linha.get("video_id"):
+        # PUBLICACAO SEM VIDEO NAO E PUBLICACAO. `video` aqui e sempre um item
+        # do catalogo, que tem `.id`; quando chega uma string (um caminho solto
+        # — ou um dublê de teste), todos os campos saem `None` e a linha nao
+        # identifica coisa nenhuma.
+        #
+        # Nao e hipotese: medido em 09/09/2026, 322 das 358 linhas deste
+        # arquivo eram exatamente isso, escritas por
+        # `tests/test_modo_navegador_regressions.py`, que dubla
+        # `youtube.publicar` mas nao o registro. O ledger e a unica resposta
+        # para "o que foi publicado?" — com 90% de lixo ele deixa de
+        # responder, e `atualizar()` ainda vai buscar metrica de id nenhum.
+        raise ValueError(
+            "registro recusado: a linha nao identifica video nenhum "
+            f"(video={video!r}). Quem publica passa o item do catalogo, "
+            "nao o caminho do arquivo.")
     REGISTRO.parent.mkdir(parents=True, exist_ok=True)
     with open(REGISTRO, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
@@ -112,11 +138,24 @@ def publicados() -> list[dict]:
 
 
 # --------------------------------------------------------------------- API
+def comando_oauth(canal: str = "builds") -> str:
+    """A linha de comando exata, ja com a conta ATIVA daquele canal."""
+    try:
+        from ..contas import ativa
+        conta = ativa("youtube", canal)
+    except Exception:
+        conta = "principal"
+    return COMANDO_OAUTH.format(conta=conta)
+
+
 def _token():
     from .youtube import PublicacaoFalhou, carregar_credenciais, token_de_acesso
     credenciais = carregar_credenciais()
     if credenciais is None:
-        raise PublicacaoFalhou("sem credenciais do YouTube (rode o OAuth no painel).")
+        from .youtube import caminho_credenciais
+        raise PublicacaoFalhou(
+            f"sem credencial do YouTube em {caminho_credenciais('builds')} — "
+            f"rode:\n  {comando_oauth()}")
     return token_de_acesso(credenciais), credenciais
 
 
@@ -152,6 +191,36 @@ def estatisticas(youtube_ids: list[str], token: str) -> dict:
     return saida
 
 
+def motivo_da_recusa(resposta) -> str:
+    """Le o MOTIVO que o Google mandou, em vez de chutar sempre o mesmo.
+
+    Ate 11/09/2026 todo 401/403 virava "escopo yt-analytics.readonly
+    ausente". O escopo estava certo, o token estava vivo, e a causa real era
+    `accessNotConfigured`: a YouTube Analytics API nunca foi LIGADA no
+    projeto do Google Cloud. Diagnostico errado com cara de certeza custou
+    uma reautorizacao inutil e mandou procurar no lugar errado — o mesmo
+    defeito do "esta logado?" que errou dos dois lados (09/09/2026).
+    """
+    try:
+        erro = (resposta.json() or {}).get("error") or {}
+        detalhes = erro.get("errors") or [{}]
+        razao = str(detalhes[0].get("reason") or "")
+        recado = str(erro.get("message") or "")
+    except ValueError:
+        razao, recado = "", (resposta.text or "")[:200]
+
+    if razao == "accessNotConfigured":
+        return ("YouTube Analytics API DESLIGADA no projeto do Google Cloud "
+                "(nao e escopo, nao e token). Ligue em "
+                "console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com "
+                "e espere alguns minutos. Detalhe: " + recado[:200])
+    if razao in ("authError", "unauthorized") or resposta.status_code == 401:
+        return f"token invalido ou revogado — rode: {comando_oauth()}"
+    if razao == "insufficientPermissions":
+        return f"falta o escopo yt-analytics.readonly — rode: {comando_oauth()}"
+    return f"Analytics API {resposta.status_code} ({razao or 'sem reason'}): {recado[:200]}"
+
+
 def retencao(youtube_id: str, token: str, desde: str) -> dict:
     """Media de visualizacao e a CURVA (Analytics API). Sem o escopo, devolve
     `erro` explicando o que falta — nunca levanta."""
@@ -163,11 +232,21 @@ def retencao(youtube_id: str, token: str, desde: str) -> dict:
     resumo = requests.get(API_ANALYTICS, timeout=30, headers=cab, params={
         **base, "metrics": "views,averageViewDuration,averageViewPercentage"})
     if resumo.status_code in (401, 403):
-        return {"erro": "escopo yt-analytics.readonly ausente — rode "
-                        "`neural-fights youtube-oauth --com-upload --com-analytics`"}
+        return {"erro": motivo_da_recusa(resumo)}
     if not resumo.ok:
         return {"erro": f"Analytics API {resumo.status_code}: {resumo.text[:160]}"}
-    linhas = resumo.json().get("rows") or [[0, 0, 0]]
+    linhas = resumo.json().get("rows") or []
+    if not linhas:
+        # SEM LINHAS NAO E ZERO. `ids=channel==MINE` filtra pelo canal DO
+        # TOKEN: um video que esta em outro canal do mesmo dono devolve lista
+        # vazia, sem erro. Virar `[[0, 0, 0]]` gravava "retencao media 0%"
+        # como se fosse medicao — e um numero errado no ledger e pior do que
+        # numero nenhum, porque ninguem desconfia dele. Foi o risco criado em
+        # 01/09/2026, quando builds e historias passaram a ter canais
+        # diferentes mas continuaram com um token so.
+        return {"erro": "a Analytics nao devolveu linha para este video: ele "
+                        "provavelmente esta em outro canal que nao o do token "
+                        "(`channel==MINE`), ou ainda nao tem dado."}
     saida = {"views_analytics": linhas[0][0], "media_segundos": linhas[0][1],
              "media_percentual": linhas[0][2]}
     curva = requests.get(API_ANALYTICS, timeout=30, headers=cab, params={
@@ -194,11 +273,77 @@ def atualizar(log=print) -> list[dict]:
         dado = {**registro, **stats.get(yid, {}), "atualizado": datetime.now().isoformat(timespec="seconds")}
         desde = (dado.get("publicado_em") or registro["quando"])[:10]
         dado.update(retencao(yid, token, desde))
+        # Gravados junto para o relatorio nao depender de recalcular a idade
+        # a cada leitura — e para o arquivo guardar a foto do dia.
+        dado["dias_no_ar"] = idade_em_dias(dado)
+        dado["views_por_dia"] = views_por_dia(dado)
         with open(PASTA / f"{yid}.json", "w", encoding="utf-8") as fh:
             json.dump(dado, fh, ensure_ascii=False, indent=2)
         salvos.append(dado)
     log(f"{len(salvos)} video(s) atualizados em {PASTA}")
     return salvos
+
+
+# ------------------------------------------------- comparacao por formato
+# Enquanto o canal tem 4-20 views por video, a curva de retencao vem VAZIA
+# (a Analytics suprime linha por baixo volume) e `custo_por_cena` nao roda.
+# A medicao que sobra, e que nao precisa de escopo nenhum, e views POR DIA
+# agregada por origem: normaliza a idade, entao um video de ontem nao perde
+# para um de um mes atras so por ter tido menos tempo de existir. Medido em
+# 10/09/2026, sem normalizar: build 19,6 e estreia 4,2 views de media.
+def idade_em_dias(dado: dict, agora: datetime | None = None) -> float | None:
+    """Dias desde a publicacao, com piso de 1 dia.
+
+    Piso porque o divisor de `views_por_dia` nao pode tender a zero: video
+    publicado ha uma hora daria uma taxa absurda e envenenaria a media.
+    """
+    bruto = dado.get("publicado_em") or dado.get("quando")
+    if not bruto:
+        return None
+    try:
+        quando = datetime.fromisoformat(str(bruto).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    referencia = agora or datetime.now(quando.tzinfo)
+    if referencia.tzinfo is None and quando.tzinfo is not None:
+        quando = quando.replace(tzinfo=None)
+    return max(1.0, (referencia - quando).total_seconds() / 86400.0)
+
+
+def views_por_dia(dado: dict, agora: datetime | None = None) -> float | None:
+    dias = idade_em_dias(dado, agora)
+    if dias is None:
+        return None
+    return (dado.get("views") or 0) / dias
+
+
+def comparar_formatos(dados: list[dict], agora: datetime | None = None) -> list[dict]:
+    """Agrega por origem: n, views/dia, like-rate e duracao mediana.
+
+    E o numero que decide a Onda 15 — se o formato curto vence o longo. Um
+    video sem data de publicacao fica de fora em vez de contar como idade
+    zero, pelo mesmo motivo que `retencao()` se recusa a gravar zero quando
+    a Analytics nao devolve linha: ausencia nao e zero.
+    """
+    grupos: dict[str, list[dict]] = {}
+    for d in dados:
+        if views_por_dia(d, agora) is None:
+            continue
+        grupos.setdefault(str(d.get("origem") or "?"), []).append(d)
+    saida = []
+    for origem, lista in grupos.items():
+        taxas = [views_por_dia(d, agora) for d in lista]
+        views = sum(d.get("views") or 0 for d in lista)
+        duracoes = sorted(float(d["duracao"]) for d in lista if d.get("duracao"))
+        saida.append({
+            "origem": origem,
+            "videos": len(lista),
+            "views": views,
+            "views_por_dia": sum(taxas) / len(taxas),
+            "like_rate": (sum(d.get("likes") or 0 for d in lista) / views) if views else None,
+            "duracao_mediana": duracoes[len(duracoes) // 2] if duracoes else None,
+        })
+    return sorted(saida, key=lambda x: -x["views_por_dia"])
 
 
 def carregar_salvas() -> list[dict]:
@@ -413,6 +558,19 @@ def relatorio(dados: list[dict]) -> str:
     erros = {d.get("erro") for d in dados if d.get("erro")}
     for erro in erros:
         linhas.append(f"\n  retencao indisponivel: {erro}")
+
+    # Por FORMATO, normalizado pela idade. E a unica comparacao que funciona
+    # com o volume de hoje, e a que diz se o formato curto vence o longo.
+    formatos = comparar_formatos(dados)
+    if len(formatos) > 1:
+        linhas.append("\n  por formato (views/dia normaliza a idade)")
+        linhas.append("    origem      videos   views  views/dia  like%  dur s")
+        for f in formatos:
+            like = f"{f['like_rate'] * 100:5.1f}" if f["like_rate"] is not None else "   --"
+            dur = f"{f['duracao_mediana']:5.0f}" if f["duracao_mediana"] is not None else "   --"
+            linhas.append(
+                f"    {f['origem']:<12}{f['videos']:>6}{f['views']:>8}"
+                f"{f['views_por_dia']:>11.2f}  {like}  {dur}")
 
     for d in dados:
         curva = d.get("curva")

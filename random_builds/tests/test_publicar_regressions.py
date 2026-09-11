@@ -321,5 +321,150 @@ class RegistroDePublicacaoTests(unittest.TestCase):
                 self._video(), "https://youtu.be/zzz"))
 
 
+class ComandoDeOauthTests(unittest.TestCase):
+    """O comando que a mensagem de erro manda rodar precisa EXISTIR.
+
+    Em 11/09/2026 a mensagem dizia `neural-fights youtube-oauth --com-upload
+    --com-analytics`. Nao havia entry point `youtube-oauth` no pyproject, e
+    a ferramenta exigia --client-id/--client-secret: quem seguia a
+    instrucao so via o `usage` e nenhum navegador abria. Uma instrucao
+    errada custa mais que nenhuma instrucao.
+    """
+
+    def test_o_comando_sugerido_e_aceito_pelo_parser_da_ferramenta(self):
+        from neural_fights.tools.youtube_oauth import build_parser
+
+        linha = metricas.comando_oauth("builds").split()
+        self.assertEqual(
+            ["python", "-m", "neural_fights.tools.youtube_oauth"], linha[:3],
+            "a mensagem tem que nomear o modulo, nao um entry point que nao existe")
+        args = build_parser().parse_args(linha[3:])
+        self.assertTrue(args.com_analytics, "sem isso nao ha curva de retencao")
+        self.assertTrue(args.com_upload, "pedir os dois de uma vez: um token so "
+                                         "de analytics quebraria a publicacao")
+        self.assertTrue(args.conta, "sem --conta a reautorizacao sobrescreve "
+                                    "o canal errado")
+
+    def test_o_comando_aponta_para_a_conta_ativa_do_canal(self):
+        """Cada canal tem a sua conta; o comando tem que nomear a certa."""
+        with patch("builds.contas.ativa", return_value="neural_fights"):
+            self.assertIn("--conta neural_fights", metricas.comando_oauth("builds"))
+
+    def test_sem_registro_de_contas_o_comando_ainda_sai(self):
+        """Mensagem de erro nao pode falhar por causa de outro erro."""
+        with patch("builds.contas.ativa", side_effect=RuntimeError("boom")):
+            self.assertIn("--conta principal", metricas.comando_oauth("builds"))
+
+
+class MotivoDaRecusaTests(unittest.TestCase):
+    """Um 403 tem varias causas; chutar sempre a mesma manda pro lugar errado.
+
+    Em 11/09/2026 o token estava vivo e o escopo correto, e mesmo assim todo
+    video vinha com "escopo yt-analytics.readonly ausente". A causa real era
+    `accessNotConfigured`: a API nunca foi ligada no projeto do Google Cloud.
+    A mensagem errada custou uma reautorizacao inutil.
+    """
+
+    class _Resposta:
+        def __init__(self, status, corpo):
+            self.status_code = status
+            self._corpo = corpo
+            self.text = json.dumps(corpo) if isinstance(corpo, dict) else str(corpo)
+
+        def json(self):
+            if not isinstance(self._corpo, dict):
+                raise ValueError("nao e json")
+            return self._corpo
+
+    def _erro(self, reason, mensagem="detalhe do google"):
+        return {"error": {"code": 403, "message": mensagem,
+                          "errors": [{"reason": reason}]}}
+
+    def test_api_desligada_nao_e_confundida_com_escopo(self):
+        motivo = metricas.motivo_da_recusa(
+            self._Resposta(403, self._erro("accessNotConfigured")))
+        self.assertIn("DESLIGADA", motivo)
+        self.assertIn("youtubeanalytics.googleapis.com", motivo)
+        self.assertNotIn("escopo yt-analytics", motivo)
+
+    def test_escopo_faltando_manda_reautorizar(self):
+        motivo = metricas.motivo_da_recusa(
+            self._Resposta(403, self._erro("insufficientPermissions")))
+        self.assertIn("escopo yt-analytics.readonly", motivo)
+        self.assertIn("youtube_oauth", motivo)
+
+    def test_token_revogado_manda_reautorizar(self):
+        motivo = metricas.motivo_da_recusa(
+            self._Resposta(401, self._erro("authError")))
+        self.assertIn("revogado", motivo)
+        self.assertIn("youtube_oauth", motivo)
+
+    def test_motivo_desconhecido_repassa_o_que_o_google_disse(self):
+        """Nunca engolir a resposta: o proximo defeito pode ser outro."""
+        motivo = metricas.motivo_da_recusa(
+            self._Resposta(403, self._erro("quotaExceeded", "cota estourada")))
+        self.assertIn("quotaExceeded", motivo)
+        self.assertIn("cota estourada", motivo)
+
+    def test_resposta_que_nao_e_json_nao_derruba(self):
+        motivo = metricas.motivo_da_recusa(self._Resposta(403, "<html>502</html>"))
+        self.assertIn("403", motivo)
+
+
+class CaminhoDeCredencialTests(unittest.TestCase):
+    """Motor e fabrica precisam concordar em ONDE mora cada credencial.
+
+    `neural_fights.tools.youtube_oauth` repete a regra de nomes de
+    `builds.contas.credencial_youtube` de proposito: o motor nao importa a
+    fabrica. Repeticao sem teste e divergencia com data marcada — e o
+    sintoma seria a autorizacao gravar num arquivo que ninguem le.
+    """
+
+    def test_as_duas_regras_de_nome_dao_o_mesmo_arquivo(self):
+        from builds import contas
+        from neural_fights.tools.youtube_oauth import caminho_da_conta
+
+        for nome in ("principal", "historinhas", "neural_fights", "outra_qualquer"):
+            with self.subTest(conta=nome):
+                self.assertEqual(contas.credencial_youtube("geral", nome),
+                                 caminho_da_conta(nome))
+
+    def test_o_par_do_app_e_reusado_de_outra_credencial(self):
+        """client_id/secret sao do PROJETO, nao do canal.
+
+        Reautorizar um canal novo nao pode exigir volta ao Google Cloud
+        Console so para copiar dois campos que ja estao em disco.
+        """
+        from neural_fights.tools.youtube_oauth import credenciais_do_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp)
+            (pasta / "youtube_credentials.json").write_text(json.dumps({
+                "client_id": "ID-DO-APP", "client_secret": "SEGREDO",
+                "refresh_token": "t"}), encoding="utf-8")
+            alvo = pasta / "youtube_credentials_canal_novo.json"
+            self.assertEqual(("ID-DO-APP", "SEGREDO"), credenciais_do_app(alvo))
+
+    def test_a_credencial_do_proprio_destino_tem_prioridade(self):
+        from neural_fights.tools.youtube_oauth import credenciais_do_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pasta = Path(tmp)
+            (pasta / "youtube_credentials.json").write_text(json.dumps({
+                "client_id": "OUTRO", "client_secret": "X",
+                "refresh_token": "t"}), encoding="utf-8")
+            alvo = pasta / "youtube_credentials_meu.json"
+            alvo.write_text(json.dumps({
+                "client_id": "MEU", "client_secret": "Y",
+                "refresh_token": "t"}), encoding="utf-8")
+            self.assertEqual(("MEU", "Y"), credenciais_do_app(alvo))
+
+    def test_sem_nenhuma_credencial_devolve_none_em_vez_de_inventar(self):
+        from neural_fights.tools.youtube_oauth import credenciais_do_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(credenciais_do_app(Path(tmp) / "nada.json"))
+
+
 if __name__ == "__main__":
     unittest.main()

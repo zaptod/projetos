@@ -36,6 +36,7 @@ import json
 import tempfile
 import unittest
 import wave
+from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -513,6 +514,66 @@ class PendenciasTests(unittest.TestCase):
             lista = catalogo.pendencias_da_build(pasta, "celular")
             self.assertEqual(1, len(lista))
             self.assertIn("mais velho", lista[0])
+
+
+# ------------------------------------------------- 9b. comparacao por formato
+class ComparacaoPorFormatoTests(unittest.TestCase):
+    """Onda 15A: o numero que compara formatos enquanto nao ha retencao.
+
+    Com 4-20 views por video a Analytics suprime a curva, entao `quedas` e
+    `custo_por_cena` ficam mudos. Views POR DIA por origem e o que sobra —
+    e precisa ser honesto sobre idade e sobre ausencia de dado.
+    """
+
+    AGORA = datetime(2026, 9, 10, 12, 0, 0)
+
+    def _video(self, origem, views, dias, likes=0, duracao=60):
+        publicado = self.AGORA - timedelta(days=dias)
+        return {"origem": origem, "views": views, "likes": likes,
+                "duracao": duracao, "publicado_em": publicado.isoformat()}
+
+    def test_views_por_dia_normaliza_pela_idade(self):
+        """Dois videos com as MESMAS views e idades diferentes nao empatam.
+
+        Sem normalizar, o formato mais antigo ganha so por ter existido mais
+        tempo — e como o formato novo nasce hoje, ele perderia toda
+        comparacao no primeiro mes por um motivo que nao e qualidade.
+        """
+        novo = self._video("duelo", 20, dias=2)
+        velho = self._video("build", 20, dias=20)
+        self.assertGreater(metricas.views_por_dia(novo, self.AGORA),
+                           metricas.views_por_dia(velho, self.AGORA))
+        self.assertAlmostEqual(10.0, metricas.views_por_dia(novo, self.AGORA))
+        self.assertAlmostEqual(1.0, metricas.views_por_dia(velho, self.AGORA))
+
+    def test_video_recem_publicado_nao_explode_a_taxa(self):
+        """Piso de um dia: publicado ha uma hora nao vale 480 views/dia."""
+        agora_mesmo = self._video("duelo", 20, dias=0)
+        self.assertAlmostEqual(20.0, metricas.views_por_dia(agora_mesmo, self.AGORA))
+
+    def test_a_comparacao_separa_por_origem(self):
+        dados = [self._video("build", 40, dias=10, likes=2, duracao=74),
+                 self._video("build", 20, dias=10, duracao=70),
+                 self._video("duelo", 30, dias=2, duracao=28)]
+        por_origem = {f["origem"]: f for f in metricas.comparar_formatos(dados, self.AGORA)}
+        self.assertEqual(2, por_origem["build"]["videos"])
+        self.assertEqual(1, por_origem["duelo"]["videos"])
+        self.assertAlmostEqual(3.0, por_origem["build"]["views_por_dia"])
+        self.assertAlmostEqual(15.0, por_origem["duelo"]["views_por_dia"])
+        # o duelo tem menos views no total e ainda assim vem na frente
+        self.assertEqual("duelo", metricas.comparar_formatos(dados, self.AGORA)[0]["origem"])
+
+    def test_video_sem_data_fica_de_fora_em_vez_de_valer_zero(self):
+        """Ausencia nao e zero — a mesma doutrina de `retencao()`.
+
+        Um video sem `publicado_em` entrando como idade zero inventaria uma
+        taxa e envenenaria a media da origem dele.
+        """
+        dados = [self._video("build", 40, dias=10),
+                 {"origem": "build", "views": 999}]
+        formatos = metricas.comparar_formatos(dados, self.AGORA)
+        self.assertEqual(1, formatos[0]["videos"])
+        self.assertEqual(40, formatos[0]["views"])
 
 
 # ---------------------------------------------------------------- 9. metricas

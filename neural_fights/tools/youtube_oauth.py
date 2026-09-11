@@ -8,9 +8,20 @@ Cloud Console; o terceiro exige o fluxo de consentimento OAuth — que esta
 ferramenta executa uma única vez, com loopback local e ``urllib`` puro
 (mesma regra da fonte: nenhuma dependência nova).
 
-Uso:
+Uso, na primeira vez (os dois campos saem do Console)::
+
     python -m neural_fights.tools.youtube_oauth \
         --client-id SEU_ID --client-secret SEU_SECRET
+
+Uso depois — autorizar outro canal, ou renovar um token revogado::
+
+    python -m neural_fights.tools.youtube_oauth \
+        --conta neural_fights --com-upload --com-analytics
+
+``--client-id``/``--client-secret`` passam a ser opcionais: o par e do
+PROJETO no Google Cloud, nao do canal, entao ele e reusado de qualquer
+credencial ja gravada. E ``--conta`` escolhe o arquivo de destino, para uma
+reautorizacao nao sobrescrever o canal errado.
 
 Abre o navegador no consentimento do Google; ao autorizar, o código volta
 no loopback, é trocado pelo refresh_token e o arquivo é gravado no
@@ -57,6 +68,47 @@ def _caminho_padrao() -> Path:
     return Path(RUNTIME_DIR) / "youtube_credentials.json"
 
 
+# `principal` mora no arquivo legado; conta nova ganha sufixo. A regra e a
+# mesma de `builds.contas.credencial_youtube` e esta REPETIDA de proposito:
+# o motor nao importa a fabrica. Ha teste travando as duas na mesma resposta.
+CONTA_LEGADA = "principal"
+
+
+def caminho_da_conta(conta: str | None) -> Path:
+    if not conta or conta == CONTA_LEGADA:
+        return _caminho_padrao()
+    return _caminho_padrao().with_name(f"youtube_credentials_{conta}.json")
+
+
+def credenciais_do_app(destino: Path) -> tuple[str, str] | None:
+    """client_id/secret de qualquer credencial ja gravada nesta maquina.
+
+    O par client_id/client_secret e do PROJETO no Google Cloud, nao do canal:
+    autorizar um canal novo reusa o mesmo app. Sem isto, reautorizar exigia
+    voltar ao Console so para copiar dois campos que ja estao em disco — e
+    foi assim que o comando documentado (sem --client-id) simplesmente
+    imprimia o `usage` e nao abria navegador nenhum (11/09/2026).
+
+    Procura primeiro no arquivo de destino (reautorizacao da mesma conta) e
+    depois em qualquer outro, em ordem estavel.
+    """
+    candidatos = [destino] if destino.is_file() else []
+    pasta = destino.parent
+    if pasta.is_dir():
+        candidatos += sorted(p for p in pasta.glob("youtube_credentials*.json")
+                             if p != destino)
+    for caminho in candidatos:
+        try:
+            with open(caminho, encoding="utf-8-sig") as fh:
+                dados = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        cid, secret = dados.get("client_id"), dados.get("client_secret")
+        if cid and secret:
+            return str(cid), str(secret)
+    return None
+
+
 def _receber_codigo(porta: int) -> str:
     """Servidor de um tiro só: espera o redirect com ?code=..."""
     codigo: dict[str, str] = {}
@@ -92,12 +144,24 @@ def build_parser() -> SafeArgumentParser:
     parser = SafeArgumentParser(
         description="Fluxo OAuth unico do YouTube (gera o refresh_token)"
     )
-    parser.add_argument("--client-id", required=True)
-    parser.add_argument("--client-secret", required=True)
+    parser.add_argument(
+        "--client-id",
+        help="do Google Cloud Console. Omitido, reusa o de uma credencial "
+             "ja gravada nesta maquina (o app e o mesmo para todo canal).",
+    )
+    parser.add_argument("--client-secret", help="idem --client-id")
     parser.add_argument("--porta", type=int, default=8765)
     parser.add_argument(
+        "--conta",
+        help="nome da conta (builds.contas): decide o arquivo de destino. "
+             "`principal` grava no legado youtube_credentials.json; conta "
+             "nova grava youtube_credentials_<nome>.json. Sem isto, uma "
+             "reautorizacao para OUTRO canal sobrescreve o canal errado.",
+    )
+    parser.add_argument(
         "--out",
-        help="destino do JSON (padrao: youtube_credentials.json no runtime)",
+        help="destino do JSON (padrao: o de --conta, ou "
+             "youtube_credentials.json no runtime)",
     )
     parser.add_argument(
         "--com-upload",
@@ -117,6 +181,27 @@ def build_parser() -> SafeArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     redirect = f"http://localhost:{args.porta}"
+
+    destino = Path(args.out) if args.out else caminho_da_conta(args.conta)
+    if not (args.client_id and args.client_secret):
+        par = credenciais_do_app(destino)
+        if par is None:
+            safe_print(
+                "Faltam --client-id/--client-secret e nao ha nenhuma "
+                "credencial gravada para reusar. Pegue os dois no Google "
+                "Cloud Console (APIs e Servicos > Credenciais > ID do "
+                "cliente OAuth, tipo Aplicativo para computador)."
+            )
+            return 2
+        args.client_id, args.client_secret = par
+        safe_print("client_id/secret reusados de uma credencial ja gravada.")
+
+    safe_print(f"conta: {args.conta or CONTA_LEGADA}  ->  {destino}")
+    if destino.is_file():
+        safe_print("ATENCAO: o arquivo ja existe e vai ser SOBRESCRITO.")
+    safe_print("Entre com a conta Google dona DESTE canal — o Google costuma "
+               "vir logado na ultima usada, e autorizar o canal errado grava "
+               "um token que le a analytics de outro lugar.")
 
     url = AUTH_URL + "?" + urllib.parse.urlencode(
         {
@@ -158,7 +243,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    destino = Path(args.out) if args.out else _caminho_padrao()
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(
         json.dumps(
