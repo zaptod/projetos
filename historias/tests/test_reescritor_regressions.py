@@ -184,8 +184,138 @@ class EscaladaTests(unittest.TestCase):
         self.assertIn(primeiro, r._falso.perguntas[1],
                       "a 2a volta tem que partir do que ja foi tentado")
 
+    def test_maximo_como_string_llm_numero_nao_quebra(self):
+        """Robustez: se maximo vem como "llm 1" de estado corrupto, extrai o 1."""
+        r = _reescritor(["llm um, cinematic, 35mm, grain"])
+        vistos, estado = [], {"motivo": None, "n": 0}
+        # Passar maximo como string "llm 1" (simulando estado corrupto)
+        for nivel, prompt, _m in _com_reescrita(
+                self.DEGRAUS, r, lambda: estado["motivo"], "llm 1",
+                lambda *_a: None, "p01_cena_01"):
+            vistos.append((nivel, prompt))
+            estado["n"] += 1
+            estado["motivo"] = "escudo" if estado["n"] <= 3 else None
+        # Tem que ter extraido o numero 1 e rodado 1 volta do LLM
+        self.assertIn("llm 1", [n for n, _p in vistos],
+                      "maximo como 'llm 1' deveria rodar 1 volta do LLM")
+
+    def test_maximo_como_string_numero_puro_funciona(self):
+        """Se maximo e string "2", converte para int(2)."""
+        r = _reescritor(["llm um, cinematic, 35mm, grain",
+                         "llm dois, cinematic, 35mm, grain"])
+        vistos, estado = [], {"motivo": None, "n": 0}
+        # Passar maximo como string "2" (invés de int)
+        for nivel, prompt, _m in _com_reescrita(
+                self.DEGRAUS, r, lambda: estado["motivo"], "2",
+                lambda *_a: None, "p01_cena_01"):
+            vistos.append((nivel, prompt))
+            estado["n"] += 1
+            estado["motivo"] = "escudo" if estado["n"] <= 3 else None
+        # Tem que ter rodado 2 voltas do LLM
+        niveis = [n for n, _p in vistos]
+        self.assertEqual(2, niveis.count("llm 1") + niveis.count("llm 2"),
+                         "maximo como '2' deveria rodar 2 voltas")
+
     def test_escalada_vazia_nao_quebra(self):
         self.assertEqual([], self._correr([], _reescritor(), recusas=9))
+
+
+class ThreadPropriaTests(unittest.TestCase):
+    """O navegador do reescritor vive numa thread só dele (08/09/2026).
+
+    O Playwright sync NÃO pode ser aninhado: a API sincrona roda sobre um loop
+    asyncio POR THREAD, e só cabe um. O worker de imagens já está dentro do
+    navegador do PicassoIA, então abrir o ChatGPT na mesma thread levantava
+    `Playwright Sync API inside the asyncio loop` — e a reescrita por LLM
+    nunca chegou a acontecer numa corrida de verdade. O sintoma era invisível
+    porque a mensagem saía por `print`, que ninguém guardava; parecia que o
+    reescritor estava trabalhando e ele caía direto no mecânico.
+
+    Estes testes olham a THREAD, que é o que a correção mudou. Os outros deste
+    arquivo usam `ReescritorFalso`, que troca `_garantir` inteiro — eles nunca
+    passariam por aqui, e é por isso que passavam com o defeito no lugar.
+    """
+
+    def _preparar(self):
+        import contextlib
+        import threading
+        from contos.llm import cliente as mod
+
+        visto = {}
+
+        class _Cliente:
+            def abrir(self, novo_chat=True):
+                visto["abriu"] = threading.get_ident()
+
+            def perguntar(self, pedido, timeout=None):
+                visto["perguntou"] = threading.get_ident()
+                return "a woman in a kitchen, warm light, cinematic"
+
+        @contextlib.contextmanager
+        def _falso(provedor, headless=False, ajustes=None, log=None):
+            visto["entrou"] = threading.get_ident()
+            try:
+                yield _Cliente()
+            finally:
+                visto["saiu"] = threading.get_ident()
+
+        original = mod.abrir_cliente
+        mod.abrir_cliente = _falso
+        self.addCleanup(setattr, mod, "abrir_cliente", original)
+        return visto, threading.get_ident()
+
+    def test_o_navegador_nao_abre_na_thread_de_quem_chamou(self):
+        visto, minha = self._preparar()
+        r = Reescritor(log=lambda *_a: None)
+        self.addCleanup(r.fechar)
+        r.reescrever(PROMPT, "conteudo bloqueado")
+        self.assertIn("entrou", visto, "o cliente nao chegou a abrir")
+        self.assertNotEqual(visto["entrou"], minha,
+                            "abriu na mesma thread: o Playwright quebraria")
+
+    def test_abrir_e_perguntar_na_MESMA_thread(self):
+        """Trocar de thread no meio quebraria igual a aninhar."""
+        visto, _minha = self._preparar()
+        r = Reescritor(log=lambda *_a: None)
+        self.addCleanup(r.fechar)
+        r.reescrever(PROMPT, "conteudo bloqueado")
+        r.reescrever(PROMPT, "conteudo bloqueado", primeira=False)
+        self.assertEqual(visto["abriu"], visto["entrou"])
+        self.assertEqual(visto["perguntou"], visto["entrou"])
+
+    def test_fechar_na_mesma_thread_e_sem_travar(self):
+        # `_fechar_pilha` chamado de dentro da thread com um executor de UMA
+        # vaga seria um deadlock — por isso existe `_fechar_na_thread`.
+        visto, _minha = self._preparar()
+        r = Reescritor(log=lambda *_a: None)
+        r.reescrever(PROMPT, "conteudo bloqueado")
+        r.fechar()
+        self.assertEqual(visto["saiu"], visto["entrou"])
+        self.assertIsNone(r._executor, "o executor tinha que ter sido desligado")
+        self.assertIsNone(r._cliente)
+
+    def test_llm_que_nao_abre_desiste_e_nao_tenta_de_novo(self):
+        import contextlib
+        from contos.llm import cliente as mod
+
+        tentativas = []
+
+        @contextlib.contextmanager
+        def _explode(*_a, **_kw):
+            tentativas.append(1)
+            raise RuntimeError("Playwright Sync API inside the asyncio loop")
+            yield  # pragma: no cover
+
+        original = mod.abrir_cliente
+        mod.abrir_cliente = _explode
+        self.addCleanup(setattr, mod, "abrir_cliente", original)
+
+        r = Reescritor(log=lambda *_a: None)
+        self.addCleanup(r.fechar)
+        self.assertIsNone(r.reescrever(PROMPT, "bloqueado"))
+        self.assertIsNone(r.reescrever(PROMPT, "bloqueado"))
+        self.assertEqual(len(tentativas), 1,
+                         "navegador morto nao se tenta duas vezes por cena")
 
 
 if __name__ == "__main__":

@@ -140,11 +140,40 @@ class Reescritor:
         self._cliente = None
         self._desistiu = False        # ja falhou em abrir: nao tenta de novo
         self.reescritas = 0
+        self._executor = None
 
     # ------------------------------------------------------------- sessao
+    def _na_thread(self, funcao, *args, **kwargs):
+        """Roda no navegador do reescritor, sempre na MESMA thread so dele.
+
+        O Playwright sync NAO PODE SER ANINHADO. A API sincrona dele roda
+        sobre um loop asyncio por thread, e so cabe um: quando o worker de
+        imagens ja esta dentro do navegador do PicassoIA, abrir o ChatGPT na
+        mesma thread levanta "Playwright Sync API inside the asyncio loop".
+
+        Medido em 08/09/2026, na primeira cena que o filtro recusou de
+        verdade: a reescrita por LLM NUNCA chegou a abrir numa corrida real
+        por causa disso. O worker caia direto na suavizacao mecanica, e como
+        a mensagem so aparecia em `print` (que ninguem guardava), o sintoma
+        era invisivel — parecia que o reescritor estava trabalhando.
+
+        Uma thread dedicada da ao ChatGPT o loop dele. Tem que ser SEMPRE a
+        mesma: abrir numa e perguntar noutra quebraria igual.
+        """
+        if self._executor is None:
+            from concurrent.futures import ThreadPoolExecutor
+            self._executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="reescritor")
+        return self._executor.submit(funcao, *args, **kwargs).result()
+
     def _garantir(self):
         if self._cliente is not None or self._desistiu:
             return self._cliente
+        self._na_thread(self._abrir)
+        return self._cliente
+
+    def _abrir(self):
+        """RODA NA THREAD do reescritor (ver `_na_thread`)."""
         from ..llm.cliente import abrir_cliente
         try:
             self.log(f"[imagens] abrindo o {self.provedor} para reescrever o "
@@ -158,17 +187,27 @@ class Reescritor:
             # Sem login, conta ocupada, site fora: o worker cai no mecanico.
             self.log(f"[imagens] nao abri o {self.provedor} ({exc}); sigo com "
                      "a suavizacao automatica.")
-            self._fechar_pilha()
+            self._fechar_na_thread()
             self._desistiu = True
-        return self._cliente
 
-    def _fechar_pilha(self):
+    def _fechar_na_thread(self):
+        """RODA NA THREAD. Fechar de fora dela travaria igual a abrir."""
         if self._pilha is not None:
             try:
                 self._pilha.close()
             except Exception:
                 pass
         self._pilha, self._cliente = None, None
+
+    def _fechar_pilha(self):
+        if self._pilha is not None or self._cliente is not None:
+            try:
+                self._na_thread(self._fechar_na_thread)
+            except Exception:
+                self._pilha, self._cliente = None, None
+        if self._executor is not None:
+            self._executor.shutdown(wait=False)
+            self._executor = None
 
     def fechar(self):
         if self._cliente is not None:
@@ -194,7 +233,8 @@ class Reescritor:
         pedido = molde.format(prompt=prompt,
                               motivo=(motivo or "conteudo bloqueado")[:300])
         try:
-            resposta = cliente.perguntar(pedido, timeout=self.timeout)
+            resposta = self._na_thread(cliente.perguntar, pedido,
+                                       timeout=self.timeout)
         except Exception as exc:
             self.log(f"[imagens] o {self.provedor} nao respondeu ({exc}); "
                      "sigo com a suavizacao automatica.")

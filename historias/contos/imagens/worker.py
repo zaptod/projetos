@@ -18,6 +18,7 @@ Tres regras que vieram de bug real no outro projeto e valem igual aqui:
 """
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -55,7 +56,16 @@ def _com_reescrita(degraus, reescritor, ultima_recusa, maximo, log, rotulo):
 
     if reescritor is not None:
         atual = prompt
-        for volta in range(max(0, int(maximo))):
+        # Garantir que maximo e sempre um inteiro, mesmo se foi passado como
+        # string de um estado corrupto (ex: "llm 1" ao inves de 2). Tira apenas
+        # o numero da string se houver, senao usa 0.
+        try:
+            maximo_int = int(maximo)
+        except (ValueError, TypeError):
+            # Se maximo e string como "llm 1", extrai o numero ou usa 0
+            match = re.search(r'\d+', str(maximo or 0))
+            maximo_int = int(match.group()) if match else 0
+        for volta in range(max(0, maximo_int)):
             motivo = ultima_recusa()
             if not motivo:
                 break        # nao foi recusa: nao ha o que reescrever
@@ -69,6 +79,53 @@ def _com_reescrita(degraus, reescritor, ultima_recusa, maximo, log, rotulo):
 
     for nivel, tentativa, mudancas in degraus[1:]:
         yield (nivel, tentativa, mudancas)
+
+
+def _gerar_esperando(cliente, prompt: str, config: dict, ajustes: dict,
+                     log, rotulo: str) -> tuple:
+    """Manda o prompt e espera a imagem. Estouro de espera TENTA DE NOVO.
+
+    Medido no dia 08/09/2026, 87 envios: imagem que da certo volta em 9 a 42
+    segundos — a maioria nem chega a imprimir o primeiro "gerando...", que so
+    sai aos 20 s. Quando falha, nao demora: NUNCA VOLTA. Fica os 600 s
+    inteiros e estoura.
+
+    E isso era tratado como fim da cena. `EsperaEstourou` caia no `except
+    Exception` generico, que registrava o erro e saia do laco de escalada —
+    sem nenhuma nova tentativa. O resultado no disco:
+
+        historia_00010  p01_cena_01 estourou as 10:12, as 12:10 e as 15:10,
+                        em tres disparos seguidos, e ficou PRONTA as 15:35 —
+                        o mesmo prompt, numa tentativa a mais.
+        historia_00011  81 de 84 imagens; faltaram a cena 1 da parte 1 (o
+                        gancho) e a ultima da parte 6 (o CTA), e por isso
+                        duas das seis partes nao viraram video.
+
+    Reenviar o MESMO texto e o certo aqui, e e o oposto do que se faz com
+    recusa: recusa e sobre o conteudo (reenviar identico seria recusado de
+    novo, por definicao), estouro e sobre o site. Suavizar por causa de um
+    timeout pioraria a imagem para consertar o que nao era problema dela.
+    """
+    from builds.identity.client import BrowserMorreu, EsperaEstourou
+
+    espera = int(ajustes.get("render_timeout", 150))
+    tentativas = max(1, int(config.get("tentativas_por_espera", 3)))
+    for volta in range(1, tentativas + 1):
+        antes = cliente.submit_prompt(
+            prompt, aspect=str(config.get("aspect", "9:16")))
+        try:
+            return cliente.wait_for_render(antes=antes), antes
+        except BrowserMorreu:
+            raise                       # aba fechada nao se resolve tentando
+        except EsperaEstourou:
+            if volta >= tentativas:
+                raise
+            log(f"[imagens] {rotulo}: nada voltou em {espera}s "
+                f"(tentativa {volta}/{tentativas}). Mandando de novo — "
+                "imagem boa volta em menos de 45s, entao isto e o site, "
+                "nao o prompt.")
+            time.sleep(float(ajustes.get("min_interval", 8)))
+    raise AssertionError("inalcancavel")
 
 
 class NaoRodou(RuntimeError):
@@ -174,6 +231,7 @@ def gerar(historia_id: str, *, limite: int | None = None,
                 # isso a cena ficava sem imagem para sempre: reenviar o mesmo
                 # texto e ser recusado de novo, por definicao.
                 feito, ultima_recusa, ultima_tentativa = False, None, prompt
+                falha_tecnica = None
                 # A escalada nao e uma lista fixa: depois de uma recusa REAL
                 # entra o LLM (que escreveu a historia e sabe o que a cena
                 # esta contando) e so depois a troca mecanica, que e a rede
@@ -188,15 +246,20 @@ def gerar(historia_id: str, *, limite: int | None = None,
                         log(f"[imagens] {rotulo}: tentando {nivel} "
                             f"({', '.join(mudancas) or 'suavizado'})")
                     try:
-                        antes = cliente.submit_prompt(
-                            tentativa, aspect=str(config.get("aspect", "9:16")))
-                        alvo = cliente.wait_for_render(antes=antes)
+                        alvo, antes = _gerar_esperando(
+                            cliente, tentativa, config, ajustes, log, rotulo)
                         prova = proveniencia.comprovar(
                             cliente, historia_id, rotulo,
                             cliente.prompt_enviado, cliente.enviado_em, alvo,
                             ajustes)
                         if (config.get("exigir_prova_de_origem", True)
                                 and not prova.get("comprovada")):
+                            # Falha de prova nao e recusa de conteudo: e erro
+                            # tecnico (site falhou ao confirmar origem).
+                            # Marcar como tecnico para que retente na proxima
+                            # passada, em vez de virar "recusado" permanente.
+                            falha_tecnica = ValueError(
+                                f"Prova: {prova.get('motivo')}")
                             erros.append(f"{rotulo}: sem prova de origem "
                                          f"({prova.get('motivo')}). Nada baixado.")
                             log(f"[imagens] {rotulo}: {erros[-1]}")
@@ -223,13 +286,32 @@ def gerar(historia_id: str, *, limite: int | None = None,
                         time.sleep(float(ajustes.get("min_interval", 8)) / 2)
                         continue
                     except Exception as exc:
+                        falha_tecnica = exc
                         erros.append(f"{rotulo}: {type(exc).__name__}: {exc}")
                         log(f"[imagens] {rotulo} FALHOU: {exc}")
                         if type(exc).__name__ in ("BrowserMorreu",):
                             morreu = True
                         break
 
-                if not feito and ultima_recusa:
+                if not feito and falha_tecnica is not None:
+                    # PAROU POR ERRO NOSSO, NAO POR RECUSA DO SITE — e a
+                    # diferenca muda o que se faz depois: recusa pede prompt
+                    # novo no roteiro (trabalho humano), erro tecnico pede
+                    # conserto no codigo e a cena volta sozinha.
+                    #
+                    # Sem esta separacao a mentira era completa. Em 09/09/2026,
+                    # `historia_00012` p01_cena_10: o PicassoIA recusou, o
+                    # ChatGPT reescreveu, a imagem NOVA passou e foi baixada —
+                    # e ai `fila.registrar` estourou num `int("llm 1")`. O
+                    # `except` generico pegou, `feito` ficou False, e como
+                    # havia uma recusa antiga guardada a cena foi gravada como
+                    # "recusado pelo filtro ate o ultimo nivel". Tres cenas
+                    # ficaram assim: imagem no disco, sem prova de origem, e
+                    # marcadas como impossiveis.
+                    log(f"[imagens] {rotulo}: parou por erro tecnico "
+                        f"({type(falha_tecnica).__name__}), NAO por recusa. "
+                        "A cena volta na proxima passada.")
+                elif not feito and ultima_recusa:
                     # Esgotou ate o nivel ambiente: a cena fica marcada com o
                     # motivo (o painel mostra) e a geracao SEGUE. Uma cena
                     # barrada nao pode parar a historia inteira.

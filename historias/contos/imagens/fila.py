@@ -94,21 +94,23 @@ def _meta(historia_id: str) -> dict:
 
 def registrar(historia_id: str, n: int, *, prompt: str, arquivo: Path,
               prova: dict | None = None, url: str = "",
-              parte: int = 1, nivel: int = 0) -> None:
+              parte: int = 1, nivel: int | str = 0) -> None:
     """Anota prompt e prova daquela cena (append idempotente por cena).
 
-    `nivel` > 0 significa que o prompt precisou ser suavizado para passar
-    pelo filtro de conteudo — fica registrado porque muda o que a imagem
-    mostra, e quem for reescrever o roteiro precisa saber.
+    `nivel` registra qual foi o tratamento: 0 (original), 1-3 (suavizacao
+    mecanica), ou "llm 1"/"llm 2" (reescrita com LLM). Importa saber qual
+    dos dois passou a cena, porque muda o que a imagem mostra.
     """
     caminho = pasta_da_historia(historia_id) / "imagens.json"
     dados = _meta(historia_id)
     chave = f"{int(parte)}:{int(n)}"
+    # `nivel` pode ser int ou str ("llm 1", etc). Se for 0 ou falsy, vira None.
+    nivel_para_salvar = nivel if nivel else None
     dados.setdefault("cenas", {})[chave] = {
         "prompt": prompt,
         "arquivo": Path(arquivo).name,
         "url": url,
-        "suavizacao": int(nivel) or None,
+        "suavizacao": nivel_para_salvar,
         "prova": {"comprovada": bool((prova or {}).get("comprovada")),
                   "forca": (prova or {}).get("forca"),
                   "motivo": (prova or {}).get("motivo")} if prova else None,
