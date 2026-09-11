@@ -40,6 +40,22 @@ PADRAO = {
     "autorizados": [],      # chat_ids que podem mandar comando
     "alertas": True,        # empurrar erro do diario sem ser perguntado
     "intervalo_alerta_s": 20,
+    # Erro novo abre uma sessao do Claude que LE os arquivos e diz o que houve.
+    "apurar": True,
+    # ... e, com isto, ela tambem MEXE no codigo. Pedido dele em 08/09/2026.
+    # O conserto so sobrevive se a suite inteira passar; reprovou, e desfeito.
+    # Desligue aqui se um dia quiser so o diagnostico.
+    "consertar": True,
+    # Os dois relatorios periodicos (pedido de 09/09/2026), e a hora local de
+    # cada um. Hora vazia ou invalida = aquele relatorio nao sai sozinho (o
+    # comando continua funcionando).
+    #
+    # `metas` as 21:00: depois da postagem das 17:07 E depois do ultimo
+    # disparo de geracao (20:00), entao o dia ja esta fechado quando ele fala.
+    # `funcionamento` as 09:00: e o relatorio da NOITE — o que rodou enquanto
+    # ninguem olhava e o que quebrou. De manha ainda da tempo de consertar
+    # antes da postagem da tarde.
+    "relatorios": {"metas": "21:00", "funcionamento": "09:00"},
 }
 
 

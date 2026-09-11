@@ -17,7 +17,11 @@ O bot nunca abre porta na maquina: quem inicia a conexao e ele, para fora.
 from __future__ import annotations
 
 import random
+import subprocess
+import sys
 import time
+from datetime import datetime
+from pathlib import Path
 
 from . import comandos, config
 from .api import Telegram
@@ -111,6 +115,55 @@ class Bot:
                      f"{(evento.get('detalhe') or '')[:400]}")
             for chat in config.carregar()["autorizados"]:
                 self.tg.mensagem(chat, texto, markdown=True)
+        self._apurar()
+
+    def _apurar(self):
+        """Solta o Claude em cima dos erros novos, sem segurar o bot.
+
+        `Popen` e nao `run`: a apuracao le arquivos e pensa, o que leva
+        dezenas de segundos, e o bot precisa continuar respondendo comando do
+        celular enquanto isso. O resultado chega no chat por conta propria.
+
+        Quem se protege de rodar duas vezes e o proprio apurador (trava de
+        arquivo e teto diario) — aqui so se dispara.
+        """
+        if not self.config.get("apurar", True):
+            return
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "remoto", "--apurar"],
+                cwd=str(Path(__file__).resolve().parents[1]),
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except Exception as exc:                               # noqa: BLE001
+            self.log(f"[remoto] nao consegui apurar os erros: {exc}")
+
+    def _relatorios(self):
+        """Manda os relatorios periodicos que ja venceram.
+
+        Vence por "passou da hora e ainda nao saiu hoje", nao por "e
+        exatamente a hora": o bot reinicia e a maquina dorme, e um relatorio
+        que so sai se alguem estiver no minuto certo e um relatorio que nao
+        sai. Mesma licao do `StartWhenAvailable` das tarefas do Windows.
+
+        Marca ANTES de mandar: se o Telegram estiver fora do ar, o relatorio
+        daquele dia se perde — e isso e melhor do que a alternativa, que e
+        tentar de novo a cada volta do laco e entupir o chat quando a rede
+        voltar.
+        """
+        from . import relatorios
+
+        horarios = config.carregar().get("relatorios") or {}
+        vencidos = relatorios.devidos(horarios)
+        if not vencidos:
+            return
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        for nome in vencidos:
+            relatorios.marcar(nome, hoje)
+            texto = relatorios.montar(nome)
+            for chat in config.carregar()["autorizados"]:
+                self.tg.mensagem(chat, texto, markdown=True)
+            self.log(f"[remoto] relatorio de {nome} enviado.")
 
     def avisar_todos(self, texto: str):
         for chat in config.carregar()["autorizados"]:
@@ -130,6 +183,10 @@ class Bot:
             self._alertar()
         except Exception as exc:
             self.log(f"[remoto] erro nos alertas: {exc}")
+        try:
+            self._relatorios()
+        except Exception as exc:   # relatorio quebrado nao derruba o bot
+            self.log(f"[remoto] erro nos relatorios: {exc}")
         return len(novidades)
 
     def rodar(self):

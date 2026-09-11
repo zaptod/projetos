@@ -72,6 +72,8 @@ def ajuda(_args: str = "") -> str:
         "/publicar <id> [youtube|tiktok|ambos] — sobe aquele vídeo\n"
         "/gerar — uma build nova (roleta + vídeo)\n"
         "/historias — em que pé está o canal de histórias\n"
+        "/metas — quantos vídeos, em que horário, em que canal\n"
+        "/funcionamento — tempos, erros e agendamento das últimas 24h\n"
         "/pausar [minutos] · /retomar · /parar\n"
         "/ajuda — isto aqui")
 
@@ -206,6 +208,17 @@ def historias(_args: str = "") -> str:
     return "\n".join(linhas[:MAX_LINHAS]) or "nenhuma história ainda."
 
 
+def metas(_args: str = "") -> str:
+    """O mesmo texto que chega sozinho todo dia — sob demanda."""
+    from . import relatorios
+    return relatorios.montar("metas")
+
+
+def funcionamento(_args: str = "") -> str:
+    from . import relatorios
+    return relatorios.montar("funcionamento")
+
+
 def pausar(args: str = "") -> str:
     try:
         minutos = float(args.strip()) if args.strip() else None
@@ -237,6 +250,9 @@ TABELA = {
     "publicar": publicar,
     "gerar": gerar,
     "historias": historias,
+    "metas": metas,
+    "funcionamento": funcionamento,
+    "relatorio": funcionamento,
     "pausar": pausar,
     "retomar": retomar,
     "parar": parar,
