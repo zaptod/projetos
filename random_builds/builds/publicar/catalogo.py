@@ -92,6 +92,9 @@ class Video:
     quando: float = 0.0
     variante: str = "A"          # gancho A (payoff) ou B (alternativo)
     pendencias: list[str] = field(default_factory=list)
+    # Onda 15D: a miniatura, quando a pasta tem uma. Campo NOVO no fim de
+    # proposito — quem compara `to_dict()` inteiro nao quebra por isso.
+    capa: Path | None = None
 
     @property
     def pronto(self) -> bool:
@@ -120,7 +123,8 @@ class Video:
                 "descricao": self.descricao, "hashtags": list(self.hashtags),
                 "fonte_id": self.fonte_id, "rotulo": self.rotulo,
                 "bytes": self.bytes, "quando": self.quando,
-                "variante": self.variante, "pendencias": list(self.pendencias)}
+                "variante": self.variante, "pendencias": list(self.pendencias),
+                "capa": str(self.capa) if self.capa else None}
 
 
 def pendencias_da_build(pasta: Path, perfil: str) -> list[str]:
@@ -253,6 +257,9 @@ def _videos_de(pasta: Path, origem: str, fonte_id: str, campos: dict,
                        campos)
     descricao = _formatar(config.get("descricoes", {}).get(origem, ""), campos)
     hashtags = list(config.get("hashtags", {}).get(origem, []))
+    # Uma capa por PASTA, valida para os dois perfis e as duas variantes.
+    capa = next((pasta / n for n in ("capa.png", "capa.jpg")
+                 if (pasta / n).is_file()), None)
     saida = []
     for perfil in PERFIS:
         pendencias = pendencias_da_build(pasta, perfil) if origem == BUILD else []
@@ -269,7 +276,7 @@ def _videos_de(pasta: Path, origem: str, fonte_id: str, campos: dict,
                 descricao=descricao, hashtags=hashtags, fonte_id=fonte_id,
                 rotulo=rotulo + sufixo_rotulo, bytes=caminho.stat().st_size,
                 quando=caminho.stat().st_mtime, variante=variante,
-                pendencias=list(pendencias)))
+                pendencias=list(pendencias), capa=capa))
     return saida
 
 
@@ -370,11 +377,15 @@ def exportar(video: Video, destino: Path | None = None,
     destino.mkdir(parents=True, exist_ok=True)
     alvo = destino / video.nome_export
     shutil.copy2(video.caminho, alvo)
+    # A capa vai JUNTO: se a API e o navegador falharem em subi-la, ela
+    # ainda chega a mao com o mp4, em vez de ficar perdida no outputs.
+    if video.capa and Path(video.capa).is_file():
+        shutil.copy2(video.capa, alvo.with_suffix(Path(video.capa).suffix))
     alvo.with_suffix(".txt").write_text(
         f"{video.titulo}\n\n{video.descricao_completa}\n", encoding="utf-8")
     return alvo
 
 
-__all__ = ["BUILD", "ESTREIA", "TORNEIO", "Video", "carregar_config",
+__all__ = ["BUILD", "DUELO", "ESTREIA", "TORNEIO", "Video", "carregar_config",
            "exportar", "listar", "pasta_export", "pendencias_da_build", "por_id",
            "salvar_texto", "slug"]

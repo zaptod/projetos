@@ -18,6 +18,7 @@ decisão de ferramenta.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -118,6 +119,14 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
         # sucesso tambem. Sem URL o registro entra com `youtube_id: None` e
         # `atualizar()` o ignora — mas o "isto foi publicado" nao se perde.
         publicado = youtube_web.confirmado(estado)
+    if publicado and getattr(video, "capa", None):
+        # Depois do upload, nunca antes: `thumbnails.set` precisa do id do
+        # video. Os dois caminhos devolvem a URL em `estado`.
+        achado = _ID_NA_URL.search(str(estado) or "")
+        if achado:
+            definir_capa(achado.group(1), video.capa, canal=canal, log=fala)
+        else:
+            fala("  capa: o upload nao devolveu a URL, entao nao ha id")
     if publicado:
         from . import metricas
         metricas.registrar_publicado(
@@ -320,6 +329,48 @@ def token_de_acesso(credenciais: Credenciais) -> str:
     if not token:
         raise PublicacaoFalhou("o Google não devolveu access_token.")
     return token
+
+
+API_THUMBNAIL = "https://www.googleapis.com/upload/youtube/v3/thumbnails/set"
+
+# Extrai o id de qualquer forma de URL que os dois caminhos devolvem.
+_ID_NA_URL = re.compile(r"(?:youtu\.be/|v=|/shorts/)([A-Za-z0-9_-]{6,})")
+
+
+def definir_capa(video_id: str, capa, *, canal: str = "builds",
+                 log=None) -> bool:
+    """Sobe a miniatura de um video ja publicado. NUNCA levanta.
+
+    `thumbnails.set` e autorizado pelo escopo de UPLOAD que a credencial ja
+    tem — nao precisa da reautorizacao do Analytics. Mesmo assim isto e
+    enfeite: um 403 de canal sem verificacao, ou uma capa que nao existe,
+    nao pode transformar uma publicacao bem-sucedida em falha.
+    """
+    fala = log or (lambda _linha: None)
+    caminho = Path(capa) if capa else None
+    if not video_id or caminho is None or not caminho.is_file():
+        return False
+    try:
+        import requests
+        credenciais = carregar_credenciais(canal=canal)
+        if credenciais is None:
+            fala("  capa: sem credencial da API (o navegador tenta depois)")
+            return False
+        tipo = "image/png" if caminho.suffix.lower() == ".png" else "image/jpeg"
+        resposta = requests.post(
+            API_THUMBNAIL, timeout=120,
+            headers={"Authorization": f"Bearer {token_de_acesso(credenciais)}",
+                     "Content-Type": tipo},
+            params={"videoId": video_id}, data=caminho.read_bytes())
+        if resposta.ok:
+            fala("  capa enviada")
+            return True
+        # O motivo importa: canal sem verificacao por telefone recebe 403
+        # aqui e em nenhum outro lugar do fluxo.
+        fala(f"  capa recusada ({resposta.status_code}): {resposta.text[:160]}")
+    except Exception as erro:
+        fala(f"  capa falhou ({type(erro).__name__}: {erro})")
+    return False
 
 
 def _corpo(video, config: dict, visibilidade: str,

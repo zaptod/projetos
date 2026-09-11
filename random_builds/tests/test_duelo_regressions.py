@@ -214,6 +214,85 @@ class EscopoPorOrigemTests(unittest.TestCase):
         self.assertEqual(28.0, config_gameplay(None, "duelo")["max_total"])
 
 
+class CarreiraNaTelaTests(unittest.TestCase):
+    """Onda 15D: os 61 registros do ledger que nunca chegaram ao quadro.
+
+    `builds/arena/ledger.py` guarda cartel, sequencia, revanche e campeao
+    desde a onda 9, e `FightSession._carreira` ja injetava tudo no evento
+    da luta. O renderer nao lia um campo sequer; o unico consumidor era uma
+    legenda passageira, com 60% de chance de aparecer. Era o unico motivo
+    para o espectador querer o proximo video, guardado num arquivo.
+    """
+
+    def _com_carreira(self, **extra) -> dict:
+        fight = _fight()
+        fight["luta"].update({
+            "p1_cartel": "1V-5D", "p2_cartel": "4V-0D",
+            "p1_recorde": {"vitorias": 1, "derrotas": 5, "sequencia": -1},
+            "p2_recorde": {"vitorias": 4, "derrotas": 0, "sequencia": 4},
+        })
+        fight["luta"].update(extra)
+        return fight
+
+    def test_o_cartel_do_ledger_chega_ao_quadro(self):
+        ident = _plano(self._com_carreira())["events"][0]["identidade"]
+        self.assertEqual("1V-5D", ident["p1"]["cartel"])
+        self.assertEqual("4V-0D", ident["p2"]["cartel"])
+
+    def test_estreante_nao_mostra_cartel_zerado(self):
+        """"0V-0D" ocuparia a linha para dizer que nao ha historia nenhuma."""
+        fight = _fight()
+        fight["luta"]["p1_cartel"] = "0V-0D"
+        ident = _plano(fight)["events"][0]["identidade"]
+        self.assertEqual("", ident["p1"]["cartel"])
+
+    def test_o_titulo_em_jogo_vence_a_revanche_no_selo(self):
+        """Um selo so, e o mais forte: dois avisos no mesmo segundo nao sao
+        lidos, e cinturao em jogo vale mais que historico."""
+        plano = _plano(self._com_carreira(titulo=True, revanche=True))
+        self.assertEqual("TITULO EM JOGO",
+                         plano["events"][0]["identidade"]["selo"])
+
+    def test_revanche_vira_selo_quando_nao_ha_titulo(self):
+        plano = _plano(self._com_carreira(revanche=True))
+        self.assertEqual("REVANCHE", plano["events"][0]["identidade"]["selo"])
+
+    def test_sequencia_longa_vira_selo_quando_nao_ha_mais_nada(self):
+        ident = _plano(self._com_carreira())["events"][0]["identidade"]
+        self.assertIn("SEGUIDAS", ident["selo"])
+        self.assertIn("Lyra", ident["selo"])
+
+    def test_confronto_sem_historia_nao_inventa_selo(self):
+        self.assertNotIn("selo", _plano(_fight())["events"][0]["identidade"])
+
+    def test_o_veredito_mostra_o_cartel_JA_com_esta_luta(self):
+        """O numero que MUDOU e o gancho do proximo video.
+
+        O ledger so registra o duelo depois da renderizacao, entao o
+        recorde que chega ao builder e o de antes: somar a vitoria aqui e
+        mais barato que inverter a ordem do pipeline.
+        """
+        ver = _plano(self._com_carreira())["events"][0]["veredito"]
+        self.assertEqual("Kael", ver["vencedor"])
+        self.assertEqual("2V-5D", ver["cartel_apos"])
+
+    def test_sem_ledger_o_duelo_continua_de_pe(self):
+        """Carreira e enfeite, nao requisito: a primeira luta de todas."""
+        evento = _plano(_fight())["events"][0]
+        self.assertEqual("", evento["identidade"]["p1"]["cartel"])
+        self.assertEqual("", evento["veredito"]["cartel_apos"])
+
+    def test_a_capa_e_gerada_com_o_duelo(self):
+        """O controller chama a capa depois de renderizar, e a falha dela
+        nao pode derrubar um video que ja existe em disco."""
+        import inspect
+
+        from builds.pipeline.controller import PipelineController
+        fonte = inspect.getsource(PipelineController._entregar_duelo)
+        self.assertIn("gerar_capa", fonte)
+        self.assertIn("except Exception", fonte)
+
+
 class PublicacaoDoDueloTests(unittest.TestCase):
     """Roda contra o `config/publicacao.json` REAL, como os outros."""
 

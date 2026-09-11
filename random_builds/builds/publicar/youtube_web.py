@@ -253,6 +253,15 @@ def perfil_da_conta(canal: str = "builds") -> Path:
 #     python -m builds.publicar.youtube_web --sondar
 # e ajuste ESTAS listas com o que a pagina realmente tem.
 ENTRADA_ARQUIVO = 'input[type="file"]'
+# Onda 15D: a miniatura. O Studio tem DOIS inputs de arquivo na tela de
+# detalhes — o do video (que ja foi usado) e o da capa —, entao este
+# precisa ser especifico. Falhar aqui nunca derruba a publicacao: a API
+# ja tentou subir a capa, e o `exportar` a entrega junto com o mp4.
+ENTRADA_MINIATURA = (
+    'ytcp-thumbnails-compact-editor-uploader input[type="file"]',
+    '#file-loader input[type="file"]',
+    'input[type="file"][accept*="image"]',
+)
 CAMPO_TITULO = (
     '#title-textarea #textbox',
     'ytcp-social-suggestions-textbox[id="title-textarea"] #textbox',
@@ -698,6 +707,19 @@ def publicar(video, *, visibilidade: str | None = None,
         if descricao is not None:
             _escrever(page, descricao, video.descricao_completa[:4900])
             passo("descricao escrita.")
+
+        capa = getattr(video, "capa", None)
+        if capa and Path(capa).is_file():
+            try:
+                entrada_capa = _primeiro(page, ENTRADA_MINIATURA, timeout=8.0)
+                if entrada_capa is None:
+                    passo("campo de miniatura nao apareceu; capa fica de fora.")
+                else:
+                    entrada_capa.set_input_files(str(capa))
+                    passo(f"capa entregue ({Path(capa).name}).")
+            except Exception as erro:
+                # Enfeite: o video ja esta subindo e nao pode cair por isto.
+                passo(f"capa falhou ({type(erro).__name__}); seguindo sem ela.")
 
         # O campo obrigatorio. Sem ele, "Publicar" nunca habilita.
         criancas = _primeiro(page, NAO_E_PARA_CRIANCAS, timeout=15.0)

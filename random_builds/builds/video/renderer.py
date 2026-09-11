@@ -602,6 +602,12 @@ class VideoRenderer:
                                            classe) if p)
             if not texto:
                 continue
+            # Onda 15D: o cartel entra na MESMA linha, depois de um ponto.
+            # Linha nova custaria altura no unico lugar livre do quadro, e
+            # "1V-5D" e curto o bastante para caber junto.
+            cartel = str(dados.get("cartel") or "").strip()
+            if cartel:
+                texto = f"{texto} · {cartel}" if texto else cartel
             lados.append({
                 "x": margem if lado == "esq" else self.width - margem,
                 "y": y, "cor": cor, "texto": texto,
@@ -611,7 +617,19 @@ class VideoRenderer:
             })
         if not lados:
             return None
-        return {"ate": float(ident.get("ate", 1.5)), "lados": lados}
+        saida = {"ate": float(ident.get("ate", 1.5)), "lados": lados}
+        selo = str(ident.get("selo") or "").strip()
+        if selo:
+            # O selo e o motivo de ESTE confronto existir — revanche,
+            # cinturao, sequencia. Fica sob a faixa de identidade, centrado,
+            # e some junto com ela.
+            saida["selo"] = {
+                "texto": selo,
+                "y": y + int(self.ref * 0.045),
+                "fonte": fit_font(selo, self.fonts["black"],
+                                  int(self.width * 0.8), int(self.ref * 0.034)),
+            }
+        return saida
 
     def _desenhar_identidade(self, img: Image.Image, ident: dict, t: float) -> None:
         ate = ident["ate"]
@@ -627,6 +645,12 @@ class VideoRenderer:
                       fill=lado["cor"], anchor=lado["anchor"],
                       stroke_width=max(2, int(self.ref * 0.004)),
                       stroke_fill=(12, 10, 24))
+        selo = ident.get("selo")
+        if selo:
+            draw.text((self.width // 2, selo["y"]), selo["texto"],
+                      font=selo["fonte"], fill=(255, 214, 92), anchor="ma",
+                      stroke_width=max(3, int(self.ref * 0.005)),
+                      stroke_fill=(12, 10, 24))
         if alfa < 1.0:
             camada = self._com_alfa(camada, alfa)
         img.paste(camada, (0, 0), camada)
@@ -639,8 +663,13 @@ class VideoRenderer:
         fonte = fit_font(vencedor, self.fonts["black"], int(self.width * 0.86),
                          int(self.ref * 0.085))
         fonte_ko = load_font(self.fonts["bold"], int(self.ref * 0.034))
+        # Onda 15D: o cartel JA CONTANDO esta luta. "5V-0D" no fim diz que
+        # ha uma sequencia em risco — e o unico gancho honesto para o
+        # proximo video, porque nasce do que acabou de acontecer.
+        cartel = str(ver.get("cartel_apos") or "").strip()
         return {"de": float(ver.get("de", 0.0)), "nome": vencedor,
-                "ko": str(ver.get("ko_type") or "").strip(),
+                "ko": " · ".join(p for p in
+                                 (str(ver.get("ko_type") or "").strip(), cartel) if p),
                 "fonte": fonte, "fonte_ko": fonte_ko}
 
     def _desenhar_veredito(self, img: Image.Image, ver: dict, t: float) -> None:

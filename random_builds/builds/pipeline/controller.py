@@ -346,6 +346,14 @@ class PipelineController:
             renderer = VideoRenderer(self.render_config, profile, preview)
             final = renderer.render(edit_plan, fight, out_dir, music)
             print(f"[render:{profile}] {final} ({edit_plan['total_duration']}s)")
+        # A capa e enfeite: falhar nela nao pode custar o video, que ja
+        # esta renderizado. Mesma doutrina de `_enfileirar_identidade`.
+        try:
+            from ..publicar.capa import gerar as gerar_capa
+            print(f"[capa] {gerar_capa(fight, out_dir, self.render_config)}")
+        except Exception as erro:
+            print(f"[capa] falhou ({type(erro).__name__}: {erro}) — o video "
+                  f"continua publicavel sem miniatura")
 
     # ------------------------------------------------------------------- luta
     def luta(self, p1: str | None = None, p2: str | None = None,

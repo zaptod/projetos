@@ -94,11 +94,38 @@ class DueloTimelineBuilder:
         revanche, titulo) entra nesta mesma caixa na 15D.
         """
         ate = float(self._cfg.get("identidade_s", 1.5))
-        return {
+        saida = {
             "ate": round(min(ate, duracao * 0.25), 3),
             "p1": self._lado(luta, "p1"),
             "p2": self._lado(luta, "p2"),
         }
+        # Onda 15D: a CARREIRA na tela. O ledger tem 61 lutas registradas e
+        # `FightSession._carreira` ja injetava cartel, revanche e titulo no
+        # evento desde a onda 9 — o renderer nunca leu nenhum campo. Era o
+        # unico motivo para o espectador querer o proximo video, guardado
+        # num arquivo que ninguem ve.
+        selo = self._selo(luta)
+        if selo:
+            saida["selo"] = selo
+        return saida
+
+    @staticmethod
+    def _selo(luta: dict) -> str:
+        """A frase curta que diz por que ESTE confronto importa.
+
+        Um selo so, e o mais forte: dois avisos competindo no mesmo segundo
+        nao sao lidos. Titulo ganha de revancha porque cinturao em jogo vale
+        mais que historico.
+        """
+        if luta.get("titulo"):
+            return "TITULO EM JOGO"
+        if luta.get("revanche"):
+            return "REVANCHE"
+        for slot in ("p1", "p2"):
+            seq = ((luta.get(f"{slot}_recorde") or {}).get("sequencia") or 0)
+            if seq >= 3:
+                return f"{luta.get(slot, '')} VEM DE {seq} SEGUIDAS".strip()
+        return ""
 
     def _veredito(self, luta: dict, duracao: float) -> dict:
         """O desfecho sobre o ultimo frame — nunca um cartao depois dele.
@@ -113,7 +140,29 @@ class DueloTimelineBuilder:
             "de": round(max(0.0, duracao - dur), 3),
             "vencedor": luta.get("vencedor") or "",
             "ko_type": luta.get("ko_type") or "",
+            # O numero que MUDOU e o gancho do proximo video: "5V-0D" diz
+            # que existe uma sequencia em risco. O cartel de antes ja
+            # apareceu na abertura; repeti-lo aqui nao acrescenta nada.
+            "cartel_apos": self._cartel_apos(luta),
         }
+
+    @staticmethod
+    def _cartel_apos(luta: dict) -> str:
+        """Cartel do vencedor JA CONTANDO esta luta.
+
+        O ledger so registra o duelo depois da renderizacao (`controller.
+        duelo`), entao o recorde que chega aqui e o de ANTES. Somar a
+        vitoria na mao e mais barato e mais previsivel que inverter a ordem
+        do pipeline — e o registro continua acontecendo uma vez so.
+        """
+        vencedor = luta.get("vencedor")
+        if not vencedor:
+            return ""
+        slot = "p1" if luta.get("p1") == vencedor else "p2"
+        recorde = luta.get(f"{slot}_recorde") or {}
+        if not recorde:
+            return ""
+        return f"{int(recorde.get('vitorias', 0)) + 1}V-{int(recorde.get('derrotas', 0))}D"
 
     @staticmethod
     def _lado(luta: dict, slot: str) -> dict:
@@ -129,4 +178,7 @@ class DueloTimelineBuilder:
             "nome": luta.get(slot) or "",
             "arma": ficha.get("nome_arma") or "",
             "classe": ficha.get("classe") or "",
+            # Cartel vazio quando o lutador estreia: "0V-0D" ocuparia a
+            # linha para dizer que nao ha historia nenhuma.
+            "cartel": (luta.get(f"{slot}_cartel") or "").replace("0V-0D", ""),
         }
