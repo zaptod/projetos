@@ -62,7 +62,10 @@ def _audio(caminho: Path, duracao: float) -> tuple:
     """
     try:
         saida = subprocess.run(
-            ["ffmpeg", "-v", "info", "-i", str(caminho), "-af",
+            # `-vn`: as duas perguntas sao sobre AUDIO, e decodificar 150 s de
+            # 1080x1920 para responde-las e o grosso do custo. Sem ele, a
+            # vistoria do acervo inteiro leva minutos em vez de segundos.
+            ["ffmpeg", "-v", "info", "-i", str(caminho), "-vn", "-af",
              "volumedetect,silencedetect=n=-40dB:d=1.0", "-f", "null", "-"],
             capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
@@ -164,8 +167,41 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
         laudo["erros"].append(
             "nenhuma cena tem imagem: o video inteiro e cartao de texto")
     elif imagens["faltam"]:
+        # CENA SEM IMAGEM E ERRO, NAO AVISO. O render nao se recusa a rodar sem
+        # imagem: ele desenha um cartao tipografico e entrega um mp4 que parece
+        # pronto. Como aviso, isso ja passou tres vezes — a historia 5 e a 10
+        # foram ao disco com o GANCHO (cena 1, o primeiro segundo, onde a
+        # pessoa decide ficar) virado cartao de texto, e o painel dizia
+        # "pronta para publicar". Aviso e o que se le depois; erro e o que
+        # impede.
+        faltando = [l["n"] for l in fila.estado(historia_id, roteiro, parte)
+                    if not l["pronta"]]
+        laudo["erros"].append(
+            f"{imagens['faltam']} de {imagens['total']} cena(s) sem imagem "
+            f"(cena(s) {', '.join(str(c) for c in faltando[:6])}): o video tem "
+            "cartao de texto no lugar. Gere as imagens e renderize de novo.")
+
+    # IMAGEM SEM PROVA DE ORIGEM NAO VAI AO AR. As imagens de verdade vem do
+    # PicassoIA e ficam registradas em `imagens.json` com a prova (o card do
+    # historico com o nosso prompt). As da `historia_00001` sao PLACEHOLDER
+    # gerado localmente com PIL — um gradiente borrado com o numero da cena no
+    # meio — e as da `historia_00002` sao cartoes roxos de teste. As duas
+    # passavam em tudo: o arquivo existe, tem tamanho, o video tem imagem.
+    #
+    # Descoberto em 08/09/2026 no primeiro ensaio da postagem diaria: a fila
+    # comeca pela historia mais antiga, e a mais antiga e justamente a do
+    # placeholder — ela seria o primeiro video PUBLICO do canal.
+    linhas = fila.estado(historia_id, roteiro, parte)
+    prontas = [l for l in linhas if l["pronta"]]
+    sem_prova = [l["n"] for l in prontas if not l.get("prova")]
+    if prontas and len(sem_prova) == len(prontas):
+        laudo["erros"].append(
+            "nenhuma imagem tem prova de origem: estas cenas nao vieram do "
+            "PicassoIA (placeholder ou teste). Isto nao vai ao ar.")
+    elif sem_prova:
         laudo["avisos"].append(
-            f"{imagens['faltam']} de {imagens['total']} cena(s) sem imagem")
+            f"{len(sem_prova)} cena(s) sem prova de origem "
+            f"(cena(s) {', '.join(str(c) for c in sem_prova[:6])})")
 
     # O mp4 mais velho que a ultima imagem = a imagem nova nao entrou nele.
     novas = [l["arquivo"] for l in fila.estado(historia_id, roteiro, parte)

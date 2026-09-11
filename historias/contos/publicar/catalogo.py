@@ -103,6 +103,15 @@ def listar(config: dict | None = None) -> list:
         if str(dados.get("provedor") or "").lower() == "fake":
             continue
         from ..roteiro import roteiro as R
+        # SERIE PELA METADE NAO E CONTEUDO, pelo mesmo motivo que a de teste
+        # nao e: o catalogo e a porta do upload, e ela para aqui. Publicar a
+        # parte 2 de uma historia que nao tem parte 3 e o pior resultado do
+        # canal — quem viu e ficou esperando nao volta. Em 10/09/2026 as 06:15
+        # o Gemini bateu no limite no meio da parte 3 e a `historia_00005`
+        # ficou com 2 de 6; sem esta guarda ela entraria na fila como uma
+        # serie de duas partes bem-acabada.
+        if R.partes_que_faltam(dados):
+            continue
         dados = R.normalizar(dados)
         total_partes = len(dados["partes"])
         for arquivo in sorted(pasta.glob("final_*.mp4")):

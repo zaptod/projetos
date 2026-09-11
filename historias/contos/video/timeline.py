@@ -284,10 +284,22 @@ def legenda_srt(plano: dict) -> str:
 
     partes = []
     principais = [e for e in plano["events"] if not e.get("continuacao")]
+    total = float(plano.get("total_duration") or 0.0)
     for i, evento in enumerate(principais, 1):
         if not evento.get("narracao"):
             continue
-        fim = evento["start"] + evento["duration"]
+        # A CENA PODE TER VIRADO VARIOS PLANOS. `dividir_planos` corta cena
+        # longa em 2-3 enquadramentos da mesma imagem, e so o PRIMEIRO fica
+        # sem `continuacao` — entao `evento["duration"]` e a duracao do
+        # primeiro plano, nao a da cena. Usar ela encurtava a legenda:
+        # medido em 08/09/2026 na historia 9, a fala final durava 15,1 s e a
+        # legenda sumia aos 5,2 s, deixando o CTA sem texto na tela.
+        #
+        # As cenas ladrilham a linha do tempo, entao o fim de uma e o comeco
+        # da seguinte — e a ultima vai ate o fim do video.
+        proximo = principais[i] if i < len(principais) else None
+        fim = (float(proximo["start"]) if proximo is not None
+               else (total or evento["start"] + evento["duration"]))
         partes.append(f"{i}\n{tempo(evento['start'])} --> {tempo(fim)}\n"
                       f"{evento['narracao']}\n")
     return "\n".join(partes)
