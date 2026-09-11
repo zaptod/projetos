@@ -83,6 +83,8 @@ GAMEPLAY_PADRAO = {
     "abertura": 0.8, "camera": CAMERA_DE_VIDEO, "sem_hud": True,
     # None = o default da classe Camera (7,0 m). Ver GAMEPLAY_POR_ORIGEM.
     "camera_largura_min": None,
+    # None = o default da classe Camera (1,5 s). Ver GAMEPLAY_POR_ORIGEM.
+    "camera_espera_zoom": None,
     "camera_por_origem": CAMERA_POR_ORIGEM,
     # Luta curta (<= isto) entra inteira, sem corte de tedio. Era fixo em
     # 12 s dentro de `highlights.planejar_corte_tedio`; virou knob na 15B
@@ -115,7 +117,12 @@ GAMEPLAY_POR_ORIGEM = {
         # 7,0 m do default. Medido em 11/09/2026: com 7,0 m o corpo do
         # lutador ocupa ~20% da largura no 9:16; a 5,0 m passa de 30%.
         # So o duelo — mexer no default re-enquadraria estreia e torneio.
-        "camera_largura_min": 5.0,
+        "camera_largura_min": 5.5,
+        # Fechar o quadro fez o zoom oscilar: 18,5 trocas/min contra o
+        # teto de 16 do V7_zoom_calmo. Exigir 2,5 s de estabilidade
+        # antes de fechar devolve 12,4 e mantem o corpo em 0,228 da
+        # largura (0,194 sem fechar nada). Medido em 11/09/2026.
+        "camera_espera_zoom": 2.5,
     },
 }
 
@@ -269,6 +276,7 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
             "resolucao": resolucoes.get(perfil),
             "sem_hud": bool(gameplay.get("sem_hud", True)),
             "camera_largura_min": gameplay.get("camera_largura_min"),
+            "camera_espera_zoom": gameplay.get("camera_espera_zoom"),
         } for perfil in perfis]
         gravacoes = capture.gravar_em_paralelo(tarefas, trabalhadores=len(tarefas))
 

@@ -2719,8 +2719,9 @@ class Lutador:
 
                 # Passe 4 (arte): telegraph de golpe pesado — o manager de
                 # attack.py é singleton, então este é o MESMO attack_anims
-                # que o Simulador desenha. criar_anticipation já filtra
-                # forca < 12; só nasce quando há tela (headless não tem
+                # que o Simulador desenha. criar_anticipation já filtra pelo
+                # tier heavy (LIMIARES_FORCA — o corte era `forca < 12`, que
+                # nunca deixava nada passar); só nasce quando há tela (headless não tem
                 # display e não deve pagar nem os draws de random visual).
                 try:
                     import pygame

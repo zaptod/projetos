@@ -145,6 +145,46 @@ class CameraDiretorTests(unittest.TestCase):
         self.assertLessEqual(cam.zoom, cam._diretor_teto_zoom() + 1e-9)
         self.assertGreaterEqual(cam.screen_width / cam.zoom / PPM, 7.0 - 1e-6)
 
+    def test_o_enquadramento_do_duelo_e_override_e_nao_default(self) -> None:
+        """Onda 15C: so o DUELO fecha mais que 7,0 m.
+
+        Baixar `diretor_largura_min_m` na classe re-enquadraria a estreia e
+        o torneio — dois formatos ja publicados e medidos — em silencio.
+        O duelo pede por `match_config`, e este teste trava as duas metades:
+        o default continua 7,0 e o override chega na camera.
+        """
+        self.assertEqual(7.0, Câmera(1080, 1920).diretor_largura_min_m,
+                         "o default nao pode ter mudado")
+        cam = _camera()
+        cam.diretor_largura_min_m = 5.5
+        a, b = _Lutador(7.0, 5.0), _Lutador(9.0, 5.5)
+        _assentar(cam, a, b, 8.0)
+        self.assertGreaterEqual(cam.screen_width / cam.zoom / PPM, 5.5 - 1e-6)
+        # ...e fecha MAIS do que fecharia com o default.
+        largo = _camera()
+        _assentar(largo, _Lutador(7.0, 5.0), _Lutador(9.0, 5.5), 8.0)
+        self.assertGreater(cam.zoom, largo.zoom)
+
+    def test_quadro_fechado_espera_mais_para_fechar_de_novo(self) -> None:
+        """Medido em 11/09/2026 (Ylva x Aldric, seed 101, Torre): fechar o
+        quadro para 5,5 m levou o zoom de 12,4 para 18,5 trocas por minuto,
+        acima do teto de 16 do alvo V7_zoom_calmo — com o teto em 7,0 m ele
+        ficava travado e nunca oscilava. Exigir 2,5 s de estabilidade antes
+        de FECHAR devolve 12,4 sem perder o enquadramento (0,228 contra
+        0,194 de diametro). O knob e por origem, como a largura."""
+        self.assertEqual(1.5, Câmera(1080, 1920).diretor_espera_zoom_in,
+                         "o default nao pode ter mudado")
+        cam = _camera()
+        cam.diretor_espera_zoom_in = 2.5
+        a, b = _Lutador(7.0, 5.0), _Lutador(9.0, 5.5)
+        # Antes da espera vencer, o quadro NAO fecha.
+        for _ in range(int(2.0 / DT)):
+            cam.atualizar(DT, a, b)
+        parcial = cam.zoom
+        for _ in range(int(4.0 / DT)):
+            cam.atualizar(DT, a, b)
+        self.assertGreater(cam.zoom, parcial, "nunca fechou")
+
     def test_pan_e_lento_e_converge(self) -> None:
         """Um deslocamento dentro da zona segura e seguido devagar, sem pulo."""
         cam = _camera()

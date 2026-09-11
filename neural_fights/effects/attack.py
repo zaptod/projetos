@@ -396,11 +396,14 @@ class ImpactShockwave:
             cor = random.choice(IMPACT_COLORS["physical"])
         self.cor = cor
         
-        # Múltiplas ondas para impactos fortes
+        # Múltiplas ondas para impactos fortes. Os limiares eram 15 e 20,
+        # da mesma escala inexistente dos tiers — caminho morto hoje
+        # (ninguem constroi ImpactShockwave), mas amarrado a LIMIARES_FORCA
+        # para nao renascer quebrado no dia em que alguem o religar.
         self.ondas = [{'raio': 5, 'alpha': 255}]
-        if forca >= 15:
+        if forca >= LIMIARES_FORCA['heavy']:
             self.ondas.append({'raio': 0, 'alpha': 200})
-        if forca >= 20:
+        if forca >= LIMIARES_FORCA['colossal']:
             self.ondas.append({'raio': -5, 'alpha': 150})
     
     def update(self, dt: float):
@@ -690,6 +693,11 @@ class AttackAnimationManager:
         self.MAX_SPARKS = 15
         self.MAX_CRATERS = 6
         self.MAX_CRACKS = 3
+        # Sao DOIS lutadores: mais de dois telegraphs vivos ao mesmo
+        # tempo e acumulo, nao leitura. Teto posto na 15C junto com a
+        # correcao do limiar que fazia este efeito nunca nascer — a
+        # doutrina de VFX e que toda lista tem teto (effects/budget.py).
+        self.MAX_ANTICIPATIONS = 2
         
         # PPM
         self.ppm = 50
@@ -780,9 +788,17 @@ class AttackAnimationManager:
     def criar_anticipation(self, lutador):
         """Cria efeito de antecipação para ataque pesado"""
         forca = lutador.dados.forca
-        if forca < 12:  # Só para ataques pesados
+        # "So para ataques pesados" — mas com 12 numa escala que vai ate
+        # 7,7, era "para ninguem": o telegraph de golpe pesado NUNCA
+        # apareceu em video nenhum. Amarrado ao tier heavy, ele passa a
+        # valer para ~25% do roster, que e o que "pesado" quer dizer.
+        if forca < LIMIARES_FORCA['heavy']:
             return None
         
+        if len(self.anticipations) >= self.MAX_ANTICIPATIONS:
+            # Descarta o MAIS ANTIGO, nunca o novo: o golpe que esta sendo
+            # telegrafado agora e o que o espectador precisa ler.
+            self.anticipations.pop(0)
         antic = AttackAnticipation(lutador, forca)
         self.anticipations.append(antic)
         return antic

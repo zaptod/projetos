@@ -107,22 +107,67 @@ class ZoomPunchTests(unittest.TestCase):
 
 
 class TelegraphTests(unittest.TestCase):
+    """O telegraph de golpe pesado tem que separar lutadores QUE EXISTEM.
+
+    Ate 11/09/2026 este teste usava forca 8 como "fraco" e 18 como "forte",
+    e o corte no codigo era `forca < 12`. Tudo coerente entre si e sem
+    relacao nenhuma com o jogo: o roster vai de 4,5 a 7,7, entao o corte
+    nunca abria e o efeito NUNCA apareceu em video. O teste existia e
+    passava — ele documentava a escala fantasma em vez de pega-la.
+
+    Agora os dois lados vem do roster de verdade, e o corte de
+    `LIMIARES_FORCA['heavy']`. Um teste de escala tem que estar ancorado no
+    que a escala mede.
+    """
+
+    @staticmethod
+    def _forcas_do_roster() -> list[float]:
+        import json
+        from pathlib import Path
+
+        caminho = (Path(__file__).resolve().parents[1] / "neural_fights"
+                   / "data" / "personagens.json")
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        itens = dados if isinstance(dados, list) else list(dados.values())
+        return sorted(float(p["forca"]) for p in itens
+                      if isinstance(p, dict) and "forca" in p)
+
     def test_anticipation_so_nasce_para_golpe_pesado(self) -> None:
         from neural_fights.effects.attack import AttackAnimationManager
 
+        forcas = self._forcas_do_roster()
+        fraco_real, forte_real = forcas[0], forcas[-1]
         AttackAnimationManager.reset()
         try:
             manager = AttackAnimationManager()
             fraco = SimpleNamespace(
-                dados=SimpleNamespace(forca=8), pos=[1.0, 1.0]
+                dados=SimpleNamespace(forca=fraco_real), pos=[1.0, 1.0]
             )
             forte = SimpleNamespace(
-                dados=SimpleNamespace(forca=18), pos=[1.0, 1.0]
+                dados=SimpleNamespace(forca=forte_real), pos=[1.0, 1.0]
             )
             self.assertIsNone(manager.criar_anticipation(fraco))
             self.assertEqual(len(manager.anticipations), 0)
             self.assertIsNotNone(manager.criar_anticipation(forte))
             self.assertEqual(len(manager.anticipations), 1)
+        finally:
+            AttackAnimationManager.reset()
+
+    def test_o_telegraph_tem_teto_como_toda_lista_de_vfx(self) -> None:
+        """Sao dois lutadores: mais de dois telegraphs vivos e acumulo."""
+        from neural_fights.effects.attack import AttackAnimationManager
+
+        forte_real = self._forcas_do_roster()[-1]
+        AttackAnimationManager.reset()
+        try:
+            manager = AttackAnimationManager()
+            forte = SimpleNamespace(
+                dados=SimpleNamespace(forca=forte_real), pos=[1.0, 1.0]
+            )
+            for _ in range(8):
+                manager.criar_anticipation(forte)
+            self.assertLessEqual(len(manager.anticipations),
+                                 manager.MAX_ANTICIPATIONS)
         finally:
             AttackAnimationManager.reset()
 

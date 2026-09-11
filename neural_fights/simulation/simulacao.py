@@ -483,6 +483,16 @@ class Simulador:
         largura_min = self.match_config.get("camera_largura_min_m")
         if largura_min:
             self.cam.diretor_largura_min_m = float(largura_min)
+        # Quanto mais FECHADO o quadro, mais tempo de estabilidade antes de
+        # fechar de novo: com o teto em 7,0 m o zoom ficava travado e nunca
+        # oscilava; a 5,5 m ele passa a seguir a distancia de verdade e a
+        # luta vira sanfona. Medido em 11/09/2026 (Ylva x Aldric, seed 101):
+        # 18,5 trocas de zoom por minuto com a espera de 1,5 s, contra o
+        # teto de 16 do alvo V7_zoom_calmo; com 2,5 s cai para 12,4 e o
+        # corpo ainda ocupa 0,228 da largura (era 0,194 sem fechar).
+        espera_zoom = self.match_config.get("camera_espera_zoom_in")
+        if espera_zoom:
+            self.cam.diretor_espera_zoom_in = float(espera_zoom)
 
         spawn1, spawn2 = self.arena.get_spawn_points()
         self.p1.pos[0], self.p1.pos[1] = spawn1

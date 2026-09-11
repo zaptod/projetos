@@ -33,7 +33,8 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path, cenario: str,
                fps: int = 30, max_duracao: float = 120.0,
                timeout: float = 600.0, resolucao: tuple[int, int] | None = None,
                sem_hud: bool = False,
-               camera_largura_min: float | None = None) -> dict:
+               camera_largura_min: float | None = None,
+               camera_espera_zoom: float | None = None) -> dict:
     """Roda o gravador oficial num subprocesso e devolve o resultado da luta.
 
     `resolucao` grava em tamanho nativo (1080x1920 para o celular) — sem o
@@ -56,6 +57,8 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path, cenario: str,
         comando += ["--camera", camera_modo]
     if camera_largura_min:
         comando += ["--camera-largura-min", str(float(camera_largura_min))]
+    if camera_espera_zoom:
+        comando += ["--camera-espera-zoom", str(float(camera_espera_zoom))]
     if sem_hud:
         comando.append("--sem-hud")
 

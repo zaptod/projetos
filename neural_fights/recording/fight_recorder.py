@@ -408,6 +408,7 @@ def gravar_luta(
     preset: str = "veryfast",
     camera_modo: str | None = None,
     camera_largura_min_m: float | None = None,
+    camera_espera_zoom_in: float | None = None,
     nomes_exibicao: dict | None = None,
     resolucao: tuple[int, int] | list[int] | str | None = None,
     roster_provider=None,
@@ -452,6 +453,8 @@ def gravar_luta(
     # mantem estreia e torneio com o enquadramento que ja foi medido.
     if camera_largura_min_m:
         match_config["camera_largura_min_m"] = float(camera_largura_min_m)
+    if camera_espera_zoom_in:
+        match_config["camera_espera_zoom_in"] = float(camera_espera_zoom_in)
     if nomes_exibicao:
         match_config["nomes_exibicao"] = dict(nomes_exibicao)
 
@@ -618,6 +621,11 @@ def build_parser() -> argparse.ArgumentParser:
                         metavar="METROS",
                         help="quao fechado o DIRETOR pode chegar, em metros "
                              "de largura visivel (padrao da classe: 7.0)")
+    parser.add_argument("--camera-espera-zoom", type=float, default=None,
+                        metavar="SEGUNDOS",
+                        help="estabilidade exigida antes de FECHAR o quadro "
+                             "(padrao da classe: 1.5). Quadro mais fechado "
+                             "precisa de mais, senao vira sanfona")
     parser.add_argument("--camera", default=None, choices=CAMERAS,
                         help="enquadramento; ausente = ARENA (arena inteira). "
                              "DIRETOR = camera de transmissao para video")
@@ -635,6 +643,7 @@ def main(argv: list[str] | None = None) -> int:
             max_duracao=args.max_duracao, hud=not args.sem_hud,
             crf=args.crf, preset=args.preset, camera_modo=args.camera,
             camera_largura_min_m=args.camera_largura_min,
+            camera_espera_zoom_in=args.camera_espera_zoom,
             resolucao=args.resolucao,
         )
     except Exception as erro:  # o chamador precisa do motivo, nao de um traceback

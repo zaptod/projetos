@@ -1,0 +1,1671 @@
+{
+  "config": {
+    "corpus": "smoke",
+    "dados": "engine",
+    "onda": 11
+  },
+  "resumo": {
+    "lutas": 48,
+    "lutas_ok": 48,
+    "falhas": 0,
+    "duracao_p50": 27.55833333333333,
+    "duracao_p90": 45.04666666666667,
+    "pct_sob_5s": 0.020833333333333332,
+    "pct_timeout": 0.0,
+    "pct_ko": 1.0,
+    "primeiro_hit_p50": 2.0166666666666644,
+    "humores_distintos_corpus": 13,
+    "pct_momentum_saturado_media": 0.2768692769515927,
+    "taxa_percepcao_projetil_media": 1.0,
+    "pct_vencedor_acima_80": 0.14583333333333334,
+    "pct_vencedor_abaixo_30": 0.4166666666666667,
+    "pct_com_lead_change": 0.4375,
+    "pct_comeback_25pp": 0.10416666666666667,
+    "maior_seca_p90": 5.9450000000001975,
+    "cv_intervalos_p50": 0.9456424598009354,
+    "taxa_anulacao_iframes_media": 0.0,
+    "skills_por_luta_p50": 18.0,
+    "desvios_por_luta_p50": 15.0,
+    "bloqueios_por_luta_p50": 1.0,
+    "parries_por_luta_p50": 0.0,
+    "parries_por_luta_media": 0.7708333333333334,
+    "bloqueios_por_luta_media": 1.9166666666666667,
+    "dashes_por_luta_p50": 7.5,
+    "taxa_antecipacao_desvios": 0.3020457280385078,
+    "punicoes_por_luta_media": 4.791666666666667,
+    "combos_por_luta_p50": 1.0,
+    "combos_por_luta_media": 2.8125,
+    "maior_combo_corpus": 5,
+    "bursts_por_luta_media": 0.7083333333333334,
+    "taxa_pilha_media": 1.0,
+    "taxa_decisoes_melee_media": 0.4239885709139107,
+    "pct_tempo_colado_media": 0.04313799274777976,
+    "pct_tempo_colado_p90": 0.09632597767186787,
+    "clinches_por_luta_media": 0.4166666666666667,
+    "pct_tempo_standoff_media": 0.10089877036812796,
+    "pct_tempo_standoff_p90": 0.25386209364036616,
+    "agarroes_por_luta_p50": 0.0,
+    "agarroes_por_luta_media": 0.8958333333333334,
+    "skills_distintas_por_luta_p50": 9.0,
+    "skills_distintas_por_luta_media": 8.416666666666666,
+    "agarroes_desfechos": {
+      "arremesso": 16,
+      "joelhada": 5,
+      "empurrao": 5,
+      "escape": 11,
+      "reversao": 4
+    },
+    "wall_splats_por_luta_media": 0.5416666666666666,
+    "iniciativas_por_luta_media": 1.875,
+    "dashes_taticos_por_luta_media": 2.5416666666666665,
+    "share_casts_com_consequencia": 0.5151515151515151,
+    "status_cc_por_luta_media": 1.7083333333333333,
+    "obstaculos_destruidos_por_luta_media": 0.0,
+    "dashes_ofensivos_share": 0.2768878718535469,
+    "velocidade_media_ms_por_classe": {
+      "Assassino": 8.231064121392464,
+      "Berserker": 5.538826255400397,
+      "Cavaleiro": 5.591262047972346,
+      "Criomante": 6.055933783937668,
+      "Druida": 8.707537716026426,
+      "Duelista": 8.431154843187716,
+      "Feiticeiro": 6.062308938703529,
+      "Gladiador": 11.471913228374135,
+      "Guerreiro": 6.993228136940864,
+      "Ladino": 6.879613116144165,
+      "Mago": 6.814328137401972,
+      "Monge": 9.868793980682494,
+      "Necromante": 5.828212434774667,
+      "Ninja": 11.130757265155726,
+      "Paladino": 4.826809476180313,
+      "Piromante": 4.740712016987137
+    },
+    "razao_velocidade_ninja_cavaleiro": 1.9907414765495137,
+    "distancia_percorrida_por_s_media": 8.053364519442791,
+    "pct_frames_parado_em_range_media": 0.001675278486396865,
+    "pct_frames_com_plano_media": 1.0,
+    "planos_por_luta_p50": 23.0,
+    "pct_frames_acao_coerente_media": 0.5280750005281318,
+    "planos_adaptativos_por_luta_media": 5.458333333333333,
+    "planos_concluidos_share": 0.6841103710751665,
+    "planos_sucesso_share": 0.5451950523311132,
+    "acao_mediana_ms_p50": 500.00000000000006,
+    "pct_trocas_curtas_media": 0.03613918569294742,
+    "winrate_p1": 0.4583333333333333,
+    "lutas_espelho": 48,
+    "taxa_critico_global": 0.15160349854227406,
+    "taxa_super_armor": 0.014577259475218658,
+    "share_dano_basico": 0.6682388152488619,
+    "share_dano_skill": 0.24815420812487982,
+    "share_dano_dot": 0.05000806160320663,
+    "winrate_classe_min": 0.3,
+    "winrate_classe_max": 0.7,
+    "winrate_tipo_min": 0.3125,
+    "winrate_tipo_max": 0.5833333333333334,
+    "divergencia_presets_l1": null,
+    "razao_duracao_celulas": null,
+    "frames": 2616,
+    "vfx_p50": 15,
+    "vfx_p90": 63,
+    "vfx_p99": 133,
+    "vfx_max": 181,
+    "textos_p90": 2,
+    "textos_max": 3,
+    "particulas_p99": 112
+  },
+  "quadros": {
+    "classes": {
+      "Feiticeiro (Caos)": {
+        "lutas": 2,
+        "vitorias": 1
+      },
+      "Cavaleiro (Defesa)": {
+        "lutas": 6,
+        "vitorias": 1
+      },
+      "Criomante (Gelo)": {
+        "lutas": 12,
+        "vitorias": 5
+      },
+      "Guerreiro (Força Bruta)": {
+        "lutas": 10,
+        "vitorias": 3
+      },
+      "Druida (Natureza)": {
+        "lutas": 4,
+        "vitorias": 4
+      },
+      "Necromante (Trevas)": {
+        "lutas": 6,
+        "vitorias": 2
+      },
+      "Monge (Chi)": {
+        "lutas": 10,
+        "vitorias": 6
+      },
+      "Assassino (Crítico)": {
+        "lutas": 4,
+        "vitorias": 0
+      },
+      "Duelista (Precisão)": {
+        "lutas": 10,
+        "vitorias": 7
+      },
+      "Berserker (Fúria)": {
+        "lutas": 4,
+        "vitorias": 1
+      },
+      "Gladiador (Combate)": {
+        "lutas": 4,
+        "vitorias": 4
+      },
+      "Ninja (Velocidade)": {
+        "lutas": 4,
+        "vitorias": 3
+      },
+      "Mago (Arcano)": {
+        "lutas": 6,
+        "vitorias": 3
+      },
+      "Paladino (Sagrado)": {
+        "lutas": 6,
+        "vitorias": 3
+      },
+      "Ladino (Evasão)": {
+        "lutas": 4,
+        "vitorias": 3
+      },
+      "Piromante (Fogo)": {
+        "lutas": 4,
+        "vitorias": 2
+      }
+    },
+    "tipos": {
+      "Arco": {
+        "lutas": 16,
+        "vitorias": 8
+      },
+      "Transformável": {
+        "lutas": 16,
+        "vitorias": 5
+      },
+      "Mágica": {
+        "lutas": 24,
+        "vitorias": 14
+      },
+      "Arremesso": {
+        "lutas": 14,
+        "vitorias": 6
+      },
+      "Corrente": {
+        "lutas": 6,
+        "vitorias": 4
+      },
+      "Orbital": {
+        "lutas": 6,
+        "vitorias": 3
+      },
+      "Reta": {
+        "lutas": 8,
+        "vitorias": 5
+      },
+      "Dupla": {
+        "lutas": 6,
+        "vitorias": 3
+      }
+    }
+  },
+  "alvos": [
+    {
+      "alvo": "A1_percepcao_projetil",
+      "metrica": "taxa_percepcao_projetil_media",
+      "valor": 1.0,
+      "faixa": {
+        "min": 0.95
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A2_desvios_por_luta",
+      "metrica": "desvios_por_luta_p50",
+      "valor": 15.0,
+      "faixa": {
+        "min": 2,
+        "max": 24
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A2c_parries_no_corpus",
+      "metrica": "parries_por_luta_media",
+      "valor": 0.7708333333333334,
+      "faixa": {
+        "min": 0.02,
+        "max": 2.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A3_antecipacao",
+      "metrica": "taxa_antecipacao_desvios",
+      "valor": 0.3020457280385078,
+      "faixa": {
+        "min": 0.1
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A4_punicao_whiff",
+      "metrica": "punicoes_por_luta_media",
+      "valor": 4.791666666666667,
+      "faixa": {
+        "min": 0.5,
+        "max": 8
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A5_planos_vivos",
+      "metrica": "pct_frames_com_plano_media",
+      "valor": 1.0,
+      "faixa": {
+        "min": 0.9
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A5_rotatividade_planos",
+      "metrica": "planos_por_luta_p50",
+      "valor": 23.0,
+      "faixa": {
+        "min": 6,
+        "max": 32
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A6_decisoes_melee",
+      "metrica": "taxa_decisoes_melee_media",
+      "valor": 0.4239885709139107,
+      "faixa": {
+        "min": 0.25
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A7_coerencia_plano",
+      "metrica": "pct_frames_acao_coerente_media",
+      "valor": 0.5280750005281318,
+      "faixa": {
+        "min": 0.5
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A8_planos_adaptativos",
+      "metrica": "planos_adaptativos_por_luta_media",
+      "valor": 5.458333333333333,
+      "faixa": {
+        "min": 1.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "A9_planos_concluidos",
+      "metrica": "planos_concluidos_share",
+      "valor": 0.6841103710751665,
+      "faixa": {
+        "min": 0.3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "B1_classe_max",
+      "metrica": "winrate_classe_max",
+      "valor": 0.7,
+      "faixa": {
+        "max": 0.75
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "B1_classe_min",
+      "metrica": "winrate_classe_min",
+      "valor": 0.3,
+      "faixa": {
+        "min": 0.18
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "B1_classe_min_meta",
+      "metrica": "winrate_classe_min",
+      "valor": 0.3,
+      "faixa": {
+        "min": 0.2
+      },
+      "enforced": false,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "B2_tipo_max",
+      "metrica": "winrate_tipo_max",
+      "valor": 0.5833333333333334,
+      "faixa": {
+        "max": 0.7
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "B2_tipo_min",
+      "metrica": "winrate_tipo_min",
+      "valor": 0.3125,
+      "faixa": {
+        "min": 0.3
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "B3_razao_duracao_matriz",
+      "metrica": "razao_duracao_celulas",
+      "valor": null,
+      "faixa": {
+        "max": 5.0
+      },
+      "enforced": true,
+      "status": "sem_dados"
+    },
+    {
+      "alvo": "B4_vies_de_lado",
+      "metrica": "winrate_p1",
+      "valor": 0.4583333333333333,
+      "faixa": {
+        "min": 0.42,
+        "max": 0.58
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "B4_vies_de_lado_smoke",
+      "metrica": "winrate_p1",
+      "valor": 0.4583333333333333,
+      "faixa": {
+        "min": 0.3,
+        "max": 0.7
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "C1_combos_existem",
+      "metrica": "combos_por_luta_p50",
+      "valor": 1.0,
+      "faixa": {
+        "min": 1,
+        "max": 20
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "C2_anti_stunlock",
+      "metrica": "maior_combo_corpus",
+      "valor": 5,
+      "faixa": {
+        "max": 9
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D1_lead_changes",
+      "metrica": "pct_com_lead_change",
+      "valor": 0.4375,
+      "faixa": {
+        "min": 0.25
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "D1_lead_changes_meta",
+      "metrica": "pct_com_lead_change",
+      "valor": 0.4375,
+      "faixa": {
+        "min": 0.35
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "D2_comebacks",
+      "metrica": "pct_comeback_25pp",
+      "valor": 0.10416666666666667,
+      "faixa": {
+        "min": 0.03
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "D2_comebacks_meta",
+      "metrica": "pct_comeback_25pp",
+      "valor": 0.10416666666666667,
+      "faixa": {
+        "min": 0.045
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "D3_atropelos",
+      "metrica": "pct_vencedor_acima_80",
+      "valor": 0.14583333333333334,
+      "faixa": {
+        "max": 0.22
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "D3_atropelos_meta",
+      "metrica": "pct_vencedor_acima_80",
+      "valor": 0.14583333333333334,
+      "faixa": {
+        "max": 0.14
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "D4_foto_chegada",
+      "metrica": "pct_vencedor_abaixo_30",
+      "valor": 0.4166666666666667,
+      "faixa": {
+        "min": 0.22
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "D5_janela_seca",
+      "metrica": "maior_seca_p90",
+      "valor": 5.9450000000001975,
+      "faixa": {
+        "max": 8.0
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "D5_janela_seca_meta",
+      "metrica": "maior_seca_p90",
+      "valor": 5.9450000000001975,
+      "faixa": {
+        "max": 6.0
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "D6_burstiness",
+      "metrica": "cv_intervalos_p50",
+      "valor": 0.9456424598009354,
+      "faixa": {
+        "min": 0.7,
+        "max": 1.6
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "K1_casts_com_consequencia",
+      "metrica": "share_casts_com_consequencia",
+      "valor": 0.5151515151515151,
+      "faixa": {
+        "min": 0.45
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "K2_status_cc",
+      "metrica": "status_cc_por_luta_media",
+      "valor": 1.7083333333333333,
+      "faixa": {
+        "min": 1.5
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "K3_obstaculos",
+      "metrica": "obstaculos_destruidos_por_luta_media",
+      "valor": 0.0,
+      "faixa": {
+        "min": 0.0
+      },
+      "enforced": false,
+      "status": "ok"
+    },
+    {
+      "alvo": "M1_dashes",
+      "metrica": "dashes_por_luta_p50",
+      "valor": 7.5,
+      "faixa": {
+        "min": 3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "M2_dashes_ofensivos",
+      "metrica": "dashes_ofensivos_share",
+      "valor": 0.2768878718535469,
+      "faixa": {
+        "min": 0.25
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "M3_ninja_vs_cavaleiro",
+      "metrica": "razao_velocidade_ninja_cavaleiro",
+      "valor": 1.9907414765495137,
+      "faixa": {
+        "min": 1.5
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "M3_ninja_vs_cavaleiro_meta",
+      "metrica": "razao_velocidade_ninja_cavaleiro",
+      "valor": 1.9907414765495137,
+      "faixa": {
+        "min": 1.8
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "M4_parado_em_range",
+      "metrica": "pct_frames_parado_em_range_media",
+      "valor": 0.001675278486396865,
+      "faixa": {
+        "max": 0.02
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "P1_duracao_mediana",
+      "metrica": "duracao_p50",
+      "valor": 27.55833333333333,
+      "faixa": {
+        "min": 20.0,
+        "max": 40.0
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "P2_lutas_relampago",
+      "metrica": "pct_sob_5s",
+      "valor": 0.020833333333333332,
+      "faixa": {
+        "max": 0.02
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "P3_duracao_p90",
+      "metrica": "duracao_p90",
+      "valor": 45.04666666666667,
+      "faixa": {
+        "max": 60.0
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "P3_timeouts",
+      "metrica": "pct_timeout",
+      "valor": 0.0,
+      "faixa": {
+        "max": 0.03
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "P3_timeouts_meta",
+      "metrica": "pct_timeout",
+      "valor": 0.0,
+      "faixa": {
+        "max": 0.02
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "P4_ko",
+      "metrica": "pct_ko",
+      "valor": 1.0,
+      "faixa": {
+        "min": 0.9
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "P5_primeiro_hit",
+      "metrica": "primeiro_hit_p50",
+      "valor": 2.0166666666666644,
+      "faixa": {
+        "max": 4.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "R1_tempo_colado",
+      "metrica": "pct_tempo_colado_media",
+      "valor": 0.04313799274777976,
+      "faixa": {
+        "max": 0.09
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "R1_tempo_colado_p90",
+      "metrica": "pct_tempo_colado_p90",
+      "valor": 0.09632597767186787,
+      "faixa": {
+        "max": 0.2
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "R2_standoff",
+      "metrica": "pct_tempo_standoff_media",
+      "valor": 0.10089877036812796,
+      "faixa": {
+        "max": 0.12
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "R2_standoff_meta",
+      "metrica": "pct_tempo_standoff_media",
+      "valor": 0.10089877036812796,
+      "faixa": {
+        "max": 0.05
+      },
+      "enforced": false,
+      "status": "fora_da_faixa"
+    },
+    {
+      "alvo": "R2_standoff_p90",
+      "metrica": "pct_tempo_standoff_p90",
+      "valor": 0.25386209364036616,
+      "faixa": {
+        "max": 0.3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "R3_agarroes",
+      "metrica": "agarroes_por_luta_media",
+      "valor": 0.8958333333333334,
+      "faixa": {
+        "min": 0.3,
+        "max": 6.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "R3_agarroes_meta",
+      "metrica": "agarroes_por_luta_p50",
+      "valor": 0.0,
+      "faixa": {
+        "min": 1
+      },
+      "enforced": false,
+      "status": "fora_da_faixa"
+    },
+    {
+      "alvo": "R4_wall_splats",
+      "metrica": "wall_splats_por_luta_media",
+      "valor": 0.5416666666666666,
+      "faixa": {
+        "min": 0.3,
+        "max": 5.0
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S1_taxa_critico",
+      "metrica": "taxa_critico_global",
+      "valor": 0.15160349854227406,
+      "faixa": {
+        "min": 0.06,
+        "max": 0.2
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S2_anulacao_iframes",
+      "metrica": "taxa_anulacao_iframes_media",
+      "valor": 0.0,
+      "faixa": {
+        "max": 0.1
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S3_share_basico",
+      "metrica": "share_dano_basico",
+      "valor": 0.6682388152488619,
+      "faixa": {
+        "max": 0.78
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "S3_share_basico_meta",
+      "metrica": "share_dano_basico",
+      "valor": 0.6682388152488619,
+      "faixa": {
+        "max": 0.69
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "S3_share_dot",
+      "metrica": "share_dano_dot",
+      "valor": 0.05000806160320663,
+      "faixa": {
+        "min": 0.01
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S3_share_dot_meta",
+      "metrica": "share_dano_dot",
+      "valor": 0.05000806160320663,
+      "faixa": {
+        "min": 0.03
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S3_share_skills",
+      "metrica": "share_dano_skill",
+      "valor": 0.24815420812487982,
+      "faixa": {
+        "min": 0.18
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "S3_share_skills_meta",
+      "metrica": "share_dano_skill",
+      "valor": 0.24815420812487982,
+      "faixa": {
+        "min": 0.23
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "S4_casts_por_luta",
+      "metrica": "skills_por_luta_p50",
+      "valor": 18.0,
+      "faixa": {
+        "min": 3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S5_super_armor",
+      "metrica": "taxa_super_armor",
+      "valor": 0.014577259475218658,
+      "faixa": {
+        "min": 0.005,
+        "max": 0.3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "S5_super_armor_meta",
+      "metrica": "taxa_super_armor",
+      "valor": 0.014577259475218658,
+      "faixa": {
+        "min": 0.008
+      },
+      "enforced": false,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "S6_skills_distintas",
+      "metrica": "skills_distintas_por_luta_p50",
+      "valor": 9.0,
+      "faixa": {
+        "min": 7
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "S6_skills_distintas_meta",
+      "metrica": "skills_distintas_por_luta_p50",
+      "valor": 9.0,
+      "faixa": {
+        "min": 8
+      },
+      "enforced": false,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "V1_pilha_personalidade",
+      "metrica": "taxa_pilha_media",
+      "valor": 1.0,
+      "faixa": {
+        "min": 0.95
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "V2_persistencia_acao",
+      "metrica": "acao_mediana_ms_p50",
+      "valor": 500.00000000000006,
+      "faixa": {
+        "min": 500.0
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "V2_trocas_curtas",
+      "metrica": "pct_trocas_curtas_media",
+      "valor": 0.03613918569294742,
+      "faixa": {
+        "max": 0.1
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "V3_divergencia_presets",
+      "metrica": "divergencia_presets_l1",
+      "valor": null,
+      "faixa": {
+        "min": 0.25
+      },
+      "enforced": true,
+      "status": "sem_dados"
+    },
+    {
+      "alvo": "V3_divergencia_presets_meta",
+      "metrica": "divergencia_presets_l1",
+      "valor": null,
+      "faixa": {
+        "min": 0.28
+      },
+      "enforced": true,
+      "status": "sem_dados"
+    },
+    {
+      "alvo": "V4_humores_vivos",
+      "metrica": "humores_distintos_corpus",
+      "valor": 13,
+      "faixa": {
+        "min": 12
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "V5_momentum_saturado",
+      "metrica": "pct_momentum_saturado_media",
+      "valor": 0.2768692769515927,
+      "faixa": {
+        "max": 0.3
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "V5_momentum_saturado_meta",
+      "metrica": "pct_momentum_saturado_media",
+      "valor": 0.2768692769515927,
+      "faixa": {
+        "max": 0.32
+      },
+      "enforced": true,
+      "status": "amostra_insuficiente"
+    },
+    {
+      "alvo": "V6_textos_simultaneos",
+      "metrica": "textos_max",
+      "valor": 3,
+      "faixa": {
+        "max": 3
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V6_vfx_extremos",
+      "metrica": "vfx_p99",
+      "valor": 133,
+      "faixa": {
+        "max": 110
+      },
+      "enforced": true,
+      "status": "violado"
+    },
+    {
+      "alvo": "V6_vfx_mediana",
+      "metrica": "vfx_p50",
+      "valor": 15,
+      "faixa": {
+        "max": 26
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V6_vfx_picos",
+      "metrica": "vfx_p90",
+      "valor": 63,
+      "faixa": {
+        "max": 70
+      },
+      "enforced": true,
+      "status": "ok"
+    },
+    {
+      "alvo": "V6_vfx_picos_meta",
+      "metrica": "vfx_p90",
+      "valor": 63,
+      "faixa": {
+        "max": 55
+      },
+      "enforced": false,
+      "status": "fora_da_faixa"
+    },
+    {
+      "alvo": "V7_diametro_na_tela",
+      "metrica": "video_diametro_lutador_p50",
+      "valor": null,
+      "faixa": {
+        "min": 0.16
+      },
+      "enforced": true,
+      "status": "sem_dados"
+    },
+    {
+      "alvo": "V7_diametro_na_tela_meta",
+      "metrica": "video_diametro_lutador_p50",
+      "valor": null,
+      "faixa": {
+        "min": 0.2
+      },
+      "enforced": false,
+      "status": "sem_dados"
+    },
+    {
+      "alvo": "V7_lutadores_visiveis",
+      "metrica": "video_pct_frames_visiveis_min",
+      "valor": null,
+      "faixa": {
+        "min": 0.98
+      },
+      "enforced": true,
+      "status": "sem_dados"
+    },
+    {
+      "alvo": "V7_pan_calmo",
+      "metrica": "video_pan_p90_larguras_s",
+      "valor": null,
+      "faixa": {
+        "max": 0.6
+      },
+      "enforced": true,
+      "status": "sem_dados"
+    },
+    {
+      "alvo": "V7_zoom_calmo",
+      "metrica": "video_zoom_trocas_por_min",
+      "valor": null,
+      "faixa": {
+        "max": 16
+      },
+      "enforced": true,
+      "status": "sem_dados"
+    },
+    {
+      "alvo": "V7_zoom_calmo_meta",
+      "metrica": "video_zoom_trocas_por_min",
+      "valor": null,
+      "faixa": {
+        "max": 8
+      },
+      "enforced": false,
+      "status": "sem_dados"
+    }
+  ],
+  "lutas": [
+    {
+      "spec": {
+        "p1": "Lucius",
+        "p2": "Zephyr",
+        "seed": 9000,
+        "bloco": "espelho"
+      },
+      "duracao": 38.833333333333336,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Lucius",
+        "seed": 9000,
+        "bloco": "espelho"
+      },
+      "duracao": 8.783333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Icarus",
+        "p2": "Tempest o Bravo",
+        "seed": 9001,
+        "bloco": "espelho"
+      },
+      "duracao": 37.85,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tempest o Bravo",
+        "p2": "Icarus",
+        "seed": 9001,
+        "bloco": "espelho"
+      },
+      "duracao": 44.5,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Elara o Lendário",
+        "p2": "Adelaide a Justa",
+        "seed": 9002,
+        "bloco": "espelho"
+      },
+      "duracao": 45.233333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Adelaide a Justa",
+        "p2": "Elara o Lendário",
+        "seed": 9002,
+        "bloco": "espelho"
+      },
+      "duracao": 44.96666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus",
+        "p2": "Kenji o Nobre",
+        "seed": 9003,
+        "bloco": "espelho"
+      },
+      "duracao": 31.866666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Perseus",
+        "seed": 9003,
+        "bloco": "espelho"
+      },
+      "duracao": 60.5,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki o Protetor",
+        "p2": "Zephyr o Nobre",
+        "seed": 9004,
+        "bloco": "espelho"
+      },
+      "duracao": 49.3,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr o Nobre",
+        "p2": "Yuki o Protetor",
+        "seed": 9004,
+        "bloco": "espelho"
+      },
+      "duracao": 28.9,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Kenji o Nobre",
+        "seed": 9005,
+        "bloco": "espelho"
+      },
+      "duracao": 22.55,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Zephyr",
+        "seed": 9005,
+        "bloco": "espelho"
+      },
+      "duracao": 27.599999999999998,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Tyr o Nobre",
+        "seed": 9006,
+        "bloco": "espelho"
+      },
+      "duracao": 19.266666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Leoric a Impiedosa",
+        "seed": 9006,
+        "bloco": "espelho"
+      },
+      "duracao": 2.9,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Zephyr",
+        "p2": "Ajax",
+        "seed": 9007,
+        "bloco": "espelho"
+      },
+      "duracao": 17.266666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Ajax",
+        "p2": "Zephyr",
+        "seed": 9007,
+        "bloco": "espelho"
+      },
+      "duracao": 39.96666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Marcus o Amaldiçoado",
+        "p2": "Elara o Lendário",
+        "seed": 9008,
+        "bloco": "espelho"
+      },
+      "duracao": 33.733333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Elara o Lendário",
+        "p2": "Marcus o Amaldiçoado",
+        "seed": 9008,
+        "bloco": "espelho"
+      },
+      "duracao": 15.466666666666667,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven o Lendário",
+        "p2": "Icarus",
+        "seed": 9009,
+        "bloco": "espelho"
+      },
+      "duracao": 37.38333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Icarus",
+        "p2": "Raven o Lendário",
+        "seed": 9009,
+        "bloco": "espelho"
+      },
+      "duracao": 29.78333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Fenrir a Implacável",
+        "p2": "Thor o Nobre",
+        "seed": 9010,
+        "bloco": "espelho"
+      },
+      "duracao": 17.483333333333334,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Thor o Nobre",
+        "p2": "Fenrir a Implacável",
+        "seed": 9010,
+        "bloco": "espelho"
+      },
+      "duracao": 18.333333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Yuki o Protetor",
+        "p2": "Raven a Vidente",
+        "seed": 9011,
+        "bloco": "espelho"
+      },
+      "duracao": 15.45,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Yuki o Protetor",
+        "seed": 9011,
+        "bloco": "espelho"
+      },
+      "duracao": 15.7,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Icarus",
+        "p2": "Crixus o Amaldiçoado",
+        "seed": 9012,
+        "bloco": "espelho"
+      },
+      "duracao": 27.583333333333332,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus o Amaldiçoado",
+        "p2": "Icarus",
+        "seed": 9012,
+        "bloco": "espelho"
+      },
+      "duracao": 40.11666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Leoric a Impiedosa",
+        "p2": "Raven a Vidente",
+        "seed": 9013,
+        "bloco": "espelho"
+      },
+      "duracao": 11.166666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven a Vidente",
+        "p2": "Leoric a Impiedosa",
+        "seed": 9013,
+        "bloco": "espelho"
+      },
+      "duracao": 17.316666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Perseus",
+        "p2": "Kenji o Nobre",
+        "seed": 9014,
+        "bloco": "espelho"
+      },
+      "duracao": 55.166666666666664,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Kenji o Nobre",
+        "p2": "Perseus",
+        "seed": 9014,
+        "bloco": "espelho"
+      },
+      "duracao": 37.4,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cassius o Cruel",
+        "p2": "Crixus a Sábia",
+        "seed": 9015,
+        "bloco": "espelho"
+      },
+      "duracao": 28.266666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Crixus a Sábia",
+        "p2": "Cassius o Cruel",
+        "seed": 9015,
+        "bloco": "espelho"
+      },
+      "duracao": 47.78333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Selene das Chamas",
+        "p2": "Takeshi",
+        "seed": 9016,
+        "bloco": "espelho"
+      },
+      "duracao": 33.88333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Takeshi",
+        "p2": "Selene das Chamas",
+        "seed": 9016,
+        "bloco": "espelho"
+      },
+      "duracao": 22.716666666666665,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Raven",
+        "p2": "Winter a Sombria",
+        "seed": 9017,
+        "bloco": "espelho"
+      },
+      "duracao": 18.683333333333334,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Winter a Sombria",
+        "p2": "Raven",
+        "seed": 9017,
+        "bloco": "espelho"
+      },
+      "duracao": 22.066666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Seraphina a Justa",
+        "p2": "Lucia o Implacável",
+        "seed": 9018,
+        "bloco": "espelho"
+      },
+      "duracao": 9.566666666666666,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Lucia o Implacável",
+        "p2": "Seraphina a Justa",
+        "seed": 9018,
+        "bloco": "espelho"
+      },
+      "duracao": 7.016666666666667,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Cassius o Cruel",
+        "p2": "Akemi a Valente",
+        "seed": 9019,
+        "bloco": "espelho"
+      },
+      "duracao": 29.3,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Akemi a Valente",
+        "p2": "Cassius o Cruel",
+        "seed": 9019,
+        "bloco": "espelho"
+      },
+      "duracao": 39.416666666666664,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aurora o Bravo",
+        "p2": "Jin a Protetora",
+        "seed": 9020,
+        "bloco": "espelho"
+      },
+      "duracao": 26.05,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Jin a Protetora",
+        "p2": "Aurora o Bravo",
+        "seed": 9020,
+        "bloco": "espelho"
+      },
+      "duracao": 23.9,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Phoenix",
+        "p2": "Athena o Protetor",
+        "seed": 9021,
+        "bloco": "espelho"
+      },
+      "duracao": 8.95,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Athena o Protetor",
+        "p2": "Phoenix",
+        "seed": 9021,
+        "bloco": "espelho"
+      },
+      "duracao": 12.133333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Winter a Sombria",
+        "p2": "Tyr o Nobre",
+        "seed": 9022,
+        "bloco": "espelho"
+      },
+      "duracao": 16.066666666666666,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Tyr o Nobre",
+        "p2": "Winter a Sombria",
+        "seed": 9022,
+        "bloco": "espelho"
+      },
+      "duracao": 11.283333333333333,
+      "vencedor_slot": "p2",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Aurora o Bravo",
+        "p2": "Akemi a Valente",
+        "seed": 9023,
+        "bloco": "espelho"
+      },
+      "duracao": 27.53333333333333,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    },
+    {
+      "spec": {
+        "p1": "Akemi a Valente",
+        "p2": "Aurora o Bravo",
+        "seed": 9023,
+        "bloco": "espelho"
+      },
+      "duracao": 31.416666666666668,
+      "vencedor_slot": "p1",
+      "reason": "knockout",
+      "error": null
+    }
+  ]
+}
