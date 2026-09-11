@@ -11,12 +11,20 @@ Classes pesadas (Berserker, Cavaleiro, Guerreiro) têm ataques que:
 - Têm trails de arma mais intensos
 
 PRINCÍPIOS DE DESIGN:
-- Força 5-10: Ataques leves (Magos, Ladinos)
-- Força 10-15: Ataques médios (Guerreiros, Assassinos)
-- Força 15-20: Ataques pesados (Gladiadores, Paladinos)
-- Força 20+: Ataques COLOSSAIS (Berserkers, Cavaleiros grandes)
+- O impacto visual deve SEMPRE corresponder ao "peso" do ataque.
+- As faixas de força que decidem isso estão em ``LIMIARES_FORCA``, e são
+  medidas no roster que o jogo realmente tem. A tabela original falava de
+  força 5-10 / 10-15 / 15-20 / 20+, uma escala que nunca existiu aqui: o
+  roster vive entre 4,5 e 7,7, então todo golpe caía no tier mais fraco.
 
-O impacto visual deve SEMPRE corresponder ao "peso" do ataque.
+ATENÇÃO — grande parte deste módulo é caminho MORTO (verificado em
+11/09/2026). ``criar_impacto_completo`` não é chamado por ninguém, e com ele
+ficam inertes ``ScreenFlash``, ``CraterMark`` e ``GroundCrack``;
+``ImpactEffect`` e ``ImpactShockwave`` também nunca são construídos, o que
+torna ``spark_count`` decorativo. O que o tier de fato controla hoje é o
+TAMANHO da onda de choque do corpo-a-corpo (``simulacao.py``, no push de
+``shockwaves``). Religar os caminhos mortos é decisão de outra onda: eles
+criam objetos novos por frame e passam pelo orçamento de VFX (alvos V6).
 """
 
 import pygame
@@ -30,9 +38,24 @@ from typing import List, Tuple
 # CONSTANTES DE IMPACTO BASEADAS EM FORÇA
 # =============================================================================
 
+# Onde cada tier comeca, em FORCA. Medido no roster vivo em 11/09/2026
+# (neural_fights/data/personagens.json, 64 personagens): forca vai de 4,5 a
+# 7,7, com mediana 6,5 e p90 em 7,5. Os limiares eram 8 / 14 / 20, de uma
+# escala que o jogo nunca teve: NENHUM personagem alcancava o segundo tier,
+# entao todo golpe de todo video ja publicado saiu no tier mais fraco que
+# existe. A onda de choque do corpo-a-corpo nascia com `0.6 * 0.3` de
+# tamanho, contra 1,2 e 2,5 dos impactos de projetil — e por isso que o
+# soco nao tinha peso.
+#
+# Ocupacao com estes valores, no mesmo roster: light 28%, medium 47%,
+# heavy 11%, colossal 14%. Ha teste cobrando que nenhum tier fique vazio e
+# que nenhum abocanhe mais de 60% — e o que impede a escala de descolar de
+# novo do jogo que ela mede.
+LIMIARES_FORCA = {"colossal": 7.5, "heavy": 7.0, "medium": 5.5}
+
 # Multiplicadores de efeito por faixa de força
 IMPACT_TIERS = {
-    "light": {      # Força 0-8
+    "light": {      # Forca < 5,5
         "shake_mult": 0.4,
         "crater_chance": 0.0,
         "trail_intensity": 0.5,
@@ -41,7 +64,7 @@ IMPACT_TIERS = {
         "screen_flash": False,
         "ground_crack": False,
     },
-    "medium": {     # Força 8-14
+    "medium": {     # Forca 5,5 a 7,0
         "shake_mult": 0.8,
         "crater_chance": 0.1,
         "trail_intensity": 0.8,
@@ -50,7 +73,7 @@ IMPACT_TIERS = {
         "screen_flash": False,
         "ground_crack": False,
     },
-    "heavy": {      # Força 14-20
+    "heavy": {      # Forca 7,0 a 7,5
         "shake_mult": 1.2,
         "crater_chance": 0.4,
         "trail_intensity": 1.2,
@@ -59,7 +82,7 @@ IMPACT_TIERS = {
         "screen_flash": True,
         "ground_crack": True,
     },
-    "colossal": {   # Força 20+
+    "colossal": {   # Forca >= 7,5
         "shake_mult": 2.0,
         "crater_chance": 0.8,
         "trail_intensity": 1.8,
@@ -95,12 +118,12 @@ WEAPON_TRAIL_CONFIG = {
 
 
 def get_impact_tier(forca: float) -> dict:
-    """Retorna o tier de impacto baseado na força"""
-    if forca >= 20:
+    """Retorna o tier de impacto baseado na força (ver LIMIARES_FORCA)."""
+    if forca >= LIMIARES_FORCA["colossal"]:
         return IMPACT_TIERS["colossal"]
-    elif forca >= 14:
+    elif forca >= LIMIARES_FORCA["heavy"]:
         return IMPACT_TIERS["heavy"]
-    elif forca >= 8:
+    elif forca >= LIMIARES_FORCA["medium"]:
         return IMPACT_TIERS["medium"]
     else:
         return IMPACT_TIERS["light"]
@@ -704,7 +727,12 @@ class AttackAnimationManager:
         # HitSpark e o Shockwave do simulador — um evento, uma leitura.
         
         # === SCREEN FLASH (só para ataques fortes) ===
-        if tier['screen_flash'] and (is_critico or forca >= 18):
+        # As portas absolutas deste bloco (18, 16 e 12) vinham da mesma
+        # escala inexistente dos tiers: com o roster indo ate 7,7, nenhuma
+        # delas jamais abriu. Ficam amarradas a LIMIARES_FORCA para nao
+        # descolarem de novo — o dia em que alguem chamar este metodo, ele
+        # nao vai estar quebrado do mesmo jeito.
+        if tier['screen_flash'] and (is_critico or forca >= LIMIARES_FORCA['colossal']):
             cores = IMPACT_COLORS.get(tipo_dano, IMPACT_COLORS["physical"])
             flash = ScreenFlash(forca * crit_mult, random.choice(cores))
             self.screen_flashes.append(flash)
@@ -721,7 +749,7 @@ class AttackAnimationManager:
                 )
                 self.crater_marks.append(crater)
         
-        if tier['ground_crack'] and forca >= 16:
+        if tier['ground_crack'] and forca >= LIMIARES_FORCA['heavy']:
             if len(self.ground_cracks) < self.MAX_CRACKS:
                 crack = GroundCrack(px, py, direcao, forca)
                 self.ground_cracks.append(crack)
@@ -734,7 +762,8 @@ class AttackAnimationManager:
             # numeros — todo golpe saturava o teto.
             'shake_intensity': 2 + dano * 0.18 * tier['shake_mult'],
             'shake_duration': 0.1 + forca * 0.005,
-            'zoom_punch': 0.05 + forca * 0.005 if forca >= 12 else 0,
+            'zoom_punch': (0.05 + forca * 0.005
+                           if forca >= LIMIARES_FORCA['medium'] else 0),
         }
     
     def criar_weapon_trail(self, lutador) -> WeaponTrailEnhanced:

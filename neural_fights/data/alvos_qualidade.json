@@ -644,12 +644,12 @@
     "min_lutas": 0,
     "descricao": "Onda 9: na PIOR luta do passe de video, os dois lutadores estao no quadro em >=98% dos frames capturados. A camera DIRETOR herda a garantia bulletproof (correcao imediata na margem critica); um knockback para fora da arena pode custar frames isolados."
   },
-  "V7_tamanho_na_tela": {
-    "metrica": "video_tamanho_lutador_p50",
-    "min": 0.08,
+  "V7_diametro_na_tela": {
+    "metrica": "video_diametro_lutador_p50",
+    "min": 0.16,
     "enforce_onda": 9,
     "min_lutas": 0,
-    "descricao": "Onda 9: mediana do diametro do lutador como fracao da largura do 9:16, pior caso do passe --video. ARENA travada dava 0,043 (ilegivel no celular). TRIPWIRE no nivel MEDIDO na fixture congelada (4 lutas, 0,090): matchups a distancia (arco/arremesso) obrigam a camera a abrir para caber os dois. Luta melee de referencia mede 0,115. Meta plena 0,10 em V7_tamanho_na_tela_meta."
+    "descricao": "Onda 9: mediana do diametro DESENHADO do lutador como fracao da largura do 9:16, pior caso do passe --video. ARENA travada dava 0,086 (ilegivel no celular). TRIPWIRE no nivel MEDIDO na fixture congelada (4 lutas, 0,180): matchups a distancia (arco/arremesso) obrigam a camera a abrir para caber os dois. Luta melee de referencia mede 0,230. Meta plena 0,20 em V7_diametro_na_tela_meta. RENOMEADO na 15A (10/09/2026): a sonda media 2*raio_fisico, que e o RAIO desenhado, entao o alvo antigo V7_tamanho_na_tela>=0,08 sempre valeu 0,16 de diametro. Mesma imagem, mesma exigencia — so a unidade foi corrigida, e nome e numero mudaram no mesmo diff para a troca ser auditavel."
   },
   "V7_pan_calmo": {
     "metrica": "video_pan_p90_larguras_s",
@@ -665,12 +665,12 @@
     "min_lutas": 0,
     "descricao": "Onda 9: inversoes de direcao do zoom por minuto (media do passe --video). Histerese assimetrica (fechar so apos 1,5 s estavel e +12%; abrir so abaixo de -8%) levou de 20,3 para 13,9/min na fixture congelada — o residuo e kiting de arqueiro, em que a distancia oscila de verdade. Luta melee de referencia mede 1,9. TRIPWIRE a 16; meta plena 8 em V7_zoom_calmo_meta."
   },
-  "V7_tamanho_na_tela_meta": {
-    "metrica": "video_tamanho_lutador_p50",
-    "min": 0.1,
+  "V7_diametro_na_tela_meta": {
+    "metrica": "video_diametro_lutador_p50",
+    "min": 0.2,
     "enforce_onda": 99,
     "min_lutas": 0,
-    "descricao": "Meta aspiracional: lutador com >= 10% da largura mesmo nos matchups a distancia. Depende de enquadrar o alvo do projetil (nao os dois corpos) quando a distancia passa de ~9 m — decisao de direcao, nao de knob."
+    "descricao": "Meta aspiracional: lutador com >= 20% da largura (diametro desenhado) mesmo nos matchups a distancia. Depende de enquadrar o alvo do projetil (nao os dois corpos) quando a distancia passa de ~9 m — decisao de direcao, nao de knob. RENOMEADO na 15A: era V7_tamanho_na_tela_meta >= 0,10 na escala do raio."
   },
   "V7_zoom_calmo_meta": {
     "metrica": "video_zoom_trocas_por_min",

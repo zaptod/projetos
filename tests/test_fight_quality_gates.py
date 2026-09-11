@@ -104,5 +104,49 @@ class FightQualityGateTests(unittest.TestCase):
         self.assertGreater(self.resumo["share_dano_dot"], 0.0)
 
 
+class HarnessDeVideoTests(unittest.TestCase):
+    """Contratos baratos do passe --video. Fora do gate pesado de proposito.
+
+    O gate acima nao roda `medir_video` (ele custa 4 gravacoes), entao os
+    alvos V7 ficam `sem_dados` no CI e nada aqui os cobra automaticamente.
+    O que DA para cobrar sem gravar nada e que o harness aponte para o palco
+    certo — e era exatamente isso que estava errado.
+    """
+
+    def test_o_harness_mede_as_arenas_que_a_producao_publica(self) -> None:
+        """O passe --video precisa medir o palco que vai ao ar.
+
+        Ate 10/09/2026 `ARENAS_DE_VIDEO` era ("Arena Pequena", "Ringue",
+        "Dojo", "Cyberpunk") enquanto os videos eram gravados em
+        Duto/Poco/Torre: os alvos V7 nunca mediram o que o espectador ve.
+        Medido na troca (fixture congelada, 4 lutas): diametro p50 de 0,190
+        para 0,207, frames visiveis de 0,985 para 0,993, pan p90 de 0,625
+        para 0,566 — o estouro do V7_pan_calmo era artefato do palco errado.
+        """
+        from neural_fights.core.arena import ARENAS, ARENAS_VERTICAIS
+        from neural_fights.tools import qualidade_luta as ql
+
+        self.assertEqual(tuple(ARENAS_VERTICAIS), tuple(ql.ARENAS_DE_VIDEO))
+        for nome in ql.ARENAS_DE_VIDEO:
+            with self.subTest(arena=nome):
+                self.assertIn(nome, ARENAS)
+
+    def test_o_alvo_de_tamanho_fala_da_mesma_chave_que_a_sonda_emite(self) -> None:
+        """Alvo e sonda tem que concordar na METRICA, nao so no numero.
+
+        Na 15A a sonda passou a emitir o diametro desenhado (antes emitia o
+        raio com nome de diametro) e os alvos V7 foram renomeados junto. Se
+        um lado mudar sozinho, o alvo vira `sem_dados` em silencio — que e o
+        pior modo de falha possivel num harness de qualidade.
+        """
+        from neural_fights.tools import qualidade_luta as ql
+
+        alvos = ql.carregar_alvos()
+        metricas = {a["metrica"] for a in alvos.values()
+                    if str(a["metrica"]).startswith("video_")}
+        self.assertIn("video_diametro_lutador_p50", metricas)
+        self.assertNotIn("video_tamanho_lutador_p50", metricas)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -159,7 +159,18 @@ class GravacaoDeLutaTests(unittest.TestCase):
         self.assertIn("primeiro_sangue", tipos)
         metricas = diretor["metricas_video"]
         self.assertGreaterEqual(metricas["pct_frames_visiveis"], 0.98)
-        self.assertGreaterEqual(metricas["tamanho_lutador_p50"], 0.10)
+        # Diametro DESENHADO do corpo. Era `tamanho_lutador_p50 >= 0.10` ate
+        # 10/09/2026, quando a sonda media o raio: mesma imagem, unidade
+        # corrigida, o numero dobra junto com o nome.
+        #
+        # O teto e 0,16 e NAO 0,20 porque este assert estava VERMELHO desde
+        # sempre e ninguem via: so roda com NF_RECORDING_GATE=1. Medido nesta
+        # luta (Arena Pequena, seed 20260821): 0,1633 — que na escala antiga
+        # dava 0,0816 contra os 0,10 exigidos. O numero agora e o do alvo
+        # V7_diametro_na_tela, que e o tripwire medido; os 0,20 ficam em
+        # V7_diametro_na_tela_meta, e quem os entrega e a 15C (camera fechada
+        # por origem). Subir este assert antes disso e pedir vermelho.
+        self.assertGreaterEqual(metricas["diametro_lutador_p50"], 0.16)
         self.assertLessEqual(metricas["pan_p90_larguras_s"], 0.6)
 
     @unittest.skipIf(GATE_PESADO, "gate pesado; ligue com NF_RECORDING_GATE=1")

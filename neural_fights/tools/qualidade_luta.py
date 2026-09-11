@@ -35,6 +35,7 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
+from neural_fights.core.arena import ARENAS_VERTICAIS
 from neural_fights.data import database
 from neural_fights.models.characters import Personagem
 from neural_fights.simulation.probes import FightQualityProbe, percentil
@@ -933,7 +934,12 @@ def medir_vfx(fonte: FonteDeDados, pares: int = 3, segundos: float = 25.0
     return probe.resumo()
 
 
-ARENAS_DE_VIDEO = ("Arena Pequena", "Ringue", "Dojo", "Cyberpunk")
+# O harness mede o PALCO QUE VAI AO AR. Ate 10/09/2026 esta tupla era
+# ("Arena Pequena", "Ringue", "Dojo", "Cyberpunk") enquanto a producao gravava
+# em Duto/Poco/Torre (random_builds/builds/tournament/runner.py), entao os
+# alvos V7 nunca mediram o video publicado. Importar de core.arena em vez de
+# repetir os nomes faz arena vertical nova entrar na medicao sozinha.
+ARENAS_DE_VIDEO = ARENAS_VERTICAIS
 
 
 def medir_video(fonte: FonteDeDados, lutas: int = 4,
@@ -946,8 +952,10 @@ def medir_video(fonte: FonteDeDados, lutas: int = 4,
 
     - ``video_pct_frames_visiveis_min``  pior luta: fracao de frames com os
       dois lutadores no quadro (a camera nunca pode perder alguem);
-    - ``video_tamanho_lutador_p50``      mediana do diametro do lutador como
-      fracao da largura (legibilidade no celular);
+    - ``video_diametro_lutador_p50``     mediana do diametro DESENHADO do
+      lutador como fracao da largura (legibilidade no celular). Ate
+      10/09/2026 a chave se chamava ``video_tamanho_lutador_p50`` e valia a
+      METADE disto, porque a sonda media o raio; ver `SondaCamera.on_frame`;
     - ``video_pan_p90_larguras_s``       pior p90 de velocidade de pan, em
       larguras de tela por segundo ("camera que cansa" vira numero);
     - ``video_zoom_trocas_por_min``      media de inversoes de zoom por minuto.
@@ -956,7 +964,7 @@ def medir_video(fonte: FonteDeDados, lutas: int = 4,
 
     specs = corpus_smoke(fonte)[: max(1, lutas) * 2 : 2]  # um lado de cada espelho
     visiveis: list[float] = []
-    tamanhos: list[float] = []
+    diametros: list[float] = []
     pans: list[float] = []
     trocas: list[float] = []
     for indice, spec in enumerate(specs):
@@ -969,8 +977,8 @@ def medir_video(fonte: FonteDeDados, lutas: int = 4,
         metricas = resultado.get("metricas_video") or {}
         if metricas.get("pct_frames_visiveis") is not None:
             visiveis.append(float(metricas["pct_frames_visiveis"]))
-        if metricas.get("tamanho_lutador_p50") is not None:
-            tamanhos.append(float(metricas["tamanho_lutador_p50"]))
+        if metricas.get("diametro_lutador_p50") is not None:
+            diametros.append(float(metricas["diametro_lutador_p50"]))
         if metricas.get("pan_p90_larguras_s") is not None:
             pans.append(float(metricas["pan_p90_larguras_s"]))
         if metricas.get("zoom_trocas_por_min") is not None:
@@ -979,7 +987,7 @@ def medir_video(fonte: FonteDeDados, lutas: int = 4,
         "video_lutas": len(specs),
         "video_resolucao": f"{resolucao[0]}x{resolucao[1]}",
         "video_pct_frames_visiveis_min": min(visiveis) if visiveis else None,
-        "video_tamanho_lutador_p50": percentil(tamanhos, 0.5) if tamanhos else None,
+        "video_diametro_lutador_p50": percentil(diametros, 0.5) if diametros else None,
         "video_pan_p90_larguras_s": max(pans) if pans else None,
         "video_zoom_trocas_por_min": _media(trocas),
     }

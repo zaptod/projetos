@@ -35,13 +35,24 @@ from neural_fights.utils.config import PPM  # noqa: E402
 DT = 1.0 / 60.0
 
 
+class _Dados:
+    """So o campo que o desenho (e agora a SondaCamera) le."""
+
+    def __init__(self, tamanho: float) -> None:
+        self.tamanho = float(tamanho)
+
+
 class _Lutador:
     """Fake de contrato: so o que a camera e as sondas leem."""
 
-    def __init__(self, x: float, y: float) -> None:
+    def __init__(self, x: float, y: float, tamanho: float = 1.7) -> None:
         self.pos = [float(x), float(y)]
         self.z = 0.0
-        self.raio_fisico = 0.425
+        # O fake fica COERENTE com o motor: `raio_fisico = tamanho / 4`
+        # (entities.py) e o corpo e desenhado com raio `tamanho / 2`
+        # (simulacao.py). 1,7 m e a mediana do roster.
+        self.dados = _Dados(tamanho)
+        self.raio_fisico = tamanho / 4.0
         self.vida = 100.0
         self.vida_max = 100.0
         self.morto = False
@@ -118,12 +129,18 @@ class CameraDiretorTests(unittest.TestCase):
         self.assertAlmostEqual(y, cam.y, delta=1e-6)
 
     def test_fecha_o_quadro_em_metros(self) -> None:
-        """Dois lutadores proximos: o lutador ocupa >= 10% da largura do 9:16."""
+        """Dois lutadores proximos: o corpo ocupa >= 20% da largura do 9:16.
+
+        Ate 10/09/2026 este teste calculava `2 * raio_fisico`, que e o RAIO
+        desenhado, e cobrava 10%. Mesma imagem, mesmo enquadramento: o
+        diametro que a tela mostra e `dados.tamanho` (simulacao.py desenha
+        raio `tamanho / 2`), e a exigencia real sempre foi 20%.
+        """
         cam = _camera()
         a, b = _Lutador(7.0, 5.0), _Lutador(9.0, 5.5)
         _assentar(cam, a, b, 8.0)
-        diametro = 2 * a.raio_fisico * PPM * cam.zoom
-        self.assertGreaterEqual(diametro / cam.screen_width, 0.10)
+        diametro = a.dados.tamanho * PPM * cam.zoom
+        self.assertGreaterEqual(diametro / cam.screen_width, 0.20)
         # ...e nunca alem do teto em metros (lado menor >= 7 m)
         self.assertLessEqual(cam.zoom, cam._diretor_teto_zoom() + 1e-9)
         self.assertGreaterEqual(cam.screen_width / cam.zoom / PPM, 7.0 - 1e-6)
@@ -287,10 +304,35 @@ class SondaCameraTests(unittest.TestCase):
         resumo = sonda.resumo(10.0)
         self.assertEqual(300, resumo["frames"])
         self.assertEqual(1.0, resumo["pct_frames_visiveis"])
-        self.assertGreater(resumo["tamanho_lutador_p50"], 0.05)
+        self.assertGreater(resumo["diametro_lutador_p50"], 0.10)
         self.assertIsNotNone(resumo["pan_p90_larguras_s"])
         self.assertLess(resumo["pan_p90_larguras_s"], 0.6)
         self.assertLessEqual(resumo["zoom_trocas_por_min"], 8.0)
+
+    def test_a_sonda_mede_o_corpo_desenhado_e_nao_metade_dele(self) -> None:
+        """A sonda tem que reportar o DIAMETRO que `desenhar_lutador` pinta.
+
+        Ate 10/09/2026 ela calculava `2 * raio_fisico`, e `raio_fisico` e
+        `tamanho / 4` (entities.py) enquanto o corpo e desenhado com raio
+        `tamanho / 2` (simulacao.py). O numero saia pela metade e contaminou
+        os alvos V7 e o comentario do runner de video. Este teste amarra a
+        sonda a geometria do desenho: com camera parada, o valor reportado e
+        exatamente `tamanho * PPM * zoom / largura`.
+        """
+        cam = _camera()
+        sim = _Sim(cam)
+        sonda = SondaCamera()
+        cam.atualizar(DT, sim.p1, sim.p2)
+        zoom = cam.zoom
+        sonda.on_frame(sim, 1 / 30)
+        esperado = sim.p1.dados.tamanho * PPM * zoom / cam.screen_width
+        self.assertAlmostEqual(esperado, sonda.resumo(1.0)["diametro_lutador_p50"],
+                               places=9)
+        # E o alias obsoleto continua sendo exatamente a metade, para nenhum
+        # leitor externo trocar de escala em silencio. Sai na onda 16.
+        resumo = sonda.resumo(1.0)
+        self.assertAlmostEqual(resumo["diametro_lutador_p50"] / 2.0,
+                               resumo["tamanho_lutador_p50"], places=12)
 
 
 if __name__ == "__main__":

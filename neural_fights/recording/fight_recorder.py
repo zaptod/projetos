@@ -244,7 +244,7 @@ class SondaCamera:
     def __init__(self) -> None:
         self.frames = 0
         self.visiveis = 0
-        self.tamanhos: list[float] = []
+        self.diametros: list[float] = []
         self.pans: list[float] = []
         self.zoom_trocas = 0
         self._ultimo: tuple[float, float, float] | None = None
@@ -261,8 +261,16 @@ class SondaCamera:
             if cam._lutador_visivel(p1) and cam._lutador_visivel(p2):
                 self.visiveis += 1
             for lutador in (p1, p2):
-                diametro = 2.0 * float(getattr(lutador, "raio_fisico", 0.4)) * PPM * cam.zoom
-                self.tamanhos.append(diametro / largura)
+                # O DIAMETRO que o espectador ve. `desenhar_lutador` pinta o
+                # corpo com raio `dados.tamanho / 2` (simulacao.py), enquanto
+                # `raio_fisico` e `tamanho / 4` — metade disso. Ate 10/09/2026
+                # esta sonda media `2 * raio_fisico`, que e o RAIO desenhado, e
+                # reportava o corpo pela METADE: o alvo V7 de 0.08 valia na
+                # pratica 0.16, e o comentario do runner citava "8-10%" quando
+                # o corpo ocupava 16-20%. Ler `dados.tamanho` tira a
+                # indirecao que causou o engano.
+                diametro = float(lutador.dados.tamanho) * PPM * cam.zoom
+                self.diametros.append(diametro / largura)
         except Exception:
             pass
         atual = (float(cam.x), float(cam.y), float(cam.zoom))
@@ -287,11 +295,18 @@ class SondaCamera:
             return ordenados[indice]
 
         minutos = max(1e-9, duracao_video / 60.0)
+        d50 = _percentil(self.diametros, 0.5)
+        d10 = _percentil(self.diametros, 0.1)
         return {
             "frames": self.frames,
             "pct_frames_visiveis": (self.visiveis / self.frames) if self.frames else None,
-            "tamanho_lutador_p50": _percentil(self.tamanhos, 0.5),
-            "tamanho_lutador_p10": _percentil(self.tamanhos, 0.1),
+            "diametro_lutador_p50": d50,
+            "diametro_lutador_p10": d10,
+            # Aliases obsoletos (10/09/2026): sao o RAIO desenhado, que e o que
+            # as chaves antigas sempre entregaram apesar do nome. Ficam uma
+            # onda para nao quebrar leitor externo em silencio; saem na 16.
+            "tamanho_lutador_p50": None if d50 is None else d50 / 2.0,
+            "tamanho_lutador_p10": None if d10 is None else d10 / 2.0,
             "pan_p50_larguras_s": _percentil(self.pans, 0.5),
             "pan_p90_larguras_s": _percentil(self.pans, 0.9),
             "zoom_trocas_por_min": self.zoom_trocas / minutos,
@@ -392,6 +407,7 @@ def gravar_luta(
     crf: int = 20,
     preset: str = "veryfast",
     camera_modo: str | None = None,
+    camera_largura_min_m: float | None = None,
     nomes_exibicao: dict | None = None,
     resolucao: tuple[int, int] | list[int] | str | None = None,
     roster_provider=None,
@@ -431,6 +447,11 @@ def gravar_luta(
     # luta, so o que aparece na tela.
     if camera_modo:
         match_config["camera_modo"] = str(camera_modo).upper()
+    # Onda 15C: so o DUELO fecha mais que o default de 7,0 m da classe
+    # Camera. Passar por match_config (e nao mexer no default) e o que
+    # mantem estreia e torneio com o enquadramento que ja foi medido.
+    if camera_largura_min_m:
+        match_config["camera_largura_min_m"] = float(camera_largura_min_m)
     if nomes_exibicao:
         match_config["nomes_exibicao"] = dict(nomes_exibicao)
 
@@ -593,6 +614,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="sem as barras do jogo (o video desenha as suas)")
     parser.add_argument("--crf", type=int, default=20)
     parser.add_argument("--preset", default="veryfast")
+    parser.add_argument("--camera-largura-min", type=float, default=None,
+                        metavar="METROS",
+                        help="quao fechado o DIRETOR pode chegar, em metros "
+                             "de largura visivel (padrao da classe: 7.0)")
     parser.add_argument("--camera", default=None, choices=CAMERAS,
                         help="enquadramento; ausente = ARENA (arena inteira). "
                              "DIRETOR = camera de transmissao para video")
@@ -609,6 +634,7 @@ def main(argv: list[str] | None = None) -> int:
             cenario=args.cenario, portrait=args.portrait, fps_saida=args.fps,
             max_duracao=args.max_duracao, hud=not args.sem_hud,
             crf=args.crf, preset=args.preset, camera_modo=args.camera,
+            camera_largura_min_m=args.camera_largura_min,
             resolucao=args.resolucao,
         )
     except Exception as erro:  # o chamador precisa do motivo, nao de um traceback

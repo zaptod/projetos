@@ -1,0 +1,38 @@
+{
+  "quando": "2026-09-11",
+  "fonte": "YouTube Analytics API, primeira coleta",
+  "formatos": [
+    {
+      "origem": "build",
+      "videos": 20,
+      "views": 413,
+      "views_por_dia": 1.7166079980577955,
+      "like_rate": 0.012106537530266344,
+      "duracao_mediana": 74.0
+    },
+    {
+      "origem": "estreia",
+      "videos": 12,
+      "views": 64,
+      "views_por_dia": 0.452752209255594,
+      "like_rate": 0.0,
+      "duracao_mediana": 91.0
+    }
+  ],
+  "retencao": {
+    "estreia": {
+      "n": 12,
+      "media_pct": 3.37,
+      "mediana_pct": 0.0,
+      "media_segundos_vistos": 3.33,
+      "duracao_media": 103.1
+    },
+    "build": {
+      "n": 18,
+      "media_pct": 28.15,
+      "mediana_pct": 14.66,
+      "media_segundos_vistos": 19.44,
+      "duracao_media": 73.5
+    }
+  }
+}
