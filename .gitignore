@@ -17,3 +17,17 @@ youtube_credentials.json
 *.sqlite3
 *.jsonl
 !tests/fixtures/*.jsonl
+
+# Lancador da criacao automatica: gerado por `main.py auto --instalar`, com o
+# caminho do Python e da pasta DESTA maquina dentro.
+historias/auto.cmd
+# Lancador do bot de Telegram: gerado por `python -m remoto --instalar`.
+bot.cmd
+# Saida do bot (o .cmd redireciona para ca).
+outputs/bot.txt
+# Lancador da postagem diaria: gerado por `ferramentas/postar.py --instalar`.
+postar.cmd
+# Saida da postagem (o .cmd redireciona para ca).
+outputs/postar.txt
+# Patches que a apuracao automatica propoe: saida de maquina, um por erro.
+outputs/_apuracoes/
