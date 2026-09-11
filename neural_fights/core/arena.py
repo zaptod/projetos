@@ -6,7 +6,7 @@ Sistema expandido com múltiplos mapas temáticos.
 
 import math
 import pygame
-from neural_fights.utils.config import PPM
+from neural_fights.utils.config import COR_FUNDO, PPM
 import dataclasses
 from dataclasses import dataclass, field
 from typing import Tuple, List, Optional
@@ -940,6 +940,40 @@ class Arena:
         # Desenha efeitos de colisão com paredes
         self._desenhar_efeitos_colisao(surface, camera)
     
+    # Quanto o tom mais escuro do chao precisa ficar ACIMA do fundo, em
+    # luminancia. Medido em 11/09/2026: `cor_chao * 0.72` deixava Duto em
+    # 18,0 e Torre em 23,7 contra 25,4 do COR_FUNDO — nas duas, a borda do
+    # palco ficava mais ESCURA que o vazio em volta e a arena sumia na
+    # moldura. Duas das tres arenas que vao ao ar.
+    PISO_DE_CONTRASTE = 12.0
+
+    @staticmethod
+    def _luminancia(cor) -> float:
+        return 0.2126 * cor[0] + 0.7152 * cor[1] + 0.0722 * cor[2]
+
+    @classmethod
+    def _tons_do_chao(cls, cor):
+        """(escuro, meio, claro) com o escuro garantidamente sobre o fundo.
+
+        A vinheta continua sendo a mesma multiplicacao de antes; o que muda
+        e que o tom mais escuro tem PISO. Sem isso, uma arena de chao
+        escuro desenha a propria borda com menos luz que o nada em volta.
+        """
+        escuro = [max(0, int(c * 0.72)) for c in cor]
+        alvo = cls._luminancia(COR_FUNDO) + cls.PISO_DE_CONTRASTE
+        falta = alvo - cls._luminancia(escuro)
+        if falta > 0:
+            # Somar o mesmo em todos os canais preserva o matiz do chao —
+            # clarear por multiplicacao saturaria o canal dominante.
+            escuro = [min(255, int(c + falta)) for c in escuro]
+        meio = [max(0, int(c * 0.88)) for c in cor]
+        claro = [min(255, int(c * 1.18) + 6) for c in cor]
+        # A escada tem que continuar subindo depois do piso, senao a
+        # vinheta inverte e o centro fica mais escuro que a borda.
+        meio = [max(a, b) for a, b in zip(meio, escuro)]
+        claro = [max(a, b) for a, b in zip(claro, meio)]
+        return tuple(escuro), tuple(meio), tuple(claro)
+
     def _desenhar_chao(self, surface: pygame.Surface, camera):
         """Desenha o chão da arena"""
         cor = self.config.cor_chao
@@ -951,9 +985,7 @@ class Arena:
             cx, cy = camera.converter(self.centro_x * PPM, self.centro_y * PPM)
             raio = camera.converter_tam(self.raio * PPM)
             if raio > 0:
-                escuro = tuple(max(0, int(c * 0.72)) for c in cor)
-                meio = tuple(max(0, int(c * 0.88)) for c in cor)
-                claro = tuple(min(255, int(c * 1.18) + 6) for c in cor)
+                escuro, meio, claro = self._tons_do_chao(cor)
                 pygame.draw.circle(surface, escuro, (cx, cy), raio)
                 pygame.draw.circle(surface, meio, (cx, cy), int(raio * 0.86))
                 pygame.draw.circle(surface, cor, (cx, cy), int(raio * 0.62))
@@ -979,9 +1011,7 @@ class Arena:
                 # Passe 7 (arte): o retangular ganha o tratamento do
                 # circular - vinheta em camadas + borda que le parede.
                 rect = pygame.Rect(min_px[0], min_px[1], largura, altura)
-                escuro = tuple(max(0, int(c * 0.72)) for c in cor)
-                meio = tuple(max(0, int(c * 0.88)) for c in cor)
-                claro = tuple(min(255, int(c * 1.18) + 6) for c in cor)
+                escuro, meio, claro = self._tons_do_chao(cor)
                 pygame.draw.rect(surface, escuro, rect)
                 pygame.draw.rect(surface, meio, rect.inflate(-int(largura * 0.10), -int(altura * 0.10)))
                 pygame.draw.rect(surface, cor, rect.inflate(-int(largura * 0.30), -int(altura * 0.30)))
@@ -1004,8 +1034,11 @@ class Arena:
     def _desenhar_grid(self, surface: pygame.Surface, camera):
         """Desenha grid no chão"""
         grid_size = 2.0  # Metros
-        # grid quase subliminar: textura, nao informacao (passe de arte 1)
-        cor_grid = tuple(min(255, c + 5) for c in self.config.cor_chao)
+        # Textura, nao informacao — mas VISIVEL. Com +5 por canal o grid
+        # ficava abaixo do que a compressao do mp4 preserva: o chao lia
+        # como um borrao liso, e sem referencia de escala a luta parece
+        # acontecer no vazio. +14 continua discreto e sobrevive ao h264.
+        cor_grid = tuple(min(255, c + 14) for c in self.config.cor_chao)
         
         # Linhas verticais
         x = math.ceil(self.min_x / grid_size) * grid_size
