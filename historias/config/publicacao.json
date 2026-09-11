@@ -5,8 +5,10 @@
         "parte": "{titulo}"
     },
     "descricoes": {
-        "historia": "{titulo}\n\nHistoria ficticia, narrada por IA. Nomes e situacoes sao invencao.\n\nO que voce faria?",
-        "parte": "{serie}\n\nParte {parte} de {partes}.\n\nHistoria ficticia, narrada por IA. Nomes e situacoes sao invencao.\n\nO que voce faria?"
+        "_comment": "Nada de 'narrado por IA' aqui: quebra a imersao no exato momento em que a pessoa acabou de se envolver com a historia (decisao dele, 08/09/2026). O que fica e a voz de quem faz o canal. A linha sobre os personagens serem invencao continua - e o que impede alguem de ler um desabafo inventado como se fosse a confissao de uma pessoa real, e ela nao atrapalha a imersao porque nao fala de como o video foi feito.",
+        "_comment_acento": "ESTE texto o publico le. O resto do projeto e escrito sem acento de proposito (nome de arquivo, log, codigo), mas descricao de video nao: 'historias' e 'invencao' numa legenda ao lado de um titulo acentuado parece desleixo.",
+        "historia": "{titulo}\n\nEu escrevo e conto essas histórias aqui, uma por vez. Os personagens e os nomes são invenção minha.\n\nSe essa te pegou, tem mais no canal.\n\nO que você faria no lugar dele?",
+        "parte": "{serie}\n\nParte {parte} de {partes} — as outras estão no canal, na ordem.\n\nEu escrevo e conto essas histórias aqui. Os personagens e os nomes são invenção minha.\n\nO que você faria no lugar dele?"
     },
     "hashtags": {
         "historia": [
@@ -19,7 +21,7 @@
     },
     "youtube": {
         "categoria": "24",
-        "visibilidade": "private",
+        "visibilidade": "public",
         "para_criancas": false,
         "_comment_shorts": "O YouTube so trata video vertical como SHORT ate 3 min (180 s). Passou disso ele vira video normal e sai da esteira de Shorts. Com `cortar_para_shorts`, a publicacao corta sozinha em partes equilibradas, sempre numa TROCA DE CENA (nunca no meio de uma fala). Para desligar: false, ou shorts_max_s = 0.",
         "cortar_para_shorts": true,
