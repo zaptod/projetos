@@ -77,6 +77,24 @@ CHATGPT = {
 GEMINI = {
     "url": "https://gemini.google.com/app",
     "url_novo_chat": "https://gemini.google.com/app",
+    # O MODELO NAO VEM ESCOLHIDO. A URL abre com o que estiver marcado na
+    # conta, e em 08/09/2026 estava em "3.6 Flash" — o rapido. As historias 3
+    # a 10 inteiras foram escritas por ele; e a primeira coisa a olhar quando
+    # o texto parece raso. `modelo_botao` abre o menu, `modelo_opcao` sao as
+    # escolhas, e `modelo_preferido` e a ordem em que se procura.
+    "modelo_botao": [
+        'button[data-test-id="bard-mode-menu-button"]',
+        "bard-mode-switcher button",
+        'button[aria-label*="modelo" i]',
+    ],
+    "modelo_opcao": [
+        'button[role="menuitemradio"]',
+        '[role="menuitem"]',
+        "button.mat-mdc-menu-item",
+    ],
+    # Do mais forte para o mais fraco: escrever historia e trabalho de
+    # raciocinio, nao de velocidade.
+    "modelo_preferido": ["pro", "flash"],
     "campo": [
         "rich-textarea div.ql-editor[contenteditable='true']",
         "div.ql-editor[contenteditable='true']",

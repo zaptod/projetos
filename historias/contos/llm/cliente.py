@@ -75,6 +75,10 @@ class ClienteLLM:
         self.rng = rng or random.Random()
         self.log = log
         self.turnos = 0
+        self.modelo_atual = ""
+        # Comeca em False de proposito: enquanto ninguem confirmou o modelo
+        # forte, a resposta honesta e "nao sei", e nao "esta tudo certo".
+        self.modelo_confirmado = False
 
     # ----------------------------------------------------------- navegacao
     def abrir(self, novo_chat: bool = True) -> None:
@@ -89,7 +93,98 @@ class ClienteLLM:
                 f"Rode uma vez: python main.py llm login --provedor {self.provedor} "
                 "(a janela abre, voce entra na conta, e o login fica salvo).")
         self.turnos = 0
+        self.modelo_atual = self.escolher_modelo()
         self.log(f"[{self.provedor}] chat novo aberto.")
+
+    # ------------------------------------------------------------- modelo
+    TENTATIVAS_DE_MODELO = 3
+
+    def escolher_modelo(self, preferido=None) -> str:
+        """Poe o chat no modelo mais forte que a conta tiver.
+
+        POR QUE ISTO EXISTE: a URL nao carrega modelo nenhum — ela abre com o
+        que estiver marcado na conta. Descoberto em 08/09/2026: estava em
+        "3.6 Flash", o rapido, e as historias 3 a 10 inteiras sairam dele.
+        Escrever historia e trabalho de raciocinio; deixar isso na sorte do
+        que ficou selecionado da ultima vez e deixar a qualidade na sorte.
+
+        TENTA DE NOVO ANTES DE DESISTIR. Em 09/09/2026 as 22:59 a troca deu
+        `TimeoutError` na primeira tentativa e a `historia_00004` inteira saiu
+        no Flash-Lite: respostas em 14 s no lugar de 42, partes com 200
+        palavras no lugar de 400, e 84 imagens mais seis renders gastos em
+        cima de um texto do modelo fraco. A pagina estava so terminando de
+        hidratar — na segunda tentativa ela responde.
+
+        Nunca levanta: um seletor que mudou nao pode impedir a geracao. Mas
+        agora ela deixa RASTRO — `self.modelo_confirmado` diz se o alvo foi
+        mesmo alcancado, e quem grava o roteiro registra isso em vez de
+        gravar vazio.
+        """
+        self.modelo_confirmado = False
+        ordem = preferido or self.sel.get("modelo_preferido")
+        if not ordem or not self.sel.get("modelo_botao"):
+            return ""
+        ultimo = ""
+        for volta in range(1, self.TENTATIVAS_DE_MODELO + 1):
+            nome, confirmado = self._tentar_modelo(ordem)
+            if confirmado:
+                self.modelo_confirmado = True
+                return nome
+            ultimo = nome or ultimo
+            if volta < self.TENTATIVAS_DE_MODELO:
+                self.log(f"[{self.provedor}] a troca de modelo nao pegou "
+                         f"(tentativa {volta}/{self.TENTATIVAS_DE_MODELO}); "
+                         "esperando a pagina e tentando de novo.")
+                time.sleep(2.5 * volta)
+        self.log(f"[{self.provedor}] ATENCAO: nao consegui por no modelo "
+                 f"forte depois de {self.TENTATIVAS_DE_MODELO} tentativas; "
+                 f"a historia vai sair em {ultimo or 'modelo desconhecido'}.")
+        return ultimo
+
+    def _tentar_modelo(self, ordem) -> tuple:
+        """(nome do modelo em uso, alcancou o alvo?). Nunca levanta."""
+        try:
+            botao = sel.encontrar(self.page, self.sel["modelo_botao"],
+                                  timeout=6.0)
+            if botao is None:
+                self.log(f"[{self.provedor}] nao achei o seletor de modelo.")
+                return "", False
+            atual = (botao.inner_text(timeout=3000) or "").strip()
+            if any(a.lower() in atual.lower() for a in ordem[:1]):
+                self.log(f"[{self.provedor}] modelo: {atual} (ja era o alvo).")
+                return atual, True
+            botao.click(timeout=8000)
+            _pausa(self.rng, 0.8, 1.4)
+            opcoes = None
+            for seletor in self.sel["modelo_opcao"]:
+                achado = self.page.locator(seletor)
+                if achado.count():
+                    opcoes = achado
+                    break
+            if opcoes is None:
+                self.log(f"[{self.provedor}] o menu de modelo nao abriu.")
+                self.page.keyboard.press("Escape")
+                return atual, False
+            # Procura na ORDEM da preferencia: o primeiro alvo que existir
+            # ganha, e "pro" antes de "flash" e o que faz o forte vencer.
+            for alvo in ordem:
+                for i in range(opcoes.count()):
+                    texto = (opcoes.nth(i).inner_text(timeout=1500) or "")
+                    if alvo.lower() in texto.lower():
+                        opcoes.nth(i).click(timeout=8000)
+                        _pausa(self.rng, 1.0, 1.8)
+                        nome = " ".join(texto.split())[:40]
+                        self.log(f"[{self.provedor}] modelo: {atual} -> {nome}")
+                        return nome, True
+            self.page.keyboard.press("Escape")
+            # A conta nao TEM o modelo forte: tentar de novo nao muda isso.
+            self.log(f"[{self.provedor}] nenhum modelo de {ordem} nesta conta; "
+                     f"fico em {atual!r}.")
+            return atual, True
+        except Exception as exc:                               # noqa: BLE001
+            self.log(f"[{self.provedor}] a troca de modelo falhou "
+                     f"({type(exc).__name__}).")
+            return "", False
 
     def _esperar_montar(self, quieto: float = 1.0) -> None:
         """Espera o app hidratar: os dois sites servem HTML vazio e montam
@@ -181,6 +276,14 @@ class ClienteLLM:
     # ------------------------------------------------------------ resposta
     def _resposta_atual(self) -> str:
         """O texto do ULTIMO turno do assistente."""
+        try:
+            # Scroll para o fim da pagina garante que a nova resposta
+            # foi renderizada no DOM, evitando pegar a resposta anterior
+            # em chats com multiplos turnos (gemini-resposta-anterior-multiplasturnos).
+            self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        except Exception:
+            pass  # Se nao conseguir fazer scroll, tenta mesmo assim
+
         for seletor in self.sel["resposta"]:
             try:
                 alvos = self.page.locator(seletor)
