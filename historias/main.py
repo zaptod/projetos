@@ -116,8 +116,9 @@ def cmd_gerar(args, pipeline) -> int:
 def cmd_llm(args, pipeline) -> int:
     from contos.llm import probe
     if args.acao == "login":
-        probe.login(args.provedor)
-        return 0
+        # O codigo de saida diz se logou: quem chama isto de script (ou eu,
+        # olhando o log depois) nao pode ter que adivinhar pelo traceback.
+        return 0 if probe.login(args.provedor) else 1
     probe.run(args.provedor, esperar=args.esperar)
     return 0
 
@@ -155,6 +156,60 @@ def cmd_modelos(args, pipeline) -> int:
         print(f"  {dados['nome']:<14} {dados['rotulo']:<38} {cenas}")
     print("\nModelo proprio: um .txt em modelos/ (uma linha por bloco) e depois")
     print("  python main.py prompt --arquivo modelos/meu.txt")
+    return 0
+
+
+def cmd_auto(args, pipeline) -> int:
+    """Criacao automatica: a rodada em si e as tarefas que a disparam."""
+    from contos.pipeline import agenda, tarefas
+
+    config = agenda.carregar()
+    horas = args.horas or config["horas"]
+
+    if args.instalar:
+        resultados = tarefas.instalar(horas)
+        for r in resultados:
+            marca = "ok " if r["ok"] else "FALHOU"
+            print(f"  [{marca}] {r['tarefa']}  {r['hora']:02d}:00  "
+                  f"{r['mensagem'][:90]}")
+        if any(not r["ok"] for r in resultados):
+            print("\nAlguma tarefa nao entrou. O schtasks costuma precisar de "
+                  "um terminal ABERTO COMO ADMINISTRADOR.")
+            return 1
+        print(f"\n{len(resultados)} tarefa(s) diaria(s) criadas. Elas chamam "
+              f"{tarefas.caminho_do_lancador()}")
+        print("O PC precisa estar ligado e com a sessao do Windows aberta na "
+              "hora: a rodada abre Chrome de verdade.")
+        return 0
+
+    if args.remover:
+        removidas = tarefas.remover()
+        for r in removidas:
+            print(f"  removida: {r['tarefa']}")
+        print(f"{len(removidas)} tarefa(s) removida(s).")
+        return 0
+
+    if args.listar:
+        instaladas = tarefas.listar()
+        if not instaladas:
+            print("nenhuma tarefa instalada. Rode: python main.py auto --instalar")
+            return 1
+        for t in instaladas:
+            print(f"  {t['tarefa']:<22} proximo: {t['proximo']:<22} "
+                  f"{t['situacao']}")
+        print(f"\nagenda: {', '.join(f'{h:02d}:00' for h in config['horas'])}"
+              f"  ({'ativa' if config.get('ativo', True) else 'DESLIGADA'})")
+        pendentes = agenda.incompletas()
+        for p in pendentes:
+            print(f"  pendente: {p['historia_id']} - "
+                  f"{p['imagens_faltando']} imagem(ns), "
+                  f"{len(p['partes_sem_video'])} video(s)")
+        return 0
+
+    # Sem bandeira: E a rodada. E isto que a tarefa do Windows chama.
+    resultado = agenda.rodar(config=config, headless=args.headless)
+    if resultado.get("erros"):
+        return 1
     return 0
 
 
@@ -274,9 +329,24 @@ def cmd_publicar(args, pipeline) -> int:
         # imprimia a descricao e saia com 0, como se tivesse publicado.
         codigo = 0
         if args.youtube:
+            from contos.publicar import serie as _serie
+            # NAO PUBLICAR DUAS VEZES. Este caminho (parte avulsa) subia sem
+            # olhar nem registrar o ledger — so `--serie` registrava. Rodar o
+            # comando de novo colocaria o MESMO video no canal outra vez, e
+            # video duplicado nao tem desfazer bonito. Medido em 08/09/2026:
+            # a primeira publicacao do projeto saiu por aqui e nao deixou
+            # rastro nenhum.
+            ja = _serie.ja_publicado(alvo.id, "youtube")
+            if ja and not args.forcar:
+                print(f"YouTube: {alvo.id} ja foi publicado em "
+                      f"{ja.get('quando', '?')} ({ja.get('url', 'sem url')}). "
+                      "Use --forcar para subir de novo.")
+                return 0
             try:
-                print("YouTube:",
-                      catalogo.publicar_youtube(alvo, args.visibilidade))
+                url = catalogo.publicar_youtube(alvo, args.visibilidade)
+                print("YouTube:", url)
+                _serie.registrar(alvo, url, "youtube", None,
+                                 {"visibilidade": args.visibilidade or ""})
             except Exception as exc:
                 print(f"YouTube FALHOU: {exc}")
                 codigo = 1
@@ -396,6 +466,19 @@ def main() -> int:
     s = sub.add_parser("status", help="onde cada historia esta")
     s.add_argument("historia_id", nargs="?", default=None)
 
+    au = sub.add_parser("auto",
+                        help="criacao automatica (rodada + tarefas do Windows)")
+    au.add_argument("--instalar", action="store_true",
+                    help="cria as tarefas diarias no Agendador do Windows")
+    au.add_argument("--remover", action="store_true",
+                    help="remove as tarefas diarias")
+    au.add_argument("--listar", action="store_true",
+                    help="mostra as tarefas, a agenda e o que ficou pendente")
+    au.add_argument("--horas", type=int, nargs="+", default=None,
+                    help="horas a instalar (padrao: as de config/agenda.json)")
+    au.add_argument("--headless", action="store_true",
+                    help="navegador invisivel (nao funciona para o LLM)")
+
     cf = sub.add_parser("conferir",
                         help="procura defeito no que ja esta no disco")
     cf.add_argument("historia_id", nargs="?", default=None)
@@ -433,7 +516,7 @@ def main() -> int:
              "llm": cmd_llm, "imagens": cmd_imagens,
              "video": cmd_video, "tudo": cmd_tudo, "modelos": cmd_modelos,
              "status": cmd_status, "publicar": cmd_publicar,
-             "conferir": cmd_conferir}
+             "conferir": cmd_conferir, "auto": cmd_auto}
     return acoes[args.comando](args, pipeline)
 
 

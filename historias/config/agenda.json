@@ -1,0 +1,26 @@
+{
+    "_comment": "Criacao automatica de historias. `horas` sao os disparos do Agendador do Windows (hora cheia, hora local). Cada disparo tenta fazer UMA historia inteira: roteiro no LLM, imagens no PicassoIA e um mp4 por parte.",
+    "_comment_realidade": "MEDIDO em 01/09/2026 na historia 8: roteiro 5 min, 84 imagens 3h13, seis videos 53 min = ~4h por historia. Oito disparos num dia de 24h nao cabem, e por isso existe a trava: o disparo que encontra uma rodada em andamento SAI na hora em vez de competir pelo PicassoIA e pelo navegador do LLM. Na pratica saem 4 a 6 historias por dia, e o log diz quantas.",
+    "ativo": true,
+    "horas": [
+        6,
+        7,
+        8,
+        10,
+        12,
+        15,
+        17,
+        20
+    ],
+    "_comment_geracao": "O que cada rodada pede ao LLM. `tema` vazio = o modelo escolhe (foi assim que sairam as historias 3 a 8).",
+    "provedor": "gemini",
+    "partes": 6,
+    "cenas_por_parte": 14,
+    "tema": "",
+    "_comment_retomar": "Antes de comecar historia nova, a rodada TERMINA a que ficou pela metade. Sem isto, uma corrida interrompida (PC reiniciado, PicassoIA fora do ar) deixaria historia sem imagem para sempre, e o disparo seguinte empilharia outra por cima.",
+    "retomar_incompletas": true,
+    "_comment_avisar": "Avisa no Telegram quando uma historia fica pronta e quando a rodada falha. Disparo que sai sem fazer nada (trava ocupada, pausa) NAO avisa: seriam 4 a 6 por dia dizendo a mesma coisa. Usa o bot de `remoto/` (token em %LOCALAPPDATA%/neural-fights/remoto.json); sem token, a rodada segue igual e so registra no log.",
+    "avisar_telegram": true,
+    "_comment_estoque": "GORDURA DE UM DIA, e nova. Pedido dele em 10/09/2026: 'quero sempre ter a gordura de apenas um dia em tudo, mas quero que essa gordura seja totalmente nova'. Estoque grande parece seguranca e e o contrario: ele e feito com o molde de HOJE e sai no ar semanas depois, quando o molde ja mudou - foi assim que 38 dias de video do Gemini Flash seguraram as melhorias de 08/09 na fila. `teto_de_estoque: 0` = derivar da grade (um horario, um video); qualquer numero aqui vence o calculo.",
+    "piso_de_estoque": 1
+}
