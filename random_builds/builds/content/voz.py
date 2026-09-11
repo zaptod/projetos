@@ -624,6 +624,79 @@ def _sorteio(indice: int, faixa: tuple) -> float:
     return faixa[0] + (faixa[1] - faixa[0]) * passo
 
 
+# Rampa nas bordas que encostam em silencio. 3 ms e curto demais para a
+# orelha ouvir como corte de fala e longo o bastante para matar o degrau: a
+# 44,1 kHz sao 132 amostras, contra as ~10 que um clique ocupa.
+RAMPA_S = 0.003
+
+
+def _pausa_com_ar(entre, segundos: float, taxa: int, tipo):
+    """Uma pausa de `segundos` que COMECA e TERMINA com o audio original.
+
+    `entre` e o que existia entre as duas palavras. Quando a pausa precisa
+    ficar maior, o zero entra no MIOLO e as bordas seguem sendo o ar da
+    gravacao; quando precisa encolher, corta-se pelo miolo tambem. Assim a
+    fala nunca encosta em zero absoluto, que e o que se ouve como corte.
+    """
+    alvo = max(0, int(segundos * taxa))
+    if not len(entre):
+        return np.zeros(alvo, dtype=tipo)
+    if alvo <= len(entre):
+        # encolher: fica o comeco e o fim, some o meio
+        metade = alvo // 2
+        return np.concatenate([entre[:metade], entre[len(entre) - (alvo - metade):]])
+    metade = len(entre) // 2
+    return np.concatenate([
+        entre[:metade],
+        np.zeros(alvo - len(entre), dtype=tipo),
+        entre[metade:],
+    ])
+
+
+def _tirar_o_estalo(pedacos: list, taxa: int) -> None:
+    """Suaviza toda borda de fala que encosta em silencio, no lugar.
+
+    POR QUE ISTO EXISTE. `respirar` fatia a narracao em `pcm[t0:t1]` — posicao
+    ARBITRARIA de amostra, nunca um cruzamento de zero — e emenda com
+    `np.zeros`. Quando a palavra termina com a onda em -4000 e o proximo
+    sample e 0, isso e um DEGRAU, e degrau e clique.
+
+    Medido em 10/09/2026 na `historia_00006`, que ele ouviu "pipocando": 54
+    estalos no `voz.wav`, e os mesmos 30 sobrevivendo no mp4 final nos mesmos
+    segundos. As bordas de CENA nao tinham nada (salto mediano 241 contra
+    3560 do resto) — o defeito nunca esteve na montagem do video, estava aqui.
+
+    So mexe onde encosta em silencio: fala contigua nao e tocada, senao a
+    rampa viraria um afundamento no meio da frase.
+    """
+    if np is None or len(pedacos) < 2:
+        return
+    n = max(1, int(RAMPA_S * taxa))
+
+    def e_silencio(bloco) -> bool:
+        return len(bloco) > 0 and not bool(np.any(bloco))
+
+    def descer(bloco):
+        if len(bloco) < n:
+            return
+        rampa = np.linspace(1.0, 0.0, n)
+        bloco[-n:] = (bloco[-n:].astype(np.float64) * rampa).astype(bloco.dtype)
+
+    def subir(bloco):
+        if len(bloco) < n:
+            return
+        rampa = np.linspace(0.0, 1.0, n)
+        bloco[:n] = (bloco[:n].astype(np.float64) * rampa).astype(bloco.dtype)
+
+    for i, bloco in enumerate(pedacos):
+        if not e_silencio(bloco):
+            continue
+        if i > 0 and not e_silencio(pedacos[i - 1]):
+            descer(pedacos[i - 1])
+        if i + 1 < len(pedacos) and not e_silencio(pedacos[i + 1]):
+            subir(pedacos[i + 1])
+
+
 def respirar(pcm, palavras: list, taxa: int, paragrafos=None, log=None):
     """Varia o TAMANHO das pausas que ja existem. Devolve (pcm, palavras).
 
@@ -660,9 +733,21 @@ def respirar(pcm, palavras: list, taxa: int, paragrafos=None, log=None):
             break
 
         natural = max(0.0, float(palavras[i + 1]["t0"]) - t1)
+        # O QUE HA DE VERDADE ENTRE AS PALAVRAS. Nao e silencio: e respiracao,
+        # ruido de sala e a ligacao entre um som e o outro. Trocar isso por
+        # `np.zeros` era o que fazia a voz PIPOCAR — medido em 10/09/2026 na
+        # parte 1 da historia 6: 333 buracos de zero exato entre 5 e 120 ms
+        # dentro da fala, uns 2,6 por segundo. O ouvido nao escuta "silencio",
+        # escuta o audio SUMINDO e voltando.
+        entre = pcm[int(t1 * taxa):int(float(palavras[i + 1]["t0"]) * taxa)]
         if natural < PAUSA_MINIMA_S:
-            # transicao entre palavras da mesma frase: fica como esta
-            silencio = natural
+            # transicao entre palavras da mesma frase: fica como esta, e
+            # "como esta" quer dizer o AUDIO ORIGINAL, nao um vazio do mesmo
+            # tamanho.
+            if len(entre):
+                pedacos.append(entre)
+                cursor += len(entre) / taxa
+            continue
         else:
             if i + 1 in paragrafos:
                 tipo = "cena"
@@ -675,11 +760,16 @@ def respirar(pcm, palavras: list, taxa: int, paragrafos=None, log=None):
             silencio = _sorteio(i, PAUSAS[tipo])
             mexidas += 1
         if silencio > 0:
-            pedacos.append(np.zeros(int(silencio * taxa), dtype=pcm.dtype))
+            # A PAUSA CRESCE PELO MIOLO, nunca pelas bordas. O que encosta na
+            # fala continua sendo o audio de verdade (a respirada, o ar da
+            # sala); o zero entra so no meio, onde ja nao ha nada para ouvir.
+            # Emendar fala direto em zero absoluto e o que se ouve como corte.
+            pedacos.append(_pausa_com_ar(entre, silencio, taxa, pcm.dtype))
             cursor += silencio
 
     if not pedacos:
         return pcm, palavras
+    _tirar_o_estalo(pedacos, taxa)
     novo = np.concatenate(pedacos)
     if log:
         log(f"[voz] respiro: {mexidas} pausa(s) redistribuida(s); "
