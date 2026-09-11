@@ -107,6 +107,49 @@ class YouTubeWebFalhou(RuntimeError):
     """Erro legivel — o painel mostra a frase, nao o traceback."""
 
 
+class LimiteDiarioDoYouTube(YouTubeWebFalhou):
+    """A conta bateu a cota de envios do dia. Nao ha o que tentar.
+
+    E DIFERENTE de toda outra falha daqui, e por isso tem classe propria:
+    esperar nao resolve, tentar de novo nao resolve, e o proximo video da fila
+    vai bater na mesma parede. So passa quando o YouTube libera (vira o dia)
+    ou quando alguem eleva o limite na conta.
+
+    Como ela se apresentava antes de ser reconhecida, em 10/09/2026: o Studio
+    mostra o aviso e o formulario simplesmente nao completa — o
+    `VIDEO_MADE_FOR_KIDS_NOT_MFK` nunca fica clicavel e a falha chega como
+    `TimeoutError: Locator.click: 30000ms`, no botao errado. Foram dois
+    videos e um minuto de espera cada para descobrir uma coisa que estava
+    escrita na tela.
+    """
+
+
+# O aviso, nas duas linguas em que a conta dele pode estar. O YouTube o mostra
+# num `.error-short`, e foi assim que o Adrian o achou (10/09/2026).
+LIMITE_DIARIO = (
+    "limite diário de envios",
+    "limite diario de envios",
+    "daily upload limit",
+    "you have reached the daily",
+)
+
+
+def _bateu_o_limite(page) -> str:
+    """A frase do aviso de cota, se ela estiver na tela. `""` se nao."""
+    for seletor in (".error-short", "ytcp-uploads-dialog .error-short",
+                    "[class*='error-short']"):
+        try:
+            alvo = page.locator(seletor)
+            for i in range(min(alvo.count(), 4)):
+                texto = " ".join((alvo.nth(i).inner_text(timeout=1500)
+                                  or "").split())
+                if any(m in texto.lower() for m in LIMITE_DIARIO):
+                    return texto[:160]
+        except Exception:                                      # noqa: BLE001
+            continue
+    return ""
+
+
 URL_CANAIS = ("https://www.youtube.com/channel_switcher"
               "?next=%2Faccount&feature=settings")
 
@@ -634,6 +677,16 @@ def publicar(video, *, visibilidade: str | None = None,
         entrada.set_input_files(str(caminho))
         passo(f"arquivo entregue ({caminho.name}); o YouTube esta subindo...")
 
+        # A COTA SE PERGUNTA AQUI, logo depois do envio. Medido em 10/09/2026:
+        # detectando so no fim, a rodada escrevia titulo, escrevia descricao,
+        # falhava no botao de "feito para criancas", nao achava o "Proximo",
+        # nao achava o "public" — cinco sintomas confusos para uma causa que
+        # ja estava escrita na tela desde o primeiro segundo. E pior: deixava
+        # um rascunho meio preenchido no canal.
+        aviso = _bateu_o_limite(page)
+        if aviso:
+            raise LimiteDiarioDoYouTube(aviso)
+
         titulo = _primeiro(page, CAMPO_TITULO, timeout=60.0)
         if titulo is None:
             raise YouTubeWebFalhou(
@@ -652,8 +705,20 @@ def publicar(video, *, visibilidade: str | None = None,
             passo("AVISO: nao achei a pergunta 'feito para criancas'. Se o "
                   "botao de publicar nao habilitar, e por isso.")
         else:
-            criancas.click()
-            passo("marcado: nao e conteudo para criancas.")
+            try:
+                # Se o elemento nao fica clicavel em 10 s (overlay, outro
+                # dialogo, ou elemento desabilitado), falha rapido em vez de
+                # esperar os 30 s do timeout padrao do Playwright. Melhor
+                # falhar rapido e deixar a janela aberta (usuario ve e
+                # conserta) do que travar por 30 s esperando algo que nunca
+                # vira clicavel.
+                criancas.click(timeout=10000)
+                passo("marcado: nao e conteudo para criancas.")
+            except Exception as exc:
+                passo(f"AVISO: nao consegui clicar em 'feito para criancas' "
+                      f"({type(exc).__name__}: {str(exc)[:60]}). A janela "
+                      f"esta aberta — confira se ha um dialogo cobrindo e "
+                      f"feche-o se for o caso.")
 
         # O assistente: detalhes -> elementos -> verificacoes -> visibilidade
         for etapa in range(3):
@@ -695,9 +760,19 @@ def publicar(video, *, visibilidade: str | None = None,
         limite = time.time() + ESPERA_UPLOAD_S
         while time.time() < limite and pronto is None:
             pronto = _primeiro(page, SINAIS_PRONTO, timeout=3.0)
-            if pronto is None:
-                time.sleep(5)
+            if pronto is not None:
+                break
+            # A COTA SE DESCOBRE AQUI, e nao depois de 15 min de espera: o
+            # aviso ja esta na tela e nenhum botao vai habilitar. Perguntar
+            # antes de dormir e a diferenca entre saber em 3 s e saber em 900.
+            aviso = _bateu_o_limite(page)
+            if aviso:
+                raise LimiteDiarioDoYouTube(aviso)
+            time.sleep(5)
         if pronto is None:
+            aviso = _bateu_o_limite(page)
+            if aviso:
+                raise LimiteDiarioDoYouTube(aviso)
             raise YouTubeWebFalhou(
                 "o YouTube nao terminou de processar o video a tempo. A "
                 "janela esta aberta: da para terminar na mao.")
