@@ -335,6 +335,11 @@ def comparar_formatos(dados: list[dict], agora: datetime | None = None) -> list[
         taxas = [views_por_dia(d, agora) for d in lista]
         views = sum(d.get("views") or 0 for d in lista)
         duracoes = sorted(float(d["duracao"]) for d in lista if d.get("duracao"))
+        # Retencao so entra de quem TEM retencao. Video sem linha da
+        # Analytics nao vira 0% na media — e a mesma regra de `retencao()`,
+        # que se recusa a gravar zero quando a API nao devolveu nada.
+        retencoes = sorted(float(d["media_percentual"]) for d in lista
+                           if d.get("media_percentual") is not None)
         saida.append({
             "origem": origem,
             "videos": len(lista),
@@ -342,8 +347,14 @@ def comparar_formatos(dados: list[dict], agora: datetime | None = None) -> list[
             "views_por_dia": sum(taxas) / len(taxas),
             "like_rate": (sum(d.get("likes") or 0 for d in lista) / views) if views else None,
             "duracao_mediana": duracoes[len(duracoes) // 2] if duracoes else None,
+            "com_retencao": len(retencoes),
+            "retencao_media": (sum(retencoes) / len(retencoes)) if retencoes else None,
+            "retencao_mediana": (retencoes[len(retencoes) // 2] if retencoes else None),
         })
-    return sorted(saida, key=lambda x: -x["views_por_dia"])
+    # Ordena por RETENCAO quando ela existe: com 4-20 views por video, views
+    # por dia e muito mais ruidosa que "quanto do video as pessoas veem".
+    return sorted(saida, key=lambda x: (-(x["retencao_media"] or -1),
+                                        -x["views_por_dia"]))
 
 
 def carregar_salvas() -> list[dict]:
@@ -563,14 +574,22 @@ def relatorio(dados: list[dict]) -> str:
     # com o volume de hoje, e a que diz se o formato curto vence o longo.
     formatos = comparar_formatos(dados)
     if len(formatos) > 1:
-        linhas.append("\n  por formato (views/dia normaliza a idade)")
-        linhas.append("    origem      videos   views  views/dia  like%  dur s")
+        linhas.append("\n  por formato — o veredito da Onda 15")
+        linhas.append("    origem      n  ret%med  ret%mid   (n)  views/dia"
+                      "  like%  dur s")
         for f in formatos:
-            like = f"{f['like_rate'] * 100:5.1f}" if f["like_rate"] is not None else "   --"
-            dur = f"{f['duracao_mediana']:5.0f}" if f["duracao_mediana"] is not None else "   --"
+            def _num(valor, casas=1, largura=7):
+                return (f"{valor:{largura}.{casas}f}" if valor is not None
+                        else " " * (largura - 2) + "--")
+            like = _num((f["like_rate"] or 0) * 100, 1, 6) \
+                if f["like_rate"] is not None else "    --"
             linhas.append(
-                f"    {f['origem']:<12}{f['videos']:>6}{f['views']:>8}"
-                f"{f['views_por_dia']:>11.2f}  {like}  {dur}")
+                f"    {f['origem']:<10}{f['videos']:>3}{_num(f['retencao_media'])}"
+                f"{_num(f['retencao_mediana'])}{f['com_retencao']:>6}"
+                f"{f['views_por_dia']:>11.2f}{like}"
+                f"{_num(f['duracao_mediana'], 0, 7)}")
+        linhas.append("    (retencao e o criterio: com 4-20 views por video, "
+                      "views/dia e muito mais ruidosa)")
 
     for d in dados:
         curva = d.get("curva")

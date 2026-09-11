@@ -304,7 +304,87 @@ def _visibilidade_das_historias() -> str:
 
 
 # ------------------------------------------------------------------ builds
-def proximo_build():
+# Quantos dos 8 disparos diarios cada formato deve ocupar. Sem este bloco no
+# `publicacao.json`, a escolha volta a ser o FIFO cego de antes.
+COTA_PADRAO = {"duelo": 4, "build": 3, "estreia": 1, "torneio": 0}
+
+# Quantas publicacoes recentes contam para medir o equilibrio. Duas voltas da
+# grade: curto o bastante para reagir a um formato que secou, longo o
+# bastante para nao oscilar a cada disparo.
+JANELA_DA_GRADE = 16
+
+
+def cota_da_grade(config=None) -> dict:
+    """A mistura de formatos, do config ou o padrao do modulo."""
+    if config is None:
+        try:
+            from builds.publicar import catalogo as C
+            config = C.carregar_config()
+        except Exception:                                      # noqa: BLE001
+            config = {}
+    bruta = ((config or {}).get("grade") or {}).get("mistura")
+    if not isinstance(bruta, dict) or not bruta:
+        return dict(COTA_PADRAO)
+    return {str(k): max(0, int(v)) for k, v in bruta.items()}
+
+
+def _servidos_recentes(n: int = JANELA_DA_GRADE) -> dict:
+    """Quantas das ultimas `n` publicacoes foram de cada formato."""
+    from builds.publicar import metricas
+
+    contagem: dict[str, int] = {}
+    linhas = [l for l in metricas.publicados() if l.get("url")]
+    for linha in linhas[-n:]:
+        origem = str(linha.get("origem") or "")
+        if origem:
+            contagem[origem] = contagem.get(origem, 0) + 1
+    return contagem
+
+
+def escolher_por_cota(pendentes: list, servidos: dict, cota: dict):
+    """A regra de escolha, pura: sem disco, sem rede, sem catalogo.
+
+    Entre os formatos que TEM pendente, vence o mais atrasado em relacao a
+    propria cota (`servidos / cota`). Empate desempata pelo mais antigo,
+    que era a regra de sempre. Cota zero nao e proibicao: e "so quando
+    ninguem mais quer".
+
+    `pendentes` chega do mais ANTIGO para o mais novo.
+    """
+    if not pendentes:
+        return None
+    if not cota:
+        return pendentes[0]
+    por_origem: dict[str, list] = {}
+    for video in pendentes:
+        por_origem.setdefault(str(getattr(video, "origem", "")), []).append(video)
+
+    def atraso(origem: str) -> float:
+        peso = cota.get(origem, 0)
+        if peso <= 0:
+            return float("inf")
+        return servidos.get(origem, 0) / peso
+
+    melhor = min(por_origem,
+                 key=lambda o: (atraso(o), por_origem[o][0].quando))
+    return por_origem[melhor][0]
+
+
+def proximo_build(config=None):
+    """O proximo video de builds, alternando entre os FORMATOS.
+
+    Ate 11/09/2026 isto era FIFO cego: `C.listar()` devolve build, estreia,
+    duelo e torneio no mesmo indice, e a unica regra era "o mais antigo que
+    ainda nao saiu". Com 8 disparos por dia e um backlog desequilibrado, uma
+    semana inteira podia sair de um formato so — e ai a comparacao que a
+    Onda 15 existe para fazer simplesmente nao acontece.
+
+    Agora e round-robin PONDERADO: entre os formatos com pendente, vence o
+    que estiver mais atrasado em relacao a propria cota (`servidos / cota`).
+    Empate desempata pelo mais antigo, que era a regra de sempre. Formato
+    sem cota, ou sem pendente, nao trava a grade: os slots dele vao para
+    quem tem.
+    """
     from builds.publicar import catalogo as C
     from builds.publicar import metricas
 
@@ -314,7 +394,9 @@ def proximo_build():
     if not pendentes:
         return None
     # o mais ANTIGO primeiro: o catalogo vem do mais novo para o mais velho
-    return pendentes[-1]
+    pendentes.reverse()
+    return escolher_por_cota(pendentes, _servidos_recentes(),
+                             cota_da_grade(config))
 
 
 def postar_build(*, so_ver: bool = False) -> dict:
@@ -495,6 +577,39 @@ def estoque(por_dia: int | None = None) -> dict:
     return dias
 
 
+def estoque_por_formato(por_dia: int | None = None) -> dict:
+    """Dias de estoque de CADA formato de builds, pela cota dele.
+
+    O total do canal esconde o que importa depois da Onda 15E: com a grade
+    alternando formatos, o duelo pode secar enquanto o numero geral segue
+    confortavel — e a comparacao para de ter os dois lados sem ninguem
+    perceber. Cada formato e medido contra a cota DELE, nao contra os 8
+    disparos do dia.
+    """
+    por_dia = int(por_dia or len(HORAS_PADRAO)) or 1
+    cota = cota_da_grade()
+    total_cota = sum(cota.values()) or 1
+    try:
+        from builds.publicar import catalogo as C
+        from builds.publicar import metricas
+        ja = {l.get("video_id") for l in metricas.publicados() if l.get("url")}
+        pendentes = [v for v in C.listar()
+                     if v.id not in ja and getattr(v, "perfil", "") == "celular"]
+    except Exception:                                          # noqa: BLE001
+        return {}
+    contagem: dict[str, int] = {}
+    for video in pendentes:
+        origem = str(getattr(video, "origem", ""))
+        contagem[origem] = contagem.get(origem, 0) + 1
+    saida = {}
+    for origem, peso in cota.items():
+        if peso <= 0:
+            continue  # cota zero nao tem ritmo proprio para medir
+        saidas_por_dia = max(1e-9, por_dia * peso / total_cota)
+        saida[origem] = int(contagem.get(origem, 0) // saidas_por_dia)
+    return saida
+
+
 CANAIS = {"historias": {"emoji": "📖", "rotulo": "histórias"},
           "builds": {"emoji": "⚔️", "rotulo": "builds"}}
 
@@ -597,6 +712,20 @@ def avisar(resultados: list) -> None:
     if magros:
         linhas.append(f"⚠️ *{', '.join(magros)}* abaixo de {PISO_DE_ALERTA} "
                       "dia(s): sem vídeo novo o canal para.")
+    # Por FORMATO: o total do canal esconde um formato secando. Com a grade
+    # alternando, o duelo pode acabar enquanto o numero geral segue folgado
+    # — e a comparacao da Onda 15 perde um dos lados sem ninguem ver.
+    try:
+        por_formato = estoque_por_formato()
+    except Exception:                                          # noqa: BLE001
+        por_formato = {}
+    if por_formato:
+        linhas.append("    por formato — " + " · ".join(
+            f"{o} {n}d" for o, n in sorted(por_formato.items())))
+        secos = [o for o, n in por_formato.items() if n < PISO_DE_ALERTA]
+        if secos:
+            linhas.append(f"⚠️ sem estoque de *{', '.join(sorted(secos))}*: "
+                          "a grade passa a cota para os outros formatos.")
     linhas.append(f"Próximo horário: {_proximo_horario(agora)}")
     try:
         subprocess.run([sys.executable, "-m", "remoto", "--avisar",

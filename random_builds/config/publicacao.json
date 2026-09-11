@@ -60,5 +60,14 @@
     "postar_automatico": false,
     "_comment_postar": "false = o painel sobe o arquivo, escreve a legenda e PARA com a janela aberta para você conferir e clicar em Publicar. true = clica sozinho (o TikTok não tem API aberta de post; isso é automação de navegador na SUA conta e pode quebrar quando o site mudar).",
     "url_upload": "https://www.tiktok.com/tiktokstudio/upload"
+  },
+  "grade": {
+    "_porque": "Quantos dos 8 disparos diarios cada formato ocupa. O duelo leva a maioria porque e o formato em teste e o mais barato (uma gravacao, nenhuma chamada de IA); a estreia leva 1 porque tem retencao mediana ZERO e so fica no ar para a comparacao ter os dois lados. Medido em 11/09/2026.",
+    "mistura": {
+      "duelo": 4,
+      "build": 3,
+      "estreia": 1,
+      "torneio": 0
+    }
   }
 }
