@@ -294,5 +294,400 @@ class NarracaoCobreOVideoTests(unittest.TestCase):
         self.assertIn("volumedetect,silencedetect", fonte)
 
 
+class PadraoDeNomesTests(unittest.TestCase):
+    """O nome da conta e o DESTINO (08/09/2026).
+
+    Ele pediu: "confira cada caminho e em qual canal vai, com base nisso mude
+    o nome e crie o padrao". O que a auditoria achou no registro:
+
+        `principal`            significava TRES destinos conforme o servico —
+                               o canal pessoal, o historinhas e a conta de
+                               builds do TikTok
+        `bem_facil_d_verdade`  e `historinhas` eram o MESMO canal
+        `canal2`               nao dizia nada
+
+    Com nomes assim, "para onde isso vai?" so se responde abrindo o navegador,
+    e publicar no canal errado nao tem desfazer.
+    """
+
+    def setUp(self):
+        self.contas = _rb_contas
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._registro, self._runtime = self.contas.ARQUIVO, self.contas.runtime_dir
+        self.contas.ARQUIVO = Path(self._tmp.name) / "contas.json"
+        self.contas.runtime_dir = lambda: Path(self._tmp.name)
+
+        def restaurar():
+            self.contas.ARQUIVO = self._registro
+            self.contas.runtime_dir = self._runtime
+        self.addCleanup(restaurar)
+
+    # ------------------------------------------------------------ renomear
+    def test_renomear_leva_o_perfil_do_chrome_junto(self):
+        """Renomear so o registro deixaria a conta sem login.
+
+        O nome E a pasta. Trocar o registro e deixar a pasta para tras faria
+        o proximo upload pedir login de novo, no meio de uma fila agendada.
+        """
+        self.contas.adicionar("tiktok", "canal2")
+        pasta = self.contas.perfil("tiktok", "historias", "canal2")
+        (pasta / "marca.txt").write_text("sessao", encoding="utf-8")
+
+        self.contas.renomear("tiktok", "canal2", "historinhas")
+        nova = Path(self._tmp.name) / "browser_profiles" / "tiktok__historinhas"
+        self.assertTrue((nova / "marca.txt").is_file(), "o login ficou para tras")
+        self.assertIn("historinhas", self.contas.contas("tiktok"))
+        self.assertNotIn("canal2", self.contas.contas("tiktok"))
+
+    def test_renomear_leva_a_credencial_do_youtube_junto(self):
+        self.contas.adicionar("youtube", "bem_facil_d_verdade")
+        cred = self.contas.credencial_youtube("historias", "bem_facil_d_verdade")
+        cred.write_text('{"refresh_token": "x"}', encoding="utf-8")
+
+        self.contas.renomear("youtube", "bem_facil_d_verdade", "historinhas")
+        self.assertTrue(
+            (Path(self._tmp.name) / "youtube_credentials_historinhas.json").is_file())
+
+    def test_renomear_carrega_a_escolha_e_a_identidade(self):
+        self.contas.adicionar("youtube_web", "antiga")
+        self.contas.escolher("youtube_web", "builds", "antiga")
+        self.contas.identificar("youtube_web", "antiga",
+                                rotulo="Neural fights", identificador="UCA3Y")
+
+        self.contas.renomear("youtube_web", "antiga", "neural_fights")
+        self.assertEqual(self.contas.ativa("youtube_web", "builds"),
+                         "neural_fights")
+        self.assertEqual(
+            self.contas.identidade("youtube_web", "neural_fights")["id"], "UCA3Y")
+
+    def test_principal_NAO_se_renomeia(self):
+        """Ela mora nos caminhos antigos; mover perderia os logins de todos.
+
+        Ha teste irmao (`test_perfil_da_principal_e_o_caminho_antigo`) travando
+        esse caminho — este garante que nem por engano se mexa nele.
+        """
+        with self.assertRaises(ValueError) as ctx:
+            self.contas.renomear("tiktok", "principal", "neural_fights")
+        self.assertIn("legado", str(ctx.exception))
+
+    def test_nenhuma_conta_pode_virar_principal(self):
+        self.contas.adicionar("tiktok", "outra")
+        with self.assertRaises(ValueError):
+            self.contas.renomear("tiktok", "outra", "principal")
+
+    def test_nao_atropela_uma_conta_que_ja_existe(self):
+        self.contas.adicionar("tiktok", "uma")
+        self.contas.adicionar("tiktok", "outra")
+        with self.assertRaises(ValueError):
+            self.contas.renomear("tiktok", "uma", "outra")
+
+    # -------------------------------------------------------- conformidade
+    def _identificar(self, servico, conta, rotulo, ident):
+        self.contas.adicionar(servico, conta)
+        self.contas.identificar(servico, conta, rotulo=rotulo,
+                                identificador=ident)
+
+    def test_dois_nomes_para_o_mesmo_destino_e_acusado(self):
+        for nome in ("historinhas", "bem_facil_d_verdade"):
+            self._identificar("youtube_web", nome, "historinhas", "UC2S8")
+        self.contas.escolher("youtube_web", "historias", "historinhas")
+        self.contas.escolher("youtube_web", "builds", "bem_facil_d_verdade")
+        tipos = [a["tipo"] for a in self.contas.conformidade()]
+        self.assertIn("dois nomes para um destino", tipos)
+
+    def test_dois_canais_no_mesmo_lugar_e_acusado(self):
+        self._identificar("youtube_web", "historinhas", "historinhas", "UC2S8")
+        for canal in ("builds", "historias"):
+            self.contas.escolher("youtube_web", canal, "historinhas")
+        tipos = [a["tipo"] for a in self.contas.conformidade()]
+        self.assertIn("canais no mesmo destino", tipos)
+
+    def test_canal_sem_escolha_e_acusado(self):
+        # Registro virgem: builds e historias caem em `principal`.
+        tipos = [a["tipo"] for a in self.contas.conformidade()]
+        self.assertIn("canal sem conta propria", tipos)
+
+    def test_nome_sem_sentido_e_sem_identidade_e_acusado(self):
+        self.contas.adicionar("tiktok", "canal2")
+        self.contas.escolher("tiktok", "historias", "canal2")
+        achados = [a for a in self.contas.conformidade()
+                   if a["tipo"] == "destino desconhecido"]
+        self.assertTrue(achados)
+        self.assertIn("canal2", achados[0]["detalhe"])
+
+    def test_nome_ruim_COM_identidade_gravada_passa(self):
+        """A regra e 'da para saber para onde vai', nao 'o nome e bonito'.
+
+        `principal` do TikTok e o login legado e nao pode ser renomeada — mas
+        se a identidade dela estiver registrada, a pergunta tem resposta.
+        """
+        self.contas.escolher("tiktok", "builds", "principal")
+        self.contas.identificar("tiktok", "principal",
+                                rotulo="Neural fights", identificador="@nf")
+        tipos = [a["tipo"] for a in self.contas.conformidade()
+                 if a["servico"] == "tiktok"]
+        self.assertNotIn("destino desconhecido", tipos)
+
+    def test_geral_nao_conta_como_canal_repetido(self):
+        """`geral` nao e canal: e a queda de quem nao escolheu.
+
+        Contando ele, a regra 2 acusava "historias e geral publicam no mesmo
+        lugar" — que e a definicao de queda padrao, nao um defeito. O alerta
+        certo para isso e a regra 3, e ele some sozinho quando o canal escolhe.
+        """
+        self._identificar("youtube_web", "historinhas", "historinhas", "UC2S8")
+        self._identificar("youtube_web", "neural_fights", "Neural fights", "UCA3Y")
+        self.contas.escolher("youtube_web", "historias", "historinhas")
+        self.contas.escolher("youtube_web", "builds", "neural_fights")
+        tipos = [a["tipo"] for a in self.contas.conformidade()
+                 if a["servico"] == "youtube_web"]
+        self.assertNotIn("canais no mesmo destino", tipos)
+
+    def test_principal_nao_conta_como_nome_duplicado(self):
+        """Ela nao pode ser renomeada: acusar seria alerta que nunca apaga."""
+        self._identificar("youtube", "historinhas", "historinhas", "UC2S8")
+        self.contas.identificar("youtube", "principal", rotulo="historinhas",
+                                identificador="UC2S8")
+        self.contas.escolher("youtube", "historias", "historinhas")
+        tipos = [a["tipo"] for a in self.contas.conformidade()]
+        self.assertNotIn("dois nomes para um destino", tipos)
+
+    def test_oauth_sem_arquivo_e_reportado_como_morto(self):
+        estado = self.contas.oauth_vivo("builds", "nao_existe")
+        self.assertFalse(estado["ok"])
+        self.assertIn("credencial", estado["motivo"])
+
+    def test_oauth_com_arquivo_incompleto_nao_diz_que_esta_vivo(self):
+        """`tem_login` so ve campos; isto tem que ver se serve.
+
+        Em 08/09/2026 a auditoria dizia "login ok" para uma credencial que o
+        Google recusava com `invalid_grant` — e as metricas estavam paradas
+        havia seis dias sem nada avisar.
+        """
+        caminho = self.contas.credencial_youtube("builds", "capenga")
+        caminho.write_text('{"client_id": "x"}', encoding="utf-8")
+        estado = self.contas.oauth_vivo("builds", "capenga")
+        self.assertFalse(estado["ok"])
+
+    def test_login_sem_destino_nao_entra_na_conformidade(self):
+        """PicassoIA e ChatGPT nao publicam: nao ha canal para nomear."""
+        servicos = {a["servico"] for a in self.contas.conformidade()}
+        for so_login in ("picasso", "chatgpt", "gemini", "digen", "dreamface"):
+            self.assertNotIn(so_login, servicos)
+
+
+class CenaSemImagemNaoPublicaTests(unittest.TestCase):
+    """Cena sem imagem e ERRO, nao aviso (08/09/2026).
+
+    O render nao se recusa a rodar sem imagem: ele desenha um cartao
+    tipografico e entrega um mp4 que PARECE pronto. Como aviso, isso passou
+    tres vezes — a historia 5 e a 10 foram ao disco com o GANCHO (cena 1, o
+    primeiro segundo, onde a pessoa decide ficar) virado cartao de texto, e o
+    painel dizia "pronta para publicar".
+
+    Aviso e o que se le depois. Erro e o que impede.
+    """
+
+    def _laudo(self, faltam: int, cenas_faltando: list):
+        from contos.imagens import fila
+        from contos.roteiro import roteiro as R
+        from contos.publicar import qualidade as Q
+
+        roteiro = {"serie": True, "titulo": "T", "provedor": "gemini",
+                   "partes": [{"n": 1, "cenas": [
+                       {"n": i, "imagem": "x", "tempo": 4, "narracao": "oi"}
+                       for i in range(1, 15)]}]}
+        alvos = [
+            (fila, "resumo", lambda *a, **k: {
+                "total": 14, "prontas": 14 - faltam, "faltam": faltam,
+                "completa": faltam == 0}),
+            # Os arquivos precisam EXISTIR: a vistoria compara o mtime da
+            # imagem com o do mp4 ("imagem mais nova que o video").
+            # `prova` presente: aqui se testa a cena que FALTA, nao a origem
+            # da imagem — essa tem teste proprio em `ImagemSemProvaTests`.
+            (fila, "estado", lambda *a, **k: [
+                {"n": i, "parte": 1, "pronta": i not in cenas_faltando,
+                 "arquivo": self._png(i), "prova": {"card": 1}}
+                for i in range(1, 15)]),
+            (R, "carregar", lambda _h: roteiro),
+            (R, "titulo_da_parte", lambda *a, **k: "T"),
+            (Q, "vistoriar_arquivo", lambda _c: {
+                "existe": True, "duracao": 140.0, "bytes": 10 ** 7,
+                "audio": True, "video": True, "media_db": -17.0,
+                "silencio_final": 0.0, "erros": [], "avisos": []}),
+        ]
+        for alvo, nome, falso in alvos:
+            self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))
+            setattr(alvo, nome, falso)
+        # O mp4 tambem precisa existir, e ser MAIS NOVO que as imagens: senao
+        # a vistoria acusa "imagem mais nova que o video" e o teste passaria
+        # pelo motivo errado.
+        video = Path(self._tmp.name) / "final.mp4"
+        video.write_bytes(b"\x00" * 32)
+        return Q.vistoriar_parte("historia_00010", 1, video, roteiro)
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+
+    def _png(self, numero: int) -> Path:
+        alvo = Path(self._tmp.name) / f"c{numero}.png"
+        if not alvo.exists():
+            alvo.write_bytes(b"\x89PNG")
+        return alvo
+
+    def test_uma_cena_sem_imagem_REPROVA(self):
+        laudo = self._laudo(faltam=1, cenas_faltando=[1])
+        self.assertFalse(laudo["ok"], "video com buraco nao pode publicar")
+        self.assertTrue(any("sem imagem" in e for e in laudo["erros"]))
+
+    def test_o_erro_diz_QUAL_cena_falta(self):
+        """Sem o numero, a pessoa tem que ir procurar na pasta."""
+        laudo = self._laudo(faltam=2, cenas_faltando=[1, 7])
+        junto = " ".join(laudo["erros"])
+        self.assertIn("cena(s) 1, 7", junto)
+
+    def test_todas_as_imagens_passa(self):
+        laudo = self._laudo(faltam=0, cenas_faltando=[])
+        self.assertTrue(laudo["ok"], laudo["erros"])
+
+
+class ParteAvulsaTambemRegistraTests(unittest.TestCase):
+    """Publicar parte avulsa nao pode subir duas vezes (08/09/2026).
+
+    `main.py publicar <id> --youtube` subia sem OLHAR nem REGISTRAR o ledger —
+    so o caminho `--serie` registrava. Rodar o comando de novo colocaria o
+    MESMO video no canal outra vez, e video duplicado no canal nao tem
+    desfazer bonito.
+
+    Descoberto na PRIMEIRA publicacao real do projeto: ela saiu por esse
+    caminho e nao deixou rastro nenhum no `publicados.jsonl`.
+    """
+
+    def test_o_caminho_avulso_confere_o_ledger_antes(self):
+        fonte = Path(RAIZ / "main.py").read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("if args.youtube or args.tiktok:"):]
+        self.assertIn("ja_publicado(", corpo)
+        self.assertLess(corpo.index("ja_publicado("),
+                        corpo.index("catalogo.publicar_youtube("))
+
+    def test_o_caminho_avulso_registra_depois(self):
+        fonte = Path(RAIZ / "main.py").read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("if args.youtube or args.tiktok:"):]
+        self.assertIn("_serie.registrar(", corpo)
+        self.assertLess(corpo.index("catalogo.publicar_youtube("),
+                        corpo.index("_serie.registrar("))
+
+    def test_forcar_ainda_deixa_subir_de_novo(self):
+        """Republicar as vezes e o que se quer; so nao pode ser por descuido."""
+        fonte = Path(RAIZ / "main.py").read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("if args.youtube or args.tiktok:"):]
+        self.assertIn("not args.forcar", corpo)
+
+
+def _postar():
+    """Carrega `ferramentas/postar.py` (script solto, nao e pacote)."""
+    import importlib.util
+    caminho = RAIZ.parent / "ferramentas" / "postar.py"
+    spec = importlib.util.spec_from_file_location("postar_tool", caminho)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+class PostagemDiariaTests(unittest.TestCase):
+    """Uma postagem por dia, um video de cada canal, publica (08/09/2026).
+
+    Ele pediu depois de o sistema passar o dia inteiro CRIANDO sem entregar
+    nada: "quero que seja apenas um e que tudo seja public, quero um video de
+    cada canal".
+    """
+
+    def test_a_visibilidade_padrao_e_publica(self):
+        cfg = json.loads((RAIZ / "config" / "publicacao.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(cfg["youtube"]["visibilidade"], "public")
+
+    def test_a_descricao_nao_fala_de_IA(self):
+        """Dizer 'narrado por IA' quebra a imersao no pior momento.
+
+        A linha sobre os personagens serem invencao FICA: ela impede que um
+        desabafo inventado seja lido como confissao de gente real, e nao fala
+        de como o video foi feito.
+        """
+        cfg = json.loads((RAIZ / "config" / "publicacao.json").read_text(
+            encoding="utf-8"))
+        for chave in ("historia", "parte"):
+            texto = cfg["descricoes"][chave].lower()
+            for proibido in (" ia", "inteligência artificial",
+                             "inteligencia artificial", "gerado por", "narrada por ia"):
+                self.assertNotIn(proibido, texto, chave)
+            self.assertIn("invenção", texto)
+
+    def test_a_descricao_e_acentuada(self):
+        """Isto o publico le, ao lado de um titulo acentuado."""
+        cfg = json.loads((RAIZ / "config" / "publicacao.json").read_text(
+            encoding="utf-8"))
+        texto = cfg["descricoes"]["parte"]
+        self.assertIn("histórias", texto)
+        self.assertIn("você", texto)
+
+    def test_a_fila_respeita_a_ordem_das_partes(self):
+        """Serie fora de ordem esta quebrada: quem cai na 4 sem ver a 3 sai."""
+        postar = _postar()
+        fila = postar.fila_de_historias()
+        vistos = {}
+        for video in fila:
+            anterior = vistos.get(video.fonte_id)
+            if anterior is not None:
+                self.assertGreater(video.parte or 0, anterior,
+                                   f"{video.fonte_id} fora de ordem")
+            vistos[video.fonte_id] = video.parte or 0
+
+    def test_a_fila_PULA_o_que_a_vistoria_reprova(self):
+        """Video ruim na frente travaria o canal para sempre.
+
+        A `historia_00001` e placeholder (gradiente com o numero da cena) e e
+        a mais antiga — sem pular, ela seria o primeiro video PUBLICO.
+        """
+        postar = _postar()
+        fonte = Path(postar.__file__).read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def proxima_historia("):]
+        self.assertIn("vistoriar_parte", corpo)
+        self.assertIn("recusados.append", corpo)
+
+    def test_ha_teto_de_tentativas(self):
+        """Cada vistoria decodifica um mp4; acervo todo ruim viraria moinho."""
+        postar = _postar()
+        self.assertGreater(postar.TENTATIVAS, 1)
+        self.assertLessEqual(postar.TENTATIVAS, 12)
+
+    def test_posta_de_UM_canal_de_cada_vez(self):
+        postar = _postar()
+        fonte = Path(postar.__file__).read_text(encoding="utf-8")
+        self.assertIn("postar_historia(", fonte)
+        self.assertIn("postar_build(", fonte)
+        self.assertIn('"DAILY"', fonte)
+
+
+class ImagemSemProvaTests(unittest.TestCase):
+    """Imagem sem prova de origem nao vai ao ar (08/09/2026).
+
+    As imagens de verdade vem do PicassoIA e ficam registradas com a prova (o
+    card do historico com o nosso prompt). As da `historia_00001` sao
+    PLACEHOLDER gerado com PIL — um gradiente borrado com o numero da cena — e
+    passavam em tudo: o arquivo existe, tem tamanho, o video tem imagem.
+    """
+
+    def test_o_erro_existe_e_e_bloqueante(self):
+        fonte = (RAIZ / "contos" / "publicar" / "qualidade.py").read_text(
+            encoding="utf-8")
+        self.assertIn("prova de origem", fonte)
+        corpo = fonte[fonte.index("sem_prova = "):]
+        # nenhuma com prova = ERRO; algumas sem = aviso
+        self.assertLess(corpo.index('laudo["erros"]'), corpo.index('laudo["avisos"]'))
+
+
 if __name__ == "__main__":
     unittest.main()

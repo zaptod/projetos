@@ -169,6 +169,133 @@ def adicionar(servico: str, nome: str) -> str:
     return limpo
 
 
+# ------------------------------------------------------------------- padrao
+# O NOME DA CONTA E O DESTINO. Nao a pessoa, nao a ordem em que foi criada.
+#
+# Como o registro estava em 08/09/2026, antes desta regra existir:
+#
+#   `principal`             significava TRES coisas — o canal pessoal (no
+#                           youtube_web), o historinhas (no youtube da API) e
+#                           a conta de builds (no tiktok)
+#   `bem_facil_d_verdade`   e `historinhas` eram o MESMO canal
+#                           (UC2S8Z85XCotBNFdstIXpeJw) com dois nomes
+#   `canal2`                nao dizia nada
+#
+# Com nomes assim, "para onde isso vai?" so se responde abrindo o navegador —
+# e publicar no canal errado nao tem desfazer. As regras:
+#
+#   1. UM DESTINO, UM NOME. O mesmo canal real tem o mesmo nome de conta em
+#      todos os servicos.
+#   2. O NOME E O CANAL REAL, em slug: `neural_fights`, `historinhas`,
+#      `pessoal`. Nunca posicao (`principal`, `canal2`) nem arroba.
+#   3. `principal` E RESERVADO ao login legado — e o unico que mora nos
+#      caminhos antigos, e renomea-lo perderia os logins ja feitos. Ele nao e
+#      um destino: canal de projeto caindo nele significa "nao configurado".
+#   4. TODO CANAL QUE PUBLICA ESCOLHE EXPLICITAMENTE. Queda padrao e alerta.
+#
+# `conformidade()` responde se isso esta valendo agora.
+NOMES_SEM_SENTIDO = re.compile(r"^(principal|conta\d*|canal\d*|nova?|teste)$")
+
+
+def renomear(servico: str, antigo: str, novo: str) -> dict:
+    """Troca o nome de uma conta LEVANDO o login junto.
+
+    Renomear nao e cosmetico: o nome e a pasta do Chrome
+    (`browser_profiles/<servico>__<nome>`) e o arquivo de credencial
+    (`youtube_credentials_<nome>.json`). Mudar so o registro deixaria a conta
+    apontando para um login que nao existe, e o proximo upload pediria login
+    de novo — no meio de uma fila agendada.
+
+    `principal` nao se renomeia: ele mora nos caminhos ANTIGOS
+    (`random_builds/.browser_profile/<servico>`, `youtube_credentials.json`),
+    que outras partes do projeto ainda leem. Ha teste travando isso.
+    """
+    if servico not in SERVICOS:
+        raise KeyError(f"servico desconhecido: {servico!r}")
+    if antigo == PADRAO:
+        raise ValueError(
+            "`principal` nao pode ser renomeada: ela e o login legado, e "
+            "mover a pasta dela perderia as sessoes ja feitas.")
+    limpo = _limpar_nome(novo)
+    if limpo == PADRAO:
+        raise ValueError("nenhuma conta pode se chamar `principal`.")
+    dados = estado()
+    bloco = dados["servicos"][servico]
+    if antigo not in bloco["contas"]:
+        raise KeyError(f"{servico} nao tem a conta {antigo!r}")
+    if limpo in bloco["contas"] and limpo != antigo:
+        raise ValueError(f"{servico} ja tem uma conta chamada {limpo!r}")
+
+    movidos = []
+    if SERVICOS[servico].get("tipo") == "oauth":
+        origem = runtime_dir() / f"youtube_credentials_{antigo}.json"
+        alvo = runtime_dir() / f"youtube_credentials_{limpo}.json"
+    else:
+        origem = runtime_dir() / "browser_profiles" / f"{servico}__{antigo}"
+        alvo = runtime_dir() / "browser_profiles" / f"{servico}__{limpo}"
+    if origem.exists() and not alvo.exists():
+        alvo.parent.mkdir(parents=True, exist_ok=True)
+        origem.rename(alvo)
+        movidos.append(str(alvo))
+
+    bloco["contas"] = [limpo if c == antigo else c for c in bloco["contas"]]
+    for canal, escolhida in list((bloco.get("ativa") or {}).items()):
+        if escolhida == antigo:
+            bloco["ativa"][canal] = limpo
+    identidades = dados.setdefault("identidades", {}).setdefault(servico, {})
+    if antigo in identidades:
+        identidades[limpo] = identidades.pop(antigo)
+    _gravar(dados)
+    return {"servico": servico, "de": antigo, "para": limpo, "movidos": movidos}
+
+
+def conformidade() -> list[dict]:
+    """O que foge do padrao de nomes, com o motivo. Lista vazia = tudo certo."""
+    achados = []
+    for servico, ficha in SERVICOS.items():
+        if not ficha.get("publica"):
+            continue                    # login sem destino nao tem o que nomear
+        # 1. mesmo destino com dois nomes. `principal` fica de fora: a regra 3
+        #    ja diz que ela e o login legado e nao um destino, e ela nao pode
+        #    ser renomeada — acusa-la aqui seria um alerta que nunca apaga.
+        for identificador, nomes in colisoes(servico).items():
+            proprios = [n for n in nomes if n != PADRAO]
+            if len(proprios) > 1:
+                achados.append({
+                    "servico": servico, "tipo": "dois nomes para um destino",
+                    "detalhe": f"{identificador} atende por "
+                               f"{', '.join(proprios)}"})
+        # 2. dois canais do PRODUTO no mesmo lugar. `geral` nao entra: ele nao
+        #    e um canal, e a queda de quem nao escolheu — some sozinho quando
+        #    builds e historias escolhem, e ate la repetiria o alerta da regra 3.
+        for identificador, canais in destinos_repetidos(servico).items():
+            produtos = [c for c in canais if c != "geral"]
+            if len(produtos) > 1:
+                achados.append({
+                    "servico": servico, "tipo": "canais no mesmo destino",
+                    "detalhe": f"{', '.join(produtos)} publicam em "
+                               f"{identificador}"})
+        for canal in CANAIS:
+            if canal == "geral":
+                continue
+            nome = ativa(servico, canal)
+            # 3. canal que publica caindo na queda padrao
+            if not explicita(servico, canal):
+                achados.append({
+                    "servico": servico, "tipo": "canal sem conta propria",
+                    "detalhe": f"{canal} cai em {nome} por falta de escolha"})
+            # 4. ninguem consegue dizer PARA ONDE isso vai. O nome e a
+            #    primeira resposta; a identidade gravada e a segunda. Sem
+            #    nenhuma das duas, so abrindo o navegador — e ai ja e tarde.
+            elif (NOMES_SEM_SENTIDO.match(nome)
+                  and not identidade(servico, nome).get("rotulo")):
+                achados.append({
+                    "servico": servico, "tipo": "destino desconhecido",
+                    "detalhe": f"{canal} usa a conta {nome!r} e nada registra "
+                               "para onde ela publica"})
+    return achados
+
+
 def remover(servico: str, nome: str) -> bool:
     """Tira a conta do registro. NAO apaga perfil nem credencial em disco:
     esquecer e reversivel, apagar login nao."""
@@ -365,6 +492,46 @@ def escopo_youtube(canal: str = "geral", conta: str | None = None) -> str:
             return str(json.load(fh).get("escopo") or "")
     except (OSError, ValueError):
         return ""
+
+
+def oauth_vivo(canal: str = "geral", conta: str | None = None) -> dict:
+    """A credencial OAuth AINDA FUNCIONA? Pergunta ao Google (usa rede).
+
+    `tem_login` responde outra coisa: se o ARQUIVO existe e tem os campos. Isso
+    e leitura pura, e e o certo para desenhar uma tela — mas mente quando o
+    refresh_token foi revogado ou expirou. Medido em 08/09/2026: a auditoria
+    dizia "login ok" para uma credencial que o Google recusava com
+    `invalid_grant`, e as metricas estavam paradas havia seis dias sem que
+    nada avisasse.
+
+    Fica separada de proposito: quem desenha tela nao deve chamar rede, e quem
+    audita deve.
+    """
+    caminho = credencial_youtube(canal, conta)
+    if not caminho.is_file():
+        return {"ok": False, "motivo": "nao existe arquivo de credencial"}
+    try:
+        from .publicar.youtube import carregar_credenciais, token_de_acesso
+        credenciais = carregar_credenciais(caminho)
+        if credenciais is None:
+            return {"ok": False,
+                    "motivo": "o arquivo existe mas nao tem client_id, "
+                              "client_secret e refresh_token"}
+        token_de_acesso(credenciais)
+    except Exception as exc:                                   # noqa: BLE001
+        texto = str(exc)
+        if "invalid_grant" in texto:
+            return {"ok": False, "motivo": "o Google revogou ou expirou o "
+                                           "refresh_token: precisa autorizar "
+                                           "de novo"}
+        return {"ok": False, "motivo": texto[:180]}
+    faltando = [e for e in ("yt-analytics.readonly",)
+                if e not in escopo_youtube(canal, conta)]
+    if faltando:
+        return {"ok": True, "motivo": "funciona, mas sem o escopo "
+                                      + ", ".join(faltando)
+                                      + " (retencao nao vem)"}
+    return {"ok": True, "motivo": ""}
 
 
 def resumo() -> list:
