@@ -163,6 +163,74 @@ class PicassoClient:
               "tentando logar por ele.")
         return False
 
+    def _parede_visivel(self):
+        """O dialogo que esta por cima da pagina, seja ele qual for.
+
+        DELIBERADAMENTE mais largo que `_modal_de_login_visivel`, que exige um
+        `svg.lucide-x` dentro. Em 09/09/2026 o site pos uma parede de PROMOCAO
+        — `role="dialog"`, `data-slot="dialog-content"`, uma seta vermelha
+        `lucide-arrow-right` — e o Playwright registrou o efeito dela com todas
+        as letras:
+
+            <div data-slot="dialog-overlay" class="fixed inset-0 z-50
+                 bg-black/60"> intercepts pointer events
+
+        Nao e recusa nem lentidao: e uma camada preta por cima de tudo. O
+        clique no `#submit-button` nao chega, e a espera fica olhando uma tela
+        coberta ate estourar.
+        """
+        for seletor in ("div[role='dialog'][data-state='open']",
+                        "div[role='dialog']",
+                        "[data-slot='dialog-content']"):
+            try:
+                alvo = self.page.locator(seletor)
+                if alvo.count() and alvo.first.is_visible():
+                    return alvo.first
+            except Exception:
+                continue
+        return None
+
+    def _tirar_parede_da_frente(self) -> str:
+        """Fecha o dialogo que estiver na frente. Devolve o TEXTO dele.
+
+        O texto volta porque sem ele toda parede vira a mesma linha de log e
+        ninguem descobre se foi aviso de login, promocao ou limite de plano —
+        e e essa diferenca que decide se ha algo a fazer fora do codigo.
+
+        Tres saidas, nesta ordem: o X (quando ha), a tecla ESC (os dialogos
+        deste site sao Radix, e Radix fecha no ESC — e o X pode estar coberto
+        pelo proprio overlay) e, por fim, desistir avisando.
+        """
+        parede = self._parede_visivel()
+        if parede is None:
+            return ""
+        try:
+            texto = " ".join((parede.inner_text(timeout=2000) or "").split())
+        except Exception:
+            texto = ""
+        texto = texto[:200] or "(sem texto)"
+
+        for seletor in FECHAR_MODAL:
+            try:
+                botao = self.page.locator(seletor)
+                if botao.count() and botao.first.is_visible():
+                    botao.first.click(timeout=3000)
+                    time.sleep(0.5)
+                    if self._parede_visivel() is None:
+                        return texto
+            except Exception:
+                continue
+        try:
+            self.page.keyboard.press("Escape")
+            time.sleep(0.6)
+            if self._parede_visivel() is None:
+                return texto
+        except Exception:
+            pass
+        print(f"[picasso] ha uma parede na frente e ela NAO fecha: {texto}",
+              flush=True)
+        return ""
+
     def preparar_espaco(self, espaco: str | None) -> list[str]:
         """Mesma assinatura do Digen. Devolve a foto do que ja esta na tela."""
         self.abrir_espaco(espaco)
@@ -261,6 +329,16 @@ class PicassoClient:
         if antes is None:
             self.abrir_espaco(espaco)
 
+        # A PAREDE SAI ANTES DE QUALQUER CLIQUE. O overlay do dialogo cobre a
+        # pagina inteira (`fixed inset-0 z-50`) e engole o clique no
+        # `#submit-button` — o Playwright tenta por 10 s e desiste com
+        # "subtree intercepts pointer events". Fechar so ao abrir a pagina nao
+        # bastava: a parede aparece no meio da fila, entre uma cena e outra.
+        parede = self._tirar_parede_da_frente()
+        if parede:
+            print(f"[picasso] tirei da frente um aviso do site: {parede}",
+                  flush=True)
+
         campo = selectors.resolver(self.page, selectors.CAMPO_PROMPT,
                                    "o campo de prompt (textarea#prompt)")
         campo.fill(prompt)
@@ -297,6 +375,12 @@ class PicassoClient:
         # foi assim que o job da arma baixou a imagem do personagem.
         antes = self._esperar_estabilizar()
         pausa_humana(self.rng)
+        # A PAREDE PODE APARECER DE NOVO ENTRE `_esperar_estabilizar` e o clique.
+        # Ela precisa estar FECHADA NO INSTANTE DO CLICK, nao so no inicio.
+        parede = self._tirar_parede_da_frente()
+        if parede:
+            print(f"[picasso] tirei da frente um aviso que apareceu novamente: "
+                  f"{parede}", flush=True)
         try:
             botao.click(timeout=10000)
         except Exception:
@@ -484,6 +568,27 @@ class PicassoClient:
             return " ".join(sinal["texto"].split())
         return None
 
+    def _falha_do_site(self) -> str:
+        """A geracao morreu do lado do SITE? Devolve o texto do cartao.
+
+        O PicassoIA poe no lugar da imagem um cartao de erro — o icone
+        `lucide-image` quebrado, pintado de `text-destructive` (visto na tela
+        do Adrian em 09/09/2026). `JS_BLOQUEIO` ja o enxergava e ja o
+        devolvia separado do escudo (`escudo: false`), com o comentario certo:
+        escudo e bloqueio de CONTEUDO (reescrever o prompt resolve),
+        `text-destructive` sozinho e "deu ruim" — credito, rede, o que for —
+        e reescrever nao adianta.
+
+        So que ninguem usava essa distincao: `_recusou` descartava o sinal
+        quando nao era escudo, e a espera seguia ate estourar o timeout com a
+        resposta ja na tela. Aqui ela vira o que sempre deveria ter sido: um
+        motivo para parar de esperar AGORA e mandar de novo.
+        """
+        sinal = selectors.bloqueio_na_tela(self.page)
+        if not sinal or sinal.get("escudo"):
+            return ""        # escudo e recusa de conteudo, tratada em `_recusou`
+        return " ".join((sinal.get("texto") or "").split())[:200]
+
     def wait_for_render(self, timeout: float | None = None,
                         antes: list[str] | None = None) -> str:
         """Espera a imagem nova aparecer e devolve a URL dela.
@@ -502,6 +607,13 @@ class PicassoClient:
         inicio = time.monotonic()
         fim = inicio + timeout
         ultimo_aviso = 0.0
+        # O CARTAO DE FALHA QUE JA ESTAVA NA TELA NAO E NOSSO. A pagina e a
+        # mesma da cena anterior: se ela terminou com um cartao de erro, ele
+        # continua ali quando esta espera comeca, e trata-lo como resposta
+        # faria a cena seguinte "falhar" antes mesmo de o site responder.
+        # So conta o que aparecer DEPOIS daqui, ou um texto diferente.
+        falha_velha = self._falha_do_site()
+        falha_vista = None
 
         while time.monotonic() < fim:
             self._checar_vivo()
@@ -509,6 +621,39 @@ class PicassoClient:
             if recusa:
                 raise ConteudoRecusado(
                     f"o PicassoIA recusou o prompt: {recusa}")
+            # A PAREDE SE TIRA AQUI, e so DEPOIS da recusa: o escudo do filtro
+            # de conteudo tambem mora num dialogo, e fechar antes de olhar
+            # apagaria o motivo real.
+            #
+            # Ate 09/09/2026 o modal so era fechado ao ABRIR a pagina. Quando
+            # o site punha uma parede DEPOIS — e ele poe —, esta espera ficava
+            # olhando uma tela coberta ate estourar. E o que explica o padrao
+            # que media como "a imagem que falha NUNCA volta": ela nao estava
+            # demorando, estava atras de um aviso que ninguem fechava. Por
+            # isso reenviar resolvia em 9 s: o reenvio passa pela abertura,
+            # que fechava a parede.
+            parede = self._tirar_parede_da_frente()
+            if parede:
+                print(f"[picasso] tirei da frente um aviso do site: {parede}",
+                      flush=True)
+
+            # O SITE JA RESPONDEU "FALHOU" — nao ha o que esperar. Continuar
+            # ate o timeout era gastar 180 s olhando um cartao de erro que ja
+            # estava na tela. `EsperaEstourou` de proposito: e a excecao que
+            # `_gerar_esperando` reenvia, e reenviar e exatamente o certo aqui
+            # (a falha e do site, nao do prompt — se fosse do prompt, o sinal
+            # seria o ESCUDO, e ele sai por `_recusou` com outra resposta).
+            falha = self._falha_do_site()
+            if falha and falha != falha_velha:
+                # Duas voltas seguidas: o cartao pisca durante o carregamento,
+                # e desistir no primeiro relance jogaria fora imagem boa.
+                if falha_vista == falha:
+                    raise EsperaEstourou(
+                        f"o site marcou esta geracao como falha: {falha}")
+                falha_vista = falha
+            elif not falha:
+                falha_vista = None
+
             for imagem in selectors.resultados_na_tela(self.page):
                 if imagem["src"] in conhecidas:
                     continue

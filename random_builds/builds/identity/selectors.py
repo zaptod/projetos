@@ -758,17 +758,34 @@ def encontrar(page, candidatos: list[tuple[str, str]], timeout: float = 2.0):
     return None
 
 
+def _site_da_url(url: str) -> str:
+    """"picassoia.com" a partir da URL — para o erro acusar QUEM mudou."""
+    resto = str(url or "").split("//", 1)[-1]
+    dominio = resto.split("/", 1)[0].split("?", 1)[0]
+    partes = [p for p in dominio.split(".") if p and p != "www"]
+    return ".".join(partes[-2:]) if len(partes) >= 2 else (dominio or "o site")
+
+
 def resolver(page, candidatos: list[tuple[str, str]], descricao: str,
              timeout: float = 10.0):
-    """Como `encontrar`, mas exige o elemento e explica como consertar."""
+    """Como `encontrar`, mas exige o elemento e explica como consertar.
+
+    A mensagem acusava sempre o "Digen" e mandava editar
+    `src/identity/selectors.py`. As duas coisas estavam erradas: `resolver` e
+    generico (o PicassoIA passa por aqui tanto quanto o Digen) e `src` virou
+    `builds` na reorganizacao de 01/09/2026. Em 08/09 as 17:11 o login do
+    PICASSOIA falhou e o log mandou consultar o layout do DIGEN num caminho
+    que nao existe mais — a mensagem custou mais tempo do que economizou.
+    """
     loc = encontrar(page, candidatos, timeout=timeout / max(len(candidatos), 1))
     if loc is None:
+        site = _site_da_url(getattr(page, "url", ""))
         raise SeletorNaoEncontrado(
             f"Nao achei {descricao} em {page.url}.\n"
             f"Candidatos tentados: {candidatos}\n"
-            "O Digen provavelmente mudou o layout. Rode:\n"
+            f"O {site} provavelmente mudou o layout. Rode:\n"
             "    python main.py identity probe\n"
-            "e atualize a lista em src/identity/selectors.py.")
+            "e atualize a lista em builds/identity/selectors.py.")
     return loc
 
 
