@@ -318,7 +318,6 @@ def proximo_build():
 
 
 def postar_build(*, so_ver: bool = False) -> dict:
-    from builds.publicar import catalogo as C
     from builds.publicar import youtube
 
     # Uma guarda por DESTINO, igual as historias: o YouTube ter saido nesta

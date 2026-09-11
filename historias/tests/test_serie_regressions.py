@@ -891,7 +891,6 @@ class AbordagemDeQualidadeTests(unittest.TestCase):
         familias, a regra "uma de medo e uma de fantasia" para de valer em
         silencio e o par sai sempre do mesmo lado.
         """
-        import re
         catalogo = CONFIG["ganchos"]
         self.assertEqual({"mulher", "homem", "qualquer"}, set(catalogo))
         vistos = set()

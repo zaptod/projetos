@@ -194,7 +194,6 @@ class LimiteDiarioTests(unittest.TestCase):
                         trecho.index("CAMPO_TITULO"))
 
     def test_o_escoamento_PARA_na_cota_em_vez_de_insistir(self):
-        from pathlib import Path
         fonte = POSTAR.read_text(encoding="utf-8")
         corpo = fonte[fonte.index("def escoar_historias("):]
         corpo = corpo[:corpo.index("\ndef ")]
@@ -205,7 +204,6 @@ class LimiteDiarioTests(unittest.TestCase):
 
     def test_o_caminho_NORMAL_tambem_avisa(self):
         """Quem roda sozinho nos oito horarios e ele, nao o escoamento."""
-        from pathlib import Path
         fonte = POSTAR.read_text(encoding="utf-8")
         corpo = fonte[fonte.index("def main("):]
         self.assertIn("_e_limite_diario(exc)", corpo)
