@@ -422,6 +422,10 @@ class VideoRenderer:
         tamanho = self.width * self.height * 3
         hud = self._hud_preparado(event)
         callouts = self._callouts_preparados(event)
+        # Onda 15B (duelo): identidade e veredito sao SOBREPOSICAO, nao cena.
+        # Ausentes nos outros formatos — o build e a estreia nao mudam.
+        identidade = self._identidade_preparada(event)
+        veredito = self._veredito_preparado(event)
         ultimo: bytes | None = None
         try:
             for i in range(total):
@@ -434,8 +438,12 @@ class VideoRenderer:
                 t = i / self.fps
                 if hud is not None:
                     self._desenhar_hud(img, hud, t)
+                if identidade is not None:
+                    self._desenhar_identidade(img, identidade, t)
                 for callout in callouts:
                     self._desenhar_callout(img, callout, t)
+                if veredito is not None:
+                    self._desenhar_veredito(img, veredito, t)
                 yield img
         finally:
             try:
@@ -561,6 +569,99 @@ class VideoRenderer:
                 if cheio > 0:
                     cx0 = bx if lado == "esq" else bx + bw - cheio
                     draw.rounded_rectangle([cx0, by, cx0 + cheio, by + 4], radius=2, fill=cor)
+
+    # ------------------------------------------- duelo: identidade/veredito
+    # Estas duas camadas so existem no formato DUELO (Onda 15B). Elas sao a
+    # resposta a uma medicao: a curva de retencao de 11/09/2026 mostra o
+    # publico caindo de 86% para 60% durante as cenas paradas que existiam
+    # para apresentar o lutador. Apresentar SOBRE a luta custa zero segundo.
+    def _identidade_preparada(self, event: dict) -> dict | None:
+        ident = event.get("identidade")
+        if not ident:
+            return None
+        luta = event.get("luta") or {}
+        cor1, cor2 = self._cores_do_confronto(luta) if luta.get("p1_ficha") \
+            else ((230, 90, 90), (90, 150, 230))
+        # O NOME nao entra aqui: o HUD ja o desenha, na cor do lutador, no
+        # video inteiro. Repetir logo abaixo (como saiu no primeiro duelo,
+        # 11/09/2026) gasta a unica faixa livre do topo dizendo o que ja
+        # esta dito. Esta camada acrescenta o que falta — arma e classe.
+        margem = int(self.width * 0.04)
+        y = int(self.height * (0.105 if not self.horizontal else 0.155))
+        # Cada lado tem METADE da tela, menos a margem e uma calha no meio.
+        # Sem esse teto os dois textos se encontram no centro e viram uma
+        # linha ilegivel (foi o que saiu no primeiro duelo, 11/09/2026).
+        cabe = max(1, self.width // 2 - margem - int(self.width * 0.02))
+        lados = []
+        for slot, cor, lado in (("p1", cor1, "esq"), ("p2", cor2, "dir")):
+            dados = ident.get(slot) or {}
+            # "Berserker (Furia)" vira "Berserker": o parenteses e taxonomia
+            # do motor, e em 1,5 s de leitura so a primeira palavra chega.
+            classe = str(dados.get("classe") or "").split("(")[0].strip()
+            texto = " · ".join(p for p in (str(dados.get("arma") or "").strip(),
+                                           classe) if p)
+            if not texto:
+                continue
+            lados.append({
+                "x": margem if lado == "esq" else self.width - margem,
+                "y": y, "cor": cor, "texto": texto,
+                "fonte": fit_font(texto, self.fonts["bold"], cabe,
+                                  int(self.ref * 0.026)),
+                "anchor": "la" if lado == "esq" else "ra",
+            })
+        if not lados:
+            return None
+        return {"ate": float(ident.get("ate", 1.5)), "lados": lados}
+
+    def _desenhar_identidade(self, img: Image.Image, ident: dict, t: float) -> None:
+        ate = ident["ate"]
+        if t > ate:
+            return
+        # Sem pop-in: a identidade tem que estar LEGIVEL no frame 0, porque
+        # e nele que o espectador decide ficar. Só o fim tem fade.
+        alfa = 1.0 if t < ate - 0.35 else max(0.0, (ate - t) / 0.35)
+        camada = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(camada)
+        for lado in ident["lados"]:
+            draw.text((lado["x"], lado["y"]), lado["texto"], font=lado["fonte"],
+                      fill=lado["cor"], anchor=lado["anchor"],
+                      stroke_width=max(2, int(self.ref * 0.004)),
+                      stroke_fill=(12, 10, 24))
+        if alfa < 1.0:
+            camada = self._com_alfa(camada, alfa)
+        img.paste(camada, (0, 0), camada)
+
+    def _veredito_preparado(self, event: dict) -> dict | None:
+        ver = event.get("veredito")
+        if not ver or not str(ver.get("vencedor") or "").strip():
+            return None
+        vencedor = str(ver["vencedor"]).strip()
+        fonte = fit_font(vencedor, self.fonts["black"], int(self.width * 0.86),
+                         int(self.ref * 0.085))
+        fonte_ko = load_font(self.fonts["bold"], int(self.ref * 0.034))
+        return {"de": float(ver.get("de", 0.0)), "nome": vencedor,
+                "ko": str(ver.get("ko_type") or "").strip(),
+                "fonte": fonte, "fonte_ko": fonte_ko}
+
+    def _desenhar_veredito(self, img: Image.Image, ver: dict, t: float) -> None:
+        if t < ver["de"]:
+            return
+        # Sobe em 0,25 s sobre o ultimo frame da luta, em vez de virar um
+        # cartao depois dela: o formato nunca para o jogo para falar.
+        alfa = min(1.0, (t - ver["de"]) / 0.25)
+        camada = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(camada)
+        cy = int(self.height * 0.5)
+        draw.text((self.width // 2, cy), ver["nome"], font=ver["fonte"],
+                  fill=(255, 255, 255), anchor="mm",
+                  stroke_width=max(4, int(self.ref * 0.008)), stroke_fill=(12, 10, 24))
+        if ver["ko"]:
+            draw.text((self.width // 2, cy + int(self.ref * 0.075)), ver["ko"],
+                      font=ver["fonte_ko"], fill=(255, 214, 92), anchor="mm",
+                      stroke_width=3, stroke_fill=(12, 10, 24))
+        if alfa < 1.0:
+            camada = self._com_alfa(camada, alfa)
+        img.paste(camada, (0, 0), camada)
 
     def _callouts_preparados(self, event: dict) -> list[dict]:
         saida = []
@@ -1612,21 +1713,59 @@ class VideoRenderer:
         return (ficha.get("cor_r", padrao[0]), ficha.get("cor_g", padrao[1]),
                 ficha.get("cor_b", padrao[2]))
 
-    def _cores_do_confronto(self, luta: dict) -> tuple[tuple, tuple]:
-        """Cores dos dois lados COM contraste garantido.
+    # Distancia L1 minima entre as cores dos dois lados. Abaixo disto o
+    # espectador nao separa quem e quem — dois verdes viram um borrao.
+    DISTANCIA_MINIMA_DE_COR = 140
 
-        As cores vem do banco e podem cair quase iguais (dois verdes, por
-        exemplo) — ai o card de luta fica ilegivel. Quando isso acontece,
-        o segundo lado assume o laranja do ecossistema.
+    @staticmethod
+    def _girar_matiz(cor: tuple, nome: str) -> tuple:
+        """Desloca o MATIZ de uma cor por um giro derivado do nome.
+
+        Determinístico e estavel: o mesmo lutador recebe sempre o mesmo
+        deslocamento, contra qualquer adversario. Ate 11/09/2026 o desempate
+        de cor trocava o lado 2 pelo laranja do ecossistema, entao a cor de
+        um personagem DEPENDIA de quem estava do outro lado — ele saia verde
+        num video e laranja no seguinte. Identidade que muda nao e
+        identidade, e e identidade que transforma fisica aleatoria em
+        torcida (a licao do marble racing).
+        """
+        import colorsys
+        import zlib
+        h, l, s = colorsys.rgb_to_hls(*[c / 255.0 for c in cor])
+        # crc32, nao `hash()`: o hash de str do Python e randomizado por
+        # processo (PYTHONHASHSEED), e a cor do lutador mudaria a cada
+        # render. Determinismo e doutrina aqui — o mesmo padrao de
+        # `identity/prompt.py`.
+        semente = zlib.crc32(nome.encode("utf-8"))
+        # 0,28 a 0,72 de volta: longe o bastante para separar, e sem chegar
+        # perto de uma volta inteira (que devolveria a cor original).
+        giro = 0.28 + (semente % 1000) / 1000.0 * 0.44
+        r, g, b = colorsys.hls_to_rgb((h + giro) % 1.0, max(0.45, l),
+                                      max(0.55, s))
+        return (int(r * 255), int(g * 255), int(b * 255))
+
+    def _cores_do_confronto(self, luta: dict) -> tuple[tuple, tuple]:
+        """Cores dos dois lados, com contraste garantido.
+
+        As cores vem do banco e podem cair quase iguais (dois verdes) — ai
+        nao da para saber quem e quem, e algum desempate e inevitavel.
+
+        O que MUDOU na 15C e de onde sai a cor do desempate. Antes o lado 2
+        virava o laranja do ecossistema: uma cor sem nenhuma relacao com
+        aquele lutador, que aparecia num video e nao no outro. Agora ele
+        gira o PROPRIO matiz por um valor derivado do nome dele.
+
+        A garantia honesta, portanto, nao e "a cor nunca muda": e que toda
+        cor que um lutador exibe e funcao SO DELE. Ele tem no maximo duas
+        aparencias — a dele e a dele girada — e as duas sao dele, estaveis
+        em qualquer confronto. Identidade que muda ao acaso nao vira
+        torcida, e torcida e o que o formato precisa.
         """
         cor1 = self._cor_lutador(luta["p1_ficha"])
         cor2 = self._cor_lutador(luta["p2_ficha"], hex_rgb(self.colors["accent_weapon"]))
         distancia = sum(abs(a - b) for a, b in zip(cor1, cor2))
-        if distancia < 140:
-            alternativa = hex_rgb(self.colors["accent_weapon"])
-            if sum(abs(a - b) for a, b in zip(cor1, alternativa)) < 140:
-                alternativa = hex_rgb(self.colors["accent_character"])
-            cor2 = alternativa
+        if distancia < self.DISTANCIA_MINIMA_DE_COR:
+            cor2 = self._girar_matiz(cor2, str(luta.get("p2") or ""))
         return cor1, cor2
 
     def _participantes_frames(self, event: dict):

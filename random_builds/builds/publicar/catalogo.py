@@ -27,7 +27,7 @@ RAIZ = Path(__file__).resolve().parents[2]
 OUTPUTS = RAIZ / "outputs"
 CONFIG = RAIZ / "config" / "publicacao.json"
 
-BUILD, ESTREIA, TORNEIO = "build", "estreia", "torneio"
+BUILD, ESTREIA, TORNEIO, DUELO = "build", "estreia", "torneio", "duelo"
 PERFIS = ("celular", "normal")
 
 # Abaixo disto não é vídeo: render interrompido ou arquivo pela metade.
@@ -230,6 +230,23 @@ def _campos_torneio(pasta: Path) -> dict:
             "participantes": len(participantes) or None}
 
 
+def _campos_duelo(pasta: Path) -> dict:
+    """Onda 15B. O titulo do duelo NAO leva placar nem nota.
+
+    O da estreia dizia "venceu por 2 x 0" e o do build "BUILD MEDIANA":
+    um entregava o final antes do video, o outro anunciava que o video era
+    mediano. Aqui o titulo e o confronto, e o desfecho fica no video.
+    """
+    dados = _json(pasta / "fight.json")
+    luta = dados.get("luta") or {}
+    return {
+        "p1": luta.get("p1"),
+        "p2": luta.get("p2"),
+        "arena": luta.get("cenario"),
+        "duracao": (round(luta["duracao"]) if luta.get("duracao") else None),
+    }
+
+
 def _videos_de(pasta: Path, origem: str, fonte_id: str, campos: dict,
                config: dict, rotulo: str) -> list[Video]:
     titulo = _formatar(config.get("titulos", {}).get(origem, "{personagem}"),
@@ -313,6 +330,11 @@ def listar(config: dict | None = None) -> list[Video]:
             campos_estreia = _campos_estreia(pasta)
             videos += _videos_de(estreia, ESTREIA, pasta.name, campos_estreia,
                                  config, f"{nome} — estreia")
+    for pasta in sorted(OUTPUTS.glob("duelo_*")):
+        campos = _campos_duelo(pasta)
+        videos += _videos_de(pasta, DUELO, pasta.name, campos, config,
+                             f"{campos.get('p1') or pasta.name} x "
+                             f"{campos.get('p2') or '?'}")
     for pasta in sorted(OUTPUTS.glob("tournament_*")):
         campos = _campos_torneio(pasta)
         videos += _videos_de(pasta, TORNEIO, pasta.name, campos, config,

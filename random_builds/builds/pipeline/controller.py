@@ -269,6 +269,84 @@ class PipelineController:
                                 f"estreia de {nome}: {str(exc)[:160]}", "builds")
             return None
 
+    # ------------------------------------------------------------------ duelo
+    def duelo(self, p1: str | None = None, p2: str | None = None,
+              seed: int | None = None, cenario: str | None = None,
+              preview: bool = False) -> Path:
+        """Onda 15B: a luta inteira em 20-35 s -> `outputs/duelo_XXXXX/`.
+
+        O formato curto, publicado AO LADO do build e da estreia. Reusa a
+        mesma FightSession e o mesmo ledger — o que muda e o orcamento de
+        gravacao (`GAMEPLAY_POR_ORIGEM["duelo"]`) e a montagem, que e um
+        evento so. Ver `builds/tournament/duelo.py` para o porque.
+        """
+        from ..arena.ledger import Ledger, escolher_adversario
+        from ..tournament.runner import (FightSession, config_gameplay,
+                                         fichas_do_banco, personagens_gerados)
+
+        duelo_id = _next_id("duelo")
+        out_dir = OUTPUTS / duelo_id
+        ledger = Ledger()
+        fichas = fichas_do_banco()
+        seed = seed if seed is not None else RandomEngine.new_seed()
+        rng = RandomEngine(seed).fork("duelo:participantes")
+        gerados = personagens_gerados()
+        if not p1:
+            recentes = [g for g in reversed(gerados) if g in fichas]
+            p1 = recentes[0] if recentes else rng.choice(sorted(fichas))
+        if not p2:
+            p2 = escolher_adversario(p1, list(fichas), rng, gerados=gerados,
+                                     fichas=fichas, ledger=ledger)
+        if not p2:
+            raise ValueError("nao ha adversario disponivel no banco")
+
+        sessao = FightSession(self.scoring,
+                              gameplay=config_gameplay(self.editing_config, "duelo"))
+        fight = sessao.gerar(p1=p1, p2=p2, seed=seed, cenario=cenario,
+                             gravar_em=out_dir, perfis=self.perfis,
+                             origem="duelo", ledger=ledger,
+                             progresso=self._progresso_luta, melhor_de=1)
+        fight["duelo_id"] = duelo_id
+        _write_json(out_dir / "fight.json", fight)
+        luta = fight["luta"]
+        print(f"[duelo] {duelo_id} seed={fight['seed']} {p1} vs {p2} -> "
+              f"{fight['vencedor']} ({luta['ko_type']}, {luta['duracao']}s)")
+        self._entregar_duelo(out_dir, fight, preview)
+        for round_ in fight["lutas"]:
+            ledger.registrar(round_, origem="duelo", video=str(out_dir))
+        return out_dir
+
+    def rerender_duelo(self, duelo_id: str, preview: bool = False,
+                       refazer_edicao: bool = False) -> Path:
+        out_dir = OUTPUTS / duelo_id
+        with open(out_dir / "fight.json", encoding="utf-8") as fh:
+            fight = json.load(fh)
+        self._entregar_duelo(
+            out_dir, fight, preview,
+            remontar=refazer_edicao or not (out_dir / "edit_plan.json").exists())
+        return out_dir
+
+    def _entregar_duelo(self, out_dir: Path, fight: dict, preview: bool,
+                        remontar: bool = True) -> None:
+        # Import tardio pelo mesmo motivo de `_entregar_luta`: quem so gera
+        # DADOS nao pode puxar pygame por tabela.
+        from ..tournament.duelo import DueloTimelineBuilder
+
+        engine = RandomEngine(fight["seed"])
+        if remontar:
+            builder = DueloTimelineBuilder(self.editing_config, self.captions)
+            edit_plan = builder.build(engine.fork("duelo:edicao"), fight)
+            _write_json(out_dir / "edit_plan.json", edit_plan)
+            _write_json(out_dir / "fight.json", fight)
+        else:
+            with open(out_dir / "edit_plan.json", encoding="utf-8") as fh:
+                edit_plan = json.load(fh)
+        music = self._musica(engine)
+        for profile in self.perfis:
+            renderer = VideoRenderer(self.render_config, profile, preview)
+            final = renderer.render(edit_plan, fight, out_dir, music)
+            print(f"[render:{profile}] {final} ({edit_plan['total_duration']}s)")
+
     # ------------------------------------------------------------------- luta
     def luta(self, p1: str | None = None, p2: str | None = None,
              seed: int | None = None, cenario: str | None = None,

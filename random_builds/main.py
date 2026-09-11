@@ -184,6 +184,24 @@ def main() -> None:
                      help="com --rerender, remonta a timeline (legendas, "
                           "callouts e reacao novos) sobre o mesmo gameplay")
 
+    due = sub.add_parser("duelo",
+                         help="Onda 15B: a luta inteira em 20-35 s, um "
+                              "segmento so, sem cena parada")
+    due.add_argument("--p1", default=None,
+                     help="lutador 1 (padrao: o ultimo criado na roleta)")
+    due.add_argument("--p2", default=None,
+                     help="lutador 2 (padrao: adversario por continuidade/poder)")
+    due.add_argument("--seed", type=int, default=None, help="seed deterministica")
+    due.add_argument("--arena", default=None,
+                     help="cenario (padrao: sorteado entre as arenas de video)")
+    due.add_argument("--preview", action="store_true", help="render rapido")
+    due.add_argument("--rerender", metavar="DUELO_ID", default=None,
+                     help="re-renderiza um duelo existente (duelo_00001) "
+                          "reaproveitando o gameplay ja gravado")
+    due.add_argument("--refazer-edicao", action="store_true",
+                     help="com --rerender, remonta a timeline sobre o mesmo "
+                          "gameplay")
+
     are = sub.add_parser("arena", help="carreira dos personagens entre videos")
     asub = are.add_subparsers(dest="arena_command", required=True)
     arank = asub.add_parser("ranking", help="ranking por vitorias do ledger")
@@ -452,6 +470,14 @@ def main() -> None:
         controller.luta(p1=args.p1, p2=args.p2, seed=args.seed, cenario=args.arena,
                         generation_only=args.generation_only, preview=args.preview,
                         melhor_de=args.melhor_de)
+        return
+    if args.command == "duelo":
+        if args.rerender:
+            controller.rerender_duelo(args.rerender, preview=args.preview,
+                                      refazer_edicao=args.refazer_edicao)
+            return
+        controller.duelo(p1=args.p1, p2=args.p2, seed=args.seed,
+                         cenario=args.arena, preview=args.preview)
         return
     if args.command == "arena":
         controller.arena_ranking(limite=args.n)

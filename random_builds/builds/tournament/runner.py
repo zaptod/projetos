@@ -33,8 +33,10 @@ OUTPUTS = Path(__file__).resolve().parents[2] / "outputs"
 # As arenas do video sao as VERTICAIS (9:16), desenhadas no motor para este
 # uso — ver `ARENAS_VERTICAIS` em neural_fights/core/arena.py. Elas encaixam
 # exatamente no quadro do celular: com a camera presa a arena inteira enche a
-# tela sem faixa morta, e o lutador sai com ~8-10% da largura contra 3,1% do
-# Templo e 5,0% do Ringue (medido em 1080x1920).
+# tela sem faixa morta, e o lutador sai com ~16-20% da largura contra 6,2% do
+# Templo e 10,0% do Ringue (medido em 1080x1920). Os numeros estavam pela
+# METADE aqui ate 10/09/2026 porque a SondaCamera media o raio desenhado e
+# chamava de diametro — ver `SondaCamera.on_frame` no fight_recorder.
 #
 # A MESMA arena vale para os dois formatos, e isso e obrigatorio: a arena
 # muda o terreno e portanto o RESULTADO da luta, e `gravar_confronto` aborta
@@ -79,7 +81,42 @@ CAMERA_POR_ORIGEM = {
 GAMEPLAY_PADRAO = {
     "max_total": 45.0, "seca": 4.0, "contexto": 1.0, "protecao_ko": 8.0,
     "abertura": 0.8, "camera": CAMERA_DE_VIDEO, "sem_hud": True,
+    # None = o default da classe Camera (7,0 m). Ver GAMEPLAY_POR_ORIGEM.
+    "camera_largura_min": None,
     "camera_por_origem": CAMERA_POR_ORIGEM,
+    # Luta curta (<= isto) entra inteira, sem corte de tedio. Era fixo em
+    # 12 s dentro de `highlights.planejar_corte_tedio`; virou knob na 15B
+    # porque no formato de 25 s o degrau aparece: 11 s passavam inteiros e
+    # 13 s eram cortados.
+    "minimo_para_cortar": 12.0,
+}
+
+# Onda 15B: o DUELO e um formato proprio — a luta inteira em 20-35 s, sem
+# cena parada. Medido em 11/09/2026: a retencao media do build e 28,1% (19,4 s
+# vistos de 74) e a da estreia e 3,4% (mediana ZERO, 3,3 s de 103). O publico
+# entrega ~20 s a este canal, entao o video tem que caber nisso.
+#
+# Escopar por ORIGEM e o que mantem build, estreia e torneio intactos: eles
+# continuam lendo `GAMEPLAY_PADRAO` sem enxergar nada disto. Ha teste
+# cobrando que a estreia nao mudou.
+GAMEPLAY_POR_ORIGEM = {
+    "duelo": {
+        # 28 s de teto: sobra folga para a identidade de 1,5 s e o veredito
+        # de 1,2 s cabendo nos 20-35 s do formato.
+        "max_total": 28.0,
+        # `seca` de 4,0 para 2,0 e o que transforma 45 s de luta em ~25 s de
+        # pancada: qualquer janela de 2 s sem dano vira corte.
+        "seca": 2.0,
+        "contexto": 0.5,
+        "protecao_ko": 6.0,
+        "abertura": 0.4,
+        "minimo_para_cortar": 8.0,
+        # O DIRETOR pode fechar ate 5,0 m de largura visivel, contra os
+        # 7,0 m do default. Medido em 11/09/2026: com 7,0 m o corpo do
+        # lutador ocupa ~20% da largura no 9:16; a 5,0 m passa de 30%.
+        # So o duelo — mexer no default re-enquadraria estreia e torneio.
+        "camera_largura_min": 5.0,
+    },
 }
 
 
@@ -94,12 +131,26 @@ def camera_do_perfil(gameplay: dict, origem: str, perfil: str) -> str:
     return por_origem.get(perfil) or gameplay.get("camera") or CAMERA_DE_VIDEO
 
 
-def config_gameplay(editing_config: dict | None) -> dict:
-    """Bloco `gameplay` do editing.json com os padroes preenchidos."""
+def config_gameplay(editing_config: dict | None,
+                    origem: str | None = None) -> dict:
+    """Bloco `gameplay` do editing.json com os padroes preenchidos.
+
+    `origem` sobrepoe o bloco por formato, na ordem padrao -> editing.json ->
+    padrao da origem -> editing.json da origem. Sem `origem`, a resposta e
+    exatamente a de sempre: build, estreia e torneio nao mudam de ritmo
+    porque o duelo existe.
+    """
     bloco = dict(GAMEPLAY_PADRAO)
     if editing_config:
         bloco.update({k: v for k, v in (editing_config.get("gameplay") or {}).items()
                       if k in bloco})
+    if origem:
+        bloco.update({k: v for k, v in GAMEPLAY_POR_ORIGEM.get(origem, {}).items()
+                      if k in bloco})
+        if editing_config:
+            por_origem = (editing_config.get("gameplay_por_origem") or {})
+            bloco.update({k: v for k, v in (por_origem.get(origem) or {}).items()
+                          if k in bloco})
     return bloco
 
 
@@ -217,6 +268,7 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
             "camera_modo": camera_do_perfil(gameplay, origem, perfil),
             "resolucao": resolucoes.get(perfil),
             "sem_hud": bool(gameplay.get("sem_hud", True)),
+            "camera_largura_min": gameplay.get("camera_largura_min"),
         } for perfil in perfis]
         gravacoes = capture.gravar_em_paralelo(tarefas, trabalhadores=len(tarefas))
 
@@ -238,7 +290,8 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
         referencia, max_total=float(gameplay["max_total"]),
         seca_min=float(gameplay["seca"]), contexto=float(gameplay["contexto"]),
         protecao_ko=float(gameplay["protecao_ko"]),
-        abertura=float(gameplay["abertura"]))
+        abertura=float(gameplay["abertura"]),
+        minimo_para_cortar=float(gameplay.get("minimo_para_cortar", 12.0)))
     remap = highlights.remapear_gravacao(referencia, trechos)
 
     clipes = {}
