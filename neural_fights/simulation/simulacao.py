@@ -474,6 +474,15 @@ class Simulador:
         camera_modo = self.match_config.get("camera_modo")
         if camera_modo:
             self.cam.modo = str(camera_modo).upper()
+        # Onda 15C: quao FECHADO o DIRETOR pode chegar, em metros de largura
+        # visivel. O default da classe (7,0 m) vale para estreia e torneio,
+        # dois formatos ja publicados e medidos — baixa-lo globalmente
+        # re-enquadraria os dois em silencio. O DUELO pede um valor menor
+        # por origem: com 7,0 m o corpo ocupa ~20% da largura no 9:16, e a
+        # referencia do genero enche bem mais que isso.
+        largura_min = self.match_config.get("camera_largura_min_m")
+        if largura_min:
+            self.cam.diretor_largura_min_m = float(largura_min)
 
         spawn1, spawn2 = self.arena.get_spawn_points()
         self.p1.pos[0], self.p1.pos[1] = spawn1
