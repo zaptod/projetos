@@ -120,7 +120,7 @@ Um aviso é o que se lê depois; um erro é o que barra.
 | imagem sem prova de origem | `qualidade.vistoriar_parte` | placeholder ou teste indo ao ar como se fosse arte |
 | colagem | `contos/imagens/composicao.py` | imagem em grade ou díptico onde devia haver um instante só (44 de 440 achadas) |
 | imagem mais nova que o mp4 | `qualidade.vistoriar_parte` | render defasado: a correção não entrou no arquivo |
-| veto da IA | `contos/publicar/parecer.py` | o Gemini assistiu e reprovou |
+| veto da IA | `contos/publicar/parecer.py` | o Gemini assistiu e reprovou. **Vale por três rodadas de conserto**: depois delas vira aviso e o vídeo sai do jeito que está, com alerta no Telegram. Veto já gravado não gasta as tentativas do publicador, para os barrados da frente não esconderem os aprovados de trás |
 | build com pendência | `builds/publicar/catalogo.py` | sem payoff, sem imagem do personagem, sem a luta no fim (23 de 66 estavam na fila) |
 | conta ocupada | `builds/travas.py` | dois processos no mesmo login do PicassoIA ou do Gemini ao mesmo tempo |
 | freio de mão | página Vila do painel | pausa a pipeline inteira, e a criação respeita |

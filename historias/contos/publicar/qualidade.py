@@ -300,6 +300,7 @@ def liberado(video, roteiro: dict | None = None) -> dict:
     laudo = vistoriar_parte(video.fonte_id, video.parte, video.caminho,
                             roteiro)
     erros = list(laudo.get("erros") or [])
+    avisos = list(laudo.get("avisos") or [])
     fonte = "vistoria"
     if not erros:
         try:
@@ -308,12 +309,36 @@ def liberado(video, roteiro: dict | None = None) -> dict:
         except Exception:                                      # noqa: BLE001
             ficha = None
         if ficha and not ficha.get("aprovado"):
-            erros.append("a IA reprovou: "
-                         + "; ".join(ficha.get("motivos") or []))
-            fonte = "parecer"
-    return {"ok": not erros, "erros": erros,
-            "avisos": list(laudo.get("avisos") or []),
+            motivo = ("a IA reprovou: "
+                      + "; ".join(ficha.get("motivos") or []))
+            if veto_vencido(video):
+                # O VETO VENCE. Depois das tres rodadas de conserto ele vira
+                # aviso: o video sai do jeito que esta. Defeito de ARQUIVO
+                # (mudo, sem imagem) continua barrando acima — isso nao e
+                # opiniao, e video quebrado.
+                avisos.append(f"{motivo} (as rodadas de conserto acabaram; "
+                              "sai assim)")
+                fonte = "veto vencido"
+            else:
+                erros.append(motivo)
+                fonte = "parecer"
+    return {"ok": not erros, "erros": erros, "avisos": avisos,
             "fonte": fonte, "laudo": laudo}
+
+
+def veto_vencido(video) -> bool:
+    """O veto da IA ja teve as tres rodadas de conserto e continua de pe?
+
+    Pedido dele em 13/09/2026: "ela tem que ter apenas 3 rounds pra consertar
+    as coisas, caso nao conserte o video tem que sair de qualquer forma". O
+    veto que nunca vencia travou a grade: seis videos barrados na frente da
+    fila, onze aprovados logo atras, e nenhuma historia saiu nos horarios.
+    """
+    try:
+        from ..pipeline import reparo
+        return reparo.insistente(str(getattr(video, "id", video)))
+    except Exception:                                          # noqa: BLE001
+        return False
 
 
 def vistoriar_serie(historia_id: str, videos: list) -> dict:

@@ -200,6 +200,13 @@ def _parecer_da_ia(alvo, roteiro: dict, laudo: dict) -> str:
     #
     # `lembrado` devolve `None` quando o mp4 mudou desde o veredito, entao um
     # re-render continua merecendo pergunta nova.
+    #
+    # TRES RODADAS E SAI. Veto vencido nao e perguntado de novo: perguntar
+    # daria a mesma reprovacao e travaria o horario outra vez.
+    if _veto_vencido(alvo):
+        _linha(f"[parecer] {alvo.id}: a IA reprovou, mas as rodadas de "
+               "conserto acabaram; sai assim.")
+        return ""
     ficha = parecer.lembrado(alvo)
     if ficha and not ficha.get("aprovado"):
         motivos = "; ".join(ficha.get("motivos") or [])[:300]
@@ -256,6 +263,38 @@ def _atualizar_metricas() -> None:
         _linha(f"[metricas] nao atualizei: {type(exc).__name__}: {exc}")
 
 
+def _veto_vencido(alvo) -> bool:
+    """Tres rodadas de conserto e a IA ainda reprova: sai assim.
+
+    A regra mora em `contos.publicar.qualidade.veto_vencido`, a mesma que a
+    auditoria e o freio de estoque consultam.
+    """
+    try:
+        from contos.publicar import qualidade
+        return qualidade.veto_vencido(alvo)
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _veto_lembrado(alvo) -> str:
+    """O veto da IA ja gravado para este arquivo, se ainda vale. `""` se nao.
+
+    E LER UM ARQUIVO, e nao decodificar o mp4, e por isso nao gasta
+    `TENTATIVAS`. Em 13/09/2026 os seis primeiros da fila eram os seis
+    barrados, o teto de seis se esgotava neles, e onze aprovados logo atras
+    nunca eram vistos: nenhuma historia saiu nos horarios.
+    """
+    try:
+        from contos.publicar import parecer
+        ficha = parecer.lembrado(alvo)
+    except Exception:                                          # noqa: BLE001
+        return ""
+    if not ficha or ficha.get("aprovado") or _veto_vencido(alvo):
+        return ""
+    motivos = "; ".join(ficha.get("motivos") or [])[:300]
+    return f"{alvo.id}: a IA REPROVOU — {motivos}"
+
+
 def proxima_historia(*, vistoriar: bool = True):
     """A proxima parte PUBLICAVEL. `None` quando nao ha nenhuma.
 
@@ -268,9 +307,20 @@ def proxima_historia(*, vistoriar: bool = True):
     from contos.roteiro import roteiro as R
 
     recusados = []
-    for alvo in fila_de_historias()[:TENTATIVAS]:
+    examinados = 0
+    for alvo in fila_de_historias():
         if not vistoriar:
             return alvo, recusados
+        # O VETO JA GRAVADO NAO GASTA TENTATIVA. `TENTATIVAS` existe para nao
+        # decodificar mp4 sem fim; gasto com veto lido de arquivo, ele deixava
+        # os barrados da frente esconderem os aprovados de tras.
+        veto = _veto_lembrado(alvo)
+        if veto:
+            recusados.append(veto)
+            continue
+        if examinados >= TENTATIVAS:
+            break
+        examinados += 1
         roteiro = R.carregar(alvo.fonte_id)
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
                                           alvo.caminho, roteiro)
@@ -417,6 +467,8 @@ def postar_historia(*, so_ver: bool = False) -> dict:
              "titulo": alvo.titulo, "url": url,
              "parte": alvo.parte, "partes": alvo.partes,
              "visibilidade": visibilidade, "recusados": recusados}
+    if _veto_vencido(alvo):
+        ficha["veto_vencido"] = True
     if cota:
         ficha["motivo"] = f"YouTube na cota: {cota}"[:200]
         ficha["cota_youtube"] = True
@@ -921,6 +973,9 @@ def avisar(resultados: list) -> None:
                           f"{_estado_da_plataforma(r.get('tiktok'))}"
                           f" · {_conta_do_destino('tiktok', canal)}")
         linhas.append(f"    `{r.get('alvo', '')}`")
+        if r.get("veto_vencido"):
+            linhas.append("    ⚠ saiu com veto da IA: as 3 rodadas de "
+                          "conserto acabaram")
         for recusado in (r.get("recusados") or [])[:2]:
             linhas.append(f"    ⏭ pulei {str(recusado)[:90]}")
         linhas.append("")

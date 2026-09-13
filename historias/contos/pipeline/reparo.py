@@ -248,7 +248,16 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
         plano_da_ia = _plano_pelo_veto_da_ia(video, historia_id, parte,
                                              headless=headless, log=log)
         if plano_da_ia.get("parar"):
-            return plano_da_ia["parar"]
+            parar = plano_da_ia["parar"]
+            if parar.get("acao") == "nada":
+                # CONTA COMO RODADA. A IA continua reprovando e nao ha conserto
+                # automatico: sem gastar tentativa, o video nunca chegaria ao
+                # teto e ficaria barrado para sempre, travando a fila. Pedido
+                # dele em 13/09/2026: tres rodadas e o video sai.
+                parar["tentativas"] = _anotar(
+                    video_id, "; ".join(str(e) for e in erros),
+                    "a IA reprova e nao ha conserto automatico")
+            return parar
         colagens = plano_da_ia["refazer"]
         detalhe = plano_da_ia["detalhe"]
     acao = ""
