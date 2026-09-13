@@ -34,6 +34,25 @@ def pasta_da_historia(historia_id: str) -> Path:
     return OUTPUTS / historia_id
 
 
+def estilo_do_roteiro(roteiro: dict) -> str:
+    """O estilo de imagem do MOLDE daquela historia, ou `""` para usar o padrao.
+
+    Le do `roteiro.json` da propria historia, e nao de um parametro que
+    alguem lembra de passar: a fila de imagens roda em outro processo, dias
+    depois de o roteiro existir, e esquecer o estilo ali daria uma historia
+    caricata com metade das cenas fotorrealistas.
+    """
+    from ..roteiro.serie import carregar_config as _config_roteiro
+    molde = str((roteiro or {}).get("estrutura") or "")
+    if not molde:
+        return ""
+    try:
+        moldes = (_config_roteiro() or {}).get("modelos") or {}
+    except Exception:                                          # noqa: BLE001
+        return ""
+    return str((moldes.get(molde) or {}).get("estilo_imagem") or "")
+
+
 def caminho_da_cena(historia_id: str, n: int, parte: int | None = None) -> Path:
     """O arquivo daquela cena.
 
@@ -49,18 +68,56 @@ def caminho_da_cena(historia_id: str, n: int, parte: int | None = None) -> Path:
     return cenas / f"p{int(parte or 1):02d}_cena_{int(n):02d}.png"
 
 
+# O video e 1080x1920 (0,5625). O PicassoIA devolve 1088x1920 quando obedece
+# o pedido de 9:16 — e de vez em quando devolve 1024x1024, ignorando o
+# seletor. O teto e folgado de proposito: 3:4 (0,75) ainda e retrato e cabe na
+# tela com um corte suave; quadrado (1,0) e paisagem nao cabem de jeito nenhum.
+PROPORCAO_MAXIMA = 0.75
+
+
+def vertical(caminho: Path) -> bool:
+    """A imagem tem a forma que foi PEDIDA?
+
+    Medido em 11/09/2026, na primeira historia do genero caricato: 18 cenas
+    voltaram 1088x1920 e uma voltou 1024x1024. `utilizavel` so olhava o
+    tamanho em bytes, entao a quadrada passou como pronta, o worker nunca
+    refez, e ela entrou no video — onde o renderizador a preenche com fundo
+    borrado. O resultado e uma cena com cara de outro video no meio da
+    historia, sem erro nenhum em lugar nenhum.
+
+    Mesma doutrina da prova de origem: nao basta o arquivo existir, ele
+    precisa ser o que foi pedido.
+    """
+    try:
+        from PIL import Image
+        with Image.open(caminho) as imagem:
+            largura, altura = imagem.size
+    except Exception:                                          # noqa: BLE001
+        # Ilegivel nao e o problema desta funcao — `utilizavel` ja recusa por
+        # tamanho, e recusar aqui tambem esconderia a causa real.
+        return True
+    return bool(altura) and (largura / altura) <= PROPORCAO_MAXIMA
+
+
 def utilizavel(caminho: Path) -> bool:
-    return caminho.is_file() and caminho.stat().st_size >= BYTES_MINIMOS
+    return (caminho.is_file() and caminho.stat().st_size >= BYTES_MINIMOS
+            and vertical(caminho))
 
 
 def prompt_da_cena(cena: dict, config: dict | None = None,
-                   protagonista: str = "") -> str:
+                   protagonista: str = "", estilo: str = "") -> str:
     """O prompt que vai para o PicassoIA: cena + estilo + proibicoes.
 
     O estilo entra em TODAS as cenas: e ele que faz doze imagens parecerem do
     mesmo filme. `protagonista` e a descricao fisica curta repetida quando a
     cena esqueceu de repeti-la (a consistencia da pessoa vem do texto, porque
     este modelo nao aceita imagem de referencia).
+
+    `estilo` sobrepoe o do `imagens.json` quando o MOLDE tem um proprio. O do
+    arquivo e fotografico ("cinematic photography, shot on 35mm film,
+    photorealistic") e serve ao relato confessional; aplicado a uma novela
+    caricata, ele entrega gente de verdade encenando desenho — o pior dos
+    dois. O molde e quem sabe qual dos dois a historia e.
     """
     config = config or carregar_config()
     partes = [str(cena.get("imagem") or "").strip().rstrip(".")]
@@ -68,7 +125,7 @@ def prompt_da_cena(cena: dict, config: dict | None = None,
         alvo = protagonista.strip().rstrip(".")
         if alvo and alvo.lower() not in partes[0].lower():
             partes.append(alvo)
-    partes.append(str(config.get("estilo") or "").strip().rstrip("."))
+    partes.append(str(estilo or config.get("estilo") or "").strip().rstrip("."))
     negativo = str(config.get("negativo") or "").strip()
     if negativo:
         partes.append(negativo.rstrip("."))

@@ -266,8 +266,48 @@ def parte_de(roteiro: dict, numero: int) -> dict:
     raise KeyError(f"a historia nao tem a parte {numero}")
 
 
+TITULO_MAXIMO = 100
+
+
+def limpar_titulo_de_parte(texto: str) -> str:
+    """Tira o que o LLM escreveu por conta propria e nao e titulo.
+
+    Medido em 11/09/2026: a parte 3 da `historia_00005` foi ao ar como
+    `PARTE 3 - A PASSAGEM E A TOALHA` — prefixo e caixa alta escritos pelo
+    modelo e aceitos crus, enquanto as outras cinco partes da MESMA serie
+    saiam como `O Recibo da Ruina (Parte 4)`. Seis videos da mesma historia
+    com seis formatos de titulo diferentes.
+
+    O numero da parte sai daqui porque quem o escreve e `titulo_da_parte`,
+    sempre do mesmo jeito, e nao o modelo.
+    """
+    import re
+    limpo = " ".join(str(texto or "").split())
+    limpo = re.sub(r"^\s*parte\s*\d+\s*[-–—:.]\s*", "", limpo, flags=re.I)
+    limpo = re.sub(r"\s*[\(\[]\s*parte\s+\d+\s*[\)\]]\s*$", "", limpo,
+                   flags=re.I)
+    # CAIXA ALTA INTEIRA vira capitalizacao normal. Em titulo de video ela le
+    # como grito, e so uma das seis partes vinha assim.
+    letras = [c for c in limpo if c.isalpha()]
+    if letras and all(c.isupper() for c in letras):
+        limpo = limpo.capitalize()
+    return limpo.strip(" -–—:")
+
+
+def nome_da_serie(roteiro: dict) -> str:
+    """A marca curta que liga as partes. `""` quando a historia nao tem."""
+    return " ".join(str(roteiro.get("serie_nome") or "").split())
+
+
 def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
-    """O que vai na tela: na serie, o titulo da parte; senao, o da historia.
+    """O que vai na tela e no YouTube.
+
+    O TITULO PRECISA DIZER QUE HA MAIS. Ate 11/09/2026 ele era so o titulo da
+    parte, cru: `O limite do desespero`, `O Trofeu de Aluguel`,
+    `PARTE 3 - A PASSAGEM E A TOALHA`. Sao tres partes da MESMA serie, e quem
+    assistiu uma nao tinha como descobrir que existiam as outras — nem pelo
+    titulo, nem pela ordem, nem por nada. A identidade da serie so existia na
+    DESCRICAO, que ninguem abre num Short.
 
     Defensivo de proposito: e chamado durante a montagem do plano, e um
     roteiro sem `partes` (montado a mao, ou de um teste) nao pode derrubar o
@@ -278,9 +318,26 @@ def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
         parte = parte_de(roteiro, numero)
     except KeyError:
         return base
-    if parte.get("titulo"):
-        return parte["titulo"]
-    return f"{base} (Parte {numero})" if roteiro.get("serie") else base
+    total = len(roteiro.get("partes") or []) or roteiro.get("partes_esperadas")
+    proprio = limpar_titulo_de_parte(parte.get("titulo") or "")
+    if not roteiro.get("serie"):
+        return proprio or base
+
+    marca = nome_da_serie(roteiro)
+    ordem = f"Parte {numero}" + (f"/{total}" if total else "")
+    # A marca vem PRIMEIRO: e ela que se repete, e o olho a encontra no fim
+    # de uma fileira de miniaturas. O titulo da parte vem depois, porque e o
+    # que muda.
+    pedacos = [p for p in (marca, proprio) if p]
+    titulo = " — ".join(pedacos) if pedacos else base
+    titulo = f"{titulo} ({ordem})" if titulo else f"{base} ({ordem})"
+    if len(titulo) > TITULO_MAXIMO:
+        # O que cede e o titulo da parte, nunca a marca nem a ordem: sem elas
+        # o video volta a parecer solto, que e o defeito que isto conserta.
+        folga = TITULO_MAXIMO - len(marca) - len(ordem) - 8
+        curto = proprio[:max(0, folga)].rstrip(" ,;–—-")
+        titulo = " — ".join(p for p in (marca, curto) if p) + f" ({ordem})"
+    return titulo
 
 
 def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
@@ -327,6 +384,11 @@ def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
         # com molde, revisao e alavancas) do estoque antigo feito no Flash.
         "modelo_llm": modelo_llm,
         "titulo": biblia.get("titulo") or "",
+        # A MARCA CURTA que liga as partes no titulo do video. O `titulo`
+        # acima e uma frase de gancho inteira e nao cabe ali junto com o
+        # numero da parte — foi por isso que seis partes da mesma serie
+        # foram ao ar parecendo seis videos sem relacao nenhuma.
+        "serie_nome": biblia.get("serie_nome") or "",
         "premissa": biblia.get("premissa") or "",
         # A descricao fisica do protagonista entra em TODA imagem de TODAS as
         # partes: e o que faz 80 imagens parecerem a mesma pessoa.

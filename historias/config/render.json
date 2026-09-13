@@ -103,6 +103,8 @@
             },
             "_comment_taxa": "taxa = velocidade da fala. As historias saem em +0% (medido, o padrao do motor) e os videos de build em +12%. Se a leitura parecer arrastada, +6% costuma soar mais conversado sem virar pressa — e encurta o video, o que ajuda no teto de 3 min do Shorts. Mude e ouca: isto e ouvido, nao medicao."
         },
-        "_comment_musica": "music_volume era 0.16: medido em 01/09/2026, a cama ficava 27-31 dB abaixo da voz durante a fala (inaudivel) e so aparecia nos buracos, inchando. Com 0.26 + o ducking suave, ela fica ~17 dB sob a voz de forma constante: presente sem competir."
+        "_comment_musica": "music_volume era 0.16: medido em 01/09/2026, a cama ficava 27-31 dB abaixo da voz durante a fala (inaudivel) e so aparecia nos buracos, inchando. Com 0.26 + o ducking suave, ela fica ~17 dB sob a voz de forma constante: presente sem competir.",
+        "trilha_arquivo": "instrumental.mp3",
+        "_comment_trilha": "A trilha ESCOLHIDA por ele (11/09/2026). Antes o `_musica` pegava o primeiro arquivo da pasta em ordem alfabetica, e com dois arquivos la dentro qual tocava virou sorte. Nomear aqui e o que torna a escolha uma escolha. O A/B entre esta e a cama sintetizada existe em `panorama`/experimentos e esta ENCERRADO: ele nega metade dos videos a trilha que o dono quer, e sem metrica no canal de historias nao mede nada em troca. Religar quando o OAuth do canal voltar."
     }
 }

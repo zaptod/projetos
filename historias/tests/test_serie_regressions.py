@@ -209,8 +209,11 @@ class PartesNaPipelineTests(unittest.TestCase):
         self.assertEqual(2, plano["parte"])
         self.assertEqual(3, plano["partes"])
         self.assertEqual(5, len(plano["events"]))
-        self.assertEqual("Parte 2 - titulo", plano["titulo"])
-        self.assertEqual("Parte 2 - titulo", plano["events"][0]["titulo"])
+        # O titulo passa a dizer que ha mais partes (11/09/2026). O dublê
+        # escreve "Parte 2 - titulo", e o prefixo escrito pelo modelo agora e
+        # limpo: quem numera a parte e `titulo_da_parte`, sempre igual.
+        self.assertEqual("titulo (Parte 2/3)", plano["titulo"])
+        self.assertEqual("titulo (Parte 2/3)", plano["events"][0]["titulo"])
         self.assertEqual(["p2 1.", "p2 2.", "p2 3.", "p2 4.", "p2 5."],
                          [e["narracao"] for e in plano["events"]])
 
@@ -757,9 +760,29 @@ class AbordagemDeQualidadeTests(unittest.TestCase):
         self.assertEqual(S.proxima_estrutura(usadas, CONFIG), "vinganca")
 
     def test_com_todos_usados_volta_para_o_mais_antigo(self):
-        # lida do mais NOVO para o mais velho: `reddit` e o mais antigo aqui
+        # lida do mais NOVO para o mais velho: `reddit` e o mais antigo aqui.
+        #
+        # Candidatos EXPLICITOS, e nao os do CONFIG: este teste e sobre a
+        # fase 2 do rodizio (todos ja usados), e ela so acontece quando nao
+        # sobrou molde virgem. Amarra-lo aos moldes do arquivo fazia o teste
+        # quebrar a cada molde novo — aconteceu em 11/09/2026 com a entrada
+        # da `quebrada`, que e virgem e por isso ganha na fase 1, certissimo.
         usadas = ["vinganca", "confissao", "reddit"]
-        self.assertEqual(S.proxima_estrutura(usadas, CONFIG), "reddit")
+        self.assertEqual(
+            S._menos_usado(["reddit", "confissao", "vinganca"], usadas),
+            "reddit")
+
+    def test_molde_novo_entra_na_frente_de_todos(self):
+        """Fase 1: quem nunca apareceu na janela vem primeiro.
+
+        E o que espalha um genero novo rapido, em vez de ele esperar a vez
+        atras de tres que ja rodaram.
+        """
+        usadas = ["vinganca", "confissao", "reddit"]
+        self.assertEqual(
+            S._menos_usado(["reddit", "confissao", "vinganca", "quebrada"],
+                           usadas),
+            "quebrada")
 
     def test_a_estrutura_e_guardada_para_o_rodizio_ter_memoria(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -846,6 +869,16 @@ class AbordagemDeQualidadeTests(unittest.TestCase):
         self.assertIn("CULPA", catalogo)
         self.assertIn("CULPA", S.catalogo_de_ganchos("mulher", CONFIG))
 
+    def test_O_FILHO_E_MEU_foi_removido(self):
+        """Gancho sobre teste de paternidade com crianca viola o LIMITE.
+        Removido em 12/09/2026 para evitar regressao como historia 00009."""
+        catalogo_homem = S.catalogo_de_ganchos("homem", CONFIG)
+        catalogo_mulher = S.catalogo_de_ganchos("mulher", CONFIG)
+        catalogo_qualquer = S.catalogo_de_ganchos("", CONFIG)
+        self.assertNotIn("O_FILHO_E_MEU", catalogo_homem)
+        self.assertNotIn("O_FILHO_E_MEU", catalogo_mulher)
+        self.assertNotIn("O_FILHO_E_MEU", catalogo_qualquer)
+
     def test_o_par_traz_um_medo_e_uma_fantasia(self):
         """Duas do mesmo lado dao video que so aperta (cansa) ou so afaga."""
         for narrador in ("mulher", "homem"):
@@ -873,6 +906,9 @@ class AbordagemDeQualidadeTests(unittest.TestCase):
                                 ganchos=[])
         self.assertIn("menor de 18", texto)
         self.assertIn("nao se negocia", texto)
+        # A historia 00009 foi gerada com teste de paternidade de um filho
+        # de seis anos: expandir LIMITE para incluir filiacao/paternidade (12/09)
+        self.assertIn("teste de paternidade", texto)
 
     def test_o_narrador_ja_decidido_vai_no_prompt(self):
         """Ele derivava: as historias 12 a 15 sairam todas com narrador homem."""
@@ -961,7 +997,9 @@ class AbordagemDeQualidadeTests(unittest.TestCase):
         usado. E `reddit` tinha acabado de sair na 00014.
         """
         usadas = ["reddit", "vinganca", "confissao", "reddit"]
-        self.assertEqual("confissao", S.proxima_estrutura(usadas, CONFIG))
+        self.assertEqual(
+            "confissao",
+            S._menos_usado(["reddit", "confissao", "vinganca"], usadas))
 
     def test_a_biblia_declara_quais_duas_escolheu(self):
         self.assertIn("ALAVANCAS:", S.prompt_biblia(partes=2, cenas_por_parte=4,

@@ -4,7 +4,7 @@
     "aspect": "9:16",
     "quantidade": 1,
     "estilo": "cinematic photography, shot on 35mm film, shallow depth of field, moody volumetric lighting, muted teal and amber color grading, film grain, vertical composition, photorealistic, highly detailed",
-    "negativo": "no text, no letters, no captions, no watermark, no logo, no collage, no split screen, no borders, not landscape",
+    "negativo": "no text, no letters, no captions, no watermark, no logo, no collage, no split screen, no borders, not landscape, no diptych, no before and after, no grid of panels, single frame only",
     "_comment_pessoa": "A consistencia do protagonista entre cenas vem do TEXTO. O roteiro repete a descricao curta; isto aqui e a rede de seguranca quando o roteiro esquece.",
     "reforco_consistencia": true,
     "_comment_worker": "Ajustes do browser. Herdam o perfil e o login do random_builds (mesma conta do PicassoIA) - por isso os dois workers nunca rodam juntos: a trava de instancia unica e compartilhada.",
@@ -26,5 +26,9 @@
     "suavizacao_max": 3,
     "reescrever_com_llm": true,
     "reescritas_max": 2,
-    "llm_provedor": "chatgpt"
+    "llm_provedor": "chatgpt",
+    "_comment_negativo": "O gerador ignora 'no collage' quando o PROMPT descreve uma transicao: 'sitting up abruptly and blinking' sao dois momentos, e ele resolve com um antes-e-depois lado a lado. Medido em 11/09/2026: 44 das 440 imagens do disco eram colagem. As palavras extras aqui sao a segunda linha de defesa; a primeira e a regra de UM INSTANTE SO em `roteiro.json`, e a terceira e o detector em `contos/imagens/composicao.py`, que recusa e manda refazer.",
+    "aprimorar_prompt": true,
+    "aprimorar_timeout": 90,
+    "_comment_aprimorador": "O Aprimorador de Prompt e do PROPRIO PicassoIA, entao ele sabe o que aquele gerador entende — vantagem sobre o nosso reescritor, que e um LLM generico adivinhando. Medido em 11/09/2026 com um prompt real: 701 chars viraram 4093, a descricao do protagonista e o estilo foram MANTIDOS e detalhados, e as proibicoes (`no collage`, `no split screen`) foram APAGADAS. Por isso `_reforcar_proibicoes` recoloca o `negativo` depois e so entao corta no `prompt_max_chars`. Desligue com false se a consistencia do protagonista entre cenas piorar: o aprimorador detalha a mesma descricao de um jeito diferente a cada cena, e e a repeticao IDENTICA dela que faz 84 imagens parecerem a mesma pessoa."
 }

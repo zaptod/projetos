@@ -40,6 +40,34 @@
                 "O ESTRAGO (2 cenas): a hora em que ela percebe.",
                 "CTA (1 cena): pergunta se foi longe demais."
             ]
+        },
+        "_comment_quebrada": "OUTRA CATEGORIA, e nao mais um molde. Os tres de cima sao a mesma coisa em formas diferentes: relato em primeira pessoa, realista, sussurrado. Este e o oposto em tudo - terceira pessoa, elenco caricato, escandalo de novela das seis gritado por um narrador fofoqueiro. Por isso ele traz `pessoa`, `regras` e `estilo_imagem` proprios: sem sobrepor esses tres, o prompt de cima forcaria 'primeira pessoa, sem magia, relato pessoal' e mataria o genero na primeira linha. Inspiracao medida no que ja funciona: as novelas de frutas com IA (Abacatudo, Moranguete) e os desenhos mandrake. O que faz aquilo prender NAO e o palavrao: e melodrama de novela levado 100% a serio em cima de uma premissa ridicula, com apelido no lugar de nome e escandalo a cada 5 segundos.",
+        "quebrada": {
+            "rotulo": "Novela caricata da quebrada (terceira pessoa, escandalo)",
+            "duracao_alvo": 70,
+            "cenas_alvo": 12,
+            "pessoa": "terceira",
+            "estilo_imagem": "stylized 3D cartoon render, Pixar-like exaggerated proportions, big expressive eyes, saturated tropical colors, warm golden hour light, Brazilian hillside neighborhood with colorful stacked houses, string lights and satellite dishes, playful caricature, vertical composition, highly detailed",
+            "regras": [
+                "Historia ficticia em TERCEIRA pessoa, contada por um narrador fofoqueiro que esta do lado de fora e claramente tomou partido. Ele comenta, se escandaliza, adianta desgraca ('e olha que isso ainda nem era o pior') e chama quem assiste para dentro.",
+                "O elenco e CARICATO, nao humano realista: frutas, bichos, objetos ou tipos exagerados da vizinhanca. Cada um tem APELIDO no lugar de nome (Bananildo, Dona Fofoca, Seu Boteco, Moranguete) e UMA caracteristica unica repetida toda vez que aparece.",
+                "A premissa e ridicula e o elenco a leva 100% a serio. O riso nasce do descompasso: tragedia de novela das seis por causa de um liquidificador emprestado. Se alguem dentro da historia achar graca, o genero morre.",
+                "Ritmo de escandalo: cada cena entrega uma revelacao, uma acusacao ou uma virada. Nada de cena de transicao, nada de reflexao. Se a cena nao faz alguem gritar, ela nao existe.",
+                "Fala de rua, curta e falada em voz alta: girias, frases feitas, repeticao para enfase. Nada de frase de livro. Mas SEM palavrao e SEM ofensa a pessoa - o exagero e o humor, nao o xingamento.",
+                "A quebrada aqui e COMUNIDADE, e o que ela tem de bom: laje, baile, churrasco, boteco, vizinha que sabe de tudo, mutirao. Nunca crime, arma, faccao, droga ou policia - nem de brincadeira, nem como piada de fundo. Isso nao e pudor: e o que derruba o video e o que faz a imagem ser recusada.",
+                "Nada de humilhar quem ja e humilhado. A piada e sempre com quem tem mais poder na cena (o vizinho metido, o dono da loja, o galã convencido), nunca com pobreza, corpo, cor, religiao ou com mulher por ser mulher. O genero viral erra nisso o tempo todo, e e justamente a parte que derruba canal.",
+                "UMA confusao central atravessa as partes e so se resolve na ultima. Cada parte termina no meio de um barraco.",
+                "Cada parte entrega um FATO NOVO que vira o que se sabia. Se a parte pode ser resumida sem perder nada, ela nao existe."
+            ],
+            "estrutura": [
+                "GANCHO (1 cena): o barraco ja acontecendo, no auge, sem explicar nada. Alguem acusando alguem na frente de todo mundo.",
+                "QUEM E QUEM (2 cenas): o narrador apresenta o elenco pelos apelidos e pelo defeito de cada um, rapido, um por cena.",
+                "O ESTOPIM (2 cenas): a coisa pequena e boba que comecou tudo, mostrada como se fosse tragedia nacional.",
+                "ESCALADA (3-4 cenas): a fofoca corre, cada vizinho conta uma versao pior, e a confusao cresce sozinha.",
+                "A REVELACAO (2 cenas): o segredo que vira tudo do avesso - e o culpado nao e quem todo mundo estava acusando.",
+                "O ACERTO (1-2 cenas): como a quebrada resolve do jeito dela, com todo mundo junto.",
+                "CTA (1 cena): o narrador pergunta de que lado quem assiste ficou, ou entrega o proximo barraco que ja esta comecando."
+            ]
         }
     },
     "_comment_regras": "Estas regras entram em TODO prompt. A revisao de 31/08 muda o alvo: nao e 'roteiro bem escrito', e DESABAFO DE GENTE. O video ja e artificial nas imagens e na voz; o texto e o unico lugar onde da para soar humano - e proximidade e o que segura.",
@@ -66,6 +94,7 @@
             "Consistencia entre cenas vem do TEXTO: repita a mesma descricao fisica curta do protagonista (idade aparente, cabelo, roupa) em toda cena em que ele aparece.",
             "Enquadramento vertical, cinematografico, foto realista, luz coerente com a hora da cena.",
             "Proibido na imagem: qualquer texto, letra, legenda, marca d'agua, colagem, moldura, imagem deitada.",
+            "UM INSTANTE SO, nunca uma transicao. 'sitting up abruptly and blinking' descreve dois momentos (deitado e sentado) e o gerador resolve isso com um antes-e-depois lado a lado — medido em 11/09/2026, a cena refeita tres vezes voltou colagem nas tres. Escolha o instante e descreva SO ele: 'already sitting up, eyes wide'.",
             "A imagem passa por um filtro de conteudo automatico: descreva a cena SEM sangue, ferimento, arma, nudez, criancas em perigo ou autolesao. Mostre o ANTES ou o DEPOIS (a mao tremendo, a porta fechada, a mancha no chao), nunca o ato - alem de passar no filtro, sugerir assusta mais que mostrar."
         ],
         "tempo": [
@@ -172,11 +201,6 @@
                 "registro": "medo",
                 "mexe": "nao foi so traicao - foi por alguem que vale menos que eu",
                 "cena": "ele reconhecendo o carro velho na garagem; o cara que ele mesmo ajudou a empregar"
-            },
-            "O_FILHO_E_MEU": {
-                "registro": "medo",
-                "mexe": "e se os anos todos forem mentira",
-                "cena": "a semelhanca que nao existe; a data que nao fecha; o envelope que ele nao abre ha tres dias"
             },
             "TROCADO_PELO_MAIS_NOVO": {
                 "registro": "medo",

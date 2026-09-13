@@ -109,6 +109,52 @@ def _completar_parte(cliente, texto: str, numero: int, cenas_alvo: int,
     return parcial
 
 
+TENTATIVAS_DE_COERENCIA = 2
+
+
+def _exigir_coerencia(cliente, parcial: dict, numero: int, cenas_alvo: int,
+                      pasta: Path, config: dict, biblia: dict, log) -> dict:
+    """Recusa a parte que nao e desta historia, e PEDE DE NOVO.
+
+    O unico criterio para aceitar uma parte era contar cenas. Em 11/09/2026 as
+    partes 3 a 6 da `historia_00005` chegaram com 14 cenas cada de gameplay de
+    Minecraft dentro de um drama domestico — contagem certa, conteudo de outra
+    conversa — e foram para o disco, viraram video e uma delas foi publicada.
+
+    Pedir de novo, e nao suavizar: o texto nao esta ruim, ele e de OUTRO
+    assunto. Reescrever a partir dele so espalharia a contaminacao.
+
+    Se nem a ultima tentativa vier limpa, a parte e devolvida assim mesmo —
+    e a vistoria (`publicar/qualidade.py`) impede a publicacao. Derrubar a
+    geracao inteira aqui perderia tambem as partes boas ja salvas.
+    """
+    from . import pertinencia
+
+    for volta in range(1, TENTATIVAS_DE_COERENCIA + 1):
+        motivos = pertinencia.problemas(parcial.get("cenas") or [])
+        if not motivos:
+            return parcial
+        log(f"[serie] a parte {numero} NAO parece desta historia "
+            f"({motivos[0][:90]}). Pedindo de novo "
+            f"({volta}/{TENTATIVAS_DE_COERENCIA}).")
+        try:
+            texto = cliente.perguntar(
+                S.prompt_parte(biblia, numero, cenas=cenas_alvo, config=config))
+        except Exception as exc:                               # noqa: BLE001
+            log(f"[serie] a parte {numero} nao veio de novo ({exc}).")
+            break
+        _guardar_conversa(pasta, f"parte_{numero:02d}_recoerencia{volta}.txt",
+                          texto)
+        nova = _completar_parte(cliente, texto, numero, cenas_alvo, pasta, log)
+        if nova.get("cenas"):
+            parcial = nova
+    if pertinencia.problemas(parcial.get("cenas") or []):
+        log(f"[serie] a parte {numero} segue fora do assunto depois de "
+            f"{TENTATIVAS_DE_COERENCIA} tentativas. Ela fica gravada, mas a "
+            "vistoria vai barrar a publicacao.")
+    return parcial
+
+
 def _revisar_parte(cliente, parcial: dict, numero: int, cenas_alvo: int,
                    pasta: Path, config: dict, log) -> dict:
     """Um turno a mais: o modelo relê o que escreveu e reescreve melhor.
@@ -249,6 +295,11 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                     f"As partes anteriores continuam salvas.")
             parcial = _revisar_parte(cliente, parcial, numero, cenas_por_parte,
                                      pasta, config, log)
+            # A retomada corre o MESMO risco, e mais: ela existe justamente
+            # para consertar serie que deu errado antes.
+            parcial = _exigir_coerencia(cliente, parcial, numero,
+                                        cenas_por_parte, pasta, config,
+                                        biblia, log)
             plano = next((p for p in biblia["partes"] if p["n"] == numero), {})
             partes_prontas.append({
                 "n": numero,
@@ -393,6 +444,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                         "ja estao salvas.")
                 parcial = _revisar_parte(cliente, parcial, numero,
                                          cenas_por_parte, pasta, config, log)
+                parcial = _exigir_coerencia(cliente, parcial, numero,
+                                            cenas_por_parte, pasta, config,
+                                            biblia, log)
                 plano = next((p for p in biblia["partes"] if p["n"] == numero), {})
                 partes_prontas.append({
                     "n": numero,

@@ -357,6 +357,16 @@ class PicassoClient:
 
         prompt = self._aprimorar(campo, botao, prompt)
 
+        # Se o aprimorador falhou ou demorou, pode ter deixado o botao
+        # desabilitado novamente. Aguardar ate estar pronto.
+        limite = time.monotonic() + 10
+        while botao.is_disabled() and time.monotonic() < limite:
+            time.sleep(0.5)
+        if botao.is_disabled():
+            raise GeracaoFalhou(
+                "o botao ficou desabilitado apos aprimorador (timeout ou falha "
+                "na disponibilidade do painel). A proxima tentativa pode suceder.")
+
         self._ajustar_select("proporcao", aspect)
         quantidade = str(self.ajustes.get("quantidade", 1))
         if quantidade in selectors.OPCOES_QUANTIDADE:
@@ -381,6 +391,20 @@ class PicassoClient:
         if parede:
             print(f"[picasso] tirei da frente um aviso que apareceu novamente: "
                   f"{parede}", flush=True)
+
+        # O botao pode ter sido desabilitado durante `_esperar_estabilizar` ou
+        # `_tirar_parede_da_frente`. Uma tentativa de clique num aria-disabled
+        # falha em timeout do Playwright (10s), escondendo o motivo real. Conferir
+        # aqui evita "subtree intercepts pointer events" e deixa a mensagem clara.
+        limite = time.monotonic() + 10
+        while botao.is_disabled() and time.monotonic() < limite:
+            time.sleep(0.5)
+        if botao.is_disabled():
+            raise GeracaoFalhou(
+                "o botao ficou desabilitado entre aprimorador e clique: "
+                "a pagina pode ter desabilitado por validacao. "
+                "A proxima tentativa pode suceder.")
+
         try:
             botao.click(timeout=10000)
         except Exception:
@@ -522,10 +546,41 @@ class PicassoClient:
                 time.sleep(0.5)
         except Exception:
             pass
+        novo = self._reforcar_proibicoes(novo)
         campo.fill(novo)
         print(f"[picasso] prompt aprimorado ({len(original)} -> "
               f"{len(novo)} chars)")
         return novo
+
+    def _reforcar_proibicoes(self, texto: str) -> str:
+        """Devolve as PROIBICOES que o aprimorador joga fora, e corta no teto.
+
+        MEDIDO em 11/09/2026 com um prompt real do canal de historias, 701
+        chars entrando e 4093 saindo:
+
+            manteve   a descricao do protagonista (45-year-old, curly black
+                      hair, floral sundress) e o estilo (cartoon)
+            APAGOU    `no collage`, `no split screen`
+
+        Ou seja: ele apaga exatamente as duas linhas que existem para impedir
+        o defeito que mais aparece aqui — 44 das 440 imagens do disco eram
+        colagem. Ligar o aprimorador sem devolver isso seria trocar um prompt
+        melhor por imagens piores.
+
+        O corte vem depois de recolocar, e nao antes: cortar em `prompt_max_chars`
+        um texto de 4093 chars com as proibicoes no fim jogaria fora
+        justamente elas.
+        """
+        proibicoes = str(self.ajustes.get("negativo") or "").strip()
+        limpo = " ".join(str(texto or "").split())
+        if proibicoes and proibicoes.lower() not in limpo.lower():
+            teto = int(self.ajustes.get("prompt_max_chars", 900))
+            folga = max(120, teto - len(proibicoes) - 2)
+            if len(limpo) > folga:
+                corte = limpo.rfind(",", 0, folga)
+                limpo = limpo[:corte if corte > 120 else folga].rstrip(" ,;")
+            return f"{limpo}, {proibicoes}"
+        return limpo
 
     @staticmethod
     def _texto_do_painel(bruto: str) -> str:

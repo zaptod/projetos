@@ -32,7 +32,7 @@ from builds.identity import moderacao as _rb_identity_moderacao
 from builds.identity import provedores as _rb_identity_provedores
 from builds.identity import proveniencia as _rb_identity_proveniencia
 import builds.travas as _rb_travas
-from . import fila
+from . import composicao, fila
 
 RAIZ = Path(__file__).resolve().parents[2]
 
@@ -128,6 +128,13 @@ def _gerar_esperando(cliente, prompt: str, config: dict, ajustes: dict,
     raise AssertionError("inalcancavel")
 
 
+# Quantas vezes mandar o MESMO prompt quando a imagem volta em
+# painel. Duas refeitas: mais do que isso gasta a conta
+# compartilhada atras de um desenho que o modelo insiste em errar,
+# e uma colagem no ar ainda e melhor do que cena sem imagem.
+TENTATIVAS_DE_COMPOSICAO = 3
+
+
 class NaoRodou(RuntimeError):
     """Motivo humano para a passada nao ter acontecido (trava, pausa, login)."""
 
@@ -221,7 +228,9 @@ def gerar(historia_id: str, *, limite: int | None = None,
                 bloco = next(p for p in roteiro["partes"]
                              if p["n"] == numero_parte)
                 cena = next(c for c in bloco["cenas"] if c["n"] == n)
-                prompt = fila.prompt_da_cena(cena, config, protagonista)
+                prompt = fila.prompt_da_cena(cena, config, protagonista,
+                                             estilo=fila.estilo_do_roteiro(
+                                                 roteiro))
                 rotulo = f"p{numero_parte:02d}_cena_{n:02d}"
                 if i:
                     time.sleep(float(ajustes.get("min_interval", 8)))
@@ -258,14 +267,68 @@ def gerar(historia_id: str, *, limite: int | None = None,
                             # tecnico (site falhou ao confirmar origem).
                             # Marcar como tecnico para que retente na proxima
                             # passada, em vez de virar "recusado" permanente.
+                            #
+                            # Registrar a tentativa em imagens.json mesmo com
+                            # prova falha (comprovada: false), para que o sistema
+                            # saiba que foi tentado. Na proxima passada, retentara
+                            # com informacao do que falhou da ultima vez.
                             falha_tecnica = ValueError(
                                 f"Prova: {prova.get('motivo')}")
                             erros.append(f"{rotulo}: sem prova de origem "
                                          f"({prova.get('motivo')}). Nada baixado.")
                             log(f"[imagens] {rotulo}: {erros[-1]}")
+                            destino = linha["arquivo"]
+                            try:
+                                cliente.download(prova.get("url") or alvo, destino)
+                            except Exception as download_exc:
+                                # Se o download falhar, registrar apenas que foi
+                                # tentado (sem arquivo). A proxima passada vai
+                                # retentar tudo desde o comeco.
+                                log(f"[imagens] {rotulo}: download falhou: "
+                                    f"{type(download_exc).__name__}")
+                            fila.registrar(historia_id, n,
+                                           prompt=cliente.prompt_enviado,
+                                           arquivo=destino, prova=prova,
+                                           url=prova.get("url") or alvo,
+                                           parte=numero_parte, nivel=nivel)
                             break
                         destino = linha["arquivo"]
                         cliente.download(prova.get("url") or alvo, destino)
+                        # COLAGEM SE REFAZ COM O MESMO PROMPT, e nao se
+                        # suaviza: o texto esta certo, quem errou foi o
+                        # desenho. Suavizar aqui pioraria a cena para
+                        # consertar o que nao era problema dela — a mesma
+                        # regra do estouro de espera.
+                        for volta in range(1, TENTATIVAS_DE_COMPOSICAO):
+                            razao = composicao.motivo(destino)
+                            if not razao:
+                                break
+                            log(f"[imagens] {rotulo}: {razao} Refazendo "
+                                f"({volta}/{TENTATIVAS_DE_COMPOSICAO - 1}).")
+                            time.sleep(float(ajustes.get("min_interval", 8)))
+                            alvo, antes = _gerar_esperando(
+                                cliente, tentativa, config, ajustes, log,
+                                rotulo)
+                            prova = proveniencia.comprovar(
+                                cliente, historia_id, rotulo,
+                                cliente.prompt_enviado, cliente.enviado_em,
+                                alvo, ajustes)
+                            cliente.download(prova.get("url") or alvo, destino)
+                        # O DOWNLOAD FALHA CALADO, e o laco acima acredita
+                        # nele: `composicao.motivo` de um caminho inexistente
+                        # devolve "", que quer dizer "nao e colagem", e a cena
+                        # sairia registrada como pronta. Um "sim" tirado de uma
+                        # pergunta que nao pode ser respondida.
+                        #
+                        # Medido em 11/09/2026 na p05_cena_11: o registro dizia
+                        # sucesso e o arquivo nunca chegou ao disco.
+                        if not Path(destino).is_file():
+                            falha_tecnica = FileNotFoundError(
+                                f"Download nao criou o arquivo: {destino}")
+                            erros.append(f"{rotulo}: arquivo nao foi criado "
+                                         f"apos download. Nada salvo.")
+                            log(f"[imagens] {rotulo} FALHOU: {falha_tecnica}")
+                            break
                         proveniencia.reivindicar(prova, historia_id, rotulo)
                         fila.registrar(historia_id, n,
                                        prompt=cliente.prompt_enviado,

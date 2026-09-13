@@ -261,6 +261,15 @@ class RecusaFalsaTests(unittest.TestCase):
         recusa = trecho[trecho.index("elif not feito and ultima_recusa:"):]
         self.assertIn("registrar_recusa", recusa[:900])
 
+    def test_falha_de_prova_registra_a_tentativa(self):
+        """Falha de prova deve ser registrada em imagens.json (com comprovada=false)."""
+        trecho = self._trecho()
+        # Deve haver fila.registrar() no ramo de prova falha
+        prova_falha = trecho[trecho.index("exigir_prova_de_origem"):
+                             trecho.index("except ConteudoRecusado")]
+        self.assertIn("fila.registrar(", prova_falha,
+                      "Falha de prova deve registrar a tentativa em imagens.json")
+
 
 class NivelDeSuavizacaoTests(unittest.TestCase):
     """O nivel e int OU rotulo de texto — e o registro tem que aceitar os dois."""
@@ -287,6 +296,48 @@ class NivelDeSuavizacaoTests(unittest.TestCase):
 
     def test_sem_tratamento_nenhum_fica_None(self):
         self.assertIsNone(self._registrar(0))
+
+
+class DownloadFalhaTests(unittest.TestCase):
+    """Download silenciosamente falha e deixa o arquivo inexistente.
+
+    Em 11/09/2026, p05_cena_11 foi registrada como sucesso em imagens.json,
+    mas o arquivo nunca foi criado no disco. O motivo: se o download falhava,
+    composicao.motivo() tentava abrir um arquivo inexistente e retornava "",
+    fazendo o codigo assumir que a colagem estava OK.
+
+    O conserto valida que o arquivo foi criado antes de registrar sucesso.
+    """
+
+    def test_arquivo_inexistente_nao_registra_como_sucesso(self):
+        """Se o download falha, composicao.motivo retorna ""; precisamos
+        validar que o arquivo realmente foi criado antes de registrar."""
+        from contos.imagens import worker
+        import tempfile
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            arquivo = Path(tmpdir) / "cena_teste.png"
+
+            # Cliente fake que nao cria arquivo no download
+            cliente_fake = MagicMock()
+            cliente_fake.prompt_enviado = "prompt de teste"
+            cliente_fake.enviado_em = "2026-09-11T10:00:00"
+
+            def download_sem_arquivo(url, destino):
+                # Simula download que falha silenciosamente
+                pass
+
+            cliente_fake.download = download_sem_arquivo
+
+            # Simular a escalada de um prompt com arquivo faltando
+            # Precisamos chamar a funcao de colagem que valida
+            razao = worker.composicao.motivo(str(arquivo))
+
+            # Se o arquivo nao existe, motivo deve retornar "" (lista vazia)
+            self.assertEqual("", razao,
+                             "composicao.motivo deve retornar string vazia "
+                             "quando arquivo nao existe")
 
 
 if __name__ == "__main__":

@@ -51,7 +51,21 @@ def proxima_estrutura(usadas: list, config: dict | None = None) -> str:
     Rodizio pelo menos usado, e nao sorteio: sorteio repete.
     """
     config = config or carregar_config()
-    return _menos_usado(list((config.get("modelos") or {}).keys()), usadas)
+    return _menos_usado(moldes_disponiveis(config), usadas)
+
+
+def moldes_disponiveis(config: dict | None = None) -> list:
+    """Os moldes que o rodizio pode sortear.
+
+    Fora as chaves `_comment_*`. O resto do arquivo documenta cada bloco com
+    um comentario IRMAO (`_comment_ganchos` ao lado de `ganchos`), e dentro de
+    `modelos` esse mesmo habito criaria um molde fantasma: o rodizio o
+    escolheria, `prompt_biblia` acharia uma string onde espera um dicionario e
+    a historia sairia sem molde nenhum — em silencio, que e o pior jeito.
+    """
+    config = config or carregar_config()
+    return [nome for nome in (config.get("modelos") or {})
+            if not nome.startswith("_")]
 
 
 def _menos_usado(disponiveis: list, usadas: list) -> str:
@@ -225,7 +239,17 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
     # O QUE PRENDE NAO E A TRAMA, e o que ela mexe em quem assiste. Sem isto o
     # modelo escreve um acontecimento bem contado e a pessoa sai no meio,
     # porque nada nela estava em jogo.
-    if narrador:
+    terceira = (molde.get("pessoa") or "primeira") == "terceira"
+    if terceira:
+        # A CATEGORIA CARICATA NAO E RELATO. Mandar "primeira pessoa de uma
+        # mulher adulta" aqui e, tres blocos abaixo, "sem magia, relato
+        # pessoal" matava o genero na primeira linha do prompt: nao existe
+        # novela de fruta em primeira pessoa realista.
+        voz = narrador or "quem conhece todo mundo na rua"
+        add(f"QUEM CONTA: um narrador de fora, voz de {voz}. Ele nao e "
+            "personagem: ele assiste, comenta e toma partido.")
+        add("")
+    elif narrador:
         # QUEM NARRA VEM DECIDIDO. Antes o modelo escolhia, e derivava: as
         # historias 12 a 15 sairam todas com narrador homem, quatro seguidas.
         add(f"QUEM CONTA: {narrador}. A historia inteira e na primeira pessoa "
@@ -278,6 +302,9 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
     add("LIMITE, e ele nao se negocia:")
     add("  - NINGUEM menor de 18 anos em situacao sexual ou romantica — nem "
         "agora, nem no passado da historia, nem sugerido.")
+    add("  - Nada de teste de paternidade, filiacao, adocao ou qualquer duvida "
+        "sobre quem e o pai/mae de uma crianca. A plataforma derruba conteudo "
+        "sobre crianca em contextos como este, independente da palavra usada.")
     add("  - Nada de sexo explicito, de violencia sexual, de autolesao como "
         "cena, nem de pessoa, marca ou crime reais.")
     add("  - Uma historia que a plataforma derruba nao serve para nada, por "
@@ -285,31 +312,52 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
         "a ideia errada: troque, nao suavize.")
     add("")
     add("REGRAS DA HISTORIA (valem para o planejamento inteiro):")
-    add("  - Historia ficticia em primeira pessoa, com nomes inventados.")
-    add("  - O texto final vai soar como um DESABAFO que uma pessoa real "
-        "postou num forum, nao como roteiro. Planeje so acontecimentos que "
-        "alguem contaria de memoria, com detalhe mundano e ponta solta.")
-    add("  - UMA pergunta central atravessa as {n} partes e so e respondida "
-        "na ultima.".replace("{n}", str(partes)))
-    add("  - Cada parte entrega um FATO NOVO que muda o que se sabia ate "
-        "ali — nao basta 'avancar a acao'. Se a parte pode ser resumida sem "
-        "perder nada, ela nao existe.")
-    add("  - Cada parte tem a propria mini-virada, alem da virada central.")
-    add("  - Nada de enrolacao: se um acontecimento nao muda a situacao do "
-        "protagonista, ele nao existe.")
-    add("  - A historia precisa caber num relato pessoal: sem magia, sem "
-        "conspiracao mundial, sem final de novela.")
+    if molde.get("regras"):
+        # O MOLDE MANDA. Um genero caricato nao cabe nas regras do relato
+        # confessional — "desabafo de gente real, sem final de novela" e o
+        # oposto exato do que faz uma novela de fruta funcionar. Sobrepor a
+        # lista inteira, e nao acrescentar, e o que evita o prompt pedir as
+        # duas coisas e o modelo entregar nenhuma.
+        for regra in molde["regras"]:
+            add(f"  - {str(regra).strip()}")
+    else:
+        add("  - Historia ficticia em primeira pessoa, com nomes inventados.")
+        add("  - O texto final vai soar como um DESABAFO que uma pessoa real "
+            "postou num forum, nao como roteiro. Planeje so acontecimentos que "
+            "alguem contaria de memoria, com detalhe mundano e ponta solta.")
+        add("  - UMA pergunta central atravessa as {n} partes e so e respondida "
+            "na ultima.".replace("{n}", str(partes)))
+        add("  - Cada parte entrega um FATO NOVO que muda o que se sabia ate "
+            "ali — nao basta 'avancar a acao'. Se a parte pode ser resumida sem "
+            "perder nada, ela nao existe.")
+        add("  - Cada parte tem a propria mini-virada, alem da virada central.")
+        add("  - Nada de enrolacao: se um acontecimento nao muda a situacao do "
+            "protagonista, ele nao existe.")
+        add("  - A historia precisa caber num relato pessoal: sem magia, sem "
+            "conspiracao mundial, sem final de novela.")
     add("")
     add("CONSISTENCIA VISUAL (isto e obrigatorio):")
     add("  - Descreva o protagonista FISICAMENTE em ingles, em uma frase "
-        "curta e fixa (idade aparente, cabelo, rosto, roupa recorrente).")
+        "curta e fixa. Ela PRECISA ter, nesta ordem: etnia ou tom de pele, "
+        "idade aparente, cabelo (cor e corte), UM traco marcante do rosto, "
+        "e a roupa recorrente.")
+    add("  - Nada de adjetivo vago no lugar de um traco: 'tired eyes' e "
+        "'kind face' nao descrevem ninguem e cada imagem inventa uma pessoa "
+        "diferente. Vale 'a thin scar on the left eyebrow', 'round "
+        "wire-frame glasses', 'a wide gap between the front teeth'.")
     add("  - Essa frase sera repetida em TODAS as imagens de TODAS as partes, "
         "entao nao pode mudar depois. Nada de nome dentro dela.")
     add("  - Faca o mesmo para cada personagem que aparece mais de uma vez.")
     add("")
     # O gemeo FACTUAL da consistencia visual. A descricao fisica ja e repetida
-    # em toda imagem e por isso o protagonista nao muda de cara; nada fazia o
-    # mesmo pelos NUMEROS, e eles derraparam: na historia 8 o aluguel era
+    # em toda imagem — mas repetir uma descricao VAGA nao fixa ninguem: em
+    # 12/09/2026 o Gemini reprovou tres videos porque o protagonista trocava
+    # de rosto entre as cenas, e o motivo estava aqui. A frase era "a 30s man,
+    # short dark hair, tired eyes, wearing a simple gray button-down shirt",
+    # que serve tanto a um homem asiatico quanto a um branco — e o modelo
+    # escolhia um diferente a cada imagem. Dai a exigencia de etnia e de UM
+    # traco concreto acima. Nada fazia o mesmo pelos NUMEROS, e eles
+    # derraparam: na historia 8 o aluguel era
     # "tres mil e oitocentos" nas partes 1 e 6 e "cinco mil" na 2, e o casal se
     # conheceu em 2020 na parte 2 e em 2018 na parte 4. Quem escreve a parte 4
     # nao lembra do que disse na 2 — entao a ficha vai junto em toda pergunta.
@@ -323,8 +371,20 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
     add("")
     add("FORMATO DA RESPOSTA (exatamente assim, sem nada em volta):")
     add("")
-    add("TITULO DA SERIE: <uma linha, em primeira pessoa, que ja entrega o "
-        "conflito e provoca curiosidade>")
+    add("TITULO DA SERIE: <uma linha "
+        + ("de escandalo, com o apelido de quem aprontou, do jeito que a "
+           "vizinha contaria gritando" if terceira
+           else "em primeira pessoa")
+        + ", que ja entrega o conflito e provoca curiosidade>")
+    # A MARCA, e ela nao e o titulo. O titulo da serie e uma FRASE de gancho
+    # ("Faz quatro anos que minha esposa acha que fui promovido, mas...") e
+    # nao cabe no titulo de um video junto com o numero da parte. Sem uma
+    # marca curta, as seis partes foram ao ar como seis videos sem relacao
+    # nenhuma e quem gostou de uma nao tinha como achar as outras.
+    add("NOME DA SERIE: <2 a 4 palavras, como nome de novela. E a MARCA que "
+        "vai no titulo de TODAS as partes, entao precisa ser curta, "
+        "especifica desta historia e facil de reconhecer numa lista. Nao "
+        "repita a frase do titulo>")
     add("PREMISSA: <2 frases: a situacao e a pergunta central>")
     add("PROTAGONISTA: <nome> | <descricao fisica em ingles, uma frase>")
     # Continua sendo pedido de volta mesmo quando ja foi ditado: e assim que
@@ -363,12 +423,12 @@ def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
     """Texto da etapa 1 -> {titulo, premissa, protagonista, elenco, partes}."""
     campos = {"titulo": "", "premissa": "", "protagonista": "", "elenco": "",
               "cenario": "", "virada": "", "narrador": "", "fatos": "",
-              "alavancas": ""}
+              "alavancas": "", "serie_nome": ""}
     rotulos = {
         "titulo da serie": "titulo", "titulo": "titulo", "premissa": "premissa",
         "protagonista": "protagonista", "elenco": "elenco", "cenario": "cenario",
         "virada central": "virada", "narrador": "narrador", "fatos": "fatos",
-        "alavancas": "alavancas",
+        "alavancas": "alavancas", "nome da serie": "serie_nome",
     }
     partes = []
     atual = None
@@ -403,6 +463,10 @@ def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
 
     return {
         "titulo": campos["titulo"],
+        # A marca curta que liga as partes no titulo do video. Vazia nas
+        # historias anteriores a 11/09/2026, e `titulo_da_parte` sabe viver
+        # sem ela — cai em "(Parte 3/6)", que ja diz que ha mais.
+        "serie_nome": campos["serie_nome"],
         "premissa": campos["premissa"],
         "protagonista_nome": nome.strip(),
         "protagonista": fisico.strip() or campos["protagonista"].strip(),

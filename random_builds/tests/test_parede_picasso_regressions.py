@@ -201,6 +201,49 @@ class OndeEChamadoTests(unittest.TestCase):
         self.assertLess(corpo.index("self._recusou()"),
                         corpo.index("_tirar_parede_da_frente()"))
 
+    def test_botao_verif_pos_aprimorador(self):
+        """O botao pode ficar desabilitado se aprimorador falhar; aguarda novamente.
+
+        p06_cena_02 (2026-09-11): o botao nunca ficou habilitado na primeira
+        tentativa porque o aprimorador de prompt pode desabilitar o form enquanto
+        tenta usar. Agora apos _aprimorar() aguarda novamente o botao ficar
+        habilitado antes de prosseguir.
+        """
+        corpo = self._corpo("submit_prompt")
+        # Verifica que ha check de botao APOS _aprimorar
+        aprimorador_idx = corpo.index("self._aprimorar(")
+        botao_check_idx = corpo.index("botao.is_disabled()",
+                                       aprimorador_idx)
+        ajustar_select_idx = corpo.index('_ajustar_select("proporcao"',
+                                          aprimorador_idx)
+        # Garantir que o check do botao vem entre aprimorador e ajustar_select
+        self.assertLess(aprimorador_idx, botao_check_idx,
+                        "botao.is_disabled() deveria estar apos _aprimorar()")
+        self.assertLess(botao_check_idx, ajustar_select_idx,
+                        "botao.is_disabled() deveria estar antes de _ajustar_select()")
+
+    def test_botao_verif_logo_antes_do_clique(self):
+        """O botao pode desabilitar entre estabilizar e clicar; aguarda novamente.
+
+        p06_cena_02 (2026-09-11): o Playwright registrou aria-disabled="true"
+        no instante do click. Entre a ultima verificacao (apos aprimorador) e
+        o clique, passam operacoes longas (_esperar_estabilizar ate 25s,
+        _tirar_parede_da_frente). Se o botao desabilitar ali, tentar clicar
+        numa aria-disabled falha em timeout do Playwright (10s), escondendo o
+        motivo real. Verificar logo antes do clique evita isso.
+        """
+        corpo = self._corpo("submit_prompt")
+        # Deve haver um check de botao APOS a segunda _tirar_parede_da_frente
+        # e ANTES de botao.click()
+        segunda_parede_idx = corpo.index("_tirar_parede_da_frente()",
+                                         corpo.index("_tirar_parede_da_frente()") + 1)
+        click_idx = corpo.index("botao.click(")
+        # Procurar por um check do botao entre a segunda parede e o click
+        slice_apos_parede = corpo[segunda_parede_idx:click_idx]
+        self.assertIn("botao.is_disabled()", slice_apos_parede,
+                      "deveria haver check de botao entre tirar parede "
+                      "e botao.click()")
+
 
 if __name__ == "__main__":
     unittest.main()
