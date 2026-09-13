@@ -480,7 +480,12 @@ def rodada(*, limite: int = 2, headless: bool = False, log=print) -> dict:
     # responde pelos dois crivos.
     ainda_barrados = {v.id for v, _e in agenda.barrados_no_estoque()}
     for video, _erros in barrados:
-        if video.id not in ainda_barrados:
+        # VETO VENCIDO NAO E CONSERTO. Depois das tres rodadas o video deixa
+        # de aparecer como barrado porque o veto venceu, e nao porque passou.
+        # Zerar a conta dele aqui o traria de volta para a fila de barrados:
+        # foi o que aconteceu na primeira rodada com a regra, em 13/09/2026, e
+        # os quatro videos liberados voltaram a travar.
+        if video.id not in ainda_barrados and not insistente(video.id):
             esquecer(video.id)
     return {"barrados": len(barrados), "consertados": consertados,
             "insistentes": insistentes + [v.id for v, _e in barrados

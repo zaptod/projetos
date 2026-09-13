@@ -105,6 +105,33 @@ class RodadaSemConsertoContaTests(_Base):
         self.assertEqual(1, reparo.tentativas(_V.id))
 
 
+class RodadaNaoEsqueceVetoVencidoTests(_Base):
+
+    def test_veto_vencido_nao_volta_a_ser_barrado(self):
+        """O video some dos barrados porque o veto venceu, nao porque passou.
+
+        A rodada zerava a conta de todo video que deixava de ser barrado, e
+        com a conta zerada o veto deixava de estar vencido: os quatro
+        liberados na primeira rodada real voltaram a travar a fila.
+        """
+        from contos.pipeline import agenda, controller
+        self._esgotar()
+        chamadas = []
+
+        def barrados():
+            chamadas.append(1)
+            if len(chamadas) == 1:
+                return [(_V(), ["a IA reprovou: cena 3: x"])]
+            return []
+
+        for modulo, nome, valor in ((agenda, "barrados_no_estoque", barrados),
+                                    (controller, "Pipeline", lambda: object())):
+            self.addCleanup(setattr, modulo, nome, getattr(modulo, nome))
+            setattr(modulo, nome, valor)
+        reparo.rodada(limite=5, log=lambda *_a: None)
+        self.assertEqual(reparo.TETO_DE_TENTATIVAS, reparo.tentativas(_V.id))
+
+
 class PublicadorTests(_Base):
 
     def setUp(self):
