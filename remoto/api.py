@@ -31,6 +31,18 @@ BASE = "https://api.telegram.org/bot{token}/{metodo}"
 LIMITE_ARQUIVO_MB = 45
 
 
+# O Telegram diz exatamente isto quando o Markdown nao fecha. Casar pela
+# frase, e nao so pelo 400: um 400 tambem pode ser chat errado ou texto vazio,
+# e reenviar sem formatacao nao conserta nenhum dos dois.
+FALHAS_DE_FORMATACAO = ("can't parse entities", "can't find end of the entity",
+                        "unsupported start tag")
+
+
+def _e_erro_de_formatacao(resposta: dict) -> bool:
+    motivo = str((resposta or {}).get("description") or "").lower()
+    return any(sinal in motivo for sinal in FALHAS_DE_FORMATACAO)
+
+
 class Telegram:
     def __init__(self, token: str, *, abrir=None):
         self.token = token
@@ -42,23 +54,57 @@ class Telegram:
         return BASE.format(token=self.token, metodo=metodo)
 
     def chamar(self, metodo: str, **campos) -> dict:
-        """POST simples (form-urlencoded). {} quando a rede falha."""
+        """POST simples (form-urlencoded). {} quando a rede falha.
+
+        O CORPO DO 400 TAMBEM VOLTA. Ate 11/09/2026 qualquer erro virava `{}`,
+        e o Telegram poe o motivo real no corpo de um 400 — foi assim que
+        "can't parse entities" ficou meses invisivel.
+        """
         dados = urllib.parse.urlencode(
             {k: v for k, v in campos.items() if v is not None}).encode()
         try:
             with self._abrir(self._url(metodo), data=dados, timeout=60) as r:
                 return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as erro:
+            try:
+                return json.loads(erro.read().decode("utf-8", "replace"))
+            except Exception:                                  # noqa: BLE001
+                return {"ok": False, "error_code": erro.code}
         except (urllib.error.URLError, OSError, ValueError, TimeoutError):
             return {}
 
     # -------------------------------------------------------------- enviar
     def mensagem(self, chat_id, texto: str, *, markdown: bool = False) -> dict:
+        """Manda o texto. O CONTEUDO chega mesmo quando a formatacao nao dá.
+
+        DEFEITO ACHADO EM 11/09/2026, e ele calava o canal inteiro: o bot
+        manda tudo com `parse_mode=Markdown`, e o Markdown legado do Telegram
+        trata `_` e `*` como formatacao. Todo id deste projeto tem underscore
+        (`historia_00004`, `p04_cena_02`, `generation_00055`), entao os tres
+        relatorios voltavam
+
+            400 Bad Request: can't parse entities
+
+        e nada era entregue. Nao havia erro no log, nao havia excecao: a
+        funcao devolvia `{}` e quem chamou seguiu em frente. Os relatorios de
+        metas e funcionamento — os que existem justamente para avisar quando
+        algo quebra — eram os que mais escapavam, porque listam ids.
+
+        Reenviar SEM formatacao e a escolha certa: negrito e enfeite, a lista
+        de videos barrados nao. Escapar os `_` seria a outra saida, e ela e
+        pior — depende de quem escreve o relatorio lembrar de escapar, e o
+        proximo relatorio vai esquecer de novo.
+        """
         # 4096 e o teto do Telegram; cortar aqui evita perder a mensagem
         # inteira por causa de uma lista longa.
-        return self.chamar("sendMessage", chat_id=chat_id,
-                           text=texto[:4000],
-                           parse_mode="Markdown" if markdown else None,
-                           disable_web_page_preview="true")
+        corpo = texto[:4000]
+        resposta = self.chamar("sendMessage", chat_id=chat_id, text=corpo,
+                               parse_mode="Markdown" if markdown else None,
+                               disable_web_page_preview="true")
+        if markdown and not resposta.get("ok") and _e_erro_de_formatacao(resposta):
+            return self.chamar("sendMessage", chat_id=chat_id, text=corpo,
+                               disable_web_page_preview="true")
+        return resposta
 
     def arquivo(self, chat_id, caminho, *, legenda: str = "",
                 como_video: bool = True) -> dict:

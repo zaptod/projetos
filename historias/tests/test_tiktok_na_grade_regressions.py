@@ -316,5 +316,58 @@ class AvisoDoTelegramTests(unittest.TestCase):
         self.assertIn(f":{m.MINUTO_PADRAO:02d}", texto)
 
 
+
+class QuedaDeEnergiaTests(unittest.TestCase):
+    """A noite de 11/09/2026: tres horarios perdidos, e silencio total.
+
+    A queda de energia derrubou o PC. Ele voltou as 03:34; as tarefas das
+    06:07, 07:07 e 08:07 dispararam em dia e as tres morreram em
+    `net::ERR_NAME_NOT_RESOLVED` — a rede nao tinha voltado junto. As 10:00 o
+    DNS resolvia normalmente: era espera, nao defeito.
+
+    TRES DEFEITOS SE SOMARAM, e nenhum sozinho teria feito o estrago:
+
+    1. `return 0` fixo — o Agendador registrou SUCESSO nas tres rodadas que
+       publicaram zero. O historico do Windows era a ultima coisa que ainda
+       podia denunciar, e ele mentia.
+    2. Erro de rede nao esperava nem tentava de novo.
+    3. `avisar()` so disparava com `any(feito)` — rodada que nao publica NADA
+       nao mandava Telegram nenhum. Falha calada e pior que falha.
+    """
+
+    def test_espera_a_rede_antes_de_gastar_navegador(self):
+        m = _postar()
+        self.assertTrue(m.esperar_a_rede(limite=5))
+
+    def test_desiste_e_devolve_False_quando_a_rede_nao_volta(self):
+        m = _postar()
+        m.ALVOS_DE_REDE = ("nao.existe.invalido.teste",)
+        self.assertFalse(m.esperar_a_rede(limite=1, log=lambda _s: None))
+
+    def test_a_espera_cobre_religar_o_roteador(self):
+        """Curta demais nao cobre o boot; longa demais engole o horario."""
+        m = _postar()
+        self.assertGreaterEqual(m.ESPERA_DE_REDE_S, 120)
+        self.assertLessEqual(m.ESPERA_DE_REDE_S, 900)
+
+    def test_o_codigo_de_saida_diz_a_VERDADE(self):
+        fonte = POSTAR.read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def main("):]
+        self.assertIn("if tentou and not any(", corpo)
+        self.assertIn("return 1", corpo)
+
+    def test_avisa_SEMPRE_e_nao_so_quando_deu_certo(self):
+        """Era `if any(feito)`, e por isso a noite inteira passou calada."""
+        fonte = POSTAR.read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def main("):]
+        self.assertIn("if not args.ver:\n        avisar(resultados)", corpo)
+        self.assertNotIn("any(r.get(\"feito\") for r in resultados):\n"
+                         "        avisar(", corpo)
+
+    def test_a_checagem_de_rede_vem_ANTES_de_publicar(self):
+        fonte = POSTAR.read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def main("):]
+        self.assertLess(corpo.index("esperar_a_rede()"),
+                        corpo.index("resultados = []"))
 if __name__ == "__main__":
     unittest.main()

@@ -30,6 +30,32 @@ OUTPUTS = RAIZ / "outputs"
 REGISTRO = OUTPUTS / "_publicar" / "publicados.jsonl"
 PASTA = OUTPUTS / "_metricas"
 
+# O canal de historias tem ledger, credencial e metricas PROPRIOS. Ate
+# 11/09/2026 este modulo so conhecia `builds`, e por isso nenhuma historia
+# jamais teve uma metrica: `atualizar()` lia um ledger onde elas nao estao.
+# `builds` continua saindo das globais acima, e nao de um dicionario, porque
+# tres suites trocam `REGISTRO` e `PASTA` por um tmpdir — ler o valor na hora
+# da chamada e o que mantem esse patch funcionando.
+CANAIS = ("builds", "historias")
+OUTRAS_RAIZES = {"historias": RAIZ.parent / "historias"}
+
+API_UPLOADS = "https://www.googleapis.com/youtube/v3/playlistItems"
+API_CANAIS = "https://www.googleapis.com/youtube/v3/channels"
+
+
+def registro_do_canal(canal: str = "builds") -> Path:
+    """O `publicados.jsonl` daquele canal."""
+    if canal == "builds":
+        return Path(REGISTRO)
+    return OUTRAS_RAIZES[canal] / "outputs" / "_publicar" / "publicados.jsonl"
+
+
+def pasta_do_canal(canal: str = "builds") -> Path:
+    """Onde ficam os `<youtube_id>.json` daquele canal."""
+    if canal == "builds":
+        return Path(PASTA)
+    return OUTRAS_RAIZES[canal] / "outputs" / "_metricas"
+
 # O comando que a mensagem de erro manda rodar tem que EXISTIR. Ate
 # 11/09/2026 ela dizia `neural-fights youtube-oauth --com-upload
 # --com-analytics`, e nada disso era verdade: nao ha entry point
@@ -121,11 +147,12 @@ def registrar_publicado(video, url: str, plataforma: str = "youtube", *,
         return None
 
 
-def publicados() -> list[dict]:
-    if not REGISTRO.is_file():
+def publicados(canal: str = "builds") -> list[dict]:
+    registro = registro_do_canal(canal)
+    if not registro.is_file():
         return []
     saida = []
-    with open(REGISTRO, encoding="utf-8") as fh:
+    with open(registro, encoding="utf-8") as fh:
         for linha in fh:
             linha = linha.strip()
             if not linha:
@@ -148,14 +175,14 @@ def comando_oauth(canal: str = "builds") -> str:
     return COMANDO_OAUTH.format(conta=conta)
 
 
-def _token():
+def _token(canal: str = "builds"):
     from .youtube import PublicacaoFalhou, carregar_credenciais, token_de_acesso
-    credenciais = carregar_credenciais()
+    credenciais = carregar_credenciais(canal=canal)
     if credenciais is None:
         from .youtube import caminho_credenciais
         raise PublicacaoFalhou(
-            f"sem credencial do YouTube em {caminho_credenciais('builds')} — "
-            f"rode:\n  {comando_oauth()}")
+            f"sem credencial do YouTube em {caminho_credenciais(canal)} — "
+            f"rode:\n  {comando_oauth(canal)}")
     return token_de_acesso(credenciais), credenciais
 
 
@@ -189,6 +216,104 @@ def estatisticas(youtube_ids: list[str], token: str) -> dict:
                 "publicado_em": item.get("snippet", {}).get("publishedAt"),
             }
     return saida
+
+
+def enviados(token: str, quantos: int = 200) -> list[dict]:
+    """Os uploads mais recentes do canal: `{youtube_id, titulo, publicado_em}`.
+
+    Sai da playlist de uploads e nao do `search`, porque `search` e eventual:
+    video publicado ha minutos costuma nao aparecer nele, e e exatamente esse
+    que precisamos casar.
+    """
+    import requests
+    cabecalho = {"Authorization": f"Bearer {token}"}
+    resposta = requests.get(API_CANAIS, timeout=30, headers=cabecalho,
+                            params={"part": "contentDetails", "mine": "true"})
+    if not resposta.ok:
+        raise RuntimeError(motivo_da_recusa(resposta))
+    itens = resposta.json().get("items") or []
+    if not itens:
+        return []
+    lista = (itens[0].get("contentDetails", {})
+             .get("relatedPlaylists", {}).get("uploads"))
+    if not lista:
+        return []
+    saida, pagina = [], None
+    while len(saida) < quantos:
+        params = {"part": "snippet", "playlistId": lista, "maxResults": 50}
+        if pagina:
+            params["pageToken"] = pagina
+        resposta = requests.get(API_UPLOADS, timeout=30, headers=cabecalho,
+                                params=params)
+        if not resposta.ok:
+            raise RuntimeError(motivo_da_recusa(resposta))
+        dados = resposta.json()
+        for item in dados.get("items", []):
+            snip = item.get("snippet") or {}
+            vid = (snip.get("resourceId") or {}).get("videoId")
+            if vid:
+                saida.append({"youtube_id": vid,
+                              "titulo": snip.get("title") or "",
+                              "publicado_em": snip.get("publishedAt")})
+        pagina = dados.get("nextPageToken")
+        if not pagina:
+            break
+    return saida
+
+
+def _chave_de_titulo(texto: str) -> str:
+    """Titulo comparavel: o Studio devolve o que ele ACEITOU, nao o que foi
+    mandado — corta em 100 caracteres, normaliza espaco e mexe em emoji."""
+    limpo = re.sub(r"\s+", " ", str(texto or "")).strip().lower()
+    limpo = "".join(c for c in limpo if c.isalnum() or c.isspace())
+    return re.sub(r"\s+", " ", limpo).strip()[:60]
+
+
+def reconciliar(canal: str = "builds", log=print) -> int:
+    """Preenche o `youtube_id` que faltou no ledger, casando pelo TITULO.
+
+    O caminho de publicacao por navegador (`youtube_web`) quase nunca captura
+    o link: o Studio troca o dialogo de confirmacao de tempos em tempos e o
+    seletor para de casar. O resultado, medido em 11/09/2026: 18 uploads de
+    builds e TODOS os 30 de historias sem id nenhum — ou seja, invisiveis
+    para a metrica, e nenhum experimento poderia ser medido.
+
+    Casar pelo titulo depois do fato e mais robusto do que raspar o dialogo,
+    porque nao depende do DOM de ninguem, e recupera o passado junto.
+    """
+    registro = registro_do_canal(canal)
+    linhas = publicados(canal)
+    faltam = [L for L in linhas
+              if L.get("plataforma", "youtube") == "youtube"
+              and not L.get("youtube_id") and L.get("titulo")]
+    if not faltam:
+        log(f"[{canal}] nenhum upload sem id.")
+        return 0
+    token, _ = _token(canal)
+    catalogo = {}
+    for video in enviados(token):
+        catalogo.setdefault(_chave_de_titulo(video["titulo"]), video)
+    achados = 0
+    for linha in linhas:
+        if linha.get("youtube_id") or not linha.get("titulo"):
+            continue
+        if linha.get("plataforma", "youtube") != "youtube":
+            continue
+        video = catalogo.get(_chave_de_titulo(linha["titulo"]))
+        if not video:
+            continue
+        linha["youtube_id"] = video["youtube_id"]
+        linha["url"] = f"https://youtu.be/{video['youtube_id']}"
+        linha["publicado_em"] = video.get("publicado_em")
+        achados += 1
+    if achados:
+        # Reescrito inteiro porque o ledger e a linha do tempo: ordem e
+        # conteudo das outras linhas nao mudam, so os campos preenchidos.
+        with open(registro, "w", encoding="utf-8") as fh:
+            for linha in linhas:
+                fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    log(f"[{canal}] {achados} de {len(faltam)} upload(s) reconciliados.")
+    return achados
 
 
 def motivo_da_recusa(resposta) -> str:
@@ -257,16 +382,17 @@ def retencao(youtube_id: str, token: str, desde: str) -> dict:
     return saida
 
 
-def atualizar(log=print) -> list[dict]:
+def atualizar(log=print, canal: str = "builds") -> list[dict]:
     """Consulta a API para cada video registrado e grava o resultado."""
-    registros = [r for r in publicados() if r.get("youtube_id")]
+    registros = [r for r in publicados(canal) if r.get("youtube_id")]
     if not registros:
         log("nenhum video registrado ainda (publique com `main.py publicar <id> --youtube`).")
         return []
-    token, credenciais = _token()
+    token, credenciais = _token(canal)
     ids = sorted({r["youtube_id"] for r in registros})
     stats = estatisticas(ids, token)
-    PASTA.mkdir(parents=True, exist_ok=True)
+    pasta = pasta_do_canal(canal)
+    pasta.mkdir(parents=True, exist_ok=True)
     salvos = []
     for registro in registros:
         yid = registro["youtube_id"]
@@ -277,11 +403,67 @@ def atualizar(log=print) -> list[dict]:
         # a cada leitura — e para o arquivo guardar a foto do dia.
         dado["dias_no_ar"] = idade_em_dias(dado)
         dado["views_por_dia"] = views_por_dia(dado)
-        with open(PASTA / f"{yid}.json", "w", encoding="utf-8") as fh:
+        dado["canal"] = canal
+        with open(pasta / f"{yid}.json", "w", encoding="utf-8") as fh:
             json.dump(dado, fh, ensure_ascii=False, indent=2)
         salvos.append(dado)
-    log(f"{len(salvos)} video(s) atualizados em {PASTA}")
+    log(f"{len(salvos)} video(s) atualizados em {pasta}")
     return salvos
+
+
+# A marca do dia. Mora ao lado das metricas, e nao em quem chama, porque quem
+# chama pode ser mais de um (a grade das 8 postagens, o botao do painel, a CLI)
+# e a pergunta "ja atualizei hoje?" e sempre a mesma.
+MARCA_DO_DIA = OUTPUTS / "_metricas" / "_atualizado_em.json"
+
+
+def atualizar_uma_vez_por_dia(log=print, agora=None) -> bool:
+    """`atualizar_tudo`, mas so na primeira vez do dia. `False` = ja tinha ido.
+
+    UMA VEZ, e nao a cada disparo: views nao mudam de hora em hora, e cada
+    passada custa uma ida a API do YouTube por canal. Oito por dia seria
+    gastar cota para reler o mesmo numero.
+
+    NUNCA LEVANTA. Quem chama e a grade de publicacao; OAuth vencido, rede
+    fora ou Analytics desligada nao podem custar o horario. O relatorio diario
+    e que denuncia metrica velha — nao esta funcao.
+    """
+    agora = agora or datetime.now()
+    hoje = agora.strftime("%Y-%m-%d")
+    try:
+        with open(MARCA_DO_DIA, encoding="utf-8-sig") as fh:
+            if (json.load(fh) or {}).get("dia") == hoje:
+                return False
+    except (OSError, ValueError):
+        pass
+    try:
+        resultado = atualizar_tudo(log=log)
+    except Exception as exc:                                   # noqa: BLE001
+        log(f"[metricas] nao atualizei ({type(exc).__name__}: {exc}).")
+        return False
+    try:
+        MARCA_DO_DIA.parent.mkdir(parents=True, exist_ok=True)
+        with open(MARCA_DO_DIA, "w", encoding="utf-8") as fh:
+            json.dump({"dia": hoje,
+                       "quando": agora.isoformat(timespec="seconds"),
+                       "videos": {c: len(v or []) for c, v in resultado.items()}},
+                      fh, ensure_ascii=False, indent=2)
+    except OSError:
+        pass          # a marca e conveniencia: no pior caso roda duas vezes
+    return True
+
+
+def atualizar_tudo(log=print) -> dict:
+    """Os dois canais, e o que falhar num nao derruba o outro."""
+    saida = {}
+    for canal in CANAIS:
+        try:
+            reconciliar(canal, log=log)
+            saida[canal] = atualizar(log=log, canal=canal)
+        except Exception as exc:                              # noqa: BLE001
+            log(f"[{canal}] metrica nao atualizou: {exc}")
+            saida[canal] = []
+    return saida
 
 
 # ------------------------------------------------- comparacao por formato
@@ -357,16 +539,27 @@ def comparar_formatos(dados: list[dict], agora: datetime | None = None) -> list[
                                         -x["views_por_dia"]))
 
 
-def carregar_salvas() -> list[dict]:
+def carregar_salvas(canal: str = "builds") -> list[dict]:
     saida = []
-    if not PASTA.is_dir():
+    pasta = pasta_do_canal(canal)
+    if not pasta.is_dir():
         return saida
-    for arquivo in sorted(PASTA.glob("*.json")):
+    for arquivo in sorted(pasta.glob("*.json")):
         try:
             with open(arquivo, encoding="utf-8-sig") as fh:
-                saida.append(json.load(fh))
+                dado = json.load(fh)
         except (OSError, ValueError):
             continue
+        dado.setdefault("canal", canal)
+        saida.append(dado)
+    return saida
+
+
+def salvas_de_todos() -> list[dict]:
+    """As metricas dos dois canais numa lista so, cada uma marcada."""
+    saida = []
+    for canal in CANAIS:
+        saida.extend(carregar_salvas(canal))
     return saida
 
 
@@ -653,7 +846,21 @@ def cli(atualizar: bool = False, como_json: bool = False) -> int:
 
 
 def atualizar_com_log() -> list[dict]:
-    return atualizar(log=print)
+    """Os DOIS canais, reconciliando antes de buscar.
+
+    Era `atualizar(log=print)` — so builds, e sem reconciliar. O comando
+    "oficial" (`main.py metricas --atualizar`) era entao o unico caminho que
+    NAO fazia o servico completo: quem rodasse ele para conferir o canal de
+    historias veria zero e concluiria que nao ha metrica, quando o que falta
+    e o `youtube_id` que a reconciliacao por titulo preenche.
+    """
+    resultado = atualizar_tudo(log=print)
+    saida = []
+    for canal in CANAIS:
+        for dado in resultado.get(canal) or []:
+            dado.setdefault("canal", canal)
+            saida.append(dado)
+    return saida
 
 
 __all__ = ["ESCOPO_ANALYTICS", "atualizar", "carregar_salvas", "cli", "publicados",

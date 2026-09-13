@@ -219,6 +219,17 @@ def funcionamento(_args: str = "") -> str:
     return relatorios.montar("funcionamento")
 
 
+def auditoria(_args: str = "") -> str:
+    """Os quatro controles, e o que a grade vai barrar no proximo horario.
+
+    Responde outra pergunta que `/metas` e `/funcionamento`: os dois olham
+    para tras (o que saiu, o que falhou) e um video ruim que publica sem erro
+    nao aparece em nenhum dos dois. Este olha para a frente.
+    """
+    from . import relatorios
+    return relatorios.montar("auditoria")
+
+
 def pausar(args: str = "") -> str:
     try:
         minutos = float(args.strip()) if args.strip() else None
@@ -253,6 +264,8 @@ TABELA = {
     "metas": metas,
     "funcionamento": funcionamento,
     "relatorio": funcionamento,
+    "auditoria": auditoria,
+    "auditar": auditoria,
     "pausar": pausar,
     "retomar": retomar,
     "parar": parar,

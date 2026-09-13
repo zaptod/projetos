@@ -106,12 +106,28 @@ def confirmado(estado: str) -> bool:
     return str(estado or "").startswith(SUCESSO)
 
 
-# Sinais de que o vídeo terminou de subir e a página está pronta para postar.
-SINAIS_PRONTO = (
-    'button[data-e2e="post_video_button"]:not([disabled])',
+# A ÚNICA prova de que dá para postar: o botão existe E está habilitado.
+#
+# Isto já foi uma lista de três, com `div[class*="preview"] video` e `video`
+# junto — e `_primeiro` devolve o primeiro que casar. O `<video>` do preview
+# nasce assim que o arquivo chega, muito antes de o TikTok terminar de
+# processar, então a espera de 300 s saía em poucos segundos e o clique caía
+# num botão ainda desabilitado. O Playwright então esperava ele habilitar
+# com o timeout PADRÃO (30 s) e estourava.
+#
+# Medido em 11/09/2026, 12:09: `duelo_00001` subiu no YouTube e ficou fora do
+# TikTok exatamente assim, com 300 s de orçamento intactos e um erro que
+# dizia "Timeout 30000ms" — o número que não era de ninguém.
+PROVA_DE_PRONTO = 'button[data-e2e="post_video_button"]:not([disabled])'
+# Estes dizem só que o arquivo CHEGOU. Servem para não desistir calado
+# quando o TikTok troca o `data-e2e` do botão, e para nada mais.
+SINAIS_DE_PROGRESSO = (
     'div[class*="preview"] video',
     'video',
 )
+# Quanto esperar o botão habilitar no momento do clique. O padrão do
+# Playwright são 30 s, e o processamento do TikTok passa disso com folga.
+ESPERA_HABILITAR_S = 120.0
 
 
 class TikTokFalhou(RuntimeError):
@@ -385,16 +401,22 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
 
         # O upload real acontece do lado deles; o sinal de pronto é a tela
         # mudar (preview do vídeo / botão de postar habilitado).
-        pronto = None
+        pronto = chegou = None
         limite = time.time() + ESPERA_PROCESSAR_S
         while time.time() < limite and pronto is None:
-            pronto = _primeiro(page, SINAIS_PRONTO, timeout=2.0)
+            pronto = _primeiro(page, (PROVA_DE_PRONTO,), timeout=2.0)
+            if pronto is None and chegou is None:
+                chegou = _primeiro(page, SINAIS_DE_PROGRESSO, timeout=1.0)
+                if chegou is not None:
+                    passo("arquivo recebido; esperando o TikTok processar...")
             time.sleep(1.0)
-        if pronto is None:
+        if pronto is None and chegou is None:
             raise TikTokFalhou(
                 "o TikTok não confirmou o processamento do vídeo a tempo. A "
                 "janela está aberta: dá para terminar na mão.")
-        passo("vídeo processado.")
+        passo("vídeo processado." if pronto is not None else
+              "o botão de publicar não habilitou no tempo, mas o vídeo está "
+              "na tela — tentando publicar mesmo assim.")
 
         legenda = _primeiro(page, CAMPO_LEGENDA, timeout=10.0)
         if legenda is not None:
@@ -422,7 +444,17 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         if botao is None:
             raise TikTokFalhou(
                 "não achei o botão de publicar (a janela segue aberta).")
-        botao.click()
+        # O timeout PRECISA ser dito. Sem ele o Playwright usa 30 s para
+        # esperar o botão ficar clicável, e o processamento do TikTok passa
+        # disso — foi o que deixou `duelo_00001` fora do ar em 11/09/2026.
+        try:
+            botao.click(timeout=int(ESPERA_HABILITAR_S * 1000))
+        except Exception as exc:
+            raise TikTokFalhou(
+                "o botão de publicar não ficou clicável em "
+                f"{ESPERA_HABILITAR_S / 60:.0f} min — o TikTok ainda estava "
+                f"processando o vídeo. A janela segue aberta. ({exc})"
+            ) from exc
         passo("publicar clicado; confirmando...")
         estado = _confirmar_publicacao(page, passo)
         passo(estado)

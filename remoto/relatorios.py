@@ -29,15 +29,17 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from builds import atividade
+from builds import atividade, grade
 
 RAIZ = Path(__file__).resolve().parents[1]
 
 # UM VIDEO EM CADA HORARIO DA GRADE (6, 7, 8, 10, 12, 15, 17, 20), e nao um
 # por dia — correcao dele em 09/09/2026. A meta do dia so esta batida quando
 # os oito sairam; contar "pelo menos um" esconderia sete disparos perdidos.
-HORARIOS_DA_GRADE = (6, 7, 8, 10, 12, 15, 17, 20)
-META_DIARIA_POR_CANAL = len(HORARIOS_DA_GRADE)
+# Fonte unica: `builds.grade`. Antes esta tupla era uma copia da de
+# `ferramentas/postar.py`, e nada garantia que as duas contassem o mesmo dia.
+HORARIOS_DA_GRADE = grade.HORAS
+META_DIARIA_POR_CANAL = grade.META_DIARIA_POR_CANAL
 CANAIS = {
     "historias": {"emoji": "📖", "rotulo": "histórias"},
     "builds": {"emoji": "⚔️", "rotulo": "builds"},
@@ -329,7 +331,44 @@ def funcionamento(agora: datetime | None = None, *, horas: int = 24) -> str:
 
     # --- o agendamento, que e o que decide se AMANHA acontece
     linhas += ["", "*Agendamento*"] + _linhas_do_agendador()
+    linhas += ["", "*Credenciais*"] + _linhas_das_credenciais()
     return "\n".join(linhas)
+
+
+def _linhas_das_credenciais() -> list[str]:
+    """O OAuth de cada canal ainda funciona?
+
+    Entra aqui porque um refresh_token morto nao faz barulho: a publicacao
+    continua (ela vai pelo navegador), so a MEDICAO para. Medido em
+    11/09/2026, o canal de historias estava assim desde 31/08 e a pasta de
+    metricas dele nunca chegou a existir — onze dias sem um numero, sem uma
+    linha de erro em lugar nenhum.
+
+    `oauth_vivo` usa rede de proposito: `tem_login` so olha o arquivo, e foi
+    exatamente isso que ja mentiu antes (08/09/2026).
+    """
+    try:
+        from builds import contas
+    except Exception:                                          # noqa: BLE001
+        return ["  (não consegui consultar as contas)"]
+    saida = []
+    for canal in ("builds", "historias"):
+        try:
+            ficha = contas.oauth_vivo(canal)
+        except Exception as exc:                               # noqa: BLE001
+            saida.append(f"  ⚠ {canal}: não deu para conferir ({exc})"[:120])
+            continue
+        if ficha.get("ok") and not ficha.get("motivo"):
+            continue
+        marca = "⚠" if ficha.get("ok") else "❗"
+        saida.append(f"  {marca} {canal}: {ficha.get('motivo')}")
+        if not ficha.get("ok"):
+            try:
+                from builds.publicar import metricas
+                saida.append(f"     `{metricas.comando_oauth(canal)}`")
+            except Exception:                                  # noqa: BLE001
+                pass
+    return saida or ["  ✓ os dois canais medem normalmente"]
 
 
 def _linhas_do_agendador() -> list[str]:
@@ -343,8 +382,18 @@ def _linhas_do_agendador() -> list[str]:
         from builds import tarefas_windows
     except Exception:                                          # noqa: BLE001
         return ["  (não consegui consultar o Agendador)"]
-    nomes = ([f"Historias_auto_{h:02d}" for h in (6, 7, 8, 10, 12, 15, 17, 20)]
-             + ["NeuralFights_postar", "NeuralFights_bot_telegram"])
+    # AS OITO DE POSTAGEM, e nao a antiga `NeuralFights_postar`. Aquela tarefa
+    # foi APAGADA de proposito quando a grade virou uma por horario
+    # (`postar.instalar_grade` a deleta antes de criar as novas), e a lista
+    # aqui nunca acompanhou. Resultado medido em 11/09/2026: o relatorio
+    # dizia "1 tarefa nao existe" TODO DIA — e, pior, nunca conferia nenhuma
+    # das oito que de fato publicam. Alerta que sempre acende e alerta que
+    # ninguem le, e um instrumento cego achando que esta olhando.
+    #
+    # A lista vem de `grade.HORAS`, que ja e a fonte unica dos horarios.
+    nomes = ([f"Historias_auto_{h:02d}" for h in grade.HORAS]
+             + [f"NeuralFights_postar_{h:02d}" for h in grade.HORAS]
+             + ["NeuralFights_bot_telegram"])
     fracas, sumidas = [], []
     for nome in nomes:
         ficha = tarefas_windows.conferir(nome)
@@ -442,7 +491,76 @@ def _minutos(hora) -> int | None:
     return total if 0 <= total < 24 * 60 else None
 
 
-RELATORIOS = {"metas": metas, "funcionamento": funcionamento}
+def auditoria(agora: datetime | None = None) -> str:
+    """Os quatro controles em texto — o mesmo veredito que a tela mostra.
+
+    E o relatorio que responde "o proximo horario vai sair?", e nao "o que ja
+    saiu". Ele existe porque em 11/09/2026 tres videos foram ao ar errados e
+    nenhum dos dois relatorios de entao tinha como saber: metas contava
+    publicacao e funcionamento contava erro, e um video ruim que publica sem
+    erro nao aparece em nenhum dos dois.
+
+    Chama a vistoria de verdade, que decodifica mp4 — segundos, nao
+    milissegundos. Por isso ele nao entra no ritmo dos outros dois: e pedido.
+    """
+    try:
+        from panorama import auditoria as motor
+    except Exception as exc:                                   # noqa: BLE001
+        return f"a auditoria não está disponível: {exc}"
+    dados = motor.completa(com_rede=True)
+    veredito = motor.veredito(dados)
+    marca = {"ok": "✅", "aviso": "⚠️", "erro": "🚨"}.get(veredito["cor"], "•")
+    linhas = [f"{marca} *Auditoria* — {veredito['frase']}", ""]
+
+    qual = dados.get("qualidade") or {}
+    linhas.append("*Qualidade* (o que a grade vai pegar)")
+    linhas.append(f"  {qual.get('liberados', 0)} liberado(s) · "
+                  f"{qual.get('barrados', 0)} barrado(s) · "
+                  f"{qual.get('pendentes', 0)} na fila")
+    for item in (qual.get("fila") or []):
+        if item.get("ok"):
+            continue
+        motivo = (item.get("erros") or ["?"])[0]
+        linhas.append(f"  ✕ {item['id']}: {motivo[:110]}")
+
+    alvo = dados.get("metas") or {}
+    linhas += ["", "*Metas de hoje*",
+               f"  {alvo.get('horarios_vencidos', 0)} de "
+               f"{alvo.get('horarios_do_dia', 0)} horários já venceram · "
+               f"próximo {alvo.get('proximo', '—')}"]
+    for canal, ficha in (alvo.get("canais") or {}).items():
+        corpo = " · ".join(f"{p} {x['saiu']}/{x['devido']}"
+                           for p, x in ficha.items())
+        marca = "✓" if all(x["faltando"] == 0 for x in ficha.values()) else "⏳"
+        linhas.append(f"  {marca} {canal}: {corpo}")
+
+    prod = dados.get("producao") or {}
+    travadas = prod.get("historias_incompletas")
+    if isinstance(travadas, list) and travadas:
+        linhas += ["", "*Produção* — parou no meio"]
+        for item in travadas[:4]:
+            faltas = []
+            if item.get("partes_sem_texto"):
+                faltas.append(f"texto das partes {item['partes_sem_texto']}")
+            if item.get("imagens_faltando"):
+                faltas.append(f"{item['imagens_faltando']} imagem(ns)")
+            if item.get("partes_sem_video"):
+                faltas.append(f"{item['partes_sem_video']} vídeo(s)")
+            linhas.append(f"  {item.get('id')}: " + ", ".join(faltas or ["?"]))
+
+    alertas = (dados.get("recursos") or {}).get("alertas") or []
+    linhas += ["", "*Recursos*"]
+    if alertas:
+        linhas += [f"  ⚠ {a}" for a in alertas[:6]]
+    else:
+        disco = (dados.get("recursos") or {}).get("disco") or {}
+        linhas.append(f"  ✓ disco {disco.get('livre_gb', '—')} GB, contas e "
+                      "tarefas em ordem")
+    return "\n".join(linhas)
+
+
+RELATORIOS = {"metas": metas, "funcionamento": funcionamento,
+              "auditoria": auditoria}
 
 
 def montar(nome: str, agora: datetime | None = None) -> str:

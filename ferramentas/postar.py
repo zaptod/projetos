@@ -25,6 +25,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from builds import grade
+
 RAIZ = Path(__file__).resolve().parents[1]
 TAREFA = "NeuralFights_postar"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -36,13 +38,68 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # O `:07` evita o minuto cheio, em que todo agendador do mundo dispara — e
 # tambem afasta a postagem da criacao, que roda em ponto e usa as mesmas
 # contas de navegador.
-HORAS_PADRAO = (6, 7, 8, 10, 12, 15, 17, 20)
-MINUTO_PADRAO = 7
+# A grade mora em `builds.grade`: a mesma tupla estava escrita aqui e em
+# `remoto/relatorios.py`, e duas copias bastam para o relatorio dizer que
+# bateu a meta enquanto a postagem trabalha com outro horario.
+HORAS_PADRAO = grade.HORAS
+MINUTO_PADRAO = grade.MINUTO
 HORA_PADRAO = "17:07"        # compatibilidade com quem passa --hora
 
 
 def _linha(texto: str = "") -> None:
     sys.stdout.buffer.write((texto + "\n").encode("utf-8", "replace"))
+
+
+# Quanto esperar a rede voltar antes de desistir do horario. Numeros vindos
+# do caso real: a maquina voltou de queda de energia as 03:34 e o DNS ainda
+# nao resolvia as 06:07 — mas resolvia muito antes das 10:00. Cinco minutos
+# de paciencia cobrem religar roteador/modem; mais que isso ja e problema de
+# verdade e o horario seguinte tenta de novo.
+ESPERA_DE_REDE_S = 300.0
+ALVOS_DE_REDE = ("studio.youtube.com", "www.tiktok.com")
+
+
+def esperar_a_rede(*, limite: float = ESPERA_DE_REDE_S, log=None) -> bool:
+    """Espera o DNS resolver. `False` quando desiste.
+
+    POR QUE ISTO EXISTE: em 11/09/2026 a queda de energia derrubou o PC. Ele
+    voltou as 03:34, as tarefas das 06:07, 07:07 e 08:07 dispararam em dia,
+    e as tres morreram em `net::ERR_NAME_NOT_RESOLVED` — a rede nao tinha
+    voltado junto. Tres horarios perdidos por uma coisa que se resolve
+    esperando.
+
+    Resolver o NOME e o teste certo, e nao abrir o navegador: e barato, e e
+    exatamente o passo que falhava. Espera crescente para nao martelar o
+    resolvedor enquanto ele ainda sobe.
+    """
+    import socket
+    import time
+
+    log = log or _linha
+    fim = time.monotonic() + max(0.0, float(limite))
+    espera, avisou = 1.0, False
+    while True:
+        faltou = ""
+        for alvo in ALVOS_DE_REDE:
+            try:
+                socket.getaddrinfo(alvo, 443)
+            except OSError:
+                faltou = alvo
+                break
+        if not faltou:
+            if avisou:
+                log("[rede] voltou; sigo com a postagem.")
+            return True
+        if time.monotonic() >= fim:
+            log(f"[rede] {faltou} nao resolve depois de {limite:.0f}s; "
+                "desisto deste horario.")
+            return False
+        if not avisou:
+            log(f"[rede] {faltou} ainda nao resolve; espero ate "
+                f"{limite:.0f}s.")
+            avisou = True
+        time.sleep(min(espera, max(0.0, fim - time.monotonic())))
+        espera = min(espera * 2, 15.0)
 
 
 # --------------------------------------------------------------- historias
@@ -90,6 +147,115 @@ def _ao_contrario(texto: str) -> str:
     return f"{10 ** 9 - int(numero or 0):012d}"
 
 
+# A IA VETA, MAS NAO CALA A GRADE. Quando nao da para PERGUNTAR (conta
+# ocupada, site fora do ar, login caido), a vistoria tecnica ja passou e o
+# video sai — silencio da IA nao e reprovacao. O veto so vale quando ela
+# respondeu REPROVADO de verdade.
+PUBLICAR_SEM_PARECER = True
+
+
+def _pela_folha(ficha: dict) -> bool:
+    """A aprovacao veio so das miniaturas? Entao ela nao dispensa perguntar.
+
+    Um "aprovado" da folha de contato e fraco: ela nao mostra movimento,
+    corte nem audio. Vale como ultimo recurso na hora, nao como cache que
+    poupa a pergunta ao Gemini na proxima vez.
+    """
+    return not str(ficha.get("vista") or "").startswith("video")
+
+
+def avisar_reprovacao(alvo, veredito: dict) -> bool:
+    """Conta no Telegram que a IA barrou um video. Nunca derruba a postagem.
+
+    Um veto silencioso e pior do que nenhum: o horario passa em branco e nao
+    ha nada na tela dizendo por que.
+    """
+    import subprocess
+    motivos = "; ".join(veredito.get("motivos") or [])[:400]
+    texto = ("🤖 *A IA reprovou um vídeo*\n"
+             f"{alvo.id}\n{motivos}\n"
+             "Ele fica fora da fila; a grade segue com o próximo.")
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "remoto", "--avisar", texto],
+            cwd=str(RAIZ), capture_output=True, timeout=90,
+            creationflags=NO_WINDOW)
+        return proc.returncode == 0
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _parecer_da_ia(alvo, roteiro: dict, laudo: dict) -> str:
+    """`""` quando pode publicar; o motivo quando a IA vetou."""
+    from contos.publicar import parecer
+
+    # O QUE JA FOI DECIDIDO SOBRE ESTE ARQUIVO VALE. Esta funcao perguntava
+    # sempre de novo e nunca lia o veredito em disco — o terceiro dono da
+    # pergunta "pode sair?", que ficou de fora quando `qualidade.liberado`
+    # unificou os outros dois. O preco: em 12/09/2026 o Gemini reprovou a
+    # parte 3 da historia 4 as 06:14 depois de assistir 2:23 de video, e as
+    # 15:34 ela foi para o YouTube e para o TikTok. Perguntar de novo nao e
+    # rigor; e dar uma segunda chance a quem ja foi reprovado, num momento em
+    # que a conta boa pode estar ocupada.
+    #
+    # `lembrado` devolve `None` quando o mp4 mudou desde o veredito, entao um
+    # re-render continua merecendo pergunta nova.
+    ficha = parecer.lembrado(alvo)
+    if ficha and not ficha.get("aprovado"):
+        motivos = "; ".join(ficha.get("motivos") or [])[:300]
+        _linha(f"[parecer] {alvo.id}: veto ja registrado em "
+               f"{ficha.get('quando')} ({ficha.get('vista')}).")
+        return f"{alvo.id}: a IA REPROVOU — {motivos}"
+    if ficha and ficha.get("aprovado") and not _pela_folha(ficha):
+        _linha(f"[parecer] {alvo.id}: aprovado em {ficha.get('quando')} "
+               f"({ficha.get('vista')}); nao pergunto de novo.")
+        return ""
+
+    try:
+        veredito = parecer.pedir(alvo, roteiro, alvo.parte, laudo=laudo,
+                                 log=_linha)
+    except parecer.SemParecer as exc:
+        recado = f"{alvo.id}: nao deu para pedir o parecer da IA ({exc})"
+        if PUBLICAR_SEM_PARECER:
+            _linha(f"[parecer] {recado} — publico assim mesmo, a vistoria "
+                   "tecnica passou.")
+            return ""
+        return recado
+    if veredito["aprovado"]:
+        return ""
+    motivos = "; ".join(veredito["motivos"])[:300]
+    avisar_reprovacao(alvo, veredito)
+    return f"{alvo.id}: a IA REPROVOU — {motivos}"
+
+
+def _atualizar_metricas() -> None:
+    """Busca views e retencao dos dois canais — uma vez por dia.
+
+    AQUI, e nao na rodada de criacao. A tentacao era pendurar em
+    `historias/contos/pipeline/agenda.py`, que tambem dispara oito vezes; mas
+    ela SAI CEDO em tres condicoes normais — pipeline pausada, outra rodada em
+    andamento, agenda desligada — e nas tres a metrica simplesmente nao
+    aconteceria. Gatilho que some quando a maquina esta ocupada nao serve para
+    medir.
+
+    A grade de publicacao nao tem esse problema: ela roda nos oito horarios
+    aconteca o que acontecer, ja esperou a rede subir e ja sabe avisar no
+    Telegram. E o momento e o certo — o `youtube_id` que falta e justamente o
+    do video que acabou de subir.
+
+    Depois do `avisar`, de proposito: metrica nao pode atrasar o aviso da
+    publicacao. E sem tocar no codigo de saida — ele responde "publiquei?", e
+    envenena-lo com falha de metrica faria o Agendador acusar erro num
+    horario que deu certo.
+    """
+    try:
+        from builds.publicar import metricas
+        if metricas.atualizar_uma_vez_por_dia(log=_linha):
+            _linha("[metricas] atualizadas (primeira vez hoje).")
+    except Exception as exc:                                   # noqa: BLE001
+        _linha(f"[metricas] nao atualizei: {type(exc).__name__}: {exc}")
+
+
 def proxima_historia(*, vistoriar: bool = True):
     """A proxima parte PUBLICAVEL. `None` quando nao ha nenhuma.
 
@@ -105,12 +271,19 @@ def proxima_historia(*, vistoriar: bool = True):
     for alvo in fila_de_historias()[:TENTATIVAS]:
         if not vistoriar:
             return alvo, recusados
+        roteiro = R.carregar(alvo.fonte_id)
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
-                                          alvo.caminho,
-                                          R.carregar(alvo.fonte_id))
-        if laudo["ok"]:
-            return alvo, recusados
-        recusados.append(f"{alvo.id}: {'; '.join(laudo['erros'])[:120]}")
+                                          alvo.caminho, roteiro)
+        if not laudo["ok"]:
+            recusados.append(f"{alvo.id}: {'; '.join(laudo['erros'])[:120]}")
+            continue
+        # A VISTORIA PASSOU; FALTA A IA OLHAR. A mecanica responde "o arquivo
+        # esta inteiro?"; so quem assiste responde "o video presta?".
+        veto = _parecer_da_ia(alvo, roteiro, laudo)
+        if veto:
+            recusados.append(veto)
+            continue
+        return alvo, recusados
     return None, recusados
 
 
@@ -393,6 +566,23 @@ def proximo_build(config=None):
                  if v.id not in ja and getattr(v, "perfil", "") == "celular"]
     if not pendentes:
         return None
+
+    # BUILD COM PENDENCIA NAO ENTRA NA FILA. O catalogo ja calcula isto
+    # (`pendencias_da_build`: sem payoff, sem imagem do personagem, sem a luta
+    # no fim, render defasado) e o painel ja mostra — o publicador era o unico
+    # que nao olhava. Medido em 11/09/2026: 23 dos 66 pendentes tinham
+    # pendencia e podiam sair a qualquer horario. E o mesmo criterio que
+    # `proxima_historia` aplica ao pular o que a vistoria reprova.
+    prontos = [v for v in pendentes if not getattr(v, "pendencias", None)]
+    barrados = [v for v in pendentes if getattr(v, "pendencias", None)]
+    if barrados:
+        _linha(f"[postar] {len(barrados)} build(s) fora da fila por "
+               f"pendencia: {', '.join(v.id for v in barrados[:4])}"
+               f"{'...' if len(barrados) > 4 else ''}")
+    pendentes = prontos
+    if not pendentes:
+        return None
+
     # o mais ANTIGO primeiro: o catalogo vem do mais novo para o mais velho
     pendentes.reverse()
     return escolher_por_cota(pendentes, _servidos_recentes(),
@@ -874,6 +1064,15 @@ def main(argv=None) -> int:
                 _linha(f"   ! {f}")
         return 0
 
+    # A REDE ANTES DE QUALQUER NAVEGADOR. Abrir o Chrome para descobrir que o
+    # DNS nao resolve custa minutos e termina em `ERR_NAME_NOT_RESOLVED`;
+    # resolver um nome custa milissegundos e responde a mesma pergunta.
+    if not args.ver and not esperar_a_rede():
+        avisar([{"canal": c, "feito": False,
+                 "motivo": "a rede nao voltou a tempo deste horario"}
+                for c in ("historias", "builds")])
+        return 1
+
     resultados = []
     for canal, funcao in (("historias", postar_historia),
                           ("builds", postar_build)):
@@ -913,8 +1112,23 @@ def main(argv=None) -> int:
     for canal, dias in estoque().items():
         alerta = "  <<< ABAIXO DO PISO" if 0 <= dias < PISO_DE_ALERTA else ""
         _linha(f"  gordura {canal:<10} {dias:>4} dia(s){alerta}")
-    if not args.ver and any(r.get("feito") for r in resultados):
+    # AVISA SEMPRE, e nao so quando deu certo. Era `if any(feito)`, e foi por
+    # isso que a noite de 11/09/2026 passou inteira calada: as rodadas que
+    # publicaram ZERO eram justamente as que precisavam avisar.
+    if not args.ver:
         avisar(resultados)
+    _atualizar_metricas()
+
+    # O CODIGO DE SAIDA DIZ A VERDADE. Era `return 0` fixo, e o Agendador
+    # registrou SUCESSO nas tres rodadas que publicaram nada — o historico do
+    # Windows era a ultima coisa que ainda podia denunciar, e mentia.
+    #
+    # `tentou` e o que separa "falhei" de "nao era comigo": com `--so builds`
+    # a lista de historias nem roda, e uma rodada que nao tentou nada nao
+    # falhou em nada.
+    tentou = bool(resultados)
+    if tentou and not any(r.get("feito") for r in resultados):
+        return 1
     return 0
 
 
