@@ -365,7 +365,8 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     # mostrar a mesma coisa, e assim o TikTok recupera o atraso sozinho.
     ja_yt = None if so_ver else publicou_neste_horario("historias", "youtube")
     ja_tk = None if so_ver else publicou_neste_horario("historias", "tiktok")
-    if ja_yt and ja_tk:
+    tiktok_agora = _tiktok_neste_horario()
+    if ja_yt and (ja_tk or not tiktok_agora):
         return _ja_foi_neste_horario("historias", "youtube")
     if ja_yt:
         alvo = _video_por_id(ja_yt.get("video_id"))
@@ -419,7 +420,13 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     if cota:
         ficha["motivo"] = f"YouTube na cota: {cota}"[:200]
         ficha["cota_youtube"] = True
-    ficha["tiktok"] = "" if ja_tk else _tiktok_das_historias(alvo)
+    if not tiktok_agora:
+        # FORA DA GRADE DO TIKTOK, e nao falha: ele posta seis por dia.
+        ficha["tiktok"] = ""
+        ficha["tiktok_fora_da_grade"] = True
+        _linha("[postar] historias: este horario nao e da grade do TikTok.")
+    else:
+        ficha["tiktok"] = "" if ja_tk else _tiktok_das_historias(alvo)
     # Deu TikTok e nao deu YouTube: a rodada fez alguma coisa, e o relatorio
     # tem que dizer isso em vez de chamar tudo de falha.
     if ficha["tiktok"]:
@@ -434,6 +441,19 @@ def _video_por_id(video_id: str):
         return next((v for v in catalogo.listar() if v.id == video_id), None)
     except Exception:                                          # noqa: BLE001
         return None
+
+
+def _tiktok_neste_horario(agora=None) -> bool:
+    """Este disparo e horario de TikTok?
+
+    Desde 13/09/2026 o TikTok segue uma grade propria, mais curta que a do
+    YouTube (`builds.grade.HORAS_POR_PLATAFORMA`): seis por dia, sem 7h e 8h.
+    A hora e a do RELOGIO, como na guarda de um-por-horario — tarefa atrasada
+    vale pela hora em que rodou.
+    """
+    from datetime import datetime
+    agora = agora or datetime.now()
+    return grade.publica_em("tiktok", agora.hour)
 
 
 def _tiktok_das_historias(alvo) -> str:
@@ -596,7 +616,8 @@ def postar_build(*, so_ver: bool = False) -> dict:
     # hora nao pode cancelar o TikTok.
     ja_yt = None if so_ver else publicou_neste_horario("builds", "youtube")
     ja_tk = None if so_ver else publicou_neste_horario("builds", "tiktok")
-    if ja_yt and ja_tk:
+    tiktok_agora = _tiktok_neste_horario()
+    if ja_yt and (ja_tk or not tiktok_agora):
         return _ja_foi_neste_horario("builds", "youtube")
     if ja_yt:
         alvo = _build_por_id(ja_yt.get("video_id"))
@@ -626,7 +647,13 @@ def postar_build(*, so_ver: bool = False) -> dict:
                                             visibilidade="public", log=_linha)
     ficha = {"canal": "builds", "feito": True, "alvo": alvo.id,
              "titulo": alvo.titulo, "url": url}
-    ficha["tiktok"] = "" if ja_tk else _tiktok_dos_builds(alvo)
+    if not tiktok_agora:
+        # FORA DA GRADE DO TIKTOK, e nao falha: ele posta seis por dia.
+        ficha["tiktok"] = ""
+        ficha["tiktok_fora_da_grade"] = True
+        _linha("[postar] builds: este horario nao e da grade do TikTok.")
+    else:
+        ficha["tiktok"] = "" if ja_tk else _tiktok_dos_builds(alvo)
     return ficha
 
 
@@ -886,9 +913,13 @@ def avisar(resultados: list) -> None:
             linhas.append("    ▸ YouTube   "
                           f"{_estado_da_plataforma(r.get('url'))}"
                           f" · {r.get('visibilidade') or '?'}")
-        linhas.append("    ▸ TikTok    "
-                      f"{_estado_da_plataforma(r.get('tiktok'))}"
-                      f" · {_conta_do_destino('tiktok', canal)}")
+        if r.get("tiktok_fora_da_grade"):
+            linhas.append("    ▸ TikTok    ⏸ fora da grade do TikTok "
+                          "neste horário")
+        else:
+            linhas.append("    ▸ TikTok    "
+                          f"{_estado_da_plataforma(r.get('tiktok'))}"
+                          f" · {_conta_do_destino('tiktok', canal)}")
         linhas.append(f"    `{r.get('alvo', '')}`")
         for recusado in (r.get("recusados") or [])[:2]:
             linhas.append(f"    ⏭ pulei {str(recusado)[:90]}")
@@ -1103,6 +1134,8 @@ def main(argv=None) -> int:
             # falhou: um destino que some do relatorio e um destino que passa
             # 49 publicacoes vazio sem ninguem notar.
             estado = r.get("tiktok")
+            if r.get("tiktok_fora_da_grade"):
+                estado = "fora da grade do TikTok neste horario"
             _linha(f"           tiktok:  {estado or 'NAO SUBIU'}"[:96])
         if not r.get("feito"):
             _linha(f"           {r.get('motivo', '')}")

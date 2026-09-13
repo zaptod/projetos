@@ -33,6 +33,14 @@ MINUTO = 7                                 (publica em :07)
 e a criação roda em `:20`, treze minutos depois de publicar — de propósito,
 para o vídeo criado agora nunca disputar o horário que está saindo.
 
+**O TikTok não usa os oito.** Desde 13/09/2026 ele posta seis vezes por dia,
+às 6h, 10h, 12h, 15h, 17h e 20h. Nas 7h e 8h o vídeo vai só para o YouTube,
+e o aviso diz "fora da grade do TikTok" em vez de chamar isso de falha. O
+motivo foi medido nas duas contas: em todas as sessões com mais de seis
+posts, só os seis primeiros tiveram distribuição, e do sétimo em diante tudo
+ficou em 1 ou 2 views até uma pausa longa. É correlação, não causa provada;
+a coleta de métricas do TikTok é o que vai confirmar ou desmentir.
+
 ### As 17 tarefas do Windows
 
 | família | quantas | quando | o que faz |

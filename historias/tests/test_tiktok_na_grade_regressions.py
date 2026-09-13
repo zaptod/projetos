@@ -369,5 +369,40 @@ class QuedaDeEnergiaTests(unittest.TestCase):
         corpo = fonte[fonte.index("def main("):]
         self.assertLess(corpo.index("esperar_a_rede()"),
                         corpo.index("resultados = []"))
+
+
+class TikTokSoNaGradeDeleTests(unittest.TestCase):
+    """Decisao de 13/09/2026: o TikTok posta seis vezes por dia, sem 7h e 8h.
+
+    Medido nas duas contas: em todas as sessoes com mais de seis posts, so os
+    seis primeiros tiveram distribuicao. O YouTube continua com os oito.
+    """
+
+    def test_os_disparos_das_7h_e_8h_nao_postam_no_tiktok(self):
+        from datetime import datetime
+        m = _postar()
+        self.assertFalse(m._tiktok_neste_horario(datetime(2026, 9, 13, 7, 7)))
+        self.assertFalse(m._tiktok_neste_horario(datetime(2026, 9, 13, 8, 7)))
+        self.assertTrue(m._tiktok_neste_horario(datetime(2026, 9, 13, 6, 7)))
+        self.assertTrue(m._tiktok_neste_horario(datetime(2026, 9, 13, 20, 7)))
+
+    def test_os_dois_canais_consultam_a_grade_do_tiktok(self):
+        fonte = POSTAR.read_text(encoding="utf-8")
+        for nome in ("def postar_historia(", "def postar_build("):
+            inicio = fonte.index(nome)
+            corpo = fonte[inicio:fonte.index("\ndef ", inicio + 10)]
+            self.assertIn("_tiktok_neste_horario()", corpo, nome)
+            self.assertIn("tiktok_fora_da_grade", corpo, nome)
+
+    def test_pular_o_tiktok_nao_aparece_como_falha(self):
+        """Fora da grade e decisao, e "nao subiu" no aviso pareceria defeito."""
+        fonte = POSTAR.read_text(encoding="utf-8")
+        aviso = fonte[fonte.index("def avisar("):]
+        aviso = aviso[:aviso.index("\ndef ")]
+        self.assertIn("tiktok_fora_da_grade", aviso)
+        principal = fonte[fonte.index("def main("):]
+        self.assertIn("tiktok_fora_da_grade", principal)
+
+
 if __name__ == "__main__":
     unittest.main()

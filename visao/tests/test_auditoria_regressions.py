@@ -51,8 +51,30 @@ class GradeUnicaTests(unittest.TestCase):
         self.assertEqual(len(grade.HORAS), grade.META_DIARIA_POR_CANAL)
 
     def test_a_meta_total_conta_os_dois_lugares(self):
-        """Cada video vai ao YouTube E ao TikTok: 8 x 2 canais x 2 = 32."""
-        self.assertEqual(32, grade.META_DIARIA_TOTAL)
+        """YouTube com 8 e TikTok com 6, nos dois canais: (8 + 6) x 2 = 28.
+
+        Era 32 ate 13/09/2026, quando o TikTok passou a pular 7h e 8h.
+        """
+        self.assertEqual(28, grade.META_DIARIA_TOTAL)
+
+    def test_o_tiktok_pula_os_horarios_colados(self):
+        """Decisao de 13/09/2026: seis por dia, sem 7h e 8h."""
+        self.assertEqual((6, 10, 12, 15, 17, 20),
+                         grade.horas_da_plataforma("tiktok"))
+        self.assertEqual(grade.HORAS, grade.horas_da_plataforma("youtube"))
+        self.assertFalse(grade.publica_em("tiktok", 7))
+        self.assertTrue(grade.publica_em("youtube", 7))
+
+    def test_o_tiktok_so_usa_horario_que_existe_na_grade(self):
+        """Quem posta no TikTok e a rodada da grade: hora fora dela nunca roda."""
+        for plataforma in grade.PLATAFORMAS:
+            self.assertTrue(set(grade.horas_da_plataforma(plataforma))
+                            <= set(grade.HORAS))
+
+    def test_o_tiktok_nao_deve_o_que_nao_e_dele(self):
+        cedo = datetime(2026, 9, 11, 9, 0)
+        self.assertEqual([6, 7, 8], grade.vencidos(cedo))
+        self.assertEqual([6], grade.vencidos(cedo, "tiktok"))
 
     def test_so_conta_o_horario_que_ja_venceu(self):
         cedo = datetime(2026, 9, 11, 9, 0)

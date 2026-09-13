@@ -75,8 +75,12 @@ def metas(agora: datetime | None = None) -> dict:
         ficha = {}
         for plataforma in grade.PLATAFORMAS:
             saiu = len(por_plataforma.get(plataforma) or [])
-            ficha[plataforma] = {"saiu": saiu, "devido": len(vencidos),
-                                 "faltando": max(0, len(vencidos) - saiu)}
+            # O devido e o da grade DAQUELA plataforma: desde 13/09/2026 o
+            # TikTok pula 7h e 8h, e cobrar dele os oito horarios acusaria
+            # dois "faltando" todo dia por uma decisao, nao por uma falha.
+            devido = len(grade.vencidos(agora, plataforma))
+            ficha[plataforma] = {"saiu": saiu, "devido": devido,
+                                 "faltando": max(0, devido - saiu)}
         canais[canal] = ficha
     faltando = sum(p["faltando"] for c in canais.values() for p in c.values())
     return {"horarios_vencidos": len(vencidos),
