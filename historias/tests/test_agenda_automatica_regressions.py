@@ -682,6 +682,20 @@ class GorduraDeEstoqueTests(unittest.TestCase):
         controller.Pipeline.gerar = lambda *a, **k: criou.append(1)
         self.addCleanup(setattr, controller.Pipeline, "gerar", original)
 
+        # O REPARADOR TAMBEM, e pelo mesmo motivo do aviso la em cima.
+        # `_trabalhar` chama `reparo.rodada()` ANTES do freio, e a rodada abre
+        # o PicassoIA para refazer cena com colagem. Este teste passava sem
+        # dublar porque `cenas_com_colagem` estava cega ao vocabulario da IA e
+        # nunca achava nada; consertada a cegueira em 12/09/2026, o teste
+        # encontrou 14 cenas de verdade no `outputs/` e a suite parou de
+        # terminar (900 s de estouro). Duble que so era seguro por causa de
+        # um defeito nao e duble.
+        from contos.pipeline import reparo
+        antes_rodada = reparo.rodada
+        reparo.rodada = lambda **k: {"barrados": 0, "consertados": 0,
+                                     "insistentes": [], "acoes": []}
+        self.addCleanup(setattr, reparo, "rodada", antes_rodada)
+
         resultado = agenda._trabalhar(
             {"retomar_incompletas": False, "teto_de_estoque": 8},
             False, lambda *_a: None)

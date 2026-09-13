@@ -149,6 +149,83 @@ def cmd_tudo(args, pipeline) -> int:
     return 0
 
 
+def cmd_colagens(args, pipeline) -> int:
+    """Lista (e opcionalmente apaga) as imagens que viraram colagem.
+
+    Separado da vistoria DE PROPOSITO. Marcar as 44 como pendentes de uma vez
+    faria a vistoria barrar cinco historias inteiras por "cena sem imagem" — e
+    o estoque de hoje tem oito videos. Consertar o acervo e uma decisao de
+    quando, nao um efeito colateral de ligar o detector.
+
+    Com `--apagar`, a cena volta a ficar pendente e a proxima passada do
+    worker a refaz com o mesmo prompt.
+    """
+    from contos.imagens import composicao
+    from contos.pipeline.controller import OUTPUTS
+
+    alvo = f"{args.historia_id}/cenas/*.png" if args.historia_id \
+        else "historia_*/cenas/*.png"
+    achadas, por_historia = 0, {}
+    for arquivo in sorted(OUTPUTS.glob(alvo)):
+        razao = composicao.motivo(arquivo)
+        if not razao:
+            continue
+        achadas += 1
+        historia = arquivo.parent.parent.name
+        por_historia.setdefault(historia, []).append(arquivo)
+        print(f"  {historia}/{arquivo.name}: {razao}")
+    for historia, arquivos in sorted(por_historia.items()):
+        print(f"{historia}: {len(arquivos)} colagem(ns)")
+        if args.apagar:
+            for arquivo in arquivos:
+                arquivo.unlink()
+            print(f"  apagadas — rode `main.py imagens {historia}` para refazer")
+    print(f"\n{achadas} colagem(ns) encontradas.")
+    return 0
+
+
+def cmd_capas(args, pipeline) -> int:
+    """Desenha a miniatura que falta em cada parte ja renderizada.
+
+    Todo video anterior a 11/09/2026 subiu com o frame que o YouTube escolheu
+    sozinho — e era isso que aparecia na prateleira de Shorts, sem uma letra
+    na tela, do lado de concorrentes com titulo em corpo 120. Este comando
+    existe para o ESTOQUE nao ficar esperando um novo render.
+    """
+    from contos.pipeline.controller import OUTPUTS
+    from contos.roteiro import roteiro as R
+    from contos.video import capa as capa_mod
+
+    alvos = ([args.historia_id] if args.historia_id
+             else sorted(p.name for p in OUTPUTS.glob("historia_*")
+                         if p.is_dir()))
+    feitas = puladas = 0
+    for historia_id in alvos:
+        try:
+            roteiro = R.carregar(historia_id)
+        except Exception as exc:                               # noqa: BLE001
+            print(f"  ! {historia_id}: {exc}")
+            continue
+        pasta = OUTPUTS / historia_id
+        total = len(roteiro.get("partes") or [])
+        for bloco in roteiro.get("partes") or []:
+            parte = int(bloco["n"])
+            destino = capa_mod.caminho(pasta, parte, total)
+            if destino.is_file() and not args.refazer:
+                puladas += 1
+                continue
+            if not any(pasta.glob(f"final_*_p{parte:02d}.mp4")) \
+                    and not any(pasta.glob("final_*.mp4")):
+                continue
+            feito = pipeline._capa(roteiro, historia_id, pasta, parte,
+                                   pipeline.render_config, log=lambda _t: None)
+            if feito:
+                feitas += 1
+                print(f"  {feito.relative_to(OUTPUTS)}")
+    print(f"{feitas} capa(s) desenhada(s), {puladas} ja existiam.")
+    return 0
+
+
 def cmd_modelos(args, pipeline) -> int:
     from contos.roteiro import modelo
     for dados in modelo.listar(pipeline.roteiro_config):
@@ -463,6 +540,17 @@ def main() -> int:
 
     sub.add_parser("modelos", help="estruturas de roteiro disponiveis")
 
+    cg = sub.add_parser("colagens",
+                        help="acha imagem que virou colagem de paineis")
+    cg.add_argument("historia_id", nargs="?", default=None)
+    cg.add_argument("--apagar", action="store_true",
+                    help="apaga as achadas para o worker refazer")
+
+    cp = sub.add_parser("capas", help="desenha a miniatura das partes prontas")
+    cp.add_argument("historia_id", nargs="?", default=None)
+    cp.add_argument("--refazer", action="store_true",
+                    help="redesenha inclusive as que ja existem")
+
     s = sub.add_parser("status", help="onde cada historia esta")
     s.add_argument("historia_id", nargs="?", default=None)
 
@@ -516,7 +604,8 @@ def main() -> int:
              "llm": cmd_llm, "imagens": cmd_imagens,
              "video": cmd_video, "tudo": cmd_tudo, "modelos": cmd_modelos,
              "status": cmd_status, "publicar": cmd_publicar,
-             "conferir": cmd_conferir, "auto": cmd_auto}
+             "conferir": cmd_conferir, "auto": cmd_auto, "capas": cmd_capas,
+             "colagens": cmd_colagens}
     return acoes[args.comando](args, pipeline)
 
 

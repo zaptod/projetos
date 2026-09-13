@@ -290,8 +290,25 @@ def dias_de_estoque_novo() -> int:
 
     A marca e `modelo_llm` no roteiro, gravada desde que o modelo passou a ser
     escolhido de proposito. Historia sem a marca e do tempo antigo.
+
+    CONTA SO O QUE A VISTORIA APROVA, e essa e a correcao de 11/09/2026. Antes
+    a conta era de ARQUIVO NO DISCO, e isso deixava a pipeline se matar de
+    fome achando que estava abastecida: video barrado por colagem, por texto
+    de outra historia ou pela IA continua no disco, continua contando como
+    estoque, e o freio se fecha. A grade entao pede um video que a vistoria
+    nao deixa sair, e nada cria mais nenhum. Nenhum alerta dispara, porque do
+    ponto de vista do freio esta tudo cheio.
+
+    Custa uma decodificacao por video (ffprobe), medido em 1 s cada, 8 s para
+    a fila inteira. O freio roda oito vezes por dia: o custo e irrelevante
+    perto de descobrir tarde que o canal ficou sem o que publicar.
     """
-    from ..publicar import catalogo, serie
+    return len(aprovados_no_estoque())
+
+
+def aprovados_no_estoque() -> list:
+    """Os videos PRONTOS E PUBLICAVEIS feitos com a abordagem atual."""
+    from ..publicar import catalogo, qualidade, serie
     from ..roteiro import roteiro as R
 
     try:
@@ -303,9 +320,55 @@ def dias_de_estoque_novo() -> int:
     for resumo in R.listar():
         if (resumo.get("modelo_llm") or "").strip():
             novas.add(resumo["historia_id"])
-    return len([v for v in catalogo.listar()
-                if v.id not in ja and v.perfil == "celular"
-                and v.fonte_id in novas])
+
+    aprovados, roteiros = [], {}
+    for video in catalogo.listar():
+        if video.id in ja or video.perfil != "celular":
+            continue
+        if video.fonte_id not in novas:
+            continue
+        try:
+            if video.fonte_id not in roteiros:
+                roteiros[video.fonte_id] = R.carregar(video.fonte_id)
+            veredito = qualidade.liberado(video, roteiros[video.fonte_id])
+        except Exception:                                      # noqa: BLE001
+            # Nao deu para vistoriar: conta como estoque. Errar para o lado de
+            # nao criar e melhor do que gerar sem parar por causa de um
+            # ffprobe que travou.
+            aprovados.append(video)
+            continue
+        if veredito.get("ok"):
+            aprovados.append(video)
+    return aprovados
+
+
+def barrados_no_estoque() -> list:
+    """`[(video, motivos)]` do que esta pronto mas a vistoria nao deixa sair.
+
+    E a lista que o reparador consome. Sai daqui, e nao de uma varredura
+    propria, para o reparo olhar exatamente o que a grade olha.
+    """
+    from ..publicar import catalogo, qualidade, serie
+    from ..roteiro import roteiro as R
+
+    try:
+        ja = {linha.get("video_id") for linha in serie.publicados()
+              if linha.get("url")}
+    except Exception:                                          # noqa: BLE001
+        ja = set()
+    saida, roteiros = [], {}
+    for video in catalogo.listar():
+        if video.id in ja or video.perfil != "celular":
+            continue
+        try:
+            if video.fonte_id not in roteiros:
+                roteiros[video.fonte_id] = R.carregar(video.fonte_id)
+            veredito = qualidade.liberado(video, roteiros[video.fonte_id])
+        except Exception:                                      # noqa: BLE001
+            continue
+        if not veredito.get("ok"):
+            saida.append((video, list(veredito.get("erros") or [])))
+    return saida
 
 
 def dias_de_estoque() -> int:
@@ -431,6 +494,21 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
                 f"{len(alvo['partes_sem_video'])} video(s) pendentes.")
             return _terminar(pipeline, alvo["historia_id"], headless, log,
                              criada=False)
+
+    # CONSERTAR VEM ANTES DE CRIAR, e a ordem e a coisa toda. Um video
+    # barrado ja custou roteiro, imagens e render; recuperar ele e mais
+    # barato do que fabricar outro do zero. E, sem isto, o freio abaixo
+    # nunca mais fecharia: ele agora conta APROVADOS, entao um barrado que
+    # ninguem conserta faz a maquina produzir sem parar para cobrir um
+    # buraco que continua ali.
+    from . import reparo
+    conserto = reparo.rodada(headless=headless, log=log)
+    if conserto["barrados"]:
+        log(f"[auto] {conserto['consertados']} de {conserto['barrados']} "
+            "video(s) barrado(s) consertados.")
+        if conserto["insistentes"]:
+            log(f"[auto] desisti de {len(conserto['insistentes'])}: "
+                + ", ".join(conserto["insistentes"][:3]))
 
     # O FREIO, e ele aperta MUITO mais desde 10/09/2026. Antes o teto era 45
     # videos (uns 5 dias e meio) e a ideia era ter reserva. O pedido dele

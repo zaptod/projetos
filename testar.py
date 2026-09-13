@@ -20,7 +20,7 @@ ninguém fica sabendo.
 O que ele cobre, e por que cada parte está aqui:
 
   SUÍTES        os contratos de cada projeto. É o grosso.
-  SMOKE         o painel MONTA as 13 páginas. Nenhuma suíte pega um erro de
+  SMOKE         o painel MONTA todas as páginas das três janelas. Nenhuma suíte pega um erro de
                 layout, e o painel é por onde tudo é operado.
   ARQUITETURA   os numeros da bagunca (cirurgias de sys.path, nomes de
                 pacote repetidos) subiram? Catraca: falha se PIORAR.
@@ -77,8 +77,13 @@ SUITES = (
     ("historias", RAIZ / "historias",
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
       "-p", "test_*.py"]),
+    # `discover` e nao o modulo pelo nome: nomear um arquivo so faz com que
+    # todo teste novo ao lado dele nasca invisivel. Aconteceu em 11/09/2026 —
+    # cinco testes entraram, o total do repositorio nao mexeu, e o unico
+    # sinal foi a conta nao bater.
     ("remoto (bot)", RAIZ,
-     [PY, "-X", "utf8", "-m", "unittest", "remoto.test_remoto"]),
+     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "remoto",
+      "-t", ".", "-p", "test_*.py"]),
     ("vila (sprites)", RAIZ,
      [PY, "-X", "utf8", "-m", "unittest", "vila.test_motor"]),
     ("painel (novo)", RAIZ,
@@ -93,7 +98,7 @@ SUITES = (
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
       "-p", "test_*.py"]),
 )
-SMOKE = ("painel (13 páginas)", RAIZ, [PY, "-X", "utf8", "-m", "painel",
+SMOKE = ("painel (páginas)", RAIZ, [PY, "-X", "utf8", "-m", "painel",
                                        "--smoke"])
 
 VERDE, VERMELHO, AMARELO, FIM = "\033[92m", "\033[91m", "\033[93m", "\033[0m"

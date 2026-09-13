@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 
 import builds.atividade as _rb_atividade
+import builds.experimentos as _rb_experimentos
 from builds.content import voz as _rb_content_voz
 from builds.video import trilha as _rb_video_trilha
 from ..imagens import fila
@@ -130,6 +131,19 @@ class Pipeline:
             return f"final_{perfil}.mp4"
         return f"final_{perfil}_p{int(parte):02d}.mp4"
 
+    @staticmethod
+    def id_do_catalogo(roteiro: dict, historia_id: str, perfil: str,
+                       parte: int) -> str:
+        """O mesmo id que `publicar.catalogo` monta — a chave da metrica.
+
+        Duplicar a regra aqui e ruim, mas a alternativa e pior: o catalogo
+        varre o DISCO procurando mp4 pronto, e no meio do render o arquivo
+        da parte ainda esta sendo escrito.
+        """
+        total = len(roteiro.get("partes") or [])
+        sufixo = f":p{int(parte):02d}" if total > 1 else ""
+        return f"{historia_id}:{perfil}{sufixo}"
+
     def render(self, historia_id: str, *, preview: bool = False,
                parte: int | None = None, log=print) -> dict:
         """Renderiza uma parte (ou todas). Um mp4 por parte, por perfil."""
@@ -139,17 +153,29 @@ class Pipeline:
         alvos = ([int(parte)] if parte
                  else [bloco["n"] for bloco in roteiro["partes"]])
 
+        # O experimento entra AQUI e em nenhum outro lugar. Sem nada em curso
+        # `aplicar` devolve o proprio config, e daqui para baixo o caminho e
+        # identico ao de sempre. Uma unica sorteada por render: as partes de
+        # uma mesma historia tem que sair do mesmo braco, senao a comparacao
+        # separaria partes da mesma historia em lados opostos.
+        cfg_render, marca = _rb_experimentos.aplicar("historias",
+                                                     self.render_config,
+                                                     historia_id)
+        if marca:
+            log(f"[experimento] {marca['nome_experimento']}: "
+                f"braco {marca['braco']!r}")
+
         voz_mod = _rb_content_voz
         # A voz sai do ROTEIRO, nao do config: quem narra em primeira pessoa
         # define o timbre. Sem isto, toda historia saia na mesma voz
         # masculina, inclusive as narradas por mulheres.
         from ..roteiro import narrador
         cfg_voz = voz_mod.config(narrador.voz_para(
-            roteiro, (self.render_config.get("audio") or {}).get("voz")))
+            roteiro, (cfg_render.get("audio") or {}).get("voz")))
         log(f"[voz] narrador: {cfg_voz.get('narrador', '?')} "
             f"({cfg_voz.get('voz')}, tom {cfg_voz.get('tom', '+0Hz')})")
-        taxa = int((self.render_config.get("audio") or {}).get("sample_rate", 44100))
-        musica = self._musica(log)
+        taxa = int((cfg_render.get("audio") or {}).get("sample_rate", 44100))
+        musica = self._musica(log, cfg_render)
         saida = []
         atividade = _rb_atividade
         atividade.registrar("estudio", "inicio",
@@ -187,7 +213,7 @@ class Pipeline:
                                     marcos=(leitura or {}).get("marcos"),
                                     duracao_audio=(leitura or {}).get("duracao"),
                                     config_roteiro=self.roteiro_config,
-                                    config_render=self.render_config,
+                                    config_render=cfg_render,
                                     pasta=pasta, parte=numero)
             plano["historia_id"] = historia_id
             self._gravar(trabalho / "edit_plan.json", plano)
@@ -208,7 +234,7 @@ class Pipeline:
                     palavras = voz_mod.caminho_palavras(voz_wav)
 
             for perfil in self.perfis:
-                renderer = render_mod.VideoRenderer(self.render_config, perfil,
+                renderer = render_mod.VideoRenderer(cfg_render, perfil,
                                                     preview)
                 final = renderer.render(
                     plano, trabalho, voz=voz_wav, palavras=palavras,
@@ -216,8 +242,25 @@ class Pipeline:
                     out_name=str(pasta / self.nome_do_video(roteiro, perfil,
                                                             numero)))
                 saida.append(str(final))
+                # O id do catalogo, que e por onde a metrica volta. Gravado
+                # no ato: reconstruir a atribuicao depois seria adivinhar.
+                #
+                # A regra do sufixo e a do catalogo, e ela NAO e "sempre":
+                # historia de uma parte so sai como `historia_X:celular`, sem
+                # `:p01`. Escrever o sufixo sempre faria a atribuicao apontar
+                # para um id que nao existe no ledger, e o braco apareceria
+                # com zero medidos sem nenhum erro no caminho.
+                _rb_experimentos.atribuir(
+                    marca, self.id_do_catalogo(roteiro, historia_id, perfil,
+                                               numero))
                 log(f"[render:{perfil}] {rotulo}: {final} "
                     f"({plano['total_duration']}s)")
+
+            # UMA capa por PARTE, e nao por perfil: a miniatura e a mesma nos
+            # dois. Fora do laco de perfil de proposito — dentro, ela seria
+            # redesenhada e regravada a cada perfil pelo mesmo resultado.
+            self._capa(roteiro, historia_id, pasta, numero, cfg_render, log)
+
         atividade.registrar("estudio", "ok",
                             f"{historia_id}: {len(saida)} video(s)", "historias")
         return {"historia_id": historia_id, "videos": saida,
@@ -311,14 +354,53 @@ class Pipeline:
         return saida
 
     # ------------------------------------------------------------ internos
-    def _musica(self, log=print):
-        """A trilha sintetizada deste canal (nasce sozinha na 1a vez)."""
-        if not (self.render_config.get("audio") or {}).get("trilha_procedural", True):
+    def _capa(self, roteiro: dict, historia_id: str, pasta: Path, parte: int,
+              cfg_render: dict, log=print):
+        """A miniatura daquela parte, desenhada sobre a imagem do GANCHO.
+
+        Nunca derruba o render: um video sem capa vai ao ar com o frame que o
+        YouTube escolher, que e o que ja acontecia. Um render que morre por
+        causa da miniatura perde o video inteiro.
+        """
+        from ..video import capa as capa_mod
+        total = len(roteiro.get("partes") or [])
+        try:
+            cenas = timeline.cenas_da_parte(roteiro, parte)
+            primeira = cenas[0]["n"] if cenas else 1
+            imagem = fila.caminho_da_cena(historia_id, primeira, parte)
+            from ..roteiro.roteiro import titulo_da_parte
+            destino = capa_mod.montar(
+                titulo_da_parte(roteiro, parte),
+                imagem if imagem.is_file() else None,
+                capa_mod.caminho(pasta, parte, total),
+                parte=parte, partes=total, config_render=cfg_render)
+            log(f"[capa] {destino.name}")
+            return destino
+        except Exception as exc:                               # noqa: BLE001
+            log(f"[capa] nao saiu ({type(exc).__name__}: {exc}); o video vai "
+                "sem miniatura propria.")
+            return None
+
+    def _musica(self, log=print, config=None):
+        """A trilha de fundo: a nomeada, a que estiver la, ou a sintetizada."""
+        audio = ((config or self.render_config).get("audio") or {})
+        if not audio.get("trilha_procedural", True):
             return None
         pasta = ASSETS / "music"
         pasta.mkdir(parents=True, exist_ok=True)
-        existentes = [p for p in pasta.iterdir()
-                      if p.suffix.lower() in (".mp3", ".wav", ".ogg", ".m4a", ".flac")]
+        # `trilha_arquivo` existe para o experimento ter o que trocar. Sem
+        # ele a escolha era `existentes[0]`: com dois arquivos na pasta, qual
+        # tocava dependia da ordem do sistema de arquivos — e um experimento
+        # de trilha com trilha indefinida nao mede nada.
+        nomeada = str(audio.get("trilha_arquivo") or "").strip()
+        if nomeada:
+            alvo = pasta / nomeada
+            if alvo.is_file():
+                return alvo
+            log(f"[trilha] {nomeada!r} nao esta em {pasta} — usando a de sempre.")
+        existentes = sorted(
+            p for p in pasta.iterdir()
+            if p.suffix.lower() in (".mp3", ".wav", ".ogg", ".m4a", ".flac"))
         if existentes:
             return existentes[0]
         trilha = _rb_video_trilha

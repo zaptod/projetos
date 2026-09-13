@@ -634,5 +634,108 @@ class PeriodicoTests(unittest.TestCase):
                                                 "desligado")
 
 
+class ExperimentosTests(unittest.TestCase):
+    """A pagina de experimentos (11/09/2026).
+
+    O que ela nao pode fazer e mentir: um braco com 20 videos e 2 medidos
+    parece forte e nao e. Por isso `videos` e `medidos` sao colunas
+    separadas, e nenhuma conta acontece aqui — tudo vem de
+    `builds.experimentos`, para o numero da tela, o do Telegram e o da linha
+    de comando serem o mesmo.
+    """
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        import builds.experimentos as X
+
+        from painel.app import Casca
+        from painel.paginas import experimentos
+
+        self.X = X
+        self._tmp = tempfile.TemporaryDirectory()
+        raiz = Path(self._tmp.name)
+        self._antes = (X.PASTA, X.REGISTRO, X.ATRIBUICOES)
+        X.PASTA, X.REGISTRO = raiz, raiz / "experimentos.json"
+        X.ATRIBUICOES = raiz / "atribuicoes.jsonl"
+
+        self.app = Casca.criar([experimentos.Pagina])
+        self.app.geometry("1366x740")
+        self.app.update()
+        self.pagina = self.app.paginas["experimentos"]
+        self.addCleanup(self._fechar)
+
+    def _fechar(self):
+        self.X.PASTA, self.X.REGISTRO, self.X.ATRIBUICOES = self._antes
+        self.app.encerrar()
+        self.app.destroy()
+        self._tmp.cleanup()
+
+    def test_as_colunas_cabem_na_tela_dele(self):
+        """1366 de largura menos a barra lateral. A tabela do Fluxo ja
+        estourou isso uma vez, sem erro nenhum."""
+        colunas = [("id", "ID", 82, "w"), ("nome", "NOME", 260, "w"),
+                   ("canal", "CANAL", 88, "w"), ("tipo", "TIPO", 108, "w"),
+                   ("estado", "ESTADO", 92, "w"),
+                   ("bracos", "BRAÇOS", 70, "center"),
+                   ("videos", "VÍDEOS", 70, "center"),
+                   ("pergunta", "PERGUNTA", 300, "w")]
+        self.assertTrue(self.pagina.o.largura_cabe(colunas, 1116))
+
+    def test_o_placar_separa_quantos_entraram_de_quantos_foram_medidos(self):
+        self.assertIn("videos", self.pagina.placar["columns"])
+        self.assertIn("medidos", self.pagina.placar["columns"])
+
+    def test_experimento_novo_aparece_na_lista(self):
+        self.X.criar("Trilha", "muda?", "historias", [
+            {"nome": "com", "ajuste": {"audio.trilha_procedural": True}},
+            {"nome": "sem", "ajuste": {"audio.trilha_procedural": False}}])
+        self.pagina.recarregar()
+        self.app.update()
+        linhas = self.pagina.lista.get_children()
+        self.assertEqual(1, len(linhas))
+        valores = self.pagina.lista.item(linhas[0])["values"]
+        self.assertIn("Trilha", valores)
+        self.assertIn("rascunho", valores)
+
+    def test_sem_selecao_a_leitura_nao_inventa_numero(self):
+        self.pagina.recarregar()
+        self.app.update()
+        self.assertIn("escolha", self.pagina.leitura.cget("text").lower())
+
+    def test_braco_sem_metrica_diz_que_nao_tem_metrica(self):
+        """O caso perigoso: o video foi produzido, entrou no braco, e a
+        metrica ainda nao existe. Sem a nota a linha parece um zero medido."""
+        from painel.paginas import experimentos as E
+        nota = E._nota({"videos": 4, "medidos": 0})
+        self.assertIn("nenhum vídeo medido", nota)
+        parcial = E._nota({"videos": 4, "medidos": 1})
+        self.assertIn("3 vídeo(s) ainda sem métrica", parcial)
+
+    def test_valor_do_ajuste_vira_o_tipo_certo(self):
+        """Gravar a string "false" onde o config espera False LIGA a trilha
+        em vez de desligar, e o experimento mediria o oposto do que diz."""
+        from painel.paginas import experimentos as E
+        self.assertIs(False, E.interpretar("false"))
+        self.assertIs(True, E.interpretar("TRUE"))
+        self.assertEqual(12, E.interpretar("12"))
+        self.assertEqual(0.26, E.interpretar("0.26"))
+        self.assertEqual("itaraca.mp3", E.interpretar(" itaraca.mp3 "))
+
+    def test_uma_linha_por_braco_com_chave_pontilhada(self):
+        from painel.paginas import experimentos as E
+        bracos = E.ler_bracos(
+            "com trilha | audio.trilha_arquivo=itaraca.mp3, "
+            "audio.music_volume=0.3\n"
+            "# comentario\n"
+            "sem trilha | audio.trilha_procedural=false\n")
+        self.assertEqual(["com trilha", "sem trilha"],
+                         [b["nome"] for b in bracos])
+        self.assertEqual({"audio.trilha_arquivo": "itaraca.mp3",
+                          "audio.music_volume": 0.3}, bracos[0]["ajuste"])
+        self.assertIs(False, bracos[1]["ajuste"]["audio.trilha_procedural"])
+
+
 if __name__ == "__main__":
     unittest.main()
