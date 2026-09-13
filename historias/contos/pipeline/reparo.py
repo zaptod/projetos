@@ -8,22 +8,25 @@ estoque contava ele como se fosse estoque bom, e a grade chegava no horario
 sem nada aprovado para publicar. Tres defeitos que so aparecem juntos, e o
 sintoma final e um canal mudo sem nenhum alerta.
 
-O QUE ELE CONSERTA, e por que so isto:
+O QUE ELE CONSERTA:
 
     colagem numa cena     apaga aquela imagem e refaz. O prompt esta certo,
                           quem errou foi o desenho — a mesma doutrina do
                           worker, que reenvia o texto identico.
     render defasado       o mp4 e mais velho que as imagens: so re-renderizar.
     cena sem imagem       gera o que falta e re-renderiza.
+    veto da IA            desde 13/09/2026, e so com numero de CENA
+                          confiavel (`conserto_de_cena`): colagem e marca
+                          d'agua refazem a cena; imagem que nao bate com a
+                          narracao ganha prompt novo escrito a partir dela;
+                          troca de rosto fixa a descricao do protagonista
+                          pela aparencia que a IA viu na maioria das cenas.
 
 O QUE ELE NAO CONSERTA, de proposito:
 
     texto de outra historia   nao e conserto de imagem, e reescrita de parte.
                               Quem faz isso e a retomada (`incompletas`), e
                               ela ja roda antes daqui.
-    veto da IA                o motivo e em linguagem ("a imagem contradiz a
-                              narracao"), e adivinhar qual cena mexer a partir
-                              de uma frase e chute. Vira aviso, nao acao.
 
 TETO DE TENTATIVAS, e ele nao e opcional. A conta do PicassoIA e
 compartilhada, e uma cena que o modelo insiste em desenhar em painel ficaria
@@ -47,13 +50,11 @@ REGISTRO = OUTPUTS / "_reparos.json"
 TETO_DE_TENTATIVAS = 3
 
 # `cena 11: parece colagem: ...` — o numero e o que diz qual imagem apagar.
-# "cena" e a palavra do NOSSO codigo; "quadro" e a que o Gemini usa quando
-# assiste ao video. Aceitar so a primeira fez o reparador ficar cego para
-# tudo o que a IA achou: em 12/09/2026 ele registrou "0 de 8 video(s)
-# barrado(s) consertados" oito vezes seguidas, e o motivo era esta linha —
-# `cenas_com_colagem` devolvia lista vazia para "quadro 2: a imagem tem tela
-# dividida." e o reparo concluia "nenhum dos motivos tem conserto
-# automatico". O detector estava certo, o vocabulario e que nao batia.
+# Aceita "quadro" tambem, mas CUIDADO: ate 13/09/2026 o "quadro N" do Gemini
+# nao era a cena N (na folha de contato era a N-esima de doze miniaturas
+# espacadas no tempo). Veto da IA nao passa mais por aqui: vai por
+# `_plano_pelo_veto_da_ia`, que so age com numero de cena confiavel e
+# pergunta de novo quando nao ha.
 CENA_NA_MENSAGEM = re.compile(r"(?:cena|quadro)\s+(\d+)\s*:", re.I)
 
 
@@ -242,7 +243,15 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
     historia_id, parte = video.fonte_id, int(video.parte)
 
     colagens = cenas_com_colagem(erros)
-    acao, detalhe = "", ""
+    detalhe = ""
+    if any("a ia reprovou" in str(e).lower() for e in erros):
+        plano_da_ia = _plano_pelo_veto_da_ia(video, historia_id, parte,
+                                             headless=headless, log=log)
+        if plano_da_ia.get("parar"):
+            return plano_da_ia["parar"]
+        colagens = plano_da_ia["refazer"]
+        detalhe = plano_da_ia["detalhe"]
+    acao = ""
     try:
         if colagens:
             trocadas, guardadas = _refazer_cenas(
@@ -307,6 +316,82 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
     conta = _anotar(video_id, "; ".join(str(e) for e in erros), acao)
     return {"acao": acao, "ok": True, "detalhe": detalhe,
             "tentativas": conta}
+
+
+def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
+                           headless: bool = False, log=print) -> dict:
+    """O que refazer, lido do veto da IA. `{"parar": resultado}` para sair.
+
+    SO CONFIA EM NUMERO DE CENA. Ate 13/09/2026 o prompt do parecer nao dizia
+    ao Gemini o que era "quadro 6": na folha de contato era a sexta de doze
+    miniaturas espacadas no tempo, numa parte de 13 ou 14 cenas; no video, a
+    contagem dele. O reparador lia esse numero como cena e podia refazer a
+    imagem boa e deixar a ruim. Veto sem numeracao por cena e perguntado de
+    novo AQUI, com as cenas numeradas — nunca esquecido, porque esquecer
+    liberaria o video para a grade sem parecer nenhum.
+    """
+    from ..publicar import parecer
+    from ..roteiro import roteiro as R
+    from . import conserto_de_cena as C
+
+    try:
+        ficha = parecer.lembrado(video)
+    except Exception:                                          # noqa: BLE001
+        ficha = None
+    if not C.confiavel(ficha):
+        log(f"[reparo] {getattr(video, 'id', video)}: o veto da IA nao "
+            "numera as cenas; peco para ela olhar de novo.")
+        ficha = _confirmar_com_a_ia(video, historia_id, parte,
+                                    headless=headless, log=log)
+        if ficha is None:
+            return {"parar": {"acao": "adiado", "ok": False,
+                              "detalhe": "precisava que a IA olhasse de novo "
+                                         "com as cenas numeradas e nao deu"}}
+        if ficha.get("aprovado"):
+            return {"parar": {"acao": "reolhado", "ok": True,
+                              "detalhe": "olhando de novo, com as cenas "
+                                         "numeradas, a IA aprovou"}}
+        if not C.confiavel(ficha):
+            return {"parar": {"acao": "adiado", "ok": False,
+                              "detalhe": "a IA respondeu sem numerar as "
+                                         "cenas; nao refaco no escuro"}}
+
+    motivos = list(ficha.get("motivos") or [])
+    classes = C.classificar(motivos)
+    roteiro = R.carregar(historia_id)
+    mudou, contado = False, []
+    if classes["rosto"]:
+        nova = str(ficha.get("protagonista") or "").strip()
+        if nova:
+            trocas = C.fixar_protagonista(roteiro, nova)
+            mudou = True
+            contado.append(f"fixei o protagonista em {trocas} prompt(s): "
+                           f"{nova[:80]}")
+        else:
+            # Sem a descricao, refazer so sortearia outro rosto.
+            classes["rosto"] = []
+            contado.append("a IA apontou troca de rosto sem descrever o "
+                           "protagonista")
+    if classes["narracao"]:
+        novos = C.reescrever_prompts(roteiro, parte, classes["narracao"],
+                                     motivos, headless=headless, log=log)
+        if novos:
+            mudou = True
+            contado.append(f"reescrevi pela narracao o prompt da(s) cena(s) "
+                           f"{sorted(novos)}")
+        classes["narracao"] = sorted(novos)
+    if mudou:
+        # NAO `R.salvar`: aquele e o gravador do roteiro avulso e remonta o
+        # arquivo so com titulo, cta e cenas — numa serie apagaria tudo.
+        C.gravar_roteiro(historia_id, roteiro)
+    refazer = sorted(set(classes["imagem"]) | set(classes["rosto"])
+                     | set(classes["narracao"]))
+    if not refazer:
+        return {"parar": {"acao": "nada", "ok": False,
+                          "detalhe": "nenhum motivo da IA tem conserto "
+                                     "automatico: "
+                                     + "; ".join(motivos)[:160]}}
+    return {"refazer": refazer, "detalhe": "; ".join(contado)}
 
 
 def _confirmar_com_a_ia(video, historia_id: str, parte: int, *,

@@ -180,23 +180,28 @@ para continuar.
 
 | motivo | o reparador resolve? |
 |---|---|
-| colagem, tela dividida, grade de painéis | **sim** — refaz a cena e re-renderiza |
-| mp4 mais velho que a imagem | **sim** — só re-renderiza |
-| protagonista troca de rosto entre cenas | não: refazer uma cena não devolve continuidade |
-| imagem não bate com a narração da cena | não: o prompt errado está no roteiro |
+| colagem, tela dividida, grade de painéis, marca d'água | **sim**: refaz a cena e re-renderiza |
+| mp4 mais velho que a imagem | **sim**: só re-renderiza |
+| imagem não bate com a narração da cena | **sim**: reescreve o prompt pela narração e refaz a cena |
+| protagonista troca de rosto entre cenas | **sim**: fixa a descrição pela aparência que a IA viu na maioria das cenas e refaz só as apontadas |
 
-O reparador lê os motivos escritos pela IA, e isso exige falar a língua dela:
-ele diz "cena", o Gemini escreve "quadro"; ele dizia "colagem", o Gemini
-escreve "tela dividida" e "grade de painéis". Enquanto os dois vocabulários
-não bateram, o log registrou "0 de 8 barrados consertados" por oito rodadas
-seguidas, com o detector funcionando o tempo todo.
+**O número que a IA dá aponta CENA.** Até 13/09/2026 o prompt pedia "o
+número do quadro" sem dizer o que era um quadro. Na folha de contato era a
+sexta de doze miniaturas espaçadas no tempo, numa parte de 13 ou 14 cenas; no
+vídeo, era a contagem do próprio Gemini. O reparador lia esse número como
+cena e podia refazer a imagem boa. Agora a IA recebe cada cena com seu trecho
+de tempo, a folha de contato tem um quadro por cena, e o veredito guarda se
+numerou por cena. Veto sem essa numeração é perguntado de novo antes de
+qualquer conserto, e nunca esquecido, porque esquecer liberaria o vídeo sem
+parecer.
 
-As duas linhas que ele não resolve nascem na escrita, não na imagem. Contra a
-troca de rosto, a ficha física do protagonista passou a exigir etnia ou tom
-de pele e **um traço concreto** do rosto: repetir "a 30s man, short dark
-hair, tired eyes" em todas as imagens não fixa ninguém, porque serve a um
-homem asiático e a um branco igualmente, e o gerador escolhia um diferente a
-cada cena.
+Os consertos de narração e de rosto mexem no roteiro, que é regravado inteiro,
+com cópia do original ao lado. E a mesma regra entra antes do defeito nascer:
+a revisão do roteiro passou a conferir se a imagem de cada cena mostra o que
+a narração dela conta, e a ficha do protagonista exige etnia ou tom de pele e
+**um traço concreto** do rosto. Repetir "a 30s man, short dark hair, tired
+eyes" em todas as imagens não fixava ninguém: servia a um homem asiático e a
+um branco igualmente.
 
 **3. A prova de que está no ar** (`metricas.reconciliar`). O upload por
 navegador quase nunca devolve o link. Então a reconciliação lê a playlist de
@@ -212,12 +217,11 @@ publicado. Em builds casou 18 de 18. Essa é a única confirmação real de que
 - O parecer do Gemini cobre **só histórias**. Nenhum build é assistido.
 - Um vídeo já publicado nunca é reavaliado. O erro descoberto depois do ar
   fica no ar até alguém apagar a mão.
-- **Nada confere se o prompt de imagem descreve o que a narração daquela cena
-  diz.** Existe guarda para o texto ser da história certa, e nenhuma para a
-  imagem combinar com a fala. É o Gemini quem descobre, já com o vídeo
-  renderizado e o custo todo gasto.
-- A ficha do protagonista só melhora as histórias **novas**. As já escritas
-  ficam com a descrição vaga que têm.
+- **Antes do render, quem confere imagem contra narração é só o LLM que
+  revisa o roteiro.** Nada mede isso de forma independente antes de gastar
+  imagem; a confirmação continua sendo o Gemini, depois do render.
+- **O conserto de rosto depende de a IA descrever o protagonista.** Sem essa
+  linha no veredito, a troca de rosto fica sem conserto.
 
 ### O apurador — a parte que surpreende
 

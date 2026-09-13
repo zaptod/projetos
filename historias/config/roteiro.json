@@ -90,8 +90,8 @@
         ],
         "imagem": [
             "Escreva o prompt de imagem em INGLES, uma frase densa, sem lista.",
-            "Descreva a ACAO daquela cena: quem esta em quadro, fazendo o que, em que lugar, com que luz.",
-            "Consistencia entre cenas vem do TEXTO: repita a mesma descricao fisica curta do protagonista (idade aparente, cabelo, roupa) em toda cena em que ele aparece.",
+            "Descreva a ACAO daquela cena: quem esta em quadro, fazendo o que, em que lugar, com que luz. E a MESMA acao que a narracao desta cena conta: se ela diz que a pessoa ja esperava sentada, a imagem nao mostra a pessoa chegando; se diz que a sala estava cheia, a imagem nao mostra um corredor vazio.",
+            "Consistencia entre cenas vem do TEXTO: repita a mesma descricao fisica curta do protagonista (etnia ou tom de pele, idade aparente, cabelo com cor e corte, UM traco concreto do rosto, roupa) em toda cena em que ele aparece. 'tired eyes' nao descreve ninguem: serve a qualquer pessoa, e o gerador escolhe uma diferente a cada cena.",
             "Enquadramento vertical, cinematografico, foto realista, luz coerente com a hora da cena.",
             "Proibido na imagem: qualquer texto, letra, legenda, marca d'agua, colagem, moldura, imagem deitada.",
             "UM INSTANTE SO, nunca uma transicao. 'sitting up abruptly and blinking' descreve dois momentos (deitado e sentado) e o gerador resolve isso com um antes-e-depois lado a lado — medido em 11/09/2026, a cena refeita tres vezes voltou colagem nas tres. Escolha o instante e descreva SO ele: 'already sitting up, eyes wide'.",

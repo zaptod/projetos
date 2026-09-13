@@ -150,8 +150,13 @@ def _lembrar(video, veredito: dict) -> None:
     # nada, nunca para derrubar quem viu o arquivo inteiro. Mesmo mp4 (mesma
     # mtime) e veredito antigo vindo do video: a folha nao entra.
     antigo = dados.get(chave)
+    # Excecao unica: a folha POR CENA entra no lugar de um veredito de video
+    # dado sem numerar as cenas. O video viu mais, mas o numero que ele deu
+    # nao aponta cena nenhuma, e sem ele o reparador nao tem o que refazer.
+    melhora_numeracao = (veredito.get("numeracao") == "cena"
+                         and (antigo or {}).get("numeracao") != "cena")
     if (antigo and not _pela_folha(antigo.get("vista", ""))
-            and _pela_folha(vista)
+            and _pela_folha(vista) and not melhora_numeracao
             and abs(float(antigo.get("mtime") or 0) - marca) <= 1.0):
         return
 
@@ -160,6 +165,8 @@ def _lembrar(video, veredito: dict) -> None:
         "aprovado": bool(veredito.get("aprovado")),
         "motivos": list(veredito.get("motivos") or []),
         "vista": vista,
+        "numeracao": str(veredito.get("numeracao") or ""),
+        "protagonista": str(veredito.get("protagonista") or ""),
         "quando": datetime.now().isoformat(timespec="seconds"),
     }
     LEMBRETES.parent.mkdir(parents=True, exist_ok=True)
@@ -213,6 +220,70 @@ def folha_de_contato(video: Path, destino: Path, *,
     return destino
 
 
+COLUNAS_POR_CENA = 4
+
+
+def folha_por_cena(video: Path, destino: Path, cenas: list) -> Path:
+    """Um quadro por CENA, tirado do meio dela, com o numero no canto.
+
+    A folha no tempo pega doze momentos espacados, numa parte de 13 ou 14
+    cenas: o "quadro 6" dela quase nunca e a cena 6.
+    """
+    import tempfile
+
+    from PIL import Image, ImageDraw
+
+    video, destino = Path(video), Path(destino)
+    if not cenas:
+        raise SemParecer("sem cenas para montar a folha por cena")
+    quadros = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for cena in cenas:
+            meio = (float(cena["inicio"]) + float(cena["fim"])) / 2.0
+            saida = Path(tmp) / f"c{int(cena['n']):02d}.jpg"
+            comando = ["ffmpeg", "-v", "error", "-y", "-ss", f"{meio:.2f}",
+                       "-i", str(video), "-frames:v", "1",
+                       "-vf", f"scale={LARGURA_DO_QUADRO}:-1", str(saida)]
+            try:
+                subprocess.run(comando, capture_output=True, timeout=120,
+                               creationflags=NO_WINDOW, check=True)
+                with Image.open(saida) as imagem:
+                    quadros.append((int(cena["n"]), imagem.convert("RGB")))
+            except (OSError, subprocess.SubprocessError) as erro:
+                raise SemParecer(
+                    f"nao tirei o quadro da cena {cena['n']}: {erro}"
+                ) from erro
+    altura = max(q.height for _n, q in quadros)
+    colunas = min(COLUNAS_POR_CENA, len(quadros))
+    linhas = (len(quadros) + colunas - 1) // colunas
+    folha = Image.new("RGB", (colunas * LARGURA_DO_QUADRO, linhas * altura),
+                      "black")
+    desenho = ImageDraw.Draw(folha)
+    for i, (n, quadro) in enumerate(quadros):
+        x = (i % colunas) * LARGURA_DO_QUADRO
+        y = (i // colunas) * altura
+        folha.paste(quadro, (x, y))
+        desenho.rectangle([x, y, x + 46, y + 30], fill="black")
+        desenho.text((x + 8, y + 8), str(n), fill="yellow")
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    folha.save(destino, quality=85)
+    return destino
+
+
+def _montar_folha(video, roteiro: dict, parte: int, caminho: Path,
+                  destino: Path) -> tuple:
+    """`(folha, por_cena)`. Por cena quando da; no tempo quando nao da."""
+    fonte = getattr(video, "fonte_id", None)
+    if fonte:
+        try:
+            from ..video import plano
+            cenas = plano.cenas_com_tempo(fonte, parte, roteiro)
+            return folha_por_cena(caminho, destino, cenas), True
+        except Exception:                                      # noqa: BLE001
+            pass
+    return folha_de_contato(caminho, destino), False
+
+
 def _duracao(video: Path) -> float:
     try:
         saida = subprocess.run(
@@ -227,15 +298,29 @@ def _duracao(video: Path) -> float:
 
 
 def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
-           pela_folha: bool = False) -> str:
+           pela_folha: bool = False, por_cena: bool = True) -> str:
     """O que se pergunta. Fechado de proposito: a resposta tem de ser lida
-    por codigo, nao interpretada."""
-    from ..video.timeline import cenas_da_parte
+    por codigo, nao interpretada.
 
-    cenas = cenas_da_parte(roteiro, parte)
-    narracao = " ".join(str(c.get("narracao") or "") for c in cenas)
+    NUMERADO POR CENA. Ate 13/09/2026 pedia "o numero do quadro" sem dizer o
+    que era um quadro, e o reparador lia esse numero como cena. Agora a IA
+    recebe a lista de cenas com o trecho de tempo de cada uma, e a folha de
+    contato tem um quadro por cena: "cena 7" passa a ser literal.
+    """
+    from ..video import plano
+
+    fonte = getattr(video, "fonte_id", None)
+    cenas = (plano.cenas_com_tempo(fonte, parte, roteiro) if fonte
+             else plano.cenas_do_roteiro(roteiro, parte))
     laudo = laudo or {}
-    if pela_folha:
+    if pela_folha and por_cena:
+        abertura = ("Voce e o revisor final de um canal de historias narradas "
+                    "em video vertical. A imagem anexada e uma FOLHA DE "
+                    "CONTATO com UM QUADRO POR CENA, na ordem, da esquerda "
+                    "para a direita e de cima para baixo, com o numero da "
+                    "cena escrito no canto. O quadro 1 e a CENA 1, o quadro "
+                    "2 e a CENA 2, e assim por diante.")
+    elif pela_folha:
         abertura = ("Voce e o revisor final de um canal de historias narradas "
                     "em video vertical. A imagem anexada e uma FOLHA DE "
                     f"CONTATO: {QUADROS} quadros do video inteiro, na ordem, "
@@ -243,14 +328,19 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
     else:
         abertura = ("Voce e o revisor final de um canal de historias narradas "
                     "em video vertical. Assista ao video anexado do comeco ao "
-                    "fim antes de responder.")
+                    "fim antes de responder. Cada cena ocupa o trecho de "
+                    "tempo indicado na lista abaixo: e por ele que voce sabe "
+                    "em que cena esta.")
+    lista = [f"CENA {c['n']} ({c['inicio']:.0f}s a {c['fim']:.0f}s): "
+             f"{str(c['narracao'])[:260]}" for c in cenas]
     linhas = [
         abertura,
         "",
         f"TITULO QUE VAI NO YOUTUBE: {getattr(video, 'titulo', '')}",
         "",
-        "NARRACAO COMPLETA DESTE VIDEO:",
-        narracao[:3500],
+        "AS CENAS DESTE VIDEO, na ordem, com o trecho e o que o narrador "
+        "fala em cada uma:",
+        *lista,
         "",
         "MEDIDAS JA CONFERIDAS (nao precisa julgar de novo): "
         f"{laudo.get('duracao', '?')}s de duracao, "
@@ -261,6 +351,8 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
         "REPROVE se, e somente se, houver algum destes:",
         "  - alguma imagem nao pertence a esta historia (assunto de outro "
         "video, cena que nao tem nada a ver com o que a narracao conta);",
+        "  - a imagem de uma cena nao mostra o que a narracao DAQUELA cena "
+        "conta: outras pessoas, outro lugar ou outro momento;",
         "  - alguma imagem e colagem, tela dividida ou grade de paineis "
         "(dois ou mais quadros dentro do mesmo quadro, com uma faixa "
         "separando);",
@@ -287,7 +379,12 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
         "FORMATO DA RESPOSTA, exatamente assim e nada mais:",
         f"Primeira linha: a palavra {APROVADO} ou a palavra {REPROVADO}.",
         "Se REPROVADO, as linhas seguintes: um problema por linha, comecando "
-        "com o numero do quadro quando for imagem (ex.: 'quadro 7: ...').",
+        "com o NUMERO DA CENA quando for imagem (ex.: 'cena 7: ...'). Use "
+        "sempre o numero da lista de cenas acima, nunca uma contagem sua.",
+        "Se um dos problemas for o protagonista mudar de aparencia, termine "
+        "com uma linha 'PROTAGONISTA: <como ele aparece na MAIORIA das "
+        "cenas, em ingles: etnia ou tom de pele, idade, cabelo, um traco do "
+        "rosto, roupa>'.",
         f"Se {APROVADO}, nao escreva mais nada.",
     ]
     return "\n".join(linhas)
@@ -307,12 +404,19 @@ def ler_veredito(texto: str) -> dict:
     primeira = str(texto).strip().splitlines()[0].upper()
     primeira = re.sub(r"[^A-Z]", "", primeira)
     if primeira.startswith(REPROVADO):
-        motivos = [L.strip(" -•\t") for L in str(texto).strip().splitlines()[1:]
-                   if L.strip(" -•\t")]
+        linhas = [L.strip(" -•\t") for L in str(texto).strip().splitlines()[1:]
+                  if L.strip(" -•\t")]
+        protagonista, motivos = "", []
+        for linha in linhas:
+            if linha.upper().startswith("PROTAGONISTA:"):
+                protagonista = linha.split(":", 1)[1].strip()
+            else:
+                motivos.append(linha)
         return {"aprovado": False, "motivos": motivos or ["sem motivo dado"],
-                "texto": str(texto).strip()}
+                "protagonista": protagonista, "texto": str(texto).strip()}
     if primeira.startswith(APROVADO):
-        return {"aprovado": True, "motivos": [], "texto": str(texto).strip()}
+        return {"aprovado": True, "motivos": [], "protagonista": "",
+                "texto": str(texto).strip()}
     raise SemParecer(
         "a resposta nao comeca com APROVADO nem com REPROVADO: "
         + limpo[:160])
@@ -383,9 +487,11 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
 
     caminho = Path(getattr(video, "caminho", video))
     pasta = Path(pasta_temp or caminho.parent)
-    folha = folha_de_contato(caminho, pasta / f"folha_p{int(parte):02d}.jpg")
+    destino = pasta / f"folha_p{int(parte):02d}.jpg"
+    folha, por_cena = _montar_folha(video, roteiro, parte, caminho, destino)
     log(f"[parecer] folha de contato: {folha.name} "
-        f"({folha.stat().st_size // 1024} KB)")
+        f"({folha.stat().st_size // 1024} KB, "
+        f"{'um quadro por cena' if por_cena else 'quadros no tempo'})")
 
     pergunta = prompt(video, roteiro, parte, laudo)
     try:
@@ -413,7 +519,7 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
                 vista = "folha de contato"
             cliente.enviar(pergunta if vista.startswith("video")
                            else prompt(video, roteiro, parte, laudo,
-                                       pela_folha=True))
+                                       pela_folha=True, por_cena=por_cena))
             resposta = cliente.esperar_resposta(timeout=900)
     except (SemParecer, ContaOcupada):
         # `ContaOcupada` sobe intacta: quem chamou decide trocar de provedor,
@@ -425,10 +531,15 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
     veredito["folha"] = str(folha)
     veredito["vista"] = vista
     veredito["provedor"] = provedor
+    # "cena" quando o numero aponta cena de verdade: video com a lista de
+    # trechos, ou folha com um quadro por cena. So assim o reparador confia.
+    veredito["numeracao"] = ("cena" if vista.startswith("video") or por_cena
+                             else "quadro")
     log(f"[parecer] {'APROVADO' if veredito['aprovado'] else 'REPROVADO'}"
         + (f": {veredito['motivos'][0][:90]}" if veredito["motivos"] else ""))
     return veredito
 
 
 __all__ = ["pedir", "prompt", "ler_veredito", "folha_de_contato",
+           "folha_por_cena",
            "SemParecer", "APROVADO", "REPROVADO"]

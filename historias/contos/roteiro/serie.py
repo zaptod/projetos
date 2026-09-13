@@ -711,6 +711,11 @@ def prompt_revisao(numero: int, cenas: int, config: dict | None = None) -> str:
         "perder nada, o problema nao e a cena — e o que ela devia contar.",
         "  - Explicacao do que ja se entendeu. Repetir e o que faz rolar o feed.",
         "  - Palavra que essa pessoa nao usaria falando.",
+        "  - IMAGEM QUE NAO MOSTRA A NARRACAO DA MESMA CENA. Leia a NARRACAO "
+        "e depois o prompt de IMAGEM da mesma cena: as mesmas pessoas, o "
+        "mesmo lugar, o mesmo momento. Se a narracao diz que ela ja esperava "
+        "sentada, a imagem nao pode mostra-la entrando pela porta. Se diz que "
+        "a sala estava cheia, a imagem nao mostra um corredor vazio.",
         "  - TERMO QUE DERRUBA O VIDEO. Toda vez que o texto NOMEIA a coisa "
         "pesada em vez de mostrar, troque: a cena fica, a palavra sai. O "
         "video nao pode morrer por causa de um substantivo.",
