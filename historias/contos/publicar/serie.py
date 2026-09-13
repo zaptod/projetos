@@ -19,6 +19,7 @@ o horario e a unica coisa que decide quando o video aparece.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from builds.publicar import tiktok as _rb_publicar_tiktok
@@ -63,11 +64,38 @@ def ja_publicado(video_id: str, plataforma: str = "youtube") -> dict | None:
     return None
 
 
+def id_do_youtube(url: str) -> str | None:
+    """O id do video dentro da URL, ou `None`.
+
+    ELE QUASE NUNCA VEM, e isso e o normal, nao a excecao. A publicacao vai
+    pelo Studio (navegador), e de la volta a string de status
+    `"publicado no YouTube"` — as vezes duplicada com `" | "` quando o video
+    saiu em dois pedacos. So o caminho da API devolve link de verdade.
+    Medido em 11/09/2026: 48 de 48 linhas deste ledger sem id nenhum, e por
+    isso `historias/outputs/_metricas/` nunca chegou a existir.
+    Quem preenche o resto e `metricas.reconciliar`, casando pelo TITULO.
+    """
+    achado = re.search(r"(?:youtu\.be/|v=)([A-Za-z0-9_-]{6,})", str(url or ""))
+    return achado.group(1) if achado else None
+
+
 def registrar(video, url: str, plataforma: str, quando_publica: str | None,
               extra: dict | None = None) -> dict:
     linha = {
         "quando": datetime.now().isoformat(timespec="seconds"),
         "plataforma": plataforma, "url": url,
+        # O campo passa a existir. NAO e ele que destrava a metrica deste
+        # canal — conferido: `metricas.reconciliar` usa `.get("youtube_id")`,
+        # que devolve `None` tanto para chave ausente quanto para vazia, e ja
+        # encontrava as 28 linhas de YouTube deste ledger. O que trava e o
+        # OAuth do canal, morto desde 31/08/2026.
+        #
+        # O que ele resolve e menor e vale: quando a publicacao vai pela API
+        # (que devolve link de verdade), o id entra NO ATO, sem depender de
+        # uma volta de reconciliacao casando titulo. E o ledger passa a
+        # descrever a si mesmo, em vez de ter um campo que so existe no
+        # ledger do outro canal.
+        "youtube_id": id_do_youtube(url) if plataforma == "youtube" else None,
         "video_id": video.id, "fonte_id": video.fonte_id,
         "parte": video.parte, "partes": video.partes,
         "titulo": video.titulo, "agendado_para": quando_publica,

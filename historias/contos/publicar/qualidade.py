@@ -132,6 +132,43 @@ def vistoriar_arquivo(caminho: Path) -> dict:
             "erros": erros, "avisos": avisos}
 
 
+def _erros_das_imagens(historia_id: str, roteiro: dict,
+                       parte: int) -> list[str]:
+    """O que as CENAS daquela parte tem de errado — e se o mp4 as reflete.
+
+    Duas perguntas que nenhuma medida do arquivo responde:
+
+    COLAGEM. Varridas as 440 imagens do disco em 11/09/2026, 44 eram colagem
+    de paineis, apesar de o prompt negativo pedir uma cena so em todas elas.
+    Num vertical cada painel fica com menos de metade da altura e a cena
+    seguinte volta a ser inteira: o video pisca entre dois formatos.
+
+    Quem cuida do resto ja existe: `utilizavel` recusa a cena que nao e
+    vertical, e a comparacao de datas mais abaixo pega o mp4 renderizado
+    ANTES de uma imagem ser refeita — sem ela, consertar a colagem no disco
+    nao mudaria o arquivo que sobe.
+    """
+    from ..imagens import composicao, fila
+    from ..video.timeline import cenas_da_parte
+
+    erros = []
+    for cena in cenas_da_parte(roteiro, parte):
+        arquivo = fila.caminho_da_cena(historia_id, cena["n"], parte)
+        if not arquivo.is_file():
+            continue
+        razao = composicao.motivo(arquivo)
+        if razao:
+            erros.append(f"cena {cena['n']}: {razao}")
+    return erros
+
+
+def _capa_existe(historia_id: str, roteiro: dict, parte: int) -> bool:
+    from ..pipeline.controller import OUTPUTS
+    from ..video.capa import caminho
+    total = len(roteiro.get("partes") or [])
+    return caminho(OUTPUTS / historia_id, parte, total).is_file()
+
+
 def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
                     roteiro: dict | None = None) -> dict:
     """A vistoria do arquivo MAIS o que so o roteiro sabe dizer."""
@@ -141,6 +178,29 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
 
     roteiro = roteiro or R.carregar(historia_id)
     laudo = vistoriar_arquivo(caminho)
+
+    # O TEXTO E MESMO DESTA HISTORIA? Nenhuma medida do arquivo responde isso.
+    # Em 11/09/2026 as partes 3 a 6 da historia_00005 foram ao disco com 56
+    # cenas de gameplay de Minecraft dentro de um drama sobre um homem que
+    # esconde da esposa quem paga o apartamento — e a parte 3 tinha ate a
+    # narracao de OUTRA historia. O video tinha audio, imagem, duracao e
+    # palavras por segundo perfeitos: passava em tudo o que se mede abaixo, e
+    # foi publicado no YouTube e no TikTok antes de alguem ver.
+    #
+    # Erro e nao aviso, pelo mesmo motivo da cena sem imagem: aviso e o que se
+    # le depois, erro e o que impede.
+    from ..roteiro import pertinencia
+    for motivo in pertinencia.problemas(cenas_da_parte(roteiro, parte)):
+        laudo["erros"].append(f"roteiro: {motivo}")
+
+    laudo["erros"].extend(_erros_das_imagens(historia_id, roteiro, parte))
+    if not _capa_existe(historia_id, roteiro, parte):
+        # AVISO e nao erro: a capa melhora o clique, mas um video sem ela
+        # ainda e um video — e todo o acervo anterior a 11/09/2026 esta
+        # assim. Barrar por capa pararia a grade para consertar vitrine.
+        laudo["avisos"].append(
+            "sem capa propria: o YouTube vai escolher um frame sozinho "
+            "(`main.py capas` desenha as que faltam)")
 
     # A NARRACAO CHEGOU INTEIRA? Nenhuma medida do arquivo sozinha responde
     # isso: um video com 85% da fala faltando tem audio, tem imagem, tem
@@ -216,6 +276,44 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
                   "titulo": R.titulo_da_parte(roteiro, parte),
                   "ok": not laudo["erros"]})
     return laudo
+
+
+def liberado(video, roteiro: dict | None = None) -> dict:
+    """ESTE video pode sair? A resposta unica, para todo mundo consultar.
+
+    Havia tres donos da mesma pergunta e duas respostas. A auditoria
+    (`panorama.auditoria.qualidade`) chamava so `vistoriar_parte`; o freio de
+    estoque (`agenda.aprovados_no_estoque`) somava o veto lembrado da IA; e o
+    publicador fazia um terceiro arranjo. Medido em 11/09/2026: a tela dizia
+    "0 barrados" enquanto o freio contava um video reprovado pela IA — e nao
+    havia como saber qual das duas estava certa.
+
+    SO LE, e isso e requisito, nao detalhe: o `panorama` tem regra escrita de
+    nao tocar rede nem navegador. Por isso aqui entra `parecer.lembrado` (que
+    le um arquivo) e nunca `parecer.pedir` (que abre o Gemini). Quem PERGUNTA
+    e o publicador, uma vez, no horario; os outros dois LEEM o que ele achou.
+    """
+    from ..roteiro import roteiro as R
+
+    if roteiro is None:
+        roteiro = R.carregar(video.fonte_id)
+    laudo = vistoriar_parte(video.fonte_id, video.parte, video.caminho,
+                            roteiro)
+    erros = list(laudo.get("erros") or [])
+    fonte = "vistoria"
+    if not erros:
+        try:
+            from . import parecer
+            ficha = parecer.lembrado(video)
+        except Exception:                                      # noqa: BLE001
+            ficha = None
+        if ficha and not ficha.get("aprovado"):
+            erros.append("a IA reprovou: "
+                         + "; ".join(ficha.get("motivos") or []))
+            fonte = "parecer"
+    return {"ok": not erros, "erros": erros,
+            "avisos": list(laudo.get("avisos") or []),
+            "fonte": fonte, "laudo": laudo}
 
 
 def vistoriar_serie(historia_id: str, videos: list) -> dict:

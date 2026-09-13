@@ -129,6 +129,12 @@ GEMINI = {
         "a:has-text('Fazer login')",
     ],
     "anexo_botao": [
+        # O rotulo ATUAL, medido em 11/09/2026 sondando a pagina: o botao de
+        # `+` do compositor chama-se "Envio e ferramentas". Nenhum dos quatro
+        # abaixo casava mais, e por isso `anexar` dizia "nao achei onde
+        # anexar" — o input de arquivo so existe no DOM depois deste clique.
+        "button[aria-label='Envio e ferramentas']",
+        "button[aria-label*='Envio e ferramentas' i]",
         "button[aria-label*='Open upload file menu' i]",
         "button[aria-label*='Adicionar arquivos' i]",
         "button[aria-label*='Add files' i]",
@@ -136,6 +142,23 @@ GEMINI = {
     ],
     "anexo_input": [
         "input[type='file']",
+    ],
+    # O Gemini pede consentimento de DIREITOS a cada video enviado, num
+    # dialogo MODAL. Enquanto ele esta aberto o botao de enviar existe,
+    # aparece habilitado e o clique nao faz nada — foi o que fez tres
+    # tentativas seguidas morrerem em "cliquei em enviar mas nada mudou".
+    # O `data-test-id` e o seletor certo: nao depende do idioma.
+    "consentimento_video": [
+        "[data-test-id='video-upload-consent-dialog-agree-button'] button",
+        "button[aria-label='Concordo']",
+        "button[aria-label='I agree']",
+    ],
+    # A prova de que o VIDEO subiu inteiro nao e a miniatura: e a duracao
+    # aparecer ao lado do nome do arquivo. A miniatura sai em 10 s, a
+    # duracao em ~30 s, e antes dela o modelo responde sobre um video que
+    # ainda nao recebeu.
+    "anexo_duracao": [
+        "span.gds-emphasized-body-s",
     ],
     "anexo_prova": [
         "button[aria-label*='Remove' i]",

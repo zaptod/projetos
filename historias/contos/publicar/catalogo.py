@@ -54,6 +54,10 @@ class Video:
     variante: str = "A"
     bytes: int = 0
     quando: float = 0.0
+    # `youtube.py` (API) e `youtube_web.py` (Studio) ja leem `video.capa` e
+    # sobem a miniatura — o canal de builds usa isso desde a Onda 15D. Faltava
+    # so o catalogo de historias dizer onde ela esta.
+    capa: Path | None = None
 
     @property
     def vertical(self) -> bool:
@@ -71,6 +75,17 @@ class Video:
     def descricao_completa(self) -> str:
         tags = " ".join(self.hashtags)
         return f"{self.descricao}\n\n{tags}".strip() if tags else self.descricao
+
+
+def _capa_da_parte(pasta: Path, parte: int, total_partes: int) -> Path | None:
+    """A miniatura daquela parte, se o render ja a desenhou.
+
+    `None` para todo video anterior a 11/09/2026 — eles subiram sem capa e
+    continuam assim. Rode `main.py capas` para desenhar as que faltam.
+    """
+    from ..video.capa import caminho
+    alvo = caminho(pasta, parte, total_partes)
+    return alvo if alvo.is_file() else None
 
 
 def _formatar(modelo: str, campos: dict) -> str:
@@ -149,7 +164,8 @@ def listar(config: dict | None = None) -> list:
                 titulo=titulo, descricao=descricao,
                 hashtags=list(config.get("hashtags", {}).get("historia", [])),
                 fonte_id=pasta.name, bytes=arquivo.stat().st_size,
-                quando=arquivo.stat().st_mtime))
+                quando=arquivo.stat().st_mtime,
+                capa=_capa_da_parte(pasta, parte, total_partes)))
     # Mais nova primeiro, mas as partes de uma serie SEMPRE em ordem: e a
     # ordem em que elas tem que ir ao ar.
     videos.sort(key=lambda v: (-v.quando if v.partes == 1 else 0,

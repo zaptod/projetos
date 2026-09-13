@@ -22,6 +22,7 @@ prompt gigante.
 from __future__ import annotations
 
 import random
+import re
 import time
 from pathlib import Path
 from builds.identity import browser as _rb_identity_browser
@@ -263,13 +264,26 @@ class ClienteLLM:
 
     def _confirmou_envio(self, campo, espera: float = 25.0) -> bool:
         """Prova de que o turno comecou: o campo esvaziou OU apareceu o
-        botao de parar (que so existe enquanto o modelo escreve)."""
+        botao de parar (que so existe enquanto o modelo escreve).
+
+        O CONSENTIMENTO ENTRA AQUI, e nao ao anexar. Descoberto olhando a
+        tela em 11/09/2026: com video anexado, o Gemini so abre o dialogo de
+        direitos DEPOIS do clique em enviar. A mensagem fica pendurada
+        esperando o "Concordo", o campo continua com o texto, e daqui de
+        dentro isso e indistinguivel de um envio que nao pegou — foram
+        quatro tentativas morrendo em "cliquei em enviar mas nada mudou".
+
+        Aceitar aqui cobre qualquer envio, com anexo ou sem: o dialogo so
+        existe quando ha video, e procurar por ele custa uma consulta de
+        seletor por volta do laco.
+        """
         fim = time.monotonic() + espera
         while time.monotonic() < fim:
             if sel.encontrar(self.page, self.sel["parar"], timeout=0.4) is not None:
                 return True
             if len(self._texto_do_campo(campo).strip()) < 5:
                 return True
+            self._aceitar_consentimento(espera=0.3)
             time.sleep(0.4)
         return False
 
@@ -407,6 +421,88 @@ class ClienteLLM:
             f"em {espera:.0f}s. Pode ser arquivo grande demais para a conta, "
             "ou o site mudou a tela de anexo.")
 
+    def anexar_video(self, caminho, espera: float = 900.0) -> str:
+        """Sobe um VIDEO e so volta quando ele esta pronto para a pergunta.
+
+        Video nao e anexo grande: e outro fluxo. Duas coisas o separam, e
+        ignorar qualquer uma delas faz o envio falhar em silencio — medido em
+        11/09/2026, tres tentativas seguidas morreram em "cliquei em enviar
+        mas nada mudou na tela":
+
+        1. CONSENTIMENTO. O Gemini abre um dialogo MODAL ("Confira se voce tem
+           os direitos sobre os conteudos que enviar"). Enquanto ele esta
+           aberto o botao de enviar existe, reporta `disabled: false` e o
+           clique nao faz nada.
+        2. A DURACAO E A PROVA, nao a miniatura. A miniatura sai em ~10 s; a
+           duracao (`1:47`) aparece em ~30 s, e e ela que diz que o arquivo
+           chegou inteiro. Perguntar entre uma e outra faz o modelo responder
+           sobre um video que ele nao recebeu — e a resposta parece boa.
+
+        Devolve a duracao lida na tela.
+        """
+        alvo = Path(caminho)
+        if not alvo.is_file():
+            raise LLMFalhou(f"o video nao existe: {alvo}")
+
+        campo = sel.encontrar_oculto(self.page, self.sel["anexo_input"],
+                                     timeout=3.0)
+        if campo is None:
+            botao = sel.encontrar(self.page, self.sel["anexo_botao"],
+                                  timeout=8.0)
+            if botao is not None:
+                try:
+                    botao.click(timeout=8000)
+                except Exception:                              # noqa: BLE001
+                    pass
+                _pausa(self.rng, 0.4, 0.9)
+            campo = sel.encontrar_oculto(self.page, self.sel["anexo_input"],
+                                         timeout=8.0)
+        if campo is None:
+            raise LLMFalhou(
+                f"nao achei onde anexar video no {self.provedor}.")
+        campo.set_input_files(str(alvo))
+        self.log(f"[{self.provedor}] {alvo.name} entregue "
+                 f"({alvo.stat().st_size // (1024 * 1024)} MB).")
+
+        # NAO aceita consentimento aqui: ele so aparece depois do ENVIO.
+        # Quem trata e `_confirmou_envio`.
+        return self._esperar_duracao(espera)
+
+    def _aceitar_consentimento(self, espera: float = 25.0) -> bool:
+        """Fecha o aviso de direitos. Best-effort: em algumas contas ele nao
+        aparece, e nao aparecer nao e erro."""
+        botao = sel.encontrar(self.page,
+                              self.sel.get("consentimento_video") or [],
+                              timeout=espera)
+        if botao is None:
+            return False
+        try:
+            botao.click(timeout=8000)
+        except Exception:                                      # noqa: BLE001
+            return False
+        self.log(f"[{self.provedor}] aviso de direitos aceito.")
+        _pausa(self.rng, 0.5, 1.0)
+        return True
+
+    def _esperar_duracao(self, espera: float) -> str:
+        padrao = re.compile(r"^\d+:\d{2}$")
+        fim = time.monotonic() + float(espera)
+        while time.monotonic() < fim:
+            for seletor in self.sel.get("anexo_duracao") or []:
+                try:
+                    textos = self.page.locator(seletor).all_text_contents()
+                except Exception:                              # noqa: BLE001
+                    continue
+                for texto in textos:
+                    limpo = str(texto).strip()
+                    if padrao.match(limpo):
+                        self.log(f"[{self.provedor}] video pronto ({limpo}).")
+                        return limpo
+            time.sleep(3.0)
+        raise LLMFalhou(
+            f"o video nao terminou de subir em {espera / 60:.0f} min "
+            "(a duracao nunca apareceu ao lado do nome do arquivo).")
+
     def _provas_de_anexo(self) -> int:
         """Quantas miniaturas de anexo estao na tela agora."""
         total = 0
@@ -428,9 +524,22 @@ class ClienteLLM:
         return self.esperar_resposta(timeout)
 
 
+class ContaOcupada(LLMFalhou):
+    """A conta esta com outro processo. E diferente de "deu erro": quem
+    chama pode tentar OUTRO provedor em vez de desistir do turno."""
+
+
 def abrir_cliente(provedor: str, *, headless: bool = False,
-                  ajustes: dict | None = None, log=print):
-    """Contexto: `with abrir_cliente('chatgpt') as cliente:`."""
+                  ajustes: dict | None = None, esperar: float = 10.0,
+                  log=print):
+    """Contexto: `with abrir_cliente('chatgpt') as cliente:`.
+
+    `esperar` e quanto se espera pela conta. O padrao curto serve a quem tem
+    o dia inteiro (a geracao); quem tem hora marcada, como o parecer antes de
+    publicar, passa um valor maior — mas nao adianta esperar muito: a geracao
+    segura a conta pela historia INTEIRA, que leva horas. Contra isso o que
+    funciona e trocar de provedor, nao ter paciencia.
+    """
     from contextlib import contextmanager
 
     @contextmanager
@@ -438,9 +547,9 @@ def abrir_cliente(provedor: str, *, headless: bool = False,
         browser = _rb_identity_browser
         travas = _rb_travas
         nome_trava = travas.do_perfil(provedor, "geral")
-        with travas.trava(nome_trava, esperar=10.0) as minha:
+        with travas.trava(nome_trava, esperar=float(esperar)) as minha:
             if not minha:
-                raise LLMFalhou(
+                raise ContaOcupada(
                     f"a conta do {provedor} ({nome_trava}) esta em uso por "
                     "outra geracao agora. Espere ela terminar, ou cadastre "
                     "outra conta na pagina Contas para rodar em paralelo.")
