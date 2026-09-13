@@ -198,8 +198,9 @@ publicado. Em builds casou 18 de 18. Essa é a única confirmação real de que
 
 ### O que ainda não existe aqui
 
-- Ninguém confere o **TikTok** depois do envio. O ledger registra a frase de
-  status que o navegador devolveu, e é só isso que se sabe.
+- O **TikTok** só é conferido uma vez por dia, na coleta de métricas: o post
+  que casa com o ledger prova que está no ar. Entre o envio e essa coleta, o
+  que se sabe é a frase de status que o navegador devolveu.
 - O parecer do Gemini cobre **só histórias**. Nenhum build é assistido.
 - Um vídeo já publicado nunca é reavaliado. O erro descoberto depois do ar
   fica no ar até alguém apagar a mão.
@@ -277,6 +278,33 @@ não numa tarefa nova, porque uma nona coisa para endurecer contra bateria e
 horário perdido não valeria a pena. Roda **uma vez por dia**, no primeiro
 disparo, e sai calada nos outros sete: views não mudam de hora em hora.
 
+### O TikTok, pelo Studio
+
+A API oficial do TikTok entrega views, curtidas, comentários e
+compartilhamentos, e nada de tempo assistido nem retenção — além de exigir
+app registrado e revisão. O TikTok Studio, aberto com o mesmo login que já
+publica, entrega tudo isso e mais. Então a coleta abre o Studio e **escuta o
+JSON que a própria página carrega**, sem ler a tela:
+
+| resposta da página | o que traz |
+|---|---|
+| lista de conteúdo | todos os posts: hora exata, legenda, duração, views, curtidas, comentários, compartilhamentos, salvamentos |
+| análise de cada vídeo | tempo médio assistido, taxa de conclusão, curva de retenção, origem do tráfego, seguidores ganhos |
+
+O TikTok não devolve id ao publicar, então cada post é casado com o ledger
+**pela hora**: o Studio registra a postagem de 1 a 7 segundos antes do que o
+ledger anota, e a legenda confirma a parte ("Parte 3 de 6"). Medido em
+13/09/2026: 21 de 21 em histórias e 19 de 19 em builds.
+
+A análise por vídeo custa uma página cada, 8,8 segundos medidos, e roda
+dentro da tarefa das 06:07 com o perfil do TikTok travado. Por isso ela tem
+orçamento: só vídeos da última semana, nunca duas vezes no mesmo dia, no
+máximo 40 por canal, e quem nunca foi analisado passa na frente. Quem fica
+de fora mantém a análise anterior em vez de perdê-la. Tudo vai para `_metricas_tiktok/`, **separado** da
+pasta do YouTube, porque os experimentos indexam aquela pelo `youtube_id`.
+Roda na mesma atualização diária do YouTube, num `try` próprio: login caído
+no TikTok não apaga a métrica do YouTube.
+
 ### Como saber se está funcionando
 
 - `historias/outputs/_metricas/` deixa de estar vazia.
@@ -285,8 +313,9 @@ disparo, e sai calada nos outros sete: views não mudam de hora em hora.
 
 ### O que ainda não existe aqui
 
-- **TikTok não tem métrica nenhuma.** Metade das publicações do sistema é
-  invisível para qualquer análise.
+- **A métrica do TikTok ainda não entra nos experimentos nem no painel.** Ela
+  é coletada e gravada (veja abaixo), mas quem compara braços e formatos lê
+  só a pasta do YouTube.
 - 16 dos 48 arquivos de builds carregam um erro `channel==MINE` da API, e
   ninguém os repara.
 - A comparação entre experimentos (`builds/experimentos.py`) já sabe medir

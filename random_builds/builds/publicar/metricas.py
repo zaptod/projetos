@@ -463,6 +463,16 @@ def atualizar_tudo(log=print) -> dict:
         except Exception as exc:                              # noqa: BLE001
             log(f"[{canal}] metrica nao atualizou: {exc}")
             saida[canal] = []
+        # O TIKTOK NUM `try` PROPRIO. Ele le o Studio pelo navegador, e login
+        # caido la e coisa comum — nao pode custar a metrica do YouTube, que
+        # ja foi gravada acima. Chave separada para quem conta quantos videos
+        # cada lado atualizou nao somar plataforma com plataforma.
+        try:
+            from . import tiktok_metricas
+            saida[f"{canal}_tiktok"] = tiktok_metricas.coletar(canal, log=log)
+        except Exception as exc:                              # noqa: BLE001
+            log(f"[{canal}] metrica do TikTok nao atualizou: {exc}")
+            saida[f"{canal}_tiktok"] = []
     return saida
 
 
