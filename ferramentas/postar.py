@@ -1150,7 +1150,11 @@ def main(argv=None) -> int:
     # publicaram ZERO eram justamente as que precisavam avisar.
     if not args.ver:
         avisar(resultados)
-    _atualizar_metricas()
+    # A METRICA SAIU DAQUI em 13/09/2026. A coleta do TikTok segura o Studio
+    # por ate 12 minutos, e rodava na postagem das 06:07, no comeco do dia.
+    # Agora ela e servico da madrugada (`agenda._servico_da_noite`), junto com
+    # o resto do trabalho pesado. `_atualizar_metricas` fica para quem quiser
+    # rodar na mao.
 
     # O CODIGO DE SAIDA DIZ A VERDADE. Era `return 0` fixo, e o Agendador
     # registrou SUCESSO nas tres rodadas que publicaram nada — o historico do

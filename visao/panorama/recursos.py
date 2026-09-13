@@ -176,14 +176,27 @@ def completo() -> dict:
     return dados
 
 
+def _horas_de_criacao() -> list:
+    """Os disparos da criacao, lidos do config da agenda.
+
+    Desde 13/09/2026 eles sao de madrugada. A lista fixa com os oito horarios
+    do dia acusaria oito tarefas sumidas e deixaria as sete reais sem
+    conferencia nenhuma.
+    """
+    try:
+        from contos.pipeline import agenda
+        return list(agenda.carregar()["horas"])
+    except Exception:                                          # noqa: BLE001
+        return []
+
+
 def _agendador() -> dict:
     try:
-        from builds import tarefas_windows
+        from builds import grade, tarefas_windows
     except Exception as erro:                                  # noqa: BLE001
         return {"erro": f"{type(erro).__name__}: {erro}"}
-    nomes = ([f"Historias_auto_{h:02d}" for h in (6, 7, 8, 10, 12, 15, 17, 20)]
-             + [f"NeuralFights_postar_{h:02d}"
-                for h in (6, 7, 8, 10, 12, 15, 17, 20)]
+    nomes = ([f"Historias_auto_{h:02d}" for h in _horas_de_criacao()]
+             + [f"NeuralFights_postar_{h:02d}" for h in grade.HORAS]
              + ["NeuralFights_bot_telegram"])
     faltando, fracas = [], []
     for nome in nomes:

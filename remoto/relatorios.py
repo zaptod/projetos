@@ -390,8 +390,16 @@ def _linhas_do_agendador() -> list[str]:
     # das oito que de fato publicam. Alerta que sempre acende e alerta que
     # ninguem le, e um instrumento cego achando que esta olhando.
     #
-    # A lista vem de `grade.HORAS`, que ja e a fonte unica dos horarios.
-    nomes = ([f"Historias_auto_{h:02d}" for h in grade.HORAS]
+    # A postagem vem de `grade.HORAS`, a fonte unica dos horarios de publicar.
+    # A CRIACAO vem do config da agenda: desde 13/09/2026 ela roda de
+    # madrugada, e conferir os oito horarios do dia acusaria oito tarefas
+    # sumidas todo dia.
+    try:
+        from contos.pipeline import agenda
+        horas_de_criacao = list(agenda.carregar()["horas"])
+    except Exception:                                          # noqa: BLE001
+        horas_de_criacao = []
+    nomes = ([f"Historias_auto_{h:02d}" for h in horas_de_criacao]
              + [f"NeuralFights_postar_{h:02d}" for h in grade.HORAS]
              + ["NeuralFights_bot_telegram"])
     fracas, sumidas = [], []

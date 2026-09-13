@@ -43,6 +43,52 @@ TRAVA = "historias__auto"
 HORAS_VALIDAS = range(24)
 
 
+# A JANELA DO TRABALHO PESADO. Pedido dele em 13/09/2026: "fazer o trabalho
+# pesado de madrugada e deixar os ajustes e deliverys para o dia". Pesado e o
+# que abre navegador e segura a maquina por horas: roteiro, imagem, render,
+# parecer do Gemini, conserto, metrica do TikTok. De dia a maquina so publica
+# e avisa.
+#
+# Config sem `janela_pesada` roda a qualquer hora, como antes: e o que os
+# testes e quem roda na mao esperam.
+def na_janela(hora: int, janela: dict | None) -> bool:
+    """A hora cheia `hora` esta dentro da janela? Atravessa a meia-noite."""
+    if not janela:
+        return True
+    inicio, fim = int(janela["inicio"]) % 24, int(janela["fim"]) % 24
+    if inicio == fim:
+        return True
+    if inicio < fim:
+        return inicio <= int(hora) < fim
+    return int(hora) >= inicio or int(hora) < fim
+
+
+def minutos_ate_fechar(agora, janela: dict | None) -> float:
+    """Quanto falta para a janela fechar. Sem janela, tempo de sobra."""
+    from datetime import timedelta
+
+    if not janela:
+        return float("inf")
+    fim = int(janela["fim"]) % 24
+    fechamento = agora.replace(hour=fim, minute=0, second=0, microsecond=0)
+    if fechamento <= agora:
+        fechamento += timedelta(days=1)
+    return (fechamento - agora).total_seconds() / 60.0
+
+
+def chave_da_noite(agora, janela: dict | None) -> str:
+    """A data em que a noite COMECOU.
+
+    23h do dia 12 e 3h do dia 13 sao a mesma noite, "2026-09-12". Pela data
+    do calendario seriam duas, e o que e "uma vez por noite" rodaria duas.
+    """
+    from datetime import timedelta
+
+    if janela and int(agora.hour) < int(janela["fim"]) % 24:
+        return (agora - timedelta(days=1)).strftime("%Y-%m-%d")
+    return agora.strftime("%Y-%m-%d")
+
+
 def carregar(caminho: Path | None = None) -> dict:
     with open(caminho or CONFIG, encoding="utf-8-sig") as fh:
         dados = json.load(fh)
@@ -180,7 +226,8 @@ def mensagem(resultado: dict, segundos: float) -> str | None:
     """
     if resultado.get("feito") != "historia":
         motivo = resultado.get("motivo") or ""
-        if motivo in ("ja rodando", "pausado", "agenda desligada",
+        if motivo in ("ja rodando", "pausado", "agenda desligada", "fora da janela",
+                    "sem tempo na janela",
                       "estoque cheio"):
             return None
         return (f"❌ *a criacao automatica falhou*\n{motivo}\n"
@@ -274,8 +321,11 @@ def teto_de_estoque(config: dict | None = None) -> int:
     config = config if config is not None else carregar()
     if "teto_de_estoque" in config and config["teto_de_estoque"] is not None:
         return int(config["teto_de_estoque"])
-    horas = config.get("horas") or []
-    return len(horas) or 8
+    # Da GRADE DE PUBLICACAO, e nao dos disparos de criacao. Eram a mesma
+    # lista ate 13/09/2026; com a criacao so de madrugada (7 disparos), contar
+    # os disparos daria teto 7 para uma grade que consome 8 por dia.
+    from builds import grade
+    return len(grade.HORAS) or 8
 
 
 def dias_de_estoque_novo() -> int:
@@ -418,6 +468,16 @@ def rodar(*, config: dict | None = None, headless: bool = False,
             "nada; o proximo disparo tenta de novo.")
         return {"feito": "nada", "motivo": "pausado"}
 
+    janela = config.get("janela_pesada")
+    if not na_janela(agora.hour, janela):
+        # A tarefa perdida de madrugada roda quando o PC volta
+        # (`StartWhenAvailable`), de manha, justamente a hora em que ele quer
+        # a maquina livre. Aqui ela percebe e sai.
+        log(f"[auto] fora da janela do trabalho pesado "
+            f"({int(janela['inicio']):02d}h as {int(janela['fim']):02d}h). "
+            "Saindo sem fazer nada.")
+        return {"feito": "nada", "motivo": "fora da janela"}
+
     with travas.trava(TRAVA, esperar=0.0) as minha:
         if not minha:
             log("[auto] ja tem uma rodada em andamento. Saindo — uma historia "
@@ -450,7 +510,8 @@ def rodar(*, config: dict | None = None, headless: bool = False,
                     avisar(mensagem(resultado, time.monotonic() - comeco))
                 raise
             if resultado.get("erros") or resultado.get("motivo") not in (
-                    None, "", "ja rodando", "pausado", "agenda desligada",
+                    None, "", "ja rodando", "pausado", "agenda desligada", "fora da janela",
+                    "sem tempo na janela",
                     "estoque cheio"):
                 # TODO ERRO NO MESMO LUGAR. `atividade.jsonl` e o ledger de
                 # onde o bot tira os alertas e onde a apuracao automatica
@@ -467,10 +528,92 @@ def rodar(*, config: dict | None = None, headless: bool = False,
             sys.stdout, sys.stderr = anterior_out, anterior_err
 
 
+def _servico_da_noite(config: dict, headless: bool, log) -> None:
+    """O que so a madrugada faz. Nunca derruba a rodada: e servico.
+
+    1. METRICA do YouTube e do TikTok, uma vez por noite. Estava na primeira
+       postagem do dia, as 06:07, e a coleta do TikTok segura o Studio por
+       ate 12 minutos: era trabalho pesado caindo na hora em que o dia comeca.
+    2. PARECER DO GEMINI em todo video pendente sem veredito numerado por
+       cena. De dia a postagem so LE o que a madrugada decidiu.
+    """
+    from datetime import datetime as _relogio
+
+    janela = config.get("janela_pesada")
+    try:
+        from builds.publicar import metricas
+        chave = f"noite-{chave_da_noite(_relogio.now(), janela)}"
+        if metricas.atualizar_uma_vez_por_dia(log=log, chave=chave):
+            log("[auto] metricas da noite atualizadas.")
+    except Exception as exc:                                   # noqa: BLE001
+        log(f"[auto] a metrica da noite falhou: {type(exc).__name__}: {exc}")
+    if config.get("revisar_estoque_a_noite", True):
+        try:
+            revisar_estoque(config, headless=headless, log=log)
+        except Exception as exc:                               # noqa: BLE001
+            log(f"[auto] a revisao do estoque falhou: "
+                f"{type(exc).__name__}: {exc}")
+
+
+def revisar_estoque(config: dict, *, headless: bool = False,
+                    log=print) -> dict:
+    """Parecer do Gemini para cada video pendente sem veredito numerado.
+
+    Para quando a janela aperta. Video que ja tem veredito por cena e pulado,
+    aprovado ou nao: o aprovado esta pronto e o reprovado e do reparador.
+    """
+    from datetime import datetime as _relogio
+
+    from ..publicar import catalogo, parecer, qualidade, serie
+    from ..roteiro import roteiro as R
+    from . import conserto_de_cena as C
+
+    janela = config.get("janela_pesada")
+    margem = float(config.get("minutos_minimos") or 90)
+    ja = {l.get("video_id") for l in serie.publicados() if l.get("url")}
+    pendentes = [v for v in catalogo.listar()
+                 if v.perfil == "celular" and v.id not in ja]
+    revisados = aprovados = pulados = 0
+    for video in pendentes:
+        if minutos_ate_fechar(_relogio.now(), janela) < margem:
+            log("[auto] a janela esta fechando; paro a revisao do estoque.")
+            break
+        if C.confiavel(parecer.lembrado(video)):
+            pulados += 1
+            continue
+        roteiro = R.carregar(video.fonte_id)
+        laudo = qualidade.vistoriar_parte(video.fonte_id, video.parte,
+                                          video.caminho, roteiro)
+        if not laudo.get("ok"):
+            pulados += 1
+            continue
+        try:
+            veredito = parecer.pedir(video, roteiro, video.parte, laudo=laudo,
+                                     headless=headless, log=log)
+        except parecer.SemParecer as exc:
+            log(f"[auto] {video.id}: sem parecer agora ({exc}).")
+            continue
+        revisados += 1
+        aprovados += 1 if veredito.get("aprovado") else 0
+    if revisados:
+        log(f"[auto] revisei {revisados} video(s) do estoque de madrugada; "
+            f"{aprovados} aprovado(s).")
+    return {"revisados": revisados, "aprovados": aprovados,
+            "pulados": pulados}
+
+
 def _trabalhar(config: dict, headless: bool, log) -> dict:
     from .controller import Pipeline
 
     pipeline = Pipeline()
+    janela = config.get("janela_pesada")
+    if janela:
+        sobra = minutos_ate_fechar(datetime.now(), janela)
+        if sobra < float(config.get("minutos_minimos") or 90):
+            log(f"[auto] faltam {sobra:.0f} min para a janela fechar. Nao "
+                "comeco trabalho pesado: ele invadiria o dia.")
+            return {"feito": "nada", "motivo": "sem tempo na janela"}
+        _servico_da_noite(config, headless, log)
 
     if config.get("retomar_incompletas", True):
         pendentes = incompletas()
@@ -502,7 +645,8 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
     # ninguem conserta faz a maquina produzir sem parar para cobrir um
     # buraco que continua ali.
     from . import reparo
-    conserto = reparo.rodada(headless=headless, log=log)
+    conserto = reparo.rodada(limite=int(config.get("reparos_por_rodada") or 2),
+                             headless=headless, log=log)
     if conserto["barrados"]:
         log(f"[auto] {conserto['consertados']} de {conserto['barrados']} "
             "video(s) barrado(s) consertados.")
@@ -529,6 +673,14 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
             return {"feito": "nada", "motivo": "estoque cheio",
                     "estoque": estoque}
 
+    if janela:
+        sobra = minutos_ate_fechar(datetime.now(), janela)
+        precisa = float(config.get("minutos_por_historia") or 240)
+        if sobra < precisa:
+            log(f"[auto] faltam {sobra:.0f} min para a janela fechar e uma "
+                f"historia leva ~{precisa:.0f}. Nao comeco outra: ela "
+                "invadiria o dia.")
+            return {"feito": "nada", "motivo": "sem tempo na janela"}
     log(f"[auto] criando historia nova via {config.get('provedor')} "
         f"({config.get('partes')} partes de {config.get('cenas_por_parte')} "
         "cenas)...")

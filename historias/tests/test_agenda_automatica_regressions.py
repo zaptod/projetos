@@ -31,7 +31,9 @@ from contos.pipeline import agenda, tarefas                    # noqa: E402
 RAIZ = Path(__file__).resolve().parents[1]
 
 # O que ele pediu. Se alguém mexer no config sem querer, o teste conta.
-HORAS_PEDIDAS = [6, 7, 8, 10, 12, 15, 17, 20]
+# De madrugada desde 13/09/2026: "fazer o trabalho pesado de madrugada e
+# deixar os ajustes e deliverys para o dia". `carregar` devolve ordenado.
+HORAS_PEDIDAS = [0, 1, 2, 3, 4, 5, 23]
 
 
 class ConfigTests(unittest.TestCase):
@@ -131,7 +133,12 @@ class UmaDeCadaVezTests(unittest.TestCase):
 
         travas.trava = _ocupada
         self.addCleanup(setattr, travas, "trava", original)
-        resultado = agenda.rodar(tela=None)
+        # SEM JANELA: o config real so deixa rodar de madrugada, e este teste
+        # pergunta sobre a TRAVA. Rodando de dia com o config real, a rodada
+        # sairia "fora da janela" antes de chegar nela, e o teste dependeria
+        # do relogio.
+        config = {**agenda.carregar(), "janela_pesada": None}
+        resultado = agenda.rodar(config=config, tela=None)
         self.assertEqual(resultado["motivo"], "ja rodando")
         self.assertEqual(self.chamou, [], "nao podia ter comecado a trabalhar")
 
@@ -231,12 +238,62 @@ class IncompletasTests(unittest.TestCase):
                         corpo.index("pipeline.gerar("))
 
 
+class JanelaPesadaTests(unittest.TestCase):
+    """Pedido de 13/09/2026: trabalho pesado de madrugada, entrega de dia."""
+
+    JANELA = {"inicio": 23, "fim": 6}
+
+    def test_a_janela_atravessa_a_meia_noite(self):
+        for hora in (23, 0, 3, 5):
+            self.assertTrue(agenda.na_janela(hora, self.JANELA), hora)
+        for hora in (6, 7, 12, 22):
+            self.assertFalse(agenda.na_janela(hora, self.JANELA), hora)
+
+    def test_sem_janela_roda_a_qualquer_hora(self):
+        self.assertTrue(agenda.na_janela(14, None))
+
+    def test_23h_e_3h_sao_a_mesma_noite(self):
+        """Senao a metrica de "uma vez por noite" rodaria duas."""
+        from datetime import datetime
+        self.assertEqual(
+            agenda.chave_da_noite(datetime(2026, 9, 12, 23, 20), self.JANELA),
+            agenda.chave_da_noite(datetime(2026, 9, 13, 3, 20), self.JANELA))
+
+    def test_quanto_falta_para_fechar(self):
+        from datetime import datetime
+        self.assertEqual(40, agenda.minutos_ate_fechar(
+            datetime(2026, 9, 13, 5, 20), self.JANELA))
+        self.assertEqual(400, agenda.minutos_ate_fechar(
+            datetime(2026, 9, 12, 23, 20), self.JANELA))
+
+    def test_a_agenda_instalada_e_toda_de_madrugada(self):
+        config = agenda.carregar()
+        janela = config["janela_pesada"]
+        self.assertEqual((23, 6), (janela["inicio"], janela["fim"]))
+        for hora in config["horas"]:
+            self.assertTrue(agenda.na_janela(hora, janela), hora)
+
+    def test_fora_da_janela_sai_antes_da_trava_e_nao_e_erro(self):
+        """A tarefa perdida roda quando o PC volta, de manha: tem de sair."""
+        fonte = Path(agenda.__file__).read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def rodar("):]
+        self.assertLess(corpo.index("na_janela("),
+                        corpo.index("travas.trava("))
+        self.assertGreaterEqual(fonte.count('"fora da janela"'), 3)
+
+    def test_historia_nova_so_comeca_se_couber_na_janela(self):
+        fonte = Path(agenda.__file__).read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def _trabalhar("):]
+        self.assertLess(corpo.index("minutos_por_historia"),
+                        corpo.index("pipeline.gerar("))
+
+
 class TarefaDoWindowsTests(unittest.TestCase):
     def test_uma_tarefa_por_hora_com_nome_da_familia(self):
         nomes = [tarefas.nome_da_tarefa(h) for h in HORAS_PEDIDAS]
         self.assertEqual(len(set(nomes)), len(HORAS_PEDIDAS))
         self.assertTrue(all(n.startswith(tarefas.PREFIXO) for n in nomes))
-        self.assertIn("Historias_auto_06", nomes)
+        self.assertIn("Historias_auto_23", nomes)
 
     def test_o_lancador_entra_na_pasta_certa_e_chama_o_python_certo(self):
         import sys
@@ -648,7 +705,8 @@ class GorduraDeEstoqueTests(unittest.TestCase):
         """
         config = agenda.carregar()
         self.assertGreater(config["piso_de_estoque"], 0)
-        self.assertEqual(len(config["horas"]), agenda.teto_de_estoque(config))
+        from builds import grade
+        self.assertEqual(len(grade.HORAS), agenda.teto_de_estoque(config))
 
     def test_os_TRES_estados_do_teto(self):
         """A diferenca entre "derivar" e "desligado" ja se perdeu uma vez.
@@ -657,7 +715,9 @@ class GorduraDeEstoqueTests(unittest.TestCase):
         valvula de escape que existia — `0` sempre foi "freio desligado".
         Ausente = derivar; 0 = desligado; N = N.
         """
-        self.assertEqual(2, agenda.teto_de_estoque({"horas": [1, 2]}))
+        from builds import grade
+        self.assertEqual(len(grade.HORAS),
+                         agenda.teto_de_estoque({"horas": [1, 2]}))
         self.assertEqual(0, agenda.teto_de_estoque(
             {"horas": [1, 2], "teto_de_estoque": 0}))
         self.assertEqual(5, agenda.teto_de_estoque(

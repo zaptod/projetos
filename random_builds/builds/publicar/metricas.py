@@ -417,19 +417,25 @@ def atualizar(log=print, canal: str = "builds") -> list[dict]:
 MARCA_DO_DIA = OUTPUTS / "_metricas" / "_atualizado_em.json"
 
 
-def atualizar_uma_vez_por_dia(log=print, agora=None) -> bool:
+def atualizar_uma_vez_por_dia(log=print, agora=None,
+                              chave: str | None = None) -> bool:
     """`atualizar_tudo`, mas so na primeira vez do dia. `False` = ja tinha ido.
 
     UMA VEZ, e nao a cada disparo: views nao mudam de hora em hora, e cada
     passada custa uma ida a API do YouTube por canal. Oito por dia seria
     gastar cota para reler o mesmo numero.
 
+    `chave` substitui a data quando "o dia" nao e o do calendario. A rotina de
+    madrugada (23h as 6h) atravessa a meia-noite: pela data, a rodada das 23h
+    e a da 0h seriam dias diferentes e a coleta rodaria duas vezes na mesma
+    noite. Com a chave da noite, roda uma.
+
     NUNCA LEVANTA. Quem chama e a grade de publicacao; OAuth vencido, rede
     fora ou Analytics desligada nao podem custar o horario. O relatorio diario
     e que denuncia metrica velha — nao esta funcao.
     """
     agora = agora or datetime.now()
-    hoje = agora.strftime("%Y-%m-%d")
+    hoje = chave or agora.strftime("%Y-%m-%d")
     try:
         with open(MARCA_DO_DIA, encoding="utf-8-sig") as fh:
             if (json.load(fh) or {}).get("dia") == hoje:

@@ -30,8 +30,23 @@ HORAS  = 6, 7, 8, 10, 12, 15, 17, 20      (oito horários)
 MINUTO = 7                                 (publica em :07)
 ```
 
-e a criação roda em `:20`, treze minutos depois de publicar — de propósito,
-para o vídeo criado agora nunca disputar o horário que está saindo.
+**O trabalho pesado é de madrugada.** Desde 13/09/2026 a criação roda só
+entre 23h e 6h, e de dia a máquina apenas publica e avisa. Pesado é tudo o
+que abre navegador e segura a máquina por horas: roteiro, imagem, render,
+parecer do Gemini, conserto e métrica do TikTok. Cada rodada da madrugada faz,
+nesta ordem:
+
+1. coleta a métrica do YouTube e do TikTok, uma vez por noite;
+2. pede o parecer do Gemini para cada vídeo pendente que ainda não tem
+   veredito numerado por cena, para a postagem de dia só ler;
+3. termina a história que ficou pela metade;
+4. conserta os vídeos barrados;
+5. começa uma história nova só se ela couber antes das 6h, porque uma
+   história leva cerca de 4 horas.
+
+Faltando menos de 90 minutos para fechar, a rodada não começa nada pesado.
+Uma tarefa perdida de madrugada que o Windows tente rodar de manhã percebe
+que está fora da janela e sai sem fazer nada.
 
 **O TikTok não usa os oito.** Desde 13/09/2026 ele posta seis vezes por dia,
 às 6h, 10h, 12h, 15h, 17h e 20h. Nas 7h e 8h o vídeo vai só para o YouTube,
@@ -45,12 +60,12 @@ a coleta de métricas do TikTok é o que vai confirmar ou desmentir.
 
 | família | quantas | quando | o que faz |
 |---|---|---|---|
-| `Historias_auto_HH` | 8 | nos oito horários, `:20` | cria: roteiro, imagens, voz, render |
+| `Historias_auto_HH` | 7 | 23h, 0h, 1h, 2h, 3h, 4h e 5h, `:20` | a madrugada: métrica, parecer, conserto e criação |
 | `NeuralFights_postar_HH` | 8 | nos oito horários, `:07` | publica um de cada canal, nos dois destinos |
 | `NeuralFights_bot_telegram` | 1 | a cada 10 min | lê comandos, avisa erro, roda o apurador |
 
-As tarefas recuperam horário perdido (o PC dorme, cai a luz) e estão
-configuradas para rodar na bateria — as duas coisas custaram um dia inteiro
+As tarefas acordam o PC se ele estiver suspenso, recuperam horário perdido
+(o PC dorme, cai a luz) e estão configuradas para rodar na bateria — as duas coisas custaram um dia inteiro
 em 09/09/2026, quando dez tarefas recusavam iniciar com `0x800710E0`.
 
 ### A linha de produção, de ponta a ponta
@@ -285,10 +300,10 @@ Sem reautorizar esse OAuth, o conserto fica pronto e inerte. A retenção
 Antes de 11/09/2026, **nunca sozinha**: zero das 17 tarefas atualizavam
 métrica, e o único caminho completo era um botão numa aba do painel.
 
-Hoje ela está pendurada no `ferramentas/postar.py`, depois da publicação — e
-não numa tarefa nova, porque uma nona coisa para endurecer contra bateria e
-horário perdido não valeria a pena. Roda **uma vez por dia**, no primeiro
-disparo, e sai calada nos outros sete: views não mudam de hora em hora.
+Hoje ela é serviço da madrugada: a primeira rodada da noite coleta, e as
+outras saem caladas, porque views não mudam de hora em hora. Até 13/09/2026
+ela ficava na postagem das 06:07, e a coleta do TikTok segurava o Studio por
+até 12 minutos justamente quando o dia começava.
 
 ### O TikTok, pelo Studio
 
@@ -308,8 +323,8 @@ O TikTok não devolve id ao publicar, então cada post é casado com o ledger
 ledger anota, e a legenda confirma a parte ("Parte 3 de 6"). Medido em
 13/09/2026: 21 de 21 em histórias e 19 de 19 em builds.
 
-A análise por vídeo custa uma página cada, 8,8 segundos medidos, e roda
-dentro da tarefa das 06:07 com o perfil do TikTok travado. Por isso ela tem
+A análise por vídeo custa uma página cada, 8,8 segundos medidos, e roda na
+madrugada com o perfil do TikTok travado. Por isso ela tem
 orçamento: só vídeos da última semana, nunca duas vezes no mesmo dia, no
 máximo 40 por canal, e quem nunca foi analisado passa na frente. Quem fica
 de fora mantém a análise anterior em vez de perdê-la. Tudo vai para `_metricas_tiktok/`, **separado** da

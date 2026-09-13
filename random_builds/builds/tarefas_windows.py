@@ -76,6 +76,7 @@ $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
 $s.ExecutionTimeLimit = $t.Settings.ExecutionTimeLimit
 $s.MultipleInstances  = $t.Settings.MultipleInstances
 $s.Enabled            = $t.Settings.Enabled
+$s.WakeToRun          = $true
 Set-ScheduledTask -TaskName $nome -Settings $s | Out-Null
 """
 
