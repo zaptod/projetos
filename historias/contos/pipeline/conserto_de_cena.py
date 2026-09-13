@@ -52,8 +52,15 @@ def _pedacos(motivos) -> list:
 # "muda de aparencia" nao casou: a cena 13 ficou fora do conserto na primeira
 # rodada real. Entao troca de rosto e reconhecida tambem por dois sinais
 # juntos: a frase fala de rosto E fala de mudanca.
+# ROUPA, CABELO E IDADE TAMBEM. O prompt do parecer reprova "o protagonista
+# muda de rosto, idade, cabelo ou roupa", e na segunda rodada real o Gemini
+# escreveu "cena 8: o protagonista muda de roupa, passando a usar uma blusa
+# preta lisa". Sem estas palavras a cena caiu fora de todas as classes e nao
+# foi refeita. E o mesmo defeito de continuidade, com o mesmo conserto: a
+# descricao fixa do protagonista ja traz a roupa.
 SINAIS_DE_ROSTO = ("rosto", "aparencia", "aparência", "etnia", "identidade",
-                   "outra pessoa", "outro homem", "outra mulher")
+                   "outra pessoa", "outro homem", "outra mulher", "roupa",
+                   "cabelo", "idade")
 SINAIS_DE_MUDANCA = ("muda", "mudou", "diferente", "troca", "trocou", "outra",
                      "outro", "nao e o mesmo", "não é o mesmo",
                      "nao e a mesma", "não é a mesma")
@@ -192,7 +199,12 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
         with abrir_cliente(provedor, headless=headless, esperar=60.0,
                            log=log) as cliente:
             cliente.abrir(novo_chat=True)
-            _rodar(lambda texto: cliente.perguntar(texto, timeout=180))
+            # SEM PRAZO PROPRIO: vale o do cliente, o mesmo da geracao de
+            # roteiro. Com 180 s a reescrita falhou duas vezes seguidas na
+            # primeira rodada de dia ("nao respondeu em 180s e nao ha texto na
+            # tela") enquanto o mesmo Gemini respondia a revisao de video: o
+            # modelo Pro ainda estava pensando quando o prazo acabou.
+            _rodar(lambda texto: cliente.perguntar(texto))
     except Exception as exc:                                   # noqa: BLE001
         log(f"[reparo] nao consegui reescrever os prompts pelo {provedor} "
             f"({type(exc).__name__}: {exc}).")

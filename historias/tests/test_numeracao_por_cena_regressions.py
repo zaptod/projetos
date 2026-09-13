@@ -185,6 +185,13 @@ class ClassificacaoTests(unittest.TestCase):
             "(etnia, rosto e cabelo) e de roupa"])
         self.assertEqual([13], classes["rosto"])
 
+    def test_troca_de_roupa_e_continuidade(self):
+        """O texto real da segunda rodada, que caiu fora de todas as classes."""
+        classes = C.classificar([
+            "cena 8: o protagonista muda de roupa, passando a usar uma blusa "
+            "preta lisa"])
+        self.assertEqual([8], classes["rosto"])
+
     def test_mesmo_rosto_citado_nao_vira_troca_de_rosto(self):
         """"com o mesmo rosto" contradiz a narracao; nao e troca de rosto."""
         classes = C.classificar([
