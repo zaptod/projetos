@@ -31,3 +31,6 @@ postar.cmd
 outputs/postar.txt
 # Patches que a apuracao automatica propoe: saida de maquina, um por erro.
 outputs/_apuracoes/
+# Registro dos experimentos e a que braco cada producao foi sorteada: estado
+# DESTA maquina, escrito pela pipeline a cada rodada.
+outputs/_experimentos/

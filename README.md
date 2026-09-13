@@ -134,6 +134,10 @@ Antes das suítes, três verificações baratas:
 
 ## Documentação
 
+- **`docs/OPERACAO.md`** — o mapa da **operação**: o fluxo dos dois canais,
+  o que bloqueia e o que só avisa, como a IA confere o que foi feito e
+  postado, e o que a métrica ainda não sabe. Este README é o mapa dos
+  projetos; aquele é o do que roda sozinho.
 - `docs/neural_fights/PROJECT_CONTEXT.md` — o jogo por dentro
 - `docs/historico/` — changelogs e prompts antigos
 - `random_builds/README.md`, `historias/README.md`, `vila/README.md`,
