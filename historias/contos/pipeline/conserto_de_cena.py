@@ -47,6 +47,25 @@ def _pedacos(motivos) -> list:
     return saida
 
 
+# Frase fixa nao pega o jeito que o Gemini escreve. Em 13/09/2026 ele disse
+# "o protagonista muda COMPLETAMENTE de aparencia (etnia, rosto e cabelo)", e
+# "muda de aparencia" nao casou: a cena 13 ficou fora do conserto na primeira
+# rodada real. Entao troca de rosto e reconhecida tambem por dois sinais
+# juntos: a frase fala de rosto E fala de mudanca.
+SINAIS_DE_ROSTO = ("rosto", "aparencia", "aparência", "etnia", "identidade",
+                   "outra pessoa", "outro homem", "outra mulher")
+SINAIS_DE_MUDANCA = ("muda", "mudou", "diferente", "troca", "trocou", "outra",
+                     "outro", "nao e o mesmo", "não é o mesmo",
+                     "nao e a mesma", "não é a mesma")
+
+
+def _fala_de_rosto(texto: str) -> bool:
+    if any(t in texto for t in DIZ_ROSTO):
+        return True
+    return (any(t in texto for t in SINAIS_DE_ROSTO)
+            and any(t in texto for t in SINAIS_DE_MUDANCA))
+
+
 def classificar(motivos) -> dict:
     """`{"rosto": [n], "narracao": [n], "imagem": [n]}` a partir dos motivos.
 
@@ -60,7 +79,7 @@ def classificar(motivos) -> dict:
         if not numeros:
             continue
         texto = pedaco.lower()
-        if any(t in texto for t in DIZ_ROSTO):
+        if _fala_de_rosto(texto):
             classes["rosto"] |= numeros
         elif any(t in texto for t in DIZ_IMAGEM):
             classes["imagem"] |= numeros

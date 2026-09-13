@@ -178,6 +178,21 @@ class ClassificacaoTests(unittest.TestCase):
         self.assertEqual([2], classes["imagem"])
         self.assertEqual([8], classes["rosto"])
 
+    def test_rosto_escrito_de_outro_jeito_ainda_e_rosto(self):
+        """O texto real da primeira rodada, que a lista literal deixou passar."""
+        classes = C.classificar([
+            "cena 13: o protagonista muda completamente de aparência "
+            "(etnia, rosto e cabelo) e de roupa"])
+        self.assertEqual([13], classes["rosto"])
+
+    def test_mesmo_rosto_citado_nao_vira_troca_de_rosto(self):
+        """"com o mesmo rosto" contradiz a narracao; nao e troca de rosto."""
+        classes = C.classificar([
+            "cena 8: a mulher que sorri e a propria protagonista (com o mesmo "
+            "rosto e casaco), o que contradiz a narracao"])
+        self.assertEqual([], classes["rosto"])
+        self.assertEqual([8], classes["narracao"])
+
     def test_so_confia_em_numeracao_por_cena(self):
         self.assertFalse(C.confiavel(None))
         self.assertFalse(C.confiavel({"numeracao": ""}))
