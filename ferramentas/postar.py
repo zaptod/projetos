@@ -308,6 +308,7 @@ def proxima_historia(*, vistoriar: bool = True):
 
     recusados = []
     examinados = 0
+    vetados = []
     for alvo in fila_de_historias():
         if not vistoriar:
             return alvo, recusados
@@ -317,6 +318,7 @@ def proxima_historia(*, vistoriar: bool = True):
         veto = _veto_lembrado(alvo)
         if veto:
             recusados.append(veto)
+            vetados.append(alvo)
             continue
         if examinados >= TENTATIVAS:
             break
@@ -334,6 +336,18 @@ def proxima_historia(*, vistoriar: bool = True):
             recusados.append(veto)
             continue
         return alvo, recusados
+    # NAO FICAR SEM VIDEO. Pedido dele em 13/09/2026: "a prioridade e nao
+    # ficar sem video". Nenhum candidato limpo: sai o primeiro que so tem o
+    # veto da IA contra ele, desde que o ARQUIVO esteja inteiro. Video mudo
+    # ou sem imagem nao sai nem assim.
+    for alvo in vetados[:3]:
+        roteiro = R.carregar(alvo.fonte_id)
+        laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
+                                          alvo.caminho, roteiro)
+        if laudo["ok"]:
+            _linha(f"[postar] {alvo.id}: nenhum video limpo na fila; sai "
+                   "este, com o veto da IA, para o horario nao ficar vazio.")
+            return alvo, recusados
     return None, recusados
 
 
@@ -469,6 +483,8 @@ def postar_historia(*, so_ver: bool = False) -> dict:
              "visibilidade": visibilidade, "recusados": recusados}
     if _veto_vencido(alvo):
         ficha["veto_vencido"] = True
+    elif _veto_lembrado(alvo):
+        ficha["veto_ignorado"] = True
     if cota:
         ficha["motivo"] = f"YouTube na cota: {cota}"[:200]
         ficha["cota_youtube"] = True
@@ -976,6 +992,9 @@ def avisar(resultados: list) -> None:
         if r.get("veto_vencido"):
             linhas.append("    ⚠ saiu com veto da IA: as 3 rodadas de "
                           "conserto acabaram")
+        if r.get("veto_ignorado"):
+            linhas.append("    ⚠ saiu com veto da IA: nao havia outro video "
+                          "pronto e o horario nao podia ficar vazio")
         for recusado in (r.get("recusados") or [])[:2]:
             linhas.append(f"    ⏭ pulei {str(recusado)[:90]}")
         linhas.append("")

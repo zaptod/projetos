@@ -98,6 +98,47 @@ def carregar(caminho: Path | None = None) -> dict:
     return dados
 
 
+def horarios_restantes(agora) -> int:
+    """Quantos horarios da grade de publicacao ainda faltam hoje."""
+    from builds import grade
+
+    minuto = agora.hour * 60 + agora.minute
+    return len([h for h in grade.HORAS if h * 60 + grade.MINUTO > minuto])
+
+
+def falta_video(aprovados: int, agora, piso: int = 1) -> bool:
+    """O estoque aprovado NAO cobre o resto do dia com folga de `piso`?"""
+    return int(aprovados) < horarios_restantes(agora) + int(piso)
+
+
+def modo_dia(config: dict, agora) -> dict | None:
+    """O que a rodada faz fora da janela. `None` quando nao ha nada a fazer.
+
+    Conserta sempre que ha video barrado: esperar a madrugada deixava a fila
+    parada o dia inteiro. Cria historia so se faltar video para o dia.
+    Metrica e revisao do estoque continuam so de madrugada.
+    """
+    barrados = len(barrados_no_estoque())
+    aprovados = len(aprovados_no_estoque())
+    urgente = falta_video(aprovados, agora,
+                          int(config.get("piso_de_estoque") or 1))
+    if not barrados and not urgente:
+        return None
+    motivos = []
+    if barrados:
+        motivos.append(f"{barrados} video(s) barrado(s)")
+    if urgente:
+        motivos.append(f"so {aprovados} aprovado(s) para "
+                       f"{horarios_restantes(agora)} horario(s) de hoje")
+    return {"por_que": " e ".join(motivos),
+            "config": {**config, "janela_pesada": None,
+                       "revisar_estoque_a_noite": False,
+                       "retomar_incompletas": urgente,
+                       "reparos_por_rodada":
+                           int(config.get("reparos_de_dia") or 2),
+                       "so_consertar": not urgente}}
+
+
 def _diario(destino: Path, tela=print):
     """Escreve na tela E no arquivo — a tarefa agendada nao tem tela."""
     destino.parent.mkdir(parents=True, exist_ok=True)
@@ -227,7 +268,7 @@ def mensagem(resultado: dict, segundos: float) -> str | None:
     if resultado.get("feito") != "historia":
         motivo = resultado.get("motivo") or ""
         if motivo in ("ja rodando", "pausado", "agenda desligada", "fora da janela",
-                    "sem tempo na janela",
+                    "sem tempo na janela", "so consertar",
                       "estoque cheio"):
             return None
         return (f"❌ *a criacao automatica falhou*\n{motivo}\n"
@@ -470,13 +511,20 @@ def rodar(*, config: dict | None = None, headless: bool = False,
 
     janela = config.get("janela_pesada")
     if not na_janela(agora.hour, janela):
-        # A tarefa perdida de madrugada roda quando o PC volta
-        # (`StartWhenAvailable`), de manha, justamente a hora em que ele quer
-        # a maquina livre. Aqui ela percebe e sai.
-        log(f"[auto] fora da janela do trabalho pesado "
-            f"({int(janela['inicio']):02d}h as {int(janela['fim']):02d}h). "
-            "Saindo sem fazer nada.")
-        return {"feito": "nada", "motivo": "fora da janela"}
+        # DE DIA SO O QUE EVITA FICAR SEM VIDEO. Pedido dele em 13/09/2026,
+        # logo depois de montar a rotina de madrugada: "esse tipo de problema
+        # eu quero que seja resolvido a qualquer momento, a prioridade e nao
+        # ficar sem video". Fora da janela a rodada nao coleta metrica nem
+        # revisa o estoque: ela conserta o que esta barrado e, se o estoque
+        # aprovado nao cobre o resto do dia, cria historia tambem.
+        dia = modo_dia(config, agora)
+        if not dia:
+            log(f"[auto] fora da janela do trabalho pesado "
+                f"({int(janela['inicio']):02d}h as {int(janela['fim']):02d}h),"
+                " sem video barrado e com estoque para o dia. Saindo.")
+            return {"feito": "nada", "motivo": "fora da janela"}
+        log(f"[auto] fora da janela, mas {dia['por_que']}: sigo em modo dia.")
+        config = dia["config"]
 
     with travas.trava(TRAVA, esperar=0.0) as minha:
         if not minha:
@@ -511,7 +559,7 @@ def rodar(*, config: dict | None = None, headless: bool = False,
                 raise
             if resultado.get("erros") or resultado.get("motivo") not in (
                     None, "", "ja rodando", "pausado", "agenda desligada", "fora da janela",
-                    "sem tempo na janela",
+                    "sem tempo na janela", "so consertar",
                     "estoque cheio"):
                 # TODO ERRO NO MESMO LUGAR. `atividade.jsonl` e o ledger de
                 # onde o bot tira os alertas e onde a apuracao automatica
@@ -664,6 +712,10 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
     # ja mudou — foi assim que 38 dias de video do Gemini Flash seguraram as
     # melhorias de 08/09 na fila. Gordura de um dia significa que o que sai
     # amanha foi feito com o que se aprendeu hoje.
+    if config.get("so_consertar"):
+        # Modo dia sem falta de video: consertar e tudo o que se faz.
+        return {"feito": "nada", "motivo": "so consertar",
+                "consertados": conserto.get("consertados", 0)}
     teto = teto_de_estoque(config)
     if teto:
         estoque = dias_de_estoque_novo()

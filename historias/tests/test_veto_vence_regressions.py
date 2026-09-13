@@ -139,6 +139,29 @@ class PublicadorTests(_Base):
         aviso = fonte[fonte.index("def avisar("):]
         aviso = aviso[:aviso.index("\ndef ")]
         self.assertIn("veto_vencido", aviso)
+        self.assertIn("veto_ignorado", aviso)
+
+    def test_sem_video_limpo_sai_o_vetado_com_arquivo_inteiro(self):
+        """"A prioridade e nao ficar sem video.\""""
+        from contos.roteiro import roteiro as R
+        antes = R.carregar
+        self.addCleanup(setattr, R, "carregar", antes)
+        R.carregar = lambda _hid: {}
+        self.postar.fila_de_historias = lambda: [_V()]
+        alvo, recusados = self.postar.proxima_historia()
+        self.assertEqual(_V.id, alvo.id)
+        self.assertTrue(recusados)
+
+    def test_vetado_com_arquivo_quebrado_nao_sai_nem_assim(self):
+        from contos.roteiro import roteiro as R
+        antes = R.carregar
+        self.addCleanup(setattr, R, "carregar", antes)
+        R.carregar = lambda _hid: {}
+        qualidade.vistoriar_parte = lambda *_a, **_k: {
+            "ok": False, "erros": ["video sem audio"], "avisos": []}
+        self.postar.fila_de_historias = lambda: [_V()]
+        alvo, _recusados = self.postar.proxima_historia()
+        self.assertIsNone(alvo)
 
 
 if __name__ == "__main__":

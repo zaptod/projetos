@@ -48,6 +48,21 @@ Faltando menos de 90 minutos para fechar, a rodada não começa nada pesado.
 Uma tarefa perdida de madrugada que o Windows tente rodar de manhã percebe
 que está fora da janela e sai sem fazer nada.
 
+**De dia, só o que evita ficar sem vídeo.** Pedido dele no mesmo dia: "a
+prioridade é não ficar sem vídeo". A criação também dispara nos horários da
+grade, 20 minutos depois de cada publicação, mas em modo dia:
+
+- sem vídeo barrado e com estoque aprovado para o resto do dia, sai sem
+  fazer nada;
+- com vídeo barrado, conserta até dois por rodada, para terminar antes da
+  próxima publicação;
+- se o estoque aprovado não cobrir os horários que faltam hoje, termina a
+  história incompleta e cria outra.
+
+E na hora de publicar, se nenhum vídeo da fila estiver limpo, sai o primeiro
+que só tem o veto da IA contra ele, com aviso no Telegram. Vídeo mudo ou sem
+imagem não sai nem assim.
+
 **O TikTok não usa os oito.** Desde 13/09/2026 ele posta seis vezes por dia,
 às 6h, 10h, 12h, 15h, 17h e 20h. Nas 7h e 8h o vídeo vai só para o YouTube,
 e o aviso diz "fora da grade do TikTok" em vez de chamar isso de falha. O
@@ -60,7 +75,7 @@ a coleta de métricas do TikTok é o que vai confirmar ou desmentir.
 
 | família | quantas | quando | o que faz |
 |---|---|---|---|
-| `Historias_auto_HH` | 7 | 23h, 0h, 1h, 2h, 3h, 4h e 5h, `:20` | a madrugada: métrica, parecer, conserto e criação |
+| `Historias_auto_HH` | 15 | 23h a 5h e os horários da grade, `:20` | de madrugada: métrica, parecer, conserto e criação; de dia, só conserto de barrado e criação se faltar vídeo |
 | `NeuralFights_postar_HH` | 8 | nos oito horários, `:07` | publica um de cada canal, nos dois destinos |
 | `NeuralFights_bot_telegram` | 1 | a cada 10 min | lê comandos, avisa erro, roda o apurador |
 

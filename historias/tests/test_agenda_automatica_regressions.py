@@ -31,9 +31,9 @@ from contos.pipeline import agenda, tarefas                    # noqa: E402
 RAIZ = Path(__file__).resolve().parents[1]
 
 # O que ele pediu. Se alguém mexer no config sem querer, o teste conta.
-# De madrugada desde 13/09/2026: "fazer o trabalho pesado de madrugada e
-# deixar os ajustes e deliverys para o dia". `carregar` devolve ordenado.
-HORAS_PEDIDAS = [0, 1, 2, 3, 4, 5, 23]
+# De madrugada desde 13/09/2026, e nos horarios da grade so para nao ficar
+# sem video. `carregar` devolve ordenado.
+HORAS_PEDIDAS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 17, 20, 23]
 
 
 class ConfigTests(unittest.TestCase):
@@ -266,12 +266,15 @@ class JanelaPesadaTests(unittest.TestCase):
         self.assertEqual(400, agenda.minutos_ate_fechar(
             datetime(2026, 9, 12, 23, 20), self.JANELA))
 
-    def test_a_agenda_instalada_e_toda_de_madrugada(self):
+    def test_a_agenda_cobre_a_madrugada_e_os_horarios_da_grade(self):
+        from builds import grade
         config = agenda.carregar()
         janela = config["janela_pesada"]
         self.assertEqual((23, 6), (janela["inicio"], janela["fim"]))
-        for hora in config["horas"]:
-            self.assertTrue(agenda.na_janela(hora, janela), hora)
+        noite = [h for h in config["horas"] if agenda.na_janela(h, janela)]
+        dia = [h for h in config["horas"] if not agenda.na_janela(h, janela)]
+        self.assertEqual([0, 1, 2, 3, 4, 5, 23], noite)
+        self.assertEqual(sorted(grade.HORAS), dia)
 
     def test_fora_da_janela_sai_antes_da_trava_e_nao_e_erro(self):
         """A tarefa perdida roda quando o PC volta, de manha: tem de sair."""
@@ -285,6 +288,65 @@ class JanelaPesadaTests(unittest.TestCase):
         fonte = Path(agenda.__file__).read_text(encoding="utf-8")
         corpo = fonte[fonte.index("def _trabalhar("):]
         self.assertLess(corpo.index("minutos_por_historia"),
+                        corpo.index("pipeline.gerar("))
+
+
+class ModoDiaTests(unittest.TestCase):
+    """De dia so o que evita ficar sem video (13/09/2026).
+
+    "esse tipo de problema eu quero que seja resolvido a qualquer momento, a
+    prioridade e nao ficar sem video."
+    """
+
+    def _dublar(self, barrados: int, aprovados: int):
+        for nome, n in (("barrados_no_estoque", barrados),
+                        ("aprovados_no_estoque", aprovados)):
+            self.addCleanup(setattr, agenda, nome, getattr(agenda, nome))
+            setattr(agenda, nome, lambda n=n: [object()] * n)
+
+    def test_horarios_que_ainda_faltam_hoje(self):
+        from datetime import datetime
+        self.assertEqual(8, agenda.horarios_restantes(
+            datetime(2026, 9, 13, 5, 0)))
+        self.assertEqual(3, agenda.horarios_restantes(
+            datetime(2026, 9, 13, 13, 0)))
+        self.assertEqual(0, agenda.horarios_restantes(
+            datetime(2026, 9, 13, 21, 0)))
+
+    def test_falta_video_quando_o_estoque_nao_cobre_o_dia(self):
+        from datetime import datetime
+        meio_dia = datetime(2026, 9, 13, 13, 0)
+        self.assertTrue(agenda.falta_video(3, meio_dia))
+        self.assertFalse(agenda.falta_video(4, meio_dia))
+
+    def test_de_dia_sem_barrado_e_com_estoque_sai(self):
+        from datetime import datetime
+        self._dublar(barrados=0, aprovados=11)
+        self.assertIsNone(agenda.modo_dia({}, datetime(2026, 9, 13, 13, 0)))
+
+    def test_de_dia_com_barrado_conserta_e_nao_cria(self):
+        from datetime import datetime
+        self._dublar(barrados=5, aprovados=11)
+        dia = agenda.modo_dia({"reparos_de_dia": 2},
+                              datetime(2026, 9, 13, 13, 0))
+        self.assertTrue(dia["config"]["so_consertar"])
+        self.assertIsNone(dia["config"]["janela_pesada"])
+        self.assertFalse(dia["config"]["revisar_estoque_a_noite"])
+        self.assertEqual(2, dia["config"]["reparos_por_rodada"])
+
+    def test_de_dia_faltando_video_cria_tambem(self):
+        from datetime import datetime
+        self._dublar(barrados=0, aprovados=1)
+        dia = agenda.modo_dia({}, datetime(2026, 9, 13, 13, 0))
+        self.assertFalse(dia["config"]["so_consertar"])
+        self.assertTrue(dia["config"]["retomar_incompletas"])
+
+    def test_so_consertar_para_antes_de_criar(self):
+        fonte = Path(agenda.__file__).read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def _trabalhar("):]
+        self.assertLess(corpo.index("reparo.rodada"),
+                        corpo.index('config.get("so_consertar")'))
+        self.assertLess(corpo.index('config.get("so_consertar")'),
                         corpo.index("pipeline.gerar("))
 
 
