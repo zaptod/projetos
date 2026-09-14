@@ -126,14 +126,26 @@ def _tela_dividida(video, historia_id: str, parte: int) -> bool:
 # O Gemini reclamando da TELA (o formato), e nao da imagem da cena...
 DIZ_FORMATO = ("metade de baixo", "metade inferior", "parte de baixo",
                "parte inferior", "video de fundo", "vídeo de fundo",
-               "maquiagem", "tela inteira", "divisao da tela",
-               "divisão da tela", "dividida ao meio")
+               "maquiagem", "se maquiando", "batom", "tela inteira",
+               "divisao da tela", "divisão da tela", "dividida ao meio")
 # ...e descrevendo a IMAGEM da cena, que e colagem de verdade.
 DIZ_IMAGEM_DA_CENA = ("a imagem e", "a imagem é", "dois quadros", "paineis",
-                      "painéis", "empilhad", "grade", "marca d", "logotipo")
+                      "painéis", "empilhad", "grade")
+# Marca d'agua e logotipo: o video de fundo TEM os dois, e a imagem gerada
+# tambem pode ter. So quem assistiu ao video inteiro distingue onde estava.
+DIZ_MARCA = ("marca d", "logotipo")
 
 
-def _motivo_e_do_formato(motivos, n: int) -> bool:
+def _vista_do_veto(video) -> str:
+    """Como o veto lembrado foi dado: "video inteiro (...)" ou "folha..."."""
+    try:
+        from ..publicar import parecer
+        return str((parecer.lembrado(video) or {}).get("vista") or "")
+    except Exception:                                          # noqa: BLE001
+        return ""
+
+
+def _motivo_e_do_formato(motivos, n: int, vista: str = "") -> bool:
     """A queixa da cena `n` e sobre a tela dividida em si, e nao sobre a imagem?
 
     Desde 14/09/2026 a metade de baixo do video e um video de fundo. O prompt
@@ -148,12 +160,22 @@ def _motivo_e_do_formato(motivos, n: int) -> bool:
     da IA na mao, o detector ja disse "nao e colagem" — e toda colagem real
     que so a IA pega ("a imagem e uma tela dividida com dois quadros
     empilhados", h10 p04) seria descartada. Na duvida, refaz.
+
+    MARCA NA METADE DE BAIXO (revisao de conflitos de 14/09/2026): o video de
+    maquiagem tem texto e a marca "babycolor". Quando o veto veio de quem
+    ASSISTIU (vista "video inteiro") e fala da metade de baixo, a marca e do
+    fundo. Na folha de contato, ja recortada no painel, a mesma frase aponta a
+    imagem da historia — e la ela continua sendo refeita.
     """
     from . import conserto_de_cena as C
     texto = C.motivos_da_cena(motivos, int(n)).lower()
     if not texto or any(t in texto for t in DIZ_IMAGEM_DA_CENA):
         return False
-    return any(t in texto for t in DIZ_FORMATO)
+    if not any(t in texto for t in DIZ_FORMATO):
+        return False
+    if any(t in texto for t in DIZ_MARCA):
+        return str(vista or "").lower().startswith("video")
+    return True
 
 
 def cenas_com_colagem(erros: list) -> list[int]:
@@ -289,8 +311,9 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
 
     colagens = cenas_com_colagem(erros)
     if colagens and _tela_dividida(video, historia_id, parte):
+        vista = _vista_do_veto(video)
         colagens = [n for n in colagens
-                    if not _motivo_e_do_formato(erros, n)]
+                    if not _motivo_e_do_formato(erros, n, vista)]
     detalhe = ""
     if any("a ia reprovou" in str(e).lower() for e in erros):
         plano_da_ia = _plano_pelo_veto_da_ia(video, historia_id, parte,
@@ -417,14 +440,20 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
     classes = C.classificar(motivos)
     roteiro = R.carregar(historia_id)
     mudou, contado = False, []
-    if classes["imagem"] and _tela_dividida(video, historia_id, parte):
-        falsas = [n for n in classes["imagem"]
-                  if _motivo_e_do_formato(motivos, n)]
-        if falsas:
-            classes["imagem"] = [n for n in classes["imagem"]
-                                 if n not in falsas]
-            contado.append(f"cena(s) {falsas}: a queixa e da tela dividida "
-                           "(o formato do video), nao da imagem da cena")
+    # O FILTRO VALE PARA AS TRES CLASSES, e antes de mexer no roteiro. "Cena 4:
+    # aparece outra mulher se maquiando" cai em ROSTO, e sem isto trocaria a
+    # descricao do protagonista em todos os prompts da serie por causa do video
+    # de fundo (revisao de conflitos de 14/09/2026).
+    if any(classes.values()) and _tela_dividida(video, historia_id, parte):
+        vista = str(ficha.get("vista") or "")
+        for classe in ("imagem", "rosto", "narracao"):
+            falsas = [n for n in classes[classe]
+                      if _motivo_e_do_formato(motivos, n, vista)]
+            if falsas:
+                classes[classe] = [n for n in classes[classe]
+                                   if n not in falsas]
+                contado.append(f"cena(s) {falsas}: a queixa e da tela "
+                               "dividida (o formato do video), nao da cena")
     if classes["rosto"]:
         nova = str(ficha.get("protagonista") or "").strip()
         if nova:

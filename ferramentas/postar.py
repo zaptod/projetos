@@ -127,10 +127,21 @@ def fila_de_historias() -> list:
     """
     from contos.publicar import catalogo, serie
 
-    ja = {l.get("video_id") for l in serie.publicados() if l.get("url")}
+    publicados = [l for l in serie.publicados() if l.get("url")]
+    ja = {l.get("video_id") for l in publicados}
     videos = [v for v in catalogo.listar() if v.perfil == "celular"]
     comecadas = {v.fonte_id for v in videos if v.id in ja}
-    pendentes = [v for v in videos if v.id not in ja]
+    # SEM BURACO NA SERIE. O catalogo lista cada mp4 assim que ele existe, e a
+    # agenda renderiza as partes seguintes mesmo quando uma falha (imagem que
+    # nao veio, tela dividida que nao montou). Sem isto a parte 3 ia ao ar sem
+    # a 2 existir. A parte anterior conta se tem mp4 OU se ja esta no ar — mp4
+    # apagado depois de publicado nao pode travar a serie para sempre.
+    tem = {(v.fonte_id, int(v.parte or 0)) for v in videos}
+    tem |= {(str(l.get("fonte_id")), int(l.get("parte") or 0))
+            for l in publicados}
+    pendentes = [v for v in videos if v.id not in ja
+                 and all((v.fonte_id, n) in tem
+                         for n in range(1, int(v.parte or 1)))]
     fila = sorted(pendentes, key=lambda v: (
         0 if v.fonte_id in comecadas else 1,   # terminar antes de comecar
         v.fonte_id if v.fonte_id in comecadas  # entre as comecadas: a mais velha

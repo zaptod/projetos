@@ -553,6 +553,31 @@ class ApuracaoTests(BaseTemp):
         self.assertEqual(de_outro.read_text(encoding="utf-8"),
                          "trabalho de outra sessao")
 
+    def test_conserto_espera_a_rodada_da_agenda_acabar(self):
+        """14/09/2026: rodada longa importa modulo no meio do caminho, e codigo
+        editado por baixo dela a derruba. Com a trava da agenda ocupada, so
+        diagnostico."""
+        from builds import travas
+        from remoto import apurador
+        from remoto import config as cfg_remoto
+        chamadas = []
+        for alvo, nome, valor in (
+                (apurador, "pendentes",
+                 lambda *a, **k: [{"ts": "x", "fabrica": "picasso"}]),
+                (apurador, "apurar", lambda *a, **k: "diagnostico"),
+                (apurador, "marcar", lambda *a, **k: None),
+                (apurador, "consertar",
+                 lambda *a, **k: chamadas.append(1) or {"mexeu": True}),
+                (travas, "ocupada",
+                 lambda nome: nome == apurador.TRAVA_DA_AGENDA),
+                (cfg_remoto, "carregar", lambda *a, **k: {"consertar": True})):
+            self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))
+            setattr(alvo, nome, valor)
+        saida = apurador.uma_volta(log=lambda *_a: None)
+        self.assertEqual([], chamadas)
+        self.assertFalse(saida["conserto"]["mexeu"])
+        self.assertEqual("historias__auto", apurador.TRAVA_DA_AGENDA)
+
     def test_o_remendo_mostra_so_o_que_o_agente_fez(self):
         from remoto import apurador
         alvo = apurador.RAIZ / "remoto" / "_alvo_de_teste.py"

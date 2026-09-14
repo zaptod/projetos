@@ -469,5 +469,23 @@ def uma_volta(*, log=print) -> dict:
         # sem antes entender o que quebrou e como consertar no escuro.
         from . import config
         if config.carregar().get("consertar", True):
-            saida["conserto"] = consertar(erros, texto, log=log)
+            if travas.ocupada(TRAVA_DA_AGENDA):
+                # NAO MEXE NO CODIGO COM UMA RODADA NO MEIO. A rodada da agenda
+                # dura horas e importa modulos no caminho: um arquivo editado
+                # (ou editado e desfeito depois da suite) entra so em parte do
+                # processo, e ela quebra. As 13:45 de 14/09/2026 uma rodada
+                # morreu assim, com AttributeError, por codigo que mudou no
+                # meio dela. O diagnostico sai; o conserto espera.
+                log("[apurador] ha uma rodada da agenda em andamento; so "
+                    "diagnostico, o conserto fica para depois.")
+                saida["conserto"] = {"mexeu": False,
+                                     "motivo": "rodada da agenda em andamento: "
+                                               "conserto adiado"}
+            else:
+                saida["conserto"] = consertar(erros, texto, log=log)
         return saida
+
+
+# O nome da trava de `historias/contos/pipeline/agenda.py` (TRAVA). Escrito
+# aqui para o bot nao importar a pipeline de historias inteira a cada volta.
+TRAVA_DA_AGENDA = "historias__auto"

@@ -243,6 +243,14 @@ def _trocar_premissa_se_precisar(cliente, biblia: dict, partes: int,
     return biblia
 
 
+# QUANTO A CRIACAO ESPERA A CONTA DO LLM. O padrao do cliente e 10 s, e a
+# postagem das :07 segura o Gemini no parecer por ate ~30 min (60 s pela conta,
+# 900 s pelo video, 900 s pela resposta). Uma rodada que chegasse ao roteiro
+# nessa hora terminava em "roteiro falhou" sem criar a historia (revisao de
+# conflitos de 14/09/2026).
+ESPERA_DA_CONTA_S = 1500.0
+
+
 def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                   cenas_por_parte: int = S.CENAS_POR_PARTE,
                   headless: bool = False, config: dict | None = None,
@@ -279,7 +287,8 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
     partes_prontas = [dict(p) for p in (roteiro.get("partes") or [])]
     log(f"[serie] retomando {historia_id}: faltam as partes {faltam} de "
         f"{roteiro.get('partes_esperadas')}.")
-    with abrir_cliente(provedor, headless=headless, log=log) as cliente:
+    with abrir_cliente(provedor, headless=headless,
+                       esperar=ESPERA_DA_CONTA_S, log=log) as cliente:
         cliente.abrir(novo_chat=True)
         for numero in faltam:
             log(f"[serie] retomada: escrevendo a parte {numero}...")
@@ -346,7 +355,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
         + (f", tema: {tema}" if tema else ""))
 
     try:
-        with abrir_cliente(provedor, headless=headless, log=log) as cliente:
+        with abrir_cliente(provedor, headless=headless,
+                           esperar=ESPERA_DA_CONTA_S, log=log) as cliente:
             cliente.abrir(novo_chat=True)
             # QUAL MODELO ESCREVEU ESTA HISTORIA. Guardado porque a qualidade
             # mudou de patamar em 08/09/2026 (Flash -> 3.1 Pro, mais molde,
