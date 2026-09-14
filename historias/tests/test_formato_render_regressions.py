@@ -80,6 +80,48 @@ class CobrirTests(unittest.TestCase):
         self.assertGreater(r0, 60)
 
 
+class EncaixarTests(unittest.TestCase):
+    """Pedido dele em 14/09/2026: a foto inteira na metade de cima."""
+
+    def test_topo_e_pe_da_imagem_aparecem_em_todo_quadro(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            imagem = Image.new("RGB", (1088, 1920), (120, 120, 120))
+            faixa = Image.new("RGB", (1088, 120), (20, 230, 20))
+            imagem.paste(faixa, (0, 0))
+            imagem.paste(Image.new("RGB", (1088, 120), (20, 20, 230)),
+                         (0, 1800))
+            caminho = Path(tmp) / "cena.png"
+            imagem.save(caminho)
+            cfg = json.loads(json.dumps(RENDER))
+            cfg.setdefault("formato", {})["ajuste_imagem"] = "encaixar"
+            # Vinheta e clarao mudam a COR das bordas e dos primeiros quadros;
+            # o que se mede aqui e so se a imagem inteira aparece.
+            cfg["camera"]["vinheta"] = 0
+            cfg["camera"]["flash_frames"] = 0
+            r = renderer.VideoRenderer(cfg, "celular", preview=True,
+                                       formato=DIVIDIDO)
+            self.assertEqual("encaixar", r.ajuste)
+            evento = {"type": "cena", "n": 1, "start": 0.0, "duration": 0.3,
+                      "arquivo": str(caminho), "narracao": "x",
+                      "camera": {"zoom": [1.0, 1.15],
+                                 "centro": [[0.5, 0.46], [0.54, 0.52]]}}
+            quadros = list(r._cena_frames(evento))
+
+        def tem(quadro, cor):
+            alvo = [p for p in quadro.getdata()
+                    if all(abs(a - b) < 45 for a, b in zip(p, cor))]
+            return len(alvo) > 50
+
+        self.assertTrue(quadros)
+        for quadro in quadros:
+            self.assertEqual((540, 480), quadro.size)
+            self.assertTrue(tem(quadro, (20, 230, 20)), "o topo foi cortado")
+            self.assertTrue(tem(quadro, (20, 20, 230)), "o pe foi cortado")
+
+    def test_render_json_pede_a_imagem_inteira(self):
+        self.assertEqual("encaixar", RENDER["formato"]["ajuste_imagem"])
+
+
 def _ffmpeg(*args) -> None:
     subprocess.run(["ffmpeg", "-v", "error", "-y", *args], check=True,
                    capture_output=True)

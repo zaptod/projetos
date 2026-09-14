@@ -425,6 +425,8 @@ class VideoRenderer:
             canto = (0, 0)
             fundo = None
         else:
+            # "conter" e "encaixar": a imagem cabe inteira no painel, sobre o
+            # borrado dela mesma. A diferenca e so o movimento (abaixo).
             janela_l, janela_a = float(fonte.width), float(fonte.height)
             escala = min(self.width / fonte.width, self.height / fonte.height)
             destino = (max(1, int(fonte.width * escala)),
@@ -445,13 +447,28 @@ class VideoRenderer:
             zoom = max(1.0, self._interp(zoom_ini, zoom_fim, suave))
             cx = self._interp(cx0, cx1, suave)
             cy = self._interp(cy0, cy1, suave)
-            largura, altura = janela_l / zoom, janela_a / zoom
-            x0 = min(max(cx * fonte.width - largura / 2, 0.0), fonte.width - largura)
-            y0 = min(max(cy * fonte.height - altura / 2, 0.0), fonte.height - altura)
-            quadro = fonte.resize(destino, Image.LANCZOS,
-                                  box=(x0, y0, x0 + largura, y0 + altura))
             img = fundo.copy() if fundo is not None else self._fundo().copy()
-            img.paste(quadro, canto)
+            if self.ajuste == "encaixar":
+                # NADA SAI DA TELA. Pedido dele em 14/09/2026: "as fotos nao
+                # sejam cortadas, mas se ajustem na parte de cima". O zoom de
+                # recorte cortaria ate 13% das bordas; aqui o movimento e a
+                # imagem INTEIRA crescendo dentro do painel, e no zoom maximo
+                # ela tem o tamanho que cabe.
+                fator = zoom / max(1.0, float(zoom_ini), float(zoom_fim))
+                tamanho = (max(1, int(destino[0] * fator)),
+                           max(1, int(destino[1] * fator)))
+                quadro = fonte.resize(tamanho, Image.LANCZOS)
+                img.paste(quadro, ((self.width - tamanho[0]) // 2,
+                                   (self.height - tamanho[1]) // 2))
+            else:
+                largura, altura = janela_l / zoom, janela_a / zoom
+                x0 = min(max(cx * fonte.width - largura / 2, 0.0),
+                         fonte.width - largura)
+                y0 = min(max(cy * fonte.height - altura / 2, 0.0),
+                         fonte.height - altura)
+                quadro = fonte.resize(destino, Image.LANCZOS,
+                                      box=(x0, y0, x0 + largura, y0 + altura))
+                img.paste(quadro, canto)
             if vinheta is not None:
                 img = Image.composite(preto, img, vinheta)
             self._sobrepor(img, evento, inicio + i / self.fps, i)
