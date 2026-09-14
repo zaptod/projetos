@@ -508,7 +508,7 @@ class CenaSemImagemNaoPublicaTests(unittest.TestCase):
             # da imagem — essa tem teste proprio em `ImagemSemProvaTests`.
             (fila, "estado", lambda *a, **k: [
                 {"n": i, "parte": 1, "pronta": i not in cenas_faltando,
-                 "arquivo": self._png(i), "prova": {"card": 1}}
+                 "arquivo": self._png(i), "prova": {"comprovada": True}}
                 for i in range(1, 15)]),
             (R, "carregar", lambda _h: roteiro),
             (R, "titulo_da_parte", lambda *a, **k: "T"),

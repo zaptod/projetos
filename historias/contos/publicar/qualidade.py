@@ -329,7 +329,11 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
     # placeholder — ela seria o primeiro video PUBLICO do canal.
     linhas = fila.estado(historia_id, roteiro, parte)
     prontas = [l for l in linhas if l["pronta"]]
-    sem_prova = [l["n"] for l in prontas if not l.get("prova")]
+    # `prova` e um dict ate quando a prova FALHOU ({"comprovada": false}); so
+    # a presenca dele deixou passar, em 14/09/2026, a foto de outra pessoa da
+    # conta na historia_00011 p06_cena_07.
+    sem_prova = [l["n"] for l in prontas
+                 if not (l.get("prova") or {}).get("comprovada")]
     if prontas and len(sem_prova) == len(prontas):
         laudo["erros"].append(
             "nenhuma imagem tem prova de origem: estas cenas nao vieram do "

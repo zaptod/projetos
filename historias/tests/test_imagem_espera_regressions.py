@@ -261,14 +261,16 @@ class RecusaFalsaTests(unittest.TestCase):
         recusa = trecho[trecho.index("elif not feito and ultima_recusa:"):]
         self.assertIn("registrar_recusa", recusa[:900])
 
-    def test_falha_de_prova_registra_a_tentativa(self):
-        """Falha de prova deve ser registrada em imagens.json (com comprovada=false)."""
+    def test_falha_de_prova_nao_baixa_nem_registra(self):
+        """Ate 14/09/2026 este teste EXIGIA registrar a tentativa sem prova, e
+        o codigo baixava a imagem junto: foi assim que a foto de outra pessoa
+        da conta entrou na historia_00011 p06_cena_07. Sem prova, nada vai ao
+        disco nem ao imagens.json (ver test_prova_de_origem_regressions)."""
         trecho = self._trecho()
-        # Deve haver fila.registrar() no ramo de prova falha
-        prova_falha = trecho[trecho.index("exigir_prova_de_origem"):
-                             trecho.index("except ConteudoRecusado")]
-        self.assertIn("fila.registrar(", prova_falha,
-                      "Falha de prova deve registrar a tentativa em imagens.json")
+        ramo = trecho[trecho.index("exigir_prova_de_origem"):]
+        ramo = ramo[:ramo.index("break")]
+        self.assertNotIn("fila.registrar(", ramo)
+        self.assertNotIn(".download(", ramo)
 
 
 class NivelDeSuavizacaoTests(unittest.TestCase):

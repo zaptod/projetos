@@ -267,33 +267,23 @@ def gerar(historia_id: str, *, limite: int | None = None,
                         if (config.get("exigir_prova_de_origem", True)
                                 and not prova.get("comprovada")):
                             # Falha de prova nao e recusa de conteudo: e erro
-                            # tecnico (site falhou ao confirmar origem).
-                            # Marcar como tecnico para que retente na proxima
-                            # passada, em vez de virar "recusado" permanente.
+                            # tecnico (site falhou ao confirmar origem), e a
+                            # cena volta na proxima passada.
                             #
-                            # Registrar a tentativa em imagens.json mesmo com
-                            # prova falha (comprovada: false), para que o sistema
-                            # saiba que foi tentado. Na proxima passada, retentara
-                            # com informacao do que falhou da ultima vez.
+                            # NADA VAI AO DISCO. Ate 14/09/2026 este ramo
+                            # baixava a imagem "para registrar a tentativa" e
+                            # gravava `prova` com comprovada: false. A imagem
+                            # que aparece sem card nosso e, por definicao, de
+                            # OUTRA pessoa da conta compartilhada: as 20:26 a
+                            # historia_00011 p06_cena_07 (um rapaz preso num
+                            # conteiner) virou uma mulher se maquiando, o
+                            # reparo aceitou o arquivo e renderizou a parte com
+                            # ela. So o Gemini barrou.
                             falha_tecnica = ValueError(
                                 f"Prova: {prova.get('motivo')}")
                             erros.append(f"{rotulo}: sem prova de origem "
                                          f"({prova.get('motivo')}). Nada baixado.")
                             log(f"[imagens] {rotulo}: {erros[-1]}")
-                            destino = linha["arquivo"]
-                            try:
-                                cliente.download(prova.get("url") or alvo, destino)
-                            except Exception as download_exc:
-                                # Se o download falhar, registrar apenas que foi
-                                # tentado (sem arquivo). A proxima passada vai
-                                # retentar tudo desde o comeco.
-                                log(f"[imagens] {rotulo}: download falhou: "
-                                    f"{type(download_exc).__name__}")
-                            fila.registrar(historia_id, n,
-                                           prompt=cliente.prompt_enviado,
-                                           arquivo=destino, prova=prova,
-                                           url=prova.get("url") or alvo,
-                                           parte=numero_parte, nivel=nivel)
                             break
                         destino = linha["arquivo"]
                         cliente.download(prova.get("url") or alvo, destino)
