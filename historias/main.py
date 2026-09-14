@@ -438,8 +438,26 @@ def cmd_publicar(args, pipeline) -> int:
                 print(f"YouTube FALHOU: {exc}")
                 codigo = 1
         if args.tiktok:
+            from contos.publicar import serie as _serie
+            # O MESMO REGISTRO DA GRADE. Este caminho postava no TikTok e nao
+            # gravava nada: a postagem das :07 via o YouTube ja feito, sem
+            # TikTok nesta hora, e subia o MESMO video de novo (revisao de
+            # conflitos de 14/09/2026). Mesma regra do `postar.py`: grava so
+            # o que o TikTok confirmou.
+            ja = _serie.ja_publicado(alvo.id, "tiktok")
+            if ja and not args.forcar:
+                print(f"TikTok: {alvo.id} ja foi publicado em "
+                      f"{ja.get('quando', '?')}. Use --forcar para subir de "
+                      "novo.")
+                return codigo
             try:
-                print("TikTok:", catalogo.publicar_tiktok(alvo, postar=True))
+                estado = catalogo.publicar_tiktok(alvo, postar=True)
+                print("TikTok:", estado)
+                from builds.publicar import tiktok as _tk
+                if _tk.confirmado(estado):
+                    _serie.registrar(alvo, estado, "tiktok", None,
+                                     {"por": "main.py publicar",
+                                      "visibilidade": "public"})
             except Exception as exc:
                 print(f"TikTok FALHOU: {exc}")
                 codigo = 1

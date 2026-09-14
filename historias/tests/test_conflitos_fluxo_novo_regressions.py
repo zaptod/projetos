@@ -69,6 +69,21 @@ class MetadeDeBaixoTests(unittest.TestCase):
         self.assertLess(fonte.index(laco), fonte.index("C.reescrever_prompts("))
 
 
+class PublicacaoManualRegistraTikTokTests(unittest.TestCase):
+
+    def test_main_publicar_confere_e_grava_o_tiktok_como_a_grade(self):
+        """Sem registro, a postagem das :07 subiria o mesmo video de novo."""
+        fonte = (Path(__file__).resolve().parents[1] / "main.py").read_text(
+            encoding="utf-8")
+        corpo = fonte[fonte.index("def cmd_publicar("):]
+        corpo = corpo[:corpo.index("\ndef ")]
+        trecho = corpo[corpo.index("if args.tiktok:"):]
+        self.assertLess(trecho.index('ja_publicado(alvo.id, "tiktok")'),
+                        trecho.index("catalogo.publicar_tiktok("))
+        self.assertLess(trecho.index("_tk.confirmado(estado)"),
+                        trecho.index('_serie.registrar(alvo, estado, "tiktok"'))
+
+
 class SerieSemBuracoTests(unittest.TestCase):
 
     def _fila(self, partes, publicados):
