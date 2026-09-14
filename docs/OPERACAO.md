@@ -95,8 +95,10 @@ em 09/09/2026, quando dez tarefas recusavam iniciar com `0x800710E0`.
         |  fila.utilizavel ........... vertical, tamanho, não é colagem
         v
    narrador (edge-tts) + trilha + capa
+        |  formato.resolver .......... velocidade e tela da HISTORIA (trava na 1a parte)
+        |  aplicar_formato ........... voz 1,7x (atempo) e plano dividido ANTES de ir ao disco
         v
-   render -> mp4 no disco
+   render -> mp4 no disco ............ historia em cima, video de fundo mudo embaixo
         v
    qualidade.liberado(video) ......... A PORTA: mecânica + veto lembrado da IA
         v
@@ -109,8 +111,24 @@ O reparador (`contos/pipeline/reparo.py`) fica pendurado entre o render e a
 porta: quando a vistoria acha algo que ele sabe consertar (cena com colagem,
 imagem faltando), ele refaz e renderiza de novo, até 3 tentativas por vídeo.
 
+**O formato do vídeo (desde 14/09/2026).** História nova sai **1,7x mais
+rápida** e com a **tela dividida**: em cima as imagens e a legenda, embaixo um
+trecho mudo de `historias/assets/fundo/videoMaquiagem.mp4` (fora do git,
+794 MB), sorteado pelo hash de `historia:parte`. O que manda está em
+`config/render.json`, bloco `formato`. A voz é esticada depois da síntese e o
+plano é dividido pelo mesmo fator antes de ir ao disco, então o parecer, os
+cortes de Shorts e a métrica já leem o relógio final. O formato é **da
+história**: se qualquer parte já renderizada não tem o campo `formato` no
+plano, a série inteira fica no formato antigo (`contos/video/formato.py`); para
+converter uma história de propósito, `outputs/<id>/formato.json`. Render de
+prova: `main.py video <id> --parte N --prova PASTA --velocidade 1.7 --layout
+dividido` — **nunca `--saida`**, que é a opção do log da agenda.
+
 ### O que ainda não existe aqui
 
+- O vídeo de fundo tem **texto de tutorial em inglês e a marca "babycolor"**
+  (visto pelo Gemini na prova). O parecer manda ignorar a metade de baixo, mas
+  nada escolhe trechos limpos.
 - O canal de `builds` **não tem fábrica automática**. As 8 tarefas de criação
   são só de histórias; os builds vêm de um estoque produzido a mão.
 - Não há retomada de horário **dentro do dia**: se as 12h falharem, as 15h
@@ -210,7 +228,7 @@ para continuar.
 
 | motivo | o reparador resolve? |
 |---|---|
-| colagem, tela dividida, grade de painéis, marca d'água | **sim**: refaz a cena e re-renderiza |
+| colagem, tela dividida, grade de painéis, marca d'água | **sim**: refaz a cena e re-renderiza. No vídeo de tela dividida, a queixa que fala da metade de baixo, do vídeo de fundo ou da maquiagem é o formato e **não** vira conserto (decidido pelo texto do veto, `reparo._motivo_e_do_formato`) |
 | mp4 mais velho que a imagem | **sim**: só re-renderiza |
 | imagem não bate com a narração da cena | **sim**: reescreve o prompt pela narração e refaz a cena |
 | protagonista troca de rosto entre cenas | **sim**: fixa a descrição pela aparência que a IA viu na maioria das cenas e refaz só as apontadas |
