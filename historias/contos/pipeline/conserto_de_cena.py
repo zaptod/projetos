@@ -192,11 +192,13 @@ def _cenas_da_parte(roteiro: dict, parte: int) -> dict:
 
 def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
                        provedor: str = "gemini", headless: bool = False,
-                       log=print, perguntar=None) -> dict:
+                       log=print, perguntar=None, falhas=None) -> dict:
     """Reescreve NO ROTEIRO o prompt das cenas apontadas. `{n: prompt}`.
 
     Nao salva: quem chama decide, depois de ver o que mudou. `perguntar` e
-    injetavel para o teste nao abrir navegador.
+    injetavel para o teste nao abrir navegador. `falhas`, se vier, recebe o
+    texto da falha do provedor: quem chama precisa separar "o Gemini nao
+    respondeu" de "respondeu e nao mudou nada".
     """
     from ..imagens.reescritor import limpar
 
@@ -233,6 +235,8 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
     except Exception as exc:                                   # noqa: BLE001
         log(f"[reparo] nao consegui reescrever os prompts pelo {provedor} "
             f"({type(exc).__name__}: {exc}).")
+        if falhas is not None:
+            falhas.append(f"{provedor} falhou: {type(exc).__name__}")
     return novos
 
 

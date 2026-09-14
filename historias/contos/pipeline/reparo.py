@@ -393,8 +393,15 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
             reescrita_nao_rodou = "a conta do Gemini esta em uso"
             novos = {}
         else:
+            # O GEMINI QUE NAO RESPONDE tambem nao e culpa do video: 6:32 do
+            # mesmo dia, 600 s com 0 caracteres, e a terceira tentativa do
+            # h10 p06 foi gasta sem conserto nenhum.
+            falhas = []
             novos = C.reescrever_prompts(roteiro, parte, classes["narracao"],
-                                         motivos, headless=headless, log=log)
+                                         motivos, headless=headless, log=log,
+                                         falhas=falhas)
+            if falhas and not novos:
+                reescrita_nao_rodou = falhas[0][:120]
         if novos:
             mudou = True
             contado.append(f"reescrevi pela narracao o prompt da(s) cena(s) "

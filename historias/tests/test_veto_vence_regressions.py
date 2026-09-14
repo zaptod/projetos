@@ -159,6 +159,37 @@ class ContaOcupadaNaoGastaTentativaTests(_Base):
         self.assertEqual("adiado", saida["acao"])
         self.assertEqual(0, reparo.tentativas(_V.id))
 
+    def test_gemini_que_nao_responde_adia_e_nao_conta(self):
+        """14/09/2026, 6:32: 600 s com 0 caracteres e a terceira tentativa
+        do h10 p06 foi gasta sem conserto nenhum."""
+        from builds import travas
+        from contos.pipeline import conserto_de_cena as C
+        from contos.roteiro import roteiro as R
+        veto = {"aprovado": False, "numeracao": "cena",
+                "criterio": parecer.CRITERIO, "vista": "video inteiro (2:03)",
+                "motivos": ["cena 12: a imagem mostra uma cozinha industrial, "
+                            "mas a narração diz que a salinha de vidro está "
+                            "fechada"]}
+        parecer.lembrado = lambda _v: dict(veto)
+
+        def sem_resposta(*_a, falhas=None, **_k):
+            falhas.append("gemini falhou: LLMFalhou")
+            return {}
+        for modulo, nome, valor in (
+                (R, "carregar", lambda _hid: {"partes": []}),
+                (travas, "ocupada", lambda _nome: False),
+                (C, "reescrever_prompts", sem_resposta)):
+            self.addCleanup(setattr, modulo, nome, getattr(modulo, nome))
+            setattr(modulo, nome, valor)
+
+        class _Pipeline:
+            pass
+
+        saida = reparo.reparar(_V(), ["a IA reprovou: " + veto["motivos"][0]],
+                               pipeline=_Pipeline(), log=lambda *_a: None)
+        self.assertEqual("adiado", saida["acao"])
+        self.assertEqual(0, reparo.tentativas(_V.id))
+
 
 class PublicadorTests(_Base):
 
