@@ -609,5 +609,32 @@ def main() -> int:
     return acoes[args.comando](args, pipeline)
 
 
+def _redirecionar_saida(argv: list) -> tuple:
+    """`--saida ARQUIVO` -> (argv sem a opcao, arquivo aberto). Sem ela, None.
+
+    A TAREFA NAO PODE REDIRECIONAR COM `>>`. O redirecionamento do cmd abre o
+    arquivo negando escrita a outros processos, e os disparos da agenda sao
+    um processo por hora usando o MESMO arquivo: enquanto uma rodada longa
+    rodava, o disparo seguinte nao conseguia abrir a saida e morria com
+    codigo 1 antes de o Python comecar. Medido em 14/09/2026: 0:20, 1:20 e
+    2:20 sairam assim, sem uma linha em log nenhum, e o mesmo tinha derrubado
+    7:20 e 8:20 no dia 13. O `open` do Python no Windows deixa varios
+    processos escreverem no mesmo arquivo.
+
+    E a saida continua indo para ARQUIVO, e nao para o console: escrever no
+    console que o Agendador da e ninguem esvazia trava o `print` (08/09/2026).
+    """
+    if "--saida" not in argv:
+        return argv, None
+    i = argv.index("--saida")
+    if i + 1 >= len(argv):
+        return argv[:i], None
+    arquivo = open(argv[i + 1], "a", encoding="utf-8", buffering=1)
+    return argv[:i] + argv[i + 2:], arquivo
+
+
 if __name__ == "__main__":
+    sys.argv, _saida = _redirecionar_saida(list(sys.argv))
+    if _saida is not None:
+        sys.stdout = sys.stderr = _saida
     raise SystemExit(main())

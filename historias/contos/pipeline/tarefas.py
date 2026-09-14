@@ -51,6 +51,12 @@ def escrever_lancador(python: str | None = None) -> Path:
     processo nao conseguia escrever uma linha no console que o Agendador da a
     ele e ninguem esvazia. Escrevendo em ARQUIVO, `print` nunca bloqueia — e de
     quebra a saida do PicassoIA (que so existe como `print`) fica gravada.
+
+    MAS O ARQUIVO E ABERTO PELO PYTHON, e nao pelo `>>` do cmd (14/09/2026).
+    O `>>` nega escrita a outros processos, e os disparos sao um processo por
+    hora no mesmo arquivo: enquanto uma rodada longa rodava, o disparo
+    seguinte morria com codigo 1 antes de o Python comecar, sem uma linha em
+    log nenhum. Ver `_redirecionar_saida` no `main.py`.
     """
     destino = caminho_do_lancador()
     python = python or sys.executable
@@ -66,7 +72,9 @@ def escrever_lancador(python: str | None = None) -> Path:
         # pagina de codigo do Windows (cp1252), e a primeira linha com acento
         # ou emoji vira UnicodeEncodeError — a rodada morreria por causa de um
         # "ç". `-u` para o log nao ficar preso no buffer enquanto ela trabalha.
-        f'"{python}" -u -X utf8 main.py auto >> "{saida}" 2>&1\r\n',
+        # O console do cmd vai para NUL, onde escrever nunca trava; a saida de
+        # verdade o Python abre sozinho com `--saida`.
+        f'"{python}" -u -X utf8 main.py auto --saida "{saida}" > NUL 2>&1\r\n',
         encoding="utf-8")
     return destino
 

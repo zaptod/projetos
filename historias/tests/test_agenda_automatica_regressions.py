@@ -398,11 +398,42 @@ class SaidaNaoPodeTravarTests(unittest.TestCase):
     diário de uma rodada de 4h tinha três linhas.
     """
 
-    def test_o_lancador_redireciona_a_saida_para_arquivo(self):
+    def test_o_lancador_manda_a_saida_para_arquivo_sem_tranca_lo(self):
+        """Arquivo, sim; o `>>` do cmd, nao (14/09/2026).
+
+        O `>>` abre o arquivo negando escrita aos outros. Enquanto uma rodada
+        longa rodava, os disparos seguintes morriam com codigo 1 antes de o
+        Python comecar: 0:20, 1:20 e 2:20 sem uma linha em log nenhum.
+        """
         texto = tarefas.escrever_lancador().read_text(encoding="utf-8")
-        self.assertIn(">>", texto)
-        self.assertIn("2>&1", texto)
         self.assertIn("auto_saida.txt", texto)
+        self.assertIn("--saida", texto)
+        self.assertNotIn(">>", texto)
+        self.assertIn("> NUL", texto)
+
+    def test_o_python_abre_a_saida_junto_com_outro_processo(self):
+        """Duas rodadas escrevendo no mesmo arquivo, sem uma trancar a outra."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("main_historias",
+                                                      RAIZ / "main.py")
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        with TemporaryDirectory() as tmp:
+            alvo = Path(tmp) / "auto_saida.txt"
+            argv, primeiro = modulo._redirecionar_saida(
+                ["main.py", "auto", "--saida", str(alvo)])
+            _argv, segundo = modulo._redirecionar_saida(
+                ["main.py", "auto", "--saida", str(alvo)])
+            try:
+                self.assertEqual(["main.py", "auto"], argv)
+                primeiro.write("rodada longa\n")
+                segundo.write("disparo seguinte\n")
+            finally:
+                primeiro.close()
+                segundo.close()
+            texto = alvo.read_text(encoding="utf-8")
+        self.assertIn("rodada longa", texto)
+        self.assertIn("disparo seguinte", texto)
 
     def test_print_vai_para_o_diario_com_horario(self):
         import sys
