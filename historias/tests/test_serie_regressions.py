@@ -512,6 +512,51 @@ class ClienteLLMTests(unittest.TestCase):
         self.assertEqual("Analisando", texto)
         self.assertEqual([1], falso.diagnosticos)
 
+    def _devolvido(self, na_caixa: str):
+        """Cliente falso cujo campo de texto mostra `na_caixa`."""
+        from contos.llm import cliente as C
+        from contos.llm import seletores
+        prompt = ("REPROVE se, e somente se, houver algum destes: a imagem "
+                  "nao pertence a historia. Se APROVADO, nao escreva mais nada.")
+
+        class _Campo:
+            def input_value(self):
+                return na_caixa.replace("{prompt}", prompt)
+
+        falso = C.ClienteLLM.__new__(C.ClienteLLM)
+        falso.provedor = "gemini"
+        falso.sel = seletores.do_provedor("gemini")
+        falso.page = object()
+        falso.ajustes = {"pensar_ate": 999, "devolvido_apos_s": 0}
+        falso.log = lambda *_a: None
+        falso._ultimo_prompt = prompt
+        falso._resposta_atual = lambda: ""
+        falso.diagnosticos = []
+        falso._diagnosticar_calado = lambda: falso.diagnosticos.append(1)
+        original = seletores.encontrar
+        seletores.encontrar = lambda page, cand, timeout=0: (
+            _Campo() if cand is falso.sel["campo"] else None)
+        self.addCleanup(setattr, seletores, "encontrar", original)
+        return falso, C
+
+    def test_pergunta_de_volta_na_caixa_desiste_na_hora(self):
+        """14/09/2026 18:21: a tela salva mostrou o prompt de volta na caixa,
+        sem anexo — a espera de 900 s olhava uma resposta que nao existia."""
+        import time
+        falso, C = self._devolvido("{prompt}")
+        comeco = time.monotonic()
+        with self.assertRaises(C.LLMFalhou) as erro:
+            falso.esperar_resposta(timeout=30, estabilidade=0.2)
+        self.assertLess(time.monotonic() - comeco, 5)
+        self.assertIn("voltou para a caixa", str(erro.exception))
+        self.assertEqual([1], falso.diagnosticos)
+
+    def test_caixa_vazia_e_raciocinio_normal_nao_desiste(self):
+        falso, C = self._devolvido("")
+        with self.assertRaises(C.LLMFalhou) as erro:
+            falso.esperar_resposta(timeout=2.2, estabilidade=0.2)
+        self.assertNotIn("voltou para a caixa", str(erro.exception))
+
     def test_o_parecer_pede_para_desistir_cedo(self):
         from contos.publicar import parecer
         fonte = inspect.getsource(parecer._pedir_em)

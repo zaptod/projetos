@@ -77,6 +77,7 @@ class ClienteLLM:
         self.log = log
         self.turnos = 0
         self.modelo_atual = ""
+        self._ultimo_prompt = ""
         # Comeca em False de proposito: enquanto ninguem confirmou o modelo
         # forte, a resposta honesta e "nao sei", e nao "esta tudo certo".
         self.modelo_confirmado = False
@@ -251,7 +252,30 @@ class ClienteLLM:
                 "cliquei em enviar mas nada mudou na tela: o campo continua "
                 "com o texto e nenhuma resposta comecou. Pode ser limite de "
                 "uso da conta ou um desafio na tela - abra a janela e olhe.")
+        self._ultimo_prompt = prompt
         self.turnos += 1
+
+    def _envio_devolvido(self) -> bool:
+        """A pergunta VOLTOU para a caixa de texto, sem resposta comecando?
+
+        Visto na tela em 14/09/2026 (18:21, `_logs/llm_calado/`): depois do
+        upload do video o Gemini voltou para "E ai, Adrian, qual o plano?" com
+        o nosso prompt inteiro de novo na caixa e sem o anexo. A confirmacao do
+        envio tinha passado (o campo esvaziou por um instante), e a espera ficou
+        900 s olhando uma resposta que nunca ia comecar — era isso o "raciocinio
+        preso" das revisoes de video. Nunca levanta.
+        """
+        prompt = " ".join(str(getattr(self, "_ultimo_prompt", "") or "").split())
+        if len(prompt) < 40:
+            return False
+        try:
+            campo = sel.encontrar(self.page, self.sel["campo"], timeout=0.3)
+            if campo is None:
+                return False
+            na_caixa = " ".join(self._texto_do_campo(campo).split())
+        except Exception:                                      # noqa: BLE001
+            return False
+        return prompt[:40] in na_caixa or prompt[-40:] in na_caixa
 
     @staticmethod
     def _aceita_fill(campo) -> bool:
@@ -385,6 +409,9 @@ class ClienteLLM:
         # as 8:22 o clique a 120 s cortou o raciocinio de uma parte saudavel.
         # O raciocinio preso de verdade passava de 600 s.
         pensar_ate = float(self.ajustes.get("pensar_ate", 300))
+        # A partir de quando olhar se a pergunta voltou para a caixa: antes
+        # disso o site ainda pode estar limpando o campo do envio.
+        devolvido_apos = float(self.ajustes.get("devolvido_apos_s", 20))
         apressado = diagnosticado = False
 
         while time.monotonic() < fim:
@@ -407,6 +434,15 @@ class ClienteLLM:
                     f"do prazo de {timeout:.0f}s.")
             escrevendo = sel.encontrar(self.page, self.sel["parar"],
                                        timeout=0.3) is not None
+            if (calado and not escrevendo
+                    and time.monotonic() - inicio >= devolvido_apos
+                    and self._envio_devolvido()):
+                if not diagnosticado:
+                    self._diagnosticar_calado()
+                raise LLMFalhou(
+                    f"o envio voltou para a caixa de texto do {self.provedor} "
+                    "sem resposta comecar (a pagina voltou ao inicio, e o anexo "
+                    "sumiu): a pergunta nao foi recebida.")
             if len(texto) != ultimo_tamanho:
                 ultimo_tamanho = len(texto)
                 parado_desde = None
