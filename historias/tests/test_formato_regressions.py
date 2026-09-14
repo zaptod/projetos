@@ -216,13 +216,16 @@ class AcelerarVozTests(unittest.TestCase):
             return info, len(amostras) / taxa, velocidade.inicio_da_fala(
                 amostras, taxa)
 
-    def test_rubberband_encolhe_e_nao_desloca_a_fala(self):
+    def test_atempo_o_principal_encolhe_e_nao_desloca_a_fala(self):
+        self.assertTrue(velocidade.FILTRO_PADRAO.startswith("atempo"))
         info, duracao, inicio = self._medir(velocidade.FILTRO_PADRAO)
         self.assertIsNotNone(info)
         self.assertAlmostEqual(3.0 / 1.7, duracao, delta=0.03)
         self.assertAlmostEqual(0.5 / 1.7, inicio, delta=0.04)
 
-    def test_atempo_tambem_serve_de_reserva(self):
+    def test_rubberband_serve_de_reserva(self):
+        """A reserva mede o atraso do filtro: o rubberband entrega atrasado."""
+        self.assertTrue(velocidade.RESERVA_PADRAO.startswith("rubberband"))
         info, duracao, inicio = self._medir(velocidade.RESERVA_PADRAO)
         self.assertIsNotNone(info)
         self.assertAlmostEqual(3.0 / 1.7, duracao, delta=0.03)

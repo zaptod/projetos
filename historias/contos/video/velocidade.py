@@ -28,11 +28,13 @@ from pathlib import Path
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-# `rubberband` estica preservando o tom e borra menos a fala que o `atempo`.
-# O `atempo` e a reserva: sempre existe no ffmpeg.
-FILTRO_PADRAO = ("rubberband=tempo={fator}:transients=smooth:detector=soft:"
-                 "window=short")
-RESERVA_PADRAO = "atempo={fator}"
+# OUVIDO, NAO SUPOSTO. A aposta era o `rubberband`, que costuma borrar menos a
+# fala. Em 14/09/2026 o Gemini ouviu a mesma narracao acelerada 1,7x por quatro
+# metodos e deu 7/10 ao `atempo` contra 3 a 5 a tres ajustes do rubberband
+# (metalico, robotico e tremulo, eco constante). O rubberband fica de reserva.
+FILTRO_PADRAO = "atempo={fator}"
+RESERVA_PADRAO = ("rubberband=tempo={fator}:transients=smooth:detector=soft:"
+                  "window=short")
 # Quanto o audio esticado pode ficar abaixo do esperado antes de ser recusado.
 TOLERANCIA = 0.02
 # O que conta como "a fala comecou" ao medir o atraso do filtro.
