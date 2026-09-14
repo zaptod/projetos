@@ -381,9 +381,20 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
             classes["rosto"] = []
             contado.append("a IA apontou troca de rosto sem descrever o "
                            "protagonista")
+    reescrita_nao_rodou = ""
     if classes["narracao"]:
-        novos = C.reescrever_prompts(roteiro, parte, classes["narracao"],
-                                     motivos, headless=headless, log=log)
+        # CONTA OCUPADA NAO E CULPA DO VIDEO. Em 14/09/2026, 6:21, a
+        # publicacao segurava o Gemini e a reescrita pela narracao falhou por
+        # isso; sem outro conserto no video, a rodada virava "nada" e gastava
+        # uma das tres tentativas. Tres assim e o video saia com veto sem nunca
+        # ter sido consertado. Conta ocupada adia, como o PicassoIA ocupado.
+        from builds import travas
+        if travas.ocupada(travas.do_perfil("gemini", "geral")):
+            reescrita_nao_rodou = "a conta do Gemini esta em uso"
+            novos = {}
+        else:
+            novos = C.reescrever_prompts(roteiro, parte, classes["narracao"],
+                                         motivos, headless=headless, log=log)
         if novos:
             mudou = True
             contado.append(f"reescrevi pela narracao o prompt da(s) cena(s) "
@@ -396,6 +407,11 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
     refazer = sorted(set(classes["imagem"]) | set(classes["rosto"])
                      | set(classes["narracao"]))
     if not refazer:
+        if reescrita_nao_rodou:
+            return {"parar": {"acao": "adiado", "ok": False,
+                              "detalhe": "a reescrita pela narracao nao rodou "
+                                         f"({reescrita_nao_rodou}); tento de "
+                                         "novo na proxima rodada"}}
         return {"parar": {"acao": "nada", "ok": False,
                           "detalhe": "nenhum motivo da IA tem conserto "
                                      "automatico: "

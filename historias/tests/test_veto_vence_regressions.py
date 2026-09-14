@@ -132,6 +132,34 @@ class RodadaNaoEsqueceVetoVencidoTests(_Base):
         self.assertEqual(reparo.TETO_DE_TENTATIVAS, reparo.tentativas(_V.id))
 
 
+class ContaOcupadaNaoGastaTentativaTests(_Base):
+
+    def test_reescrita_sem_conta_livre_adia_e_nao_conta(self):
+        """A publicacao segurava o Gemini, a reescrita nao rodou, e a rodada
+        gastava tentativa de um video que nunca foi consertado."""
+        from builds import travas
+        from contos.roteiro import roteiro as R
+        veto = {"aprovado": False, "numeracao": "cena",
+                "criterio": parecer.CRITERIO, "vista": "video inteiro (2:03)",
+                "motivos": ["cena 2: a imagem mostra a protagonista como a "
+                            "entrevistada, mas a narração diz que quem estava "
+                            "dando a entrevista era Valeria"]}
+        parecer.lembrado = lambda _v: dict(veto)
+        for modulo, nome, valor in (
+                (R, "carregar", lambda _hid: {"partes": []}),
+                (travas, "ocupada", lambda _nome: True)):
+            self.addCleanup(setattr, modulo, nome, getattr(modulo, nome))
+            setattr(modulo, nome, valor)
+
+        class _Pipeline:
+            pass
+
+        saida = reparo.reparar(_V(), ["a IA reprovou: " + veto["motivos"][0]],
+                               pipeline=_Pipeline(), log=lambda *_a: None)
+        self.assertEqual("adiado", saida["acao"])
+        self.assertEqual(0, reparo.tentativas(_V.id))
+
+
 class PublicadorTests(_Base):
 
     def setUp(self):
