@@ -1,6 +1,10 @@
 outputs/
 assets/music/*
 !assets/music/.gitkeep
+# O video de fundo da tela dividida (14/09/2026) tem 794 MB: o GitHub recusa
+# arquivo acima de 100 MB, e um `git add -A` travaria o push inteiro.
+assets/fundo/*
+!assets/fundo/.gitkeep
 __pycache__/
 *.pyc
 
