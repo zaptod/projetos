@@ -21,6 +21,7 @@ video subiria de novo — e video repetido no canal nao tem desfazer bonito.
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -130,11 +131,38 @@ def fila_de_historias() -> list:
     videos = [v for v in catalogo.listar() if v.perfil == "celular"]
     comecadas = {v.fonte_id for v in videos if v.id in ja}
     pendentes = [v for v in videos if v.id not in ja]
-    return sorted(pendentes, key=lambda v: (
+    fila = sorted(pendentes, key=lambda v: (
         0 if v.fonte_id in comecadas else 1,   # terminar antes de comecar
         v.fonte_id if v.fonte_id in comecadas  # entre as comecadas: a mais velha
         else _ao_contrario(v.fonte_id),        # entre as novas: a mais nova
         v.parte or 0))
+    # FURAR A FILA PELO CAMINHO NORMAL. Pedido dele em 14/09/2026: ver o
+    # formato novo no ar ja, e nao depois de tres series terminarem. O video
+    # pedido vai para a frente e passa pelas MESMAS guardas (vistoria, parecer,
+    # um-por-horario, grade do TikTok); se nao passar, a fila segue como era.
+    # O pedido se apaga sozinho: publicado, o video deixa de estar pendente.
+    ordem = {video_id: i for i, video_id in enumerate(_prioridades())}
+    if ordem:
+        fila.sort(key=lambda v: (0, ordem[v.id]) if v.id in ordem else (1, 0))
+    return fila
+
+
+# `historias/outputs/_publicar/prioridade.json`: {"videos": ["<id>", ...]}.
+PRIORIDADE = (Path(__file__).resolve().parents[1] / "historias" / "outputs"
+              / "_publicar" / "prioridade.json")
+
+
+def _prioridades() -> list:
+    """Os ids que furam a fila, na ordem pedida. Lista vazia se nao ha pedido."""
+    try:
+        with open(PRIORIDADE, encoding="utf-8-sig") as fh:
+            dados = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    ids = dados.get("videos") if isinstance(dados, dict) else dados
+    if not isinstance(ids, list):
+        return []
+    return [str(i).strip() for i in ids if str(i).strip()]
 
 
 def _ao_contrario(texto: str) -> str:

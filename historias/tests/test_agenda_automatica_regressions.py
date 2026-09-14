@@ -982,6 +982,53 @@ class FilaPrefereONovoTests(unittest.TestCase):
         self.assertEqual([v.fonte_id for v in fila],
                          ["historia_00010", "historia_00008", "historia_00004"])
 
+    def _fila_com_pedido(self, pedido):
+        """A fila da serie comecada (h3) + uma nova (h12), com um pedido."""
+        import json
+        import tempfile
+        postar = self._postar()
+        from contos.publicar import catalogo, serie
+
+        def _video(h, parte):
+            return type("V", (), {"id": f"{h}:celular:p{parte:02d}",
+                                  "fonte_id": h, "perfil": "celular",
+                                  "parte": parte})()
+
+        videos = [_video("historia_00003", i) for i in (1, 2, 3)]
+        videos += [_video("historia_00012", i) for i in (1, 2)]
+        self.addCleanup(setattr, catalogo, "listar", catalogo.listar)
+        self.addCleanup(setattr, serie, "publicados", serie.publicados)
+        catalogo.listar = lambda: videos
+        serie.publicados = lambda: [
+            {"video_id": "historia_00003:celular:p01", "url": "x"}]
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        postar.PRIORIDADE = Path(tmp.name) / "prioridade.json"
+        if pedido is not None:
+            postar.PRIORIDADE.write_text(
+                pedido if isinstance(pedido, str) else json.dumps(pedido),
+                encoding="utf-8")
+        return [v.id for v in postar.fila_de_historias()]
+
+    def test_pedido_de_prioridade_fura_a_fila_e_o_resto_segue_igual(self):
+        """14/09/2026: a parte 1 do formato novo no ar ja, e nao depois de
+        tres series terminarem — pelo caminho normal da postagem."""
+        sem = self._fila_com_pedido(None)
+        com = self._fila_com_pedido({"videos": ["historia_00012:celular:p01"]})
+        self.assertEqual("historia_00012:celular:p01", com[0])
+        self.assertEqual([i for i in sem if i != com[0]], com[1:])
+
+    def test_pedido_de_video_que_nao_esta_na_fila_nao_mexe_em_nada(self):
+        sem = self._fila_com_pedido(None)
+        ja_publicado = self._fila_com_pedido(
+            {"videos": ["historia_00003:celular:p01", "historia_99999:p01"]})
+        self.assertEqual(sem, ja_publicado)
+
+    def test_pedido_quebrado_nao_derruba_a_postagem(self):
+        sem = self._fila_com_pedido(None)
+        for torto in ("{nao e json", '{"videos": "historia_00012"}', "[]"):
+            self.assertEqual(sem, self._fila_com_pedido(torto))
+
 
 if __name__ == "__main__":
     unittest.main()
