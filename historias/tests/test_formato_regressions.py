@@ -163,6 +163,17 @@ class FormatoTests(unittest.TestCase):
         f = formato.resolver("historia_00050", self.cfg, self.pasta)
         self.assertEqual((1.5, "dividido"), (f["velocidade"], f["layout"]))
 
+    def test_uma_parte_convertida_nao_arrasta_as_irmas_antigas(self):
+        """14/09/2026: um render de prova gravou 1,7x/dividido no plano da
+        p03 da historia 10, que tinha as outras cinco partes no formato
+        antigo. A regra antiga ("o primeiro plano com formato decide") faria
+        o reparo refazer as irmas no formato novo."""
+        self._plano_da_parte(1, {"events": []})
+        self._plano_da_parte(3, {"formato": {"velocidade": 1.7,
+                                             "layout": "dividido"}})
+        f = formato.resolver("historia_00050", self.cfg, self.pasta)
+        self.assertEqual((1.0, "vertical"), (f["velocidade"], f["layout"]))
+
     def test_formato_json_vence_tudo(self):
         self._plano_da_parte(2, {"events": []})
         (self.pasta / "formato.json").write_text(

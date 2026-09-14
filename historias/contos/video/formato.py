@@ -12,10 +12,10 @@ A regra, na ordem:
 
   1. `outputs/<id>/formato.json` — escolha explicita, para converter uma
      historia de proposito;
-  2. o `formato` de qualquer `partes/pNN/edit_plan.json` — a primeira parte
-     renderizada decide pelas outras;
-  3. se ja existe parte renderizada SEM esse campo, a historia e de antes da
-     mudanca: formato antigo;
+  2. se QUALQUER parte ja renderizada nao tem o campo `formato` no plano (ou
+     so ha mp4 sem plano), a historia e de antes da mudanca: formato antigo;
+  3. senao, o `formato` dos planos — a primeira parte renderizada decide
+     pelas outras;
   4. senao, o que o `render.json` pede hoje.
 """
 from __future__ import annotations
@@ -63,12 +63,24 @@ def resolver(historia_id: str, cfg_render: dict | None, pasta: Path) -> dict:
         return {**normalizar(escolhido), "origem": "formato.json"}
 
     planos = sorted((pasta / "partes").glob("p*/edit_plan.json"))
+    achados = []
     for plano in planos:
         dados = _ler_json(plano)
-        if isinstance(dados, dict) and isinstance(dados.get("formato"), dict):
-            return {**normalizar(dados["formato"]),
-                    "origem": f"{plano.parent.name}/edit_plan.json"}
-    if planos or any(pasta.glob("final_*.mp4")):
+        pedido = dados.get("formato") if isinstance(dados, dict) else None
+        if not isinstance(pedido, dict):
+            # UMA PARTE ANTIGA BASTA. Todo render desde 14/09/2026 grava o
+            # campo, entao plano sem ele e de antes da mudanca — e a serie
+            # tem parte no ar no formato antigo. Achado pela revisao
+            # adversarial: "o primeiro plano que tiver formato decide" deixava
+            # uma parte convertida por engano arrastar as irmas antigas.
+            return {**LEGADO,
+                    "origem": f"{plano.parent.name} e de antes da mudanca"}
+        achados.append((plano, pedido))
+    if achados:
+        plano, pedido = achados[0]
+        return {**normalizar(pedido),
+                "origem": f"{plano.parent.name}/edit_plan.json"}
+    if any(pasta.glob("final_*.mp4")):
         return {**LEGADO, "origem": "historia anterior a mudanca"}
     return {**do_config(cfg_render), "origem": "render.json"}
 

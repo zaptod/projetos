@@ -140,6 +140,11 @@ def cmd_video(args, pipeline) -> int:
     trocas = {chave: valor for chave, valor in (
         ("velocidade", getattr(args, "velocidade", None)),
         ("layout", getattr(args, "layout", None))) if valor is not None}
+    if trocas and not getattr(args, "prova", None):
+        print("[video] --velocidade e --layout so valem com --prova PASTA: na "
+              "historia de verdade o formato e travado pela primeira parte "
+              "renderizada (contos/video/formato.py).")
+        return 2
     pipeline.render(args.historia_id, preview=args.preview, parte=args.parte,
                     saida=getattr(args, "prova", None),
                     formato_override=trocas or None)

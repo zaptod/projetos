@@ -123,24 +123,37 @@ def _tela_dividida(video, historia_id: str, parte: int) -> bool:
         return False
 
 
-def _colagem_falsa(historia_id: str, parte: int, n: int, motivos) -> bool:
-    """"Tela dividida" que e o FORMATO do video, e nao defeito da imagem.
+# O Gemini reclamando da TELA (o formato), e nao da imagem da cena...
+DIZ_FORMATO = ("metade de baixo", "metade inferior", "parte de baixo",
+               "parte inferior", "video de fundo", "vídeo de fundo",
+               "maquiagem", "tela inteira", "divisao da tela",
+               "divisão da tela", "dividida ao meio")
+# ...e descrevendo a IMAGEM da cena, que e colagem de verdade.
+DIZ_IMAGEM_DA_CENA = ("a imagem e", "a imagem é", "dois quadros", "paineis",
+                      "painéis", "empilhad", "grade", "marca d", "logotipo")
+
+
+def _motivo_e_do_formato(motivos, n: int) -> bool:
+    """A queixa da cena `n` e sobre a tela dividida em si, e nao sobre a imagem?
 
     Desde 14/09/2026 a metade de baixo do video e um video de fundo. O prompt
-    do parecer avisa, mas o Gemini ainda pode escrever "cena 4: tela dividida"
-    olhando para a tela inteira — e refazer a imagem por isso gastaria
-    PicassoIA para trocar uma imagem boa por outra. So vale quando o nosso
-    detector, olhando a IMAGEM da cena, nao ve colagem nenhuma.
+    do parecer avisa, mas o Gemini ainda pode escrever "cena 4: tela dividida
+    ao meio, com um video de maquiagem embaixo" — e refazer a imagem por isso
+    trocaria uma imagem boa por outra.
+
+    PELO TEXTO, E NAO PELO DETECTOR. A primeira versao perguntava ao
+    `composicao.e_colagem` se a imagem era colagem, e a revisao adversarial
+    mostrou que isso nunca decide nada: a IA so e consultada DEPOIS de a
+    vistoria passar, e a vistoria roda o mesmo detector em toda cena. Com veto
+    da IA na mao, o detector ja disse "nao e colagem" — e toda colagem real
+    que so a IA pega ("a imagem e uma tela dividida com dois quadros
+    empilhados", h10 p04) seria descartada. Na duvida, refaz.
     """
     from . import conserto_de_cena as C
     texto = C.motivos_da_cena(motivos, int(n)).lower()
-    if not texto or not any(t in texto for t in DIZ_COLAGEM):
+    if not texto or any(t in texto for t in DIZ_IMAGEM_DA_CENA):
         return False
-    if any(t in texto for t in ("marca d", "logotipo")):
-        return False
-    from ..imagens import composicao, fila
-    arquivo = fila.caminho_da_cena(historia_id, int(n), parte)
-    return arquivo.is_file() and not composicao.e_colagem(arquivo)
+    return any(t in texto for t in DIZ_FORMATO)
 
 
 def cenas_com_colagem(erros: list) -> list[int]:
@@ -277,7 +290,7 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
     colagens = cenas_com_colagem(erros)
     if colagens and _tela_dividida(video, historia_id, parte):
         colagens = [n for n in colagens
-                    if not _colagem_falsa(historia_id, parte, n, erros)]
+                    if not _motivo_e_do_formato(erros, n)]
     detalhe = ""
     if any("a ia reprovou" in str(e).lower() for e in erros):
         plano_da_ia = _plano_pelo_veto_da_ia(video, historia_id, parte,
@@ -406,12 +419,12 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
     mudou, contado = False, []
     if classes["imagem"] and _tela_dividida(video, historia_id, parte):
         falsas = [n for n in classes["imagem"]
-                  if _colagem_falsa(historia_id, parte, n, motivos)]
+                  if _motivo_e_do_formato(motivos, n)]
         if falsas:
             classes["imagem"] = [n for n in classes["imagem"]
                                  if n not in falsas]
-            contado.append(f"cena(s) {falsas}: 'tela dividida' e o formato "
-                           "do video, e o detector nao ve colagem na imagem")
+            contado.append(f"cena(s) {falsas}: a queixa e da tela dividida "
+                           "(o formato do video), nao da imagem da cena")
     if classes["rosto"]:
         nova = str(ficha.get("protagonista") or "").strip()
         if nova:

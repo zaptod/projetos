@@ -337,6 +337,11 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
     laudo = laudo or {}
     feito = laudo.get("formato") or {}
     dividido = feito.get("layout") == "dividido"
+    # A FOLHA JA VEM RECORTADA no painel da historia: la, "ignore a metade de
+    # baixo" viraria "ignore a metade de baixo de cada quadro" (onde ficam a
+    # marca d'agua e a legenda) ou as ultimas linhas da folha. A isencao e so
+    # de quem assiste ao video inteiro. Revisao adversarial de 14/09/2026.
+    fundo_na_tela = dividido and not pela_folha
     velocidade = float(feito.get("velocidade") or 1.0)
     acelerado = abs(velocidade - 1.0) > 1e-6
     if pela_folha and por_cena:
@@ -385,7 +390,7 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
         "outro lugar, ou o contrario do que acontece;",
         ("  - alguma IMAGEM DA HISTORIA (metade de cima da tela) e colagem, "
          "tela dividida ou grade de paineis dentro dela mesma "
-         if dividido else
+         if fundo_na_tela else
          "  - alguma imagem e colagem, tela dividida ou grade de paineis ")
         + "(dois ou mais quadros dentro do mesmo quadro, com uma faixa "
         "separando);",
@@ -406,7 +411,12 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
            "sem nenhuma relacao com a historia (maquiagem). Ignore tudo o que "
            "aparece na metade de baixo — pessoa, rosto, maos, produto, texto "
            "em qualquer lingua, marca d'agua, logotipo — e julgue so a "
-           "metade de cima;"] if dividido else []),
+           "metade de cima;"] if fundo_na_tela else []),
+        *(["  - o fundo do video publicado: a tela dele e dividida, com um "
+           "video de fundo embaixo, mas na folha ele ja foi RECORTADO e cada "
+           "quadro e SO a imagem da historia. Julgue o quadro inteiro: marca "
+           "d'agua ou logotipo dentro dele continua sendo problema;"]
+          if dividido and pela_folha else []),
         *([f"  - a fala rapida: o video inteiro e acelerado {velocidade:g}x "
            "de proposito;"] if acelerado else []),
         "  - texto que faz parte da CENA (papel na mao, placa na porta, "

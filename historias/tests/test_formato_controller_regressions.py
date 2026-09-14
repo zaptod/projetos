@@ -137,6 +137,26 @@ class FormatoNovoTests(_Base):
         self.assertEqual(17.0, palavra["t0"])
 
 
+class OverrideSoEmProvaTests(unittest.TestCase):
+
+    def test_override_na_historia_de_verdade_e_recusado(self):
+        """Revisao adversarial de 14/09/2026: `video --velocidade 1.7` sem
+        --prova gravaria o formato no plano real e travaria a serie nele."""
+        with self.assertRaises(ValueError):
+            controller.Pipeline().render(
+                "historia_que_nao_existe", parte=1,
+                formato_override={"velocidade": 1.7})
+
+    def test_linha_de_comando_recusa_antes_de_renderizar(self):
+        fonte = (Path(controller.__file__).resolve().parents[2]
+                 / "main.py").read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def cmd_video("):]
+        corpo = corpo[:corpo.index("\ndef ")]
+        self.assertLess(corpo.index('getattr(args, "prova", None)'),
+                        corpo.index("pipeline.render("))
+        self.assertIn("return 2", corpo)
+
+
 class LinhaDeComandoTests(unittest.TestCase):
 
     def test_render_de_prova_nao_usa_a_opcao_do_log(self):

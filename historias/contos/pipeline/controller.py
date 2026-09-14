@@ -222,6 +222,15 @@ class Pipeline:
         """
         from ..video import formato as formato_mod
 
+        if formato_override and not saida:
+            # Na pasta de verdade o override viraria o formato da historia
+            # inteira (o plano o grava, e ele trava as outras partes) — e o
+            # mp4 substituiria uma parte ja pronta. Achado pela revisao
+            # adversarial de 14/09/2026.
+            raise ValueError(
+                "formato_override so vale em render de prova (saida/--prova): "
+                "na historia de verdade o formato e travado pela primeira "
+                "parte renderizada.")
         roteiro = R.carregar(historia_id)
         pasta = OUTPUTS / historia_id
         pasta.mkdir(parents=True, exist_ok=True)

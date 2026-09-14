@@ -69,6 +69,20 @@ class PromptTests(unittest.TestCase):
             self.assertNotIn("acelerad", texto)
             self.assertIn("alguma imagem e colagem, tela dividida", texto)
 
+    def test_na_folha_recortada_nao_manda_ignorar_metade_nenhuma(self):
+        """Revisao adversarial de 14/09/2026: a folha ja vem so com o painel
+        da historia, e "ignore a metade de baixo" faria o revisor ignorar a
+        metade de baixo de cada QUADRO (marca d'agua, legenda) ou as ultimas
+        linhas da folha."""
+        laudo = {"duracao": 63, "media_db": -16.2, "palavras_por_s": 4.1,
+                 "formato": DIVIDIDO}
+        texto = parecer.prompt(_Video(), ROTEIRO, 1, laudo, pela_folha=True)
+        self.assertNotIn("metade de baixo", texto)
+        self.assertNotIn("metade de cima", texto)
+        self.assertIn("ja foi RECORTADO", texto)
+        self.assertIn("alguma imagem e colagem, tela dividida", texto)
+        self.assertIn("acelerada 1.7x", texto)
+
     def test_a_legenda_do_canal_continua_liberada(self):
         self.assertIn("legenda amarela", _texto(DIVIDIDO))
 
@@ -121,40 +135,39 @@ class FolhaSoDaHistoriaTests(unittest.TestCase):
 
 class ReparoNaoRefazOFormatoTests(unittest.TestCase):
 
-    def setUp(self):
-        from contos.imagens import composicao, fila
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.imagem = Path(self._tmp.name) / "p01_cena_03.png"
-        self.imagem.write_bytes(b"png")
-        self.colagem = False
-        for modulo, nome, valor in (
-                (fila, "caminho_da_cena", lambda *_a, **_k: self.imagem),
-                (composicao, "e_colagem", lambda _p: self.colagem)):
-            self.addCleanup(setattr, modulo, nome, getattr(modulo, nome))
-            setattr(modulo, nome, valor)
-
-    def test_tela_dividida_sem_colagem_na_imagem_e_o_formato(self):
-        self.assertTrue(reparo._colagem_falsa(
-            "h", 1, 3, ["cena 3: a imagem mostra uma tela dividida"]))
+    def test_queixa_da_metade_de_baixo_e_o_formato(self):
+        self.assertTrue(reparo._motivo_e_do_formato(
+            ["cena 3: tela dividida ao meio, com um video de maquiagem na "
+             "metade de baixo"], 3))
 
     def test_colagem_de_verdade_continua_sendo_refeita(self):
-        self.colagem = True
-        self.assertFalse(reparo._colagem_falsa(
-            "h", 1, 3, ["cena 3: a imagem e uma colagem de dois paineis"]))
+        """Revisao adversarial de 14/09/2026: o veto real da h10 p04."""
+        self.assertFalse(reparo._motivo_e_do_formato(
+            ["cena 6: a imagem é uma tela dividida com dois quadros "
+             "empilhados"], 6))
+        self.assertFalse(reparo._motivo_e_do_formato(
+            ["cena 3: colagem de dois paineis"], 3))
 
-    def test_marca_d_agua_nao_e_confundida(self):
-        self.assertFalse(reparo._colagem_falsa(
-            "h", 1, 3, ["cena 3: tela dividida com marca d'agua"]))
+    def test_marca_d_agua_na_duvida_e_refeita(self):
+        self.assertFalse(reparo._motivo_e_do_formato(
+            ["cena 3: marca d'agua na parte de baixo"], 3))
 
     def test_motivo_de_outra_cena_nao_conta(self):
-        self.assertFalse(reparo._colagem_falsa(
-            "h", 1, 3, ["cena 5: tela dividida"]))
+        self.assertFalse(reparo._motivo_e_do_formato(
+            ["cena 5: tela dividida ao meio"], 3))
+
+    def test_nao_usa_o_detector_como_juiz(self):
+        """A IA so e perguntada depois de a vistoria, com o mesmo detector,
+        passar: com veto na mao ele sempre diria "nao e colagem"."""
+        chamados = reparo._motivo_e_do_formato.__code__.co_names
+        self.assertNotIn("e_colagem", chamados)
+        self.assertNotIn("composicao", chamados)
 
     def test_os_dois_caminhos_do_reparo_passam_pela_guarda(self):
-        self.assertIn("_colagem_falsa(",
+        self.assertIn("_motivo_e_do_formato(",
                       inspect.getsource(reparo._plano_pelo_veto_da_ia))
-        self.assertIn("_colagem_falsa(", inspect.getsource(reparo.reparar))
+        self.assertIn("_motivo_e_do_formato(",
+                      inspect.getsource(reparo.reparar))
 
 
 if __name__ == "__main__":
