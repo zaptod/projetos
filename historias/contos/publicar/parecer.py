@@ -57,6 +57,14 @@ QUALIDADE = 82
 APROVADO = "APROVADO"
 REPROVADO = "REPROVADO"
 
+# A VERSAO DO CRITERIO. Sobe quando o prompt passa a julgar diferente, para
+# veto dado com a regua antiga ser perguntado de novo em vez de guiar
+# conserto. 2 = 13/09/2026, 23h50: imagem so reprova por CONTRADIZER a
+# narracao, nao por deixar detalhe de fora. Com a regua 1, a revisao da
+# madrugada reprovou 11 de 11 videos do estoque, 25 das 34 cenas por detalhe
+# (o gesto, o objeto na mao, a expressao, um personagem secundario).
+CRITERIO = 2
+
 
 # O veredito da IA fica GRAVADO, com a data do mp4 junto. Sem isso, o freio
 # de estoque e o reparo teriam de perguntar de novo para saber — 100 s e um
@@ -155,8 +163,12 @@ def _lembrar(video, veredito: dict) -> None:
     # nao aponta cena nenhuma, e sem ele o reparador nao tem o que refazer.
     melhora_numeracao = (veredito.get("numeracao") == "cena"
                          and (antigo or {}).get("numeracao") != "cena")
+    # E a regua nova entra no lugar da velha, mesmo vindo da folha.
+    melhora_criterio = (int(veredito.get("criterio") or 1)
+                        > int((antigo or {}).get("criterio") or 1))
     if (antigo and not _pela_folha(antigo.get("vista", ""))
             and _pela_folha(vista) and not melhora_numeracao
+            and not melhora_criterio
             and abs(float(antigo.get("mtime") or 0) - marca) <= 1.0):
         return
 
@@ -167,6 +179,7 @@ def _lembrar(video, veredito: dict) -> None:
         "vista": vista,
         "numeracao": str(veredito.get("numeracao") or ""),
         "protagonista": str(veredito.get("protagonista") or ""),
+        "criterio": int(veredito.get("criterio") or 1),
         "quando": datetime.now().isoformat(timespec="seconds"),
     }
     LEMBRETES.parent.mkdir(parents=True, exist_ok=True)
@@ -351,8 +364,10 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
         "REPROVE se, e somente se, houver algum destes:",
         "  - alguma imagem nao pertence a esta historia (assunto de outro "
         "video, cena que nao tem nada a ver com o que a narracao conta);",
-        "  - a imagem de uma cena nao mostra o que a narracao DAQUELA cena "
-        "conta: outras pessoas, outro lugar ou outro momento;",
+        "  - a imagem de uma cena CONTRADIZ a narracao daquela cena: mostra "
+        "outra pessoa no lugar de quem a narracao diz (um adulto no lugar de "
+        "uma crianca, um homem no lugar de uma mulher, outro personagem), "
+        "outro lugar, ou o contrario do que acontece;",
         "  - alguma imagem e colagem, tela dividida ou grade de paineis "
         "(dois ou mais quadros dentro do mesmo quadro, com uma faixa "
         "separando);",
@@ -373,6 +388,10 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
         "de banco de imagens sao problema;",
         "  - gosto pessoal, ritmo, qualidade artistica, cor ou estilo de "
         "arte;",
+        "  - a imagem nao mostrar um DETALHE da narracao: o objeto na mao, o "
+        "gesto, a expressao do rosto, um personagem secundario ou a acao "
+        "exata. Cada cena e UMA imagem que ilustra o momento, nao uma copia "
+        "fiel de cada frase;",
         "  - a historia ser dramatica ou exagerada demais: o canal e de "
         "drama e de humor caricato, e isso e proposital.",
         "",
@@ -535,6 +554,7 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
     # trechos, ou folha com um quadro por cena. So assim o reparador confia.
     veredito["numeracao"] = ("cena" if vista.startswith("video") or por_cena
                              else "quadro")
+    veredito["criterio"] = CRITERIO
     log(f"[parecer] {'APROVADO' if veredito['aprovado'] else 'REPROVADO'}"
         + (f": {veredito['motivos'][0][:90]}" if veredito["motivos"] else ""))
     return veredito

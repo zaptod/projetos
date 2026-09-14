@@ -40,6 +40,21 @@ def confiavel(ficha: dict | None) -> bool:
     return bool(ficha) and ficha.get("numeracao") == "cena"
 
 
+def atual(ficha: dict | None) -> bool:
+    """Numerado por cena E dado com o criterio de hoje do parecer.
+
+    O criterio muda quando o prompt muda. Em 13/09/2026 a regra de "imagem
+    igual a narracao" saiu rigida demais e a IA reprovou 11 de 11 videos do
+    estoque por detalhe. Veto dado com a regua velha e perguntado de novo em
+    vez de guiar conserto: refazer cena por causa de um gesto que falta so
+    gasta a conta do PicassoIA.
+    """
+    if not confiavel(ficha):
+        return False
+    from ..publicar import parecer
+    return int(ficha.get("criterio") or 1) >= parecer.CRITERIO
+
+
 def _pedacos(motivos) -> list:
     saida = []
     for motivo in motivos or []:

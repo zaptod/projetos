@@ -347,7 +347,7 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
         ficha = parecer.lembrado(video)
     except Exception:                                          # noqa: BLE001
         ficha = None
-    if not C.confiavel(ficha):
+    if not C.atual(ficha):
         log(f"[reparo] {getattr(video, 'id', video)}: o veto da IA nao "
             "numera as cenas; peco para ela olhar de novo.")
         ficha = _confirmar_com_a_ia(video, historia_id, parte,

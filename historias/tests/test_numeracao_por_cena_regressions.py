@@ -86,7 +86,7 @@ class PromptNumeradoTests(unittest.TestCase):
         self.assertIn("PROTAGONISTA:", self._texto())
 
     def test_a_imagem_tem_de_mostrar_a_narracao_daquela_cena(self):
-        self.assertIn("narracao DAQUELA cena", self._texto())
+        self.assertIn("CONTRADIZ a narracao daquela cena", self._texto())
 
 
 class LeituraDoVereditoTests(unittest.TestCase):
@@ -356,7 +356,7 @@ class ReparadorSoConfiaEmCenaTests(unittest.TestCase):
     def test_veto_numerado_refaz_a_cena_que_ele_aponta(self):
         parecer.lembrado = lambda _v: {
             "aprovado": False, "vista": "video inteiro (2:03)",
-            "numeracao": "cena",
+            "numeracao": "cena", "criterio": parecer.CRITERIO,
             "motivos": ["cena 6: a imagem e uma tela dividida"]}
         refeitas = []
 

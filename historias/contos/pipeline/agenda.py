@@ -626,7 +626,9 @@ def revisar_estoque(config: dict, *, headless: bool = False,
         if minutos_ate_fechar(_relogio.now(), janela) < margem:
             log("[auto] a janela esta fechando; paro a revisao do estoque.")
             break
-        if C.confiavel(parecer.lembrado(video)):
+        # ATUAL, e nao so numerado: veto dado com o criterio velho do parecer
+        # e perguntado de novo aqui, com a regua de hoje.
+        if C.atual(parecer.lembrado(video)):
             pulados += 1
             continue
         roteiro = R.carregar(video.fonte_id)
