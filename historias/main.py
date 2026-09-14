@@ -141,7 +141,7 @@ def cmd_video(args, pipeline) -> int:
         ("velocidade", getattr(args, "velocidade", None)),
         ("layout", getattr(args, "layout", None))) if valor is not None}
     pipeline.render(args.historia_id, preview=args.preview, parte=args.parte,
-                    saida=getattr(args, "saida", None),
+                    saida=getattr(args, "prova", None),
                     formato_override=trocas or None)
     return 0
 
@@ -537,7 +537,11 @@ def main() -> int:
     v.add_argument("historia_id")
     v.add_argument("--parte", type=int, default=None, help="so esta parte")
     v.add_argument("--preview", action="store_true", help="render rapido")
-    v.add_argument("--saida", default=None,
+    # `--prova`, e NAO `--saida`: `--saida ARQUIVO` e a opcao global que manda
+    # o log para um arquivo (ver `_redirecionar_saida`), tirada do argv antes
+    # do argparse. Em 14/09/2026 um render de prova com `--saida` teve a pasta
+    # engolida por ela e caiu na historia de verdade.
+    v.add_argument("--prova", default=None,
                    help="render de PROVA nesta pasta (nao toca a historia)")
     v.add_argument("--velocidade", type=float, default=None,
                    help="troca a velocidade so neste render (ex.: 1.7)")

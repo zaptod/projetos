@@ -137,6 +137,20 @@ class FormatoNovoTests(_Base):
         self.assertEqual(17.0, palavra["t0"])
 
 
+class LinhaDeComandoTests(unittest.TestCase):
+
+    def test_render_de_prova_nao_usa_a_opcao_do_log(self):
+        """14/09/2026: `video --saida PASTA` foi engolido pelo `--saida
+        ARQUIVO` global (o log da agenda), e o render de prova caiu na pasta
+        de verdade da historia 10."""
+        fonte = (Path(controller.__file__).resolve().parents[2]
+                 / "main.py").read_text(encoding="utf-8")
+        parser_video = fonte[fonte.index('add_parser("video"'):]
+        parser_video = parser_video[:parser_video.index("add_parser(", 10)]
+        self.assertNotIn('"--saida"', parser_video)
+        self.assertIn('"--prova"', parser_video)
+
+
 class OrdemNoRenderTests(unittest.TestCase):
 
     def test_o_plano_so_vai_ao_disco_depois_do_formato(self):
