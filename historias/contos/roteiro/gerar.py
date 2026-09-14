@@ -426,6 +426,16 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             log(f"[serie] biblia pronta: {biblia['titulo'] or '(sem titulo)'} "
                 f"- {len(biblia['partes'])} parte(s)")
 
+            # Salvar o roteiro com partes vazias, para que se esta geracao falhar
+            # antes de completar alguma parte, a proxima rodada a detecte como
+            # incompleta e retome (em vez de deixar a historia orfã). E essencial
+            # para que falhas por timeout do LLM (no limite de uso da conta) sejam
+            # adiadas automaticamente pelo sistema, não causem diagnóstico e interrupção.
+            R.salvar_serie(biblia, [], historia_id, tema=tema or "",
+                           provedor=provedor, estrutura=estrutura,
+                           modelo_llm=modelo_llm,
+                           ganchos=ganchos, narrador=narrador)
+
             # --- etapa 2: uma parte por vez, salvando a cada uma
             total = len(biblia["partes"]) or partes
             partes_prontas = []

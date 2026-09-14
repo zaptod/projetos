@@ -28,6 +28,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from contos.roteiro import gerar
 from contos.roteiro import roteiro as R
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -131,6 +132,24 @@ class RetomadaTests(unittest.TestCase):
         trecho = corpo[corpo.index("def _retomar_texto("):]
         self.assertIn("except Exception", trecho[:1200])
         self.assertIn("_registrar_erro(", trecho[:1400])
+
+    def test_roteiro_com_partes_vazias_e_salvo_apos_biblia(self):
+        """Apos a BIBLIA ser parseada, o roteiro e salvo com partes vazias.
+
+        Isso permite que se a geracao falhar antes de completar alguma parte,
+        a proxima rodada a detecte como incompleta e retome automaticamente
+        (evitando deixar a historia orfã e gerando diagnóstico).
+        """
+        fonte = Path(gerar.__file__).read_text(encoding="utf-8")
+        trecho = fonte[fonte.index("_gravar(pasta / \"biblia.json\""):]
+        # Deve salvar o roteiro apos gravar a biblia
+        self.assertLess(trecho.index("_gravar(pasta / \"biblia.json\""),
+                        trecho.index("R.salvar_serie(biblia, []"))
+        # Com partes vazias, para que incompletas() a detecte
+        self.assertIn("R.salvar_serie(biblia, []", trecho[:700])
+        # E ANTES de comeco da etapa 2, nao depois
+        self.assertLess(trecho.index("R.salvar_serie(biblia, []"),
+                        trecho.index("# --- etapa 2:"))
 
 
 if __name__ == "__main__":
