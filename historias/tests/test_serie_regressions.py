@@ -24,6 +24,7 @@ Rode de dentro de historias/:
 """
 from __future__ import annotations
 
+import inspect
 import json
 import tempfile
 import unittest
@@ -470,6 +471,52 @@ class ClienteLLMTests(unittest.TestCase):
             seletores.encontrar = original
         self.assertEqual("OK", texto)
         self.assertEqual(1, estado["cliques"])
+
+    def _calado(self, **ajustes):
+        """Cliente falso: nunca escreve, nunca oferece 'Responder agora'."""
+        from contos.llm import cliente as C
+        from contos.llm import seletores
+        falso = C.ClienteLLM.__new__(C.ClienteLLM)
+        falso.provedor = "gemini"
+        falso.sel = seletores.do_provedor("gemini")
+        falso.page = object()
+        falso.ajustes = {"pensar_ate": 0, **ajustes}
+        falso.log = lambda *_a: None
+        falso._resposta_atual = lambda: "Analisando"
+        falso.diagnosticos = []
+        falso._diagnosticar_calado = lambda: falso.diagnosticos.append(1)
+        original = seletores.encontrar
+        seletores.encontrar = lambda page, cand, timeout=0: None
+        self.addCleanup(setattr, seletores, "encontrar", original)
+        return falso, C
+
+    def test_parecer_desiste_cedo_de_modelo_calado_sem_botao(self):
+        """14/09/2026: tres revisoes ficaram 900 s com 10 chars e sem botao."""
+        import time
+        falso, C = self._calado()
+        comeco = time.monotonic()
+        with self.assertRaises(C.LLMFalhou):
+            falso.esperar_resposta(timeout=20, estabilidade=0.2,
+                                   desistir_calado=0.5)
+        self.assertLess(time.monotonic() - comeco, 5)
+        self.assertEqual([1], falso.diagnosticos)
+
+    def test_sem_pedido_de_desistir_espera_o_prazo_inteiro(self):
+        """A escrita da historia nao pede para desistir: espera o prazo e
+        devolve o que ha na tela, como sempre. A tela e registrada uma vez."""
+        import time
+        falso, _C = self._calado()
+        comeco = time.monotonic()
+        texto = falso.esperar_resposta(timeout=2.2, estabilidade=0.2)
+        self.assertGreaterEqual(time.monotonic() - comeco, 2.0)
+        self.assertEqual("Analisando", texto)
+        self.assertEqual([1], falso.diagnosticos)
+
+    def test_o_parecer_pede_para_desistir_cedo(self):
+        from contos.publicar import parecer
+        fonte = inspect.getsource(parecer._pedir_em)
+        self.assertIn("desistir_calado=ESPERA_CALADO_S", fonte)
+        self.assertLess(parecer.ESPERA_CALADO_S, 900)
 
     def test_rotulo_final_nao_vira_fala(self):
         """14/09/2026: a narradora dizia "FINAL" na ultima cena das

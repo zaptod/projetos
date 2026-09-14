@@ -331,8 +331,34 @@ class ClienteLLM:
                  "'Responder agora'.")
         return True
 
+    def _diagnosticar_calado(self) -> None:
+        """Guarda o que a pagina mostra quando o modelo fica calado SEM botao.
+
+        Em 14/09/2026 as revisoes de video ficaram 900 s com 10 chars na tela
+        e nenhum "Responder agora" para clicar — tres vezes. A captura de tela
+        do Windows nao serve (com o monitor apagado ela devolve quadro velho);
+        a do proprio navegador renderiza a pagina de verdade. Nunca levanta.
+        """
+        try:
+            pasta = RAIZ / "outputs" / "_logs" / "llm_calado"
+            pasta.mkdir(parents=True, exist_ok=True)
+            destino = pasta / f"{self.provedor}_{time.strftime('%Y%m%d_%H%M%S')}.png"
+            self.page.screenshot(path=str(destino))
+            textos = self.page.evaluate(
+                "() => Array.from(document.querySelectorAll('body *'))"
+                ".filter(e => e.offsetParent !== null && e.children.length === 0)"
+                ".map(e => (e.innerText || '').trim())"
+                ".filter(t => t && t.length < 60)") or []
+            self.log(f"[{self.provedor}] calado e sem 'Responder agora': tela "
+                     f"em _logs/llm_calado/{destino.name}; visivel: "
+                     + " | ".join(textos[-12:])[:400])
+        except Exception as exc:                               # noqa: BLE001
+            self.log(f"[{self.provedor}] nao consegui registrar a tela "
+                     f"({type(exc).__name__}).")
+
     def esperar_resposta(self, timeout: float | None = None,
-                         estabilidade: float = 2.5) -> str:
+                         estabilidade: float = 2.5,
+                         desistir_calado: float | None = None) -> str:
         """Espera o modelo TERMINAR e devolve o texto.
 
         Duas condicoes, e as duas sao necessarias: o botao de parar sumiu
@@ -340,6 +366,11 @@ class ClienteLLM:
         por `estabilidade` segundos. So a primeira falha quando o botao
         pisca entre blocos; so a segunda falha quando o modelo pensa alguns
         segundos antes de escrever.
+
+        `desistir_calado`: com ele, se o modelo passar esse tempo sem escrever
+        e sem oferecer "Responder agora", a espera desiste antes do `timeout`.
+        So quem tem reserva deve pedir isso (o parecer cai para o ChatGPT); a
+        escrita da historia espera o prazo inteiro.
         """
         timeout = float(timeout if timeout is not None
                         else self.ajustes.get("resposta_timeout", 600))
@@ -354,16 +385,26 @@ class ClienteLLM:
         # as 8:22 o clique a 120 s cortou o raciocinio de uma parte saudavel.
         # O raciocinio preso de verdade passava de 600 s.
         pensar_ate = float(self.ajustes.get("pensar_ate", 300))
-        apressado = False
+        apressado = diagnosticado = False
 
         while time.monotonic() < fim:
             texto = self._resposta_atual()
+            calado = len(texto.strip()) < 40
             # "Sem texto" e MENOS DE 40 caracteres, e nao vazio: as 7:29 de
             # 14/09/2026 a pagina mostrou 10 chars (o rotulo do raciocinio)
             # por minutos, o clique nunca veio e a revisao gastou 900 s.
-            if (not apressado and len(texto.strip()) < 40
+            if (not apressado and calado
                     and time.monotonic() - inicio >= pensar_ate):
                 apressado = self._responder_agora()
+                if not apressado and not diagnosticado:
+                    diagnosticado = True
+                    self._diagnosticar_calado()
+            if (desistir_calado and not apressado and calado
+                    and time.monotonic() - inicio >= float(desistir_calado)):
+                raise LLMFalhou(
+                    f"o {self.provedor} ficou {float(desistir_calado):.0f}s sem "
+                    "escrever e sem oferecer 'Responder agora'; desisto antes "
+                    f"do prazo de {timeout:.0f}s.")
             escrevendo = sel.encontrar(self.page, self.sel["parar"],
                                        timeout=0.3) is not None
             if len(texto) != ultimo_tamanho:

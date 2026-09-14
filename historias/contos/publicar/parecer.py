@@ -500,6 +500,11 @@ ASSISTEM_VIDEO = ("gemini",)
 # Espera pela conta antes de trocar de provedor. Curta de proposito: se nao
 # liberou em um minuto, e uma geracao rodando, e ela nao vai liberar tao cedo.
 ESPERA_DA_CONTA_S = 60.0
+# Quanto o parecer espera o modelo calado e sem "Responder agora" antes de
+# desistir e cair para o ChatGPT. Respostas boas de video vieram em 37-120 s;
+# em 14/09/2026 tres revisoes ficaram os 900 s inteiros com 10 chars na tela,
+# e cada uma atrasou o horario da postagem em quinze minutos.
+ESPERA_CALADO_S = 480.0
 
 
 def pedir(video, roteiro: dict, parte: int, *, laudo: dict | None = None,
@@ -584,7 +589,8 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
             cliente.enviar(pergunta if vista.startswith("video")
                            else prompt(video, roteiro, parte, laudo,
                                        pela_folha=True, por_cena=por_cena))
-            resposta = cliente.esperar_resposta(timeout=900)
+            resposta = cliente.esperar_resposta(
+                timeout=900, desistir_calado=ESPERA_CALADO_S)
     except (SemParecer, ContaOcupada):
         # `ContaOcupada` sobe intacta: quem chamou decide trocar de provedor,
         # e transformar em `SemParecer` aqui apagaria essa informacao.
