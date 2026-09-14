@@ -210,9 +210,31 @@ class Pipeline:
         sufixo = f":p{int(parte):02d}" if total > 1 else ""
         return f"{historia_id}:{perfil}{sufixo}"
 
-    def render(self, historia_id: str, *, preview: bool = False,
-               parte: int | None = None, log=print, saida=None,
-               formato_override: dict | None = None) -> dict:
+    def render(self, historia_id: str, **opcoes) -> dict:
+        """Renderiza uma parte (ou todas), UMA renderizacao por historia.
+
+        Dois renders da mesma historia ao mesmo tempo escrevem os mesmos
+        `voz.wav`, `voz_palavras.json`, segmentos e mp4 — e, desde a voz
+        acelerada no lugar, um intercalado deixaria a fala 2,89x e as palavras
+        divididas duas vezes (revisao de conflitos de 14/09/2026). O botao do
+        painel e o `main.py video` podem cruzar com a agenda. O render de prova
+        escreve em outra pasta e nao precisa da trava.
+        """
+        if opcoes.get("saida"):
+            return self._render(historia_id, **opcoes)
+        from builds import travas
+        with travas.trava(f"historias__render__{historia_id}",
+                          esperar=0.0) as minha:
+            if not minha:
+                raise RuntimeError(
+                    f"{historia_id} ja esta sendo renderizada por outro "
+                    "processo; duas renderizacoes escreveriam os mesmos "
+                    "arquivos. Tente depois que ela terminar.")
+            return self._render(historia_id, **opcoes)
+
+    def _render(self, historia_id: str, *, preview: bool = False,
+                parte: int | None = None, log=print, saida=None,
+                formato_override: dict | None = None) -> dict:
         """Renderiza uma parte (ou todas). Um mp4 por parte, por perfil.
 
         `saida` e o render de PROVA: partes e mp4 vao para aquela pasta, e

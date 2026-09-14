@@ -104,7 +104,8 @@ def _uma_tentativa(wav: Path, fator: float, filtro: str) -> str | None:
 
     entrada, taxa = _ler(wav)
     esperado = int(round(len(entrada) / fator))
-    temporario = wav.with_name(wav.stem + ".acelerando.wav")
+    # Com o pid no nome: dois processos nunca apagam o temporario um do outro.
+    temporario = wav.with_name(f"{wav.stem}.acelerando.{os.getpid()}.wav")
     try:
         erro = _esticar(wav, temporario, filtro.format(fator=f"{fator:g}"), taxa)
         if erro:

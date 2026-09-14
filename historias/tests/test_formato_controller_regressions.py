@@ -157,6 +157,36 @@ class OverrideSoEmProvaTests(unittest.TestCase):
         self.assertIn("return 2", corpo)
 
 
+class UmRenderPorHistoriaTests(unittest.TestCase):
+
+    def test_segundo_render_da_mesma_historia_e_recusado(self):
+        """Revisao de conflitos de 14/09/2026: o botao do painel ou um
+        `main.py video` cruzando com a agenda aceleraria a voz duas vezes."""
+        import threading
+        from builds import travas
+
+        nome = "historia_teste_trava_render"
+        segurando, liberar = threading.Event(), threading.Event()
+
+        def outro_processo():
+            with travas.trava(f"historias__render__{nome}", esperar=0.0):
+                segurando.set()
+                liberar.wait(10)
+
+        fio = threading.Thread(target=outro_processo)
+        fio.start()
+        self.addCleanup(fio.join)
+        self.addCleanup(liberar.set)
+        self.assertTrue(segurando.wait(10))
+        with self.assertRaises(RuntimeError):
+            controller.Pipeline().render(nome, parte=1)
+
+    def test_render_de_prova_nao_espera_a_trava(self):
+        fonte = inspect.getsource(controller.Pipeline.render)
+        self.assertLess(fonte.index('opcoes.get("saida")'),
+                        fonte.index("travas.trava("))
+
+
 class LinhaDeComandoTests(unittest.TestCase):
 
     def test_render_de_prova_nao_usa_a_opcao_do_log(self):
@@ -174,7 +204,7 @@ class LinhaDeComandoTests(unittest.TestCase):
 class OrdemNoRenderTests(unittest.TestCase):
 
     def test_o_plano_so_vai_ao_disco_depois_do_formato(self):
-        fonte = inspect.getsource(controller.Pipeline.render)
+        fonte = inspect.getsource(controller.Pipeline._render)
         self.assertLess(fonte.index("formato_mod.resolver("),
                         fonte.index("aplicar_formato("))
         self.assertLess(fonte.index("aplicar_formato("),
