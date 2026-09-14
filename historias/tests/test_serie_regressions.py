@@ -118,7 +118,11 @@ class BibliaTests(unittest.TestCase):
                          biblia["partes"][0]["titulo"])
         self.assertEqual("Do outro lado tem luz acesa.",
                          biblia["partes"][0]["cliffhanger"])
-        self.assertTrue(biblia["partes"][2]["cliffhanger"].startswith("FINAL"))
+        # O rotulo "FINAL -" do molde sai na leitura: ate 14/09/2026 ele
+        # chegava a fala da ultima cena (historias 9 e 10).
+        final = biblia["partes"][2]["cliffhanger"]
+        self.assertTrue(final)
+        self.assertFalse(final.upper().startswith("FINAL"))
 
     def test_biblia_incompleta_e_acusada(self):
         self.assertEqual([], S.problemas_da_biblia(_biblia()))
@@ -466,6 +470,23 @@ class ClienteLLMTests(unittest.TestCase):
             seletores.encontrar = original
         self.assertEqual("OK", texto)
         self.assertEqual(1, estado["cliques"])
+
+    def test_rotulo_final_nao_vira_fala(self):
+        """14/09/2026: a narradora dizia "FINAL" na ultima cena das
+        historias 9 e 10, copiado do molde da biblia."""
+        from contos.roteiro import serie as S
+        pedido = S.prompt_biblia(partes=3)
+        self.assertIn("CLIFFHANGER:", pedido)
+        self.assertNotIn("FINAL -", pedido)
+        biblia = S.parse_biblia(
+            "TITULO: t\nPARTE 1\nTITULO: a\nCLIFFHANGER: FINAL - Eu joguei "
+            "o envelope fora; e voce?\n", partes_esperadas=1)
+        self.assertEqual("Eu joguei o envelope fora; e voce?",
+                         biblia["partes"][0]["cliffhanger"])
+        for sujo in ("FINAL: fim", "**FINAL** - fim", "final — fim"):
+            self.assertEqual("fim", S.sem_rotulo_final(sujo))
+        self.assertEqual("Finalmente acabou", S.sem_rotulo_final(
+            "Finalmente acabou"))
 
     def test_perfil_por_provedor_e_separado(self):
         self.assertNotEqual(llm_cliente.perfil_de("chatgpt"),
@@ -1012,11 +1033,12 @@ class AbordagemDeQualidadeTests(unittest.TestCase):
         self.assertLess(trecho.index("proximos_ganchos("),
                         trecho.index("cliente.perguntar("))
         self.assertIn("ganchos=ganchos, narrador=narrador", trecho)
-        # AS DUAS chamadas de `salvar_serie` tem que levar a escolha: uma
-        # corrida que morra na parte 3 grava pela primeira, e memoria vazia
-        # ali faria o rodizio esquecer a historia inteira.
+        # AS TRES chamadas de `salvar_serie` tem que levar a escolha: a logo
+        # depois da biblia (para a retomada achar uma corrida que morreu antes
+        # da parte 1), a de cada parte e a final. Memoria vazia em qualquer
+        # uma faria o rodizio esquecer a historia inteira.
         chamadas = [p for p in trecho.split("R.salvar_serie(")[1:]]
-        self.assertEqual(2, len(chamadas), "mudou o numero de gravacoes")
+        self.assertEqual(3, len(chamadas), "mudou o numero de gravacoes")
         for corpo in chamadas:
             self.assertIn("ganchos=ganchos", corpo[:corpo.index(")")])
 

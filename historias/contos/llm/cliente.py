@@ -349,13 +349,19 @@ class ClienteLLM:
         parado_desde = None
         ultimo_aviso = 0.0
         # Quanto o modelo pode pensar calado antes de ouvir "responda agora".
-        # Resposta boa do Pro sai em 30-50 s; 120 s so pega o raciocinio preso.
-        pensar_ate = float(self.ajustes.get("pensar_ate", 120))
+        # 300 s, e nao 120: escrevendo historia o Pro leva 120-132 s por parte
+        # e pensa calado quase tudo isso (medido em 14/09/2026, 8:16-8:20), e
+        # as 8:22 o clique a 120 s cortou o raciocinio de uma parte saudavel.
+        # O raciocinio preso de verdade passava de 600 s.
+        pensar_ate = float(self.ajustes.get("pensar_ate", 300))
         apressado = False
 
         while time.monotonic() < fim:
             texto = self._resposta_atual()
-            if (not apressado and not texto.strip()
+            # "Sem texto" e MENOS DE 40 caracteres, e nao vazio: as 7:29 de
+            # 14/09/2026 a pagina mostrou 10 chars (o rotulo do raciocinio)
+            # por minutos, o clique nunca veio e a revisao gastou 900 s.
+            if (not apressado and len(texto.strip()) < 40
                     and time.monotonic() - inicio >= pensar_ate):
                 apressado = self._responder_agora()
             escrevendo = sel.encontrar(self.page, self.sel["parar"],

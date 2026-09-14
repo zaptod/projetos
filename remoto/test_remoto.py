@@ -501,7 +501,7 @@ class ApuracaoTests(BaseTemp):
         """O unico juiz de um conserto que ninguem revisou sao os testes."""
         corpo = self._corpo("consertar")
         self.assertLess(corpo.index("passou, ultima = _testar()"),
-                        corpo.index("restaurar(foto, alvos)"))
+                        corpo.index("restaurar(foto, alvos, depois)"))
         self.assertIn("if not passou:", corpo)
 
     def test_o_conserto_nao_alcanca_outputs_nem_git(self):
@@ -530,6 +530,28 @@ class ApuracaoTests(BaseTemp):
         apurador.restaurar(foto, [str(antigo), str(criado)])
         self.assertEqual(antigo.read_text(encoding="utf-8"), "original")
         self.assertFalse(criado.exists())
+
+    def test_desfazer_nao_leva_o_que_outra_sessao_escreveu_depois(self):
+        """14/09/2026, 6:53 e 11:49: a suite reprovou e a restauracao
+        devolveu a foto de arquivos que OUTRA sessao editou durante a suite."""
+        from remoto import apurador
+        do_agente = self.pasta / "do_agente.py"
+        de_outro = self.pasta / "de_outro.py"
+        do_agente.write_text("original", encoding="utf-8")
+        de_outro.write_text("original", encoding="utf-8")
+        foto = {str(do_agente): b"original", str(de_outro): b"original"}
+
+        do_agente.write_text("mexido pelo agente", encoding="utf-8")
+        de_outro.write_text("mexido pelo agente", encoding="utf-8")
+        depois = {str(do_agente): do_agente.read_bytes(),
+                  str(de_outro): de_outro.read_bytes()}
+        # durante a suite, outra sessao escreve por cima
+        de_outro.write_text("trabalho de outra sessao", encoding="utf-8")
+
+        apurador.restaurar(foto, [str(do_agente), str(de_outro)], depois)
+        self.assertEqual(do_agente.read_text(encoding="utf-8"), "original")
+        self.assertEqual(de_outro.read_text(encoding="utf-8"),
+                         "trabalho de outra sessao")
 
     def test_o_remendo_mostra_so_o_que_o_agente_fez(self):
         from remoto import apurador

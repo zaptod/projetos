@@ -28,6 +28,7 @@ TRES LIMITES, e nenhum e enfeite:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -261,10 +262,42 @@ def mexidos(foto: dict) -> list[str]:
     return sorted(saida)
 
 
-def restaurar(foto: dict, alvos: list[str]) -> None:
-    """Desfaz o conserto: volta o que mudou e apaga o que foi criado."""
+def _no_commit(caminho: Path, conteudo: bytes) -> bool:
+    """O conteudo atual e o do HEAD? Entao e trabalho aceito, nao rascunho."""
+    try:
+        rel = caminho.resolve().relative_to(RAIZ).as_posix()
+        proc = subprocess.run(["git", "show", f"HEAD:{rel}"], cwd=str(RAIZ),
+                              capture_output=True, timeout=30,
+                              creationflags=NO_WINDOW)
+    except Exception:                                          # noqa: BLE001
+        return False
+    if proc.returncode != 0:
+        return False
+    normalizar = lambda b: b.replace(b"\r\n", b"\n")           # noqa: E731
+    return normalizar(proc.stdout) == normalizar(conteudo)
+
+
+def restaurar(foto: dict, alvos: list[str], depois: dict | None = None) -> None:
+    """Desfaz o conserto: volta o que mudou e apaga o que foi criado.
+
+    SO O QUE E DO AGENTE. Em 14/09/2026, as 6:53 e de novo as 11:49, a suite
+    reprovou e isto devolveu a foto de TODO arquivo mudado desde o inicio —
+    inclusive edicoes de outra sessao feitas durante a suite, algumas ja
+    commitadas. Duas guardas:
+      - `depois` e o conteudo no fim do agente: se o arquivo mudou de novo
+        depois disso, quem mudou nao foi ele, e o arquivo fica;
+      - conteudo igual ao HEAD e trabalho commitado, e fica.
+    """
     for chave in alvos:
         caminho = Path(chave)
+        try:
+            agora = caminho.read_bytes() if caminho.exists() else None
+        except OSError:
+            continue
+        if depois is not None and depois.get(chave) != agora:
+            continue
+        if agora is not None and _no_commit(caminho, agora):
+            continue
         if chave in foto:
             caminho.write_bytes(foto[chave])
         else:
@@ -391,10 +424,14 @@ def consertar(erros: list[dict], diagnostico: str, *, log=print) -> dict:
         return {"mexeu": False, "motivo": "nada a mexer no codigo",
                 "resumo": resumo[-600:]}
 
+    depois = {}
+    for chave in alvos:
+        with contextlib.suppress(OSError):
+            depois[chave] = Path(chave).read_bytes()
     log(f"[apurador] {len(alvos)} arquivo(s) mexido(s); rodando a suite...")
     passou, ultima = _testar()
     if not passou:
-        restaurar(foto, alvos)
+        restaurar(foto, alvos, depois)
         log("[apurador] a suite reprovou; desfiz tudo.")
         return {"mexeu": False, "desfeito": True, "arquivos": alvos,
                 "motivo": f"os testes reprovaram ({ultima}); desfiz o conserto",

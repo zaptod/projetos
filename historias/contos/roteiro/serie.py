@@ -21,6 +21,7 @@ import re
 import unicodedata
 
 from .modelo import carregar_config
+from .roteiro import sem_rotulo_final
 
 # Uma parte = um video. Estes numeros sao o alvo que vai no prompt.
 CENAS_POR_PARTE = 14
@@ -410,7 +411,12 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
         if i < partes:
             add("CLIFFHANGER: <a pergunta que fica no ar para a parte seguinte>")
         else:
-            add("CLIFFHANGER: FINAL - <como a pergunta central e respondida>")
+            # SEM ROTULO NO VALOR. Ate 14/09/2026 esta linha era
+            # "CLIFFHANGER: FINAL - <...>", o modelo copiava o "FINAL -", a
+            # etapa 2 recebia "Ela termina em: FINAL - ..." e a narradora
+            # dizia "FINAL" em voz alta na ultima cena (historias 9 e 10).
+            add("CLIFFHANGER: <como a pergunta central e respondida; esta e a "
+                "ultima parte, escreva so a frase, sem rotulo nenhum>")
         add("")
     add("Regras de escrita que valerao na etapa 2 (para voce ja planejar "
         "pensando nelas):")
@@ -449,7 +455,8 @@ def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
         valor = valor.strip()
         if atual is not None and chave in ("titulo", "resumo", "gancho",
                                            "cliffhanger"):
-            atual[chave] = valor
+            atual[chave] = (sem_rotulo_final(valor) if chave == "cliffhanger"
+                            else valor)
             continue
         if chave in rotulos and not atual:
             campos[rotulos[chave]] = valor

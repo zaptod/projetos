@@ -174,12 +174,26 @@ def _tempo(valor, padrao: float = 4.0) -> float:
     return float(achado.group(1).replace(",", ".")) if achado else padrao
 
 
+_ROTULO_FINAL = re.compile(r"^\s*\**\s*final\s*\**\s*[-–—:]\s*", re.IGNORECASE)
+
+
+def sem_rotulo_final(texto: str) -> str:
+    """Tira o "FINAL -" que o modelo copia do molde para o texto falado.
+
+    14/09/2026: a narradora dizia "FINAL" na ultima cena das historias 9 e
+    10. O molde da biblia pedia "CLIFFHANGER: FINAL - <...>" e o modelo
+    levou o rotulo para o gancho e dali para a fala.
+    """
+    return _ROTULO_FINAL.sub("", str(texto or ""), count=1)
+
+
 def parse(texto: str) -> dict:
     """Texto do LLM -> {titulo, cta, cenas:[{n, imagem, tempo, narracao}]}."""
     dados = _do_json(texto) or _dos_blocos(texto)
     cenas = []
     for i, bruta in enumerate(dados.get("cenas") or [], 1):
-        narracao = " ".join(str(bruta.get("narracao") or "").split())
+        narracao = sem_rotulo_final(
+            " ".join(str(bruta.get("narracao") or "").split()))
         imagem = " ".join(str(bruta.get("imagem") or "").split())
         if not narracao and not imagem:
             continue
