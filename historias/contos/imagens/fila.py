@@ -99,9 +99,55 @@ def vertical(caminho: Path) -> bool:
     return bool(altura) and (largura / altura) <= PROPORCAO_MAXIMA
 
 
-def utilizavel(caminho: Path) -> bool:
+def proporcao_ok(caminho: Path, aspecto: str = "9:16") -> bool:
+    """A imagem tem a forma que a HISTORIA pede?
+
+    Retrato (9:16, 3:4, 2:3) continua com a regra de sempre, `vertical`.
+    Quadrada (1:1, desde 14/09/2026) aceita uma folga pequena; deitada, so
+    deitada. Imagem que veio no formato de outra historia seria a "cena com
+    cara de outro video" que `vertical` existe para barrar.
+    """
+    if aspecto in ("9:16", "3:4", "2:3"):
+        return vertical(caminho)
+    try:
+        from PIL import Image
+        with Image.open(caminho) as imagem:
+            largura, altura = imagem.size
+    except Exception:                                          # noqa: BLE001
+        return True
+    if not altura:
+        return False
+    razao = largura / altura
+    if aspecto == "1:1":
+        return 0.85 <= razao <= 1.18
+    return razao >= 1.2
+
+
+def utilizavel(caminho: Path, aspecto: str = "9:16") -> bool:
     return (caminho.is_file() and caminho.stat().st_size >= BYTES_MINIMOS
-            and vertical(caminho))
+            and proporcao_ok(caminho, aspecto))
+
+
+def aspecto_da_historia(historia_id: str) -> str:
+    """A proporcao das fotos daquela historia (a trava de formato decide)."""
+    from ..video import formato, timeline
+    try:
+        cfg = timeline.carregar_config("render.json")
+        return formato.resolver(historia_id, cfg,
+                                pasta_da_historia(historia_id))["aspecto"]
+    except Exception:                                          # noqa: BLE001
+        return formato.ASPECTO_LEGADO
+
+
+# O enquadramento acompanha a proporcao pedida: "vertical composition" num
+# pedido 1:1 puxaria o gerador a empilhar a cena num quadro que nao e retrato.
+COMPOSICAO = {
+    "9:16": "vertical composition", "3:4": "vertical composition",
+    "2:3": "vertical composition",
+    "1:1": "square composition, subject centered with room around",
+    "4:3": "horizontal composition", "3:2": "horizontal composition",
+    "16:9": "horizontal composition",
+}
 
 
 def prompt_da_cena(cena: dict, config: dict | None = None,
@@ -126,6 +172,9 @@ def prompt_da_cena(cena: dict, config: dict | None = None,
         if alvo and alvo.lower() not in partes[0].lower():
             partes.append(alvo)
     partes.append(str(estilo or config.get("estilo") or "").strip().rstrip("."))
+    composicao = COMPOSICAO.get(str(config.get("aspect") or "9:16"))
+    if composicao and composicao.lower() not in ", ".join(partes).lower():
+        partes.append(composicao)
     negativo = str(config.get("negativo") or "").strip()
     if negativo:
         partes.append(negativo.rstrip("."))
@@ -218,6 +267,7 @@ def estado(historia_id: str, roteiro: dict | None = None,
         roteiro = R.normalizar(dict(roteiro))
     meta = _meta(historia_id).get("cenas", {})
     serie = bool(roteiro.get("serie"))
+    aspecto = aspecto_da_historia(historia_id)
     saida = []
     for bloco in roteiro["partes"]:
         if parte is not None and int(bloco["n"]) != int(parte):
@@ -232,7 +282,7 @@ def estado(historia_id: str, roteiro: dict | None = None,
                 "n": cena["n"],
                 "imagem": cena.get("imagem", ""),
                 "arquivo": caminho,
-                "pronta": utilizavel(caminho),
+                "pronta": utilizavel(caminho, aspecto),
                 "prompt_enviado": registro.get("prompt", ""),
                 "prova": registro.get("prova"),
             })

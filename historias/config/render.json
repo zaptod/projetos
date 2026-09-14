@@ -24,6 +24,8 @@
         "velocidade_reserva": "rubberband=tempo={fator}:transients=smooth:detector=soft:window=short",
         "titulo_minimo_s": 2.0,
         "layout": "dividido",
+        "_comment_aspecto": "Proporcao das FOTOS da historia (14/09/2026, pedido dele: o 9:16 nao encaixava na metade de cima). 1:1 ocupa 960x960 do painel de 1080x960. Vai para a trava de formato: historia antiga continua 9:16, e reparo de cena sai na proporcao da propria historia.",
+        "aspecto": "1:1",
         "_comment_ajuste": "encaixar (14/09/2026, pedido dele: 'as fotos nao sejam cortadas, mas se ajustem na parte de cima'): a imagem vertical aparece INTEIRA no painel, sobre o borrado dela mesma, e o movimento e ela crescer dentro do painel em vez de um zoom que corta as bordas. 'cobrir' enche o painel cortando topo e pe; 'conter' e o encaixe com zoom de recorte.",
         "ajuste_imagem": "encaixar",
         "legenda_y_painel": 0.8,

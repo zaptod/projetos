@@ -47,7 +47,6 @@
             "duracao_alvo": 70,
             "cenas_alvo": 12,
             "pessoa": "terceira",
-            "estilo_imagem": "stylized 3D cartoon render, Pixar-like exaggerated proportions, big expressive eyes, saturated tropical colors, warm golden hour light, Brazilian hillside neighborhood with colorful stacked houses, string lights and satellite dishes, playful caricature, vertical composition, highly detailed",
             "regras": [
                 "Historia ficticia em TERCEIRA pessoa, contada por um narrador fofoqueiro que esta do lado de fora e claramente tomou partido. Ele comenta, se escandaliza, adianta desgraca ('e olha que isso ainda nem era o pior') e chama quem assiste para dentro.",
                 "O elenco e CARICATO, nao humano realista: frutas, bichos, objetos ou tipos exagerados da vizinhanca. Cada um tem APELIDO no lugar de nome (Bananildo, Dona Fofoca, Seu Boteco, Moranguete) e UMA caracteristica unica repetida toda vez que aparece.",
@@ -92,7 +91,7 @@
             "Escreva o prompt de imagem em INGLES, uma frase densa, sem lista.",
             "Descreva a ACAO daquela cena: quem esta em quadro, fazendo o que, em que lugar, com que luz. E a MESMA acao que a narracao desta cena conta: se ela diz que a pessoa ja esperava sentada, a imagem nao mostra a pessoa chegando; se diz que a sala estava cheia, a imagem nao mostra um corredor vazio.",
             "Consistencia entre cenas vem do TEXTO: repita a mesma descricao fisica curta do protagonista (etnia ou tom de pele, idade aparente, cabelo com cor e corte, UM traco concreto do rosto, roupa) em toda cena em que ele aparece. 'tired eyes' nao descreve ninguem: serve a qualquer pessoa, e o gerador escolhe uma diferente a cada cena.",
-            "Enquadramento vertical, cinematografico, foto realista, luz coerente com a hora da cena.",
+            "Enquadramento cinematografico com o assunto no centro, foto realista, luz coerente com a hora da cena.",
             "Proibido na imagem: qualquer texto, letra, legenda, marca d'agua, colagem, moldura, imagem deitada.",
             "UM INSTANTE SO, nunca uma transicao. 'sitting up abruptly and blinking' descreve dois momentos (deitado e sentado) e o gerador resolve isso com um antes-e-depois lado a lado — medido em 11/09/2026, a cena refeita tres vezes voltou colagem nas tres. Escolha o instante e descreva SO ele: 'already sitting up, eyes wide'.",
             "A imagem passa por um filtro de conteudo automatico: descreva a cena SEM sangue, ferimento, arma, nudez, criancas em perigo ou autolesao. Mostre o ANTES ou o DEPOIS (a mao tremendo, a porta fechada, a mancha no chao), nunca o ato - alem de passar no filtro, sugerir assusta mais que mostrar."

@@ -163,7 +163,7 @@ def pedido_de_prompt(cena: dict, protagonista: str, motivo: str) -> str:
         "as mesmas pessoas, o mesmo lugar, o mesmo momento.",
         "Regras da descricao: uma frase densa com virgulas; um instante so, "
         "sem transicao; sem colagem, sem tela dividida, sem texto; "
-        "enquadramento vertical, cinematografico.",
+        "enquadramento cinematografico, com o assunto no centro.",
     ]
     if protagonista:
         linhas.append("Se o protagonista aparecer, use exatamente esta "

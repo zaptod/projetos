@@ -234,7 +234,7 @@ class LegendaCobreAFalaTests(unittest.TestCase):
         # existe, senao a cena longa nunca vira varios planos.
         from contos.imagens import fila
         original = fila.utilizavel
-        fila.utilizavel = lambda _a: True
+        fila.utilizavel = lambda *_a, **_k: True
         self.addCleanup(setattr, fila, "utilizavel", original)
 
         roteiro = {

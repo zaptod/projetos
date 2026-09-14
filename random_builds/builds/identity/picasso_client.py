@@ -48,6 +48,20 @@ FECHAR_MODAL = [
 ]
 
 
+def proporcao_confere(pedida, aplicada) -> bool:
+    """A proporcao que ficou no controle serve para a que foi pedida?
+
+    Pedido VERTICAL aceita qualquer vertical, como sempre foi (o canal de
+    builds pede 9:16). Qualquer outro pedido precisa bater exato: as fotos
+    1:1 das historias (14/09/2026) sairiam erradas num 9:16 que "tambem e
+    uma imagem".
+    """
+    pedida, aplicada = str(pedida or ""), str(aplicada or "")
+    if pedida in selectors.ASPECTOS_VERTICAIS:
+        return aplicada in selectors.ASPECTOS_VERTICAIS
+    return aplicada == pedida
+
+
 class PicassoClient:
     def __init__(self, ctx, page, ajustes: dict, rng=None,
                  ao_descobrir_espaco=None):
@@ -374,10 +388,10 @@ class PicassoClient:
         self.presets_aplicados = self.presets_atuais()
         print("[picasso] presets: " + ", ".join(
             f"{k}={v}" for k, v in self.presets_aplicados.items()))
-        if self.presets_aplicados.get("aspecto") not in selectors.ASPECTOS_VERTICAIS:
+        if not proporcao_confere(aspect, self.presets_aplicados.get("aspecto")):
             raise GeracaoFalhou(
-                f"a proporcao ficou em {self.presets_aplicados.get('aspecto')!r}, "
-                "que nao e vertical. A imagem entraria deitada num video 9:16.")
+                f"a proporcao ficou em {self.presets_aplicados.get('aspecto')!r} "
+                f"e eu pedi {aspect!r}. Nao gero imagem no formato errado.")
 
         # A foto so vale depois que a lista PARA de crescer. Tirar no ultimo
         # instante antes do clique nao bastava: o historico da conta chega em

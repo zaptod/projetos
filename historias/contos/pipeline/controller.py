@@ -59,6 +59,7 @@ def aplicar_formato(plano: dict, pedido: dict, cfg_render: dict, *,
     from ..video import formato as F
     from ..video import fundo, velocidade
 
+    aspecto_das_fotos = F.aspecto((pedido or {}).get("aspecto"))
     pedido = F.normalizar(pedido)
     efetivo = dict(pedido)
     cfg = cfg_render.get("formato") or {}
@@ -102,6 +103,9 @@ def aplicar_formato(plano: dict, pedido: dict, cfg_render: dict, *,
                 "tela inteira", "historias")
     plano["formato"] = pedido
     plano["formato_efetivo"] = efetivo
+    # A proporcao das fotos vai junto: e ela que o reparo le para refazer uma
+    # cena no mesmo formato das outras.
+    plano["aspecto_imagem"] = aspecto_das_fotos
     return plano, efetivo
 
 

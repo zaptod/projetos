@@ -222,11 +222,13 @@ class MoldeQuebradaTests(unittest.TestCase):
         self.assertIn("na primeira pessoa", prompt)
         self.assertIn("DESABAFO que uma pessoa real", prompt)
 
-    def test_o_estilo_de_imagem_sai_do_molde(self):
-        """O estilo do `imagens.json` e fotografico. Aplicado a uma novela
-        caricata, entrega gente de verdade encenando desenho."""
-        estilo = fila.estilo_do_roteiro({"estrutura": "quebrada"})
-        self.assertIn("cartoon", estilo)
+    def test_a_quebrada_usa_o_estilo_fotografico_de_todas(self):
+        """Ate 14/09/2026 a quebrada tinha estilo proprio (render 3D estilo
+        Pixar). Pedido dele: "abandone completamente essa ideia da pixar" —
+        o personagem ia e voltava entre cenas. Agora ela cai no estilo
+        fotografico do `imagens.json`, como os outros moldes. O mecanismo de
+        estilo por molde continua (os dois testes abaixo)."""
+        self.assertEqual("", fila.estilo_do_roteiro({"estrutura": "quebrada"}))
         self.assertEqual("", fila.estilo_do_roteiro({"estrutura": "reddit"}))
         self.assertEqual("", fila.estilo_do_roteiro({}))
 

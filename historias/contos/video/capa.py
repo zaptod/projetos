@@ -52,8 +52,28 @@ LARGURA_UTIL = 0.90
 
 
 def _preencher(imagem: Image.Image) -> Image.Image:
-    """Recorta para 1080x1920 sem espremer — corta o excedente do lado maior."""
+    """1080x1920 a partir da imagem da cena, sem espremer.
+
+    Retrato: corta o excedente do lado maior. Quadrada ou deitada (fotos 1:1
+    desde 14/09/2026): recortar para 9:16 jogaria fora quase metade da
+    largura, entao ela entra INTEIRA sobre o borrado dela mesma, no terco de
+    cima — o mesmo "nao cortar a foto" que ele pediu para o video.
+    """
     origem = imagem.convert("RGB")
+    if origem.width / max(1, origem.height) > 0.75:
+        escala = max(LARGURA / origem.width, ALTURA / origem.height)
+        fundo = origem.resize((max(1, round(origem.width * escala)),
+                               max(1, round(origem.height * escala))),
+                              Image.LANCZOS)
+        esquerda = (fundo.width - LARGURA) // 2
+        topo = (fundo.height - ALTURA) // 2
+        fundo = fundo.crop((esquerda, topo, esquerda + LARGURA, topo + ALTURA))
+        fundo = ImageEnhance.Brightness(
+            fundo.filter(ImageFilter.GaussianBlur(40))).enhance(0.55)
+        alto = max(1, round(origem.height * LARGURA / origem.width))
+        fundo.paste(origem.resize((LARGURA, alto), Image.LANCZOS),
+                    (0, max(0, (ALTURA - alto) // 3)))
+        return fundo
     escala = max(LARGURA / origem.width, ALTURA / origem.height)
     novo = (max(1, round(origem.width * escala)),
             max(1, round(origem.height * escala)))

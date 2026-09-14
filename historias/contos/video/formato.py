@@ -24,6 +24,16 @@ import json
 from pathlib import Path
 
 LEGADO = {"velocidade": 1.0, "layout": "vertical"}
+# A PROPORCAO DAS FOTOS tambem e da historia (14/09/2026: fotos 1:1 para
+# encaixar na metade de cima). Historia de antes disso tem fotos 9:16, e o
+# reparo de uma cena dela precisa sair no mesmo formato das irmas.
+ASPECTOS = ("9:16", "1:1", "4:3", "3:4", "2:3", "3:2", "16:9")
+ASPECTO_LEGADO = "9:16"
+
+
+def aspecto(valor) -> str:
+    valor = str(valor or "").strip()
+    return valor if valor in ASPECTOS else ASPECTO_LEGADO
 # Fracao da altura que a historia ocupa na tela dividida. Constante, e nao
 # config: o renderer desenha nela e o parecer recorta a folha de contato por
 # ela — um valor em cada lugar mostraria ao revisor metade do video errada.
@@ -60,7 +70,9 @@ def resolver(historia_id: str, cfg_render: dict | None, pasta: Path) -> dict:
     pasta = Path(pasta)
     escolhido = _ler_json(pasta / "formato.json")
     if isinstance(escolhido, dict):
-        return {**normalizar(escolhido), "origem": "formato.json"}
+        return {**normalizar(escolhido),
+                "aspecto": aspecto(escolhido.get("aspecto")),
+                "origem": "formato.json"}
 
     planos = sorted((pasta / "partes").glob("p*/edit_plan.json"))
     achados = []
@@ -73,16 +85,21 @@ def resolver(historia_id: str, cfg_render: dict | None, pasta: Path) -> dict:
             # tem parte no ar no formato antigo. Achado pela revisao
             # adversarial: "o primeiro plano que tiver formato decide" deixava
             # uma parte convertida por engano arrastar as irmas antigas.
-            return {**LEGADO,
+            return {**LEGADO, "aspecto": ASPECTO_LEGADO,
                     "origem": f"{plano.parent.name} e de antes da mudanca"}
-        achados.append((plano, pedido))
+        achados.append((plano, pedido, dados))
     if achados:
-        plano, pedido = achados[0]
+        plano, pedido, dados = achados[0]
         return {**normalizar(pedido),
+                "aspecto": aspecto(dados.get("aspecto_imagem")),
                 "origem": f"{plano.parent.name}/edit_plan.json"}
     if any(pasta.glob("final_*.mp4")):
-        return {**LEGADO, "origem": "historia anterior a mudanca"}
-    return {**do_config(cfg_render), "origem": "render.json"}
+        return {**LEGADO, "aspecto": ASPECTO_LEGADO,
+                "origem": "historia anterior a mudanca"}
+    return {**do_config(cfg_render),
+            "aspecto": aspecto(((cfg_render or {}).get("formato") or {})
+                               .get("aspecto")),
+            "origem": "render.json"}
 
 
 def rotulo(formato: dict) -> str:

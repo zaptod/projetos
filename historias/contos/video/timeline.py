@@ -95,6 +95,10 @@ def montar(roteiro: dict, medidas: dict | None = None, *, marcos=None,
         marcos = []
     eventos = []
     cursor = 0.0
+    aspecto = None
+    if pasta is not None:
+        from ..imagens import fila as _fila
+        aspecto = _fila.aspecto_da_historia(Path(pasta).name)
     for indice, cena in enumerate(cenas):
         sugerido = float(cena.get("tempo") or 4.0)
         falado = float(medidas.get(indice, 0.0))
@@ -138,7 +142,7 @@ def montar(roteiro: dict, medidas: dict | None = None, *, marcos=None,
             from ..imagens import fila
             arquivo = fila.caminho_da_cena(Path(pasta).name, cena["n"],
                                            parte if serie else None)
-            if fila.utilizavel(arquivo):
+            if fila.utilizavel(arquivo, aspecto):
                 evento["arquivo"] = str(arquivo)
         if indice == 0 and roteiro.get("titulo"):
             # O titulo entra SOBRE a primeira imagem, nunca num cartao antes

@@ -166,6 +166,9 @@ def gerar(historia_id: str, *, limite: int | None = None,
 
     roteiro = R.carregar(historia_id)
     config = fila.carregar_config()
+    # A PROPORCAO E DA HISTORIA, e nao do imagens.json: historia antiga tem
+    # fotos 9:16 e o reparo de uma cena dela nao pode voltar quadrado.
+    config["aspect"] = fila.aspecto_da_historia(historia_id)
     pendentes = fila.pendentes(historia_id, roteiro, parte)
     if not pendentes:
         log(f"[imagens] {historia_id}: todas as cenas ja tem imagem.")

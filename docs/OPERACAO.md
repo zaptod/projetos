@@ -92,7 +92,7 @@ em 09/09/2026, quando dez tarefas recusavam iniciar com `0x800710E0`.
         v
    PicassoIA gera as imagens (uma por cena)
         |  prova de origem ........... o card do histórico com o NOSSO prompt
-        |  fila.utilizavel ........... vertical, tamanho, não é colagem
+        |  fila.utilizavel ........... proporção DA HISTÓRIA (1:1 nova, 9:16 antiga), tamanho, não é colagem
         v
    narrador (edge-tts) + trilha + capa
         |  formato.resolver .......... velocidade e tela da HISTORIA (trava na 1a parte)
@@ -124,6 +124,18 @@ plano, a série inteira fica no formato antigo (`contos/video/formato.py`); para
 converter uma história de propósito, `outputs/<id>/formato.json`. Render de
 prova: `main.py video <id> --parte N --prova PASTA --velocidade 1.7 --layout
 dividido` — **nunca `--saida`**, que é a opção do log da agenda.
+
+**Fotos quadradas e sem Pixar (14/09/2026, noite).** A foto 9:16 não
+encaixava na metade de cima; história nova pede **1:1** ao PicassoIA
+(`formato.aspecto` no `render.json`). A proporção também é da história: o
+plano grava `aspecto_imagem`, e `fila.utilizavel`, o worker e o reparo usam a
+proporção da própria história. Assim, uma cena refeita de uma história antiga
+volta 9:16, e uma foto 9:16 perdida numa história 1:1 é recusada e refeita. O
+cliente do PicassoIA recusa gerar se a proporção aplicada não bater com a
+pedida (pedido vertical ainda aceita qualquer vertical, que é o que as builds
+pedem). O molde `quebrada` perdeu o estilo "render 3D estilo Pixar" (o
+personagem mudava de cena para cena) e usa o estilo fotográfico de todos. A
+capa põe a foto quadrada inteira sobre o borrado dela.
 
 **Furar a fila e as travas entre processos (14/09/2026).** Para um vídeo sair
 antes da vez, escreva `historias/outputs/_publicar/prioridade.json` com
