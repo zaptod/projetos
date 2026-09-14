@@ -111,6 +111,38 @@ DIZ_COLAGEM = ("colagem", "tela dividida", "grade de paine", "grade de painé",
                "dividida em", "paineis separados", "painéis separados")
 
 
+def _tela_dividida(video, historia_id: str, parte: int) -> bool:
+    """O video foi feito com a tela dividida (formato de 14/09/2026)?"""
+    try:
+        from ..publicar import qualidade
+        caminho = getattr(video, "caminho", None)
+        dados = qualidade._ffprobe(Path(caminho)) if caminho else None
+        return qualidade.formato_de(dados, historia_id,
+                                    parte).get("layout") == "dividido"
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _colagem_falsa(historia_id: str, parte: int, n: int, motivos) -> bool:
+    """"Tela dividida" que e o FORMATO do video, e nao defeito da imagem.
+
+    Desde 14/09/2026 a metade de baixo do video e um video de fundo. O prompt
+    do parecer avisa, mas o Gemini ainda pode escrever "cena 4: tela dividida"
+    olhando para a tela inteira — e refazer a imagem por isso gastaria
+    PicassoIA para trocar uma imagem boa por outra. So vale quando o nosso
+    detector, olhando a IMAGEM da cena, nao ve colagem nenhuma.
+    """
+    from . import conserto_de_cena as C
+    texto = C.motivos_da_cena(motivos, int(n)).lower()
+    if not texto or not any(t in texto for t in DIZ_COLAGEM):
+        return False
+    if any(t in texto for t in ("marca d", "logotipo")):
+        return False
+    from ..imagens import composicao, fila
+    arquivo = fila.caminho_da_cena(historia_id, int(n), parte)
+    return arquivo.is_file() and not composicao.e_colagem(arquivo)
+
+
 def cenas_com_colagem(erros: list) -> list[int]:
     """Os numeros de cena que a mensagem acusa de colagem.
 
@@ -243,6 +275,9 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
     historia_id, parte = video.fonte_id, int(video.parte)
 
     colagens = cenas_com_colagem(erros)
+    if colagens and _tela_dividida(video, historia_id, parte):
+        colagens = [n for n in colagens
+                    if not _colagem_falsa(historia_id, parte, n, erros)]
     detalhe = ""
     if any("a ia reprovou" in str(e).lower() for e in erros):
         plano_da_ia = _plano_pelo_veto_da_ia(video, historia_id, parte,
@@ -369,6 +404,14 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
     classes = C.classificar(motivos)
     roteiro = R.carregar(historia_id)
     mudou, contado = False, []
+    if classes["imagem"] and _tela_dividida(video, historia_id, parte):
+        falsas = [n for n in classes["imagem"]
+                  if _colagem_falsa(historia_id, parte, n, motivos)]
+        if falsas:
+            classes["imagem"] = [n for n in classes["imagem"]
+                                 if n not in falsas]
+            contado.append(f"cena(s) {falsas}: 'tela dividida' e o formato "
+                           "do video, e o detector nao ve colagem na imagem")
     if classes["rosto"]:
         nova = str(ficha.get("protagonista") or "").strip()
         if nova:

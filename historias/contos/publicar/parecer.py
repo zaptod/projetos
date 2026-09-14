@@ -208,8 +208,15 @@ class SemParecer(RuntimeError):
     """Nao deu para perguntar. NAO e reprovacao — a diferenca importa."""
 
 
+def _recorte(painel: float | None) -> str:
+    """Na tela dividida, so a metade de cima e a historia: a de baixo e o
+    video de fundo, e na folha ele so confundiria quem julga as cenas."""
+    return f"crop=iw:trunc(ih*{float(painel):g}/2)*2:0:0," if painel else ""
+
+
 def folha_de_contato(video: Path, destino: Path, *,
-                     quadros: int = QUADROS) -> Path:
+                     quadros: int = QUADROS,
+                     painel: float | None = None) -> Path:
     """Um mosaico com `quadros` momentos do video, igualmente espacados."""
     video, destino = Path(video), Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
@@ -219,8 +226,8 @@ def folha_de_contato(video: Path, destino: Path, *,
     # `fps` fracionario e o que espaca os quadros pelo video INTEIRO. Pegar
     # os N primeiros daria doze imagens do mesmo primeiro segundo.
     taxa = quadros / duracao
-    filtro = (f"fps={taxa:.6f},scale={LARGURA_DO_QUADRO}:-1,"
-              f"tile={COLUNAS}x{LINHAS}")
+    filtro = (f"fps={taxa:.6f},{_recorte(painel)}"
+              f"scale={LARGURA_DO_QUADRO}:-1,tile={COLUNAS}x{LINHAS}")
     comando = ["ffmpeg", "-v", "error", "-y", "-i", str(video),
                "-vf", filtro, "-frames:v", "1", "-q:v", "3", str(destino)]
     try:
@@ -236,7 +243,8 @@ def folha_de_contato(video: Path, destino: Path, *,
 COLUNAS_POR_CENA = 4
 
 
-def folha_por_cena(video: Path, destino: Path, cenas: list) -> Path:
+def folha_por_cena(video: Path, destino: Path, cenas: list,
+                   painel: float | None = None) -> Path:
     """Um quadro por CENA, tirado do meio dela, com o numero no canto.
 
     A folha no tempo pega doze momentos espacados, numa parte de 13 ou 14
@@ -256,7 +264,8 @@ def folha_por_cena(video: Path, destino: Path, cenas: list) -> Path:
             saida = Path(tmp) / f"c{int(cena['n']):02d}.jpg"
             comando = ["ffmpeg", "-v", "error", "-y", "-ss", f"{meio:.2f}",
                        "-i", str(video), "-frames:v", "1",
-                       "-vf", f"scale={LARGURA_DO_QUADRO}:-1", str(saida)]
+                       "-vf", f"{_recorte(painel)}scale={LARGURA_DO_QUADRO}:-1",
+                       str(saida)]
             try:
                 subprocess.run(comando, capture_output=True, timeout=120,
                                creationflags=NO_WINDOW, check=True)
@@ -284,17 +293,17 @@ def folha_por_cena(video: Path, destino: Path, cenas: list) -> Path:
 
 
 def _montar_folha(video, roteiro: dict, parte: int, caminho: Path,
-                  destino: Path) -> tuple:
+                  destino: Path, painel: float | None = None) -> tuple:
     """`(folha, por_cena)`. Por cena quando da; no tempo quando nao da."""
     fonte = getattr(video, "fonte_id", None)
     if fonte:
         try:
             from ..video import plano
             cenas = plano.cenas_com_tempo(fonte, parte, roteiro)
-            return folha_por_cena(caminho, destino, cenas), True
+            return folha_por_cena(caminho, destino, cenas, painel), True
         except Exception:                                      # noqa: BLE001
             pass
-    return folha_de_contato(caminho, destino), False
+    return folha_de_contato(caminho, destino, painel=painel), False
 
 
 def _duracao(video: Path) -> float:
@@ -326,6 +335,10 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
     cenas = (plano.cenas_com_tempo(fonte, parte, roteiro) if fonte
              else plano.cenas_do_roteiro(roteiro, parte))
     laudo = laudo or {}
+    feito = laudo.get("formato") or {}
+    dividido = feito.get("layout") == "dividido"
+    velocidade = float(feito.get("velocidade") or 1.0)
+    acelerado = abs(velocidade - 1.0) > 1e-6
     if pela_folha and por_cena:
         abertura = ("Voce e o revisor final de um canal de historias narradas "
                     "em video vertical. A imagem anexada e uma FOLHA DE "
@@ -359,7 +372,9 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
         f"{laudo.get('duracao', '?')}s de duracao, "
         f"audio a {laudo.get('media_db', '?')} dB, "
         f"{laudo.get('palavras_por_s', '?')} palavras por segundo, "
-        f"{len(cenas)} cenas.",
+        f"{len(cenas)} cenas"
+        + (f" (narracao acelerada {velocidade:g}x de proposito)."
+           if acelerado else "."),
         "",
         "REPROVE se, e somente se, houver algum destes:",
         "  - alguma imagem nao pertence a esta historia (assunto de outro "
@@ -368,8 +383,11 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
         "outra pessoa no lugar de quem a narracao diz (um adulto no lugar de "
         "uma crianca, um homem no lugar de uma mulher, outro personagem), "
         "outro lugar, ou o contrario do que acontece;",
-        "  - alguma imagem e colagem, tela dividida ou grade de paineis "
-        "(dois ou mais quadros dentro do mesmo quadro, com uma faixa "
+        ("  - alguma IMAGEM DA HISTORIA (metade de cima da tela) e colagem, "
+         "tela dividida ou grade de paineis dentro dela mesma "
+         if dividido else
+         "  - alguma imagem e colagem, tela dividida ou grade de paineis ")
+        + "(dois ou mais quadros dentro do mesmo quadro, com uma faixa "
         "separando);",
         "  - alguma imagem tem marca d'agua, logotipo de banco de imagens ou "
         "legenda SOBREPOSTA pelo gerador;",
@@ -383,6 +401,13 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
         "NAO reprove por nada disto, que e como o canal E:",
         "  - a legenda amarela sobre a imagem: e nossa, entra no render, e "
         "aparece em todos os videos de proposito;",
+        *(["  - a TELA DIVIDIDA AO MEIO: e o formato do canal. A metade de "
+           "cima e a historia; a metade de baixo e um video de fundo mudo, "
+           "sem nenhuma relacao com a historia (maquiagem). Ignore tudo o que "
+           "aparece na metade de baixo — pessoa, rosto, maos, produto, texto "
+           "— e julgue so a metade de cima;"] if dividido else []),
+        *([f"  - a fala rapida: o video inteiro e acelerado {velocidade:g}x "
+           "de proposito;"] if acelerado else []),
         "  - texto que faz parte da CENA (papel na mao, placa na porta, "
         "quadro na parede, tela de computador). So marca d'agua e logotipo "
         "de banco de imagens sao problema;",
@@ -507,7 +532,16 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
     caminho = Path(getattr(video, "caminho", video))
     pasta = Path(pasta_temp or caminho.parent)
     destino = pasta / f"folha_p{int(parte):02d}.jpg"
-    folha, por_cena = _montar_folha(video, roteiro, parte, caminho, destino)
+    # COMO O VIDEO FOI FEITO decide o que se pergunta e o que a folha mostra:
+    # desde 14/09/2026 ele pode vir acelerado e com a tela dividida.
+    from . import qualidade
+    from ..video import formato as _formato
+    feito = (laudo or {}).get("formato") or qualidade.formato_de(
+        qualidade._ffprobe(caminho), getattr(video, "fonte_id", None), parte)
+    laudo = {**(laudo or {}), "formato": feito}
+    painel = _formato.PAINEL if feito.get("layout") == "dividido" else None
+    folha, por_cena = _montar_folha(video, roteiro, parte, caminho, destino,
+                                    painel)
     log(f"[parecer] folha de contato: {folha.name} "
         f"({folha.stat().st_size // 1024} KB, "
         f"{'um quadro por cena' if por_cena else 'quadros no tempo'})")

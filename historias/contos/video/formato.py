@@ -24,6 +24,10 @@ import json
 from pathlib import Path
 
 LEGADO = {"velocidade": 1.0, "layout": "vertical"}
+# Fracao da altura que a historia ocupa na tela dividida. Constante, e nao
+# config: o renderer desenha nela e o parecer recorta a folha de contato por
+# ela — um valor em cada lugar mostraria ao revisor metade do video errada.
+PAINEL = 0.5
 LAYOUTS = ("vertical", "dividido")
 PREFIXO = "contos:"
 
