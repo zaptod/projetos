@@ -311,6 +311,26 @@ class ClienteLLM:
                     continue
         return ""
 
+    def _responder_agora(self) -> bool:
+        """Clica em "Responder agora" se a tela oferecer. True se clicou.
+
+        Nunca levanta: sem o botao (ou num provedor sem ele) a espera segue
+        como sempre foi.
+        """
+        candidatos = self.sel.get("responder_agora") or []
+        if not candidatos:
+            return False
+        try:
+            botao = sel.encontrar(self.page, candidatos, timeout=0.3)
+            if botao is None:
+                return False
+            botao.click(timeout=5000)
+        except Exception:                                      # noqa: BLE001
+            return False
+        self.log(f"[{self.provedor}] raciocinio sem fim; cliquei em "
+                 "'Responder agora'.")
+        return True
+
     def esperar_resposta(self, timeout: float | None = None,
                          estabilidade: float = 2.5) -> str:
         """Espera o modelo TERMINAR e devolve o texto.
@@ -328,9 +348,16 @@ class ClienteLLM:
         ultimo_tamanho = -1
         parado_desde = None
         ultimo_aviso = 0.0
+        # Quanto o modelo pode pensar calado antes de ouvir "responda agora".
+        # Resposta boa do Pro sai em 30-50 s; 120 s so pega o raciocinio preso.
+        pensar_ate = float(self.ajustes.get("pensar_ate", 120))
+        apressado = False
 
         while time.monotonic() < fim:
             texto = self._resposta_atual()
+            if (not apressado and not texto.strip()
+                    and time.monotonic() - inicio >= pensar_ate):
+                apressado = self._responder_agora()
             escrevendo = sel.encontrar(self.page, self.sel["parar"],
                                        timeout=0.3) is not None
             if len(texto) != ultimo_tamanho:
@@ -357,7 +384,8 @@ class ClienteLLM:
             return texto
         raise LLMFalhou(
             f"o {self.provedor} nao respondeu em {timeout:.0f}s e nao ha texto "
-            "na tela. Verifique se a conta atingiu o limite de uso.")
+            "na tela. Pode ser raciocinio preso (o botao 'Responder agora' "
+            "nao apareceu ou nao clicou) ou limite de uso da conta.")
 
     # ------------------------------------------------------------- anexo
     def anexar(self, caminhos, espera: float = 120.0) -> int:

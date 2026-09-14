@@ -113,6 +113,21 @@ GEMINI = {
         "button.stop-icon",
         "mat-icon[fonticon='stop']",
     ],
+    # O RACIOCINIO QUE NAO ACABA. Em 14/09/2026 o Pro passou a pensar por
+    # mais de 10 minutos ("Developing the Core Twist") sem escrever um
+    # caractere, e desde as 3:45 metade dos pedidos estourou 600-900 s com
+    # "0 chars" — parecia limite de conta. A tela oferecia este botao, que
+    # encerra o raciocinio e manda escrever.
+    "responder_agora": [
+        "button:has-text('Responder agora')",
+        "button:has-text('Answer now')",
+        "button[aria-label*='Responder agora' i]",
+        "button[aria-label*='Answer now' i]",
+        # Na captura ele parece um chip, que pode nao ser <button>.
+        "[role='button']:has-text('Responder agora')",
+        "text='Responder agora'",
+        "text='Answer now'",
+    ],
     "resposta": [
         "model-response message-content .markdown",
         "message-content.model-response-text",

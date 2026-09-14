@@ -436,6 +436,37 @@ class ClienteLLMTests(unittest.TestCase):
         self.assertNotEqual(resp3, resp2)
         self.assertNotEqual(resp3, resp1)
 
+    def test_raciocinio_preso_ganha_responder_agora(self):
+        """14/09/2026: o Gemini Pro pensou mais de 10 min sem escrever nada e
+        a espera estourava com "0 chars", parecendo limite de conta. A tela
+        oferecia "Responder agora"; o cliente passa a clicar uma vez."""
+        from contos.llm import cliente as C
+        from contos.llm import seletores
+
+        estado = {"cliques": 0}
+
+        class _Botao:
+            def click(self, **_k):
+                estado["cliques"] += 1
+
+        falso = C.ClienteLLM.__new__(C.ClienteLLM)
+        falso.provedor = "gemini"
+        falso.sel = seletores.do_provedor("gemini")
+        falso.page = object()
+        falso.ajustes = {"pensar_ate": 0}
+        falso.log = lambda *_a: None
+        falso._resposta_atual = lambda: "OK" if estado["cliques"] else ""
+
+        original = seletores.encontrar
+        seletores.encontrar = lambda page, cand, timeout=0: (
+            _Botao() if cand is falso.sel["responder_agora"] else None)
+        try:
+            texto = falso.esperar_resposta(timeout=20, estabilidade=0.2)
+        finally:
+            seletores.encontrar = original
+        self.assertEqual("OK", texto)
+        self.assertEqual(1, estado["cliques"])
+
     def test_perfil_por_provedor_e_separado(self):
         self.assertNotEqual(llm_cliente.perfil_de("chatgpt"),
                             llm_cliente.perfil_de("gemini"))
