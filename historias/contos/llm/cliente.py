@@ -268,6 +268,17 @@ class ClienteLLM:
         prompt = " ".join(str(getattr(self, "_ultimo_prompt", "") or "").split())
         if len(prompt) < 40:
             return False
+        # SO SEM CONVERSA NA TELA. A primeira versao olhava so a caixa e deu
+        # falso positivo as 18:56: a pergunta tinha entrado ("Voce disse", o
+        # video 1:15, o Gemini "Analisando"), e mesmo assim a espera desistiu
+        # em 20 s e jogou a revisao para o ChatGPT. Devolvido de verdade e a
+        # pagina de inicio: nenhuma mensagem nossa na conversa.
+        try:
+            if sel.encontrar_oculto(self.page, self.sel.get("turno_usuario")
+                                    or [], timeout=0.2) is not None:
+                return False
+        except Exception:                                      # noqa: BLE001
+            return False
         try:
             campo = sel.encontrar(self.page, self.sel["campo"], timeout=0.3)
             if campo is None:

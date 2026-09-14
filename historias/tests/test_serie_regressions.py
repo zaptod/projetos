@@ -551,6 +551,20 @@ class ClienteLLMTests(unittest.TestCase):
         self.assertIn("voltou para a caixa", str(erro.exception))
         self.assertEqual([1], falso.diagnosticos)
 
+    def test_pergunta_na_conversa_analisando_video_nao_e_devolvida(self):
+        """14/09/2026 18:56, falso positivo da primeira versao: a pergunta
+        estava na conversa ("Voce disse") e o Gemini "Analisando" o video."""
+        from contos.llm import seletores
+        falso, C = self._devolvido("{prompt}")
+        original = seletores.encontrar_oculto
+        seletores.encontrar_oculto = lambda page, cand, timeout=0: (
+            object() if cand is falso.sel["turno_usuario"] else None)
+        self.addCleanup(setattr, seletores, "encontrar_oculto", original)
+        self.assertFalse(falso._envio_devolvido())
+        with self.assertRaises(C.LLMFalhou) as erro:
+            falso.esperar_resposta(timeout=2.2, estabilidade=0.2)
+        self.assertNotIn("voltou para a caixa", str(erro.exception))
+
     def test_caixa_vazia_e_raciocinio_normal_nao_desiste(self):
         falso, C = self._devolvido("")
         with self.assertRaises(C.LLMFalhou) as erro:

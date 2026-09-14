@@ -37,6 +37,10 @@ CHATGPT = {
         "button[aria-label*='Stop' i]",
         "button[aria-label*='Parar' i]",
     ],
+    # A mensagem do USUARIO ja na conversa: prova de que o envio entrou.
+    "turno_usuario": [
+        "div[data-message-author-role='user']",
+    ],
     "resposta": [
         "div[data-message-author-role='assistant']",
         "article[data-testid^='conversation-turn'] div.markdown",
@@ -127,6 +131,14 @@ GEMINI = {
         "[role='button']:has-text('Responder agora')",
         "text='Responder agora'",
         "text='Answer now'",
+    ],
+    # A mensagem do USUARIO ja na conversa ("Voce disse"): prova de que o
+    # envio entrou. Sem ela e com o prompt de volta na caixa, a pagina voltou
+    # ao inicio — com ela, e o Gemini "Analisando" o video (14/09/2026).
+    "turno_usuario": [
+        "user-query",
+        "[data-test-id='user-query']",
+        "div.user-query-container",
     ],
     "resposta": [
         "model-response message-content .markdown",
