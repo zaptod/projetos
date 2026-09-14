@@ -29,6 +29,8 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 from builds.video import medidas as _rb_video_medidas
 from builds.visualization import draw_common as _rb_visualization_draw_common
 
+from . import formato as formato_mod
+
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _desenho = _rb_visualization_draw_common
 medidas = _rb_video_medidas
@@ -41,14 +43,24 @@ load_font = _desenho.load_font
 
 class VideoRenderer:
     def __init__(self, config: dict, profile: str = "celular",
-                 preview: bool = False):
+                 preview: bool = False, formato: dict | None = None):
         base = config["profiles"][profile]
         self.config = config
         self.profile = profile
         self.horizontal = base.get("layout") == "horizontal"
         escala = config["preview"]["scale"] if preview else 1.0
-        self.width = int(base["width"] * escala) // 2 * 2
-        self.height = int(base["height"] * escala) // 2 * 2
+        self.saida_w = int(base["width"] * escala) // 2 * 2
+        self.saida_h = int(base["height"] * escala) // 2 * 2
+        # TELA DIVIDIDA (14/09/2026): tudo o que ja se desenhava — imagem,
+        # camera, titulo, legenda — passa a ser desenhado num PAINEL do tamanho
+        # da metade de cima, e o video de fundo entra embaixo no ffmpeg. So em
+        # tela vertical: num 16:9 a metade de cima viraria uma faixa.
+        self.formato = formato_mod.normalizar(formato or formato_mod.LEGADO)
+        self.dividido = (self.formato["layout"] == "dividido"
+                         and self.saida_h > self.saida_w)
+        self.width = self.saida_w
+        self.height = (int(self.saida_h * formato_mod.PAINEL) // 2 * 2
+                       if self.dividido else self.saida_h)
         self.fps = int(config["preview"]["fps"] if preview else config["fps"])
         self.crf = int(config["preview"]["crf"] if preview else config["crf"])
         self.preset = config["preview"]["preset"] if preview else config["preset"]
@@ -58,7 +70,17 @@ class VideoRenderer:
         self.legenda_cfg = config.get("legenda", {})
         self.titulo_cfg = config.get("titulo", {})
         self.camera_cfg = config.get("camera", {})
-        self.ref = min(self.width, self.height)
+        # A referencia das fontes e a TELA, nao o painel: com o painel (960)
+        # toda letra encolheria 11% justamente quando a tela ficou mais cheia.
+        self.ref = min(self.saida_w, self.saida_h)
+        cfg_formato = config.get("formato") or {}
+        # "cobrir": a imagem vertical preenche o painel quase quadrado, cortando
+        # topo e pe. "conter" poe a imagem inteira, estreita, sobre o borrado.
+        self.ajuste = (str(cfg_formato.get("ajuste_imagem") or "cobrir")
+                       if self.dividido else "conter")
+        self.legenda_y = (float(cfg_formato.get("legenda_y_painel", 0.80))
+                          if self.dividido
+                          else float(self.legenda_cfg.get("y", 0.74)))
         self._bg = None
         self._vinheta = None
         self._palavras: list[dict] = []
@@ -82,9 +104,54 @@ class VideoRenderer:
 
         concat = seg_dir / "concat.mp4"
         self._concat(segmentos, concat)
+        if self.dividido:
+            composto = seg_dir / "dividido.mp4"
+            self._compor_dividido(concat, plano, composto)
+            concat = composto
         final = out_dir / (out_name or f"final_{self.profile}.mp4")
         self._mix_final(concat, musica, voz, final)
         return final
+
+    def _compor_dividido(self, video: Path, plano: dict, destino: Path) -> None:
+        """Painel da historia em cima, trecho do video de fundo embaixo.
+
+        Uma recodificacao a mais, e de proposito aqui e nao no `_mix_final`:
+        la o video e COPIADO, e a mixagem que falha cai para "video sem
+        trilha" — nao pode cair para "video sem metade de baixo". E a duracao
+        e conferida como no `_concat`, porque o `returncode` do ffmpeg ja
+        mentiu sobre video incompleto.
+        """
+        fundo = plano.get("fundo") or {}
+        arquivo = fundo.get("arquivo")
+        if not arquivo or not Path(arquivo).is_file():
+            raise RuntimeError(
+                "tela dividida sem video de fundo no plano: quem monta o plano "
+                "tinha que ter escolhido o formato vertical")
+        total = medidas.duracao(video) or float(plano.get("total_duration") or 0)
+        baixo = self.saida_h - self.height
+        entradas = ["-i", str(video)]
+        if fundo.get("repetir"):
+            entradas += ["-stream_loop", "-1"]
+        entradas += ["-ss", f"{float(fundo.get('offset_s') or 0.0):.3f}",
+                     "-i", str(arquivo)]
+        grafo = (f"[1:v]scale={self.saida_w}:{baixo}:"
+                 "force_original_aspect_ratio=increase,"
+                 f"crop={self.saida_w}:{baixo},fps={self.fps},setsar=1[baixo];"
+                 "[0:v]setsar=1[cima];[cima][baixo]vstack=inputs=2[v]")
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", *entradas,
+               "-filter_complex", grafo, "-map", "[v]", "-map", "0:a?",
+               "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", self.preset,
+               "-crf", str(self.crf), "-pix_fmt", "yuv420p", "-c:a", "copy",
+               str(destino)]
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           creationflags=NO_WINDOW)
+        saiu = medidas.duracao(destino)
+        if r.returncode != 0 or saiu is None or saiu < total - 0.5:
+            raise RuntimeError(
+                "a tela dividida nao montou: "
+                + ((r.stderr or "")[-300:] or
+                   (f"saiu com {saiu:.1f}s de {total:.1f}s" if saiu
+                    else "o arquivo nao abre")))
 
     # -------------------------------------------------------------- ffmpeg
     def _encode_frames(self, frames, destino: Path) -> None:
@@ -270,7 +337,12 @@ class VideoRenderer:
         cmd = ["ffmpeg", "-y", "-loglevel", "error", *entradas,
                "-filter_complex", ";".join(cadeia),
                "-map", "0:v", "-map", "[out]", "-c:v", "copy",
-               "-c:a", "aac", "-b:a", "160k", "-ar", str(sr), str(destino)]
+               "-c:a", "aac", "-b:a", "160k", "-ar", str(sr),
+               # O ARQUIVO DIZ COMO FOI FEITO: a vistoria e o parecer leem
+               # velocidade e layout daqui, e nao de um plano que pode ter
+               # sido regravado depois.
+               "-metadata", f"comment={formato_mod.rotulo(self.formato)}",
+               str(destino)]
         r = subprocess.run(cmd, capture_output=True, text=True, creationflags=NO_WINDOW)
         if r.returncode != 0:
             print(f"[render] mixagem falhou ({r.stderr[-300:]}); video sem trilha",
@@ -343,12 +415,25 @@ class VideoRenderer:
         centros = movimento.get("centro") or [[0.5, 0.5], [0.5, 0.5]]
         (cx0, cy0), (cx1, cy1) = centros[0], centros[-1]
 
-        escala = min(self.width / fonte.width, self.height / fonte.height)
-        destino = (max(1, int(fonte.width * escala)), max(1, int(fonte.height * escala)))
-        canto = ((self.width - destino[0]) // 2, (self.height - destino[1]) // 2)
-        fundo = (self._fundo_borrado(fonte)
-                 if destino != (self.width, self.height)
-                 and self.camera_cfg.get("fundo_borrado", True) else None)
+        if self.ajuste == "cobrir":
+            # A janela da camera tem o formato do PAINEL, e o zoom aperta a
+            # partir dela: a imagem enche a metade de cima sem faixa borrada.
+            proporcao = self.width / self.height
+            janela_l = min(float(fonte.width), fonte.height * proporcao)
+            janela_a = janela_l / proporcao
+            destino = (self.width, self.height)
+            canto = (0, 0)
+            fundo = None
+        else:
+            janela_l, janela_a = float(fonte.width), float(fonte.height)
+            escala = min(self.width / fonte.width, self.height / fonte.height)
+            destino = (max(1, int(fonte.width * escala)),
+                       max(1, int(fonte.height * escala)))
+            canto = ((self.width - destino[0]) // 2,
+                     (self.height - destino[1]) // 2)
+            fundo = (self._fundo_borrado(fonte)
+                     if destino != (self.width, self.height)
+                     and self.camera_cfg.get("fundo_borrado", True) else None)
         vinheta = self._mascara_vinheta()
         preto = Image.new("RGB", (self.width, self.height), (0, 0, 0))
         estalo = int(self.camera_cfg.get("flash_frames", 2))
@@ -360,7 +445,7 @@ class VideoRenderer:
             zoom = max(1.0, self._interp(zoom_ini, zoom_fim, suave))
             cx = self._interp(cx0, cx1, suave)
             cy = self._interp(cy0, cy1, suave)
-            largura, altura = fonte.width / zoom, fonte.height / zoom
+            largura, altura = janela_l / zoom, janela_a / zoom
             x0 = min(max(cx * fonte.width - largura / 2, 0.0), fonte.width - largura)
             y0 = min(max(cy * fonte.height - altura / 2, 0.0), fonte.height - altura)
             quadro = fonte.resize(destino, Image.LANCZOS,
@@ -526,7 +611,7 @@ class VideoRenderer:
 
         desenho = ImageDraw.Draw(img)
         x = self.width / 2 - total / 2
-        y = self.height * float(self.legenda_cfg.get("y", 0.74))
+        y = self.height * self.legenda_y
         stroke = max(3, tamanho // 10)
         ativa = hex_rgb(str(self.legenda_cfg.get("cor_ativa", "#ffb703")))
         dita = hex_rgb(str(self.legenda_cfg.get("cor_dita", "#f7f3ea")))

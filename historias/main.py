@@ -137,7 +137,12 @@ def cmd_imagens(args, pipeline) -> int:
 
 
 def cmd_video(args, pipeline) -> int:
-    pipeline.render(args.historia_id, preview=args.preview, parte=args.parte)
+    trocas = {chave: valor for chave, valor in (
+        ("velocidade", getattr(args, "velocidade", None)),
+        ("layout", getattr(args, "layout", None))) if valor is not None}
+    pipeline.render(args.historia_id, preview=args.preview, parte=args.parte,
+                    saida=getattr(args, "saida", None),
+                    formato_override=trocas or None)
     return 0
 
 
@@ -532,6 +537,12 @@ def main() -> int:
     v.add_argument("historia_id")
     v.add_argument("--parte", type=int, default=None, help="so esta parte")
     v.add_argument("--preview", action="store_true", help="render rapido")
+    v.add_argument("--saida", default=None,
+                   help="render de PROVA nesta pasta (nao toca a historia)")
+    v.add_argument("--velocidade", type=float, default=None,
+                   help="troca a velocidade so neste render (ex.: 1.7)")
+    v.add_argument("--layout", choices=("vertical", "dividido"), default=None,
+                   help="troca o layout so neste render")
 
     t = sub.add_parser("tudo", help="imagens que faltam + video")
     t.add_argument("historia_id")

@@ -39,6 +39,72 @@ def carregar_config(nome: str) -> dict:
         return json.load(fh)
 
 
+def aplicar_formato(plano: dict, pedido: dict, cfg_render: dict, *,
+                    historia_id: str, parte: int, voz_wav=None,
+                    palavras=None, log=print) -> tuple:
+    """`(plano, efetivo)`: o plano acelerado e com o video de fundo escolhido.
+
+    Pedido dele em 14/09/2026: historia 1,7x mais rapida ("a narracao e tudo
+    mais") e a tela cortada ao meio com um trecho de outro video embaixo.
+
+    Roda DEPOIS de a voz e o plano existirem, e antes de o plano ir para o
+    disco: voz, palavras e plano sao divididos pelo mesmo fator de uma vez, e
+    tudo o que le `edit_plan.json` depois ja encontra o relogio final.
+
+    O que falhar vira formato mais simples, nunca parte sem video: voz que nao
+    estica sai 1x; video de fundo que falta sai na tela inteira. O plano guarda
+    os dois — `formato` (o que a historia pede, e o que trava as outras partes)
+    e `formato_efetivo` (o que saiu).
+    """
+    from ..video import formato as F
+    from ..video import fundo, velocidade
+
+    pedido = F.normalizar(pedido)
+    efetivo = dict(pedido)
+    cfg = cfg_render.get("formato") or {}
+    fator = pedido["velocidade"]
+    if abs(fator - 1.0) > 1e-6:
+        acelerou = True
+        if voz_wav is not None and Path(voz_wav).is_file():
+            acelerou = velocidade.acelerar_voz(
+                voz_wav, fator,
+                filtro=str(cfg.get("velocidade_filtro")
+                           or velocidade.FILTRO_PADRAO),
+                reserva=str(cfg.get("velocidade_reserva")
+                            or velocidade.RESERVA_PADRAO),
+                log=log) is not None
+        if acelerou:
+            if palavras is not None:
+                velocidade.escalar_palavras(palavras, fator)
+            plano = velocidade.escalar_plano(
+                plano, fator, float(cfg.get("titulo_minimo_s", 1.4)))
+        else:
+            efetivo["velocidade"] = 1.0
+            _rb_atividade.registrar(
+                "estudio", "aviso",
+                f"{historia_id} parte {parte}: a voz nao acelerou; saiu 1x",
+                "historias")
+    if pedido["layout"] == "dividido":
+        escolhido = fundo.escolher(historia_id, parte,
+                                   float(plano.get("total_duration") or 0.0),
+                                   cfg.get("fundo_video"), ASSETS)
+        if escolhido:
+            plano["fundo"] = escolhido
+            log(f"[formato] fundo: {Path(escolhido['arquivo']).name} a partir "
+                f"de {escolhido['offset_s']:.0f}s")
+        else:
+            efetivo["layout"] = "vertical"
+            log("[formato] o video de fundo nao esta disponivel; a parte sai "
+                "na tela inteira.")
+            _rb_atividade.registrar(
+                "estudio", "aviso",
+                f"{historia_id} parte {parte}: sem video de fundo; saiu na "
+                "tela inteira", "historias")
+    plano["formato"] = pedido
+    plano["formato_efetivo"] = efetivo
+    return plano, efetivo
+
+
 class Pipeline:
     def __init__(self):
         self.render_config = carregar_config("render.json")
@@ -145,11 +211,23 @@ class Pipeline:
         return f"{historia_id}:{perfil}{sufixo}"
 
     def render(self, historia_id: str, *, preview: bool = False,
-               parte: int | None = None, log=print) -> dict:
-        """Renderiza uma parte (ou todas). Um mp4 por parte, por perfil."""
+               parte: int | None = None, log=print, saida=None,
+               formato_override: dict | None = None) -> dict:
+        """Renderiza uma parte (ou todas). Um mp4 por parte, por perfil.
+
+        `saida` e o render de PROVA: partes e mp4 vao para aquela pasta, e
+        nada do que e da historia de verdade (capa, atividade, atribuicao de
+        experimento) e tocado. `formato_override` troca campos do formato so
+        neste render.
+        """
+        from ..video import formato as formato_mod
+
         roteiro = R.carregar(historia_id)
         pasta = OUTPUTS / historia_id
         pasta.mkdir(parents=True, exist_ok=True)
+        prova = Path(saida) if saida else None
+        if prova is not None:
+            prova.mkdir(parents=True, exist_ok=True)
         alvos = ([int(parte)] if parte
                  else [bloco["n"] for bloco in roteiro["partes"]])
 
@@ -164,6 +242,15 @@ class Pipeline:
         if marca:
             log(f"[experimento] {marca['nome_experimento']}: "
                 f"braco {marca['braco']!r}")
+        if prova is not None:
+            marca = None
+        # O FORMATO E DA HISTORIA, NAO DO RENDER: a primeira parte renderizada
+        # decide pelas outras, e historia de antes da mudanca fica como era.
+        pedido = formato_mod.resolver(historia_id, cfg_render, pasta)
+        if formato_override:
+            pedido = {**pedido, **formato_override, "origem": "linha de comando"}
+        log(f"[formato] {pedido.get('velocidade', 1.0):g}x, "
+            f"{pedido.get('layout', 'vertical')} ({pedido.get('origem', '?')})")
 
         voz_mod = _rb_content_voz
         # A voz sai do ROTEIRO, nao do config: quem narra em primeira pessoa
@@ -178,11 +265,14 @@ class Pipeline:
         musica = self._musica(log, cfg_render)
         saida = []
         atividade = _rb_atividade
-        atividade.registrar("estudio", "inicio",
-                            f"{historia_id}: {len(alvos)} parte(s)", "historias")
+        if prova is None:
+            atividade.registrar("estudio", "inicio",
+                                f"{historia_id}: {len(alvos)} parte(s)",
+                                "historias")
 
         for numero in alvos:
-            trabalho = self.pasta_da_parte(historia_id, numero)
+            trabalho = (prova / f"p{int(numero):02d}" if prova is not None
+                        else self.pasta_da_parte(historia_id, numero))
             trabalho.mkdir(parents=True, exist_ok=True)
             rotulo = (f"parte {numero}/{len(roteiro['partes'])}"
                       if roteiro.get("serie") else "video")
@@ -216,9 +306,6 @@ class Pipeline:
                                     config_render=cfg_render,
                                     pasta=pasta, parte=numero)
             plano["historia_id"] = historia_id
-            self._gravar(trabalho / "edit_plan.json", plano)
-            (trabalho / "legendas.srt").write_text(timeline.legenda_srt(plano),
-                                                   encoding="utf-8")
 
             # 3) A voz. Na leitura continua ela JA existe (o plano nasceu
             #    dela); no caminho antigo, e montada agora no relogio do plano.
@@ -233,14 +320,25 @@ class Pipeline:
                 if voz_wav is not None:
                     palavras = voz_mod.caminho_palavras(voz_wav)
 
+            # 4) O FORMATO: acelerar e escolher o fundo. So DEPOIS disto o plano
+            #    vai para o disco — gravado antes, ele ficaria no relogio antigo
+            #    e o parecer, os cortes e a metrica apontariam a cena errada.
+            plano, efetivo = aplicar_formato(
+                plano, pedido, cfg_render, historia_id=historia_id,
+                parte=numero, voz_wav=voz_wav, palavras=palavras, log=log)
+            self._gravar(trabalho / "edit_plan.json", plano)
+            (trabalho / "legendas.srt").write_text(timeline.legenda_srt(plano),
+                                                   encoding="utf-8")
+
+            destino_mp4 = prova if prova is not None else pasta
             for perfil in self.perfis:
                 renderer = render_mod.VideoRenderer(cfg_render, perfil,
-                                                    preview)
+                                                    preview, formato=efetivo)
                 final = renderer.render(
                     plano, trabalho, voz=voz_wav, palavras=palavras,
                     musica=musica,
-                    out_name=str(pasta / self.nome_do_video(roteiro, perfil,
-                                                            numero)))
+                    out_name=str(destino_mp4 / self.nome_do_video(
+                        roteiro, perfil, numero)))
                 saida.append(str(final))
                 # O id do catalogo, que e por onde a metrica volta. Gravado
                 # no ato: reconstruir a atribuicao depois seria adivinhar.
@@ -259,10 +357,13 @@ class Pipeline:
             # UMA capa por PARTE, e nao por perfil: a miniatura e a mesma nos
             # dois. Fora do laco de perfil de proposito — dentro, ela seria
             # redesenhada e regravada a cada perfil pelo mesmo resultado.
-            self._capa(roteiro, historia_id, pasta, numero, cfg_render, log)
+            if prova is None:
+                self._capa(roteiro, historia_id, pasta, numero, cfg_render, log)
 
-        atividade.registrar("estudio", "ok",
-                            f"{historia_id}: {len(saida)} video(s)", "historias")
+        if prova is None:
+            atividade.registrar("estudio", "ok",
+                                f"{historia_id}: {len(saida)} video(s)",
+                                "historias")
         return {"historia_id": historia_id, "videos": saida,
                 "partes": len(alvos)}
 
