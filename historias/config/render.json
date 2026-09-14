@@ -20,7 +20,7 @@
         "velocidade": 1.0,
         "velocidade_filtro": "rubberband=tempo={fator}:transients=smooth:detector=soft:window=short",
         "velocidade_reserva": "atempo={fator}",
-        "titulo_minimo_s": 1.4,
+        "titulo_minimo_s": 2.0,
         "layout": "vertical",
         "ajuste_imagem": "cobrir",
         "legenda_y_painel": 0.8,

@@ -405,7 +405,8 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
            "cima e a historia; a metade de baixo e um video de fundo mudo, "
            "sem nenhuma relacao com a historia (maquiagem). Ignore tudo o que "
            "aparece na metade de baixo — pessoa, rosto, maos, produto, texto "
-           "— e julgue so a metade de cima;"] if dividido else []),
+           "em qualquer lingua, marca d'agua, logotipo — e julgue so a "
+           "metade de cima;"] if dividido else []),
         *([f"  - a fala rapida: o video inteiro e acelerado {velocidade:g}x "
            "de proposito;"] if acelerado else []),
         "  - texto que faz parte da CENA (papel na mao, placa na porta, "

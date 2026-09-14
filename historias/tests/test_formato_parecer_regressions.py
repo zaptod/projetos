@@ -50,6 +50,14 @@ class PromptTests(unittest.TestCase):
         self.assertIn("metade de baixo", texto)
         self.assertIn("IMAGEM DA HISTORIA (metade de cima", texto)
 
+    def test_texto_e_marca_d_agua_do_fundo_nao_reprovam(self):
+        """O video de maquiagem tem legenda de tutorial em ingles e a marca
+        'babycolor' (visto pelo Gemini na prova de 14/09/2026). Sem isto, o
+        motivo "marca d'agua" viraria conserto de uma imagem que esta boa."""
+        trecho = _texto(DIVIDIDO).split("TELA DIVIDIDA AO MEIO")[1][:400]
+        self.assertIn("marca d'agua", trecho)
+        self.assertIn("texto em qualquer lingua", trecho)
+
     def test_fala_acelerada_e_de_proposito(self):
         texto = _texto(DIVIDIDO)
         self.assertIn("acelerada 1.7x de proposito", texto)
