@@ -256,6 +256,15 @@ class ReescritaPelaNarracaoTests(unittest.TestCase):
         self.assertIn("crowded waiting room", cenas[0]["imagem"])
         self.assertEqual("a man smiling, office, vertical", cenas[1]["imagem"])
 
+    def test_o_pedido_diz_que_e_texto_e_nao_imagem(self):
+        """O Gemini leu "prompts de imagem para um gerador" como pedido para
+        desenhar e ficou 590 s sem escrever uma letra (14/09/2026)."""
+        pedido = C.pedido_de_prompt({"narracao": "x", "imagem": "y"}, "", "")
+        primeira = pedido.splitlines()[0]
+        self.assertIn("PEDIDO DE TEXTO", primeira)
+        self.assertIn("Nao gere", primeira)
+        self.assertNotIn("gerador", pedido)
+
 
 class GravarRoteiroTests(unittest.TestCase):
 

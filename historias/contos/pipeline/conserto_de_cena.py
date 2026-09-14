@@ -146,14 +146,24 @@ def fixar_protagonista(roteiro: dict, nova: str) -> int:
 
 
 def pedido_de_prompt(cena: dict, protagonista: str, motivo: str) -> str:
-    """O que se pede ao LLM para reescrever o prompt de UMA cena."""
+    """O que se pede ao LLM para reescrever o prompt de UMA cena.
+
+    PEDIDO DE TEXTO, E DITO NA PRIMEIRA LINHA. A primeira versao abria com
+    "Voce escreve prompts de imagem para um gerador", e o Gemini entendia
+    como pedido para DESENHAR: na madrugada de 14/09/2026 ele ficou 590 s
+    "escrevendo" com zero caracteres de texto, e o mesmo ja tinha derrubado a
+    reescrita duas vezes na tarde anterior. O conserto de narracao nunca
+    chegava a acontecer.
+    """
     linhas = [
-        "Voce escreve prompts de imagem para um gerador. Reescreva o prompt "
-        "da cena abaixo para que a imagem mostre EXATAMENTE o que a narracao "
-        "desta cena conta: as mesmas pessoas, o mesmo lugar, o mesmo momento.",
-        "Regras: em ingles; uma frase densa com virgulas; um instante so, "
-        "sem transicao; sem colagem, sem tela dividida, sem texto na imagem; "
-        "vertical, cinematografico.",
+        "PEDIDO DE TEXTO. Nao gere, nao desenhe e nao anexe imagem nenhuma: "
+        "responda apenas com uma linha de texto.",
+        "Reescreva, em ingles, a descricao usada para ilustrar a cena abaixo, "
+        "para que ela descreva EXATAMENTE o que a narracao desta cena conta: "
+        "as mesmas pessoas, o mesmo lugar, o mesmo momento.",
+        "Regras da descricao: uma frase densa com virgulas; um instante so, "
+        "sem transicao; sem colagem, sem tela dividida, sem texto; "
+        "enquadramento vertical, cinematografico.",
     ]
     if protagonista:
         linhas.append("Se o protagonista aparecer, use exatamente esta "
