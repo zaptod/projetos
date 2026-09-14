@@ -33,9 +33,13 @@ def carregar_config() -> dict:
 def listar(config: dict | None = None) -> list[dict]:
     """Modelos do config + os .txt que voce largou em `modelos/`."""
     config = config or carregar_config()
+    # COMENTARIO NAO E MODELO. O config explica cada molde numa chave
+    # `_comment_*` ao lado dele, e em 14/09/2026 a listagem quebrou em
+    # `'str' object has no attribute 'get'` por tratar esse texto como molde.
     saida = [{"nome": nome, "rotulo": dados.get("rotulo", nome),
               "cenas": dados.get("cenas_alvo"), "origem": "config"}
-             for nome, dados in config["modelos"].items()]
+             for nome, dados in config["modelos"].items()
+             if not str(nome).startswith("_") and isinstance(dados, dict)]
     if MODELOS_DIR.is_dir():
         for arquivo in sorted(MODELOS_DIR.glob("*.txt")):
             saida.append({"nome": arquivo.stem, "rotulo": f"{arquivo.stem} (arquivo)",
