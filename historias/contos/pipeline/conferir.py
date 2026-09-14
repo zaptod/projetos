@@ -113,16 +113,16 @@ def partes_da_historia(historia_id: str) -> list[dict]:
         dados = qualidade._ffprobe(video)
         duracao = float((dados.get("format") or {}).get("duration") or 0.0)
         linha["duracao"] = round(duracao, 2)
-        if palavras and duracao:
-            taxa = palavras / duracao
-            linha["palavras_por_s"] = round(taxa, 2)
-            if taxa > qualidade.PALAVRAS_POR_S_MAX:
-                linha["erros"].append(
-                    f"{palavras} palavras em {duracao:.0f}s ({taxa:.1f} "
-                    "palavras/s): a narracao nao cabe — o audio veio incompleto")
-            elif taxa < qualidade.PALAVRAS_POR_S_MIN:
-                linha["avisos"].append(
-                    f"{taxa:.1f} palavras/s: o video esta arrastado para o texto")
+        # A MESMA regra da vistoria de publicar, e nao uma copia dela: desde
+        # 14/09/2026 o video pode estar acelerado, e duas contas diferentes
+        # dariam duas respostas para a mesma parte.
+        feito = qualidade.formato_de(dados, historia_id, n)
+        ritmo = qualidade.avaliar_ritmo(palavras, duracao, feito["velocidade"])
+        linha["palavras_por_s"] = ritmo["palavras_por_s"]
+        linha["palavras_por_s_natural"] = ritmo["palavras_por_s_natural"]
+        linha["formato"] = feito
+        linha["erros"].extend(ritmo["erros"])
+        linha["avisos"].extend(ritmo["avisos"])
         linhas.append(linha)
 
     # A parte que destoa das irmas. Precisa das outras para existir, entao so

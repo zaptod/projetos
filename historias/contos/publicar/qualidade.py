@@ -41,11 +41,78 @@ SILENCIO_FINAL_MAXIMO = 3.0
 FRACAO_MINIMA_DA_MEDIANA = 0.5
 
 
+def _formato_no_arquivo(dados: dict | None) -> dict | None:
+    from ..video import formato
+    tags = ((dados or {}).get("format") or {}).get("tags") or {}
+    return formato.ler_rotulo(tags.get("comment") or tags.get("COMMENT"))
+
+
+def formato_de(dados: dict | None, historia_id: str | None = None,
+               parte: int | None = None) -> dict:
+    """Velocidade e layout com que a parte FOI feita.
+
+    O arquivo responde primeiro: o render grava o formato no `comment` do mp4.
+    Sem a etiqueta, vale o que o plano da parte registrou; sem plano, e video
+    de antes de 14/09/2026 — velocidade normal, tela inteira.
+    """
+    from ..video import formato
+    achado = _formato_no_arquivo(dados)
+    if achado:
+        return achado
+    if historia_id and parte:
+        from ..video import plano
+        try:
+            with open(plano.caminho_do_plano(historia_id, parte),
+                      encoding="utf-8-sig") as fh:
+                dados_plano = json.load(fh)
+        except (OSError, ValueError):
+            dados_plano = None
+        if isinstance(dados_plano, dict):
+            for chave in ("formato_efetivo", "formato"):
+                if isinstance(dados_plano.get(chave), dict):
+                    return formato.normalizar(dados_plano[chave])
+    return dict(formato.LEGADO)
+
+
+def avaliar_ritmo(palavras: int, duracao: float,
+                  velocidade: float = 1.0) -> dict:
+    """Palavras por segundo OUVIDAS e na velocidade NATURAL da fala.
+
+    A faixa de 1,5 a 4,0 e de fala humana, e so faz sentido na velocidade em
+    que a voz foi sintetizada. Desde 14/09/2026 o video acelera tudo 1,7x de
+    proposito: medida crua, uma parte boa (2,5 palavras/s) viraria 4,3 e seria
+    barrada como "audio cortado". Dividir pela velocidade devolve a pergunta
+    original — a narracao chegou inteira? — e a parte 1 da historia 8, com
+    19,1 palavras/s, continua sendo pega.
+    """
+    saida = {"palavras_por_s": None, "palavras_por_s_natural": None,
+             "erros": [], "avisos": []}
+    if not palavras or not duracao:
+        return saida
+    velocidade = float(velocidade or 1.0)
+    ouvida = palavras / float(duracao)
+    natural = ouvida / velocidade
+    saida["palavras_por_s"] = round(ouvida, 2)
+    saida["palavras_por_s_natural"] = round(natural, 2)
+    acelerado = ("" if abs(velocidade - 1.0) < 1e-6 else
+                 f", {natural:.1f} na fala natural a {velocidade:g}x")
+    if natural > PALAVRAS_POR_S_MAX:
+        saida["erros"].append(
+            f"{palavras} palavras em {float(duracao):.0f}s "
+            f"({ouvida:.1f} palavras/s{acelerado}): a narracao nao cabe no "
+            "video — o audio veio incompleto")
+    elif natural < PALAVRAS_POR_S_MIN:
+        saida["avisos"].append(
+            f"{natural:.1f} palavras/s: o video esta arrastado para o texto")
+    return saida
+
+
 def _ffprobe(caminho: Path) -> dict:
     try:
         saida = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries",
-             "format=duration,size:stream=codec_type,codec_name",
+             "format=duration,size:format_tags=comment:"
+             "stream=codec_type,codec_name",
              "-of", "json", str(caminho)],
             capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
         return json.loads(saida.stdout or "{}")
@@ -129,6 +196,7 @@ def vistoriar_arquivo(caminho: Path) -> dict:
     return {"existe": True, "duracao": round(duracao, 2), "bytes": tamanho,
             "audio": tem_audio, "video": tem_video, "media_db": media,
             "silencio_final": round(calado, 2),
+            "formato": _formato_no_arquivo(dados),
             "erros": erros, "avisos": avisos}
 
 
@@ -209,18 +277,26 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
     palavras = sum(len(str(c.get("narracao") or "").split())
                    for c in cenas_da_parte(roteiro, parte))
     laudo["palavras"] = palavras
-    laudo["palavras_por_s"] = None
-    if palavras and laudo.get("duracao"):
-        taxa = palavras / float(laudo["duracao"])
-        laudo["palavras_por_s"] = round(taxa, 2)
-        if taxa > PALAVRAS_POR_S_MAX:
-            laudo["erros"].append(
-                f"{palavras} palavras em {laudo['duracao']:.0f}s "
-                f"({taxa:.1f} palavras/s): a narracao nao cabe no video — "
-                "o audio veio incompleto")
-        elif taxa < PALAVRAS_POR_S_MIN:
+    feito = laudo.get("formato") or formato_de(None, historia_id, parte)
+    laudo["formato"] = feito
+    ritmo = avaliar_ritmo(palavras, float(laudo.get("duracao") or 0.0),
+                          feito["velocidade"])
+    laudo["palavras_por_s"] = ritmo["palavras_por_s"]
+    laudo["palavras_por_s_natural"] = ritmo["palavras_por_s_natural"]
+    laudo["erros"].extend(ritmo["erros"])
+    laudo["avisos"].extend(ritmo["avisos"])
+    if laudo.get("existe") and feito.get("layout") == "vertical":
+        from ..video import plano
+        try:
+            with open(plano.caminho_do_plano(historia_id, parte),
+                      encoding="utf-8-sig") as fh:
+                pedido = (json.load(fh) or {}).get("formato") or {}
+        except (OSError, ValueError, AttributeError):
+            pedido = {}
+        if str(pedido.get("layout") or "") == "dividido":
             laudo["avisos"].append(
-                f"{taxa:.1f} palavras/s: o video esta arrastado para o texto")
+                "o plano pedia tela dividida e o video saiu na tela inteira: "
+                "o video de fundo faltou no render")
 
     imagens = fila.resumo(historia_id, roteiro, parte)
     if imagens["total"] and imagens["prontas"] == 0:
