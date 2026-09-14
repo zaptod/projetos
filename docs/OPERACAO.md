@@ -124,6 +124,20 @@ converter uma história de propósito, `outputs/<id>/formato.json`. Render de
 prova: `main.py video <id> --parte N --prova PASTA --velocidade 1.7 --layout
 dividido` — **nunca `--saida`**, que é a opção do log da agenda.
 
+**Furar a fila e as travas entre processos (14/09/2026).** Para um vídeo sair
+antes da vez, escreva `historias/outputs/_publicar/prioridade.json` com
+`{"videos": ["historia_00012:celular:p01"]}`: a próxima postagem da grade o
+põe na frente e ele passa pelas mesmas guardas (vistoria, parecer,
+um-por-horário, grade do TikTok); publicado, o pedido some sozinho. **A série
+espera a parte barrada**: parte vetada ou reprovada segura as seguintes da mesma
+história e a grade publica outra série; sem nada limpo sai a própria vetada com
+arquivo inteiro, e a seguinte só vai fora de ordem em último caso. Parte cuja
+anterior não tem mp4 nem está no ar não entra na fila. Entre processos: o
+**apurador não edita código** enquanto a trava da agenda (`historias__auto`)
+está ocupada; **uma renderização por história** (`historias__render__<id>`); a
+criação espera até 25 min pela conta do LLM que a postagem estiver usando; e
+`main.py publicar --tiktok` confere e grava o registro como a grade.
+
 ### O que ainda não existe aqui
 
 - O vídeo de fundo tem **texto de tutorial em inglês e a marca "babycolor"**
