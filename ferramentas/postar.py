@@ -353,11 +353,20 @@ def proxima_historia(*, vistoriar: bool = True):
     # vistoria) segura as seguintes da MESMA historia, e a grade publica outra
     # serie no lugar. A seguinte so sai como ultimo recurso, la embaixo.
     bloqueadas, adiadas = set(), []
+    from builds import travas
     for alvo in fila_de_historias():
         if not vistoriar:
             return alvo, recusados
         if alvo.fonte_id in bloqueadas:
             adiadas.append(alvo)
+            continue
+        # HISTORIA SENDO RENDERIZADA NAO SAI NESTE HORARIO. As 15:07 de
+        # 14/09/2026 a postagem chegou a h9 p01 minutos depois de o reparo
+        # regravar o mp4 dela; mais cedo, teria lido o arquivo no meio da
+        # escrita. `Pipeline.render` segura esta trava enquanto escreve.
+        if travas.ocupada(f"historias__render__{alvo.fonte_id}"):
+            recusados.append(f"{alvo.id}: a historia esta sendo renderizada")
+            bloqueadas.add(alvo.fonte_id)
             continue
         # O VETO JA GRAVADO NAO GASTA TENTATIVA. `TENTATIVAS` existe para nao
         # decodificar mp4 sem fim; gasto com veto lido de arquivo, ele deixava

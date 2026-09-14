@@ -127,6 +127,17 @@ class SerieEsperaAParteBarradaTests(unittest.TestCase):
         self.vetadas.add("historia_00010:celular:p05")
         self.assertEqual("historia_00010:celular:p05", self._escolha(fila))
 
+    def test_historia_sendo_renderizada_nao_sai_neste_horario(self):
+        """14/09/2026 15:07: a postagem chegou a h9 p01 logo depois de o
+        reparo regravar o mp4; mais cedo, leria o arquivo pela metade."""
+        from builds import travas
+        antes = travas.ocupada
+        self.addCleanup(setattr, travas, "ocupada", antes)
+        travas.ocupada = (
+            lambda nome: nome == "historias__render__historia_00009")
+        fila = [self.video("historia_00009", 1), self.video("historia_00011", 1)]
+        self.assertEqual("historia_00011:celular:p01", self._escolha(fila))
+
     def test_a_seguinte_so_sai_quando_nada_mais_pode(self):
         p05 = self.video("historia_00010", 5)
         p05.caminho = "quebrado.mp4"
