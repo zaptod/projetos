@@ -84,6 +84,58 @@ class PublicacaoManualRegistraTikTokTests(unittest.TestCase):
                         trecho.index('_serie.registrar(alvo, estado, "tiktok"'))
 
 
+class SerieEsperaAParteBarradaTests(unittest.TestCase):
+    """Pedido dele em 14/09/2026: a parte barrada segura as seguintes."""
+
+    def setUp(self):
+        from contos.publicar import qualidade
+        from contos.roteiro import roteiro as R
+        self.postar = _postar()
+        self.vetadas, self.quebradas = set(), set()
+
+        def _video(h, p):
+            return type("V", (), {"id": f"{h}:celular:p{p:02d}",
+                                  "fonte_id": h, "parte": p,
+                                  "caminho": "x.mp4"})()
+
+        self.video = _video
+        self.postar._veto_lembrado = (
+            lambda alvo: f"{alvo.id}: veto" if alvo.id in self.vetadas else "")
+        self.postar._parecer_da_ia = lambda *_a, **_k: ""
+        for modulo, nome, valor in (
+                (qualidade, "vistoriar_parte",
+                 lambda _h, _p, caminho, _r: {
+                     "ok": caminho not in self.quebradas,
+                     "erros": ["quebrado"]}),
+                (R, "carregar", lambda _hid: {})):
+            self.addCleanup(setattr, modulo, nome, getattr(modulo, nome))
+            setattr(modulo, nome, valor)
+
+    def _escolha(self, fila):
+        self.postar.fila_de_historias = lambda: fila
+        alvo, _recusados = self.postar.proxima_historia()
+        return alvo.id if alvo else None
+
+    def test_outra_serie_sai_no_lugar_da_parte_seguinte(self):
+        fila = [self.video("historia_00010", 5), self.video("historia_00010", 6),
+                self.video("historia_00011", 1)]
+        self.vetadas.add("historia_00010:celular:p05")
+        self.assertEqual("historia_00011:celular:p01", self._escolha(fila))
+
+    def test_sem_outra_serie_sai_a_propria_vetada_e_nao_a_seguinte(self):
+        fila = [self.video("historia_00010", 5), self.video("historia_00010", 6)]
+        self.vetadas.add("historia_00010:celular:p05")
+        self.assertEqual("historia_00010:celular:p05", self._escolha(fila))
+
+    def test_a_seguinte_so_sai_quando_nada_mais_pode(self):
+        p05 = self.video("historia_00010", 5)
+        p05.caminho = "quebrado.mp4"
+        fila = [p05, self.video("historia_00010", 6)]
+        self.vetadas.add("historia_00010:celular:p05")
+        self.quebradas.add("quebrado.mp4")
+        self.assertEqual("historia_00010:celular:p06", self._escolha(fila))
+
+
 class SerieSemBuracoTests(unittest.TestCase):
 
     def _fila(self, partes, publicados):

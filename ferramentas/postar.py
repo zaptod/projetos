@@ -348,9 +348,17 @@ def proxima_historia(*, vistoriar: bool = True):
     recusados = []
     examinados = 0
     vetados = []
+    # A SERIE ESPERA A PARTE BARRADA. Pedido dele em 14/09/2026, depois de a
+    # historia 10 publicar a parte 6 antes da 5: parte barrada (veto ou
+    # vistoria) segura as seguintes da MESMA historia, e a grade publica outra
+    # serie no lugar. A seguinte so sai como ultimo recurso, la embaixo.
+    bloqueadas, adiadas = set(), []
     for alvo in fila_de_historias():
         if not vistoriar:
             return alvo, recusados
+        if alvo.fonte_id in bloqueadas:
+            adiadas.append(alvo)
+            continue
         # O VETO JA GRAVADO NAO GASTA TENTATIVA. `TENTATIVAS` existe para nao
         # decodificar mp4 sem fim; gasto com veto lido de arquivo, ele deixava
         # os barrados da frente esconderem os aprovados de tras.
@@ -358,6 +366,7 @@ def proxima_historia(*, vistoriar: bool = True):
         if veto:
             recusados.append(veto)
             vetados.append(alvo)
+            bloqueadas.add(alvo.fonte_id)
             continue
         if examinados >= TENTATIVAS:
             break
@@ -367,12 +376,14 @@ def proxima_historia(*, vistoriar: bool = True):
                                           alvo.caminho, roteiro)
         if not laudo["ok"]:
             recusados.append(f"{alvo.id}: {'; '.join(laudo['erros'])[:120]}")
+            bloqueadas.add(alvo.fonte_id)
             continue
         # A VISTORIA PASSOU; FALTA A IA OLHAR. A mecanica responde "o arquivo
         # esta inteiro?"; so quem assiste responde "o video presta?".
         veto = _parecer_da_ia(alvo, roteiro, laudo)
         if veto:
             recusados.append(veto)
+            bloqueadas.add(alvo.fonte_id)
             continue
         return alvo, recusados
     # NAO FICAR SEM VIDEO. Pedido dele em 13/09/2026: "a prioridade e nao
@@ -386,6 +397,18 @@ def proxima_historia(*, vistoriar: bool = True):
         if laudo["ok"]:
             _linha(f"[postar] {alvo.id}: nenhum video limpo na fila; sai "
                    "este, com o veto da IA, para o horario nao ficar vazio.")
+            return alvo, recusados
+    # ULTIMO RECURSO: a parte seguinte de uma serie parada, fora de ordem, so
+    # quando nada acima pode sair — o horario vazio continua sendo pior.
+    for alvo in adiadas[:3]:
+        if _veto_lembrado(alvo):
+            continue
+        roteiro = R.carregar(alvo.fonte_id)
+        laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
+                                          alvo.caminho, roteiro)
+        if laudo["ok"]:
+            _linha(f"[postar] {alvo.id}: nenhum outro video pode sair; vai "
+                   "fora de ordem para o horario nao ficar vazio.")
             return alvo, recusados
     return None, recusados
 
