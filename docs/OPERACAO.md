@@ -96,7 +96,7 @@ em 09/09/2026, quando dez tarefas recusavam iniciar com `0x800710E0`.
         v
    narrador (edge-tts) + trilha + capa
         |  formato.resolver .......... velocidade e tela da HISTORIA (trava na 1a parte)
-        |  aplicar_formato ........... voz 1,7x (atempo) e plano dividido ANTES de ir ao disco
+        |  aplicar_formato ........... voz 1,5x (atempo) e plano dividido ANTES de ir ao disco
         v
    render -> mp4 no disco ............ historia em cima, video de fundo mudo embaixo
         v
@@ -111,8 +111,9 @@ O reparador (`contos/pipeline/reparo.py`) fica pendurado entre o render e a
 porta: quando a vistoria acha algo que ele sabe consertar (cena com colagem,
 imagem faltando), ele refaz e renderiza de novo, até 3 tentativas por vídeo.
 
-**O formato do vídeo (desde 14/09/2026).** História nova sai **1,7x mais
-rápida** e com a **tela dividida**: em cima as imagens e a legenda, embaixo um
+**O formato do vídeo (desde 14/09/2026).** História nova sai **1,5x mais
+rápida** (era 1,7x; ele achou rápido demais) e com a **tela dividida**: em cima
+as imagens INTEIRAS (modo `encaixar`, sem corte) e a legenda, embaixo um
 trecho mudo de `historias/assets/fundo/videoMaquiagem.mp4` (fora do git,
 794 MB), sorteado pelo hash de `historia:parte`. O que manda está em
 `config/render.json`, bloco `formato`. A voz é esticada depois da síntese e o

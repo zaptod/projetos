@@ -17,7 +17,8 @@
     ],
     "_comment_formato": "Pedido dele em 14/09/2026: a historia 1,7x mais rapida ('a narracao e tudo mais') e a tela cortada ao meio, com a historia em cima e um trecho do video de maquiagem embaixo, mudo. So vale para historia NOVA: a primeira parte renderizada trava o formato da historia inteira (contos/video/formato.py), e historia com parte de antes da mudanca fica como era. velocidade: a voz e esticada DEPOIS da sintese (rubberband, reserva atempo) e o plano inteiro e dividido pelo mesmo fator — pedir 1,7x ao edge-tts faria o voz.py le-la como audio cortado. titulo_minimo_s: tempo de leitura do titulo depois de acelerar. ajuste_imagem: 'cobrir' enche o painel cortando topo e pe da imagem vertical; 'conter' mostra a imagem inteira estreita sobre o borrado. legenda_y_painel: altura da legenda como fracao do PAINEL de cima. fundo_video.arquivo: relativo a assets/ (aceita absoluto); o trecho e sorteado pelo hash de historia:parte, longe das margens.",
     "formato": {
-        "velocidade": 1.7,
+        "_comment_velocidade": "1.5 desde 14/09/2026 19:16: ele viu a primeira historia a 1,7x no ar e achou rapido demais ('pode ser 1.5').",
+        "velocidade": 1.5,
         "_comment_filtro": "atempo e o principal: o Gemini ouviu a mesma narracao acelerada 1,7x por quatro metodos (14/09/2026) e deu atempo 7/10 contra 3 a 5 para tres ajustes do rubberband (metalico, robotico e tremulo, eco). O rubberband fica de reserva.",
         "velocidade_filtro": "atempo={fator}",
         "velocidade_reserva": "rubberband=tempo={fator}:transients=smooth:detector=soft:window=short",
