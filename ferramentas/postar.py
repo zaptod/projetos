@@ -128,13 +128,13 @@ def fila_de_historias() -> list:
     from contos.publicar import catalogo, serie
 
     publicados = [l for l in serie.publicados() if l.get("url")]
-    # A FILA E DO YOUTUBE. Parte que so foi ao TikTok (YouTube na cota ou fora
-    # do ar naquele horario) continua devendo o YouTube; contar qualquer
-    # plataforma tirava a parte da fila para sempre (auditoria de 15/09/2026).
-    # Medido na mesma noite: nenhum video estava so no TikTok, entao a ordem
-    # da fila nao mudou com isto.
-    ja = {l.get("video_id") for l in publicados
-          if l.get("plataforma", "youtube") == "youtube"}
+    # QUALQUER PLATAFORMA CONTA. Em 15/09/2026 a fila passou a contar so o
+    # YouTube (para a parte que so foi ao TikTok nao sumir do YouTube), e a
+    # revisao adversarial mediu o preco: com o YouTube na cota o dia inteiro,
+    # a mesma parte voltava a frente em todo horario, o TikTok ja a tinha e
+    # postava 1 de 6 (antes, 6 de 6). Horario vazio e pior que buraco no
+    # YouTube. O conserto de verdade e uma fila POR PLATAFORMA.
+    ja = {l.get("video_id") for l in publicados}
     videos = [v for v in catalogo.listar() if v.perfil == "celular"]
     comecadas = {v.fonte_id for v in videos if v.id in ja}
     # SEM BURACO NA SERIE. O catalogo lista cada mp4 assim que ele existe, e a
@@ -556,11 +556,11 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         else:
             # QUALQUER FALHA DO YOUTUBE SEGUE PARA O TIKTOK (auditoria de
             # 15/09/2026). Subir aqui deixava o TikTok daquele horario vazio
-            # para sempre; a parte continua na fila do YouTube, que so conta
-            # o que saiu NELE.
+            # para sempre. Se o TikTok subir, a parte sai da fila como na cota:
+            # o YouTube fica sem ela ate existir fila por plataforma.
             falha_yt = f"{type(exc).__name__}: {exc}"[:200]
             _linha(f"[postar] historias: YouTube falhou ({falha_yt}). "
-                   "Sigo para o TikTok; a parte volta no proximo horario.")
+                   "Sigo para o TikTok.")
     ficha = {"canal": "historias", "feito": bool(url), "alvo": alvo.id,
              "titulo": alvo.titulo, "url": url,
              "parte": alvo.parte, "partes": alvo.partes,
@@ -583,8 +583,10 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     else:
         ficha["tiktok"] = "" if ja_tk else _tiktok_das_historias(alvo)
     # Deu TikTok e nao deu YouTube: a rodada fez alguma coisa, e o relatorio
-    # tem que dizer isso em vez de chamar tudo de falha.
-    if ficha["tiktok"]:
+    # tem que dizer isso em vez de chamar tudo de falha. So com o post
+    # CONFIRMADO: "cliquei mas o TikTok nao confirmou" nao e publicacao
+    # (revisao de 15/09/2026).
+    if _tiktok_confirmado(ficha["tiktok"]):
         ficha["feito"] = True
     return ficha
 
@@ -619,9 +621,9 @@ def _tiktok_das_historias(alvo) -> str:
     — que ja subiu — parecer que falhou.
     """
     from contos.publicar import catalogo, serie
-    # A MESMA PARTE NAO VAI DUAS VEZES AO TIKTOK. Com a fila do YouTube
-    # contando so o YouTube, uma parte que foi ao TikTok num horario em que o
-    # YouTube falhou volta a ser escolhida quando o YouTube a publicar.
+    # A MESMA PARTE NAO VAI DUAS VEZES AO TIKTOK. Rede de seguranca: o caminho
+    # "YouTube ja saiu nesta hora, levando so para o TikTok" pega o video do
+    # ledger do YouTube, e nada ali olhava se o TikTok ja o tinha.
     if serie.ja_publicado(alvo.id, "tiktok"):
         _linha(f"   tiktok: {alvo.id} ja esta no TikTok; nao posto de novo.")
         return ""
@@ -725,15 +727,22 @@ def escolher_por_cota(pendentes: list, servidos: dict, cota: dict):
 
 
 LIMIAR_MUDO_DB = -60.0
+# Fracao do video em silencio (abaixo de -50 dB por mais de 0,5 s) a partir da
+# qual ele conta como mudo. A MEDIA sozinha so pegava o render 100% calado: a
+# revisao de 15/09/2026 achou estreias do render antigo mudas quase inteiras e
+# com som so no fim, media -27 a -30 dB. Medido nos 23 builds prontos: 20 com
+# 0% de silencio, e as tres estreias defeituosas com 93%, 95% e 100%.
+FRACAO_MUDA = 0.5
 
 
 def _audio_mudo(video) -> str:
-    """O motivo quando o mp4 sai calado; "" quando tem som.
+    """O motivo quando o mp4 sai calado (inteiro ou quase); "" quando tem som.
 
-    Mesma medida da vistoria das historias (`qualidade._audio`). Ferramenta que
-    falha NAO barra: sem ffprobe/ffmpeg a grade inteira ficaria vazia por um
-    problema da maquina, e nao do video.
+    Ferramenta que falha NAO barra: sem ffprobe/ffmpeg a grade inteira ficaria
+    vazia por um problema da maquina, e nao do video.
     """
+    import re
+    import subprocess
     try:
         from contos.publicar import qualidade
     except Exception:                                          # noqa: BLE001
@@ -745,10 +754,44 @@ def _audio_mudo(video) -> str:
     faixas = dados.get("streams") if isinstance(dados, dict) else None
     if faixas and not any(f.get("codec_type") == "audio" for f in faixas):
         return "o mp4 nao tem faixa de audio"
-    media, _ = qualidade._audio(caminho, 0.0)
-    if media is not None and media < LIMIAR_MUDO_DB:
-        return f"o audio esta mudo (media {media:.1f} dB)"
+    try:
+        duracao = float(((dados or {}).get("format") or {}).get("duration") or 0)
+    except (TypeError, ValueError):
+        duracao = 0.0
+    try:
+        saida = subprocess.run(
+            ["ffmpeg", "-v", "info", "-i", str(caminho), "-vn", "-af",
+             "silencedetect=n=-50dB:d=0.5,volumedetect", "-f", "null", "-"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=300, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    texto = saida.stderr or ""
+    media = re.search(r"mean_volume: (-?[\d.]+) dB", texto)
+    if media and float(media.group(1)) < LIMIAR_MUDO_DB:
+        return f"o audio esta mudo (media {float(media.group(1)):.1f} dB)"
+    if duracao > 0:
+        calado = sum(float(x) for x in re.findall(r"silence_duration: ([\d.]+)", texto))
+        inicios = re.findall(r"silence_start: (-?[\d.]+)", texto)
+        if len(inicios) > len(re.findall(r"silence_end:", texto)):
+            # silencio que vai ate o fim do arquivo pode nao ganhar fechamento
+            calado += max(0.0, duracao - float(inicios[-1]))
+        fracao = min(1.0, calado / duracao)
+        if fracao >= FRACAO_MUDA:
+            return (f"o video fica calado em {fracao:.0%} do tempo "
+                    f"({calado:.0f} de {duracao:.0f} s)")
     return ""
+
+
+def _tiktok_confirmado(estado) -> bool:
+    """O TikTok CONFIRMOU o post? Frase de "cliquei mas nao confirmou" nao conta."""
+    if not estado:
+        return False
+    try:
+        from builds.publicar import tiktok as _tk
+        return bool(_tk.confirmado(estado))
+    except Exception:                                          # noqa: BLE001
+        return bool(estado)
 
 
 def proximo_build(config=None):
@@ -769,10 +812,10 @@ def proximo_build(config=None):
     from builds.publicar import catalogo as C
     from builds.publicar import metricas
 
-    # A fila e do YOUTUBE (auditoria de 15/09/2026): video que so foi ao
-    # TikTok continua devendo o YouTube.
-    ja = {l.get("video_id") for l in metricas.publicados() if l.get("url")
-          and l.get("plataforma", "youtube") == "youtube"}
+    # Qualquer plataforma conta (ver `fila_de_historias`): contando so o
+    # YouTube, a cota repetia o mesmo video em todo horario e o TikTok ficava
+    # vazio.
+    ja = {l.get("video_id") for l in metricas.publicados() if l.get("url")}
     pendentes = [v for v in C.listar()
                  if v.id not in ja and getattr(v, "perfil", "") == "celular"]
     if not pendentes:
@@ -874,7 +917,7 @@ def postar_build(*, so_ver: bool = False) -> dict:
         _linha("[postar] builds: este horario nao e da grade do TikTok.")
     else:
         ficha["tiktok"] = "" if ja_tk else _tiktok_dos_builds(alvo)
-    if ficha["tiktok"]:
+    if _tiktok_confirmado(ficha["tiktok"]):
         ficha["feito"] = True
     return ficha
 
@@ -889,9 +932,8 @@ def _build_por_id(video_id: str):
 
 
 def _build_ja_no_tiktok(video_id: str) -> bool:
-    """O build ja saiu no TikTok? Com a fila do YouTube contando so o
-    YouTube, o mesmo video pode voltar a ser escolhido depois de um horario
-    em que o YouTube falhou e o TikTok subiu."""
+    """O build ja saiu no TikTok? Rede de seguranca contra post repetido no
+    caminho "YouTube ja saiu nesta hora, levando so para o TikTok"."""
     try:
         from builds.publicar import metricas
         return any(l.get("video_id") == video_id and l.get("url")
