@@ -66,7 +66,10 @@ class _Base(unittest.TestCase):
 class VetoVenceTests(_Base):
 
     def test_antes_das_tres_rodadas_o_veto_barra(self):
-        reparo._anotar(_V.id, "a IA reprova", "refiz")
+        """Desde 15/09/2026 a regra e UMA rodada: antes dela (nenhuma
+        tentativa gasta), o veto barra."""
+        for _ in range(reparo.TETO_DE_TENTATIVAS - 1):
+            reparo._anotar(_V.id, "a IA reprova", "refiz")
         veredito = qualidade.liberado(_V(), roteiro={})
         self.assertFalse(veredito["ok"])
         self.assertIn("a IA reprovou", veredito["erros"][0])

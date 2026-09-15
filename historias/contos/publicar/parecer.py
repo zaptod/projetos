@@ -187,6 +187,19 @@ def _lembrar(video, veredito: dict) -> None:
         json.dump(dados, fh, ensure_ascii=False, indent=2)
 
 
+def ja_olhado(video) -> bool:
+    """A IA ja deu parecer sobre este VIDEO alguma vez, mesmo num mp4 antigo?
+
+    E a regra de uma passada so (15/09/2026): o video consertado depois do
+    veto tem mp4 novo, `lembrado` o trata como nunca visto, e a revisao da
+    madrugada perguntaria de novo.
+    """
+    try:
+        return bool(_lembretes().get(str(getattr(video, "id", video))))
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
 def lembrado(video) -> dict | None:
     """O ultimo veredito DAQUELE arquivo, ou `None` se ele mudou desde entao."""
     ficha = _lembretes().get(str(getattr(video, "id", video)))

@@ -87,9 +87,12 @@ class ReparoTests(unittest.TestCase):
 
     def test_o_teto_de_tentativas_existe_e_e_pequeno(self):
         """A conta do PicassoIA e compartilhada: uma cena que o modelo
-        insiste em desenhar em painel consumiria geracao para sempre."""
-        self.assertLessEqual(reparo.TETO_DE_TENTATIVAS, 4)
-        self.assertGreaterEqual(reparo.TETO_DE_TENTATIVAS, 2)
+        insiste em desenhar em painel consumiria geracao para sempre.
+
+        UMA rodada desde 15/09/2026 (pedido dele: "diminua para apenas uma
+        passada no gemini e pronto"); eram tres."""
+        self.assertEqual(1, reparo.TETO_DE_TENTATIVAS)
+        self.assertFalse(reparo.CONFIRMAR_COM_A_IA)
 
     def test_depois_do_teto_para_de_tentar(self):
         alvo = "historia_00005:celular:p05"

@@ -157,6 +157,29 @@ class GateTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("postar_parecer", caminho)
         self.postar = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.postar)
+        # Estes testes cobrem a pergunta AO VIVO, que continua atras da chave.
+        # O padrao desde 15/09/2026 e a postagem nao perguntar.
+        self.postar.PEDIR_PARECER_NA_POSTAGEM = True
+
+    def test_por_padrao_a_postagem_nao_pergunta_ao_gemini(self):
+        """15/09/2026: 'amanha nos horarios certos seja postar'."""
+        import importlib.util
+        caminho = Path(__file__).resolve().parents[2] / "ferramentas" / "postar.py"
+        spec = importlib.util.spec_from_file_location("postar_parecer_padrao", caminho)
+        postar = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(postar)
+        self.assertFalse(postar.PEDIR_PARECER_NA_POSTAGEM)
+
+        def nao_pergunta(*_a, **_k):
+            raise AssertionError("a postagem perguntou ao Gemini")
+        self._com_parecer({"aprovado": False, "motivos": [], "texto": ""})
+        from contos.publicar import parecer as modulo
+        modulo.pedir = nao_pergunta
+        postar._veto_vencido = lambda _alvo: False
+        antes = modulo.lembrado
+        self.addCleanup(setattr, modulo, "lembrado", antes)
+        modulo.lembrado = lambda _v: None
+        self.assertEqual("", postar._parecer_da_ia(self._Alvo(), {}, {}))
 
     class _Alvo:
         id = "historia_00008:celular:p01"

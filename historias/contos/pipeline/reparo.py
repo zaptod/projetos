@@ -47,7 +47,13 @@ REGISTRO = OUTPUTS / "_reparos.json"
 
 # Tres passadas por video. Cada uma custa geracao de imagem na conta
 # compartilhada mais um render de ~2 min; alem disso e teimosia.
-TETO_DE_TENTATIVAS = 3
+# UMA PASSADA SO NO GEMINI (pedido dele em 15/09/2026, 02:25: "o gemini
+# parece estar mais atrasando do que ajudando, diminua para apenas uma passada
+# no gemini e pronto"). Era 3 desde 13/09. Agora: o parecer da madrugada olha
+# o video UMA vez; se reprovar, o reparo refaz as cenas apontadas UMA vez,
+# confere so a vistoria mecanica (`CONFIRMAR_COM_A_IA`) e o veto vence.
+TETO_DE_TENTATIVAS = 1
+CONFIRMAR_COM_A_IA = False
 
 # `cena 11: parece colagem: ...` — o numero e o que diz qual imagem apagar.
 # Aceita "quadro" tambem, mas CUIDADO: ate 13/09/2026 o "quadro N" do Gemini
@@ -383,8 +389,13 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
                 "detalhe": f"{type(exc).__name__}: {exc}"[:160],
                 "tentativas": conta}
 
-    olhado = _confirmar_com_a_ia(video, historia_id, parte,
-                                 headless=headless, log=log)
+    if CONFIRMAR_COM_A_IA:
+        olhado = _confirmar_com_a_ia(video, historia_id, parte,
+                                     headless=headless, log=log)
+    else:
+        # Uma passada so: o conserto nao volta ao Gemini. A vistoria mecanica
+        # continua valendo (imagem faltando, audio, mp4 velho).
+        olhado = _so_vistoria(video, historia_id, parte, log=log)
     if olhado and not olhado["aprovado"]:
         conta = _anotar(video_id, "; ".join(str(e) for e in erros),
                         f"consertei mas a IA ainda reprova: {acao}")
@@ -418,6 +429,12 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
         ficha = parecer.lembrado(video)
     except Exception:                                          # noqa: BLE001
         ficha = None
+    if not C.atual(ficha) and not CONFIRMAR_COM_A_IA:
+        # Uma passada so (15/09/2026): nao se pergunta de novo. Conta como a
+        # rodada do video, e o veto vence.
+        return {"parar": {"acao": "nada", "ok": False,
+                          "detalhe": "o veto da IA nao numera as cenas e a "
+                                     "regra e uma passada so no Gemini"}}
     if not C.atual(ficha):
         log(f"[reparo] {getattr(video, 'id', video)}: o veto da IA nao "
             "numera as cenas; peco para ela olhar de novo.")
@@ -509,6 +526,21 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
                                      "automatico: "
                                      + "; ".join(motivos)[:160]}}
     return {"refazer": refazer, "detalhe": "; ".join(contado)}
+
+
+def _so_vistoria(video, historia_id: str, parte: int, *,
+                 log=print) -> dict | None:
+    """A vistoria mecanica do video consertado, sem perguntar a IA."""
+    from ..publicar import qualidade
+    from ..roteiro import roteiro as R
+    try:
+        laudo = qualidade.vistoriar_parte(historia_id, parte, video.caminho,
+                                          R.carregar(historia_id))
+    except Exception as exc:                                   # noqa: BLE001
+        log(f"[reparo] a vistoria do conserto falhou ({type(exc).__name__}: {exc}).")
+        return None
+    return {"aprovado": bool(laudo.get("ok")),
+            "motivos": list(laudo.get("erros") or [])}
 
 
 def _confirmar_com_a_ia(video, historia_id: str, parte: int, *,

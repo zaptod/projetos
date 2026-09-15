@@ -631,6 +631,12 @@ def revisar_estoque(config: dict, *, headless: bool = False,
         if C.atual(parecer.lembrado(video)):
             pulados += 1
             continue
+        # UMA PASSADA SO NO GEMINI (15/09/2026): video que ja foi olhado uma
+        # vez nao volta, nem depois de consertado (o mp4 novo zera o
+        # `lembrado`, mas a passada dele ja foi gasta).
+        if parecer.ja_olhado(video):
+            pulados += 1
+            continue
         roteiro = R.carregar(video.fonte_id)
         laudo = qualidade.vistoriar_parte(video.fonte_id, video.parte,
                                           video.caminho, roteiro)

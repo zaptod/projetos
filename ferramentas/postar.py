@@ -198,6 +198,14 @@ def _ao_contrario(texto: str) -> str:
 # respondeu REPROVADO de verdade.
 PUBLICAR_SEM_PARECER = True
 
+# A POSTAGEM NAO PERGUNTA AO GEMINI (pedido dele em 15/09/2026, 02:25: "o
+# gemini parece estar mais atrasando do que ajudando... amanha nos horarios
+# certos seja postar"). O parecer e servico da madrugada, uma passada por
+# video. Na hora de postar vale o que ficou gravado: veto de pe barra (ate o
+# reparo gastar a sua rodada), aprovado sai, e video sem parecer sai com a
+# vistoria tecnica. Perguntar aqui chegou a segurar o horario 15 minutos.
+PEDIR_PARECER_NA_POSTAGEM = False
+
 
 def _pela_folha(ficha: dict) -> bool:
     """A aprovacao veio so das miniaturas? Entao ela nao dispensa perguntar.
@@ -261,6 +269,12 @@ def _parecer_da_ia(alvo, roteiro: dict, laudo: dict) -> str:
     if ficha and ficha.get("aprovado") and not _pela_folha(ficha):
         _linha(f"[parecer] {alvo.id}: aprovado em {ficha.get('quando')} "
                f"({ficha.get('vista')}); nao pergunto de novo.")
+        return ""
+    if not PEDIR_PARECER_NA_POSTAGEM:
+        _linha(f"[parecer] {alvo.id}: "
+               + ("aprovado pela folha" if ficha else "sem parecer gravado")
+               + "; a postagem nao pergunta ao Gemini, sai com a vistoria "
+                 "tecnica.")
         return ""
 
     try:

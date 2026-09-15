@@ -324,6 +324,7 @@ class ReparadorSoConfiaEmCenaTests(unittest.TestCase):
             (reparo, "REGISTRO"): reparo.REGISTRO,
             (reparo, "_confirmar_com_a_ia"): reparo._confirmar_com_a_ia,
             (reparo, "_refazer_cenas"): reparo._refazer_cenas,
+            (reparo, "CONFIRMAR_COM_A_IA"): reparo.CONFIRMAR_COM_A_IA,
             (parecer, "lembrado"): parecer.lembrado,
             (R, "carregar"): R.carregar,
         }
@@ -331,6 +332,10 @@ class ReparadorSoConfiaEmCenaTests(unittest.TestCase):
             self.addCleanup(setattr, modulo, nome, valor)
         reparo.REGISTRO = Path(self._tmp.name) / "_reparos.json"
         R.carregar = lambda _hid: {"partes": []}
+        # Estes testes cobrem o caminho que PERGUNTA de novo a IA, que continua
+        # existindo atras da chave. O padrao desde 15/09/2026 e uma passada so
+        # (ver `UmaPassadaSoTests`).
+        reparo.CONFIRMAR_COM_A_IA = True
 
         class _V:
             id = "historia_00004:celular:p02"
@@ -394,6 +399,65 @@ class ReparadorSoConfiaEmCenaTests(unittest.TestCase):
             self.video, ["a IA reprovou: quadro 6: x"],
             pipeline=_Pipeline(), log=lambda *_a: None)
         self.assertEqual("adiado", saida["acao"])
+
+
+class UmaPassadaSoTests(ReparadorSoConfiaEmCenaTests):
+    """15/09/2026: "diminua para apenas uma passada no gemini e pronto"."""
+
+    def setUp(self):
+        super().setUp()
+        from contos.publicar import qualidade
+        self.reparo.CONFIRMAR_COM_A_IA = False
+        antes = qualidade.vistoriar_parte
+        self.addCleanup(setattr, qualidade, "vistoriar_parte", antes)
+        qualidade.vistoriar_parte = lambda *_a, **_k: {"ok": True, "erros": [],
+                                                       "avisos": []}
+
+        def nao_pergunta(*_a, **_k):
+            raise AssertionError("perguntou ao Gemini de novo")
+        self.reparo._confirmar_com_a_ia = nao_pergunta
+
+    def test_veto_sem_numeracao_e_perguntado_de_novo_antes_de_refazer(self):
+        """Com uma passada so, NAO se pergunta de novo: gasta a rodada."""
+        parecer.lembrado = lambda _v: {
+            "aprovado": False, "motivos": ["quadro 6: tela dividida"],
+            "vista": "video inteiro (2:03)"}
+        saida = self.reparo.reparar(
+            self.video, ["a IA reprovou: quadro 6: tela dividida"],
+            pipeline=_Pipeline(), log=lambda *_a: None)
+        self.assertEqual("nada", saida["acao"])
+        self.assertTrue(self.reparo.insistente(self.video.id))
+
+    def test_veto_numerado_refaz_a_cena_que_ele_aponta(self):
+        """Refaz a cena apontada e confere so a vistoria, sem o Gemini."""
+        parecer.lembrado = lambda _v: {
+            "aprovado": False, "vista": "video inteiro (2:03)",
+            "numeracao": "cena", "criterio": parecer.CRITERIO,
+            "motivos": ["cena 6: a imagem e uma tela dividida"]}
+        refeitas = []
+
+        def refazer(_pipeline, _hid, _parte, cenas, **_k):
+            refeitas.extend(cenas)
+            return list(cenas), []
+        self.reparo._refazer_cenas = refazer
+        pipeline = _Pipeline()
+        saida = self.reparo.reparar(
+            self.video, ["a IA reprovou: cena 6: a imagem e uma tela dividida"],
+            pipeline=pipeline, log=lambda *_a: None)
+        self.assertEqual([6], refeitas)
+        self.assertTrue(saida["ok"])
+        self.assertEqual([2], pipeline.renders)
+        self.assertTrue(self.reparo.insistente(self.video.id))
+
+    def test_sem_parecer_adia_e_nao_esquece_o_veto(self):
+        """Veto sem numeracao, uma passada: vira a rodada do video."""
+        parecer.lembrado = lambda _v: {
+            "aprovado": False, "motivos": ["quadro 6: x"],
+            "vista": "video inteiro (2:03)"}
+        saida = self.reparo.reparar(
+            self.video, ["a IA reprovou: quadro 6: x"],
+            pipeline=_Pipeline(), log=lambda *_a: None)
+        self.assertEqual("nada", saida["acao"])
 
 
 if __name__ == "__main__":
