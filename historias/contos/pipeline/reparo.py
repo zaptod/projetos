@@ -49,10 +49,17 @@ REGISTRO = OUTPUTS / "_reparos.json"
 # compartilhada mais um render de ~2 min; alem disso e teimosia.
 # UMA PASSADA SO NO GEMINI (pedido dele em 15/09/2026, 02:25: "o gemini
 # parece estar mais atrasando do que ajudando, diminua para apenas uma passada
-# no gemini e pronto"). Era 3 desde 13/09. Agora: o parecer da madrugada olha
-# o video UMA vez; se reprovar, o reparo refaz as cenas apontadas UMA vez,
-# confere so a vistoria mecanica (`CONFIRMAR_COM_A_IA`) e o veto vence.
-TETO_DE_TENTATIVAS = 1
+# no gemini e pronto"). O parecer da madrugada olha o video UMA vez; se
+# reprovar, o reparo aplica o conserto UMA vez, confere so a vistoria mecanica
+# (`CONFIRMAR_COM_A_IA`) e o veto vence (`UMA_PASSADA`).
+#
+# DOIS CONTADORES, e a revisao da mesma noite mostrou por que: com um so, a
+# falha da MAQUINA (PicassoIA que nao devolve, render que quebra) gastava a
+# unica rodada e o veto vencia sem conserto nenhum; e um video com defeito de
+# arquivo que falhou uma vez ficava barrado para sempre. A passada do veto e
+# `passada`; as tentativas de maquina seguem com teto 3.
+TETO_DE_TENTATIVAS = 3
+UMA_PASSADA = True
 CONFIRMAR_COM_A_IA = False
 
 # `cena 11: parece colagem: ...` — o numero e o que diz qual imagem apagar.
@@ -86,17 +93,46 @@ def tentativas(video_id: str) -> int:
 
 
 def insistente(video_id: str) -> bool:
-    """Ja bateu o teto? Entao nao se tenta mais — e nem se avisa de novo."""
+    """Ja bateu o teto de tentativas? Entao nao se tenta mais consertar."""
     return tentativas(video_id) >= TETO_DE_TENTATIVAS
 
 
-def _anotar(video_id: str, motivo: str, feito: str) -> int:
+# O `feito` que gastava a passada do veto nos registros de antes do campo
+# `passada` existir: conserto aplicado ou desistencia da IA. "A imagem nova nao
+# veio", "ainda faltam" e "falhou" sao da MAQUINA e nao gastam.
+_FEITO_DA_PASSADA = ("refiz", "consertei", "a ia reprova")
+
+
+def _passada_da_ficha(ficha: dict) -> bool:
+    if "passada" in ficha:
+        return bool(ficha["passada"])
+    return str(ficha.get("feito") or "").lower().startswith(_FEITO_DA_PASSADA)
+
+
+def passada_gasta(video_id: str) -> bool:
+    """O veto da IA ja teve a sua passada (conserto aplicado ou desistencia)?"""
+    return _passada_da_ficha(_ler().get(str(video_id)) or {})
+
+
+def veto_consumido(video_id: str) -> bool:
+    """O veto da IA deixou de barrar este video?
+
+    Com `UMA_PASSADA`, basta a passada gasta. Sempre: as tentativas acabaram.
+    """
+    return (UMA_PASSADA and passada_gasta(video_id)) or insistente(video_id)
+
+
+def _anotar(video_id: str, motivo: str, feito: str, *,
+            passada: bool = False) -> int:
     dados = _ler()
     ficha = dados.setdefault(str(video_id), {"tentativas": 0})
+    ja_gasta = _passada_da_ficha(ficha)
     ficha["tentativas"] = int(ficha.get("tentativas") or 0) + 1
     ficha["quando"] = datetime.now().isoformat(timespec="seconds")
     ficha["motivo"] = str(motivo)[:200]
     ficha["feito"] = feito
+    # A passada, uma vez gasta, fica gasta.
+    ficha["passada"] = bool(passada) or ja_gasta
     _gravar(dados)
     return ficha["tentativas"]
 
@@ -321,7 +357,8 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
         colagens = [n for n in colagens
                     if not _motivo_e_do_formato(erros, n, vista)]
     detalhe = ""
-    if any("a ia reprovou" in str(e).lower() for e in erros):
+    veio_do_veto = any("a ia reprovou" in str(e).lower() for e in erros)
+    if veio_do_veto:
         plano_da_ia = _plano_pelo_veto_da_ia(video, historia_id, parte,
                                              headless=headless, log=log)
         if plano_da_ia.get("parar"):
@@ -333,7 +370,7 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
                 # dele em 13/09/2026: tres rodadas e o video sai.
                 parar["tentativas"] = _anotar(
                     video_id, "; ".join(str(e) for e in erros),
-                    "a IA reprova e nao ha conserto automatico")
+                    "a IA reprova e nao ha conserto automatico", passada=True)
             return parar
         colagens = plano_da_ia["refazer"]
         detalhe = plano_da_ia["detalhe"]
@@ -397,14 +434,17 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
         # continua valendo (imagem faltando, audio, mp4 velho).
         olhado = _so_vistoria(video, historia_id, parte, log=log)
     if olhado and not olhado["aprovado"]:
+        quem = "a IA" if CONFIRMAR_COM_A_IA else "a vistoria"
         conta = _anotar(video_id, "; ".join(str(e) for e in erros),
-                        f"consertei mas a IA ainda reprova: {acao}")
+                        f"consertei mas {quem} ainda reprova: {acao}",
+                        passada=veio_do_veto)
         return {"acao": acao, "ok": False,
-                "detalhe": "a IA olhou o video consertado e ainda reprova: "
+                "detalhe": f"{quem} olhou o video consertado e ainda reprova: "
                            + "; ".join(olhado["motivos"])[:200],
                 "tentativas": conta}
 
-    conta = _anotar(video_id, "; ".join(str(e) for e in erros), acao)
+    conta = _anotar(video_id, "; ".join(str(e) for e in erros), acao,
+                    passada=veio_do_veto)
     return {"acao": acao, "ok": True, "detalhe": detalhe,
             "tentativas": conta}
 
@@ -483,7 +523,7 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
             classes["rosto"] = []
             contado.append("a IA apontou troca de rosto sem descrever o "
                            "protagonista")
-    reescrita_nao_rodou = ""
+    reescrita_nao_rodou, conta_ocupada = "", False
     if classes["narracao"]:
         # CONTA OCUPADA NAO E CULPA DO VIDEO. Em 14/09/2026, 6:21, a
         # publicacao segurava o Gemini e a reescrita pela narracao falhou por
@@ -493,6 +533,7 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
         from builds import travas
         if travas.ocupada(travas.do_perfil("gemini", "geral")):
             reescrita_nao_rodou = "a conta do Gemini esta em uso"
+            conta_ocupada = True
             novos = {}
         else:
             # O GEMINI QUE NAO RESPONDE tambem nao e culpa do video: 6:32 do
@@ -516,6 +557,16 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
     refazer = sorted(set(classes["imagem"]) | set(classes["rosto"])
                      | set(classes["narracao"]))
     if not refazer:
+        if (reescrita_nao_rodou and UMA_PASSADA and not CONFIRMAR_COM_A_IA
+                and not conta_ocupada
+                and "ContaOcupada" not in reescrita_nao_rodou):
+            # Uma passada so (revisao de 15/09/2026): o Gemini que nao responde
+            # a reescrita gasta a passada do veto. Adiar reabria o Gemini a
+            # cada rodada para o mesmo video, e ele seguia barrado.
+            return {"parar": {"acao": "nada", "ok": False,
+                              "detalhe": "a reescrita pelo Gemini nao rodou "
+                                         f"({reescrita_nao_rodou}) e a regra "
+                                         "e uma passada so"}}
         if reescrita_nao_rodou:
             return {"parar": {"acao": "adiado", "ok": False,
                               "detalhe": "a reescrita pela narracao nao rodou "
@@ -598,11 +649,13 @@ def rodada(*, limite: int = 2, headless: bool = False, log=print) -> dict:
 
     from .controller import Pipeline
     pipeline = Pipeline()
-    acoes, consertados, insistentes = [], 0, []
-    for video, erros in barrados[:limite]:
-        if insistente(video.id):
-            insistentes.append(video.id)
-            continue
+    acoes, consertados = [], 0
+    # OS INSISTENTES SAEM ANTES DO LIMITE (revisao de 15/09/2026): cortar
+    # primeiro deixava videos que ja esgotaram as tentativas ocupando as vagas,
+    # e o barrado seguinte nunca era tentado.
+    insistentes = [v.id for v, _e in barrados if insistente(v.id)]
+    tentaveis = [(v, e) for v, e in barrados if not insistente(v.id)]
+    for video, erros in tentaveis[:limite]:
         log(f"[reparo] {video.id}: {erros[0][:100]}")
         resultado = reparar(video, erros, pipeline=pipeline,
                             headless=headless, log=log)
@@ -625,11 +678,12 @@ def rodada(*, limite: int = 2, headless: bool = False, log=print) -> dict:
         # Zerar a conta dele aqui o traria de volta para a fila de barrados:
         # foi o que aconteceu na primeira rodada com a regra, em 13/09/2026, e
         # os quatro videos liberados voltaram a travar.
-        if video.id not in ainda_barrados and not insistente(video.id):
+        if video.id not in ainda_barrados and not veto_consumido(video.id):
             esquecer(video.id)
     return {"barrados": len(barrados), "consertados": consertados,
-            "insistentes": insistentes + [v.id for v, _e in barrados
-                                          if insistente(v.id)],
+            "insistentes": sorted(set(insistentes)
+                                  | {v.id for v, _e in barrados
+                                     if insistente(v.id)}),
             "acoes": acoes}
 
 

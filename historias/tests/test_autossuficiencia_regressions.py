@@ -89,9 +89,12 @@ class ReparoTests(unittest.TestCase):
         """A conta do PicassoIA e compartilhada: uma cena que o modelo
         insiste em desenhar em painel consumiria geracao para sempre.
 
-        UMA rodada desde 15/09/2026 (pedido dele: "diminua para apenas uma
-        passada no gemini e pronto"); eram tres."""
-        self.assertEqual(1, reparo.TETO_DE_TENTATIVAS)
+        Desde 15/09/2026 ("diminua para apenas uma passada no gemini e
+        pronto") o VETO tem uma passada so (`UMA_PASSADA`), e as tentativas de
+        maquina seguem com teto proprio."""
+        self.assertLessEqual(reparo.TETO_DE_TENTATIVAS, 4)
+        self.assertGreaterEqual(reparo.TETO_DE_TENTATIVAS, 2)
+        self.assertTrue(reparo.UMA_PASSADA)
         self.assertFalse(reparo.CONFIRMAR_COM_A_IA)
 
     def test_depois_do_teto_para_de_tentar(self):

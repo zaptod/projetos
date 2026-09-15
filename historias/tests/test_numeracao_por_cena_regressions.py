@@ -426,7 +426,7 @@ class UmaPassadaSoTests(ReparadorSoConfiaEmCenaTests):
             self.video, ["a IA reprovou: quadro 6: tela dividida"],
             pipeline=_Pipeline(), log=lambda *_a: None)
         self.assertEqual("nada", saida["acao"])
-        self.assertTrue(self.reparo.insistente(self.video.id))
+        self.assertTrue(self.reparo.veto_consumido(self.video.id))
 
     def test_veto_numerado_refaz_a_cena_que_ele_aponta(self):
         """Refaz a cena apontada e confere so a vistoria, sem o Gemini."""
@@ -447,7 +447,8 @@ class UmaPassadaSoTests(ReparadorSoConfiaEmCenaTests):
         self.assertEqual([6], refeitas)
         self.assertTrue(saida["ok"])
         self.assertEqual([2], pipeline.renders)
-        self.assertTrue(self.reparo.insistente(self.video.id))
+        self.assertTrue(self.reparo.veto_consumido(self.video.id))
+        self.assertFalse(self.reparo.insistente(self.video.id))
 
     def test_sem_parecer_adia_e_nao_esquece_o_veto(self):
         """Veto sem numeracao, uma passada: vira a rodada do video."""

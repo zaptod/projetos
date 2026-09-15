@@ -200,6 +200,21 @@ def ja_olhado(video) -> bool:
         return False
 
 
+def veto_por_id(video) -> dict | None:
+    """O ultimo parecer deste VIDEO, se foi REPROVADO — mesmo de um mp4 antigo.
+
+    Serve para o veto nao sumir com um re-render que nao o consertou (revisao
+    de 15/09/2026). Quem decide se ele ainda barra e `reparo.veto_consumido`.
+    """
+    try:
+        ficha = _lembretes().get(str(getattr(video, "id", video)))
+    except Exception:                                          # noqa: BLE001
+        return None
+    if ficha and not ficha.get("aprovado"):
+        return ficha
+    return None
+
+
 def lembrado(video) -> dict | None:
     """O ultimo veredito DAQUELE arquivo, ou `None` se ele mudou desde entao."""
     ficha = _lembretes().get(str(getattr(video, "id", video)))

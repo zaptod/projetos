@@ -345,7 +345,8 @@ def _veto_lembrado(alvo) -> str:
     """
     try:
         from contos.publicar import parecer
-        ficha = parecer.lembrado(alvo)
+        # O veto e do VIDEO: re-render sem conserto nao o apaga (15/09/2026).
+        ficha = parecer.lembrado(alvo) or parecer.veto_por_id(alvo)
     except Exception:                                          # noqa: BLE001
         return ""
     if not ficha or ficha.get("aprovado") or _veto_vencido(alvo):

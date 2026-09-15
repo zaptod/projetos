@@ -385,7 +385,12 @@ def liberado(video, roteiro: dict | None = None) -> dict:
     if not erros:
         try:
             from . import parecer
-            ficha = parecer.lembrado(video)
+            # O VETO E DO VIDEO, e nao so do mp4 (revisao de 15/09/2026): um
+            # re-render que nao aplicou o conserto (so "imagem mais nova")
+            # apagava o veto pelo mtime, e com uma passada so no Gemini
+            # ninguem olharia o mp4 novo. Ele vale ate o reparo gastar a
+            # passada.
+            ficha = parecer.lembrado(video) or parecer.veto_por_id(video)
         except Exception:                                      # noqa: BLE001
             ficha = None
         if ficha and not ficha.get("aprovado"):
@@ -416,7 +421,8 @@ def veto_vencido(video) -> bool:
     """
     try:
         from ..pipeline import reparo
-        return reparo.insistente(str(getattr(video, "id", video)))
+        # Uma passada so desde 15/09/2026: vence com a passada gasta.
+        return reparo.veto_consumido(str(getattr(video, "id", video)))
     except Exception:                                          # noqa: BLE001
         return False
 

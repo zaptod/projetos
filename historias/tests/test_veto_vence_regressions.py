@@ -164,7 +164,12 @@ class ContaOcupadaNaoGastaTentativaTests(_Base):
 
     def test_gemini_que_nao_responde_adia_e_nao_conta(self):
         """14/09/2026, 6:32: 600 s com 0 caracteres e a terceira tentativa
-        do h10 p06 foi gasta sem conserto nenhum."""
+        do h10 p06 foi gasta sem conserto nenhum.
+
+        Vale no caminho que CONFIRMA com a IA; com uma passada so (padrao
+        desde 15/09/2026) ver `UmaPassadaContadoresTests`."""
+        self.addCleanup(setattr, reparo, "CONFIRMAR_COM_A_IA", reparo.CONFIRMAR_COM_A_IA)
+        reparo.CONFIRMAR_COM_A_IA = True
         from builds import travas
         from contos.pipeline import conserto_de_cena as C
         from contos.roteiro import roteiro as R
@@ -192,6 +197,101 @@ class ContaOcupadaNaoGastaTentativaTests(_Base):
                                pipeline=_Pipeline(), log=lambda *_a: None)
         self.assertEqual("adiado", saida["acao"])
         self.assertEqual(0, reparo.tentativas(_V.id))
+
+
+class UmaPassadaContadoresTests(_Base):
+    """15/09/2026: a passada do veto e uma so; a falha da maquina nao a gasta."""
+
+    def test_falha_da_maquina_nao_gasta_a_passada_do_veto(self):
+        reparo._anotar(_V.id, "a IA reprovou: cena 3: x", "a imagem nova nao veio; desfiz")
+        self.assertFalse(reparo.veto_consumido(_V.id))
+        self.assertFalse(qualidade.liberado(_V(), roteiro={})["ok"])
+
+    def test_conserto_aplicado_gasta_a_passada_e_o_veto_vence(self):
+        reparo._anotar(_V.id, "a IA reprovou: cena 3: x",
+                       "refiz as cenas [3] e re-renderizei", passada=True)
+        self.assertTrue(reparo.veto_consumido(_V.id))
+        veredito = qualidade.liberado(_V(), roteiro={})
+        self.assertTrue(veredito["ok"])
+        self.assertEqual("veto vencido", veredito["fonte"])
+
+    def test_registro_antigo_deduz_a_passada_pelo_feito(self):
+        import json
+        reparo.REGISTRO.write_text(json.dumps({
+            "a": {"tentativas": 1, "feito": "refiz as cenas [3] e re-renderizei"},
+            "b": {"tentativas": 1, "feito": "a imagem nova nao veio; desfiz"},
+            "c": {"tentativas": 2, "feito": "consertei mas a IA ainda reprova: x"}}),
+            encoding="utf-8")
+        self.assertTrue(reparo.passada_gasta("a"))
+        self.assertFalse(reparo.passada_gasta("b"))
+        self.assertTrue(reparo.passada_gasta("c"))
+        reparo._anotar("a", "m", "a imagem nova nao veio; desfiz")
+        self.assertTrue(reparo.passada_gasta("a"), "a passada gasta nao volta")
+
+    def test_reescrita_que_o_gemini_nao_responde_gasta_a_passada(self):
+        from builds import travas
+        from contos.pipeline import conserto_de_cena as C
+        from contos.roteiro import roteiro as R
+        veto = {"aprovado": False, "numeracao": "cena",
+                "criterio": parecer.CRITERIO, "vista": "video inteiro (2:03)",
+                "motivos": ["cena 12: a imagem mostra uma cozinha industrial, "
+                            "mas a narração diz que a salinha de vidro está "
+                            "fechada"]}
+        parecer.lembrado = lambda _v: dict(veto)
+        chamadas = []
+
+        def sem_resposta(*_a, falhas=None, **_k):
+            chamadas.append(1)
+            falhas.append("gemini falhou: LLMFalhou")
+            return {}
+        for modulo, nome, valor in (
+                (R, "carregar", lambda _hid: {"partes": []}),
+                (travas, "ocupada", lambda _nome: False),
+                (C, "reescrever_prompts", sem_resposta)):
+            self.addCleanup(setattr, modulo, nome, getattr(modulo, nome))
+            setattr(modulo, nome, valor)
+
+        class _Pipeline:
+            pass
+        saida = reparo.reparar(_V(), ["a IA reprovou: " + veto["motivos"][0]],
+                               pipeline=_Pipeline(), log=lambda *_a: None)
+        self.assertEqual("nada", saida["acao"])
+        self.assertTrue(reparo.veto_consumido(_V.id))
+        self.assertEqual(1, len(chamadas))
+
+    def test_rodada_tira_os_insistentes_antes_do_limite(self):
+        from contos.pipeline import agenda, controller
+
+        class _A(_V):
+            id = "historia_00099:celular:p03"
+
+        class _B(_V):
+            id = "historia_00099:celular:p04"
+        for alvo in (_A.id, _B.id):
+            for _ in range(reparo.TETO_DE_TENTATIVAS):
+                reparo._anotar(alvo, "colagem", "a imagem nova nao veio; desfiz")
+        tentados = []
+        barrados = [(_A(), ["cena 1: parece colagem: x"]),
+                    (_B(), ["cena 1: parece colagem: x"]),
+                    (_V(), ["a IA reprovou: cena 3: x"])]
+        for modulo, nome, valor in (
+                (agenda, "barrados_no_estoque", lambda: list(barrados)),
+                (controller, "Pipeline", lambda: object()),
+                (reparo, "reparar", lambda video, *_a, **_k: tentados.append(video.id)
+                 or {"acao": "nada", "ok": False, "detalhe": "d"})):
+            self.addCleanup(setattr, modulo, nome, getattr(modulo, nome))
+            setattr(modulo, nome, valor)
+        reparo.rodada(limite=1, log=lambda *_a: None)
+        self.assertEqual([_V.id], tentados)
+
+    def test_rerender_sem_conserto_nao_apaga_o_veto(self):
+        parecer.lembrado = lambda _v: None
+        self.addCleanup(setattr, parecer, "veto_por_id", parecer.veto_por_id)
+        parecer.veto_por_id = lambda _v: dict(REPROVADO)
+        self.assertFalse(qualidade.liberado(_V(), roteiro={})["ok"])
+        self.assertIn("REPROVOU", _postar()._veto_lembrado(_V()))
+        reparo._anotar(_V.id, "x", "refiz as cenas [3] e re-renderizei", passada=True)
+        self.assertTrue(qualidade.liberado(_V(), roteiro={})["ok"])
 
 
 class PublicadorTests(_Base):
