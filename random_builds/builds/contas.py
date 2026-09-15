@@ -36,6 +36,10 @@ PADRAO = "principal"
 CANAIS = {
     "builds": "Vídeos de build (roleta)",
     "historias": "Histórias por IA",
+    # Vertente nova de 15/09/2026: o jogo de zumbis mora em OUTRO repositorio
+    # (E:\jogo_ZOMBIE), que so grava o mp4 — ele nao tem login nem publicacao
+    # propria, e nem vai ter. Conta e postagem saem daqui, como nos outros.
+    "zombie": "Jogo zombie (gravações da partida)",
     "geral": "Vale para tudo (quando o canal não tem conta própria)",
 }
 
