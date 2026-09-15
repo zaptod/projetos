@@ -5,8 +5,9 @@
     "quantidade": 1,
     "estilo": "cinematic photography, shot on 35mm film, shallow depth of field, moody volumetric lighting, muted teal and amber color grading, film grain, photorealistic, highly detailed",
     "_comment_composicao": "O enquadramento (vertical / quadrado) nao mora mais no estilo: `fila.prompt_da_cena` acrescenta de acordo com a proporcao da historia (14/09/2026, fotos 1:1). `composicao` troca o texto por proporcao sem reiniciar a rodada (o arquivo e relido a cada passada). 15/09/2026 00:45: sem a palavra 'composition' no 1:1, que desenhava linhas de grade por cima da foto (historia_00012 p06_cena_09/10), e com 'everyone fully clothed' (p06_cena_11 saiu de costas nuas).",
+    "_comment_composicao_sangrada": "15/09/2026 04:35: 'square photo' puxava FOTO IMPRESSA, com moldura branca (historia_00012 p03_cena_10 e 12; historia_00013 p01_cena_01 e 05, 2 de 12). Sem 'photo' e sem 'frame': imagem sangrada, de ponta a ponta.",
     "composicao": {
-        "1:1": "square photo, one continuous photograph of a single scene, everyone fully clothed"
+        "1:1": "full-bleed square image edge to edge, one continuous scene, everyone fully clothed"
     },
     "negativo": "no text, no letters, no captions, no watermark, no logo, no collage, no split screen, no borders, not landscape, no diptych, no before and after, no grid of panels, single frame only",
     "_comment_pessoa": "A consistencia do protagonista entre cenas vem do TEXTO. O roteiro repete a descricao curta; isto aqui e a rede de seguranca quando o roteiro esquece.",
