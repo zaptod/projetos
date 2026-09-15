@@ -403,6 +403,11 @@ class VideoRenderer:
                 fonte = Image.open(caminho)
                 fonte.load()
                 fonte = fonte.convert("RGB")
+                # Foto que o gerador entregou com moldura (impressa ou
+                # fotograma) entra sem ela, sem precisar gerar de novo
+                # (15/09/2026).
+                from ..imagens.composicao import sem_moldura
+                fonte = sem_moldura(fonte)
             except Exception:
                 fonte = None
 

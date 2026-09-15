@@ -113,4 +113,64 @@ def motivo(caminho) -> str:
             f"({onde}). O prompt pede uma cena so.")
 
 
-__all__ = ["calhas", "e_colagem", "motivo", "CALHA_MAXIMA", "MIOLO"]
+# ------------------------------------------------------------------ moldura
+# A MOLDURA NAO E COLAGEM, e se conserta sem gerar de novo. Nas fotos 1:1 de
+# 15/09/2026 o gerador desenhou foto IMPRESSA (borda branca) e fotograma de
+# filme (borda escura) em volta da cena. Medido em 147 imagens das historias
+# 12 e 13: 8 marcadas, e as 8 tem moldura de verdade (4 das 5 que eu tinha
+# visto de olho, mais tres da quarentena e uma escura que passou); nenhuma
+# foto normal marcada. So corta quando OS QUATRO LADOS tem faixa uniforme da
+# MESMA cor — parede clara num lado so nao e moldura.
+MOLDURA_MINIMA = 0.015   # fracao do lado
+MOLDURA_MAXIMA = 0.12
+MOLDURA_DESVIO = 10.0
+MOLDURA_FOLGA = 0.006    # corta um pouco alem da faixa, para nao sobrar fio
+
+
+def moldura(imagem) -> dict | None:
+    """`{"topo": f, "base": f, "esq": f, "dir": f}` (fracoes) ou None."""
+    try:
+        import numpy as np
+        from PIL import Image
+        if not hasattr(imagem, "convert"):
+            with Image.open(imagem) as aberta:
+                imagem = aberta.convert("RGB")
+        cinza = np.asarray(imagem.convert("L").resize((256, 256), Image.BILINEAR),
+                           dtype=np.float32)
+    except Exception:                                          # noqa: BLE001
+        return None
+    n = cinza.shape[0]
+    lados = {"topo": cinza, "base": cinza[::-1, :],
+             "esq": cinza.T, "dir": cinza.T[::-1, :]}
+    fracoes, cores = {}, []
+    for nome, g in lados.items():
+        cor = float(g[0].mean())
+        linhas = 0
+        while (linhas < int(n * MOLDURA_MAXIMA)
+               and g[linhas].std() < MOLDURA_DESVIO
+               and abs(float(g[linhas].mean()) - cor) < 12):
+            linhas += 1
+        fracoes[nome] = linhas / n
+        cores.append(cor)
+    if min(fracoes.values()) < MOLDURA_MINIMA or max(cores) - min(cores) >= 25:
+        return None
+    return fracoes
+
+
+def sem_moldura(imagem):
+    """A imagem sem a moldura desenhada em volta; a mesma, se nao ha moldura."""
+    faixas = moldura(imagem)
+    if not faixas:
+        return imagem
+    largura, altura = imagem.size
+    esq = int(largura * (faixas["esq"] + MOLDURA_FOLGA))
+    dir_ = int(largura * (faixas["dir"] + MOLDURA_FOLGA))
+    topo = int(altura * (faixas["topo"] + MOLDURA_FOLGA))
+    base = int(altura * (faixas["base"] + MOLDURA_FOLGA))
+    if largura - esq - dir_ < largura * 0.6 or altura - topo - base < altura * 0.6:
+        return imagem
+    return imagem.crop((esq, topo, largura - dir_, altura - base))
+
+
+__all__ = ["calhas", "e_colagem", "motivo", "CALHA_MAXIMA", "MIOLO",
+           "moldura", "sem_moldura"]
