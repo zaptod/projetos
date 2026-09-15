@@ -21,6 +21,8 @@
     "retomar_incompletas": true,
     "_comment_avisar": "Avisa no Telegram quando uma historia fica pronta e quando a rodada falha. Disparo que sai sem fazer nada (trava ocupada, pausa) NAO avisa: seriam 4 a 6 por dia dizendo a mesma coisa. Usa o bot de `remoto/` (token em %LOCALAPPDATA%/neural-fights/remoto.json); sem token, a rodada segue igual e so registra no log.",
     "avisar_telegram": true,
+    "_comment_gordura": "DOIS DIAS DESDE 15/09/2026, e por conta medida. A grade nova consome 10 partes/dia e a janela de 01h-06h so cabe UMA historia (4h40 de janela, 2h12 por historia; a rodada das 04:20 precisaria de 150 min e so tem 100): 6 produzidas contra 10 publicadas. Com teto de um dia o freio fechava em 10 e a fila so era reabastecida raspando o fundo. Dois dias = 20 videos, que saem em 48 h e nao envelhecem o molde. As rodadas de dia enchem esse teto nos buracos entre as publicacoes (2h10 a 2h55 entre um post e o proximo), que e onde a maquina estava parada.",
+    "dias_de_gordura": 2,
     "_comment_estoque": "GORDURA DE UM DIA, e nova. Pedido dele em 10/09/2026: 'quero sempre ter a gordura de apenas um dia em tudo, mas quero que essa gordura seja totalmente nova'. Estoque grande parece seguranca e e o contrario: ele e feito com o molde de HOJE e sai no ar semanas depois, quando o molde ja mudou - foi assim que 38 dias de video do Gemini Flash seguraram as melhorias de 08/09 na fila. `teto_de_estoque: 0` = derivar da grade (um horario, um video); qualquer numero aqui vence o calculo.",
     "piso_de_estoque": 1
 }

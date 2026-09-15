@@ -140,14 +140,30 @@ def modo_dia(config: dict, agora) -> dict | None:
     """O que a rodada faz fora da janela. `None` quando nao ha nada a fazer.
 
     Conserta sempre que ha video barrado: esperar a madrugada deixava a fila
-    parada o dia inteiro. Cria historia so se faltar video para o dia.
-    Metrica e revisao do estoque continuam so de madrugada.
+    parada o dia inteiro. Metrica e revisao do estoque continuam so de
+    madrugada.
+
+    CRIA TAMBEM QUANDO O ESTOQUE ESTA MAGRO, e nao so quando ja falta video
+    para hoje (15/09/2026). A conta que obrigou a mudanca: a grade nova
+    consome 10 partes por dia e a janela de 01h-06h so cabe UMA historia (4h40
+    de janela, 2h12 por historia, e a rodada das 04:20 nao comeca outra porque
+    precisaria de 150 min e so tem 100). Sao 6 produzidas contra 10
+    publicadas: -4 por dia. Esperar "faltar" e viver raspando o fundo, que e o
+    contrario da regra dele — a prioridade e nao ficar sem video.
+
+    O trabalho cabe onde a maquina ja estava parada: medidos em 15/09, os
+    buracos entre uma publicacao e a proxima sao de 2h10 a 2h55 (06:47, 09:47,
+    12:42, 15:47, 18:07), e uma historia leva 2h12.
     """
     barrados = len(barrados_no_estoque())
     aprovados = len(aprovados_no_estoque())
     urgente = falta_video(aprovados, agora,
                           int(config.get("piso_de_estoque") or 1))
-    if not barrados and not urgente:
+    # `teto` 0 e o freio DESLIGADO (ver `teto_de_estoque`): sem teto nao existe
+    # "magro", senao a rodada de dia passaria a criar sem parar.
+    teto = teto_de_estoque(config)
+    magro = bool(teto) and aprovados < teto
+    if not barrados and not urgente and not magro:
         return None
     motivos = []
     if barrados:
@@ -155,13 +171,16 @@ def modo_dia(config: dict, agora) -> dict | None:
     if urgente:
         motivos.append(f"so {aprovados} aprovado(s) para "
                        f"{horarios_restantes(agora)} horario(s) de hoje")
+    elif magro:
+        motivos.append(f"{aprovados} aprovado(s) para um teto de {teto}")
+    criar = urgente or magro
     return {"por_que": " e ".join(motivos),
             "config": {**config, "janela_pesada": None,
                        "revisar_estoque_a_noite": False,
-                       "retomar_incompletas": urgente,
+                       "retomar_incompletas": criar,
                        "reparos_por_rodada":
                            int(config.get("reparos_de_dia") or 2),
-                       "so_consertar": not urgente}}
+                       "so_consertar": not criar}}
 
 
 def _diario(destino: Path, tela=print):
@@ -372,7 +391,7 @@ def incompletas() -> list[dict]:
 
 
 def teto_de_estoque(config: dict | None = None) -> int:
-    """Quantos videos novos podem esperar na fila: UM DIA de grade.
+    """Quantos videos novos podem esperar na fila: `dias_de_gordura` de grade.
 
     DERIVADO da grade, e nao um numero solto no config. Se um dia a grade for
     de 8 para 12 horarios, o teto acompanha sozinho — um numero fixo ao lado
@@ -391,7 +410,26 @@ def teto_de_estoque(config: dict | None = None) -> int:
     # lista ate 13/09/2026; com a criacao so de madrugada (7 disparos), contar
     # os disparos daria teto 7 para uma grade que consome 8 por dia.
     from builds import grade
-    return len(grade.HORAS) or 8
+    return (len(grade.HORAS) or 8) * dias_de_gordura(config)
+
+
+def dias_de_gordura(config: dict | None = None) -> int:
+    """Quantos DIAS de grade o teto guarda. Dois desde 15/09/2026.
+
+    Era um dia fixo desde 10/09 ("quero sempre ter a gordura de apenas um dia
+    em tudo, mas quero que essa gordura seja totalmente nova"), e o motivo
+    continua valendo: estoque grande e feito com o molde de hoje e vai ao ar
+    semanas depois, quando o molde ja mudou.
+
+    Dois dias nao briga com isso — 20 videos saem em 48 h — e e o minimo para
+    a grade nova parar de pe. Com teto de um dia, o freio fecha em 10 e a
+    producao da madrugada (6) fica abaixo do consumo (10): a fila so e
+    reabastecida quando ja esta raspando, e qualquer noite que falhe deixa o
+    dia seguinte sem video. Com dois, a rodada de dia tem margem para encher
+    nos buracos entre as publicacoes antes de virar emergencia.
+    """
+    config = config if config is not None else carregar()
+    return max(1, int(config.get("dias_de_gordura") or 2))
 
 
 def dias_de_estoque_novo() -> int:

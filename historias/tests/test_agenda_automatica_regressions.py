@@ -336,12 +336,37 @@ class ModoDiaTests(unittest.TestCase):
 
     def test_de_dia_sem_barrado_e_com_estoque_sai(self):
         from datetime import datetime
-        self._dublar(barrados=0, aprovados=11)
+        # ACIMA DO TETO (2 dias de grade = 20): com 11 a rodada teria o que
+        # fazer, porque desde 15/09/2026 estoque magro tambem cria.
+        self._dublar(barrados=0, aprovados=25)
         self.assertIsNone(agenda.modo_dia({}, datetime(2026, 9, 13, 13, 0)))
+
+    def test_de_dia_com_estoque_magro_cria_antes_de_faltar(self):
+        """A conta de 15/09/2026: a madrugada faz 6 e a grade consome 10.
+
+        Esperar `falta_video` era reabastecer raspando o fundo. Abaixo do teto
+        a rodada de dia ja cria, nos buracos de 2h+ entre as publicacoes.
+        """
+        from datetime import datetime
+        meio_dia = datetime(2026, 9, 13, 13, 0)
+        self._dublar(barrados=0, aprovados=11)
+        self.assertFalse(agenda.falta_video(11, meio_dia))   # nao e emergencia
+        dia = agenda.modo_dia({}, meio_dia)
+        self.assertFalse(dia["config"]["so_consertar"])
+        self.assertTrue(dia["config"]["retomar_incompletas"])
+        self.assertIn("teto", dia["por_que"])
+
+    def test_freio_desligado_nao_inventa_estoque_magro(self):
+        """`teto_de_estoque: 0` e a valvula de escape: nada de "magro"."""
+        from datetime import datetime
+        self._dublar(barrados=0, aprovados=1)
+        dia = agenda.modo_dia({"teto_de_estoque": 0},
+                              datetime(2026, 9, 13, 23, 50))
+        self.assertIsNone(dia)
 
     def test_de_dia_com_barrado_conserta_e_nao_cria(self):
         from datetime import datetime
-        self._dublar(barrados=5, aprovados=11)
+        self._dublar(barrados=5, aprovados=25)
         dia = agenda.modo_dia({"reparos_de_dia": 2},
                               datetime(2026, 9, 13, 13, 0))
         self.assertTrue(dia["config"]["so_consertar"])
@@ -804,17 +829,20 @@ class GorduraDeEstoqueTests(unittest.TestCase):
         corpo = fonte[fonte.index("def dias_de_estoque("):]
         self.assertIn('v.id not in ja', corpo)
 
-    def test_o_teto_e_um_DIA_de_grade(self):
-        """Pedido dele em 10/09/2026: "gordura de apenas um dia em tudo".
+    def test_o_teto_e_DOIS_DIAS_de_grade(self):
+        """Dois dias desde 15/09/2026, e ainda derivado da grade.
 
-        DERIVADO da grade, e nao um numero solto: se a grade for de 8 para 12
-        horarios, o teto acompanha sozinho. Numero fixo ao lado de uma grade
-        que muda vira mentira na primeira mudanca.
+        Era um dia (pedido dele em 10/09: "gordura de apenas um dia em tudo").
+        Com a grade de 10 horarios e a janela de 01h-06h cabendo UMA historia
+        (6 partes), o teto de um dia fechava o freio em 10 e a producao ficava
+        abaixo do consumo. O que NAO muda: o teto vem da grade, e nao de um
+        numero solto que vira mentira na primeira mudanca.
         """
         config = agenda.carregar()
         self.assertGreater(config["piso_de_estoque"], 0)
         from builds import grade
-        self.assertEqual(len(grade.HORAS), agenda.teto_de_estoque(config))
+        self.assertEqual(2, agenda.dias_de_gordura(config))
+        self.assertEqual(2 * len(grade.HORAS), agenda.teto_de_estoque(config))
 
     def test_os_TRES_estados_do_teto(self):
         """A diferenca entre "derivar" e "desligado" ja se perdeu uma vez.
@@ -824,7 +852,7 @@ class GorduraDeEstoqueTests(unittest.TestCase):
         Ausente = derivar; 0 = desligado; N = N.
         """
         from builds import grade
-        self.assertEqual(len(grade.HORAS),
+        self.assertEqual(2 * len(grade.HORAS),
                          agenda.teto_de_estoque({"horas": [1, 2]}))
         self.assertEqual(0, agenda.teto_de_estoque(
             {"horas": [1, 2], "teto_de_estoque": 0}))
@@ -933,9 +961,21 @@ class EstoqueNovoContraReservaTests(unittest.TestCase):
         self.assertEqual(agenda.dias_de_estoque_novo(), 2)   # so a marcada
 
     def test_o_teto_olha_o_estoque_NOVO(self):
+        """Em `_trabalhar`, o freio compara com o estoque NOVO e aprovado.
+
+        Procurava a primeira aparicao do teto no arquivo inteiro e passou a
+        cair sozinho em 15/09/2026, quando `modo_dia` tambem passou a olhar o
+        teto (estoque magro cria de dia). O que o teste guarda e o freio de
+        `_trabalhar`, entao e la que ele olha.
+        """
         fonte = Path(agenda.__file__).read_text(encoding="utf-8")
-        corpo = fonte[fonte.index("teto = teto_de_estoque(config)"):]
+        trabalhar = fonte[fonte.index("def _trabalhar("):]
+        corpo = trabalhar[trabalhar.index("teto = teto_de_estoque(config)"):]
         self.assertIn("dias_de_estoque_novo()", corpo[:400])
+        # E o de `modo_dia` conta a mesma coisa, pela mesma razao: video
+        # barrado no disco nao e estoque.
+        dia = fonte[fonte.index("def modo_dia("):fonte.index("def _diario(")]
+        self.assertIn("aprovados = len(aprovados_no_estoque())", dia)
 
 
 class FilaPrefereONovoTests(unittest.TestCase):

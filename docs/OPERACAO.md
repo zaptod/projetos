@@ -55,17 +55,35 @@ Faltando menos de 30 minutos para fechar, a rodada não começa nada pesado.
 Uma tarefa perdida de madrugada que o Windows tente rodar de manhã percebe
 que está fora da janela e sai sem fazer nada.
 
-**De dia, só o que evita ficar sem vídeo.** Pedido dele no mesmo dia: "a
-prioridade é não ficar sem vídeo". A criação também dispara 25 minutos depois
-de cada publicação (07:02, 10:02, 12:32, 16:02, 18:22, 21:02, 22:02, 23:02 e
-00:02), mas em modo dia:
+**De dia, o que evita ficar sem vídeo — e encher o estoque.** Pedido dele no
+mesmo dia: "a prioridade é não ficar sem vídeo". A criação também dispara 25
+minutos depois de cada publicação (07:02, 10:02, 12:32, 16:02, 18:22, 21:02,
+22:02, 23:02 e 00:02), em modo dia:
 
-- sem vídeo barrado e com estoque aprovado para o resto do dia, sai sem
-  fazer nada;
+- com o estoque aprovado acima do teto e nada barrado, sai sem fazer nada;
 - com vídeo barrado, conserta até dois por rodada, para terminar antes da
   próxima publicação;
-- se o estoque aprovado não cobrir os horários que faltam hoje, termina a
-  história incompleta e cria outra.
+- **abaixo do teto de estoque, termina a história incompleta e cria outra** —
+  mesmo sem faltar vídeo para hoje;
+- se o estoque não cobrir os horários que faltam hoje, é o mesmo trabalho,
+  mas por emergência.
+
+A criação de dia é de 15/09/2026 e vem de uma conta que não fecha: a grade
+consome dez partes por dia e a janela de 1h às 6h só cabe **uma** história —
+4h40 de janela contra 2h12 por história, e a rodada das 04:20 precisaria de
+150 minutos e só tem 100. Seis produzidas contra dez publicadas são quatro a
+menos por dia. Esperar faltar era reabastecer raspando o fundo; o trabalho
+cabe justamente onde a máquina estava parada, nos buracos de 2h10 a 2h55
+entre uma publicação e a próxima (06:47, 09:47, 12:42, 15:47 e 18:07).
+
+**O teto de estoque são dois dias de grade** (vinte vídeos), e não um. Ele
+continua derivado da grade — grade maior, teto maior, sem número solto em
+lugar nenhum — e continua contando só vídeo novo e **aprovado**: barrado no
+disco não é estoque. Era um dia desde 10/09 ("gordura de apenas um dia em
+tudo, mas totalmente nova"), e a razão de então continua valendo: estoque
+grande é feito com o molde de hoje e vai ao ar quando o molde já mudou. Vinte
+vídeos saem em 48 horas, e é o mínimo para a grade de dez parar de pé.
+`teto_de_estoque: 0` no config segue sendo o freio desligado.
 
 E na hora de publicar, se nenhum vídeo da fila estiver limpo, sai o primeiro
 que só tem o veto da IA contra ele, com aviso no Telegram. Vídeo mudo ou sem
@@ -83,7 +101,7 @@ se a distribuição aguenta os dez.
 
 | família | quantas | quando | o que faz |
 |---|---|---|---|
-| `Historias_auto_HH` | 14 | 1h a 5h em `:20`, e 25 min depois de cada publicação | de madrugada: métrica, parecer, conserto e criação; de dia, só conserto de barrado e criação se faltar vídeo |
+| `Historias_auto_HH` | 14 | 1h a 5h em `:20`, e 25 min depois de cada publicação | de madrugada: métrica, parecer, conserto e criação; de dia: conserto de barrado e criação enquanto o estoque estiver abaixo do teto |
 | `NeuralFights_postar_HH` | 10 | nos dez horários da grade | publica um de cada canal, nos dois destinos |
 | `NeuralFights_bot_telegram` | 1 | a cada 10 min | lê comandos, avisa erro, roda o apurador |
 
