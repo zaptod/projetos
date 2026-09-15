@@ -43,6 +43,21 @@ class NaoLogado(LLMFalhou):
     """A sessao daquele perfil caiu (ou nunca existiu)."""
 
 
+class EnvioTruncado(LLMFalhou):
+    """So um PEDACO do prompt virou mensagem; o resto ficou na caixa.
+
+    Visto em 15/09/2026 as 16:23, escrevendo a parte 6 da historia 14: na
+    conversa havia um balao nosso com uma linha so ("ETAPA 2 - escreva agora a
+    PARTE 6 de 6, e SO ela.") e a caixa de texto continuava com o resto do
+    prompt e o botao Enviar aceso. Como existe turno do usuario na tela,
+    `_envio_devolvido` nao pega este caso, e a espera gastou os 600 s inteiros
+    para so entao falhar a rodada.
+
+    E diferente de "nao foi recebida": quem chama pode REENVIAR, porque
+    `enviar` limpa a caixa antes de colar.
+    """
+
+
 def perfil_de(provedor: str, canal: str = "geral") -> Path:
     """A pasta de Chrome daquele LLM, na conta ativa.
 
@@ -288,6 +303,49 @@ class ClienteLLM:
             return False
         return prompt[:40] in na_caixa or prompt[-40:] in na_caixa
 
+    def _texto_do_turno_usuario(self) -> str:
+        """O texto do ULTIMO turno do usuario na conversa."""
+        for seletor in self.sel.get("turno_usuario") or []:
+            try:
+                alvos = self.page.locator(seletor)
+                total = alvos.count()
+            except Exception:                                  # noqa: BLE001
+                continue
+            if total:
+                try:
+                    return alvos.nth(total - 1).inner_text() or ""
+                except Exception:                              # noqa: BLE001
+                    continue
+        return ""
+
+    def _envio_truncado(self) -> bool:
+        """Foi so um PEDACO do prompt, e o fim dele continua na caixa?
+
+        A diferenca para `_envio_devolvido` e o balao na conversa: la nao ha
+        nenhum (a pagina voltou ao inicio), aqui ha um com um pedaco do
+        prompt. E a diferenca para o caso saudavel de 14/09 as 18:56 — prompt
+        inteiro na conversa, Gemini "Analisando" — e o TAMANHO do que foi
+        enviado: ali o balao tinha o prompt todo, aqui tem uma linha.
+
+        Nunca levanta: e checagem de tela dentro da espera.
+        """
+        prompt = " ".join(str(getattr(self, "_ultimo_prompt", "") or "").split())
+        if len(prompt) < 200:
+            return False
+        turno = " ".join(self._texto_do_turno_usuario().split())
+        if not turno:
+            return False        # sem balao nenhum e caso do `_envio_devolvido`
+        try:
+            campo = sel.encontrar(self.page, self.sel["campo"], timeout=0.3)
+            if campo is None:
+                return False
+            na_caixa = " ".join(self._texto_do_campo(campo).split())
+        except Exception:                                      # noqa: BLE001
+            return False
+        fim = prompt[-40:]
+        return (fim in na_caixa and fim not in turno
+                and len(turno) < 0.6 * len(prompt))
+
     @staticmethod
     def _aceita_fill(campo) -> bool:
         try:
@@ -356,7 +414,12 @@ class ClienteLLM:
         if not candidatos:
             return False
         try:
-            botao = sel.encontrar(self.page, candidatos, timeout=0.3)
+            # 3.0s em vez de 0.3s: quando o modelo fica pensando de verdade,
+            # o botao leva mais tempo para aparecer na UI. Descoberto em
+            # 15/09/2026: historia_00014 parte 6 esperou 600s sem tentar
+            # clicar novamente porque o timeout era muito curto na primeira
+            # tentativa.
+            botao = sel.encontrar(self.page, candidatos, timeout=3.0)
             if botao is None:
                 return False
             botao.click(timeout=5000)
@@ -454,6 +517,16 @@ class ClienteLLM:
                     f"o envio voltou para a caixa de texto do {self.provedor} "
                     "sem resposta comecar (a pagina voltou ao inicio, e o anexo "
                     "sumiu): a pergunta nao foi recebida.")
+            # ENVIO PELA METADE: desiste em ~20 s em vez de gastar os 600 s,
+            # porque quem chama pode reenviar na hora (15/09/2026).
+            if (calado and not escrevendo
+                    and time.monotonic() - inicio >= devolvido_apos
+                    and self._envio_truncado()):
+                if not diagnosticado:
+                    self._diagnosticar_calado()
+                raise EnvioTruncado(
+                    f"so um pedaco do prompt virou mensagem no {self.provedor}: "
+                    "o fim dele continua na caixa de texto.")
             if len(texto) != ultimo_tamanho:
                 ultimo_tamanho = len(texto)
                 parado_desde = None
@@ -643,7 +716,19 @@ class ClienteLLM:
             _pausa(self.rng, 0.4, 1.0)
         self.enviar(prompt)
         _pausa(self.rng, 0.5, 1.2)
-        return self.esperar_resposta(timeout)
+        try:
+            return self.esperar_resposta(timeout)
+        except EnvioTruncado as exc:
+            # SO SEM ANEXO. Reenviar um prompt que dependia de um video sem
+            # reanexar o video e pior do que falhar: a resposta viria sobre
+            # nada. Com anexo, quem chama decide (o parecer tem reserva).
+            if anexos:
+                raise
+            self.log(f"[{self.provedor}] {exc} Reenvio uma vez — `enviar` "
+                     "limpa a caixa antes de colar.")
+            self.enviar(prompt)
+            _pausa(self.rng, 0.5, 1.2)
+            return self.esperar_resposta(timeout)
 
 
 class ContaOcupada(LLMFalhou):

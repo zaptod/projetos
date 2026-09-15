@@ -565,6 +565,111 @@ class ClienteLLMTests(unittest.TestCase):
             falso.esperar_resposta(timeout=2.2, estabilidade=0.2)
         self.assertNotIn("voltou para a caixa", str(erro.exception))
 
+    def _truncado(self, no_balao: str, na_caixa_do_fim: bool = True):
+        """Cliente falso: `no_balao` foi o que virou mensagem na conversa.
+
+        15/09/2026, parte 6 da historia 14: o balao tinha UMA linha e o resto
+        do prompt continuava na caixa, com o Enviar aceso.
+        """
+        from contos.llm import cliente as C
+        from contos.llm import seletores
+        prompt = ("ETAPA 2 - escreva agora a PARTE 6 de 6, e SO ela. " +
+                  "CENA 1 IMAGEM: <prompt em ingles> TEMPO: <segundos> " * 8 +
+                  "... ate a CENA 14. Nao escreva mais nada depois da ultima.")
+
+        class _Campo:
+            def input_value(self):
+                return prompt[-200:] if na_caixa_do_fim else ""
+
+        falso = C.ClienteLLM.__new__(C.ClienteLLM)
+        falso.provedor = "gemini"
+        falso.sel = seletores.do_provedor("gemini")
+        falso.page = object()
+        falso.ajustes = {"pensar_ate": 999, "devolvido_apos_s": 0}
+        falso.log = lambda *_a: None
+        falso._ultimo_prompt = prompt
+        falso._resposta_atual = lambda: ""
+        falso.diagnosticos = []
+        falso._diagnosticar_calado = lambda: falso.diagnosticos.append(1)
+        falso._texto_do_turno_usuario = lambda: no_balao.replace(
+            "{prompt}", prompt)
+        original = seletores.encontrar
+        seletores.encontrar = lambda page, cand, timeout=0: (
+            _Campo() if cand is falso.sel["campo"] else None)
+        self.addCleanup(setattr, seletores, "encontrar", original)
+        # O BALAO EXISTE NA TELA, e e isso que separa este caso do
+        # `_envio_devolvido`: sem o dublê, a checagem antiga dispara primeiro
+        # e o teste passaria pelo motivo errado.
+        oculto = seletores.encontrar_oculto
+        seletores.encontrar_oculto = lambda page, cand, timeout=0: (
+            object() if cand is falso.sel["turno_usuario"] else None)
+        self.addCleanup(setattr, seletores, "encontrar_oculto", oculto)
+        return falso, C, prompt
+
+    def test_envio_pela_metade_desiste_na_hora_em_vez_de_600s(self):
+        """A rodada das 16:02 de 15/09/2026 gastou os 600 s inteiros olhando
+        uma resposta que nao vinha: so a primeira linha tinha sido enviada."""
+        import time
+        falso, C, _p = self._truncado("ETAPA 2 - escreva agora a PARTE 6 de 6,"
+                                      " e SO ela.")
+        self.assertTrue(falso._envio_truncado())
+        comeco = time.monotonic()
+        with self.assertRaises(C.EnvioTruncado):
+            falso.esperar_resposta(timeout=30, estabilidade=0.2)
+        self.assertLess(time.monotonic() - comeco, 5)
+        self.assertEqual([1], falso.diagnosticos)
+
+    def test_prompt_inteiro_no_balao_nao_e_envio_truncado(self):
+        """O caso saudavel: o prompt todo foi, o modelo e que esta pensando.
+        Sem isto, a espera legitima de 300 s viraria falha na hora."""
+        falso, _C, _p = self._truncado("{prompt}")
+        self.assertFalse(falso._envio_truncado())
+
+    def test_caixa_limpa_nao_e_envio_truncado(self):
+        falso, _C, _p = self._truncado("ETAPA 2 - escreva agora a PARTE 6",
+                                       na_caixa_do_fim=False)
+        self.assertFalse(falso._envio_truncado())
+
+    def test_envio_truncado_e_reenviado_uma_vez(self):
+        """Detectar sem reenviar so trocaria 600 s de espera por uma falha."""
+        import random
+        from contos.llm import cliente as C
+        falso = C.ClienteLLM.__new__(C.ClienteLLM)
+        falso.provedor = "gemini"
+        falso.rng = random.Random(1)
+        falso.log = lambda *_a: None
+        enviados, esperas = [], []
+        falso.enviar = lambda p: enviados.append(p)
+
+        def _esperar(_timeout=None):
+            esperas.append(1)
+            if len(esperas) == 1:
+                raise C.EnvioTruncado("so um pedaco virou mensagem")
+            return "CENA 1 ..."
+
+        falso.esperar_resposta = _esperar
+        texto = C.ClienteLLM.perguntar(falso, "prompt inteiro")
+        self.assertEqual("CENA 1 ...", texto)
+        self.assertEqual(["prompt inteiro", "prompt inteiro"], enviados)
+
+    def test_com_anexo_o_truncado_NAO_reenvia(self):
+        """Reenviar sem reanexar o video daria resposta sobre nada — foi o
+        que aconteceu em 14/09 quando o anexo sumiu."""
+        import random
+        from contos.llm import cliente as C
+        falso = C.ClienteLLM.__new__(C.ClienteLLM)
+        falso.provedor = "gemini"
+        falso.rng = random.Random(1)
+        falso.log = lambda *_a: None
+        enviados = []
+        falso.anexar = lambda _a: None
+        falso.enviar = lambda p: enviados.append(p)
+        falso.esperar_resposta = lambda _t=None: (_ for _ in ()).throw(
+            C.EnvioTruncado("so um pedaco virou mensagem"))
+        with self.assertRaises(C.EnvioTruncado):
+            C.ClienteLLM.perguntar(falso, "prompt", anexos=["video.mp4"])
+        self.assertEqual(1, len(enviados))
+
     def test_caixa_vazia_e_raciocinio_normal_nao_desiste(self):
         falso, C = self._devolvido("")
         with self.assertRaises(C.LLMFalhou) as erro:
