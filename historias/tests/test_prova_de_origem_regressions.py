@@ -47,6 +47,24 @@ class SemProvaNaoBaixaTests(unittest.TestCase):
             self.assertGreater(achado.start(), prova)
 
 
+class RefeitaPorColagemExigeProvaTests(unittest.TestCase):
+    """Revisao de 15/09/2026: o laco que refaz colagem baixava
+    `prova.get("url") or alvo` sem olhar `comprovada`."""
+
+    def _laco(self) -> str:
+        fonte = inspect.getsource(worker.gerar)
+        inicio = fonte.index("for volta in range(1, TENTATIVAS_DE_COMPOSICAO)")
+        return fonte[inicio:fonte.index("if not Path(destino).is_file()", inicio)]
+
+    def test_a_refeita_confere_a_prova_antes_de_baixar(self):
+        laco = self._laco()
+        self.assertLess(laco.index('nova.get("comprovada")'),
+                        laco.index("cliente.download("))
+
+    def test_a_refeita_nunca_baixa_o_candidato_sem_prova(self):
+        self.assertNotIn("or alvo", self._laco())
+
+
 class VistoriaLeComprovadaTests(unittest.TestCase):
 
     def test_prova_falha_conta_como_sem_prova(self):

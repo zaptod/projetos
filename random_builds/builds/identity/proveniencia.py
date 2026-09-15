@@ -115,11 +115,6 @@ def card_traz_prompt(card: dict, enviado) -> bool:
 SINAL_RECUSA_NO_CARD = re.compile(
     r"conte[uú]do\s+ilegal|n[aã]o\s+pode\s+ser\s+processado|"
     r"proibido\s+na\s+nossa\s+plataforma", re.I)
-# Recusa NAO baixa nada: um prefixo mais curto que o da prova basta para
-# ligar o card ao nosso prompt quando o texto do card nao separa o paragrafo.
-PREFIXO_RECUSA = 100
-
-
 def _motivo_da_recusa(card: dict) -> str:
     texto = " ".join(str(card.get("texto") or "").split())
     achado = SINAL_RECUSA_NO_CARD.search(texto)
@@ -138,27 +133,38 @@ def recusa_no_historico(cards: list[dict], escolha: dict | None, prompt: str,
     mesmo texto para sempre em vez de reescrever. Recusa e resposta, nao
     atraso: quem chama levanta `ConteudoRecusado` e a escalada reescreve.
 
-    Card recusado de OUTRA pessoa da conta nao conta: precisa trazer o nosso
-    prompt (casado pela escolha ou, sem escolha, pelo prefixo no texto do
-    card) e nao ser anterior ao envio.
+    Houve um recuo por prefixo de 100 caracteres, e a revisao de 15/09/2026
+    mostrou o furo: nas historias o prompt comeca pela descricao do
+    personagem, e 63 das 84 cenas da historia_00012 dividem esse prefixo — a
+    recusa de uma cena IRMA virava recusa desta, e a escalada degradava uma
+    cena que teria passado.
+
+    Para RECUSA a regra e mais dura que para a prova de imagem (revisao de
+    15/09/2026): o paragrafo do card tem que ser IGUAL ao prompt enviado (sem
+    a regra de prefixo — o prompt suavizado comeca pelo texto do nivel
+    anterior, e herdaria a recusa dele), e a data do card tem que ser legivel
+    e nao anterior ao envio. Card sem data (Editor Pro) nao decide recusa:
+    o prompt da juncao e o mesmo entre tentativas e builds, e a recusa de
+    ontem nao e a resposta de agora. `escolha` fica na assinatura por
+    compatibilidade; a decisao e daqui.
     """
-    card = (escolha or {}).get("card")
-    if card is not None:
-        return _motivo_da_recusa(card) if card.get("recusado") else ""
-    alvo = normalizar(prompt)[:PREFIXO_RECUSA]
-    if len(alvo) < PREFIXO_RECUSA:
+    alvo = normalizar(prompt)
+    if not alvo:
         return ""
     envio = _local(enviado_em)
     limite = envio - timedelta(minutes=float(tolerancia_min)) if envio else None
-    for candidato in cards:
-        if not candidato.get("recusado"):
+    for card in cards or []:
+        if not card.get("recusado"):
             continue
-        if alvo not in normalizar(candidato.get("texto")):
+        textos = [card.get("prompt")] + list(card.get("paragrafos") or [])
+        if not any(normalizar(t) == alvo for t in textos):
             continue
-        data = data_do_card(candidato.get("data") or candidato.get("texto"))
-        if limite is not None and data is not None and data < limite:
+        data = data_do_card(card.get("data") or card.get("texto"))
+        if data is None:
             continue
-        return _motivo_da_recusa(candidato)
+        if limite is not None and data < limite:
+            continue
+        return _motivo_da_recusa(card)
     return ""
 
 

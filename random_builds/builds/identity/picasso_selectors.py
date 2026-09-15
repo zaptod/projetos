@@ -305,7 +305,7 @@ JS_CARDS_HISTORICO = """([limite, revelar]) => {
     // TODOS os paragrafos, e nao so o primeiro: no card RECUSADO (14/09/2026,
     // "CONTEUDO ILEGAL - Este conteudo e ilegal e proibido na nossa
     // plataforma") o primeiro <p> pode ser o aviso, e o prompt nunca casava.
-    const paragrafos = Array.from((bloco || card).querySelectorAll('p'))
+    const paragrafos = Array.from(card.querySelectorAll('p'))
       .map(x => (x.innerText || x.textContent || '').trim()).filter(Boolean);
     const imagens = Array.from(card.querySelectorAll('img'))
       .map(i => i.currentSrc || i.getAttribute('src') || '').filter(Boolean);

@@ -768,6 +768,10 @@ class PicassoClient:
                 # Duas voltas seguidas: o cartao pisca durante o carregamento,
                 # e desistir no primeiro relance jogaria fora imagem boa.
                 if falha_vista == falha:
+                    recusa = self._recusa_no_historico()
+                    if recusa:
+                        raise ConteudoRecusado(
+                            f"o PicassoIA recusou o prompt: {recusa}")
                     raise EsperaEstourou(
                         f"o site marcou esta geracao como falha: {falha}")
                 falha_vista = falha
@@ -802,10 +806,53 @@ class PicassoClient:
                 print(f"[picasso] gerando... {decorrido:.0f}s", flush=True)
             time.sleep(intervalo)
 
+        # ANTES DE DESISTIR, O HISTORICO. Prompt recusado nao gera imagem: com
+        # a espera aceitando so a forma pedida, uma recusa que a pagina do
+        # criador nao mostre (sem escudo) estouraria aqui e reenviaria o MESMO
+        # texto — revisao de 15/09/2026. O card do nosso prompt diz se foi isso.
+        recusa = self._recusa_no_historico()
+        if recusa:
+            raise ConteudoRecusado(f"o PicassoIA recusou o prompt: {recusa}")
         raise EsperaEstourou(
             f"a imagem nao ficou pronta em {timeout:.0f}s.")
 
     # ----------------------------------------------------------------- origem
+    def _recusa_no_historico(self) -> str:
+        """O card do ULTIMO envio esta recusado no historico? Motivo, ou "".
+
+        Uma olhada so, numa aba propria (navegar a aba do editor mata a
+        geracao, ver `comprovar_origem`). Nunca levanta: e o ultimo recurso
+        antes de um estouro, e falhar aqui nao pode mudar o estouro.
+        """
+        prompt = getattr(self, "prompt_enviado", "") or ""
+        if not prompt:
+            return ""
+        aba = None
+        try:
+            ajustes = proveniencia.ajustes(self.ajustes)
+            aba = self.ctx.new_page()
+            url = selectors.url_historico(getattr(self, "url_do_espaco", None)
+                                          or self.page.url)
+            aba.goto(url, wait_until="domcontentloaded", timeout=int(float(
+                self.ajustes.get("navigation_timeout", 60)) * 1000))
+            esperar_hidratacao(aba, float(self.ajustes.get("hydration_timeout", 45)))
+            cards = selectors.cards_do_historico(
+                aba, int(ajustes["cards_inspecionados"]))
+            escolha = proveniencia.escolher_card(
+                cards, prompt, getattr(self, "enviado_em", None),
+                float(ajustes["tolerancia_data_min"]))
+            return proveniencia.recusa_no_historico(
+                cards, escolha, prompt, getattr(self, "enviado_em", None),
+                float(ajustes["tolerancia_data_min"]))
+        except Exception:                                      # noqa: BLE001
+            return ""
+        finally:
+            if aba is not None:
+                try:
+                    aba.close()
+                except Exception:                              # noqa: BLE001
+                    pass
+
     def comprovar_origem(self, alvo, prompt: str, enviado_em=None) -> dict:
         """Prova FORTE: o card do Historico que traz o NOSSO prompt.
 

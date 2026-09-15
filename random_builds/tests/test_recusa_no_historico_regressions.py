@@ -81,12 +81,32 @@ class RecusaNoHistoricoTests(unittest.TestCase):
         escolha = proveniencia.escolher_card(cards, NOSSO)
         self.assertEqual("", proveniencia.recusa_no_historico(cards, escolha, NOSSO))
 
-    def test_sem_escolha_o_prefixo_no_texto_liga_o_card(self):
-        """Quando o texto do card nao separa o paragrafo do prompt."""
-        card = {"indice": 0, "prompt": "", "paragrafos": [],
-                "texto": f"{AVISO}\n{NOSSO}", "imagens": [], "recusado": True}
-        motivo = proveniencia.recusa_no_historico([card], {"card": None}, NOSSO)
-        self.assertTrue(motivo)
+    def test_recusa_da_cena_irma_com_o_mesmo_comeco_nao_e_nossa(self):
+        """Revisao de 15/09/2026: 63 de 84 cenas da historia_00012 comecam
+        pela mesma descricao de personagem. A recusa da IRMA nao e desta."""
+        comeco = ("Rosa Coxinha, Brown-skinned Latina, late 20s, curly black hair tied "
+                  "in a messy bun, a small beauty mark above the left lip, ")
+        irma = comeco + "kneeling on a bright white tiled floor scrubbing it hard."
+        atual = comeco + "standing frozen in a dark room looking at the door."
+        cards = [_recusado(0, irma)]
+        escolha = proveniencia.escolher_card(cards, atual)
+        self.assertIsNone(escolha["card"])
+        self.assertEqual("", proveniencia.recusa_no_historico(cards, escolha, atual))
+
+    def test_recusa_do_nivel_anterior_nao_passa_para_o_suavizado(self):
+        """O nivel suavizado COMECA pelo texto do anterior; a recusa daquele
+        nao e a resposta deste (revisao de 15/09/2026)."""
+        suavizado = NOSSO + " Calm everyday scene, soft light."
+        cards = [_recusado(0, NOSSO)]
+        escolha = proveniencia.escolher_card(cards, suavizado)
+        self.assertEqual("", proveniencia.recusa_no_historico(cards, escolha, suavizado))
+
+    def test_card_sem_data_nao_decide_recusa(self):
+        """Editor Pro nao mostra data: a recusa de outra tentativa com o
+        mesmo texto nao pode virar recusa desta."""
+        card = _recusado(0, NOSSO, data="")
+        self.assertEqual("", proveniencia.recusa_no_historico(
+            [card], proveniencia.escolher_card([card], NOSSO), NOSSO))
 
     def test_recusa_anterior_ao_envio_nao_conta(self):
         """O mesmo prompt recusado ONTEM nao e a resposta deste envio."""
@@ -173,6 +193,57 @@ class VigiaDoHistoricoTests(unittest.TestCase):
         prova = cliente._vigiar_historico(aba, proveniencia.ajustes({}), 12, 3.0,
                                           0.01, None, NOSSO, None)
         self.assertTrue(prova["comprovada"])
+
+
+class RecusaAntesDoEstouroTests(unittest.TestCase):
+    """Sem imagem nenhuma, o estouro olha o historico antes (revisao de 15/09)."""
+
+    def _cliente(self, cards, quebra=False):
+        class Aba:
+            fechada = False
+            def goto(self, *a, **k):
+                if quebra:
+                    raise RuntimeError("rede caiu")
+            def close(self):
+                Aba.fechada = True
+        class Ctx:
+            def new_page(self):
+                return Aba()
+        cliente = object.__new__(pc.PicassoClient)
+        cliente.ctx = Ctx()
+        cliente.page = type("P", (), {"url": pc.selectors.URL_CRIACAO})()
+        cliente.ajustes = {}
+        cliente.prompt_enviado = NOSSO
+        cliente.enviado_em = None
+        cliente.url_do_espaco = None
+        for nome, valor in (("cards_do_historico", lambda *a, **k: cards),):
+            original = getattr(pc.selectors, nome)
+            setattr(pc.selectors, nome, valor)
+            self.addCleanup(setattr, pc.selectors, nome, original)
+        original_h = pc.esperar_hidratacao
+        pc.esperar_hidratacao = lambda *a, **k: None
+        self.addCleanup(setattr, pc, "esperar_hidratacao", original_h)
+        return cliente, Aba
+
+    def test_card_nosso_recusado_da_o_motivo(self):
+        cliente, Aba = self._cliente([_recusado(0, NOSSO)])
+        self.assertIn("ILEGAL", cliente._recusa_no_historico().upper())
+        self.assertTrue(Aba.fechada, "a aba do historico tem que ser fechada")
+
+    def test_card_de_outra_pessoa_nao_e_recusa(self):
+        cliente, _ = self._cliente([_recusado(0, ALHEIO)])
+        self.assertEqual("", cliente._recusa_no_historico())
+
+    def test_falha_ao_abrir_nao_levanta(self):
+        cliente, _ = self._cliente([_recusado(0, NOSSO)], quebra=True)
+        self.assertEqual("", cliente._recusa_no_historico())
+
+    def test_os_dois_estouros_olham_o_historico_antes(self):
+        import inspect
+        fonte = inspect.getsource(pc.PicassoClient.wait_for_render)
+        self.assertEqual(2, fonte.count("self._recusa_no_historico()"))
+        self.assertLess(fonte.rindex("self._recusa_no_historico()"),
+                        fonte.rindex("raise EsperaEstourou("))
 
 
 class AprimoradorDesabilitadoTests(unittest.TestCase):

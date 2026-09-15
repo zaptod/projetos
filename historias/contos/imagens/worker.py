@@ -292,6 +292,13 @@ def gerar(historia_id: str, *, limite: int | None = None,
                         # desenho. Suavizar aqui pioraria a cena para
                         # consertar o que nao era problema dela — a mesma
                         # regra do estouro de espera.
+                        #
+                        # A REFEITA TAMBEM EXIGE PROVA (revisao de 15/09/2026).
+                        # Este laco baixava `prova.get("url") or alvo` sem olhar
+                        # `comprovada`: numa conta compartilhada, a primeira
+                        # imagem nova com a forma pedida pode ser de outra
+                        # pessoa, e ela sobrescrevia a imagem PROVADA. Sem
+                        # prova, fica a que ja estava (e a prova dela).
                         for volta in range(1, TENTATIVAS_DE_COMPOSICAO):
                             razao = composicao.motivo(destino)
                             if not razao:
@@ -302,11 +309,17 @@ def gerar(historia_id: str, *, limite: int | None = None,
                             alvo, antes = _gerar_esperando(
                                 cliente, tentativa, config, ajustes, log,
                                 rotulo)
-                            prova = proveniencia.comprovar(
+                            nova = proveniencia.comprovar(
                                 cliente, historia_id, rotulo,
                                 cliente.prompt_enviado, cliente.enviado_em,
                                 alvo, ajustes)
-                            cliente.download(prova.get("url") or alvo, destino)
+                            if not (nova.get("comprovada") and nova.get("url")):
+                                log(f"[imagens] {rotulo}: a refeita nao tem "
+                                    f"prova de origem ({nova.get('motivo')}); "
+                                    "fica a imagem anterior.")
+                                break
+                            cliente.download(nova["url"], destino)
+                            prova = nova
                         # O DOWNLOAD FALHA CALADO, e o laco acima acredita
                         # nele: `composicao.motivo` de um caminho inexistente
                         # devolve "", que quer dizer "nao e colagem", e a cena
