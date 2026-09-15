@@ -302,12 +302,26 @@ JS_CARDS_HISTORICO = """([limite, revelar]) => {
     if (revelar === indice) card.scrollIntoView({block: 'center'});
     const bloco = botao.parentElement ? botao.parentElement.parentElement : null;
     const p = bloco ? bloco.querySelector('p') : null;
+    // TODOS os paragrafos, e nao so o primeiro: no card RECUSADO (14/09/2026,
+    // "CONTEUDO ILEGAL - Este conteudo e ilegal e proibido na nossa
+    // plataforma") o primeiro <p> pode ser o aviso, e o prompt nunca casava.
+    const paragrafos = Array.from((bloco || card).querySelectorAll('p'))
+      .map(x => (x.innerText || x.textContent || '').trim()).filter(Boolean);
+    const imagens = Array.from(card.querySelectorAll('img'))
+      .map(i => i.currentSrc || i.getAttribute('src') || '').filter(Boolean);
+    const texto = (card.innerText || '').slice(0, 3000);
+    const escudo = Array.from(card.querySelectorAll('svg, [class*="shield"]')).some(el =>
+      /shield[-_]?alert|shield[-_]?ban|shield[-_]?x/i.test(
+        (el.getAttribute('class') || '') + ' ' + (el.className && el.className.baseVal || '')));
+    const aviso = /conte[uú]do\\s+ilegal|n[aã]o\\s+pode\\s+ser\\s+processado|proibido\\s+na\\s+nossa\\s+plataforma/i.test(texto);
     out.push({
       indice: indice,
       prompt: p ? (p.innerText || p.textContent || '') : '',
-      texto: (card.innerText || '').slice(0, 3000),
-      imagens: Array.from(card.querySelectorAll('img'))
-        .map(i => i.currentSrc || i.getAttribute('src') || '').filter(Boolean),
+      paragrafos: paragrafos,
+      texto: texto,
+      imagens: imagens,
+      // Recusa do filtro NO CARD: a frase, ou o escudo num card sem imagem.
+      recusado: aviso || (escudo && imagens.length === 0),
     });
   });
   return out;
@@ -339,6 +353,9 @@ def cards_do_historico(page, limite: int = 12, revelar: int | None = None) -> li
                 imagens.append(src)
         cards.append({"indice": item.get("indice"),
                       "prompt": item.get("prompt") or "",
+                      "paragrafos": [str(t) for t in item.get("paragrafos") or []
+                                     if t],
                       "texto": item.get("texto") or "",
-                      "imagens": imagens})
+                      "imagens": imagens,
+                      "recusado": bool(item.get("recusado"))})
     return cards

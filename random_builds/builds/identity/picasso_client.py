@@ -48,6 +48,25 @@ FECHAR_MODAL = [
 ]
 
 
+def forma_confere(pedida, largura, altura) -> bool:
+    """A imagem na tela tem a forma do que foi PEDIDO?
+
+    Vertical (9:16, 3:4, 2:3): a regra de sempre, retrato com folga de 2%.
+    Quadrada (1:1, as fotos das historias desde 14/09/2026): 10% de folga.
+    O resto e deitado. Sem isto, em 14/09 as 23:33, a imagem 1:1 da
+    historia_00012 ficou na tela e a espera seguiu 180 s ate reenviar.
+    """
+    largura, altura = float(largura or 0), float(altura or 0)
+    if not (largura and altura):
+        return False
+    pedida = str(pedida or "9:16")
+    if pedida in selectors.ASPECTOS_VERTICAIS:
+        return altura >= largura * TOLERANCIA_RETRATO
+    if pedida == "1:1":
+        return 0.9 <= largura / altura <= 1.1
+    return largura >= altura * TOLERANCIA_RETRATO
+
+
 def proporcao_confere(pedida, aplicada) -> bool:
     """A proporcao que ficou no controle serve para a que foi pedida?
 
@@ -67,6 +86,9 @@ class PicassoClient:
                  ao_descobrir_espaco=None):
         self.ctx = ctx
         self.page = page
+        # A forma que `wait_for_render` aceita como "a nossa imagem". Quem
+        # manda e o `aspect` do ultimo `submit_prompt`.
+        self.aspecto_pedido = "9:16"
         self.ajustes = ajustes
         import random
         self.rng = rng or random.Random()
@@ -429,6 +451,7 @@ class PicassoClient:
             botao.click()
         self.prompt_enviado = prompt
         self.enviado_em = datetime.now(timezone.utc)
+        self.aspecto_pedido = str(aspect or "9:16")
         self.url_do_espaco = self.page.url
         print(f"[picasso] prompt enviado ({len(prompt)} chars), "
               f"{len(antes)} imagem(ns) ja na tela")
@@ -733,9 +756,13 @@ class PicassoClient:
                     # em que ela nao pode ser aplicada; a proxima volta ja tem
                     # a medida. NAO entra em `conhecidas`: e para reavaliar.
                     continue
-                if altura < largura * TOLERANCIA_RETRATO:
-                    # Deitada: e miniatura do historico, nao a nossa. Entra na
-                    # lista de conhecidas para nao ser reavaliada a cada volta.
+                if not forma_confere(getattr(self, "aspecto_pedido", "9:16"),
+                                     largura, altura):
+                    # Forma de OUTRO pedido: miniatura do historico, nao a
+                    # nossa. Entra na lista de conhecidas para nao ser
+                    # reavaliada a cada volta. Ate 14/09/2026 a regra era fixa
+                    # em retrato, e o pedido 1:1 das historias nunca via a
+                    # propria imagem: esperava 180 s e mandava de novo.
                     conhecidas.add(imagem["src"])
                     continue
                 print(f"[picasso] imagem pronta ({largura}x{altura}) em "
@@ -841,6 +868,15 @@ class PicassoClient:
                 escolha = proveniencia.escolher_card(cards, prompt, enviado_em,
                                                      tolerancia)
                 card = escolha["card"]
+            # RECUSA NO CARD E RESPOSTA, NAO ATRASO (14/09/2026 23:25): o
+            # historico mostrava "CONTEUDO ILEGAL" no card do nosso prompt e
+            # esta espera seguia os 240 s ate sair "sem prova" — erro tecnico,
+            # que reenvia o MESMO texto para sempre. `ConteudoRecusado` leva a
+            # cena para a escalada que reescreve o prompt.
+            recusa = proveniencia.recusa_no_historico(cards, escolha, prompt,
+                                                      enviado_em, tolerancia)
+            if recusa:
+                raise ConteudoRecusado(f"o PicassoIA recusou o prompt: {recusa}")
             if card is not None and card["imagens"]:
                 prova = proveniencia.prova_forte(
                     selectors.PROVEDOR, card, card["imagens"][0], alvo,

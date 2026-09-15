@@ -100,6 +100,68 @@ def prompt_bate(no_card, enviado) -> bool:
     return len(a) >= PREFIXO_MINIMO and b.startswith(a)
 
 
+def card_traz_prompt(card: dict, enviado) -> bool:
+    """O prompt do card (ou qualquer paragrafo dele) e o que foi enviado?
+
+    Os paragrafos entram desde 14/09/2026: no card recusado pelo filtro o
+    primeiro <p> e o aviso ("Este conteudo e ilegal..."), e o prompt de
+    verdade vinha num paragrafo seguinte que ninguem lia.
+    """
+    textos = [card.get("prompt")] + list(card.get("paragrafos") or [])
+    return any(prompt_bate(texto, enviado) for texto in textos)
+
+
+# A frase que o PicassoIA poe no lugar da imagem quando o filtro barra.
+SINAL_RECUSA_NO_CARD = re.compile(
+    r"conte[uú]do\s+ilegal|n[aã]o\s+pode\s+ser\s+processado|"
+    r"proibido\s+na\s+nossa\s+plataforma", re.I)
+# Recusa NAO baixa nada: um prefixo mais curto que o da prova basta para
+# ligar o card ao nosso prompt quando o texto do card nao separa o paragrafo.
+PREFIXO_RECUSA = 100
+
+
+def _motivo_da_recusa(card: dict) -> str:
+    texto = " ".join(str(card.get("texto") or "").split())
+    achado = SINAL_RECUSA_NO_CARD.search(texto)
+    if not achado:
+        return "o card do historico marcou o conteudo como bloqueado (escudo)"
+    return texto[max(0, achado.start() - 20):achado.end() + 80]
+
+
+def recusa_no_historico(cards: list[dict], escolha: dict | None, prompt: str,
+                        enviado_em=None, tolerancia_min: float = 3.0) -> str:
+    """O card do NOSSO prompt voltou RECUSADO pelo filtro? Motivo, ou "".
+
+    Visto na tela em 14/09/2026 23:25 (historia_00012 p02_cena_01): o card
+    com o prompt mostrava "CONTEUDO ILEGAL" no lugar da imagem, e a prova
+    esperou os 240 s e saiu como "sem prova" — erro TECNICO, que reenvia o
+    mesmo texto para sempre em vez de reescrever. Recusa e resposta, nao
+    atraso: quem chama levanta `ConteudoRecusado` e a escalada reescreve.
+
+    Card recusado de OUTRA pessoa da conta nao conta: precisa trazer o nosso
+    prompt (casado pela escolha ou, sem escolha, pelo prefixo no texto do
+    card) e nao ser anterior ao envio.
+    """
+    card = (escolha or {}).get("card")
+    if card is not None:
+        return _motivo_da_recusa(card) if card.get("recusado") else ""
+    alvo = normalizar(prompt)[:PREFIXO_RECUSA]
+    if len(alvo) < PREFIXO_RECUSA:
+        return ""
+    envio = _local(enviado_em)
+    limite = envio - timedelta(minutes=float(tolerancia_min)) if envio else None
+    for candidato in cards:
+        if not candidato.get("recusado"):
+            continue
+        if alvo not in normalizar(candidato.get("texto")):
+            continue
+        data = data_do_card(candidato.get("data") or candidato.get("texto"))
+        if limite is not None and data is not None and data < limite:
+            continue
+        return _motivo_da_recusa(candidato)
+    return ""
+
+
 def data_do_card(texto) -> datetime | None:
     """Data/hora LOCAL (naive) que o card mostra, ou None se nao der para ler."""
     achado = _DATA_CARD.search(str(texto or ""))
@@ -138,7 +200,7 @@ def escolher_card(cards: list[dict], prompt: str, enviado_em=None,
     `tolerancia_min` absorve relogio do site vs. da maquina). Devolve
     {"card": dict | None, "motivo": str}.
     """
-    candidatos = [c for c in cards if prompt_bate(c.get("prompt"), prompt)]
+    candidatos = [c for c in cards if card_traz_prompt(c, prompt)]
     if not candidatos:
         return {"card": None,
                 "motivo": f"nenhum dos {len(cards)} card(s) do historico traz "
