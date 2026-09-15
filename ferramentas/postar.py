@@ -128,7 +128,13 @@ def fila_de_historias() -> list:
     from contos.publicar import catalogo, serie
 
     publicados = [l for l in serie.publicados() if l.get("url")]
-    ja = {l.get("video_id") for l in publicados}
+    # A FILA E DO YOUTUBE. Parte que so foi ao TikTok (YouTube na cota ou fora
+    # do ar naquele horario) continua devendo o YouTube; contar qualquer
+    # plataforma tirava a parte da fila para sempre (auditoria de 15/09/2026).
+    # Medido na mesma noite: nenhum video estava so no TikTok, entao a ordem
+    # da fila nao mudou com isto.
+    ja = {l.get("video_id") for l in publicados
+          if l.get("plataforma", "youtube") == "youtube"}
     videos = [v for v in catalogo.listar() if v.perfil == "celular"]
     comecadas = {v.fonte_id for v in videos if v.id in ja}
     # SEM BURACO NA SERIE. O catalogo lista cada mp4 assim que ele existe, e a
@@ -536,18 +542,25 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     # diario por CANAL; o TikTok nao tem esse limite. Deixar a excecao subir
     # aqui faria o TikTok ficar vazio pelo motivo errado — que e exatamente o
     # que manteve os dois TikToks zerados por 49 publicacoes.
-    url, cota = "", None
+    url, cota, falha_yt = "", None, None
     try:
         url = catalogo.publicar_youtube(alvo, visibilidade)
         serie.registrar(alvo, url, "youtube", None,
                         {"por": "postar.py", "visibilidade": visibilidade})
     except Exception as exc:                                   # noqa: BLE001
-        if not _e_limite_diario(exc):
-            raise
-        cota = str(exc)
-        _linha(f"[postar] historias: YouTube na cota ({exc}). "
-               "Sigo para o TikTok — ele nao tem esse limite.")
-        avisar_limite_diario(f"canal historias: {exc}")
+        if _e_limite_diario(exc):
+            cota = str(exc)
+            _linha(f"[postar] historias: YouTube na cota ({exc}). "
+                   "Sigo para o TikTok — ele nao tem esse limite.")
+            avisar_limite_diario(f"canal historias: {exc}")
+        else:
+            # QUALQUER FALHA DO YOUTUBE SEGUE PARA O TIKTOK (auditoria de
+            # 15/09/2026). Subir aqui deixava o TikTok daquele horario vazio
+            # para sempre; a parte continua na fila do YouTube, que so conta
+            # o que saiu NELE.
+            falha_yt = f"{type(exc).__name__}: {exc}"[:200]
+            _linha(f"[postar] historias: YouTube falhou ({falha_yt}). "
+                   "Sigo para o TikTok; a parte volta no proximo horario.")
     ficha = {"canal": "historias", "feito": bool(url), "alvo": alvo.id,
              "titulo": alvo.titulo, "url": url,
              "parte": alvo.parte, "partes": alvo.partes,
@@ -559,6 +572,9 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     if cota:
         ficha["motivo"] = f"YouTube na cota: {cota}"[:200]
         ficha["cota_youtube"] = True
+    if falha_yt:
+        ficha["motivo"] = f"YouTube falhou: {falha_yt}"[:200]
+        ficha["youtube_falhou"] = True
     if not tiktok_agora:
         # FORA DA GRADE DO TIKTOK, e nao falha: ele posta seis por dia.
         ficha["tiktok"] = ""
@@ -603,6 +619,12 @@ def _tiktok_das_historias(alvo) -> str:
     — que ja subiu — parecer que falhou.
     """
     from contos.publicar import catalogo, serie
+    # A MESMA PARTE NAO VAI DUAS VEZES AO TIKTOK. Com a fila do YouTube
+    # contando so o YouTube, uma parte que foi ao TikTok num horario em que o
+    # YouTube falhou volta a ser escolhida quando o YouTube a publicar.
+    if serie.ja_publicado(alvo.id, "tiktok"):
+        _linha(f"   tiktok: {alvo.id} ja esta no TikTok; nao posto de novo.")
+        return ""
     try:
         estado = catalogo.publicar_tiktok(alvo, postar=True, log=_linha)
     except Exception as exc:                                   # noqa: BLE001
@@ -702,6 +724,33 @@ def escolher_por_cota(pendentes: list, servidos: dict, cota: dict):
     return por_origem[melhor][0]
 
 
+LIMIAR_MUDO_DB = -60.0
+
+
+def _audio_mudo(video) -> str:
+    """O motivo quando o mp4 sai calado; "" quando tem som.
+
+    Mesma medida da vistoria das historias (`qualidade._audio`). Ferramenta que
+    falha NAO barra: sem ffprobe/ffmpeg a grade inteira ficaria vazia por um
+    problema da maquina, e nao do video.
+    """
+    try:
+        from contos.publicar import qualidade
+    except Exception:                                          # noqa: BLE001
+        return ""
+    caminho = Path(str(getattr(video, "caminho", "") or ""))
+    if not caminho.is_file():
+        return ""
+    dados = qualidade._ffprobe(caminho)
+    faixas = dados.get("streams") if isinstance(dados, dict) else None
+    if faixas and not any(f.get("codec_type") == "audio" for f in faixas):
+        return "o mp4 nao tem faixa de audio"
+    media, _ = qualidade._audio(caminho, 0.0)
+    if media is not None and media < LIMIAR_MUDO_DB:
+        return f"o audio esta mudo (media {media:.1f} dB)"
+    return ""
+
+
 def proximo_build(config=None):
     """O proximo video de builds, alternando entre os FORMATOS.
 
@@ -720,7 +769,10 @@ def proximo_build(config=None):
     from builds.publicar import catalogo as C
     from builds.publicar import metricas
 
-    ja = {l.get("video_id") for l in metricas.publicados() if l.get("url")}
+    # A fila e do YOUTUBE (auditoria de 15/09/2026): video que so foi ao
+    # TikTok continua devendo o YouTube.
+    ja = {l.get("video_id") for l in metricas.publicados() if l.get("url")
+          and l.get("plataforma", "youtube") == "youtube"}
     pendentes = [v for v in C.listar()
                  if v.id not in ja and getattr(v, "perfil", "") == "celular"]
     if not pendentes:
@@ -744,8 +796,18 @@ def proximo_build(config=None):
 
     # o mais ANTIGO primeiro: o catalogo vem do mais novo para o mais velho
     pendentes.reverse()
-    return escolher_por_cota(pendentes, _servidos_recentes(),
-                             cota_da_grade(config))
+    servidos, cota = _servidos_recentes(), cota_da_grade(config)
+    # VIDEO MUDO NAO SAI (auditoria de 15/09/2026): a estreia da
+    # generation_00065 media -91 dB e estava marcada para as 10:07, nas duas
+    # plataformas. So o ESCOLHIDO e medido: uma decodificacao por horario.
+    while pendentes:
+        alvo = escolher_por_cota(pendentes, servidos, cota)
+        motivo = _audio_mudo(alvo)
+        if not motivo:
+            return alvo
+        _linha(f"[postar] {alvo.id} fora da fila: {motivo}")
+        pendentes = [v for v in pendentes if v.id != alvo.id]
+    return None
 
 
 def postar_build(*, so_ver: bool = False) -> dict:
@@ -782,10 +844,29 @@ def postar_build(*, so_ver: bool = False) -> dict:
     # vezes, e a segunda linha saia sem `visibilidade` (o `extra` e montado la
     # dentro): o ledger dizia `public` numa linha e `null` na seguinte, para o
     # mesmo video. Foi assim nos dois builds de 08/09/2026.
-    url = youtube.publicar_como_configurado(alvo, canal="builds",
-                                            visibilidade="public", log=_linha)
-    ficha = {"canal": "builds", "feito": True, "alvo": alvo.id,
+    url, falha_yt, cota = "", None, False
+    try:
+        url = youtube.publicar_como_configurado(alvo, canal="builds",
+                                                visibilidade="public",
+                                                log=_linha)
+    except Exception as exc:                                   # noqa: BLE001
+        # Mesma regra das historias (auditoria de 15/09/2026): falha do
+        # YouTube — cota ou qualquer outra — nao deixa o TikTok vazio. Antes
+        # a excecao subia ate `main` e `_tiktok_dos_builds` nunca rodava.
+        falha_yt = f"{type(exc).__name__}: {exc}"[:200]
+        cota = _e_limite_diario(exc)
+        _linha(f"[postar] builds: YouTube falhou ({falha_yt}). "
+               "Sigo para o TikTok.")
+        if cota:
+            avisar_limite_diario(f"canal builds: {exc}")
+    ficha = {"canal": "builds", "feito": bool(url), "alvo": alvo.id,
              "titulo": alvo.titulo, "url": url}
+    if falha_yt:
+        ficha["motivo"] = (f"YouTube na cota: {falha_yt}" if cota
+                           else f"YouTube falhou: {falha_yt}")[:200]
+        ficha["youtube_falhou"] = True
+        if cota:
+            ficha["cota_youtube"] = True
     if not tiktok_agora:
         # FORA DA GRADE DO TIKTOK, e nao falha: ele posta seis por dia.
         ficha["tiktok"] = ""
@@ -793,6 +874,8 @@ def postar_build(*, so_ver: bool = False) -> dict:
         _linha("[postar] builds: este horario nao e da grade do TikTok.")
     else:
         ficha["tiktok"] = "" if ja_tk else _tiktok_dos_builds(alvo)
+    if ficha["tiktok"]:
+        ficha["feito"] = True
     return ficha
 
 
@@ -805,6 +888,19 @@ def _build_por_id(video_id: str):
         return None
 
 
+def _build_ja_no_tiktok(video_id: str) -> bool:
+    """O build ja saiu no TikTok? Com a fila do YouTube contando so o
+    YouTube, o mesmo video pode voltar a ser escolhido depois de um horario
+    em que o YouTube falhou e o TikTok subiu."""
+    try:
+        from builds.publicar import metricas
+        return any(l.get("video_id") == video_id and l.get("url")
+                   and l.get("plataforma") == "tiktok"
+                   for l in metricas.publicados())
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
 def _tiktok_dos_builds(alvo) -> str:
     """Mesmo video, segundo destino. Aqui o registro E de dentro.
 
@@ -814,6 +910,9 @@ def _tiktok_dos_builds(alvo) -> str:
     o defeito que ja custou uma limpeza de ledger em 09/09/2026.
     """
     from builds.publicar import tiktok as _tk
+    if _build_ja_no_tiktok(alvo.id):
+        _linha(f"   tiktok: {alvo.id} ja esta no TikTok; nao posto de novo.")
+        return ""
     try:
         # `postar=True` EXPLICITO. O config tem `postar_automatico: false`, que
         # e o certo para o botao do painel — la a ultima palavra e dele. A
@@ -1048,6 +1147,10 @@ def avisar(resultados: list) -> None:
             linhas.append("    ▸ YouTube   já saiu neste horário")
         elif r.get("cota_youtube"):
             linhas.append("    ▸ YouTube   🚫 limite diário da conta")
+        elif r.get("youtube_falhou"):
+            motivo = str(r.get("motivo") or "").split(": ", 1)[-1]
+            linhas.append(f"    ▸ YouTube   ❌ falhou: {motivo[:100]} "
+                          "(a parte volta no próximo horário)")
         else:
             linhas.append("    ▸ YouTube   "
                           f"{_estado_da_plataforma(r.get('url'))}"
