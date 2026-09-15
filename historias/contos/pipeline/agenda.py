@@ -89,13 +89,38 @@ def chave_da_noite(agora, janela: dict | None) -> str:
     return agora.strftime("%Y-%m-%d")
 
 
+# O minuto do disparo quando a hora vem sem ele: depois da postagem, nunca
+# antes (a criacao abre os mesmos navegadores).
+MINUTO_PADRAO = 20
+
+
 def carregar(caminho: Path | None = None) -> dict:
+    """O config, com `horas` (ints) e `minutos` ({hora: minuto}) normalizados.
+
+    Cada disparo pode vir como hora cheia (`3`, dispara em :20) ou como
+    `"HH:MM"` (desde 15/09/2026, para a rodada de dia cair 25 min depois de
+    cada publicacao, que tem minuto proprio por horario).
+    """
     with open(caminho or CONFIG, encoding="utf-8-sig") as fh:
         dados = json.load(fh)
-    horas = sorted({int(h) for h in (dados.get("horas") or [])
-                    if int(h) in HORAS_VALIDAS})
-    dados["horas"] = horas
+    minutos = {}
+    for item in dados.get("horas") or []:
+        texto = str(item).strip()
+        if ":" in texto:
+            hora, minuto = texto.split(":", 1)
+            hora, minuto = int(hora), int(minuto)
+        else:
+            hora, minuto = int(texto), MINUTO_PADRAO
+        if hora in HORAS_VALIDAS:
+            minutos[hora] = minuto
+    dados["horas"] = sorted(minutos)
+    dados["minutos"] = minutos
     return dados
+
+
+def horario_do_disparo(config: dict, hora: int) -> str:
+    """`'07:02'` — quando a agenda dispara naquela hora."""
+    return f"{int(hora):02d}:{int((config.get('minutos') or {}).get(int(hora), MINUTO_PADRAO)):02d}"
 
 
 def horarios_restantes(agora) -> int:
@@ -103,7 +128,7 @@ def horarios_restantes(agora) -> int:
     from builds import grade
 
     minuto = agora.hour * 60 + agora.minute
-    return len([h for h in grade.HORAS if h * 60 + grade.MINUTO > minuto])
+    return len([h for h in grade.HORAS if h * 60 + grade.minuto(h) > minuto])
 
 
 def falta_video(aprovados: int, agora, piso: int = 1) -> bool:

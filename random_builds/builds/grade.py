@@ -9,33 +9,51 @@ duas telas nao tem como saber qual esta certa.
 
 Mora em `builds` porque e o pacote que todos importam (`contos` inclusive), e
 porque a grade nao e de um canal: os dois publicam nos mesmos horarios.
+
+A GRADE E DAS HORAS VAGAS DAS PESSOAS (pedido dele em 15/09/2026): indo para
+o trabalho, cafe, almoco, lanche, ida embora e a noite ociosa ate quase de
+madrugada. Ate entao eram oito horarios densos de manha (6, 7, 8), e o TikTok
+pulava 7h e 8h — o que deixava buracos na serie la. Agora sao dez, com minuto
+proprio em cada um, e o TikTok posta em todos.
 """
 from __future__ import annotations
 
 from datetime import datetime
 
-# Oito horarios, espalhados pelo dia. Nao e "de duas em duas horas": a manha
-# e mais densa de proposito (6, 7, 8) porque e quando o feed roda mais.
-HORAS = (6, 7, 8, 10, 12, 15, 17, 20)
-# :07 e nao :00 — horario redondo e quando todo mundo publica.
-MINUTO = 7
+# (hora, minuto), na ordem do calendario. O 00:37 e o ultimo da noite, mas no
+# calendario e o primeiro do dia — e assim que `vencidos` e `proximo` contam.
+GRADE = (
+    (0, 37),    # madrugada, quem ainda esta acordado
+    (6, 37),    # indo para o trabalho
+    (9, 37),    # cafe da manha
+    (12, 7),    # almoco
+    (15, 37),   # lanche da tarde
+    (17, 57),   # ida embora
+    (20, 37),   # noite
+    (21, 37),   # noite
+    (22, 37),   # noite
+    (23, 37),   # noite
+)
+HORAS = tuple(h for h, _m in GRADE)
+MINUTOS = {h: m for h, m in GRADE}
+# O minuto "tipico", para quem so precisa de um numero (o das 12h e :07 para
+# cair no comeco do almoco). Fora do minuto cheio, em que todo agendador do
+# mundo dispara.
+MINUTO = 37
 
 CANAIS = ("historias", "builds")
 PLATAFORMAS = ("youtube", "tiktok")
 
-# O TIKTOK NAO POSTA EM TODOS OS HORARIOS. Medido em 13/09/2026 nas duas
-# contas: em todas as cinco sessoes com mais de seis posts, so os seis
-# primeiros tiveram distribuicao (80 a 180 views); do setimo em diante, 1 ou
-# 2 views, ate uma pausa longa sem postar. Oito por dia deixava a conta nessa
-# faixa quase o dia inteiro. E correlacao, nao causa provada — por isso a
-# coleta de metricas do TikTok continua de pe para confirmar ou desmentir.
-#
-# Decisao dele no mesmo dia: seis, pulando 7h e 8h, que sao os horarios
-# colados, e preservando a pausa de dez horas durante a noite. O YouTube
-# segue com os oito.
+# O TIKTOK POSTA EM TODOS OS HORARIOS (decisao dele em 15/09/2026: "quero
+# tapar esses buracos"). De 13/09 ate entao ele pulava 7h e 8h, por uma
+# medicao em que do setimo post do dia em diante a distribuicao caia — mas a
+# fila avancava com o YouTube e a parte publicada nesses horarios nunca
+# chegava ao TikTok. Com a grade espalhada, sem horarios colados, a serie sai
+# em sincronia nas duas plataformas; a metrica do TikTok diz se a distribuicao
+# aguenta os dez.
 HORAS_POR_PLATAFORMA = {
     "youtube": HORAS,
-    "tiktok": (6, 10, 12, 15, 17, 20),
+    "tiktok": HORAS,
 }
 
 # Quantos videos cada canal deve por no ar por dia, POR PLATAFORMA.
@@ -46,6 +64,16 @@ META_DIARIA_POR_CANAL = len(HORAS)
 # A conta cheia do dia: cada canal, cada plataforma, com a grade de cada uma.
 META_DIARIA_TOTAL = len(CANAIS) * sum(META_DIARIA_POR_PLATAFORMA[p]
                                       for p in PLATAFORMAS)
+
+
+def minuto(hora: int) -> int:
+    """O minuto em que a grade publica naquela hora."""
+    return int(MINUTOS.get(int(hora), MINUTO))
+
+
+def horario(hora: int) -> str:
+    """`'06:37'` — a hora da grade como ela aparece nas telas e no schtasks."""
+    return f"{int(hora):02d}:{minuto(hora):02d}"
 
 
 def horas_da_plataforma(plataforma: str = "youtube") -> tuple:
@@ -59,37 +87,37 @@ def publica_em(plataforma: str, hora: int) -> bool:
 
 
 def horarios(plataforma: str | None = None) -> list[str]:
-    """`['06:07', '07:07', ...]` — a grade como ela aparece nas telas."""
+    """`['00:37', '06:37', ...]` — a grade como ela aparece nas telas."""
     horas = HORAS if plataforma is None else horas_da_plataforma(plataforma)
-    return [f"{h:02d}:{MINUTO:02d}" for h in horas]
+    return [horario(h) for h in horas]
 
 
 def vencidos(agora: datetime | None = None,
              plataforma: str | None = None) -> list[int]:
     """As horas da grade que JA passaram hoje.
 
-    E contra esta lista que se mede o dia. Comparar com as oito o dia inteiro
-    faria o relatorio das 09:00 acusar seis horarios perdidos que ainda nem
-    chegaram. Com `plataforma`, so os horarios dela: o TikTok nao deve o que
-    nunca foi da grade dele.
+    E contra esta lista que se mede o dia. Comparar com a grade inteira o dia
+    todo faria o relatorio das 09:00 acusar horarios perdidos que ainda nem
+    chegaram. Com `plataforma`, so os horarios dela.
     """
     agora = agora or datetime.now()
-    minuto = agora.hour * 60 + agora.minute
+    agora_min = agora.hour * 60 + agora.minute
     horas = HORAS if plataforma is None else horas_da_plataforma(plataforma)
-    return [h for h in horas if h * 60 + MINUTO <= minuto]
+    return [h for h in horas if h * 60 + minuto(h) <= agora_min]
 
 
 def proximo(agora: datetime | None = None) -> str:
     """O proximo horario da grade, com a marca de amanha quando virou o dia."""
     agora = agora or datetime.now()
-    minuto = agora.hour * 60 + agora.minute
+    agora_min = agora.hour * 60 + agora.minute
     for h in HORAS:
-        if h * 60 + MINUTO > minuto:
-            return f"{h:02d}:{MINUTO:02d}"
-    return f"{HORAS[0]:02d}:{MINUTO:02d} (amanha)"
+        if h * 60 + minuto(h) > agora_min:
+            return horario(h)
+    return f"{horario(HORAS[0])} (amanha)"
 
 
-__all__ = ["HORAS", "MINUTO", "META_DIARIA_POR_CANAL", "META_DIARIA_TOTAL",
-           "META_DIARIA_POR_PLATAFORMA", "HORAS_POR_PLATAFORMA", "CANAIS",
-           "PLATAFORMAS", "horarios", "horas_da_plataforma", "publica_em",
+__all__ = ["GRADE", "HORAS", "MINUTOS", "MINUTO", "META_DIARIA_POR_CANAL",
+           "META_DIARIA_TOTAL", "META_DIARIA_POR_PLATAFORMA",
+           "HORAS_POR_PLATAFORMA", "CANAIS", "PLATAFORMAS", "minuto",
+           "horario", "horarios", "horas_da_plataforma", "publica_em",
            "vencidos", "proximo"]

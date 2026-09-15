@@ -26,12 +26,18 @@ A grade vive num lugar só, `random_builds/builds/grade.py`, e todo mundo lê
 de lá: o publicador, o relatório do Telegram e a auditoria. Ela diz
 
 ```
-HORAS  = 6, 7, 8, 10, 12, 15, 17, 20      (oito horários)
-MINUTO = 7                                 (publica em :07)
+GRADE = 00:37, 06:37, 09:37, 12:07, 15:37, 17:57, 20:37, 21:37, 22:37, 23:37
 ```
 
-**O trabalho pesado é de madrugada.** Desde 13/09/2026 a criação roda só
-entre 23h e 6h, e de dia a máquina apenas publica e avisa. Pesado é tudo o
+São as horas vagas das pessoas (pedido dele em 15/09/2026): indo para o
+trabalho, café, almoço, lanche, ida embora e a noite ociosa até quase de
+madrugada. Cada horário tem o próprio minuto (`grade.minuto(h)`), e a hora
+identifica o horário nas tarefas e na guarda de um-por-horário. Até 15/09
+eram oito, densos de manhã (6, 7, 8), todos em `:07`.
+
+**O trabalho pesado é de madrugada.** Desde 15/09/2026 a criação roda só
+entre 1h e 6h — depois do último post, das 00:37 — e de dia a máquina apenas
+publica e avisa. Pesado é tudo o
 que abre navegador e segura a máquina por horas: roteiro, imagem, render,
 parecer do Gemini, conserto e métrica do TikTok. Cada rodada da madrugada faz,
 nesta ordem:
@@ -41,16 +47,18 @@ nesta ordem:
    veredito numerado por cena, para a postagem de dia só ler;
 3. termina a história que ficou pela metade;
 4. conserta os vídeos barrados;
-5. começa uma história nova só se ela couber antes das 6h, porque uma
-   história leva cerca de 4 horas.
+5. começa uma história nova só se ela couber antes das 6h: medido na
+   história 13 em 15/09/2026, uma história leva cerca de 2h15 (84 fotos e
+   seis renders), e o config reserva 150 minutos.
 
-Faltando menos de 90 minutos para fechar, a rodada não começa nada pesado.
+Faltando menos de 30 minutos para fechar, a rodada não começa nada pesado.
 Uma tarefa perdida de madrugada que o Windows tente rodar de manhã percebe
 que está fora da janela e sai sem fazer nada.
 
 **De dia, só o que evita ficar sem vídeo.** Pedido dele no mesmo dia: "a
-prioridade é não ficar sem vídeo". A criação também dispara nos horários da
-grade, 20 minutos depois de cada publicação, mas em modo dia:
+prioridade é não ficar sem vídeo". A criação também dispara 25 minutos depois
+de cada publicação (07:02, 10:02, 12:32, 16:02, 18:22, 21:02, 22:02, 23:02 e
+00:02), mas em modo dia:
 
 - sem vídeo barrado e com estoque aprovado para o resto do dia, sai sem
   fazer nada;
@@ -63,20 +71,20 @@ E na hora de publicar, se nenhum vídeo da fila estiver limpo, sai o primeiro
 que só tem o veto da IA contra ele, com aviso no Telegram. Vídeo mudo ou sem
 imagem não sai nem assim.
 
-**O TikTok não usa os oito.** Desde 13/09/2026 ele posta seis vezes por dia,
-às 6h, 10h, 12h, 15h, 17h e 20h. Nas 7h e 8h o vídeo vai só para o YouTube,
-e o aviso diz "fora da grade do TikTok" em vez de chamar isso de falha. O
-motivo foi medido nas duas contas: em todas as sessões com mais de seis
-posts, só os seis primeiros tiveram distribuição, e do sétimo em diante tudo
-ficou em 1 ou 2 views até uma pausa longa. É correlação, não causa provada;
-a coleta de métricas do TikTok é o que vai confirmar ou desmentir.
+**O TikTok posta em todos os horários.** De 13 a 15/09/2026 ele pulava 7h e
+8h, por uma medição em que do sétimo post do dia em diante a distribuição
+caía. Só que a fila avança com o YouTube: a parte publicada nesses horários
+nunca chegava ao TikTok, e a série lá ficava com buracos. Decisão dele em
+15/09 ("quero tapar esses buracos"): mesma parte nas duas plataformas em
+todo horário. A grade nova não tem horários colados; a métrica do TikTok diz
+se a distribuição aguenta os dez.
 
-### As 17 tarefas do Windows
+### As 25 tarefas do Windows
 
 | família | quantas | quando | o que faz |
 |---|---|---|---|
-| `Historias_auto_HH` | 15 | 23h a 5h e os horários da grade, `:20` | de madrugada: métrica, parecer, conserto e criação; de dia, só conserto de barrado e criação se faltar vídeo |
-| `NeuralFights_postar_HH` | 8 | nos oito horários, `:07` | publica um de cada canal, nos dois destinos |
+| `Historias_auto_HH` | 14 | 1h a 5h em `:20`, e 25 min depois de cada publicação | de madrugada: métrica, parecer, conserto e criação; de dia, só conserto de barrado e criação se faltar vídeo |
+| `NeuralFights_postar_HH` | 10 | nos dez horários da grade | publica um de cada canal, nos dois destinos |
 | `NeuralFights_bot_telegram` | 1 | a cada 10 min | lê comandos, avisa erro, roda o apurador |
 
 As tarefas acordam o PC se ele estiver suspenso, recuperam horário perdido
@@ -102,7 +110,7 @@ em 09/09/2026, quando dez tarefas recusavam iniciar com `0x800710E0`.
         v
    qualidade.liberado(video) ......... A PORTA: mecânica + veto lembrado da IA
         v
-   postar.py, às :07 ................. YouTube (API) e TikTok (navegador)
+   postar.py, nos horários da grade .. YouTube (API) e TikTok (navegador)
         v
    metricas .......................... reconcilia por título, busca views
 ```

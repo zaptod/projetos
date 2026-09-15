@@ -312,8 +312,8 @@ class AvisoDoTelegramTests(unittest.TestCase):
     def test_e_diz_o_proximo_horario(self):
         texto = self._avisar([self._historia()])
         self.assertIn("Próximo horário", texto)
-        m = _postar()
-        self.assertIn(f":{m.MINUTO_PADRAO:02d}", texto)
+        from builds import grade
+        self.assertTrue(any(h in texto for h in grade.horarios()), texto)
 
 
 
@@ -372,19 +372,17 @@ class QuedaDeEnergiaTests(unittest.TestCase):
 
 
 class TikTokSoNaGradeDeleTests(unittest.TestCase):
-    """Decisao de 13/09/2026: o TikTok posta seis vezes por dia, sem 7h e 8h.
+    """O TikTok segue a grade de `builds.grade`, e desde 15/09/2026 ela e a
+    mesma do YouTube: de 13 a 15/09 ele pulava 7h e 8h e a fila avancava sem
+    ele, deixando buracos na serie. Hora fora da grade continua fora."""
 
-    Medido nas duas contas: em todas as sessoes com mais de seis posts, so os
-    seis primeiros tiveram distribuicao. O YouTube continua com os oito.
-    """
-
-    def test_os_disparos_das_7h_e_8h_nao_postam_no_tiktok(self):
+    def test_o_tiktok_posta_em_toda_hora_da_grade_e_so_nela(self):
         from datetime import datetime
+        from builds import grade
         m = _postar()
-        self.assertFalse(m._tiktok_neste_horario(datetime(2026, 9, 13, 7, 7)))
-        self.assertFalse(m._tiktok_neste_horario(datetime(2026, 9, 13, 8, 7)))
-        self.assertTrue(m._tiktok_neste_horario(datetime(2026, 9, 13, 6, 7)))
-        self.assertTrue(m._tiktok_neste_horario(datetime(2026, 9, 13, 20, 7)))
+        for h in grade.HORAS:
+            self.assertTrue(m._tiktok_neste_horario(datetime(2026, 9, 15, h, 40)), h)
+        self.assertFalse(m._tiktok_neste_horario(datetime(2026, 9, 15, 8, 7)))
 
     def test_os_dois_canais_consultam_a_grade_do_tiktok(self):
         fonte = POSTAR.read_text(encoding="utf-8")

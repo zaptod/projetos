@@ -53,8 +53,9 @@ class Base(unittest.TestCase):
 
 
 class GradeTests(Base):
-    def test_a_grade_tem_os_oito_horarios(self):
-        self.assertEqual((6, 7, 8, 10, 12, 15, 17, 20),
+    def test_a_grade_tem_os_dez_horarios(self):
+        """15/09/2026: horas vagas das pessoas, com minuto proprio."""
+        self.assertEqual((0, 6, 9, 12, 15, 17, 20, 21, 22, 23),
                          self.postar.HORAS_PADRAO)
 
     def test_cada_horario_vira_uma_tarefa_com_nome_proprio(self):

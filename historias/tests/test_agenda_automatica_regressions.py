@@ -31,9 +31,10 @@ from contos.pipeline import agenda, tarefas                    # noqa: E402
 RAIZ = Path(__file__).resolve().parents[1]
 
 # O que ele pediu. Se alguém mexer no config sem querer, o teste conta.
-# De madrugada desde 13/09/2026, e nos horarios da grade so para nao ficar
-# sem video. `carregar` devolve ordenado.
-HORAS_PEDIDAS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 17, 20, 23]
+# De madrugada (01h-06h desde 15/09/2026) e, de dia, 25 min depois de cada
+# publicacao da grade das horas vagas, so para nao ficar sem video.
+# `carregar` devolve ordenado.
+HORAS_PEDIDAS = [0, 1, 2, 3, 4, 5, 7, 10, 12, 16, 18, 21, 22, 23]
 
 
 class ConfigTests(unittest.TestCase):
@@ -270,11 +271,21 @@ class JanelaPesadaTests(unittest.TestCase):
         from builds import grade
         config = agenda.carregar()
         janela = config["janela_pesada"]
-        self.assertEqual((23, 6), (janela["inicio"], janela["fim"]))
+        # 15/09/2026: o pesado comeca DEPOIS do ultimo post (00:37).
+        self.assertEqual((1, 6), (janela["inicio"], janela["fim"]))
         noite = [h for h in config["horas"] if agenda.na_janela(h, janela)]
         dia = [h for h in config["horas"] if not agenda.na_janela(h, janela)]
-        self.assertEqual([0, 1, 2, 3, 4, 5, 23], noite)
-        self.assertEqual(sorted(grade.HORAS), dia)
+        self.assertEqual([1, 2, 3, 4, 5], noite)
+        # Um disparo de dia 25 min depois de cada publicacao (a das 00:37 cai
+        # dentro da janela, na rodada da 01:20).
+        for h in grade.HORAS:
+            if h == 0:
+                continue
+            esperado = h * 60 + grade.minuto(h) + 25
+            hora = esperado // 60 % 24
+            self.assertIn(hora, dia, h)
+            self.assertEqual(f"{hora:02d}:{esperado % 60:02d}",
+                             agenda.horario_do_disparo(config, hora), h)
 
     def test_fora_da_janela_sai_antes_da_trava_e_nao_e_erro(self):
         """A tarefa perdida roda quando o PC volta, de manha: tem de sair."""
@@ -306,18 +317,22 @@ class ModoDiaTests(unittest.TestCase):
 
     def test_horarios_que_ainda_faltam_hoje(self):
         from datetime import datetime
-        self.assertEqual(8, agenda.horarios_restantes(
+        # Grade das horas vagas (15/09/2026): 00:37 ja passou as 5h; das 13h
+        # faltam 15:37, 17:57, 20:37, 21:37, 22:37 e 23:37.
+        self.assertEqual(9, agenda.horarios_restantes(
             datetime(2026, 9, 13, 5, 0)))
-        self.assertEqual(3, agenda.horarios_restantes(
+        self.assertEqual(6, agenda.horarios_restantes(
             datetime(2026, 9, 13, 13, 0)))
-        self.assertEqual(0, agenda.horarios_restantes(
+        self.assertEqual(3, agenda.horarios_restantes(
             datetime(2026, 9, 13, 21, 0)))
+        self.assertEqual(0, agenda.horarios_restantes(
+            datetime(2026, 9, 13, 23, 40)))
 
     def test_falta_video_quando_o_estoque_nao_cobre_o_dia(self):
         from datetime import datetime
         meio_dia = datetime(2026, 9, 13, 13, 0)
-        self.assertTrue(agenda.falta_video(3, meio_dia))
-        self.assertFalse(agenda.falta_video(4, meio_dia))
+        self.assertTrue(agenda.falta_video(6, meio_dia))
+        self.assertFalse(agenda.falta_video(7, meio_dia))
 
     def test_de_dia_sem_barrado_e_com_estoque_sai(self):
         from datetime import datetime

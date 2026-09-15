@@ -50,20 +50,25 @@ class GradeUnicaTests(unittest.TestCase):
     def test_a_meta_do_canal_e_um_por_horario(self):
         self.assertEqual(len(grade.HORAS), grade.META_DIARIA_POR_CANAL)
 
+    def test_a_grade_e_das_horas_vagas(self):
+        """15/09/2026, pedido dele: indo pro trabalho, cafe, almoco, lanche,
+        ida embora e a noite ociosa ate quase de madrugada."""
+        self.assertEqual(["00:37", "06:37", "09:37", "12:07", "15:37", "17:57",
+                          "20:37", "21:37", "22:37", "23:37"], grade.horarios())
+        self.assertEqual(10, grade.META_DIARIA_POR_CANAL)
+
     def test_a_meta_total_conta_os_dois_lugares(self):
-        """YouTube com 8 e TikTok com 6, nos dois canais: (8 + 6) x 2 = 28.
+        """Dez horarios, duas plataformas, dois canais: 10 x 2 x 2 = 40."""
+        self.assertEqual(40, grade.META_DIARIA_TOTAL)
 
-        Era 32 ate 13/09/2026, quando o TikTok passou a pular 7h e 8h.
-        """
-        self.assertEqual(28, grade.META_DIARIA_TOTAL)
-
-    def test_o_tiktok_pula_os_horarios_colados(self):
-        """Decisao de 13/09/2026: seis por dia, sem 7h e 8h."""
-        self.assertEqual((6, 10, 12, 15, 17, 20),
-                         grade.horas_da_plataforma("tiktok"))
+    def test_o_tiktok_posta_em_todos_os_horarios(self):
+        """Decisao dele em 15/09/2026 ("tapar esses buracos"): de 13 a 15/09 o
+        TikTok pulava 7h e 8h e a parte desses horarios nunca chegava la."""
+        self.assertEqual(grade.HORAS, grade.horas_da_plataforma("tiktok"))
         self.assertEqual(grade.HORAS, grade.horas_da_plataforma("youtube"))
-        self.assertFalse(grade.publica_em("tiktok", 7))
-        self.assertTrue(grade.publica_em("youtube", 7))
+        for h in grade.HORAS:
+            self.assertTrue(grade.publica_em("tiktok", h))
+        self.assertFalse(grade.publica_em("tiktok", 8))
 
     def test_o_tiktok_so_usa_horario_que_existe_na_grade(self):
         """Quem posta no TikTok e a rodada da grade: hora fora dela nunca roda."""
@@ -71,34 +76,33 @@ class GradeUnicaTests(unittest.TestCase):
             self.assertTrue(set(grade.horas_da_plataforma(plataforma))
                             <= set(grade.HORAS))
 
-    def test_o_tiktok_nao_deve_o_que_nao_e_dele(self):
-        cedo = datetime(2026, 9, 11, 9, 0)
-        self.assertEqual([6, 7, 8], grade.vencidos(cedo))
-        self.assertEqual([6], grade.vencidos(cedo, "tiktok"))
-
     def test_so_conta_o_horario_que_ja_venceu(self):
         cedo = datetime(2026, 9, 11, 9, 0)
-        self.assertEqual([6, 7, 8], grade.vencidos(cedo))
+        self.assertEqual([0, 6], grade.vencidos(cedo))
+        self.assertEqual([0, 6], grade.vencidos(cedo, "tiktok"))
 
     def test_antes_do_primeiro_horario_nao_ha_divida(self):
-        self.assertEqual([], grade.vencidos(datetime(2026, 9, 11, 5, 59)))
+        self.assertEqual([], grade.vencidos(datetime(2026, 9, 11, 0, 36)))
 
-    def test_o_minuto_conta_na_borda(self):
-        """06:07 e a hora; 06:06 ainda nao."""
-        self.assertEqual([], grade.vencidos(datetime(2026, 9, 11, 6, 6)))
-        self.assertEqual([6], grade.vencidos(datetime(2026, 9, 11, 6, 7)))
+    def test_o_minuto_conta_na_borda_e_e_de_cada_hora(self):
+        """06:37 e a hora; 06:36 ainda nao. E o almoco e 12:07, nao 12:37."""
+        self.assertEqual([0], grade.vencidos(datetime(2026, 9, 11, 6, 36)))
+        self.assertEqual([0, 6], grade.vencidos(datetime(2026, 9, 11, 6, 37)))
+        self.assertEqual([0, 6, 9], grade.vencidos(datetime(2026, 9, 11, 12, 6)))
+        self.assertEqual([0, 6, 9, 12], grade.vencidos(datetime(2026, 9, 11, 12, 7)))
 
     def test_o_proximo_vira_o_dia(self):
-        self.assertEqual("06:07", grade.proximo(datetime(2026, 9, 11, 23, 0))[:5])
-        self.assertIn("amanha", grade.proximo(datetime(2026, 9, 11, 23, 0)))
+        self.assertEqual("00:37", grade.proximo(datetime(2026, 9, 11, 23, 50))[:5])
+        self.assertIn("amanha", grade.proximo(datetime(2026, 9, 11, 23, 50)))
         self.assertEqual("12:07", grade.proximo(datetime(2026, 9, 11, 10, 30)))
+        self.assertEqual("06:37", grade.proximo(datetime(2026, 9, 11, 0, 37)))
 
 
 class MetasTests(unittest.TestCase):
 
     def test_a_divida_e_contra_o_que_venceu(self):
         cedo = auditoria.metas(datetime(2026, 9, 11, 9, 0))
-        self.assertEqual(3, cedo["horarios_vencidos"])
+        self.assertEqual(2, cedo["horarios_vencidos"])
         self.assertEqual(len(grade.HORAS), cedo["horarios_do_dia"])
 
     def test_todo_canal_e_toda_plataforma_entram_na_conta(self):

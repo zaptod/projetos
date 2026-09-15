@@ -100,12 +100,19 @@ def _schtasks(argumentos: list) -> "_Saida":
                                  creationflags=NO_WINDOW))
 
 
-def instalar(horas: list) -> list[dict]:
-    """Cria (ou substitui) uma tarefa diaria por hora. Devolve o que deu."""
+def instalar(horas: list, minutos: dict | None = None) -> list[dict]:
+    """Cria (ou substitui) uma tarefa diaria por hora. Devolve o que deu.
+
+    `minutos` ({hora: minuto}) e o minuto de cada disparo; sem ele, `:20`.
+    Desde 15/09/2026 a rodada de dia cai 25 min depois de cada publicacao, e
+    a grade de publicacao tem minuto proprio por horario.
+    """
     lancador = escrever_lancador()
+    minutos = minutos or {}
     saida = []
     for hora in horas:
         nome = nome_da_tarefa(hora)
+        minuto = int(minutos.get(int(hora), MINUTO))
         proc = _schtasks(["/Create", "/TN", nome,
                           "/TR", f'"{lancador}"',
                           # POSTAR VEM PRIMEIRO, GERAR DEPOIS. Pedido dele
@@ -116,9 +123,9 @@ def instalar(horas: list) -> list[dict]:
                           # chegava — as duas disputando os mesmos navegadores.
                           # Agora a postagem sai as :07 com a maquina livre, e
                           # a geracao comeca as :20, ja sabendo o que saiu.
-                          "/SC", "DAILY", "/ST", f"{int(hora):02d}:{MINUTO:02d}",
+                          "/SC", "DAILY", "/ST", f"{int(hora):02d}:{minuto:02d}",
                           "/RL", "LIMITED", "/F"])
-        ficha = {"hora": int(hora), "tarefa": nome,
+        ficha = {"hora": int(hora), "minuto": minuto, "tarefa": nome,
                  "ok": proc.returncode == 0,
                  "mensagem": (proc.stdout or proc.stderr or "").strip()}
         if ficha["ok"]:

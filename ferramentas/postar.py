@@ -36,15 +36,14 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # de proposito: criar e publicar no mesmo ritmo e o que mantem o estoque
 # estavel em vez de crescer sem sair.
 #
-# O `:07` evita o minuto cheio, em que todo agendador do mundo dispara — e
-# tambem afasta a postagem da criacao, que roda em ponto e usa as mesmas
-# contas de navegador.
-# A grade mora em `builds.grade`: a mesma tupla estava escrita aqui e em
-# `remoto/relatorios.py`, e duas copias bastam para o relatorio dizer que
-# bateu a meta enquanto a postagem trabalha com outro horario.
+# A grade mora em `builds.grade`, com o minuto de cada horario (desde
+# 15/09/2026 cada hora tem o seu: 06:37, 12:07, 17:57...): a mesma tupla
+# estava escrita aqui e em `remoto/relatorios.py`, e duas copias bastam para
+# o relatorio dizer que bateu a meta enquanto a postagem trabalha com outro
+# horario.
 HORAS_PADRAO = grade.HORAS
 MINUTO_PADRAO = grade.MINUTO
-HORA_PADRAO = "17:07"        # compatibilidade com quem passa --hora
+HORA_PADRAO = grade.horario(17)   # compatibilidade com quem passa --hora
 
 
 def _linha(texto: str = "") -> None:
@@ -618,9 +617,11 @@ def _video_por_id(video_id: str):
 def _tiktok_neste_horario(agora=None) -> bool:
     """Este disparo e horario de TikTok?
 
-    Desde 13/09/2026 o TikTok segue uma grade propria, mais curta que a do
-    YouTube (`builds.grade.HORAS_POR_PLATAFORMA`): seis por dia, sem 7h e 8h.
-    A hora e a do RELOGIO, como na guarda de um-por-horario — tarefa atrasada
+    A grade do TikTok mora em `builds.grade.HORAS_POR_PLATAFORMA`. De 13 a
+    15/09/2026 ela era mais curta que a do YouTube (sem 7h e 8h), e a fila
+    avancava sem ele: a parte desses horarios nunca chegava ao TikTok. Desde
+    15/09 ele posta em todos, por decisao dele ("tapar esses buracos"). A
+    hora e a do RELOGIO, como na guarda de um-por-horario — tarefa atrasada
     vale pela hora em que rodou.
     """
     from datetime import datetime
@@ -1008,8 +1009,7 @@ def instalar_grade(horas=None) -> list[dict]:
     # postagem a mais as 17:07 alem da tarefa `_17` — duas no mesmo horario.
     subprocess.run(["schtasks", "/Delete", "/TN", TAREFA, "/F"],
                    capture_output=True, timeout=60, creationflags=NO_WINDOW)
-    return [instalar(f"{int(h):02d}:{MINUTO_PADRAO:02d}", nome=nome_da_tarefa(h))
-            for h in horas]
+    return [instalar(grade.horario(h), nome=nome_da_tarefa(h)) for h in horas]
 
 
 def instalar(hora: str = HORA_PADRAO, *, nome: str | None = None) -> dict:
@@ -1160,13 +1160,7 @@ def _estado_da_plataforma(estado: str) -> str:
 
 
 def _proximo_horario(agora=None) -> str:
-    from datetime import datetime
-    agora = agora or datetime.now()
-    minuto = agora.hour * 60 + agora.minute
-    for h in HORAS_PADRAO:
-        if h * 60 + MINUTO_PADRAO > minuto:
-            return f"{h:02d}:{MINUTO_PADRAO:02d}"
-    return f"{HORAS_PADRAO[0]:02d}:{MINUTO_PADRAO:02d} (amanhã)"
+    return grade.proximo(agora).replace("(amanha)", "(amanhã)")
 
 
 def avisar(resultados: list) -> None:

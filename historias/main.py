@@ -254,10 +254,10 @@ def cmd_auto(args, pipeline) -> int:
     horas = args.horas or config["horas"]
 
     if args.instalar:
-        resultados = tarefas.instalar(horas)
+        resultados = tarefas.instalar(horas, config.get("minutos"))
         for r in resultados:
             marca = "ok " if r["ok"] else "FALHOU"
-            print(f"  [{marca}] {r['tarefa']}  {r['hora']:02d}:00  "
+            print(f"  [{marca}] {r['tarefa']}  {r['hora']:02d}:{r.get('minuto', 20):02d}  "
                   f"{r['mensagem'][:90]}")
         if any(not r["ok"] for r in resultados):
             print("\nAlguma tarefa nao entrou. O schtasks costuma precisar de "
@@ -284,7 +284,7 @@ def cmd_auto(args, pipeline) -> int:
         for t in instaladas:
             print(f"  {t['tarefa']:<22} proximo: {t['proximo']:<22} "
                   f"{t['situacao']}")
-        print(f"\nagenda: {', '.join(f'{h:02d}:00' for h in config['horas'])}"
+        print(f"\nagenda: {', '.join(agenda.horario_do_disparo(config, h) for h in config['horas'])}"
               f"  ({'ativa' if config.get('ativo', True) else 'DESLIGADA'})")
         pendentes = agenda.incompletas()
         for p in pendentes:

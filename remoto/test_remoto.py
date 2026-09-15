@@ -790,8 +790,8 @@ class ConteudoDosRelatoriosTests(BaseTemp):
 
     def test_a_meta_e_a_grade_inteira_e_nao_um_por_dia(self):
         """Correcao dele em 09/09: 'quero um video em todos esses horarios'."""
-        self.assertEqual(8, relatorios.META_DIARIA_POR_CANAL)
-        self.assertEqual((6, 7, 8, 10, 12, 15, 17, 20),
+        self.assertEqual(10, relatorios.META_DIARIA_POR_CANAL)
+        self.assertEqual((0, 6, 9, 12, 15, 17, 20, 21, 22, 23),
                          relatorios.HORARIOS_DA_GRADE)
 
     def test_metas_acusa_video_que_NAO_esta_publico(self):
