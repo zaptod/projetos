@@ -106,6 +106,25 @@ def vencidos(agora: datetime | None = None,
     return [h for h in horas if h * 60 + minuto(h) <= agora_min]
 
 
+def slot(agora: datetime | None = None) -> int:
+    """A hora da grade a que ESTE momento pertence.
+
+    Uma rodada tem UM horario, e nao um por minuto em que ela olha o relogio.
+    Em 15/09/2026 o disparo das 17:57 publicou a historia as 17:59 (hora 17,
+    dentro da grade) e o build as 18:01 — e a hora 18 nao esta na grade, entao
+    o TikTok do build foi cortado com "fora da grade do TikTok neste horario".
+    A mesma rodada, dois veredictos. E acontecia TODO DIA nesse horario: :57
+    mais os ~4 min de upload cruzam a hora.
+
+    O horario e o ultimo que ja venceu: quem roda as 18:01 pertence ao das
+    17:57, e a tarefa recuperada que so rodou as 19:30 tambem — ela e aquele
+    disparo, atrasado. Antes do primeiro horario do dia (00:37) o momento
+    ainda pertence ao ultimo de ontem.
+    """
+    passados = vencidos(agora or datetime.now())
+    return passados[-1] if passados else HORAS[-1]
+
+
 def proximo(agora: datetime | None = None) -> str:
     """O proximo horario da grade, com a marca de amanha quando virou o dia."""
     agora = agora or datetime.now()
@@ -120,4 +139,4 @@ __all__ = ["GRADE", "HORAS", "MINUTOS", "MINUTO", "META_DIARIA_POR_CANAL",
            "META_DIARIA_TOTAL", "META_DIARIA_POR_PLATAFORMA",
            "HORAS_POR_PLATAFORMA", "CANAIS", "PLATAFORMAS", "minuto",
            "horario", "horarios", "horas_da_plataforma", "publica_em",
-           "vencidos", "proximo"]
+           "vencidos", "proximo", "slot"]

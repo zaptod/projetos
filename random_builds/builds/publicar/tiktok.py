@@ -325,7 +325,15 @@ def _janela_de_login(perfil: Path) -> bool:
         while time.time() < limite:
             time.sleep(2)
             try:
-                if "login" not in pagina(ctx).url:
+                # O COOKIE VEM ANTES DA URL, e e o conserto de 15/09/2026. A
+                # conta `zombie_surviv0rs` entrou de verdade — o titulo da
+                # janela ja dizia "zombie_surviv0rs (@zombie_surviv0rs)" — e
+                # mesmo assim o laco imprimiu "tempo esgotado sem login" e o
+                # cadastro ficou sem identidade. `pagina(ctx)` e a PRIMEIRA
+                # aba; o login acontecendo em outra deixa a primeira parada em
+                # /login para sempre. O cookie e do contexto inteiro: nao
+                # depende de em qual aba ele entrou.
+                if _tem_sessao(ctx) or "login" not in pagina(ctx).url:
                     print(f"[tiktok] sessão iniciada; perfil salvo em {perfil}")
                     time.sleep(3)
                     return False
@@ -333,6 +341,27 @@ def _janela_de_login(perfil: Path) -> bool:
                 return False
         print("[tiktok] tempo esgotado sem login.")
         return False
+
+
+# Os cookies que o TikTok grava quando a sessao vale. Basta um: `sessionid` e
+# o principal, e `sid_tt`/`sessionid_ss` acompanham conforme o dominio.
+COOKIES_DE_SESSAO = ("sessionid", "sessionid_ss", "sid_tt")
+
+
+def _tem_sessao(ctx) -> bool:
+    """Ha sessao de TikTok guardada neste contexto? Nunca levanta.
+
+    NAO serve para dizer se a sessao ainda e VALIDA (cookie expirado continua
+    no disco) — por isso quem pergunta "ja esta logado?" no comeco da janela
+    continua olhando o redirecionamento, que so acontece com sessao viva.
+    Aqui a pergunta e outra: "ele acabou de entrar?", e ai o cookie novo e a
+    prova certa, venha de qual aba vier.
+    """
+    try:
+        nomes = {c.get("name") for c in ctx.cookies("https://www.tiktok.com")}
+    except Exception:                                          # noqa: BLE001
+        return False
+    return bool(set(COOKIES_DE_SESSAO) & nomes)
 
 
 def publicar(video, *, postar: bool | None = None, config: dict | None = None,

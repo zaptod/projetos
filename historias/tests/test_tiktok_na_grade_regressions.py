@@ -376,13 +376,46 @@ class TikTokSoNaGradeDeleTests(unittest.TestCase):
     mesma do YouTube: de 13 a 15/09 ele pulava 7h e 8h e a fila avancava sem
     ele, deixando buracos na serie. Hora fora da grade continua fora."""
 
-    def test_o_tiktok_posta_em_toda_hora_da_grade_e_so_nela(self):
+    def test_o_tiktok_posta_em_toda_hora_da_grade(self):
         from datetime import datetime
         from builds import grade
         m = _postar()
         for h in grade.HORAS:
-            self.assertTrue(m._tiktok_neste_horario(datetime(2026, 9, 15, h, 40)), h)
-        self.assertFalse(m._tiktok_neste_horario(datetime(2026, 9, 15, 8, 7)))
+            momento = datetime(2026, 9, 15, h, grade.minuto(h))
+            self.assertTrue(m._tiktok_neste_horario(momento), h)
+
+    def test_upload_que_cruza_a_hora_NAO_perde_o_tiktok(self):
+        """15/09/2026, 18:01: o disparo das 17:57 publicou a historia as 17:59
+        e o build as 18:01 — e a hora 18 nao esta na grade. O build saiu com
+        "fora da grade do TikTok neste horario", na MESMA rodada em que a
+        historia foi aos dois destinos. Todo dia, porque :57 mais os ~4 min de
+        upload cruzam a hora."""
+        from datetime import datetime
+        from builds import grade
+        m = _postar()
+        self.assertEqual(17, grade.slot(datetime(2026, 9, 15, 18, 1)))
+        self.assertTrue(m._tiktok_neste_horario(datetime(2026, 9, 15, 18, 1)))
+        # A tarefa recuperada tarde continua sendo AQUELE disparo.
+        self.assertEqual(17, grade.slot(datetime(2026, 9, 15, 19, 30)))
+        # Antes do primeiro horario do dia, o momento e do ultimo de ontem.
+        self.assertEqual(grade.HORAS[-1], grade.slot(datetime(2026, 9, 15, 0, 5)))
+
+    def test_a_grade_do_TIKTOK_e_quem_manda_se_ela_encolher(self):
+        """Hoje o TikTok posta em todos, mas o mecanismo tem que continuar
+        valendo: se a grade dele voltar a ser menor, o horario de fora sai."""
+        from datetime import datetime
+        from builds import grade
+        m = _postar()
+        original = grade.HORAS_POR_PLATAFORMA["tiktok"]
+        grade.HORAS_POR_PLATAFORMA["tiktok"] = tuple(
+            h for h in grade.HORAS if h != 15)
+        try:
+            self.assertFalse(m._tiktok_neste_horario(
+                datetime(2026, 9, 15, 15, 40)))
+            self.assertTrue(m._tiktok_neste_horario(
+                datetime(2026, 9, 15, 17, 58)))
+        finally:
+            grade.HORAS_POR_PLATAFORMA["tiktok"] = original
 
     def test_os_dois_canais_consultam_a_grade_do_tiktok(self):
         fonte = POSTAR.read_text(encoding="utf-8")

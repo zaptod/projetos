@@ -620,13 +620,18 @@ def _tiktok_neste_horario(agora=None) -> bool:
     A grade do TikTok mora em `builds.grade.HORAS_POR_PLATAFORMA`. De 13 a
     15/09/2026 ela era mais curta que a do YouTube (sem 7h e 8h), e a fila
     avancava sem ele: a parte desses horarios nunca chegava ao TikTok. Desde
-    15/09 ele posta em todos, por decisao dele ("tapar esses buracos"). A
-    hora e a do RELOGIO, como na guarda de um-por-horario — tarefa atrasada
-    vale pela hora em que rodou.
+    15/09 ele posta em todos, por decisao dele ("tapar esses buracos").
+
+    O HORARIO E O DA GRADE, e nao a hora do relogio — conserto de 15/09/2026,
+    18:01. O disparo das 17:57 publicou a historia as 17:59 (hora 17) e o
+    build as 18:01, e a hora 18 nao esta na grade: o build perdeu o TikTok com
+    "fora da grade do TikTok neste horario". Na mesma rodada, dois veredictos.
+    E nao foi acaso deste dia: :57 mais os ~4 min de upload cruzam a hora
+    todo dia. `grade.slot` diz a que horario a rodada pertence.
     """
     from datetime import datetime
     agora = agora or datetime.now()
-    return grade.publica_em("tiktok", agora.hour)
+    return grade.publica_em("tiktok", grade.slot(agora))
 
 
 def _tiktok_das_historias(alvo) -> str:
