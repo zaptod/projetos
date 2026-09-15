@@ -150,6 +150,37 @@ class PromptSemPixarTests(unittest.TestCase):
         self.assertIn("one continuous photograph", prompt)
         self.assertNotIn("subject centered", prompt)
 
+    def test_cena_de_outro_personagem_nao_ganha_o_protagonista(self):
+        """historia_00012, 15/09/2026: o Beto saia de pele clara porque a cena
+        dele recebia a descricao da Rosa no fim."""
+        cena = {"imagem": "Beto Bomba | Black man, early 30s, white tank top, "
+                          "standing in a dim storage room"}
+        prompt = fila.prompt_da_cena(cena, {"estilo": "photo"},
+                                     "Rosa Coxinha | Brown-skinned Latina, late 20s")
+        self.assertNotIn("Brown-skinned Latina", prompt)
+        self.assertIn("Black man", prompt)
+
+    def test_cena_que_descreve_alguem_do_elenco_sem_barra_nao_ganha_o_protagonista(self):
+        elenco = ("Suelen Unha de Gel | Light-skinned Latina, 30s, platinum blonde hair; "
+                  "Beto Bomba | Black man, early 30s, short buzz cut, thick completely "
+                  "straight eyebrows, wearing a sleeveless white tank top")
+        cena = {"imagem": "Black man, early 30s, short buzz cut, thick completely "
+                          "straight eyebrows, leaning against a rusty shelf"}
+        prompt = fila.prompt_da_cena(cena, {"estilo": "photo"},
+                                     "Brown-skinned Latina, late 20s, curly black hair",
+                                     elenco=elenco)
+        self.assertNotIn("Brown-skinned Latina", prompt)
+
+    def test_o_worker_passa_o_elenco(self):
+        self.assertIn('elenco=str(roteiro.get("elenco")',
+                      inspect.getsource(worker.gerar))
+
+    def test_cena_sem_personagem_descrito_continua_com_o_reforco(self):
+        prompt = fila.prompt_da_cena({"imagem": "a hand closes the door"},
+                                     {"estilo": "photo"},
+                                     "Rosa Coxinha | Brown-skinned Latina, late 20s")
+        self.assertIn("Brown-skinned Latina", prompt)
+
     def test_protagonista_com_barra_nao_sai_repetido(self):
         cena = {"imagem": "Tiago | a man with a red scarf, opening a door"}
         prompt = fila.prompt_da_cena(cena, {"estilo": "photo"},

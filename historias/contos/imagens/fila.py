@@ -166,8 +166,21 @@ def _sem_barra(texto) -> str:
     return " ".join(re.sub(r"\s*\|\s*", ", ", str(texto or "")).split())
 
 
+def _descreve_alguem_do_elenco(texto: str, elenco: str) -> bool:
+    """A cena ja traz a descricao fisica de alguem do elenco ("Nome | descricao;
+    ...")? Compara o comeco de cada descricao, sem o nome."""
+    baixo = " ".join(str(texto or "").lower().split())
+    for pessoa in str(elenco or "").split(";"):
+        descricao = pessoa.split("|", 1)[-1]
+        nucleo = " ".join(descricao.lower().split())[:30].strip(" ,.")
+        if len(nucleo) >= 15 and nucleo in baixo:
+            return True
+    return False
+
+
 def prompt_da_cena(cena: dict, config: dict | None = None,
-                   protagonista: str = "", estilo: str = "") -> str:
+                   protagonista: str = "", estilo: str = "",
+                   elenco: str = "") -> str:
     """O prompt que vai para o PicassoIA: cena + estilo + proibicoes.
 
     O estilo entra em TODAS as cenas: e ele que faz doze imagens parecerem do
@@ -187,7 +200,16 @@ def prompt_da_cena(cena: dict, config: dict | None = None,
     # personagens e desenha em dois paineis (historia_00012 p01_cena_03,
     # 14/09/2026). A virgula diz a mesma coisa sem sugerir divisao.
     partes = [_sem_barra(cena.get("imagem")).strip().rstrip(".")]
-    if protagonista and config.get("reforco_consistencia", True):
+    # CENA QUE JA DESCREVE UM PERSONAGEM ("Nome | descricao") NAO GANHA A
+    # DESCRICAO DO PROTAGONISTA. Em 15/09/2026, na historia_00012, as cenas so
+    # do Beto ("Black man...") recebiam a da Rosa no fim ("Brown-skinned
+    # Latina..."), o gerador misturava as duas e o Beto saia de pele clara; o
+    # Gemini tomou esse Beto como o certo e passou a vetar as cenas CERTAS.
+    # O mesmo vale para a cena que descreve alguem do elenco SEM a barra
+    # ("Black man, early 30s..."), que e como o roteiro escreve nas partes 4 a 6.
+    ja_descreve = ("|" in str(cena.get("imagem") or "")
+                   or _descreve_alguem_do_elenco(cena.get("imagem"), elenco))
+    if protagonista and not ja_descreve and config.get("reforco_consistencia", True):
         # Mesma troca da barra que a cena: senao a descricao, que o roteiro
         # tambem escreve com "|", nunca casaria e sairia repetida.
         alvo = _sem_barra(protagonista).strip().rstrip(".")

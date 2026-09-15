@@ -233,7 +233,9 @@ def gerar(historia_id: str, *, limite: int | None = None,
                 cena = next(c for c in bloco["cenas"] if c["n"] == n)
                 prompt = fila.prompt_da_cena(cena, config, protagonista,
                                              estilo=fila.estilo_do_roteiro(
-                                                 roteiro))
+                                                 roteiro),
+                                             elenco=str(roteiro.get("elenco")
+                                                        or ""))
                 rotulo = f"p{numero_parte:02d}_cena_{n:02d}"
                 if i:
                     time.sleep(float(ajustes.get("min_interval", 8)))
