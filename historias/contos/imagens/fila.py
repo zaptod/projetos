@@ -147,7 +147,14 @@ COMPOSICAO = {
     # "one continuous photograph": em 14/09/2026 uma cena com DUAS pessoas,
     # pedida com "subject centered with room around", saiu em diptico (cada
     # uma no seu painel). O enquadramento fala de uma foto so.
-    "1:1": "square composition, one continuous photograph of a single scene",
+    # SEM A PALAVRA "composition" (15/09/2026 00:45): com "square composition"
+    # o gerador desenhou LINHAS DE GRADE (os tercos) por cima da foto na
+    # historia_00012 p06_cena_09 e p06_cena_10 — o "grade de paineis" que o
+    # parecer veta. "everyone fully clothed": a p06_cena_11 saiu de costas nuas
+    # so com o avental. O `imagens.json` pode trocar isto sem reiniciar
+    # (`composicao` por proporcao).
+    "1:1": "square photo, one continuous photograph of a single scene, "
+           "everyone fully clothed",
     "4:3": "horizontal composition", "3:2": "horizontal composition",
     "16:9": "horizontal composition",
 }
@@ -187,7 +194,9 @@ def prompt_da_cena(cena: dict, config: dict | None = None,
         if alvo and alvo.lower() not in partes[0].lower():
             partes.append(alvo)
     partes.append(str(estilo or config.get("estilo") or "").strip().rstrip("."))
-    composicao = COMPOSICAO.get(str(config.get("aspect") or "9:16"))
+    aspecto = str(config.get("aspect") or "9:16")
+    composicao = ((config.get("composicao") or {}).get(aspecto)
+                  or COMPOSICAO.get(aspecto))
     if composicao and composicao.lower() not in ", ".join(partes).lower():
         partes.append(composicao)
     negativo = str(config.get("negativo") or "").strip()

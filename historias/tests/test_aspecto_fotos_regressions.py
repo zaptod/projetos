@@ -120,9 +120,24 @@ class PromptSemPixarTests(unittest.TestCase):
         cena = {"imagem": "a woman holding a pink pressure cooker"}
         quadrado = fila.prompt_da_cena(cena, {"estilo": "photo", "aspect": "1:1"})
         retrato = fila.prompt_da_cena(cena, {"estilo": "photo", "aspect": "9:16"})
-        self.assertIn("square composition", quadrado)
+        self.assertIn("square photo", quadrado)
         self.assertNotIn("vertical composition", quadrado)
         self.assertIn("vertical composition", retrato)
+
+    def test_o_quadrado_nao_pede_composition(self):
+        """15/09/2026: 'square composition' desenhava a grade dos tercos."""
+        texto = fila.COMPOSICAO["1:1"].lower()
+        self.assertNotIn("composition", texto)
+        self.assertIn("fully clothed", texto)
+        config = fila.carregar_config()
+        self.assertNotIn("composition", config["composicao"]["1:1"].lower())
+
+    def test_o_config_troca_o_enquadramento_sem_reiniciar(self):
+        cena = {"imagem": "a woman opens a door"}
+        prompt = fila.prompt_da_cena(cena, {"estilo": "photo", "aspect": "1:1",
+                                            "composicao": {"1:1": "wide square shot"}})
+        self.assertIn("wide square shot", prompt)
+        self.assertNotIn("square photo", prompt)
 
     def test_a_barra_do_personagem_vira_virgula(self):
         """"A | B" era lido como folha de personagens e saia em diptico
