@@ -114,16 +114,22 @@ class LigadoNoFluxoTests(unittest.TestCase):
         self.assertIn('ajustes.get("aprimorar_prompt"',
                       inspect.getsource(PicassoClient._aprimorar))
 
-    def test_o_canal_de_historias_esta_com_ele_ligado(self):
+    def test_o_canal_de_historias_esta_com_ele_desligado(self):
+        """Desligado em 14/09/2026 23:55: na historia_00012 ele trocou a ACAO
+        de 18 de 21 cenas por um retrato do personagem, e numa cena reescrita
+        depois de recusa escreveu um retrato sexualizado que saiu em diptico.
+        Religar exige uma guarda que confira se a acao do roteiro sobreviveu —
+        e o comentario no imagens.json tem que continuar explicando por que."""
         import json
         from pathlib import Path
         raiz = Path(__file__).resolve().parents[2]
         config = json.loads(
             (raiz / "historias" / "config" / "imagens.json")
             .read_text(encoding="utf-8-sig"))
-        self.assertTrue(config.get("aprimorar_prompt"))
+        self.assertFalse(config.get("aprimorar_prompt"))
+        self.assertIn("DESLIGADO", config.get("_comment_aprimorador_desligado", ""))
         self.assertTrue(config.get("negativo"),
-                        "sem `negativo` nao ha o que recolocar")
+                        "sem `negativo` o prompt cru perde as proibicoes")
 
 
 if __name__ == "__main__":
