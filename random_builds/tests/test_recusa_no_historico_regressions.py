@@ -175,5 +175,40 @@ class VigiaDoHistoricoTests(unittest.TestCase):
         self.assertTrue(prova["comprovada"])
 
 
+class AprimoradorDesabilitadoTests(unittest.TestCase):
+    """Botao do aprimorador desabilitado nao derruba a cena (14/09 20:21 e 23:46)."""
+
+    def _cliente(self, botao):
+        cliente = object.__new__(pc.PicassoClient)
+        cliente.ajustes = {"aprimorar_prompt": True, "aprimorar_espera_botao": 0}
+        cliente.page = object()
+        cliente.rng = None
+        original = pc.selectors.resolver
+        pc.selectors.resolver = lambda *a, **k: botao
+        self.addCleanup(setattr, pc.selectors, "resolver", original)
+        return cliente
+
+    def test_desabilitado_segue_com_o_original_sem_clicar(self):
+        class Botao:
+            clicou = False
+            def is_disabled(self):
+                return True
+            def click(self, **_k):
+                Botao.clicou = True
+                raise AssertionError("nao era para clicar")
+        cliente = self._cliente(Botao())
+        self.assertEqual("prompt original", cliente._aprimorar(None, None, "prompt original"))
+        self.assertFalse(Botao.clicou)
+
+    def test_clique_que_estoura_segue_com_o_original(self):
+        class Botao:
+            def is_disabled(self):
+                return False
+            def click(self, **_k):
+                raise TimeoutError("Locator.click: Timeout 30000ms exceeded.")
+        cliente = self._cliente(Botao())
+        self.assertEqual("prompt original", cliente._aprimorar(None, None, "prompt original"))
+
+
 if __name__ == "__main__":
     unittest.main()

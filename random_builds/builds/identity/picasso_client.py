@@ -508,6 +508,20 @@ class PicassoClient:
             "o modal de login do Picasso nao fechou depois de preencher as "
             "credenciais; provavel senha rejeitada ou desafio anti-bot.")
 
+    @staticmethod
+    def _esperar_habilitado(botao, segundos: float) -> bool:
+        """O botao fica habilitado dentro de `segundos`? Nunca levanta."""
+        limite = time.monotonic() + max(0.0, float(segundos))
+        while True:
+            try:
+                if not botao.is_disabled():
+                    return True
+            except Exception:                                  # noqa: BLE001
+                return False
+            if time.monotonic() >= limite:
+                return False
+            time.sleep(0.5)
+
     def _aprimorar(self, campo, botao_gerar, original: str) -> str:
         """Roda o Aprimorador de Prompt e devolve o texto que valeu.
 
@@ -528,10 +542,24 @@ class PicassoClient:
             print("[picasso] aprimorador de prompt nao encontrado; "
                   "seguindo com o prompt original")
             return original
-        botao.click()
-        pausa_humana(self.rng, 1.0, 2.0)
-        if self._resolver_dialogo_de_auth():
-            botao.click()
+        # BOTAO DESABILITADO NAO PODE DERRUBAR A CENA (14/09/2026, 20:21 e
+        # 23:46, as duas na primeira cena depois de a pagina abrir): o
+        # aprimorador ficava `disabled`, o `click` do Playwright esperava 30 s
+        # e levantava TimeoutError, e a cena inteira saia como erro tecnico.
+        espera = float(self.ajustes.get("aprimorar_espera_botao", 8))
+        if not self._esperar_habilitado(botao, espera):
+            print("[picasso] aprimorador de prompt desabilitado; "
+                  "seguindo com o prompt original")
+            return original
+        try:
+            botao.click(timeout=5000)
+            pausa_humana(self.rng, 1.0, 2.0)
+            if self._resolver_dialogo_de_auth():
+                botao.click(timeout=5000)
+        except Exception as exc:                               # noqa: BLE001
+            print(f"[picasso] o aprimorador nao aceitou o clique "
+                  f"({type(exc).__name__}); seguindo com o prompt original")
+            return original
 
         rotulo = self.page.get_by_text("NOVO PROMPT", exact=False)
         try:
