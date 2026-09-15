@@ -144,10 +144,19 @@ def aspecto_da_historia(historia_id: str) -> str:
 COMPOSICAO = {
     "9:16": "vertical composition", "3:4": "vertical composition",
     "2:3": "vertical composition",
-    "1:1": "square composition, subject centered with room around",
+    # "one continuous photograph": em 14/09/2026 uma cena com DUAS pessoas,
+    # pedida com "subject centered with room around", saiu em diptico (cada
+    # uma no seu painel). O enquadramento fala de uma foto so.
+    "1:1": "square composition, one continuous photograph of a single scene",
     "4:3": "horizontal composition", "3:2": "horizontal composition",
     "16:9": "horizontal composition",
 }
+
+
+def _sem_barra(texto) -> str:
+    """ "Nome | descricao" -> "Nome, descricao", com os espacos em ordem."""
+    import re
+    return " ".join(re.sub(r"\s*\|\s*", ", ", str(texto or "")).split())
 
 
 def prompt_da_cena(cena: dict, config: dict | None = None,
@@ -166,9 +175,15 @@ def prompt_da_cena(cena: dict, config: dict | None = None,
     dois. O molde e quem sabe qual dos dois a historia e.
     """
     config = config or carregar_config()
-    partes = [str(cena.get("imagem") or "").strip().rstrip(".")]
+    # O roteiro escreve cada personagem como "Nome | descricao". Com DUAS
+    # pessoas na cena a barra vira "A | B", que o gerador le como folha de
+    # personagens e desenha em dois paineis (historia_00012 p01_cena_03,
+    # 14/09/2026). A virgula diz a mesma coisa sem sugerir divisao.
+    partes = [_sem_barra(cena.get("imagem")).strip().rstrip(".")]
     if protagonista and config.get("reforco_consistencia", True):
-        alvo = protagonista.strip().rstrip(".")
+        # Mesma troca da barra que a cena: senao a descricao, que o roteiro
+        # tambem escreve com "|", nunca casaria e sairia repetida.
+        alvo = _sem_barra(protagonista).strip().rstrip(".")
         if alvo and alvo.lower() not in partes[0].lower():
             partes.append(alvo)
     partes.append(str(estilo or config.get("estilo") or "").strip().rstrip("."))

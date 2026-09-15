@@ -124,6 +124,23 @@ class PromptSemPixarTests(unittest.TestCase):
         self.assertNotIn("vertical composition", quadrado)
         self.assertIn("vertical composition", retrato)
 
+    def test_a_barra_do_personagem_vira_virgula(self):
+        """"A | B" era lido como folha de personagens e saia em diptico
+        (historia_00012 p01_cena_03, 14/09/2026 23:53)."""
+        cena = {"imagem": "Suelen | blonde woman in pink, pointing at Rosa | "
+                          "curly-haired woman in a yellow apron"}
+        prompt = fila.prompt_da_cena(cena, {"estilo": "photo", "aspect": "1:1"})
+        self.assertNotIn("|", prompt)
+        self.assertIn("Suelen, blonde woman in pink", prompt)
+        self.assertIn("one continuous photograph", prompt)
+        self.assertNotIn("subject centered", prompt)
+
+    def test_protagonista_com_barra_nao_sai_repetido(self):
+        cena = {"imagem": "Tiago | a man with a red scarf, opening a door"}
+        prompt = fila.prompt_da_cena(cena, {"estilo": "photo"},
+                                     "Tiago | a man with a red scarf")
+        self.assertEqual(1, prompt.lower().count("a man with a red scarf"))
+
     def test_o_estilo_padrao_nao_fixa_enquadramento_vertical(self):
         self.assertNotIn("vertical composition",
                          fila.carregar_config().get("estilo", ""))
