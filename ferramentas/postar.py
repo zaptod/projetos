@@ -723,6 +723,23 @@ def _arquivo_de_desistencias(canal: str):
             / "_tiktok_desistencias.json")
 
 
+def reserva_do_tiktok(limite: int = 40) -> list:
+    """Os builds de ANTES do corte, que nunca tiveram chance no TikTok.
+
+    Decisao do Adrian em 16/09/2026: os 33 builds de 29/08 a 09/09 que sairam
+    so no YouTube nao sao atraso a recuperar — sao **gordura**. Eles nao
+    entram na recuperacao (que despejaria agosto inteiro de uma vez); eles
+    esperam um buraco. Quando a fila normal de builds nao tem video para o
+    TikTok naquele horario, sai um destes, do mais antigo para o mais novo, e
+    o YouTube nao repete nada.
+
+    Mesma peneira dos atrasados — catalogo, desistencia, titulo — porque os
+    motivos sao os mesmos: 21 dos 33 passam, e os 12 que caem sao variantes
+    `:B` com o titulo do proprio principal.
+    """
+    return _fila_do_tiktok("builds", limite, reserva=True)
+
+
 def atrasados_no_tiktok(limite: int = 40, canal: str = "historias") -> list:
     """Videos que sairam no YouTube e NUNCA chegaram ao TikTok, do mais antigo.
 
@@ -755,6 +772,17 @@ def atrasados_no_tiktok(limite: int = 40, canal: str = "historias") -> list:
        testes verdes, que ninguem notaria;
     5. titulo repetido dentro da propria fila fica so com o primeiro.
     """
+    return _fila_do_tiktok(canal, limite, reserva=False)
+
+
+def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
+    """O corpo comum de `atrasados_no_tiktok` e `reserva_do_tiktok`.
+
+    As duas filas sao o MESMO calculo sobre faixas de data complementares:
+    atraso e o que falhou depois do corte, reserva e o que nunca teve chance
+    antes dele. Uma so implementacao para que um crivo novo (desistencia,
+    titulo) nunca exista em uma e falte na outra.
+    """
     from builds.publicar import titulos
 
     try:
@@ -763,6 +791,8 @@ def atrasados_no_tiktok(limite: int = 40, canal: str = "historias") -> list:
         return []
 
     corte = CORTE_DO_TIKTOK.get(canal, "")
+    if reserva and not corte:
+        return []                  # canal sem corte nao tem reserva
     no_tiktok, titulos_no_tiktok = set(), {}
     for l in publicados:
         if l.get("plataforma") != "tiktok" or not l.get("url"):
@@ -781,7 +811,8 @@ def atrasados_no_tiktok(limite: int = 40, canal: str = "historias") -> list:
         if not vid or vid in no_tiktok or vid in vistos:
             continue
         vistos.add(vid)
-        if corte and (linha.get("quando") or "")[:10] < corte:
+        antigo = (linha.get("quando") or "")[:10] < corte
+        if corte and antigo != reserva:
             continue
         if vid in desistidos:
             continue
@@ -846,6 +877,42 @@ def recuperar_no_tiktok(so_ver: bool = False,
     return {"feito": _tiktok_confirmado(estado), "fila": len(fila),
             "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
             "canal": canal, "tiktok": estado}
+
+
+def publicar_da_reserva(so_ver: bool = False) -> dict:
+    """Tapa um buraco do TikTok com um build da gordura. So o TikTok.
+
+    Roda quando a rodada de builds NAO levou nada ao TikTok neste horario —
+    porque a fila acabou, ou porque o video da vez ja estava la. A reserva
+    existe para isso: horario do TikTok vazio e alcance jogado fora, e ha 21
+    builds de agosto que nunca tiveram chance.
+
+    A condicao e lida do LEDGER, e nao de uma marca passada de mao em mao
+    pela `ficha`: "o que de fato saiu neste horario" e a unica pergunta que
+    importa, e ela ja tem resposta em disco. Marca carregada por parametro
+    envelhece; o ledger nao.
+
+    O YOUTUBE NAO REPETE NADA: estes videos ja estao la desde agosto. Este
+    passo e exclusivamente do segundo destino.
+    """
+    if not _tiktok_neste_horario():
+        return {"feito": False, "reserva": 0,
+                "motivo": "este horario nao e da grade do TikTok"}
+    if not so_ver and publicou_neste_horario("builds", "tiktok"):
+        return {"feito": False, "reserva": 0,
+                "motivo": "builds ja foi ao TikTok neste horario"}
+    fila = reserva_do_tiktok()
+    if not fila:
+        return {"feito": False, "reserva": 0}
+    alvo = fila[0]
+    if so_ver:
+        return {"feito": False, "reserva": len(fila), "veria": alvo.id}
+    _linha(f"[postar] reserva do TikTok: {alvo.id} "
+           f"({len(fila)} na gordura).")
+    estado = _tiktok_dos_builds(alvo)
+    return {"feito": _tiktok_confirmado(estado), "reserva": len(fila),
+            "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
+            "tiktok": estado}
 
 
 def _tiktok_neste_horario(agora=None) -> bool:
@@ -1850,10 +1917,41 @@ def main(argv=None) -> int:
             _linha(f"[postar] recuperacao do TikTok ({canal}) falhou "
                    f"({type(exc).__name__}: {exc})"[:140])
 
+    # A RESERVA E A ULTIMA A FALAR. Ela so existe para buraco: se a rodada e a
+    # recuperacao ja levaram um build ao TikTok, nao ha buraco nenhum.
+    if args.so in (None, "builds"):
+        try:
+            da_reserva = publicar_da_reserva(so_ver=args.ver)
+            if da_reserva.get("reserva"):
+                if args.ver:
+                    _linha(f"[postar] reserva do TikTok: "
+                           f"{da_reserva['reserva']} build(s) de gordura; "
+                           f"levaria {da_reserva.get('veria')}.")
+                else:
+                    marca = ("publicado" if da_reserva.get("feito")
+                             else "NAO subiu")
+                    _linha(f"[postar] reserva do TikTok: {marca} "
+                           f"{da_reserva.get('alvo')} "
+                           f"(restam {da_reserva['reserva'] - 1})")
+        except Exception as exc:                               # noqa: BLE001
+            _linha(f"[postar] reserva do TikTok falhou "
+                   f"({type(exc).__name__}: {exc})"[:140])
+
     _linha()
     for canal, dias in estoque().items():
         alerta = "  <<< ABAIXO DO PISO" if 0 <= dias < PISO_DE_ALERTA else ""
         _linha(f"  gordura {canal:<10} {dias:>4} dia(s){alerta}")
+    # SEPARADA DA GORDURA, nunca somada a ela. Estes builds ja estao no ar no
+    # YouTube: eles nao sao estoque para publicar, so alcance que falta ser
+    # colhido no segundo destino. Somar os dois numeros faria o painel dizer
+    # que ha mais video do que ha.
+    try:
+        reserva = len(reserva_do_tiktok())
+    except Exception:                                          # noqa: BLE001
+        reserva = 0
+    if reserva:
+        _linha(f"  reserva TikTok    {reserva:>4} build(s) "
+               f"(so o segundo destino; ja estao no YouTube)")
     # AVISA SEMPRE, e nao so quando deu certo. Era `if any(feito)`, e foi por
     # isso que a noite de 11/09/2026 passou inteira calada: as rodadas que
     # publicaram ZERO eram justamente as que precisavam avisar.

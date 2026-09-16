@@ -160,6 +160,102 @@ class AtrasadosPorCanalTests(unittest.TestCase):
                          self._fila(linhas, [_Video("ok:build:celular", "Ok")]))
 
 
+class ReservaDoTikTokTests(unittest.TestCase):
+    """Os 33 builds de agosto sao GORDURA, nao atraso (decisao do Adrian,
+    16/09/2026). Eles nao entram na recuperacao — despejariam agosto inteiro
+    de uma vez — e esperam um buraco no TikTok.
+    """
+
+    def _reserva(self, linhas, videos, desistidos=()):
+        cat = {v.id: v for v in videos}
+        with patch.object(postar, "_fontes_de_atraso",
+                          return_value=(linhas, cat)), \
+             patch.object(postar, "desistencias_do_tiktok",
+                          return_value=set(desistidos)):
+            return [v.id for v in postar.reserva_do_tiktok()]
+
+    def test_a_reserva_e_o_que_vem_ANTES_do_corte(self):
+        linhas = [
+            _linha("velho:build:celular", "youtube", "2026-08-30T10:00", "Velho"),
+            _linha("novo:build:celular", "youtube", "2026-09-14T10:00", "Novo"),
+        ]
+        videos = [_Video("velho:build:celular", "Velho"),
+                  _Video("novo:build:celular", "Novo")]
+        self.assertEqual(["velho:build:celular"], self._reserva(linhas, videos),
+                         "o de 14/09 e atraso, nao reserva")
+
+    def test_atraso_e_reserva_nao_se_cruzam(self):
+        """Complementares por construcao: nenhum video nas duas listas."""
+        linhas = [
+            _linha("velho:build:celular", "youtube", "2026-08-30T10:00", "Velho"),
+            _linha("novo:build:celular", "youtube", "2026-09-14T10:00", "Novo"),
+        ]
+        videos = [_Video("velho:build:celular", "Velho"),
+                  _Video("novo:build:celular", "Novo")]
+        cat = {v.id: v for v in videos}
+        with patch.object(postar, "_fontes_de_atraso",
+                          return_value=(linhas, cat)), \
+             patch.object(postar, "desistencias_do_tiktok", return_value=set()):
+            atraso = {v.id for v in postar.atrasados_no_tiktok(canal="builds")}
+            reserva = {v.id for v in postar.reserva_do_tiktok()}
+        self.assertEqual(set(), atraso & reserva)
+
+    def test_a_reserva_usa_os_mesmos_crivos(self):
+        """Titulo ja no TikTok nao sai de novo, nem vindo da gordura."""
+        linhas = [
+            _linha("outro:build:celular", "tiktok", "2026-09-14T09:00", "Erik"),
+            _linha("velho:build:celular", "youtube", "2026-08-30T10:00", "Erik"),
+        ]
+        self.assertEqual([], self._reserva(
+            linhas, [_Video("velho:build:celular", "Erik")]))
+
+    def test_historias_nao_tem_reserva(self):
+        """Sem corte nao ha faixa 'antes do corte'."""
+        linhas = [_linha("h:celular:p01", "youtube", "2026-08-30T10:00", "P1")]
+        cat = {"h:celular:p01": _Video("h:celular:p01", "P1")}
+        with patch.object(postar, "_fontes_de_atraso",
+                          return_value=(linhas, cat)), \
+             patch.object(postar, "desistencias_do_tiktok", return_value=set()):
+            self.assertEqual([], [v.id for v in
+                                  postar._fila_do_tiktok("historias", 40,
+                                                         reserva=True)])
+
+
+class QuandoAReservaEntraTests(unittest.TestCase):
+    def setUp(self):
+        for nome in ("_tiktok_neste_horario", "publicou_neste_horario",
+                     "reserva_do_tiktok", "_tiktok_dos_builds"):
+            self.addCleanup(setattr, postar, nome, getattr(postar, nome))
+        postar._tiktok_neste_horario = lambda *_a, **_k: True
+        postar.publicou_neste_horario = lambda *_a, **_k: None
+        postar.reserva_do_tiktok = lambda *_a, **_k: [
+            _Video("velho:build:celular", "Velho")]
+        self.publicados = []
+        postar._tiktok_dos_builds = lambda alvo: (
+            self.publicados.append(alvo.id) or "publicado no TikTok")
+
+    def test_buraco_no_tiktok_puxa_da_reserva(self):
+        r = postar.publicar_da_reserva()
+        self.assertTrue(r["feito"])
+        self.assertEqual(["velho:build:celular"], self.publicados)
+
+    def test_builds_ja_foi_ao_tiktok_deixa_a_reserva_quieta(self):
+        postar.publicou_neste_horario = lambda *_a, **_k: {"video_id": "x"}
+        r = postar.publicar_da_reserva()
+        self.assertFalse(r["feito"])
+        self.assertEqual([], self.publicados, "nao havia buraco")
+
+    def test_fora_da_grade_do_tiktok_nao_puxa(self):
+        postar._tiktok_neste_horario = lambda *_a, **_k: False
+        self.assertEqual([], self.publicados)
+        self.assertFalse(postar.publicar_da_reserva()["feito"])
+
+    def test_so_ver_nao_publica(self):
+        r = postar.publicar_da_reserva(so_ver=True)
+        self.assertEqual([], self.publicados)
+        self.assertEqual("velho:build:celular", r["veria"])
+
+
 class DesistenciasTests(unittest.TestCase):
     def test_arquivo_ausente_e_ninguem_desistiu(self):
         with TemporaryDirectory() as tmp:
