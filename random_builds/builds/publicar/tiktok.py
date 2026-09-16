@@ -528,8 +528,15 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
     # navegador, a fabrica "publicacao" ficava OCIOSA durante quase todo
     # upload de verdade -- so a API, hoje secundaria, reportava. Um painel
     # que mostra "parado" enquanto se publica e pior do que nao ter painel.
+    # `etapa` e `ref` fecham a conta do /confiabilidade. Sem `etapa`, uma
+    # excecao crua daqui (um TimeoutError no `goto`, por exemplo) entra no
+    # diario sem dizer de que passo veio, e o relatorio conta "publicacao"
+    # inteira como uma coisa so — misturando "o TikTok nao abriu" com "o
+    # YouTube recusou", que tem consertos diferentes. `ref` liga a falha ao
+    # video, sem o qual nao da para saber se e um video ruim ou o passo.
     with atividade.fabrica("publicacao", f"TikTok: {caminho.name}",
-                           canal=canal), \
+                           canal=canal, etapa="publicar.tiktok",
+                           ref=getattr(video, "id", "")), \
             contexto_persistente(headless=False,
                                  profile=perfil_da_conta(canal)) as ctx:
         page = _abrir(ctx, url_upload)

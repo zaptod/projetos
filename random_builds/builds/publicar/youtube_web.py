@@ -796,8 +796,12 @@ def publicar(video, *, visibilidade: str | None = None,
     # navegador, a fabrica "publicacao" ficava OCIOSA durante quase todo
     # upload de verdade -- so a API, hoje secundaria, reportava. Um painel
     # que mostra "parado" enquanto se publica e pior do que nao ter painel.
+    # Ver o mesmo comentario em `tiktok.publicar`: sem `etapa`, o
+    # /confiabilidade conta os dois destinos como uma coisa so, e uma excecao
+    # crua chega la sem dizer de que passo veio.
     with atividade.fabrica("publicacao", f"YouTube: {caminho.name}",
-                           canal=canal), \
+                           canal=canal, etapa="publicar.youtube",
+                           ref=getattr(video, "id", "")), \
             contexto_persistente(headless=False,
                                  profile=perfil_da_conta(canal)) as ctx:
         page = _abrir(ctx, url_de_upload(canal))
