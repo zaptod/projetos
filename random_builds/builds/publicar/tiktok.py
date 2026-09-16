@@ -486,11 +486,14 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
                 page.keyboard.press("Control+A")
                 page.keyboard.press("Delete")
                 legenda.type(video.descricao_completa[:2000], delay=8)
+                laudo["legenda"] = "escrita"
                 passo("legenda escrita.")
             except Exception as exc:
+                laudo["legenda"] = f"falhou: {type(exc).__name__}"
                 passo(f"não consegui escrever a legenda ({type(exc).__name__}); "
                       "dá para colar na mão.")
         else:
+            laudo["legenda"] = "campo não encontrado"
             passo("campo de legenda não encontrado; a janela está aberta.")
 
         if not postar:
@@ -510,10 +513,16 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         try:
             botao.click(timeout=int(ESPERA_HABILITAR_S * 1000))
         except Exception as exc:
+            # A LEGENDA ENTRA NA MENSAGEM porque a mensagem e o que fica
+            # gravado: `atividade.fabrica` anota o texto da excecao no
+            # diario, e e de la que se conta por que o TikTok falhou. Sem
+            # isto, "legenda nao escreveu" e "botao nao habilitou" chegam ao
+            # diario como a mesma falha, e as duas tem conserto diferente.
             raise TikTokFalhou(
                 "o botão de publicar não ficou clicável em "
                 f"{ESPERA_HABILITAR_S / 60:.0f} min — o TikTok ainda estava "
-                f"processando o vídeo. A janela segue aberta. ({exc})"
+                f"processando o vídeo. A janela segue aberta. "
+                f"[legenda: {laudo.get('legenda', 'nao tentada')}] ({exc})"
             ) from exc
         passo("publicar clicado; confirmando...")
         estado = _confirmar_publicacao(page, passo)

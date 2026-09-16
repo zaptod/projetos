@@ -415,13 +415,26 @@ def _qualidade_agora(page) -> dict:
     ninguem perceberia.
     """
     vazio = {"qualidade": "desconhecida", "falta": "", "texto": "",
-             "reconhecido": False}
+             "reconhecido": False, "escopo": "nenhum"}
+    # O ESCOPO E O DIALOGO, nao a pagina. Medido em 16/09/2026: lendo
+    # `document.body.innerText` o laudo trazia o menu inteiro do Studio e,
+    # pior, a LISTA DE VIDEOS atras do dialogo — que e justamente a dos
+    # ultimos enviados. O "10 minutos restantes" gravado podia ser o
+    # processamento do video de ONTEM, com um numero plausivel que ninguem
+    # questionaria. O rodape com "Envio concluido / processamento vai
+    # comecar" fica dentro do dialogo, entao nada do que interessa se perde.
     try:
-        texto = _sem_acento(page.evaluate(
-            "() => document.body ? document.body.innerText : ''"))
+        bruto = page.evaluate(
+            "() => {"
+            " const d = document.querySelector('ytcp-uploads-dialog');"
+            " return d ? d.innerText : '';"
+            "}")
     except Exception:
         return vazio
+    texto = _sem_acento(bruto)
     if not texto.strip():
+        # Sem dialogo nao ha o que atribuir a ESTE video. Ler a pagina toda
+        # aqui seria trocar "nao sei" por um palpite com cara de medida.
         return vazio
 
     achado = FALTA.search(texto)
@@ -429,7 +442,8 @@ def _qualidade_agora(page) -> dict:
     for rotulo, frases in FASES:
         if any(frase in texto for frase in frases):
             return {"qualidade": rotulo, "falta": falta,
-                    "texto": texto[:200], "reconhecido": True}
+                    "texto": texto[:200], "reconhecido": True,
+                    "escopo": "dialogo"}
     if falta:
         # CONTAGEM REGRESSIVA SEM FRASE CONHECIDA. Medido em 16/09/2026, na
         # primeira noite com esta medicao ligada: a barra dizia "10 minutos
@@ -438,10 +452,11 @@ def _qualidade_agora(page) -> dict:
         # ainda conta o tempo, alguma coisa esta pendente — e a resposta
         # honesta e dizer que nao se sabe o que.
         return {"qualidade": "desconhecida", "falta": falta,
-                "texto": texto[:200], "reconhecido": False}
+                "texto": texto[:200], "reconhecido": False,
+                "escopo": "dialogo"}
     visto = any(_sem_acento(s) in texto for s in SINAIS_PUBLICADO)
     return {"qualidade": "hd", "falta": falta, "texto": texto[:200],
-            "reconhecido": visto}
+            "reconhecido": visto, "escopo": "dialogo"}
 
 
 def _id_do_video(url: str) -> str:
@@ -968,6 +983,7 @@ def publicar(video, *, visibilidade: str | None = None,
         laudo["falta_texto"] = estagio["falta"]
         laudo["texto_da_barra"] = estagio["texto"]
         laudo["reconhecido"] = estagio["reconhecido"]
+        laudo["escopo"] = estagio["escopo"]
         if estagio["qualidade"] not in ("hd", "desconhecida"):
             passo(f"atencao: publicando com o video em "
                   f"{estagio['qualidade']}"

@@ -20,15 +20,24 @@ from builds.publicar import metricas, youtube, youtube_web as Y
 
 
 class PaginaFalsa:
-    """So o que `_qualidade_agora` usa: `evaluate` devolvendo innerText."""
+    """O `evaluate` devolve o innerText DO DIALOGO, nao o da pagina.
 
-    def __init__(self, texto: str = "", estoura: bool = False):
+    `sem_dialogo=True` imita a tela em que o dialogo de upload nao esta
+    aberto: o script devolve string vazia, como o `querySelector` falhando.
+    """
+
+    def __init__(self, texto: str = "", estoura: bool = False,
+                 sem_dialogo: bool = False):
         self.texto, self.estoura = texto, estoura
+        self.sem_dialogo = sem_dialogo
 
-    def evaluate(self, _script):
+        self.script = ""
+
+    def evaluate(self, script):
+        self.script = str(script)
         if self.estoura:
             raise RuntimeError("a pagina fechou no meio")
-        return self.texto
+        return "" if self.sem_dialogo else self.texto
 
 
 class QualidadeNoClique(unittest.TestCase):
@@ -65,6 +74,30 @@ class QualidadeNoClique(unittest.TestCase):
         achado = Y._qualidade_agora(PaginaFalsa("bem-vindo ao novo studio"))
         self.assertEqual(achado["qualidade"], "hd")
         self.assertFalse(achado["reconhecido"])
+
+    def test_le_o_dialogo_e_nao_a_pagina(self):
+        # A LEITURA E ESCOPADA. Sem isso, o texto vinha com o menu do Studio
+        # e com a LISTA DE VIDEOS atras do dialogo — que e a dos ultimos
+        # enviados. O "10 minutos restantes" gravado podia ser o
+        # processamento do video de ONTEM, com numero plausivel e ninguem
+        # desconfiando. (Achado de 16/09/2026.)
+        page = PaginaFalsa("Processando até SD")
+        Y._qualidade_agora(page)
+        # O que importa e o script que VAI AO NAVEGADOR, nao o texto do
+        # arquivo: conferir a fonte faria este teste quebrar com um
+        # comentario e passar com um escopo errado.
+        self.assertIn("ytcp-uploads-dialog", page.script)
+        self.assertNotIn("document.body", page.script)
+
+    def test_sem_dialogo_aberto_a_resposta_e_nao_sei(self):
+        achado = Y._qualidade_agora(
+            PaginaFalsa("Processando até SD", sem_dialogo=True))
+        self.assertEqual(achado["qualidade"], "desconhecida")
+        self.assertEqual(achado["escopo"], "nenhum")
+
+    def test_o_laudo_diz_de_onde_leu(self):
+        achado = Y._qualidade_agora(PaginaFalsa("Processando até SD"))
+        self.assertEqual(achado["escopo"], "dialogo")
 
     def test_pagina_morta_nao_levanta(self):
         achado = Y._qualidade_agora(PaginaFalsa(estoura=True))
