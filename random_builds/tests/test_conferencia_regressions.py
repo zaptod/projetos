@@ -480,6 +480,18 @@ class OAlarme(unittest.TestCase):
             "no_ledger": 1, "janela_dias": 3})
         self.assertEqual(len(avisos), 1)
 
+    def test_o_alarme_tem_fabrica_propria(self):
+        # Com "publicacao", o apurador tratava achado de dados como defeito
+        # de codigo e abria um conserto (16/09/2026). O outro lado — o
+        # apurador ignorar esta fabrica — e testado em remoto/test_remoto.py:
+        # `builds` nao pode importar `remoto`.
+        avisos = self._rodar({
+            "canal": "builds", "plataforma": "youtube", "veredito": "sujo",
+            "fantasmas": [], "rascunhos": [{}], "orfaos": [], "casados": 1,
+            "no_ledger": 1, "janela_dias": 3})
+        (args, _kw), = avisos
+        self.assertEqual("conferencia", args[0])
+
     def test_falha_tambem_vai_para_disco(self):
         # 16/09/2026: com os tres tokens revogados a pagina dizia "nunca
         # rodou", porque a falha nao era gravada. Sao acoes diferentes.

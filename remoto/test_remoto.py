@@ -600,6 +600,35 @@ class ApuracaoTests(BaseTemp):
         apurador.marcar(antes)
         self.assertEqual(apurador.pendentes(), [])
 
+    def test_alarme_da_conferencia_nao_vira_apuracao(self):
+        """16/09/2026: o alarme de rascunhos no canal disparou um conserto que
+        editou codigo. Achado de dados nao se conserta no fonte."""
+        from remoto import apurador
+        original = apurador._estado_path
+        apurador._estado_path = lambda: self.pasta / "apuracoes.json"
+        self.addCleanup(setattr, apurador, "_estado_path", original)
+
+        comandos.atividade.registrar(
+            "conferencia", "erro", "conferencia builds/youtube: 2 privados",
+            "builds")
+        comandos.atividade.registrar("picasso", "erro", "quebrou de verdade")
+        fabricas = [e.get("fabrica") for e in apurador.pendentes()]
+        self.assertNotIn("conferencia", fabricas)
+        self.assertIn("picasso", fabricas)
+
+    def test_alarme_da_conferencia_continua_indo_ao_celular(self):
+        """So a apuracao fica de fora; o aviso no Telegram nao."""
+        config.autorizar(42)
+        tg = TelegramFalso()
+        robo = bot_mod.Bot(telegram=tg, log=lambda *_a: None)
+        robo._apurar = lambda: None     # a apuracao nao e o que se testa aqui
+        robo.uma_volta(timeout=0)
+        comandos.atividade.registrar(
+            "conferencia", "erro", "conferencia builds/youtube: 2 privados",
+            "builds")
+        robo.uma_volta(timeout=0)
+        self.assertTrue(any("2 privados" in t for t in tg.textos()))
+
     def test_teto_diario_segura_o_moinho(self):
         """Erro que nao para gastaria sessao ate o fim do mundo."""
         from remoto import apurador

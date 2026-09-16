@@ -324,8 +324,13 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
             f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora do "
             f"ledger — {ficha['veredito']}")
         if ficha["veredito"] == "sujo":
+            # FABRICA PROPRIA, e nao "publicacao". O alarme continua indo ao
+            # celular (o bot le todo erro do diario), mas o apurador ignora
+            # esta fabrica: em 16/09/2026 dois alarmes daqui dispararam um
+            # conserto automatico que editou codigo por causa de rascunhos
+            # no canal — achado de dados, nao defeito do fonte.
             atividade.registrar(
-                "publicacao", atividade.ERRO,
+                "conferencia", atividade.ERRO,
                 f"conferencia {canal}/{ficha['plataforma']}: "
                 f"{len(ficha['fantasmas'])} no ledger sem video no canal, "
                 f"{len(ficha['rascunhos'])} rascunho(s), "

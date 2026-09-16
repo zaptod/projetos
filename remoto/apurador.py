@@ -92,6 +92,15 @@ def _quando(evento: dict) -> str:
     return str(evento.get("ts") or evento.get("quando") or "")
 
 
+# Fabricas cujo "erro" e ACHADO DE DADOS, nao defeito de codigo. Medido em
+# 16/09/2026: os dois alarmes da conferencia ("22 rascunho(s) no canal")
+# dispararam uma sessao de conserto que EDITOU codigo — e deixou uma mudanca
+# sem dono no `contos/publicar/__init__.py`. Rascunho no canal nao se
+# conserta mexendo no fonte; o alerta no celular continua (o bot le o mesmo
+# diario), so a apuracao por `claude -p` fica de fora.
+FABRICAS_SEM_APURACAO = frozenset({"conferencia"})
+
+
 def pendentes(janela_h: float = JANELA_H) -> list[dict]:
     """Os erros do ledger que ainda nao foram apurados."""
     from builds import atividade
@@ -101,6 +110,8 @@ def pendentes(janela_h: float = JANELA_H) -> list[dict]:
     novos = []
     for evento in atividade.recentes(300):
         if (evento.get("status") or "") != "erro":
+            continue
+        if evento.get("fabrica") in FABRICAS_SEM_APURACAO:
             continue
         marca = f"{_quando(evento)}|{evento.get('fabrica')}"
         if marca in ja_visto:
