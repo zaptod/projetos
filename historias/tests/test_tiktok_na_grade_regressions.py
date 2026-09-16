@@ -527,11 +527,29 @@ class AtrasadoNoTikTokTests(unittest.TestCase):
 
     def test_a_recuperacao_vem_DEPOIS_das_publicacoes_do_horario(self):
         """O video da vez e o que mantem as duas plataformas em sincronia; a
-        recuperacao so limpa atraso, e nunca toma o lugar dele."""
-        fonte = POSTAR.read_text(encoding="utf-8")
-        principal = fonte[fonte.index("def main("):]
-        self.assertLess(principal.index("postar_historia"),
-                        principal.index("recuperar_no_tiktok"))
+        recuperacao so limpa atraso, e nunca toma o lugar dele.
+
+        Confere a ORDEM DAS CHAMADAS, e nao a ordem no texto do arquivo. A
+        versao anterior procurava os dois nomes na fonte de `main()` com
+        `index()` — e um comentario citando a funcao mais cedo inverteria o
+        resultado sem nada ter mudado de verdade. Esse padrao ja mordeu duas
+        vezes em dois dias neste repositorio.
+        """
+        ordem = []
+        for nome in ("postar_historia", "postar_build",
+                     "recuperar_no_tiktok"):
+            self.addCleanup(setattr, self.postar, nome,
+                            getattr(self.postar, nome))
+        self.postar.postar_historia = lambda **_k: (
+            ordem.append("historias") or {"canal": "historias",
+                                          "feito": False, "motivo": "-"})
+        self.postar.postar_build = lambda **_k: (
+            ordem.append("builds") or {"canal": "builds",
+                                       "feito": False, "motivo": "-"})
+        self.postar.recuperar_no_tiktok = lambda **_k: (
+            ordem.append("recuperacao") or {"feito": False, "fila": 0})
+        self.postar.main(["--ver"])
+        self.assertEqual(["historias", "builds", "recuperacao"], ordem)
 
 
 if __name__ == "__main__":
