@@ -141,6 +141,75 @@ class NadaDeRede(unittest.TestCase):
         self.assertIn("Studio", str(erro.exception))
 
 
+class ABuscaDeVerdade(unittest.TestCase):
+    """`buscar_no_canal` com a rede dublada UM NIVEL ABAIXO.
+
+    Ate 16/09/2026 nenhum caso passava por esta funcao — todos injetavam as
+    listas prontas. Foi assim que `token = _token(canal)` mandou a TUPLA
+    `(token, credenciais)` como token: o Google respondeu 401, o 401 virou
+    "token revogado", e o diagnostico errado chegou ao Adrian.
+    """
+
+    def _dublar(self, *, enviados, detalhes):
+        from builds.publicar import metricas
+        visto = {}
+        reais = (metricas._token, metricas.enviados, metricas.estatisticas)
+
+        def enviados_falso(token, quantos=200):
+            visto["token_enviados"] = token
+            return enviados
+
+        def estatisticas_falsa(ids, token):
+            visto["token_estatisticas"] = token
+            visto["ids"] = list(ids)
+            return detalhes
+
+        metricas._token = lambda canal="builds": ("TOKEN-DE-VERDADE",
+                                                  object())
+        metricas.enviados = enviados_falso
+        metricas.estatisticas = estatisticas_falsa
+
+        def restaurar():
+            (metricas._token, metricas.enviados,
+             metricas.estatisticas) = reais
+
+        self.addCleanup(restaurar)
+        return visto
+
+    def test_o_token_vai_como_texto_e_nao_como_tupla(self):
+        visto = self._dublar(enviados=[{"youtube_id": "aaa",
+                                        "titulo": "O MAGO"}],
+                             detalhes={"aaa": {"privacidade": "public"}})
+        conferencia.buscar_no_canal("builds")
+        self.assertEqual("TOKEN-DE-VERDADE", visto["token_enviados"])
+        self.assertEqual("TOKEN-DE-VERDADE", visto["token_estatisticas"])
+
+    def test_junta_a_lista_do_canal_com_os_detalhes(self):
+        self._dublar(
+            enviados=[{"youtube_id": "aaa", "titulo": "O MAGO",
+                       "publicado_em": "2026-09-16T09:40:00Z"}],
+            detalhes={"aaa": {"privacidade": "private", "definicao": "sd",
+                              "upload": "processed"}})
+        (video,) = conferencia.buscar_no_canal("builds")
+        self.assertEqual("aaa", video["id"])
+        self.assertEqual("O MAGO", video["titulo"])
+        self.assertEqual("private", video["privacidade"])
+
+    def test_video_que_a_api_nao_detalhou_continua_na_lista(self):
+        # Sem detalhe nao da para dizer se e rascunho — mas sumir com ele
+        # faria a linha do ledger virar fantasma sem ser.
+        self._dublar(enviados=[{"youtube_id": "bbb", "titulo": "X"}],
+                     detalhes={})
+        (video,) = conferencia.buscar_no_canal("builds")
+        self.assertEqual("bbb", video["id"])
+        self.assertNotIn("privacidade", video)
+
+    def test_canal_vazio_nao_pede_detalhe(self):
+        visto = self._dublar(enviados=[], detalhes={})
+        self.assertEqual([], conferencia.buscar_no_canal("builds"))
+        self.assertNotIn("ids", visto)
+
+
 class OAlarme(unittest.TestCase):
     """O alarme e uma linha de erro no diario — nada de Telegram proprio."""
 

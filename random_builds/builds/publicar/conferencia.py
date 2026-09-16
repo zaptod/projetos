@@ -130,7 +130,11 @@ def buscar_no_canal(canal: str = "builds",
             "so o YouTube tem consulta direta. O TikTok nao expoe a lista "
             "por API: a conferencia dele passa pelo Studio, em "
             "`tiktok_metricas.coletar`.")
-    token = metricas._token(canal)
+    # `_token` devolve (token, credenciais). Ate 16/09/2026 a TUPLA inteira
+    # ia para o cabecalho `Authorization`, o Google respondia 401, e o 401
+    # virava "token invalido ou revogado" — um diagnostico falso que chegou
+    # a ser repassado ao Adrian como "os tres tokens estao revogados".
+    token, _ = metricas._token(canal)
     enviados = metricas.enviados(token)
     ids = [v.get("youtube_id") or v.get("id") for v in enviados]
     ids = [i for i in ids if i]
