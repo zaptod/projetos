@@ -213,6 +213,17 @@ class AConferencia(unittest.TestCase):
                                        "historias": _limpo()})
         self.assertTrue(any("2 rascunho" in a for a in ficha["alertas"]))
 
+    def test_suja_so_por_privado_fora_do_ledger_diz_isso(self):
+        # Sem isto o alerta dizia "0 fantasma(s), 0 rascunho(s)" para uma
+        # conferencia suja — e ninguem saberia o que olhar.
+        sujo = dict(_limpo(), veredito="sujo",
+                    orfaos_privados=[{}, {}, {}])
+        ficha = _retrato(conferencias={"builds": sujo,
+                                       "historias": _limpo()})
+        (alerta,) = [a for a in ficha["alertas"] if "builds" in a]
+        self.assertIn("3 privado(s) fora do ledger", alerta)
+        self.assertNotIn("0 fantasma", alerta)
+
     def test_falha_de_oauth_aparece_em_vez_de_passar_por_limpa(self):
         # O caso REAL de 16/09/2026: os tres tokens revogados. Uma
         # conferencia que nao rodou nao pode aparecer como "tudo certo".

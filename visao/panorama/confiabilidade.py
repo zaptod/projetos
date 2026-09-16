@@ -209,6 +209,7 @@ def _resumo_conferencia(ficha: dict, hoje: date) -> dict:
         "no_ledger": ficha.get("no_ledger", 0),
         "fantasmas": len(ficha.get("fantasmas") or []),
         "rascunhos": len(ficha.get("rascunhos") or []),
+        "privados_fora": len(ficha.get("orfaos_privados") or []),
         "orfaos": len(ficha.get("orfaos") or []),
         "so_sd": len(ficha.get("so_sd") or []),
     }
@@ -235,8 +236,14 @@ def _alertas(ficha: dict) -> list:
     for canal, conf in ficha["conferencia"].items():
         estado = conf.get("estado")
         if estado == "sujo":
-            alertas.append(f"conferência de {canal}: {conf['fantasmas']} "
-                           f"fantasma(s), {conf['rascunhos']} rascunho(s)")
+            partes = [f"{conf.get(chave, 0)} {nome}"
+                      for chave, nome in (("fantasmas", "fantasma(s)"),
+                                          ("rascunhos", "rascunho(s)"),
+                                          ("privados_fora",
+                                           "privado(s) fora do ledger"))
+                      if conf.get(chave)]
+            alertas.append(f"conferência de {canal}: "
+                           + (", ".join(partes) or "suja"))
         elif estado == "falhou":
             alertas.append(f"conferência de {canal} não rodou: "
                            f"{str(conf.get('erro'))[:80]}")

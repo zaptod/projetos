@@ -81,29 +81,38 @@ def rascunhos_aceitos() -> dict:
     return ids if isinstance(ids, dict) else {}
 
 
-def aceitar_rascunhos(ficha: dict, motivo: str = ACEITOS_MOTIVO) -> Path:
-    """Grava os rascunhos DESTA ficha como conhecidos e aceitos.
+def aceitar(itens, motivo: str, canal: str = "builds") -> Path:
+    """Grava videos PRIVADOS como conhecidos e aceitos, cada um com o motivo.
 
-    Soma aos que ja estavam; nunca apaga. Quem aceita e uma pessoa: esta
-    funcao so e chamada a mao, nunca pela rodada da madrugada — senao todo
-    rascunho novo seria aceito na mesma noite em que aparecesse.
+    Serve para rascunho do ledger e para orfao privado — a lista e por id do
+    video, e o que importa e que uma PESSOA decidiu. Soma aos que ja estavam
+    e nunca apaga; um id ja aceito mantem o motivo original.
+
+    Nunca e chamada pela rodada da madrugada: se fosse, todo privado novo
+    seria aceito na mesma noite em que aparecesse.
     """
     destino = arquivo_de_aceitos()
     atuais = rascunhos_aceitos()
     agora = datetime.now().isoformat(timespec="seconds")
-    for r in ficha.get("rascunhos") or []:
-        vid = r.get("youtube_id")
+    for item in itens or ():
+        vid = item.get("youtube_id")
         if vid and vid not in atuais:
-            atuais[vid] = {"canal": ficha.get("canal"),
-                           "video_id": r.get("video_id"),
-                           "titulo": r.get("titulo"),
-                           "quando_no_ledger": r.get("quando"),
+            atuais[vid] = {"canal": canal,
+                           "video_id": item.get("video_id"),
+                           "titulo": item.get("titulo"),
+                           "quando_no_ledger": item.get("quando"),
+                           "publicado_em": item.get("publicado_em"),
                            "aceito_em": agora, "motivo": motivo}
     destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(json.dumps({"motivo": motivo, "ids": atuais},
-                                  ensure_ascii=False, indent=1),
-                       encoding="utf-8")
+    destino.write_text(json.dumps({"ids": atuais}, ensure_ascii=False,
+                                  indent=1), encoding="utf-8")
     return destino
+
+
+def aceitar_rascunhos(ficha: dict, motivo: str = ACEITOS_MOTIVO) -> Path:
+    """Os rascunhos do ledger DESTA ficha, como aceitos."""
+    return aceitar(ficha.get("rascunhos") or [], motivo,
+                   ficha.get("canal") or "builds")
 
 
 def conferir(canal: str = "builds", plataforma: str = "youtube", *,
@@ -163,7 +172,8 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     na_janela = [v for v in do_canal
                  if _dia_do_canal(v.get("publicado_em")) >= desde]
     orfaos = [{"youtube_id": v.get("id"), "titulo": v.get("titulo"),
-               "publicado_em": v.get("publicado_em")}
+               "publicado_em": v.get("publicado_em"),
+               "privacidade": v.get("privacidade")}
               for v in na_janela if id(v) not in vistos]
 
     # Duplicado conta o canal todo, MAS so entra se um dos videos e recente:
@@ -188,6 +198,19 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     ja_aceitos = [r for r in rascunhos if r.get("youtube_id") in aceitos]
     rascunhos = [r for r in rascunhos if r.get("youtube_id") not in aceitos]
 
+    # ORFAO PRIVADO SUJA. Um video privado no canal, sem linha no ledger, e
+    # um upload que ninguem registrou e que nao foi ao ar — o mesmo sintoma
+    # do rascunho, visto pelo outro lado. Na primeira rodada real (16/09)
+    # havia 10 deles, e como orfao nunca sujava, a conferencia disse "limpo".
+    # Os que uma pessoa ja explicou ficam na mesma lista de aceitos.
+    privados = [o for o in orfaos
+                if str(o.get("privacidade") or "").lower()
+                in ("private", "privado")]
+    orfaos_privados = [o for o in privados
+                       if o.get("youtube_id") not in aceitos]
+    orfaos_privados_aceitos = [o for o in privados
+                               if o.get("youtube_id") in aceitos]
+
     # DUAS LINHAS DO LEDGER PARA O MESMO VIDEO: o ledger conta duas
     # publicacoes onde o canal tem uma. Achado da primeira rodada real
     # (I9ETJSGR1A0 e opdRgGJ1y_8, em 15/09). Registrado, nao corrigido: a
@@ -202,7 +225,7 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     mesmo_video = [{"youtube_id": vid, "linhas": grupo}
                    for vid, grupo in por_video.items() if len(grupo) > 1]
 
-    sujo = bool(fantasmas or rascunhos)
+    sujo = bool(fantasmas or rascunhos or orfaos_privados)
     return {
         "canal": canal, "plataforma": plataforma,
         "dia": hoje.isoformat(), "janela_dias": int(dias),
@@ -210,6 +233,8 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
         "no_canal_na_janela": len(na_janela),
         "casados": len(casados),
         "fantasmas": fantasmas, "orfaos": orfaos,
+        "orfaos_privados": orfaos_privados,
+        "orfaos_privados_aceitos": orfaos_privados_aceitos,
         "rascunhos": rascunhos, "rascunhos_aceitos": ja_aceitos,
         "so_sd": so_sd, "duplicados": duplicados,
         "mesmo_video": mesmo_video,
@@ -295,15 +320,17 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
         fichas[canal] = ficha
         log(f"[conferencia] {canal}: {ficha['casados']}/{ficha['no_ledger']} "
             f"casados, {len(ficha['fantasmas'])} fantasma(s), "
-            f"{len(ficha['rascunhos'])} rascunho(s) — {ficha['veredito']}")
+            f"{len(ficha['rascunhos'])} rascunho(s), "
+            f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora do "
+            f"ledger — {ficha['veredito']}")
         if ficha["veredito"] == "sujo":
             atividade.registrar(
                 "publicacao", atividade.ERRO,
                 f"conferencia {canal}/{ficha['plataforma']}: "
                 f"{len(ficha['fantasmas'])} no ledger sem video no canal, "
                 f"{len(ficha['rascunhos'])} rascunho(s), "
-                f"{len(ficha['orfaos'])} orfao(s) em {ficha['janela_dias']} "
-                "dia(s)", canal=canal)
+                f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora "
+                f"do ledger em {ficha['janela_dias']} dia(s)", canal=canal)
     return fichas
 
 
@@ -335,7 +362,7 @@ def main(argv=None) -> int:
               f"rascunho(s) ja aceito(s), {len(ficha.get('orfaos') or [])} "
               f"orfao(s) de {ficha.get('no_canal_na_janela', 0)} video(s) "
               "na janela")
-        for nome in ("fantasmas", "rascunhos", "orfaos", "so_sd"):
+        for nome in ("fantasmas", "rascunhos", "orfaos_privados", "orfaos", "so_sd"):
             for item in (ficha.get(nome) or [])[:6]:
                 print(f"   [{canal}] {nome[:-1]:10} "
                       f"{item.get('titulo') or item.get('youtube_id')}")
@@ -352,7 +379,7 @@ def main(argv=None) -> int:
 
 
 __all__ = ["ACEITOS_MOTIVO", "DIAS_PADRAO", "aceitar_rascunhos",
-           "arquivo_de_aceitos", "buscar_no_canal", "conferir",
+           "aceitar", "arquivo_de_aceitos", "buscar_no_canal", "conferir",
            "conferir_tudo", "main", "pasta", "rascunhos_aceitos",
            "salvar", "ultima"]
 

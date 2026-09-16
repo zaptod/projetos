@@ -228,6 +228,48 @@ class RascunhosAceitos(unittest.TestCase):
         self.assertEqual([], ficha["rascunhos_aceitos"])
 
 
+class OrfaoPrivado(unittest.TestCase):
+    """Video privado no canal, sem linha no ledger: upload que ninguem
+    registrou e que nao foi ao ar. Na primeira rodada real havia 10, e a
+    conferencia disse "limpo" porque orfao nunca sujava."""
+
+    def _ficha(self, privacidade, aceitos=None):
+        return conferencia.conferir(
+            publicados=[_linha("g1", "O MAGO", youtube_id="aaa")],
+            no_canal=[_no_canal("aaa", "O MAGO"),
+                      _no_canal("zzz", "TESTE DA MADRUGADA",
+                                privacidade=privacidade)],
+            hoje=HOJE, aceitos=aceitos or {})
+
+    def test_orfao_privado_suja(self):
+        ficha = self._ficha("private")
+        self.assertEqual(["zzz"],
+                         [o["youtube_id"] for o in ficha["orfaos_privados"]])
+        self.assertEqual("sujo", ficha["veredito"])
+
+    def test_orfao_publico_nao_suja(self):
+        # Video no ar sem linha e dado faltando, nao defeito de publicacao.
+        ficha = self._ficha("public")
+        self.assertEqual([], ficha["orfaos_privados"])
+        self.assertEqual(1, len(ficha["orfaos"]))
+        self.assertEqual("limpo", ficha["veredito"])
+
+    def test_orfao_privado_aceito_nao_suja(self):
+        # Os 8 testes da madrugada de 16/09, explicados pelo Adrian.
+        ficha = self._ficha("private", aceitos={"zzz": {"motivo": "teste"}})
+        self.assertEqual([], ficha["orfaos_privados"])
+        self.assertEqual(["zzz"], [o["youtube_id"]
+                                   for o in ficha["orfaos_privados_aceitos"]])
+        self.assertEqual("limpo", ficha["veredito"])
+
+    def test_orfao_privado_antigo_fora_da_janela_nao_suja(self):
+        velho = _no_canal("zzz", "ANTIGO", privacidade="private")
+        velho["publicado_em"] = "2026-08-01T10:00:00Z"
+        ficha = conferencia.conferir(publicados=[], no_canal=[velho],
+                                     hoje=HOJE, aceitos={})
+        self.assertEqual("limpo", ficha["veredito"])
+
+
 class AListaDeAceitos(unittest.TestCase):
 
     def setUp(self):
@@ -262,6 +304,31 @@ class AListaDeAceitos(unittest.TestCase):
         conferencia.aceitar_rascunhos(self._ficha("aaa"))
         conferencia.aceitar_rascunhos(self._ficha("bbb"))
         self.assertEqual({"aaa", "bbb"}, set(conferencia.rascunhos_aceitos()))
+
+    def test_aceitar_orfao_guarda_o_motivo_proprio(self):
+        conferencia.aceitar_rascunhos(self._ficha("aaa"))
+        conferencia.aceitar(
+            [{"youtube_id": "zzz", "titulo": "final celular",
+              "publicado_em": "2026-09-16T03:50:00Z"}],
+            "testes do conserto do rascunho, 16/09 madrugada")
+        lidos = conferencia.rascunhos_aceitos()
+        self.assertIn("15/09/2026", lidos["aaa"]["motivo"])
+        self.assertIn("testes do conserto", lidos["zzz"]["motivo"])
+        self.assertEqual("2026-09-16T03:50:00Z", lidos["zzz"]["publicado_em"])
+
+    def test_aceito_mantem_o_motivo_original(self):
+        conferencia.aceitar([{"youtube_id": "aaa"}], "primeiro")
+        conferencia.aceitar([{"youtube_id": "aaa"}], "segundo")
+        self.assertEqual("primeiro",
+                         conferencia.rascunhos_aceitos()["aaa"]["motivo"])
+
+    def test_le_o_formato_antigo_com_motivo_no_topo(self):
+        # O arquivo gravado na primeira rodada (7a3941d) tinha "motivo" no
+        # topo; o leitor so olha "ids".
+        conferencia.arquivo_de_aceitos().write_text(
+            '{"motivo": "x", "ids": {"aaa": {"motivo": "x"}}}',
+            encoding="utf-8")
+        self.assertEqual({"aaa"}, set(conferencia.rascunhos_aceitos()))
 
     def test_arquivo_ausente_ou_torto_e_lista_vazia(self):
         self.assertEqual({}, conferencia.rascunhos_aceitos())
