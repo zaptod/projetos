@@ -328,6 +328,39 @@ SINAIS_PUBLICADO = (
     "processamento concluído", "link do vídeo", "share a link",
     "seu vídeo foi publicado", "your video is now live",
 )
+# A SEGUNDA CONFIRMACAO DO STUDIO, e a causa de 30 rascunhos no canal.
+#
+# Quando se clica em Publicar com o video ainda processando (ou sem
+# descricao), o Studio abre um aviso com o botao "Publicar mesmo assim". O
+# `_confirmar` daqui NUNCA clicou em nada — ele so procurava texto de sucesso
+# —, entao o aviso ficava aberto, a espera estourava, o Chrome fechava e o
+# video ficava como RASCUNHO. Dos 30 rascunhos do Neural fights em 15/09/2026,
+# 29 tinham um gemeo publicado: um por postagem, todo dia, desde 10/09.
+#
+# O ROTULO E UM `div` DENTRO DO BOTAO (design system do Studio), igual ao
+# "Publicar agora" do TikTok:
+#   <div class="ytcpButtonShapeImpl__button-text-content">Publicar mesmo assim</div>
+# Por isso os seletores pegam tanto o botao quanto o rotulo: clicar no rotulo
+# funciona porque o clique sobe.
+BOTAO_PUBLICAR_ASSIM = (
+    'button:has-text("Publicar mesmo assim")',
+    'button:has-text("Publish anyway")',
+    'div.ytcpButtonShapeImpl__button-text-content:has-text("Publicar mesmo assim")',
+    'div.ytcpButtonShapeImpl__button-text-content:has-text("Publish anyway")',
+    '[class*="button-text-content"]:has-text("Publicar mesmo assim")',
+    '[class*="button-text-content"]:has-text("Publish anyway")',
+)
+# O que a barra de estado mostra enquanto o arquivo AINDA NAO ESTA PRONTO.
+# Medido em 15/09/2026, no instante em que o codigo clicava em publicar:
+# "Envio concluido ... O processamento vai comecar em breve" e, logo depois,
+# "Processando ate SD ... 3 minutos restantes". Ou seja: o video ia ao ar
+# antes de existir nem em SD, justamente na primeira hora, que e quando o
+# algoritmo mede o Short e decide se entrega.
+PROCESSANDO = (
+    "processamento vai comecar", "processando ate sd", "processando ate hd",
+    "processando video", "fazendo upload", "enviando",
+    "processing will begin", "processing sd", "processing hd", "uploading",
+)
 LINK_DO_VIDEO = (
     'a[href*="youtu.be/"]',
     'a[href*="/watch?v="]',
@@ -478,14 +511,37 @@ def _escrever(page, alvo, texto: str) -> None:
 
 
 def _confirmar(page, passo) -> str:
-    """Clica o que falta e CONFERE. Nunca devolve promessa."""
+    """Clica o que falta e CONFERE. Nunca devolve promessa.
+
+    O "o que falta" e novo em 15/09/2026 e e o conserto dos rascunhos: o
+    Studio abre "Publicar mesmo assim" no instante em que se acha que
+    publicou, e ninguem clicava nele. O video ficava parado no aviso ate a
+    janela fechar, virava RASCUNHO, e esta funcao devolvia texto de sucesso
+    porque a pagina por tras ja dizia "video publicado".
+    """
     fim = time.time() + ESPERA_CONFIRMAR_S
+    insistiu = False
     while time.time() < fim:
         try:
             texto = _sem_acento(page.evaluate(
                 "() => document.body ? document.body.innerText : ''"))
         except Exception:
             texto = ""
+        # O AVISO VEM ANTES DA PROVA. Com ele aberto a pagina de tras ja
+        # mostra frases de sucesso, e conferir primeiro devolveria "publicado"
+        # para um video que vai ficar como rascunho.
+        assim = _primeiro(page, BOTAO_PUBLICAR_ASSIM, timeout=1.0)
+        if assim is not None:
+            try:
+                assim.click()
+                insistiu = True
+                passo('o Studio pediu confirmacao: cliquei em "Publicar '
+                      'mesmo assim".')
+                time.sleep(2.0)
+                continue
+            except Exception as exc:
+                passo(f"achei 'Publicar mesmo assim' mas nao consegui clicar "
+                      f"({type(exc).__name__}).")
         if any(sinal in texto for sinal in
                (_sem_acento(s) for s in SINAIS_PUBLICADO)):
             link = _primeiro(page, LINK_DO_VIDEO, timeout=3.0)
@@ -496,11 +552,12 @@ def _confirmar(page, passo) -> str:
                         return url
                 except Exception:
                     pass
-            return SUCESSO
-        time.sleep(3)
+            return SUCESSO + (" (com a confirmacao extra)" if insistiu else "")
+        time.sleep(1.5)
     return ("cliquei em publicar, mas o Studio nao mostrou a confirmacao. "
             "A janela ficou aberta: confira em studio.youtube.com se o video "
-            "subiu antes de tentar de novo.")
+            "subiu antes de tentar de novo — ele pode ter ficado como "
+            "RASCUNHO.")
 
 
 SUCESSO = "publicado no YouTube"
