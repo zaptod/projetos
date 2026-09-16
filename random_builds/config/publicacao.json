@@ -62,6 +62,8 @@
     "url_upload": "https://www.tiktok.com/tiktokstudio/upload"
   },
   "grade": {
+    "_porque_repetir_titulo": "false = video com titulo ja publicado sai da fila. Medido em 16/09/2026: das 63 chaves de titulo no canal de builds, 21 tinham saido DUAS vezes, porque a variante 'gancho B' tem id com sufixo :B e o mesmo titulo. Se a fila inteira ficar repetida, o menos pior sai assim mesmo e o aviso diz. Ponha true para voltar ao comportamento antigo.",
+    "repetir_titulo": false,
     "_porque": "Quantos dos 8 disparos diarios cada formato ocupa. O duelo leva a maioria porque e o formato em teste e o mais barato (uma gravacao, nenhuma chamada de IA); a estreia leva 1 porque tem retencao mediana ZERO e so fica no ar para a comparacao ter os dois lados. Medido em 11/09/2026.",
     "mistura": {
       "duelo": 4,

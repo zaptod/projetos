@@ -174,6 +174,23 @@ def fila_de_historias() -> list:
     ordem = {video_id: i for i, video_id in enumerate(_prioridades())}
     if ordem:
         fila.sort(key=lambda v: (0, ordem[v.id]) if v.id in ordem else (1, 0))
+
+    # TITULO JA NO AR TAMBEM SAI DAQUI. Nas historias isto quase nunca
+    # dispara — o titulo carrega "(Parte N/6)", entao duas partes nunca
+    # colidem. Entra pela simetria e por UM caso real possivel: uma historia
+    # recriada com outro numero sai com o mesmo titulo da anterior, e o id
+    # novo passaria pela deduplicacao sem ninguem notar.
+    novos, repetidos = _sem_titulo_repetido(fila, "historias")
+    if repetidos:
+        _linha(f"[postar] {len(repetidos)} parte(s) fora da fila por titulo "
+               f"ja publicado: {', '.join(v.id for v in repetidos[:3])}"
+               f"{'...' if len(repetidos) > 3 else ''}")
+    if novos:
+        return novos
+    if repetidos:
+        # A VALVULA, igual a dos builds.
+        _linha("[postar] historias: TODAS as partes pendentes tem titulo ja "
+               "publicado; sigo com a fila como estava.")
     return fila
 
 
@@ -600,6 +617,8 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         ficha["veto_vencido"] = True
     elif _veto_lembrado(alvo):
         ficha["veto_ignorado"] = True
+    if titulo_repetido(alvo, "historias"):
+        ficha["titulo_repetido"] = True
     if cota:
         ficha["motivo"] = f"YouTube na cota: {cota}"[:200]
         ficha["cota_youtube"] = True
@@ -710,6 +729,70 @@ COTA_PADRAO = {"duelo": 4, "build": 3, "estreia": 1, "torneio": 0}
 # grade: curto o bastante para reagir a um formato que secou, longo o
 # bastante para nao oscilar a cada disparo.
 JANELA_DA_GRADE = 16
+
+
+def repetir_titulo(config=None) -> bool:
+    """O interruptor: `true` volta ao comportamento de antes de 16/09/2026.
+
+    Existe porque barrar titulo repetido pode secar a fila num dia ruim, e a
+    decisao de deixar a grade vazia nunca deve ser minha.
+    """
+    if config is None:
+        try:
+            from builds.publicar import catalogo as C
+            config = C.carregar_config()
+        except Exception:                                      # noqa: BLE001
+            config = {}
+    return bool(((config or {}).get("grade") or {}).get("repetir_titulo"))
+
+
+def _titulos_no_ar(canal: str) -> set:
+    """As chaves de titulo que aquele canal ja publicou."""
+    try:
+        from builds.publicar import titulos
+        return titulos.ja_publicados(_publicados_do_canal(canal))
+    except Exception:                                          # noqa: BLE001
+        # Sem ledger legivel nao da para saber o que ja saiu — e "nao sei"
+        # tem que deixar passar, nunca barrar.
+        return set()
+
+
+def titulo_repetido(alvo, canal: str) -> bool:
+    """Este video saiu com titulo que ja estava no ar?
+
+    Recalcula em vez de carregar o estado da escolha: a fila e montada num
+    lugar e a ficha em outro, e passar a marca por parametro obrigaria a
+    mudar a assinatura de todo o caminho. O ledger tem poucas centenas de
+    linhas — recalcular custa menos que a complicacao.
+    """
+    if repetir_titulo():
+        return False
+    try:
+        from builds.publicar import titulos
+        return titulos.repetido(getattr(alvo, "titulo", ""),
+                                _titulos_no_ar(canal))
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _sem_titulo_repetido(pendentes, canal: str, config=None):
+    """Tira da fila quem tem titulo ja publicado. Devolve (fila, barrados).
+
+    A VALVULA vive em quem chama: se a fila ficar vazia, o certo e sair com
+    o menos pior e avisar, nao deixar o horario em branco.
+    """
+    if repetir_titulo(config) or not pendentes:
+        return pendentes, []
+    from builds.publicar import titulos
+    ja = _titulos_no_ar(canal)
+    if not ja:
+        return pendentes, []
+    novos, repetidos = [], []
+    for v in pendentes:
+        alvo = novos if not titulos.repetido(getattr(v, "titulo", ""), ja) \
+            else repetidos
+        alvo.append(v)
+    return novos, repetidos
 
 
 def cota_da_grade(config=None) -> dict:
@@ -879,6 +962,25 @@ def proximo_build(config=None):
     if not pendentes:
         return None
 
+    # TITULO JA NO AR NAO VOLTA. Medido em 16/09/2026 contra o ledger: das
+    # 63 chaves de titulo publicadas no canal, 21 sairam DUAS vezes. A causa
+    # e a variante "gancho B", que tem id com sufixo `:B` e o mesmo titulo —
+    # para a deduplicacao por `video_id` sao dois videos, para o YouTube sao
+    # dois iguais, competindo pelo mesmo termo de busca.
+    novos, repetidos = _sem_titulo_repetido(pendentes, "builds", config)
+    if repetidos:
+        _linha(f"[postar] {len(repetidos)} build(s) fora da fila por titulo "
+               f"ja publicado: {', '.join(v.id for v in repetidos[:4])}"
+               f"{'...' if len(repetidos) > 4 else ''}")
+    if novos:
+        pendentes = novos
+    elif repetidos:
+        # A VALVULA. Fila inteira repetida e um problema de estoque, e a
+        # resposta a estoque vazio nunca e horario em branco: sai o menos
+        # pior, e `postar_build` marca a ficha para o aviso dizer isso.
+        _linha("[postar] builds: TODOS os pendentes tem titulo ja publicado; "
+               "sai o mais antigo assim mesmo.")
+
     # o mais ANTIGO primeiro: o catalogo vem do mais novo para o mais velho
     pendentes.reverse()
     servidos, cota = _servidos_recentes(), cota_da_grade(config)
@@ -946,6 +1048,11 @@ def postar_build(*, so_ver: bool = False) -> dict:
             avisar_limite_diario(f"canal builds: {exc}")
     ficha = {"canal": "builds", "feito": bool(url), "alvo": alvo.id,
              "titulo": alvo.titulo, "url": url}
+    # A VALVULA APARECE NO RELATORIO. "Libera o menos pior com aviso" so
+    # funciona se o aviso for somavel: sem esta marca, a excecao vira rotina
+    # silenciosa e ninguem descobre que ela virou regra.
+    if titulo_repetido(alvo, "builds"):
+        ficha["titulo_repetido"] = True
     if falha_yt:
         ficha["motivo"] = (f"YouTube na cota: {falha_yt}" if cota
                            else f"YouTube falhou: {falha_yt}")[:200]
@@ -1246,6 +1353,9 @@ def avisar(resultados: list) -> None:
         if r.get("veto_ignorado"):
             linhas.append("    ⚠ saiu com veto da IA: nao havia outro video "
                           "pronto e o horario nao podia ficar vazio")
+        if r.get("titulo_repetido"):
+            linhas.append("    ⚠ saiu com titulo JA PUBLICADO: nao havia "
+                          "outro video na fila. Os dois competem entre si.")
         for recusado in (r.get("recusados") or [])[:2]:
             linhas.append(f"    ⏭ pulei {str(recusado)[:90]}")
         linhas.append("")
