@@ -130,8 +130,43 @@ def _num_destino_so(linhas_por_canal: dict, hoje: date) -> dict:
     return saida
 
 
+# A etapa que cada publicador grava no diario. E o criterio CERTO: ela diz
+# de onde veio a falha, independente do texto da excecao.
+ETAPA_POR_DESTINO = {"publicar.tiktok": "tiktok",
+                     "publicar.youtube": "youtube"}
+# Os erros que so o publicador do YouTube levanta. Casar por "youtube" solto
+# contaria tambem a conferencia, que grava `fabrica="publicacao"` com
+# "conferencia builds/youtube: ..." no detalhe — e isso nao e falha de
+# publicar.
+ERROS_DO_YOUTUBE = ("YouTubeWebFalhou", "LimiteDiarioDoYouTube")
+
+
+def _destino_da_falha(ev: dict) -> str:
+    """De que publicador veio esta falha? `""` se nao e falha de publicar.
+
+    Evento COM etapa e julgado so pela etapa. Evento SEM etapa cai no
+    criterio antigo, e isso e transicao, nao descuido: ate o publicador
+    passar a gravar a etapa, zerar a contagem esconderia justamente as
+    falhas que se quer ver. O antigo do TikTok e o de 16/09/2026 ("tiktok"
+    no texto, que pega o nome da classe `TikTokFalhou`); o do YouTube casa so
+    o nome das classes dele.
+    """
+    if ev.get("fabrica") != "publicacao" or ev.get("status") != "erro":
+        return ""
+    etapa = str(ev.get("etapa") or "")
+    if etapa:
+        return ETAPA_POR_DESTINO.get(etapa, "")
+    detalhe = str(ev.get("detalhe") or "")
+    if "tiktok" in detalhe.lower():
+        return "tiktok"
+    if detalhe.startswith(ERROS_DO_YOUTUBE):
+        return "youtube"
+    return ""
+
+
 def _do_diario(eventos: list, dia: str) -> tuple:
-    valvula, falhas_tiktok = [], 0
+    valvula = []
+    falhas = {"tiktok": 0, "youtube": 0}
     for ev in eventos:
         if not isinstance(ev, dict) or _dia_local(ev.get("ts")) != dia:
             continue
@@ -140,10 +175,11 @@ def _do_diario(eventos: list, dia: str) -> tuple:
             valvula.append({"canal": ev.get("canal"), "alvo": alvo,
                             "marca": marca, "motivo": ev.get("detalhe"),
                             "hora": _hora_local(ev.get("ts"))})
-        elif (ev.get("fabrica") == "publicacao" and ev.get("status") == "erro"
-              and "tiktok" in str(ev.get("detalhe") or "").lower()):
-            falhas_tiktok += 1
-    return valvula, falhas_tiktok
+            continue
+        destino = _destino_da_falha(ev)
+        if destino:
+            falhas[destino] += 1
+    return valvula, falhas
 
 
 def _hora_local(ts) -> str:
@@ -226,7 +262,7 @@ def hoje(dia: str | None = None, *, builds=None, historias=None,
     conferencias = _conferencias() if conferencias is None else conferencias
 
     publicacoes = _publicacoes(linhas, dia)
-    valvula, falhas_tiktok = _do_diario(eventos, dia)
+    valvula, falhas = _do_diario(eventos, dia)
     ficha = {
         "dia": dia,
         "publicacoes": publicacoes,
@@ -245,7 +281,9 @@ def hoje(dia: str | None = None, *, builds=None, historias=None,
             and p["reconhecido"] is False),
         "num_destino_so": _num_destino_so(linhas, referencia),
         "valvula": valvula,
-        "falhas_tiktok": falhas_tiktok,
+        # O nome antigo continua: o Telegram e a pagina ja leem este campo.
+        "falhas_tiktok": falhas["tiktok"],
+        "falhas_youtube": falhas["youtube"],
         "conferencia": {canal: _resumo_conferencia(f or {}, referencia)
                         for canal, f in (conferencias or {}).items()},
         "quando": datetime.now().isoformat(timespec="seconds"),

@@ -130,6 +130,67 @@ class OEstadoGanhaDoEvento(unittest.TestCase):
         self.assertEqual(ficha["veredito"], "ok")
 
 
+def _falha(detalhe, *, etapa=None, fabrica="publicacao", status="erro"):
+    ev = {"ts": f"{DIA}T12:40:00", "fabrica": fabrica, "status": status,
+          "detalhe": detalhe}
+    if etapa is not None:
+        ev["etapa"] = etapa
+    return ev
+
+
+class AsFalhasPorDestino(unittest.TestCase):
+    """Por etapa quando o publicador grava; pelo nome enquanto nao grava."""
+
+    def _falhas(self, *eventos):
+        ficha = _retrato(builds=[_yt("g1"), _tk("g1")], eventos=eventos)
+        return ficha["falhas_tiktok"], ficha["falhas_youtube"]
+
+    def test_etapa_decide_o_destino(self):
+        self.assertEqual((1, 1), self._falhas(
+            _falha("TimeoutError: page.goto", etapa="publicar.tiktok"),
+            _falha("TimeoutError: page.goto", etapa="publicar.youtube")))
+
+    def test_erro_cru_do_navegador_so_e_contado_com_etapa(self):
+        # O buraco do criterio antigo: um TimeoutError do Playwright nao tem
+        # "tiktok" no texto e sumia da conta.
+        self.assertEqual((0, 0), self._falhas(_falha("TimeoutError: x")))
+        self.assertEqual((1, 0), self._falhas(
+            _falha("TimeoutError: x", etapa="publicar.tiktok")))
+
+    def test_com_etapa_o_texto_nao_manda_mais(self):
+        # Julgado pela etapa, e so por ela: a mensagem do YouTube pode citar
+        # o TikTok sem virar falha do TikTok.
+        self.assertEqual((0, 1), self._falhas(_falha(
+            "YouTubeWebFalhou: o TikTok ja saiu, o YouTube nao",
+            etapa="publicar.youtube")))
+
+    def test_sem_etapa_o_criterio_antigo_continua_contando(self):
+        # TRANSICAO: ate o publicador gravar a etapa, zerar a contagem
+        # esconderia exatamente as falhas que se quer ver.
+        self.assertEqual((1, 0), self._falhas(
+            _falha("TikTokFalhou: a legenda não entrou (falhou: X)")))
+        self.assertEqual((0, 2), self._falhas(
+            _falha("YouTubeWebFalhou: o Studio nao carregou"),
+            _falha("LimiteDiarioDoYouTube: cota do dia")))
+
+    def test_a_conferencia_nao_vira_falha_de_publicar(self):
+        # Ela grava na MESMA fabrica, com "youtube" no texto. Casar por
+        # substring contaria cada noite suja como uma publicacao falhada.
+        self.assertEqual((0, 0), self._falhas(_falha(
+            "conferencia builds/youtube: 1 no ledger sem video no canal")))
+
+    def test_etapa_desconhecida_e_log_nao_contam(self):
+        self.assertEqual((0, 0), self._falhas(
+            _falha("TikTokFalhou: x", etapa="render"),
+            _falha("TikTokFalhou: x", status="log"),
+            _falha("TikTokFalhou: x", fabrica="estudio")))
+
+    def test_evento_de_outro_dia_nao_conta(self):
+        ontem = _falha("TikTokFalhou: x", etapa="publicar.tiktok")
+        ontem["ts"] = "2026-09-15T12:40:00"
+        self.assertEqual((0, 0), self._falhas(ontem))
+
+
 class AValvula(unittest.TestCase):
 
     def test_cada_abertura_aparece_com_o_motivo(self):
