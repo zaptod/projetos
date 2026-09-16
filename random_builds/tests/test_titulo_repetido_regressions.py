@@ -136,5 +136,58 @@ class AFilaDoPostar(unittest.TestCase):
         self.assertIn("titulo JA PUBLICADO", fonte)
 
 
+class AValvulaFicaEmDisco(unittest.TestCase):
+    """Ate 16/09/2026 a valvula so existia na ficha do Telegram, e sumia.
+
+    "Libera o menos pior com aviso" e a regra do Adrian; um aviso que
+    ninguem soma deixa a excecao virar rotina sem ninguem perceber.
+    """
+
+    def _gravar(self, ficha):
+        from builds import atividade
+        gravado = []
+        real = atividade.registrar
+        atividade.registrar = lambda *a, **k: gravado.append((a, k))
+        self.addCleanup(lambda: setattr(atividade, "registrar", real))
+        _postar()._registrar_valvula(ficha)
+        return gravado
+
+    def test_publicacao_pela_valvula_vira_linha_no_diario(self):
+        gravado = self._gravar({"feito": True, "canal": "builds",
+                                "alvo": "g1:build:celular:B",
+                                "titulo_repetido": True})
+        self.assertEqual(len(gravado), 1)
+        args, kw = gravado[0]
+        self.assertEqual(kw["etapa"], "valvula")
+        self.assertEqual(kw["ref"], "g1:build:celular:B|titulo_repetido")
+        self.assertEqual(args[3], "builds")
+
+    def test_rodada_que_nao_publicou_nao_conta(self):
+        # Valvula de uma rodada que nao saiu nao liberou nada.
+        gravado = self._gravar({"feito": False, "titulo_repetido": True})
+        self.assertEqual(gravado, [])
+
+    def test_publicacao_limpa_nao_conta(self):
+        self.assertEqual(self._gravar({"feito": True, "canal": "builds"}), [])
+
+    def test_as_tres_marcas_contam_em_separado(self):
+        gravado = self._gravar({"feito": True, "canal": "historias",
+                                "veto_vencido": True, "titulo_repetido": True})
+        marcas = sorted(k["ref"].split("|")[1] for _a, k in gravado)
+        self.assertEqual(marcas, ["titulo_repetido", "veto_vencido"])
+
+    def test_nunca_levanta(self):
+        # Registrar a valvula nao pode derrubar a postagem que JA saiu.
+        from builds import atividade
+        real = atividade.registrar
+
+        def explode(*_a, **_k):
+            raise OSError("disco cheio")
+
+        atividade.registrar = explode
+        self.addCleanup(lambda: setattr(atividade, "registrar", real))
+        _postar()._registrar_valvula({"feito": True, "titulo_repetido": True})
+
+
 if __name__ == "__main__":
     unittest.main()

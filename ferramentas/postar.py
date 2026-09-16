@@ -638,6 +638,7 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     # (revisao de 15/09/2026).
     if _tiktok_confirmado(ficha["tiktok"]):
         ficha["feito"] = True
+    _registrar_valvula(ficha)
     return ficha
 
 
@@ -821,6 +822,41 @@ def _titulos_no_ar(canal: str) -> set:
         # Sem ledger legivel nao da para saber o que ja saiu — e "nao sei"
         # tem que deixar passar, nunca barrar.
         return set()
+
+
+# As marcas da ficha que querem dizer "saiu, mas pela valvula". A ordem e a
+# da gravidade, e e a que o relatorio mostra.
+VALVULAS = {
+    "veto_vencido": "veto da IA venceu (as rodadas de conserto acabaram)",
+    "veto_ignorado": "veto da IA ignorado (nao havia outro video pronto)",
+    "titulo_repetido": "titulo ja publicado (nao havia outro na fila)",
+}
+
+
+def _registrar_valvula(ficha: dict) -> None:
+    """Grava no diario cada vez que a valvula abriu. Nunca levanta.
+
+    Ate 16/09/2026 a valvula so existia na FICHA, que vira mensagem do
+    Telegram e some. "Libera o menos pior com aviso" e a regra do Adrian —
+    mas um aviso que ninguem soma deixa a excecao virar rotina sem que
+    ninguem perceba. No diario ela passa a ser contavel pela pagina de
+    confiabilidade e pelo resumo do dia.
+
+    So conta o que de fato SAIU: valvula de rodada que nao publicou nada nao
+    liberou nada.
+    """
+    try:
+        if not ficha or not ficha.get("feito"):
+            return
+        from builds import atividade
+        for marca, motivo in VALVULAS.items():
+            if ficha.get(marca):
+                atividade.registrar(
+                    "publicacao", atividade.LOG, motivo,
+                    ficha.get("canal") or "builds", etapa="valvula",
+                    ref=f"{ficha.get('alvo', '')}|{marca}")
+    except Exception:                                          # noqa: BLE001
+        pass
 
 
 def titulo_repetido(alvo, canal: str) -> bool:
@@ -1146,6 +1182,7 @@ def postar_build(*, so_ver: bool = False) -> dict:
         ficha["tiktok"] = "" if ja_tk else _tiktok_dos_builds(alvo)
     if _tiktok_confirmado(ficha["tiktok"]):
         ficha["feito"] = True
+    _registrar_valvula(ficha)
     return ficha
 
 
