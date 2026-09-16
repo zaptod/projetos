@@ -199,6 +199,27 @@ class TabelaFechadaTests(BaseTemp):
         self.assertIn("onde?", comandos.publicar("x instagram"))
 
 
+class LogComHoraTests(unittest.TestCase):
+    """16/09/2026: sem hora no bot.txt, nao dava para saber se um "relatorio
+    enviado" era de agora ou de dias atras."""
+
+    def test_a_linha_leva_data_e_hora(self):
+        linha = bot_mod.carimbar("[remoto] relatorio de metas enviado.",
+                                 datetime(2026, 9, 16, 21, 0, 5))
+        self.assertEqual("16/09 21:00:05 [remoto] relatorio de metas enviado.",
+                         linha)
+
+    def test_o_bot_usa_o_log_com_hora_por_padrao(self):
+        robo = bot_mod.Bot(telegram=TelegramFalso())
+        self.assertIs(bot_mod._log_com_hora, robo.log)
+
+    def test_quem_passa_o_proprio_log_nao_ganha_prefixo(self):
+        linhas = []
+        robo = bot_mod.Bot(telegram=TelegramFalso(), log=linhas.append)
+        robo.log("[remoto] oi")
+        self.assertEqual(["[remoto] oi"], linhas)
+
+
 class AlertaTests(BaseTemp):
     def test_so_avisa_o_que_e_novo(self):
         """Ligar o bot nao pode despejar o historico do dia no celular."""

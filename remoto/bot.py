@@ -31,8 +31,22 @@ def _codigo() -> str:
     return f"{random.randint(0, 999999):06d}"
 
 
+def carimbar(texto: str, agora: datetime | None = None) -> str:
+    """A linha do log com data e hora na frente.
+
+    Ate 16/09/2026 o `outputs/bot.txt` nao tinha hora nenhuma: depois de um
+    reinicio, "relatorio de metas enviado" no fim do arquivo podia ser de
+    agora ou de tres dias atras, e so o `relatorios.json` desempatava.
+    """
+    return f"{(agora or datetime.now()).strftime('%d/%m %H:%M:%S')} {texto}"
+
+
+def _log_com_hora(texto: str) -> None:
+    print(carimbar(texto), flush=True)
+
+
 class Bot:
-    def __init__(self, *, telegram=None, log=print):
+    def __init__(self, *, telegram=None, log=_log_com_hora):
         self.log = log
         self.config = config.carregar()
         self.tg = telegram or Telegram(config.token())
