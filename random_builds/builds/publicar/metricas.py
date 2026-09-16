@@ -403,7 +403,19 @@ def motivo_da_recusa(resposta) -> str:
                 "console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com "
                 "e espere alguns minutos. Detalhe: " + recado[:200])
     if razao in ("authError", "unauthorized") or resposta.status_code == 401:
-        return f"token invalido ou revogado — rode: {comando_oauth()}"
+        # 401 AQUI NUNCA E REVOGACAO. Refresh revogado falha ANTES, em
+        # `token_de_acesso`, com `invalid_grant`. Chegar ate esta chamada
+        # quer dizer que o refresh FUNCIONOU e a API recusou o token de
+        # acesso que foi mandado. Medido em 16/09/2026: a conferencia mandava
+        # a tupla `(token, credenciais)` no cabecalho, esta funcao dizia
+        # "token invalido ou revogado", e o Adrian ouviu que as tres
+        # credenciais estavam mortas quando duas estavam vivas.
+        return (f"o Google recusou o token de acesso enviado "
+                f"({resposta.status_code} {razao or 'sem reason'}: "
+                f"{recado[:200] or 'sem mensagem'}). O refresh funcionou, "
+                "entao nao e credencial revogada: confira o que vai no "
+                "cabecalho Authorization. So se persistir, reautorize: "
+                f"{comando_oauth()}")
     if razao == "insufficientPermissions":
         return f"falta o escopo yt-analytics.readonly — rode: {comando_oauth()}"
     return f"Analytics API {resposta.status_code} ({razao or 'sem reason'}): {recado[:200]}"

@@ -393,11 +393,35 @@ class MotivoDaRecusaTests(unittest.TestCase):
         self.assertIn("escopo yt-analytics.readonly", motivo)
         self.assertIn("youtube_oauth", motivo)
 
-    def test_token_revogado_manda_reautorizar(self):
+    def test_401_nao_e_chamado_de_revogado(self):
+        """Refresh revogado falha ANTES, com `invalid_grant`. Um 401 aqui
+        quer dizer que o refresh funcionou e o token ENVIADO foi recusado.
+
+        Era `test_token_revogado_manda_reautorizar`, e fixava o diagnostico
+        errado: em 16/09/2026 um cabecalho malformado (uma tupla no lugar do
+        token) virou "tres credenciais revogadas" para o Adrian.
+        """
+        corpo = {"error": {
+            "code": 401, "status": "UNAUTHENTICATED",
+            "message": "Request had invalid authentication credentials. "
+                       "Expected OAuth 2 access token",
+            "errors": [{"reason": "authError", "location": "Authorization",
+                        "message": "Invalid Credentials"}]}}
+        motivo = metricas.motivo_da_recusa(self._Resposta(401, corpo))
+        self.assertNotIn("revogado", motivo)
+        self.assertIn("invalid authentication credentials", motivo)
+        self.assertIn("authError", motivo)
+        self.assertIn("Authorization", motivo)
+
+    def test_401_ainda_diz_como_reautorizar_se_persistir(self):
         motivo = metricas.motivo_da_recusa(
             self._Resposta(401, self._erro("authError")))
-        self.assertIn("revogado", motivo)
         self.assertIn("youtube_oauth", motivo)
+
+    def test_401_sem_corpo_json_nao_derruba(self):
+        motivo = metricas.motivo_da_recusa(self._Resposta(401, "Unauthorized"))
+        self.assertIn("401", motivo)
+        self.assertNotIn("revogado", motivo)
 
     def test_motivo_desconhecido_repassa_o_que_o_google_disse(self):
         """Nunca engolir a resposta: o proximo defeito pode ser outro."""
