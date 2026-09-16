@@ -32,6 +32,7 @@ protege).
 from __future__ import annotations
 
 import json
+import socket
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -109,6 +110,67 @@ def credenciais_do_app(destino: Path) -> tuple[str, str] | None:
     return None
 
 
+# O RETORNO VAI PARA O IP, NAO PARA "localhost". Medido em 16/09/2026: um
+# `python -m http.server 8765` esquecido por outra sessao segurava
+# `[::]:8765`; esta ferramenta escutava `127.0.0.1:8765`; o redirect ia para
+# "localhost", o Chrome resolvia para `::1` e entregava o `?code=` ao
+# servidor esquecido — que respondia 200 com uma listagem de diretorio. O
+# login do Adrian "funcionava" na tela e o codigo sumia. Cliente OAuth do
+# tipo "Aplicativo para computador" aceita loopback por IP em qualquer
+# porta; `--host localhost` volta ao comportamento antigo se precisar.
+HOST_PADRAO = "127.0.0.1"
+
+
+def redirect_uri(host: str, porta: int) -> str:
+    return f"http://{host}:{porta}"
+
+
+def porta_ocupada(porta: int) -> str:
+    """Quem mais pode receber o retorno nesta porta? `""` se ninguem.
+
+    Olha as DUAS familias, por dois lados:
+
+      - CONECTAR em 127.0.0.1 e em ::1. E a pergunta que importa: se alguem
+        atende ali, o navegador pode cair nele. Um bind so nao basta no
+        Windows, onde um endereco especifico pode ser aceito mesmo com outro
+        processo segurando o coringa.
+      - BIND nos coringas e nos loopbacks. Pega quem ainda nao aceita
+        conexao mas ja reservou a porta.
+
+    Familia que a maquina nao tem (sem IPv6, por exemplo) e pulada: nao ha
+    como o navegador ir por ela.
+    """
+    alvos = ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET, "0.0.0.0"),
+             (socket.AF_INET6, "::1"), (socket.AF_INET6, "::"))
+    for familia, endereco in alvos:
+        if endereco in ("127.0.0.1", "::1"):
+            try:
+                cliente = socket.socket(familia, socket.SOCK_STREAM)
+            except OSError:
+                continue
+            try:
+                cliente.settimeout(0.5)
+                if cliente.connect_ex((endereco, porta)) == 0:
+                    return f"ja tem alguem atendendo em {endereco}:{porta}"
+            except OSError:
+                pass
+            finally:
+                cliente.close()
+        try:
+            teste = socket.socket(familia, socket.SOCK_STREAM)
+        except OSError:
+            continue
+        try:
+            if familia == socket.AF_INET6:
+                teste.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            teste.bind((endereco, porta))
+        except OSError as exc:
+            return f"nao consegui reservar {endereco}:{porta} ({exc})"
+        finally:
+            teste.close()
+    return ""
+
+
 def _receber_codigo(porta: int) -> str:
     """Servidor de um tiro só: espera o redirect com ?code=..."""
     codigo: dict[str, str] = {}
@@ -152,6 +214,12 @@ def build_parser() -> SafeArgumentParser:
     parser.add_argument("--client-secret", help="idem --client-id")
     parser.add_argument("--porta", type=int, default=8765)
     parser.add_argument(
+        "--host", default=HOST_PADRAO,
+        help="para onde o Google devolve o codigo (padrao 127.0.0.1). "
+             "`localhost` deixa o navegador escolher entre IPv4 e IPv6, e ja "
+             "entregou o codigo a outro programa.",
+    )
+    parser.add_argument(
         "--conta",
         help="nome da conta (builds.contas): decide o arquivo de destino. "
              "`principal` grava no legado youtube_credentials.json; conta "
@@ -180,7 +248,21 @@ def build_parser() -> SafeArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    redirect = f"http://localhost:{args.porta}"
+    redirect = redirect_uri(args.host, args.porta)
+
+    # ANTES de abrir o navegador: com a porta tomada, o consentimento
+    # "funciona" na tela e o codigo vai para outro programa.
+    ocupante = porta_ocupada(args.porta)
+    if ocupante:
+        safe_print(
+            f"A porta {args.porta} ja esta em uso: {ocupante}. Outro programa "
+            "receberia o retorno do Google e o codigo se perderia. Feche esse "
+            f"programa, ou rode de novo com --porta OUTRA (ex.: "
+            f"--porta {args.porta + 1}).")
+        return 3
+    if args.host == "localhost":
+        safe_print("ATENCAO: com --host localhost o navegador pode ir por "
+                   "IPv6 (::1), e esta ferramenta escuta so 127.0.0.1.")
 
     destino = Path(args.out) if args.out else caminho_da_conta(args.conta)
     if not (args.client_id and args.client_secret):
