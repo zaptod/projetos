@@ -8,6 +8,7 @@ entre catalogos sao validadas.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import shutil
@@ -854,6 +855,76 @@ def carregar_database(
     return raw_armas, raw_chars
 
 
+logger = logging.getLogger(__name__)
+
+COPIAS_GUARDADAS = 5
+
+
+def _copia_antes_de_perder(
+    armas_path: str, chars_path: str, chars_novos: Sequence[Mapping[str, Any]]
+) -> str | None:
+    """Guarda o banco atual quando a gravacao vai APAGAR personagens.
+
+    `gerador_database.py` grava com `substituir=True` — o banco inteiro e
+    trocado, sem aviso e sem volta. Em 02/09/2026 isso levou junto todos os
+    personagens gerados em agosto, e com eles 20 videos de build que estavam
+    prontos e ainda nao publicados: sem ficha no banco nao ha estreia, e sem
+    estreia a build nunca entra na fila. Ninguem ficou sabendo por duas
+    semanas, porque o dano nao aparece aqui — aparece la, como uma pendencia
+    que parece tarefa.
+
+    A copia so sai quando alguem SUMIRIA. Escrita que so acrescenta (a roleta
+    inserindo o personagem novo, que e o caso comum) nao gera arquivo nenhum.
+    Falhar ao copiar nunca impede a gravacao: isto e rede de seguranca, nao
+    portao.
+    """
+    from datetime import datetime
+
+    try:
+        antigos = carregar_json(chars_path)
+    except Exception:
+        return None
+    if not antigos:
+        return None
+    nomes_novos = {str(p.get("nome")) for p in chars_novos}
+    perdidos = [str(p.get("nome")) for p in antigos
+                if str(p.get("nome")) not in nomes_novos]
+    if not perdidos:
+        return None
+
+    try:
+        carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
+        destino = os.path.join(os.path.dirname(chars_path),
+                               f"_backup-{carimbo}")
+        os.makedirs(destino, exist_ok=True)
+        for origem in (armas_path, chars_path):
+            if os.path.isfile(origem):
+                shutil.copy2(origem, os.path.join(destino,
+                                                  os.path.basename(origem)))
+        logger.warning(
+            "banco: %d personagem(ns) sairam nesta gravacao (%s%s); "
+            "copia do estado anterior em %s",
+            len(perdidos), ", ".join(perdidos[:3]),
+            "..." if len(perdidos) > 3 else "", destino,
+        )
+        _podar_copias(os.path.dirname(chars_path))
+        return destino
+    except Exception:
+        return None
+
+
+def _podar_copias(pasta: str) -> None:
+    """So as ultimas `COPIAS_GUARDADAS`: rede de seguranca nao vira deposito."""
+    try:
+        copias = sorted(d for d in os.listdir(pasta)
+                        if d.startswith("_backup-")
+                        and os.path.isdir(os.path.join(pasta, d)))
+        for velha in copias[:-COPIAS_GUARDADAS]:
+            shutil.rmtree(os.path.join(pasta, velha), ignore_errors=True)
+    except Exception:
+        pass
+
+
 @_serializar_persistencia
 def salvar_database(
     armas: Sequence[Mapping[str, Any]],
@@ -874,6 +945,7 @@ def salvar_database(
     )
     os.makedirs(os.path.dirname(armas_path), exist_ok=True)
     os.makedirs(os.path.dirname(chars_path), exist_ok=True)
+    _copia_antes_de_perder(armas_path, chars_path, chars_json)
     salvar_jsons_coerentes(
         {
             armas_path: armas_json,
