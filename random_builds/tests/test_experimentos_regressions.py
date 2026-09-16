@@ -360,12 +360,23 @@ class ReconciliarTests(unittest.TestCase):
         metricas._token = lambda canal="builds": ("t", None)
         metricas.enviados = lambda token, quantos=200: catalogo
 
+    # As linhas precisam de HORA desde 16/09/2026: o casamento passou a exigir
+    # que o video tenha ido ao ar perto da hora da linha (`casar_ids`). O
+    # ledger real sempre tem `quando` e o canal sempre tem `publicado_em`; o
+    # `quando` sai da MESMA conversao, para o teste nao depender do fuso.
+    NO_AR = "2026-09-10T12:00:00Z"
+
+    def _quando(self, minutos_depois=1):
+        from datetime import timedelta
+        return (metricas._instante(self.NO_AR)
+                + timedelta(minutes=minutos_depois)).isoformat(timespec="seconds")
+
     def test_preenche_o_id_casando_pelo_titulo(self):
         self._escrever([{"video_id": "g1:build:celular", "titulo": "Alfa x Beta",
                          "plataforma": "youtube", "url": "publicado no YouTube",
-                         "youtube_id": None}])
+                         "youtube_id": None, "quando": self._quando()}])
         self._dublar([{"youtube_id": "ABC123", "titulo": "Alfa x Beta",
-                       "publicado_em": "2026-09-10T12:00:00Z"}])
+                       "publicado_em": self.NO_AR}])
         self.assertEqual(1, metricas.reconciliar("builds", log=lambda *_a: None))
         linha = metricas.publicados("builds")[0]
         self.assertEqual("ABC123", linha["youtube_id"])
@@ -376,9 +387,30 @@ class ReconciliarTests(unittest.TestCase):
         emoji. Comparar cru nao casava quase nada."""
         self._escrever([{"video_id": "g1:build:celular",
                          "titulo": "🔥 Alfa  x  BETA", "plataforma": "youtube",
-                         "youtube_id": None}])
-        self._dublar([{"youtube_id": "ABC123", "titulo": "Alfa x Beta"}])
+                         "youtube_id": None, "quando": self._quando()}])
+        self._dublar([{"youtube_id": "ABC123", "titulo": "Alfa x Beta",
+                       "publicado_em": self.NO_AR}])
         self.assertEqual(1, metricas.reconciliar("builds", log=lambda *_a: None))
+
+    def test_o_caso_generation_00081_nao_se_repete(self):
+        """A (15/09 21:39) sem link, B (16/09 00:39) com XKDORFs4CdY, mesmo
+        titulo. A reconciliacao dava a A o id de B."""
+        titulo = "Morgana Nekrevok, Necromante (Trevas) — build 47/100"
+        b_no_ar = "2026-09-16T03:40:10Z"
+        b_quando = metricas._instante(b_no_ar).isoformat(timespec="seconds")
+        a_quando = (metricas._instante(b_no_ar)
+                    - __import__("datetime").timedelta(hours=3, minutes=1)
+                    ).isoformat(timespec="seconds")
+        self._escrever([
+            {"video_id": "generation_00081:build:celular", "titulo": titulo,
+             "plataforma": "youtube", "youtube_id": None, "quando": a_quando},
+            {"video_id": "generation_00081:build:celular:B", "titulo": titulo,
+             "plataforma": "youtube", "youtube_id": "XKDORFs4CdY",
+             "quando": b_quando}])
+        self._dublar([{"youtube_id": "XKDORFs4CdY", "titulo": titulo,
+                       "publicado_em": b_no_ar}])
+        self.assertEqual(0, metricas.reconciliar("builds", log=lambda *_a: None))
+        self.assertIsNone(metricas.publicados("builds")[0]["youtube_id"])
 
     def test_quem_ja_tem_id_nao_e_tocado(self):
         self._escrever([{"video_id": "g1:build:celular", "titulo": "Alfa",

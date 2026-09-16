@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import re
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -332,6 +332,79 @@ def _chave_de_titulo(texto: str) -> str:
     return chave(texto)
 
 
+# Quanto a hora do video no canal pode se afastar da hora da linha. Subir e
+# publicar leva minutos; duas horas cobre um Studio lento sem alcancar o
+# horario seguinte da grade na maior parte do dia.
+FOLGA_DE_CASAMENTO = timedelta(hours=2)
+
+
+def _instante(texto) -> datetime | None:
+    """Um carimbo do ledger (local, sem fuso) ou do YouTube (UTC, com Z),
+    sempre como hora LOCAL sem fuso — para os dois poderem ser subtraidos."""
+    if not texto:
+        return None
+    try:
+        quando = datetime.fromisoformat(str(texto).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if quando.tzinfo is not None:
+        quando = quando.astimezone().replace(tzinfo=None)
+    return quando
+
+
+def casar_ids(linhas: list, videos: list,
+              folga: timedelta = FOLGA_DE_CASAMENTO) -> list:
+    """Quais linhas sem id ganham qual video. PURA: nao le nem grava nada.
+
+    Casa pelo TITULO, com duas guardas que faltavam (16/09/2026). A linha A
+    de `generation_00081` (15/09 21:39) saiu sem link, e a reconciliacao lhe
+    deu o id do upload B (16/09 00:39), porque A e B tem o mesmo titulo e o
+    canal lista o mais novo primeiro. O ledger passou a afirmar que A foi ao
+    ar com o video de B.
+
+      1. HORA: o video tem de ter ido ao ar perto da hora da linha (ou do
+         `agendado_para`, quando houve agendamento) — nos DOIS sentidos. No
+         caso real o video era tres horas POSTERIOR a linha.
+      2. DONO: id que ja pertence a outra linha do ledger nao e dado de novo.
+         Tambem nao a duas linhas na mesma rodada.
+
+    Entre candidatos validos, fica o mais proximo da hora da linha. Sem
+    candidato valido, a linha fica sem id — "nao sei" e melhor que um id
+    errado, que a conferencia depois usaria como prova.
+    """
+    usados = {str(L.get("youtube_id")) for L in linhas if L.get("youtube_id")}
+    por_titulo: dict = {}
+    for video in videos or ():
+        chave = _chave_de_titulo(video.get("titulo"))
+        if chave and video.get("youtube_id"):
+            por_titulo.setdefault(chave, []).append(video)
+
+    pares = []
+    for indice, linha in enumerate(linhas):
+        if linha.get("youtube_id") or not linha.get("titulo"):
+            continue
+        if linha.get("plataforma", "youtube") != "youtube":
+            continue
+        referencia = _instante(linha.get("agendado_para")) \
+            or _instante(linha.get("quando"))
+        if referencia is None:
+            continue
+        candidatos = []
+        for video in por_titulo.get(_chave_de_titulo(linha["titulo"]), ()):
+            if video["youtube_id"] in usados:
+                continue
+            no_ar = _instante(video.get("publicado_em"))
+            if no_ar is None or abs(no_ar - referencia) > folga:
+                continue
+            candidatos.append((abs(no_ar - referencia), video))
+        if not candidatos:
+            continue
+        _, escolhido = min(candidatos, key=lambda c: c[0])
+        usados.add(escolhido["youtube_id"])
+        pares.append((indice, escolhido))
+    return pares
+
+
 def reconciliar(canal: str = "builds", log=print) -> int:
     """Preenche o `youtube_id` que faltou no ledger, casando pelo TITULO.
 
@@ -353,18 +426,9 @@ def reconciliar(canal: str = "builds", log=print) -> int:
         log(f"[{canal}] nenhum upload sem id.")
         return 0
     token, _ = _token(canal)
-    catalogo = {}
-    for video in enviados(token):
-        catalogo.setdefault(_chave_de_titulo(video["titulo"]), video)
     achados = 0
-    for linha in linhas:
-        if linha.get("youtube_id") or not linha.get("titulo"):
-            continue
-        if linha.get("plataforma", "youtube") != "youtube":
-            continue
-        video = catalogo.get(_chave_de_titulo(linha["titulo"]))
-        if not video:
-            continue
+    for indice, video in casar_ids(linhas, enviados(token)):
+        linha = linhas[indice]
         linha["youtube_id"] = video["youtube_id"]
         linha["url"] = f"https://youtu.be/{video['youtube_id']}"
         linha["publicado_em"] = video.get("publicado_em")
