@@ -299,6 +299,16 @@ class ACabecaDaFilaNaoTravaTests(unittest.TestCase):
             self.addCleanup(setattr, postar, nome, getattr(postar, nome))
         postar._arquivo_de_desistencias = lambda _c: arq
         postar._linha = lambda *_a, **_k: None
+        # O DIARIO TAMBEM E DE VERDADE. Sem esta linha, `_anotar_falha_no_tiktok`
+        # escreve ERRO no `atividade.jsonl` de PRODUCAO com um id de duble —
+        # e em 16/09/2026 foi o que aconteceu: "desisti do TikTok para
+        # trava:build:celular" entrou no diario real, o apurador automatico
+        # leu aquilo como falha de producao e saiu editando o repositorio.
+        # Desviar o arquivo do contador nao basta; o diario e outro caminho.
+        self.diario = []
+        from builds import atividade
+        self.addCleanup(setattr, atividade, "registrar", atividade.registrar)
+        atividade.registrar = lambda *a, **k: self.diario.append((a, k))
         self.tentados = []
         # A CABECA SEMPRE FALHA; a segunda sempre sobe.
         postar._tiktok_dos_builds = lambda alvo: (
