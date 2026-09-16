@@ -284,6 +284,76 @@ class DesistenciasTests(unittest.TestCase):
                 self.assertEqual(set(), postar.desistencias_do_tiktok("builds"))
 
 
+class ACabecaDaFilaNaoTravaTests(unittest.TestCase):
+    """A recuperacao pega SEMPRE `fila[0]`. Sem contador, um video que falha
+    sempre gasta a tentativa de toda rodada e prende os outros atras dele —
+    a fila parece andar e nao anda. Depois de `FALHAS_ATE_DESISTIR` ele sai.
+    """
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        arq = Path(self.tmp.name) / "_tiktok_desistencias.json"
+        for nome in ("_arquivo_de_desistencias", "_fontes_de_atraso",
+                     "_tiktok_dos_builds", "_linha"):
+            self.addCleanup(setattr, postar, nome, getattr(postar, nome))
+        postar._arquivo_de_desistencias = lambda _c: arq
+        postar._linha = lambda *_a, **_k: None
+        self.tentados = []
+        # A CABECA SEMPRE FALHA; a segunda sempre sobe.
+        postar._tiktok_dos_builds = lambda alvo: (
+            self.tentados.append(alvo.id)
+            or ("" if alvo.id == "trava:build:celular"
+                else "publicado no TikTok"))
+        linhas = [
+            _linha("trava:build:celular", "youtube", "2026-09-11T10:00", "Trava"),
+            _linha("segundo:build:celular", "youtube", "2026-09-12T10:00", "Dois"),
+        ]
+        cat = {"trava:build:celular": _Video("trava:build:celular", "Trava"),
+               "segundo:build:celular": _Video("segundo:build:celular", "Dois")}
+        postar._fontes_de_atraso = lambda _c: (linhas, cat)
+
+    def test_depois_de_tres_falhas_o_segundo_sai(self):
+        for _ in range(postar.FALHAS_ATE_DESISTIR):
+            r = postar.recuperar_no_tiktok(canal="builds")
+            self.assertEqual("trava:build:celular", r["alvo"])
+            self.assertFalse(r["feito"])
+        # Quarta rodada: a cabeca foi abandonada e a fila anda.
+        r = postar.recuperar_no_tiktok(canal="builds")
+        self.assertEqual("segundo:build:celular", r["alvo"])
+        self.assertTrue(r["feito"])
+
+    def test_sucesso_zera_o_contador(self):
+        """Falhar duas vezes e subir na terceira nao deixa divida."""
+        postar._anotar_falha_no_tiktok("builds", "segundo:build:celular")
+        postar._anotar_falha_no_tiktok("builds", "segundo:build:celular")
+        postar.recuperar_no_tiktok(canal="builds")   # trava falha (1)
+        r = postar.recuperar_no_tiktok(canal="builds")
+        self.assertEqual("trava:build:celular", r["alvo"])
+        # o "segundo" ainda nao desistiu: 2 < 3
+        self.assertNotIn("segundo:build:celular",
+                         postar.desistencias_do_tiktok("builds"))
+
+    def test_desistencia_vira_ERRO_no_diario(self):
+        registros = []
+        from builds import atividade
+        self.addCleanup(setattr, atividade, "registrar",
+                        atividade.registrar)
+        atividade.registrar = lambda *a, **k: registros.append((a, k))
+        for _ in range(postar.FALHAS_ATE_DESISTIR):
+            postar._anotar_falha_no_tiktok("builds", "x:build:celular")
+        self.assertEqual(1, len(registros), "so no momento de desistir")
+        args, kwargs = registros[0]
+        self.assertEqual(atividade.ERRO, args[1])
+        self.assertIn("desisti do TikTok", args[2])
+        self.assertEqual("publicar.tiktok", kwargs.get("etapa"))
+
+    def test_contar_falha_nunca_derruba_a_rodada(self):
+        postar._arquivo_de_desistencias = lambda _c: Path(
+            "Z:/nao/existe/_d.json")
+        self.assertEqual(0, postar._anotar_falha_no_tiktok("builds", "x"))
+
+
 class VarianteTests(unittest.TestCase):
     def test_reconhece_a_variante_sem_depender_do_alfabeto(self):
         self.assertTrue(postar._e_variante("g1:build:celular:B"))

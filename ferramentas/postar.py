@@ -716,6 +716,61 @@ def desistencias_do_tiktok(canal: str = "historias") -> set:
 FALHAS_ATE_DESISTIR = 3
 
 
+def _anotar_falha_no_tiktok(canal: str, video_id: str) -> int:
+    """Conta mais uma falha daquele video e devolve o total. Nunca levanta.
+
+    Sem contador, a recuperacao pega SEMPRE `fila[0]`: um video que falha
+    sempre — legenda que nunca entra, arquivo que o TikTok recusa — prende
+    todos os atrasados atras dele, para sempre, gastando uma tentativa por
+    rodada e nunca avancando. A fila parece andar e nao anda.
+
+    Ao bater o teto vira ERRO no diario, e nao aviso no log: o log e lido por
+    ninguem as 3 da manha, e desistir de publicar um video e exatamente o
+    tipo de coisa que tem de ser contada pela apuracao.
+    """
+    import json
+    try:
+        caminho = _arquivo_de_desistencias(canal)
+        dados = {}
+        if caminho.is_file():
+            try:
+                dados = json.loads(caminho.read_text(encoding="utf-8"))
+            except ValueError:
+                dados = {}            # estado corrompido recomeca do zero
+        total = int(dados.get(video_id, 0)) + 1
+        dados[video_id] = total
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=1),
+                           encoding="utf-8")
+        if total == FALHAS_ATE_DESISTIR:
+            from builds import atividade
+            atividade.registrar(
+                "publicacao", atividade.ERRO,
+                f"desisti do TikTok para {video_id} depois de {total} "
+                f"tentativas; ele sai da fila e libera os atrasados atras",
+                canal, etapa="publicar.tiktok", ref=video_id)
+        return total
+    except Exception:                                          # noqa: BLE001
+        # Contar e melhoria; falhar em contar nao pode derrubar a rodada.
+        return 0
+
+
+def _esquecer_falhas_no_tiktok(canal: str, video_id: str) -> None:
+    """Video que subiu zera o contador: a fila nao guarda rancor."""
+    import json
+    try:
+        caminho = _arquivo_de_desistencias(canal)
+        if not caminho.is_file():
+            return
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        if dados.pop(video_id, None) is None:
+            return
+        caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=1),
+                           encoding="utf-8")
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 def _arquivo_de_desistencias(canal: str):
     """Ao lado do `publicados.jsonl` do canal: e estado da mesma familia."""
     from builds.publicar import metricas
@@ -874,7 +929,12 @@ def recuperar_no_tiktok(so_ver: bool = False,
     # perderia a linha do outro.
     estado = (_tiktok_dos_builds(alvo) if canal == "builds"
               else _tiktok_das_historias(alvo))
-    return {"feito": _tiktok_confirmado(estado), "fila": len(fila),
+    feito = _tiktok_confirmado(estado)
+    if feito:
+        _esquecer_falhas_no_tiktok(canal, alvo.id)
+    else:
+        _anotar_falha_no_tiktok(canal, alvo.id)
+    return {"feito": feito, "fila": len(fila),
             "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
             "canal": canal, "tiktok": estado}
 
@@ -910,7 +970,15 @@ def publicar_da_reserva(so_ver: bool = False) -> dict:
     _linha(f"[postar] reserva do TikTok: {alvo.id} "
            f"({len(fila)} na gordura).")
     estado = _tiktok_dos_builds(alvo)
-    return {"feito": _tiktok_confirmado(estado), "reserva": len(fila),
+    feito = _tiktok_confirmado(estado)
+    # A reserva tem a MESMA cabeca de fila que os atrasados, e portanto o
+    # mesmo jeito de travar: um video que o TikTok sempre recusa seguraria os
+    # outros 20 indefinidamente.
+    if feito:
+        _esquecer_falhas_no_tiktok("builds", alvo.id)
+    else:
+        _anotar_falha_no_tiktok("builds", alvo.id)
+    return {"feito": feito, "reserva": len(fila),
             "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
             "tiktok": estado}
 
