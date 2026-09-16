@@ -607,6 +607,11 @@ def confiabilidade(agora: datetime | None = None, *, ficha=None) -> str:
     if falhas:
         linhas.append(f"   (falhas ao publicar hoje: {', '.join(falhas)} — "
                       "o número que importa é o de destino só)")
+    ignoradas = ficha.get("falhas_ignoradas") or []
+    if ignoradas:
+        refs = ", ".join(sorted({f"`{i.get('ref')}`" for i in ignoradas}))
+        linhas.append(f"   ({len(ignoradas)} falha(s) de teste fora da conta: "
+                      f"{refs})")
     return "\n".join(linhas)
 
 

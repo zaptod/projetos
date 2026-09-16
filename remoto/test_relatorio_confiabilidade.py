@@ -80,6 +80,13 @@ class AsFalhasDosDoisDestinos(unittest.TestCase):
     def test_sem_falha_nenhuma_nao_ha_linha(self):
         self.assertNotIn("falhas ao publicar", self._texto())
 
+    def test_falha_de_teste_descartada_e_dita(self):
+        texto = self._texto(falhas_ignoradas=[
+            {"ref": "trava:build:celular"}, {"ref": "trava:build:celular"}])
+        self.assertIn("2 falha(s) de teste fora da conta", texto)
+        self.assertIn("trava:build:celular", texto)
+        self.assertEqual(1, texto.count("trava:build:celular"))
+
 
 class AFonteQuebrada(unittest.TestCase):
 

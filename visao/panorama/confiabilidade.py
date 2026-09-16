@@ -26,6 +26,7 @@ seu motivo.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 
 # Quantos dias para tras contam para o ESTADO "num destino so". Curto o
@@ -164,8 +165,26 @@ def _destino_da_falha(ev: dict) -> str:
     return ""
 
 
+# A forma de um id de video DE VERDADE. Um `ref` fora dela veio de dublê de
+# teste: em 16/09/2026 dois testes escreveram no diario de producao falhas
+# de "trava:build:celular", e elas contavam como falhas reais do TikTok.
+# Canal novo com outro formato de id (o zombie, por exemplo) precisa entrar
+# aqui — ha teste que lista os formatos aceitos.
+ID_DE_VIDEO = re.compile(r"^(?:generation|historia|duelo|tournament)_\d+")
+
+
+def _ref_de_teste(ev: dict) -> bool:
+    """O evento aponta para um video que nao pode existir?
+
+    Evento SEM ref nao e julgado: a maioria do diario antigo e assim, e
+    descartar tudo o que nao tem ref apagaria falhas verdadeiras.
+    """
+    ref = str(ev.get("ref") or "")
+    return bool(ref) and not ID_DE_VIDEO.match(ref)
+
+
 def _do_diario(eventos: list, dia: str) -> tuple:
-    valvula = []
+    valvula, ignoradas = [], []
     falhas = {"tiktok": 0, "youtube": 0}
     for ev in eventos:
         if not isinstance(ev, dict) or _dia_local(ev.get("ts")) != dia:
@@ -177,9 +196,18 @@ def _do_diario(eventos: list, dia: str) -> tuple:
                             "hora": _hora_local(ev.get("ts"))})
             continue
         destino = _destino_da_falha(ev)
-        if destino:
-            falhas[destino] += 1
-    return valvula, falhas
+        if not destino:
+            continue
+        if _ref_de_teste(ev):
+            # Fica na ficha, e nao some: quem le precisa saber que houve
+            # linha descartada, e por que.
+            ignoradas.append({"hora": _hora_local(ev.get("ts")),
+                              "destino": destino, "ref": ev.get("ref"),
+                              "pid": ev.get("pid"),
+                              "motivo": "ref nao e id de video (dublê de teste)"})
+            continue
+        falhas[destino] += 1
+    return valvula, falhas, ignoradas
 
 
 def _hora_local(ts) -> str:
@@ -269,7 +297,7 @@ def hoje(dia: str | None = None, *, builds=None, historias=None,
     conferencias = _conferencias() if conferencias is None else conferencias
 
     publicacoes = _publicacoes(linhas, dia)
-    valvula, falhas = _do_diario(eventos, dia)
+    valvula, falhas, ignoradas = _do_diario(eventos, dia)
     ficha = {
         "dia": dia,
         "publicacoes": publicacoes,
@@ -291,6 +319,7 @@ def hoje(dia: str | None = None, *, builds=None, historias=None,
         # O nome antigo continua: o Telegram e a pagina ja leem este campo.
         "falhas_tiktok": falhas["tiktok"],
         "falhas_youtube": falhas["youtube"],
+        "falhas_ignoradas": ignoradas,
         "conferencia": {canal: _resumo_conferencia(f or {}, referencia)
                         for canal, f in (conferencias or {}).items()},
         "quando": datetime.now().isoformat(timespec="seconds"),

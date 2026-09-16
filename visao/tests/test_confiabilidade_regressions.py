@@ -191,6 +191,47 @@ class AsFalhasPorDestino(unittest.TestCase):
         self.assertEqual((0, 0), self._falhas(ontem))
 
 
+class FalhasDeTesteFicamForaDaConta(unittest.TestCase):
+    """16/09/2026: dois testes escreveram no diario de producao falhas do
+    TikTok para "trava:build:celular", e elas contavam como falhas reais."""
+
+    def _falha_com_ref(self, ref, destino="publicar.tiktok"):
+        ev = _falha("TikTokFalhou: desisti", etapa=destino)
+        ev["ref"] = ref
+        ev["pid"] = 11624
+        return ev
+
+    def test_ref_de_duble_nao_conta_e_fica_registrada(self):
+        ficha = _retrato(builds=[_yt("g1"), _tk("g1")], eventos=[
+            self._falha_com_ref("trava:build:celular"),
+            self._falha_com_ref("trava:build:celular")])
+        self.assertEqual(0, ficha["falhas_tiktok"])
+        self.assertEqual(2, len(ficha["falhas_ignoradas"]))
+        self.assertEqual("trava:build:celular",
+                         ficha["falhas_ignoradas"][0]["ref"])
+        self.assertEqual(11624, ficha["falhas_ignoradas"][0]["pid"])
+
+    def test_ids_de_verdade_continuam_contando(self):
+        # Os formatos de id que o projeto usa hoje. Canal novo com outro
+        # formato precisa entrar em ID_DE_VIDEO, senao as falhas dele somem.
+        refs = ["generation_00081:build:celular:B",
+                "historia_00012:celular:p02",
+                "duelo_00001:celular", "tournament_00003:celular"]
+        ficha = _retrato(builds=[_yt("g1"), _tk("g1")],
+                         eventos=[self._falha_com_ref(r) for r in refs])
+        self.assertEqual(4, ficha["falhas_tiktok"])
+        self.assertEqual([], ficha["falhas_ignoradas"])
+
+    def test_falha_sem_ref_continua_contando(self):
+        # A maior parte do diario antigo nao tem ref; descarta-la apagaria
+        # falha verdadeira.
+        ficha = _retrato(builds=[_yt("g1"), _tk("g1")],
+                         eventos=[_falha("TikTokFalhou: x",
+                                         etapa="publicar.tiktok")])
+        self.assertEqual(1, ficha["falhas_tiktok"])
+        self.assertEqual([], ficha["falhas_ignoradas"])
+
+
 class AValvula(unittest.TestCase):
 
     def test_cada_abertura_aparece_com_o_motivo(self):
