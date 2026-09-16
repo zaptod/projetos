@@ -650,6 +650,72 @@ def _video_por_id(video_id: str):
         return None
 
 
+def atrasados_no_tiktok(limite: int = 40) -> list:
+    """Videos que sairam no YouTube e NUNCA chegaram ao TikTok, do mais antigo.
+
+    O buraco que isto fecha (achado pelo Adrian em 16/09/2026, quando ele viu
+    que a parte 4 da "Panela da Discordia" nao estava no TikTok): a
+    recuperacao que ja existia em `postar_historia` so vale DENTRO DA MESMA
+    HORA — se o YouTube saiu neste disparo e o TikTok nao, ela leva o mesmo
+    video. Mas quando a rodada TERMINA com o TikTok falhado, a rodada
+    seguinte e outra hora, `publicou_neste_horario` devolve `None` e ela segue
+    para o proximo video da fila. O que falhou nao e tentado nunca mais.
+
+    Naquele dia eram **14 de 59** partes so no YouTube. A serie no TikTok fica
+    com buraco permanente — exatamente o que ele mandou tapar em 15/09.
+
+    So conta quem ainda esta no catalogo: video que saiu do disco nao tem como
+    ser publicado, e insistir nele travaria a recuperacao para sempre.
+    """
+    from contos.publicar import catalogo, serie
+
+    try:
+        publicados = serie.publicados()
+        no_catalogo = {v.id: v for v in catalogo.listar()
+                       if getattr(v, "perfil", "") == "celular"}
+    except Exception:                                          # noqa: BLE001
+        return []
+
+    no_tiktok = {l.get("video_id") for l in publicados
+                 if l.get("plataforma") == "tiktok" and l.get("url")}
+    vistos, atrasados = set(), []
+    for linha in publicados:                     # ledger ja vem em ordem
+        if linha.get("plataforma") != "youtube" or not linha.get("url"):
+            continue
+        vid = linha.get("video_id")
+        if not vid or vid in no_tiktok or vid in vistos:
+            continue
+        vistos.add(vid)
+        alvo = no_catalogo.get(vid)
+        if alvo is not None:
+            atrasados.append(alvo)
+        if len(atrasados) >= limite:
+            break
+    return atrasados
+
+
+def recuperar_no_tiktok(so_ver: bool = False) -> dict:
+    """Leva UM atrasado por rodada ao TikTok. Nunca derruba a rodada.
+
+    UM, e nao todos, de proposito: os 14 de uma vez virariam enxurrada no
+    perfil e enterrariam a serie nova. Com dez horarios por dia a fila
+    atrasada se fecha em menos de dois dias, na ordem em que os videos
+    sairam no YouTube.
+    """
+    fila = atrasados_no_tiktok()
+    if not fila:
+        return {"feito": False, "fila": 0}
+    alvo = fila[0]
+    if so_ver:
+        return {"feito": False, "fila": len(fila), "veria": alvo.id}
+    _linha(f"[postar] recuperando no TikTok: {alvo.id} "
+           f"({len(fila)} atrasado(s) na fila).")
+    estado = _tiktok_das_historias(alvo)
+    return {"feito": _tiktok_confirmado(estado), "fila": len(fila),
+            "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
+            "tiktok": estado}
+
+
 def _tiktok_neste_horario(agora=None) -> bool:
     """Este disparo e horario de TikTok?
 
@@ -1576,6 +1642,27 @@ def main(argv=None) -> int:
             _linha(f"           {r.get('motivo', '')}")
         for recusado in r.get("recusados") or []:
             _linha(f"   pulado: {recusado}")
+    # A RECUPERACAO VEM DEPOIS das publicacoes do horario, e nunca no lugar
+    # delas: o vídeo da vez e o que mantem as duas plataformas em sincronia.
+    # Este passo so limpa o atraso que ficou de rodadas em que o TikTok
+    # falhou — e falha dele nao era tentada de novo nunca (16/09/2026).
+    if args.so != "builds":
+        try:
+            recuperado = recuperar_no_tiktok(so_ver=args.ver)
+            if recuperado.get("fila"):
+                if args.ver:
+                    _linha(f"[postar] {recuperado['fila']} atrasado(s) no "
+                           f"TikTok; levaria {recuperado.get('veria')}.")
+                else:
+                    marca = ("recuperado" if recuperado.get("feito")
+                             else "NAO subiu")
+                    _linha(f"[postar] TikTok atrasado: {marca} "
+                           f"{recuperado.get('alvo')} "
+                           f"(restam {recuperado['fila'] - 1})")
+        except Exception as exc:                               # noqa: BLE001
+            _linha(f"[postar] recuperacao do TikTok falhou "
+                   f"({type(exc).__name__}: {exc})"[:140])
+
     _linha()
     for canal, dias in estoque().items():
         alerta = "  <<< ABAIXO DO PISO" if 0 <= dias < PISO_DE_ALERTA else ""

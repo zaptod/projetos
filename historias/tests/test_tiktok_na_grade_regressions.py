@@ -435,5 +435,104 @@ class TikTokSoNaGradeDeleTests(unittest.TestCase):
         self.assertIn("tiktok_fora_da_grade", principal)
 
 
+class AtrasadoNoTikTokTests(unittest.TestCase):
+    """Falha do TikTok era DEFINITIVA, e ninguem via.
+
+    16/09/2026: o Adrian viu que a parte 4 da "Panela da Discordia" nao estava
+    no TikTok. Na rodada das 06:37 o YouTube passou e o TikTok caiu ("o botao
+    de publicar nao ficou clicavel em 2 min — o TikTok ainda estava
+    processando"). A recuperacao que existia so valia DENTRO DA MESMA HORA:
+    na rodada seguinte `publicou_neste_horario` devolve `None`, a fila anda e
+    aquele video nao e tentado nunca mais. Eram **14 de 59** partes so no
+    YouTube — buraco permanente na serie, justo o que ele mandou tapar em
+    15/09.
+    """
+
+    def setUp(self):
+        self.postar = _postar()
+
+    def _mundo(self, ledger, catalogo_ids):
+        """Duble do ledger e do catalogo, sem tocar no disco."""
+        class _V:
+            def __init__(self, vid):
+                self.id = vid
+                self.perfil = "celular"
+                self.titulo = f"titulo de {vid}"
+
+        from contos.publicar import catalogo as C
+        from contos.publicar import serie as S
+        self.addCleanup(setattr, S, "publicados", S.publicados)
+        self.addCleanup(setattr, C, "listar", C.listar)
+        S.publicados = lambda: list(ledger)
+        C.listar = lambda: [_V(v) for v in catalogo_ids]
+
+    def test_pega_o_que_saiu_no_youtube_e_nao_no_tiktok(self):
+        self._mundo(
+            ledger=[
+                {"video_id": "h:p1", "plataforma": "youtube", "url": "u"},
+                {"video_id": "h:p1", "plataforma": "tiktok", "url": "u"},
+                {"video_id": "h:p2", "plataforma": "youtube", "url": "u"},
+                {"video_id": "h:p3", "plataforma": "youtube", "url": "u"},
+                {"video_id": "h:p3", "plataforma": "tiktok", "url": "u"},
+            ],
+            catalogo_ids=["h:p1", "h:p2", "h:p3"])
+        fila = self.postar.atrasados_no_tiktok()
+        self.assertEqual(["h:p2"], [v.id for v in fila])
+
+    def test_a_ordem_e_a_do_youtube(self):
+        """O TikTok repete a sequencia que o publico ja viu no YouTube."""
+        self._mundo(
+            ledger=[
+                {"video_id": "h:p9", "plataforma": "youtube", "url": "u"},
+                {"video_id": "h:p1", "plataforma": "youtube", "url": "u"},
+            ],
+            catalogo_ids=["h:p1", "h:p9"])
+        self.assertEqual(["h:p9", "h:p1"],
+                         [v.id for v in self.postar.atrasados_no_tiktok()])
+
+    def test_video_que_saiu_do_catalogo_nao_trava_a_fila(self):
+        """Sem isto, um video apagado do disco seria tentado para sempre e
+        nenhum dos outros atrasados sairia."""
+        self._mundo(
+            ledger=[{"video_id": "sumiu", "plataforma": "youtube", "url": "u"},
+                    {"video_id": "h:p2", "plataforma": "youtube", "url": "u"}],
+            catalogo_ids=["h:p2"])
+        self.assertEqual(["h:p2"],
+                         [v.id for v in self.postar.atrasados_no_tiktok()])
+
+    def test_leva_UM_por_rodada(self):
+        """14 de uma vez virariam enxurrada no perfil e enterrariam a serie
+        nova; com dez horarios por dia a fila fecha em menos de dois dias."""
+        self._mundo(
+            ledger=[{"video_id": f"h:p{i}", "plataforma": "youtube",
+                     "url": "u"} for i in range(1, 6)],
+            catalogo_ids=[f"h:p{i}" for i in range(1, 6)])
+        levados = []
+        self.addCleanup(setattr, self.postar, "_tiktok_das_historias",
+                        self.postar._tiktok_das_historias)
+        self.postar._tiktok_das_historias = (
+            lambda v: levados.append(v.id) or "publicado no TikTok")
+        ficha = self.postar.recuperar_no_tiktok()
+        self.assertEqual(["h:p1"], levados)
+        self.assertEqual(5, ficha["fila"])
+        self.assertTrue(ficha["feito"])
+
+    def test_sem_atrasado_nao_faz_nada(self):
+        self._mundo(
+            ledger=[{"video_id": "h:p1", "plataforma": "youtube", "url": "u"},
+                    {"video_id": "h:p1", "plataforma": "tiktok", "url": "u"}],
+            catalogo_ids=["h:p1"])
+        self.assertEqual({"feito": False, "fila": 0},
+                         self.postar.recuperar_no_tiktok())
+
+    def test_a_recuperacao_vem_DEPOIS_das_publicacoes_do_horario(self):
+        """O video da vez e o que mantem as duas plataformas em sincronia; a
+        recuperacao so limpa atraso, e nunca toma o lugar dele."""
+        fonte = POSTAR.read_text(encoding="utf-8")
+        principal = fonte[fonte.index("def main("):]
+        self.assertLess(principal.index("postar_historia"),
+                        principal.index("recuperar_no_tiktok"))
+
+
 if __name__ == "__main__":
     unittest.main()
