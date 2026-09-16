@@ -29,6 +29,8 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, timedelta
 
+from .auditoria import _publicado
+
 # Quantos dias para tras contam para o ESTADO "num destino so". Curto o
 # bastante para o acervo de antes do TikTok entrar na grade nao inflar o
 # numero; longo o bastante para a fila de atrasados aparecer inteira.
@@ -90,7 +92,7 @@ def _publicacoes(linhas_por_canal: dict, dia: str) -> list:
     saida = []
     for canal, linhas in linhas_por_canal.items():
         for linha in linhas:
-            if not isinstance(linha, dict) or not linha.get("url"):
+            if not isinstance(linha, dict) or not _publicado(linha):
                 continue
             if _dia_local(linha.get("quando")) != dia:
                 continue
@@ -118,7 +120,7 @@ def _num_destino_so(linhas_por_canal: dict, hoje: date) -> dict:
     for canal, linhas in linhas_por_canal.items():
         onde: dict = {}
         for linha in linhas:
-            if not isinstance(linha, dict) or not linha.get("url"):
+            if not isinstance(linha, dict) or not _publicado(linha):
                 continue
             dia = _dia_local(linha.get("quando"))
             if not dia or dia < desde.isoformat():

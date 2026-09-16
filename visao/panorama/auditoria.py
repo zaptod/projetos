@@ -32,6 +32,16 @@ from datetime import datetime
 from . import recursos as _recursos
 
 
+def _publicado(linha) -> bool:
+    """A mesma resposta do ledger (`metricas.publicado`). Sem `builds`
+    instalado, cai no criterio antigo em vez de derrubar a familia."""
+    try:
+        from builds.publicar.metricas import publicado
+    except Exception:                                          # noqa: BLE001
+        return isinstance(linha, dict) and bool(linha.get("url"))
+    return publicado(linha)
+
+
 def _publicados_hoje(agora: datetime | None = None) -> dict:
     """`{canal: {plataforma: [horas]}}` do dia, dos dois ledgers."""
     agora = agora or datetime.now()
@@ -49,7 +59,7 @@ def _publicados_hoje(agora: datetime | None = None) -> dict:
             linhas = []
         for linha in linhas:
             quando = str(linha.get("quando") or "")
-            if not quando.startswith(hoje) or not linha.get("url"):
+            if not quando.startswith(hoje) or not _publicado(linha):
                 continue
             plataforma = linha.get("plataforma") or "youtube"
             por_plataforma.setdefault(plataforma, []).append(quando[11:16])
@@ -116,7 +126,7 @@ def qualidade(limite: int = 12) -> dict:
                     dado = json.loads(linha)
                 except ValueError:
                     continue
-                if dado.get("url"):
+                if _publicado(dado):
                     ja.add(dado.get("video_id"))
         pendentes = [v for v in catalogo.listar() if v.id not in ja]
     except Exception as erro:                                  # noqa: BLE001

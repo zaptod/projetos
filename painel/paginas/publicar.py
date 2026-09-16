@@ -18,6 +18,12 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox
 
+
+def _publicado(linha) -> bool:
+    """A resposta unica do ledger (`metricas.publicado`)."""
+    from builds.publicar.metricas import publicado
+    return publicado(linha)
+
 from builds import contas as contas_reg
 from builds.publicar import catalogo as catalogo_builds
 from builds.publicar import youtube as youtube_reg
@@ -259,7 +265,7 @@ class Pagina:
                     dado = json.loads(linha)
                 except ValueError:
                     continue
-                if dado.get("url"):
+                if _publicado(dado):
                     mapa[(dado.get("video_id"),
                           dado.get("plataforma") or "youtube")] = dado
         return mapa

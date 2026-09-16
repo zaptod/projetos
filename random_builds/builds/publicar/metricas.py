@@ -97,6 +97,27 @@ def em_lista(prova) -> list:
     return [prova]
 
 
+def publicado(linha) -> bool:
+    """Esta linha do ledger quer dizer que o video SAIU? A resposta unica.
+
+    Ate 16/09/2026 cada leitor respondia com `bool(linha.get("url"))`. Mas o
+    `url` guardava tres coisas — o link, a frase de estado ("publicado no
+    YouTube (com a confirmacao extra)") e, no TikTok, sempre a frase — e a
+    frase contava como "saiu". E por isso que rascunho e publicacao de
+    verdade ficavam identicos para todo filtro do projeto.
+
+    Contrato novo (passo 1 de 2): o campo `publicado`, quando existe, manda.
+    Linha antiga sem ele cai no criterio de antes, para nenhum leitor mudar
+    de resposta sem que o ledger tenha sido migrado. O passo 2 — reescrever
+    as linhas antigas — e decisao do Adrian.
+    """
+    if not isinstance(linha, dict):
+        return False
+    if "publicado" in linha:
+        return bool(linha["publicado"])
+    return bool(linha.get("url"))
+
+
 def prova_ok(laudo: dict | list | None) -> bool | None:
     """O laudo sustenta a afirmacao "publiquei"?
 

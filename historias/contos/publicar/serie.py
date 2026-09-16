@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from builds.publicar import tiktok as _rb_publicar_tiktok
 from builds.publicar import youtube as _rb_publicar_youtube
+from builds.publicar.metricas import publicado as _rb_publicado
 import builds.atividade as _rb_atividade
 
 from . import catalogo, qualidade
@@ -58,7 +59,7 @@ def publicados() -> list:
 
 def ja_publicado(video_id: str, plataforma: str = "youtube") -> dict | None:
     for linha in reversed(publicados()):
-        if (linha.get("video_id") == video_id and linha.get("url")
+        if (linha.get("video_id") == video_id and _rb_publicado(linha)
                 and linha.get("plataforma", "youtube") == plataforma):
             return linha
     return None

@@ -33,6 +33,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from builds.publicar.metricas import publicado as _publicado
+
 RAIZ = Path(__file__).resolve().parents[2]
 OUTPUTS = RAIZ / "outputs"
 CONFIG = RAIZ / "config" / "agenda.json"
@@ -489,7 +491,7 @@ def aprovados_no_estoque() -> list:
 
     try:
         ja = {linha.get("video_id") for linha in serie.publicados()
-              if linha.get("url")}
+              if _publicado(linha)}
     except Exception:                                          # noqa: BLE001
         ja = set()
     novas = set()
@@ -529,7 +531,7 @@ def barrados_no_estoque() -> list:
 
     try:
         ja = {linha.get("video_id") for linha in serie.publicados()
-              if linha.get("url")}
+              if _publicado(linha)}
     except Exception:                                          # noqa: BLE001
         ja = set()
     saida, roteiros = [], {}
@@ -562,7 +564,7 @@ def dias_de_estoque() -> int:
     from ..publicar import catalogo, serie
     try:
         ja = {linha.get("video_id") for linha in serie.publicados()
-              if linha.get("url")}
+              if _publicado(linha)}
     except Exception:                                          # noqa: BLE001
         ja = set()
     return len([v for v in catalogo.listar()
@@ -723,7 +725,7 @@ def revisar_estoque(config: dict, *, headless: bool = False,
 
     janela = config.get("janela_pesada")
     margem = float(config.get("minutos_minimos") or 90)
-    ja = {l.get("video_id") for l in serie.publicados() if l.get("url")}
+    ja = {l.get("video_id") for l in serie.publicados() if _publicado(l)}
     pendentes = [v for v in catalogo.listar()
                  if v.perfil == "celular" and v.id not in ja]
     revisados = aprovados = pulados = 0

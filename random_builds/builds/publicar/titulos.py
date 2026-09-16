@@ -20,6 +20,13 @@ from __future__ import annotations
 
 import re
 
+
+def _publicado(linha) -> bool:
+    # Import tardio: `metricas` importa este modulo.
+    from .metricas import publicado
+    return publicado(linha)
+
+
 # O corte em 60 e o do criterio original: o Studio devolve o titulo que ele
 # ACEITOU (corta em 100), e comparar o rabo de dois titulos longos gera mais
 # falso negativo do que acerto.
@@ -36,12 +43,12 @@ def chave(texto: str) -> str:
 def ja_publicados(linhas) -> set:
     """As chaves de titulo que ja foram ao ar, vindas do ledger.
 
-    So conta linha que de fato saiu (`url` preenchida) — uma linha sem
+    So conta linha que de fato saiu (`metricas.publicado`) — uma linha sem
     destino nao ocupou lugar nenhum no canal e nao deve barrar ninguem.
     """
     vistos = set()
     for linha in linhas or ():
-        if not isinstance(linha, dict) or not linha.get("url"):
+        if not isinstance(linha, dict) or not _publicado(linha):
             continue
         k = chave(linha.get("titulo"))
         if k:
