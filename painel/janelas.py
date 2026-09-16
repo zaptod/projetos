@@ -35,15 +35,19 @@ def _paginas_da_vila() -> list:
 
 
 def _paginas_de_criacao() -> list:
-    from .paginas import (auditoria, contas, experimentos, extras, fluxo,
-                          historias, mimetizar, publicar, videos)
+    from .paginas import (auditoria, confiabilidade, contas, experimentos,
+                          extras, fluxo, historias, mimetizar, publicar,
+                          videos)
     # `auditoria` vem PRIMEIRO de proposito: e a unica pagina que responde
     # "pode sair?", e ela abre com a janela. As outras contam o que ja foi.
+    # `confiabilidade` vem logo depois: a auditoria responde "pode sair?", e
+    # ela responde a pergunta seguinte — "o que saiu, saiu mesmo?".
     # `mimetizar` fica ao lado de `historias` porque e ela que ele alimenta:
     # o preset que sai de la vira o modelo de roteiro daqui.
     # `experimentos` vem logo depois de `publicar` porque le o que publicar
     # produziu: e a pagina onde a metrica vira decisao.
-    return [auditoria.Pagina, fluxo.Pagina, publicar.Pagina,
+    return [auditoria.Pagina, confiabilidade.Pagina, fluxo.Pagina,
+            publicar.Pagina,
             experimentos.Pagina, videos.Pagina, historias.Pagina,
             mimetizar.Pagina, contas.Pagina, extras.Reacoes]
 

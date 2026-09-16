@@ -737,5 +737,108 @@ class ExperimentosTests(unittest.TestCase):
         self.assertIs(False, bracos[1]["ajuste"]["audio.trilha_procedural"])
 
 
+class ConfiabilidadeTests(unittest.TestCase):
+    """A pagina DESENHA o que `panorama.confiabilidade` entrega — e so."""
+
+    FICHA = {
+        "dia": "2026-09-16", "quando": "2026-09-16T16:41:25",
+        "prometido": 3, "provado": 1, "sem_prova": 1, "sem_campo": 1,
+        "fora_de_hd": 1, "barra_nao_entendida": 0,
+        "valvula": [{"hora": "12:10", "marca": "titulo_repetido",
+                     "alvo": "g1:build:celular:B", "motivo": "x"}],
+        "conferencia": {"builds": {"estado": "falhou", "erro": "token"},
+                        "historias": {"estado": "limpo", "casados": 4,
+                                      "no_ledger": 4}},
+        "alertas": ["1 publicação(ões) sem prova hoje"],
+        "veredito": "atencao",
+        "publicacoes": [
+            {"hora": "09:40", "canal": "builds", "plataforma": "youtube",
+             "video_id": "g1", "tem_laudo": True, "prova_ok": True,
+             "qualidade": "processando"},
+            {"hora": "09:38", "canal": "historias", "plataforma": "youtube",
+             "video_id": "h12:p2", "tem_laudo": True, "prova_ok": False,
+             "qualidade": "desconhecida"},
+            {"hora": "06:37", "canal": "builds", "plataforma": "tiktok",
+             "video_id": "g0", "tem_laudo": False, "prova_ok": None,
+             "qualidade": ""},
+        ],
+    }
+
+    def setUp(self):
+        from painel.app import Casca
+        from painel.paginas import confiabilidade
+
+        self.app = Casca.criar([confiabilidade.Pagina])
+        self.app.geometry("1366x740")
+        self.app.update()
+        self.pagina = self.app.paginas["confiabilidade"]
+        self.addCleanup(self._fechar)
+
+    def _fechar(self):
+        self.app.encerrar()
+        self.app.destroy()
+
+    def test_desenha_a_ficha_inteira(self):
+        self.pagina._desenhar(self.FICHA)
+        self.assertIn("1/3", self.pagina.faixa.cget("text"))
+        self.assertIn("⚠", self.pagina.faixa.cget("text"))
+        linhas = self.pagina.tabela.get_children()
+        self.assertEqual(3, len(linhas))
+        etiquetas = [self.pagina.tabela.item(i, "tags")[0] for i in linhas]
+        # O TERCEIRO ESTADO tem cor propria: sem laudo nao e reprovado.
+        self.assertEqual(["provado", "sem_prova", "sem_laudo"], etiquetas)
+        self.assertIn("não rodou",
+                      self.pagina._cartoes["conferencia"].cget("text"))
+        self.assertIn("abriu 1",
+                      self.pagina._cartoes["valvula"].cget("text"))
+
+    def test_desenhar_de_novo_nao_duplica_linhas(self):
+        self.pagina._desenhar(self.FICHA)
+        self.pagina._desenhar(self.FICHA)
+        self.assertEqual(3, len(self.pagina.tabela.get_children()))
+
+    def test_dia_limpo_diz_que_nada_esta_fora(self):
+        limpo = dict(self.FICHA, alertas=[], veredito="ok")
+        self.pagina._desenhar(limpo)
+        self.assertIn("✓", self.pagina.faixa.cget("text"))
+
+    def test_fonte_quebrada_vira_frase_e_nao_excecao(self):
+        self.pagina._desenhar({"erro": "OSError: ledger ilegivel"})
+        self.assertIn("não consegui ler", self.pagina.faixa.cget("text"))
+        self.pagina._desenhar(None)
+        self.pagina.atualizar({})
+
+    def test_a_tabela_cabe_na_tela_dele(self):
+        # A tela dele e 1366 de largura. A coluna VIDEO estica para ocupar o
+        # que sobra, entao somar larguras mede o espaco OCUPADO, nao estouro:
+        # o que importa e a borda direita da tabela nao passar da janela.
+        self.pagina._desenhar(self.FICHA)
+        self.app.update()
+        tabela = self.pagina.tabela
+        direita = tabela.winfo_rootx() + tabela.winfo_width()
+        janela = self.app.winfo_rootx() + self.app.winfo_width()
+        self.assertLessEqual(direita, janela)
+
+    def test_os_botoes_ficam_na_tela_dele_mesmo_com_muito_alerta(self):
+        # A pagina tem altura fixa e nao rola. Em 27/08/2026 botoes sumiram
+        # abaixo da borda numa tela de 1366x768 sem erro nenhum.
+        cheia = dict(self.FICHA, alertas=[f"alerta {n}" for n in range(8)])
+        self.pagina._desenhar(cheia)
+        self.app.update()
+        acoes = self.pagina._acoes
+        base = acoes.winfo_rooty() + acoes.winfo_height()
+        janela = self.app.winfo_rooty() + self.app.winfo_height()
+        self.assertTrue(acoes.winfo_ismapped())
+        self.assertLessEqual(base, janela)
+
+    def test_vem_logo_depois_da_auditoria(self):
+        from painel import janelas
+        from painel.paginas import auditoria, confiabilidade
+
+        paginas = janelas._paginas_de_criacao()
+        self.assertEqual([auditoria.Pagina, confiabilidade.Pagina],
+                         paginas[:2])
+
+
 if __name__ == "__main__":
     unittest.main()
