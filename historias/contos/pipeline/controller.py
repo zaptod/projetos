@@ -16,6 +16,7 @@ depois foi o bug mais caro do outro projeto.
 from __future__ import annotations
 
 import json
+import time as _time
 from pathlib import Path
 
 import builds.atividade as _rb_atividade
@@ -149,19 +150,25 @@ class Pipeline:
         """Automatico: o browser abre o LLM e escreve a serie inteira."""
         from ..roteiro import gerar as gerador
         atividade = _rb_atividade
+        comeco = _time.monotonic()
         atividade.registrar(provedor, "inicio",
-                            f"serie de {partes} parte(s)", "historias")
+                            f"serie de {partes} parte(s)", "historias",
+                            etapa="roteiro")
         try:
             resultado = gerador.gerar_serie(
                 provedor=provedor, partes=partes,
                 cenas_por_parte=cenas_por_parte, tema=tema, headless=headless,
                 config=self.roteiro_config, log=log)
         except Exception as exc:
-            atividade.registrar(provedor, "erro", str(exc)[:200], "historias")
+            atividade.registrar(provedor, "erro", str(exc)[:200], "historias",
+                                etapa="roteiro",
+                                dur_s=_time.monotonic() - comeco)
             raise
         atividade.registrar(provedor, "ok",
                             f"{resultado['historia_id']}: {resultado['partes']} "
-                            f"parte(s), {resultado['cenas']} cenas", "historias")
+                            f"parte(s), {resultado['cenas']} cenas", "historias",
+                            etapa="roteiro", ref=resultado["historia_id"],
+                            dur_s=_time.monotonic() - comeco)
         return resultado
 
     # ------------------------------------------------------------- imagens
@@ -170,19 +177,25 @@ class Pipeline:
                 log=print) -> dict:
         from ..imagens import worker
         atividade = _rb_atividade
-        atividade.registrar("picasso", "inicio", historia_id, "historias")
+        comeco = _time.monotonic()
+        atividade.registrar("picasso", "inicio", historia_id, "historias",
+                            etapa="imagens", ref=historia_id)
         try:
             resultado = worker.gerar(historia_id, limite=limite,
                                      headless=headless, parte=parte, log=log)
         except Exception as exc:
-            atividade.registrar("picasso", "erro", str(exc)[:200], "historias")
+            atividade.registrar("picasso", "erro", str(exc)[:200], "historias",
+                                etapa="imagens", ref=historia_id,
+                                dur_s=_time.monotonic() - comeco)
             raise
         atividade.registrar(
             "picasso", "erro" if resultado["erros"] else "ok",
             f"{historia_id}: {resultado['geradas']} gerada(s), "
             f"{resultado['faltam']} pendente(s)"
             + (f"; 1o erro: {resultado['erros'][0][:100]}"
-               if resultado["erros"] else ""), "historias")
+               if resultado["erros"] else ""), "historias",
+            etapa="imagens", ref=historia_id,
+            dur_s=_time.monotonic() - comeco)
         return resultado
 
     # --------------------------------------------------------------- video
@@ -300,10 +313,11 @@ class Pipeline:
         musica = self._musica(log, cfg_render)
         saida = []
         atividade = _rb_atividade
+        comeco_do_render = _time.monotonic()
         if prova is None:
             atividade.registrar("estudio", "inicio",
                                 f"{historia_id}: {len(alvos)} parte(s)",
-                                "historias")
+                                "historias", etapa="render", ref=historia_id)
 
         for numero in alvos:
             trabalho = (prova / f"p{int(numero):02d}" if prova is not None
@@ -398,7 +412,8 @@ class Pipeline:
         if prova is None:
             atividade.registrar("estudio", "ok",
                                 f"{historia_id}: {len(saida)} video(s)",
-                                "historias")
+                                "historias", etapa="render", ref=historia_id,
+                                dur_s=_time.monotonic() - comeco_do_render)
         return {"historia_id": historia_id, "videos": saida,
                 "partes": len(alvos)}
 

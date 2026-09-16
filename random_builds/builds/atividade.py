@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -86,8 +87,19 @@ def _arquivo() -> Path:
 
 
 def registrar(fabrica: str, status: str, detalhe: str = "",
-              canal: str = "builds") -> None:
-    """Anota o evento. Nunca levanta — ver o cabecalho."""
+              canal: str = "builds", *, etapa: str = "", ref: str = "",
+              dur_s: float | None = None) -> None:
+    """Anota o evento. Nunca levanta — ver o cabecalho.
+
+    `etapa`, `ref` e `dur_s` sao OPCIONAIS e so aparecem na linha quando tem
+    valor: linha sem eles sai byte a byte igual a de antes de 16/09/2026, e
+    todo leitor antigo continua valendo.
+
+    Por que os tres, e nao so a duracao: a pergunta e "quanto tempo leva
+    cada etapa E O QUE PIOROU". `fabrica` e grossa demais — `estudio` cobre
+    render, concat e mix no mesmo rotulo. E sem `ref` (a QUAL coisa o tempo
+    pertence) um pico e indistinguivel de uma historia grande.
+    """
     try:
         linha = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -100,6 +112,12 @@ def registrar(fabrica: str, status: str, detalhe: str = "",
             "fabrica": str(fabrica), "canal": str(canal),
             "status": str(status), "detalhe": str(detalhe)[:300],
         }
+        if etapa:
+            linha["etapa"] = str(etapa)[:60]
+        if ref:
+            linha["ref"] = str(ref)[:80]
+        if dur_s is not None:
+            linha["dur_s"] = round(float(dur_s), 1)
         caminho = _arquivo()
         caminho.parent.mkdir(parents=True, exist_ok=True)
         with open(caminho, "a", encoding="utf-8") as fh:
@@ -254,22 +272,48 @@ class fabrica:
     mensagem) quando estourar — e re-levanta: o diario observa, nao engole.
     """
 
-    def __init__(self, nome: str, detalhe: str = "", canal: str = "builds"):
+    def __init__(self, nome: str, detalhe: str = "", canal: str = "builds",
+                 *, etapa: str = "", ref: str = ""):
         self.nome, self.detalhe, self.canal = nome, detalhe, canal
+        self.etapa, self.ref = etapa, ref
+        self._comeco = None
 
     def __enter__(self):
-        registrar(self.nome, TRABALHANDO, self.detalhe, self.canal)
+        self._comeco = time.monotonic()
+        registrar(self.nome, TRABALHANDO, self.detalhe, self.canal,
+                  etapa=self.etapa, ref=self.ref)
         return self
 
     def anotar(self, detalhe: str) -> None:
-        registrar(self.nome, LOG, detalhe, self.canal)
+        registrar(self.nome, LOG, detalhe, self.canal,
+                  etapa=self.etapa, ref=self.ref)
+
+    def marco(self, etapa: str, dur_s: float, detalhe: str = "") -> None:
+        """Um sub-tempo dentro da mesma fabrica, sem abrir outro `inicio`.
+
+        Serve para o que acontece em laco (uma cena, um segmento): abrir e
+        fechar uma fabrica por item encheria o diario e a poda comeria o
+        dia inteiro em poucas horas.
+        """
+        registrar(self.nome, LOG, detalhe or etapa, self.canal,
+                  etapa=etapa, ref=self.ref, dur_s=dur_s)
+
+    def _gasto(self) -> float | None:
+        if self._comeco is None:
+            return None
+        return time.monotonic() - self._comeco
 
     def __exit__(self, tipo, valor, tb):
+        # A DURACAO SAI TAMBEM NO ERRO. Etapa que estoura e justamente a que
+        # se quer medir: sem isto, o tempo perdido numa falha some do total
+        # do dia e a conta fecha errado para menos.
         if tipo is None:
-            registrar(self.nome, OK, self.detalhe, self.canal)
+            registrar(self.nome, OK, self.detalhe, self.canal,
+                      etapa=self.etapa, ref=self.ref, dur_s=self._gasto())
         else:
             registrar(self.nome, ERRO, f"{tipo.__name__}: {str(valor)[:200]}",
-                      self.canal)
+                      self.canal, etapa=self.etapa, ref=self.ref,
+                      dur_s=self._gasto())
         return False
 
 

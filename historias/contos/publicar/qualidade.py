@@ -244,6 +244,13 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
     from ..roteiro import roteiro as R
     from ..video.timeline import cenas_da_parte
 
+    # QUANTAS VEZES O MESMO mp4 E VISTORIADO NUMA RODADA. Cada passada paga
+    # um ffprobe MAIS um decode completo do audio, e ha cinco chamadores
+    # diferentes (freio de estoque, barrados, revisao, reparo e o proprio
+    # `liberado`). Contar aqui, por `ref`, e o que transforma "acho que isso
+    # roda demais" no numero que decide se vale cachear.
+    import time as _t
+    _comeco = _t.monotonic()
     roteiro = roteiro or R.carregar(historia_id)
     laudo = vistoriar_arquivo(caminho)
 
@@ -355,6 +362,14 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
     laudo.update({"parte": parte, "imagens": imagens,
                   "titulo": R.titulo_da_parte(roteiro, parte),
                   "ok": not laudo["erros"]})
+    try:
+        from builds import atividade as _at
+        _at.registrar("estudio", _at.LOG, f"vistoria {historia_id} p{parte}",
+                      "historias", etapa="vistoria",
+                      ref=f"{historia_id}:p{parte}",
+                      dur_s=_t.monotonic() - _comeco)
+    except Exception:                                          # noqa: BLE001
+        pass
     return laudo
 
 

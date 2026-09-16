@@ -296,6 +296,28 @@ def _registrar_erro(resultado: dict) -> None:
         pass
 
 
+def _cronometrar(resultado: dict, gasto: float) -> None:
+    """Grava quanto a rodada levou. Nunca levanta.
+
+    Rodada que nao fez nada (`ja rodando`, `estoque cheio`, `pausado`) fica
+    de fora: ela mede o custo de conferir, nao o de produzir, e misturar as
+    duas faria a mediana do dia despencar sem nada ter melhorado.
+    """
+    try:
+        if resultado.get("motivo") in ("ja rodando", "pausado",
+                                       "agenda desligada", "fora da janela",
+                                       "sem tempo na janela", "estoque cheio"):
+            return
+        from builds import atividade
+        atividade.registrar(
+            "estudio", atividade.LOG,
+            f"rodada: {resultado.get('feito', '?')}", "historias",
+            etapa="rodada",
+            ref=str(resultado.get("historia_id") or ""), dur_s=gasto)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 def _duracao(segundos: float) -> str:
     horas, resto = divmod(int(segundos), 3600)
     minutos = resto // 60
@@ -630,6 +652,10 @@ def rodar(*, config: dict | None = None, headless: bool = False,
                 # LLM); a rodada em si nao, entao uma falha DELA nao chegava
                 # nem no Telegram nem no Claude.
                 _registrar_erro(resultado)
+            # A DURACAO DA RODADA PASSA A IR PARA O DISCO. Ela ja era medida
+            # aqui desde sempre, e ia so para o TEXTO do Telegram — lida uma
+            # vez, nunca somada. Uma linha faz dela serie.
+            _cronometrar(resultado, time.monotonic() - comeco)
             if config.get("avisar_telegram", True):
                 texto = mensagem(resultado, time.monotonic() - comeco)
                 if texto:
@@ -647,6 +673,9 @@ def _servico_da_noite(config: dict, headless: bool, log) -> None:
        ate 12 minutos: era trabalho pesado caindo na hora em que o dia comeca.
     2. PARECER DO GEMINI em todo video pendente sem veredito numerado por
        cena. De dia a postagem so LE o que a madrugada decidiu.
+    3. FECHAR O DIA DE ONTEM em tempos por etapa. O diario e podado acima de
+       4000 linhas, entao a medicao fina dura menos de um dia nele: sem esta
+       consolidacao, a serie que diz "o que piorou" nunca existiria.
     """
     from datetime import datetime as _relogio
 
@@ -658,6 +687,13 @@ def _servico_da_noite(config: dict, headless: bool, log) -> None:
             log("[auto] metricas da noite atualizadas.")
     except Exception as exc:                                   # noqa: BLE001
         log(f"[auto] a metrica da noite falhou: {type(exc).__name__}: {exc}")
+    try:
+        from builds import tempos
+        destino = tempos.consolidar()
+        log(f"[auto] tempos do dia fechados em {destino.name}.")
+    except Exception as exc:                                   # noqa: BLE001
+        log(f"[auto] a consolidacao dos tempos falhou: "
+            f"{type(exc).__name__}: {exc}")
     if config.get("revisar_estoque_a_noite", True):
         try:
             revisar_estoque(config, headless=headless, log=log)
