@@ -208,9 +208,10 @@ def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
             continue
         # `type()` voltar sem erro NAO e prova de que o texto ficou la — e a
         # mesma confusao do "botao habilitado". Le o campo de volta.
-        if not _legenda_ficou(campo, texto):
-            laudo["legenda"] = "ficou vazia"
-            passo(f"digitei a legenda mas o campo ficou vazio{de_novo}")
+        estado = _estado_da_legenda(campo, texto)
+        if estado != "escrita":
+            laudo["legenda"] = estado
+            passo(f"digitei a legenda mas ela {estado}{de_novo}")
             continue
         laudo["legenda"] = "escrita"
         passo("legenda escrita." if tentativa == 1
@@ -219,24 +220,60 @@ def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
     return False
 
 
-def _legenda_ficou(campo, texto: str) -> bool:
-    """O texto esta MESMO no campo? (nao basta o `type()` ter voltado sem erro)
+def _sem_emoji(texto: str) -> str:
+    """So o que o `inner_text` consegue devolver.
 
-    O TikTok reformata a legenda enquanto ela e digitada: hashtag vira
-    sugestao num `span`, emoji vira imagem, quebra de linha vira outro no. Por
-    isso a conferencia nao compara o texto inteiro — compara o comeco, que e o
-    titulo e e digitado literal, e exige que o campo tenha volume compativel.
-    Comparar igual daria falso alarme e faria adiar video bom.
+    O TikTok troca emoji por `<img>` enquanto se digita, e `inner_text` nao ve
+    imagem. Uma legenda que COMECE com emoji some dos primeiros caracteres e a
+    conferencia acusaria vazio num campo cheio — adiando video bom e, pior,
+    somando falhas ate o contador desistir dele. Tirar dos DOIS lados antes de
+    comparar e o que torna a comparacao honesta.
+    """
+    return "".join(c for c in texto if c.isalnum() or c.isspace()
+                   or c in ".,;:!?-_#@/()'\"").strip()
+
+
+def _estado_da_legenda(campo, texto: str) -> str:
+    """"escrita", "ficou vazia" ou "ficou incompleta".
+
+    Separadas porque tem causas diferentes: vazia e o campo que nao aceitou
+    nada (clique perdido, elemento trocado); incompleta e a digitacao
+    interrompida no meio. Gravadas como a mesma coisa, o diario nao permite
+    distinguir "o TikTok recusou o foco" de "a pagina travou digitando".
+
+    A conferencia NAO compara o texto inteiro: o TikTok reformata hashtag em
+    `span` e emoji em imagem enquanto se digita. Compara o comeco (o titulo,
+    digitado literal) e exige volume compativel.
     """
     try:
         atual = (campo.inner_text() or "").strip()
-    except Exception:
+    except Exception:                                          # noqa: BLE001
         # Nao deu para ler: nao invente falha. Quem decide e a etapa seguinte.
-        return True
+        return "escrita"
     if not atual:
-        return False
-    inicio = texto.strip()[:20]
-    return inicio in atual or len(atual) >= len(texto.strip()) * 0.5
+        return "ficou vazia"
+    esperado = _sem_emoji(texto)
+    visto = _sem_emoji(atual)
+    if esperado[:20] and esperado[:20] in visto:
+        return "escrita"
+    if len(visto) >= len(esperado) * 0.5:
+        return "escrita"
+    return "ficou incompleta"
+
+
+def _deve_barrar(postar: bool, texto: str, laudo: dict) -> bool:
+    """Publicar agora seria publicar sem legenda?
+
+    Funcao propria para que o teste chame A MESMA decisao que a producao. A
+    versao anterior reproduzia esta condicao dentro do teste, e um teste que
+    reimplementa a regra passa com a producao quebrada — que e exatamente o
+    defeito que ele existe para pegar.
+
+    `postar=False` NUNCA barra: e o modo do painel, em que a janela fica
+    aberta para o Adrian conferir e clicar. Ali tem gente na frente da tela, e
+    levantar excecao tiraria dele a chance de colar a legenda na mao.
+    """
+    return bool(postar and texto and laudo.get("legenda") != "escrita")
 
 
 def _confirmar_publicacao(page, passo, espera: float = ESPERA_CONFIRMAR_S) -> str:
@@ -544,7 +581,7 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         texto_legenda = video.descricao_completa[:2000]
         _escrever_legenda(page, texto_legenda, passo, laudo)
 
-        if postar and texto_legenda and laudo.get("legenda") != "escrita":
+        if _deve_barrar(postar, texto_legenda, laudo):
             raise TikTokFalhou(
                 f"a legenda não entrou ({laudo.get('legenda')}) e publicar sem "
                 "ela queima o vídeo: sem título e sem hashtag ele não é "
@@ -568,16 +605,15 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         try:
             botao.click(timeout=int(ESPERA_HABILITAR_S * 1000))
         except Exception as exc:
-            # A LEGENDA ENTRA NA MENSAGEM porque a mensagem e o que fica
-            # gravado: `atividade.fabrica` anota o texto da excecao no
-            # diario, e e de la que se conta por que o TikTok falhou. Sem
-            # isto, "legenda nao escreveu" e "botao nao habilitou" chegam ao
-            # diario como a mesma falha, e as duas tem conserto diferente.
+            # A etiqueta `[legenda: ...]` saiu daqui em 16/09/2026. Ela existia
+            # para separar no diario "legenda nao escreveu" de "botao nao
+            # habilitou" — mas agora legenda que nao entra LEVANTA antes, com
+            # mensagem propria, e nunca chega neste ponto. Chegar aqui ja
+            # significa que a legenda estava escrita.
             raise TikTokFalhou(
                 "o botão de publicar não ficou clicável em "
                 f"{ESPERA_HABILITAR_S / 60:.0f} min — o TikTok ainda estava "
-                f"processando o vídeo. A janela segue aberta. "
-                f"[legenda: {laudo.get('legenda', 'nao tentada')}] ({exc})"
+                f"processando o vídeo. A janela segue aberta. ({exc})"
             ) from exc
         passo("publicar clicado; confirmando...")
         estado = _confirmar_publicacao(page, passo)

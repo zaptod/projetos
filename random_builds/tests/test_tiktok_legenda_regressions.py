@@ -61,23 +61,71 @@ class _Campo:
 LEGENDA = "Ylva Brumalok, Berserker — build 56/100 #build #rpg"
 
 
-class LegendaFicouTests(unittest.TestCase):
-    def test_campo_vazio_nao_passa(self):
-        self.assertFalse(tiktok._legenda_ficou(_Campo(texto_lido=""), LEGENDA))
+class EstadoDaLegendaTests(unittest.TestCase):
+    def test_campo_vazio_e_vazio(self):
+        self.assertEqual("ficou vazia",
+                         tiktok._estado_da_legenda(_Campo(texto_lido=""),
+                                                   LEGENDA))
 
-    def test_campo_com_o_texto_passa(self):
+    def test_campo_com_o_texto_e_escrita(self):
         campo = _Campo()
         campo.type(LEGENDA)
-        self.assertTrue(tiktok._legenda_ficou(campo, LEGENDA))
+        self.assertEqual("escrita", tiktok._estado_da_legenda(campo, LEGENDA))
 
-    def test_hashtag_reformatada_ainda_passa(self):
+    def test_hashtag_reformatada_ainda_e_escrita(self):
         """O TikTok mexe no fim da legenda; o comeco e o titulo e fica."""
         campo = _Campo(texto_lido="Ylva Brumalok, Berserker — build 56/100 ")
-        self.assertTrue(tiktok._legenda_ficou(campo, LEGENDA),
-                        "exigir texto identico adiaria video bom")
+        self.assertEqual("escrita", tiktok._estado_da_legenda(campo, LEGENDA),
+                         "exigir texto identico adiaria video bom")
+
+    def test_meia_duzia_de_letras_e_INCOMPLETA_nao_vazia(self):
+        """Vazia e incompleta tem causas diferentes e conserto diferente:
+        campo que nao aceitou nada contra digitacao interrompida no meio."""
+        self.assertEqual("ficou incompleta",
+                         tiktok._estado_da_legenda(_Campo(texto_lido="Ylv"),
+                                                   LEGENDA))
 
     def test_nao_dar_para_ler_nao_inventa_falha(self):
-        self.assertTrue(tiktok._legenda_ficou(_Campo(ler_erro=True), LEGENDA))
+        self.assertEqual("escrita",
+                         tiktok._estado_da_legenda(_Campo(ler_erro=True),
+                                                   LEGENDA))
+
+    def test_emoji_no_comeco_nao_vira_falso_alarme(self):
+        """`inner_text` nao ve emoji (o TikTok troca por `<img>`). Sem tirar
+        dos DOIS lados, legenda que comeca com emoji seria dada como falha e
+        o contador acabaria DESISTINDO de um video que estava certo."""
+        texto = "🔥 Ylva Brumalok, Berserker — build 56/100 #build"
+        campo = _Campo(texto_lido=" Ylva Brumalok, Berserker — build 56/100 ")
+        self.assertEqual("escrita", tiktok._estado_da_legenda(campo, texto))
+
+
+class DeveBarrarTests(unittest.TestCase):
+    """A decisao real, chamada direto — nao uma copia dela no teste."""
+
+    def test_barra_quando_a_legenda_nao_entrou(self):
+        self.assertTrue(tiktok._deve_barrar(True, LEGENDA,
+                                            {"legenda": "ficou vazia"}))
+
+    def test_nao_barra_com_a_legenda_escrita(self):
+        self.assertFalse(tiktok._deve_barrar(True, LEGENDA,
+                                             {"legenda": "escrita"}))
+
+    def test_conferir_na_mao_NUNCA_barra(self):
+        """`postar=False` e o modo do painel: a janela fica aberta para ele
+        conferir. Levantar ali tiraria dele a chance de colar na mao."""
+        for estado in ("ficou vazia", "ficou incompleta",
+                       "campo não encontrado", "falhou: TimeoutError"):
+            with self.subTest(estado=estado):
+                self.assertFalse(
+                    tiktok._deve_barrar(False, LEGENDA, {"legenda": estado}))
+
+    def test_sem_texto_nao_ha_o_que_cobrar(self):
+        self.assertFalse(tiktok._deve_barrar(True, "", {"legenda": "ficou vazia"}))
+
+    def test_laudo_sem_a_chave_barra(self):
+        """Ausencia nao e sucesso: se ninguem escreveu o laudo, a legenda nao
+        foi escrita."""
+        self.assertTrue(tiktok._deve_barrar(True, LEGENDA, {}))
 
 
 class _Passos(list):
@@ -116,7 +164,8 @@ class NaoPublicaSemLegendaTests(unittest.TestCase):
         finally:
             tiktok._primeiro = original
         # A mesma condicao que `publicar` aplica logo depois de chamar.
-        barrou = bool(postar and texto and laudo.get("legenda") != "escrita")
+        # A MESMA funcao que `publicar` chama, nao uma copia da regra.
+        barrou = tiktok._deve_barrar(postar, texto, laudo)
         return laudo, passo, barrou
 
     def test_falha_uma_vez_e_passa_na_segunda(self):
@@ -160,16 +209,38 @@ class AGuardaEstaNoCaminhoRealTests(unittest.TestCase):
     continuariam verdes — a funcao devolve `False` e ninguem olha.
     """
 
-    def test_publicar_chama_a_funcao_e_barra_com_o_resultado(self):
+    def test_publicar_chama_as_duas_funcoes_testadas(self):
+        """Duas chamadas, nao a regra escrita de novo.
+
+        Ficou mais simples depois que a condicao virou `_deve_barrar`: antes
+        este teste procurava o TEXTO da condicao no fonte e quebraria numa
+        reformatacao. Agora procura o nome de duas funcoes, que so mudam se
+        alguem realmente trocar o desenho.
+        """
         import inspect
         fonte = inspect.getsource(tiktok.publicar)
         sem_comentario = "\n".join(
             l for l in fonte.splitlines() if not l.strip().startswith("#"))
         self.assertIn("_escrever_legenda(", sem_comentario,
                       "publicar tem de usar a funcao testada, nao uma copia")
-        self.assertIn('laudo.get("legenda") != "escrita"', sem_comentario,
-                      "e tem de barrar a publicacao com o resultado dela")
+        self.assertIn("_deve_barrar(", sem_comentario,
+                      "e tem de decidir pela funcao testada, nao por uma copia")
         self.assertIn("raise TikTokFalhou", sem_comentario)
+
+    def test_a_etiqueta_de_legenda_saiu_da_mensagem_do_botao(self):
+        """Item F: `[legenda: ...]` era para separar duas falhas no diario.
+        Legenda que nao entra levanta ANTES agora, com mensagem propria, e
+        nunca chega la — a etiqueta so dizia "escrita" e ocupava espaco.
+
+        Confere o CODIGO sem os comentarios: o proprio comentario que explica
+        a remocao cita a etiqueta, e sem tirar os comentarios este teste
+        acusaria a si mesmo. E a armadilha que ja mordeu duas vezes aqui.
+        """
+        import inspect
+        codigo = "\n".join(
+            l for l in inspect.getsource(tiktok.publicar).splitlines()
+            if not l.strip().startswith("#"))
+        self.assertNotIn("[legenda:", codigo)
 
 
 if __name__ == "__main__":
