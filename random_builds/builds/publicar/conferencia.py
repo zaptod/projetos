@@ -180,7 +180,15 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
             # Servico da noite NAO derruba rodada. E o OAuth de um canal pode
             # estar morto sem que o outro esteja.
             log(f"[conferencia] {canal}: {type(exc).__name__}: {exc}")
-            fichas[canal] = {"canal": canal, "erro": f"{type(exc).__name__}: {exc}"}
+            fichas[canal] = {"canal": canal, "dia": date.today().isoformat(),
+                             "erro": f"{type(exc).__name__}: {exc}"}
+            # A FALHA TAMBEM VAI PARA DISCO. Sem isto a pagina via "nunca
+            # rodou" — medido em 16/09/2026, com os tres tokens revogados — e
+            # "nunca rodou" e "rodou e o token morreu" pedem acoes diferentes.
+            try:
+                salvar(fichas[canal])
+            except OSError:
+                pass
             continue
         salvar(ficha)
         fichas[canal] = ficha

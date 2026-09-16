@@ -165,6 +165,24 @@ class OAlarme(unittest.TestCase):
             "no_ledger": 1, "janela_dias": 3})
         self.assertEqual(len(avisos), 1)
 
+    def test_falha_tambem_vai_para_disco(self):
+        # 16/09/2026: com os tres tokens revogados a pagina dizia "nunca
+        # rodou", porque a falha nao era gravada. Sao acoes diferentes.
+        salvos = []
+        real_conf, real_salvar = conferencia.conferir, conferencia.salvar
+
+        def explode(*_a, **_k):
+            raise RuntimeError("token invalido ou revogado")
+
+        conferencia.conferir = explode
+        conferencia.salvar = salvos.append
+        self.addCleanup(lambda: setattr(conferencia, "conferir", real_conf))
+        self.addCleanup(lambda: setattr(conferencia, "salvar", real_salvar))
+        fichas = conferencia.conferir_tudo(("builds",), log=lambda _t: None)
+        self.assertIn("revogado", fichas["builds"]["erro"])
+        self.assertEqual(len(salvos), 1)
+        self.assertTrue(salvos[0]["dia"])
+
     def test_limpo_NAO_acende(self):
         # Alarme que sempre acende e alarme que ninguem le.
         avisos = self._rodar({
