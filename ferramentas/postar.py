@@ -651,7 +651,79 @@ def _video_por_id(video_id: str):
         return None
 
 
-def atrasados_no_tiktok(limite: int = 40) -> list:
+# Builds so comecaram a ir ao TikTok em 10/09/2026. Antes disso o `postar.py`
+# nao tinha uma linha dele — 49 publicacoes, todas YouTube, zero TikTok. Os 33
+# builds anteriores a essa data NAO falharam: nunca tiveram chance. Recupera-
+# los seria despejar agosto inteiro no perfil por causa de um conserto de bug,
+# e isso e decisao de conteudo, do Adrian. Para recuperar os antigos, mova a
+# data; nada mais precisa mudar.
+#
+# HISTORIAS NAO TEM CORTE, de proposito. A fila delas ja vinha drenando sob
+# politica aceita (13 -> 11 no proprio dia 16/09) e tres partes de 09/09 estao
+# nela. Uniformizar a regra agora tiraria video de uma fila que funciona, em
+# silencio, por causa de um problema que e dos builds.
+CORTE_DO_TIKTOK = {"builds": "2026-09-10"}
+
+
+def _fontes_de_atraso(canal: str):
+    """O ledger e o catalogo daquele canal. Os dois vivem em lugares
+    diferentes: historias em `contos`, builds em `builds`."""
+    if canal == "builds":
+        from builds.publicar import catalogo as C
+        from builds.publicar import metricas
+        return metricas.publicados(), {
+            v.id: v for v in C.listar()
+            if getattr(v, "perfil", "") == "celular"}
+    from contos.publicar import catalogo, serie
+    return serie.publicados(), {
+        v.id: v for v in catalogo.listar()
+        if getattr(v, "perfil", "") == "celular"}
+
+
+VARIANTES = (":B",)
+
+
+def _e_variante(vid: str) -> bool:
+    """Este id e o gancho ALTERNATIVO do mesmo video?
+
+    Existe como funcao nomeada porque a alternativa era confiar no alfabeto:
+    `...celular` < `...celular:B` por acidente da ordenacao, e isso inverteria
+    no dia em que alguem trocasse o sufixo, em silencio.
+    """
+    return any(str(vid).endswith(s) for s in VARIANTES)
+
+
+def desistencias_do_tiktok(canal: str = "historias") -> set:
+    """De quem a recuperacao ja desistiu. Vazio se o arquivo nao existe.
+
+    Fica ao lado do ledger que ele complementa. Quem ESCREVE aqui e o passo
+    de recuperacao, ao falhar; esta metade so le, e ler um arquivo ausente e
+    "ninguem desistiu de nada", nunca um erro.
+    """
+    import json
+    try:
+        caminho = _arquivo_de_desistencias(canal)
+        if not caminho.is_file():
+            return set()
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        return {vid for vid, n in dados.items()
+                if int(n) >= FALHAS_ATE_DESISTIR}
+    except Exception:                                          # noqa: BLE001
+        # Estado ilegivel nao pode BARRAR video: "nao sei" deixa passar.
+        return set()
+
+
+FALHAS_ATE_DESISTIR = 3
+
+
+def _arquivo_de_desistencias(canal: str):
+    """Ao lado do `publicados.jsonl` do canal: e estado da mesma familia."""
+    from builds.publicar import metricas
+    return (metricas.registro_do_canal(canal).parent
+            / "_tiktok_desistencias.json")
+
+
+def atrasados_no_tiktok(limite: int = 40, canal: str = "historias") -> list:
     """Videos que sairam no YouTube e NUNCA chegaram ao TikTok, do mais antigo.
 
     O buraco que isto fecha (achado pelo Adrian em 16/09/2026, quando ele viu
@@ -665,21 +737,43 @@ def atrasados_no_tiktok(limite: int = 40) -> list:
     Naquele dia eram **14 de 59** partes so no YouTube. A serie no TikTok fica
     com buraco permanente — exatamente o que ele mandou tapar em 15/09.
 
-    So conta quem ainda esta no catalogo: video que saiu do disco nao tem como
-    ser publicado, e insistir nele travaria a recuperacao para sempre.
+    BUILDS ENTRARAM EM 16/09, e o buraco era maior do lado deles: a fila de
+    builds descarta todo video com `url` em QUALQUER plataforma, entao um
+    build que falhasse no TikTok saia da fila para sempre. Eram 8 no periodo em
+    que o TikTok ja funcionava, ~1 por dia de postagem, invisiveis.
+
+    A ordem das etapas importa e cada uma existe por um motivo:
+    1. so quem ainda esta no catalogo — video fora do disco travaria a fila;
+    2. data de corte do canal (ver `CORTE_DO_TIKTOK`);
+    3. **desistidos saem ANTES da deduplicacao** — se o A foi abandonado, o B
+       precisa poder assumir, senao a desistencia de um VIDEO viraria a
+       desistencia do TITULO;
+    4. quem ja tem o titulo no TikTok sob OUTRO id nao entra. Nao da para
+       reusar `titulo_repetido` aqui: ela conta `url` de qualquer plataforma e
+       nao exclui o proprio id, e como todo candidato ja esta no ar no YouTube
+       com o proprio titulo, ela recusaria TODOS — uma fila vazia, com os
+       testes verdes, que ninguem notaria;
+    5. titulo repetido dentro da propria fila fica so com o primeiro.
     """
-    from contos.publicar import catalogo, serie
+    from builds.publicar import titulos
 
     try:
-        publicados = serie.publicados()
-        no_catalogo = {v.id: v for v in catalogo.listar()
-                       if getattr(v, "perfil", "") == "celular"}
+        publicados, no_catalogo = _fontes_de_atraso(canal)
     except Exception:                                          # noqa: BLE001
         return []
 
-    no_tiktok = {l.get("video_id") for l in publicados
-                 if l.get("plataforma") == "tiktok" and l.get("url")}
-    vistos, atrasados = set(), []
+    corte = CORTE_DO_TIKTOK.get(canal, "")
+    no_tiktok, titulos_no_tiktok = set(), {}
+    for l in publicados:
+        if l.get("plataforma") != "tiktok" or not l.get("url"):
+            continue
+        no_tiktok.add(l.get("video_id"))
+        chave = titulos.chave(l.get("titulo"))
+        if chave:
+            titulos_no_tiktok.setdefault(chave, l.get("video_id"))
+
+    desistidos = desistencias_do_tiktok(canal)
+    candidatos, vistos = [], set()
     for linha in publicados:                     # ledger ja vem em ordem
         if linha.get("plataforma") != "youtube" or not linha.get("url"):
             continue
@@ -687,34 +781,71 @@ def atrasados_no_tiktok(limite: int = 40) -> list:
         if not vid or vid in no_tiktok or vid in vistos:
             continue
         vistos.add(vid)
+        if corte and (linha.get("quando") or "")[:10] < corte:
+            continue
+        if vid in desistidos:
+            continue
         alvo = no_catalogo.get(vid)
         if alvo is not None:
-            atrasados.append(alvo)
+            candidatos.append(alvo)
+
+    # A ORDEM CONTINUA SENDO A DO LEDGER, do mais antigo para o mais novo: a
+    # recuperacao anda na ordem em que os videos sairam no YouTube. A regra
+    # "principal antes da variante" e desempate DENTRO do mesmo titulo, nao
+    # ordenacao geral — ordenar por id jogaria a cronologia fora.
+    principais = {titulos.chave(getattr(v, "titulo", "")) for v in candidatos
+                  if not _e_variante(v.id)}
+    atrasados, chaves = [], set()
+    for alvo in candidatos:
+        chave = titulos.chave(getattr(alvo, "titulo", ""))
+        if chave and titulos_no_tiktok.get(chave, alvo.id) != alvo.id:
+            continue
+        if chave and chave in chaves:
+            continue
+        if chave and _e_variante(alvo.id) and chave in principais:
+            continue          # o principal esta pendente: ele vai, este nao
+        chaves.add(chave)
+        atrasados.append(alvo)
         if len(atrasados) >= limite:
             break
     return atrasados
 
 
-def recuperar_no_tiktok(so_ver: bool = False) -> dict:
+def recuperar_no_tiktok(so_ver: bool = False,
+                        canal: str = "historias") -> dict:
     """Leva UM atrasado por rodada ao TikTok. Nunca derruba a rodada.
 
     UM, e nao todos, de proposito: os 14 de uma vez virariam enxurrada no
     perfil e enterrariam a serie nova. Com dez horarios por dia a fila
     atrasada se fecha em menos de dois dias, na ordem em que os videos
     sairam no YouTube.
+
+    UM POR CANAL, e nao um no total: com fila unica os builds ficariam atras
+    de 11 historias — mais de um dia sem a primeira recuperacao, enquanto
+    falhas novas entram. Por canal, cada fila anda uma por rodada, o
+    acumulado de builds (8) fecha em um dia e o passo fica ocioso depois. O
+    custo maximo e uma postagem de TikTok a mais por rodada, e ele some
+    sozinho quando nao ha atraso.
     """
-    fila = atrasados_no_tiktok()
+    fila = atrasados_no_tiktok(canal=canal)
     if not fila:
-        return {"feito": False, "fila": 0}
+        return {"feito": False, "fila": 0, "canal": canal}
     alvo = fila[0]
     if so_ver:
-        return {"feito": False, "fila": len(fila), "veria": alvo.id}
-    _linha(f"[postar] recuperando no TikTok: {alvo.id} "
+        return {"feito": False, "fila": len(fila), "veria": alvo.id,
+                "canal": canal}
+    _linha(f"[postar] recuperando no TikTok ({canal}): {alvo.id} "
            f"({len(fila)} atrasado(s) na fila).")
-    estado = _tiktok_das_historias(alvo)
+    # O PUBLICADOR E DIFERENTE POR CANAL e nao da para escolher um so: em
+    # builds o registro acontece DENTRO de `tiktok.publicar`, e em historias
+    # ele acontece fora, porque `registrar_publicado` descarta tudo que nao e
+    # do canal `builds`. Trocar um pelo outro duplicaria linha de um lado e
+    # perderia a linha do outro.
+    estado = (_tiktok_dos_builds(alvo) if canal == "builds"
+              else _tiktok_das_historias(alvo))
     return {"feito": _tiktok_confirmado(estado), "fila": len(fila),
             "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
-            "tiktok": estado}
+            "canal": canal, "tiktok": estado}
 
 
 def _tiktok_neste_horario(agora=None) -> bool:
@@ -1695,21 +1826,28 @@ def main(argv=None) -> int:
     # delas: o vídeo da vez e o que mantem as duas plataformas em sincronia.
     # Este passo so limpa o atraso que ficou de rodadas em que o TikTok
     # falhou — e falha dele nao era tentada de novo nunca (16/09/2026).
-    if args.so != "builds":
+    #
+    # UM POR CANAL: builds entraram em 16/09 e tinham o buraco maior — a fila
+    # de builds descarta quem ja tem `url` em qualquer plataforma, entao um
+    # build que falhasse no TikTok saia dela para sempre.
+    for canal in ("historias", "builds"):
+        if args.so not in (None, canal):
+            continue
         try:
-            recuperado = recuperar_no_tiktok(so_ver=args.ver)
+            recuperado = recuperar_no_tiktok(so_ver=args.ver, canal=canal)
             if recuperado.get("fila"):
                 if args.ver:
                     _linha(f"[postar] {recuperado['fila']} atrasado(s) no "
-                           f"TikTok; levaria {recuperado.get('veria')}.")
+                           f"TikTok ({canal}); "
+                           f"levaria {recuperado.get('veria')}.")
                 else:
                     marca = ("recuperado" if recuperado.get("feito")
                              else "NAO subiu")
-                    _linha(f"[postar] TikTok atrasado: {marca} "
+                    _linha(f"[postar] TikTok atrasado ({canal}): {marca} "
                            f"{recuperado.get('alvo')} "
                            f"(restam {recuperado['fila'] - 1})")
         except Exception as exc:                               # noqa: BLE001
-            _linha(f"[postar] recuperacao do TikTok falhou "
+            _linha(f"[postar] recuperacao do TikTok ({canal}) falhou "
                    f"({type(exc).__name__}: {exc})"[:140])
 
     _linha()

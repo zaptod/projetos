@@ -522,7 +522,7 @@ class AtrasadoNoTikTokTests(unittest.TestCase):
             ledger=[{"video_id": "h:p1", "plataforma": "youtube", "url": "u"},
                     {"video_id": "h:p1", "plataforma": "tiktok", "url": "u"}],
             catalogo_ids=["h:p1"])
-        self.assertEqual({"feito": False, "fila": 0},
+        self.assertEqual({"feito": False, "fila": 0, "canal": "historias"},
                          self.postar.recuperar_no_tiktok())
 
     def test_a_recuperacao_vem_DEPOIS_das_publicacoes_do_horario(self):
@@ -546,10 +546,17 @@ class AtrasadoNoTikTokTests(unittest.TestCase):
         self.postar.postar_build = lambda **_k: (
             ordem.append("builds") or {"canal": "builds",
                                        "feito": False, "motivo": "-"})
-        self.postar.recuperar_no_tiktok = lambda **_k: (
-            ordem.append("recuperacao") or {"feito": False, "fila": 0})
+        # DUAS recuperacoes desde 16/09: uma por canal. Com fila unica os
+        # builds ficariam atras de 11 historias, mais de um dia sem a
+        # primeira recuperacao, enquanto falhas novas entram.
+        self.postar.recuperar_no_tiktok = lambda canal="historias", **_k: (
+            ordem.append(f"recuperacao:{canal}")
+            or {"feito": False, "fila": 0, "canal": canal})
         self.postar.main(["--ver"])
-        self.assertEqual(["historias", "builds", "recuperacao"], ordem)
+        self.assertEqual(
+            ["historias", "builds",
+             "recuperacao:historias", "recuperacao:builds"], ordem,
+            "as duas recuperacoes vem DEPOIS das duas publicacoes")
 
 
 if __name__ == "__main__":
