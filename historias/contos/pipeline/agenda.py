@@ -694,6 +694,12 @@ def _servico_da_noite(config: dict, headless: bool, log) -> None:
     except Exception as exc:                                   # noqa: BLE001
         log(f"[auto] a consolidacao dos tempos falhou: "
             f"{type(exc).__name__}: {exc}")
+    try:
+        from builds.publicar import conferencia
+        conferencia.conferir_tudo(log=log)
+    except Exception as exc:                                   # noqa: BLE001
+        log(f"[auto] a conferencia do canal falhou: "
+            f"{type(exc).__name__}: {exc}")
     if config.get("revisar_estoque_a_noite", True):
         try:
             revisar_estoque(config, headless=headless, log=log)

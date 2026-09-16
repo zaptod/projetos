@@ -247,20 +247,32 @@ def estatisticas(youtube_ids: list[str], token: str) -> dict:
     saida = {}
     for i in range(0, len(youtube_ids), 50):
         lote = youtube_ids[i:i + 50]
-        resposta = requests.get(API_VIDEOS, timeout=30,
-                                params={"part": "statistics,contentDetails,snippet",
-                                        "id": ",".join(lote)},
-                                headers={"Authorization": f"Bearer {token}"})
+        resposta = requests.get(
+            API_VIDEOS, timeout=30,
+            # `status` foi acrescentado em 16/09/2026 e e o que torna a
+            # conferencia possivel: `privacyStatus == "private"` e a
+            # assinatura EXATA do rascunho que passou 5 dias contado como
+            # publicado. Mesmo escopo readonly, nenhuma permissao nova.
+            params={"part": "statistics,contentDetails,snippet,status",
+                    "id": ",".join(lote)},
+            headers={"Authorization": f"Bearer {token}"})
         if not resposta.ok:
             raise RuntimeError(f"Data API {resposta.status_code}: {resposta.text[:200]}")
         for item in resposta.json().get("items", []):
             st = item.get("statistics", {})
+            detalhes = item.get("contentDetails", {})
+            estado = item.get("status", {})
             saida[item["id"]] = {
                 "views": int(st.get("viewCount", 0)),
                 "likes": int(st.get("likeCount", 0)),
                 "comentarios": int(st.get("commentCount", 0)),
-                "duracao": _iso_para_segundos(item.get("contentDetails", {}).get("duration")),
+                "duracao": _iso_para_segundos(detalhes.get("duration")),
                 "publicado_em": item.get("snippet", {}).get("publishedAt"),
+                "privacidade": estado.get("privacyStatus"),
+                "upload": estado.get("uploadStatus"),
+                # "sd" aqui e INDICIO, nao veredito: o campo reflete a melhor
+                # renderizacao ja disponivel e demora a virar "hd".
+                "definicao": detalhes.get("definition"),
             }
     return saida
 
