@@ -107,15 +107,40 @@ class OComando(unittest.TestCase):
         self.assertIn("/confiabilidade", comandos.ajuda())
 
 
-class NaoSaiSozinho(unittest.TestCase):
+class SaiSozinhoSoAs2230(unittest.TestCase):
+    """Decisao do Adrian (16/09/2026, 18:58): liga o envio diario as 22:30.
 
-    def test_nao_esta_no_horario_padrao(self):
-        # Decisao pendente do Adrian (16/09/2026): o comando responde quando
-        # perguntado, mas o envio automatico diario so liga quando ele
-        # escolher. Ligar aqui faria o bot mandar mensagem real sem ninguem
-        # ter decidido isso.
-        self.assertNotIn("confiabilidade",
-                         config.PADRAO.get("relatorios") or {})
+    Ate essa decisao este teste travava o contrario — que o relatorio NAO
+    saisse sozinho —, porque ligar sem ninguem decidir faria o bot mandar
+    mensagem real. Agora trava o estado decidido, e nada alem dele.
+    """
+
+    def test_confiabilidade_sai_as_2230(self):
+        self.assertEqual("22:30", config.PADRAO["relatorios"]["confiabilidade"])
+
+    def test_os_automaticos_sao_exatamente_estes(self):
+        # Um quarto relatorio automatico e mais uma mensagem por dia no
+        # celular dele: tem de ser decisao, nao efeito colateral.
+        self.assertEqual({"metas": "21:00", "funcionamento": "09:00",
+                          "confiabilidade": "22:30"},
+                         config.PADRAO["relatorios"])
+
+    def test_o_horario_vence_uma_vez_por_dia(self):
+        from datetime import datetime
+        horarios = config.PADRAO["relatorios"]
+        antes = relatorios.devidos(horarios, datetime(2026, 9, 16, 22, 29),
+                                   ja_enviados={"metas": "2026-09-16",
+                                                "funcionamento": "2026-09-16"})
+        depois = relatorios.devidos(horarios, datetime(2026, 9, 16, 22, 31),
+                                    ja_enviados={"metas": "2026-09-16",
+                                                 "funcionamento": "2026-09-16"})
+        ja_foi = relatorios.devidos(horarios, datetime(2026, 9, 16, 23, 0),
+                                    ja_enviados={"metas": "2026-09-16",
+                                                 "funcionamento": "2026-09-16",
+                                                 "confiabilidade": "2026-09-16"})
+        self.assertNotIn("confiabilidade", antes)
+        self.assertEqual(["confiabilidade"], depois)
+        self.assertEqual([], ja_foi)
 
 
 if __name__ == "__main__":

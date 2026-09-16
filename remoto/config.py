@@ -55,7 +55,12 @@ PADRAO = {
     # `funcionamento` as 09:00: e o relatorio da NOITE — o que rodou enquanto
     # ninguem olhava e o que quebrou. De manha ainda da tempo de consertar
     # antes da postagem da tarde.
-    "relatorios": {"metas": "21:00", "funcionamento": "09:00"},
+    #
+    # `confiabilidade` as 22:30 (decisao do Adrian, 16/09/2026 18:58):
+    # depois do horario das 21:37 e antes do das 22:37 — o dia ja esta quase
+    # fechado e ainda da para agir no ultimo post. Quase sempre e uma linha.
+    "relatorios": {"metas": "21:00", "funcionamento": "09:00",
+                   "confiabilidade": "22:30"},
 }
 
 
