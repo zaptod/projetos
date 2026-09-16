@@ -1021,9 +1021,21 @@ def proximo_build(config=None):
     prontos = [v for v in pendentes if not getattr(v, "pendencias", None)]
     barrados = [v for v in pendentes if getattr(v, "pendencias", None)]
     if barrados:
-        _linha(f"[postar] {len(barrados)} build(s) fora da fila por "
-               f"pendencia: {', '.join(v.id for v in barrados[:4])}"
-               f"{'...' if len(barrados) > 4 else ''}")
+        # SEPARA O QUE ESPERA DO QUE ACABOU. Em 16/09/2026 este resumo dizia
+        # "22 build(s) fora da fila por pendencia" havia semanas, e 20 delas
+        # eram irrecuperaveis (personagem fora do banco). Um numero que nao
+        # anda parece fila; dito assim, e o que e: estoque morto, e a unica
+        # pergunta aberta e se vale reinserir os personagens.
+        perdidos = [v for v in barrados
+                    if any("impossivel" in p for p in v.pendencias)]
+        esperando = [v for v in barrados if v not in perdidos]
+        if esperando:
+            _linha(f"[postar] {len(esperando)} build(s) fora da fila por "
+                   f"pendencia: {', '.join(v.id for v in esperando[:4])}"
+                   f"{'...' if len(esperando) > 4 else ''}")
+        if perdidos:
+            _linha(f"[postar] {len(perdidos)} build(s) IRRECUPERAVEIS "
+                   f"(estreia impossivel): {perdidos[0].pendencias[0]}")
     pendentes = prontos
     if not pendentes:
         return None

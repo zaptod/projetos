@@ -21,6 +21,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -127,6 +128,45 @@ class Video:
                 "capa": str(self.capa) if self.capa else None}
 
 
+@lru_cache(maxsize=1)
+def _nomes_no_banco() -> frozenset[str] | None:
+    """Quem esta no banco do neural_fights AGORA. `None` se nao deu para ler.
+
+    So os nomes, e uma vez so: `pendencias_da_build` roda por build e
+    `fichas_do_banco` ainda monta o kit de cada personagem.
+    """
+    try:
+        from ..nf_bridge import loader as nf
+        _, personagens = nf.database.carregar_database()
+        return frozenset(p["nome"] for p in personagens if p.get("nome"))
+    except Exception:
+        return None
+
+
+def _falta_estreia(pasta: Path) -> str:
+    """Por que nao ha luta no fim — e se ainda da para haver.
+
+    A mensagem antiga ("estreia nao gravada") se lia como tarefa: grave a
+    luta. Medido em 16/09/2026: 20 das 30 builds fora da fila estavam nela, e
+    NENHUMA era gravavel. O banco do neural_fights foi refeito em 02/09 e os
+    personagens de agosto sairam junto; sem ficha no banco nao ha quem lute, e
+    `_gravar_estreia` desiste na primeira linha. Ou seja: a pendencia nao era
+    uma tarefa pendente, era uma lapide — e ficava contando 20 todo dia como
+    se alguem pudesse resolver.
+
+    Quando nao da para ler o banco a mensagem volta a ser a antiga: melhor
+    dizer "grave a luta" sobre algo perdido do que "perdido" sobre algo que so
+    precisava ser gravado.
+    """
+    nomes = _nomes_no_banco()
+    nome = _json(Path(pasta) / "character.json").get("nome")
+    if nomes is None or not nome or nome in nomes:
+        return "sem luta no fim (estreia nao gravada)"
+    return (f"estreia impossivel: '{nome}' nao esta mais no banco do "
+            f"neural_fights (refeito depois desta build). Nao adianta tentar "
+            f"gravar; so volta a fila se o personagem for reinserido.")
+
+
 def pendencias_da_build(pasta: Path, perfil: str) -> list[str]:
     """O que falta para o video de build estar COMPLETO.
 
@@ -153,7 +193,7 @@ def pendencias_da_build(pasta: Path, perfil: str) -> list[str]:
     if not imagem.is_file():
         lista.append("sem imagem do personagem (PicassoIA)")
     if not estreia.is_file():
-        lista.append("sem luta no fim (estreia nao gravada)")
+        lista.append(_falta_estreia(pasta))
     if final.is_file():
         mais_novo = max((c.stat().st_mtime for c in (payoff, imagem, estreia)
                          if c.is_file()), default=0.0)
