@@ -124,18 +124,38 @@ class ConfereAntesDeEnviarTests(unittest.TestCase):
 
     def setUp(self):
         self.fonte = Path(youtube_web.__file__).read_text(encoding="utf-8")
+        self.trecho = self._corpo_de("def publicar(")
+
+    def _corpo_de(self, cabecalho: str) -> str:
+        """A funcao INTEIRA, do cabecalho ate o proximo `def` de topo.
+
+        Era uma fatia de 4000 caracteres, e isso e uma regua que mede o
+        tamanho do texto em vez da presenca da guarda: em 15/09/2026 uma
+        medicao nova no comeco de `publicar` empurrou "nao tem id gravado"
+        para 4127 e o teste acusou defeito onde nao havia nenhum. A guarda
+        continua sendo exigida — o que deixou de ser exigido e que ela caiba
+        numa janela arbitraria.
+        """
+        i = self.fonte.index(cabecalho)
+        resto = self.fonte[i + len(cabecalho):]
+        fim = resto.find("\ndef ")
+        return self.fonte[i:i + len(cabecalho) + (fim if fim >= 0
+                                                  else len(resto))]
+
+    def test_o_recorte_para_na_proxima_funcao(self):
+        # Sem isto, um recorte que engolisse o arquivo inteiro faria os dois
+        # testes abaixo passarem para SEMPRE, inclusive com a guarda apagada.
+        self.assertNotIn("\ndef main(", self.trecho)
+        self.assertIn("def publicar(", self.trecho)
+        self.assertLess(len(self.trecho), len(self.fonte))
 
     def test_publicar_compara_o_id_pedido_com_o_que_abriu(self):
-        i = self.fonte.index("def publicar(")
-        trecho = self.fonte[i:i + 4000]
-        self.assertIn("id_do_canal(page.url)", trecho)
-        self.assertIn("raise YouTubeWebFalhou", trecho)
-        self.assertIn("nao tem desfazer", trecho)
+        self.assertIn("id_do_canal(page.url)", self.trecho)
+        self.assertIn("raise YouTubeWebFalhou", self.trecho)
+        self.assertIn("nao tem desfazer", self.trecho)
 
     def test_sem_id_gravado_ele_avisa_em_vez_de_calar(self):
-        i = self.fonte.index("def publicar(")
-        trecho = self.fonte[i:i + 4000]
-        self.assertIn("nao tem id gravado", trecho)
+        self.assertIn("nao tem id gravado", self.trecho)
 
 
 class ListaDaSessaoTests(unittest.TestCase):

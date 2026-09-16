@@ -81,6 +81,35 @@ TOLERANCIA_PLANO_S = 2.0
 
 
 # ------------------------------------------------------------------ registro
+def prova_ok(laudo: dict | list | None) -> bool | None:
+    """O laudo sustenta a afirmacao "publiquei"?
+
+    TRES estados, e o terceiro nao e detalhe: `None` quer dizer "nao sei",
+    e e o que sai para toda linha anterior a esta medicao. Se ausencia de
+    prova valesse `False`, o alarme acenderia para o acervo inteiro no
+    primeiro dia e ninguem olharia o alarme de novo.
+
+    Prova de verdade e a que o outro lado pode desmentir: id do video, ou ao
+    menos a confirmacao vista na tela. "A funcao nao levantou excecao" nao e
+    prova — foi exatamente o que 29 rascunhos devolveram entre 10 e 15 de
+    setembro de 2026.
+
+    Aceita uma LISTA porque uma parte de historia longa vira dois Shorts: sao
+    dois uploads para uma linha de ledger, e meia publicacao nao e publicacao
+    — se um pedaco nao tem prova, a linha inteira nao tem.
+    """
+    if isinstance(laudo, list):
+        if not laudo:
+            return None
+        return all(prova_ok(um) is True for um in laudo)
+    if not laudo:
+        return None
+    if laudo.get("estado") != "publicado":
+        return False
+    return bool(laudo.get("youtube_id") or laudo.get("url")
+                or laudo.get("confirmado"))
+
+
 def registrar_publicacao(video, url: str, plataforma: str = "youtube",
                          extra: dict | None = None) -> dict:
     """Uma linha por upload. E o unico lugar que sabe qual mp4 virou qual

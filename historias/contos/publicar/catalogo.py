@@ -207,7 +207,8 @@ def exportar(video: Video, destino: Path | None = None) -> Path:
 
 
 def publicar_youtube(video: Video, visibilidade: str | None = None, *,
-                     agendar_para: str | None = None, log=print) -> str:
+                     agendar_para: str | None = None, log=print,
+                     provas: list | None = None) -> str:
     """Sobe a parte no canal `historias` — cortada, se passar do Shorts.
 
     O corte mora AQUI, e nao em quem chama, porque todo caminho de publicacao
@@ -225,18 +226,26 @@ def publicar_youtube(video: Video, visibilidade: str | None = None, *,
 
     # POR NAVEGADOR por padrao (decisao de 01/09/2026). A API continua no
     # projeto, mas so para LER: metricas e identidade do canal.
+    # `provas` recebe UM laudo por pedaco. E por isso que ela e lista e nao
+    # dicionario: quando a parte passa do limite do Shorts sao dois uploads
+    # para uma linha de ledger, e um laudo so esconderia o segundo.
     urls = []
     for pedaco in cortes.preparar(video, limite=cortes.limite(config), log=log):
+        laudo: dict = {}
         urls.append(youtube.publicar_como_configurado(
             pedaco, visibilidade=visibilidade, canal="historias",
-            agendar_para=agendar_para, config=config, log=log))
+            agendar_para=agendar_para, config=config, log=log, prova=laudo))
+        if provas is not None:
+            provas.append(laudo)
     return " | ".join(u for u in urls if u)
 
 
-def publicar_tiktok(video: Video, *, postar: bool = False, log=print) -> str:
+def publicar_tiktok(video: Video, *, postar: bool = False, log=print,
+                    prova: dict | None = None) -> str:
     """Sobe no TikTok pela conta do canal `historias` (para antes de postar
     quando `postar` e False — publicar sozinho nao e decisao de ferramenta)."""
     tiktok = _rb_publicar_tiktok
     # `postar or None` fazia `False` virar `None`, e `None` significa "use o
     # config" — ou seja, nao dava para dizer "NAO poste" a partir daqui.
-    return tiktok.publicar(video, postar=bool(postar), canal="historias")
+    return tiktok.publicar(video, postar=bool(postar), canal="historias",
+                           prova=prova)

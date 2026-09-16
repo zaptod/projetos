@@ -44,6 +44,17 @@ def perfil_da_conta(canal: str = "builds"):
         return perfil("tiktok", canal)
     except Exception:
         return PERFIL
+
+
+def _conta_ativa(canal: str) -> str:
+    """Qual conta de TikTok está publicando — nunca levanta."""
+    try:
+        from ..contas import ativa
+        return str(ativa("tiktok", canal))
+    except Exception:
+        return ""
+
+
 URL_UPLOAD = "https://www.tiktok.com/tiktokstudio/upload"
 
 # Espera o input de arquivo aparecer (a página é uma SPA pesada).
@@ -366,10 +377,18 @@ def _tem_sessao(ctx) -> bool:
 
 def publicar(video, *, postar: bool | None = None, config: dict | None = None,
              canal: str = "builds",
-             progresso=None) -> str:
+             progresso=None, prova: dict | None = None) -> str:
     """Sobe o vídeo e escreve a legenda. Só posta se `postar` for True.
 
     Devolve uma frase de estado — o que aconteceu de fato, não uma promessa.
+
+    `prova` é um dicionário OPCIONAL preenchido no lugar, com o laudo do que
+    deu para provar. O retorno e o comportamento não mudam.
+
+    O laudo do TikTok é mais pobre que o do YouTube de propósito: aqui não
+    volta id nem URL, então a prova possível é a da tela — a página saiu de
+    `/upload` e mostrou sucesso. A conferência contra o Studio (que casa pela
+    hora da postagem) é quem fecha a conta depois.
     """
     from . import catalogo
 
@@ -392,6 +411,17 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         print(f"[tiktok] {texto}", flush=True)
         if progresso:
             progresso(texto)
+
+    # Nasce pessimista: se estourar no meio, quem passou o dicionário fica
+    # com o que deu tempo de medir em vez de ficar sem nada.
+    from datetime import datetime as _dt
+    laudo = prova if prova is not None else {}
+    laudo.update({
+        "plataforma": "tiktok", "canal": canal,
+        "conta": _conta_ativa(canal), "estado": "nao_subiu",
+        "url": "", "confirmado": False, "upload_s": None,
+        "quando": _dt.now().isoformat(timespec="seconds"),
+    })
 
     # A Vila mostra o que esta acontecendo lendo o diario, e ate 01/09/2026
     # publicar nao escrevia nada nele. Como o caminho padrao virou o
@@ -426,6 +456,7 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
                 "`python -m builds.publicar.tiktok --sondar` para ver a tela.")
 
         entrada.set_input_files(str(caminho))
+        comeco_do_upload = time.monotonic()
         passo(f"arquivo entregue ({caminho.name}); o TikTok está processando...")
 
         # O upload real acontece do lado deles; o sinal de pronto é a tela
@@ -487,12 +518,21 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         passo("publicar clicado; confirmando...")
         estado = _confirmar_publicacao(page, passo)
         passo(estado)
+        laudo["upload_s"] = round(time.monotonic() - comeco_do_upload, 1)
+        laudo["confirmacao_extra"] = "confirmacao extra" in estado
         if confirmado(estado):
+            laudo["estado"] = "publicado"
+            laudo["confirmado"] = True
             # O TikTok nao devolve URL nem id aqui; o registro vale para
             # saber O QUE ja foi publicado e onde (a metrica de retencao
             # segue sendo so do YouTube).
             from . import metricas
-            metricas.registrar_publicado(video, estado, "tiktok", canal=canal)
+            metricas.registrar_publicado(
+                video, estado, "tiktok", canal=canal,
+                extra={"prova": dict(laudo),
+                       "prova_ok": metricas.prova_ok(laudo)})
+        else:
+            laudo["estado"] = "sem_confirmacao"
         return estado
 
 

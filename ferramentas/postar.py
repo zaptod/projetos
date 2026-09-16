@@ -50,6 +50,20 @@ def _linha(texto: str = "") -> None:
     sys.stdout.buffer.write((texto + "\n").encode("utf-8", "replace"))
 
 
+def _prova_ok(laudo):
+    """A regra mora no ledger de builds; aqui e so a porta.
+
+    Nunca levanta: um laudo mal formado nao pode impedir o REGISTRO da
+    publicacao. Perder a linha do ledger e pior do que perder a prova — foi
+    a linha faltando que deixou os dois TikToks zerados por 49 publicacoes.
+    """
+    try:
+        from builds.publicar.metricas import prova_ok
+        return prova_ok(laudo)
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
 # Quanto esperar a rede voltar antes de desistir do horario. Numeros vindos
 # do caso real: a maquina voltou de queda de energia as 03:34 e o DNS ainda
 # nao resolvia as 06:07 — mas resolvia muito antes das 10:00. Cinco minutos
@@ -557,10 +571,13 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     # aqui faria o TikTok ficar vazio pelo motivo errado — que e exatamente o
     # que manteve os dois TikToks zerados por 49 publicacoes.
     url, cota, falha_yt = "", None, None
+    provas: list = []
     try:
-        url = catalogo.publicar_youtube(alvo, visibilidade)
+        url = catalogo.publicar_youtube(alvo, visibilidade, provas=provas)
         serie.registrar(alvo, url, "youtube", None,
-                        {"por": "postar.py", "visibilidade": visibilidade})
+                        {"por": "postar.py", "visibilidade": visibilidade,
+                         "prova": provas,
+                         "prova_ok": _prova_ok(provas)})
     except Exception as exc:                                   # noqa: BLE001
         if _e_limite_diario(exc):
             cota = str(exc)
@@ -648,8 +665,10 @@ def _tiktok_das_historias(alvo) -> str:
     if serie.ja_publicado(alvo.id, "tiktok"):
         _linha(f"   tiktok: {alvo.id} ja esta no TikTok; nao posto de novo.")
         return ""
+    laudo: dict = {}
     try:
-        estado = catalogo.publicar_tiktok(alvo, postar=True, log=_linha)
+        estado = catalogo.publicar_tiktok(alvo, postar=True, log=_linha,
+                                          prova=laudo)
     except Exception as exc:                                   # noqa: BLE001
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
         return ""
@@ -661,7 +680,9 @@ def _tiktok_das_historias(alvo) -> str:
     from builds.publicar import tiktok as _tk
     if _tk.confirmado(estado):
         serie.registrar(alvo, estado, "tiktok", None,
-                        {"por": "postar.py", "visibilidade": "public"})
+                        {"por": "postar.py", "visibilidade": "public",
+                         "prova": [laudo] if laudo else [],
+                         "prova_ok": _prova_ok(laudo)})
     return estado
 
 

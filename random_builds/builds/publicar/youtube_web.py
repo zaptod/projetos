@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 
 from .. import atividade
@@ -356,11 +357,22 @@ BOTAO_PUBLICAR_ASSIM = (
 # "Processando ate SD ... 3 minutos restantes". Ou seja: o video ia ao ar
 # antes de existir nem em SD, justamente na primeira hora, que e quando o
 # algoritmo mede o Short e decide se entrega.
-PROCESSANDO = (
-    "processamento vai comecar", "processando ate sd", "processando ate hd",
-    "processando video", "fazendo upload", "enviando",
-    "processing will begin", "processing sd", "processing hd", "uploading",
+# As fases, da mais crua para a mais adiantada. A ORDEM E O CONTEUDO:
+# "processando ate SD" quer dizer que nao ha nada pronto ainda; "processando
+# ate HD" quer dizer que o SD ja existe e o HD esta a caminho. Tratar as duas
+# como a mesma coisa era o que escondia o problema.
+FASES = (
+    ("subindo", ("fazendo upload", "enviando", "uploading",
+                 "processamento vai comecar", "processing will begin")),
+    ("processando", ("processando ate sd", "processando video",
+                     "processing sd")),
+    ("sd", ("processando ate hd", "processing hd")),
 )
+PROCESSANDO = tuple(frase for _, frases in FASES for frase in frases)
+# "3 minutos restantes" — quanto o Studio ainda pede.
+FALTA = re.compile(
+    r"\d+\s*(?:minutos?|segundos?|minutes?|seconds?)\s*"
+    r"(?:restantes?|remaining)")
 LINK_DO_VIDEO = (
     'a[href*="youtu.be/"]',
     'a[href*="/watch?v="]',
@@ -390,6 +402,64 @@ def _sem_acento(texto: str) -> str:
     import unicodedata
     return "".join(c for c in unicodedata.normalize("NFD", str(texto or ""))
                    if unicodedata.category(c) != "Mn").lower()
+
+
+def _qualidade_agora(page) -> dict:
+    """Em que pe o arquivo esta NO INSTANTE do clique em publicar.
+
+    Le a barra de estado contra FASES. Nao decide nada e nao espera: esta
+    etapa e so a medida. O `reconhecido` existe porque a ausencia de frase
+    de processamento tem DUAS leituras — o Studio terminou, ou o Studio
+    mudou o texto e a gente parou de entender a tela. Sem esse campo, o dia
+    em que o YouTube trocar as palavras a medicao viraria "hd" para tudo e
+    ninguem perceberia.
+    """
+    vazio = {"qualidade": "desconhecida", "falta": "", "texto": "",
+             "reconhecido": False}
+    try:
+        texto = _sem_acento(page.evaluate(
+            "() => document.body ? document.body.innerText : ''"))
+    except Exception:
+        return vazio
+    if not texto.strip():
+        return vazio
+
+    achado = FALTA.search(texto)
+    falta = achado.group(0) if achado else ""
+    for rotulo, frases in FASES:
+        if any(frase in texto for frase in frases):
+            return {"qualidade": rotulo, "falta": falta,
+                    "texto": texto[:200], "reconhecido": True}
+    visto = any(_sem_acento(s) in texto for s in SINAIS_PUBLICADO)
+    return {"qualidade": "hd", "falta": falta, "texto": texto[:200],
+            "reconhecido": visto}
+
+
+def _id_do_video(url: str) -> str:
+    """O id que o Studio devolveu — a prova que da para conferir depois.
+
+    E o unico campo do laudo que uma API externa consegue desmentir: com ele,
+    a conferencia pergunta ao YouTube se aquele video esta mesmo publico. Sem
+    ele, "publiquei" continua sendo palavra do proprio publicador contra si
+    mesma, que foi como 29 rascunhos passaram por publicados entre 10 e 15 de
+    setembro de 2026.
+    """
+    achado = re.search(r"(?:youtu\.be/|[?&]v=|/shorts/)([\w-]{11})",
+                       str(url or ""))
+    return achado.group(1) if achado else ""
+
+
+def _agora() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _conta_ativa(canal: str) -> str:
+    """Qual conta de youtube-web esta publicando — nunca levanta."""
+    try:
+        from ..contas import ativa
+        return str(ativa("youtube_web", canal))
+    except Exception:
+        return ""
 
 
 def _abrir(ctx, url: str):
@@ -653,8 +723,14 @@ def _abrir_dialogo_de_upload(page, passo) -> bool:
 def publicar(video, *, visibilidade: str | None = None,
              postar: bool | None = None, config: dict | None = None,
              canal: str = "builds", agendar_para: str | None = None,
-             progresso=None) -> str:
-    """Sobe o video pelo Studio. Devolve a URL, ou o que de fato aconteceu."""
+             progresso=None, prova: dict | None = None) -> str:
+    """Sobe o video pelo Studio. Devolve a URL, ou o que de fato aconteceu.
+
+    `prova` e um dicionario OPCIONAL preenchido no lugar: quem passa recebe o
+    laudo do que aconteceu (id do video, em que resolucao estava no clique,
+    se houve confirmacao extra). O retorno e o comportamento nao mudam — os
+    chamadores antigos continuam valendo palavra por palavra.
+    """
     from . import catalogo
 
     config = catalogo.carregar_config() if config is None else config
@@ -676,6 +752,19 @@ def publicar(video, *, visibilidade: str | None = None,
         print(f"[youtube-web] {texto}", flush=True)
         if progresso:
             progresso(texto)
+
+    # O laudo nasce PESSIMISTA e e preenchido pelo caminho. Se a funcao
+    # estourar no meio, quem passou o dicionario fica com o que deu tempo de
+    # medir em vez de ficar sem nada — que era o estado anterior do mundo.
+    laudo = prova if prova is not None else {}
+    laudo.update({
+        "plataforma": "youtube", "canal": canal,
+        "conta": _conta_ativa(canal), "estado": "nao_subiu",
+        "url": "", "youtube_id": "",
+        "qualidade_no_clique": "", "falta_texto": "", "texto_da_barra": "",
+        "reconhecido": False, "upload_s": None, "confirmacao_extra": False,
+        "quando": _agora(),
+    })
 
     # A Vila mostra o que esta acontecendo lendo o diario, e ate 01/09/2026
     # publicar nao escrevia nada nele. Como o caminho padrao virou o
@@ -741,6 +830,7 @@ def publicar(video, *, visibilidade: str | None = None,
                 "`python -m builds.publicar.youtube_web --sondar` para ver a tela.")
 
         entrada.set_input_files(str(caminho))
+        comeco_do_upload = time.monotonic()
         passo(f"arquivo entregue ({caminho.name}); o YouTube esta subindo...")
 
         # A COTA SE PERGUNTA AQUI, logo depois do envio. Medido em 10/09/2026:
@@ -856,10 +946,37 @@ def publicar(video, *, visibilidade: str | None = None,
                 "o YouTube nao terminou de processar o video a tempo. A "
                 "janela esta aberta: da para terminar na mao.")
 
+        # A MEDIDA VAI AQUI, no ultimo instante antes do clique, porque e
+        # esta a pergunta: em que resolucao o video foi ao ar? O botao acima
+        # habilita quando o ARQUIVO TERMINA DE SUBIR, e nao quando o YouTube
+        # termina de processar — medido em 15/09/2026, a barra ainda dizia
+        # "Processando ate SD ... 3 minutos restantes" neste ponto. Por
+        # enquanto so se MEDE: nada aqui segura o clique.
+        laudo["upload_s"] = round(time.monotonic() - comeco_do_upload, 1)
+        estagio = _qualidade_agora(page)
+        laudo["qualidade_no_clique"] = estagio["qualidade"]
+        laudo["falta_texto"] = estagio["falta"]
+        laudo["texto_da_barra"] = estagio["texto"]
+        laudo["reconhecido"] = estagio["reconhecido"]
+        if estagio["qualidade"] not in ("hd", "desconhecida"):
+            passo(f"atencao: publicando com o video em "
+                  f"{estagio['qualidade']}"
+                  + (f" ({estagio['falta']})" if estagio["falta"] else ""))
+
         pronto.click()
         passo("publicar clicado; confirmando...")
         estado = _confirmar(page, passo)
         passo(estado)
+
+        laudo["confirmacao_extra"] = "confirmacao extra" in estado
+        if estado.startswith("http"):
+            laudo["estado"] = "publicado"
+            laudo["url"] = estado
+            laudo["youtube_id"] = _id_do_video(estado)
+        elif estado.startswith(SUCESSO):
+            laudo["estado"] = "publicado"
+        else:
+            laudo["estado"] = "sem_confirmacao"
         return estado
 
 

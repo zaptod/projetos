@@ -103,6 +103,13 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
     caminho = modo(config)
     fala(f"[youtube] publicando por {caminho.upper()}")
     canal = kw.get("canal", "builds")
+    # O laudo do upload. Sai daqui por `prova=` (dicionario preenchido no
+    # lugar) e entra no ledger logo abaixo. Pelo caminho da API ele fica
+    # vazio de proposito: aquele caminho nao le a tela do Studio, entao nao
+    # tem o que provar, e vazio vira "nao sei" — que e a verdade.
+    laudo = kw.pop("prova", None)
+    if laudo is None:
+        laudo = {}
     if caminho == "api":
         estado = publicar(
             video, config=config,
@@ -114,7 +121,7 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
         from . import youtube_web
         estado = youtube_web.publicar(
             video, config=config, postar=True,
-            progresso=lambda texto: fala(f"  {texto}"), **kw)
+            progresso=lambda texto: fala(f"  {texto}"), prova=laudo, **kw)
         # O Studio nem sempre entrega o link; `confirmado` aceita a frase de
         # sucesso tambem. Sem URL o registro entra com `youtube_id: None` e
         # `atualizar()` o ignora — mas o "isto foi publicado" nao se perde.
@@ -132,7 +139,13 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
         metricas.registrar_publicado(
             video, estado, "youtube", canal=canal,
             extra={"visibilidade": _visibilidade_efetiva(kw, config),
-                   "via": caminho})
+                   "via": caminho,
+                   # SEMPRE lista, mesmo com um upload so: nas historias uma
+                   # parte longa vira dois Shorts, e dois formatos de campo
+                   # no mesmo ledger seria a proxima pergunta sem resposta
+                   # unica.
+                   "prova": [dict(laudo)] if laudo else [],
+                   "prova_ok": metricas.prova_ok(laudo)})
     return estado
 
 
