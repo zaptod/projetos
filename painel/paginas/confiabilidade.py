@@ -149,9 +149,13 @@ class Pagina:
             text=f"dia {self._dia}  ·  lido às "
                  f"{str(dados.get('quando'))[11:19]}")
 
+        # As falhas ficam neste cartao, e nao no de SEM PROVA: falha nao e
+        # publicacao — o video nao saiu, entao nao ha o que provar.
         self._cartoes["provado"].configure(
             text=f"{provado} de {prometido}\n"
-                 f"{dados.get('sem_campo', 0)} sem laudo (não sei)")
+                 f"{dados.get('sem_campo', 0)} sem laudo (não sei)\n"
+                 f"falhou: TikTok {dados.get('falhas_tiktok', 0)} · "
+                 f"YouTube {dados.get('falhas_youtube', 0)}")
         self._cartoes["sem_prova"].configure(
             text=f"{dados.get('sem_prova', 0)} sem prova\n"
                  f"{dados.get('fora_de_hd', 0)} antes do processamento\n"

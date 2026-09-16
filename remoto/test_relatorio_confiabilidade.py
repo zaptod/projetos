@@ -56,6 +56,31 @@ class OTexto(unittest.TestCase):
         self.assertNotIn("p05", texto)
 
 
+class AsFalhasDosDoisDestinos(unittest.TestCase):
+
+    def _texto(self, **falhas):
+        return relatorios.confiabilidade(ficha=_ficha(
+            veredito="atencao", alertas=["algo"], **falhas))
+
+    def test_mostra_as_duas_plataformas(self):
+        texto = self._texto(falhas_tiktok=2, falhas_youtube=1)
+        self.assertIn("TikTok 2x", texto)
+        self.assertIn("YouTube 1x", texto)
+
+    def test_so_a_que_falhou_aparece(self):
+        texto = self._texto(falhas_youtube=3)
+        self.assertIn("YouTube 3x", texto)
+        self.assertNotIn("TikTok", texto)
+
+    def test_ficha_antiga_sem_o_campo_novo_nao_quebra(self):
+        # Ficha anterior a 3b07c4e so tinha `falhas_tiktok`.
+        texto = self._texto(falhas_tiktok=1)
+        self.assertIn("TikTok 1x", texto)
+
+    def test_sem_falha_nenhuma_nao_ha_linha(self):
+        self.assertNotIn("falhas ao publicar", self._texto())
+
+
 class AFonteQuebrada(unittest.TestCase):
 
     def test_montar_nunca_levanta(self):

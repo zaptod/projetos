@@ -792,6 +792,19 @@ class ConfiabilidadeTests(unittest.TestCase):
         self.assertIn("abriu 1",
                       self.pagina._cartoes["valvula"].cget("text"))
 
+    def test_mostra_as_falhas_das_duas_plataformas(self):
+        self.pagina._desenhar(dict(self.FICHA, falhas_tiktok=2,
+                                   falhas_youtube=1))
+        texto = self.pagina._cartoes["provado"].cget("text")
+        self.assertIn("TikTok 2", texto)
+        self.assertIn("YouTube 1", texto)
+
+    def test_ficha_sem_as_falhas_mostra_zero(self):
+        # Ficha anterior a 3b07c4e nao tinha `falhas_youtube`.
+        self.pagina._desenhar(self.FICHA)
+        self.assertIn("YouTube 0",
+                      self.pagina._cartoes["provado"].cget("text"))
+
     def test_desenhar_de_novo_nao_duplica_linhas(self):
         self.pagina._desenhar(self.FICHA)
         self.pagina._desenhar(self.FICHA)

@@ -601,9 +601,12 @@ def confiabilidade(agora: datetime | None = None, *, ficha=None) -> str:
             amostra = ", ".join(f"`{i}`" for i in ids[:3])
             linhas.append(f"   ↳ {canal}: {amostra}"
                           f"{' …' if len(ids) > 3 else ''}")
-    if ficha.get("falhas_tiktok"):
-        linhas.append(f"   (o TikTok falhou {ficha['falhas_tiktok']} vez(es) "
-                      "hoje — o número que importa é o de destino só)")
+    falhas = [f"{nome} {ficha[campo]}x" for nome, campo in
+              (("TikTok", "falhas_tiktok"), ("YouTube", "falhas_youtube"))
+              if ficha.get(campo)]
+    if falhas:
+        linhas.append(f"   (falhas ao publicar hoje: {', '.join(falhas)} — "
+                      "o número que importa é o de destino só)")
     return "\n".join(linhas)
 
 
