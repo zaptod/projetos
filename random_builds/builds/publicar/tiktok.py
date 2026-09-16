@@ -176,6 +176,69 @@ def _publicou(page, url_antes: str) -> bool:
     return any(sinal in texto for sinal in SINAIS_DE_SUCESSO)
 
 
+def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
+    """Escreve a legenda, confere que ficou, e tenta DUAS vezes.
+
+    Existe como funcao propria (e nao como um trecho dentro de `publicar`)
+    para poder ser testada sem abrir o Chrome. Um teste que reproduzisse este
+    laco por fora passaria com a producao quebrada — que e exatamente o
+    defeito que ele deveria pegar.
+
+    Grava o resultado em `laudo["legenda"]`, que e o que vai para a ficha e
+    para a mensagem do erro: "legenda nao escreveu" e "botao nao habilitou"
+    tem conserto diferente e nao podem chegar ao diario como a mesma falha.
+    """
+    for tentativa in (1, 2):
+        de_novo = "; tentando de novo." if tentativa == 1 else "."
+        campo = _primeiro(page, CAMPO_LEGENDA, timeout=10.0)
+        if campo is None:
+            laudo["legenda"] = "campo não encontrado"
+            passo(f"campo de legenda não encontrado{de_novo}")
+            continue
+        try:
+            campo.click()
+            # `fill` não funciona em contenteditable: seleciona e digita.
+            page.keyboard.press("Control+A")
+            page.keyboard.press("Delete")
+            campo.type(texto, delay=8)
+        except Exception as exc:                               # noqa: BLE001
+            laudo["legenda"] = f"falhou: {type(exc).__name__}"
+            passo(f"não consegui escrever a legenda "
+                  f"({type(exc).__name__}){de_novo}")
+            continue
+        # `type()` voltar sem erro NAO e prova de que o texto ficou la — e a
+        # mesma confusao do "botao habilitado". Le o campo de volta.
+        if not _legenda_ficou(campo, texto):
+            laudo["legenda"] = "ficou vazia"
+            passo(f"digitei a legenda mas o campo ficou vazio{de_novo}")
+            continue
+        laudo["legenda"] = "escrita"
+        passo("legenda escrita." if tentativa == 1
+              else "legenda escrita (2a tentativa).")
+        return True
+    return False
+
+
+def _legenda_ficou(campo, texto: str) -> bool:
+    """O texto esta MESMO no campo? (nao basta o `type()` ter voltado sem erro)
+
+    O TikTok reformata a legenda enquanto ela e digitada: hashtag vira
+    sugestao num `span`, emoji vira imagem, quebra de linha vira outro no. Por
+    isso a conferencia nao compara o texto inteiro — compara o comeco, que e o
+    titulo e e digitado literal, e exige que o campo tenha volume compativel.
+    Comparar igual daria falso alarme e faria adiar video bom.
+    """
+    try:
+        atual = (campo.inner_text() or "").strip()
+    except Exception:
+        # Nao deu para ler: nao invente falha. Quem decide e a etapa seguinte.
+        return True
+    if not atual:
+        return False
+    inicio = texto.strip()[:20]
+    return inicio in atual or len(atual) >= len(texto.strip()) * 0.5
+
+
 def _confirmar_publicacao(page, passo, espera: float = ESPERA_CONFIRMAR_S) -> str:
     """Clica "Publicar agora" se o modal aparecer, e so entao confere.
 
@@ -478,23 +541,15 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
               "o botão de publicar não habilitou no tempo, mas o vídeo está "
               "na tela — tentando publicar mesmo assim.")
 
-        legenda = _primeiro(page, CAMPO_LEGENDA, timeout=10.0)
-        if legenda is not None:
-            try:
-                legenda.click()
-                # `fill` não funciona em contenteditable: seleciona e digita.
-                page.keyboard.press("Control+A")
-                page.keyboard.press("Delete")
-                legenda.type(video.descricao_completa[:2000], delay=8)
-                laudo["legenda"] = "escrita"
-                passo("legenda escrita.")
-            except Exception as exc:
-                laudo["legenda"] = f"falhou: {type(exc).__name__}"
-                passo(f"não consegui escrever a legenda ({type(exc).__name__}); "
-                      "dá para colar na mão.")
-        else:
-            laudo["legenda"] = "campo não encontrado"
-            passo("campo de legenda não encontrado; a janela está aberta.")
+        texto_legenda = video.descricao_completa[:2000]
+        _escrever_legenda(page, texto_legenda, passo, laudo)
+
+        if postar and texto_legenda and laudo.get("legenda") != "escrita":
+            raise TikTokFalhou(
+                f"a legenda não entrou ({laudo.get('legenda')}) e publicar sem "
+                "ela queima o vídeo: sem título e sem hashtag ele não é "
+                "encontrado por ninguém. Adiado de propósito — volta na fila "
+                "de atrasados e sai inteiro. A janela segue aberta.")
 
         if not postar:
             passo("PARANDO antes de publicar — confira e clique em Publicar. "
