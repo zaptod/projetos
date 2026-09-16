@@ -454,7 +454,7 @@ class PadraoDeNomesTests(unittest.TestCase):
         self.assertNotIn("dois nomes para um destino", tipos)
 
     def test_oauth_sem_arquivo_e_reportado_como_morto(self):
-        estado = self.contas.oauth_vivo("builds", "nao_existe")
+        estado = self.contas.oauth_vivo("builds", conta="nao_existe")
         self.assertFalse(estado["ok"])
         self.assertIn("credencial", estado["motivo"])
 
@@ -467,7 +467,7 @@ class PadraoDeNomesTests(unittest.TestCase):
         """
         caminho = self.contas.credencial_youtube("builds", "capenga")
         caminho.write_text('{"client_id": "x"}', encoding="utf-8")
-        estado = self.contas.oauth_vivo("builds", "capenga")
+        estado = self.contas.oauth_vivo("builds", conta="capenga")
         self.assertFalse(estado["ok"])
 
     def test_login_sem_destino_nao_entra_na_conformidade(self):

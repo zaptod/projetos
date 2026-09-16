@@ -76,7 +76,7 @@ def credenciais_vivas() -> list[dict]:
         if conta in vistas:
             continue
         vistas.add(conta)
-        estado = contas.oauth_vivo(canal, conta)
+        estado = contas.oauth_vivo(canal, conta=conta)
         marca = "ok " if estado["ok"] else "MORTA"
         _linha(f"  [{marca}] youtube/{conta}")
         if estado["motivo"]:

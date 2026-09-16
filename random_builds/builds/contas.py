@@ -498,8 +498,41 @@ def escopo_youtube(canal: str = "geral", conta: str | None = None) -> str:
         return ""
 
 
-def oauth_vivo(canal: str = "geral", conta: str | None = None) -> dict:
-    """A credencial OAuth AINDA FUNCIONA? Pergunta ao Google (usa rede).
+def oauth_vivo(canal: str = "geral", *, conta: str | None = None) -> dict:
+    """A credencial OAuth daquele CANAL ainda funciona? (usa rede)
+
+    `conta` e so NOMEAVEL, e canal desconhecido e recusado. As duas guardas
+    vem do mesmo erro, de 16/09/2026: `oauth_vivo("neural_fights")` passou o
+    nome de uma CONTA onde vai o canal. `ativa()` nao conhece esse canal e
+    cai, de proposito, em `principal` — entao "neural_fights",
+    "historinhas" e "principal" testaram o MESMO arquivo tres vezes, e a
+    conclusao "os tres tokens estao revogados" chegou ao Adrian quando so um
+    estava.
+
+    A queda para `principal` continua valendo em `ativa()`, onde ela e regra.
+    Aqui, onde a pergunta e sobre UM canal, ela so esconde o engano.
+    """
+    if canal not in CANAIS:
+        dica = (" — esse e o nome de uma CONTA; use conta=" + repr(canal)
+                if canal in contas("youtube") else "")
+        return {"ok": False,
+                "motivo": f"canal desconhecido: {canal!r}{dica}. Canais: "
+                          + ", ".join(sorted(CANAIS))}
+    ficha = _oauth_vivo(canal, conta)
+    if conta is None and canal in contas("youtube"):
+        # O OUTRO LADO DA MESMA ARMADILHA: canal e conta com o mesmo nome. Se
+        # o canal aponta para outra conta, quem pediu provavelmente queria a
+        # conta — e esta testando outra coisa sem saber.
+        resolvida = ativa("youtube", canal)
+        if resolvida != canal:
+            ficha["aviso"] = (f"{canal!r} e canal E conta; testei a conta "
+                              f"ativa do canal ({resolvida!r}). Para testar "
+                              f"a conta, use conta={canal!r}.")
+    return ficha
+
+
+def _oauth_vivo(canal: str, conta: str | None) -> dict:
+    """O corpo da pergunta, depois de o canal ter sido conferido.
 
     `tem_login` responde outra coisa: se o ARQUIVO existe e tem os campos. Isso
     e leitura pura, e e o certo para desenhar uma tela — mas mente quando o
