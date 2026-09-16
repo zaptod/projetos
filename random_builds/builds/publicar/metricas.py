@@ -309,11 +309,15 @@ def enviados(token: str, quantos: int = 200) -> list[dict]:
 
 
 def _chave_de_titulo(texto: str) -> str:
-    """Titulo comparavel: o Studio devolve o que ele ACEITOU, nao o que foi
-    mandado — corta em 100 caracteres, normaliza espaco e mexe em emoji."""
-    limpo = re.sub(r"\s+", " ", str(texto or "")).strip().lower()
-    limpo = "".join(c for c in limpo if c.isalnum() or c.isspace())
-    return re.sub(r"\s+", " ", limpo).strip()[:60]
+    """Titulo comparavel. MOVIDA para `titulos.chave`; aqui ficou o apelido.
+
+    Ela nasceu para reconciliar id faltante, e passou a servir tambem para
+    barrar titulo repetido na fila. Sao dois usos da MESMA pergunta ("estes
+    dois titulos sao o mesmo?"), e responder com dois criterios seria criar
+    a proxima divergencia do projeto.
+    """
+    from .titulos import chave
+    return chave(texto)
 
 
 def reconciliar(canal: str = "builds", log=print) -> int:
