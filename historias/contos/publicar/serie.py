@@ -101,6 +101,12 @@ def registrar(video, url: str, plataforma: str, quando_publica: str | None,
         "titulo": video.titulo, "agendado_para": quando_publica,
     }
     linha.update(extra or {})
+    if "prova" in linha:
+        # A MESMA GUARDA DO OUTRO LEDGER, pelo mesmo motivo: o campo `prova`
+        # e sempre lista, porque uma parte longa vira dois Shorts e porque um
+        # chamador distraido ja gravou dicionario uma vez (16/09/2026).
+        from builds.publicar.metricas import em_lista
+        linha["prova"] = em_lista(linha["prova"])
     REGISTRO.parent.mkdir(parents=True, exist_ok=True)
     with open(REGISTRO, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(linha, ensure_ascii=False) + "\n")

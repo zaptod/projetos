@@ -430,6 +430,15 @@ def _qualidade_agora(page) -> dict:
         if any(frase in texto for frase in frases):
             return {"qualidade": rotulo, "falta": falta,
                     "texto": texto[:200], "reconhecido": True}
+    if falta:
+        # CONTAGEM REGRESSIVA SEM FRASE CONHECIDA. Medido em 16/09/2026, na
+        # primeira noite com esta medicao ligada: a barra dizia "10 minutos
+        # restantes" e nenhuma frase de FASES casava, entao o classificador
+        # caia em "hd" por omissao e gravava o oposto da verdade. Se o Studio
+        # ainda conta o tempo, alguma coisa esta pendente — e a resposta
+        # honesta e dizer que nao se sabe o que.
+        return {"qualidade": "desconhecida", "falta": falta,
+                "texto": texto[:200], "reconhecido": False}
     visto = any(_sem_acento(s) in texto for s in SINAIS_PUBLICADO)
     return {"qualidade": "hd", "falta": falta, "texto": texto[:200],
             "reconhecido": visto}
@@ -444,8 +453,9 @@ def _id_do_video(url: str) -> str:
     mesma, que foi como 29 rascunhos passaram por publicados entre 10 e 15 de
     setembro de 2026.
     """
-    achado = re.search(r"(?:youtu\.be/|[?&]v=|/shorts/)([\w-]{11})",
-                       str(url or ""))
+    achado = re.search(
+        r"(?:youtu\.be/|[?&]v=|/shorts/|/video/)([\w-]{11})(?![\w-])",
+        str(url or ""))
     return achado.group(1) if achado else ""
 
 
@@ -977,6 +987,16 @@ def publicar(video, *, visibilidade: str | None = None,
             laudo["estado"] = "publicado"
         else:
             laudo["estado"] = "sem_confirmacao"
+        if not laudo["youtube_id"]:
+            # SEGUNDA FONTE PARA O ID. Medido em 16/09/2026: em 3 das 4
+            # publicacoes da noite o Studio confirmou o sucesso mas nao
+            # renderizou o elemento de link, e a publicacao ficava sem a
+            # unica prova que uma API externa consegue desmentir. A propria
+            # URL da pagina costuma carregar o id.
+            try:
+                laudo["youtube_id"] = _id_do_video(page.url)
+            except Exception:
+                pass
         return estado
 
 

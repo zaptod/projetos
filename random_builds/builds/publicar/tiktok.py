@@ -529,7 +529,7 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
             from . import metricas
             metricas.registrar_publicado(
                 video, estado, "tiktok", canal=canal,
-                extra={"prova": dict(laudo),
+                extra={"prova": [dict(laudo)],
                        "prova_ok": metricas.prova_ok(laudo)})
         else:
             laudo["estado"] = "sem_confirmacao"

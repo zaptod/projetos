@@ -81,6 +81,22 @@ TOLERANCIA_PLANO_S = 2.0
 
 
 # ------------------------------------------------------------------ registro
+def em_lista(prova) -> list:
+    """O campo `prova` do ledger e SEMPRE lista.
+
+    A guarda mora aqui, e nao em cada chamador, porque em 16/09/2026 um deles
+    (o registro do TikTok) gravou dicionario enquanto todos os outros
+    gravavam lista. Duas formas do mesmo campo no mesmo arquivo e a proxima
+    pergunta sem resposta unica — e quem for ler isso na pagina de
+    confiabilidade nao tem como saber qual das duas esperar.
+    """
+    if prova is None:
+        return []
+    if isinstance(prova, list):
+        return prova
+    return [prova]
+
+
 def prova_ok(laudo: dict | list | None) -> bool | None:
     """O laudo sustenta a afirmacao "publiquei"?
 
@@ -131,6 +147,8 @@ def registrar_publicacao(video, url: str, plataforma: str = "youtube",
         "titulo": getattr(video, "titulo", None),
     }
     linha.update(extra or {})
+    if "prova" in linha:
+        linha["prova"] = em_lista(linha["prova"])
     if not linha.get("video_id"):
         # PUBLICACAO SEM VIDEO NAO E PUBLICACAO. `video` aqui e sempre um item
         # do catalogo, que tem `.id`; quando chega uma string (um caminho solto

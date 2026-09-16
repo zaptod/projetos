@@ -71,6 +71,18 @@ class QualidadeNoClique(unittest.TestCase):
         self.assertEqual(achado["qualidade"], "desconhecida")
         self.assertFalse(achado["reconhecido"])
 
+    def test_contagem_regressiva_sem_frase_conhecida_nao_vira_hd(self):
+        # MEDIDO EM 16/09/2026, na primeira noite com isto ligado: a barra
+        # dizia "10 minutos restantes" e nenhuma frase de FASES casava, entao
+        # o classificador caia em "hd" por omissao e gravava o OPOSTO da
+        # verdade. Se o Studio ainda conta o tempo, algo esta pendente.
+        page = PaginaFalsa(
+            "Todas as alterações foram salvas. 10 minutos restantes")
+        achado = Y._qualidade_agora(page)
+        self.assertEqual(achado["qualidade"], "desconhecida")
+        self.assertEqual(achado["falta"], "10 minutos restantes")
+        self.assertFalse(achado["reconhecido"])
+
     def test_pagina_em_branco_nao_vira_hd(self):
         # Texto vazio e ausencia de informacao, nao aprovacao.
         self.assertEqual(
@@ -96,8 +108,18 @@ class IdDoVideo(unittest.TestCase):
         ):
             self.assertEqual(Y._id_do_video(url), esperado)
 
+    def test_reconhece_tambem_a_url_do_proprio_studio(self):
+        # A SEGUNDA FONTE. Em 3 das 4 publicacoes de 16/09/2026 o Studio
+        # confirmou o sucesso mas nao renderizou o link, e a publicacao
+        # ficava sem a unica prova que da para conferir por fora.
+        self.assertEqual(
+            Y._id_do_video(
+                "https://studio.youtube.com/video/XKDORFs4CdY/edit"),
+            "XKDORFs4CdY")
+
     def test_sem_id_devolve_vazio_e_nao_levanta(self):
-        for url in ("", None, "publicado no YouTube", "https://youtu.be/"):
+        for url in ("", None, "publicado no YouTube", "https://youtu.be/",
+                    "https://studio.youtube.com/channel/UC123/videos/upload"):
             self.assertEqual(Y._id_do_video(url), "")
 
 
@@ -184,6 +206,27 @@ class LaudoChegaNoLedger(unittest.TestCase):
             "https://youtu.be/bZIDPJr_yzs",
             {"estado": "publicado", "youtube_id": "bZIDPJr_yzs"})
         self.assertIsInstance(registrado["prova"], list)
+
+
+class OTikTokTambemGravaLista(unittest.TestCase):
+    """O defeito de 16/09/2026, achado no ledger de verdade.
+
+    O TikTok de builds registra POR DENTRO de `tiktok.publicar`, e ali o
+    laudo foi gravado como dicionario enquanto todo o resto gravava lista.
+    Duas formas do mesmo campo no mesmo arquivo e a proxima pergunta sem
+    resposta unica — e o teste anterior nao pegou porque so cobria o caminho
+    do YouTube.
+    """
+
+    def test_o_ledger_normaliza_prova_solta_para_lista(self):
+        # A guarda mora em `registrar_publicacao` porque e o unico ponto por
+        # onde TODA linha passa. Um chamador distraido nao consegue mais
+        # gravar dois formatos do mesmo campo.
+        self.assertEqual(metricas.em_lista({"estado": "publicado"}),
+                         [{"estado": "publicado"}])
+        self.assertEqual(metricas.em_lista([{"a": 1}]), [{"a": 1}])
+        self.assertEqual(metricas.em_lista(None), [])
+        self.assertEqual(metricas.em_lista([]), [])
 
 
 class ProvaDeVariosPedacos(unittest.TestCase):
