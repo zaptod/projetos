@@ -16,6 +16,21 @@ from builds.publicar import conferencia
 
 HOJE = date(2026, 9, 16)
 
+_ACEITOS_DE_VERDADE = None
+
+
+def setUpModule():
+    # HERMETICO: sem isto, todo `conferir` sem `aceitos=` leria a lista REAL
+    # de rascunhos aceitos do runtime do Adrian, e o resultado do teste
+    # passaria a depender do que foi aceito na maquina.
+    global _ACEITOS_DE_VERDADE
+    _ACEITOS_DE_VERDADE = conferencia.rascunhos_aceitos
+    conferencia.rascunhos_aceitos = lambda: {}
+
+
+def tearDownModule():
+    conferencia.rascunhos_aceitos = _ACEITOS_DE_VERDADE
+
 
 def _linha(video_id, titulo, *, quando="2026-09-16T09:40:02",
            youtube_id="", prova_ok=True, plataforma="youtube"):
@@ -139,6 +154,170 @@ class NadaDeRede(unittest.TestCase):
         with self.assertRaises(ValueError) as erro:
             conferencia.buscar_no_canal("builds", "tiktok")
         self.assertIn("Studio", str(erro.exception))
+
+
+class SoDentroDaJanela(unittest.TestCase):
+    """Primeira rodada real: 98 "orfaos" que eram so os videos antigos."""
+
+    def test_video_antigo_nao_vira_orfao(self):
+        antigo = _no_canal("velho", "DE AGOSTO")
+        antigo["publicado_em"] = "2026-08-01T10:00:00Z"
+        ficha = conferencia.conferir(
+            publicados=[_linha("g1", "O MAGO", youtube_id="aaa")],
+            no_canal=[_no_canal("aaa", "O MAGO"), antigo], hoje=HOJE)
+        self.assertEqual([], ficha["orfaos"])
+        self.assertEqual(1, ficha["no_canal_na_janela"])
+
+    def test_video_sem_data_nao_vira_orfao(self):
+        sem_data = _no_canal("x", "SEM DATA")
+        sem_data["publicado_em"] = None
+        ficha = conferencia.conferir(publicados=[], no_canal=[sem_data],
+                                     hoje=HOJE)
+        self.assertEqual([], ficha["orfaos"])
+
+    def test_novo_com_titulo_de_um_antigo_e_duplicado(self):
+        # O caso que restringir OS DOIS a janela esconderia.
+        antigo = _no_canal("velho", "O MAGO")
+        antigo["publicado_em"] = "2026-08-01T10:00:00Z"
+        ficha = conferencia.conferir(
+            publicados=[], no_canal=[antigo, _no_canal("novo", "O MAGO")],
+            hoje=HOJE)
+        self.assertEqual(1, len(ficha["duplicados"]))
+
+    def test_dois_antigos_iguais_nao_entram(self):
+        a, b = _no_canal("a1", "O MAGO"), _no_canal("a2", "O MAGO")
+        a["publicado_em"] = b["publicado_em"] = "2026-08-01T10:00:00Z"
+        ficha = conferencia.conferir(publicados=[], no_canal=[a, b],
+                                     hoje=HOJE)
+        self.assertEqual([], ficha["duplicados"])
+
+
+class RascunhosAceitos(unittest.TestCase):
+    """Decisao do Adrian em 15/09/2026: os rascunhos ficam de gordura."""
+
+    ACEITOS = {"aaa": {"motivo": "gordura"}}
+
+    def test_aceito_aparece_mas_nao_suja(self):
+        ficha = conferencia.conferir(
+            publicados=[_linha("g1", "O MAGO", youtube_id="aaa")],
+            no_canal=[_no_canal("aaa", "O MAGO", privacidade="private")],
+            hoje=HOJE, aceitos=self.ACEITOS)
+        self.assertEqual([], ficha["rascunhos"])
+        self.assertEqual(["aaa"],
+                         [r["youtube_id"] for r in ficha["rascunhos_aceitos"]])
+        self.assertEqual("limpo", ficha["veredito"])
+
+    def test_rascunho_novo_fora_da_lista_continua_sujando(self):
+        # Sem isto a lista viraria uma forma de calar o proximo defeito.
+        ficha = conferencia.conferir(
+            publicados=[_linha("g1", "O MAGO", youtube_id="aaa"),
+                        _linha("g2", "O LADINO", youtube_id="bbb")],
+            no_canal=[_no_canal("aaa", "O MAGO", privacidade="private"),
+                      _no_canal("bbb", "O LADINO", privacidade="private")],
+            hoje=HOJE, aceitos=self.ACEITOS)
+        self.assertEqual(["bbb"],
+                         [r["youtube_id"] for r in ficha["rascunhos"]])
+        self.assertEqual("sujo", ficha["veredito"])
+
+    def test_aceito_que_virou_publico_sai_sozinho(self):
+        ficha = conferencia.conferir(
+            publicados=[_linha("g1", "O MAGO", youtube_id="aaa")],
+            no_canal=[_no_canal("aaa", "O MAGO", privacidade="public")],
+            hoje=HOJE, aceitos=self.ACEITOS)
+        self.assertEqual([], ficha["rascunhos"])
+        self.assertEqual([], ficha["rascunhos_aceitos"])
+
+
+class AListaDeAceitos(unittest.TestCase):
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        arquivo = Path(self._tmp.name) / "rascunhos_aceitos.json"
+        real = conferencia.arquivo_de_aceitos
+        conferencia.arquivo_de_aceitos = lambda: arquivo
+        self.addCleanup(
+            lambda: setattr(conferencia, "arquivo_de_aceitos", real))
+        # O modulo inteiro troca `rascunhos_aceitos` por um vazio; aqui se
+        # testa a de verdade, contra o arquivo descartavel.
+        conferencia.rascunhos_aceitos = _ACEITOS_DE_VERDADE
+        self.addCleanup(lambda: setattr(conferencia, "rascunhos_aceitos",
+                                        lambda: {}))
+
+    def _ficha(self, *ids):
+        return {"canal": "builds", "rascunhos": [
+            {"youtube_id": i, "video_id": f"g-{i}", "titulo": i,
+             "quando": "2026-09-13T06:09:34"} for i in ids]}
+
+    def test_grava_com_motivo_e_le_de_volta(self):
+        conferencia.aceitar_rascunhos(self._ficha("aaa", "bbb"))
+        lidos = conferencia.rascunhos_aceitos()
+        self.assertEqual({"aaa", "bbb"}, set(lidos))
+        self.assertIn("15/09/2026", lidos["aaa"]["motivo"])
+        self.assertEqual("g-aaa", lidos["aaa"]["video_id"])
+
+    def test_soma_e_nunca_apaga(self):
+        conferencia.aceitar_rascunhos(self._ficha("aaa"))
+        conferencia.aceitar_rascunhos(self._ficha("bbb"))
+        self.assertEqual({"aaa", "bbb"}, set(conferencia.rascunhos_aceitos()))
+
+    def test_arquivo_ausente_ou_torto_e_lista_vazia(self):
+        self.assertEqual({}, conferencia.rascunhos_aceitos())
+        conferencia.arquivo_de_aceitos().write_text("nao e json",
+                                                    encoding="utf-8")
+        self.assertEqual({}, conferencia.rascunhos_aceitos())
+
+    def test_a_madrugada_nunca_aceita_sozinha(self):
+        # Se `conferir_tudo` aceitasse, todo rascunho novo seria calado na
+        # mesma noite em que aparecesse.
+        chamou = []
+        real_ac, real_conf, real_salvar = (conferencia.aceitar_rascunhos,
+                                           conferencia.conferir,
+                                           conferencia.salvar)
+        conferencia.aceitar_rascunhos = lambda *a, **k: chamou.append(1)
+        conferencia.conferir = lambda *a, **k: dict(
+            self._ficha("zzz"), plataforma="youtube", veredito="sujo",
+            fantasmas=[], orfaos=[], casados=1, no_ledger=1, janela_dias=3)
+        conferencia.salvar = lambda f: None
+        self.addCleanup(lambda: setattr(conferencia, "aceitar_rascunhos",
+                                        real_ac))
+        self.addCleanup(lambda: setattr(conferencia, "conferir", real_conf))
+        self.addCleanup(lambda: setattr(conferencia, "salvar", real_salvar))
+        from builds import atividade
+        real_reg = atividade.registrar
+        atividade.registrar = lambda *a, **k: None
+        self.addCleanup(lambda: setattr(atividade, "registrar", real_reg))
+        conferencia.conferir_tudo(("builds",), log=lambda _t: None)
+        self.assertEqual([], chamou)
+
+
+class MesmoVideoEmDuasLinhas(unittest.TestCase):
+
+    def test_duas_linhas_com_o_mesmo_id_viram_achado(self):
+        # O caso real: I9ETJSGR1A0 as 07:08 e as 08:08 de 15/09/2026.
+        ficha = conferencia.conferir(
+            publicados=[
+                _linha("g1", "ERIK", youtube_id="I9ETJSGR1A0",
+                       quando="2026-09-15T07:08:48"),
+                _linha("g1", "ERIK", youtube_id="I9ETJSGR1A0",
+                       quando="2026-09-15T08:08:48"),
+                _linha("g2", "OUTRO", youtube_id="ccc")],
+            no_canal=[_no_canal("I9ETJSGR1A0", "ERIK"),
+                      _no_canal("ccc", "OUTRO")], hoje=HOJE)
+        (grupo,) = ficha["mesmo_video"]
+        self.assertEqual("I9ETJSGR1A0", grupo["youtube_id"])
+        self.assertEqual(2, len(grupo["linhas"]))
+
+    def test_e_achado_e_nao_suja_sozinho(self):
+        ficha = conferencia.conferir(
+            publicados=[_linha("g1", "X", youtube_id="aaa"),
+                        _linha("g1", "X", youtube_id="aaa",
+                               quando="2026-09-16T10:00:00")],
+            no_canal=[_no_canal("aaa", "X")], hoje=HOJE)
+        self.assertEqual(1, len(ficha["mesmo_video"]))
+        self.assertEqual("limpo", ficha["veredito"])
 
 
 class ABuscaDeVerdade(unittest.TestCase):

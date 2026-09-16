@@ -46,9 +46,69 @@ def _recente(quando: str, desde: date) -> bool:
         return False
 
 
+def _dia_do_canal(ts) -> date:
+    """O dia LOCAL de um `publishedAt` do YouTube (vem em UTC, com Z).
+
+    Sem data, o video fica no passado remoto: nao da para dizer que e
+    recente, e contar como recente o faria virar orfao todo dia.
+    """
+    try:
+        quando = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return date.min
+    if quando.tzinfo is not None:
+        quando = quando.astimezone()
+    return quando.date()
+
+
+ACEITOS_MOTIVO = ("decisão do Adrian 15/09/2026: os rascunhos do "
+                  "\"Publicar mesmo assim\" ficam de gordura")
+
+
+def arquivo_de_aceitos() -> Path:
+    """Fora do repositorio: e estado da operacao, nao codigo."""
+    from .. import contas
+    return contas.runtime_dir() / "rascunhos_aceitos.json"
+
+
+def rascunhos_aceitos() -> dict:
+    """{youtube_id: ficha} dos rascunhos que ja se decidiu deixar. Nunca levanta."""
+    try:
+        dados = json.loads(arquivo_de_aceitos().read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return {}
+    ids = dados.get("ids") if isinstance(dados, dict) else None
+    return ids if isinstance(ids, dict) else {}
+
+
+def aceitar_rascunhos(ficha: dict, motivo: str = ACEITOS_MOTIVO) -> Path:
+    """Grava os rascunhos DESTA ficha como conhecidos e aceitos.
+
+    Soma aos que ja estavam; nunca apaga. Quem aceita e uma pessoa: esta
+    funcao so e chamada a mao, nunca pela rodada da madrugada — senao todo
+    rascunho novo seria aceito na mesma noite em que aparecesse.
+    """
+    destino = arquivo_de_aceitos()
+    atuais = rascunhos_aceitos()
+    agora = datetime.now().isoformat(timespec="seconds")
+    for r in ficha.get("rascunhos") or []:
+        vid = r.get("youtube_id")
+        if vid and vid not in atuais:
+            atuais[vid] = {"canal": ficha.get("canal"),
+                           "video_id": r.get("video_id"),
+                           "titulo": r.get("titulo"),
+                           "quando_no_ledger": r.get("quando"),
+                           "aceito_em": agora, "motivo": motivo}
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(json.dumps({"motivo": motivo, "ids": atuais},
+                                  ensure_ascii=False, indent=1),
+                       encoding="utf-8")
+    return destino
+
+
 def conferir(canal: str = "builds", plataforma: str = "youtube", *,
              dias: int = DIAS_PADRAO, publicados=None, no_canal=None,
-             hoje: date | None = None) -> dict:
+             hoje: date | None = None, aceitos: dict | None = None) -> dict:
     """O que o ledger afirma contra o que o canal tem de fato.
 
     `publicados` sao as linhas do ledger; `no_canal` e o que a plataforma
@@ -96,26 +156,63 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
         if str(alvo.get("definicao") or "").lower() == "sd":
             so_sd.append({**ficha, "youtube_id": alvo.get("id")})
 
+    # ORFAO E DUPLICADO SO DENTRO DA JANELA. Na primeira rodada real
+    # (16/09/2026) a janela de 3 dias do ledger era comparada com o canal
+    # INTEIRO: 98 "orfaos" em builds e 58 em historias, que eram so os videos
+    # antigos. Um numero que e sempre grande nao diz nada.
+    na_janela = [v for v in do_canal
+                 if _dia_do_canal(v.get("publicado_em")) >= desde]
     orfaos = [{"youtube_id": v.get("id"), "titulo": v.get("titulo"),
                "publicado_em": v.get("publicado_em")}
-              for v in do_canal if id(v) not in vistos]
+              for v in na_janela if id(v) not in vistos]
 
+    # Duplicado conta o canal todo, MAS so entra se um dos videos e recente:
+    # restringir os dois a janela esconderia justamente o caso que importa,
+    # um video novo com o titulo de um antigo.
     contagem = {}
     for v in do_canal:
         chave = titulos.chave(v.get("titulo"))
         if chave:
-            contagem.setdefault(chave, []).append(v.get("id"))
-    duplicados = [{"chave": k, "ids": ids}
-                  for k, ids in contagem.items() if len(ids) > 1]
+            contagem.setdefault(chave, []).append(v)
+    recentes = {id(v) for v in na_janela}
+    duplicados = [{"chave": k, "ids": [v.get("id") for v in grupo]}
+                  for k, grupo in contagem.items()
+                  if len(grupo) > 1 and any(id(v) in recentes for v in grupo)]
+
+    # RASCUNHO JA CONHECIDO E ACEITO nao suja. Decisao do Adrian em 15/09:
+    # os rascunhos do "Publicar mesmo assim" ficam como gordura. Sem esta
+    # separacao a madrugada acusaria o mesmo estado sabido todas as noites
+    # ate ele sair da janela, e o apurador investigaria o que ja foi decidido.
+    # Rascunho NOVO, fora da lista, continua sujando.
+    aceitos = rascunhos_aceitos() if aceitos is None else aceitos
+    ja_aceitos = [r for r in rascunhos if r.get("youtube_id") in aceitos]
+    rascunhos = [r for r in rascunhos if r.get("youtube_id") not in aceitos]
+
+    # DUAS LINHAS DO LEDGER PARA O MESMO VIDEO: o ledger conta duas
+    # publicacoes onde o canal tem uma. Achado da primeira rodada real
+    # (I9ETJSGR1A0 e opdRgGJ1y_8, em 15/09). Registrado, nao corrigido: a
+    # cura do ledger e decisao do Adrian.
+    por_video: dict = {}
+    for linha in linhas:
+        vid = str(linha.get("youtube_id") or "")
+        if vid:
+            por_video.setdefault(vid, []).append(
+                {"video_id": linha.get("video_id"),
+                 "quando": linha.get("quando")})
+    mesmo_video = [{"youtube_id": vid, "linhas": grupo}
+                   for vid, grupo in por_video.items() if len(grupo) > 1]
 
     sujo = bool(fantasmas or rascunhos)
     return {
         "canal": canal, "plataforma": plataforma,
         "dia": hoje.isoformat(), "janela_dias": int(dias),
         "no_ledger": len(linhas), "no_canal": len(do_canal),
+        "no_canal_na_janela": len(na_janela),
         "casados": len(casados),
         "fantasmas": fantasmas, "orfaos": orfaos,
-        "rascunhos": rascunhos, "so_sd": so_sd, "duplicados": duplicados,
+        "rascunhos": rascunhos, "rascunhos_aceitos": ja_aceitos,
+        "so_sd": so_sd, "duplicados": duplicados,
+        "mesmo_video": mesmo_video,
         "taxa": round(len(casados) / len(linhas), 3) if linhas else 1.0,
         "veredito": "sujo" if sujo else "limpo",
         "quando": datetime.now().isoformat(timespec="seconds"),
@@ -220,6 +317,10 @@ def main(argv=None) -> int:
     parser.add_argument("--canal", default="", help="builds, historias, ou "
                                                     "vazio para os dois")
     parser.add_argument("--dias", type=int, default=DIAS_PADRAO)
+    parser.add_argument(
+        "--aceitar-rascunhos", dest="aceitar_rascunhos", action="store_true",
+        help="grava os rascunhos DESTA rodada como conhecidos e aceitos (so "
+             "com decisao de uma pessoa; a madrugada nunca faz isto)")
     args = parser.parse_args(argv)
 
     canais = (args.canal,) if args.canal else ("builds", "historias")
@@ -230,14 +331,30 @@ def main(argv=None) -> int:
             print(f"[{canal}] NAO DEU PARA CONFERIR: {ficha['erro']}")
             continue
         sujo = sujo or ficha.get("veredito") == "sujo"
+        print(f"[{canal}] {len(ficha.get('rascunhos_aceitos') or [])} "
+              f"rascunho(s) ja aceito(s), {len(ficha.get('orfaos') or [])} "
+              f"orfao(s) de {ficha.get('no_canal_na_janela', 0)} video(s) "
+              "na janela")
         for nome in ("fantasmas", "rascunhos", "orfaos", "so_sd"):
             for item in (ficha.get(nome) or [])[:6]:
-                print(f"   {nome[:-1]:10} {item.get('titulo') or item.get('youtube_id')}")
+                print(f"   [{canal}] {nome[:-1]:10} "
+                      f"{item.get('titulo') or item.get('youtube_id')}")
+        for grupo in ficha.get("mesmo_video") or []:
+            quando = ", ".join(str(l.get("quando"))[:16]
+                               for l in grupo["linhas"])
+            print(f"   [{canal}] mesmo video {grupo['youtube_id']} em "
+                  f"{len(grupo['linhas'])} linhas do ledger: {quando}")
+        if args.aceitar_rascunhos and ficha.get("rascunhos"):
+            destino = aceitar_rascunhos(ficha)
+            print(f"[{canal}] {len(ficha['rascunhos'])} rascunho(s) "
+                  f"gravado(s) como aceito(s) em {destino}")
     return 1 if sujo else 0
 
 
-__all__ = ["DIAS_PADRAO", "buscar_no_canal", "conferir", "conferir_tudo",
-           "main", "pasta", "salvar", "ultima"]
+__all__ = ["ACEITOS_MOTIVO", "DIAS_PADRAO", "aceitar_rascunhos",
+           "arquivo_de_aceitos", "buscar_no_canal", "conferir",
+           "conferir_tudo", "main", "pasta", "rascunhos_aceitos",
+           "salvar", "ultima"]
 
 
 if __name__ == "__main__":  # pragma: no cover
