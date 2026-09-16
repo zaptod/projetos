@@ -567,8 +567,48 @@ def auditoria(agora: datetime | None = None) -> str:
     return "\n".join(linhas)
 
 
+def confiabilidade(agora: datetime | None = None, *, ficha=None) -> str:
+    """O que foi afirmado hoje, e o que da para provar.
+
+    FORMATA E NAO CALCULA. O numero mora em `panorama.confiabilidade`, que e
+    o mesmo que a pagina do painel le: se os dois mostrarem coisas
+    diferentes para o mesmo dia, o defeito esta la, e so la se conserta.
+
+    Quase sempre e uma linha. So cresce quando ha o que olhar.
+    """
+    if ficha is None:
+        from panorama import confiabilidade as fonte
+        dia = (agora or datetime.now()).strftime("%Y-%m-%d")
+        ficha = fonte.hoje(dia)
+    dia = datetime.strptime(ficha["dia"], "%Y-%m-%d").strftime("%d/%m")
+    prometido, provado = ficha.get("prometido", 0), ficha.get("provado", 0)
+    marca = "✓" if ficha.get("veredito") == "ok" else "⚠"
+    linhas = [f"🔒 *Confiabilidade* — {dia}",
+              f"{marca} {provado}/{prometido} publicação(ões) com prova"]
+    if ficha.get("sem_campo"):
+        linhas.append(f"   {ficha['sem_campo']} sem laudo (não sei, não é falha)")
+    if not ficha.get("alertas"):
+        return "\n".join(linhas)
+
+    linhas.append("")
+    for alerta in ficha["alertas"]:
+        linhas.append(f"• {alerta}")
+    for v in (ficha.get("valvula") or [])[:4]:
+        linhas.append(f"   ↳ {v.get('hora', '')} {v.get('alvo', '')}: "
+                      f"{v.get('motivo', '')}")
+    for canal, ids in (ficha.get("num_destino_so") or {}).items():
+        if ids:
+            amostra = ", ".join(f"`{i}`" for i in ids[:3])
+            linhas.append(f"   ↳ {canal}: {amostra}"
+                          f"{' …' if len(ids) > 3 else ''}")
+    if ficha.get("falhas_tiktok"):
+        linhas.append(f"   (o TikTok falhou {ficha['falhas_tiktok']} vez(es) "
+                      "hoje — o número que importa é o de destino só)")
+    return "\n".join(linhas)
+
+
 RELATORIOS = {"metas": metas, "funcionamento": funcionamento,
-              "auditoria": auditoria}
+              "auditoria": auditoria, "confiabilidade": confiabilidade}
 
 
 def montar(nome: str, agora: datetime | None = None) -> str:

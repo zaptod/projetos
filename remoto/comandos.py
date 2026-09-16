@@ -74,6 +74,7 @@ def ajuda(_args: str = "") -> str:
         "/historias — em que pé está o canal de histórias\n"
         "/metas — quantos vídeos, em que horário, em que canal\n"
         "/funcionamento — tempos, erros e agendamento das últimas 24h\n"
+        "/confiabilidade — o que saiu hoje e o que dá para provar\n"
         "/pausar [minutos] · /retomar · /parar\n"
         "/ajuda — isto aqui")
 
@@ -219,6 +220,12 @@ def funcionamento(_args: str = "") -> str:
     return relatorios.montar("funcionamento")
 
 
+def confiabilidade(_args: str = "") -> str:
+    """O que foi afirmado hoje e o que da para provar. So le disco."""
+    from . import relatorios
+    return relatorios.montar("confiabilidade")
+
+
 def auditoria(_args: str = "") -> str:
     """Os quatro controles, e o que a grade vai barrar no proximo horario.
 
@@ -264,6 +271,8 @@ TABELA = {
     "metas": metas,
     "funcionamento": funcionamento,
     "relatorio": funcionamento,
+    "confiabilidade": confiabilidade,
+    "prova": confiabilidade,
     "auditoria": auditoria,
     "auditar": auditoria,
     "pausar": pausar,

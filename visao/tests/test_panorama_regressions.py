@@ -77,13 +77,18 @@ class NaoDerrubaTests(unittest.TestCase):
         self.assertEqual(0, dados["inventario"]["videos_prontos"]["historias"])
 
 
-class QuatroFamiliasTests(unittest.TestCase):
+class CincoFamiliasTests(unittest.TestCase):
     def setUp(self):
         panorama.esquecer()
         self.dados = panorama.resumo()
 
-    def test_as_quatro_estao_la(self):
-        self.assertEqual({"saude", "desempenho", "inventario", "qualidade"},
+    def test_as_cinco_estao_la(self):
+        # A quinta, `confiabilidade`, entrou em 16/09/2026: o que foi
+        # afirmado e o que da para provar. O teste continua exigindo o
+        # conjunto EXATO — uma familia a mais sem ninguem decidir e tao
+        # defeito quanto uma a menos.
+        self.assertEqual({"saude", "desempenho", "inventario", "qualidade",
+                          "confiabilidade"},
                          set(self.dados))
 
     def test_saude_separa_por_canal(self):

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""As quatro familias de numero, num dicionario so — e sempre o MESMO.
+"""As cinco familias de numero, num dicionario so — e sempre o MESMO.
 
     from panorama import resumo
     dados = resumo()
@@ -14,6 +14,7 @@ pergunta e uma delas errada -- e ninguem sabe qual.
     desempenho  (b) o que foi publicado e como se saiu
     inventario  (c) quanto ha pronto, por etapa
     qualidade   (d) o que falhou, e o placar das lutas
+    confiabilidade (e) o que foi afirmado hoje, e o que da para provar
 
 REGRAS, e elas nao sao decoracao:
 
@@ -33,7 +34,7 @@ from __future__ import annotations
 import threading
 import time
 
-from . import desempenho, inventario, qualidade, saude
+from . import confiabilidade, desempenho, inventario, qualidade, saude
 
 # Quanto tempo uma leitura vale. Curto o bastante para a tela parecer viva,
 # longo o bastante para varios paineis pedindo junto nao virarem enxurrada
@@ -46,7 +47,7 @@ _porta = threading.Lock()
 
 
 def resumo(forcar: bool = False) -> dict:
-    """As quatro familias. Repetido dentro da validade, devolve o cache."""
+    """As cinco familias. Repetido dentro da validade, devolve o cache."""
     global _cache, _quando
     with _porta:
         if not forcar and _cache and (time.monotonic() - _quando) < VALIDADE_S:
@@ -56,6 +57,9 @@ def resumo(forcar: bool = False) -> dict:
             "desempenho": _seguro(desempenho.publicado),
             "inventario": _seguro(inventario.estoque),
             "qualidade": _seguro(qualidade.problemas),
+            # (e) o que foi afirmado e o que da para provar. So le
+            # ledger e diario: cabe no pulso de 3 s.
+            "confiabilidade": _seguro(confiabilidade.hoje),
         }
         _quando = time.monotonic()
         return _cache
@@ -76,5 +80,5 @@ def esquecer() -> None:
         _cache, _quando = {}, 0.0
 
 
-__all__ = ["VALIDADE_S", "desempenho", "esquecer", "inventario", "qualidade",
+__all__ = ["VALIDADE_S", "confiabilidade", "desempenho", "esquecer", "inventario", "qualidade",
            "resumo", "saude"]
