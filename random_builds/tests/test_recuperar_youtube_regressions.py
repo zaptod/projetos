@@ -158,6 +158,66 @@ class EscolhaTests(unittest.TestCase):
         self.assertEqual(["velho", "novo"], [v["id"] for v in fora])
 
 
+class CanalCertoTests(unittest.TestCase):
+    """O login e refeito por uma PESSOA, numa tela que lista todos os canais
+    dela. Escolher o errado ali e um clique, e aconteceu em 17/09/2026.
+
+    Depois disso a credencial funciona perfeitamente — autentica, lista,
+    pagina — so que lista OUTRO canal. E a recuperacao, que so olha "privado
+    sem gemeo publico", acharia dezenas de candidatos no canal pessoal dele e
+    os tornaria publicos.
+    """
+
+    CERTO = "UCA3Y1SaahhDsMj4JKGLbQ-Q"
+
+    def _com_identidade(self, gravado):
+        import builds.contas as C
+        self.addCleanup(setattr, C, "identidade", C.identidade)
+        self.addCleanup(setattr, C, "ativa", C.ativa)
+        C.ativa = lambda _s, _c="geral": "neural_fights"
+        C.identidade = lambda _s, _conta: ({"id": gravado} if gravado else {})
+
+    def test_o_canal_esperado_passa(self):
+        self._com_identidade(self.CERTO)
+        self.assertEqual(self.CERTO, recuperar.conferir_o_canal(
+            "builds", {"id": self.CERTO, "snippet": {"title": "Neural"}}))
+
+    def test_outro_canal_PARA_tudo(self):
+        self._com_identidade(self.CERTO)
+        with self.assertRaises(recuperar.CanalErrado) as caso:
+            recuperar.conferir_o_canal("builds", {
+                "id": "UC1IrqhQZJhaiYGT_0bQJcFA",
+                "snippet": {"title": "Adrian Oliveira (pessoal)"}})
+        texto = str(caso.exception)
+        self.assertIn("Adrian Oliveira", texto, "diga QUAL canal ele abriu")
+        self.assertIn(self.CERTO, texto, "e qual era o esperado")
+        self.assertIn("youtube_oauth", texto, "e como refazer")
+
+    def test_sem_identidade_gravada_PARA(self):
+        """"Nao sei em que canal estou" nao pode virar "deve ser o certo"."""
+        self._com_identidade("")
+        with self.assertRaises(recuperar.CanalErrado):
+            recuperar.conferir_o_canal("builds", {"id": self.CERTO})
+
+    def test_a_listagem_confere_antes_de_listar(self):
+        self._com_identidade(self.CERTO)
+        chamou = []
+
+        def get(_t, caminho, **_k):
+            chamou.append(caminho)
+            if caminho == "channels":
+                return {"items": [{"id": "OUTRO", "snippet": {"title": "x"},
+                                   "contentDetails": {"relatedPlaylists":
+                                                      {"uploads": "UU"}}}]}
+            raise AssertionError("nao pode chegar aqui")
+
+        with patch.object(recuperar, "_get", get), \
+             patch.object(recuperar, "_token", lambda _c, editar=True: "t"):
+            with self.assertRaises(recuperar.CanalErrado):
+                recuperar.videos_do_canal("builds")
+        self.assertEqual(["channels"], chamou)
+
+
 class _Resposta:
     def __init__(self, status=200, texto="{}"):
         self.status_code = status
@@ -170,6 +230,15 @@ class TornarPublicoTests(unittest.TestCase):
               "license": "youtube", "embeddable": True,
               "publicStatsViewable": True, "uploadStatus": "processed"}
 
+    CANAL = "UCA3Y1SaahhDsMj4JKGLbQ-Q"
+
+    def setUp(self):
+        import builds.contas as C
+        self.addCleanup(setattr, C, "identidade", C.identidade)
+        self.addCleanup(setattr, C, "ativa", C.ativa)
+        C.ativa = lambda _s, _c="geral": "neural_fights"
+        C.identidade = lambda _s, _conta: {"id": self.CANAL}
+
     def _rodar(self, depois="public", status_put=200):
         self.enviado = {}
         leituras = [
@@ -177,7 +246,10 @@ class TornarPublicoTests(unittest.TestCase):
             {"items": [{"status": {"privacyStatus": depois}}]},
         ]
 
-        def get(_t, _c, **_k):
+        def get(_t, caminho, **_k):
+            if caminho == "channels":
+                return {"items": [{"id": self.CANAL,
+                                   "snippet": {"title": "Neural fights"}}]}
             return leituras.pop(0)
 
         def put(_url, **kw):

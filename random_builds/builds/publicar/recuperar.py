@@ -111,6 +111,50 @@ def _get(token: str, caminho: str, **params) -> dict:
     return r.json()
 
 
+class CanalErrado(PublicacaoFalhou):
+    """A credencial abriu um canal que nao e o esperado. Erro proprio porque
+    a reacao e parar tudo: recuperar aqui mexeria em video de outro canal."""
+
+
+def conferir_o_canal(canal: str, aberto: dict) -> str:
+    """O canal que a credencial abriu e o que este projeto espera?
+
+    O LOGIN E REFEITO POR UMA PESSOA, numa tela do Google que lista todos os
+    canais dela, e escolher o errado ali e um clique — aconteceu em
+    17/09/2026. Depois disso a credencial funciona perfeitamente: autentica,
+    lista, pagina. So que lista OUTRO canal. E a recuperacao, que so olha
+    "privado sem gemeo publico", acharia dezenas de candidatos no canal
+    pessoal dele e os tornaria publicos.
+
+    A comparacao e contra a IDENTIDADE JA GRAVADA (`contas.identidade`), e
+    nao contra um id escrito aqui: o registro cobre todos os canais, e e o
+    mesmo que a auditoria de contas mantem. Sem id gravado nao da para
+    afirmar nada, e ai a resposta e parar — "nao sei em que canal estou" nao
+    pode virar "deve ser o certo".
+    """
+    from ..contas import ativa, identidade
+    try:
+        conta = ativa("youtube", canal)
+    except Exception:                                          # noqa: BLE001
+        conta = ""
+    esperado = str((identidade("youtube", conta) or {}).get("id") or "")
+    achado = str(aberto.get("id") or "")
+    if not esperado:
+        raise CanalErrado(
+            f"nao sei qual e o canal da conta '{conta or canal}': nao ha "
+            f"identidade gravada. Rode `python -m ferramentas.auditoria_contas`"
+            f" para conferir e gravar antes de mexer em video nenhum.")
+    if achado != esperado:
+        rotulo = (aberto.get("snippet") or {}).get("title", "?")
+        raise CanalErrado(
+            f"a credencial da conta '{conta}' abriu o canal {achado} "
+            f"('{rotulo}'), e este projeto espera {esperado}. NAO mexo em "
+            f"nada: o login provavelmente escolheu o canal errado na tela do "
+            f"Google. Refaca com `youtube_oauth --conta {conta}` e escolha o "
+            f"canal certo.")
+    return achado
+
+
 def videos_do_canal(canal: str = "builds", token: str | None = None) -> list:
     """Tudo o que esta na playlist de envios, com estado. So leitura.
 
@@ -119,10 +163,12 @@ def videos_do_canal(canal: str = "builds", token: str | None = None) -> list:
     videos antigos nao existem.
     """
     token = token or _token(canal, editar=False)
-    canais = _get(token, "channels", part="contentDetails", mine="true")
+    canais = _get(token, "channels", part="contentDetails,snippet",
+                  mine="true")
     itens = canais.get("items") or []
     if not itens:
         raise PublicacaoFalhou("a credencial nao controla canal nenhum.")
+    conferir_o_canal(canal, itens[0])
     lista = itens[0]["contentDetails"]["relatedPlaylists"]["uploads"]
 
     ids, pagina = [], None
@@ -217,6 +263,12 @@ def tornar_publico(video_id: str, canal: str = "builds",
     """
     import requests
     token = token or _token(canal)
+    # A CONFERENCIA DO CANAL SE REFAZ AQUI, e nao so na listagem: esta e a
+    # chamada que muda alguma coisa, e ela pode ser feita direto (pelo app,
+    # por um `-c`, por uma rodada futura) sem passar por `recuperaveis`.
+    # Guarda que depende de outra funcao ter sido chamada antes nao e guarda.
+    meu = _get(token, "channels", part="snippet", mine="true")
+    conferir_o_canal(canal, (meu.get("items") or [{}])[0])
     atual = _get(token, "videos", part="status", id=video_id)
     itens = atual.get("items") or []
     if not itens:
