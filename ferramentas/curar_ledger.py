@@ -423,7 +423,7 @@ def postar_migrado(fonte: str | None = None) -> str:
 def trava_do_ledger(canal: str):
     """A trava que TODO escritor do ledger deve segurar para reescreve-lo."""
     from builds import travas
-    return travas.trava(f"ledger__{canal}", esperar=60.0)
+    return travas.trava(metricas.nome_da_trava(canal), esperar=60.0)
 
 
 def gravar(caminho: Path, linhas: list, carimbo: str) -> Path:

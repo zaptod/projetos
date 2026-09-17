@@ -19,7 +19,9 @@ diferente aparecem lado a lado com a retencao media de cada um.
 """
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import sys
 from datetime import date, datetime, timedelta
@@ -147,6 +149,50 @@ def prova_ok(laudo: dict | list | None) -> bool | None:
                 or laudo.get("confirmado"))
 
 
+# ------------------------------------------------------ trava do ledger
+# Todo escritor do ledger usa a MESMA trava, `ledger__<canal>`. Sem ela, uma
+# reescrita (a reconciliacao da madrugada, a cura) le o arquivo, pensa, e
+# grava por cima — e a linha que a postagem acrescentou no meio SOME.
+# Publicacao que aconteceu e sumiu do ledger vira REPOSTAGEM, entao a regra e
+# assimetrica:
+#   - quem ACRESCENTA uma publicacao espera muito e, se ainda assim nao
+#     conseguir, grava do mesmo jeito e avisa no diario;
+#   - quem REESCREVE desiste se a trava estiver ocupada, e tenta outro dia.
+PACIENCIA_DO_ESCRITOR = 120.0
+
+
+def nome_da_trava(canal: str) -> str:
+    return f"ledger__{canal}"
+
+
+def acrescentar_ao_ledger(caminho: Path, linha: dict, canal: str,
+                          paciencia: float = PACIENCIA_DO_ESCRITOR) -> None:
+    """Acrescenta uma linha. NUNCA perde a linha por causa da trava."""
+    from .. import travas
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    with travas.trava(nome_da_trava(canal), esperar=paciencia) as minha:
+        with open(caminho, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    if not minha:
+        with contextlib.suppress(Exception):
+            from .. import atividade
+            atividade.registrar(
+                "publicacao", "erro",
+                f"gravei no ledger de {canal} SEM a trava (ocupada por "
+                f"{paciencia:.0f} s): {linha.get('video_id')} "
+                f"({linha.get('plataforma')}). Confira se uma reescrita "
+                "simultanea nao apagou esta linha.", canal)
+
+
+def reescrever_ledger(caminho: Path, linhas: list) -> None:
+    """Troca o arquivo inteiro de uma vez. Quem chama segura a trava."""
+    temporario = caminho.with_name(f"{caminho.name}.{os.getpid()}.tmp")
+    with open(temporario, "w", encoding="utf-8") as fh:
+        for linha in linhas:
+            fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    os.replace(temporario, caminho)
+
+
 def registrar_publicacao(video, url: str, plataforma: str = "youtube",
                          extra: dict | None = None) -> dict:
     """Uma linha por upload. E o unico lugar que sabe qual mp4 virou qual
@@ -186,9 +232,7 @@ def registrar_publicacao(video, url: str, plataforma: str = "youtube",
             "registro recusado: a linha nao identifica video nenhum "
             f"(video={video!r}). Quem publica passa o item do catalogo, "
             "nao o caminho do arquivo.")
-    REGISTRO.parent.mkdir(parents=True, exist_ok=True)
-    with open(REGISTRO, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    acrescentar_ao_ledger(Path(REGISTRO), linha, "builds")
     return linha
 
 
@@ -447,19 +491,29 @@ def reconciliar(canal: str = "builds", log=print) -> int:
         log(f"[{canal}] nenhum upload sem id.")
         return 0
     token, _ = _token(canal)
-    achados = 0
-    for indice, video in casar_ids(linhas, enviados(token)):
-        linha = linhas[indice]
-        linha["youtube_id"] = video["youtube_id"]
-        linha["url"] = f"https://youtu.be/{video['youtube_id']}"
-        linha["publicado_em"] = video.get("publicado_em")
-        achados += 1
-    if achados:
-        # Reescrito inteiro porque o ledger e a linha do tempo: ordem e
-        # conteudo das outras linhas nao mudam, so os campos preenchidos.
-        with open(registro, "w", encoding="utf-8") as fh:
-            for linha in linhas:
-                fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    # A rede vem ANTES da trava: segurar o ledger durante uma chamada a API
+    # faria a postagem esperar por ela.
+    videos = enviados(token)
+    from .. import travas
+    with travas.trava(nome_da_trava(canal), esperar=30.0) as minha:
+        if not minha:
+            log(f"[{canal}] ledger ocupado por outro escritor; reconcilio "
+                "na proxima vez.")
+            return 0
+        # RELIDO dentro da trava: a postagem pode ter acrescentado linhas
+        # enquanto a lista do canal era baixada.
+        linhas = publicados(canal)
+        achados = 0
+        for indice, video in casar_ids(linhas, videos):
+            linha = linhas[indice]
+            linha["youtube_id"] = video["youtube_id"]
+            linha["url"] = f"https://youtu.be/{video['youtube_id']}"
+            linha["publicado_em"] = video.get("publicado_em")
+            achados += 1
+        if achados:
+            # Reescrito inteiro porque o ledger e a linha do tempo: ordem e
+            # conteudo das outras linhas nao mudam, so os campos preenchidos.
+            reescrever_ledger(registro, linhas)
     log(f"[{canal}] {achados} de {len(faltam)} upload(s) reconciliados.")
     return achados
 

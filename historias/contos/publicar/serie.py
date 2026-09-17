@@ -108,9 +108,11 @@ def registrar(video, url: str, plataforma: str, quando_publica: str | None,
         # chamador distraido ja gravou dicionario uma vez (16/09/2026).
         from builds.publicar.metricas import em_lista
         linha["prova"] = em_lista(linha["prova"])
-    REGISTRO.parent.mkdir(parents=True, exist_ok=True)
-    with open(REGISTRO, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    # A MESMA trava do ledger de builds (`ledger__<canal>`): quem acrescenta
+    # espera, e grava mesmo sem ela se precisar — publicacao que some do
+    # ledger vira repostagem.
+    from builds.publicar.metricas import acrescentar_ao_ledger
+    acrescentar_ao_ledger(REGISTRO, linha, "historias")
     return linha
 
 
