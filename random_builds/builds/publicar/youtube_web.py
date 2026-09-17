@@ -1017,6 +1017,15 @@ def publicar(video, *, visibilidade: str | None = None,
                 laudo["youtube_id"] = _id_do_video(page.url)
             except Exception:
                 pass
+        # A MESMA GUARDA DO TIKTOK, e ela faltava aqui — onde o estrago era
+        # MAIOR. Sem confirmacao, o video nao ganha linha no ledger; como a
+        # fila escolhe pelo que ainda nao foi registrado, ele voltava no
+        # horario seguinte e subia DE NOVO. Cada tentativa deixava um
+        # rascunho: e a fabrica de rascunhos gemeos que explica os 22 do
+        # canal. No TikTok o video so saia da fila; aqui ele reenviava.
+        from . import desfecho as _desf
+        laudo["desfecho"] = _desf.resolver(canal, video, estado, laudo,
+                                           plataforma="youtube")
         return estado
 
 

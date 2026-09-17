@@ -188,6 +188,7 @@ def fila_de_historias() -> list:
     #
     # A ordem das partes DENTRO da serie continua sagrada: o teto so decide
     # QUAL serie anda hoje, nunca em que ordem as partes dela saem.
+    fila = _sem_a_conferir(fila, "historias")
     fila = _sem_fonte_cheia(fila, "historias")
 
     novos, repetidos = _sem_titulo_repetido(fila, "historias")
@@ -805,6 +806,37 @@ def _fontes_de_atraso(canal: str):
 VARIANTES = (":B",)
 
 
+def _sem_a_conferir(fila: list, canal: str) -> list:
+    """Tira da fila quem subiu ao YouTube sem confirmacao.
+
+    E A FABRICA DE RASCUNHOS GEMEOS. Quando o Studio nao mostra a
+    confirmacao, `publicar_como_configurado` nao grava linha no ledger; como
+    a fila escolhe pelo que ainda nao foi registrado, o MESMO video volta no
+    horario seguinte e sobe DE NOVO. Cada tentativa deixa um rascunho — e sao
+    22 no canal.
+
+    No TikTok o defeito so tirava o video da fila; aqui ele o reenviava.
+
+    Se nao der para ler a lista, a fila fica VAZIA: o horario sem post custa
+    um video, e reenviar custa mais um rascunho em cima dos 22.
+    """
+    if not fila:
+        return fila
+    try:
+        marcados = a_conferir_no_tiktok(canal, "youtube")
+    except Exception as exc:                                   # noqa: BLE001
+        _linha(f"[postar] {canal}: nao consegui ler quem esta a conferir no "
+               f"YouTube ({type(exc).__name__}); NAO publico nesta rodada.")
+        return []
+    if not marcados:
+        return fila
+    livres = [v for v in fila if v.id not in marcados]
+    if len(livres) != len(fila):
+        _linha(f"[postar] {len(fila) - len(livres)} video(s) fora da fila: "
+               f"subiram ao YouTube sem confirmacao e esperam conferencia.")
+    return livres
+
+
 def _sem_fonte_cheia(fila: list, canal: str) -> list:
     """Tira da fila as historias/geracoes que ja bateram o teto HOJE.
 
@@ -969,9 +1001,11 @@ def desfecho_do_tiktok(estado, falha=None, laudo=None) -> str:
     return classificar(estado, falha, laudo)
 
 
-def a_conferir_no_tiktok(canal: str = "historias") -> set:
+def a_conferir_no_tiktok(canal: str = "historias",
+                         plataforma: str = "tiktok") -> set:
+    """LEVANTA se nao conseguir ler — quem chama nao pode seguir sem a lista."""
     from builds.publicar.desfecho import a_conferir
-    return a_conferir(canal)
+    return a_conferir(canal, plataforma)
 
 
 def _anotar_falha_no_tiktok(canal: str, video_id: str) -> int:
@@ -1117,6 +1151,9 @@ def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
 
     # Desistidos E os que esperam conferencia saem antes da deduplicacao, pelo
     # mesmo motivo: se o A esta fora, o B precisa poder assumir o titulo.
+    # FALHA FECHADA, e e a unica do projeto: sem a lista de bloqueados eu
+    # nao sei quem esta esperando conferencia, e a recuperacao repostaria
+    # todos eles. Adiar uma rodada custa um video; repostar custa o perfil.
     desistidos = desistencias_do_tiktok(canal) | a_conferir_no_tiktok(canal)
     candidatos, vistos = [], set()
     for linha in publicados:                     # ledger ja vem em ordem
@@ -1631,7 +1668,13 @@ def _tiktok_confirmado(estado) -> bool:
         from builds.publicar import tiktok as _tk
         return bool(_tk.confirmado(estado))
     except Exception:                                          # noqa: BLE001
-        return bool(estado)
+        # SEM O MODULO, A RESPOSTA E "NAO". A versao anterior devolvia
+        # `bool(estado)`, e ai QUALQUER texto virava "publicado" — inclusive
+        # "cliquei em publicar, mas o TikTok nao confirmou", que e
+        # precisamente o caso em que nao se deve afirmar nada. O ledger
+        # ganharia uma linha de publicacao para um post que talvez nao
+        # exista, e ninguem iria conferir.
+        return False
 
 
 def proximo_build(config=None):
@@ -1694,6 +1737,13 @@ def proximo_build(config=None):
     # e a variante "gancho B", que tem id com sufixo `:B` e o mesmo titulo —
     # para a deduplicacao por `video_id` sao dois videos, para o YouTube sao
     # dois iguais, competindo pelo mesmo termo de busca.
+    # A mesma guarda das historias: quem subiu ao YouTube sem confirmacao
+    # espera conferencia, senao a rodada seguinte reenvia e gera outro
+    # rascunho.
+    pendentes = _sem_a_conferir(pendentes, "builds")
+    if not pendentes:
+        return None
+
     # O mesmo teto das historias, por geracao: 2 por dia no perfil.
     pendentes = _sem_fonte_cheia(pendentes, "builds")
     if not pendentes:

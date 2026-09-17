@@ -41,6 +41,20 @@ from builds.identity.config import PROVEDORES as PROVEDORES_LOGIN
 from builds.pipeline.controller import PipelineController
 
 
+def _a_conferir(estado) -> bool:
+    """O clique saiu e ninguem confirmou? (nem sucesso, nem falha)
+
+    Usa a MESMA classificacao da grade (`builds.publicar.desfecho`), e nao um
+    criterio proprio: dois criterios de "publicou" foi o defeito que fez
+    rascunho contar como publicacao por semanas.
+    """
+    try:
+        from builds.publicar.desfecho import classificar
+        return classificar(estado) == "sem_confirmacao"
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
 def _publicar(args) -> int:
     """Listar / exportar / enviar. Sem id, lista tudo o que existe pronto."""
     from builds.publicar import catalogo
@@ -79,6 +93,7 @@ def _publicar(args) -> int:
         return 1
 
     feito = False
+    a_conferir = False
     if args.exportar:
         destino = catalogo.exportar(video)
         print(f"exportado: {destino}")
@@ -100,16 +115,35 @@ def _publicar(args) -> int:
             except Exception as exc:
                 print(f"YouTube FALHOU: {exc}")
                 return 1
-            print(f"YouTube: {url}")
+            # "A CONFERIR" NAO E SUCESSO, e ate 17/09/2026 saia como
+            # `YouTube: <estado>` com codigo 0 — inclusive quando o estado
+            # era "cliquei em publicar, mas o Studio nao mostrou a
+            # confirmacao... RASCUNHO". Quem chama (o bot, o app, um script)
+            # lia zero e dava por publicado.
+            if _a_conferir(url):
+                print(f"YouTube A CONFERIR: {url}")
+                a_conferir = True
+            else:
+                print(f"YouTube: {url}")
         feito = True
     if args.tiktok:
         from builds.publicar import tiktok
         try:
-            print(f"TikTok: {tiktok.publicar(video, postar=args.postar or None)}")
+            estado = tiktok.publicar(video, postar=args.postar or None)
         except tiktok.TikTokFalhou as exc:
             print(f"TikTok FALHOU: {exc}")
             return 1
+        if _a_conferir(estado):
+            print(f"TikTok A CONFERIR: {estado}")
+            a_conferir = True
+        else:
+            print(f"TikTok: {estado}")
         feito = True
+
+    if a_conferir:
+        # Codigo PROPRIO: nem 0 (publicou) nem 1 (falhou). O post pode estar
+        # no ar e nao ha confirmacao — quem automatiza precisa distinguir.
+        return 3
 
     if not feito:
         print(video.titulo)

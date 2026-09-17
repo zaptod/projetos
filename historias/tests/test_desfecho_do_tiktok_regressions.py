@@ -146,7 +146,8 @@ class ReacaoAoDesfechoTests(unittest.TestCase):
         from builds.publicar import desfecho as _D
         self.addCleanup(setattr, _D, "arquivo_a_conferir",
                         _D.arquivo_a_conferir)
-        _D.arquivo_a_conferir = lambda _c: base / "conferir.json"
+        _D.arquivo_a_conferir = (
+            lambda _c, _p="tiktok": base / f"conferir_{_p}.json")
         postar._linha = lambda *_a, **_k: None
         self.diario = []
         from builds import atividade

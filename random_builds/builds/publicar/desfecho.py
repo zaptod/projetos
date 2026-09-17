@@ -53,6 +53,28 @@ def _sem_acentos(texto: str) -> str:
     return "".join(c for c in normal if not unicodedata.combining(c))
 
 
+def _confirmado(estado) -> bool:
+    """Algum dos dois destinos confirmou?
+
+    Um link `http` conta: o YouTube devolve a URL quando publica de verdade.
+    As frases de sucesso dos dois modulos contam. Qualquer outra coisa, nao —
+    e e por isso que a funcao nao pergunta a QUEM pertence o estado: o
+    criterio e o mesmo, e ter dois criterios de "publicou" foi o defeito que
+    fez rascunho contar como publicacao por semanas.
+    """
+    texto = str(estado or "")
+    if texto.startswith("http"):
+        return True
+    for modulo in ("tiktok", "youtube_web"):
+        try:
+            mod = __import__(f"builds.publicar.{modulo}", fromlist=["SUCESSO"])
+            if texto.startswith(getattr(mod, "SUCESSO", "\0")):
+                return True
+        except Exception:                                      # noqa: BLE001
+            continue
+    return False
+
+
 def classificar(estado, falha: dict | None = None,
                 laudo: dict | None = None) -> str:
     """"publicado", "sem_confirmacao", "infraestrutura" ou "falha".
@@ -63,8 +85,7 @@ def classificar(estado, falha: dict | None = None,
     reenviado ate tres vezes sobre um post que ja podia estar no ar. A marca
     do laudo e escrita no instante do clique e sobrevive a excecao.
     """
-    from .tiktok import confirmado
-    if confirmado(estado):
+    if _confirmado(estado):
         return "publicado"
     if (laudo or {}).get("clicou"):
         return "sem_confirmacao"
@@ -77,60 +98,189 @@ def classificar(estado, falha: dict | None = None,
     return "falha"
 
 
-def arquivo_a_conferir(canal: str):
-    """Ao lado do ledger do canal: e estado da mesma familia."""
+ESPERA_DA_TRAVA_S = 20.0
+
+
+class NaoConsegviLer(RuntimeError):
+    """Nao deu para saber quem esta bloqueado.
+
+    Quem chama NAO pode seguir: sem a lista, a recuperacao acha que ninguem
+    esta bloqueado e reposta. E a falha fechada — a unica no projeto — e ela
+    existe porque aqui o erro barato e "adiar uma rodada" e o erro caro e
+    "publicar de novo no perfil do Adrian".
+    """
+
+
+def nome_da_trava(plataforma: str = "tiktok") -> str:
+    """A trava que TODO leitor e escritor da lista deve segurar.
+
+    Publica de proposito: o app, o bot e a grade mexem no mesmo arquivo, e
+    sem trava comum o `os.replace` de um faz a leitura do outro falhar — que
+    no desenho anterior era interpretado como "corrompido" e apagava a lista.
+    """
+    return f"{plataforma}_a_conferir"
+
+
+def arquivo_a_conferir(canal: str, plataforma: str = "tiktok"):
+    """Ao lado do ledger do canal: e estado da mesma familia.
+
+    Um arquivo POR DESTINO: um video sem confirmacao no YouTube nao pode
+    ficar bloqueado no TikTok, onde ele talvez ainda precise sair.
+    """
     from .metricas import registro_do_canal
-    return registro_do_canal(canal).parent / "_tiktok_a_conferir.json"
+    return (registro_do_canal(canal).parent
+            / f"_{plataforma}_a_conferir.json")
 
 
-def a_conferir(canal: str = "historias") -> set:
+def _ler(caminho, tentativas: int = 3) -> dict:
+    """Le o JSON, com nova tentativa antes de concluir "corrompido".
+
+    A DIFERENCA ENTRE ERRO PASSAGEIRO E CORRUPCAO. No Windows, ler enquanto
+    outro processo faz `os.replace` devolve erro de compartilhamento — e a
+    versao anterior tratava isso como arquivo quebrado, renomeava a lista e
+    recomecava VAZIA. A protecao contra corrupcao virava a causa da perda.
+    `OSError` tenta de novo; so `ValueError` (JSON invalido de verdade) conta
+    como corrupcao.
+    """
+    import time
+    ultimo = None
+    for n in range(tentativas):
+        try:
+            if not caminho.is_file():
+                return {}
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            if not isinstance(dados, dict):
+                raise ValueError("a marca nao e um objeto")
+            return dados
+        except OSError as exc:
+            ultimo = exc
+            time.sleep(0.4 * (n + 1))
+    raise ultimo or OSError("nao consegui ler")
+
+
+def a_conferir(canal: str = "historias", plataforma: str = "tiktok") -> set:
     """Videos cujo clique saiu sem confirmacao: ficam FORA da fila.
 
     Nao sao desistencia (o video nao tem defeito) nem atraso (pode estar no
     ar). Sao um terceiro estado, que so sai daqui por conferencia.
+
+    LEVANTA quando nao consegue ler. A versao anterior devolvia `set()` em
+    qualquer erro, e quem chama entendia "ninguem bloqueado" — repostando
+    todos os marcados. Um conjunto vazio e uma afirmacao, nao um "nao sei".
     """
+    from .. import travas
+    caminho = arquivo_a_conferir(canal, plataforma)
     try:
-        caminho = arquivo_a_conferir(canal)
-        if not caminho.is_file():
-            return set()
-        return set(json.loads(caminho.read_text(encoding="utf-8")))
-    except Exception:                                          # noqa: BLE001
-        return set()
+        with travas.trava(nome_da_trava(plataforma),
+                          esperar=ESPERA_DA_TRAVA_S) as minha:
+            if minha is False:
+                raise NaoConsegviLer(
+                    f"a trava {nome_da_trava(plataforma)} esta ocupada")
+            return set(_ler(caminho))
+    except (ValueError, OSError) as exc:
+        _avisar(canal, texto=(
+            f"nao consegui ler {caminho.name} ({type(exc).__name__}). A "
+            f"recuperacao NAO roda nesta rodada: sem a lista eu nao sei quem "
+            f"esta bloqueado, e publicar de novo e pior que adiar."))
+        raise NaoConsegviLer(str(exc)) from exc
 
 
-def marcar_para_conferir(canal: str, video_id: str, estado: str) -> None:
-    """Tira da fila e AVISA. Erro no diario, nao aviso no log."""
+class NaoConsegviMarcar(RuntimeError):
+    """Nao deu para gravar a marca de "a conferir".
+
+    Levanta em vez de seguir calada porque a marca E o bloqueio: sem ela o
+    video volta para a fila e a recuperacao o reposta. Um `except: pass` aqui
+    transforma "nao consegui bloquear" em "nao havia o que bloquear".
+    """
+
+
+def marcar_para_conferir(canal: str, video_id: str, estado: str,
+                         plataforma: str = "tiktok") -> bool:
+    """Tira da fila e AVISA. Erro no diario, nao aviso no log.
+
+    ESCRITA ATOMICA E ARQUIVO CORROMPIDO PRESERVADO. A primeira versao lia o
+    JSON, e com o arquivo cortado caia em `{}` e regravava a lista **so com o
+    item novo** — apagando todas as marcas antigas e devolvendo aqueles
+    videos para a fila. O modo de falha era exatamente o defeito que a marca
+    existe para impedir, e chegava em silencio.
+
+    Agora: arquivo ilegivel e RENOMEADO para `.corrompido` (nunca
+    sobrescrito, porque ele e a unica copia de quem estava bloqueado), a
+    gravacao vai por `.tmp` + `os.replace` (troca atomica: ou o arquivo
+    antigo inteiro, ou o novo inteiro, nunca meio), e nao gravar LEVANTA.
+    """
     if not video_id:
-        return
-    try:
-        caminho = arquivo_a_conferir(canal)
-        dados = {}
-        if caminho.is_file():
+        return False
+    import os
+    from .. import travas
+    caminho = arquivo_a_conferir(canal, plataforma)
+    # LER E ESCREVER SOB A MESMA TRAVA, e nao so escrever: entre uma leitura
+    # sem trava e a gravacao, outro processo pode marcar um video — e a
+    # gravacao o apagaria.
+    with travas.trava(nome_da_trava(plataforma),
+                      esperar=ESPERA_DA_TRAVA_S) as minha:
+        if minha is False:
+            _avisar(canal, ref=video_id, texto=(
+                f"{video_id}: a trava {nome_da_trava(plataforma)} nao veio; "
+                f"NAO marquei. O video pode estar no ar e nao esta bloqueado."))
+            raise NaoConsegviMarcar("a trava esta ocupada")
+        try:
+            dados = _ler(caminho)
+        except ValueError as exc:
+            # CORRUPCAO DE VERDADE (JSON invalido), e nao erro passageiro:
+            # `_ler` ja tentou de novo em `OSError`. Nao sobrescreve — o
+            # ilegivel e a unica lista de quem estava bloqueado, e pode ser
+            # recuperavel a mao.
+            quebrado = caminho.with_suffix(
+                f".corrompido-{datetime.now():%Y%m%d-%H%M%S}")
             try:
-                dados = json.loads(caminho.read_text(encoding="utf-8"))
-            except ValueError:
-                dados = {}
+                caminho.rename(quebrado)
+            except OSError:
+                pass
+            dados = {}
+            _avisar(canal, texto=(
+                f"o {caminho.name} estava ilegivel ({type(exc).__name__}); "
+                f"guardei em {quebrado.name} e recomecei. Os videos que "
+                f"estavam marcados podem voltar a fila — confira o arquivo."))
         if video_id in dados:
-            return                       # ja avisado; nao repete no diario
+            return True                  # ja avisado; nao repete no diario
         dados[video_id] = {
             "quando": datetime.now().isoformat(timespec="seconds"),
-            "estado": str(estado)[:200]}
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=1),
+            "estado": str(estado)[:200], "plataforma": plataforma}
+        try:
+            caminho.parent.mkdir(parents=True, exist_ok=True)
+            tmp = caminho.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=1),
                            encoding="utf-8")
+            os.replace(tmp, caminho)
+        except OSError as exc:
+            _avisar(canal, ref=video_id, texto=(
+                f"{video_id}: NAO consegui gravar a marca de 'a conferir' "
+                f"({type(exc).__name__}). O video pode estar no ar e NAO esta "
+                f"bloqueado — confira antes da proxima rodada."))
+            raise NaoConsegviMarcar(str(exc)) from exc
+    _avisar(canal, ref=video_id, texto=(
+        f"{video_id}: cliquei em publicar no {plataforma} e nao veio "
+        f"confirmacao. Pode estar no ar — NAO reenvio sozinho para nao "
+        f"duplicar. Precisa de conferencia no perfil."))
+    return True
+
+
+def _avisar(canal: str, texto: str, ref: str = "",
+            atividade_erro: bool = True) -> None:
+    """Diario, nunca log: ninguem le log as 3 da manha."""
+    try:
         from .. import atividade
         atividade.registrar(
-            "publicacao", atividade.ERRO,
-            f"{video_id}: cliquei em publicar no TikTok e nao veio "
-            f"confirmacao. Pode estar no ar — NAO reenvio sozinho para nao "
-            f"duplicar. Precisa de conferencia no perfil.",
-            canal, etapa="publicar.tiktok.sem_confirmacao", ref=video_id)
+            "publicacao",
+            atividade.ERRO if atividade_erro else atividade.LOG,
+            texto, canal, etapa="publicar.tiktok.sem_confirmacao", ref=ref)
     except Exception:                                          # noqa: BLE001
         pass
 
 
 def resolver(canal: str, video, estado: str, laudo: dict | None = None,
-             falha: dict | None = None) -> str:
+             falha: dict | None = None, plataforma: str = "tiktok") -> str:
     """Classifica e REAGE. Devolve o desfecho.
 
     Chamada de dentro do `tiktok.publicar`, para que nenhum dos caminhos que
@@ -142,5 +292,5 @@ def resolver(canal: str, video, estado: str, laudo: dict | None = None,
     if desfecho == "sem_confirmacao":
         marcar_para_conferir(
             canal, getattr(video, "id", ""),
-            estado or "o clique saiu e nao veio confirmacao")
+            estado or "o clique saiu e nao veio confirmacao", plataforma)
     return desfecho
