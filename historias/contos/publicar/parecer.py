@@ -554,7 +554,15 @@ def provedores_da_analise() -> list:
     """
     try:
         from ..llm import papeis
-        lista = papeis.provedores(papeis.QUALIDADE)
+        todos = papeis.carregar()
+        # QUEM ASSISTE VEM PRIMEIRO: o parecer e sobre o VIDEO, e a folha e
+        # a reserva. A ordem do papel "qualidade" (texto/folha) vale depois.
+        lista = []
+        ordem = ((todos.get(papeis.VIDEO) or [])
+                 + (todos.get(papeis.QUALIDADE) or []))
+        for nome in ordem:
+            if nome not in lista:
+                lista.append(nome)
     except Exception:                                          # noqa: BLE001
         lista = []
     return lista or list(PROVEDORES)

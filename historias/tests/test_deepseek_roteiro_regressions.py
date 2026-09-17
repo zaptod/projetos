@@ -206,6 +206,24 @@ class QuedaDeProvedor(_Base):
         self.assertEqual([("retomar", "deepseek", "historia_00077")],
                          self.chamadas)
 
+    def test_so_o_ultimo_espera_a_conta_pelo_prazo_cheio(self):
+        # Conta ocupada passa ao PROXIMO LIVRE (17/09/2026).
+        esperas = []
+        real = self._gerar
+
+        def espia(**k):
+            esperas.append((k["provedor"], k.get("espera_da_conta")))
+            return real(**k)
+
+        G.gerar_serie = espia
+        self.falhas.update(deepseek="antes", chatgpt="antes")
+        G.escrever_serie(["deepseek", "chatgpt", "gemini"],
+                         log=lambda *_a: None)
+        self.assertEqual([("deepseek", G.ESPERA_CURTA_S),
+                          ("chatgpt", G.ESPERA_CURTA_S),
+                          ("gemini", G.ESPERA_DA_CONTA_S)], esperas)
+        self.assertLess(G.ESPERA_CURTA_S, 60)
+
     def test_sem_provedor_e_erro_claro(self):
         with self.assertRaises(G.GeracaoFalhou):
             G.escrever_serie([], log=lambda *_a: None)
@@ -278,8 +296,11 @@ class QuemAnalisa(unittest.TestCase):
 
     def test_parecer_usa_o_papel_de_qualidade(self):
         from contos.publicar import parecer
-        self.assertEqual(papeis.provedores(papeis.QUALIDADE),
+        # Quem ASSISTE primeiro (papel video), depois a folha (qualidade).
+        self.assertEqual(["gemini", "chatgpt"],
                          parecer.provedores_da_analise())
+        self.assertEqual(["chatgpt", "gemini"],
+                         papeis.provedores(papeis.QUALIDADE))
         self.assertNotIn("deepseek", parecer.provedores_da_analise())
         self.assertIn(parecer.provedores_da_analise()[0],
                       parecer.ASSISTEM_VIDEO)

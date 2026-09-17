@@ -250,11 +250,14 @@ def _trocar_premissa_se_precisar(cliente, biblia: dict, partes: int,
 # nessa hora terminava em "roteiro falhou" sem criar a historia (revisao de
 # conflitos de 14/09/2026).
 ESPERA_DA_CONTA_S = 1500.0
+# Quanto espera a conta quem ainda tem para onde cair na ordem de queda.
+ESPERA_CURTA_S = 15.0
 
 
 def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                   cenas_por_parte: int = S.CENAS_POR_PARTE,
                   headless: bool = False, config: dict | None = None,
+                  espera_da_conta: float = ESPERA_DA_CONTA_S,
                   log=print) -> dict:
     """Escreve so as PARTES QUE FALTAM de uma historia que parou no meio.
 
@@ -292,7 +295,7 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
     log(f"[serie] retomando {historia_id}: faltam as partes {faltam} de "
         f"{roteiro.get('partes_esperadas')}.")
     with abrir_cliente(provedor, headless=headless,
-                       esperar=ESPERA_DA_CONTA_S, log=log) as cliente:
+                       esperar=espera_da_conta, log=log) as cliente:
         cliente.abrir(novo_chat=True)
         for numero in faltam:
             log(f"[serie] retomada: escrevendo a parte {numero}...")
@@ -343,7 +346,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                 cenas_por_parte: int = S.CENAS_POR_PARTE,
                 tema: str | None = None, historia_id: str | None = None,
                 headless: bool = False, config: dict | None = None,
-                tipo: str | None = None, log=print) -> dict:
+                tipo: str | None = None,
+                espera_da_conta: float = ESPERA_DA_CONTA_S,
+                log=print) -> dict:
     """Conduz a conversa inteira e devolve {historia_id, partes, cenas}.
 
     `tipo` (favela, normal, babaca): o molde sai do rodizio DAQUELE tipo.
@@ -365,7 +370,7 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
 
     try:
         with abrir_cliente(provedor, headless=headless,
-                           esperar=ESPERA_DA_CONTA_S, log=log) as cliente:
+                           esperar=espera_da_conta, log=log) as cliente:
             cliente.abrir(novo_chat=True)
             # QUAL MODELO ESCREVEU ESTA HISTORIA. Guardado porque a qualidade
             # mudou de patamar em 08/09/2026 (Flash -> 3.1 Pro, mais molde,
@@ -587,6 +592,9 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
     ultimo = None
     for indice, provedor in enumerate(ordem):
         proximo = ordem[indice + 1] if indice + 1 < len(ordem) else None
+        # CONTA OCUPADA PASSA AO PROXIMO LIVRE (17/09/2026): so o ULTIMO da
+        # lista espera a conta pelo prazo cheio; os outros desistem logo.
+        espera = ESPERA_DA_CONTA_S if proximo is None else ESPERA_CURTA_S
         if ao_tentar:
             ao_tentar(provedor)
         situacao = _situacao(historia_id)
@@ -598,7 +606,7 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
                 feito = retomar_serie(historia_id, provedor=provedor,
                                       cenas_por_parte=cenas_por_parte,
                                       headless=headless, config=config,
-                                      log=log)
+                                      espera_da_conta=espera, log=log)
                 if feito.get("faltam"):
                     raise GeracaoFalhou(
                         f"a retomada com o {provedor} deixou as partes "
@@ -607,7 +615,8 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
             return gerar_serie(provedor=provedor, partes=partes,
                                cenas_por_parte=cenas_por_parte, tema=tema,
                                historia_id=historia_id, headless=headless,
-                               config=config, tipo=tipo, log=log)
+                               config=config, tipo=tipo,
+                               espera_da_conta=espera, log=log)
         except Exception as exc:                               # noqa: BLE001
             ultimo = exc
             historia_id = historia_id or getattr(exc, "historia_id", None)

@@ -22,13 +22,15 @@ RAIZ = Path(__file__).resolve().parents[2]
 ARQUIVO = RAIZ / "config" / "llm.json"
 
 ROTEIRO = "roteiro"            # biblia, aberturas, partes e revisao por parte
-QUALIDADE = "qualidade"        # parecer de folha/video e conserto de cena
+QUALIDADE = "qualidade"        # analise de texto/folha e conserto de cena
+VIDEO = "video"                # parecer que ASSISTE o mp4 (so o Gemini)
 IMAGEM_PROMPT = "imagem_prompt"  # reescrever o prompt que o PicassoIA recusou
 
 # O comportamento de ANTES desta mudanca, para config ausente ou torto.
 PADRAO = {
     ROTEIRO: ["gemini"],
     QUALIDADE: ["gemini", "chatgpt"],
+    VIDEO: ["gemini"],
     IMAGEM_PROMPT: ["chatgpt"],
 }
 CONHECIDOS = ("deepseek", "gemini", "chatgpt")
