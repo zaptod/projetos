@@ -294,6 +294,58 @@ def recuperaveis(canal: str = "builds", token: str | None = None,
     return sorted(escolhido.values(), key=lambda v: v["quando"])
 
 
+JANELA_DO_ID_MIN = 90.0
+
+
+def id_no_canal(canal: str, titulo: str, quando, janela_min: float = None,
+                token: str | None = None) -> str:
+    """O id do video que acabou de subir, perguntado ao CANAL. `""` se nao der.
+
+    POR QUE PRECISA EXISTIR: o publicador pelo navegador nem sempre consegue
+    o id. O Studio as vezes confirma o sucesso sem renderizar o link, e a URL
+    da pagina tambem nao o traz. Medido em 17/09/2026: 16 linhas de YouTube
+    sem `youtube_id`, e o `prova` delas tambem sem — a segunda fonte (a URL)
+    nao salvou NENHUMA. Sem id nao ha metrica, nao ha conferencia por API, e
+    nao ha capa.
+
+    O canal sabe. Casando por TITULO e por JANELA DE TEMPO, as 8 linhas de
+    builds resolveram com 0 minuto de diferenca, e as 3 de historias do dia
+    tambem. (As 5 de historias de 09-10/09 nao tem titulo correspondente no
+    canal — problema diferente, e mais feio: ou foram apagadas, ou nunca
+    subiram.)
+
+    AMBIGUO DEVOLVE VAZIO, nunca um palpite. Duas partes da mesma serie podem
+    dividir o titulo depois de um corte, e gravar o id errado e pior que nao
+    gravar: a metrica passaria a medir outro video, em silencio, para sempre.
+    """
+    from datetime import datetime, timedelta, timezone
+    janela = JANELA_DO_ID_MIN if janela_min is None else janela_min
+    chave = titulos.chave(titulo)
+    if not chave:
+        return ""
+    if isinstance(quando, str):
+        quando = datetime.fromisoformat(quando)
+    if quando.tzinfo is None:
+        # O LEDGER GRAVA HORA LOCAL e o YouTube devolve UTC. Comparar os dois
+        # como se fossem o mesmo relogio daria 180 minutos de diferenca — bem
+        # dentro de uma janela generosa, e casando com o video errado.
+        quando = quando.astimezone()
+
+    perto = []
+    for video in videos_do_canal(canal, token):
+        if titulos.chave(video["titulo"]) != chave:
+            continue
+        try:
+            subiu = datetime.fromisoformat(video["quando"])
+        except ValueError:
+            continue
+        if subiu.tzinfo is None:
+            subiu = subiu.replace(tzinfo=timezone.utc)
+        if abs(subiu - quando) <= timedelta(minutes=janela):
+            perto.append(video["id"])
+    return perto[0] if len(perto) == 1 else ""
+
+
 def tornar_publico(video_id: str, canal: str = "builds",
                    token: str | None = None) -> dict:
     """Privado -> publico, e CONFERE no canal que ficou.

@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -126,20 +127,57 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
         # sucesso tambem. Sem URL o registro entra com `youtube_id: None` e
         # `atualizar()` o ignora — mas o "isto foi publicado" nao se perde.
         publicado = youtube_web.confirmado(estado)
-    if publicado and getattr(video, "capa", None):
-        # Depois do upload, nunca antes: `thumbnails.set` precisa do id do
-        # video. Os dois caminhos devolvem a URL em `estado`.
+    video_id = ""
+    if publicado:
+        # TRES FONTES PARA O ID, e elas nao sao redundantes: cada uma cobre o
+        # caso em que a anterior nao responde.
+        #
+        # 1. a URL devolvida pelo publicador (o caminho normal);
+        # 2. o laudo, que o `youtube_web` preenche tambem a partir da URL da
+        #    pagina do Studio;
+        # 3. o CANAL, perguntado pela API.
+        #
+        # A terceira entrou em 17/09/2026, depois de medir que as duas
+        # primeiras falham juntas: 16 linhas de YouTube sem `youtube_id` e
+        # com o `prova` igualmente vazio. Sem id nao ha metrica, nao ha
+        # conferencia por API e nao ha capa — e o video fica invisivel para
+        # tudo que nao seja o olho humano.
         achado = _ID_NA_URL.search(str(estado) or "")
-        if achado:
-            definir_capa(achado.group(1), video.capa, canal=canal, log=fala)
+        video_id = (achado.group(1) if achado else "") or laudo.get(
+            "youtube_id") or ""
+        if not video_id:
+            try:
+                from . import recuperar
+                video_id = recuperar.id_no_canal(
+                    canal, getattr(video, "titulo", ""), datetime.now())
+                if video_id:
+                    laudo["youtube_id"] = video_id
+                    laudo["id_veio_do_canal"] = True
+                    fala(f"  id pelo canal: {video_id}")
+                else:
+                    fala("  o canal nao identificou o video sem ambiguidade")
+            except Exception as erro:                          # noqa: BLE001
+                # PERGUNTAR E EXTRA. Publicacao feita nao pode virar falha
+                # porque a consulta de conferencia nao respondeu.
+                fala(f"  nao consegui perguntar o id ao canal ({erro})")
+    if publicado and getattr(video, "capa", None):
+        # Depois do upload, nunca antes: `thumbnails.set` precisa do id.
+        if video_id:
+            definir_capa(video_id, video.capa, canal=canal, log=fala)
         else:
-            fala("  capa: o upload nao devolveu a URL, entao nao ha id")
+            fala("  capa: nao ha id do video, entao nao da para enviar")
     if publicado:
         from . import metricas
         metricas.registrar_publicado(
             video, estado, "youtube", canal=canal,
             extra={"visibilidade": _visibilidade_efetiva(kw, config),
                    "via": caminho,
+                   # O ID VAI PARA A LINHA, e nao so para o laudo:
+                   # `registrar_publicacao` o extrai da URL, e sem URL a
+                   # linha nascia com `youtube_id: null` — invisivel para a
+                   # metrica para sempre. `extra` sobrescreve depois do
+                   # calculo, entao esta chave chega inteira.
+                   **({"youtube_id": video_id} if video_id else {}),
                    # SEMPRE lista, mesmo com um upload so: nas historias uma
                    # parte longa vira dois Shorts, e dois formatos de campo
                    # no mesmo ledger seria a proxima pergunta sem resposta
