@@ -86,6 +86,76 @@ class TetoPorFonteTests(unittest.TestCase):
         self.assertEqual({"h3"}, postar._fontes_cheias_hoje(linhas))
 
 
+class TetoNaRodadaNORMALTests(unittest.TestCase):
+    """O teto vale para o PERFIL INTEIRO (decisao do Adrian, 17/09).
+
+    Ele so valia em `_fila_do_tiktok`, ou seja, na recuperacao e na reserva.
+    A rodada NORMAL — que leva a parte do horario aos dois destinos — nao
+    passava por ele, e a fila de historias prefere "terminar a serie
+    comecada": sozinha, uma historia ocupava ate seis horarios num dia. Foi
+    parte do que ele viu em 16/09, e nao so a recuperacao.
+    """
+
+    def setUp(self):
+        self.addCleanup(setattr, postar, "_publicados_do_canal",
+                        postar._publicados_do_canal)
+        self.addCleanup(setattr, postar, "_linha", postar._linha)
+        postar._linha = lambda *_a, **_k: None
+
+    def _fila(self, ids, ledger):
+        postar._publicados_do_canal = lambda _c: ledger
+        return [v.id for v in postar._sem_fonte_cheia(
+            [_V(i) for i in ids], "historias")]
+
+    def test_historia_que_ja_saiu_duas_vezes_hoje_sai_da_fila(self):
+        ledger = [_tiktok("h3:celular:p01", f"{HOJE}T10:00"),
+                  _tiktok("h3:celular:p02", f"{HOJE}T12:00")]
+        self.assertEqual(["h4:celular:p01"],
+                         self._fila(["h3:celular:p03", "h4:celular:p01"],
+                                    ledger))
+
+    def test_o_teto_conta_o_YOUTUBE_tambem(self):
+        """Basta um destino cheio: publicar so no outro deixaria a serie meio
+        publicada, com a parte N num lugar e nao no outro."""
+        ledger = [{"video_id": "h3:celular:p01", "plataforma": "youtube",
+                   "quando": f"{HOJE}T10:00", "titulo": "x", "url": "u"},
+                  {"video_id": "h3:celular:p02", "plataforma": "youtube",
+                   "quando": f"{HOJE}T12:00", "titulo": "y", "url": "u"}]
+        self.assertEqual([], self._fila(["h3:celular:p03"], ledger))
+
+    def test_uma_saida_hoje_nao_barra(self):
+        ledger = [_tiktok("h3:celular:p01", f"{HOJE}T10:00")]
+        self.assertEqual(["h3:celular:p02"],
+                         self._fila(["h3:celular:p02"], ledger))
+
+    def test_TODAS_cheias_devolve_vazio(self):
+        """Horario sem post e melhor que empilhar a mesma serie."""
+        ledger = [_tiktok("h3:celular:p01", f"{HOJE}T10:00"),
+                  _tiktok("h3:celular:p02", f"{HOJE}T12:00")]
+        self.assertEqual([], self._fila(["h3:celular:p03"], ledger))
+
+    def test_ledger_ilegivel_NAO_barra_a_rodada(self):
+        def explode(_c):
+            raise OSError("ledger ilegivel")
+        postar._publicados_do_canal = explode
+        self.assertEqual(
+            ["h3:celular:p01"],
+            [v.id for v in postar._sem_fonte_cheia(
+                [_V("h3:celular:p01")], "historias")])
+
+
+class SoContaOQueSaiuTests(unittest.TestCase):
+    def test_linha_nao_publicada_nao_fecha_a_fonte(self):
+        """Tentativa que falhou nao ocupa lugar no perfil."""
+        linhas = [{"video_id": "h3:celular:p01", "plataforma": "tiktok",
+                   "quando": f"{HOJE}T10:00", "titulo": "x",
+                   "url": "", "publicado": False},
+                  {"video_id": "h3:celular:p02", "plataforma": "tiktok",
+                   "quando": f"{HOJE}T12:00", "titulo": "y",
+                   "url": "", "publicado": False}]
+        self.assertEqual(set(), postar._fontes_cheias_hoje(linhas))
+
+
 class RodizioTests(unittest.TestCase):
     def test_alterna_entre_historias(self):
         fila = [_V("h3:p01"), _V("h3:p02"), _V("h3:p03"),

@@ -180,6 +180,16 @@ def fila_de_historias() -> list:
     # colidem. Entra pela simetria e por UM caso real possivel: uma historia
     # recriada com outro numero sai com o mesmo titulo da anterior, e o id
     # novo passaria pela deduplicacao sem ninguem notar.
+    # O TETO POR HISTORIA VALE PARA O PERFIL INTEIRO, e nao so para a
+    # recuperacao (decisao do Adrian, 17/09/2026). Esta fila leva a parte do
+    # horario aos DOIS destinos, e ela prefere "terminar a serie comecada" —
+    # entao, sozinha, uma historia ocupava ate seis horarios num dia. Foi
+    # parte do que ele viu no perfil em 16/09, e nao so a recuperacao.
+    #
+    # A ordem das partes DENTRO da serie continua sagrada: o teto so decide
+    # QUAL serie anda hoje, nunca em que ordem as partes dela saem.
+    fila = _sem_fonte_cheia(fila, "historias")
+
     novos, repetidos = _sem_titulo_repetido(fila, "historias")
     if repetidos:
         _linha(f"[postar] {len(repetidos)} parte(s) fora da fila por titulo "
@@ -728,6 +738,37 @@ def _fontes_de_atraso(canal: str):
 VARIANTES = (":B",)
 
 
+def _sem_fonte_cheia(fila: list, canal: str) -> list:
+    """Tira da fila as historias/geracoes que ja bateram o teto HOJE.
+
+    O teto vale por DESTINO, e a rodada normal leva o video aos dois. Basta
+    um deles estar cheio para a fonte sair: publicar so no YouTube deixaria a
+    serie meio publicada, com a parte N num destino e nao no outro — pior que
+    esperar o dia virar.
+
+    Se TODAS as fontes estiverem cheias, devolve vazio e o horario fica sem
+    post, pela mesma regra do titulo repetido: repetir (ou empilhar a mesma
+    serie) e pior que nao postar.
+    """
+    if not fila:
+        return fila
+    try:
+        publicados = _publicados_do_canal(canal)
+    except Exception:                                          # noqa: BLE001
+        return fila                    # "nao sei" nao pode barrar a rodada
+    cheias = (_fontes_cheias_hoje(publicados, "tiktok")
+              | _fontes_cheias_hoje(publicados, "youtube"))
+    if not cheias:
+        return fila
+    livres = [v for v in fila if str(v.id).split(":")[0] not in cheias]
+    barradas = len(fila) - len(livres)
+    if barradas:
+        _linha(f"[postar] {barradas} parte(s) fora da fila: a historia ja "
+               f"saiu {TETO_POR_FONTE_NO_DIA}x hoje "
+               f"({', '.join(sorted(cheias)[:3])}).")
+    return livres
+
+
 def _fontes_cheias_hoje(publicados, plataforma: str = "tiktok") -> set:
     """As fontes que ja bateram o teto do dia naquele destino.
 
@@ -740,10 +781,16 @@ def _fontes_cheias_hoje(publicados, plataforma: str = "tiktok") -> set:
     """
     from collections import Counter
     from datetime import datetime
+    from builds.publicar import metricas
     hoje = datetime.now().strftime("%Y-%m-%d")
     contagem = Counter()
     for linha in publicados or ():
         if linha.get("plataforma") != plataforma:
+            continue
+        # SO O QUE DE FATO SAIU. Linha de tentativa que nao virou publicacao
+        # nao ocupa lugar no perfil, e contar ela fecharia a fonte por causa
+        # de uma falha.
+        if not metricas.publicado(linha):
             continue
         if not (linha.get("quando") or "").startswith(hoje):
             continue
@@ -1672,6 +1719,11 @@ def proximo_build(config=None):
     # e a variante "gancho B", que tem id com sufixo `:B` e o mesmo titulo —
     # para a deduplicacao por `video_id` sao dois videos, para o YouTube sao
     # dois iguais, competindo pelo mesmo termo de busca.
+    # O mesmo teto das historias, por geracao: 2 por dia no perfil.
+    pendentes = _sem_fonte_cheia(pendentes, "builds")
+    if not pendentes:
+        return None
+
     novos, repetidos = _sem_titulo_repetido(pendentes, "builds", config)
     if repetidos:
         _linha(f"[postar] {len(repetidos)} build(s) fora da fila por titulo "

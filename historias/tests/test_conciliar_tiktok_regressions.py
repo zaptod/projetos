@@ -163,6 +163,51 @@ class LinhasAImportarTests(unittest.TestCase):
             studio, [b], {"g67:build:celular"}, {"111"})
         self.assertEqual(["222"], [n["tiktok_id"] for n in novas])
 
+    def test_post_com_linha_REAL_por_perto_ja_tem_dono(self):
+        """As seis linhas falsas de 17/09 vieram daqui.
+
+        A primeira versao so marcava como usado o post que tinha `tiktok_id`,
+        e as linhas do caminho normal NAO tem esse campo. Entao a principal
+        saia dos candidatos (ja tinha linha) e a `:B` ficava sozinha na chave
+        e herdava o post dela. Dois posts nao acontecem no mesmo segundo: se
+        ha linha de TikTok a menos de 120 s, o post ja tem dono.
+        """
+        quando = 1757000000
+        studio = [_post("111", "Erik — build 87/100", quando)]
+        b = _V("g67:build:celular:B", "Erik — build 87/100")
+        novas = conciliar.linhas_a_importar(
+            studio, [b], {"g67:build:celular"},
+            set(),                       # a linha real nao tem tiktok_id...
+            [quando + 2])                # ...mas tem hora, e ela basta
+        self.assertEqual([], novas, "a :B herdou o post da principal")
+
+    def test_post_longe_no_tempo_continua_importavel(self):
+        quando = 1757000000
+        studio = [_post("111", "Erik — build 87/100", quando)]
+        b = _V("g67:build:celular:B", "Erik — build 87/100")
+        novas = conciliar.linhas_a_importar(
+            studio, [b], {"g67:build:celular"}, set(), [quando + 9999])
+        self.assertEqual(["111"], [n["tiktok_id"] for n in novas])
+
+    def test_marca_de_DUAS_GERACOES_nao_se_importa(self):
+        """Nos builds a legenda nao tem "Parte", e geracoes diferentes
+        compartilham os 70 primeiros caracteres: 118 videos para 90 marcas.
+        Foi assim que o generation_00027 recebeu um post do 00024."""
+        studio = [_post("111", "Aventura sem fim no coliseu de pedra")]
+        a = _V("g24:build:celular", "Aventura sem fim no coliseu de pedra")
+        b = _V("g27:build:celular", "Aventura sem fim no coliseu de pedra")
+        self.assertEqual([], conciliar.linhas_a_importar(studio, [a, b], set()),
+                         "nao da para saber de quem e; nenhum recebe")
+
+    def test_variantes_da_MESMA_geracao_nao_sao_ambiguidade(self):
+        """O par A/B e resolvido de proposito: fica a principal."""
+        studio = [_post("111", "Erik — build 87/100")]
+        a = _V("g67:build:celular", "Erik — build 87/100")
+        b = _V("g67:build:celular:B", "Erik — build 87/100")
+        novas = conciliar.linhas_a_importar(studio, [a, b], set())
+        self.assertEqual(["g67:build:celular"],
+                         [n["video_id"] for n in novas])
+
     def test_studio_vazio_nao_importa_nada(self):
         v = _V("h3:celular:p07", f"{GANCHO}\n\nParte 7 de 10 — x")
         self.assertEqual([], conciliar.linhas_a_importar([], [v], set()))

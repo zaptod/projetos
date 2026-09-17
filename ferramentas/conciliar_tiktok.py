@@ -79,9 +79,53 @@ def _principal(a, b):
     return b if str(a.id).endswith(":B") and not str(b.id).endswith(":B") else a
 
 
+JANELA_S = 120
+
+
+def _posts_ja_com_dono(linhas_do_ledger: list) -> tuple:
+    """(tiktok_ids ja atribuidos, instantes de post ja ocupados).
+
+    O SEGUNDO CONJUNTO E O QUE FALTAVA, e ele custou seis linhas falsas no
+    ledger. A primeira versao so marcava como usado o post que tinha
+    `tiktok_id` — mas as linhas do caminho normal NAO tem esse campo. Entao a
+    principal saia dos candidatos (ja tinha linha) e a variante `:B` ficava
+    sozinha na chave e HERDAVA o post dela.
+
+    Dois posts distintos nao acontecem no mesmo segundo. Se ja existe linha
+    de TikTok a menos de 120 s daquele instante, o post ja tem dono — mesmo
+    que ninguem tenha anotado o id.
+    """
+    ids, quandos = set(), []
+    for l in linhas_do_ledger or ():
+        if l.get("plataforma") != "tiktok":
+            continue
+        if l.get("tiktok_id"):
+            ids.add(l["tiktok_id"])
+        try:
+            quandos.append(datetime.fromisoformat(l["quando"]).timestamp())
+        except Exception:                                      # noqa: BLE001
+            continue
+    return ids, quandos
+
+
+def _tem_dono(item: dict, ids: set, quandos: list) -> bool:
+    if item.get("tiktok_id") in ids:
+        return True
+    try:
+        t = float(item.get("post_time") or 0)
+    except (TypeError, ValueError):
+        return False
+    return any(abs(q - t) <= JANELA_S for q in quandos)
+
+
+def _fonte_de(video) -> str:
+    """A geracao/historia, sem a variante: `g67:build:celular:B` -> `g67`."""
+    return str(getattr(video, "id", "")).split(":")[0]
+
+
 def linhas_a_importar(itens_do_studio: list, videos: list,
-                      ja_no_tiktok: set, ids_ja_usados: set | None = None
-                      ) -> list:
+                      ja_no_tiktok: set, ids_ja_usados: set | None = None,
+                      quandos_ja_usados: list | None = None) -> list:
     """O que falta no ledger. Sem tocar em disco — e por isso e testavel.
 
     `ids_ja_usados` sao os `tiktok_id` que JA pertencem a alguem no ledger, e
@@ -94,13 +138,22 @@ def linhas_a_importar(itens_do_studio: list, videos: list,
     primeira ter gravado. A conferencia de idempotencia pagou sozinha.
     """
     usados = set(ids_ja_usados or ())
+    quandos = list(quandos_ja_usados or ())
     indice = {}
     for item in itens_do_studio or ():
-        if item.get("tiktok_id") in usados:
+        if _tem_dono(item, usados, quandos):
             continue
         indice.setdefault(marca(item.get("legenda")), item)
 
-    escolhidos: dict = {}
+    # MARCA AMBIGUA NAO SE IMPORTA. Nos builds a legenda nao tem "Parte", e
+    # geracoes DIFERENTES compartilham os 70 primeiros caracteres: medido em
+    # 17/09, 118 videos para 90 marcas, com grupos como 00025/26/28/29 e
+    # 00024/27. O `escolhidos[chave]` entregava o post ao primeiro do
+    # catalogo, e foi assim que o 00027 recebeu um post do 00024.
+    #
+    # Variante da MESMA geracao nao e ambiguidade: e o par A/B, e ali o
+    # criterio (fica a principal) e deliberado.
+    candidatos: dict = {}
     for v in videos or ():
         if v.id in ja_no_tiktok:
             continue
@@ -108,7 +161,16 @@ def linhas_a_importar(itens_do_studio: list, videos: list,
                       getattr(v, "titulo", ""))
         if chave not in indice:
             continue
-        escolhidos[chave] = _principal(escolhidos.get(chave), v)
+        candidatos.setdefault(chave, []).append(v)
+
+    escolhidos: dict = {}
+    for chave, lista in candidatos.items():
+        if len({_fonte_de(v) for v in lista}) > 1:
+            continue                    # fontes diferentes: nao da para saber
+        escolhido = None
+        for v in lista:
+            escolhido = _principal(escolhido, v)
+        escolhidos[chave] = escolhido
 
     novas = []
     for chave, v in escolhidos.items():
@@ -145,9 +207,9 @@ def _catalogo(canal: str) -> list:
     return [v for v in C.listar() if getattr(v, "perfil", "") == "celular"]
 
 
-def _ja_no_tiktok(caminho: Path) -> tuple:
-    """(video_ids que ja tem linha de TikTok, tiktok_ids ja atribuidos)."""
-    videos, posts = set(), set()
+def _ledger_lido(caminho: Path) -> tuple:
+    """(linhas, video_ids com linha de TikTok)."""
+    linhas, videos = [], set()
     for bruta in caminho.read_text(encoding="utf-8").splitlines():
         if not bruta.strip():
             continue
@@ -155,13 +217,10 @@ def _ja_no_tiktok(caminho: Path) -> tuple:
             linha = json.loads(bruta)
         except ValueError:
             continue
-        if linha.get("plataforma") != "tiktok":
-            continue
-        if linha.get("video_id"):
+        linhas.append(linha)
+        if linha.get("plataforma") == "tiktok" and linha.get("video_id"):
             videos.add(linha["video_id"])
-        if linha.get("tiktok_id"):
-            posts.add(linha["tiktok_id"])
-    return videos, posts
+    return linhas, videos
 
 
 def main(argv=None) -> int:
@@ -183,8 +242,10 @@ def main(argv=None) -> int:
             print(f"--- {canal}: sem captura, pulei.")
             continue
         caminho = metricas.registro_do_canal(canal)
-        vistos, usados = _ja_no_tiktok(caminho)
-        novas = linhas_a_importar(itens, _catalogo(canal), vistos, usados)
+        do_ledger, vistos = _ledger_lido(caminho)
+        usados, quandos = _posts_ja_com_dono(do_ledger)
+        novas = linhas_a_importar(itens, _catalogo(canal), vistos,
+                                  usados, quandos)
         print(f"--- {canal}: {len(itens)} no Studio, {len(novas)} a importar")
         for n in novas:
             print(f"      {n['quando'][:16]}  {n['video_id']:34} "
@@ -195,7 +256,14 @@ def main(argv=None) -> int:
         # A TRAVA E A MESMA DE TODO ESCRITOR DO LEDGER, e a copia vem antes de
         # qualquer escrita: importar errado e pior que nao importar, porque
         # marca como publicado um video que ninguem viu.
-        with travas.trava(metricas.nome_da_trava(canal), esperar=60.0):
+        # A TRAVA DEVOLVE BOOL, e ignorar isso e escrever por cima de quem
+        # esta reescrevendo o ledger. Esta ferramenta pode esperar: abortar e
+        # sempre melhor que um append no meio de uma reescrita.
+        with travas.trava(metricas.nome_da_trava(canal), esperar=60.0) as peguei:
+            if peguei is False:
+                print(f"      NAO peguei a trava de {canal}; abortei "
+                      f"(rode de novo depois).")
+                continue
             carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
             copia = caminho.with_suffix(f".jsonl.antes-{carimbo}")
             shutil.copy2(caminho, copia)

@@ -44,7 +44,14 @@ RAIZ = Path(__file__).resolve().parents[1]
 BASELINE = Path(__file__).resolve().parent / "arquitetura_baseline.json"
 
 IGNORAR = ("__pycache__", ".venv", "venv", "build", "dist", ".git",
-           ".ruff_cache", ".pytest_cache", "node_modules", ".browser_profile")
+           ".ruff_cache", ".pytest_cache", "node_modules", ".browser_profile",
+           # COPIA DO REPOSITORIO, e nao codigo novo. Desde 17/09/2026 ha
+           # sessoes trabalhando em `git worktree` sob `.claude/worktrees/`,
+           # e o auditor contava cada arquivo DUAS vezes: as "cirurgias de
+           # sys.path" pularam de 2 (o teto) para 7 sem ninguem ter escrito
+           # uma linha. Vermelho falso e caro — ele ensina a ignorar
+           # vermelho, que e o oposto do que a catraca existe para fazer.
+           ".claude")
 
 # Mutacao de sys.path que e legitima e nao entra na conta. Mantenha esta
 # lista CURTA e com o motivo escrito - allowlist que cresce sem justificativa
