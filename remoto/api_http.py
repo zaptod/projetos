@@ -37,6 +37,7 @@ esquecido nela ja quebrou o login.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import hmac
 import ipaddress
@@ -98,7 +99,39 @@ def caminho() -> Path:
     return Path(ARQUIVO) if ARQUIVO else runtime_dir() / "app_celular.json"
 
 
-_TRAVA_CONFIG = threading.Lock()
+_TRAVA_THREADS = threading.Lock()
+
+
+@contextlib.contextmanager
+def _trava_config():
+    """Uma escrita por vez no json — entre threads E entre processos.
+
+    O servidor e o `--parear`/`--esquecer` sao processos diferentes: sem a
+    trava de arquivo, o `--esquecer` podia ler, o servidor gravar um
+    pareamento, e o `--esquecer` gravar por cima (o celular novo sumia).
+    O `.lock` so guarda o byte trancado; o conteudo nao importa.
+    """
+    alvo = caminho().with_suffix(".lock")
+    alvo.parent.mkdir(parents=True, exist_ok=True)
+    with _TRAVA_THREADS, open(alvo, "a+b") as fh:
+        if os.name == "nt":
+            import msvcrt
+            fh.seek(0)
+            # LK_LOCK tenta por ~10 s e entao levanta: melhor que esperar
+            # para sempre um processo travado.
+            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        else:                                            # pragma: no cover
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 def ler_config() -> dict:
@@ -130,7 +163,7 @@ def novo_codigo(agora: float | None = None) -> str:
     """Gera e grava (so o hash) um codigo de pareamento. Devolve o codigo."""
     codigo = f"{secrets.randbelow(10**6):06d}"
     agora = time.time() if agora is None else agora
-    with _TRAVA_CONFIG:
+    with _trava_config():
         dados = ler_config()
         dados["pareamento"] = {"hash": _hash(codigo),
                                "expira": agora + CODIGO_VALE_S,
@@ -143,7 +176,7 @@ def trocar_codigo(codigo: str, nome: str, agora: float | None = None) -> str | N
     """Codigo certo e dentro do prazo -> token novo (e o codigo morre)."""
     agora = time.time() if agora is None else agora
     codigo = re.sub(r"\D", "", str(codigo or ""))
-    with _TRAVA_CONFIG:
+    with _trava_config():
         dados = ler_config()
         pedido = dados.get("pareamento")
         if not pedido or agora > float(pedido.get("expira", 0)):
@@ -162,6 +195,31 @@ def trocar_codigo(codigo: str, nome: str, agora: float | None = None) -> str | N
         dados["pareamento"] = None
         gravar_config(dados)
     return token
+
+
+def id_do_aparelho(aparelho: dict) -> str:
+    """Id curto e estavel: o comeco do hash (o nome pode repetir)."""
+    return str(aparelho.get("hash", ""))[:8]
+
+
+def aparelhos() -> list[dict]:
+    return [{"id": id_do_aparelho(a), "nome": a.get("nome", ""),
+             "criado": a.get("criado", "")} for a in ler_config()["aparelhos"]]
+
+
+def esquecer(id_curto: str) -> int:
+    """Tira da lista o aparelho com esse id. Devolve quantos saíram."""
+    id_curto = str(id_curto or "").strip().lower()
+    if len(id_curto) < 8:
+        return 0
+    with _trava_config():
+        dados = ler_config()
+        antes = len(dados["aparelhos"])
+        dados["aparelhos"] = [a for a in dados["aparelhos"]
+                              if id_do_aparelho(a) != id_curto]
+        if len(dados["aparelhos"]) != antes:
+            gravar_config(dados)
+    return antes - len(dados["aparelhos"])
 
 
 def aparelho_existe(hash_token: str) -> bool:
@@ -617,7 +675,8 @@ def main(argv=None) -> int:
     parser.add_argument("--porta", type=int, default=None)
     parser.add_argument("--parear", action="store_true")
     parser.add_argument("--aparelhos", action="store_true")
-    parser.add_argument("--esquecer", metavar="NOME")
+    parser.add_argument("--esquecer", metavar="ID",
+                        help="o id de 8 letras que --aparelhos mostra")
     args = parser.parse_args(argv)
 
     if args.parear:
@@ -626,18 +685,17 @@ def main(argv=None) -> int:
         print("No app, toque em Parear e digite o código.")
         return 0
     if args.aparelhos:
-        for aparelho in ler_config()["aparelhos"]:
-            print(f"{aparelho.get('nome')}  desde {aparelho.get('criado')}")
+        lista = aparelhos()
+        for aparelho in lista:
+            print(f"{aparelho['id']}  {aparelho['nome']}  desde {aparelho['criado']}")
+        if not lista:
+            print("nenhum aparelho pareado")
         return 0
     if args.esquecer:
-        with _TRAVA_CONFIG:
-            dados = ler_config()
-            antes = len(dados["aparelhos"])
-            dados["aparelhos"] = [a for a in dados["aparelhos"]
-                                  if a.get("nome") != args.esquecer]
-            gravar_config(dados)
-        print(f"removidos: {antes - len(dados['aparelhos'])}")
-        return 0
+        saiu = esquecer(args.esquecer)
+        print(f"removidos: {saiu}" if saiu else
+              "nenhum aparelho com esse id (veja --aparelhos)")
+        return 0 if saiu else 1
 
     porta = args.porta or int(ler_config()["porta"])
     host = "127.0.0.1" if args.local else ip_do_tailscale()

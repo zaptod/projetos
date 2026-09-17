@@ -10,6 +10,8 @@ from __future__ import annotations
 import http.client
 import json
 import socket
+import subprocess
+import sys
 import threading
 import time
 import types
@@ -65,6 +67,7 @@ def mundo(tmp_path, monkeypatch):
     monkeypatch.setattr(painel_dados, "_controle", lambda: _ControleFalso())
     monkeypatch.setattr(painel_dados, "_grade", lambda: _GradeFalsa())
     monkeypatch.setattr(painel_dados._Previsao, "disponivel", staticmethod(lambda: False))
+    monkeypatch.setattr(painel_dados, "_RELATORIOS_CACHE", {})
 
     saida = tmp_path / "outputs"
     (saida / "generation_00001").mkdir(parents=True)
@@ -355,7 +358,8 @@ def test_esquecer_revoga_os_bilhetes_do_aparelho(servidor, capsys):
     url = json.loads(dados)["url"]
     resp, _ = _pedir(servidor, "GET", url, cabecalhos={"Range": "bytes=0-9"})
     assert resp.status == 206
-    assert api_http.main(["--esquecer", "moto"]) == 0
+    (aparelho,) = api_http.aparelhos()
+    assert api_http.main(["--esquecer", aparelho["id"]]) == 0
     resp, _ = _pedir(servidor, "GET", url, cabecalhos={"Range": "bytes=0-9"})
     assert resp.status == 403
     resp, _ = _pedir(servidor, "GET", "/api/estado", token=token)
@@ -450,3 +454,74 @@ def test_intervalo(cabecalho, total, esperado):
 
 def test_intervalo_nunca_passa_da_fatia():
     assert api_http.intervalo("bytes=0-", 10**9) == (0, api_http.FATIA_MAX - 1)
+
+
+# ------------------------------------------------------- aparelhos e trava
+def test_esquecer_pelo_id_e_nao_pelo_nome(mundo):
+    primeiro = api_http.trocar_codigo(api_http.novo_codigo(), "moto")
+    segundo = api_http.trocar_codigo(api_http.novo_codigo(), "moto")
+    lista = api_http.aparelhos()
+    assert [a["nome"] for a in lista] == ["moto", "moto"]
+    assert all(len(a["id"]) == 8 for a in lista)
+    assert api_http.esquecer("moto") == 0
+    assert api_http.esquecer(lista[0]["id"][:4]) == 0          # curto demais
+    assert api_http.esquecer(lista[0]["id"].upper()) == 1
+    assert api_http.aparelho_do_token(primeiro) is None
+    assert api_http.aparelho_do_token(segundo) == "moto"
+    assert api_http.main(["--esquecer", "00000000"]) == 1
+
+
+def test_trava_do_json_vale_entre_processos(mundo):
+    alvo = api_http.caminho()
+    segurar = (
+        "import sys, time\n"
+        "from remoto import api_http\n"
+        f"api_http.ARQUIVO = {str(alvo)!r}\n"
+        "with api_http._trava_config():\n"
+        "    print('peguei', flush=True)\n"
+        "    time.sleep(1.5)\n"
+    )
+    outro = subprocess.Popen([sys.executable, "-c", segurar],
+                             stdout=subprocess.PIPE, text=True,
+                             cwd=str(Path(api_http.__file__).parents[1]))
+    try:
+        assert outro.stdout.readline().strip() == "peguei"
+        inicio = time.monotonic()
+        api_http.novo_codigo()
+        assert time.monotonic() - inicio > 1.0      # esperou o outro soltar
+    finally:
+        outro.wait(timeout=20)
+
+
+# ------------------------------------------------------------- filtro
+@pytest.mark.parametrize("entrada,esperado", [
+    ("falhou em https://x.com/a?token=abc agora", "falhou em [link] agora"),
+    ("C:\\Users\\adrian\\AppData\\x.txt", "C:\\Users\\…\\AppData\\x.txt"),
+    ("C:/Users/Adrian Silva/x", "C:/Users/…/x"),
+    ("chave ya29.A0ARrdaM_abcdefghijklmnopqrstuvwxyz0123456789 fim",
+     "chave ya29.[…] fim"),
+    ("historia_00017:celular:p06 parte 3", "historia_00017:celular:p06 parte 3"),
+    ("E:\\projetos\\historias\\outputs", "E:\\projetos\\historias\\outputs"),
+    (None, ""),
+])
+def test_limpar(entrada, esperado):
+    assert painel_dados.limpar(entrada) == esperado
+
+
+def test_diario_e_relatorio_saem_limpos(servidor, mundo, monkeypatch):
+    token = _parear(servidor)
+    mundo.atividade.EVENTOS = [{"ts": "2026-09-17T11:00:00", "fabrica": "estudio",
+                                "status": "erro",
+                                "detalhe": "C:\\Users\\adrian\\x https://a.b/c"}]
+    _, dados = _pedir(servidor, "GET", "/api/diario", token=token)
+    assert "adrian" not in dados.decode() and "a.b" not in dados.decode()
+
+    from remoto import relatorios
+    chamadas = []
+    monkeypatch.setattr(relatorios, "montar",
+                        lambda nome: chamadas.append(nome) or "ver https://x.y/z")
+    for _ in range(3):
+        _, dados = _pedir(servidor, "GET", "/api/relatorio/funcionamento",
+                          token=token)
+        assert json.loads(dados) == {"texto": "ver [link]"}
+    assert chamadas == ["funcionamento"]             # guardado, sem refazer

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -35,6 +36,25 @@ RELATORIOS = ("metas", "funcionamento", "confiabilidade", "auditoria")
 MAX_EVENTOS = 200
 PREVISAO_VALE_S = 120.0
 PREVISAO_TIMEOUT_S = 180
+RELATORIO_VALE_S = 120.0
+
+
+# ---------------------------------------------------------------- filtro
+# O que sai para o celular e texto que o diario e os relatorios escreveram
+# para uma tela local. Tres coisas nao precisam viajar: links (podem ter
+# token na consulta), sequencias longas tipo chave/base64, e o nome do
+# usuario do Windows dentro de caminhos.
+_URL = re.compile(r"\b(?:https?|wss?|file)://\S+", re.I)
+_CHAVE = re.compile(r"(?<![\w/+=-])[A-Za-z0-9+/_=-]{32,}(?![\w/+=-])")
+# Ate a proxima barra, com espacos: "Adrian Silva" sairia pela metade.
+_USUARIO = re.compile(r"(?i)([a-z]:[\\/]+users[\\/]+)[^\\/\r\n\"']+")
+
+
+def limpar(texto) -> str:
+    texto = str(texto or "")
+    texto = _URL.sub("[link]", texto)
+    texto = _USUARIO.sub(lambda m: m.group(1) + "…", texto)
+    return _CHAVE.sub("[…]", texto)
 
 
 # --------------------------------------------------------------- fontes
@@ -82,7 +102,7 @@ def fabricas() -> list[dict]:
                       "emoji": dados.get("emoji", ""),
                       "faz": dados.get("faz", ""),
                       "status": info.get("status", "ocioso"),
-                      "detalhe": info.get("detalhe") or "",
+                      "detalhe": limpar(info.get("detalhe")),
                       "canal": info.get("canal") or "",
                       "ha_s": info.get("ha_s")})
     return saida
@@ -91,7 +111,7 @@ def fabricas() -> list[dict]:
 def pausa() -> dict:
     estado = _controle().estado()
     return {"situacao": estado.get("situacao", ""),
-            "resumo": estado.get("resumo", ""),
+            "resumo": limpar(estado.get("resumo")),
             "alvos": sorted((estado.get("pausas") or {}).keys())}
 
 
@@ -123,8 +143,8 @@ def _evento(evento: dict) -> dict:
             "emoji": fabrica.get("emoji", ""),
             "status": str(evento.get("status", "")),
             "canal": str(evento.get("canal", "")),
-            "etapa": str(evento.get("etapa", "")),
-            "detalhe": str(evento.get("detalhe", ""))[:300],
+            "etapa": limpar(evento.get("etapa", "")),
+            "detalhe": limpar(evento.get("detalhe", ""))[:300],
             "dur_s": evento.get("dur_s")}
 
 
@@ -160,7 +180,8 @@ def _video(canal: str, video) -> dict:
             "partes": getattr(video, "partes", None),
             "bytes": int(getattr(video, "bytes", 0) or 0),
             "quando": float(getattr(video, "quando", 0.0) or 0.0),
-            "pendencias": list(getattr(video, "pendencias", []) or [])}
+            "pendencias": [limpar(x) for x in
+                           getattr(video, "pendencias", []) or []]}
 
 
 def videos(quantos: int = 40) -> list[dict]:
@@ -207,11 +228,28 @@ def arquivo_do_video(canal: str, video_id: str) -> Path | None:
 
 
 # ------------------------------------------------------------ relatorios
+_RELATORIOS_CACHE: dict[str, tuple] = {}
+_RELATORIOS_TRAVA = threading.Lock()
+
+
 def relatorio(nome: str) -> str | None:
+    """O texto do bot, limpo, guardado por RELATORIO_VALE_S.
+
+    O "funcionamento" consulta a rede; a tela pode ser aberta muitas vezes
+    seguidas e nao precisa refazer isso a cada toque.
+    """
     if nome not in RELATORIOS:
         return None
+    agora = time.time()
+    with _RELATORIOS_TRAVA:
+        guardado = _RELATORIOS_CACHE.get(nome)
+    if guardado and agora - guardado[1] < RELATORIO_VALE_S:
+        return guardado[0]
     from . import relatorios
-    return relatorios.montar(nome)
+    texto = limpar(relatorios.montar(nome))
+    with _RELATORIOS_TRAVA:
+        _RELATORIOS_CACHE[nome] = (texto, agora)
+    return texto
 
 
 # -------------------------------------------------------------- previsao
@@ -246,6 +284,8 @@ class _Previsao:
                 creationflags=NO_WINDOW).stdout or ""
             linhas = [l for l in saida.splitlines() if l.strip()]
             valor = json.loads(linhas[-1]) if linhas else {"falhou": "sem saida"}
+            valor["avisos"] = [limpar(a) for a in valor.get("avisos") or []]
+            valor["erros"] = [limpar(e) for e in valor.get("erros") or []]
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             valor = {"falhou": f"{type(exc).__name__}"}
         with self._trava:
