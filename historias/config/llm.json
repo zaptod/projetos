@@ -1,0 +1,12 @@
+{
+    "_comment": "Quem faz o que entre os LLMs (16/09/2026, decisao do Adrian). Cada lista e uma ORDEM DE QUEDA: o primeiro tenta; se falhar, o proximo assume, e isso fica no diario e no roteiro.json (campo `quedas`, e `provedor` em cada parte). Provedores conhecidos: deepseek, gemini, chatgpt.",
+    "_comment_papeis": "roteiro = biblia, aberturas, partes e revisao por parte (tudo no mesmo chat). qualidade = parecer (folha e video; so o Gemini assiste video) e conserto de cena. video = parecer que ASSISTE o mp4 (so o Gemini assiste). imagem_prompt = reescrever o prompt que o PicassoIA recusou. 17/09/2026: conta ocupada ou falha passa ao PROXIMO LIVRE sem esperar; o Gemini fica por ultimo no roteiro porque e o unico que assiste video.",
+    "papeis": {
+        "roteiro": ["deepseek", "chatgpt", "gemini"],
+        "qualidade": ["chatgpt", "gemini"],
+        "video": ["gemini"],
+        "imagem_prompt": ["chatgpt"]
+    },
+    "_comment_deepseek": "Pelo SITE (chat.deepseek.com), conta gratis, perfil de Chrome proprio. `deepthink`: true liga, false desliga, null deixa como a conta estiver (em 17/09/2026 ele vem ligado e responde o raciocinio em ingles, num bloco que nunca e lido). O texto do raciocinio NUNCA entra na resposta.",
+    "deepseek": {"deepthink": null}
+}

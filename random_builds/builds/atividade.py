@@ -29,7 +29,8 @@ from pathlib import Path
 # nada — ela so aparece na lista de logs, sem predio proprio.
 FABRICAS = {
     "chatgpt": {"rotulo": "ChatGPT", "emoji": "🤖", "faz": "roteiros"},
-    "gemini": {"rotulo": "Gemini", "emoji": "✨", "faz": "roteiros"},
+    "gemini": {"rotulo": "Gemini", "emoji": "✨", "faz": "analise e video"},
+    "deepseek": {"rotulo": "DeepSeek", "emoji": "🐋", "faz": "roteiros"},
     "picasso": {"rotulo": "PicassoIA", "emoji": "🎨", "faz": "imagens"},
     "digen": {"rotulo": "Digen", "emoji": "🎥", "faz": "video do payoff"},
     "estudio": {"rotulo": "Estúdio", "emoji": "🎬", "faz": "render dos vídeos"},

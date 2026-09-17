@@ -87,6 +87,20 @@ def proporcao_confere(pedida, aplicada) -> bool:
     return aplicada == pedida
 
 
+class ParedeDePlanos(GeracaoFalhou):
+    """O botao de gerar virou "Assine para Gerar": a sessao aberta nao e a da
+    conta com plano.
+
+    17/09/2026: a pagina mostrava "FREE -> PRO+" e "Assine para Gerar" numa
+    conta ilimitada; reabrir o perfil resolveu. O fechamento automatico do
+    aviso "Planos e Creditos" escondia o sinal, e a espera ficava olhando uma
+    imagem que nunca ia sair. Quem recebe esta excecao reabre o navegador.
+    """
+
+
+SEM_PLANO = "button:has-text('Assine para Gerar')"
+
+
 class PicassoClient:
     def __init__(self, ctx, page, ajustes: dict, rng=None,
                  ao_descobrir_espaco=None):
@@ -232,6 +246,23 @@ class PicassoClient:
             except Exception:
                 continue
         return None
+
+    def _sem_plano(self) -> str:
+        """O motivo, se o botao de gerar pede assinatura; senao `""`."""
+        try:
+            alvo = self.page.locator(SEM_PLANO)
+            if alvo.count() and alvo.first.is_visible():
+                return "o botao de gerar virou 'Assine para Gerar'"
+        except Exception:
+            return ""
+        return ""
+
+    def _conferir_plano(self, parede: str = "") -> None:
+        motivo = self._sem_plano()
+        if motivo:
+            raise ParedeDePlanos(
+                f"PicassoIA mostrando parede de planos (sessao FREE?): "
+                f"{motivo}" + (f"; aviso: {parede[:120]}" if parede else ""))
 
     def _tirar_parede_da_frente(self) -> str:
         """Fecha o dialogo que estiver na frente. Devolve o TEXTO dele.
@@ -381,6 +412,8 @@ class PicassoClient:
         if parede:
             print(f"[picasso] tirei da frente um aviso do site: {parede}",
                   flush=True)
+        # SEM PLANO NAO SE CLICA: o clique so abre a parede de novo.
+        self._conferir_plano(parede)
 
         campo = selectors.resolver(self.page, selectors.CAMPO_PROMPT,
                                    "o campo de prompt (textarea#prompt)")
@@ -434,6 +467,7 @@ class PicassoClient:
         if parede:
             print(f"[picasso] tirei da frente um aviso que apareceu novamente: "
                   f"{parede}", flush=True)
+        self._conferir_plano(parede)
 
         # O botao pode ter sido desabilitado durante `_esperar_estabilizar` ou
         # `_tirar_parede_da_frente`. Uma tentativa de clique num aria-disabled
@@ -763,6 +797,9 @@ class PicassoClient:
             if parede:
                 print(f"[picasso] tirei da frente um aviso do site: {parede}",
                       flush=True)
+                # A PAREDE DE PLANOS NAO SE ESPERA: fechada, ela volta a cada
+                # clique, e a imagem nunca sai.
+                self._conferir_plano(parede)
 
             # O SITE JA RESPONDEU "FALHOU" — nao ha o que esperar. Continuar
             # ate o timeout era gastar 180 s olhando um cartao de erro que ja

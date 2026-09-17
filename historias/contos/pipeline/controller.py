@@ -35,6 +35,10 @@ ASSETS = RAIZ / "assets"
 CACHE_VOZ = OUTPUTS / "_voz_cache"
 
 
+class ImagensFaltando(RuntimeError):
+    """Render recusado: a parte ainda nao tem todas as imagens."""
+
+
 def carregar_config(nome: str) -> dict:
     with open(RAIZ / "config" / nome, encoding="utf-8-sig") as fh:
         return json.load(fh)
@@ -146,24 +150,48 @@ class Pipeline:
 
     def gerar(self, *, provedor: str = "chatgpt", partes: int = 6,
               cenas_por_parte: int = 14, tema: str | None = None,
-              headless: bool = False, log=print) -> dict:
-        """Automatico: o browser abre o LLM e escreve a serie inteira."""
+              headless: bool = False, provedores=None,
+              tipo: str | None = None, log=print) -> dict:
+        """Automatico: o browser abre o LLM e escreve a serie inteira.
+
+        `provedores` e a ordem de queda (papel "roteiro" de `llm/papeis.py`):
+        o primeiro que conseguir escreve. Sem ela, so `provedor`, como antes.
+        """
         from ..roteiro import gerar as gerador
         atividade = _rb_atividade
-        comeco = _time.monotonic()
-        atividade.registrar(provedor, "inicio",
-                            f"serie de {partes} parte(s)", "historias",
-                            etapa="roteiro")
+        ordem = list(provedores or [provedor])
+        vez = {"provedor": ordem[0], "comeco": _time.monotonic()}
+
+        def ao_tentar(nome):
+            vez.update(provedor=nome, comeco=_time.monotonic())
+            atividade.registrar(nome, "inicio",
+                                f"serie de {partes} parte(s)", "historias",
+                                etapa="roteiro")
+
+        def ao_falhar(nome, exc, proximo):
+            # A queda e AVISO de quem falhou (fecha o `inicio` dele), com
+            # etapa propria para o relatorio separar de roteiro perdido. Como
+            # erro, cada queda do DeepSeek virava alerta e apuracao; o erro
+            # vem da regra das 3 falhas seguidas (`llm/cliente.py`).
+            if proximo:
+                atividade.registrar(
+                    nome, "aviso",
+                    f"{str(exc)[:160]} — o {proximo} assume o roteiro",
+                    "historias", etapa="roteiro.queda",
+                    dur_s=_time.monotonic() - vez["comeco"])
+
         try:
-            resultado = gerador.gerar_serie(
-                provedor=provedor, partes=partes,
+            resultado = gerador.escrever_serie(
+                ordem, partes=partes,
                 cenas_por_parte=cenas_por_parte, tema=tema, headless=headless,
-                config=self.roteiro_config, log=log)
+                config=self.roteiro_config, tipo=tipo, ao_tentar=ao_tentar,
+                ao_falhar=ao_falhar, log=log)
         except Exception as exc:
-            atividade.registrar(provedor, "erro", str(exc)[:200], "historias",
-                                etapa="roteiro",
-                                dur_s=_time.monotonic() - comeco)
+            atividade.registrar(vez["provedor"], "erro", str(exc)[:200],
+                                "historias", etapa="roteiro",
+                                dur_s=_time.monotonic() - vez["comeco"])
             raise
+        provedor, comeco = vez["provedor"], vez["comeco"]
         atividade.registrar(provedor, "ok",
                             f"{resultado['historia_id']}: {resultado['partes']} "
                             f"parte(s), {resultado['cenas']} cenas", "historias",
@@ -251,13 +279,15 @@ class Pipeline:
 
     def _render(self, historia_id: str, *, preview: bool = False,
                 parte: int | None = None, log=print, saida=None,
-                formato_override: dict | None = None) -> dict:
+                formato_override: dict | None = None,
+                forcar: bool = False) -> dict:
         """Renderiza uma parte (ou todas). Um mp4 por parte, por perfil.
 
         `saida` e o render de PROVA: partes e mp4 vao para aquela pasta, e
         nada do que e da historia de verdade (capa, atividade, atribuicao de
         experimento) e tocado. `formato_override` troca campos do formato so
-        neste render.
+        neste render. Parte com imagem faltando nao renderiza na pasta de
+        verdade (ver `_partes_com_imagens`); `forcar` e a saida explicita.
         """
         from ..video import formato as formato_mod
 
@@ -271,13 +301,16 @@ class Pipeline:
                 "na historia de verdade o formato e travado pela primeira "
                 "parte renderizada.")
         roteiro = R.carregar(historia_id)
+        alvos = ([int(parte)] if parte
+                 else [bloco["n"] for bloco in roteiro["partes"]])
+        if not saida and not forcar:
+            alvos = self._partes_com_imagens(historia_id, roteiro, alvos,
+                                             pedida=parte, log=log)
         pasta = OUTPUTS / historia_id
         pasta.mkdir(parents=True, exist_ok=True)
         prova = Path(saida) if saida else None
         if prova is not None:
             prova.mkdir(parents=True, exist_ok=True)
-        alvos = ([int(parte)] if parte
-                 else [bloco["n"] for bloco in roteiro["partes"]])
 
         # O experimento entra AQUI e em nenhum outro lugar. Sem nada em curso
         # `aplicar` devolve o proprio config, e daqui para baixo o caminho e
@@ -417,6 +450,35 @@ class Pipeline:
         return {"historia_id": historia_id, "videos": saida,
                 "partes": len(alvos)}
 
+    @staticmethod
+    def _partes_com_imagens(historia_id: str, roteiro: dict, alvos: list,
+                            *, pedida=None, log=print) -> list:
+        """So as partes com TODAS as imagens.
+
+        17/09/2026: o 09003 p1 renderizou com 11 de 14 imagens (a aba do
+        navegador fechou no meio) e o mp4 saiu com cartao no lugar das cenas.
+        A agenda ja pulava parte assim; `tudo()`, `main.py video` e o botao
+        "So video" do painel nao. Parte pedida pelo numero levanta com o
+        motivo; sem numero, as completas renderizam e as outras sao adiadas.
+        """
+        faltam = {linha["parte"]: linha["faltam"]
+                  for linha in fila.resumo_por_parte(historia_id, roteiro)
+                  if linha["faltam"]}
+        if pedida and int(pedida) in faltam:
+            raise ImagensFaltando(
+                f"{historia_id} parte {int(pedida)}: {faltam[int(pedida)]} "
+                "imagem(ns) faltando; gere as imagens antes de renderizar.")
+        adiadas = [n for n in alvos if n in faltam]
+        if adiadas:
+            log("[render] adiadas por imagem faltando: "
+                + ", ".join(f"p{n} ({faltam[n]})" for n in adiadas))
+        prontas = [n for n in alvos if n not in faltam]
+        if not prontas:
+            raise ImagensFaltando(
+                f"{historia_id}: nenhuma parte com todas as imagens; gere as "
+                "imagens antes de renderizar.")
+        return prontas
+
     def tudo(self, historia_id: str, *, preview: bool = False,
              headless: bool = False, log=print) -> dict:
         """Imagens que faltam + video de todas as partes."""
@@ -429,7 +491,12 @@ class Pipeline:
                 log(f"[imagens] nao rodou: {exc}")
                 imagens = {"geradas": 0, "faltam": resumo["faltam"],
                            "erros": [str(exc)]}
-        video = self.render(historia_id, preview=preview, log=log)
+        try:
+            video = self.render(historia_id, preview=preview, log=log)
+        except ImagensFaltando as exc:
+            log(f"[video] nao renderizei: {exc}")
+            video = {"historia_id": historia_id, "videos": [], "partes": 0,
+                     "erro": str(exc)}
         return {"imagens": imagens, "video": video}
 
     # -------------------------------------------------------------- estado

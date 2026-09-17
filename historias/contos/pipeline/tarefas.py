@@ -114,7 +114,10 @@ def instalar(horas: list, minutos: dict | None = None) -> list[dict]:
         nome = nome_da_tarefa(hora)
         minuto = int(minutos.get(int(hora), MINUTO))
         proc = _schtasks(["/Create", "/TN", nome,
-                          "/TR", f'"{lancador}"',
+                          # SEM JANELA PRETA (pedido do Adrian, 17/09/2026):
+                          # o .cmd roda pelo wscript, escondido, e a tarefa
+                          # espera ele terminar como antes.
+                          "/TR", tarefas_windows.acao_oculta(lancador),
                           # POSTAR VEM PRIMEIRO, GERAR DEPOIS. Pedido dele
                           # em 10/09/2026, e a ordem importa de verdade: a
                           # postagem leva ~2 min e a geracao ~2 h, entao gerar

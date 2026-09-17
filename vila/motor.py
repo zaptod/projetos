@@ -48,7 +48,7 @@ def _fabricas() -> list:
         from builds.atividade import FABRICAS as do_diario
         return list(do_diario)
     except Exception:
-        return ["chatgpt", "gemini", "picasso", "digen",
+        return ["chatgpt", "gemini", "deepseek", "picasso", "digen",
                 "estudio", "arena", "publicacao"]
 
 

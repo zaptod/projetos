@@ -19,6 +19,7 @@ Tres cuidados que vieram da experiencia com os outros sites:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -156,7 +157,8 @@ def _exigir_coerencia(cliente, parcial: dict, numero: int, cenas_alvo: int,
 
 
 def _revisar_parte(cliente, parcial: dict, numero: int, cenas_alvo: int,
-                   pasta: Path, config: dict, log) -> dict:
+                   pasta: Path, config: dict, log,
+                   biblia: dict | None = None) -> dict:
     """Um turno a mais: o modelo relê o que escreveu e reescreve melhor.
 
     E a mudanca que mais levanta qualidade de texto de LLM. A primeira versao
@@ -169,7 +171,8 @@ def _revisar_parte(cliente, parcial: dict, numero: int, cenas_alvo: int,
     """
     try:
         texto = cliente.perguntar(
-            S.prompt_revisao(numero, cenas_alvo, config=config))
+            S.prompt_revisao(numero, cenas_alvo, config=config,
+                             biblia=biblia))
     except Exception as exc:                                   # noqa: BLE001
         log(f"[serie] a revisao da parte {numero} nao veio ({exc}); "
             "fico com a primeira versao.")
@@ -249,11 +252,14 @@ def _trocar_premissa_se_precisar(cliente, biblia: dict, partes: int,
 # nessa hora terminava em "roteiro falhou" sem criar a historia (revisao de
 # conflitos de 14/09/2026).
 ESPERA_DA_CONTA_S = 1500.0
+# Quanto espera a conta quem ainda tem para onde cair na ordem de queda.
+ESPERA_CURTA_S = 15.0
 
 
 def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                   cenas_por_parte: int = S.CENAS_POR_PARTE,
                   headless: bool = False, config: dict | None = None,
+                  espera_da_conta: float = ESPERA_DA_CONTA_S,
                   log=print) -> dict:
     """Escreve so as PARTES QUE FALTAM de uma historia que parou no meio.
 
@@ -283,12 +289,16 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
         return {"historia_id": historia_id, "partes": 0, "retomada": False}
     with open(pasta / "biblia.json", encoding="utf-8-sig") as fh:
         biblia = json.load(fh)
+    # Biblia de antes dos tipos nao tem o molde: ele esta no roteiro.
+    biblia.setdefault("estrutura", roteiro.get("estrutura") or "")
+    biblia.setdefault("tipo", roteiro.get("tipo") or "")
 
     partes_prontas = [dict(p) for p in (roteiro.get("partes") or [])]
     log(f"[serie] retomando {historia_id}: faltam as partes {faltam} de "
         f"{roteiro.get('partes_esperadas')}.")
     with abrir_cliente(provedor, headless=headless,
-                       esperar=ESPERA_DA_CONTA_S, log=log) as cliente:
+                       esperar=espera_da_conta, log=log,
+                       papel="roteiro", ref=historia_id) as cliente:
         cliente.abrir(novo_chat=True)
         for numero in faltam:
             log(f"[serie] retomada: escrevendo a parte {numero}...")
@@ -303,7 +313,7 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                     f"a parte {numero} voltou sem cena legivel na retomada. "
                     f"As partes anteriores continuam salvas.")
             parcial = _revisar_parte(cliente, parcial, numero, cenas_por_parte,
-                                     pasta, config, log)
+                                     pasta, config, log, biblia=biblia)
             # A retomada corre o MESMO risco, e mais: ela existe justamente
             # para consertar serie que deu errado antes.
             parcial = _exigir_coerencia(cliente, parcial, numero,
@@ -316,6 +326,7 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                 "cliffhanger": plano.get("cliffhanger", ""),
                 "cta": parcial["cta"],
                 "cenas": parcial["cenas"],
+                "provedor": provedor,
             })
             partes_prontas.sort(key=lambda p: int(p["n"]))
             R.salvar_serie(biblia, partes_prontas, historia_id,
@@ -323,7 +334,8 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                            estrutura=roteiro.get("estrutura") or "",
                            modelo_llm=getattr(cliente, "modelo_atual", "") or "",
                            ganchos=roteiro.get("ganchos") or [],
-                           narrador=roteiro.get("narrador") or "")
+                           narrador=roteiro.get("narrador") or "",
+                           tipo=biblia.get("tipo") or "")
             log(f"[serie] parte {numero} pronta na retomada "
                 f"({len(parcial['cenas'])} cenas).")
     ainda = R.partes_que_faltam(R.carregar(historia_id))
@@ -337,8 +349,13 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                 cenas_por_parte: int = S.CENAS_POR_PARTE,
                 tema: str | None = None, historia_id: str | None = None,
                 headless: bool = False, config: dict | None = None,
+                tipo: str | None = None,
+                espera_da_conta: float = ESPERA_DA_CONTA_S,
                 log=print) -> dict:
-    """Conduz a conversa inteira e devolve {historia_id, partes, cenas}."""
+    """Conduz a conversa inteira e devolve {historia_id, partes, cenas}.
+
+    `tipo` (favela, normal, babaca): o molde sai do rodizio DAQUELE tipo.
+    """
     from ..llm.cliente import abrir_cliente
 
     config = config or carregar_config()
@@ -356,7 +373,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
 
     try:
         with abrir_cliente(provedor, headless=headless,
-                           esperar=ESPERA_DA_CONTA_S, log=log) as cliente:
+                           esperar=espera_da_conta, log=log,
+                           papel="roteiro",
+                           ref=historia_id or "nova") as cliente:
             cliente.abrir(novo_chat=True)
             # QUAL MODELO ESCREVEU ESTA HISTORIA. Guardado porque a qualidade
             # mudou de patamar em 08/09/2026 (Flash -> 3.1 Pro, mais molde,
@@ -377,7 +396,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                     "a sair mais curto e mais raso.")
 
             # --- etapa 1: a biblia
-            estrutura = S.proxima_estrutura(R.estruturas_recentes(), config)
+            estrutura = S.proxima_estrutura(R.estruturas_recentes(), config,
+                                            tipo=tipo)
+            tipo = tipo or S.tipo_do_molde(estrutura, config)
             # QUEM NARRA E QUAIS ALAVANCAS, decididos AQUI e nao pelo modelo.
             # A ordem importa: as alavancas sao de genero ("marido que nao
             # cresce" so funciona na boca dela), entao o narrador tem que ser
@@ -399,7 +420,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                                 estrutura=estrutura,
                                 # Sem estes dois ele repetia as MESMAS duas
                                 # alavancas em 5 de 5 historias.
-                                ganchos=ganchos, narrador=narrador))
+                                ganchos=ganchos, narrador=narrador,
+                                tipo=tipo or "",
+                                recentes=R.resumos_recentes(3)))
             biblia = S.parse_biblia(texto, partes)
             problemas = S.problemas_da_biblia(biblia)
 
@@ -431,6 +454,23 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             # fim, jogando a historia inteira fora. Custa um turno de chat.
             biblia = _trocar_premissa_se_precisar(
                 cliente, biblia, partes, pasta, log)
+            # O molde e o tipo vao NA BIBLIA: `prompt_parte` le dali as
+            # regras, a abertura e o fechamento do molde — inclusive na
+            # retomada, que abre um chat novo sem o contexto da biblia.
+            biblia["estrutura"] = estrutura
+            biblia["tipo"] = tipo
+            if S.livre(tipo, config):
+                # MODO LIVRE: quem narra e o que prende sao da IA. O rodizio
+                # nao manda aqui, e o roteiro grava o que ela escolheu.
+                ganchos = []
+                escolhido = S._sem_acento(biblia.get("narrador") or "").lower()
+                # A voz so conhece "mulher" e "homem"; o resto do que a IA
+                # escreveu ("mulher, 34 anos") fica fora do roteiro.
+                for voz in S.NARRADORES:
+                    if voz in escolhido:
+                        narrador = voz
+                        break
+                biblia["narrador"] = narrador
 
             _gravar(pasta / "biblia.json", biblia)
             log(f"[serie] biblia pronta: {biblia['titulo'] or '(sem titulo)'} "
@@ -444,7 +484,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             R.salvar_serie(biblia, [], historia_id, tema=tema or "",
                            provedor=provedor, estrutura=estrutura,
                            modelo_llm=modelo_llm,
-                           ganchos=ganchos, narrador=narrador)
+                           ganchos=ganchos, narrador=narrador,
+                           tipo=tipo)
 
             # --- etapa 2: uma parte por vez, salvando a cada uma
             total = len(biblia["partes"]) or partes
@@ -463,7 +504,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                         f"cru esta em {pasta / 'conversa'}; as partes anteriores "
                         "ja estao salvas.")
                 parcial = _revisar_parte(cliente, parcial, numero,
-                                         cenas_por_parte, pasta, config, log)
+                                         cenas_por_parte, pasta, config, log,
+                                         biblia=biblia)
                 parcial = _exigir_coerencia(cliente, parcial, numero,
                                             cenas_por_parte, pasta, config,
                                             biblia, log)
@@ -474,6 +516,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                     "cliffhanger": plano.get("cliffhanger", ""),
                     "cta": parcial["cta"],
                     "cenas": parcial["cenas"],
+                    # QUEM ESCREVEU ESTA PARTE: com a queda de provedor, uma
+                    # historia pode ter partes de dois modelos.
+                    "provedor": provedor,
                 })
                 R.salvar_serie(biblia, partes_prontas, historia_id, tema=tema or "",
                                provedor=provedor, estrutura=estrutura,
@@ -481,7 +526,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                                # NAS DUAS chamadas: esta salva a cada parte, e
                                # uma corrida que morra na parte 3 nao pode
                                # deixar memoria vazia para o rodizio.
-                               ganchos=ganchos, narrador=narrador)
+                               ganchos=ganchos, narrador=narrador,
+                           tipo=tipo)
                 log(f"[serie] parte {numero}/{total} pronta: "
                     f"{len(parcial['cenas'])} cenas")
     except Exception as exc:
@@ -489,12 +535,17 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
         # pasta vazia e nenhuma pista (historias 6 e 7, 01/09/2026).
         log(f"[serie] FALHOU: {type(exc).__name__}: {exc}")
         log(f"[serie] o registro desta tentativa esta em {diario.destino}")
+        # A queda de provedor precisa saber se ja existe historia (e entao
+        # RETOMAR com o proximo) ou se nada foi criado (e entao comecar).
+        with contextlib.suppress(Exception):
+            exc.historia_id = historia_id
         raise
 
     caminho = R.salvar_serie(biblia, partes_prontas, historia_id,
                              tema=tema or "", provedor=provedor,
                              estrutura=estrutura, modelo_llm=modelo_llm,
-                             ganchos=ganchos, narrador=narrador)
+                             ganchos=ganchos, narrador=narrador,
+                           tipo=tipo)
     cenas = sum(len(p["cenas"]) for p in partes_prontas)
     log(f"[serie] {historia_id} completa: {len(partes_prontas)} parte(s), "
         f"{cenas} cenas -> {caminho}")
@@ -509,3 +560,95 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             "partes": len(partes_prontas), "cenas": cenas,
             "coerencia": avisos,
             "gerado_em": datetime.now().isoformat(timespec="seconds")}
+
+
+# ------------------------------------------------------ queda de provedor
+def _resultado_da_historia(historia_id: str, log) -> dict:
+    """O mesmo formato de `gerar_serie`, lido do disco (depois da retomada)."""
+    from . import coerencia
+    roteiro = R.carregar(historia_id)
+    partes = roteiro.get("partes") or []
+    avisos = coerencia.conferir(roteiro)
+    for aviso in avisos:
+        log(f"[coerencia] {aviso}")
+    return {"historia_id": historia_id, "titulo": roteiro.get("titulo") or "",
+            "partes": len(partes),
+            "cenas": sum(len(p.get("cenas") or []) for p in partes),
+            "coerencia": avisos,
+            "gerado_em": datetime.now().isoformat(timespec="seconds")}
+
+
+def _situacao(historia_id: str | None) -> str:
+    """"nova" (sem roteiro gravado), "incompleta" ou "completa"."""
+    if not historia_id:
+        return "nova"
+    try:
+        roteiro = R.carregar(historia_id)
+    except (OSError, ValueError):
+        return "nova"
+    return "incompleta" if R.partes_que_faltam(roteiro) else "completa"
+
+
+def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
+                   cenas_por_parte: int = S.CENAS_POR_PARTE,
+                   tema: str | None = None, historia_id: str | None = None,
+                   headless: bool = False, config: dict | None = None,
+                   tipo: str | None = None,
+                   ao_tentar=None, ao_falhar=None, log=print) -> dict:
+    """Escreve a serie com o primeiro provedor que conseguir.
+
+    Decisao do Adrian (16/09/2026): o DeepSeek escreve; se ele falhar, o
+    Gemini assume. A queda nao joga fora o que ja foi escrito: se a historia
+    ja existe (biblia pronta, algumas partes), o proximo provedor RETOMA as
+    partes que faltam em vez de comecar outra. Cada parte guarda quem a
+    escreveu, e cada queda fica em `roteiro.json["quedas"]`.
+
+    `ao_tentar(provedor)` e `ao_falhar(provedor, exc, proximo)` sao para o
+    diario de quem chama; o nucleo nao sabe onde se registra.
+    """
+    ordem = [p for p in (provedores or []) if p]
+    if not ordem:
+        raise GeracaoFalhou("nenhum provedor configurado para o roteiro")
+    ultimo = None
+    for indice, provedor in enumerate(ordem):
+        proximo = ordem[indice + 1] if indice + 1 < len(ordem) else None
+        # CONTA OCUPADA PASSA AO PROXIMO LIVRE (17/09/2026): so o ULTIMO da
+        # lista espera a conta pelo prazo cheio; os outros desistem logo.
+        espera = ESPERA_DA_CONTA_S if proximo is None else ESPERA_CURTA_S
+        if ao_tentar:
+            ao_tentar(provedor)
+        situacao = _situacao(historia_id)
+        if situacao == "completa":
+            # Caiu DEPOIS da ultima parte: nada a reescrever.
+            return _resultado_da_historia(historia_id, log)
+        try:
+            if situacao == "incompleta":
+                feito = retomar_serie(historia_id, provedor=provedor,
+                                      cenas_por_parte=cenas_por_parte,
+                                      headless=headless, config=config,
+                                      espera_da_conta=espera, log=log)
+                if feito.get("faltam"):
+                    raise GeracaoFalhou(
+                        f"a retomada com o {provedor} deixou as partes "
+                        f"{feito['faltam']} sem escrever")
+                return _resultado_da_historia(historia_id, log)
+            return gerar_serie(provedor=provedor, partes=partes,
+                               cenas_por_parte=cenas_por_parte, tema=tema,
+                               historia_id=historia_id, headless=headless,
+                               config=config, tipo=tipo,
+                               espera_da_conta=espera, log=log)
+        except Exception as exc:                               # noqa: BLE001
+            ultimo = exc
+            historia_id = historia_id or getattr(exc, "historia_id", None)
+            queda = {"quando": datetime.now().isoformat(timespec="seconds"),
+                     "provedor": provedor, "proximo": proximo,
+                     "erro": f"{type(exc).__name__}: {exc}"[:300]}
+            log(f"[serie] o {provedor} nao escreveu ({queda['erro']})"
+                + (f"; o {proximo} assume." if proximo else "; sem outro "
+                   "provedor na lista."))
+            if historia_id:
+                R.registrar_queda(historia_id, queda)
+            if ao_falhar:
+                with contextlib.suppress(Exception):
+                    ao_falhar(provedor, exc, proximo)
+    raise ultimo

@@ -252,7 +252,9 @@ class ThreadPropriaTests(unittest.TestCase):
                 return "a woman in a kitchen, warm light, cinematic"
 
         @contextlib.contextmanager
-        def _falso(provedor, headless=False, ajustes=None, log=None):
+        def _falso(provedor, headless=False, ajustes=None, log=None,
+                   **_diario):
+            # `papel`/`ref`/`canal` sao do diario por turno (17/09/2026).
             visto["entrou"] = threading.get_ident()
             try:
                 yield _Cliente()

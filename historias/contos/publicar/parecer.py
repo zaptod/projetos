@@ -546,6 +546,28 @@ ESPERA_DA_CONTA_S = 60.0
 ESPERA_CALADO_S = 480.0
 
 
+def provedores_da_analise() -> list:
+    """A ordem do papel "qualidade" (`config/llm.json`); sem ela, `PROVEDORES`.
+
+    Provedor que nao e de analise nunca entra aqui: o roteiro e de outro
+    papel, e misturar faria a mesma conta escrever e julgar ao mesmo tempo.
+    """
+    try:
+        from ..llm import papeis
+        todos = papeis.carregar()
+        # QUEM ASSISTE VEM PRIMEIRO: o parecer e sobre o VIDEO, e a folha e
+        # a reserva. A ordem do papel "qualidade" (texto/folha) vale depois.
+        lista = []
+        ordem = ((todos.get(papeis.VIDEO) or [])
+                 + (todos.get(papeis.QUALIDADE) or []))
+        for nome in ordem:
+            if nome not in lista:
+                lista.append(nome)
+    except Exception:                                          # noqa: BLE001
+        lista = []
+    return lista or list(PROVEDORES)
+
+
 def pedir(video, roteiro: dict, parte: int, *, laudo: dict | None = None,
           provedor: str | None = None, headless: bool = False,
           pasta_temp: Path | None = None,
@@ -554,7 +576,7 @@ def pedir(video, roteiro: dict, parte: int, *, laudo: dict | None = None,
     quando nao deu para perguntar em nenhum provedor."""
     from ..llm.cliente import ContaOcupada
 
-    tentar = [provedor] if provedor else list(PROVEDORES)
+    tentar = [provedor] if provedor else provedores_da_analise()
     ultimo = ""
     for i, alvo in enumerate(tentar):
         try:
@@ -604,8 +626,10 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
     pergunta = prompt(video, roteiro, parte, laudo)
     try:
         with abrir_cliente(provedor, headless=headless,
-                           esperar=ESPERA_DA_CONTA_S,
-                           log=log) as cliente:
+                           esperar=ESPERA_DA_CONTA_S, log=log,
+                           papel=("video" if provedor in ASSISTEM_VIDEO
+                                  else "qualidade"),
+                           ref=str(getattr(video, "id", ""))) as cliente:
             cliente.abrir(novo_chat=True)
             # O VIDEO INTEIRO primeiro, e a folha como reserva. O Gemini
             # assiste ao mp4 — leva uns minutos, mas ve movimento, corte e

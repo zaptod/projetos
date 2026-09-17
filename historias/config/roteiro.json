@@ -1,6 +1,39 @@
 {
     "_comment": "O modelo de roteiro e as regras que fazem o video prender. `modelos` sao ESTRUTURAS (o que deve sair, cena a cena) e nao ideias: a ideia e o LLM que inventa. `regras` valem para todo modelo e sao o que separa uma historia que prende de um texto lido em voz alta. `contrato` e o formato exato que o parser sabe ler.",
     "modelo_padrao": "reddit",
+    "_comment_tipos": "TRES TIPOS POR DIA (17/09/2026, decisao do Adrian): favela, normal e babaca, uma serie de cada no ar ao mesmo tempo e a fila alternando os tipos em rodizio. O rodizio de molde acontece DENTRO do tipo. `partes` [min, max] = numero de partes sorteado por historia; sem ele vale o `partes` da agenda. A criacao escolhe o tipo com MENOS estoque aprovado. `modo: livre` (pedido do Adrian, 17/09/2026: \"deixar pro lado da IA, dar um tamanho desejado e assunto base e dar a ela autoridade\"): a IA recebe so o `assunto`, o tamanho, o limite da plataforma, o guia de linguagem, a continuidade das imagens e o formato; molde, alavancas, narrador e abertura/fechamento sao dela. Sem `modo`, vale o modo guiado pelos moldes.",
+    "tipos": {
+        "favela": {
+            "modo": "livre",
+            "assunto": "uma novela caricata da quebrada, com fofoca, barraco e vizinhanca, contada com humor por um narrador de fora (sem crime, arma, droga ou policia)",
+            "rotulo": "Favela (novela da quebrada)",
+            "moldes": [
+                "quebrada"
+            ]
+        },
+        "normal": {
+            "modo": "livre",
+            "assunto": "um relato em primeira pessoa de alguem comum contando algo marcante que viveu: uma confissao, uma vinganca ou um conflito que ainda divide opinioes",
+            "rotulo": "Normal (relato em 1a pessoa)",
+            "moldes": [
+                "reddit",
+                "confissao",
+                "vinganca"
+            ]
+        },
+        "babaca": {
+            "modo": "livre",
+            "assunto": "um post do Reddit no estilo 'Eu sou o babaca?': quem postou conta, em primeira pessoa, um conflito e pede que quem assiste julgue quem errou (em portugues, sem as siglas do Reddit)",
+            "rotulo": "Eu sou o babaca?",
+            "moldes": [
+                "babaca"
+            ],
+            "partes": [
+                2,
+                6
+            ]
+        }
+    },
     "modelos": {
         "reddit": {
             "rotulo": "Reddit (relato em 1a pessoa)",
@@ -66,6 +99,38 @@
                 "A REVELACAO (2 cenas): o segredo que vira tudo do avesso - e o culpado nao e quem todo mundo estava acusando.",
                 "O ACERTO (1-2 cenas): como a quebrada resolve do jeito dela, com todo mundo junto.",
                 "CTA (1 cena): o narrador pergunta de que lado quem assiste ficou, ou entrega o proximo barraco que ja esta comecando."
+            ]
+        },
+        "_comment_babaca": "17/09/2026, pedido do Adrian depois de uma conversa com o DeepSeek: o formato POST do Reddit \"Eu sou o babaca?\" (titulo-pergunta, idades, prosa sem dialogo, familia dividida, duvida honesta, edicoes, resumo e julgamento). O molde `reddit` de cima e relato sussurrado, nao post - por isso este e outro molde, com regras proprias.",
+        "babaca": {
+            "rotulo": "Eu sou o babaca? (post do Reddit, 1a pessoa)",
+            "abertura": "ABERTURA (parte 1): a cena 1 e a PERGUNTA do post, dita de uma vez: 'Eu sou o babaca por ...?'. A cena 2 da as idades com naturalidade e o objeto do conflito. Nada de cena de acao antes da pergunta.",
+            "abertura_meio": "ABERTURA (parte {n}): a cena 1 comeca com 'Edicao:' e responde, com um fato novo, o que a parte anterior deixou no ar. Nunca 'no episodio anterior'. A cena 2 ja avanca.",
+            "fechamento": "FECHAMENTO (ultima parte): a penultima cena comeca com 'Resumindo:' e conta o conflito inteiro em uma frase. A ultima cena pede o julgamento EM PORTUGUES, exatamente neste espirito: 'Entao me fala: eu errei, ela errou, ou todo mundo errou?' (troque 'ela' por quem for a outra pessoa). Nunca use NTA, YTA ou ESH.",
+            "fechamento_meio": "FECHAMENTO (parte {n}): a ultima cena entrega um fato novo que ainda nao foi explicado - o que a proxima 'Edicao' vai responder. A ultima frase e a pergunta que isso deixa no ar.",
+            "duracao_alvo": 70,
+            "cenas_alvo": 12,
+            "regras": [
+                "Historia ficticia em PRIMEIRA pessoa, com nomes inventados, escrita como um POST que a pessoa publicou num forum pedindo julgamento: 'Eu sou o babaca por ...?'. E um relato, em PROSA corrida - nada de cena encenada, nada de dialogo com nome de personagem na frente. O que alguem disse entra DENTRO da narracao ('ela disse que eu nem ia casar mesmo').",
+                "A primeira parte ABRE com a pergunta-titulo falada e com as idades ditas com naturalidade ('eu tenho trinta anos, minha irma tem vinte e seis'). E assim que o post comeca, e e o que diz a quem assiste que tipo de historia e.",
+                "O conflito e FAMILIAR ou de convivencia (irmaos, sogra, amigos, casamento, heranca, casa, dinheiro, festa), e pequeno visto de fora: um vestido, uma vaga, um convite. Ele cresce ate a outra pessoa PASSAR DE UM LIMITE claro (pegar escondido, expor, mentir para a familia).",
+                "NINGUEM e 100% vilao, e isso e o que gera comentario. Quem narra tem razao em parte e admite uma duvida honesta ('talvez eu pudesse ter oferecido...'), e a outra pessoa tem um motivo que faz sentido.",
+                "A familia SE DIVIDE: alguem manda audio no grupo, alguem tenta mediar, alguem toma partido. Isso e mostrado pelo que cada um disse, contado por quem narra.",
+                "As EDICOES do post sao o gancho entre as partes: toda parte, menos a ultima, termina com um fato novo que so vai ser explicado numa 'Edicao' - e a parte seguinte abre com 'Edicao:' e esse fato ('Edicao: muita gente perguntou se tinha testamento. Nao tinha.').",
+                "A ULTIMA parte fecha com o RESUMO em uma frase ('Resumindo: ...') e com o pedido de julgamento EM PORTUGUES: 'Entao me fala: eu errei, ela errou, ou todo mundo errou?'. Nunca use as siglas do Reddit (NTA, YTA, ESH).",
+                "Cada parte entrega um FATO NOVO que muda o que se sabia. Se a parte pode ser resumida sem perder nada, ela nao existe.",
+                "Tom de gente real desabafando: frase curta, detalhe mundano, sem frase de efeito e sem final de novela. O video mostra imagens realistas das cenas contadas.",
+                "O TITULO DA SERIE pode ser a pergunta do post, mas o NOME DA SERIE e curto (2 a 4 palavras, ex.: 'O Vestido da Mae'): a pergunta inteira nao cabe no titulo de cada parte, e partes com o mesmo comeco de titulo sao barradas como repetidas."
+            ],
+            "estrutura": [
+                "A PERGUNTA (1 cena): 'Eu sou o babaca por ...?' dita de uma vez, com o objeto do conflito.",
+                "QUEM SOU (1-2 cenas): idades, a relacao com a outra pessoa e por que o objeto importa tanto para mim.",
+                "O PEDIDO E O NAO (2 cenas): o que a outra pessoa quis, o que eu respondi e o que ela disse de volta.",
+                "O LIMITE PASSADO (2-3 cenas): o que ela fez escondido ou em publico, e o momento em que eu descobri.",
+                "A FAMILIA DIVIDIDA (2 cenas): quem me chamou de egoista, quem tentou mediar, o que cada um disse.",
+                "A MINHA DUVIDA (1 cena): onde eu talvez tenha errado.",
+                "EDICOES (ao longo das partes): cada uma responde uma pergunta dos comentarios com um fato novo.",
+                "RESUMO E JULGAMENTO (1 cena, so na ultima parte): 'Resumindo: ...' e 'Entao me fala: eu errei, ela errou, ou todo mundo errou?'."
             ]
         }
     },

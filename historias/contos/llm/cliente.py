@@ -26,6 +26,7 @@ import re
 import time
 from pathlib import Path
 from builds.identity import browser as _rb_identity_browser
+import builds.atividade as _rb_atividade
 import builds.contas as _rb_contas
 import builds.travas as _rb_travas
 
@@ -33,6 +34,10 @@ from . import seletores as sel
 
 RAIZ = Path(__file__).resolve().parents[2]
 PERFIS = RAIZ / ".browser_profile"
+# A partir de quantas falhas SEGUIDAS do mesmo provedor o diario ganha um
+# erro (e o Telegram, um alerta). So a de numero exato: as seguintes voltam
+# a ser aviso, para um login caido nao virar um alerta por rodada.
+FALHAS_PARA_ERRO = 3
 
 
 class LLMFalhou(RuntimeError):
@@ -93,6 +98,12 @@ class ClienteLLM:
         self.turnos = 0
         self.modelo_atual = ""
         self._ultimo_prompt = ""
+        self._ultima_resposta = ""
+        # O DIARIO (atividade.jsonl) so e escrito por cliente aberto de
+        # verdade (`abrir_cliente`): cliente montado em teste nao pode sujar
+        # o diario de producao.
+        self.diario = False
+        self.papel, self.ref, self.canal = "", "", "historias"
         # Comeca em False de proposito: enquanto ninguem confirmou o modelo
         # forte, a resposta honesta e "nao sei", e nao "esta tudo certo".
         self.modelo_confirmado = False
@@ -110,6 +121,7 @@ class ClienteLLM:
                 f"Rode uma vez: python main.py llm login --provedor {self.provedor} "
                 "(a janela abre, voce entra na conta, e o login fica salvo).")
         self.turnos = 0
+        self._ultima_resposta = ""
         self.modelo_atual = self.escolher_modelo()
         self.log(f"[{self.provedor}] chat novo aberto.")
 
@@ -138,6 +150,15 @@ class ClienteLLM:
         gravar vazio.
         """
         self.modelo_confirmado = False
+        if self.sel.get("modelo_fixo"):
+            # Site sem menu de modelo (DeepSeek): o que se escolhe e so o
+            # raciocinio, e ele entra no nome para o roteiro dizer qual foi.
+            pensa = self._ajustar_raciocinio()
+            self.modelo_confirmado = pensa is not None
+            nome = str(self.sel["modelo_fixo"])
+            if pensa == self.RACIOCINIO_DA_CONTA:
+                return nome + " (DeepThink como a conta estiver)"
+            return nome + (" + DeepThink" if pensa else "")
         ordem = preferido or self.sel.get("modelo_preferido")
         if not ordem or not self.sel.get("modelo_botao"):
             return ""
@@ -157,6 +178,54 @@ class ClienteLLM:
                  f"forte depois de {self.TENTATIVAS_DE_MODELO} tentativas; "
                  f"a historia vai sair em {ultimo or 'modelo desconhecido'}.")
         return ultimo
+
+    RACIOCINIO_DA_CONTA = "como_a_conta"
+
+    def _ajustar_raciocinio(self):
+        """Poe o DeepThink no estado do config. True/False, None se nao deu
+        para saber, ou `RACIOCINIO_DA_CONTA` quando o config manda nao mexer
+        (`"deepthink": null`). Nunca levanta.
+
+        O estado so e lido de atributo (`aria-pressed`, classe "active" ou
+        "selected"). Sem nenhum dos dois, NAO se clica: um clique no escuro
+        pode ligar o que devia estar desligado.
+        """
+        try:
+            from . import papeis
+            querido = papeis.ajustes(self.provedor).get("deepthink")
+        except Exception:                                      # noqa: BLE001
+            querido = None
+        if querido is None:
+            return self.RACIOCINIO_DA_CONTA
+        querido = bool(querido)
+        candidatos = self.sel.get("deepthink_botao") or []
+        if not candidatos:
+            return None
+        try:
+            botao = sel.encontrar(self.page, candidatos, timeout=6.0)
+            if botao is None:
+                self.log(f"[{self.provedor}] nao achei o botao do DeepThink.")
+                return None
+            estado = botao.evaluate(
+                "el => { const p = el.getAttribute('aria-pressed');"
+                " if (p === 'true') return true; if (p === 'false') return false;"
+                " const c = String(el.className || '').toLowerCase();"
+                " if (/active|selected|checked/.test(c)) return true;"
+                " return null; }")
+            if estado is None:
+                self.log(f"[{self.provedor}] nao sei se o DeepThink esta "
+                         "ligado; deixo como esta.")
+                return None
+            if bool(estado) != querido:
+                botao.click(timeout=5000)
+                _pausa(self.rng, 0.5, 1.0)
+                self.log(f"[{self.provedor}] DeepThink "
+                         f"{'ligado' if querido else 'desligado'}.")
+            return querido
+        except Exception as exc:                               # noqa: BLE001
+            self.log(f"[{self.provedor}] o ajuste do DeepThink falhou "
+                     f"({type(exc).__name__}).")
+            return None
 
     def _tentar_modelo(self, ordem) -> tuple:
         """(nome do modelo em uso, alcancou o alvo?). Nunca levanta."""
@@ -391,6 +460,12 @@ class ClienteLLM:
         except Exception:
             pass  # Se nao conseguir fazer scroll, tenta mesmo assim
 
+        self._ancorado = False
+        if self.sel.get("raciocinio") or self.sel.get("turno_usuario"):
+            achado = self._resposta_no_dom()
+            if achado is not None:
+                self._ancorado = bool(achado.get("ancorado"))
+                return str(achado.get("texto") or "")
         for seletor in self.sel["resposta"]:
             try:
                 alvos = self.page.locator(seletor)
@@ -403,6 +478,76 @@ class ClienteLLM:
                 except Exception:
                     continue
         return ""
+
+    # A RESPOSTA E A QUE VEM DEPOIS DA NOSSA PERGUNTA. `ancorado` diz que o
+    # ultimo turno do usuario foi achado na pagina e que o texto devolvido
+    # esta DEPOIS dele na ordem do documento — prova de que e deste turno,
+    # mesmo que o texto seja identico ao anterior (revisao "ja esta boa").
+    _JS_RESPOSTA = (
+        "([respostas, pensamentos, usuarios]) => {"
+        " const dentro = el => pensamentos.some(s => {"
+        "   try { return !!el.closest(s); } catch (e) { return false; } });"
+        " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
+        "   & Node.DOCUMENT_POSITION_FOLLOWING);"
+        " let usuario = null;"
+        " for (const s of usuarios) {"
+        "   let els = [];"
+        "   try { els = [...document.querySelectorAll(s)]; } catch (e) { continue; }"
+        "   const ultimo = els[els.length - 1];"
+        "   if (ultimo && (!usuario || depois(usuario, ultimo))) usuario = ultimo;"
+        " }"
+        " for (const s of respostas) {"
+        "   let achados = [];"
+        "   try { achados = [...document.querySelectorAll(s)]; }"
+        "   catch (e) { continue; }"
+        "   achados = achados.filter(el => !dentro(el));"
+        "   if (!achados.length) continue;"
+        "   if (usuario) {"
+        "     const novos = achados.filter(el => depois(usuario, el));"
+        "     return {texto: novos.length"
+        "       ? (novos[novos.length - 1].innerText || '') : '',"
+        "       ancorado: true};"
+        "   }"
+        "   return {texto: achados[achados.length - 1].innerText || '',"
+        "           ancorado: false};"
+        " }"
+        " return {texto: '', ancorado: !!usuario}; }")
+
+    def _resposta_no_dom(self):
+        """`{"texto", "ancorado"}`, ou `None` se a pagina nao respondeu."""
+        try:
+            achado = self.page.evaluate(
+                self._JS_RESPOSTA,
+                [list(self.sel.get("resposta") or []),
+                 list(self.sel.get("raciocinio") or []),
+                 list(self.sel.get("turno_usuario") or [])])
+        except Exception:                                      # noqa: BLE001
+            return None
+        return achado if isinstance(achado, dict) else None
+
+    def _resposta_nova(self) -> str:
+        """A resposta atual, ou `""` se ela ainda e a do turno ANTERIOR.
+
+        17/09/2026, primeira historia pelo DeepSeek: a revisao da parte 1
+        "respondeu" 6372 chars em 4 s — o mesmo texto da parte, porque o
+        modelo ainda estava no raciocinio e o ultimo bloco de resposta final
+        na tela era o do turno anterior, parado e sem botao de parar. Aceito
+        assim, todas as respostas seguintes escorregariam um turno (a parte 2
+        receberia a revisao da parte 1).
+
+        A PROVA E A POSICAO: so vale o bloco que vem DEPOIS do ultimo turno do
+        usuario na pagina (`_ancorado`). Assim uma revisao que devolve o texto
+        identico ("a parte ja esta boa") e aceita. A igualdade com o ultimo
+        texto devolvido fica so como reserva, para pagina onde o turno do
+        usuario nao foi achado.
+        """
+        texto = self._resposta_atual()
+        if getattr(self, "_ancorado", False):
+            return texto
+        anterior = getattr(self, "_ultima_resposta", "")
+        if anterior and " ".join(texto.split()) == " ".join(anterior.split()):
+            return ""
+        return texto
 
     def _responder_agora(self) -> bool:
         """Clica em "Responder agora" se a tela oferecer. True se clicou.
@@ -489,7 +634,7 @@ class ClienteLLM:
         apressado = diagnosticado = False
 
         while time.monotonic() < fim:
-            texto = self._resposta_atual()
+            texto = self._resposta_nova()
             calado = len(texto.strip()) < 40
             # "Sem texto" e MENOS DE 40 caracteres, e nao vazio: as 7:29 de
             # 14/09/2026 a pagina mostrou 10 chars (o rotulo do raciocinio)
@@ -536,6 +681,7 @@ class ClienteLLM:
                     decorrido = time.monotonic() - inicio
                     self.log(f"[{self.provedor}] resposta pronta: "
                              f"{len(texto)} chars em {decorrido:.0f}s")
+                    self._ultima_resposta = texto
                     return texto
             decorrido = time.monotonic() - inicio
             if decorrido - ultimo_aviso >= 20:
@@ -544,10 +690,11 @@ class ClienteLLM:
                          f"({ultimo_tamanho} chars)", )
             time.sleep(1.0)
 
-        texto = self._resposta_atual()
+        texto = self._resposta_nova()
         if texto.strip():
             self.log(f"[{self.provedor}] espera estourou em {timeout:.0f}s; "
                      "uso o que ja veio.")
+            self._ultima_resposta = texto
             return texto
         raise LLMFalhou(
             f"o {self.provedor} nao respondeu em {timeout:.0f}s e nao ha texto "
@@ -710,7 +857,76 @@ class ClienteLLM:
 
     def perguntar(self, prompt: str, timeout: float | None = None,
                   anexos=None) -> str:
-        """Um turno completo: anexa (se houver), envia, espera, devolve."""
+        """Um turno completo: anexa (se houver), envia, espera, devolve.
+
+        Cada turno vai ao DIARIO (17/09/2026): sem isso a Vila nao via o
+        Gemini, o ChatGPT nem o DeepSeek trabalhando. So o papel, a ref e o
+        tamanho — nunca o texto do prompt. Falha de turno e `aviso`, e nao
+        `erro`: fecha o "trabalhando" sem virar alerta no Telegram nem abrir
+        apuracao (quem decide o que fazer com a falha e quem chamou).
+        """
+        comeco = time.monotonic()
+        ClienteLLM._registrar_turno(self, "inicio", "turno")
+        try:
+            texto = ClienteLLM._perguntar(self, prompt, timeout, anexos)
+        except Exception as exc:
+            seguidas = ClienteLLM._falhas_seguidas(self) + 1
+            # A MESMA FALHA REPETIDA VIRA UM ERRO (login caido, conta
+            # travada): so com aviso, ninguem ficaria sabendo.
+            status = "erro" if seguidas == FALHAS_PARA_ERRO else "aviso"
+            ClienteLLM._registrar_turno(
+                self, status, f"turno falhou ({seguidas} seguida(s)): "
+                f"{type(exc).__name__}: {str(exc)[:120]}",
+                time.monotonic() - comeco)
+            raise
+        if (getattr(self, "sel", None) or {}).get("limpar_resposta"):
+            from .texto import limpar_resposta
+            texto = limpar_resposta(texto)
+        ClienteLLM._registrar_turno(self, "ok", f"{len(texto)} chars",
+                                    time.monotonic() - comeco)
+        return texto
+
+    def _falhas_seguidas(self) -> int:
+        """Quantos turnos deste provedor falharam em seguida, pelo diario.
+
+        Pelo DIARIO e nao por contador em memoria: cada rodada e um processo
+        novo, e o login caido aparece como uma falha por rodada.
+        """
+        if not getattr(self, "diario", False):
+            return 0
+        try:
+            eventos = _rb_atividade.recentes(80, fabrica=self.provedor)
+        except Exception:                                      # noqa: BLE001
+            return 0
+        conta = 0
+        for evento in eventos:
+            if not str(evento.get("etapa") or "").startswith("llm."):
+                continue
+            status = evento.get("status")
+            if status == "inicio":
+                continue
+            if status in ("aviso", "erro") and "turno falhou" in str(
+                    evento.get("detalhe") or ""):
+                conta += 1
+                continue
+            break
+        return conta
+
+    def _registrar_turno(self, status: str, detalhe: str,
+                         dur_s: float | None = None) -> None:
+        if not getattr(self, "diario", False):
+            return
+        try:
+            papel = getattr(self, "papel", "") or "turno"
+            _rb_atividade.registrar(
+                self.provedor, status, f"{papel}: {detalhe}",
+                getattr(self, "canal", "") or "historias",
+                etapa=f"llm.{papel}", ref=str(getattr(self, "ref", "") or ""),
+                dur_s=dur_s)
+        except Exception:                                      # noqa: BLE001
+            pass
+
+    def _perguntar(self, prompt: str, timeout: float | None, anexos) -> str:
         if anexos:
             self.anexar(anexos)
             _pausa(self.rng, 0.4, 1.0)
@@ -738,7 +954,8 @@ class ContaOcupada(LLMFalhou):
 
 def abrir_cliente(provedor: str, *, headless: bool = False,
                   ajustes: dict | None = None, esperar: float = 10.0,
-                  log=print):
+                  log=print, papel: str = "", ref: str = "",
+                  canal: str = "historias"):
     """Contexto: `with abrir_cliente('chatgpt') as cliente:`.
 
     `esperar` e quanto se espera pela conta. O padrao curto serve a quem tem
@@ -763,6 +980,9 @@ def abrir_cliente(provedor: str, *, headless: bool = False,
             with browser.contexto_persistente(headless=headless,
                                               profile=perfil_de(provedor)) as ctx:
                 page = browser.pagina(ctx)
-                yield ClienteLLM(provedor, ctx, page, ajustes, log=log)
+                cliente = ClienteLLM(provedor, ctx, page, ajustes, log=log)
+                cliente.diario = True
+                cliente.papel, cliente.ref, cliente.canal = papel, ref, canal
+                yield cliente
 
     return _abrir()

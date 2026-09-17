@@ -58,6 +58,9 @@ SERVICOS = {
                 "ajuda": "Usado para escrever os roteiros das historias."},
     "gemini": {"rotulo": "Gemini", "tipo": "perfil", "publica": False,
                "ajuda": "Alternativa ao ChatGPT para os roteiros."},
+    "deepseek": {"rotulo": "DeepSeek", "tipo": "perfil", "publica": False,
+                 "ajuda": "Escreve os roteiros das historias (site, conta "
+                          "gratis); Gemini e ChatGPT ficam com a analise."},
     "picasso": {"rotulo": "PicassoIA", "tipo": "perfil", "publica": False,
                 "legado": RAIZ / ".browser_profile" / "picasso",
                 "ajuda": "Imagens das cenas e das builds."},

@@ -130,3 +130,53 @@ def conferir(nome: str, *, timeout: float = 60) -> dict:
             # esta tarefa dispara no horario combinado?
             "confiavel": (not so_no_ac and not para_na_bateria
                           and roda_se_perdeu)}
+
+
+# ---------------------------------------------------------- sem janela preta
+# Pedido do Adrian (17/09/2026): as tarefas abriam uma janela preta do cmd a
+# cada disparo. A acao passa a ser o `wscript.exe` rodando um .vbs que chama o
+# .cmd ESCONDIDO e ESPERA ele terminar — assim a tarefa continua "Em
+# execucao" enquanto o trabalho roda, e o IgnoreNew (nao abrir segunda copia)
+# e o codigo de saida continuam valendo, como era com o .cmd direto.
+NOME_DO_VBS = "oculto.vbs"
+WSCRIPT = r"C:\Windows\System32\wscript.exe"
+VBS = (
+    "' Roda um .cmd do projeto SEM janela de console (pedido do Adrian, "
+    "17/09/2026).\r\n"
+    "' Uso (pelo Agendador): wscript.exe //B //Nologo oculto.vbs "
+    "\"E:\\projetos\\postar.cmd\"\r\n"
+    "' Espera o .cmd terminar (True): assim a tarefa continua \"Em execucao\" "
+    "enquanto\r\n"
+    "' o trabalho roda, e a regra do Agendador de nao abrir uma segunda copia\r\n"
+    "' (IgnoreNew) continua valendo, como era com o .cmd direto.\r\n"
+    "If WScript.Arguments.Count < 1 Then WScript.Quit 2\r\n"
+    "Set shell = CreateObject(\"WScript.Shell\")\r\n"
+    "codigo = shell.Run(\"cmd.exe /c \"\"\" & WScript.Arguments(0) & "
+    "\"\"\"\", 0, True)\r\n"
+    "WScript.Quit codigo\r\n"
+)
+
+
+def garantir_vbs(pasta=None):
+    """O `oculto.vbs` no runtime, escrito se faltar. Devolve o caminho.
+
+    Um arquivo que ja existe NAO e sobrescrito: quem o ajustou a mao (ou a
+    versao que esta rodando agora nas 25 tarefas) continua valendo.
+    """
+    from pathlib import Path
+    if pasta is None:
+        from .contas import runtime_dir
+        pasta = runtime_dir()
+    caminho = Path(pasta) / NOME_DO_VBS
+    if not caminho.is_file():
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        # Em BYTES: `write_text` no Windows traduz cada quebra de linha
+        # de novo, e o CRLF do VBS sairia com o CR dobrado.
+        caminho.write_bytes(VBS.encode("ascii"))
+    return caminho
+
+
+def acao_oculta(lancador, vbs=None) -> str:
+    """O `/TR` do schtasks: o `.cmd` chamado pelo wscript, sem janela."""
+    vbs = vbs if vbs is not None else garantir_vbs()
+    return f'{WSCRIPT} //B //Nologo "{vbs}" "{lancador}"'

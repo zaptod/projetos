@@ -975,7 +975,8 @@ class EstoqueNovoContraReservaTests(unittest.TestCase):
         # E o de `modo_dia` conta a mesma coisa, pela mesma razao: video
         # barrado no disco nao e estoque.
         dia = fonte[fonte.index("def modo_dia("):fonte.index("def _diario(")]
-        self.assertIn("aprovados = len(aprovados_no_estoque())", dia)
+        self.assertIn("lista = aprovados_no_estoque()", dia)
+        self.assertIn("aprovados = len(lista)", dia)
 
 
 class FilaPrefereONovoTests(unittest.TestCase):

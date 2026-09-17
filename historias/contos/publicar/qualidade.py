@@ -39,6 +39,17 @@ PALAVRAS_POR_S_MAX = 4.0
 SILENCIO_FINAL_MAXIMO = 3.0
 # Parte que destoa das irmas: a p01 tinha 35,7 s contra ~145 s das outras cinco.
 FRACAO_MINIMA_DA_MEDIANA = 0.5
+# Imagem preta no video (ver `trechos_pretos`): area quase preta acima de
+# PRETO_AREA da imagem por mais de PRETO_MIN_S. PRETO_PIXEL e o limiar do
+# pixel (fracao da faixa de luma): o cartao de cena sem imagem e o degrade
+# #0d0b12→#191320, luma ~26-34 no mp4, e 0,03 (limiar ~23) deixava ele passar.
+# PRETO_AREA medido em 17/09/2026: o cartao (painel do dividido) e 87% escuro;
+# cenas noturnas com laterais escuras dao 44-62%, e com 40% os tres videos da
+# remessa acusavam trechos que eram so noite.
+PRETO_AREA = 0.80
+PRETO_MIN_S = 0.5
+PRETO_PIXEL = 0.10
+PRETO_FPS = 4
 
 
 def _formato_no_arquivo(dados: dict | None) -> dict | None:
@@ -158,6 +169,139 @@ def _audio(caminho: Path, duracao: float) -> tuple:
     if fim < duracao - 0.3:
         return media, 0.0
     return media, max(0.0, duracao - comeco)
+
+
+def _intervalos_pretos(texto: str) -> list[tuple[float, float]]:
+    """(inicio, fim) de cada `black_start/black_end` do blackdetect."""
+    saida = []
+    for linha in (texto or "").splitlines():
+        if "black_start:" not in linha:
+            continue
+        try:
+            inicio = float(linha.split("black_start:")[1].split()[0])
+            fim = float(linha.split("black_end:")[1].split()[0])
+        except (ValueError, IndexError):
+            continue
+        saida.append((round(inicio, 2), round(fim, 2)))
+    return saida
+
+
+def trechos_pretos(caminho: Path, layout: str = "vertical") -> list | None:
+    """Trechos em que a IMAGEM DA HISTORIA ficou preta, medidos no pixel.
+
+    17/09/2026: o 09003 p1 foi renderizado com 11 de 14 imagens e as cenas
+    12 a 14 sairam com a metade de cima preta. O arquivo tinha audio, duracao
+    e ritmo perfeitos; so o Gemini viu. Aqui a pergunta vai ao quadro: mais de
+    `PRETO_AREA` da area quase preta por mais de `PRETO_MIN_S`. No dividido a
+    imagem e a metade de cima (a de baixo e o video de fundo); no vertical, a
+    tela inteira. O quadro e reduzido e amostrado a `PRETO_FPS` antes do
+    filtro. `None` = nao deu para medir (sem ffmpeg, estouro): nao barra.
+    """
+    corte = "crop=iw:ih/2:0:0," if layout == "dividido" else ""
+    filtro = (f"fps={PRETO_FPS},{corte}scale=120:-2:flags=neighbor,"
+              f"blackdetect=d={PRETO_MIN_S}:pic_th={PRETO_AREA}"
+              f":pix_th={PRETO_PIXEL}")
+    try:
+        saida = subprocess.run(
+            ["ffmpeg", "-v", "info", "-an", "-i", str(caminho),
+             "-vf", filtro, "-f", "null", "-"],
+            capture_output=True, text=True, timeout=300,
+            creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if saida.returncode != 0:
+        return None
+    return _intervalos_pretos(saida.stderr)
+
+
+# A vistoria roda no mesmo mp4 ate cinco vezes numa rodada, e cada rodada da
+# agenda e um processo novo que vistoria a fila inteira (revisao de 17/09/2026:
+# 3-5 min a mais por rodada, 12-50 s por video vertical antigo). Entao o
+# resultado fica em memoria E em disco. A chave leva mtime e tamanho: o
+# reparo re-renderiza no mesmo caminho, e o laudo do arquivo antigo nao pode
+# valer para o novo. So mede de novo o video novo ou alterado.
+_PRETOS_MEDIDOS: dict = {}
+MEMO_PRETOS_NOME = "_vistoria_pretos.json"
+
+
+def _outputs() -> Path:
+    from ..pipeline.controller import OUTPUTS
+    return Path(OUTPUTS)
+
+
+def _memo_em_disco() -> Path:
+    return _outputs() / MEMO_PRETOS_NOME
+
+
+def _ler_memo() -> dict:
+    try:
+        dados = json.loads(_memo_em_disco().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return dados if isinstance(dados, dict) else {}
+
+
+def _gravar_memo(chave: str, trechos: list, gasto: float) -> None:
+    """Grava por troca atomica; perder a corrida so custa medir de novo."""
+    import os
+    destino = _memo_em_disco()
+    dados = _ler_memo()
+    dados[chave] = {"trechos": trechos, "s": gasto}
+    # Poda: so fica o que ainda aponta para um arquivo existente.
+    dados = {k: v for k, v in dados.items()
+             if Path(k.split("|", 1)[0]).is_file()}
+    temporario = destino.with_name(f"{destino.name}.{os.getpid()}.tmp")
+    try:
+        temporario.write_text(json.dumps(dados, ensure_ascii=False),
+                              encoding="utf-8")
+        os.replace(temporario, destino)
+    except OSError:
+        try:
+            temporario.unlink()
+        except OSError:
+            pass
+
+
+def erros_de_preto(caminho: Path, layout: str) -> dict:
+    """`trechos_pretos` virado laudo: erro se achou, aviso se nao mediu."""
+    import time as _t
+    caminho = Path(caminho)
+    try:
+        info = caminho.stat()
+        real = caminho.resolve()
+    except OSError:
+        return {"erros": [], "avisos": [], "trechos": None, "s": 0.0}
+    chave = f"{real}|{info.st_mtime_ns}|{info.st_size}|{layout}"
+    # So o que mora em outputs/ vai para o disco: arquivo de teste (pasta
+    # temporaria) nunca escreve no memo de verdade.
+    try:
+        persiste = real.is_relative_to(_outputs().resolve())
+    except (OSError, ValueError):
+        persiste = False
+    if chave not in _PRETOS_MEDIDOS and persiste:
+        salvo = _ler_memo().get(chave)
+        if isinstance(salvo, dict) and isinstance(salvo.get("trechos"), list):
+            _PRETOS_MEDIDOS[chave] = (
+                [tuple(t) for t in salvo["trechos"]], 0.0)
+    if chave not in _PRETOS_MEDIDOS:
+        comeco = _t.monotonic()
+        trechos = trechos_pretos(caminho, layout)
+        gasto = round(_t.monotonic() - comeco, 2)
+        _PRETOS_MEDIDOS[chave] = (trechos, gasto)
+        # "Nao medi" (None) nao vai ao disco: a proxima rodada tenta de novo.
+        if persiste and trechos is not None:
+            _gravar_memo(chave, [list(t) for t in trechos], gasto)
+    trechos, gasto = _PRETOS_MEDIDOS[chave]
+    erros, avisos = [], []
+    if trechos is None:
+        avisos.append("nao consegui medir trechos pretos (ffmpeg falhou)")
+    elif trechos:
+        onde = ("a metade de cima (a imagem)" if layout == "dividido"
+                else "a imagem")
+        lista = ", ".join(f"{a:.1f}-{b:.1f}s" for a, b in trechos[:4])
+        erros.append(f"{onde} fica preta em {len(trechos)} trecho(s) "
+                     f"({lista}): cena sem imagem ou render quebrado")
+    return {"erros": erros, "avisos": avisos, "trechos": trechos, "s": gasto}
 
 
 def vistoriar_arquivo(caminho: Path) -> dict:
@@ -292,6 +436,12 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
     laudo["palavras_por_s_natural"] = ritmo["palavras_por_s_natural"]
     laudo["erros"].extend(ritmo["erros"])
     laudo["avisos"].extend(ritmo["avisos"])
+    if laudo.get("existe") and laudo.get("video"):
+        preto = erros_de_preto(caminho, str(feito.get("layout") or "vertical"))
+        laudo["erros"].extend(preto["erros"])
+        laudo["avisos"].extend(preto["avisos"])
+        laudo["trechos_pretos"] = preto["trechos"]
+        laudo["preto_s"] = preto["s"]
     if laudo.get("existe") and feito.get("layout") == "vertical":
         from ..video import plano
         try:

@@ -158,13 +158,15 @@ def modo_dia(config: dict, agora) -> dict | None:
     12:42, 15:47, 18:07), e uma historia leva 2h12.
     """
     barrados = len(barrados_no_estoque())
-    aprovados = len(aprovados_no_estoque())
+    lista = aprovados_no_estoque()
+    aprovados = len(lista)
     urgente = falta_video(aprovados, agora,
                           int(config.get("piso_de_estoque") or 1))
     # `teto` 0 e o freio DESLIGADO (ver `teto_de_estoque`): sem teto nao existe
     # "magro", senao a rodada de dia passaria a criar sem parar.
     teto = teto_de_estoque(config)
-    magro = bool(teto) and aprovados < teto
+    falta = falta_serie(config, lista) if teto else None
+    magro = bool(teto) and (aprovados < teto or bool(falta))
     if not barrados and not urgente and not magro:
         return None
     motivos = []
@@ -173,8 +175,10 @@ def modo_dia(config: dict, agora) -> dict | None:
     if urgente:
         motivos.append(f"so {aprovados} aprovado(s) para "
                        f"{horarios_restantes(agora)} horario(s) de hoje")
-    elif magro:
+    elif magro and aprovados < teto:
         motivos.append(f"{aprovados} aprovado(s) para um teto de {teto}")
+    elif magro:
+        motivos.append(falta["motivo"])
     criar = urgente or magro
     return {"por_que": " e ".join(motivos),
             "config": {**config, "janela_pesada": None,
@@ -872,10 +876,22 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
     if teto:
         estoque = dias_de_estoque_novo()
         if estoque >= teto:
-            log(f"[auto] ja ha {estoque} video(s) novo(s) na fila "
-                f"(teto: {teto} = um dia de grade). Nao crio mais ate baixar.")
-            return {"feito": "nada", "motivo": "estoque cheio",
-                    "estoque": estoque}
+            # A lista so e aberta abaixo do TETO DURO: acima dele a resposta
+            # ja e "nao cria", e abrir o catalogo a toa custa um ffprobe por
+            # video.
+            falta = (falta_serie(config, aprovados_no_estoque())
+                     if estoque < teto_duro(config) else None)
+            if not falta:
+                log(f"[auto] ja ha {estoque} video(s) novo(s) na fila "
+                    f"(teto: {teto} = um dia de grade). Nao crio mais ate "
+                    "baixar.")
+                return {"feito": "nada", "motivo": "estoque cheio",
+                        "estoque": estoque}
+            # A RODADA CRIA UMA HISTORIA SO, entao este gatilho nunca da mais
+            # de uma criacao extra por rodada.
+            log(f"[auto] estoque cheio em PARTES ({estoque}/{teto}), mas "
+                f"{falta['motivo']}: crio mais uma.")
+            _registrar_gatilho_de_serie(falta)
 
     if janela:
         sobra = minutos_ate_fechar(datetime.now(), janela)
@@ -885,13 +901,17 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
                 f"historia leva ~{precisa:.0f}. Nao comeco outra: ela "
                 "invadiria o dia.")
             return {"feito": "nada", "motivo": "sem tempo na janela"}
-    log(f"[auto] criando historia nova via {config.get('provedor')} "
-        f"({config.get('partes')} partes de {config.get('cenas_por_parte')} "
-        "cenas)...")
+    escritores = provedores_do_roteiro(config)
+    tipo = tipo_mais_magro()
+    partes = partes_da_proxima(tipo, config)
+    log("[auto] criando historia nova"
+        + (f" do tipo {tipo}" if tipo else "")
+        + f" via {' -> '.join(escritores)} "
+        f"({partes} partes de {config.get('cenas_por_parte')} cenas)...")
     try:
         criada = pipeline.gerar(
-            provedor=str(config.get("provedor") or "gemini"),
-            partes=int(config.get("partes") or 6),
+            provedor=escritores[0], provedores=escritores, tipo=tipo or None,
+            partes=partes,
             cenas_por_parte=int(config.get("cenas_por_parte") or 14),
             tema=(config.get("tema") or None),
             headless=headless, log=log)
@@ -922,17 +942,164 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
     return _terminar(pipeline, historia_id, headless, log, criada=True)
 
 
+def estoque_por_tipo(aprovados=None) -> dict:
+    """`{tipo: partes aprovadas na fila}` para os tipos do config.
+
+    Tipo sem nada na fila aparece com 0 — e e justamente o que a criacao
+    precisa ver. Historia de antes dos tipos entra pelo molde (quebrada ->
+    favela). Nunca levanta.
+    """
+    from ..roteiro import roteiro as R
+    from ..roteiro import serie as S
+
+    try:
+        config = S.carregar_config()
+        saida = {nome: 0 for nome in S.tipos(config)}
+    except Exception:                                          # noqa: BLE001
+        return {}
+    if aprovados is None:
+        try:
+            aprovados = aprovados_no_estoque()
+        except Exception:                                      # noqa: BLE001
+            return saida
+    roteiros: dict = {}
+    for video in aprovados:
+        fonte = getattr(video, "fonte_id", "")
+        if fonte not in roteiros:
+            try:
+                roteiros[fonte] = R.carregar(fonte)
+            except Exception:                                  # noqa: BLE001
+                roteiros[fonte] = {}
+        tipo = S.tipo_da_historia(roteiros[fonte], config)
+        if tipo in saida:
+            saida[tipo] += 1
+    return saida
+
+
+def tipo_mais_magro(estoque: dict | None = None) -> str:
+    """O tipo com MENOS partes aprovadas na fila; `""` sem tipos no config.
+
+    Empate: a ordem do config decide (favela, normal, babaca), para a
+    escolha ser previsivel e testavel.
+    """
+    estoque = estoque_por_tipo() if estoque is None else estoque
+    if not estoque:
+        return ""
+    return min(estoque, key=lambda nome: (estoque[nome],
+                                          list(estoque).index(nome)))
+
+
+def partes_da_proxima(tipo: str, config: dict, rng=None) -> int:
+    """Partes da proxima historia: sorteadas no tipo que pede, senao a agenda."""
+    padrao = int(config.get("partes") or 6)
+    if not tipo:
+        return padrao
+    from ..roteiro import serie as S
+    try:
+        return S.partes_do_tipo(tipo, padrao, rng=rng)
+    except Exception:                                          # noqa: BLE001
+        return padrao
+
+
+def teto_por_historia(config: dict | None = None) -> int:
+    """Partes da MESMA historia por dia no perfil (decisao do Adrian,
+    17/09/2026, valendo para tudo). O publicador aplica; aqui ele so entra
+    na conta de quantas series precisam estar prontas."""
+    config = config if config is not None else carregar()
+    return max(1, int(config.get("teto_por_historia_no_dia") or 2))
+
+
+def series_minimas(config: dict | None = None) -> int:
+    """Quantas SERIES distintas a grade precisa por dia: horarios / teto."""
+    import math
+    from builds import grade
+    return math.ceil((len(grade.HORAS) or 8) / teto_por_historia(config))
+
+
+def falta_serie(config: dict, aprovados: list) -> dict | None:
+    """`{motivo, series, minimo, teto_duro}` quando faltam SERIES; senao None.
+
+    O freio conta PARTES, e com o teto por historia isso nao basta: 20 partes
+    de 3 series enchem o teto (20) e so alimentam 6 horarios por dia. A
+    criacao e liberada quando ha menos series que o minimo, com um TETO DURO
+    de partes (o teto de sempre + uma serie inteira), para series longas nao
+    virarem producao sem fim.
+    """
+    teto = teto_de_estoque(config)
+    if not teto:
+        return None
+    aprovados = list(aprovados or ())
+    duro = teto_duro(config)
+    if len(aprovados) < teto or len(aprovados) >= duro:
+        # Abaixo do teto o freio de partes ja cria; acima do duro, nada cria.
+        return None
+    fontes = set()
+    for video in aprovados:
+        fonte = str(getattr(video, "fonte_id", "") or
+                    str(getattr(video, "id", "")).split(":")[0])
+        if not fonte.startswith("historia_"):
+            # NAO SEI CONTAR: sem a fonte de todos, "poucas series" seria
+            # chute — e o erro barato aqui e nao criar.
+            return None
+        fontes.add(fonte)
+    minimo = series_minimas(config)
+    if len(fontes) >= minimo:
+        return None
+    return {"motivo": f"so {len(fontes)} serie(s) pronta(s), a grade precisa "
+                      f"de {minimo}",
+            "series": len(fontes), "minimo": minimo, "teto_duro": duro}
+
+
+def teto_duro(config: dict) -> int:
+    """O teto de partes + uma serie inteira: o limite do gatilho de series."""
+    return teto_de_estoque(config) + int(config.get("partes") or 6)
+
+
+def _registrar_gatilho_de_serie(falta: dict) -> None:
+    """No diario, para o relatorio saber POR QUE a historia nasceu."""
+    try:
+        from builds import atividade
+        atividade.registrar(
+            "estudio", atividade.LOG,
+            f"series < {falta['minimo']}: {falta['motivo']}; criacao extra "
+            f"(teto duro {falta['teto_duro']} partes)",
+            "historias", etapa="criacao.series")
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def provedores_do_roteiro(config: dict) -> list:
+    """A ordem de queda de quem escreve (`config/llm.json`, papel roteiro).
+
+    Sem o arquivo, vale o `provedor` da agenda, como era antes da troca.
+    """
+    from ..llm import papeis
+
+    lista = papeis.provedores(papeis.ROTEIRO)
+    if not (papeis.ARQUIVO.is_file() and lista):
+        lista = [str(config.get("provedor") or "gemini")]
+    return lista
+
+
 def _retomar_texto(pipeline, historia_id: str, faltam: list,
                    headless: bool, log) -> dict:
     """Escreve as partes que faltam e so entao segue para imagem e video."""
     from ..roteiro import gerar as G
     from ..roteiro import roteiro as R
 
+    from ..llm import papeis
+
     config = carregar()
+    # A historia continua com QUEM a comecou (o estilo e dele); se ele falhar,
+    # a mesma ordem de queda da criacao assume.
     try:
-        G.retomar_serie(historia_id, provedor=str(config.get("provedor")
-                                                  or "gemini"),
-                        headless=headless, log=log)
+        gravado = R.carregar(historia_id).get("provedor")
+    except Exception:                                          # noqa: BLE001
+        gravado = None
+    ordem = papeis.com_preferido(gravado, provedores_do_roteiro(config))
+    try:
+        G.escrever_serie(ordem, historia_id=historia_id,
+                         headless=headless, log=log)
     except Exception as exc:                                   # noqa: BLE001
         # A retomada falha pelo mesmo motivo que a escrita falhou (limite de
         # uso, rede). Ela nao pode derrubar a rodada: a proxima tenta de novo,

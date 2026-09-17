@@ -25,6 +25,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 from remoto import bot as bot_mod
 from remoto import comandos, config, relatorios
@@ -198,6 +199,56 @@ class TabelaFechadaTests(BaseTemp):
             "V", (), {"id": "x", "titulo": "t"})()
         self.addCleanup(lambda: setattr(comandos, "procurar_video", original))
         self.assertIn("onde?", comandos.publicar("x instagram"))
+
+
+class ProcurarVideoTests(unittest.TestCase):
+    """17/09/2026: prefixo OU trecho, e o primeiro que aparecesse. O id da
+    variante A e prefixo do da B, e "00023" casava com generation_000230."""
+
+    A = "generation_00023:build:normal"
+    IDS = (A, A + ":B", "generation_000230:build:normal",
+           "generation_00031:build:normal")
+
+    def _videos(self, ids=IDS):
+        return [type("V", (), {"id": i, "titulo": i})() for i in ids]
+
+    def test_id_exato_ganha_mesmo_sendo_prefixo_de_outro(self):
+        videos = self._videos()
+        self.assertEqual(self.A, comandos.procurar_video(self.A, videos).id)
+        self.assertEqual(self.A + ":B",
+                         comandos.procurar_video(self.A + ":B", videos).id)
+        # A ordem do catalogo nao decide.
+        invertido = self._videos(tuple(reversed(self.IDS)))
+        self.assertEqual(self.A, comandos.procurar_video(self.A,
+                                                         invertido).id)
+
+    def test_prefixo_com_um_dono_so_resolve(self):
+        self.assertEqual("generation_00031:build:normal",
+                         comandos.procurar_video("generation_00031",
+                                                 self._videos()).id)
+
+    def test_prefixo_ambiguo_nao_escolhe(self):
+        self.assertIsNone(comandos.procurar_video("generation_00023",
+                                                  self._videos()))
+
+    def test_trecho_do_meio_nunca_resolve(self):
+        self.assertIsNone(comandos.procurar_video("00031", self._videos()))
+        self.assertEqual(["generation_00031:build:normal"],
+                         [v.id for v in comandos.candidatos(
+                             "00031", self._videos())])
+
+    def test_publicar_ambiguo_lista_e_nao_roda(self):
+        videos = self._videos()
+        for nome, falso in (("_listar_videos", lambda: videos),
+                            ("_rodar", mock.Mock(side_effect=AssertionError(
+                                "nao podia publicar")))):
+            patcher = mock.patch.object(comandos, nome, falso)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        resposta = comandos.publicar("generation_00023 youtube")
+        self.assertIn("não é exato", resposta)
+        self.assertIn(self.A + ":B", resposta)
+        self.assertLessEqual(resposta.count("`") // 2, 5)
 
 
 class LogComHoraTests(unittest.TestCase):
@@ -433,6 +484,33 @@ class TarefaDoBotTests(unittest.TestCase):
         self.assertIn("-m remoto", texto)
         self.assertIn("-X utf8", texto)
         self.assertIn("2>&1", texto)
+
+    def test_reinstalar_nao_traz_a_janela_preta_de_volta(self):
+        # Pedido do Adrian (17/09/2026): a acao e o wscript com o .vbs.
+        from builds import tarefas_windows as TW
+        from remoto import tarefa
+        chamadas = []
+
+        class Proc:
+            returncode, stdout, stderr = 0, "SUCESSO", ""
+
+        reais = (tarefa._schtasks, TW.endurecer, TW.garantir_vbs,
+                 tarefa.escrever_lancador)
+        tarefa._schtasks = lambda args: chamadas.append(args) or Proc()
+        TW.endurecer = lambda nome, **k: {"ok": True, "mensagem": ""}
+        TW.garantir_vbs = lambda pasta=None: Path("C:/rt/oculto.vbs")
+        tarefa.escrever_lancador = lambda python=None: Path("C:/r/bot.cmd")
+
+        def restaurar():
+            (tarefa._schtasks, TW.endurecer, TW.garantir_vbs,
+             tarefa.escrever_lancador) = reais
+
+        self.addCleanup(restaurar)
+        self.assertTrue(tarefa.instalar()["ok"])
+        (args,) = chamadas
+        acao = args[args.index("/TR") + 1]
+        self.assertIn("wscript.exe //B //Nologo", acao)
+        self.assertTrue(acao.endswith(f'"{Path("C:/r/bot.cmd")}"'))
 
 
 class ApuracaoTests(BaseTemp):

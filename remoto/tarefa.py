@@ -65,9 +65,19 @@ def _schtasks(argumentos: list) -> subprocess.CompletedProcess:
                           text=True, timeout=60, creationflags=NO_WINDOW)
 
 
+def acao(lancador) -> str:
+    """O `/TR`: o .cmd pelo wscript, SEM janela preta (17/09/2026). Sem o
+    monorepo instalado, cai no .cmd direto, como era antes."""
+    try:
+        from builds import tarefas_windows
+        return tarefas_windows.acao_oculta(lancador)
+    except Exception:                                          # noqa: BLE001
+        return f'"{lancador}"'
+
+
 def instalar(minutos: int = 10) -> dict:
     lancador = escrever_lancador()
-    proc = _schtasks(["/Create", "/TN", TAREFA, "/TR", f'"{lancador}"',
+    proc = _schtasks(["/Create", "/TN", TAREFA, "/TR", acao(lancador),
                       "/SC", "MINUTE", "/MO", str(int(minutos)),
                       "/RL", "LIMITED", "/F"])
     ficha = {"tarefa": TAREFA, "ok": proc.returncode == 0,

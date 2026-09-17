@@ -191,7 +191,7 @@ def _cenas_da_parte(roteiro: dict, parte: int) -> dict:
 
 
 def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
-                       provedor: str = "gemini", headless: bool = False,
+                       provedor: str | None = None, headless: bool = False,
                        log=print, perguntar=None, falhas=None) -> dict:
     """Reescreve NO ROTEIRO o prompt das cenas apontadas. `{n: prompt}`.
 
@@ -202,6 +202,15 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
     """
     from ..imagens.reescritor import limpar
 
+    if not provedor:
+        # Reescrever prompt a partir do veto e ANALISE do video: fica com o
+        # primeiro do papel "video" (o Gemini, que viu o mp4). O "qualidade"
+        # comeca pelo ChatGPT desde 17/09/2026, e ele nao assiste video.
+        try:
+            from ..llm import papeis
+            provedor = (papeis.provedores(papeis.VIDEO) or ["gemini"])[0]
+        except Exception:                                      # noqa: BLE001
+            provedor = "gemini"
     alvo = _cenas_da_parte(roteiro, parte)
     protagonista = str(roteiro.get("protagonista") or "")
     novos = {}
@@ -224,7 +233,9 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
     try:
         from ..llm.cliente import abrir_cliente
         with abrir_cliente(provedor, headless=headless, esperar=60.0,
-                           log=log) as cliente:
+                           log=log, papel="qualidade",
+                           ref=f"{roteiro.get('historia_id', '')}:p{parte}"
+                           ) as cliente:
             cliente.abrir(novo_chat=True)
             # SEM PRAZO PROPRIO: vale o do cliente, o mesmo da geracao de
             # roteiro. Com 180 s a reescrita falhou duas vezes seguidas na

@@ -34,8 +34,14 @@ class ContaDoLLMTests(unittest.TestCase):
     def test_criacao_espera_a_postagem_liberar_o_gemini(self):
         """A postagem das :07 segura o Gemini por ate ~30 min no parecer."""
         self.assertGreaterEqual(gerar.ESPERA_DA_CONTA_S, 1500)
+        # Desde 17/09/2026 a espera e parametro (so o ULTIMO da ordem de
+        # queda espera o prazo cheio); o padrao continua sendo o prazo cheio,
+        # e e ele que chega ao `abrir_cliente`.
+        for funcao in (gerar.gerar_serie, gerar.retomar_serie):
+            padrao = inspect.signature(funcao).parameters["espera_da_conta"]
+            self.assertEqual(gerar.ESPERA_DA_CONTA_S, padrao.default)
         fonte = inspect.getsource(gerar)
-        self.assertEqual(2, fonte.count("esperar=ESPERA_DA_CONTA_S"))
+        self.assertEqual(2, fonte.count("esperar=espera_da_conta"))
 
 
 class MetadeDeBaixoTests(unittest.TestCase):

@@ -25,7 +25,7 @@ from contos.publicar import qualidade
 class SemProvaNaoBaixaTests(unittest.TestCase):
 
     def _ramo_sem_prova(self) -> str:
-        fonte = inspect.getsource(worker.gerar)
+        fonte = inspect.getsource(worker._gerar)
         inicio = fonte.index('not prova.get("comprovada")')
         fim = fonte.index("break", inicio)
         return fonte[inicio:fim]
@@ -39,7 +39,7 @@ class SemProvaNaoBaixaTests(unittest.TestCase):
         self.assertNotIn("fila.registrar(", self._ramo_sem_prova())
 
     def test_o_download_so_acontece_depois_da_prova(self):
-        fonte = inspect.getsource(worker.gerar)
+        fonte = inspect.getsource(worker._gerar)
         prova = fonte.index("proveniencia.comprovar(")
         for achado in re.finditer(r"cliente\.download\(", fonte):
             self.assertGreater(achado.start(), fonte.index(
@@ -52,7 +52,7 @@ class RefeitaPorColagemExigeProvaTests(unittest.TestCase):
     `prova.get("url") or alvo` sem olhar `comprovada`."""
 
     def _laco(self) -> str:
-        fonte = inspect.getsource(worker.gerar)
+        fonte = inspect.getsource(worker._gerar)
         inicio = fonte.index("for volta in range(1, TENTATIVAS_DE_COMPOSICAO)")
         return fonte[inicio:fonte.index("if not Path(destino).is_file()", inicio)]
 

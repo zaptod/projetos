@@ -40,7 +40,8 @@ def _limpar(linha: str) -> str:
 
 
 # --------------------------------------------------------------- 1. biblia
-def proxima_estrutura(usadas: list, config: dict | None = None) -> str:
+def proxima_estrutura(usadas: list, config: dict | None = None,
+                      tipo: str | None = None) -> str:
     """Qual molde usar agora: o que ficou mais tempo sem aparecer.
 
     O fluxo automatico NUNCA usou os moldes. `config/roteiro.json` tem tres
@@ -49,10 +50,82 @@ def proxima_estrutura(usadas: list, config: dict | None = None) -> str:
     converge sempre para a mesma. Foi assim que as historias 9 e 10 sairam
     quase iguais ("conta de luz paga no meu nome").
 
-    Rodizio pelo menos usado, e nao sorteio: sorteio repete.
+    Rodizio pelo menos usado, e nao sorteio: sorteio repete. Com `tipo`, o
+    rodizio acontece so entre os moldes DAQUELE tipo.
     """
     config = config or carregar_config()
-    return _menos_usado(moldes_disponiveis(config), usadas)
+    disponiveis = moldes_disponiveis(config)
+    if tipo:
+        do_tipo = moldes_do_tipo(tipo, config)
+        disponiveis = [m for m in disponiveis if m in do_tipo]
+    return _menos_usado(disponiveis, usadas)
+
+
+# ------------------------------------------------------------------ tipos
+# TRES TIPOS POR DIA (17/09/2026, decisao do Adrian): favela, normal e
+# babaca, uma serie de cada no ar ao mesmo tempo. O tipo fica ACIMA do
+# molde: o rodizio de molde acontece dentro dele.
+def tipos(config: dict | None = None) -> dict:
+    """`{tipo: {"moldes": [...], "partes": [min, max]?}}`, so os validos."""
+    config = config or carregar_config()
+    existentes = set(moldes_disponiveis(config))
+    saida = {}
+    for nome, ficha in (config.get("tipos") or {}).items():
+        if str(nome).startswith("_") or not isinstance(ficha, dict):
+            continue
+        moldes = [m for m in (ficha.get("moldes") or []) if m in existentes]
+        if moldes:
+            saida[str(nome)] = dict(ficha, moldes=moldes)
+    return saida
+
+
+def moldes_do_tipo(tipo: str, config: dict | None = None) -> list:
+    return list((tipos(config).get(str(tipo)) or {}).get("moldes") or [])
+
+
+def tipo_do_molde(molde: str, config: dict | None = None) -> str:
+    """O tipo de um molde; `""` se ele nao pertence a nenhum.
+
+    E o que classifica as historias feitas antes dos tipos existirem: a
+    `historia_00016` (quebrada) e favela sem nunca ter gravado `tipo`.
+    """
+    for nome, ficha in tipos(config).items():
+        if molde in ficha["moldes"]:
+            return nome
+    return ""
+
+
+def tipo_da_historia(roteiro: dict, config: dict | None = None) -> str:
+    """O `tipo` gravado, ou o deduzido do molde."""
+    gravado = str((roteiro or {}).get("tipo") or "").strip()
+    if gravado:
+        return gravado
+    return tipo_do_molde(str((roteiro or {}).get("estrutura") or ""), config)
+
+
+def partes_do_tipo(tipo: str, padrao: int, config: dict | None = None,
+                   rng=None) -> int:
+    """Quantas partes a proxima historia daquele tipo tera.
+
+    `partes: [min, max]` no tipo = SORTEADO (o babaca: "vai ser aleatoria").
+    Sem isso, ou com faixa torta, vale `padrao`.
+    """
+    import random
+    faixa = (tipos(config).get(str(tipo)) or {}).get("partes")
+    try:
+        menor, maior = sorted(int(x) for x in faixa)
+    except (TypeError, ValueError):
+        return int(padrao)
+    if menor < 1:
+        return int(padrao)
+    return (rng or random).randint(menor, maior)
+
+
+def molde_da_biblia(biblia: dict, config: dict | None = None) -> dict:
+    config = config or carregar_config()
+    nome = str((biblia or {}).get("estrutura") or "")
+    molde = (config.get("modelos") or {}).get(nome)
+    return molde if isinstance(molde, dict) else {}
 
 
 def moldes_disponiveis(config: dict | None = None) -> list:
@@ -180,7 +253,8 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
                   cenas_por_parte: int = CENAS_POR_PARTE,
                   tema: str | None = None, config: dict | None = None,
                   evitar: list | None = None, estrutura: str = "",
-                  ganchos: list | None = None, narrador: str = "") -> str:
+                  ganchos: list | None = None, narrador: str = "",
+                  tipo: str = "", recentes: list | None = None) -> str:
     """Etapa 1: a historia inteira planejada, sem escrever nenhuma cena.
 
     `evitar` sao as historias que o canal JA tem. Sem elas o modelo se repete:
@@ -197,6 +271,11 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
     memoria entre rodadas; a lista e a memoria.
     """
     config = config or carregar_config()
+    if tipo and livre(tipo, config):
+        return prompt_biblia_livre(partes=partes,
+                                   cenas_por_parte=cenas_por_parte, tipo=tipo,
+                                   tema=tema, config=config, evitar=evitar,
+                                   recentes=recentes)
     regras = config["regras"]
     total_cenas = partes * cenas_por_parte
     duracao = total_cenas * 5
@@ -425,6 +504,26 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
     return "\n".join(linhas)
 
 
+def _sem_aspas(texto) -> str:
+    return str(texto or "").strip().strip("\"'“”").strip()
+
+
+def _virada_do_plano(partes: list) -> str:
+    """A virada quando a IA nao escreveu a linha: o fim da parte do meio e o
+    fim da ultima, do proprio plano dela.
+
+    No modo livre ela pode pular o rotulo (a favela de 17/09/2026 pulou), e
+    a virada so serve para a memoria "evite repetir" das proximas historias.
+    Sem turno de chat a mais e sem regra nova: o plano ja diz.
+    """
+    fins = [str(p.get("cliffhanger") or "").strip() for p in partes or []]
+    fins = [f for f in fins if f]
+    if not fins:
+        return ""
+    meio = fins[(len(fins) - 1) // 2]
+    return (meio if meio == fins[-1] else f"{meio} ... {fins[-1]}")[:200]
+
+
 def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
     """Texto da etapa 1 -> {titulo, premissa, protagonista, elenco, partes}."""
     campos = {"titulo": "", "premissa": "", "protagonista": "", "elenco": "",
@@ -476,13 +575,16 @@ def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
         "serie_nome": campos["serie_nome"],
         "premissa": campos["premissa"],
         "protagonista_nome": nome.strip(),
-        "protagonista": fisico.strip() or campos["protagonista"].strip(),
+        # SEM ASPAS: o DeepSeek embrulha a frase em aspas (17/09/2026), e
+        # ela entra assim no prompt de TODA imagem.
+        "protagonista": _sem_aspas(fisico) or _sem_aspas(
+            campos["protagonista"]),
         "narrador": campos["narrador"],
         "elenco": campos["elenco"],
         "cenario": campos["cenario"],
         "fatos": campos["fatos"],
         "alavancas": campos["alavancas"],
-        "virada": campos["virada"],
+        "virada": campos["virada"] or _virada_do_plano(partes),
         "partes": partes,
         "partes_esperadas": partes_esperadas,
         "bruto": texto,
@@ -575,11 +677,17 @@ def prompt_parte(biblia: dict, numero: int, *,
                  config: dict | None = None) -> str:
     """Etapa 2: escreve UMA parte, em cenas, no formato do contrato."""
     config = config or carregar_config()
+    if livre(biblia, config):
+        return prompt_parte_livre(biblia, numero, cenas=cenas, config=config)
     regras = config["regras"]
     total = len(biblia.get("partes") or []) or biblia.get("partes_esperadas", 1)
     plano = next((p for p in biblia.get("partes") or [] if p["n"] == numero), {})
     primeira = numero == 1
     ultima = numero >= total
+    # O MOLDE MANDA NA ABERTURA E NO FECHAMENTO quando ele os define (o
+    # babaca abre com a pergunta do post e fecha pedindo julgamento). Vem da
+    # biblia, e nao do contexto do chat: a retomada abre um chat novo.
+    molde = molde_da_biblia(biblia, config)
 
     linhas = []
     add = linhas.append
@@ -595,7 +703,21 @@ def prompt_parte(biblia: dict, numero: int, *,
         add("")
     add(f"Escreva exatamente {cenas} cenas.")
     add("")
-    if primeira:
+    if molde.get("regras"):
+        add("AS REGRAS DO MOLDE DESTA HISTORIA continuam valendo nesta parte:")
+        for regra in molde["regras"]:
+            add(f"  - {str(regra).strip()}")
+        add("")
+    if primeira and molde.get("abertura"):
+        add(str(molde["abertura"]))
+        # A regra geral de narracao, mais abaixo, pede "a primeira frase e o
+        # momento mais chocante". O post comeca pela pergunta: sem dizer quem
+        # manda, o modelo tenta as duas e entrega nenhuma.
+        add("  - Esta ABERTURA vale sobre qualquer regra geral abaixo que fale "
+            "da primeira frase.")
+    elif not primeira and molde.get("abertura_meio"):
+        add(str(molde["abertura_meio"]).replace("{n}", str(numero)))
+    elif primeira:
         add("ABERTURA (parte 1): a primeira cena e o momento mais chocante da "
             "HISTORIA INTEIRA, dito no meio da acao, antes de qualquer "
             "contexto. Nao apresente ninguem antes disso.")
@@ -610,13 +732,18 @@ def prompt_parte(biblia: dict, numero: int, *,
         add(f"ABERTURA (parte {numero}): a cena 1 recapitula o essencial em "
             "UMA frase que funciona como gancho novo para quem cai aqui "
             "primeiro - nunca 'no episodio anterior'. A cena 2 ja avanca.")
-    if ultima:
+    if ultima and molde.get("fechamento"):
+        add(str(molde["fechamento"]))
+    elif ultima:
         add("FECHAMENTO (ultima parte): responda a pergunta central de forma "
             "concreta. Depois, a ultima cena faz uma pergunta direta para "
             "quem assiste. Nao deixe nada em aberto.")
     else:
-        add(f"FECHAMENTO (parte {numero}): as duas ultimas cenas montam o "
-            "cliffhanger e a ULTIMA FRASE e a pergunta que fica no ar.")
+        if molde.get("fechamento_meio"):
+            add(str(molde["fechamento_meio"]).replace("{n}", str(numero)))
+        else:
+            add(f"FECHAMENTO (parte {numero}): as duas ultimas cenas montam o "
+                "cliffhanger e a ULTIMA FRASE e a pergunta que fica no ar.")
         add("  - NUNCA escreva 'a historia continua na proxima parte' (nem "
             "nada parecido). Medido em 01/09/2026: 9 de 10 partes de uma "
             "serie terminavam com essa frase literal, no pior lugar possivel "
@@ -692,7 +819,8 @@ def prompt_parte(biblia: dict, numero: int, *,
     return "\n".join(linhas)
 
 
-def prompt_revisao(numero: int, cenas: int, config: dict | None = None) -> str:
+def prompt_revisao(numero: int, cenas: int, config: dict | None = None,
+                   biblia: dict | None = None) -> str:
     """Pede ao modelo que critique o proprio texto e reescreva.
 
     E a mudanca que mais levanta qualidade de texto de LLM, e a razao e
@@ -704,6 +832,8 @@ def prompt_revisao(numero: int, cenas: int, config: dict | None = None) -> str:
     a historia leva depois, e barato.
     """
     config = config or carregar_config()
+    if biblia and livre(biblia, config):
+        return prompt_revisao_livre(numero, cenas)
     regras = (config.get("regras") or {}).get("narracao") or []
     linhas = [
         f"Agora RELEIA a parte {numero} que voce acabou de escrever, como se "
@@ -749,3 +879,184 @@ def prompt_continuar(numero: int, ultima_cena: int, cenas: int) -> str:
             f"da CENA {ultima_cena + 1} ate a CENA {cenas}, no mesmo formato "
             "(CENA / IMAGEM / TEMPO / NARRACAO). Nao repita as cenas "
             "anteriores e nao escreva nenhum texto fora do formato.")
+
+
+# ------------------------------------------------------------ modo livre
+# PEDIDO DO ADRIAN (17/09/2026), depois de ler a primeira historia do
+# DeepSeek: "a forma como fizemos engessa muito a criacao; deixar isso pro
+# lado da IA, dar um tamanho desejado e assunto base e dar a ela autoridade
+# para criar algo interessante".
+#
+# No modo livre a IA recebe so o ASSUNTO (o tipo), o TAMANHO e o que nao se
+# negocia: o limite da plataforma, o guia de linguagem, o que as imagens
+# precisam para a mesma pessoa aparecer em todas as cenas, e o FORMATO que o
+# parser le. Premissa, forma, tom, narrador, viradas e abertura sao dela.
+def modo_do_tipo(tipo: str, config: dict | None = None) -> str:
+    """`"livre"` ou `""` (o modo guiado de sempre)."""
+    return str((tipos(config).get(str(tipo or "")) or {}).get("modo") or "")
+
+
+def assunto_do_tipo(tipo: str, config: dict | None = None) -> str:
+    return str((tipos(config).get(str(tipo or "")) or {}).get("assunto") or "")
+
+
+def livre(biblia_ou_tipo, config: dict | None = None) -> bool:
+    tipo = (biblia_ou_tipo.get("tipo") if isinstance(biblia_ou_tipo, dict)
+            else biblia_ou_tipo)
+    return modo_do_tipo(tipo, config) == "livre"
+
+
+def _limite_da_plataforma(add) -> None:
+    add("O QUE NAO SE NEGOCIA (o canal publica sozinho e PUBLICO):")
+    add("  - Ninguem menor de 18 anos em situacao sexual ou romantica, nem "
+        "sugerido. Nada de duvida sobre quem e pai ou mae de uma crianca.")
+    add("  - Nada de sexo explicito, violencia sexual, autolesao em cena, nem "
+        "pessoa, marca ou crime reais.")
+    add("  - Historia ficticia, nomes inventados.")
+    add("")
+
+
+def _consistencia(add, biblia: dict | None = None) -> None:
+    if biblia is None:
+        add("PARA AS IMAGENS (o video mostra uma imagem gerada por cena):")
+        add("  - Descreva cada personagem que aparece mais de uma vez em "
+            "INGLES, numa frase fixa: etnia ou tom de pele, idade aparente, "
+            "cabelo, UM traco concreto do rosto e a roupa. Ela sera repetida "
+            "em todas as imagens, entao nao muda depois.")
+        # 17/09/2026, favela livre: quem narrava era um morador, o
+        # protagonista era o porteiro, e o Gemini reprovou porque as imagens
+        # mostravam o porteiro quando a narracao falava do narrador.
+        add("  - Se quem NARRA tambem aparece na historia, ele e um desses "
+            "personagens: descreva-o no ELENCO (ou como PROTAGONISTA).")
+        add("  - Liste os numeros e datas que a historia repete (valores, "
+            "anos, idades): eles tambem nao mudam depois.")
+        add("")
+        return
+    add("CONTINUIDADE (do seu proprio planejamento):")
+    if biblia.get("protagonista"):
+        add(f"  - Protagonista, em toda imagem em que aparecer: "
+            f"{biblia['protagonista']}")
+    if biblia.get("elenco"):
+        add(f"  - Outros personagens: {biblia['elenco']}")
+    if biblia.get("cenario"):
+        add(f"  - Cenario: {biblia['cenario']}")
+    if biblia.get("fatos"):
+        add(f"  - Numeros e datas fixados: {biblia['fatos']}")
+    add("")
+
+
+def prompt_biblia_livre(*, partes: int, cenas_por_parte: int, tipo: str,
+                        tema: str | None = None, config: dict | None = None,
+                        evitar: list | None = None,
+                        recentes: list | None = None) -> str:
+    config = config or carregar_config()
+    assunto = assunto_do_tipo(tipo, config) or "uma historia narrada"
+    total = partes * cenas_por_parte
+    linhas = []
+    add = linhas.append
+    add("Voce e roteirista de um canal de historias narradas em video vertical "
+        "(TikTok/Shorts). Vamos trabalhar em DUAS etapas: agora o "
+        "PLANEJAMENTO da historia; depois, uma parte por vez.")
+    add("")
+    add(f"O QUE EU QUERO: {assunto}.")
+    if tema:
+        add(f"Ponto de partida: {tema}.")
+    add(f"TAMANHO: {partes} parte(s), cada uma com {cenas_por_parte} cenas "
+        f"(cerca de {max(1, total * 5 // 60)} minutos no total). Cada parte "
+        "vira um video proprio, publicado em sequencia.")
+    add("")
+    add("VOCE TEM AUTORIDADE CRIATIVA. Escolha a premissa, a forma, o tom, "
+        "quem narra, as viradas e o que prende quem assiste — faca algo que "
+        "voce mesmo pararia para ver ate o fim. Nao ha molde a seguir.")
+    add("")
+    if evitar:
+        add("O canal ja tem estas historias; nao repita assunto nem gancho:")
+        for anterior in evitar:
+            add(f"  - {str(anterior).strip()[:160]}")
+        add("")
+    if recentes:
+        # UMA LINHA, e nao uma regra: e o que da variedade sem virar molde.
+        add("Evite repetir o desenho das ultimas (quem narra; premissa; "
+            "virada): " + " / ".join(str(r) for r in recentes))
+        add("")
+    _limite_da_plataforma(add)
+    _consistencia(add)
+    add("FORMATO DA RESPOSTA (o sistema le exatamente estes rotulos):")
+    add("")
+    add("TITULO DA SERIE: <o titulo da historia>")
+    add("NOME DA SERIE: <2 a 4 palavras; vai no titulo de todas as partes>")
+    add("PREMISSA: <2 frases>")
+    add("PROTAGONISTA: <nome> | <descricao fisica em ingles, uma frase>")
+    add("NARRADOR: <homem ou mulher — a voz que vai contar>")
+    add("ELENCO: <nome> | <descricao fisica em ingles>; <nome> | <descricao>")
+    add("CENARIO: <onde acontece, em ingles, uma frase>")
+    add("FATOS: <fato> = <valor>; <fato> = <valor>")
+    add("VIRADA CENTRAL: <a virada principal, uma frase>")
+    add("")
+    for i in range(1, partes + 1):
+        add(f"PARTE {i}")
+        add("TITULO: <titulo da parte>")
+        add("RESUMO: <o que acontece nesta parte>")
+        add("GANCHO: <como ela abre>")
+        add("CLIFFHANGER: <como ela termina>")
+        add("")
+    return "\n".join(linhas)
+
+
+def prompt_parte_livre(biblia: dict, numero: int, *, cenas: int,
+                       config: dict | None = None) -> str:
+    config = config or carregar_config()
+    total = len(biblia.get("partes") or []) or biblia.get("partes_esperadas", 1)
+    plano = next((p for p in biblia.get("partes") or [] if p["n"] == numero),
+                 {})
+    linhas = []
+    add = linhas.append
+    add(f"Escreva agora a PARTE {numero} de {total}, e so ela, seguindo o seu "
+        "proprio planejamento.")
+    if plano:
+        add(f"O que voce planejou para ela: {plano.get('resumo') or ''} "
+            f"(abre com: {plano.get('gancho') or '-'}; termina em: "
+            f"{plano.get('cliffhanger') or '-'})")
+    if numero >= total:
+        add("E a ultima parte: a historia termina aqui.")
+    add("")
+    add(f"TAMANHO: exatamente {cenas} cenas. Cada NARRACAO cabe em ~10 "
+        "segundos de fala (no maximo ~220 caracteres).")
+    add("")
+    _consistencia(add, biblia)
+    linguagem = config.get("linguagem") or []
+    if linguagem:
+        add("COMO DIZER O QUE E PESADO SEM PERDER O VIDEO (a plataforma le "
+            "palavras, nao a historia):")
+        for regra in linguagem:
+            add(f"  - {regra}")
+        add("")
+    add("O PROMPT DE IMAGEM de cada cena: em INGLES, uma frase, UM instante "
+        "so, mostrando o que a narracao daquela cena conta; sem texto, "
+        "legenda ou colagem; sem sangue, arma, nudez ou crianca em perigo.")
+    add("")
+    add("O resto e seu: voz, ritmo e como contar.")
+    add("")
+    add("FORMATO DA RESPOSTA (exatamente assim, sem nada em volta):")
+    add("")
+    add(f"TITULO: <titulo desta parte, terminando com ' (Parte {numero})'>")
+    add("")
+    add("CENA 1")
+    add("IMAGEM: <prompt em ingles>")
+    add("TEMPO: <segundos, so o numero>")
+    add("NARRACAO: <o que o narrador fala>")
+    add("")
+    add(f"... ate a CENA {cenas}. Nao escreva mais nada depois da ultima cena.")
+    return "\n".join(linhas)
+
+
+def prompt_revisao_livre(numero: int, cenas: int) -> str:
+    return "\n".join([
+        f"Releia a parte {numero} como um editor exigente e reescreva o que "
+        "deixaria a historia mais forte. Se ela ja estiver boa, devolva igual.",
+        "So confira que a IMAGEM de cada cena mostra o que a NARRACAO da mesma "
+        "cena conta, e que nenhuma palavra crua derrubaria o video.",
+        "",
+        f"Devolva a parte {numero} INTEIRA, as {cenas} cenas, no mesmo formato "
+        "(TITULO, e CENA n com IMAGEM/TEMPO/NARRACAO), sem comentarios.",
+    ])

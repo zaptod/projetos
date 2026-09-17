@@ -161,7 +161,44 @@ def _pausado(alvo: str = "picasso"):
 
 def gerar(historia_id: str, *, limite: int | None = None,
           headless: bool = False, parte: int | None = None, log=print) -> dict:
-    """Gera as imagens que faltam. Devolve {geradas, faltam, erros}."""
+    """Gera as imagens que faltam. Devolve {geradas, faltam, erros}.
+
+    PAREDE DE PLANOS (17/09/2026): se o PicassoIA pedir assinatura numa conta
+    que tem plano, o navegador e FECHADO e o perfil REABERTO uma vez — foi o
+    que resolveu na madrugada. Se a parede voltar, a rodada para como erro de
+    infraestrutura (`NaoRodou`): a historia continua pendente e a proxima
+    rodada tenta de novo; o video nao e abandonado.
+    """
+    Parede = _rb_identity_picasso_client.ParedeDePlanos
+    try:
+        return _gerar(historia_id, limite=limite, headless=headless,
+                      parte=parte, log=log)
+    except Parede as exc:
+        log(f"[imagens] {exc}. Fecho o navegador e reabro o perfil uma vez.")
+    try:
+        return _gerar(historia_id, limite=limite, headless=headless,
+                      parte=parte, log=log)
+    except Parede as exc:
+        _registrar_parede(historia_id, exc)
+        raise NaoRodou(f"{exc} (de novo, depois de reabrir o perfil)") from exc
+
+
+def _registrar_parede(historia_id: str, exc) -> None:
+    try:
+        import builds.atividade as atividade
+        atividade.registrar(
+            "picasso", atividade.ERRO,
+            f"{historia_id}: {str(exc)[:200]} - reabri o perfil e continuou; "
+            "confira a conta logada no perfil do PicassoIA",
+            "historias", etapa="imagens.parede_de_planos", ref=historia_id)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def _gerar(historia_id: str, *, limite: int | None = None,
+           headless: bool = False, parte: int | None = None,
+           log=print) -> dict:
+    """Uma passada com UM navegador aberto."""
     from ..roteiro import roteiro as R
 
     roteiro = R.carregar(historia_id)
@@ -193,6 +230,7 @@ def gerar(historia_id: str, *, limite: int | None = None,
 
     geradas, erros, recusadas = 0, [], []
     morreu = False
+    parede = None
     moderacao = _rb_identity_moderacao
     ConteudoRecusado = _rb_identity_client.ConteudoRecusado
     from .reescritor import Reescritor
@@ -362,6 +400,11 @@ def gerar(historia_id: str, *, limite: int | None = None,
                         log(f"[imagens] {rotulo} FALHOU: {exc}")
                         if type(exc).__name__ in ("BrowserMorreu",):
                             morreu = True
+                        if isinstance(
+                                exc,
+                                _rb_identity_picasso_client.ParedeDePlanos):
+                            # Sai do navegador inteiro: quem chama reabre.
+                            parede, morreu = exc, True
                         break
 
                 if not feito and falha_tecnica is not None:
@@ -400,6 +443,8 @@ def gerar(historia_id: str, *, limite: int | None = None,
 
     if reescritor is not None:
         reescritor.fechar()
+    if parede is not None:
+        raise parede
 
     faltam = len(fila.pendentes(historia_id, roteiro, parte))
     if recusadas:
