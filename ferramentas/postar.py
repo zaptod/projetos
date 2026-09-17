@@ -697,8 +697,21 @@ def _video_por_id(video_id: str):
 # ganhar linha no ledger. Nao basta consertar a recuperacao: enquanto o
 # ledger for cego para o passado, qualquer coisa que dependa dele para dizer
 # "nunca foi" vai repetir.
-RECUPERACAO_LIGADA = False
-RESERVA_LIGADA = False
+# RELIGADAS EM 17/09/2026, depois de as quatro condicoes existirem:
+#
+#   1. O ledger enxerga o passado do TikTok (`conciliar_tiktok.py` importou
+#      as publicacoes que nunca tinham ganhado linha). Era a causa: a fila
+#      lia "nunca foi" sobre partes que estavam no ar havia dias.
+#   2. Teto de 2 por historia/geracao por dia, no perfil inteiro — a rodada
+#      normal inclusive, que era por onde uma serie ocupava seis horarios.
+#   3. Rodizio entre fontes, para a fila nao esgotar uma serie antes de
+#      tocar na proxima.
+#   4. Desfecho classificado: clique sem confirmacao sai da fila e espera
+#      conferencia, em vez de ser reenviado ate tres vezes.
+#
+# Se alguma delas for desfeita, desligue as duas de novo antes.
+RECUPERACAO_LIGADA = True
+RESERVA_LIGADA = True
 
 CORTE_DO_TIKTOK = {"builds": "2026-09-10"}
 
@@ -766,6 +779,33 @@ def _sem_fonte_cheia(fila: list, canal: str) -> list:
         _linha(f"[postar] {barradas} parte(s) fora da fila: a historia ja "
                f"saiu {TETO_POR_FONTE_NO_DIA}x hoje "
                f"({', '.join(sorted(cheias)[:3])}).")
+    # A PRIORIDADE MANUAL TAMBEM E ADIADA PELO TETO, e isso precisa aparecer:
+    # o Adrian pede um video para furar a fila e ele simplesmente nao sai.
+    # Adiar e o certo (o teto e regra dele), mas em silencio parece defeito.
+    try:
+        pedidos = set(_prioridades())
+    except Exception:                                          # noqa: BLE001
+        pedidos = set()
+    adiados = [v.id for v in fila if v.id in pedidos and v not in livres]
+    for vid in adiados:
+        _linha(f"[postar] o pedido {vid} fica para amanha: a historia dele "
+               f"ja saiu {TETO_POR_FONTE_NO_DIA}x hoje.")
+    # SERIES DISTINTAS, e nao partes: com teto de 2 por fonte, dez horarios
+    # exigem pelo menos cinco series diferentes. O freio da producao conta
+    # PARTES, entao ele ve estoque cheio enquanto o dia fica com horario
+    # vazio por falta de VARIEDADE. O conserto do freio e na agenda; aqui
+    # fica o aviso, que e o que torna a fome visivel.
+    import math
+    fontes = {str(v.id).split(":")[0] for v in livres}
+    try:
+        from builds import grade
+        precisa = math.ceil(len(grade.HORAS) / max(1, TETO_POR_FONTE_NO_DIA))
+    except Exception:                                          # noqa: BLE001
+        precisa = 5
+    if fontes and len(fontes) < precisa:
+        _linha(f"[postar] ATENCAO {canal}: so {len(fontes)} serie(s) "
+               f"elegivel(is) hoje, e o dia precisa de {precisa} para encher "
+               f"os horarios. Falta VARIEDADE, nao partes.")
     return livres
 
 

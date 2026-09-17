@@ -229,6 +229,13 @@ def main(argv=None) -> int:
                    help="JSON {canal: [itens do Studio]}")
     p.add_argument("--gravar", action="store_true",
                    help="grava de verdade (sem isto, so mostra)")
+    p.add_argument("--so", action="append", default=None, metavar="VIDEO_ID",
+                   help="grava APENAS estes video_id (repetivel). A "
+                        "ferramenta propoe; quem revisou escolhe. Existe "
+                        "porque nem toda proposta e decidivel: quando A e B "
+                        "da mesma geracao disputam um post sem dono, nao da "
+                        "para saber de quem e, e chutar marca como publicado "
+                        "um video que ninguem viu.")
     args = p.parse_args(argv)
 
     captura = json.loads(Path(args.captura).read_text(encoding="utf-8"))
@@ -246,10 +253,16 @@ def main(argv=None) -> int:
         usados, quandos = _posts_ja_com_dono(do_ledger)
         novas = linhas_a_importar(itens, _catalogo(canal), vistos,
                                   usados, quandos)
-        print(f"--- {canal}: {len(itens)} no Studio, {len(novas)} a importar")
-        for n in novas:
+        propostas = novas
+        if args.so:
+            novas = [n for n in novas if n["video_id"] in set(args.so)]
+        print(f"--- {canal}: {len(itens)} no Studio, "
+              f"{len(propostas)} proposta(s)"
+              + (f", {len(novas)} selecionada(s)" if args.so else ""))
+        for n in propostas:
+            marca_sel = "  <<< GRAVA" if n in novas else ""
             print(f"      {n['quando'][:16]}  {n['video_id']:34} "
-                  f"{n['tiktok_id']}")
+                  f"{n['tiktok_id']}{marca_sel}")
         total += len(novas)
         if not args.gravar or not novas:
             continue
