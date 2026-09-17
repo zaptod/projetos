@@ -343,14 +343,27 @@ def ref_legivel(ref: str) -> str:
 
 _VERBOS = {"publicar.tiktok": "post", "publicar.youtube": "upload",
            "publicar.corte": "corte", "imagens": "imagens"}
+# Turnos de LLM (branch feat/deepseek-roteiro): etapa "llm.<papel>".
+_PAPEIS_DE_LLM = {"roteiro": "roteiro", "video": "vídeo",
+                  "qualidade": "qualidade",
+                  "imagem_prompt": "prompt de imagem"}
+
+
+def _verbo(etapa: str) -> str:
+    if etapa.startswith("llm."):
+        papel = etapa[4:]
+        return _PAPEIS_DE_LLM.get(papel, papel.replace("_", " "))
+    return _VERBOS.get(etapa, etapa)
 
 
 def balao(evento: dict, limite: int = 30) -> str:
-    """O texto curto em cima do bot: `render historia_00017`."""
+    """O texto curto do bot: `render historia_00017`, `vídeo historia_00013 p1`."""
     etapa = str(evento.get("etapa") or "")
     ref = ref_legivel(evento.get("ref") or "")
     if etapa and ref:
-        texto = f"{_VERBOS.get(etapa, etapa)} {ref}"
+        texto = f"{_verbo(etapa)} {ref}"
+    elif etapa.startswith("llm."):
+        texto = _verbo(etapa)
     else:
         texto = str(evento.get("detalhe") or etapa or "trabalhando")
     texto = " ".join(texto.split())
@@ -493,20 +506,32 @@ def linha_do_diario(evento: dict) -> tuple[str, str]:
     hora = momento.strftime("%H:%M:%S") if momento else "--:--:--"
     predio = predio_do_evento(evento)
     status = str(evento.get("status") or "")
-    simbolo = {"inicio": "▶", "ok": "✓", "erro": "✗", "log": "·"}.get(status,
-                                                                     "·")
+    simbolo = {"inicio": "▶", "ok": "✓", "erro": "✗", "log": "·",
+               "aviso": "⚠"}.get(status, "·")
     canal = str(evento.get("canal") or "")
     canal = {"historias": "hist", "builds": "build"}.get(canal, canal[:5])
     detalhe = " ".join(str(evento.get("detalhe") or "").split())
     texto = f"{hora} {simbolo} {rotulo(predio):<9.9} {canal:<5} {detalhe}"
-    marca = {"inicio": "inicio", "ok": "ok", "erro": "erro"}.get(status,
-                                                                 "fraco")
+    marca = {"inicio": "inicio", "ok": "ok", "erro": "erro",
+             "aviso": "aviso"}.get(status, "fraco")
     return texto, marca
+
+
+def ultimo_status_por_predio(eventos: list[dict]) -> dict:
+    """{predio: status} do ultimo evento que nao e `log`."""
+    saida = {}
+    for evento in eventos:
+        if evento.get("status") in (None, "", "log") \
+                or not evento.get("fabrica"):
+            continue
+        saida[predio_do_evento(evento)] = evento.get("status")
+    return saida
 
 
 def estado_dos_predios(abertos: list[dict], erros: list[dict],
                        ocupadas: list[str],
-                       recentes: dict | None = None) -> dict:
+                       recentes: dict | None = None,
+                       ultimos: dict | None = None) -> dict:
     """{predio: {status, balao, trabalhos, contas, erro, recente}}.
 
     status: trabalhando (`inicio` aberto) > erro > recente (evento nos
@@ -523,6 +548,9 @@ def estado_dos_predios(abertos: list[dict], erros: list[dict],
         if erro is not None and recente is not None \
                 and recente["ha_s"] < erro["ha_s"]:
             erro = None          # houve atividade DEPOIS do erro
+        if erro is not None and ultimos is not None \
+                and ultimos.get(nome) not in (None, "erro"):
+            erro = None          # o predio ja fez coisa certa depois
         uso = em_uso.get(nome) or []
         if trabalhos:
             status = "trabalhando"
@@ -539,6 +567,11 @@ def estado_dos_predios(abertos: list[dict], erros: list[dict],
                 texto = f"{texto} +{len(uso) - 1}"
         elif erro is not None:
             status, texto = "erro", "❗ " + balao(erro, 26)
+        elif recente is not None and \
+                recente["evento"].get("status") == "aviso":
+            # Aviso (turno de LLM que falhou e vai tentar de novo) e ambar,
+            # nao o vermelho do erro.
+            status, texto = "aviso", "⚠ " + balao(recente["evento"], 26)
         elif recente is not None:
             status, texto = "recente", recente["balao"]
         else:
@@ -734,6 +767,13 @@ def tem_prova(linha: dict) -> bool:
     return bool(tem_id) and str(linha.get("url") or "").startswith("http")
 
 
+def publicados_no_dia(por_canal: dict, dia: str) -> int:
+    """Quantas publicacoes (qualquer canal e destino) sairam no dia ISO."""
+    return sum(1 for linhas in por_canal.values() for linha in linhas
+               if publicado(linha)
+               and str(linha.get("quando") or "").startswith(dia))
+
+
 def ultimos_publicados(por_canal: dict, n: int = 5) -> list[dict]:
     """Os `n` mais recentes dos dois ledgers, com a marca de prova."""
     todos = []
@@ -800,14 +840,12 @@ def resumo(estado: dict) -> dict:
         alerta = agendador.get("selo", "tarefas do Agendador com problema")
     # TRABALHO REAL tem tres fontes, e "tudo parado" so quando nenhuma diz
     # nada: `inicio` aberto, processo de producao vivo, evento recente.
-    focos = [a["texto"] for a in abertos]
+    focos = [f"{rotulo(a.get('predio'))} · {a['texto']}" for a in abertos]
     predios_com_foco = {a.get("predio") for a in abertos}
     for predio, info in (estado.get("predios") or {}).items():
-        if info.get("status") in ("recente", "trabalhando") \
+        if info.get("status") in ("recente", "trabalhando", "aviso") \
                 and predio not in predios_com_foco:
-            focos.append(f"{rotulo(predio)} {info['balao']}"
-                         if info.get("em_uso") and not info.get("trabalhos")
-                         else info["balao"])
+            focos.append(f"{rotulo(predio)} · {info['balao']}")
     for linha in estado.get("vivos") or []:
         if linha.get("tipo") in PRODUCAO and linha.get("ativo"):
             focos.append(linha["quem"])

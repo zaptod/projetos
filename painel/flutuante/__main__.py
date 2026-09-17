@@ -44,6 +44,15 @@ def main(argv=None) -> int:
                                           "terminal"))
     parser.add_argument("--gaveta", action="store_true",
                         help="com --grande: abre com o terminal aberto")
+    parser.add_argument("--hora", type=int, metavar="HH",
+                        help="finge esta hora na arte (dia/noite), para provas")
+    parser.add_argument("--demo", action="store_true",
+                        help="dados de DEMONSTRACAO (so para provas e GIF)")
+    parser.add_argument("--gif", metavar="GIF",
+                        help="com --prova: grava tambem 5 s de animacao")
+    parser.add_argument("--arte", choices=("fofa", "classico"))
+    parser.add_argument("--medir-cpu", type=float, metavar="SEG",
+                        help="com --prova: mede a CPU deste processo por SEG")
     args = parser.parse_args(argv)
 
     alca = _uma_so() if not args.prova else True
@@ -61,9 +70,17 @@ def main(argv=None) -> int:
     from .janela import Janela
 
     # A prova nao pode mudar as preferencias de quem usa a janela.
+    coletor = None
+    if args.demo:
+        from .demo import ColetorDemo
+        coletor = ColetorDemo()
     janela = Janela(modo=args.modo,
                     topo=False if args.sem_topo else None,
-                    persistir=not args.prova)
+                    persistir=not args.prova, coletor=coletor,
+                    hora=args.hora)
+    if args.arte and args.arte != janela.prefs.get("arte"):
+        janela.prefs["arte"] = args.arte
+        janela.trocar(janela.modo)
     if args.aba and janela.modo == "medio":
         janela.aba(args.aba)
     if args.gaveta and not janela.prefs.get("gaveta"):
@@ -71,12 +88,44 @@ def main(argv=None) -> int:
         janela.trocar(janela.modo)
 
     if args.prova:
+        import time
+
+        from .captura import capturar
+        quadros = []
+        cpu = {}
+
         def fotografar():
-            from .captura import fotografar as foto
             janela.update()
-            tamanho = foto(janela, args.prova)
-            print(f"prova: {args.prova} {tamanho[0]}x{tamanho[1]} "
+            imagem = capturar(janela)
+            imagem.save(args.prova)
+            print(f"prova: {args.prova} {imagem.width}x{imagem.height} "
                   f"modo={janela.modo}")
+            if args.gif:
+                quadros.append(imagem)
+                janela.after(80, gravar_gif)
+            elif args.medir_cpu:
+                cpu["ini"] = (time.process_time(), time.monotonic())
+                janela.after(int(args.medir_cpu * 1000), medir)
+            else:
+                janela.sair()
+
+        def gravar_gif():
+            quadros.append(capturar(janela))
+            if len(quadros) < 63:                  # ~5 s a 12,5 fps
+                janela.after(80, gravar_gif)
+                return
+            quadros[0].save(args.gif, save_all=True,
+                            append_images=quadros[1:], duration=80, loop=0,
+                            optimize=True)
+            print(f"gif: {args.gif} {len(quadros)} quadros")
+            janela.sair()
+
+        def medir():
+            cpu_ini, relogio_ini = cpu["ini"]
+            gasto = time.process_time() - cpu_ini
+            parede = time.monotonic() - relogio_ini
+            print(f"cpu: {100 * gasto / parede:.1f}% de um nucleo "
+                  f"em {parede:.0f} s (modo {janela.modo})")
             janela.sair()
 
         esperar = int(args.espera * 1000)

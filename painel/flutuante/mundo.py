@@ -309,10 +309,11 @@ class CenaVila:
             bot["status"] = status
             # `recente` (evento solto ha poucos minutos) tambem e trabalho:
             # o Estudio vistoria e renderiza registrando so `log`/`ok`.
-            vai = status in ("trabalhando", "no_ar", "recente")
+            vai = status in ("trabalhando", "no_ar", "recente", "aviso")
             bot["alvo"] = list(porta(nome) if vai else bot["casa"])
             bot["texto"] = info.get("balao") or ""
             cor = {"trabalhando": self.t.acento, "recente": self.t.acento,
+                   "aviso": self.t.aviso,
                    "no_ar": self.t.ok,
                    "erro": self.t.erro}.get(status, self.t.borda)
             self.canvas.itemconfigure(bot["rotulo_fundo"], outline=cor)

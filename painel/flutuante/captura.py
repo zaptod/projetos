@@ -38,6 +38,13 @@ def hwnd_da_janela(raiz) -> int:
 
 def fotografar(raiz, destino) -> tuple:
     """Salva a janela em `destino` (PNG). Devolve (largura, altura)."""
+    imagem = capturar(raiz)
+    imagem.save(destino)
+    return imagem.size
+
+
+def capturar(raiz):
+    """A janela como imagem PIL (RGB)."""
     from PIL import Image
 
     user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
@@ -63,13 +70,12 @@ def fotografar(raiz, destino) -> tuple:
                         ctypes.byref(cabeca), 0)
         imagem = Image.frombuffer("RGBA", (largura, altura), buffer.raw,
                                   "raw", "BGRA", 0, 1).convert("RGB")
-        imagem.save(destino)
     finally:
         gdi32.SelectObject(memoria, antigo)
         gdi32.DeleteObject(bitmap)
         gdi32.DeleteDC(memoria)
         user32.ReleaseDC(hwnd, tela)
-    return largura, altura
+    return imagem
 
 
-__all__ = ["fotografar", "hwnd_da_janela"]
+__all__ = ["capturar", "fotografar", "hwnd_da_janela"]

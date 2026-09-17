@@ -31,9 +31,12 @@ from ..estilo import ESPACO
 from . import dados, preferencias
 from .caminhos import Caminhos
 from .coletor import Coletor
+from .cena import CenaFofa
 from .mundo import CenaVila
 
+# A arte fofa anda a 20 fps; a classica (pixel) nao precisa de tanto.
 ANIMACAO_MS = 70
+ANIMACAO_FOFA_MS = 50
 FILA_MS = 250
 TIQUE_MS = 1000
 # Cor que o Windows torna transparente no modo icone (o circulo fica redondo).
@@ -517,7 +520,7 @@ class Janela(tk.Tk):
     def __init__(self, caminhos: Caminhos | None = None,
                  modo: str | None = None, topo: bool | None = None,
                  coletor: Coletor | None = None, iniciar: bool = True,
-                 persistir: bool = True):
+                 persistir: bool = True, hora: int | None = None):
         super().__init__()
         self.persistir = persistir
         self.t = estilo.VILA
@@ -533,7 +536,9 @@ class Janela(tk.Tk):
         self.modo = None
         self._cache_mundo: dict = {}
         self._paineis: list = []
-        self._cena: CenaVila | None = None
+        self._cena = None
+        self.hora_visual = hora
+        self._cache_fofa: dict = {}
         self._animacao = None
         self._arrasto = None
         self._abas: dict = {}
@@ -586,6 +591,14 @@ class Janela(tk.Tk):
         menu.add_command(label="Médio", command=lambda: self.trocar("medio"))
         menu.add_command(label="Grande", command=lambda: self.trocar("grande"))
         menu.add_command(label="Ícone", command=lambda: self.trocar("icone"))
+        menu.add_separator()
+        self._arte_var = tk.StringVar(value=self.prefs.get("arte", "fofa"))
+        menu.add_radiobutton(label="Arte fofa", value="fofa",
+                             variable=self._arte_var,
+                             command=self._trocar_arte)
+        menu.add_radiobutton(label="Arte clássica (pixel)", value="classico",
+                             variable=self._arte_var,
+                             command=self._trocar_arte)
         menu.add_separator()
         self._topo_var = tk.BooleanVar(value=bool(self.prefs["topo"]))
         menu.add_checkbutton(label="Sempre por cima",
@@ -798,6 +811,20 @@ class Janela(tk.Tk):
             self._ligar_animacao()
         self.guardar()
 
+    def _criar_cena(self, pai):
+        if self.prefs.get("arte") == "classico":
+            return CenaVila(pai, self.t, self.detalhe_predio,
+                            self._cache_mundo)
+        return CenaFofa(pai, self.t, self.detalhe_predio, self._cache_fofa,
+                        hora=self.hora_visual)
+
+    def _trocar_arte(self) -> None:
+        self.prefs["arte"] = self._arte_var.get()
+        if self.modo in ("medio", "grande"):
+            self.trocar(self.modo)
+        else:
+            self.guardar()
+
     def restaurar(self) -> None:
         anterior = self.prefs.get("anterior") or "medio"
         self.trocar(anterior if anterior != "icone" else "medio")
@@ -922,8 +949,7 @@ class Janela(tk.Tk):
         self._barra_titulo(moldura)
         corpo = tk.Frame(moldura, bg=self.t.fundo)
         corpo.pack(fill="both", expand=True, padx=6, pady=(ESPACO["pouco"], 4))
-        self._cena = CenaVila(corpo, self.t, self.detalhe_predio,
-                              self._cache_mundo)
+        self._cena = self._criar_cena(corpo)
         self._cena.canvas.pack()
         proxima = PainelProxima(self, corpo, curto=True)
         proxima.quadro.pack(fill="x", pady=(ESPACO["pouco"], 0))
@@ -1012,8 +1038,7 @@ class Janela(tk.Tk):
         direita.pack(side="left", fill="both", expand=True,
                      padx=(ESPACO["normal"], 0))
 
-        self._cena = CenaVila(esquerda, self.t, self.detalhe_predio,
-                              self._cache_mundo)
+        self._cena = self._criar_cena(esquerda)
         self._cena.canvas.pack(anchor="w")
         proxima = PainelProxima(self, esquerda)
         proxima.quadro.pack(fill="x", pady=(ESPACO["pouco"], 0))
@@ -1043,7 +1068,11 @@ class Janela(tk.Tk):
     # ---------------------------------------------------------- animacao
     def _ligar_animacao(self) -> None:
         self._parar_animacao()
-        self._animacao = self.after(ANIMACAO_MS, self._animar)
+        self._animacao = self.after(self._intervalo(), self._animar)
+
+    def _intervalo(self) -> int:
+        return (ANIMACAO_FOFA_MS if isinstance(self._cena, CenaFofa)
+                else ANIMACAO_MS)
 
     def _parar_animacao(self) -> None:
         if self._animacao is not None:
@@ -1063,7 +1092,7 @@ class Janela(tk.Tk):
                 self._cena.passo()
             except tk.TclError:
                 return
-        self._animacao = self.after(ANIMACAO_MS, self._animar)
+        self._animacao = self.after(self._intervalo(), self._animar)
 
     # ------------------------------------------------------------- dados
     def _drenar(self) -> None:
@@ -1078,6 +1107,10 @@ class Janela(tk.Tk):
                     ultimo = valor
                 elif tipo == "mostrar":
                     mostrar = True
+                elif tipo == "falha":
+                    # Leitura que estourou nao pode sumir calada.
+                    self._dica_padrao = f"falha ao ler o sistema: {valor}"[:90]
+                    self._dica(None)
         except queue.Empty:
             pass
         if mostrar:
@@ -1109,6 +1142,14 @@ class Janela(tk.Tk):
                 text=agendador.get("selo") or "tarefas: …", fg=cor)
         if self._cena is not None:
             self._cena.aplicar(estado.get("predios") or {})
+            if hasattr(self._cena, "aplicar_estado"):
+                hoje = int(estado.get("publicados_hoje") or 0)
+                antes = dict(self.prefs.get("colecao") or {})
+                nivel = preferencias.atualizar_colecao(
+                    self.prefs, hoje, datetime.now().date().isoformat())
+                if self.prefs["colecao"] != antes:
+                    self.guardar()
+                self._cena.aplicar_estado(estado, nivel, hoje)
         for painel in self._paineis:
             painel.atualizar(estado)
         self._rotular_abas()

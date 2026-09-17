@@ -20,7 +20,28 @@ BARRA_DO_WINDOWS = 48
 
 PADRAO = {"modo": "medio", "anterior": "medio", "topo": True,
           "x": None, "y": None, "aba": "diario", "terminal": "postar",
-          "gaveta": False}
+          "gaveta": False, "arte": "fofa", "colecao": None}
+ARTES = ("fofa", "classico")
+# Um enfeite novo na Vila a cada N publicacoes do dia (o "passatempo").
+PUBLICACOES_POR_ENFEITE = 3
+ENFEITES = 6
+
+
+def atualizar_colecao(prefs: dict, publicados_hoje: int, dia: str) -> int:
+    """O nivel de enfeites de hoje. Guarda o dia e o recorde em `prefs`.
+
+    Nunca desce no mesmo dia (um ledger relido pela metade nao pode tirar
+    enfeite da tela); vira o dia, recomeca do zero. Devolve o nivel.
+    """
+    nivel = min(ENFEITES, max(0, int(publicados_hoje)) //
+                PUBLICACOES_POR_ENFEITE)
+    atual = prefs.get("colecao") if isinstance(prefs.get("colecao"),
+                                               dict) else {}
+    if atual.get("dia") == dia:
+        nivel = max(nivel, int(atual.get("nivel") or 0))
+    recorde = max(nivel, int(atual.get("recorde") or 0))
+    prefs["colecao"] = {"dia": dia, "nivel": nivel, "recorde": recorde}
+    return nivel
 
 
 def tamanho(modo: str, tela: tuple) -> tuple:
@@ -57,6 +78,8 @@ def ler(caminho: Path) -> dict:
         dados["modo"] = "medio"
     if dados["anterior"] not in MODOS or dados["anterior"] == "icone":
         dados["anterior"] = "medio"
+    if dados["arte"] not in ARTES:
+        dados["arte"] = "fofa"
     return dados
 
 

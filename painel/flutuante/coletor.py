@@ -46,7 +46,7 @@ _PS_PROCESSOS = (
     "ConvertTo-Json -Compress")
 
 
-def listar_processos(timeout: float = 20.0) -> list[dict] | None:
+def listar_processos(timeout: float = 60.0) -> list[dict] | None:
     """Os pythons vivos, com linha de comando. None se nao deu para ver."""
     if os.name != "nt":
         return None
@@ -140,6 +140,7 @@ class Coletor:
         self._ledgers = _PorData(dados.ler_ledger)
         self._terminais = _PorData(self._ler_terminal)
         self._thread: threading.Thread | None = None
+        self._rodando: set = set()
 
     # ------------------------------------------------------------ ciclo
     def iniciar(self) -> None:
@@ -175,23 +176,57 @@ class Coletor:
             self._acordar.wait(self._ritmo)
             self._acordar.clear()
 
-    def _talvez_processos(self) -> None:
+    # OS POWERSHELL RODAM A PARTE. Medido em 17/09/2026 com a maquina
+    # ocupada: o Get-CimInstance levou 19 s. Enquanto ele rodava dentro do
+    # laco, a janela abria VAZIA (nem diario, nem Vila) ate ele voltar.
+    def _em_paralelo(self, nome: str, trabalho) -> None:
+        if nome in self._rodando:
+            return
+        self._rodando.add(nome)
+
+        def rodar():
+            try:
+                trabalho()
+            except Exception:                                # noqa: BLE001
+                pass
+            finally:
+                self._rodando.discard(nome)
+                self._acordar.set()
+
+        threading.Thread(target=rodar, daemon=True,
+                         name=f"flutuante-{nome}").start()
+
+    def _talvez_processos(self, esperar: bool = False) -> None:
         if time.monotonic() - self._processos_em < PROCESSOS_S \
                 and self._processos is not None:
             return
         self._processos_em = time.monotonic()
-        lista = self._listar()
-        if lista is not None:
-            self._processos = lista
 
-    def _talvez_tarefas(self) -> None:
+        def ler():
+            lista = self._listar()
+            if lista is not None:
+                self._processos = lista
+
+        if esperar:
+            ler()
+        else:
+            self._em_paralelo("processos", ler)
+
+    def _talvez_tarefas(self, esperar: bool = False) -> None:
         if time.monotonic() - self._tarefas_em < TAREFAS_S:
             return
         self._tarefas_em = time.monotonic()
-        try:
-            self._tarefas = tarefas.examinar(self._ler_agendador())
-        except Exception:                                    # noqa: BLE001
-            self._tarefas = tarefas.examinar(None)
+
+        def ler():
+            try:
+                self._tarefas = tarefas.examinar(self._ler_agendador())
+            except Exception:                                # noqa: BLE001
+                self._tarefas = tarefas.examinar(None)
+
+        if esperar:
+            ler()
+        else:
+            self._em_paralelo("tarefas", ler)
 
     def _talvez_previsao(self) -> None:
         if self._previsao_rodando:
@@ -269,12 +304,15 @@ class Coletor:
             "erros": erros,
             "ocupadas": ocupadas,
             "travas": [t for t in (dados.ler_trava(n) for n in ocupadas) if t],
-            "predios": dados.estado_dos_predios(abertos, erros, ocupadas,
-                                                recentes),
+            "predios": dados.estado_dos_predios(
+                abertos, erros, ocupadas, recentes,
+                dados.ultimo_status_por_predio(eventos)),
             "processos_conhecidos": self._processos is not None,
             "vivos": dados.linhas_vivas(processos, abertos, agora,
                                         os.getpid(), eventos, agora_utc),
             "publicados": dados.ultimos_publicados(por_canal, 5),
+            "publicados_hoje": dados.publicados_no_dia(
+                por_canal, agora.date().isoformat()),
             "terminais": terminais,
             "bot": {
                 "vivo": bot_vivo,

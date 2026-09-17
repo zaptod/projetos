@@ -19,6 +19,7 @@ Rode da raiz:  python -m pytest painel/test_flutuante.py -q
 """
 from __future__ import annotations
 
+import gc
 import importlib.util
 import json
 import os
@@ -407,6 +408,20 @@ class CenaDaCaptura(unittest.TestCase):
         vivo = dados.atividade_recente(eventos, self.AGORA_UTC,
                                        vivo=lambda p: True)
         self.assertEqual(vivo["picasso"]["balao"], "imagens historia_09003")
+
+    def test_ok_depois_do_erro_tira_o_predio_do_erro(self):
+        eventos = [_evento(self.AGORA_UTC - timedelta(minutes=40),
+                           fabrica="picasso", status="erro", detalhe="caiu"),
+                   _evento(self.AGORA_UTC - timedelta(minutes=28),
+                           fabrica="picasso", status="ok", detalhe="3 ok")]
+        erros = dados.erros_recentes(eventos, self.AGORA_UTC)
+        self.assertEqual(len(erros), 1, "o erro continua na lista de erros")
+        ultimos = dados.ultimo_status_por_predio(eventos)
+        predios = dados.estado_dos_predios([], erros, [], {}, ultimos)
+        self.assertEqual(predios["picasso"]["status"], "ocioso")
+        so_erro = dados.ultimo_status_por_predio(eventos[:1])
+        predios = dados.estado_dos_predios([], erros, [], {}, so_erro)
+        self.assertEqual(predios["picasso"]["status"], "erro")
 
     def test_atividade_depois_do_erro_apaga_o_alerta_do_predio(self):
         erro = [{"predio": "estudio", "ha_s": 900, "detalhe": "x",
@@ -964,6 +979,10 @@ class Coleta(unittest.TestCase):
         try:
             tipo, estado = fila.get(timeout=10)
             self.assertEqual(tipo, "estado")
+            # O Agendador chega depois, sem segurar a primeira leitura.
+            fim = time.monotonic() + 10
+            while not (estado.get("tarefas") or {}).get("selo")                     and time.monotonic() < fim:
+                tipo, estado = fila.get(timeout=10)
             self.assertEqual(estado["tarefas"]["selo"],
                              "tarefas ⚠ 1 com console")
             fim = time.monotonic() + 10
@@ -975,6 +994,28 @@ class Coleta(unittest.TestCase):
         c._thread.join(10)
         self.assertFalse(c._thread.is_alive())
         self.assertEqual(len(pedidos), 1, "a previsao roda uma vez so")
+
+    def test_powershell_lento_nao_segura_a_primeira_leitura(self):
+        import threading
+        liberar = threading.Event()
+
+        def lento():
+            liberar.wait(20)
+            return []
+
+        fila = queue.Queue()
+        c = coletor.Coletor(_caminhos_de_teste(), fila, processos=lento,
+                            previsao=lambda: {}, agendador=lento)
+        c.iniciar()
+        try:
+            inicio = time.monotonic()
+            tipo, estado = fila.get(timeout=5)
+            self.assertLess(time.monotonic() - inicio, 3)
+            self.assertFalse(estado["processos_conhecidos"])
+            self.assertTrue(estado["feed"], "o diario ja aparece")
+        finally:
+            liberar.set()
+            c.parar()
 
     def test_so_a_janela_chama_after(self):
         """`after()` de outra thread quebra o Tk: o coletor nem conhece Tk."""
@@ -1069,11 +1110,13 @@ class JanelaMonta(unittest.TestCase):
         real = coletor.Coletor(caminhos, queue.Queue(),
                                processos=lambda: [], previsao=lambda: {},
                                agendador=lambda: [])
-        real._talvez_tarefas()
+        real._talvez_tarefas(esperar=True)
         self.estado = real.coletar()
         self.app = janela.Janela(caminhos=caminhos, modo="medio", topo=False,
                                  coletor=self.coletor, iniciar=False,
                                  persistir=False)
+        self.addCleanup(gc.collect)
+        self.addCleanup(self.__dict__.pop, "app", None)
         self.addCleanup(self._fechar)
 
     def _fechar(self):

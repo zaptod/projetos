@@ -29,6 +29,17 @@ linha por processo), o que sai no próximo horário, a gordura, os últimos
 publicados com a prova, os erros das últimas 2 h, o estado do bot, o selo
 "tarefas ocultas" e as saídas `bot.txt`/`postar.txt`/`auto_saida.txt`.
 
+A arte padrão é a **fofa** (`flutuante/arte.py`): lisa, desenhada com o
+Pillow em 4× e reduzida com LANCZOS, procedural e determinística. Os
+habitantes (`flutuante/vida.py`) passeiam por um grafo de caminhos, sentam
+no banco, regam flores, alimentam os patos, conversam quando se cruzam,
+comemoram ao terminar um trabalho e consolam quem está com erro; publicação
+nova solta confete, e a cada 3 publicações do dia a vila ganha um enfeite.
+O estado real sempre vence a animação. A arte em pixel continua no menu do
+botão direito ("Arte clássica"). `--demo` usa dados de demonstração (só
+para provas), `--hora HH` finge dia/noite, `--gif` grava 5 s, e
+`--medir-cpu SEG` mede a CPU.
+
 Só lê. A trava é sondada lendo o byte trancado (nunca pegando a trava), e
 o "o que sai" vem de `flutuante/previsao.py` em subprocesso, com as filas
 do `postar.py` e sem a vistoria do `--ver` (que grava no diário).
