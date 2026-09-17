@@ -232,8 +232,9 @@ DEEPSEEK = {
     ],
     "parar": [
         "div[role='button'].ds-button--primary.ds-button--circle:has(svg rect)",
-        "div[role='button'][aria-label*='Stop' i]",
-        "div[role='button'][aria-label*='Parar' i]",
+        "div[role='button'][aria-label^='Stop' i]",
+        "div[role='button'][aria-label^='Parar' i]",
+        "div[role='button'][aria-label^='Interromper' i]",
     ],
     # Mensagem sem resposta final E sem raciocinio: a do assistente que
     # ainda esta pensando tem o bloco `ds-think-content` e nao conta.

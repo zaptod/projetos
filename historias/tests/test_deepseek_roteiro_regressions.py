@@ -437,9 +437,27 @@ class ClienteDoDeepSeek(unittest.TestCase):
     def test_botao_de_parar_nunca_casa_por_trecho_do_rotulo(self):
         # 17/09/2026: "contem 'stop'" casa com rotulo que nao e o botao de
         # parar, e o cliente acha que o modelo ainda escreve.
+        import re
         for provedor in seletores.PROVEDORES:
-            for seletor in seletores.do_provedor(provedor)["parar"]:
+            candidatos = seletores.do_provedor(provedor)["parar"]
+            for seletor in candidatos:
                 self.assertNotIn("aria-label*=", seletor, provedor)
+            prefixos = [m.group(1).lower() for s in candidatos
+                        for m in [re.search(r"aria-label\^='([^']+)' i", s)]
+                        if m]
+
+            def casa(rotulo):
+                return any(rotulo.lower().startswith(p) for p in prefixos)
+
+            # Os rotulos que casavam em falso, medidos na tela do ChatGPT.
+            for falso in ("Fixar Comparar defeitos do formato A",
+                          "Abrir opções de conversa para Comparar defeitos",
+                          "Baixar o app para desktop"):
+                self.assertFalse(casa(falso), (provedor, falso))
+            # O botao de verdade, nas duas linguas.
+            for real in ("Stop streaming", "Parar resposta",
+                         "Interromper geração"):
+                self.assertTrue(casa(real), (provedor, real))
 
     def test_seletores_tem_o_que_o_cliente_usa(self):
         bloco = seletores.do_provedor("deepseek")
