@@ -151,25 +151,58 @@ def videos(_args: str = "") -> str:
     return "\n".join(linhas)
 
 
-def procurar_video(pedaco: str):
-    """O video cujo id COMECA com o que veio do celular (id inteiro e longo)."""
+def _listar_videos() -> list:
+    try:
+        return list(_catalogo().listar())
+    except Exception:
+        return []
+
+
+def procurar_video(pedaco: str, videos: list | None = None):
+    """O video com ESTE id, ou o unico cujo id comeca com o pedaco.
+
+    17/09/2026: casava por prefixo OU trecho e devolvia o primeiro. O id da
+    variante A e prefixo do da B (`...:B`), e "00023" casava com qualquer id
+    que tivesse isso no meio — o /publicar podia subir outro video. Prefixo
+    com mais de um dono nao escolhe: devolve None e `candidatos` lista.
+    """
     pedaco = (pedaco or "").strip()
     if not pedaco:
         return None
-    try:
-        for video in _catalogo().listar():
-            if video.id.startswith(pedaco) or pedaco in video.id:
-                return video
-    except Exception:
-        return None
-    return None
+    videos = _listar_videos() if videos is None else videos
+    for video in videos:
+        if video.id == pedaco:
+            return video
+    comecam = [v for v in videos if v.id.startswith(pedaco)]
+    return comecam[0] if len(comecam) == 1 else None
+
+
+def candidatos(pedaco: str, videos: list | None = None,
+               limite: int = 5) -> list:
+    """Sugestoes quando `procurar_video` nao decide. So para MOSTRAR."""
+    pedaco = (pedaco or "").strip()
+    if not pedaco:
+        return []
+    videos = _listar_videos() if videos is None else videos
+    achados = ([v for v in videos if v.id.startswith(pedaco)]
+               or [v for v in videos if pedaco in v.id])
+    return achados[:limite]
+
+
+def _nao_achei(pedaco: str) -> str:
+    opcoes = candidatos(pedaco)
+    if not opcoes:
+        return "não achei esse id. Use /videos para ver a lista."
+    linhas = ["esse id não é exato; mande o id inteiro. Parecidos:"]
+    linhas += [f"`{v.id}`" for v in opcoes]
+    return "\n".join(linhas)
 
 
 def ver(args: str = "") -> tuple:
     """(texto, caminho): o bot manda o arquivo quando ha caminho."""
     video = procurar_video(args)
     if video is None:
-        return ("não achei esse id. Use /videos para ver a lista.", None)
+        return (_nao_achei(args), None)
     return (f"{video.titulo}", Path(video.caminho))
 
 
@@ -179,7 +212,7 @@ def publicar(args: str = "") -> str:
         return "diga o id: /publicar <id> [youtube|tiktok|ambos]"
     video = procurar_video(partes[0])
     if video is None:
-        return "não achei esse id. Use /videos para ver a lista."
+        return _nao_achei(partes[0])
     onde = (partes[1] if len(partes) > 1 else "youtube").lower()
     if onde not in ("youtube", "tiktok", "ambos"):
         return "onde? youtube, tiktok ou ambos."
