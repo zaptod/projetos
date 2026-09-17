@@ -434,6 +434,13 @@ class ClienteDoDeepSeek(unittest.TestCase):
         cliente.enviar = lambda _prompt: None
         cliente.esperar_resposta = lambda _timeout=None: texto
 
+    def test_botao_de_parar_nunca_casa_por_trecho_do_rotulo(self):
+        # 17/09/2026: "contem 'stop'" casa com rotulo que nao e o botao de
+        # parar, e o cliente acha que o modelo ainda escreve.
+        for provedor in seletores.PROVEDORES:
+            for seletor in seletores.do_provedor(provedor)["parar"]:
+                self.assertNotIn("aria-label*=", seletor, provedor)
+
     def test_seletores_tem_o_que_o_cliente_usa(self):
         bloco = seletores.do_provedor("deepseek")
         for chave in ("url", "url_novo_chat", "campo", "enviar", "parar",
