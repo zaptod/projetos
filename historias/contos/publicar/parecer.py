@@ -56,6 +56,11 @@ QUALIDADE = 82
 
 APROVADO = "APROVADO"
 REPROVADO = "REPROVADO"
+# O Gemini as vezes responde a palavra EM INGLES, mesmo com o pedido em
+# portugues: em 17/09/2026 um parecer inteiro veio como "REPROVED cena 1: ..."
+# e virou "sem parecer" — o veto se perdia.
+PALAVRAS_DE_REPROVACAO = (REPROVADO, "REPROVED", "REJEITADO", "REJECTED")
+PALAVRAS_DE_APROVACAO = (APROVADO, "APPROVED")
 
 # A VERSAO DO CRITERIO. Sobe quando o prompt passa a julgar diferente, para
 # veto dado com a regua antiga ser perguntado de novo em vez de guiar
@@ -484,11 +489,17 @@ def ler_veredito(texto: str) -> dict:
     limpo = " ".join(str(texto or "").split())
     if not limpo:
         raise SemParecer("o modelo nao respondeu nada")
-    primeira = str(texto).strip().splitlines()[0].upper()
-    primeira = re.sub(r"[^A-Z]", "", primeira)
-    if primeira.startswith(REPROVADO):
+    linha_um = str(texto).strip().splitlines()[0]
+    primeira = re.sub(r"[^A-Z]", "", linha_um.upper())
+    if primeira.startswith(PALAVRAS_DE_REPROVACAO):
         linhas = [L.strip(" -•\t") for L in str(texto).strip().splitlines()[1:]
                   if L.strip(" -•\t")]
+        # O MOTIVO PODE VIR NA MESMA LINHA ("REPROVED cena 1: ..."): o que
+        # sobra depois da palavra e o primeiro motivo, e nao lixo.
+        resto = re.sub(r"^[\W_]*(?:" + "|".join(PALAVRAS_DE_REPROVACAO)
+                       + r")\b[\W_]*", "", linha_um, flags=re.IGNORECASE)
+        if resto.strip():
+            linhas.insert(0, resto.strip())
         protagonista, motivos = "", []
         for linha in linhas:
             if linha.upper().startswith("PROTAGONISTA:"):
@@ -497,7 +508,7 @@ def ler_veredito(texto: str) -> dict:
                 motivos.append(linha)
         return {"aprovado": False, "motivos": motivos or ["sem motivo dado"],
                 "protagonista": protagonista, "texto": str(texto).strip()}
-    if primeira.startswith(APROVADO):
+    if primeira.startswith(PALAVRAS_DE_APROVACAO):
         return {"aprovado": True, "motivos": [], "protagonista": "",
                 "texto": str(texto).strip()}
     raise SemParecer(

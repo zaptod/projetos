@@ -69,6 +69,26 @@ class VereditoTests(unittest.TestCase):
         with self.assertRaises(parecer.SemParecer):
             parecer.ler_veredito("Claro! Vou analisar o video para voce.")
 
+    def test_reprovacao_em_ingles_com_motivo_na_mesma_linha(self):
+        # 17/09/2026: o Gemini respondeu assim e o veto virou "sem parecer".
+        lido = parecer.ler_veredito(
+            "REPROVED cena 1: a imagem mostra o porteiro, mas a narracao "
+            "apresenta o Anisio.\ncena 6: o porteiro muda de rosto")
+        self.assertFalse(lido["aprovado"])
+        self.assertEqual(2, len(lido["motivos"]))
+        self.assertTrue(lido["motivos"][0].startswith("cena 1:"))
+
+    def test_aprovacao_em_ingles(self):
+        self.assertTrue(parecer.ler_veredito("Approved.")["aprovado"])
+
+    def test_motivo_na_mesma_linha_em_portugues(self):
+        lido = parecer.ler_veredito("**REPROVADO** - cena 3: texto na tela")
+        self.assertEqual(["cena 3: texto na tela"], lido["motivos"])
+
+    def test_palavra_parecida_nao_decide(self):
+        with self.assertRaises(parecer.SemParecer):
+            parecer.ler_veredito("Reprovar seria exagero, mas...")
+
     def test_resposta_vazia_nao_e_reprovacao(self):
         with self.assertRaises(parecer.SemParecer):
             parecer.ler_veredito("   ")
