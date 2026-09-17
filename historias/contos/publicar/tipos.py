@@ -19,14 +19,28 @@ como descobrir o tipo de um video. Sem disco, sem rede.
 from __future__ import annotations
 
 
-def ordenar_por_tipo(fila, ultimos, tipo_de) -> list:
+def fonte_do_video(video) -> str:
+    """`historia_00003:celular:p04` -> `historia_00003`."""
+    return str(getattr(video, "fonte_id", "") or
+               str(getattr(video, "id", "")).split(":")[0])
+
+
+def ordenar_por_tipo(fila, ultimos, tipo_de, cheias=(),
+                     fonte_de=fonte_do_video) -> list:
     """A fila reordenada pela vez de cada tipo.
 
     `ultimos`: tipos das publicacoes, da MAIS NOVA para a mais velha (pode
     repetir). `tipo_de(video)`: o tipo daquele video (`""` se nao tem).
     Video sem tipo fica no fim, na ordem em que veio.
+
+    `cheias`: fontes que ja bateram o TETO DO DIA (2 partes da mesma
+    historia, decisao do Adrian em 17/09/2026, valendo para tudo). Os videos
+    delas saem daqui, e e isso que impede o rodizio de contradizer o teto: o
+    tipo da vez sem serie elegivel simplesmente nao aparece, e a vez passa
+    para o proximo tipo.
     """
-    fila = list(fila or [])
+    cheias = set(cheias or ())
+    fila = [v for v in (fila or []) if fonte_de(v) not in cheias]
     ultimos = [str(t) for t in (ultimos or []) if t]
     grupos: dict = {}
     sem_tipo = []

@@ -446,6 +446,25 @@ class RodizioNaFila(unittest.TestCase):
         fila = [self._v("a", ""), self._v("b", "")]
         self.assertEqual(["a", "b"], self._ordem(fila, ["favela"]))
 
+    def test_tipo_da_vez_com_serie_no_teto_passa_a_vez(self):
+        # Teto de 2 por historia/dia (Adrian, 17/09/2026) vale para tudo: o
+        # babaca era o da vez, mas a unica serie dele ja saiu 2x hoje.
+        fila = [SimpleNamespace(id="historia_00001:celular:p03",
+                                fonte_id="historia_00001", tipo="babaca"),
+                SimpleNamespace(id="historia_00002:celular:p01",
+                                fonte_id="historia_00002", tipo="favela"),
+                SimpleNamespace(id="historia_00003:celular:p02",
+                                fonte_id="historia_00003", tipo="normal")]
+        ordem = [v.id for v in T.ordenar_por_tipo(
+            fila, ["normal", "favela", "babaca"], lambda v: v.tipo,
+            cheias={"historia_00001"})]
+        self.assertEqual(["historia_00002:celular:p01",
+                          "historia_00003:celular:p02"], ordem)
+
+    def test_fonte_sai_do_id_quando_falta_fonte_id(self):
+        video = SimpleNamespace(id="historia_00009:celular:p02")
+        self.assertEqual("historia_00009", T.fonte_do_video(video))
+
     def test_fila_vazia(self):
         self.assertEqual([], T.ordenar_por_tipo([], ["favela"], str))
 
