@@ -57,6 +57,7 @@ import contextlib
 import json
 import os
 import queue
+import re
 import secrets
 import subprocess
 import sys
@@ -445,6 +446,34 @@ def _desfecho():
     return desfecho
 
 
+# O video longo sobe ao YouTube em partes, e cada parte ganha o id
+# `X:corte01` (`cortes._copia`) — no ledger e na marca do publicador. Para
+# qualquer guarda, `X` e `X:corteNN` sao o MESMO video.
+_CORTE = re.compile(r":corte\d+$")
+
+
+def id_base(video_id) -> str:
+    return _CORTE.sub("", str(video_id or ""))
+
+
+def mesmo_video(a, b) -> bool:
+    return bool(a) and bool(b) and id_base(a) == id_base(b)
+
+
+def _diario(texto: str, video_id: str) -> None:
+    """Uma linha de ERRO no diario, para a apuracao ver.
+
+    Com a marca previa do app, a `marcar_para_conferir` do publicador ve o
+    video ja marcado e nao escreve nada — quem avisa passa a ser o app.
+    """
+    try:
+        from builds import atividade
+        atividade.registrar("publicacao", atividade.ERRO, texto, "builds",
+                            etapa="app.a_conferir", ref=video_id)
+    except Exception:                                        # noqa: BLE001
+        pass
+
+
 def caminho_a_conferir(plataforma: str = "tiktok") -> Path:
     if PASTA_A_CONFERIR:
         return Path(PASTA_A_CONFERIR) / f"_{plataforma}_a_conferir.json"
@@ -515,13 +544,36 @@ def _retirar_marca_do_app(video_id: str, chave: str,
     try:
         with _trava_da_marca(plataforma):
             dados = _ler_marcas(plataforma)
-            if (dados.get(video_id) or {}).get("app") != chave:
+            nossas = [k for k, v in dados.items()
+                      if mesmo_video(k, video_id) and (v or {}).get("app") == chave]
+            if not nossas:
                 return video_id not in dados
-            del dados[video_id]
+            for k in nossas:
+                del dados[k]
             _gravar_json(caminho_a_conferir(plataforma), dados)
-            return video_id not in _ler_marcas(plataforma)
+            depois = _ler_marcas(plataforma)
+            return not any(k in depois for k in nossas) and video_id not in depois
     except (Recusa, OSError):
         return False
+
+
+def _adotar_partes(video_id: str, chave: str, desde: str,
+                   plataforma: str) -> int:
+    """As marcas `X:corteNN` que o publicador pos DURANTE esta publicacao
+    passam a ser do app, para sairem junto depois da conferencia."""
+    with _trava_da_marca(plataforma):
+        dados = _ler_marcas(plataforma)
+        adotadas = 0
+        for k, v in dados.items():
+            v = v if isinstance(v, dict) else {}
+            if (k != video_id and mesmo_video(k, video_id) and not v.get("app")
+                    and str(v.get("quando", "")) >= str(desde or "")):
+                v["app"] = chave
+                dados[k] = v
+                adotadas += 1
+        if adotadas:
+            _gravar_json(caminho_a_conferir(plataforma), dados)
+        return adotadas
 
 
 # ------------------------------------------------------------------ avisos
@@ -634,17 +686,18 @@ def video_para_publicar(video_id: str, onde: str, agora: datetime | None = None,
     fonte = getattr(video, "fonte_id", "") or ""
     for destino in DESTINOS[onde]:
         nome = NOME_DESTINO[destino]
-        if video.id in _ler_a_conferir(destino):
+        if any(mesmo_video(k, video.id) for k in _ler_a_conferir(destino)):
             raise Recusa(f"o {nome} deste vídeo está “a conferir” (o clique "
                          "pode ter saído); confira antes")
         saidas = [l for l in linhas if _destino_da_linha(l) == destino
                   and metricas.publicado(l)]
-        if any(l.get("video_id") == video.id for l in saidas):
-            raise Recusa(f"esse vídeo já saiu no {nome}")
-        if fonte and any(l.get("fonte_id") == fonte and l.get("video_id") != video.id
+        if any(mesmo_video(l.get("video_id"), video.id) for l in saidas):
+            raise Recusa(f"esse vídeo (ou uma parte dele) já saiu no {nome}")
+        if fonte and any(l.get("fonte_id") == fonte
+                         and not mesmo_video(l.get("video_id"), video.id)
                          for l in saidas):
             raise Recusa(f"a outra variante de {fonte} já saiu no {nome}")
-        outros = [l for l in saidas if l.get("video_id") != video.id]
+        outros = [l for l in saidas if not mesmo_video(l.get("video_id"), video.id)]
         if not _repetir_titulo() and titulos.repetido(
                 video.titulo, titulos.ja_publicados(outros)):
             raise Recusa(f"outro vídeo já pôs esse título no ar no {nome}")
@@ -911,6 +964,11 @@ def concluir_publicacao(chave: str) -> dict | None:
     avisos = []
 
     with trava_de_acoes():
+        # De novo, dentro da trava: duas vigias (esta e a de um servidor que
+        # acabou de subir) nao concluem a mesma publicacao duas vezes.
+        atual = em_voo().get(chave)
+        if atual is None or atual.get("estado") != "em_andamento":
+            return None
         for destino, desfecho in resultado.items():
             nome = NOME_DESTINO[destino]
             if desfecho == "a_conferir":
@@ -920,8 +978,12 @@ def concluir_publicacao(chave: str) -> dict | None:
                                     else f"saída {codigo} sem linha do {nome}")
                 try:
                     _marcar_do_app(video_id, chave, f"a conferir: {motivo}", destino)
+                    _adotar_partes(video_id, chave, item.get("desde", ""), destino)
                 except Recusa as exc:
                     avisos.append(f"marca do {nome} não atualizada ({exc})")
+                _diario(f"{video_id}: publicado pelo app sem confirmação no "
+                        f"{nome} ({motivo[:120]}). Pode estar no ar — bloqueado "
+                        "até conferência (--em-voo / --liberar).", video_id)
             elif not _retirar_marca_do_app(video_id, chave, destino):
                 avisos.append(f"não consegui tirar a marca “a conferir” do app "
                               f"no {nome}")
@@ -956,12 +1018,19 @@ def situacao_da_filha(item: dict) -> dict:
     pasta = Path(item.get("pasta") or "")
     terminou = bool(item.get("pasta")) and (pasta / "fim.json").is_file()
     filha = vivo_de_verdade(item.get("pid"), item.get("criado"))
-    try:
-        filho_json = _ler_json(pasta / "filho.json") if item.get("pasta") else None
-    except ValueError:
-        filho_json = None
-    filho = (vivo_de_verdade(filho_json.get("pid"), filho_json.get("criado"))
-             if filho_json else False)
+    # O filho.json e escrito logo depois do main.py nascer. Ausente COM fim:
+    # o main.py nem chegou a nascer (o fim traz o erro). Ausente SEM fim, ou
+    # ilegivel: nao sei — e "nao sei" nao solta.
+    filho = None
+    if item.get("pasta"):
+        try:
+            filho_json = _ler_json(pasta / "filho.json")
+        except ValueError:
+            filho_json = {}
+        if filho_json is None:
+            filho = False if terminou else None
+        elif isinstance(filho_json, dict) and filho_json.get("pid"):
+            filho = vivo_de_verdade(filho_json.get("pid"), filho_json.get("criado"))
     return {"terminou": terminou, "filha": filha, "filho": filho}
 
 
@@ -1063,19 +1132,20 @@ def soltar_marca(video_id: str) -> bool:
     with trava_de_acoes():
         if any(v.get("id") == video_id for v in em_voo().values()):
             raise Recusa("o vídeo ainda está no em-voo do app; libere-o antes")
-        do_app = {}
+        do_app = []
         for destino in NOME_DESTINO:
-            marca = _ler_a_conferir(destino).get(video_id)
-            if marca is None:
-                continue
-            chave = (marca or {}).get("app")
-            if not chave:
-                raise Recusa(f"a marca do {NOME_DESTINO[destino]} não é do app "
-                             "(é da grade); não mexo nela")
-            do_app[destino] = chave
-        for destino, chave in do_app.items():
-            if not _retirar_marca_do_app(video_id, chave, destino):
-                raise Recusa(f"não consegui tirar a marca do {NOME_DESTINO[destino]}")
+            for k, marca in _ler_a_conferir(destino).items():
+                if not mesmo_video(k, video_id):
+                    continue
+                chave = (marca or {}).get("app")
+                if not chave:
+                    raise Recusa(f"a marca de {k} no {NOME_DESTINO[destino]} não é "
+                                 "do app (é da grade); não mexo nela")
+                do_app.append((destino, k, chave))
+        for destino, k, chave in do_app:
+            if not _retirar_marca_do_app(k, chave, destino):
+                raise Recusa(f"não consegui tirar a marca de {k} no "
+                             f"{NOME_DESTINO[destino]}")
     return bool(do_app)
 
 
@@ -1084,24 +1154,27 @@ def relatorio_do_video(video_id: str) -> list[str]:
     linhas = []
     try:
         for item in em_voo().values():
-            if item.get("id") == video_id:
+            if mesmo_video(item.get("id"), video_id):
                 linhas.append(f"em voo: {item.get('onde')} {item.get('estado')} "
                               f"desde {item.get('desde')} — {item.get('motivo', '')}")
     except Recusa as exc:
         linhas.append(f"em voo: {exc}")
     try:
         for l in _metricas().publicados("builds"):
-            if isinstance(l, dict) and l.get("video_id") == video_id:
-                linhas.append(f"ledger: {_destino_da_linha(l)} {l.get('quando')} "
+            if isinstance(l, dict) and mesmo_video(l.get("video_id"), video_id):
+                linhas.append(f"ledger: {l.get('video_id')} {_destino_da_linha(l)} "
+                              f"{l.get('quando')} "
                               f"publicado={_metricas().publicado(l)}")
     except Exception as exc:                                 # noqa: BLE001
         linhas.append(f"ledger: ilegível ({type(exc).__name__})")
     for destino, nome in NOME_DESTINO.items():
         try:
-            marca = _ler_a_conferir(destino).get(video_id)
-            if marca is not None:
+            for k, marca in _ler_a_conferir(destino).items():
+                if not mesmo_video(k, video_id):
+                    continue
                 dono = "do app" if (marca or {}).get("app") else "da grade"
-                linhas.append(f"a conferir ({nome}, {dono}): "
+                parte = "" if k == video_id else f" {k}"
+                linhas.append(f"a conferir ({nome}, {dono}){parte}: "
                               f"{(marca or {}).get('estado', '')}")
         except Recusa as exc:
             linhas.append(f"a conferir ({nome}): {exc}")

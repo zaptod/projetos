@@ -137,19 +137,24 @@ class _Filha:
 
     def iniciar(self, pasta, comando, cwd):
         self._pid += 1
-        pid = self._pid
+        pid, filho = self._pid, self._pid + 10000
         self.comandos.append(list(comando))
         roteiro, segurar = self.roteiro, self.segurar
         self.vivos[pid] = True
+        self.vivos[filho] = True
+        (pasta / "filho.json").write_text(json.dumps({"pid": filho, "criado": None}),
+                                          encoding="utf-8")
 
         def correr():
             if segurar is not None:
                 segurar.wait(10)
-            if roteiro is None:
+            if roteiro is None:            # filha e main.py morreram sem fim
+                self.vivos[filho] = False
                 self.vivos[pid] = False
                 return
             saida, codigo = roteiro
             (pasta / "saida.log").write_text(saida, encoding="utf-8")
+            self.vivos[filho] = False
             (pasta / "fim.json").write_text(json.dumps({"codigo": codigo}),
                                             encoding="utf-8")
             self.vivos[pid] = False
@@ -211,8 +216,10 @@ def mundo(tmp_path, monkeypatch):
     monkeypatch.setattr(acoes, "processos", lambda: [])
     avisos = []
     monkeypatch.setattr(acoes, "_entregar", avisos.append)
+    diario = []
+    monkeypatch.setattr(acoes, "_diario", lambda texto, ref: diario.append((ref, texto)))
     monkeypatch.setattr(painel_dados._Previsao, "disponivel", staticmethod(lambda: False))
-    ns = types.SimpleNamespace(
+    ns = types.SimpleNamespace(diario=diario, 
         tmp=tmp_path, controle=controle, comandos=comandos, metricas=metricas,
         grade=grade, filha=filha, avisos=avisos, catalogo=catalogo)
     yield ns
@@ -419,6 +426,7 @@ def test_publicador_depois_do_app_nao_apaga_nem_duplica(mundo, monkeypatch):
     """A marca do app ja esta la quando o publicador chama a da grade."""
     from builds.publicar import desfecho
     mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"TikTok A CONFERIR: {TK_CLIQUE}\n", 3)
     _publicar({"id": A, "onde": "tiktok"})
     monkeypatch.setattr(desfecho, "arquivo_a_conferir",
                         lambda canal, plataforma="tiktok":
@@ -427,8 +435,13 @@ def test_publicador_depois_do_app_nao_apaga_nem_duplica(mundo, monkeypatch):
     assert desfecho.marcar_para_conferir("builds", A, "cliquei em publicar") is True
     marca = _marcas(mundo)[A]
     assert marca["app"] and "em andamento" in marca["estado"]
-    mundo.filha.roteiro = (f"TikTok A CONFERIR: {TK_CLIQUE}\n", 3)
     mundo.filha.segurar.set()
+    _esperar_publicacoes()
+    (so_uma,) = [k for k in _marcas(mundo)]
+    marca = _marcas(mundo)[so_uma]
+    assert so_uma == A and marca["app"]
+    assert marca["estado"].startswith("pelo app: a conferir: TikTok A CONFERIR")
+    assert [ref for ref, _ in mundo.diario] == [A]
 
 
 def test_clique_sem_confirmacao_fica_marcado_e_bloqueado(mundo, monkeypatch):
@@ -587,7 +600,7 @@ def test_liberar_mostra_antes_e_so_solta_com_confirmo(mundo, capsys):
     assert api_http.main(["--liberar", A]) == 0
     saida = capsys.readouterr().out
     assert "em voo: tiktok a_conferir" in saida
-    assert "ledger: youtube" in saida and "a conferir (TikTok, do app)" in saida
+    assert f"ledger: {A} youtube" in saida and "a conferir (TikTok, do app)" in saida
     assert "--confirmo" in saida
     assert len(acoes.em_voo()) == 1                     # nada saiu
     assert api_http.main(["--liberar", A, "--confirmo"]) == 0
@@ -1296,12 +1309,14 @@ def test_vigia_espera_crescente(mundo, monkeypatch):
 
 
 # ---------------------------------------------------------------- M2
-def _item_preso(mundo, *, fim, filha, filho=None):
+def _item_preso(mundo, *, fim, filha, filho="ausente"):
     pasta = mundo.tmp / "publicacoes" / "k"
     pasta.mkdir(parents=True, exist_ok=True)
     if fim:
         (pasta / "fim.json").write_text('{"codigo": 0}', encoding="utf-8")
-    if filho is not None:
+    if filho == "ilegivel":
+        (pasta / "filho.json").write_text('{"pid": 7', encoding="utf-8")
+    elif filho != "ausente":
         (pasta / "filho.json").write_text(json.dumps({"pid": 77, "criado": None}),
                                           encoding="utf-8")
         mundo.filha.vivos[77] = filho
@@ -1311,12 +1326,16 @@ def _item_preso(mundo, *, fim, filha, filho=None):
 
 
 @pytest.mark.parametrize("fim,filha,filho,pode", [
-    (False, True, None, False),          # rodando
-    (False, None, None, False),          # nao sei
+    (False, True, False, False),         # rodando
+    (False, None, False, False),         # nao sei
     (True, False, True, False),          # a filha acabou, o main.py nao
-    (True, False, None, True),           # acabou tudo
+    (True, False, False, True),          # acabou tudo
+    (True, False, "ausente", True),      # o main.py nem nasceu (o fim diz)
     (False, False, False, True),         # morreram sem fim: ja nao roda nada
     (True, True, False, True),           # fim gravado; o que resta e o fim da filha
+    (False, False, "ausente", False),    # sem fim e sem filho.json: nao sei
+    (True, False, "ilegivel", False),    # filho.json cortado: nao sei
+    (True, False, None, False),          # PID do main.py sem resposta: nao sei
 ])
 def test_liberar_so_quando_nada_mais_roda(mundo, fim, filha, filho, pode):
     _item_preso(mundo, fim=fim, filha=filha, filho=filho)
@@ -1329,7 +1348,7 @@ def test_liberar_so_quando_nada_mais_roda(mundo, fim, filha, filho, pode):
 
 
 def test_liberar_recusado_pelo_cli(mundo, capsys):
-    _item_preso(mundo, fim=False, filha=True)
+    _item_preso(mundo, fim=False, filha=True, filho=False)
     assert api_http.main(["--liberar", A, "--confirmo"]) == 1
     assert "ainda não terminou" in capsys.readouterr().out
 
@@ -1367,7 +1386,9 @@ def test_filha_de_verdade_grava_a_hora_do_filho(tmp_path):
 def test_conciliar_com_filha_viva_nao_conclui(mundo):
     pasta = mundo.tmp / "publicacoes" / "viva"
     pasta.mkdir(parents=True)
+    (pasta / "filho.json").write_text('{"pid": 188, "criado": null}', encoding="utf-8")
     mundo.filha.vivos[88] = True
+    mundo.filha.vivos[188] = False
     acoes._mexer_no_voo("viva", {"id": A, "onde": "tiktok", "estado": "em_andamento",
                                  "pasta": str(pasta), "pid": 88})
     assert acoes.conciliar() == ["viva"]
@@ -1378,7 +1399,8 @@ def test_conciliar_com_filha_viva_nao_conclui(mundo):
     assert acoes.em_voo()["viva"]["estado"] == "a_conferir"
 
 
-def test_conciliar_com_pasta_sumida(mundo):
+def test_conciliar_com_pasta_sumida(mundo, monkeypatch):
+    monkeypatch.setattr(acoes, "ESPERA_MAX_S", 0.3)
     mundo.filha.vivos[89] = False
     acoes._mexer_no_voo("sumida", {"id": DOIS, "onde": "youtube",
                                    "estado": "em_andamento",
@@ -1463,3 +1485,129 @@ def test_formato_novo_com_ambos(mundo):
     saida = f"YouTube A CONFERIR: {YT_RASCUNHO}\nTikTok: {TK_OK}\n"
     assert acoes.desfechos(saida, 3, "ambos") == {"youtube": "a_conferir",
                                                   "tiktok": "a_conferir"}
+
+
+
+# =================================================== quinta rodada
+C1 = f"{DOIS}:corte01"
+C2 = f"{DOIS}:corte02"
+
+
+@pytest.mark.parametrize("a,b,igual", [
+    (DOIS, C1, True), (C1, C2, True), (DOIS, DOIS, True),
+    (A, B, False), (f"{B}:corte01", B, True), (f"{B}:corte01", A, False),
+    ("", "", False), (DOIS, f"{DOIS}:cortex", False),
+])
+def test_mesmo_video(a, b, igual):
+    assert acoes.mesmo_video(a, b) is igual
+
+
+def test_parte_no_ledger_barra_o_video(mundo):
+    mundo.metricas.linhas = [{"video_id": C1, "fonte_id": "generation_00042",
+                              "plataforma": "youtube", "publicado": True,
+                              "titulo": "Build Dois (1 de 2)"}]
+    with pytest.raises(acoes.Recusa, match="uma parte dele"):
+        acoes.preparar("publicar", {"id": DOIS, "onde": "youtube"}, "ap")
+    acoes.preparar("publicar", {"id": DOIS, "onde": "tiktok"}, "ap")
+
+
+def test_parte_da_outra_variante_conta_como_variante(mundo):
+    mundo.metricas.linhas = [{"video_id": f"{B}:corte01", "fonte_id": "generation_00041",
+                              "plataforma": "youtube", "publicado": True, "titulo": "x"}]
+    with pytest.raises(acoes.Recusa, match="outra variante"):
+        acoes.preparar("publicar", {"id": A, "onde": "youtube"}, "ap")
+
+
+def test_parte_a_conferir_barra_o_video(mundo):
+    (mundo.tmp / "_youtube_a_conferir.json").write_text(
+        json.dumps({C2: {"quando": "2026-09-17T09:00:00", "estado": "rascunho"}}),
+        encoding="utf-8")
+    with pytest.raises(acoes.Recusa, match="YouTube deste vídeo"):
+        acoes.preparar("publicar", {"id": DOIS, "onde": "youtube"}, "ap")
+
+
+def test_partes_marcadas_pelo_publicador_sao_adotadas_e_saem_juntas(mundo, capsys):
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"YouTube: {YT_OK}\nYouTube A CONFERIR: {YT_RASCUNHO}\n", 3)
+    _publicar({"id": DOIS, "onde": "youtube"})
+    # durante a publicacao, o publicador marca a parte 2 (marca da grade)
+    caminho = mundo.tmp / "_youtube_a_conferir.json"
+    dados = json.loads(caminho.read_text(encoding="utf-8"))
+    dados[C2] = {"quando": "2026-09-17T10:05:00", "estado": "cliquei, rascunho",
+                 "plataforma": "youtube"}
+    caminho.write_text(json.dumps(dados), encoding="utf-8")
+    mundo.filha.segurar.set()
+    _esperar_publicacoes()
+    marcas = _marcas(mundo, "youtube")
+    assert set(marcas) == {DOIS, C2}
+    assert marcas[C2]["app"] == marcas[DOIS]["app"]           # adotada
+    assert api_http.main(["--liberar", DOIS, "--confirmo"]) == 0
+    assert api_http.main(["--soltar-marca", DOIS]) == 0
+    saida = capsys.readouterr().out
+    assert C2 in saida and "do app" in saida
+    assert api_http.main(["--soltar-marca", DOIS, "--confirmo"]) == 0
+    assert _marcas(mundo, "youtube") == {}
+
+
+def test_parte_marcada_antes_nao_e_adotada(mundo):
+    caminho = mundo.tmp / "_youtube_a_conferir.json"
+    caminho.write_text(json.dumps({C1: {"quando": "2026-09-01T10:00:00",
+                                        "estado": "antiga"}}), encoding="utf-8")
+    assert acoes._adotar_partes(DOIS, "k", "2026-09-17T10:00:00", "youtube") == 0
+    with pytest.raises(acoes.Recusa, match="da grade"):
+        acoes.soltar_marca(DOIS)
+    assert C1 in _marcas(mundo, "youtube")
+
+
+def test_relatorio_mostra_as_partes(mundo):
+    mundo.metricas.linhas = [{"video_id": C1, "plataforma": "youtube",
+                              "quando": "2026-09-17T09:00:00", "publicado": True}]
+    (mundo.tmp / "_youtube_a_conferir.json").write_text(
+        json.dumps({C2: {"estado": "rascunho"}}), encoding="utf-8")
+    texto = "\n".join(acoes.relatorio_do_video(DOIS))
+    assert f"ledger: {C1} youtube" in texto
+    assert f"a conferir (YouTube, da grade) {C2}" in texto
+
+
+def test_diario_recebe_a_linha_do_app(mundo):
+    mundo.filha.roteiro = (f"YouTube A CONFERIR: {YT_RASCUNHO}\n", 3)
+    _publicar({"id": DOIS, "onde": "youtube"})
+    _esperar_publicacoes()
+    ((ref, texto),) = mundo.diario
+    assert ref == DOIS and "sem confirmação no YouTube" in texto
+
+
+def test_diario_de_verdade_com_etapa_propria(monkeypatch):
+    """Sem o fixture: a funcao real, com o registrador do diario dublado."""
+    from builds import atividade
+    chamadas = []
+    monkeypatch.setattr(atividade, "registrar",
+                        lambda *a, **k: chamadas.append((a, k)))
+    acoes._diario("x: sem confirmacao", "generation_00042:build:celular")
+    ((args, kwargs),) = chamadas
+    assert args[0] == "publicacao" and args[1] == atividade.ERRO
+    assert kwargs["etapa"] == "app.a_conferir"
+    assert kwargs["ref"] == "generation_00042:build:celular"
+
+
+def test_sucesso_nao_escreve_no_diario(mundo):
+    mundo.filha.roteiro = (f"YouTube: {YT_OK}\n", 0)
+    _publicar({"id": DOIS, "onde": "youtube"})
+    _esperar_publicacoes()
+    assert mundo.diario == []
+
+
+def test_conclusao_nao_repete(mundo, monkeypatch):
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"TikTok A CONFERIR: {TK_CLIQUE}\n", 3)
+    monkeypatch.setattr(acoes, "vigiar", lambda chave: None)
+    _publicar({"id": A, "onde": "tiktok"})
+    mundo.filha.segurar.set()
+    chave = next(iter(acoes.em_voo()))
+    pasta = Path(acoes.em_voo()[chave]["pasta"])
+    assert _esperar_arquivo(pasta / "fim.json", 5)
+    assert acoes.concluir_publicacao(chave) == {"tiktok": "a_conferir"}
+    assert acoes.concluir_publicacao(chave) is None          # a segunda nao faz nada
+    assert len(mundo.diario) == 1
+    acoes._FILA_AVISOS.join()
+    assert sum("publicar" in a for a in mundo.avisos) == 1
