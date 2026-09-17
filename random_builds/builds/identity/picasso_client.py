@@ -39,9 +39,15 @@ TOLERANCIA_RETRATO = 1.02
 # 29/08/2026 o site abre esse modal com a sessao do perfil VALIDA - e so um
 # aviso que precisa ser fechado. Tentar logar por ele (o caminho antigo)
 # quebrava: "o modal nao fechou depois de preencher as credenciais".
+# O X do dialogo e um `svg.lucide-x` com `aria-hidden` (17/09/2026, pop-up de
+# paywall: `class="lucide lucide-x size-5"`): o clique vai no BOTAO que o
+# contem, nunca no svg. O botao pode ser `button` ou `[role=button]`.
 FECHAR_MODAL = [
     "div[role='dialog'] button:has(svg.lucide-x)",
     "[role='dialog'] button:has(svg.lucide-x)",
+    "[role='dialog'] [role='button']:has(svg.lucide-x)",
+    "[data-slot='dialog-content'] button:has(svg.lucide-x)",
+    "[data-slot='dialog-content'] [role='button']:has(svg.lucide-x)",
     "div[role='dialog'] button[aria-label*='lose' i]",
     "div[role='dialog'] button[aria-label*='echar' i]",
     "button:has(svg.lucide-x)",
@@ -217,7 +223,8 @@ class PicassoClient:
         """
         for seletor in ("div[role='dialog'][data-state='open']",
                         "div[role='dialog']",
-                        "[data-slot='dialog-content']"):
+                        "[data-slot='dialog-content']",
+                        "[role='alertdialog']"):
             try:
                 alvo = self.page.locator(seletor)
                 if alvo.count() and alvo.first.is_visible():
