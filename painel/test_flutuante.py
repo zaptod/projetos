@@ -416,6 +416,55 @@ class CenaDaCaptura(unittest.TestCase):
         self.assertEqual(predios["estudio"]["status"], "recente")
 
 
+class TravaEmUsoETrabalho(unittest.TestCase):
+    """17/09 02:56: "o Gemini esta ligado e a Vila nao mostra ninguem la".
+    O cliente de LLM nao escreve no diario: so a trava sabe."""
+
+    def test_trava_de_perfil_ou_legada_poe_o_bot_no_predio(self):
+        for trava in ("perfil__gemini__principal__7094d258",
+                      "gemini__principal", "perfil__gemini__outra__0badc0de"):
+            predios = dados.estado_dos_predios([], [], [trava])
+            self.assertEqual(predios["gemini"]["status"], "trabalhando",
+                             trava)
+            self.assertTrue(predios["gemini"]["balao"].startswith("em uso"))
+            resumo = dados.resumo({"predios": predios, "bot": {"vivo": True}})
+            self.assertEqual(resumo["nivel"], "trabalhando")
+            self.assertIn("Gemini", resumo["frase"])
+
+    def test_picasso_por_hash_e_render_do_estudio(self):
+        predios = dados.estado_dos_predios(
+            [], [], ["perfil__picasso__68a3efc2",
+                     "historias__render__historia_00017"])
+        self.assertEqual(predios["picasso"]["status"], "trabalhando")
+        self.assertEqual(predios["estudio"]["status"], "trabalhando")
+        self.assertEqual(predios["estudio"]["balao"], "render historia_00017")
+
+    def test_trava_em_uso_vence_erro_antigo(self):
+        erro = [{"predio": "gemini", "ha_s": 600, "detalhe": "Timeout",
+                 "fabrica": "gemini"}]
+        predios = dados.estado_dos_predios(
+            [], erro, ["perfil__gemini__principal__7094d258"])
+        self.assertEqual(predios["gemini"]["status"], "trabalhando")
+
+    def test_sessao_do_scratchpad_com_atividade_conta(self):
+        agora_utc = datetime(2026, 9, 17, 5, 56, tzinfo=timezone.utc)
+        evento = _evento(agora_utc - timedelta(minutes=1), fabrica="gemini",
+                         status="log", pid=4242, etapa="parecer",
+                         ref="historia_00013:p1")
+        processos = dados.ler_processos_json(json.dumps([
+            {"ProcessId": 4242, "CommandLine":
+                "python C:/x/scratchpad/reparecer_h13p01.py",
+             "Inicio": "2026-09-17T02:50:00"},
+            {"ProcessId": 9324, "CommandLine": "python -m remoto",
+             "Inicio": "2026-09-17T02:20:00"}]))
+        linhas = dados.linhas_vivas(processos, [], datetime(2026, 9, 17, 2, 56),
+                                    eventos=[evento], agora_utc=agora_utc)
+        self.assertEqual(linhas[0]["tipo"], "sessao")
+        self.assertTrue(linhas[0]["ativo"])
+        self.assertIn("sessão de desenvolvimento", linhas[0]["quem"])
+        self.assertIn("parecer historia_00013 p1 (Gemini", linhas[0]["oque"])
+
+
 class Relogio(unittest.TestCase):
     GRADE = ((0, 37), (6, 37), (12, 7), (23, 37))
 

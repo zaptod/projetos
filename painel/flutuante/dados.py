@@ -295,6 +295,29 @@ def ler_trava(nome: str) -> dict | None:
             "texto": f"conta {conta} em uso"}
 
 
+def em_uso_por_predio(ocupadas: list[str]) -> dict:
+    """{predio: [texto, ...]} do que as TRAVAS dizem estar em uso agora.
+
+    Bug de 17/09/2026 02:56: o Gemini estava ligado e a Vila nao mostrava
+    ninguem la. O cliente de LLM nao escreve no diario — so a trava sabe.
+    Trava de conta (`gemini__principal`, `perfil__gemini__principal__<hash>`,
+    qualquer conta, qualquer hash) ou de render ocupada = trabalho real.
+    """
+    saida: dict[str, list] = {}
+    for nome in ocupadas:
+        info = ler_trava(nome)
+        if not info or not info["predio"] or info["predio"] in ("casa", "bot"):
+            continue
+        if info["texto"].startswith("render "):
+            texto = info["texto"]
+        else:
+            texto = f"em uso ({info['conta'] or 'principal'})"
+        lista = saida.setdefault(info["predio"], [])
+        if texto not in lista:
+            lista.append(texto)
+    return saida
+
+
 def contas_por_predio(ocupadas: list[str]) -> dict:
     """{predio: [conta, ...]} das contas de navegador em uso agora."""
     saida: dict[str, list] = {}
@@ -490,6 +513,7 @@ def estado_dos_predios(abertos: list[dict], erros: list[dict],
     ultimos minutos) > ocioso. `recente` tambem leva o bot ao predio.
     """
     contas = contas_por_predio(ocupadas)
+    em_uso = em_uso_por_predio(ocupadas)
     recentes = recentes or {}
     saida = {}
     for nome in PREDIOS:
@@ -499,11 +523,20 @@ def estado_dos_predios(abertos: list[dict], erros: list[dict],
         if erro is not None and recente is not None \
                 and recente["ha_s"] < erro["ha_s"]:
             erro = None          # houve atividade DEPOIS do erro
+        uso = em_uso.get(nome) or []
         if trabalhos:
             status = "trabalhando"
             texto = trabalhos[0]["balao"]
             if len(trabalhos) > 1:
                 texto = f"{texto} +{len(trabalhos) - 1}"
+        elif uso:
+            # A trava ocupada AGORA vence o erro de minutos atras: se a conta
+            # esta em uso, alguem esta tentando de novo.
+            status = "trabalhando"
+            texto = (recente["balao"] if recente and recente["ha_s"] < 120
+                     else uso[0])
+            if len(uso) > 1:
+                texto = f"{texto} +{len(uso) - 1}"
         elif erro is not None:
             status, texto = "erro", "❗ " + balao(erro, 26)
         elif recente is not None:
@@ -512,7 +545,7 @@ def estado_dos_predios(abertos: list[dict], erros: list[dict],
             status, texto = "ocioso", "💤"
         saida[nome] = {"status": status, "balao": texto,
                        "trabalhos": trabalhos, "contas": contas.get(nome, []),
-                       "erro": erro, "recente": recente}
+                       "erro": erro, "recente": recente, "em_uso": uso}
     # O bot do Telegram nao escreve `inicio` no diario: ele "trabalha" o dia
     # inteiro. Quem diz se ele esta vivo e a trava dele.
     if "remoto__bot" in ocupadas and saida["bot"]["status"] == "ocioso":
@@ -647,8 +680,10 @@ def linhas_vivas(processos: list[dict], abertos: list[dict],
         else:
             oque = "sem etapa no diário"
         inicio = proc.get("inicio")
+        # Sessao de desenvolvimento nao e trabalho so por existir; mas se ela
+        # abriu etapa ou escreveu no diario, esta usando a conta de verdade.
         ativo = (bool(dele) or recente is not None
-                 or tipo["tipo"] in PRODUCAO) and tipo["tipo"] != "sessao"
+                 or tipo["tipo"] in PRODUCAO)
         linhas.append({
             "emoji": tipo["emoji"], "quem": tipo["quem"], "oque": oque,
             "desde": inicio.strftime("%H:%M") if inicio else "?",
@@ -667,8 +702,8 @@ def linhas_vivas(processos: list[dict], abertos: list[dict],
             "ordem": desde or agora})
     # Producao primeiro, desenvolvimento por ultimo; dentro de cada grupo,
     # quem trabalha antes, e o mais antigo antes.
-    linhas.sort(key=lambda l: (_ORDEM_TIPO.get(l["tipo"], 2), not l["ativo"],
-                               l["ordem"]))
+    linhas.sort(key=lambda l: (0 if l["ativo"] else _ORDEM_TIPO.get(
+        l["tipo"], 2), not l["ativo"], l["ordem"]))
     return linhas
 
 
@@ -768,8 +803,11 @@ def resumo(estado: dict) -> dict:
     focos = [a["texto"] for a in abertos]
     predios_com_foco = {a.get("predio") for a in abertos}
     for predio, info in (estado.get("predios") or {}).items():
-        if info.get("status") == "recente" and predio not in predios_com_foco:
-            focos.append(info["balao"])
+        if info.get("status") in ("recente", "trabalhando") \
+                and predio not in predios_com_foco:
+            focos.append(f"{rotulo(predio)} {info['balao']}"
+                         if info.get("em_uso") and not info.get("trabalhos")
+                         else info["balao"])
     for linha in estado.get("vivos") or []:
         if linha.get("tipo") in PRODUCAO and linha.get("ativo"):
             focos.append(linha["quem"])
