@@ -902,6 +902,7 @@ def desfechos(saida: str | None, codigo: int | None, onde: str) -> dict:
     cota = codigo == 2
     yt = [l[len("YouTube: "):] for l in linhas if l.startswith("YouTube: ")]
     yt_falhou = any(l.startswith("YouTube FALHOU") for l in linhas)
+    yt_a_conferir = any(l.startswith("YouTube A CONFERIR") for l in linhas)
     tk = next((l[len("TikTok: "):] for l in linhas if l.startswith("TikTok: ")), None)
     tk_falhou = any(l.startswith("TikTok FALHOU") for l in linhas)
 
@@ -917,7 +918,9 @@ def desfechos(saida: str | None, codigo: int | None, onde: str) -> dict:
         elif cota:
             # A linha da cota e a ultima "YouTube:". Qualquer linha antes
             # dela e uma parte que foi tentada (publicada ou rascunho).
-            resultado["youtube"] = "falha_limpa" if len(yt) <= 1 else "a_conferir"
+            # "A CONFERIR" antes da cota tambem e parte tentada.
+            limpa = len(yt) <= 1 and not yt_a_conferir
+            resultado["youtube"] = "falha_limpa" if limpa else "a_conferir"
         elif yt and confirma("youtube", yt) is True and codigo == 0:
             resultado["youtube"] = "publicado"
         else:
@@ -976,14 +979,21 @@ def concluir_publicacao(chave: str) -> dict | None:
                                if l.startswith(nome)), "")
                 motivo = ultima or ("sem desfecho" if fim is None
                                     else f"saída {codigo} sem linha do {nome}")
+                adotadas = 0
                 try:
                     _marcar_do_app(video_id, chave, f"a conferir: {motivo}", destino)
-                    _adotar_partes(video_id, chave, item.get("desde", ""), destino)
+                    adotadas = _adotar_partes(video_id, chave, item.get("desde", ""),
+                                              destino)
                 except Recusa as exc:
                     avisos.append(f"marca do {nome} não atualizada ({exc})")
-                _diario(f"{video_id}: publicado pelo app sem confirmação no "
-                        f"{nome} ({motivo[:120]}). Pode estar no ar — bloqueado "
-                        "até conferência (--em-voo / --liberar).", video_id)
+                # Parte cortada: o publicador marcou `X:corteNN` (que nao tinha
+                # marca previa) e ja escreveu o ERRO no diario. So o app avisa
+                # quando o publicador ficou calado.
+                if not adotadas:
+                    _diario(f"{video_id}: publicado pelo app sem confirmação no "
+                            f"{nome} ({motivo[:120]}). Pode estar no ar — "
+                            "bloqueado até conferência (--em-voo / --liberar).",
+                            video_id)
             elif not _retirar_marca_do_app(video_id, chave, destino):
                 avisos.append(f"não consegui tirar a marca “a conferir” do app "
                               f"no {nome}")
@@ -1111,7 +1121,7 @@ def liberar(video_id: str) -> int:
     """
     with trava_de_acoes():
         dados = em_voo()
-        fora = [k for k, v in dados.items() if v.get("id") == video_id]
+        fora = [k for k, v in dados.items() if mesmo_video(v.get("id"), video_id)]
         for chave in fora:
             motivo = _pode_soltar(dados[chave])
             if motivo:
@@ -1130,7 +1140,7 @@ def soltar_marca(video_id: str) -> bool:
     em-voo para aquele video. Marca da grade nao sai por aqui.
     """
     with trava_de_acoes():
-        if any(v.get("id") == video_id for v in em_voo().values()):
+        if any(mesmo_video(v.get("id"), video_id) for v in em_voo().values()):
             raise Recusa("o vídeo ainda está no em-voo do app; libere-o antes")
         do_app = []
         for destino in NOME_DESTINO:

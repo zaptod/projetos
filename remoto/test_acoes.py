@@ -295,6 +295,11 @@ def test_portas_reais_recusam_o_rascunho():
     (f"YouTube: {YT_OK}\nYouTube: {YT_RASCUNHO}\n", 0, "youtube", {"youtube": "a_conferir"}),
     ("YouTube FALHOU: sessao\n", 1, "youtube", {"youtube": "a_conferir"}),
     ("YouTube: cota esgotada\n", 2, "youtube", {"youtube": "falha_limpa"}),
+    # uma parte ficou em rascunho e a cota acabou na seguinte
+    (f"YouTube A CONFERIR: {YT_RASCUNHO}\nYouTube: cota esgotada\n", 2, "youtube",
+     {"youtube": "a_conferir"}),
+    (f"YouTube A CONFERIR: {YT_RASCUNHO}\nYouTube: cota esgotada\n", 2, "ambos",
+     {"youtube": "a_conferir", "tiktok": "nao_tentado"}),
     # a parte 1 subiu e a cota acabou na 2
     (f"YouTube: {YT_OK}\nYouTube: cota esgotada\n", 2, "youtube",
      {"youtube": "a_conferir"}),
@@ -1611,3 +1616,38 @@ def test_conclusao_nao_repete(mundo, monkeypatch):
     assert len(mundo.diario) == 1
     acoes._FILA_AVISOS.join()
     assert sum("publicar" in a for a in mundo.avisos) == 1
+
+
+
+# =================================================== sexta rodada
+def test_soltar_marca_de_uma_parte_com_o_video_em_voo_recusa(mundo):
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"YouTube: {YT_OK}\n", 0)
+    _publicar({"id": DOIS, "onde": "youtube"})
+    with pytest.raises(acoes.Recusa, match="em-voo"):
+        acoes.soltar_marca(C1)
+    assert DOIS in _marcas(mundo, "youtube")          # a marca previa ficou
+
+
+def test_liberar_por_uma_parte_acha_o_video_e_respeita_a_guarda(mundo):
+    _item_preso(mundo, fim=False, filha=True, filho=False)
+    with pytest.raises(acoes.Recusa, match="não solto"):
+        acoes.liberar(f"{A}:corte01")
+    assert len(acoes.em_voo()) == 1
+    mundo.filha.vivos[55] = False
+    assert acoes.liberar(f"{A}:corte02") == 1
+
+
+def test_parte_marcada_pelo_publicador_nao_duplica_o_diario(mundo):
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"YouTube: {YT_OK}\nYouTube A CONFERIR: {YT_RASCUNHO}\n", 3)
+    _publicar({"id": DOIS, "onde": "youtube"})
+    caminho = mundo.tmp / "_youtube_a_conferir.json"
+    dados = json.loads(caminho.read_text(encoding="utf-8"))
+    dados[C2] = {"quando": "2026-09-17T10:05:00", "estado": "cliquei, rascunho"}
+    caminho.write_text(json.dumps(dados), encoding="utf-8")
+    mundo.filha.segurar.set()
+    _esperar_publicacoes()
+    assert mundo.diario == []                 # o publicador ja avisou da parte
+    (item,) = acoes.em_voo().values()
+    assert item["estado"] == "a_conferir"
