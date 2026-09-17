@@ -1,15 +1,19 @@
 {
     "_comment": "O modelo de roteiro e as regras que fazem o video prender. `modelos` sao ESTRUTURAS (o que deve sair, cena a cena) e nao ideias: a ideia e o LLM que inventa. `regras` valem para todo modelo e sao o que separa uma historia que prende de um texto lido em voz alta. `contrato` e o formato exato que o parser sabe ler.",
     "modelo_padrao": "reddit",
-    "_comment_tipos": "TRES TIPOS POR DIA (17/09/2026, decisao do Adrian): favela, normal e babaca, uma serie de cada no ar ao mesmo tempo e a fila alternando os tipos em rodizio. O rodizio de molde acontece DENTRO do tipo. `partes` [min, max] = numero de partes sorteado por historia; sem ele vale o `partes` da agenda. A criacao escolhe o tipo com MENOS estoque aprovado.",
+    "_comment_tipos": "TRES TIPOS POR DIA (17/09/2026, decisao do Adrian): favela, normal e babaca, uma serie de cada no ar ao mesmo tempo e a fila alternando os tipos em rodizio. O rodizio de molde acontece DENTRO do tipo. `partes` [min, max] = numero de partes sorteado por historia; sem ele vale o `partes` da agenda. A criacao escolhe o tipo com MENOS estoque aprovado. `modo: livre` (pedido do Adrian, 17/09/2026: \"deixar pro lado da IA, dar um tamanho desejado e assunto base e dar a ela autoridade\"): a IA recebe so o `assunto`, o tamanho, o limite da plataforma, o guia de linguagem, a continuidade das imagens e o formato; molde, alavancas, narrador e abertura/fechamento sao dela. Sem `modo`, vale o modo guiado pelos moldes.",
     "tipos": {
         "favela": {
+            "modo": "livre",
+            "assunto": "uma novela caricata da quebrada, com fofoca, barraco e vizinhanca, contada com humor por um narrador de fora (sem crime, arma, droga ou policia)",
             "rotulo": "Favela (novela da quebrada)",
             "moldes": [
                 "quebrada"
             ]
         },
         "normal": {
+            "modo": "livre",
+            "assunto": "um relato em primeira pessoa de alguem comum contando algo marcante que viveu: uma confissao, uma vinganca ou um conflito que ainda divide opinioes",
             "rotulo": "Normal (relato em 1a pessoa)",
             "moldes": [
                 "reddit",
@@ -18,6 +22,8 @@
             ]
         },
         "babaca": {
+            "modo": "livre",
+            "assunto": "um post do Reddit no estilo 'Eu sou o babaca?': quem postou conta, em primeira pessoa, um conflito e pede que quem assiste julgue quem errou (em portugues, sem as siglas do Reddit)",
             "rotulo": "Eu sou o babaca?",
             "moldes": [
                 "babaca"

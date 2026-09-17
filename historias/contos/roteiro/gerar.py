@@ -157,7 +157,8 @@ def _exigir_coerencia(cliente, parcial: dict, numero: int, cenas_alvo: int,
 
 
 def _revisar_parte(cliente, parcial: dict, numero: int, cenas_alvo: int,
-                   pasta: Path, config: dict, log) -> dict:
+                   pasta: Path, config: dict, log,
+                   biblia: dict | None = None) -> dict:
     """Um turno a mais: o modelo relê o que escreveu e reescreve melhor.
 
     E a mudanca que mais levanta qualidade de texto de LLM. A primeira versao
@@ -170,7 +171,8 @@ def _revisar_parte(cliente, parcial: dict, numero: int, cenas_alvo: int,
     """
     try:
         texto = cliente.perguntar(
-            S.prompt_revisao(numero, cenas_alvo, config=config))
+            S.prompt_revisao(numero, cenas_alvo, config=config,
+                             biblia=biblia))
     except Exception as exc:                                   # noqa: BLE001
         log(f"[serie] a revisao da parte {numero} nao veio ({exc}); "
             "fico com a primeira versao.")
@@ -310,7 +312,7 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                     f"a parte {numero} voltou sem cena legivel na retomada. "
                     f"As partes anteriores continuam salvas.")
             parcial = _revisar_parte(cliente, parcial, numero, cenas_por_parte,
-                                     pasta, config, log)
+                                     pasta, config, log, biblia=biblia)
             # A retomada corre o MESMO risco, e mais: ela existe justamente
             # para consertar serie que deu errado antes.
             parcial = _exigir_coerencia(cliente, parcial, numero,
@@ -415,7 +417,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                                 estrutura=estrutura,
                                 # Sem estes dois ele repetia as MESMAS duas
                                 # alavancas em 5 de 5 historias.
-                                ganchos=ganchos, narrador=narrador))
+                                ganchos=ganchos, narrador=narrador,
+                                tipo=tipo or ""))
             biblia = S.parse_biblia(texto, partes)
             problemas = S.problemas_da_biblia(biblia)
 
@@ -452,6 +455,18 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             # retomada, que abre um chat novo sem o contexto da biblia.
             biblia["estrutura"] = estrutura
             biblia["tipo"] = tipo
+            if S.livre(tipo, config):
+                # MODO LIVRE: quem narra e o que prende sao da IA. O rodizio
+                # nao manda aqui, e o roteiro grava o que ela escolheu.
+                ganchos = []
+                escolhido = S._sem_acento(biblia.get("narrador") or "").lower()
+                # A voz so conhece "mulher" e "homem"; o resto do que a IA
+                # escreveu ("mulher, 34 anos") fica fora do roteiro.
+                for voz in S.NARRADORES:
+                    if voz in escolhido:
+                        narrador = voz
+                        break
+                biblia["narrador"] = narrador
 
             _gravar(pasta / "biblia.json", biblia)
             log(f"[serie] biblia pronta: {biblia['titulo'] or '(sem titulo)'} "
@@ -485,7 +500,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                         f"cru esta em {pasta / 'conversa'}; as partes anteriores "
                         "ja estao salvas.")
                 parcial = _revisar_parte(cliente, parcial, numero,
-                                         cenas_por_parte, pasta, config, log)
+                                         cenas_por_parte, pasta, config, log,
+                                         biblia=biblia)
                 parcial = _exigir_coerencia(cliente, parcial, numero,
                                             cenas_por_parte, pasta, config,
                                             biblia, log)

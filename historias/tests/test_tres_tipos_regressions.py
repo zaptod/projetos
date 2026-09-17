@@ -16,6 +16,8 @@ Rode de dentro de historias/:
 """
 from __future__ import annotations
 
+import contextlib
+import json
 import random
 import tempfile
 import unittest
@@ -30,6 +32,11 @@ from contos.roteiro import serie as S                              # noqa: E402
 from contos.roteiro.modelo import carregar_config                  # noqa: E402
 
 CONFIG = carregar_config()
+# O modo GUIADO (moldes, abertura e fechamento prescritos) continua existindo
+# para quem desligar o `modo: livre`; os testes dele usam esta copia.
+CONFIG_GUIADO = json.loads(json.dumps(CONFIG))
+for _ficha in CONFIG_GUIADO["tipos"].values():
+    _ficha.pop("modo", None)
 
 
 class OsTiposNoConfig(unittest.TestCase):
@@ -155,7 +162,7 @@ class OTipoViajaComAHistoria(unittest.TestCase):
         self.assertEqual(["babaca"], vistos)
 
 
-class OPromptDoBabaca(unittest.TestCase):
+class OPromptDoBabacaGuiado(unittest.TestCase):
 
     def _biblia(self, partes=4):
         return {"titulo": "Eu sou o babaca?", "estrutura": "babaca",
@@ -164,7 +171,7 @@ class OPromptDoBabaca(unittest.TestCase):
                            for k in range(1, partes + 1)]}
 
     def test_parte_1_abre_com_a_pergunta_do_post(self):
-        texto = S.prompt_parte(self._biblia(), 1, config=CONFIG)
+        texto = S.prompt_parte(self._biblia(), 1, config=CONFIG_GUIADO)
         self.assertIn("Eu sou o babaca por", texto)
         self.assertNotIn("ABERTURA (parte 1): a primeira cena e o momento "
                          "mais chocante", texto)
@@ -173,20 +180,20 @@ class OPromptDoBabaca(unittest.TestCase):
         self.assertIn("vale sobre qualquer regra geral", texto)
 
     def test_parte_do_meio_abre_com_edicao_e_fecha_em_fato_novo(self):
-        texto = S.prompt_parte(self._biblia(), 2, config=CONFIG)
+        texto = S.prompt_parte(self._biblia(), 2, config=CONFIG_GUIADO)
         self.assertIn("ABERTURA (parte 2)", texto)
         self.assertIn("'Edicao:'", texto)
         self.assertIn("proxima 'Edicao'", texto)
 
     def test_ultima_parte_pede_julgamento_em_portugues(self):
-        texto = S.prompt_parte(self._biblia(), 4, config=CONFIG)
+        texto = S.prompt_parte(self._biblia(), 4, config=CONFIG_GUIADO)
         self.assertIn("Resumindo:", texto)
         self.assertIn("eu errei, ela errou, ou todo mundo errou?", texto)
         self.assertIn("Nunca use NTA", texto)
 
     def test_as_regras_do_molde_chegam_a_retomada(self):
         # Chat novo: sem as regras aqui, o post viraria roteiro com dialogo.
-        texto = S.prompt_parte(self._biblia(), 3, config=CONFIG)
+        texto = S.prompt_parte(self._biblia(), 3, config=CONFIG_GUIADO)
         self.assertIn("PROSA", texto)
         self.assertIn("NOME DA SERIE e curto", texto)
 
@@ -194,8 +201,8 @@ class OPromptDoBabaca(unittest.TestCase):
         # Parte 1: a pergunta e o fato que a Edicao vai explicar.
         # Parte 2: abre com a Edicao e fecha com resumo e julgamento.
         biblia = self._biblia(partes=2)
-        primeira = S.prompt_parte(biblia, 1, config=CONFIG)
-        segunda = S.prompt_parte(biblia, 2, config=CONFIG)
+        primeira = S.prompt_parte(biblia, 1, config=CONFIG_GUIADO)
+        segunda = S.prompt_parte(biblia, 2, config=CONFIG_GUIADO)
         self.assertIn("PARTE 1 de 2", primeira)
         self.assertIn("'Eu sou o babaca por ...?'", primeira)
         self.assertIn("proxima 'Edicao'", primeira)
@@ -211,11 +218,11 @@ class OPromptDoBabaca(unittest.TestCase):
     def test_o_normal_continua_com_a_abertura_de_sempre(self):
         biblia = dict(self._biblia(), estrutura="confissao", tipo="normal")
         self.assertIn("momento mais chocante",
-                      S.prompt_parte(biblia, 1, config=CONFIG))
+                      S.prompt_parte(biblia, 1, config=CONFIG_GUIADO))
 
     def test_biblia_sem_molde_nao_quebra(self):
         biblia = {"titulo": "x", "partes": [{"n": 1}, {"n": 2}]}
-        self.assertIn("ETAPA 2", S.prompt_parte(biblia, 2, config=CONFIG))
+        self.assertIn("ETAPA 2", S.prompt_parte(biblia, 2, config=CONFIG_GUIADO))
 
     def test_o_julgamento_em_portugues_passa_na_linguagem(self):
         from contos.roteiro import linguagem
@@ -227,6 +234,111 @@ class OPromptDoBabaca(unittest.TestCase):
                                 "narracao": "Entao me fala: eu errei, ela "
                                             "errou, ou todo mundo errou?"}]}]})
         self.assertEqual([], linguagem.conferir(roteiro)["pare"])
+
+
+class OModoLivre(unittest.TestCase):
+    """Pedido do Adrian (17/09/2026): assunto base e tamanho, e a IA com
+    autoridade para criar. O que fica e so o que nao se negocia."""
+
+    def _biblia(self, partes=3):
+        return {"titulo": "T", "tipo": "babaca", "estrutura": "babaca",
+                "protagonista": "a Brazilian woman in her thirties",
+                "fatos": "idade = 34",
+                "partes": [{"n": k, "resumo": f"r{k}", "gancho": f"g{k}",
+                            "cliffhanger": f"c{k}"}
+                           for k in range(1, partes + 1)]}
+
+    def test_os_tres_tipos_estao_livres_e_tem_assunto(self):
+        for tipo in ("favela", "normal", "babaca"):
+            self.assertTrue(S.livre(tipo, CONFIG), tipo)
+            self.assertTrue(S.assunto_do_tipo(tipo, CONFIG), tipo)
+        self.assertFalse(S.livre("babaca", CONFIG_GUIADO))
+
+    def test_biblia_livre_da_assunto_tamanho_e_autoridade(self):
+        texto = S.prompt_biblia(partes=4, cenas_por_parte=12, config=CONFIG,
+                                tipo="babaca", estrutura="babaca",
+                                ganchos=["TRAICAO"], narrador="mulher",
+                                evitar=["historia velha"])
+        self.assertIn(S.assunto_do_tipo("babaca", CONFIG), texto)
+        self.assertIn("4 parte(s), cada uma com 12 cenas", texto)
+        self.assertIn("AUTORIDADE CRIATIVA", texto)
+        self.assertIn("historia velha", texto)
+        self.assertIn("menor de 18", texto)
+        for rotulo in ("TITULO DA SERIE:", "NOME DA SERIE:", "PROTAGONISTA:",
+                       "NARRADOR:", "FATOS:", "PARTE 4", "GANCHO:"):
+            self.assertIn(rotulo, texto)
+        for engessado in ("MOLDE DESTA HISTORIA", "ALAVANCAS", "TRAICAO",
+                          "QUEM CONTA", "Eu sou o babaca por"):
+            self.assertNotIn(engessado, texto)
+
+    def test_parte_livre_so_traz_o_necessario(self):
+        texto = S.prompt_parte(self._biblia(), 2, config=CONFIG)
+        self.assertIn("PARTE 2 de 3", texto)
+        self.assertIn("exatamente 14 cenas", texto)
+        self.assertIn("a Brazilian woman in her thirties", texto)
+        self.assertIn("idade = 34", texto)
+        self.assertIn("COMO DIZER O QUE E PESADO", texto)
+        self.assertIn("CENA 1", texto)
+        for engessado in ("ABERTURA (parte", "FECHAMENTO (parte",
+                          "COMO ESCREVER A NARRACAO", "Edicao",
+                          "AS REGRAS DO MOLDE"):
+            self.assertNotIn(engessado, texto)
+
+    def test_ultima_parte_livre_so_avisa_que_termina(self):
+        texto = S.prompt_parte(self._biblia(), 3, config=CONFIG)
+        self.assertIn("E a ultima parte", texto)
+        self.assertNotIn("Resumindo", texto)
+
+    def test_revisao_livre_e_curta_e_aceita_devolver_igual(self):
+        livre = S.prompt_revisao(2, 14, config=CONFIG, biblia=self._biblia())
+        guiada = S.prompt_revisao(2, 14, config=CONFIG)
+        self.assertIn("devolva igual", livre)
+        self.assertLess(len(livre), len(guiada) / 2)
+
+    def test_gerar_serie_livre_grava_o_narrador_que_a_ia_escolheu(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for modulo in (R, G):
+            self.addCleanup(setattr, modulo, "OUTPUTS", modulo.OUTPUTS)
+            modulo.OUTPUTS = Path(tmp.name)
+        biblia = ("TITULO DA SERIE: O vestido\nNOME DA SERIE: O Vestido\n"
+                  "PREMISSA: a irma pegou o vestido. Quem errou?\n"
+                  "PROTAGONISTA: Joao | a Brazilian man in his forties, bald\n"
+                  "NARRADOR: Homem, 41 anos\n"
+                  "CENARIO: a small apartment in Sao Paulo\n"
+                  "FATOS: idade = 41\n\nPARTE 1\nTITULO: O vestido\n"
+                  "RESUMO: r\nGANCHO: g\nCLIFFHANGER: c\n")
+        parte = "TITULO: O vestido (Parte 1)\n\n" + "\n\n".join(
+            f"CENA {i}\nIMAGEM: a bald Brazilian man in a small kitchen, "
+            f"moment {i}\nTEMPO: 4\nNARRACAO: Eu nunca achei que ia contar "
+            f"isso, parte {i}." for i in (1, 2))
+        perguntas = []
+
+        class Cliente:
+            modelo_atual, modelo_confirmado = "DeepSeek (site)", True
+
+            def abrir(self, novo_chat=True):
+                pass
+
+            def perguntar(self, prompt, timeout=None):
+                perguntas.append(prompt)
+                return biblia if len(perguntas) == 1 else parte
+
+        from contos.llm import cliente as llm_cliente
+        self.addCleanup(setattr, llm_cliente, "abrir_cliente",
+                        llm_cliente.abrir_cliente)
+        llm_cliente.abrir_cliente = (
+            lambda *a, **k: contextlib.nullcontext(Cliente()))
+        feito = G.gerar_serie(provedor="deepseek", partes=1,
+                              cenas_por_parte=2, tipo="babaca",
+                              historia_id="historia_00005",
+                              log=lambda *_a: None)
+        roteiro = R.carregar(feito["historia_id"])
+        self.assertEqual("homem", roteiro["narrador"])
+        self.assertEqual([], roteiro["ganchos"])
+        self.assertEqual("babaca", roteiro["tipo"])
+        self.assertIn("AUTORIDADE CRIATIVA", perguntas[0])
+        self.assertNotIn("ABERTURA (parte", perguntas[1])
 
 
 class RodizioNaFila(unittest.TestCase):
