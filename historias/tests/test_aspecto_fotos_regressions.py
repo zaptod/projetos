@@ -104,7 +104,7 @@ class ProporcaoDaImagemTests(unittest.TestCase):
         self.assertIn("utilizavel(arquivo, aspecto)",
                       inspect.getsource(timeline.montar))
         self.assertIn('config["aspect"] = fila.aspecto_da_historia(',
-                      inspect.getsource(worker.gerar))
+                      inspect.getsource(worker._gerar))
 
 
 class PromptSemPixarTests(unittest.TestCase):
@@ -173,7 +173,7 @@ class PromptSemPixarTests(unittest.TestCase):
 
     def test_o_worker_passa_o_elenco(self):
         self.assertIn('elenco=str(roteiro.get("elenco")',
-                      inspect.getsource(worker.gerar))
+                      inspect.getsource(worker._gerar))
 
     def test_cena_sem_personagem_descrito_continua_com_o_reforco(self):
         prompt = fila.prompt_da_cena({"imagem": "a hand closes the door"},

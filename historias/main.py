@@ -145,9 +145,17 @@ def cmd_video(args, pipeline) -> int:
               "historia de verdade o formato e travado pela primeira parte "
               "renderizada (contos/video/formato.py).")
         return 2
-    pipeline.render(args.historia_id, preview=args.preview, parte=args.parte,
-                    saida=getattr(args, "prova", None),
-                    formato_override=trocas or None)
+    from contos.pipeline.controller import ImagensFaltando
+    try:
+        pipeline.render(args.historia_id, preview=args.preview,
+                        parte=args.parte, saida=getattr(args, "prova", None),
+                        formato_override=trocas or None,
+                        forcar=bool(getattr(args, "forcar", False)))
+    except ImagensFaltando as exc:
+        # O botao "So video" do painel mostra esta linha em vez de um mp4
+        # com cartao no lugar das cenas.
+        print(f"[video] nao renderizei: {exc}")
+        return 2
     return 0
 
 
@@ -570,6 +578,8 @@ def main() -> int:
                    help="troca a velocidade so neste render (ex.: 1.7)")
     v.add_argument("--layout", choices=("vertical", "dividido"), default=None,
                    help="troca o layout so neste render")
+    v.add_argument("--forcar", action="store_true",
+                   help="renderiza mesmo com imagem faltando (cartao no lugar)")
 
     t = sub.add_parser("tudo", help="imagens que faltam + video")
     t.add_argument("historia_id")
