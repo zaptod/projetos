@@ -434,6 +434,33 @@ class TarefaDoBotTests(unittest.TestCase):
         self.assertIn("-X utf8", texto)
         self.assertIn("2>&1", texto)
 
+    def test_reinstalar_nao_traz_a_janela_preta_de_volta(self):
+        # Pedido do Adrian (17/09/2026): a acao e o wscript com o .vbs.
+        from builds import tarefas_windows as TW
+        from remoto import tarefa
+        chamadas = []
+
+        class Proc:
+            returncode, stdout, stderr = 0, "SUCESSO", ""
+
+        reais = (tarefa._schtasks, TW.endurecer, TW.garantir_vbs,
+                 tarefa.escrever_lancador)
+        tarefa._schtasks = lambda args: chamadas.append(args) or Proc()
+        TW.endurecer = lambda nome, **k: {"ok": True, "mensagem": ""}
+        TW.garantir_vbs = lambda pasta=None: Path("C:/rt/oculto.vbs")
+        tarefa.escrever_lancador = lambda python=None: Path("C:/r/bot.cmd")
+
+        def restaurar():
+            (tarefa._schtasks, TW.endurecer, TW.garantir_vbs,
+             tarefa.escrever_lancador) = reais
+
+        self.addCleanup(restaurar)
+        self.assertTrue(tarefa.instalar()["ok"])
+        (args,) = chamadas
+        acao = args[args.index("/TR") + 1]
+        self.assertIn("wscript.exe //B //Nologo", acao)
+        self.assertTrue(acao.endswith(f'"{Path("C:/r/bot.cmd")}"'))
+
 
 class ApuracaoTests(BaseTemp):
     """Erro no ledger -> o Claude apura sozinho -> o diagnostico vai ao chat.
