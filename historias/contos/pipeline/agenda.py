@@ -517,7 +517,38 @@ def aprovados_no_estoque() -> list:
             continue
         if veredito.get("ok"):
             aprovados.append(video)
-    return aprovados
+    return _sem_titulo_barrado(aprovados)
+
+
+def _sem_titulo_barrado(aprovados: list) -> list:
+    """Tira do ESTOQUE o que a guarda de titulo nunca vai deixar sair.
+
+    Desde 17/09/2026 a valvula de titulo repetido FECHA: parte cujo titulo ja
+    esta no ar nao sai — nunca, nao "sai depois". Mas ela continuava contando
+    aqui, e o estoque alimenta o freio da producao.
+
+    O resultado seria fome silenciosa: com 20 aprovados, tres deles com
+    titulo repetido, o freio ve 20 (teto 20) e nao cria nada; a fila entrega
+    17 e esvazia; o freio continua vendo 3 e continua sem criar. Horarios
+    vazios ate alguem olhar — e nada acusa, porque o numero parece saudavel.
+
+    Estoque quer dizer "video que vai sair". O que nao vai sair e outra
+    coisa, e somar os dois faz o painel prometer o que nao tem.
+
+    Falhar ao ler os titulos NAO tira ninguem do estoque: nesse caso o certo
+    e contar a mais e criar de menos, nao o contrario — criar sem parar por
+    causa de um ledger ilegivel seria trocar fome por enchente.
+    """
+    try:
+        from builds.publicar import titulos
+        from ..publicar import serie
+        ja = titulos.ja_publicados(serie.publicados())
+    except Exception:                                          # noqa: BLE001
+        return aprovados
+    if not ja:
+        return aprovados
+    return [v for v in aprovados
+            if not titulos.repetido(getattr(v, "titulo", ""), ja)]
 
 
 def barrados_no_estoque() -> list:
