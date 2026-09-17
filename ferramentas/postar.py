@@ -140,7 +140,7 @@ def fila_de_historias() -> list:
     """
     from contos.publicar import catalogo, serie
 
-    publicados = [l for l in serie.publicados() if l.get("url")]
+    publicados = [l for l in serie.publicados() if _saiu(l)]
     # QUALQUER PLATAFORMA CONTA. Em 15/09/2026 a fila passou a contar so o
     # YouTube (para a parte que so foi ao TikTok nao sumir do YouTube), e a
     # revisao adversarial mediu o preco: com o YouTube na cota o dia inteiro,
@@ -697,6 +697,46 @@ def _video_por_id(video_id: str):
 # ganhar linha no ledger. Nao basta consertar a recuperacao: enquanto o
 # ledger for cego para o passado, qualquer coisa que dependa dele para dizer
 # "nunca foi" vai repetir.
+# A versao do contrato do ledger que este publicador entende.
+#
+# 1 = "saiu?" era `bool(linha["url"])`. E o `url` guardava TRES coisas: o
+#     link, a frase de estado ("publicado no YouTube (com a confirmacao
+#     extra)") e, no TikTok, sempre a frase. Entao rascunho e publicacao de
+#     verdade ficavam identicos para todo filtro do projeto.
+# 2 = "saiu?" e `metricas.publicado(linha)`: o campo `publicado` manda quando
+#     existe, e linha antiga sem ele cai no criterio de antes.
+#
+# O `curar_ledger` da d2 recusa gravar enquanto este numero nao for 2, e a
+# razao e concreta: a cura tira a frase do `url` das linhas de TikTok, e com
+# o publicador lendo `url` a guarda de "ja esta no TikTok" sumiria de 46
+# builds e 51 historias — que voltariam a ser postadas. A migracao vem
+# ANTES da cura, nunca depois.
+CONTRATO_DO_LEDGER = 2
+
+
+def _saiu(linha) -> bool:
+    """Esta linha quer dizer que o video SAIU? A resposta unica do projeto.
+
+    Um atalho para `metricas.publicado`, com import tardio porque o
+    `postar.py` roda de dois cwd diferentes. Existe para que nenhum leitor
+    daqui volte a perguntar `linha.get("url")` por conta propria — foi assim
+    que cada arquivo ganhou o proprio criterio de "publicado".
+    """
+    try:
+        from builds.publicar import metricas
+        return metricas.publicado(linha)
+    except Exception:                                          # noqa: BLE001
+        # Queda para o criterio velho SO se `metricas` nao importar. Escrito
+        # em duas linhas, com a leitura numa variavel, porque a varredura da
+        # cura procura a forma condicional no fonte para saber se a migracao
+        # aconteceu — e um fallback documentado nao pode parecer uma leitura
+        # esquecida.
+        if not isinstance(linha, dict):
+            return False
+        antigo = linha.get("url")
+        return bool(antigo)
+
+
 # RELIGADAS EM 17/09/2026, depois de as quatro condicoes existirem:
 #
 #   1. O ledger enxerga o passado do TikTok (`conciliar_tiktok.py` importou
@@ -1173,7 +1213,7 @@ def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
         return []                  # canal sem corte nao tem reserva
     no_tiktok, titulos_no_tiktok = set(), {}
     for l in publicados:
-        if l.get("plataforma") != "tiktok" or not l.get("url"):
+        if l.get("plataforma") != "tiktok" or not _saiu(l):
             continue
         no_tiktok.add(l.get("video_id"))
         chave = titulos.chave(l.get("titulo"))
@@ -1185,7 +1225,7 @@ def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
     desistidos = desistencias_do_tiktok(canal) | a_conferir_no_tiktok(canal)
     candidatos, vistos = [], set()
     for linha in publicados:                     # ledger ja vem em ordem
-        if linha.get("plataforma") != "youtube" or not linha.get("url"):
+        if linha.get("plataforma") != "youtube" or not _saiu(linha):
             continue
         vid = linha.get("video_id")
         if not vid or vid in no_tiktok or vid in vistos:
@@ -1594,7 +1634,7 @@ def _servidos_recentes(n: int = JANELA_DA_GRADE) -> dict:
     from builds.publicar import metricas
 
     contagem: dict[str, int] = {}
-    linhas = [l for l in metricas.publicados() if l.get("url")]
+    linhas = [l for l in metricas.publicados() if _saiu(l)]
     for linha in linhas[-n:]:
         origem = str(linha.get("origem") or "")
         if origem:
@@ -1720,7 +1760,7 @@ def proximo_build(config=None):
     # Qualquer plataforma conta (ver `fila_de_historias`): contando so o
     # YouTube, a cota repetia o mesmo video em todo horario e o TikTok ficava
     # vazio.
-    ja = {l.get("video_id") for l in metricas.publicados() if l.get("url")}
+    ja = {l.get("video_id") for l in metricas.publicados() if _saiu(l)}
     pendentes = [v for v in C.listar()
                  if v.id not in ja and getattr(v, "perfil", "") == "celular"]
     if not pendentes:
@@ -1891,7 +1931,7 @@ def _build_ja_no_tiktok(video_id: str) -> bool:
     caminho "YouTube ja saiu nesta hora, levando so para o TikTok"."""
     try:
         from builds.publicar import metricas
-        return any(l.get("video_id") == video_id and l.get("url")
+        return any(l.get("video_id") == video_id and _saiu(l)
                    and l.get("plataforma") == "tiktok"
                    for l in metricas.publicados())
     except Exception:                                          # noqa: BLE001
@@ -2065,7 +2105,7 @@ def estoque_por_formato(por_dia: int | None = None) -> dict:
     try:
         from builds.publicar import catalogo as C
         from builds.publicar import metricas
-        ja = {l.get("video_id") for l in metricas.publicados() if l.get("url")}
+        ja = {l.get("video_id") for l in metricas.publicados() if _saiu(l)}
         pendentes = [v for v in C.listar()
                      if v.id not in ja and getattr(v, "perfil", "") == "celular"]
     except Exception:                                          # noqa: BLE001
