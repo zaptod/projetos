@@ -622,6 +622,13 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
                 f"{ESPERA_HABILITAR_S / 60:.0f} min — o TikTok ainda estava "
                 f"processando o vídeo. A janela segue aberta. ({exc})"
             ) from exc
+        # A PROVA DO CLIQUE, GRAVADA NO INSTANTE EM QUE ELE SAI. O `laudo` e
+        # preenchido no lugar (e o `prova` de quem chamou), entao esta marca
+        # SOBREVIVE a qualquer excecao daqui para baixo — inclusive uma que
+        # aconteca depois do post ja ter subido. Sem ela, a unica evidencia
+        # de que o clique saiu era a frase de retorno, e uma excecao apaga a
+        # frase: o video voltaria para a fila e seria reenviado, duplicando.
+        laudo["clicou"] = True
         passo("publicar clicado; confirmando...")
         estado = _confirmar_publicacao(page, passo)
         passo(estado)

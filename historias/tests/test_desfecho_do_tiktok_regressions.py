@@ -106,6 +106,25 @@ class ClassificacaoTests(unittest.TestCase):
             CLICOU_1, {"tipo": "RuntimeError",
                        "mensagem": "nao consegui abrir o Chrome"}))
 
+    def test_a_marca_do_laudo_sobrevive_a_excecao(self):
+        """O caso que o codigo real produz, e que o teste acima NAO cobria.
+
+        Quando algo levanta depois do clique (o ledger preso, o Chrome
+        fechando), a frase de retorno se perde e sobra `""`. Sem a marca
+        `clicou` gravada no laudo, isso viraria "falha" — tres reenvios sobre
+        um post que pode estar no ar.
+        """
+        self.assertEqual("sem_confirmacao", postar.desfecho_do_tiktok(
+            "", {"tipo": "RuntimeError", "mensagem": "ledger ocupado"},
+            {"clicou": True}))
+
+    def test_acento_nao_impede_a_marca_de_casar(self):
+        """"nao achei o campo de arquivo" nunca casava: o tiktok.py escreve
+        "nao" COM acento. Marca que nunca casa e pior que marca ausente."""
+        self.assertEqual("infraestrutura", postar.desfecho_do_tiktok(
+            "", {"tipo": "TikTokFalhou",
+                 "mensagem": "não achei o campo de arquivo na página"}))
+
 
 class ReacaoAoDesfechoTests(unittest.TestCase):
     """Classificar sem reagir nao conserta nada."""
@@ -137,8 +156,28 @@ class ReacaoAoDesfechoTests(unittest.TestCase):
         postar._fontes_de_atraso = lambda _c: (
             linhas, {v.id: v for v in self.videos})
 
+    def _publicador_que_clica_sem_confirmar(self):
+        """Dubla `tiktok.publicar`, e NAO `_tiktok_dos_builds`.
+
+        A reacao mora dentro do publicador desde o segundo conserto — dublar
+        o publicador inteiro pularia justamente o que se quer testar.
+        """
+        import sys
+        modulo = sys.modules.get("builds.publicar.tiktok")
+        self.addCleanup(setattr, modulo, "publicar", modulo.publicar)
+
+        def publicar(alvo, postar=True, canal="builds", progresso=None,
+                     prova=None):
+            if prova is not None:
+                prova["clicou"] = True
+            return CLICOU_1
+        modulo.publicar = publicar
+        self.addCleanup(setattr, postar, "_build_ja_no_tiktok",
+                        postar._build_ja_no_tiktok)
+        postar._build_ja_no_tiktok = lambda _v: False
+
     def test_sem_confirmacao_sai_da_fila_e_NAO_conta_falha(self):
-        postar._tiktok_dos_builds = lambda alvo, falha=None: CLICOU_1
+        self._publicador_que_clica_sem_confirmar()
         postar.recuperar_no_tiktok(canal="builds")
         self.assertEqual(set(), postar.desistencias_do_tiktok("builds"),
                          "clique sem confirmacao nao e falha do video")
@@ -149,7 +188,7 @@ class ReacaoAoDesfechoTests(unittest.TestCase):
         self.assertIn("b:build:celular", fila)
 
     def test_sem_confirmacao_vira_ERRO_no_diario(self):
-        postar._tiktok_dos_builds = lambda alvo, falha=None: CLICOU_1
+        self._publicador_que_clica_sem_confirmar()
         postar.recuperar_no_tiktok(canal="builds")
         from builds import atividade
         erros = [a for a, _k in self.diario if a[1] == atividade.ERRO]
@@ -169,6 +208,44 @@ class ReacaoAoDesfechoTests(unittest.TestCase):
                          "o TikTok fora do ar nao pode abandonar video bom")
         self.assertIn("a:build:celular",
                       [v.id for v in postar.atrasados_no_tiktok(canal="builds")])
+
+    def test_TODO_caminho_marca_a_conferir_nao_so_a_recuperacao(self):
+        """O buraco que sobrou do primeiro conserto, e ele era da MESMA rodada.
+
+        A rodada normal recebia "cliquei mas nao confirmou", nada ia para o
+        ledger, e a recuperacao — chamada logo depois, no mesmo `main` — via
+        um video com YouTube e sem TikTok e o postava DE NOVO. Marcar so
+        dentro da recuperacao nao cobria nenhum dos cinco outros caminhos.
+        """
+        chamados = []
+
+        class _Fake:
+            id = "a:build:celular"
+            titulo = "A"
+
+        def publicar(alvo, postar=True, canal="builds", progresso=None,
+                     prova=None):
+            chamados.append(alvo.id)
+            if prova is not None:
+                prova["clicou"] = True          # o clique saiu
+            return CLICOU_1
+
+        import sys
+        modulo = sys.modules.get("builds.publicar.tiktok")
+        original = modulo.publicar
+        self.addCleanup(setattr, modulo, "publicar", original)
+        modulo.publicar = publicar
+        self.addCleanup(setattr, postar, "_build_ja_no_tiktok",
+                        postar._build_ja_no_tiktok)
+        postar._build_ja_no_tiktok = lambda _v: False
+
+        postar._tiktok_dos_builds(_Fake())
+        self.assertEqual(["a:build:celular"], chamados)
+        self.assertIn("a:build:celular", postar.a_conferir_no_tiktok("builds"),
+                      "o caminho NORMAL tem de marcar, nao so a recuperacao")
+        fila = [v.id for v in postar.atrasados_no_tiktok(canal="builds")]
+        self.assertNotIn("a:build:celular", fila,
+                         "e por isso a recuperacao da MESMA rodada nao o pega")
 
     def test_falha_do_video_continua_contando(self):
         def publicar(alvo, falha=None):

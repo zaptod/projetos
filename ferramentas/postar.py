@@ -731,7 +731,8 @@ MARCAS_DE_INFRAESTRUTURA = (
 )
 
 
-def desfecho_do_tiktok(estado, falha: dict | None = None) -> str:
+def desfecho_do_tiktok(estado, falha: dict | None = None,
+                       laudo: dict | None = None) -> str:
     """"publicado", "sem_confirmacao", "infraestrutura" ou "falha".
 
     Ate hoje so havia duas respostas — confirmou ou nao — e o "nao" juntava
@@ -749,16 +750,36 @@ def desfecho_do_tiktok(estado, falha: dict | None = None) -> str:
     A ORDEM IMPORTA: se o clique saiu, o que aconteceu depois nao muda o
     risco. Um erro de infraestrutura DEPOIS do clique continua sendo
     "sem_confirmacao", porque o post pode ter subido do mesmo jeito.
+
+    E POR ISSO `laudo["clicou"]` VEM ANTES DO TEXTO: a frase de retorno se
+    perde quando algo levanta depois do clique (o ledger preso, o Chrome
+    fechando), e ai sobrava `""` — classificado como "falha" e reenviado ate
+    tres vezes, sobre um post que ja podia estar no ar. A marca do laudo e
+    escrita no instante do clique e sobrevive a excecao.
     """
     if _tiktok_confirmado(estado):
         return "publicado"
-    texto = str(estado or "").lower()
+    if (laudo or {}).get("clicou"):
+        return "sem_confirmacao"
+    texto = _sem_acentos(str(estado or ""))
     if any(m in texto for m in MARCAS_DE_CLIQUE):
         return "sem_confirmacao"
-    motivo = " ".join(str(v) for v in (falha or {}).values()).lower()
+    motivo = _sem_acentos(" ".join(str(v) for v in (falha or {}).values()))
     if any(m in motivo for m in MARCAS_DE_INFRAESTRUTURA):
         return "infraestrutura"
     return "falha"
+
+
+def _sem_acentos(texto: str) -> str:
+    """Minusculas e sem acento, para as marcas casarem de verdade.
+
+    A marca "nao achei o campo de arquivo" nunca casava: o `tiktok.py`
+    escreve "nao" COM acento, e a comparacao era byte a byte. Uma marca que
+    nunca casa e pior que marca ausente — ela da a impressao de estar coberto.
+    """
+    import unicodedata
+    normal = unicodedata.normalize("NFKD", str(texto).lower())
+    return "".join(c for c in normal if not unicodedata.combining(c))
 
 
 def a_conferir_no_tiktok(canal: str = "historias") -> set:
@@ -781,6 +802,28 @@ def a_conferir_no_tiktok(canal: str = "historias") -> set:
 def _arquivo_a_conferir(canal: str):
     from builds.publicar import metricas
     return metricas.registro_do_canal(canal).parent / "_tiktok_a_conferir.json"
+
+
+def _resolver_desfecho(canal: str, alvo, estado: str, laudo: dict,
+                       falha: dict | None) -> str:
+    """Classifica e REAGE, dentro do publicador. Devolve o estado, intacto.
+
+    Mora aqui, e nao em quem chama, porque ha SETE caminhos que publicam no
+    TikTok (rodada normal dos dois canais, "so TikTok", escoamento,
+    recuperacao, reserva) e o conserto anterior so cobriu dois. O buraco que
+    sobrou era real e na mesma rodada: a rodada normal recebia "cliquei mas
+    nao confirmou", nada ia para o ledger, e a recuperacao — chamada logo
+    depois, no mesmo `main` — via um video com YouTube e sem TikTok e o
+    postava DE NOVO.
+
+    Uma funcao que os publicadores chamam sempre e a unica forma de isto nao
+    depender de alguem lembrar no oitavo caminho.
+    """
+    desfecho = desfecho_do_tiktok(estado, falha, laudo)
+    if desfecho == "sem_confirmacao":
+        _marcar_para_conferir(canal, getattr(alvo, "id", ""), estado or
+                              "o clique saiu e nao veio confirmacao")
+    return estado
 
 
 def _marcar_para_conferir(canal: str, video_id: str, estado: str) -> None:
@@ -1033,8 +1076,6 @@ def recuperar_no_tiktok(so_ver: bool = False,
     feito = desfecho == "publicado"
     if feito:
         _esquecer_falhas_no_tiktok(canal, alvo.id)
-    elif desfecho == "sem_confirmacao":
-        _marcar_para_conferir(canal, alvo.id, estado)
     elif desfecho == "falha":
         _anotar_falha_no_tiktok(canal, alvo.id)
     # "infraestrutura" nao conta nada: o video continua na fila e a proxima
@@ -1083,8 +1124,6 @@ def publicar_da_reserva(so_ver: bool = False) -> dict:
     # outros 20 indefinidamente.
     if feito:
         _esquecer_falhas_no_tiktok("builds", alvo.id)
-    elif desfecho == "sem_confirmacao":
-        _marcar_para_conferir("builds", alvo.id, estado)
     elif desfecho == "falha":
         _anotar_falha_no_tiktok("builds", alvo.id)
     return {"feito": feito, "desfecho": desfecho, "reserva": len(fila),
@@ -1139,7 +1178,10 @@ def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
             falha["tipo"] = type(exc).__name__
             falha["mensagem"] = str(exc)[:300]
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
-        return ""
+        # A EXCECAO NAO PULA A CLASSIFICACAO: se o clique ja tinha saido (o
+        # `laudo` guarda isso), o video precisa ir para "a conferir" mesmo
+        # que o erro tenha vindo depois.
+        return _resolver_desfecho("historias", alvo, "", laudo, falha)
     # O REGISTRO E AQUI, e nao dentro do `tiktok.publicar`. La ele chama
     # `metricas.registrar_publicado(canal="historias")`, que DESCARTA tudo que
     # nao e do canal `builds` — entao uma postagem de historia no TikTok nunca
@@ -1151,7 +1193,7 @@ def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
                         {"por": "postar.py", "visibilidade": "public",
                          "prova": [laudo] if laudo else [],
                          "prova_ok": _prova_ok(laudo)})
-    return estado
+    return _resolver_desfecho("historias", alvo, estado, laudo, falha)
 
 
 def _visibilidade_das_historias() -> str:
@@ -1601,12 +1643,17 @@ def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
     if _build_ja_no_tiktok(alvo.id):
         _linha(f"   tiktok: {alvo.id} ja esta no TikTok; nao posto de novo.")
         return ""
+    # O `laudo` E PREENCHIDO NO LUGAR pelo `tiktok.publicar`, e e por isso que
+    # ele nasce aqui fora do `try`: a marca `clicou` escrita la dentro precisa
+    # sobreviver a uma excecao levantada depois do clique.
+    laudo: dict = {}
     try:
         # `postar=True` EXPLICITO. O config tem `postar_automatico: false`, que
         # e o certo para o botao do painel — la a ultima palavra e dele. A
         # grade automatica nao tem quem clique, entao ela diz o que quer.
-        return _tk.publicar(alvo, postar=True, canal="builds",
-                            progresso=lambda t: _linha(f"   {t}"))
+        estado = _tk.publicar(alvo, postar=True, canal="builds",
+                              progresso=lambda t: _linha(f"   {t}"),
+                              prova=laudo)
     except Exception as exc:                                   # noqa: BLE001
         # Ver o mesmo comentario em `_tiktok_das_historias`: sem a causa,
         # infraestrutura e defeito do video viram a mesma coisa.
@@ -1614,7 +1661,8 @@ def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
             falha["tipo"] = type(exc).__name__
             falha["mensagem"] = str(exc)[:300]
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
-        return ""
+        estado = ""
+    return _resolver_desfecho("builds", alvo, estado, laudo, falha)
 
 
 # ------------------------------------------------------------------ tarefa
