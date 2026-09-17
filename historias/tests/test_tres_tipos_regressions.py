@@ -295,6 +295,62 @@ class OModoLivre(unittest.TestCase):
         self.assertIn("devolva igual", livre)
         self.assertLess(len(livre), len(guiada) / 2)
 
+    def test_biblia_livre_leva_uma_linha_do_que_evitar(self):
+        texto = S.prompt_biblia(partes=2, config=CONFIG, tipo="favela",
+                                recentes=["mulher; a sogra; o carro",
+                                          "homem; o chefe; a demissao"])
+        linha = [l for l in texto.splitlines() if "Evite repetir" in l]
+        self.assertEqual(1, len(linha))
+        self.assertIn("a sogra; o carro / homem; o chefe", linha[0])
+        self.assertIn("VIRADA CENTRAL:", texto)
+        sem = S.prompt_biblia(partes=2, config=CONFIG, tipo="favela")
+        self.assertNotIn("Evite repetir", sem)
+
+    def test_o_resumo_das_ultimas_vem_do_disco(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.addCleanup(setattr, R, "OUTPUTS", R.OUTPUTS)
+        R.OUTPUTS = Path(tmp.name)
+        for n, (narrador, premissa, virada) in enumerate((
+                ("mulher", "p1", "v1"), ("homem", "p2", "v2"),
+                ("mulher", "p3", "v3"), ("homem", "p4", "v4")), 1):
+            R.salvar_serie({"titulo": "x", "premissa": premissa,
+                            "virada": virada, "partes": [{"n": 1}]}, [],
+                           f"historia_0000{n}", narrador=narrador)
+        self.assertEqual(["homem; p4; v4", "mulher; p3; v3", "homem; p2; v2"],
+                         R.resumos_recentes(3))
+
+    def test_corte_automatico_fica_no_diario(self):
+        from builds import atividade
+        from builds.publicar import cortes
+        registros = []
+        reais = (atividade.registrar, cortes.precisa, cortes.pedacos,
+                 cortes.fronteiras, cortes.ganchos, cortes.cortar,
+                 cortes._copia)
+        atividade.registrar = lambda *a, **k: registros.append((a, k))
+        cortes.precisa = lambda video, limite: (250.0, True)
+        cortes.pedacos = lambda *a, **k: [(0, 125), (125, 250)]
+        cortes.fronteiras = lambda caminho: []
+        cortes.ganchos = lambda caminho: {}
+        cortes.cortar = lambda caminho, fatias, log=print: ["a", "b"]
+        cortes._copia = lambda video, arquivo, i, total: arquivo
+
+        def restaurar():
+            (atividade.registrar, cortes.precisa, cortes.pedacos,
+             cortes.fronteiras, cortes.ganchos, cortes.cortar,
+             cortes._copia) = reais
+
+        self.addCleanup(restaurar)
+        video = SimpleNamespace(caminho="x/h_p01.mp4", id="h:celular:p01",
+                                canal="historias")
+        self.assertEqual(["a", "b"],
+                         cortes.preparar(video, limite=180, log=lambda *_a: None))
+        ((args, kwargs),) = registros
+        self.assertEqual(("publicacao", atividade.LOG), args[:2])
+        self.assertIn("250s passou de 180s", args[2])
+        self.assertEqual("publicar.corte", kwargs["etapa"])
+        self.assertEqual("h:celular:p01", kwargs["ref"])
+
     def test_gerar_serie_livre_grava_o_narrador_que_a_ia_escolheu(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

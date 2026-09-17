@@ -274,6 +274,20 @@ def preparar(video, *, limite: float = LIMITE_PADRAO_S, log=print) -> list:
     log(f"[cortes] {Path(video.caminho).name}: {duracao:.0f}s passa do limite "
         f"de {limite:.0f}s do Shorts — cortando em {len(fatias)} parte(s) nas "
         "trocas de cena.")
+    # REGISTRADO NO DIARIO (17/09/2026): no modo livre o tamanho e da IA, e
+    # o corte e o sinal de que ela passou do que a plataforma aceita. Sem a
+    # linha, ninguem mede com que frequencia isso acontece.
+    try:
+        from .. import atividade
+        atividade.registrar(
+            "publicacao", atividade.LOG,
+            f"{Path(video.caminho).name}: {duracao:.0f}s passou de "
+            f"{limite:.0f}s; cortado em {len(fatias)} pedaco(s)",
+            getattr(video, "canal", "") or "historias",
+            etapa="publicar.corte", ref=str(getattr(video, "id", "") or ""),
+            dur_s=float(duracao))
+    except Exception:                                          # noqa: BLE001
+        pass
     try:
         arquivos = cortar(video.caminho, fatias, log=log)
     except (RuntimeError, OSError) as exc:

@@ -418,7 +418,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                                 # Sem estes dois ele repetia as MESMAS duas
                                 # alavancas em 5 de 5 historias.
                                 ganchos=ganchos, narrador=narrador,
-                                tipo=tipo or ""))
+                                tipo=tipo or "",
+                                recentes=R.resumos_recentes(3)))
             biblia = S.parse_biblia(texto, partes)
             problemas = S.problemas_da_biblia(biblia)
 

@@ -254,7 +254,7 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
                   tema: str | None = None, config: dict | None = None,
                   evitar: list | None = None, estrutura: str = "",
                   ganchos: list | None = None, narrador: str = "",
-                  tipo: str = "") -> str:
+                  tipo: str = "", recentes: list | None = None) -> str:
     """Etapa 1: a historia inteira planejada, sem escrever nenhuma cena.
 
     `evitar` sao as historias que o canal JA tem. Sem elas o modelo se repete:
@@ -274,7 +274,8 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
     if tipo and livre(tipo, config):
         return prompt_biblia_livre(partes=partes,
                                    cenas_por_parte=cenas_por_parte, tipo=tipo,
-                                   tema=tema, config=config, evitar=evitar)
+                                   tema=tema, config=config, evitar=evitar,
+                                   recentes=recentes)
     regras = config["regras"]
     total_cenas = partes * cenas_por_parte
     duracao = total_cenas * 5
@@ -918,7 +919,8 @@ def _consistencia(add, biblia: dict | None = None) -> None:
 
 def prompt_biblia_livre(*, partes: int, cenas_por_parte: int, tipo: str,
                         tema: str | None = None, config: dict | None = None,
-                        evitar: list | None = None) -> str:
+                        evitar: list | None = None,
+                        recentes: list | None = None) -> str:
     config = config or carregar_config()
     assunto = assunto_do_tipo(tipo, config) or "uma historia narrada"
     total = partes * cenas_por_parte
@@ -944,6 +946,11 @@ def prompt_biblia_livre(*, partes: int, cenas_por_parte: int, tipo: str,
         for anterior in evitar:
             add(f"  - {str(anterior).strip()[:160]}")
         add("")
+    if recentes:
+        # UMA LINHA, e nao uma regra: e o que da variedade sem virar molde.
+        add("Evite repetir o desenho das ultimas (quem narra; premissa; "
+            "virada): " + " / ".join(str(r) for r in recentes))
+        add("")
     _limite_da_plataforma(add)
     _consistencia(add)
     add("FORMATO DA RESPOSTA (o sistema le exatamente estes rotulos):")
@@ -956,6 +963,7 @@ def prompt_biblia_livre(*, partes: int, cenas_por_parte: int, tipo: str,
     add("ELENCO: <nome> | <descricao fisica em ingles>; <nome> | <descricao>")
     add("CENARIO: <onde acontece, em ingles, uma frase>")
     add("FATOS: <fato> = <valor>; <fato> = <valor>")
+    add("VIRADA CENTRAL: <a virada principal, uma frase>")
     add("")
     for i in range(1, partes + 1):
         add(f"PARTE {i}")

@@ -427,6 +427,10 @@ def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
         # foram ao ar parecendo seis videos sem relacao nenhuma.
         "serie_nome": biblia.get("serie_nome") or "",
         "premissa": biblia.get("premissa") or "",
+        # A VIRADA que a IA escolheu: com o `narrador` e a `premissa`, e o
+        # resumo que a proxima historia livre recebe para nao repetir o
+        # desenho (17/09/2026).
+        "virada": biblia.get("virada") or "",
         # A descricao fisica do protagonista entra em TODA imagem de TODAS as
         # partes: e o que faz 80 imagens parecerem a mesma pessoa.
         "protagonista": biblia.get("protagonista") or "",
@@ -459,6 +463,27 @@ def registrar_queda(historia_id: str, queda: dict) -> None:
         os.replace(temporario, caminho)
     except (OSError, ValueError, AttributeError):
         pass
+
+
+def resumos_recentes(quantos: int = 3) -> list:
+    """`["narrador; premissa; virada", ...]` das ultimas historias.
+
+    E a memoria do MODO LIVRE: sem rodizio de alavanca e de narrador, o
+    modelo converge para o mesmo desenho (em 09/09/2026, cinco historias
+    seguidas com o mesmo par de alavancas). Uma linha por historia basta
+    para ele fugir do que acabou de fazer, sem virar molde.
+    """
+    saida = []
+    for dados in listar():
+        if str(dados.get("provedor") or "").lower() == "fake":
+            continue
+        pedacos = [str(dados.get(campo) or "").strip()
+                   for campo in ("narrador", "premissa", "virada")]
+        if any(pedacos[1:]):
+            saida.append("; ".join(p for p in pedacos if p)[:240])
+        if len(saida) >= quantos:
+            break
+    return saida
 
 
 def titulos_recentes(quantos: int = 12) -> list:
