@@ -246,12 +246,18 @@ def _meta(historia_id: str) -> dict:
 
 def registrar(historia_id: str, n: int, *, prompt: str, arquivo: Path,
               prova: dict | None = None, url: str = "",
-              parte: int = 1, nivel: int | str = 0) -> None:
+              parte: int = 1, nivel: int | str = 0,
+              refeita: dict | None = None) -> None:
     """Anota prompt e prova daquela cena (append idempotente por cena).
 
     `nivel` registra qual foi o tratamento: 0 (original), 1-3 (suavizacao
     mecanica), ou "llm 1"/"llm 2" (reescrita com LLM). Importa saber qual
     dos dois passou a cena, porque muda o que a imagem mostra.
+
+    `refeita` e o registro da refeita por COLAGEM: {"voltas", "variacao",
+    "colagem_no_fim"}. E o que vai permitir medir, daqui a um mes, se a
+    variacao de enquadramento adianta alguma coisa (experimento de
+    17/09/2026, sem medida ate agora).
     """
     caminho = pasta_da_historia(historia_id) / "imagens.json"
     dados = _meta(historia_id)
@@ -267,6 +273,8 @@ def registrar(historia_id: str, n: int, *, prompt: str, arquivo: Path,
                   "forca": (prova or {}).get("forca"),
                   "motivo": (prova or {}).get("motivo")} if prova else None,
     }
+    if refeita:
+        dados["cenas"][chave]["refeita"] = dict(refeita)
     # A cena passou: se estava marcada como recusada, deixa de estar.
     (dados.get("recusadas") or {}).pop(chave, None)
     caminho.parent.mkdir(parents=True, exist_ok=True)

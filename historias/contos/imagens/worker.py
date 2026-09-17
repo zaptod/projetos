@@ -31,6 +31,7 @@ from builds.identity import controle as _rb_identity_controle
 from builds.identity import moderacao as _rb_identity_moderacao
 from builds.identity import provedores as _rb_identity_provedores
 from builds.identity import proveniencia as _rb_identity_proveniencia
+import builds.atividade as _rb_atividade
 import builds.travas as _rb_travas
 from . import composicao, fila
 
@@ -133,6 +134,29 @@ def _gerar_esperando(cliente, prompt: str, config: dict, ajustes: dict,
 # compartilhada atras de um desenho que o modelo insiste em errar,
 # e uma colagem no ar ainda e melhor do que cena sem imagem.
 TENTATIVAS_DE_COMPOSICAO = 3
+
+# EXPERIMENTO SEM MEDIDA (17/09/2026). A partir da SEGUNDA refeita, o prompt
+# ganha um enquadramento que quebra a simetria. O motivo: na historia_00018
+# p04_cena_03 ("as duas face a face") as tres tentativas com o MESMO texto
+# voltaram com a mesma calha em ~49%, e nao ha no acervo nenhum caso de
+# refeita por colagem que tenha dado certo para comparar. Varridas as 1336
+# imagens do disco, colagem e 3% no total, mas 0,17% nas historias novas
+# (1 em 588): o gatilho antigo — duas descricoes fisicas completas no mesmo
+# prompt, 14,8% — ja foi consertado em 14-15/09.
+#
+# ENTAO ISTO E HIPOTESE, e nao conclusao. Cada refeita fica registrada em
+# `imagens.json` ("refeita": voltas/variacao/colagem_no_fim) e no diario,
+# para decidir com dado daqui a um mes se fica ou sai.
+VARIACAO_DA_REFEITA = ("over-the-shoulder framing, one camera, "
+                       "one continuous photograph")
+
+
+def variar_enquadramento(prompt: str) -> str:
+    """O mesmo pedido, com um enquadramento que nao cabe em dois paineis."""
+    texto = str(prompt or "").strip()
+    if not texto or VARIACAO_DA_REFEITA in texto:
+        return texto
+    return f"{texto.rstrip('.')}, {VARIACAO_DA_REFEITA}"
 
 
 class NaoRodou(RuntimeError):
@@ -339,15 +363,27 @@ def _gerar(historia_id: str, *, limite: int | None = None,
                         # imagem nova com a forma pedida pode ser de outra
                         # pessoa, e ela sobrescrevia a imagem PROVADA. Sem
                         # prova, fica a que ja estava (e a prova dela).
+                        refeita = {"voltas": 0, "variacao": False}
                         for volta in range(1, TENTATIVAS_DE_COMPOSICAO):
                             razao = composicao.motivo(destino)
                             if not razao:
                                 break
+                            # A 1a refeita repete o texto (o desenho e que
+                            # errou); da 2a em diante entra a variacao de
+                            # enquadramento (experimento, ver a constante).
+                            com_variacao = volta >= 2
+                            pedido = (variar_enquadramento(tentativa)
+                                      if com_variacao else tentativa)
+                            refeita["voltas"] = volta
+                            refeita["variacao"] = (refeita["variacao"]
+                                                   or com_variacao)
                             log(f"[imagens] {rotulo}: {razao} Refazendo "
-                                f"({volta}/{TENTATIVAS_DE_COMPOSICAO - 1}).")
+                                f"({volta}/{TENTATIVAS_DE_COMPOSICAO - 1})"
+                                + (" com outro enquadramento."
+                                   if com_variacao else "."))
                             time.sleep(float(ajustes.get("min_interval", 8)))
                             alvo, antes = _gerar_esperando(
-                                cliente, tentativa, config, ajustes, log,
+                                cliente, pedido, config, ajustes, log,
                                 rotulo)
                             nova = proveniencia.comprovar(
                                 cliente, historia_id, rotulo,
@@ -376,11 +412,28 @@ def _gerar(historia_id: str, *, limite: int | None = None,
                             log(f"[imagens] {rotulo} FALHOU: {falha_tecnica}")
                             break
                         proveniencia.reivindicar(prova, historia_id, rotulo)
+                        if refeita["voltas"]:
+                            # O QUE PERMITE MEDIR DEPOIS: quantas refeitas, se
+                            # alguma levou a variacao, e se no fim ainda era
+                            # colagem. Sem isto o experimento nunca poderia ser
+                            # julgado, so lembrado.
+                            refeita["colagem_no_fim"] = bool(
+                                composicao.motivo(destino))
+                            _rb_atividade.registrar(
+                                "picasso", _rb_atividade.LOG,
+                                f"{rotulo}: refeita por colagem "
+                                f"{refeita['voltas']}x, "
+                                f"variacao={refeita['variacao']}, "
+                                f"colagem_no_fim={refeita['colagem_no_fim']}",
+                                "historias", etapa="imagens.refeita",
+                                ref=f"{historia_id}:{rotulo}")
                         fila.registrar(historia_id, n,
                                        prompt=cliente.prompt_enviado,
                                        arquivo=destino, prova=prova,
                                        url=prova.get("url") or alvo,
-                                       parte=numero_parte, nivel=nivel)
+                                       parte=numero_parte, nivel=nivel,
+                                       refeita=refeita if refeita["voltas"]
+                                       else None)
                         geradas += 1
                         feito = True
                         aviso = (f" [{nivel}: "

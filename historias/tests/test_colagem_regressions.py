@@ -190,12 +190,23 @@ class RefazerTests(unittest.TestCase):
                       "a colagem precisa ser vista ANTES de a cena virar "
                       "pronta, senao o worker nunca a refaz")
 
-    def test_o_reenvio_usa_o_mesmo_prompt(self):
+    def test_o_reenvio_parte_do_mesmo_prompt_e_nunca_suaviza(self):
+        """O texto da cena nao muda; da 2a volta ele so GANHA enquadramento.
+
+        17/09/2026: a refeita passou a variar o enquadramento a partir da 2a
+        volta (experimento). Continua proibido suavizar: suavizar pioraria a
+        cena para consertar o que nao era problema dela.
+        """
+        from contos.imagens import worker
         trecho = self.fonte[self.fonte.index("composicao.motivo(destino)"):]
-        trecho = trecho[:900]
-        self.assertIn("cliente, tentativa, config", trecho,
-                      "suavizar por causa de colagem pioraria a cena para "
-                      "consertar o que nao era problema dela")
+        trecho = trecho[:1400]
+        self.assertIn("pedido = (variar_enquadramento(tentativa)", trecho)
+        self.assertNotIn("_com_reescrita", trecho)
+        self.assertNotIn("suavizar", trecho)
+        # A variacao ACRESCENTA ao texto da cena; nao troca nada dele.
+        original = "duas mulheres na sala, cinematic photography"
+        self.assertTrue(
+            worker.variar_enquadramento(original).startswith(original))
 
     def test_o_orcamento_de_refeitas_e_pequeno(self):
         from contos.imagens import worker
