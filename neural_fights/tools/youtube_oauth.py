@@ -18,6 +18,9 @@ Uso depois — autorizar outro canal, ou renovar um token revogado::
     python -m neural_fights.tools.youtube_oauth \
         --conta neural_fights --com-upload --com-analytics
 
+Para mudar video ja enviado (tornar publico um privado), some
+``--com-edicao``.
+
 ``--client-id``/``--client-secret`` passam a ser opcionais: o par e do
 PROJETO no Google Cloud, nao do canal, entao ele e reusado de qualquer
 credencial ja gravada. E ``--conta`` escolhe o arquivo de destino, para uma
@@ -52,15 +55,29 @@ ESCOPO_COMPLETO = f"{ESCOPO} {ESCOPO_UPLOAD}"
 # Retencao por segundo (curva de audiencia) vive em OUTRA API, com escopo
 # proprio. Sem ele o `main.py metricas` mostra so views/likes.
 ESCOPO_ANALYTICS = "https://www.googleapis.com/auth/yt-analytics.readonly"
+# EDICAO (17/09/2026): mudar um video que JA existe (videos.update, por
+# exemplo tornar publico um privado) nao cabe no `youtube.upload`. E o escopo
+# amplo do YouTube; ele vai SOMADO aos outros, nunca no lugar: quem confere
+# upload procura o `youtube.upload` pelo nome.
+ESCOPO_EDICAO = "https://www.googleapis.com/auth/youtube"
 
 
-def escopos(com_upload: bool, com_analytics: bool = False) -> str:
+def escopos(com_upload: bool, com_analytics: bool = False,
+            com_edicao: bool = False) -> str:
     partes = [ESCOPO]
     if com_upload:
         partes.append(ESCOPO_UPLOAD)
     if com_analytics:
         partes.append(ESCOPO_ANALYTICS)
+    if com_edicao:
+        partes.append(ESCOPO_EDICAO)
     return " ".join(partes)
+
+
+def _escopos_pedidos(args) -> str:
+    """O MESMO texto vai no pedido ao Google e no json gravado."""
+    return escopos(args.com_upload, getattr(args, "com_analytics", False),
+                   getattr(args, "com_edicao", False))
 
 
 def _caminho_padrao() -> Path:
@@ -243,6 +260,13 @@ def build_parser() -> SafeArgumentParser:
         help="pede tambem o escopo do YouTube Analytics (curva de retencao "
              "para `random_builds/main.py metricas`).",
     )
+    parser.add_argument(
+        "--com-edicao",
+        action="store_true",
+        help="pede tambem o escopo amplo do YouTube (editar video que ja "
+             "existe: videos.update, tornar publico um privado). Soma aos "
+             "outros; use junto com --com-upload --com-analytics.",
+    )
     return parser
 
 
@@ -290,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
             "client_id": args.client_id,
             "redirect_uri": redirect,
             "response_type": "code",
-            "scope": escopos(args.com_upload, getattr(args, "com_analytics", False)),
+            "scope": _escopos_pedidos(args),
             "access_type": "offline",
             "prompt": "consent",
         }
@@ -335,8 +359,7 @@ def main(argv: list[str] | None = None) -> int:
                 # Fica gravado o que este token PODE fazer: quem for publicar
                 # confere aqui em vez de descobrir com um 403 no meio do
                 # upload de 30 MB.
-                "escopo": escopos(args.com_upload,
-                                  getattr(args, "com_analytics", False)),
+                "escopo": _escopos_pedidos(args),
             },
             indent=2,
         )
@@ -346,6 +369,8 @@ def main(argv: list[str] | None = None) -> int:
     safe_print(f"Credenciais gravadas em: {destino}")
     if args.com_upload:
         safe_print("Escopo com UPLOAD: da para publicar pelo painel.")
+    if getattr(args, "com_edicao", False):
+        safe_print("Escopo com EDICAO: da para mudar videos ja enviados.")
     safe_print("Pronto: neural-fights-live --source youtube")
     return 0
 

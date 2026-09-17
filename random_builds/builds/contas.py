@@ -501,6 +501,26 @@ def escopo_youtube(canal: str = "geral", conta: str | None = None) -> str:
         return ""
 
 
+# O escopo AMPLO do YouTube: editar video ja enviado (videos.update).
+ESCOPO_EDICAO_YOUTUBE = "https://www.googleapis.com/auth/youtube"
+
+
+def tem_escopo(escopo: str, alvo: str) -> bool:
+    """`alvo` esta entre os escopos gravados, pelo NOME inteiro.
+
+    Por trecho nao serve: ".../auth/youtube" esta dentro de
+    `youtube.readonly` e de `youtube.upload`, e todo token antigo pareceria
+    poder editar.
+    """
+    return alvo in str(escopo or "").split()
+
+
+def pode_editar_youtube(canal: str = "geral",
+                        conta: str | None = None) -> bool:
+    """O token daquela conta pode mudar video ja enviado (videos.update)?"""
+    return tem_escopo(escopo_youtube(canal, conta), ESCOPO_EDICAO_YOUTUBE)
+
+
 def oauth_vivo(canal: str = "geral", *, conta: str | None = None) -> dict:
     """A credencial OAuth daquele CANAL ainda funciona? (usa rede)
 
@@ -594,4 +614,5 @@ def resumo() -> list:
 
 __all__ = ["CANAIS", "PADRAO", "SERVICOS", "adicionar", "ativa", "contas",
            "credencial_youtube", "escolher", "escopo_youtube", "estado",
-           "perfil", "remover", "resumo", "runtime_dir", "tem_login"]
+           "perfil", "pode_editar_youtube", "remover", "resumo",
+           "runtime_dir", "tem_escopo", "tem_login"]
