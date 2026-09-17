@@ -222,7 +222,7 @@ class Pagina:
                         f"canal {canal}.\n\nUm login do Google cobre os três "
                         "canais; o que separa um do outro é o id, escolhido "
                         "em 🎯 Canais do YouTube.")
-        elif servico in ("chatgpt", "gemini"):
+        elif servico in ("chatgpt", "gemini", "deepseek"):
             if not HISTORIAS.is_dir():
                 messagebox.showinfo("Contas", "A pasta historias/ não existe.")
                 return

@@ -273,7 +273,7 @@ class ODiarioDaQueda(_Base):
                        log=lambda *_a: None)
         resumo = [(a[0], a[1], k.get("etapa")) for a, k in registros]
         self.assertEqual([("deepseek", "inicio", "roteiro"),
-                          ("deepseek", "erro", "roteiro.queda"),
+                          ("deepseek", "aviso", "roteiro.queda"),
                           ("gemini", "inicio", "roteiro"),
                           ("gemini", "ok", "roteiro")], resumo)
         self.assertIn("gemini assume", registros[1][0][2])
@@ -332,7 +332,9 @@ class QuemAnalisa(unittest.TestCase):
         self.addCleanup(setattr, llm_cliente, "abrir_cliente", real)
         conserto_de_cena.reescrever_prompts(
             {"partes": []}, 1, [1], [], log=lambda *_a: None)
-        self.assertEqual([papeis.provedores(papeis.QUALIDADE)[0]], usados)
+        # Revisao de 17/09/2026: quem reescreve e quem VIU o video.
+        self.assertEqual([papeis.provedores(papeis.VIDEO)[0]], usados)
+        self.assertEqual(["gemini"], usados)
 
 
 # ------------------------------------------------------------------ texto

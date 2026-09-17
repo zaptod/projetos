@@ -123,7 +123,10 @@ def _quando(evento: dict) -> str:
 # diario), so a apuracao por `claude -p` fica de fora.
 # `apurador` e o alarme deste proprio modulo (conserto que mexeu na
 # arvore principal): ele nao pode abrir outro conserto.
-FABRICAS_SEM_APURACAO = frozenset({"conferencia", "apurador"})
+# As fabricas de LLM (sites de chat) caem por conta ocupada, login ou site
+# fora: o alerta chega, mas nao ha codigo a consertar a cada queda.
+FABRICAS_SEM_APURACAO = frozenset({"conferencia", "apurador",
+                                   "deepseek", "chatgpt", "gemini"})
 
 
 def pendentes(janela_h: float = JANELA_H) -> list[dict]:

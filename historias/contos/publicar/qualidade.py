@@ -214,10 +214,52 @@ def trechos_pretos(caminho: Path, layout: str = "vertical") -> list | None:
     return _intervalos_pretos(saida.stderr)
 
 
-# A vistoria roda no mesmo mp4 ate cinco vezes numa rodada. A chave leva
-# mtime e tamanho: o reparo re-renderiza no mesmo caminho, e o laudo do
-# arquivo antigo nao pode valer para o novo.
+# A vistoria roda no mesmo mp4 ate cinco vezes numa rodada, e cada rodada da
+# agenda e um processo novo que vistoria a fila inteira (revisao de 17/09/2026:
+# 3-5 min a mais por rodada, 12-50 s por video vertical antigo). Entao o
+# resultado fica em memoria E em disco. A chave leva mtime e tamanho: o
+# reparo re-renderiza no mesmo caminho, e o laudo do arquivo antigo nao pode
+# valer para o novo. So mede de novo o video novo ou alterado.
 _PRETOS_MEDIDOS: dict = {}
+MEMO_PRETOS_NOME = "_vistoria_pretos.json"
+
+
+def _outputs() -> Path:
+    from ..pipeline.controller import OUTPUTS
+    return Path(OUTPUTS)
+
+
+def _memo_em_disco() -> Path:
+    return _outputs() / MEMO_PRETOS_NOME
+
+
+def _ler_memo() -> dict:
+    try:
+        dados = json.loads(_memo_em_disco().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return dados if isinstance(dados, dict) else {}
+
+
+def _gravar_memo(chave: str, trechos: list, gasto: float) -> None:
+    """Grava por troca atomica; perder a corrida so custa medir de novo."""
+    import os
+    destino = _memo_em_disco()
+    dados = _ler_memo()
+    dados[chave] = {"trechos": trechos, "s": gasto}
+    # Poda: so fica o que ainda aponta para um arquivo existente.
+    dados = {k: v for k, v in dados.items()
+             if Path(k.split("|", 1)[0]).is_file()}
+    temporario = destino.with_name(f"{destino.name}.{os.getpid()}.tmp")
+    try:
+        temporario.write_text(json.dumps(dados, ensure_ascii=False),
+                              encoding="utf-8")
+        os.replace(temporario, destino)
+    except OSError:
+        try:
+            temporario.unlink()
+        except OSError:
+            pass
 
 
 def erros_de_preto(caminho: Path, layout: str) -> dict:
@@ -226,13 +268,29 @@ def erros_de_preto(caminho: Path, layout: str) -> dict:
     caminho = Path(caminho)
     try:
         info = caminho.stat()
+        real = caminho.resolve()
     except OSError:
         return {"erros": [], "avisos": [], "trechos": None, "s": 0.0}
-    chave = (str(caminho.resolve()), info.st_mtime_ns, info.st_size, layout)
+    chave = f"{real}|{info.st_mtime_ns}|{info.st_size}|{layout}"
+    # So o que mora em outputs/ vai para o disco: arquivo de teste (pasta
+    # temporaria) nunca escreve no memo de verdade.
+    try:
+        persiste = real.is_relative_to(_outputs().resolve())
+    except (OSError, ValueError):
+        persiste = False
+    if chave not in _PRETOS_MEDIDOS and persiste:
+        salvo = _ler_memo().get(chave)
+        if isinstance(salvo, dict) and isinstance(salvo.get("trechos"), list):
+            _PRETOS_MEDIDOS[chave] = (
+                [tuple(t) for t in salvo["trechos"]], 0.0)
     if chave not in _PRETOS_MEDIDOS:
         comeco = _t.monotonic()
         trechos = trechos_pretos(caminho, layout)
-        _PRETOS_MEDIDOS[chave] = (trechos, round(_t.monotonic() - comeco, 2))
+        gasto = round(_t.monotonic() - comeco, 2)
+        _PRETOS_MEDIDOS[chave] = (trechos, gasto)
+        # "Nao medi" (None) nao vai ao disco: a proxima rodada tenta de novo.
+        if persiste and trechos is not None:
+            _gravar_memo(chave, [list(t) for t in trechos], gasto)
     trechos, gasto = _PRETOS_MEDIDOS[chave]
     erros, avisos = [], []
     if trechos is None:

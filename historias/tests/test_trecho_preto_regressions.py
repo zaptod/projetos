@@ -96,6 +96,103 @@ class LaudoDoPreto(unittest.TestCase):
         self.assertIn('erros_de_preto(caminho, str(feito.get("layout")',
                       fonte)
 
+    def test_fora_de_outputs_nunca_escreve_o_memo(self):
+        with mock.patch.object(Q, "trechos_pretos", return_value=[]), \
+                mock.patch.object(Q, "_gravar_memo") as gravar:
+            Q.erros_de_preto(self.mp4, "dividido")
+        gravar.assert_not_called()
+
+
+class MemoEmDisco(unittest.TestCase):
+    """Revisao de 17/09/2026: cada rodada da agenda e um processo novo e
+    media a fila inteira de novo (3-5 min por rodada)."""
+
+    def setUp(self):
+        from contos.pipeline import controller
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.outputs = Path(pasta.name)
+        patcher = mock.patch.object(controller, "OUTPUTS", self.outputs)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        historia = self.outputs / "historia_teste"
+        historia.mkdir()
+        self.mp4 = historia / "final_celular_p01.mp4"
+        self.mp4.write_bytes(b"x" * 10)
+        Q._PRETOS_MEDIDOS.clear()
+        self.addCleanup(Q._PRETOS_MEDIDOS.clear)
+
+    def _novo_processo(self):
+        Q._PRETOS_MEDIDOS.clear()
+
+    def test_outro_processo_le_do_disco_e_nao_mede(self):
+        with mock.patch.object(Q, "trechos_pretos",
+                               return_value=[(3.0, 4.5)]) as medir:
+            Q.erros_de_preto(self.mp4, "dividido")
+            self._novo_processo()
+            laudo = Q.erros_de_preto(self.mp4, "dividido")
+        self.assertEqual(1, medir.call_count)
+        self.assertEqual([(3.0, 4.5)], laudo["trechos"])
+        self.assertEqual(1, len(laudo["erros"]))
+        self.assertTrue((self.outputs / Q.MEMO_PRETOS_NOME).is_file())
+
+    def test_video_refeito_e_medido_de_novo(self):
+        with mock.patch.object(Q, "trechos_pretos", return_value=[]) as medir:
+            Q.erros_de_preto(self.mp4, "dividido")
+            self.mp4.write_bytes(b"y" * 20)
+            self._novo_processo()
+            Q.erros_de_preto(self.mp4, "dividido")
+        self.assertEqual(2, medir.call_count)
+
+    def test_sem_medida_nao_vai_ao_disco(self):
+        with mock.patch.object(Q, "trechos_pretos",
+                               return_value=None) as medir:
+            Q.erros_de_preto(self.mp4, "vertical")
+            self._novo_processo()
+            Q.erros_de_preto(self.mp4, "vertical")
+        self.assertEqual(2, medir.call_count)
+
+    def test_memo_quebrado_so_faz_medir(self):
+        (self.outputs / Q.MEMO_PRETOS_NOME).write_text("{", encoding="utf-8")
+        with mock.patch.object(Q, "trechos_pretos", return_value=[]):
+            self.assertEqual([], Q.erros_de_preto(self.mp4,
+                                                  "dividido")["erros"])
+
+    def test_arquivo_apagado_sai_do_memo(self):
+        import json
+        outro = self.mp4.with_name("final_celular_p02.mp4")
+        outro.write_bytes(b"z" * 5)
+        with mock.patch.object(Q, "trechos_pretos", return_value=[]):
+            Q.erros_de_preto(outro, "dividido")
+            outro.unlink()
+            Q.erros_de_preto(self.mp4, "dividido")
+        memo = json.loads((self.outputs / Q.MEMO_PRETOS_NOME)
+                          .read_text(encoding="utf-8"))
+        self.assertEqual(1, len(memo))
+        self.assertIn("final_celular_p01.mp4", next(iter(memo)))
+
+
+class AjustesDaRevisao(unittest.TestCase):
+    """Revisao independente da feat/deepseek-roteiro (17/09/2026)."""
+
+    def test_conserto_de_cena_vai_para_quem_viu_o_video(self):
+        from contos.pipeline import conserto_de_cena
+        fonte = inspect.getsource(conserto_de_cena)
+        self.assertIn("papeis.provedores(papeis.VIDEO)", fonte)
+        self.assertNotIn("papeis.provedores(papeis.QUALIDADE)", fonte)
+
+    def test_fabricas_de_llm_nao_disparam_apuracao(self):
+        from remoto import apurador
+        for fabrica in ("deepseek", "chatgpt", "gemini"):
+            self.assertIn(fabrica, apurador.FABRICAS_SEM_APURACAO)
+
+    def test_painel_manda_o_login_do_deepseek_para_o_llm(self):
+        raiz = Path(Q.__file__).resolve().parents[3]
+        fonte = (raiz / "painel" / "paginas" / "contas.py").read_text(
+            encoding="utf-8")
+        self.assertIn('elif servico in ("chatgpt", "gemini", "deepseek"):',
+                      fonte)
+
 
 @unittest.skipUnless(shutil.which("ffmpeg"),
                      "ffmpeg ausente: o video sintetico nao pode ser gerado")

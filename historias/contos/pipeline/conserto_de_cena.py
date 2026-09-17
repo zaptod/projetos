@@ -203,11 +203,12 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
     from ..imagens.reescritor import limpar
 
     if not provedor:
-        # Reescrever prompt a partir do veto e ANALISE, nao escrita: fica com
-        # o primeiro do papel "qualidade" (o Gemini, que viu o video).
+        # Reescrever prompt a partir do veto e ANALISE do video: fica com o
+        # primeiro do papel "video" (o Gemini, que viu o mp4). O "qualidade"
+        # comeca pelo ChatGPT desde 17/09/2026, e ele nao assiste video.
         try:
             from ..llm import papeis
-            provedor = (papeis.provedores(papeis.QUALIDADE) or ["gemini"])[0]
+            provedor = (papeis.provedores(papeis.VIDEO) or ["gemini"])[0]
         except Exception:                                      # noqa: BLE001
             provedor = "gemini"
     alvo = _cenas_da_parte(roteiro, parte)

@@ -169,11 +169,13 @@ class Pipeline:
                                 etapa="roteiro")
 
         def ao_falhar(nome, exc, proximo):
-            # A queda e ERRO de quem falhou (fecha o `inicio` dele e avisa),
-            # com etapa propria para o relatorio separar de roteiro perdido.
+            # A queda e AVISO de quem falhou (fecha o `inicio` dele), com
+            # etapa propria para o relatorio separar de roteiro perdido. Como
+            # erro, cada queda do DeepSeek virava alerta e apuracao; o erro
+            # vem da regra das 3 falhas seguidas (`llm/cliente.py`).
             if proximo:
                 atividade.registrar(
-                    nome, "erro",
+                    nome, "aviso",
                     f"{str(exc)[:160]} — o {proximo} assume o roteiro",
                     "historias", etapa="roteiro.queda",
                     dur_s=_time.monotonic() - vez["comeco"])
