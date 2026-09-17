@@ -244,8 +244,9 @@ async function carregarAcoes() {
     const atual = alvo.value;
     alvo.replaceChildren(...info.alvos.map((a) => el("option", {value: a}, a)));
     if (info.alvos.includes(atual)) alvo.value = atual;
-    $("restantes").textContent =
-      `${info.restantes} de ${info.limite_por_hora} gerações/publicações nesta hora`;
+    $("restantes").textContent = info.restantes == null
+      ? "não consegui ler o limite desta hora"
+      : `${info.restantes} de ${info.limite_por_hora} gerações/publicações nesta hora`;
   } catch (err) { /* a leitura principal ja mostra a conexao */ }
 }
 

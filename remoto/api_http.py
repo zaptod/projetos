@@ -100,7 +100,9 @@ def caminho() -> Path:
     return Path(ARQUIVO) if ARQUIVO else runtime_dir() / "app_celular.json"
 
 
-_TRAVA_THREADS = threading.Lock()
+_TRAVAS_THREADS: dict[str, threading.RLock] = {}
+_TRAVAS_GUARDA = threading.Lock()
+_PROFUNDIDADE = threading.local()
 
 
 @contextlib.contextmanager
@@ -111,11 +113,36 @@ def trava_arquivo(alvo: Path):
     trava de arquivo, o `--esquecer` podia ler, o servidor gravar um
     pareamento, e o `--esquecer` gravar por cima (o celular novo sumia).
     O `.lock` so guarda o byte trancado; o conteudo nao importa.
-    Nao e reentrante: quem segura uma nao pega outra.
+
+    Uma trava por ARQUIVO, e reentrante na mesma thread: a acao do app
+    segura a sua e, dentro dela, grava o rastro, que pede a mesma. Travar
+    o byte duas vezes no mesmo processo esperaria ~10 s e levantaria.
     """
     alvo = Path(alvo)
+    chave = os.path.normcase(str(alvo.resolve()))
+    with _TRAVAS_GUARDA:
+        trava = _TRAVAS_THREADS.setdefault(chave, threading.RLock())
+    profundidade = _PROFUNDIDADE.__dict__.setdefault("mapa", {})
+    with trava:
+        if profundidade.get(chave):
+            profundidade[chave] += 1
+            try:
+                yield
+            finally:
+                profundidade[chave] -= 1
+            return
+        profundidade[chave] = 1
+        try:
+            with _trava_de_arquivo(alvo):
+                yield
+        finally:
+            profundidade.pop(chave, None)
+
+
+@contextlib.contextmanager
+def _trava_de_arquivo(alvo: Path):
     alvo.parent.mkdir(parents=True, exist_ok=True)
-    with _TRAVA_THREADS, open(alvo, "a+b") as fh:
+    with open(alvo, "a+b") as fh:
         if os.name == "nt":
             import msvcrt
             fh.seek(0)
@@ -500,12 +527,16 @@ class Manipulador(BaseHTTPRequestHandler):
             if rota == "/api/acoes":
                 if not self.estado.com_acoes:
                     return self._json({"ligadas": False})
+                try:
+                    restantes = max(0, acoes.LIMITE_POR_HORA
+                                    - acoes.usadas_na_ultima_hora(self._id))
+                except acoes.Recusa:
+                    restantes = None          # rastro ilegivel: a acao recusa
                 return self._json({
                     "ligadas": True,
                     "alvos": acoes.alvos_de_pausa(),
                     "limite_por_hora": acoes.LIMITE_POR_HORA,
-                    "restantes": max(0, acoes.LIMITE_POR_HORA
-                                     - acoes.usadas_na_ultima_hora(self._id))})
+                    "restantes": restantes})
             if rota == "/api/erros":
                 return self._json(painel_dados.erros(_inteiro(consulta, "n", 10)))
             if rota == "/api/videos":
@@ -594,33 +625,49 @@ class Manipulador(BaseHTTPRequestHandler):
                 codigo = self.estado.pendentes.guardar(pedido, self._dono)
                 return self._json({"confirmar": codigo, "texto": pedido["texto"],
                                    "vale_s": acoes.CONFIRMAR_VALE_S})
-            return self._executar(pedido)
+            return self._executar(pedido["acao"], pedido["args"])
 
-        pedido = self.estado.pendentes.tirar(str(corpo.get("codigo") or "")[:64],
-                                             self._dono)
+        pedido, motivo = self.estado.pendentes.tirar(
+            str(corpo.get("codigo") or "")[:64], self._dono)
+        if motivo == "encerrado":
+            # Toque duplo, ou o "sim" que chegou depois do prazo: do proprio
+            # aparelho, nao e chute.
+            return self._erro(410, "essa confirmação já foi usada ou venceu; "
+                                   "peça de novo")
         if pedido is None:
             if not self._barrar_chute():
-                self._erro(404, "confirmação vencida ou desconhecida; peça de novo")
+                self._erro(404, "confirmação desconhecida; peça de novo")
             return
-        # De novo, com os args congelados: em 60 s a grade pode ter
-        # publicado o mesmo video, ou outra build pode ter comecado.
-        try:
-            pedido = acoes.preparar(pedido["acao"], pedido["args"], self._id)
-        except acoes.Recusa as exc:
-            return self._erro(409, str(exc))
-        return self._executar(pedido)
+        return self._executar(pedido["acao"], pedido["args"])
 
-    def _executar(self, pedido: dict):
-        nome, args = pedido["acao"], pedido["args"]
+    def _executar(self, nome: str, args: dict):
+        """Dentro da trava: preparar DE NOVO -> executar -> registrar.
+
+        De novo, com os args congelados: em 60 s a grade pode ter publicado
+        o mesmo video, e duas confirmacoes simultaneas (dois aparelhos, ou
+        dois servidores) nao podem passar juntas pelas guardas.
+        """
         try:
-            resultado = acoes.executar(nome, args)
-            ok = True
-        except Exception as exc:                             # noqa: BLE001
-            resultado, ok = f"falhou: {type(exc).__name__}: {exc}", False
-        try:
-            acoes.registrar(self._id, nome, args, resultado, ok)
-        except Exception:                                    # noqa: BLE001
-            resultado += " (o rastro nao foi gravado)"
+            with acoes.trava_de_acoes():
+                try:
+                    pedido = acoes.preparar(nome, args, self._id)
+                    resultado = acoes.executar(pedido["acao"], pedido["args"],
+                                               self._id)
+                except acoes.Recusa as exc:
+                    return self._erro(409, str(exc))
+                except Exception as exc:                     # noqa: BLE001
+                    resultado = f"falhou: {type(exc).__name__}: {exc}"
+                    ok = False
+                else:
+                    ok = True
+                try:
+                    acoes.registrar(self._id, nome, pedido["args"] if ok else args,
+                                    resultado, ok)
+                except Exception:                            # noqa: BLE001
+                    resultado += (" (o rastro não foi gravado; gerar e publicar "
+                                  "ficam bloqueados até ele voltar)")
+        except OSError:
+            return self._erro(503, "outra ação está em andamento; tente de novo")
         acoes.avisar_telegram(self._id, nome, resultado)
         if not ok:
             return self._erro(500, resultado)
@@ -766,7 +813,28 @@ def main(argv=None) -> int:
     parser.add_argument("--aparelhos", action="store_true")
     parser.add_argument("--esquecer", metavar="ID",
                         help="o id de 8 letras que --aparelhos mostra")
+    parser.add_argument("--em-voo", action="store_true",
+                        help="publicações do app sem desfecho (bloqueadas)")
+    parser.add_argument("--liberar", metavar="VIDEO_ID",
+                        help="solta um vídeo do em-voo, DEPOIS de conferir no perfil")
     args = parser.parse_args(argv)
+
+    if args.em_voo:
+        try:
+            voando = acoes.em_voo()
+        except acoes.Recusa as exc:
+            print(str(exc))
+            return 1
+        for chave, item in voando.items():
+            print(f"{item.get('id')}  {item.get('onde')}  desde {item.get('desde')}"
+                  f"  (aparelho {item.get('aparelho')})")
+        if not voando:
+            print("nada em voo")
+        return 0
+    if args.liberar:
+        saiu = acoes.liberar(args.liberar)
+        print(f"liberados: {saiu}" if saiu else "esse vídeo não está em voo")
+        return 0 if saiu else 1
 
     if args.parear:
         codigo = novo_codigo()
