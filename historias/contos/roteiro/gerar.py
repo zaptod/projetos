@@ -297,7 +297,8 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
     log(f"[serie] retomando {historia_id}: faltam as partes {faltam} de "
         f"{roteiro.get('partes_esperadas')}.")
     with abrir_cliente(provedor, headless=headless,
-                       esperar=espera_da_conta, log=log) as cliente:
+                       esperar=espera_da_conta, log=log,
+                       papel="roteiro", ref=historia_id) as cliente:
         cliente.abrir(novo_chat=True)
         for numero in faltam:
             log(f"[serie] retomada: escrevendo a parte {numero}...")
@@ -372,7 +373,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
 
     try:
         with abrir_cliente(provedor, headless=headless,
-                           esperar=espera_da_conta, log=log) as cliente:
+                           esperar=espera_da_conta, log=log,
+                           papel="roteiro",
+                           ref=historia_id or "nova") as cliente:
             cliente.abrir(novo_chat=True)
             # QUAL MODELO ESCREVEU ESTA HISTORIA. Guardado porque a qualidade
             # mudou de patamar em 08/09/2026 (Flash -> 3.1 Pro, mais molde,

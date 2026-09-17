@@ -626,8 +626,10 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
     pergunta = prompt(video, roteiro, parte, laudo)
     try:
         with abrir_cliente(provedor, headless=headless,
-                           esperar=ESPERA_DA_CONTA_S,
-                           log=log) as cliente:
+                           esperar=ESPERA_DA_CONTA_S, log=log,
+                           papel=("video" if provedor in ASSISTEM_VIDEO
+                                  else "qualidade"),
+                           ref=str(getattr(video, "id", ""))) as cliente:
             cliente.abrir(novo_chat=True)
             # O VIDEO INTEIRO primeiro, e a folha como reserva. O Gemini
             # assiste ao mp4 — leva uns minutos, mas ve movimento, corte e

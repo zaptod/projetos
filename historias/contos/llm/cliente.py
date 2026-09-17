@@ -26,6 +26,7 @@ import re
 import time
 from pathlib import Path
 from builds.identity import browser as _rb_identity_browser
+import builds.atividade as _rb_atividade
 import builds.contas as _rb_contas
 import builds.travas as _rb_travas
 
@@ -94,6 +95,11 @@ class ClienteLLM:
         self.modelo_atual = ""
         self._ultimo_prompt = ""
         self._ultima_resposta = ""
+        # O DIARIO (atividade.jsonl) so e escrito por cliente aberto de
+        # verdade (`abrir_cliente`): cliente montado em teste nao pode sujar
+        # o diario de producao.
+        self.diario = False
+        self.papel, self.ref, self.canal = "", "", "historias"
         # Comeca em False de proposito: enquanto ninguem confirmou o modelo
         # forte, a resposta honesta e "nao sei", e nao "esta tudo certo".
         self.modelo_confirmado = False
@@ -847,12 +853,43 @@ class ClienteLLM:
 
     def perguntar(self, prompt: str, timeout: float | None = None,
                   anexos=None) -> str:
-        """Um turno completo: anexa (se houver), envia, espera, devolve."""
-        texto = ClienteLLM._perguntar(self, prompt, timeout, anexos)
+        """Um turno completo: anexa (se houver), envia, espera, devolve.
+
+        Cada turno vai ao DIARIO (17/09/2026): sem isso a Vila nao via o
+        Gemini, o ChatGPT nem o DeepSeek trabalhando. So o papel, a ref e o
+        tamanho — nunca o texto do prompt. Falha de turno e `aviso`, e nao
+        `erro`: fecha o "trabalhando" sem virar alerta no Telegram nem abrir
+        apuracao (quem decide o que fazer com a falha e quem chamou).
+        """
+        comeco = time.monotonic()
+        ClienteLLM._registrar_turno(self, "inicio", "turno")
+        try:
+            texto = ClienteLLM._perguntar(self, prompt, timeout, anexos)
+        except Exception as exc:
+            ClienteLLM._registrar_turno(
+                self, "aviso", f"turno falhou: {type(exc).__name__}: "
+                f"{str(exc)[:120]}", time.monotonic() - comeco)
+            raise
         if (getattr(self, "sel", None) or {}).get("limpar_resposta"):
             from .texto import limpar_resposta
             texto = limpar_resposta(texto)
+        ClienteLLM._registrar_turno(self, "ok", f"{len(texto)} chars",
+                                    time.monotonic() - comeco)
         return texto
+
+    def _registrar_turno(self, status: str, detalhe: str,
+                         dur_s: float | None = None) -> None:
+        if not getattr(self, "diario", False):
+            return
+        try:
+            papel = getattr(self, "papel", "") or "turno"
+            _rb_atividade.registrar(
+                self.provedor, status, f"{papel}: {detalhe}",
+                getattr(self, "canal", "") or "historias",
+                etapa=f"llm.{papel}", ref=str(getattr(self, "ref", "") or ""),
+                dur_s=dur_s)
+        except Exception:                                      # noqa: BLE001
+            pass
 
     def _perguntar(self, prompt: str, timeout: float | None, anexos) -> str:
         if anexos:
@@ -882,7 +919,8 @@ class ContaOcupada(LLMFalhou):
 
 def abrir_cliente(provedor: str, *, headless: bool = False,
                   ajustes: dict | None = None, esperar: float = 10.0,
-                  log=print):
+                  log=print, papel: str = "", ref: str = "",
+                  canal: str = "historias"):
     """Contexto: `with abrir_cliente('chatgpt') as cliente:`.
 
     `esperar` e quanto se espera pela conta. O padrao curto serve a quem tem
@@ -907,6 +945,9 @@ def abrir_cliente(provedor: str, *, headless: bool = False,
             with browser.contexto_persistente(headless=headless,
                                               profile=perfil_de(provedor)) as ctx:
                 page = browser.pagina(ctx)
-                yield ClienteLLM(provedor, ctx, page, ajustes, log=log)
+                cliente = ClienteLLM(provedor, ctx, page, ajustes, log=log)
+                cliente.diario = True
+                cliente.papel, cliente.ref, cliente.canal = papel, ref, canal
+                yield cliente
 
     return _abrir()

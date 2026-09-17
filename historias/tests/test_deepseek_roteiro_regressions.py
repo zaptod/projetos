@@ -666,6 +666,57 @@ class ClienteDoDeepSeek(unittest.TestCase):
         self.assertIs(False, cliente._ajustar_raciocinio())
         self.assertEqual([1], cliques)
 
+    def _diario(self, cliente):
+        registros = []
+        atividade = llm_cliente._rb_atividade
+        self.addCleanup(setattr, atividade, "registrar", atividade.registrar)
+        atividade.registrar = lambda *a, **k: registros.append((a, k))
+        cliente.diario = True
+        cliente.papel, cliente.ref = "roteiro", "historia_00077"
+        return registros
+
+    def test_turno_vai_ao_diario_sem_o_prompt(self):
+        # A Vila so ve o LLM trabalhando se o turno estiver no diario.
+        cliente = self._cliente()
+        registros = self._diario(cliente)
+        self._responder(cliente, "TITULO: A")
+        cliente.perguntar("PROMPT SECRETO DA HISTORIA")
+        resumo = [(a[0], a[1], k["etapa"], k["ref"]) for a, k in registros]
+        self.assertEqual([("deepseek", "inicio", "llm.roteiro", "historia_00077"),
+                          ("deepseek", "ok", "llm.roteiro", "historia_00077")],
+                         resumo)
+        self.assertFalse(any("SECRETO" in a[2] for a, _ in registros))
+        self.assertIsNotNone(registros[-1][1]["dur_s"])
+
+    def test_turno_que_falha_e_aviso_e_nao_erro(self):
+        # Erro no diario vira alerta no Telegram e apuracao: a falha de um
+        # turno e de quem chamou decidir.
+        cliente = self._cliente()
+        registros = self._diario(cliente)
+        self._responder(cliente, "x")
+
+        def quebra(_t=None):
+            raise llm_cliente.LLMFalhou("calado")
+
+        cliente.esperar_resposta = quebra
+        with self.assertRaises(llm_cliente.LLMFalhou):
+            cliente.perguntar("oi")
+        self.assertEqual(["inicio", "aviso"], [a[1] for a, _ in registros])
+        self.assertNotIn("erro", [a[1] for a, _ in registros])
+
+    def test_cliente_de_teste_nao_escreve_no_diario(self):
+        cliente = self._cliente()
+        registros = self._diario(cliente)
+        cliente.diario = False
+        self._responder(cliente, "x")
+        cliente.perguntar("oi")
+        self.assertEqual([], registros)
+
+    def test_deepseek_e_fabrica_da_vila(self):
+        from builds import atividade
+        self.assertIn("deepseek", atividade.FABRICAS)
+        self.assertEqual("roteiros", atividade.FABRICAS["deepseek"]["faz"])
+
     def test_conta_registrada(self):
         import builds.contas as contas
         self.assertIn("deepseek", contas.SERVICOS)

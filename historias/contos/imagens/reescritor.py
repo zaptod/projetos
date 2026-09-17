@@ -181,7 +181,8 @@ class Reescritor:
             self._pilha = ExitStack()
             self._cliente = self._pilha.enter_context(
                 abrir_cliente(self.provedor, headless=self.headless,
-                              ajustes=self.ajustes, log=self.log))
+                              ajustes=self.ajustes, log=self.log,
+                              papel="imagem_prompt"))
             self._cliente.abrir(novo_chat=True)
         except Exception as exc:
             # Sem login, conta ocupada, site fora: o worker cai no mecanico.

@@ -232,7 +232,9 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
     try:
         from ..llm.cliente import abrir_cliente
         with abrir_cliente(provedor, headless=headless, esperar=60.0,
-                           log=log) as cliente:
+                           log=log, papel="qualidade",
+                           ref=f"{roteiro.get('historia_id', '')}:p{parte}"
+                           ) as cliente:
             cliente.abrir(novo_chat=True)
             # SEM PRAZO PROPRIO: vale o do cliente, o mesmo da geracao de
             # roteiro. Com 180 s a reescrita falhou duas vezes seguidas na
