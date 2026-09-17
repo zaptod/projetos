@@ -1153,6 +1153,62 @@ def atrasados_no_tiktok(limite: int = 40, canal: str = "historias") -> list:
     return _fila_do_tiktok(canal, limite, reserva=False)
 
 
+def _em_ordem_no_destino(candidatos: list, partes_no_destino: set,
+                         canal: str) -> list:
+    """Parte N so sai depois que a N-1 ja esta NESTE destino.
+
+    MEDIDO EM 17/09/2026, todas as series dos dois canais: no YouTube 3 de 13
+    sairam fora de ordem — todas anteriores a guarda de 14/09, que ja
+    conserta aquele lado. No TIKTOK sao 7 de 13, e ainda acontecendo. A pior
+    e a `historia_00003`, que saiu 7, 8, 9, 10 e SO ENTAO 1 a 6: quem comecou
+    a acompanhar recebeu o fim primeiro.
+
+    Dois mecanismos produziam isso, e a guarda fecha os dois de uma vez
+    porque pergunta pelo DESTINO em vez de pelo ledger:
+
+    - a fila do TikTok e partida em duas por data (`CORTE_DO_TIKTOK`):
+      "atraso" depois do corte e "reserva" antes dele. Serie que atravessa o
+      corte saia com as partes novas primeiro, por construcao.
+    - a fila segue a ordem do ledger, que e a ordem do YOUTUBE. Uma desordem
+      la era copiada para ca — para sempre, e mesmo depois de consertada la.
+
+    "A N-1 ESTA NO DESTINO?", e nao "a ordem foi respeitada": as sete series
+    ja embaralhadas nao podem travar para sempre. Na `historia_00009` o
+    TikTok tem 1, 2, 3, 4 e 6; a parte 5 exige 1 a 4, que estao la, entao ela
+    sai — e e exatamente o que conserta a serie.
+
+    SEM ULTIMO RECURSO AQUI, ao contrario do YouTube. La o "fora de ordem" e
+    escolha consciente do Adrian para o horario nao ficar vazio; aqui a
+    recuperacao e sempre EXTRA, entao pular para outra serie nao custa nada e
+    parte fora de ordem custa quem esta acompanhando.
+
+    E O QUE TRAVA APARECE. Se a parte anterior foi abandonada, a serie para
+    neste destino — e parar em silencio e o defeito que deixou 20 builds
+    esperando duas semanas com o contador parecendo certo.
+    """
+    livres, presos = [], []
+    for video in candidatos:
+        parte = int(getattr(video, "parte", 0) or 0)
+        fonte = str(getattr(video, "fonte_id", "") or "")
+        if parte <= 1 or not fonte:
+            livres.append(video)          # build, torneio, ou a propria p01
+            continue
+        faltam = [n for n in range(1, parte)
+                  if (fonte, n) not in partes_no_destino]
+        if faltam:
+            presos.append((video, faltam))
+        else:
+            livres.append(video)
+    if presos:
+        detalhe = "; ".join(
+            f"{v.id} espera a(s) parte(s) {','.join(str(n) for n in f)}"
+            for v, f in presos[:3])
+        _linha(f"[postar] {canal}: {len(presos)} parte(s) fora da fila do "
+               f"TikTok por ordem da serie: {detalhe}"
+               f"{'...' if len(presos) > 3 else ''}")
+    return livres
+
+
 def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
     """O corpo comum de `atrasados_no_tiktok` e `reserva_do_tiktok`.
 
@@ -1172,10 +1228,14 @@ def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
     if reserva and not corte:
         return []                  # canal sem corte nao tem reserva
     no_tiktok, titulos_no_tiktok = set(), {}
+    partes_no_tiktok = set()
     for l in publicados:
         if l.get("plataforma") != "tiktok" or not _saiu(l):
             continue
         no_tiktok.add(l.get("video_id"))
+        parte = l.get("parte")
+        if parte and l.get("fonte_id"):
+            partes_no_tiktok.add((str(l.get("fonte_id")), int(parte)))
         chave = titulos.chave(l.get("titulo"))
         if chave:
             titulos_no_tiktok.setdefault(chave, l.get("video_id"))
@@ -1203,6 +1263,10 @@ def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
         alvo = no_catalogo.get(vid)
         if alvo is not None:
             candidatos.append(alvo)
+
+    # A ORDEM DA SERIE, NESTE DESTINO. Vem antes do rodizio e do teto porque
+    # e sobre o video, e nao sobre o dia.
+    candidatos = _em_ordem_no_destino(candidatos, partes_no_tiktok, canal)
 
     # TETO POR FONTE NO DIA: uma historia nao ocupa o perfil inteiro. Aplicado
     # aqui, depois dos outros crivos, porque e sobre o DIA e nao sobre o video.
