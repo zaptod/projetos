@@ -692,6 +692,23 @@ RESERVA_LIGADA = False
 
 CORTE_DO_TIKTOK = {"builds": "2026-09-10"}
 
+# Quantas partes da MESMA historia (ou variantes da mesma geracao) podem ir
+# ao TikTok num dia, contando tudo: a rodada normal e a recuperacao.
+#
+# Decisao do Adrian em 17/09/2026, depois de ver o perfil. Em 16/09 sairam 16
+# posts no TikTok e DUAS historias ocuparam onze deles — a h3 com as partes
+# 1 a 6 e a h16 com 1 a 5, alternando a cada rodada. Nenhuma parte repetida:
+# a recuperacao andava "uma por rodada" e a fila estava ordenada por data,
+# entao ela despejou uma serie inteira em seis horas.
+#
+# Como as partes de uma serie compartilham o COMECO da legenda (so diferem no
+# "Parte N de M" no meio do texto), o perfil ficou com seis blocos de texto
+# quase identico. Indistinguivel de repeticao para quem abre.
+#
+# O comentario original da recuperacao dizia "os 14 de uma vez virariam
+# enxurrada". Eu evitei os 14 de uma vez e produzi 6 em seis horas.
+TETO_POR_FONTE_NO_DIA = 2
+
 
 def _fontes_de_atraso(canal: str):
     """O ledger e o catalogo daquele canal. Os dois vivem em lugares
@@ -709,6 +726,57 @@ def _fontes_de_atraso(canal: str):
 
 
 VARIANTES = (":B",)
+
+
+def _fontes_cheias_hoje(publicados, plataforma: str = "tiktok") -> set:
+    """As fontes que ja bateram o teto do dia naquele destino.
+
+    Conta pelo LEDGER e por DATA, e nao por rodada: a rodada normal e a
+    recuperacao publicam por caminhos diferentes, e o teto so faz sentido se
+    for sobre o que o perfil recebeu no dia, venha de onde vier.
+
+    A fonte sai do `video_id` (`historia_00003:celular:p04` -> `historia_00003`)
+    porque a linha do ledger nem sempre tem `fonte_id`.
+    """
+    from collections import Counter
+    from datetime import datetime
+    hoje = datetime.now().strftime("%Y-%m-%d")
+    contagem = Counter()
+    for linha in publicados or ():
+        if linha.get("plataforma") != plataforma:
+            continue
+        if not (linha.get("quando") or "").startswith(hoje):
+            continue
+        vid = str(linha.get("video_id") or "")
+        if vid:
+            contagem[vid.split(":")[0]] += 1
+    return {fonte for fonte, n in contagem.items()
+            if n >= TETO_POR_FONTE_NO_DIA}
+
+
+def _em_rodizio(candidatos: list) -> list:
+    """Alterna entre fontes, preservando a ordem das partes DENTRO de cada uma.
+
+    A fila vinha em ordem de ledger, o que e cronologico e agrupa por serie —
+    entao a recuperacao esgotava uma historia antes de tocar na proxima. Com
+    rodizio, a primeira rodada leva a parte 1 da h3, a segunda a parte 1 da
+    h4, e so depois volta para a h3.
+
+    A ORDEM DAS PARTES E SAGRADA e nao e negociada aqui: dentro de cada fonte
+    a sequencia original e mantida, porque quem viu a parte 2 e nunca recebe
+    a 3 e o pior resultado possivel — pior do que qualquer atraso.
+    """
+    from collections import OrderedDict
+    por_fonte: "OrderedDict[str, list]" = OrderedDict()
+    for v in candidatos:
+        por_fonte.setdefault(str(v.id).split(":")[0], []).append(v)
+    saida = []
+    while por_fonte:
+        for fonte in list(por_fonte):
+            saida.append(por_fonte[fonte].pop(0))
+            if not por_fonte[fonte]:
+                del por_fonte[fonte]
+    return saida
 
 
 def _e_variante(vid: str) -> bool:
@@ -1045,10 +1113,21 @@ def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
         if alvo is not None:
             candidatos.append(alvo)
 
-    # A ORDEM CONTINUA SENDO A DO LEDGER, do mais antigo para o mais novo: a
-    # recuperacao anda na ordem em que os videos sairam no YouTube. A regra
-    # "principal antes da variante" e desempate DENTRO do mesmo titulo, nao
-    # ordenacao geral — ordenar por id jogaria a cronologia fora.
+    # TETO POR FONTE NO DIA: uma historia nao ocupa o perfil inteiro. Aplicado
+    # aqui, depois dos outros crivos, porque e sobre o DIA e nao sobre o video.
+    cheias = _fontes_cheias_hoje(publicados)
+    if cheias:
+        candidatos = [v for v in candidatos
+                      if str(v.id).split(":")[0] not in cheias]
+
+    # A ORDEM DENTRO DE CADA FONTE CONTINUA SENDO A DO LEDGER (as partes tem
+    # de sair em sequencia), mas as fontes ALTERNAM. Antes a fila vinha
+    # agrupada por serie e a recuperacao esgotava uma antes de tocar na
+    # proxima — foi assim que a h3 ocupou seis horarios num dia.
+    candidatos = _em_rodizio(candidatos)
+
+    # A regra "principal antes da variante" e desempate DENTRO do mesmo
+    # titulo, nao ordenacao geral.
     principais = {titulos.chave(getattr(v, "titulo", "")) for v in candidatos
                   if not _e_variante(v.id)}
     atrasados, chaves = [], set()
@@ -1840,10 +1919,21 @@ def pendentes_por_canal() -> dict:
     except Exception:                                          # noqa: BLE001
         saida["historias"] = -1
     try:
+        # O MESMO FUNIL DO `proximo_build`, e nao uma contagem propria.
+        # Contando so `catalogo - ja`, a gordura dizia "2 dias" enquanto
+        # `proximo_build` devolvia None: ficavam de fora as pendencias (as 20
+        # estreias impossiveis) e os titulos repetidos. O alerta "ABAIXO DO
+        # PISO" nunca disparava na hora certa, porque o numero que ele olha
+        # nao era o numero que sai.
         from builds.publicar import catalogo as C, metricas
-        ja = {l.get("video_id") for l in metricas.publicados() if l.get("url")}
-        saida["builds"] = len([v for v in C.listar() if v.id not in ja
-                               and getattr(v, "perfil", "") == "celular"])
+        ja = {l.get("video_id") for l in metricas.publicados()
+              if metricas.publicado(l)}
+        pendentes = [v for v in C.listar()
+                     if v.id not in ja
+                     and getattr(v, "perfil", "") == "celular"
+                     and not getattr(v, "pendencias", None)]
+        prontos, _repetidos = _sem_titulo_repetido(pendentes, "builds")
+        saida["builds"] = len(prontos)
     except Exception:                                          # noqa: BLE001
         saida["builds"] = -1
     return saida

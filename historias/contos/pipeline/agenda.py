@@ -541,7 +541,13 @@ def _sem_titulo_barrado(aprovados: list) -> list:
     """
     try:
         from builds.publicar import titulos
+        from ..publicar import catalogo as _cat
         from ..publicar import serie
+        # O INTERRUPTOR DA GRADE REABRE A VALVULA. Com ele ligado o titulo
+        # repetido volta a sair, entao esses videos voltam a ser estoque — e
+        # descontar aqui faria a producao passar do ponto.
+        if (_cat.carregar_config() or {}).get("repetir_titulo"):
+            return aprovados
         ja = titulos.ja_publicados(serie.publicados())
     except Exception:                                          # noqa: BLE001
         return aprovados
