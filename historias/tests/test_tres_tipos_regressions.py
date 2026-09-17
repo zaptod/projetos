@@ -134,6 +134,68 @@ class CriacaoPeloTipoMaisMagro(unittest.TestCase):
                          agenda.estoque_por_tipo(videos))
 
 
+class FaltaDeSerie(unittest.TestCase):
+    """Teto de 2 por historia (Adrian, 17/09/2026) x 10 horarios: a grade
+    precisa de 5 SERIES prontas, e o freio contava so PARTES."""
+
+    CONFIG = {"partes": 6, "dias_de_gordura": 2}
+
+    @staticmethod
+    def _partes(series, cada):
+        return [SimpleNamespace(fonte_id=f"historia_0{s:04d}",
+                                id=f"historia_0{s:04d}:celular:p{p:02d}")
+                for s in range(1, series + 1) for p in range(1, cada + 1)]
+
+    def test_minimo_vem_da_grade_e_do_teto(self):
+        from builds import grade
+        import math
+        self.assertEqual(math.ceil(len(grade.HORAS) / 2),
+                         agenda.series_minimas(self.CONFIG))
+        self.assertEqual(math.ceil(len(grade.HORAS) / 3),
+                         agenda.series_minimas(
+                             dict(self.CONFIG, teto_por_historia_no_dia=3)))
+
+    def test_partes_cheias_mas_series_poucas_libera(self):
+        # 20 partes de 3 series: teto de partes cheio, 6 posts por dia.
+        falta = agenda.falta_serie(self.CONFIG, self._partes(3, 7)[:20])
+        self.assertIsNotNone(falta)
+        self.assertIn("so 3 serie(s)", falta["motivo"])
+
+    def test_series_suficientes_nao_libera(self):
+        self.assertIsNone(agenda.falta_serie(self.CONFIG,
+                                             self._partes(5, 4)))
+
+    def test_teto_duro_segura_series_longas(self):
+        # teto (20) + uma serie (6) = 26 partes: mesmo com poucas series,
+        # nao cria mais.
+        teto = agenda.teto_de_estoque(self.CONFIG)
+        muitas = self._partes(3, 10)[:teto + 6]
+        self.assertIsNone(agenda.falta_serie(self.CONFIG, muitas))
+
+    def test_sem_saber_a_fonte_nao_libera(self):
+        partes = self._partes(2, 10)
+        partes[0] = object()
+        self.assertIsNone(agenda.falta_serie(self.CONFIG, partes))
+
+    def test_abaixo_do_teto_de_partes_o_freio_de_sempre_decide(self):
+        self.assertIsNone(agenda.falta_serie(self.CONFIG, self._partes(1, 5)))
+
+    def test_freio_desligado_nao_libera(self):
+        self.assertIsNone(agenda.falta_serie(
+            dict(self.CONFIG, teto_de_estoque=0), self._partes(1, 2)))
+
+    def test_o_gatilho_fica_no_diario(self):
+        from builds import atividade
+        registros = []
+        self.addCleanup(setattr, atividade, "registrar", atividade.registrar)
+        atividade.registrar = lambda *a, **k: registros.append((a, k))
+        agenda._registrar_gatilho_de_serie(
+            {"motivo": "so 3 serie(s)", "minimo": 5, "teto_duro": 26})
+        ((args, kwargs),) = registros
+        self.assertIn("series < 5", args[2])
+        self.assertEqual("criacao.series", kwargs["etapa"])
+
+
 class OTipoViajaComAHistoria(unittest.TestCase):
 
     def setUp(self):
