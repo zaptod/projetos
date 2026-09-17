@@ -95,6 +95,8 @@ class Pagina:
                 lambda c=chave: self.abrir_janela(c),
                 tipo="primario" if chave == "criacao" else "normal").pack(
                 side="left", padx=(0, estilo.ESPACO["meio"]))
+        self.o.botao(abrir, "🪟  Vila flutuante", self.flutuante).pack(
+            side="left", padx=(0, estilo.ESPACO["meio"]))
         self.o.legenda(
             abrir, "cada uma abre numa janela própria — fechar uma não mexe "
                    "nas outras").pack(side="left",
@@ -446,6 +448,17 @@ class Pagina:
                                   "erro")
             return
         self.casca._registrar(f"[vila] abri {nome} (processo "
+                              f"{processo.pid}).", "fim")
+
+    def flutuante(self) -> None:
+        """A janela pequena, por cima de tudo, no lugar dos consoles."""
+        try:
+            processo = janelas.abrir_flutuante()
+        except OSError as erro:
+            self.casca._registrar(f"[vila] a flutuante não abriu: {erro}",
+                                  "erro")
+            return
+        self.casca._registrar(f"[vila] abri a Vila flutuante (processo "
                               f"{processo.pid}).", "fim")
 
     def bot(self) -> None:

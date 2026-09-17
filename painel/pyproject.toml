@@ -20,8 +20,9 @@ requires-python = ">=3.10"
 dependencies = ["panorama", "random-builds"]
 
 [tool.setuptools]
-packages = ["painel", "painel.paginas"]
+packages = ["painel", "painel.paginas", "painel.flutuante"]
 
 [tool.setuptools.package-dir]
 painel = "."
 "painel.paginas" = "paginas"
+"painel.flutuante" = "flutuante"

@@ -15,7 +15,25 @@ processos.py  UM supervisor e UMA fila
 app.py        a casca: barra lateral, conteúdo e o console em gaveta
 janelas.py    quais janelas existem e como cada uma abre
 paginas/      uma por arquivo, seguindo o contrato
+flutuante/    a Vila flutuante: a janela pequena no lugar dos consoles
 ```
+
+## A Vila flutuante
+
+`python -m painel.flutuante` (ou dois cliques em `vila_flutuante.pyw` na
+raiz) abre uma janela sem borda, por cima das outras, que substitui as
+janelas pretas do bot e das rodadas agendadas. Quatro tamanhos: ícone
+(56 px, o "fechar"), faixa (340x64), médio (720x520) e grande (até
+1180x700). Mostra a Vila com um bot por serviço, quem está rodando (uma
+linha por processo), o que sai no próximo horário, a gordura, os últimos
+publicados com a prova, os erros das últimas 2 h, o estado do bot, o selo
+"tarefas ocultas" e as saídas `bot.txt`/`postar.txt`/`auto_saida.txt`.
+
+Só lê. A trava é sondada lendo o byte trancado (nunca pegando a trava), e
+o "o que sai" vem de `flutuante/previsao.py` em subprocesso, com as filas
+do `postar.py` e sem a vistoria do `--ver` (que grava no diário).
+`--prova arquivo.png` abre invisível, fotografa só a janela
+(PrintWindow) e sai sem mudar as preferências.
 
 ## O contrato de página
 
