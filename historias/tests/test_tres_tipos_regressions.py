@@ -75,7 +75,8 @@ class PartesSorteadas(unittest.TestCase):
         rng = random.Random(7)
         vistos = {S.partes_do_tipo("babaca", 6, CONFIG, rng=rng)
                   for _ in range(200)}
-        self.assertEqual({3, 4, 5, 6}, vistos)
+        # "aleatorio de 2 a 6" (Adrian, 17/09/2026).
+        self.assertEqual({2, 3, 4, 5, 6}, vistos)
 
     def test_tipo_sem_faixa_usa_a_agenda(self):
         self.assertEqual(6, S.partes_do_tipo("normal", 6, CONFIG))
@@ -91,7 +92,7 @@ class PartesSorteadas(unittest.TestCase):
         self.assertEqual(6, agenda.partes_da_proxima("", {"partes": 6}))
         self.assertEqual(6, agenda.partes_da_proxima("normal", {"partes": 6}))
         self.assertIn(agenda.partes_da_proxima(
-            "babaca", {"partes": 6}, rng=random.Random(1)), range(3, 7))
+            "babaca", {"partes": 6}, rng=random.Random(1)), range(2, 7))
 
 
 class CriacaoPeloTipoMaisMagro(unittest.TestCase):
@@ -189,6 +190,24 @@ class OPromptDoBabaca(unittest.TestCase):
         self.assertIn("PROSA", texto)
         self.assertIn("NOME DA SERIE e curto", texto)
 
+    def test_babaca_de_duas_partes_tem_gancho_so_na_primeira(self):
+        # Parte 1: a pergunta e o fato que a Edicao vai explicar.
+        # Parte 2: abre com a Edicao e fecha com resumo e julgamento.
+        biblia = self._biblia(partes=2)
+        primeira = S.prompt_parte(biblia, 1, config=CONFIG)
+        segunda = S.prompt_parte(biblia, 2, config=CONFIG)
+        self.assertIn("PARTE 1 de 2", primeira)
+        self.assertIn("'Eu sou o babaca por ...?'", primeira)
+        self.assertIn("proxima 'Edicao'", primeira)
+        self.assertNotIn("Resumindo:", primeira.split("ABERTURA (parte 1)")[1]
+                         .split("CONSISTENCIA VISUAL")[0])
+        self.assertIn("PARTE 2 de 2", segunda)
+        self.assertIn("ABERTURA (parte 2)", segunda)
+        self.assertIn("'Edicao:'", segunda)
+        self.assertIn("Resumindo:", segunda)
+        self.assertIn("eu errei, ela errou, ou todo mundo errou?", segunda)
+        self.assertNotIn("proxima 'Edicao'", segunda)
+
     def test_o_normal_continua_com_a_abertura_de_sempre(self):
         biblia = dict(self._biblia(), estrutura="confissao", tipo="normal")
         self.assertIn("momento mais chocante",
@@ -245,6 +264,19 @@ class RodizioNaFila(unittest.TestCase):
         ordem = self._ordem(fila, [])
         self.assertEqual(sorted(v.id for v in fila), sorted(ordem))
         self.assertEqual("x", ordem[-1], "sem tipo vai para o fim")
+
+    def test_fila_com_um_tipo_so_fica_como_veio(self):
+        # Ate existir estoque dos tres tipos, a fila so tem um: o rodizio
+        # nao pode mudar nada nem esvaziar horario.
+        fila = [self._v("n:p2", "normal"), self._v("n:p3", "normal"),
+                self._v("m:p1", "normal")]
+        for ultimos in ([], ["normal"], ["favela", "babaca"]):
+            self.assertEqual(["n:p2", "n:p3", "m:p1"],
+                             self._ordem(fila, ultimos))
+
+    def test_fila_so_de_historias_antigas_sem_tipo_fica_como_veio(self):
+        fila = [self._v("a", ""), self._v("b", "")]
+        self.assertEqual(["a", "b"], self._ordem(fila, ["favela"]))
 
     def test_fila_vazia(self):
         self.assertEqual([], T.ordenar_por_tipo([], ["favela"], str))
