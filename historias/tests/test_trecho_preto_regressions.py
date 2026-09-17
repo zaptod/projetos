@@ -182,9 +182,19 @@ class AjustesDaRevisao(unittest.TestCase):
         self.assertNotIn("papeis.provedores(papeis.QUALIDADE)", fonte)
 
     def test_fabricas_de_llm_nao_disparam_apuracao(self):
-        from remoto import apurador
+        # Pelo fonte: a suite de historias roda sem a raiz no sys.path, e
+        # `import remoto` so passava com o PYTHONPATH da worktree.
+        import ast
+        raiz = Path(Q.__file__).resolve().parents[3]
+        arvore = ast.parse((raiz / "remoto" / "apurador.py").read_text(
+            encoding="utf-8"))
+        valor = next(no.value for no in arvore.body
+                     if isinstance(no, ast.Assign)
+                     and getattr(no.targets[0], "id", "")
+                     == "FABRICAS_SEM_APURACAO")
+        nomes = ast.literal_eval(valor.args[0])
         for fabrica in ("deepseek", "chatgpt", "gemini"):
-            self.assertIn(fabrica, apurador.FABRICAS_SEM_APURACAO)
+            self.assertIn(fabrica, nomes)
 
     def test_painel_manda_o_login_do_deepseek_para_o_llm(self):
         raiz = Path(Q.__file__).resolve().parents[3]
