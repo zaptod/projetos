@@ -725,16 +725,30 @@ def _saiu(linha) -> bool:
     try:
         from builds.publicar import metricas
         return metricas.publicado(linha)
-    except Exception:                                          # noqa: BLE001
-        # Queda para o criterio velho SO se `metricas` nao importar. Escrito
-        # em duas linhas, com a leitura numa variavel, porque a varredura da
-        # cura procura a forma condicional no fonte para saber se a migracao
-        # aconteceu — e um fallback documentado nao pode parecer uma leitura
-        # esquecida.
-        if not isinstance(linha, dict):
-            return False
-        antigo = linha.get("url")
-        return bool(antigo)
+    except Exception as exc:                                   # noqa: BLE001
+        # NAO HA QUEDA LOCAL, e a ausencia dela e deliberada.
+        #
+        # Tentei escrever uma, e a varredura da cura a recusou — com razao.
+        # Qualquer queda ou volta ao criterio de antes (e ai, depois da cura,
+        # diz "nao saiu" para 46 builds e 51 historias, e a recuperacao
+        # reposta os noventa e sete), ou olha so o campo `publicado` (e ai
+        # diz "nao saiu" para toda linha anterior a cura). As duas erram
+        # feio, em silencio, por um caminho raro.
+        #
+        # E ela nao protege nada: todo chamador de `_saiu` acabou de chamar
+        # `metricas.publicados()` ou `serie.publicados()` na linha de cima.
+        # Se `metricas` nao importa, a rodada ja esta morta — adivinhar so
+        # troca uma falha visivel por uma decisao errada calada.
+        try:
+            from builds import atividade
+            atividade.registrar(
+                "publicacao", atividade.ERRO,
+                f"nao consegui importar `metricas` para decidir se o video "
+                f"saiu ({type(exc).__name__}: {str(exc)[:120]})",
+                "builds", etapa="publicar.saiu")
+        except Exception:                                      # noqa: BLE001
+            pass
+        raise
 
 
 # RELIGADAS EM 17/09/2026, depois de as quatro condicoes existirem:
@@ -938,145 +952,26 @@ def desistencias_do_tiktok(canal: str = "historias") -> set:
 
 FALHAS_ATE_DESISTIR = 3
 
-# O CLIQUE SAIU. Qualquer estado com isto significa que o post PODE estar no
-# ar, e reenviar duplicaria no perfil — onde o publico ve.
-MARCAS_DE_CLIQUE = ("cliquei em publicar",)
-
-# Falha que nao e do video: a maquina, a rede, a sessao. Contar isto como
-# defeito do video abandonaria, depois de tres rodadas, um video sem problema
-# nenhum. Aconteceu de verdade em 16/09/2026 as 20:47 — a maquina estava
-# sobrecarregada, o Chrome nao abriu, e a rodada de historias perdeu o video.
-MARCAS_DE_INFRAESTRUTURA = (
-    "nao consegui abrir o chrome", "perfilocupado", "perfil esta em uso",
-    "pediu login", "nao esta valida neste perfil",
-    "err_name_not_resolved", "err_connection", "err_internet",
-    "net::err", "nao achei o campo de arquivo",
-)
+# A CLASSIFICACAO MUDOU-SE PARA `builds/publicar/desfecho.py` em 17/09/2026.
+#
+# Ela vivia aqui, e o `main.py publicar <id> --tiktok --postar` — que e o
+# `/publicar` do bot e o botao do app — chama `tiktok.publicar` DIRETO: um
+# clique sem confirmacao por aquele caminho nao marcava nada, e a recuperacao
+# da grade repostava. Agora ela e chamada de dentro do `tiktok.publicar`, que
+# e o funil por onde TODOS passam.
+#
+# Estes atalhos existem para o codigo daqui (e os testes) nao precisarem
+# saber onde ela mora.
 
 
-def desfecho_do_tiktok(estado, falha: dict | None = None,
-                       laudo: dict | None = None) -> str:
-    """"publicado", "sem_confirmacao", "infraestrutura" ou "falha".
-
-    Ate hoje so havia duas respostas — confirmou ou nao — e o "nao" juntava
-    tres coisas que pedem reacoes OPOSTAS:
-
-    - **sem_confirmacao**: o clique saiu e o aviso de sucesso nao apareceu. O
-      post pode estar no ar. Reenviar duplica, e duplicata o publico ve. Sai
-      da fila e espera conferencia humana; nunca volta sozinho.
-    - **infraestrutura**: Chrome que nao abre, perfil ocupado, login vencido,
-      rede fora. Nao e do video: nao conta para a desistencia e continua na
-      fila, porque a proxima rodada pode simplesmente funcionar.
-    - **falha**: legenda que nao fica, arquivo recusado. E dela, e so dela,
-      que o contador de tres tentativas fala.
-
-    A ORDEM IMPORTA: se o clique saiu, o que aconteceu depois nao muda o
-    risco. Um erro de infraestrutura DEPOIS do clique continua sendo
-    "sem_confirmacao", porque o post pode ter subido do mesmo jeito.
-
-    E POR ISSO `laudo["clicou"]` VEM ANTES DO TEXTO: a frase de retorno se
-    perde quando algo levanta depois do clique (o ledger preso, o Chrome
-    fechando), e ai sobrava `""` — classificado como "falha" e reenviado ate
-    tres vezes, sobre um post que ja podia estar no ar. A marca do laudo e
-    escrita no instante do clique e sobrevive a excecao.
-    """
-    if _tiktok_confirmado(estado):
-        return "publicado"
-    if (laudo or {}).get("clicou"):
-        return "sem_confirmacao"
-    texto = _sem_acentos(str(estado or ""))
-    if any(m in texto for m in MARCAS_DE_CLIQUE):
-        return "sem_confirmacao"
-    motivo = _sem_acentos(" ".join(str(v) for v in (falha or {}).values()))
-    if any(m in motivo for m in MARCAS_DE_INFRAESTRUTURA):
-        return "infraestrutura"
-    return "falha"
-
-
-def _sem_acentos(texto: str) -> str:
-    """Minusculas e sem acento, para as marcas casarem de verdade.
-
-    A marca "nao achei o campo de arquivo" nunca casava: o `tiktok.py`
-    escreve "nao" COM acento, e a comparacao era byte a byte. Uma marca que
-    nunca casa e pior que marca ausente — ela da a impressao de estar coberto.
-    """
-    import unicodedata
-    normal = unicodedata.normalize("NFKD", str(texto).lower())
-    return "".join(c for c in normal if not unicodedata.combining(c))
+def desfecho_do_tiktok(estado, falha=None, laudo=None) -> str:
+    from builds.publicar.desfecho import classificar
+    return classificar(estado, falha, laudo)
 
 
 def a_conferir_no_tiktok(canal: str = "historias") -> set:
-    """Videos cujo clique saiu sem confirmacao: ficam FORA da fila.
-
-    Nao sao desistencia (o video nao tem defeito) nem atraso (pode estar no
-    ar). Sao um terceiro estado, que so sai daqui por conferencia — humana ou
-    pela conferencia do Studio.
-    """
-    import json
-    try:
-        caminho = _arquivo_a_conferir(canal)
-        if not caminho.is_file():
-            return set()
-        return set(json.loads(caminho.read_text(encoding="utf-8")))
-    except Exception:                                          # noqa: BLE001
-        return set()
-
-
-def _arquivo_a_conferir(canal: str):
-    from builds.publicar import metricas
-    return metricas.registro_do_canal(canal).parent / "_tiktok_a_conferir.json"
-
-
-def _resolver_desfecho(canal: str, alvo, estado: str, laudo: dict,
-                       falha: dict | None) -> str:
-    """Classifica e REAGE, dentro do publicador. Devolve o estado, intacto.
-
-    Mora aqui, e nao em quem chama, porque ha SETE caminhos que publicam no
-    TikTok (rodada normal dos dois canais, "so TikTok", escoamento,
-    recuperacao, reserva) e o conserto anterior so cobriu dois. O buraco que
-    sobrou era real e na mesma rodada: a rodada normal recebia "cliquei mas
-    nao confirmou", nada ia para o ledger, e a recuperacao — chamada logo
-    depois, no mesmo `main` — via um video com YouTube e sem TikTok e o
-    postava DE NOVO.
-
-    Uma funcao que os publicadores chamam sempre e a unica forma de isto nao
-    depender de alguem lembrar no oitavo caminho.
-    """
-    desfecho = desfecho_do_tiktok(estado, falha, laudo)
-    if desfecho == "sem_confirmacao":
-        _marcar_para_conferir(canal, getattr(alvo, "id", ""), estado or
-                              "o clique saiu e nao veio confirmacao")
-    return estado
-
-
-def _marcar_para_conferir(canal: str, video_id: str, estado: str) -> None:
-    """Tira da fila e AVISA. Erro no diario, nao aviso no log."""
-    import json
-    from datetime import datetime
-    try:
-        caminho = _arquivo_a_conferir(canal)
-        dados = {}
-        if caminho.is_file():
-            try:
-                dados = json.loads(caminho.read_text(encoding="utf-8"))
-            except ValueError:
-                dados = {}
-        if video_id in dados:
-            return                       # ja avisado; nao repete no diario
-        dados[video_id] = {"quando": datetime.now().isoformat(timespec="seconds"),
-                           "estado": str(estado)[:200]}
-        caminho.parent.mkdir(parents=True, exist_ok=True)
-        caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=1),
-                           encoding="utf-8")
-        from builds import atividade
-        atividade.registrar(
-            "publicacao", atividade.ERRO,
-            f"{video_id}: cliquei em publicar no TikTok e nao veio "
-            f"confirmacao. Pode estar no ar — NAO reenvio sozinho para nao "
-            f"duplicar. Precisa de conferencia no perfil.",
-            canal, etapa="publicar.tiktok.sem_confirmacao", ref=video_id)
-    except Exception:                                          # noqa: BLE001
-        pass
+    from builds.publicar.desfecho import a_conferir
+    return a_conferir(canal)
 
 
 def _anotar_falha_no_tiktok(canal: str, video_id: str) -> int:
@@ -1421,7 +1316,7 @@ def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
         # A EXCECAO NAO PULA A CLASSIFICACAO: se o clique ja tinha saido (o
         # `laudo` guarda isso), o video precisa ir para "a conferir" mesmo
         # que o erro tenha vindo depois.
-        return _resolver_desfecho("historias", alvo, "", laudo, falha)
+        return ""
     # O REGISTRO E AQUI, e nao dentro do `tiktok.publicar`. La ele chama
     # `metricas.registrar_publicado(canal="historias")`, que DESCARTA tudo que
     # nao e do canal `builds` — entao uma postagem de historia no TikTok nunca
@@ -1433,7 +1328,7 @@ def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
                         {"por": "postar.py", "visibilidade": "public",
                          "prova": [laudo] if laudo else [],
                          "prova_ok": _prova_ok(laudo)})
-    return _resolver_desfecho("historias", alvo, estado, laudo, falha)
+    return estado
 
 
 def _visibilidade_das_historias() -> str:
@@ -1969,7 +1864,7 @@ def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
             falha["mensagem"] = str(exc)[:300]
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
         estado = ""
-    return _resolver_desfecho("builds", alvo, estado, laudo, falha)
+    return estado
 
 
 # ------------------------------------------------------------------ tarefa

@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .. import atividade
 from ..identity.browser import contexto_persistente, pagina
+from . import desfecho
 
 RAIZ = Path(__file__).resolve().parents[2]
 PERFIL = RAIZ / ".browser_profile" / "tiktok"
@@ -647,6 +648,12 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
                        "prova_ok": metricas.prova_ok(laudo)})
         else:
             laudo["estado"] = "sem_confirmacao"
+        # A CLASSIFICACAO MORA AQUI, e nao em quem chama. Ela vivia dentro do
+        # `postar.py`, e o `main.py publicar <id> --tiktok --postar` — que e
+        # o `/publicar` do bot e o botao do app — chama esta funcao DIRETO:
+        # um clique sem confirmacao por ali nao marcava nada, e a recuperacao
+        # da grade repostava. Aqui e o funil por onde todos passam.
+        laudo["desfecho"] = desfecho.resolver(canal, video, estado, laudo)
         return estado
 
 

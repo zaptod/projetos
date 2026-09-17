@@ -139,11 +139,14 @@ class ReacaoAoDesfechoTests(unittest.TestCase):
         self.tmp = TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         base = Path(self.tmp.name)
-        for nome in ("_arquivo_de_desistencias", "_arquivo_a_conferir",
+        for nome in ("_arquivo_de_desistencias",
                      "_fontes_de_atraso", "_tiktok_dos_builds", "_linha"):
             self.addCleanup(setattr, postar, nome, getattr(postar, nome))
         postar._arquivo_de_desistencias = lambda _c: base / "desist.json"
-        postar._arquivo_a_conferir = lambda _c: base / "conferir.json"
+        from builds.publicar import desfecho as _D
+        self.addCleanup(setattr, _D, "arquivo_a_conferir",
+                        _D.arquivo_a_conferir)
+        _D.arquivo_a_conferir = lambda _c: base / "conferir.json"
         postar._linha = lambda *_a, **_k: None
         self.diario = []
         from builds import atividade
@@ -174,8 +177,13 @@ class ReacaoAoDesfechoTests(unittest.TestCase):
 
         def publicar(alvo, postar=True, canal="builds", progresso=None,
                      prova=None):
-            if prova is not None:
-                prova["clicou"] = True
+            laudo = prova if prova is not None else {}
+            laudo["clicou"] = True
+            # A REACAO E A REAL, chamada como o `tiktok.publicar` a chama.
+            # O duble para na borda do navegador e nao reimplementa a
+            # decisao — se ele a copiasse, passaria com a producao quebrada.
+            from builds.publicar import desfecho as D
+            D.resolver(canal, alvo, CLICOU_1, laudo)
             return CLICOU_1
         modulo.publicar = publicar
         self.addCleanup(setattr, postar, "_build_ja_no_tiktok",
@@ -215,43 +223,45 @@ class ReacaoAoDesfechoTests(unittest.TestCase):
         self.assertIn("a:build:celular",
                       [v.id for v in postar.atrasados_no_tiktok(canal="builds")])
 
-    def test_TODO_caminho_marca_a_conferir_nao_so_a_recuperacao(self):
-        """O buraco que sobrou do primeiro conserto, e ele era da MESMA rodada.
+    def test_a_marcacao_MORA_no_tiktok_publicar(self):
+        """O buraco que sobrou dos dois primeiros consertos.
 
-        A rodada normal recebia "cliquei mas nao confirmou", nada ia para o
-        ledger, e a recuperacao — chamada logo depois, no mesmo `main` — via
-        um video com YouTube e sem TikTok e o postava DE NOVO. Marcar so
-        dentro da recuperacao nao cobria nenhum dos cinco outros caminhos.
+        Primeiro a marcacao so existia na recuperacao; depois passou para os
+        dois publicadores do `postar.py`. Mas o `main.py publicar <id>
+        --tiktok --postar` — o `/publicar` do bot e o botao do app — chama
+        `tiktok.publicar` DIRETO, e por ali nada era marcado: a recuperacao
+        da grade repostava.
+
+        Agora ela mora DENTRO do `tiktok.publicar`. Este teste confere as
+        duas metades disso, porque uma sozinha nao prova nada: que a funcao
+        compartilhada marca, e que o publicador a chama.
         """
-        chamados = []
+        from builds.publicar import desfecho as D
 
         class _Fake:
             id = "a:build:celular"
             titulo = "A"
 
-        def publicar(alvo, postar=True, canal="builds", progresso=None,
-                     prova=None):
-            chamados.append(alvo.id)
-            if prova is not None:
-                prova["clicou"] = True          # o clique saiu
-            return CLICOU_1
+        # 1. a funcao compartilhada marca.
+        self.assertEqual("sem_confirmacao",
+                         D.resolver("builds", _Fake(), CLICOU_1))
+        self.assertIn("a:build:celular", D.a_conferir("builds"))
 
-        import sys
-        modulo = sys.modules.get("builds.publicar.tiktok")
-        original = modulo.publicar
-        self.addCleanup(setattr, modulo, "publicar", original)
-        modulo.publicar = publicar
-        self.addCleanup(setattr, postar, "_build_ja_no_tiktok",
-                        postar._build_ja_no_tiktok)
-        postar._build_ja_no_tiktok = lambda _v: False
+        # 2. e o publicador a chama — senao a metade de cima e decorativa.
+        import inspect
+        from builds.publicar import tiktok
+        fonte = "\n".join(
+            l for l in inspect.getsource(tiktok.publicar).splitlines()
+            if not l.strip().startswith("#"))
+        self.assertIn("desfecho.resolver(", fonte)
 
-        postar._tiktok_dos_builds(_Fake())
-        self.assertEqual(["a:build:celular"], chamados)
-        self.assertIn("a:build:celular", postar.a_conferir_no_tiktok("builds"),
-                      "o caminho NORMAL tem de marcar, nao so a recuperacao")
+    def test_quem_esta_a_conferir_sai_da_fila(self):
+        """E o efeito que importa: marcado, o video nao volta sozinho."""
+        from builds.publicar import desfecho as D
+        D.marcar_para_conferir("builds", "a:build:celular", CLICOU_1)
         fila = [v.id for v in postar.atrasados_no_tiktok(canal="builds")]
-        self.assertNotIn("a:build:celular", fila,
-                         "e por isso a recuperacao da MESMA rodada nao o pega")
+        self.assertNotIn("a:build:celular", fila)
+        self.assertIn("b:build:celular", fila)
 
     def test_falha_do_video_continua_contando(self):
         def publicar(alvo, falha=None):

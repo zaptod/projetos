@@ -41,11 +41,21 @@ def _postar():
 
 postar = _postar()
 
-# O MESMO padrao que a varredura da cura usa (`curar_ledger.LEITURA_POR_URL`).
-# Copiado de proposito: se ele mudar la e nao aqui, este teste para de
-# proteger — e e melhor descobrir por divergencia do que por reposta em massa.
-LEITURA_POR_URL = re.compile(
-    r"(?:\bif|\band|\bor|\bnot)\s+(?:l|linha)\.get\(\"url\"\)")
+def _leituras_por_url(fonte: str):
+    """A varredura DA PROPRIA CURA, e nao uma copia dela.
+
+    A primeira versao deste teste copiava a regex antiga do `curar_ledger`.
+    Copia diverge: desde `db55cae` a varredura le a ARVORE do codigo (ast), e
+    a regex que eu tinha copiado nem via leitura atribuida a uma variavel.
+    Um teste que confere um criterio diferente do portao nao protege do
+    portao — protege de uma lembranca dele.
+    """
+    import importlib.util
+    caminho = RAIZ / "ferramentas" / "curar_ledger.py"
+    spec = importlib.util.spec_from_file_location("curar_varredura", caminho)
+    curar = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(curar)
+    return curar.leituras_por_url(fonte)
 
 
 class ContratoTests(unittest.TestCase):
@@ -53,19 +63,16 @@ class ContratoTests(unittest.TestCase):
         self.assertGreaterEqual(postar.CONTRATO_DO_LEDGER, 2)
 
     def test_nenhum_ponto_decide_saiu_pelo_url(self):
-        """SEM os comentarios.
-
-        A primeira versao deste teste acusou uma ocorrencia que estava dentro
-        do comentario que explica por que ela nao existe. E a mesma armadilha
-        de teste-que-le-fonte que ja mordeu tres vezes aqui — e ela mostra que
-        a varredura da propria cura tambem pode ser enganada por um
-        comentario, em qualquer arquivo. Avisado a d2.
-        """
-        codigo = "\n".join(
-            l for l in POSTAR.read_text(encoding="utf-8").splitlines()
-            if not l.strip().startswith("#"))
-        self.assertEqual([], LEITURA_POR_URL.findall(codigo),
+        """Pela varredura da cura, que le a arvore e ignora comentario."""
+        fonte = POSTAR.read_text(encoding="utf-8")
+        self.assertEqual([], _leituras_por_url(fonte),
                          "a cura recusa gravar enquanto houver leitura por url")
+
+    def test_comentario_nao_conta_como_leitura(self):
+        """Eu acusei, no meu proprio teste, uma leitura que estava dentro do
+        comentario que explicava por que ela nao existia."""
+        self.assertEqual(
+            [], _leituras_por_url('# if linha.get("url")\nx = 1\n'))
 
     def test_a_cura_libera_a_gravacao(self):
         """O portao de verdade, e nao a nossa leitura dele."""
@@ -101,6 +108,46 @@ class SaiuTests(unittest.TestCase):
         for ruim in ({}, {"url": ""}, None, "texto", []):
             with self.subTest(ruim=ruim):
                 self.assertFalse(postar._saiu(ruim))
+
+
+class SemQuedaLocalTests(unittest.TestCase):
+    """`_saiu` NAO tem queda local, e a ausencia dela e deliberada.
+
+    Eu escrevi uma, e a varredura da cura a recusou — com razao. Qualquer
+    queda ou volta ao criterio antigo (e ai, depois da cura, diz "nao saiu"
+    para 46 builds e 51 historias, e a recuperacao reposta os noventa e
+    sete), ou olha so o campo `publicado` (e ai diz "nao saiu" para toda
+    linha anterior a cura). As duas erram feio, em silencio, num caminho
+    raro.
+
+    E ela nao protegeria nada: todo chamador de `_saiu` acabou de chamar
+    `publicados()` na linha de cima. Se `metricas` nao importa, a rodada ja
+    esta morta — adivinhar so troca falha visivel por decisao errada calada.
+    """
+
+    def setUp(self):
+        import builds.publicar.metricas as M
+        self.addCleanup(setattr, M, "publicado", M.publicado)
+
+        def explode(_l):
+            raise ImportError("metricas indisponivel")
+        M.publicado = explode
+        from builds import atividade
+        self.addCleanup(setattr, atividade, "registrar", atividade.registrar)
+        self.diario = []
+        atividade.registrar = lambda *a, **k: self.diario.append(a)
+
+    def test_sem_metricas_ele_LEVANTA_em_vez_de_adivinhar(self):
+        with self.assertRaises(ImportError):
+            postar._saiu({"url": "", "publicado": True})
+
+    def test_e_registra_ERRO_antes_de_levantar(self):
+        """Defeito de ambiente que ninguem veria de outro jeito."""
+        with self.assertRaises(ImportError):
+            postar._saiu({"url": "x"})
+        self.assertTrue(self.diario, "a falha tem de ser contada")
+        from builds import atividade
+        self.assertEqual(atividade.ERRO, self.diario[0][1])
 
 
 if __name__ == "__main__":
