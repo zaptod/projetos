@@ -75,6 +75,7 @@ def ajuda(_args: str = "") -> str:
         "/metas — quantos vídeos, em que horário, em que canal\n"
         "/funcionamento — tempos, erros e agendamento das últimas 24h\n"
         "/confiabilidade — o que saiu hoje e o que dá para provar\n"
+        "/testar\\_conserto <carimbo> — a suíte com um remendo proposto\n"
         "/pausar [minutos] · /retomar · /parar\n"
         "/ajuda — isto aqui")
 
@@ -237,6 +238,24 @@ def auditoria(_args: str = "") -> str:
     return relatorios.montar("auditoria")
 
 
+def testar_conserto(args: str = "") -> str:
+    """Testa um remendo PROPOSTO pelo conserto automatico. Nunca aplica.
+
+    A suite leva minutos: o teste roda num processo a parte, e o resultado
+    chega por mensagem. A validacao aqui e a barata (formato, remendo
+    existe); as travas e o teto sao conferidos de novo la dentro.
+    """
+    from . import apurador
+    carimbo = args.strip()
+    if not carimbo:
+        return "use: /testar_conserto <carimbo> (vem no aviso do conserto)"
+    motivo = apurador.motivo_para_nao_testar(carimbo)
+    if motivo:
+        return f"não vou testar: {motivo}"
+    return _rodar([PY, "-m", "remoto", "--testar-conserto", carimbo], RAIZ,
+                  f"o teste do remendo {carimbo}")
+
+
 def pausar(args: str = "") -> str:
     try:
         minutos = float(args.strip()) if args.strip() else None
@@ -273,6 +292,7 @@ TABELA = {
     "relatorio": funcionamento,
     "confiabilidade": confiabilidade,
     "prova": confiabilidade,
+    "testar_conserto": testar_conserto,
     "auditoria": auditoria,
     "auditar": auditoria,
     "pausar": pausar,

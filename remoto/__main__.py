@@ -53,6 +53,9 @@ def main(argv=None) -> int:
     parser.add_argument("--apurar", action="store_true",
                         help="le os erros novos do ledger, manda o Claude "
                              "investigar e avisa o diagnostico no Telegram")
+    parser.add_argument("--testar-conserto", metavar="CARIMBO",
+                        help="aplica o remendo proposto numa worktree nova, "
+                             "roda a suite la e avisa o resultado")
     parser.add_argument("--avisar", metavar="TEXTO",
                         help="manda UMA mensagem para quem esta autorizado e "
                              "sai (nao liga o bot)")
@@ -89,7 +92,7 @@ def main(argv=None) -> int:
               "  (o Claude le os arquivos e diz o que houve)")
         print(f"consertar ..: "
               f"{'SIM' if atual.get('consertar') is True else 'nao'}"
-              "  (numa copia do repositorio; o que passar vira branch)")
+              "  (propoe um remendo; testar e aplicar sao com uma pessoa)")
         return 0
 
     if not config.token():
@@ -108,6 +111,13 @@ def main(argv=None) -> int:
                + _conserto_em_texto(resultado.get("conserto")))
         print(resultado["diagnostico"])
         return 0
+
+    if args.testar_conserto:
+        from .apurador import testar_conserto
+        resultado = testar_conserto(args.testar_conserto)
+        avisar(_teste_em_texto(args.testar_conserto, resultado))
+        print(resultado)
+        return 0 if resultado.get("passou") else 1
 
     if args.avisar:
         # Aviso AVULSO, sem ligar o bot — e sem trava, porque manda e sai. E o
@@ -147,27 +157,41 @@ def _conserto_em_texto(conserto: dict | None) -> str:
     """O que o conserto automatico fez, para caber no fim do aviso.
 
     O que ele precisa saber sem abrir o PC: mexeu ou nao, em que arquivos, e
-    onde esta o remendo para desfazer se nao gostar. Codigo mudado sozinho tem
-    que ser visivel — o contrario e acordar com o repositorio diferente.
+    onde esta o remendo. Desde a segunda revisao (16/09/2026) o conserto so
+    PROPOE: nada foi executado, testado nem aplicado.
     """
     if not conserto:
         return ""
     nl = chr(10)
     if not conserto.get("mexeu"):
         if conserto.get("desfeito"):
-            return (nl * 2 + "🔧 tentei consertar e *nada entrou*: "
+            return (nl * 2 + "🔧 tentei consertar e *nada foi proposto*: "
                     + str(conserto.get("motivo", ""))[:200])
         return nl * 2 + "🔧 " + str(conserto.get("motivo", ""))[:200]
     from pathlib import Path as _P
     nomes = ", ".join(_P(a).name for a in (conserto.get("arquivos") or [])[:6])
-    # O conserto vira BRANCH, nao mudanca na arvore: a mensagem diz onde esta
-    # e que o merge e de uma pessoa.
-    return (nl * 2 + "🔧 *conserto pronto para revisar* (a suite passou)" + nl
-            + f"branch: `{conserto.get('ramo', '?')}` "
-            + f"({conserto.get('commit', '?')})" + nl
+    carimbo = conserto.get("carimbo", "?")
+    return (nl * 2 + "🔧 *remendo PROPOSTO, não testado*" + nl
             + f"arquivos: {nomes}" + nl
-            + "nada entrou na arvore principal: o merge e seu." + nl
+            + f"remendo: `{conserto.get('remendo', '?')}`" + nl
+            + f"leia antes; para testar: `/testar_conserto {carimbo}`" + nl
+            + "nada foi executado nem aplicado: aplicar é com você." + nl
             + str(conserto.get("resumo", ""))[-400:])
+
+
+def _teste_em_texto(carimbo: str, resultado: dict) -> str:
+    nl = chr(10)
+    if resultado.get("alarme"):
+        return (f"🚨 *teste do remendo* `{carimbo}`: "
+                + str(resultado.get("motivo", ""))[:300])
+    if resultado.get("passou"):
+        return (f"✅ *a suíte passou* com o remendo `{carimbo}`" + nl
+                + str(resultado.get("ultima", ""))[:200] + nl
+                + "nada foi aplicado: `git apply` na árvore é com você.")
+    return (f"❌ *não passou*: remendo `{carimbo}`" + nl
+            + str(resultado.get("motivo", ""))[:200]
+            + (nl + str(resultado.get("ultima", ""))[:200]
+               if resultado.get("ultima") else ""))
 
 
 def avisar(texto: str) -> bool:
