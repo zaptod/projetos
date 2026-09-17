@@ -996,8 +996,8 @@ class FilaPrefereONovoTests(unittest.TestCase):
         spec.loader.exec_module(modulo)
         return modulo
 
-    def test_serie_comecada_vem_antes_da_mais_nova(self):
-        postar = self._postar()
+    @staticmethod
+    def _duas_series(postar, mesmo_tipo: bool):
         from contos.publicar import catalogo, serie
 
         def _video(h, parte):
@@ -1007,11 +1007,36 @@ class FilaPrefereONovoTests(unittest.TestCase):
 
         videos = [_video("historia_00003", i) for i in (1, 2, 3)]
         videos += [_video("historia_00009", i) for i in (1, 2)]
-        self.addCleanup(setattr, catalogo, "listar", catalogo.listar)
-        self.addCleanup(setattr, serie, "publicados", serie.publicados)
         catalogo.listar = lambda: videos
         serie.publicados = lambda: [
             {"video_id": "historia_00003:celular:p01", "url": "x"}]
+        tipos = ({"historia_00003": "favela", "historia_00009": "favela"}
+                 if mesmo_tipo else
+                 {"historia_00003": "favela", "historia_00009": "normal"})
+        postar._tipo_da_fonte = lambda f: tipos.get(f, "")
+        return catalogo, serie
+
+    def setUp(self):
+        from contos.publicar import catalogo, serie
+        self.addCleanup(setattr, catalogo, "listar", catalogo.listar)
+        self.addCleanup(setattr, serie, "publicados", serie.publicados)
+
+    def test_serie_comecada_vem_antes_da_mais_nova(self):
+        """DENTRO DO TIPO, e o tipo e a fatia que o rodizio distribui.
+
+        O RODIZIO DE TIPO (decisao dele em 17/09/2026: favela, normal e
+        babaca no ar ao mesmo tempo) mudou o alcance desta regra, e nao a
+        regra. Ela nasceu contra ABANDONAR serie iniciada — "quem viu a parte
+        2 e nunca recebe a 3 sai" — e isso continua valendo inteiro: dentro
+        de um tipo, a comecada vem antes da nova, sempre.
+
+        O que o rodizio faz e intercalar TIPOS, entao uma serie comecada de
+        favela divide os horarios com uma serie de normal. Ela sai mais
+        devagar; nao sai de cena. Fixar os dois no MESMO tipo isola a regra
+        que este teste existe para proteger.
+        """
+        postar = self._postar()
+        self._duas_series(postar, mesmo_tipo=True)
 
         fila = postar.fila_de_historias()
         self.assertEqual(fila[0].fonte_id, "historia_00003",
@@ -1019,6 +1044,23 @@ class FilaPrefereONovoTests(unittest.TestCase):
         self.assertEqual(fila[0].parte, 2)
         # so depois de terminar a 3 e que a 9 (mais nova) entra
         self.assertEqual(fila[-1].fonte_id, "historia_00009")
+
+    def test_tipos_DIFERENTES_se_intercalam_sem_abandonar_a_comecada(self):
+        """O rodizio adia a serie comecada; nunca a deixa para o fim.
+
+        A diferenca importa: adiar um horario e o preco do rodizio que ele
+        pediu; deixar para o fim seria o abandono que a regra acima proibe.
+        """
+        postar = self._postar()
+        self._duas_series(postar, mesmo_tipo=False)
+
+        fila = postar.fila_de_historias()
+        fontes = [v.fonte_id for v in fila]
+        self.assertIn("historia_00003", fontes[:2],
+                      "a comecada pode esperar um horario, nao mais")
+        # e a ordem DENTRO da serie continua intacta
+        partes3 = [v.parte for v in fila if v.fonte_id == "historia_00003"]
+        self.assertEqual([2, 3], partes3)
 
     def test_entre_as_nao_comecadas_a_mais_nova_ganha(self):
         postar = self._postar()

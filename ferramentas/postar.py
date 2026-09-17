@@ -124,6 +124,82 @@ def esperar_a_rede(*, limite: float = ESPERA_DE_REDE_S, log=None) -> bool:
 TENTATIVAS = 6
 
 
+def _tipo_da_fonte(fonte_id: str) -> str:
+    """O tipo (favela, normal, babaca) daquela historia. `""` se nao der.
+
+    O tipo esta no roteiro, e ler roteiro custa disco: a fila tem dezenas de
+    partes e poucas historias, entao a resposta e lembrada por fonte durante
+    a rodada. Sem tipo nao e erro — historia feita antes dos tipos existirem
+    e classificada pelo molde, e o que sobrar fica no fim da fila, na ordem
+    em que veio.
+    """
+    if fonte_id in _TIPOS_LEMBRADOS:
+        return _TIPOS_LEMBRADOS[fonte_id]
+    tipo = ""
+    try:
+        from contos.roteiro import roteiro as R, serie as S
+        tipo = S.tipo_da_historia(R.carregar(fonte_id)) or ""
+    except Exception:                                          # noqa: BLE001
+        tipo = ""
+    _TIPOS_LEMBRADOS[fonte_id] = tipo
+    return tipo
+
+
+_TIPOS_LEMBRADOS: dict = {}
+
+
+def _no_rodizio_dos_tipos(fila: list, publicados: list) -> list:
+    """A fila reordenada pela vez de cada tipo. So a ORDEM muda.
+
+    Decisao do Adrian (17/09/2026): tres tipos de historia no ar ao mesmo
+    tempo — favela, normal e babaca — com os horarios em rodizio entre eles.
+    Sem isto a fila esgota uma serie inteira antes de tocar na proxima, e
+    quem abre o perfil ve seis partes do mesmo tipo em seguida.
+
+    O PEDIDO MANUAL CONTINUA VENCENDO, e e por isso que isto nao e uma
+    chamada direta: `_prioridades()` e um pedido de pessoa ("quero ver este
+    video no ar ja"), e o rodizio, aplicado por cima, o desfaria em
+    silencio. Entao os pedidos ficam grudados na frente e o rodizio ordena o
+    resto.
+
+    A ORDEM DAS PARTES SOBREVIVE por construcao: todas as partes de uma
+    historia tem o mesmo `fonte_id`, logo o mesmo roteiro e o mesmo tipo, e
+    `ordenar_por_tipo` preserva a ordem relativa DENTRO de cada tipo. A
+    guarda de ordem no destino continua valendo por cima disso.
+    """
+    try:
+        from contos.publicar import tipos as T
+    except Exception:                                          # noqa: BLE001
+        return fila
+    pedidos = set(_prioridades())
+    frente = [v for v in fila if v.id in pedidos]
+    resto = [v for v in fila if v.id not in pedidos]
+    try:
+        # AS DUAS FUNCOES PEDEM COISAS DIFERENTES, e isto nao e detalhe:
+        # `tipos_das_ultimas` chama o callback com o `fonte_id` (string, que
+        # e o que a linha do ledger tem), e `ordenar_por_tipo` chama com o
+        # VIDEO. Passando `_tipo_da_fonte` nos dois, o segundo recebia um
+        # objeto, devolvia "" para tudo, e a fila inteira caia no balde "sem
+        # tipo" — que sai na ordem em que veio.
+        #
+        # Ou seja: o rodizio virava NO-OP sem levantar nada, sem log, e com o
+        # resto da suite verde. E o mesmo formato do conserto que nao
+        # consertava de 16/09; foi o teste de intercalacao que pegou.
+        ultimos = T.tipos_das_ultimas(publicados, _tipo_da_fonte,
+                                      "youtube", publicado=_saiu)
+        # O TETO POR FONTE JA FOI APLICADO acima (`_sem_fonte_cheia`), entao
+        # `cheias` aqui e vazio de proposito: passar a lista de novo seria
+        # dois donos para a mesma regra, e o segundo envelhece.
+        resto = T.ordenar_por_tipo(
+            resto, ultimos, lambda v: _tipo_da_fonte(T.fonte_do_video(v)))
+    except Exception as exc:                                   # noqa: BLE001
+        # ORDENAR E MELHORIA, e nunca motivo de horario vazio.
+        _linha(f"[postar] o rodizio de tipo falhou ({type(exc).__name__}); "
+               f"a fila segue na ordem anterior.")
+        return fila
+    return frente + resto
+
+
 def fila_de_historias() -> list:
     """As partes pendentes, NA ORDEM em que devem sair.
 
@@ -198,7 +274,7 @@ def fila_de_historias() -> list:
                f"ja publicado: {', '.join(v.id for v in repetidos[:3])}"
                f"{'...' if len(repetidos) > 3 else ''}")
     if novos:
-        return novos
+        return _no_rodizio_dos_tipos(novos, publicados)
     if repetidos:
         # A VALVULA FECHOU EM 17/09/2026, por decisao do Adrian depois de ver
         # conteudo repetido no perfil. Ela liberava "o menos pior" quando a
