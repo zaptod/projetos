@@ -303,6 +303,119 @@ class EstadoDoSistema(unittest.TestCase):
         self.assertIn("PicassoIA: caiu", dados.resumo(erro)["alerta"])
 
 
+class CenaDaCaptura(unittest.TestCase):
+    """17/09/2026 02:27: a tela dizia "tudo parado" e "9 à toa" com a
+    rodada de historias viva e o Estudio vistoriando a historia_09002.
+    Estas sao as linhas do diario daquele momento, byte a byte."""
+
+    DIARIO = [
+        '{"ts": "2026-09-17T05:22:04+00:00", "pid": 17620, "fabrica": "estudio", "canal": "historias", "status": "log", "detalhe": "rodada: historia", "etapa": "rodada", "dur_s": 0.0}',  # noqa: E501
+        '{"ts": "2026-09-17T05:22:52+00:00", "pid": 12584, "fabrica": "estudio", "canal": "historias", "status": "log", "detalhe": "vistoria historia_00010 p1", "etapa": "vistoria", "ref": "historia_00010:p1", "dur_s": 0.0}',  # noqa: E501
+        '{"ts": "2026-09-17T05:22:59+00:00", "pid": 12548, "fabrica": "estudio", "canal": "historias", "status": "ok", "detalhe": "historia_09002: 1 video(s)", "etapa": "render", "ref": "historia_09002", "dur_s": 483.5}',  # noqa: E501
+        '{"ts": "2026-09-17T05:23:00+00:00", "pid": 12548, "fabrica": "estudio", "canal": "historias", "status": "log", "detalhe": "vistoria historia_09002 p1", "etapa": "vistoria", "ref": "historia_09002:p1", "dur_s": 1.2}',  # noqa: E501
+        '{"ts": "2026-09-17T05:27:23+00:00", "pid": 15416, "fabrica": "estudio", "canal": "historias", "status": "log", "detalhe": "rodada: historia", "etapa": "rodada", "dur_s": 0.0}',  # noqa: E501
+    ]
+    AGORA_UTC = datetime(2026, 9, 17, 5, 30, 40, tzinfo=timezone.utc)
+    PROCESSOS = json.dumps([
+        {"ProcessId": 13740, "CommandLine":
+            "C:\\Python314\\python.exe -X utf8 C:/Users/adrian/AppData/Local/"
+            "Temp/claude/e--projetos/164334a8/scratchpad/remessa_livre.py",
+         "Inicio": "2026-09-17T02:02:10"},
+        {"ProcessId": 3001, "CommandLine":
+            "C:\\Python314\\python.exe -X utf8 C:/Users/adrian/AppData/Local/"
+            "Temp/claude/e--projetos/999/scratchpad/medir_coisa.py",
+         "Inicio": "2026-09-17T01:50:00"},
+        {"ProcessId": 5555, "CommandLine":
+            '"C:\\Python314\\python.exe"  -u -X utf8 main.py auto --saida '
+            '"E:\\projetos\\historias\\outputs\\_logs\\auto_saida.txt"',
+         "Inicio": "2026-09-17T02:20:30"},
+        {"ProcessId": 9324, "CommandLine":
+            '"C:\\Python314\\python.exe"  -u -X utf8 -m remoto',
+         "Inicio": "2026-09-17T02:20:05"},
+    ])
+
+    def setUp(self):
+        pasta = Path(tempfile.mkdtemp())
+        diario = pasta / "atividade.jsonl"
+        diario.write_text("\n".join(self.DIARIO) + "\n", encoding="utf-8")
+        self.eventos = dados.ler_diario(diario)
+        self.agora = datetime(2026, 9, 17, 2, 30, 40)
+        abertos = dados.trabalhos_abertos(self.eventos, self.AGORA_UTC,
+                                          vivo=lambda p: False)
+        self.assertEqual(abertos, [], "nada tinha `inicio` aberto")
+        recentes = dados.atividade_recente(self.eventos, self.AGORA_UTC)
+        self.predios = dados.estado_dos_predios(abertos, [], ["remoto__bot"],
+                                                recentes)
+        self.vivos = dados.linhas_vivas(
+            dados.ler_processos_json(self.PROCESSOS), abertos, self.agora,
+            eventos=self.eventos, agora_utc=self.AGORA_UTC)
+        self.estado = {"abertos": abertos, "predios": self.predios,
+                       "vivos": self.vivos, "bot": {"vivo": True}}
+
+    def test_o_topo_nao_diz_tudo_parado(self):
+        resumo = dados.resumo(self.estado)
+        self.assertEqual(resumo["nivel"], "trabalhando")
+        self.assertNotIn("parado", resumo["frase"])
+
+    def test_o_bot_do_estudio_vai_ao_predio_com_o_ultimo_evento_util(self):
+        estudio = self.predios["estudio"]
+        self.assertEqual(estudio["status"], "recente")
+        self.assertEqual(estudio["balao"], "vistoria historia_09002 p1")
+        ociosos = [n for n, i in self.predios.items()
+                   if i["status"] == "ocioso"]
+        self.assertNotIn("estudio", ociosos)
+        self.assertEqual(len(ociosos), 8, "estudio e bot nao estao a toa")
+
+    def test_rodada_e_remessa_sao_trabalho_e_a_sessao_vai_para_o_fim(self):
+        tipos = [v["tipo"] for v in self.vivos]
+        self.assertEqual(tipos, ["remessa", "historias", "bot", "sessao"])
+        por_tipo = {v["tipo"]: v for v in self.vivos}
+        self.assertTrue(por_tipo["historias"]["ativo"])
+        self.assertTrue(por_tipo["remessa"]["ativo"])
+        self.assertFalse(por_tipo["sessao"]["ativo"])
+        self.assertEqual(por_tipo["sessao"]["quem"],
+                         "sessão de desenvolvimento (medir_coisa.py)")
+        self.assertIn("rodando", por_tipo["historias"]["oque"])
+
+    def test_evento_do_proprio_pid_vira_o_que(self):
+        processos = dados.ler_processos_json(json.dumps(
+            [{"ProcessId": 12548, "CommandLine": "python main.py auto",
+              "Inicio": "2026-09-17T02:15:00"}]))
+        linha = dados.linhas_vivas(processos, [], self.agora,
+                                   eventos=self.eventos,
+                                   agora_utc=self.AGORA_UTC)[0]
+        self.assertTrue(linha["ativo"])
+        self.assertIn("vistoria historia_09002 p1 (Estúdio, há 7 min)",
+                      linha["oque"])
+
+    def test_passada_a_janela_volta_a_ficar_parado(self):
+        depois = self.AGORA_UTC + timedelta(minutes=30)
+        recentes = dados.atividade_recente(self.eventos, depois)
+        self.assertEqual(recentes, {})
+        predios = dados.estado_dos_predios([], [], [], recentes)
+        self.assertEqual(predios["estudio"]["status"], "ocioso")
+        self.assertIn("parado", dados.resumo({"predios": predios})["frase"])
+
+    def test_inicio_de_processo_morto_nao_e_atividade(self):
+        abortado = json.dumps(_evento(self.AGORA_UTC - timedelta(minutes=2),
+                                      fabrica="picasso", pid=12548,
+                                      etapa="imagens", ref="historia_09003"))
+        eventos = self.eventos + [json.loads(abortado)]
+        morto = dados.atividade_recente(eventos, self.AGORA_UTC,
+                                        vivo=lambda p: False)
+        self.assertNotIn("picasso", morto)
+        vivo = dados.atividade_recente(eventos, self.AGORA_UTC,
+                                       vivo=lambda p: True)
+        self.assertEqual(vivo["picasso"]["balao"], "imagens historia_09003")
+
+    def test_atividade_depois_do_erro_apaga_o_alerta_do_predio(self):
+        erro = [{"predio": "estudio", "ha_s": 900, "detalhe": "x",
+                 "fabrica": "estudio"}]
+        recentes = dados.atividade_recente(self.eventos, self.AGORA_UTC)
+        predios = dados.estado_dos_predios([], erro, [], recentes)
+        self.assertEqual(predios["estudio"]["status"], "recente")
+
+
 class Relogio(unittest.TestCase):
     GRADE = ((0, 37), (6, 37), (12, 7), (23, 37))
 
@@ -394,10 +507,14 @@ class FeedEPaineis(unittest.TestCase):
                          "postar")
         self.assertIsNone(c("pythonw.exe -X utf8 -m painel.flutuante"))
         sessao = c("python.exe C:/Users/x/AppData/Local/Temp/claude/p/"
-                   "scratchpad/remessa.py")
+                   "scratchpad/medir.py")
         self.assertEqual(sessao["tipo"], "sessao")
-        self.assertIn("remessa.py", sessao["quem"])
+        self.assertEqual(sessao["quem"], "sessão de desenvolvimento (medir.py)")
         self.assertNotIn("Users", sessao["quem"])
+        remessa = c("C:\\Python314\\python.exe -X utf8 C:/Users/x/AppData/"
+                    "Local/Temp/claude/p/scratchpad/remessa_livre.py")
+        self.assertEqual(remessa["tipo"], "remessa")
+        self.assertIn("remessa_livre.py", remessa["quem"])
         self.assertEqual(c("python.exe -m pytest painel")["tipo"], "testes")
 
     def test_linhas_vivas_juntam_diario_e_processo(self):

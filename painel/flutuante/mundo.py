@@ -307,10 +307,13 @@ class CenaVila:
                                          "contas": []}
             status = info["status"]
             bot["status"] = status
-            vai = status in ("trabalhando", "no_ar")
+            # `recente` (evento solto ha poucos minutos) tambem e trabalho:
+            # o Estudio vistoria e renderiza registrando so `log`/`ok`.
+            vai = status in ("trabalhando", "no_ar", "recente")
             bot["alvo"] = list(porta(nome) if vai else bot["casa"])
             bot["texto"] = info.get("balao") or ""
-            cor = {"trabalhando": self.t.acento, "no_ar": self.t.ok,
+            cor = {"trabalhando": self.t.acento, "recente": self.t.acento,
+                   "no_ar": self.t.ok,
                    "erro": self.t.erro}.get(status, self.t.borda)
             self.canvas.itemconfigure(bot["rotulo_fundo"], outline=cor)
             self.canvas.itemconfigure(
@@ -324,6 +327,7 @@ class CenaVila:
                 state="normal" if contas else "hidden")
             self._ajustar_fundo(bot["bandeira_fundo"], bot["bandeira"], 2, 0)
             bot["efeito"] = {"trabalhando": "fx.trabalho",
+                             "recente": "fx.trabalho",
                              "erro": "fx.erro"}.get(status)
         ociosos = sum(1 for b in self._bots.values() if b["status"] == "ocioso")
         self.canvas.itemconfigure(

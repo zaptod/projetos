@@ -1062,9 +1062,19 @@ class Janela(tk.Tk):
         linhas = [(f"{dados.emoji(nome)} {dados.rotulo(nome)} — "
                    f"{dados.PREDIOS[nome]['faz']}\n", "forte")]
         status = {"trabalhando": "trabalhando", "erro": "com erro recente",
+                  "recente": "com atividade nos últimos minutos",
                   "no_ar": "no ar", "ocioso": "ocioso"}.get(
             info.get("status"), "sem leitura ainda")
         linhas.append((f"estado: {status}\n", ""))
+        recente = info.get("recente")
+        if recente and not info.get("trabalhos"):
+            evento = recente["evento"]
+            linhas.append((f"\n· {recente['texto']}  "
+                           f"({evento.get('canal') or 'sem canal'})\n",
+                           "inicio"))
+            linhas.append((f"  há {dados.duracao(recente['ha_s'])} · "
+                           f"{evento.get('status', '')} · pid "
+                           f"{evento.get('pid', '?')}\n", "fraco"))
         for t in info.get("trabalhos") or []:
             desde = t.get("desde")
             linhas.append((f"\n▶ {t['texto']}  ({t['canal'] or 'sem canal'})\n",

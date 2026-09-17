@@ -411,6 +411,59 @@ def erros_recentes(eventos: list[dict], agora_utc: datetime | None = None,
     return saida
 
 
+# Evento solto (vistoria, rodada, `ok` de render) nesta janela tambem conta
+# como trabalho: o Estudio registra muita coisa so como `log`, sem `inicio`,
+# e a tela dizia "tudo parado" com o render acontecendo (17/09/2026).
+JANELA_RECENTE_S = 10 * 60
+
+
+def _idade(evento: dict, agora_utc: datetime) -> float | None:
+    try:
+        ts = datetime.fromisoformat(str(evento.get("ts")))
+    except (TypeError, ValueError):
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return (agora_utc - ts).total_seconds()
+
+
+def atividade_recente(eventos: list[dict], agora_utc: datetime | None = None,
+                      janela_s: float = JANELA_RECENTE_S,
+                      vivo=None) -> dict:
+    """{predio: {evento, balao, texto, ha_s}} do que aconteceu ha pouco.
+
+    Erro fica de fora (tem o proprio estado). O balao prefere o ultimo
+    evento que diz A QUAL coisa se refere (`ref`): "vistoria historia_09002
+    p1" diz mais que "rodada: historia", que veio depois.
+    """
+    agora_utc = agora_utc or datetime.now(timezone.utc)
+    vivo = vivo or _pid_vivo
+    por_predio: dict[str, list] = {}
+    for evento in reversed(eventos):
+        idade = _idade(evento, agora_utc)
+        if idade is None:
+            continue
+        if idade > janela_s:
+            if idade > janela_s * 6:
+                break
+            continue
+        if evento.get("status") == "erro" or not evento.get("fabrica"):
+            continue
+        # `inicio` de processo que MORREU e trabalho abortado, nao atividade.
+        if evento.get("status") == "inicio" and vivo(evento.get("pid")) is False:
+            continue
+        por_predio.setdefault(predio_do_evento(evento), []).append(
+            (idade, evento))
+    saida = {}
+    for predio, lista in por_predio.items():
+        idade, evento = next(((i, e) for i, e in lista if e.get("ref")),
+                             lista[0])
+        saida[predio] = {"evento": evento, "balao": balao(evento),
+                         "texto": balao(evento, 40), "ha_s": idade,
+                         "pid": evento.get("pid")}
+    return saida
+
+
 def linha_do_diario(evento: dict) -> tuple[str, str]:
     """(texto, marca) de uma linha do feed. A marca e a cor na tela."""
     momento = quando(evento.get("ts"))
@@ -429,13 +482,23 @@ def linha_do_diario(evento: dict) -> tuple[str, str]:
 
 
 def estado_dos_predios(abertos: list[dict], erros: list[dict],
-                       ocupadas: list[str]) -> dict:
-    """{predio: {status, balao, trabalhos, contas, erro}} para desenhar."""
+                       ocupadas: list[str],
+                       recentes: dict | None = None) -> dict:
+    """{predio: {status, balao, trabalhos, contas, erro, recente}}.
+
+    status: trabalhando (`inicio` aberto) > erro > recente (evento nos
+    ultimos minutos) > ocioso. `recente` tambem leva o bot ao predio.
+    """
     contas = contas_por_predio(ocupadas)
+    recentes = recentes or {}
     saida = {}
     for nome in PREDIOS:
         trabalhos = [t for t in abertos if t["predio"] == nome]
         erro = next((e for e in erros if e["predio"] == nome), None)
+        recente = recentes.get(nome)
+        if erro is not None and recente is not None \
+                and recente["ha_s"] < erro["ha_s"]:
+            erro = None          # houve atividade DEPOIS do erro
         if trabalhos:
             status = "trabalhando"
             texto = trabalhos[0]["balao"]
@@ -443,11 +506,13 @@ def estado_dos_predios(abertos: list[dict], erros: list[dict],
                 texto = f"{texto} +{len(trabalhos) - 1}"
         elif erro is not None:
             status, texto = "erro", "❗ " + balao(erro, 26)
+        elif recente is not None:
+            status, texto = "recente", recente["balao"]
         else:
             status, texto = "ocioso", "💤"
         saida[nome] = {"status": status, "balao": texto,
                        "trabalhos": trabalhos, "contas": contas.get(nome, []),
-                       "erro": erro}
+                       "erro": erro, "recente": recente}
     # O bot do Telegram nao escreve `inicio` no diario: ele "trabalha" o dia
     # inteiro. Quem diz se ele esta vivo e a trava dele.
     if "remoto__bot" in ocupadas and saida["bot"]["status"] == "ocioso":
@@ -477,11 +542,15 @@ def classificar_processo(linha_de_comando: str) -> dict | None:
     if "pytest" in baixo or "testar.py" in baixo or "unittest" in baixo:
         return {"tipo": "testes", "emoji": "🧪", "quem": "Testes"}
     if "/scratchpad/" in baixo:
-        # O caminho do scratchpad e de uma sessao do Claude; o nome do
-        # arquivo basta, o resto nao diz nada util e e comprido.
+        # Script de uma sessao de desenvolvimento. O nome do arquivo basta
+        # (o caminho e comprido e nao diz nada). A REMESSA e excecao: e
+        # producao de historias rodando por la, e conta como trabalho.
         arquivo = baixo.rsplit("/", 1)[-1].split()[0].strip('"')
-        return {"tipo": "sessao", "emoji": "💻",
-                "quem": f"Sessão do Claude ({arquivo})"}
+        if arquivo.startswith("remessa"):
+            return {"tipo": "remessa", "emoji": "📚",
+                    "quem": f"Remessa de histórias ({arquivo})"}
+        return {"tipo": "sessao", "emoji": "·",
+                "quem": f"sessão de desenvolvimento ({arquivo})"}
     achado = re.search(r"([\w.-]+\.py)\b(.*)$", cmd.replace("\\", "/"))
     if achado:
         resto = achado.group(2).split()
@@ -525,14 +594,33 @@ def ler_processos_json(texto: str) -> list[dict]:
     return saida
 
 
+# Processo destes tipos VIVO ja e trabalho, com ou sem etapa no diario.
+PRODUCAO = ("historias", "postar", "remessa")
+# A ordem na lista: producao, o bot, o resto; desenvolvimento por ultimo.
+_ORDEM_TIPO = {"historias": 0, "postar": 0, "remessa": 0, "diario": 0,
+               "bot": 1, "painel": 2, "oficina": 2, "script": 2,
+               "modulo": 2, "python": 2, "sessao": 3, "testes": 3}
+
+
 def linhas_vivas(processos: list[dict], abertos: list[dict],
-                 agora: datetime, meu_pid: int | None = None) -> list[dict]:
+                 agora: datetime, meu_pid: int | None = None,
+                 eventos: list[dict] | None = None,
+                 agora_utc: datetime | None = None) -> list[dict]:
     """Uma linha por processo vivo: quem, o que, desde quando.
 
-    O "o que" vem do diario (os `inicio` abertos daquele PID). Trabalho
-    aberto cujo PID nao esta na lista (outro interpretador, lista velha)
-    ganha linha propria — melhor repetido que escondido.
+    O "o que" vem do diario: os `inicio` abertos daquele PID ou, sem eles,
+    o ultimo evento dele nos ultimos minutos. Processo de PRODUCAO vivo e
+    trabalho mesmo sem nada no diario. Trabalho aberto cujo PID nao esta na
+    lista ganha linha propria — melhor repetido que escondido.
     """
+    agora_utc = agora_utc or datetime.now(timezone.utc)
+    ultimo_do_pid: dict = {}
+    for evento in eventos or []:
+        if evento.get("pid") is None or evento.get("status") == "erro":
+            continue
+        idade = _idade(evento, agora_utc)
+        if idade is not None and idade <= JANELA_RECENTE_S:
+            ultimo_do_pid[str(evento["pid"])] = (idade, evento)
     linhas = []
     pids = set()
     for proc in processos:
@@ -543,19 +631,29 @@ def linhas_vivas(processos: list[dict], abertos: list[dict],
             continue
         pids.add(proc["pid"])
         dele = [t for t in abertos if _mesmo_pid(t.get("pid"), proc["pid"])]
+        recente = ultimo_do_pid.get(str(proc["pid"]))
         if dele:
             oque = " · ".join(f"{t['texto']} ({rotulo(t['predio'])})"
                               for t in dele)
+        elif recente is not None:
+            idade, evento = recente
+            oque = (f"{balao(evento, 40)} "
+                    f"({rotulo(predio_do_evento(evento))}, "
+                    f"há {duracao(idade)})")
         elif tipo["tipo"] == "bot":
             oque = "ouvindo o celular e avisando erros"
+        elif tipo["tipo"] in PRODUCAO:
+            oque = "rodando (sem etapa no diário ainda)"
         else:
-            oque = "sem etapa aberta no diário"
+            oque = "sem etapa no diário"
         inicio = proc.get("inicio")
+        ativo = (bool(dele) or recente is not None
+                 or tipo["tipo"] in PRODUCAO) and tipo["tipo"] != "sessao"
         linhas.append({
             "emoji": tipo["emoji"], "quem": tipo["quem"], "oque": oque,
             "desde": inicio.strftime("%H:%M") if inicio else "?",
             "ha": duracao((agora - inicio).total_seconds()) if inicio else "",
-            "pid": proc["pid"], "ativo": bool(dele), "tipo": tipo["tipo"],
+            "pid": proc["pid"], "ativo": ativo, "tipo": tipo["tipo"],
             "ordem": inicio or agora})
     for t in abertos:
         if any(_mesmo_pid(t.get("pid"), p) for p in pids):
@@ -567,8 +665,10 @@ def linhas_vivas(processos: list[dict], abertos: list[dict],
             "desde": desde.strftime("%H:%M") if desde else "?",
             "ha": duracao(t.get("ha_s")), "tipo": "diario",
             "ordem": desde or agora})
-    # Quem trabalha primeiro; dentro disso, o mais antigo primeiro.
-    linhas.sort(key=lambda l: (not l["ativo"], l["ordem"]))
+    # Producao primeiro, desenvolvimento por ultimo; dentro de cada grupo,
+    # quem trabalha antes, e o mais antigo antes.
+    linhas.sort(key=lambda l: (_ORDEM_TIPO.get(l["tipo"], 2), not l["ativo"],
+                               l["ordem"]))
     return linhas
 
 
@@ -663,14 +763,24 @@ def resumo(estado: dict) -> dict:
         alerta = "o bot do Telegram não está no ar"
     elif agendador.get("ok") is False:
         alerta = agendador.get("selo", "tarefas do Agendador com problema")
+    # TRABALHO REAL tem tres fontes, e "tudo parado" so quando nenhuma diz
+    # nada: `inicio` aberto, processo de producao vivo, evento recente.
+    focos = [a["texto"] for a in abertos]
+    predios_com_foco = {a.get("predio") for a in abertos}
+    for predio, info in (estado.get("predios") or {}).items():
+        if info.get("status") == "recente" and predio not in predios_com_foco:
+            focos.append(info["balao"])
+    for linha in estado.get("vivos") or []:
+        if linha.get("tipo") in PRODUCAO and linha.get("ativo"):
+            focos.append(linha["quem"])
     if erros or bot.get("vivo") is False or quebradas:
         nivel = "erro"
-    elif abertos:
+    elif focos:
         nivel = "trabalhando"
     else:
         nivel = "calmo"
-    if abertos:
-        frase = f"⚙ {len(abertos)} trabalhando · {abertos[0]['texto']}"
+    if focos:
+        frase = f"⚙ {len(focos)} em andamento · {focos[0]}"
     else:
         frase = "💤 tudo parado"
     if erros:

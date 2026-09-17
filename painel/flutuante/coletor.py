@@ -227,9 +227,21 @@ class Coletor:
         c = self.caminhos
         eventos = dados.ler_diario(c.diario)
         ocupadas = dados.travas_ocupadas(c.travas)
-        abertos = dados.trabalhos_abertos(eventos, agora_utc)
-        erros = dados.erros_recentes(eventos, agora_utc)
         processos = self._processos or []
+        # Quem esta na lista de processos esta vivo, sem perguntar de novo.
+        pids = {p["pid"] for p in processos}
+
+        def vivo(pid):
+            try:
+                if int(pid) in pids:
+                    return True
+            except (TypeError, ValueError):
+                pass
+            return dados._pid_vivo(pid)
+
+        abertos = dados.trabalhos_abertos(eventos, agora_utc, vivo=vivo)
+        erros = dados.erros_recentes(eventos, agora_utc)
+        recentes = dados.atividade_recente(eventos, agora_utc, vivo=vivo)
         por_canal = {canal: self._ledgers(caminho, [])
                      for canal, caminho in c.ledgers.items()}
         terminais = {nome: self._terminais(caminho, [])
@@ -257,10 +269,11 @@ class Coletor:
             "erros": erros,
             "ocupadas": ocupadas,
             "travas": [t for t in (dados.ler_trava(n) for n in ocupadas) if t],
-            "predios": dados.estado_dos_predios(abertos, erros, ocupadas),
+            "predios": dados.estado_dos_predios(abertos, erros, ocupadas,
+                                                recentes),
             "processos_conhecidos": self._processos is not None,
             "vivos": dados.linhas_vivas(processos, abertos, agora,
-                                        os.getpid()),
+                                        os.getpid(), eventos, agora_utc),
             "publicados": dados.ultimos_publicados(por_canal, 5),
             "terminais": terminais,
             "bot": {
