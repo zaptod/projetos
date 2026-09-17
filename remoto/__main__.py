@@ -29,6 +29,15 @@ Como criar o bot (uma vez, de graça):
 """
 
 
+def _limpar_consertos_orfaos() -> None:
+    """Worktree e pasta de conserto interrompido. Nunca derruba a subida."""
+    try:
+        from .apurador import limpar_orfaos
+        limpar_orfaos()
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="remoto",
                                      description="bot de Telegram do painel")
@@ -79,8 +88,8 @@ def main(argv=None) -> int:
         print(f"apurar .....: {'sim' if atual.get('apurar', True) else 'nao'}"
               "  (o Claude le os arquivos e diz o que houve)")
         print(f"consertar ..: "
-              f"{'SIM' if atual.get('consertar', True) else 'nao'}"
-              "  (e MEXE no codigo; so fica se a suite passar)")
+              f"{'SIM' if atual.get('consertar') is True else 'nao'}"
+              "  (numa copia do repositorio; o que passar vira branch)")
         return 0
 
     if not config.token():
@@ -122,12 +131,14 @@ def ligar() -> int:
     try:
         from builds import travas
     except ImportError:              # sem o monorepo instalado, segue sozinho
+        _limpar_consertos_orfaos()
         Bot().rodar()
         return 0
     with travas.trava("remoto__bot", esperar=0.0) as minha:
         if not minha:
             print("[remoto] ja tem um bot no ar; este sai sem fazer nada.")
             return 0
+        _limpar_consertos_orfaos()
         Bot().rodar()
     return 0
 

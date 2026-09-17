@@ -505,18 +505,30 @@ class ApuracaoTests(BaseTemp):
                          "bypassPermissions", "acceptEdits"):
             self.assertNotIn(perigosa, corpo, f"{perigosa} nao pode entrar")
 
-    def test_o_CONSERTO_edita_mas_nao_roda_comando(self):
+    def test_o_CONSERTO_edita_so_dentro_da_pasta_e_nao_roda_comando(self):
         """Ele pediu que mexesse no codigo. Bash e outra conversa.
 
-        Editar arquivo, com a suite julgando depois, e reversivel. Rodar
-        comando arbitrario e o que transforma um engano em estrago — e quem
-        roda a suite e o `_testar()`, que o agente nao alcanca.
+        E a edicao fica PRESA a pasta onde o agente roda (a worktree): com
+        `dontAsk`, o que nao esta na lista e negado — inclusive `Edit` com
+        caminho absoluto da arvore principal (revisao de 16/09/2026).
         """
-        corpo = self._corpo("consertar")
-        self.assertIn('"Edit", "Write"', corpo)
-        for perigosa in ('"Bash"', "--dangerously-skip-permissions",
-                         "bypassPermissions"):
-            self.assertNotIn(perigosa, corpo, f"{perigosa} nao pode entrar")
+        from remoto import apurador
+        comando = apurador.comando_de_conserto("claude", "prompt")
+        permitidas = comando[comando.index("--allowedTools") + 1:
+                             comando.index("--disallowedTools")]
+        negadas = comando[comando.index("--disallowedTools") + 1:
+                          comando.index("--permission-mode")]
+        self.assertIn("Edit(./**)", permitidas)
+        self.assertIn("Write(./**)", permitidas)
+        self.assertNotIn("Edit", permitidas, "Edit sem caminho libera tudo")
+        self.assertNotIn("Write", permitidas)
+        self.assertIn("Bash", negadas)
+        self.assertIn("Edit(./.git/**)", negadas)
+        self.assertEqual("dontAsk",
+                         comando[comando.index("--permission-mode") + 1])
+        for perigosa in ("--dangerously-skip-permissions", "bypassPermissions",
+                         "acceptEdits"):
+            self.assertNotIn(perigosa, comando)
 
     def test_o_conserto_nao_alcanca_outputs_nem_git(self):
         from remoto import apurador
@@ -632,6 +644,7 @@ class ProtecoesDoConsertoTests(BaseTemp):
         self.status_da_worktree = " M historias/contos/pipeline/agenda.py"
         self.suite_passa = True
         self.arvore_principal_suja = False
+        self.agente_mexe_na_principal = False
 
         def git(args, cwd=None, timeout=120):
             self.chamadas.append((tuple(args), str(cwd) if cwd else None))
@@ -658,19 +671,31 @@ class ProtecoesDoConsertoTests(BaseTemp):
         travas.ocupada = lambda _nome: False
 
         self.suites = []
+        type(self)._testar_de_verdade = staticmethod(apurador._testar)
         for nome, valor in (
                 ("_git", git),
                 ("caminho_do_claude", lambda: "claude"),
-                ("_rodar_claude", lambda comando, pasta: type(
-                    "P", (), {"stdout": "mexi", "returncode": 0})()),
-                ("_testar", lambda pasta=None: (
+                ("_rodar_claude", self._claude_falso),
+                ("_testar", lambda pasta=None, timeout=1800: (
                     self.suites.append(str(pasta)) or
                     (self.suite_passa, "TUDO VERDE" if self.suite_passa
                      else "FALHOU"))),
+                ("retrato_da_arvore", self._retrato_falso),
                 ("_estado_path", lambda: self.pasta / "apuracoes.json"),
                 ("RAIZ", self.pasta)):
             self.addCleanup(setattr, apurador, nome, getattr(apurador, nome))
             setattr(apurador, nome, valor)
+
+    def _claude_falso(self, comando, pasta):
+        self.claude = {"comando": list(comando), "pasta": str(pasta)}
+        if self.agente_mexe_na_principal:
+            self.retratos_depois = {"status": " M remoto/bot.py"}
+        return type("P", (), {"stdout": "mexi", "returncode": 0})()
+
+    def _retrato_falso(self):
+        if not hasattr(self, "claude"):
+            return {"status": ""}
+        return getattr(self, "retratos_depois", {"status": ""})
 
     def _chamou(self, comando):
         return [c for c in self.chamadas if c[0][:len(comando)] == comando]
@@ -731,6 +756,139 @@ class ProtecoesDoConsertoTests(BaseTemp):
         self.assertFalse(saida["mexeu"])
         self.assertTrue(self._chamou(("branch", "-D")))
 
+
+    # ---- revisao independente de 16/09/2026 (A1 a A7)
+    def _trocar_subprocess(self, popen):
+        # A REFERENCIA `apurador.subprocess`, nunca o modulo `subprocess`:
+        # trocar `subprocess.Popen` valeria para o processo inteiro.
+        import subprocess
+        import types
+        falso = types.SimpleNamespace(
+            Popen=popen, PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT,
+            TimeoutExpired=subprocess.TimeoutExpired, run=subprocess.run,
+            CREATE_NO_WINDOW=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self.addCleanup(setattr, self.ap, "subprocess", self.ap.subprocess)
+        self.ap.subprocess = falso
+
+    def test_o_claude_roda_na_worktree_com_o_comando_preso(self):
+        self.ap.consertar([{"fabrica": "picasso"}], "diag",
+                          log=lambda *_a: None)
+        (add,) = self._chamou(("worktree", "add"))
+        self.assertEqual(add[0][4], self.claude["pasta"])
+        self.assertIn("Edit(./**)", self.claude["comando"])
+        self.assertIn(add[0][4], self.claude["comando"][2],
+                      "o prompt tem de dizer a pasta")
+
+    def test_agente_que_mexe_na_arvore_principal_dispara_alarme(self):
+        self.agente_mexe_na_principal = True
+        alarmes = []
+        self.addCleanup(setattr, self.ap, "_alarmar", self.ap._alarmar)
+        self.ap._alarmar = alarmes.append
+        saida = self.ap.consertar([{"fabrica": "picasso"}], "diag",
+                                  log=lambda *_a: None)
+        self.assertFalse(saida["mexeu"])
+        self.assertTrue(saida["alarme"])
+        self.assertEqual(1, len(alarmes))
+        self.assertFalse(self._chamou(("commit",)))
+        self.assertTrue(self._chamou(("branch", "-D")))
+
+    def test_conserto_que_mexe_em_teste_nao_e_julgado(self):
+        self.status_da_worktree = ("?? remoto/test_novo.py" + chr(10)
+                                   + " M remoto/apurador.py")
+        saida = self.ap.consertar([{"fabrica": "picasso"}], "diag",
+                                  log=lambda *_a: None)
+        self.assertFalse(saida["mexeu"])
+        self.assertIn("teste", saida["motivo"])
+        self.assertEqual([], self.suites, "a suite nao pode rodar")
+
+    def test_reconhece_arquivos_de_teste(self):
+        for caminho in ("remoto/test_remoto.py", "historias/tests/x.py",
+                        "conftest.py", "testar.py", "a/b_test.py"):
+            self.assertTrue(self.ap.e_teste(caminho), caminho)
+        for caminho in ("remoto/apurador.py", "painel/testemunho.py"):
+            self.assertFalse(self.ap.e_teste(caminho), caminho)
+
+    def test_a_suite_recebe_o_ambiente_da_worktree(self):
+        vistos = {}
+
+        class PopenFalso:
+            returncode = 0
+            pid = 1
+
+            def __init__(self, comando, **kw):
+                vistos.update(kw)
+
+            def communicate(self, timeout=None):
+                return "TUDO VERDE", None
+
+        self._trocar_subprocess(PopenFalso)
+        real = type(self)._testar_de_verdade
+        passou, _ = real(Path("C:/w/arvore"))
+        self.assertTrue(passou)
+        self.assertEqual(str(Path("C:/w/arvore")), vistos["cwd"])
+        self.assertIn(str(Path("C:/w/arvore") / "random_builds"),
+                      vistos["env"]["PYTHONPATH"])
+
+    def test_suite_que_passa_do_tempo_mata_a_arvore_de_processos(self):
+        mortos = []
+
+        class PopenLento:
+            returncode = None
+            pid = 4242
+
+            def __init__(self, comando, **kw):
+                pass
+
+            def communicate(self, timeout=None):
+                if not mortos:
+                    raise self_ap.subprocess.TimeoutExpired("testar", timeout)
+                return "", None
+
+        self_ap = self.ap
+        self.addCleanup(setattr, self.ap, "_matar_arvore", self.ap._matar_arvore)
+        self._trocar_subprocess(PopenLento)
+        self.ap._matar_arvore = mortos.append
+        passou, motivo = type(self)._testar_de_verdade(Path("C:/w"), timeout=1)
+        self.assertFalse(passou)
+        self.assertEqual([4242], mortos)
+        self.assertIn("encerrada", motivo)
+
+    def test_ref_e_obrigatorio_e_normalizado(self):
+        repetido = lambda **k: [self._erro(**k), self._erro(**k)]
+        fontes = {"historia_00016", "generation_00081"}
+        for ref in ("historia_00016", "historia_00016:p3",
+                    "historia_00016:celular:p02",
+                    "generation_00081:build:celular|titulo_repetido"):
+            erro = self._erro(ref=ref)
+            self.assertEqual([erro], self.ap.erros_que_valem(
+                [erro], recentes=repetido(ref=ref), fontes=fontes), ref)
+        sem_ref = self._erro()
+        self.assertEqual([], self.ap.erros_que_valem(
+            [sem_ref], recentes=[sem_ref, sem_ref], fontes=fontes))
+
+    def test_estado_ilegivel_conta_como_teto_esgotado(self):
+        (self.pasta / "apuracoes.json").write_text("{quebrado",
+                                                   encoding="utf-8")
+        motivo = self.ap.motivo_para_nao_consertar([{"fabrica": "picasso"}])
+        self.assertIn("ilegivel", motivo)
+
+    def test_tentativa_conta_mesmo_quando_falha(self):
+        self.suite_passa = False
+        self.ap.consertar([{"fabrica": "picasso"}], "diag",
+                          log=lambda *_a: None)
+        self.assertEqual(1, self.ap.tentativas_hoje())
+
+    def test_limpa_consertos_orfaos(self):
+        orfa = self.pasta / "conserto-velho"
+        orfa.mkdir()
+        (orfa / "lixo.txt").write_text("x", encoding="utf-8")
+        self.addCleanup(setattr, self.ap.tempfile, "gettempdir",
+                        self.ap.tempfile.gettempdir)
+        self.ap.tempfile.gettempdir = lambda: str(self.pasta)
+        self.assertEqual(1, self.ap.limpar_orfaos(log=lambda *_a: None))
+        self.assertFalse(orfa.exists())
+        self.assertTrue(self._chamou(("worktree", "prune")))
+
     # ---- 1 e 5: arvore limpa, teto, travas
     def test_arvore_suja_so_diagnostico(self):
         self.arvore_principal_suja = True
@@ -739,7 +897,7 @@ class ProtecoesDoConsertoTests(BaseTemp):
 
     def test_teto_de_consertos_por_dia(self):
         for _ in range(self.ap.TETO_CONSERTOS_DIA):
-            self.ap._somar_conserto()
+            self.ap._somar_tentativa()
         motivo = self.ap.motivo_para_nao_consertar([{"fabrica": "picasso"}])
         self.assertIn("teto", motivo)
 
@@ -760,28 +918,31 @@ class ProtecoesDoConsertoTests(BaseTemp):
                      "detalhe": detalhe}, **extra)
 
     def test_erro_unico_nao_vale(self):
-        erro = self._erro()
-        self.assertEqual([], self.ap.erros_que_valem([erro], recentes=[erro]))
+        erro = self._erro(ref="historia_00016")
+        self.assertEqual([], self.ap.erros_que_valem(
+            [erro], recentes=[erro], fontes={"historia_00016"}))
 
     def test_erro_repetido_vale_mesmo_com_numero_diferente(self):
-        a, b = self._erro("quebrou no passo 3"), self._erro("quebrou no passo 7")
-        self.assertEqual([a], self.ap.erros_que_valem([a], recentes=[a, b]))
+        a = self._erro("quebrou no passo 3", ref="historia_00016")
+        b = self._erro("quebrou no passo 7", ref="historia_00016")
+        self.assertEqual([a], self.ap.erros_que_valem(
+            [a], recentes=[a, b], fontes={"historia_00016"}))
 
     def test_ref_de_duble_nao_vale(self):
         # "trava:build:celular" veio de teste e abriu conserto (16/09/2026).
         erro = self._erro(ref="trava:build:celular")
         self.assertEqual([], self.ap.erros_que_valem(
-            [erro], recentes=[erro, erro], ids={"trava:build:celular"}))
+            [erro], recentes=[erro, erro], fontes={"trava"}))
 
     def test_ref_que_nao_existe_no_catalogo_nao_vale(self):
         erro = self._erro(ref="generation_09999:build:celular")
         self.assertEqual([], self.ap.erros_que_valem(
-            [erro], recentes=[erro, erro], ids={"generation_00081:build:celular"}))
+            [erro], recentes=[erro, erro], fontes={"generation_00081"}))
 
     def test_ref_real_e_repetida_vale(self):
         erro = self._erro(ref="generation_00081:build:celular")
         self.assertEqual([erro], self.ap.erros_que_valem(
-            [erro], recentes=[erro, erro], ids={"generation_00081:build:celular"}))
+            [erro], recentes=[erro, erro], fontes={"generation_00081"}))
 
     def test_nenhum_erro_que_vale_e_motivo(self):
         self.assertIn("nenhum erro vale",
@@ -793,6 +954,41 @@ class ProtecoesDoConsertoTests(BaseTemp):
                                     "commit": "abc1234", "arquivos": ["a.py"]})
         self.assertIn("conserto/x", texto)
         self.assertIn("o merge e seu", texto)
+
+
+class ConsertoFalhaFechadoTests(BaseTemp):
+    """Religar exige `"consertar": true` escrito. Ilegivel = desligado."""
+
+    def test_padrao_e_desligado(self):
+        self.assertIs(False, config.PADRAO["consertar"])
+
+    def test_arquivo_ilegivel_desliga(self):
+        Path(config.ARQUIVO).write_text("{nao e json", encoding="utf-8")
+        self.assertIs(False, config.carregar().get("consertar"))
+
+    def test_so_true_liga(self):
+        from remoto import apurador
+        chamadas = []
+        for alvo, nome, valor in (
+                (apurador, "pendentes",
+                 lambda *a, **k: [{"ts": "x", "fabrica": "picasso"}]),
+                (apurador, "apurar", lambda *a, **k: "diagnostico"),
+                (apurador, "marcar", lambda *a, **k: None),
+                (apurador, "erros_que_valem", lambda erros, **k: erros),
+                (apurador, "motivo_para_nao_consertar",
+                 lambda *a, **k: chamadas.append(1) or "parei")):
+            self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))
+            setattr(alvo, nome, valor)
+        for valor in ("true", 1, "sim", None):
+            Path(config.ARQUIVO).write_text(
+                '{"consertar": %s}' % __import__("json").dumps(valor),
+                encoding="utf-8")
+            apurador.uma_volta(log=lambda *_a: None)
+        self.assertEqual([], chamadas, "so `true` de JSON liga o conserto")
+        Path(config.ARQUIVO).write_text('{"consertar": true}',
+                                        encoding="utf-8")
+        apurador.uma_volta(log=lambda *_a: None)
+        self.assertEqual([1], chamadas)
 
 
 class VencimentoTests(BaseTemp):

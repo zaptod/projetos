@@ -45,7 +45,9 @@ PADRAO = {
     # ... e, com isto, ela tambem MEXE no codigo. Pedido dele em 08/09/2026.
     # O conserto so sobrevive se a suite inteira passar; reprovou, e desfeito.
     # Desligue aqui se um dia quiser so o diagnostico.
-    "consertar": True,
+    # DESLIGADO POR PADRAO (16/09/2026): religar exige `"consertar": true`
+    # escrito no remoto.json. Arquivo ilegivel cai aqui, e aqui e falso.
+    "consertar": False,
     # Os dois relatorios periodicos (pedido de 09/09/2026), e a hora local de
     # cada um. Hora vazia ou invalida = aquele relatorio nao sai sozinho (o
     # comando continua funcionando).
