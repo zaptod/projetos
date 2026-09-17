@@ -362,12 +362,25 @@ BOTAO_PUBLICAR_ASSIM = (
 # ate HD" quer dizer que o SD ja existe e o HD esta a caminho. Tratar as duas
 # como a mesma coisa era o que escondia o problema.
 FASES = (
-    ("subindo", ("fazendo upload", "enviando", "uploading",
-                 "processamento vai comecar", "processing will begin")),
+    # "salvando" ENTRA AQUI desde 17/09/2026. Medido na prova gravada da
+    # `historia_00016:celular:p02`: no instante do clique a barra dizia
+    # "salvando..." com "10 minutos restantes" pela frente, nenhuma frase de
+    # FASES casava, e o estagio saiu como `desconhecida`. Sem esta palavra a
+    # medicao fica cega justamente no momento que ela existe para medir.
+    ("subindo", ("fazendo upload", "enviando", "uploading", "salvando",
+                 "saving", "processamento vai comecar", "processing will begin")),
     ("processando", ("processando ate sd", "processando video",
                      "processing sd")),
     ("sd", ("processando ate hd", "processing hd")),
 )
+
+# Quanto esperar o video ficar pronto ANTES de clicar em publicar. O teto sai
+# da grade (ver `_teto_da_espera`): esperar nao pode empurrar a rodada para
+# dentro do horario seguinte.
+ESPERA_QUALIDADE_S = 300.0
+# Mesmo comecando atrasado, vale esperar um pouco: publicar "em subindo" e o
+# pior desfecho possivel.
+PISO_DA_ESPERA_S = 30.0
 PROCESSANDO = tuple(frase for _, frases in FASES for frase in frases)
 # "3 minutos restantes" — quanto o Studio ainda pede.
 FALTA = re.compile(
@@ -402,6 +415,112 @@ def _sem_acento(texto: str) -> str:
     import unicodedata
     return "".join(c for c in unicodedata.normalize("NFD", str(texto or ""))
                    if unicodedata.category(c) != "Mn").lower()
+
+
+def _teto_da_espera() -> float:
+    """Quanto da para esperar sem invadir o proximo horario da grade.
+
+    Derivado da grade, e nao um numero fixo: o buraco mais apertado hoje e
+    20:37 -> 21:37, e um teto fixo que caiba ali serve — mas deixa de servir
+    no dia em que alguem mexer nos horarios, em silencio. Piso de 30 s para a
+    rodada que comeca atrasada: mesmo sem folga, esperar meio minuto e melhor
+    que publicar um arquivo que ainda esta subindo.
+    """
+    try:
+        from datetime import datetime, timedelta
+        from .. import grade
+        agora = datetime.now()
+        faltas = []
+        for h in grade.HORAS:
+            alvo = agora.replace(hour=h, minute=grade.minuto(h), second=0,
+                                 microsecond=0)
+            if alvo <= agora:
+                alvo += timedelta(days=1)
+            faltas.append((alvo - agora).total_seconds())
+        folga = min(faltas) - 120          # 2 min para a rodada terminar
+    except Exception:                                          # noqa: BLE001
+        folga = ESPERA_QUALIDADE_S
+    return max(PISO_DA_ESPERA_S, min(ESPERA_QUALIDADE_S, folga))
+
+
+def _nao_publicar_ainda(estagio: dict) -> bool:
+    """O estagio em que publicar produz video quebrado.
+
+    `subindo`: o arquivo nao chegou inteiro.
+    `processando`: chegou, mas NADA e assistivel ainda ("processando ate SD"
+        quer dizer que nem o SD existe).
+    `sd`: ja existe video de verdade, que melhora sozinho — um Short em SD na
+        primeira hora rende mais que um Short perfeito que nao saiu.
+    `hd` e `desconhecida`: publica.
+    """
+    return estagio.get("qualidade") in ("subindo", "processando")
+
+
+def _esperar_qualidade(page, passo, laudo: dict, *, canal: str = "builds",
+                       limite_s: float | None = None) -> dict:
+    """Espera o YouTube terminar de processar antes do clique.
+
+    O botao `#done-button` habilita quando o ARQUIVO TERMINA DE SUBIR, e nao
+    quando o YouTube termina de processar. Medido em 16/09/2026: nove
+    publicacoes sairam com a barra dizendo "processando" ou "subindo" — o
+    video ia ao ar antes de existir nem em SD, justamente na primeira hora,
+    que e quando o algoritmo mede o Short. E metade dos "Publicar mesmo
+    assim" coincidia com isso.
+
+    `desconhecida` ESPERA como `processando`, e nao publica na hora: "nao
+    consegui ler" nao e "pronto". E o mesmo erro do botao habilitado, e o do
+    `None` que virava `False`. No estouro do teto ela publica — uma troca de
+    layout do Studio nao pode derrubar todas as postagens — mas grava ERRO,
+    para a apuracao pegar na primeira vez.
+    """
+    def ler():
+        # LER NUNCA PODE DERRUBAR A POSTAGEM. `_qualidade_agora` ja se protege
+        # por dentro, mas esta funcao e o unico caminho de saida da espera:
+        # se ela levantar, o video fica no navegador e a rodada perde o
+        # horario — trocando um problema de qualidade por um de existencia.
+        try:
+            return _qualidade_agora(page)
+        except Exception:                                      # noqa: BLE001
+            return {"qualidade": "desconhecida", "falta": "", "texto": "",
+                    "reconhecido": False, "escopo": "nenhum"}
+
+    limite = _teto_da_espera() if limite_s is None else limite_s
+    comeco = time.monotonic()
+    estagio = ler()
+    laudo["qualidade_ao_habilitar"] = estagio["qualidade"]
+    esperou = 0.0
+    # `sd` ENTRA NA ESPERA, mas NAO na guarda: sao perguntas diferentes.
+    # "Vale a pena esperar o HD?" — vale, o teto e barato e sai da grade.
+    # "Da para publicar assim?" — da, ja existe video de verdade no ar.
+    while (estagio["qualidade"] in ("subindo", "processando", "sd",
+                                    "desconhecida")
+           and esperou < limite):
+        passo(f"esperando o processamento ({estagio['qualidade']}"
+              + (f", {estagio['falta']}" if estagio["falta"] else "") + ")...")
+        time.sleep(5)
+        esperou = time.monotonic() - comeco
+        estagio = ler()
+    laudo["esperou_s"] = round(esperou, 1)
+    laudo["qualidade_no_clique"] = estagio["qualidade"]
+    laudo["falta_texto"] = estagio["falta"]
+    laudo["texto_da_barra"] = estagio["texto"]
+    laudo["reconhecido"] = estagio["reconhecido"]
+    laudo["escopo"] = estagio["escopo"]
+    if esperou >= limite:
+        laudo["estourou_a_espera"] = True
+        passo(f"o processamento nao terminou em {limite:.0f}s "
+              f"(ficou em {estagio['qualidade']})")
+        if estagio["qualidade"] == "desconhecida":
+            try:
+                atividade.registrar(
+                    "publicacao", atividade.ERRO,
+                    f"estagio ILEGIVEL no clique depois de {limite:.0f}s; "
+                    f"publiquei assim mesmo. Barra: "
+                    f"{estagio.get('texto', '')[:120]}",
+                    canal, etapa="publicar.youtube.estagio")
+            except Exception:                                  # noqa: BLE001
+                pass
+    return estagio
 
 
 def _qualidade_agora(page) -> dict:
@@ -975,23 +1094,41 @@ def publicar(video, *, visibilidade: str | None = None,
                 "o YouTube nao terminou de processar o video a tempo. A "
                 "janela esta aberta: da para terminar na mao.")
 
-        # A MEDIDA VAI AQUI, no ultimo instante antes do clique, porque e
-        # esta a pergunta: em que resolucao o video foi ao ar? O botao acima
+        # A ESPERA VAI AQUI, no ultimo instante antes do clique. O botao acima
         # habilita quando o ARQUIVO TERMINA DE SUBIR, e nao quando o YouTube
         # termina de processar — medido em 15/09/2026, a barra ainda dizia
-        # "Processando ate SD ... 3 minutos restantes" neste ponto. Por
-        # enquanto so se MEDE: nada aqui segura o clique.
+        # "Processando ate SD ... 3 minutos restantes" neste ponto. Desde
+        # 16/09 isso era so MEDIDO, e a medida mostrou nove publicacoes assim.
+        # Agora segura o clique.
         laudo["upload_s"] = round(time.monotonic() - comeco_do_upload, 1)
-        estagio = _qualidade_agora(page)
-        laudo["qualidade_no_clique"] = estagio["qualidade"]
-        laudo["falta_texto"] = estagio["falta"]
-        laudo["texto_da_barra"] = estagio["texto"]
-        laudo["reconhecido"] = estagio["reconhecido"]
-        laudo["escopo"] = estagio["escopo"]
-        if estagio["qualidade"] not in ("hd", "desconhecida"):
-            passo(f"atencao: publicando com o video em "
-                  f"{estagio['qualidade']}"
-                  + (f" ({estagio['falta']})" if estagio["falta"] else ""))
+        try:
+            estagio = _esperar_qualidade(page, passo, laudo, canal=canal)
+        except Exception as erro:                              # noqa: BLE001
+            # FALHA DA ESPERA NAO PODE VIRAR FALHA DA POSTAGEM. A espera e um
+            # ganho de qualidade; ficar sem video e o pior desfecho. Se ela
+            # quebrar, publica-se como antes de existir — com ERRO no diario,
+            # porque quebrar aqui e defeito e nao rotina.
+            laudo["espera_quebrou"] = str(erro)[:200]
+            passo(f"a espera pelo processamento falhou ({erro}); publicando")
+            try:
+                atividade.registrar(
+                    "publicacao", atividade.ERRO,
+                    f"a espera pelo processamento quebrou: {str(erro)[:160]}",
+                    canal, etapa="publicar.youtube.estagio")
+            except Exception:                                  # noqa: BLE001
+                pass
+            estagio = {"qualidade": "desconhecida", "falta": "", "texto": "",
+                       "reconhecido": False, "escopo": "nenhum"}
+        if _nao_publicar_ainda(estagio):
+            # NAO PUBLICA PELA METADE. Em `subindo` o arquivo nao chegou
+            # inteiro; em `processando` nada e assistivel ainda. Publicar
+            # nestes dois da o rascunho quebrado — e o video volta a fila
+            # inteiro, sai depois certo, e nada se perde alem de um horario.
+            raise YouTubeWebFalhou(
+                f"o video ainda estava em '{estagio['qualidade']}' depois de "
+                f"esperar {laudo.get('esperou_s')}s"
+                + (f" ({estagio['falta']})" if estagio["falta"] else "")
+                + ". Nao publiquei: sairia quebrado. A janela segue aberta.")
 
         pronto.click()
         passo("publicar clicado; confirmando...")
