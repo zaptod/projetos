@@ -1085,3 +1085,279 @@ def test_servidor_serializa_confirmacoes_simultaneas(servidor, mundo, monkeypatc
         fio.join(30)
     assert sorted(respostas) == [200, 409]
     assert len(mundo.filha.comandos) == 1
+
+
+# =================================================== quarta rodada
+_JOB = r'''
+import ctypes, sys
+from ctypes import wintypes
+from pathlib import Path
+from remoto import acoes
+k32 = ctypes.windll.kernel32
+k32.CreateJobObjectW.restype = wintypes.HANDLE
+k32.GetCurrentProcess.restype = wintypes.HANDLE
+k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int,
+                                        ctypes.c_void_p, wintypes.DWORD]
+class BASIC(ctypes.Structure):
+    _fields_ = [("a", ctypes.c_int64), ("b", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD), ("c", ctypes.c_size_t),
+                ("d", ctypes.c_size_t), ("e", wintypes.DWORD),
+                ("f", ctypes.c_size_t), ("g", wintypes.DWORD), ("h", wintypes.DWORD)]
+class EXT(ctypes.Structure):
+    _fields_ = [("Basic", BASIC), ("Io", ctypes.c_uint64 * 6),
+                ("i", ctypes.c_size_t), ("j", ctypes.c_size_t),
+                ("k", ctypes.c_size_t), ("l", ctypes.c_size_t)]
+job = k32.CreateJobObjectW(None, None)
+info = EXT()
+info.Basic.LimitFlags = 0x2000 | 0x800
+assert k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
+assert k32.AssignProcessToJobObject(job, k32.GetCurrentProcess())
+if sys.argv[2] == "sem":
+    acoes.FORA_DO_JOB = 0
+pasta = Path(sys.argv[1])
+filho = [sys.executable, "-c",
+         "import time; time.sleep(2.0); print('TikTok: publicado no TikTok')"]
+print(acoes._iniciar_filha(pasta, filho, str(pasta)), flush=True)
+'''
+
+
+def _servidor_num_job(pasta, modo):
+    return subprocess.run([sys.executable, "-c", _JOB, str(pasta), modo],
+                          capture_output=True, text=True, timeout=30,
+                          cwd=str(Path(acoes.__file__).parents[1]))
+
+
+def _esperar_arquivo(caminho, segundos=15.0):
+    fim = time.monotonic() + segundos
+    while time.monotonic() < fim:
+        if caminho.exists():
+            return True
+        time.sleep(0.1)
+    return False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="job object e do Windows")
+def test_filha_sobrevive_ao_job_que_mata_ao_fechar(tmp_path):
+    pasta = tmp_path / "com"
+    pasta.mkdir()
+    pai = _servidor_num_job(pasta, "com")
+    assert pai.returncode == 0, pai.stderr
+    assert _esperar_arquivo(pasta / "fim.json")
+    assert json.loads((pasta / "fim.json").read_text(encoding="utf-8"))["codigo"] == 0
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="job object e do Windows")
+def test_sem_breakaway_o_job_mata_a_filha(tmp_path):
+    """O controle do teste acima: sem sair do job, a filha morre com o pai.
+    Se este passar a falhar, o teste acima deixou de provar alguma coisa."""
+    pasta = tmp_path / "sem"
+    pasta.mkdir()
+    pai = _servidor_num_job(pasta, "sem")
+    assert pai.returncode == 0, pai.stderr
+    assert not _esperar_arquivo(pasta / "fim.json", segundos=6.0)
+
+
+# ---------------------------------------------------------------- M1
+def test_vigia_nao_desiste_quando_a_trava_estoura(mundo, monkeypatch):
+    mundo.filha.roteiro = (f"TikTok: {TK_OK}\n", 0)
+    real = acoes.concluir_publicacao
+    tentativas = {"n": 0}
+
+    def instavel(chave):
+        tentativas["n"] += 1
+        if tentativas["n"] <= 2:
+            raise OSError("trava ocupada ha mais de 15 s")
+        return real(chave)
+    monkeypatch.setattr(acoes, "concluir_publicacao", instavel)
+    _publicar({"id": A, "onde": "tiktok"})
+    _esperar_publicacoes()
+    assert tentativas["n"] == 3
+    assert acoes.em_voo() == {} and _marcas(mundo) == {}
+
+
+def test_vigia_espera_crescente(mundo, monkeypatch):
+    monkeypatch.setattr(acoes, "ESPERA_ERRO_MAX_S", 0.4)
+    esperas = []
+    real_sleep = time.sleep
+
+    def dormir(segundos):
+        esperas.append(segundos)
+        real_sleep(0.001)
+    monkeypatch.setattr(acoes.time, "sleep", dormir)
+    mundo.filha.roteiro = (f"TikTok: {TK_OK}\n", 0)
+    real = acoes.concluir_publicacao
+    tentativas = {"n": 0}
+
+    def instavel(chave):
+        tentativas["n"] += 1
+        if tentativas["n"] <= 5:
+            raise OSError("disco")
+        return real(chave)
+    monkeypatch.setattr(acoes, "concluir_publicacao", instavel)
+    _publicar({"id": A, "onde": "tiktok"})
+    _esperar_publicacoes()
+    monkeypatch.undo()
+    # a primeira espera de erro e o proprio VIGIA_S (0,05), igual as normais
+    erros = [e for e in esperas if e != 0.05]
+    assert erros == [0.1, 0.2, 0.4, 0.4] and tentativas["n"] == 6
+
+
+# ---------------------------------------------------------------- M2
+def _item_preso(mundo, *, fim, filha, filho=None):
+    pasta = mundo.tmp / "publicacoes" / "k"
+    pasta.mkdir(parents=True, exist_ok=True)
+    if fim:
+        (pasta / "fim.json").write_text('{"codigo": 0}', encoding="utf-8")
+    if filho is not None:
+        (pasta / "filho.json").write_text(json.dumps({"pid": 77, "criado": None}),
+                                          encoding="utf-8")
+        mundo.filha.vivos[77] = filho
+    mundo.filha.vivos[55] = filha
+    acoes._mexer_no_voo("k", {"id": A, "onde": "youtube", "estado": "a_conferir",
+                              "pasta": str(pasta), "pid": 55, "criado": None})
+
+
+@pytest.mark.parametrize("fim,filha,filho,pode", [
+    (False, True, None, False),          # rodando
+    (False, None, None, False),          # nao sei
+    (True, False, True, False),          # a filha acabou, o main.py nao
+    (True, False, None, True),           # acabou tudo
+    (False, False, False, True),         # morreram sem fim: ja nao roda nada
+    (True, True, False, True),           # fim gravado; o que resta e o fim da filha
+])
+def test_liberar_so_quando_nada_mais_roda(mundo, fim, filha, filho, pode):
+    _item_preso(mundo, fim=fim, filha=filha, filho=filho)
+    if pode:
+        assert acoes.liberar(A) == 1
+    else:
+        with pytest.raises(acoes.Recusa, match="não solto"):
+            acoes.liberar(A)
+        assert len(acoes.em_voo()) == 1
+
+
+def test_liberar_recusado_pelo_cli(mundo, capsys):
+    _item_preso(mundo, fim=False, filha=True)
+    assert api_http.main(["--liberar", A, "--confirmo"]) == 1
+    assert "ainda não terminou" in capsys.readouterr().out
+
+
+def test_pid_reaproveitado_conta_como_morto(mundo, monkeypatch):
+    monkeypatch.setattr(acoes, "_vivo", lambda pid: True)
+    monkeypatch.setattr(acoes, "_criado_em", lambda pid: 2000.0)
+    assert acoes.vivo_de_verdade(55, 2000.5) is True
+    assert acoes.vivo_de_verdade(55, 1000.0) is False
+    assert acoes.vivo_de_verdade(55, None) is True
+    monkeypatch.setattr(acoes, "_criado_em", lambda pid: None)
+    assert acoes.vivo_de_verdade(55, 1000.0) is None
+    monkeypatch.setattr(acoes, "_vivo", lambda pid: False)
+    assert acoes.vivo_de_verdade(55, 1000.0) is False
+
+
+def test_criado_em_do_proprio_processo():
+    import os
+    agora = time.time()
+    criado = publicacao_filha.criado_em(os.getpid())
+    assert criado is not None and agora - 86400 < criado <= agora + 1
+    assert publicacao_filha.criado_em(0) is None
+    assert publicacao_filha.criado_em("x") is None
+
+
+def test_filha_de_verdade_grava_a_hora_do_filho(tmp_path):
+    pasta = tmp_path / "pub"
+    publicacao_filha.main(["--pasta", str(pasta), "--cwd", str(tmp_path), "--",
+                           sys.executable, "-c", "print('ok')"])
+    filho = json.loads((pasta / "filho.json").read_text(encoding="utf-8"))
+    assert filho["pid"] > 0 and filho["criado"]
+
+
+# ------------------------------------------------ conciliar e casos novos
+def test_conciliar_com_filha_viva_nao_conclui(mundo):
+    pasta = mundo.tmp / "publicacoes" / "viva"
+    pasta.mkdir(parents=True)
+    mundo.filha.vivos[88] = True
+    acoes._mexer_no_voo("viva", {"id": A, "onde": "tiktok", "estado": "em_andamento",
+                                 "pasta": str(pasta), "pid": 88})
+    assert acoes.conciliar() == ["viva"]
+    time.sleep(0.3)
+    assert acoes.em_voo()["viva"]["estado"] == "em_andamento"
+    mundo.filha.vivos[88] = False
+    _esperar_publicacoes()
+    assert acoes.em_voo()["viva"]["estado"] == "a_conferir"
+
+
+def test_conciliar_com_pasta_sumida(mundo):
+    mundo.filha.vivos[89] = False
+    acoes._mexer_no_voo("sumida", {"id": DOIS, "onde": "youtube",
+                                   "estado": "em_andamento",
+                                   "pasta": str(mundo.tmp / "nao_existe"), "pid": 89})
+    acoes.conciliar()
+    _esperar_publicacoes()
+    item = acoes.em_voo()["sumida"]
+    assert item["estado"] == "a_conferir" and "YouTube" in item["motivo"]
+
+
+@pytest.mark.parametrize("saida,codigo,onde", [
+    ("TikTok: A CONFERIR - cliquei e nao confirmou\n", 3, "tiktok"),
+    ("YouTube: A CONFERIR - rascunho\n", 3, "youtube"),
+    (f"TikTok: {TK_OK}\n", 3, "tiktok"),
+    (f"YouTube: {YT_OK}\n", 3, "youtube"),
+])
+def test_a_conferir_e_codigo_3(saida, codigo, onde):
+    assert set(acoes.desfechos(saida, codigo, onde).values()) == {"a_conferir"}
+
+
+def test_escrita_concorrente_no_em_voo(mundo):
+    def poe(i):
+        acoes._mexer_no_voo(f"k{i}", {"id": f"generation_{i:05d}:build:celular",
+                                      "onde": "youtube", "estado": "a_conferir"})
+    fios = [threading.Thread(target=poe, args=(i,)) for i in range(25)]
+    for fio in fios:
+        fio.start()
+    for fio in fios:
+        fio.join(30)
+    assert len(acoes.em_voo()) == 25
+
+
+def test_escrita_concorrente_entre_processos(mundo):
+    outro = (
+        "from remoto import acoes\n"
+        f"acoes.ARQUIVO_EM_VOO = {str(mundo.tmp / 'em_voo.json')!r}\n"
+        f"acoes.ARQUIVO_RASTRO = {str(mundo.tmp / 'acoes.jsonl')!r}\n"
+        "for i in range(30):\n"
+        "    acoes._mexer_no_voo(f'p{i}', {'id': f'p{i}', 'onde': 'tiktok', 'estado': 'x'})\n"
+    )
+    processo = subprocess.Popen([sys.executable, "-c", outro],
+                                cwd=str(Path(acoes.__file__).parents[1]))
+    for i in range(30):
+        acoes._mexer_no_voo(f"t{i}", {"id": f"t{i}", "onde": "tiktok", "estado": "x"})
+    assert processo.wait(timeout=60) == 0
+    chaves = set(acoes.em_voo())
+    assert {f"p{i}" for i in range(30)} <= chaves
+    assert {f"t{i}" for i in range(30)} <= chaves
+
+
+# ------------------------------------------------------- soltar a marca
+def test_soltar_marca_so_a_do_app_e_so_fora_do_voo(mundo, capsys):
+    mundo.filha.roteiro = (f"TikTok: {TK_CLIQUE}\n", 0)
+    _publicar({"id": A, "onde": "tiktok"})
+    _esperar_publicacoes()
+    with pytest.raises(acoes.Recusa, match="em-voo"):
+        acoes.soltar_marca(A)
+    acoes.liberar(A)
+    assert api_http.main(["--soltar-marca", A]) == 0
+    saida = capsys.readouterr().out
+    assert "a conferir (TikTok)" in saida and "--confirmo" in saida
+    assert A in _marcas(mundo)
+    assert api_http.main(["--soltar-marca", A, "--confirmo"]) == 0
+    assert A not in _marcas(mundo)
+    assert api_http.main(["--soltar-marca", A, "--confirmo"]) == 1
+
+
+def test_marca_da_grade_nao_sai_pelo_app(mundo):
+    (mundo.tmp / "_tiktok_a_conferir.json").write_text(
+        json.dumps({CINCO: {"quando": "2026-09-16T20:00:00", "estado": "cliquei"}}),
+        encoding="utf-8")
+    with pytest.raises(acoes.Recusa, match="da grade"):
+        acoes.soltar_marca(CINCO)
+    assert CINCO in _marcas(mundo)

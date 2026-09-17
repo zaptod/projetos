@@ -72,7 +72,11 @@ def mundo(tmp_path, monkeypatch):
     saida = tmp_path / "outputs"
     (saida / "generation_00001").mkdir(parents=True)
     dentro = saida / "generation_00001" / "video.mp4"
-    dentro.write_bytes(bytes(range(256)) * 40_000)          # ~10 MB
+    # PEQUENO de proposito, com a fatia reduzida junto: um "video" de 10 MB
+    # por teste encheu o disco C: em 17/09/2026 (pytest guarda 3 rodadas),
+    # e era essa a falha "intermitente" da suite.
+    monkeypatch.setattr(api_http, "FATIA_MAX", 64 * 1024)
+    dentro.write_bytes(bytes(range(256)) * 1200)             # ~300 KB
     fora = tmp_path / "segredo.mp4"
     fora.write_bytes(b"x" * 1000)
 

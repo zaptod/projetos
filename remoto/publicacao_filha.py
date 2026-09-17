@@ -29,6 +29,38 @@ from pathlib import Path
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def criado_em(pid) -> float | None:
+    """Quando o processo nasceu (epoch), ou None se nao deu para saber.
+
+    Serve para nao confundir um PID reaproveitado (depois de um reboot) com
+    a filha de verdade: PID igual com nascimento diferente e outro processo.
+    """
+    try:
+        numero = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if os.name != "nt" or numero <= 0:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.windll.kernel32
+        handle = k32.OpenProcess(0x1000, False, numero)   # QUERY_LIMITED_INFORMATION
+        if not handle:
+            return None
+        try:
+            criacao, saida, kernel, usuario = (wintypes.FILETIME() for _ in range(4))
+            if not k32.GetProcessTimes(handle, ctypes.byref(criacao), ctypes.byref(saida),
+                                       ctypes.byref(kernel), ctypes.byref(usuario)):
+                return None
+        finally:
+            k32.CloseHandle(handle)
+        cem_ns = (criacao.dwHighDateTime << 32) | criacao.dwLowDateTime
+        return cem_ns / 1e7 - 11644473600.0
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
 def _gravar(caminho: Path, dados: dict) -> None:
     temporario = caminho.with_suffix(".tmp")
     temporario.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
@@ -45,7 +77,8 @@ def rodar(pasta: Path, cwd: str, comando: list) -> int:
             filho = subprocess.Popen(comando, cwd=cwd, stdin=subprocess.DEVNULL,
                                      stdout=saida, stderr=subprocess.STDOUT,
                                      creationflags=NO_WINDOW, env=ambiente)
-            _gravar(pasta / "filho.json", {"pid": filho.pid})
+            _gravar(pasta / "filho.json", {"pid": filho.pid,
+                                           "criado": criado_em(filho.pid)})
             codigo = filho.wait()
     except Exception as exc:                                 # noqa: BLE001
         erro = f"{type(exc).__name__}: {exc}"

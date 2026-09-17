@@ -834,7 +834,30 @@ def main(argv=None) -> int:
                         help="publicações do app sem desfecho (bloqueadas)")
     parser.add_argument("--liberar", metavar="VIDEO_ID",
                         help="solta um vídeo do em-voo, DEPOIS de conferir no perfil")
+    parser.add_argument("--soltar-marca", metavar="VIDEO_ID",
+                        help="tira a marca “a conferir” que o APP pôs no TikTok, "
+                             "depois de conferir no perfil")
     args = parser.parse_args(argv)
+
+    if args.soltar_marca:
+        for linha in acoes.relatorio_do_video(args.soltar_marca) or ["nada registrado"]:
+            print(linha)
+        if not args.confirmo:
+            print("\nConfira no perfil do TikTok (tiktok.com/@…) e no ledger acima "
+                  "se o vídeo está ou não no ar. Para tirar a marca do app: repita "
+                  "com --confirmo. Se ele ESTÁ no ar e o ledger não diz, não tire "
+                  "a marca: ela é o que impede a grade de repostar.")
+            return 0
+        try:
+            saiu = acoes.soltar_marca(args.soltar_marca)
+        except OSError as exc:
+            print(f"não consegui agora: {exc}. Tente de novo em instantes.")
+            return 3
+        except acoes.Recusa as exc:
+            print(str(exc))
+            return 1
+        print("marca do app retirada" if saiu else "esse vídeo não tem marca")
+        return 0 if saiu else 1
 
     if args.em_voo:
         try:
@@ -905,10 +928,16 @@ def main(argv=None) -> int:
     print(f"App do celular em http://{host}:{porta}/  (Ctrl+C para parar)"
           f"  — ações {'LIGADAS' if args.acoes else 'desligadas'}"
           f"{' (com publicar)' if args.acoes and args.publicar else ''}")
-    if args.acoes:
-        voltando = acoes.conciliar()
-        if voltando:
-            print(f"retomei a vigia de {len(voltando)} publicação(ões) do app")
+    # Sempre, mesmo sem --acoes: uma publicacao que ficou pela metade precisa
+    # ser concluida (marca e em-voo) mesmo que o botao esteja desligado.
+    voltando = acoes.conciliar()
+    if voltando:
+        print(f"retomei a vigia de {len(voltando)} publicação(ões) do app")
+    with contextlib.suppress(acoes.Recusa):
+        presos = [v for v in acoes.em_voo().values() if v.get("estado") != "em_andamento"]
+        if presos:
+            print(f"ATENÇÃO: {len(presos)} publicação(ões) do app esperando conferência "
+                  "(veja --em-voo); o destino delas segue bloqueado no app.")
     if not ler_config()["aparelhos"]:
         print("Nenhum celular pareado: rode `python -m remoto.api_http --parear`.")
     try:

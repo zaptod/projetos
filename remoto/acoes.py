@@ -154,6 +154,27 @@ def _vivo(pid) -> bool | None:
     return sonda(pid)
 
 
+def _criado_em(pid) -> float | None:
+    from .publicacao_filha import criado_em
+    return criado_em(pid)
+
+
+def vivo_de_verdade(pid, criado) -> bool | None:
+    """O processo daquele PID, nascido naquela hora, ainda existe?
+
+    Depois de um reboot o Windows reaproveita PIDs: "o 4312 esta vivo" pode
+    ser outro programa. Com a hora de nascimento guardada, PID igual e hora
+    diferente e morte.
+    """
+    vivo = _vivo(pid)
+    if vivo is not True or not criado:
+        return vivo
+    agora = _criado_em(pid)
+    if agora is None:
+        return None
+    return abs(float(agora) - float(criado)) <= 2.0
+
+
 def _iniciar_filha(pasta: Path, comando: list, cwd) -> int:
     """Sobe a `publicacao_filha` fora do servidor. Devolve o PID."""
     chamada = [sys.executable, "-X", "utf8", "-m", "remoto.publicacao_filha",
@@ -769,7 +790,7 @@ def _disparar_publicacao(args: dict, aparelho: str) -> str:
             if isinstance(exc, Recusa):
                 raise
             raise Recusa(f"não consegui iniciar a publicação: {exc}") from exc
-        _mexer_no_voo(chave, pid=pid)
+        _mexer_no_voo(chave, pid=pid, criado=_criado_em(pid))
     vigiar(chave)
     publico = " (público no YouTube)" if "youtube" in destinos else ""
     return (f"comecei: publicar {args['id']} em {args['onde']}{publico}. "
@@ -890,8 +911,36 @@ def concluir_publicacao(chave: str) -> dict | None:
     return resultado
 
 
+def situacao_da_filha(item: dict) -> dict:
+    """{terminou, filha, filho}: o fim existe? e os dois processos vivem?
+
+    `filho` e o `main.py` que a filha abriu (ele pode sobreviver a ela).
+    Cada vivo e True/False/None, com a hora de nascimento conferida.
+    """
+    pasta = Path(item.get("pasta") or "")
+    terminou = bool(item.get("pasta")) and (pasta / "fim.json").is_file()
+    filha = vivo_de_verdade(item.get("pid"), item.get("criado"))
+    try:
+        filho_json = _ler_json(pasta / "filho.json") if item.get("pasta") else None
+    except ValueError:
+        filho_json = None
+    filho = (vivo_de_verdade(filho_json.get("pid"), filho_json.get("criado"))
+             if filho_json else False)
+    return {"terminou": terminou, "filha": filha, "filho": filho}
+
+
+ESPERA_ERRO_MAX_S = 300.0
+
+
 def _vigia(chave: str) -> None:
+    """Espera o fim e conclui. Erro (trava estourada, disco) NAO encerra.
+
+    Ate 17/09 um erro no concluir saia da vigia para sempre, e o item ficava
+    "em_andamento" ate alguem reiniciar o servidor. Agora ela tenta de novo,
+    com espera crescente, ate o item sair de "em_andamento".
+    """
     comeco = time.monotonic()
+    espera_erro = VIGIA_S
     while True:
         try:
             item = em_voo().get(chave)
@@ -899,14 +948,19 @@ def _vigia(chave: str) -> None:
             item = {}                      # arquivo ilegivel agora: tenta depois
         if item is None or (item and item.get("estado") != "em_andamento"):
             return
-        pasta = Path((item or {}).get("pasta") or pasta_publicacoes() / chave)
-        terminou = (pasta / "fim.json").is_file()
-        sumiu = bool(item) and _vivo(item.get("pid")) is False and not terminou
-        estourou = time.monotonic() - comeco > ESPERA_MAX_S
-        if terminou or sumiu or estourou:
-            with contextlib.suppress(Exception):
-                concluir_publicacao(chave)
-            return
+        if item:
+            estado = situacao_da_filha(item)
+            sumiu = (not estado["terminou"] and estado["filha"] is False
+                     and estado["filho"] is False)
+            estourou = time.monotonic() - comeco > ESPERA_MAX_S
+            if estado["terminou"] or sumiu or estourou:
+                try:
+                    concluir_publicacao(chave)
+                    espera_erro = VIGIA_S
+                except Exception:                            # noqa: BLE001
+                    time.sleep(espera_erro)
+                    espera_erro = min(espera_erro * 2, ESPERA_ERRO_MAX_S)
+                continue                   # rele: so sai quando concluiu
         time.sleep(VIGIA_S)
 
 
@@ -929,16 +983,59 @@ def conciliar() -> list[str]:
     return chaves
 
 
+def _pode_soltar(item: dict) -> str:
+    """"" se o item pode sair do em-voo; senao, o motivo.
+
+    Enquanto a publicacao PODE estar rodando, soltar libera um segundo
+    publicar do mesmo video (no YouTube em rascunho, uma duplicata).
+    Pode estar rodando = sem fim.json e com a filha ou o main.py vivos (ou
+    sem dar para saber), ou com fim.json mas o main.py ainda vivo.
+    """
+    estado = situacao_da_filha(item)
+    if estado["filho"] is not False:
+        return "o main.py dessa publicação ainda pode estar rodando"
+    if not estado["terminou"] and estado["filha"] is not False:
+        return "essa publicação ainda não terminou"
+    return ""
+
+
 def liberar(video_id: str) -> int:
-    """Tira do "em voo" as publicacoes daquele video. A marca do TikTok fica."""
+    """Tira do "em voo" as publicacoes daquele video. A marca do TikTok fica.
+
+    Recusa (levanta `Recusa`) se alguma delas ainda puder estar rodando.
+    """
     with trava_de_acoes():
         dados = em_voo()
         fora = [k for k, v in dados.items() if v.get("id") == video_id]
+        for chave in fora:
+            motivo = _pode_soltar(dados[chave])
+            if motivo:
+                raise Recusa(f"não solto {video_id}: {motivo}")
         for chave in fora:
             del dados[chave]
         if fora:
             _gravar_json(caminho_em_voo(), dados)
     return len(fora)
+
+
+def soltar_marca(video_id: str) -> bool:
+    """Tira a marca "a conferir" que o APP pos, depois da conferencia humana.
+
+    So a marca do app (a que tem "app"), e so sem publicacao do app ainda no
+    em-voo para aquele video. Marca da grade nao sai por aqui.
+    """
+    with trava_de_acoes():
+        if any(v.get("id") == video_id for v in em_voo().values()):
+            raise Recusa("o vídeo ainda está no em-voo do app; libere-o antes")
+        marca = _ler_a_conferir().get(video_id)
+        if marca is None:
+            return False
+        chave = (marca or {}).get("app")
+        if not chave:
+            raise Recusa("essa marca não é do app (é da grade); não mexo nela")
+        if not _retirar_marca_do_app(video_id, chave):
+            raise Recusa("não consegui tirar a marca")
+    return True
 
 
 def relatorio_do_video(video_id: str) -> list[str]:
@@ -1020,8 +1117,9 @@ class Pendentes:
 __all__ = ["CONFIRMAR_VALE_S", "LIMITE_POR_HORA", "Pendentes", "Recusa",
            "alvos_de_pausa", "avisar_telegram", "conciliar", "concluir_publicacao",
            "desfechos", "em_voo", "executar", "liberar", "preparar", "registrar",
-           "relatorio_do_video", "trava_de_acoes", "usadas_na_ultima_hora",
-           "video_para_publicar"]
+           "relatorio_do_video", "situacao_da_filha", "soltar_marca",
+           "trava_de_acoes", "usadas_na_ultima_hora", "video_para_publicar",
+           "vivo_de_verdade"]
 
 
 if __name__ == "__main__":                                   # pragma: no cover
