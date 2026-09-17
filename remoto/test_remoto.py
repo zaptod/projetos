@@ -518,13 +518,6 @@ class ApuracaoTests(BaseTemp):
                          "bypassPermissions"):
             self.assertNotIn(perigosa, corpo, f"{perigosa} nao pode entrar")
 
-    def test_conserto_reprovado_pela_suite_e_desfeito(self):
-        """O unico juiz de um conserto que ninguem revisou sao os testes."""
-        corpo = self._corpo("consertar")
-        self.assertLess(corpo.index("passou, ultima = _testar()"),
-                        corpo.index("restaurar(foto, alvos, depois)"))
-        self.assertIn("if not passou:", corpo)
-
     def test_o_conserto_nao_alcanca_outputs_nem_git(self):
         from remoto import apurador
         for pasta in apurador.FONTES:
@@ -533,46 +526,6 @@ class ApuracaoTests(BaseTemp):
         # e so texto de codigo: video e credencial nao entram
         self.assertEqual(set(apurador.EXTENSOES),
                          {".py", ".json", ".md", ".txt"})
-
-    def test_desfazer_volta_o_conteudo_e_apaga_o_que_foi_criado(self):
-        """`git checkout --` nao serve: a arvore tem trabalho nao commitado.
-
-        Restaurar do HEAD apagaria o dele junto com o do agente.
-        """
-        from remoto import apurador
-        antigo = self.pasta / "antigo.py"
-        antigo.write_text("original", encoding="utf-8")
-        foto = {str(antigo): b"original"}
-
-        antigo.write_text("mexido pelo agente", encoding="utf-8")
-        criado = self.pasta / "novo.py"
-        criado.write_text("inventado", encoding="utf-8")
-
-        apurador.restaurar(foto, [str(antigo), str(criado)])
-        self.assertEqual(antigo.read_text(encoding="utf-8"), "original")
-        self.assertFalse(criado.exists())
-
-    def test_desfazer_nao_leva_o_que_outra_sessao_escreveu_depois(self):
-        """14/09/2026, 6:53 e 11:49: a suite reprovou e a restauracao
-        devolveu a foto de arquivos que OUTRA sessao editou durante a suite."""
-        from remoto import apurador
-        do_agente = self.pasta / "do_agente.py"
-        de_outro = self.pasta / "de_outro.py"
-        do_agente.write_text("original", encoding="utf-8")
-        de_outro.write_text("original", encoding="utf-8")
-        foto = {str(do_agente): b"original", str(de_outro): b"original"}
-
-        do_agente.write_text("mexido pelo agente", encoding="utf-8")
-        de_outro.write_text("mexido pelo agente", encoding="utf-8")
-        depois = {str(do_agente): do_agente.read_bytes(),
-                  str(de_outro): de_outro.read_bytes()}
-        # durante a suite, outra sessao escreve por cima
-        de_outro.write_text("trabalho de outra sessao", encoding="utf-8")
-
-        apurador.restaurar(foto, [str(do_agente), str(de_outro)], depois)
-        self.assertEqual(do_agente.read_text(encoding="utf-8"), "original")
-        self.assertEqual(de_outro.read_text(encoding="utf-8"),
-                         "trabalho de outra sessao")
 
     def test_conserto_espera_a_rodada_da_agenda_acabar(self):
         """14/09/2026: rodada longa importa modulo no meio do caminho, e codigo
@@ -598,15 +551,6 @@ class ApuracaoTests(BaseTemp):
         self.assertEqual([], chamadas)
         self.assertFalse(saida["conserto"]["mexeu"])
         self.assertEqual("historias__auto", apurador.TRAVA_DA_AGENDA)
-
-    def test_o_remendo_mostra_so_o_que_o_agente_fez(self):
-        from remoto import apurador
-        alvo = apurador.RAIZ / "remoto" / "_alvo_de_teste.py"
-        self.addCleanup(lambda: alvo.unlink(missing_ok=True))
-        alvo.write_text("linha nova" + chr(10), encoding="utf-8")
-        texto = apurador.remendo({}, [str(alvo)])
-        self.assertIn("linha nova", texto)
-        self.assertIn("_alvo_de_teste.py", texto)
 
     def test_erro_apurado_nao_volta(self):
         """Sem isso, cada volta reapuraria os mesmos erros para sempre."""
@@ -676,6 +620,181 @@ class ApuracaoTests(BaseTemp):
 
 
 # --------------------------------------------------------------- relatorios
+class ProtecoesDoConsertoTests(BaseTemp):
+    """As cinco protecoes de 16/09/2026. `git`, `claude -p` e a suite sao
+    SEMPRE dublados: nenhum caso cria worktree, branch ou sessao de verdade."""
+
+    def setUp(self):
+        super().setUp()
+        from remoto import apurador
+        self.ap = apurador
+        self.chamadas = []
+        self.status_da_worktree = " M historias/contos/pipeline/agenda.py"
+        self.suite_passa = True
+        self.arvore_principal_suja = False
+
+        def git(args, cwd=None, timeout=120):
+            self.chamadas.append((tuple(args), str(cwd) if cwd else None))
+
+            class R:
+                returncode, stdout, stderr = 0, "", ""
+            r = R()
+            if args[:1] == ["status"]:
+                if cwd is None:
+                    r.stdout = " M algo.py" if self.arvore_principal_suja else ""
+                else:
+                    r.stdout = self.status_da_worktree
+            elif args[:1] == ["rev-parse"]:
+                r.stdout = "abc1234"
+            elif args[:1] == ["show"]:
+                r.stdout = "diff --git a/x b/x"
+            return r
+
+        # Travas LIVRES por padrao: sem isto, rodar este arquivo durante uma
+        # rodada de verdade da agenda (que segura `historias__auto`) mudaria o
+        # resultado. Quem testa trava ocupada dubla por cima.
+        from builds import travas
+        self.addCleanup(setattr, travas, "ocupada", travas.ocupada)
+        travas.ocupada = lambda _nome: False
+
+        self.suites = []
+        for nome, valor in (
+                ("_git", git),
+                ("caminho_do_claude", lambda: "claude"),
+                ("_rodar_claude", lambda comando, pasta: type(
+                    "P", (), {"stdout": "mexi", "returncode": 0})()),
+                ("_testar", lambda pasta=None: (
+                    self.suites.append(str(pasta)) or
+                    (self.suite_passa, "TUDO VERDE" if self.suite_passa
+                     else "FALHOU"))),
+                ("_estado_path", lambda: self.pasta / "apuracoes.json"),
+                ("RAIZ", self.pasta)):
+            self.addCleanup(setattr, apurador, nome, getattr(apurador, nome))
+            setattr(apurador, nome, valor)
+
+    def _chamou(self, comando):
+        return [c for c in self.chamadas if c[0][:len(comando)] == comando]
+
+    # ---- 2 e 3: worktree e entrega em branch
+    def test_sucesso_vira_commit_numa_branch_e_nao_toca_a_arvore(self):
+        saida = self.ap.consertar([{"fabrica": "picasso"}], "diag",
+                                  log=lambda *_a: None)
+        self.assertTrue(saida["mexeu"])
+        self.assertTrue(saida["ramo"].startswith("conserto/"))
+        self.assertEqual("abc1234", saida["commit"])
+        (add,) = self._chamou(("worktree", "add"))
+        pasta = add[0][4]
+        # add e commit acontecem NA WORKTREE, nunca na arvore principal
+        for comando in (("add", "-A"), ("commit",)):
+            (chamada,) = self._chamou(comando)
+            self.assertEqual(pasta, chamada[1])
+        # a suite rodou na worktree
+        self.assertEqual([pasta], self.suites)
+        # a worktree some, a branch fica
+        self.assertTrue(self._chamou(("worktree", "remove")))
+        self.assertFalse(self._chamou(("branch", "-D")))
+
+    def test_suite_reprovada_nao_entrega_nada(self):
+        self.suite_passa = False
+        saida = self.ap.consertar([{"fabrica": "picasso"}], "diag",
+                                  log=lambda *_a: None)
+        self.assertFalse(saida["mexeu"])
+        self.assertTrue(saida["desfeito"])
+        self.assertFalse(self._chamou(("commit",)))
+        self.assertTrue(self._chamou(("worktree", "remove")))
+        self.assertTrue(self._chamou(("branch", "-D")))
+
+    def test_mexer_fora_das_fontes_nao_entrega_nada(self):
+        self.status_da_worktree = (" M remoto/bot.py" + chr(10)
+                                   + "?? outputs/_publicar/publicados.jsonl")
+        saida = self.ap.consertar([{"fabrica": "picasso"}], "diag",
+                                  log=lambda *_a: None)
+        self.assertFalse(saida["mexeu"])
+        self.assertIn("outputs/_publicar", saida["motivo"])
+        self.assertFalse(self._chamou(("commit",)))
+
+    def test_a_suite_da_worktree_importa_os_pacotes_dela(self):
+        # Sem isto, `import builds` acharia a arvore PRINCIPAL (instalacao
+        # editavel) e a suite aprovaria um conserto que nunca testou.
+        pasta = Path("C:/tmp/conserto-x/arvore")
+        caminhos = self.ap.ambiente_da_worktree(pasta)["PYTHONPATH"]
+        import os
+        partes = caminhos.split(os.pathsep)
+        self.assertIn(str(pasta / "random_builds"), partes)
+        self.assertIn(str(pasta / "historias"), partes)
+        self.assertIn(str(pasta), partes)
+
+    def test_nada_mexido_nao_vira_branch(self):
+        self.status_da_worktree = ""
+        saida = self.ap.consertar([{"fabrica": "picasso"}], "diag",
+                                  log=lambda *_a: None)
+        self.assertFalse(saida["mexeu"])
+        self.assertTrue(self._chamou(("branch", "-D")))
+
+    # ---- 1 e 5: arvore limpa, teto, travas
+    def test_arvore_suja_so_diagnostico(self):
+        self.arvore_principal_suja = True
+        motivo = self.ap.motivo_para_nao_consertar([{"fabrica": "picasso"}])
+        self.assertIn("arvore suja", motivo)
+
+    def test_teto_de_consertos_por_dia(self):
+        for _ in range(self.ap.TETO_CONSERTOS_DIA):
+            self.ap._somar_conserto()
+        motivo = self.ap.motivo_para_nao_consertar([{"fabrica": "picasso"}])
+        self.assertIn("teto", motivo)
+
+    def test_sessao_editando_adia(self):
+        from builds import travas
+        self.addCleanup(setattr, travas, "ocupada", travas.ocupada)
+        travas.ocupada = lambda nome: nome == self.ap.TRAVA_DE_SESSAO
+        motivo = self.ap.motivo_para_nao_consertar([{"fabrica": "picasso"}])
+        self.assertIn("sessao editando", motivo)
+
+    def test_tudo_liberado_e_sem_motivo(self):
+        self.assertEqual(
+            "", self.ap.motivo_para_nao_consertar([{"fabrica": "picasso"}]))
+
+    # ---- 4: so erro que vale
+    def _erro(self, detalhe="quebrou no passo 3", **extra):
+        return dict({"fabrica": "picasso", "status": "erro",
+                     "detalhe": detalhe}, **extra)
+
+    def test_erro_unico_nao_vale(self):
+        erro = self._erro()
+        self.assertEqual([], self.ap.erros_que_valem([erro], recentes=[erro]))
+
+    def test_erro_repetido_vale_mesmo_com_numero_diferente(self):
+        a, b = self._erro("quebrou no passo 3"), self._erro("quebrou no passo 7")
+        self.assertEqual([a], self.ap.erros_que_valem([a], recentes=[a, b]))
+
+    def test_ref_de_duble_nao_vale(self):
+        # "trava:build:celular" veio de teste e abriu conserto (16/09/2026).
+        erro = self._erro(ref="trava:build:celular")
+        self.assertEqual([], self.ap.erros_que_valem(
+            [erro], recentes=[erro, erro], ids={"trava:build:celular"}))
+
+    def test_ref_que_nao_existe_no_catalogo_nao_vale(self):
+        erro = self._erro(ref="generation_09999:build:celular")
+        self.assertEqual([], self.ap.erros_que_valem(
+            [erro], recentes=[erro, erro], ids={"generation_00081:build:celular"}))
+
+    def test_ref_real_e_repetida_vale(self):
+        erro = self._erro(ref="generation_00081:build:celular")
+        self.assertEqual([erro], self.ap.erros_que_valem(
+            [erro], recentes=[erro, erro], ids={"generation_00081:build:celular"}))
+
+    def test_nenhum_erro_que_vale_e_motivo(self):
+        self.assertIn("nenhum erro vale",
+                      self.ap.motivo_para_nao_consertar([]))
+
+    def test_o_aviso_do_telegram_aponta_a_branch(self):
+        from remoto.__main__ import _conserto_em_texto
+        texto = _conserto_em_texto({"mexeu": True, "ramo": "conserto/x",
+                                    "commit": "abc1234", "arquivos": ["a.py"]})
+        self.assertIn("conserto/x", texto)
+        self.assertIn("o merge e seu", texto)
+
+
 class VencimentoTests(BaseTemp):
     """Quando cada relatorio periodico sai — pedido dele em 09/09/2026.
 

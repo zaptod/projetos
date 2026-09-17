@@ -31,8 +31,10 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 
@@ -225,129 +227,6 @@ FONTES = ("historias/contos", "historias/tests", "historias/config",
           "random_builds/builds", "random_builds/tests", "random_builds/config",
           "remoto", "painel", "ferramentas", "vila", "visao", "mimetizar")
 EXTENSOES = (".py", ".json", ".md", ".txt")
-# Arquivo maior que isso nao e codigo; e dado que entrou onde nao devia.
-TAMANHO_MAX = 2_000_000
-
-
-def _arquivos_de_fonte() -> list[Path]:
-    achados = []
-    for pasta in FONTES:
-        raiz = RAIZ / pasta
-        if not raiz.is_dir():
-            continue
-        for caminho in raiz.rglob("*"):
-            if (caminho.is_file() and caminho.suffix in EXTENSOES
-                    and "__pycache__" not in caminho.parts
-                    and caminho.stat().st_size <= TAMANHO_MAX):
-                achados.append(caminho)
-    return achados
-
-
-def fotografar() -> dict:
-    """O conteudo de cada fonte ANTES do conserto.
-
-    Nao da para usar `git checkout --` para desfazer: a arvore dele tem
-    trabalho NAO COMMITADO (24 arquivos em 08/09/2026), e restaurar do HEAD
-    apagaria o dele junto com o do agente. A foto e do estado real de agora.
-    """
-    foto = {}
-    for caminho in _arquivos_de_fonte():
-        try:
-            foto[str(caminho)] = caminho.read_bytes()
-        except OSError:
-            continue
-    return foto
-
-
-def mexidos(foto: dict) -> list[str]:
-    """O que mudou desde a foto — arquivos criados inclusive."""
-    saida = []
-    for caminho in _arquivos_de_fonte():
-        chave = str(caminho)
-        try:
-            agora = caminho.read_bytes()
-        except OSError:
-            continue
-        if foto.get(chave) != agora:
-            saida.append(chave)
-    return sorted(saida)
-
-
-def _no_commit(caminho: Path, conteudo: bytes) -> bool:
-    """O conteudo atual e o do HEAD? Entao e trabalho aceito, nao rascunho."""
-    try:
-        rel = caminho.resolve().relative_to(RAIZ).as_posix()
-        proc = subprocess.run(["git", "show", f"HEAD:{rel}"], cwd=str(RAIZ),
-                              capture_output=True, timeout=30,
-                              creationflags=NO_WINDOW)
-    except Exception:                                          # noqa: BLE001
-        return False
-    if proc.returncode != 0:
-        return False
-    normalizar = lambda b: b.replace(b"\r\n", b"\n")           # noqa: E731
-    return normalizar(proc.stdout) == normalizar(conteudo)
-
-
-def restaurar(foto: dict, alvos: list[str], depois: dict | None = None) -> None:
-    """Desfaz o conserto: volta o que mudou e apaga o que foi criado.
-
-    SO O QUE E DO AGENTE. Em 14/09/2026, as 6:53 e de novo as 11:49, a suite
-    reprovou e isto devolveu a foto de TODO arquivo mudado desde o inicio —
-    inclusive edicoes de outra sessao feitas durante a suite, algumas ja
-    commitadas. Duas guardas:
-      - `depois` e o conteudo no fim do agente: se o arquivo mudou de novo
-        depois disso, quem mudou nao foi ele, e o arquivo fica;
-      - conteudo igual ao HEAD e trabalho commitado, e fica.
-    """
-    for chave in alvos:
-        caminho = Path(chave)
-        try:
-            agora = caminho.read_bytes() if caminho.exists() else None
-        except OSError:
-            continue
-        if depois is not None and depois.get(chave) != agora:
-            continue
-        if agora is not None and _no_commit(caminho, agora):
-            continue
-        if chave in foto:
-            caminho.write_bytes(foto[chave])
-        else:
-            caminho.unlink(missing_ok=True)
-
-
-def remendo(foto: dict, alvos: list[str]) -> str:
-    """O diff do que o AGENTE fez — sem o trabalho nao commitado dele no meio.
-
-    `git diff` nao serve aqui: ele mostraria as duas coisas juntas, e o que se
-    quer revisar (ou desfazer) e so o que a maquina escreveu sozinha.
-    """
-    import difflib
-    pedacos = []
-    for chave in alvos:
-        antes = foto.get(chave, b"").decode("utf-8", "replace").splitlines(True)
-        try:
-            depois = Path(chave).read_text(
-                encoding="utf-8", errors="replace").splitlines(True)
-        except OSError:
-            depois = []
-        rel = Path(chave).relative_to(RAIZ).as_posix()
-        pedacos.extend(difflib.unified_diff(antes, depois,
-                                            f"a/{rel}", f"b/{rel}"))
-    return "".join(pedacos)
-
-
-def _testar() -> tuple:
-    """A suite inteira. E o unico juiz de um conserto que ninguem revisou."""
-    try:
-        proc = subprocess.run([sys.executable, "testar.py"], cwd=str(RAIZ),
-                              capture_output=True, text=True, encoding="utf-8",
-                              errors="replace", timeout=900,
-                              creationflags=NO_WINDOW)
-    except Exception as exc:                                   # noqa: BLE001
-        return False, f"nao consegui rodar a suite: {exc}"
-    saida = (proc.stdout or "") + (proc.stderr or "")
-    ultima = [l for l in saida.splitlines() if l.strip()][-1:] or [""]
-    return proc.returncode == 0, ultima[0].strip()[:200]
 
 
 def prompt_de_conserto(erros: list[dict], diagnostico: str) -> str:
@@ -394,66 +273,272 @@ def prompt_de_conserto(erros: list[dict], diagnostico: str) -> str:
     ])
 
 
-def consertar(erros: list[dict], diagnostico: str, *, log=print) -> dict:
-    """Deixa o Claude MEXER no codigo, com a suite como juiz.
+# ------------------------------------------------ protecoes do conserto
+# Desenho de 16/09/2026, depois de um conserto automatico ter editado codigo
+# por causa de um ACHADO DE DADOS (rascunhos no canal) com tres sessoes
+# trabalhando na mesma arvore. O conserto antigo editava a arvore principal,
+# rodava a suite ali e, se ela reprovasse, restaurava uma "foto" — e a foto
+# pegava junto o que outra sessao tivesse escrito no meio. O novo nunca toca
+# a arvore principal:
+#
+#   1. so comeca com a arvore LIMPA (sem alteracao pendente);
+#   2. trabalha numa WORKTREE propria, e a suite roda LA;
+#   3. entrega um COMMIT numa branch `conserto/<carimbo>`, e nao mudanca solta
+#      no disco — quem decide o merge e uma pessoa;
+#   4. so gasta um `claude -p` com erro que vale: fabrica de codigo, ref com
+#      cara de video que existe, e erro que se REPETIU;
+#   5. tem teto proprio por dia, e espera a rodada da agenda e qualquer sessao
+#      que segure a trava de edicao.
+#
+# "consertar" continua FALSE no remoto.json: religar e decisao do Adrian.
 
-    Ele pediu isso em 08/09/2026, depois de ver a apuracao so diagnosticar. O
-    risco de um agente que edita sozinho, oito vezes por dia, sem ninguem
-    olhando, e quebrar as rodadas seguintes em silencio — por isso o conserto
-    so SOBREVIVE se os 2248 testes passarem, e o que ele escreveu vai inteiro
-    para o Telegram e para um arquivo de remendo que da para reverter.
+TETO_CONSERTOS_DIA = 3
+TRAVA_DE_SESSAO = "sessao_editando"
+REPETICOES_MINIMAS = 2
+# Onde moram os pacotes instalados em modo editavel. A suite da worktree tem
+# de importar DAQUI: sem isto, `import builds` acharia a arvore PRINCIPAL e a
+# suite aprovaria um conserto sem nunca te-lo testado.
+PACOTES_DA_ARVORE = ("random_builds", "historias", "visao", "mimetizar", "")
+ID_DE_VIDEO = re.compile(r"^(?:generation|historia|duelo|tournament)_\d+")
+
+
+def no_escopo(relativo: str) -> bool:
+    """O arquivo esta numa fonte permitida e e texto de codigo?"""
+    caminho = str(relativo).replace("\\", "/").strip('"')
+    return (caminho.startswith(tuple(f"{f}/" for f in FONTES))
+            and Path(caminho).suffix in EXTENSOES)
+
+
+def _git(args: list, cwd=None, timeout: int = 120):
+    return subprocess.run(["git", *args], cwd=str(cwd or RAIZ),
+                          capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", timeout=timeout,
+                          creationflags=NO_WINDOW)
+
+
+def arvore_limpa() -> tuple:
+    """(limpa?, motivo). Qualquer duvida conta como SUJA."""
+    try:
+        proc = _git(["status", "--porcelain"])
+    except Exception as exc:                                   # noqa: BLE001
+        return False, f"nao consegui ler o git ({exc})"
+    if proc.returncode != 0:
+        return False, "o git status falhou"
+    sujos = [linha for linha in proc.stdout.splitlines() if linha.strip()]
+    if sujos:
+        return False, (f"{len(sujos)} arquivo(s) com alteracao pendente — "
+                       "alguem esta trabalhando na arvore")
+    return True, ""
+
+
+def _ids_do_catalogo() -> set:
+    """Os ids de video que existem de verdade. Nunca levanta."""
+    ids = set()
+    for modulo in ("builds.publicar.catalogo", "contos.publicar.catalogo"):
+        try:
+            catalogo = __import__(modulo, fromlist=["listar"])
+            ids.update(str(v.id) for v in catalogo.listar())
+        except Exception:                                      # noqa: BLE001
+            continue
+    return ids
+
+
+def _assinatura(evento: dict) -> tuple:
+    """O mesmo erro, mesmo com numero e hora diferentes no texto."""
+    detalhe = re.sub(r"\d+", "#", str(evento.get("detalhe") or "").lower())
+    return (evento.get("fabrica"), detalhe[:120])
+
+
+def erros_que_valem(erros: list, recentes=None, ids=None) -> list:
+    """Os erros que justificam gastar um `claude -p` com permissao de editar.
+
+      - fabrica de codigo (a de dados, `conferencia`, ja sai em `pendentes`);
+      - `ref`, quando existe, com cara de video E presente num catalogo —
+        16/09/2026: "trava:build:celular" era duble de teste escrito no
+        diario de producao, e abriu um conserto de verdade;
+      - erro que se REPETIU: uma linha solta nao prova defeito.
+    """
+    if recentes is None:
+        from builds import atividade
+        recentes = [e for e in atividade.recentes(300)
+                    if e.get("status") == "erro"]
+    contagem: dict = {}
+    for evento in recentes or ():
+        contagem[_assinatura(evento)] = contagem.get(_assinatura(evento), 0) + 1
+    valem = []
+    for erro in erros:
+        if erro.get("fabrica") in FABRICAS_SEM_APURACAO:
+            continue
+        ref = str(erro.get("ref") or "")
+        if ref:
+            if not ID_DE_VIDEO.match(ref):
+                continue
+            if ids is None:
+                ids = _ids_do_catalogo()
+            if ref not in ids:
+                continue
+        if contagem.get(_assinatura(erro), 0) < REPETICOES_MINIMAS:
+            continue
+        valem.append(erro)
+    return valem
+
+
+def _consertos_hoje(estado: dict) -> int:
+    return int((estado.get("consertos_por_dia") or {})
+               .get(date.today().isoformat(), 0))
+
+
+def _somar_conserto() -> None:
+    estado = _ler_estado()
+    dias = estado.setdefault("consertos_por_dia", {})
+    hoje = date.today().isoformat()
+    dias[hoje] = int(dias.get(hoje, 0)) + 1
+    _gravar_estado(estado)
+
+
+def motivo_para_nao_consertar(valem: list) -> str:
+    """`""` se pode consertar; senao, o motivo. Da mais barata a mais cara."""
+    from builds import travas
+    if travas.ocupada(TRAVA_DA_AGENDA):
+        return "rodada da agenda em andamento: conserto adiado"
+    if travas.ocupada(TRAVA_DE_SESSAO):
+        return "ha uma sessao editando o codigo: conserto adiado"
+    if _consertos_hoje(_ler_estado()) >= TETO_CONSERTOS_DIA:
+        return f"teto de {TETO_CONSERTOS_DIA} consertos por dia atingido"
+    if not valem:
+        return ("nenhum erro vale um conserto (dado, duble de teste ou "
+                "ocorrencia unica)")
+    limpa, motivo = arvore_limpa()
+    if not limpa:
+        return f"arvore suja, so diagnostico: {motivo}"
+    return ""
+
+
+def ambiente_da_worktree(pasta: Path) -> dict:
+    """O ambiente da suite na worktree: os pacotes vem DELA."""
+    caminhos = [str(pasta / p) if p else str(pasta)
+                for p in PACOTES_DA_ARVORE]
+    ambiente = dict(os.environ)
+    ambiente["PYTHONPATH"] = os.pathsep.join(caminhos)
+    return ambiente
+
+
+def _testar(pasta: Path | None = None) -> tuple:
+    """A suite inteira, na pasta dada. E o unico juiz de um conserto."""
+    pasta = pasta or RAIZ
+    try:
+        proc = subprocess.run([sys.executable, "testar.py"], cwd=str(pasta),
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=1800,
+                              env=ambiente_da_worktree(pasta),
+                              creationflags=NO_WINDOW)
+    except Exception as exc:                                   # noqa: BLE001
+        return False, f"nao consegui rodar a suite: {exc}"
+    saida = (proc.stdout or "") + (proc.stderr or "")
+    ultima = [l for l in saida.splitlines() if l.strip()][-1:] or [""]
+    return proc.returncode == 0, ultima[0].strip()[:200]
+
+
+def _rodar_claude(comando: list, pasta: Path):
+    return subprocess.run(comando, cwd=str(pasta), capture_output=True,
+                          text=True, encoding="utf-8", errors="replace",
+                          timeout=LIMITE_S * 2, creationflags=NO_WINDOW)
+
+
+def consertar(erros: list[dict], diagnostico: str, *, log=print) -> dict:
+    """Deixa o Claude mexer no codigo — numa WORKTREE, com a suite de juiz.
+
+    Ele pediu isso em 08/09/2026, depois de ver a apuracao so diagnosticar.
+    O conserto nunca escreve na arvore principal: o que passar na suite vira
+    um commit na branch `conserto/<carimbo>`, e o merge e de uma pessoa. O
+    que reprovar some com a worktree, sem nada a restaurar.
     """
     executavel = caminho_do_claude()
     if not executavel:
         return {"mexeu": False, "motivo": "sem o executavel do Claude"}
 
-    foto = fotografar()
-    comando = [
-        executavel, "-p", prompt_de_conserto(erros, diagnostico),
-        # Edit/Write SIM, Bash NAO. Rodar comando e o que transforma um engano
-        # em estrago; a suite quem roda e o `_testar()` aqui embaixo, que o
-        # agente nao alcanca.
-        "--allowedTools", "Read", "Grep", "Glob", "Edit", "Write",
-        "--permission-mode", "acceptEdits",
-        "--model", MODELO,
-    ]
-    log("[apurador] deixando o Claude consertar...")
+    carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ramo = f"conserto/{carimbo}"
+    pasta = Path(tempfile.mkdtemp(prefix="conserto-")) / "arvore"
     try:
-        proc = subprocess.run(comando, cwd=str(RAIZ), capture_output=True,
-                              text=True, encoding="utf-8", errors="replace",
-                              timeout=LIMITE_S * 2, creationflags=NO_WINDOW)
-    except subprocess.TimeoutExpired:
-        restaurar(foto, mexidos(foto))
+        criada = _git(["worktree", "add", "-b", ramo, str(pasta), "HEAD"])
+    except Exception as exc:                                   # noqa: BLE001
+        return {"mexeu": False, "motivo": f"nao criei a worktree: {exc}"}
+    if criada.returncode != 0:
         return {"mexeu": False,
-                "motivo": "o conserto passou do tempo e foi desfeito"}
-    except OSError as exc:
-        return {"mexeu": False, "motivo": f"nao rodou: {exc}"}
+                "motivo": f"nao criei a worktree: {criada.stderr[:160]}"}
 
-    alvos = mexidos(foto)
-    resumo = (proc.stdout or "").strip()
-    if not alvos:
-        return {"mexeu": False, "motivo": "nada a mexer no codigo",
+    entregue = False
+    try:
+        comando = [
+            executavel, "-p", prompt_de_conserto(erros, diagnostico),
+            # Edit/Write SIM, Bash NAO. Rodar comando e o que transforma um
+            # engano em estrago; a suite quem roda e o `_testar()`, que o
+            # agente nao alcanca.
+            "--allowedTools", "Read", "Grep", "Glob", "Edit", "Write",
+            "--permission-mode", "acceptEdits",
+            "--model", MODELO,
+        ]
+        log(f"[apurador] consertando numa worktree ({ramo})...")
+        try:
+            proc = _rodar_claude(comando, pasta)
+        except subprocess.TimeoutExpired:
+            return {"mexeu": False,
+                    "motivo": "o conserto passou do tempo; nada entrou"}
+        except OSError as exc:
+            return {"mexeu": False, "motivo": f"nao rodou: {exc}"}
+        resumo = (proc.stdout or "").strip()
+
+        estado = _git(["status", "--porcelain", "--untracked-files=all"],
+                      cwd=pasta)
+        alvos = [linha[3:].strip() for linha in estado.stdout.splitlines()
+                 if linha.strip()]
+        if not alvos:
+            return {"mexeu": False, "motivo": "nada a mexer no codigo",
+                    "resumo": resumo[-600:]}
+        fora = [a for a in alvos if not no_escopo(a)]
+        if fora:
+            # Ninguem mandou mexer em saida, credencial ou arquivo que nao e
+            # codigo. Nada vira commit.
+            return {"mexeu": False, "desfeito": True, "arquivos": alvos,
+                    "motivo": "mexeu fora das fontes permitidas: "
+                              + ", ".join(fora[:4]),
+                    "resumo": resumo[-600:]}
+
+        log(f"[apurador] {len(alvos)} arquivo(s) mexido(s); suite na "
+            "worktree...")
+        passou, ultima = _testar(pasta)
+        if not passou:
+            return {"mexeu": False, "desfeito": True, "arquivos": alvos,
+                    "motivo": f"os testes reprovaram ({ultima}); nada entrou "
+                              "na arvore principal",
+                    "resumo": resumo[-600:]}
+
+        _git(["add", "-A"], cwd=pasta)
+        feito = _git(["commit", "-m",
+                      f"Conserto automatico {carimbo} (apurador)\n\n"
+                      + diagnostico[:1500]], cwd=pasta)
+        if feito.returncode != 0:
+            return {"mexeu": False,
+                    "motivo": f"a suite passou mas o commit falhou: "
+                              f"{feito.stderr[:160]}"}
+        commit = _git(["rev-parse", "--short", "HEAD"], cwd=pasta).stdout.strip()
+        destino = RAIZ / "outputs" / "_apuracoes"
+        destino.mkdir(parents=True, exist_ok=True)
+        arquivo = destino / f"conserto_{carimbo}.patch"
+        arquivo.write_text(_git(["show", "HEAD"], cwd=pasta).stdout,
+                           encoding="utf-8")
+        _somar_conserto()
+        entregue = True
+        return {"mexeu": True, "ramo": ramo, "commit": commit,
+                "arquivos": alvos, "remendo": str(arquivo), "testes": ultima,
                 "resumo": resumo[-600:]}
-
-    depois = {}
-    for chave in alvos:
-        with contextlib.suppress(OSError):
-            depois[chave] = Path(chave).read_bytes()
-    log(f"[apurador] {len(alvos)} arquivo(s) mexido(s); rodando a suite...")
-    passou, ultima = _testar()
-    if not passou:
-        restaurar(foto, alvos, depois)
-        log("[apurador] a suite reprovou; desfiz tudo.")
-        return {"mexeu": False, "desfeito": True, "arquivos": alvos,
-                "motivo": f"os testes reprovaram ({ultima}); desfiz o conserto",
-                "resumo": resumo[-600:]}
-
-    destino = RAIZ / "outputs" / "_apuracoes"
-    destino.mkdir(parents=True, exist_ok=True)
-    arquivo = destino / f"conserto_{datetime.now():%Y%m%d_%H%M%S}.patch"
-    arquivo.write_text(remendo(foto, alvos), encoding="utf-8")
-    return {"mexeu": True, "arquivos": alvos, "remendo": str(arquivo),
-            "testes": ultima, "resumo": resumo[-600:]}
+    finally:
+        with contextlib.suppress(Exception):
+            _git(["worktree", "remove", "--force", str(pasta)])
+        if not entregue:
+            with contextlib.suppress(Exception):
+                _git(["branch", "-D", ramo])
 
 
 def uma_volta(*, log=print) -> dict:
@@ -480,20 +565,17 @@ def uma_volta(*, log=print) -> dict:
         # sem antes entender o que quebrou e como consertar no escuro.
         from . import config
         if config.carregar().get("consertar", True):
-            if travas.ocupada(TRAVA_DA_AGENDA):
-                # NAO MEXE NO CODIGO COM UMA RODADA NO MEIO. A rodada da agenda
-                # dura horas e importa modulos no caminho: um arquivo editado
-                # (ou editado e desfeito depois da suite) entra so em parte do
-                # processo, e ela quebra. As 13:45 de 14/09/2026 uma rodada
-                # morreu assim, com AttributeError, por codigo que mudou no
-                # meio dela. O diagnostico sai; o conserto espera.
-                log("[apurador] ha uma rodada da agenda em andamento; so "
-                    "diagnostico, o conserto fica para depois.")
-                saida["conserto"] = {"mexeu": False,
-                                     "motivo": "rodada da agenda em andamento: "
-                                               "conserto adiado"}
+            # As guardas vem ANTES do conserto, da mais barata para a mais
+            # cara. A primeira e a de 14/09/2026, 13:45: uma rodada da agenda
+            # morreu com AttributeError por codigo que mudou no meio dela.
+            valem = erros_que_valem(erros) if not travas.ocupada(
+                TRAVA_DA_AGENDA) else erros
+            motivo = motivo_para_nao_consertar(valem)
+            if motivo:
+                log(f"[apurador] so diagnostico: {motivo}.")
+                saida["conserto"] = {"mexeu": False, "motivo": motivo}
             else:
-                saida["conserto"] = consertar(erros, texto, log=log)
+                saida["conserto"] = consertar(valem, texto, log=log)
         return saida
 
 

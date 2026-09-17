@@ -144,14 +144,18 @@ def _conserto_em_texto(conserto: dict | None) -> str:
     nl = chr(10)
     if not conserto.get("mexeu"):
         if conserto.get("desfeito"):
-            return (nl * 2 + "🔧 tentei consertar e *desfiz*: "
+            return (nl * 2 + "🔧 tentei consertar e *nada entrou*: "
                     + str(conserto.get("motivo", ""))[:200])
         return nl * 2 + "🔧 " + str(conserto.get("motivo", ""))[:200]
     from pathlib import Path as _P
     nomes = ", ".join(_P(a).name for a in (conserto.get("arquivos") or [])[:6])
-    return (nl * 2 + "🔧 *consertei e a suite passou*" + nl
+    # O conserto vira BRANCH, nao mudanca na arvore: a mensagem diz onde esta
+    # e que o merge e de uma pessoa.
+    return (nl * 2 + "🔧 *conserto pronto para revisar* (a suite passou)" + nl
+            + f"branch: `{conserto.get('ramo', '?')}` "
+            + f"({conserto.get('commit', '?')})" + nl
             + f"arquivos: {nomes}" + nl
-            + f"remendo: {_P(conserto.get('remendo', '')).name}" + nl
+            + "nada entrou na arvore principal: o merge e seu." + nl
             + str(conserto.get("resumo", ""))[-400:])
 
 
