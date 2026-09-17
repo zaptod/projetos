@@ -175,23 +175,17 @@ def _no_rodizio_dos_tipos(fila: list, publicados: list) -> list:
     frente = [v for v in fila if v.id in pedidos]
     resto = [v for v in fila if v.id not in pedidos]
     try:
-        # AS DUAS FUNCOES PEDEM COISAS DIFERENTES, e isto nao e detalhe:
-        # `tipos_das_ultimas` chama o callback com o `fonte_id` (string, que
-        # e o que a linha do ledger tem), e `ordenar_por_tipo` chama com o
-        # VIDEO. Passando `_tipo_da_fonte` nos dois, o segundo recebia um
-        # objeto, devolvia "" para tudo, e a fila inteira caia no balde "sem
-        # tipo" — que sai na ordem em que veio.
-        #
-        # Ou seja: o rodizio virava NO-OP sem levantar nada, sem log, e com o
-        # resto da suite verde. E o mesmo formato do conserto que nao
-        # consertava de 16/09; foi o teste de intercalacao que pegou.
+        # O MESMO CALLBACK NOS DOIS, e isto nao e economia: ate 17/09/2026
+        # `ordenar_por_tipo` pedia o tipo do VIDEO e `tipos_das_ultimas` o da
+        # FONTE, e quem passasse a mesma funcao nos dois (o caminho obvio)
+        # tinha a fila inteira caindo no balde "sem tipo". O contrato foi
+        # unificado no modulo: uma pergunta, uma assinatura.
         ultimos = T.tipos_das_ultimas(publicados, _tipo_da_fonte,
                                       "youtube", publicado=_saiu)
         # O TETO POR FONTE JA FOI APLICADO acima (`_sem_fonte_cheia`), entao
         # `cheias` aqui e vazio de proposito: passar a lista de novo seria
         # dois donos para a mesma regra, e o segundo envelhece.
-        resto = T.ordenar_por_tipo(
-            resto, ultimos, lambda v: _tipo_da_fonte(T.fonte_do_video(v)))
+        resto = T.ordenar_por_tipo(resto, ultimos, _tipo_da_fonte)
     except Exception as exc:                                   # noqa: BLE001
         # ORDENAR E MELHORIA, e nunca motivo de horario vazio.
         _linha(f"[postar] o rodizio de tipo falhou ({type(exc).__name__}); "

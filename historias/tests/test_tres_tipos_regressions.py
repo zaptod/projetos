@@ -482,11 +482,14 @@ class RodizioNaFila(unittest.TestCase):
 
     @staticmethod
     def _v(vid, tipo):
-        return SimpleNamespace(id=vid, tipo=tipo)
+        return SimpleNamespace(id=vid, fonte_id=vid.split(":")[0], tipo=tipo)
 
-    def _ordem(self, fila, ultimos):
+    def _ordem(self, fila, ultimos, **kw):
+        # O callback recebe o FONTE_ID, e e o mesmo do `tipos_das_ultimas`
+        # (17/09/2026): duas perguntas iguais, uma assinatura so.
+        tipos = {v.fonte_id: v.tipo for v in fila}
         return [v.id for v in T.ordenar_por_tipo(
-            fila, ultimos, lambda v: v.tipo)]
+            fila, ultimos, lambda f: tipos.get(f, ""), **kw)]
 
     def test_quem_esta_ha_mais_tempo_sem_sair_vai_primeiro(self):
         fila = [self._v("f1", "favela"), self._v("n1", "normal"),
@@ -512,7 +515,15 @@ class RodizioNaFila(unittest.TestCase):
                 self._v("n1", "normal")]
         ordem = self._ordem(fila, [])
         self.assertEqual(sorted(v.id for v in fila), sorted(ordem))
-        self.assertEqual("x", ordem[-1], "sem tipo vai para o fim")
+
+    def test_sem_tipo_tem_vez_no_rodizio_e_nao_e_o_rabo_da_fila(self):
+        """17/09/2026: antes, `sem tipo` ia para o fim da fila inteira — uma
+        serie antiga com seis partes prontas so sairia quando o resto
+        acabasse. Agora ela e um tipo a mais: entra na volta, por ultimo."""
+        fila = [self._v("x:p1", ""), self._v("x:p2", ""),
+                self._v("f:p1", "favela"), self._v("f:p2", "favela")]
+        self.assertEqual(["f:p1", "x:p1", "f:p2", "x:p2"],
+                         self._ordem(fila, ["favela"]))
 
     def test_fila_com_um_tipo_so_fica_como_veio(self):
         # Ate existir estoque dos tres tipos, a fila so tem um: o rodizio
@@ -525,7 +536,21 @@ class RodizioNaFila(unittest.TestCase):
 
     def test_fila_so_de_historias_antigas_sem_tipo_fica_como_veio(self):
         fila = [self._v("a", ""), self._v("b", "")]
-        self.assertEqual(["a", "b"], self._ordem(fila, ["favela"]))
+        self.assertEqual(["a", "b"], self._ordem(fila, []))
+
+    def test_fila_inteira_sem_tipo_com_ledger_tipado_levanta(self):
+        """A CONTRADICAO E O SINAL. O ledger sabe classificar e a fila
+        inteira volta sem tipo: foi assim que o callback errado virou no-op
+        silencioso. Quem chama cai na ordem anterior COM log (o `except` do
+        postar.py), em vez de ordenar por um criterio que nao existe.
+
+        O preco: uma fila 100% de historias antigas sem tipo tambem levanta.
+        A ordem final e a mesma; o que muda e a linha no log.
+        """
+        fila = [self._v("a", ""), self._v("b", "")]
+        with self.assertRaises(ValueError) as ctx:
+            self._ordem(fila, ["favela", "normal"])
+        self.assertIn("fonte_id", str(ctx.exception))
 
     def test_tipo_da_vez_com_serie_no_teto_passa_a_vez(self):
         # Teto de 2 por historia/dia (Adrian, 17/09/2026) vale para tudo: o
@@ -536,8 +561,9 @@ class RodizioNaFila(unittest.TestCase):
                                 fonte_id="historia_00002", tipo="favela"),
                 SimpleNamespace(id="historia_00003:celular:p02",
                                 fonte_id="historia_00003", tipo="normal")]
+        tipos = {v.fonte_id: v.tipo for v in fila}
         ordem = [v.id for v in T.ordenar_por_tipo(
-            fila, ["normal", "favela", "babaca"], lambda v: v.tipo,
+            fila, ["normal", "favela", "babaca"], lambda f: tipos.get(f, ""),
             cheias={"historia_00001"})]
         self.assertEqual(["historia_00002:celular:p01",
                           "historia_00003:celular:p02"], ordem)

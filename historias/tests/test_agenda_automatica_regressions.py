@@ -1114,7 +1114,18 @@ class FilaPrefereONovoTests(unittest.TestCase):
         sem = self._fila_com_pedido(None)
         com = self._fila_com_pedido({"videos": ["historia_00012:celular:p01"]})
         self.assertEqual("historia_00012:celular:p01", com[0])
-        self.assertEqual([i for i in sem if i != com[0]], com[1:])
+        # "O RESTO SEGUE IGUAL" e sobre CONTEUDO e sobre a ordem DENTRO de
+        # cada serie, e nao sobre a posicao absoluta: desde o rodizio de tipo
+        # (17/09/2026), tirar um video da frente muda a alternancia do resto,
+        # que continua sendo uma fila valida. Ate 17/09 este teste passava por
+        # acaso — a historia_00003 nao tem tipo e, na versao antiga, ia toda
+        # para o fim da fila.
+        self.assertEqual(sorted(i for i in sem if i != com[0]),
+                         sorted(com[1:]))
+        for fonte in ("historia_00003", "historia_00012"):
+            partes = [i for i in com if i.startswith(fonte)]
+            self.assertEqual(sorted(partes), partes,
+                             "a ordem das partes da serie tem de sobreviver")
 
     def test_pedido_de_video_que_nao_esta_na_fila_nao_mexe_em_nada(self):
         sem = self._fila_com_pedido(None)
