@@ -32,10 +32,16 @@ CHATGPT = {
         "button[aria-label*='Enviar' i]",
         "button#composer-submit-button",
     ],
+    # SO O BOTAO DE PARAR A RESPOSTA. Ate 17/09/2026 aqui havia
+    # `aria-label*='Parar' i` ("contem", sem caixa), e ele casava com o
+    # HISTORICO da barra lateral: "Fixar COMPARAR defeitos do formato A"
+    # (medido na tela). O parecer ficou 8 min com "APROVADO" pronto e o
+    # cliente dizendo "escrevendo". O rotulo tem de COMECAR com a palavra.
     "parar": [
         "button[data-testid='stop-button']",
-        "button[aria-label*='Stop' i]",
-        "button[aria-label*='Parar' i]",
+        "button[aria-label^='Stop' i]",
+        "button[aria-label^='Parar' i]",
+        "button[aria-label^='Interromper' i]",
     ],
     # A mensagem do USUARIO ja na conversa: prova de que o envio entrou.
     "turno_usuario": [
@@ -112,8 +118,9 @@ GEMINI = {
         "button[mattooltip*='Enviar' i]",
     ],
     "parar": [
-        "button[aria-label*='Stop' i]",
-        "button[aria-label*='Parar' i]",
+        "button[aria-label^='Stop' i]",
+        "button[aria-label^='Parar' i]",
+        "button[aria-label^='Interromper' i]",
         "button.stop-icon",
         "mat-icon[fonticon='stop']",
     ],
