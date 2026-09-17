@@ -50,19 +50,43 @@ class MarcaTests(unittest.TestCase):
     def test_arquivo_cortado_NAO_apaga_as_marcas_antigas(self):
         self.arq.write_text('{"velho:build:celular": {"quando": "x"}',  # sem }
                             encoding="utf-8")
-        desfecho.marcar_para_conferir("builds", "novo:build:celular", CLICOU)
+        with self.assertRaises(desfecho.NaoConsegviMarcar):
+            desfecho.marcar_para_conferir("builds", "novo:build:celular",
+                                          CLICOU)
         guardados = list(self.arq.parent.glob("*.corrompido-*"))
         self.assertTrue(guardados, "o ilegivel tem de ser GUARDADO, nao sumir")
         self.assertIn("velho:build:celular",
                       guardados[0].read_text(encoding="utf-8"),
                       "e ele e a unica lista de quem estava bloqueado")
 
-    def test_avisa_que_os_marcados_podem_voltar_a_fila(self):
+    def test_o_ilegivel_FICA_no_lugar_e_nada_e_gravado(self):
+        """Renomear sozinho ja era o estrago.
+
+        Sem arquivo, `a_conferir` devolve `set()` — "ninguem bloqueado" —,
+        que e uma AFIRMACAO. A falha fechada da leitura viraria falha aberta
+        na chamada seguinte, pela porta dos fundos, e a recuperacao
+        repostaria todo mundo que estava marcado.
+        """
+        self.arq.write_text('{"velho:build:celular": {"quando": "x"}',
+                            encoding="utf-8")
+        with self.assertRaises(desfecho.NaoConsegviMarcar):
+            desfecho.marcar_para_conferir("builds", "novo:build:celular",
+                                          CLICOU)
+        self.assertTrue(self.arq.exists(), "o ilegivel nao pode sumir")
+        self.assertNotIn("novo:build:celular",
+                         self.arq.read_text(encoding="utf-8"),
+                         "gravar por cima do ilegivel apaga a lista")
+        with self.assertRaises(desfecho.NaoConsegviLer):
+            desfecho.a_conferir("builds")
+
+    def test_avisa_que_ninguem_esta_bloqueado(self):
         self.arq.write_text("{quebrado", encoding="utf-8")
-        desfecho.marcar_para_conferir("builds", "novo:build:celular", CLICOU)
+        with self.assertRaises(desfecho.NaoConsegviMarcar):
+            desfecho.marcar_para_conferir("builds", "novo:build:celular",
+                                          CLICOU)
         texto = " ".join(str(a) for a in self.diario)
         self.assertIn("ilegivel", texto)
-        self.assertIn("voltar a fila", texto)
+        self.assertIn("NAO esta bloqueado", texto)
 
     def test_marca_normal_preserva_as_anteriores(self):
         desfecho.marcar_para_conferir("builds", "a:build:celular", CLICOU)

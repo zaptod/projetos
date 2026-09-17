@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -806,6 +807,35 @@ def _fontes_de_atraso(canal: str):
 VARIANTES = (":B",)
 
 
+CORTE_NO_ID = re.compile(r":corte\d+$")
+
+
+def _com_as_raizes(marcados) -> set:
+    """Os ids marcados, mais o video INTEIRO de onde cada corte saiu.
+
+    Video longo demais e cortado antes de subir (`cortes._copia`), e cada
+    pedaco ganha `id` proprio: `X:corte01`, `X:corte02`. A marca de "a
+    conferir" fica com o id do PEDACO, porque e ele que sobe — mas a fila
+    escolhe pelo id do video INTEIRO. Comparando so `v.id`, o `X` continuava
+    livre e voltava no horario seguinte, reenviando todos os pedacos, os que
+    ja tinham saido inclusive. E a fabrica de rascunhos gemeos de novo, pela
+    unica porta que ela ainda tinha.
+
+    Bloquear o inteiro por causa de um pedaco e de proposito: reenviar `X`
+    duplica os cortes que deram certo. Quem confere solta os dois juntos.
+
+    `:corteNN` sai; `:B` e os outros sufixos ficam — variante e outro video.
+    """
+    raizes = set()
+    for vid in marcados or ():
+        vid = str(vid)
+        raizes.add(vid)
+        raiz = CORTE_NO_ID.sub("", vid)
+        if raiz != vid:
+            raizes.add(raiz)
+    return raizes
+
+
 def _sem_a_conferir(fila: list, canal: str) -> list:
     """Tira da fila quem subiu ao YouTube sem confirmacao.
 
@@ -830,6 +860,7 @@ def _sem_a_conferir(fila: list, canal: str) -> list:
         return []
     if not marcados:
         return fila
+    marcados = _com_as_raizes(marcados)
     livres = [v for v in fila if v.id not in marcados]
     if len(livres) != len(fila):
         _linha(f"[postar] {len(fila) - len(livres)} video(s) fora da fila: "
@@ -1154,7 +1185,8 @@ def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
     # FALHA FECHADA, e e a unica do projeto: sem a lista de bloqueados eu
     # nao sei quem esta esperando conferencia, e a recuperacao repostaria
     # todos eles. Adiar uma rodada custa um video; repostar custa o perfil.
-    desistidos = desistencias_do_tiktok(canal) | a_conferir_no_tiktok(canal)
+    desistidos = _com_as_raizes(
+        desistencias_do_tiktok(canal) | a_conferir_no_tiktok(canal))
     candidatos, vistos = [], set()
     for linha in publicados:                     # ledger ja vem em ordem
         if linha.get("plataforma") != "youtube" or not _saiu(linha):

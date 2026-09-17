@@ -228,20 +228,35 @@ def marcar_para_conferir(canal: str, video_id: str, estado: str,
             dados = _ler(caminho)
         except ValueError as exc:
             # CORRUPCAO DE VERDADE (JSON invalido), e nao erro passageiro:
-            # `_ler` ja tentou de novo em `OSError`. Nao sobrescreve — o
-            # ilegivel e a unica lista de quem estava bloqueado, e pode ser
-            # recuperavel a mao.
-            quebrado = caminho.with_suffix(
+            # `_ler` ja tentou de novo em `OSError`.
+            #
+            # AQUI NAO SE GRAVA E NAO SE RENOMEIA, e as duas coisas pelo mesmo
+            # motivo. A versao anterior renomeava o ilegivel e recomecava com
+            # o item novo: as marcas antigas sobreviviam no `.corrompido` para
+            # olho humano, mas a MAQUINA passava a ler uma lista de um item
+            # so, e todos os outros voltavam para a fila e eram repostados.
+            #
+            # E renomear sozinho ja seria o bastante para o estrago: sem
+            # arquivo, `a_conferir` devolve `set()` — "ninguem bloqueado" —,
+            # que e uma AFIRMACAO. A falha fechada que a leitura mantem de
+            # proposito viraria falha aberta na chamada seguinte, pela porta
+            # dos fundos.
+            #
+            # Entao: copia de seguranca, o ilegivel FICA onde esta, e levanta.
+            # `a_conferir` segue levantando, a rodada nao publica, e ninguem e
+            # reposto ate uma pessoa olhar o arquivo. O erro barato e adiar.
+            copia = caminho.with_suffix(
                 f".corrompido-{datetime.now():%Y%m%d-%H%M%S}")
             try:
-                caminho.rename(quebrado)
+                copia.write_bytes(caminho.read_bytes())
             except OSError:
                 pass
-            dados = {}
-            _avisar(canal, texto=(
-                f"o {caminho.name} estava ilegivel ({type(exc).__name__}); "
-                f"guardei em {quebrado.name} e recomecei. Os videos que "
-                f"estavam marcados podem voltar a fila — confira o arquivo."))
+            _avisar(canal, ref=video_id, texto=(
+                f"o {caminho.name} esta ilegivel ({type(exc).__name__}); "
+                f"copiei para {copia.name} e NAO gravei nada. {video_id} pode "
+                f"estar no ar e NAO esta bloqueado, e nenhuma rodada publica "
+                f"ate o arquivo ser consertado a mao."))
+            raise NaoConsegviMarcar(f"{caminho.name} ilegivel") from exc
         if video_id in dados:
             return True                  # ja avisado; nao repete no diario
         dados[video_id] = {
