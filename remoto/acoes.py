@@ -26,13 +26,15 @@ acrescenta e o que um botao no bolso exige a mais que um comando digitado:
   na linha de comando e no texto da confirmacao, como a grade.
 
   O CAMINHO DE UMA PUBLICACAO, e por que cada passo esta onde esta:
-    1. (TikTok) a marca "a conferir" e gravada ANTES do clique, e relida.
+    1. a marca "a conferir" de cada destino e gravada ANTES do clique, sob
+       a trava comum da lista (`desfecho.nome_da_trava`), e relida.
        Se o servidor, o PC ou o filho morrerem no meio, a recuperacao da
        grade — que le essa lista e nao le o app — nao reposta. A marca e
-       escrita aqui, no mesmo arquivo e formato do `postar.py`, e nao pela
-       `_marcar_para_conferir` dele: aquela grava um ERRO no diario ("cliquei
-       e nao veio confirmacao"), que antes do clique seria mentira e
-       dispararia a apuracao automatica.
+       escrita aqui, no arquivo e sob a trava da grade, e nao pela
+       `desfecho.marcar_para_conferir`: aquela grava um ERRO no diario
+       ("cliquei e nao veio confirmacao"), que antes do clique seria mentira
+       e dispararia a apuracao automatica. Depois do clique, o proprio
+       publicador chama a dela, que ve a marca do app e nao duplica.
     2. o "em voo" (arquivo) recebe a publicacao.
     3. `publicacao_filha` sobe DESLIGADA do servidor e manda a saida do
        `main.py` para um arquivo (um PIPE mataria o filho junto com o
@@ -94,7 +96,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 ARQUIVO_RASTRO = None                     # os testes apontam para outro lugar
 ARQUIVO_EM_VOO = None
 PASTA_PUBLICACOES = None
-ARQUIVO_A_CONFERIR = None
+PASTA_A_CONFERIR = None
 
 
 class Recusa(Exception):
@@ -429,66 +431,96 @@ def _mexer_no_voo(chave: str, item: dict | None = None, **campos) -> None:
         _gravar_json(caminho_em_voo(), dados)
 
 
-# -------------------------------------------------------- a conferir (TikTok)
-def caminho_a_conferir() -> Path:
-    if ARQUIVO_A_CONFERIR:
-        return Path(ARQUIVO_A_CONFERIR)
-    # O mesmo lugar que o `postar._arquivo_a_conferir("builds")` usa.
-    return _metricas().registro_do_canal("builds").parent / "_tiktok_a_conferir.json"
+# -------------------------------------------------- a conferir (os dois destinos)
+# A lista e da grade (`builds.publicar.desfecho`): um arquivo por destino, uma
+# trava comum (`desfecho.nome_da_trava`) para QUEM LE E QUEM ESCREVE. O app
+# le e escreve sob ela, com a leitura dela (`desfecho._ler`: nova tentativa em
+# OSError, ValueError = corrupcao). O que o app nao usa e a `marcar_para_
+# conferir` para a marca PREVIA: ela grava ERRO no diario ("cliquei e nao veio
+# confirmacao"), que antes do clique seria falso — e como e idempotente, a
+# marca do app, posta antes, faz a do publicador virar no-op sem perder o
+# bloqueio.
+def _desfecho():
+    from builds.publicar import desfecho
+    return desfecho
 
 
-def _ler_a_conferir() -> dict:
-    """{video_id: {quando, estado, ...}}. Ilegivel = Recusa.
+def caminho_a_conferir(plataforma: str = "tiktok") -> Path:
+    if PASTA_A_CONFERIR:
+        return Path(PASTA_A_CONFERIR) / f"_{plataforma}_a_conferir.json"
+    return Path(_desfecho().arquivo_a_conferir("builds", plataforma))
 
-    Aceita a lista antiga (so ids) lendo; nunca regrava por cima de um
-    arquivo que nao conseguiu ler — foi assim que uma lista cortada virou
-    uma lista de um item so.
+
+@contextlib.contextmanager
+def _trava_da_marca(plataforma: str):
+    """A trava comum da lista daquele destino. Nao veio = Recusa."""
+    from builds import travas
+    desfecho = _desfecho()
+    with travas.trava(desfecho.nome_da_trava(plataforma),
+                      esperar=desfecho.ESPERA_DA_TRAVA_S) as minha:
+        if minha is False:
+            raise Recusa(f"a lista “a conferir” do {NOME_DESTINO[plataforma]} "
+                         "está ocupada; tente de novo")
+        yield
+
+
+def _ler_marcas(plataforma: str) -> dict:
+    """Le a lista (quem chama segura a trava). Ilegivel = Recusa, NUNCA {}.
+
+    Conjunto vazio e uma afirmacao ("ninguem bloqueado"); nao saber e outra
+    coisa, e tratar um como o outro republica os marcados.
     """
+    nome = NOME_DESTINO[plataforma]
     try:
-        dados = _ler_json(caminho_a_conferir())
+        dados = _desfecho()._ler(caminho_a_conferir(plataforma))
     except ValueError as exc:
-        raise Recusa("não consegui ler a lista “a conferir” do TikTok") from exc
-    if dados is None:
-        return {}
-    if isinstance(dados, list):
-        return {str(v): {} for v in dados}
+        raise Recusa(f"a lista “a conferir” do {nome} está ilegível; "
+                     "confira o arquivo antes de publicar") from exc
+    except OSError as exc:
+        raise Recusa(f"não consegui ler a lista “a conferir” do {nome}") from exc
     if not isinstance(dados, dict):
-        raise Recusa("a lista “a conferir” do TikTok está num formato estranho")
+        raise Recusa(f"a lista “a conferir” do {nome} está ilegível")
     return dados
 
 
-def _marcar_do_app(video_id: str, chave: str, estado: str) -> None:
+def _ler_a_conferir(plataforma: str = "tiktok") -> dict:
+    """{video_id: {...}} daquele destino, lido sob a trava comum."""
+    with _trava_da_marca(plataforma):
+        return _ler_marcas(plataforma)
+
+
+def _marcar_do_app(video_id: str, chave: str, estado: str,
+                   plataforma: str = "tiktok") -> None:
     """Grava (ou atualiza) a marca do app e RELE. Nao conseguiu = Recusa."""
-    dados = _ler_a_conferir()
-    atual = dados.get(video_id)
-    if atual is not None and (atual or {}).get("app") != chave:
-        raise Recusa("esse vídeo já está “a conferir” no TikTok")
-    dados[video_id] = {"quando": _agora().isoformat(timespec="seconds"),
-                       "estado": f"{MARCA_DO_APP}: {estado}"[:200], "app": chave}
-    try:
-        _gravar_json(caminho_a_conferir(), dados)
-    except OSError as exc:
-        raise Recusa("não consegui gravar a marca “a conferir”") from exc
-    if (_ler_a_conferir().get(video_id) or {}).get("app") != chave:
-        raise Recusa("a marca “a conferir” não ficou gravada")
+    nome = NOME_DESTINO[plataforma]
+    with _trava_da_marca(plataforma):
+        dados = _ler_marcas(plataforma)
+        atual = dados.get(video_id)
+        if atual is not None and (atual or {}).get("app") != chave:
+            raise Recusa(f"esse vídeo já está “a conferir” no {nome}")
+        dados[video_id] = {"quando": _agora().isoformat(timespec="seconds"),
+                           "estado": f"{MARCA_DO_APP}: {estado}"[:200],
+                           "plataforma": plataforma, "app": chave}
+        try:
+            _gravar_json(caminho_a_conferir(plataforma), dados)
+        except OSError as exc:
+            raise Recusa(f"não consegui gravar a marca “a conferir” do {nome}") from exc
+        if (_ler_marcas(plataforma).get(video_id) or {}).get("app") != chave:
+            raise Recusa(f"a marca “a conferir” do {nome} não ficou gravada")
 
 
-def _retirar_marca_do_app(video_id: str, chave: str) -> bool:
+def _retirar_marca_do_app(video_id: str, chave: str,
+                          plataforma: str = "tiktok") -> bool:
     """Tira SO a marca que este app pos para esta publicacao. True se saiu."""
     try:
-        dados = _ler_a_conferir()
-    except Recusa:
-        return False
-    if (dados.get(video_id) or {}).get("app") != chave:
-        return video_id not in dados
-    del dados[video_id]
-    try:
-        _gravar_json(caminho_a_conferir(), dados)
-    except OSError:
-        return False
-    try:
-        return video_id not in _ler_a_conferir()
-    except Recusa:
+        with _trava_da_marca(plataforma):
+            dados = _ler_marcas(plataforma)
+            if (dados.get(video_id) or {}).get("app") != chave:
+                return video_id not in dados
+            del dados[video_id]
+            _gravar_json(caminho_a_conferir(plataforma), dados)
+            return video_id not in _ler_marcas(plataforma)
+    except (Recusa, OSError):
         return False
 
 
@@ -600,9 +632,11 @@ def video_para_publicar(video_id: str, onde: str, agora: datetime | None = None,
                      f"({type(exc).__name__})") from exc
 
     fonte = getattr(video, "fonte_id", "") or ""
-    conferir = _ler_a_conferir()
     for destino in DESTINOS[onde]:
         nome = NOME_DESTINO[destino]
+        if video.id in _ler_a_conferir(destino):
+            raise Recusa(f"o {nome} deste vídeo está “a conferir” (o clique "
+                         "pode ter saído); confira antes")
         saidas = [l for l in linhas if _destino_da_linha(l) == destino
                   and metricas.publicado(l)]
         if any(l.get("video_id") == video.id for l in saidas):
@@ -614,9 +648,6 @@ def video_para_publicar(video_id: str, onde: str, agora: datetime | None = None,
         if not _repetir_titulo() and titulos.repetido(
                 video.titulo, titulos.ja_publicados(outros)):
             raise Recusa(f"outro vídeo já pôs esse título no ar no {nome}")
-        if destino == "tiktok" and video.id in conferir:
-            raise Recusa("o TikTok deste vídeo está “a conferir” (o clique "
-                         "pode ter saído); confira no perfil antes")
     return video
 
 
@@ -769,9 +800,12 @@ def _disparar_publicacao(args: dict, aparelho: str) -> str:
     pasta = pasta_publicacoes() / chave
     destinos = DESTINOS[args["onde"]]
     with trava_de_acoes():
-        if "tiktok" in destinos:
-            _marcar_do_app(args["id"], chave, f"publicação em andamento ({chave})")
+        marcados = []
         try:
+            for destino in destinos:
+                _marcar_do_app(args["id"], chave,
+                               f"publicação em andamento ({chave})", destino)
+                marcados.append(destino)
             pasta.mkdir(parents=True, exist_ok=True)
             _mexer_no_voo(chave, {
                 "id": args["id"], "onde": args["onde"],
@@ -785,8 +819,8 @@ def _disparar_publicacao(args: dict, aparelho: str) -> str:
             # Nada subiu: desfaz o que foi preparado.
             with contextlib.suppress(Exception):
                 _mexer_no_voo(chave)
-            if "tiktok" in destinos:
-                _retirar_marca_do_app(args["id"], chave)
+            for destino in marcados:
+                _retirar_marca_do_app(args["id"], chave, destino)
             if isinstance(exc, Recusa):
                 raise
             raise Recusa(f"não consegui iniciar a publicação: {exc}") from exc
@@ -877,18 +911,20 @@ def concluir_publicacao(chave: str) -> dict | None:
     avisos = []
 
     with trava_de_acoes():
-        if "tiktok" in resultado:
-            if resultado["tiktok"] == "a_conferir":
+        for destino, desfecho in resultado.items():
+            nome = NOME_DESTINO[destino]
+            if desfecho == "a_conferir":
                 ultima = next((l for l in reversed((saida or "").splitlines())
-                               if l.startswith("TikTok")), "")
+                               if l.startswith(nome)), "")
                 motivo = ultima or ("sem desfecho" if fim is None
-                                    else f"saída {codigo} sem linha do TikTok")
+                                    else f"saída {codigo} sem linha do {nome}")
                 try:
-                    _marcar_do_app(video_id, chave, f"a conferir: {motivo}")
+                    _marcar_do_app(video_id, chave, f"a conferir: {motivo}", destino)
                 except Recusa as exc:
-                    avisos.append(f"marca do TikTok não atualizada ({exc})")
-            elif not _retirar_marca_do_app(video_id, chave):
-                avisos.append("não consegui tirar a marca “a conferir” do app")
+                    avisos.append(f"marca do {nome} não atualizada ({exc})")
+            elif not _retirar_marca_do_app(video_id, chave, destino):
+                avisos.append(f"não consegui tirar a marca “a conferir” do app "
+                              f"no {nome}")
         if _limpo(resultado):
             _mexer_no_voo(chave)
         else:
@@ -1027,15 +1063,20 @@ def soltar_marca(video_id: str) -> bool:
     with trava_de_acoes():
         if any(v.get("id") == video_id for v in em_voo().values()):
             raise Recusa("o vídeo ainda está no em-voo do app; libere-o antes")
-        marca = _ler_a_conferir().get(video_id)
-        if marca is None:
-            return False
-        chave = (marca or {}).get("app")
-        if not chave:
-            raise Recusa("essa marca não é do app (é da grade); não mexo nela")
-        if not _retirar_marca_do_app(video_id, chave):
-            raise Recusa("não consegui tirar a marca")
-    return True
+        do_app = {}
+        for destino in NOME_DESTINO:
+            marca = _ler_a_conferir(destino).get(video_id)
+            if marca is None:
+                continue
+            chave = (marca or {}).get("app")
+            if not chave:
+                raise Recusa(f"a marca do {NOME_DESTINO[destino]} não é do app "
+                             "(é da grade); não mexo nela")
+            do_app[destino] = chave
+        for destino, chave in do_app.items():
+            if not _retirar_marca_do_app(video_id, chave, destino):
+                raise Recusa(f"não consegui tirar a marca do {NOME_DESTINO[destino]}")
+    return bool(do_app)
 
 
 def relatorio_do_video(video_id: str) -> list[str]:
@@ -1055,12 +1096,15 @@ def relatorio_do_video(video_id: str) -> list[str]:
                               f"publicado={_metricas().publicado(l)}")
     except Exception as exc:                                 # noqa: BLE001
         linhas.append(f"ledger: ilegível ({type(exc).__name__})")
-    try:
-        marca = _ler_a_conferir().get(video_id)
-        if marca is not None:
-            linhas.append(f"a conferir (TikTok): {(marca or {}).get('estado', '')}")
-    except Recusa as exc:
-        linhas.append(f"a conferir: {exc}")
+    for destino, nome in NOME_DESTINO.items():
+        try:
+            marca = _ler_a_conferir(destino).get(video_id)
+            if marca is not None:
+                dono = "do app" if (marca or {}).get("app") else "da grade"
+                linhas.append(f"a conferir ({nome}, {dono}): "
+                              f"{(marca or {}).get('estado', '')}")
+        except Recusa as exc:
+            linhas.append(f"a conferir ({nome}): {exc}")
     return linhas
 
 

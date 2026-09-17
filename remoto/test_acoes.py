@@ -160,14 +160,29 @@ class _Filha:
 FORA_DA_GRADE = datetime(2026, 9, 17, 10, 0)
 
 
+def _isolar(monkeypatch, tmp):
+    """Tudo o que o app grava vai para `tmp` — inclusive as TRAVAS da grade.
+
+    Sem trocar a pasta das travas, um teste seguraria a `tiktok_a_conferir`
+    DE VERDADE, e a postagem da grade que rodasse naquele instante esperaria
+    por ele.
+    """
+    from builds import travas
+    from builds.publicar import desfecho
+    (tmp / "locks").mkdir(exist_ok=True)
+    monkeypatch.setattr(travas, "_pasta", lambda: tmp / "locks")
+    monkeypatch.setattr(desfecho, "ESPERA_DA_TRAVA_S", 0.5)
+    monkeypatch.setattr(api_http, "ARQUIVO", tmp / "app_celular.json")
+    monkeypatch.setattr(acoes, "ARQUIVO_RASTRO", tmp / "acoes.jsonl")
+    monkeypatch.setattr(acoes, "ARQUIVO_EM_VOO", tmp / "em_voo.json")
+    monkeypatch.setattr(acoes, "PASTA_PUBLICACOES", tmp / "publicacoes")
+    monkeypatch.setattr(acoes, "PASTA_A_CONFERIR", tmp)
+    monkeypatch.setattr(acoes, "VIGIA_S", 0.05)
+
+
 @pytest.fixture
 def mundo(tmp_path, monkeypatch):
-    monkeypatch.setattr(api_http, "ARQUIVO", tmp_path / "app_celular.json")
-    monkeypatch.setattr(acoes, "ARQUIVO_RASTRO", tmp_path / "acoes.jsonl")
-    monkeypatch.setattr(acoes, "ARQUIVO_EM_VOO", tmp_path / "em_voo.json")
-    monkeypatch.setattr(acoes, "PASTA_PUBLICACOES", tmp_path / "publicacoes")
-    monkeypatch.setattr(acoes, "ARQUIVO_A_CONFERIR", tmp_path / "_tiktok_a_conferir.json")
-    monkeypatch.setattr(acoes, "VIGIA_S", 0.05)
+    _isolar(monkeypatch, tmp_path)
     acoes._RASTRO_FALHOU.clear()
     controle, comandos = _Controle(), _Comandos()
     metricas, grade, filha = _Metricas(tmp_path), _Grade(), _Filha()
@@ -223,8 +238,8 @@ def _publicar(args, aparelho="ap"):
     return texto
 
 
-def _marcas(mundo) -> dict:
-    caminho = mundo.tmp / "_tiktok_a_conferir.json"
+def _marcas(mundo, plataforma="tiktok") -> dict:
+    caminho = mundo.tmp / f"_{plataforma}_a_conferir.json"
     return json.loads(caminho.read_text(encoding="utf-8")) if caminho.exists() else {}
 
 
@@ -338,20 +353,82 @@ def test_marca_que_nao_fica_nao_sobe_nada(mundo, monkeypatch):
 def test_lista_a_conferir_ilegivel_recusa_e_nao_e_regravada(mundo):
     caminho = mundo.tmp / "_tiktok_a_conferir.json"
     caminho.write_text('{"generation_00001:build:celular": {"estado": "x"', encoding="utf-8")
-    with pytest.raises(acoes.Recusa, match="a conferir"):
-        acoes.preparar("publicar", {"id": A, "onde": "tiktok"}, "ap")
-    with pytest.raises(acoes.Recusa, match="a conferir"):
-        acoes.preparar("publicar", {"id": A, "onde": "youtube"}, "ap")
+    for onde in ("tiktok", "ambos"):
+        with pytest.raises(acoes.Recusa, match="ilegível"):
+            acoes.preparar("publicar", {"id": A, "onde": onde}, "ap")
+    acoes.preparar("publicar", {"id": A, "onde": "youtube"}, "ap")    # outro arquivo
     assert caminho.read_text(encoding="utf-8").startswith('{"generation_00001')
+    assert list(mundo.tmp.glob("*.corrompido*")) == []    # o app nem renomeia
 
 
-def test_lista_antiga_em_formato_de_lista_e_lida(mundo):
+def test_lista_em_formato_de_lista_e_ilegivel_para_a_grade_e_para_o_app(mundo):
+    # `desfecho._ler` so aceita objeto; o app nao inventa outra leitura
     (mundo.tmp / "_tiktok_a_conferir.json").write_text(json.dumps([CINCO]),
                                                         encoding="utf-8")
     for onde in ("tiktok", "ambos"):
-        with pytest.raises(acoes.Recusa, match="a conferir"):
+        with pytest.raises(acoes.Recusa, match="ilegível"):
             acoes.preparar("publicar", {"id": CINCO, "onde": onde}, "ap")
     acoes.preparar("publicar", {"id": CINCO, "onde": "youtube"}, "ap")
+
+
+def test_marca_do_youtube_barra_so_o_youtube(mundo):
+    (mundo.tmp / "_youtube_a_conferir.json").write_text(
+        json.dumps({CINCO: {"estado": "cliquei, rascunho", "plataforma": "youtube"}}),
+        encoding="utf-8")
+    for onde in ("youtube", "ambos"):
+        with pytest.raises(acoes.Recusa, match="YouTube deste vídeo está “a conferir”"):
+            acoes.preparar("publicar", {"id": CINCO, "onde": onde}, "ap")
+    acoes.preparar("publicar", {"id": CINCO, "onde": "tiktok"}, "ap")
+
+
+def test_trava_da_lista_ocupada_recusa(mundo):
+    from builds import travas
+    from builds.publicar import desfecho
+    dentro, sair = threading.Event(), threading.Event()
+
+    def segurar():
+        with travas.trava(desfecho.nome_da_trava("tiktok")):
+            dentro.set()
+            sair.wait(5)
+    fio = threading.Thread(target=segurar)
+    fio.start()
+    dentro.wait(5)
+    try:
+        with pytest.raises(acoes.Recusa, match="ocupada"):
+            acoes.preparar("publicar", {"id": A, "onde": "tiktok"}, "ap")
+        acoes.preparar("publicar", {"id": A, "onde": "youtube"}, "ap")
+    finally:
+        sair.set()
+        fio.join(5)
+
+
+def test_a_trava_e_a_mesma_da_grade(mundo, monkeypatch):
+    from builds import travas
+    pedidas = []
+    real = travas.trava
+
+    def espia(nome, esperar=0.0):
+        pedidas.append(nome)
+        return real(nome, esperar)
+    monkeypatch.setattr(travas, "trava", espia)
+    acoes.preparar("publicar", {"id": A, "onde": "ambos"}, "ap")
+    assert {"tiktok_a_conferir", "youtube_a_conferir"} <= set(pedidas)
+
+
+def test_publicador_depois_do_app_nao_apaga_nem_duplica(mundo, monkeypatch):
+    """A marca do app ja esta la quando o publicador chama a da grade."""
+    from builds.publicar import desfecho
+    mundo.filha.segurar = threading.Event()
+    _publicar({"id": A, "onde": "tiktok"})
+    monkeypatch.setattr(desfecho, "arquivo_a_conferir",
+                        lambda canal, plataforma="tiktok":
+                        mundo.tmp / f"_{plataforma}_a_conferir.json")
+    monkeypatch.setattr(desfecho, "_avisar", lambda *a, **k: None)
+    assert desfecho.marcar_para_conferir("builds", A, "cliquei em publicar") is True
+    marca = _marcas(mundo)[A]
+    assert marca["app"] and "em andamento" in marca["estado"]
+    mundo.filha.roteiro = (f"TikTok A CONFERIR: {TK_CLIQUE}\n", 3)
+    mundo.filha.segurar.set()
 
 
 def test_clique_sem_confirmacao_fica_marcado_e_bloqueado(mundo, monkeypatch):
@@ -372,6 +449,18 @@ def test_clique_sem_confirmacao_fica_marcado_e_bloqueado(mundo, monkeypatch):
     assert any("a\\_conferir" in a for a in mundo.avisos)
 
 
+def test_marca_previa_nos_dois_destinos(mundo):
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"YouTube: {YT_OK}\nTikTok: {TK_OK}\n", 0)
+    _publicar({"id": A, "onde": "ambos"})
+    for plataforma in ("youtube", "tiktok"):
+        marca = _marcas(mundo, plataforma)[A]
+        assert marca["plataforma"] == plataforma and marca["app"]
+    mundo.filha.segurar.set()
+    _esperar_publicacoes()
+    assert _marcas(mundo, "youtube") == {} and _marcas(mundo, "tiktok") == {}
+
+
 def test_youtube_nao_confirmado_bloqueia_o_youtube(mundo):
     mundo.filha.roteiro = (f"YouTube: {YT_RASCUNHO}\n", 0)
     _publicar({"id": DOIS, "onde": "youtube"})
@@ -382,13 +471,20 @@ def test_youtube_nao_confirmado_bloqueia_o_youtube(mundo):
         acoes.preparar("publicar", {"id": CINCO, "onde": "youtube"}, "ap")
     acoes.preparar("publicar", {"id": CINCO, "onde": "tiktok"}, "ap")
     assert _marcas(mundo) == {}              # o TikTok nem entrou nessa
+    marca = _marcas(mundo, "youtube")[DOIS]
+    # o estado e cortado em 200 caracteres, como na grade
+    assert marca["estado"].startswith("pelo app: a conferir: YouTube: cliquei em publicar")
+    with pytest.raises(acoes.Recusa, match="YouTube"):   # mesmo depois de liberar
+        acoes.liberar(DOIS)
+        acoes.preparar("publicar", {"id": DOIS, "onde": "youtube"}, "ap")
 
 
 def test_youtube_que_falhou_antes_tira_a_marca_do_tiktok(mundo):
     mundo.filha.roteiro = ("YouTube: cota esgotada\n", 2)
     _publicar({"id": A, "onde": "ambos"})
     _esperar_publicacoes()
-    assert _marcas(mundo) == {} and acoes.em_voo() == {}
+    assert _marcas(mundo) == {} and _marcas(mundo, "youtube") == {}
+    assert acoes.em_voo() == {}
 
 
 def test_ambos_com_youtube_em_rascunho_solta_so_o_tiktok(mundo):
@@ -396,6 +492,7 @@ def test_ambos_com_youtube_em_rascunho_solta_so_o_tiktok(mundo):
     _publicar({"id": A, "onde": "ambos"})
     _esperar_publicacoes()
     assert _marcas(mundo) == {}
+    assert A in _marcas(mundo, "youtube")
     (item,) = acoes.em_voo().values()
     assert item["motivo"] == "confira no YouTube"
 
@@ -424,12 +521,7 @@ def test_servidor_que_cai_concilia_na_subida(mundo, monkeypatch):
         time.sleep(0.02)
     assert acoes.em_voo()[chave]["estado"] == "em_andamento"    # ainda sem conclusao
     monkeypatch.undo()          # volta tudo, e o mundo de novo sem o `vigiar` falso
-    monkeypatch.setattr(api_http, "ARQUIVO", mundo.tmp / "app_celular.json")
-    monkeypatch.setattr(acoes, "ARQUIVO_RASTRO", mundo.tmp / "acoes.jsonl")
-    monkeypatch.setattr(acoes, "ARQUIVO_EM_VOO", mundo.tmp / "em_voo.json")
-    monkeypatch.setattr(acoes, "PASTA_PUBLICACOES", mundo.tmp / "publicacoes")
-    monkeypatch.setattr(acoes, "ARQUIVO_A_CONFERIR", mundo.tmp / "_tiktok_a_conferir.json")
-    monkeypatch.setattr(acoes, "VIGIA_S", 0.05)
+    _isolar(monkeypatch, mundo.tmp)
     monkeypatch.setattr(acoes, "_entregar", mundo.avisos.append)
     monkeypatch.setattr(acoes, "_metricas", lambda: mundo.metricas)
     assert acoes.conciliar() == [chave]
@@ -495,7 +587,7 @@ def test_liberar_mostra_antes_e_so_solta_com_confirmo(mundo, capsys):
     assert api_http.main(["--liberar", A]) == 0
     saida = capsys.readouterr().out
     assert "em voo: tiktok a_conferir" in saida
-    assert "ledger: youtube" in saida and "a conferir (TikTok)" in saida
+    assert "ledger: youtube" in saida and "a conferir (TikTok, do app)" in saida
     assert "--confirmo" in saida
     assert len(acoes.em_voo()) == 1                     # nada saiu
     assert api_http.main(["--liberar", A, "--confirmo"]) == 0
@@ -1298,6 +1390,10 @@ def test_conciliar_com_pasta_sumida(mundo):
 
 
 @pytest.mark.parametrize("saida,codigo,onde", [
+    (f"TikTok A CONFERIR: {TK_CLIQUE}\n", 3, "tiktok"),
+    (f"YouTube A CONFERIR: {YT_RASCUNHO}\n", 3, "youtube"),
+    (f"YouTube: {YT_OK}\nYouTube A CONFERIR: {YT_RASCUNHO}\n", 3, "youtube"),
+    (f"YouTube A CONFERIR: {YT_RASCUNHO}\nTikTok: {TK_OK}\n", 3, "youtube"),
     ("TikTok: A CONFERIR - cliquei e nao confirmou\n", 3, "tiktok"),
     ("YouTube: A CONFERIR - rascunho\n", 3, "youtube"),
     (f"TikTok: {TK_OK}\n", 3, "tiktok"),
@@ -1347,7 +1443,7 @@ def test_soltar_marca_so_a_do_app_e_so_fora_do_voo(mundo, capsys):
     acoes.liberar(A)
     assert api_http.main(["--soltar-marca", A]) == 0
     saida = capsys.readouterr().out
-    assert "a conferir (TikTok)" in saida and "--confirmo" in saida
+    assert "a conferir (TikTok, do app)" in saida and "--confirmo" in saida
     assert A in _marcas(mundo)
     assert api_http.main(["--soltar-marca", A, "--confirmo"]) == 0
     assert A not in _marcas(mundo)
@@ -1361,3 +1457,9 @@ def test_marca_da_grade_nao_sai_pelo_app(mundo):
     with pytest.raises(acoes.Recusa, match="da grade"):
         acoes.soltar_marca(CINCO)
     assert CINCO in _marcas(mundo)
+
+
+def test_formato_novo_com_ambos(mundo):
+    saida = f"YouTube A CONFERIR: {YT_RASCUNHO}\nTikTok: {TK_OK}\n"
+    assert acoes.desfechos(saida, 3, "ambos") == {"youtube": "a_conferir",
+                                                  "tiktok": "a_conferir"}
