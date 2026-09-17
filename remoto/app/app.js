@@ -304,7 +304,8 @@ async function agir(acao, args = {}) {
 }
 
 async function pedirPublicacao(v) {
-  const onde = await perguntar(`Publicar «${v.titulo || v.id}» onde?`,
+  const gancho = v.variante && v.variante !== "A" ? ` (gancho ${v.variante})` : "";
+  const onde = await perguntar(`Publicar «${v.titulo || v.id}»${gancho} onde?`,
                                {destinos: true});
   if (["youtube", "tiktok", "ambos"].includes(onde))
     agir("publicar", {id: v.id, onde});

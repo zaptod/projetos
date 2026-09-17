@@ -59,6 +59,7 @@ class _Comandos:
 
 def _video(id_, titulo, fonte, pendencias=(), perfil="celular"):
     return types.SimpleNamespace(id=id_, titulo=titulo, fonte_id=fonte,
+                                 variante="B" if id_.endswith(":B") else "A",
                                  perfil=perfil, pendencias=list(pendencias),
                                  caminho="x.mp4", bytes=1, quando=1.0, origem="build")
 
@@ -148,6 +149,9 @@ def test_publicar_monta_o_comando_com_o_id_exato(mundo):
     pedido = acoes.preparar("publicar", {"id": "g1:build:normal:", "onde": "ambos"}, "ap")
     assert pedido["dois_passos"]
     assert "Build Um" in pedido["texto"] and "YouTube e no TikTok" in pedido["texto"]
+    assert "gancho" not in pedido["texto"]
+    b = acoes.preparar("publicar", {"id": "g1:build:normal::B", "onde": "youtube"}, "ap")
+    assert "«Build Um» (gancho B) no YouTube" in b["texto"]
     acoes.executar(pedido["acao"], pedido["args"])
     assert mundo.comandos.rodados == [["python", "main.py", "publicar",
                                        "g1:build:normal:", "--youtube",

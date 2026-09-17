@@ -415,11 +415,14 @@ def preparar(acao: str, args, aparelho: str) -> dict:
         onde = str(args.get("onde") or "")
         video = video_para_publicar(video_id, onde)
         destinos = " e no ".join(NOME_DESTINO[d] for d in DESTINOS[onde])
+        # A e B tem o MESMO titulo: sem isto, a confirmacao nao diz qual sai.
+        variante = str(getattr(video, "variante", "A") or "A")
+        gancho = "" if variante == "A" else f" (gancho {variante})"
         return {"acao": acao,
                 "args": {"id": video.id, "onde": onde,
                          "fonte": getattr(video, "fonte_id", "") or ""},
                 "dois_passos": True,
-                "texto": f"Publicar «{video.titulo}» no {destinos}? "
+                "texto": f"Publicar «{video.titulo}»{gancho} no {destinos}? "
                          "Não dá para desfazer pelo app."}
     raise Recusa(f"ação desconhecida: {acao}")
 
