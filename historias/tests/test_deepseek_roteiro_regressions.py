@@ -666,11 +666,13 @@ class ClienteDoDeepSeek(unittest.TestCase):
         self.assertIs(False, cliente._ajustar_raciocinio())
         self.assertEqual([1], cliques)
 
-    def _diario(self, cliente):
+    def _diario(self, cliente, anteriores=()):
         registros = []
         atividade = llm_cliente._rb_atividade
         self.addCleanup(setattr, atividade, "registrar", atividade.registrar)
+        self.addCleanup(setattr, atividade, "recentes", atividade.recentes)
         atividade.registrar = lambda *a, **k: registros.append((a, k))
+        atividade.recentes = lambda n=60, fabrica=None: list(anteriores)
         cliente.diario = True
         cliente.papel, cliente.ref = "roteiro", "historia_00077"
         return registros
@@ -703,6 +705,49 @@ class ClienteDoDeepSeek(unittest.TestCase):
             cliente.perguntar("oi")
         self.assertEqual(["inicio", "aviso"], [a[1] for a, _ in registros])
         self.assertNotIn("erro", [a[1] for a, _ in registros])
+
+    def _falhar(self, cliente):
+        self._responder(cliente, "x")
+
+        def quebra(_t=None):
+            raise llm_cliente.NaoLogado("sessao caiu")
+
+        cliente.esperar_resposta = quebra
+        with self.assertRaises(llm_cliente.LLMFalhou):
+            cliente.perguntar("oi")
+
+    @staticmethod
+    def _falha_antiga():
+        return {"fabrica": "deepseek", "status": "aviso",
+                "etapa": "llm.roteiro", "detalhe": "roteiro: turno falhou ..."}
+
+    def test_terceira_falha_seguida_vira_um_erro(self):
+        # Login caido: uma falha por rodada, e so aviso ninguem ve.
+        cliente = self._cliente()
+        anteriores = [self._falha_antiga(), {"status": "inicio",
+                                             "etapa": "llm.roteiro"},
+                      self._falha_antiga()]
+        registros = self._diario(cliente, anteriores)
+        self._falhar(cliente)
+        ((args, _k),) = [r for r in registros if r[0][1] != "inicio"]
+        self.assertEqual("erro", args[1])
+        self.assertIn("3 seguida", args[2])
+
+    def test_quarta_falha_volta_a_ser_aviso(self):
+        cliente = self._cliente()
+        registros = self._diario(cliente, [self._falha_antiga()] * 3)
+        self._falhar(cliente)
+        self.assertEqual("aviso", registros[-1][0][1])
+
+    def test_um_turno_bom_zera_a_conta(self):
+        cliente = self._cliente()
+        anteriores = [self._falha_antiga(),
+                      {"status": "ok", "etapa": "llm.roteiro"},
+                      self._falha_antiga(), self._falha_antiga()]
+        registros = self._diario(cliente, anteriores)
+        self._falhar(cliente)
+        self.assertEqual("aviso", registros[-1][0][1])
+        self.assertIn("2 seguida", registros[-1][0][2])
 
     def test_cliente_de_teste_nao_escreve_no_diario(self):
         cliente = self._cliente()

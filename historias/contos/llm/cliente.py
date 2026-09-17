@@ -34,6 +34,10 @@ from . import seletores as sel
 
 RAIZ = Path(__file__).resolve().parents[2]
 PERFIS = RAIZ / ".browser_profile"
+# A partir de quantas falhas SEGUIDAS do mesmo provedor o diario ganha um
+# erro (e o Telegram, um alerta). So a de numero exato: as seguintes voltam
+# a ser aviso, para um login caido nao virar um alerta por rodada.
+FALHAS_PARA_ERRO = 3
 
 
 class LLMFalhou(RuntimeError):
@@ -866,9 +870,14 @@ class ClienteLLM:
         try:
             texto = ClienteLLM._perguntar(self, prompt, timeout, anexos)
         except Exception as exc:
+            seguidas = ClienteLLM._falhas_seguidas(self) + 1
+            # A MESMA FALHA REPETIDA VIRA UM ERRO (login caido, conta
+            # travada): so com aviso, ninguem ficaria sabendo.
+            status = "erro" if seguidas == FALHAS_PARA_ERRO else "aviso"
             ClienteLLM._registrar_turno(
-                self, "aviso", f"turno falhou: {type(exc).__name__}: "
-                f"{str(exc)[:120]}", time.monotonic() - comeco)
+                self, status, f"turno falhou ({seguidas} seguida(s)): "
+                f"{type(exc).__name__}: {str(exc)[:120]}",
+                time.monotonic() - comeco)
             raise
         if (getattr(self, "sel", None) or {}).get("limpar_resposta"):
             from .texto import limpar_resposta
@@ -876,6 +885,32 @@ class ClienteLLM:
         ClienteLLM._registrar_turno(self, "ok", f"{len(texto)} chars",
                                     time.monotonic() - comeco)
         return texto
+
+    def _falhas_seguidas(self) -> int:
+        """Quantos turnos deste provedor falharam em seguida, pelo diario.
+
+        Pelo DIARIO e nao por contador em memoria: cada rodada e um processo
+        novo, e o login caido aparece como uma falha por rodada.
+        """
+        if not getattr(self, "diario", False):
+            return 0
+        try:
+            eventos = _rb_atividade.recentes(80, fabrica=self.provedor)
+        except Exception:                                      # noqa: BLE001
+            return 0
+        conta = 0
+        for evento in eventos:
+            if not str(evento.get("etapa") or "").startswith("llm."):
+                continue
+            status = evento.get("status")
+            if status == "inicio":
+                continue
+            if status in ("aviso", "erro") and "turno falhou" in str(
+                    evento.get("detalhe") or ""):
+                conta += 1
+                continue
+            break
+        return conta
 
     def _registrar_turno(self, status: str, detalhe: str,
                          dur_s: float | None = None) -> None:
