@@ -662,6 +662,26 @@ def _video_por_id(video_id: str):
 # politica aceita (13 -> 11 no proprio dia 16/09) e tres partes de 09/09 estao
 # nela. Uniformizar a regra agora tiraria video de uma fila que funciona, em
 # silencio, por causa de um problema que e dos builds.
+# DESLIGADAS EM 16/09/2026, as tres de uma vez, depois de repostarem no ar.
+#
+# A recuperacao confia no LEDGER para saber o que ja esta no TikTok, e o
+# ledger NAO TEM as publicacoes antigas de la: as feitas a mao, as da grade
+# propria de 13-15/09, os pedaços "1 de 2". Entao ela leu "nunca foi ao
+# TikTok" sobre partes que estavam no ar havia dias e as postou de novo. Hoje
+# a historia_00003 saiu duas vezes da p01 a p06, e provavelmente a h10 p01 e
+# a h16 p01.
+#
+# O erro de metodo foi meu e tem nome: eu conferi a lista contra o ledger, e
+# a pergunta era sobre o CANAL. Media a fonte errada com cuidado.
+#
+# So volta a ligar depois que a fila for conferida contra a lista COMPLETA do
+# Studio do TikTok — por titulo, por parte e por data — e o que ja estiver la
+# ganhar linha no ledger. Nao basta consertar a recuperacao: enquanto o
+# ledger for cego para o passado, qualquer coisa que dependa dele para dizer
+# "nunca foi" vai repetir.
+RECUPERACAO_LIGADA = False
+RESERVA_LIGADA = False
+
 CORTE_DO_TIKTOK = {"builds": "2026-09-10"}
 
 
@@ -1055,6 +1075,9 @@ def recuperar_no_tiktok(so_ver: bool = False,
     custo maximo e uma postagem de TikTok a mais por rodada, e ele some
     sozinho quando nao ha atraso.
     """
+    if not RECUPERACAO_LIGADA:
+        return {"feito": False, "fila": 0, "canal": canal,
+                "motivo": "recuperacao desligada (ver RECUPERACAO_LIGADA)"}
     fila = atrasados_no_tiktok(canal=canal)
     if not fila:
         return {"feito": False, "fila": 0, "canal": canal}
@@ -1101,6 +1124,9 @@ def publicar_da_reserva(so_ver: bool = False) -> dict:
     O YOUTUBE NAO REPETE NADA: estes videos ja estao la desde agosto. Este
     passo e exclusivamente do segundo destino.
     """
+    if not RESERVA_LIGADA:
+        return {"feito": False, "reserva": 0,
+                "motivo": "reserva desligada (ver RESERVA_LIGADA)"}
     if not _tiktok_neste_horario():
         return {"feito": False, "reserva": 0,
                 "motivo": "este horario nao e da grade do TikTok"}
@@ -2187,8 +2213,9 @@ def main(argv=None) -> int:
     except Exception:                                          # noqa: BLE001
         reserva = 0
     if reserva:
+        estado = ("" if RESERVA_LIGADA else "  <<< DESLIGADA")
         _linha(f"  reserva TikTok    {reserva:>4} build(s) "
-               f"(so o segundo destino; ja estao no YouTube)")
+               f"(so o segundo destino; ja estao no YouTube){estado}")
     # AVISA SEMPRE, e nao so quando deu certo. Era `if any(feito)`, e foi por
     # isso que a noite de 11/09/2026 passou inteira calada: as rodadas que
     # publicaram ZERO eram justamente as que precisavam avisar.

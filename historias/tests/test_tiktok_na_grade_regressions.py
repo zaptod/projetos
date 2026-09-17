@@ -450,6 +450,11 @@ class AtrasadoNoTikTokTests(unittest.TestCase):
 
     def setUp(self):
         self.postar = _postar()
+        # A recuperacao esta DESLIGADA em producao desde 16/09/2026: ela
+        # repostou no ar, porque o ledger e cego para o passado do TikTok.
+        # Estes testes descrevem o contrato de QUANDO ela estiver ligada.
+        self.postar.RECUPERACAO_LIGADA = True
+        self.postar.RESERVA_LIGADA = True
 
     def _mundo(self, ledger, catalogo_ids):
         """Duble do ledger e do catalogo, sem tocar no disco."""

@@ -130,6 +130,12 @@ class ReacaoAoDesfechoTests(unittest.TestCase):
     """Classificar sem reagir nao conserta nada."""
 
     def setUp(self):
+        # A recuperacao esta DESLIGADA em producao desde 16/09/2026 (ela
+        # repostou no ar). Estes testes descrevem o contrato de QUANDO ela
+        # estiver ligada, entao ligam a chave e a devolvem no fim.
+        for _chave in ("RECUPERACAO_LIGADA", "RESERVA_LIGADA"):
+            self.addCleanup(setattr, postar, _chave, getattr(postar, _chave))
+            setattr(postar, _chave, True)
         self.tmp = TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         base = Path(self.tmp.name)
