@@ -164,7 +164,63 @@ class VideoPrivado(unittest.TestCase):
         self.assertEqual([(0, "historia_privada", "a_conferir")], _tipos(curas))
 
 
+class GemeoDeVerdade(unittest.TestCase):
+    """B4 da revisao de 16/09/2026, confirmado nos dados: 11 dos 12 "gemeos"
+    achados so pelo titulo foram ao ar ~17 dias ANTES do rascunho. Eram
+    videos antigos de builds refeitas, com o mesmo personagem e nota."""
+
+    def setUp(self):
+        self.linha = _yt(url="https://youtu.be/rrr", youtube_id="rrr")
+        self.rascunho = _video("rrr", privacidade="private")
+
+    def test_homonimo_antigo_nao_e_gemeo(self):
+        antigo = _video("velho", no_ar=_hora(days=-17))
+        (cura,) = C.calcular_curas([self.linha], [self.rascunho, antigo])
+        self.assertEqual("rascunho_sem_gemeo", cura["tipo"])
+        self.assertIn("velho", cura["motivo"])
+
+    def test_reenvio_depois_do_rascunho_e_gemeo(self):
+        depois = _video("novo", no_ar=_hora(hours=5))
+        (cura,) = C.calcular_curas([self.linha], [self.rascunho, depois])
+        self.assertEqual("rascunho_com_gemeo", cura["tipo"])
+        self.assertEqual("novo", cura["depois"]["youtube_id"])
+
+    def test_reenvio_depois_de_uma_semana_nao_conta(self):
+        tarde = _video("tarde", no_ar=_hora(days=9))
+        (cura,) = C.calcular_curas([self.linha], [self.rascunho, tarde])
+        self.assertEqual("rascunho_sem_gemeo", cura["tipo"])
+
+    def test_parte_diferente_nao_e_gemeo_nas_historias(self):
+        titulo = "Uma historia com titulo bem comprido para passar do corte"
+        linha = _yt("h1:celular:p03", f"{titulo} (Parte 3/6)",
+                    url="https://youtu.be/rrr", youtube_id="rrr")
+        rascunho = _video("rrr", f"{titulo} (Parte 3/6)", privacidade="private")
+        outra_parte = _video("p4", f"{titulo} (Parte 4/6)", no_ar=_hora(hours=1))
+        (cura,) = C.calcular_curas([linha], [rascunho, outra_parte], "historias")
+        self.assertEqual("historia_privada", cura["tipo"])
+
+    def test_o_dono_verdadeiro_fica_com_o_video(self):
+        # A regra da frase (hora exata) vem ANTES do gemeo e reserva o id.
+        dono = _yt("g2", url="publicado no YouTube", quando=_hora(hours=5,
+                                                                 seconds=10))
+        publico = _video("novo", no_ar=_hora(hours=5))
+        curas = C.calcular_curas([self.linha, dono], [self.rascunho, publico])
+        por_linha = {c["linha"]: c for c in curas}
+        self.assertEqual("link_de_frase", por_linha[1]["tipo"])
+        self.assertEqual("novo", por_linha[1]["depois"]["youtube_id"])
+        self.assertEqual("rascunho_sem_gemeo", por_linha[0]["tipo"])
+
+
 class IdRepetido(unittest.TestCase):
+
+    def test_video_fora_da_lista_do_canal_e_a_conferir(self):
+        # B5: sem o video, "o mais proximo" seria sorteio.
+        a = _yt("g1", url="https://youtu.be/xxx", youtube_id="xxx")
+        b = _yt("g2", url="https://youtu.be/xxx", youtube_id="xxx")
+        curas = C.calcular_curas([a, b], [])
+        self.assertEqual({"id_repetido_sem_video"}, {c["tipo"] for c in curas})
+        self.assertEqual({"a_conferir"}, {c["certeza"] for c in curas})
+        self.assertEqual([a, b], C.aplicar([a, b], curas))
 
     def test_a_linha_longe_da_hora_do_video_perde_o_id(self):
         # generation_00081: A (21:39) recebeu o id do upload B (00:39).
@@ -219,6 +275,109 @@ class Formato(unittest.TestCase):
         self.assertEqual("publicado no YouTube", hist["antes"]["url"])
 
 
+class PreCondicaoDoPostar(unittest.TestCase):
+    """B1 da revisao: com o postar.py lendo o `url`, a regra de formato
+    apagaria a guarda de "ja esta no TikTok" de 46 builds e 51 historias."""
+
+    def test_sem_a_constante_recusa(self):
+        self.assertIn("CONTRATO_DO_LEDGER",
+                      C.postar_migrado("def x():\n    return 1\n"))
+
+    def test_constante_com_leitura_por_url_restante_recusa(self):
+        fonte = ("CONTRATO_DO_LEDGER = 2\n"
+                 "ja = {l.get('v') for l in x if l.get(\"url\")}\n")
+        self.assertIn("1 ponto", C.postar_migrado(fonte))
+
+    def test_migrado_de_verdade_libera(self):
+        fonte = ("CONTRATO_DO_LEDGER = 2\n"
+                 "ja = {l.get('v') for l in x if publicado(l)}\n"
+                 "# o aviso da ficha nao e ledger:\n"
+                 "if r.get(\"url\"):\n    pass\n")
+        self.assertEqual("", C.postar_migrado(fonte))
+
+    def test_o_postar_de_verdade_e_a_guarda_do_tiktok(self):
+        """Pelo LEITOR do postar, e nao so por `metricas.publicado`.
+
+        Uma linha de TikTok curada (url vazio, publicado=true) tem de
+        continuar barrando a repostagem. Enquanto o postar.py nao estiver
+        migrado, o que tem de valer e o outro lado: o --gravar recusa.
+        """
+        spec = importlib.util.spec_from_file_location(
+            "postar_para_cura", FERRAMENTA.parent / "postar.py")
+        postar = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(postar)
+        curada = {"video_id": "g1:build:celular", "plataforma": "tiktok",
+                  "url": "", "estado_texto": "publicado no TikTok",
+                  "publicado": True, "estado": "publicado"}
+        real = M.publicados
+        M.publicados = lambda canal="builds": [curada]
+        self.addCleanup(lambda: setattr(M, "publicados", real))
+        if C.postar_migrado() == "":
+            self.assertTrue(postar._build_ja_no_tiktok("g1:build:celular"))
+        else:
+            self.assertFalse(postar._build_ja_no_tiktok("g1:build:celular"),
+                             "o postar ja enxerga a linha curada: suba o "
+                             "CONTRATO_DO_LEDGER para 2")
+
+
+class GravacaoSegura(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.pasta = Path(self._tmp.name)
+        self.ledger = self.pasta / "publicados.jsonl"
+        self.ledger.write_text(json.dumps(_yt(), ensure_ascii=False) + "\n",
+                               encoding="utf-8")
+        real = M.registro_do_canal
+        M.registro_do_canal = lambda canal="builds": self.ledger
+        self.addCleanup(lambda: setattr(M, "registro_do_canal", real))
+
+    def test_linha_escrita_durante_a_cura_nao_se_perde(self):
+        # B2: a postagem acrescenta linhas enquanto a cura calcula.
+        real = C.calcular_curas
+        chamadas = []
+
+        def calcular_e_postar_no_meio(*a, **k):
+            if not chamadas:
+                with open(self.ledger, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(_yt("g9", "NOVO"),
+                                        ensure_ascii=False) + "\n")
+            chamadas.append(1)
+            return real(*a, **k)
+
+        C.calcular_curas = calcular_e_postar_no_meio
+        self.addCleanup(lambda: setattr(C, "calcular_curas", real))
+        C.curar_canal("builds", [_video("aaa")], gravar_de_fato=True,
+                      carimbo="t1")
+        ids = [linha["video_id"] for linha in C.ler(self.ledger)]
+        self.assertEqual(["g1:build:celular", "g9"], ids)
+        self.assertEqual(2, len(chamadas), "tinha de recalcular")
+
+    def test_ledger_travado_nao_grava(self):
+        import contextlib
+
+        @contextlib.contextmanager
+        def ocupada(_canal):
+            yield False
+
+        real = C.trava_do_ledger
+        C.trava_do_ledger = ocupada
+        self.addCleanup(lambda: setattr(C, "trava_do_ledger", real))
+        antes = self.ledger.read_bytes()
+        with self.assertRaises(RuntimeError):
+            C.curar_canal("builds", [_video("aaa")], gravar_de_fato=True,
+                          carimbo="t2")
+        self.assertEqual(antes, self.ledger.read_bytes())
+
+    def test_troca_atomica_nao_deixa_temporario(self):
+        # B3: o arquivo e escrito ao lado e trocado de uma vez.
+        C.curar_canal("builds", [_video("aaa")], gravar_de_fato=True,
+                      carimbo="t3")
+        self.assertEqual([], list(self.pasta.glob("*.tmp")))
+        self.assertEqual(1, len(list(self.pasta.glob("*.antes-cura-t3"))))
+
+
 class ASecoEPadrao(unittest.TestCase):
 
     def setUp(self):
@@ -248,7 +407,19 @@ class ASecoEPadrao(unittest.TestCase):
         self.assertIs(False, dados["gravado"])
         self.assertEqual({"link_de_frase (alta)": 1}, dados["canais"]["builds"])
 
+    def test_com_flag_e_postar_antigo_recusa(self):
+        real = C.postar_migrado
+        C.postar_migrado = lambda fonte=None: "o postar ainda le o url"
+        self.addCleanup(lambda: setattr(C, "postar_migrado", real))
+        antes = self.ledger.read_bytes()
+        self.assertEqual(2, C.main(["--canal", "builds", "--gravar"]))
+        self.assertEqual(antes, self.ledger.read_bytes())
+        self.assertEqual([], list(self.ledger.parent.glob("*.antes-cura-*")))
+
     def test_com_flag_grava_e_guarda_copia(self):
+        real = C.postar_migrado
+        C.postar_migrado = lambda fonte=None: ""
+        self.addCleanup(lambda: setattr(C, "postar_migrado", real))
         antes = self.ledger.read_bytes()
         C.main(["--canal", "builds", "--gravar"])
         (copia,) = self.ledger.parent.glob("*.antes-cura-*")

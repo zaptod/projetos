@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -85,11 +86,19 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds",
 
     Ordem das regras, e ela importa:
       1. ID REPETIDO: dono e a linha mais proxima da hora do video; as outras
-         perdem o id (o caso A/B de generation_00081).
-      2. VIDEO PRIVADO: com gemeo publico de mesmo titulo, a linha passa a
-         apontar para ele; sem gemeo, a linha deixa de contar como publicada.
-      3. FRASE NO URL: um video (titulo e hora) ou dois pedacos
-         "(1 de 2)"/"(2 de 2)" viram link.
+         perdem o id (o caso A/B de generation_00081). Sem o video na lista do
+         canal nao ha hora para comparar, e a escolha seria arbitraria: "a
+         conferir".
+      2. FRASE NO URL: um video (titulo e hora) ou todos os pedacos
+         "(k de N)" viram link. Vem ANTES do gemeo porque casa pela hora exata
+         e reserva o id: a ordem inversa deixava um rascunho tomar o video do
+         dono verdadeiro.
+      3. VIDEO PRIVADO: sem gemeo, a linha deixa de contar como publicada.
+         Gemeo so conta se for ao ar DEPOIS do rascunho, dentro de uma
+         semana, e (nas historias) da mesma parte. Medido em 16/09/2026: 11
+         dos 12 "gemeos" achados so pelo titulo tinham ido ao ar ~17 dias
+         ANTES da linha — eram videos antigos de builds refeitas, com o mesmo
+         personagem, classe e nota.
       4. FORMATO: toda linha que sobrar ganha `publicado` explicito, e a
          frase sai do `url` para `estado_texto` (inclui o TikTok, que nunca
          teve link).
@@ -121,10 +130,19 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds",
         if len(indices) < 2:
             continue
         video = por_id.get(vid)
-        def chave_de_dono(i, video=video):
-            d = _distancia(linhas[i], video) if video else None
-            return d if d is not None else timedelta.max
-        dono = min(indices, key=chave_de_dono)
+        distancias = {i: (_distancia(linhas[i], video) if video else None)
+                      for i in indices}
+        if any(d is None for d in distancias.values()):
+            # Video fora da lista do canal (a paginacao para em ~200, ou ele
+            # foi apagado): sem hora, "o mais proximo" seria sorteio.
+            for i in indices:
+                curas.append(_cura(
+                    i, linhas[i], "id_repetido_sem_video", A_CONFERIR, {},
+                    f"o id {vid} esta em {len(indices)} linhas e o video nao "
+                    "esta na lista do canal para desempatar"))
+                tocadas.add(i)
+            continue
+        dono = min(indices, key=lambda i: distancias[i])
         for i in indices:
             if i == dono:
                 continue
@@ -136,65 +154,7 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds",
                 "do video); esta linha nao tem video proprio no canal"))
             tocadas.add(i)
 
-    # 2. video privado
-    publicos = [v for v in videos
-                if str(v.get("privacidade") or "").lower() == "public"]
-    for i, L in enumerate(linhas):
-        if i in tocadas or not youtube(L):
-            continue
-        if L.get("estado") in ESTADOS_JA_DECIDIDOS:
-            # Ja curada: o video continua privado, e e isso mesmo. Sem esta
-            # saida, cada rodada "curaria" a mesma linha de novo.
-            continue
-        video = por_id.get(str(L.get("youtube_id") or ""))
-        if not video or str(video.get("privacidade") or "").lower() not in PRIVADO:
-            continue
-        chave = titulos.chave(video.get("titulo"))
-        gemeos = [v for v in publicos if titulos.chave(v.get("titulo")) == chave
-                  and v["youtube_id"] not in donos]
-        if L.get("video_id") in privadas:
-            # DECISAO DE UMA PESSOA, passada pelo nome: a parte fica privada e
-            # a fila nunca a republica (`publicado` continua verdadeiro).
-            curas.append(_cura(
-                i, L, "privado_de_proposito", ALTA,
-                {"publicado": True, "estado": "privado_de_proposito"},
-                f"{video['youtube_id']} esta privado por decisao do Adrian"))
-        elif canal == "historias" and not gemeos:
-            curas.append(_cura(
-                i, L, "historia_privada", A_CONFERIR, {},
-                f"{video['youtube_id']} esta privado e nao ha publico de mesmo "
-                "titulo; pode ter sido privado de proposito"))
-        elif not gemeos:
-            # O `url` e esvaziado: link de rascunho no campo de "saiu" deixava
-            # `url` e `publicado` discordando para qualquer leitor que ainda
-            # olhe o `url`. O id do rascunho fica em `rascunho_id`.
-            curas.append(_cura(
-                i, L, "rascunho_sem_gemeo", MEDIA,
-                {"publicado": False, "estado": "rascunho", "url": "",
-                 "rascunho_id": video["youtube_id"]},
-                f"{video['youtube_id']} esta privado e nenhum video publico "
-                "tem o mesmo titulo: este video nunca foi ao ar"))
-        elif len(gemeos) > 1:
-            curas.append(_cura(
-                i, L, "rascunho_gemeo_ambiguo", A_CONFERIR, {},
-                f"{video['youtube_id']} esta privado e ha {len(gemeos)} "
-                "publicos com o mesmo titulo: "
-                + ", ".join(g["youtube_id"] for g in gemeos)))
-        else:
-            gemeo = gemeos[0]
-            donos.add(gemeo["youtube_id"])
-            curas.append(_cura(
-                i, L, "rascunho_com_gemeo", MEDIA,
-                {"youtube_id": gemeo["youtube_id"],
-                 "url": _link(gemeo["youtube_id"]),
-                 "publicado_em": gemeo.get("publicado_em"),
-                 "publicado": True, "estado": "publicado",
-                 "rascunho_id": video["youtube_id"]},
-                f"{video['youtube_id']} esta privado; o publico de mesmo "
-                f"titulo e {gemeo['youtube_id']}"))
-        tocadas.add(i)
-
-    # 3. frase no url
+    # 2. frase no url
     pares = dict(metricas.casar_ids(linhas, videos))
     for i, L in enumerate(linhas):
         if i in tocadas or not youtube(L) or _e_link(L.get("url")):
@@ -202,9 +162,6 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds",
         if not L.get("url") or L.get("youtube_id"):
             continue
         video = pares.get(i)
-        if video is not None and video["youtube_id"] in donos:
-            # `casar_ids` nao sabe dos gemeos atribuidos na regra 2.
-            video = None
         if video is not None:
             d = _distancia(L, video)
             curas.append(_cura(
@@ -235,6 +192,69 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds",
                 "parte, no ar a menos de 2 min da linha"))
             tocadas.add(i)
 
+    # 3. video privado
+    publicos = [v for v in videos
+                if str(v.get("privacidade") or "").lower() == "public"]
+    for i, L in enumerate(linhas):
+        if i in tocadas or not youtube(L):
+            continue
+        if L.get("estado") in ESTADOS_JA_DECIDIDOS:
+            # Ja curada: o video continua privado, e e isso mesmo. Sem esta
+            # saida, cada rodada "curaria" a mesma linha de novo.
+            continue
+        video = por_id.get(str(L.get("youtube_id") or ""))
+        if not video or str(video.get("privacidade") or "").lower() not in PRIVADO:
+            continue
+        if L.get("video_id") in privadas:
+            # DECISAO DE UMA PESSOA, passada pelo nome: a parte fica privada e
+            # a fila nunca a republica (`publicado` continua verdadeiro).
+            curas.append(_cura(
+                i, L, "privado_de_proposito", ALTA,
+                {"publicado": True, "estado": "privado_de_proposito"},
+                f"{video['youtube_id']} esta privado por decisao do Adrian"))
+            tocadas.add(i)
+            continue
+        homonimos = [v for v in publicos if _mesmo_titulo(v, video, canal)
+                     and v["youtube_id"] not in donos]
+        gemeos = [v for v in homonimos if _depois_do_rascunho(L, v)]
+        if canal == "historias" and not gemeos:
+            curas.append(_cura(
+                i, L, "historia_privada", A_CONFERIR, {},
+                f"{video['youtube_id']} esta privado e nao ha publico da "
+                "mesma parte depois dele; pode ter sido privado de proposito"))
+        elif not gemeos:
+            antigos = [v["youtube_id"] for v in homonimos]
+            # O `url` e esvaziado: link de rascunho no campo de "saiu" deixava
+            # `url` e `publicado` discordando para qualquer leitor que ainda
+            # olhe o `url`. O id do rascunho fica em `rascunho_id`.
+            curas.append(_cura(
+                i, L, "rascunho_sem_gemeo", MEDIA,
+                {"publicado": False, "estado": "rascunho", "url": "",
+                 "rascunho_id": video["youtube_id"]},
+                f"{video['youtube_id']} esta privado e nenhum video publico "
+                "de mesmo titulo foi ao ar depois dele"
+                + (f" (ha homonimos ANTERIORES, que sao outros videos: "
+                   f"{', '.join(antigos[:3])})" if antigos else "")))
+        elif len(gemeos) > 1:
+            curas.append(_cura(
+                i, L, "rascunho_gemeo_ambiguo", A_CONFERIR, {},
+                f"{video['youtube_id']} esta privado e ha {len(gemeos)} "
+                "publicos de mesmo titulo depois dele: "
+                + ", ".join(g["youtube_id"] for g in gemeos)))
+        else:
+            gemeo = gemeos[0]
+            donos.add(gemeo["youtube_id"])
+            curas.append(_cura(
+                i, L, "rascunho_com_gemeo", MEDIA,
+                {"youtube_id": gemeo["youtube_id"],
+                 "url": _link(gemeo["youtube_id"]),
+                 "publicado_em": gemeo.get("publicado_em"),
+                 "publicado": True, "estado": "publicado",
+                 "rascunho_id": video["youtube_id"]},
+                f"{video['youtube_id']} esta privado; o publico de mesmo "
+                f"titulo que foi ao ar depois dele e {gemeo['youtube_id']}"))
+        tocadas.add(i)
+
     # 4. formato
     for i, L in enumerate(linhas):
         if i in tocadas or not isinstance(L, dict) or "publicado" in L:
@@ -248,6 +268,43 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds",
         curas.append(_cura(i, L, "formato", ALTA, depois,
                            "campo `publicado` explicito; frase fora do `url`"))
     return curas
+
+
+# Quanto tempo DEPOIS do rascunho um reenvio ainda conta como o mesmo video.
+JANELA_DO_GEMEO = timedelta(days=7)
+PARTE = re.compile(r"\(Parte\s+(\d+)", re.IGNORECASE)
+
+
+def _titulo_inteiro(texto) -> str:
+    """A mesma normalizacao de `titulos.chave`, sem o corte em 60.
+
+    O corte serve para reconciliar titulos que o Studio encurtou; aqui ele
+    escondia a parte: "(Parte 3/6)" cai depois do caractere 60 em titulo
+    longo, e duas partes diferentes viravam o mesmo titulo.
+    """
+    limpo = re.sub(r"\s+", " ", str(texto or "")).strip().lower()
+    limpo = "".join(c for c in limpo if c.isalnum() or c.isspace())
+    return re.sub(r"\s+", " ", limpo).strip()[:100]
+
+
+def _mesmo_titulo(publico: dict, rascunho: dict, canal: str) -> bool:
+    if _titulo_inteiro(publico.get("titulo")) != _titulo_inteiro(
+            rascunho.get("titulo")):
+        return False
+    if canal == "historias":
+        a = PARTE.search(str(publico.get("titulo") or ""))
+        b = PARTE.search(str(rascunho.get("titulo") or ""))
+        return bool(a and b and a.group(1) == b.group(1))
+    return True
+
+
+def _depois_do_rascunho(linha: dict, publico: dict) -> bool:
+    """O publico foi ao ar depois do rascunho (com folga), e ate uma semana?"""
+    ref = _referencia(linha)
+    no_ar = metricas._instante(publico.get("publicado_em"))
+    if ref is None or no_ar is None:
+        return False
+    return ref - FOLGA_ALTA <= no_ar <= ref + JANELA_DO_GEMEO
 
 
 def _pedacos(linha: dict, videos: list, donos: set) -> list:
@@ -312,21 +369,108 @@ def buscar_canal(canal: str) -> list:
     return [{**v, **detalhes.get(v["youtube_id"], {})} for v in enviados]
 
 
-def ler(caminho: Path) -> list:
+def ler_bruto(caminho: Path) -> bytes:
+    try:
+        return caminho.read_bytes()
+    except FileNotFoundError:
+        return b""
+
+
+def ler(caminho: Path, bruto: bytes | None = None) -> list:
+    texto = (caminho.read_bytes() if bruto is None else bruto).decode("utf-8")
     linhas = []
-    for bruta in caminho.read_text(encoding="utf-8").splitlines():
-        if bruta.strip():
-            linhas.append(json.loads(bruta))
+    for linha in texto.splitlines():
+        if linha.strip():
+            linhas.append(json.loads(linha))
     return linhas
 
 
+# ------------------------------------------------------- pre-condicao (B1)
+POSTAR = RAIZ / "ferramentas" / "postar.py"
+CONTRATO_MINIMO = 2
+# "Saiu?" decidido pelo `url` de uma LINHA DO LEDGER (no postar.py elas se
+# chamam `l` ou `linha`). O `r.get("url")` do aviso e da ficha, nao do ledger.
+LEITURA_POR_URL = re.compile(
+    r"(?:\bif|\band|\bor|\bnot)\s+(?:l|linha)\.get\(\"url\"\)")
+
+
+def postar_migrado(fonte: str | None = None) -> str:
+    """`""` se o publicador ja decide "saiu?" por `publicado()`; senao, o motivo.
+
+    Medido em 16/09/2026, antes de qualquer gravacao: com o postar.py lendo o
+    `url`, a regra de formato (que tira a frase do `url` do TikTok) apagaria
+    a guarda de "ja esta no TikTok" de 46 builds e 51 historias, e o
+    publicador repostaria. As curas so podem ser gravadas DEPOIS da migracao.
+    """
+    if fonte is None:
+        try:
+            fonte = POSTAR.read_text(encoding="utf-8")
+        except OSError as exc:
+            return f"nao consegui ler o postar.py ({exc})"
+    achado = re.search(r"^CONTRATO_DO_LEDGER\s*=\s*(\d+)", fonte, re.MULTILINE)
+    if not achado or int(achado.group(1)) < CONTRATO_MINIMO:
+        return (f"o postar.py ainda nao declara CONTRATO_DO_LEDGER = "
+                f"{CONTRATO_MINIMO} (a migracao para `publicado()` nao "
+                "aconteceu)")
+    restos = LEITURA_POR_URL.findall(fonte)
+    if restos:
+        return (f"o postar.py declara o contrato mas ainda decide 'saiu?' "
+                f"pelo url em {len(restos)} ponto(s)")
+    return ""
+
+
+# ------------------------------------------------ gravacao segura (B2, B3)
+def trava_do_ledger(canal: str):
+    """A trava que TODO escritor do ledger deve segurar para reescreve-lo."""
+    from builds import travas
+    return travas.trava(f"ledger__{canal}", esperar=60.0)
+
+
 def gravar(caminho: Path, linhas: list, carimbo: str) -> Path:
+    """Copia o antes e troca o arquivo de uma vez (`os.replace`).
+
+    Escrever direto com `open("w")` deixava uma janela em que o ledger
+    existia pela metade — e qualquer leitor nesse instante via um ledger
+    truncado.
+    """
     copia = caminho.with_name(f"{caminho.name}.antes-cura-{carimbo}")
     shutil.copy2(caminho, copia)
-    with open(caminho, "w", encoding="utf-8") as fh:
+    temporario = caminho.with_name(f"{caminho.name}.cura-{carimbo}.tmp")
+    with open(temporario, "w", encoding="utf-8") as fh:
         for linha in linhas:
             fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    os.replace(temporario, caminho)
     return copia
+
+
+def curar_canal(canal: str, videos: list, *, gravar_de_fato: bool,
+                privadas=(), carimbo: str = "", tentativas: int = 3) -> tuple:
+    """(linhas, curas, copia). Le, calcula e grava DENTRO da trava.
+
+    A lista do canal chega pronta: a chamada de rede nao pode acontecer com
+    a trava na mao. Antes de trocar o arquivo, ele e relido; se alguem
+    escreveu no meio (a postagem acrescenta linhas a cada horario), as curas
+    sao recalculadas em cima do novo conteudo. Medido em 16/09/2026: entre a
+    primeira rodada a seco e a segunda, os ledgers foram de 137 para 140 e
+    de 112 para 113 linhas.
+    """
+    caminho = metricas.registro_do_canal(canal)
+    with trava_do_ledger(canal) as minha:
+        if not minha:
+            raise RuntimeError(f"o ledger de {canal} esta travado por outro "
+                               "escritor; nada foi gravado")
+        for _ in range(max(1, tentativas)):
+            bruto = ler_bruto(caminho)
+            linhas = ler(caminho, bruto)
+            curas = calcular_curas(linhas, videos, canal, privadas=privadas)
+            if not gravar_de_fato:
+                return linhas, curas, None
+            if ler_bruto(caminho) != bruto:
+                continue
+            copia = gravar(caminho, aplicar(linhas, curas), carimbo)
+            return linhas, curas, copia
+    raise RuntimeError(f"o ledger de {canal} mudou {tentativas} vezes durante "
+                       "a cura; nada foi gravado")
 
 
 def main(argv=None) -> int:
@@ -344,23 +488,29 @@ def main(argv=None) -> int:
              "vira publicado=true, estado=privado_de_proposito")
     args = parser.parse_args(argv)
 
+    if args.gravar:
+        impedimento = postar_migrado()
+        if impedimento:
+            _linha(f"RECUSADO: {impedimento}. Nada foi gravado. Rode sem "
+                   "--gravar para ver o que mudaria.")
+            return 2
+
     carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
     pasta = SAIDA / carimbo
     pasta.mkdir(parents=True, exist_ok=True)
     geral = {}
     for canal in args.canal or ("builds", "historias"):
-        caminho = metricas.registro_do_canal(canal)
-        linhas = ler(caminho)
-        curas = calcular_curas(linhas, buscar_canal(canal), canal,
-                               privadas=args.privadas)
+        videos = buscar_canal(canal)
+        linhas, curas, copia = curar_canal(
+            canal, videos, gravar_de_fato=args.gravar,
+            privadas=args.privadas, carimbo=carimbo)
         (pasta / f"{canal}.json").write_text(
             json.dumps(curas, ensure_ascii=False, indent=1), encoding="utf-8")
         geral[canal] = resumo(curas)
         _linha(f"[{canal}] {len(linhas)} linhas, {len(curas)} cura(s):")
         for chave, n in geral[canal].items():
             _linha(f"   {n:4d}  {chave}")
-        if args.gravar:
-            copia = gravar(caminho, aplicar(linhas, curas), carimbo)
+        if copia:
             _linha(f"[{canal}] GRAVADO. Copia do antes: {copia}")
     (pasta / "resumo.json").write_text(
         json.dumps({"gravado": bool(args.gravar), "canais": geral},
