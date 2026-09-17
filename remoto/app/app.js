@@ -196,7 +196,7 @@ async function carregarVideos() {
       const botao = el("button", {class: "acao"}, "▶");
       botao.addEventListener("click", () => tocar(v));
       let publicar = null;
-      if (acoesLigadas && v.canal === "builds" && v.perfil === "celular"
+      if (publicarLigado && v.canal === "builds" && v.perfil === "celular"
           && !v.pendencias.length) {
         publicar = el("button", {class: "acao"}, "Publicar");
         publicar.addEventListener("click", () => pedirPublicacao(v));
@@ -224,6 +224,7 @@ async function carregarVideos() {
 // O servidor decide tudo: o que pode, o texto da confirmacao, as recusas.
 // A tela so mostra e pede o "sim".
 let acoesLigadas = false;
+let publicarLigado = false;
 
 function avisar(texto, ruim = false) {
   const t = $("toast");
@@ -237,6 +238,7 @@ async function carregarAcoes() {
   try {
     const info = await api("/api/acoes");
     acoesLigadas = !!info.ligadas;
+    publicarLigado = acoesLigadas && !!info.publicar;
     $("controle").classList.toggle("oculto", !acoesLigadas);
     $("gerar-cartao").classList.toggle("oculto", !acoesLigadas);
     if (!acoesLigadas) return;

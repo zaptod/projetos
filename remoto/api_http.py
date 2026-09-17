@@ -101,6 +101,7 @@ def caminho() -> Path:
 
 
 _TRAVAS_THREADS: dict[str, threading.RLock] = {}
+TRAVA_PRAZO_S = 15.0
 _TRAVAS_GUARDA = threading.Lock()
 _PROFUNDIDADE = threading.local()
 
@@ -123,7 +124,9 @@ def trava_arquivo(alvo: Path):
     with _TRAVAS_GUARDA:
         trava = _TRAVAS_THREADS.setdefault(chave, threading.RLock())
     profundidade = _PROFUNDIDADE.__dict__.setdefault("mapa", {})
-    with trava:
+    if not trava.acquire(timeout=TRAVA_PRAZO_S):
+        raise OSError(f"trava ocupada ha mais de {TRAVA_PRAZO_S:.0f} s: {alvo.name}")
+    try:
         if profundidade.get(chave):
             profundidade[chave] += 1
             try:
@@ -137,6 +140,8 @@ def trava_arquivo(alvo: Path):
                 yield
         finally:
             profundidade.pop(chave, None)
+    finally:
+        trava.release()
 
 
 @contextlib.contextmanager
@@ -342,11 +347,15 @@ def host_aceito(cabecalho: str, ip_servidor: str, local: bool) -> bool:
 class Estado:
     """O que o servidor guarda em memoria entre requisicoes."""
 
-    def __init__(self, ip: str, local: bool, com_acoes: bool = False):
+    def __init__(self, ip: str, local: bool, com_acoes: bool = False,
+                 com_publicar: bool = False):
         self.ip = ip
         self.local = local
         # Fase 2: as acoes so existem quando o servidor sobe com --acoes.
         self.com_acoes = com_acoes
+        # Publicar e uma chave a parte: da para ligar pausar/parar/gerar
+        # enquanto o publicar amadurece.
+        self.com_publicar = com_acoes and com_publicar
         self.pendentes = acoes.Pendentes()
         self.trava = threading.Lock()
         # bilhete -> (caminho, expira, hash do token do aparelho)
@@ -534,6 +543,7 @@ class Manipulador(BaseHTTPRequestHandler):
                     restantes = None          # rastro ilegivel: a acao recusa
                 return self._json({
                     "ligadas": True,
+                    "publicar": self.estado.com_publicar,
                     "alvos": acoes.alvos_de_pausa(),
                     "limite_por_hora": acoes.LIMITE_POR_HORA,
                     "restantes": restantes})
@@ -617,6 +627,8 @@ class Manipulador(BaseHTTPRequestHandler):
 
         if rota == "/api/acao":
             nome = str(corpo.get("acao") or "")[:20]
+            if nome == "publicar" and not self.estado.com_publicar:
+                return self._erro(403, "publicar está desligado neste servidor")
             try:
                 pedido = acoes.preparar(nome, corpo.get("args") or {}, self._id)
             except acoes.Recusa as exc:
@@ -789,14 +801,15 @@ class Servidor(ThreadingHTTPServer):
 
 
 def criar_servidor(host: str, porta: int, local: bool,
-                   com_acoes: bool = False) -> ThreadingHTTPServer:
+                   com_acoes: bool = False,
+                   com_publicar: bool = False) -> ThreadingHTTPServer:
     if not endereco_permitido(host, local):
         raise ValueError(f"endereco recusado: {host}")
     if porta in PORTAS_PROIBIDAS:
         raise ValueError(f"a porta {porta} e do login do YouTube")
 
     class _Manipulador(Manipulador):
-        estado = Estado(host, local, com_acoes)
+        estado = Estado(host, local, com_acoes, com_publicar)
 
     return Servidor((host, porta), _Manipulador)
 
@@ -804,6 +817,10 @@ def criar_servidor(host: str, porta: int, local: bool,
 # ================================================================= CLI
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m remoto.api_http")
+    parser.add_argument("--publicar", action="store_true",
+                        help="com --acoes, liga tambem o botao de publicar")
+    parser.add_argument("--confirmo", action="store_true",
+                        help="com --liberar: solta de verdade (sem ele, so mostra)")
     parser.add_argument("--acoes", action="store_true",
                         help="liga a fase 2 (pausar, parar, gerar, publicar)")
     parser.add_argument("--local", action="store_true",
@@ -832,7 +849,21 @@ def main(argv=None) -> int:
             print("nada em voo")
         return 0
     if args.liberar:
-        saiu = acoes.liberar(args.liberar)
+        for linha in acoes.relatorio_do_video(args.liberar) or ["nada registrado"]:
+            print(linha)
+        if not args.confirmo:
+            print("\nConfira no YouTube Studio / perfil do TikTok. Para soltar do "
+                  "app: repita com --confirmo. A marca “a conferir” do TikTok "
+                  "NÃO sai por aqui.")
+            return 0
+        try:
+            saiu = acoes.liberar(args.liberar)
+        except OSError as exc:
+            print(f"não consegui soltar agora: {exc}. Tente de novo em instantes.")
+            return 3
+        except acoes.Recusa as exc:
+            print(str(exc))
+            return 1
         print(f"liberados: {saiu}" if saiu else "esse vídeo não está em voo")
         return 0 if saiu else 1
 
@@ -866,12 +897,18 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 3
     try:
-        servidor = criar_servidor(host, porta, args.local, args.acoes)
+        servidor = criar_servidor(host, porta, args.local, args.acoes,
+                                  args.publicar)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 4
     print(f"App do celular em http://{host}:{porta}/  (Ctrl+C para parar)"
-          f"  — ações {'LIGADAS' if args.acoes else 'desligadas'}")
+          f"  — ações {'LIGADAS' if args.acoes else 'desligadas'}"
+          f"{' (com publicar)' if args.acoes and args.publicar else ''}")
+    if args.acoes:
+        voltando = acoes.conciliar()
+        if voltando:
+            print(f"retomei a vigia de {len(voltando)} publicação(ões) do app")
     if not ler_config()["aparelhos"]:
         print("Nenhum celular pareado: rode `python -m remoto.api_http --parear`.")
     try:

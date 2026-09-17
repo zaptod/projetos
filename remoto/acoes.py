@@ -11,31 +11,38 @@ acrescenta e o que um botao no bolso exige a mais que um comando digitado:
   segundos a grade pode ter publicado o mesmo video, e duas confirmacoes
   simultaneas nao podem passar juntas pelas guardas.
 
-  GUARDAS DE PUBLICACAO. O Adrian passou a noite de 16 para 17/09 limpando
-  repostagem; publicar pelo app nao pode ser o oitavo caminho que fura as
-  guardas do `postar.py`. As mesmas leituras, e mais as de um botao:
+  GUARDAS DE PUBLICACAO (a noite de 16 para 17/09 foi limpando repostagem):
     - o video ja saiu naquele destino (`metricas.publicado`);
     - OUTRO video ja pos o mesmo titulo no ar ali (`titulos`);
     - a outra variante (A/B) da mesma geracao ja saiu ali;
     - o TikTok marcou o video "a conferir";
     - postagem da grade perto (relogio), `postar.py` vivo, ou o perfil de
       Chrome daquele destino ocupado;
-    - o proprio app ja mandou o video (ou a outra variante) e o desfecho
-      ainda nao voltou — o "em voo";
+    - QUALQUER publicacao do app naquele destino ainda sem desfecho limpo;
     - o video tem pendencia ou nao e do perfil celular.
   Tudo que nao se consegue ler RECUSA: um botao manual nao tem pressa.
 
-  PUBLICO. O padrao do `publicacao.json` e `private`, e o que sobe privado
-  vira "publicado" no ledger e fica queimado. A grade publica `public`;
-  o app tambem, dito na linha de comando e no texto da confirmacao.
+  PUBLICO. O padrao do `publicacao.json` e `private`; o app diz `public`
+  na linha de comando e no texto da confirmacao, como a grade.
 
-  DESFECHO DO TIKTOK. `main.py publicar --tiktok` so grava no ledger quando
-  o post confirma. Clique sem confirmacao (ou saida que nao seja sucesso
-  limpo) nao deixava marca nenhuma, e a recuperacao da grade repostaria.
-  O app acompanha o processo ate o fim e, nesse caso, marca "a conferir"
-  com a MESMA funcao do `postar.py`. Enquanto o desfecho nao volta, o video
-  fica no "em voo" (arquivo, nao memoria: servidor que cai no meio deixa o
-  bloqueio de pe, e `--liberar` o tira depois da conferencia).
+  O CAMINHO DE UMA PUBLICACAO, e por que cada passo esta onde esta:
+    1. (TikTok) a marca "a conferir" e gravada ANTES do clique, e relida.
+       Se o servidor, o PC ou o filho morrerem no meio, a recuperacao da
+       grade — que le essa lista e nao le o app — nao reposta. A marca e
+       escrita aqui, no mesmo arquivo e formato do `postar.py`, e nao pela
+       `_marcar_para_conferir` dele: aquela grava um ERRO no diario ("cliquei
+       e nao veio confirmacao"), que antes do clique seria mentira e
+       dispararia a apuracao automatica.
+    2. o "em voo" (arquivo) recebe a publicacao.
+    3. `publicacao_filha` sobe DESLIGADA do servidor e manda a saida do
+       `main.py` para um arquivo (um PIPE mataria o filho junto com o
+       servidor).
+    4. o desfecho e lido com `youtube_web.confirmado` e `tiktok.confirmado`
+       (o prefixo "YouTube:" nao basta: o Studio devolve "cliquei em
+       publicar, mas... RASCUNHO" com codigo 0).
+    5. SO o sucesso limpo tira a marca do app e o "em voo". Qualquer outra
+       coisa deixa os dois de pe, com o motivo, ate a conferencia humana e
+       `--liberar`. O servidor que sobe concilia o que ficou pela metade.
 
   LIMITES E RASTRO: gerar + publicar e pausar + retomar tem teto por hora e
   por aparelho, contado por TEMPO no `app_celular_acoes.jsonl` (com
@@ -45,7 +52,6 @@ acrescenta e o que um botao no bolso exige a mais que um comando digitado:
 from __future__ import annotations
 
 import contextlib
-import importlib.util
 import json
 import os
 import queue
@@ -69,20 +75,26 @@ CONFIRMAR_VALE_S = 60
 # Depois do horario, a rodada da grade vai ate :55 de um disparo em :37.
 JANELA_ANTES_MIN = {"youtube": 25, "tiktok": 20, "ambos": 40}
 JANELA_DEPOIS_MIN = 18
-PUBLICAR_TIMEOUT_S = 60 * 60
+ESPERA_MAX_S = 6 * 3600                  # depois disso: a conferir, sem matar
+VIGIA_S = 5.0
 ROTACAO_BYTES = 512 * 1024
 DESTINOS = {"youtube": ("youtube",), "tiktok": ("tiktok",),
             "ambos": ("youtube", "tiktok")}
 NOME_DESTINO = {"youtube": "YouTube", "tiktok": "TikTok"}
-SERVICO_DO_DESTINO = {"youtube": "youtube_web", "tiktok": "tiktok"}
 PESADAS = ("gerar", "publicar")
 LEVES = ("pausar", "retomar")
 TRAVA_HISTORIAS = "historias__auto"
+MARCA_DO_APP = "pelo app"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+DESLIGADO = (getattr(subprocess, "DETACHED_PROCESS", 0)
+             | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+FORA_DO_JOB = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
 RAIZ = Path(__file__).resolve().parents[1]
 
 ARQUIVO_RASTRO = None                     # os testes apontam para outro lugar
 ARQUIVO_EM_VOO = None
+PASTA_PUBLICACOES = None
+ARQUIVO_A_CONFERIR = None
 
 
 class Recusa(Exception):
@@ -125,31 +137,38 @@ def _agora() -> datetime:
     return datetime.now()
 
 
-_POSTAR = None
+def confirmado(destino: str, estado: str) -> bool:
+    """A porta de cada publicador. Levanta se nao der para carregar."""
+    if destino == "tiktok":
+        from builds.publicar.tiktok import confirmado as porta
+    else:
+        from builds.publicar.youtube_web import confirmado as porta
+    return bool(porta(estado))
 
 
-def _postar():
-    """O `ferramentas/postar.py`, carregado uma vez. E dele a marca "a conferir".
-
-    Nao e copia: `desfecho_do_tiktok` e `_marcar_para_conferir` sao as
-    funcoes da grade, e o que mudar la vale aqui.
-    """
-    global _POSTAR
-    if _POSTAR is None:
-        caminho = RAIZ / "ferramentas" / "postar.py"
-        spec = importlib.util.spec_from_file_location("_postar_app_celular", caminho)
-        modulo = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(modulo)
-        _POSTAR = modulo
-    return _POSTAR
+def _vivo(pid) -> bool | None:
+    try:
+        from builds.atividade import _vivo as sonda
+    except Exception:                                        # noqa: BLE001
+        return None
+    return sonda(pid)
 
 
-def _abrir_processo(comando: list, cwd) -> subprocess.Popen:
-    ambiente = dict(os.environ, PYTHONIOENCODING="utf-8")
-    return subprocess.Popen(comando, cwd=str(cwd), creationflags=NO_WINDOW,
-                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True,
-                            encoding="utf-8", errors="replace", env=ambiente)
+def _iniciar_filha(pasta: Path, comando: list, cwd) -> int:
+    """Sobe a `publicacao_filha` fora do servidor. Devolve o PID."""
+    chamada = [sys.executable, "-X", "utf8", "-m", "remoto.publicacao_filha",
+               "--pasta", str(pasta), "--cwd", str(cwd), "--"] + list(comando)
+    comum = dict(cwd=str(RAIZ), stdin=subprocess.DEVNULL,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                 close_fds=True)
+    try:
+        # Fora do job do servidor, quando o Windows deixa: um servidor que
+        # roda dentro de um job com "mata ao fechar" levaria a filha junto.
+        processo = subprocess.Popen(chamada, creationflags=DESLIGADO | FORA_DO_JOB,
+                                    **comum)
+    except OSError:
+        processo = subprocess.Popen(chamada, creationflags=DESLIGADO, **comum)
+    return processo.pid
 
 
 def alvos_de_pausa() -> list[str]:
@@ -165,8 +184,8 @@ def alvos_de_pausa() -> list[str]:
 def trava_de_acoes():
     """Uma acao por vez: preparar de novo -> executar -> registrar.
 
-    Entre threads E entre processos, e reentrante na mesma thread (o
-    `registrar` de dentro pega a mesma trava sem se bloquear).
+    Entre threads E entre processos, reentrante na mesma thread, e com prazo
+    (quem nao consegue levanta OSError; o servidor responde 503).
     """
     from .api_http import trava_arquivo
     return trava_arquivo(caminho_rastro().with_name("app_celular_acoes.lock"))
@@ -174,13 +193,7 @@ def trava_de_acoes():
 
 # -------------------------------------------------------- travas e processos
 def trava_ocupada(nome: str) -> bool | None:
-    """Sonda a trava SEM pegar (a regra da Vila flutuante).
-
-    `travas.ocupada()` responde pegando a trava por um instante, e nesse
-    instante o dono de verdade ouviria "ocupado" e desistiria da rodada.
-    Aqui so se tenta LER o byte que o dono tranca: no Windows, byte trancado
-    por outro processo nao le. None = nao sei.
-    """
+    """Sonda a trava SEM pegar (a regra da Vila flutuante). None = nao sei."""
     try:
         from builds import travas
         caminho = travas._pasta() / f"{travas._nome_seguro(nome)}.lock"
@@ -296,7 +309,6 @@ def _rastro_gravavel() -> bool:
             pass
     except OSError:
         return False
-    _RASTRO_FALHOU.clear()
     return True
 
 
@@ -335,56 +347,128 @@ def caminho_em_voo() -> Path:
         runtime_dir() / "app_celular_em_voo.json"
 
 
+def pasta_publicacoes() -> Path:
+    return Path(PASTA_PUBLICACOES) if PASTA_PUBLICACOES else \
+        runtime_dir() / "app_celular_publicacoes"
+
+
+def _ler_json(caminho: Path, tentativas: int = 3):
+    """O JSON do arquivo (None se nao existe). Ilegivel apos tentar: ValueError.
+
+    Tenta de novo por um instante: quem le no meio de um `os.replace` do
+    outro lado pode pegar o arquivo sendo trocado.
+    """
+    for vez in range(tentativas):
+        try:
+            texto = caminho.read_text(encoding="utf-8")
+            return json.loads(texto) if texto.strip() else {}
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError):
+            if vez == tentativas - 1:
+                raise ValueError(f"{caminho.name} ilegível") from None
+            time.sleep(0.2)
+    return None
+
+
+def _gravar_json(caminho: Path, dados) -> None:
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    temporario = caminho.with_name(f"{caminho.name}.{os.getpid()}.tmp")
+    temporario.write_text(json.dumps(dados, ensure_ascii=False, indent=1),
+                          encoding="utf-8")
+    os.replace(temporario, caminho)
+
+
 def em_voo() -> dict:
-    """{chave: {id, onde, fonte, desde, aparelho}}. Ilegivel = Recusa."""
+    """{chave: item}. Ilegivel = Recusa."""
     try:
-        texto = caminho_em_voo().read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {}
-    except OSError as exc:
-        raise Recusa("não consegui ler as publicações em andamento") from exc
-    try:
-        dados = json.loads(texto) if texto.strip() else {}
+        dados = _ler_json(caminho_em_voo())
     except ValueError as exc:
-        raise Recusa("o arquivo de publicações em andamento está ilegível") from exc
+        raise Recusa("o arquivo de publicações do app está ilegível") from exc
+    if dados is None:
+        return {}
     if not isinstance(dados, dict):
-        raise Recusa("o arquivo de publicações em andamento está ilegível")
+        raise Recusa("o arquivo de publicações do app está ilegível")
     return dados
 
 
-def _gravar_em_voo(dados: dict) -> None:
-    alvo = caminho_em_voo()
-    alvo.parent.mkdir(parents=True, exist_ok=True)
-    temporario = alvo.with_suffix(".tmp")
-    temporario.write_text(json.dumps(dados, ensure_ascii=False, indent=1),
-                          encoding="utf-8")
-    os.replace(temporario, alvo)
-
-
-def _por_em_voo(chave: str, item: dict) -> None:
+def _mexer_no_voo(chave: str, item: dict | None = None, **campos) -> None:
+    """Poe (item), atualiza (campos) ou tira (nenhum dos dois) uma entrada."""
     with trava_de_acoes():
         dados = em_voo()
-        dados[chave] = item
-        _gravar_em_voo(dados)
+        if item is not None:
+            dados[chave] = item
+        elif campos:
+            if chave not in dados:
+                return
+            dados[chave].update(campos)
+        else:
+            if dados.pop(chave, None) is None:
+                return
+        _gravar_json(caminho_em_voo(), dados)
 
 
-def _tirar_do_voo(chave: str) -> None:
-    with trava_de_acoes():
-        dados = em_voo()
-        if dados.pop(chave, None) is not None:
-            _gravar_em_voo(dados)
+# -------------------------------------------------------- a conferir (TikTok)
+def caminho_a_conferir() -> Path:
+    if ARQUIVO_A_CONFERIR:
+        return Path(ARQUIVO_A_CONFERIR)
+    # O mesmo lugar que o `postar._arquivo_a_conferir("builds")` usa.
+    return _metricas().registro_do_canal("builds").parent / "_tiktok_a_conferir.json"
 
 
-def liberar(video_id: str) -> int:
-    """Tira do "em voo" as publicacoes daquele video (depois de conferir)."""
-    with trava_de_acoes():
-        dados = em_voo()
-        fora = [k for k, v in dados.items() if v.get("id") == video_id]
-        for chave in fora:
-            del dados[chave]
-        if fora:
-            _gravar_em_voo(dados)
-    return len(fora)
+def _ler_a_conferir() -> dict:
+    """{video_id: {quando, estado, ...}}. Ilegivel = Recusa.
+
+    Aceita a lista antiga (so ids) lendo; nunca regrava por cima de um
+    arquivo que nao conseguiu ler — foi assim que uma lista cortada virou
+    uma lista de um item so.
+    """
+    try:
+        dados = _ler_json(caminho_a_conferir())
+    except ValueError as exc:
+        raise Recusa("não consegui ler a lista “a conferir” do TikTok") from exc
+    if dados is None:
+        return {}
+    if isinstance(dados, list):
+        return {str(v): {} for v in dados}
+    if not isinstance(dados, dict):
+        raise Recusa("a lista “a conferir” do TikTok está num formato estranho")
+    return dados
+
+
+def _marcar_do_app(video_id: str, chave: str, estado: str) -> None:
+    """Grava (ou atualiza) a marca do app e RELE. Nao conseguiu = Recusa."""
+    dados = _ler_a_conferir()
+    atual = dados.get(video_id)
+    if atual is not None and (atual or {}).get("app") != chave:
+        raise Recusa("esse vídeo já está “a conferir” no TikTok")
+    dados[video_id] = {"quando": _agora().isoformat(timespec="seconds"),
+                       "estado": f"{MARCA_DO_APP}: {estado}"[:200], "app": chave}
+    try:
+        _gravar_json(caminho_a_conferir(), dados)
+    except OSError as exc:
+        raise Recusa("não consegui gravar a marca “a conferir”") from exc
+    if (_ler_a_conferir().get(video_id) or {}).get("app") != chave:
+        raise Recusa("a marca “a conferir” não ficou gravada")
+
+
+def _retirar_marca_do_app(video_id: str, chave: str) -> bool:
+    """Tira SO a marca que este app pos para esta publicacao. True se saiu."""
+    try:
+        dados = _ler_a_conferir()
+    except Recusa:
+        return False
+    if (dados.get(video_id) or {}).get("app") != chave:
+        return video_id not in dados
+    del dados[video_id]
+    try:
+        _gravar_json(caminho_a_conferir(), dados)
+    except OSError:
+        return False
+    try:
+        return video_id not in _ler_a_conferir()
+    except Recusa:
+        return False
 
 
 # ------------------------------------------------------------------ avisos
@@ -443,17 +527,6 @@ def _repetir_titulo() -> bool:
     return bool(((config or {}).get("grade") or {}).get("repetir_titulo"))
 
 
-def _a_conferir_no_tiktok() -> set:
-    try:
-        caminho = (_metricas().registro_do_canal("builds").parent
-                   / "_tiktok_a_conferir.json")
-        if not caminho.is_file():
-            return set()
-        return set(json.loads(caminho.read_text(encoding="utf-8")))
-    except Exception as exc:                                 # noqa: BLE001
-        raise Recusa("não consegui ler a lista “a conferir” do TikTok") from exc
-
-
 def video_para_publicar(video_id: str, onde: str, agora: datetime | None = None,
                         vivos: list[str] | None = None):
     """O video do catalogo, se TODAS as guardas deixarem. Senao, `Recusa`."""
@@ -466,6 +539,20 @@ def video_para_publicar(video_id: str, onde: str, agora: datetime | None = None,
         raise Recusa("só o formato celular vai para a grade")
     if getattr(video, "pendencias", None):
         raise Recusa("o vídeo tem pendência: " + "; ".join(video.pendencias))
+
+    # O app, primeiro: uma publicacao dele sem desfecho limpo no mesmo
+    # destino barra tudo ali (o perfil so tranca quando o Chrome abre).
+    for item in em_voo().values():
+        comum = set(DESTINOS[onde]) & set(DESTINOS.get(item.get("onde"), ()))
+        if not comum:
+            continue
+        nome = " e ".join(NOME_DESTINO[d] for d in sorted(comum))
+        situacao = ("ainda está em andamento" if item.get("estado") == "em_andamento"
+                    else "está “a conferir”")
+        if item.get("id") == video.id:
+            raise Recusa(f"esse vídeo já foi mandado ao {nome} pelo app e {situacao}")
+        raise Recusa(f"outra publicação do app no {nome} ({item.get('id')}) "
+                     f"{situacao}; confira e libere antes")
 
     perto = postagem_em_curso(agora, onde)
     if perto:
@@ -492,19 +579,9 @@ def video_para_publicar(video_id: str, onde: str, agora: datetime | None = None,
                      f"({type(exc).__name__})") from exc
 
     fonte = getattr(video, "fonte_id", "") or ""
-    conferir = _a_conferir_no_tiktok()
-    voando = list(em_voo().values())
+    conferir = _ler_a_conferir()
     for destino in DESTINOS[onde]:
         nome = NOME_DESTINO[destino]
-        for pedido in voando:
-            if destino not in DESTINOS.get(pedido.get("onde"), ()):
-                continue
-            if pedido.get("id") == video.id:
-                raise Recusa(f"esse vídeo já foi mandado ao {nome} pelo app e o "
-                             "resultado ainda não voltou")
-            if fonte and pedido.get("fonte") == fonte:
-                raise Recusa(f"a outra variante de {fonte} foi mandada ao {nome} "
-                             "pelo app e o resultado ainda não voltou")
         saidas = [l for l in linhas if _destino_da_linha(l) == destino
                   and metricas.publicado(l)]
         if any(l.get("video_id") == video.id for l in saidas):
@@ -518,7 +595,7 @@ def video_para_publicar(video_id: str, onde: str, agora: datetime | None = None,
             raise Recusa(f"outro vídeo já pôs esse título no ar no {nome}")
         if destino == "tiktok" and video.id in conferir:
             raise Recusa("o TikTok deste vídeo está “a conferir” (o clique "
-                         "saiu sem confirmação); confira no perfil antes")
+                         "pode ter saído); confira no perfil antes")
     return video
 
 
@@ -631,7 +708,8 @@ def preparar(acao: str, args, aparelho: str) -> dict:
         gancho = "" if variante == "A" else f" (gancho {variante})"
         return {"acao": acao,
                 "args": {"id": video.id, "onde": onde,
-                         "fonte": getattr(video, "fonte_id", "") or ""},
+                         "fonte": getattr(video, "fonte_id", "") or "",
+                         "titulo": str(getattr(video, "titulo", "") or "")[:120]},
                 "dois_passos": True,
                 "texto": f"Publicar «{video.titulo}»{gancho} no {destinos}"
                          f"{publico}? Não dá para desfazer pelo app."}
@@ -661,110 +739,232 @@ def executar(acao: str, args: dict, aparelho: str = "") -> str:
     if acao == "gerar":
         return _comandos().gerar()
     if acao == "publicar":
-        chave = secrets.token_hex(8)
-        # Primeiro o bloqueio, depois o processo: se o arquivo nao grava,
-        # nada sobe.
-        _por_em_voo(chave, {"id": args["id"], "onde": args["onde"],
-                            "fonte": args.get("fonte", ""), "aparelho": aparelho,
-                            "desde": _agora().isoformat(timespec="seconds")})
-        try:
-            processo = _abrir_processo(comando_de_publicar(args),
-                                       _comandos().RANDOM_BUILDS)
-        except OSError as exc:
-            _tirar_do_voo(chave)
-            raise Recusa(f"não consegui iniciar a publicação: {exc}") from exc
-        threading.Thread(target=_acompanhar, args=(processo, chave, args, aparelho),
-                         daemon=True, name=f"publicar-{chave}").start()
-        publico = " (público no YouTube)" if "youtube" in DESTINOS[args["onde"]] else ""
-        return (f"comecei: publicar {args['id']} em {args['onde']}{publico}. "
-                "Aviso quando terminar.")
+        return _disparar_publicacao(args, aparelho)
     raise Recusa(f"ação desconhecida: {acao}")
+
+
+def _disparar_publicacao(args: dict, aparelho: str) -> str:
+    chave = secrets.token_hex(8)
+    pasta = pasta_publicacoes() / chave
+    destinos = DESTINOS[args["onde"]]
+    with trava_de_acoes():
+        if "tiktok" in destinos:
+            _marcar_do_app(args["id"], chave, f"publicação em andamento ({chave})")
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+            _mexer_no_voo(chave, {
+                "id": args["id"], "onde": args["onde"],
+                "fonte": args.get("fonte", ""), "titulo": args.get("titulo", ""),
+                "aparelho": aparelho, "pasta": str(pasta), "pid": None,
+                "estado": "em_andamento", "motivo": "",
+                "desde": _agora().isoformat(timespec="seconds")})
+            pid = _iniciar_filha(pasta, comando_de_publicar(args),
+                                 _comandos().RANDOM_BUILDS)
+        except Exception as exc:
+            # Nada subiu: desfaz o que foi preparado.
+            with contextlib.suppress(Exception):
+                _mexer_no_voo(chave)
+            if "tiktok" in destinos:
+                _retirar_marca_do_app(args["id"], chave)
+            if isinstance(exc, Recusa):
+                raise
+            raise Recusa(f"não consegui iniciar a publicação: {exc}") from exc
+        _mexer_no_voo(chave, pid=pid)
+    vigiar(chave)
+    publico = " (público no YouTube)" if "youtube" in destinos else ""
+    return (f"comecei: publicar {args['id']} em {args['onde']}{publico}. "
+            "Aviso quando terminar.")
 
 
 # ---------------------------------------------------------------- desfecho
 def desfechos(saida: str | None, codigo: int | None, onde: str) -> dict:
-    """{destino: "publicado" | "nao_tentado" | desfecho do postar}.
+    """{destino: "publicado" | "a_conferir" | "falha_limpa" | "nao_tentado"}.
 
-    Le a saida do `main.py publicar`: "YouTube: <url>" ou "YouTube FALHOU:",
-    "TikTok: <estado>" ou "TikTok FALHOU: <motivo>". Sem saida (tempo
-    esgotado) ou sem a linha do TikTok, o clique PODE ter saido: vale
-    "sem_confirmacao". A excecao e o YouTube ter falhado antes, porque o
-    `main.py` sai ali sem tentar o TikTok.
+    Le a saida do `main.py publicar`. "publicado" so com a porta do
+    publicador dizendo que confirmou, em TODAS as partes (o video longo vira
+    "(1 de 2)", "(2 de 2)"), e o processo saindo com 0. "falha_limpa" so
+    existe para a cota do YouTube (codigo 2) antes de qualquer parte
+    confirmada: nada foi clicado. "nao_tentado": o `main.py` saiu no YouTube
+    e nunca chegou ao TikTok. Todo o resto — incluindo o que nao deu para
+    ler — e "a_conferir".
     """
     resultado: dict = {}
     linhas = (saida or "").splitlines()
-    # Cota esgotada sai como "YouTube: <motivo>" com codigo 2 — e falha.
-    yt_falhou = (any(l.startswith("YouTube FALHOU") for l in linhas)
-                 or (codigo == 2 and "youtube" in DESTINOS[onde]))
-    if "youtube" in DESTINOS[onde]:
-        yt_linha = any(l.startswith("YouTube: ") for l in linhas)
-        resultado["youtube"] = "publicado" if yt_linha and not yt_falhou else "falha"
-    if "tiktok" in DESTINOS[onde]:
-        estado = next((l[len("TikTok: "):] for l in linhas
-                       if l.startswith("TikTok: ")), None)
-        falha = next((l[len("TikTok FALHOU: "):] for l in linhas
-                      if l.startswith("TikTok FALHOU: ")), None)
-        if saida is None:
-            resultado["tiktok"] = "sem_confirmacao"
-        elif estado is None and falha is None:
-            resultado["tiktok"] = ("nao_tentado" if yt_falhou and onde == "ambos"
-                                   else "sem_confirmacao")
-        else:
-            desfecho = _postar().desfecho_do_tiktok(
-                estado or "", {"erro": falha} if falha else None)
-            # So o sucesso limpo solta o video. Qualquer outra coisa pode ter
-            # clicado: vai para a conferencia humana.
-            if desfecho == "publicado" and codigo != 0:
-                desfecho = "sem_confirmacao"
-            resultado["tiktok"] = desfecho
-    return resultado
+    sem_fim = saida is None or codigo is None
+    cota = codigo == 2
+    yt = [l[len("YouTube: "):] for l in linhas if l.startswith("YouTube: ")]
+    yt_falhou = any(l.startswith("YouTube FALHOU") for l in linhas)
+    tk = next((l[len("TikTok: "):] for l in linhas if l.startswith("TikTok: ")), None)
+    tk_falhou = any(l.startswith("TikTok FALHOU") for l in linhas)
 
-
-def concluir_publicacao(chave: str, args: dict, aparelho: str,
-                        saida: str | None, codigo: int | None) -> dict:
-    """Marca o que precisa de conferencia, anota, avisa e solta o "em voo"."""
-    resultado = desfechos(saida, codigo, args["onde"])
-    soltar = True
-    tiktok = resultado.get("tiktok")
-    if tiktok not in (None, "publicado", "nao_tentado"):
-        ultima = next((l for l in reversed((saida or "").splitlines())
-                       if l.startswith("TikTok")), "")
-        motivo = (ultima or ("tempo esgotado" if saida is None else
-                             f"saída {codigo} sem linha do TikTok"))[:200]
+    def confirma(destino, estados) -> bool | None:
         try:
-            _postar()._marcar_para_conferir("builds", args["id"],
-                                            f"pelo app: {tiktok}: {motivo}")
+            return all(confirmado(destino, e) for e in estados)
         except Exception:                                    # noqa: BLE001
-            # Sem a marca, o "em voo" e a unica coisa que segura o video.
-            soltar = False
-    texto = ", ".join(f"{NOME_DESTINO[d]}: {r}" for d, r in resultado.items())
-    if not soltar:
-        texto += " (não consegui marcar “a conferir”; o vídeo segue bloqueado no app)"
-    ok = all(r == "publicado" for r in resultado.values())
-    try:
-        registrar(aparelho, "desfecho", {"id": args["id"], "onde": args["onde"]},
-                  texto, ok=ok)
-    except Exception:                                        # noqa: BLE001
-        pass
-    avisar_telegram(aparelho, f"publicar {args['id']}", texto)
-    if soltar:
-        _tirar_do_voo(chave)
+            return None        # nao deu para carregar a porta: nao sei
+
+    if "youtube" in DESTINOS[onde]:
+        if sem_fim or yt_falhou:
+            resultado["youtube"] = "a_conferir"
+        elif cota:
+            # A linha da cota e a ultima "YouTube:". Qualquer linha antes
+            # dela e uma parte que foi tentada (publicada ou rascunho).
+            resultado["youtube"] = "falha_limpa" if len(yt) <= 1 else "a_conferir"
+        elif yt and confirma("youtube", yt) is True and codigo == 0:
+            resultado["youtube"] = "publicado"
+        else:
+            resultado["youtube"] = "a_conferir"
+    if "tiktok" in DESTINOS[onde]:
+        saiu_no_youtube = (onde == "ambos" and not sem_fim and tk is None
+                           and not tk_falhou and codigo in (1, 2)
+                           and resultado.get("youtube") in ("falha_limpa", "a_conferir")
+                           and (yt_falhou or cota))
+        if saiu_no_youtube:
+            resultado["tiktok"] = "nao_tentado"
+        elif (not sem_fim and tk is not None and not tk_falhou and codigo == 0
+              and confirma("tiktok", [tk]) is True):
+            resultado["tiktok"] = "publicado"
+        else:
+            resultado["tiktok"] = "a_conferir"
     return resultado
 
 
-def _acompanhar(processo, chave: str, args: dict, aparelho: str) -> None:
+def _limpo(resultado: dict) -> bool:
+    return all(r in ("publicado", "falha_limpa", "nao_tentado")
+               for r in resultado.values())
+
+
+def concluir_publicacao(chave: str) -> dict | None:
+    """Le a saida da filha, marca/solta, anota e avisa. Devolve o resultado."""
+    item = em_voo().get(chave)
+    if item is None:
+        return None
+    pasta = Path(item.get("pasta") or pasta_publicacoes() / chave)
     try:
-        saida, _ = processo.communicate(timeout=PUBLICAR_TIMEOUT_S)
-        codigo = processo.returncode
-    except subprocess.TimeoutExpired:
-        # Nao mata: pode estar no meio do upload. Vai para a conferencia.
-        saida, codigo = None, None
-    except Exception:                                        # noqa: BLE001
-        saida, codigo = None, None
+        saida = (pasta / "saida.log").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        saida = None
     try:
-        concluir_publicacao(chave, args, aparelho, saida, codigo)
-    except Exception:                                        # noqa: BLE001
-        pass          # o "em voo" fica: bloqueado e visivel em --em-voo
+        fim = _ler_json(pasta / "fim.json")
+    except ValueError:
+        fim = None
+    codigo = (fim or {}).get("codigo")
+    if fim is None:
+        saida = None                        # sem fim, a saida esta incompleta
+    resultado = desfechos(saida, codigo, item["onde"])
+    video_id = item["id"]
+    avisos = []
+
+    with trava_de_acoes():
+        if "tiktok" in resultado:
+            if resultado["tiktok"] == "a_conferir":
+                ultima = next((l for l in reversed((saida or "").splitlines())
+                               if l.startswith("TikTok")), "")
+                motivo = ultima or ("sem desfecho" if fim is None
+                                    else f"saída {codigo} sem linha do TikTok")
+                try:
+                    _marcar_do_app(video_id, chave, f"a conferir: {motivo}")
+                except Recusa as exc:
+                    avisos.append(f"marca do TikTok não atualizada ({exc})")
+            elif not _retirar_marca_do_app(video_id, chave):
+                avisos.append("não consegui tirar a marca “a conferir” do app")
+        if _limpo(resultado):
+            _mexer_no_voo(chave)
+        else:
+            pendentes = [NOME_DESTINO[d] for d, r in resultado.items()
+                         if r == "a_conferir"]
+            _mexer_no_voo(chave, estado="a_conferir",
+                          motivo="confira no " + " e no ".join(pendentes),
+                          resultado=resultado)
+
+    texto = ", ".join(f"{NOME_DESTINO[d]}: {r}" for d, r in resultado.items())
+    if not _limpo(resultado):
+        texto += " — bloqueado no app até conferir (--em-voo / --liberar)"
+    if avisos:
+        texto += " (" + "; ".join(avisos) + ")"
+    with contextlib.suppress(Exception):
+        registrar(item.get("aparelho", ""), "desfecho",
+                  {"id": video_id, "onde": item["onde"]}, texto,
+                  ok=_limpo(resultado) and not avisos)
+    avisar_telegram(item.get("aparelho", ""), f"publicar {video_id}", texto)
+    return resultado
+
+
+def _vigia(chave: str) -> None:
+    comeco = time.monotonic()
+    while True:
+        try:
+            item = em_voo().get(chave)
+        except Recusa:
+            item = {}                      # arquivo ilegivel agora: tenta depois
+        if item is None or (item and item.get("estado") != "em_andamento"):
+            return
+        pasta = Path((item or {}).get("pasta") or pasta_publicacoes() / chave)
+        terminou = (pasta / "fim.json").is_file()
+        sumiu = bool(item) and _vivo(item.get("pid")) is False and not terminou
+        estourou = time.monotonic() - comeco > ESPERA_MAX_S
+        if terminou or sumiu or estourou:
+            with contextlib.suppress(Exception):
+                concluir_publicacao(chave)
+            return
+        time.sleep(VIGIA_S)
+
+
+def vigiar(chave: str) -> threading.Thread:
+    fio = threading.Thread(target=_vigia, args=(chave,), daemon=True,
+                           name=f"publicar-{chave}")
+    fio.start()
+    return fio
+
+
+def conciliar() -> list[str]:
+    """Na subida do servidor: volta a vigiar o que ficou em andamento."""
+    try:
+        voando = em_voo()
+    except Recusa:
+        return []
+    chaves = [k for k, v in voando.items() if v.get("estado") == "em_andamento"]
+    for chave in chaves:
+        vigiar(chave)
+    return chaves
+
+
+def liberar(video_id: str) -> int:
+    """Tira do "em voo" as publicacoes daquele video. A marca do TikTok fica."""
+    with trava_de_acoes():
+        dados = em_voo()
+        fora = [k for k, v in dados.items() if v.get("id") == video_id]
+        for chave in fora:
+            del dados[chave]
+        if fora:
+            _gravar_json(caminho_em_voo(), dados)
+    return len(fora)
+
+
+def relatorio_do_video(video_id: str) -> list[str]:
+    """O que se sabe do video antes de liberar: em voo, ledger, a conferir."""
+    linhas = []
+    try:
+        for item in em_voo().values():
+            if item.get("id") == video_id:
+                linhas.append(f"em voo: {item.get('onde')} {item.get('estado')} "
+                              f"desde {item.get('desde')} — {item.get('motivo', '')}")
+    except Recusa as exc:
+        linhas.append(f"em voo: {exc}")
+    try:
+        for l in _metricas().publicados("builds"):
+            if isinstance(l, dict) and l.get("video_id") == video_id:
+                linhas.append(f"ledger: {_destino_da_linha(l)} {l.get('quando')} "
+                              f"publicado={_metricas().publicado(l)}")
+    except Exception as exc:                                 # noqa: BLE001
+        linhas.append(f"ledger: ilegível ({type(exc).__name__})")
+    try:
+        marca = _ler_a_conferir().get(video_id)
+        if marca is not None:
+            linhas.append(f"a conferir (TikTok): {(marca or {}).get('estado', '')}")
+    except Recusa as exc:
+        linhas.append(f"a conferir: {exc}")
+    return linhas
 
 
 # ---------------------------------------------------------- confirmacoes
@@ -818,9 +1018,9 @@ class Pendentes:
 
 
 __all__ = ["CONFIRMAR_VALE_S", "LIMITE_POR_HORA", "Pendentes", "Recusa",
-           "alvos_de_pausa", "avisar_telegram", "concluir_publicacao",
-           "desfechos", "em_voo", "executar", "liberar", "preparar",
-           "registrar", "trava_de_acoes", "usadas_na_ultima_hora",
+           "alvos_de_pausa", "avisar_telegram", "conciliar", "concluir_publicacao",
+           "desfechos", "em_voo", "executar", "liberar", "preparar", "registrar",
+           "relatorio_do_video", "trava_de_acoes", "usadas_na_ultima_hora",
            "video_para_publicar"]
 
 

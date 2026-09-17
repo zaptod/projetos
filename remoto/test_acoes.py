@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 """Fase 2 do app: acoes, guardas de publicacao e confirmacao em dois passos.
 
-Nenhum teste encosta no `controle.json` real, no ledger real, no Telegram ou
-num subprocesso de verdade: tudo que executa e duble, e o que se confere e o
-que TERIA sido chamado. Os ids seguem o formato real do catalogo
-(`generation_00041:build:celular`, com `:B` na variante).
+Nenhum teste encosta no `controle.json` real, no ledger real, na lista
+"a conferir" real, no Telegram ou num `main.py publicar` de verdade. A
+`publicacao_filha` e trocada por um duble que escreve `saida.log` e
+`fim.json` como a de verdade escreveria; a de verdade tem testes proprios,
+com um filho Python minusculo. As portas de confirmacao (`youtube_web` e
+`tiktok`.confirmado) sao as REAIS. Os ids seguem o formato do catalogo.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from remoto import acoes, api_http, painel_dados
+from remoto import acoes, api_http, painel_dados, publicacao_filha
 
 A = "generation_00041:build:celular"
 B = "generation_00041:build:celular:B"
@@ -28,6 +30,14 @@ DOIS = "generation_00042:build:celular"
 PENDENTE = "generation_00043:build:celular"
 PC = "generation_00044:build:normal"
 CINCO = "generation_00045:estreia:celular"
+
+YT_OK = "https://youtu.be/abc123XYZ"
+YT_FRASE = "publicado no YouTube"
+YT_RASCUNHO = ("cliquei em publicar, mas o Studio nao mostrou a confirmacao. "
+               "A janela ficou aberta: confira em studio.youtube.com se o video "
+               "subiu antes de tentar de novo — ele pode ter ficado como RASCUNHO.")
+TK_OK = "publicado no TikTok"
+TK_CLIQUE = "cliquei em publicar; sem confirmação do TikTok"
 
 
 # ------------------------------------------------------------------ dubles
@@ -63,20 +73,6 @@ class _Comandos:
     def gerar(self):
         self.gerados += 1
         return "comecei: uma build nova"
-
-
-class _Processo:
-    """Um `main.py publicar` de mentira: devolve a saida roteirizada."""
-
-    def __init__(self, saida, codigo=0, segurar=None):
-        self.saida, self.returncode, self.segurar = saida, codigo, segurar
-
-    def communicate(self, timeout=None):
-        if self.segurar is not None:
-            self.segurar.wait(10)
-        if self.saida is None:
-            raise subprocess.TimeoutExpired("main.py", timeout)
-        return self.saida, None
 
 
 def _video(id_, titulo, pendencias=(), perfil="celular"):
@@ -128,32 +124,37 @@ class _Grade:
         return list(self.lista)
 
 
-class _Postar:
-    """O que o app usa do postar.py: o desfecho e a marca (que grava de verdade,
-    no arquivo que a guarda le)."""
+class _Filha:
+    """A `publicacao_filha` de mentira. `roteiro` = (saida, codigo) ou None
+    (a filha "sumiu" sem fim). `segurar` atrasa o fim ate ser solto."""
 
-    def __init__(self, pasta):
-        self.pasta = pasta
-        self.quebrar = False
+    def __init__(self):
+        self.comandos = []
+        self.roteiro = ("", 0)
+        self.segurar = None
+        self.vivos = {}
+        self._pid = 1000
 
-    @staticmethod
-    def desfecho_do_tiktok(estado, falha=None, laudo=None):
-        texto = str(estado or "").lower()
-        if "publicado no tiktok" in texto:
-            return "publicado"
-        if "cliquei em publicar" in texto:
-            return "sem_confirmacao"
-        if "chrome" in json.dumps(falha or {}).lower():
-            return "infraestrutura"
-        return "falha"
+    def iniciar(self, pasta, comando, cwd):
+        self._pid += 1
+        pid = self._pid
+        self.comandos.append(list(comando))
+        roteiro, segurar = self.roteiro, self.segurar
+        self.vivos[pid] = True
 
-    def _marcar_para_conferir(self, canal, video_id, estado):
-        if self.quebrar:
-            raise OSError("disco cheio")
-        caminho = self.pasta / "_tiktok_a_conferir.json"
-        dados = json.loads(caminho.read_text(encoding="utf-8")) if caminho.is_file() else {}
-        dados[video_id] = {"estado": estado}
-        caminho.write_text(json.dumps(dados), encoding="utf-8")
+        def correr():
+            if segurar is not None:
+                segurar.wait(10)
+            if roteiro is None:
+                self.vivos[pid] = False
+                return
+            saida, codigo = roteiro
+            (pasta / "saida.log").write_text(saida, encoding="utf-8")
+            (pasta / "fim.json").write_text(json.dumps({"codigo": codigo}),
+                                            encoding="utf-8")
+            self.vivos[pid] = False
+        threading.Thread(target=correr, daemon=True).start()
+        return pid
 
 
 FORA_DA_GRADE = datetime(2026, 9, 17, 10, 0)
@@ -164,9 +165,12 @@ def mundo(tmp_path, monkeypatch):
     monkeypatch.setattr(api_http, "ARQUIVO", tmp_path / "app_celular.json")
     monkeypatch.setattr(acoes, "ARQUIVO_RASTRO", tmp_path / "acoes.jsonl")
     monkeypatch.setattr(acoes, "ARQUIVO_EM_VOO", tmp_path / "em_voo.json")
+    monkeypatch.setattr(acoes, "PASTA_PUBLICACOES", tmp_path / "publicacoes")
+    monkeypatch.setattr(acoes, "ARQUIVO_A_CONFERIR", tmp_path / "_tiktok_a_conferir.json")
+    monkeypatch.setattr(acoes, "VIGIA_S", 0.05)
     acoes._RASTRO_FALHOU.clear()
     controle, comandos = _Controle(), _Comandos()
-    metricas, grade, postar = _Metricas(tmp_path), _Grade(), _Postar(tmp_path)
+    metricas, grade, filha = _Metricas(tmp_path), _Grade(), _Filha()
     videos = [
         _video(A, "Build Um"),
         _video(B, "Build Um"),
@@ -177,21 +181,14 @@ def mundo(tmp_path, monkeypatch):
     ]
     catalogo = types.SimpleNamespace(listar=lambda: list(videos),
                                      carregar_config=lambda: {})
-    processos = []
-
-    def abrir(comando, cwd):
-        roteiro = mundo_ns.roteiro
-        processos.append(list(comando))
-        return roteiro()
-
     monkeypatch.setattr(acoes, "_controle", lambda: controle)
     monkeypatch.setattr(acoes, "_comandos", lambda: comandos)
     monkeypatch.setattr(acoes, "_metricas", lambda: metricas)
     monkeypatch.setattr(acoes, "_titulos", lambda: _Titulos)
     monkeypatch.setattr(acoes, "_grade", lambda: grade)
     monkeypatch.setattr(acoes, "_catalogo", lambda: catalogo)
-    monkeypatch.setattr(acoes, "_postar", lambda: postar)
-    monkeypatch.setattr(acoes, "_abrir_processo", abrir)
+    monkeypatch.setattr(acoes, "_iniciar_filha", filha.iniciar)
+    monkeypatch.setattr(acoes, "_vivo", lambda pid: filha.vivos.get(pid))
     monkeypatch.setattr(acoes, "_agora", lambda: FORA_DA_GRADE)
     monkeypatch.setattr(acoes, "alvos_de_pausa", lambda: ["tudo", "digen", "picasso"])
     monkeypatch.setattr(acoes, "trava_ocupada", lambda nome: False)
@@ -200,12 +197,12 @@ def mundo(tmp_path, monkeypatch):
     avisos = []
     monkeypatch.setattr(acoes, "_entregar", avisos.append)
     monkeypatch.setattr(painel_dados._Previsao, "disponivel", staticmethod(lambda: False))
-    mundo_ns = types.SimpleNamespace(
+    ns = types.SimpleNamespace(
         tmp=tmp_path, controle=controle, comandos=comandos, metricas=metricas,
-        grade=grade, postar=postar, avisos=avisos, catalogo=catalogo,
-        processos=processos,
-        roteiro=lambda: _Processo("YouTube: https://youtu.be/abc\n", 0))
-    yield mundo_ns
+        grade=grade, filha=filha, avisos=avisos, catalogo=catalogo)
+    yield ns
+    if filha.segurar is not None:
+        filha.segurar.set()
     _esperar_publicacoes()
     acoes._FILA_AVISOS.join()
 
@@ -226,6 +223,11 @@ def _publicar(args, aparelho="ap"):
     return texto
 
 
+def _marcas(mundo) -> dict:
+    caminho = mundo.tmp / "_tiktok_a_conferir.json"
+    return json.loads(caminho.read_text(encoding="utf-8")) if caminho.exists() else {}
+
+
 # ================================================= 1. publico no YouTube
 def test_youtube_sobe_publico_e_o_texto_diz(mundo):
     pedido = acoes.preparar("publicar", {"id": A, "onde": "ambos"}, "ap")
@@ -239,9 +241,10 @@ def test_youtube_sobe_publico_e_o_texto_diz(mundo):
 
 
 def test_o_processo_disparado_leva_o_publico(mundo):
+    mundo.filha.roteiro = (f"YouTube: {YT_OK}\n", 0)
     _publicar({"id": DOIS, "onde": "youtube"})
     _esperar_publicacoes()
-    (comando,) = mundo.processos
+    (comando,) = mundo.filha.comandos
     assert comando[comando.index("--visibilidade") + 1] == "public"
 
 
@@ -251,136 +254,291 @@ def test_confirmacao_diz_qual_gancho(mundo):
     assert "«Build Um» (gancho B) no YouTube" in texto
 
 
-# =========================================== 2. desfecho do TikTok e marca
+# ==================================================== desfechos (A2 e cia.)
+def test_portas_reais_recusam_o_rascunho():
+    assert acoes.confirmado("youtube", YT_OK) is True
+    assert acoes.confirmado("youtube", YT_FRASE + " (com a confirmacao extra)") is True
+    assert acoes.confirmado("youtube", YT_RASCUNHO) is False
+    assert acoes.confirmado("tiktok", TK_OK) is True
+    assert acoes.confirmado("tiktok", TK_CLIQUE) is False
+
+
 @pytest.mark.parametrize("saida,codigo,onde,esperado", [
-    ("TikTok: publicado no TikTok\n", 0, "tiktok", {"tiktok": "publicado"}),
-    ("TikTok: cliquei em publicar; sem confirmação\n", 0, "tiktok",
-     {"tiktok": "sem_confirmacao"}),
-    ("TikTok FALHOU: nao consegui abrir o chrome\n", 1, "tiktok",
-     {"tiktok": "infraestrutura"}),
-    ("TikTok FALHOU: legenda\n", 1, "tiktok", {"tiktok": "falha"}),
-    # sucesso na frase, mas o processo nao saiu limpo: vai para a conferencia
-    ("TikTok: publicado no TikTok\n", 1, "tiktok", {"tiktok": "sem_confirmacao"}),
-    (None, None, "tiktok", {"tiktok": "sem_confirmacao"}),            # tempo
-    ("Traceback...\n", 1, "tiktok", {"tiktok": "sem_confirmacao"}),   # quebrou
-    ("YouTube FALHOU: x\n", 1, "ambos", {"youtube": "falha", "tiktok": "nao_tentado"}),
+    (f"YouTube: {YT_OK}\n", 0, "youtube", {"youtube": "publicado"}),
+    (f"YouTube: {YT_FRASE}\n", 0, "youtube", {"youtube": "publicado"}),
+    # A2: o Studio nao confirmou, e o main.py sai com 0 mesmo assim
+    (f"YouTube: {YT_RASCUNHO}\n", 0, "youtube", {"youtube": "a_conferir"}),
+    # video longo: TODAS as partes precisam confirmar
+    (f"YouTube: {YT_OK}\nYouTube: {YT_OK}\n", 0, "youtube", {"youtube": "publicado"}),
+    (f"YouTube: {YT_OK}\nYouTube: {YT_RASCUNHO}\n", 0, "youtube", {"youtube": "a_conferir"}),
+    ("YouTube FALHOU: sessao\n", 1, "youtube", {"youtube": "a_conferir"}),
+    ("YouTube: cota esgotada\n", 2, "youtube", {"youtube": "falha_limpa"}),
+    # a parte 1 subiu e a cota acabou na 2
+    (f"YouTube: {YT_OK}\nYouTube: cota esgotada\n", 2, "youtube",
+     {"youtube": "a_conferir"}),
+    (None, None, "youtube", {"youtube": "a_conferir"}),
+    ("", 0, "youtube", {"youtube": "a_conferir"}),
+    (f"TikTok: {TK_OK}\n", 0, "tiktok", {"tiktok": "publicado"}),
+    (f"TikTok: {TK_CLIQUE}\n", 0, "tiktok", {"tiktok": "a_conferir"}),
+    ("TikTok FALHOU: nao consegui abrir o chrome\n", 1, "tiktok", {"tiktok": "a_conferir"}),
+    (f"TikTok: {TK_OK}\n", 1, "tiktok", {"tiktok": "a_conferir"}),      # nao saiu limpo
+    (None, None, "tiktok", {"tiktok": "a_conferir"}),
+    ("Traceback...\nOSError: [Errno 22]\n", 1, "tiktok", {"tiktok": "a_conferir"}),
+    ("YouTube FALHOU: x\n", 1, "ambos", {"youtube": "a_conferir", "tiktok": "nao_tentado"}),
     ("YouTube: cota esgotada\n", 2, "ambos",
-     {"youtube": "falha", "tiktok": "nao_tentado"}),
-    ("YouTube: https://youtu.be/a\nTikTok: publicado no TikTok\n", 0, "ambos",
+     {"youtube": "falha_limpa", "tiktok": "nao_tentado"}),
+    (f"YouTube: {YT_OK}\nTikTok: {TK_OK}\n", 0, "ambos",
      {"youtube": "publicado", "tiktok": "publicado"}),
-    ("YouTube: https://youtu.be/a\n", 0, "youtube", {"youtube": "publicado"}),
+    (f"YouTube: {YT_RASCUNHO}\nTikTok: {TK_OK}\n", 0, "ambos",
+     {"youtube": "a_conferir", "tiktok": "publicado"}),
 ])
-def test_desfechos(mundo, saida, codigo, onde, esperado):
+def test_desfechos(saida, codigo, onde, esperado):
     assert acoes.desfechos(saida, codigo, onde) == esperado
 
 
-def test_clique_sem_confirmacao_marca_a_conferir_e_segura_para_sempre(mundo, monkeypatch):
-    mundo.roteiro = lambda: _Processo("TikTok: cliquei em publicar; sem confirmação\n", 0)
+def test_porta_que_nao_carrega_vira_a_conferir(monkeypatch):
+    def quebra(destino, estado):
+        raise ImportError("sem o modulo")
+    monkeypatch.setattr(acoes, "confirmado", quebra)
+    assert acoes.desfechos(f"TikTok: {TK_OK}\n", 0, "tiktok") == {"tiktok": "a_conferir"}
+    assert acoes.desfechos(f"YouTube: {YT_OK}\n", 0, "youtube") == {"youtube": "a_conferir"}
+
+
+# ============================== A1/A3: marca antes, soltura so no sucesso
+def test_marca_do_tiktok_existe_antes_do_processo(mundo):
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"TikTok: {TK_OK}\n", 0)
     _publicar({"id": A, "onde": "tiktok"})
+    marca = _marcas(mundo)[A]
+    assert marca["estado"].startswith("pelo app: publicação em andamento")
+    (item,) = acoes.em_voo().values()
+    assert item["estado"] == "em_andamento" and item["titulo"] == "Build Um"
+    mundo.filha.segurar.set()
     _esperar_publicacoes()
-    conferir = json.loads((mundo.tmp / "_tiktok_a_conferir.json").read_text(encoding="utf-8"))
-    assert A in conferir and "pelo app" in conferir[A]["estado"]
-    assert acoes.em_voo() == {}                     # a marca assumiu o bloqueio
-    # muito depois, e sem nada no ledger: continua barrado
-    monkeypatch.setattr(acoes, "_agora", lambda: FORA_DA_GRADE + timedelta(days=3))
+    assert _marcas(mundo) == {} and acoes.em_voo() == {}      # sucesso limpo
+
+
+def test_marca_nao_gravada_nao_sobe_nada(mundo, monkeypatch):
+    monkeypatch.setattr(acoes, "_gravar_json",
+                        lambda caminho, dados: (_ for _ in ()).throw(OSError("cheio")))
+    with pytest.raises(acoes.Recusa, match="marca"):
+        _publicar({"id": A, "onde": "tiktok"})
+    assert mundo.filha.comandos == []
+
+
+def test_marca_que_nao_fica_nao_sobe_nada(mundo, monkeypatch):
+    # grava "com sucesso", mas a releitura nao acha o id (o que a funcao do
+    # postar faria com um arquivo cortado: engole o erro)
+    monkeypatch.setattr(acoes, "_gravar_json", lambda caminho, dados: None)
+    with pytest.raises(acoes.Recusa, match="não ficou gravada"):
+        _publicar({"id": A, "onde": "tiktok"})
+    assert mundo.filha.comandos == []
+
+
+def test_lista_a_conferir_ilegivel_recusa_e_nao_e_regravada(mundo):
+    caminho = mundo.tmp / "_tiktok_a_conferir.json"
+    caminho.write_text('{"generation_00001:build:celular": {"estado": "x"', encoding="utf-8")
     with pytest.raises(acoes.Recusa, match="a conferir"):
         acoes.preparar("publicar", {"id": A, "onde": "tiktok"}, "ap")
-    acoes.preparar("publicar", {"id": A, "onde": "youtube"}, "ap")
-    acoes._FILA_AVISOS.join()
-    assert any("sem\\_confirmacao" in a for a in mundo.avisos)   # markdown escapado
+    with pytest.raises(acoes.Recusa, match="a conferir"):
+        acoes.preparar("publicar", {"id": A, "onde": "youtube"}, "ap")
+    assert caminho.read_text(encoding="utf-8").startswith('{"generation_00001')
 
 
-def test_sucesso_limpo_nao_marca_e_solta(mundo):
-    mundo.roteiro = lambda: _Processo("TikTok: publicado no TikTok\n", 0)
+def test_lista_antiga_em_formato_de_lista_e_lida(mundo):
+    (mundo.tmp / "_tiktok_a_conferir.json").write_text(json.dumps([CINCO]),
+                                                        encoding="utf-8")
+    for onde in ("tiktok", "ambos"):
+        with pytest.raises(acoes.Recusa, match="a conferir"):
+            acoes.preparar("publicar", {"id": CINCO, "onde": onde}, "ap")
+    acoes.preparar("publicar", {"id": CINCO, "onde": "youtube"}, "ap")
+
+
+def test_clique_sem_confirmacao_fica_marcado_e_bloqueado(mundo, monkeypatch):
+    mundo.filha.roteiro = (f"TikTok: {TK_CLIQUE}\n", 0)
     _publicar({"id": A, "onde": "tiktok"})
     _esperar_publicacoes()
-    assert not (mundo.tmp / "_tiktok_a_conferir.json").exists()
-    assert acoes.em_voo() == {}
+    marca = _marcas(mundo)[A]
+    assert "a conferir" in marca["estado"] and TK_CLIQUE[:20] in marca["estado"]
+    (item,) = acoes.em_voo().values()
+    assert item["estado"] == "a_conferir" and "TikTok" in item["motivo"]
+    monkeypatch.setattr(acoes, "_agora", lambda: FORA_DA_GRADE + timedelta(days=3))
+    for video, onde in ((A, "tiktok"), (DOIS, "tiktok"), (A, "ambos")):
+        with pytest.raises(acoes.Recusa):
+            acoes.preparar("publicar", {"id": video, "onde": onde}, "ap")
+    # o YouTube nao tem nada com isso
+    acoes.preparar("publicar", {"id": DOIS, "onde": "youtube"}, "ap")
+    acoes._FILA_AVISOS.join()
+    assert any("a\\_conferir" in a for a in mundo.avisos)
 
 
-def test_youtube_que_falhou_antes_nao_marca_o_tiktok(mundo):
-    mundo.roteiro = lambda: _Processo("YouTube FALHOU: sessao\n", 1)
+def test_youtube_nao_confirmado_bloqueia_o_youtube(mundo):
+    mundo.filha.roteiro = (f"YouTube: {YT_RASCUNHO}\n", 0)
+    _publicar({"id": DOIS, "onde": "youtube"})
+    _esperar_publicacoes()
+    (item,) = acoes.em_voo().values()
+    assert item["estado"] == "a_conferir" and "YouTube" in item["motivo"]
+    with pytest.raises(acoes.Recusa, match="a conferir"):
+        acoes.preparar("publicar", {"id": CINCO, "onde": "youtube"}, "ap")
+    acoes.preparar("publicar", {"id": CINCO, "onde": "tiktok"}, "ap")
+    assert _marcas(mundo) == {}              # o TikTok nem entrou nessa
+
+
+def test_youtube_que_falhou_antes_tira_a_marca_do_tiktok(mundo):
+    mundo.filha.roteiro = ("YouTube: cota esgotada\n", 2)
     _publicar({"id": A, "onde": "ambos"})
     _esperar_publicacoes()
-    assert not (mundo.tmp / "_tiktok_a_conferir.json").exists()
+    assert _marcas(mundo) == {} and acoes.em_voo() == {}
 
 
-def test_sem_desfecho_o_video_fica_em_voo(mundo, monkeypatch):
-    solta = threading.Event()
-    mundo.roteiro = lambda: _Processo("TikTok: publicado no TikTok\n", 0, segurar=solta)
+def test_ambos_com_youtube_em_rascunho_solta_so_o_tiktok(mundo):
+    mundo.filha.roteiro = (f"YouTube: {YT_RASCUNHO}\nTikTok: {TK_OK}\n", 0)
+    _publicar({"id": A, "onde": "ambos"})
+    _esperar_publicacoes()
+    assert _marcas(mundo) == {}
+    (item,) = acoes.em_voo().values()
+    assert item["motivo"] == "confira no YouTube"
+
+
+def test_filha_que_some_sem_fim_fica_a_conferir(mundo):
+    mundo.filha.roteiro = None                       # morreu sem escrever o fim
     _publicar({"id": A, "onde": "tiktok"})
-    # passou muito tempo e o processo nao voltou: o bloqueio nao vence
-    monkeypatch.setattr(acoes, "_agora", lambda: FORA_DA_GRADE + timedelta(hours=5))
-    with pytest.raises(acoes.Recusa, match="ainda não voltou"):
+    _esperar_publicacoes()
+    assert "sem desfecho" in _marcas(mundo)[A]["estado"]
+    (item,) = acoes.em_voo().values()
+    assert item["estado"] == "a_conferir"
+
+
+def test_servidor_que_cai_concilia_na_subida(mundo, monkeypatch):
+    """O servidor morre com a publicacao no ar; o proximo le o fim e conclui."""
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"TikTok: {TK_OK}\n", 0)
+    monkeypatch.setattr(acoes, "vigiar", lambda chave: None)    # ninguem vigia
+    _publicar({"id": A, "onde": "tiktok"})
+    mundo.filha.segurar.set()                                   # a filha termina sozinha
+    chave = next(iter(acoes.em_voo()))
+    pasta = Path(acoes.em_voo()[chave]["pasta"])
+    for _ in range(100):
+        if (pasta / "fim.json").exists():
+            break
+        time.sleep(0.02)
+    assert acoes.em_voo()[chave]["estado"] == "em_andamento"    # ainda sem conclusao
+    monkeypatch.undo()          # volta tudo, e o mundo de novo sem o `vigiar` falso
+    monkeypatch.setattr(api_http, "ARQUIVO", mundo.tmp / "app_celular.json")
+    monkeypatch.setattr(acoes, "ARQUIVO_RASTRO", mundo.tmp / "acoes.jsonl")
+    monkeypatch.setattr(acoes, "ARQUIVO_EM_VOO", mundo.tmp / "em_voo.json")
+    monkeypatch.setattr(acoes, "PASTA_PUBLICACOES", mundo.tmp / "publicacoes")
+    monkeypatch.setattr(acoes, "ARQUIVO_A_CONFERIR", mundo.tmp / "_tiktok_a_conferir.json")
+    monkeypatch.setattr(acoes, "VIGIA_S", 0.05)
+    monkeypatch.setattr(acoes, "_entregar", mundo.avisos.append)
+    monkeypatch.setattr(acoes, "_metricas", lambda: mundo.metricas)
+    assert acoes.conciliar() == [chave]
+    _esperar_publicacoes()
+    assert acoes.em_voo() == {} and _marcas(mundo) == {}
+
+
+def test_marca_que_nao_atualiza_no_fim_mantem_tudo_e_avisa(mundo, monkeypatch):
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"TikTok: {TK_CLIQUE}\n", 0)
+    _publicar({"id": A, "onde": "tiktok"})
+    (mundo.tmp / "_tiktok_a_conferir.json").write_text("{cortado", encoding="utf-8")
+    mundo.filha.segurar.set()
+    _esperar_publicacoes()
+    (item,) = acoes.em_voo().values()
+    assert item["estado"] == "a_conferir"
+    acoes._FILA_AVISOS.join()
+    assert any("marca do TikTok não atualizada" in a for a in mundo.avisos)
+    assert (mundo.tmp / "_tiktok_a_conferir.json").read_text(encoding="utf-8") == "{cortado"
+
+
+def test_qualquer_publicacao_do_app_no_destino_barra_as_outras(mundo):
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"TikTok: {TK_OK}\n", 0)
+    _publicar({"id": A, "onde": "tiktok"})
+    with pytest.raises(acoes.Recusa, match=f"outra publicação do app no TikTok \\({A}\\)"):
+        acoes.preparar("publicar", {"id": DOIS, "onde": "tiktok"}, "outro")
+    with pytest.raises(acoes.Recusa, match="já foi mandado"):
         acoes.preparar("publicar", {"id": A, "onde": "ambos"}, "outro")
-    with pytest.raises(acoes.Recusa, match="outra variante de generation_00041"):
-        acoes.preparar("publicar", {"id": B, "onde": "tiktok"}, "outro")
     acoes.preparar("publicar", {"id": B, "onde": "youtube"}, "outro")
-    solta.set()
-    _esperar_publicacoes()
-    assert acoes.em_voo() == {}
 
 
-def test_marca_que_falha_mantem_o_bloqueio_e_liberar_solta(mundo):
-    mundo.postar.quebrar = True
-    mundo.roteiro = lambda: _Processo("TikTok: cliquei em publicar\n", 0)
-    _publicar({"id": A, "onde": "tiktok"})
-    _esperar_publicacoes()
-    assert [v["id"] for v in acoes.em_voo().values()] == [A]
-    with pytest.raises(acoes.Recusa, match="ainda não voltou"):
-        acoes.preparar("publicar", {"id": A, "onde": "tiktok"}, "ap")
-    assert api_http.main(["--liberar", A]) == 0
-    assert acoes.em_voo() == {}
-
-
-def test_em_voo_sobrevive_ao_servidor(mundo):
-    # o arquivo e a memoria: outro processo (o servidor reiniciado) ve o mesmo
-    acoes._por_em_voo("x", {"id": DOIS, "onde": "youtube", "fonte": "generation_00042"})
-    assert json.loads((mundo.tmp / "em_voo.json").read_text(encoding="utf-8"))["x"]["id"] == DOIS
-    with pytest.raises(acoes.Recusa):
-        acoes.preparar("publicar", {"id": DOIS, "onde": "youtube"}, "ap")
-
-
-def test_em_voo_ilegivel_recusa(mundo):
+def test_em_voo_ilegivel_recusa_depois_de_tentar(mundo, monkeypatch):
     (mundo.tmp / "em_voo.json").write_text("{quebrado", encoding="utf-8")
+    comeco = time.monotonic()
     with pytest.raises(acoes.Recusa, match="ilegível"):
         acoes.preparar("publicar", {"id": DOIS, "onde": "youtube"}, "ap")
+    assert time.monotonic() - comeco >= 0.3          # tentou de novo
 
 
-def test_postar_de_verdade_tem_as_funcoes_e_o_desfecho():
-    """Sem duble: o app usa as funcoes do postar.py, nao uma copia."""
-    postar = acoes._postar()
-    assert callable(postar._marcar_para_conferir)
-    assert postar.desfecho_do_tiktok("cliquei em publicar; sem confirmação") == \
-        "sem_confirmacao"
+def test_em_voo_que_volta_na_segunda_leitura(mundo, monkeypatch):
+    real = Path.read_text
+    vezes = {"n": 0}
+
+    def instavel(self, *a, **k):
+        if self.name == "em_voo.json":
+            vezes["n"] += 1
+            if vezes["n"] == 1:
+                raise PermissionError("sendo trocado")
+        return real(self, *a, **k)
+    (mundo.tmp / "em_voo.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(Path, "read_text", instavel)
+    assert acoes.em_voo() == {}
 
 
-# ================================================== 3. uma acao por vez
-def test_duas_confirmacoes_simultaneas_nao_passam_juntas(mundo, monkeypatch):
-    solta = threading.Event()
-    mundo.roteiro = lambda: _Processo("TikTok: publicado no TikTok\n", 0, segurar=solta)
-    lento = threading.Event()
+# ================================================= liberar (B7) e CLI
+def test_liberar_mostra_antes_e_so_solta_com_confirmo(mundo, capsys):
+    mundo.filha.roteiro = (f"TikTok: {TK_CLIQUE}\n", 0)
+    _publicar({"id": A, "onde": "tiktok"})
+    _esperar_publicacoes()
+    mundo.metricas.linhas = [{"video_id": A, "plataforma": "youtube",
+                              "quando": "2026-09-16T20:00:00", "publicado": True}]
+    assert api_http.main(["--liberar", A]) == 0
+    saida = capsys.readouterr().out
+    assert "em voo: tiktok a_conferir" in saida
+    assert "ledger: youtube" in saida and "a conferir (TikTok)" in saida
+    assert "--confirmo" in saida
+    assert len(acoes.em_voo()) == 1                     # nada saiu
+    assert api_http.main(["--liberar", A, "--confirmo"]) == 0
+    assert acoes.em_voo() == {}
+    assert A in _marcas(mundo)                          # a marca fica
+    assert api_http.main(["--liberar", "generation_00099:build:celular",
+                          "--confirmo"]) == 1
 
-    def processos_lentos():
-        lento.wait(0.3)          # sem a trava, os dois passariam pela guarda
-        return []
-    monkeypatch.setattr(acoes, "processos", processos_lentos)
-    resultados = []
 
-    def tentar(video_id):
-        try:
-            _publicar({"id": video_id, "onde": "tiktok"})
-            resultados.append("ok")
-        except acoes.Recusa:
-            resultados.append("recusa")
-    fios = [threading.Thread(target=tentar, args=(v,)) for v in (A, B)]
-    for fio in fios:
-        fio.start()
-    for fio in fios:
-        fio.join(20)
-    assert sorted(resultados) == ["ok", "recusa"]
-    assert len(mundo.processos) == 1
-    solta.set()
+def test_liberar_com_trava_presa(mundo, monkeypatch, capsys):
+    def presa():
+        raise OSError("trava ocupada")
+    monkeypatch.setattr(acoes, "trava_de_acoes", presa)
+    assert api_http.main(["--liberar", A, "--confirmo"]) == 3
+    assert "não consegui soltar agora" in capsys.readouterr().out
+
+
+def test_cli_em_voo(mundo, capsys):
+    acoes._mexer_no_voo("k", {"id": A, "onde": "tiktok", "estado": "em_andamento",
+                              "desde": "2026-09-17T10:00:00", "aparelho": "076f31d9"})
+    assert api_http.main(["--em-voo"]) == 0
+    assert A in capsys.readouterr().out
+
+
+# ================================================== 3/M6. uma acao por vez
+def test_trava_entre_threads_tem_prazo(mundo, monkeypatch):
+    monkeypatch.setattr(api_http, "TRAVA_PRAZO_S", 0.3)
+    dentro, sair = threading.Event(), threading.Event()
+
+    def segurar():
+        with acoes.trava_de_acoes():
+            dentro.set()
+            sair.wait(5)
+    fio = threading.Thread(target=segurar)
+    fio.start()
+    dentro.wait(5)
+    try:
+        with pytest.raises(OSError, match="ocupada"):
+            with acoes.trava_de_acoes():
+                pass
+    finally:
+        sair.set()
+        fio.join(5)
 
 
 def test_trava_de_acoes_vale_entre_processos(mundo):
@@ -407,7 +565,7 @@ def test_trava_de_acoes_vale_entre_processos(mundo):
 def test_trava_e_reentrante_na_mesma_thread(mundo):
     inicio = time.monotonic()
     with acoes.trava_de_acoes():
-        acoes.registrar("ap", "pausar", {}, "ok")     # pede a mesma trava
+        acoes.registrar("ap", "pausar", {}, "ok")
     assert time.monotonic() - inicio < 3
 
 
@@ -415,7 +573,7 @@ def test_trava_e_reentrante_na_mesma_thread(mundo):
 def test_rastro_ilegivel_recusa(mundo, monkeypatch):
     pasta = mundo.tmp / "rastro_pasta"
     pasta.mkdir()
-    monkeypatch.setattr(acoes, "ARQUIVO_RASTRO", pasta)       # abrir levanta
+    monkeypatch.setattr(acoes, "ARQUIVO_RASTRO", pasta)
     for acao, args in (("gerar", {}), ("publicar", {"id": DOIS, "onde": "youtube"}),
                        ("pausar", {"alvo": "tudo"})):
         with pytest.raises(acoes.Recusa, match="rastro"):
@@ -434,7 +592,6 @@ def test_rastro_que_falha_bloqueia_ate_voltar(mundo, monkeypatch):
     with pytest.raises(OSError):
         acoes.registrar("ap", "gerar", {}, "comecei")
     assert acoes._RASTRO_FALHOU.is_set()
-    # o arquivo abre, mas a gravacao de verdade ainda falha: continua fechado
     with pytest.raises(acoes.Recusa, match="não está gravando"):
         acoes.preparar("gerar", {}, "ap")
     quebrado["sim"] = False
@@ -450,10 +607,10 @@ def test_limite_conta_por_tempo_e_le_o_arquivo_rodado(mundo, monkeypatch):
     velho = FORA_DA_GRADE - timedelta(hours=2)
     monkeypatch.setattr(acoes, "_agora", lambda: velho)
     for _ in range(5):
-        acoes.registrar("ap", "gerar", {}, "ok")              # fora da janela
+        acoes.registrar("ap", "gerar", {}, "ok")
     monkeypatch.setattr(acoes, "_agora", lambda: FORA_DA_GRADE)
     acoes.registrar("ap", "gerar", {}, "ok")
-    for _ in range(12):                                       # enche e roda
+    for _ in range(12):
         acoes.registrar("outro", "pausar", {}, "x" * 50)
     acoes.registrar("ap", "publicar", {}, "ok")
     assert (mundo.tmp / "acoes.jsonl.1").exists()
@@ -538,7 +695,7 @@ def test_publicar_recusa_o_basico(mundo, args, trecho):
 
 def test_ja_saiu_naquele_destino(mundo):
     mundo.metricas.linhas = [{"video_id": DOIS, "fonte_id": "generation_00042",
-                              "plataforma": "youtube", "url": "https://youtu.be/x",
+                              "plataforma": "youtube", "url": YT_OK,
                               "titulo": "Build Dois"}]
     for onde in ("youtube", "ambos"):
         with pytest.raises(acoes.Recusa, match="já saiu no YouTube"):
@@ -548,9 +705,9 @@ def test_ja_saiu_naquele_destino(mundo):
 
 def test_linha_sem_plataforma_e_do_youtube_e_rascunho_nao_conta(mundo):
     mundo.metricas.linhas = [
-        {"video_id": DOIS, "url": "https://youtu.be/x"},
+        {"video_id": DOIS, "url": YT_OK},
         {"video_id": CINCO, "plataforma": "youtube",
-         "url": "publicado no YouTube", "publicado": False},
+         "url": YT_FRASE, "publicado": False},
     ]
     with pytest.raises(acoes.Recusa, match="já saiu no YouTube"):
         acoes.preparar("publicar", {"id": DOIS, "onde": "youtube"}, "ap")
@@ -575,21 +732,6 @@ def test_titulo_ja_no_ar_por_outro_video(mundo):
         acoes.preparar("publicar", {"id": DOIS, "onde": "youtube"}, "ap")
     mundo.catalogo.carregar_config = lambda: {"grade": {"repetir_titulo": True}}
     acoes.preparar("publicar", {"id": DOIS, "onde": "youtube"}, "ap")
-
-
-def test_a_conferir_no_tiktok(mundo):
-    (mundo.tmp / "_tiktok_a_conferir.json").write_text(json.dumps([CINCO]),
-                                                        encoding="utf-8")
-    for onde in ("tiktok", "ambos"):
-        with pytest.raises(acoes.Recusa, match="a conferir"):
-            acoes.preparar("publicar", {"id": CINCO, "onde": onde}, "ap")
-    acoes.preparar("publicar", {"id": CINCO, "onde": "youtube"}, "ap")
-
-
-def test_a_conferir_ilegivel_recusa(mundo):
-    (mundo.tmp / "_tiktok_a_conferir.json").write_text("{", encoding="utf-8")
-    with pytest.raises(acoes.Recusa, match="a conferir"):
-        acoes.preparar("publicar", {"id": CINCO, "onde": "youtube"}, "ap")
 
 
 def test_ledger_ilegivel_barra(mundo):
@@ -655,7 +797,7 @@ def test_pausar_e_retomar_tem_teto(mundo, monkeypatch):
     acoes.registrar("ap", "retomar", {}, "ok")
     with pytest.raises(acoes.Recusa, match="pausas/retomadas"):
         acoes.preparar("retomar", {}, "ap")
-    acoes.preparar("gerar", {}, "ap")                     # conta separada
+    acoes.preparar("gerar", {}, "ap")
 
 
 def test_avisos_saem_por_uma_thread_so_e_em_ordem(mundo):
@@ -671,10 +813,65 @@ def test_escapa_markdown_do_telegram():
     assert acoes._escapar_markdown("g_1 *x* `y` [z]") == "g\\_1 \\*x\\* \\`y\\` \\[z]"
 
 
+# ============================================ publicacao_filha (de verdade)
+def test_filha_de_verdade_escreve_saida_e_fim(tmp_path):
+    pasta = tmp_path / "pub"
+    filho = [sys.executable, "-c",
+             "import sys; print('YouTube: https://youtu.be/x'); "
+             "print('TikTok: publicado no TikTok'); sys.exit(0)"]
+    assert publicacao_filha.main(["--pasta", str(pasta), "--cwd", str(tmp_path),
+                                  "--"] + filho) == 0
+    assert "TikTok: publicado no TikTok" in (pasta / "saida.log").read_text(encoding="utf-8")
+    assert json.loads((pasta / "fim.json").read_text(encoding="utf-8"))["codigo"] == 0
+    assert acoes.desfechos((pasta / "saida.log").read_text(encoding="utf-8"), 0,
+                           "ambos") == {"youtube": "publicado", "tiktok": "publicado"}
+
+
+def test_filha_desligada_sobrevive_ao_servidor_que_morre(tmp_path):
+    """O "servidor" (um processo) sobe a filha real e MORRE na hora, com o
+    pipe dele fechado. O filho so escreve depois disso — e muito — e mesmo
+    assim termina e deixa o fim gravado."""
+    pasta = tmp_path / "pub"
+    pasta.mkdir()
+    filho = [sys.executable, "-c",
+             "import time; time.sleep(1.5); "
+             "print('TikTok: publicado no TikTok', flush=True); "
+             "print('x' * 100000, flush=True)"]
+    servidor = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from remoto import acoes\n"
+        f"pid = acoes._iniciar_filha(Path({str(pasta)!r}), {filho!r}, {str(tmp_path)!r})\n"
+        "print(pid, flush=True)\n"
+        "sys.exit(0)\n"
+    )
+    pai = subprocess.run([sys.executable, "-c", servidor], capture_output=True,
+                         text=True, timeout=30,
+                         cwd=str(Path(acoes.__file__).parents[1]))
+    assert pai.returncode == 0 and int(pai.stdout.strip()) > 0
+    assert not (pasta / "fim.json").exists()          # o pai morreu antes do fim
+    for _ in range(200):
+        if (pasta / "fim.json").exists():
+            break
+        time.sleep(0.05)
+    fim = json.loads((pasta / "fim.json").read_text(encoding="utf-8"))
+    assert fim["codigo"] == 0
+    assert "publicado no TikTok" in (pasta / "saida.log").read_text(encoding="utf-8")
+
+
+def test_filha_com_comando_que_nao_existe_grava_fim(tmp_path):
+    pasta = tmp_path / "pub"
+    assert publicacao_filha.main(["--pasta", str(pasta), "--cwd", str(tmp_path),
+                                  "--", str(tmp_path / "nao_existe.exe")]) == 1
+    fim = json.loads((pasta / "fim.json").read_text(encoding="utf-8"))
+    assert fim["codigo"] is None and fim["erro"]
+
+
 # ============================================================ servidor
 @pytest.fixture
 def servidor(mundo):
-    srv = api_http.criar_servidor("127.0.0.1", 0, local=True, com_acoes=True)
+    srv = api_http.criar_servidor("127.0.0.1", 0, local=True, com_acoes=True,
+                                  com_publicar=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv
     srv.shutdown()
@@ -683,7 +880,7 @@ def servidor(mundo):
 
 def _pedir(srv, metodo, caminho, corpo=None, token=None, tipo="application/json"):
     porta = srv.server_address[1]
-    conexao = http.client.HTTPConnection("127.0.0.1", porta, timeout=20)
+    conexao = http.client.HTTPConnection("127.0.0.1", porta, timeout=30)
     cab = {"Host": f"127.0.0.1:{porta}"}
     if token:
         cab["Authorization"] = f"Bearer {token}"
@@ -716,6 +913,25 @@ def test_desligadas_por_padrao(mundo):
         srv.server_close()
 
 
+def test_acoes_sem_publicar(mundo):
+    srv = api_http.criar_servidor("127.0.0.1", 0, local=True, com_acoes=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        token = _token()
+        _, info = _pedir(srv, "GET", "/api/acoes", token=token)
+        assert info["ligadas"] is True and info["publicar"] is False
+        status, dados = _pedir(srv, "POST", "/api/acao",
+                               {"acao": "publicar", "args": {"id": DOIS, "onde": "youtube"}},
+                               token)
+        assert status == 403 and "publicar" in dados["erro"]
+        assert _pedir(srv, "POST", "/api/acao",
+                      {"acao": "pausar", "args": {"alvo": "tudo"}}, token)[0] == 200
+        assert mundo.filha.comandos == []
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
 def test_sem_token_nao_age(servidor, mundo):
     assert _pedir(servidor, "POST", "/api/acao", {"acao": "parar"})[0] == 401
     assert _pedir(servidor, "POST", "/api/acao/confirmar", {"codigo": "x"})[0] == 401
@@ -742,7 +958,7 @@ def test_pausar_e_um_passo_e_deixa_rastro(servidor, mundo):
     acoes._FILA_AVISOS.join()
     assert any(linha["aparelho"] in a for a in mundo.avisos)
     status, dados = _pedir(servidor, "GET", "/api/acoes", token=token)
-    assert dados["ligadas"] and "digen" in dados["alvos"] and dados["restantes"] == 6
+    assert dados["ligadas"] and dados["publicar"] and dados["restantes"] == 6
 
 
 def test_parar_so_executa_na_confirmacao_e_toque_duplo_nao_e_chute(servidor, mundo,
@@ -754,11 +970,10 @@ def test_parar_so_executa_na_confirmacao_e_toque_duplo_nao_e_chute(servidor, mun
     assert mundo.controle.chamadas == []
     codigo = dados["confirmar"]
     assert _pedir(servidor, "POST", "/api/acao/confirmar", {"codigo": codigo}, token)[0] == 200
-    for _ in range(3):                                   # toque duplo, triplo...
+    for _ in range(3):
         assert _pedir(servidor, "POST", "/api/acao/confirmar",
                       {"codigo": codigo}, token)[0] == 410
     assert mundo.controle.chamadas == [("parar", "pelo app")]
-    # nada disso contou como chute: um codigo inventado ainda e 404, nao 429
     assert _pedir(servidor, "POST", "/api/acao/confirmar",
                   {"codigo": "inventado"}, token)[0] == 404
 
@@ -796,10 +1011,11 @@ def test_guarda_reavaliada_na_confirmacao(servidor, mundo):
     status, dados = _pedir(servidor, "POST", "/api/acao/confirmar",
                            {"codigo": dados["confirmar"]}, token)
     assert status == 409 and "já saiu" in dados["erro"]
-    assert mundo.processos == []
+    assert mundo.filha.comandos == []
 
 
 def test_args_ficam_congelados_no_primeiro_passo(servidor, mundo):
+    mundo.filha.roteiro = (f"YouTube: {YT_OK}\n", 0)
     token = _token()
     _, dados = _pedir(servidor, "POST", "/api/acao",
                       {"acao": "publicar", "args": {"id": DOIS, "onde": "youtube"}}, token)
@@ -808,7 +1024,7 @@ def test_args_ficam_congelados_no_primeiro_passo(servidor, mundo):
                                "args": {"id": CINCO, "onde": "ambos"}}, token)
     assert status == 200 and "público" in resposta["texto"]
     _esperar_publicacoes()
-    (comando,) = mundo.processos
+    (comando,) = mundo.filha.comandos
     assert DOIS in comando and CINCO not in comando and "--tiktok" not in comando
 
 
@@ -848,21 +1064,13 @@ def test_codigo_inventado_conta_como_chute(servidor, mundo, monkeypatch):
     assert _pedir(servidor, "GET", "/api/estado", token=token)[0] == 200
 
 
-def test_cli_em_voo(mundo, capsys):
-    acoes._por_em_voo("k", {"id": A, "onde": "tiktok", "desde": "2026-09-17T10:00:00",
-                            "aparelho": "076f31d9"})
-    assert api_http.main(["--em-voo"]) == 0
-    assert A in capsys.readouterr().out
-    assert api_http.main(["--liberar", "generation_00099:build:celular"]) == 1
-
-
 def test_servidor_serializa_confirmacoes_simultaneas(servidor, mundo, monkeypatch):
-    solta = threading.Event()
-    mundo.roteiro = lambda: _Processo("TikTok: publicado no TikTok\n", 0, segurar=solta)
+    mundo.filha.segurar = threading.Event()
+    mundo.filha.roteiro = (f"TikTok: {TK_OK}\n", 0)
     monkeypatch.setattr(acoes, "processos", lambda: (time.sleep(0.3), [])[1])
     token = _token()
     codigos = []
-    for video_id in (A, B):
+    for video_id in (A, DOIS):
         _, dados = _pedir(servidor, "POST", "/api/acao",
                           {"acao": "publicar", "args": {"id": video_id, "onde": "tiktok"}},
                           token)
@@ -876,5 +1084,4 @@ def test_servidor_serializa_confirmacoes_simultaneas(servidor, mundo, monkeypatc
     for fio in fios:
         fio.join(30)
     assert sorted(respostas) == [200, 409]
-    assert len(mundo.processos) == 1
-    solta.set()
+    assert len(mundo.filha.comandos) == 1
