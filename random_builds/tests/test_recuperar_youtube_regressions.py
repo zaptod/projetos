@@ -218,6 +218,71 @@ class CanalCertoTests(unittest.TestCase):
         self.assertEqual(["channels"], chamou)
 
 
+class PaginacaoInstavelTests(unittest.TestCase):
+    """Video nao some de canal, mas a leitura faz parecer que sim.
+
+    MEDIDO EM 17/09/2026: duas leituras do mesmo canal, com uma hora de
+    diferenca, devolveram 130 videos CADA — com quatro ids diferentes de um
+    lado e quatro do outro. A playlist de envios e ordenada por recencia e o
+    envio novo entra na POSICAO ZERO, empurrando todo mundo uma casa: quem
+    pagina com cursor por posicao PULA quem atravessou a fronteira da pagina
+    e REPETE quem atravessou para o outro lado (a primeira leitura tinha 134
+    linhas para 130 ids — a mesma assinatura vista do outro angulo).
+
+    O estrago seria silencioso: nada errado seria publicado, mas alguns
+    privados nunca apareceriam na fila e o contador diria um numero
+    convincente.
+    """
+
+    def _com_passadas(self, passadas):
+        restantes = list(passadas)
+
+        def uma(_t, _l):
+            return restantes.pop(0) if len(restantes) > 1 else restantes[0]
+
+        return patch.object(recuperar, "_uma_passada", uma)
+
+    def test_une_o_que_cada_passada_viu(self):
+        with self._com_passadas([["a", "b"], ["b", "c"], ["a", "b", "c"]]):
+            self.assertEqual({"a", "b", "c"},
+                             set(recuperar._todos_os_ids("t", "UU")))
+
+    def test_para_quando_a_leitura_estabiliza(self):
+        contadas = []
+
+        def uma(_t, _l):
+            contadas.append(1)
+            return ["a", "b"]
+
+        with patch.object(recuperar, "_uma_passada", uma):
+            recuperar._todos_os_ids("t", "UU")
+        self.assertEqual(2, len(contadas),
+                         "duas leituras iguais ja bastam; a terceira e cota "
+                         "gasta a toa")
+
+    def test_nao_passa_do_teto_de_passadas(self):
+        contadas = []
+
+        def uma(_t, _l):
+            contadas.append(1)
+            return [f"novo{len(contadas)}"]
+
+        with patch.object(recuperar, "_uma_passada", uma):
+            recuperar._todos_os_ids("t", "UU")
+        self.assertEqual(recuperar.PASSADAS, len(contadas),
+                         "canal que muda o tempo todo nao pode virar laco")
+
+    def test_a_ordem_do_canal_e_preservada(self):
+        with self._com_passadas([["a", "b"], ["a", "b", "c"]]):
+            self.assertEqual(["a", "b", "c"],
+                             recuperar._todos_os_ids("t", "UU"))
+
+    def test_o_repetido_entra_uma_vez_so(self):
+        """134 linhas para 130 ids era o mesmo defeito, do outro angulo."""
+        with self._com_passadas([["a", "a", "b"], ["a", "b"]]):
+            self.assertEqual(["a", "b"], recuperar._todos_os_ids("t", "UU"))
+
+
 class _Resposta:
     def __init__(self, status=200, texto="{}"):
         self.status_code = status

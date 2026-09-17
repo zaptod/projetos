@@ -111,6 +111,62 @@ def _get(token: str, caminho: str, **params) -> dict:
     return r.json()
 
 
+PASSADAS = 3
+
+
+def _uma_passada(token: str, lista: str) -> list:
+    ids, pagina = [], None
+    while True:
+        extra = {"pageToken": pagina} if pagina else {}
+        p = _get(token, "playlistItems", part="contentDetails",
+                 playlistId=lista, maxResults=50, **extra)
+        ids += [i["contentDetails"]["videoId"] for i in p.get("items", [])]
+        pagina = p.get("nextPageToken")
+        if not pagina:
+            return ids
+
+
+def _todos_os_ids(token: str, lista: str, log=None) -> list:
+    """A playlist de envios inteira, e nao "o que uma passada devolveu".
+
+    MEDIDO EM 17/09/2026, e por acaso: duas leituras do mesmo canal, com uma
+    hora de diferenca, devolveram 130 videos CADA — mas com quatro ids
+    diferentes de um lado e quatro do outro. Video nao some de canal.
+
+    A playlist de envios e ordenada por recencia e o envio novo entra na
+    POSICAO ZERO, empurrando todo mundo uma casa para baixo. Quem esta
+    paginando com um cursor por posicao pula o item que atravessou a
+    fronteira da pagina — e repete o que atravessou para o outro lado (a
+    primeira leitura tinha 134 linhas para 130 ids: quatro repetidos, que e a
+    assinatura do mesmo defeito visto do outro angulo).
+
+    O estrago aqui seria silencioso e do pior tipo: a recuperacao nao
+    publicaria nada errado (a trava de canal e o crivo de titulo seguem
+    valendo), mas alguns privados simplesmente nunca apareceriam na fila, e
+    o contador diria um numero convincente. Contador que parece certo e o
+    jeito mais caro de perder video — ja custou duas semanas em 16/09.
+
+    Entao: passa de novo e UNE, ate duas passadas seguidas nao acrescentarem
+    nada. Uniao, e nunca "a ultima leitura vale": cada passada ve um subconjunto
+    diferente, e a unica operacao que nao perde e somar. Custa 1 unidade de
+    cota por pagina — tres videos de diferenca valem mais que isso.
+    """
+    achados, ordem = set(), []
+    for volta in range(PASSADAS):
+        novos = 0
+        for vid in _uma_passada(token, lista):
+            if vid not in achados:
+                achados.add(vid)
+                ordem.append(vid)
+                novos += 1
+        if volta and novos and log:
+            log(f"  a playlist mexeu entre as leituras: +{novos} video(s) "
+                f"na passada {volta + 1}")
+        if volta and not novos:
+            break
+    return ordem
+
+
 class CanalErrado(PublicacaoFalhou):
     """A credencial abriu um canal que nao e o esperado. Erro proprio porque
     a reacao e parar tudo: recuperar aqui mexeria em video de outro canal."""
@@ -171,15 +227,7 @@ def videos_do_canal(canal: str = "builds", token: str | None = None) -> list:
     conferir_o_canal(canal, itens[0])
     lista = itens[0]["contentDetails"]["relatedPlaylists"]["uploads"]
 
-    ids, pagina = [], None
-    while True:
-        extra = {"pageToken": pagina} if pagina else {}
-        p = _get(token, "playlistItems", part="contentDetails",
-                 playlistId=lista, maxResults=50, **extra)
-        ids += [i["contentDetails"]["videoId"] for i in p.get("items", [])]
-        pagina = p.get("nextPageToken")
-        if not pagina:
-            break
+    ids = _todos_os_ids(token, lista)
 
     fora = []
     for i in range(0, len(ids), 50):
