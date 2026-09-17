@@ -923,6 +923,11 @@ def _consistencia(add, biblia: dict | None = None) -> None:
             "INGLES, numa frase fixa: etnia ou tom de pele, idade aparente, "
             "cabelo, UM traco concreto do rosto e a roupa. Ela sera repetida "
             "em todas as imagens, entao nao muda depois.")
+        # 17/09/2026, favela livre: quem narrava era um morador, o
+        # protagonista era o porteiro, e o Gemini reprovou porque as imagens
+        # mostravam o porteiro quando a narracao falava do narrador.
+        add("  - Se quem NARRA tambem aparece na historia, ele e um desses "
+            "personagens: descreva-o no ELENCO (ou como PROTAGONISTA).")
         add("  - Liste os numeros e datas que a historia repete (valores, "
             "anos, idades): eles tambem nao mudam depois.")
         add("")
