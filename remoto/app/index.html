@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161a">
+<title>Painel</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone.svg">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <h1 id="titulo">Agora</h1>
+  <span id="conexao">…</span>
+</header>
+<div id="aviso" class="aviso oculto" role="status">
+  <span id="aviso-texto"></span>
+  <button class="acao" id="btn-tentar">Tentar de novo</button>
+</div>
+
+<main>
+  <section id="tela-parear" class="oculto">
+    <div class="cartao">
+      <h2>Parear este celular</h2>
+      <p>No PC, rode <code>python -m remoto.api_http --parear</code> e digite
+        o código de 6 dígitos aqui. Ele vale 5 minutos.</p>
+      <input id="codigo" inputmode="numeric" autocomplete="one-time-code"
+             maxlength="7" placeholder="000000">
+      <p><button class="acao primario" id="btn-parear">Parear</button>
+        <span id="parear-msg" class="fraco"></span></p>
+    </div>
+  </section>
+
+  <section id="tela-agora" class="oculto">
+    <div class="cartao oculto" id="controle">
+      <h2>Controle</h2>
+      <div class="campos">
+        <label>O quê
+          <select id="alvo-pausa"></select>
+        </label>
+        <label>Por quanto tempo
+          <select id="prazo-pausa">
+            <option value="">sem prazo</option>
+            <option value="30">30 min</option>
+            <option value="60">1 hora</option>
+            <option value="120">2 horas</option>
+            <option value="240">4 horas</option>
+          </select>
+        </label>
+      </div>
+      <div class="botoes">
+        <button class="acao" id="btn-pausar">⏸ Pausar</button>
+        <button class="acao" id="btn-retomar">▶ Retomar</button>
+        <button class="acao perigo" id="btn-parar">⏹ Parar</button>
+      </div>
+    </div>
+    <div class="cartao">
+      <h2>Próxima postagem</h2>
+      <div class="grande" id="proxima">—</div>
+      <div class="fraco" id="pausa"></div>
+      <div id="previsao"></div>
+    </div>
+    <div class="cartao">
+      <h2>Fábricas</h2>
+      <div id="fabricas"></div>
+    </div>
+    <div class="cartao">
+      <h2>Erros recentes</h2>
+      <div id="erros"></div>
+    </div>
+  </section>
+
+  <section id="tela-diario" class="oculto">
+    <div class="cartao"><div id="diario"></div></div>
+  </section>
+
+  <section id="tela-videos" class="oculto">
+    <div class="cartao oculto" id="gerar-cartao">
+      <div class="botoes">
+        <button class="acao primario" id="btn-gerar">＋ Gerar build</button>
+        <span class="fraco" id="restantes"></span>
+      </div>
+    </div>
+    <div class="cartao oculto" id="player-cartao">
+      <div class="fraco" id="player-titulo"></div>
+      <video id="player" controls playsinline preload="metadata"></video>
+    </div>
+    <div class="cartao"><div id="videos"></div></div>
+  </section>
+
+  <section id="tela-relatorios" class="oculto">
+    <div class="abas" id="abas-relatorio"></div>
+    <div class="cartao"><pre id="relatorio">Escolha um relatório.</pre></div>
+  </section>
+</main>
+
+<dialog id="dialogo">
+  <form method="dialog">
+    <p id="dialogo-texto"></p>
+    <div class="botoes oculto" id="dialogo-destinos">
+      <button class="acao" value="youtube">YouTube</button>
+      <button class="acao" value="tiktok">TikTok</button>
+      <button class="acao" value="ambos">Os dois</button>
+    </div>
+    <p class="fraco" id="dialogo-prazo"></p>
+    <div class="botoes">
+      <button class="acao" value="cancelar">Cancelar</button>
+      <button class="acao primario" value="confirmar" id="dialogo-sim">Confirmar</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast oculto" role="status"></div>
+
+<nav id="nav" class="oculto">
+  <button data-tela="agora"><span>◉</span>Agora</button>
+  <button data-tela="diario"><span>☰</span>Diário</button>
+  <button data-tela="videos"><span>▶</span>Vídeos</button>
+  <button data-tela="relatorios"><span>▤</span>Relatórios</button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>
