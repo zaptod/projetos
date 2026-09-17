@@ -1263,11 +1263,34 @@ def repetir_titulo(config=None) -> bool:
     return bool(((config or {}).get("grade") or {}).get("repetir_titulo"))
 
 
-def _titulos_no_ar(canal: str) -> set:
-    """As chaves de titulo que aquele canal ja publicou."""
+def _titulos_no_ar(canal: str, plataforma: str | None = None,
+                   menos: str = "") -> set:
+    """Chaves de titulo ja publicadas naquele canal.
+
+    `plataforma`: so aquele destino. A pergunta util e "ja esta no ar NO
+    TIKTOK?", nao "ja esta no ar em algum lugar" — um video no YouTube e nao
+    no TikTok deve poder ir ao TikTok.
+
+    `menos`: um `video_id` a ignorar, e este parametro conserta um defeito
+    que rodou o dia inteiro. `titulo_repetido` era avaliada DEPOIS de o
+    YouTube ter publicado e gravado no ledger, na mesma rodada — entao a
+    chave do proprio video ja estava la, posta por ele mesmo segundos antes,
+    e a valvula "titulo ja publicado" abria em falso. Abriu quatro vezes em
+    16/09/2026, e em nenhuma havia titulo repetido de verdade: conferido nas
+    seis partes da h16, todas com chaves distintas.
+
+    Eu mesma tinha escrito o diagnostico deste defeito horas antes, sobre a
+    fila de recuperacao — "conta url de qualquer plataforma e nao exclui o
+    proprio video_id" — e nao vi que ele valia aqui tambem.
+    """
     try:
         from builds.publicar import titulos
-        return titulos.ja_publicados(_publicados_do_canal(canal))
+        linhas = _publicados_do_canal(canal)
+        if plataforma:
+            linhas = [l for l in linhas if l.get("plataforma") == plataforma]
+        if menos:
+            linhas = [l for l in linhas if l.get("video_id") != menos]
+        return titulos.ja_publicados(linhas)
     except Exception:                                          # noqa: BLE001
         # Sem ledger legivel nao da para saber o que ja saiu — e "nao sei"
         # tem que deixar passar, nunca barrar.
@@ -1309,20 +1332,25 @@ def _registrar_valvula(ficha: dict) -> None:
         pass
 
 
-def titulo_repetido(alvo, canal: str) -> bool:
-    """Este video saiu com titulo que ja estava no ar?
+def titulo_repetido(alvo, canal: str, plataforma: str | None = None) -> bool:
+    """OUTRO video ja pos este titulo no ar (naquele destino)?
 
     Recalcula em vez de carregar o estado da escolha: a fila e montada num
     lugar e a ficha em outro, e passar a marca por parametro obrigaria a
     mudar a assinatura de todo o caminho. O ledger tem poucas centenas de
     linhas — recalcular custa menos que a complicacao.
+
+    "OUTRO" e a palavra que faltava: o proprio `video_id` sai da conta. Sem
+    isso, todo video que acabava de sair no YouTube se acusava de repetir a
+    si mesmo na mesma rodada.
     """
     if repetir_titulo():
         return False
     try:
         from builds.publicar import titulos
-        return titulos.repetido(getattr(alvo, "titulo", ""),
-                                _titulos_no_ar(canal))
+        return titulos.repetido(
+            getattr(alvo, "titulo", ""),
+            _titulos_no_ar(canal, plataforma, menos=getattr(alvo, "id", "")))
     except Exception:                                          # noqa: BLE001
         return False
 
@@ -1341,6 +1369,9 @@ def _sem_titulo_repetido(pendentes, canal: str, config=None):
         return pendentes, []
     novos, repetidos = [], []
     for v in pendentes:
+        # `menos` nao e preciso aqui: quem esta na fila ainda nao publicou
+        # nada, entao nao ha como se acusar. A exclusao do proprio id importa
+        # em `titulo_repetido`, que roda DEPOIS da publicacao.
         alvo = novos if not titulos.repetido(getattr(v, "titulo", ""), ja) \
             else repetidos
         alvo.append(v)
