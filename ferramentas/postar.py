@@ -1286,6 +1286,168 @@ def recuperar_no_tiktok(so_ver: bool = False,
             "canal": canal, "tiktok": estado}
 
 
+RECUPERACAO_YOUTUBE_LIGADA = True
+
+
+def _ledger_do_youtube(canal: str) -> dict:
+    """{youtube_id: linha} do que o ledger sabe daquele canal.
+
+    E o que liga o video NO CANAL ao video DO PROJETO. Sem isto a recuperacao
+    veria titulos e datas e nao saberia de que build cada um saiu — e os
+    crivos de fila (a conferir, teto por fonte) sao todos sobre o projeto.
+    """
+    try:
+        publicados = _publicados_do_canal(canal)
+    except Exception:                                          # noqa: BLE001
+        return {}
+    fora = {}
+    for linha in publicados:
+        vid = linha.get("youtube_id")
+        if vid and str(linha.get("plataforma", "youtube")).lower() == "youtube":
+            fora[str(vid)] = linha
+    return fora
+
+
+def privados_no_youtube(canal: str = "builds", limite: int = 40) -> list:
+    """Os privados que devem voltar ao ar, ja passados pelos crivos da fila.
+
+    `builds.publicar.recuperar` responde "quais fazem sentido NO CANAL"
+    (titulo sem gemeo publico, processado, com descricao). Aqui entram os
+    crivos que so o projeto conhece:
+
+    - quem espera conferencia NAO volta sozinho. A marca existe porque
+      alguem tem de olhar; torna-lo publico por conta propria seria decidir
+      justamente o que a marca adiou.
+    - o teto por fonte no dia vale igual. Recuperar quatro partes da mesma
+      historia de uma vez e a mesma enxurrada que o teto existe para evitar,
+      e o publico nao distingue "recuperado" de "postado".
+    """
+    from builds.publicar import recuperar
+
+    conhecidas = _ledger_do_youtube(canal)
+    fila = recuperar.recuperaveis(canal, conhecidos=set(conhecidas))
+
+    try:
+        bloqueados = _com_as_raizes(a_conferir_no_tiktok(canal, "youtube"))
+    except Exception as exc:                                   # noqa: BLE001
+        # FALHA FECHADA, como em `_sem_a_conferir`: sem a lista eu nao sei
+        # quem esta esperando conferencia, e tornar publico e irreversivel
+        # na pratica (o publico ja viu).
+        _linha(f"[postar] {canal}: nao consegui ler quem espera conferencia "
+               f"({type(exc).__name__}); NAO recupero nesta rodada.")
+        return []
+
+    try:
+        cheias = _fontes_cheias_hoje(_publicados_do_canal(canal), "youtube")
+    except Exception:                                          # noqa: BLE001
+        cheias = set()
+
+    fora = []
+    for video in fila:
+        linha = conhecidas.get(video["id"], {})
+        projeto = str(linha.get("video_id") or "")
+        if projeto and projeto in bloqueados:
+            continue
+        fonte = str(linha.get("fonte_id") or projeto.split(":")[0])
+        if fonte and fonte in cheias:
+            continue
+        fora.append(dict(video, video_id=projeto, fonte_id=fonte))
+        if len(fora) >= limite:
+            break
+    return fora
+
+
+def recuperar_no_youtube(so_ver: bool = False,
+                         canal: str = "builds") -> dict:
+    """Devolve UM privado ao ar por rodada. Nunca derruba a rodada.
+
+    UM, pela mesma razao do TikTok: dezesseis de uma vez viram enxurrada, e
+    foi exatamente esse excesso que fez o perfil parecer repetitivo em
+    16/09. Com dez horarios por dia a fila fecha em menos de dois dias, do
+    mais antigo para o mais novo.
+
+    ANTES do render novo, e nao depois: estes videos ja existem, ja custaram
+    render, ja tem capa e descricao, e estao parados desde 31/08. Gastar um
+    horario subindo coisa nova enquanto eles esperam e jogar fora trabalho
+    que ja foi pago.
+
+    NAO grava linha nova no ledger quando o video ja tem a dele. A linha que
+    existe ja diz "publicado no YouTube" com o id certo — foi ela que
+    permitiu achar o video no canal. Uma segunda linha contaria a mesma
+    publicacao duas vezes em toda estatistica, e a cura do ledger passaria a
+    ver duplicata onde ha conserto. O que e novo e o ACONTECIMENTO, e
+    acontecimento vai para o diario.
+    """
+    if not RECUPERACAO_YOUTUBE_LIGADA:
+        return {"feito": False, "fila": 0, "canal": canal,
+                "motivo": "recuperacao desligada "
+                          "(ver RECUPERACAO_YOUTUBE_LIGADA)"}
+    from builds.publicar import recuperar
+    try:
+        fila = privados_no_youtube(canal)
+    except recuperar.FaltaEscopo as exc:
+        # O TEXTO SAI UMA VEZ SO, e quem imprime e quem chama. Impresso aqui
+        # E devolvido em `detalhe`, ele aparecia duas vezes seguidas na tela —
+        # dez linhas repetidas fazem qualquer aviso parecer defeito.
+        return {"feito": False, "fila": 0, "canal": canal,
+                "motivo": "falta o escopo de edicao", "detalhe": str(exc)}
+    except Exception as exc:                                   # noqa: BLE001
+        _linha(f"[postar] {canal}: nao consegui ler o canal "
+               f"({type(exc).__name__}: {exc}).")
+        return {"feito": False, "fila": 0, "canal": canal,
+                "motivo": f"{type(exc).__name__}: {exc}"[:180]}
+    if not fila:
+        return {"feito": False, "fila": 0, "canal": canal}
+
+    alvo = fila[0]
+    if so_ver:
+        return {"feito": False, "fila": len(fila), "canal": canal,
+                "veria": alvo["id"], "titulo": alvo["titulo"],
+                "lista": fila}
+    _linha(f"[postar] recuperando no YouTube ({canal}): {alvo['id']} "
+           f"— {alvo['titulo'][:60]} ({len(fila)} na fila).")
+    try:
+        r = recuperar.tornar_publico(alvo["id"], canal)
+    except Exception as exc:                                   # noqa: BLE001
+        _linha(f"[postar] recuperacao falhou: {exc}"[:200])
+        _anotar_no_diario(canal, atividade_erro=True, ref=alvo["id"], texto=(
+            f"nao consegui tornar publico {alvo['id']} "
+            f"({alvo['titulo'][:60]}): {exc}"[:400]))
+        return {"feito": False, "fila": len(fila), "canal": canal,
+                "alvo": alvo["id"], "motivo": str(exc)[:180]}
+
+    if not r["mudou"]:
+        _linha(f"[postar] {alvo['id']}: {r['motivo']}")
+        _anotar_no_diario(canal, atividade_erro=True, ref=alvo["id"], texto=(
+            f"pedi publico para {alvo['id']} e o canal nao mudou: "
+            f"{r['motivo']}"[:400]))
+    else:
+        _anotar_no_diario(canal, atividade_erro=False, ref=alvo["id"], texto=(
+            f"{alvo['id']} voltou ao ar ({alvo['titulo'][:60]}); estava "
+            f"privado desde {alvo['quando'][:10]}. Video do projeto: "
+            f"{alvo.get('video_id') or 'fora do ledger'}."))
+    return {"feito": r["mudou"], "fila": len(fila), "canal": canal,
+            "alvo": alvo["id"], "titulo": alvo["titulo"],
+            "video_id": alvo.get("video_id"), "motivo": r["motivo"]}
+
+
+def _anotar_no_diario(canal: str, texto: str, ref: str = "",
+                      atividade_erro: bool = False) -> None:
+    """O acontecimento vai para o diario, e nunca para o ledger.
+
+    O ledger responde "o que foi publicado?"; estes videos ja estao nele. O
+    diario responde "o que aconteceu?", e uma recuperacao e exatamente isso.
+    """
+    try:
+        from builds import atividade
+        atividade.registrar(
+            "publicacao",
+            atividade.ERRO if atividade_erro else atividade.OK,
+            texto, canal, etapa="publicar.youtube.recuperar", ref=ref)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 def publicar_da_reserva(so_ver: bool = False) -> dict:
     """Tapa um buraco do TikTok com um build da gordura. So o TikTok.
 
@@ -2352,7 +2514,31 @@ def main(argv=None) -> int:
                              "outra (ignora a guarda de um-por-horario)")
     parser.add_argument("--limite", type=int, default=0, metavar="N",
                         help="com --tudo, para depois de N videos")
+    parser.add_argument("--recuperar", action="store_true",
+                        help="devolve ao ar UM video que ficou privado no "
+                             "canal por defeito nosso (com --ver, lista)")
     args = parser.parse_args(argv)
+
+    if args.recuperar:
+        r = recuperar_no_youtube(so_ver=args.ver, canal=args.so or "builds")
+        if args.ver:
+            _linha(f"[recuperar] {r['fila']} video(s) na fila do canal "
+                   f"{r['canal']}.")
+            for v in r.get("lista", []):
+                _linha(f"   {v['quando'][:10]}  {v['id']:<13} "
+                       f"{(v.get('video_id') or '(fora do ledger)'):<40} "
+                       f"{v['titulo'][:56]}")
+            if r.get("motivo"):
+                _linha(f"[recuperar] {r['motivo']}")
+                if r.get("detalhe"):
+                    _linha(r["detalhe"])
+            return 0
+        if r.get("detalhe"):
+            _linha(r["detalhe"])
+        _linha(f"[recuperar] {'ok' if r['feito'] else 'nada feito'}"
+               + (f" — {r.get('alvo')}" if r.get("alvo") else "")
+               + (f" ({r['motivo']})" if r.get("motivo") else ""))
+        return 0 if r["feito"] or not r["fila"] else 1
 
     if args.instalar:
         fichas = ([instalar(args.hora)] if args.hora
@@ -2447,6 +2633,41 @@ def main(argv=None) -> int:
                            f"(restam {recuperado['fila'] - 1})")
         except Exception as exc:                               # noqa: BLE001
             _linha(f"[postar] recuperacao do TikTok ({canal}) falhou "
+                   f"({type(exc).__name__}: {exc})"[:140])
+
+    # A RECUPERACAO DO YOUTUBE E OUTRA COISA da recuperacao do TikTok, apesar
+    # do nome: la o video nunca chegou ao destino; aqui ele CHEGOU e ficou
+    # privado, porque o clique em publicar nao foi confirmado e o Studio o
+    # deixou como rascunho. Sao 16 videos prontos parados no canal de builds,
+    # o mais velho desde 31/08 — render, capa e descricao ja pagos.
+    #
+    # ELA NAO TIRA O LUGAR DA RODADA, e essa e uma escolha com custo: no
+    # horario em que recupera, o canal recebe DOIS videos no YouTube em vez
+    # de um. Aceito porque sao ~1,6 dia de dobra, todos de conteudo distinto,
+    # num canal que ja posta dez por dia — diferente da enxurrada de 16/09 no
+    # TikTok, que era uma serie so ocupando onze horarios. O outro desenho
+    # (recuperar NO LUGAR do video novo) deixaria o canal dois dias sem nada
+    # novo, que e pior para quem assiste.
+    #
+    # E o TIKTOK NAO ENTRA: estes videos ja passaram por la, ou vao entrar
+    # pela fila de atraso, que le o ledger. Este passo e so do YouTube.
+    if args.so in (None, "builds"):
+        try:
+            volta = recuperar_no_youtube(so_ver=args.ver, canal="builds")
+            if volta.get("fila"):
+                if args.ver:
+                    _linha(f"[postar] {volta['fila']} privado(s) no YouTube; "
+                           f"devolveria {volta.get('veria')}.")
+                else:
+                    marca = "de volta ao ar" if volta.get("feito") else "NAO"
+                    _linha(f"[postar] privado no YouTube: {marca} "
+                           f"{volta.get('alvo')} "
+                           f"(restam {volta['fila'] - 1})")
+            elif volta.get("motivo"):
+                _linha(f"[postar] recuperacao do YouTube parada: "
+                       f"{volta['motivo']}"[:140])
+        except Exception as exc:                               # noqa: BLE001
+            _linha(f"[postar] recuperacao do YouTube falhou "
                    f"({type(exc).__name__}: {exc})"[:140])
 
     # A RESERVA E A ULTIMA A FALAR. Ela so existe para buraco: se a rodada e a
