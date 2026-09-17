@@ -366,7 +366,7 @@ def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
                  tema: str = "", provedor: str = "",
                  estrutura: str = "", modelo_llm: str = "",
                  ganchos: list | None = None, narrador: str = "",
-                 quedas: list | None = None) -> Path:
+                 quedas: list | None = None, tipo: str = "") -> Path:
     """Grava a serie inteira (biblia + partes) em roteiro.json.
 
     Chamado a CADA parte pronta: uma serie longa leva minutos e o disco tem
@@ -393,6 +393,9 @@ def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
         # O molde usado. Guardado para o RODIZIO ter memoria: sem ele a
         # escolha do proximo viraria sorteio, e sorteio repete.
         "estrutura": estrutura,
+        # O TIPO (favela, normal, babaca): a fila de postagem alterna por
+        # ele, e a criacao escolhe o tipo com menos estoque.
+        "tipo": tipo or biblia.get("tipo") or "",
         # AS ALAVANCAS, PELO NOME, e quem narrou. Pelo mesmo motivo do molde:
         # sem memoria nao ha rodizio. Ate 09/09/2026 elas so existiam em
         # `biblia.json`, que `listar()` nao le — e o resultado foi cinco

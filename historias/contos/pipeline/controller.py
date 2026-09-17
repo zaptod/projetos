@@ -146,7 +146,8 @@ class Pipeline:
 
     def gerar(self, *, provedor: str = "chatgpt", partes: int = 6,
               cenas_por_parte: int = 14, tema: str | None = None,
-              headless: bool = False, provedores=None, log=print) -> dict:
+              headless: bool = False, provedores=None,
+              tipo: str | None = None, log=print) -> dict:
         """Automatico: o browser abre o LLM e escreve a serie inteira.
 
         `provedores` e a ordem de queda (papel "roteiro" de `llm/papeis.py`):
@@ -177,7 +178,7 @@ class Pipeline:
             resultado = gerador.escrever_serie(
                 ordem, partes=partes,
                 cenas_por_parte=cenas_por_parte, tema=tema, headless=headless,
-                config=self.roteiro_config, ao_tentar=ao_tentar,
+                config=self.roteiro_config, tipo=tipo, ao_tentar=ao_tentar,
                 ao_falhar=ao_falhar, log=log)
         except Exception as exc:
             atividade.registrar(vez["provedor"], "erro", str(exc)[:200],

@@ -886,13 +886,16 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
                 "invadiria o dia.")
             return {"feito": "nada", "motivo": "sem tempo na janela"}
     escritores = provedores_do_roteiro(config)
-    log(f"[auto] criando historia nova via {' -> '.join(escritores)} "
-        f"({config.get('partes')} partes de {config.get('cenas_por_parte')} "
-        "cenas)...")
+    tipo = tipo_mais_magro()
+    partes = partes_da_proxima(tipo, config)
+    log("[auto] criando historia nova"
+        + (f" do tipo {tipo}" if tipo else "")
+        + f" via {' -> '.join(escritores)} "
+        f"({partes} partes de {config.get('cenas_por_parte')} cenas)...")
     try:
         criada = pipeline.gerar(
-            provedor=escritores[0], provedores=escritores,
-            partes=int(config.get("partes") or 6),
+            provedor=escritores[0], provedores=escritores, tipo=tipo or None,
+            partes=partes,
             cenas_por_parte=int(config.get("cenas_por_parte") or 14),
             tema=(config.get("tema") or None),
             headless=headless, log=log)
@@ -921,6 +924,65 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
                 "historia_id": historia_id,
                 "erro": "; ".join(linguagem.resumo(achados))[:300]}
     return _terminar(pipeline, historia_id, headless, log, criada=True)
+
+
+def estoque_por_tipo(aprovados=None) -> dict:
+    """`{tipo: partes aprovadas na fila}` para os tipos do config.
+
+    Tipo sem nada na fila aparece com 0 — e e justamente o que a criacao
+    precisa ver. Historia de antes dos tipos entra pelo molde (quebrada ->
+    favela). Nunca levanta.
+    """
+    from ..roteiro import roteiro as R
+    from ..roteiro import serie as S
+
+    try:
+        config = S.carregar_config()
+        saida = {nome: 0 for nome in S.tipos(config)}
+    except Exception:                                          # noqa: BLE001
+        return {}
+    if aprovados is None:
+        try:
+            aprovados = aprovados_no_estoque()
+        except Exception:                                      # noqa: BLE001
+            return saida
+    roteiros: dict = {}
+    for video in aprovados:
+        fonte = getattr(video, "fonte_id", "")
+        if fonte not in roteiros:
+            try:
+                roteiros[fonte] = R.carregar(fonte)
+            except Exception:                                  # noqa: BLE001
+                roteiros[fonte] = {}
+        tipo = S.tipo_da_historia(roteiros[fonte], config)
+        if tipo in saida:
+            saida[tipo] += 1
+    return saida
+
+
+def tipo_mais_magro(estoque: dict | None = None) -> str:
+    """O tipo com MENOS partes aprovadas na fila; `""` sem tipos no config.
+
+    Empate: a ordem do config decide (favela, normal, babaca), para a
+    escolha ser previsivel e testavel.
+    """
+    estoque = estoque_por_tipo() if estoque is None else estoque
+    if not estoque:
+        return ""
+    return min(estoque, key=lambda nome: (estoque[nome],
+                                          list(estoque).index(nome)))
+
+
+def partes_da_proxima(tipo: str, config: dict, rng=None) -> int:
+    """Partes da proxima historia: sorteadas no tipo que pede, senao a agenda."""
+    padrao = int(config.get("partes") or 6)
+    if not tipo:
+        return padrao
+    from ..roteiro import serie as S
+    try:
+        return S.partes_do_tipo(tipo, padrao, rng=rng)
+    except Exception:                                          # noqa: BLE001
+        return padrao
 
 
 def provedores_do_roteiro(config: dict) -> list:

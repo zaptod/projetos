@@ -284,6 +284,9 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
         return {"historia_id": historia_id, "partes": 0, "retomada": False}
     with open(pasta / "biblia.json", encoding="utf-8-sig") as fh:
         biblia = json.load(fh)
+    # Biblia de antes dos tipos nao tem o molde: ele esta no roteiro.
+    biblia.setdefault("estrutura", roteiro.get("estrutura") or "")
+    biblia.setdefault("tipo", roteiro.get("tipo") or "")
 
     partes_prontas = [dict(p) for p in (roteiro.get("partes") or [])]
     log(f"[serie] retomando {historia_id}: faltam as partes {faltam} de "
@@ -325,7 +328,8 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                            estrutura=roteiro.get("estrutura") or "",
                            modelo_llm=getattr(cliente, "modelo_atual", "") or "",
                            ganchos=roteiro.get("ganchos") or [],
-                           narrador=roteiro.get("narrador") or "")
+                           narrador=roteiro.get("narrador") or "",
+                           tipo=biblia.get("tipo") or "")
             log(f"[serie] parte {numero} pronta na retomada "
                 f"({len(parcial['cenas'])} cenas).")
     ainda = R.partes_que_faltam(R.carregar(historia_id))
@@ -339,8 +343,11 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                 cenas_por_parte: int = S.CENAS_POR_PARTE,
                 tema: str | None = None, historia_id: str | None = None,
                 headless: bool = False, config: dict | None = None,
-                log=print) -> dict:
-    """Conduz a conversa inteira e devolve {historia_id, partes, cenas}."""
+                tipo: str | None = None, log=print) -> dict:
+    """Conduz a conversa inteira e devolve {historia_id, partes, cenas}.
+
+    `tipo` (favela, normal, babaca): o molde sai do rodizio DAQUELE tipo.
+    """
     from ..llm.cliente import abrir_cliente
 
     config = config or carregar_config()
@@ -379,7 +386,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                     "a sair mais curto e mais raso.")
 
             # --- etapa 1: a biblia
-            estrutura = S.proxima_estrutura(R.estruturas_recentes(), config)
+            estrutura = S.proxima_estrutura(R.estruturas_recentes(), config,
+                                            tipo=tipo)
+            tipo = tipo or S.tipo_do_molde(estrutura, config)
             # QUEM NARRA E QUAIS ALAVANCAS, decididos AQUI e nao pelo modelo.
             # A ordem importa: as alavancas sao de genero ("marido que nao
             # cresce" so funciona na boca dela), entao o narrador tem que ser
@@ -433,6 +442,11 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             # fim, jogando a historia inteira fora. Custa um turno de chat.
             biblia = _trocar_premissa_se_precisar(
                 cliente, biblia, partes, pasta, log)
+            # O molde e o tipo vao NA BIBLIA: `prompt_parte` le dali as
+            # regras, a abertura e o fechamento do molde — inclusive na
+            # retomada, que abre um chat novo sem o contexto da biblia.
+            biblia["estrutura"] = estrutura
+            biblia["tipo"] = tipo
 
             _gravar(pasta / "biblia.json", biblia)
             log(f"[serie] biblia pronta: {biblia['titulo'] or '(sem titulo)'} "
@@ -446,7 +460,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             R.salvar_serie(biblia, [], historia_id, tema=tema or "",
                            provedor=provedor, estrutura=estrutura,
                            modelo_llm=modelo_llm,
-                           ganchos=ganchos, narrador=narrador)
+                           ganchos=ganchos, narrador=narrador,
+                           tipo=tipo)
 
             # --- etapa 2: uma parte por vez, salvando a cada uma
             total = len(biblia["partes"]) or partes
@@ -486,7 +501,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                                # NAS DUAS chamadas: esta salva a cada parte, e
                                # uma corrida que morra na parte 3 nao pode
                                # deixar memoria vazia para o rodizio.
-                               ganchos=ganchos, narrador=narrador)
+                               ganchos=ganchos, narrador=narrador,
+                           tipo=tipo)
                 log(f"[serie] parte {numero}/{total} pronta: "
                     f"{len(parcial['cenas'])} cenas")
     except Exception as exc:
@@ -503,7 +519,8 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
     caminho = R.salvar_serie(biblia, partes_prontas, historia_id,
                              tema=tema or "", provedor=provedor,
                              estrutura=estrutura, modelo_llm=modelo_llm,
-                             ganchos=ganchos, narrador=narrador)
+                             ganchos=ganchos, narrador=narrador,
+                           tipo=tipo)
     cenas = sum(len(p["cenas"]) for p in partes_prontas)
     log(f"[serie] {historia_id} completa: {len(partes_prontas)} parte(s), "
         f"{cenas} cenas -> {caminho}")
@@ -551,6 +568,7 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
                    cenas_por_parte: int = S.CENAS_POR_PARTE,
                    tema: str | None = None, historia_id: str | None = None,
                    headless: bool = False, config: dict | None = None,
+                   tipo: str | None = None,
                    ao_tentar=None, ao_falhar=None, log=print) -> dict:
     """Escreve a serie com o primeiro provedor que conseguir.
 
@@ -589,7 +607,7 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
             return gerar_serie(provedor=provedor, partes=partes,
                                cenas_por_parte=cenas_por_parte, tema=tema,
                                historia_id=historia_id, headless=headless,
-                               config=config, log=log)
+                               config=config, tipo=tipo, log=log)
         except Exception as exc:                               # noqa: BLE001
             ultimo = exc
             historia_id = historia_id or getattr(exc, "historia_id", None)

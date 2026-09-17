@@ -40,7 +40,8 @@ def _limpar(linha: str) -> str:
 
 
 # --------------------------------------------------------------- 1. biblia
-def proxima_estrutura(usadas: list, config: dict | None = None) -> str:
+def proxima_estrutura(usadas: list, config: dict | None = None,
+                      tipo: str | None = None) -> str:
     """Qual molde usar agora: o que ficou mais tempo sem aparecer.
 
     O fluxo automatico NUNCA usou os moldes. `config/roteiro.json` tem tres
@@ -49,10 +50,82 @@ def proxima_estrutura(usadas: list, config: dict | None = None) -> str:
     converge sempre para a mesma. Foi assim que as historias 9 e 10 sairam
     quase iguais ("conta de luz paga no meu nome").
 
-    Rodizio pelo menos usado, e nao sorteio: sorteio repete.
+    Rodizio pelo menos usado, e nao sorteio: sorteio repete. Com `tipo`, o
+    rodizio acontece so entre os moldes DAQUELE tipo.
     """
     config = config or carregar_config()
-    return _menos_usado(moldes_disponiveis(config), usadas)
+    disponiveis = moldes_disponiveis(config)
+    if tipo:
+        do_tipo = moldes_do_tipo(tipo, config)
+        disponiveis = [m for m in disponiveis if m in do_tipo]
+    return _menos_usado(disponiveis, usadas)
+
+
+# ------------------------------------------------------------------ tipos
+# TRES TIPOS POR DIA (17/09/2026, decisao do Adrian): favela, normal e
+# babaca, uma serie de cada no ar ao mesmo tempo. O tipo fica ACIMA do
+# molde: o rodizio de molde acontece dentro dele.
+def tipos(config: dict | None = None) -> dict:
+    """`{tipo: {"moldes": [...], "partes": [min, max]?}}`, so os validos."""
+    config = config or carregar_config()
+    existentes = set(moldes_disponiveis(config))
+    saida = {}
+    for nome, ficha in (config.get("tipos") or {}).items():
+        if str(nome).startswith("_") or not isinstance(ficha, dict):
+            continue
+        moldes = [m for m in (ficha.get("moldes") or []) if m in existentes]
+        if moldes:
+            saida[str(nome)] = dict(ficha, moldes=moldes)
+    return saida
+
+
+def moldes_do_tipo(tipo: str, config: dict | None = None) -> list:
+    return list((tipos(config).get(str(tipo)) or {}).get("moldes") or [])
+
+
+def tipo_do_molde(molde: str, config: dict | None = None) -> str:
+    """O tipo de um molde; `""` se ele nao pertence a nenhum.
+
+    E o que classifica as historias feitas antes dos tipos existirem: a
+    `historia_00016` (quebrada) e favela sem nunca ter gravado `tipo`.
+    """
+    for nome, ficha in tipos(config).items():
+        if molde in ficha["moldes"]:
+            return nome
+    return ""
+
+
+def tipo_da_historia(roteiro: dict, config: dict | None = None) -> str:
+    """O `tipo` gravado, ou o deduzido do molde."""
+    gravado = str((roteiro or {}).get("tipo") or "").strip()
+    if gravado:
+        return gravado
+    return tipo_do_molde(str((roteiro or {}).get("estrutura") or ""), config)
+
+
+def partes_do_tipo(tipo: str, padrao: int, config: dict | None = None,
+                   rng=None) -> int:
+    """Quantas partes a proxima historia daquele tipo tera.
+
+    `partes: [min, max]` no tipo = SORTEADO (o babaca: "vai ser aleatoria").
+    Sem isso, ou com faixa torta, vale `padrao`.
+    """
+    import random
+    faixa = (tipos(config).get(str(tipo)) or {}).get("partes")
+    try:
+        menor, maior = sorted(int(x) for x in faixa)
+    except (TypeError, ValueError):
+        return int(padrao)
+    if menor < 1:
+        return int(padrao)
+    return (rng or random).randint(menor, maior)
+
+
+def molde_da_biblia(biblia: dict, config: dict | None = None) -> dict:
+    config = config or carregar_config()
+    nome = str((biblia or {}).get("estrutura") or "")
+    molde = (config.get("modelos") or {}).get(nome)
+    return molde if isinstance(molde, dict) else {}
 
 
 def moldes_disponiveis(config: dict | None = None) -> list:
@@ -580,6 +653,10 @@ def prompt_parte(biblia: dict, numero: int, *,
     plano = next((p for p in biblia.get("partes") or [] if p["n"] == numero), {})
     primeira = numero == 1
     ultima = numero >= total
+    # O MOLDE MANDA NA ABERTURA E NO FECHAMENTO quando ele os define (o
+    # babaca abre com a pergunta do post e fecha pedindo julgamento). Vem da
+    # biblia, e nao do contexto do chat: a retomada abre um chat novo.
+    molde = molde_da_biblia(biblia, config)
 
     linhas = []
     add = linhas.append
@@ -595,7 +672,21 @@ def prompt_parte(biblia: dict, numero: int, *,
         add("")
     add(f"Escreva exatamente {cenas} cenas.")
     add("")
-    if primeira:
+    if molde.get("regras"):
+        add("AS REGRAS DO MOLDE DESTA HISTORIA continuam valendo nesta parte:")
+        for regra in molde["regras"]:
+            add(f"  - {str(regra).strip()}")
+        add("")
+    if primeira and molde.get("abertura"):
+        add(str(molde["abertura"]))
+        # A regra geral de narracao, mais abaixo, pede "a primeira frase e o
+        # momento mais chocante". O post comeca pela pergunta: sem dizer quem
+        # manda, o modelo tenta as duas e entrega nenhuma.
+        add("  - Esta ABERTURA vale sobre qualquer regra geral abaixo que fale "
+            "da primeira frase.")
+    elif not primeira and molde.get("abertura_meio"):
+        add(str(molde["abertura_meio"]).replace("{n}", str(numero)))
+    elif primeira:
         add("ABERTURA (parte 1): a primeira cena e o momento mais chocante da "
             "HISTORIA INTEIRA, dito no meio da acao, antes de qualquer "
             "contexto. Nao apresente ninguem antes disso.")
@@ -610,13 +701,18 @@ def prompt_parte(biblia: dict, numero: int, *,
         add(f"ABERTURA (parte {numero}): a cena 1 recapitula o essencial em "
             "UMA frase que funciona como gancho novo para quem cai aqui "
             "primeiro - nunca 'no episodio anterior'. A cena 2 ja avanca.")
-    if ultima:
+    if ultima and molde.get("fechamento"):
+        add(str(molde["fechamento"]))
+    elif ultima:
         add("FECHAMENTO (ultima parte): responda a pergunta central de forma "
             "concreta. Depois, a ultima cena faz uma pergunta direta para "
             "quem assiste. Nao deixe nada em aberto.")
     else:
-        add(f"FECHAMENTO (parte {numero}): as duas ultimas cenas montam o "
-            "cliffhanger e a ULTIMA FRASE e a pergunta que fica no ar.")
+        if molde.get("fechamento_meio"):
+            add(str(molde["fechamento_meio"]).replace("{n}", str(numero)))
+        else:
+            add(f"FECHAMENTO (parte {numero}): as duas ultimas cenas montam o "
+                "cliffhanger e a ULTIMA FRASE e a pergunta que fica no ar.")
         add("  - NUNCA escreva 'a historia continua na proxima parte' (nem "
             "nada parecido). Medido em 01/09/2026: 9 de 10 partes de uma "
             "serie terminavam com essa frase literal, no pior lugar possivel "
