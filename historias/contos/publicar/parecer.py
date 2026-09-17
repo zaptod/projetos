@@ -546,6 +546,20 @@ ESPERA_DA_CONTA_S = 60.0
 ESPERA_CALADO_S = 480.0
 
 
+def provedores_da_analise() -> list:
+    """A ordem do papel "qualidade" (`config/llm.json`); sem ela, `PROVEDORES`.
+
+    Provedor que nao e de analise nunca entra aqui: o roteiro e de outro
+    papel, e misturar faria a mesma conta escrever e julgar ao mesmo tempo.
+    """
+    try:
+        from ..llm import papeis
+        lista = papeis.provedores(papeis.QUALIDADE)
+    except Exception:                                          # noqa: BLE001
+        lista = []
+    return lista or list(PROVEDORES)
+
+
 def pedir(video, roteiro: dict, parte: int, *, laudo: dict | None = None,
           provedor: str | None = None, headless: bool = False,
           pasta_temp: Path | None = None,
@@ -554,7 +568,7 @@ def pedir(video, roteiro: dict, parte: int, *, laudo: dict | None = None,
     quando nao deu para perguntar em nenhum provedor."""
     from ..llm.cliente import ContaOcupada
 
-    tentar = [provedor] if provedor else list(PROVEDORES)
+    tentar = [provedor] if provedor else provedores_da_analise()
     ultimo = ""
     for i, alvo in enumerate(tentar):
         try:

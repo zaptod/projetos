@@ -14,7 +14,7 @@ crescer.
 """
 from __future__ import annotations
 
-PROVEDORES = ("chatgpt", "gemini")
+PROVEDORES = ("chatgpt", "gemini", "deepseek")
 
 CHATGPT = {
     "url": "https://chatgpt.com/",
@@ -202,7 +202,74 @@ GEMINI = {
     ],
 }
 
-MAPA = {"chatgpt": CHATGPT, "gemini": GEMINI}
+# O DEEPSEEK (16/09/2026): ESCREVE os roteiros; Gemini e ChatGPT analisam.
+# Seletores passados pelo Adrian em 17/09/2026, copiados da tela logada
+# (caixa, botao de enviar e uma resposta inteira com o raciocinio aberto).
+# As classes curtas (`_27c9245`, `_52c986b`) sao geradas no build do site e
+# mudam sem aviso: nenhum seletor aqui depende delas.
+DEEPSEEK = {
+    "url": "https://chat.deepseek.com/",
+    "url_novo_chat": "https://chat.deepseek.com/",
+    # Sem menu de modelo no site. O raciocinio ("Pensou por N segundos") vem
+    # LIGADO na conta, em ingles, e fica num bloco proprio que nunca e lido.
+    "modelo_fixo": "DeepSeek (site)",
+    "deepthink_botao": [
+        "div[role='button']:has-text('DeepThink')",
+        "div[role='button']:has-text('Pensamento profundo')",
+        "button:has-text('DeepThink')",
+    ],
+    "campo": [
+        "textarea[placeholder='Mensagem para DeepSeek']",
+        "textarea[placeholder*='DeepSeek' i]",
+        "textarea[name='search']",
+    ],
+    # O botao de enviar e um DIV com role=button, primario e redondo, com a
+    # seta. Enquanto o modelo escreve, o mesmo lugar vira o botao de parar;
+    # por isso a prova de envio tambem aceita o campo esvaziar.
+    "enviar": [
+        "div[role='button'].ds-button--primary.ds-button--circle",
+        "div[role='button'].ds-button--primary.ds-button--filled:has(svg)",
+    ],
+    "parar": [
+        "div[role='button'].ds-button--primary.ds-button--circle:has(svg rect)",
+        "div[role='button'][aria-label*='Stop' i]",
+        "div[role='button'][aria-label*='Parar' i]",
+    ],
+    "turno_usuario": [
+        "div.ds-message:not(:has(.ds-assistant-message-main-content))",
+    ],
+    # A RESPOSTA FINAL tem classe propria. O raciocinio usa o mesmo
+    # `ds-markdown`, dentro de `ds-think-content` — por isso as duas listas.
+    "resposta": [
+        "div.ds-message div.ds-markdown.ds-assistant-message-main-content",
+        "div.ds-markdown.ds-assistant-message-main-content",
+        "div.ds-message div.ds-markdown",
+    ],
+    "raciocinio": [
+        "div.ds-think-content",
+    ],
+    "logado": [
+        "textarea[placeholder='Mensagem para DeepSeek']",
+        "textarea[placeholder*='DeepSeek' i]",
+    ],
+    # A tela de entrar (vista em 17/09/2026): campos de senha e os botoes
+    # "Entrar", "Entrar com Google", "Entrar com Apple".
+    "login": [
+        "input[type='password']",
+        "div[role='button']:has-text('Entrar com Google')",
+        "div.ds-button:has-text('Entrar com Google')",
+    ],
+    "anexo_botao": [],
+    "anexo_input": [
+        "input[type='file']",
+    ],
+    "anexo_prova": [],
+    # A resposta vem em markdown carregado e pode trazer rotulo de
+    # raciocinio: `llm/texto.limpar_resposta` passa antes do parser.
+    "limpar_resposta": True,
+}
+
+MAPA = {"chatgpt": CHATGPT, "gemini": GEMINI, "deepseek": DEEPSEEK}
 
 
 def do_provedor(provedor: str) -> dict:
@@ -271,7 +338,7 @@ def resolver(page, candidatos, descricao: str, timeout: float = 15.0):
         raise SeletorNaoEncontrado(
             f"nao achei {descricao}.\nCandidatos tentados: {candidatos}\n"
             "O site provavelmente mudou. Rode: python main.py llm probe "
-            "--provedor <chatgpt|gemini> e ajuste src/llm/seletores.py.")
+            "--provedor <chatgpt|gemini|deepseek> e ajuste src/llm/seletores.py.")
     return alvo
 
 

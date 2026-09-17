@@ -535,7 +535,7 @@ def main() -> int:
 
     g = sub.add_parser("gerar",
                        help="AUTOMATICO: abre o LLM no browser e escreve a serie")
-    g.add_argument("--provedor", default="chatgpt", choices=("chatgpt", "gemini"))
+    g.add_argument("--provedor", default="chatgpt", choices=("chatgpt", "gemini", "deepseek"))
     g.add_argument("--partes", type=int, default=6,
                    help="quantas partes (cada parte vira um video)")
     g.add_argument("--cenas", type=int, default=14, help="cenas por parte")
@@ -545,7 +545,7 @@ def main() -> int:
 
     llm = sub.add_parser("llm", help="login e diagnostico do ChatGPT/Gemini")
     llm.add_argument("acao", choices=("login", "probe"))
-    llm.add_argument("--provedor", default="chatgpt", choices=("chatgpt", "gemini"))
+    llm.add_argument("--provedor", default="chatgpt", choices=("chatgpt", "gemini", "deepseek"))
     llm.add_argument("--esperar", type=float, default=0.0,
                      help="no probe, segundos com a janela aberta antes de olhar")
 

@@ -16,6 +16,7 @@ de continuar). O CLI e o painel mostram os dois.
 from __future__ import annotations
 
 import json
+import os
 import re
 import unicodedata
 from datetime import datetime
@@ -133,16 +134,17 @@ def _dos_blocos(texto: str) -> dict:
                 campo_aberto = "narracao"
             continue
 
+        # O rotulo e casado SEM ACENTO ("TÍTULO", como o DeepSeek escreve), e
+        # o valor sai da linha ORIGINAL, que e onde os acentos do texto estao.
         if not cenas:
-            achado = LINHA_TITULO.match(linha)
-            if achado:
-                titulo = achado.group(1).strip().strip('"')
+            if LINHA_TITULO.match(_sem_acento(linha)):
+                titulo = _valor_do_rotulo(linha).strip('"')
                 campo_aberto = None
                 continue
 
-        achado_cta = LINHA_CTA.match(linha)
-        if achado_cta and _chave_da_linha(linha) is None:
-            cta = achado_cta.group(1).strip()
+        if (LINHA_CTA.match(_sem_acento(linha))
+                and _chave_da_linha(linha) is None):
+            cta = _valor_do_rotulo(linha)
             campo_aberto = None
             continue
 
@@ -165,6 +167,12 @@ def _dos_blocos(texto: str) -> dict:
             titulo = linha.strip().strip('"')
 
     return {"titulo": titulo, "cta": cta, "cenas": cenas}
+
+
+def _valor_do_rotulo(linha: str) -> str:
+    """O que vem depois do primeiro `:` ou `-` de "ROTULO: valor"."""
+    partes = re.split(r"\s*[:\-]\s*", linha, maxsplit=1)
+    return (partes[1] if len(partes) > 1 else "").strip()
 
 
 def _tempo(valor, padrao: float = 4.0) -> float:
@@ -357,15 +365,27 @@ def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
 def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
                  tema: str = "", provedor: str = "",
                  estrutura: str = "", modelo_llm: str = "",
-                 ganchos: list | None = None, narrador: str = "") -> Path:
+                 ganchos: list | None = None, narrador: str = "",
+                 quedas: list | None = None) -> Path:
     """Grava a serie inteira (biblia + partes) em roteiro.json.
 
     Chamado a CADA parte pronta: uma serie longa leva minutos e o disco tem
     que estar sempre um passo a frente do que pode dar errado.
+
+    `quedas` (provedores que falharam e quem assumiu) e ACUMULADO: sem
+    `quedas`, o que ja estava gravado continua — a regravacao de cada parte
+    nao pode apagar a historia de quem tentou escrever.
     """
     historia_id = historia_id or proximo_id()
     pasta = OUTPUTS / historia_id
     pasta.mkdir(parents=True, exist_ok=True)
+    if quedas is None:
+        quedas = []
+        try:
+            with open(pasta / "roteiro.json", encoding="utf-8-sig") as fh:
+                quedas = list(json.load(fh).get("quedas") or [])
+        except (OSError, ValueError, AttributeError):
+            quedas = []
     dados = {
         "historia_id": historia_id,
         "criado_em": datetime.now().isoformat(timespec="seconds"),
@@ -415,11 +435,27 @@ def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
         "fatos": biblia.get("fatos") or "",
         "cta": "",
         "partes": [dict(p) for p in partes],
+        "quedas": [dict(q) for q in quedas],
     }
     normalizar(dados)
     with open(pasta / "roteiro.json", "w", encoding="utf-8") as fh:
         json.dump(dados, fh, ensure_ascii=False, indent=2)
     return pasta / "roteiro.json"
+
+
+def registrar_queda(historia_id: str, queda: dict) -> None:
+    """Acrescenta `queda` ao roteiro.json existente. Nunca levanta."""
+    caminho = OUTPUTS / historia_id / "roteiro.json"
+    try:
+        with open(caminho, encoding="utf-8-sig") as fh:
+            dados = json.load(fh)
+        dados["quedas"] = list(dados.get("quedas") or []) + [dict(queda)]
+        temporario = caminho.with_name("roteiro.json.tmp")
+        with open(temporario, "w", encoding="utf-8") as fh:
+            json.dump(dados, fh, ensure_ascii=False, indent=2)
+        os.replace(temporario, caminho)
+    except (OSError, ValueError, AttributeError):
+        pass
 
 
 def titulos_recentes(quantos: int = 12) -> list:

@@ -146,24 +146,45 @@ class Pipeline:
 
     def gerar(self, *, provedor: str = "chatgpt", partes: int = 6,
               cenas_por_parte: int = 14, tema: str | None = None,
-              headless: bool = False, log=print) -> dict:
-        """Automatico: o browser abre o LLM e escreve a serie inteira."""
+              headless: bool = False, provedores=None, log=print) -> dict:
+        """Automatico: o browser abre o LLM e escreve a serie inteira.
+
+        `provedores` e a ordem de queda (papel "roteiro" de `llm/papeis.py`):
+        o primeiro que conseguir escreve. Sem ela, so `provedor`, como antes.
+        """
         from ..roteiro import gerar as gerador
         atividade = _rb_atividade
-        comeco = _time.monotonic()
-        atividade.registrar(provedor, "inicio",
-                            f"serie de {partes} parte(s)", "historias",
-                            etapa="roteiro")
+        ordem = list(provedores or [provedor])
+        vez = {"provedor": ordem[0], "comeco": _time.monotonic()}
+
+        def ao_tentar(nome):
+            vez.update(provedor=nome, comeco=_time.monotonic())
+            atividade.registrar(nome, "inicio",
+                                f"serie de {partes} parte(s)", "historias",
+                                etapa="roteiro")
+
+        def ao_falhar(nome, exc, proximo):
+            # A queda e ERRO de quem falhou (fecha o `inicio` dele e avisa),
+            # com etapa propria para o relatorio separar de roteiro perdido.
+            if proximo:
+                atividade.registrar(
+                    nome, "erro",
+                    f"{str(exc)[:160]} — o {proximo} assume o roteiro",
+                    "historias", etapa="roteiro.queda",
+                    dur_s=_time.monotonic() - vez["comeco"])
+
         try:
-            resultado = gerador.gerar_serie(
-                provedor=provedor, partes=partes,
+            resultado = gerador.escrever_serie(
+                ordem, partes=partes,
                 cenas_por_parte=cenas_por_parte, tema=tema, headless=headless,
-                config=self.roteiro_config, log=log)
+                config=self.roteiro_config, ao_tentar=ao_tentar,
+                ao_falhar=ao_falhar, log=log)
         except Exception as exc:
-            atividade.registrar(provedor, "erro", str(exc)[:200], "historias",
-                                etapa="roteiro",
-                                dur_s=_time.monotonic() - comeco)
+            atividade.registrar(vez["provedor"], "erro", str(exc)[:200],
+                                "historias", etapa="roteiro",
+                                dur_s=_time.monotonic() - vez["comeco"])
             raise
+        provedor, comeco = vez["provedor"], vez["comeco"]
         atividade.registrar(provedor, "ok",
                             f"{resultado['historia_id']}: {resultado['partes']} "
                             f"parte(s), {resultado['cenas']} cenas", "historias",

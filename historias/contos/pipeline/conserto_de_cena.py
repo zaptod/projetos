@@ -191,7 +191,7 @@ def _cenas_da_parte(roteiro: dict, parte: int) -> dict:
 
 
 def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
-                       provedor: str = "gemini", headless: bool = False,
+                       provedor: str | None = None, headless: bool = False,
                        log=print, perguntar=None, falhas=None) -> dict:
     """Reescreve NO ROTEIRO o prompt das cenas apontadas. `{n: prompt}`.
 
@@ -202,6 +202,14 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
     """
     from ..imagens.reescritor import limpar
 
+    if not provedor:
+        # Reescrever prompt a partir do veto e ANALISE, nao escrita: fica com
+        # o primeiro do papel "qualidade" (o Gemini, que viu o video).
+        try:
+            from ..llm import papeis
+            provedor = (papeis.provedores(papeis.QUALIDADE) or ["gemini"])[0]
+        except Exception:                                      # noqa: BLE001
+            provedor = "gemini"
     alvo = _cenas_da_parte(roteiro, parte)
     protagonista = str(roteiro.get("protagonista") or "")
     novos = {}

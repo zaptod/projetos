@@ -885,12 +885,13 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
                 f"historia leva ~{precisa:.0f}. Nao comeco outra: ela "
                 "invadiria o dia.")
             return {"feito": "nada", "motivo": "sem tempo na janela"}
-    log(f"[auto] criando historia nova via {config.get('provedor')} "
+    escritores = provedores_do_roteiro(config)
+    log(f"[auto] criando historia nova via {' -> '.join(escritores)} "
         f"({config.get('partes')} partes de {config.get('cenas_por_parte')} "
         "cenas)...")
     try:
         criada = pipeline.gerar(
-            provedor=str(config.get("provedor") or "gemini"),
+            provedor=escritores[0], provedores=escritores,
             partes=int(config.get("partes") or 6),
             cenas_por_parte=int(config.get("cenas_por_parte") or 14),
             tema=(config.get("tema") or None),
@@ -922,17 +923,38 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
     return _terminar(pipeline, historia_id, headless, log, criada=True)
 
 
+def provedores_do_roteiro(config: dict) -> list:
+    """A ordem de queda de quem escreve (`config/llm.json`, papel roteiro).
+
+    Sem o arquivo, vale o `provedor` da agenda, como era antes da troca.
+    """
+    from ..llm import papeis
+
+    lista = papeis.provedores(papeis.ROTEIRO)
+    if not (papeis.ARQUIVO.is_file() and lista):
+        lista = [str(config.get("provedor") or "gemini")]
+    return lista
+
+
 def _retomar_texto(pipeline, historia_id: str, faltam: list,
                    headless: bool, log) -> dict:
     """Escreve as partes que faltam e so entao segue para imagem e video."""
     from ..roteiro import gerar as G
     from ..roteiro import roteiro as R
 
+    from ..llm import papeis
+
     config = carregar()
+    # A historia continua com QUEM a comecou (o estilo e dele); se ele falhar,
+    # a mesma ordem de queda da criacao assume.
     try:
-        G.retomar_serie(historia_id, provedor=str(config.get("provedor")
-                                                  or "gemini"),
-                        headless=headless, log=log)
+        gravado = R.carregar(historia_id).get("provedor")
+    except Exception:                                          # noqa: BLE001
+        gravado = None
+    ordem = papeis.com_preferido(gravado, provedores_do_roteiro(config))
+    try:
+        G.escrever_serie(ordem, historia_id=historia_id,
+                         headless=headless, log=log)
     except Exception as exc:                                   # noqa: BLE001
         # A retomada falha pelo mesmo motivo que a escrita falhou (limite de
         # uso, rede). Ela nao pode derrubar a rodada: a proxima tenta de novo,

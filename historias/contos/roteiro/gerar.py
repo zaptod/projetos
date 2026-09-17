@@ -19,6 +19,7 @@ Tres cuidados que vieram da experiencia com os outros sites:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -316,6 +317,7 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                 "cliffhanger": plano.get("cliffhanger", ""),
                 "cta": parcial["cta"],
                 "cenas": parcial["cenas"],
+                "provedor": provedor,
             })
             partes_prontas.sort(key=lambda p: int(p["n"]))
             R.salvar_serie(biblia, partes_prontas, historia_id,
@@ -474,6 +476,9 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                     "cliffhanger": plano.get("cliffhanger", ""),
                     "cta": parcial["cta"],
                     "cenas": parcial["cenas"],
+                    # QUEM ESCREVEU ESTA PARTE: com a queda de provedor, uma
+                    # historia pode ter partes de dois modelos.
+                    "provedor": provedor,
                 })
                 R.salvar_serie(biblia, partes_prontas, historia_id, tema=tema or "",
                                provedor=provedor, estrutura=estrutura,
@@ -489,6 +494,10 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
         # pasta vazia e nenhuma pista (historias 6 e 7, 01/09/2026).
         log(f"[serie] FALHOU: {type(exc).__name__}: {exc}")
         log(f"[serie] o registro desta tentativa esta em {diario.destino}")
+        # A queda de provedor precisa saber se ja existe historia (e entao
+        # RETOMAR com o proximo) ou se nada foi criado (e entao comecar).
+        with contextlib.suppress(Exception):
+            exc.historia_id = historia_id
         raise
 
     caminho = R.salvar_serie(biblia, partes_prontas, historia_id,
@@ -509,3 +518,90 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             "partes": len(partes_prontas), "cenas": cenas,
             "coerencia": avisos,
             "gerado_em": datetime.now().isoformat(timespec="seconds")}
+
+
+# ------------------------------------------------------ queda de provedor
+def _resultado_da_historia(historia_id: str, log) -> dict:
+    """O mesmo formato de `gerar_serie`, lido do disco (depois da retomada)."""
+    from . import coerencia
+    roteiro = R.carregar(historia_id)
+    partes = roteiro.get("partes") or []
+    avisos = coerencia.conferir(roteiro)
+    for aviso in avisos:
+        log(f"[coerencia] {aviso}")
+    return {"historia_id": historia_id, "titulo": roteiro.get("titulo") or "",
+            "partes": len(partes),
+            "cenas": sum(len(p.get("cenas") or []) for p in partes),
+            "coerencia": avisos,
+            "gerado_em": datetime.now().isoformat(timespec="seconds")}
+
+
+def _situacao(historia_id: str | None) -> str:
+    """"nova" (sem roteiro gravado), "incompleta" ou "completa"."""
+    if not historia_id:
+        return "nova"
+    try:
+        roteiro = R.carregar(historia_id)
+    except (OSError, ValueError):
+        return "nova"
+    return "incompleta" if R.partes_que_faltam(roteiro) else "completa"
+
+
+def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
+                   cenas_por_parte: int = S.CENAS_POR_PARTE,
+                   tema: str | None = None, historia_id: str | None = None,
+                   headless: bool = False, config: dict | None = None,
+                   ao_tentar=None, ao_falhar=None, log=print) -> dict:
+    """Escreve a serie com o primeiro provedor que conseguir.
+
+    Decisao do Adrian (16/09/2026): o DeepSeek escreve; se ele falhar, o
+    Gemini assume. A queda nao joga fora o que ja foi escrito: se a historia
+    ja existe (biblia pronta, algumas partes), o proximo provedor RETOMA as
+    partes que faltam em vez de comecar outra. Cada parte guarda quem a
+    escreveu, e cada queda fica em `roteiro.json["quedas"]`.
+
+    `ao_tentar(provedor)` e `ao_falhar(provedor, exc, proximo)` sao para o
+    diario de quem chama; o nucleo nao sabe onde se registra.
+    """
+    ordem = [p for p in (provedores or []) if p]
+    if not ordem:
+        raise GeracaoFalhou("nenhum provedor configurado para o roteiro")
+    ultimo = None
+    for indice, provedor in enumerate(ordem):
+        proximo = ordem[indice + 1] if indice + 1 < len(ordem) else None
+        if ao_tentar:
+            ao_tentar(provedor)
+        situacao = _situacao(historia_id)
+        if situacao == "completa":
+            # Caiu DEPOIS da ultima parte: nada a reescrever.
+            return _resultado_da_historia(historia_id, log)
+        try:
+            if situacao == "incompleta":
+                feito = retomar_serie(historia_id, provedor=provedor,
+                                      cenas_por_parte=cenas_por_parte,
+                                      headless=headless, config=config,
+                                      log=log)
+                if feito.get("faltam"):
+                    raise GeracaoFalhou(
+                        f"a retomada com o {provedor} deixou as partes "
+                        f"{feito['faltam']} sem escrever")
+                return _resultado_da_historia(historia_id, log)
+            return gerar_serie(provedor=provedor, partes=partes,
+                               cenas_por_parte=cenas_por_parte, tema=tema,
+                               historia_id=historia_id, headless=headless,
+                               config=config, log=log)
+        except Exception as exc:                               # noqa: BLE001
+            ultimo = exc
+            historia_id = historia_id or getattr(exc, "historia_id", None)
+            queda = {"quando": datetime.now().isoformat(timespec="seconds"),
+                     "provedor": provedor, "proximo": proximo,
+                     "erro": f"{type(exc).__name__}: {exc}"[:300]}
+            log(f"[serie] o {provedor} nao escreveu ({queda['erro']})"
+                + (f"; o {proximo} assume." if proximo else "; sem outro "
+                   "provedor na lista."))
+            if historia_id:
+                R.registrar_queda(historia_id, queda)
+            if ao_falhar:
+                with contextlib.suppress(Exception):
+                    ao_falhar(provedor, exc, proximo)
+    raise ultimo

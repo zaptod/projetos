@@ -138,6 +138,15 @@ class ClienteLLM:
         gravar vazio.
         """
         self.modelo_confirmado = False
+        if self.sel.get("modelo_fixo"):
+            # Site sem menu de modelo (DeepSeek): o que se escolhe e so o
+            # raciocinio, e ele entra no nome para o roteiro dizer qual foi.
+            pensa = self._ajustar_raciocinio()
+            self.modelo_confirmado = pensa is not None
+            nome = str(self.sel["modelo_fixo"])
+            if pensa == self.RACIOCINIO_DA_CONTA:
+                return nome + " (DeepThink como a conta estiver)"
+            return nome + (" + DeepThink" if pensa else "")
         ordem = preferido or self.sel.get("modelo_preferido")
         if not ordem or not self.sel.get("modelo_botao"):
             return ""
@@ -157,6 +166,54 @@ class ClienteLLM:
                  f"forte depois de {self.TENTATIVAS_DE_MODELO} tentativas; "
                  f"a historia vai sair em {ultimo or 'modelo desconhecido'}.")
         return ultimo
+
+    RACIOCINIO_DA_CONTA = "como_a_conta"
+
+    def _ajustar_raciocinio(self):
+        """Poe o DeepThink no estado do config. True/False, None se nao deu
+        para saber, ou `RACIOCINIO_DA_CONTA` quando o config manda nao mexer
+        (`"deepthink": null`). Nunca levanta.
+
+        O estado so e lido de atributo (`aria-pressed`, classe "active" ou
+        "selected"). Sem nenhum dos dois, NAO se clica: um clique no escuro
+        pode ligar o que devia estar desligado.
+        """
+        try:
+            from . import papeis
+            querido = papeis.ajustes(self.provedor).get("deepthink")
+        except Exception:                                      # noqa: BLE001
+            querido = None
+        if querido is None:
+            return self.RACIOCINIO_DA_CONTA
+        querido = bool(querido)
+        candidatos = self.sel.get("deepthink_botao") or []
+        if not candidatos:
+            return None
+        try:
+            botao = sel.encontrar(self.page, candidatos, timeout=6.0)
+            if botao is None:
+                self.log(f"[{self.provedor}] nao achei o botao do DeepThink.")
+                return None
+            estado = botao.evaluate(
+                "el => { const p = el.getAttribute('aria-pressed');"
+                " if (p === 'true') return true; if (p === 'false') return false;"
+                " const c = String(el.className || '').toLowerCase();"
+                " if (/active|selected|checked/.test(c)) return true;"
+                " return null; }")
+            if estado is None:
+                self.log(f"[{self.provedor}] nao sei se o DeepThink esta "
+                         "ligado; deixo como esta.")
+                return None
+            if bool(estado) != querido:
+                botao.click(timeout=5000)
+                _pausa(self.rng, 0.5, 1.0)
+                self.log(f"[{self.provedor}] DeepThink "
+                         f"{'ligado' if querido else 'desligado'}.")
+            return querido
+        except Exception as exc:                               # noqa: BLE001
+            self.log(f"[{self.provedor}] o ajuste do DeepThink falhou "
+                     f"({type(exc).__name__}).")
+            return None
 
     def _tentar_modelo(self, ordem) -> tuple:
         """(nome do modelo em uso, alcancou o alvo?). Nunca levanta."""
@@ -391,6 +448,8 @@ class ClienteLLM:
         except Exception:
             pass  # Se nao conseguir fazer scroll, tenta mesmo assim
 
+        if self.sel.get("raciocinio"):
+            return self._resposta_sem_raciocinio()
         for seletor in self.sel["resposta"]:
             try:
                 alvos = self.page.locator(seletor)
@@ -403,6 +462,31 @@ class ClienteLLM:
                 except Exception:
                     continue
         return ""
+
+    def _resposta_sem_raciocinio(self) -> str:
+        """O ultimo bloco de resposta que NAO esta dentro do raciocinio.
+
+        No DeepSeek o raciocinio do DeepThink e renderizado com o mesmo
+        markdown da resposta; pegar "o ultimo" pegaria o pensamento enquanto
+        a resposta ainda nao comecou. Nunca levanta.
+        """
+        try:
+            return self.page.evaluate(
+                "([respostas, pensamentos]) => {"
+                " const dentro = el => pensamentos.some(s => {"
+                "   try { return !!el.closest(s); } catch (e) { return false; } });"
+                " for (const s of respostas) {"
+                "   let achados = [];"
+                "   try { achados = [...document.querySelectorAll(s)]; }"
+                "   catch (e) { continue; }"
+                "   achados = achados.filter(el => !dentro(el));"
+                "   if (achados.length)"
+                "     return achados[achados.length - 1].innerText || '';"
+                " }"
+                " return ''; }",
+                [list(self.sel["resposta"]), list(self.sel["raciocinio"])]) or ""
+        except Exception:                                      # noqa: BLE001
+            return ""
 
     def _responder_agora(self) -> bool:
         """Clica em "Responder agora" se a tela oferecer. True se clicou.
@@ -711,6 +795,13 @@ class ClienteLLM:
     def perguntar(self, prompt: str, timeout: float | None = None,
                   anexos=None) -> str:
         """Um turno completo: anexa (se houver), envia, espera, devolve."""
+        texto = ClienteLLM._perguntar(self, prompt, timeout, anexos)
+        if (getattr(self, "sel", None) or {}).get("limpar_resposta"):
+            from .texto import limpar_resposta
+            texto = limpar_resposta(texto)
+        return texto
+
+    def _perguntar(self, prompt: str, timeout: float | None, anexos) -> str:
         if anexos:
             self.anexar(anexos)
             _pausa(self.rng, 0.4, 1.0)
