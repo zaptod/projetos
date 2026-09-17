@@ -54,6 +54,25 @@ class OCliente(unittest.TestCase):
         self.assertTrue(issubclass(PC.ParedeDePlanos, PC.GeracaoFalhou))
 
 
+class OFechador(unittest.TestCase):
+    """Pop-up de paywall de 17/09/2026: o X e
+    `<svg class="lucide lucide-x size-5" aria-hidden="true">`. Conferido num
+    Chromium headless (sem perfil, sem rede): os seletores pegam o BOTAO do
+    dialogo em tres formatos, e nunca o X de limpar o prompt."""
+
+    def test_especificos_antes_do_generico(self):
+        generico = PC.FECHAR_MODAL.index("button:has(svg.lucide-x)")
+        self.assertEqual(len(PC.FECHAR_MODAL) - 1, generico)
+        for seletor in ("[role='dialog'] [role='button']:has(svg.lucide-x)",
+                        "[data-slot='dialog-content'] button:has(svg.lucide-x)"):
+            self.assertLess(PC.FECHAR_MODAL.index(seletor), generico)
+
+    def test_o_clique_vai_no_botao_e_nao_no_svg(self):
+        for seletor in PC.FECHAR_MODAL:
+            if "lucide-x" in seletor:
+                self.assertIn(":has(svg.lucide-x)", seletor)
+
+
 class OWorker(unittest.TestCase):
 
     def setUp(self):
