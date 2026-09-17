@@ -235,8 +235,11 @@ DEEPSEEK = {
         "div[role='button'][aria-label*='Stop' i]",
         "div[role='button'][aria-label*='Parar' i]",
     ],
+    # Mensagem sem resposta final E sem raciocinio: a do assistente que
+    # ainda esta pensando tem o bloco `ds-think-content` e nao conta.
     "turno_usuario": [
-        "div.ds-message:not(:has(.ds-assistant-message-main-content))",
+        "div.ds-message:not(:has(.ds-assistant-message-main-content))"
+        ":not(:has(.ds-think-content))",
     ],
     # A RESPOSTA FINAL tem classe propria. O raciocinio usa o mesmo
     # `ds-markdown`, dentro de `ds-think-content` — por isso as duas listas.

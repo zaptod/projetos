@@ -469,15 +469,71 @@ class ClienteDoDeepSeek(unittest.TestCase):
             def evaluate(self, script, argumento=None):
                 if argumento is not None:
                     vistos["argumento"] = argumento
-                    return "a resposta"
+                    return {"texto": "a resposta", "ancorado": True}
                 return None
 
         cliente = self._cliente()
         cliente.page = Pagina()
         self.assertEqual("a resposta", cliente._resposta_atual())
-        respostas, pensamentos = vistos["argumento"]
+        self.assertTrue(cliente._ancorado)
+        respostas, pensamentos, usuarios = vistos["argumento"]
         self.assertIn("ds-assistant-message-main-content", respostas[0])
         self.assertEqual(["div.ds-think-content"], pensamentos)
+        self.assertIn(":not(:has(.ds-think-content))", usuarios[0],
+                      "o assistente pensando nao pode contar como usuario")
+
+    def _pagina(self, telas):
+        class Pagina:
+            def evaluate(self, script, argumento=None):
+                return next(telas) if argumento is not None else None
+        return Pagina()
+
+    def _sem_tela(self, cliente):
+        cliente._envio_devolvido = lambda: False
+        cliente._envio_truncado = lambda: False
+        self.addCleanup(setattr, seletores, "encontrar", seletores.encontrar)
+        seletores.encontrar = lambda *a, **k: None
+
+    def test_revisao_identica_depois_do_nosso_turno_e_aceita(self):
+        # Pedido do orquestrador: "a parte ja esta boa" devolve o MESMO
+        # texto, e isso nao pode virar estouro de 600 s.
+        self._relogio()
+        cliente = self._cliente()
+        cliente._ultima_resposta = "PARTE 1 " * 20
+        pensando = {"texto": "", "ancorado": True}
+        pronta = {"texto": "PARTE 1 " * 20, "ancorado": True}
+        cliente.page = self._pagina(iter([pensando] * 5 + [pronta] * 10))
+        self._sem_tela(cliente)
+        self.assertEqual("PARTE 1 " * 20,
+                         cliente.esperar_resposta(timeout=100, estabilidade=2))
+
+    def test_enquanto_pensa_a_resposta_velha_nao_aparece(self):
+        # Ancorado e sem bloco depois do nosso turno = ainda nao respondeu,
+        # mesmo que a resposta anterior esteja inteira na tela.
+        cliente = self._cliente()
+        cliente.page = self._pagina(iter([{"texto": "", "ancorado": True}]))
+        self.assertEqual("", cliente._resposta_nova())
+
+    def test_sem_ancora_a_igualdade_segura(self):
+        cliente = self._cliente()
+        cliente._ultima_resposta = "VELHA " * 20
+        cliente.page = self._pagina(iter(
+            [{"texto": "VELHA " * 20, "ancorado": False}]))
+        self.assertEqual("", cliente._resposta_nova())
+
+    def test_pagina_que_nao_responde_cai_no_leitor_antigo(self):
+        cliente = self._cliente()
+
+        class Quebrada:
+            def evaluate(self, *_a, **_k):
+                raise RuntimeError("pagina fechou")
+
+            def locator(self, _s):
+                raise RuntimeError("pagina fechou")
+
+        cliente.page = Quebrada()
+        self.assertEqual("", cliente._resposta_atual())
+        self.assertFalse(cliente._ancorado)
 
     def _relogio(self):
         import types

@@ -450,8 +450,12 @@ class ClienteLLM:
         except Exception:
             pass  # Se nao conseguir fazer scroll, tenta mesmo assim
 
-        if self.sel.get("raciocinio"):
-            return self._resposta_sem_raciocinio()
+        self._ancorado = False
+        if self.sel.get("raciocinio") or self.sel.get("turno_usuario"):
+            achado = self._resposta_no_dom()
+            if achado is not None:
+                self._ancorado = bool(achado.get("ancorado"))
+                return str(achado.get("texto") or "")
         for seletor in self.sel["resposta"]:
             try:
                 alvos = self.page.locator(seletor)
@@ -465,6 +469,52 @@ class ClienteLLM:
                     continue
         return ""
 
+    # A RESPOSTA E A QUE VEM DEPOIS DA NOSSA PERGUNTA. `ancorado` diz que o
+    # ultimo turno do usuario foi achado na pagina e que o texto devolvido
+    # esta DEPOIS dele na ordem do documento — prova de que e deste turno,
+    # mesmo que o texto seja identico ao anterior (revisao "ja esta boa").
+    _JS_RESPOSTA = (
+        "([respostas, pensamentos, usuarios]) => {"
+        " const dentro = el => pensamentos.some(s => {"
+        "   try { return !!el.closest(s); } catch (e) { return false; } });"
+        " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
+        "   & Node.DOCUMENT_POSITION_FOLLOWING);"
+        " let usuario = null;"
+        " for (const s of usuarios) {"
+        "   let els = [];"
+        "   try { els = [...document.querySelectorAll(s)]; } catch (e) { continue; }"
+        "   const ultimo = els[els.length - 1];"
+        "   if (ultimo && (!usuario || depois(usuario, ultimo))) usuario = ultimo;"
+        " }"
+        " for (const s of respostas) {"
+        "   let achados = [];"
+        "   try { achados = [...document.querySelectorAll(s)]; }"
+        "   catch (e) { continue; }"
+        "   achados = achados.filter(el => !dentro(el));"
+        "   if (!achados.length) continue;"
+        "   if (usuario) {"
+        "     const novos = achados.filter(el => depois(usuario, el));"
+        "     return {texto: novos.length"
+        "       ? (novos[novos.length - 1].innerText || '') : '',"
+        "       ancorado: true};"
+        "   }"
+        "   return {texto: achados[achados.length - 1].innerText || '',"
+        "           ancorado: false};"
+        " }"
+        " return {texto: '', ancorado: !!usuario}; }")
+
+    def _resposta_no_dom(self):
+        """`{"texto", "ancorado"}`, ou `None` se a pagina nao respondeu."""
+        try:
+            achado = self.page.evaluate(
+                self._JS_RESPOSTA,
+                [list(self.sel.get("resposta") or []),
+                 list(self.sel.get("raciocinio") or []),
+                 list(self.sel.get("turno_usuario") or [])])
+        except Exception:                                      # noqa: BLE001
+            return None
+        return achado if isinstance(achado, dict) else None
+
     def _resposta_nova(self) -> str:
         """A resposta atual, ou `""` se ela ainda e a do turno ANTERIOR.
 
@@ -475,39 +525,19 @@ class ClienteLLM:
         assim, todas as respostas seguintes escorregariam um turno (a parte 2
         receberia a revisao da parte 1).
 
-        Contar blocos nao serve: a lista de mensagens do site e virtual e
-        desmonta as antigas. Comparar com o que ja foi devolvido serve.
+        A PROVA E A POSICAO: so vale o bloco que vem DEPOIS do ultimo turno do
+        usuario na pagina (`_ancorado`). Assim uma revisao que devolve o texto
+        identico ("a parte ja esta boa") e aceita. A igualdade com o ultimo
+        texto devolvido fica so como reserva, para pagina onde o turno do
+        usuario nao foi achado.
         """
         texto = self._resposta_atual()
+        if getattr(self, "_ancorado", False):
+            return texto
         anterior = getattr(self, "_ultima_resposta", "")
         if anterior and " ".join(texto.split()) == " ".join(anterior.split()):
             return ""
         return texto
-
-    def _resposta_sem_raciocinio(self) -> str:
-        """O ultimo bloco de resposta que NAO esta dentro do raciocinio.
-
-        No DeepSeek o raciocinio do DeepThink e renderizado com o mesmo
-        markdown da resposta; pegar "o ultimo" pegaria o pensamento enquanto
-        a resposta ainda nao comecou. Nunca levanta.
-        """
-        try:
-            return self.page.evaluate(
-                "([respostas, pensamentos]) => {"
-                " const dentro = el => pensamentos.some(s => {"
-                "   try { return !!el.closest(s); } catch (e) { return false; } });"
-                " for (const s of respostas) {"
-                "   let achados = [];"
-                "   try { achados = [...document.querySelectorAll(s)]; }"
-                "   catch (e) { continue; }"
-                "   achados = achados.filter(el => !dentro(el));"
-                "   if (achados.length)"
-                "     return achados[achados.length - 1].innerText || '';"
-                " }"
-                " return ''; }",
-                [list(self.sel["resposta"]), list(self.sel["raciocinio"])]) or ""
-        except Exception:                                      # noqa: BLE001
-            return ""
 
     def _responder_agora(self) -> bool:
         """Clica em "Responder agora" se a tela oferecer. True se clicou.
