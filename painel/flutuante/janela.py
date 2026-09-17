@@ -539,6 +539,9 @@ class Janela(tk.Tk):
         self._abas: dict = {}
         self._dica_padrao = ""
         self._vivo = True
+        self._botoes: list = []
+        self._dica_flutuante = None
+        self._escuta = None
 
         self.title("Vila — Neural Fights")
         self.configure(bg=self.t.borda_forte)
@@ -550,6 +553,8 @@ class Janela(tk.Tk):
         self.after(TIQUE_MS, self._tique)
         if iniciar:
             self.coletor.iniciar()
+        if persistir:
+            self.escutar()
 
     # -------------------------------------------------------- utilidades
     def guardar(self) -> None:
@@ -567,8 +572,9 @@ class Janela(tk.Tk):
         self._aplicar_topo()
         self._topo_var.set(self.prefs["topo"])
         if getattr(self, "_btn_topo", None) is not None:
-            self._btn_topo.configure(
-                fg=self.t.acento if self.prefs["topo"] else self.t.texto_fraco)
+            cor = self.t.acento if self.prefs["topo"] else self.t.texto_fraco
+            self._btn_topo.botao.cor_normal = cor
+            self._btn_topo.botao.configure(fg=cor)
         self.guardar()
 
     def _montar_menu(self) -> tk.Menu:
@@ -590,7 +596,9 @@ class Janela(tk.Tk):
         menu.add_command(label="Abrir o painel completo",
                          command=self.abrir_painel)
         menu.add_separator()
-        menu.add_command(label="Sair da Vila flutuante", command=self.sair)
+        # O unico jeito de FECHAR de verdade: o ✕ e o − viram o icone, que
+        # continua visivel e traz a janela de volta com um clique.
+        menu.add_command(label="Fechar de verdade", command=self.sair)
         return menu
 
     def _abrir_menu(self, evento) -> None:
@@ -637,26 +645,96 @@ class Janela(tk.Tk):
                                      tela)
         self.geometry(f"+{x}+{y}")
 
+    LADO_BOTAO = 26
+
     def _botao(self, pai, texto: str, acao, dica: str,
-               ativo: bool = False) -> tk.Label:
+               ativo: bool = False, nome: str = "") -> tk.Label:
+        """Um botao com AREA DE CLIQUE PROPRIA, de tamanho fixo.
+
+        Bug de 17/09/2026: os botoes eram Labels soltos empacotados DEPOIS
+        de um texto com `expand`; com o texto comprido o Tk os espremia e o
+        clique no ✕ caia no vizinho. Agora cada um mora num quadro de
+        26x26 que nao encolhe, e a barra empacota os botoes PRIMEIRO.
+        """
         fundo = pai.cget("bg")
         cor = self.t.acento if ativo else self.t.texto_fraco
-        botao = tk.Label(pai, text=texto, bg=fundo, fg=cor, cursor="hand2",
-                         font=self.t.letra("corpo"), padx=ESPACO["pouco"] + 2)
+        from tkinter import font as tkfont
+        largura = max(self.LADO_BOTAO, tkfont.Font(
+            font=self.t.letra("corpo")).measure(texto) + 12)
+        caixa = tk.Frame(pai, bg=fundo, width=largura,
+                         height=self.LADO_BOTAO, cursor="hand2")
+        caixa.pack_propagate(False)
+        botao = tk.Label(caixa, text=texto, bg=fundo, fg=cor, cursor="hand2",
+                         font=self.t.letra("corpo"), bd=0, padx=0, pady=0)
+        botao.pack(fill="both", expand=True)
 
         def entrar(_e):
-            botao.configure(bg=self.t.superficie_alta, fg=self.t.acento_forte)
+            for w in (caixa, botao):
+                w.configure(bg=self.t.superficie_alta)
+            botao.configure(fg=self.t.acento_forte)
             self._dica(dica)
+            self._mostrar_dica_flutuante(caixa, dica)
 
         def sair(_e):
-            botao.configure(bg=fundo, fg=botao.cor_normal)
+            for w in (caixa, botao):
+                w.configure(bg=fundo)
+            botao.configure(fg=botao.cor_normal)
             self._dica(None)
+            self._esconder_dica_flutuante()
+
+        def clicar(_e):
+            self._esconder_dica_flutuante()
+            acao()
+            return "break"
 
         botao.cor_normal = cor
-        botao.bind("<Enter>", entrar)
-        botao.bind("<Leave>", sair)
-        botao.bind("<Button-1>", lambda _e: acao())
-        return botao
+        botao.caixa = caixa
+        botao.dica = dica
+        for w in (caixa, botao):
+            w.bind("<Enter>", entrar)
+            w.bind("<Leave>", sair)
+            w.bind("<ButtonRelease-1>", clicar)
+        caixa.botao = botao
+        self._botoes.append((nome or texto, caixa))
+        return caixa
+
+    def _mostrar_dica_flutuante(self, alvo, texto: str) -> None:
+        self._esconder_dica_flutuante()
+        if not texto or not self.persistir:
+            return
+        dica = tk.Toplevel(self)
+        dica.overrideredirect(True)
+        dica.attributes("-topmost", True)
+        tk.Label(dica, text=texto, bg=self.t.superficie_alta,
+                 fg=self.t.texto, font=self.t.letra("legenda"),
+                 padx=ESPACO["meio"], pady=2, bd=1, relief="solid"
+                 ).pack()
+        dica.update_idletasks()
+        x = alvo.winfo_rootx() + alvo.winfo_width() - dica.winfo_width()
+        y = alvo.winfo_rooty() + alvo.winfo_height() + 4
+        dica.geometry(f"+{max(0, x)}+{y}")
+        self._dica_flutuante = dica
+
+    def _esconder_dica_flutuante(self) -> None:
+        dica = getattr(self, "_dica_flutuante", None)
+        if dica is not None:
+            try:
+                dica.destroy()
+            except tk.TclError:
+                pass
+            self._dica_flutuante = None
+
+    def botoes_visiveis(self) -> list:
+        """[(nome, x, y, largura, altura)] relativos a janela — para teste."""
+        self.update()
+        saida = []
+        for nome, caixa in self._botoes:
+            if not caixa.winfo_exists() or not caixa.winfo_ismapped():
+                continue
+            saida.append((nome, caixa.winfo_rootx() - self.winfo_rootx(),
+                          caixa.winfo_rooty() - self.winfo_rooty(),
+                          caixa.winfo_width(), caixa.winfo_height()))
+        return saida
 
     def _dica(self, texto) -> None:
         alvo = getattr(self, "_lbl_dica", None)
@@ -683,6 +761,8 @@ class Janela(tk.Tk):
         self._btn_topo = None
         self._lbl_dica = None
         self._lbl_tarefas = None
+        self._botoes = []
+        self._esconder_dica_flutuante()
         self.modo = modo
         self.prefs["modo"] = modo
 
@@ -732,30 +812,36 @@ class Janela(tk.Tk):
         barra = tk.Frame(pai, bg=self.t.fundo, height=30)
         barra.pack(fill="x")
         barra.pack_propagate(False)
+        # OS BOTOES ENTRAM PRIMEIRO: no `pack`, quem chega antes reserva o
+        # espaco. O texto com `expand` fica com o que sobrar, nunca o
+        # contrario (era isso que sobrepunha o ✕ ao vizinho).
+        botoes = [
+            ("✕", "fechar", lambda: self.trocar("icone"),
+             "fechar: vira o ícone flutuante (sair de vez: botão direito "
+             "no ícone → Fechar de verdade)"),
+            ("−", "recolher", lambda: self.trocar("icone"),
+             "recolher para o ícone flutuante (clique nele para voltar)"),
+            ("▬", "faixa", lambda: self.trocar("mini"),
+             "encolher para a faixa"),
+            ("⤡" if self.modo == "grande" else "⤢", "tamanho",
+             lambda: self.trocar("medio" if self.modo == "grande"
+                                 else "grande"),
+             "tamanho médio" if self.modo == "grande" else "tamanho grande"),
+            ("⟳", "prever", self.prever_agora,
+             "prever agora o que sai no próximo horário"),
+        ]
+        for texto, nome, acao, dica in botoes:
+            self._botao(barra, texto, acao, dica, nome=nome).pack(
+                side="right", padx=(2, 0), pady=2)
+        self._btn_topo = self._botao(barra, "📌", self.alternar_topo,
+                                     "sempre por cima (liga/desliga)",
+                                     ativo=bool(self.prefs["topo"]),
+                                     nome="topo")
+        self._btn_topo.pack(side="right", padx=(2, 0), pady=2)
         marca = tk.Label(barra, text="🏘 Vila", bg=self.t.fundo,
                          fg=self.t.texto, font=self.t.letra("secao", "bold"),
                          padx=ESPACO["meio"])
         marca.pack(side="left")
-        self._lbl_dica = tk.Label(barra, text="", bg=self.t.fundo,
-                                  fg=self.t.texto_fraco, anchor="w",
-                                  font=self.t.letra("legenda"))
-        self._lbl_dica.pack(side="left", fill="x", expand=True)
-        botoes = [
-            ("✕", lambda: self.trocar("icone"),
-             "fechar para o ícone (os alertas continuam)"),
-            ("▁", lambda: self.trocar("mini"), "encolher para a faixa"),
-            ("⧉" if self.modo == "grande" else "▢",
-             lambda: self.trocar("medio" if self.modo == "grande"
-                                 else "grande"),
-             "tamanho médio" if self.modo == "grande" else "tamanho grande"),
-            ("⟳", self.prever_agora, "prever agora o que sai no próximo horário"),
-        ]
-        for texto, acao, dica in botoes:
-            self._botao(barra, texto, acao, dica).pack(side="right")
-        self._btn_topo = self._botao(barra, "📌", self.alternar_topo,
-                                     "sempre por cima (liga/desliga)",
-                                     ativo=bool(self.prefs["topo"]))
-        self._btn_topo.pack(side="right")
         # O SELO DO AGENDADOR: as tarefas ainda abririam janela preta? Fica
         # na barra porque e a promessa desta janela — o console nao volta.
         self._lbl_tarefas = tk.Label(barra, text="tarefas: …", bg=self.t.fundo,
@@ -764,6 +850,11 @@ class Janela(tk.Tk):
                                      padx=ESPACO["meio"])
         self._lbl_tarefas.pack(side="right")
         self._lbl_tarefas.bind("<Button-1>", lambda _e: self.detalhe_tarefas())
+        # `width=1`: o texto nao PEDE espaco, so ocupa o que sobrou.
+        self._lbl_dica = tk.Label(barra, text="", bg=self.t.fundo, width=1,
+                                  fg=self.t.texto_fraco, anchor="w",
+                                  font=self.t.letra("legenda"))
+        self._lbl_dica.pack(side="left", fill="x", expand=True)
         self._arrastavel(barra, marca, self._lbl_dica)
         tk.Frame(pai, bg=self.t.borda, height=1).pack(fill="x")
 
@@ -795,22 +886,28 @@ class Janela(tk.Tk):
                                                    fill=self.t.texto_apagado,
                                                    outline="")
         self._ponto.pack(side="left")
+        # Botoes primeiro (ver `_barra_titulo`), depois o texto com width=1.
+        self._botao(linha1, "✕", lambda: self.trocar("icone"),
+                    "fechar: vira o ícone flutuante", nome="fechar").pack(
+            side="right", padx=(2, 2))
+        self._botao(linha1, "−", lambda: self.trocar("icone"),
+                    "recolher para o ícone", nome="recolher").pack(
+            side="right", padx=(2, 0))
+        self._botao(linha1, "⤢", lambda: self.trocar("medio"),
+                    "abrir a Vila (tamanho médio)", nome="tamanho").pack(
+            side="right", padx=(2, 0))
         self._mini_frase = tk.Label(linha1, text="lendo…", bg=self.t.fundo,
-                                    fg=self.t.texto, anchor="w",
+                                    fg=self.t.texto, anchor="w", width=1,
                                     font=self.t.letra("corpo", "bold"))
         self._mini_frase.pack(side="left", fill="x", expand=True,
                               padx=(ESPACO["pouco"], 0))
-        self._botao(linha1, "✕", lambda: self.trocar("icone"),
-                    "ícone").pack(side="right")
-        self._botao(linha1, "▢", lambda: self.trocar("medio"),
-                    "abrir a Vila").pack(side="right")
         linha2 = tk.Frame(moldura, bg=self.t.fundo)
         linha2.pack(fill="x", padx=ESPACO["meio"])
         self._mini_tempo = tk.Label(linha2, bg=self.t.fundo, fg=self.t.acento,
                                     font=self.t.letra("legenda", "bold"))
         self._mini_tempo.pack(side="left")
         self._mini_alerta = tk.Label(linha2, bg=self.t.fundo, anchor="w",
-                                     fg=self.t.texto_fraco,
+                                     fg=self.t.texto_fraco, width=1,
                                      font=self.t.letra("legenda"))
         self._mini_alerta.pack(side="left", fill="x", expand=True,
                                padx=(ESPACO["meio"], 0))
@@ -973,13 +1070,18 @@ class Janela(tk.Tk):
         if not self._vivo:
             return
         ultimo = None
+        mostrar = False
         try:
             while True:
                 tipo, valor = self.fila.get_nowait()
                 if tipo == "estado":
                     ultimo = valor
+                elif tipo == "mostrar":
+                    mostrar = True
         except queue.Empty:
             pass
+        if mostrar:
+            self.mostrar()
         if ultimo is not None:
             self.estado = ultimo
             try:
@@ -1151,8 +1253,37 @@ class Janela(tk.Tk):
         janela.geometry(f"+{x}+{self.winfo_y()}")
         janela.bind("<Escape>", lambda _e: janela.destroy())
 
+    def escutar(self) -> None:
+        """Deixa um segundo lancamento trazer ESTA janela de volta."""
+        from . import sinal
+        try:
+            self._escuta = sinal.Escuta(
+                self.caminhos.sinal,
+                lambda: self.fila.put(("mostrar", None))).iniciar()
+        except OSError:
+            self._escuta = None
+
+    def mostrar(self) -> None:
+        """Volta a janela: sai do icone/faixa e vem para a frente."""
+        if self.modo in ("icone", "mini"):
+            anterior = self.prefs.get("anterior")
+            self.trocar(anterior if anterior in ("medio", "grande")
+                        else "medio")
+        self.deiconify()
+        self.lift()
+        # Por cima por um instante, mesmo com "sempre por cima" desligado.
+        self.attributes("-topmost", True)
+        self.after(1500, self._aplicar_topo)
+        try:
+            self.focus_force()
+        except tk.TclError:
+            pass
+
     def sair(self) -> None:
         self._vivo = False
+        self._esconder_dica_flutuante()
+        if self._escuta is not None:
+            self._escuta.parar()
         self.guardar()
         self.coletor.parar()
         self._parar_animacao()

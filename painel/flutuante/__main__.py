@@ -48,7 +48,14 @@ def main(argv=None) -> int:
 
     alca = _uma_so() if not args.prova else True
     if alca is None:
-        print("a Vila flutuante ja esta aberta.")
+        # Ja ha uma aberta: em vez de sair calado (e a janela sumida nao
+        # voltar nunca mais), pede para ELA aparecer.
+        from .caminhos import Caminhos
+        from .sinal import pedir_para_mostrar
+        if pedir_para_mostrar(Caminhos().sinal):
+            print("a Vila flutuante ja estava aberta: trouxe para a frente.")
+        else:
+            print("a Vila flutuante ja esta aberta, mas nao respondeu.")
         return 0
 
     from .janela import Janela

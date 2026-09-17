@@ -957,6 +957,40 @@ class Coleta(unittest.TestCase):
                                  f"{arquivo.name}:{no.lineno} chama {nome}")
 
 
+class Sinal(unittest.TestCase):
+    def test_segundo_lancamento_chama_a_janela_viva(self):
+        from painel.flutuante import sinal
+        arquivo = Path(tempfile.mkdtemp()) / "flutuante.sinal"
+        chamou = []
+        escuta = sinal.Escuta(arquivo, lambda: chamou.append(1)).iniciar()
+        try:
+            dados_ = json.loads(arquivo.read_text(encoding="utf-8"))
+            self.assertEqual(dados_["pid"], os.getpid())
+            self.assertTrue(sinal.pedir_para_mostrar(arquivo))
+            fim = time.monotonic() + 5
+            while not chamou and time.monotonic() < fim:
+                time.sleep(0.05)
+            self.assertEqual(chamou, [1])
+            # Segredo errado: ignorado.
+            import socket
+            with socket.create_connection(("127.0.0.1", escuta.porta)) as c:
+                c.sendall(b"mostrar outro")
+            time.sleep(0.3)
+            self.assertEqual(chamou, [1])
+        finally:
+            escuta.parar()
+        self.assertFalse(arquivo.exists(), "a instancia limpa o proprio sinal")
+        self.assertFalse(sinal.pedir_para_mostrar(arquivo))
+
+    def test_so_escuta_na_propria_maquina(self):
+        from painel.flutuante import sinal
+        escuta = sinal.Escuta(Path(tempfile.mkdtemp()) / "s", lambda: None)
+        try:
+            self.assertEqual(escuta._sock.getsockname()[0], "127.0.0.1")
+        finally:
+            escuta.parar()
+
+
 class _ColetorParado:
     def __init__(self):
         self.fila = queue.Queue()
@@ -1039,6 +1073,84 @@ class JanelaMonta(unittest.TestCase):
         self.assertEqual(len([w for w in self.app.winfo_children()
                               if isinstance(w, tk.Toplevel)]), 3,
                          "trocar de tamanho nao fecha o detalhe aberto")
+
+    def test_botoes_nao_se_sobrepoem_em_nenhum_tamanho(self):
+        """Bug de 17/09: o clique no ✕ caia no botao vizinho."""
+        self.coletor.fila.put(("estado", self.estado))
+        self.app._drenar()
+        for modo in ("medio", "grande", "mini"):
+            self.app.trocar(modo)
+            # Texto comprido na barra: era ele que espremia os botoes.
+            self.app._dica_padrao = "x" * 400
+            self.app._dica(None)
+            if modo == "mini":
+                self.app._mini_frase.configure(text="y" * 400)
+            botoes = self.app.botoes_visiveis()
+            nomes = [b[0] for b in botoes]
+            esperados = ({"fechar", "recolher", "tamanho"} if modo == "mini"
+                         else {"fechar", "recolher", "faixa", "tamanho",
+                               "prever", "topo"})
+            self.assertTrue(esperados <= set(nomes), (modo, nomes))
+            largura, altura = self.app.winfo_width(), self.app.winfo_height()
+            for nome, x, y, w, h in botoes:
+                self.assertGreaterEqual(w, 24, (modo, nome))
+                self.assertGreaterEqual(h, 24, (modo, nome))
+                self.assertTrue(0 <= x and x + w <= largura
+                                and 0 <= y and y + h <= altura, (modo, nome))
+            for i, (n1, x1, y1, w1, h1) in enumerate(botoes):
+                centro = (x1 + w1 / 2, y1 + h1 / 2)
+                for n2, x2, y2, w2, h2 in botoes[i + 1:]:
+                    sobrepoe = (x1 < x2 + w2 and x2 < x1 + w1
+                                and y1 < y2 + h2 and y2 < y1 + h1)
+                    self.assertFalse(sobrepoe, (modo, n1, n2))
+                    self.assertFalse(x2 <= centro[0] < x2 + w2
+                                     and y2 <= centro[1] < y2 + h2,
+                                     (modo, n1, "centro cai em", n2))
+
+    def test_o_clique_resolve_para_o_botao_certo(self):
+        for modo in ("medio", "mini"):
+            self.app.trocar(modo)
+            self.app.update()
+            caixa = dict(self.app._botoes)["fechar"]
+            caixa.botao.event_generate("<ButtonRelease-1>")
+            self.app.update()
+            self.assertEqual(self.app.modo, "icone", modo)
+            self.app.restaurar()
+
+    def test_menos_e_x_viram_o_icone_e_ele_volta(self):
+        self.app.trocar("grande")
+        self.app.update()
+        dict(self.app._botoes)["recolher"].botao.event_generate(
+            "<ButtonRelease-1>")
+        self.app.update()
+        self.assertEqual(self.app.modo, "icone")
+        self.assertTrue(self.app.winfo_viewable(), "o icone continua visivel")
+        self.app.restaurar()
+        self.assertEqual(self.app.modo, "grande")
+
+    def test_nunca_some_de_vez(self):
+        """Janela sem borda nao tem barra de tarefas: iconify/withdraw a
+        fariam sumir sem volta."""
+        import ast
+        arvore = ast.parse(Path(janela.__file__).read_text(encoding="utf-8"))
+        chamadas = {getattr(n.func, "attr", "") for n in ast.walk(arvore)
+                    if isinstance(n, ast.Call)}
+        self.assertFalse(chamadas & {"iconify", "withdraw", "wm_iconify",
+                                     "wm_withdraw"})
+        rotulos = [self.app._menu.entrycget(i, "label")
+                   for i in range(self.app._menu.index("end") + 1)
+                   if self.app._menu.type(i) != "separator"]
+        self.assertIn("Fechar de verdade", rotulos)
+
+    def test_pedido_de_mostrar_traz_a_janela(self):
+        self.app.trocar("medio")
+        self.app.trocar("icone")
+        self.coletor.fila.put(("mostrar", None))
+        self.app._drenar()
+        self.assertEqual(self.app.modo, "medio")
+        self.app.trocar("mini")
+        self.app.mostrar()
+        self.assertEqual(self.app.modo, "medio")
 
     def test_prova_nao_grava_preferencias(self):
         self.app.trocar("grande")

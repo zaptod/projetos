@@ -79,6 +79,11 @@ class Caminhos:
         return self.runtime / "flutuante.json"
 
     @property
+    def sinal(self) -> Path:
+        # Porta local + segredo da instancia viva (ver `sinal.py`).
+        return self.runtime / "flutuante.sinal"
+
+    @property
     def ledgers(self) -> dict:
         return {
             "historias": self.raiz / "historias" / "outputs" / "_publicar"
