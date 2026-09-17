@@ -1,6 +1,7 @@
 "use strict";
 const TOKEN = "painel.token";
 const ULTIMO = "painel.ultimo_estado";
+const CONTATO = "painel.ultimo_contato";
 const TITULOS = {agora: "Agora", diario: "Diário", videos: "Vídeos",
                  relatorios: "Relatórios"};
 const RELATORIOS = ["metas", "funcionamento", "confiabilidade", "auditoria"];
@@ -34,30 +35,75 @@ function ha(segundos) {
   return h < 24 ? `há ${h} h` : `há ${Math.floor(h / 24)} d`;
 }
 
+class ErroApi extends Error {
+  constructor(mensagem, status) { super(mensagem); this.status = status; }
+}
+
 async function api(caminho, opcoes = {}) {
   const token = localStorage.getItem(TOKEN);
-  const resp = await fetch(caminho, {
-    ...opcoes,
-    headers: {...(opcoes.headers || {}),
-              ...(token ? {Authorization: `Bearer ${token}`} : {})},
-  });
-  if (resp.status === 401) { localStorage.removeItem(TOKEN); mostrar(); throw new Error("401"); }
-  const dados = await resp.json();
-  if (!resp.ok) throw new Error(dados.erro || resp.status);
+  let resp;
+  try {
+    resp = await fetch(caminho, {
+      ...opcoes,
+      headers: {...(opcoes.headers || {}),
+                ...(token ? {Authorization: `Bearer ${token}`} : {})},
+    });
+  } catch (err) {
+    // fetch so falha assim quando nao chegou a falar com ninguem: sem
+    // rede, ou o Tailscale do celular desligado.
+    throw new ErroApi("sem rede", 0);
+  }
+  if (resp.status === 401) {
+    localStorage.removeItem(TOKEN); mostrar();
+    throw new ErroApi("não pareado", 401);
+  }
+  let dados = {};
+  try { dados = await resp.json(); } catch (err) { /* 502 do serve vem em texto */ }
+  if (!resp.ok) throw new ErroApi(dados.erro || `erro ${resp.status}`, resp.status);
   return dados;
 }
 
-function conexao(ok) {
+function quandoCurto(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const hoje = new Date().toDateString() === d.toDateString();
+  return hoje ? hora(iso)
+    : d.toLocaleDateString("pt-BR", {day: "2-digit", month: "2-digit"}) + " " + hora(iso);
+}
+
+// O "desde quando" e o ultimo contato que deu certo, de QUALQUER tela.
+// E a mensagem diz de que lado esta o problema: sem rede (quase sempre o
+// Tailscale do celular, que o Android desliga) nao e o mesmo que o PC
+// respondendo com erro (502 = servidor parado atras do `tailscale serve`).
+function conexao(ok, err) {
   const alvo = $("conexao");
   if (ok) {
+    localStorage.setItem(CONTATO, new Date().toISOString());
     alvo.className = "";
     alvo.textContent = "ao vivo · " + hora(new Date().toISOString());
+    $("aviso").classList.add("oculto");
     return;
   }
-  const ultimo = JSON.parse(localStorage.getItem(ULTIMO) || "null");
+  const status = err && err.status;
+  if (status === 401) return;
+  const contato = localStorage.getItem(CONTATO);
+  const desde = contato ? ` desde ${quandoCurto(contato)}` : "";
   alvo.className = "off";
-  alvo.textContent = ultimo ? `PC sem resposta desde ${hora(ultimo.quando)}`
-                            : "PC sem resposta";
+  let texto;
+  if (!status) {
+    alvo.textContent = "sem conexão" + desde;
+    texto = navigator.onLine === false
+      ? "O celular está sem internet."
+      : "Não consegui falar com o PC. Confira se o Tailscale está ligado neste celular.";
+  } else if (status === 502 || status === 503 || status === 504) {
+    alvo.textContent = "PC sem o servidor" + desde;
+    texto = "O PC atendeu, mas o servidor do app está parado.";
+  } else {
+    alvo.textContent = "erro do PC" + desde;
+    texto = `O PC respondeu com erro: ${err.message}`;
+  }
+  $("aviso-texto").textContent = texto;
+  $("aviso").classList.remove("oculto");
 }
 
 // ------------------------------------------------------------- agora
@@ -126,7 +172,7 @@ async function carregarAgora() {
   } catch (err) {
     const ultimo = JSON.parse(localStorage.getItem(ULTIMO) || "null");
     if (ultimo) desenharEstado(ultimo.e);
-    conexao(false);
+    conexao(false, err);
   }
 }
 
@@ -137,7 +183,7 @@ async function carregarDiario() {
     if (eventos.length) diarioDesde = eventos[eventos.length - 1].ts;
     desenharEventos($("diario"), eventos);
     conexao(true);
-  } catch (err) { conexao(false); }
+  } catch (err) { conexao(false, err); }
 }
 
 // ------------------------------------------------------------ videos
@@ -164,7 +210,7 @@ async function carregarVideos() {
     }
     if (!lista.length) alvo.append(el("div", {class: "fraco"}, "nenhum vídeo pronto."));
     conexao(true);
-  } catch (err) { conexao(false); }
+  } catch (err) { conexao(false, err); }
 }
 
 let tocando = null;
@@ -207,7 +253,7 @@ function montarAbas() {
         conexao(true);
       } catch (err) {
         $("relatorio").textContent = "falhou: " + err.message;
-        conexao(false);
+        conexao(false, err);
       }
     });
     abas.append(b);
@@ -262,6 +308,8 @@ function mostrar(nova) {
 
 for (const b of document.querySelectorAll("nav button"))
   b.addEventListener("click", () => mostrar(b.dataset.tela));
+$("btn-tentar").addEventListener("click", () => mostrar());
+window.addEventListener("online", () => mostrar());
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") mostrar();
 });
