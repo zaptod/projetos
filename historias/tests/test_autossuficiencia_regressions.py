@@ -359,6 +359,12 @@ class ConfirmarComQuemViuTests(unittest.TestCase):
         fonte = inspect.getsource(reparo._confirmar_com_a_ia)
         self.assertIn("return None", fonte)
 
+    # Le o roteiro de verdade da historia_00004, que so existe em outputs/
+    # da arvore principal (numa worktree o teste falhava sem dizer por que).
+    @unittest.skipUnless(
+        (Path(reparo.__file__).resolve().parents[2] / "outputs"
+         / "historia_00004" / "roteiro.json").is_file(),
+        "depende de outputs/historia_00004 (so na arvore principal)")
     def test_reprovado_pela_IA_nao_conta_como_consertado(self):
         class _V:
             id = "historia_00004:celular:p02"
