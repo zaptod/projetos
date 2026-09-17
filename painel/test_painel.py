@@ -6,6 +6,7 @@ Rode da raiz:
 """
 from __future__ import annotations
 
+import gc
 import os
 import pathlib
 import tkinter as tk
@@ -89,7 +90,12 @@ class GavetaTests(unittest.TestCase):
 
     def _fechar(self):
         self.app.encerrar()
+        # As leituras de fundo seguram a janela: se acabarem depois do
+        # destroy, o Tk e finalizado fora da thread principal e o processo
+        # aborta. Espera, destroi e coleta AQUI.
+        self.app.supervisor.aguardar(60)
         self.app.destroy()
+        gc.collect()
 
     def test_fechada_ocupa_uma_faixa_fina(self):
         altura = self.app._gaveta.winfo_height()
@@ -138,7 +144,12 @@ class FreioDaPipelineTests(unittest.TestCase):
 
     def _fechar(self):
         self.app.encerrar()
+        # As leituras de fundo seguram a janela: se acabarem depois do
+        # destroy, o Tk e finalizado fora da thread principal e o processo
+        # aborta. Espera, destroi e coleta AQUI.
+        self.app.supervisor.aguardar(60)
         self.app.destroy()
+        gc.collect()
 
     def test_a_faixa_existe_na_janela_de_criacao(self):
         self.assertTrue(hasattr(self.app, "_pipeline_estado"))
@@ -669,7 +680,12 @@ class ExperimentosTests(unittest.TestCase):
     def _fechar(self):
         self.X.PASTA, self.X.REGISTRO, self.X.ATRIBUICOES = self._antes
         self.app.encerrar()
+        # As leituras de fundo seguram a janela: se acabarem depois do
+        # destroy, o Tk e finalizado fora da thread principal e o processo
+        # aborta. Espera, destroi e coleta AQUI.
+        self.app.supervisor.aguardar(60)
         self.app.destroy()
+        gc.collect()
         self._tmp.cleanup()
 
     def test_as_colunas_cabem_na_tela_dele(self):
@@ -776,7 +792,12 @@ class ConfiabilidadeTests(unittest.TestCase):
 
     def _fechar(self):
         self.app.encerrar()
+        # As leituras de fundo seguram a janela: se acabarem depois do
+        # destroy, o Tk e finalizado fora da thread principal e o processo
+        # aborta. Espera, destroi e coleta AQUI.
+        self.app.supervisor.aguardar(60)
         self.app.destroy()
+        gc.collect()
 
     def test_desenha_a_ficha_inteira(self):
         self.pagina._desenhar(self.FICHA)
