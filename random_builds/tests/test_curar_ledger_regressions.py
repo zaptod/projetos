@@ -155,6 +155,39 @@ class VideoPrivado(unittest.TestCase):
         self.assertEqual([], C.calcular_curas(
             curadas, videos, privadas={"h5:celular:p03"}))
 
+    def test_decisao_do_adrian_vale_para_linha_ja_curada_como_rascunho(self):
+        # Item 12 da segunda revisao: ignorar em silencio deixava a fila
+        # republicar uma parte que ele quis privada.
+        linha = dict(_yt("g5:build:celular", url="", youtube_id="rrr"),
+                     publicado=False, estado="rascunho", rascunho_id="rrr")
+        (cura,) = C.calcular_curas([linha],
+                                   [_video("rrr", privacidade="private")],
+                                   privadas={"g5:build:celular"})
+        self.assertEqual("privado_de_proposito", cura["tipo"])
+        self.assertIn("rascunho", cura["motivo"])
+        (curada,) = C.aplicar([linha], [cura])
+        self.assertTrue(M.publicado(curada))
+        self.assertEqual("https://youtu.be/rrr", curada["url"])
+        self.assertEqual([], C.calcular_curas(
+            [curada], [_video("rrr", privacidade="private")],
+            privadas={"g5:build:celular"}))
+
+    def test_privada_que_nao_pegou_vira_aviso(self):
+        linhas = [_yt("g1", url="https://youtu.be/pub", youtube_id="pub"),
+                  _yt("g2", url="https://youtu.be/rrr", youtube_id="rrr")]
+        videos = [_video("pub"), _video("rrr", privacidade="private")]
+        privadas = ["g1", "g2", "digitado_errado"]
+        curas = C.calcular_curas(linhas, videos, privadas=privadas)
+        avisos = dict(C.privadas_sem_efeito(linhas, curas, privadas))
+        self.assertEqual({"g1", "digitado_errado"}, set(avisos))
+        self.assertIn("nao esta privado", avisos["g1"])
+        self.assertIn("nenhuma linha", avisos["digitado_errado"])
+
+    def test_privada_ja_decidida_nao_e_aviso(self):
+        linha = dict(_yt("g2", url="https://youtu.be/rrr", youtube_id="rrr"),
+                     publicado=True, estado="privado_de_proposito")
+        self.assertEqual([], C.privadas_sem_efeito([linha], [], ["g2"]))
+
     def test_historia_privada_e_pergunta_para_o_adrian(self):
         # A historia_00005 pode ter sido privada DE PROPOSITO.
         linha = _yt("h5:celular:p03", url="https://youtu.be/rrr",
@@ -288,6 +321,28 @@ class PreCondicaoDoPostar(unittest.TestCase):
                  "ja = {l.get('v') for l in x if l.get(\"url\")}\n")
         self.assertIn("1 ponto", C.postar_migrado(fonte))
 
+    def test_arvore_pega_qualquer_nome_e_qualquer_formatacao(self):
+        # Item 6: a regex so via `l`/`linha` na mesma linha do `if`.
+        fonte = ("CONTRATO_DO_LEDGER = 2\n"
+                 "a = any(x.get('video_id') == v and\n"
+                 "        x.get(\"url\") for x in y)\n"
+                 "b = [e for e in y\n"
+                 "     if e.get('url')]\n"
+                 "if not item.get('url'):\n    pass\n"
+                 "c = 1 if w.get('url') else 2\n")
+        self.assertEqual([3, 5, 6, 8], C.leituras_por_url(fonte))
+        self.assertIn("4 ponto", C.postar_migrado(fonte))
+
+    def test_valor_padrao_e_ficha_nao_sao_decisao(self):
+        fonte = ("d = {'url': ja.get('url') or ''}\n"
+                 "if r.get('url'):\n    pass\n"
+                 "print(linha.get('url'))\n")
+        self.assertEqual([], C.leituras_por_url(fonte))
+
+    def test_codigo_que_nao_compila_recusa(self):
+        self.assertIn("nao compila",
+                      C.postar_migrado("CONTRATO_DO_LEDGER = 2\nif (:\n"))
+
     def test_migrado_de_verdade_libera(self):
         fonte = ("CONTRATO_DO_LEDGER = 2\n"
                  "ja = {l.get('v') for l in x if publicado(l)}\n"
@@ -318,6 +373,90 @@ class PreCondicaoDoPostar(unittest.TestCase):
             self.assertFalse(postar._build_ja_no_tiktok("g1:build:celular"),
                              "o postar ja enxerga a linha curada: suba o "
                              "CONTRATO_DO_LEDGER para 2")
+
+
+POSTAR_MIGRADO = '''
+CONTRATO_DO_LEDGER = 2
+def _build_ja_no_tiktok(video_id):
+    from builds.publicar import metricas
+    return any(l.get("video_id") == video_id and metricas.publicado(l)
+               and l.get("plataforma") == "tiktok"
+               for l in metricas.publicados())
+'''
+POSTAR_ANTIGO = POSTAR_MIGRADO.replace("metricas.publicado(l)",
+                                       "l.get(\"url\")")
+
+
+class SondaDoLeitor(unittest.TestCase):
+    """Item 6: carrega o postar e pergunta, com uma linha curada no lugar do
+    ledger, se ela conta como publicada."""
+
+    def _com_postar(self, fonte):
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        falso = Path(pasta.name) / "postar.py"
+        falso.write_text(fonte, encoding="utf-8")
+        real = C.POSTAR
+        C.POSTAR = falso
+        self.addCleanup(lambda: setattr(C, "POSTAR", real))
+
+    def test_postar_migrado_passa_nas_tres_provas(self):
+        self._com_postar(POSTAR_MIGRADO)
+        self.assertEqual("", C.postar_migrado())
+
+    def test_leitor_que_ainda_le_o_url_e_recusado_pela_sonda(self):
+        # Sem a varredura (que ja pegaria), a sonda sozinha tem de pegar.
+        self._com_postar(POSTAR_ANTIGO)
+        motivo = C.leitores_entendem_a_cura()
+        self.assertIn("_build_ja_no_tiktok", motivo)
+
+    def test_postar_que_quebra_ao_carregar_e_recusado(self):
+        self._com_postar("CONTRATO_DO_LEDGER = 2\nraise RuntimeError('x')\n")
+        self.assertIn("falhou", C.postar_migrado())
+
+    def test_a_sonda_devolve_os_leitores_de_verdade(self):
+        from contos.publicar import serie
+        reais = (M.publicados, serie.publicados)
+        self._com_postar(POSTAR_ANTIGO)
+        C.leitores_entendem_a_cura()
+        self.assertEqual(reais, (M.publicados, serie.publicados))
+
+
+class SondaDosEscritores(unittest.TestCase):
+    """Item 5: os tres escritores passam pela trava `ledger__<canal>`."""
+
+    def test_o_codigo_de_hoje_passa(self):
+        self.assertEqual("", C.escritores_travados())
+
+    def test_escritor_que_foge_da_trava_e_pego_sem_tocar_no_ledger(self):
+        real = M.registrar_publicacao
+        registro_real = M.REGISTRO
+
+        def por_fora(video, url, plataforma="youtube", extra=None):
+            with open(M.REGISTRO, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"video_id": video.id}) + "\n")
+
+        M.registrar_publicacao = por_fora
+        self.addCleanup(lambda: setattr(M, "registrar_publicacao", real))
+        antes = (Path(registro_real).read_bytes()
+                 if Path(registro_real).is_file() else None)
+        motivo = C.escritores_travados()
+        self.assertIn("gravou fora", motivo)
+        self.assertIn("['historias']", motivo)
+        self.assertEqual(registro_real, M.REGISTRO)
+        depois = (Path(registro_real).read_bytes()
+                  if Path(registro_real).is_file() else None)
+        self.assertEqual(antes, depois)
+
+    def test_reconciliar_sem_trava_e_pego(self):
+        real = M.reconciliar
+
+        def sem_trava(canal="builds", log=print):
+            return 0
+
+        M.reconciliar = sem_trava
+        self.addCleanup(lambda: setattr(M, "reconciliar", real))
+        self.assertIn("travas pedidas", C.escritores_travados())
 
 
 class GravacaoSegura(unittest.TestCase):
@@ -415,6 +554,19 @@ class ASecoEPadrao(unittest.TestCase):
         self.assertEqual(2, C.main(["--canal", "builds", "--gravar"]))
         self.assertEqual(antes, self.ledger.read_bytes())
         self.assertEqual([], list(self.ledger.parent.glob("*.antes-cura-*")))
+
+    def test_com_flag_e_escritor_sem_trava_recusa(self):
+        reais = (C.postar_migrado, C.escritores_travados)
+        C.postar_migrado = lambda fonte=None: ""
+        C.escritores_travados = lambda: "reconciliar sem trava"
+
+        def restaurar():
+            C.postar_migrado, C.escritores_travados = reais
+
+        self.addCleanup(restaurar)
+        antes = self.ledger.read_bytes()
+        self.assertEqual(2, C.main(["--canal", "builds", "--gravar"]))
+        self.assertEqual(antes, self.ledger.read_bytes())
 
     def test_com_flag_grava_e_guarda_copia(self):
         real = C.postar_migrado

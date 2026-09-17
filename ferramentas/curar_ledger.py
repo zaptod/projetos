@@ -198,21 +198,30 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds",
     for i, L in enumerate(linhas):
         if i in tocadas or not youtube(L):
             continue
-        if L.get("estado") in ESTADOS_JA_DECIDIDOS:
-            # Ja curada: o video continua privado, e e isso mesmo. Sem esta
-            # saida, cada rodada "curaria" a mesma linha de novo.
+        if L.get("estado") == "privado_de_proposito":
             continue
         video = por_id.get(str(L.get("youtube_id") or ""))
         if not video or str(video.get("privacidade") or "").lower() not in PRIVADO:
             continue
         if L.get("video_id") in privadas:
             # DECISAO DE UMA PESSOA, passada pelo nome: a parte fica privada e
-            # a fila nunca a republica (`publicado` continua verdadeiro).
+            # a fila nunca a republica (`publicado` continua verdadeiro). Vale
+            # tambem para a linha que uma cura anterior ja chamou de rascunho:
+            # a decisao chegou depois e manda — ignorar em silencio deixaria a
+            # fila republicar o que ele quis privado.
+            depois = {"publicado": True, "estado": "privado_de_proposito"}
+            if not _e_link(L.get("url")):
+                depois["url"] = _link(video["youtube_id"])
             curas.append(_cura(
-                i, L, "privado_de_proposito", ALTA,
-                {"publicado": True, "estado": "privado_de_proposito"},
-                f"{video['youtube_id']} esta privado por decisao do Adrian"))
+                i, L, "privado_de_proposito", ALTA, depois,
+                f"{video['youtube_id']} esta privado por decisao do Adrian"
+                + (" (a linha estava como rascunho)"
+                   if L.get("estado") == "rascunho" else "")))
             tocadas.add(i)
+            continue
+        if L.get("estado") in ESTADOS_JA_DECIDIDOS:
+            # Ja curada: o video continua privado, e e isso mesmo. Sem esta
+            # saida, cada rodada "curaria" a mesma linha de novo.
             continue
         homonimos = [v for v in publicos if _mesmo_titulo(v, video, canal)
                      and v["youtube_id"] not in donos]
@@ -360,6 +369,31 @@ def resumo(curas: list) -> dict:
     return dict(sorted(contagem.items()))
 
 
+def privadas_sem_efeito(linhas: list, curas: list, privadas) -> list:
+    """`[(video_id, motivo)]` dos `--privada-de-proposito` que nao pegaram.
+
+    Um id digitado errado, ou de uma parte cujo video nao esta privado, nao
+    pode sumir calado: a pessoa acha que decidiu, e a fila republica.
+    """
+    curadas = {c["video_id"] for c in curas
+               if c["tipo"] == "privado_de_proposito"}
+    saida = []
+    for vid in dict.fromkeys(privadas or ()):
+        if vid in curadas:
+            continue
+        dele = [L for L in linhas if isinstance(L, dict)
+                and L.get("video_id") == vid
+                and (L.get("plataforma") or "youtube") == "youtube"]
+        if not dele:
+            saida.append((vid, "nenhuma linha de YouTube com este video_id"))
+        elif any(L.get("estado") == "privado_de_proposito" for L in dele):
+            continue
+        else:
+            saida.append((vid, "o video desta linha nao esta privado no canal "
+                               "(ou nao esta na lista do canal)"))
+    return saida
+
+
 # ------------------------------------------------------------------- casca
 def buscar_canal(canal: str) -> list:
     """A UNICA funcao com rede: uploads do canal com privacidade e data."""
@@ -388,10 +422,165 @@ def ler(caminho: Path, bruto: bytes | None = None) -> list:
 # ------------------------------------------------------- pre-condicao (B1)
 POSTAR = RAIZ / "ferramentas" / "postar.py"
 CONTRATO_MINIMO = 2
-# "Saiu?" decidido pelo `url` de uma LINHA DO LEDGER (no postar.py elas se
-# chamam `l` ou `linha`). O `r.get("url")` do aviso e da ficha, nao do ledger.
-LEITURA_POR_URL = re.compile(
-    r"(?:\bif|\band|\bor|\bnot)\s+(?:l|linha)\.get\(\"url\"\)")
+# Nomes do postar.py cujo `.get("url")` NAO e de linha do ledger: `r` e o
+# resultado de uma postagem (aviso e ficha). Qualquer outro nome conta.
+NAO_E_LEDGER = frozenset({"r"})
+# Uma linha como a cura a deixa: TikTok, frase fora do `url`.
+SONDA = "__sonda_da_cura__"
+
+
+def _linha_curada() -> dict:
+    return {"video_id": SONDA, "plataforma": "tiktok", "url": "",
+            "estado_texto": "publicado no TikTok", "publicado": True,
+            "estado": "publicado", "quando": "2026-09-16T00:00:00"}
+
+
+def leituras_por_url(fonte: str) -> list:
+    """Linhas onde `<nome>.get("url")` decide alguma coisa (teste de verdade).
+
+    Pela arvore do codigo, nao por texto: pega `if`, `and`/`or`, `not`,
+    filtro de compreensao e ternario, com qualquer nome de variavel e em
+    qualquer formatacao. A regex anterior so via `l`/`linha` depois de
+    `if|and|or|not` na mesma linha.
+    """
+    import ast
+
+    def e_leitura(no) -> bool:
+        return (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
+                and no.func.attr == "get" and no.args
+                and isinstance(no.args[0], ast.Constant)
+                and no.args[0].value == "url"
+                and not (isinstance(no.func.value, ast.Name)
+                         and no.func.value.id in NAO_E_LEDGER))
+
+    testes = []
+    for no in ast.walk(ast.parse(fonte)):
+        if isinstance(no, (ast.If, ast.While, ast.IfExp, ast.Assert)):
+            testes.append(no.test)
+        elif isinstance(no, ast.comprehension):
+            testes.extend(no.ifs)
+        elif isinstance(no, ast.BoolOp):
+            if (isinstance(no.op, ast.Or)
+                    and isinstance(no.values[-1], ast.Constant)):
+                continue          # `x.get("url") or ""` e valor padrao
+            testes.extend(no.values)
+        elif isinstance(no, ast.UnaryOp) and isinstance(no.op, ast.Not):
+            testes.append(no.operand)
+        elif (isinstance(no, ast.Call) and isinstance(no.func, ast.Name)
+              and no.func.id in ("bool", "any", "all", "filter")):
+            testes.extend(no.args)
+    achadas = set()
+    for teste in testes:
+        for no in ast.walk(teste):
+            if e_leitura(no):
+                achadas.add(no.lineno)
+    return sorted(achadas)
+
+
+def leitores_entendem_a_cura() -> str:
+    """`""` se os leitores de verdade veem a linha curada como publicada.
+
+    Carrega o postar.py (sem rodar o `main`) e pergunta as duas guardas de
+    "ja esta no TikTok" com uma linha curada no lugar do ledger. Qualquer
+    excecao conta como "nao entendem": a guarda do postar engole erro e
+    devolve False, e e exatamente o False que repostaria.
+    """
+    import importlib.util
+
+    from contos.publicar import serie
+
+    linha = _linha_curada()
+    reais = (metricas.publicados, serie.publicados)
+    metricas.publicados = lambda canal="builds": [dict(linha)]
+    serie.publicados = lambda: [dict(linha)]
+    try:
+        spec = importlib.util.spec_from_file_location("_postar_da_cura", POSTAR)
+        postar = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(postar)
+        falhas = []
+        if postar._build_ja_no_tiktok(SONDA) is not True:
+            falhas.append("postar._build_ja_no_tiktok")
+        if not serie.ja_publicado(SONDA, "tiktok"):
+            falhas.append("serie.ja_publicado")
+    except Exception as exc:                                   # noqa: BLE001
+        return f"a sonda do postar.py falhou ({type(exc).__name__}: {exc})"
+    finally:
+        metricas.publicados, serie.publicados = reais
+    if falhas:
+        return ("uma linha curada do TikTok NAO conta como publicada para "
+                + ", ".join(falhas) + " (repostaria)")
+    return ""
+
+
+def escritores_travados() -> str:
+    """`""` se os tres escritores do ledger passam pela trava `ledger__<canal>`.
+
+    Teste de comportamento, com os dois ledgers apontados para um arquivo
+    temporario e a escrita trocada por um espiao: se algum escritor fugir do
+    caminho comum, ele escreve no temporario, nunca no ledger de verdade.
+    """
+    import contextlib
+    import tempfile
+
+    from builds import travas
+    from contos.publicar import serie
+
+    vistos: list = []
+    pedidas: list = []
+
+    def espiao(caminho, linha, canal, **_k):
+        vistos.append(canal)
+
+    @contextlib.contextmanager
+    def ocupada(nome, esperar=0.0):
+        pedidas.append(nome)
+        yield False
+
+    video = type("Sonda", (), {"id": SONDA, "fonte_id": SONDA, "parte": 1,
+                               "partes": 1, "titulo": SONDA})()
+    with tempfile.TemporaryDirectory() as pasta:
+        falso = Path(pasta) / "publicados.jsonl"
+        reais = (metricas.acrescentar_ao_ledger, metricas.REGISTRO,
+                 metricas.registro_do_canal, metricas.publicados,
+                 metricas._token, metricas.enviados, serie.REGISTRO,
+                 travas.trava)
+        metricas.acrescentar_ao_ledger = espiao
+        metricas.REGISTRO = falso
+        metricas.registro_do_canal = lambda canal="builds": falso
+        # Uma linha sem id: sem ela o `reconciliar` sai antes da trava.
+        metricas.publicados = lambda canal="builds": [
+            {"plataforma": "youtube", "titulo": SONDA, "video_id": SONDA}]
+        metricas._token = lambda canal="builds": ("sonda", None)
+        metricas.enviados = lambda token, quantos=200: []
+        serie.REGISTRO = falso
+        travas.trava = ocupada
+        try:
+            metricas.registrar_publicacao(video, "", "tiktok")
+            serie.registrar(video, "", "tiktok", None)
+            metricas.reconciliar("builds", log=lambda *_a: None)
+            metricas.reconciliar("historias", log=lambda *_a: None)
+            with trava_do_ledger("builds"):
+                pass
+        except Exception as exc:                               # noqa: BLE001
+            return (f"a sonda dos escritores falhou "
+                    f"({type(exc).__name__}: {exc})")
+        finally:
+            (metricas.acrescentar_ao_ledger, metricas.REGISTRO,
+             metricas.registro_do_canal, metricas.publicados,
+             metricas._token, metricas.enviados, serie.REGISTRO,
+             travas.trava) = reais
+        escrito = falso.is_file() and falso.stat().st_size > 0
+    faltas = []
+    if vistos != ["builds", "historias"]:
+        faltas.append(f"acrescentar_ao_ledger viu {vistos}, esperado "
+                      "['builds', 'historias']")
+    if escrito:
+        faltas.append("um escritor gravou fora de acrescentar_ao_ledger")
+    esperadas = [metricas.nome_da_trava(c)
+                 for c in ("builds", "historias", "builds")]
+    if pedidas != esperadas:
+        faltas.append(f"travas pedidas {pedidas}, esperado {esperadas}")
+    return "; ".join(faltas)
 
 
 def postar_migrado(fonte: str | None = None) -> str:
@@ -401,8 +590,13 @@ def postar_migrado(fonte: str | None = None) -> str:
     `url`, a regra de formato (que tira a frase do `url` do TikTok) apagaria
     a guarda de "ja esta no TikTok" de 46 builds e 51 historias, e o
     publicador repostaria. As curas so podem ser gravadas DEPOIS da migracao.
+
+    Tres provas, todas exigidas: a declaracao do contrato, nenhuma decisao
+    pelo `url` na arvore do codigo e — so com o arquivo de verdade — a sonda
+    que pergunta aos leitores se a linha curada conta como publicada.
     """
-    if fonte is None:
+    real = fonte is None
+    if real:
         try:
             fonte = POSTAR.read_text(encoding="utf-8")
         except OSError as exc:
@@ -412,11 +606,20 @@ def postar_migrado(fonte: str | None = None) -> str:
         return (f"o postar.py ainda nao declara CONTRATO_DO_LEDGER = "
                 f"{CONTRATO_MINIMO} (a migracao para `publicado()` nao "
                 "aconteceu)")
-    restos = LEITURA_POR_URL.findall(fonte)
+    try:
+        restos = leituras_por_url(fonte)
+    except SyntaxError as exc:
+        return f"o postar.py nao compila ({exc})"
     if restos:
         return (f"o postar.py declara o contrato mas ainda decide 'saiu?' "
-                f"pelo url em {len(restos)} ponto(s)")
-    return ""
+                f"pelo url em {len(restos)} ponto(s): linhas "
+                + ", ".join(map(str, restos[:8])))
+    return leitores_entendem_a_cura() if real else ""
+
+
+def impedimento_para_gravar() -> str:
+    """Tudo o que precisa ser verdade antes de reescrever um ledger."""
+    return postar_migrado() or escritores_travados()
 
 
 # ------------------------------------------------ gravacao segura (B2, B3)
@@ -489,7 +692,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if args.gravar:
-        impedimento = postar_migrado()
+        impedimento = impedimento_para_gravar()
         if impedimento:
             _linha(f"RECUSADO: {impedimento}. Nada foi gravado. Rode sem "
                    "--gravar para ver o que mudaria.")
@@ -499,7 +702,11 @@ def main(argv=None) -> int:
     pasta = SAIDA / carimbo
     pasta.mkdir(parents=True, exist_ok=True)
     geral = {}
-    for canal in args.canal or ("builds", "historias"):
+    canais = args.canal or ("builds", "historias")
+    # Um id so e aviso se nao pegou em NENHUM canal: o id de uma build nunca
+    # vai estar no ledger das historias.
+    sem_efeito: dict = {}
+    for canal in canais:
         videos = buscar_canal(canal)
         linhas, curas, copia = curar_canal(
             canal, videos, gravar_de_fato=args.gravar,
@@ -510,8 +717,15 @@ def main(argv=None) -> int:
         _linha(f"[{canal}] {len(linhas)} linhas, {len(curas)} cura(s):")
         for chave, n in geral[canal].items():
             _linha(f"   {n:4d}  {chave}")
+        for vid, motivo in privadas_sem_efeito(linhas, curas, args.privadas):
+            sem_efeito.setdefault(vid, {})[canal] = motivo
         if copia:
             _linha(f"[{canal}] GRAVADO. Copia do antes: {copia}")
+    for vid, motivos in sem_efeito.items():
+        if len(motivos) < len(canais):
+            continue
+        detalhe = "; ".join(f"{c}: {m}" for c, m in motivos.items())
+        _linha(f"AVISO: --privada-de-proposito {vid} nao teve efeito ({detalhe})")
     (pasta / "resumo.json").write_text(
         json.dumps({"gravado": bool(args.gravar), "canais": geral},
                    ensure_ascii=False, indent=1), encoding="utf-8")
