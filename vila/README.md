@@ -68,3 +68,9 @@ No painel: **Vila → 🎨 Oficina**. Fluxo com arte gerada por IA:
 
 O cenário base (`sprites/base.png`) é procedural e serve de gabarito: a arte
 final só precisa substituí-lo **mantendo os papéis**.
+
+`sprites/extra.png` (`python -m vila.gerar_base --extras`) traz os prédios
+da Vila flutuante que a folha base não tinha: `predio.deepseek`,
+`predio.youtube`, `predio.tiktok` e `predio.bot`. O comando só acrescenta
+o que falta — papel atribuído na Oficina não é sobrescrito. Sem sprite, a
+flutuante desenha o prédio na hora (`gerar_base.predio_procedural`).
