@@ -123,6 +123,38 @@ class VideoPrivado(unittest.TestCase):
         tipos = [c["tipo"] for c in C.calcular_curas(linhas, videos)]
         self.assertIn("rascunho_sem_gemeo", tipos)
 
+    def test_rascunho_sem_gemeo_perde_o_url(self):
+        # Link de rascunho no campo de "saiu" faria `url` e `publicado`
+        # discordarem para quem ainda olha o `url`.
+        linha = _yt(url="https://youtu.be/rrr", youtube_id="rrr")
+        (cura,) = C.calcular_curas([linha], [_video("rrr", privacidade="private")])
+        self.assertEqual("", cura["depois"]["url"])
+        self.assertEqual("rrr", cura["depois"]["rascunho_id"])
+
+    def test_privada_de_proposito_continua_publicada(self):
+        # Decisao do Adrian (16/09/2026) para h10 p01, h05 p03 e h04 p03.
+        linha = _yt("h5:celular:p03", url="https://youtu.be/rrr",
+                    youtube_id="rrr")
+        (cura,) = C.calcular_curas(
+            [linha], [_video("rrr", privacidade="private")], "historias",
+            privadas={"h5:celular:p03"})
+        self.assertEqual(("privado_de_proposito", "alta"),
+                         (cura["tipo"], cura["certeza"]))
+        self.assertIs(True, cura["depois"]["publicado"])
+        (curada,) = C.aplicar([linha], [cura])
+        self.assertTrue(M.publicado(curada))
+
+    def test_curar_de_novo_nao_mexe_no_que_ja_foi_decidido(self):
+        linhas = [_yt(url="https://youtu.be/rrr", youtube_id="rrr"),
+                  _yt("h5:celular:p03", url="https://youtu.be/sss",
+                      youtube_id="sss")]
+        videos = [_video("rrr", privacidade="private"),
+                  _video("sss", privacidade="private")]
+        curadas = C.aplicar(linhas, C.calcular_curas(
+            linhas, videos, privadas={"h5:celular:p03"}))
+        self.assertEqual([], C.calcular_curas(
+            curadas, videos, privadas={"h5:celular:p03"}))
+
     def test_historia_privada_e_pergunta_para_o_adrian(self):
         # A historia_00005 pode ter sido privada DE PROPOSITO.
         linha = _yt("h5:celular:p03", url="https://youtu.be/rrr",

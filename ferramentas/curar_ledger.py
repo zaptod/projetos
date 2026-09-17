@@ -42,6 +42,7 @@ ALTA, MEDIA, A_CONFERIR = "alta", "media", "a_conferir"
 FOLGA_ALTA = timedelta(minutes=2)
 PEDACO = re.compile(r"\s*\((\d+) de (\d+)\)\s*$")
 PRIVADO = ("private", "privado")
+ESTADOS_JA_DECIDIDOS = ("rascunho", "privado_de_proposito")
 
 
 def _linha(texto: str = "") -> None:
@@ -78,7 +79,8 @@ def _cura(indice, linha, tipo, certeza, depois, motivo) -> dict:
             "depois": depois, "motivo": motivo}
 
 
-def calcular_curas(linhas: list, videos: list, canal: str = "builds") -> list:
+def calcular_curas(linhas: list, videos: list, canal: str = "builds",
+                   privadas=()) -> list:
     """As curas de UM canal. Uma linha recebe no maximo uma cura de conteudo.
 
     Ordem das regras, e ela importa:
@@ -92,6 +94,7 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds") -> list:
          frase sai do `url` para `estado_texto` (inclui o TikTok, que nunca
          teve link).
     """
+    privadas = set(privadas or ())
     # UM video por id. A lista de uploads do canal traz o mesmo video mais de
     # uma vez (medido em 16/09/2026: `U7n1dgQCidA` duas vezes), e sem isto um
     # gemeo unico virava "dois gemeos" e a cura caia em "a conferir".
@@ -139,21 +142,35 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds") -> list:
     for i, L in enumerate(linhas):
         if i in tocadas or not youtube(L):
             continue
+        if L.get("estado") in ESTADOS_JA_DECIDIDOS:
+            # Ja curada: o video continua privado, e e isso mesmo. Sem esta
+            # saida, cada rodada "curaria" a mesma linha de novo.
+            continue
         video = por_id.get(str(L.get("youtube_id") or ""))
         if not video or str(video.get("privacidade") or "").lower() not in PRIVADO:
             continue
         chave = titulos.chave(video.get("titulo"))
         gemeos = [v for v in publicos if titulos.chave(v.get("titulo")) == chave
                   and v["youtube_id"] not in donos]
-        if canal == "historias" and not gemeos:
+        if L.get("video_id") in privadas:
+            # DECISAO DE UMA PESSOA, passada pelo nome: a parte fica privada e
+            # a fila nunca a republica (`publicado` continua verdadeiro).
+            curas.append(_cura(
+                i, L, "privado_de_proposito", ALTA,
+                {"publicado": True, "estado": "privado_de_proposito"},
+                f"{video['youtube_id']} esta privado por decisao do Adrian"))
+        elif canal == "historias" and not gemeos:
             curas.append(_cura(
                 i, L, "historia_privada", A_CONFERIR, {},
                 f"{video['youtube_id']} esta privado e nao ha publico de mesmo "
                 "titulo; pode ter sido privado de proposito"))
         elif not gemeos:
+            # O `url` e esvaziado: link de rascunho no campo de "saiu" deixava
+            # `url` e `publicado` discordando para qualquer leitor que ainda
+            # olhe o `url`. O id do rascunho fica em `rascunho_id`.
             curas.append(_cura(
                 i, L, "rascunho_sem_gemeo", MEDIA,
-                {"publicado": False, "estado": "rascunho",
+                {"publicado": False, "estado": "rascunho", "url": "",
                  "rascunho_id": video["youtube_id"]},
                 f"{video['youtube_id']} esta privado e nenhum video publico "
                 "tem o mesmo titulo: este video nunca foi ao ar"))
@@ -320,6 +337,11 @@ def main(argv=None) -> int:
                         action="append", help="padrao: os dois")
     parser.add_argument("--gravar", action="store_true",
                         help="APLICA as curas (alta e media), com copia antes")
+    parser.add_argument(
+        "--privada-de-proposito", dest="privadas", action="append",
+        default=[], metavar="VIDEO_ID",
+        help="video_id que ficou privado POR DECISAO (repetivel): a linha "
+             "vira publicado=true, estado=privado_de_proposito")
     args = parser.parse_args(argv)
 
     carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -329,7 +351,8 @@ def main(argv=None) -> int:
     for canal in args.canal or ("builds", "historias"):
         caminho = metricas.registro_do_canal(canal)
         linhas = ler(caminho)
-        curas = calcular_curas(linhas, buscar_canal(canal), canal)
+        curas = calcular_curas(linhas, buscar_canal(canal), canal,
+                               privadas=args.privadas)
         (pasta / f"{canal}.json").write_text(
             json.dumps(curas, ensure_ascii=False, indent=1), encoding="utf-8")
         geral[canal] = resumo(curas)
