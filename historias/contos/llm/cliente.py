@@ -93,6 +93,7 @@ class ClienteLLM:
         self.turnos = 0
         self.modelo_atual = ""
         self._ultimo_prompt = ""
+        self._ultima_resposta = ""
         # Comeca em False de proposito: enquanto ninguem confirmou o modelo
         # forte, a resposta honesta e "nao sei", e nao "esta tudo certo".
         self.modelo_confirmado = False
@@ -110,6 +111,7 @@ class ClienteLLM:
                 f"Rode uma vez: python main.py llm login --provedor {self.provedor} "
                 "(a janela abre, voce entra na conta, e o login fica salvo).")
         self.turnos = 0
+        self._ultima_resposta = ""
         self.modelo_atual = self.escolher_modelo()
         self.log(f"[{self.provedor}] chat novo aberto.")
 
@@ -463,6 +465,25 @@ class ClienteLLM:
                     continue
         return ""
 
+    def _resposta_nova(self) -> str:
+        """A resposta atual, ou `""` se ela ainda e a do turno ANTERIOR.
+
+        17/09/2026, primeira historia pelo DeepSeek: a revisao da parte 1
+        "respondeu" 6372 chars em 4 s — o mesmo texto da parte, porque o
+        modelo ainda estava no raciocinio e o ultimo bloco de resposta final
+        na tela era o do turno anterior, parado e sem botao de parar. Aceito
+        assim, todas as respostas seguintes escorregariam um turno (a parte 2
+        receberia a revisao da parte 1).
+
+        Contar blocos nao serve: a lista de mensagens do site e virtual e
+        desmonta as antigas. Comparar com o que ja foi devolvido serve.
+        """
+        texto = self._resposta_atual()
+        anterior = getattr(self, "_ultima_resposta", "")
+        if anterior and " ".join(texto.split()) == " ".join(anterior.split()):
+            return ""
+        return texto
+
     def _resposta_sem_raciocinio(self) -> str:
         """O ultimo bloco de resposta que NAO esta dentro do raciocinio.
 
@@ -573,7 +594,7 @@ class ClienteLLM:
         apressado = diagnosticado = False
 
         while time.monotonic() < fim:
-            texto = self._resposta_atual()
+            texto = self._resposta_nova()
             calado = len(texto.strip()) < 40
             # "Sem texto" e MENOS DE 40 caracteres, e nao vazio: as 7:29 de
             # 14/09/2026 a pagina mostrou 10 chars (o rotulo do raciocinio)
@@ -620,6 +641,7 @@ class ClienteLLM:
                     decorrido = time.monotonic() - inicio
                     self.log(f"[{self.provedor}] resposta pronta: "
                              f"{len(texto)} chars em {decorrido:.0f}s")
+                    self._ultima_resposta = texto
                     return texto
             decorrido = time.monotonic() - inicio
             if decorrido - ultimo_aviso >= 20:
@@ -628,10 +650,11 @@ class ClienteLLM:
                          f"({ultimo_tamanho} chars)", )
             time.sleep(1.0)
 
-        texto = self._resposta_atual()
+        texto = self._resposta_nova()
         if texto.strip():
             self.log(f"[{self.provedor}] espera estourou em {timeout:.0f}s; "
                      "uso o que ja veio.")
+            self._ultima_resposta = texto
             return texto
         raise LLMFalhou(
             f"o {self.provedor} nao respondeu em {timeout:.0f}s e nao ha texto "

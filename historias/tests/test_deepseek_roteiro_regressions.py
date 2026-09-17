@@ -479,6 +479,51 @@ class ClienteDoDeepSeek(unittest.TestCase):
         self.assertIn("ds-assistant-message-main-content", respostas[0])
         self.assertEqual(["div.ds-think-content"], pensamentos)
 
+    def _relogio(self):
+        import types
+        agora = [0.0]
+
+        def monotonic():
+            agora[0] += 1.0
+            return agora[0]
+
+        falso = types.SimpleNamespace(monotonic=monotonic,
+                                      sleep=lambda _s: None,
+                                      strftime=__import__("time").strftime)
+        self.addCleanup(setattr, llm_cliente, "time", llm_cliente.time)
+        llm_cliente.time = falso
+
+    def test_resposta_do_turno_anterior_nao_e_aceita(self):
+        # 17/09/2026: a revisao "respondeu" em 4 s com o texto da parte,
+        # porque o modelo ainda pensava e o ultimo bloco final era o antigo.
+        self._relogio()
+        cliente = self._cliente()
+        cliente._ultima_resposta = "PARTE 1 " * 20
+        telas = iter(["PARTE 1 " * 20] * 8 + ["REVISADA " * 5] * 2
+                     + ["REVISADA " * 20] * 10)
+        cliente._resposta_atual = lambda: next(telas)
+        cliente._envio_devolvido = lambda: False
+        cliente._envio_truncado = lambda: False
+        self.addCleanup(setattr, seletores, "encontrar", seletores.encontrar)
+        seletores.encontrar = lambda *a, **k: None
+        texto = cliente.esperar_resposta(timeout=100, estabilidade=2)
+        self.assertEqual("REVISADA " * 20, texto)
+        self.assertEqual(texto, cliente._ultima_resposta)
+
+    def test_sem_resposta_nova_nao_devolve_a_velha_no_estouro(self):
+        self._relogio()
+        cliente = self._cliente()
+        cliente._ultima_resposta = "VELHA " * 20
+        cliente._resposta_atual = lambda: "VELHA " * 20
+        cliente._envio_devolvido = lambda: False
+        cliente._envio_truncado = lambda: False
+        cliente._responder_agora = lambda: False
+        cliente._diagnosticar_calado = lambda: None
+        self.addCleanup(setattr, seletores, "encontrar", seletores.encontrar)
+        seletores.encontrar = lambda *a, **k: None
+        with self.assertRaises(llm_cliente.LLMFalhou):
+            cliente.esperar_resposta(timeout=30, estabilidade=2)
+
     def test_deepthink_em_estado_desconhecido_nao_e_clicado(self):
         cliques = []
 
