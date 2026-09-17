@@ -195,9 +195,31 @@ def test_chutes_demais_bloqueiam_o_ip(servidor, monkeypatch):
     monkeypatch.setattr(api_http, "FALHAS_MAX", 3)
     for _ in range(3):
         _pedir(servidor, "GET", "/api/estado", token="chute")
-    token = api_http.trocar_codigo(api_http.novo_codigo(), "moto")
-    resp, _ = _pedir(servidor, "GET", "/api/estado", token=token)
+    resp, _ = _pedir(servidor, "GET", "/api/estado", token="chute")
     assert resp.status == 429
+    resp, _ = _pedir(servidor, "POST", "/api/parear", {"codigo": "000000"})
+    assert resp.status == 429
+    resp, _ = _pedir(servidor, "GET", "/v/bilhete-inventado")
+    assert resp.status == 429
+
+
+def test_chute_alheio_nao_trava_o_celular_pareado(servidor, monkeypatch):
+    # Atras do `tailscale serve` todos chegam de 127.0.0.1: o celular com
+    # token valido continua lendo mesmo com o IP "bloqueado".
+    monkeypatch.setattr(api_http, "FALHAS_MAX", 3)
+    token = _parear(servidor)
+    for _ in range(5):
+        _pedir(servidor, "GET", "/api/estado", token="chute",
+               cabecalhos={"X-Forwarded-For": "100.1.2.3"})
+    resp, _ = _pedir(servidor, "GET", "/api/estado", token=token)
+    assert resp.status == 200
+
+
+def test_host_do_tailscale_serve_e_aceito(servidor):
+    token = _parear(servidor)
+    resp, _ = _pedir(servidor, "GET", "/api/estado", token=token,
+                     host="desktop-tgti3ek.tail1234.ts.net")
+    assert resp.status == 200
 
 
 def test_pareamento_pela_rota_e_corpo_invalido(servidor):

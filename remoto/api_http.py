@@ -319,17 +319,30 @@ class Manipulador(BaseHTTPRequestHandler):
                            self.estado.local):
             self._erro(421, "host desconhecido")
             return False
+        return True
+
+    def _barrar_chute(self) -> bool:
+        """Conta uma tentativa errada; True (e 429) se ja houve demais.
+
+        O bloqueio so pesa sobre quem NAO tem token valido. Atras do
+        `tailscale serve` toda requisicao chega de 127.0.0.1: se o 429
+        valesse para o IP inteiro, quem chutasse travaria tambem o celular
+        pareado. `X-Forwarded-For` nao entra em conta — qualquer processo
+        local o escreve. O chute do token nao preocupa (256 bits); o do
+        codigo ja morre em 5 erros; o bloqueio e a terceira camada.
+        """
+        ip = self.client_address[0]
         if self.estado.bloqueado(ip):
             self._erro(429, "tentativas demais; espere alguns minutos")
-            return False
-        return True
+            return True
+        self.estado.falhou(ip)
+        return False
 
     def _aparelho(self) -> str | None:
         bruto = self.headers.get("Authorization", "")
         token = bruto[7:].strip() if bruto.lower().startswith("bearer ") else ""
         aparelho = aparelho_do_token(token)
-        if aparelho is None:
-            self.estado.falhou(self.client_address[0])
+        if aparelho is None and not self._barrar_chute():
             self._erro(401, "nao pareado")
         return aparelho
 
@@ -393,6 +406,8 @@ class Manipulador(BaseHTTPRequestHandler):
             tamanho = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             tamanho = -1
+        if self.estado.bloqueado(self.client_address[0]):
+            return self._erro(429, "tentativas demais; espere alguns minutos")
         if not 0 < tamanho <= CORPO_MAX:
             return self._erro(413, "corpo invalido")
         try:
@@ -427,7 +442,9 @@ class Manipulador(BaseHTTPRequestHandler):
     def _video_por_bilhete(self, chave: str):
         arquivo = self.estado.arquivo_do_bilhete(chave)
         if arquivo is None:
-            return self._erro(404, "bilhete vencido")
+            if not self._barrar_chute():
+                self._erro(404, "bilhete vencido")
+            return
         try:
             total = arquivo.stat().st_size
         except OSError:
