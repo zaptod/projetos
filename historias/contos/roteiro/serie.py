@@ -504,6 +504,26 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
     return "\n".join(linhas)
 
 
+def _sem_aspas(texto) -> str:
+    return str(texto or "").strip().strip("\"'“”").strip()
+
+
+def _virada_do_plano(partes: list) -> str:
+    """A virada quando a IA nao escreveu a linha: o fim da parte do meio e o
+    fim da ultima, do proprio plano dela.
+
+    No modo livre ela pode pular o rotulo (a favela de 17/09/2026 pulou), e
+    a virada so serve para a memoria "evite repetir" das proximas historias.
+    Sem turno de chat a mais e sem regra nova: o plano ja diz.
+    """
+    fins = [str(p.get("cliffhanger") or "").strip() for p in partes or []]
+    fins = [f for f in fins if f]
+    if not fins:
+        return ""
+    meio = fins[(len(fins) - 1) // 2]
+    return (meio if meio == fins[-1] else f"{meio} ... {fins[-1]}")[:200]
+
+
 def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
     """Texto da etapa 1 -> {titulo, premissa, protagonista, elenco, partes}."""
     campos = {"titulo": "", "premissa": "", "protagonista": "", "elenco": "",
@@ -555,13 +575,16 @@ def parse_biblia(texto: str, partes_esperadas: int = PARTES_PADRAO) -> dict:
         "serie_nome": campos["serie_nome"],
         "premissa": campos["premissa"],
         "protagonista_nome": nome.strip(),
-        "protagonista": fisico.strip() or campos["protagonista"].strip(),
+        # SEM ASPAS: o DeepSeek embrulha a frase em aspas (17/09/2026), e
+        # ela entra assim no prompt de TODA imagem.
+        "protagonista": _sem_aspas(fisico) or _sem_aspas(
+            campos["protagonista"]),
         "narrador": campos["narrador"],
         "elenco": campos["elenco"],
         "cenario": campos["cenario"],
         "fatos": campos["fatos"],
         "alavancas": campos["alavancas"],
-        "virada": campos["virada"],
+        "virada": campos["virada"] or _virada_do_plano(partes),
         "partes": partes,
         "partes_esperadas": partes_esperadas,
         "bruto": texto,

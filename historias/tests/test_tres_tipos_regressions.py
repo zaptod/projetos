@@ -295,6 +295,25 @@ class OModoLivre(unittest.TestCase):
         self.assertIn("devolva igual", livre)
         self.assertLess(len(livre), len(guiada) / 2)
 
+    def test_biblia_livre_sem_virada_e_com_aspas_e_completada(self):
+        # Favela livre de 17/09/2026: o DeepSeek pulou VIRADA CENTRAL e pos a
+        # descricao do protagonista entre aspas.
+        texto = ("TITULO DA SERIE: O Bolo\n"
+                 'PROTAGONISTA: Claudio | "Black Brazilian man, 39"\n'
+                 "PARTE 1\nGANCHO: g1\nCLIFFHANGER: a sindica proibe\n"
+                 "PARTE 2\nGANCHO: g2\nCLIFFHANGER: o audio vaza\n"
+                 "PARTE 3\nGANCHO: g3\nCLIFFHANGER: ela entra na fila\n")
+        biblia = S.parse_biblia(texto, 3)
+        self.assertEqual("Black Brazilian man, 39", biblia["protagonista"])
+        self.assertEqual("o audio vaza ... ela entra na fila",
+                         biblia["virada"])
+        # Rotulo depois das partes nao e da biblia: vale o plano tambem.
+        depois = S.parse_biblia(texto + "VIRADA CENTRAL: x\n", 3)
+        self.assertEqual("o audio vaza ... ela entra na fila",
+                         depois["virada"])
+        antes = S.parse_biblia("VIRADA CENTRAL: a propria\n" + texto, 3)
+        self.assertEqual("a propria", antes["virada"])
+
     def test_biblia_livre_leva_uma_linha_do_que_evitar(self):
         texto = S.prompt_biblia(partes=2, config=CONFIG, tipo="favela",
                                 recentes=["mulher; a sogra; o carro",
