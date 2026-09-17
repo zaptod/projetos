@@ -71,6 +71,11 @@ FATIA_MAX = 4 * 1024 * 1024
 CORPO_MAX = 4096
 FALHAS_MAX = 20                          # por IP, na janela abaixo
 FALHAS_JANELA_S = 10 * 60
+# Uma conexao lenta (ou um POST que promete corpo e nao manda) nao pode
+# prender uma thread para sempre, nem abrir threads sem fim.
+TIMEOUT_S = 15
+CONEXOES_MAX = 32
+VENCIDOS_MAX = 1000                      # bilhetes vencidos que ainda lembramos
 
 ARQUIVO = None                           # os testes apontam para outro lugar
 
@@ -83,6 +88,8 @@ ESTATICOS = {
                               "application/manifest+json"),
     "/sw.js": ("sw.js", "text/javascript; charset=utf-8"),
     "/icone.svg": ("icone.svg", "image/svg+xml"),
+    "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/app.css": ("app.css", "text/css; charset=utf-8"),
 }
 
 
@@ -155,6 +162,15 @@ def trocar_codigo(codigo: str, nome: str, agora: float | None = None) -> str | N
         dados["pareamento"] = None
         gravar_config(dados)
     return token
+
+
+def aparelho_existe(hash_token: str) -> bool:
+    """O aparelho dono desse hash ainda esta pareado? (`--esquecer` o tira.)"""
+    achado = False
+    for aparelho in ler_config()["aparelhos"]:
+        if hmac.compare_digest(hash_token, str(aparelho.get("hash", ""))):
+            achado = True
+    return achado
 
 
 def aparelho_do_token(token: str) -> str | None:
@@ -239,24 +255,48 @@ class Estado:
         self.ip = ip
         self.local = local
         self.trava = threading.Lock()
-        self.bilhetes: dict[str, tuple] = {}     # bilhete -> (caminho, expira)
+        # bilhete -> (caminho, expira, hash do token do aparelho)
+        self.bilhetes: dict[str, tuple] = {}
+        # Bilhetes que EXISTIRAM e venceram. O celular que deixa o video
+        # parado 10 minutos e da play de novo nao esta chutando: sem esta
+        # lembranca, ele contaria para o bloqueio.
+        self.vencidos: dict[str, float] = {}
         self.falhas: dict[str, list] = {}        # ip -> [instantes]
 
-    def bilhete(self, arquivo: Path) -> str:
+    def _podar(self, agora: float) -> None:
+        for chave, (_, expira, _dono) in list(self.bilhetes.items()):
+            if expira <= agora:
+                del self.bilhetes[chave]
+                self.vencidos[chave] = expira
+        if len(self.vencidos) > VENCIDOS_MAX:
+            antigos = sorted(self.vencidos, key=self.vencidos.get)
+            for chave in antigos[:len(self.vencidos) - VENCIDOS_MAX]:
+                del self.vencidos[chave]
+
+    def bilhete(self, arquivo: Path, dono: str) -> str:
         agora = time.time()
         with self.trava:
-            self.bilhetes = {k: v for k, v in self.bilhetes.items()
-                             if v[1] > agora}
+            self._podar(agora)
             chave = secrets.token_urlsafe(24)
-            self.bilhetes[chave] = (arquivo, agora + BILHETE_VALE_S)
+            self.bilhetes[chave] = (arquivo, agora + BILHETE_VALE_S, dono)
         return chave
 
-    def arquivo_do_bilhete(self, chave: str) -> Path | None:
+    def arquivo_do_bilhete(self, chave: str) -> tuple:
+        """(caminho, motivo): motivo e "ok", "vencido", "revogado" ou "inventado".
+
+        "revogado" e o bilhete de um aparelho que `--esquecer` tirou da
+        lista: o `--esquecer` roda em outro processo, entao a conferencia e
+        feita aqui, na hora do uso, contra o arquivo de config.
+        """
         with self.trava:
+            self._podar(time.time())
             achado = self.bilhetes.get(chave)
-        if not achado or achado[1] < time.time():
-            return None
-        return achado[0]
+            vencido = chave in self.vencidos
+        if achado is None:
+            return (None, "vencido" if vencido else "inventado")
+        if not aparelho_existe(achado[2]):
+            return (None, "revogado")
+        return (achado[0], "ok")
 
     def bloqueado(self, ip: str) -> bool:
         agora = time.time()
@@ -282,15 +322,34 @@ class Manipulador(BaseHTTPRequestHandler):
     server_version = "painel-celular"
     sys_version = ""
     estado: Estado                       # preenchido por `criar_servidor`
+    timeout = TIMEOUT_S
 
     # ------------------------------------------------------------ saida
-    def log_message(self, formato, *args):
-        # So metodo e caminho SEM consulta, e nunca o bilhete do video.
-        caminho = urlsplit(self.path).path
-        if caminho.startswith("/v/"):
+    # O log nunca repete o que veio do cliente alem de metodo e caminho
+    # limpo: a linha de uma requisicao malformada pode carregar o bilhete do
+    # video, e as mensagens de erro da classe base a incluem com %r.
+    def _log(self, status) -> None:
+        bruto = str(getattr(self, "path", "") or "")
+        try:
+            caminho = urlsplit(bruto).path
+        except ValueError:
+            caminho = "?"
+        if "/v/" in bruto:
             caminho = "/v/…"
-        sys.stderr.write(f"{datetime.now():%H:%M:%S} {self.client_address[0]} "
-                         f"{self.command} {caminho} {args[1] if len(args) > 1 else ''}\n")
+        metodo = str(getattr(self, "command", "") or "?")[:10]
+        ip = self.client_address[0] if self.client_address else "?"
+        sys.stderr.write(f"{datetime.now():%H:%M:%S} {ip} {metodo} "
+                         f"{caminho[:80]} {status}\n")
+
+    def log_request(self, code="-", size="-"):
+        self._log(int(code) if str(code).isdigit() or hasattr(code, "value")
+                  else "-")
+
+    def log_error(self, formato, *args):
+        self._log(args[0] if args and isinstance(args[0], int) else "erro")
+
+    def log_message(self, formato, *args):
+        self._log("-")
 
     def _cabecalhos_comuns(self, tipo: str, tamanho: int, cache: bool = False):
         self.send_header("Content-Type", tipo)
@@ -344,6 +403,7 @@ class Manipulador(BaseHTTPRequestHandler):
         aparelho = aparelho_do_token(token)
         if aparelho is None and not self._barrar_chute():
             self._erro(401, "nao pareado")
+        self._dono = _hash(token) if aparelho is not None else ""
         return aparelho
 
     # ------------------------------------------------------------- GET
@@ -383,7 +443,7 @@ class Manipulador(BaseHTTPRequestHandler):
                     achado.group(1), unquote(achado.group(2)))
                 if arquivo is None:
                     return self._erro(404, "video nao encontrado")
-                return self._json({"url": f"/v/{self.estado.bilhete(arquivo)}",
+                return self._json({"url": f"/v/{self.estado.bilhete(arquivo, self._dono)}",
                                    "vale_s": BILHETE_VALE_S})
             achado = re.fullmatch(r"/api/relatorio/(\w{1,30})", rota)
             if achado:
@@ -433,17 +493,22 @@ class Manipulador(BaseHTTPRequestHandler):
         if nome.endswith(".html"):
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; img-src 'self' data:; media-src 'self'; "
-                "style-src 'self' 'unsafe-inline'; script-src 'self' "
-                "'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+                "default-src 'self'; img-src 'self'; media-src 'self'; "
+                "style-src 'self'; script-src 'self'; connect-src 'self'; "
+                "manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
+                "form-action 'none'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(corpo)
 
     def _video_por_bilhete(self, chave: str):
-        arquivo = self.estado.arquivo_do_bilhete(chave)
+        arquivo, motivo = self.estado.arquivo_do_bilhete(chave)
+        if motivo == "vencido":
+            return self._erro(410, "bilhete vencido; abra o video de novo")
+        if motivo == "revogado":
+            return self._erro(403, "aparelho esquecido")
         if arquivo is None:
             if not self._barrar_chute():
-                self._erro(404, "bilhete vencido")
+                self._erro(404, "bilhete desconhecido")
             return
         try:
             total = arquivo.stat().st_size
@@ -484,7 +549,9 @@ def intervalo(cabecalho: str, total: int) -> tuple:
     """
     if total <= 0:
         return (None, None)
-    achado = re.fullmatch(r"\s*bytes=(\d*)-(\d*)\s*", cabecalho or "")
+    # No maximo 18 digitos: numero maior nem cabe num arquivo, e `int()` de
+    # mais de 4300 digitos levanta ValueError no Python 3.11+.
+    achado = re.fullmatch(r"\s*bytes=(\d{0,18})-(\d{0,18})\s*", cabecalho or "")
     if not cabecalho:
         inicio, fim = 0, total - 1
     elif not achado or (not achado.group(1) and not achado.group(2)):
@@ -501,6 +568,35 @@ def intervalo(cabecalho: str, total: int) -> tuple:
     return (inicio, fim)
 
 
+class Servidor(ThreadingHTTPServer):
+    """ThreadingHTTPServer com teto de conexoes simultaneas.
+
+    Passou do teto, a conexao e fechada na hora (sem thread). O celular
+    abre poucas; mais que isso e defeito ou abuso.
+    """
+    daemon_threads = True
+
+    def __init__(self, *args, **kwargs):
+        self.vagas = threading.BoundedSemaphore(CONEXOES_MAX)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self.vagas.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self.vagas.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.vagas.release()
+
+
 def criar_servidor(host: str, porta: int, local: bool) -> ThreadingHTTPServer:
     if not endereco_permitido(host, local):
         raise ValueError(f"endereco recusado: {host}")
@@ -510,9 +606,7 @@ def criar_servidor(host: str, porta: int, local: bool) -> ThreadingHTTPServer:
     class _Manipulador(Manipulador):
         estado = Estado(host, local)
 
-    servidor = ThreadingHTTPServer((host, porta), _Manipulador)
-    servidor.daemon_threads = True
-    return servidor
+    return Servidor((host, porta), _Manipulador)
 
 
 # ================================================================= CLI

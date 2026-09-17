@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import http.client
 import json
+import socket
 import threading
+import time
 import types
 from pathlib import Path
 
@@ -267,7 +269,12 @@ def test_relatorio_so_da_lista(servidor, monkeypatch):
 def test_estatico_so_os_arquivos_da_tabela(servidor):
     resp, dados = _pedir(servidor, "GET", "/")
     assert resp.status == 200 and b"<html" in dados
-    assert "frame-ancestors" in resp.getheader("Content-Security-Policy")
+    csp = resp.getheader("Content-Security-Policy")
+    assert "frame-ancestors 'none'" in csp and "unsafe-inline" not in csp
+    assert b"<script>" not in dados and b"<style>" not in dados
+    for rota in ("/app.js", "/app.css", "/sw.js", "/manifest.webmanifest"):
+        resp, _ = _pedir(servidor, "GET", rota)
+        assert resp.status == 200, rota
     for rota in ("/../api_http.py", "/app/index.html", "/api_http.py",
                  "/%2e%2e/config.py"):
         resp, _ = _pedir(servidor, "GET", rota)
@@ -324,7 +331,102 @@ def test_bilhete_vence(servidor, mundo, monkeypatch):
     monkeypatch.setattr(api_http.time, "time",
                         lambda: agora + api_http.BILHETE_VALE_S + 1)
     resp, _ = _pedir(servidor, "GET", url)
-    assert resp.status == 404
+    assert resp.status == 410
+
+
+def test_bilhete_vencido_do_proprio_celular_nao_e_chute(servidor, monkeypatch):
+    monkeypatch.setattr(api_http, "FALHAS_MAX", 2)
+    token = _parear(servidor)
+    _, dados = _pedir(servidor, "GET", "/api/video/builds/bom", token=token)
+    url = json.loads(dados)["url"]
+    agora = api_http.time.time()
+    monkeypatch.setattr(api_http.time, "time",
+                        lambda: agora + api_http.BILHETE_VALE_S + 1)
+    for _ in range(5):
+        resp, _ = _pedir(servidor, "GET", url)
+        assert resp.status == 410
+    resp, _ = _pedir(servidor, "POST", "/api/parear", {"codigo": "000000"})
+    assert resp.status == 403                       # ainda nao bloqueado
+
+
+def test_esquecer_revoga_os_bilhetes_do_aparelho(servidor, capsys):
+    token = _parear(servidor)
+    _, dados = _pedir(servidor, "GET", "/api/video/builds/bom", token=token)
+    url = json.loads(dados)["url"]
+    resp, _ = _pedir(servidor, "GET", url, cabecalhos={"Range": "bytes=0-9"})
+    assert resp.status == 206
+    assert api_http.main(["--esquecer", "moto"]) == 0
+    resp, _ = _pedir(servidor, "GET", url, cabecalhos={"Range": "bytes=0-9"})
+    assert resp.status == 403
+    resp, _ = _pedir(servidor, "GET", "/api/estado", token=token)
+    assert resp.status == 401
+
+
+def test_range_com_numero_gigante_e_416(servidor):
+    token = _parear(servidor)
+    _, dados = _pedir(servidor, "GET", "/api/video/builds/bom", token=token)
+    url = json.loads(dados)["url"]
+    resp, _ = _pedir(servidor, "GET", url,
+                     cabecalhos={"Range": "bytes=" + "9" * 5000 + "-"})
+    assert resp.status == 416
+
+
+# ---------------------------------------------------------- robustez
+def _cru(srv, dados: bytes, esperar: float = 5.0) -> bytes:
+    with socket.create_connection(srv.server_address, timeout=esperar) as s:
+        s.sendall(dados)
+        pedacos = []
+        try:
+            while True:
+                pedaco = s.recv(65536)
+                if not pedaco:
+                    break
+                pedacos.append(pedaco)
+        except (socket.timeout, ConnectionError):
+            pass
+    return b"".join(pedacos)
+
+
+def test_requisicao_malformada_nao_vaza_bilhete_no_log(servidor, capsys):
+    resposta = _cru(servidor, b"GET /v/SEGREDO123 HTTP/1.1 lixo\r\n\r\n")
+    assert b" 400 " in resposta.split(b"\r\n")[0]
+    _cru(servidor, b"\x16\x03\x01lixo-binario\r\n\r\n")
+    time.sleep(0.2)
+    erro = capsys.readouterr().err
+    assert "SEGREDO123" not in erro
+    assert "Traceback" not in erro
+
+
+def test_post_que_promete_corpo_e_nao_manda_nao_prende_a_thread(servidor, monkeypatch):
+    monkeypatch.setattr(api_http.Manipulador, "timeout", 0.5)
+    inicio = time.monotonic()
+    _cru(servidor, b"POST /api/parear HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                   b"Content-Length: 100\r\n\r\n", esperar=5.0)
+    assert time.monotonic() - inicio < 4.0
+
+
+def test_teto_de_conexoes(mundo, monkeypatch):
+    monkeypatch.setattr(api_http, "CONEXOES_MAX", 2)
+    monkeypatch.setattr(api_http.Manipulador, "timeout", 3)
+    srv = api_http.criar_servidor("127.0.0.1", 0, local=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        paradas = [socket.create_connection(srv.server_address) for _ in range(2)]
+        time.sleep(0.3)
+        with socket.create_connection(srv.server_address, timeout=2) as terceira:
+            terceira.sendall(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            try:
+                assert terceira.recv(100) == b""       # fechada sem resposta
+            except ConnectionError:
+                pass
+        for conexao in paradas:
+            conexao.close()
+        time.sleep(0.3)
+        resp, _ = _pedir(srv, "GET", "/")
+        assert resp.status == 200                      # as vagas voltaram
+    finally:
+        srv.shutdown()
+        srv.server_close()
 
 
 @pytest.mark.parametrize("cabecalho,total,esperado", [
@@ -339,6 +441,8 @@ def test_bilhete_vence(servidor, mundo, monkeypatch):
     ("itens=0-1", 100, (None, None)),
     ("bytes=0-1,5-6", 100, (None, None)),
     ("", 0, (None, None)),
+    ("bytes=" + "9" * 5000 + "-", 100, (None, None)),
+    ("bytes=0-" + "9" * 5000, 100, (None, None)),
 ])
 def test_intervalo(cabecalho, total, esperado):
     assert api_http.intervalo(cabecalho, total) == esperado

@@ -1,7 +1,8 @@
 // Guarda so a CASCA do app (html, icone, manifest) para abrir sem rede.
 // Dados e videos nunca entram no cache: eles vem sempre do PC.
-const CASCA = "painel-casca-v1";
-const ARQUIVOS = ["./", "index.html", "manifest.webmanifest", "icone.svg"];
+const CASCA = "painel-casca-v2";
+const ARQUIVOS = ["./", "index.html", "app.js", "app.css",
+                  "manifest.webmanifest", "icone.svg"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CASCA).then((c) => c.addAll(ARQUIVOS)));
@@ -19,9 +20,13 @@ self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET" || url.pathname.startsWith("/api/")
       || url.pathname.startsWith("/v/")) return;
   // rede primeiro (a casca nova chega logo), cache quando o PC nao responde
+  // So resposta 200 da propria origem entra no cache: um 404 ou 429
+  // guardado viraria a casca quebrada ate a proxima atualizacao.
   e.respondWith(fetch(e.request).then((resp) => {
-    const copia = resp.clone();
-    caches.open(CASCA).then((c) => c.put(e.request, copia));
+    if (resp.status === 200 && resp.type === "basic") {
+      const copia = resp.clone();
+      caches.open(CASCA).then((c) => c.put(e.request, copia));
+    }
     return resp;
   }).catch(() => caches.match(e.request)));
 });
