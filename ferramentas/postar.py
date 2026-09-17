@@ -188,10 +188,18 @@ def fila_de_historias() -> list:
     if novos:
         return novos
     if repetidos:
-        # A VALVULA, igual a dos builds.
+        # A VALVULA FECHOU EM 17/09/2026, por decisao do Adrian depois de ver
+        # conteudo repetido no perfil. Ela liberava "o menos pior" quando a
+        # fila ficava vazia — e "o menos pior" era publicar de novo um titulo
+        # que ja estava no ar.
+        #
+        # Repetir e pior que nao postar: o horario vazio custa um post, e o
+        # repetido custa a confianca de quem abre o perfil e ve a mesma coisa
+        # duas vezes. A regra "nao ficar sem video" continua valendo para
+        # estoque e falha — nao para cobrir buraco com repeticao.
         _linha("[postar] historias: TODAS as partes pendentes tem titulo ja "
-               "publicado; sigo com a fila como estava.")
-    return fila
+               "publicado; o horario fica SEM post (a valvula fechou).")
+    return []
 
 
 # `historias/outputs/_publicar/prioridade.json`: {"videos": ["<id>", ...]}.
@@ -1287,13 +1295,32 @@ def _titulos_no_ar(canal: str, plataforma: str | None = None,
         from builds.publicar import titulos
         linhas = _publicados_do_canal(canal)
         if plataforma:
-            linhas = [l for l in linhas if l.get("plataforma") == plataforma]
+            # Linha antiga sem `plataforma` e do YouTube: era o unico destino
+            # antes de 10/09. Hoje nenhuma das 269 linhas esta sem o campo,
+            # mas assumir o padrao custa nada e evita perder linha velha.
+            linhas = [l for l in linhas
+                      if (l.get("plataforma") or "youtube") == plataforma]
         if menos:
             linhas = [l for l in linhas if l.get("video_id") != menos]
         return titulos.ja_publicados(linhas)
-    except Exception:                                          # noqa: BLE001
+    except Exception as exc:                                   # noqa: BLE001
         # Sem ledger legivel nao da para saber o que ja saiu — e "nao sei"
         # tem que deixar passar, nunca barrar.
+        #
+        # Mas tem de APARECER. Com a valvula fechada, este `set()` vazio quer
+        # dizer "nao ha repeticao" para quem chama, e um ledger ilegivel
+        # liberaria tudo em silencio — exatamente o tipo de "nao sei" que
+        # vira afirmacao quando ninguem escreve nada.
+        try:
+            from builds import atividade
+            atividade.registrar(
+                "publicacao", atividade.ERRO,
+                f"nao consegui ler os titulos ja publicados de {canal} "
+                f"({type(exc).__name__}: {str(exc)[:120]}); a guarda de "
+                f"titulo repetido fica CEGA nesta rodada",
+                canal, etapa="publicar.titulo_repetido")
+        except Exception:                                      # noqa: BLE001
+            pass
         return set()
 
 
@@ -1302,7 +1329,11 @@ def _titulos_no_ar(canal: str, plataforma: str | None = None,
 VALVULAS = {
     "veto_vencido": "veto da IA venceu (as rodadas de conserto acabaram)",
     "veto_ignorado": "veto da IA ignorado (nao havia outro video pronto)",
-    "titulo_repetido": "titulo ja publicado (nao havia outro na fila)",
+    # A valvula fechou em 17/09, entao esta marca mudou de sentido: ela nao
+    # e mais "saiu assim mesmo porque nao havia outro", e sim um DETECTOR —
+    # se aparecer, algum caminho escapou da guarda e o relatorio tem de
+    # gritar. Pelo desenho novo ela deveria ficar em zero para sempre.
+    "titulo_repetido": "ESCAPOU: saiu com titulo que outro video ja pos no ar",
 }
 
 
@@ -1570,11 +1601,19 @@ def proximo_build(config=None):
     if novos:
         pendentes = novos
     elif repetidos:
-        # A VALVULA. Fila inteira repetida e um problema de estoque, e a
-        # resposta a estoque vazio nunca e horario em branco: sai o menos
-        # pior, e `postar_build` marca a ficha para o aviso dizer isso.
+        # A VALVULA FECHOU EM 17/09/2026. Ela liberava "o menos pior" com a
+        # fila inteira repetida — e o menos pior era republicar um titulo que
+        # ja estava no ar. Foi assim que as variantes A e B de cinco geracoes
+        # (00067, 00069, 00071, 00081, 00082) sairam as duas, nos dois
+        # destinos, com titulo identico. O Adrian viu.
+        #
+        # Repetir e pior que nao postar. Aqui ha uma saida melhor que o
+        # horario em branco, e ela ja existe: a RESERVA leva um build antigo
+        # ao TikTok quando a fila normal nao tem nada. O YouTube fica sem, e
+        # fica sem de proposito.
         _linha("[postar] builds: TODOS os pendentes tem titulo ja publicado; "
-               "sai o mais antigo assim mesmo.")
+               "o horario fica SEM post (a valvula fechou).")
+        return None
 
     # o mais ANTIGO primeiro: o catalogo vem do mais novo para o mais velho
     pendentes.reverse()
