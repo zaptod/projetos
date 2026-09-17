@@ -715,6 +715,103 @@ def desistencias_do_tiktok(canal: str = "historias") -> set:
 
 FALHAS_ATE_DESISTIR = 3
 
+# O CLIQUE SAIU. Qualquer estado com isto significa que o post PODE estar no
+# ar, e reenviar duplicaria no perfil — onde o publico ve.
+MARCAS_DE_CLIQUE = ("cliquei em publicar",)
+
+# Falha que nao e do video: a maquina, a rede, a sessao. Contar isto como
+# defeito do video abandonaria, depois de tres rodadas, um video sem problema
+# nenhum. Aconteceu de verdade em 16/09/2026 as 20:47 — a maquina estava
+# sobrecarregada, o Chrome nao abriu, e a rodada de historias perdeu o video.
+MARCAS_DE_INFRAESTRUTURA = (
+    "nao consegui abrir o chrome", "perfilocupado", "perfil esta em uso",
+    "pediu login", "nao esta valida neste perfil",
+    "err_name_not_resolved", "err_connection", "err_internet",
+    "net::err", "nao achei o campo de arquivo",
+)
+
+
+def desfecho_do_tiktok(estado, falha: dict | None = None) -> str:
+    """"publicado", "sem_confirmacao", "infraestrutura" ou "falha".
+
+    Ate hoje so havia duas respostas — confirmou ou nao — e o "nao" juntava
+    tres coisas que pedem reacoes OPOSTAS:
+
+    - **sem_confirmacao**: o clique saiu e o aviso de sucesso nao apareceu. O
+      post pode estar no ar. Reenviar duplica, e duplicata o publico ve. Sai
+      da fila e espera conferencia humana; nunca volta sozinho.
+    - **infraestrutura**: Chrome que nao abre, perfil ocupado, login vencido,
+      rede fora. Nao e do video: nao conta para a desistencia e continua na
+      fila, porque a proxima rodada pode simplesmente funcionar.
+    - **falha**: legenda que nao fica, arquivo recusado. E dela, e so dela,
+      que o contador de tres tentativas fala.
+
+    A ORDEM IMPORTA: se o clique saiu, o que aconteceu depois nao muda o
+    risco. Um erro de infraestrutura DEPOIS do clique continua sendo
+    "sem_confirmacao", porque o post pode ter subido do mesmo jeito.
+    """
+    if _tiktok_confirmado(estado):
+        return "publicado"
+    texto = str(estado or "").lower()
+    if any(m in texto for m in MARCAS_DE_CLIQUE):
+        return "sem_confirmacao"
+    motivo = " ".join(str(v) for v in (falha or {}).values()).lower()
+    if any(m in motivo for m in MARCAS_DE_INFRAESTRUTURA):
+        return "infraestrutura"
+    return "falha"
+
+
+def a_conferir_no_tiktok(canal: str = "historias") -> set:
+    """Videos cujo clique saiu sem confirmacao: ficam FORA da fila.
+
+    Nao sao desistencia (o video nao tem defeito) nem atraso (pode estar no
+    ar). Sao um terceiro estado, que so sai daqui por conferencia — humana ou
+    pela conferencia do Studio.
+    """
+    import json
+    try:
+        caminho = _arquivo_a_conferir(canal)
+        if not caminho.is_file():
+            return set()
+        return set(json.loads(caminho.read_text(encoding="utf-8")))
+    except Exception:                                          # noqa: BLE001
+        return set()
+
+
+def _arquivo_a_conferir(canal: str):
+    from builds.publicar import metricas
+    return metricas.registro_do_canal(canal).parent / "_tiktok_a_conferir.json"
+
+
+def _marcar_para_conferir(canal: str, video_id: str, estado: str) -> None:
+    """Tira da fila e AVISA. Erro no diario, nao aviso no log."""
+    import json
+    from datetime import datetime
+    try:
+        caminho = _arquivo_a_conferir(canal)
+        dados = {}
+        if caminho.is_file():
+            try:
+                dados = json.loads(caminho.read_text(encoding="utf-8"))
+            except ValueError:
+                dados = {}
+        if video_id in dados:
+            return                       # ja avisado; nao repete no diario
+        dados[video_id] = {"quando": datetime.now().isoformat(timespec="seconds"),
+                           "estado": str(estado)[:200]}
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        caminho.write_text(json.dumps(dados, ensure_ascii=False, indent=1),
+                           encoding="utf-8")
+        from builds import atividade
+        atividade.registrar(
+            "publicacao", atividade.ERRO,
+            f"{video_id}: cliquei em publicar no TikTok e nao veio "
+            f"confirmacao. Pode estar no ar — NAO reenvio sozinho para nao "
+            f"duplicar. Precisa de conferencia no perfil.",
+            canal, etapa="publicar.tiktok.sem_confirmacao", ref=video_id)
+    except Exception:                                          # noqa: BLE001
+        pass
+
 
 def _anotar_falha_no_tiktok(canal: str, video_id: str) -> int:
     """Conta mais uma falha daquele video e devolve o total. Nunca levanta.
@@ -857,7 +954,9 @@ def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
         if chave:
             titulos_no_tiktok.setdefault(chave, l.get("video_id"))
 
-    desistidos = desistencias_do_tiktok(canal)
+    # Desistidos E os que esperam conferencia saem antes da deduplicacao, pelo
+    # mesmo motivo: se o A esta fora, o B precisa poder assumir o titulo.
+    desistidos = desistencias_do_tiktok(canal) | a_conferir_no_tiktok(canal)
     candidatos, vistos = [], set()
     for linha in publicados:                     # ledger ja vem em ordem
         if linha.get("plataforma") != "youtube" or not linha.get("url"):
@@ -927,14 +1026,20 @@ def recuperar_no_tiktok(so_ver: bool = False,
     # ele acontece fora, porque `registrar_publicado` descarta tudo que nao e
     # do canal `builds`. Trocar um pelo outro duplicaria linha de um lado e
     # perderia a linha do outro.
-    estado = (_tiktok_dos_builds(alvo) if canal == "builds"
-              else _tiktok_das_historias(alvo))
-    feito = _tiktok_confirmado(estado)
+    falha: dict = {}
+    estado = (_tiktok_dos_builds(alvo, falha) if canal == "builds"
+              else _tiktok_das_historias(alvo, falha))
+    desfecho = desfecho_do_tiktok(estado, falha)
+    feito = desfecho == "publicado"
     if feito:
         _esquecer_falhas_no_tiktok(canal, alvo.id)
-    else:
+    elif desfecho == "sem_confirmacao":
+        _marcar_para_conferir(canal, alvo.id, estado)
+    elif desfecho == "falha":
         _anotar_falha_no_tiktok(canal, alvo.id)
-    return {"feito": feito, "fila": len(fila),
+    # "infraestrutura" nao conta nada: o video continua na fila e a proxima
+    # rodada tenta de novo, porque o defeito nao e dele.
+    return {"feito": feito, "desfecho": desfecho, "fila": len(fila),
             "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
             "canal": canal, "tiktok": estado}
 
@@ -969,16 +1074,20 @@ def publicar_da_reserva(so_ver: bool = False) -> dict:
         return {"feito": False, "reserva": len(fila), "veria": alvo.id}
     _linha(f"[postar] reserva do TikTok: {alvo.id} "
            f"({len(fila)} na gordura).")
-    estado = _tiktok_dos_builds(alvo)
-    feito = _tiktok_confirmado(estado)
+    falha: dict = {}
+    estado = _tiktok_dos_builds(alvo, falha)
+    desfecho = desfecho_do_tiktok(estado, falha)
+    feito = desfecho == "publicado"
     # A reserva tem a MESMA cabeca de fila que os atrasados, e portanto o
     # mesmo jeito de travar: um video que o TikTok sempre recusa seguraria os
     # outros 20 indefinidamente.
     if feito:
         _esquecer_falhas_no_tiktok("builds", alvo.id)
-    else:
+    elif desfecho == "sem_confirmacao":
+        _marcar_para_conferir("builds", alvo.id, estado)
+    elif desfecho == "falha":
         _anotar_falha_no_tiktok("builds", alvo.id)
-    return {"feito": feito, "reserva": len(fila),
+    return {"feito": feito, "desfecho": desfecho, "reserva": len(fila),
             "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
             "tiktok": estado}
 
@@ -1003,7 +1112,7 @@ def _tiktok_neste_horario(agora=None) -> bool:
     return grade.publica_em("tiktok", grade.slot(agora))
 
 
-def _tiktok_das_historias(alvo) -> str:
+def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
     """Mesmo video, segundo destino. Nunca derruba a postagem do YouTube.
 
     O TikTok nao tem API de post: e automacao de navegador na conta dele, e
@@ -1022,6 +1131,13 @@ def _tiktok_das_historias(alvo) -> str:
         estado = catalogo.publicar_tiktok(alvo, postar=True, log=_linha,
                                           prova=laudo)
     except Exception as exc:                                   # noqa: BLE001
+        # A CAUSA PRECISA SAIR DAQUI. Devolvendo so `""`, quem chama nao
+        # consegue distinguir "o Chrome nao abriu" de "o TikTok recusou o
+        # video" — e trata as duas como defeito do video, abandonando video
+        # bom depois de tres rodadas de maquina ruim.
+        if falha is not None:
+            falha["tipo"] = type(exc).__name__
+            falha["mensagem"] = str(exc)[:300]
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
         return ""
     # O REGISTRO E AQUI, e nao dentro do `tiktok.publicar`. La ele chama
@@ -1473,7 +1589,7 @@ def _build_ja_no_tiktok(video_id: str) -> bool:
         return False
 
 
-def _tiktok_dos_builds(alvo) -> str:
+def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
     """Mesmo video, segundo destino. Aqui o registro E de dentro.
 
     Diferente das historias: `tiktok.publicar` chama
@@ -1492,6 +1608,11 @@ def _tiktok_dos_builds(alvo) -> str:
         return _tk.publicar(alvo, postar=True, canal="builds",
                             progresso=lambda t: _linha(f"   {t}"))
     except Exception as exc:                                   # noqa: BLE001
+        # Ver o mesmo comentario em `_tiktok_das_historias`: sem a causa,
+        # infraestrutura e defeito do video viram a mesma coisa.
+        if falha is not None:
+            falha["tipo"] = type(exc).__name__
+            falha["mensagem"] = str(exc)[:300]
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
         return ""
 

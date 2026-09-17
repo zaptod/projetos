@@ -511,7 +511,7 @@ class AtrasadoNoTikTokTests(unittest.TestCase):
         self.addCleanup(setattr, self.postar, "_tiktok_das_historias",
                         self.postar._tiktok_das_historias)
         self.postar._tiktok_das_historias = (
-            lambda v: levados.append(v.id) or "publicado no TikTok")
+            lambda v, falha=None: levados.append(v.id) or "publicado no TikTok")
         ficha = self.postar.recuperar_no_tiktok()
         self.assertEqual(["h:p1"], levados)
         self.assertEqual(5, ficha["fila"])

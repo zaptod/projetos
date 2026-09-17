@@ -231,7 +231,7 @@ class QuandoAReservaEntraTests(unittest.TestCase):
         postar.reserva_do_tiktok = lambda *_a, **_k: [
             _Video("velho:build:celular", "Velho")]
         self.publicados = []
-        postar._tiktok_dos_builds = lambda alvo: (
+        postar._tiktok_dos_builds = lambda alvo, falha=None: (
             self.publicados.append(alvo.id) or "publicado no TikTok")
 
     def test_buraco_no_tiktok_puxa_da_reserva(self):
@@ -311,7 +311,7 @@ class ACabecaDaFilaNaoTravaTests(unittest.TestCase):
         atividade.registrar = lambda *a, **k: self.diario.append((a, k))
         self.tentados = []
         # A CABECA SEMPRE FALHA; a segunda sempre sobe.
-        postar._tiktok_dos_builds = lambda alvo: (
+        postar._tiktok_dos_builds = lambda alvo, falha=None: (
             self.tentados.append(alvo.id)
             or ("" if alvo.id == "trava:build:celular"
                 else "publicado no TikTok"))

@@ -287,10 +287,19 @@ def contexto_persistente(headless: bool = False, profile: Path | None = None,
                 # Uma unica retomada, e so se havia mesmo orfao para matar:
                 # sem isso um erro de outra natureza viraria loop.
                 if not _liberar_perfil(user_data_dir):
+                    # A CAUSA VAI NO TEXTO, e nao so no encadeamento. O
+                    # `from exc` ja existia, mas quem grava no diario anota
+                    # `str(exc)` — e ali so aparecia "nao consegui abrir o
+                    # Chrome", sem dizer se foi tempo esgotado, perfil
+                    # travado ou o processo morrendo. Em 16/09/2026 uma
+                    # rodada perdeu o video por isto e ninguem soube qual das
+                    # tres tinha sido.
                     raise RuntimeError(
                         f"nao consegui abrir o Chrome no perfil "
                         f"{user_data_dir}. Se houver uma janela aberta nesse "
-                        "perfil, feche-a e tente de novo.") from exc
+                        f"perfil, feche-a e tente de novo. "
+                        f"[causa: {type(exc).__name__}: "
+                        f"{str(exc)[:200]}]") from exc
                 ctx = abrir(p)
             yield ctx
         finally:
