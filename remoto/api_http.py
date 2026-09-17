@@ -19,8 +19,9 @@ TRANCAS, na ordem em que a requisicao passa por elas:
   2. Host: so o IP, o nome da maquina ou *.ts.net (contra DNS rebinding);
   3. token: `Authorization: Bearer`, comparado em tempo constante. No disco
      fica so o SHA-256 de cada token; o token em si so existe no celular;
-  4. rotas: tabela FECHADA, nenhuma recebe texto para executar. Nesta fase
-     todas sao de LEITURA.
+  4. rotas: tabela FECHADA, nenhuma recebe texto para executar. As acoes
+     (fase 2, `acoes.py`) so existem com `--acoes`, e as que nao se
+     desfazem pedem confirmacao em dois passos.
 
 PAREAMENTO. `--parear` grava o hash de um codigo de 6 digitos, valido por
 5 minutos e por UMA troca. O app manda o codigo e recebe o token. O token
@@ -56,7 +57,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import painel_dados
+from . import acoes, painel_dados
 from .config import runtime_dir
 
 PORTA_PADRAO = 8931
@@ -103,15 +104,16 @@ _TRAVA_THREADS = threading.Lock()
 
 
 @contextlib.contextmanager
-def _trava_config():
-    """Uma escrita por vez no json — entre threads E entre processos.
+def trava_arquivo(alvo: Path):
+    """Uma escrita por vez — entre threads E entre processos.
 
     O servidor e o `--parear`/`--esquecer` sao processos diferentes: sem a
     trava de arquivo, o `--esquecer` podia ler, o servidor gravar um
     pareamento, e o `--esquecer` gravar por cima (o celular novo sumia).
     O `.lock` so guarda o byte trancado; o conteudo nao importa.
+    Nao e reentrante: quem segura uma nao pega outra.
     """
-    alvo = caminho().with_suffix(".lock")
+    alvo = Path(alvo)
     alvo.parent.mkdir(parents=True, exist_ok=True)
     with _TRAVA_THREADS, open(alvo, "a+b") as fh:
         if os.name == "nt":
@@ -132,6 +134,10 @@ def _trava_config():
                 yield
             finally:
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+def _trava_config():
+    return trava_arquivo(caminho().with_suffix(".lock"))
 
 
 def ler_config() -> dict:
@@ -309,9 +315,12 @@ def host_aceito(cabecalho: str, ip_servidor: str, local: bool) -> bool:
 class Estado:
     """O que o servidor guarda em memoria entre requisicoes."""
 
-    def __init__(self, ip: str, local: bool):
+    def __init__(self, ip: str, local: bool, com_acoes: bool = False):
         self.ip = ip
         self.local = local
+        # Fase 2: as acoes so existem quando o servidor sobe com --acoes.
+        self.com_acoes = com_acoes
+        self.pendentes = acoes.Pendentes()
         self.trava = threading.Lock()
         # bilhete -> (caminho, expira, hash do token do aparelho)
         self.bilhetes: dict[str, tuple] = {}
@@ -462,6 +471,7 @@ class Manipulador(BaseHTTPRequestHandler):
         if aparelho is None and not self._barrar_chute():
             self._erro(401, "nao pareado")
         self._dono = _hash(token) if aparelho is not None else ""
+        self._id = self._dono[:8]
         return aparelho
 
     # ------------------------------------------------------------- GET
@@ -487,6 +497,15 @@ class Manipulador(BaseHTTPRequestHandler):
                 desde = (consulta.get("desde") or [""])[0][:40]
                 return self._json(painel_dados.diario(
                     desde, _inteiro(consulta, "n", 60)))
+            if rota == "/api/acoes":
+                if not self.estado.com_acoes:
+                    return self._json({"ligadas": False})
+                return self._json({
+                    "ligadas": True,
+                    "alvos": acoes.alvos_de_pausa(),
+                    "limite_por_hora": acoes.LIMITE_POR_HORA,
+                    "restantes": max(0, acoes.LIMITE_POR_HORA
+                                     - acoes.usadas_na_ultima_hora(self._id))})
             if rota == "/api/erros":
                 return self._json(painel_dados.erros(_inteiro(consulta, "n", 10)))
             if rota == "/api/videos":
@@ -514,31 +533,98 @@ class Manipulador(BaseHTTPRequestHandler):
         return self._erro(404, "nao existe")
 
     # ------------------------------------------------------------ POST
-    def do_POST(self):
-        if not self._passou_rede():
-            return
-        rota = urlsplit(self.path).path
-        if rota != "/api/parear":
-            return self._erro(404, "nao existe")
+    def _corpo(self) -> dict | None:
+        """O JSON do POST, ou None (com a resposta de erro ja enviada)."""
+        tipo = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        if tipo != "application/json":
+            self._erro(415, "envie application/json")
+            return None
         try:
             tamanho = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             tamanho = -1
-        if self.estado.bloqueado(self.client_address[0]):
-            return self._erro(429, "tentativas demais; espere alguns minutos")
         if not 0 < tamanho <= CORPO_MAX:
-            return self._erro(413, "corpo invalido")
+            self._erro(413, "corpo invalido")
+            return None
         try:
             corpo = json.loads(self.rfile.read(tamanho).decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
-            return self._erro(400, "json invalido")
+            corpo = None
         if not isinstance(corpo, dict):
-            return self._erro(400, "json invalido")
+            self._erro(400, "json invalido")
+            return None
+        return corpo
+
+    def do_POST(self):
+        if not self._passou_rede():
+            return
+        rota = urlsplit(self.path).path
+        if rota in ("/api/acao", "/api/acao/confirmar"):
+            return self._acao(rota)
+        if rota != "/api/parear":
+            return self._erro(404, "nao existe")
+        if self.estado.bloqueado(self.client_address[0]):
+            return self._erro(429, "tentativas demais; espere alguns minutos")
+        corpo = self._corpo()
+        if corpo is None:
+            return
         token = trocar_codigo(corpo.get("codigo", ""), corpo.get("nome", ""))
         if token is None:
             self.estado.falhou(self.client_address[0])
             return self._erro(403, "codigo errado ou vencido")
         return self._json({"token": token})
+
+    # ---------------------------------------------------------- acoes
+    def _acao(self, rota: str):
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        corpo = self._corpo()
+        if corpo is None:
+            return
+
+        if rota == "/api/acao":
+            nome = str(corpo.get("acao") or "")[:20]
+            try:
+                pedido = acoes.preparar(nome, corpo.get("args") or {}, self._id)
+            except acoes.Recusa as exc:
+                return self._erro(409, str(exc))
+            if pedido["dois_passos"]:
+                codigo = self.estado.pendentes.guardar(pedido, self._dono)
+                return self._json({"confirmar": codigo, "texto": pedido["texto"],
+                                   "vale_s": acoes.CONFIRMAR_VALE_S})
+            return self._executar(pedido)
+
+        pedido = self.estado.pendentes.tirar(str(corpo.get("codigo") or "")[:64],
+                                             self._dono)
+        if pedido is None:
+            if not self._barrar_chute():
+                self._erro(404, "confirmação vencida ou desconhecida; peça de novo")
+            return
+        # De novo, com os args congelados: em 60 s a grade pode ter
+        # publicado o mesmo video, ou outra build pode ter comecado.
+        try:
+            pedido = acoes.preparar(pedido["acao"], pedido["args"], self._id)
+        except acoes.Recusa as exc:
+            return self._erro(409, str(exc))
+        return self._executar(pedido)
+
+    def _executar(self, pedido: dict):
+        nome, args = pedido["acao"], pedido["args"]
+        try:
+            resultado = acoes.executar(nome, args)
+            ok = True
+        except Exception as exc:                             # noqa: BLE001
+            resultado, ok = f"falhou: {type(exc).__name__}: {exc}", False
+        try:
+            acoes.registrar(self._id, nome, args, resultado, ok)
+        except Exception:                                    # noqa: BLE001
+            resultado += " (o rastro nao foi gravado)"
+        acoes.avisar_telegram(self._id, nome, resultado)
+        if not ok:
+            return self._erro(500, resultado)
+        return self._json({"feito": True, "texto": resultado})
 
     # ------------------------------------------------------- arquivos
     def _estatico(self, nome: str, tipo: str):
@@ -655,14 +741,15 @@ class Servidor(ThreadingHTTPServer):
             self.vagas.release()
 
 
-def criar_servidor(host: str, porta: int, local: bool) -> ThreadingHTTPServer:
+def criar_servidor(host: str, porta: int, local: bool,
+                   com_acoes: bool = False) -> ThreadingHTTPServer:
     if not endereco_permitido(host, local):
         raise ValueError(f"endereco recusado: {host}")
     if porta in PORTAS_PROIBIDAS:
         raise ValueError(f"a porta {porta} e do login do YouTube")
 
     class _Manipulador(Manipulador):
-        estado = Estado(host, local)
+        estado = Estado(host, local, com_acoes)
 
     return Servidor((host, porta), _Manipulador)
 
@@ -670,6 +757,8 @@ def criar_servidor(host: str, porta: int, local: bool) -> ThreadingHTTPServer:
 # ================================================================= CLI
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m remoto.api_http")
+    parser.add_argument("--acoes", action="store_true",
+                        help="liga a fase 2 (pausar, parar, gerar, publicar)")
     parser.add_argument("--local", action="store_true",
                         help="escuta em 127.0.0.1 (teste, ou atras de `tailscale serve`)")
     parser.add_argument("--porta", type=int, default=None)
@@ -709,11 +798,12 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 3
     try:
-        servidor = criar_servidor(host, porta, args.local)
+        servidor = criar_servidor(host, porta, args.local, args.acoes)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 4
-    print(f"App do celular em http://{host}:{porta}/  (Ctrl+C para parar)")
+    print(f"App do celular em http://{host}:{porta}/  (Ctrl+C para parar)"
+          f"  — ações {'LIGADAS' if args.acoes else 'desligadas'}")
     if not ler_config()["aparelhos"]:
         print("Nenhum celular pareado: rode `python -m remoto.api_http --parear`.")
     try:

@@ -176,6 +176,7 @@ def _video(canal: str, video) -> dict:
             "titulo": str(getattr(video, "titulo", "") or ""),
             "perfil": str(getattr(video, "perfil", "") or ""),
             "origem": str(getattr(video, "origem", "") or ""),
+            "variante": str(getattr(video, "variante", "") or ""),
             "parte": getattr(video, "parte", None),
             "partes": getattr(video, "partes", None),
             "bytes": int(getattr(video, "bytes", 0) or 0),

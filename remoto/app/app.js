@@ -195,7 +195,14 @@ async function carregarVideos() {
     for (const v of lista) {
       const botao = el("button", {class: "acao"}, "▶");
       botao.addEventListener("click", () => tocar(v));
+      let publicar = null;
+      if (acoesLigadas && v.canal === "builds" && v.perfil === "celular"
+          && !v.pendencias.length) {
+        publicar = el("button", {class: "acao"}, "Publicar");
+        publicar.addEventListener("click", () => pedirPublicacao(v));
+      }
       const detalhe = [v.canal, v.perfil,
+        v.variante && v.variante !== "A" ? `gancho ${v.variante}` : "",
         v.partes > 1 ? `parte ${v.parte}/${v.partes}` : "",
         (v.bytes / 1048576).toFixed(1) + " MB",
         new Date(v.quando * 1000).toLocaleDateString("pt-BR")]
@@ -206,12 +213,113 @@ async function carregarVideos() {
           v.pendencias.length
             ? el("div", {class: "erro"}, "pendente: " + v.pendencias.join(", "))
             : null),
-        botao));
+        publicar, botao));
     }
     if (!lista.length) alvo.append(el("div", {class: "fraco"}, "nenhum vídeo pronto."));
     conexao(true);
   } catch (err) { conexao(false, err); }
 }
+
+// ------------------------------------------------------------- acoes
+// O servidor decide tudo: o que pode, o texto da confirmacao, as recusas.
+// A tela so mostra e pede o "sim".
+let acoesLigadas = false;
+
+function avisar(texto, ruim = false) {
+  const t = $("toast");
+  t.textContent = texto;
+  t.className = "toast" + (ruim ? " ruim" : "");
+  clearTimeout(avisar.timer);
+  avisar.timer = setTimeout(() => t.classList.add("oculto"), ruim ? 8000 : 5000);
+}
+
+async function carregarAcoes() {
+  try {
+    const info = await api("/api/acoes");
+    acoesLigadas = !!info.ligadas;
+    $("controle").classList.toggle("oculto", !acoesLigadas);
+    $("gerar-cartao").classList.toggle("oculto", !acoesLigadas);
+    if (!acoesLigadas) return;
+    const alvo = $("alvo-pausa");
+    const atual = alvo.value;
+    alvo.replaceChildren(...info.alvos.map((a) => el("option", {value: a}, a)));
+    if (info.alvos.includes(atual)) alvo.value = atual;
+    $("restantes").textContent =
+      `${info.restantes} de ${info.limite_por_hora} gerações/publicações nesta hora`;
+  } catch (err) { /* a leitura principal ja mostra a conexao */ }
+}
+
+// Abre o dialogo e resolve com o botao escolhido ("cancelar" ao fechar).
+function perguntar(texto, {destinos = false, validade = 0} = {}) {
+  const d = $("dialogo");
+  $("dialogo-texto").textContent = texto;
+  $("dialogo-destinos").classList.toggle("oculto", !destinos);
+  $("dialogo-sim").classList.toggle("oculto", destinos);
+  $("dialogo-sim").disabled = false;
+  const prazo = $("dialogo-prazo");
+  prazo.textContent = "";
+  let relogio = null;
+  if (validade) {
+    const fim = Date.now() + validade * 1000;
+    const tique = () => {
+      const falta = Math.max(0, Math.round((fim - Date.now()) / 1000));
+      prazo.textContent = falta ? `vale por ${falta} s` : "venceu — peça de novo";
+      if (!falta) { $("dialogo-sim").disabled = true; clearInterval(relogio); }
+    };
+    tique();
+    relogio = setInterval(tique, 1000);
+  }
+  return new Promise((resolve) => {
+    d.returnValue = "cancelar";
+    d.addEventListener("close", () => {
+      clearInterval(relogio);
+      resolve(d.returnValue || "cancelar");
+    }, {once: true});
+    d.showModal();
+  });
+}
+
+async function agir(acao, args = {}) {
+  try {
+    const r = await api("/api/acao", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({acao, args}),
+    });
+    if (r.confirmar) {
+      const escolha = await perguntar(r.texto, {validade: r.vale_s});
+      if (escolha !== "confirmar") { avisar("cancelado"); return; }
+      const feito = await api("/api/acao/confirmar", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({codigo: r.confirmar}),
+      });
+      avisar(feito.texto);
+    } else {
+      avisar(r.texto);
+    }
+  } catch (err) {
+    avisar(err.message, true);
+  }
+  carregarAcoes();
+  if (tela === "agora") carregarAgora();
+}
+
+async function pedirPublicacao(v) {
+  const onde = await perguntar(`Publicar «${v.titulo || v.id}» onde?`,
+                               {destinos: true});
+  if (["youtube", "tiktok", "ambos"].includes(onde))
+    agir("publicar", {id: v.id, onde});
+}
+
+$("btn-pausar").addEventListener("click", () => agir("pausar", {
+  alvo: $("alvo-pausa").value,
+  minutos: $("prazo-pausa").value ? Number($("prazo-pausa").value) : null,
+}));
+$("btn-retomar").addEventListener("click", () => {
+  const alvo = $("alvo-pausa").value;
+  agir("retomar", alvo === "tudo" ? {} : {alvo});
+});
+$("btn-parar").addEventListener("click", () => agir("parar"));
+$("btn-gerar").addEventListener("click", () => agir("gerar"));
 
 let tocando = null;
 let renovacoes = 0;
@@ -281,7 +389,7 @@ $("btn-parear").addEventListener("click", async () => {
 
 // --------------------------------------------------------------- telas
 const CARGAS = {agora: [carregarAgora, 15000], diario: [carregarDiario, 5000],
-                videos: [carregarVideos, 0], relatorios: [null, 0]};
+                videos: [null, 0], relatorios: [null, 0]};
 
 function mostrar(nova) {
   if (nova) tela = nova;
@@ -297,6 +405,7 @@ function mostrar(nova) {
   }
   clearInterval(timer);
   if (!pareado) return;
+  carregarAcoes().then(() => { if (tela === "videos") carregarVideos(); });
   const [carga, intervalo] = CARGAS[tela];
   if (carga) {
     carga();

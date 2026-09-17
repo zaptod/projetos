@@ -33,6 +33,28 @@
   </section>
 
   <section id="tela-agora" class="oculto">
+    <div class="cartao oculto" id="controle">
+      <h2>Controle</h2>
+      <div class="campos">
+        <label>O quê
+          <select id="alvo-pausa"></select>
+        </label>
+        <label>Por quanto tempo
+          <select id="prazo-pausa">
+            <option value="">sem prazo</option>
+            <option value="30">30 min</option>
+            <option value="60">1 hora</option>
+            <option value="120">2 horas</option>
+            <option value="240">4 horas</option>
+          </select>
+        </label>
+      </div>
+      <div class="botoes">
+        <button class="acao" id="btn-pausar">⏸ Pausar</button>
+        <button class="acao" id="btn-retomar">▶ Retomar</button>
+        <button class="acao perigo" id="btn-parar">⏹ Parar</button>
+      </div>
+    </div>
     <div class="cartao">
       <h2>Próxima postagem</h2>
       <div class="grande" id="proxima">—</div>
@@ -54,6 +76,12 @@
   </section>
 
   <section id="tela-videos" class="oculto">
+    <div class="cartao oculto" id="gerar-cartao">
+      <div class="botoes">
+        <button class="acao primario" id="btn-gerar">＋ Gerar build</button>
+        <span class="fraco" id="restantes"></span>
+      </div>
+    </div>
     <div class="cartao oculto" id="player-cartao">
       <div class="fraco" id="player-titulo"></div>
       <video id="player" controls playsinline preload="metadata"></video>
@@ -66,6 +94,24 @@
     <div class="cartao"><pre id="relatorio">Escolha um relatório.</pre></div>
   </section>
 </main>
+
+<dialog id="dialogo">
+  <form method="dialog">
+    <p id="dialogo-texto"></p>
+    <div class="botoes oculto" id="dialogo-destinos">
+      <button class="acao" value="youtube">YouTube</button>
+      <button class="acao" value="tiktok">TikTok</button>
+      <button class="acao" value="ambos">Os dois</button>
+    </div>
+    <p class="fraco" id="dialogo-prazo"></p>
+    <div class="botoes">
+      <button class="acao" value="cancelar">Cancelar</button>
+      <button class="acao primario" value="confirmar" id="dialogo-sim">Confirmar</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast oculto" role="status"></div>
 
 <nav id="nav" class="oculto">
   <button data-tela="agora"><span>◉</span>Agora</button>
