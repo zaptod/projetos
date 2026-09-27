@@ -258,7 +258,10 @@ def recuperaveis(canal: str = "builds", token: str | None = None,
     3. descricao vazia sai. Sao envios de teste — video de produto nunca sai
        daqui sem descricao, e os dois casos no canal eram meus.
     4. titulo que JA tem irmao publico sai. Sao os 29 rascunhos gemeos, e
-       publica-los duplicaria o canal — o oposto do que isto conserta.
+       publica-los duplicaria o canal — o oposto do que isto conserta. Mas
+       "irmao" aqui e de ARQUIVO: uma metade "(2 de 2)" privada nao e irmao
+       da "(1 de 2)" publica, e sim a outra metade da mesma parte (veja o
+       comentario no corpo).
     5. titulo repetido DENTRO dos privados sai, ficando UM. Sao os pares
        principal/variante do mesmo build: a variante existe para assumir
        quando o principal cai, e aqui o principal nao caiu.
@@ -273,8 +276,21 @@ def recuperaveis(canal: str = "builds", token: str | None = None,
     """
     todos = videos_do_canal(canal, token)
     conhecidos = set(conhecidos or ())
-    publicos = {titulos.chave(v["titulo"]) for v in todos
-                if v["privacidade"] == "public" and v["titulo"]}
+    # O IRMAO PUBLICO E DE ARQUIVO, NAO DE CONTEUDO — e esta distincao nasceu
+    # com `titulos.chave` deixando de ver o "(N de M)". Medido em 27/09/2026:
+    # com a metade "(1 de 2)" publica e a "(2 de 2)" privada, o crivo 4
+    # apagava a segunda (chaves agora iguais) e a parte ficava PARTIDA no
+    # canal para sempre — exatamente o que o resto deste trabalho conserta.
+    # Entao o que se guarda por chave e o CONJUNTO DE PEDACOS publicos, com
+    # `None` querendo dizer "o video inteiro esta publico".
+    publicos = {}
+    for v in todos:
+        if v["privacidade"] != "public" or not v["titulo"]:
+            continue
+        k = titulos.chave(v["titulo"])
+        if k:
+            achado = titulos.corte(v["titulo"])
+            publicos.setdefault(k, set()).add(achado[0] if achado else None)
     validos = []
     for v in todos:
         if v["privacidade"] != "private" or v["upload"] != "processed":
@@ -282,9 +298,26 @@ def recuperaveis(canal: str = "builds", token: str | None = None,
         if not v["descricao"].strip() or not v["titulo"].strip():
             continue
         chave = titulos.chave(v["titulo"])
-        if not chave or chave in publicos:
+        if not chave:
             continue
-        validos.append((chave, v))
+        irmaos = publicos.get(chave)
+        if irmaos is not None:
+            achado = titulos.corte(v["titulo"])
+            pedaco = achado[0] if achado else None
+            # Sai quando o conteudo JA esta no ar de uma forma que cobre este
+            # arquivo: o inteiro publico cobre qualquer pedaco, e o pedaco
+            # publico cobre a si mesmo e o video inteiro (foi assim que a
+            # `historia_00003` acabou com o inteiro E os dois pedacos no ar).
+            # Fica so o caso que importa: pedaco de indice que ninguem publicou.
+            if pedaco is None or None in irmaos or pedaco in irmaos:
+                continue
+        # A CHAVE E DO CONTEUDO; AQUI A ESCOLHA E DE ARQUIVO. Uma parte longa
+        # vira dois Shorts ("(1 de 2)" e "(2 de 2)") e `titulos.chave` passou
+        # a dar a mesma resposta para os dois, de proposito — e correto para
+        # "este conteudo ja esta no ar?". Aqui seria o oposto: deduplicar por
+        # conteudo escolheria UM dos pedacos e deixaria o outro privado para
+        # sempre, quebrando a parte ao meio no canal.
+        validos.append(((chave, titulos.corte(v["titulo"])), v))
 
     escolhido = {}
     for chave, v in sorted(validos,
@@ -297,9 +330,12 @@ def recuperaveis(canal: str = "builds", token: str | None = None,
 JANELA_DO_ID_MIN = 90.0
 
 
-def id_no_canal(canal: str, titulo: str, quando, janela_min: float = None,
-                token: str | None = None) -> str:
-    """O id do video que acabou de subir, perguntado ao CANAL. `""` se nao der.
+def ids_no_canal(canal: str, titulo: str, quando, janela_min: float = None,
+                 token: str | None = None) -> list:
+    """Os ids daquela linha do ledger no CANAL, em ordem. `[]` se nao der.
+
+    Lista, e nao um id, porque uma linha nem sempre e um video: parte longa
+    vira dois Shorts e o ledger guarda UMA linha para os dois.
 
     POR QUE PRECISA EXISTIR: o publicador pelo navegador nem sempre consegue
     o id. O Studio as vezes confirma o sucesso sem renderizar o link, e a URL
@@ -309,14 +345,15 @@ def id_no_canal(canal: str, titulo: str, quando, janela_min: float = None,
     nao ha capa.
 
     O canal sabe. Casando por TITULO e por JANELA DE TEMPO, as 8 linhas de
-    builds resolveram com 0 minuto de diferenca, e as 3 de historias do dia
-    tambem. (As 5 de historias de 09-10/09 nao tem titulo correspondente no
-    canal — problema diferente, e mais feio: ou foram apagadas, ou nunca
-    subiram.)
+    builds resolveram com ZERO minuto de diferenca, e as 3 de historias do
+    dia tambem. As 5 de historias de 09-10/09 devolvem os DOIS pedacos de
+    cada parte — eu as reportei como "publicacoes fantasma" enquanto
+    `titulos.chave` nao tirava o sufixo do corte, e estava errada: elas estao
+    no ar, publicas.
 
-    AMBIGUO DEVOLVE VAZIO, nunca um palpite. Duas partes da mesma serie podem
-    dividir o titulo depois de um corte, e gravar o id errado e pior que nao
-    gravar: a metrica passaria a medir outro video, em silencio, para sempre.
+    AMBIGUO DEVOLVE VAZIO, nunca um palpite: o MESMO pedaco duas vezes, ou
+    titulos iguais sem corte. Gravar o id errado e pior que nao gravar —
+    a metrica mediria outro video, em silencio, para sempre.
     """
     from datetime import datetime, timedelta, timezone
     janela = JANELA_DO_ID_MIN if janela_min is None else janela_min
@@ -342,8 +379,39 @@ def id_no_canal(canal: str, titulo: str, quando, janela_min: float = None,
         if subiu.tzinfo is None:
             subiu = subiu.replace(tzinfo=timezone.utc)
         if abs(subiu - quando) <= timedelta(minutes=janela):
-            perto.append(video["id"])
-    return perto[0] if len(perto) == 1 else ""
+            perto.append(video)
+
+    if len(perto) == 1:
+        return [perto[0]["id"]]
+    if not perto:
+        return []
+
+    # DOIS CANDIDATOS NEM SEMPRE E AMBIGUIDADE. Uma parte longa vira dois
+    # Shorts, e o ledger guarda UMA linha para os dois — entao "dois videos
+    # com esta chave" e a resposta CERTA, e nao um empate. Confirmado por
+    # `corte`: se cada candidato e um pedaco de indice diferente, sao as
+    # metades da mesma parte e as duas valem, na ordem do corte.
+    pedacos = [(titulos.corte(v["titulo"]), v) for v in perto]
+    indices = [c[0] for c, _ in pedacos if c]
+    if len(indices) == len(pedacos) and len(set(indices)) == len(indices):
+        return [v["id"] for _, v in sorted(pedacos, key=lambda cv: cv[0][0])]
+
+    # Ambiguidade de verdade: o MESMO pedaco duas vezes, ou titulos iguais
+    # sem corte. Devolver um palpite aqui gravaria o id errado, e a metrica
+    # mediria outro video em silencio, para sempre.
+    return []
+
+
+def id_no_canal(canal: str, titulo: str, quando, janela_min: float = None,
+                token: str | None = None) -> str:
+    """O PRIMEIRO id daquela linha, ou `""`.
+
+    O campo `youtube_id` do ledger guarda um id so, e muita coisa o le
+    assim; quando a parte virou dois Shorts, ele aponta para o primeiro
+    pedaco. Quem precisa dos dois chama `ids_no_canal`.
+    """
+    ids = ids_no_canal(canal, titulo, quando, janela_min, token)
+    return ids[0] if ids else ""
 
 
 def tornar_publico(video_id: str, canal: str = "builds",

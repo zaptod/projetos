@@ -40,8 +40,46 @@ PARTE = re.compile(r"\(?\s*parte\s*(\d+)\s*[/de]{1,2}\s*(\d+)\s*\)?\s*$",
                    re.IGNORECASE)
 
 
+# O "(1 de 2)" que o `cortes._copia` gruda quando uma parte longa vira dois
+# Shorts. Ele identifica o ARQUIVO, e nao o CONTEUDO: os dois pedacos contam
+# a mesma parte da mesma historia.
+# O PARENTESE DE ABERTURA E OBRIGATORIO, e o teste pegou o porque: sem ele o
+# regex casava o rabo de "(Parte 3 de 6)" — lendo a PARTE como se fosse um
+# pedaco e apagando a unica coisa que distingue duas partes da mesma serie.
+# Dentro dos parenteses so pode haver "N de M", nada mais.
+CORTE = re.compile(r"\(\s*(\d+)\s+de\s+(\d+)\s*\)\s*$", re.IGNORECASE)
+
+
+def corte(texto: str) -> tuple | None:
+    """`(indice, total)` quando o titulo e de um PEDACO; `None` quando nao.
+
+    Existe porque `chave` deixou de distinguir os dois pedacos, e em um lugar
+    essa distincao e obrigatoria: ao escolher videos PRIVADOS para voltar ao
+    ar, "(1 de 2)" e "(2 de 2)" sao dois arquivos e os dois precisam sair.
+    Deduplicar por conteudo ali deixaria metade da parte privada para sempre.
+    """
+    achado = CORTE.search(re.sub(r"\s+", " ", str(texto or "")).strip())
+    return (int(achado.group(1)), int(achado.group(2))) if achado else None
+
+
 def chave(texto: str) -> str:
     """Titulo comparavel: sem acento de pontuacao, sem emoji, sem caixa.
+
+    O SUFIXO DO CORTE SAI; o da PARTE fica. MEDIDO EM 17/09/2026, casando o
+    ledger com o canal de historias: a `historia_00003` tem SEIS conteudos
+    publicados em duplicata (as partes 1 a 3 com o video inteiro E os dois
+    pedacos no ar, as partes 4 a 6 com dois pares de pedacos de rodadas
+    diferentes). 96 videos no canal para 79 conteudos.
+
+    A chave nao enxergava nada disso, porque o ledger guarda "(Parte 4)" e o
+    canal guarda "(Parte 4) (1 de 2)" — chaves diferentes, comparacao sempre
+    negativa. Eu mesma reportei os cinco como "publicacoes fantasma" por
+    causa deste falso negativo.
+
+    Tirar o "(N de M)" e seguro para as guardas porque NENHUMA delas roda por
+    pedaco: `publicar_youtube` percorre `cortes.preparar` dentro de UMA
+    publicacao, e o titulo repetido e o rodizio decidem sobre o item do
+    catalogo, que e sempre inteiro. Quem precisa da distincao chama `corte`.
 
     O SUFIXO DA PARTE SOBREVIVE AO CORTE. Medido em 17/09/2026: o corte em 60
     caracteres ainda nao colidia por sorte — a diferenca entre as partes cai
@@ -58,6 +96,9 @@ def chave(texto: str) -> str:
     Entao o corte passa a comer o corpo do titulo, nunca a parte.
     """
     limpo = re.sub(r"\s+", " ", str(texto or "")).strip().lower()
+    # O CORTE SAI PRIMEIRO, senao o "(Parte 4)" deixa de estar no fim e o
+    # regex da parte nao casa — e a parte e justamente o que nao pode sumir.
+    limpo = CORTE.sub("", limpo).strip()
     achado = PARTE.search(limpo)
     sufixo = ""
     if achado:
@@ -95,4 +136,4 @@ def repetido(titulo: str, ja: set) -> bool:
     return bool(k) and k in (ja or set())
 
 
-__all__ = ["TAMANHO", "chave", "ja_publicados", "repetido"]
+__all__ = ["TAMANHO", "chave", "corte", "ja_publicados", "repetido"]

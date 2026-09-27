@@ -27,6 +27,13 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+# `titulos` e importado no topo de proposito: `casar_ids` usa `titulos.corte`
+# e, sem esta linha, a reconciliacao da madrugada morria com
+# `NameError: name 'titulos' is not defined` — so no caminho em que a linha
+# tem hora e titulo casavel, que e justamente o caminho util. Ficou assim de
+# 17 a 27/09/2026 porque o unico import era local, dentro de outra funcao.
+from . import titulos
+
 RAIZ = Path(__file__).resolve().parents[2]
 OUTPUTS = RAIZ / "outputs"
 REGISTRO = OUTPUTS / "_publicar" / "publicados.jsonl"
@@ -454,9 +461,25 @@ def casar_ids(linhas: list, videos: list,
             or _instante(linha.get("quando"))
         if referencia is None:
             continue
+        # UM PEDACO NAO E A LINHA INTEIRA, e esta guarda nasceu em 17/09/2026
+        # junto com a que fez `titulos.chave` ignorar o sufixo "(1 de 2)".
+        # Aquela mudanca era necessaria (sem ela o ledger nunca casava com o
+        # canal, e eu cheguei a chamar de "publicacao fantasma" cinco videos
+        # que estavam no ar), mas ela tem um efeito colateral aqui: a linha de
+        # uma parte passou a casar com UM dos dois Shorts dela, e a
+        # reconciliacao gravaria metade da parte como se fosse a parte.
+        #
+        # A regra: linha sem corte so casa com video sem corte. Linha e video
+        # de pedacos casam entre si (um dia o ledger pode guardar o pedaco).
+        # Quem sabe juntar os dois pedacos numa linha e a cura, que tem
+        # `_pedacos` para isso e exige TODOS eles — meia parte nao e
+        # publicacao.
+        corte_da_linha = titulos.corte(linha["titulo"])
         candidatos = []
         for video in por_titulo.get(_chave_de_titulo(linha["titulo"]), ()):
             if video["youtube_id"] in usados:
+                continue
+            if titulos.corte(video.get("titulo")) != corte_da_linha:
                 continue
             no_ar = _instante(video.get("publicado_em"))
             if no_ar is None or abs(no_ar - referencia) > folga:

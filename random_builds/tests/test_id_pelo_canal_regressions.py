@@ -75,6 +75,40 @@ class IdNoCanalTests(unittest.TestCase):
             self.assertEqual("", recuperar.id_no_canal(
                 "builds", "mesmo titulo", self.AGORA))
 
+    # --------------------------------------------- a parte que virou dois
+    def test_os_DOIS_pedacos_sao_a_resposta_certa(self):
+        """Dois candidatos nem sempre e empate. Uma parte longa vira dois
+        Shorts e o ledger guarda UMA linha para os dois."""
+        with self._com([
+                _video("b", "A parte (Parte 4) (2 de 2)",
+                       "2026-09-17T18:44:00Z"),
+                _video("a", "A parte (Parte 4) (1 de 2)",
+                       "2026-09-17T18:41:00Z")]):
+            self.assertEqual(["a", "b"], recuperar.ids_no_canal(
+                "historias", "A parte (Parte 4)", self.AGORA),
+                "na ordem do corte, e nao na de chegada")
+
+    def test_o_campo_antigo_aponta_para_o_PRIMEIRO(self):
+        """`youtube_id` guarda um id so e muita coisa o le assim."""
+        with self._com([
+                _video("a", "A parte (Parte 4) (1 de 2)",
+                       "2026-09-17T18:41:00Z"),
+                _video("b", "A parte (Parte 4) (2 de 2)",
+                       "2026-09-17T18:44:00Z")]):
+            self.assertEqual("a", recuperar.id_no_canal(
+                "historias", "A parte (Parte 4)", self.AGORA))
+
+    def test_o_MESMO_pedaco_duas_vezes_continua_ambiguo(self):
+        """Duas copias de "(1 de 2)" sao duplicata no canal, nao as metades
+        de uma parte — e ai nao da para escolher."""
+        with self._com([
+                _video("a", "A parte (Parte 4) (1 de 2)",
+                       "2026-09-17T18:41:00Z"),
+                _video("b", "A parte (Parte 4) (1 de 2)",
+                       "2026-09-17T18:44:00Z")]):
+            self.assertEqual([], recuperar.ids_no_canal(
+                "historias", "A parte (Parte 4)", self.AGORA))
+
     def test_titulo_vazio_nem_pergunta(self):
         chamou = []
         with patch.object(recuperar, "videos_do_canal",
