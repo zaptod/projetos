@@ -29,6 +29,10 @@ outputs/bot.txt
 postar.cmd
 # Saida da postagem (o .cmd redireciona para ca).
 outputs/postar.txt
+# Saida do app do celular (o app_celular.cmd redireciona para ca).
+outputs/app_celular.txt
+# Retratos crus do Studio do TikTok: JSON interno da conta DESTA maquina.
+outputs/_tiktok/
 # Patches que a apuracao automatica propoe: saida de maquina, um por erro.
 outputs/_apuracoes/
 # Relatorios da cura do ledger (`ferramentas/curar_ledger.py`): um por rodada.
