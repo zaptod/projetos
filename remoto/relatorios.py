@@ -51,6 +51,41 @@ PISO_DE_ESTOQUE = 1
 
 
 # ----------------------------------------------------------------- coleta
+def _slot_do_registro(quando: str):
+    """O horario da grade daquele registro, ou `None` se a data nao der.
+
+    `None` nao vira zero nem palpite: registro sem data legivel nao paga
+    horario nenhum, e e assim que ele aparece no placar (em falta).
+    """
+    try:
+        return grade.slot(datetime.fromisoformat(str(quando)[:19]))
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
+def _horarios_servidos(itens: list[dict]) -> dict:
+    """`{(canal, plataforma): quantos HORARIOS da grade sairam}`.
+
+    Conta SLOT DISTINTO, nao linha. Duas publicacoes no mesmo horario (a
+    normal e a recuperacao que anda junto) sao um horario cumprido, e nao
+    dois — a grade promete um video por horario, nao dois.
+    """
+    slots = {}
+    for item in itens:
+        if item["slot"] is None or not item["plataforma"]:
+            continue
+        slots.setdefault((item["canal"], item["plataforma"]),
+                         set()).add(item["slot"])
+    return {chave: len(vistos) for chave, vistos in slots.items()}
+
+
+def _bateu_o_dia(servidos: dict) -> bool:
+    """O dia so esta completo quando TODO canal cumpriu TODA plataforma."""
+    return all(servidos.get((canal, plataforma), 0)
+               >= grade.META_DIARIA_POR_PLATAFORMA[plataforma]
+               for canal in CANAIS for plataforma in grade.PLATAFORMAS)
+
+
 def _publicacoes() -> list[dict]:
     """Toda publicacao dos dois canais, com canal e hora local resolvidos.
 
@@ -70,6 +105,18 @@ def _publicacoes() -> list[dict]:
                 "quando": quando,
                 "dia": quando[:10],
                 "hora": quando[11:16],
+                # A PLATAFORMA E O QUE FALTAVA AQUI, e a falta dava meta
+                # batida que nao foi: o placar somava YouTube e TikTok e
+                # comparava com o alvo de UMA plataforma. Em 27/09/2026 ele
+                # imprimiu "✓ histórias: 11/10 horários" com 5 no YouTube e
+                # 6 no TikTok — os dois destinos em falta, e um tique verde.
+                "plataforma": str(linha.get("plataforma") or "").lower(),
+                # O HORARIO DA GRADE a que a publicacao pertence, e nao a
+                # hora do relogio: a rodada das 17:57 termina as 18:01, e a
+                # tarefa recuperada as 19:30 ainda e aquele disparo. Contar
+                # por slot tambem impede que dois videos no mesmo horario
+                # (a recuperacao e um extra) paguem dois horarios.
+                "slot": _slot_do_registro(quando),
                 "video_id": linha.get("video_id"),
                 "titulo": linha.get("titulo") or "",
                 # `None` aqui e uma linha antiga, de antes de o registro
@@ -135,16 +182,33 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
     else:
         linhas.append("*Hoje* — nada publicado ainda")
 
-    # A meta e por HORARIO, entao o placar tem que ser por horario — dizer
-    # "os dois canais publicaram" com um post de oito seria dar por batida uma
-    # meta que faltou 7/8.
+    # A meta e por HORARIO E POR PLATAFORMA, entao o placar tem de ser as
+    # duas coisas. Contar linha e somar os destinos foi o defeito de
+    # 27/09/2026: "✓ histórias: 11/10 horários" com 5 no YouTube e 6 no
+    # TikTok — 11 linhas contra o alvo de uma plataforma so, tique verde num
+    # dia em que os dois destinos ficaram em falta. Quem ja contava certo era
+    # a conferencia da noite (`slots_da_grade_hoje`/`deficit`); aqui nao.
     linhas.append("")
+    servidos_hoje = _horarios_servidos(de_hoje)
     for canal, ficha in CANAIS.items():
-        saiu = sum(1 for i in de_hoje if i["canal"] == canal)
-        alvo = META_DIARIA_POR_CANAL
-        marca = "✓" if saiu >= alvo else "⏳"
+        placar = []
+        completo = True
+        for plataforma in grade.PLATAFORMAS:
+            saiu = servidos_hoje.get((canal, plataforma), 0)
+            alvo = grade.META_DIARIA_POR_PLATAFORMA[plataforma]
+            completo = completo and saiu >= alvo
+            placar.append(f"{plataforma} {saiu}/{alvo}")
+        marca = "✓" if completo else "⏳"
         linhas.append(f"  {marca} {ficha['emoji']} {ficha['rotulo']}: "
-                      f"{saiu}/{alvo} horários")
+                      + " · ".join(placar))
+
+    # LINHA QUE NAO PAGA HORARIO TEM DE APARECER. Sem plataforma ou sem data
+    # legivel, o registro fica fora do placar — e um placar menor sem explicar
+    # por que e exatamente o tipo de silencio que fez este relatorio mentir.
+    mudas = [i for i in de_hoje if not i["plataforma"] or i["slot"] is None]
+    if mudas:
+        linhas.append(f"  ⚠ {len(mudas)} registro(s) sem plataforma ou sem "
+                      f"data legível: não pagam horário")
 
     # --- a serie, que e onde se ve se e habito ou sorte
     linhas += ["", f"*Últimos {dias} dias*"]
@@ -152,13 +216,18 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
     for recuo in range(dias - 1, -1, -1):
         dia = (agora - timedelta(days=recuo)).strftime("%Y-%m-%d")
         itens = por_dia.get(dia) or []
-        contagem = {c: 0 for c in CANAIS}
-        for item in itens:
-            if item["canal"] in contagem:
-                contagem[item["canal"]] += 1
-        bateu = all(v >= META_DIARIA_POR_CANAL for v in contagem.values())
+        servidos = _horarios_servidos(itens)
+        bateu = _bateu_o_dia(servidos)
         completos += 1 if bateu else 0
-        corpo = " ".join(f"{CANAIS[c]['emoji']}{contagem[c]}" for c in CANAIS)
+        # Um numero por canal, mas com o DENOMINADOR CHEIO (os horarios das
+        # duas plataformas somados) — senao "11" ao lado de uma meta de 10
+        # continua parecendo dia completo.
+        alvo_do_canal = sum(grade.META_DIARIA_POR_PLATAFORMA[p]
+                            for p in grade.PLATAFORMAS)
+        corpo = " ".join(
+            f"{CANAIS[c]['emoji']}"
+            f"{sum(servidos.get((c, p), 0) for p in grade.PLATAFORMAS)}"
+            f"/{alvo_do_canal}" for c in CANAIS)
         linhas.append(f"  {dia[8:10]}/{dia[5:7]}  {corpo}  "
                       f"{'✓' if bateu else '✗'}")
     total = {c: sum(1 for i in tudo

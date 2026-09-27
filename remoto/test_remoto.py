@@ -1461,12 +1461,20 @@ class ConteudoDosRelatoriosTests(BaseTemp):
         _serie().REGISTRO = self._ledgers["historias"]
         _metricas().REGISTRO = self._ledgers["builds"]
 
-    def _publicar(self, modulo, nome, quando, video_id, visibilidade):
+    def _publicar(self, modulo, nome, quando, video_id, visibilidade,
+                  plataforma="youtube"):
+        """Uma linha de ledger. `plataforma` existe em TODA linha de verdade.
+
+        Conferido nos dois ledgers em 27/09/2026: 244 e 320 linhas, nenhuma
+        sem o campo. O padrao aqui e `youtube` porque e o destino que a
+        maioria dos testes quer; quem testa placar por destino passa os dois.
+        """
         import json
         alvo = self.pasta / f"{nome}.jsonl"
         with open(alvo, "a", encoding="utf-8") as fh:
             fh.write(json.dumps({"quando": quando, "video_id": video_id,
                                  "visibilidade": visibilidade,
+                                 "plataforma": plataforma,
                                  "titulo": "t"}) + "\n")
 
     def test_metas_diz_hora_e_canal_de_cada_video(self):
@@ -1479,16 +1487,58 @@ class ConteudoDosRelatoriosTests(BaseTemp):
         self.assertIn("17:13", texto)
         self.assertIn("histórias", texto)
         self.assertIn("builds", texto)
-        # O placar e por HORARIO (a grade tem oito), nao por canal: dizer "os
-        # dois canais publicaram" com um post de oito daria por batida uma
-        # meta que faltou 7/8.
-        self.assertIn(f"1/{relatorios.META_DIARIA_POR_CANAL} horários", texto)
+        # O placar e por HORARIO (a grade tem dez) E POR PLATAFORMA: dizer
+        # "os dois canais publicaram" com um post de dez daria por batida uma
+        # meta que faltou 9/10, e somar os destinos daria 11/10.
+        alvo = relatorios.grade.META_DIARIA_POR_PLATAFORMA["youtube"]
+        self.assertIn(f"youtube 1/{alvo}", texto)
+        self.assertIn(f"tiktok 0/{alvo}", texto)
 
     def test_metas_acusa_canal_que_ficou_sem_postar(self):
         self._publicar(_serie(), "historias", "2026-09-09T17:12:45",
                        "historia_00003:celular:p02", "public")
         texto = relatorios.metas(datetime(2026, 9, 9, 21, 0))
-        self.assertIn(f"builds: 0/{relatorios.META_DIARIA_POR_CANAL}", texto)
+        alvo = relatorios.grade.META_DIARIA_POR_PLATAFORMA["youtube"]
+        self.assertIn(f"builds: youtube 0/{alvo}", texto)
+
+    def test_metas_nao_soma_os_destinos_para_dar_meta_batida(self):
+        """Foi assim que saiu "✓ histórias: 11/10 horários" em 27/09/2026.
+
+        Cinco no YouTube e seis no TikTok, os DOIS destinos em falta, e o
+        relatorio das 21h imprimiu tique verde: ele contava linha, nao
+        horario, e comparava a soma dos destinos com o alvo de um so.
+        """
+        # O minuto vem da grade, hora por hora: as 17h ela publica as 17:57,
+        # e um registro as 17:40 pertence ao horario ANTERIOR — foi assim que
+        # a primeira versao deste teste contou 4 onde queria 5.
+        horas = (9, 12, 15, 17, 20)
+
+        def _quando(hora, atraso):
+            return (f"2026-09-09T{hora:02d}:"
+                    f"{relatorios.grade.minuto(hora) + atraso:02d}:00")
+
+        for i, hora in enumerate(horas):
+            self._publicar(_serie(), "historias", _quando(hora, 1),
+                           f"historia_00003:celular:p{i:02d}", "public")
+        for i, hora in enumerate(horas + (21,)):
+            self._publicar(_serie(), "historias", _quando(hora, 2),
+                           f"historia_00003:celular:p{i:02d}", "public",
+                           plataforma="tiktok")
+        texto = relatorios.metas(datetime(2026, 9, 9, 23, 0))
+        alvo = relatorios.grade.META_DIARIA_POR_PLATAFORMA["youtube"]
+        self.assertIn(f"youtube 5/{alvo}", texto)
+        self.assertIn(f"tiktok 6/{alvo}", texto)
+        self.assertNotIn("✓ 📖", texto)
+
+    def test_duas_publicacoes_no_mesmo_horario_pagam_UM_horario(self):
+        """A recuperacao anda junto com a rodada e nao cumpre outro horario."""
+        self._publicar(_serie(), "historias", "2026-09-09T17:12:45",
+                       "historia_00003:celular:p02", "public")
+        self._publicar(_serie(), "historias", "2026-09-09T17:14:10",
+                       "historia_00004:celular:p01", "public")
+        texto = relatorios.metas(datetime(2026, 9, 9, 21, 0))
+        alvo = relatorios.grade.META_DIARIA_POR_PLATAFORMA["youtube"]
+        self.assertIn(f"histórias: youtube 1/{alvo}", texto)
 
     def test_a_meta_e_a_grade_inteira_e_nao_um_por_dia(self):
         """Correcao dele em 09/09: 'quero um video em todos esses horarios'."""
