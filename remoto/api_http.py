@@ -57,7 +57,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import acoes, painel_dados
+from . import acoes, painel_dados, vila_dados
 from .config import runtime_dir
 
 PORTA_PADRAO = 8931
@@ -92,6 +92,7 @@ ESTATICOS = {
     "/icone.svg": ("icone.svg", "image/svg+xml"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/app.css": ("app.css", "text/css; charset=utf-8"),
+    "/vila.js": ("vila.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -414,6 +415,29 @@ class Estado:
             self.falhas.setdefault(ip, []).append(time.time())
 
 
+class _MundoPNG:
+    """O cenario composto, guardado em memoria enquanto o config nao muda."""
+
+    def __init__(self):
+        self._trava = threading.Lock()
+        self._bytes: bytes | None = None
+        self._versao = ""
+
+    def versao(self) -> str:
+        return vila_dados.versao_do_mundo()
+
+    def ler(self) -> bytes:
+        versao = self.versao()
+        with self._trava:
+            if self._bytes is None or versao != self._versao:
+                self._bytes = vila_dados.png_do_mundo()
+                self._versao = versao
+            return self._bytes
+
+
+_MUNDO_PNG = _MundoPNG()
+
+
 def _inteiro(consulta: dict, chave: str, padrao: int) -> int:
     try:
         return int((consulta.get(chave) or [padrao])[0])
@@ -519,6 +543,10 @@ class Manipulador(BaseHTTPRequestHandler):
 
         if rota in ESTATICOS:
             return self._estatico(*ESTATICOS[rota])
+        if rota in ("/vila.png", "/sprites.png"):
+            # Abertas como o resto da casca (a rede ja e a tranca): sao o
+            # cenario, nao dado. O que esta NELAS nao diz nada do sistema.
+            return self._imagem_da_vila(rota)
         if rota.startswith("/v/"):
             return self._video_por_bilhete(rota[3:])
         if not rota.startswith("/api/"):
@@ -531,8 +559,14 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json(painel_dados.estado())
             if rota == "/api/diario":
                 desde = (consulta.get("desde") or [""])[0][:40]
+                fabrica = (consulta.get("fabrica") or [""])[0][:40] or None
                 return self._json(painel_dados.diario(
-                    desde, _inteiro(consulta, "n", 60)))
+                    desde, _inteiro(consulta, "n", 60), fabrica))
+            if rota == "/api/vila":
+                saida = {"estado": vila_dados.estado()}
+                if (consulta.get("mundo") or ["0"])[0] == "1":
+                    saida["mundo"] = vila_dados.mundo()
+                return self._json(saida)
             if rota == "/api/acoes":
                 if not self.estado.com_acoes:
                     return self._json({"ligadas": False})
@@ -686,6 +720,26 @@ class Manipulador(BaseHTTPRequestHandler):
         return self._json({"feito": True, "texto": resultado})
 
     # ------------------------------------------------------- arquivos
+    def _imagem_da_vila(self, rota: str):
+        """O cenario composto (uma vez) e a folha de sprites.
+
+        Compor custa 0,03 s, mas nao ha por que refazer a cada tela aberta:
+        o mundo so muda quando a Oficina salva. O `Cache-Control` longo vale
+        porque o app pede com `?v=` (a versao vem em `/api/vila`).
+        """
+        try:
+            corpo = (_MUNDO_PNG.ler() if rota == "/vila.png"
+                     else vila_dados.caminho_sprites().read_bytes())
+        except Exception:                                    # noqa: BLE001
+            return self._erro(404, "a vila ainda nao tem cenario")
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(corpo)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "private, max-age=86400")
+        self.end_headers()
+        self.wfile.write(corpo)
+
     def _estatico(self, nome: str, tipo: str):
         try:
             corpo = (APP / nome).read_bytes()

@@ -2,13 +2,14 @@
 const TOKEN = "painel.token";
 const ULTIMO = "painel.ultimo_estado";
 const CONTATO = "painel.ultimo_contato";
-const TITULOS = {agora: "Agora", diario: "Diário", videos: "Vídeos",
+const TITULOS = {vila: "Vila", diario: "Diário", videos: "Vídeos",
                  relatorios: "Relatórios"};
 const RELATORIOS = ["metas", "funcionamento", "confiabilidade", "auditoria"];
 const $ = (id) => document.getElementById(id);
 
-let tela = "agora";
+let tela = "vila";
 let diarioDesde = "";
+let diarioFabrica = null;
 let timer = null;
 
 function el(tag, attrs = {}, ...filhos) {
@@ -179,7 +180,12 @@ async function carregarAgora() {
 // ------------------------------------------------------------ diario
 async function carregarDiario() {
   try {
-    const eventos = await api(`/api/diario?n=80&desde=${encodeURIComponent(diarioDesde)}`);
+    const filtro = diarioFabrica ? `&fabrica=${encodeURIComponent(diarioFabrica)}` : "";
+    $("diario-filtro").classList.toggle("oculto", !diarioFabrica);
+    $("diario-filtro-nome").textContent = diarioFabrica
+      ? `só ${diarioFabrica}` : "";
+    const eventos = await api(
+      `/api/diario?n=80&desde=${encodeURIComponent(diarioDesde)}${filtro}`);
     if (eventos.length) diarioDesde = eventos[eventos.length - 1].ts;
     desenharEventos($("diario"), eventos);
     conexao(true);
@@ -392,10 +398,14 @@ $("btn-parear").addEventListener("click", async () => {
 });
 
 // --------------------------------------------------------------- telas
-const CARGAS = {agora: [carregarAgora, 15000], diario: [carregarDiario, 5000],
+const CARGAS = {vila: [carregarAgora, 15000], diario: [carregarDiario, 5000],
                 videos: [null, 0], relatorios: [null, 0]};
 
 function mostrar(nova) {
+  if (nova && nova !== tela && nova === "diario") {
+    diarioDesde = "";                     // filtro novo, lista do zero
+    $("diario").replaceChildren();
+  }
   if (nova) tela = nova;
   const pareado = !!localStorage.getItem(TOKEN);
   const atual = pareado ? tela : "parear";
@@ -408,7 +418,9 @@ function mostrar(nova) {
     else b.removeAttribute("aria-current");
   }
   clearInterval(timer);
+  if (typeof vilaParar === "function") vilaParar();
   if (!pareado) return;
+  if (tela === "vila" && typeof vilaMostrar === "function") vilaMostrar();
   carregarAcoes().then(() => { if (tela === "videos") carregarVideos(); });
   const [carga, intervalo] = CARGAS[tela];
   if (carga) {
@@ -422,6 +434,12 @@ function mostrar(nova) {
 for (const b of document.querySelectorAll("nav button"))
   b.addEventListener("click", () => mostrar(b.dataset.tela));
 $("btn-tentar").addEventListener("click", () => mostrar());
+$("btn-todas").addEventListener("click", () => {
+  diarioFabrica = null; diarioDesde = ""; $("diario").replaceChildren();
+  carregarDiario();
+});
+$("vila-mais").addEventListener("click", () => vilaZoom(Vila.zoom * 1.5));
+$("vila-menos").addEventListener("click", () => vilaZoom(Vila.zoom / 1.5));
 window.addEventListener("online", () => mostrar());
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") mostrar();

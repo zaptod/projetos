@@ -32,7 +32,18 @@
     </div>
   </section>
 
-  <section id="tela-agora" class="oculto">
+  <section id="tela-vila" class="oculto">
+    <div class="cartao sem-borda">
+      <div class="vila-caixa">
+        <canvas id="vila-canvas" aria-label="A vila"></canvas>
+        <div class="vila-botoes">
+          <button class="acao" id="vila-menos" aria-label="Afastar">－</button>
+          <button class="acao" id="vila-mais" aria-label="Aproximar">＋</button>
+        </div>
+      </div>
+      <div id="vila-escolhido" class="oculto"></div>
+      <div id="vila-placar" class="placar"></div>
+    </div>
     <div class="cartao oculto" id="controle">
       <h2>Controle</h2>
       <div class="campos">
@@ -69,9 +80,19 @@
       <h2>Erros recentes</h2>
       <div id="erros"></div>
     </div>
+    <div class="cartao">
+      <h2>Paralelismo</h2>
+      <div id="vila-travas"></div>
+    </div>
   </section>
 
   <section id="tela-diario" class="oculto">
+    <div class="cartao oculto" id="diario-filtro">
+      <div class="botoes">
+        <span class="corpo" id="diario-filtro-nome"></span>
+        <button class="acao" id="btn-todas">Todas as fábricas</button>
+      </div>
+    </div>
     <div class="cartao"><div id="diario"></div></div>
   </section>
 
@@ -114,12 +135,13 @@
 <div id="toast" class="toast oculto" role="status"></div>
 
 <nav id="nav" class="oculto">
-  <button data-tela="agora"><span>◉</span>Agora</button>
+  <button data-tela="vila"><span>🏘</span>Vila</button>
   <button data-tela="diario"><span>☰</span>Diário</button>
   <button data-tela="videos"><span>▶</span>Vídeos</button>
   <button data-tela="relatorios"><span>▤</span>Relatórios</button>
 </nav>
 
 <script src="app.js"></script>
+<script src="vila.js"></script>
 </body>
 </html>

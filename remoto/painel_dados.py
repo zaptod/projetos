@@ -148,7 +148,7 @@ def _evento(evento: dict) -> dict:
             "dur_s": evento.get("dur_s")}
 
 
-def diario(desde: str = "", n: int = 60) -> list[dict]:
+def diario(desde: str = "", n: int = 60, fabrica: str | None = None) -> list[dict]:
     """Eventos mais novos que `desde`, do MAIS VELHO para o mais novo.
 
     Nessa ordem o app so acrescenta no fim da lista. `desde` e o `ts` do
@@ -156,7 +156,7 @@ def diario(desde: str = "", n: int = 60) -> list[dict]:
     no mesmo fuso e a mesma coisa que comparar datas.
     """
     n = max(1, min(int(n), MAX_EVENTOS))
-    eventos = _atividade().recentes(n)
+    eventos = _atividade().recentes(n, fabrica or None)
     if desde:
         eventos = [e for e in eventos if str(e.get("ts", "")) > desde]
     return [_evento(e) for e in reversed(eventos)]
