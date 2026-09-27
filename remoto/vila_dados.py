@@ -1,17 +1,10 @@
 # -*- coding: utf-8 -*-
-"""A Vila para o celular: o mundo, quem esta em cada predio, e o placar.
+"""O que a Vila do celular mostra em TEXTO: fabricas, travas e placar.
 
-A Vila do painel (`painel/paginas/vila.py`) e uma tela Tk: o cenario e uma
-imagem so, composta por `vila.motor`, e os bots sao animados por cima. Aqui
-vale a mesma divisao, com a fronteira na rede:
-
-  - o CENARIO vai pronto, como PNG (`/vila.png`): compor custa 0,03 s e 46 KB,
-    e o celular nao precisa refazer chao, decoracao e predios;
-  - as POSICOES sao calculadas aqui, uma vez (`mundo()`), com as MESMAS
-    contas do painel (porta = meio da base do predio) — para o app nao ter
-    uma segunda geometria que possa divergir;
-  - o ESTADO (`estado()`) e o que muda: quem trabalha, quem deu erro, ha
-    quanto tempo, e o paralelismo.
+O DESENHO da Vila e outro modulo: `remoto/vila_nova.py` serve a arte fofa
+(a mesma da janela flutuante) e a vida dos habitantes. Aqui fica o que se le
+em texto embaixo do cenario — e que o desenho nao mostra: o estado de cada
+fabrica por canal, quais contas estao em uso, e o placar.
 
 TRES CUIDADOS QUE VIERAM DE FORA:
   1. `travas.estado()` responde "ocupada?" PEGANDO a trava por um instante —
@@ -21,16 +14,14 @@ TRES CUIDADOS QUE VIERAM DE FORA:
   2. `panorama.resumo()` leva ~159 s na primeira conta (medido em 27/09/2026)
      e so depois fica em cache. Isso NAO pode acontecer dentro de um GET: o
      placar e calculado numa thread e servido com a idade dele.
-  3. `deepseek` e `mimetizar` sao fabricas do diario que NAO tem predio no
-     mapa. Elas ganham lugar na fila em frente a casa, como no painel, e o
-     app mostra que elas nao tem predio (em vez de escondê-las).
+  3. toda fabrica do diario aparece na lista, inclusive as que nao tem
+     predio na arte — esconder uma fabrica e pior do que mostra-la sem casa.
 """
 from __future__ import annotations
 
 import threading
 import time
 from datetime import datetime
-from pathlib import Path
 
 from .painel_dados import limpar
 
@@ -59,113 +50,6 @@ def _travas():
 def _trava_ocupada(nome: str):
     from .acoes import trava_ocupada
     return trava_ocupada(nome)
-
-
-# ------------------------------------------------------------------ mundo
-_MUNDO: dict | None = None
-_MUNDO_TRAVA = threading.Lock()
-
-
-def caminho_sprites() -> Path:
-    motor = _motor()
-    cfg = motor.carregar()
-    folha = (cfg.get("folhas") or {}).get("base") or {}
-    raiz = Path(motor.__file__).resolve().parent
-    return raiz / str(folha.get("arquivo") or "sprites/base.png")
-
-
-def versao_do_mundo() -> str:
-    """Muda quando o cenario muda (a Oficina salvou, ou a folha foi trocada).
-
-    E o que deixa o app guardar `/vila.png` por um dia sem ficar preso a um
-    cenario velho: a versao vai junto no `/api/vila` e entra na URL.
-    """
-    partes = []
-    for caminho in (Path(_motor().__file__).resolve().parent / "config.json",
-                    caminho_sprites()):
-        try:
-            estado = caminho.stat()
-            partes.append(f"{int(estado.st_mtime)}-{estado.st_size}")
-        except OSError:
-            partes.append("0")
-    return ".".join(partes)
-
-
-def png_do_mundo(escala: int = ESCALA) -> bytes:
-    """O cenario inteiro (chao, decoracao, predios) como PNG."""
-    import io
-
-    motor = _motor()
-    cfg = motor.carregar()
-    if not motor.pronto(cfg):
-        raise RuntimeError("a vila ainda nao tem cenario")
-    imagem = motor.compor_mundo(cfg, motor.Atlas(cfg), escala)
-    saco = io.BytesIO()
-    imagem.save(saco, "PNG", optimize=True)
-    return saco.getvalue()
-
-
-def _porta(pos: dict, larg: float, alt: float, lado: int) -> list:
-    """O pe do predio, no meio: e para la que o bot anda (a conta do painel)."""
-    return [(pos["x"] + larg / 2) * lado, (pos["y"] + alt) * lado + 4]
-
-
-def mundo(forcar: bool = False) -> dict:
-    """Geometria e sprites, em pixels. Nao muda entre chamadas."""
-    global _MUNDO
-    with _MUNDO_TRAVA:
-        if _MUNDO is not None and not forcar:
-            return _MUNDO
-        motor = _motor()
-        atividade = _atividade()
-        cfg = motor.carregar()
-        mapa = cfg["mapa"]
-        lado = int(cfg["tile"]) * ESCALA
-        casa = mapa.get("casa") or {"x": mapa["larg"] // 2, "y": mapa["alt"] // 2}
-        larg_casa, alt_casa = motor.tamanho(cfg, "predio.casa")
-        porta_casa = _porta(casa, larg_casa, alt_casa, lado)
-
-        predios = {}
-        lugares = {}
-        for i, nome in enumerate(atividade.FABRICAS):
-            dados = atividade.FABRICAS[nome]
-            pos = (mapa.get("predios") or {}).get(nome)
-            # Fabrica sem predio fica na fila em frente a casa — a mesma
-            # regra do painel, para os dois desenhos combinarem.
-            fila = [porta_casa[0] + (i - 3) * lado * 0.9, porta_casa[1] + lado * 0.6]
-            if pos:
-                larg, alt = motor.tamanho(cfg, f"predio.{nome}")
-                trabalho = _porta(pos, larg, alt, lado)
-                predios[nome] = {
-                    "x": pos["x"] * lado, "y": pos["y"] * lado,
-                    "larg": larg * lado, "alt": alt * lado,
-                    "topo": pos["y"] * lado, "porta": trabalho}
-            else:
-                trabalho = list(fila)
-            lugares[nome] = {
-                "rotulo": dados.get("rotulo", nome), "emoji": dados.get("emoji", ""),
-                "faz": dados.get("faz", ""), "casa": fila, "trabalho": trabalho,
-                "tem_predio": bool(pos), "fase": i * 1.3}
-
-        papeis = cfg.get("papeis") or {}
-        folha = (cfg.get("folhas") or {}).get("base") or {}
-        _MUNDO = {
-            "versao": versao_do_mundo(),
-            "tamanho": [mapa["larg"] * lado, mapa["alt"] * lado],
-            "lado": lado, "escala": ESCALA, "tile": int(cfg["tile"]),
-            "colunas": 256 // int(folha.get("tile_w") or cfg["tile"]),
-            "fundo": mapa.get("fundo") or "#17251a",
-            "casa": {"x": casa["x"] * lado, "y": casa["y"] * lado,
-                     "larg": larg_casa * lado, "alt": alt_casa * lado,
-                     "porta": porta_casa},
-            "predios": predios,
-            "lugares": lugares,
-            "sprites": {nome: {"frames": papel.get("frames") or [],
-                               "fps": papel.get("fps") or 6}
-                        for nome, papel in papeis.items()
-                        if nome.startswith(("bot.", "fx."))},
-        }
-        return _MUNDO
 
 
 # ---------------------------------------------------------------- estado
@@ -293,5 +177,4 @@ def estado() -> dict:
     return saida
 
 
-__all__ = ["PLACAR", "caminho_sprites", "estado", "mundo", "paralelismo",
-           "png_do_mundo", "versao_do_mundo"]
+__all__ = ["PLACAR", "estado", "paralelismo"]

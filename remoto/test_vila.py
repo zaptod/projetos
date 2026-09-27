@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""A Vila do celular: geometria, paralelismo sem pegar trava, e placar.
+"""O texto da Vila: fabricas por canal, paralelismo e placar.
 
 O que estes testes seguram, e por que:
-  - a geometria tem que ser a MESMA do painel (porta no meio da base), senao
-    o bot do celular anda para um lugar que no PC e outro;
   - `paralelismo()` NAO pode chamar `travas.ocupada()`: aquela funcao responde
     PEGANDO a trava, e o dono de verdade ouviria "ocupado";
   - o placar (`panorama.resumo`, ~159 s) nunca pode ser calculado dentro do
     pedido;
-  - fabrica sem predio (deepseek, mimetizar) continua aparecendo.
+  - fonte quebrada nao derruba a tela, e o detalhe sai limpo.
+
+O DESENHO da Vila tem testes proprios em `test_vila_nova.py`.
 """
 from __future__ import annotations
 
@@ -19,34 +19,6 @@ import types
 import pytest
 
 from remoto import vila_dados
-
-
-class _Motor:
-    """O mundo de mentira: dois predios, uma casa, tiles de 16."""
-
-    FABRICAS = {}
-
-    @staticmethod
-    def carregar():
-        return {
-            "tile": 16, "escala": 2,
-            "folhas": {"base": {"arquivo": "sprites/base.png", "tile_w": 16}},
-            "papeis": {"bot.baixo": {"frames": [144, 145], "fps": 6},
-                       "fx.erro": {"frames": [162, 163], "fps": 2},
-                       "predio.casa": {"frames": [108], "larg": 4, "alt": 3},
-                       "chao.grama": {"frames": [0]}},
-            "mapa": {"larg": 40, "alt": 20, "fundo": "#101010",
-                     "predios": {"estudio": {"x": 4, "y": 10}},
-                     "casa": {"x": 20, "y": 14}},
-        }
-
-    @staticmethod
-    def tamanho(cfg, papel):
-        return (4, 3)
-
-    @staticmethod
-    def pronto(cfg):
-        return True
 
 
 class _Atividade:
@@ -75,48 +47,8 @@ class _Atividade:
 @pytest.fixture
 def mundo_falso(monkeypatch, tmp_path):
     atividade = _Atividade()
-    # o modulo de verdade tem __file__ (e ao lado dele mora o config.json)
-    monkeypatch.setattr(_Motor, "__file__", str(tmp_path / "motor.py"), raising=False)
-    (tmp_path / "config.json").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(vila_dados, "_motor", lambda: _Motor)
     monkeypatch.setattr(vila_dados, "_atividade", lambda: atividade)
-    monkeypatch.setattr(vila_dados, "_MUNDO", None)
-    monkeypatch.setattr(vila_dados, "caminho_sprites", lambda: tmp_path / "base.png")
-    (tmp_path / "base.png").write_bytes(b"png")
     return types.SimpleNamespace(atividade=atividade, tmp=tmp_path)
-
-
-# ---------------------------------------------------------------- mundo
-def test_geometria_e_a_mesma_do_painel(mundo_falso):
-    m = vila_dados.mundo(forcar=True)
-    assert m["tamanho"] == [40 * 32, 20 * 32] and m["lado"] == 32
-    # porta = meio da base do predio, +4 px, como em painel/paginas/vila.py
-    assert m["predios"]["estudio"]["porta"] == [(4 + 2) * 32, (10 + 3) * 32 + 4]
-    assert m["predios"]["estudio"]["larg"] == 4 * 32
-    assert m["casa"]["porta"] == [(20 + 2) * 32, (14 + 3) * 32 + 4]
-
-
-def test_fabrica_sem_predio_ganha_lugar_na_fila(mundo_falso):
-    m = vila_dados.mundo(forcar=True)
-    assert "deepseek" not in m["predios"]
-    lugar = m["lugares"]["deepseek"]
-    assert lugar["tem_predio"] is False
-    # anda ate a propria casa: o trabalho dela e o lugar dela na fila
-    assert lugar["trabalho"] == lugar["casa"]
-    assert vila_dados.mundo()["lugares"]["estudio"]["tem_predio"] is True
-
-
-def test_mundo_leva_so_os_sprites_animados(mundo_falso):
-    sprites = vila_dados.mundo(forcar=True)["sprites"]
-    assert set(sprites) == {"bot.baixo", "fx.erro"}      # nada de chao/predio
-    assert sprites["fx.erro"]["fps"] == 2
-
-
-def test_versao_muda_quando_o_cenario_muda(mundo_falso, monkeypatch, tmp_path):
-    antes = vila_dados.versao_do_mundo()
-    time.sleep(0.01)
-    (tmp_path / "base.png").write_bytes(b"png diferente")
-    assert vila_dados.versao_do_mundo() != antes
 
 
 # ---------------------------------------------------------------- estado

@@ -57,7 +57,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import acoes, painel_dados, vila_dados
+from . import acoes, painel_dados, vila_dados, vila_nova
 from .config import runtime_dir
 
 PORTA_PADRAO = 8931
@@ -415,29 +415,6 @@ class Estado:
             self.falhas.setdefault(ip, []).append(time.time())
 
 
-class _MundoPNG:
-    """O cenario composto, guardado em memoria enquanto o config nao muda."""
-
-    def __init__(self):
-        self._trava = threading.Lock()
-        self._bytes: bytes | None = None
-        self._versao = ""
-
-    def versao(self) -> str:
-        return vila_dados.versao_do_mundo()
-
-    def ler(self) -> bytes:
-        versao = self.versao()
-        with self._trava:
-            if self._bytes is None or versao != self._versao:
-                self._bytes = vila_dados.png_do_mundo()
-                self._versao = versao
-            return self._bytes
-
-
-_MUNDO_PNG = _MundoPNG()
-
-
 def _inteiro(consulta: dict, chave: str, padrao: int) -> int:
     try:
         return int((consulta.get(chave) or [padrao])[0])
@@ -543,7 +520,7 @@ class Manipulador(BaseHTTPRequestHandler):
 
         if rota in ESTATICOS:
             return self._estatico(*ESTATICOS[rota])
-        if rota in ("/vila.png", "/sprites.png"):
+        if rota in ("/vilanova.png", "/vilanova-atlas.png"):
             # Abertas como o resto da casca (a rede ja e a tranca): sao o
             # cenario, nao dado. O que esta NELAS nao diz nada do sistema.
             return self._imagem_da_vila(rota)
@@ -563,9 +540,14 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json(painel_dados.diario(
                     desde, _inteiro(consulta, "n", 60), fabrica))
             if rota == "/api/vila":
-                saida = {"estado": vila_dados.estado()}
+                # o que a Vila mostra em texto: placar, travas e fabricas
+                return self._json({"estado": vila_dados.estado()})
+            if rota == "/api/vilanova":
+                # O retrato e pedido a cada segundo: leve de proposito. O
+                # placar e as travas continuam no /api/vila, mais devagar.
+                saida = {"retrato": vila_nova.MOTOR.retrato()}
                 if (consulta.get("mundo") or ["0"])[0] == "1":
-                    saida["mundo"] = vila_dados.mundo()
+                    saida["mundo"] = vila_nova.mundo()
                 return self._json(saida)
             if rota == "/api/acoes":
                 if not self.estado.com_acoes:
@@ -721,15 +703,18 @@ class Manipulador(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------- arquivos
     def _imagem_da_vila(self, rota: str):
-        """O cenario composto (uma vez) e a folha de sprites.
+        """O fundo da Vila (dia/noite) e o atlas dos personagens.
 
-        Compor custa 0,03 s, mas nao ha por que refazer a cada tela aberta:
-        o mundo so muda quando a Oficina salva. O `Cache-Control` longo vale
-        porque o app pede com `?v=` (a versao vem em `/api/vila`).
+        As duas sao compostas uma vez e guardadas em memoria; o `?v=` na URL
+        (a versao vem no `/api/vilanova`) e o que deixa o app guarda-las por
+        um dia sem ficar preso a uma arte velha.
         """
         try:
-            corpo = (_MUNDO_PNG.ler() if rota == "/vila.png"
-                     else vila_dados.caminho_sprites().read_bytes())
+            if rota == "/vilanova.png":
+                noite = (urlsplit(self.path).query or "").endswith("noite=1")
+                corpo = vila_nova.png_do_fundo(noite)
+            else:
+                corpo = vila_nova.atlas()["png"]
         except Exception:                                    # noqa: BLE001
             return self._erro(404, "a vila ainda nao tem cenario")
         self.send_response(200)
