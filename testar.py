@@ -86,8 +86,11 @@ SUITES = (
       "-t", ".", "-p", "test_*.py"]),
     ("vila (sprites)", RAIZ,
      [PY, "-X", "utf8", "-m", "unittest", "vila.test_motor"]),
+    # `discover` pelo mesmo motivo do remoto: `test_flutuante` (a janela
+    # flutuante, 17/09/2026) nasceria invisivel com o modulo pelo nome.
     ("painel (novo)", RAIZ,
-     [PY, "-X", "utf8", "-m", "unittest", "painel.test_painel"]),
+     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "painel",
+      "-t", ".", "-p", "test_*.py"]),
     ("panorama (metricas)", RAIZ,
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "visao/tests",
       "-p", "test_*.py"]),

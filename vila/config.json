@@ -10,6 +10,14 @@
       "margem": 0,
       "espaco": 0,
       "chave": null
+    },
+    "extra": {
+      "arquivo": "sprites/extra.png",
+      "tile_w": 16,
+      "tile_h": 16,
+      "margem": 0,
+      "espaco": 0,
+      "chave": null
     }
   },
   "papeis": {
@@ -201,6 +209,38 @@
       "folha": "base",
       "frames": [
         108
+      ],
+      "larg": 4,
+      "alt": 3
+    },
+    "predio.deepseek": {
+      "folha": "extra",
+      "frames": [
+        0
+      ],
+      "larg": 4,
+      "alt": 3
+    },
+    "predio.youtube": {
+      "folha": "extra",
+      "frames": [
+        4
+      ],
+      "larg": 4,
+      "alt": 3
+    },
+    "predio.tiktok": {
+      "folha": "extra",
+      "frames": [
+        8
+      ],
+      "larg": 4,
+      "alt": 3
+    },
+    "predio.bot": {
+      "folha": "extra",
+      "frames": [
+        12
       ],
       "larg": 4,
       "alt": 3
@@ -1758,6 +1798,10 @@
       "publicacao": {
         "x": 34,
         "y": 17
+      },
+      "deepseek": {
+        "x": 37,
+        "y": 12
       }
     },
     "casa": {

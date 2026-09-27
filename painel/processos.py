@@ -42,6 +42,7 @@ class Supervisor:
         self.raiz = raiz
         self._fila: queue.Queue = queue.Queue()
         self._processos: list = []
+        self._trabalhos: list = []
         self._ao_registrar = ao_registrar or (lambda _t, _tipo: None)
         self._ao_terminar = ao_terminar or (lambda _n, _c: None)
         self._rodando = True
@@ -88,7 +89,26 @@ class Supervisor:
                 valor = {"erro": f"{type(erro).__name__}: {erro}"}
             self._fila.put(("valor", ao_pronto, valor, rotulo))
 
-        threading.Thread(target=trabalho, daemon=True).start()
+        fio = threading.Thread(target=trabalho, daemon=True)
+        self._trabalhos = [f for f in self._trabalhos if f.is_alive()]
+        self._trabalhos.append(fio)
+        fio.start()
+
+    def aguardar(self, limite: float = 30.0) -> bool:
+        """Espera as tarefas de fundo acabarem. True se todas acabaram.
+
+        Existe por um motivo do Tk, nao de logica: a thread trabalhadora
+        segura a pagina (e com ela a janela) ate terminar. Se ela termina
+        DEPOIS de a janela ser destruida, a ultima referencia cai naquela
+        thread e o Tcl aborta o processo inteiro ("Windows fatal exception",
+        visto nos testes em 17/09/2026). Quem fecha a janela e quer estar
+        seguro espera aqui antes do `destroy`.
+        """
+        fim = time.monotonic() + limite
+        for fio in list(self._trabalhos):
+            fio.join(max(0.0, fim - time.monotonic()))
+        self._trabalhos = [f for f in self._trabalhos if f.is_alive()]
+        return not self._trabalhos
 
     # --------------------------------------------------------- interface
     def _drenar(self) -> None:

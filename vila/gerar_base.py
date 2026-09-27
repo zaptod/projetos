@@ -44,8 +44,8 @@ def _sombra(cor, fator):
 
 
 class Folha:
-    def __init__(self):
-        self.img = Image.new("RGBA", (COLS * TILE, LINHAS * TILE), (0, 0, 0, 0))
+    def __init__(self, linhas: int = LINHAS):
+        self.img = Image.new("RGBA", (COLS * TILE, linhas * TILE), (0, 0, 0, 0))
         self.d = ImageDraw.Draw(self.img)
         self.rnd = random.Random(SEED)
 
@@ -331,6 +331,139 @@ def gerar_mapa() -> dict:
     return mapa
 
 
+# =====================================================================
+# EXTRAS (17/09/2026): os predios que a janela flutuante precisa e que o
+# cenario base nao tinha — o DeepSeek (roteiro, chegando), os dois destinos
+# de publicacao separados (YouTube e TikTok) e a torre do bot do Telegram.
+#
+# Ficam numa folha PROPRIA (`sprites/extra.png`) para nao mexer nos indices
+# da folha base, que a Oficina e o config ja referenciam. Cada predio e o
+# mesmo `_predio` de sempre com um emblema no telhado — a mesma gramatica
+# visual, e nao um segundo estilo.
+# =====================================================================
+EXTRAS = ("deepseek", "youtube", "tiktok", "bot")
+CORES_EXTRA = {
+    "deepseek": "#4d6bfe", "youtube": "#d4201a", "tiktok": "#26242e",
+    "bot": "#6d5fd8",
+}
+EXTRA_LINHAS = 3
+
+
+def _emblema(f: Folha, nome: str, x: int, y: int) -> None:
+    """O desenho no telhado que diz de quem e o predio, sem texto."""
+    w = TILE * 4
+    cx, cy = x + w // 2, y + 10
+    branco = (250, 248, 240, 255)
+    if nome == "deepseek":                      # a baleia
+        f.d.ellipse([cx - 7, cy - 3, cx + 5, cy + 4], fill=branco)
+        f.d.polygon([cx + 4, cy, cx + 9, cy - 4, cx + 9, cy + 3], fill=branco)
+        f.d.point((cx - 4, cy - 1), fill=_rgb("#1b2a6b") + (255,))
+        f.d.point([(cx - 3, cy - 6), (cx - 3, cy - 5)],
+                  fill=_rgb("#9fd3ff") + (255,))
+    elif nome == "youtube":                     # o botao de play
+        f.d.rounded_rectangle([cx - 8, cy - 5, cx + 7, cy + 5], radius=3,
+                              fill=branco)
+        f.d.polygon([cx - 3, cy - 3, cx - 3, cy + 3, cx + 3, cy],
+                    fill=_rgb("#d4201a") + (255,))
+    elif nome == "tiktok":                      # a nota, com o eco colorido
+        for dx, cor in ((-1, "#25f4ee"), (1, "#fe2c55"), (0, "#ffffff")):
+            c = _rgb(cor) + (255,)
+            f.d.rectangle([cx + dx, cy - 6, cx + dx + 1, cy + 3], fill=c)
+            f.d.ellipse([cx + dx - 4, cy + 1, cx + dx + 1, cy + 5], fill=c)
+            f.d.rectangle([cx + dx + 1, cy - 6, cx + dx + 4, cy - 5], fill=c)
+    elif nome == "bot":                         # antena + aviao de papel
+        f.d.rectangle([cx + 9, y, cx + 10, cy + 2],
+                      fill=_rgb("#c9ccd1") + (255,))
+        f.d.rectangle([cx + 8, y, cx + 11, y + 2], fill=_rgb("#ff5a5a") + (255,))
+        f.d.polygon([cx - 9, cy, cx + 6, cy - 6, cx + 2, cy + 5], fill=branco)
+        f.d.polygon([cx - 1, cy + 1, cx + 6, cy - 6, cx, cy + 5],
+                    fill=_rgb("#c8c2f2") + (255,))
+
+
+def predio_procedural(nome: str, cor: str | None = None) -> Image.Image:
+    """Um predio 4x3 (64x48) desenhado na hora, sem arquivo nenhum.
+
+    E o FALLBACK da janela flutuante: se o papel `predio.<nome>` nao tem
+    sprite atribuido (Oficina salva pela metade, folha apagada, fabrica nova
+    que ainda nao ganhou arte), o predio aparece assim em vez de sumir.
+    """
+    f = Folha(linhas=3)
+    tom = cor or CORES_EXTRA.get(nome) or CORES_FABRICA.get(nome) or "#8a7f72"
+    _predio(f, 0, tom)
+    if nome in EXTRAS:
+        _emblema(f, nome, 0, 0)
+    return f.img.crop((0, 0, TILE * 4, TILE * 3))
+
+
+def gerar_folha_extra() -> Image.Image:
+    f = Folha(linhas=EXTRA_LINHAS)
+    for i, nome in enumerate(EXTRAS):
+        _predio(f, i * 4, CORES_EXTRA[nome])
+        _emblema(f, nome, i * 4 * TILE, 0)
+    return f.img
+
+
+def _papeis_extra() -> dict:
+    return {f"predio.{nome}": {"folha": "extra", "frames": [i * 4],
+                               "larg": 4, "alt": 3}
+            for i, nome in enumerate(EXTRAS)}
+
+
+# Onde o DeepSeek mora no mapa grande do painel: um lote livre de grama no
+# canto nordeste, conferido contra arvores e caminhos em `garantir_extras`.
+DEEPSEEK_NO_MAPA = (37, 12)
+
+
+def _lote_livre(mapa: dict, cfg: dict, x: int, y: int, larg: int = 4,
+                alt: int = 3) -> bool:
+    if x < 0 or y < 0 or x + larg > mapa["larg"] or y + alt > mapa["alt"]:
+        return False
+    lote = {(x + dx, y + dy) for dx in range(larg) for dy in range(alt)}
+    ocupados = set()
+    for item in mapa.get("decor") or []:
+        lw, lh = motor.tamanho(cfg, item["papel"])
+        ocupados |= {(item["x"] + dx, item["y"] + dy)
+                     for dx in range(lw) for dy in range(lh)}
+    blocos = dict(mapa.get("predios") or {})
+    if mapa.get("casa"):
+        blocos["casa"] = mapa["casa"]
+    for pos in blocos.values():
+        ocupados |= {(pos["x"] + dx, pos["y"] + dy)
+                     for dx in range(4) for dy in range(3)}
+    if lote & ocupados:
+        return False
+    paleta = mapa.get("paleta") or []
+    for cx, cy in lote:
+        indice = mapa["chao"][cy][cx]
+        papel = paleta[indice] if 0 <= indice < len(paleta) else ""
+        if papel not in ("chao.grama", "chao.flor"):
+            return False
+    return True
+
+
+def garantir_extras(cfg: dict, gravar: bool = True) -> dict:
+    """Acrescenta a folha extra e os papeis que faltam. NUNCA sobrescreve.
+
+    Papel que ja existe no config e escolha de quem usou a Oficina: fica.
+    So entra o que falta — e a folha so e (re)escrita no disco se `gravar`.
+    """
+    if gravar:
+        motor.SPRITES.mkdir(parents=True, exist_ok=True)
+        gerar_folha_extra().save(motor.SPRITES / "extra.png")
+    cfg.setdefault("folhas", {})
+    cfg["folhas"].setdefault("extra", {
+        "arquivo": "sprites/extra.png", "tile_w": TILE, "tile_h": TILE,
+        "margem": 0, "espaco": 0, "chave": None})
+    for papel, dados in _papeis_extra().items():
+        cfg["papeis"].setdefault(papel, dados)
+    mapa = cfg.get("mapa")
+    if mapa and "deepseek" not in (mapa.get("predios") or {}):
+        x, y = DEEPSEEK_NO_MAPA
+        if _lote_livre(mapa, cfg, x, y):
+            mapa.setdefault("predios", {})["deepseek"] = {"x": x, "y": y}
+    return cfg
+
+
 def gerar(forcar: bool = False) -> dict:
     if motor.CONFIG.is_file() and not forcar:
         print(f"ja existe {motor.CONFIG} — use --forcar para sobrescrever.")
@@ -345,6 +478,7 @@ def gerar(forcar: bool = False) -> dict:
                              "chave": None}
     cfg["papeis"].update(_papeis())
     cfg["mapa"] = gerar_mapa()
+    garantir_extras(cfg)
     motor.salvar(cfg)
     print(f"cenario base pronto: {motor.SPRITES / 'base.png'} "
           f"({folha.size[0]}x{folha.size[1]}) + mapa {LARG}x{ALT}")
@@ -352,4 +486,11 @@ def gerar(forcar: bool = False) -> dict:
 
 
 if __name__ == "__main__":
-    gerar(forcar="--forcar" in sys.argv)
+    if "--extras" in sys.argv:
+        # So os predios novos: nao toca no mapa nem nos papeis existentes.
+        cfg = garantir_extras(motor.carregar())
+        motor.salvar(cfg)
+        print(f"extras prontos: {motor.SPRITES / 'extra.png'} "
+              f"({', '.join(EXTRAS)})")
+    else:
+        gerar(forcar="--forcar" in sys.argv)

@@ -164,5 +164,50 @@ class ListaDeFabricasTests(unittest.TestCase):
         self.assertEqual(sorted(motor.FABRICAS + ["casa"]), sorted(predios))
 
 
+class PrediosExtras(unittest.TestCase):
+    """DeepSeek, YouTube, TikTok e o bot (17/09/2026, a Vila flutuante)."""
+
+    def test_predio_procedural_tem_o_tamanho_do_contrato(self):
+        from vila import gerar_base
+        for nome in gerar_base.EXTRAS + ("chatgpt", "uma_fabrica_nova"):
+            img = gerar_base.predio_procedural(nome)
+            self.assertEqual(img.size, (64, 48), nome)
+            self.assertEqual(img.mode, "RGBA")
+
+    def test_extras_nao_sobrescrevem_o_que_a_oficina_atribuiu(self):
+        from vila import gerar_base
+        escolhido = {"folha": "minha", "frames": [3], "larg": 4, "alt": 3}
+        cfg = {"folhas": {}, "papeis": {"predio.youtube": dict(escolhido)},
+               "mapa": None}
+        gerar_base.garantir_extras(cfg, gravar=False)
+        self.assertEqual(cfg["papeis"]["predio.youtube"], escolhido)
+        self.assertEqual(cfg["papeis"]["predio.deepseek"]["folha"], "extra")
+        self.assertIn("extra", cfg["folhas"])
+
+    def test_deepseek_so_entra_no_mapa_em_lote_livre(self):
+        from vila import gerar_base
+        cfg = motor.carregar()
+        mapa = cfg["mapa"]
+        x, y = mapa["predios"].get("deepseek",
+                                   {"x": -1, "y": -1}).values()
+        if (x, y) == (-1, -1):
+            self.skipTest("o mapa atual nao tem o deepseek")
+        sem = dict(mapa, predios={k: v for k, v in mapa["predios"].items()
+                                  if k != "deepseek"})
+        self.assertTrue(gerar_base._lote_livre(sem, cfg, x, y))
+        # Em cima de outro predio, nao.
+        chat = mapa["predios"]["chatgpt"]
+        self.assertFalse(gerar_base._lote_livre(sem, cfg, chat["x"],
+                                                chat["y"]))
+
+    def test_a_folha_extra_do_repositorio_bate_com_os_papeis(self):
+        cfg = motor.carregar()
+        atlas = motor.Atlas(cfg)
+        for nome in ("deepseek", "youtube", "tiktok", "bot"):
+            img = atlas.sprite(f"predio.{nome}", 0, 1)
+            self.assertEqual(img.size, (64, 48), nome)
+            self.assertGreater(img.getextrema()[3][1], 0, nome)
+
+
 if __name__ == "__main__":
     unittest.main()

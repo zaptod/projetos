@@ -102,4 +102,21 @@ def abrir(chave: str) -> subprocess.Popen | None:
         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
 
 
-__all__ = ["JANELAS", "abrir", "montar"]
+def abrir_flutuante() -> subprocess.Popen:
+    """A Vila flutuante (`python -m painel.flutuante`), sem console.
+
+    Nao entra em JANELAS: ela nao e uma Casca com paginas, e a janela
+    pequena que fica por cima de tudo. Se ja houver uma aberta, a nova sai
+    sozinha (mutex dela).
+    """
+    executavel = Path(PY)
+    sem_console = executavel.with_name(
+        executavel.name.replace("python.exe", "pythonw.exe"))
+    interpretador = sem_console if sem_console.is_file() else executavel
+    return subprocess.Popen(
+        [str(interpretador), "-X", "utf8", "-m", "painel.flutuante"],
+        cwd=str(RAIZ),
+        creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+
+
+__all__ = ["JANELAS", "abrir", "abrir_flutuante", "montar"]
