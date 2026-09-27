@@ -3,7 +3,7 @@ const TOKEN = "painel.token";
 const ULTIMO = "painel.ultimo_estado";
 const CONTATO = "painel.ultimo_contato";
 const TITULOS = {vila: "Vila", diario: "Diário", videos: "Vídeos",
-                 relatorios: "Relatórios"};
+                 comandos: "Comandos", relatorios: "Relatórios"};
 const RELATORIOS = ["metas", "funcionamento", "confiabilidade", "auditoria"];
 const $ = (id) => document.getElementById(id);
 
@@ -289,6 +289,8 @@ function perguntar(texto, {destinos = false, validade = 0} = {}) {
 }
 
 async function agir(acao, args = {}) {
+  // as ações do catálogo mandam os campos que a ficha pediu; as antigas
+  // (pausar, gerar, publicar) continuam mandando os seus
   try {
     const r = await api("/api/acao", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -399,7 +401,7 @@ $("btn-parear").addEventListener("click", async () => {
 
 // --------------------------------------------------------------- telas
 const CARGAS = {vila: [carregarAgora, 15000], diario: [carregarDiario, 5000],
-                videos: [null, 0], relatorios: [null, 0]};
+                videos: [null, 0], comandos: [null, 0], relatorios: [null, 0]};
 
 function mostrar(nova) {
   if (nova && nova !== tela && nova === "diario") {
@@ -419,8 +421,12 @@ function mostrar(nova) {
   }
   clearInterval(timer);
   if (typeof vilaParar === "function") vilaParar();
+  if (typeof comandosParar === "function") comandosParar();
   if (!pareado) return;
   if (tela === "vila" && typeof vilaMostrar === "function") vilaMostrar();
+  if (tela === "comandos" && typeof comandosMostrar === "function") {
+    comandosMostrar();
+  }
   carregarAcoes().then(() => { if (tela === "videos") carregarVideos(); });
   const [carga, intervalo] = CARGAS[tela];
   if (carga) {

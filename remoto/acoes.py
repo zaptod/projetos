@@ -86,6 +86,13 @@ DESTINOS = {"youtube": ("youtube",), "tiktok": ("tiktok",),
 NOME_DESTINO = {"youtube": "YouTube", "tiktok": "TikTok"}
 PESADAS = ("gerar", "publicar")
 LEVES = ("pausar", "retomar")
+# As do catalogo (remoto/comandos_app.py) entram no mesmo teto por hora: o
+# que pesa e gastar conta compartilhada, cota e tempo de maquina.
+
+
+def _pesadas() -> tuple:
+    from .comandos_app import PESADAS as outras
+    return PESADAS + tuple(outras)
 TRAVA_HISTORIAS = "historias__auto"
 MARCA_DO_APP = "pelo app"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -357,9 +364,10 @@ def registrar(aparelho: str, acao: str, args: dict, resultado: str,
     return linha
 
 
-def usadas_na_ultima_hora(aparelho: str, acoes: tuple = PESADAS,
+def usadas_na_ultima_hora(aparelho: str, acoes: tuple | None = None,
                           agora: datetime | None = None) -> int:
     agora = agora or _agora()
+    acoes = _pesadas() if acoes is None else acoes
     return sum(1 for l in _ler_rastro(agora - timedelta(hours=1))
                if l.get("aparelho") == aparelho and l.get("ok")
                and l.get("acao") in acoes)
@@ -781,9 +789,9 @@ def preparar(acao: str, args, aparelho: str) -> dict:
                 "texto": f"Retomar {alvo or 'tudo'}."}
     if acao == "parar":
         return {"acao": acao, "args": {}, "dois_passos": True, "texto": TEXTO_PARAR}
-    if acao in PESADAS:
+    if acao in _pesadas():
         _rastro_ok()
-        _limite(aparelho, PESADAS, LIMITE_POR_HORA, "gerações/publicações")
+        _limite(aparelho, _pesadas(), LIMITE_POR_HORA, "gerações/publicações")
     if acao == "gerar":
         avisos = []
         historias = trava_ocupada(TRAVA_HISTORIAS)
@@ -818,7 +826,26 @@ def preparar(acao: str, args, aparelho: str) -> dict:
                 "dois_passos": True,
                 "texto": f"Publicar «{video.titulo}»{gancho} no {destinos}"
                          f"{publico}? Não dá para desfazer pelo app."}
-    raise Recusa(f"ação desconhecida: {acao}")
+    return _preparar_do_catalogo(acao, args, aparelho)
+
+
+def _preparar_do_catalogo(acao: str, args: dict, aparelho: str) -> dict:
+    """As acoes declaradas em `comandos_app`: valida, guarda, e pede o "sim".
+
+    A validacao vem ANTES das guardas de propósito: "falta preencher o
+    campo" e uma resposta melhor do que "o perfil esta ocupado" para quem
+    nem terminou de preencher.
+    """
+    from . import comandos_app
+    ficha = comandos_app.FICHAS.get(acao)
+    if ficha is None:
+        raise Recusa(f"ação desconhecida: {acao}")
+    limpos = comandos_app.validar(acao, args)
+    comandos_app.guardar(acao, limpos)
+    return {"acao": acao, "args": limpos,
+            "dois_passos": bool(ficha.get("dois_passos")),
+            "perigosa": comandos_app.e_perigosa(acao, limpos),
+            "texto": comandos_app.texto(acao, limpos)}
 
 
 def comando_de_publicar(args: dict) -> list:
@@ -845,6 +872,9 @@ def executar(acao: str, args: dict, aparelho: str = "") -> str:
         return _comandos().gerar()
     if acao == "publicar":
         return _disparar_publicacao(args, aparelho)
+    from . import comandos_app
+    if acao in comandos_app.FICHAS:
+        return comandos_app.executar(acao, args, aparelho)
     raise Recusa(f"ação desconhecida: {acao}")
 
 

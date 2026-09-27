@@ -57,7 +57,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import acoes, painel_dados, vila_dados, vila_nova
+from . import acoes, comandos_app, painel_dados, tarefas, vila_dados, vila_nova
 from .config import runtime_dir
 
 PORTA_PADRAO = 8931
@@ -93,6 +93,7 @@ ESTATICOS = {
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/app.css": ("app.css", "text/css; charset=utf-8"),
     "/vila.js": ("vila.js", "text/javascript; charset=utf-8"),
+    "/comandos.js": ("comandos.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -349,7 +350,7 @@ class Estado:
     """O que o servidor guarda em memoria entre requisicoes."""
 
     def __init__(self, ip: str, local: bool, com_acoes: bool = False,
-                 com_publicar: bool = False):
+                 com_publicar: bool = False, com_perigosas: bool = False):
         self.ip = ip
         self.local = local
         # Fase 2: as acoes so existem quando o servidor sobe com --acoes.
@@ -357,6 +358,9 @@ class Estado:
         # Publicar e uma chave a parte: da para ligar pausar/parar/gerar
         # enquanto o publicar amadurece.
         self.com_publicar = com_acoes and com_publicar
+        # A zona de perigo (apagar, regenerar, mexer em conta) e uma chave a
+        # parte: sem ela o catalogo nem mostra esses controles.
+        self.com_perigosas = com_acoes and com_perigosas
         self.pendentes = acoes.Pendentes()
         self.trava = threading.Lock()
         # bilhete -> (caminho, expira, hash do token do aparelho)
@@ -560,9 +564,26 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json({
                     "ligadas": True,
                     "publicar": self.estado.com_publicar,
+                    "perigosas": self.estado.com_perigosas,
                     "alvos": acoes.alvos_de_pausa(),
                     "limite_por_hora": acoes.LIMITE_POR_HORA,
                     "restantes": restantes})
+            if rota == "/api/catalogo":
+                if not self.estado.com_acoes:
+                    return self._json({"grupos": [], "acoes": []})
+                return self._json(
+                    comandos_app.catalogo(self.estado.com_perigosas))
+            if rota == "/api/tarefas":
+                return self._json({"tarefas": tarefas.listar(
+                    _inteiro(consulta, "n", 20))})
+            achado = re.fullmatch(r"/api/tarefa/([\w.-]{1,60})", rota)
+            if achado:
+                ficha = tarefas.uma(achado.group(1))
+                if ficha is None:
+                    return self._erro(404, "não achei essa tarefa")
+                ficha["log"] = tarefas.log(achado.group(1),
+                                           _inteiro(consulta, "desde", 0))
+                return self._json(ficha)
             if rota == "/api/erros":
                 return self._json(painel_dados.erros(_inteiro(consulta, "n", 10)))
             if rota == "/api/videos":
@@ -645,6 +666,10 @@ class Manipulador(BaseHTTPRequestHandler):
             nome = str(corpo.get("acao") or "")[:20]
             if nome == "publicar" and not self.estado.com_publicar:
                 return self._erro(403, "publicar está desligado neste servidor")
+            if (not self.estado.com_perigosas
+                    and comandos_app.e_perigosa(nome, corpo.get("args") or {})):
+                return self._erro(403, "a zona de perigo está desligada "
+                                       "neste servidor")
             try:
                 pedido = acoes.preparar(nome, corpo.get("args") or {}, self._id)
             except acoes.Recusa as exc:
@@ -840,15 +865,15 @@ class Servidor(ThreadingHTTPServer):
 
 
 def criar_servidor(host: str, porta: int, local: bool,
-                   com_acoes: bool = False,
-                   com_publicar: bool = False) -> ThreadingHTTPServer:
+                   com_acoes: bool = False, com_publicar: bool = False,
+                   com_perigosas: bool = False) -> ThreadingHTTPServer:
     if not endereco_permitido(host, local):
         raise ValueError(f"endereco recusado: {host}")
     if porta in PORTAS_PROIBIDAS:
         raise ValueError(f"a porta {porta} e do login do YouTube")
 
     class _Manipulador(Manipulador):
-        estado = Estado(host, local, com_acoes, com_publicar)
+        estado = Estado(host, local, com_acoes, com_publicar, com_perigosas)
 
     return Servidor((host, porta), _Manipulador)
 
@@ -858,6 +883,9 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m remoto.api_http")
     parser.add_argument("--publicar", action="store_true",
                         help="com --acoes, liga tambem o botao de publicar")
+    parser.add_argument("--perigosas", action="store_true",
+                        help="com --acoes, liga a zona de perigo (apagar, "
+                             "regenerar, mexer em conta)")
     parser.add_argument("--confirmo", action="store_true",
                         help="com --liberar: solta de verdade (sem ele, so mostra)")
     parser.add_argument("--acoes", action="store_true",
@@ -960,13 +988,14 @@ def main(argv=None) -> int:
         return 3
     try:
         servidor = criar_servidor(host, porta, args.local, args.acoes,
-                                  args.publicar)
+                                  args.publicar, args.perigosas)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 4
     print(f"App do celular em http://{host}:{porta}/  (Ctrl+C para parar)"
           f"  — ações {'LIGADAS' if args.acoes else 'desligadas'}"
-          f"{' (com publicar)' if args.acoes and args.publicar else ''}")
+          f"{' (com publicar)' if args.acoes and args.publicar else ''}"
+          f"{' (com a zona de perigo)' if args.acoes and args.perigosas else ''}")
     # Sempre, mesmo sem --acoes: uma publicacao que ficou pela metade precisa
     # ser concluida (marca e em-voo) mesmo que o botao esteja desligado.
     voltando = acoes.conciliar()

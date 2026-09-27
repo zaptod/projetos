@@ -112,5 +112,24 @@ dialog p { margin: 0 0 10px; overflow-wrap: anywhere; }
   color: var(--fundo); font-size: 14px; max-width: 608px; margin: 0 auto;
 }
 .toast.ruim { background: var(--erro); color: #fff; }
+.comando { margin-top: 10px; }
+.comando button { width: 100%; text-align: left; }
+.comando .fraco { margin: 2px 2px 0; font-size: 12px; }
+.perigo-caixa { border-color: var(--erro); }
+.campo { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;
+  font-size: 13px; color: var(--fraco); }
+.campo input[type=text], .campo input[type=number], .campo select {
+  font: inherit; font-size: 15px; padding: 8px; border-radius: 8px;
+  border: 1px solid var(--linha); background: var(--fundo); color: var(--texto);
+  letter-spacing: normal; text-align: left; width: 100%;
+}
+.campo input[type=checkbox] { width: 22px; height: 22px; }
+.log {
+  background: var(--fundo); border: 1px solid var(--linha); border-radius: 8px;
+  padding: 8px; max-height: 40vh; overflow: auto; font-size: 12px;
+  white-space: pre-wrap; margin-top: 8px;
+}
+.selo.ok { color: var(--ok); }
+#tarefa-caixa { margin-top: 10px; }
 .abas { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .abas button[aria-pressed="true"] { border-color: var(--acento); color: var(--acento); }
