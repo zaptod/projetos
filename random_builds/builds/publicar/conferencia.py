@@ -27,6 +27,7 @@ import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from .. import grade
 from . import metricas, titulos
 
 # Janela curta de proposito. O acervo antigo nao tem laudo nem id, e uma
@@ -225,10 +226,33 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     mesmo_video = [{"youtube_id": vid, "linhas": grupo}
                    for vid, grupo in por_video.items() if len(grupo) > 1]
 
+    # CANAL PARADO TIRAVA NOTA MAXIMA. Ate 27/09/2026 a unica pergunta era
+    # "o que o ledger afirma esta no canal?" — e um canal que nao publica NADA
+    # nao afirma nada, entao passava com taxa 1,0 e veredito limpo. Foi o que
+    # aconteceu em 24, 25, 26 e 27/09 com o builds: zero publicacoes, quatro
+    # noites de "limpo". A intencao (a grade prometeu N por dia) tambem entra
+    # na conta, senao a conferencia mede so o que existe e nunca o que falta.
+    prometidos = len(grade.horas_da_plataforma(plataforma))
+    # So conta o que o CANAL confirmou: `casados` e a lista das linhas que
+    # acharam o video la. Linha que o ledger afirma e o canal nao tem ja esta
+    # em `fantasmas`, e contar essa como cumprida seria medir o ledger contra
+    # ele mesmo — o defeito que este modulo existe para nao repetir.
+    confirmados_hoje = sum(1 for f in casados
+                           if _dia_do_canal(f.get("quando")) == hoje)
+    deficit = max(0, prometidos - confirmados_hoje)
+
+    # DUAS PERGUNTAS, DOIS VEREDITOS. "O ledger bate com o canal?" e "a grade
+    # foi cumprida?" nao sao a mesma coisa: um canal parado tem ledger
+    # coerente (nao afirma nada) e grade furada. Misturar as duas faria toda
+    # ficha de dia parcial nascer suja e apagaria o significado de `sujo`.
     sujo = bool(fantasmas or rascunhos or orfaos_privados)
     return {
         "canal": canal, "plataforma": plataforma,
         "dia": hoje.isoformat(), "janela_dias": int(dias),
+        "slots_da_grade_hoje": prometidos,
+        "publicados_confirmados_hoje": confirmados_hoje,
+        "deficit": deficit,
+        "grade": "em falta" if deficit else "cumprida",
         "no_ledger": len(linhas), "no_canal": len(do_canal),
         "no_canal_na_janela": len(na_janela),
         "casados": len(casados),
@@ -322,7 +346,9 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
             f"casados, {len(ficha['fantasmas'])} fantasma(s), "
             f"{len(ficha['rascunhos'])} rascunho(s), "
             f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora do "
-            f"ledger — {ficha['veredito']}")
+            f"ledger, {ficha.get('publicados_confirmados_hoje', 0)}/"
+            f"{ficha.get('slots_da_grade_hoje', 0)} horarios cumpridos "
+            f"— {ficha['veredito']}")
         if ficha["veredito"] == "sujo":
             # FABRICA PROPRIA, e nao "publicacao". O alarme continua indo ao
             # celular (o bot le todo erro do diario), mas o apurador ignora
@@ -336,6 +362,18 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
                 f"{len(ficha['rascunhos'])} rascunho(s), "
                 f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora "
                 f"do ledger em {ficha['janela_dias']} dia(s)", canal=canal)
+        if ficha.get("deficit"):
+            # ALARME PROPRIO PARA A GRADE FURADA. O builds ficou de 21 a 27/09
+            # sem publicar e a conferencia dizia "limpo" toda noite, porque
+            # ledger coerente e grade cumprida nao sao a mesma pergunta. Quem
+            # nao publica tem de acender aqui, e nao no relatorio diario, onde
+            # a linha "builds: 0/10" passou seis dias sem ser notada.
+            atividade.registrar(
+                "conferencia", atividade.ERRO,
+                f"grade {canal}/{ficha['plataforma']}: "
+                f"{ficha['publicados_confirmados_hoje']} de "
+                f"{ficha['slots_da_grade_hoje']} horarios com video "
+                f"confirmado hoje ({ficha['deficit']} em falta)", canal=canal)
     return fichas
 
 
