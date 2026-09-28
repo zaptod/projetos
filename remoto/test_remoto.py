@@ -606,6 +606,83 @@ class TarefaDoBotTests(unittest.TestCase):
         self.assertTrue(acao.endswith(f'"{Path("C:/r/bot.cmd")}"'))
 
 
+class AgendadorNoRelatorioTests(unittest.TestCase):
+    """O monitor do Agendador confere as tarefas que existem de verdade.
+
+    28/09/2026: as cinco `NeuralFights_gerar_HH` (geracao noturna de duelos,
+    bdfa125) e a do app do celular rodavam sem que o relatorio as olhasse. O
+    "✓ 25 tarefas ativas e confiáveis" nao dizia nada sobre elas.
+    """
+
+    def _rodar(self, existentes=None, noite=None, falha_noite=False):
+        from builds import tarefas_windows
+        from builds.pipeline import noite as mod_noite
+        from contos.pipeline import agenda
+
+        pedidas = []
+
+        def conferir(nome):
+            pedidas.append(nome)
+            if existentes is not None and nome not in existentes:
+                return None
+            return {"tarefa": nome, "confiavel": True}
+
+        trocas = [mock.patch.object(tarefas_windows, "conferir", conferir),
+                  mock.patch.object(agenda, "carregar",
+                                    return_value={"horas": [1, 3]})]
+        if falha_noite:
+            trocas.append(mock.patch.object(mod_noite, "carregar",
+                                            side_effect=RuntimeError("torto")))
+        else:
+            trocas.append(mock.patch.object(
+                mod_noite, "carregar",
+                return_value=noite or {"ativo": True, "horas": [1, 2, 3, 4, 5]}))
+        for troca in trocas:
+            troca.start()
+            self.addCleanup(troca.stop)
+        return pedidas, relatorios._linhas_do_agendador()
+
+    def _gerar(self, horas=(1, 2, 3, 4, 5)):
+        from builds.pipeline import tarefas_noite
+        return [tarefas_noite.nome_da_tarefa(h) for h in horas]
+
+    def test_confere_as_tarefas_da_geracao_noturna(self):
+        pedidas, linhas = self._rodar()
+        for nome in self._gerar():
+            self.assertIn(nome, pedidas)
+        self.assertEqual("NeuralFights_gerar_01", self._gerar()[0])
+        # 2 da criacao + 10 da postagem + 5 da geracao + bot + app
+        esperado = 2 + len(relatorios.grade.HORAS) + 5 + 2
+        self.assertEqual([f"  ✓ {esperado} tarefas ativas e confiáveis"], linhas)
+
+    def test_tarefa_de_geracao_que_sumiu_acende(self):
+        todas, _ = self._rodar()
+        faltando = set(todas) - {"NeuralFights_gerar_03"}
+        _, linhas = self._rodar(existentes=faltando)
+        self.assertEqual(["  ❗ 1 tarefa(s) não existem: NeuralFights_gerar_03"],
+                         linhas)
+
+    def test_geracao_desligada_nao_cobra_as_tarefas(self):
+        pedidas, _ = self._rodar(noite={"ativo": False, "horas": [1, 2]})
+        self.assertFalse([n for n in pedidas if n.startswith("NeuralFights_gerar")])
+
+    def test_as_horas_vem_do_config_da_geracao(self):
+        pedidas, _ = self._rodar(noite={"ativo": True, "horas": [2, 4]})
+        self.assertEqual(self._gerar((2, 4)),
+                         [n for n in pedidas if n.startswith("NeuralFights_gerar")])
+
+    def test_config_que_nao_le_nao_some_em_silencio(self):
+        """Caso zero: sem a lista, o monitor conferia MENOS e dizia ✓."""
+        pedidas, linhas = self._rodar(falha_noite=True)
+        self.assertFalse([n for n in pedidas if n.startswith("NeuralFights_gerar")])
+        self.assertIn("  ⚠ não consegui ler as tarefas da geração noturna", linhas)
+
+    def test_o_app_do_celular_tambem_e_conferido(self):
+        pedidas, _ = self._rodar()
+        self.assertIn("NeuralFights_app_celular", pedidas)
+        self.assertIn("NeuralFights_bot_telegram", pedidas)
+
+
 class ApuracaoTests(BaseTemp):
     """Erro no ledger -> o Claude apura sozinho -> o diagnostico vai ao chat.
 

@@ -116,6 +116,16 @@ DOM e clicando.
   conciliar. Por isso o bot que sobe chama `acoes.conciliar()`, e o servidor
   também. Duas vigias não concluem duas vezes: a conclusão confere o estado
   dentro da trava.
+- **Depois de reiniciar a máquina, o app pode ficar fora do tailnet sem
+  erro nenhum.** Em 28/09, no boot das 07:22, o cliente da bandeja
+  (`tailscale-ipn.exe`, que a pasta Inicializar comum abre no logon) não
+  subiu. Sem ele o `tailscaled` fica em `NoState` e o `tailscale serve
+  status` diz "No serve config". O servidor seguia respondendo em
+  `127.0.0.1:8931`, só que o celular não o alcançava. Abrir o
+  `tailscale-ipn.exe` resolveu em 11 s, e a configuração do `serve` voltou
+  sozinha, ainda "tailnet only". Nada de rodar `tailscale serve` de novo.
+  Para conferir: `tailscale status` tem de sair de `NoState`, e a URL
+  `*.ts.net` tem de responder 200.
 - **Nos testes do bot, `comandos._rodar` é um `Popen` de verdade.** O
   `/publicar` antigo chamava o `main.py publicar` real por ali. O fixture
   `bot` de `test_acoes.py` o troca por um gravador e falha se ele for
@@ -161,6 +171,19 @@ DOM e clicando.
   duas únicas com gatilho de logon são do Opera GX e da Realtek. Na pasta
   Inicializar e nas chaves `Run` não há nada do projeto; o Tailscale sobe
   pela pasta Inicializar comum.
+- **Resolvido em 28/09/2026: o monitor do Agendador não olhava a geração
+  noturna.** O `_linhas_do_agendador` (relatório de funcionamento) conferia
+  as tarefas da criação das histórias, as 10 da postagem e o bot, e dizia
+  "✓ 25 tarefas ativas e confiáveis". As cinco `NeuralFights_gerar_HH`
+  (bdfa125) e a do app ficavam de fora. Agora ele confere as da geração
+  pelas horas do `geracao.json` e pelo nome de `tarefas_noite`, e não cobra
+  se ela estiver desligada (`ativo`). Na máquina real: 31, todas confiáveis.
+  Lista que não se consegue ler vira aviso, em vez de sumir do total. A
+  `NeuralFights_vila_flutuante` continua fora: é da parte painel-e-vila.
+- **28/09/2026, a máquina reiniciou às 07:22.** As tarefas trouxeram de volta
+  o app às 07:29 (PID 996) e o bot às 07:32 (PID 1620), os dois já com o
+  d68523e, sem reinício à mão. O Tailscale ficou em `NoState` até 07:43
+  (ver §4); depois disso a URL `*.ts.net` voltou a responder 200.
 - **Mudou em 28/09/2026: o relatório de metas conta por dia de grade**
   (06:37 → 00:37 do dia seguinte), pela regra da conferência (fc17986). A
   recuperação das 23:37 que sai às 00:10 conta no dia anterior, e o dia em

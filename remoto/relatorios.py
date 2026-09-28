@@ -522,14 +522,36 @@ def _linhas_do_agendador() -> list[str]:
     # A CRIACAO vem do config da agenda: desde 13/09/2026 ela roda de
     # madrugada, e conferir os oito horarios do dia acusaria oito tarefas
     # sumidas todo dia.
+    #
+    # A GERACAO NOTURNA DE DUELOS (`NeuralFights_gerar_HH`, bdfa125) entrou
+    # em 28/09/2026: cinco tarefas de madrugada que ninguem conferia, e das
+    # quais depende o estoque do canal de builds. As horas vem do config dela
+    # (`geracao.json`) e o nome, de quem cria a tarefa; desligada (`ativo`
+    # falso), ela nao e cobrada. O app do celular entra junto: ele tambem
+    # vive de uma tarefa que o relatorio nao olhava.
+    #
+    # LISTA QUE NAO SE LE NAO SOME EM SILENCIO. Sem ela o monitor conferia
+    # menos tarefas e dizia "✓" do mesmo jeito.
+    ilegiveis = []
     try:
         from contos.pipeline import agenda
         horas_de_criacao = list(agenda.carregar()["horas"])
     except Exception:                                          # noqa: BLE001
         horas_de_criacao = []
+        ilegiveis.append("da criação das histórias")
+    try:
+        from builds.pipeline import noite, tarefas_noite
+        geracao = noite.carregar()
+        tarefas_da_geracao = ([tarefas_noite.nome_da_tarefa(h)
+                               for h in geracao["horas"]]
+                              if geracao.get("ativo", True) else [])
+    except Exception:                                          # noqa: BLE001
+        tarefas_da_geracao = []
+        ilegiveis.append("da geração noturna")
     nomes = ([f"Historias_auto_{h:02d}" for h in horas_de_criacao]
              + [f"NeuralFights_postar_{h:02d}" for h in grade.HORAS]
-             + ["NeuralFights_bot_telegram"])
+             + tarefas_da_geracao
+             + ["NeuralFights_bot_telegram", "NeuralFights_app_celular"])
     fracas, sumidas = [], []
     for nome in nomes:
         ficha = tarefas_windows.conferir(nome)
@@ -546,6 +568,8 @@ def _linhas_do_agendador() -> list[str]:
                      "perdem horário: " + ", ".join(fracas[:3]))
     if not saida:
         saida.append(f"  ✓ {len(nomes)} tarefas ativas e confiáveis")
+    for qual in ilegiveis:
+        saida.append(f"  ⚠ não consegui ler as tarefas {qual}")
     return saida
 
 
