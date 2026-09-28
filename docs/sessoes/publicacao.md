@@ -10,6 +10,9 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Modo de trabalho dos agentes** — Um projeto por vez (28/09/2026) `modo-de-trabalho`
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
 
+**Publicação**
+- ⏳ **As 3 partes só no TikTok (00022:p03, 00027:p01, 00032:p04)** — Essas três partes saíram no TikTok e não no YouTube. Subo no YouTube? `partes-so-no-tiktok`
+
 <!-- decisoes:fim -->
 
 Documento de passagem. Quem chegar aqui sem nunca ter visto o projeto consegue
