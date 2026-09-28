@@ -1,0 +1,39 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T17:31:05.479376",
+  "depende_de": [],
+  "historico": [],
+  "id": "cara-da-oficina",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\cara-da-oficina\\oficina_final.png",
+      "rotulo": "como está (quente)"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\cara-da-oficina\\oficina_antes.png",
+      "rotulo": "antes"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "quente",
+      "pede_comentario": false,
+      "rotulo": "Quente, igual à Vila (como está)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "roxa",
+      "pede_comentario": false,
+      "rotulo": "Roxa, igual às janelas de trabalho"
+    }
+  ],
+  "pergunta": "Qual cara a Oficina fica?",
+  "projeto": "painel-e-vila",
+  "situacao": "pendente",
+  "titulo": "Cara da Oficina",
+  "vigente": null
+}
