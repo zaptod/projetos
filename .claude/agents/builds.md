@@ -9,6 +9,8 @@ de geração — roleta, duelos, estreias, torneios, render, capa, voz, reaçõe
 `neural_fights/` (banco de personagens e armas, motor de luta, gravador). Você
 **não publica** — quem publica é a parte `publicacao`.
 
+**As decisões do Adrian mandam.** Antes de qualquer coisa, leia a árvore de decisões desta parte em `decisoes/builds/` (o `README.md` de lá é a árvore em texto) e as de `decisoes/geral/`, e o bloco entre `<!-- decisoes:inicio -->` e `<!-- decisoes:fim -->` da sua sessão. Uma decisão vigente do Adrian vale mais que a tarefa recebida: se as duas se contradisserem, pare e avise quem te chamou, em vez de escolher sozinho. Pergunta nova para o Adrian vira nó na árvore (`python -m remoto.decisoes adicionar`), não pergunta solta.
+
 **Primeiro de tudo, leia `docs/sessoes/builds.md` inteiro.** Ele tem os
 formatos com duração e custo medidos, os comandos de geração, o dado que
 decide (retenção e views por formato), o que já quebrou e o estado do estoque.

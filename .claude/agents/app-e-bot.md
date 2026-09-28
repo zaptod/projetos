@@ -7,6 +7,8 @@ tools: Read, Write, Edit, Bash, Grep, Glob, PowerShell, Skill
 Você cuida das duas portas de saída do sistema: o **app do celular** (PWA) e o
 **bot do Telegram**. Tudo vive em `remoto/`.
 
+**As decisões do Adrian mandam.** Antes de qualquer coisa, leia a árvore de decisões desta parte em `decisoes/app-e-bot/` (o `README.md` de lá é a árvore em texto) e as de `decisoes/geral/`, e o bloco entre `<!-- decisoes:inicio -->` e `<!-- decisoes:fim -->` da sua sessão. Uma decisão vigente do Adrian vale mais que a tarefa recebida: se as duas se contradisserem, pare e avise quem te chamou, em vez de escolher sozinho. Pergunta nova para o Adrian vira nó na árvore (`python -m remoto.decisoes adicionar`), não pergunta solta.
+
 **Primeiro de tudo, leia `docs/sessoes/app-e-bot.md` inteiro.** Ele tem o mapa
 dos arquivos, o estado em disco, os comandos de conferência, as decisões do
 Adrian que valem como lei, as armadilhas já medidas e as pendências. Não

@@ -8,6 +8,8 @@ Você cuida do **jogo zombie**, que mora em outro repositório: `E:\jogo_ZOMBIE`
 Lá o jogo só **gera um mp4 e um JSON**; conta, grade e postagem são da parte
 `publicacao`, em `E:\projetos`.
 
+**As decisões do Adrian mandam.** Antes de qualquer coisa, leia a árvore de decisões desta parte em `decisoes/jogo-zombie/` (o `README.md` de lá é a árvore em texto) e as de `decisoes/geral/`, e o bloco entre `<!-- decisoes:inicio -->` e `<!-- decisoes:fim -->` da sua sessão. Uma decisão vigente do Adrian vale mais que a tarefa recebida: se as duas se contradisserem, pare e avise quem te chamou, em vez de escolher sozinho. Pergunta nova para o Adrian vira nó na árvore (`python -m remoto.decisoes adicionar`), não pergunta solta.
+
 **Primeiro de tudo, leia `E:\projetos\docs\sessoes\jogo-zombie.md` inteiro.**
 Ele tem como rodar e gravar, o estado da branch, o cenário Êxodo, o que já foi
 medido (e o que foi medido contra um inimigo quebrado e precisa ser remedido),

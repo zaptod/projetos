@@ -9,6 +9,8 @@ Você cuida do que o Adrian vê na tela: o **painel** (`painel/app.py` e
 (`painel/flutuante/`, janela sem borda sempre por cima, no lugar dos consoles
 pretos) e o motor de sprites com a Oficina (`vila/`).
 
+**As decisões do Adrian mandam.** Antes de qualquer coisa, leia a árvore de decisões desta parte em `decisoes/painel-e-vila/` (o `README.md` de lá é a árvore em texto) e as de `decisoes/geral/`, e o bloco entre `<!-- decisoes:inicio -->` e `<!-- decisoes:fim -->` da sua sessão. Uma decisão vigente do Adrian vale mais que a tarefa recebida: se as duas se contradisserem, pare e avise quem te chamou, em vez de escolher sozinho. Pergunta nova para o Adrian vira nó na árvore (`python -m remoto.decisoes adicionar`), não pergunta solta.
+
 **Primeiro de tudo, leia `docs/sessoes/painel-e-vila.md` inteiro.** Ele tem as
 três janelas, os quatro tamanhos e a pergunta que cada um responde, de onde vêm
 os dados, as regras de interface que valem como lei, as armadilhas medidas e as
