@@ -15,6 +15,14 @@
       "em": "2026-09-28T19:57:42",
       "opcao": "limpar-depois",
       "origem": "app"
+    },
+    {
+      "anterior": "limpar-depois",
+      "aparelho": "614c026b",
+      "comentario": "Eu consegui gerar alguns spritesheet bons, veja o arquivo piriri.py , eu consegui esse usando o chat gpt, mas como o processo é moroso quero apenas uma interface gráfica que facilite ao máximo esse processo, como essa limpeza de fundo, saneamento e auto faturamento de frames, identificação e outras coisas úteis.",
+      "em": "2026-09-28T19:57:43",
+      "opcao": "limpar-depois",
+      "origem": "app"
     }
   ],
   "id": "sprites-animados",
@@ -64,7 +72,7 @@
   "titulo": "Sprites animados: como produzir",
   "vigente": {
     "comentario": "Eu consegui gerar alguns spritesheet bons, veja o arquivo piriri.py , eu consegui esse usando o chat gpt, mas como o processo é moroso quero apenas uma interface gráfica que facilite ao máximo esse processo, como essa limpeza de fundo, saneamento e auto faturamento de frames, identificação e outras coisas úteis.",
-    "em": "2026-09-28T19:57:42",
+    "em": "2026-09-28T19:57:43",
     "opcao": "limpar-depois"
   }
 }
