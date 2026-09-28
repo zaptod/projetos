@@ -184,7 +184,14 @@ métrica): não mexer antes.
   do painel e de `por_id` tudo o que tiver a chave `<fonte_id>:<origem>`
   (`generation_00066:estreia`), com o motivo escrito. Nada é apagado: o mp4
   fica na pasta, e tirar a linha devolve o vídeo. `main.py publicar` lista os
-  descartados no fim, e publicar um deles na mão diz o motivo.
+  descartados no fim, e publicar um deles na mão diz o motivo. A
+  **`generation_00077`** saiu pelo mesmo caminho em 28/09 (decisão
+  `generation-00077`: "Descartar, como a 00066"), com as duas chaves
+  (`:build` e `:estreia`): medido pela régua da publicação, a luta está a
+  -91 dB na build (`seg_022`, A e B) **e** na estreia (`seg_007`), e os dois
+  lutadores saíram do banco em 02/09. Build descartada também tira o payoff
+  dela da fila do worker (`queue.geracoes_descartadas()`): o job fica
+  `pending`, ninguém o reivindica, e volta junto se a linha sair.
 - **Gancho B com título igual ao do A.** A variante B (`final_<perfil>_ganchoB.mp4`)
   tem id com sufixo `:B` e o MESMO título; para o código eram dois vídeos, para
   o YouTube eram duplicatas. 21 chaves de título saíram duas vezes (medição de
@@ -247,6 +254,8 @@ métrica): não mexer antes.
     estrutura: o clique cru passou em 0,2 s. A conta do Digen aparece como
     **Free** (Meme 221, Pro Meme 0).
   - `generation_00077#character_weapon` pendente: não coube às 05:12 (18 min).
+    Desde 28/09 à noite a 00077 está descartada (§4) e o worker não pega
+    mais esse job.
   Build não tem `capa.png` (só duelo tem); o que falta nas duas é o payoff.
 - **82 personagens e 95 armas** no banco vivo; só **9** dos personagens de
   roleta estão nele (os de agosto se perderam em 02/09).
@@ -353,12 +362,9 @@ faixa de áudio — silêncio entre golpes não conta). Em 28/09, 07:31: 38
 vídeos não publicados com luta (12 duelos, 26 builds), **2 mudos, de uma
 fonte só**: `generation_00077` A e B (`seg_022` a -91 dB; render de 29/08,
 antes do sintetizado). Som real impossível: Seraphina Pyrberim e Lucrecia
-Aciaegir saíram do banco em 02/09 e a luta não re-simula. Ela já está fora da
-fila (sem payoff, "mp4 mais velho que os clipes"), e o re-render que o worker
-fizer quando o payoff chegar sai com o sintetizado — não muda mais:
-`python main.py generate-video --rerender generation_00077 --refazer-edicao`.
-Clipe cru: `outputs\generation_00077\estreia\gameplay\luta_01_{celular,normal}.mp4`.
-A `generation_00066/estreia` (-91 dB) foi descartada pela decisão 5 do Adrian
+Aciaegir saíram do banco em 02/09 e a luta não re-simula. **Descartada em
+28/09** (decisão `generation-00077`, build e estreia; §4). A
+`generation_00066/estreia` (-91 dB) foi descartada pela decisão 5 do Adrian
 (`config/publicacao.json` → `descartados`).
 
 Os outros 36 estão com o sintetizado. Sete deles ficam calados em 57–63% do

@@ -85,6 +85,64 @@ class DescarteReversivel(unittest.TestCase):
         self.assertIn("mudo", motivo)
         self.assertIn("95%", motivo)
 
+    def test_o_config_real_descarta_a_00077_inteira(self):
+        # Decisao `generation-00077` do Adrian (28/09/2026): "Descartar, como
+        # a 00066". Medido pela regua da publicacao: a luta da build (seg_022,
+        # A e B) E a da estreia (seg_007) a -91 dB, e os dois lutadores sairam
+        # do banco em 02/09 (som real impossivel). As duas chaves saem.
+        descartados = catalogo.descartados(catalogo.carregar_config())
+        for chave in ("generation_00077:build", "generation_00077:estreia"):
+            motivo = descartados.get(chave, "")
+            self.assertIn("luta muda", motivo, chave)
+            self.assertIn("fora do banco", motivo, chave)
+
+
+class FilaDeIdentidadePulaDescartada(unittest.TestCase):
+    """A `generation_00077` foi descartada com o payoff do Digen `pending`: a
+    rodada noturna gastaria 12-15 min de Digen num video que nao vai ao ar.
+    O job fica na fila (reversivel), mas ninguem o reivindica."""
+
+    def setUp(self):
+        from builds.identity import queue as fila
+        self.fila = fila
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        p = patch.object(fila, "ARQUIVO_FILA", Path(tmp.name) / "queue.json")
+        p.start()
+        self.addCleanup(p.stop)
+        for gid in ("generation_00077", "generation_00090"):
+            fila.enqueue(gid, "prompt", slot="character")
+
+    def _descartar(self, config):
+        p = patch.object(catalogo, "carregar_config", lambda: config)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_build_descartada_nao_e_reivindicada(self):
+        self._descartar({"descartados": {
+            "generation_00077:build": {"motivo": "luta muda"}}})
+        self.assertEqual({"generation_00077"}, self.fila.geracoes_descartadas())
+        job = self.fila.claim(3)
+        self.assertEqual("generation_00090", job["generation_id"])
+        self.assertIsNone(self.fila.claim(3))
+        self.assertFalse(self.fila.tem_reivindicavel(3))
+        # Nada saiu da fila: continua `pending`, pronta para voltar.
+        linha = [j for j in self.fila.listar()
+                 if j["generation_id"] == "generation_00077"]
+        self.assertEqual("pending", linha[0]["status"])
+
+    def test_so_a_estreia_descartada_nao_para_o_payoff(self):
+        # 00066: so a estreia saiu; a build (e o payoff dela) seguem.
+        self._descartar({"descartados": {
+            "generation_00077:estreia": {"motivo": "muda"}}})
+        self.assertEqual(set(), self.fila.geracoes_descartadas())
+        self.assertIsNotNone(self.fila.claim(3))
+        self.assertIsNotNone(self.fila.claim(3))
+
+    def test_sem_a_linha_o_job_volta(self):
+        self._descartar({})
+        self.assertTrue(self.fila.tem_reivindicavel(3))
+
 
 if __name__ == "__main__":
     unittest.main()

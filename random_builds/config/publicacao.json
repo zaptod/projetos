@@ -66,6 +66,14 @@
     "generation_00066:estreia": {
       "motivo": "audio mudo: 114,7 s de silencio em 120,8 s (95%), media -30,4 dB, medido com ffmpeg em 27/09/2026; render antigo de 29/08. Descartada pela decisao 5 do Adrian (rota de 27/09/2026).",
       "desde": "2026-09-28"
+    },
+    "generation_00077:build": {
+      "motivo": "luta muda, lutadores fora do banco: o trecho de luta mede -91,0 dB na build (seg_022, A e B) e na estreia (seg_007), medido em 28/09/2026 pela regua da publicacao; Seraphina Pyrberim e Lucrecia Aciaegir sairam do banco em 02/09, a luta nao re-simula e o som real e impossivel. Render de 29/08. Descartada pela decisao `generation-00077` do Adrian (28/09/2026), como a 00066.",
+      "desde": "2026-09-28"
+    },
+    "generation_00077:estreia": {
+      "motivo": "luta muda, lutadores fora do banco: o trecho de luta mede -91,0 dB na build (seg_022, A e B) e na estreia (seg_007), medido em 28/09/2026 pela regua da publicacao; Seraphina Pyrberim e Lucrecia Aciaegir sairam do banco em 02/09, a luta nao re-simula e o som real e impossivel. Render de 29/08. Descartada pela decisao `generation-00077` do Adrian (28/09/2026), como a 00066.",
+      "desde": "2026-09-28"
     }
   },
   "grade": {

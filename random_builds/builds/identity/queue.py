@@ -329,11 +329,31 @@ def _dependencias_satisfeitas(job: dict, jobs: list[dict], agora: str) -> bool:
     return bool(prazo) and agora >= prazo
 
 
+def geracoes_descartadas() -> set[str]:
+    """Geracoes cuja BUILD foi descartada (`config/publicacao.json`).
+
+    Existe pela `generation_00077` (decisao do Adrian, 28/09/2026): descartada
+    com a luta muda e os lutadores fora do banco, ela ainda tinha o payoff do
+    Digen `pending`, e a rodada noturna gastaria 12-15 min de Digen num video
+    que nao vai ao ar. O job fica `pending` (nada e apagado): tirar a linha do
+    config devolve o video E o job. Config ilegivel = nada descartado.
+    """
+    try:
+        from ..publicar import catalogo
+        return {chave.rsplit(":", 1)[0]
+                for chave in catalogo.descartados()
+                if chave.endswith(":" + catalogo.BUILD)}
+    except Exception:                                   # noqa: BLE001
+        return set()
+
+
 def _reivindicavel(job: dict, jobs: list[dict], max_attempts: int,
-                   provedor: str | None, agora: str) -> bool:
+                   provedor: str | None, agora: str,
+                   descartadas: set[str] | frozenset = frozenset()) -> bool:
     return (job["status"] == PENDENTE
             and job.get("attempts", 0) < max_attempts
             and (provedor is None or job.get("provider") == provedor)
+            and job.get("generation_id") not in descartadas
             and _dependencias_satisfeitas(job, jobs, agora))
 
 
@@ -349,9 +369,11 @@ def tem_reivindicavel(max_attempts: int = 3, provedor: str | None = None) -> boo
     if controle.pausado_para(provedor):
         return False
     agora = _agora()
+    descartadas = geracoes_descartadas()
     with _bloqueio():
         jobs = _ler()
-        return any(_reivindicavel(j, jobs, max_attempts, provedor, agora)
+        return any(_reivindicavel(j, jobs, max_attempts, provedor, agora,
+                                  descartadas)
                    for j in jobs)
 
 
@@ -376,12 +398,14 @@ def claim(max_attempts: int = 3, ignorar: set[str] | None = None,
         return None
     ignorar = ignorar or set()
     agora = _agora()
+    descartadas = geracoes_descartadas()
     with _bloqueio():
         jobs = _ler()
         for job in jobs:
             if job["job_id"] in ignorar:
                 continue
-            if _reivindicavel(job, jobs, max_attempts, provedor, agora):
+            if _reivindicavel(job, jobs, max_attempts, provedor, agora,
+                              descartadas):
                 job.update({"status": RODANDO,
                             "attempts": job.get("attempts", 0) + 1,
                             "updated_at": _agora()})
