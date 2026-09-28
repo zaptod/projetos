@@ -8,7 +8,15 @@
       "opcao": "quente"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T19:06:54",
+      "opcao": "aposentar",
+      "origem": "app"
+    }
+  ],
   "id": "aposentar-vila-pixel",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "No nó 'Cara da Oficina' você comentou: 'Eu descartei essa vila'. Aposento a Vila em pixel art (pasta vila/, a Oficina e a arte clássica da janela flutuante), ficando só a Vila fofa do PC e do celular?",
   "projeto": "painel-e-vila",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Aposentar a Vila em pixel e a Oficina",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T19:06:54",
+    "opcao": "aposentar"
+  }
 }
