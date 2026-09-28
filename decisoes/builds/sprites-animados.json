@@ -8,7 +8,15 @@
       "opcao": "cc0-ia"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "Eu consegui gerar alguns spritesheet bons, veja o arquivo piriri.py , eu consegui esse usando o chat gpt, mas como o processo é moroso quero apenas uma interface gráfica que facilite ao máximo esse processo, como essa limpeza de fundo, saneamento e auto faturamento de frames, identificação e outras coisas úteis.",
+      "em": "2026-09-28T19:57:42",
+      "opcao": "limpar-depois",
+      "origem": "app"
+    }
+  ],
   "id": "sprites-animados",
   "midias": [
     {
@@ -52,7 +60,11 @@
   ],
   "pergunta": "A IA não entrega sprite sheet fatiável. O teste do fireball saiu em 1024×576, fundo branco sem alfa, grade e rótulos desenhados e 14 colunas em vez de 6. Nano Banana 2 e GPT Image exigem crédito ou plano nesta conta compartilhada. Como produzir as animações?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Sprites animados: como produzir",
-  "vigente": null
+  "vigente": {
+    "comentario": "Eu consegui gerar alguns spritesheet bons, veja o arquivo piriri.py , eu consegui esse usando o chat gpt, mas como o processo é moroso quero apenas uma interface gráfica que facilite ao máximo esse processo, como essa limpeza de fundo, saneamento e auto faturamento de frames, identificação e outras coisas úteis.",
+    "em": "2026-09-28T19:57:42",
+    "opcao": "limpar-depois"
+  }
 }

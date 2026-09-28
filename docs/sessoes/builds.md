@@ -25,7 +25,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Chão da arena** — Foto de pedra CC0 escurecida (como está) (28/09/2026) `chao-da-arena`
 - ✅ **Hitstop: a pausinha no impacto** — Ligar (28/09/2026) `hitstop`
 - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`
-- ⏳ **Sprites animados: como produzir** — A IA não entrega sprite sheet fatiável. O teste do fireball saiu em 1024×576, fundo branco sem alfa, grade e rótulos desenhados e 14 colunas em vez de 6. Nano Banana 2 e GPT Image exigem crédito ou plano nesta conta compartilhada. Como produzir as animações? `sprites-animados`
+- ✅ **Sprites animados: como produzir** — Continuar com o modelo padrão e limpar depois (28/09/2026) · “Eu consegui gerar alguns spritesheet bons, veja o arquivo piriri.py , eu consegui esse usando o chat gpt, mas como o processo é moroso quero apenas uma interface gráfica que facilite ao máximo esse processo, como essa limpeza de fundo, saneamento e auto faturamento de frames, identificação e outras coisas úteis.” `sprites-animados`
 
 <!-- decisoes:fim -->
 
