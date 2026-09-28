@@ -14,6 +14,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
 - ✅ **Cara da Oficina** — Quente, igual à Vila (como está) (28/09/2026) · “Eu descartei essa vila” `cara-da-oficina`
 - ⏳ **Zoom da Vila no celular** — A Vila enche a tela com até 3x de zoom. Prefere a cena grande (poucas casas, perto) ou ver mais da vila de uma vez (menor)? `vila-zoom-celular`
+- ⏳ **Aposentar a Vila em pixel e a Oficina** — No nó 'Cara da Oficina' você comentou: 'Eu descartei essa vila'. Aposento a Vila em pixel art (pasta vila/, a Oficina e a arte clássica da janela flutuante), ficando só a Vila fofa do PC e do celular? `aposentar-vila-pixel`
 
 <!-- decisoes:fim -->
 

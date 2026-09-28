@@ -25,7 +25,9 @@
   ],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "aposentar-vila-pixel"
+      ],
       "descricao": "",
       "id": "quente",
       "pede_comentario": false,
