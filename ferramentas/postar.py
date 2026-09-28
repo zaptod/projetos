@@ -2465,7 +2465,13 @@ def pendentes_por_canal() -> dict:
     """Quantos VIDEOS prontos cada canal ainda tem para publicar."""
     saida = {}
     try:
-        saida["historias"] = len(fila_de_historias())
+        # RETIDA NAO E ESTOQUE (28/09/2026). A parte que a IA reprovou, ou que
+        # so a folha de contato viu (`nao_assistido`), so sai no lugar do
+        # horario vazio (`_retencao`, a valvula de qualidade). Contada aqui,
+        # ela virava "dias de gordura" que a escolha nao usa; ela aparece a
+        # parte, em `retidos_por_canal`.
+        saida["historias"] = len([v for v in fila_de_historias()
+                                  if not _retencao(v)])
     except Exception:                                          # noqa: BLE001
         saida["historias"] = -1
     try:
@@ -2480,6 +2486,20 @@ def pendentes_por_canal() -> dict:
     except Exception:                                          # noqa: BLE001
         saida["builds"] = -1
     return saida
+
+
+def retidos_por_canal() -> dict:
+    """Quantas partes estao RETIDAS pela valvula de qualidade, por canal.
+
+    A parte, e nunca somadas a gordura: elas so saem quando o horario ia
+    ficar vazio. Builds nao tem valvula de qualidade (sem parecer de IA), e
+    so aparece o canal que tem. `-1` quando nao deu para contar.
+    """
+    try:
+        return {"historias": len([v for v in fila_de_historias()
+                                  if _retencao(v)])}
+    except Exception:                                          # noqa: BLE001
+        return {"historias": -1}
 
 
 def estoque(por_dia: int | None = None) -> dict:
@@ -2649,6 +2669,15 @@ def avisar(resultados: list) -> None:
     linhas.append("*Estoque* — " + " · ".join(
         f"{CANAIS.get(c, {}).get('emoji', '•')} {n} dia(s)"
         for c, n in dias.items()))
+    try:
+        retidos = {c: n for c, n in retidos_por_canal().items() if n > 0}
+    except Exception:                                          # noqa: BLE001
+        retidos = {}
+    if retidos:
+        linhas.append("    retidos — " + " · ".join(
+            f"{CANAIS.get(c, {}).get('emoji', '•')} {n} parte(s)"
+            for c, n in retidos.items())
+            + " (fora da gordura: so saem no lugar do vazio)")
     magros = [c for c, n in dias.items() if 0 <= n < PISO_DE_ALERTA]
     if magros:
         linhas.append(f"⚠️ *{', '.join(magros)}* abaixo de {PISO_DE_ALERTA} "
@@ -2972,6 +3001,10 @@ def main(argv=None) -> int:
     for canal, dias in estoque().items():
         alerta = "  <<< ABAIXO DO PISO" if 0 <= dias < PISO_DE_ALERTA else ""
         _linha(f"  gordura {canal:<10} {dias:>4} dia(s){alerta}")
+    for canal, quantos in retidos_por_canal().items():
+        if quantos:
+            _linha(f"  retidos {canal:<10} {quantos:>4} parte(s) (a IA "
+                   "reprovou ou ninguem assistiu; so no lugar do vazio)")
     # SEPARADA DA GORDURA, nunca somada a ela. Estes builds ja estao no ar no
     # YouTube: eles nao sao estoque para publicar, so alcance que falta ser
     # colhido no segundo destino. Somar os dois numeros faria o painel dizer
