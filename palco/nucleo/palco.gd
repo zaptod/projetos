@@ -373,7 +373,15 @@ func _desenhar_quadro(f: int) -> void:
 		lb.visible = not oculto
 		var topo := Vector2(float(s["x"]), float(s["y"]) - (0.0 if morto else float(s.get("z", 0.0))) - float(cab[slot].get("raio_corpo", 0.85)) * 1.18) * PX
 		var na_tela := mundo.transform * topo
-		lb.position = Vector2(na_tela.x - lb.size.x / 2.0, na_tela.y - lb.size.y)
+		# O nome nunca sai da tela: o texto (e nao a caixa, que e larga) e
+		# empurrado para dentro com uma margem. No A/B de 28/09 o nome de quem
+		# lutava junto a parede saia cortado.
+		var fonte := lb.get_theme_font("font")
+		var tam := lb.get_theme_font_size("font_size")
+		var largura_texto := fonte.get_string_size(lb.text, HORIZONTAL_ALIGNMENT_LEFT, -1, tam).x if fonte else 0.0
+		var margem := tela.x * 0.03
+		var meio := clampf(na_tela.x, margem + largura_texto / 2.0, tela.x - margem - largura_texto / 2.0)
+		lb.position = Vector2(meio - lb.size.x / 2.0, maxf(margem, na_tela.y - lb.size.y))
 	if hud_no != null and hud_no.has_method("atualizar"):
 		hud_no.atualizar(amostras, ctx)
 	var alto := tela.y * 0.085 if estilo.letterbox and float(g.get("letterbox", 0.0)) > 0.0 else 0.0
@@ -531,7 +539,10 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 		if amostras.has(slot):
 			var s: Dictionary = amostras[slot]
 			pos = Vector2(float(s["x"]), float(s["y"]) - float(s.get("z", 0.0))) * PX
-	var no = _instanciar(bib.evento(tipo, str(ev.get("tier", ""))), camada_efeitos)
+	# O KO vai para o CHAO (abaixo dos lutadores): no A/B de 28/09 a explosao
+	# por cima cobria o corpo caido, que e o que o desfecho tem de mostrar.
+	var camada := camada_solo if tipo == "ko" else camada_efeitos
+	var no = _instanciar(bib.evento(tipo, str(ev.get("tier", ""))), camada)
 	no.position = pos
 	if no.has_method("configurar"):
 		no.configurar(ev, ctx)

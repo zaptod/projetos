@@ -10,6 +10,8 @@ extends PecaPalco
 const PPM_MOTOR := 50.0
 # mascara branca CC0 (Kenney light_01), tingida pela paleta do elemento
 const TEX_BRILHO := preload("res://biblioteca/efeitos/texturas/brilho.png")
+const TEX_ESTRELA := preload("res://biblioteca/efeitos/texturas/estrela.png")
+const TEX_CHAMA := preload("res://biblioteca/efeitos/texturas/chama.png")
 
 var tipo := "projetil"
 var fixos: Dictionary = {}
@@ -91,8 +93,15 @@ func _draw() -> void:
 			var forte := 1.0 + 0.35 * estado
 			var halo := r * 4.5 * forte
 			draw_texture_rect(TEX_BRILHO, Rect2(-Vector2(halo, halo) / 2.0, Vector2(halo, halo)), false, _c("glow", 0, 0.8 * _brilho()))
-			draw_circle(Vector2.ZERO, r, _c("mid", 1), true, -1.0, true)
-			draw_circle(Vector2.ZERO, r * 0.5, _c("core"), true, -1.0, true)
+			# nucleo com as mascaras CC0 (Kenney) em vez da esfera lisa do A/B de
+			# 28/09: a estrela gira pelo tempo de jogo, o clarao pulsa no disparo
+			var giro := float(_ctx.get("t_jogo", 0.0)) * 2.4 + float(fixos.get("id", 0))
+			var estrela := r * 3.2 * forte
+			draw_set_transform(Vector2.ZERO, giro)
+			draw_texture_rect(TEX_ESTRELA, Rect2(-Vector2(estrela, estrela) / 2.0, Vector2(estrela, estrela)), false, _c("mid", 0, 0.9))
+			draw_set_transform(Vector2.ZERO)
+			var nucleo := r * 1.6
+			draw_texture_rect(TEX_CHAMA, Rect2(-Vector2(nucleo, nucleo) / 2.0, Vector2(nucleo, nucleo)), false, _c("core", 0, 1.0))
 		"area":
 			_area(M, t, prog)
 		"beam":
