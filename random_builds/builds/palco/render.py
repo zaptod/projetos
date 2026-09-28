@@ -7,7 +7,7 @@
 2. o Godot grava o AVI (MJPEG 0,95 + PCM 48 kHz, video e audio sincronizados
    pelo Movie Maker);
 3. UMA compressao so: h264 crf 18 + aac 192k, com o nivel do trecho de luta
-   levado ao alvo (energia ativa, como a mistura da 16A) e pico limitado;
+   levado a -18 LUFS (o nivel da luta na mistura da 16A) e pico limitado;
 4. o AVI e apagado e o mp4 e CONFERIDO (checagens.conferir). Qualquer
    problema e ErroPalco: nada sai com rc 0 calado.
 
@@ -97,8 +97,8 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
         raise ErroPalco(f"o Godot saiu 0 mas o AVI nao existe: {avi}")
 
     som_cfg = cfg.get("som") or {}
-    ganho, energia = checagens.ganho_para_alvo(avi, alvo_db=float(som_cfg.get("alvo_db", -13.0)),
-                                               ganho_max_db=float(som_cfg.get("ganho_max_db", 18.0)))
+    ganho, lufs_avi = checagens.ganho_para_alvo(avi, alvo_lufs=float(som_cfg.get("alvo_lufs", -18.0)),
+                                                ganho_max_db=float(som_cfg.get("ganho_max_db", 18.0)))
     limite = 10 ** (float(som_cfg.get("pico_db", -1.0)) / 20.0)
     enc = cfg.get("encode") or {}
     inicio = time.time()
@@ -143,7 +143,7 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
         "reservas": rel.get("reservas"), "avisos_godot": rel.get("avisos"),
         "tempo": {"godot_s": filme["segundos"], "laco_godot_ms": rel.get("laco_ms"), "encode_s": segundos_encode},
         "avi_mb": round(tamanho_avi / 2 ** 20, 1),
-        "nivel": {"energia_ativa_db": energia, "ganho_db": round(ganho, 2)}, "medidas": medidas,
+        "nivel": {"lufs_antes": lufs_avi, "ganho_db": round(ganho, 2)}, "medidas": medidas,
         "video": rel.get("video"), "comando": filme["comando"],
     }
     saida.with_suffix(".palco.json").write_text(json.dumps(resumo, ensure_ascii=False, indent=1, default=str),

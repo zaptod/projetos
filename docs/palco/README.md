@@ -16,7 +16,7 @@ seed ──► gravar_timeline (16C, sem desenhar, ~2-3 s) ──► timeline.gc
           + `sons` (16A: o que o jogo tocou)
 job.json ──► Godot (palco/, Movie Maker, --fixed-fps 30) ──► AVI (MJPEG 0,95 + PCM 48 kHz)
           ──► relatorio_godot.json (quadros, sons tocados, peças usadas, reservas)
-ffmpeg, UMA compressão: h264 crf 18 + aac 192k, nível da luta no alvo (-13 dBFS ativo)
+ffmpeg, UMA compressão: h264 crf 18 + aac 192k, luta a -18 LUFS, pico <= -1 dBFS
           ──► mp4 CONFERIDO ──► <mp4>.palco.json (tempos, medidas, peças)
 ```
 
@@ -113,20 +113,33 @@ grava o N).
   antes da 16G; quando entrar, medir numa madrugada com a sessão bloqueada (se
   quebrar, a guarda rc 4 ou a de quadro liso acusa, não passa calado).
 
-## Medido (28/09/2026, máquina ocupada)
+## Medido (28/09/2026)
 
 | peça | tempo |
 |---|---|
-| timeline da luta (`gravar_timeline`, sem desenhar) | ~2-3 s por duelo |
+| timeline da luta (`gravar_timeline`, sem desenhar, com os `sons` da 16A) | 1,8 s (duelo_00016) |
 | Godot, 2 s de vídeo (60 quadros) | 6,7 s de parede |
-| Godot, duelo_00016 (23,23 s, 697 quadros, corte já aplicado) | 62-67 s (laço de 61-66 s; ~90 ms por quadro) |
-| AVI intermediário | 108 MB para 23 s (~155 KB/quadro), apagado depois |
-| x264 + aac do mp4 | 26-46 s para 23 s de vídeo |
-| mp4 final | 8,2 MB para 23 s |
+| Godot, duelo_00016 (23,23 s, 697 quadros, corte do fight.json) | 51-67 s (laço de 50-66 s; 72-95 ms por quadro) |
+| Godot, duelo seed 4242 (11,1 s, 333 quadros, luta curta sem corte) | 25,8 s |
+| AVI intermediário (MJPEG 0,95) | 108-262 MB para 23 s, conforme o chão; apagado depois |
+| x264 + aac do mp4 | 22-46 s para 23 s de vídeo |
+| `palco ab` inteiro (timeline + palco + lado a lado) | ~2 min |
 
-Nível do duelo_00016 no palco (sons de reserva): −19,5 LUFS integrado, média
-−16,1 dB, pico −2,2 dBFS — na faixa do que a 16A mede no visual de hoje com o
-som real (−17,8 a −18,7 LUFS).
+O chão pesa no arquivo: com a textura de pedra a 1024 px o mp4 do duelo_00016
+foi de 8,2 MB para 35 MB (o x264 gasta bits no grão); a 512 px com borrão leve,
+14 MB. O mesmo duelo no ar tem 7,7 MB.
+
+**Nível:** o palco leva a luta a −18 LUFS integrado (o nível da luta na
+mistura da 16A) e limita o pico em −1 dBFS. Mirar a energia ativa em −13 dBFS,
+como a 16A descreve, deu −20,3 LUFS no duelo_00016, contra −16,5 do mesmo
+duelo no ar: 4 LU a menos, e num A/B de ouvido o mais alto parece melhor. Hoje:
+duelo_00016 no palco a −18,0 LUFS, média −13,7 dB, pico −5,1 dBFS; 161 sons de
+19 arquivos distintos, nenhum sem arquivo, nenhum cortado por falta de voz.
+
+**A/B do duelo_00016** (`outputs/_palco/ab_duelo_00016/ab_celular.mp4`): o
+lado esquerdo é o `_ouvir/par2_duelo_00016` da 16A (o visual de hoje já com o
+som real), o direito o palco; mesma seed, mesmo corte (23,23 s). O vídeo passa
+duas vezes: a 1ª com o som da esquerda, a 2ª com o da direita (46,6 s).
 
 ## Pendente
 

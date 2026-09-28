@@ -9,8 +9,8 @@
 - a imagem nao e um quadro liso (a janela minimizada grava quadro vazio COM
   som e rc 0 — o palco ja sai com rc 4, e isto e a segunda rede).
 
-Tambem o nivel: `ganho_para_alvo` mede a energia dos momentos ativos (o
-mesmo alvo da mistura da 16A) para a compressao unica levar o som ao alvo.
+Tambem o nivel: `ganho_para_alvo` mede a loudness integrada do AVI para a
+compressao unica levar a luta ao nivel da mistura da 16A (~-18 LUFS).
 """
 from __future__ import annotations
 
@@ -62,11 +62,20 @@ def energia_ativa_db(amostras: np.ndarray, taxa: int = 48000, janela_s: float = 
     return float(10 * np.log10(np.mean(ativas ** 2)))
 
 
-def ganho_para_alvo(caminho: Path, *, alvo_db: float, ganho_max_db: float) -> tuple[float, float | None]:
-    medido = energia_ativa_db(audio_mono(caminho))
-    if medido is None:
+def ganho_para_alvo(caminho: Path, *, alvo_lufs: float, ganho_max_db: float) -> tuple[float, float | None]:
+    """Ganho (dB) que leva a loudness integrada do trecho de luta ao alvo.
+
+    O alvo e o nivel da luta da 16A (~-18 LUFS). A primeira versao mirava a
+    energia ativa em -13 dBFS, como a mistura da 16A diz fazer, e o duelo_00016
+    saiu a -20,3 LUFS contra -16,5 do mesmo duelo no ar: 4 LU a menos, e num
+    A/B de ouvido o mais alto parece o melhor. Mede-se entao o que se compara.
+    Mudo (sem nada ativo) devolve 0 e a conferencia acusa."""
+    if energia_ativa_db(audio_mono(caminho)) is None:
         return 0.0, None
-    return float(np.clip(alvo_db - medido, -ganho_max_db, ganho_max_db)), medido
+    medido = loudness(caminho).get("lufs")
+    if medido is None or medido == float("-inf"):
+        return 0.0, None
+    return float(np.clip(alvo_lufs - medido, -ganho_max_db, ganho_max_db)), medido
 
 
 def loudness(caminho: Path) -> dict:
