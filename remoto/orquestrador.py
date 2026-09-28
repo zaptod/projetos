@@ -36,7 +36,10 @@ CLI (a do orquestrador):
     python -m remoto.orquestrador fila remover <id>
     python -m remoto.orquestrador fila listar
     python -m remoto.orquestrador decisao --titulo T --escolha E [--porque P] [--alternativa A] [--parte P]
-    python -m remoto.orquestrador modo um_por_vez|paralelo|forca_total
+    python -m remoto.orquestrador modo um_por_vez|paralelo|forca_total   # operacional: NAO vira regra
+    python -m remoto.orquestrador capacidade [--max-paralelo N] [--modo M] [--teto P]
+        [--forca-total on|off] [--fonte chat|app] [--porque "palavras dele"]  # vira regra (Grimorio)
+    python -m remoto.orquestrador eu "no que a sessao principal esta agora"
     python -m remoto.orquestrador pendentes [--json]
     python -m remoto.orquestrador aplicado <id> [--recusado MOTIVO] [--nota TEXTO]
     python -m remoto.orquestrador esperar [--intervalo S]     # sai quando chega comando
@@ -72,9 +75,8 @@ LANCADOR = None               # app_celular.cmd
 MODOS = ("um_por_vez", "paralelo", "forca_total")
 ROTULO_MODO = {"um_por_vez": "Um por vez", "paralelo": "Paralelo",
                "forca_total": "Força total"}
-# O padrao segue as decisoes do Adrian no Grimorio: `geral/modo-de-trabalho`
-# (um projeto por vez) e `geral/teto-de-uso` (50%; forca total 20 min antes
-# de a janela renovar).
+# O padrao de fabrica; sem `config.json`, vale o que o Grimorio diz
+# (`padrao_do_grimorio`: modo-de-trabalho, teto-de-uso, forca-total-ainda-vale).
 PADRAO_CONFIG = {"max_paralelo": 1, "modo": "um_por_vez", "teto_sessao_pct": 50,
                  "forca_total_antes_min": 20, "fila_pausada": False,
                  "sonda_min": 10}
@@ -214,11 +216,49 @@ def _gravar_estado(estado: dict) -> None:
     _gravar_json(arquivo("estado.json"), estado)
 
 
+def padrao_do_grimorio() -> dict:
+    """O padrao da config lido das decisoes VIGENTES do Grimorio.
+
+    Sem isto, uma Mesa sem `config.json` (maquina nova, pasta apagada) nascia
+    "um por vez" com o Grimorio dizendo "paralelo" desde 28/09 20:29. O que
+    nao der para ler fica no PADRAO_CONFIG.
+    """
+    padrao = dict(PADRAO_CONFIG)
+    try:
+        from . import decisoes
+        itens = decisoes.carregar()
+    except Exception:                                        # noqa: BLE001
+        return padrao
+
+    def vigente(no):
+        item = itens.get(no) or {}
+        if item.get("situacao") != "decidida":
+            return None, ""
+        v = item.get("vigente") or {}
+        return v.get("opcao"), str(v.get("comentario") or "")
+
+    opcao, comentario = vigente("modo-de-trabalho")
+    if opcao == "paralelo":
+        numero = re.search(r"até (\d+) agentes|max_paralelo (\d+)", comentario)
+        n = int(next(g for g in numero.groups() if g)) if numero else 2
+        padrao["modo"], padrao["max_paralelo"] = "paralelo", max(2, min(MAX_PARALELO, n))
+    opcao, comentario = vigente("teto-de-uso")
+    numero = re.search(r"(\d+)\s*%", comentario)
+    if opcao == "outro" and numero and 10 <= int(numero.group(1)) <= 100:
+        padrao["teto_sessao_pct"] = int(numero.group(1))
+    opcao, _ = vigente("forca-total-ainda-vale")
+    if opcao == "so-quando-eu-pedir":
+        padrao["forca_total_antes_min"] = None
+    return padrao
+
+
 def ler_config() -> dict:
     dados = _ler_json(arquivo("config.json"), {})
     if not isinstance(dados, dict):
         raise Recusa("config.json está ilegível")
-    return {**PADRAO_CONFIG, **{k: v for k, v in dados.items() if k in PADRAO_CONFIG}}
+    faltam = [k for k in PADRAO_CONFIG if k not in dados]
+    padrao = padrao_do_grimorio() if faltam else PADRAO_CONFIG
+    return {**padrao, **{k: v for k, v in dados.items() if k in PADRAO_CONFIG}}
 
 
 def paralelo_efetivo(config: dict) -> int:
@@ -228,21 +268,66 @@ def paralelo_efetivo(config: dict) -> int:
     return int(config["max_paralelo"])
 
 
-def _mudar_config(chave: str, valor, origem: str, comando_id: str = "") -> None:
+def _mudar_config(chave: str, valor, origem: str, comando_id: str = "") -> bool:
+    """Grava a config e o historico. Devolve se mudou de fato."""
     config = ler_config()
     antes = config.get(chave)
     if antes == valor:
-        return
+        return False
     config[chave] = valor
     _gravar_json(arquivo("config.json"), config)
     _anexar(arquivo("config_historico.jsonl"),
             {"em": _agora_iso(), "chave": chave, "de": antes, "para": valor,
              "origem": origem, "comando": comando_id})
+    return True
 
 
 def _curto(texto, limite: int = 300) -> str:
     texto = " ".join(str(texto or "").split())
     return texto if len(texto) <= limite else texto[:limite - 1] + "…"
+
+
+# -------------------------------------------------------- a sessao principal
+# "No que voce esta trabalhando agora" nao e so os agentes: e a sessao
+# principal (o orquestrador). `eu "..."` e o relato dela, em uma linha; cada
+# movimento da CLI (disparar, fechar, aplicar, mudar a capacidade) entra
+# sozinho na linha do tempo, para a tela nunca ficar muda.
+LINHA_DO_TEMPO_MAX = 15
+
+
+def _principal(estado: dict) -> dict:
+    atual = estado.get("principal")
+    if not isinstance(atual, dict):
+        atual = {}
+    if not isinstance(atual.get("linha"), list):
+        atual["linha"] = []
+    estado["principal"] = atual
+    return atual
+
+
+def _movimento(estado: dict, texto: str, tipo: str = "acao") -> None:
+    """Uma linha na linha do tempo da sessao principal (so em memoria; quem
+    chama grava o estado)."""
+    principal = _principal(estado)
+    em = _agora_iso()
+    linha = {"em": em, "texto": _curto(texto, 200), "tipo": tipo}
+    principal["linha"] = (principal["linha"] + [linha])[-LINHA_DO_TEMPO_MAX:]
+    if tipo == "relato":
+        principal["relato"], principal["relato_em"] = linha["texto"], em
+    else:
+        principal["movimento"], principal["movimento_em"] = linha["texto"], em
+
+
+def eu(texto: str) -> dict:
+    """A sessao principal diz no que esta, em uma linha."""
+    texto = _curto(texto, 200)
+    if not texto:
+        raise Recusa("diga no que a sessão principal está")
+    with _trava():
+        estado = ler_estado()
+        _movimento(estado, texto, "relato")
+        _gravar_estado(estado)
+    return estado["principal"]
 
 
 # ----------------------------------------------------------------- agentes
@@ -284,6 +369,8 @@ def agente_inicio(parte: str, titulo: str, *, da_fila: str = "", relato: str = "
         if item_da_fila is not None:
             estado["fila"] = [f for f in estado["fila"] if f.get("id") != da_fila]
             _numerar(estado["fila"])
+        _movimento(estado, f"disparou [{agente['parte']}] {agente['titulo']}"
+                   + (" (forçado)" if forcar else ""))
         _gravar_estado(estado)
     return agente
 
@@ -317,6 +404,7 @@ def agente_fim(agente_id: str, *, situacao: str = "concluido", commits=(),
                    commits=[str(c).strip()[:12] for c in commits if str(c).strip()],
                    relato=_curto(relato_final) if relato_final else agente.get("relato", ""))
         estado["concluidos_hoje"].append(fim)
+        _movimento(estado, f"fechou [{fim['parte']}] {fim['titulo']}: {situacao}")
         _gravar_estado(estado)
     return fim
 
@@ -335,6 +423,7 @@ def fila_adicionar(parte: str, item: str, posicao: int | None = None) -> dict:
         else:
             fila.insert(max(0, int(posicao) - 1), novo)
         _numerar(fila)
+        _movimento(estado, f"pôs na fila [{novo['parte']}] {novo['item']}")
         _gravar_estado(estado)
     return novo
 
@@ -387,6 +476,7 @@ def decisao(titulo: str, escolha: str, porque: str = "", alternativa: str = "",
     with _trava():
         _anexar(arquivo("decisoes_orquestrador.jsonl"), linha)
         estado = ler_estado()
+        _movimento(estado, f"decidiu: {linha['titulo']} → {linha['escolha']}")
         _gravar_estado(estado)                   # vale como pulso
     return linha
 
@@ -396,12 +486,18 @@ def ler_decisoes() -> tuple[list[dict], int]:
 
 
 def mudar_modo(modo: str, origem: str = "orquestrador", comando_id: str = "") -> None:
+    """O modo que o PROPRIO orquestrador liga (ex.: a janela da forca total).
+
+    E operacional: nao responde o Grimorio. Instrucao do Adrian e
+    `capacidade --modo M --fonte chat`, que vira regra.
+    """
     if modo not in MODOS:
         raise Recusa(f"modo desconhecido: {modo} ({', '.join(MODOS)})")
     with _trava():
         _mudar_config("modo", modo, origem, comando_id)
         estado = ler_estado()
         estado["modo"] = modo
+        _movimento(estado, f"modo operacional: {ROTULO_MODO[modo]}")
         _gravar_estado(estado)
 
 
@@ -424,6 +520,8 @@ COMANDOS = {
     "retomar_fila": "retomar a fila",
     "parar_agente": "parar agente",
     "priorizar": "mudar a ordem da fila",
+    "tirar_da_fila": "tirar da fila",
+    "adicionar_a_fila": "pôr na fila",
     "mensagem": "mensagem",
     "contestar": "contestou uma decisão",
 }
@@ -481,6 +579,18 @@ def validar_comando(comando: str, valor):
         if direcao not in ("subir", "descer", "topo"):
             raise Recusa("a direção é subir, descer ou topo")
         return {"item": item, "direcao": direcao}
+    if comando == "tirar_da_fila":
+        if not isinstance(valor, str) or not _ID.fullmatch(valor):
+            raise Recusa("item da fila inválido")
+        return valor
+    if comando == "adicionar_a_fila":
+        if not isinstance(valor, dict):
+            raise Recusa("diga a parte e o item")
+        parte = _curto(valor.get("parte"), 40)
+        item = _curto(valor.get("item"), 200)
+        if not parte or not item:
+            raise Recusa("diga a parte e o item")
+        return {"parte": parte, "item": item}
     if comando == "mensagem":
         texto = str(valor or "").strip()
         if not texto:
@@ -546,27 +656,122 @@ def pendentes() -> list[dict]:
     return [c for c in lista if c["situacao"] == "pendente"]
 
 
-def _efeito(comando: dict) -> str:
-    """O que o `aplicado` muda sozinho. Devolve uma nota (ou "")."""
-    nome, valor, cid = comando["comando"], comando.get("valor"), comando["id"]
-    if nome == "max_paralelo":
-        _mudar_config("max_paralelo", int(valor), "app", cid)
-    elif nome == "modo":
-        _mudar_config("modo", valor, "app", cid)
+# ------------------------------------------------ capacidade vira regra
+# Decisao do Adrian `geral/capacidade-pelo-app` (28/09, "Substitui: o que eu
+# mudo no app vira a regra"). Ao valer, cada mudanca de capacidade responde o
+# no correspondente do Grimorio, com commit: pela Mesa (`aplicado`) ou por uma
+# instrucao dele no chat (`capacidade --fonte chat`). O modo que o proprio
+# orquestrador liga (`modo`, ex.: a janela da forca total) e operacional e NAO
+# vira regra.
+COMANDO_PARA_CHAVE = {"max_paralelo": "max_paralelo", "modo": "modo",
+                      "teto_uso": "teto_sessao_pct",
+                      "forca_total": "forca_total_antes_min"}
+NO_DA_CHAVE = {"max_paralelo": "modo-de-trabalho", "modo": "modo-de-trabalho",
+               "teto_sessao_pct": "teto-de-uso",
+               "forca_total_antes_min": "forca-total-ainda-vale"}
+FONTES = {"app": "pela Mesa de comando", "chat": "no chat"}
+
+
+def regra_da_config(chave: str, config: dict) -> tuple[str, str, str]:
+    """(no do Grimorio, opcao, texto) que a config diz para aquela chave."""
+    no = NO_DA_CHAVE[chave]
+    if no == "modo-de-trabalho":
+        n = paralelo_efetivo(config)
+        if n == 1:
+            texto = ("um por vez" if config["modo"] == "um_por_vez"
+                     else f"{ROTULO_MODO[config['modo']].lower()}, até 1 agente")
+            return no, "um", texto
+        return no, "paralelo", f"{ROTULO_MODO[config['modo']].lower()}, até {n} agentes"
+    if no == "teto-de-uso":
+        pct = int(config["teto_sessao_pct"])
+        return no, ("cinquenta" if pct == 50 else "outro"), \
+            f"passou de {pct}% da sessão, para tudo"
+    antes = config["forca_total_antes_min"]
+    if antes:
+        return no, "ligada", f"força total {antes} min antes de renovar"
+    return no, "so-quando-eu-pedir", "força total só quando eu pedir"
+
+
+def registrar_no_grimorio(chave: str, config: dict, fonte: str, *,
+                          aparelho: str = "", porque: str = "") -> str:
+    """Responde o no da chave. Devolve a nota. Nunca levanta: a config ja
+    vale, e o que falhar aparece na nota, que a tela mostra."""
+    from . import decisoes
+    try:
+        no, opcao, texto = regra_da_config(chave, config)
+    except (KeyError, TypeError, ValueError) as exc:
+        return f"Grimório: não soube traduzir {chave} ({type(exc).__name__})"
+    try:
+        vigente = (decisoes.carregar().get(no) or {}).get("vigente") or {}
+    except Exception:                                         # noqa: BLE001
+        vigente = {}
+    if vigente.get("opcao") == opcao and texto in str(vigente.get("comentario", "")):
+        # ex.: o maximo mudou no modo "um por vez": a regra continua a mesma
+        return f"Grimório: {no} já dizia isso ({texto})"
+    comentario = (f"{datetime.now().strftime('%d/%m %H:%M')}, "
+                  f"{FONTES.get(fonte, fonte)}: {texto}")
+    if porque:
+        comentario += f" — nas palavras dele: {_curto(porque, 300)}"
+    try:
+        evento = decisoes.responder(no, opcao, comentario, aparelho=aparelho,
+                                    origem="mesa" if fonte == "app" else fonte)
+    except KeyError:
+        return f"Grimório: não existe o nó {no}"
+    except decisoes.Recusa as exc:
+        return f"Grimório: não registrei em {no} ({exc})"
+    except Exception as exc:                                  # noqa: BLE001
+        return f"Grimório: falhou em {no} ({type(exc).__name__}: {exc})"
+    nota = f"Grimório: {no} → {evento['opcao_rotulo']} ({texto})"
+    if evento.get("a_rever"):
+        nota += f"; foram para \"a rever\": {', '.join(evento['a_rever'])}"
+    if str(evento.get("commit", "")).startswith("falhou"):
+        nota += f"; o commit ficou para depois ({evento['commit'][:120]})"
+    return nota
+
+
+def _mudar_capacidade(nome: str, valor, fonte: str, cid: str) -> tuple[str, bool]:
+    """(chave da config, mudou?). So a config; o Grimorio vem depois."""
+    chave = COMANDO_PARA_CHAVE[nome]
+    novo = int(valor) if nome in ("max_paralelo", "teto_uso") else valor
+    mudou = _mudar_config(chave, novo, fonte, cid)
+    if mudou and nome == "modo":
         estado = ler_estado()
         estado["modo"] = valor
         _gravar_estado(estado)
-    elif nome == "teto_uso":
-        _mudar_config("teto_sessao_pct", int(valor), "app", cid)
-    elif nome == "forca_total":
-        _mudar_config("forca_total_antes_min", valor, "app", cid)
-    elif nome == "pausar_fila":
-        _mudar_config("fila_pausada", True, "app", cid)
+    return chave, mudou
+
+
+def _aplicar(nome: str, valor, fonte: str, cid: str, *, aparelho: str = "",
+             porque: str = "") -> str:
+    """O efeito de um comando. Devolve uma nota (ou ""). Chame sob a trava."""
+    if nome in COMANDO_PARA_CHAVE:
+        chave, mudou = _mudar_capacidade(nome, valor, fonte, cid)
+        if not mudou:
+            return "já estava assim"
+        return registrar_no_grimorio(chave, ler_config(), fonte, aparelho=aparelho,
+                                     porque=porque)
+    if nome == "pausar_fila":
+        _mudar_config("fila_pausada", True, fonte, cid)
     elif nome == "retomar_fila":
-        _mudar_config("fila_pausada", False, "app", cid)
+        _mudar_config("fila_pausada", False, fonte, cid)
     elif nome == "priorizar":
         estado = ler_estado()
         _mover(estado["fila"], valor["item"], valor["direcao"])
+        _gravar_estado(estado)
+    elif nome == "tirar_da_fila":
+        estado = ler_estado()
+        antes = len(estado["fila"])
+        estado["fila"] = [f for f in estado["fila"] if f.get("id") != valor]
+        if len(estado["fila"]) == antes:
+            raise Recusa(f"a fila não tem o item {valor}; recuse com o motivo")
+        _numerar(estado["fila"])
+        _gravar_estado(estado)
+    elif nome == "adicionar_a_fila":
+        estado = ler_estado()
+        estado["fila"].append({"id": _novo_id(), "parte": valor["parte"],
+                               "item": valor["item"], "desde": _agora_iso(),
+                               "pedido": "Adrian"})
+        _numerar(estado["fila"])
         _gravar_estado(estado)
     elif nome == "parar_agente":
         estado = ler_estado()
@@ -579,6 +784,25 @@ def _efeito(comando: dict) -> str:
     return ""
 
 
+def _efeito(comando: dict) -> str:
+    """O que o `aplicado` muda sozinho. Devolve uma nota (ou "")."""
+    return _aplicar(comando["comando"], comando.get("valor"), "app", comando["id"],
+                    aparelho=str(comando.get("aparelho") or ""))
+
+
+def _descrever(nome: str, valor) -> str:
+    rotulo = COMANDOS.get(nome, nome)
+    if valor is None:
+        return rotulo
+    if nome == "forca_total":
+        return f"{rotulo}: {'ligada' if valor else 'desligada'}"
+    if nome == "teto_uso":
+        return f"{rotulo}: {valor}%"
+    if isinstance(valor, dict):
+        valor = " ".join(str(v) for v in valor.values())
+    return f"{rotulo}: {_curto(valor, 80)}"
+
+
 def aplicado(comando_id: str, *, recusado: str = "", nota: str = "") -> dict:
     """O orquestrador leu e aplicou (ou recusou, com o motivo)."""
     with _trava():
@@ -588,6 +812,13 @@ def aplicado(comando_id: str, *, recusado: str = "", nota: str = "") -> dict:
             raise Recusa(f"comando desconhecido: {comando_id}")
         if comando["situacao"] != "pendente":
             raise Recusa(f"o comando {comando_id} já foi {comando['situacao']}")
+        # o nome do item, antes de ele sair da fila (a linha do tempo diz o que saiu)
+        descricao = _descrever(comando["comando"], comando.get("valor"))
+        if comando["comando"] == "tirar_da_fila":
+            item = next((f for f in ler_estado()["fila"]
+                         if f.get("id") == comando.get("valor")), None)
+            if item:
+                descricao = f"tirar da fila: [{item['parte']}] {item['item']}"
         if recusado:
             linha = {"id": comando_id, "em": _agora_iso(), "resultado": "recusado",
                      "motivo": _curto(recusado, 500), "nota": _curto(nota, 500)}
@@ -597,9 +828,61 @@ def aplicado(comando_id: str, *, recusado: str = "", nota: str = "") -> dict:
                      "motivo": "", "nota": _curto(" · ".join(x for x in (nota, extra) if x),
                                                    500)}
         _anexar(arquivo("comandos_aplicados.jsonl"), linha)
-        estado = ler_estado()
-        _gravar_estado(estado)                   # quem aplica esta vivo
+        estado = ler_estado()                    # quem aplica esta vivo
+        _movimento(estado, ("recusou " if recusado else "aplicou ") + descricao)
+        _gravar_estado(estado)
     return linha
+
+
+def capacidade(pedidos, *, fonte: str = "chat", porque: str = "") -> list[dict]:
+    """Uma instrucao do Adrian fora do app (no chat) vira regra IGUAL a uma da
+    Mesa: muda a config pelo mesmo caminho do `aplicado`, com historico, e
+    responde o no do Grimorio. Entra na lista de comandos ja aplicada, com a
+    fonte, para a Mesa mostrar de onde veio.
+
+    `pedidos` e [(comando, valor)]. Tudo e validado antes de mudar qualquer
+    coisa, e o Grimorio e respondido UMA vez por no, com a config final: "modo
+    paralelo, ate 2" numa instrucao so nao passa por um "um por vez" no meio.
+    """
+    if fonte not in FONTES:
+        raise Recusa(f"fonte desconhecida: {fonte} ({', '.join(FONTES)})")
+    validados = []
+    for nome, valor in pedidos:
+        if nome not in COMANDO_PARA_CHAVE:
+            raise Recusa(f"capacidade é {', '.join(COMANDO_PARA_CHAVE)}")
+        validados.append((nome, validar_comando(nome, valor)))
+    if not validados:
+        raise Recusa("diga o que muda: --max-paralelo, --modo, --teto ou --forca-total")
+    with _trava():
+        feitos, nos = [], {}
+        for nome, valor in validados:
+            cid = _novo_id()
+            chave, mudou = _mudar_capacidade(nome, valor, fonte, cid)
+            feitos.append({"id": cid, "comando": nome, "valor": valor, "chave": chave,
+                           "mudou": mudou})
+            if mudou:
+                nos.setdefault(NO_DA_CHAVE[chave], chave)
+        config = ler_config()
+        notas = {no: registrar_no_grimorio(chave, config, fonte, porque=porque)
+                 for no, chave in nos.items()}
+        for feito in feitos:
+            feito["nota"] = (notas[NO_DA_CHAVE[feito["chave"]]] if feito["mudou"]
+                             else "já estava assim")
+            em = _agora_iso()
+            # O `aplicado` ANTES do comando: quem le (o `esperar`) le os
+            # comandos primeiro, entao nunca ve este como pendente.
+            _anexar(arquivo("comandos_aplicados.jsonl"),
+                    {"id": feito["id"], "em": em, "resultado": "aplicado", "motivo": "",
+                     "nota": _curto(" · ".join(x for x in (_curto(porque, 200),
+                                                           feito["nota"]) if x), 500)})
+            _anexar(arquivo("comandos.jsonl"),
+                    {"id": feito["id"], "em": em, "comando": feito["comando"],
+                     "valor": feito["valor"], "aparelho": "", "fonte": fonte})
+        estado = ler_estado()
+        _movimento(estado, f"capacidade {FONTES[fonte]}: "
+                   + "; ".join(_descrever(f["comando"], f["valor"]) for f in feitos))
+        _gravar_estado(estado)
+    return feitos
 
 
 # =================================================================== uso
@@ -962,6 +1245,44 @@ def id_do_no(decisao_id: str) -> str:
     return f"contestada-{decisao_id}"
 
 
+def historico_da_config(n: int = 12) -> list[dict]:
+    linhas, _ = _ler_jsonl(arquivo("config_historico.jsonl"))
+    return list(reversed(linhas[-n:]))
+
+
+def grimorio_da_capacidade(config: dict) -> list[dict]:
+    """Os nos do Grimorio que a capacidade responde, e se batem com a config.
+
+    `bate` False quer dizer: a Mesa vale uma coisa e o Grimorio diz outra
+    (ex.: a regra mudou antes da automacao, ou o commit falhou). A tela avisa.
+    """
+    try:
+        from . import decisoes
+        itens = decisoes.carregar()
+    except Exception as exc:                                 # noqa: BLE001
+        return [{"erro": f"não consegui ler o Grimório: {type(exc).__name__}"}]
+    saida, vistos = [], set()
+    for chave in ("modo", "teto_sessao_pct", "forca_total_antes_min"):
+        no, opcao, texto = regra_da_config(chave, config)
+        if no in vistos:
+            continue
+        vistos.add(no)
+        item = itens.get(no)
+        if item is None:
+            saida.append({"no": no, "existe": False, "bate": False, "esperado": texto})
+            continue
+        vigente = item.get("vigente") or {}
+        rotulo = next((o["rotulo"] for o in item.get("opcoes") or []
+                       if o["id"] == vigente.get("opcao")), vigente.get("opcao"))
+        bate = (item.get("situacao") == "decidida" and vigente.get("opcao") == opcao
+                and (opcao != "outro" or texto in str(vigente.get("comentario", ""))))
+        saida.append({"no": no, "existe": True, "titulo": item.get("titulo"),
+                      "situacao": item.get("situacao"), "opcao": vigente.get("opcao"),
+                      "rotulo": rotulo, "comentario": vigente.get("comentario", ""),
+                      "em": vigente.get("em"), "bate": bool(bate), "esperado": texto})
+    return saida
+
+
 def para_o_app(agora: float | None = None) -> dict:
     """Tudo o que a Mesa de comando mostra, numa chamada. So leitura."""
     agora = time.time() if agora is None else agora
@@ -996,6 +1317,12 @@ def para_o_app(agora: float | None = None) -> dict:
         acessos = None
     if ruins_d or ruins_c:
         erros.append(f"{ruins_d + ruins_c} linha(s) ilegível(is) nos registros")
+    try:
+        historico_config = historico_da_config()
+    except Recusa as exc:
+        erros.append(str(exc))
+        historico_config = []
+    principal = (estado or {}).get("principal") or {}
     return {
         "agora": datetime.fromtimestamp(agora).isoformat(timespec="seconds"),
         "estado": estado or _estado_vazio_sem_disco(),
@@ -1004,6 +1331,13 @@ def para_o_app(agora: float | None = None) -> dict:
         "idade_s": idade,
         "config": config,
         "paralelo_efetivo": paralelo_efetivo(config),
+        "principal": {"relato": principal.get("relato"),
+                      "relato_em": principal.get("relato_em"),
+                      "movimento": principal.get("movimento"),
+                      "movimento_em": principal.get("movimento_em"),
+                      "linha": list(reversed(principal.get("linha") or []))},
+        "historico_config": historico_config,
+        "grimorio": grimorio_da_capacidade(config),
         "modos": [{"id": m, "rotulo": ROTULO_MODO[m]} for m in MODOS],
         "uso": uso,
         "historico_uso": historico,
@@ -1056,6 +1390,15 @@ def contestar(decisao_id: str, comentario: str = "", aparelho: str = "") -> dict
 # ==================================================================== cli
 def _imprimir_estado(estado: dict) -> None:
     print(f"atualizado em {estado.get('atualizado_em') or 'nunca'} · modo {estado.get('modo')}")
+    principal = estado.get("principal") or {}
+    print("SESSÃO PRINCIPAL")
+    if principal.get("relato"):
+        print(f"  {str(principal.get('relato_em'))[11:16]}  {principal['relato']}")
+    if principal.get("movimento"):
+        print(f"  último movimento {str(principal.get('movimento_em'))[11:16]}: "
+              f"{principal['movimento']}")
+    if not principal.get("relato") and not principal.get("movimento"):
+        print("  nada relatado (use: eu \"...\")")
     print("AGORA")
     for a in estado["agora"]:
         print(f"  {a['id']}  [{a['parte']}] {a['titulo']}  desde {a['desde'][11:16]}"
@@ -1123,8 +1466,18 @@ def main(argv=None) -> int:
     dec.add_argument("--alternativa", default="")
     dec.add_argument("--parte", default="geral")
     dec.add_argument("--em", default="")
-    mod = sub.add_parser("modo")
+    mod = sub.add_parser("modo", help="modo operacional (não vira regra)")
     mod.add_argument("modo", choices=MODOS)
+    cap = sub.add_parser("capacidade",
+                         help="instrução do Adrian: muda a config e responde o Grimório")
+    cap.add_argument("--max-paralelo", default=None)
+    cap.add_argument("--modo", default=None, choices=MODOS)
+    cap.add_argument("--teto", default=None, help="teto de uso da sessão, 10 a 100")
+    cap.add_argument("--forca-total", default=None, choices=("on", "off"))
+    cap.add_argument("--fonte", default="chat", choices=tuple(FONTES))
+    cap.add_argument("--porque", default="", help="as palavras dele, curtas")
+    eu_ = sub.add_parser("eu", help="no que a sessão principal está, em uma linha")
+    eu_.add_argument("texto")
     pen = sub.add_parser("pendentes")
     pen.add_argument("--json", action="store_true")
     apl = sub.add_parser("aplicado")
@@ -1140,6 +1493,13 @@ def main(argv=None) -> int:
     for nome in ("config", "estado", "uso", "pulso", "onde", "sonda"):
         sub.add_parser(nome)
     args = p.parse_args(argv)
+    # Quem le esta saida (o orquestrador) le por pipe: no Windows seria cp1252,
+    # e um emoji da arvore derrubava o `arvore` com UnicodeEncodeError.
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
     try:
         if args.cmd == "agente-inicio":
@@ -1171,7 +1531,19 @@ def main(argv=None) -> int:
                           args.parte, args.em)["id"])
         elif args.cmd == "modo":
             mudar_modo(args.modo)
-            print(f"modo {args.modo}")
+            print(f"modo {args.modo} (operacional; instrução do Adrian: capacidade --modo)")
+        elif args.cmd == "capacidade":
+            pedidos = [(n, v) for n, v in (
+                ("max_paralelo", args.max_paralelo), ("modo", args.modo),
+                ("teto_uso", args.teto),
+                ("forca_total", None if args.forca_total is None
+                 else args.forca_total == "on")) if v is not None]
+            for feito in capacidade(pedidos, fonte=args.fonte, porque=args.porque):
+                print(f"{feito['id']} {feito['comando']}={feito['valor']} · "
+                      f"{feito['nota'] or 'ok'}")
+        elif args.cmd == "eu":
+            principal = eu(args.texto)
+            print(f"{principal['relato_em'][11:16]} {principal['relato']}")
         elif args.cmd == "pendentes":
             _imprimir_pendentes(pendentes(), args.json)
         elif args.cmd == "aplicado":

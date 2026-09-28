@@ -160,6 +160,9 @@
     </div>
     <div class="cartao" id="orq-sec-agora">
       <h2>Agora</h2>
+      <div id="orq-principal" class="orq-principal"></div>
+      <div id="orq-resumo" class="orq-resumo"></div>
+      <h3 class="orq-sub" id="orq-agentes-titulo">Agentes</h3>
       <div id="orq-agora"></div>
       <div id="orq-concluidos" class="fraco"></div>
     </div>
@@ -168,9 +171,12 @@
       <div id="orq-fila-situacao" class="fraco"></div>
       <div id="orq-fila"></div>
       <div class="botoes">
+        <button class="acao" id="orq-adicionar-fila">+ Pôr na fila</button>
         <button class="acao" id="orq-pausar-fila">⏸ Pausar a fila</button>
         <button class="acao" id="orq-retomar-fila">▶ Retomar a fila</button>
       </div>
+      <div class="fraco">Pausada, o orquestrador não dispara ninguém da fila; quem já está
+        trabalhando segue.</div>
     </div>
     <div class="cartao" id="orq-sec-capacidade">
       <h2>Capacidade</h2>
@@ -185,6 +191,7 @@
         <span class="corpo">Modo</span>
       </div>
       <div class="abas" id="orq-modos"></div>
+      <div class="fraco" id="orq-modo-ajuda"></div>
       <div class="orq-controle">
         <label class="corpo" for="orq-teto">Teto de uso da sessão</label>
         <select id="orq-teto"></select>
@@ -193,7 +200,11 @@
         <span class="corpo">Força total antes de renovar</span>
         <button class="acao" id="orq-forca" aria-pressed="false">desligada</button>
       </div>
+      <div class="fraco">A regra: nos últimos minutos antes de a janela de 5 h renovar, o teto
+        deixa de valer e todos os agentes com trabalho rodam.</div>
       <div class="fraco" id="orq-capacidade-pendente"></div>
+      <div id="orq-grimorio" class="orq-grimorio"></div>
+      <div id="orq-cap-historico"></div>
     </div>
     <div class="cartao" id="orq-sec-limites">
       <h2>Limites</h2>
@@ -219,12 +230,14 @@
       <h2>Mensagem para o orquestrador</h2>
       <textarea id="orq-mensagem" class="decisao-comentario" rows="3" maxlength="1000"
                 placeholder="o que você quer que ele saiba ou faça"></textarea>
+      <div class="fraco">A resposta dele aparece em “O que você mandou”, logo abaixo.</div>
       <div class="botoes">
         <button class="acao primario" id="orq-enviar">Enviar</button>
       </div>
     </div>
     <div class="cartao" id="orq-sec-comandos">
       <h2>O que você mandou</h2>
+      <div class="fraco">Pelo app e pelo chat, do mais novo para o mais velho.</div>
       <div id="orq-comandos"></div>
     </div>
   </section>

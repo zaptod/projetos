@@ -10,6 +10,14 @@ const ORQ_MS = 10000;
 const ORQ_FLUXO_MS = 60000;
 const ORQ_SELO_MS = 60000;
 const ORQ_SIMBOLO = {ok: "✓", rodando: "▶", fila: "…", falhou: "✕", ausente: "·"};
+// Agente sem relato ha mais que isto pode estar preso: a ficha avisa.
+const ORQ_SEM_NOTICIA_S = 30 * 60;
+const ORQ_PARTES = ["geral", "builds", "historias", "publicacao", "metricas", "app-e-bot",
+                    "painel-e-vila", "jogo-zombie"];
+const ORQ_FONTE = {app: "pelo app", chat: "pelo chat", orquestrador: "pelo orquestrador"};
+const ORQ_CHAVE = {max_paralelo: "agentes em paralelo", modo: "modo",
+                   teto_sessao_pct: "teto de uso", forca_total_antes_min: "força total",
+                   fila_pausada: "fila pausada"};
 
 const Orq = {dados: null, relogio: null, relogioFluxo: null, seloEm: 0};
 
@@ -96,7 +104,61 @@ function orqFicha(parte) {
   return el("span", {class: "orq-ficha", "aria-hidden": "true"}, letras || "?");
 }
 
+function orqIdade(iso) {
+  const t = new Date(iso).getTime();
+  return isNaN(t) ? null : (Date.now() - t) / 1000;
+}
+
+// A sessão principal (o orquestrador), em uma linha, com a hora: o relato
+// que ele dá (`eu "..."`) e o último movimento que a CLI registrou sozinha.
+function orqDesenharPrincipal(d) {
+  const p = d.principal || {};
+  const alvo = $("orq-principal");
+  const partes = [el("div", {class: "orq-sub"}, "Sessão principal")];
+  if (p.relato) {
+    partes.push(el("div", {class: "orq-principal-relato"}, p.relato),
+      el("div", {class: "fraco"}, `${orqHora(p.relato_em)} (${orqDesde(p.relato_em)})`));
+  } else {
+    partes.push(el("div", {class: "fraco"}, "Ele ainda não disse no que está."));
+  }
+  if (p.movimento) {
+    partes.push(el("div", {class: "fraco"},
+      `último movimento ${orqHora(p.movimento_em)}: ${p.movimento}`));
+  }
+  const sinal = d.estado.atualizado_em;
+  partes.push(el("div", {class: d.fora_do_ar ? "erro" : "fraco"}, sinal
+    ? `sinal de vida ${orqHora(sinal)} (${ha(d.idade_s)})` : "nunca deu sinal de vida"));
+  const linha = p.linha || [];
+  if (linha.length) {
+    partes.push(orqDetalhes(`Linha do tempo (${linha.length})`, linha.map((x) =>
+      el("div", {class: "linha"}, el("span", {class: "orq-hora"}, orqHora(x.em)),
+        el("span", {class: "corpo" + (x.tipo === "relato" ? "" : " fraco")}, x.texto)))));
+  }
+  alvo.replaceChildren(...partes);
+}
+
+// O resumo que responde "cabe mais um?": vagas, uso contra o teto, fila.
+function orqDesenharResumo(d) {
+  const ocupadas = (d.estado.agora || []).length;
+  const vagas = d.paralelo_efetivo;
+  const u = d.uso || {};
+  const itens = [
+    [`${ocupadas} de ${vagas}`, "vagas ocupadas", ocupadas > vagas ? "erro" : ""],
+    u.situacao === "ok" && u.medicao
+      ? [`${Math.round(u.medicao.sessao_pct)}%`, `da sessão · teto ${u.teto}%`,
+         u.passou_teto ? "erro" : ""]
+      : ["—", "uso sem medição", "erro"],
+    [String((d.estado.fila || []).length),
+     d.config.fila_pausada ? "na fila (pausada)" : "na fila", d.config.fila_pausada ? "erro" : ""],
+  ];
+  $("orq-resumo").replaceChildren(...itens.map(([n, r, c]) =>
+    el("span", {class: "orq-passo " + c}, el("strong", {}, n), r)));
+  $("orq-agentes-titulo").textContent = `Agentes (${ocupadas} de ${vagas} vagas)`;
+}
+
 function orqDesenharAgora(d) {
+  orqDesenharPrincipal(d);
+  orqDesenharResumo(d);
   const alvo = $("orq-agora");
   const agora = d.estado.agora || [];
   if (!agora.length) {
@@ -118,7 +180,8 @@ function orqDesenharAgora(d) {
             + `(${orqDesde(a.desde)})` + (a.situacao !== "trabalhando" ? ` · ${a.situacao}` : "")
             + (parando.has(a.id) ? " · parar pedido (pendente)" : "")),
           a.relato ? el("div", {class: "orq-relato"}, "“" + a.relato + "”"
-            + (a.relato_em ? ` · ${orqHora(a.relato_em)}` : "")) : null),
+            + (a.relato_em ? ` · ${orqHora(a.relato_em)}` : "")) : null,
+          orqSemNoticia(a)),
         botao);
     }));
   }
@@ -127,6 +190,13 @@ function orqDesenharAgora(d) {
     ? "Hoje: " + feitos.map((c) => `${c.titulo} (${c.situacao}`
       + (c.commits && c.commits.length ? ` · ${c.commits.join(" ")}` : "") + ")").join(" · ")
     : "";
+}
+
+// Sem relato há muito tempo: pode estar preso, ou só calado. A ficha diz.
+function orqSemNoticia(a) {
+  const idade = orqIdade(a.relato_em || a.desde);
+  if (idade == null || idade < ORQ_SEM_NOTICIA_S) return null;
+  return el("div", {class: "erro"}, `sem notícia ${ha(idade)}`);
 }
 
 // ----------------------------------------------------------------- fila
@@ -140,9 +210,14 @@ function orqDesenharFila(d) {
     + (pedRetomar ? " · retomar pedido (pendente)" : "");
   $("orq-fila-situacao").className = pausada ? "erro" : "fraco";
   const movendo = orqPendentes("priorizar");
+  const tirando = new Set(orqPendentes("tirar_da_fila").map((c) => c.valor));
+  const pondo = orqPendentes("adicionar_a_fila").map((c) => el("div", {class: "linha"},
+    el("span", {class: "orq-ordem"}, "+"),
+    el("span", {class: "corpo"}, c.valor.item,
+      el("div", {class: "fraco"}, `${c.valor.parte} · pedido (pendente)`))));
   const alvo = $("orq-fila");
   if (!fila.length) {
-    alvo.replaceChildren(el("div", {class: "fraco"}, "A fila está vazia."));
+    alvo.replaceChildren(el("div", {class: "fraco"}, "A fila está vazia."), ...pondo);
     return;
   }
   alvo.replaceChildren(...fila.map((f, n) => {
@@ -152,14 +227,43 @@ function orqDesenharFila(d) {
     descer.disabled = n === fila.length - 1;
     subir.addEventListener("click", () => orqEnviar("priorizar", {item: f.id, direcao: "subir"}));
     descer.addEventListener("click", () => orqEnviar("priorizar", {item: f.id, direcao: "descer"}));
+    const tirar = el("button", {class: "acao perigo", "aria-label": "Tirar da fila"}, "✕");
+    tirar.disabled = tirando.has(f.id);
+    tirar.addEventListener("click", async () => {
+      const r = await perguntar(`Tirar «${f.item}» (${f.parte}) da fila?`);
+      if (r === "confirmar") orqEnviar("tirar_da_fila", f.id);
+    });
     const pedido = movendo.filter((c) => c.valor && c.valor.item === f.id)
       .map((c) => c.valor.direcao).join(", ");
     return el("div", {class: "linha"},
       el("span", {class: "orq-ordem"}, String(n + 1)),
       el("span", {class: "corpo"}, f.item,
-        el("div", {class: "fraco"}, f.parte + (pedido ? ` · ${pedido} (pendente)` : ""))),
-      subir, descer);
-  }));
+        el("div", {class: "fraco"}, f.parte + (f.pedido ? ` · pedido por ${f.pedido}` : "")
+          + (f.desde ? ` · desde ${quandoCurto(f.desde)}` : "")
+          + (pedido ? ` · ${pedido} (pendente)` : "")
+          + (tirando.has(f.id) ? " · tirar pedido (pendente)" : ""))),
+      subir, descer, tirar);
+  }), ...pondo);
+}
+
+// Pôr na fila: a parte e o que fazer. Vira comando; o orquestrador põe.
+async function orqPorNaFila() {
+  const d = $("dialogo-campos");
+  const parte = el("select", {});
+  for (const p of ORQ_PARTES) parte.append(el("option", {value: p}, p));
+  const item = el("textarea", {class: "decisao-comentario", rows: "3", maxlength: "200"});
+  $("campos-corpo").replaceChildren(el("p", {}, "Pôr na fila do orquestrador"),
+    el("p", {class: "fraco"}, "Entra no fim; depois dá para subir. Fica pendente até ele aplicar."),
+    el("label", {class: "campo"}, "Parte", parte),
+    el("label", {class: "campo"}, "O que fazer", item));
+  const ok = await new Promise((resolve) => {
+    d.returnValue = "cancelar";
+    d.addEventListener("close", () => resolve(d.returnValue === "ok"), {once: true});
+    d.showModal();
+  });
+  if (!ok) return;
+  if (!item.value.trim()) { avisar("diga o que fazer", true); return; }
+  orqEnviar("adicionar_a_fila", {parte: parte.value, item: item.value.trim()});
 }
 
 // ----------------------------------------------------------- capacidade
@@ -188,6 +292,11 @@ function orqDesenharCapacidade(d) {
     b.addEventListener("click", () => { if (m.id !== alvoModo) orqEnviar("modo", m.id); });
     return b;
   }));
+  $("orq-modo-ajuda").textContent = {
+    um_por_vez: "Um por vez: 1 agente, qualquer que seja o máximo.",
+    paralelo: "Paralelo: até o máximo acima, e para no teto de uso.",
+    forca_total: "Força total: até o máximo, e o teto de uso NÃO para os agentes.",
+  }[c.modo] || "";
 
   const teto = $("orq-teto");
   const valores = [30, 40, 50, 60, 70, 80, 90, 100];
@@ -208,6 +317,44 @@ function orqDesenharCapacidade(d) {
     .map((p) => `${p.rotulo}: ${orqValor(p)}`);
   $("orq-capacidade-pendente").textContent = pedidos.length
     ? "Pedido, esperando o orquestrador: " + pedidos.join(" · ") : "";
+  orqDesenharGrimorio(d);
+  orqDesenharHistoricoCapacidade(d);
+}
+
+// O que muda aqui vira a regra (decisão geral/capacidade-pelo-app): o
+// orquestrador responde o Grimório ao aplicar. Aqui, a prova: o que o
+// Grimório diz, e se bate com o que vale na Mesa.
+function orqDesenharGrimorio(d) {
+  const lista = d.grimorio || [];
+  const linhas = lista.map((g) => {
+    if (g.erro) return el("div", {class: "erro"}, g.erro);
+    if (!g.existe) return el("div", {class: "erro"}, `⚠ o Grimório não tem o nó ${g.no}`);
+    return el("div", {class: "linha"},
+      el("span", {class: "corpo"}, el("strong", {}, g.titulo),
+        el("div", {class: "fraco"}, `${g.rotulo || "sem resposta"}`
+          + (g.comentario ? ` · “${g.comentario}”` : "")),
+        g.bate ? null : el("div", {class: "erro"},
+          `⚠ não bate com a Mesa (${g.esperado})` + (g.situacao !== "decidida"
+            ? ` · está ${g.situacao === "a_rever" ? "a rever" : g.situacao}` : ""))),
+      el("span", {class: "selo " + (g.bate ? "ok" : "erro")}, g.bate ? "bate" : "diverge"));
+  });
+  $("orq-grimorio").replaceChildren(
+    el("h3", {class: "orq-sub"}, "No Grimório (vira regra)"),
+    el("div", {class: "fraco"}, "O que você muda aqui o orquestrador registra no Grimório, "
+      + "com commit — igual a uma instrução sua no chat."),
+    ...linhas);
+}
+
+function orqDesenharHistoricoCapacidade(d) {
+  const h = d.historico_config || [];
+  const texto = (v) => v == null ? "desligada" : v === true ? "sim" : v === false ? "não"
+    : String(v);
+  $("orq-cap-historico").replaceChildren(orqDetalhes(`Histórico das mudanças (${h.length})`,
+    h.length ? h.map((x) => el("div", {class: "linha"},
+      el("span", {class: "orq-hora"}, quandoCurto(x.em)),
+      el("span", {class: "corpo"}, `${ORQ_CHAVE[x.chave] || x.chave}: ${texto(x.de)} → `
+        + `${texto(x.para)}`, el("div", {class: "fraco"}, ORQ_FONTE[x.origem] || x.origem))))
+      : [el("div", {class: "fraco"}, "Nada mudou ainda.")]));
 }
 
 // -------------------------------------------------------------- limites
@@ -239,7 +386,8 @@ function orqDesenharLimites(d) {
     const texto = u.situacao === "velha"
       ? `Sem medição desde ${orqHoraEpoch(u.desde)}` + (u.motivo ? ` — ${u.motivo}` : "")
       : "Sem medição ainda" + (u.motivo ? ` — ${u.motivo}` : "");
-    alvo.replaceChildren(el("div", {class: "orq-sem-medicao"}, texto));
+    alvo.replaceChildren(el("div", {class: "orq-sem-medicao"}, texto),
+      el("div", {class: "fraco"}, orqSonda(d)));
   } else {
     const m = u.medicao;
     // replaceChildren escreveria "null" por extenso: so os que existem
@@ -247,7 +395,13 @@ function orqDesenharLimites(d) {
       orqBarra("Sessão (5 h)", m.sessao_pct, m.sessao_renova_em, u.teto),
       m.semana_pct != null ? orqBarra("Semana", m.semana_pct, m.semana_renova_em, null)
         : el("div", {class: "fraco"}, "semana: a medição não trouxe"),
-      el("div", {class: "fraco"}, `medido às ${orqHoraEpoch(m.gravado_em)} · ${u.fonte}`),
+      el("div", {class: "fraco"}, `medido às ${orqHoraEpoch(m.gravado_em)} · ${u.fonte}`
+        + ` · ${orqSonda(d)}`),
+      u.forca_total_antes_min && m.sessao_renova_em
+        ? el("div", {class: "fraco"}, `força total a partir de `
+          + `${orqHoraEpoch(Number(m.sessao_renova_em) - u.forca_total_antes_min * 60)}`
+          + ` (${u.forca_total_antes_min} min antes de renovar)`)
+        : el("div", {class: "fraco"}, "força total desligada: o teto vale até renovar"),
       u.janela_forca_total
         ? el("div", {class: "ok"}, `Janela da força total: faltam menos de `
           + `${u.forca_total_antes_min} min para renovar.`) : null].filter(Boolean));
@@ -258,6 +412,11 @@ function orqDesenharLimites(d) {
     }
   }
   orqGrafico(d.historico_uso || [], u.teto);
+}
+
+function orqSonda(d) {
+  const n = Number(d.config.sonda_min || 0);
+  return n > 0 ? `sonda a cada ${n} min` : "sonda desligada (sonda_min 0)";
 }
 
 // O gráfico do dia: uma linha (a sessão), o teto tracejado, eixo de 0 a 24 h.
@@ -465,6 +624,11 @@ function orqValor(c) {
   if (c.comando === "priorizar") return `${v.direcao}`;
   if (c.comando === "contestar") return v.titulo || "";
   if (c.comando === "teto_uso") return `${v}%`;
+  if (c.comando === "tirar_da_fila") {
+    const f = ((Orq.dados && Orq.dados.estado.fila) || []).find((x) => x.id === v);
+    return f ? f.item : v;
+  }
+  if (c.comando === "adicionar_a_fila") return `[${v.parte}] ${v.item}`;
   return typeof v === "object" ? JSON.stringify(v) : String(v);
 }
 
@@ -481,7 +645,7 @@ function orqDesenharComandos(d) {
     const valor = orqValor(c);
     return el("div", {class: "linha"},
       el("span", {class: "corpo"}, c.rotulo + (valor ? `: ${valor}` : ""),
-        el("div", {class: "fraco"}, quandoCurto(c.em)
+        el("div", {class: "fraco"}, quandoCurto(c.em) + ` · ${ORQ_FONTE[c.fonte || "app"]}`
           + (c.aplicado_em ? ` · ${c.situacao} ${orqHora(c.aplicado_em)}` : "")),
         c.motivo ? el("div", {class: "erro"}, "motivo: " + c.motivo) : null,
         c.nota ? el("div", {class: "fraco"}, c.nota) : null),
@@ -540,6 +704,7 @@ function orquestradorParar() {
   clearInterval(Orq.relogioFluxo); Orq.relogioFluxo = null;
 }
 
+$("orq-adicionar-fila").addEventListener("click", orqPorNaFila);
 $("orq-pausar-fila").addEventListener("click", () => orqEnviar("pausar_fila"));
 $("orq-retomar-fila").addEventListener("click", () => orqEnviar("retomar_fila"));
 $("orq-enviar").addEventListener("click", async () => {

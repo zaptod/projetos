@@ -11,6 +11,8 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
 - ✅ **Força total antes de renovar: ainda vale?** — Ligada, 20 min antes de renovar (28/09/2026) `forca-total-ainda-vale`
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
+- ⏳ **Força total ligada pela Mesa: por quanto tempo?** — Na Mesa de comando, o modo 'Força total' deixa os agentes passarem do teto de uso. Desde hoje, o que você muda na Mesa vira regra no Grimório. Se você tocar em 'Força total', ela vale até a janela de 5 h renovar (e volta ao modo de antes), ou até você desligar? `forca-total-pela-mesa`
+- ⏳ **Teto também no limite semanal?** — Hoje só a sessão de 5 h tem teto (50%): passou, os agentes param. A semana aparece na Mesa, mas nada para quando ela enche. Quer um teto na semana também? `teto-da-semana`
 
 **App e bot**
 - ✅ **Quem publica pelo celular** — Só o app (28/09/2026) `quem-publica-pelo-celular`
@@ -108,7 +110,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 558 testes (28/09)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 574 testes (28/09, noite)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -122,9 +124,17 @@ python -m remoto.decisoes adicionar --projeto builds --titulo "..." --pergunta "
     --midia "E:\x.mp4|ANTES" [--copiar] [--depende "decisao=opcao"] [--commit]
 python -m remoto.decisoes responder <id> <opcao> [--comentario C] [--sem-commit]
 python -m remoto.decisoes gerar          # regenera os READMEs e os blocos das sessões
+python -m remoto.decisoes tirar-dependencia <id> <decisao> --nota N   # aresta errada sai; a resposta fica
 python -m remoto.decisoes onde
 python -m remoto.orquestrador onde | estado | config | uso | pendentes   # a Mesa (§7)
+python -m remoto.orquestrador capacidade --max-paralelo N | --teto P | --forca-total on|off \
+    [--modo M] --fonte chat|app [--porque "palavras dele"]            # vira regra (§7)
+python -m remoto.orquestrador eu "no que a sessão principal está"
 ```
+
+Instância de teste que não toca o real: `NF_ORQUESTRADOR_PASTA` (cópia do
+estado do orquestrador) e `NF_DECISOES_REPO` (um clone do Grimório; a CLI
+do orquestrador que a prova chama commita nele, não no repositório).
 
 Opção cujo rótulo diz "(comente)" ou "(diga ...)" exige comentário.
 `--depende "x=*"` quer dizer "x decidida, com qualquer opção". Mídia de pasta
@@ -376,11 +386,11 @@ troca, para a instância de teste.
 
 | arquivo | quem escreve |
 | --- | --- |
-| `estado.json` (agora, fila, concluídos de hoje, modo, `atualizado_em`) | CLI do orquestrador |
+| `estado.json` (agora, fila, concluídos de hoje, modo, `principal`, `atualizado_em`) | CLI do orquestrador |
 | `decisoes_orquestrador.jsonl` | CLI `decisao` |
-| `config.json` + `config_historico.jsonl` | CLI `aplicado` (e `modo`) |
-| `comandos.jsonl` | servidor (`POST /api/orquestrador/comando` e o Contestar) |
-| `comandos_aplicados.jsonl` | CLI `aplicado` |
+| `config.json` + `config_historico.jsonl` | CLI `aplicado`, `capacidade` (e `modo`) |
+| `comandos.jsonl` | servidor (`POST /api/orquestrador/comando` e o Contestar); a CLI `capacidade`, já aplicado, com `fonte: chat` |
+| `comandos_aplicados.jsonl` | CLI `aplicado` e `capacidade` |
 | `uso.json` + `uso_historico.jsonl` | a sonda do servidor |
 | `acessos.json` | o servidor ao subir, ou a CLI `acessos` |
 
@@ -395,7 +405,10 @@ python -m remoto.orquestrador fila mover <id> subir|descer|topo
 python -m remoto.orquestrador fila remover <id>
 python -m remoto.orquestrador fila listar
 python -m remoto.orquestrador decisao --titulo T --escolha E [--porque P] [--alternativa A] [--parte P]
-python -m remoto.orquestrador modo um_por_vez|paralelo|forca_total
+python -m remoto.orquestrador eu "uma linha"          # a sessão principal: no que está agora
+python -m remoto.orquestrador capacidade [--max-paralelo N] [--modo M] [--teto P] [--forca-total on|off] \
+    [--fonte chat|app] [--porque "palavras dele"]      # instrução do Adrian: vira regra
+python -m remoto.orquestrador modo um_por_vez|paralelo|forca_total   # operacional: NÃO vira regra
 python -m remoto.orquestrador pendentes [--json]
 python -m remoto.orquestrador aplicado <id> [--recusado MOTIVO] [--nota N]
 python -m remoto.orquestrador esperar [--json]     # bloqueia até chegar comando; vale como pulso
@@ -417,19 +430,76 @@ python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
     ~18h o orquestrador tinha parado de usá-la; vale o Grimório, e a Mesa
     já nasce assim;
   - `geral/capacidade-pelo-app` → **substitui**: o que ele muda na Mesa vira
-    a regra, e o orquestrador registra a mudança no Grimório. **Ainda não
-    automatizado.** O `aplicado` muda só o `config.json`; responder
-    `modo-de-trabalho` / `teto-de-uso` é do orquestrador. Cuidado: as duas
-    perguntas da Mesa têm `depende_de` nessas decisões. Trocar a opção delas
-    manda as duas para "a rever".
+    a regra, e o orquestrador registra a mudança no Grimório.
+- **Automatizado em 28/09 (noite): a capacidade vira regra sozinha.** Ao
+  valer, cada mudança responde o nó dela, com commit por caminho:
+  - `max_paralelo` e `modo` → `modo-de-trabalho` (1 agente efetivo = "um",
+    mais = "paralelo", com "até N agentes" no comentário);
+  - `teto_uso` → `teto-de-uso` (50 = "cinquenta"; outro número = "outro",
+    com o número no comentário);
+  - `forca_total` → `forca-total-ainda-vale` ("ligada" ou "só quando eu
+    pedir").
+
+  Vale pelos dois caminhos: o `aplicado` de um comando da Mesa (origem
+  `mesa` no histórico do nó, com o aparelho) e o `capacidade --fonte chat`,
+  para uma instrução dele no chat. O `capacidade` grava a config pelo mesmo
+  `_mudar_config` do `aplicado` (com `config_historico`) e entra na lista
+  de comandos já aplicado, com `fonte: chat`; o `aplicado` é escrito antes
+  do comando, e o `esperar` nunca o vê como pendente. Com várias chaves
+  numa instrução, o nó é respondido uma vez, com a config final (sem um
+  "um por vez" no meio). Valor que não mudou não mexe no Grimório ("já
+  estava assim"), nem regra que o nó já diz. Falha no Grimório nunca desfaz
+  a config: vai para a nota do comando, que a tela mostra. O `modo` da CLI
+  é **operacional** (ex.: a janela da força total) e não vira regra.
+- **Consertado no mesmo dia: a aresta que derrubava a regra.** Responder
+  `modo-de-trabalho` = paralelo (20:29) mandou `capacidade-pelo-app` para
+  "a rever", porque ela dependia do modo (`=*`); a regra vale em qualquer
+  modo. Com `decisoes tirar-dependencia` (f459fde) a aresta saiu e o nó
+  voltou para "decidida" com a mesma resposta de 19:25; o histórico ganhou
+  uma linha `origem: correcao`, com a nota. A mesma aresta, em
+  `forca-total-ainda-vale` → `teto-de-uso`, saiu também (7e345d4): sem isso,
+  mudar o teto pela Mesa mandaria a força total para "a rever". Há teste
+  lendo os nós reais.
+- **Sem `config.json`, a Mesa nasce como o Grimório diz**
+  (`padrao_do_grimorio`). Antes nascia "um por vez", contra um Grimório que
+  diz "paralelo" desde 20:29.
+- **Perguntas abertas ao Adrian (28/09, noite), no Grimório:**
+  - `geral/forca-total-pela-mesa`: o modo "Força total" tocado na Mesa vale
+    até a janela renovar ou até ele desligar? Hoje vale até desligar e vira
+    `modo-de-trabalho` = paralelo, com "força total" no comentário;
+  - `geral/teto-da-semana`: hoje nada para quando a semana enche; só a
+    sessão tem teto.
 - O que o `aplicado` faz sozinho, por comando:
   - `priorizar`: reordena a fila;
+  - `adicionar_a_fila` (`{parte, item}`) põe no fim, com `pedido: Adrian`;
+    `tirar_da_fila` (id) tira, e recusa se o item não existe (desde 28/09,
+    noite: antes a Mesa só subia e descia);
   - `parar_agente`: marca o agente como "parando". Quem para é o
     orquestrador, que depois roda `agente-fim --situacao parado`. Com um
     agente que não existe, o `aplicado` **recusa**, e o orquestrador
     registra com `--recusado`.
 - **Fora do ar**: `estado.atualizado_em` com mais de 15 min. Todo comando da
   CLI conta como pulso, e o `esperar` pulsa a cada 5 min.
+- **A sessão principal** (desde 28/09, noite; antes a Mesa só mostrava os
+  agentes). No topo de Agora ficam:
+  - o relato dela em uma linha, com a hora (`eu "..."`, em
+    `estado.principal`);
+  - o último movimento e o sinal de vida. Disparar, fechar, aplicar,
+    recusar, decidir, pôr na fila e mudar a capacidade entram sozinhos na
+    linha do tempo (as últimas 15);
+  - o resumo "cabe mais um?": vagas ocupadas de N, a sessão contra o teto
+    e a fila (pausada em vermelho).
+
+  Agente sem relato há mais de 30 min ganha "sem notícia há X" na ficha.
+- **Capacidade** mostra o que cada modo faz, o que a força total faz e o
+  bloco **"No Grimório (vira regra)"**, com os três nós. Cada nó leva
+  "bate" ou "diverge": diverge quando a Mesa vale uma coisa e o Grimório
+  diz outra, ou quando o nó está "a rever". Embaixo fica o histórico das
+  mudanças (`config_historico`), com a origem: app, chat ou orquestrador.
+- **Limites** diz quando começa a força total ("a partir de 22:30") e se a
+  sonda está ligada. "O que você mandou" diz a fonte de cada comando (pelo
+  app ou pelo chat). O Grimório mostra no histórico de onde veio cada
+  resposta: "pela Mesa de comando", "no chat", "correção".
 - **Contestar** uma decisão do orquestrador cria o nó `contestada-<id>` no
   Grimório, pela mesma função do `remoto.decisoes adicionar --commit`
   (`decisoes.adicionar_e_commitar`):
@@ -484,3 +554,22 @@ na 8935 vazia, com 0 erros de JS.
   prateleira.
 - O Controle está na Bancada, e não nos Avisos.
 - O caso ZERO diz que o orquestrador nunca publicou.
+
+**Prova de tela (28/09, noite: a Mesa completada):** 390×844, clicando, na
+8934, com cópia do estado e um clone do Grimório (`NF_DECISOES_REPO`). Na
+8935 vazia, 0 erros de JS. Telas em `E:\projetos-wt\_prova_mesa2\telas\`.
+- `eu` aparece no topo com a hora, e o resumo diz "2 de 2 vagas · 24% da
+  sessão · teto 50% · 3 na fila".
+- Um relato de 45 min dá "sem notícia há 45 min".
+- O `+` pela Mesa foi aplicado pela CLI. O `modo-de-trabalho` do clone
+  ganhou uma resposta `origem: mesa`, com commit, e
+  `capacidade-pelo-app` seguiu "decidida".
+- Teto 60 pela Mesa virou `teto-de-uso` = outro, e a força total seguiu
+  "decidida".
+- `capacidade --teto 50 --max-paralelo 2 --fonte chat` saiu "pelo chat"
+  na lista, sem nada pendente.
+- Um nó respondido à mão com outra coisa aparece como "diverge".
+- "Pôr na fila" pelo diálogo mostrou o pedido pendente e depois o item
+  "pedido por Adrian". O ✕ pediu confirmação, e o item saiu.
+- Limites: "força total a partir de 22:30".
+- O histórico do nó no Grimório diz "pela Mesa de comando" e "no chat".

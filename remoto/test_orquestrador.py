@@ -476,3 +476,261 @@ def test_o_texto_que_vai_ao_celular_passa_pelo_filtro(servidor):
     _, tela = _pedir(servidor, "GET", "/api/orquestrador", token=token)
     escolha = tela["decisoes"][0]["escolha"]
     assert "adrian" not in escolha and "https://" not in escolha
+
+
+# ======================================= a capacidade vira regra (Grimorio)
+# Decisao do Adrian `geral/capacidade-pelo-app` = "substitui": o que ele muda
+# na Mesa (ou manda no chat) vira a regra, e o no do Grimorio e respondido
+# sozinho, com commit. Os nos sao COPIAS dos reais, num repositorio temporario.
+REAIS_GERAL = D.RAIZ / "decisoes" / "geral"
+NOS_DA_CAPACIDADE = ("modo-de-trabalho", "teto-de-uso", "forca-total-ainda-vale",
+                     "capacidade-pelo-app")
+
+
+def _grimorio_geral(mundo, *, dependencia_antiga=False):
+    destino = mundo.repo / "decisoes" / "geral"
+    destino.mkdir(parents=True, exist_ok=True)
+    for no in NOS_DA_CAPACIDADE:
+        item = json.loads((REAIS_GERAL / f"{no}.json").read_text(encoding="utf-8"))
+        if dependencia_antiga and no == "capacidade-pelo-app":
+            item["depende_de"] = [{"decisao": "modo-de-trabalho", "opcao": "*"}]
+        if dependencia_antiga and no == "forca-total-ainda-vale":
+            item["depende_de"] = [{"decisao": "teto-de-uso", "opcao": "*"}]
+        (destino / f"{no}.json").write_bytes(D._canonico(item))
+    _git(mundo.repo, "add", "--", "decisoes")
+    _git(mundo.repo, "commit", "-q", "-m", "grimorio")
+    return D.carregar()
+
+
+def _ultimo_commit(repo):
+    return _git(repo, "log", "-1", "--format=%s").stdout.strip()
+
+
+def test_os_nos_reais_da_capacidade_nao_dependem_do_modo_nem_do_teto():
+    # 28/09 20:29: responder o modo (paralelo) mandou `capacidade-pelo-app`
+    # para "a rever", porque ela dependia de modo-de-trabalho. A regra vale em
+    # qualquer modo; a forca total, com qualquer teto.
+    for no, pai in (("capacidade-pelo-app", "modo-de-trabalho"),
+                    ("forca-total-ainda-vale", "teto-de-uso")):
+        item = json.loads((REAIS_GERAL / f"{no}.json").read_text(encoding="utf-8"))
+        assert pai not in {d["decisao"] for d in item.get("depende_de") or []}, no
+
+
+def test_mudar_o_paralelo_pela_mesa_responde_o_modo_de_trabalho(mundo):
+    _grimorio_geral(mundo)
+    O.mudar_modo("paralelo")                 # operacional: nao responde nada
+    O.aplicado(O.gravar_comando("max_paralelo", 3, "614c026b")["id"])
+    linha = O.comandos_com_situacao()[0][-1]
+    assert "Grimório: modo-de-trabalho → Vários projetos em paralelo" in linha["nota"]
+    item = D.carregar()["modo-de-trabalho"]
+    assert item["vigente"]["opcao"] == "paralelo"
+    assert "pela Mesa de comando: paralelo, até 3 agentes" in item["vigente"]["comentario"]
+    ultimo = item["historico"][-1]
+    assert ultimo["origem"] == "mesa" and ultimo["aparelho"] == "614c026b"
+    assert _ultimo_commit(mundo.repo).startswith("decisão(geral): Modo de trabalho")
+    # e a regra da Mesa nao foi para "a rever"
+    assert D.carregar()["capacidade-pelo-app"]["situacao"] == "decidida"
+
+
+def test_voltar_a_um_por_vez_responde_um(mundo):
+    _grimorio_geral(mundo)
+    O.mudar_modo("paralelo")
+    O.aplicado(O.gravar_comando("modo", "um_por_vez")["id"])
+    item = D.carregar()["modo-de-trabalho"]
+    assert item["vigente"]["opcao"] == "um"
+    assert O.ler_estado()["modo"] == "um_por_vez"
+    # e o `capacidade-pelo-app` continua valendo (a aresta que o derrubava saiu)
+    assert D.carregar()["capacidade-pelo-app"]["situacao"] == "decidida"
+
+
+def test_a_dependencia_antiga_derrubava_a_regra(mundo):
+    # o defeito, reproduzido: com a aresta antiga, trocar o modo manda a regra
+    # da Mesa para "a rever"; a nota do `aplicado` diz isso na tela.
+    _grimorio_geral(mundo, dependencia_antiga=True)
+    O.mudar_modo("paralelo")
+    O.aplicado(O.gravar_comando("modo", "um_por_vez")["id"])
+    assert D.carregar()["capacidade-pelo-app"]["situacao"] == "a_rever"
+    assert "a rever" in O.comandos_com_situacao()[0][-1]["nota"]
+
+
+def test_teto_e_forca_total_pela_mesa(mundo):
+    _grimorio_geral(mundo)
+    O.aplicado(O.gravar_comando("teto_uso", 60)["id"])
+    teto = D.carregar()["teto-de-uso"]
+    assert teto["vigente"]["opcao"] == "outro"
+    assert "passou de 60% da sessão" in teto["vigente"]["comentario"]
+    O.aplicado(O.gravar_comando("teto_uso", 50)["id"])
+    assert D.carregar()["teto-de-uso"]["vigente"]["opcao"] == "cinquenta"
+    # a forca total nao foi para "a rever" com a troca do teto
+    assert D.carregar()["forca-total-ainda-vale"]["situacao"] == "decidida"
+    O.aplicado(O.gravar_comando("forca_total", False)["id"])
+    assert D.carregar()["forca-total-ainda-vale"]["vigente"]["opcao"] == "so-quando-eu-pedir"
+    O.aplicado(O.gravar_comando("forca_total", True)["id"])
+    assert D.carregar()["forca-total-ainda-vale"]["vigente"]["opcao"] == "ligada"
+
+
+def test_sem_mudanca_nao_mexe_no_grimorio(mundo):
+    _grimorio_geral(mundo)
+    antes = len(D.carregar()["teto-de-uso"]["historico"])
+    O.aplicado(O.gravar_comando("teto_uso", 50)["id"])          # ja era 50
+    assert O.comandos_com_situacao()[0][-1]["nota"] == "já estava assim"
+    assert len(D.carregar()["teto-de-uso"]["historico"]) == antes
+
+
+def test_grimorio_sem_o_no_nao_impede_a_config(mundo):
+    # repositorio vazio: a config vale, e a nota diz o que faltou
+    O.aplicado(O.gravar_comando("max_paralelo", 2)["id"])
+    assert O.ler_config()["max_paralelo"] == 2
+    assert "não existe o nó modo-de-trabalho" in O.comandos_com_situacao()[0][-1]["nota"]
+
+
+def test_o_modo_operacional_nao_vira_regra(mundo):
+    _grimorio_geral(mundo)
+    antes = json.dumps(D.carregar()["modo-de-trabalho"], sort_keys=True)
+    O.mudar_modo("forca_total")
+    assert json.dumps(D.carregar()["modo-de-trabalho"], sort_keys=True) == antes
+    assert "modo operacional" in O.ler_estado()["principal"]["movimento"]
+
+
+def test_capacidade_pelo_chat_vira_regra_igual_a_mesa(mundo, capsys):
+    _grimorio_geral(mundo)
+    O.mudar_modo("um_por_vez")               # operacional: o Grimorio segue "paralelo"
+    respostas_antes = len(D.carregar()["modo-de-trabalho"]["historico"])
+    assert O.main(["capacidade", "--max-paralelo", "3", "--modo", "paralelo",
+                   "--fonte", "chat", "--porque", "trabalhe em duas tarefas"]) == 0
+    saida = capsys.readouterr().out
+    assert "max_paralelo=3" in saida and "Grimório: modo-de-trabalho" in saida
+    assert O.ler_config()["max_paralelo"] == 3
+    # nunca aparece como pendente (o `esperar` nao acorda por isso)
+    assert O.pendentes() == []
+    lista = O.comandos_com_situacao()[0]
+    feito = [c for c in lista if c["comando"] == "max_paralelo"][-1]
+    assert feito["situacao"] == "aplicado" and feito["fonte"] == "chat"
+    assert "trabalhe em duas tarefas" in feito["nota"]
+    historico = [json.loads(linha) for linha in (mundo.tmp / "orquestrador" /
+                 "config_historico.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [(h["chave"], h["para"], h["origem"]) for h in historico[-2:]] == [
+        ("max_paralelo", 3, "chat"), ("modo", "paralelo", "chat")]
+    item = D.carregar()["modo-de-trabalho"]
+    # UMA resposta, com a config final: nada de "um por vez" no meio (o max
+    # mudou antes do modo, que ainda era "um por vez")
+    assert len(item["historico"]) == respostas_antes + 1
+    assert item["historico"][-1]["origem"] == "chat"
+    assert "no chat: paralelo, até 3 agentes" in item["vigente"]["comentario"]
+    assert "nas palavras dele: trabalhe em duas tarefas" in item["vigente"]["comentario"]
+    # a tela mostra a fonte, e o Grimorio bate com a Mesa
+    tela = O.para_o_app()
+    assert tela["historico_config"][0]["origem"] == "chat"
+    assert all(g["bate"] for g in tela["grimorio"]), tela["grimorio"]
+
+
+def test_capacidade_recusa_valor_ruim_e_nada_muda(mundo, capsys):
+    assert O.main(["capacidade", "--max-paralelo", "9"]) == 3
+    assert O.main(["capacidade"]) == 3
+    assert "diga o que muda" in capsys.readouterr().err
+    assert not (mundo.tmp / "orquestrador" / "config.json").exists()
+
+
+def test_a_tela_mostra_quando_o_grimorio_diverge(mundo):
+    _grimorio_geral(mundo)
+    O.capacidade([("teto_uso", 70)])
+    # alguem responde o no a mao com outra coisa: a Mesa avisa
+    D.responder("teto-de-uso", "cinquenta", commitar=False)
+    teto = next(g for g in O.para_o_app()["grimorio"] if g["no"] == "teto-de-uso")
+    assert teto["bate"] is False and "70%" in teto["esperado"]
+
+
+# ============================================= a sessao principal, na tela
+def test_eu_e_os_movimentos_da_sessao_principal(mundo, capsys):
+    assert O.para_o_app()["principal"]["relato"] is None          # caso ZERO
+    assert O.main(["eu", "lendo o desenho da Mesa"]) == 0
+    capsys.readouterr()
+    agente = O.agente_inicio("app-e-bot", "Mesa")["id"]
+    principal = O.para_o_app()["principal"]
+    assert principal["relato"] == "lendo o desenho da Mesa"
+    assert principal["movimento"] == "disparou [app-e-bot] Mesa"
+    O.agente_fim(agente)
+    tela = O.para_o_app()["principal"]
+    assert tela["movimento"] == "fechou [app-e-bot] Mesa: concluido"
+    # a linha do tempo vem da mais nova para a mais velha, e tem teto
+    assert [x["tipo"] for x in tela["linha"]] == ["acao", "acao", "relato"]
+    for n in range(O.LINHA_DO_TEMPO_MAX + 5):
+        O.eu(f"passo {n}")
+    assert len(O.para_o_app()["principal"]["linha"]) == O.LINHA_DO_TEMPO_MAX
+    assert O.main(["estado"]) == 0
+    assert "SESSÃO PRINCIPAL" in capsys.readouterr().out
+    assert O.main(["eu", "  "]) == 3
+
+
+def test_aplicar_entra_na_linha_do_tempo(mundo):
+    c = O.gravar_comando("mensagem", "oi")
+    O.aplicado(c["id"], recusado="só teste")
+    assert O.ler_estado()["principal"]["movimento"].startswith("recusou mensagem")
+
+
+# ==================================================== a fila, pelo app
+def test_por_e_tirar_da_fila_pelo_app(servidor, mundo):
+    token = _parear(servidor)
+    status, _ = _pedir(servidor, "POST", "/api/orquestrador/comando",
+                       {"comando": "adicionar_a_fila",
+                        "valor": {"parte": "builds", "item": "olhar a 00085"}}, token)
+    assert status == 200
+    O.aplicado(O.pendentes()[0]["id"])
+    fila = O.ler_estado()["fila"]
+    assert [(f["parte"], f["item"], f["pedido"]) for f in fila] == \
+        [("builds", "olhar a 00085", "Adrian")]
+    status, _ = _pedir(servidor, "POST", "/api/orquestrador/comando",
+                       {"comando": "tirar_da_fila", "valor": fila[0]["id"]}, token)
+    assert status == 200
+    O.aplicado(O.pendentes()[0]["id"])
+    assert O.ler_estado()["fila"] == []
+    assert O.ler_estado()["principal"]["movimento"] ==         "aplicou tirar da fila: [builds] olhar a 00085"
+    # tirar o que nao existe: o `aplicado` recusa, e o orquestrador registra
+    fantasma = O.gravar_comando("tirar_da_fila", "nao-existe")
+    with pytest.raises(O.Recusa):
+        O.aplicado(fantasma["id"])
+    status, _ = _pedir(servidor, "POST", "/api/orquestrador/comando",
+                       {"comando": "adicionar_a_fila", "valor": {"parte": "x"}}, token)
+    assert status == 409
+
+
+# ============================================ decisoes: tirar uma aresta
+def test_tirar_dependencia_devolve_a_resposta_que_ele_tinha(mundo, capsys):
+    _grimorio_geral(mundo, dependencia_antiga=True)
+    D.responder("modo-de-trabalho", "um", commitar=False)       # derruba a regra
+    item = D.carregar()["capacidade-pelo-app"]
+    assert item["situacao"] == "a_rever"
+    vigente, historico = dict(item["vigente"]), list(item["historico"])
+    assert D.main(["tirar-dependencia", "capacidade-pelo-app", "modo-de-trabalho",
+                   "--nota", "vale em qualquer modo"]) == 0
+    assert "voltou a valer" in capsys.readouterr().out
+    depois = D.carregar()["capacidade-pelo-app"]
+    assert depois["situacao"] == "decidida" and depois["depende_de"] == []
+    assert depois["vigente"] == vigente                        # a MESMA resposta
+    assert depois["historico"][:-1] == historico               # o historico so cresce
+    assert depois["historico"][-1]["origem"] == "correcao"
+    assert depois["historico"][-1]["nota"] == "vale em qualquer modo"
+    assert "capacidade-pelo-app" not in [
+        x for o in D.carregar()["modo-de-trabalho"]["opcoes"] for x in o["desbloqueia"]]
+    assert "deixa de depender" in _ultimo_commit(mundo.repo)
+    # sem a aresta, ou sem nota: recusa
+    assert D.main(["tirar-dependencia", "capacidade-pelo-app", "modo-de-trabalho",
+                   "--nota", "x"]) == 2
+    with pytest.raises(D.Recusa):
+        D.tirar_dependencia("forca-total-ainda-vale", "teto-de-uso", "  ")
+
+
+def test_sem_config_a_mesa_nasce_como_o_grimorio_diz(mundo):
+    # caso ZERO com o Grimorio de verdade: nada de "um por vez" contra um
+    # Grimorio que diz "paralelo" (28/09 20:29, max_paralelo 2)
+    _grimorio_geral(mundo)
+    config = O.ler_config()
+    assert config["modo"] == "paralelo" and config["max_paralelo"] == 2
+    assert config["teto_sessao_pct"] == 50 and config["forca_total_antes_min"] == 20
+    assert all(g["bate"] for g in O.para_o_app()["grimorio"])
+    # a config gravada manda sobre o padrao
+    O.capacidade([("teto_uso", 60)])
+    assert O.ler_config()["teto_sessao_pct"] == 60
+    (mundo.tmp / "orquestrador" / "config.json").unlink()
+    assert O.ler_config()["teto_sessao_pct"] == 60        # agora o Grimorio diz 60
+

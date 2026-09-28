@@ -37,6 +37,7 @@ que falha nao desfaz a decisao: ela vale, e o aviso diz que o commit ficou.
         [--contexto C] [--sem-comentario] [--id ID] [--commit]
     python -m remoto.decisoes responder <id> <opcao> [--comentario C] [--sem-commit]
     python -m remoto.decisoes gerar      # regenera READMEs e blocos das sessoes
+    python -m remoto.decisoes tirar-dependencia <id> <decisao> --nota N [--sem-commit]
     python -m remoto.decisoes onde
 """
 from __future__ import annotations
@@ -86,7 +87,13 @@ class Recusa(Exception):
 
 # ================================================================== lugares
 def repo() -> Path:
-    return Path(REPO) if REPO else RAIZ
+    """A raiz do git. `NF_DECISOES_REPO` troca (a instancia de teste e a CLI
+    que ela chama apontam para um clone, nunca para o repositorio real)."""
+    if REPO:
+        return Path(REPO)
+    if os.environ.get("NF_DECISOES_REPO"):
+        return Path(os.environ["NF_DECISOES_REPO"])
+    return RAIZ
 
 
 def pasta() -> Path:
@@ -112,7 +119,12 @@ def caminho_item(projeto: str, item_id: str) -> Path:
 def _trava():
     """Entre threads e entre processos (o servidor e a CLI)."""
     from .api_http import trava_arquivo
-    alvo = Path(TRAVA) if TRAVA else runtime_dir() / "decisoes.lock"
+    if TRAVA:
+        alvo = Path(TRAVA)
+    elif os.environ.get("NF_DECISOES_REPO"):
+        alvo = Path(os.environ["NF_DECISOES_REPO"]).parent / "decisoes.lock"
+    else:
+        alvo = runtime_dir() / "decisoes.lock"
     return trava_arquivo(alvo)
 
 
@@ -513,6 +525,54 @@ def responder(item_id: str, opcao: str, comentario: str = "", *,
     return evento
 
 
+def tirar_dependencia(item_id: str, decisao_id: str, nota: str, *,
+                      commitar: bool = True) -> dict:
+    """Uma aresta que nao devia existir sai da arvore.
+
+    Caso de 28/09: `capacidade-pelo-app` dependia de `modo-de-trabalho` (=*),
+    e trocar o modo mandou a regra da Mesa para "a rever", embora ela valha em
+    qualquer modo. Sem a aresta, o no que foi para "a rever" SO por causa
+    dela volta para "decidida" com a MESMA resposta (a `vigente` nao muda), e
+    o historico ganha uma linha `origem: correcao` com a nota. Nada se apaga.
+    Nao entra no `_eventos.jsonl`: nao e uma resposta do Adrian.
+    """
+    nota = str(nota or "").strip()
+    if not nota:
+        raise Recusa("diga por que a dependência sai (--nota)")
+    with _trava():
+        itens = carregar()
+        item = itens.get(item_id)
+        if item is None:
+            raise KeyError(item_id)
+        antes = list(item.get("depende_de") or [])
+        item["depende_de"] = [d for d in antes if d.get("decisao") != decisao_id]
+        if len(item["depende_de"]) == len(antes):
+            raise Recusa(f"{item_id} não depende de {decisao_id}")
+        _sincronizar_arestas(itens)
+        situacao_antes = item.get("situacao")
+        voltou = False
+        if (situacao_antes == "a_rever" and item.get("vigente")
+                and all(_satisfeita(d, itens) for d in item["depende_de"])):
+            item["situacao"] = "decidida"
+            vigente = item["vigente"]
+            item["historico"].append({"opcao": vigente.get("opcao"),
+                                      "comentario": vigente.get("comentario", ""),
+                                      "em": _agora(), "origem": "correcao",
+                                      "nota": nota[:COMENTARIO_MAX]})
+            voltou = True
+        recalcular(itens)
+        _gravar_itens(itens, sorted(itens))
+        gerar_textos(itens)
+        saida = {"id": item_id, "tirou": decisao_id, "situacao": item["situacao"],
+                 "voltou": voltou, "commit": "desligado"}
+        if commitar:
+            saida["commit"] = commitar_por_caminho(
+                *_tudo_para_commit(),
+                f"decisão({item['projeto']}): {item['titulo']} — deixa de depender "
+                f"de {itens[decisao_id]['titulo'] if decisao_id in itens else decisao_id}")
+    return saida
+
+
 # ================================================================ textos
 def _data(em) -> str:
     texto = str(em or "")
@@ -883,11 +943,24 @@ def main(argv=None) -> int:
                      help='"caminho" ou "caminho|RÓTULO" (repita)')
     mid.add_argument("--copiar", action="store_true")
     mid.add_argument("--commit", action="store_true", help="commita por caminho")
+    dep = sub.add_parser("tirar-dependencia",
+                         help="tira uma aresta errada (a resposta vigente fica)")
+    dep.add_argument("id")
+    dep.add_argument("decisao", help="a decisão da qual ela deixa de depender")
+    dep.add_argument("--nota", required=True, help="por que a aresta sai")
+    dep.add_argument("--sem-commit", action="store_true")
     arv = sub.add_parser("arvore")
     arv.add_argument("--projeto", choices=PROJETOS)
     sub.add_parser("gerar", help="regenera os READMEs e os blocos das sessões")
     sub.add_parser("onde")
     args = parser.parse_args(argv)
+    # Quem le esta saida (o orquestrador) le por pipe: no Windows seria cp1252,
+    # e um emoji da arvore derrubava o `arvore` com UnicodeEncodeError.
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
     try:
         if args.comando == "adicionar":
@@ -930,6 +1003,13 @@ def main(argv=None) -> int:
                                commitar=not args.sem_commit)
             print(f"{evento['titulo']} → {evento['opcao_rotulo']} "
                   f"(a rever: {evento['a_rever'] or 'nada'}; commit: {evento['commit']})")
+            return 0
+        if args.comando == "tirar-dependencia":
+            feito = tirar_dependencia(args.id, args.decisao, args.nota,
+                                      commitar=not args.sem_commit)
+            print(f"{feito['id']}: não depende mais de {feito['tirou']} · "
+                  f"{feito['situacao']}{' (voltou a valer)' if feito['voltou'] else ''}"
+                  f" · commit: {feito['commit']}")
             return 0
         if args.comando == "arvore":
             itens = carregar()

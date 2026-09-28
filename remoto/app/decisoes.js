@@ -12,6 +12,9 @@
 const Decisoes = {projeto: null, dados: null, aberta: null};
 const SITUACAO = {decidida: ["✅", "decidida"], pendente: ["⏳", "pendente"],
                   bloqueada: ["🔒", "bloqueada"], a_rever: ["↺", "a rever"]};
+// De onde veio cada linha do histórico ("app" = respondida aqui, sem rótulo).
+const ORIGEM_NO_HISTORICO = {semente: "antes da árvore", mesa: "pela Mesa de comando",
+                             chat: "no chat", cli: "pelo orquestrador", correcao: "correção"};
 
 function decisoesParar() {
   for (const v of document.querySelectorAll("#tela-decisoes video")) v.pause();
@@ -239,9 +242,10 @@ function decisoesAbrir(id) {
     for (const h of [...item.historico].reverse()) {
       hist.append(el("div", {class: "linha"},
         el("span", {class: "corpo"}, h.opcao_rotulo,
-          h.comentario ? el("div", {class: "fraco"}, `“${h.comentario}”`) : null),
+          h.comentario ? el("div", {class: "fraco"}, `“${h.comentario}”`) : null,
+          h.nota ? el("div", {class: "fraco"}, `correção: ${h.nota}`) : null),
         el("span", {class: "fraco"},
-          (h.origem === "semente" ? "antes da árvore · " : "")
+          (ORIGEM_NO_HISTORICO[h.origem] ? ORIGEM_NO_HISTORICO[h.origem] + " · " : "")
           + String(h.em || "").slice(0, 16).replace("T", " "))));
     }
     caixa.append(hist);

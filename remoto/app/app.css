@@ -498,7 +498,19 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
   padding: 6px 10px; border-radius: 10px; background: #efe0bb; border: 1px solid #c9ad78;
   font-size: 12px; }
 .orq-passo strong { font: 700 18px Georgia, serif; }
+.orq-passo.erro { border-color: #a8321f; background: #f8d9cf; }
 .orq-etapas { font-size: 12px; letter-spacing: .01em; }
+/* a sessao principal, o resumo das vagas e o Grimorio da capacidade */
+.orq-sub { margin: 12px 0 4px; font: 700 12px Georgia, serif; letter-spacing: .06em;
+  text-transform: uppercase; color: #6b3a1a; }
+.orq-principal { padding: 8px 10px; border-radius: 10px; background: #efe0bb;
+  border: 1px solid #c9ad78; }
+.orq-principal .orq-sub { margin-top: 0; }
+.orq-principal-relato { font-weight: 600; margin: 2px 0; }
+.orq-resumo { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 2px; }
+.orq-resumo .orq-passo { flex: 1; min-width: 0; text-align: center; }
+.orq-hora { flex: none; width: 3.2em; font-size: 12px; color: var(--fraco); }
+.orq-grimorio { margin-top: 6px; border-top: 1px solid var(--linha); }
 /* o selo do objeto na prateleira */
 nav.prateleira button.objeto { position: relative; }
 nav.prateleira button.objeto.selo-pendente::after,
