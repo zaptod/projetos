@@ -280,7 +280,8 @@ class PipelineController:
         gravacao (`GAMEPLAY_POR_ORIGEM["duelo"]`) e a montagem, que e um
         evento so. Ver `builds/tournament/duelo.py` para o porque.
         """
-        from ..arena.ledger import Ledger, escolher_adversario
+        from ..arena import rodizio
+        from ..arena.ledger import Ledger
         from ..tournament.runner import (FightSession, config_gameplay,
                                          fichas_do_banco, personagens_gerados)
 
@@ -291,12 +292,14 @@ class PipelineController:
         seed = seed if seed is not None else RandomEngine.new_seed()
         rng = RandomEngine(seed).fork("duelo:participantes")
         gerados = personagens_gerados()
+        # RODIZIO, e nao "o ultimo criado" (27/09/2026): sem roleta nova, o
+        # ultimo criado era sempre o mesmo e 5 dos 8 duelos do dia sairam com
+        # o mesmo p1. O rodizio tambem gira o p2 e nunca escolhe par cujo
+        # titulo ja esteja ocupado (ele nunca sairia). Ver arena/rodizio.py.
+        p1, p2 = rodizio.escolher_par(fichas, gerados, rng, ledger=ledger,
+                                      p1=p1, p2=p2)
         if not p1:
-            recentes = [g for g in reversed(gerados) if g in fichas]
-            p1 = recentes[0] if recentes else rng.choice(sorted(fichas))
-        if not p2:
-            p2 = escolher_adversario(p1, list(fichas), rng, gerados=gerados,
-                                     fichas=fichas, ledger=ledger)
+            raise ValueError("nao ha personagem no banco para o duelo")
         if not p2:
             raise ValueError("nao ha adversario disponivel no banco")
 

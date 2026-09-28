@@ -154,6 +154,64 @@ def _publicar(args) -> int:
     return 0
 
 
+def _noite(args) -> int:
+    """`main.py noite`: a rodada, ou instalar/remover/listar as tarefas."""
+    from builds.pipeline import noite, tarefas_noite
+
+    config = noite.carregar()
+    if args.instalar:
+        fichas = tarefas_noite.instalar(config["horas"], config["minuto"])
+        for ficha in fichas:
+            marca = "ok " if ficha["ok"] else "ERRO"
+            print(f"  [{marca}] {ficha['tarefa']} {ficha['hora']:02d}:"
+                  f"{ficha['minuto']:02d}  {ficha['mensagem'][:120]}")
+        print(f"lancador: {tarefas_noite.caminho_do_lancador()}")
+        return 0 if all(f["ok"] for f in fichas) else 1
+    if args.remover:
+        for ficha in tarefas_noite.remover():
+            print(f"  removida: {ficha['tarefa']}")
+        return 0
+    if args.listar:
+        tarefas = tarefas_noite.listar()
+        if not tarefas:
+            print("nenhuma tarefa instalada. Rode: python main.py noite --instalar")
+        for tarefa in tarefas:
+            print(f"  {tarefa['tarefa']:24s} proximo: {tarefa['proximo']:22s} "
+                  f"{tarefa['situacao']}")
+        fila = noite.estoque_de_duelos()
+        teto = noite.teto_de_duelos(config)
+        print(f"duelos que a grade escolheria: {len(fila)} (teto {teto}, "
+              f"{noite.duelos_por_dia():.1f} por dia)")
+        for video in fila:
+            print(f"  {video.id}  {video.titulo}")
+        print(f"diario de hoje: {noite.diario_do_dia()}")
+        return 0
+    resultado = noite.rodar(ensaio=args.ensaio, duelos=args.duelos,
+                            sem_worker=args.sem_worker)
+    return noite.codigo_de_saida(resultado)
+
+
+def _redirecionar_saida(argv: list) -> tuple:
+    """`--saida ARQUIVO` -> (argv sem a opcao, arquivo aberto). Sem ela, None.
+
+    O mesmo das historias (`historias/main.py`), pelo mesmo motivo: a tarefa
+    NAO pode redirecionar com `>>`. O `>>` do cmd nega escrita a outros
+    processos, e em 14/09/2026 tres disparos seguidos morreram com codigo 1,
+    sem uma linha de log, porque a rodada anterior segurava o arquivo. O
+    `open` do Python no Windows deixa varios processos escreverem.
+
+    E a saida continua em ARQUIVO, nunca no console do Agendador: escrever
+    num console que ninguem esvazia trava o `print` (08/09/2026).
+    """
+    if "--saida" not in argv:
+        return argv, None
+    i = argv.index("--saida")
+    if i + 1 >= len(argv):
+        return argv[:i], None
+    arquivo = open(argv[i + 1], "a", encoding="utf-8", buffering=1)
+    return argv[:i] + argv[i + 2:], arquivo
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Gerador procedural de builds + video")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -222,9 +280,11 @@ def main() -> None:
                          help="Onda 15B: a luta inteira em 20-35 s, um "
                               "segmento so, sem cena parada")
     due.add_argument("--p1", default=None,
-                     help="lutador 1 (padrao: o ultimo criado na roleta)")
+                     help="lutador 1 (padrao: rodizio, quem lutou menos nos "
+                          "ultimos duelos)")
     due.add_argument("--p2", default=None,
-                     help="lutador 2 (padrao: adversario por continuidade/poder)")
+                     help="lutador 2 (padrao: rodizio + continuidade/poder, "
+                          "nunca um par com titulo ja usado)")
     due.add_argument("--seed", type=int, default=None, help="seed deterministica")
     due.add_argument("--arena", default=None,
                      help="cenario (padrao: sorteado entre as arenas de video)")
@@ -235,6 +295,26 @@ def main() -> None:
     due.add_argument("--refazer-edicao", action="store_true",
                      help="com --rerender, remonta a timeline sobre o mesmo "
                           "gameplay")
+
+    noi = sub.add_parser(
+        "noite",
+        help="geracao noturna: duelos ate o teto de gordura e o worker de "
+             "identidade (e o que as tarefas NeuralFights_gerar_HH chamam)")
+    noi.add_argument("--ensaio", action="store_true",
+                     help="confere tudo e diz o que faria, sem gerar nada "
+                          "(duble do teste de ponta a ponta)")
+    noi.add_argument("--duelos", type=int, default=None, metavar="N",
+                     help="gera N duelos ignorando o teto (rodada manual); "
+                          "o relogio continua mandando")
+    noi.add_argument("--sem-worker", action="store_true",
+                     help="nao roda o worker de identidade nesta rodada")
+    noi.add_argument("--instalar", action="store_true",
+                     help="cria as tarefas NeuralFights_gerar_HH (horas e "
+                          "minuto do config/geracao.json)")
+    noi.add_argument("--remover", action="store_true",
+                     help="remove as tarefas NeuralFights_gerar_HH")
+    noi.add_argument("--listar", action="store_true",
+                     help="mostra as tarefas e o estoque de duelos")
 
     are = sub.add_parser("arena", help="carreira dos personagens entre videos")
     asub = are.add_subparsers(dest="arena_command", required=True)
@@ -484,6 +564,10 @@ def main() -> None:
     rea.add_argument("ids", nargs="*", help="IDs da biblioteca (ex.: 0007)")
 
     args = parser.parse_args()
+    if args.command == "noite":
+        # Antes do PipelineController: instalar/listar nao precisam dele, e a
+        # rodada cria o seu so quando ha duelo a gerar.
+        raise SystemExit(_noite(args))
     controller = PipelineController()
 
     if args.command == "tournament":
@@ -855,4 +939,8 @@ def _identity(args, controller) -> None:
 
 
 if __name__ == "__main__":
+    import sys
+    sys.argv, _saida = _redirecionar_saida(list(sys.argv))
+    if _saida is not None:
+        sys.stdout = sys.stderr = _saida
     main()

@@ -1,0 +1,30 @@
+{
+  "_comment": "Geracao noturna do canal de builds (`python main.py noite`), chamada pelas tarefas NeuralFights_gerar_HH do Agendador. Criada em 27/09/2026: ate ali nenhuma tarefa gerava build nem duelo, e o canal publicou zero videos em 22, 23, 25 e 26/09 por falta de estoque.",
+  "ativo": true,
+  "_porque_janela": "Trabalho pesado (render, navegador) so de madrugada: decisao do Adrian em 13/09/2026, janela 01h-06h desde 15/09 (a grade publica as 00:37 e as 06:37).",
+  "janela_pesada": {
+    "inicio": 1,
+    "fim": 6
+  },
+  "_porque_grade_proibida": "Nada pesado comeca se nao termina antes de :25, e nada roda entre :25 e :55: e a janela em que a grade publica (posts em :37). Regra da rota de 27/09/2026, valida tambem de madrugada.",
+  "grade_proibida": {
+    "de": 25,
+    "ate": 55
+  },
+  "horas": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "_porque_minuto": "HH:02 e nao HH:00: uma rodada manual lancada na hora cheia pega a trava primeiro e a tarefa sai dizendo 'ja rodando', em vez de as duas disputarem.",
+  "minuto": 2,
+  "_porque_gordura": "Teto de duelos = dias_de_gordura x duelos por dia, e duelos por dia sai da COTA (grade.mistura do publicacao.json) sobre os horarios da grade: 4/8 de 10 = 5. Com 2 dias, 10 duelos no estoque; acima disso a rodada nao gera.",
+  "dias_de_gordura": 2,
+  "_porque_minutos": "Medido em 27/09/2026: 8 duelos entre 17:29 e 18:03, ~4,3 min por duelo ponta a ponta. 5 da folga para nao encostar em :25. O job do worker (imagem do PicassoIA ou clipe do Digen, mais o re-render quando e o ultimo) fica em 8.",
+  "minutos_por_duelo": 5,
+  "minutos_por_job_do_worker": 8,
+  "maximo_de_duelos_por_rodada": 6,
+  "worker": true
+}

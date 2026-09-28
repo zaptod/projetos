@@ -13,3 +13,7 @@ assets/sfx/*
 *_credentials.json
 digen_credentials.json
 picasso_credentials.json
+
+# Lancador da geracao noturna: gerado por `main.py noite --instalar`, com o
+# caminho do Python e da pasta DESTA maquina dentro.
+gerar.cmd
