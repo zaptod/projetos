@@ -10,6 +10,9 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Modo de trabalho dos agentes** — Um projeto por vez (28/09/2026) `modo-de-trabalho`
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
 
+**Painel e Vila**
+- ⏳ **Tarefa da Vila acorda o PC** — A tarefa da Vila acorda o PC a cada 10 min para manter a janela viva. Para uma janela isso não serve; a tarefa do bot já acorda o PC do mesmo jeito. Mantém? `tarefa-da-vila-acorda-o-pc`
+
 <!-- decisoes:fim -->
 
 Documento de passagem. Tudo abaixo foi conferido no código e na máquina em 27/09/2026.
