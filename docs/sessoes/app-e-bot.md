@@ -54,7 +54,8 @@ Use **sempre** `--basetemp` no `E:` — o `C:` vive perto de encher, e a falha
 **Não suba o servidor à mão na porta 8931.** Se ele cair, a tarefa do
 Agendador o levanta em até 10 minutos. Para trocar de versão: pare o processo
 e rode `app_celular.cmd` (ou espere a tarefa). Reinício fora de `:25–:55`, que
-é a janela da postagem.
+é a janela da postagem — e conte o tempo de subida: com a máquina carregada,
+em 27/09 o app levou 10–12 min do processo parado até escutar na 8931.
 
 A prova de tela roda em Chrome headless com perfil temporário
 (`patchright`, `channel="chrome"`). Atenção: `page.evaluate` do patchright roda
@@ -103,9 +104,44 @@ DOM e clicando.
 
 ## 5. Pendências e o que não fazer
 
-- O bot (`/publicar`) **não** usa as guardas novas nem o "em voo" do app: ele
-  pode mandar o mesmo vídeo que o app acabou de mandar. Unificar é a próxima
-  dívida.
+- **Resolvido em 27/09/2026: processos desatualizados.** O bot rodava desde
+  20/09 (PID 6120) e o app desde 27/09 19:18 (PID 13356), os dois sem o
+  9d09759 (meta por plataforma; o relatório das 21h tinha mostrado
+  "✓ histórias: 11/10"). Reiniciados pelos lançadores com o `remoto/` do HEAD
+  518e6e8 (o fc17986, das 23:33, não toca em `remoto/`): app
+  às 23:09 (PID 18260, escutando entre 23:19 e 23:22), bot às
+  23:56 (PID 1560). Todo bot que sobe manda "🤖 bot no ar" aos autorizados
+  (`bot.py:219`), e este também mandou. O `relatorios.metas()` do código novo,
+  montado sem enviar às 23:23, mostra "histórias: youtube 6/10 · tiktok 7/10"
+  e "builds: youtube 3/10 · tiktok 2/10". O "11/10" não aparece mais.
+- **A confirmar pelo Adrian: o `--publicar` do app.** Há uma divergência. A
+  decisão de 17/09 era `--acoes` **sem** `--publicar` até o ok. Mas o
+  `app_celular.cmd` (a101a2e) sobe com `--acoes --publicar --perigosas`, e o
+  log `outputs/app_celular.txt`, criado em 24/09 20:09, já abre com "(com
+  publicar)". O comentário do `.cmd` registra a decisão dele só para
+  `--perigosas`. Até ele confirmar, fica como está (plano de 27/09,
+  pendente 3). Se ele disser não, tire `--publicar` do `.cmd` e reinicie
+  fora de `:25–:55`.
+- **O `/publicar` do bot não tem as guardas do app** (`comandos.py:209`).
+  Ele chama `main.py publicar` direto, em um passo só: sem "em voo", sem a
+  lista "a conferir", sem a janela da grade e sem recusar quando o
+  `postar.py` está vivo. Pode mandar de novo o vídeo que o app acabou de
+  mandar. E sobe o YouTube **privado**, porque não passa `--visibilidade` e
+  vale o `"private"` de `random_builds/config/publicacao.json:48` (o app
+  passa `public`, `acoes.py:855`). Conserto: item 5 da S2 da parte
+  publicação, com o bot passando pela mesma função das guardas do app.
+- **Falta no README a linha "`tailscale serve` sim, `funnel` nunca".** Nem o
+  `README.md` da raiz nem o `remoto/README.md` falam do app ou do Tailscale.
+  O `remoto/README.md` ainda diz que um painel web "precisaria de uma porta
+  aberta para a internet", o que o app não faz. Fica para a S2, junto com
+  conferir se as tarefas de logon estão ocultas. Em 27/09 23:22,
+  `tailscale serve status` e `tailscale funnel status` mostravam só
+  "tailnet only".
+- **Falta conferir o desfecho da tarefa `20260927-191533-3cf268`.** Quem
+  roda `--em-voo` e `python -m remoto.tarefas` é o Adrian, porque a
+  permissão foi barrada para os agentes. Um indício só: a subida das 23:11
+  não imprimiu "ATENÇÃO: … esperando conferência" nem "retomei a vigia".
+  Isso não prova nada, porque uma `Recusa` na leitura também é calada.
 - O app **não** mata tarefa: um `kill` no meio de um upload deixa estado pela
   metade. Para frear, use Pausar/Parar, que o worker obedece.
 - **Não** apague `vila/` (motor e Oficina): o painel do PC e a arte "clássico"
