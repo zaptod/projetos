@@ -3,7 +3,15 @@
   "contexto": "Subir é pelo historias/main.py publicar <id> --youtube, que fura as guardas da grade; nas h27 e h32 a ordem das partes no YouTube já se perdeu.",
   "criado": "2026-09-28T17:31:40.771607",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T19:54:09",
+      "opcao": "subir",
+      "origem": "app"
+    }
+  ],
   "id": "partes-so-no-tiktok",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "Essas três partes saíram no TikTok e não no YouTube. Subo no YouTube?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "As 3 partes só no TikTok (00022:p03, 00027:p01, 00032:p04)",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T19:54:09",
+    "opcao": "subir"
+  }
 }
