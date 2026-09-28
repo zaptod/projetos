@@ -101,8 +101,11 @@ Conserto (28/09): `comparar_formatos` deixa privado de fora (conta em
 trata a linha de zeros como "sem dado". O número certo **com o disco de
 27/09** é 51,45% / 80 (n=5). Mas o ledger já tem **11 duelos no YouTube com
 id**, e o disco só tem 7: os quatro mais novos ficaram sem medida porque a
-coleta de builds falhou na madrugada de 28/09. O número de hoje é o da coleta
-seguinte (§3).
+coleta de builds falhou na madrugada de 28/09. **O número de hoje** (coleta
+refeita às 08:13 de 28/09, código novo): 11 duelos em disco, 9 públicos, 5
+com retenção — **mediana 51,5%, média 47,5% (n=5)**, views mediana **106
+(n=9 públicos)**. Os 4 públicos sem retenção são os mais novos: a Analytics
+ainda não tem linha para eles (não é 0%).
 
 Tráfego (mesma chamada com `dimensions=insightTrafficSourceType`, sem
 `video`): builds **SHORTS 4499 (64%) + YT_SEARCH 2399 (34%)**; histórias
@@ -272,7 +275,38 @@ noite fechou; `atualizar_uma_vez_por_dia` só devolve `True` (e o log só diz
 tem uma segunda tentativa depois de 5 s — inclusive no refresh do token, que
 derrubou a coleta em 17 e 19/09; resposta ruim do Google não é repetida. Custo esperado de uma parte
 do YouTube: 1 `channels` + até 4 páginas de `playlistItems` + 1 `videos` a
-cada 50 ids na Data API, e 2 consultas por vídeo na Analytics.
+cada 50 ids na Data API, e 2 consultas por vídeo na Analytics. **Medido**
+(builds, 08:13 de 28/09): **8 `data`, 226 `analytics`, 2 `token`, 405 s**
+para 126 linhas do ledger / 121 vídeos. Histórias com o contador novo:
+**não medi** (a próxima noite grava).
+
+A marca conta **vídeo, não linha** (`dd9b122`): `videos` são ids distintos
+(um arquivo por id) e `linhas` as linhas do ledger. Antes dizia 126 com 121
+arquivos em disco, porque há linhas repetidas para o mesmo id.
+
+### O TikTok: a lista inteira (28/09)
+
+`tiktok_metricas.coletar` parava em 50 ou 60 posts toda noite (17 a 28/09):
+**60 de 119 envios casados em builds, 50 de 165 em histórias**. Medido no
+Studio: `item_list` é um `POST /tiktok/creator/manage/item_list/v1/` com
+corpo `{"cursor", "size"}` — 50 na primeira página, 10 nas seguintes — e a
+resposta traz `cursor` (onde a próxima começa) e `has_more`. A lista mora num
+DIV com rolagem própria; `mouse.wheel` sem o ponteiro em cima dele não pede
+página nenhuma. E a cada rolagem o Studio repede a primeira página
+(`cursor 0`, `has_more=true`), que não pode apagar a notícia de que acabou.
+
+Agora: `Lista` guarda a resposta de **maior** `cursor`; `ler_a_lista` rola o
+DIV por JS (sem nome de classe — as do Studio são geradas) alternando com a
+tecla End, e diz **por que** parou: `completa` (`has_more=false`),
+`suficiente` (já cobre o envio mais velho do ledger), `parada` ou `tempo`
+(estas duas = lista INCOMPLETA, gravada na marca e alertada no panorama).
+Lista vazia e zero casados viram **falha**, não "0 vídeos".
+
+Prova (só leitura, perfil verdadeiro, 28/09 08:04–08:09): **builds 130 posts
+(`suficiente`) → 120/120 envios casados; histórias 190 posts (`completa`) →
+163/166**. Os 3 de histórias sem par (11, 12 e 16/09) são envios que o ledger
+tem e o Studio não lista — **não investiguei**. A primeira noite com o código
+novo é a de 29/09.
 
 ### As tarefas do Agendador que o panorama confere (28/09)
 
@@ -347,6 +381,12 @@ a versão nova repete na rodada seguinte.
 - **`atividade.recentes()` lê só 1200 linhas.** Num dia de histórias (1103
   eventos em 27/09) uma janela de 24 h lida por ali sai cortada, sem aviso.
   Para janela de tempo, `sinais.ler_diario()`.
+- **Perfil do TikTok de builds mora DENTRO do repositório**
+  (`random_builds/.browser_profile/tiktok`). Rodando o código de uma
+  worktree, `perfil_da_conta("builds")` aponta para a pasta da worktree, o
+  Chrome cria um perfil vazio e a tela é de login — parece logout e não é
+  (28/09, 07:58). Para provar coisa no navegador a partir de worktree, troque
+  a raiz do caminho pela de `E:\projetos`.
 - **Id do YouTube que começa com `_`.** `_bHp95XZpgc.json` é vídeo. Filtro por
   "começa com sublinhado" para pular a marca jogava um vídeo fora — medido
   antes de ir ao ar (93 em vez de 94).
