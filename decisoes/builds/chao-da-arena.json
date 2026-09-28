@@ -8,7 +8,15 @@
       "opcao": "seguir"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T18:29:38",
+      "opcao": "pedra",
+      "origem": "app"
+    }
+  ],
   "id": "chao-da-arena",
   "midias": [
     {
@@ -41,7 +49,11 @@
   ],
   "pergunta": "Qual chão fica na arena?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Chão da arena",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T18:29:38",
+    "opcao": "pedra"
+  }
 }
