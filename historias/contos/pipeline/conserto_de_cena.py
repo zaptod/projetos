@@ -211,17 +211,36 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
             provedor = (papeis.provedores(papeis.VIDEO) or ["gemini"])[0]
         except Exception:                                      # noqa: BLE001
             provedor = "gemini"
+    from ..llm.texto import e_recusa_enlatada
+
     alvo = _cenas_da_parte(roteiro, parte)
     protagonista = str(roteiro.get("protagonista") or "")
     novos = {}
 
-    def _rodar(pergunta):
+    def _rodar(pergunta, de_novo=None):
         for n in cenas:
             cena = alvo.get(int(n))
             if cena is None:
                 continue
-            resposta = pergunta(pedido_de_prompt(
-                cena, protagonista, motivos_da_cena(motivos, int(n))))
+            pedido = pedido_de_prompt(cena, protagonista,
+                                      motivos_da_cena(motivos, int(n)))
+            resposta = pergunta(pedido)
+            # A RECUSA ENLATADA (27/09/2026, 02:18): "Nao fui programado para
+            # fazer essas coisas" virava prompt vazio em `limpar`, e o reparo
+            # concluia "nenhum motivo da IA tem conserto automatico", como se
+            # alguem tivesse olhado e desistido. A frase e sorteada: pergunta
+            # de novo uma vez; recusada de novo, e FALHA do provedor.
+            if e_recusa_enlatada(resposta):
+                frase = " ".join(str(resposta).split())[:80]
+                log(f"[reparo] o {provedor} recusou a reescrita da cena {n} "
+                    f"com a frase enlatada ({frase}); pergunto de novo, "
+                    "uma vez.")
+                resposta = (de_novo or pergunta)(pedido)
+                if e_recusa_enlatada(resposta):
+                    if falhas is not None:
+                        falhas.append(f"{provedor} recusou a reescrita da "
+                                      f"cena {n} (frase enlatada)")
+                    continue
             novo = limpar(resposta)
             if novo and novo.lower() != str(cena.get("imagem") or "").lower():
                 cena["imagem"] = novo
@@ -242,7 +261,13 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
             # primeira rodada de dia ("nao respondeu em 180s e nao ha texto na
             # tela") enquanto o mesmo Gemini respondia a revisao de video: o
             # modelo Pro ainda estava pensando quando o prazo acabou.
-            _rodar(lambda texto: cliente.perguntar(texto))
+            # A segunda chance e num CHAT NOVO: no mesmo chat o modelo tende a
+            # repetir a propria recusa.
+            def _num_chat_novo(texto):
+                cliente.abrir(novo_chat=True)
+                return cliente.perguntar(texto)
+
+            _rodar(lambda texto: cliente.perguntar(texto), _num_chat_novo)
     except Exception as exc:                                   # noqa: BLE001
         log(f"[reparo] nao consegui reescrever os prompts pelo {provedor} "
             f"({type(exc).__name__}: {exc}).")

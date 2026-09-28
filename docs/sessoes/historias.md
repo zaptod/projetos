@@ -38,7 +38,8 @@ rodada nunca levanta exceção: devolve dicionário, escreve em
    de origem) e **vídeo** (a voz é medida **antes** do plano: a cena espera a fala; um
    mp4 + capa por parte).
 5. **Vistoria e parecer**: `qualidade.liberado()` mede o arquivo, `parecer` manda uma IA
-   assistir. Barrado vai ao `reparo`; aprovado é estoque.
+   assistir. Barrado vai ao `reparo`; aprovado é estoque. O que só a folha de contato
+   aprovou fica gravado como **`nao_assistido`**, nunca como aprovado (ver Contratos).
 
 Medido em `outputs/_logs/auto_20260927.txt` — `00035` (babaca, 3 partes, 42 cenas):
 roteiro 3 min 36 s, imagens 26 min 23 s (~38 s/cena), render 16 min 44 s, **total
@@ -65,7 +66,8 @@ geração de horas tiraria o juiz do ar. Conta ocupada passa ao próximo livre, 
 esperar. O `provedor: gemini` de `agenda.json` é só o fallback de
 `agenda.provedores_do_roteiro()` quando `llm.json` falta. O ChatGPT não assiste vídeo
 nesta máquina (conta free: o mp4 entra como "Arquivo" opaco) — cai na folha de
-contato, mosaico de 12 quadros.
+contato, um quadro por cena. **A conta do Gemini também é free** ("Faça upgrade para o
+Google AI Pro" na barra lateral).
 
 ## 3. Os três tipos, o modo livre e os dois rodízios
 
@@ -100,6 +102,22 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   com a palavra (`^='Parar'`), em `seletores.py`.
 - **Veredito em inglês**: um parecer veio "REPROVED cena 1: …" e virou "sem parecer" —
   o veto se perdia. `parecer.PALAVRAS_DE_REPROVACAO`/`_APROVACAO` aceitam as duas.
+- **Recusa enlatada do Gemini** ("Sou uma IA com base em texto, e isso está além das
+  minhas capacidades", "Não fui programado para fazer isso", "Fui criado apenas para
+  processar e gerar texto"…): uma frase sorteada de uma lista fixa, no lugar da resposta.
+  Nos logs, 18 em 169 revisões de vídeo de 13 a 27/09, e **5 de 9** na madrugada de 27/09.
+  **Não é o anexo** (o histórico do Gemini mostra o mp4 com a duração no balão da
+  pergunta, e a reescrita das 02:18, sem anexo, levou a mesma frase), **não é o vídeo nem
+  o prompt** (o mp4 de `00034 p01`, recusado às 01:35, foi assistido 4 de 4 vezes às
+  23:55, com o prompt de sempre e com "PEDIDO DE TEXTO" na 1ª linha — que por isso **não**
+  entrou), e **não é o modelo** (recusou no "Pro" e no "3.1 Pro Raciocínio avançado"). Vem
+  em **rajadas**: 4 chats novos seguidos recusados entre 01:32 e 01:43; às 00:06–00:13 de
+  28/09, 5 de 7. O que se controla daqui: `parecer.RecusaDoModelo` (subclasse de
+  `SemParecer`, detectada por `llm.texto.e_recusa_enlatada`), **uma** pergunta de novo num
+  chat novo (`REPETIR_RECUSA = 1`, recuperou 1 de 3 na hora), e a revisão da madrugada
+  pergunta de novo, **no fim da passada e só ao Gemini**, o que ficou `nao_assistido` —
+  inclusive de noites anteriores. A reescrita do reparo pergunta de novo num chat novo e,
+  recusada duas vezes, vira falha do provedor em vez de "nenhum motivo tem conserto".
 - **Parede de planos do PicassoIA**: o diálogo de assinatura cobre a página e engole o
   clique, mesmo em conta com plano. `worker.gerar()` fecha o navegador e **reabre o perfil
   uma vez**; só se voltar morre como `NaoRodou` (a história fica pendente e a próxima
@@ -144,6 +162,15 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
 - **14 falhas de YouTube** no `postar.txt`, as 5 últimas iguais: `TimeoutError` em
   `#title-textarea #textbox`. Hoje às 18h a `historia_00032:celular:p04` saiu **só no
   TikTok** e não há linha de YouTube para ela no ledger.
+- **Os 5 aprovados sem ninguém assistir** (27/09, 01:30–01:43: Gemini recusou, a folha
+  do ChatGPT aprovou em 8 caracteres), marcados `nao_assistido` e revistos no Gemini em
+  28/09, 00:04–00:15: `00034 p01` **reprovado** (cena 2: peça íntima sem relação com a
+  narração; cena 8: a protagonista duplicada), `00034 p03` **reprovado** (cena 14: troca de
+  rosto e roupa), `00035 p01` **reprovado** (cenas 4–7: protagonista muda de aparência) —
+  e este **já está no ar desde 27/09 20:43**, YouTube e TikTok. `00034 p02` e `p04`: o
+  Gemini recusou duas vezes cada, seguem `nao_assistido` e voltam ao Gemini na revisão da
+  madrugada. Também foram ao ar só com a folha, em 14–17/09: `00009 p05`, `00010 p02`,
+  `00010 p03`.
 - **7 vídeos INSISTENTES** em `outputs/_reparos.json` (teto de tentativas): partes de
   `00004`, `00005`, `00010`, `00011`, todas antigas, esperando decisão humana.
 - 103 linhas "a IA reprovou, mas as rodadas de conserto acabaram; sai assim" — o veto da IA
@@ -184,6 +211,25 @@ provedor**, não esperar. `travas.do_perfil("picasso", "historias")` é o **Pica
 disputado com o worker de builds quando a conta é a mesma (espera 20 s e desiste com
 `NaoRodou`). `historias__auto` garante uma rodada automática por máquina;
 `historias__render__<id>` impede dois renders da mesma história.
+
+**O parecer que ninguém assistiu** (decisão dele em 27/09/2026: parecer só pela folha
+fica retido e só sai se o horário fosse ficar vazio — a válvula é da publicação, S2).
+Cada ficha de `outputs/_pareceres.json` (chave = id do vídeo,
+`historia_NNNNN:celular:pNN`) tem desde 28/09 dois campos:
+
+```
+"situacao":  "aprovado" | "reprovado" | "nao_assistido"
+"assistido": true | false      # true só com vista "video inteiro (m:ss)"
+```
+
+`nao_assistido` = só a folha de contato aprovou; `reprovado` vale para veto de vídeo **e**
+de folha. **`aprovado` continua sendo a palavra do revisor** e não mudou de sentido: o
+`postar.py` lê esse campo, e trocá-lo mudaria a escolha antes de a válvula existir. Para
+ler, use `parecer.situacao(ficha)` (nas fichas antigas, sem o campo, deduz de `aprovado`
++ `vista`), `parecer.situacao_do_video(video_ou_id)` (pelo id, como `veto_por_id`) ou
+`parecer.nao_assistido(video_ou_id)`. O estoque desta parte (`qualidade.liberado`,
+`aprovados_no_estoque`) **ainda conta** `nao_assistido` como aprovado — muda junto com a
+válvula, não antes.
 
 **O diário** é `builds.atividade.registrar(...)` com `canal="historias"` e `etapa` (ex.:
 `imagens.parede_de_planos`, `criacao.series`) — é o que o bot de apuração lê para

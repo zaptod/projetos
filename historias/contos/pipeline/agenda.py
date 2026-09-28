@@ -769,20 +769,28 @@ def revisar_estoque(config: dict, *, headless: bool = False,
     ja = {l.get("video_id") for l in serie.publicados() if _publicado(l)}
     pendentes = [v for v in catalogo.listar()
                  if v.perfil == "celular" and v.id not in ja]
-    revisados = aprovados = pulados = 0
+    revisados = aprovados = pulados = nao_assistidos = 0
+    # Quem assiste: so ele pode tirar um video de "nao assistido". A folha
+    # daquele video ja foi olhada, e olhar de novo nao muda nada.
+    quem_assiste = (list(parecer.ASSISTEM_VIDEO) or ["gemini"])[0]
+    segunda_chance = []
     for video in pendentes:
         if minutos_ate_fechar(_relogio.now(), janela) < margem:
             log("[auto] a janela esta fechando; paro a revisao do estoque.")
             break
+        # NAO ASSISTIDO VOLTA AO GEMINI (27/09/2026). A passada dele nao foi
+        # gasta: quem "olhou" foi a folha, depois de o Gemini recusar o mp4
+        # com a frase enlatada. Sem isto o video ficaria retido para sempre.
+        sem_assistir = parecer.nao_assistido(video)
         # ATUAL, e nao so numerado: veto dado com o criterio velho do parecer
         # e perguntado de novo aqui, com a regua de hoje.
-        if C.atual(parecer.lembrado(video)):
+        if not sem_assistir and C.atual(parecer.lembrado(video)):
             pulados += 1
             continue
         # UMA PASSADA SO NO GEMINI (15/09/2026): video que ja foi olhado uma
         # vez nao volta, nem depois de consertado (o mp4 novo zera o
         # `lembrado`, mas a passada dele ja foi gasta).
-        if parecer.ja_olhado(video):
+        if not sem_assistir and parecer.ja_olhado(video):
             pulados += 1
             continue
         roteiro = R.carregar(video.fonte_id)
@@ -792,18 +800,50 @@ def revisar_estoque(config: dict, *, headless: bool = False,
             pulados += 1
             continue
         try:
-            veredito = parecer.pedir(video, roteiro, video.parte, laudo=laudo,
-                                     headless=headless, log=log)
+            veredito = parecer.pedir(
+                video, roteiro, video.parte, laudo=laudo, headless=headless,
+                provedor=quem_assiste if sem_assistir else None, log=log)
         except parecer.SemParecer as exc:
-            log(f"[auto] {video.id}: sem parecer agora ({exc}).")
+            log(f"[auto] {video.id}: sem parecer agora ({exc})"
+                + ("; continua NAO ASSISTIDO." if sem_assistir else "."))
             continue
         revisados += 1
-        aprovados += 1 if veredito.get("aprovado") else 0
+        # SO CONTA COMO APROVADO QUEM ASSISTIU (27/09/2026): "revisei 9;
+        # 5 aprovado(s)" daquela madrugada eram 5 folhas do ChatGPT depois de
+        # o Gemini recusar o mp4 — nenhum dos cinco tinha sido assistido.
+        situacao = parecer.situacao(veredito)
+        if situacao == parecer.NAO_ASSISTIDO:
+            nao_assistidos += 1
+            segunda_chance.append((video, roteiro, laudo))
+        elif situacao == parecer.SITUACAO_APROVADO:
+            aprovados += 1
+    # A SEGUNDA CHANCE VEM NO FIM, minutos depois, e nao na hora: a recusa
+    # vem em rajadas. Em 27/09/2026 quatro chats novos seguidos foram
+    # recusados entre 01:32 e 01:43, e os dois seguintes foram assistidos; o
+    # mesmo mp4 da parte 1 da historia 34, recusado as 01:35, foi assistido
+    # 4 de 4 vezes as 23:55.
+    for video, roteiro, laudo in segunda_chance:
+        if minutos_ate_fechar(_relogio.now(), janela) < margem:
+            break
+        try:
+            veredito = parecer.pedir(video, roteiro, video.parte, laudo=laudo,
+                                     headless=headless, provedor=quem_assiste,
+                                     log=log)
+        except parecer.SemParecer as exc:
+            log(f"[auto] {video.id}: o {quem_assiste} nao assistiu de novo "
+                f"({exc}); fica NAO ASSISTIDO.")
+            continue
+        situacao = parecer.situacao(veredito)
+        if situacao != parecer.NAO_ASSISTIDO:
+            nao_assistidos -= 1
+            aprovados += 1 if situacao == parecer.SITUACAO_APROVADO else 0
     if revisados:
         log(f"[auto] revisei {revisados} video(s) do estoque de madrugada; "
-            f"{aprovados} aprovado(s).")
+            f"{aprovados} aprovado(s) assistindo"
+            + (f", {nao_assistidos} so pela folha (NAO ASSISTIDOS)"
+               if nao_assistidos else "") + ".")
     return {"revisados": revisados, "aprovados": aprovados,
-            "pulados": pulados}
+            "nao_assistidos": nao_assistidos, "pulados": pulados}
 
 
 def _trabalhar(config: dict, headless: bool, log) -> dict:

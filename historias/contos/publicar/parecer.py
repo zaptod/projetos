@@ -62,6 +62,27 @@ REPROVADO = "REPROVADO"
 PALAVRAS_DE_REPROVACAO = (REPROVADO, "REPROVED", "REJEITADO", "REJECTED")
 PALAVRAS_DE_APROVACAO = (APROVADO, "APPROVED")
 
+# O QUE O VEREDITO VALE, e nao so o que o revisor escreveu (27/09/2026).
+#
+# `aprovado` e a PALAVRA de quem respondeu. Quando quem respondeu foi o
+# ChatGPT olhando a folha de contato, ninguem assistiu ao video: na madrugada
+# de 27/09 o Gemini recusou 5 de 9 mp4 com a frase enlatada, a folha aprovou
+# os cinco em 8 caracteres, e este arquivo gravou APROVADO para videos que
+# ninguem viu. Decisao dele no mesmo dia: parecer so pela folha fica RETIDO e
+# so sai se o horario fosse ficar vazio. A valvula e da publicacao; daqui sai
+# o campo que ela le, `situacao`:
+#
+#     "aprovado"       quem aprovou ASSISTIU ao mp4 inteiro
+#     "reprovado"      alguem reprovou (video ou folha: veto e veto)
+#     "nao_assistido"  so a folha de contato aprovou
+#
+# `aprovado` nao muda de sentido de proposito: o postar.py le esse campo, e
+# trocar o valor mudaria a escolha da publicacao antes de a valvula existir.
+SITUACAO_APROVADO = "aprovado"
+SITUACAO_REPROVADO = "reprovado"
+NAO_ASSISTIDO = "nao_assistido"
+SITUACOES = (SITUACAO_APROVADO, SITUACAO_REPROVADO, NAO_ASSISTIDO)
+
 # A VERSAO DO CRITERIO. Sobe quando o prompt passa a julgar diferente, para
 # veto dado com a regua antiga ser perguntado de novo em vez de guiar
 # conserto. 2 = 13/09/2026, 23h50: imagem so reprova por CONTRADIZER a
@@ -139,6 +160,72 @@ def _pela_folha(vista: str) -> bool:
     return not str(vista or "").startswith("video")
 
 
+def situacao(ficha: dict | None) -> str:
+    """`"aprovado"`, `"reprovado"`, `"nao_assistido"`, ou `""` sem ficha.
+
+    Le o campo `situacao` quando ele existe; nas fichas de antes de
+    27/09/2026 deduz de `aprovado` + `vista`. Sem `vista` conta como folha: o
+    que nao prova que assistiu nao vale como assistido.
+    """
+    if not ficha:
+        return ""
+    gravada = str(ficha.get("situacao") or "")
+    if gravada in SITUACOES:
+        return gravada
+    if not ficha.get("aprovado"):
+        return SITUACAO_REPROVADO
+    if _pela_folha(ficha.get("vista", "")):
+        return NAO_ASSISTIDO
+    return SITUACAO_APROVADO
+
+
+def _carimbar(veredito: dict) -> dict:
+    """Poe `assistido` e `situacao` no veredito. Devolve o mesmo dict."""
+    assistido = not _pela_folha(veredito.get("vista", ""))
+    veredito["assistido"] = assistido
+    if not veredito.get("aprovado"):
+        veredito["situacao"] = SITUACAO_REPROVADO
+    else:
+        veredito["situacao"] = (SITUACAO_APROVADO if assistido
+                                else NAO_ASSISTIDO)
+    return veredito
+
+
+def situacao_do_video(video) -> str:
+    """A `situacao` do ultimo parecer deste VIDEO (pelo id, como
+    `veto_por_id`), ou `""` se ninguem deu parecer. Nunca levanta."""
+    try:
+        return situacao(_lembretes().get(str(getattr(video, "id", video))))
+    except Exception:                                          # noqa: BLE001
+        return ""
+
+
+def nao_assistido(video) -> bool:
+    """So a folha de contato aprovou este video: ninguem assistiu."""
+    return situacao_do_video(video) == NAO_ASSISTIDO
+
+
+def marcar_nao_assistido(video_id: str, nota: str = "") -> bool:
+    """Grava `situacao: nao_assistido` numa ficha que so a folha aprovou.
+
+    Para as fichas de ANTES do campo existir. So muda `situacao`,
+    `assistido` e a nota: o veredito, a data e o mtime ficam como estavam.
+    Recusa (devolve False) ficha que nao existe ou que alguem assistiu.
+    """
+    chave = str(video_id)
+    dados = _lembretes()
+    ficha = dados.get(chave)
+    if not ficha or situacao({**ficha, "situacao": ""}) != NAO_ASSISTIDO:
+        return False
+    ficha["situacao"] = NAO_ASSISTIDO
+    ficha["assistido"] = False
+    if nota:
+        ficha["nota"] = str(nota)
+    with open(LEMBRETES, "w", encoding="utf-8") as fh:
+        json.dump(dados, fh, ensure_ascii=False, indent=2)
+    return True
+
+
 def _lembrar(video, veredito: dict) -> None:
     chave = str(getattr(video, "id", video))
     if not _e_id_de_video(chave):
@@ -177,9 +264,12 @@ def _lembrar(video, veredito: dict) -> None:
             and abs(float(antigo.get("mtime") or 0) - marca) <= 1.0):
         return
 
+    carimbo = _carimbar(dict(veredito))
     dados[chave] = {
         "mtime": marca,
         "aprovado": bool(veredito.get("aprovado")),
+        "situacao": carimbo["situacao"],
+        "assistido": carimbo["assistido"],
         "motivos": list(veredito.get("motivos") or []),
         "vista": vista,
         "numeracao": str(veredito.get("numeracao") or ""),
@@ -239,6 +329,16 @@ def esquecer(video) -> None:
 
 class SemParecer(RuntimeError):
     """Nao deu para perguntar. NAO e reprovacao — a diferenca importa."""
+
+
+class RecusaDoModelo(SemParecer):
+    """O modelo devolveu a frase enlatada de "isso eu nao faco".
+
+    E `SemParecer` (ninguem julgou nada), mas com tipo proprio porque e a
+    unica falha que vale repetir na hora: a frase e sorteada. A parte 6 da
+    historia 25 foi recusada as 02:22 de 23/09/2026 e assistida as 03:20 com
+    o MESMO mp4.
+    """
 
 
 def _recorte(painel: float | None) -> str:
@@ -397,6 +497,12 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
                     "em que cena esta.")
     lista = [f"CENA {c['n']} ({c['inicio']:.0f}s a {c['fim']:.0f}s): "
              f"{str(c['narracao'])[:260]}" for c in cenas]
+    # SEM "PEDIDO DE TEXTO" NA PRIMEIRA LINHA, de proposito (27/09/2026). A
+    # recusa enlatada parecia a armadilha de 14/09 (memoria gemini-modo-
+    # imagem), mas a reescrita de prompt das 02:18 JA abria assim e levou a
+    # mesma frase; e as 23:55 o prompt de sempre e o com a linha deram 2 de 2
+    # vereditos cada no mesmo mp4 recusado de madrugada. Sem efeito medido,
+    # nao entra — quem trata a recusa e `pedir`, perguntando de novo.
     linhas = [
         abertura,
         "",
@@ -511,6 +617,10 @@ def ler_veredito(texto: str) -> dict:
     if primeira.startswith(PALAVRAS_DE_APROVACAO):
         return {"aprovado": True, "motivos": [], "protagonista": "",
                 "texto": str(texto).strip()}
+    from ..llm.texto import e_recusa_enlatada
+    if e_recusa_enlatada(limpo):
+        raise RecusaDoModelo("o modelo recusou com a frase enlatada: "
+                             + limpo[:160])
     raise SemParecer(
         "a resposta nao comeca com APROVADO nem com REPROVADO: "
         + limpo[:160])
@@ -544,6 +654,11 @@ ESPERA_DA_CONTA_S = 60.0
 # em 14/09/2026 tres revisoes ficaram os 900 s inteiros com 10 chars na tela,
 # e cada uma atrasou o horario da postagem em quinze minutos.
 ESPERA_CALADO_S = 480.0
+# Quantas vezes a RECUSA ENLATADA de quem assiste video e perguntada de novo,
+# num chat novo, antes de cair para a folha. Uma: a frase e sorteada (a p06
+# da historia 25 foi recusada as 02:22 de 23/09/2026 e assistida as 03:20,
+# mesmo mp4), e cada volta custa um upload de 40 MB e ~1-3 min.
+REPETIR_RECUSA = 1
 
 
 def provedores_da_analise() -> list:
@@ -579,24 +694,42 @@ def pedir(video, roteiro: dict, parte: int, *, laudo: dict | None = None,
     tentar = [provedor] if provedor else provedores_da_analise()
     ultimo = ""
     for i, alvo in enumerate(tentar):
-        try:
-            veredito = _pedir_em(alvo, video, roteiro, parte, laudo=laudo,
-                                 headless=headless, pasta_temp=pasta_temp,
-                                 espera_video=espera_video, log=log)
-            lembrar(video, veredito)
-            return veredito
-        except ContaOcupada as erro:
-            ultimo = str(erro)
-            if i + 1 < len(tentar):
-                log(f"[parecer] a conta do {alvo} esta ocupada; tento o "
-                    f"{tentar[i + 1]}.")
-            continue
-        except SemParecer as erro:
-            ultimo = str(erro)
-            if i + 1 < len(tentar):
-                log(f"[parecer] o {alvo} nao respondeu ({erro}); tento o "
-                    f"{tentar[i + 1]}.")
-            continue
+        recusas = 0
+        while True:
+            try:
+                veredito = _carimbar(_pedir_em(
+                    alvo, video, roteiro, parte, laudo=laudo,
+                    headless=headless, pasta_temp=pasta_temp,
+                    espera_video=espera_video, log=log))
+                lembrar(video, veredito)
+                return veredito
+            except ContaOcupada as erro:
+                ultimo = str(erro)
+                if i + 1 < len(tentar):
+                    log(f"[parecer] a conta do {alvo} esta ocupada; tento o "
+                        f"{tentar[i + 1]}.")
+                break
+            except RecusaDoModelo as erro:
+                # A RECUSA ENLATADA E SORTEIO, e nao julgamento: pergunta de
+                # novo num chat novo antes de entregar o video a quem so ve
+                # a folha. So para quem assiste — do ChatGPT, a folha e tudo.
+                ultimo = str(erro)
+                if alvo in ASSISTEM_VIDEO and recusas < REPETIR_RECUSA:
+                    recusas += 1
+                    log(f"[parecer] o {alvo} recusou com a frase enlatada "
+                        f"({erro}); pergunto de novo num chat novo "
+                        f"({recusas}/{REPETIR_RECUSA}).")
+                    continue
+                if i + 1 < len(tentar):
+                    log(f"[parecer] o {alvo} nao respondeu ({erro}); tento o "
+                        f"{tentar[i + 1]}.")
+                break
+            except SemParecer as erro:
+                ultimo = str(erro)
+                if i + 1 < len(tentar):
+                    log(f"[parecer] o {alvo} nao respondeu ({erro}); tento o "
+                        f"{tentar[i + 1]}.")
+                break
     raise SemParecer(ultimo or "nenhum provedor respondeu")
 
 
@@ -669,11 +802,23 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
     veredito["numeracao"] = ("cena" if vista.startswith("video") or por_cena
                              else "quadro")
     veredito["criterio"] = CRITERIO
-    log(f"[parecer] {'APROVADO' if veredito['aprovado'] else 'REPROVADO'}"
-        + (f": {veredito['motivos'][0][:90]}" if veredito["motivos"] else ""))
+    _carimbar(veredito)
+    if veredito["situacao"] == NAO_ASSISTIDO:
+        # NUNCA "APROVADO" no log quando ninguem assistiu: o log das 01:30 de
+        # 27/09/2026 dizia "[parecer] APROVADO" cinco vezes para videos que so
+        # tiveram 14 miniaturas olhadas.
+        log(f"[parecer] NAO ASSISTIDO: a folha de contato ({provedor}) disse "
+            "APROVADO, mas ninguem assistiu ao video (gravado como "
+            "situacao 'nao_assistido').")
+    else:
+        log(f"[parecer] {'APROVADO' if veredito['aprovado'] else 'REPROVADO'}"
+            + (f": {veredito['motivos'][0][:90]}" if veredito["motivos"]
+               else ""))
     return veredito
 
 
 __all__ = ["pedir", "prompt", "ler_veredito", "folha_de_contato",
-           "folha_por_cena",
-           "SemParecer", "APROVADO", "REPROVADO"]
+           "folha_por_cena", "situacao", "situacao_do_video", "nao_assistido",
+           "marcar_nao_assistido",
+           "SemParecer", "RecusaDoModelo", "APROVADO", "REPROVADO",
+           "SITUACAO_APROVADO", "SITUACAO_REPROVADO", "NAO_ASSISTIDO"]
