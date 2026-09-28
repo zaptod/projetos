@@ -2,9 +2,10 @@
 const TOKEN = "painel.token";
 const ULTIMO = "painel.ultimo_estado";
 const CONTATO = "painel.ultimo_contato";
-const TITULOS = {vila: "Vila", diario: "Diário", videos: "Vídeos",
-                 comandos: "Comandos", relatorios: "Relatórios",
-                 decisoes: "Decisões"};
+// A Vila é a tela; as outras áreas são objetos dela, com nome de objeto.
+const TITULOS = {vila: "Vila", quadro: "Quadro de avisos", diario: "Diário",
+                 videos: "Cinema", comandos: "Bancada",
+                 relatorios: "Pergaminhos", decisoes: "Grimório"};
 const RELATORIOS = ["metas", "funcionamento", "confiabilidade", "auditoria"];
 const $ = (id) => document.getElementById(id);
 
@@ -312,7 +313,7 @@ async function agir(acao, args = {}) {
     avisar(err.message, true);
   }
   carregarAcoes();
-  if (tela === "agora") carregarAgora();
+  if (tela === "vila" || tela === "quadro") carregarAgora();
 }
 
 async function pedirPublicacao(v) {
@@ -348,7 +349,7 @@ async function tocar(v, desde = 0) {
     player.src = url;
     if (desde) player.currentTime = desde;
     player.play().catch(() => {});
-    if (!desde) window.scrollTo({top: 0, behavior: "smooth"});
+    if (!desde) $("tela-videos").scrollTo({top: 0, behavior: "smooth"});
   } catch (err) { alert("Não consegui abrir o vídeo: " + err.message); }
 }
 
@@ -401,7 +402,8 @@ $("btn-parear").addEventListener("click", async () => {
 });
 
 // --------------------------------------------------------------- telas
-const CARGAS = {vila: [carregarAgora, 15000], diario: [carregarDiario, 5000],
+const CARGAS = {vila: [carregarAgora, 15000], quadro: [carregarAgora, 15000],
+                diario: [carregarDiario, 5000],
                 videos: [null, 0], comandos: [null, 0], relatorios: [null, 0],
                 decisoes: [null, 0]};
 
@@ -413,11 +415,17 @@ function mostrar(nova) {
   if (nova) tela = nova;
   const pareado = !!localStorage.getItem(TOKEN);
   const atual = pareado ? tela : "parear";
+  // A Vila fica sempre atrás (parada, quando outro objeto está aberto): o
+  // objeto abre POR CIMA dela, e fechar é voltar para a praça.
   for (const s of document.querySelectorAll("main > section"))
-    s.classList.toggle("oculto", s.id !== "tela-" + atual);
-  $("nav").classList.toggle("oculto", !pareado);
+    s.classList.toggle("oculto", s.id !== "tela-" + atual
+      && !(pareado && s.id === "tela-vila"));
+  document.body.classList.toggle("pareado", pareado);
+  document.body.classList.toggle("objeto-aberto", pareado && tela !== "vila");
+  $("nav").classList.toggle("oculto", !pareado || tela !== "vila");
+  $("btn-voltar").classList.toggle("oculto", !pareado || tela === "vila");
   $("titulo").textContent = pareado ? TITULOS[tela] : "Parear";
-  for (const b of document.querySelectorAll("nav button")) {
+  for (const b of document.querySelectorAll("[data-tela]")) {
     if (b.dataset.tela === tela) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   }
@@ -426,7 +434,10 @@ function mostrar(nova) {
   if (typeof comandosParar === "function") comandosParar();
   if (typeof decisoesParar === "function") decisoesParar();
   if (!pareado) return;
-  if (tela === "vila" && typeof vilaMostrar === "function") vilaMostrar();
+  // o quadro de avisos mostra a gente e as travas, que vêm da vida da vila
+  if ((tela === "vila" || tela === "quadro") && typeof vilaMostrar === "function") {
+    vilaMostrar();
+  }
   if (tela === "comandos" && typeof comandosMostrar === "function") {
     comandosMostrar();
   }
@@ -443,8 +454,32 @@ function mostrar(nova) {
   }
 }
 
-for (const b of document.querySelectorAll("nav button"))
-  b.addEventListener("click", () => mostrar(b.dataset.tela));
+// Abrir um objeto da vila. A animação sai de onde o objeto está (--ox,
+// --oy), e o "voltar" do Android fecha o objeto em vez de sair do app.
+function abrir(nova, origem) {
+  const secao = $("tela-" + nova);
+  if (!secao) return;
+  if (origem) {
+    const r = origem.getBoundingClientRect();
+    secao.style.setProperty("--ox", `${Math.round(r.left + r.width / 2)}px`);
+    secao.style.setProperty("--oy", `${Math.round(r.top + r.height / 2)}px`);
+  }
+  secao.scrollTop = 0;
+  if (tela === "vila" && nova !== "vila") history.pushState({tela: nova}, "");
+  mostrar(nova);
+}
+
+function voltarParaVila() {
+  if (history.state && history.state.tela) history.back();
+  else mostrar("vila");
+}
+
+for (const b of document.querySelectorAll("[data-tela]"))
+  b.addEventListener("click", () => abrir(b.dataset.tela, b));
+$("btn-voltar").addEventListener("click", voltarParaVila);
+window.addEventListener("popstate", (e) => {
+  mostrar((e.state && e.state.tela) || "vila");
+});
 $("btn-tentar").addEventListener("click", () => mostrar());
 $("btn-todas").addEventListener("click", () => {
   diarioFabrica = null; diarioDesde = ""; $("diario").replaceChildren();

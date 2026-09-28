@@ -26,7 +26,7 @@ Duas portas de saída para o Adrian comandar o sistema de fora do PC:
 
 | Peça | O que é | Sobe por |
 | --- | --- | --- |
-| **App** (PWA) | página instalável no celular: a Vila animada, diário, vídeos por streaming, relatórios e a tela Comandos | tarefa `NeuralFights_app_celular` (a cada 10 min) → `app_celular.cmd` |
+| **App** (PWA) | página instalável no celular: a Vila animada em tela cheia, e as outras áreas como objetos dela (ver abaixo) | tarefa `NeuralFights_app_celular` (a cada 10 min) → `app_celular.cmd` |
 | **Bot** | bot de Telegram: avisos automáticos e uma tabela fechada de comandos | tarefa `NeuralFights_bot_telegram` → `bot.cmd` |
 
 Tudo vive em `remoto/`:
@@ -49,6 +49,25 @@ Tudo vive em `remoto/`:
   `decisoes/<projeto>/<id>.json` (ver §3.7).
 - `app/` — a PWA (`index.html`, `app.js`, `vila.js`, `comandos.js`,
   `decisoes.js`).
+- **Desde 28/09 a Vila é a tela inteira** (pedido do Adrian: "o app focado
+  na vila, e as outras entram de forma temática"). Não há mais barra de
+  abas. Uma prateleira de madeira embaixo tem seis objetos:
+  - 📌 Avisos (`tela-quadro`): o estado, o Controle (pausar, retomar,
+    parar), a próxima postagem, fábricas, erros e paralelismo;
+  - 📓 Diário;
+  - 🎞 Cinema (vídeos, gerar e publicar);
+  - 🛠 Bancada (Comandos, com a zona de perigo);
+  - 📜 Pergaminhos (relatórios);
+  - 📖 Grimório (Decisões): a capa abre e a página vira.
+
+  Cada objeto abre por cima da Vila (ela fica parada atrás), e o "‹ Vila"
+  ou o voltar do Android fecham (`history.pushState`). As animações são CSS
+  puro e respeitam `prefers-reduced-motion`. Nenhum id sumiu do HTML:
+  `test_app_vila_objetos.py` confere que todo id que o JS procura existe e
+  que cada área tem objeto. O zoom inicial enche a altura, com teto de 3x,
+  e por isso a arte do PC aparece ampliada (e um pouco borrada): mais
+  nitidez pede fundo em resolução maior, e isso é da parte painel-e-vila.
+  A prova de tela está em `prova_vila_objetos.py`, no scratchpad da sessão.
 
 Estado em disco, em `%LOCALAPPDATA%\neural-fights\`: `app_celular.json`
 (aparelhos pareados, só o hash do token), `app_celular_acoes.jsonl` (rastro),
@@ -65,7 +84,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 505 testes (28/09)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 517 testes (28/09)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)

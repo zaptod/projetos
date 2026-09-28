@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#14161a">
+<meta name="theme-color" content="#17251a">
 <title>Painel</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icone.svg">
@@ -11,7 +11,8 @@
 </head>
 <body>
 <header>
-  <h1 id="titulo">Agora</h1>
+  <button class="voltar oculto" id="btn-voltar" aria-label="Voltar para a vila">‹ Vila</button>
+  <h1 id="titulo">Vila</h1>
   <span id="conexao">…</span>
 </header>
 <div id="aviso" class="aviso oculto" role="status">
@@ -32,18 +33,21 @@
     </div>
   </section>
 
+  <!-- A Vila é a tela inteira. As outras áreas são objetos dela
+       (a prateleira lá embaixo) e abrem por cima, cada uma com o seu tema. -->
   <section id="tela-vila" class="oculto">
-    <div class="cartao sem-borda">
-      <div class="vila-caixa">
-        <canvas id="vila-canvas" aria-label="A vila"></canvas>
-        <div class="vila-botoes">
-          <button class="acao" id="vila-menos" aria-label="Afastar">－</button>
-          <button class="acao" id="vila-mais" aria-label="Aproximar">＋</button>
-        </div>
+    <div class="vila-caixa">
+      <canvas id="vila-canvas" aria-label="A vila"></canvas>
+      <div id="vila-placar" class="placar"></div>
+      <div class="vila-botoes">
+        <button class="acao" id="vila-menos" aria-label="Afastar">－</button>
+        <button class="acao" id="vila-mais" aria-label="Aproximar">＋</button>
       </div>
       <div id="vila-escolhido" class="oculto"></div>
-      <div id="vila-placar" class="placar"></div>
     </div>
+  </section>
+
+  <section id="tela-quadro" class="oculto livro quadro" aria-label="Quadro de avisos">
     <div class="cartao">
       <h2>Na vila agora</h2>
       <div id="vila-gente"></div>
@@ -90,7 +94,7 @@
     </div>
   </section>
 
-  <section id="tela-diario" class="oculto">
+  <section id="tela-diario" class="oculto livro diario" aria-label="Diário">
     <div class="cartao oculto" id="diario-filtro">
       <div class="botoes">
         <span class="corpo" id="diario-filtro-nome"></span>
@@ -100,7 +104,7 @@
     <div class="cartao"><div id="diario"></div></div>
   </section>
 
-  <section id="tela-videos" class="oculto">
+  <section id="tela-videos" class="oculto livro cinema" aria-label="Cinema">
     <div class="cartao oculto" id="gerar-cartao">
       <div class="botoes">
         <button class="acao primario" id="btn-gerar">＋ Gerar build</button>
@@ -114,7 +118,7 @@
     <div class="cartao"><div id="videos"></div></div>
   </section>
 
-  <section id="tela-comandos" class="oculto">
+  <section id="tela-comandos" class="oculto livro bancada" aria-label="Bancada">
     <div class="cartao">
       <h2>Tarefas</h2>
       <div id="tarefas-lista"></div>
@@ -129,12 +133,12 @@
     <div id="comandos-grupos"></div>
   </section>
 
-  <section id="tela-relatorios" class="oculto">
+  <section id="tela-relatorios" class="oculto livro pergaminho" aria-label="Pergaminhos">
     <div class="abas" id="abas-relatorio"></div>
-    <div class="cartao"><pre id="relatorio">Escolha um relatório.</pre></div>
+    <div class="cartao"><pre id="relatorio">Escolha um pergaminho.</pre></div>
   </section>
 
-  <section id="tela-decisoes" class="oculto">
+  <section id="tela-decisoes" class="oculto livro grimorio" aria-label="Grimório">
     <div id="decisoes-listas">
       <div class="abas" id="decisoes-abas"></div>
       <div id="decisoes-lista"></div>
@@ -171,13 +175,14 @@
 
 <div id="toast" class="toast oculto" role="status"></div>
 
-<nav id="nav" class="oculto">
-  <button data-tela="vila"><span>🏘</span>Vila</button>
-  <button data-tela="diario"><span>☰</span>Diário</button>
-  <button data-tela="videos"><span>▶</span>Vídeos</button>
-  <button data-tela="comandos"><span>⚡</span>Comandos</button>
-  <button data-tela="relatorios"><span>▤</span>Relatórios</button>
-  <button data-tela="decisoes"><span>✔</span>Decisões</button>
+<!-- a prateleira da vila: cada objeto abre uma área -->
+<nav id="nav" class="prateleira oculto">
+  <button class="objeto" data-tela="quadro"><span>📌</span>Avisos</button>
+  <button class="objeto" data-tela="diario"><span>📓</span>Diário</button>
+  <button class="objeto" data-tela="videos"><span>🎞</span>Cinema</button>
+  <button class="objeto" data-tela="comandos"><span>🛠</span>Bancada</button>
+  <button class="objeto" data-tela="relatorios"><span>📜</span>Pergaminhos</button>
+  <button class="objeto" data-tela="decisoes"><span>📖</span>Grimório</button>
 </nav>
 
 <script src="app.js"></script>

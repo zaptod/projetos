@@ -18,6 +18,7 @@
 const VILA_RETRATO_MS = 1000;
 const VILA_ESTADO_MS = 15000;
 const VILA_FPS = 20;
+const VILA_PRATELEIRA = 150;   // px da prateleira + topo, que a vila não ocupa
 
 const Vila = {
   mundo: null, retrato: null, anterior: null, estado: null,
@@ -73,12 +74,20 @@ function vilaAjustar() {
   // A vila nova e larga e baixa (704x240). Cabendo pela largura, os
   // personagens ficariam do tamanho de uma formiga no celular; entao a
   // altura e que manda, e o dedo arrasta de lado.
-  const altura = Math.round(Math.min(largura * 0.58, Vila.mundo.tamanho[1]));
+  // Desde 28/09 a vila ocupa a tela inteira (a caixa dela é fixa): o
+  // canvas pega a altura da caixa, e a prateleira de objetos fica embaixo.
+  const caixa = canvas.parentElement ? canvas.parentElement.clientHeight : 0;
+  const altura = caixa > 0 ? caixa
+    : Math.round(Math.min(largura * 0.58, Vila.mundo.tamanho[1]));
   canvas.width = Math.round(largura * dpr);
   canvas.height = Math.round(altura * dpr);
   canvas.style.height = altura + "px";
   if (!Vila.ajustado) {
-    Vila.zoom = altura / Vila.mundo.tamanho[1];
+    // cabe em pé, sobrando a faixa da prateleira; teto de 3x para o
+    // aldeão não virar gigante no tablet
+    const livre = caixa > 0 ? altura - VILA_PRATELEIRA : altura;
+    Vila.zoom = Math.min(3, Math.max(livre / Vila.mundo.tamanho[1],
+                                     largura / Vila.mundo.tamanho[0]));
     Vila.panY = 0;
     // comeca na casa, que e o meio da vila
     const casa = Vila.mundo.portas.casa || [Vila.mundo.tamanho[0] / 2, 0];
@@ -261,7 +270,7 @@ function vilaSelecionar(nome) {
       (() => {
         const b = el("button", {class: "acao"}, "Ver no diário");
         b.addEventListener("click", () => {
-          diarioFabrica = nome; mostrar("diario");
+          diarioFabrica = nome; abrir("diario", b);
         });
         return b;
       })()));
@@ -299,8 +308,14 @@ function vilaLimitar() {
   const canvas = vilaCanvas();
   const largura = Vila.mundo.tamanho[0] * Vila.zoom;
   const altura = Vila.mundo.tamanho[1] * Vila.zoom;
-  Vila.panX = Math.max(Math.min(Vila.panX, largura - canvas.clientWidth), 0);
-  Vila.panY = Math.max(Math.min(Vila.panY, altura - canvas.clientHeight), 0);
+  // o mundo menor que a tela fica no meio (em pé, um pouco para cima,
+  // longe da prateleira), em vez de grudado no canto
+  Vila.panX = largura <= canvas.clientWidth
+    ? -Math.round((canvas.clientWidth - largura) / 2)
+    : Math.max(Math.min(Vila.panX, largura - canvas.clientWidth), 0);
+  Vila.panY = altura <= canvas.clientHeight
+    ? -Math.round((canvas.clientHeight - altura) * 0.4)
+    : Math.max(Math.min(Vila.panY, altura - canvas.clientHeight), 0);
 }
 
 function vilaLigarToque() {
