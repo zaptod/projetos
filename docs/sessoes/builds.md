@@ -205,8 +205,18 @@ métrica): não mexer antes.
     (`failed`): um diálogo de propaganda do Digen ("Upgrade",
     `pc-pop-916.webp`, `role=dialog`) cobre o composer e engole o clique —
     a mesma família da "parede do PicassoIA". O anexo da referência também não
-    entrou. Precisa: fechar esse diálogo no cliente do Digen (olhando a tela)
-    e depois `identity run generation_00085 --slot character_weapon`.
+    entrou. **Consertado em 28/09 (08:00)**, olhando a tela: a propaganda
+    aparece sozinha 10–15 s depois de a página carregar e fecha pelo X
+    (`button[data-slot="dialog-close"]`). `client.instalar_guarda` registra
+    um `add_locator_handler` do Playwright que fecha a parede antes de TODA
+    ação na página (inclusive os cliques de `escrever` e `referencias.anexar`
+    e as novas tentativas de um clique que já esperava), e há chamada
+    explícita a `tirar_parede_da_frente` antes de cada clique do fluxo e na
+    espera. Só o modal do shadcn (`data-slot="dialog-content"`): os popovers
+    de modelo/duração/anexo também são `role=dialog` e não podem ser
+    fechados. Provado no navegador de verdade com uma parede de mesma
+    estrutura: o clique cru passou em 0,2 s. A conta do Digen aparece como
+    **Free** (Meme 221, Pro Meme 0).
   - `generation_00077#character_weapon` pendente: não coube às 05:12 (18 min).
   Build não tem `capa.png` (só duelo tem); o que falta nas duas é o payoff.
 - **82 personagens e 95 armas** no banco vivo; só **9** dos personagens de

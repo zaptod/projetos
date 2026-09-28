@@ -74,6 +74,89 @@ def _e_alvo_fechado(exc: Exception) -> bool:
     return any(frase in texto for frase in _MORTE)
 
 
+def _parede(page):
+    """O modal que esta por cima da pagina, ou None."""
+    try:
+        alvo = page.locator(selectors.PAREDE)
+        if alvo.count() and alvo.first.is_visible():
+            return alvo.first
+    except Exception:
+        return None
+    return None
+
+
+def tirar_parede_da_frente(page, espera: float = 3.0) -> str:
+    """Fecha o modal que estiver na frente. Devolve o TEXTO dele ("" se nao
+    havia parede, ou se ela nao fechou — nesse caso avisa).
+
+    A mesma licao da parede do PicassoIA (09/09/2026): fechar so ao ABRIR a
+    pagina nao basta, porque a parede aparece DEPOIS — no Digen, 10-15 s
+    depois de carregar. Por isso isto roda antes de cada clique do fluxo (e o
+    guarda de `instalar_guarda` roda antes de TODA acao do Playwright).
+
+    O clique no X e `force`: o X esta DENTRO da parede, e sem `force` o
+    proprio guarda seria chamado de novo para a acao de fechar.
+    """
+    alvo = _parede(page)
+    if alvo is None:
+        return ""
+    try:
+        texto = " ".join((alvo.inner_text(timeout=2000) or "").split())
+    except Exception:
+        texto = ""
+    texto = texto[:160] or "(sem texto)"
+    for seletor in selectors.FECHAR_PAREDE:
+        try:
+            botao = alvo.locator(seletor)
+            if botao.count() and botao.first.is_visible():
+                botao.first.click(timeout=3000, force=True)
+                if _sumiu(page, espera):
+                    print(f"[digen] parede fechada pelo X: {texto}", flush=True)
+                    return texto
+        except Exception:
+            continue
+    try:
+        page.keyboard.press("Escape")
+        if _sumiu(page, espera):
+            print(f"[digen] parede fechada no ESC: {texto}", flush=True)
+            return texto
+    except Exception:
+        pass
+    print(f"[digen] ha uma parede na frente e ela NAO fecha: {texto}",
+          flush=True)
+    return ""
+
+
+def _sumiu(page, espera: float) -> bool:
+    fim = time.monotonic() + max(0.0, espera)
+    while True:
+        if _parede(page) is None:
+            return True
+        if time.monotonic() >= fim:
+            return False
+        time.sleep(0.3)
+
+
+def instalar_guarda(page) -> bool:
+    """Pede ao Playwright para fechar a parede antes de TODA acao na pagina.
+
+    `add_locator_handler` roda o fechamento sempre que a parede estiver
+    visivel antes de uma acao que confere se o alvo e clicavel — inclusive
+    nos cliques que moram fora deste arquivo (`browser.escrever`,
+    `referencias.anexar`) e nas NOVAS tentativas de um clique que ja estava
+    esperando. Nunca levanta: sem o metodo (driver antigo), ficam as
+    chamadas explicitas de `tirar_parede_da_frente`.
+    """
+    def guarda(_locator=None):
+        tirar_parede_da_frente(page)
+
+    try:
+        page.add_locator_handler(page.locator(selectors.PAREDE), guarda)
+        return True
+    except Exception:
+        return False
+
+
 class DigenClient:
     def __init__(self, ctx, page, ajustes: dict, rng: random.Random | None = None,
                  ao_descobrir_espaco=None):
@@ -90,6 +173,9 @@ class DigenClient:
         # dois, e o worker os grava no metadado do clipe.
         self.prompt_enviado: str | None = None
         self.enviado_em: datetime | None = None
+        # A parede de propaganda aparece sozinha depois que a pagina carrega:
+        # o guarda fecha antes de cada acao (ver `instalar_guarda`).
+        self.guarda_instalado = instalar_guarda(page)
         # Chamado assim que a URL do espaco aparece. O worker usa para gravar
         # na fila NA HORA: a navegacao para /en/space/<id> costuma acontecer
         # depois do envio, ja durante a espera, e sem isso um worker morto no
@@ -139,6 +225,7 @@ class DigenClient:
                                float(self.ajustes.get("hydration_timeout", 45)))
             pausa_humana(self.rng, 1.0, 2.0)
 
+        tirar_parede_da_frente(page)
         selectors.resolver(page, selectors.BOTAO_NOVO_ESPACO,
                            "o botao 'New Space'").click()
         pausa_humana(self.rng, 2.0, 3.5)
@@ -151,6 +238,7 @@ class DigenClient:
         campo = selectors.resolver(self.page, selectors.CAMPO_PROMPT,
                                    "o campo de prompt")
         if (campo.inner_text() or "").strip():
+            tirar_parede_da_frente(self.page)
             campo.click()
             self.page.keyboard.press("Control+A")
             self.page.keyboard.press("Delete")
@@ -481,6 +569,7 @@ class DigenClient:
             return []
         from . import referencias, selectors as sel
         prontos = [referencias.para_upload(Path(c)) for c in caminhos]
+        tirar_parede_da_frente(self.page)
         anexadas = referencias.anexar(self.page, prontos, sel, self.rng)
         if anexadas:
             print(f"[digen] {len(anexadas)} referencia(s) anexada(s): "
@@ -509,6 +598,7 @@ class DigenClient:
 
         campo = selectors.resolver(page, selectors.CAMPO_PROMPT,
                                    "o campo de prompt")
+        tirar_parede_da_frente(page)
         escrever(page, campo, prompt, self.rng)
 
         botao = selectors.resolver(page, selectors.BOTAO_GERAR,
@@ -535,6 +625,7 @@ class DigenClient:
         self._ajustar_aspecto(aspect)
         self._conferir_presets()
         pausa_humana(self.rng)
+        tirar_parede_da_frente(page)
         botao.click()
         self.prompt_enviado = prompt
         self.enviado_em = datetime.now(timezone.utc)
@@ -673,6 +764,9 @@ class DigenClient:
         while time.monotonic() < fim:
             self._checar_vivo()
             self._anotar_espaco()
+            # A parede pode aparecer no MEIO da espera (sao minutos): tirar
+            # aqui deixa o botao de download livre quando o video ficar pronto.
+            tirar_parede_da_frente(self.page)
             gerando = selectors.encontrar(self.page, selectors.GERANDO, timeout=1.0)
             if gerando is None:
                 # So procura o resultado quando o estado "gerando" sumiu: com o
@@ -823,6 +917,7 @@ class DigenClient:
         indice = int(alvo)
         dest.parent.mkdir(parents=True, exist_ok=True)
 
+        tirar_parede_da_frente(self.page)
         self._liberar_botao_de_download(indice)
         botao = selectors.botao_download(self.page, indice)
         if botao is not None:

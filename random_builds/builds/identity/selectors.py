@@ -28,6 +28,29 @@ URL_SPACES = f"{BASE_URL}/en/space"
 URL_CRIACAO = URL_SPACES
 URL_LOGIN = f"{BASE_URL}/login"
 
+# A PAREDE: o modal que o site poe por cima de tudo e que engole o clique.
+# Visto na tela em 28/09/2026 (07:55): propaganda "20% OFF Real Motion 3.5
+# Fast", `<img alt="Upgrade" src=".../pc-pop-916.webp">`, com overlay
+# `fixed inset-0 z-50` — ele aparece SOZINHO 10-15 s depois de a pagina
+# carregar, sem clique nosso. As 04:03 ele ficou na frente das tres
+# tentativas do payoff da generation_00085: "Locator.click: Timeout 30000ms
+# exceeded ... <img alt="Upgrade"> ... intercepts".
+#
+# SO o modal do shadcn (`data-slot="dialog-content"`). Os seletores de
+# modelo, duracao e o menu do "+" sao POPOVERS (`data-slot="popover-
+# content"`) e TAMBEM tem `role=dialog`: um seletor largo fecharia o menu no
+# meio da escolha e desfaria o preset. O cartao "Scan to download Digen App"
+# e o painel da conta tambem sao `role=dialog`, sem `data-slot`: nao casam.
+PAREDE = "[role='dialog'][data-slot='dialog-content']"
+
+# O X da parede, DENTRO dela. `data-slot="dialog-close"` e o botao do shadcn
+# (o X no canto, com `svg.lucide-x` e o texto "Close" so para leitor de tela).
+FECHAR_PAREDE = (
+    "button[data-slot='dialog-close']",
+    "button:has(svg.lucide-x)",
+    "button:has-text('Close')",
+)
+
 # Presenca de QUALQUER um destes = a sessao esta viva (estamos logados).
 SESSAO_VIVA = [
     ("css", '[aria-placeholder^="Describe your video"]'),
