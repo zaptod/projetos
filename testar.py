@@ -84,8 +84,13 @@ SUITES = (
     ("remoto (bot)", RAIZ,
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "remoto",
       "-t", ".", "-p", "test_*.py"]),
+    # Pelo NOME, e nao por `discover`: `vila/` e pacote de namespace (sem
+    # `__init__.py`), e o `discover` recusa ("not importable"). Arquivo de
+    # teste novo aqui entra nesta lista — o `test_editor` (a Oficina, 28/09)
+    # e o exemplo.
     ("vila (sprites)", RAIZ,
-     [PY, "-X", "utf8", "-m", "unittest", "vila.test_motor"]),
+     [PY, "-X", "utf8", "-m", "unittest", "vila.test_motor",
+      "vila.test_editor"]),
     # `discover` pelo mesmo motivo do remoto: `test_flutuante` (a janela
     # flutuante, 17/09/2026) nasceria invisivel com o modulo pelo nome.
     ("painel (novo)", RAIZ,

@@ -231,9 +231,18 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   escolhida (`mundo.py` → `vila.gerar_base.predio_procedural`, `vila.motor`) e a
   **Oficina** (`vila/editor.py`, pela página ou `python -m vila.editor`). Sobra
   do app: `remoto/vila_dados.py` define `_motor()` e **ninguém o chama**.
-- A **Oficina não usa o `estilo.py`**: tem cores literais próprias, é a última
-  tela fora do sistema visual. E são **duas artes da mesma Vila** para manter (o
-  mapa grande em pixel e a fofa): não é bug, é custo.
+- A **Oficina entrou no sistema visual** em 28/09: usa a cara da **VILA** do
+  `estilo.py` (o conteúdo dela é pixel art, e o `estilo` explica por que
+  essa moldura é quente e o acento é âmbar) pelo kit `painel.widgets`; o
+  acento ficou só na célula escolhida, no item selecionado e no único botão
+  primário (**Salvar tudo**); título de coluna é discreto. O tamanho sai da
+  tela (`editor.geometria`: 1330×680 na dele, com o rodapé acima da barra
+  do Windows — antes os 1330×700 fixos o punham embaixo dela), a largura
+  mínima é a do conteúdo, e o que cede na altura é a folha, a lista de
+  papéis (agora com barra) e o mapa. Se o Adrian preferir a cara sóbria
+  (roxa) das janelas de trabalho, é trocar `estilo.VILA` por
+  `estilo.OFICINA` numa linha. Continuam **duas artes da mesma Vila** para
+  manter (o mapa grande em pixel e a fofa): não é bug, é custo.
 
 ## 7. Como conferir sem quebrar nada
 
@@ -246,11 +255,14 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   `--gif` grava 5 s, `--medir-cpu SEG` mede a CPU. A `--prova` **não** passa pelo
   mutex: abre uma segunda janela de propósito, e é a forma segura de olhar sem
   mexer na do dono.
-- Testes desta parte (189): `painel/test_painel.py` (40),
+- Testes desta parte (195): `painel/test_painel.py` (40),
   `painel/test_flutuante.py` (92, com a caixa-preta e o WM_CLOSE de verdade),
   `painel/test_tarefa_da_vila.py` (12, o instalador e a guarda do `.cmd`
   rodada pelo `cmd`), `painel/test_vila_fofa.py` (28), `vila/test_motor.py`
-  (17).
+  (17) e `vila/test_editor.py` (6: sem cor literal, cabe na tela dele, nada
+  espremido nem desmapeado pelo `pack`). Os da `vila/` entram no `testar.py`
+  **pelo nome** (`vila/` é pacote de namespace e o `discover` recusa): teste
+  novo ali precisa entrar na lista.
 - `python -m painel.flutuante.tarefa` (sem bandeira) confere o `.cmd` e a
   tarefa sem escrever nada.
 
