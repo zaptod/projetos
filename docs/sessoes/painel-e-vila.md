@@ -229,8 +229,10 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   celular: a página `paginas/vila.py` (mapa grande em pixel, de
   `vila/config.json`), o fallback da flutuante quando a arte clássica está
   escolhida (`mundo.py` → `vila.gerar_base.predio_procedural`, `vila.motor`) e a
-  **Oficina** (`vila/editor.py`, pela página ou `python -m vila.editor`). Sobra
-  do app: `remoto/vila_dados.py` define `_motor()` e **ninguém o chama**.
+  **Oficina** (`vila/editor.py`, pela página ou `python -m vila.editor`). O app
+  do celular não usa mais nada da `vila/`: o `_motor()` morto de
+  `remoto/vila_dados.py` saiu em 28/09. Ainda sobra lá a constante `ESCALA = 2`,
+  que ninguém lê — o arquivo é do app, então fica para a sessão dele.
 - A **Oficina entrou no sistema visual** em 28/09: usa a cara da **VILA** do
   `estilo.py` (o conteúdo dela é pixel art, e o `estilo` explica por que
   essa moldura é quente e o acento é âmbar) pelo kit `painel.widgets`; o

@@ -32,11 +32,6 @@ SERVICOS = ("picasso", "digen", "dreamface", "chatgpt", "gemini", "deepseek",
 CANAIS = ("builds", "historias")
 
 
-def _motor():
-    from vila import motor
-    return motor
-
-
 def _atividade():
     from builds import atividade
     return atividade
