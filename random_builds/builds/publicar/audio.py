@@ -73,8 +73,15 @@ def _ffprobe(caminho: Path) -> dict:
         return {}
 
 
-def medir(caminho: Path):
+def medir(caminho: Path, *, fracao: bool = True):
     """O motivo quando o arquivo sai calado; "" com som; None se nao mediu.
+
+    `fracao=False` e a regua da LUTA: so a media (abaixo de -60 dB) e a faixa
+    ausente contam. A regra "calado em metade do tempo" foi medida em videos
+    FINAIS, com musica; no trecho de luta antes da mixagem so ha o efeito dos
+    golpes, e o silencio entre as trocas e normal. Medido em 28/09/2026: com
+    ela, tres duelos novos (00014, 00016, 00017) sairiam da fila por "calado
+    em 57-63%" com media de -19 a -21 dB — golpe de verdade, nao luta muda.
 
     `None` e a ferramenta que falhou ou que rodou sem medir nada: isso e "nao
     sei", e "nao sei" nao pode ser lembrado nem contado como "tem som".
@@ -110,9 +117,9 @@ def medir(caminho: Path):
         if len(inicios) > len(re.findall(r"silence_end:", texto)):
             # silencio que vai ate o fim do arquivo pode nao ganhar fechamento
             calado += max(0.0, duracao - float(inicios[-1]))
-        fracao = min(1.0, calado / duracao)
-        if fracao >= FRACAO_MUDA:
-            return (f"o video fica calado em {fracao:.0%} do tempo "
+        parte = min(1.0, calado / duracao)
+        if fracao and parte >= FRACAO_MUDA:
+            return (f"o video fica calado em {parte:.0%} do tempo "
                     f"({calado:.0f} de {duracao:.0f} s)")
     return ""
 
@@ -134,10 +141,11 @@ _LEMBRADO: dict = {}
 LEMBRADOS_NO_DISCO = 3000
 
 
-def _chave(caminho: Path) -> str:
+def _chave(caminho: Path, fracao: bool = True) -> str:
     info = caminho.stat()
+    regua = f"{FRACAO_MUDA}" if fracao else "so-media"
     return (f"{caminho.resolve()}|{info.st_size}|{info.st_mtime_ns}|"
-            f"{LIMIAR_MUDO_DB}|{FRACAO_MUDA}")
+            f"{LIMIAR_MUDO_DB}|{regua}")
 
 
 def _arquivo_lembrado() -> Path | None:
@@ -177,12 +185,14 @@ def _gravar_lembrado(arquivo: Path | None, chave: str, motivo: str) -> None:
         pass
 
 
-def medir_lembrado(caminho, *, medir=None):
+def medir_lembrado(caminho, *, medir=None, fracao: bool = True):
     """`medir`, lembrado por arquivo e criterio. Mesmas tres respostas."""
-    medir = medir or globals()["medir"]
+    if medir is None:
+        medida = globals()["medir"]
+        medir = lambda c: medida(c, fracao=fracao)            # noqa: E731
     caminho = Path(caminho)
     try:
-        chave = _chave(caminho)
+        chave = _chave(caminho, fracao)
     except OSError:
         return None
     if chave in _LEMBRADO:
@@ -221,8 +231,12 @@ def trechos_de_luta(video) -> list | None:
 
 
 def luta_muda(video, *, medir=None):
-    """So a luta: motivo, "" ou None (ver o topo do modulo)."""
-    medir = medir or medir_lembrado
+    """So a luta: motivo, "" ou None (ver o topo do modulo).
+
+    A regua e a da luta (`fracao=False`): muda e a luta sem som nenhum
+    (-91 dB, faixa ausente), e nao a luta com silencio entre os golpes.
+    """
+    medir = medir or (lambda t: medir_lembrado(t, fracao=False))
     trechos = trechos_de_luta(video)
     if not trechos:
         return ""

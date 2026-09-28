@@ -69,7 +69,7 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Espera de processamento e confirmação | `youtube_web.py`, `tiktok.py`; veredito em `desfecho.classificar` |
 | Texto que não entrou no campo (título, descrição, legenda) | `escrita.escrever` + `escrita.estado`, chamados por `youtube_web._escrever` e `tiktok._escrever_legenda`; foto da falha em `random_builds\outputs\_publicar\telas\` |
 | Contador de estoque = funil da escolha | `postar._builds_prontos` (usado por `proximo_build`, `pendentes_por_canal`, `estoque_por_formato`) |
-| Vídeo mudo: o arquivo inteiro **e cada trecho de luta** (`gameplay` do `edit_plan.json` → `_segments_<perfil>/seg_NNN.mp4`, antes da música) | `audio.veredito` (`LIMIAR_MUDO_DB=-60`, `FRACAO_MUDA=0.5`), usado pela fila e pelos contadores via `postar._audio_mudo`; medida lembrada por arquivo em `%LOCALAPPDATA%\neural-fights\audio_medido.json` |
+| Vídeo mudo: o arquivo inteiro **e cada trecho de luta** (`gameplay` do `edit_plan.json` → `_segments_<perfil>/seg_NNN.mp4`, antes da música) | `audio.veredito`: arquivo inteiro com `LIMIAR_MUDO_DB=-60` e `FRACAO_MUDA=0.5`; trecho de luta só pela média (-60 dB) e pela faixa ausente — silêncio entre golpes é normal. Usado pela fila e pelos contadores via `postar._audio_mudo`; medida lembrada por arquivo em `%LOCALAPPDATA%\neural-fights\audio_medido.json` |
 | Luta muda em **todo caminho** (grade, recuperação, reserva, `main.py publicar`, bot, app) | `audio.barrar_luta_muda`, chamado de dentro de `youtube.publicar_como_configurado` e `tiktok.publicar`, antes de abrir o navegador; marca `[audio]` na lista "a conferir" daquele destino. A fila (rodada de verdade) marca no YouTube e solta sozinha quando o som volta (`audio.revisar_marcas`) |
 | Imagem faltando / arquivo quebrado | `contos.publicar.qualidade.vistoriar_parte`; `v.pendencias` (builds) |
 | História sendo renderizada | trava `historias__render__<fonte>` |
@@ -153,7 +153,9 @@ diário.
   129 publicações desde 15/09 saíram com a luta calada, inclusive a
   `generation_00083:build:celular:B` das 00:45 (`seg_021` a -91 dB). A guarda
   de áudio media o arquivo *inteiro*, e a música cobria o buraco. → `audio.py`
-  mede também cada trecho `gameplay` antes da mixagem; a fila pula e marca
+  mede também cada trecho `gameplay` antes da mixagem, **só pela média**
+  (a regra "calado em metade do tempo" tiraria da fila os duelos 00014,
+  00016 e 00017, com golpes a -19/-21 dB e silêncio entre as trocas); a fila pula e marca
   `[audio]` na lista "a conferir" (só na rodada de verdade), e os dois
   publicadores barram antes de abrir o navegador — todo caminho passa por
   eles. Na fila de 28/09 (22 candidatos), 21 lutas entre -12,8 e -21 dB; só a

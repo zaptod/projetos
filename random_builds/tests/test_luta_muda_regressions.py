@@ -108,6 +108,27 @@ class LutaMudaTests(_Isolado):
         self.assertEqual("", audio.veredito(video))
         self.assertEqual("", _postar()._audio_mudo(video))
 
+    def test_luta_com_silencio_entre_os_golpes_passa(self):
+        """A regua da luta e so a media: o trecho antes da mixagem so tem o
+        som dos golpes, e o silencio entre as trocas e normal. Medido em
+        28/09/2026: com a regra "calado em metade do tempo", os duelos 00014,
+        00016 e 00017 (media de -19 a -21 dB) sairiam da fila como mudos."""
+        final = _mp4(self.pasta / "final_celular.mp4", "musica")
+        (self.pasta / "edit_plan.json").write_text(json.dumps({"events": [
+            {"type": "gameplay", "start": 0, "duration": 4}]}),
+            encoding="utf-8")
+        trecho = self.pasta / "_segments_celular" / "seg_000.mp4"
+        trecho.parent.mkdir(parents=True, exist_ok=True)
+        # 1 s de golpe e 3 s de silencio: 75% calado, media bem acima de -60.
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                        "color=c=black:s=64x64:d=4", "-f", "lavfi", "-i",
+                        "sine=frequency=440:duration=4", "-af",
+                        "volume=enable='gt(t,1)':volume=0", "-t", "4",
+                        "-shortest", str(trecho)], check=True)
+        self.assertIn("calado", audio.medir(trecho),
+                      "a regra do video final acusaria este trecho")
+        self.assertEqual("", audio.luta_muda(_Video(final)))
+
     def test_sem_plano_nao_ha_luta_a_medir(self):
         final = _mp4(self.pasta / "final_celular.mp4", "musica")
         self.assertEqual("", audio.luta_muda(_Video(final)))
