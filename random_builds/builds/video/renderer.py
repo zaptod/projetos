@@ -36,7 +36,19 @@ def _entrada_de_som(som: Path | None, taxa: int) -> list[str]:
         return ["-i", str(som)]
     return ["-f", "lavfi", "-i", f"anullsrc=r={taxa}:cl=stereo"]
 
+
+def _saiu_sem_audio(resultado, destino: Path) -> bool:
+    """O ffmpeg disse que deu certo e o arquivo nao tem faixa de audio?
+
+    So True com certeza: arquivo ilegivel (None) e assunto do `_concat`, que ja
+    confere segmento quebrado antes de juntar.
+    """
+    if getattr(resultado, "returncode", 1) != 0:
+        return False
+    return medidas.tem_audio(destino) is False
+
 from . import medidas  # noqa: E402  (depois de NO_WINDOW)
+from . import som_da_luta  # noqa: E402
 
 
 class VideoRenderer:
@@ -309,7 +321,11 @@ class VideoRenderer:
         # O clipe do payoff vem com o audio que o site gerou, e ele briga com
         # a trilha do video. Silenciar aqui, e nao no fim, evita ter que baixar
         # o volume da musica so por causa de 8 s.
-        mudo = bool(event.get("sem_som"))
+        # A LUTA tambem troca o audio do clipe pelo som do evento (Onda 16A):
+        # e o mesmo som do caminho composto (o real do jogo, ou o sintetizado
+        # na luta antiga), em vez do que o clipe trouxer — a trilha muda do
+        # gravador antigo ou faixa nenhuma, que era o `-an` do corte.
+        mudo = bool(event.get("sem_som")) or event.get("type") == "gameplay"
         # Clipe silenciado nao precisa virar SILENCIO. Medido antes desta
         # onda: no video de build, 4 segmentos (reacao, luta, payoff e CTA)
         # estavam em -70 LUFS — 25,9 s dos 61,8 s dependiam so da musica.
@@ -365,12 +381,24 @@ class VideoRenderer:
                "-t", str(duration), *filtro, *mapas,
                "-af", f"aresample={sr},apad", "-shortest", *saida]
         result = subprocess.run(cmd, capture_output=True, text=True, creationflags=NO_WINDOW)
-        if result.returncode != 0:
+        # Codigo 0 NAO prova que o segmento tem som (Onda 16A, 28/09/2026): um
+        # clipe sem faixa de audio sai daqui com 0 e sem audio nenhum, e a
+        # segunda tentativa — a que poe a trilha — nunca rodava.
+        sem_audio = _saiu_sem_audio(result, out_path)
+        if result.returncode != 0 or sem_audio:
+            if sem_audio:
+                print(f"[render] {out_path.name} saiu sem faixa de audio; "
+                      "refazendo com a trilha do evento", flush=True)
             # clipe sem audio? tenta com trilha silenciosa
             cmd_noaudio = ["ffmpeg", "-y", "-loglevel", "error", *seek,
                            *entrada_muda, "-t", str(duration),
                            *filtro_mudo, *mapas_mudo, "-shortest", *saida]
             result = subprocess.run(cmd_noaudio, capture_output=True, text=True, creationflags=NO_WINDOW)
+            if _saiu_sem_audio(result, out_path):
+                raise RuntimeError(
+                    f"segmento {out_path.name} saiu SEM faixa de audio mesmo com "
+                    f"a trilha mapeada ({event.get('type')}): o concat perderia "
+                    "o som do video inteiro")
             if result.returncode != 0:
                 # nunca derruba o render inteiro por um arquivo ruim
                 event["asset"]["synthetic"] = True
@@ -1268,6 +1296,19 @@ class VideoRenderer:
         """
         taxa = int(self.audio_cfg.get("sample_rate", 44100))
         volume = float(self.audio_cfg.get("sfx_volume", 0.9))
+        if event.get("type") == "gameplay":
+            # Onda 16A: a luta soa com o que o JOGO tocou (sons anotados pelo
+            # gravador + os wav reais). Luta gravada antes do anotador nao
+            # tem a lista e segue no sintetizado abaixo — e um defeito no som
+            # real tambem: o log diz, e o video nunca sai mudo por causa dele.
+            try:
+                real = som_da_luta.gravar(event, destino, taxa)
+            except Exception as exc:                           # noqa: BLE001
+                print(f"[som] som real da luta falhou ({type(exc).__name__}: "
+                      f"{exc}); vai o sintetizado", flush=True)
+                real = None
+            if real is not None:
+                return real
         camadas = trilha.sfx_do_evento(event, taxa)
         if event.get("type") == "roulette":
             return self._audio_da_roleta(event, destino, camadas)

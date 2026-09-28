@@ -158,6 +158,11 @@ def evento_gameplay(rng: random.Random, luta: dict, config: dict,
                                  config.get("fight_callouts"), captions)
     if callouts:
         evento["callouts"] = callouts
+    # Onda 16A: como a luta SOA (som real do jogo, reforco sintetizado). Vai
+    # no evento, como o HUD: o plano gravado diz com que som foi montado.
+    som = config.get("som_da_luta")
+    if isinstance(som, dict):
+        evento["som_da_luta"] = dict(som)
     return evento
 
 

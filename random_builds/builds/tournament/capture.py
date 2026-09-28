@@ -28,7 +28,7 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 RAIZ_PROJETOS = Path(__file__).resolve().parents[3]
 
 
-def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path, cenario: str,
+def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
                portrait: bool = False, camera_modo: str | None = None,
                fps: int = 30, max_duracao: float = 120.0,
                timeout: float = 600.0, resolucao: tuple[int, int] | None = None,
@@ -40,13 +40,16 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path, cenario: str,
     `resolucao` grava em tamanho nativo (1080x1920 para o celular) — sem o
     upscale 2x que borrava o gameplay. `sem_hud` tira as barras do jogo: o
     HUD do video e desenhado pelo renderer a partir da `serie_hp`.
+
+    `saida=None` roda e desenha a MESMA luta sem codificar mp4 (Onda 16A): e
+    assim que se anota o som de uma luta cujo clipe ja existe.
     """
-    saida = Path(saida)
     comando = [
         sys.executable, "-X", "utf8",
         "-m", "neural_fights.recording.fight_recorder",
         "--p1", p1, "--p2", p2, "--seed", str(seed),
-        "--saida", str(saida), "--cenario", cenario,
+        *(["--sem-video"] if saida is None else ["--saida", str(Path(saida))]),
+        "--cenario", cenario,
         "--fps", str(fps), "--max-duracao", str(max_duracao),
     ]
     if resolucao:

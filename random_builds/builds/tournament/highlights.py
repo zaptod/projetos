@@ -17,8 +17,12 @@ Dois recortes, duas doutrinas:
   terminando no KO**, para quando so cabem ~10 s.
 
 Cortar a gravacao muda o tempo: `remapear_gravacao` leva a serie de HP, os
-golpes e os eventos narrativos para o relogio do CLIPE, que e o que o
-renderer ve.
+golpes, os eventos narrativos e os SONS para o relogio do CLIPE, que e o que
+o renderer ve.
+
+Onda 16A: o bruto sai do gravador com o som real do jogo na trilha, entao o
+corte leva o audio junto (era `-an`, e ate 28/09/2026 nenhum som do jogo
+tinha atravessado esta etapa).
 """
 from __future__ import annotations
 
@@ -153,12 +157,22 @@ def remapear_gravacao(gravacao: dict, trechos: list[tuple[float, float]]) -> dic
         t = _mapa(evento.get("t", 0.0))
         if t is not None:
             narrativos.append({**evento, "t": t})
+    # Onda 16A: os sons que o jogo pediu (fight_recorder -> AnotadorDeAudio),
+    # no mesmo relogio dos golpes. Som que caiu num corte sai com o corte.
+    sons = []
+    for som in gravacao.get("sons") or []:
+        if not isinstance(som, dict):
+            continue
+        t = _mapa(som.get("t", 0.0))
+        if t is not None:
+            sons.append({**som, "t": t})
     ko = gravacao.get("ko_em_video")
     return {
         "serie_hp": serie,
         "serie_plano": planos,
         "eventos_dano": golpes,
         "eventos_narrativos": narrativos,
+        "sons": sons,
         "ko_em_video": _mapa(ko) if ko is not None else None,
         "duracao": duracao_total(trechos),
     }
@@ -244,28 +258,39 @@ def extrair(origem: Path, destino: Path, trechos: list[tuple[float, float]],
 
     partes = []
     for indice, (inicio, duracao) in enumerate(trechos):
-        parte = destino.with_name(f"{destino.stem}_p{indice}.mp4")
+        # O audio vai junto (Onda 16A): era `-an`, e o som real do jogo que o
+        # gravador poe no bruto morria aqui. A parte e .mov com audio PCM, e
+        # nao mp4/aac: cada parte aac traz o atraso do codificador e o passo
+        # de 1024 amostras, e a emenda acumula — medido em 28/09/2026, um
+        # estalo em 4,5 s da gravacao caia 67 ms atrasado depois de duas
+        # partes. PCM emenda sem folga; o aac e codificado uma vez, no final.
+        # (.mov e nao .mkv: o Matroska arredonda o tempo do quadro ao ms e o
+        # clipe sairia com quadros de 33 e 34 ms alternados.)
+        parte = destino.with_name(f"{destino.stem}_p{indice}.mov")
         comando = ["ffmpeg", "-y", "-loglevel", "error",
                    "-ss", str(inicio), "-i", str(origem), "-t", str(duracao),
                    "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
-                   "-pix_fmt", "yuv420p", "-an", str(parte)]
+                   "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le",
+                   "-ar", "44100", "-ac", "2", str(parte)]
         if subprocess.run(comando, capture_output=True, creationflags=NO_WINDOW).returncode != 0:
             continue
         partes.append(parte)
 
     if not partes:
         return 0.0
-    if len(partes) == 1:
-        partes[0].replace(destino)
-    else:
-        lista = destino.with_suffix(".txt")
-        lista.write_text("".join(f"file '{p.as_posix()}'\n" for p in partes),
-                         encoding="utf-8")
-        comando = ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat",
-                   "-safe", "0", "-i", str(lista), "-c", "copy", str(destino)]
-        if subprocess.run(comando, capture_output=True, creationflags=NO_WINDOW).returncode != 0:
-            partes[0].replace(destino)
-        for parte in partes:
-            parte.unlink(missing_ok=True)
-        lista.unlink(missing_ok=True)
+    lista = destino.with_suffix(".txt")
+    lista.write_text("".join(f"file '{p.as_posix()}'\n" for p in partes),
+                     encoding="utf-8")
+    final_aac = ["-c:v", "copy", "-c:a", "aac", "-b:a", "160k", str(destino)]
+    comando = ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat",
+               "-safe", "0", "-i", str(lista), *final_aac]
+    if subprocess.run(comando, capture_output=True, creationflags=NO_WINDOW).returncode != 0:
+        # A emenda falhou: fica a primeira parte, REMUXADA para mp4 (nunca um
+        # mov com nome de mp4, que era o que o `replace` antigo entregaria).
+        comando = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(partes[0]),
+                   *final_aac]
+        subprocess.run(comando, capture_output=True, creationflags=NO_WINDOW)
+    for parte in partes:
+        parte.unlink(missing_ok=True)
+    lista.unlink(missing_ok=True)
     return round(sum(d for _, d in trechos), 2)

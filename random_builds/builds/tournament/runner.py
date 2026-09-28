@@ -324,6 +324,10 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
         "serie_plano": remap.get("serie_plano") or [],
         "eventos_narrativos": remap["eventos_narrativos"],
         "eventos_dano": remap["eventos_dano"],
+        # Onda 16A: o som que o jogo pediu, no relogio do clipe. E dele que o
+        # renderer mistura a luta com os wav reais (e a secao `sons` da
+        # timeline da 16C). Luta gravada antes disto nao tem a chave.
+        "sons": remap.get("sons") or [],
         "ko_em_clipe": remap["ko_em_video"],
         "duracao_clipe": remap["duracao"],
         "duracao_gravacao": referencia.get("duracao_video"),
@@ -438,7 +442,7 @@ def _evento_base(p1: str, p2: str, bruto: dict, fichas: dict, gerados: set,
         "cenario": cenario,
     }
     for chave in ("clipes", "serie_hp", "serie_plano", "eventos_narrativos",
-                  "eventos_dano", "ko_em_clipe", "duracao_clipe", "camera",
+                  "eventos_dano", "sons", "ko_em_clipe", "duracao_clipe", "camera",
                   "metricas_video"):
         if bruto.get(chave) is not None:
             evento[chave] = bruto[chave]

@@ -13,6 +13,8 @@ Uso:
   python main.py trilha                # trilha sintetizada em assets/music (gratis)
   python main.py metricas --atualizar  # retencao dos publicados x timeline (YouTube API)
   python main.py fluxo                 # onde cada build esta e o proximo passo
+  python main.py som-da-luta --listar  # estoque com a luta muda + comando de re-render
+  python main.py som-da-luta duelo_00012   # som real do jogo, sem regravar a luta
   python main.py publicar              # lista os videos prontos, com texto pronto
   python main.py publicar <id> --exportar   # copia com nome legivel + .txt
   python main.py publicar <id> --youtube    # sobe pela API (privado por padrao)
@@ -534,6 +536,31 @@ def main() -> None:
                      help="regrava a trilha sintetizada mesmo que ja exista")
     tri.add_argument("--seed", type=int, default=7, help="variacao da trilha")
 
+    som = sub.add_parser(
+        "som-da-luta",
+        help="Onda 16A: poe o som REAL do jogo numa luta ja gravada (sem "
+             "regravar o video) e re-renderiza; --listar mostra o estoque "
+             "com a luta muda")
+    som.add_argument("alvos", nargs="*", metavar="ID",
+                     help="duelo_00012, generation_00083 (estreia + build), "
+                          "fight_00004, tournament_00006")
+    som.add_argument("--listar", action="store_true",
+                     help="estoque NAO publicado com a luta muda, o clipe cru "
+                          "de cada um e o comando de re-render; nao muda nada")
+    som.add_argument("--so-anotar", action="store_true",
+                     help="grava `sons` no fight.json e no plano, sem renderizar")
+    som.add_argument("--destino", default=None, metavar="PASTA",
+                     help="trabalha numa COPIA nesta pasta; o original nao muda "
+                          "(duelo, luta e torneio)")
+    som.add_argument("--perfis", default=None, metavar="LISTA",
+                     help="com --destino: celular,normal (padrao: os do render.json)")
+    som.add_argument("--forcar", action="store_true",
+                     help="anota de novo quem ja tem `sons`")
+    som.add_argument("--preview", action="store_true", help="render rapido")
+    som.add_argument("--agora", action="store_true",
+                     help="ignora a guarda do relogio (nada comeca se nao "
+                          "termina antes de :25)")
+
     met = sub.add_parser("metricas",
                          help="retencao e numeros dos videos publicados no YouTube "
                               "(API gratuita), cruzados com a timeline de cada um")
@@ -639,6 +666,20 @@ def main() -> None:
     if args.command == "cobertura":
         _cobertura(args)
         return
+    if args.command == "som-da-luta":
+        from pathlib import Path
+
+        from builds.pipeline import sonorizar
+        if args.listar:
+            raise SystemExit(sonorizar.listar())
+        if not args.alvos:
+            parser.error("som-da-luta: diga o(s) id(s), ou use --listar")
+        perfis = tuple(p.strip() for p in args.perfis.split(",")) if args.perfis else None
+        raise SystemExit(sonorizar.rodar(
+            controller, args.alvos,
+            destino=Path(args.destino) if args.destino else None,
+            perfis=perfis, renderizar=not args.so_anotar, forcar=args.forcar,
+            preview=args.preview, agora=args.agora))
     if args.command == "publicar":
         raise SystemExit(_publicar(args))
     if args.command == "fluxo":

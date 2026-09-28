@@ -299,6 +299,12 @@
         "camera": "DIRETOR",
         "sem_hud": true
     },
+    "_comment_som_da_luta": "Onda 16A (28/09/2026): a luta entra com o SOM REAL do jogo. O gravador anota cada som que o jogo tocaria (chave, instante, volume, pitch) e o renderer mistura com os arquivos que o jogo usa: %LOCALAPPDATA%/neural-fights/sounds (os wav do Adrian) antes do pacote, pelo sound_config.json. `real` liga isso (luta gravada antes de 28/09 nao tem a lista e continua no sintetizado ate ser re-anotada: main.py som-da-luta). `sintetizado_de_reforco` soma o som sintetizado antigo (hit/grave por golpe, riser no KO) por baixo do real: DESLIGADO, porque era ele que repetia 25 vezes o mesmo hit por duelo. `alvo_db` e a energia dos momentos ativos da luta (dBFS, janelas de 50 ms) antes da mixagem final: -13 poe o trecho de luta em ~-18 LUFS, o nivel em que o sintetizado estava (medido em duelo_00016).",
+    "som_da_luta": {
+        "real": true,
+        "sintetizado_de_reforco": false,
+        "alvo_db": -13.0
+    },
     "_comment_callouts": "Legendas sincronizadas com o motor: os eventos narrativos que a gravacao coleta (tells da Onda 8, combos, viradas, KO) viram texto grande por cima do gameplay. Orcamento: no maximo por_10s callouts a cada 10 s, gap_min entre dois, e prioridade decide quem fica quando disputam o mesmo instante.",
     "fight_callouts": {
         "duracao": 0.9,

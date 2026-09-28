@@ -189,19 +189,31 @@ class AudioManager:
         
         # Carrega configuração de sons
         self.sound_config = self._load_sound_config()
-        
+
         # Inicializa mixer do pygame
+        if not self._iniciar_mixer():
+            self.enabled = False
+            return
+
+        # Carrega/gera sons
+        self._setup_sounds()
+
+    def _iniciar_mixer(self) -> bool:
+        """Abre o mixer do pygame; False quando nao ha audio nesta maquina.
+
+        Separado do ``__init__`` para o gravador de video (Onda 16A): o
+        ``AnotadorDeAudio`` herda TODA a decisao de qual som toca, com que
+        volume e de qual arquivo, e so troca esta ponta (e a de carregar o
+        arquivo) para anotar em vez de tocar.
+        """
         try:
             pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
             pygame.mixer.set_num_channels(32)  # 32 canais simultâneos
         except pygame.error as exc:
             logger.warning("Sistema de audio indisponivel: %s", exc)
-            self.enabled = False
-            return
-        
-        # Carrega/gera sons
-        self._setup_sounds()
-    
+            return False
+        return True
+
     def _load_sound_config(self) -> dict:
         """Carrega configuração de sons personalizada."""
         try:

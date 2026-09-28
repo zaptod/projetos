@@ -49,6 +49,30 @@ def intacto(caminho) -> bool:
     return duracao(caminho) is not None
 
 
+def tem_audio(caminho) -> bool | None:
+    """O arquivo tem faixa de audio? None se o ffprobe nao conseguiu ler.
+
+    Existe pelo mesmo motivo do resto deste modulo (Onda 16A, 28/09/2026): o
+    transcode de um clipe SEM faixa de audio sai com codigo 0 e sem audio
+    nenhum — e a segunda tentativa, a que poe a trilha, nunca rodava.
+    """
+    caminho = Path(caminho)
+    if not caminho.is_file() or caminho.stat().st_size == 0:
+        return None
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=codec_type", "-of", "csv=p=0",
+             str(caminho)],
+            capture_output=True, text=True, creationflags=NO_WINDOW,
+            timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return "audio" in (r.stdout or "")
+
+
 def quebrados(caminhos) -> list:
     """Os arquivos que o ffprobe nao consegue ler (na ordem recebida)."""
     return [Path(c) for c in caminhos if duracao(c) is None]

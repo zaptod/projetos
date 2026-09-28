@@ -30,6 +30,15 @@ a luta como elemento dominante, tudo em tempo de VIDEO:
                           virar legenda sincronizada;
 - ``metricas_video``      quanto da luta cabe na tela (Onda 9: alvos V7).
 
+Onda 16A (o som real do jogo)
+-----------------------------
+O driver de audio continua ``dummy``, mas o ``AudioManager`` da partida e um
+``AnotadorDeAudio`` (``effects/audio_anotador.py``): cada som que o jogo
+tocaria vira uma linha de ``sons`` (instante no relogio do video, chave,
+volume, pitch). A mesma lista e misturada com os wav reais
+(``effects/mixagem.py``) e entra no mp4 no lugar da trilha ``anullsrc`` — o
+bruto ja sai com o som da luta. A luta nao muda com isso (ver o anotador).
+
 Uso:
     python -m neural_fights.recording.fight_recorder \\
         --p1 "Nome" --p2 "Outro" --seed 7 --saida luta.mp4 \\
@@ -375,6 +384,44 @@ def _abrir_ffmpeg(saida: Path, largura: int, altura: int, fps: int,
     return subprocess.Popen(comando, stdin=subprocess.PIPE, creationflags=NO_WINDOW)
 
 
+def _embutir_som(saida: Path, sons: list, duracao: float) -> dict:
+    """Troca a trilha silenciosa do mp4 pelo som anotado da luta.
+
+    Nunca derruba a gravacao: sem numpy, sem som anotado ou com o ffmpeg
+    falhando, o mp4 fica como estava (com ``anullsrc``) e a resposta diz
+    ``som_no_video: False`` com o motivo. Quem renderiza continua tendo a
+    lista ``sons`` para misturar na hora.
+    """
+    wav = saida.with_name(saida.stem + ".som.wav")
+    try:
+        from neural_fights.effects import mixagem
+        if not mixagem.disponivel():
+            return {"som_no_video": False, "erro_som": "numpy ausente"}
+        if not sons:
+            return {"som_no_video": False, "erro_som": "a luta nao pediu som nenhum"}
+        relatorio = mixagem.trilha_da_luta(sons, duracao, wav)
+        if relatorio is None:
+            return {"som_no_video": False, "erro_som": "nenhum som tinha arquivo"}
+        temporario = saida.with_name(saida.stem + ".com_som" + saida.suffix)
+        comando = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(saida),
+                   "-i", str(wav), "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+                   "-c:a", "aac", "-b:a", "160k", "-shortest", str(temporario)]
+        proc = subprocess.run(comando, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace",
+                              creationflags=NO_WINDOW)
+        if proc.returncode != 0 or not temporario.is_file():
+            temporario.unlink(missing_ok=True)
+            return {"som_no_video": False,
+                    "erro_som": (proc.stderr or "ffmpeg falhou")[-300:]}
+        temporario.replace(saida)
+        return {"som_no_video": True,
+                "sons_distintos": len(relatorio.get("arquivos") or [])}
+    except Exception as erro:  # o video sem som ainda e um video
+        return {"som_no_video": False, "erro_som": f"{type(erro).__name__}: {erro}"}
+    finally:
+        wav.unlink(missing_ok=True)
+
+
 def parse_resolucao(valor) -> tuple[int, int] | None:
     """"1080x1920" | [1080, 1920] -> (1080, 1920); None se invalido."""
     if not valor:
@@ -412,6 +459,8 @@ def gravar_luta(
     nomes_exibicao: dict | None = None,
     resolucao: tuple[int, int] | list[int] | str | None = None,
     roster_provider=None,
+    anotar_som: bool = True,
+    som_no_video: bool = True,
 ) -> dict:
     """Roda a luta desenhando cada frame e devolve o resultado + timestamps.
 
@@ -420,11 +469,16 @@ def gravar_luta(
 
     ``saida=None`` desenha tudo e mede tudo, mas nao codifica video — e o
     modo que o harness de qualidade usa para medir a camera (alvos V7) sem
-    pagar o ffmpeg.
+    pagar o ffmpeg, e o que re-anota o som de uma luta ja gravada.
+
+    ``anotar_som`` (Onda 16A) poe o ``AnotadorDeAudio`` no lugar do
+    ``AudioManager`` e devolve ``sons``; ``som_no_video`` mistura essa lista
+    com os wav reais e troca a trilha muda do mp4 por ela.
     """
     # Import tardio: o Simulador puxa pygame, e o driver precisa ja estar
     # escolhido (feito no topo do modulo).
     from neural_fights.simulation.simulacao import Simulador
+    from neural_fights.effects.audio_anotador import VERSAO_SONS, AnotadorDeAudio
 
     saida = Path(saida) if saida is not None else None
     resolucao = parse_resolucao(resolucao)
@@ -461,6 +515,11 @@ def gravar_luta(
     extras = {}
     if roster_provider is not None:
         extras["roster_provider"] = roster_provider
+    # A seed da luta semeia o PITCH dos sons (Random proprio do anotador): a
+    # mesma luta gravada de novo sai com o mesmo som.
+    anotador = AnotadorDeAudio(seed=seed) if anotar_som else None
+    if anotador is not None:
+        extras["audio"] = anotador
     sim = Simulador(match_config=match_config, headless=False, seed=seed, **extras)
     sonda = SondaDeDano()
     narrativa = SondaNarrativa()
@@ -510,6 +569,10 @@ def gravar_luta(
             t_video = capturados / fps_saida
             if t_video >= max_duracao:
                 break
+            if anotador is not None:
+                # O som pedido neste passo de jogo aparece no quadro que o
+                # captura: o mesmo relogio de `eventos_dano`.
+                anotador.t_video = t_video
 
             pygame.event.pump()
             # avancar_relogio aplica o time_scale (simulacao.py:5513): durante
@@ -586,6 +649,20 @@ def gravar_luta(
             "eventos_narrativos": narrativa.eventos,
             "metricas_video": camera.resumo(duracao_video),
         }
+        if anotador is not None:
+            resultado["sons"] = list(anotador.sons)
+            resultado["versao_sons"] = VERSAO_SONS
+        if ffmpeg is not None:
+            # Fecha o video ANTES de trocar a trilha: o mp4 so existe inteiro
+            # depois que o ffmpeg termina.
+            processo, ffmpeg = ffmpeg, None
+            try:
+                processo.stdin.close()
+            except (OSError, ValueError):
+                pass
+            processo.wait()
+            if anotador is not None and som_no_video:
+                resultado.update(_embutir_som(saida, resultado["sons"], duracao_video))
         return resultado
     finally:
         if ffmpeg is not None:
@@ -602,7 +679,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Grava uma luta do Neural Fights em mp4, sem abrir janela")
     parser.add_argument("--p1", required=True)
     parser.add_argument("--p2", required=True)
-    parser.add_argument("--saida", required=True, help="arquivo .mp4 de saida")
+    parser.add_argument("--saida", default=None,
+                        help="arquivo .mp4 de saida (obrigatorio sem --sem-video)")
+    parser.add_argument("--sem-video", action="store_true",
+                        help="roda e desenha a luta sem codificar mp4: devolve "
+                             "o resultado, os eventos e os sons anotados (e "
+                             "assim que se anota o som de uma luta ja gravada)")
+    parser.add_argument("--sem-som", action="store_true",
+                        help="nao anota o som (o AudioManager de sempre) e "
+                             "deixa a trilha muda no mp4")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--cenario", default="Arena Pequena")
     parser.add_argument("--portrait", action="store_true",
@@ -635,16 +720,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.sem_video and not args.saida:
+        parser.error("--saida e obrigatorio (ou use --sem-video)")
     try:
         resultado = gravar_luta(
-            p1=args.p1, p2=args.p2, saida=args.saida, seed=args.seed,
+            p1=args.p1, p2=args.p2,
+            saida=None if args.sem_video else args.saida, seed=args.seed,
             cenario=args.cenario, portrait=args.portrait, fps_saida=args.fps,
             max_duracao=args.max_duracao, hud=not args.sem_hud,
             crf=args.crf, preset=args.preset, camera_modo=args.camera,
             camera_largura_min_m=args.camera_largura_min,
             camera_espera_zoom_in=args.camera_espera_zoom,
             resolucao=args.resolucao,
+            anotar_som=not args.sem_som,
         )
     except Exception as erro:  # o chamador precisa do motivo, nao de um traceback
         resultado = {"sucesso": False, "erro": f"{type(erro).__name__}: {erro}",

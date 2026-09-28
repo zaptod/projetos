@@ -46,6 +46,11 @@ python main.py generate-video --rerender generation_00061 --refazer-edicao
 python main.py fight --p1 "Kael" --p2 "Lyra" --melhor-de 3
 python main.py tournament --fonte misto --participantes 8
 
+# SOM REAL DA LUTA em vídeo já gravado (Onda 16A, §7) — sem regravar a luta
+python main.py som-da-luta --listar                  # estoque com a luta muda + comando
+python main.py som-da-luta duelo_00014 generation_00029   # anota e re-renderiza NO LUGAR
+python main.py som-da-luta E:\projetos\random_builds\outputs\duelo_00014 --destino outputs\_ouvir\teste --perfis celular   # numa cópia
+
 # GERAÇÃO NOTURNA — o que as tarefas NeuralFights_gerar_01..05 (HH:02) chamam
 python main.py noite --listar        # tarefas + duelos que a grade escolheria (e o teto)
 python main.py noite --ensaio        # faz todas as conferências e diz o que faria; não gera
@@ -168,6 +173,13 @@ métrica): não mexer antes.
   nota, mesmo gancho B. Título novo ali poria o mesmo vídeo no ar de novo.
   Conferido com `postar.py --ver --so builds`: "25 fora por título" virou 7,
   gordura de builds 0 → 2 dias.
+- **A luta sem o som do jogo** (28/09). A guarda media o arquivo inteiro, e
+  a música esconde uma luta calada. A causa era de render: o gravador
+  escrevia `anullsrc`, o corte de tédio aplicava `-an`, e o som do jogo nunca
+  entrou num mp4; desde 02/09 o que entrava era o sintetizado
+  (`trilha.sfx_da_luta` — no `duelo_00015`, 25 vezes o mesmo hit e 14 o mesmo
+  grave). A publicação passou a medir cada trecho de luta; a origem foi
+  consertada na 16A (§7).
 
 ## 5. Estado de hoje (28/09/2026, madrugada)
 
@@ -218,6 +230,7 @@ python main.py metricas                 # sem --atualizar: mostra o último dado
 python main.py arena ranking            # cartel dos personagens
 python main.py cobertura --apenas-faltando   # o que o banco tem e o vídeo não sabe descrever
 python main.py noite --listar           # tarefas de geração + duelos que a grade escolheria
+python main.py som-da-luta --listar     # estoque não publicado com a luta muda (§7); não muda nada
 
 cd E:\projetos
 python ferramentas/postar.py --ver --so builds   # diz o que postaria e SAI
@@ -235,6 +248,91 @@ a pendência é a única coisa que segurou a estreia muda. Não apagar pasta de
 `neural_fights/data/personagens.json` esperando mexer no banco vivo (é o
 snapshot do pacote). Não refazer o banco: foi isso que matou agosto. E evitar
 gerar vídeo entre :25 e :55, que é a janela da grade.
+
+## 7. O som da luta (Onda 16A, 28/09/2026)
+
+Decisão do Adrian (28/09): o visual atual continua publicando, mas já com o
+som de verdade do jogo. Até aqui o som do jogo nunca tinha entrado num mp4
+(§4, "Vídeo mudo").
+
+**Como é agora.**
+- O gravador põe um `AnotadorDeAudio`
+  (`neural_fights/effects/audio_anotador.py`) no lugar do `AudioManager`: ele
+  herda toda a decisão de som do jogo (qual som, variante do grupo, volume por
+  categoria e por distância) e anota em vez de tocar. A lista `sons` (formato
+  em `docs/palco/sons.md`) atravessa o corte de tédio (`remapear_gravacao`) e
+  fica em `fight.json` → `luta.sons`, no relógio do clipe.
+- O render mistura a lista com os arquivos que o jogo usa
+  (`neural_fights/effects/mixagem.py`: `%LOCALAPPDATA%\neural-fights\sounds\`
+  antes do pacote, pelo `sound_config.json` e pelos fallbacks do jogo), com o
+  pitch anotado, nível por trecho e limitador. O bruto da gravação também sai
+  com esse som no lugar do `anullsrc`, e o corte leva o áudio junto (partes
+  em PCM: com aac, um estalo caía 67 ms atrasado já na 2ª parte).
+- A luta não muda: a variante do grupo continua sorteada pelo `random`
+  global, como no jogo, e o teste compara vencedor, duração, HP, golpes e o
+  estado do `random` no fim, com e sem anotador. O pitch (golpes ±7%,
+  impactos ±6%, projéteis e skills ±4%, movimento ±8%, ambiente fixo) usa um
+  `Random` próprio semeado pela seed da luta.
+- Knob em `config/editing.json` → `som_da_luta`: `real` (liga),
+  `sintetizado_de_reforco` (**desligado**: medido, o som real sozinho já deixa
+  o trecho com 0% calado e 9 a 11 arquivos distintos; o sintetizado só
+  somava repetição) e `alvo_db` = -13 (o trecho de luta em ~-18 LUFS, o nível
+  em que o sintetizado estava).
+- Luta gravada antes de 28/09 não tem `sons` e segue no sintetizado.
+  `main.py som-da-luta <id>` re-simula a MESMA luta sem vídeo, confere
+  vencedor, duração e golpes contra o `fight.json` (recusa se divergir) e
+  re-renderiza no lugar — numa geração, a estreia e a build juntas. Nenhum
+  alvo começa se não termina antes de :25.
+- Consertos no caminho: o transcode simples do renderer saía com código 0 e
+  SEM faixa de áudio (a 2ª tentativa nunca rodava) — agora refaz, e sem áudio
+  mesmo assim é erro; o sintetizado do trecho de luta no fim do build
+  ignorava o `start_offset` (tocava os golpes dos primeiros 6,5 s da luta
+  sobre os últimos).
+
+**Medido nos pares** (`random_builds\outputs\_ouvir\`, mesmo duelo e mesma
+seed; "trecho" = o segmento de luta antes da música, que é o que a guarda
+mede):
+
+| duelo | trecho de luta: antes → depois | variedade: antes → depois | vídeo final |
+|---|---|---|---|
+| `duelo_00014` (machados de arremesso × corrente) | -18,2 → -17,8 LUFS; **63% → 0% calado**; LRA 23,7 → 4,1 | 36 camadas de 5 sons sintetizados (15 hits e 15 graves iguais) → 217 sons, 19 ids, **11 arquivos** | -15,0 → -15,5 LUFS |
+| `duelo_00016` (piromante × machado-martelo) | -18,3 → -18,7; **57% → 0%**; LRA 17,4 → 7,2 | 22 camadas de 4 (15 hits iguais) → 161 sons, 19 ids, **11 arquivos** | -16,6 → -16,5 |
+| `duelo_00022` (bestas, gelo) | -15,4 → -17,3; 29% → 0%; LRA 4,0 → 8,4 | 47 camadas de 4 (22 e 18 iguais) → 57 sons, 14 ids, **9 arquivos** | -13,7 → -15,4 |
+
+A imagem é idêntica quadro a quadro nos três pares (`framemd5` do vídeo
+igual): só o som muda. O wav do trecho sai limitado em -2,5 dBFS; o aac
+intermediário pode passar disso (até +1 dB, em float, no `00014`: quatro
+`energy_impact` no mesmo quadro), e a mixagem final — float, com `alimiter` e
+`loudnorm` TP -1,5 — fecha com pico de -0,9 a -1,4 dB.
+
+O juiz do som é o Adrian (o Gemini não recebe áudio). **O re-render do
+estoque espera a aprovação dele**, e roda de madrugada.
+
+**Estoque com a luta muda** (`som-da-luta --listar`; a régua da LUTA da
+guarda da publicação desde 6f09b80: média do trecho < -60 dB ou trecho sem
+faixa de áudio — silêncio entre golpes não conta). Em 28/09, 07:31: 38
+vídeos não publicados com luta (12 duelos, 26 builds), **2 mudos, de uma
+fonte só**: `generation_00077` A e B (`seg_022` a -91 dB; render de 29/08,
+antes do sintetizado). Som real impossível: Seraphina Pyrberim e Lucrecia
+Aciaegir saíram do banco em 02/09 e a luta não re-simula. Ela já está fora da
+fila (sem payoff, "mp4 mais velho que os clipes"), e o re-render que o worker
+fizer quando o payoff chegar sai com o sintetizado — não muda mais:
+`python main.py generate-video --rerender generation_00077 --refazer-edicao`.
+Clipe cru: `outputs\generation_00077\estreia\gameplay\luta_01_{celular,normal}.mp4`.
+A `generation_00066/estreia` (-91 dB) foi descartada pela decisão 5 do Adrian
+(`config/publicacao.json` → `descartados`).
+
+Os outros 36 estão com o sintetizado. Sete deles ficam calados em 57–63% do
+trecho (`duelo_00014`, `00016`, `00017`, `generation_00029` A e B,
+`generation_00077` A e B) — não é luta muda pela régua, mas é o som que
+repete. Com o som aprovado, o re-render com o som real (de madrugada; o
+comando para antes de :25 e continua depois de :55):
+`python main.py som-da-luta duelo_00012 duelo_00013 duelo_00014 duelo_00015 duelo_00016 duelo_00017 duelo_00018 duelo_00019 duelo_00020 duelo_00021 duelo_00022 duelo_00023 generation_00029`
+(~4 min por duelo). Conferido em 28/09 às 03:02 (`--so-anotar` numa cópia):
+`duelo_00017` e os dois rounds de `generation_00029` re-simulam iguais ao
+clipe; `00014`, `00016` e `00022` são os pares. As builds de antes de 11/09
+(motor mudou na 15C) e as de elenco de agosto provavelmente não re-simulam:
+o comando recusa e diz qual.
 
 ## Contratos com outras partes
 
@@ -264,3 +362,9 @@ gerar vídeo entre :25 e :55, que é a janela da grade.
   leem o bot, o painel e o app do celular.
 - **Grade de horários** — `builds/grade.py`, uma cópia só, usada por builds e
   histórias. A cota de formatos é minha (config acima); a hora não.
+- **Som da luta** (Onda 16A) — `fight.json` → `luta.sons` (e o `gameplay` do
+  `edit_plan.json`), no relógio do clipe; o formato está em
+  `docs/palco/sons.md`, e é a seção `sons` da timeline da 16C (o palco lê de
+  lá). A guarda de luta muda POR TRECHO é da publicação: ela mede os
+  `_segments_<perfil>/seg_NNN.mp4` dos eventos `gameplay`, que o render daqui
+  produz.

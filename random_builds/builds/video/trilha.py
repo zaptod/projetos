@@ -455,10 +455,21 @@ def sfx_da_luta(event: dict, taxa: int = TAXA) -> list[tuple[float, list, float]
     dos eventos que o gravador ja devolve (`eventos_dano`,
     `eventos_narrativos`), no relogio do clipe (`remapear_gravacao` ja os
     trouxe). Nada e gravado no motor, entao nao ha risco de determinismo.
+
+    Desde a Onda 16A este e o som da luta ANTIGA (gravada sem `sons`) ou o
+    reforco opcional (`som_da_luta.sintetizado_de_reforco`); a luta nova soa
+    com o que o jogo tocou (`video/som_da_luta.py`).
+
+    `start_offset` (o round decisivo no fim do video de build) desloca tudo:
+    `luta` guarda os golpes no relogio do clipe INTEIRO, e o segmento comeca
+    no meio dele. Ate 28/09/2026 isso nao era descontado — o trecho de 6,5 s
+    do fim da luta tocava os golpes dos primeiros 6,5 s.
     """
     luta = event.get("luta") or {}
     duracao = float(event.get("duration") or 0.0)
-    eventos = _dano_dos_eventos(luta.get("eventos_dano"))
+    inicio = float(event.get("start_offset") or 0.0)
+    eventos = [(t - inicio, slot, dano, fonte) for t, slot, dano, fonte
+               in _dano_dos_eventos(luta.get("eventos_dano"))]
     if not eventos:
         return []
     vidas = _vidas_maximas(luta, eventos)
@@ -488,7 +499,7 @@ def sfx_da_luta(event: dict, taxa: int = TAXA) -> list[tuple[float, list, float]
         if not isinstance(narrativo, dict):
             continue
         try:
-            t = float(narrativo.get("t") or 0.0)
+            t = float(narrativo.get("t") or 0.0) - inicio
         except (TypeError, ValueError):
             continue
         if duracao and not (0.0 <= t <= duracao):
@@ -507,7 +518,11 @@ def sfx_da_luta(event: dict, taxa: int = TAXA) -> list[tuple[float, list, float]
 
 
 def _instante_do_ko(event: dict, luta: dict) -> float | None:
-    """Quando o nocaute cai NO CLIPE (nao na gravacao original)."""
+    """Quando o nocaute cai NO SEGMENTO (nao na gravacao original).
+
+    Os callouts ja vem no relogio do segmento (a montagem os desloca); o
+    `ko_em_clipe` da luta esta no do clipe inteiro e desconta o `start_offset`.
+    """
     for callout in event.get("callouts") or []:
         if isinstance(callout, dict) and callout.get("tipo") == "ko":
             try:
@@ -515,7 +530,9 @@ def _instante_do_ko(event: dict, luta: dict) -> float | None:
             except (TypeError, ValueError):
                 return None
     ko = luta.get("ko_em_clipe")
-    return float(ko) if isinstance(ko, (int, float)) else None
+    if not isinstance(ko, (int, float)):
+        return None
+    return float(ko) - float(event.get("start_offset") or 0.0)
 
 
 def sfx_do_evento(event: dict, taxa: int = TAXA) -> list[tuple[float, list, float]]:

@@ -122,7 +122,8 @@ class Simulador:
             "portrait_mode": False,
         }
 
-    def __init__(self, match_config=None, *, headless=False, seed=None, roster_provider=None):
+    def __init__(self, match_config=None, *, headless=False, seed=None, roster_provider=None,
+                 audio=None):
         self._lifecycle_token = None
         self._random_state_before_seed = None
         self._closed = True
@@ -146,6 +147,7 @@ class Simulador:
                 headless=headless,
                 seed=seed,
                 roster_provider=roster_provider,
+                audio=audio,
             )
         except BaseException as exc:
             try:
@@ -161,11 +163,16 @@ class Simulador:
         headless=False,
         seed=None,
         roster_provider=None,
+        audio=None,
     ):
         # Resolvedor de lutador por nome. O padrao varre o catalogo JSON a
         # cada round; quem tem um roster grande (lutadores de espectador)
         # injeta um provedor com cache e resolucao propria.
         self.roster_provider = roster_provider
+        # Onda 16A: quem grava o video injeta um AudioManager que ANOTA cada
+        # som em vez de toca-lo (effects/audio_anotador.py). Ausente, vale o
+        # de sempre: o adaptador mudo no headless, o AudioManager real no resto.
+        self._audio_injetado = audio
         if match_config is None:
             # Configurações visuais isoladas pertencem ao processo que as
             # consome. Removê-las logo após a leitura evita depender da vida
@@ -502,7 +509,13 @@ class Simulador:
         # Entidades também consultam o singleton diretamente. No headless,
         # todas recebem o mesmo adaptador nulo e nenhuma carga de áudio ocorre.
         AudioManager.reset()
-        if self.headless:
+        injetado = getattr(self, "_audio_injetado", None)
+        if injetado is not None:
+            # O gravador de video (Onda 16A): o mesmo objeto em todas as
+            # partidas da instancia, para a lista de sons nao recomecar.
+            self.audio = injetado
+            AudioManager._instance = self.audio
+        elif self.headless:
             self.audio = _SilentAudioManager()
             AudioManager._instance = self.audio
         else:
