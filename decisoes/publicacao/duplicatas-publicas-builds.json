@@ -3,7 +3,15 @@
   "contexto": "Pares recuperado → gêmeo: UlIc_DXyFa4→9U7UopBm3MM, BM5BkPe56yo→XxOuPbJ2vtA, EgganpfYcR0→Jb7gIFumNQQ, y2H4ZzNIlEM→xNZFFoMYQjk, eopdwaZ0swA→UsDYI-pRqZ8.",
   "criado": "2026-09-28T17:31:42.344554",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T19:54:26",
+      "opcao": "privado",
+      "origem": "app"
+    }
+  ],
   "id": "duplicatas-publicas-builds",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "Cinco vídeos saíram duas vezes como públicos no canal de builds. O que faço com os gêmeos?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "5 duplicatas públicas no canal de builds",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T19:54:26",
+    "opcao": "privado"
+  }
 }
