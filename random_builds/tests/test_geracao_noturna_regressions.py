@@ -308,7 +308,7 @@ class Rodada(unittest.TestCase):
         self.addCleanup(registrar.stop)
 
     def _rodar(self, relogio, na_fila=3, jobs=(), falhar=0, drenar=None,
-               **kw):
+               proximo=None, **kw):
         self.gerados = []
         falhas = {"n": falhar}
 
@@ -324,7 +324,8 @@ class Rodada(unittest.TestCase):
         return noite.rodar(config=dict(noite.PADRAO), relogio=relogio,
                            gerar_duelo=gerar, estoque=lambda: [0] * na_fila,
                            jobs=lambda: list(lista),
-                           drenar_worker=drenar or (lambda limite=1: 0),
+                           drenar_worker=drenar or (lambda **k: 0),
+                           proximo=proximo or (lambda excluir=(): None),
                            tela=None, **kw)
 
     def test_fora_da_janela_nao_gera_nada(self):
@@ -372,41 +373,98 @@ class Rodada(unittest.TestCase):
         self.assertEqual(1, noite.codigo_de_saida(resultado))
         self.assertTrue(any(r[0] == "erro" for r in self.registros))
 
-    def test_worker_so_roda_enquanto_cabe(self):
-        relogio = _Relogio(_as(3, 2))
+    def _worker(self, relogio, fila, avanco, retorno=None):
+        """Roda so o worker: estoque cheio e uma fila de jobs por provedor.
+
+        `proximo(excluir)` devolve o primeiro provedor da fila fora de
+        `excluir`; `drenar` que da certo tira um job daquele provedor."""
         chamadas = []
+        fila = list(fila)
+        retorno = retorno or {}
 
-        def drenar(limite=1):
-            chamadas.append((relogio(), limite))
-            relogio.andar(6 * limite)
-            return limite
+        def proximo(excluir=()):
+            return next((p for p in fila if p not in excluir), None)
 
-        jobs = [{"generation_id": "generation_00085"}] * 8
-        resultado = self._rodar(relogio, na_fila=10, jobs=jobs, drenar=drenar)
-        # A partir de 03:02, jobs de 8 min: 03:02-03:10, 03:10-03:18 cabem;
-        # o terceiro terminaria 03:26. Uma chamada so, com limite 2 (um
-        # navegador para os dois). Depois, as 03:14, cabe mais um (03:22).
-        self.assertEqual([(_as(3, 2), 2), (_as(3, 14), 1)], chamadas)
-        self.assertEqual(3, resultado["jobs_do_worker"])
+        def drenar(so_provedor=None, prazo=None):
+            chamadas.append((so_provedor,
+                             datetime.fromtimestamp(prazo).replace(second=0)))
+            feitos = retorno.get(so_provedor, 1)
+            if feitos:
+                relogio.andar(avanco[so_provedor])
+                fila.remove(so_provedor)
+            return feitos
+
+        resultado = self._rodar(relogio, na_fila=10,
+                                jobs=[{"generation_id": "generation_00085"}],
+                                drenar=drenar, proximo=proximo)
+        return chamadas, resultado
+
+    def test_imagem_recebe_prazo_de_8_min_antes_de_25(self):
+        relogio = _Relogio(_as(3, 2))
+        chamadas, resultado = self._worker(
+            relogio, ["picasso", "digen"], {"picasso": 5, "digen": 13})
+        # 03:02: imagem cabe (8 min) e so pode COMECAR job ate 03:17.
+        # 03:07: o payoff leva 18 e terminaria 03:25 — nao comeca.
+        self.assertEqual([("picasso", _as(3, 17))], chamadas)
+        self.assertEqual("janela", resultado["parou"])
+        self.assertEqual(1, resultado["jobs_do_worker"])
+
+    def test_o_payoff_so_comeca_com_18_min_de_folga(self):
+        # O CASO que motivou o orcamento por tipo: com um orcamento so (8
+        # min), o payoff do Digen (12-15 min medidos) comecava as :16 e
+        # terminava depois de :25.
+        relogio = _Relogio(_as(4, 2))
+        chamadas, resultado = self._worker(
+            relogio, ["digen", "digen"], {"picasso": 5, "digen": 13})
+        self.assertEqual([("digen", _as(4, 7))], chamadas)
+        relogio = _Relogio(_as(4, 8))
+        chamadas, _ = self._worker(relogio, ["digen"], {"digen": 13})
+        self.assertEqual([], chamadas)
+
+    def test_provedor_ocupado_passa_a_vez_para_o_proximo(self):
+        # 03:03 de 28/09: PicassoIA preso pelas historias, Digen livre.
+        relogio = _Relogio(_as(4, 2))
+        chamadas, resultado = self._worker(
+            relogio, ["picasso", "digen"], {"picasso": 5, "digen": 13},
+            retorno={"picasso": 0, "digen": 1})
+        self.assertEqual([("picasso", _as(4, 17)), ("digen", _as(4, 7))],
+                         chamadas)
+        self.assertEqual(1, resultado["jobs_do_worker"])
+
+    def test_nada_anda_em_nenhum_provedor(self):
+        relogio = _Relogio(_as(3, 2))
+        chamadas, resultado = self._worker(
+            relogio, ["picasso", "digen"], {"picasso": 1, "digen": 1},
+            retorno={"picasso": 0, "digen": 0})
+        self.assertEqual(["picasso", "digen"], [c[0] for c in chamadas])
+        self.assertEqual(0, resultado["jobs_do_worker"])
+
+    def test_sem_job_reivindicavel_o_worker_nem_abre(self):
+        relogio = _Relogio(_as(3, 2))
+        chamadas, resultado = self._worker(relogio, [], {})
+        self.assertEqual([], chamadas)
+        self.assertEqual(0, resultado["jobs_do_worker"])
 
     def test_quantos_cabem_conta_o_caso_zero(self):
         self.assertEqual(0, noite.quantos_cabem(_as(1, 20), 8, CONFIG))
         self.assertEqual(0, noite.quantos_cabem(_as(23, 0), 8, CONFIG))
         self.assertEqual(2, noite.quantos_cabem(_as(1, 2), 8, CONFIG))
 
-    def test_worker_para_quando_nada_anda(self):
-        relogio = _Relogio(_as(3, 2))
-        chamadas = []
+    def test_fim_da_folga(self):
+        self.assertEqual(_as(3, 25), noite.fim_da_folga(_as(3, 2), CONFIG))
+        self.assertEqual(_as(3, 25),
+                         noite.fim_da_folga(_as(3, 2, 30), CONFIG))
+        # Ja dentro da janela da grade, ou fora da madrugada: agora mesmo.
+        self.assertEqual(_as(3, 40), noite.fim_da_folga(_as(3, 40), CONFIG))
+        self.assertEqual(_as(0, 30), noite.fim_da_folga(_as(0, 30), CONFIG))
+        # Perto das 6h, quem manda e o fim da janela pesada.
+        self.assertEqual(_as(6, 0), noite.fim_da_folga(_as(5, 56), CONFIG))
 
-        def drenar(limite=1):
-            chamadas.append(limite)
-            return 0
-
-        resultado = self._rodar(relogio, na_fila=10,
-                                jobs=[{"generation_id": "generation_00077"}],
-                                drenar=drenar)
-        self.assertEqual([1], chamadas)
-        self.assertEqual(0, resultado["jobs_do_worker"])
+    def test_orcamento_por_tipo_de_job(self):
+        self.assertEqual(18, noite.minutos_do_job("digen", CONFIG))
+        self.assertEqual(8, noite.minutos_do_job("picasso", CONFIG))
+        antigo = {"minutos_por_job_do_worker": 7}
+        self.assertEqual(7, noite.minutos_do_job("picasso", antigo))
 
     def test_ensaio_nao_escreve_no_diario_compartilhado(self):
         relogio = _Relogio(_as(1, 2))
@@ -438,6 +496,99 @@ class Rodada(unittest.TestCase):
             resultado = self._rodar(relogio)
         self.assertEqual("pausado", resultado["motivo"])
         self.assertEqual([], self.gerados)
+
+
+class PrazoDentroDoWorker(unittest.TestCase):
+    """O worker nao comeca job (nem tentativa nova) depois do prazo.
+
+    `limite=1` nao bastava: um job que falha volta para a fila e e
+    reivindicado de novo NA MESMA passada, e a passada so para quando algum
+    conclui. Tres tentativas de imagem cabem em 15 min.
+    """
+
+    def test_drenar_so_do_provedor_pedido(self):
+        from builds.identity import worker
+        chamadas = []
+        with mock.patch.object(worker.queue, "reabrir", return_value=0), \
+                mock.patch.object(worker, "_resolver_no_disco", return_value=0), \
+                mock.patch.object(worker, "_explicar_parada"), \
+                mock.patch.object(worker, "_passada",
+                                  side_effect=lambda p, *a, **k:
+                                  chamadas.append((p, k.get("prazo"))) or (0, None)):
+            worker._drenar(False, True, False, None, so_provedor="digen",
+                           prazo=4102444800.0)
+        self.assertEqual([("digen", 4102444800.0)], chamadas)
+
+    def test_prazo_vencido_nao_abre_passada(self):
+        from builds.identity import worker
+        chamadas = []
+        with mock.patch.object(worker.queue, "reabrir", return_value=0), \
+                mock.patch.object(worker, "_resolver_no_disco", return_value=0), \
+                mock.patch.object(worker, "_explicar_parada"), \
+                mock.patch.object(worker, "_passada",
+                                  side_effect=lambda p, *a, **k:
+                                  chamadas.append(p) or (0, None)):
+            worker._drenar(False, True, False, None, prazo=1.0)
+        self.assertEqual([], chamadas)
+
+    def test_passada_com_prazo_vencido_nem_reivindica(self):
+        from builds.identity import worker
+        with mock.patch.object(worker.queue, "claim") as claim:
+            self.assertEqual((0, None), worker._passada(
+                "picasso", False, True, False, None, prazo=1.0))
+        claim.assert_not_called()
+
+    def test_o_prazo_para_a_passada_entre_um_job_e_outro(self):
+        import contextlib
+        from builds.identity import worker
+        relogio = {"agora": 1000.0}
+        jobs = [{"job_id": "g#character", "generation_id": "g",
+                 "slot": "character"},
+                {"job_id": "g#weapon", "generation_id": "g", "slot": "weapon"}]
+        reivindicados = []
+
+        def claim(*a, **k):
+            if not jobs:
+                return None
+            reivindicados.append(jobs[0]["job_id"])
+            return jobs.pop(0)
+
+        def processar(client, job, ajustes, rerender, preview):
+            relogio["agora"] = 2000.0              # o job passou do prazo
+            return Path("imagem.png")
+
+        cliente = mock.Mock()
+        cliente.creditos.return_value = None
+        with mock.patch.object(worker.queue, "claim", side_effect=claim), \
+                mock.patch.object(worker.queue, "concluir"), \
+                mock.patch.object(worker.time, "time",
+                                  side_effect=lambda: relogio["agora"]), \
+                mock.patch.object(worker.time, "sleep"), \
+                mock.patch.object(worker, "pausa_humana"), \
+                mock.patch.object(worker, "processar", side_effect=processar), \
+                mock.patch.object(worker, "contexto_persistente",
+                                  side_effect=lambda **k:
+                                  contextlib.nullcontext(object())), \
+                mock.patch.object(worker, "pagina", return_value=object()), \
+                mock.patch.object(worker, "ensure_logged_in"), \
+                mock.patch.object(worker.provedores, "cliente",
+                                  return_value=cliente), \
+                mock.patch.object(worker.provedores, "seletores",
+                                  return_value=None), \
+                mock.patch.object(worker.controle, "pausado_para",
+                                  return_value=False), \
+                mock.patch.object(worker.controle, "parada_pedida",
+                                  return_value=False), \
+                mock.patch("builds.travas.do_perfil",
+                           return_value=f"teste_prazo_{os.getpid()}"), \
+                mock.patch("builds.atividade.fabrica",
+                           side_effect=lambda *a, **k:
+                           contextlib.nullcontext()):
+            feitos, erro = worker._passada("picasso", False, True, False,
+                                           None, prazo=1500.0)
+        self.assertEqual((1, None), (feitos, erro))
+        # O segundo job NAO foi reivindicado: o prazo venceu no primeiro.
+        self.assertEqual(["g#character"], reivindicados)
 
 
 class TravaEntreProcessos(unittest.TestCase):

@@ -58,7 +58,8 @@ PADRAO = {
     "minuto": 2,
     "dias_de_gordura": 2,
     "minutos_por_duelo": 5,
-    "minutos_por_job_do_worker": 8,
+    "minutos_por_imagem": 8,
+    "minutos_por_payoff": 18,
     "maximo_de_duelos_por_rodada": 6,
     "worker": True,
 }
@@ -132,13 +133,45 @@ def cabe(agora: datetime, minutos: float, config: dict) -> bool:
 def quantos_cabem(agora: datetime, minutos: float, config: dict,
                   maximo: int = 50) -> int:
     """Quantos trabalhos de `minutos`, um atras do outro, cabem a partir de
-    AGORA. Serve para o worker abrir o navegador UMA vez para varios jobs
-    em vez de uma vez por job."""
+    AGORA."""
     n = 0
     while n < maximo and cabe(agora + timedelta(minutes=n * float(minutos)),
                               minutos, config):
         n += 1
     return n
+
+
+def fim_da_folga(agora: datetime, config: dict,
+                 horizonte_min: int = 24 * 60) -> datetime:
+    """O primeiro minuto, a partir de AGORA, em que nada pode estar rodando
+    (janela da grade ou fim da janela pesada). E dele que sai o prazo que o
+    worker recebe: prazo = fim da folga - quanto um job leva."""
+    janela = config.get("janela_pesada")
+    proibida = config.get("grade_proibida")
+    base = agora.replace(second=0, microsecond=0)
+    for i in range(horizonte_min + 1):
+        instante = base + timedelta(minutes=i)
+        if instante < agora:
+            continue
+        if (not na_janela(instante.hour, janela)
+                or na_grade(instante.minute, proibida)):
+            return instante
+    return base + timedelta(minutes=horizonte_min)
+
+
+def minutos_do_job(provedor: str, config: dict) -> float:
+    """Quanto um job DAQUELE provedor leva, medido.
+
+    Imagem do PicassoIA: 3,3 / 4,5 / 6 min na madrugada de 28/09/2026 (a de
+    6 teve duas tentativas falhas dentro). Payoff do Digen, do envio ao fim
+    (inclui o re-render da build, que acontece no ultimo clipe): 12, 15 e
+    12,5 min nas generation_00082/83/84. Um orcamento so (8 min) deixava o
+    payoff comecar as :16 e terminar depois de :25.
+    """
+    if provedor == "digen":
+        return float(config.get("minutos_por_payoff", 18))
+    return float(config.get("minutos_por_imagem",
+                            config.get("minutos_por_job_do_worker", 8)))
 
 
 # ------------------------------------------------------------------ estoque
@@ -202,6 +235,21 @@ def estoque_de_duelos(videos=None, publicados=None) -> list:
         vistos.add(chave)
         fila.append(video)
     return fila
+
+
+def proximo_do_worker(excluir=()) -> str | None:
+    """O provedor do proximo job que o worker CONSEGUE pegar, na ordem dele
+    (PicassoIA antes do Digen), pulando `excluir`. Usa o predicado do `claim`
+    (`queue.tem_reivindicavel`): payoff esperando imagem nao conta."""
+    from ..identity import config as icfg
+    from ..identity import provedores, queue
+    maximo = int(icfg.settings().get("max_attempts", 3))
+    for provedor in provedores.TODOS:
+        if provedor in excluir:
+            continue
+        if queue.tem_reivindicavel(maximo, provedor=provedor):
+            return provedor
+    return None
 
 
 def jobs_do_worker() -> list[dict]:
@@ -296,16 +344,17 @@ def _duelo_de_verdade():
     return gerar
 
 
-def _worker_de_verdade(limite: int = 1) -> int:
+def _worker_de_verdade(so_provedor: str | None = None,
+                       prazo: float | None = None) -> int:
     from ..identity import worker
     return worker.drenar(headless=False, rerender=True, preview=False,
-                         limite=limite)
+                         so_provedor=so_provedor, prazo=prazo)
 
 
 def rodar(*, config: dict | None = None, ensaio: bool = False,
           duelos: int | None = None, sem_worker: bool = False,
           relogio=None, gerar_duelo=None, drenar_worker=None,
-          jobs=None, estoque=None, tela=None) -> dict:
+          jobs=None, estoque=None, proximo=None, tela=None) -> dict:
     """Uma rodada. Devolve o que aconteceu; nunca levanta por conta da tarefa.
 
     `ensaio`: faz TODAS as conferencias e diz o que faria, sem gerar nada e
@@ -332,8 +381,8 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
         return _rodada(config=config, ensaio=ensaio, duelos=duelos,
                        sem_worker=sem_worker, relogio=relogio,
                        gerar_duelo=gerar_duelo, drenar_worker=drenar_worker,
-                       jobs=jobs, estoque=estoque, travas=travas,
-                       controle=controle)
+                       jobs=jobs, estoque=estoque, proximo=proximo,
+                       travas=travas, controle=controle)
     finally:
         try:
             sys.stdout.flush()
@@ -343,7 +392,7 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
 
 
 def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
-            drenar_worker, jobs, estoque, travas, controle) -> dict:
+            drenar_worker, jobs, estoque, proximo, travas, controle) -> dict:
     agora = relogio()
     rotulo = " (ENSAIO: nada e gerado)" if ensaio else ""
     print(f"[noite] disparo das {agora:%H:%M}{rotulo}")
@@ -373,7 +422,7 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
                                sem_worker=sem_worker, relogio=relogio,
                                gerar_duelo=gerar_duelo,
                                drenar_worker=drenar_worker, jobs=jobs,
-                               estoque=estoque)
+                               estoque=estoque, proximo=proximo)
         gasto = time.monotonic() - comeco
         resultado["segundos"] = round(gasto, 1)
         feitos = resultado.get("duelos") or []
@@ -394,7 +443,7 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
 
 
 def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
-               drenar_worker, jobs, estoque) -> dict:
+               drenar_worker, jobs, estoque, proximo=None) -> dict:
     erros: list[str] = []
     feitos: list[str] = []
     parou = ""
@@ -450,29 +499,55 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
             gids = sorted({j.get("generation_id", "?") for j in pendentes})
             print(f"[noite] worker: {len(pendentes)} job(s) pendente(s) "
                   f"({', '.join(gids)}).")
-        minutos_job = float(config.get("minutos_por_job_do_worker", 8))
         drenar = drenar_worker or (_worker_ensaiado if ensaio
                                    else _worker_de_verdade)
+        qual = proximo or (_proximo_ensaiado(pendentes) if ensaio
+                           else proximo_do_worker)
+        # Provedor que nao andou nesta rodada (perfil ocupado por outra
+        # fabrica, dependencia, tentativas no teto) nao e chamado de novo — e
+        # NAO encerra o worker. Medido as 03:03 de 28/09/2026: a rodada de
+        # historias segurava o PicassoIA, a passada de imagem voltou vazia e
+        # o payoff do Digen (outro perfil, livre) ficou parado atras dela.
+        tentados: set = set()
         while pendentes:
-            # O navegador abre uma vez por chamada: pedir so o que cabe
-            # antes de :25, e nao um job por vez (cada um reabriria o Chrome).
-            cabem = min(len(pendentes),
-                        quantos_cabem(relogio(), minutos_job, config))
-            if cabem <= 0:
-                print(f"[noite] worker: um job ({minutos_job:.0f} min) nao "
-                      f"cabe antes da janela da grade. Fica para a proxima.")
+            # UM PROVEDOR POR CHAMADA, COM PRAZO. O tempo de um job depende de
+            # quem faz: imagem ~3-6 min, payoff do Digen 12-15 min (medido).
+            # O prazo vai para dentro do worker, que nao comeca job nem
+            # tentativa nova depois dele — `limite` nao bastava, porque um
+            # job que falha e repescado na mesma passada.
+            try:
+                provedor = qual(excluir=frozenset(tentados))
+            except Exception as exc:                           # noqa: BLE001
+                erros.append(f"fila do worker ilegivel: {type(exc).__name__}")
+                break
+            if not provedor:
+                print("[noite] worker: nada que ele consiga pegar agora "
+                      "(dependencia esperando ou tentativas esgotadas).")
+                break
+            minutos_job = minutos_do_job(provedor, config)
+            agora = relogio()
+            if not cabe(agora, minutos_job, config):
+                print(f"[noite] worker: um job de {provedor} "
+                      f"({minutos_job:.0f} min) nao cabe antes da janela da "
+                      f"grade. Fica para a proxima.")
                 parou = parou or "janela"
                 break
+            prazo = fim_da_folga(agora, config) - timedelta(minutes=minutos_job)
+            print(f"[noite] worker: {provedor}, jobs novos ate "
+                  f"{prazo:%H:%M} ({minutos_job:.0f} min cada).")
             try:
-                feitos_agora = int(drenar(limite=cabem) or 0)
+                feitos_agora = int(drenar(so_provedor=provedor,
+                                          prazo=prazo.timestamp()) or 0)
             except Exception as exc:                           # noqa: BLE001
                 erros.append(f"worker: {type(exc).__name__}: {str(exc)[:160]}")
                 print(f"[noite] o worker falhou: {type(exc).__name__}: {exc}")
                 break
             if feitos_agora <= 0:
-                print("[noite] worker: nenhum job andou (dependencia, conta "
-                      "ocupada ou tentativas esgotadas). Paro por aqui.")
-                break
+                tentados.add(provedor)
+                print(f"[noite] worker: {provedor} nao andou (perfil "
+                      f"ocupado, dependencia ou tentativas esgotadas); sigo "
+                      f"para o proximo provedor, se houver.")
+                continue
             feitos_worker += feitos_agora
             if ensaio:
                 break
@@ -524,9 +599,24 @@ def _duelo_ensaiado():
     return gerar
 
 
-def _worker_ensaiado(limite: int = 1) -> int:
-    print(f"[ensaio] worker: drenaria ate {limite} job(s) (nada aberto)")
+def _worker_ensaiado(so_provedor: str | None = None,
+                     prazo: float | None = None) -> int:
+    quando = (datetime.fromtimestamp(prazo).strftime("%H:%M")
+              if prazo is not None else "sem prazo")
+    print(f"[ensaio] worker: drenaria {so_provedor or 'tudo'} com jobs novos "
+          f"ate {quando} (nada aberto)")
     return 1
+
+
+def _proximo_ensaiado(pendentes):
+    """No ensaio o provedor sai da lista de pendentes, sem tocar na fila."""
+    def qual(excluir=()):
+        provedores = [j.get("provider") for j in pendentes
+                      if j.get("provider") and j.get("provider") not in excluir]
+        if "picasso" in provedores:
+            return "picasso"
+        return provedores[0] if provedores else None
+    return qual
 
 
 # ---------------------------------------------------------------- saida
@@ -537,5 +627,6 @@ def codigo_de_saida(resultado: dict) -> int:
 
 __all__ = ["CONFIG", "TRAVA", "cabe", "carregar", "codigo_de_saida",
            "diario_do_dia", "duelos_por_dia", "estoque_de_duelos",
-           "jobs_do_worker", "na_grade", "na_janela", "quantos_cabem",
-           "rodar", "teto_de_duelos"]
+           "fim_da_folga", "jobs_do_worker", "minutos_do_job", "na_grade",
+           "na_janela", "proximo_do_worker", "quantos_cabem", "rodar",
+           "teto_de_duelos"]

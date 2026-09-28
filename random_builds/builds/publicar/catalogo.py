@@ -363,8 +363,39 @@ def _aplicar_textos(videos: list[Video], config: dict | None = None) -> None:
             video.hashtags = list(dados["hashtags"])
 
 
+def chave_de_descarte(video) -> str:
+    """`<fonte_id>:<origem>` — um descarte vale para os dois perfis e as duas
+    variantes daquele video (`generation_00066:estreia`)."""
+    return f"{getattr(video, 'fonte_id', '')}:{getattr(video, 'origem', '')}"
+
+
+def descartados(config: dict | None = None) -> dict[str, str]:
+    """{chave: motivo} dos videos tirados de circulacao DE PROPOSITO.
+
+    Existe por causa da estreia da `generation_00066` (decisao 5, 28/09/2026):
+    muda em 95% do tempo, ela so nao ia ao ar porque a guarda de audio da
+    publicacao a media e barrava a cada horario — e continuava contando como
+    "a unica estreia em estoque". Descartar e decisao de gente, e fica
+    escrita no config com o motivo. Nada e apagado: o mp4 fica na pasta, e
+    tirar a linha do config devolve o video ao catalogo.
+    """
+    config = carregar_config() if config is None else config
+    bruto = (config or {}).get("descartados") or {}
+    saida = {}
+    for chave, valor in bruto.items():
+        if str(chave).startswith("_"):
+            continue
+        motivo = valor.get("motivo") if isinstance(valor, dict) else valor
+        saida[str(chave)] = str(motivo or "descartado")
+    return saida
+
+
 def listar(config: dict | None = None) -> list[Video]:
-    """Todos os vídeos publicáveis, do mais novo para o mais velho."""
+    """Todos os vídeos publicáveis, do mais novo para o mais velho.
+
+    O que esta em `descartados` no config nao entra: nem na fila, nem no
+    painel, nem em `por_id` (que e por onde se publica na mao).
+    """
     config = carregar_config() if config is None else config
     videos: list[Video] = []
     for pasta in sorted(OUTPUTS.glob("generation_*")):
@@ -386,6 +417,9 @@ def listar(config: dict | None = None) -> list[Video]:
         campos = _campos_torneio(pasta)
         videos += _videos_de(pasta, TORNEIO, pasta.name, campos, config,
                              f"Torneio {pasta.name.split('_')[-1]}")
+    fora = descartados(config)
+    if fora:
+        videos = [v for v in videos if chave_de_descarte(v) not in fora]
     _aplicar_textos(videos, config)
     videos.sort(key=lambda v: v.quando, reverse=True)
     return videos
@@ -427,5 +461,6 @@ def exportar(video: Video, destino: Path | None = None,
 
 
 __all__ = ["BUILD", "DUELO", "ESTREIA", "TORNEIO", "Video", "carregar_config",
-           "exportar", "listar", "pasta_export", "pendencias_da_build", "por_id",
-           "salvar_texto", "slug"]
+           "chave_de_descarte", "descartados", "exportar", "listar",
+           "pasta_export", "pendencias_da_build", "por_id", "salvar_texto",
+           "slug"]

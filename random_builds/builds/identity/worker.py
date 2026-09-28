@@ -460,18 +460,27 @@ def _alertar_seletor(provedor: str = "digen") -> None:
 
 
 def drenar(headless: bool = False, rerender: bool = True,
-           preview: bool = False, limite: int | None = None) -> int:
+           preview: bool = False, limite: int | None = None, *,
+           so_provedor: str | None = None,
+           prazo: float | None = None) -> int:
     """Processa os pendentes e retorna quantos concluiram.
 
     Roda como INSTANCIA UNICA: se ja houver worker, esta chamada nao faz nada.
     Dois workers se sabotam: o `reabrir` de um rouba o job que o outro esta
     processando, e o mesmo video acaba baixado duas vezes.
+
+    `so_provedor`: so a passada daquele provedor (quem chama sabe quanto tempo
+    um job DELE leva: imagem do PicassoIA ~3-6 min, payoff do Digen 12-15 min).
+    `prazo` (epoch, `time.time()`): depois dele nenhum job NOVO comeca — nem
+    uma nova tentativa do mesmo. O job em andamento termina. Sem os dois, o
+    worker de sempre.
     """
     with queue.instancia_unica() as sozinho:
         if not sozinho:
             print("[identity] outro worker ja esta rodando; nada a fazer.")
             return 0
-        return _drenar(headless, rerender, preview, limite)
+        return _drenar(headless, rerender, preview, limite,
+                       so_provedor=so_provedor, prazo=prazo)
 
 
 def _resolver_no_disco(rerender: bool, preview: bool) -> int:
@@ -512,7 +521,8 @@ def _resolver_no_disco(rerender: bool, preview: bool) -> int:
 
 
 def _drenar(headless: bool, rerender: bool, preview: bool,
-            limite: int | None) -> int:
+            limite: int | None, *, so_provedor: str | None = None,
+            prazo: float | None = None) -> int:
     """Uma rodada: pre-passe no disco e depois UMA passada por provedor.
 
     As passadas sao SEQUENCIAIS e irmas, nunca aninhadas: `contexto_persistente`
@@ -533,12 +543,17 @@ def _drenar(headless: bool, rerender: bool, preview: bool,
     concluidos = resolvidos
     quebrou: Exception | None = None
     for provedor in provedores.TODOS:
+        if so_provedor is not None and provedor != so_provedor:
+            continue
         if limite is not None and concluidos >= limite:
+            break
+        if _prazo_vencido(prazo):
+            print("[identity] prazo da rodada: nenhuma passada nova.")
             break
         restante = None if limite is None else limite - concluidos
         try:
             feitos, erro = _passada(provedor, headless, rerender, preview,
-                                    restante)
+                                    restante, prazo=prazo)
         except Exception as exc:
             # Falha de UM provedor nao leva o outro junto: a imagem pode ter
             # dado certo e o video ainda valer a tentativa, e vice-versa.
@@ -592,9 +607,24 @@ def _explicar_parada() -> None:
                   + f" (prazo ate {job.get('aguardar_ate')})")
 
 
+def _prazo_vencido(prazo: float | None) -> bool:
+    """Passou da hora de COMECAR trabalho novo? Sem prazo, nunca."""
+    return prazo is not None and time.time() >= float(prazo)
+
+
 def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
-             limite: int | None) -> tuple[int, Exception | None]:
-    """Um browser, um perfil, um login: todos os jobs daquele provedor."""
+             limite: int | None,
+             prazo: float | None = None) -> tuple[int, Exception | None]:
+    """Um browser, um perfil, um login: todos os jobs daquele provedor.
+
+    Com `prazo`, nenhum job (nem nova tentativa) comeca depois dele. Existe
+    pela rodada noturna (27/09/2026): um job que falha volta para a fila e e
+    reivindicado de novo NA MESMA passada, entao `limite=1` nao limitava o
+    tempo — tres tentativas de uma imagem cabem em 15 min, e depois delas a
+    passada ainda pegava o proximo job.
+    """
+    if _prazo_vencido(prazo):
+        return 0, None
     sel = provedores.seletores(provedor)
     ajustes = config.settings(provedor)
     if controle.pausado_para(provedor):
@@ -714,6 +744,10 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
                     break
 
             if limite is not None and concluidos >= limite:
+                break
+            if _prazo_vencido(prazo):
+                print("[identity] prazo da rodada: nenhum job novo nesta "
+                      "passada; o resto fica para a proxima.", flush=True)
                 break
             job = queue.claim(max_attempts, adiados, provedor=provedor)
             if job is not None:

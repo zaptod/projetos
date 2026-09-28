@@ -22,9 +22,10 @@
   "minuto": 2,
   "_porque_gordura": "Teto de duelos = dias_de_gordura x duelos por dia, e duelos por dia sai da COTA (grade.mistura do publicacao.json) sobre os horarios da grade: 4/8 de 10 = 5. Com 2 dias, 10 duelos no estoque; acima disso a rodada nao gera.",
   "dias_de_gordura": 2,
-  "_porque_minutos": "Medido em 27/09/2026: 8 duelos entre 17:29 e 18:03, ~4,3 min por duelo ponta a ponta. 5 da folga para nao encostar em :25. O job do worker (imagem do PicassoIA ou clipe do Digen, mais o re-render quando e o ultimo) fica em 8.",
+  "_porque_minutos": "Medido: duelo ~4,3 min ponta a ponta (8 entre 17:29 e 18:03 de 27/09; 4,5 a 4,8 min na madrugada de 28/09), reserva 5. Imagem do PicassoIA 3,3 / 4,5 / 6 min (28/09, a de 6 com duas tentativas falhas dentro), reserva 8. Payoff do Digen do envio ao fim, com o re-render da build: 12, 15 e 12,5 min (generation_00082/83/84), reserva 18. O worker recebe um PRAZO e nao comeca job nem tentativa nova depois dele.",
   "minutos_por_duelo": 5,
-  "minutos_por_job_do_worker": 8,
+  "minutos_por_imagem": 8,
+  "minutos_por_payoff": 18,
   "maximo_de_duelos_por_rodada": 6,
   "worker": true
 }

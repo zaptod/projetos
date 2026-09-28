@@ -19,7 +19,8 @@ Tudo cai em `random_builds/outputs/<id>/`, sempre em dois perfis
 | **torneio** | chave de 8, uma volta inteira | — | só 2 existem (`tournament_00006`, `00007`); cota 0, não é produzido | `tournament_000NN/` |
 | luta avulsa | `fight`, 2 formatos, fora da grade | — | — | `fight_000NN/` |
 
-Hoje no disco: 83 `generation_*`, 15 `duelo_*`, 2 `tournament_*`, 4 `fight_*`.
+Hoje no disco (28/09, 02:28): 83 `generation_*`, 23 `duelo_*`, 2
+`tournament_*`, 4 `fight_*`.
 
 Dentro da pasta: `fight.json` (gameplay simulado), `edit_plan.json` (a
 montagem), `gameplay/` (clipes crus) e, na build, `build.json`,
@@ -67,8 +68,15 @@ e sem roleta nova isso deu 5 de 8 duelos com o mesmo p1 (Wren Telgyll, 27/09).
 duelos**) e depois roda o `identity worker` (capa e payoff das builds). O
 estoque é contado pelo **mesmo funil da escolha** (não publicado, sem
 pendência, título livre; dois pendentes com o mesmo título contam um). Nada
-começa se não termina antes de **:25** — cada duelo reserva 5 min, cada job
-do worker 8 —, e no máximo 6 duelos por rodada. Trava `builds__gerar` entre
+começa se não termina antes de **:25** — cada duelo reserva 5 min —, e no
+máximo 6 duelos por rodada. O worker é chamado **um provedor por vez e com
+prazo**: imagem do PicassoIA reserva 8 min (medido 3,3–6), payoff do Digen
+18 (medido 12–15, com o re-render da build); o worker não começa job nem
+tentativa nova depois do prazo (`worker.drenar(so_provedor=, prazo=)`),
+porque job que falha é repescado na mesma passada e `limite` não segurava o
+tempo. Resíduo conhecido: o Digen tem espera própria de até 30 min, então um
+payoff muito lento ainda pode passar de :25 — de madrugada não há post
+nessa janela (00:37 e 06:37 são os vizinhos). Trava `builds__gerar` entre
 processos (a rodada que encontra outra em andamento sai). A saída vai para
 `outputs/_logs/gerar_AAAAMMDD.txt` (com hora) e `gerar_saida.txt` (o resto);
 o lançador `gerar.cmd` é gerado pelo `--instalar` e não vai para o git.
@@ -106,9 +114,13 @@ dimensões e é o formato mais barato — mas n = 7, todos de 11–13/09.
 (se o bloco desaparecer) é `COTA_PADRAO` em `ferramentas/postar.py:1717`, com o
 mesmo conteúdo, lido por `cota_da_grade()`; quem escolhe o vídeo de cada
 horário é `escolher_por_cota()` (vence o formato mais atrasado em relação à
-cota dele). Atenção: o comentário do config e do código falam em "8 disparos
-diários", mas `builds/grade.py` tem **10** horários desde 15/09 — os pesos são
-relativos, então a escolha continua certa; o texto é que envelheceu.
+cota dele). Os números são **pesos relativos**: `builds/grade.py` tem **10**
+horários desde 15/09, e 4+3+1 = 8 dá ao duelo metade deles (5), ao build 3,75
+e à estreia 1,25; formato sem estoque cede o horário. O comentário do config
+foi corrigido em 28/09 (falava em "8 disparos"); o do código
+(`ferramentas/postar.py:1715`) ainda fala, e o arquivo é da publicação.
+**Aumentar a cota do duelo espera ~10 duelos medidos** (hoje há 7 com
+métrica): não mexer antes.
 
 ## 4. O que já quebrou
 
@@ -132,7 +144,13 @@ relativos, então a escolha continua certa; o texto é que envelheceu.
 - **Vídeo mudo.** Render antigo saía calado ou com som só no fim.
   `generation_00066/estreia/final_celular.mp4` tem **114,7 s de silêncio em
   120,8 s (95%)**, média -30,4 dB — medido agora com ffmpeg. A guarda está na
-  publicação (`_audio_mudo`, `FRACAO_MUDA = 0.5`) e é ela que segura esse vídeo.
+  publicação (`_audio_mudo`, `FRACAO_MUDA = 0.5`) e era ela que segurava esse
+  vídeo, medindo-o de novo a cada horário. **Descartada em 28/09** (decisão 5
+  da rota): `config/publicacao.json → descartados` tira do catálogo, da fila,
+  do painel e de `por_id` tudo o que tiver a chave `<fonte_id>:<origem>`
+  (`generation_00066:estreia`), com o motivo escrito. Nada é apagado: o mp4
+  fica na pasta, e tirar a linha devolve o vídeo. `main.py publicar` lista os
+  descartados no fim, e publicar um deles na mão diz o motivo.
 - **Gancho B com título igual ao do A.** A variante B (`final_<perfil>_ganchoB.mp4`)
   tem id com sufixo `:B` e o MESMO título; para o código eram dois vídeos, para
   o YouTube eram duplicatas. 21 chaves de título saíram duas vezes (medição de
@@ -151,26 +169,40 @@ relativos, então a escolha continua certa; o texto é que envelheceu.
   Conferido com `postar.py --ver --so builds`: "25 fora por título" virou 7,
   gordura de builds 0 → 2 dias.
 
-## 5. Estado de hoje (27/09/2026, 23:58)
+## 5. Estado de hoje (28/09/2026, madrugada)
 
-- **Duelos**: `duelo_00008` a `00011` já saíram; **4 no estoque** que a grade
-  escolheria (`00012` a `00015`), teto 10. Rodada manual marcada para esta
-  madrugada com vigia armado às 23:58 (A às 01:00:30, até 8 duelos antes de
-  01:25; B às 01:55:30, o que faltar para 8, mais o worker). As tarefas de
-  01:02 e 02:02 saem com "já rodando" se a manual estiver no meio.
-- **Builds**: 18 variantes B voltaram à fila com título próprio (§4); gordura
-  de builds 2 dias pelo `postar.py --ver`.
-- **Worker**: 8 jobs na fila — `generation_00085` (4, de 24/09) e
-  `generation_00077` (4, enfileirados em 27/09 às 23:55 sem drenar). A conta do
-  PicassoIA é a mesma das histórias (mesma trava de perfil), e a rodada de
-  histórias das 01:20 costuma segurá-la por ~2 h; o worker tenta de novo às
-  03:02, 04:02 e 05:02. Build não tem `capa.png` (só duelo tem); o que falta
-  nas duas é imagem do personagem e payoff.
+- **Duelos**: rodada manual com vigia (armado 23:58, encerrou sozinho às
+  02:19) gerou **8 duelos novos, `duelo_00016` a `00023`, 16 nomes diferentes**
+  (A: 5 entre 01:00 e 01:20; B: 3 entre 01:55 e 02:03). ~4,5 min por duelo;
+  duração 13–28 s; áudio medido nos 8: média -12 a -16 dB, zero silêncio. As
+  tarefas das 01:02 e 02:02 saíram com "já rodando", como previsto. **12 no
+  estoque** que a grade escolheria (`00012`–`00023`), teto 10: ~2 dias.
+  Atenção: `duelo_00023` é "Kuro #2 x Orion o Implacável" — o `#2` é
+  desempate de nome do banco e vai no título.
+- **Builds**: 18 variantes B voltaram à fila com título próprio (§4); a
+  `generation_00083` B já saiu (00:37). Gordura de builds 2 dias pelo
+  `postar.py --ver`.
+- **Worker** (rodadas das 02:04, 03:02, 04:02 e 05:02): as **3 imagens** de
+  `generation_00085` e de `generation_00077` estão prontas; as da 00085 com
+  prova de origem forte (`identity auditar`: 3 de 3). Às 03:02 e 04:02 o
+  PicassoIA estava preso pela rodada de histórias (mesma trava de perfil); a
+  partir das 03:06 um provedor ocupado passa a vez ao outro em vez de encerrar
+  o worker. **Os dois payoffs do Digen faltam**, e as duas builds seguem fora
+  da fila por pendência:
+  - `generation_00085#character_weapon` **falhou 3 vezes às 04:03–04:07**
+    (`failed`): um diálogo de propaganda do Digen ("Upgrade",
+    `pc-pop-916.webp`, `role=dialog`) cobre o composer e engole o clique —
+    a mesma família da "parede do PicassoIA". O anexo da referência também não
+    entrou. Precisa: fechar esse diálogo no cliente do Digen (olhando a tela)
+    e depois `identity run generation_00085 --slot character_weapon`.
+  - `generation_00077#character_weapon` pendente: não coube às 05:12 (18 min).
+  Build não tem `capa.png` (só duelo tem); o que falta nas duas é o payoff.
 - **82 personagens e 95 armas** no banco vivo; só **9** dos personagens de
   roleta estão nele (os de agosto se perderam em 02/09).
+- **Estreia**: nenhuma em estoque. A da `generation_00066` (muda) foi
+  descartada de forma reversível (§4); o horário da estreia vai para outro
+  formato.
 - Pendente:
-  - **`generation_00066`** é a única estreia em estoque e está barrada por
-    áudio mudo (95% de silêncio) — regravar ou descartar;
   - **7 builds fora por título** que são a mesma build de outra (§4) —
     decisão do Adrian se ficam fora para sempre;
   - **nenhuma tarefa gera build nem estreia**: a roleta continua manual.

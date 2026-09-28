@@ -61,10 +61,17 @@
     "_comment_postar": "false = o painel sobe o arquivo, escreve a legenda e PARA com a janela aberta para você conferir e clicar em Publicar. true = clica sozinho (o TikTok não tem API aberta de post; isso é automação de navegador na SUA conta e pode quebrar quando o site mudar).",
     "url_upload": "https://www.tiktok.com/tiktokstudio/upload"
   },
+  "_porque_descartados": "Videos tirados de circulacao DE PROPOSITO, com o motivo. Nada e apagado: o mp4 fica na pasta e tirar a linha daqui devolve o video ao catalogo (painel, fila e `main.py publicar`). A chave e `<fonte_id>:<origem>` e vale para os dois perfis e as duas variantes.",
+  "descartados": {
+    "generation_00066:estreia": {
+      "motivo": "audio mudo: 114,7 s de silencio em 120,8 s (95%), media -30,4 dB, medido com ffmpeg em 27/09/2026; render antigo de 29/08. Descartada pela decisao 5 do Adrian (rota de 27/09/2026).",
+      "desde": "2026-09-28"
+    }
+  },
   "grade": {
-    "_porque_repetir_titulo": "false = video com titulo ja publicado sai da fila. Medido em 16/09/2026: das 63 chaves de titulo no canal de builds, 21 tinham saido DUAS vezes, porque a variante 'gancho B' tem id com sufixo :B e o mesmo titulo. Se a fila inteira ficar repetida, o menos pior sai assim mesmo e o aviso diz. Ponha true para voltar ao comportamento antigo.",
+    "_porque_repetir_titulo": "false = video com titulo ja publicado sai da fila. Medido em 16/09/2026: das 63 chaves de titulo no canal de builds, 21 tinham saido DUAS vezes, porque a variante 'gancho B' tem id com sufixo :B e o mesmo titulo. Desde 17/09/2026 a valvula esta FECHADA: se a fila inteira ficar repetida, o horario fica sem post (repetir e pior que nao postar). Variante B so volta com titulo proprio em outputs/_publicar/_textos (18 ganharam em 27/09). Ponha true para voltar ao comportamento antigo.",
     "repetir_titulo": false,
-    "_porque": "Quantos dos 8 disparos diarios cada formato ocupa. O duelo leva a maioria porque e o formato em teste e o mais barato (uma gravacao, nenhuma chamada de IA); a estreia leva 1 porque tem retencao mediana ZERO e so fica no ar para a comparacao ter os dois lados. Medido em 11/09/2026.",
+    "_porque": "PESOS RELATIVOS dos formatos nos horarios do dia. Foi escrito com 8 disparos; desde 15/09/2026 a grade tem 10 (builds/grade.py), e como `escolher_por_cota` compara servidos/peso, os pesos continuam valendo: 4+3+1 = 8 da ao duelo metade dos 10 horarios (5), ao build 3,75 e a estreia 1,25. Formato sem estoque cede o horario a quem tem. O duelo leva a maioria porque e o formato em teste e o mais barato (uma gravacao, nenhuma chamada de IA); a estreia leva 1 porque tem retencao mediana ZERO e so fica no ar para a comparacao ter os dois lados. Medido em 11/09/2026; aumentar o duelo espera ~10 duelos medidos (rota de 27/09).",
     "mistura": {
       "duelo": 4,
       "build": 3,

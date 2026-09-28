@@ -76,11 +76,24 @@ def _publicar(args) -> int:
                   f"{video.caminho}")
             for pendencia in video.pendencias:
                 print(f"      ! {pendencia}")
+        fora = catalogo.descartados()
+        if fora:
+            print(f"\n{len(fora)} descartado(s) de proposito (config/"
+                  "publicacao.json -> descartados; o mp4 continua na pasta):")
+            for chave, motivo in fora.items():
+                print(f"  {chave}: {motivo}")
         print(f"\npasta de exportacao: {catalogo.pasta_export()}")
         return 0
 
     video = catalogo.por_id(args.video_id)
     if video is None:
+        partes = str(args.video_id).split(":")
+        motivo = catalogo.descartados().get(":".join(partes[:2]))
+        if motivo:
+            print(f"{args.video_id} foi DESCARTADO: {motivo}")
+            print("para devolver, tire a linha de `descartados` em "
+                  "config/publicacao.json.")
+            return 1
         print(f"video nao encontrado: {args.video_id}")
         print("rode `python main.py publicar` para ver os ids.")
         return 1
