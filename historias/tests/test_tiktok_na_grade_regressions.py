@@ -225,13 +225,33 @@ class AvisoDoTelegramTests(unittest.TestCase):
         que so se respondia abrindo o navegador.
     """
 
+    @staticmethod
+    def _sem_estoque_de_verdade(m):
+        """O estoque sai do CATALOGO e do LEDGER reais, e desde 27/09/2026
+        mede o audio de cada build pronto com ffprobe/ffmpeg — um
+        `subprocess.run` a mais antes do envio. Aqui a pergunta e o TEXTO do
+        aviso; o estoque tem teste proprio (test_estoque_pelo_funil)."""
+        m.estoque = lambda por_dia=None: {"historias": 1, "builds": 1}
+        m.estoque_por_formato = lambda por_dia=None: {}
+
+    @staticmethod
+    def _captura(enviado):
+        """So a chamada do Telegram (`python -m remoto --avisar <texto>`)
+        conta como mensagem; qualquer outra chamada nao e o aviso."""
+        def run(args, *a, **k):
+            if "--avisar" in list(args):
+                enviado.append(args[-1])
+            return type("R", (), {"returncode": 0, "stdout": "",
+                                  "stderr": ""})()
+        return run
+
     def _avisar(self, resultados):
         import subprocess
         m = _postar()
+        self._sem_estoque_de_verdade(m)
         enviado = []
         original = subprocess.run
-        subprocess.run = (lambda *a, **k: enviado.append(a[0][-1])
-                          or type("R", (), {"returncode": 0})())
+        subprocess.run = self._captura(enviado)
         try:
             m.avisar(resultados)
         finally:
@@ -288,14 +308,14 @@ class AvisoDoTelegramTests(unittest.TestCase):
         que so passa NESTA maquina nao e um teste — cobra-se a chamada.
         """
         m = _postar()
+        self._sem_estoque_de_verdade(m)
         original = m._conta_do_destino
         m._conta_do_destino = lambda servico, canal: f"conta-{servico}"
         try:
             import subprocess
             enviado = []
             roda = subprocess.run
-            subprocess.run = (lambda *a, **k: enviado.append(a[0][-1])
-                              or type("R", (), {"returncode": 0})())
+            subprocess.run = self._captura(enviado)
             try:
                 m.avisar([self._historia()])
             finally:

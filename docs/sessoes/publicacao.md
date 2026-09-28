@@ -68,6 +68,7 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | "A conferir" (clique sem confirmação) | `desfecho.a_conferir` + `postar._sem_a_conferir`/`_com_as_raizes` |
 | Espera de processamento e confirmação | `youtube_web.py`, `tiktok.py`; veredito em `desfecho.classificar` |
 | Texto que não entrou no campo (título, descrição, legenda) | `escrita.escrever` + `escrita.estado`, chamados por `youtube_web._escrever` e `tiktok._escrever_legenda`; foto da falha em `random_builds\outputs\_publicar\telas\` |
+| Contador de estoque = funil da escolha | `postar._builds_prontos` (usado por `proximo_build`, `pendentes_por_canal`, `estoque_por_formato`) |
 | Vídeo mudo | `postar._audio_mudo` (`LIMIAR_MUDO_DB=-60`, `FRACAO_MUDA=0.5`) |
 | Imagem faltando / arquivo quebrado | `contos.publicar.qualidade.vistoriar_parte`; `v.pendencias` (builds) |
 | História sendo renderizada | trava `historias__render__<fonte>` |
@@ -137,6 +138,13 @@ diário.
   está no TikTok sem "Eu escrevo e conto…" e "O que você faria…". O modo vai
   ao ledger (`prova[].escrita`, `prova[].legenda_modo`); a foto da falha, a
   `outputs\_publicar\telas\`.
+- **Contador que mentia, de novo** (27/09): `estoque_por_formato` contava
+  `catálogo − publicados` e dizia "build 7" (28 ÷ 3,75/dia) com zero builds
+  publicáveis — 25 variantes B com título no ar e 3 com pendência. Era o
+  defeito de 16/09 do `pendentes_por_canal`, de volta pelo segundo contador.
+  → os dois contadores e a escolha passam por `_builds_prontos` (publicado,
+  pendência, título no ar, áudio mudo). O áudio é lembrado por arquivo
+  (tamanho + data) dentro da execução; falha da ferramenta nunca é lembrada.
 
 ## 5. O estado de hoje (27/09/2026)
 

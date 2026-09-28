@@ -1940,21 +1940,49 @@ LIMIAR_MUDO_DB = -60.0
 FRACAO_MUDA = 0.5
 
 
+# O veredito de audio de cada ARQUIVO, nesta execucao. A chave leva tamanho e
+# data: um re-render troca os dois e o video e medido de novo. So entra aqui o
+# que foi MEDIDO — ferramenta que falhou nao vira "tem som" guardado (o cache
+# de voz envenenado de 11/09 foi exatamente isso: uma falha servida para
+# sempre como resultado).
+_AUDIO_MEDIDO: dict = {}
+
+
 def _audio_mudo(video) -> str:
     """O motivo quando o mp4 sai calado (inteiro ou quase); "" quando tem som.
 
     Ferramenta que falha NAO barra: sem ffprobe/ffmpeg a grade inteira ficaria
     vazia por um problema da maquina, e nao do video.
+
+    Lembrado por arquivo desde 27/09/2026: os contadores de estoque passaram a
+    medir todo build pronto (0,3 a 0,65 s cada, medido), e a mesma rodada os
+    chama tres vezes.
     """
+    caminho = Path(str(getattr(video, "caminho", "") or ""))
+    try:
+        info = caminho.stat()
+    except OSError:
+        return ""
+    chave = (str(caminho), info.st_size, info.st_mtime_ns)
+    if chave in _AUDIO_MEDIDO:
+        return _AUDIO_MEDIDO[chave]
+    motivo = _medir_audio(caminho)
+    if motivo is None:
+        return ""
+    _AUDIO_MEDIDO[chave] = motivo
+    return motivo
+
+
+def _medir_audio(caminho: Path):
+    """A medida de `_audio_mudo`. `None` quando a FERRAMENTA falhou."""
     import re
     import subprocess
     try:
         from contos.publicar import qualidade
     except Exception:                                          # noqa: BLE001
-        return ""
-    caminho = Path(str(getattr(video, "caminho", "") or ""))
+        return None
     if not caminho.is_file():
-        return ""
+        return None
     dados = qualidade._ffprobe(caminho)
     faixas = dados.get("streams") if isinstance(dados, dict) else None
     if faixas and not any(f.get("codec_type") == "audio" for f in faixas):
@@ -1970,10 +1998,14 @@ def _audio_mudo(video) -> str:
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=300, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.SubprocessError):
-        return ""
+        return None
     texto = saida.stderr or ""
     media = re.search(r"mean_volume: (-?[\d.]+) dB", texto)
-    if media and float(media.group(1)) < LIMIAR_MUDO_DB:
+    if media is None:
+        # O ffmpeg rodou e nao mediu nada: isso e "nao sei", nao "tem som" —
+        # e "nao sei" nao pode ser lembrado como resposta.
+        return None
+    if float(media.group(1)) < LIMIAR_MUDO_DB:
         return f"o audio esta mudo (media {float(media.group(1)):.1f} dB)"
     if duracao > 0:
         calado = sum(float(x) for x in re.findall(r"silence_duration: ([\d.]+)", texto))
@@ -2005,20 +2037,27 @@ def _tiktok_confirmado(estado) -> bool:
         return False
 
 
-def proximo_build(config=None):
-    """O proximo video de builds, alternando entre os FORMATOS.
+def _builds_prontos(config=None, *, medir_audio: bool = True,
+                    avisar: bool = False) -> list:
+    """Os builds que a escolha PODE levar, do mais novo para o mais velho.
 
-    Ate 11/09/2026 isto era FIFO cego: `C.listar()` devolve build, estreia,
-    duelo e torneio no mesmo indice, e a unica regra era "o mais antigo que
-    ainda nao saiu". Com 8 disparos por dia e um backlog desequilibrado, uma
-    semana inteira podia sair de um formato so — e ai a comparacao que a
-    Onda 15 existe para fazer simplesmente nao acontece.
+    O funil de `proximo_build` sem a escolha — e o motivo de existir e a
+    escolha e os contadores responderem a MESMA pergunta. Medido em
+    27/09/2026: o aviso do Telegram dizia "build 7d" porque
+    `estoque_por_formato` contava `catalogo - publicados` (28 builds: 25
+    variantes B com titulo ja no ar e 3 com pendencia; 28 / 3,75 por dia = 7),
+    enquanto `proximo_build` nao tinha NENHUM build para levar. Era o defeito
+    que `pendentes_por_canal` teve em 16/09, de volta porque o segundo
+    contador tinha filtro proprio.
 
-    Agora e round-robin PONDERADO: entre os formatos com pendente, vence o
-    que estiver mais atrasado em relacao a propria cota (`servidos / cota`).
-    Empate desempata pelo mais antigo, que era a regra de sempre. Formato
-    sem cota, ou sem pendente, nao trava a grade: os slots dele vao para
-    quem tem.
+    Os crivos, do mais barato ao mais caro: ja publicado (qualquer destino),
+    perfil celular, pendencia, titulo ja no ar e — com `medir_audio` — video
+    mudo. O audio fica POR ULTIMO porque decodifica o mp4 (0,3 a 0,65 s por
+    video, medido): so e medido quem passou pelos outros. A escolha passa
+    `medir_audio=False` e mede so o escolhido.
+
+    Os crivos de MOMENTO — a lista "a conferir" e o teto de 2 por geracao no
+    dia — ficam de fora: sao sobre hoje, e o estoque e sobre os proximos dias.
     """
     from builds.publicar import catalogo as C
     from builds.publicar import metricas
@@ -2030,7 +2069,7 @@ def proximo_build(config=None):
     pendentes = [v for v in C.listar()
                  if v.id not in ja and getattr(v, "perfil", "") == "celular"]
     if not pendentes:
-        return None
+        return []
 
     # BUILD COM PENDENCIA NAO ENTRA NA FILA. O catalogo ja calcula isto
     # (`pendencias_da_build`: sem payoff, sem imagem do personagem, sem a luta
@@ -2040,7 +2079,7 @@ def proximo_build(config=None):
     # `proxima_historia` aplica ao pular o que a vistoria reprova.
     prontos = [v for v in pendentes if not getattr(v, "pendencias", None)]
     barrados = [v for v in pendentes if getattr(v, "pendencias", None)]
-    if barrados:
+    if barrados and avisar:
         # SEPARA O QUE ESPERA DO QUE ACABOU. Em 16/09/2026 este resumo dizia
         # "22 build(s) fora da fila por pendencia" havia semanas, e 20 delas
         # eram irrecuperaveis (personagem fora do banco). Um numero que nao
@@ -2056,15 +2095,63 @@ def proximo_build(config=None):
         if perdidos:
             _linha(f"[postar] {len(perdidos)} build(s) IRRECUPERAVEIS "
                    f"(estreia impossivel): {perdidos[0].pendencias[0]}")
-    pendentes = prontos
-    if not pendentes:
-        return None
+    if not prontos:
+        return []
 
     # TITULO JA NO AR NAO VOLTA. Medido em 16/09/2026 contra o ledger: das
     # 63 chaves de titulo publicadas no canal, 21 sairam DUAS vezes. A causa
     # e a variante "gancho B", que tem id com sufixo `:B` e o mesmo titulo —
     # para a deduplicacao por `video_id` sao dois videos, para o YouTube sao
     # dois iguais, competindo pelo mesmo termo de busca.
+    novos, repetidos = _sem_titulo_repetido(prontos, "builds", config)
+    if repetidos and avisar:
+        _linha(f"[postar] {len(repetidos)} build(s) fora da fila por titulo "
+               f"ja publicado: {', '.join(v.id for v in repetidos[:4])}"
+               f"{'...' if len(repetidos) > 4 else ''}")
+    if not novos:
+        if repetidos and avisar:
+            # A VALVULA FECHOU EM 17/09/2026. Ela liberava "o menos pior" com
+            # a fila inteira repetida — e o menos pior era republicar um
+            # titulo que ja estava no ar. Foi assim que as variantes A e B de
+            # cinco geracoes (00067, 00069, 00071, 00081, 00082) sairam as
+            # duas, nos dois destinos, com titulo identico. O Adrian viu.
+            #
+            # Repetir e pior que nao postar. Aqui ha uma saida melhor que o
+            # horario em branco, e ela ja existe: a RESERVA leva um build
+            # antigo ao TikTok quando a fila normal nao tem nada. O YouTube
+            # fica sem, e fica sem de proposito.
+            _linha("[postar] builds: TODOS os pendentes tem titulo ja "
+                   "publicado; o horario fica SEM post (a valvula fechou).")
+        return []
+
+    if medir_audio:
+        novos = [v for v in novos if not _audio_mudo(v)]
+    return novos
+
+
+def proximo_build(config=None):
+    """O proximo video de builds, alternando entre os FORMATOS.
+
+    Ate 11/09/2026 isto era FIFO cego: `C.listar()` devolve build, estreia,
+    duelo e torneio no mesmo indice, e a unica regra era "o mais antigo que
+    ainda nao saiu". Com 8 disparos por dia e um backlog desequilibrado, uma
+    semana inteira podia sair de um formato so — e ai a comparacao que a
+    Onda 15 existe para fazer simplesmente nao acontece.
+
+    Agora e round-robin PONDERADO: entre os formatos com pendente, vence o
+    que estiver mais atrasado em relacao a propria cota (`servidos / cota`).
+    Empate desempata pelo mais antigo, que era a regra de sempre. Formato
+    sem cota, ou sem pendente, nao trava a grade: os slots dele vao para
+    quem tem.
+
+    Os crivos de CONTEUDO (publicado, pendencia, titulo no ar) moram em
+    `_builds_prontos`, que os contadores de estoque tambem usam; aqui ficam
+    os de MOMENTO (a conferir, teto do dia) e a escolha.
+    """
+    pendentes = _builds_prontos(config, medir_audio=False, avisar=True)
+    if not pendentes:
+        return None
+
     # A mesma guarda das historias: quem subiu ao YouTube sem confirmacao
     # espera conferencia, senao a rodada seguinte reenvia e gera outro
     # rascunho.
@@ -2075,28 +2162,6 @@ def proximo_build(config=None):
     # O mesmo teto das historias, por geracao: 2 por dia no perfil.
     pendentes = _sem_fonte_cheia(pendentes, "builds")
     if not pendentes:
-        return None
-
-    novos, repetidos = _sem_titulo_repetido(pendentes, "builds", config)
-    if repetidos:
-        _linha(f"[postar] {len(repetidos)} build(s) fora da fila por titulo "
-               f"ja publicado: {', '.join(v.id for v in repetidos[:4])}"
-               f"{'...' if len(repetidos) > 4 else ''}")
-    if novos:
-        pendentes = novos
-    elif repetidos:
-        # A VALVULA FECHOU EM 17/09/2026. Ela liberava "o menos pior" com a
-        # fila inteira repetida — e o menos pior era republicar um titulo que
-        # ja estava no ar. Foi assim que as variantes A e B de cinco geracoes
-        # (00067, 00069, 00071, 00081, 00082) sairam as duas, nos dois
-        # destinos, com titulo identico. O Adrian viu.
-        #
-        # Repetir e pior que nao postar. Aqui ha uma saida melhor que o
-        # horario em branco, e ela ja existe: a RESERVA leva um build antigo
-        # ao TikTok quando a fila normal nao tem nada. O YouTube fica sem, e
-        # fica sem de proposito.
-        _linha("[postar] builds: TODOS os pendentes tem titulo ja publicado; "
-               "o horario fica SEM post (a valvula fechou).")
         return None
 
     # o mais ANTIGO primeiro: o catalogo vem do mais novo para o mais velho
@@ -2329,16 +2394,9 @@ def pendentes_por_canal() -> dict:
         # `proximo_build` devolvia None: ficavam de fora as pendencias (as 20
         # estreias impossiveis) e os titulos repetidos. O alerta "ABAIXO DO
         # PISO" nunca disparava na hora certa, porque o numero que ele olha
-        # nao era o numero que sai.
-        from builds.publicar import catalogo as C, metricas
-        ja = {l.get("video_id") for l in metricas.publicados()
-              if metricas.publicado(l)}
-        pendentes = [v for v in C.listar()
-                     if v.id not in ja
-                     and getattr(v, "perfil", "") == "celular"
-                     and not getattr(v, "pendencias", None)]
-        prontos, _repetidos = _sem_titulo_repetido(pendentes, "builds")
-        saida["builds"] = len(prontos)
+        # nao era o numero que sai. Desde 27/09/2026 e literalmente a mesma
+        # funcao (`_builds_prontos`), com o audio mudo junto.
+        saida["builds"] = len(_builds_prontos())
     except Exception:                                          # noqa: BLE001
         saida["builds"] = -1
     return saida
@@ -2371,16 +2429,18 @@ def estoque_por_formato(por_dia: int | None = None) -> dict:
     confortavel — e a comparacao para de ter os dois lados sem ninguem
     perceber. Cada formato e medido contra a cota DELE, nao contra os 8
     disparos do dia.
+
+    CONTA O QUE A ESCOLHA PODE LEVAR (`_builds_prontos`), e nao o catalogo.
+    Medido em 27/09/2026: dizia `build 7` com zero builds publicaveis — 25
+    variantes B com titulo no ar e 3 com pendencia entravam na conta. Um
+    formato a zero aparece como zero (e o aviso "sem estoque" dispara); so
+    a falha de leitura devolve `{}`.
     """
     por_dia = int(por_dia or len(HORAS_PADRAO)) or 1
     cota = cota_da_grade()
     total_cota = sum(cota.values()) or 1
     try:
-        from builds.publicar import catalogo as C
-        from builds.publicar import metricas
-        ja = {l.get("video_id") for l in metricas.publicados() if _saiu(l)}
-        pendentes = [v for v in C.listar()
-                     if v.id not in ja and getattr(v, "perfil", "") == "celular"]
+        pendentes = _builds_prontos()
     except Exception:                                          # noqa: BLE001
         return {}
     contagem: dict[str, int] = {}
