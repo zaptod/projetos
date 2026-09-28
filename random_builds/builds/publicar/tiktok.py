@@ -23,7 +23,7 @@ from pathlib import Path
 
 from .. import atividade
 from ..identity.browser import contexto_persistente, pagina
-from . import desfecho
+from . import desfecho, escrita
 
 RAIZ = Path(__file__).resolve().parents[2]
 PERFIL = RAIZ / ".browser_profile" / "tiktok"
@@ -196,70 +196,49 @@ def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
             laudo["legenda"] = "campo não encontrado"
             passo(f"campo de legenda não encontrado{de_novo}")
             continue
+        # A 1a e TECLA A TECLA, o jeito que sempre produziu legenda inteira
+        # aqui — mas com o prazo de `escrita` (180 s, conferido entre
+        # palavras), e nao os 30 s do `type` para o texto inteiro, que venciam
+        # no meio da frase com a maquina ocupada (22 legendas perdidas desde
+        # 20/09; o defeito esta medido em `escrita`). A 2a COLA, para quando
+        # a maquina esta lenta demais ate para isso.
+        #
+        # A ORDEM E MEDIDA. Colando primeiro, na rodada das 00:37 de
+        # 28/09/2026, a legenda da historia_00031 p06 perdeu dois dos quatro
+        # paragrafos: o editor do TikTok come o texto colado quando o Enter
+        # chega logo atras (85 de 230 caracteres no contador). No YouTube a
+        # colagem saiu identica nas duas publicacoes, conferida pela API.
+        colar = tentativa == 2
         try:
-            campo.click()
-            # `fill` não funciona em contenteditable: seleciona e digita.
-            page.keyboard.press("Control+A")
-            page.keyboard.press("Delete")
-            campo.type(texto, delay=8)
+            escrita.escrever(page, campo, texto, colar=colar)
         except Exception as exc:                               # noqa: BLE001
             laudo["legenda"] = f"falhou: {type(exc).__name__}"
+            laudo["tela"] = escrita.fotografar(page, "tiktok_legenda")
             passo(f"não consegui escrever a legenda "
                   f"({type(exc).__name__}){de_novo}")
             continue
-        # `type()` voltar sem erro NAO e prova de que o texto ficou la — e a
-        # mesma confusao do "botao habilitado". Le o campo de volta.
+        # Escrever sem erro NAO e prova de que o texto ficou la — e a mesma
+        # confusao do "botao habilitado". Le o campo de volta.
         estado = _estado_da_legenda(campo, texto)
         if estado != "escrita":
             laudo["legenda"] = estado
-            passo(f"digitei a legenda mas ela {estado}{de_novo}")
+            laudo["tela"] = escrita.fotografar(page, "tiktok_legenda")
+            passo(f"escrevi a legenda mas ela {estado}{de_novo}")
             continue
         laudo["legenda"] = "escrita"
+        laudo["legenda_modo"] = "colada" if colar else "digitada"
         passo("legenda escrita." if tentativa == 1
-              else "legenda escrita (2a tentativa).")
+              else "legenda escrita (2a tentativa, colada).")
         return True
     return False
 
 
-def _sem_emoji(texto: str) -> str:
-    """So o que o `inner_text` consegue devolver.
-
-    O TikTok troca emoji por `<img>` enquanto se digita, e `inner_text` nao ve
-    imagem. Uma legenda que COMECE com emoji some dos primeiros caracteres e a
-    conferencia acusaria vazio num campo cheio — adiando video bom e, pior,
-    somando falhas ate o contador desistir dele. Tirar dos DOIS lados antes de
-    comparar e o que torna a comparacao honesta.
-    """
-    return "".join(c for c in texto if c.isalnum() or c.isspace()
-                   or c in ".,;:!?-_#@/()'\"").strip()
-
-
-def _estado_da_legenda(campo, texto: str) -> str:
-    """"escrita", "ficou vazia" ou "ficou incompleta".
-
-    Separadas porque tem causas diferentes: vazia e o campo que nao aceitou
-    nada (clique perdido, elemento trocado); incompleta e a digitacao
-    interrompida no meio. Gravadas como a mesma coisa, o diario nao permite
-    distinguir "o TikTok recusou o foco" de "a pagina travou digitando".
-
-    A conferencia NAO compara o texto inteiro: o TikTok reformata hashtag em
-    `span` e emoji em imagem enquanto se digita. Compara o comeco (o titulo,
-    digitado literal) e exige volume compativel.
-    """
-    try:
-        atual = (campo.inner_text() or "").strip()
-    except Exception:                                          # noqa: BLE001
-        # Nao deu para ler: nao invente falha. Quem decide e a etapa seguinte.
-        return "escrita"
-    if not atual:
-        return "ficou vazia"
-    esperado = _sem_emoji(texto)
-    visto = _sem_emoji(atual)
-    if esperado[:20] and esperado[:20] in visto:
-        return "escrita"
-    if len(visto) >= len(esperado) * 0.5:
-        return "escrita"
-    return "ficou incompleta"
+# A CONFERENCIA MUDOU-SE PARA `escrita` em 27/09/2026, quando o YouTube passou
+# a ler o campo de volta tambem. Os nomes daqui ficam como apelido — os testes
+# e quem mais os chama continuam valendo —, mas o criterio e UM so: dois
+# criterios de "o texto entrou" seriam o mesmo defeito do "publicado" duplo.
+_sem_emoji = escrita.sem_emoji
+_estado_da_legenda = escrita.estado
 
 
 def _deve_barrar(postar: bool, texto: str, laudo: dict) -> bool:

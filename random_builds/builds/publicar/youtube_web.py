@@ -32,6 +32,7 @@ from pathlib import Path
 
 from .. import atividade
 from ..identity.browser import contexto_persistente, montou, pagina
+from . import escrita
 
 RAIZ = Path(__file__).resolve().parents[2]
 PERFIL = RAIZ / ".browser_profile" / "youtube_web"
@@ -716,12 +717,35 @@ def sondar(*, canal: str = "builds", saida: Path | None = None) -> Path:
 
 
 # ---------------------------------------------------------------- publicar
-def _escrever(page, alvo, texto: str) -> None:
-    """Campo do Studio e contenteditable: `fill` nao funciona."""
-    alvo.click()
-    page.keyboard.press("Control+A")
-    page.keyboard.press("Delete")
-    alvo.type(texto, delay=6)
+def _escrever(page, alvo, texto: str, *, rotulo: str = "campo") -> dict:
+    """Escreve no campo do Studio e CONFERE. Levanta se o texto nao entrou.
+
+    Era `alvo.type(texto, delay=6)`: uma ida e volta a pagina por letra, e 30 s
+    para o texto inteiro. 12 falhas desde 20/09, quase todas durante uma
+    partida de LoL — o defeito esta medido em `escrita`. Agora o texto e
+    colado (Enter e hashtag continuam tecla), LIDO DE VOLTA, e so se a
+    colagem nao pegar cai no tecla a tecla, com o prazo de `escrita` e nao o
+    do Playwright.
+
+    Antes nao havia conferencia nenhuma aqui: "o `type` voltou" era tomado
+    por "o titulo esta la". A tela da falha fica em `outputs/_publicar/telas/`.
+    """
+    falha, excecao = "", None
+    for colar in (True, False):
+        try:
+            laudo = escrita.escrever(page, alvo, texto, colar=colar)
+        except Exception as erro:                              # noqa: BLE001
+            falha, excecao = f"{type(erro).__name__}: {erro}", erro
+            continue
+        estado = escrita.estado(alvo, texto)
+        if estado == "escrita":
+            laudo["estado"] = estado
+            return laudo
+        falha, excecao = estado, None
+    tela = escrita.fotografar(page, f"youtube_{rotulo}")
+    raise YouTubeWebFalhou(
+        f"o {rotulo} nao entrou no campo ({falha[:160]}), colando e tecla a "
+        f"tecla." + (f" Tela: {tela}" if tela else "")) from excecao
 
 
 def _confirmar(page, passo) -> str:
@@ -995,13 +1019,20 @@ def publicar(video, *, visibilidade: str | None = None,
         if titulo is None:
             raise YouTubeWebFalhou(
                 "a tela de detalhes nao apareceu (o upload nao comecou?).")
-        _escrever(page, titulo, video.titulo[:100])
-        passo("titulo escrito.")
+        # O MODO VAI PARA O LAUDO (e dele para o ledger): "digitado" quer
+        # dizer que a colagem nao pegou no Studio e o tecla a tecla assumiu.
+        # E a unica forma de saber, depois, se o Studio mudou o campo.
+        laudo["escrita"] = {}
+        laudo["escrita"]["titulo"] = _escrever(
+            page, titulo, video.titulo[:100], rotulo="titulo")["modo"]
+        passo(f"titulo escrito ({laudo['escrita']['titulo']}).")
 
         descricao = _primeiro(page, CAMPO_DESCRICAO, timeout=15.0)
         if descricao is not None:
-            _escrever(page, descricao, video.descricao_completa[:4900])
-            passo("descricao escrita.")
+            laudo["escrita"]["descricao"] = _escrever(
+                page, descricao, video.descricao_completa[:4900],
+                rotulo="descricao")["modo"]
+            passo(f"descricao escrita ({laudo['escrita']['descricao']}).")
 
         capa = getattr(video, "capa", None)
         if capa and Path(capa).is_file():

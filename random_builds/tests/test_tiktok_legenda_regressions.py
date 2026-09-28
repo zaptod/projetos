@@ -31,7 +31,14 @@ from builds.publicar import tiktok
 
 
 class _Campo:
-    """Contenteditable falso: aceita (ou nao) o `type`, e devolve o que tem."""
+    """Contenteditable falso: aceita (ou nao) o que o TECLADO manda, e devolve
+    o que tem.
+
+    Desde 27/09/2026 a legenda nao entra mais por `campo.type` (ver
+    `builds/publicar/escrita.py`): ela chega pelo teclado da pagina — colada,
+    com Enter e hashtag como tecla. Uma TENTATIVA e um clique, que e como
+    `escrita.escrever` comeca cada escrita.
+    """
 
     def __init__(self, *, falhas=0, guarda=True, texto_lido=None, ler_erro=False):
         self.falhas_restantes = falhas
@@ -42,15 +49,18 @@ class _Campo:
         self.tentativas = 0
 
     def click(self):
-        pass
-
-    def type(self, texto, delay=0):
         self.tentativas += 1
+
+    def receber(self, trecho):
         if self.falhas_restantes > 0:
             self.falhas_restantes -= 1
             raise TimeoutError("o campo nao respondeu")
         if self.guarda:
-            self.conteudo = texto
+            self.conteudo += trecho
+
+    def type(self, texto, delay=0):
+        """So para os testes de `_estado_da_legenda`, que enchem o campo."""
+        self.conteudo = texto
 
     def inner_text(self):
         if self.ler_erro:
@@ -134,8 +144,22 @@ class _Passos(list):
 
 
 class _Teclado:
-    def press(self, _tecla):
-        pass
+    """Escreve no campo da pagina, como o de verdade escreve no que tem foco."""
+
+    def __init__(self, campo):
+        self.campo = campo
+
+    def press(self, tecla):
+        if tecla == "Delete":
+            self.campo.conteudo = ""
+        elif tecla == "Enter":
+            self.campo.receber("\n")
+
+    def insert_text(self, texto):
+        self.campo.receber(texto)
+
+    def type(self, texto, delay=0):
+        self.campo.receber(texto)
 
 
 class _Pagina:
@@ -143,7 +167,7 @@ class _Pagina:
 
     def __init__(self, campo):
         self.campo = campo
-        self.keyboard = _Teclado()
+        self.keyboard = _Teclado(campo)
 
 
 class NaoPublicaSemLegendaTests(unittest.TestCase):

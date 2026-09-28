@@ -16,6 +16,7 @@ Esta parte **escolhe** qual vídeo sai, **publica** nos dois destinos e
 | Ledger, `publicado()`, `prova_ok()`, reconciliação, métricas | `...\publicar\metricas.py` |
 | Catálogo dos mp4 de builds; corte em pedaços ≤180 s | `...\publicar\catalogo.py`, `cortes.py` |
 | Publicadores | `youtube.py` (API), `youtube_web.py` (navegador — é o caminho usado), `tiktok.py` (navegador) |
+| Escrever título/descrição/legenda no campo e conferir | `...\publicar\escrita.py` (os dois publicadores passam por ele) |
 | "O que aconteceu no clique" + lista "a conferir" | `...\publicar\desfecho.py` |
 | Ledger × canal de verdade / privado que deve voltar | `conferencia.py`, `recuperar.py` |
 
@@ -66,6 +67,7 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Parte barrada segura as seguintes | `proxima_historia` (`bloqueadas`/`adiadas`) |
 | "A conferir" (clique sem confirmação) | `desfecho.a_conferir` + `postar._sem_a_conferir`/`_com_as_raizes` |
 | Espera de processamento e confirmação | `youtube_web.py`, `tiktok.py`; veredito em `desfecho.classificar` |
+| Texto que não entrou no campo (título, descrição, legenda) | `escrita.escrever` + `escrita.estado`, chamados por `youtube_web._escrever` e `tiktok._escrever_legenda`; foto da falha em `random_builds\outputs\_publicar\telas\` |
 | Vídeo mudo | `postar._audio_mudo` (`LIMIAR_MUDO_DB=-60`, `FRACAO_MUDA=0.5`) |
 | Imagem faltando / arquivo quebrado | `contos.publicar.qualidade.vistoriar_parte`; `v.pendencias` (builds) |
 | História sendo renderizada | trava `historias__render__<fonte>` |
@@ -113,6 +115,28 @@ diário.
   → `metricas.publicado(linha)` é a resposta única (`CONTRATO_DO_LEDGER = 2`).
 - **Trava do ledger**: reescrita simultânea comia a linha nova. Quem acrescenta
   espera 120 s e grava mesmo sem trava (avisando); quem reescreve desiste.
+- **Texto digitado contra o relógio** (20–27/09): 12 `Locator.type: Timeout
+  30000ms` no YouTube e 22 "a legenda não entrou" no TikTok. Não era diálogo
+  cobrindo o campo: o `type` tinha 30 s para o texto *inteiro*, uma ida e
+  volta à página por letra. Com o League of Legends aberto (CPU 100%, i5 de 4
+  núcleos): 126 ms/letra numa página vazia; ~1 s/letra no Studio. Sem jogo, no
+  TikTok de verdade: 69 ms/letra (folga de só 1,8x). 13 das 17 falhas de
+  25–27/09 caíram dentro de uma partida. A prova ficou nos rascunhos: o da
+  h27 p01 tem 88 de 245 letras da descrição; o da h32 p04, o título cortado
+  em "A Filha que Ficou — O grupo da f". → `escrita.py`, dois modos e uma
+  leitura: **colar** (`insert_text`, 0,05 s para 1500 letras na mesma CPU;
+  Enter e hashtag continuam tecla, 46 teclas em vez de 238) e **tecla a
+  tecla sem o relógio único** (prazo de 180 s conferido entre palavras); e o
+  campo é **lido de volta exigindo cada linha** (o critério antigo aprovava
+  título cortado). **YouTube cola primeiro** — conferido pela API na rodada
+  das 00:37 de 28/09: título e descrição idênticos ao catálogo nas duas
+  publicações. **TikTok digita primeiro** — na mesma rodada, uma das duas
+  legendas coladas perdeu dois parágrafos (o editor come o texto colado
+  quando o Enter chega logo atrás; 85 de 230 letras no contador da tela) e
+  o critério antigo de leitura a aprovou: a `historia_00031:celular:p06`
+  está no TikTok sem "Eu escrevo e conto…" e "O que você faria…". O modo vai
+  ao ledger (`prova[].escrita`, `prova[].legenda_modo`); a foto da falha, a
+  `outputs\_publicar\telas\`.
 
 ## 5. O estado de hoje (27/09/2026)
 
@@ -120,35 +144,40 @@ Conferência da madrugada: **limpo** nos dois canais (1/1 builds, 27/27
 histórias; zero fantasma, zero rascunho). Ledger: 244 linhas em builds, 320 em
 histórias, nenhuma `(video_id, plataforma)` duplicada.
 
-**Trabalho NÃO COMMITADO de uma sessão já fechada** — `titulos.py`,
-`recuperar.py`, `metricas.py`, `test_id_pelo_canal_regressions.py` (modificados)
-e `test_titulo_do_corte_regressions.py` (novo). Assunto único: uma parte longa
-vira dois Shorts `(1 de 2)`/`(2 de 2)` e o ledger guarda **uma** linha para os
-dois. `titulos.chave()` passa a ignorar o sufixo do corte (a *parte* fica) e
-nasce `titulos.corte()`; `recuperaveis` deduplica por `(chave, corte)` para não
-deixar metade da parte privada para sempre; `id_no_canal` virou `ids_no_canal`
-(lista); `casar_ids` ganhou guarda para linha inteira não casar com meio vídeo.
+O assunto "parte longa vira dois Shorts `(1 de 2)`/`(2 de 2)`" foi commitado
+em `42dced8` (27/09, 19:58). Sobrou uma pendência: `ids_no_canal` **não tem
+chamador** — `youtube.py:151` segue usando `id_no_canal`, então o ledger grava
+só o id do primeiro pedaço (item 6 da S2).
 
-Falta, e era o que impedia commitar:
+**Problemas abertos** (atualizado em 28/09, 00:10)
 
-1. **`casar_ids` estava QUEBRADO** e foi consertado em 27/09/2026 pela
-   orquestração: usava `titulos.corte(...)` sem `titulos` importado no topo
-   (o único import era local, dentro de `_chave_de_titulo`), e o `NameError`
-   derrubava `metricas.reconciliar` (madrugada) e `ferramentas/curar_ledger.py`.
-   Hoje `metricas.py` tem `from . import titulos` no topo, com comentário
-   dizendo por que ele mora lá. Conferido chamando a função pura: casa a linha
-   certa e não casa linha inteira com meio vídeo.
-2. A suíte completa foi rodada pela orquestração em 27/09/2026, depois do
-   conserto (`python testar.py`, TEMP no `E:`, fora da janela :25-:55).
-3. `ids_no_canal` **não tem chamador**: `youtube.py:151` segue usando
-   `id_no_canal`, então o ledger grava só o id do primeiro pedaço. Decidir se
-   passa a guardar os dois. **É a única pendência que sobrou deste assunto.**
-
-**Problemas abertos**
-
-- **25 builds fora da fila por título repetido** (quase todos variantes `:B`) e
-  **3 por pendência** (`generation_00085`, `generation_00077` e sua variante).
-  Com isso a gordura de builds está em **0 dias**, abaixo do piso.
+- **Três partes de histórias estão só no TikTok** e o YouTube nunca vai
+  recebê-las sozinho: `historia_00022:p03` (falhou 20/09), `00027:p01` (22/09)
+  e `00032:p04` (27/09). A fila das histórias conta *qualquer* destino como
+  publicado, e não existe "YouTube atrasado" para histórias. A `h32 p05`
+  sairá no YouTube **antes** da p04 se nada for feito (`_em_ordem_no_destino`
+  só olha o TikTok). Subir cada uma é
+  `python historias/main.py publicar <id> --youtube` (registra no ledger,
+  mas NÃO passa pelas guardas da grade nem grava `prova`). Decisão do Adrian.
+- **NÃO usar `postar.py --recuperar --so historias`** para isso. O `--ver`
+  de 28/09 lista 7 na fila, e o primeiro que ele tornaria público é
+  `p-hNfT12nX8` — um *build* que caiu no canal de histórias em 31/08 (o
+  outro é `FZsl4NDq6k4`). Também estão lá o rascunho da h27 p01 com a
+  descrição cortada em 88 letras (`fn1_Sy3RpMk`), dois "Cinco anos pagando a
+  luz de um estranho (Parte 1)" (`3Tb8mBy4jv0`, `MHHH0eDwMLo`, a mesma parte
+  duas vezes) e as p03 das h5 e h4 (`VLTo6aSjXJ8`, `iR1K7Up0y4k`), que o
+  ledger dá como publicadas. A recuperação do YouTube só é ligada para
+  builds de propósito.
+- **Rascunhos das falhas de escrita** (privados, ninguém apaga sem ele):
+  histórias `pPACnX6RZ18` ("final celular p03", 20/09), `fn1_Sy3RpMk` (h27
+  p01, descrição cortada, 22/09), `YqbQUrY1nuE` (h32 p04, título cortado,
+  upload nunca terminou, 27/09); builds `YUgFci9d_5Y` ("final celular",
+  duelo_00010, 27/09), `_9d1f2LPYw4` e `Vt04zdE4o1k` (15/09). Nenhum deles
+  entra na recuperação de builds (descrição vazia).
+- **Variantes B**: em 27/09, 23:55, as 25 estavam fora da fila por título
+  repetido; às 00:05 de 28/09, 18 já passavam — a parte Builds está dando
+  título próprio a elas. A gordura de builds sai de 0 com isso. **3 por
+  pendência** continuam (`generation_00085`, `generation_00077` e a variante).
 - **`generation_00066:estreia:celular` é muda** (calada em 95% do tempo, 115 s
   de 121) e é barrada em toda rodada. Precisa re-render, não conserto de código.
 - **Duplicatas da `historia_00003` no canal**: 6 conteúdos no ar duas vezes (o
@@ -177,6 +206,12 @@ decodifica mp4 e vários caminhos escrevem no `atividade.jsonl`.
 ## 7. O que NÃO fazer
 
 - Não rodar `ferramentas/postar.py` sem `--ver`: **publica de verdade**.
+- Não rodar `postar.py --recuperar --so historias` sem `--ver`: ele torna
+  público o que o crivo aceita no canal de histórias, e lá isso inclui builds
+  que caíram no canal errado e rascunho com descrição cortada (§5).
+- Não voltar a escrever texto de vídeo com `Locator.type`: o prazo de 30 s é
+  para o texto inteiro, e a máquina ocupada estoura (§4). Use `escrita`; o
+  teste `test_escrita_no_campo_regressions` varre os dois publicadores.
 - Não fazer trabalho pesado entre **:25 e :55** (as postagens automáticas).
 - Não escrever no `publicados.jsonl` sem a trava `ledger__<canal>`, nem
   reescrevê-lo fora de `curar_ledger.py --gravar` (que faz cópia antes).
