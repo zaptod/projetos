@@ -23,7 +23,7 @@ from pathlib import Path
 
 from .. import atividade
 from ..identity.browser import contexto_persistente, pagina
-from . import desfecho, escrita
+from . import audio, desfecho, escrita
 
 RAIZ = Path(__file__).resolve().parents[2]
 PERFIL = RAIZ / ".browser_profile" / "tiktok"
@@ -481,6 +481,10 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
     caminho = Path(video.caminho)
     if not caminho.is_file():
         raise TikTokFalhou(f"arquivo sumiu: {caminho}")
+    # A LUTA MUDA NAO SOBE, venha de onde vier (28/09/2026): antes de abrir o
+    # Chrome e fora da fabrica do diario — e a guarda funcionando, nao uma
+    # falha de publicacao. O motivo fica na lista "a conferir" do TikTok.
+    audio.barrar_luta_muda(video, canal, "tiktok")
     if not video.vertical:
         # Não é impedimento técnico, mas 16:9 no TikTok entra com tarja e
         # some no feed — melhor avisar do que publicar torto.

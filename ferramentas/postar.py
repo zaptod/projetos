@@ -1931,93 +1931,22 @@ def escolher_por_cota(pendentes: list, servidos: dict, cota: dict):
     return por_origem[melhor][0]
 
 
-LIMIAR_MUDO_DB = -60.0
-# Fracao do video em silencio (abaixo de -50 dB por mais de 0,5 s) a partir da
-# qual ele conta como mudo. A MEDIA sozinha so pegava o render 100% calado: a
-# revisao de 15/09/2026 achou estreias do render antigo mudas quase inteiras e
-# com som so no fim, media -27 a -30 dB. Medido nos 23 builds prontos: 20 com
-# 0% de silencio, e as tres estreias defeituosas com 93%, 95% e 100%.
-FRACAO_MUDA = 0.5
-
-
-# O veredito de audio de cada ARQUIVO, nesta execucao. A chave leva tamanho e
-# data: um re-render troca os dois e o video e medido de novo. So entra aqui o
-# que foi MEDIDO — ferramenta que falhou nao vira "tem som" guardado (o cache
-# de voz envenenado de 11/09 foi exatamente isso: uma falha servida para
-# sempre como resultado).
-_AUDIO_MEDIDO: dict = {}
-
-
 def _audio_mudo(video) -> str:
-    """O motivo quando o mp4 sai calado (inteiro ou quase); "" quando tem som.
+    """O motivo quando o video sai calado; "" quando tem som (ou nao se sabe).
+
+    A MEDIDA MORA EM `builds.publicar.audio` desde 28/09/2026, e mede duas
+    coisas: o arquivo inteiro (media abaixo de -60 dB, ou calado em metade do
+    tempo — a regra de 15/09) e CADA TRECHO DE LUTA antes da mixagem. A
+    segunda e nova: 38 de 129 publicacoes desde 15/09 sairam com a luta a
+    -91 dB debaixo da musica, e o arquivo inteiro "tinha som".
 
     Ferramenta que falha NAO barra: sem ffprobe/ffmpeg a grade inteira ficaria
-    vazia por um problema da maquina, e nao do video.
-
-    Lembrado por arquivo desde 27/09/2026: os contadores de estoque passaram a
-    medir todo build pronto (0,3 a 0,65 s cada, medido), e a mesma rodada os
-    chama tres vezes.
+    vazia por um problema da maquina, e nao do video. A medida e lembrada por
+    arquivo (tamanho e data) entre processos — os contadores de estoque medem
+    todo build pronto, em processo novo a cada relatorio.
     """
-    caminho = Path(str(getattr(video, "caminho", "") or ""))
-    try:
-        info = caminho.stat()
-    except OSError:
-        return ""
-    chave = (str(caminho), info.st_size, info.st_mtime_ns)
-    if chave in _AUDIO_MEDIDO:
-        return _AUDIO_MEDIDO[chave]
-    motivo = _medir_audio(caminho)
-    if motivo is None:
-        return ""
-    _AUDIO_MEDIDO[chave] = motivo
-    return motivo
-
-
-def _medir_audio(caminho: Path):
-    """A medida de `_audio_mudo`. `None` quando a FERRAMENTA falhou."""
-    import re
-    import subprocess
-    try:
-        from contos.publicar import qualidade
-    except Exception:                                          # noqa: BLE001
-        return None
-    if not caminho.is_file():
-        return None
-    dados = qualidade._ffprobe(caminho)
-    faixas = dados.get("streams") if isinstance(dados, dict) else None
-    if faixas and not any(f.get("codec_type") == "audio" for f in faixas):
-        return "o mp4 nao tem faixa de audio"
-    try:
-        duracao = float(((dados or {}).get("format") or {}).get("duration") or 0)
-    except (TypeError, ValueError):
-        duracao = 0.0
-    try:
-        saida = subprocess.run(
-            ["ffmpeg", "-v", "info", "-i", str(caminho), "-vn", "-af",
-             "silencedetect=n=-50dB:d=0.5,volumedetect", "-f", "null", "-"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=300, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except (OSError, subprocess.SubprocessError):
-        return None
-    texto = saida.stderr or ""
-    media = re.search(r"mean_volume: (-?[\d.]+) dB", texto)
-    if media is None:
-        # O ffmpeg rodou e nao mediu nada: isso e "nao sei", nao "tem som" —
-        # e "nao sei" nao pode ser lembrado como resposta.
-        return None
-    if float(media.group(1)) < LIMIAR_MUDO_DB:
-        return f"o audio esta mudo (media {float(media.group(1)):.1f} dB)"
-    if duracao > 0:
-        calado = sum(float(x) for x in re.findall(r"silence_duration: ([\d.]+)", texto))
-        inicios = re.findall(r"silence_start: (-?[\d.]+)", texto)
-        if len(inicios) > len(re.findall(r"silence_end:", texto)):
-            # silencio que vai ate o fim do arquivo pode nao ganhar fechamento
-            calado += max(0.0, duracao - float(inicios[-1]))
-        fracao = min(1.0, calado / duracao)
-        if fracao >= FRACAO_MUDA:
-            return (f"o video fica calado em {fracao:.0%} do tempo "
-                    f"({calado:.0f} de {duracao:.0f} s)")
-    return ""
+    from builds.publicar import audio
+    return audio.veredito(video) or ""
 
 
 def _tiktok_confirmado(estado) -> bool:
@@ -2129,8 +2058,12 @@ def _builds_prontos(config=None, *, medir_audio: bool = True,
     return novos
 
 
-def proximo_build(config=None):
+def proximo_build(config=None, *, marcar: bool = False):
     """O proximo video de builds, alternando entre os FORMATOS.
+
+    `marcar` e so da rodada de VERDADE (`postar_build`): ela poe o video mudo
+    na lista "a conferir" do YouTube, com o motivo, e solta a marca de audio
+    de quem voltou a ter som. `--ver` e o painel perguntam sem mexer em nada.
 
     Ate 11/09/2026 isto era FIFO cego: `C.listar()` devolve build, estreia,
     duelo e torneio no mesmo indice, e a unica regra era "o mais antigo que
@@ -2148,9 +2081,18 @@ def proximo_build(config=None):
     `_builds_prontos`, que os contadores de estoque tambem usam; aqui ficam
     os de MOMENTO (a conferir, teto do dia) e a escolha.
     """
+    from builds.publicar import audio
+
     pendentes = _builds_prontos(config, medir_audio=False, avisar=True)
     if not pendentes:
         return None
+
+    # A MARCA DE AUDIO SAI SOZINHA, e ANTES de a lista tirar os marcados da
+    # fila: o re-render muda o arquivo, a medida e refeita, e o video que
+    # voltou a ter som volta a concorrer nesta mesma rodada. So a marca que
+    # comeca com `[audio] ` — a de clique sem confirmacao nunca sai por aqui.
+    if marcar:
+        audio.revisar_marcas("builds", pendentes)
 
     # A mesma guarda das historias: quem subiu ao YouTube sem confirmacao
     # espera conferencia, senao a rodada seguinte reenvia e gera outro
@@ -2169,13 +2111,21 @@ def proximo_build(config=None):
     servidos, cota = _servidos_recentes(), cota_da_grade(config)
     # VIDEO MUDO NAO SAI (auditoria de 15/09/2026): a estreia da
     # generation_00065 media -91 dB e estava marcada para as 10:07, nas duas
-    # plataformas. So o ESCOLHIDO e medido: uma decodificacao por horario.
+    # plataformas. Desde 28/09 a LUTA muda debaixo da musica tambem nao (38 de
+    # 129 publicacoes desde 15/09). A medida e lembrada por arquivo, entao o
+    # escolhido de cada horario so decodifica o que mudou desde a ultima vez.
     while pendentes:
         alvo = escolher_por_cota(pendentes, servidos, cota)
         motivo = _audio_mudo(alvo)
         if not motivo:
             return alvo
         _linha(f"[postar] {alvo.id} fora da fila: {motivo}")
+        if marcar:
+            # O MOTIVO VAI PARA A LISTA "A CONFERIR", que o app e o bot
+            # mostram: la o Adrian ve o que esta parado e por que. Marca do
+            # YouTube, porque e a lista que esta fila le; a marca sai sozinha
+            # (`audio.revisar_marcas`, acima) quando o som voltar.
+            audio.marcar("builds", alvo.id, motivo, "youtube")
         pendentes = [v for v in pendentes if v.id != alvo.id]
     return None
 
@@ -2201,7 +2151,7 @@ def postar_build(*, so_ver: bool = False) -> dict:
         return {"canal": "builds", "feito": True, "alvo": alvo.id,
                 "titulo": alvo.titulo, "url": ja_yt.get("url") or "",
                 "so_tiktok": True, "tiktok": _tiktok_dos_builds(alvo)}
-    alvo = proximo_build()
+    alvo = proximo_build(marcar=not so_ver)
     if alvo is None:
         return {"canal": "builds", "feito": False,
                 "motivo": "nao ha video pendente"}

@@ -101,9 +101,15 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
     recebe `log(texto)`, uma linha por vez, e pronto.
     """
     fala = log or (lambda _linha: None)
+    canal = kw.get("canal", "builds")
+    # A LUTA MUDA NAO SOBE, venha de onde vier (28/09/2026). Esta e a porta
+    # por onde passam todos os uploads do YouTube: a grade, o `main.py
+    # publicar`, o bot, o app e as historias. Levanta `audio.LutaMuda` antes
+    # de abrir o Studio, e o motivo fica na lista "a conferir".
+    from . import audio
+    audio.barrar_luta_muda(video, canal, "youtube")
     caminho = modo(config)
     fala(f"[youtube] publicando por {caminho.upper()}")
-    canal = kw.get("canal", "builds")
     # O laudo do upload. Sai daqui por `prova=` (dicionario preenchido no
     # lugar) e entra no ledger logo abaixo. Pelo caminho da API ele fica
     # vazio de proposito: aquele caminho nao le a tela do Studio, entao nao

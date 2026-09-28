@@ -156,7 +156,7 @@ class YouTubeCaidoNaoDerrubaTikTokTests(unittest.TestCase):
         def cai(*a, **k):
             raise RuntimeError("Studio caiu")
         _trocar(self, youtube, "publicar_como_configurado", cai)
-        self.m.proximo_build = lambda config=None: _Video("g1")
+        self.m.proximo_build = lambda config=None, **k: _Video("g1")
         self.m._tiktok_dos_builds = lambda alvo: ("cliquei em publicar, mas o TikTok "
                                                    "nao confirmou")
         self.assertFalse(self.m.postar_build()["feito"])
@@ -167,7 +167,7 @@ class YouTubeCaidoNaoDerrubaTikTokTests(unittest.TestCase):
         def cai(*a, **k):
             raise RuntimeError("o YouTube nao terminou de processar o video a tempo")
         _trocar(self, youtube, "publicar_como_configurado", cai)
-        self.m.proximo_build = lambda config=None: _Video("g1")
+        self.m.proximo_build = lambda config=None, **k: _Video("g1")
         self.m._tiktok_dos_builds = lambda alvo: "publicado no TikTok"
         ficha = self.m.postar_build()
         self.assertEqual("publicado no TikTok", ficha["tiktok"])
@@ -183,7 +183,7 @@ class YouTubeCaidoNaoDerrubaTikTokTests(unittest.TestCase):
         def cota(*a, **k):
             raise LimiteDiarioDoYouTube("O limite diário de envios foi alcançado")
         _trocar(self, youtube, "publicar_como_configurado", cota)
-        self.m.proximo_build = lambda config=None: _Video("g1")
+        self.m.proximo_build = lambda config=None, **k: _Video("g1")
         self.m._tiktok_dos_builds = lambda alvo: "publicado no TikTok"
         ficha = self.m.postar_build()
         self.assertTrue(ficha["cota_youtube"])

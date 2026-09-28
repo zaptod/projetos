@@ -65,11 +65,12 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Ordem das partes na fila | `fila_de_historias` (menor parte que falta; a anterior tem de existir) |
 | Ordem das partes **no destino** | `_em_ordem_no_destino` — pergunta ao TikTok, não ao ledger |
 | Parte barrada segura as seguintes | `proxima_historia` (`bloqueadas`/`adiadas`) |
-| "A conferir" (clique sem confirmação) | `desfecho.a_conferir` + `postar._sem_a_conferir`/`_com_as_raizes` |
+| "A conferir" (clique sem confirmação; e áudio mudo, com `estado` começando por `[audio] `) | `desfecho.a_conferir`/`marcas` + `postar._sem_a_conferir`/`_com_as_raizes`. Só a marca `[audio] ` sai sozinha (`desfecho.soltar_marca` com prefixo); a de clique só por conferência humana |
 | Espera de processamento e confirmação | `youtube_web.py`, `tiktok.py`; veredito em `desfecho.classificar` |
 | Texto que não entrou no campo (título, descrição, legenda) | `escrita.escrever` + `escrita.estado`, chamados por `youtube_web._escrever` e `tiktok._escrever_legenda`; foto da falha em `random_builds\outputs\_publicar\telas\` |
 | Contador de estoque = funil da escolha | `postar._builds_prontos` (usado por `proximo_build`, `pendentes_por_canal`, `estoque_por_formato`) |
-| Vídeo mudo | `postar._audio_mudo` (`LIMIAR_MUDO_DB=-60`, `FRACAO_MUDA=0.5`) |
+| Vídeo mudo: o arquivo inteiro **e cada trecho de luta** (`gameplay` do `edit_plan.json` → `_segments_<perfil>/seg_NNN.mp4`, antes da música) | `audio.veredito` (`LIMIAR_MUDO_DB=-60`, `FRACAO_MUDA=0.5`), usado pela fila e pelos contadores via `postar._audio_mudo`; medida lembrada por arquivo em `%LOCALAPPDATA%\neural-fights\audio_medido.json` |
+| Luta muda em **todo caminho** (grade, recuperação, reserva, `main.py publicar`, bot, app) | `audio.barrar_luta_muda`, chamado de dentro de `youtube.publicar_como_configurado` e `tiktok.publicar`, antes de abrir o navegador; marca `[audio]` na lista "a conferir" daquele destino. A fila (rodada de verdade) marca no YouTube e solta sozinha quando o som volta (`audio.revisar_marcas`) |
 | Imagem faltando / arquivo quebrado | `contos.publicar.qualidade.vistoriar_parte`; `v.pendencias` (builds) |
 | História sendo renderizada | trava `historias__render__<fonte>` |
 | Rodízio favela/normal/babaca | `_no_rodizio_dos_tipos` → `contos.publicar.tipos` |
@@ -144,7 +145,23 @@ diário.
   defeito de 16/09 do `pendentes_por_canal`, de volta pelo segundo contador.
   → os dois contadores e a escolha passam por `_builds_prontos` (publicado,
   pendência, título no ar, áudio mudo). O áudio é lembrado por arquivo
-  (tamanho + data) dentro da execução; falha da ferramenta nunca é lembrada.
+  (tamanho + data) entre processos (`audio.medir_lembrado`); falha da
+  ferramenta nunca é lembrada. A primeira versão lembrava dentro do
+  `postar.py`, que o bot carrega do zero a cada relatório: os seis testes de
+  `relatorios.metas` mediam 148 builds cada um e a suíte do bot passou de 900 s.
+- **Luta muda debaixo da música** (medido pela parte Builds em 28/09): 38 de
+  129 publicações desde 15/09 saíram com a luta calada, inclusive a
+  `generation_00083:build:celular:B` das 00:45 (`seg_021` a -91 dB). A guarda
+  de áudio media o arquivo *inteiro*, e a música cobria o buraco. → `audio.py`
+  mede também cada trecho `gameplay` antes da mixagem; a fila pula e marca
+  `[audio]` na lista "a conferir" (só na rodada de verdade), e os dois
+  publicadores barram antes de abrir o navegador — todo caminho passa por
+  eles. Na fila de 28/09 (22 candidatos), 21 lutas entre -12,8 e -21 dB; só a
+  estreia da `generation_00066` tem luta a -91 dB. A marca sai sozinha quando
+  o re-render devolve o som (a medida é refeita porque o arquivo muda).
+  Limite conhecido: a recuperação de *privados* do YouTube (`tornar_publico`)
+  não passa pelo upload e não mede nada — o vídeo do canal pode ser de outro
+  render que o do disco.
 
 ## 5. O estado de hoje (27/09/2026)
 
@@ -157,14 +174,15 @@ em `42dced8` (27/09, 19:58). Sobrou uma pendência: `ids_no_canal` **não tem
 chamador** — `youtube.py:151` segue usando `id_no_canal`, então o ledger grava
 só o id do primeiro pedaço (item 6 da S2).
 
-**Problemas abertos** (atualizado em 28/09, 00:10)
+**Problemas abertos** (atualizado em 28/09, 02:40)
 
 - **Três partes de histórias estão só no TikTok** e o YouTube nunca vai
   recebê-las sozinho: `historia_00022:p03` (falhou 20/09), `00027:p01` (22/09)
   e `00032:p04` (27/09). A fila das histórias conta *qualquer* destino como
-  publicado, e não existe "YouTube atrasado" para histórias. A `h32 p05`
-  sairá no YouTube **antes** da p04 se nada for feito (`_em_ordem_no_destino`
-  só olha o TikTok). Subir cada uma é
+  publicado, e não existe "YouTube atrasado" para histórias. **A `h32 p05` é
+  a primeira da fila às 06:37 de 28/09** (conferido às 02:30) e sairá no
+  YouTube **antes** da p04 se nada for feito (`_em_ordem_no_destino` só olha
+  o TikTok). Subir cada uma é
   `python historias/main.py publicar <id> --youtube` (registra no ledger,
   mas NÃO passa pelas guardas da grade nem grava `prova`). Decisão do Adrian.
 - **NÃO usar `postar.py --recuperar --so historias`** para isso. O `--ver`
@@ -187,7 +205,12 @@ só o id do primeiro pedaço (item 6 da S2).
   título próprio a elas. A gordura de builds sai de 0 com isso. **3 por
   pendência** continuam (`generation_00085`, `generation_00077` e a variante).
 - **`generation_00066:estreia:celular` é muda** (calada em 95% do tempo, 115 s
-  de 121) e é barrada em toda rodada. Precisa re-render, não conserto de código.
+  de 121; os dois trechos de luta a -91 dB) e é barrada em toda rodada. Precisa
+  re-render, não conserto de código. Desde 28/09 fica também na lista "a
+  conferir" do YouTube, com o motivo, até o som voltar.
+- **Luta muda já publicada**: as 38 de 15/09 a 28/09 (levantamento da parte
+  Builds) estão no ar; a guarda só impede as próximas. O re-render espera o
+  som novo aprovado pelo Adrian.
 - **Duplicatas da `historia_00003` no canal**: 6 conteúdos no ar duas vezes (o
   vídeo inteiro *e* os dois pedaços). Medido em 17/09, **não reverificado hoje**.
   Nenhum código corrige isso — é limpeza no canal, decisão dele.
@@ -225,7 +248,10 @@ decodifica mp4 e vários caminhos escrevem no `atividade.jsonl`.
   reescrevê-lo fora de `curar_ledger.py --gravar` (que faz cópia antes).
 - Não apagar nem "consertar" `_tiktok_a_conferir.json` /
   `_youtube_a_conferir.json`: arquivo ausente significa "ninguém bloqueado", e
-  isso **é uma afirmação**. Corrompido fica onde está, de propósito.
+  isso **é uma afirmação**. Corrompido fica onde está, de propósito. A marca
+  `[audio]` sai sozinha quando o som volta; a de clique, só por conferência.
+- Não soltar marca por código sem prefixo: `desfecho.soltar_marca` recusa
+  prefixo vazio, porque "" casaria com a marca de clique sem confirmação.
 - Não reabrir a válvula de título repetido nem mexer em `TETO_POR_FONTE_NO_DIA`,
   `CORTE_DO_TIKTOK`, `RECUPERACAO_LIGADA`, `RESERVA_LIGADA`: são decisões dele.
 - Não criar um segundo critério de "publicado", de "título igual" ou de "horário

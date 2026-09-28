@@ -168,6 +168,17 @@ def a_conferir(canal: str = "historias", plataforma: str = "tiktok") -> set:
     qualquer erro, e quem chama entendia "ninguem bloqueado" — repostando
     todos os marcados. Um conjunto vazio e uma afirmacao, nao um "nao sei".
     """
+    return set(marcas(canal, plataforma))
+
+
+def marcas(canal: str = "historias", plataforma: str = "tiktok") -> dict:
+    """{video_id: {quando, estado, plataforma}}: a lista COM o motivo.
+
+    A mesma leitura e a mesma falha fechada de `a_conferir` (que e o conjunto
+    das chaves disto). Existe para quem precisa saber POR QUE o video esta
+    parado — o audio (`[audio] ...`) sai sozinho quando o som volta; o
+    clique sem confirmacao, so por conferencia.
+    """
     from .. import travas
     caminho = arquivo_a_conferir(canal, plataforma)
     try:
@@ -176,7 +187,7 @@ def a_conferir(canal: str = "historias", plataforma: str = "tiktok") -> set:
             if minha is False:
                 raise NaoConsegviLer(
                     f"a trava {nome_da_trava(plataforma)} esta ocupada")
-            return set(_ler(caminho))
+            return dict(_ler(caminho))
     except (ValueError, OSError) as exc:
         _avisar(canal, texto=(
             f"nao consegui ler {caminho.name} ({type(exc).__name__}). A "
@@ -195,8 +206,15 @@ class NaoConsegviMarcar(RuntimeError):
 
 
 def marcar_para_conferir(canal: str, video_id: str, estado: str,
-                         plataforma: str = "tiktok") -> bool:
+                         plataforma: str = "tiktok", *,
+                         aviso: str | None = None, etapa: str | None = None,
+                         erro: bool = True) -> bool:
     """Tira da fila e AVISA. Erro no diario, nao aviso no log.
+
+    `aviso`, `etapa` e `erro` existem para quem marca POR OUTRO MOTIVO que o
+    clique sem confirmacao (o audio mudo, desde 28/09/2026): o texto padrao
+    diz "cliquei e pode estar no ar", o que para esses seria falso, e ERRO
+    acionaria a apuracao por uma guarda que funcionou.
 
     ESCRITA ATOMICA E ARQUIVO CORROMPIDO PRESERVADO. A primeira versao lia o
     JSON, e com o arquivo cortado caia em `{}` e regravava a lista **so com o
@@ -274,22 +292,67 @@ def marcar_para_conferir(canal: str, video_id: str, estado: str,
                 f"({type(exc).__name__}). O video pode estar no ar e NAO esta "
                 f"bloqueado — confira antes da proxima rodada."))
             raise NaoConsegviMarcar(str(exc)) from exc
-    _avisar(canal, ref=video_id, texto=(
-        f"{video_id}: cliquei em publicar no {plataforma} e nao veio "
-        f"confirmacao. Pode estar no ar — NAO reenvio sozinho para nao "
-        f"duplicar. Precisa de conferencia no perfil."))
+    _avisar(canal, ref=video_id, etapa=etapa, atividade_erro=erro,
+            texto=aviso or (
+                f"{video_id}: cliquei em publicar no {plataforma} e nao veio "
+                f"confirmacao. Pode estar no ar — NAO reenvio sozinho para "
+                f"nao duplicar. Precisa de conferencia no perfil."))
+    return True
+
+
+def soltar_marca(canal: str, video_id: str, plataforma: str = "tiktok", *,
+                 prefixo: str) -> bool:
+    """Tira UMA marca, e so se o `estado` dela comecar com `prefixo`.
+
+    Existe para as marcas que a MAQUINA sabe desfazer — o audio mudo
+    (`audio.PREFIXO_DA_MARCA`), que sai quando o re-render devolve o som. A
+    de clique sem confirmacao nunca sai por aqui: so por conferencia humana.
+    Por isso `prefixo` e obrigatorio e nao pode ser vazio: "" casaria com
+    toda marca.
+
+    Mesma trava, mesma leitura e mesma escrita atomica de
+    `marcar_para_conferir`. Trava ocupada ou arquivo ilegivel: nao mexe, e
+    devolve False — o video so fica mais uma rodada parado.
+    """
+    if not video_id or not prefixo:
+        return False
+    import os
+    from .. import travas
+    caminho = arquivo_a_conferir(canal, plataforma)
+    with travas.trava(nome_da_trava(plataforma),
+                      esperar=ESPERA_DA_TRAVA_S) as minha:
+        if minha is False:
+            return False
+        try:
+            dados = _ler(caminho)
+        except (ValueError, OSError):
+            return False
+        marca = dados.get(video_id)
+        if not isinstance(marca, dict):
+            return False
+        if not str(marca.get("estado") or "").startswith(prefixo):
+            return False
+        del dados[video_id]
+        try:
+            tmp = caminho.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=1),
+                           encoding="utf-8")
+            os.replace(tmp, caminho)
+        except OSError:
+            return False
     return True
 
 
 def _avisar(canal: str, texto: str, ref: str = "",
-            atividade_erro: bool = True) -> None:
+            atividade_erro: bool = True, etapa: str | None = None) -> None:
     """Diario, nunca log: ninguem le log as 3 da manha."""
     try:
         from .. import atividade
         atividade.registrar(
             "publicacao",
             atividade.ERRO if atividade_erro else atividade.LOG,
-            texto, canal, etapa="publicar.tiktok.sem_confirmacao", ref=ref)
+            texto, canal, etapa=etapa or "publicar.tiktok.sem_confirmacao",
+            ref=ref)
     except Exception:                                          # noqa: BLE001
         pass
 

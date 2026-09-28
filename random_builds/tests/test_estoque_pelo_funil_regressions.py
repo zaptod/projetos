@@ -128,45 +128,10 @@ class EstoquePeloFunilTests(unittest.TestCase):
         self.assertEqual(-1, self.m.pendentes_por_canal()["builds"])
 
 
-class AudioLembradoTests(unittest.TestCase):
-    """O audio passou a ser medido para todo build pronto: lembrar por arquivo
-    evita decodificar o mesmo mp4 tres vezes na rodada — e SO lembra medida,
-    nunca falha de ferramenta."""
-
-    def setUp(self):
-        import tempfile
-        self.m = _postar()
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.mp4 = Path(self._tmp.name) / "v.mp4"
-        self.mp4.write_bytes(b"x")
-        self.video = _V("g1", "t", "build")
-        self.video.caminho = str(self.mp4)
-
-    def test_mede_uma_vez_por_arquivo(self):
-        medidas = []
-        self.m._medir_audio = lambda c: medidas.append(c) or "calado"
-        self.assertEqual("calado", self.m._audio_mudo(self.video))
-        self.assertEqual("calado", self.m._audio_mudo(self.video))
-        self.assertEqual(1, len(medidas))
-
-    def test_falha_da_ferramenta_nao_e_lembrada(self):
-        respostas = [None, "calado"]
-        self.m._medir_audio = lambda c: respostas.pop(0)
-        self.assertEqual("", self.m._audio_mudo(self.video),
-                         "ferramenta que falha nao barra")
-        self.assertEqual("calado", self.m._audio_mudo(self.video),
-                         "e a proxima pergunta mede de novo")
-
-    def test_arquivo_trocado_e_medido_de_novo(self):
-        import os
-        medidas = []
-        self.m._medir_audio = lambda c: medidas.append(c) or ""
-        self.m._audio_mudo(self.video)
-        self.mp4.write_bytes(b"re-render maior")
-        os.utime(self.mp4, ns=(1, 1))
-        self.m._audio_mudo(self.video)
-        self.assertEqual(2, len(medidas))
+# A lembranca da medida de audio mudou-se para `builds.publicar.audio` em
+# 28/09/2026 (a do `postar.py` morria a cada carga do modulo, e o bot o
+# carrega do zero a cada relatorio). Os testes dela estao em
+# test_luta_muda_regressions.MedidaLembradaTests.
 
 
 if __name__ == "__main__":
