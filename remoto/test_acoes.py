@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import http.client
 import json
-import re
 import subprocess
 import sys
 import threading
@@ -1655,177 +1654,84 @@ def test_parte_marcada_pelo_publicador_nao_duplica_o_diario(mundo):
 
 
 # ============================================== o /publicar do Telegram
-# Ate 28/09/2026 o /publicar do bot chamava `main.py publicar` direto, num
-# passo so: sem o "em voo" do app, sem a lista "a conferir", sem a janela da
-# grade, sem olhar se o `postar.py` estava vivo — e sem `--visibilidade`, entao
-# o YouTube subia PRIVADO (o padrao do publicacao.json). O app podia mandar um
-# video e o bot manda-lo de novo em seguida. Agora os dois passam pela MESMA
-# funcao (`acoes.preparar` e `acoes.confirmar`), e estes testes poem os dois
-# atras do mesmo video.
+# SO O APP PUBLICA PELO CELULAR (decisao do Adrian, 28/09/2026). Ate 27/09 o
+# /publicar do bot chamava `main.py publicar` direto, num passo so, sem
+# nenhuma guarda do app e com o YouTube privado. Agora ele so responde que
+# publicar e pelo app. Os dubles abaixo falham se QUALQUER caminho de
+# publicacao for tocado: o `Popen` cru do bot, as guardas, o disparo e a filha.
 @pytest.fixture
 def bot(mundo, monkeypatch):
-    """Fala com o bot como o celular fala: texto do chat, resposta de volta.
+    tocados = []
 
-    O `_rodar` do bot (o `Popen` cru) vira um gravador: nenhum teste pode
-    chegar a um `main.py publicar` de verdade, e publicar por fora da
-    `publicacao_filha` e justamente o defeito que estes testes pegam.
-    """
-    disparos = []
-    monkeypatch.setattr(comandos, "_rodar", lambda args, cwd, rotulo: (
-        disparos.append(list(args)) or f"comecei: {rotulo}"))
+    def bomba(nome):
+        def _explode(*a, **k):
+            tocados.append(nome)
+            raise AssertionError(f"o bot chegou a {nome}")
+        return _explode
+
+    monkeypatch.setattr(comandos, "_rodar", bomba("comandos._rodar (Popen)"))
+    for nome in ("preparar", "confirmar", "executar", "_disparar_publicacao",
+                 "_iniciar_filha", "comando_de_publicar"):
+        monkeypatch.setattr(acoes, nome, bomba(f"acoes.{nome}"))
     monkeypatch.setattr(comandos, "_listar_videos", mundo.catalogo.listar)
-    monkeypatch.setattr(comandos, "_PENDENTES", None, raising=False)
 
-    def falar(texto, chat=42):
-        try:
-            resposta, arquivo = comandos.executar(texto, chat=chat)
-        except TypeError:                       # o executar antigo, sem chat
-            resposta, arquivo = comandos.executar(texto)
+    def falar(texto):
+        resposta, arquivo = comandos.executar(texto)
         assert arquivo is None
-        return resposta.replace("\\", "")        # o bot escapa o Markdown
-    falar.disparos = disparos
+        return resposta
     yield falar
-    assert disparos == [], f"o bot publicou por fora da filha: {disparos}"
+    assert tocados == [], f"o bot tocou num caminho de publicacao: {tocados}"
 
 
-def _codigo_do_bot(resposta: str) -> str:
-    achado = re.search(r"/confirmar_([0-9a-f]+)", resposta)
-    assert achado, resposta
-    return achado.group(1)
-
-
-def test_bot_publica_em_dois_passos_e_como_publico(mundo, bot):
-    mundo.filha.segurar = threading.Event()
-    mundo.filha.roteiro = (f"YouTube: {YT_OK}\n", 0)
-    pedido = bot(f"/publicar {DOIS} youtube")
-    assert mundo.filha.comandos == []                # o 1º passo nao sobe nada
-    assert "«Build Dois»" in pedido and "PÚBLICO" in pedido
-    resposta = bot(f"/confirmar_{_codigo_do_bot(pedido)}")
-    assert resposta.startswith("comecei: publicar") and "público" in resposta
-    (comando,) = mundo.filha.comandos
-    assert comando[comando.index("--visibilidade") + 1] == "public"
-    (item,) = acoes.em_voo().values()                # o MESMO em voo do app
-    assert item["aparelho"] == "telegram:42" and item["estado"] == "em_andamento"
-    assert DOIS in _marcas(mundo, "youtube")          # e a mesma marca previa
-    mundo.filha.segurar.set()
-    _esperar_publicacoes()
+@pytest.mark.parametrize("texto", [
+    "/publicar", f"/publicar {DOIS}", f"/publicar {DOIS} youtube",
+    f"/publicar {DOIS} ambos", f"/publicar {A} tiktok", "/publicar@meubot x"])
+def test_bot_nao_publica_e_diz_que_e_pelo_app(mundo, bot, texto):
+    resposta = bot(texto)
+    assert resposta == comandos.SO_PELO_APP
+    assert "só pelo app" in resposta
+    assert mundo.filha.comandos == []
     assert acoes.em_voo() == {}
-    acoes._FILA_AVISOS.join()
-    (aviso,) = [a for a in mundo.avisos if "publicar" in a]
-    assert aviso.startswith("🤖 pelo Telegram") and "youtube: publicado" in aviso.lower()
-    linhas = [json.loads(l) for l in
-              (mundo.tmp / "acoes.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert [(l["aparelho"], l["acao"]) for l in linhas] == [
-        ("telegram:42", "publicar"), ("telegram:42", "desfecho")]
+    assert _marcas(mundo, "youtube") == {} and _marcas(mundo, "tiktok") == {}
+    assert not (mundo.tmp / "acoes.jsonl").exists()
 
 
-def test_app_primeiro_e_o_bot_e_barrado_no_mesmo_video(servidor, mundo, bot):
-    mundo.filha.segurar = threading.Event()
-    mundo.filha.roteiro = (f"YouTube: {YT_OK}\n", 0)
+@pytest.mark.parametrize("texto", ["/confirmar abc123", "/confirmar_abc123"])
+def test_o_bot_nao_tem_mais_confirmar(bot, texto):
+    assert "não conheço" in bot(texto)
+
+
+def test_a_ajuda_do_bot_manda_publicar_pelo_app():
+    assert "/publicar — publicar é só pelo app" in comandos.ajuda()
+    assert "/confirmar" not in comandos.ajuda()
+
+
+# ============================================== destino padrao: os dois
+# Decisao do Adrian em 28/09/2026: sem destino dito, YouTube E TikTok. A tela
+# do app pergunta sempre (tres botoes); o padrao vale para o pedido sem `onde`.
+@pytest.mark.parametrize("args", [{"id": DOIS}, {"id": DOIS, "onde": ""},
+                                  {"id": DOIS, "onde": None}])
+def test_sem_destino_dito_vai_aos_dois(mundo, args):
+    pedido = acoes.preparar("publicar", args, "ap")
+    assert pedido["args"]["onde"] == "ambos" == acoes.DESTINO_PADRAO
+    assert "no YouTube e no TikTok como PÚBLICO" in pedido["texto"]
+    comando = acoes.comando_de_publicar(pedido["args"])
+    assert "--youtube" in comando and "--tiktok" in comando
+
+
+def test_destino_dito_e_errado_continua_recusado(mundo):
+    with pytest.raises(acoes.Recusa, match="destino inválido"):
+        acoes.preparar("publicar", {"id": DOIS, "onde": "instagram"}, "ap")
+
+
+def test_app_sem_destino_publica_nos_dois(servidor, mundo):
+    mundo.filha.roteiro = (f"YouTube: {YT_OK}\nTikTok: {TK_OK}\n", 0)
     token = _token()
-    _, dados = _pedir(servidor, "POST", "/api/acao",
-                      {"acao": "publicar", "args": {"id": DOIS, "onde": "youtube"}}, token)
+    status, dados = _pedir(servidor, "POST", "/api/acao",
+                           {"acao": "publicar", "args": {"id": DOIS}}, token)
+    assert status == 200 and "YouTube e no TikTok" in dados["texto"]
     assert _pedir(servidor, "POST", "/api/acao/confirmar",
                   {"codigo": dados["confirmar"]}, token)[0] == 200
-    resposta = bot(f"/publicar {DOIS} ambos")
-    assert "não vou publicar" in resposta
-    assert "já foi mandado ao YouTube pelo app" in resposta
-    assert "/confirmar" not in resposta
-    assert len(mundo.filha.comandos) == 1
-
-
-def test_bot_primeiro_e_o_app_e_barrado_no_mesmo_video(servidor, mundo, bot):
-    mundo.filha.segurar = threading.Event()
-    mundo.filha.roteiro = (f"YouTube: {YT_OK}\n", 0)
-    bot(f"/confirmar_{_codigo_do_bot(bot(f'/publicar {DOIS} youtube'))}")
-    status, dados = _pedir(servidor, "POST", "/api/acao",
-                           {"acao": "publicar", "args": {"id": DOIS, "onde": "youtube"}},
-                           _token())
-    assert status == 409 and "já foi mandado ao YouTube pelo Telegram" in dados["erro"]
-    status, dados = _pedir(servidor, "POST", "/api/acao",
-                           {"acao": "publicar", "args": {"id": CINCO, "onde": "youtube"}},
-                           _token())
-    assert status == 409 and "outra publicação do Telegram no YouTube" in dados["erro"]
-    assert len(mundo.filha.comandos) == 1
-
-
-def test_bot_e_app_confirmando_juntos_so_um_sai(servidor, mundo, bot, monkeypatch):
-    """Os dois passaram do 1º passo com o caminho livre; so um pode sair."""
-    mundo.filha.segurar = threading.Event()
-    mundo.filha.roteiro = (f"YouTube: {YT_OK}\n", 0)
-    token = _token()
-    _, dados = _pedir(servidor, "POST", "/api/acao",
-                      {"acao": "publicar", "args": {"id": DOIS, "onde": "youtube"}}, token)
-    codigo = _codigo_do_bot(bot(f"/publicar {DOIS} youtube"))
-    # As guardas demoram (o PowerShell de verdade leva segundos): as duas
-    # confirmacoes se cruzam dentro delas se a trava nao as separar.
-    monkeypatch.setattr(acoes, "processos", lambda: (time.sleep(0.3), [])[1])
-    respostas = {}
-    fios = [threading.Thread(target=lambda: respostas.__setitem__(
-                "app", _pedir(servidor, "POST", "/api/acao/confirmar",
-                              {"codigo": dados["confirmar"]}, token)[0])),
-            threading.Thread(target=lambda: respostas.__setitem__(
-                "bot", bot(f"/confirmar_{codigo}")))]
-    for fio in fios:
-        fio.start()
-    for fio in fios:
-        fio.join(30)
-    assert len(mundo.filha.comandos) == 1
-    saiu_pelo_app = respostas["app"] == 200
-    saiu_pelo_bot = respostas["bot"].startswith("comecei")
-    assert saiu_pelo_app != saiu_pelo_bot, respostas
-    if saiu_pelo_app:
-        assert "já foi mandado" in respostas["bot"]
-    else:
-        assert respostas["app"] == 409
-
-
-def test_confirmacao_do_bot_e_do_chat_que_pediu_e_vale_uma_vez(mundo, bot):
-    mundo.filha.roteiro = (f"YouTube: {YT_OK}\n", 0)
-    codigo = _codigo_do_bot(bot(f"/publicar {DOIS} youtube", chat=42))
-    assert "não conheço essa confirmação" in bot(f"/confirmar {codigo}", chat=43)
-    assert mundo.filha.comandos == []
-    assert bot(f"/confirmar {codigo}", chat=42).startswith("comecei")
-    assert "já foi usada" in bot(f"/confirmar_{codigo}", chat=42)
     _esperar_publicacoes()
-    assert len(mundo.filha.comandos) == 1
-
-
-def test_bot_reavalia_as_guardas_na_confirmacao(mundo, bot):
-    codigo = _codigo_do_bot(bot(f"/publicar {DOIS} youtube"))
-    mundo.metricas.linhas = [{"video_id": DOIS, "plataforma": "youtube",
-                              "publicado": True, "titulo": "Build Dois"}]
-    resposta = bot(f"/confirmar_{codigo}")
-    assert "não vou publicar" in resposta and "já saiu" in resposta
-    assert mundo.filha.comandos == []
-
-
-@pytest.mark.parametrize("texto,trecho", [
-    (f"/publicar {PENDENTE} youtube", "pendência"),
-    (f"/publicar {PC} youtube", "formato celular"),
-])
-def test_bot_recusa_o_que_o_app_recusa(mundo, bot, texto, trecho):
-    resposta = bot(texto)
-    assert "não vou publicar" in resposta and trecho in resposta
-    assert "/confirmar" not in resposta and mundo.filha.comandos == []
-
-
-def test_bot_respeita_a_janela_da_grade_e_o_postar_vivo(mundo, bot, monkeypatch):
-    monkeypatch.setattr(acoes, "_agora", lambda: datetime(2026, 9, 17, 12, 0))
-    assert "perto demais" in bot(f"/publicar {DOIS} youtube")
-    monkeypatch.setattr(acoes, "_agora", lambda: FORA_DA_GRADE)
-    monkeypatch.setattr(acoes, "processos", lambda: ["python postar.py"])
-    assert "postagem da grade está rodando" in bot(f"/publicar {DOIS} youtube")
-    assert mundo.filha.comandos == []
-
-
-def test_resposta_do_bot_nao_quebra_o_markdown(mundo, bot):
-    """O Telegram le Markdown: dois `_` no texto viram italico e engolem o
-    link da confirmacao. A resposta sai escapada (o `bot` so tira as barras
-    depois; aqui o texto e o cru, com o `_rodar` do fixture no lugar)."""
-    try:
-        resposta, _ = comandos.executar(f"/publicar {DOIS} youtube", chat=42)
-    except TypeError:                           # o executar antigo, sem chat
-        resposta, _ = comandos.executar(f"/publicar {DOIS} youtube")
-    assert "/confirmar\\_" in resposta
-    assert "_" not in resposta.replace("\\_", "")
+    (comando,) = mundo.filha.comandos
+    assert "--youtube" in comando and "--tiktok" in comando

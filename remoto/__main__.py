@@ -38,27 +38,6 @@ def _limpar_consertos_orfaos() -> None:
         pass
 
 
-def _retomar_publicacoes() -> None:
-    """Volta a vigiar o que ficou "em voo" (do /publicar ou do app).
-
-    O /publicar vigia a publicacao DENTRO do processo do bot. Bot que
-    reinicia no meio deixaria o item em "em_andamento" ate o servidor do app
-    subir de novo, que e o unico outro que concilia. Duas vigias no mesmo
-    item nao concluem duas vezes (`acoes.concluir_publicacao` confere dentro
-    da trava). Nunca derruba a subida.
-    """
-    try:
-        from . import acoes
-        voltando = acoes.conciliar()
-    except Exception as exc:                                   # noqa: BLE001
-        print(f"[remoto] nao consegui retomar as publicacoes em voo: {exc}",
-              flush=True)
-        return
-    if voltando:
-        print(f"[remoto] retomei a vigia de {len(voltando)} publicação(ões)",
-              flush=True)
-
-
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="remoto",
                                      description="bot de Telegram do painel")
@@ -170,7 +149,6 @@ def ligar() -> int:
             print("[remoto] ja tem um bot no ar; este sai sem fazer nada.")
             return 0
         _limpar_consertos_orfaos()
-        _retomar_publicacoes()
         Bot().rodar()
     return 0
 

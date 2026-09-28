@@ -23,7 +23,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import comandos, config
+from . import comandos, config, vigia_tailnet
 from .api import Telegram
 
 
@@ -62,6 +62,10 @@ class Bot:
         # todo erro que caisse no mesmo segundo do anterior — justamente o
         # caso de uma falha em cascata, que e quando avisar mais importa.
         self.avisados = {self._marca(e) for e in self._erros_no_diario()}
+        # So o laco de verdade (`rodar`) liga a vigia do tailnet: os testes
+        # que chamam `uma_volta` nunca perguntam nada ao Tailscale nem abrem
+        # a bandeja dele.
+        self.vigia_tailnet = None
 
     @staticmethod
     def _marca(evento: dict) -> tuple:
@@ -92,7 +96,7 @@ class Bot:
         if not config.autorizado(chat):
             self._parear(chat, texto)
             return
-        resposta, arquivo = comandos.executar(texto, chat=chat)
+        resposta, arquivo = comandos.executar(texto)
         self._responder(chat, resposta, arquivo)
 
     def _parear(self, chat, texto: str):
@@ -201,7 +205,26 @@ class Bot:
             self._relatorios()
         except Exception as exc:   # relatorio quebrado nao derruba o bot
             self.log(f"[remoto] erro nos relatorios: {exc}")
+        try:
+            self._vigiar_tailnet()
+        except Exception as exc:   # vigia quebrada nao derruba o bot
+            self.log(f"[remoto] erro na vigia do tailnet: {exc}")
         return len(novidades)
+
+    # ------------------------------------------------------- vigia do tailnet
+    def _ligar_vigia_tailnet(self):
+        """O app do celular so existe dentro do tailnet; em 28/09/2026 ele
+        ficou fora dele depois de um religamento e nada avisou. Desliga com
+        `"vigiar_tailnet": false` no remoto.json."""
+        if config.carregar().get("vigiar_tailnet", True):
+            self.vigia_tailnet = vigia_tailnet.Vigia(avisar=self.avisar_todos)
+
+    def _vigiar_tailnet(self):
+        if self.vigia_tailnet is None:
+            return
+        aviso = self.vigia_tailnet.talvez()
+        if aviso:
+            self.log(f"[remoto] tailnet: {aviso}")
 
     def rodar(self):
         eu = self.tg.eu()
@@ -217,6 +240,7 @@ class Bot:
                      f"     /parear {self.codigo}")
         else:
             self.avisar_todos("🤖 bot no ar. /ajuda para ver o que eu faço.")
+        self._ligar_vigia_tailnet()
         while True:
             try:
                 self.uma_volta()

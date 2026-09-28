@@ -14,7 +14,6 @@ como os testes deste arquivo rodam.
 """
 from __future__ import annotations
 
-import secrets
 import subprocess
 import sys
 from pathlib import Path
@@ -70,8 +69,7 @@ def ajuda(_args: str = "") -> str:
         "/erros — os últimos problemas\n"
         "/videos — os vídeos prontos, com id\n"
         "/ver <id> — manda o mp4 aqui pra você assistir\n"
-        "/publicar <id> [youtube|tiktok|ambos] — sobe aquele vídeo como "
-        "público, depois do /confirmar\n"
+        "/publicar — publicar é só pelo app do celular\n"
         "/gerar — uma build nova (roleta + vídeo)\n"
         "/historias — em que pé está o canal de histórias\n"
         "/metas — quantos vídeos, em que horário, em que canal\n"
@@ -147,7 +145,7 @@ def videos(_args: str = "") -> str:
     prontos = _tabela_videos()
     if not prontos:
         return "nenhum vídeo pronto ainda."
-    linhas = ["*Prontos* (use /ver ou /publicar com o id)"]
+    linhas = ["*Prontos* (use /ver com o id; publicar é pelo app)"]
     for video in prontos:
         linhas.append(f"`{video.id}`\n   {video.titulo[:58]}")
     return "\n".join(linhas)
@@ -209,80 +207,21 @@ def ver(args: str = "") -> tuple:
 
 
 # ---------------------------------------------------------------- publicar
-# O /publicar passa pelas MESMAS guardas do app, e pela MESMA funcao
-# (`acoes.preparar` e `acoes.confirmar`), desde 28/09/2026. Ate entao ele
-# chamava `main.py publicar` direto, num passo so: sem o "em voo" do app, sem a
-# lista "a conferir", sem a janela da grade, sem olhar o `postar.py` — e sem
-# `--visibilidade`, entao o YouTube subia PRIVADO (padrao do publicacao.json).
-# O app mandava um video e o bot podia manda-lo de novo em seguida.
-#
-# DOIS PASSOS, como no app: o /publicar so mostra o que vai acontecer e um
-# `/confirmar_<codigo>` (o Telegram deixa tocar), que vale 60 s, uma vez, e so
-# para o chat que pediu. A confirmacao reavalia as guardas.
-_PENDENTES = None
+# SO O APP PUBLICA PELO CELULAR. Decisao do Adrian em 28/09/2026. Ate 27/09 o
+# /publicar daqui chamava `main.py publicar` direto, num passo so: sem o "em
+# voo" do app, sem a lista "a conferir", sem a janela da grade, sem olhar o
+# `postar.py` — e sem `--visibilidade`, entao o YouTube subia PRIVADO. Na
+# manha de 28/09 ele passou pelas guardas do app (d68523e); no mesmo dia o
+# Adrian decidiu que publicar e so pelo app, que tem tela para conferir o
+# video, e o comando passou a so responder isso. Nada daqui chega ao
+# `main.py publicar` nem as `acoes` de publicacao.
+SO_PELO_APP = ("Publicar é só pelo app do celular: lá tem a tela para "
+               "conferir o vídeo, o destino e a confirmação em dois passos. "
+               "Aqui eu não publico nada.")
 
 
-def _pendentes():
-    global _PENDENTES
-    if _PENDENTES is None:
-        from . import acoes
-        _PENDENTES = acoes.Pendentes(codigo=lambda: secrets.token_hex(4))
-    return _PENDENTES
-
-
-def _markdown(texto: str) -> str:
-    """O texto como o Telegram deve mostrar: sem virar italico.
-
-    O bot manda em Markdown, e dois `_` no texto (um id e o proprio
-    `/confirmar_...`) viram italico e engolem o link da confirmacao.
-    """
-    from .acoes import _escapar_markdown
-    return _escapar_markdown(texto)
-
-
-def publicar(args: str = "", chat=None) -> str:
-    """O PRIMEIRO passo: as guardas do app, e o pedido de confirmacao."""
-    partes = (args or "").split()
-    if not partes:
-        return "diga o id: /publicar <id> [youtube|tiktok|ambos]"
-    video = procurar_video(partes[0])
-    if video is None:
-        return _nao_achei(partes[0])
-    onde = (partes[1] if len(partes) > 1 else "youtube").lower()
-    if onde not in ("youtube", "tiktok", "ambos"):
-        return "onde? youtube, tiktok ou ambos."
-
-    from . import acoes
-    quem = acoes.aparelho_do_telegram(chat)
-    try:
-        pedido = acoes.preparar("publicar", {"id": video.id, "onde": onde}, quem)
-    except acoes.Recusa as exc:
-        return _markdown(f"não vou publicar: {exc}")
-    codigo = _pendentes().guardar(pedido, quem)
-    return _markdown(f"{pedido['texto']}\n\n"
-                     f"Para confirmar, toque em /confirmar_{codigo} "
-                     f"(vale {acoes.CONFIRMAR_VALE_S} s, uma vez).")
-
-
-def confirmar(args: str = "", chat=None) -> str:
-    """O SEGUNDO passo: as guardas de novo, e so entao a publicacao."""
-    from . import acoes
-    codigo = (args or "").strip().lower()
-    if not codigo:
-        return "mande o código que veio no /publicar: /confirmar <código>"
-    quem = acoes.aparelho_do_telegram(chat)
-    pedido, motivo = _pendentes().tirar(codigo, quem)
-    if motivo == "encerrado":
-        return "essa confirmação já foi usada ou venceu; peça de novo com /publicar."
-    if pedido is None:
-        return "não conheço essa confirmação; peça de novo com /publicar."
-    try:
-        ok, resultado = acoes.confirmar(pedido["acao"], pedido["args"], quem)
-    except acoes.Recusa as exc:
-        return _markdown(f"não vou publicar: {exc}")
-    except OSError:
-        return "outra ação está em andamento; tente de novo em instantes."
-    return _markdown(resultado if ok else f"não consegui: {resultado}")
+def publicar(_args: str = "") -> str:
+    return SO_PELO_APP
 
 
 def gerar(_args: str = "") -> str:
@@ -377,7 +316,6 @@ TABELA = {
     "videos": videos,
     "ver": ver,
     "publicar": publicar,
-    "confirmar": confirmar,
     "gerar": gerar,
     "historias": historias,
     "metas": metas,
@@ -394,12 +332,7 @@ TABELA = {
 }
 
 
-# Os que precisam saber QUEM pediu: a confirmacao e daquele chat, e o rastro
-# e o teto por hora contam por ele.
-PEDEM_O_CHAT = ("publicar", "confirmar")
-
-
-def executar(texto: str, chat=None):
+def executar(texto: str):
     """(resposta, arquivo_ou_None) para o texto que chegou do celular."""
     texto = (texto or "").strip()
     if not texto.startswith("/"):
@@ -407,14 +340,11 @@ def executar(texto: str, chat=None):
     corpo = texto[1:]
     nome, _, args = corpo.partition(" ")
     nome = nome.split("@")[0].lower()       # /status@meubot
-    if nome.startswith("confirmar_"):       # o toque no link da confirmacao
-        nome, args = "confirmar", nome[len("confirmar_"):]
     funcao = TABELA.get(nome)
     if funcao is None:
         return (f"não conheço /{nome}. Veja /ajuda.", None)
     try:
-        resultado = (funcao(args.strip(), chat=chat) if nome in PEDEM_O_CHAT
-                     else funcao(args.strip()))
+        resultado = funcao(args.strip())
     except Exception as exc:      # nenhum comando pode derrubar o bot
         return (f"o comando /{nome} falhou: {type(exc).__name__}: {exc}", None)
     if isinstance(resultado, tuple):

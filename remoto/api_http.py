@@ -694,12 +694,12 @@ class Manipulador(BaseHTTPRequestHandler):
         return self._executar(pedido["acao"], pedido["args"])
 
     def _executar(self, nome: str, args: dict):
-        """O segundo passo: `acoes.confirmar`, a MESMA funcao do Telegram.
+        """O segundo passo: `acoes.confirmar`.
 
         Ela prepara DE NOVO dentro da trava, com os args congelados: em 60 s
         a grade pode ter publicado o mesmo video, e duas confirmacoes
-        simultaneas (dois aparelhos, o app e o bot, dois servidores) nao
-        podem passar juntas pelas guardas.
+        simultaneas (dois aparelhos, ou dois servidores) nao podem passar
+        juntas pelas guardas.
         """
         try:
             ok, resultado = acoes.confirmar(nome, args, self._id)

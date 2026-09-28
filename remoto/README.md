@@ -65,8 +65,7 @@ python -m remoto --esquecer 123456789  # tira um celular da lista
 | `/erros [n]` | os últimos problemas, com hora |
 | `/videos` | os vídeos prontos, com id |
 | `/ver <id>` | **manda o mp4 no chat** — assistir antes de aprovar |
-| `/publicar <id> [youtube\|tiktok\|ambos]` | pede para subir aquele vídeo como **público**: mostra o que vai acontecer e um `/confirmar_<código>` |
-| `/confirmar <código>` | o segundo passo (60 s, uma vez, só do chat que pediu) |
+| `/publicar` | **não publica**: responde que publicar é só pelo app do celular |
 | `/gerar` | uma build nova |
 | `/historias` | em que pé está o canal de histórias |
 | `/pausar [min]` · `/retomar` · `/parar` | controle da fila |
@@ -75,13 +74,20 @@ Os comandos longos **não travam o chat**: eles disparam o processo e voltam
 na hora. O resultado chega pelos alertas — que é justamente para isso que o
 diário `atividade.jsonl` existe.
 
-O `/publicar` passa pelas **mesmas guardas do app, pela mesma função**
-(`acoes.preparar` e `acoes.confirmar`): vídeo já no ar, título repetido, a
-outra variante, a lista "a conferir", a postagem da grade perto ou rodando, o
-Chrome ocupado e qualquer publicação do app ainda sem desfecho. Ele entra no
-mesmo registro "em voo", então o app e o bot não mandam o mesmo vídeo duas
-vezes. Até 28/09/2026 ele chamava o `main.py publicar` direto, num passo só,
-sem nada disso — e o YouTube subia privado.
+**Só o app publica pelo celular** (decisão do Adrian, 28/09/2026). No app
+existe a tela para conferir o vídeo e o destino, a confirmação em dois passos
+e todas as guardas: vídeo já no ar, título repetido, a outra variante, a
+lista "a conferir", a postagem da grade perto ou rodando, o Chrome ocupado e
+qualquer publicação ainda sem desfecho. Sem destino dito, vão os dois
+(YouTube e TikTok). Até 27/09 o `/publicar` do bot chamava o `main.py
+publicar` direto, num passo só, sem nada disso, e o YouTube subia privado.
+
+O bot também **vigia o tailnet** (`vigia_tailnet.py`). A cada 2 minutos ele
+confere três coisas: o Tailscale está `Running`, o `serve` aponta para o app
+e o `funnel` está desligado. Quando algo falha, avisa uma vez, e avisa de novo
+quando voltar. O único conserto que ele faz sozinho é abrir o cliente da
+bandeja (`tailscale-ipn.exe`) quando ela não subiu. Ele nunca mexe no
+`serve` nem no `funnel`.
 
 ## As duas trancas
 

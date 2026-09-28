@@ -17,7 +17,7 @@ Tudo vive em `remoto/`:
 - `api_http.py` — o servidor do app (rotas, pareamento, bilhetes de vídeo).
 - `acoes.py` — as cinco ações antigas (pausar, retomar, parar, gerar,
   publicar) e as guardas de publicação. O 1º passo é `preparar` e o 2º é
-  `confirmar`; o servidor e o `/publicar` do bot chamam as **mesmas** duas.
+  `confirmar` (o servidor chama os dois).
 - `comandos_app.py` — o **catálogo** dos outros controles (fichas
   declarativas: campos, guardas, texto de confirmação).
 - `tarefas.py` + `publicacao_filha.py` — trabalho pesado como processo
@@ -25,7 +25,8 @@ Tudo vive em `remoto/`:
 - `vila_nova.py` (desenho + vida da Vila) e `vila_dados.py` (o texto:
   fábricas, travas, placar).
 - `comandos.py`, `bot.py`, `api.py`, `relatorios.py`, `apurador.py` — o bot.
-  O `/publicar` pede, e o `/confirmar_<código>` executa (ver §3.4).
+  O `/publicar` do bot **não publica** (ver §3.3).
+- `vigia_tailnet.py` — a vigia do tailnet, no laço do bot (ver §4).
 - `app/` — a PWA (`index.html`, `app.js`, `vila.js`, `comandos.js`).
 
 Estado em disco, em `%LOCALAPPDATA%\neural-fights\`: `app_celular.json`
@@ -41,7 +42,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 446 testes (28/09)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 478 testes (28/09)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -72,14 +73,14 @@ DOM e clicando.
    só o hash do token; o token existe no celular.
 3. **Publicar pelo app é só de builds**, e sempre como `public`. Histórias
    têm caminho próprio (`publicar_historia`), porque a ordem das partes é da
-   grade. Vale igual para o `/publicar` do bot desde 28/09.
+   grade. **Só o app publica pelo celular** (Adrian, 28/09/2026): o
+   `/publicar` do bot responde que é pelo app e não toca em nada; o
+   `/confirmar` saiu do bot. Isso também confirma o `--publicar` do app.
+   Sem destino dito, vão **os dois** (YouTube e TikTok; `acoes.DESTINO_PADRAO`,
+   decisão dele no mesmo dia). A tela do app sempre pergunta.
 4. **Dois passos** em tudo que não se desfaz: o 1º pedido devolve um texto de
    confirmação e um código de 60 s; só o 2º executa, e ele **reavalia as
-   guardas**. No bot, desde 28/09: o `/publicar` responde com um
-   `/confirmar_<código>` que o Telegram deixa tocar (8 hexadecimais, 60 s, uma
-   vez, só do chat que pediu). Ele entra no rastro, no teto por hora e no em
-   voo como o aparelho `telegram:<chat>`. O `/gerar` e o `/parar` do bot
-   ainda são de um passo só.
+   guardas**. O `/gerar` e o `/parar` do bot ainda são de um passo só.
 5. **Zona de perigo** (apagar mídia do Espelho, regenerar banco, esquecer ou
    trocar conta) só existe com `--perigosas` **e** digitando o nome do alvo.
 6. **Nada de interface no celular**: logins, OAuth, Oficina, janelas do jogo e
@@ -107,15 +108,9 @@ DOM e clicando.
   `acoes.mesmo_video`, nunca com `==`.
 - **Heredoc do bash come a barra invertida** ao escrever patches: use a
   ferramenta Write.
-- **O Markdown do Telegram engole o link da confirmação.** Dois `_` no texto
-  (um id e o próprio `/confirmar_...`) viram itálico. As respostas do
-  `/publicar` e do `/confirmar` saem escapadas (`acoes._escapar_markdown`),
-  e há teste disso.
-- **A vigia da publicação mora no processo que a disparou.** Se o bot cair
-  no meio de uma publicação, o item fica "em_andamento" até alguém
-  conciliar. Por isso o bot que sobe chama `acoes.conciliar()`, e o servidor
-  também. Duas vigias não concluem duas vezes: a conclusão confere o estado
-  dentro da trava.
+- **O Markdown do Telegram engole texto com dois `_`** (qualquer id do
+  projeto): vira itálico. Aviso que leva id sai escapado
+  (`acoes._escapar_markdown`) ou em texto puro (`Bot.avisar_todos`).
 - **Depois de reiniciar a máquina, o app pode ficar fora do tailnet sem
   erro nenhum.** Em 28/09, no boot das 07:22, o cliente da bandeja
   (`tailscale-ipn.exe`, que a pasta Inicializar comum abre no logon) não
@@ -125,11 +120,26 @@ DOM e clicando.
   `tailscale-ipn.exe` resolveu em 11 s, e a configuração do `serve` voltou
   sozinha, ainda "tailnet only". Nada de rodar `tailscale serve` de novo.
   Para conferir: `tailscale status` tem de sair de `NoState`, e a URL
-  `*.ts.net` tem de responder 200.
+  `*.ts.net` tem de responder 200. Desde 28/09 isso tem vigia
+  (`vigia_tailnet.py`, no laço do bot, a cada 2 min):
+  - ela confere o backend `Running`, o `serve` apontando para
+    `127.0.0.1:8931` e o `funnel` desligado;
+  - avisa no Telegram uma vez por ocorrência (um tropeço só não conta, o
+    funnel conta na hora) e avisa de novo quando volta;
+  - o único conserto que faz é abrir o `tailscale-ipn.exe` quando o backend
+    está parado e a bandeja fechada; depois espera até 30 s e diz o que fez;
+  - só roda `status --json`, `serve status --json` e `tasklist`, e há teste
+    que varre o fonte atrás de `funnel`, `set`, `up` e `--bg`;
+  - desliga com `"vigiar_tailnet": false` no `remoto.json`.
+- **O modo "rodar sem login" (unattended) do Tailscale NÃO está ligado.** O
+  Adrian decidiu ligar em 28/09 (`tailscale set --unattended=true`; a 1.102.4
+  aceita a opção). O agente não pôde rodar o comando: a permissão da sessão
+  barrou. Fica para o Adrian rodar à mão. Depois disso, conferir o backend
+  `Running`, o `serve status` intacto e "tailnet only".
 - **Nos testes do bot, `comandos._rodar` é um `Popen` de verdade.** O
   `/publicar` antigo chamava o `main.py publicar` real por ali. O fixture
-  `bot` de `test_acoes.py` o troca por um gravador e falha se ele for
-  chamado.
+  `bot` de `test_acoes.py` troca esse caminho, as guardas, o disparo e a
+  filha por bombas: se o bot tocar em qualquer um deles, o teste falha.
 
 ## 5. Pendências e o que não fazer
 
@@ -143,14 +153,11 @@ DOM e clicando.
   (`bot.py:219`), e este também mandou. O `relatorios.metas()` do código novo,
   montado sem enviar às 23:23, mostra "histórias: youtube 6/10 · tiktok 7/10"
   e "builds: youtube 3/10 · tiktok 2/10". O "11/10" não aparece mais.
-- **A confirmar pelo Adrian: o `--publicar` do app.** Há uma divergência. A
-  decisão de 17/09 era `--acoes` **sem** `--publicar` até o ok. Mas o
-  `app_celular.cmd` (a101a2e) sobe com `--acoes --publicar --perigosas`, e o
-  log `outputs/app_celular.txt`, criado em 24/09 20:09, já abre com "(com
-  publicar)". O comentário do `.cmd` registra a decisão dele só para
-  `--perigosas`. Até ele confirmar, fica como está (plano de 27/09,
-  pendente 3). Se ele disser não, tire `--publicar` do `.cmd` e reinicie
-  fora de `:25–:55`.
+- **Confirmado pelo Adrian em 28/09/2026: o `--publicar` do app fica.** A
+  divergência era esta: a decisão de 17/09 dizia `--acoes` sem `--publicar`,
+  mas o `app_celular.cmd` (a101a2e) já subia com `--publicar --perigosas`
+  desde pelo menos 24/09. Ele respondeu que "só o app" publica pelo
+  celular, o que confirma o `--publicar` do app e tira o publicar do bot.
 - **Resolvido em 28/09/2026: o `/publicar` do bot sem as guardas do app.**
   Antes ele chamava o `main.py publicar` direto, num passo só: sem "em voo",
   sem a lista "a conferir", sem a janela da grade, sem olhar o `postar.py`,
@@ -160,7 +167,10 @@ DOM e clicando.
   sozinho, inclusive com o app publicando o mesmo vídeo. Agora ele usa
   `acoes.preparar` + `acoes.confirmar` (as funções do servidor), sobe como
   público e dá a vez: com o app e o bot atrás do mesmo vídeo, só um sai
-  (teste com os dois confirmando ao mesmo tempo).
+  (teste com os dois confirmando ao mesmo tempo). **No mesmo dia o Adrian
+  decidiu que só o app publica:** o `/publicar` do bot passou a só
+  responder isso, e o `/confirmar` saiu. Do d68523e fica o `acoes.confirmar`,
+  que o servidor usa.
 - **Resolvido em 28/09/2026: a linha "`tailscale serve` sim, `funnel`
   nunca"** está no `README.md` da raiz (seção "O celular") e no
   `remoto/README.md`, que deixou de dizer que o app precisaria de porta

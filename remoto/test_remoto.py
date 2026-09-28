@@ -189,46 +189,20 @@ class TabelaFechadaTests(BaseTemp):
         self.assertIn("falhou", resposta)
         self.assertIn("boom", resposta)
 
-    def test_publicar_exige_id_que_existe(self):
-        self.assertIn("diga o id", comandos.publicar(""))
-        self.assertIn("não achei", comandos.publicar("id_que_nao_existe_xyz"))
-
-    def test_publicar_recusa_destino_invalido(self):
-        original = comandos.procurar_video
-        comandos.procurar_video = lambda _p: type(
-            "V", (), {"id": "x", "titulo": "t"})()
-        self.addCleanup(lambda: setattr(comandos, "procurar_video", original))
-        self.assertIn("onde?", comandos.publicar("x instagram"))
-
-    def test_o_toque_na_confirmacao_cai_no_confirmar_e_so_nele(self):
-        """`/confirmar_<codigo>` e o link que o Telegram deixa tocar. Ele vira
-        o /confirmar com o codigo — nao abre porta para outro nome."""
-        self.assertIn("confirmar", comandos.TABELA)
-        resposta, _ = comandos.executar("/confirmar_abc123", chat=42)
-        self.assertIn("não conheço essa confirmação", resposta)
-        resposta, _ = comandos.executar("/confirmar", chat=42)
-        self.assertIn("mande o código", resposta)
-        for texto in ("/rodar_confirmar", "/exec_abc"):
-            self.assertIn("não conheço", comandos.executar(texto)[0])
-
-    def test_so_quem_precisa_recebe_o_chat(self):
-        vistos = []
-        comandos.TABELA["testechat"] = lambda args: vistos.append(args) or "ok"
-        self.addCleanup(lambda: comandos.TABELA.pop("testechat", None))
-        self.assertEqual(("ok", None), comandos.executar("/testechat x", chat=7))
-        self.assertEqual(["x"], vistos)
-
-    def test_o_bot_passa_o_chat_de_quem_pediu(self):
-        config.autorizar(42)
-        chamadas = []
-        original = comandos.executar
-        comandos.executar = lambda texto, chat=None: (
-            chamadas.append((texto, chat)) or ("ok", None))
-        self.addCleanup(setattr, comandos, "executar", original)
-        robo = bot_mod.Bot(telegram=TelegramFalso([_mensagem("/confirmar_ab12")]),
-                           log=lambda *_a: None)
-        robo.uma_volta(timeout=0)
-        self.assertEqual([("/confirmar_ab12", 42)], chamadas)
+    def test_publicar_e_so_pelo_app(self):
+        """Decisao do Adrian em 28/09/2026: o bot nao publica. O `Popen` cru
+        e trocado por uma bomba: se o /publicar chegasse ao `main.py
+        publicar`, o teste explodia em vez de subir video."""
+        patcher = mock.patch.object(comandos, "_rodar", mock.Mock(
+            side_effect=AssertionError("o bot chegou ao main.py publicar")))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for texto in ("/publicar", "/publicar generation_00023 youtube",
+                      "/publicar x ambos"):
+            resposta, arquivo = comandos.executar(texto)
+            self.assertEqual(comandos.SO_PELO_APP, resposta, texto)
+            self.assertIsNone(arquivo)
+        self.assertNotIn("confirmar", comandos.TABELA)
 
 
 class ProcurarVideoTests(unittest.TestCase):
@@ -267,15 +241,13 @@ class ProcurarVideoTests(unittest.TestCase):
                          [v.id for v in comandos.candidatos(
                              "00031", self._videos())])
 
-    def test_publicar_ambiguo_lista_e_nao_roda(self):
+    def test_ver_ambiguo_lista_e_nao_escolhe(self):
         videos = self._videos()
-        for nome, falso in (("_listar_videos", lambda: videos),
-                            ("_rodar", mock.Mock(side_effect=AssertionError(
-                                "nao podia publicar")))):
-            patcher = mock.patch.object(comandos, nome, falso)
-            patcher.start()
-            self.addCleanup(patcher.stop)
-        resposta = comandos.publicar("generation_00023 youtube")
+        patcher = mock.patch.object(comandos, "_listar_videos", lambda: videos)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        resposta, arquivo = comandos.ver("generation_00023")
+        self.assertIsNone(arquivo)
         self.assertIn("não é exato", resposta)
         self.assertIn(self.A + ":B", resposta)
         self.assertLessEqual(resposta.count("`") // 2, 5)
@@ -494,69 +466,6 @@ class InstanciaUnicaTests(BaseTemp):
         self.assertEqual(principal.ligar(), 0)
         self.assertEqual(ligou, [], "nao podia ter ligado um segundo bot")
 
-    def test_o_bot_que_sobe_volta_a_vigiar_o_que_ficou_em_voo(self):
-        """O /publicar vigia a publicacao dentro do processo do bot. Bot que
-        reinicia no meio deixaria o "em voo" preso em "em_andamento" para
-        sempre (o app so concilia quando ELE sobe)."""
-        import contextlib
-        from builds import travas
-        from remoto import __main__ as principal
-        from remoto import acoes
-
-        ordem = []
-        reais = (principal.Bot, travas.trava, acoes.conciliar,
-                 principal._limpar_consertos_orfaos)
-        principal.Bot = lambda *a, **k: type(
-            "B", (), {"rodar": lambda _s: ordem.append("rodar")})()
-        acoes.conciliar = lambda: ordem.append("conciliar") or ["k1"]
-        principal._limpar_consertos_orfaos = lambda: None
-
-        @contextlib.contextmanager
-        def _livre(nome, esperar=0.0):
-            yield True
-
-        travas.trava = _livre
-
-        def restaurar():
-            (principal.Bot, travas.trava, acoes.conciliar,
-             principal._limpar_consertos_orfaos) = reais
-
-        self.addCleanup(restaurar)
-        self.assertEqual(principal.ligar(), 0)
-        self.assertEqual(["conciliar", "rodar"], ordem)
-
-    def test_conciliar_que_falha_nao_derruba_a_subida(self):
-        import contextlib
-        from builds import travas
-        from remoto import __main__ as principal
-        from remoto import acoes
-
-        ligou = []
-        reais = (principal.Bot, travas.trava, acoes.conciliar,
-                 principal._limpar_consertos_orfaos)
-        principal.Bot = lambda *a, **k: type(
-            "B", (), {"rodar": lambda _s: ligou.append(1)})()
-
-        def _explode():
-            raise OSError("disco")
-
-        acoes.conciliar = _explode
-        principal._limpar_consertos_orfaos = lambda: None
-
-        @contextlib.contextmanager
-        def _livre(nome, esperar=0.0):
-            yield True
-
-        travas.trava = _livre
-
-        def restaurar():
-            (principal.Bot, travas.trava, acoes.conciliar,
-             principal._limpar_consertos_orfaos) = reais
-
-        self.addCleanup(restaurar)
-        self.assertEqual(principal.ligar(), 0)
-        self.assertEqual([1], ligou)
-
 
 class TarefaDoBotTests(unittest.TestCase):
     """A tarefa que mantem o bot no ar."""
@@ -604,6 +513,54 @@ class TarefaDoBotTests(unittest.TestCase):
         acao = args[args.index("/TR") + 1]
         self.assertIn("wscript.exe //B //Nologo", acao)
         self.assertTrue(acao.endswith(f'"{Path("C:/r/bot.cmd")}"'))
+
+
+class VigiaDoTailnetNoBotTests(BaseTemp):
+    """A vigia do tailnet (remoto/vigia_tailnet.py) mora no laco do bot."""
+
+    def test_bot_de_teste_nao_pergunta_nada_ao_tailscale(self):
+        """So o `rodar` liga a vigia: `uma_volta` nos testes nao sonda."""
+        robo = bot_mod.Bot(telegram=TelegramFalso(), log=lambda *_a: None)
+        self.assertIsNone(robo.vigia_tailnet)
+        with mock.patch.object(bot_mod.vigia_tailnet, "sondar",
+                               side_effect=AssertionError("sondou")):
+            robo.uma_volta(timeout=0)
+
+    def test_o_rodar_liga_a_vigia(self):
+        class Parar(TelegramFalso):
+            def novidades(self, desde=None, timeout=30):
+                raise KeyboardInterrupt
+
+        robo = bot_mod.Bot(telegram=Parar(), log=lambda *_a: None)
+        robo.rodar()
+        self.assertIsInstance(robo.vigia_tailnet, bot_mod.vigia_tailnet.Vigia)
+
+    def test_da_para_desligar_pelo_config(self):
+        config.salvar({**config.carregar(), "vigiar_tailnet": False})
+        robo = bot_mod.Bot(telegram=TelegramFalso(), log=lambda *_a: None)
+        robo._ligar_vigia_tailnet()
+        self.assertIsNone(robo.vigia_tailnet)
+
+    def test_o_aviso_vai_ao_chat_e_ao_log(self):
+        config.autorizar(42)
+        tg, linhas = TelegramFalso(), []
+        robo = bot_mod.Bot(telegram=tg, log=linhas.append)
+        robo.vigia_tailnet = bot_mod.vigia_tailnet.Vigia(
+            avisar=robo.avisar_todos, relogio=lambda: 1000.0, primeira=0,
+            sondar=lambda: {"ok": False, "funnel": True, "estado": "Running",
+                            "motivo": "o FUNNEL está ligado"},
+            abrir=lambda: self.fail("nao podia abrir nada"))
+        robo.uma_volta(timeout=0)
+        self.assertEqual(1, len(tg.textos(42)))
+        self.assertTrue(tg.textos(42)[0].startswith("🚨"))
+        self.assertTrue(any("tailnet:" in l for l in linhas))
+
+    def test_vigia_que_explode_nao_derruba_o_bot(self):
+        linhas = []
+        robo = bot_mod.Bot(telegram=TelegramFalso(), log=linhas.append)
+        robo.vigia_tailnet = mock.Mock(talvez=mock.Mock(side_effect=OSError("x")))
+        robo.uma_volta(timeout=0)
+        self.assertTrue(any("vigia do tailnet" in l for l in linhas))
 
 
 class AgendadorNoRelatorioTests(unittest.TestCase):

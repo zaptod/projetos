@@ -48,6 +48,10 @@ PADRAO = {
     # DESLIGADO POR PADRAO (16/09/2026): religar exige `"consertar": true`
     # escrito no remoto.json. Arquivo ilegivel cai aqui, e aqui e falso.
     "consertar": False,
+    # A vigia do tailnet (remoto/vigia_tailnet.py, 28/09/2026): avisa quando
+    # o app do celular sai do tailnet e abre a bandeja do Tailscale se ela
+    # nao subiu. Nunca mexe no serve nem no funnel.
+    "vigiar_tailnet": True,
     # Os dois relatorios periodicos (pedido de 09/09/2026), e a hora local de
     # cada um. Hora vazia ou invalida = aquele relatorio nao sai sozinho (o
     # comando continua funcionando).
