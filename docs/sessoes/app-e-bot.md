@@ -10,7 +10,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Modo de trabalho dos agentes** — Um projeto por vez (28/09/2026) `modo-de-trabalho`
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
 - ✅ **Força total antes de renovar: ainda vale?** — Ligada, 20 min antes de renovar (28/09/2026) `forca-total-ainda-vale`
-- ⏳ **Capacidade mudada pelo app vira regra?** — Na Mesa de comando você muda os agentes em paralelo, o modo e o teto. Quando muda, isso substitui as decisões Modo de trabalho e Teto de uso do Grimório, ou vale só até você mudar de volta? `capacidade-pelo-app`
+- ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
 
 **App e bot**
 - ✅ **Quem publica pelo celular** — Só o app (28/09/2026) `quem-publica-pelo-celular`

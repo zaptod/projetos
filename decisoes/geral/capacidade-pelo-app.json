@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T19:25:44",
+      "opcao": "substitui",
+      "origem": "app"
+    }
+  ],
   "id": "capacidade-pelo-app",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "Na Mesa de comando você muda os agentes em paralelo, o modo e o teto. Quando muda, isso substitui as decisões Modo de trabalho e Teto de uso do Grimório, ou vale só até você mudar de volta?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Capacidade mudada pelo app vira regra?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T19:25:44",
+    "opcao": "substitui"
+  }
 }
