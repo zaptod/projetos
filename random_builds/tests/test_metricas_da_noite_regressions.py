@@ -141,6 +141,17 @@ class MarcaDaNoite(unittest.TestCase):
         self.assertTrue(self._rodar())
         self.assertEqual(["builds"], self.chamados)
 
+    def test_a_marca_conta_video_e_nao_linha(self):
+        # 28/09/2026: marca 126, disco 121 — o mesmo id em duas linhas do
+        # ledger vira um arquivo so.
+        metricas.atualizar = lambda log=print, canal="builds": [
+            {"youtube_id": "I9ETJSGR1A0"}, {"youtube_id": "I9ETJSGR1A0"},
+            {"youtube_id": "outro"}]
+        self._rodar()
+        parte = self._marca()["partes"]["builds"]
+        self.assertEqual(2, parte["videos"])
+        self.assertEqual(3, parte["linhas"])
+
     def test_parte_sem_nada_para_medir_e_vazio_e_nao_ok(self):
         # CASO ZERO: ledger sem id nenhum. Nao ha o que coletar — e isso nao
         # pode aparecer como "mediu 0 videos com sucesso" nem como falha.

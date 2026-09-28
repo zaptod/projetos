@@ -737,8 +737,16 @@ def coletar_parte(canal: str, plataforma: str, log=print) -> tuple:
         onde = "do TikTok " if plataforma == "tiktok" else ""
         log(f"[{canal}] metrica {onde}nao atualizou: {exc}")
     gasto = {api: CHAMADAS.get(api, 0) - antes.get(api, 0) for api in CHAMADAS}
+    # VIDEO, NAO LINHA. O ledger tem linhas com o mesmo id (o mesmo video
+    # registrado duas vezes, I9ETJSGR1A0 em 15/09): em 28/09 a marca disse
+    # 126 e o disco tinha 121 arquivos. Conta o que o disco guarda — um
+    # arquivo por id —, e as linhas ficam a parte.
+    chave_do_id = "youtube_id" if plataforma == "youtube" else "tiktok_id"
+    ids = {str(v.get(chave_do_id)) for v in videos or ()
+           if isinstance(v, dict) and v.get(chave_do_id)}
     ficha = {"estado": "erro" if erro else ("ok" if videos else "vazio"),
-             "videos": len(videos or []),
+             "videos": len(ids) if ids else len(videos or []),
+             "linhas": len(videos or []),
              "quando": datetime.now().isoformat(timespec="seconds"),
              "duracao_s": round(time.monotonic() - comeco, 1),
              **resumo}
