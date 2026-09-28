@@ -9,6 +9,13 @@
       "em": "2026-09-28",
       "opcao": "um",
       "origem": "semente"
+    },
+    {
+      "anterior": "um",
+      "comentario": "28/09 20:29, no chat: 'trabalhe em duas tarefas ao mesmo tempo' — max_paralelo 2",
+      "em": "2026-09-28T20:29:08",
+      "opcao": "paralelo",
+      "origem": "cli"
     }
   ],
   "id": "modo-de-trabalho",
@@ -38,8 +45,8 @@
   "situacao": "decidida",
   "titulo": "Modo de trabalho dos agentes",
   "vigente": {
-    "comentario": "",
-    "em": "2026-09-28",
-    "opcao": "um"
+    "comentario": "28/09 20:29, no chat: 'trabalhe em duas tarefas ao mesmo tempo' — max_paralelo 2",
+    "em": "2026-09-28T20:29:08",
+    "opcao": "paralelo"
   }
 }

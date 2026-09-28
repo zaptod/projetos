@@ -44,7 +44,7 @@
   ],
   "pergunta": "Na Mesa de comando você muda os agentes em paralelo, o modo e o teto. Quando muda, isso substitui as decisões Modo de trabalho e Teto de uso do Grimório, ou vale só até você mudar de volta?",
   "projeto": "geral",
-  "situacao": "decidida",
+  "situacao": "a_rever",
   "titulo": "Capacidade mudada pelo app vira regra?",
   "vigente": {
     "comentario": "",
