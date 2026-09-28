@@ -86,10 +86,15 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   na fila; empate pela ordem do config.
 - **Rodízio na saída**: `contos/publicar/tipos.py` (função pura) intercala os tipos pelo
   que está há mais tempo sem publicar, preservando a ordem das partes.
-- **Gatilho "séries < 5"**: `agenda.falta_serie()`. 10 horários ÷ teto de 2 partes da mesma
-  história por dia = `series_minimas = 5`. Com o teto de partes cheio (20) e menos de 5
-  séries prontas, a criação é liberada até um **teto duro** de 26 — sem isso o freio conta
-  partes e o dia fica com horário vazio por falta de variedade.
+- **Gatilho de séries**: `agenda.falta_serie()`. 10 horários ÷ teto de 2 partes da mesma
+  história por dia = `series_minimas = 5`. Desde 28/09 ele conta as séries **elegíveis**
+  (`agenda.series_elegiveis`): uma série só entrega se a **próxima** parte dela (a menor que
+  ainda não foi ao ar, em qualquer destino — `partes_publicadas`) está aprovada, e entrega
+  no máximo 2 por dia, as que vêm em seguida aprovadas. Com o teto de partes cheio (20) e a
+  **capacidade do dia** abaixo dos 10 horários, a criação é liberada até um **teto duro**
+  de 26. Até 27/09 contava séries **distintas**: com 6 séries no estoque o `postar.py`
+  avisou 150 vezes num dia "só 4 série(s) elegível(is)" — série com a próxima parte
+  barrada tem partes na fila e não entrega nenhuma.
 
 ## 4. Armadilhas medidas (não descubra de novo)
 
@@ -106,17 +111,25 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   minhas capacidades", "Não fui programado para fazer isso", "Fui criado apenas para
   processar e gerar texto"…): uma frase sorteada de uma lista fixa, no lugar da resposta.
   Nos logs, 18 em 169 revisões de vídeo de 13 a 27/09, e **5 de 9** na madrugada de 27/09.
-  **Não é o anexo** (o histórico do Gemini mostra o mp4 com a duração no balão da
-  pergunta, e a reescrita das 02:18, sem anexo, levou a mesma frase), **não é o vídeo nem
-  o prompt** (o mp4 de `00034 p01`, recusado às 01:35, foi assistido 4 de 4 vezes às
-  23:55, com o prompt de sempre e com "PEDIDO DE TEXTO" na 1ª linha — que por isso **não**
-  entrou), e **não é o modelo** (recusou no "Pro" e no "3.1 Pro Raciocínio avançado"). Vem
-  em **rajadas**: 4 chats novos seguidos recusados entre 01:32 e 01:43; às 00:06–00:13 de
-  28/09, 5 de 7. O que se controla daqui: `parecer.RecusaDoModelo` (subclasse de
-  `SemParecer`, detectada por `llm.texto.e_recusa_enlatada`), **uma** pergunta de novo num
-  chat novo (`REPETIR_RECUSA = 1`, recuperou 1 de 3 na hora), e a revisão da madrugada
-  pergunta de novo, **no fim da passada e só ao Gemini**, o que ficou `nao_assistido` —
-  inclusive de noites anteriores. A reescrita do reparo pergunta de novo num chat novo e,
+  **Não é o upload** (o histórico do Gemini mostra o mp4 com a duração no balão da
+  pergunta), **não é o texto do pedido de parecer** (o pedido da `00034 p04` **sem** o
+  vídeo não foi recusado — o Pro ficou 5 min pensando, 1 tentativa —, e "PEDIDO DE TEXTO"
+  na 1ª linha não mudou nada: por isso **não** entrou) e **não é o modelo** (recusou no
+  "Pro" e no "3.1 Pro Raciocínio avançado"). No parecer é o **vídeo, do lado do Google**,
+  com taxa **por vídeo** e em rajadas: `00034 p04` teve 1 de 7 tentativas assistidas (5
+  frases + um "Algo deu errado (1155)" que devolveu a pergunta à caixa, e só às 05:25 de
+  28/09 foi assistida), `00036 p01` 0 de 2, `00034 p02` 1 de 4 — e `00034 p01` 6 de 7,
+  `00036 p02`–`p06` 5 de 5. O fundo de
+  maquiagem das recusadas não tem nada que as assistidas não tenham (quadros comparados em
+  28/09). A frase também aparece sem anexo, em pedido que fala de imagem (a reescrita de
+  prompt das 02:18 de 27/09). O que se controla daqui: `parecer.RecusaDoModelo`
+  (subclasse de `SemParecer`, detectada por `llm.texto.e_recusa_enlatada`), **uma**
+  pergunta de novo num chat novo (`REPETIR_RECUSA = 1`; na hora recuperou só 1 de 5 em
+  28/09), e a revisão da madrugada pergunta de novo, **no fim da passada e só ao
+  Gemini**, o que a folha aprovou (`nao_assistido`), e devolve ao Gemini o
+  `nao_assistido` de noites anteriores — foi assim que a `00034 p02` (APROVADO, 01:44) e a
+  `00034 p04` (REPROVADO, 05:25, na rodada seguinte) foram assistidas em 28/09. A reescrita
+  do reparo pergunta de novo num chat novo e,
   recusada duas vezes, vira falha do provedor em vez de "nenhum motivo tem conserto".
 - **Parede de planos do PicassoIA**: o diálogo de assinatura cobre a página e engole o
   clique, mesmo em conta com plano. `worker.gerar()` fecha o navegador e **reabre o perfil
@@ -129,6 +142,17 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   `main.py video`, `tudo()` e o botão do painel também.
 - **Trecho preto na vistoria**: `qualidade.trechos_pretos()` — área ≥80 % escura por >0,5 s
   é **erro**. Os limiares são medidos: com 40 %, cena noturna reprovava.
+- **A vistoria é cara e roda muitas vezes**: `aprovados_no_estoque()` levou 107 s para 19
+  vídeos (28/09, 02:55, máquina ocupada): 51 s de decode do áudio, 35 s do detector de
+  colagem nas 266 imagens, 17 s de ffprobe, 4 s do resto — e a mesma passada roda 2 a 5
+  vezes por rodada (diário de 27/09: 71 a 400 s de log parado por rodada; às 12:32 foram
+  24 min, porque 6 mp4 novos pagaram o trecho preto). Desde 28/09 as três medidas ficam em
+  `outputs/_vistoria_medidas.json` (como `_vistoria_pretos.json`): chave = caminho + mtime
+  + tamanho + versão do que se mede; arquivo refeito é medido de novo, e o **laudo** não é
+  guardado (limites, roteiro e parecer valem na hora). Medido às 08:09 de 28/09, em dois
+  processos seguidos: **116,2 s → 2,3 s**, o mesmo resultado (17 aprovadas, 7 barradas).
+  Teste que vistoria cena **de verdade** aponta `qualidade._outputs` para a pasta dele: o
+  memo de produção só recebe o que a produção mediu.
 - **Prova de origem**: a conta do PicassoIA é compartilhada com outras pessoas, então o
   `worker` só baixa imagem cujo card comprova que veio do **nosso** prompt. Sem prova nada
   é baixado, a cena fica pendente e a vistoria barra a parte.
@@ -147,36 +171,45 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
    de eufemismo). A tensão mora no que a pessoa **sente**, não no que a câmera mostra —
    é o que passa no filtro do PicassoIA e não derruba a monetização.
 
-## 6. Estado de hoje (27/09/2026, ~19h35, medido)
+## 6. Estado de hoje (28/09/2026, ~08h, medido)
 
-- **22 partes aprovadas**; teto 20 (10 horários × 2 dias de gordura), teto duro 26 →
-  **criação freada**. **0 barrados**, **0 incompletas**. **6 séries**
-  (`historia_00031`…`00036`), mínimo da grade 5, `falta_serie` = `None`. Por tipo:
-  **favela 10, normal 7, babaca 5** → o próximo a nascer é **babaca**.
-- 34 histórias no disco, 200 mp4 de celular, ledger com 320 linhas (158 YouTube /
-  162 TikTok). Criadas hoje: `00035` (babaca, 3) e `00036` (favela, 6).
-- **Aviso de variedade** em todas as rodadas de postagem de hoje: "só 4 série(s)
-  elegível(is) hoje, e o dia precisa de 5 — falta VARIEDADE, não partes" (150 ocorrências
-  em `outputs/postar.txt`). Há 6 séries, mas o teto de 2/dia e a ordem das partes deixam 4
-  elegíveis; o aviso é do `postar.py`, o conserto é na agenda **desta** parte.
-- **14 falhas de YouTube** no `postar.txt`, as 5 últimas iguais: `TimeoutError` em
-  `#title-textarea #textbox`. Hoje às 18h a `historia_00032:celular:p04` saiu **só no
-  TikTok** e não há linha de YouTube para ela no ledger.
-- **Os 5 aprovados sem ninguém assistir** (27/09, 01:30–01:43: Gemini recusou, a folha
-  do ChatGPT aprovou em 8 caracteres), marcados `nao_assistido` e revistos no Gemini em
-  28/09, 00:04–00:15: `00034 p01` **reprovado** (cena 2: peça íntima sem relação com a
-  narração; cena 8: a protagonista duplicada), `00034 p03` **reprovado** (cena 14: troca de
-  rosto e roupa), `00035 p01` **reprovado** (cenas 4–7: protagonista muda de aparência) —
-  e este **já está no ar desde 27/09 20:43**, YouTube e TikTok. `00034 p02` e `p04`: o
-  Gemini recusou duas vezes cada, seguem `nao_assistido` e voltam ao Gemini na revisão da
-  madrugada. Também foram ao ar só com a folha, em 14–17/09: `00009 p05`, `00010 p02`,
-  `00010 p03`.
+- **Estoque** (08:09): **17 aprovadas, 7 barradas**; teto 20, teto duro 26 → a
+  criação **segue liberada** pelo freio de partes. **6 séries** com parte aprovada, **5
+  elegíveis**, capacidade do dia **9 de 10** (`00034` tem p02, p05 e p06 aprovadas e a p01
+  reprovada: entrega 0; `00032` só tem a p06: entrega 1). Por tipo: **favela 11, normal
+  3, babaca 3** → o próximo a nascer é **normal** (empate com babaca, a ordem do config
+  decide).
+- **A rodada das 07:02 morreu calada às 07:21** (PID 11632): último turno do DeepSeek
+  aberto às 07:21:12, nenhum erro no log nem no diário, nenhum `main.py` vivo às 07:29. A
+  `historia_00038` ficou com as partes 1–2 no `roteiro.json` (a 3ª só em
+  `conversa/parte_03.txt`): a próxima rodada a retoma pelo caminho `partes_sem_texto`
+  (`_retomar_texto`). Quem matou o processo **não foi apurado**.
+- 36 pastas `historia_*` (35 com mp4), 190 mp4 de celular, ledger com 328 linhas (162
+  YouTube / 166 TikTok). Criada na madrugada: `00037` (favela, 6; 18 problemas às 05:15,
+  terminada às 05:54).
+- **Aviso de variedade** do `postar.py` ("só N série(s) elegível(is) hoje, e o dia
+  precisa de 5"): 162 no `outputs/postar.txt`, e **148 deles com série(s) já no teto do
+  dia** — a linha de cima diz "a historia ja saiu 2x hoje". O aviso compara as séries que
+  **sobram** com as 5 que o dia **inteiro** precisa; à tarde ele dispara com 6 séries no
+  estoque. Só 14 foram de manhã, sem série nenhuma no teto. O aviso é do `postar.py`
+  (publicação); o gatilho de criação desta parte passou a contar séries elegíveis (§3).
+- **Os 5 aprovados sem ninguém assistir** (27/09, 01:30–01:43: o Gemini recusou, a folha
+  do ChatGPT aprovou em 8 caracteres), marcados `nao_assistido` em 28/09 00:04 e todos
+  assistidos pelo Gemini em 28/09: `00034 p01` **reprovado** (cena 2: peça íntima sem
+  relação com a narração; cena 8: a protagonista duplicada), `00034 p02` **aprovado**
+  (01:44, revisão da madrugada), `00034 p03` **reprovado** (cena 14: troca de rosto e
+  roupa), `00034 p04` **reprovado** (05:25, revisão da madrugada, depois de 6 tentativas
+  recusadas: cena 13, a filha no chão e a imagem outra) e `00035 p01` **reprovado**
+  (cenas 4–7: protagonista muda de aparência) — este **já estava no ar desde 27/09 20:43**,
+  YouTube e TikTok. Também foram ao ar só com a folha, em 14–17/09: `00009 p05`,
+  `00010 p02`, `00010 p03` (continuam `nao_assistido`; publicado não volta à revisão).
 - **7 vídeos INSISTENTES** em `outputs/_reparos.json` (teto de tentativas): partes de
   `00004`, `00005`, `00010`, `00011`, todas antigas, esperando decisão humana.
-- 103 linhas "a IA reprovou, mas as rodadas de conserto acabaram; sai assim" — o veto da IA
-  não é definitivo depois do teto de reparos; **não verificado** se é decisão dele ou efeito
-  colateral. Pendente antigo, **não verificado** se ainda vale: a imagem fica ~6 s na tela e
-  o ideal é 3–5 s (exigiria 45–60 imagens por parte).
+- 108 linhas "a IA reprovou, mas as rodadas de conserto acabaram; sai assim" no
+  `postar.txt`. Isso **era** a decisão dele de 13/09 ("tem que sair de qualquer forma");
+  a de 27/09 é reter o reprovado e o `nao_assistido` enquanto houver outro candidato — a
+  válvula é da publicação (S2). Pendente antigo, **não verificado** se ainda vale: a imagem
+  fica ~6 s na tela e o ideal é 3–5 s (exigiria 45–60 imagens por parte).
 
 ## 7. Como conferir sem gerar nada
 

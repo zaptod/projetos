@@ -62,8 +62,9 @@ def limpar_resposta(texto: str) -> str:
 # texto, e isso esta alem das minhas capacidades", "Nao fui programado para
 # fazer isso", "Sou apenas um modelo de linguagem...", "Nao consigo criar esse
 # tipo de video". Veio com o mp4 anexado E sem anexo nenhum (a reescrita de
-# prompt das 02:18 de 27/09), e o mesmo pedido, repetido horas depois, foi
-# respondido: e do site, em rajadas, e nao do video nem do texto.
+# prompt das 02:18 de 27/09). No parecer, e o VIDEO do lado do Google: o mesmo
+# pedido sem o video nao foi recusado, e a taxa e por video (a `00034 p04`
+# 1 de 7 tentativas assistidas, a `00034 p01` 6 de 7), em rajadas.
 RECUSA_ENLATADA = re.compile(
     r"modelo\s+de\s+linguagem"
     r"|ia\s+(?:com\s+)?base(?:ada)?\s+em\s+texto"

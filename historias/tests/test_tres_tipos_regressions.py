@@ -155,34 +155,136 @@ class FaltaDeSerie(unittest.TestCase):
                          agenda.series_minimas(
                              dict(self.CONFIG, teto_por_historia_no_dia=3)))
 
+    # `publicados=()` EM TODO TESTE: sem ele `falta_serie` le o ledger DE
+    # PRODUCAO, e as series de mentira daqui (historia_00001...) existem la.
     def test_partes_cheias_mas_series_poucas_libera(self):
         # 20 partes de 3 series: teto de partes cheio, 6 posts por dia.
-        falta = agenda.falta_serie(self.CONFIG, self._partes(3, 7)[:20])
+        falta = agenda.falta_serie(self.CONFIG, self._partes(3, 7)[:20],
+                                   publicados=())
         self.assertIsNotNone(falta)
         self.assertIn("so 3 serie(s)", falta["motivo"])
 
     def test_series_suficientes_nao_libera(self):
         self.assertIsNone(agenda.falta_serie(self.CONFIG,
-                                             self._partes(5, 4)))
+                                             self._partes(5, 4),
+                                             publicados=()))
 
     def test_teto_duro_segura_series_longas(self):
         # teto (20) + uma serie (6) = 26 partes: mesmo com poucas series,
         # nao cria mais.
         teto = agenda.teto_de_estoque(self.CONFIG)
         muitas = self._partes(3, 10)[:teto + 6]
-        self.assertIsNone(agenda.falta_serie(self.CONFIG, muitas))
+        self.assertIsNone(agenda.falta_serie(self.CONFIG, muitas,
+                                             publicados=()))
 
     def test_sem_saber_a_fonte_nao_libera(self):
         partes = self._partes(2, 10)
         partes[0] = object()
-        self.assertIsNone(agenda.falta_serie(self.CONFIG, partes))
+        self.assertIsNone(agenda.falta_serie(self.CONFIG, partes,
+                                             publicados=()))
 
     def test_abaixo_do_teto_de_partes_o_freio_de_sempre_decide(self):
-        self.assertIsNone(agenda.falta_serie(self.CONFIG, self._partes(1, 5)))
+        self.assertIsNone(agenda.falta_serie(self.CONFIG, self._partes(1, 5),
+                                             publicados=()))
 
     def test_freio_desligado_nao_libera(self):
         self.assertIsNone(agenda.falta_serie(
-            dict(self.CONFIG, teto_de_estoque=0), self._partes(1, 2)))
+            dict(self.CONFIG, teto_de_estoque=0), self._partes(1, 2),
+            publicados=()))
+
+    # ---- series ELEGIVEIS (27/09/2026): o `postar.py` avisou 150 vezes num
+    # dia "so 4 serie(s) elegivel(is) hoje" com 6 series no estoque.
+    @staticmethod
+    def _no_ar(fonte, *partes):
+        return [{"video_id": f"{fonte}:celular:p{p:02d}", "plataforma": "tiktok",
+                 "url": "https://www.tiktok.com/@x/video/1", "publicado": True}
+                for p in partes]
+
+    def test_serie_com_a_proxima_parte_barrada_nao_conta(self):
+        """6 series com parte aprovada, 2 delas com a PROXIMA parte barrada
+        (fora da lista): elas nao entregam nada hoje, e o dia fica com 8."""
+        partes = self._partes(6, 4)
+        barradas = {"historia_00005:celular:p01", "historia_00006:celular:p01"}
+        aprovados = [v for v in partes if v.id not in barradas]
+        falta = agenda.falta_serie(self.CONFIG, aprovados, publicados=())
+        self.assertIsNotNone(falta)
+        self.assertEqual(4, falta["series"])
+        self.assertEqual(6, falta["distintas"])
+        self.assertEqual(8, falta["capacidade"])
+        self.assertIn("so 4 serie(s) elegivel(is) de 6", falta["motivo"])
+        # o codigo antigo contava 6 distintas e dizia que estava tudo bem
+        self.assertGreaterEqual(falta["distintas"], agenda.series_minimas(
+            self.CONFIG))
+
+    def test_a_proxima_parte_vem_do_ledger(self):
+        """p01 e p02 no ar, p03 e p04 aprovadas: a serie entrega 2."""
+        conta = agenda.series_elegiveis(
+            [SimpleNamespace(fonte_id="historia_00007", parte=3,
+                             id="historia_00007:celular:p03"),
+             SimpleNamespace(fonte_id="historia_00007", parte=4,
+                             id="historia_00007:celular:p04")],
+            publicados=self._no_ar("historia_00007", 1, 2))
+        self.assertEqual({"proxima": 3, "entrega": 2},
+                         conta["por_serie"]["historia_00007"])
+
+    def test_parte_seguinte_sem_a_anterior_nao_entrega(self):
+        """p01 no ar, p02 fora (barrada), p03-p05 aprovadas: nada sai."""
+        aprovados = [SimpleNamespace(fonte_id="historia_00008", parte=p,
+                                     id=f"historia_00008:celular:p{p:02d}")
+                     for p in (3, 4, 5)]
+        conta = agenda.series_elegiveis(
+            aprovados, publicados=self._no_ar("historia_00008", 1))
+        self.assertEqual(0, conta["elegiveis"])
+        self.assertEqual(0, conta["capacidade"])
+
+    def test_parte_ja_no_ar_fora_de_ordem_e_pulada(self):
+        """p03 saiu como ultimo recurso antes da p02: p02 e p04 aprovadas
+        continuam em seguida."""
+        aprovados = [SimpleNamespace(fonte_id="historia_00009", parte=p,
+                                     id=f"historia_00009:celular:p{p:02d}")
+                     for p in (2, 4)]
+        conta = agenda.series_elegiveis(
+            aprovados, publicados=self._no_ar("historia_00009", 1, 3))
+        self.assertEqual(2, conta["capacidade"])
+
+    def test_serie_com_uma_parte_so_entrega_uma(self):
+        """5 series, uma so com UMA parte: 9 horarios de 10, falta."""
+        partes = self._partes(5, 5)
+        aprovados = [v for v in partes if not (
+            v.fonte_id == "historia_00005" and not v.id.endswith("p01"))]
+        # mais duas da serie 1, so para passar do teto de partes (20)
+        aprovados += [SimpleNamespace(fonte_id="historia_00001",
+                                      id=f"historia_00001:celular:p{p:02d}")
+                      for p in (6, 7)]
+        falta = agenda.falta_serie(self.CONFIG, aprovados, publicados=())
+        self.assertIsNotNone(falta)
+        self.assertEqual(5, falta["series"])
+        self.assertEqual(9, falta["capacidade"])
+
+    def test_linha_que_nao_saiu_nao_conta_como_no_ar(self):
+        """Rascunho curado (`publicado: False`) nao adianta a proxima parte."""
+        linhas = self._no_ar("historia_00010", 1)
+        linhas[0]["publicado"] = False
+        conta = agenda.series_elegiveis(
+            [SimpleNamespace(fonte_id="historia_00010", parte=2,
+                             id="historia_00010:celular:p02")],
+            publicados=linhas)
+        self.assertEqual(0, conta["capacidade"])
+
+    def test_sem_publicados_le_o_ledger(self):
+        from contos.publicar import serie
+        self.addCleanup(setattr, serie, "publicados", serie.publicados)
+        serie.publicados = lambda: self._no_ar("historia_00011", 1)
+        conta = agenda.series_elegiveis(
+            [SimpleNamespace(fonte_id="historia_00011", parte=2,
+                             id="historia_00011:celular:p02")])
+        self.assertEqual(1, conta["capacidade"])
+
+    def test_sem_saber_a_parte_nao_libera(self):
+        partes = self._partes(3, 7)[:20]
+        partes[0] = SimpleNamespace(fonte_id="historia_00001", id="sem_parte")
+        self.assertIsNone(agenda.falta_serie(self.CONFIG, partes,
+                                             publicados=()))
 
     def test_o_gatilho_fica_no_diario(self):
         from builds import atividade

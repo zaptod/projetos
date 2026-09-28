@@ -516,6 +516,10 @@ class CenaSemImagemNaoPublicaTests(unittest.TestCase):
                 "existe": True, "duracao": 140.0, "bytes": 10 ** 7,
                 "audio": True, "video": True, "media_db": -17.0,
                 "silencio_final": 0.0, "erros": [], "avisos": []}),
+            # O MEMO DA VISTORIA fica na pasta do teste: as cenas lidas aqui
+            # sao as de verdade da historia_00010, e o memo de producao so
+            # pode receber o que a producao mediu (28/09/2026).
+            (Q, "_outputs", lambda: Path(self._tmp.name)),
         ]
         for alvo, nome, falso in alvos:
             self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))

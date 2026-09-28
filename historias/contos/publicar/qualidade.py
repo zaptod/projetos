@@ -118,17 +118,163 @@ def avaliar_ritmo(palavras: int, duracao: float,
     return saida
 
 
+# AS MEDIDAS PURAS FICAM GUARDADAS (28/09/2026). `aprovados_no_estoque()`
+# levou 107 s as 02:55 de 28/09, com a maquina ocupada, para 19 videos: 51 s
+# no decode do audio, 35 s nas 266 imagens olhadas por `composicao` e 17 s no
+# ffprobe — o resto, 4 s. E a mesma passada roda 2 a 5 vezes por rodada da
+# agenda (freio, barrados, reparo, estoque novo, series), cada rodada num
+# processo novo: 71 a 400 s de log parado por rodada, medidos no diario de
+# 27/09. As tres medidas sao funcao SO do arquivo (o mp4 ou a imagem), entao
+# ficam em memoria e em disco com a chave do memo dos pretos — caminho, mtime
+# e tamanho — mais a VERSAO do que se mede (o comando, ou o fonte de
+# `composicao`). Arquivo refeito muda de chave e e medido de novo. O LAUDO nao
+# e guardado: os limites, o roteiro e o parecer sao aplicados a cada vistoria.
+MEMO_MEDIDAS_NOME = "_vistoria_medidas.json"
+_MEDIDAS: dict = {}
+_MEDIDAS_DO_DISCO: dict = {}
+_ESTADO_DO_MEMO = {"lido": False, "sujo": False}
+
+
+def _chave_da_medida(caminho, tipo: str, versao: str) -> tuple:
+    """`(chave, persiste)`. Chave `None` quando o arquivo nao existe."""
+    try:
+        caminho = Path(caminho)
+        info = caminho.stat()
+        real = caminho.resolve()
+    except (OSError, TypeError, ValueError):
+        return None, False
+    # So o que mora em outputs/ vai para o disco: arquivo de teste (pasta
+    # temporaria) nunca escreve no memo de verdade.
+    try:
+        persiste = real.is_relative_to(_outputs().resolve())
+    except (OSError, ValueError):
+        persiste = False
+    return (f"{real}|{info.st_mtime_ns}|{info.st_size}|{tipo}:{versao}",
+            persiste)
+
+
+def _medidas_em_disco() -> dict:
+    """O memo do disco DAQUELA pasta de outputs. Se a pasta mudou (um teste
+    aponta outra), o que foi lido da anterior e esquecido: um memo nunca
+    recebe medida de arquivo de outra pasta."""
+    pasta = str(_outputs())
+    if _ESTADO_DO_MEMO.get("pasta") != pasta:
+        _MEDIDAS_DO_DISCO.clear()
+        _ESTADO_DO_MEMO.update({"lido": False, "sujo": False, "pasta": pasta})
+    if not _ESTADO_DO_MEMO["lido"]:
+        _ESTADO_DO_MEMO["lido"] = True
+        try:
+            dados = json.loads((_outputs() / MEMO_MEDIDAS_NOME)
+                               .read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            dados = {}
+        if isinstance(dados, dict):
+            _MEDIDAS_DO_DISCO.update(dados)
+    return _MEDIDAS_DO_DISCO
+
+
+def _medida_guardada(chave, persiste: bool) -> tuple:
+    """`(achou, valor)`."""
+    if not chave:
+        return False, None
+    if chave in _MEDIDAS:
+        return True, _MEDIDAS[chave]
+    if persiste:
+        disco = _medidas_em_disco()
+        if chave in disco:
+            _MEDIDAS[chave] = disco[chave]
+            return True, disco[chave]
+    return False, None
+
+
+def _guardar_medida(chave, persiste: bool, valor) -> None:
+    if not chave:
+        return
+    _MEDIDAS[chave] = valor
+    if persiste:
+        _medidas_em_disco()[chave] = valor
+        _ESTADO_DO_MEMO["sujo"] = True
+
+
+def _chave_ainda_vale(chave: str) -> bool:
+    """O arquivo da chave existe e continua com o mesmo mtime e tamanho?"""
+    try:
+        caminho, mtime, tamanho, _tipo = chave.split("|", 3)
+        info = Path(caminho).stat()
+        return (info.st_mtime_ns == int(mtime)
+                and info.st_size == int(tamanho))
+    except (OSError, ValueError):
+        return False
+
+
+def _gravar_medidas() -> None:
+    """Grava o memo por troca atomica. Perder a corrida so custa medir de
+    novo; a poda tira o que nao aponta mais para o arquivo como ele esta."""
+    import os
+    import threading
+    novos = _medidas_em_disco()          # (esquece o de outra pasta)
+    if not _ESTADO_DO_MEMO["sujo"]:
+        return
+    destino = _outputs() / MEMO_MEDIDAS_NOME
+    try:
+        dados = json.loads(destino.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        dados = {}
+    if not isinstance(dados, dict):
+        dados = {}
+    dados.update(novos)
+    dados = {k: v for k, v in dados.items() if _chave_ainda_vale(k)}
+    # pid E thread: o painel vistoria em thread, e dois escritores no mesmo
+    # temporario gravariam um JSON pela metade.
+    temporario = destino.with_name(
+        f"{destino.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        temporario.write_text(json.dumps(dados, ensure_ascii=False),
+                              encoding="utf-8")
+        os.replace(temporario, destino)
+        _ESTADO_DO_MEMO["sujo"] = False
+    except OSError:
+        try:
+            temporario.unlink()
+        except OSError:
+            pass
+
+
+def _versao_do_fonte(modulo) -> str:
+    """mtime e tamanho do .py: mudou o codigo que mede, mede de novo."""
+    try:
+        info = Path(modulo.__file__).stat()
+        return f"{info.st_mtime_ns}-{info.st_size}"
+    except (OSError, AttributeError, TypeError):
+        return "?"
+
+
 def _ffprobe(caminho: Path) -> dict:
+    comando = ["ffprobe", "-v", "error", "-show_entries",
+               "format=duration,size:format_tags=comment:"
+               "stream=codec_type,codec_name",
+               "-of", "json", str(caminho)]
+    chave, persiste = _chave_da_medida(caminho, "ffprobe",
+                                       " ".join(comando[:-1]))
+    import copy
+    achou, valor = _medida_guardada(chave, persiste)
+    if achou and isinstance(valor, dict):
+        return copy.deepcopy(valor)      # quem chama nao suja o memo
     try:
         saida = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries",
-             "format=duration,size:format_tags=comment:"
-             "stream=codec_type,codec_name",
-             "-of", "json", str(caminho)],
+            comando,
             capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
-        return json.loads(saida.stdout or "{}")
+        dados = json.loads(saida.stdout or "{}")
     except (OSError, ValueError, subprocess.SubprocessError):
         return {}
+    # So o que mediu de verdade vai ao memo: ffprobe que falhou (arquivo
+    # sendo escrito, maquina engasgada) e perguntado de novo na proxima.
+    if isinstance(dados, dict) and dados.get("format"):
+        _guardar_medida(chave, persiste, copy.deepcopy(dados))
+    return dados
+
+
+AUDIO_FILTRO = "volumedetect,silencedetect=n=-40dB:d=1.0"
 
 
 def _audio(caminho: Path, duracao: float) -> tuple:
@@ -138,18 +284,31 @@ def _audio(caminho: Path, duracao: float) -> tuple:
     vezes custava o dobro para responder duas perguntas sobre as mesmas
     amostras, e a vistoria de uma serie de 6 partes fazia isso 12 vezes.
     """
+    chave, persiste = _chave_da_medida(
+        caminho, "audio", f"{AUDIO_FILTRO}|{float(duracao or 0):.2f}")
+    achou, valor = _medida_guardada(chave, persiste)
+    if achou and isinstance(valor, list) and len(valor) == 2:
+        return valor[0], float(valor[1])
     try:
         saida = subprocess.run(
             # `-vn`: as duas perguntas sao sobre AUDIO, e decodificar 150 s de
             # 1080x1920 para responde-las e o grosso do custo. Sem ele, a
             # vistoria do acervo inteiro leva minutos em vez de segundos.
             ["ffmpeg", "-v", "info", "-i", str(caminho), "-vn", "-af",
-             "volumedetect,silencedetect=n=-40dB:d=1.0", "-f", "null", "-"],
+             AUDIO_FILTRO, "-f", "null", "-"],
             capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
         return None, 0.0
+    media, calado = _ler_audio(saida.stderr, duracao)
+    if media is not None:
+        _guardar_medida(chave, persiste, [media, calado])
+    return media, calado
+
+
+def _ler_audio(texto: str, duracao: float) -> tuple:
+    """A saida do `volumedetect,silencedetect` -> (media em dB, calado no fim)."""
     media, inicios, fins = None, [], []
-    for linha in (saida.stderr or "").splitlines():
+    for linha in (texto or "").splitlines():
         try:
             if "mean_volume:" in linha:
                 media = float(linha.split("mean_volume:")[1].split("dB")[0].strip())
@@ -337,6 +496,7 @@ def vistoriar_arquivo(caminho: Path) -> dict:
         erros.append(f"os ultimos {calado:.1f}s sao mudos: a narracao acabou "
                      "antes das imagens")
 
+    _gravar_medidas()
     return {"existe": True, "duracao": round(duracao, 2), "bytes": tamanho,
             "audio": tem_audio, "video": tem_video, "media_db": media,
             "silencio_final": round(calado, 2),
@@ -360,7 +520,7 @@ def _erros_das_imagens(historia_id: str, roteiro: dict,
     ANTES de uma imagem ser refeita — sem ela, consertar a colagem no disco
     nao mudaria o arquivo que sobe.
     """
-    from ..imagens import composicao, fila
+    from ..imagens import fila
     from ..video.timeline import cenas_da_parte
 
     erros = []
@@ -368,10 +528,41 @@ def _erros_das_imagens(historia_id: str, roteiro: dict,
         arquivo = fila.caminho_da_cena(historia_id, cena["n"], parte)
         if not arquivo.is_file():
             continue
-        razao = composicao.motivo(arquivo)
+        razao = _motivo_de_colagem(arquivo)
         if razao:
             erros.append(f"cena {cena['n']}: {razao}")
+    _gravar_medidas()
     return erros
+
+
+def _motivo_de_colagem(arquivo: Path) -> str:
+    """`composicao.motivo`, guardado por imagem (35 s de 107 numa passada).
+
+    A versao e o proprio `composicao.py`: mudou o detector, mede de novo.
+    """
+    from ..imagens import composicao
+    chave, persiste = _chave_da_medida(arquivo, "colagem",
+                                       _versao_do_fonte(composicao))
+    achou, valor = _medida_guardada(chave, persiste)
+    if achou and isinstance(valor, str):
+        return valor
+    razao = str(composicao.motivo(arquivo) or "")
+    # `motivo` devolve "" tambem para imagem ILEGIVEL (baixando, trancada por
+    # outro processo). Guardar esse "" faria uma colagem de verdade passar
+    # para sempre: vazio so vai ao memo se a imagem abre.
+    if razao or _imagem_abre(arquivo):
+        _guardar_medida(chave, persiste, razao)
+    return razao
+
+
+def _imagem_abre(arquivo: Path) -> bool:
+    try:
+        from PIL import Image
+        with Image.open(arquivo) as imagem:
+            imagem.load()
+        return True
+    except Exception:                                          # noqa: BLE001
+        return False
 
 
 def _capa_existe(historia_id: str, roteiro: dict, parte: int) -> bool:
@@ -562,10 +753,11 @@ def liberado(video, roteiro: dict | None = None) -> dict:
             motivo = ("a IA reprovou: "
                       + "; ".join(ficha.get("motivos") or []))
             if veto_vencido(video):
-                # O VETO VENCE. Depois das tres rodadas de conserto ele vira
-                # aviso: o video sai do jeito que esta. Defeito de ARQUIVO
-                # (mudo, sem imagem) continua barrando acima — isso nao e
-                # opiniao, e video quebrado.
+                # O VETO VENCE. Depois da passada de conserto (uma so desde
+                # 15/09/2026; eram tres rodadas) ele vira aviso: o video sai
+                # do jeito que esta. Defeito de ARQUIVO (mudo, sem imagem)
+                # continua barrando acima — isso nao e opiniao, e video
+                # quebrado.
                 avisos.append(f"{motivo} (as rodadas de conserto acabaram; "
                               "sai assim)")
                 fonte = "veto vencido"
@@ -577,12 +769,17 @@ def liberado(video, roteiro: dict | None = None) -> dict:
 
 
 def veto_vencido(video) -> bool:
-    """O veto da IA ja teve as tres rodadas de conserto e continua de pe?
+    """O veto da IA ja teve a sua passada de conserto e continua de pe?
 
     Pedido dele em 13/09/2026: "ela tem que ter apenas 3 rounds pra consertar
     as coisas, caso nao conserte o video tem que sair de qualquer forma". O
     veto que nunca vencia travou a grade: seis videos barrados na frente da
     fila, onze aprovados logo atras, e nenhuma historia saiu nos horarios.
+    Desde 15/09/2026 e UMA passada so (`reparo.UMA_PASSADA`): o veto vence
+    quando ela foi gasta, ou quando as tentativas de maquina acabaram
+    (`reparo.veto_consumido`). A decisao dele de 27/09/2026 e reter esse
+    video enquanto houver outro candidato para o horario; quem aplica e a
+    valvula da publicacao, nao esta funcao.
     """
     try:
         from ..pipeline import reparo

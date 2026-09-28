@@ -28,6 +28,7 @@ TRES CUIDADOS, cada um vindo de uma coisa medida:
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from datetime import datetime
@@ -922,9 +923,12 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
             falta = (falta_serie(config, aprovados_no_estoque())
                      if estoque < teto_duro(config) else None)
             if not falta:
+                # "teto: 20 = um dia de grade" ficou errado em 15/09/2026,
+                # quando a gordura passou a dois dias (`dias_de_gordura`).
+                dias = dias_de_gordura(config)
                 log(f"[auto] ja ha {estoque} video(s) novo(s) na fila "
-                    f"(teto: {teto} = um dia de grade). Nao crio mais ate "
-                    "baixar.")
+                    f"(teto: {teto} = {dias} dia(s) de grade). Nao crio mais "
+                    "ate baixar.")
                 return {"feito": "nada", "motivo": "estoque cheio",
                         "estoque": estoque}
             # A RODADA CRIA UMA HISTORIA SO, entao este gatilho nunca da mais
@@ -1056,14 +1060,111 @@ def series_minimas(config: dict | None = None) -> int:
     return math.ceil((len(grade.HORAS) or 8) / teto_por_historia(config))
 
 
-def falta_serie(config: dict, aprovados: list) -> dict | None:
-    """`{motivo, series, minimo, teto_duro}` quando faltam SERIES; senao None.
+_PARTE_NO_ID = re.compile(r":p(\d+)$")
+
+
+def _parte_do_video(video) -> int | None:
+    """O numero da parte: `video.parte`, ou o `pNN` no fim do id."""
+    try:
+        parte = int(getattr(video, "parte", 0) or 0)
+    except (TypeError, ValueError):
+        parte = 0
+    if parte > 0:
+        return parte
+    achado = _PARTE_NO_ID.search(str(getattr(video, "id", "") or ""))
+    return int(achado.group(1)) if achado else None
+
+
+def partes_publicadas(publicados=None) -> dict:
+    """`{historia_id: {partes no ar}}`, em QUALQUER destino — como a fila.
+
+    `publicados` sao linhas do ledger; sem elas, le o ledger (so leitura).
+    Conta so o que `builds.publicar.metricas.publicado` aceita. Nunca levanta:
+    ledger ilegivel vira "nada publicado".
+    """
+    if publicados is None:
+        try:
+            from ..publicar import serie
+            publicados = serie.publicados()
+        except Exception:                                      # noqa: BLE001
+            publicados = []
+    saida: dict = {}
+    for linha in publicados or ():
+        try:
+            if not _publicado(linha):
+                continue
+            vid = str(linha.get("video_id") or "")
+        except Exception:                                      # noqa: BLE001
+            continue
+        achado = _PARTE_NO_ID.search(vid)
+        if vid.startswith("historia_") and achado:
+            saida.setdefault(vid.split(":")[0], set()).add(
+                int(achado.group(1)))
+    return saida
+
+
+def series_elegiveis(aprovados: list, publicados=None,
+                     teto_no_dia: int = 2) -> dict | None:
+    """O que as series aprovadas entregam num DIA. `None` = nao sei contar.
+
+    `{"elegiveis", "capacidade", "distintas", "por_serie"}`. Uma serie so
+    entrega se a PROXIMA parte dela (a menor que ainda nao foi ao ar) esta
+    aprovada: a ordem das partes e sagrada, e a parte barrada segura as
+    seguintes (`postar.proxima_historia`). E entrega no maximo `teto_no_dia`
+    partes, as que vem EM SEGUIDA aprovadas.
+
+    POR QUE (27/09/2026): o gatilho contava series DISTINTAS com parte
+    aprovada. Havia 6 e o `postar.py` avisou 150 vezes no dia "so 4 serie(s)
+    elegivel(is) hoje, e o dia precisa de 5": serie com a proxima parte
+    barrada tem partes na fila e nao entrega nenhuma.
+    """
+    teto_no_dia = max(1, int(teto_no_dia or 1))
+    aprovadas: dict = {}
+    for video in aprovados or ():
+        fonte = str(getattr(video, "fonte_id", "") or
+                    str(getattr(video, "id", "")).split(":")[0])
+        parte = _parte_do_video(video)
+        if not fonte.startswith("historia_") or not parte:
+            # NAO SEI CONTAR: sem a fonte e a parte de todos, "poucas series"
+            # seria chute — e o erro barato aqui e nao criar.
+            return None
+        aprovadas.setdefault(fonte, set()).add(parte)
+    no_ar = partes_publicadas(publicados)
+    por_serie, capacidade, elegiveis = {}, 0, 0
+    for fonte in sorted(aprovadas):
+        feitas = no_ar.get(fonte, set())
+        proxima = 1
+        while proxima in feitas:
+            proxima += 1
+        corrida, n = 0, proxima
+        while corrida < teto_no_dia:
+            if n in feitas:
+                n += 1
+            elif n in aprovadas[fonte]:
+                corrida += 1
+                n += 1
+            else:
+                break
+        por_serie[fonte] = {"proxima": proxima, "entrega": corrida}
+        capacidade += corrida
+        elegiveis += 1 if corrida else 0
+    return {"elegiveis": elegiveis, "capacidade": capacidade,
+            "distintas": len(aprovadas), "por_serie": por_serie}
+
+
+def falta_serie(config: dict, aprovados: list,
+                publicados=None) -> dict | None:
+    """`{motivo, series, minimo, teto_duro, ...}` quando faltam SERIES; senao
+    None.
 
     O freio conta PARTES, e com o teto por historia isso nao basta: 20 partes
     de 3 series enchem o teto (20) e so alimentam 6 horarios por dia. A
-    criacao e liberada quando ha menos series que o minimo, com um TETO DURO
-    de partes (o teto de sempre + uma serie inteira), para series longas nao
-    virarem producao sem fim.
+    criacao e liberada quando as series ELEGIVEIS nao enchem o dia (ver
+    `series_elegiveis`: proxima parte aprovada, teto de 2 por dia, ordem das
+    partes), com um TETO DURO de partes (o teto de sempre + uma serie
+    inteira), para series longas nao virarem producao sem fim.
+
+    `publicados` sao linhas do ledger; sem elas, le o ledger.
     """
     teto = teto_de_estoque(config)
     if not teto:
@@ -1073,21 +1174,27 @@ def falta_serie(config: dict, aprovados: list) -> dict | None:
     if len(aprovados) < teto or len(aprovados) >= duro:
         # Abaixo do teto o freio de partes ja cria; acima do duro, nada cria.
         return None
-    fontes = set()
-    for video in aprovados:
-        fonte = str(getattr(video, "fonte_id", "") or
-                    str(getattr(video, "id", "")).split(":")[0])
-        if not fonte.startswith("historia_"):
-            # NAO SEI CONTAR: sem a fonte de todos, "poucas series" seria
-            # chute — e o erro barato aqui e nao criar.
-            return None
-        fontes.add(fonte)
-    minimo = series_minimas(config)
-    if len(fontes) >= minimo:
+    por_dia = teto_por_historia(config)
+    conta = series_elegiveis(aprovados, publicados, por_dia)
+    if conta is None:
         return None
-    return {"motivo": f"so {len(fontes)} serie(s) pronta(s), a grade precisa "
-                      f"de {minimo}",
-            "series": len(fontes), "minimo": minimo, "teto_duro": duro}
+    minimo = series_minimas(config)
+    horarios = minimo * por_dia
+    try:
+        from builds import grade
+        horarios = len(grade.HORAS) or horarios
+    except Exception:                                          # noqa: BLE001
+        pass
+    if conta["capacidade"] >= horarios:
+        return None
+    return {"motivo": (f"so {conta['elegiveis']} serie(s) elegivel(is) de "
+                       f"{conta['distintas']} com parte aprovada: elas cobrem "
+                       f"{conta['capacidade']} de {horarios} horario(s) do "
+                       f"dia (teto de {por_dia} por serie), a grade precisa "
+                       f"de {minimo}"),
+            "series": conta["elegiveis"], "distintas": conta["distintas"],
+            "capacidade": conta["capacidade"], "horarios": horarios,
+            "minimo": minimo, "teto_duro": duro}
 
 
 def teto_duro(config: dict) -> int:

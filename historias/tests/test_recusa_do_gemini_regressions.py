@@ -7,11 +7,12 @@ as 23:13) e respondeu "Sou uma IA com base em texto, e isso esta alem das
 minhas capacidades" em 5 de 9 videos. As mesmas frases, sorteadas de uma
 lista, aparecem desde 13/09 (18 vezes em 169 revisoes); a reescrita de prompt
 das 02:18, SEM video nenhum, levou "Nao fui programado para fazer essas
-coisas". Nao e o anexo que falha. E nao e o video nem o prompt: as 23:55 o
-MESMO mp4 da parte 1 da historia 34, recusado as 01:35, foi assistido 4 de 4
-vezes, com o prompt de producao e com "PEDIDO DE TEXTO" na primeira linha.
-A recusa e do site, em rajadas (quatro chats novos seguidos entre 01:32 e
-01:43), e o que se controla daqui e o que fazer com ela.
+coisas". Nao e o upload que falha, nem o texto do pedido: as 23:55 o MESMO
+mp4 da parte 1 da historia 34, recusado as 01:35, foi assistido 4 de 4 vezes,
+com o prompt de producao e com "PEDIDO DE TEXTO" na primeira linha; e o
+pedido da parte 4 SEM o video nao foi recusado (28/09, 03:02). E o video do
+lado do Google, com taxa por video (parte 4: 1 de 7 tentativas assistidas;
+parte 1: 6 de 7) e em rajadas. O que se controla daqui e o que fazer com ela.
 
 Duas coisas davam errado em cima disso:
 

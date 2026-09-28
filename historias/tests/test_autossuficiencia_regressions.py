@@ -335,9 +335,16 @@ class ConfirmarComQuemViuTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self._antes = reparo.REGISTRO
         reparo.REGISTRO = Path(self._tmp.name) / "_reparos.json"
+        # O MEMO DA VISTORIA tambem fica na pasta do teste: o reparo aqui
+        # vistoria as cenas DE VERDADE da historia_00004 (28/09/2026).
+        from contos.publicar import qualidade
+        self._outputs_antes = qualidade._outputs
+        qualidade._outputs = lambda: Path(self._tmp.name)
         self.addCleanup(self._restaurar)
 
     def _restaurar(self):
+        from contos.publicar import qualidade
+        qualidade._outputs = self._outputs_antes
         reparo.REGISTRO = self._antes
         self._tmp.cleanup()
 

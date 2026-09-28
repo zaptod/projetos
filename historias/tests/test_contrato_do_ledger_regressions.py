@@ -24,7 +24,6 @@ O que fica travado aqui:
    como publicado. Se isso falhar, a cura devolve videos para a fila.
 """
 import importlib.util
-import re
 import unittest
 from pathlib import Path
 
@@ -75,10 +74,14 @@ class ContratoTests(unittest.TestCase):
             [], _leituras_por_url('# if linha.get("url")\nx = 1\n'))
 
     def test_a_cura_libera_a_gravacao(self):
-        """O portao de verdade, e nao a nossa leitura dele."""
+        """O portao de verdade, e nao a nossa leitura dele.
+
+        Tinha um `skipTest` para "curar_ledger.py ainda nao existe", morto
+        desde 16/09/2026 (o arquivo existe). Skip morto e pior que teste
+        nenhum: se a cura sumir, o teste passaria calado em vez de acusar.
+        """
         caminho = RAIZ / "ferramentas" / "curar_ledger.py"
-        if not caminho.is_file():
-            self.skipTest("curar_ledger.py ainda nao existe")
+        self.assertTrue(caminho.is_file(), f"sumiu: {caminho}")
         spec = importlib.util.spec_from_file_location("curar_teste", caminho)
         curar = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(curar)
