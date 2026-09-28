@@ -378,3 +378,11 @@ o comando recusa e diz qual.
   lá). A guarda de luta muda POR TRECHO é da publicação: ela mede os
   `_segments_<perfil>/seg_NNN.mp4` dos eventos `gameplay`, que o render daqui
   produz.
+- **Timeline do palco** (Onda 16C) — o arquivo de que o Godot desenha a luta:
+  um valor por passo de 60 Hz (lutadores, arma com a geometria da hitbox,
+  câmera, objetos, efeitos, eventos, `sons`, `remapeamento`), schema em
+  `docs/palco/timeline.md`. Sai do gravador com `--timeline CAMINHO`
+  (`.gcpf` = container zstd que o Godot abre nativo) e do
+  `neural_fights.recording.timeline.gravar_timeline(desenhar=False)`, que é o
+  que o palco usa: mesma luta, mesma câmera e mesmo som do gravador, 10× mais
+  rápido (medido no `duelo_00014`). Os vídeos de hoje não gravam timeline.

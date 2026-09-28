@@ -39,6 +39,15 @@ volume, pitch). A mesma lista e misturada com os wav reais
 (``effects/mixagem.py``) e entra no mp4 no lugar da trilha ``anullsrc`` — o
 bruto ja sai com o som da luta. A luta nao muda com isso (ver o anotador).
 
+Onda 16C (a timeline do palco)
+------------------------------
+Com ``timeline=CAMINHO`` (``--timeline``), a ``SondaTimeline``
+(``recording/timeline.py``) amostra TODO passo, logo depois do ``update`` e
+antes do ``desenhar``, e a luta sai tambem como timeline v1: o arquivo de que
+o palco em Godot desenha a luta (docs/palco/timeline.md), com os ``sons``
+acima na secao propria. A sonda so le: o teste compara um hash de estado por
+passo com e sem ela.
+
 Uso:
     python -m neural_fights.recording.fight_recorder \\
         --p1 "Nome" --p2 "Outro" --seed 7 --saida luta.mp4 \\
@@ -422,6 +431,24 @@ def _embutir_som(saida: Path, sons: list, duracao: float) -> dict:
         wav.unlink(missing_ok=True)
 
 
+def _salvar_timeline(sonda_timeline, caminho, resumo: dict, sons) -> dict:
+    """Fecha a timeline v1 (Onda 16C) e grava; nunca levanta."""
+    try:
+        from neural_fights.effects.audio_anotador import VERSAO_SONS
+        from neural_fights.recording import timeline_arquivo
+
+        if sons is not None:
+            sonda_timeline.anexar_sons(sons, VERSAO_SONS)
+        documento = sonda_timeline.documento(resultado=resumo)
+        caminho = Path(caminho)
+        compressao = "zstd" if caminho.suffix.lower() == ".gcpf" else None
+        tamanho = timeline_arquivo.salvar(documento, caminho, compressao=compressao)
+        return {"timeline": str(caminho), "timeline_bytes": tamanho,
+                "timeline_passos": documento["n"]}
+    except Exception as erro:
+        return {"timeline": None, "erro_timeline": f"{type(erro).__name__}: {erro}"}
+
+
 def parse_resolucao(valor) -> tuple[int, int] | None:
     """"1080x1920" | [1080, 1920] -> (1080, 1920); None se invalido."""
     if not valor:
@@ -461,6 +488,7 @@ def gravar_luta(
     roster_provider=None,
     anotar_som: bool = True,
     som_no_video: bool = True,
+    timeline: str | Path | None = None,
 ) -> dict:
     """Roda a luta desenhando cada frame e devolve o resultado + timestamps.
 
@@ -474,6 +502,13 @@ def gravar_luta(
     ``anotar_som`` (Onda 16A) poe o ``AnotadorDeAudio`` no lugar do
     ``AudioManager`` e devolve ``sons``; ``som_no_video`` mistura essa lista
     com os wav reais e troca a trilha muda do mp4 por ela.
+
+    ``timeline`` (Onda 16C) grava tambem a timeline v1 da luta nesse caminho:
+    o contrato do palco (docs/palco/timeline.md), com a secao ``sons``
+    preenchida pelo anotador. ``.gcpf`` sai no container comprimido que o
+    Godot abre nativo (zstd); outro sufixo, JSON. O resultado leva o CAMINHO,
+    nunca o documento (~1 MB). A timeline nunca derruba a gravacao: falha vira
+    ``erro_timeline`` no resultado.
     """
     # Import tardio: o Simulador puxa pygame, e o driver precisa ja estar
     # escolhido (feito no topo do modulo).
@@ -524,6 +559,11 @@ def gravar_luta(
     sonda = SondaDeDano()
     narrativa = SondaNarrativa()
     camera = SondaCamera()
+    sonda_timeline = None
+    erro_timeline = None
+    if timeline is not None:
+        from neural_fights.recording.timeline import SondaTimeline
+        sonda_timeline = SondaTimeline()
     ffmpeg = None
     try:
         largura, altura = sim.tela.get_size()
@@ -531,6 +571,8 @@ def gravar_luta(
         if saida is not None:
             ffmpeg = _abrir_ffmpeg(saida, largura, altura, fps_saida, crf, preset)
         sonda.on_inicio(sim)
+        if sonda_timeline is not None:
+            sonda_timeline.on_inicio(sim, seed=seed, p1=p1, p2=p2, cenario=cenario)
 
         passo = 1.0 / FPS                       # o motor pensa a 60 Hz
         a_cada = max(1, round(FPS / fps_saida))  # 2 quadros de jogo por frame de video
@@ -580,8 +622,16 @@ def gravar_luta(
             # slow-mo aparece no video.
             dt = sim.avancar_relogio(passo)
             sim.update(dt)
-            sim.desenhar()   # 1:1 com update: desenhar() drena arena.limpar_colisoes()
             t_jogo += dt
+            if sonda_timeline is not None:
+                # Onda 16C: ANTES do desenhar(), que esvazia os impactos de
+                # parede (arena.colisoes_recentes). A sonda so le.
+                try:
+                    sonda_timeline.on_frame(sim, t_video, t_jogo=t_jogo)
+                except Exception as erro:  # a timeline nunca derruba o video
+                    erro_timeline = f"{type(erro).__name__}: {erro}"
+                    sonda_timeline = None
+            sim.desenhar()   # 1:1 com update: desenhar() drena arena.limpar_colisoes()
             antes = len(sonda.eventos)
             sonda.on_frame(sim, t_video)
             narrativa.on_frame(sim, t_video, t_jogo, sonda.eventos[antes:] or None)
@@ -652,6 +702,27 @@ def gravar_luta(
         if anotador is not None:
             resultado["sons"] = list(anotador.sons)
             resultado["versao_sons"] = VERSAO_SONS
+        if timeline is not None:
+            if sonda_timeline is None:
+                resultado.update({"timeline": None, "erro_timeline": erro_timeline})
+            else:
+                resumo = {
+                    "vencedor": resultado["vencedor"],
+                    "vencedor_slot": getattr(sim, "vencedor_round_side", None),
+                    "empate": empate,
+                    "motivo": resultado["motivo"],
+                    "duracao_jogo": resultado["duracao_jogo"],
+                    "duracao_video": duracao_video,
+                    "ko_em_video": resultado["ko_em_video"],
+                    "passos": indice,
+                    "quadros_video": capturados,
+                    "passos_por_quadro": a_cada,
+                    "hp_final": hp,
+                    "seed": seed,
+                }
+                resultado.update(_salvar_timeline(
+                    sonda_timeline, timeline, resumo,
+                    resultado.get("sons") if anotador is not None else None))
         if ffmpeg is not None:
             # Fecha o video ANTES de trocar a trilha: o mp4 so existe inteiro
             # depois que o ffmpeg termina.
@@ -716,6 +787,9 @@ def build_parser() -> argparse.ArgumentParser:
                              "DIRETOR = camera de transmissao para video")
     parser.add_argument("--resultado", default=None,
                         help="grava o resultado tambem neste arquivo JSON")
+    parser.add_argument("--timeline", default=None, metavar="CAMINHO",
+                        help="grava tambem a timeline v1 do palco (Onda 16C); "
+                             ".gcpf = container zstd que o Godot abre, senao JSON")
     return parser
 
 
@@ -735,6 +809,7 @@ def main(argv: list[str] | None = None) -> int:
             camera_espera_zoom_in=args.camera_espera_zoom,
             resolucao=args.resolucao,
             anotar_som=not args.sem_som,
+            timeline=args.timeline,
         )
     except Exception as erro:  # o chamador precisa do motivo, nao de um traceback
         resultado = {"sucesso": False, "erro": f"{type(erro).__name__}: {erro}",
