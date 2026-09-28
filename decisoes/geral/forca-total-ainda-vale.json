@@ -2,12 +2,7 @@
   "comentario": true,
   "contexto": "O botão fica em Comando → Capacidade → Força total; mudar por ali também vale.",
   "criado": "2026-09-28T19:22:46.357204",
-  "depende_de": [
-    {
-      "decisao": "teto-de-uso",
-      "opcao": "*"
-    }
-  ],
+  "depende_de": [],
   "historico": [
     {
       "aparelho": "614c026b",

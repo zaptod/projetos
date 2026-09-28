@@ -15,18 +15,14 @@
   "midias": [],
   "opcoes": [
     {
-      "desbloqueia": [
-        "forca-total-ainda-vale"
-      ],
+      "desbloqueia": [],
       "descricao": "",
       "id": "cinquenta",
       "pede_comentario": false,
       "rotulo": "Passou de 50%, para tudo; força total 20 min antes de renovar"
     },
     {
-      "desbloqueia": [
-        "forca-total-ainda-vale"
-      ],
+      "desbloqueia": [],
       "descricao": "",
       "id": "outro",
       "pede_comentario": true,
