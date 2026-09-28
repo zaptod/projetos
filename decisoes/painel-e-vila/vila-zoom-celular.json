@@ -3,7 +3,15 @@
   "contexto": "O borrado está sendo consertado agora (arte na resolução do aparelho); isto é só sobre o enquadramento.",
   "criado": "2026-09-28T18:37:10.968334",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "Também adicionei suporte se eu deitar o celular, pode mudar as casas de lugar se for mais fácil, não ligo",
+      "em": "2026-09-28T19:10:10",
+      "opcao": "perto",
+      "origem": "app"
+    }
+  ],
   "id": "vila-zoom-celular",
   "midias": [
     {
@@ -37,7 +45,11 @@
   ],
   "pergunta": "A Vila enche a tela com até 3x de zoom. Prefere a cena grande (poucas casas, perto) ou ver mais da vila de uma vez (menor)?",
   "projeto": "painel-e-vila",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Zoom da Vila no celular",
-  "vigente": null
+  "vigente": {
+    "comentario": "Também adicionei suporte se eu deitar o celular, pode mudar as casas de lugar se for mais fácil, não ligo",
+    "em": "2026-09-28T19:10:10",
+    "opcao": "perto"
+  }
 }
