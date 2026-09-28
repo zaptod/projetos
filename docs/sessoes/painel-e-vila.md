@@ -11,7 +11,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
 
 **Painel e Vila**
-- ⏳ **Tarefa da Vila acorda o PC** — A tarefa da Vila acorda o PC a cada 10 min para manter a janela viva. Para uma janela isso não serve; a tarefa do bot já acorda o PC do mesmo jeito. Mantém? `tarefa-da-vila-acorda-o-pc`
+- ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
 - ⏳ **Cara da Oficina** — Qual cara a Oficina fica? `cara-da-oficina`
 
 <!-- decisoes:fim -->

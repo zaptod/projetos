@@ -3,7 +3,15 @@
   "contexto": "",
   "criado": "2026-09-28T17:31:02.227605",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T18:32:22",
+      "opcao": "tirar",
+      "origem": "app"
+    }
+  ],
   "id": "tarefa-da-vila-acorda-o-pc",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "A tarefa da Vila acorda o PC a cada 10 min para manter a janela viva. Para uma janela isso não serve; a tarefa do bot já acorda o PC do mesmo jeito. Mantém?",
   "projeto": "painel-e-vila",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Tarefa da Vila acorda o PC",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T18:32:22",
+    "opcao": "tirar"
+  }
 }
