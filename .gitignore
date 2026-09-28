@@ -40,3 +40,11 @@ outputs/_cura/
 # Registro dos experimentos e a que braco cada producao foi sorteada: estado
 # DESTA maquina, escrito pela pipeline a cada rodada.
 outputs/_experimentos/
+
+# A PASTA DO CLAUDE CODE. Os agentes por parte do projeto VAO para o
+# repositorio: sao a metade "papel" dos documentos de docs/sessoes/ (o
+# documento e o conhecimento, o agente e o que aquela parte faz e nunca faz).
+# Todo o resto ali e estado desta maquina, e `worktrees/` chega a guardar
+# copias inteiras do repositorio dentro do repositorio.
+.claude/*
+!.claude/agents/

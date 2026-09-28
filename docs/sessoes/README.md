@@ -23,15 +23,35 @@ houver nenhuma viva, assuma a parte e diga isso no commit).
 
 ## As partes
 
-| Parte | Documento | Do que cuida |
-|---|---|---|
-| Publicação | [publicacao.md](publicacao.md) | A grade, as guardas contra repetição, o ledger, a conferência com os canais |
-| Histórias | [historias.md](historias.md) | Roteiro (DeepSeek), imagens (PicassoIA), vídeo, vistoria e parecer |
-| Builds / Neural Fights | [builds.md](builds.md) | Builds, estreias, duelos e torneios; o banco de personagens |
-| App do celular e bot | [app-e-bot.md](app-e-bot.md) | O PWA pelo Tailscale, as ações e o bot do Telegram |
-| Painel e Vila | [painel-e-vila.md](painel-e-vila.md) | O painel, a janela flutuante e a arte da Vila |
-| Jogo zombie | [jogo-zombie.md](jogo-zombie.md) | `E:\jogo_ZOMBIE`, o gravador e o canal que ainda não publicou |
-| Métricas e conferências | [metricas.md](metricas.md) | Audiência, relatórios do bot, o que deveria disparar alarme |
+| Parte | Documento | Agente | Do que cuida |
+|---|---|---|---|
+| Publicação | [publicacao.md](publicacao.md) | `publicacao` | A grade, as guardas contra repetição, o ledger, a conferência com os canais |
+| Histórias | [historias.md](historias.md) | `historias` | Roteiro (DeepSeek), imagens (PicassoIA), vídeo, vistoria e parecer |
+| Builds / Neural Fights | [builds.md](builds.md) | `builds` | Builds, estreias, duelos e torneios; o banco de personagens |
+| App do celular e bot | [app-e-bot.md](app-e-bot.md) | `app-e-bot` | O PWA pelo Tailscale, as ações e o bot do Telegram |
+| Painel e Vila | [painel-e-vila.md](painel-e-vila.md) | `painel-e-vila` | O painel, a janela flutuante e a arte da Vila |
+| Jogo zombie | [jogo-zombie.md](jogo-zombie.md) | `jogo-zombie` | `E:\jogo_ZOMBIE`, o gravador e o canal que ainda não publicou |
+| Métricas e conferências | [metricas.md](metricas.md) | `metricas` | Audiência, relatórios do bot, o que deveria disparar alarme |
+
+## As sessões, e como chamá-las
+
+Cada parte tem um **agente** em [`.claude/agents/`](../../.claude/agents/), com
+o mesmo nome do documento. Os dois são as duas metades da mesma coisa: o
+documento é o **conhecimento** (o que já foi medido, o que quebrou, quem manda
+em cada arquivo) e o agente é o **papel** (o que aquela parte faz, o que ela
+nunca faz, como ela trabalha e como relata). O agente começa lendo o documento
+dela.
+
+Para chamar, basta o nome da parte e o que você quer:
+
+> `publicacao`, o horário das 20:37 não publicou build — descubra por quê.
+> `builds`, gere três duelos com pares variados e diga o custo real.
+> `metricas`, o canal de histórias caiu de views esta semana?
+
+Eles não custam nada enquanto ninguém chama, e não morrem quando a sessão
+fecha. Duas regras de uso: **um agente por parte de cada vez** (dois escrevendo
+no mesmo arquivo é o defeito mais caro deste projeto), e quem termina um
+trabalho atualiza o documento da parte **no mesmo commit**.
 
 ## O que vale para todas
 
