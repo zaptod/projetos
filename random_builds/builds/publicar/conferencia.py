@@ -62,6 +62,88 @@ def _dia_do_canal(ts) -> date:
     return quando.date()
 
 
+# ------------------------------------------------------------ o dia de grade
+# A CONFERENCIA RODA DE MADRUGADA (01:28 a 05:20 em 27/09/2026) e contava os
+# posts do dia do CALENDARIO que tinha acabado de comecar. As 05:20 o unico
+# horario desse dia que ja venceu e o das 00:37: um dia 10/10 dava deficit 9,
+# todas as noites. A pergunta certa e sobre o dia de grade que ACABOU de
+# fechar, e ele nao e o do calendario.
+
+def _minutos(hora: int) -> int:
+    return int(hora) * 60 + grade.minuto(hora)
+
+
+def _horas_em_ordem(plataforma: str) -> list:
+    """As horas da plataforma na ordem do relogio (00:37 primeiro)."""
+    return sorted(grade.horas_da_plataforma(plataforma), key=_minutos)
+
+
+def _abertura_e_fechamento(plataforma: str) -> tuple:
+    """(primeira, ultima) hora do DIA DE GRADE daquela plataforma.
+
+    O dia de grade abre no horario que vem depois do MAIOR buraco da grade e
+    fecha no que vem antes dele. O maior buraco e a madrugada (em 27/09/2026,
+    00:37 -> 06:37, seis horas): o dia abre as 06:37 e fecha as 00:37 do dia
+    seguinte. Nenhum horario escrito aqui — se a grade mudar, o dia de grade
+    muda junto.
+    """
+    horas = _horas_em_ordem(plataforma)
+
+    def buraco_antes(i: int) -> int:
+        return (_minutos(horas[i]) - _minutos(horas[i - 1])) % (24 * 60)
+
+    i = max(range(len(horas)), key=buraco_antes)
+    return horas[i], horas[i - 1]
+
+
+def _horario_da_grade(quando: datetime, plataforma: str) -> tuple:
+    """(dia do calendario, hora) do horario da grade a que `quando` pertence.
+
+    O criterio de `grade.slot`: o ultimo horario que ja venceu. A rodada das
+    17:57 que termina as 18:01, e a recuperada que so rodou as 19:30, ainda
+    sao aquele horario. Antes do primeiro horario do relogio, o momento e do
+    ultimo de ontem.
+    """
+    passados = grade.vencidos(quando, plataforma)
+    if passados:
+        return quando.date(), max(passados, key=_minutos)
+    return quando.date() - timedelta(days=1), _horas_em_ordem(plataforma)[-1]
+
+
+def _dia_de_grade(dia: date, hora: int, plataforma: str) -> date:
+    """O dia de grade a que pertence o horario `hora` do dia `dia`."""
+    abertura, _ = _abertura_e_fechamento(plataforma)
+    if _minutos(hora) >= _minutos(abertura):
+        return dia
+    return dia - timedelta(days=1)
+
+
+def dia_de_grade_fechado(agora: datetime | None = None,
+                         plataforma: str = "youtube") -> date:
+    """O ultimo dia de grade com TODOS os horarios ja vencidos.
+
+    As 05:20 de 28/09 e o de 27/09 (06:37 de 27 ate 00:37 de 28). As 14:00 de
+    28/09 continua sendo o de 27/09: o de 28 ainda nao fechou. As 00:30 de
+    28/09 e o de 26/09, porque o das 00:37 ainda nao venceu.
+    """
+    agora = agora or datetime.now()
+    dia, hora = _horario_da_grade(agora, plataforma)
+    corrente = _dia_de_grade(dia, hora, plataforma)
+    _, fechamento = _abertura_e_fechamento(plataforma)
+    return corrente if hora == fechamento else corrente - timedelta(days=1)
+
+
+def _instante_local(ts) -> datetime | None:
+    """`quando` do ledger (hora local, sem fuso) como datetime local."""
+    try:
+        quando = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if quando.tzinfo is not None:
+        quando = quando.astimezone().replace(tzinfo=None)
+    return quando
+
+
 ACEITOS_MOTIVO = ("decisão do Adrian 15/09/2026: os rascunhos do "
                   "\"Publicar mesmo assim\" ficam de gordura")
 
@@ -118,13 +200,20 @@ def aceitar_rascunhos(ficha: dict, motivo: str = ACEITOS_MOTIVO) -> Path:
 
 def conferir(canal: str = "builds", plataforma: str = "youtube", *,
              dias: int = DIAS_PADRAO, publicados=None, no_canal=None,
-             hoje: date | None = None, aceitos: dict | None = None) -> dict:
+             hoje: date | None = None, aceitos: dict | None = None,
+             agora: datetime | None = None) -> dict:
     """O que o ledger afirma contra o que o canal tem de fato.
 
     `publicados` sao as linhas do ledger; `no_canal` e o que a plataforma
     devolveu. Injetando as duas, nada aqui toca a rede.
+
+    `agora` e o relogio da conferencia: dele saem o dia da ficha e o dia de
+    grade conferido. Quem passa so `hoje` recebe o relogio no fim desse dia.
     """
-    hoje = hoje or date.today()
+    if agora is None:
+        agora = (datetime.combine(hoje, datetime.max.time()) if hoje
+                 else datetime.now())
+    hoje = hoje or agora.date()
     desde = hoje - timedelta(days=max(0, int(dias)))
     if publicados is None:
         publicados = metricas.publicados(canal)
@@ -143,11 +232,15 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
         if chave:
             por_titulo.setdefault(chave, v)
 
+    def achar(linha: dict):
+        """O video do canal que casa com a linha do ledger, ou `None`."""
+        return por_id.get(str(linha.get("youtube_id") or "")) \
+            or por_titulo.get(titulos.chave(linha.get("titulo")))
+
     fantasmas, casados, rascunhos, so_sd = [], [], [], []
     vistos = set()
     for linha in linhas:
-        alvo = por_id.get(str(linha.get("youtube_id") or "")) \
-            or por_titulo.get(titulos.chave(linha.get("titulo")))
+        alvo = achar(linha)
         ficha = {"video_id": linha.get("video_id"),
                  "titulo": linha.get("titulo"),
                  "quando": linha.get("quando"),
@@ -232,14 +325,50 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     # aconteceu em 24, 25, 26 e 27/09 com o builds: zero publicacoes, quatro
     # noites de "limpo". A intencao (a grade prometeu N por dia) tambem entra
     # na conta, senao a conferencia mede so o que existe e nunca o que falta.
-    prometidos = len(grade.horas_da_plataforma(plataforma))
-    # So conta o que o CANAL confirmou: `casados` e a lista das linhas que
-    # acharam o video la. Linha que o ledger afirma e o canal nao tem ja esta
-    # em `fantasmas`, e contar essa como cumprida seria medir o ledger contra
-    # ele mesmo — o defeito que este modulo existe para nao repetir.
-    confirmados_hoje = sum(1 for f in casados
-                           if _dia_do_canal(f.get("quando")) == hoje)
-    deficit = max(0, prometidos - confirmados_hoje)
+    #
+    # O DIA CONFERIDO E O DIA DE GRADE QUE JA FECHOU, nao o do calendario. A
+    # conferencia roda de madrugada, e ate 27/09/2026 contava o dia que tinha
+    # acabado de comecar: as 05:20 so o horario das 00:37 existia nele, e um
+    # dia 10/10 dava deficit 9.
+    dia_da_grade = dia_de_grade_fechado(agora, plataforma)
+    abertura, fechamento = _abertura_e_fechamento(plataforma)
+    horas = _horas_em_ordem(plataforma)
+    ordem = horas[horas.index(abertura):] + horas[:horas.index(abertura)]
+    prometidos = len(ordem)
+
+    # HORARIO, NAO LINHA: a grade promete um video por horario. Duas linhas no
+    # mesmo horario (a normal e a recuperacao) pagam um horario so, e o mesmo
+    # video em duas linhas do ledger (I9ETJSGR1A0, 15/09) paga um so.
+    #
+    # So paga o que o CANAL confirma PUBLICO. Linha sem video la ja esta em
+    # `fantasmas` — conta-la seria medir o ledger contra ele mesmo — e
+    # rascunho no canal (15/09) e horario sem video para quem assiste.
+    #
+    # Sai do ledger inteiro, e nao da janela de `dias`: com `--dias 0` a
+    # metade do dia de grade antes da meia-noite ficaria de fora.
+    cumpridos, usados, linhas_do_dia = set(), set(), 0
+    for linha in sorted((l for l in (publicados or ())
+                         if isinstance(l, dict)
+                         and l.get("plataforma") == plataforma),
+                        key=lambda l: str(l.get("quando") or "")):
+        instante = _instante_local(linha.get("quando"))
+        if instante is None:
+            continue
+        dia, hora = _horario_da_grade(instante, plataforma)
+        if _dia_de_grade(dia, hora, plataforma) != dia_da_grade:
+            continue
+        linhas_do_dia += 1
+        video = achar(linha)
+        if video is None or id(video) in usados:
+            continue
+        if str(video.get("privacidade") or "").lower() != "public":
+            continue
+        usados.add(id(video))
+        cumpridos.add(hora)
+    em_falta = [grade.horario(h) for h in ordem if h not in cumpridos]
+    deficit = len(em_falta)
+    ultimo_dia = dia_da_grade + timedelta(
+        days=1 if _minutos(fechamento) < _minutos(abertura) else 0)
 
     # DUAS PERGUNTAS, DOIS VEREDITOS. "O ledger bate com o canal?" e "a grade
     # foi cumprida?" nao sao a mesma coisa: um canal parado tem ledger
@@ -249,8 +378,14 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     return {
         "canal": canal, "plataforma": plataforma,
         "dia": hoje.isoformat(), "janela_dias": int(dias),
-        "slots_da_grade_hoje": prometidos,
-        "publicados_confirmados_hoje": confirmados_hoje,
+        "dia_de_grade": dia_da_grade.isoformat(),
+        "janela_da_grade": [
+            f"{dia_da_grade.isoformat()}T{grade.horario(abertura)}",
+            f"{ultimo_dia.isoformat()}T{grade.horario(fechamento)}"],
+        "slots_da_grade": prometidos,
+        "horarios_cumpridos": len(cumpridos),
+        "horarios_em_falta": em_falta,
+        "linhas_no_dia_de_grade": linhas_do_dia,
         "deficit": deficit,
         "grade": "em falta" if deficit else "cumprida",
         "no_ledger": len(linhas), "no_canal": len(do_canal),
@@ -312,7 +447,7 @@ def ultima(canal: str = "builds") -> dict:
 
 
 def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
-                  log=print) -> dict:
+                  log=print, agora: datetime | None = None) -> dict:
     """Confere cada canal, grava e ACENDE o alarme quando esta sujo.
 
     O alarme nao tem uma linha de Telegram: uma linha de erro no diario ja
@@ -325,12 +460,13 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
     fichas = {}
     for canal in canais:
         try:
-            ficha = conferir(canal, dias=dias)
+            ficha = conferir(canal, dias=dias, agora=agora)
         except Exception as exc:                               # noqa: BLE001
             # Servico da noite NAO derruba rodada. E o OAuth de um canal pode
             # estar morto sem que o outro esteja.
             log(f"[conferencia] {canal}: {type(exc).__name__}: {exc}")
-            fichas[canal] = {"canal": canal, "dia": date.today().isoformat(),
+            fichas[canal] = {"canal": canal,
+                             "dia": (agora or datetime.now()).date().isoformat(),
                              "erro": f"{type(exc).__name__}: {exc}"}
             # A FALHA TAMBEM VAI PARA DISCO. Sem isto a pagina via "nunca
             # rodou" — medido em 16/09/2026, com os tres tokens revogados — e
@@ -346,9 +482,9 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
             f"casados, {len(ficha['fantasmas'])} fantasma(s), "
             f"{len(ficha['rascunhos'])} rascunho(s), "
             f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora do "
-            f"ledger, {ficha.get('publicados_confirmados_hoje', 0)}/"
-            f"{ficha.get('slots_da_grade_hoje', 0)} horarios cumpridos "
-            f"— {ficha['veredito']}")
+            f"ledger, {ficha.get('horarios_cumpridos', 0)}/"
+            f"{ficha.get('slots_da_grade', 0)} horarios cumpridos no dia de "
+            f"grade {ficha.get('dia_de_grade', '?')} — {ficha['veredito']}")
         if ficha["veredito"] == "sujo":
             # FABRICA PROPRIA, e nao "publicacao". O alarme continua indo ao
             # celular (o bot le todo erro do diario), mas o apurador ignora
@@ -368,12 +504,17 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
             # ledger coerente e grade cumprida nao sao a mesma pergunta. Quem
             # nao publica tem de acender aqui, e nao no relatorio diario, onde
             # a linha "builds: 0/10" passou seis dias sem ser notada.
+            de, ate = (ficha.get("janela_da_grade") or ["?", "?"])[:2]
             atividade.registrar(
                 "conferencia", atividade.ERRO,
-                f"grade {canal}/{ficha['plataforma']}: "
-                f"{ficha['publicados_confirmados_hoje']} de "
-                f"{ficha['slots_da_grade_hoje']} horarios com video "
-                f"confirmado hoje ({ficha['deficit']} em falta)", canal=canal)
+                f"grade {canal}/{ficha.get('plataforma')}: "
+                f"{ficha.get('horarios_cumpridos', 0)} de "
+                f"{ficha.get('slots_da_grade', 0)} horarios com video publico "
+                f"confirmado no canal, de {str(de)[:16].replace('T', ' ')} a "
+                f"{str(ate)[:16].replace('T', ' ')} ({ficha['deficit']} em "
+                f"falta: {', '.join(ficha.get('horarios_em_falta') or [])}; "
+                f"{ficha.get('linhas_no_dia_de_grade', 0)} linha(s) no ledger)",
+                canal=canal)
     return fichas
 
 
@@ -423,7 +564,8 @@ def main(argv=None) -> int:
 
 __all__ = ["ACEITOS_MOTIVO", "DIAS_PADRAO", "aceitar_rascunhos",
            "aceitar", "arquivo_de_aceitos", "buscar_no_canal", "conferir",
-           "conferir_tudo", "main", "pasta", "rascunhos_aceitos",
+           "conferir_tudo", "dia_de_grade_fechado", "main", "pasta",
+           "rascunhos_aceitos",
            "salvar", "ultima"]
 
 

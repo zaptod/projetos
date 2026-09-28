@@ -97,13 +97,50 @@ numa janela de 3 dias. Acusa `fantasmas` (ledger afirma, canal não tem),
 `conferir` é pura quando as duas listas são injetadas; só `buscar_no_canal`
 toca a rede.
 
-**O que ela passou a acusar em 27/09** (commit `a973437`): a intenção também
-entra na conta. `slots_da_grade_hoje` (= `len(grade.horas_da_plataforma())`,
-hoje 10), `publicados_confirmados_hoje` (linhas que o **canal** confirmou),
-`deficit` e `grade` ("cumprida"/"em falta"). Déficit acende um erro próprio,
-separado de `sujo` — ledger coerente e grade cumprida são perguntas
-diferentes. **Atenção:** as fichas de 27/09 em disco são de 05:20, antes do
-commit, e não têm esses campos; eles só aparecem na próxima rodada.
+**O que ela passou a acusar em 27/09** (commit `a973437`, e o conserto da
+noite de 27/09): a intenção também entra na conta. Déficit acende um erro
+próprio, separado de `sujo` — ledger coerente e grade cumprida são perguntas
+diferentes.
+
+**O dia conferido é o DIA DE GRADE que acabou de fechar**, não o do
+calendário: de 06:37 até 00:37 do dia seguinte. Nada disso está escrito no
+código — o dia de grade abre no horário depois do **maior buraco** da grade
+(a madrugada, 00:37 → 06:37) e sai de `grade.horas_da_plataforma` e
+`grade.minuto`; `conferencia.dia_de_grade_fechado(agora)` diz qual é. Às
+01:28 e às 05:20 de 28/09 é o de 27/09; às 14:00 de 28/09 continua o de 27/09
+(o de 28 ainda não fechou); às 00:30 de 28/09 é o de 26/09. Um post das 00:39,
+ou uma recuperação das 06:34, paga o horário das 00:37 do dia anterior.
+
+Por que mudou: o `a973437` contava o dia do calendário, e a conferência roda
+de madrugada (01:28, 03:20, 04:20 e 05:20 em 27/09). Às 05:20 o único horário
+vencido do dia é o das 00:37, então **um dia 10/10 dava déficit 9 toda
+noite**. Medido com a versão do HEAD e o relógio às 05:20 de 28/09: 10/10 →
+déficit 9; a nova dá 0. Dia 0/10: déficit 10 nas duas.
+
+Campos da ficha (nenhuma em disco os tem ainda; a primeira é a de 28/09):
+
+- `dia` — o dia em que a ficha **rodou** (é o nome do arquivo).
+- `dia_de_grade`, `janela_da_grade` (`["2026-09-27T06:37", "2026-09-28T00:37"]`).
+- `slots_da_grade` — `len(grade.horas_da_plataforma())`, hoje 10.
+- `horarios_cumpridos` — **horário distinto** com vídeo que o canal confirma
+  **público**. Linha não é horário: duas no mesmo horário pagam um, o mesmo
+  vídeo em duas linhas paga um, rascunho no canal não paga, fantasma não paga.
+  Sai do ledger inteiro, não da janela de `--dias`.
+- `horarios_em_falta` — lista `"HH:MM"`, na ordem do dia de grade.
+- `linhas_no_dia_de_grade` — quantas o ledger afirma. Separa "não publicou"
+  (0 linhas) de "publicou e não chegou" (linhas sem horário cumprido).
+- `deficit` (= `len(horarios_em_falta)`) e `grade` ("cumprida"/"em falta").
+
+O que o alarme vai encontrar, lado do ledger (só disco, sem rede; é o teto do
+que o canal pode confirmar), YouTube, por dia de grade, medido às 23:05 de
+27/09: **builds 0, 0, 0, 1, 0, 0** linhas de 21 a 26/09; **histórias 10, 9,
+9, 10, 7, 9**, sempre um horário por linha. O de 27/09 ainda não tinha
+fechado (builds 3, histórias 5). Refazer: `_horario_da_grade` +
+`_dia_de_grade` sobre `metricas.publicados(canal)`. A confirmação pelo canal
+**não medi** (é rede).
+
+**Repetição:** cada rodada da noite com déficit escreve a sua linha de erro —
+até 4 avisos iguais por canal por noite. Não está deduplicado.
 
 ## 4. As conferências que faltam, e o número que deveria acender
 
@@ -132,11 +169,23 @@ que falta é justamente esta: *a última coleta deu zero vídeo?*
 - **Taxa 1,0 com canal parado.** Builds passou 21–27/09 quase sem publicar e
   a conferência dizia "limpo" toda noite: quem não afirma nada tem ledger
   coerente. Foi o que o `deficit` de 27/09 conserta — e é a razão de nunca
-  medir o ledger contra ele mesmo.
-- **`metas` conta linhas, não horários.** Hoje ele imprime
-  `✓ histórias: 11/10 horários` — mas as 11 linhas são **5 do YouTube e 6 do
-  TikTok**, contra uma meta de 10 por plataforma. Meta furada com cara de
-  meta batida. O `deficit` da conferência é por plataforma; o relatório não.
+  medir o ledger contra ele mesmo. Com o dia de grade, o builds deve acender
+  na noite de 28/09 (3 linhas no ledger em 27/09, às 23:05).
+- **`metas` contava linhas, não horários.** Imprimiu
+  `✓ histórias: 11/10 horários` com **5 do YouTube e 6 do TikTok**, contra uma
+  meta de 10 por plataforma. Consertado em `9d09759` (placar por canal e
+  plataforma, slot distinto). Resta uma borda, medida: ele fatia o dia pelo
+  **calendário** e usa `grade.slot`, então um post das 00:10 de 28/09 (a
+  recuperação das 23:37 de 27/09) entra em 28/09 como slot 23 — paga o 23:37
+  de um dia em que ele ainda não aconteceu. **Não consertado** (é de
+  `remoto/relatorios.py`).
+- **Dia do calendário numa conferência de madrugada.** O `deficit` de
+  `a973437` contava o dia que tinha acabado de começar e dava déficit 9 num
+  dia 10/10. Um medidor que acende sempre é tão surdo quanto um que nunca
+  acende. Conserto: dia de grade (§3).
+- **Painel com ✓ para grade furada.** `panorama.confiabilidade` e a página
+  Confiabilidade do painel só leem `veredito`: uma ficha `limpo` com `grade`
+  "em falta" aparece como `✓ casados/no_ledger`. Hoje só o diário acende.
 - **"Dias de estoque" conta vídeo, não vídeo publicável.**
   `estoque_por_formato` não aplica pendências nem título repetido: diz
   `build: 7 dias` quando o real é 0. `estoque()` (que passa pelo mesmo funil
@@ -162,7 +211,7 @@ que falta é justamente esta: *a última coleta deu zero vídeo?*
 
 ```bash
 cd E:/projetos
-python -c "from builds.publicar import conferencia as c; [print(k, c.ultima(k).get('veredito'), c.ultima(k).get('grade'), c.ultima(k).get('deficit')) for k in ('builds','historias')]"
+python -c "from builds.publicar import conferencia as c; [print(k, c.ultima(k).get('veredito'), c.ultima(k).get('dia_de_grade'), c.ultima(k).get('grade'), c.ultima(k).get('horarios_em_falta')) for k in ('builds','historias')]"
 PYTHONIOENCODING=utf-8 python -c "from remoto import relatorios; print(relatorios.montar('metas'))"
 PYTHONIOENCODING=utf-8 python -c "from remoto import relatorios; print(relatorios.montar('confiabilidade'))"
 python -c "from builds import atividade; import collections; e=atividade.recentes(1000); print(collections.Counter(x.get('canal') for x in e))"
@@ -181,7 +230,9 @@ ainda mede?
 - **Não tratar o que está em `_metricas/` como de hoje.** Confira
   `_atualizado_em.json` antes de citar número de disco.
 - **Não editar `random_builds/builds/publicar/*`**: é de outra sessão. O
-  `NameError` do §4 é para reportar, não para consertar.
+  `NameError` do §4 é para reportar, não para consertar. Exceção só com o ok
+  do Adrian, como o `conferencia.py` na noite de 27/09 — e fora de :25–:55,
+  porque a conferência roda de madrugada.
 - **Não chamar `conferencia.aceitar*` na rodada automática.** Aceitar rascunho
   é decisão de uma pessoa.
 - **Não somar plataformas nem canais.** Cada um tem ledger, credencial, pasta
