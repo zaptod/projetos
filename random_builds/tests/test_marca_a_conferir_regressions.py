@@ -22,7 +22,6 @@ inclusive "cliquei em publicar, mas o Studio nao mostrou a confirmacao...
 RASCUNHO". Quem automatiza lia zero e dava por publicado. Agora imprime
 "A CONFERIR" e sai com codigo 3 — nem 0 (publicou) nem 1 (falhou).
 """
-import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory

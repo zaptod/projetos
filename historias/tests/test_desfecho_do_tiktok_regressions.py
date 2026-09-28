@@ -31,7 +31,6 @@ import importlib.util
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
 
 POSTAR = Path(__file__).resolve().parents[2] / "ferramentas" / "postar.py"
 
