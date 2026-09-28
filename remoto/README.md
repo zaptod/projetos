@@ -82,6 +82,12 @@ qualquer publicação ainda sem desfecho. Sem destino dito, vão os dois
 (YouTube e TikTok). Até 27/09 o `/publicar` do bot chamava o `main.py
 publicar` direto, num passo só, sem nada disso, e o YouTube subia privado.
 
+A tela **Decisões** do app (28/09/2026) mostra o que o Adrian precisa
+decidir. Cada decisão vem com os vídeos (tocando por Range), as imagens, as
+opções e um campo de comentário. A resposta vai para
+`%LOCALAPPDATA%\neural-fights\decisoes\respostas.jsonl` e para o Telegram.
+Item novo entra pela CLI: `python -m remoto.decisoes adicionar ...`.
+
 O bot também **vigia o tailnet** (`vigia_tailnet.py`). A cada 2 minutos ele
 confere três coisas: o Tailscale está `Running`, o `serve` aponta para o app
 e o `funnel` está desligado. Quando algo falha, avisa uma vez, e avisa de novo

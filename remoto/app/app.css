@@ -133,3 +133,18 @@ dialog p { margin: 0 0 10px; overflow-wrap: anywhere; }
 #tarefa-caixa { margin-top: 10px; }
 .abas { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .abas button[aria-pressed="true"] { border-color: var(--acento); color: var(--acento); }
+/* ---- decisoes */
+.decisao-cartao { display: block; width: 100%; text-align: left; font: inherit;
+  color: var(--texto); cursor: pointer; }
+.decisao-titulo { font-weight: 600; margin-bottom: 2px; }
+.decisao-pergunta { margin: 0 0 6px; }
+.decisao-midia { margin-bottom: 14px; }
+.decisao-midia:last-child { margin-bottom: 0; }
+.decisao-rotulo { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.decisao-midia img { width: 100%; border-radius: 10px; display: block; }
+.decisao-opcao { display: block; width: 100%; text-align: left; margin-top: 8px; }
+.decisao-opcao[aria-pressed="true"] { border-color: var(--acento);
+  box-shadow: 0 0 0 1px var(--acento); }
+.decisao-comentario { width: 100%; margin-top: 10px; font: inherit; padding: 8px;
+  border-radius: 8px; border: 1px solid var(--linha); background: var(--fundo);
+  color: var(--texto); resize: vertical; }

@@ -57,7 +57,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import acoes, comandos_app, painel_dados, tarefas, vila_dados, vila_nova
+from . import (acoes, comandos_app, decisoes, painel_dados, tarefas, vila_dados,
+               vila_nova)
 from .config import runtime_dir
 
 PORTA_PADRAO = 8931
@@ -94,6 +95,7 @@ ESTATICOS = {
     "/app.css": ("app.css", "text/css; charset=utf-8"),
     "/vila.js": ("vila.js", "text/javascript; charset=utf-8"),
     "/comandos.js": ("comandos.js", "text/javascript; charset=utf-8"),
+    "/decisoes.js": ("decisoes.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -600,6 +602,22 @@ class Manipulador(BaseHTTPRequestHandler):
                     return self._erro(404, "video nao encontrado")
                 return self._json({"url": f"/v/{self.estado.bilhete(arquivo, self._dono)}",
                                    "vale_s": BILHETE_VALE_S})
+            if rota == "/api/decisoes":
+                return self._json({
+                    "pendentes": decisoes.listar("pendente"),
+                    "respondidas": decisoes.listar("respondida")})
+            # A MIDIA DE UMA DECISAO: pelo id do item e pelo indice, NUNCA
+            # por caminho. O caminho so existe no registro; o celular recebe
+            # um bilhete de 10 minutos para aquele arquivo e mais nada.
+            achado = re.fullmatch(r"/api/decisao/([a-z0-9-]{1,60})/midia/(\d{1,3})",
+                                  rota)
+            if achado:
+                ficha = decisoes.midia(achado.group(1), int(achado.group(2)))
+                if ficha is None:
+                    return self._erro(404, "mídia não encontrada")
+                caminho, tipo = ficha
+                return self._json({"url": f"/v/{self.estado.bilhete(caminho, self._dono)}",
+                                   "tipo": tipo, "vale_s": BILHETE_VALE_S})
             achado = re.fullmatch(r"/api/relatorio/(\w{1,30})", rota)
             if achado:
                 texto = painel_dados.relatorio(achado.group(1))
@@ -639,6 +657,8 @@ class Manipulador(BaseHTTPRequestHandler):
         rota = urlsplit(self.path).path
         if rota in ("/api/acao", "/api/acao/confirmar"):
             return self._acao(rota)
+        if rota == "/api/decisao/responder":
+            return self._responder_decisao()
         if rota != "/api/parear":
             return self._erro(404, "nao existe")
         if self.estado.bloqueado(self.client_address[0]):
@@ -712,6 +732,31 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._erro(500, resultado)
         return self._json({"feito": True, "texto": resultado})
 
+    def _responder_decisao(self):
+        """A resposta dele a uma decisao: grava, marca e avisa no Telegram.
+
+        So com token. Nao depende de `--acoes`: responder nao executa nada
+        na maquina, so registra o que ele decidiu.
+        """
+        if self._aparelho() is None:
+            return
+        corpo = self._corpo()
+        if corpo is None:
+            return
+        item_id = str(corpo.get("id") or "")[:60]
+        try:
+            resposta = decisoes.responder(item_id, corpo.get("opcao"),
+                                          str(corpo.get("comentario") or ""),
+                                          self._id)
+        except KeyError:
+            return self._erro(404, "decisão desconhecida")
+        except decisoes.Recusa as exc:
+            return self._erro(409, str(exc))
+        except OSError:
+            return self._erro(503, "o registro está ocupado; tente de novo")
+        acoes.avisar_texto(decisoes.texto_do_aviso(resposta))
+        return self._json({"feito": True, "resposta": resposta})
+
     # ------------------------------------------------------- arquivos
     def _imagem_da_vila(self, rota: str):
         """O fundo da Vila (dia/noite) e o atlas dos personagens.
@@ -767,6 +812,24 @@ class Manipulador(BaseHTTPRequestHandler):
             total = arquivo.stat().st_size
         except OSError:
             return self._erro(404, "arquivo sumiu")
+        # O tipo vem da extensao (as decisoes trazem imagem e webm alem do
+        # mp4). Imagem pedida sem Range por um `<img>` recebe o arquivo
+        # inteiro com 200: um 206 que ninguem pediu nao e garantido de
+        # aparecer. Video segue sempre por Range, como antes.
+        tipo = decisoes.tipo_da_midia(arquivo) or "video/mp4"
+        if (tipo.startswith("image/") and not self.headers.get("Range")
+                and total <= FATIA_MAX):
+            try:
+                corpo = arquivo.read_bytes()
+            except OSError:
+                return self._erro(404, "arquivo sumiu")
+            self.send_response(200)
+            self._cabecalhos_comuns(tipo, len(corpo))
+            self.send_header("Accept-Ranges", "bytes")
+            self.end_headers()
+            with contextlib.suppress(ConnectionError, OSError):
+                self.wfile.write(corpo)
+            return
         inicio, fim = intervalo(self.headers.get("Range", ""), total)
         if inicio is None:
             self.send_response(416)
@@ -776,7 +839,7 @@ class Manipulador(BaseHTTPRequestHandler):
             return
         tamanho = fim - inicio + 1
         self.send_response(206)
-        self._cabecalhos_comuns("video/mp4", tamanho)
+        self._cabecalhos_comuns(tipo, tamanho)
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Range", f"bytes {inicio}-{fim}/{total}")
         self.end_headers()

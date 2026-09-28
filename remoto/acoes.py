@@ -623,9 +623,13 @@ def _carteiro() -> None:
 
 def avisar_telegram(aparelho: str, acao: str, resultado: str) -> None:
     """Enfileira. UMA thread entrega, na ordem; fila cheia descarta."""
+    avisar_texto(f"📱 pelo app ({aparelho}): {acao} — {str(resultado)[:300]}")
+
+
+def avisar_texto(texto: str) -> None:
+    """Um aviso livre (ex.: a resposta de uma decisao), pela mesma fila."""
     global _CARTEIRO
-    texto = _escapar_markdown(
-        f"📱 pelo app ({aparelho}): {acao} — {str(resultado)[:300]}")
+    texto = _escapar_markdown(str(texto)[:3500])
     with _CARTEIRO_TRAVA:
         if _CARTEIRO is None or not _CARTEIRO.is_alive():
             _CARTEIRO = threading.Thread(target=_carteiro, daemon=True,
@@ -1315,7 +1319,7 @@ class Pendentes:
 
 
 __all__ = ["CONFIRMAR_VALE_S", "DESTINO_PADRAO", "LIMITE_POR_HORA", "Pendentes",
-           "Recusa", "alvos_de_pausa", "avisar_telegram", "conciliar",
+           "Recusa", "alvos_de_pausa", "avisar_telegram", "avisar_texto", "conciliar",
            "concluir_publicacao", "confirmar", "desfechos", "em_voo", "executar",
            "liberar", "preparar", "registrar",
            "relatorio_do_video", "situacao_da_filha", "soltar_marca",

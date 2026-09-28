@@ -133,6 +133,14 @@
     <div class="abas" id="abas-relatorio"></div>
     <div class="cartao"><pre id="relatorio">Escolha um relatório.</pre></div>
   </section>
+
+  <section id="tela-decisoes" class="oculto">
+    <div id="decisoes-listas">
+      <div class="abas" id="decisoes-abas"></div>
+      <div id="decisoes-lista"></div>
+    </div>
+    <div id="decisao-item" class="oculto"></div>
+  </section>
 </main>
 
 <dialog id="dialogo-campos">
@@ -169,10 +177,12 @@
   <button data-tela="videos"><span>▶</span>Vídeos</button>
   <button data-tela="comandos"><span>⚡</span>Comandos</button>
   <button data-tela="relatorios"><span>▤</span>Relatórios</button>
+  <button data-tela="decisoes"><span>✔</span>Decisões</button>
 </nav>
 
 <script src="app.js"></script>
 <script src="vila.js"></script>
 <script src="comandos.js"></script>
+<script src="decisoes.js"></script>
 </body>
 </html>

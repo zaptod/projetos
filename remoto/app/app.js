@@ -3,7 +3,8 @@ const TOKEN = "painel.token";
 const ULTIMO = "painel.ultimo_estado";
 const CONTATO = "painel.ultimo_contato";
 const TITULOS = {vila: "Vila", diario: "Diário", videos: "Vídeos",
-                 comandos: "Comandos", relatorios: "Relatórios"};
+                 comandos: "Comandos", relatorios: "Relatórios",
+                 decisoes: "Decisões"};
 const RELATORIOS = ["metas", "funcionamento", "confiabilidade", "auditoria"];
 const $ = (id) => document.getElementById(id);
 
@@ -401,7 +402,8 @@ $("btn-parear").addEventListener("click", async () => {
 
 // --------------------------------------------------------------- telas
 const CARGAS = {vila: [carregarAgora, 15000], diario: [carregarDiario, 5000],
-                videos: [null, 0], comandos: [null, 0], relatorios: [null, 0]};
+                videos: [null, 0], comandos: [null, 0], relatorios: [null, 0],
+                decisoes: [null, 0]};
 
 function mostrar(nova) {
   if (nova && nova !== tela && nova === "diario") {
@@ -422,10 +424,14 @@ function mostrar(nova) {
   clearInterval(timer);
   if (typeof vilaParar === "function") vilaParar();
   if (typeof comandosParar === "function") comandosParar();
+  if (typeof decisoesParar === "function") decisoesParar();
   if (!pareado) return;
   if (tela === "vila" && typeof vilaMostrar === "function") vilaMostrar();
   if (tela === "comandos" && typeof comandosMostrar === "function") {
     comandosMostrar();
+  }
+  if (tela === "decisoes" && typeof decisoesMostrar === "function") {
+    decisoesMostrar();
   }
   carregarAcoes().then(() => { if (tela === "videos") carregarVideos(); });
   const [carga, intervalo] = CARGAS[tela];

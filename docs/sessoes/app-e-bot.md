@@ -27,12 +27,17 @@ Tudo vive em `remoto/`:
 - `comandos.py`, `bot.py`, `api.py`, `relatorios.py`, `apurador.py` — o bot.
   O `/publicar` do bot **não publica** (ver §3.3).
 - `vigia_tailnet.py` — a vigia do tailnet, no laço do bot (ver §4).
+- `decisoes.py` + `app/decisoes.js` — a tela **Decisões** (28/09): o que o
+  Adrian precisa decidir, com vídeos e imagens para olhar, opções e
+  comentário. A resposta vai para `respostas.jsonl` e para o Telegram.
 - `app/` — a PWA (`index.html`, `app.js`, `vila.js`, `comandos.js`).
 
 Estado em disco, em `%LOCALAPPDATA%\neural-fights\`: `app_celular.json`
 (aparelhos pareados, só o hash do token), `app_celular_acoes.jsonl` (rastro),
 `app_celular_em_voo.json` (publicações sem desfecho), `app_celular_tarefas/`
-(uma pasta por tarefa) e `remoto.json` (token do bot).
+(uma pasta por tarefa), `remoto.json` (token do bot) e `decisoes\`
+(`registro.json`, `respostas.jsonl` e `midias\<id>\` para o que foi
+copiado).
 
 **Rede:** o servidor escuta só em `127.0.0.1:8931` e quem o publica é o
 `tailscale serve` (`https://desktop-tgti3ek.tail63af85.ts.net`, *tailnet
@@ -42,14 +47,21 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 478 testes (28/09)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 505 testes (28/09)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
 python -m remoto.api_http --aparelhos   # id, nome, desde
 python -m remoto.api_http --em-voo      # publicações sem desfecho
 python -m remoto.tarefas                # tarefas recentes e como terminaram
+python -m remoto.decisoes listar        # decisões pendentes (--todas, --respondidas)
+python -m remoto.decisoes adicionar --titulo "..." --pergunta "..." \
+    --opcao "Rótulo" --opcao "Rótulo|descrição" --midia "E:\x.mp4|ANTES" [--copiar]
+python -m remoto.decisoes onde          # caminhos do registro e das respostas
 ```
+
+Opção cujo rótulo diz "(comente)" ou "(diga ...)" exige comentário. Mídia de
+pasta temporária entra com `--copiar`. Só entram mp4, webm, png, jpg e webp.
 
 Use **sempre** `--basetemp` no `E:` — o `C:` vive perto de encher, e a falha
 "intermitente" da suíte em 17/09 era disco cheio.
@@ -181,6 +193,20 @@ DOM e clicando.
   duas únicas com gatilho de logon são do Opera GX e da Realtek. Na pasta
   Inicializar e nas chaves `Run` não há nada do projeto; o Tailscale sobe
   pela pasta Inicializar comum.
+- **Novo em 28/09/2026: a tela Decisões.**
+  - A mídia sai por id do item e índice, nunca por caminho. O `GET
+    /api/decisao/<id>/midia/<n>` devolve o mesmo bilhete de 10 min dos
+    vídeos, e o `/v/` serve por Range: 206, `Content-Range`, e 416 para
+    intervalo fora do arquivo. O `Content-Type` vem da extensão; imagem sem
+    Range vem inteira, com 200.
+  - Responder exige o token e não depende de `--acoes` (não executa nada).
+  - O registro ilegível recusa e não é regravado.
+  - Prova de tela clicando, na instância de teste 8934 (registro copiado):
+    6 itens; vídeo de 28 s tocando depois do toque; o pulo para o meio segue
+    dos 16 s; 20 respostas 206; a imagem aparece; os 12 duelos do zombie só
+    com "semente N"; responder grava, avisa e muda de aba.
+  - Com mais de 6 vídeos no item, eles só carregam ao tocar
+    (`preload="none"`).
 - **Resolvido em 28/09/2026: o monitor do Agendador não olhava a geração
   noturna.** O `_linhas_do_agendador` (relatório de funcionamento) conferia
   as tarefas da criação das histórias, as 10 da postagem e o bot, e dizia
@@ -226,5 +252,6 @@ DOM e clicando.
 | `atividade.jsonl` (diário) | `builds.atividade` | o app lê; escreve **uma** linha (`etapa app.a_conferir`) quando marca algo a conferir |
 | travas de perfil | `builds.travas` | só a sonda de leitura |
 | `app_celular_*.json(l)` e as tarefas | **esta sessão** | escrita sob `trava_arquivo`, reentrante por thread |
+| `decisoes\respostas.jsonl` | **esta sessão** escreve (append, uma linha por resposta: `id`, `opcao`, `opcao_rotulo`, `comentario`, `em`, `aparelho`) | o **orquestrador** vigia; os itens novos ele registra pela CLI `python -m remoto.decisoes adicionar` |
 | grade de postagem | `ferramentas/postar.py` | o app respeita a janela (−20/−25/−40 min conforme o destino, +18 min) e recusa se `postar.py` estiver vivo |
 | dia de grade | `builds.publicar.conferencia` | `relatorios.metas` usa `_horario_da_grade`, `_dia_de_grade`, `_abertura_e_fechamento` e `dia_de_grade_fechado`, todas atrás de `relatorios._conferencia()`. As três primeiras são **internas** de lá: se a conferência as renomear, o `/metas` responde "falhou" (e os testes do remoto acusam). Pedido em aberto: uma função pública `dia_de_grade(instante)` |
