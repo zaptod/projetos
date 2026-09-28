@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T19:25:13",
+      "opcao": "ligada",
+      "origem": "app"
+    }
+  ],
   "id": "forca-total-ainda-vale",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "A Mesa de comando nasceu com a força total LIGADA (20 min antes de a janela de 5 h renovar, todos os agentes com trabalho em paralelo), porque é o que diz o Teto de uso aqui no Grimório. Mas às ~18h de 28/09 você disse \"voltamos ao normal\", e o orquestrador parou de usá-la. Qual vale?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Força total antes de renovar: ainda vale?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T19:25:13",
+    "opcao": "ligada"
+  }
 }
