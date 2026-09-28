@@ -20,8 +20,9 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 A parte que mora em **outro repositório**: `E:\jogo_ZOMBIE`. Aqui não se publica nada — o jogo só **gera o mp4 e um JSON**; conta, grade e postagem são da parte de Publicação, em `E:\projetos`.
 
 Escrito em 27/09/2026 pela sessão dona. Tudo abaixo foi conferido lendo o repositório do jogo naquele dia; o que não deu para conferir está marcado **(não verificado)**.
-Atualizado na madrugada de 28/09/2026 (Semana 1 das rotas): commits `d9f6382`, `dab114c` e `a372bdc`, o êxodo remedido, e o cenário **`duelo`** — o formato que o Adrian
-escolheu em 27/09 — com critérios escritos antes de medir, um lote gravado que reprovou (3/12), a velocidade por clipe que o Adrian aprovou às ~03:20 e o lote 2 (§3b).
+Atualizado em 28/09/2026 (Semana 1 das rotas): commits `d9f6382`, `dab114c`, `a372bdc` e `24b68cd`, o êxodo remedido, e o cenário **`duelo`** — o formato que o Adrian
+escolheu em 27/09 — com critérios escritos antes de medir, o lote 1 que reprovou (3/12), a velocidade por clipe que ele aprovou às ~03:20, o **lote 2 que passou na barra
+(6/12)** e a divergência Chrome × Node (§3b, §4).
 
 ## 1. O que é, e como rodar
 
@@ -36,8 +37,8 @@ partida = semente + comandos.
 ```
 npm install
 npm run dev        # Vite em http://localhost:5173
-npm test           # Vitest: 73 arquivos, 336 testes no d9f6382; 75 e 344 com o duelo (§3b), verdes em 28/09 03:12. 66–77 s com a
-                   # máquina livre, 104–174 s disputada. Com um jogo aberto levou 592 s e 3 testes estouraram o tempo: rodar de novo, não "consertar"
+npm test           # Vitest: 75 arquivos, 348 testes no 24b68cd, verdes em 28/09 08:07. 66–77 s com a máquina livre, 104–174 s
+                   # disputada. Com um jogo aberto levou 592 s e 3 testes estouraram o tempo: rodar de novo, não "consertar"
 npm run typecheck  |  npm run bench  |  npm run experiment   (ver §4)
 ```
 
@@ -50,8 +51,20 @@ npm run record -- --cenario exodo --seed 6 --velocidade 1 --saida out/exodo.mp4 
 npm run record -- --cenario duelo --seed 13 --velocidade auto --tiles 22 --escala 2 --max-duracao 45 --saida out/d13.mp4 --resultado out/d13.json
 ```
 
-`--velocidade auto` só existe para o duelo: roda a rodada sem vídeo antes do primeiro quadro e grava na velocidade da regra do §3b (a mais lenta de 1× a 3× que põe o clipe
-em até 30 s). O JSON traz a velocidade escolhida em `velocidade`.
+`--velocidade auto` só existe para o duelo: **a página de gravação** (no Chrome) joga a rodada uma vez sem desenhar antes do primeiro quadro e grava na velocidade da regra
+do §3b (a mais lenta de 1× a 3× que põe o clipe em até 30 s). Tem de ser na página, e não no Node do `record.mjs`: os dois motores divergem (§4). O JSON traz a velocidade
+escolhida em `velocidade`.
+
+**Lote de duelos de madrugada, com um comando só** (vigia armado antes; não fica no git, porque `out/` é ignorado):
+
+```
+bash E:/jogo_ZOMBIE/out/ferramentas/lote-duelos.sh 25 36 duelo-lote3
+```
+
+Grava só entre :55 e :16, das 01:00 às 05:16; pula semente já gravada (retoma na madrugada seguinte); o vigia corta gravação viva em :25–:54 e para tudo com disco < 3 GB
+ou entre 06:00 e 12:00; no fim roda o juiz. Nome da pasta só com ASCII. Parar: `powershell -NoProfile -ExecutionPolicy Bypass -File
+E:/jogo_ZOMBIE/out/ferramentas/parar-tudo.ps1 -Dir E:/jogo_ZOMBIE/out/<pasta>`. A primeira versão (28/09 manhã) perdia a barra invertida do caminho do Windows, criava a
+pasta `out$NOME` e o vigia nunca armava; a de hoje só usa barra normal e foi testada em seco às 17:31 (vigia armou, laço pulou a semente gravada, juiz rodou, vigia saiu).
 
 Outras flags: `--resolucao 1080x1920` (padrão), `--fps`, `--max-duracao`, `--cauda`, `--com-preparacao`, `--escala` e `--tiles` (tamanho do aldeão e quanto chão cabe no quadro),
 `--pular N` (joga N segundos de jogo fora antes do primeiro quadro guardado), `--camera fixa`, `--lobotomia`, `--pais BR|PT|AR|US|JP|DE`, `--prever --paises BR,US,JP --alvo 80`
@@ -68,7 +81,8 @@ pretas. Isso muda o enquadramento de `exodo` e `limpeza` (36 de largura) se fore
 
 ## 2. Estado da branch `feat/m15-polish`
 
-HEAD = **`a372bdc`**. Os commits de 27–28/09, todos com o "sim" do Adrian, por caminho explícito e sem push. A branch não foi mergeada na `main` e não tem remoto.
+HEAD = **`24b68cd`**, árvore limpa. Os commits de 27–28/09, todos com o "sim" do Adrian, por caminho explícito e sem push. A branch não foi mergeada na `main` e não tem
+remoto.
 
 - `d9f6382` (27/09 23:58) `chore: ignore recordings, and settle the exodus figures` — o `.gitignore` com `out/` e o comentário do êxodo com os três critérios. O número
   do comentário foi **corrigido antes do commit**: o rascunho dizia "7 vitórias em 10", e a remedição deu 6 (§3).
@@ -77,15 +91,13 @@ HEAD = **`a372bdc`**. Os commits de 27–28/09, todos com o "sim" do Adrian, por
   (`judgeDuel`, `judgeDuelBatch`, com o caso zero) e testes, `tests/scenarios/duel.test.ts` (o duelo apaga toda parede antes de pôr os guardas; a ordem inversa apagaria os
   guardas), `scripts/duel-verdict.mjs` e o README. Suíte verde (75 arquivos, 344 testes) e `npm run build` verde antes dos dois.
 
-**Trabalho sem commit** — a velocidade por clipe (§3b), que o Adrian aprovou como regra mas cujo **commit ainda não foi pedido**:
+- `24b68cd` (28/09 08:09) `feat(record): film each duel at the pace its own round calls for` — `DUEL_PACE`/`duelSpeed()` em `src/record/duel.ts` com 4 testes (limites,
+  a mais lenta que cabe, monotonia, caso zero); `--velocidade auto` no `record.mjs` (só com `duelo`, recusa `--lobotomia`), com a velocidade escolhida **dentro da página**
+  (`paceFor` em `src/record/main.ts`); `duel-verdict.mjs --prever` usa a regra e `--velocidade V` pergunta "e se fosse fixa"; `scenarios.ts` só ganhou comentário (lote 2 e
+  Chrome × Node) e perdeu `DUEL_SPEED` — a luta não mudou. Suíte (348) e build verdes antes.
 
-- `src/record/duel.ts` — `DUEL_PACE`, `duelSpeed()`, `RECORDING_TAIL_SECONDS`; `duel.test.ts` — 4 testes da regra (limites, a mais lenta que cabe, monotonia, caso zero);
-- `scripts/record.mjs` — `--velocidade auto` (só com `--cenario duelo`; recusa `--lobotomia`);
-- `scripts/duel-verdict.mjs` — `--prever` passa a usar a regra; `--velocidade V` pergunta "e se fosse fixa"; sai o `--ajuste`;
-- `src/sim/round/scenarios.ts` — **só comentário** e a remoção de `DUEL_SPEED` (a luta não mudou); `README.md` — a receita com `--velocidade auto`.
-
-A mensagem do commit está pronta na pasta de rascunho da sessão (`commit-duelo-3-ritmo.txt`). O lote 2 foi gravado com esse código: o HEAD e a diferença exata estão
-guardados em `out/duelo-ritmo/codigo.txt` e `codigo.patch`.
+**Atenção à diferença entre o código do lote 2 e o `24b68cd`**: o lote 2 (03:55–04:59) foi gravado com uma versão anterior da regra, que escolhia a velocidade **no Node**
+(guardada em `out/duelo-ritmo/codigo.patch`). Só a semente 15 saiu diferente por isso (§3b).
 
 Os commits do dia 27/09:
 
@@ -187,8 +199,8 @@ armado desde 00:14 e pausa automática de 01:20 a 01:55 pela janela das postagen
 - **O que reprova não é a luta, é o tamanho**: a duração depende de quem vence. A vila vence rápido (12–26 s de jogo = 9,5–16,5 s de vídeo a 2×, com a cauda): **as três vitórias da vila
   saíram curtas demais**. A horda leva 32–85 s para virar seis guardas: das nove, uma curta e duas longas. Uma velocidade só para todas as sementes não cabe as duas.
 - **E há trégua**: cinco vitórias da horda têm 7,7–10,7 s de vídeo sem contato nenhum; em três delas isso passa de 30% do clipe.
-- A gravação reproduz a prévia sem vídeo **nas 12**: mesmo vencedor e mesmo instante do veredito (±0,01 s de jogo). Consequência útil: os critérios podem ser **estimados
-  sem gravar** (a prévia leva ~0,3 s por semente), e gravar fica só para ter o mp4.
+- A gravação reproduziu a prévia sem vídeo **nas 12**: mesmo vencedor e mesmo instante do veredito (±0,01 s de jogo). Consequência útil: os critérios podem ser
+  **estimados sem gravar** (a prévia leva ~0,3 s por semente). Mas não é garantia semente a semente: no lote 2, uma em 12 divergiu (§4).
 - Custo real: 12 clipes, 288 s de vídeo, **38 min de gravação** (2269 s), 4,7 a 13,1 s de relógio por segundo de vídeo; as cinco primeiras (01:00–01:20) rodaram ~1,5× mais
   devagar por segundo de vídeo que as sete últimas, com a máquina disputada. 36 MB em `out/duelo/`.
 - Isto está escrito também no comentário do cenário (`THE RECORDED BATCH FAILS`), como o êxodo registra a própria reprovação.
@@ -224,7 +236,40 @@ sementes 1–12, o cálculo sem vídeo repete o veredito gravado **semente por s
 - **Quando**: janelas de gravação da madrugada de 28/09 (03:55–04:16 e 04:55–05:16), com o vigia armado antes; o que não couber fica para a madrugada seguinte, com o
   **mesmo código**, retomando da primeira semente que falta (o laço pula as já gravadas).
 
+**Lote 2 — o resultado: passa na barra, 6 de 12.** Gravado inteiro na mesma madrugada, 03:55–04:59, sem falha e sem corte do vigia; cada clipe levou 108–235 s de relógio.
+
+| semente | vencedor | velocidade | 1º contato (s) | maior buraco (s) | vídeo (s) | cedo | desfecho | curto | passa |
+|---|---|---|---|---|---|---|---|---|---|
+| 13 | horda | 3 | 0,93 | 7,27 | 30,93 | sim | sim | sim | **sim** |
+| 14 | horda | 1,5 | 0,60 | 5,90 | 29,70 | sim | sim | sim | **sim** |
+| 15 | vila | 1,5* | 1,93 | 8,33 | 24,87 | não | sim | sim | não |
+| 16 | vila | 1,5 | 2,37 | 7,57 | 27,23 | sim | sim | sim | **sim** |
+| 17 | horda | 1,75 | 0,14 | 6,00 | 28,40 | sim | sim | sim | **sim** |
+| 18 | vila | 2,5 | 0,84 | 4,92 | 29,67 | sim | sim | sim | **sim** |
+| 19 | — | 3 | 3,92 | — | 45,00 | não | não | não | não |
+| 20 | horda | 2,25 | 0,44 | 8,36 | 27,30 | não | sim | sim | não |
+| 21 | vila | 1 | 0,00 | 9,85 | 25,83 | não | sim | sim | não |
+| 22 | horda | 1,75 | 0,00 | 9,78 | 27,33 | não | sim | sim | não |
+| 23 | vila | 1 | 0,25 | 9,65 | 29,83 | não | sim | sim | não |
+| 24 | horda | 2,75 | 0,87 | 5,28 | 28,53 | sim | sim | sim | **sim** |
+
+- **Passam 6 de 12** (13, 14, 16, 17, 18, 24): é a barra, então o falsificador ("menos de 6") **não** disparou. Esperado era ~55% (6–7).
+- **Equilíbrio**: vila 5, horda 6, uma sem desfecho — dentro de 30–70%. O critério 4 passa; o juiz dá `aprovado: true`.
+- **O tamanho deixou de reprovar** em todo clipe que tem desfecho (24,9–30,9 s). A semente 19 é uma rodada que **nunca acaba** (600 s de jogo sem veredito na prévia): a 3× o
+  clipe bate o teto de 45 s. É o único "sem desfecho" em 24 gravações.
+- **O que sobra é a trégua**: 15, 20, 21, 22 e 23 têm 8,3–9,9 s de vídeo sem contato nenhum, mais de 30% do clipe. **É o próximo alvo** (fila §6).
+- \* A semente 15 foi gravada a 1,5× porque a primeira versão da regra perguntava ao Node, e o Node joga essa rodada diferente do Chrome (§4). Regravada às 08:02 com a regra
+  dentro da página, saiu a 1,25× (`out/duelo-ritmo/prova/duelo-s15-regra.mp4`) e reprova do mesmo jeito (buraco de 10 s em 29,2 s). O 6/12 não muda.
+- Os mp4 e JSON: `E:\jogo_ZOMBIE\out\duelo-ritmo\duelo-s13.mp4` … `duelo-s24.mp4`; veredito em `out/duelo-ritmo/veredito.json`.
+
 ## 4. O que foi medido e vale como conhecimento
+
+- **Chrome e Node não jogam sempre a mesma rodada (28/09).** O Chrome do gravador (153) e o Node da suíte e das prévias (24, V8 13.6) calculam `Math.sin`, `cos`, `atan2`,
+  `exp`, `log` e `log10` com bits diferentes (medido em 200 mil entradas por função); `hypot` e `pow` batem. Em 23 de 24 duelos gravados isso não mudou nada (mesmo tique de
+  veredito); na **semente 15** mudou a rodada: veredito aos **35,8 s de jogo no Node e 32,05 s no Chrome**, os dois de forma determinística. Consequências: "partida = semente
+  + comandos" vale **dentro de um motor**; a prévia no Node serve para **contar critérios em muitas sementes**, não como prova de uma gravação específica (julgue gravação
+  pelo JSON dela); e tudo que decide algo **da gravação** (a velocidade) roda na página. Consertar de verdade seria trocar essas funções por versões próprias em JS
+  puro — não foi feito, e mexe em muito código de IA (23 `cos`, 20 `sin`, 18 `atan2`).
 
 - **A horda parava de caçar.** Zumbi mandado a um prédio onde já havia chegado esquecia o objetivo e voltava a vagar a meia velocidade: cerco virava aglomeração fora de paredes
   intactas. Cinco tentativas falharam antes, quatro **raciocinadas em vez de medidas** (paciência, centro do prédio, o tile da porta, alcançabilidade). A causa: porta e janela são
@@ -251,7 +296,7 @@ sementes 1–12, o cálculo sem vídeo repete o veredito gravado **semente por s
   vídeo** em pelo menos metade. Os três estão escritos no comentário de `EXODUS_PARAMS` desde `d9f6382`; o êxodo **reprova o terceiro** (2 de 10, §3). Para o duelo: §3b,
   em `DUEL_CRITERIA`, com um juiz executável (`scripts/duel-verdict.mjs`).
 - **Nunca escolher a semente que venceu.** Gravar a semente porque deu o resultado bonito troca medição por propaganda.
-- **Calibrar, confirmar e gravar em faixas de sementes separadas, e calibrar em muitas.** A gravação reproduz a prévia sem vídeo exatamente (§3b), então os critérios se contam
+- **Calibrar, confirmar e gravar em faixas de sementes separadas, e calibrar em muitas.** A gravação reproduz a prévia sem vídeo em 23 de 24 (§3b, §4), então os critérios se contam
   sem gravar a ~0,3 s por semente. Em 28/09: calibrado em 101–110 (5/10 passavam), gravado em 1–12 (3/12), confirmado em 201–260 e 301–400 (32–33%). Dez sementes de
   calibração mentiram por uma margem de 50% contra 33%.
 - **Medir o tamanho do aldeão na tela antes de polir o resto.** O aldeão sai com `907 × escala / tiles` px de diâmetro; a 1080 px sobre ~6,5 cm de tela são ~166 px/cm. Um vídeo já
@@ -264,7 +309,7 @@ sementes 1–12, o cálculo sem vídeo repete o veredito gravado **semente por s
   ele quis; se zumbi que corre e arena em ruína servem; e o que achou dos clipes, olhando no celular. O orquestrador leva a pergunta aberta, sem dizer qual venceu nem quais
   passaram. **Até a resposta, o cenário não muda.**
 - **Respondido às ~03:20 de 28/09**: "sim" aos dois commits do duelo (`dab114c`, `a372bdc`) e "sim" à velocidade por clipe. O lote 2 (§3b) é o teste dessa regra.
-- **Commit da regra de velocidade** (§2): implementada e testada; o commit dela não foi pedido ainda.
+- **Regra de velocidade**: commitada em `24b68cd`. **Próximo alvo: a trégua** (critério 1, 5 de 12 no lote 2), sem mudar a luta antes da resposta dele; próxima faixa para gravar: 25–36.
 - **Publicar ou não**: decisão dele, e não antes de 7 dias seguidos sem horário perdido nos dois canais atuais (rotas de 27/09). O canal nunca publicou (§Contratos). A ponte
   JSON/mp4 → estoque do `postar.py` é da Semana 3.
 - **O experimento de 4 braços** (pensante × lobotomizada × silenciosa × nascendo fora, remedido depois do conserto da horda) **ocupa a máquina por horas** e não foi rodado. Precisa
