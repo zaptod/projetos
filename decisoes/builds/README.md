@@ -17,4 +17,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
     - ✅ **Hitstop: a pausinha no impacto** — Ligar (28/09/2026) `hitstop`
 - ✅ **Transição até o palco** — O visual atual segue, já com o som real (28/09/2026) `transicao`
   - ✅ **Som real da luta (16A)** — Aprovar: re-render do estoque na madrugada (28/09/2026) `som-real-16a`
-    - ⏳ **generation_00077: luta muda, lutadores fora do banco** — O que fazer com a generation_00077? `generation-00077`
+    - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`

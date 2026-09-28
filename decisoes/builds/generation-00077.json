@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T18:31:34",
+      "opcao": "descartar",
+      "origem": "app"
+    }
+  ],
   "id": "generation-00077",
   "midias": [],
   "opcoes": [
@@ -29,7 +37,11 @@
   ],
   "pergunta": "O que fazer com a generation_00077?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "generation_00077: luta muda, lutadores fora do banco",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T18:31:34",
+    "opcao": "descartar"
+  }
 }

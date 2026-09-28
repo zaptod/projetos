@@ -22,7 +22,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Palco: o visual novo (A/B)** — Seguir: próxima etapa é a arte (16E) (28/09/2026) `palco-seguir`
 - ✅ **Chão da arena** — Foto de pedra CC0 escurecida (como está) (28/09/2026) `chao-da-arena`
 - ✅ **Hitstop: a pausinha no impacto** — Ligar (28/09/2026) `hitstop`
-- ⏳ **generation_00077: luta muda, lutadores fora do banco** — O que fazer com a generation_00077? `generation-00077`
+- ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`
 - ⏳ **Sprites animados: como produzir** — A IA não entrega sprite sheet fatiável. O teste do fireball saiu em 1024×576, fundo branco sem alfa, grade e rótulos desenhados e 14 colunas em vez de 6. Nano Banana 2 e GPT Image exigem crédito ou plano nesta conta compartilhada. Como produzir as animações? `sprites-animados`
 
 <!-- decisoes:fim -->
