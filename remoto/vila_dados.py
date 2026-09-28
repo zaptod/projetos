@@ -26,7 +26,6 @@ from datetime import datetime
 from .painel_dados import limpar
 
 PLACAR_VALE_S = 30 * 60          # o resumo e caro; meia hora basta
-ESCALA = 2
 SERVICOS = ("picasso", "digen", "dreamface", "chatgpt", "gemini", "deepseek",
             "tiktok", "youtube_web")
 CANAIS = ("builds", "historias")
