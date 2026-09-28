@@ -3,7 +3,15 @@
   "contexto": "",
   "criado": "2026-09-28T18:37:20.409226",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T18:46:06",
+      "opcao": "bancada",
+      "origem": "app"
+    }
+  ],
   "id": "controle-onde",
   "midias": [
     {
@@ -36,7 +44,11 @@
   ],
   "pergunta": "No app novo, o Controle (pausar, retomar, parar) ficou dentro do objeto Avisos (quadro de cortiça). Onde você quer?",
   "projeto": "app-e-bot",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Onde fica pausar / retomar / parar",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T18:46:06",
+    "opcao": "bancada"
+  }
 }
