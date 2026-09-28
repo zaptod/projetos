@@ -13,9 +13,9 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
 
 **Publicação**
+- ✅ **Rascunhos e privados** — Manter (28/09/2026) `rascunhos-e-privados`
 - ⏳ **As 3 partes só no TikTok (00022:p03, 00027:p01, 00032:p04)** — Essas três partes saíram no TikTok e não no YouTube. Subo no YouTube? `partes-so-no-tiktok`
 - ⏳ **5 duplicatas públicas no canal de builds** — Cinco vídeos saíram duas vezes como públicos no canal de builds. O que faço com os gêmeos? `duplicatas-publicas-builds`
-- ⏳ **Rascunhos e privados** — São 23 vídeos privados no canal de builds e 9 no de histórias. Apago ou mantenho? `rascunhos-e-privados`
 - ⏳ **Legenda incompleta da h31 p06 no TikTok** — A legenda da parte 6 da história 31 saiu incompleta no TikTok. Corrijo? `legenda-h31-p06`
 
 <!-- decisoes:fim -->

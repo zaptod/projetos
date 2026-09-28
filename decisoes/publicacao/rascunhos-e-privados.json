@@ -3,7 +3,15 @@
   "contexto": "A lista está no relatório da publicação de 28/09, §8.",
   "criado": "2026-09-28T17:31:44.525780",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T19:52:11",
+      "opcao": "manter",
+      "origem": "app"
+    }
+  ],
   "id": "rascunhos-e-privados",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "São 23 vídeos privados no canal de builds e 9 no de histórias. Apago ou mantenho?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Rascunhos e privados",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T19:52:11",
+    "opcao": "manter"
+  }
 }
