@@ -565,6 +565,12 @@ class FeedEPaineis(unittest.TestCase):
         c = dados.classificar_processo
         self.assertEqual(c('"C:\\Python314\\python.exe"  -u -X utf8 -m remoto')
                          ["tipo"], "bot")
+        self.assertEqual(c("python.exe -u -X utf8 -m remoto ")["tipo"], "bot")
+        # 28/09: o app casava com o bot, e a Vila mostrava dois "bots".
+        app = c('"C:\\Python314\\python.exe"  -u -X utf8 -m remoto.api_http '
+                "--local --porta 8931 --acoes --publicar --perigosas")
+        self.assertEqual((app["tipo"], app["quem"]), ("app", "App do celular"))
+        self.assertNotEqual(c("python -m remoto.apurador")["tipo"], "bot")
         self.assertEqual(c("python.exe -u -X utf8 main.py auto --saida x")
                          ["tipo"], "historias")
         self.assertEqual(c("python.exe -u ferramentas\\postar.py")["tipo"],
@@ -1105,10 +1111,22 @@ class Coleta(unittest.TestCase):
         proibidas = {"trava", "ocupada", "locking", "publicar",
                      "postar_historia", "postar_build", "registrar",
                      "vistoriar_parte", "instalar"}
+        # O instalador da tarefa (28/09) mora nesta pasta mas NAO e a janela:
+        # e um comando que alguem roda de proposito. O que vale para ele e a
+        # janela nunca importa-lo — conferido logo abaixo.
+        fora_da_janela = {"tarefa.py"}
         pasta = Path(coletor.__file__).parent
         for arquivo in pasta.glob("*.py"):
             arvore = ast.parse(arquivo.read_text(encoding="utf-8"))
             for no in ast.walk(arvore):
+                if isinstance(no, ast.ImportFrom):
+                    nomes = {a.name for a in no.names}
+                    self.assertFalse(
+                        (no.module or "").split(".")[-1] == "tarefa"
+                        or "tarefa" in nomes,
+                        f"{arquivo.name}:{no.lineno} importa o instalador")
+                if arquivo.name in fora_da_janela:
+                    continue
                 if not isinstance(no, ast.Call):
                     continue
                 alvo = no.func

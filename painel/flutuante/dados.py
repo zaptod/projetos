@@ -594,7 +594,12 @@ def classificar_processo(linha_de_comando: str) -> dict | None:
     baixo = cmd.lower().replace("\\", "/")
     if "painel.flutuante" in baixo or "vila_flutuante" in baixo:
         return None
-    if re.search(r"-m\s+remoto\b", baixo):
+    # O app do celular e `-m remoto.api_http`: o `\b` de `remoto\b` casava
+    # com ele (o ponto e fronteira de palavra), e a Vila mostrava DOIS bots —
+    # e dava o bot como vivo com o bot morto e o app no ar (28/09/2026).
+    if re.search(r"-m\s+remoto\.api_http\b", baixo):
+        return {"tipo": "app", "emoji": "📱", "quem": "App do celular"}
+    if re.search(r"-m\s+remoto(\s|$)", baixo):
         return {"tipo": "bot", "emoji": "📡", "quem": "Bot do Telegram"}
     if "main.py auto" in baixo:
         return {"tipo": "historias", "emoji": "📚",
@@ -708,6 +713,8 @@ def linhas_vivas(processos: list[dict], abertos: list[dict],
                     f"há {duracao(idade)})")
         elif tipo["tipo"] == "bot":
             oque = "ouvindo o celular e avisando erros"
+        elif tipo["tipo"] == "app":
+            oque = "servindo o app do celular"
         elif tipo["tipo"] in PRODUCAO:
             oque = "rodando (sem etapa no diário ainda)"
         else:

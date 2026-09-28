@@ -187,6 +187,12 @@ aba, arte, enfeites e a caixa-preta da §2) — estado dela, não do sistema. Co
   na janela. Cuidado ao medir isso: tecla postada com `PostMessage`
   (WM_SYSKEYDOWN + F4) **não** fecha nem janela Tk com borda, então ela não
   serve para simular Alt+F4.
+- **O app do celular passava por bot** (achado na prova de tela de 28/09: a
+  Vila listava dois "Bot do Telegram"). `-m\s+remoto\b` casa com
+  `-m remoto.api_http`, porque o ponto é fronteira de palavra — e o coletor
+  dava o **bot como vivo** só porque o app estava no ar. Hoje o app é
+  "📱 App do celular" e o bot só casa com `-m remoto` seguido de espaço ou
+  fim.
 
 ## 6. Estado de hoje e pendências
 
