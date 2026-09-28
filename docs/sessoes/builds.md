@@ -11,6 +11,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
 - ✅ **Força total antes de renovar: ainda vale?** — Ligada, 20 min antes de renovar (28/09/2026) `forca-total-ainda-vale`
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
+- ⏳ **Força total ligada pela Mesa: por quanto tempo?** — Na Mesa de comando, o modo 'Força total' deixa os agentes passarem do teto de uso. Desde hoje, o que você muda na Mesa vira regra no Grimório. Se você tocar em 'Força total', ela vale até a janela de 5 h renovar (e volta ao modo de antes), ou até você desligar? `forca-total-pela-mesa`
 
 **Builds**
 - ✅ **Variantes B** — Título próprio para cada uma (27/09/2026) `variantes-b`

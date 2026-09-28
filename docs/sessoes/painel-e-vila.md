@@ -11,6 +11,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
 - ✅ **Força total antes de renovar: ainda vale?** — Ligada, 20 min antes de renovar (28/09/2026) `forca-total-ainda-vale`
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
+- ⏳ **Força total ligada pela Mesa: por quanto tempo?** — Na Mesa de comando, o modo 'Força total' deixa os agentes passarem do teto de uso. Desde hoje, o que você muda na Mesa vira regra no Grimório. Se você tocar em 'Força total', ela vale até a janela de 5 h renovar (e volta ao modo de antes), ou até você desligar? `forca-total-pela-mesa`
 
 **Painel e Vila**
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
