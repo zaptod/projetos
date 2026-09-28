@@ -1,0 +1,19 @@
+{
+  "_comentario": "Onda 16D: o palco (Godot) que desenha a luta a partir da timeline. Ver docs/palco/README.md. O executavel do Godot vem daqui ou da variavel NF_GODOT (que vence); nunca do codigo.",
+  "godot": "E:/ferramentas/godot/Godot_v4.7.2-stable_win64_console.exe",
+  "_projeto": "pasta do projeto Godot; null = <repositorio>/palco",
+  "projeto": null,
+  "_appdata": "O user:// do Godot mora em %APPDATA%\\Godot\\app_userdata\\palco, que cai no C: (quase cheio). O APPDATA e trocado SO no processo do Godot; no shell inteiro isso quebra o Python.",
+  "appdata": "E:/projetos/palco/_userdata",
+  "_janela": "Onde a janela de render (270x480, sem foco, sempre por cima) aparece. --position conta a partir da TELA 0, que aqui e o monitor da ESQUERDA (x=-1366). [x, y] nessa conta; null = o Godot decide.",
+  "janela": {"posicao": [1070, 200]},
+  "fps": 30,
+  "timeout_s": 900,
+  "encode": {"crf": 18, "preset": "medium", "audio_kbps": 192},
+  "_som": "Nivel do trecho de luta: a energia dos momentos ativos vai para alvo_db (o mesmo -13 dBFS da mistura da 16A) e o pico fica abaixo de pico_db.",
+  "som": {"alvo_db": -13.0, "pico_db": -1.0, "ganho_max_db": 18.0},
+  "_checagens": "Falha aqui e ERRO do render (rc 1), nunca rc 0 calado.",
+  "_min_ids_distintos": "o aceite da 16A/16D: >= 6 sons distintos por luta (o sintetizado tinha 25x o mesmo hit)",
+  "checagens": {"piso_lufs": -40.0, "piso_media_db": -45.0, "min_ids_distintos": 6},
+  "duelo": {"camera_largura_min_m": 5.5, "camera_espera_zoom_in": 2.5}
+}

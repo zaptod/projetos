@@ -1,0 +1,30 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://nucleo/palco.gd" id="1_palco"]
+[ext_resource type="Script" path="res://nucleo/sons.gd" id="2_sons"]
+
+[node name="Palco" type="Node2D"]
+script = ExtResource("1_palco")
+
+[node name="Mundo" type="Node2D" parent="."]
+
+[node name="Arena" type="Node2D" parent="Mundo"]
+
+[node name="Solo" type="Node2D" parent="Mundo"]
+
+[node name="Lutadores" type="Node2D" parent="Mundo"]
+
+[node name="Armas" type="Node2D" parent="Mundo"]
+
+[node name="Objetos" type="Node2D" parent="Mundo"]
+
+[node name="Efeitos" type="Node2D" parent="Mundo"]
+
+[node name="Rotulos" type="CanvasLayer" parent="."]
+layer = 5
+
+[node name="Tela" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="MesaDeSom" type="Node" parent="."]
+script = ExtResource("2_sons")

@@ -228,6 +228,12 @@ def _redirecionar_saida(argv: list) -> tuple:
 
 
 def main() -> None:
+    import sys
+    if sys.argv[1:2] == ["palco"]:
+        # O palco (Onda 16D) tem parser proprio e so e importado AQUI: um erro
+        # nele nunca derruba publicar nem a geracao noturna.
+        from builds.palco.cli import main as palco_main
+        raise SystemExit(palco_main(sys.argv[2:]))
     parser = argparse.ArgumentParser(description="Gerador procedural de builds + video")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -310,6 +316,16 @@ def main() -> None:
     due.add_argument("--refazer-edicao", action="store_true",
                      help="com --rerender, remonta a timeline sobre o mesmo "
                           "gameplay")
+    due.add_argument("--palco", action="store_true",
+                     help="Onda 16D: desenha a luta no PALCO (Godot) em "
+                          "outputs/_palco/, fora do catalogo; nada publica")
+    due.add_argument("--ab", action="store_true",
+                     help="com --palco, grava tambem o visual de hoje e monta "
+                          "o lado a lado (A/B) da mesma seed")
+
+    # So para aparecer no `main.py -h`: `palco` e despachado no topo de main().
+    sub.add_parser("palco", help="Onda 16D: a luta desenhada pelo Godot a partir "
+                                 "da timeline (nada publica; `palco -h` explica)")
 
     noi = sub.add_parser(
         "noite",
@@ -608,6 +624,10 @@ def main() -> None:
         # Antes do PipelineController: instalar/listar nao precisam dele, e a
         # rodada cria o seu so quando ha duelo a gerar.
         raise SystemExit(_noite(args))
+    if args.command == "duelo" and args.palco:
+        from builds.palco.cli import duelo_no_palco
+        raise SystemExit(duelo_no_palco(p1=args.p1, p2=args.p2, seed=args.seed,
+                                        arena=args.arena, com_ab=args.ab))
     controller = PipelineController()
 
     if args.command == "tournament":

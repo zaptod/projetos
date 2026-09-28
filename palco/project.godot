@@ -1,0 +1,57 @@
+; O PALCO da Onda 16D: desenha a luta a partir da timeline e grava o video
+; com som (docs/palco/README.md). As chaves abaixo foram medidas no portao 16B
+; (28/09/2026) nesta maquina: HD 4600 sem Vulkan (so gl_compatibility, que cai
+; sozinho no ANGLE), tela de 768 px de altura, janela que nao pode roubar foco.
+
+config_version=5
+
+[application]
+
+config/name="palco"
+config/description="Neural Fights: o palco. Timeline -> video com som."
+run/main_scene="res://palco.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.05, 0.05, 0.08, 1)
+config/project_settings_override="user://perfil.cfg"
+
+[audio]
+
+driver/mix_rate=48000
+
+[display]
+
+window/size/viewport_width=1080
+window/size/viewport_height=1920
+window/size/window_width_override=270
+window/size/window_height_override=480
+window/size/no_focus=true
+window/stretch/mode="viewport"
+window/stretch/aspect="keep"
+window/vsync/vsync_mode=0
+window/energy_saving/keep_screen_on=false
+
+[editor]
+
+movie_writer/fps=30
+movie_writer/mix_rate=48000
+movie_writer/video_quality=0.95
+movie_writer/disable_vsync=true
+
+[importer_defaults]
+
+wav={
+"compress/mode": 0,
+"edit/normalize": false,
+"edit/trim": false
+}
+
+[physics]
+
+common/physics_ticks_per_second=30
+common/physics_jitter_fix=0.0
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

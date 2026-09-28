@@ -386,3 +386,11 @@ o comando recusa e diz qual.
   `neural_fights.recording.timeline.gravar_timeline(desenhar=False)`, que é o
   que o palco usa: mesma luta, mesma câmera e mesmo som do gravador, 10× mais
   rápido (medido no `duelo_00014`). Os vídeos de hoje não gravam timeline.
+- **O palco** (Onda 16D) — o projeto Godot `palco/` desenha a luta a partir da
+  timeline e grava o vídeo COM o som do jogo; o lado Python é
+  `builds/palco/` (`main.py palco ...`, `main.py duelo --palco [--ab]`).
+  **Não publica e não entra no catálogo**: sai em `outputs/_palco/`. A troca do
+  visual é a 16G, com a aprovação do Adrian. Como funciona, comandos, guardas
+  e medidas: `docs/palco/README.md`; como trocar arte e som:
+  `docs/palco/COMO-EDITAR.md`. O `main.py` só importa `builds.palco` no ramo
+  `palco`/`--palco`: erro no palco não derruba publicar nem a geração noturna.

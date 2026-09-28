@@ -1,0 +1,14 @@
+# Cache do Godot: imports (.godot/imported), cache de classes, shaders.
+# Refeito por `main.py palco ...` (godot.garantir_importado) quando algo muda.
+.godot/
+
+# Saidas e o user:// redirecionado (APPDATA do processo do Godot).
+# O .gdignore de cada pasta fica no git: sem ele o Godot importaria o que
+# cair ali dentro (um png de conferencia virava recurso do projeto).
+_saida/*
+!_saida/.gdignore
+_logs/*
+!_logs/.gdignore
+_userdata/*
+!_userdata/.gdignore
+*.avi
