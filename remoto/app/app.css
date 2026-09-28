@@ -418,3 +418,108 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
 .livro.bancada #comandos-grupos > .fraco { color: #f3e6cf; text-align: center;
   padding: 8px; text-shadow: 0 1px 1px rgba(0, 0, 0, .5); }
 #tela-vila #vila-escolhido.em-cima { bottom: auto; }
+
+/* ================================================================
+   Mesa de comando (o orquestrador, 28/09/2026): um mapa de campanha
+   aberto sobre a mesa de guerra. Os agentes são fichas de madeira; o mapa
+   se desdobra ao abrir. Tudo em CSS, como os outros objetos.
+   ================================================================ */
+.livro.mesa {
+  background:
+    linear-gradient(rgba(120, 80, 40, .10) 1px, transparent 1px) 0 0 / 100% 46px,
+    linear-gradient(90deg, rgba(120, 80, 40, .10) 1px, transparent 1px) 0 0 / 46px 100%,
+    radial-gradient(ellipse at 30% 20%, #f4e7c4 40%, #e2cc98 100%);
+  border: 12px solid #4a2e18;
+  box-shadow: inset 0 0 0 3px #8a6038, inset 0 0 40px rgba(90, 55, 20, .35);
+}
+.livro.mesa::after {
+  /* a rosa dos ventos no canto do mapa */
+  content: "✦"; position: fixed; right: 22px; bottom: 26px; z-index: 0;
+  font-size: 64px; line-height: 1; color: rgba(138, 75, 31, .18); pointer-events: none;
+}
+.livro.mesa:not(.oculto) {
+  transform-origin: 50% 0;
+  animation: desdobrar-mapa .55s cubic-bezier(.2, .8, .25, 1);
+}
+.livro.mesa .cartao { position: relative; z-index: 1;
+  background: rgba(250, 242, 220, .92); border-style: dashed; border-color: #b89968; }
+.livro.mesa .cartao h2 { color: #6b3a1a; }
+.orq-atalhos { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 10px;
+  scrollbar-width: none; position: relative; z-index: 1; }
+.orq-atalhos button { flex: none; font-family: Georgia, serif; font-size: 13px;
+  border-radius: 99px; background: #6b4526; color: #fff1d6; border-color: #3b2412; }
+.orq-faixa { padding: 10px 12px; border-radius: 10px; margin-bottom: 12px;
+  border: 2px solid #b8661b; background: #fbe9c8; color: #6b3a1a; font-size: 14px;
+  position: relative; z-index: 1; }
+.orq-faixa.ruim { border-color: #a8321f; background: #f8d9cf; color: #7a2012; font-weight: 600; }
+.orq-ficha {
+  flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid;
+  place-items: center; font: 700 13px/1 Georgia, serif; color: #fff1d6;
+  background: radial-gradient(circle at 35% 30%, #b07a44, #6b4526 70%);
+  border: 2px solid #3b2412; box-shadow: 0 3px 0 #2b1a0f, 0 4px 6px rgba(0, 0, 0, .3);
+}
+.linha.orq-agente { align-items: center; }
+.orq-relato { font-style: italic; margin-top: 2px; }
+.orq-ordem { flex: none; width: 1.6em; text-align: center; font: 700 15px Georgia, serif;
+  color: #8a4b1f; }
+.livro.mesa .linha .acao { flex: none; }
+.orq-controle { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.orq-controle .corpo { flex: 1; }
+.orq-controle select { min-width: 90px; }
+.orq-numero { min-width: 2ch; text-align: center; font: 700 22px Georgia, serif; }
+#orq-forca[aria-pressed="true"] { border-color: var(--ok); color: var(--ok); font-weight: 600; }
+#orq-modos { margin: 6px 0 0; }
+.orq-alerta { padding: 10px 12px; border-radius: 10px; margin-bottom: 10px;
+  background: #a8321f; color: #fff; font-weight: 600; }
+.orq-limite { margin-bottom: 12px; }
+.orq-limite-topo { display: flex; justify-content: space-between; font-size: 14px; }
+.orq-barra { position: relative; height: 12px; border-radius: 99px; margin: 4px 0;
+  background: #e6d3a8; border: 1px solid #c9ad78; overflow: hidden; }
+.orq-barra-cheio { height: 100%; border-radius: 99px; background: #8a4b1f; }
+.orq-barra-cheio.passou { background: #a8321f; }
+.orq-barra-teto { position: absolute; top: -2px; bottom: -2px; width: 2px;
+  margin-left: -1px; background: #2b1a0f; }
+.orq-sem-medicao { padding: 10px; border-radius: 8px; border: 1px dashed #a8321f;
+  color: #7a2012; font-weight: 600; margin-bottom: 8px; }
+.orq-grafico svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.orq-g-grade { stroke: #d6c29a; stroke-width: 1; }
+.orq-g-rotulo { fill: #7a6248; font: 10px system-ui, sans-serif; }
+.orq-g-teto { stroke: #6b3a1a; stroke-width: 1.5; stroke-dasharray: 5 4; }
+.orq-g-linha { fill: none; stroke: #8a4b1f; stroke-width: 2; stroke-linejoin: round;
+  stroke-linecap: round; }
+.orq-g-ponto { fill: #8a4b1f; stroke: #f6ecd2; stroke-width: 2; }
+.orq-g-cruz { stroke: #3b2a1a; stroke-width: 1; }
+.orq-decisao .acao { align-self: center; }
+.orq-detalhes { margin-top: 8px; border-top: 1px solid var(--linha); padding-top: 6px; }
+.orq-detalhes summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.orq-fluxo-linha { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 6px; }
+.orq-passo { display: inline-flex; flex-direction: column; align-items: center;
+  padding: 6px 10px; border-radius: 10px; background: #efe0bb; border: 1px solid #c9ad78;
+  font-size: 12px; }
+.orq-passo strong { font: 700 18px Georgia, serif; }
+.orq-etapas { font-size: 12px; letter-spacing: .01em; }
+/* o selo do objeto na prateleira */
+nav.prateleira button.objeto { position: relative; }
+nav.prateleira button.objeto.selo-pendente::after,
+nav.prateleira button.objeto.selo-alerta::after {
+  content: ""; position: absolute; top: 4px; right: calc(50% - 20px); width: 10px; height: 10px;
+  border-radius: 50%; background: #f0a04b; border: 2px solid #3b2412;
+}
+nav.prateleira button.objeto.selo-alerta::after { background: #ff5b45; }
+@keyframes desdobrar-mapa {
+  0% { transform: perspective(1200px) rotateX(-80deg) scaleY(.2); opacity: .2; }
+  60% { transform: perspective(1200px) rotateX(8deg) scaleY(1); opacity: 1; }
+  100% { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .livro.mesa:not(.oculto) { animation: none !important; }
+}
+/* sete objetos na prateleira (28/09): 390 px dão ~53 px a cada um; o
+   rótulo fica numa linha, apertado, e corta com reticências se não couber */
+nav.prateleira { gap: 0; padding-left: 2px; padding-right: 2px; }
+nav.prateleira button.objeto { font-size: 10px; letter-spacing: -.03em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+nav.prateleira button.objeto span { font-size: 26px; }
+/* o atalho da Mesa para a seção abaixo do cabeçalho fixo */
+.livro.mesa .cartao { scroll-margin-top: calc(72px + env(safe-area-inset-top)); }

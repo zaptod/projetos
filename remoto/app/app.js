@@ -5,7 +5,8 @@ const CONTATO = "painel.ultimo_contato";
 // A Vila é a tela; as outras áreas são objetos dela, com nome de objeto.
 const TITULOS = {vila: "Vila", quadro: "Quadro de avisos", diario: "Diário",
                  videos: "Cinema", comandos: "Bancada",
-                 relatorios: "Pergaminhos", decisoes: "Grimório"};
+                 relatorios: "Pergaminhos", decisoes: "Grimório",
+                 orquestrador: "Mesa de comando"};
 const RELATORIOS = ["metas", "funcionamento", "confiabilidade", "auditoria"];
 const $ = (id) => document.getElementById(id);
 
@@ -172,6 +173,8 @@ async function carregarAgora() {
     $("erros").replaceChildren();
     desenharEventos($("erros"), erros.reverse(), "✓ nenhum erro registrado");
     conexao(true);
+    // o selo da Mesa de comando na prateleira (teto, fora do ar, pendentes)
+    if (tela === "vila" && typeof orquestradorSelo === "function") orquestradorSelo();
   } catch (err) {
     const ultimo = JSON.parse(localStorage.getItem(ULTIMO) || "null");
     if (ultimo) desenharEstado(ultimo.e);
@@ -314,6 +317,9 @@ async function agir(acao, args = {}) {
   }
   carregarAcoes();
   if (tela === "vila" || tela === "quadro") carregarAgora();
+  // o Controle mora na Bancada: a lista de tarefas mostra o efeito
+  if (tela === "comandos" && typeof comandosCarregarTarefas === "function")
+    comandosCarregarTarefas().catch(() => {});
 }
 
 async function pedirPublicacao(v) {
@@ -415,7 +421,7 @@ const CARGAS = {vila: [carregarAgora, 15000], quadro: [carregarAgora, 15000],
                 diario: [carregarDiario, 5000],
                 videos: [null, 0], comandos: [null, 0],
                 relatorios: [abrirPergaminho, 0],
-                decisoes: [null, 0]};
+                decisoes: [null, 0], orquestrador: [null, 0]};
 
 function mostrar(nova) {
   if (nova && nova !== tela && nova === "diario") {
@@ -443,6 +449,7 @@ function mostrar(nova) {
   if (typeof vilaParar === "function") vilaParar();
   if (typeof comandosParar === "function") comandosParar();
   if (typeof decisoesParar === "function") decisoesParar();
+  if (typeof orquestradorParar === "function") orquestradorParar();
   if (!pareado) return;
   // o quadro de avisos mostra a gente e as travas, que vêm da vida da vila
   if ((tela === "vila" || tela === "quadro") && typeof vilaMostrar === "function") {
@@ -453,6 +460,9 @@ function mostrar(nova) {
   }
   if (tela === "decisoes" && typeof decisoesMostrar === "function") {
     decisoesMostrar();
+  }
+  if (tela === "orquestrador" && typeof orquestradorMostrar === "function") {
+    orquestradorMostrar();
   }
   carregarAcoes().then(() => { if (tela === "videos") carregarVideos(); });
   const [carga, intervalo] = CARGAS[tela];

@@ -48,28 +48,6 @@
       <h2>Na vila agora</h2>
       <div id="vila-gente"></div>
     </div>
-    <div class="cartao oculto" id="controle">
-      <h2>Controle</h2>
-      <div class="campos">
-        <label>O quê
-          <select id="alvo-pausa"></select>
-        </label>
-        <label>Por quanto tempo
-          <select id="prazo-pausa">
-            <option value="">sem prazo</option>
-            <option value="30">30 min</option>
-            <option value="60">1 hora</option>
-            <option value="120">2 horas</option>
-            <option value="240">4 horas</option>
-          </select>
-        </label>
-      </div>
-      <div class="botoes">
-        <button class="acao" id="btn-pausar">⏸ Pausar</button>
-        <button class="acao" id="btn-retomar">▶ Retomar</button>
-        <button class="acao perigo" id="btn-parar">⏹ Parar</button>
-      </div>
-    </div>
     <div class="cartao">
       <h2>Próxima postagem</h2>
       <div class="grande" id="proxima">—</div>
@@ -115,6 +93,30 @@
   </section>
 
   <section id="tela-comandos" class="oculto livro bancada" aria-label="Bancada">
+    <!-- O Controle mora na Bancada, junto dos comandos (decisão do Adrian,
+         app-e-bot/controle-onde, 28/09/2026). Antes ficava nos Avisos. -->
+    <div class="cartao oculto" id="controle">
+      <h2>Controle</h2>
+      <div class="campos">
+        <label>O quê
+          <select id="alvo-pausa"></select>
+        </label>
+        <label>Por quanto tempo
+          <select id="prazo-pausa">
+            <option value="">sem prazo</option>
+            <option value="30">30 min</option>
+            <option value="60">1 hora</option>
+            <option value="120">2 horas</option>
+            <option value="240">4 horas</option>
+          </select>
+        </label>
+      </div>
+      <div class="botoes">
+        <button class="acao" id="btn-pausar">⏸ Pausar</button>
+        <button class="acao" id="btn-retomar">▶ Retomar</button>
+        <button class="acao perigo" id="btn-parar">⏹ Parar</button>
+      </div>
+    </div>
     <div class="cartao">
       <h2>Tarefas</h2>
       <div id="tarefas-lista"></div>
@@ -140,6 +142,91 @@
       <div id="decisoes-lista"></div>
     </div>
     <div id="decisao-item" class="oculto"></div>
+  </section>
+  <!-- A Mesa de comando: o orquestrador (a sessão principal do Claude Code)
+       publica o que faz; daqui o Adrian vê e manda. Os comandos ficam
+       pendentes até o orquestrador aplicar (ou recusar, com o motivo). -->
+  <section id="tela-orquestrador" class="oculto livro mesa" aria-label="Mesa de comando">
+    <div id="orq-faixa" class="orq-faixa oculto" role="status"></div>
+    <div class="orq-atalhos" role="group" aria-label="Seções da mesa">
+      <button class="acao" data-orq="orq-sec-agora">Agora</button>
+      <button class="acao" data-orq="orq-sec-fila">Fila</button>
+      <button class="acao" data-orq="orq-sec-capacidade">Capacidade</button>
+      <button class="acao" data-orq="orq-sec-limites">Limites</button>
+      <button class="acao" data-orq="orq-sec-decisoes">Decisões</button>
+      <button class="acao" data-orq="orq-sec-acessos">Acessos</button>
+      <button class="acao" data-orq="orq-sec-fluxo">Fluxo</button>
+      <button class="acao" data-orq="orq-sec-mensagem">Mensagem</button>
+    </div>
+    <div class="cartao" id="orq-sec-agora">
+      <h2>Agora</h2>
+      <div id="orq-agora"></div>
+      <div id="orq-concluidos" class="fraco"></div>
+    </div>
+    <div class="cartao" id="orq-sec-fila">
+      <h2>Fila</h2>
+      <div id="orq-fila-situacao" class="fraco"></div>
+      <div id="orq-fila"></div>
+      <div class="botoes">
+        <button class="acao" id="orq-pausar-fila">⏸ Pausar a fila</button>
+        <button class="acao" id="orq-retomar-fila">▶ Retomar a fila</button>
+      </div>
+    </div>
+    <div class="cartao" id="orq-sec-capacidade">
+      <h2>Capacidade</h2>
+      <div class="orq-controle">
+        <span class="corpo">Agentes em paralelo</span>
+        <button class="acao" id="orq-menos" aria-label="Menos agentes">−</button>
+        <span class="orq-numero" id="orq-max">1</span>
+        <button class="acao" id="orq-mais" aria-label="Mais agentes">+</button>
+      </div>
+      <div class="fraco" id="orq-efetivo"></div>
+      <div class="orq-controle">
+        <span class="corpo">Modo</span>
+      </div>
+      <div class="abas" id="orq-modos"></div>
+      <div class="orq-controle">
+        <label class="corpo" for="orq-teto">Teto de uso da sessão</label>
+        <select id="orq-teto"></select>
+      </div>
+      <div class="orq-controle">
+        <span class="corpo">Força total antes de renovar</span>
+        <button class="acao" id="orq-forca" aria-pressed="false">desligada</button>
+      </div>
+      <div class="fraco" id="orq-capacidade-pendente"></div>
+    </div>
+    <div class="cartao" id="orq-sec-limites">
+      <h2>Limites</h2>
+      <div id="orq-teto-aviso" class="orq-alerta oculto" role="alert"></div>
+      <div id="orq-limites"></div>
+      <div id="orq-grafico" class="orq-grafico"></div>
+      <div id="orq-grafico-leitura" class="fraco"></div>
+    </div>
+    <div class="cartao" id="orq-sec-decisoes">
+      <h2>Decisões que tomei sozinho</h2>
+      <div id="orq-decisoes"></div>
+    </div>
+    <div class="cartao" id="orq-sec-acessos">
+      <h2>Acessos</h2>
+      <div id="orq-acessos"></div>
+    </div>
+    <div class="cartao" id="orq-sec-fluxo">
+      <h2>Fluxo</h2>
+      <div id="orq-fluxo-trabalho"></div>
+      <div id="orq-fluxo"></div>
+    </div>
+    <div class="cartao" id="orq-sec-mensagem">
+      <h2>Mensagem para o orquestrador</h2>
+      <textarea id="orq-mensagem" class="decisao-comentario" rows="3" maxlength="1000"
+                placeholder="o que você quer que ele saiba ou faça"></textarea>
+      <div class="botoes">
+        <button class="acao primario" id="orq-enviar">Enviar</button>
+      </div>
+    </div>
+    <div class="cartao" id="orq-sec-comandos">
+      <h2>O que você mandou</h2>
+      <div id="orq-comandos"></div>
+    </div>
   </section>
 </main>
 
@@ -184,11 +271,13 @@
   <button class="objeto" data-tela="comandos"><span>🛠️</span>Bancada</button>
   <button class="objeto" data-tela="relatorios"><span>📜️</span>Pergaminhos</button>
   <button class="objeto" data-tela="decisoes"><span>📖️</span>Grimório</button>
+  <button class="objeto" id="obj-orquestrador" data-tela="orquestrador"><span>🗺️</span>Comando</button>
 </nav>
 
 <script src="app.js"></script>
 <script src="vila.js"></script>
 <script src="comandos.js"></script>
 <script src="decisoes.js"></script>
+<script src="orquestrador.js"></script>
 </body>
 </html>

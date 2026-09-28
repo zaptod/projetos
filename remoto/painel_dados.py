@@ -306,3 +306,66 @@ class _Previsao:
 
 
 PREVISAO = _Previsao()
+
+
+# ----------------------------------------------------------------- fluxo
+FLUXO_VALE_S = 90.0
+
+
+def _fluxo_regra():
+    from builds.pipeline import fluxo
+    return fluxo
+
+
+def _fluxo_calcular() -> dict:
+    """O mesmo `builds.pipeline.fluxo.snapshot` do `main.py fluxo` e da
+    pagina 🧭 Fluxo do painel, resumido para o celular."""
+    regra = _fluxo_regra()
+    dados = regra.snapshot(limite=10)
+    etapas = [{"id": chave, "rotulo": regra.CURTOS.get(chave, chave)}
+              for chave, _r, _s in regra.ETAPAS]
+    geracoes = []
+    for g in dados.get("geracoes") or []:
+        geracoes.append({
+            "id": limpar(g.get("generation_id")),
+            "personagem": limpar(g.get("personagem")),
+            "proximo": limpar(g.get("proximo_passo")),
+            "etapas": {e["id"]: (g.get("etapas") or {}).get(e["id"], {}).get("estado", "")
+                       for e in etapas}})
+    fila = dados.get("fila") or {}
+    chaves = dados.get("chaves") or {}
+    arena = dados.get("arena") or {}
+    return {"etapas": etapas, "geracoes": geracoes,
+            "fila": {str(k): v for k, v in fila.items()},
+            "ultima_atividade": regra.idade(dados.get("ultima_atividade")),
+            "torneio": {"prontos": chaves.get("prontos"), "no_banco": chaves.get("no_banco")},
+            "arena": {"lutas": arena.get("lutas"), "campeao": limpar(arena.get("campeao"))},
+            "alertas": [limpar(a) for a in dados.get("alertas") or []]}
+
+
+class _Fluxo(_Previsao):
+    """O snapshot do fluxo, recalculado em segundo plano (le fila e pastas)."""
+
+    @staticmethod
+    def disponivel() -> bool:
+        return True
+
+    def _calcular(self) -> None:
+        try:
+            valor = _fluxo_calcular()
+        except Exception as exc:                             # noqa: BLE001
+            valor = {"falhou": f"{type(exc).__name__}"}
+        with self._trava:
+            self._valor, self._quando, self._rodando = valor, time.time(), False
+
+    def ler(self) -> dict | None:
+        with self._trava:
+            if time.time() - self._quando > FLUXO_VALE_S and not self._rodando:
+                self._rodando = True
+                threading.Thread(target=self._calcular, daemon=True).start()
+            if self._valor is None:
+                return {"calculando": True}
+            return dict(self._valor, idade_s=round(time.time() - self._quando))
+
+
+FLUXO = _Fluxo()

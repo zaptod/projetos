@@ -50,18 +50,28 @@ Tudo vive em `remoto/`:
 - `decisoes.py` + `app/decisoes.js` — a **árvore de decisões** do Adrian
   (28/09), uma aba por projeto no app. A fonte é o repositório:
   `decisoes/<projeto>/<id>.json` (ver §3.7).
+- `orquestrador.py` + `app/orquestrador.js` — a **Mesa de comando** (28/09):
+  o orquestrador publica o que faz, o app mostra e manda comandos, e a
+  sonda de uso roda no servidor (ver §7).
 - `app/` — a PWA (`index.html`, `app.js`, `vila.js`, `comandos.js`,
-  `decisoes.js`).
+  `decisoes.js`, `orquestrador.js`).
 - **Desde 28/09 a Vila é a tela inteira** (pedido do Adrian: "o app focado
   na vila, e as outras entram de forma temática"). Não há mais barra de
-  abas. Uma prateleira de madeira embaixo tem seis objetos:
-  - 📌 Avisos (`tela-quadro`): o estado, o Controle (pausar, retomar,
-    parar), a próxima postagem, fábricas, erros e paralelismo;
+  abas. Uma prateleira de madeira embaixo tem sete objetos:
+  - 📌 Avisos (`tela-quadro`): o estado, a próxima postagem, fábricas,
+    erros e paralelismo;
   - 📓 Diário;
   - 🎞 Cinema (vídeos, gerar e publicar);
-  - 🛠 Bancada (Comandos, com a zona de perigo);
+  - 🛠 Bancada: o **Controle** (pausar, retomar, parar) em cima, as
+    tarefas e os Comandos, com a zona de perigo. O Controle saiu dos Avisos
+    em 28/09 (decisão `app-e-bot/controle-onde`: "Na Bancada");
   - 📜 Pergaminhos (relatórios);
-  - 📖 Grimório (Decisões): a capa abre e a página vira.
+  - 📖 Grimório (Decisões): a capa abre e a página vira;
+  - 🗺 Comando (`tela-orquestrador`): a Mesa de comando, um mapa de
+    campanha que se desdobra sobre a mesa de guerra (§7).
+
+  Com sete objetos, cada um tem ~55 px a 390 px de largura: rótulo em
+  10 px numa linha só (medido na prova: os sete cabem).
 
   Cada objeto abre por cima da Vila (ela fica parada atrás), e o "‹ Vila"
   ou o voltar do Android fecham (`history.pushState`). As animações são CSS
@@ -84,6 +94,7 @@ Tudo vive em `remoto/`:
 
 Estado em disco, em `%LOCALAPPDATA%\neural-fights\`: `app_celular.json`
 (aparelhos pareados, só o hash do token), `app_celular_acoes.jsonl` (rastro),
+`orquestrador\` (a Mesa de comando, §7),
 `app_celular_em_voo.json` (publicações sem desfecho), `app_celular_tarefas/`
 (uma pasta por tarefa), `remoto.json` (token do bot), `decisoes.lock` e
 `decisoes_midia\<id>\` (mídia copiada de pasta temporária; a mídia nunca vai
@@ -97,7 +108,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 517 testes (28/09)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 558 testes (28/09)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -112,6 +123,7 @@ python -m remoto.decisoes adicionar --projeto builds --titulo "..." --pergunta "
 python -m remoto.decisoes responder <id> <opcao> [--comentario C] [--sem-commit]
 python -m remoto.decisoes gerar          # regenera os READMEs e os blocos das sessões
 python -m remoto.decisoes onde
+python -m remoto.orquestrador onde | estado | config | uso | pendentes   # a Mesa (§7)
 ```
 
 Opção cujo rótulo diz "(comente)" ou "(diga ...)" exige comentário.
@@ -343,6 +355,126 @@ DOM e clicando.
 | travas de perfil | `builds.travas` | só a sonda de leitura |
 | `app_celular_*.json(l)` e as tarefas | **esta sessão** | escrita sob `trava_arquivo`, reentrante por thread |
 | `decisoes/_eventos.jsonl` (no repositório) | **esta sessão** escreve (append, uma linha por resposta: `projeto`, `id`, `titulo`, `opcao`, `opcao_rotulo`, `comentario`, `em`, `anterior`, `a_rever`) | o **orquestrador** vigia; os itens novos ele registra pela CLI `python -m remoto.decisoes adicionar` |
+| `%LOCALAPPDATA%\neural-fights\orquestrador\` | o **orquestrador** escreve `estado.json`, `decisoes_orquestrador.jsonl` e `comandos_aplicados.jsonl` pela CLI; o `aplicado` escreve `config.json` e `config_historico.jsonl`; **esta sessão** escreve `comandos.jsonl`, `uso*.json(l)` e `acessos.json` | ver §7; escrita atômica, sob `orquestrador.lock` |
 | bloco `decisoes:inicio/fim` em cada `docs/sessoes/<parte>.md` | **gerado** por `remoto/decisoes.py` | cada parte lê como entrada; não edite à mão (é regenerado a cada resposta) |
 | grade de postagem | `ferramentas/postar.py` | o app respeita a janela (−20/−25/−40 min conforme o destino, +18 min) e recusa se `postar.py` estiver vivo |
 | dia de grade | `builds.publicar.conferencia` | `relatorios.metas` usa `_horario_da_grade`, `_dia_de_grade`, `_abertura_e_fechamento` e `dia_de_grade_fechado`, todas atrás de `relatorios._conferencia()`. As três primeiras são **internas** de lá: se a conferência as renomear, o `/metas` responde "falhou" (e os testes do remoto acusam). Pedido em aberto: uma função pública `dia_de_grade(instante)` |
+
+## 7. A Mesa de comando (o orquestrador no app, 28/09/2026)
+
+Pedido do Adrian: ver no que o orquestrador trabalha e controlar fluxo,
+acessos, decisões, capacidade e agentes paralelos, com os limites de sessão
+e semana à vista. Desenho: `~/.claude/plans/orquestrador-no-app.md`.
+
+**Princípio.** O orquestrador **publica** o estado em arquivos, pela CLI; o
+app **mostra** e **grava comandos**; o orquestrador lê (`pendentes`), aplica
+e registra (`aplicado`). A config só muda no `aplicado`. A tela mostra cada
+comando como pendente, aplicado ou recusado (com o motivo), e o valor pedido
+aparece ao lado do valor em vigor. A pasta é
+`%LOCALAPPDATA%\neural-fights\orquestrador\`; o `NF_ORQUESTRADOR_PASTA` a
+troca, para a instância de teste.
+
+| arquivo | quem escreve |
+| --- | --- |
+| `estado.json` (agora, fila, concluídos de hoje, modo, `atualizado_em`) | CLI do orquestrador |
+| `decisoes_orquestrador.jsonl` | CLI `decisao` |
+| `config.json` + `config_historico.jsonl` | CLI `aplicado` (e `modo`) |
+| `comandos.jsonl` | servidor (`POST /api/orquestrador/comando` e o Contestar) |
+| `comandos_aplicados.jsonl` | CLI `aplicado` |
+| `uso.json` + `uso_historico.jsonl` | a sonda do servidor |
+| `acessos.json` | o servidor ao subir, ou a CLI `acessos` |
+
+**CLI do orquestrador:**
+
+```bash
+python -m remoto.orquestrador agente-inicio --parte P --titulo T [--da-fila ID] [--relato R] [--forcar]
+python -m remoto.orquestrador relato <id> "uma linha"
+python -m remoto.orquestrador agente-fim <id> [--situacao concluido|falhou|parado] [--commit H]...
+python -m remoto.orquestrador fila adicionar --parte P --item T [--posicao N]
+python -m remoto.orquestrador fila mover <id> subir|descer|topo
+python -m remoto.orquestrador fila remover <id>
+python -m remoto.orquestrador fila listar
+python -m remoto.orquestrador decisao --titulo T --escolha E [--porque P] [--alternativa A] [--parte P]
+python -m remoto.orquestrador modo um_por_vez|paralelo|forca_total
+python -m remoto.orquestrador pendentes [--json]
+python -m remoto.orquestrador aplicado <id> [--recusado MOTIVO] [--nota N]
+python -m remoto.orquestrador esperar [--json]     # bloqueia até chegar comando; vale como pulso
+python -m remoto.orquestrador config | estado | uso | pulso | sonda | onde
+python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
+```
+
+- O `agente-inicio` **recusa** (código 3) em três casos:
+  - passou da capacidade (`um_por_vez` = 1 agente; nos outros modos, o
+    `max_paralelo`);
+  - a fila está pausada;
+  - o uso está acima do teto, fora da força total.
+
+  O `--forcar` passa por cima, e só vale se o Adrian mandou.
+- O padrão da config segue o Grimório: um por vez, teto de 50% e força total
+  20 min antes de renovar. Há duas perguntas abertas para ele:
+  - `geral/forca-total-ainda-vale`: às ~18h de 28/09 o orquestrador parou de
+    usar a força total, mas o Grimório ainda a manda;
+  - `geral/capacidade-pelo-app`: o que ele muda na Mesa vira regra, ou é
+    temporário.
+- O que o `aplicado` faz sozinho, por comando:
+  - `priorizar`: reordena a fila;
+  - `parar_agente`: marca o agente como "parando". Quem para é o
+    orquestrador, que depois roda `agente-fim --situacao parado`. Com um
+    agente que não existe, o `aplicado` **recusa**, e o orquestrador
+    registra com `--recusado`.
+- **Fora do ar**: `estado.atualizado_em` com mais de 15 min. Todo comando da
+  CLI conta como pulso, e o `esperar` pulsa a cada 5 min.
+- **Contestar** uma decisão do orquestrador cria o nó `contestada-<id>` no
+  Grimório, pela mesma função do `remoto.decisoes adicionar --commit`
+  (`decisoes.adicionar_e_commitar`):
+  - o nó vai para a parte da decisão, ou para `geral`;
+  - as opções são manter, trocar pela alternativa, ou outro caminho;
+  - também grava um comando `contestar`, para o orquestrador ver.
+
+**A sonda de uso** roda no servidor, a cada `sonda_min` do `config.json`
+(padrão 10; 0 desliga). É a técnica do `~/.claude/vigia_uso.py`: `claude.exe
+-p ok --model haiku --output-format stream-json --verbose`, lendo o
+`rate_limit_event`. O `uso_sessao.json` do vigia entra como fonte extra
+quando é mais novo. Medido em 28/09: 7,4 s por sonda.
+
+**Nunca um número velho como se fosse atual.** A tela mostra "sem medição
+desde HH:MM", sem barra nenhuma, quando:
+- a última sonda falhou depois da medição;
+- a medição passou de 25 min;
+- a janela já renovou depois dela.
+
+O gráfico do dia quebra a linha em buracos de mais de 30 min.
+
+**Acessos** (sem segredo):
+- os agentes de `.claude/agents/*.md` (nome e descrição);
+- os conectores e o modo de permissão, que o orquestrador declara
+  (`acessos --conector`). Quando ele não diz, ficam os anteriores;
+- o Remote Control, lido do `~/.claude/settings.json`;
+- as contas de `builds.contas`, só com o nome e o destino
+  (`identidade().rotulo`), sem caminho, id nem token. Há teste com um token
+  falso no registro;
+- o que o app dispara, com as chaves do servidor que subiu (pela CLI, as do
+  `app_celular.cmd`).
+
+**Fluxo**: mostra o de trabalho (fila → agora → feitos hoje) e o das builds.
+O das builds é o mesmo `builds.pipeline.fluxo.snapshot` do `main.py fluxo` e
+da página 🧭 Fluxo do painel, lido em segundo plano (`painel_dados.FLUXO`,
+90 s).
+
+**Vigiar os comandos** (o orquestrador, em background):
+`python -m remoto.orquestrador esperar --json` sai quando há comando
+pendente. Aplique, registre com `aplicado` e rearme.
+
+**Prova de tela (28/09):** 390×844, clicando, na 8934 com cópia do estado e
+na 8935 vazia, com 0 erros de JS.
+- Os 7 objetos cabem na prateleira.
+- O `+` vira pendente; a CLI aplica, e a tela mostra 2.
+- Descer um item reordena a fila.
+- A mensagem recusada mostra o motivo.
+- O Contestar vira nó, com commit no clone.
+- Com a sonda falhando, aparece "sem medição desde 19:22".
+- Com 62%, aparece o aviso do teto.
+- Com 20 min sem pulso, aparece "fora do ar" e o selo vermelho na
+  prateleira.
+- O Controle está na Bancada, e não nos Avisos.
+- O caso ZERO diz que o orquestrador nunca publicou.

@@ -389,6 +389,20 @@ def adicionar(projeto: str, titulo: str, pergunta: str, opcoes, midias=(), *,
     return item
 
 
+def adicionar_e_commitar(projeto: str, titulo: str, pergunta: str, opcoes,
+                         midias=(), **kwargs) -> tuple[dict, str]:
+    """`adicionar` + commit por caminho: o `adicionar --commit` da CLI.
+
+    Quem mais registra no por aqui (o "Contestar" da Mesa de comando) usa a
+    MESMA funcao, para o no nascer igual e com o mesmo commit.
+    """
+    item = adicionar(projeto, titulo, pergunta, opcoes, midias, **kwargs)
+    with _trava():
+        desfecho = commitar_por_caminho(
+            *_tudo_para_commit(), f"decisão({item['projeto']}): nova — {item['titulo']}")
+    return item, desfecho
+
+
 def acrescentar_midias(item_id: str, midias, *, copiar: bool = False) -> dict:
     """Mais midia num no que ja existe (ex.: um lote novo de clipes).
 
@@ -877,16 +891,19 @@ def main(argv=None) -> int:
 
     try:
         if args.comando == "adicionar":
-            item = adicionar(args.projeto, args.titulo, args.pergunta, args.opcao,
-                             args.midia, id=args.id, contexto=args.contexto,
-                             comentario=not args.sem_comentario,
-                             depende_de=args.depende, copiar=args.copiar)
+            opcoes = dict(id=args.id, contexto=args.contexto,
+                          comentario=not args.sem_comentario,
+                          depende_de=args.depende, copiar=args.copiar)
+            if args.commit:
+                item, desfecho = adicionar_e_commitar(
+                    args.projeto, args.titulo, args.pergunta, args.opcao, args.midia,
+                    **opcoes)
+            else:
+                item = adicionar(args.projeto, args.titulo, args.pergunta, args.opcao,
+                                 args.midia, **opcoes)
             print(f"registrada: {item['projeto']}/{item['id']} [{item['situacao']}]")
             if args.commit:
-                with _trava():
-                    print("commit:", commitar_por_caminho(
-                        *_tudo_para_commit(),
-                        f"decisão({item['projeto']}): nova — {item['titulo']}"))
+                print("commit:", desfecho)
             return 0
         if args.comando == "midia":
             item = acrescentar_midias(args.id, args.midia, copiar=args.copiar)

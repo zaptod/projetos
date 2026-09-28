@@ -57,8 +57,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import (acoes, comandos_app, decisoes, painel_dados, tarefas, vila_dados,
-               vila_nova)
+from . import (acoes, comandos_app, decisoes, orquestrador, painel_dados, tarefas,
+               vila_dados, vila_nova)
 from .config import runtime_dir
 
 PORTA_PADRAO = 8931
@@ -96,6 +96,7 @@ ESTATICOS = {
     "/vila.js": ("vila.js", "text/javascript; charset=utf-8"),
     "/comandos.js": ("comandos.js", "text/javascript; charset=utf-8"),
     "/decisoes.js": ("decisoes.js", "text/javascript; charset=utf-8"),
+    "/orquestrador.js": ("orquestrador.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -603,6 +604,12 @@ class Manipulador(BaseHTTPRequestHandler):
                     return self._erro(404, "video nao encontrado")
                 return self._json({"url": f"/v/{self.estado.bilhete(arquivo, self._dono)}",
                                    "vale_s": BILHETE_VALE_S})
+            if rota == "/api/orquestrador":
+                # A Mesa de comando: o que o orquestrador publicou, o uso, os
+                # comandos e a situacao de cada um. So leitura, e limpo.
+                return self._json(_limpo(orquestrador.para_o_app()))
+            if rota == "/api/orquestrador/fluxo":
+                return self._json(painel_dados.FLUXO.ler())
             if rota == "/api/decisoes":
                 try:
                     return self._json(decisoes.para_o_app())
@@ -661,6 +668,8 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._acao(rota)
         if rota == "/api/decisao/responder":
             return self._responder_decisao()
+        if rota in ("/api/orquestrador/comando", "/api/orquestrador/contestar"):
+            return self._orquestrador(rota)
         if rota != "/api/parear":
             return self._erro(404, "nao existe")
         if self.estado.bloqueado(self.client_address[0]):
@@ -759,6 +768,35 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._erro(503, "as decisões estão ocupadas; tente de novo")
         acoes.avisar_texto(decisoes.texto_do_aviso(evento))
         return self._json({"feito": True, "evento": evento})
+
+    def _orquestrador(self, rota: str):
+        """Um comando para o orquestrador, ou "Contestar" uma decisao dele.
+
+        So com token. Nao depende de `--acoes`: nada aqui executa na maquina.
+        O comando fica PENDENTE ate o orquestrador aplicar (ou recusar); o
+        Contestar vira no no Grimorio, com commit por caminho.
+        """
+        if self._aparelho() is None:
+            return
+        corpo = self._corpo()
+        if corpo is None:
+            return
+        try:
+            if rota == "/api/orquestrador/comando":
+                nome = str(corpo.get("comando") or "")[:30]
+                if nome not in orquestrador.DO_APP:
+                    return self._erro(400, "comando desconhecido")
+                linha = orquestrador.gravar_comando(nome, corpo.get("valor"), self._id)
+                return self._json({"feito": True, "comando": linha})
+            feito = orquestrador.contestar(str(corpo.get("id") or "")[:20],
+                                           str(corpo.get("comentario") or ""), self._id)
+        except orquestrador.Recusa as exc:
+            return self._erro(409, str(exc))
+        except OSError:
+            return self._erro(503, "o orquestrador está ocupado; tente de novo")
+        acoes.avisar_texto(f"⚔ Adrian contestou uma decisão do orquestrador: "
+                           f"nó {feito['no']} no Grimório")
+        return self._json({"feito": True, **feito})
 
     # ------------------------------------------------------- arquivos
     def _imagem_da_vila(self, rota: str):
@@ -870,6 +908,17 @@ class Manipulador(BaseHTTPRequestHandler):
             pass          # o celular fechou o video no meio: normal
 
 
+def _limpo(dados):
+    """Todo texto que vai ao celular passa pelo filtro (links, chaves, usuario)."""
+    if isinstance(dados, str):
+        return painel_dados.limpar(dados)
+    if isinstance(dados, list):
+        return [_limpo(d) for d in dados]
+    if isinstance(dados, dict):
+        return {k: _limpo(v) for k, v in dados.items()}
+    return dados
+
+
 def intervalo(cabecalho: str, total: int) -> tuple:
     """(inicio, fim) inclusivos, com no maximo FATIA_MAX bytes.
 
@@ -938,6 +987,15 @@ def criar_servidor(host: str, porta: int, local: bool,
         estado = Estado(host, local, com_acoes, com_publicar, com_perigosas)
 
     return Servidor((host, porta), _Manipulador)
+
+
+def _gerar_acessos(com_acoes: bool, com_publicar: bool, com_perigosas: bool) -> None:
+    try:
+        orquestrador.gerar_acessos({"acoes": com_acoes,
+                                    "publicar": com_acoes and com_publicar,
+                                    "perigosas": com_acoes and com_perigosas})
+    except Exception as exc:                                 # noqa: BLE001
+        sys.stderr.write(f"acessos.json: {type(exc).__name__}: {exc}\n")
 
 
 # ================================================================= CLI
@@ -1070,6 +1128,12 @@ def main(argv=None) -> int:
                   "(veja --em-voo); o destino delas segue bloqueado no app.")
     if not ler_config()["aparelhos"]:
         print("Nenhum celular pareado: rode `python -m remoto.api_http --parear`.")
+    # A Mesa de comando: a sonda de uso (a cada `sonda_min` do config.json do
+    # orquestrador; 0 desliga) e o acessos.json com as chaves DESTE servidor.
+    orquestrador.SONDA.iniciar()
+    threading.Thread(target=_gerar_acessos, args=(args.acoes, args.publicar,
+                                                  args.perigosas),
+                     name="acessos", daemon=True).start()
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:
