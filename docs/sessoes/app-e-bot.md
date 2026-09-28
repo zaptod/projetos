@@ -183,7 +183,10 @@ DOM e clicando.
 - **28/09/2026, a máquina reiniciou às 07:22.** As tarefas trouxeram de volta
   o app às 07:29 (PID 996) e o bot às 07:32 (PID 1620), os dois já com o
   d68523e, sem reinício à mão. O Tailscale ficou em `NoState` até 07:43
-  (ver §4); depois disso a URL `*.ts.net` voltou a responder 200.
+  (ver §4); depois disso a URL `*.ts.net` voltou a responder 200. Às 07:55
+  o bot foi reiniciado pela tarefa, só ele, para o monitor novo (21ce589)
+  valer no relatório das 09:00: PID 4648, "no ar" às 07:56:21. O app
+  (PID 996) seguiu no ar, e o monitor dele fica para a próxima subida.
 - **Mudou em 28/09/2026: o relatório de metas conta por dia de grade**
   (06:37 → 00:37 do dia seguinte), pela regra da conferência (fc17986). A
   recuperação das 23:37 que sai às 00:10 conta no dia anterior, e o dia em
