@@ -8,7 +8,15 @@
       "opcao": "visual-atual"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T18:26:26",
+      "opcao": "aprovar",
+      "origem": "app"
+    }
+  ],
   "id": "som-real-16a",
   "midias": [
     {
@@ -67,7 +75,11 @@
   ],
   "pergunta": "O som real (DEPOIS) substitui o sintetizado (ANTES)?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Som real da luta (16A)",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T18:26:26",
+    "opcao": "aprovar"
+  }
 }

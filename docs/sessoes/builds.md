@@ -18,10 +18,11 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Visual do lutador** — Bolinha com arte (28/09/2026) `visual-do-lutador`
 - ✅ **Origem da arte** — CC0 + IA, trocável (28/09/2026) `origem-da-arte`
 - ✅ **Transição até o palco** — O visual atual segue, já com o som real (28/09/2026) `transicao`
-- ⏳ **Som real da luta (16A)** — O som real (DEPOIS) substitui o sintetizado (ANTES)? `som-real-16a`
+- ✅ **Som real da luta (16A)** — Aprovar: re-render do estoque na madrugada (28/09/2026) `som-real-16a`
 - ⏳ **Palco: o visual novo (A/B)** — Seguir com o palco (Godot) como o visual novo das lutas? `palco-seguir`
+- ⏳ **generation_00077: luta muda, lutadores fora do banco** — O que fazer com a generation_00077? `generation-00077`
 - ⏳ **Sprites animados: como produzir** — A IA não entrega sprite sheet fatiável. O teste do fireball saiu em 1024×576, fundo branco sem alfa, grade e rótulos desenhados e 14 colunas em vez de 6. Nano Banana 2 e GPT Image exigem crédito ou plano nesta conta compartilhada. Como produzir as animações? `sprites-animados`
-- 🔒 3 bloqueada(s), esperando outra decisão: ver `decisoes/builds/README.md`
+- 🔒 2 bloqueada(s), esperando outra decisão: ver `decisoes/builds/README.md`
 
 <!-- decisoes:fim -->
 

@@ -16,5 +16,5 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
     - 🔒 **Chão da arena** — Qual chão fica na arena? · espera Palco: o visual novo (A/B) = Seguir: próxima etapa é a arte (16E) `chao-da-arena`
     - 🔒 **Hitstop: a pausinha no impacto** — Ligar a pausa curta no momento do golpe? Deixa o vídeo um pouco mais longo. · espera Palco: o visual novo (A/B) = Seguir: próxima etapa é a arte (16E) `hitstop`
 - ✅ **Transição até o palco** — O visual atual segue, já com o som real (28/09/2026) `transicao`
-  - ⏳ **Som real da luta (16A)** — O som real (DEPOIS) substitui o sintetizado (ANTES)? `som-real-16a`
-    - 🔒 **generation_00077: luta muda, lutadores fora do banco** — O que fazer com a generation_00077? · espera Som real da luta (16A) = decidida `generation-00077`
+  - ✅ **Som real da luta (16A)** — Aprovar: re-render do estoque na madrugada (28/09/2026) `som-real-16a`
+    - ⏳ **generation_00077: luta muda, lutadores fora do banco** — O que fazer com a generation_00077? `generation-00077`
