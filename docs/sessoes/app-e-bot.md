@@ -411,11 +411,17 @@ python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
 
   O `--forcar` passa por cima, e só vale se o Adrian mandou.
 - O padrão da config segue o Grimório: um por vez, teto de 50% e força total
-  20 min antes de renovar. Há duas perguntas abertas para ele:
-  - `geral/forca-total-ainda-vale`: às ~18h de 28/09 o orquestrador parou de
-    usar a força total, mas o Grimório ainda a manda;
-  - `geral/capacidade-pelo-app`: o que ele muda na Mesa vira regra, ou é
-    temporário.
+  20 min antes de renovar. O Adrian respondeu as duas perguntas da Mesa às
+  19:25 de 28/09:
+  - `geral/forca-total-ainda-vale` → **ligada, 20 min antes de renovar**. Às
+    ~18h o orquestrador tinha parado de usá-la; vale o Grimório, e a Mesa
+    já nasce assim;
+  - `geral/capacidade-pelo-app` → **substitui**: o que ele muda na Mesa vira
+    a regra, e o orquestrador registra a mudança no Grimório. **Ainda não
+    automatizado.** O `aplicado` muda só o `config.json`; responder
+    `modo-de-trabalho` / `teto-de-uso` é do orquestrador. Cuidado: as duas
+    perguntas da Mesa têm `depende_de` nessas decisões. Trocar a opção delas
+    manda as duas para "a rever".
 - O que o `aplicado` faz sozinho, por comando:
   - `priorizar`: reordena a fila;
   - `parar_agente`: marca o agente como "parando". Quem para é o
