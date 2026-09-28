@@ -211,15 +211,70 @@ def conferir_o_canal(canal: str, aberto: dict) -> str:
     return achado
 
 
+class ListaIncompleta(PublicacaoFalhou):
+    """A lista do canal tem menos publicos do que o canal declara. Com video
+    publico faltando, o crivo do gemeo fica cego — e tornar publico um
+    privado cujo gemeo nao foi visto DUPLICA o canal."""
+
+
+def _listas_do_canal(uploads: str) -> list:
+    """A playlist de envios (`UU...`) e a dos Shorts (`UUSH...`) do canal.
+
+    A DE ENVIOS NAO TRAZ TODOS OS SHORTS. Medido em 28/09/2026 no canal de
+    builds: `statistics.videoCount` 145 publicos; a `UU` com 139 videos (115
+    publicos, 24 privados); a `UUSH` com 145. Foi por esse buraco que a
+    recuperacao publicou cinco privados cujo gemeo publico so estava na
+    `UUSH`. A `UUSH` so tem publicos; os privados so aparecem na `UU`.
+    """
+    if uploads.startswith("UU") and not uploads.startswith("UUSH"):
+        return [uploads, "UUSH" + uploads[2:]]
+    return [uploads]
+
+
+def _ids_do_canal(token: str, uploads: str) -> list:
+    """A UNIAO das listas do canal, sem repetir. `UUSH` que nao existe (404:
+    canal sem Shorts) nao e erro — quem confere se ficou faltando publico e
+    `recuperaveis`, contra o numero que o canal declara."""
+    ordem, vistos = [], set()
+    for lista in _listas_do_canal(uploads):
+        try:
+            ids = _todos_os_ids(token, lista)
+        except PublicacaoFalhou as exc:
+            if lista != uploads and "(404)" in str(exc):
+                continue
+            raise
+        for vid in ids:
+            if vid not in vistos:
+                vistos.add(vid)
+                ordem.append(vid)
+    return ordem
+
+
+class _Lista(list):
+    """A lista do canal, levando junto quantos PUBLICOS o canal declara
+    (`statistics.videoCount`) — lido na mesma chamada, sem custo a mais.
+    `-1` quando o canal nao disse; `None` (o padrao) quando a lista nao veio
+    do canal (os dubles dos testes)."""
+    declarados = None
+
+
+def _declarados(canal_lido: dict) -> int:
+    try:
+        return int(canal_lido["statistics"]["videoCount"])
+    except (KeyError, TypeError, ValueError):
+        return -1
+
+
 def videos_do_canal(canal: str = "builds", token: str | None = None) -> list:
-    """Tudo o que esta na playlist de envios, com estado. So leitura.
+    """Tudo o que esta nas listas do canal, com estado. So leitura.
 
     Paginado de verdade: o canal passou de 50 faz tempo, e uma primeira
     pagina lida como "o canal inteiro" faria a recuperacao achar que os
-    videos antigos nao existem.
+    videos antigos nao existem. E a UNIAO de envios com Shorts (28/09/2026):
+    so a de envios deixava 30 Shorts publicos de fora.
     """
     token = token or _token(canal, editar=False)
-    canais = _get(token, "channels", part="contentDetails,snippet",
+    canais = _get(token, "channels", part="contentDetails,snippet,statistics",
                   mine="true")
     itens = canais.get("items") or []
     if not itens:
@@ -227,9 +282,10 @@ def videos_do_canal(canal: str = "builds", token: str | None = None) -> list:
     conferir_o_canal(canal, itens[0])
     lista = itens[0]["contentDetails"]["relatedPlaylists"]["uploads"]
 
-    ids = _todos_os_ids(token, lista)
+    ids = _ids_do_canal(token, lista)
 
-    fora = []
+    fora = _Lista()
+    fora.declarados = _declarados(itens[0])
     for i in range(0, len(ids), 50):
         lote = _get(token, "videos", part="status,snippet,contentDetails",
                     id=",".join(ids[i:i + 50]), maxResults=50)
@@ -275,6 +331,20 @@ def recuperaveis(canal: str = "builds", token: str | None = None,
     tempo.
     """
     todos = videos_do_canal(canal, token)
+    # A LISTA TEM DE ESTAR INTEIRA, e isto e FALHA FECHADA. O crivo 4 so ve o
+    # gemeo que a lista trouxe; com publico faltando, ele deixa passar o
+    # privado cujo gemeo nao veio — e foi assim que cinco duplicatas foram ao
+    # ar entre 27 e 28/09/2026. Adiar a recuperacao custa nada; duplicar, o
+    # canal. So aqui, e nao em `videos_do_canal`: a busca do id logo depois
+    # de um upload pode ver o `videoCount` andar antes da lista, e ela nao
+    # decide nada irreversivel.
+    publicos = sum(1 for v in todos if v["privacidade"] == "public")
+    declarados = getattr(todos, "declarados", None)
+    if declarados is not None and (declarados < 0 or publicos < declarados):
+        raise ListaIncompleta(
+            f"a lista do canal trouxe {publicos} publicos e o canal declara "
+            f"{declarados}: com publico faltando, o gemeo de um privado pode "
+            f"nao ter sido visto. NAO recupero nada nesta rodada.")
     conhecidos = set(conhecidos or ())
     # O IRMAO PUBLICO E DE ARQUIVO, NAO DE CONTEUDO — e esta distincao nasceu
     # com `titulos.chave` deixando de ver o "(N de M)". Medido em 27/09/2026:
