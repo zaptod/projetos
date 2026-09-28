@@ -38,12 +38,32 @@ func _initialize() -> void:
 			bib.evento(str(ev.get("tipo", "")), str(ev.get("tier", "")))
 	for e in erros:
 		printerr("validar: ", e)
+	# o plano de quadros que o render faria, com o hitstop do ESTILO GLOBAL:
+	# quanto o video fica mais longo que a luta, sem abrir janela
+	var quadros := -1
+	var parados := -1
+	if erros.is_empty():
+		var carregado = load("res://biblioteca/estilo.tres") if ResourceLoader.exists("res://biblioteca/estilo.tres") else null
+		var estilo: EstiloPalco = carregado if carregado is EstiloPalco else EstiloPalco.new()
+		var plano := PlanoQuadros.montar(tl.duracao(), tl.dados.get("remapeamento"), 30)
+		var paradas := []
+		for ev in tl.dados.get("eventos", []):
+			if ev.get("tipo") == "acerto":
+				var seg := estilo.hitstop_do_acerto(ev)
+				if seg > 0.0:
+					paradas.append([float(ev["i"]) / tl.hz, seg])
+		var sem := plano.total()
+		if not paradas.is_empty():
+			plano.com_hitstop(paradas)
+		quadros = plano.total()
+		parados = quadros - sem
 	var resumo := {
 		"ok": erros.is_empty(), "legivel": true, "erros": erros, "timeline": caminho,
 		"passos": tl.n, "hz": tl.hz, "duracao": tl.duracao(),
 		"eventos": tl.dados.get("eventos", []).size() if typeof(tl.dados.get("eventos")) == TYPE_ARRAY else -1,
 		"sons": (tl.dados["sons"].get("itens", []).size() if typeof(tl.dados.get("sons")) == TYPE_DICTIONARY else 0),
 		"pecas": bib.escolhas, "reservas": bib.reservas.keys(),
+		"quadros": quadros, "quadros_de_hitstop": parados,
 	}
 	_gravar(args, resumo)
 	print("validar: %s -> %s (%d passos, %d erro(s), %d peca(s) resolvidas)" % [

@@ -136,6 +136,21 @@ duelo no ar: 4 LU a menos, e num A/B de ouvido o mais alto parece melhor. Hoje:
 duelo_00016 no palco a −18,0 LUFS, média −13,7 dB, pico −5,1 dBFS; 161 sons de
 19 arquivos distintos, nenhum sem arquivo, nenhum cortado por falta de voz.
 
+**Hitstop do render: LIGADO** (Grimório `hitstop` = ligar, 28/09/2026). O
+estilo global (`palco/nucleo/estilo.gd`, grupo "Tremor e hitstop") para o
+vídeo 0 / 0,03 / 0,07 / 0,13 s (0 / 1 / 2 / 4 quadros) nos acertos de tier
+leve / médio / pesado / colossal, e só no acerto que tirou ≥ 3% da vida do
+alvo (`hitstop_dano_min`): o tier é do AUTOR, não do golpe, e sem o piso o
+tique de 1% de um projétil parava como uma machadada. Medido nos 23 duelos
+do disco (timeline re-simulada, sem render): **+12,9 s sobre 491,9 s =
++2,6%, +0,56 s por duelo**; o maior foi o `duelo_00023` (+0,80 s, +6,2%), o
+`duelo_00016` fica 23,23 → 24,03 s, e `00015`/`00017` (só golpes leves) não
+mudam. Sem o piso seriam +4,0% e +19,8% no `00023`. O Python refaz a conta
+(`plano.quadros_de_hitstop`, lendo `estilo.gd` e `estilo.tres`) e o render
+acusa se ela não bater com a do Godot; `palco validar` mostra os quadros com
+hitstop sem abrir janela. No A/B o palco fica mais longo que o lado de hoje:
+o mais curto congela no último quadro.
+
 **A/B do duelo_00016** (`outputs/_palco/ab_duelo_00016/ab_celular.mp4`): o
 lado esquerdo é o `_ouvir/par2_duelo_00016` da 16A (o visual de hoje já com o
 som real), o direito o palco; mesma seed, mesmo corte (23,23 s). O vídeo passa

@@ -147,7 +147,7 @@ func _preparar(args: Dictionary) -> bool:
 	var paradas := []
 	for ev in tl.dados.get("eventos", []):
 		if ev.get("tipo") == "acerto":
-			var s := estilo.hitstop_do_tier(str(ev.get("tier", "")))
+			var s := estilo.hitstop_do_acerto(ev)
 			if s > 0.0:
 				paradas.append([float(ev["i"]) / tl.hz, s])
 	if not paradas.is_empty():

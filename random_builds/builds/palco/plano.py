@@ -44,3 +44,64 @@ def mapear(t: float, duracao_total: float, remapeamento=None, fps: int = 30) -> 
             return inicio + min(max(0, arredondar((t - ini) / vel * fps)), max(0, n - 1))
         inicio += n
     return -1
+
+
+# ---------------------------------------------------------------- hitstop
+# O hitstop EXTRA do render (estilo do palco, `hitstop_<tier>` em segundos):
+# quadros repetidos logo depois do quadro-base de cada `acerto`, o maior
+# vencendo quando dois acertos caem no mesmo quadro. Espelho de
+# `PlanoQuadros.com_hitstop` (plano.gd). Os valores moram no ESTILO GLOBAL:
+# os padroes em `palco/nucleo/estilo.gd`, o que o Adrian mexeu no inspetor em
+# `palco/biblioteca/estilo.tres`, e o job ainda pode sobrepor campo a campo.
+CAMPO_HITSTOP = {"light": "hitstop_leve", "medium": "hitstop_medio", "heavy": "hitstop_pesado",
+                 "colossal": "hitstop_colossal"}
+
+
+def _valores_float(texto: str, *, gd: bool) -> dict[str, float]:
+    import re
+    padrao = (r"var\s+(hitstop_\w+)\s*:\s*float\s*=\s*([-0-9.]+)" if gd
+              else r"^\s*(hitstop_\w+)\s*=\s*([-0-9.]+)\s*$")
+    return {m.group(1): float(m.group(2)) for m in re.finditer(padrao, texto, re.MULTILINE)}
+
+
+def hitstop_do_estilo(projeto, sobrepor: dict | None = None) -> dict[str, float]:
+    """{tier: segundos, "dano_min": fracao} do estilo global do palco
+    (estilo.gd < estilo.tres < job)."""
+    from pathlib import Path
+    projeto = Path(projeto)
+    campos: dict[str, float] = {}
+    for arquivo, gd in ((projeto / "nucleo" / "estilo.gd", True), (projeto / "biblioteca" / "estilo.tres", False)):
+        try:
+            campos.update(_valores_float(arquivo.read_text(encoding="utf-8"), gd=gd))
+        except OSError:
+            pass
+    for chave, valor in (sobrepor or {}).items():
+        if chave in CAMPO_HITSTOP.values() or chave == "hitstop_dano_min":
+            campos[chave] = float(valor)
+    saida = {tier: float(campos.get(campo, 0.0)) for tier, campo in CAMPO_HITSTOP.items()}
+    saida["dano_min"] = float(campos.get("hitstop_dano_min", 0.0))
+    return saida
+
+
+def quadros_de_hitstop(doc: dict, segundos_por_tier: dict, remapeamento=None, fps: int = 30) -> int:
+    """Quantos quadros parados o hitstop do render acrescenta a esta luta.
+
+    So para o acerto que tirou pelo menos `dano_min` da vida do alvo: o tier e
+    do AUTOR (a forca dele), nao do golpe, e sem este piso o tique de um
+    projetil de 1% parava o video como uma machadada."""
+    dano_min = float(segundos_por_tier.get("dano_min", 0.0))
+    hz = int(doc["hz"])
+    duracao = int(doc["n"]) / hz
+    remap = remapeamento if remapeamento is not None else doc.get("remapeamento")
+    paradas: dict[int, int] = {}
+    for ev in doc.get("eventos") or []:
+        if ev.get("tipo") != "acerto" or float(ev.get("dano_pct") or 0.0) < dano_min:
+            continue
+        segundos = float(segundos_por_tier.get(str(ev.get("tier", "")), 0.0))
+        if segundos <= 0.0:
+            continue
+        base = mapear(int(ev["i"]) / hz, duracao, remap, fps)
+        quantos = arredondar(segundos * fps)
+        if base >= 0 and quantos > 0:
+            paradas[base] = max(paradas.get(base, 0), quantos)
+    return sum(paradas.values())

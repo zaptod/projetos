@@ -97,7 +97,7 @@ Abra `palco/biblioteca/estilo.tres` no editor e mexa no inspetor:
 | grupo | campos |
 |---|---|
 | Contorno e sombra | largura e cor do contorno (#14141A), opacidade e achatamento da sombra |
-| Tremor e hitstop | tremor da câmera nos golpes fortes; hitstop EXTRA por tier (muda a duração do vídeo) |
+| Tremor e hitstop | tremor da câmera nos golpes fortes; hitstop EXTRA por tier (LIGADO: 0 / 0,03 / 0,07 / 0,13 s) e o piso de dano (`hitstop_dano_min`, 3% da vida) abaixo do qual o golpe não para; muda a duração do vídeo (+2,6% medido) |
 | Brilho e efeitos | halo dos projéteis e faíscas, cel do corpo (0 = chapado), tamanho da faísca, rastro da arma |
 | Leitura | nome sobre o lutador e o tamanho dele, marcas de status, barras de cinema do golpe final, cor do fundo |
 | Som | estéreo, volume, vozes |

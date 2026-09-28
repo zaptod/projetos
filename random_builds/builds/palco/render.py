@@ -84,8 +84,9 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
     # para 25 s de video com a maquina cheia. Um palco que nao encerra (o loop
     # de previa, 28/09: 1,1 GB de AVI em 10 min para um video de 2 s) morre
     # aqui em minutos, nao em quinze.
-    duracao_video = plano.quadros(int(doc["n"]) / int(doc["hz"]),
-                                  job.get("remapeamento") or doc.get("remapeamento")) / 30.0
+    remap_job = job.get("remapeamento") or doc.get("remapeamento")
+    parados_py = plano.quadros_de_hitstop(doc, plano.hitstop_do_estilo(config.projeto(cfg), job["estilo"]), remap_job)
+    duracao_video = (plano.quadros(int(doc["n"]) / int(doc["hz"]), remap_job) + parados_py) / 30.0
     prazo = min(float(cfg.get("timeout_s", 900)), 90.0 + 8.0 * duracao_video)
     filme = godot.gravar_filme(arquivo_job, avi, cfg=cfg, timeout=prazo)
     (trabalho / "godot.log").write_text(filme["saida"], encoding="utf-8")
@@ -127,8 +128,10 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
     remap_usado = job.get("remapeamento") or doc.get("remapeamento")
     esperado = plano.quadros(int(doc["n"]) / int(doc["hz"]), remap_usado, fps)
     parados = int((rel.get("plano") or {}).get("quadros_de_hitstop") or 0)
-    if not quadros and esperado + parados != int(rel["quadros"]):
-        problemas.append(f"o plano em Python da {esperado} + {parados} quadros, o Godot fez {rel['quadros']}")
+    if parados != parados_py:
+        problemas.append(f"hitstop do render: o Python conta {parados_py} quadros parados, o Godot {parados}")
+    if not quadros and esperado + parados_py != int(rel["quadros"]):
+        problemas.append(f"o plano em Python da {esperado} + {parados_py} quadros, o Godot fez {rel['quadros']}")
     sons_rel = rel.get("sons") or {}
     minimo = int((cfg.get("checagens") or {}).get("min_ids_distintos", 1))
     if int(sons_rel.get("ids_distintos") or 0) < minimo:
@@ -139,6 +142,8 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
     resumo = {
         "ok": not problemas, "problemas": problemas, "saida": str(saida), "timeline": str(timeline),
         "quadros": rel.get("quadros"), "duracao": rel.get("duracao"), "sons_origem": origem_sons,
+        "hitstop": {"quadros": parados_py, "segundos": round(parados_py / fps, 3),
+                    "sem_hitstop_s": round(esperado / fps, 3)},
         "sons": sons_rel, "eventos": rel.get("eventos"), "pecas": rel.get("pecas"),
         "reservas": rel.get("reservas"), "avisos_godot": rel.get("avisos"),
         "tempo": {"godot_s": filme["segundos"], "laco_godot_ms": rel.get("laco_ms"), "encode_s": segundos_encode},

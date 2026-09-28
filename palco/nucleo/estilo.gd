@@ -25,10 +25,20 @@ extends Resource
 ## Hitstop EXTRA do render, em segundos, por tier do golpe. O hitstop do
 ## proprio jogo ja vem congelado na timeline; isto so acrescenta quadros
 ## parados no video (muda a duracao). 0 = o video dura o mesmo que a luta.
+## LIGADO por decisao do Adrian (Grimorio `hitstop` = ligar, 28/09/2026).
+## So nos golpes que contam: o leve fica em 0 porque em agosto (Onda 10) ele
+## achou que a pausa em todo golpe quebrava o fluxo. A 30 fps, 0,03 s = 1
+## quadro, 0,07 = 2, 0,13 = 4. A conta em Python (builds/palco/plano.py,
+## `quadros_de_hitstop`) le estes numeros daqui e do estilo.tres.
 @export_range(0.0, 0.5, 0.01) var hitstop_leve: float = 0.0
-@export_range(0.0, 0.5, 0.01) var hitstop_medio: float = 0.0
-@export_range(0.0, 0.5, 0.01) var hitstop_pesado: float = 0.0
-@export_range(0.0, 0.5, 0.01) var hitstop_colossal: float = 0.0
+@export_range(0.0, 0.5, 0.01) var hitstop_medio: float = 0.03
+@export_range(0.0, 0.5, 0.01) var hitstop_pesado: float = 0.07
+@export_range(0.0, 0.5, 0.01) var hitstop_colossal: float = 0.13
+## So para o acerto que tirou pelo menos esta fracao da vida do alvo. O tier
+## e do AUTOR (a forca dele), nao do golpe: sem o piso, o tique de 1% de um
+## projetil parava o video como uma machadada. 0,03 medido em 23 duelos
+## (28/09/2026): +2,6% de duracao (+0,56 s por duelo), contra +4,0% sem piso.
+@export_range(0.0, 0.5, 0.01) var hitstop_dano_min: float = 0.03
 
 @export_group("Brilho e efeitos")
 ## Intensidade do halo dos projeteis, orbes, areas e faiscas.
@@ -57,6 +67,14 @@ extends Resource
 @export_range(-24.0, 12.0, 0.5) var volume_db: float = 0.0
 ## Quantos sons tocam ao mesmo tempo (o mais velho e cortado).
 @export_range(4, 64, 1) var vozes: int = 32
+
+
+## Segundos de hitstop do render para este acerto (0 = nao para).
+func hitstop_do_acerto(ev: Dictionary) -> float:
+	var dano = ev.get("dano_pct")
+	if dano == null or float(dano) < hitstop_dano_min:
+		return 0.0
+	return hitstop_do_tier(str(ev.get("tier", "")))
 
 
 func hitstop_do_tier(tier: String) -> float:

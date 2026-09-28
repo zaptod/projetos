@@ -67,6 +67,36 @@ def test_arredondamento_e_o_do_gdscript_nao_o_bancario():
     assert plano.arredondar(72.9) == 73
 
 
+def test_hitstop_do_render_ligado_pela_decisao_do_adrian():
+    # Grimorio `hitstop` = ligar (28/09/2026): o estilo GLOBAL tem pausa nos
+    # golpes que contam e nenhuma no leve (Onda 10: pausa em todo golpe
+    # quebrava o fluxo)
+    seg = plano.hitstop_do_estilo(config.projeto())
+    assert seg["light"] == 0.0
+    assert 0.0 < seg["medium"] <= seg["heavy"] <= seg["colossal"] <= 0.2
+    assert seg["dano_min"] > 0.0
+    # o job ainda sobrepoe campo a campo (e o "desligado" de um render so)
+    zero = plano.hitstop_do_estilo(config.projeto(), {"hitstop_medio": 0, "hitstop_pesado": 0,
+                                                       "hitstop_colossal": 0})
+    assert zero["medium"] == zero["heavy"] == zero["colossal"] == 0.0
+
+
+def test_hitstop_em_python_conta_como_o_plano_do_godot():
+    seg = {"light": 0.0, "medium": 0.03, "heavy": 0.07, "colossal": 0.13, "dano_min": 0.03}
+    doc = {"hz": 60, "n": 600, "eventos": [
+        {"i": 60, "tipo": "acerto", "tier": "heavy", "dano_pct": 0.05},      # 2 quadros
+        {"i": 60, "tipo": "acerto", "tier": "colossal", "dano_pct": 0.2},    # mesmo quadro: o maior, 4
+        {"i": 120, "tipo": "acerto", "tier": "colossal", "dano_pct": 0.01},  # raspao: nao para
+        {"i": 180, "tipo": "acerto", "tier": "light", "dano_pct": 0.5},      # leve: 0 s
+        {"i": 240, "tipo": "acerto", "tier": "medium", "dano_pct": 0.1},     # 1 quadro
+        {"i": 330, "tipo": "acerto", "tier": "colossal", "dano_pct": 0.3},   # 4, ou nada no corte
+        {"i": 240, "tipo": "dano", "tier": "colossal", "dano_pct": 0.3},     # so acerto conta
+    ]}
+    assert plano.quadros_de_hitstop(doc, seg) == 4 + 1 + 4
+    assert plano.quadros_de_hitstop(doc, seg, [[0.0, 5.0], [6.0, 4.0]]) == 5
+    assert plano.quadros_de_hitstop(doc, seg, [[0.0, 5.0], [5.2, 4.0]]) == 5 + 4
+
+
 def test_timeline_sintetica_segue_o_schema_da_16c():
     doc = sintetica.timeline_sintetica(2.0)
     assert doc["n"] == 120 and doc["formato"] == "neural-fights/timeline"
@@ -146,6 +176,21 @@ def test_validacao_headless_aceita_boa_e_recusa_ruim(pasta_e):
     assert "fora de [0, 60)" in saida
     rc, _ = godot.rodar_script("res://ferramentas/validar.gd", [f"--timeline={pasta_e / 'nao_existe.json'}"])
     assert rc == 2
+
+
+@precisa_godot
+def test_hitstop_do_godot_bate_com_a_conta_em_python(pasta_e):
+    doc = sintetica.timeline_sintetica(3.0)
+    arquivo = pasta_e / "t.json"
+    arquivo.write_text(json.dumps(doc), encoding="utf-8")
+    rc, saida = godot.rodar_script("res://ferramentas/validar.gd",
+                                   [f"--timeline={arquivo}", f"--saida={pasta_e / 'v.json'}"])
+    assert rc == 0, saida[-1500:]
+    rel = json.loads((pasta_e / "v.json").read_text(encoding="utf-8"))
+    esperado = plano.quadros_de_hitstop(doc, plano.hitstop_do_estilo(config.projeto()))
+    assert esperado > 0, "a sintetica tem acertos pesados de 5%: o hitstop ligado tem de parar"
+    assert rel["quadros_de_hitstop"] == esperado
+    assert rel["quadros"] == plano.quadros(3.0) + esperado
 
 
 def _job(pasta: Path, segundos: float = 1.0) -> Path:
