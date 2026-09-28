@@ -1,0 +1,58 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:26:53.914250",
+  "depende_de": [
+    {
+      "decisao": "origem-da-arte",
+      "opcao": "cc0-ia"
+    }
+  ],
+  "historico": [],
+  "id": "sprites-animados",
+  "midias": [
+    {
+      "caminho": "random_builds/outputs/_testes_design/fireball_picassoia-image_20260928_1514.jpg",
+      "rotulo": "o que a IA entregou"
+    },
+    {
+      "caminho": "random_builds/outputs/_testes_design/conferencia/fireball_picassoia-image_20260928_1514/folha_conferencia.png",
+      "rotulo": "medição"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Gerar UMA peça por vez (fundo branco, recorte automático) e fazer o movimento no palco: brilho, pulsar, partículas e shader.",
+      "id": "ia-mais-godot",
+      "pede_comentario": false,
+      "rotulo": "1 quadro bom na IA + animar no Godot (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Animações prontas da biblioteca 16F (Sinestesia, Kenney).",
+      "id": "efeitos-cc0",
+      "pede_comentario": false,
+      "rotulo": "Usar os efeitos CC0 já baixados"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Decisão de conta e de dinheiro, numa conta compartilhada.",
+      "id": "comprar-creditos",
+      "pede_comentario": false,
+      "rotulo": "Comprar créditos ou plano para testar Nano Banana 2 / GPT Image"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Recortar e remover o fundo dos quadros.",
+      "id": "limpar-depois",
+      "pede_comentario": false,
+      "rotulo": "Continuar com o modelo padrão e limpar depois"
+    }
+  ],
+  "pergunta": "A IA não entrega sprite sheet fatiável. O teste do fireball saiu em 1024×576, fundo branco sem alfa, grade e rótulos desenhados e 14 colunas em vez de 6. Nano Banana 2 e GPT Image exigem crédito ou plano nesta conta compartilhada. Como produzir as animações?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Sprites animados: como produzir",
+  "vigente": null
+}

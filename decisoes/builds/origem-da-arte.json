@@ -20,7 +20,9 @@
   "midias": [],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "sprites-animados"
+      ],
       "descricao": "",
       "id": "cc0-ia",
       "pede_comentario": false,
