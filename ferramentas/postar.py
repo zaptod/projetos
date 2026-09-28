@@ -475,6 +475,80 @@ def _veto_lembrado(alvo) -> str:
     return f"{alvo.id}: a IA REPROVOU — {motivos}"
 
 
+def _situacao_do_parecer(alvo) -> str:
+    """"aprovado" | "reprovado" | "nao_assistido" | "" (sem ficha).
+
+    O ultimo parecer do VIDEO, pelo id (`parecer.situacao_do_video`): um
+    re-render sem parecer novo nao apaga o que foi dito dele. Nunca levanta.
+    """
+    try:
+        from contos.publicar import parecer
+        return parecer.situacao_do_video(alvo)
+    except Exception:                                          # noqa: BLE001
+        return ""
+
+
+def _retencao(alvo) -> str:
+    """Por que a parte fica RETIDA; `""` quando nao fica.
+
+    A VALVULA DE QUALIDADE, decisao do Adrian no plano de 27/09/2026 (S2):
+    "retido = 'a IA reprovou' ou 'parecer so pela folha'; retido so sai
+    quando nao houver outro candidato para o horario; quando sair, fica
+    marcado na lista 'a conferir'". As duas causas sao lidas de arquivo —
+    nao gastam `TENTATIVAS` nem perguntam a ninguem.
+
+    Ate 28/09 o veto VENCIDO (as rodadas de conserto acabaram) saia na hora,
+    com "a IA reprovou, mas as rodadas de conserto acabaram; sai assim".
+    Medido na fila daquela madrugada: 10 das 19 partes estavam assim, e a
+    primeira delas (h32 p05) saiu as 06:37 no lugar de qualquer outra.
+
+    O veto ainda de pe tambem e "a IA reprovou": `proxima_historia` o segura
+    antes (`_veto_lembrado`), e aqui ele so importa para a marca, quando sai
+    como ultimo recurso. Sem parecer nenhum NAO e retido: a postagem nao
+    pergunta ao Gemini, e reter tudo que nao tem ficha pararia o canal.
+    """
+    situacao = _situacao_do_parecer(alvo)
+    if situacao == "reprovado":
+        return (f"{alvo.id}: a IA reprovou"
+                + (" e as rodadas de conserto acabaram"
+                   if _veto_vencido(alvo) else ""))
+    if situacao == "nao_assistido":
+        return f"{alvo.id}: parecer so pela folha de contato (ninguem assistiu)"
+    return ""
+
+
+# O comeco do `estado` da marca "a conferir" de uma parte que saiu RETIDA. Nao
+# sai sozinha como a de audio: quem confere e uma pessoa.
+PREFIXO_DA_RETENCAO = "[qualidade] "
+
+
+def _marcar_retido(alvo, retencao: str) -> None:
+    """A parte retida que SAIU vai para a lista "a conferir" dos DOIS destinos.
+
+    Nos dois, e nao so onde saiu: a recuperacao do TikTok leva a parte que
+    saiu no YouTube e falhou la — e ela e extra, nunca "o horario ia ficar
+    vazio". Marcada, ela espera a pessoa conferir. So DEPOIS de sair: marcar
+    antes tiraria da fila a parte que ainda nao foi a lugar nenhum.
+
+    Nunca levanta: a publicacao ja aconteceu.
+    """
+    try:
+        from builds.publicar import desfecho
+    except Exception:                                          # noqa: BLE001
+        return
+    for plataforma in ("youtube", "tiktok"):
+        try:
+            desfecho.marcar_para_conferir(
+                "historias", alvo.id, PREFIXO_DA_RETENCAO + retencao,
+                plataforma, etapa="publicar.qualidade", erro=False,
+                aviso=(f"{alvo.id} saiu RETIDA ({retencao[:140]}): nao havia "
+                       f"outra parte para o horario. Esta na lista a conferir "
+                       f"do {plataforma}."))
+        except Exception as exc:                               # noqa: BLE001
+            _linha(f"[postar] {alvo.id}: nao consegui por na lista a conferir "
+                   f"do {plataforma} ({type(exc).__name__}).")
+
+
 def proxima_historia(*, vistoriar: bool = True):
     """A proxima parte PUBLICAVEL. `None` quando nao ha nenhuma.
 
@@ -488,7 +562,7 @@ def proxima_historia(*, vistoriar: bool = True):
 
     recusados = []
     examinados = 0
-    vetados = []
+    vetados, retidos = [], []
     # A SERIE ESPERA A PARTE BARRADA. Pedido dele em 14/09/2026, depois de a
     # historia 10 publicar a parte 6 antes da 5: parte barrada (veto ou
     # vistoria) segura as seguintes da MESMA historia, e a grade publica outra
@@ -518,6 +592,16 @@ def proxima_historia(*, vistoriar: bool = True):
             vetados.append(alvo)
             bloqueadas.add(alvo.fonte_id)
             continue
+        # A VALVULA DE QUALIDADE (28/09/2026): veto vencido ou parecer so pela
+        # folha ficam RETIDOS. Lido de arquivo e ANTES da vistoria, pelo mesmo
+        # motivo do veto: nao gasta `TENTATIVAS`, senao dez retidas na frente
+        # esconderiam a parte limpa de tras e a retida sairia mesmo assim.
+        retencao = _retencao(alvo)
+        if retencao:
+            recusados.append(f"{retencao} — retida")
+            retidos.append(alvo)
+            bloqueadas.add(alvo.fonte_id)
+            continue
         if examinados >= TENTATIVAS:
             break
         examinados += 1
@@ -537,9 +621,21 @@ def proxima_historia(*, vistoriar: bool = True):
             continue
         return alvo, recusados
     # NAO FICAR SEM VIDEO. Pedido dele em 13/09/2026: "a prioridade e nao
-    # ficar sem video". Nenhum candidato limpo: sai o primeiro que so tem o
-    # veto da IA contra ele, desde que o ARQUIVO esteja inteiro. Video mudo
-    # ou sem imagem nao sai nem assim.
+    # ficar sem video". Nenhum candidato limpo: sai o menos pior, desde que o
+    # ARQUIVO esteja inteiro — video mudo ou sem imagem nao sai nem assim. O
+    # menos pior, na ordem: a RETIDA (o conserto ja foi gasto, ou so a folha a
+    # viu), depois a VETADA (o veto ainda pode ser consertado; publica-la
+    # agora queima o conserto), e so entao a parte seguinte fora de ordem.
+    # A retida que sai vai para a lista "a conferir" (`postar_historia`).
+    for alvo in retidos[:3]:
+        roteiro = R.carregar(alvo.fonte_id)
+        laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
+                                          alvo.caminho, roteiro)
+        if laudo["ok"]:
+            _linha(f"[postar] {alvo.id}: nenhuma parte limpa na fila; sai "
+                   "esta, RETIDA, para o horario nao ficar vazio — e fica "
+                   "na lista a conferir.")
+            return alvo, recusados
     for alvo in vetados[:3]:
         roteiro = R.carregar(alvo.fonte_id)
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
@@ -551,7 +647,7 @@ def proxima_historia(*, vistoriar: bool = True):
     # ULTIMO RECURSO: a parte seguinte de uma serie parada, fora de ordem, so
     # quando nada acima pode sair — o horario vazio continua sendo pior.
     for alvo in adiadas[:3]:
-        if _veto_lembrado(alvo):
+        if _veto_lembrado(alvo) or _retencao(alvo):
             continue
         roteiro = R.carregar(alvo.fonte_id)
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
@@ -731,6 +827,9 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         ficha["veto_vencido"] = True
     elif _veto_lembrado(alvo):
         ficha["veto_ignorado"] = True
+    retencao = _retencao(alvo)
+    if retencao:
+        ficha["retido"] = retencao
     if titulo_repetido(alvo, "historias"):
         ficha["titulo_repetido"] = True
     if cota:
@@ -752,6 +851,10 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     # (revisao de 15/09/2026).
     if _tiktok_confirmado(ficha["tiktok"]):
         ficha["feito"] = True
+    # A PARTE RETIDA QUE SAIU FICA A CONFERIR (valvula de qualidade): so sai
+    # retida quando nao havia outra, e quem confere e uma pessoa.
+    if ficha.get("retido") and ficha["feito"]:
+        _marcar_retido(alvo, ficha["retido"])
     _registrar_valvula(ficha)
     return ficha
 
@@ -1736,8 +1839,10 @@ def _visibilidade_das_historias() -> str:
 
 
 # ------------------------------------------------------------------ builds
-# Quantos dos 8 disparos diarios cada formato deve ocupar. Sem este bloco no
-# `publicacao.json`, a escolha volta a ser o FIFO cego de antes.
+# PESOS RELATIVOS de cada formato, e nao contagem de disparos: 4/3/1 quer
+# dizer "quatro duelos para cada tres builds e uma estreia", repartidos pelos
+# horarios do dia (dez desde 15/09/2026; eram oito quando isto nasceu). Sem
+# este bloco no `publicacao.json`, a escolha volta a ser o FIFO cego de antes.
 COTA_PADRAO = {"duelo": 4, "build": 3, "estreia": 1, "torneio": 0}
 
 # Quantas publicacoes recentes contam para medir o equilibrio. Duas voltas da
@@ -1819,6 +1924,7 @@ def _titulos_no_ar(canal: str, plataforma: str | None = None,
 VALVULAS = {
     "veto_vencido": "veto da IA venceu (as rodadas de conserto acabaram)",
     "veto_ignorado": "veto da IA ignorado (nao havia outro video pronto)",
+    "retido": "saiu RETIDA pela valvula de qualidade (nao havia outra parte)",
     # A valvula fechou em 17/09, entao esta marca mudou de sentido: ela nao
     # e mais "saiu assim mesmo porque nao havia outro", e sim um DETECTOR —
     # se aparecer, algum caminho escapou da guarda e o relatorio tem de
@@ -2528,6 +2634,10 @@ def avisar(resultados: list) -> None:
         if r.get("veto_ignorado"):
             linhas.append("    ⚠ saiu com veto da IA: nao havia outro video "
                           "pronto e o horario nao podia ficar vazio")
+        if r.get("retido"):
+            linhas.append("    ⚠ saiu RETIDA (a IA reprovou ou ninguem "
+                          "assistiu): nao havia outra parte. Esta na lista "
+                          "a conferir.")
         if r.get("titulo_repetido"):
             linhas.append("    ⚠ saiu com titulo JA PUBLICADO: nao havia "
                           "outro video na fila. Os dois competem entre si.")

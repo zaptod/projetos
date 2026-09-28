@@ -108,6 +108,10 @@ class SerieEsperaAParteBarradaTests(unittest.TestCase):
         self.postar._veto_lembrado = (
             lambda alvo: f"{alvo.id}: veto" if alvo.id in self.vetadas else "")
         self.postar._parecer_da_ia = lambda *_a, **_k: ""
+        # A valvula de qualidade (28/09/2026) le o `_pareceres.json` DE
+        # VERDADE pelo id, e os ids daqui (historia_00010, 00011) existem la,
+        # reprovados. Este teste e sobre a ordem da serie, nao sobre o parecer.
+        self.postar._situacao_do_parecer = lambda alvo: ""
         for modulo, nome, valor in (
                 (qualidade, "vistoriar_parte",
                  lambda _h, _p, caminho, _r: {

@@ -74,6 +74,7 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Imagem faltando / arquivo quebrado | `contos.publicar.qualidade.vistoriar_parte`; `v.pendencias` (builds) |
 | História sendo renderizada | trava `historias__render__<fonte>` |
 | Rodízio favela/normal/babaca | `_no_rodizio_dos_tipos` → `contos.publicar.tipos` |
+| Válvula de qualidade: parte **retida** (veto da IA vencido, ou parecer só pela folha) só sai se o horário fosse ficar vazio | `postar._retencao` (lida de arquivo, não gasta `TENTATIVAS`), `proxima_historia` (retidos antes dos vetados e dos fora de ordem no último recurso); quando sai, `_marcar_retido` põe `[qualidade] ` na lista "a conferir" de cada destino onde saiu (não sai sozinha: quem confere é uma pessoa) |
 | Desistência após 3 falhas | `_anotar_falha_no_tiktok`, `FALHAS_ATE_DESISTIR=3` |
 | Cota do YouTube não mata o TikTok | `_e_limite_diario` + `try/except` por destino |
 
@@ -97,6 +98,11 @@ diário.
 - **Quem decide publicar de verdade é uma pessoa**: `postar_automatico: false`
   é para o botão do painel; a grade passa `postar=True` explícito.
 - **O nome da conta é o destino**: `youtube_web` publica, `youtube` só lê.
+- **Válvula de qualidade** (plano de 27/09, S2): retido = "a IA reprovou" ou
+  "parecer só pela folha"; retido só sai quando não houver outro candidato
+  para o horário, e quando sai fica marcado na lista "a conferir". Refina a
+  de 13/09 ("depois de 3 rounds o vídeo tem que sair de qualquer forma"): o
+  vencido continua saindo, mas só no lugar do horário vazio.
 
 ## 4. O que já quebrou
 
@@ -164,6 +170,32 @@ diário.
   Limite conhecido: a recuperação de *privados* do YouTube (`tornar_publico`)
   não passa pelo upload e não mede nada — o vídeo do canal pode ser de outro
   render que o do disco.
+- **Veto vencido saía na hora** (até 28/09): `_parecer_da_ia` devolvia ""
+  com "a IA reprovou, mas as rodadas de conserto acabaram; sai assim", e a
+  parte ia ao ar na frente de qualquer outra. Na fila de 28/09, 03:05 (19
+  partes): 10 vencidas, 7 vetadas, 1 só pela folha, 1 aprovada atrás de uma
+  vetada — zero limpas. → válvula de qualidade (§2). Com esta fila ela leva
+  a mesma parte (a h32 p05), só que marcada; a diferença aparece no dia em
+  que houver parte limpa.
+- **A recuperação do YouTube publicou 5 duplicatas** (27/09 20:5x → 28/09
+  06:4x): `UlIc_DXyFa4`, `BM5BkPe56yo`, `EgganpfYcR0`, `y2H4ZzNIlEM` e
+  `eopdwaZ0swA` voltaram ao ar com gêmeo **público** de mesmo título
+  (`9U7UopBm3MM`, `XxOuPbJ2vtA`, `Jb7gIFumNQQ`, `xNZFFoMYQjk`,
+  `UsDYI-pRqZ8`). O crivo do gêmeo procurava na playlist de envios (`UU…`),
+  e ela não traz todos os Shorts públicos: no canal de builds, 145 públicos
+  declarados, 139 vídeos na `UU` (115 públicos); a `UUSH` (Shorts) tem 145;
+  a união, 169. → `recuperar.videos_do_canal` lê `UU` + `UUSH`, e
+  `recuperaveis` para (`ListaIncompleta`) se a lista tiver menos públicos do
+  que o canal declara. **As 5 duplicatas seguem no ar** — voltar a privado
+  é decisão dele. `metricas.enviados` (reconciliação de ids) ainda lê só a
+  `UU`.
+- **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
+  pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
+  ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
+  laudos desde que o laudo existe. → `recuperar.id_do_video` casa pelo
+  índice do corte; a linha das histórias ganha `youtube_id` (primeiro
+  arquivo) e `youtube_ids` (todos, na ordem), tirados dos laudos —
+  `serie.registrar` tirava da URL, que pelo navegador é a frase.
 
 ## 5. O estado de hoje (27/09/2026)
 
@@ -172,19 +204,18 @@ histórias; zero fantasma, zero rascunho). Ledger: 244 linhas em builds, 320 em
 histórias, nenhuma `(video_id, plataforma)` duplicada.
 
 O assunto "parte longa vira dois Shorts `(1 de 2)`/`(2 de 2)`" foi commitado
-em `42dced8` (27/09, 19:58). Sobrou uma pendência: `ids_no_canal` **não tem
-chamador** — `youtube.py:151` segue usando `id_no_canal`, então o ledger grava
-só o id do primeiro pedaço (item 6 da S2).
+em `42dced8` (27/09, 19:58); a pendência dele (o id de cada pedaço e os dois
+ids na linha) fechou em `10142b1` (28/09).
 
-**Problemas abertos** (atualizado em 28/09, 02:40)
+**Problemas abertos** (atualizado em 28/09, 07:45)
 
 - **Três partes de histórias estão só no TikTok** e o YouTube nunca vai
   recebê-las sozinho: `historia_00022:p03` (falhou 20/09), `00027:p01` (22/09)
   e `00032:p04` (27/09). A fila das histórias conta *qualquer* destino como
-  publicado, e não existe "YouTube atrasado" para histórias. **A `h32 p05` é
-  a primeira da fila às 06:37 de 28/09** (conferido às 02:30) e sairá no
-  YouTube **antes** da p04 se nada for feito (`_em_ordem_no_destino` só olha
-  o TikTok). Subir cada uma é
+  publicado, e não existe "YouTube atrasado" para histórias. **A `h32 p05`
+  saiu às 06:38 de 28/09 nos dois destinos** (`a5zqcwa-drY`): no YouTube a
+  série tem p01–p03 e p05, sem a p04 (`_em_ordem_no_destino` só olha o
+  TikTok). Subir cada uma é
   `python historias/main.py publicar <id> --youtube` (registra no ledger,
   mas NÃO passa pelas guardas da grade nem grava `prova`). Decisão do Adrian.
 - **NÃO usar `postar.py --recuperar --so historias`** para isso. O `--ver`
