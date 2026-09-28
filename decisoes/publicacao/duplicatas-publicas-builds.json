@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Pares recuperado → gêmeo: UlIc_DXyFa4→9U7UopBm3MM, BM5BkPe56yo→XxOuPbJ2vtA, EgganpfYcR0→Jb7gIFumNQQ, y2H4ZzNIlEM→xNZFFoMYQjk, eopdwaZ0swA→UsDYI-pRqZ8.",
+  "criado": "2026-09-28T17:31:42.344554",
+  "depende_de": [],
+  "historico": [],
+  "id": "duplicatas-publicas-builds",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "privado",
+      "pede_comentario": false,
+      "rotulo": "Voltar a privado (reversível)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter como está"
+    }
+  ],
+  "pergunta": "Cinco vídeos saíram duas vezes como públicos no canal de builds. O que faço com os gêmeos?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "5 duplicatas públicas no canal de builds",
+  "vigente": null
+}
