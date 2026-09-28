@@ -1,0 +1,35 @@
+{
+  "comentario": true,
+  "contexto": "O borrado está sendo consertado agora (arte na resolução do aparelho); isto é só sobre o enquadramento.",
+  "criado": "2026-09-28T18:37:10.968334",
+  "depende_de": [],
+  "historico": [],
+  "id": "vila-zoom-celular",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\vila-zoom-celular\\1_vila_inicial.png",
+      "rotulo": "Vila hoje"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "perto",
+      "pede_comentario": false,
+      "rotulo": "Perto e grande (como está)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "longe",
+      "pede_comentario": false,
+      "rotulo": "Ver mais da vila de uma vez"
+    }
+  ],
+  "pergunta": "A Vila enche a tela com até 3x de zoom. Prefere a cena grande (poucas casas, perto) ou ver mais da vila de uma vez (menor)?",
+  "projeto": "painel-e-vila",
+  "situacao": "pendente",
+  "titulo": "Zoom da Vila no celular",
+  "vigente": null
+}

@@ -13,6 +13,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 **Painel e Vila**
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
 - ✅ **Cara da Oficina** — Quente, igual à Vila (como está) (28/09/2026) · “Eu descartei essa vila” `cara-da-oficina`
+- ⏳ **Zoom da Vila no celular** — A Vila enche a tela com até 3x de zoom. Prefere a cena grande (poucas casas, perto) ou ver mais da vila de uma vez (menor)? `vila-zoom-celular`
 
 <!-- decisoes:fim -->
 
