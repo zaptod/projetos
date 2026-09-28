@@ -8,7 +8,15 @@
       "opcao": "godot"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T18:28:57",
+      "opcao": "seguir",
+      "origem": "app"
+    }
+  ],
   "id": "palco-seguir",
   "midias": [
     {
@@ -52,7 +60,11 @@
   ],
   "pergunta": "Seguir com o palco (Godot) como o visual novo das lutas?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Palco: o visual novo (A/B)",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T18:28:57",
+    "opcao": "seguir"
+  }
 }
