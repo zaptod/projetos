@@ -1,5 +1,22 @@
 # Jogo zombie
 
+<!-- decisoes:inicio -->
+## Decisões do Adrian (gerado — não edite à mão)
+
+Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian manda.** Para mudar uma, ele usa a tela Decisões do app.
+
+**Geral**
+- ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
+- ✅ **Modo de trabalho dos agentes** — Um projeto por vez (28/09/2026) `modo-de-trabalho`
+- ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
+
+**Jogo zombie**
+- ✅ **Formato do 1º vídeo** — Duelo (27/09/2026) `formato-do-primeiro-video`
+- ✅ **Velocidade por clipe** — Sim (28/09/2026) `velocidade-por-clipe`
+- ⏳ **Duelo: é isso?** — O que você acha desse duelo? (ruína, zumbi que corre, 6 guardas contra 4 zumbis) `duelo-e-isso`
+
+<!-- decisoes:fim -->
+
 A parte que mora em **outro repositório**: `E:\jogo_ZOMBIE`. Aqui não se publica nada — o jogo só **gera o mp4 e um JSON**; conta, grade e postagem são da parte de Publicação, em `E:\projetos`.
 
 Escrito em 27/09/2026 pela sessão dona. Tudo abaixo foi conferido lendo o repositório do jogo naquele dia; o que não deu para conferir está marcado **(não verificado)**.

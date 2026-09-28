@@ -603,9 +603,10 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json({"url": f"/v/{self.estado.bilhete(arquivo, self._dono)}",
                                    "vale_s": BILHETE_VALE_S})
             if rota == "/api/decisoes":
-                return self._json({
-                    "pendentes": decisoes.listar("pendente"),
-                    "respondidas": decisoes.listar("respondida")})
+                try:
+                    return self._json(decisoes.para_o_app())
+                except decisoes.Recusa as exc:
+                    return self._erro(409, str(exc))
             # A MIDIA DE UMA DECISAO: pelo id do item e pelo indice, NUNCA
             # por caminho. O caminho so existe no registro; o celular recebe
             # um bilhete de 10 minutos para aquele arquivo e mais nada.
@@ -614,7 +615,7 @@ class Manipulador(BaseHTTPRequestHandler):
             if achado:
                 ficha = decisoes.midia(achado.group(1), int(achado.group(2)))
                 if ficha is None:
-                    return self._erro(404, "mídia não encontrada")
+                    return self._erro(404, "mídia não existe mais")
                 caminho, tipo = ficha
                 return self._json({"url": f"/v/{self.estado.bilhete(caminho, self._dono)}",
                                    "tipo": tipo, "vale_s": BILHETE_VALE_S})
@@ -733,7 +734,8 @@ class Manipulador(BaseHTTPRequestHandler):
         return self._json({"feito": True, "texto": resultado})
 
     def _responder_decisao(self):
-        """A resposta dele a uma decisao: grava, marca e avisa no Telegram.
+        """A resposta dele a uma decisao: grava, recalcula a arvore, commita
+        por caminho e avisa no Telegram.
 
         So com token. Nao depende de `--acoes`: responder nao executa nada
         na maquina, so registra o que ele decidiu.
@@ -745,17 +747,17 @@ class Manipulador(BaseHTTPRequestHandler):
             return
         item_id = str(corpo.get("id") or "")[:60]
         try:
-            resposta = decisoes.responder(item_id, corpo.get("opcao"),
-                                          str(corpo.get("comentario") or ""),
-                                          self._id)
+            evento = decisoes.responder(item_id, str(corpo.get("opcao") or "")[:60],
+                                        str(corpo.get("comentario") or ""),
+                                        aparelho=self._id, origem="app")
         except KeyError:
             return self._erro(404, "decisão desconhecida")
         except decisoes.Recusa as exc:
             return self._erro(409, str(exc))
         except OSError:
-            return self._erro(503, "o registro está ocupado; tente de novo")
-        acoes.avisar_texto(decisoes.texto_do_aviso(resposta))
-        return self._json({"feito": True, "resposta": resposta})
+            return self._erro(503, "as decisões estão ocupadas; tente de novo")
+        acoes.avisar_texto(decisoes.texto_do_aviso(evento))
+        return self._json({"feito": True, "evento": evento})
 
     # ------------------------------------------------------- arquivos
     def _imagem_da_vila(self, rota: str):

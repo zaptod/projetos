@@ -1,0 +1,35 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.315136",
+  "depende_de": [
+    {
+      "decisao": "som-real-16a",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "generation-00077",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "refazer",
+      "pede_comentario": false,
+      "rotulo": "Re-renderizar com o som sintetizado"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "descartar",
+      "pede_comentario": false,
+      "rotulo": "Descartar, como a 00066"
+    }
+  ],
+  "pergunta": "O que fazer com a generation_00077?",
+  "projeto": "builds",
+  "situacao": "bloqueada",
+  "titulo": "generation_00077: luta muda, lutadores fora do banco",
+  "vigente": null
+}

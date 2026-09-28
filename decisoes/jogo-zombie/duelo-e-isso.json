@@ -1,0 +1,91 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.930565",
+  "depende_de": [
+    {
+      "decisao": "formato-do-primeiro-video",
+      "opcao": "duelo"
+    }
+  ],
+  "historico": [],
+  "id": "duelo-e-isso",
+  "midias": [
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s1.mp4",
+      "rotulo": "semente 1"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s2.mp4",
+      "rotulo": "semente 2"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s3.mp4",
+      "rotulo": "semente 3"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s4.mp4",
+      "rotulo": "semente 4"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s5.mp4",
+      "rotulo": "semente 5"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s6.mp4",
+      "rotulo": "semente 6"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s7.mp4",
+      "rotulo": "semente 7"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s8.mp4",
+      "rotulo": "semente 8"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s9.mp4",
+      "rotulo": "semente 9"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s10.mp4",
+      "rotulo": "semente 10"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s11.mp4",
+      "rotulo": "semente 11"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\duelo\\duelo-s12.mp4",
+      "rotulo": "semente 12"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "e-isso",
+      "pede_comentario": false,
+      "rotulo": "É isso"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "quase",
+      "pede_comentario": true,
+      "rotulo": "Quase: ajustar (comente)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "nao-e-isso",
+      "pede_comentario": true,
+      "rotulo": "Não é isso (comente)"
+    }
+  ],
+  "pergunta": "O que você acha desse duelo? (ruína, zumbi que corre, 6 guardas contra 4 zumbis)",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "Duelo: é isso?",
+  "vigente": null
+}

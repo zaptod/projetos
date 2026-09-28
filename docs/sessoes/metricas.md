@@ -1,5 +1,17 @@
 # Métricas e conferências
 
+<!-- decisoes:inicio -->
+## Decisões do Adrian (gerado — não edite à mão)
+
+Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian manda.** Para mudar uma, ele usa a tela Decisões do app.
+
+**Geral**
+- ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
+- ✅ **Modo de trabalho dos agentes** — Um projeto por vez (28/09/2026) `modo-de-trabalho`
+- ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
+
+<!-- decisoes:fim -->
+
 Documento de passagem. A fotografia do §2 é de 27/09/2026; o que foi medido
 de novo na madrugada de 28/09 está com a data. Onde um número da fotografia
 não reproduziu, está dito. O que eu não medi está marcado como **não medi**,

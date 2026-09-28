@@ -1,0 +1,73 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.089802",
+  "depende_de": [
+    {
+      "decisao": "transicao",
+      "opcao": "visual-atual"
+    }
+  ],
+  "historico": [],
+  "id": "som-real-16a",
+  "midias": [
+    {
+      "caminho": "random_builds/outputs/_ouvir/1_duelo_00014_ANTES.mp4",
+      "rotulo": "ANTES · duelo 00014"
+    },
+    {
+      "caminho": "random_builds/outputs/_ouvir/1_duelo_00014_DEPOIS.mp4",
+      "rotulo": "DEPOIS · duelo 00014"
+    },
+    {
+      "caminho": "random_builds/outputs/_ouvir/2_duelo_00016_ANTES.mp4",
+      "rotulo": "ANTES · duelo 00016"
+    },
+    {
+      "caminho": "random_builds/outputs/_ouvir/2_duelo_00016_DEPOIS.mp4",
+      "rotulo": "DEPOIS · duelo 00016"
+    },
+    {
+      "caminho": "random_builds/outputs/_ouvir/3_duelo_00022_ANTES.mp4",
+      "rotulo": "ANTES · duelo 00022"
+    },
+    {
+      "caminho": "random_builds/outputs/_ouvir/3_duelo_00022_DEPOIS.mp4",
+      "rotulo": "DEPOIS · duelo 00022"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "generation-00077"
+      ],
+      "descricao": "",
+      "id": "aprovar",
+      "pede_comentario": false,
+      "rotulo": "Aprovar: re-render do estoque na madrugada"
+    },
+    {
+      "desbloqueia": [
+        "generation-00077"
+      ],
+      "descricao": "",
+      "id": "trocar",
+      "pede_comentario": true,
+      "rotulo": "Aprovar, mas trocar alguns sons (diga quais)"
+    },
+    {
+      "desbloqueia": [
+        "generation-00077"
+      ],
+      "descricao": "",
+      "id": "reprovar",
+      "pede_comentario": false,
+      "rotulo": "Reprovar: manter o sintetizado"
+    }
+  ],
+  "pergunta": "O som real (DEPOIS) substitui o sintetizado (ANTES)?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Som real da luta (16A)",
+  "vigente": null
+}

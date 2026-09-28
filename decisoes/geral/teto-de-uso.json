@@ -1,0 +1,41 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:26.894590",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "",
+      "em": "2026-09-28",
+      "opcao": "cinquenta",
+      "origem": "semente"
+    }
+  ],
+  "id": "teto-de-uso",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "cinquenta",
+      "pede_comentario": false,
+      "rotulo": "Passou de 50%, para tudo; força total 20 min antes de renovar"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "Até onde gastar o limite de uso?",
+  "projeto": "geral",
+  "situacao": "decidida",
+  "titulo": "Teto de uso do Claude",
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28",
+    "opcao": "cinquenta"
+  }
+}

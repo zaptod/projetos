@@ -1,0 +1,41 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.477350",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "",
+      "em": "2026-09-28",
+      "opcao": "manter",
+      "origem": "semente"
+    }
+  ],
+  "id": "reprovados-no-ar",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter no ar"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "tirar",
+      "pede_comentario": false,
+      "rotulo": "Tirar do ar"
+    }
+  ],
+  "pergunta": "A 00035 p01 e as 3 partes aprovadas só pela folha: ficam no ar?",
+  "projeto": "historias",
+  "situacao": "decidida",
+  "titulo": "Reprovados que já estão no ar",
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28",
+    "opcao": "manter"
+  }
+}

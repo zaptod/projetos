@@ -1,5 +1,22 @@
 # Histórias
 
+<!-- decisoes:inicio -->
+## Decisões do Adrian (gerado — não edite à mão)
+
+Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian manda.** Para mudar uma, ele usa a tela Decisões do app.
+
+**Geral**
+- ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
+- ✅ **Modo de trabalho dos agentes** — Um projeto por vez (28/09/2026) `modo-de-trabalho`
+- ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
+
+**Histórias**
+- ✅ **Vídeo reprovado ou não assistido** — Fica retido; só sai se o horário fosse ficar vazio (27/09/2026) `reprovado-ou-nao-assistido`
+- ✅ **Gemini pago** — Não: fica na gratuita (28/09/2026) `gemini-pago`
+- ✅ **Reprovados que já estão no ar** — Manter no ar (28/09/2026) `reprovados-no-ar`
+
+<!-- decisoes:fim -->
+
 Documento de passagem — escrito em 27/09/2026 pela sessão dona desta parte.
 
 Esta parte **cria**: roteiro num LLM, uma imagem por cena no PicassoIA, narração,

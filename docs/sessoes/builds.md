@@ -1,5 +1,29 @@
 # Passagem: BUILDS / NEURAL FIGHTS
 
+<!-- decisoes:inicio -->
+## Decisões do Adrian (gerado — não edite à mão)
+
+Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian manda.** Para mudar uma, ele usa a tela Decisões do app.
+
+**Geral**
+- ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
+- ✅ **Modo de trabalho dos agentes** — Um projeto por vez (28/09/2026) `modo-de-trabalho`
+- ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
+
+**Builds**
+- ✅ **Variantes B** — Título próprio para cada uma (27/09/2026) `variantes-b`
+- ✅ **Roleta automática de madrugada** — Sim (28/09/2026) `roleta-de-madrugada`
+- ✅ **Estreia generation_00066 (muda)** — Descartar (28/09/2026) `estreia-00066`
+- ✅ **Onda 16: ferramenta do visual** — Godot 4 (28/09/2026) `ferramenta-do-visual`
+- ✅ **Visual do lutador** — Bolinha com arte (28/09/2026) `visual-do-lutador`
+- ✅ **Origem da arte** — CC0 + IA, trocável (28/09/2026) `origem-da-arte`
+- ✅ **Transição até o palco** — O visual atual segue, já com o som real (28/09/2026) `transicao`
+- ⏳ **Som real da luta (16A)** — O som real (DEPOIS) substitui o sintetizado (ANTES)? `som-real-16a`
+- ⏳ **Palco: o visual novo (A/B)** — Seguir com o palco (Godot) como o visual novo das lutas? `palco-seguir`
+- 🔒 3 bloqueada(s), esperando outra decisão: ver `decisoes/builds/README.md`
+
+<!-- decisoes:fim -->
+
 Minha parte: `random_builds/` (main.py e o motor de geração — roleta/builds,
 estreias, duelos, torneios, render, capa, áudio/voz, reações) e
 `neural_fights/` (banco de personagens e armas, motor de luta, gravador). NÃO é

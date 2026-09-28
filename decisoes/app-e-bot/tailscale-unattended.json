@@ -1,0 +1,41 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.696154",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "falta ele rodar o comando: tailscale set --unattended=true (a permissão do agente barrou)",
+      "em": "2026-09-28",
+      "opcao": "sim",
+      "origem": "semente"
+    }
+  ],
+  "id": "tailscale-unattended",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "sim",
+      "pede_comentario": false,
+      "rotulo": "Sim, ligar"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "nao",
+      "pede_comentario": false,
+      "rotulo": "Não"
+    }
+  ],
+  "pergunta": "Deixar o Tailscale rodando mesmo sem ninguém logado?",
+  "projeto": "app-e-bot",
+  "situacao": "decidida",
+  "titulo": "Tailscale sem login (unattended)",
+  "vigente": {
+    "comentario": "falta ele rodar o comando: tailscale set --unattended=true (a permissão do agente barrou)",
+    "em": "2026-09-28",
+    "opcao": "sim"
+  }
+}

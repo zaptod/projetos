@@ -1,0 +1,47 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.227320",
+  "depende_de": [
+    {
+      "decisao": "palco-seguir",
+      "opcao": "seguir"
+    }
+  ],
+  "historico": [],
+  "id": "chao-da-arena",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\chao-da-arena\\ab_quadro.png",
+      "rotulo": "Quadro A/B do chão"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "pedra",
+      "pede_comentario": false,
+      "rotulo": "Foto de pedra CC0 escurecida (como está)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ia",
+      "pede_comentario": false,
+      "rotulo": "Arena pintada pela IA (PicassoIA)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "Qual chão fica na arena?",
+  "projeto": "builds",
+  "situacao": "bloqueada",
+  "titulo": "Chão da arena",
+  "vigente": null
+}

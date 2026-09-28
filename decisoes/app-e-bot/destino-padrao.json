@@ -1,0 +1,48 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.633856",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "",
+      "em": "2026-09-28",
+      "opcao": "ambos",
+      "origem": "semente"
+    }
+  ],
+  "id": "destino-padrao",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ambos",
+      "pede_comentario": false,
+      "rotulo": "YouTube e TikTok"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "youtube",
+      "pede_comentario": false,
+      "rotulo": "Só YouTube"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "tiktok",
+      "pede_comentario": false,
+      "rotulo": "Só TikTok"
+    }
+  ],
+  "pergunta": "Quando o destino não é dito, para onde vai?",
+  "projeto": "app-e-bot",
+  "situacao": "decidida",
+  "titulo": "Destino padrão da publicação",
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28",
+    "opcao": "ambos"
+  }
+}

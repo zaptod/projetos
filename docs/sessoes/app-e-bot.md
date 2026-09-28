@@ -1,5 +1,22 @@
 # App do celular e bot do Telegram
 
+<!-- decisoes:inicio -->
+## Decisões do Adrian (gerado — não edite à mão)
+
+Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian manda.** Para mudar uma, ele usa a tela Decisões do app.
+
+**Geral**
+- ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
+- ✅ **Modo de trabalho dos agentes** — Um projeto por vez (28/09/2026) `modo-de-trabalho`
+- ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
+
+**App e bot**
+- ✅ **Quem publica pelo celular** — Só o app (28/09/2026) `quem-publica-pelo-celular`
+- ✅ **Destino padrão da publicação** — YouTube e TikTok (28/09/2026) `destino-padrao`
+- ✅ **Tailscale sem login (unattended)** — Sim, ligar (28/09/2026) · “falta ele rodar o comando: tailscale set --unattended=true (a permissão do agente barrou)” `tailscale-unattended`
+
+<!-- decisoes:fim -->
+
 Documento de passagem. Quem chegar aqui sem nunca ter visto o projeto
 consegue operar esta parte lendo só isto.
 
@@ -27,17 +44,18 @@ Tudo vive em `remoto/`:
 - `comandos.py`, `bot.py`, `api.py`, `relatorios.py`, `apurador.py` — o bot.
   O `/publicar` do bot **não publica** (ver §3.3).
 - `vigia_tailnet.py` — a vigia do tailnet, no laço do bot (ver §4).
-- `decisoes.py` + `app/decisoes.js` — a tela **Decisões** (28/09): o que o
-  Adrian precisa decidir, com vídeos e imagens para olhar, opções e
-  comentário. A resposta vai para `respostas.jsonl` e para o Telegram.
-- `app/` — a PWA (`index.html`, `app.js`, `vila.js`, `comandos.js`).
+- `decisoes.py` + `app/decisoes.js` — a **árvore de decisões** do Adrian
+  (28/09), uma aba por projeto no app. A fonte é o repositório:
+  `decisoes/<projeto>/<id>.json` (ver §3.7).
+- `app/` — a PWA (`index.html`, `app.js`, `vila.js`, `comandos.js`,
+  `decisoes.js`).
 
 Estado em disco, em `%LOCALAPPDATA%\neural-fights\`: `app_celular.json`
 (aparelhos pareados, só o hash do token), `app_celular_acoes.jsonl` (rastro),
 `app_celular_em_voo.json` (publicações sem desfecho), `app_celular_tarefas/`
-(uma pasta por tarefa), `remoto.json` (token do bot) e `decisoes\`
-(`registro.json`, `respostas.jsonl` e `midias\<id>\` para o que foi
-copiado).
+(uma pasta por tarefa), `remoto.json` (token do bot), `decisoes.lock` e
+`decisoes_midia\<id>\` (mídia copiada de pasta temporária; a mídia nunca vai
+para o git).
 
 **Rede:** o servidor escuta só em `127.0.0.1:8931` e quem o publica é o
 `tailscale serve` (`https://desktop-tgti3ek.tail63af85.ts.net`, *tailnet
@@ -54,14 +72,19 @@ python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
 python -m remoto.api_http --aparelhos   # id, nome, desde
 python -m remoto.api_http --em-voo      # publicações sem desfecho
 python -m remoto.tarefas                # tarefas recentes e como terminaram
-python -m remoto.decisoes listar        # decisões pendentes (--todas, --respondidas)
-python -m remoto.decisoes adicionar --titulo "..." --pergunta "..." \
-    --opcao "Rótulo" --opcao "Rótulo|descrição" --midia "E:\x.mp4|ANTES" [--copiar]
-python -m remoto.decisoes onde          # caminhos do registro e das respostas
+python -m remoto.decisoes arvore [--projeto P]      # a árvore em texto
+python -m remoto.decisoes listar [--projeto P] [--situacao pendente]
+python -m remoto.decisoes adicionar --projeto builds --titulo "..." --pergunta "..." \
+    --opcao "id=Rótulo|descrição" --opcao "outro=Outro (comente)" \
+    --midia "E:\x.mp4|ANTES" [--copiar] [--depende "decisao=opcao"] [--commit]
+python -m remoto.decisoes responder <id> <opcao> [--comentario C] [--sem-commit]
+python -m remoto.decisoes gerar          # regenera os READMEs e os blocos das sessões
+python -m remoto.decisoes onde
 ```
 
-Opção cujo rótulo diz "(comente)" ou "(diga ...)" exige comentário. Mídia de
-pasta temporária entra com `--copiar`. Só entram mp4, webm, png, jpg e webp.
+Opção cujo rótulo diz "(comente)" ou "(diga ...)" exige comentário.
+`--depende "x=*"` quer dizer "x decidida, com qualquer opção". Mídia de pasta
+temporária entra com `--copiar`. Só entram mp4, webm, png, jpg e webp.
 
 Use **sempre** `--basetemp` no `E:` — o `C:` vive perto de encher, e a falha
 "intermitente" da suíte em 17/09 era disco cheio.
@@ -97,6 +120,27 @@ DOM e clicando.
    trocar conta) só existe com `--perigosas` **e** digitando o nome do alvo.
 6. **Nada de interface no celular**: logins, OAuth, Oficina, janelas do jogo e
    `os.startfile` ficam no PC.
+7. **As decisões dele são uma árvore no git** (28/09/2026). Formato e regras:
+   - Um arquivo por decisão em `decisoes/<projeto>/<id>.json`, com
+     indentação 2, chaves ordenadas e LF. Projetos: `geral`, `builds`,
+     `historias`, `publicacao`, `metricas`, `app-e-bot`, `painel-e-vila` e
+     `jogo-zombie`.
+   - A decisão fica `bloqueada` até os `depende_de` estarem decididos com a
+     opção certa. Quando ele troca uma já tomada, tudo o que dependia dela
+     vira `a_rever` (em qualquer nível) e fica assim até ele responder de
+     novo.
+   - O `historico` só cresce.
+   - Cada resposta:
+     - acrescenta uma linha em `decisoes/_eventos.jsonl` (o orquestrador vigia);
+     - regenera `decisoes/<projeto>/README.md` e o bloco `decisoes:inicio/fim`
+       de cada `docs/sessoes/<parte>.md` (as gerais entram em todas);
+     - commita **por caminho**, com "decisão(<projeto>): <título> → <opção>".
+   - O doc de sessão que tiver outra mudança por commitar fica fora do
+     commit. O bloco dele fica escrito e entra num commit seguinte.
+   - `index.lock` gera nova tentativa. Commit que falha não desfaz a decisão.
+   - A mídia não vai para o git: o JSON aponta para o arquivo (caminho do
+     repositório, `%LOCALAPPDATA%\...` ou absoluto), e a tela avisa "mídia
+     não existe mais".
 
 ## 4. Armadilhas medidas (já quebraram)
 
@@ -193,20 +237,34 @@ DOM e clicando.
   duas únicas com gatilho de logon são do Opera GX e da Realtek. Na pasta
   Inicializar e nas chaves `Run` não há nada do projeto; o Tailscale sobe
   pela pasta Inicializar comum.
-- **Novo em 28/09/2026: a tela Decisões.**
+- **Novo em 28/09/2026: a árvore de decisões** (a lei está em §3.7).
   - A mídia sai por id do item e índice, nunca por caminho. O `GET
     /api/decisao/<id>/midia/<n>` devolve o mesmo bilhete de 10 min dos
     vídeos, e o `/v/` serve por Range: 206, `Content-Range`, e 416 para
     intervalo fora do arquivo. O `Content-Type` vem da extensão; imagem sem
     Range vem inteira, com 200.
   - Responder exige o token e não depende de `--acoes` (não executa nada).
-  - O registro ilegível recusa e não é regravado.
-  - Prova de tela clicando, na instância de teste 8934 (registro copiado):
-    6 itens; vídeo de 28 s tocando depois do toque; o pulo para o meio segue
-    dos 16 s; 20 respostas 206; a imagem aparece; os 12 duelos do zombie só
-    com "semente N"; responder grava, avisa e muda de aba.
+    Arquivo de decisão ilegível, ou ciclo na árvore, recusa em toda leitura.
+  - Semeada com 24 decisões: 18 que ele já tinha tomado em 27–28/09
+    (`decidida`, com a data) e 6 à espera dele. Três delas estão
+    `bloqueadas`: o Chão e o Hitstop atrás do Palco, e a 00077 atrás do Som
+    real.
+  - Prova de tela clicando, na instância 8934 (cópia das decisões):
+    - a árvore aparece em 3 níveis, com as cores;
+    - o Som real toca e o pulo para o meio segue dos 16 s;
+    - a bloqueada diz o que falta e não deixa escolher;
+    - trocar a Ferramenta avisa que vão para "a rever" a Origem da arte e
+      o Visual do lutador;
+    - responder Palco = Seguir desbloqueia o Chão e o Hitstop;
+    - a imagem aparece; os 12 duelos do zombie só com "semente N";
+    - foram 26 respostas 206.
   - Com mais de 6 vídeos no item, eles só carregam ao tocar
     (`preload="none"`).
+  - **Não feito, e é do Adrian:** a linha em cada `.claude/agents/<parte>.md`
+    ("antes de começar, ler `decisoes/<parte>/` e o bloco da sessão;
+    decisão vigente do Adrian manda"). São os arquivos de configuração dos
+    agentes, e o pedido veio por mensagem de agente. O bloco gerado já está
+    em cada `docs/sessoes/<parte>.md`, que todo agente lê primeiro.
 - **Resolvido em 28/09/2026: o monitor do Agendador não olhava a geração
   noturna.** O `_linhas_do_agendador` (relatório de funcionamento) conferia
   as tarefas da criação das histórias, as 10 da postagem e o bot, e dizia
@@ -252,6 +310,7 @@ DOM e clicando.
 | `atividade.jsonl` (diário) | `builds.atividade` | o app lê; escreve **uma** linha (`etapa app.a_conferir`) quando marca algo a conferir |
 | travas de perfil | `builds.travas` | só a sonda de leitura |
 | `app_celular_*.json(l)` e as tarefas | **esta sessão** | escrita sob `trava_arquivo`, reentrante por thread |
-| `decisoes\respostas.jsonl` | **esta sessão** escreve (append, uma linha por resposta: `id`, `opcao`, `opcao_rotulo`, `comentario`, `em`, `aparelho`) | o **orquestrador** vigia; os itens novos ele registra pela CLI `python -m remoto.decisoes adicionar` |
+| `decisoes/_eventos.jsonl` (no repositório) | **esta sessão** escreve (append, uma linha por resposta: `projeto`, `id`, `titulo`, `opcao`, `opcao_rotulo`, `comentario`, `em`, `anterior`, `a_rever`) | o **orquestrador** vigia; os itens novos ele registra pela CLI `python -m remoto.decisoes adicionar` |
+| bloco `decisoes:inicio/fim` em cada `docs/sessoes/<parte>.md` | **gerado** por `remoto/decisoes.py` | cada parte lê como entrada; não edite à mão (é regenerado a cada resposta) |
 | grade de postagem | `ferramentas/postar.py` | o app respeita a janela (−20/−25/−40 min conforme o destino, +18 min) e recusa se `postar.py` estiver vivo |
 | dia de grade | `builds.publicar.conferencia` | `relatorios.metas` usa `_horario_da_grade`, `_dia_de_grade`, `_abertura_e_fechamento` e `dia_de_grade_fechado`, todas atrás de `relatorios._conferencia()`. As três primeiras são **internas** de lá: se a conferência as renomear, o `/metas` responde "falhou" (e os testes do remoto acusam). Pedido em aberto: uma função pública `dia_de_grade(instante)` |

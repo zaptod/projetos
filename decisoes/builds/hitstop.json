@@ -1,0 +1,35 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.263933",
+  "depende_de": [
+    {
+      "decisao": "palco-seguir",
+      "opcao": "seguir"
+    }
+  ],
+  "historico": [],
+  "id": "hitstop",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ligar",
+      "pede_comentario": false,
+      "rotulo": "Ligar"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "desligado",
+      "pede_comentario": false,
+      "rotulo": "Deixar desligado"
+    }
+  ],
+  "pergunta": "Ligar a pausa curta no momento do golpe? Deixa o vídeo um pouco mais longo.",
+  "projeto": "builds",
+  "situacao": "bloqueada",
+  "titulo": "Hitstop: a pausinha no impacto",
+  "vigente": null
+}

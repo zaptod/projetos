@@ -1,0 +1,41 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:27.091064",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "",
+      "em": "2026-09-27",
+      "opcao": "titulo-proprio",
+      "origem": "semente"
+    }
+  ],
+  "id": "variantes-b",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "titulo-proprio",
+      "pede_comentario": false,
+      "rotulo": "Título próprio para cada uma"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "mesmo",
+      "pede_comentario": false,
+      "rotulo": "Mesmo título da A"
+    }
+  ],
+  "pergunta": "Como a variante B se chama?",
+  "projeto": "builds",
+  "situacao": "decidida",
+  "titulo": "Variantes B",
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-27",
+    "opcao": "titulo-proprio"
+  }
+}

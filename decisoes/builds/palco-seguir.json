@@ -1,0 +1,58 @@
+{
+  "comentario": true,
+  "contexto": "O A/B passa duas vezes: a 1ª com o som de hoje, a 2ª com o do palco.",
+  "criado": "2026-09-28T15:08:28.187815",
+  "depende_de": [
+    {
+      "decisao": "ferramenta-do-visual",
+      "opcao": "godot"
+    }
+  ],
+  "historico": [],
+  "id": "palco-seguir",
+  "midias": [
+    {
+      "caminho": "random_builds/outputs/_palco/ab_duelo_00016/ab_celular.mp4",
+      "rotulo": "A/B · duelo 00016"
+    },
+    {
+      "caminho": "random_builds/outputs/_palco/ab_duelo_00016/palco_celular.mp4",
+      "rotulo": "Palco · duelo 00016"
+    },
+    {
+      "caminho": "random_builds/outputs/_palco/palco_4242/palco_celular.mp4",
+      "rotulo": "Palco · semente 4242"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "chao-da-arena",
+        "hitstop"
+      ],
+      "descricao": "",
+      "id": "seguir",
+      "pede_comentario": false,
+      "rotulo": "Seguir: próxima etapa é a arte (16E)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ajustes",
+      "pede_comentario": true,
+      "rotulo": "Seguir, com ajustes (comente)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "nao",
+      "pede_comentario": false,
+      "rotulo": "Não seguir"
+    }
+  ],
+  "pergunta": "Seguir com o palco (Godot) como o visual novo das lutas?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Palco: o visual novo (A/B)",
+  "vigente": null
+}

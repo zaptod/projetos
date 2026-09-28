@@ -82,10 +82,19 @@ qualquer publicação ainda sem desfecho. Sem destino dito, vão os dois
 (YouTube e TikTok). Até 27/09 o `/publicar` do bot chamava o `main.py
 publicar` direto, num passo só, sem nada disso, e o YouTube subia privado.
 
-A tela **Decisões** do app (28/09/2026) mostra o que o Adrian precisa
-decidir. Cada decisão vem com os vídeos (tocando por Range), as imagens, as
-opções e um campo de comentário. A resposta vai para
-`%LOCALAPPDATA%\neural-fights\decisoes\respostas.jsonl` e para o Telegram.
+A tela **Decisões** do app (28/09/2026) é a árvore de decisões do Adrian,
+uma aba por projeto. Tocar num nó abre a pergunta, os vídeos (tocando por
+Range), as imagens, as opções, o comentário e o histórico. Uma decisão fica
+bloqueada até as de que ela depende estarem decididas; trocar uma já tomada
+manda as dependentes para "a rever".
+
+A fonte é o repositório: `decisoes/<projeto>/<id>.json`, com a árvore em
+texto no `README.md` de cada projeto. Cada resposta:
+- vira uma linha em `decisoes/_eventos.jsonl`;
+- vira um commit por caminho;
+- vai para o bloco gerado de cada `docs/sessoes/<parte>.md`;
+- é avisada no Telegram.
+
 Item novo entra pela CLI: `python -m remoto.decisoes adicionar ...`.
 
 O bot também **vigia o tailnet** (`vigia_tailnet.py`). A cada 2 minutos ele

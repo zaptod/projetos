@@ -1,0 +1,43 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.030255",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "",
+      "em": "2026-09-28",
+      "opcao": "visual-atual",
+      "origem": "semente"
+    }
+  ],
+  "id": "transicao",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "som-real-16a"
+      ],
+      "descricao": "",
+      "id": "visual-atual",
+      "pede_comentario": false,
+      "rotulo": "O visual atual segue, já com o som real"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "O que vai ao ar enquanto o palco não fica pronto?",
+  "projeto": "builds",
+  "situacao": "decidida",
+  "titulo": "Transição até o palco",
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28",
+    "opcao": "visual-atual"
+  }
+}

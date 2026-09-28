@@ -133,10 +133,37 @@ dialog p { margin: 0 0 10px; overflow-wrap: anywhere; }
 #tarefa-caixa { margin-top: 10px; }
 .abas { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .abas button[aria-pressed="true"] { border-color: var(--acento); color: var(--acento); }
-/* ---- decisoes */
-.decisao-cartao { display: block; width: 100%; text-align: left; font: inherit;
-  color: var(--texto); cursor: pointer; }
-.decisao-titulo { font-weight: 600; margin-bottom: 2px; }
+/* ---- decisoes: a arvore */
+.arvore { padding: 6px 8px; }
+.no { display: flex; gap: 8px; align-items: flex-start; width: calc(100% - var(--recuo, 0px));
+  text-align: left; font: inherit; color: var(--texto); background: none; border: 0;
+  border-left: 3px solid var(--linha); border-radius: 6px; padding: 7px 8px;
+  margin: 3px 0; cursor: pointer; }
+.nivel-1 { margin-left: 16px; --recuo: 16px; }
+.nivel-2 { margin-left: 32px; --recuo: 32px; }
+.nivel-3 { margin-left: 48px; --recuo: 48px; }
+.nivel-4 { margin-left: 64px; --recuo: 64px; }
+.nivel-5 { margin-left: 80px; --recuo: 80px; }
+.no-icone { flex: none; width: 1.4em; text-align: center; }
+.no-corpo { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.no-titulo { font-weight: 600; }
+.no-resumo { margin-top: 1px; }
+.no.sit-decidida { border-left-color: var(--ok); }
+.no.sit-pendente { border-left-color: var(--acento); background: var(--fundo); }
+.no.sit-a_rever { border-left-color: var(--ativo); background: var(--fundo); }
+.no.sit-bloqueada { opacity: .6; }
+.selo.sit-decidida { color: var(--ok); }
+.selo.sit-pendente { color: var(--acento); }
+.selo.sit-a_rever { color: var(--ativo); }
+.selo.sit-bloqueada { color: var(--fraco); }
+.legenda { margin: -4px 4px 12px; }
+.link { background: none; border: 0; padding: 0; font: inherit; color: var(--acento);
+  text-decoration: underline; cursor: pointer; }
+.cartao h2.decisao-h { font-size: 17px; text-transform: none; letter-spacing: normal;
+  color: var(--texto); margin: 8px 0 4px; }
+.decisao-respec { margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--ativo); color: var(--ativo); font-size: 14px; }
+.decisao-opcao.vigente { border-color: var(--ok); }
 .decisao-pergunta { margin: 0 0 6px; }
 .decisao-midia { margin-bottom: 14px; }
 .decisao-midia:last-child { margin-bottom: 0; }
@@ -148,3 +175,4 @@ dialog p { margin: 0 0 10px; overflow-wrap: anywhere; }
 .decisao-comentario { width: 100%; margin-top: 10px; font: inherit; padding: 8px;
   border-radius: 8px; border: 1px solid var(--linha); background: var(--fundo);
   color: var(--texto); resize: vertical; }
+.cartao > .selo { display: inline-block; }

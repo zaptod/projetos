@@ -1,0 +1,50 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T15:08:28.766006",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "",
+      "em": "2026-09-27",
+      "opcao": "duelo",
+      "origem": "semente"
+    }
+  ],
+  "id": "formato-do-primeiro-video",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "duelo-e-isso"
+      ],
+      "descricao": "",
+      "id": "duelo",
+      "pede_comentario": false,
+      "rotulo": "Duelo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "exodo",
+      "pede_comentario": false,
+      "rotulo": "Êxodo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "Com que formato o canal do zombie estreia?",
+  "projeto": "jogo-zombie",
+  "situacao": "decidida",
+  "titulo": "Formato do 1º vídeo",
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-27",
+    "opcao": "duelo"
+  }
+}
