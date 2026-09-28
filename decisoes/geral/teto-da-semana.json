@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Medido às 20:47 de 28/09: sessão 24%, semana 16% (renova 05/10 09:00).",
+  "criado": "2026-09-28T20:56:20.198971",
+  "depende_de": [],
+  "historico": [],
+  "id": "teto-da-semana",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "a semana fica só à vista",
+      "id": "nao",
+      "pede_comentario": false,
+      "rotulo": "Não, só a sessão"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "a força total também respeita",
+      "id": "oitenta",
+      "pede_comentario": false,
+      "rotulo": "Sim: passou de 80% da semana, para tudo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "aviso",
+      "pede_comentario": false,
+      "rotulo": "Só avisar no Telegram aos 80%"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "Hoje só a sessão de 5 h tem teto (50%): passou, os agentes param. A semana aparece na Mesa, mas nada para quando ela enche. Quer um teto na semana também?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Teto também no limite semanal?",
+  "vigente": null
+}
