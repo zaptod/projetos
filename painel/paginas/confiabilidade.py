@@ -187,12 +187,26 @@ class Pagina:
 
 
 def _linha_da_conferencia(canal: str, conf: dict) -> str:
-    estado = (conf or {}).get("estado", "?")
+    """Uma linha por canal: o ledger contra o canal E a grade do dia.
+
+    Ate 28/09/2026 a linha era so o veredito do ledger, e o canal que cumpriu
+    5 de 10 horarios aparecia como "✓ 5/5" — ledger coerente com a grade
+    furada. O ✓ agora exige as duas coisas.
+    """
+    conf = conf or {}
+    estado = conf.get("estado", "?")
+    grade = conf.get("grade")
+    placar = (f"grade {conf.get('horarios_cumpridos', 0)}/"
+              f"{conf.get('slots_da_grade', 0)}" if grade else "")
     if estado == "sujo":
         return (f"{canal}: ✕ {conf.get('fantasmas', 0)} fant., "
-                f"{conf.get('rascunhos', 0)} rasc.")
+                f"{conf.get('rascunhos', 0)} rasc."
+                + (f" · {placar}" if placar else ""))
     if estado == "limpo":
-        return f"{canal}: ✓ {conf.get('casados', 0)}/{conf.get('no_ledger', 0)}"
+        ledger = f"{conf.get('casados', 0)}/{conf.get('no_ledger', 0)}"
+        if grade == "em falta":
+            return f"{canal}: ✕ {placar} · ledger ✓ {ledger}"
+        return f"{canal}: ✓ {ledger}" + (f" · {placar}" if placar else "")
     if estado == "falhou":
         return f"{canal}: não rodou"
     return f"{canal}: {estado}"

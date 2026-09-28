@@ -151,6 +151,21 @@ class ODiaDeGradeAs0520(unittest.TestCase):
         self.assertEqual(10, seguinte["deficit"])
 
 
+class OContratoComORelatorioDeMetas(unittest.TestCase):
+    """`remoto/relatorios.py` conta a meta pelo dia de grade chamando as
+    funcoes internas daqui (d68523e). Renomear uma delas derrubava o
+    relatorio das 21:00 sem nenhum teste deste lado acusar."""
+
+    def test_os_nomes_que_o_relatorio_usa_existem(self):
+        abertura, fechamento = conferencia._abertura_e_fechamento("youtube")
+        self.assertEqual((6, 0), (abertura, fechamento))
+        dia, hora = conferencia._horario_da_grade(
+            datetime(2026, 9, 28, 0, 39), "youtube")
+        self.assertEqual((date(2026, 9, 28), 0), (dia, hora))
+        self.assertEqual(date(2026, 9, 27),
+                         conferencia._dia_de_grade(dia, hora, "youtube"))
+
+
 class ODiaConferido(unittest.TestCase):
 
     def test_o_relogio_da_madrugada_confere_o_dia_que_acabou(self):
@@ -244,24 +259,33 @@ class OAlarmeDaGrade(unittest.TestCase):
     """O alarme e a linha de erro no diario. Com o relogio das 05:20: calado
     depois de um dia 10/10, aceso depois de um dia 0/10."""
 
-    def _rodar(self, publicados, no_canal):
+    def _rodar(self, publicados, no_canal, *, anterior=None, agora=AS_0520):
+        """`anterior` e a ficha que ja estava no disco (a rodada de antes).
+
+        O diario e o ledger dos sinais tambem sao dublados: um diario real
+        com poucos eventos de builds acenderia um alarme que o caso nao pediu.
+        """
         from builds import atividade
-        from builds.publicar import metricas
+        from builds.publicar import metricas, sinais
         avisos = []
         reais = (metricas.publicados, conferencia.buscar_no_canal,
-                 conferencia.salvar, atividade.registrar)
+                 conferencia.salvar, atividade.registrar, conferencia.ultima,
+                 sinais.ler_diario)
         metricas.publicados = lambda canal="builds": publicados
         conferencia.buscar_no_canal = lambda *a, **k: no_canal
         conferencia.salvar = lambda f: None
         atividade.registrar = lambda *a, **k: avisos.append((a, k))
+        conferencia.ultima = lambda canal="builds": dict(anterior or {})
+        sinais.ler_diario = lambda caminho=None: []
 
         def restaurar():
             (metricas.publicados, conferencia.buscar_no_canal,
-             conferencia.salvar, atividade.registrar) = reais
+             conferencia.salvar, atividade.registrar, conferencia.ultima,
+             sinais.ler_diario) = reais
 
         self.addCleanup(restaurar)
         fichas = conferencia.conferir_tudo(("builds",), log=lambda _t: None,
-                                           agora=AS_0520)
+                                           agora=agora)
         return fichas["builds"], avisos
 
     def test_dia_cheio_nao_acende(self):
@@ -278,6 +302,67 @@ class OAlarmeDaGrade(unittest.TestCase):
         self.assertIn("0 de 10", args[2])
         self.assertIn("2026-09-27 06:37 a 2026-09-28 00:37", args[2])
         self.assertIn("0 linha(s) no ledger", args[2])
+
+
+class UmAvisoPorDiaDeGrade(unittest.TestCase):
+    """A conferencia roda 01:28, 03:20, 04:20 e 05:20, e todas conferem o
+    MESMO dia de grade. Ate 28/09/2026 cada uma escrevia a sua linha de
+    erro: o mesmo deficit quatro vezes no celular."""
+
+    _rodar = OAlarmeDaGrade._rodar
+
+    def _dia_com_falta(self, faltam: int):
+        horarios = _horarios_do_dia()
+        return _dia(horarios[:len(horarios) - faltam])
+
+    def test_a_segunda_rodada_da_noite_nao_repete(self):
+        primeira, avisos = self._rodar([], [], agora=datetime(2026, 9, 28, 1, 28))
+        self.assertEqual(1, len(avisos))
+        segunda, avisos = self._rodar([], [], anterior=primeira)
+        self.assertEqual(10, segunda["deficit"])
+        self.assertEqual([], avisos)
+        # A memoria continua na ficha, para a rodada das 04:20.
+        self.assertEqual({"dia_de_grade": "2026-09-27", "deficit": 10},
+                         segunda["avisos"]["grade"])
+
+    def test_deficit_que_cresce_avisa_de_novo(self):
+        # Entre as rodadas um video pode sumir do canal (apagado, virou
+        # privado): e noticia nova, e tem de chegar.
+        primeira, _ = self._rodar(*self._dia_com_falta(3),
+                                  agora=datetime(2026, 9, 28, 1, 28))
+        self.assertEqual(3, primeira["deficit"])
+        segunda, avisos = self._rodar(*self._dia_com_falta(4),
+                                      anterior=primeira)
+        self.assertEqual(1, len(avisos))
+        self.assertIn("4 em falta", avisos[0][0][2])
+
+    def test_deficit_que_diminui_nao_avisa(self):
+        # A recuperacao das 00:37 que saiu as 03:00 melhora o dia: nada a
+        # dizer que a primeira linha ja nao disse.
+        primeira, _ = self._rodar(*self._dia_com_falta(3),
+                                  agora=datetime(2026, 9, 28, 1, 28))
+        _segunda, avisos = self._rodar(*self._dia_com_falta(2),
+                                       anterior=primeira)
+        self.assertEqual([], avisos)
+
+    def test_dia_de_grade_novo_avisa_de_novo(self):
+        # A noite seguinte confere outro dia: o deficit dele e outra noticia,
+        # mesmo que o numero seja igual.
+        ontem = {"dia": "2026-09-27", "dia_de_grade": "2026-09-26",
+                 "deficit": 10, "rodadas": ["05:20"],
+                 "avisos": {"grade": {"dia_de_grade": "2026-09-26",
+                                      "deficit": 10},
+                            "noite": {"dia": "2026-09-27"}}}
+        _ficha, avisos = self._rodar([], [], anterior=ontem)
+        self.assertEqual(1, len(avisos))
+
+    def test_ficha_de_antes_deste_campo_conta_como_avisada(self):
+        # A ficha das 01:35 de 28/09/2026 foi gravada pela versao que avisava
+        # todo deficit. O dela ja chegou ao celular.
+        antiga = {"dia": "2026-09-28", "dia_de_grade": "2026-09-27",
+                  "deficit": 10, "grade": "em falta"}
+        _ficha, avisos = self._rodar([], [], anterior=antiga)
+        self.assertEqual([], avisos)
 
 
 if __name__ == "__main__":

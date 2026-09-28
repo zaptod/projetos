@@ -66,6 +66,30 @@ ESPERA_LISTA_S = 45.0
 ESPERA_ANALISE_S = 25.0
 ABAS_DA_ANALISE = ("Espectadores", "Engajamento")
 
+# A LISTA INTEIRA, e nao a primeira pagina. Medido em 28/09/2026: o Studio
+# pede `item_list` por POST com `{"cursor", "size"}` — 50 na primeira pagina,
+# 10 nas seguintes — e responde `cursor` (onde a proxima comeca) e
+# `has_more`. A lista mora num DIV com rolagem propria; `mouse.wheel` sem o
+# ponteiro em cima dele nao rola nada. De 17 a 28/09 toda noite parou em 50
+# ou 60 posts: 60 de 119 envios casados em builds e 50 de 165 em historias.
+# Rolando o DIV (e a tecla End), a mesma pagina chegou a 130 com `has_more`
+# ainda verdadeiro.
+TEMPO_DA_LISTA_S = 180.0
+PAUSA_DA_ROLAGEM_MS = 2000
+TENTATIVAS_SEM_CRESCER = 6
+# Leva todo elemento com rolagem propria ao fim, e a janela junto. Sem nome
+# de classe: as do Studio sao geradas (`css-snthx`) e mudam a cada versao.
+ROLAR_TUDO_JS = """() => {
+  for (const el of document.querySelectorAll('*')) {
+    const s = getComputedStyle(el);
+    if ((s.overflowY === 'auto' || s.overflowY === 'scroll') &&
+        el.scrollHeight > el.clientHeight + 50) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+  window.scrollTo(0, document.body.scrollHeight);
+}"""
+
 # O que so a pagina de analise traz. Quem nao for analisado nesta rodada
 # CARREGA estes campos do arquivo anterior — regravar sem eles apagava a curva
 # ja coletada, e a curva e justamente o numero que nao se recupera depois.
@@ -297,26 +321,109 @@ def carregar_salvas(canal: str = "builds") -> list:
     return saida
 
 
+# ------------------------------------------------------------------- a lista
+class Lista:
+    """Os posts que o Studio ja mandou, e ate onde a lista foi.
+
+    `fronteira` e o maior `cursor` devolvido e `tem_mais` e o `has_more`
+    DAQUELA resposta. As outras chegam fora de ordem: a cada rolagem o Studio
+    tambem repede a primeira pagina (cursor 0, que devolve 50 e
+    `has_more=true`), e ela nao pode apagar a noticia de que a lista acabou.
+    """
+
+    def __init__(self):
+        self.itens: dict = {}
+        self.fronteira = -1
+        self.tem_mais = None
+
+    def receber(self, corpo) -> None:
+        if not isinstance(corpo, dict):
+            return
+        for bruto in corpo.get("item_list") or []:
+            if isinstance(bruto, dict):
+                item = item_do_studio(bruto)
+                if item["tiktok_id"]:
+                    self.itens[item["tiktok_id"]] = item
+        cursor = _numero(corpo.get("cursor"))
+        if cursor is not None and cursor >= self.fronteira:
+            self.fronteira = cursor
+            self.tem_mais = bool(corpo.get("has_more"))
+
+    def mais_velho(self) -> int | None:
+        tempos = [i["post_time"] for i in self.itens.values()
+                  if i.get("post_time")]
+        return min(tempos) if tempos else None
+
+
+def ler_a_lista(page, lista: Lista, *, basta_antes_de: float | None = None,
+                limite_s: float = TEMPO_DA_LISTA_S,
+                pausa_ms: int = PAUSA_DA_ROLAGEM_MS,
+                sem_crescer: int = TENTATIVAS_SEM_CRESCER) -> str:
+    """Rola a lista ate o fim e diz POR QUE parou.
+
+    `completa`   o Studio respondeu `has_more=false`: nao ha mais post;
+    `suficiente` o post mais velho ja e anterior ao envio mais velho do
+                 ledger (`basta_antes_de`): o resto nao casaria com nada;
+    `parada`     varias rolagens seguidas sem post novo, com `has_more`
+                 ainda verdadeiro — a lista ficou INCOMPLETA, e isso aparece;
+    `tempo`      o teto de tempo acabou antes (tambem incompleta).
+
+    Alterna o DIV rolado por JS com a tecla End, os dois que funcionaram na
+    medicao; `mouse.wheel` sozinho foi o que parou em 50.
+    """
+    fim = time.time() + float(limite_s)
+    parado, vez = 0, 0
+    while True:
+        if lista.tem_mais is False:
+            return "completa"
+        velho = lista.mais_velho()
+        if basta_antes_de is not None and velho is not None \
+                and velho <= basta_antes_de:
+            return "suficiente"
+        if parado >= sem_crescer:
+            return "parada"
+        if time.time() >= fim:
+            return "tempo"
+        antes = len(lista.itens)
+        if vez % 2 == 0:
+            page.evaluate(ROLAR_TUDO_JS)
+        else:
+            page.keyboard.press("End")
+        vez += 1
+        page.wait_for_timeout(pausa_ms)
+        parado = parado + 1 if len(lista.itens) == antes else 0
+
+
 # --------------------------------------------------------------- navegador
 def coletar(canal: str = "builds", *, log=print,
             dias_de_analise: int = DIAS_DE_ANALISE,
             maximo_de_analises: int = MAXIMO_DE_ANALISES,
-            analisar: bool = True) -> list:
+            analisar: bool = True, resumo: dict | None = None) -> list:
     """Abre o Studio do canal, casa os posts com o ledger e grava.
 
     Abre navegador: nunca chamar de teste sem dublar.
+
+    `resumo`, se vier, recebe quantos posts a lista trouxe, por que ela
+    parou, e quantos envios do ledger casaram — o que a marca do dia grava.
+
+    O perfil e aberto por `contexto_persistente`, que PEGA A TRAVA da pasta:
+    se a publicacao estiver com o Chrome do TikTok, a coleta espera e depois
+    desiste (`PerfilOcupado`) em vez de abrir uma segunda janela na pasta.
     """
     from ..identity.browser import contexto_persistente, pagina
     from . import metricas
     from .tiktok import TikTokFalhou, perfil_da_conta
 
+    resumo = resumo if resumo is not None else {}
     publicacoes = [p for p in metricas.publicados(canal)
                    if p.get("plataforma") == "tiktok"]
+    resumo["envios"] = len(publicacoes)
     if not publicacoes:
         log(f"[tiktok-metricas] {canal}: nenhum envio de TikTok no ledger.")
         return []
 
-    itens, insights = {}, []
+    lista, insights = Lista(), []
+    itens = lista.itens
 
     def ouvir(resp):
         url = resp.url
@@ -327,12 +434,14 @@ def coletar(canal: str = "builds", *, log=print,
         except Exception:                                      # noqa: BLE001
             return
         if LISTA in url:
-            for bruto in corpo.get("item_list") or []:
-                item = item_do_studio(bruto)
-                if item["tiktok_id"]:
-                    itens[item["tiktok_id"]] = item
+            lista.receber(corpo)
         else:
             insights.append(corpo)
+
+    # So interessa o post que pode casar com o ledger: o mais velho dele,
+    # com a folga do casamento.
+    tempos = [t for t in (_instante(p) for p in publicacoes) if t is not None]
+    basta_antes_de = (min(tempos) - JANELA_DE_CASAMENTO_S) if tempos else None
 
     salvos = []
     pasta = pasta_do_canal(canal)
@@ -350,17 +459,30 @@ def coletar(canal: str = "builds", *, log=print,
                     f"o TikTok do canal {canal} pediu login; as metricas "
                     "ficam para depois do login pelo painel.")
             page.wait_for_timeout(1000)
-        # A lista vem paginada conforme rola. Para quando o total para de
-        # crescer, e nao num numero fixo de rolagens.
-        parado = 0
-        while parado < 3:
-            antes = len(itens)
-            page.mouse.wheel(0, 4000)
-            page.wait_for_timeout(2500)
-            parado = parado + 1 if len(itens) == antes else 0
-        log(f"[tiktok-metricas] {canal}: {len(itens)} post(s) no Studio.")
+        if not itens:
+            # LISTA VAZIA NAO E "ZERO POSTS". Com envio no ledger, o Studio
+            # tem post; nada chegar e a pagina que nao carregou.
+            raise TikTokFalhou(
+                f"a lista do Studio do canal {canal} nao carregou nenhum post "
+                f"em {ESPERA_LISTA_S:.0f}s ({len(publicacoes)} envio(s) no "
+                "ledger).")
+        motivo = ler_a_lista(page, lista, basta_antes_de=basta_antes_de)
+        resumo.update({"posts": len(itens), "lista": motivo})
+        incompleta = motivo in ("parada", "tempo")
+        log(f"[tiktok-metricas] {canal}: {len(itens)} post(s) no Studio "
+            f"(lista {motivo}"
+            + (", INCOMPLETA: o Studio ainda dizia que havia mais"
+               if incompleta else "") + ").")
 
         pares = casar(publicacoes, list(itens.values()))
+        resumo["casados"] = len(pares)
+        if not pares:
+            # ZERO CASADOS NAO E COLETA. Posts no Studio, envios no ledger e
+            # nenhum par: o casamento quebrou (conta trocada, relogio), e
+            # gravar "0 videos" como noite feita seria o medidor verde.
+            raise TikTokFalhou(
+                f"nenhum dos {len(publicacoes)} envio(s) do ledger casou com "
+                f"os {len(itens)} post(s) do Studio do canal {canal}.")
         escolhidos = (escolher_para_analise(pares, anteriores,
                                             dias=dias_de_analise,
                                             maximo=maximo_de_analises)
@@ -405,6 +527,6 @@ def coletar(canal: str = "builds", *, log=print,
     return salvos
 
 
-__all__ = ["analise_anterior", "analise_do_insight", "carregar_salvas",
-           "casar", "coletar", "escolher_para_analise", "item_do_studio",
-           "montar", "pasta_do_canal"]
+__all__ = ["Lista", "analise_anterior", "analise_do_insight",
+           "carregar_salvas", "casar", "coletar", "escolher_para_analise",
+           "item_do_studio", "ler_a_lista", "montar", "pasta_do_canal"]

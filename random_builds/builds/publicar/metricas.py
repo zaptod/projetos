@@ -284,6 +284,36 @@ def publicados(canal: str = "builds") -> list[dict]:
 
 
 # --------------------------------------------------------------------- API
+# QUANTAS CHAMADAS CADA COLETA CUSTA. A Data API cobra cota por chamada
+# (videos, playlistItems e channels: 1 unidade cada, de 10.000 por dia) e a
+# Analytics tem cota propria. Ninguem sabia quanto uma noite gastava; agora
+# cada parte da coleta grava o seu numero na marca do dia.
+CHAMADAS: dict = {"data": 0, "analytics": 0, "token": 0}
+
+# UMA segunda tentativa para queda de CONEXAO, e so para ela. Das onze
+# noites sem metrica do YouTube (17 a 28/09/2026), tres morreram assim: no
+# refresh do token (`oauth2.googleapis.com`, 17 e 19/09) e no playlistItems
+# (`SSLEOFError`, 17 e 28/09). Resposta ruim do Google (401, 403, 500) nao e
+# tentada de novo — ela diz alguma coisa, e repetir so gasta cota.
+PAUSA_ANTES_DE_TENTAR_DE_NOVO_S = 5.0
+
+
+def _get(api: str, url: str, **kwargs):
+    """`requests.get` que conta a chamada e tenta de novo UMA vez se a
+    conexao cair. Qualquer outra coisa sobe como estava."""
+    import time
+
+    import requests
+    for tentativa in (1, 2):
+        CHAMADAS[api] = CHAMADAS.get(api, 0) + 1
+        try:
+            return requests.get(url, **kwargs)
+        except (requests.ConnectionError, requests.Timeout):
+            if tentativa == 2:
+                raise
+            time.sleep(PAUSA_ANTES_DE_TENTAR_DE_NOVO_S)
+
+
 def comando_oauth(canal: str = "builds") -> str:
     """A linha de comando exata, ja com a conta ATIVA daquele canal."""
     try:
@@ -302,7 +332,18 @@ def _token(canal: str = "builds"):
         raise PublicacaoFalhou(
             f"sem credencial do YouTube em {caminho_credenciais(canal)} — "
             f"rode:\n  {comando_oauth(canal)}")
-    return token_de_acesso(credenciais), credenciais
+    import time
+
+    import requests
+    for tentativa in (1, 2):
+        CHAMADAS["token"] = CHAMADAS.get("token", 0) + 1
+        try:
+            return token_de_acesso(credenciais), credenciais
+        except (requests.ConnectionError, requests.Timeout):
+            # O refresh caiu por rede (17 e 19/09/2026), nao foi recusado.
+            if tentativa == 2:
+                raise
+            time.sleep(PAUSA_ANTES_DE_TENTAR_DE_NOVO_S)
 
 
 def _iso_para_segundos(texto: str) -> float:
@@ -315,12 +356,11 @@ def _iso_para_segundos(texto: str) -> float:
 
 def estatisticas(youtube_ids: list[str], token: str) -> dict:
     """views/likes/comentarios/duracao por id (Data API v3, escopo readonly)."""
-    import requests
     saida = {}
     for i in range(0, len(youtube_ids), 50):
         lote = youtube_ids[i:i + 50]
-        resposta = requests.get(
-            API_VIDEOS, timeout=30,
+        resposta = _get(
+            "data", API_VIDEOS, timeout=30,
             # `status` foi acrescentado em 16/09/2026 e e o que torna a
             # conferencia possivel: `privacyStatus == "private"` e a
             # assinatura EXATA do rascunho que passou 5 dias contado como
@@ -356,10 +396,9 @@ def enviados(token: str, quantos: int = 200) -> list[dict]:
     video publicado ha minutos costuma nao aparecer nele, e e exatamente esse
     que precisamos casar.
     """
-    import requests
     cabecalho = {"Authorization": f"Bearer {token}"}
-    resposta = requests.get(API_CANAIS, timeout=30, headers=cabecalho,
-                            params={"part": "contentDetails", "mine": "true"})
+    resposta = _get("data", API_CANAIS, timeout=30, headers=cabecalho,
+                    params={"part": "contentDetails", "mine": "true"})
     if not resposta.ok:
         raise RuntimeError(motivo_da_recusa(resposta))
     itens = resposta.json().get("items") or []
@@ -374,8 +413,8 @@ def enviados(token: str, quantos: int = 200) -> list[dict]:
         params = {"part": "snippet", "playlistId": lista, "maxResults": 50}
         if pagina:
             params["pageToken"] = pagina
-        resposta = requests.get(API_UPLOADS, timeout=30, headers=cabecalho,
-                                params=params)
+        resposta = _get("data", API_UPLOADS, timeout=30, headers=cabecalho,
+                        params=params)
         if not resposta.ok:
             raise RuntimeError(motivo_da_recusa(resposta))
         dados = resposta.json()
@@ -586,12 +625,11 @@ def motivo_da_recusa(resposta) -> str:
 def retencao(youtube_id: str, token: str, desde: str) -> dict:
     """Media de visualizacao e a CURVA (Analytics API). Sem o escopo, devolve
     `erro` explicando o que falta — nunca levanta."""
-    import requests
     hoje = date.today().isoformat()
     base = {"ids": "channel==MINE", "startDate": desde, "endDate": hoje,
             "filters": f"video=={youtube_id}"}
     cab = {"Authorization": f"Bearer {token}"}
-    resumo = requests.get(API_ANALYTICS, timeout=30, headers=cab, params={
+    resumo = _get("analytics", API_ANALYTICS, timeout=30, headers=cab, params={
         **base, "metrics": "views,averageViewDuration,averageViewPercentage"})
     if resumo.status_code in (401, 403):
         return {"erro": motivo_da_recusa(resumo)}
@@ -609,9 +647,18 @@ def retencao(youtube_id: str, token: str, desde: str) -> dict:
         return {"erro": "a Analytics nao devolveu linha para este video: ele "
                         "provavelmente esta em outro canal que nao o do token "
                         "(`channel==MINE`), ou ainda nao tem dado."}
+    if not linhas[0][0]:
+        # LINHA DE ZEROS TAMBEM NAO E MEDIDA. Para video que ninguem viu —
+        # os rascunhos privados de 12/09/2026, `ReZ81HQB1pU` e `YS7PiOSlmBc`
+        # — a Analytics devolve [0, 0, 0], e isso era gravado como "retencao
+        # 0%". Em 28/09 esses dois zeros puxavam a media do duelo de 47,5%
+        # para 34,0%. Retencao de zero espectadores nao existe.
+        return {"views_analytics": 0,
+                "erro": "nenhuma view na Analytics: nao ha retencao para "
+                        "medir (nao e 0%)."}
     saida = {"views_analytics": linhas[0][0], "media_segundos": linhas[0][1],
              "media_percentual": linhas[0][2]}
-    curva = requests.get(API_ANALYTICS, timeout=30, headers=cab, params={
+    curva = _get("analytics", API_ANALYTICS, timeout=30, headers=cab, params={
         **base, "metrics": "audienceWatchRatio,relativeRetentionPerformance",
         "dimensions": "elapsedVideoTimeRatio"})
     if curva.ok:
@@ -654,68 +701,218 @@ def atualizar(log=print, canal: str = "builds") -> list[dict]:
 MARCA_DO_DIA = OUTPUTS / "_metricas" / "_atualizado_em.json"
 
 
+def partes() -> list:
+    """As PARTES da coleta: cada canal, cada plataforma, cada uma por si."""
+    return [(canal, plataforma) for canal in CANAIS
+            for plataforma in ("youtube", "tiktok")]
+
+
+def nome_da_parte(canal: str, plataforma: str) -> str:
+    """`builds` / `builds_tiktok`: as chaves que a marca sempre usou."""
+    return canal if plataforma == "youtube" else f"{canal}_tiktok"
+
+
+def coletar_parte(canal: str, plataforma: str, log=print) -> tuple:
+    """`(ficha, videos)` de UMA parte. Nunca levanta: a falha vira ficha.
+
+    A ficha diz o que aconteceu com numero — `ok` (mediu videos), `vazio`
+    (nao havia o que medir) ou `erro` (com a excecao) — e quanto custou em
+    chamadas de API. E o que faltava para "a coleta morreu" deixar de ser
+    igual a "a coleta mediu zero".
+    """
+    import time
+    antes = dict(CHAMADAS)
+    comeco = time.monotonic()
+    resumo: dict = {}
+    erro = None
+    try:
+        if plataforma == "youtube":
+            reconciliar(canal, log=log)
+            videos = atualizar(log=log, canal=canal)
+        else:
+            from . import tiktok_metricas
+            videos = tiktok_metricas.coletar(canal, log=log, resumo=resumo)
+    except Exception as exc:                                  # noqa: BLE001
+        videos, erro = [], f"{type(exc).__name__}: {exc}"
+        onde = "do TikTok " if plataforma == "tiktok" else ""
+        log(f"[{canal}] metrica {onde}nao atualizou: {exc}")
+    gasto = {api: CHAMADAS.get(api, 0) - antes.get(api, 0) for api in CHAMADAS}
+    ficha = {"estado": "erro" if erro else ("ok" if videos else "vazio"),
+             "videos": len(videos or []),
+             "quando": datetime.now().isoformat(timespec="seconds"),
+             "duracao_s": round(time.monotonic() - comeco, 1),
+             **resumo}
+    if plataforma == "youtube":
+        ficha["chamadas"] = {api: n for api, n in gasto.items() if n}
+    if erro:
+        ficha["erro"] = erro[:300]
+    return ficha, videos or []
+
+
 def atualizar_uma_vez_por_dia(log=print, agora=None,
                               chave: str | None = None) -> bool:
-    """`atualizar_tudo`, mas so na primeira vez do dia. `False` = ja tinha ido.
+    """A coleta da noite, uma vez por noite POR PARTE. `True` = noite fechada.
 
     UMA VEZ, e nao a cada disparo: views nao mudam de hora em hora, e cada
-    passada custa uma ida a API do YouTube por canal. Oito por dia seria
-    gastar cota para reler o mesmo numero.
+    passada custa cota da API do YouTube. Mas uma vez por PARTE, e so a parte
+    que DEU CERTO fica feita. Ate 28/09/2026 a marca era gravada depois de
+    qualquer passada, com falha ou sem: onze noites seguidas (17 a 28/09) o
+    YouTube morreu (NameError, SSLError), a marca disse "feito" e a rodada
+    seguinte nem tentou. O log ainda escrevia "metricas da noite
+    atualizadas".
 
-    `chave` substitui a data quando "o dia" nao e o do calendario. A rotina de
-    madrugada (23h as 6h) atravessa a meia-noite: pela data, a rodada das 23h
-    e a da 0h seriam dias diferentes e a coleta rodaria duas vezes na mesma
-    noite. Com a chave da noite, roda uma.
+    Agora a parte que falha fica pendente — a proxima rodada da mesma noite
+    tenta so ela — e vira UMA linha de erro no diario (fabrica `metricas`),
+    que chega ao celular. Uma por noite para o mesmo tipo de erro: quatro
+    rodadas com o token morto nao sao quatro noticias.
 
-    NUNCA LEVANTA. Quem chama e a grade de publicacao; OAuth vencido, rede
-    fora ou Analytics desligada nao podem custar o horario. O relatorio diario
-    e que denuncia metrica velha — nao esta funcao.
+    `chave` substitui a data quando "o dia" nao e o do calendario: a
+    madrugada atravessa a meia-noite, e com a chave da noite roda uma vez.
+
+    NUNCA LEVANTA: OAuth vencido, rede fora ou Studio sem login nao podem
+    derrubar a rodada da noite.
     """
+    from .. import atividade
+
     agora = agora or datetime.now()
     hoje = chave or agora.strftime("%Y-%m-%d")
-    try:
-        with open(MARCA_DO_DIA, encoding="utf-8-sig") as fh:
-            if (json.load(fh) or {}).get("dia") == hoje:
-                return False
-    except (OSError, ValueError):
-        pass
-    try:
-        resultado = atualizar_tudo(log=log)
-    except Exception as exc:                                   # noqa: BLE001
-        log(f"[metricas] nao atualizei ({type(exc).__name__}: {exc}).")
+    fichas = dict(partes_da_marca(ler_marca()))
+    pendentes = [(c, p) for c, p in partes()
+                 if not _feita(fichas.get(nome_da_parte(c, p)), hoje)]
+    if not pendentes:
         return False
+    for canal, plataforma in pendentes:
+        nome = nome_da_parte(canal, plataforma)
+        anterior = fichas.get(nome) or {}
+        ficha, _videos = coletar_parte(canal, plataforma, log=log)
+        ficha["chave"] = hoje
+        if ficha["estado"] == "erro":
+            mesma_noite = (anterior.get("chave") == hoje
+                           and anterior.get("estado") == "erro")
+            ficha["tentativas"] = (int(anterior.get("tentativas") or 0) + 1
+                                   if mesma_noite else 1)
+            for campo in ("ultimo_ok", "videos_no_ultimo_ok"):
+                if anterior.get(campo):
+                    ficha[campo] = anterior[campo]
+            tipo = str(ficha.get("erro") or "").split(":")[0]
+            if not (mesma_noite and anterior.get("avisado") == tipo):
+                rotulo = ("do TikTok" if plataforma == "tiktok"
+                          else "do YouTube")
+                atividade.registrar(
+                    "metricas", atividade.ERRO,
+                    f"coleta {rotulo} de {canal} falhou: {ficha.get('erro')}"
+                    " — a noite fica pendente e a proxima rodada tenta de novo",
+                    canal=canal)
+            ficha["avisado"] = tipo
+        else:
+            ficha["ultimo_ok"] = ficha["quando"]
+            ficha["videos_no_ultimo_ok"] = ficha["videos"]
+        fichas[nome] = ficha
+        # GRAVADA A CADA PARTE: se a rodada for derrubada no meio, o que ja
+        # deu certo nao e coletado de novo.
+        _gravar_marca(hoje, fichas)
+    completa = all(_feita(fichas.get(nome_da_parte(c, p)), hoje)
+                   for c, p in partes())
+    log("[metricas] " + hoje + ": " + " · ".join(
+        _resumo_da_parte(nome_da_parte(c, p), fichas.get(nome_da_parte(c, p)))
+        for c, p in partes())
+        + ("" if completa else " — noite PENDENTE"))
+    return completa
+
+
+def _feita(ficha, chave: str) -> bool:
+    return (isinstance(ficha, dict) and ficha.get("chave") == chave
+            and ficha.get("estado") in ("ok", "vazio"))
+
+
+def partes_da_marca(marca) -> dict:
+    """`{parte: ficha}` da marca do dia, no formato novo ou no antigo."""
+    if not isinstance(marca, dict):
+        return {}
+    if isinstance(marca.get("partes"), dict):
+        return marca["partes"]
+    return _partes_da_marca_antiga(marca)
+
+
+def _partes_da_marca_antiga(marca: dict) -> dict:
+    """A marca de antes de 28/09/2026 so tinha `videos` por parte.
+
+    Zero ali era a assinatura da coleta que morreu (a das 01:20 de 28/09
+    gravou `builds: 0`), entao so conta como feita a parte com video.
+    """
+    saida = {}
+    for nome, quantos in (marca.get("videos") or {}).items():
+        ficha = {"chave": marca.get("dia"), "videos": int(quantos or 0),
+                 "estado": "ok" if quantos else "erro",
+                 "quando": marca.get("quando")}
+        if quantos:
+            ficha["ultimo_ok"] = marca.get("quando")
+            ficha["videos_no_ultimo_ok"] = int(quantos)
+        saida[nome] = ficha
+    return saida
+
+
+def _resumo_da_parte(nome: str, ficha) -> str:
+    ficha = ficha or {}
+    texto = f"{nome} {ficha.get('estado', '?')} {ficha.get('videos', 0)}"
+    chamadas = ficha.get("chamadas") or {}
+    if chamadas:
+        texto += " (" + ", ".join(f"{n} {api}" for api, n in
+                                  sorted(chamadas.items())) + ")"
+    if ficha.get("casados") is not None:
+        texto += (f" ({ficha.get('casados')} de {ficha.get('envios')} envios, "
+                  f"lista {ficha.get('lista', '?')})")
+    return texto
+
+
+def _gravar_marca(chave: str, fichas: dict) -> None:
+    """Grava a marca inteira de uma vez (arquivo provisorio + troca)."""
+    completa = all(_feita(fichas.get(nome_da_parte(c, p)), chave)
+                   for c, p in partes())
+    dados = {
+        "dia": chave,
+        # `completa` e o que diz se a noite FECHOU. `dia` sozinho ja mentiu.
+        "completa": completa,
+        "quando": datetime.now().isoformat(timespec="seconds"),
+        # O numero de sempre, por parte — agora so da tentativa desta noite.
+        "videos": {nome: int((f or {}).get("videos") or 0)
+                   for nome, f in fichas.items()},
+        "partes": fichas,
+    }
     try:
         MARCA_DO_DIA.parent.mkdir(parents=True, exist_ok=True)
-        with open(MARCA_DO_DIA, "w", encoding="utf-8") as fh:
-            json.dump({"dia": hoje,
-                       "quando": agora.isoformat(timespec="seconds"),
-                       "videos": {c: len(v or []) for c, v in resultado.items()}},
-                      fh, ensure_ascii=False, indent=2)
+        provisorio = MARCA_DO_DIA.with_name(MARCA_DO_DIA.name + ".tmp")
+        with open(provisorio, "w", encoding="utf-8") as fh:
+            json.dump(dados, fh, ensure_ascii=False, indent=2)
+        os.replace(provisorio, MARCA_DO_DIA)
     except OSError:
-        pass          # a marca e conveniencia: no pior caso roda duas vezes
-    return True
+        pass          # no pior caso a parte roda de novo na proxima rodada
+
+
+def ler_marca() -> dict | None:
+    """A marca do dia como esta no disco. `None` = nao consegui ler."""
+    try:
+        with open(MARCA_DO_DIA, encoding="utf-8-sig") as fh:
+            dados = json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        return None
+    return dados if isinstance(dados, dict) else None
 
 
 def atualizar_tudo(log=print) -> dict:
-    """Os dois canais, e o que falhar num nao derruba o outro."""
+    """Os dois canais, e o que falhar num nao derruba o outro.
+
+    O TIKTOK NUM `try` PROPRIO (dentro de `coletar_parte`). Ele le o Studio
+    pelo navegador, e login caido la e coisa comum — nao pode custar a
+    metrica do YouTube. Chave separada para quem conta quantos videos cada
+    lado atualizou nao somar plataforma com plataforma.
+    """
     saida = {}
-    for canal in CANAIS:
-        try:
-            reconciliar(canal, log=log)
-            saida[canal] = atualizar(log=log, canal=canal)
-        except Exception as exc:                              # noqa: BLE001
-            log(f"[{canal}] metrica nao atualizou: {exc}")
-            saida[canal] = []
-        # O TIKTOK NUM `try` PROPRIO. Ele le o Studio pelo navegador, e login
-        # caido la e coisa comum — nao pode custar a metrica do YouTube, que
-        # ja foi gravada acima. Chave separada para quem conta quantos videos
-        # cada lado atualizou nao somar plataforma com plataforma.
-        try:
-            from . import tiktok_metricas
-            saida[f"{canal}_tiktok"] = tiktok_metricas.coletar(canal, log=log)
-        except Exception as exc:                              # noqa: BLE001
-            log(f"[{canal}] metrica do TikTok nao atualizou: {exc}")
-            saida[f"{canal}_tiktok"] = []
+    for canal, plataforma in partes():
+        _ficha, videos = coletar_parte(canal, plataforma, log=log)
+        saida[nome_da_parte(canal, plataforma)] = videos
     return saida
 
 
@@ -761,10 +958,18 @@ def comparar_formatos(dados: list[dict], agora: datetime | None = None) -> list[
     a Analytics nao devolve linha: ausencia nao e zero.
     """
     grupos: dict[str, list[dict]] = {}
+    privados: dict[str, int] = {}
     for d in dados:
         if views_por_dia(d, agora) is None:
             continue
-        grupos.setdefault(str(d.get("origem") or "?"), []).append(d)
+        origem = str(d.get("origem") or "?")
+        if str(d.get("privacidade") or "").lower() == "private":
+            # RASCUNHO NAO E AMOSTRA DE FORMATO. Ninguem pode ter visto um
+            # video privado: em 28/09/2026 dois duelos de 12/09 (rascunhos do
+            # "Publicar mesmo assim") entravam com 0 view e 0% de retencao.
+            privados[origem] = privados.get(origem, 0) + 1
+            continue
+        grupos.setdefault(origem, []).append(d)
     saida = []
     for origem, lista in grupos.items():
         taxas = [views_por_dia(d, agora) for d in lista]
@@ -772,12 +977,18 @@ def comparar_formatos(dados: list[dict], agora: datetime | None = None) -> list[
         duracoes = sorted(float(d["duracao"]) for d in lista if d.get("duracao"))
         # Retencao so entra de quem TEM retencao. Video sem linha da
         # Analytics nao vira 0% na media — e a mesma regra de `retencao()`,
-        # que se recusa a gravar zero quando a API nao devolveu nada.
+        # que se recusa a gravar zero quando a API nao devolveu nada. E
+        # linha de ZERO VIEW tambem nao e retencao: arquivos gravados antes
+        # de 28/09 guardaram 0% para video que ninguem viu.
         retencoes = sorted(float(d["media_percentual"]) for d in lista
-                           if d.get("media_percentual") is not None)
+                           if d.get("media_percentual") is not None
+                           and (d.get("views_analytics")
+                                if d.get("views_analytics") is not None
+                                else d.get("views") or 0) > 0)
         saida.append({
             "origem": origem,
             "videos": len(lista),
+            "privados_fora": privados.get(origem, 0),
             "views": views,
             "views_por_dia": sum(taxas) / len(taxas),
             "like_rate": (sum(d.get("likes") or 0 for d in lista) / views) if views else None,
@@ -798,10 +1009,18 @@ def carregar_salvas(canal: str = "builds") -> list[dict]:
     if not pasta.is_dir():
         return saida
     for arquivo in sorted(pasta.glob("*.json")):
+        # `_atualizado_em.json` (a marca do dia) mora na mesma pasta e nao e
+        # video: lido como metrica, virava um "video" sem id nas medias. Pelo
+        # NOME EXATO, e nao por "comeca com _": id do YouTube pode comecar
+        # com sublinhado (`_bHp95XZpgc`, medido em 28/09/2026).
+        if arquivo.name == Path(MARCA_DO_DIA).name:
+            continue
         try:
             with open(arquivo, encoding="utf-8-sig") as fh:
                 dado = json.load(fh)
         except (OSError, ValueError):
+            continue
+        if not isinstance(dado, dict):
             continue
         dado.setdefault("canal", canal)
         saida.append(dado)

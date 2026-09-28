@@ -32,6 +32,24 @@ def tearDownModule():
     conferencia.rascunhos_aceitos = _ACEITOS_DE_VERDADE
 
 
+def _sem_leituras_reais(caso: unittest.TestCase) -> None:
+    """`conferir_tudo` le a ficha anterior, o diario e o ledger (sinais).
+
+    Dublados aqui para o resultado nao depender da maquina: um diario real
+    com poucos eventos de builds acenderia um alarme que o caso nao pediu.
+    """
+    from builds.publicar import metricas, sinais
+    reais = (conferencia.ultima, sinais.ler_diario, metricas.publicados)
+    conferencia.ultima = lambda canal="builds": {}
+    sinais.ler_diario = lambda caminho=None: []
+    metricas.publicados = lambda canal="builds": []
+
+    def restaurar():
+        (conferencia.ultima, sinais.ler_diario, metricas.publicados) = reais
+
+    caso.addCleanup(restaurar)
+
+
 def _linha(video_id, titulo, *, quando="2026-09-16T09:40:02",
            youtube_id="", prova_ok=True, plataforma="youtube"):
     return {"video_id": video_id, "titulo": titulo, "quando": quando,
@@ -356,6 +374,7 @@ class AListaDeAceitos(unittest.TestCase):
         real_reg = atividade.registrar
         atividade.registrar = lambda *a, **k: None
         self.addCleanup(lambda: setattr(atividade, "registrar", real_reg))
+        _sem_leituras_reais(self)
         conferencia.conferir_tudo(("builds",), log=lambda _t: None)
         self.assertEqual([], chamou)
 
@@ -385,6 +404,35 @@ class MesmoVideoEmDuasLinhas(unittest.TestCase):
             no_canal=[_no_canal("aaa", "X")], hoje=HOJE)
         self.assertEqual(1, len(ficha["mesmo_video"]))
         self.assertEqual("limpo", ficha["veredito"])
+
+
+class OsPedacosDaParte(unittest.TestCase):
+    """A parte cortada em dois Shorts guarda `youtube_ids` (10142b1)."""
+
+    def _linha_com_pedacos(self):
+        linha = _linha("h35:p1", "A PARTE (Parte 1)", youtube_id="p1")
+        linha["youtube_ids"] = ["p1", "p2"]
+        return linha
+
+    def test_o_segundo_pedaco_nao_e_orfao(self):
+        ficha = conferencia.conferir(
+            publicados=[self._linha_com_pedacos()],
+            no_canal=[_no_canal("p1", "A PARTE (Parte 1) (1 de 2)"),
+                      _no_canal("p2", "A PARTE (Parte 1) (2 de 2)")],
+            hoje=HOJE, aceitos={})
+        self.assertEqual([], ficha["orfaos"])
+        self.assertEqual("limpo", ficha["veredito"])
+
+    def test_pedaco_privado_e_rascunho_da_linha(self):
+        ficha = conferencia.conferir(
+            publicados=[self._linha_com_pedacos()],
+            no_canal=[_no_canal("p1", "A PARTE (Parte 1) (1 de 2)"),
+                      _no_canal("p2", "A PARTE (Parte 1) (2 de 2)",
+                                privacidade="private")],
+            hoje=HOJE, aceitos={})
+        self.assertEqual(["p2"], [r["youtube_id"] for r in ficha["rascunhos"]])
+        self.assertEqual([], ficha["orfaos_privados"])
+        self.assertEqual("sujo", ficha["veredito"])
 
 
 class ABuscaDeVerdade(unittest.TestCase):
@@ -470,6 +518,7 @@ class OAlarme(unittest.TestCase):
         self.addCleanup(lambda: setattr(conferencia, "conferir", real_conf))
         self.addCleanup(lambda: setattr(conferencia, "salvar", real_salvar))
         self.addCleanup(lambda: setattr(atividade, "registrar", real_reg))
+        _sem_leituras_reais(self)
         conferencia.conferir_tudo(("builds",), log=lambda _t: None)
         return avisos
 
@@ -495,20 +544,56 @@ class OAlarme(unittest.TestCase):
     def test_falha_tambem_vai_para_disco(self):
         # 16/09/2026: com os tres tokens revogados a pagina dizia "nunca
         # rodou", porque a falha nao era gravada. Sao acoes diferentes.
-        salvos = []
+        salvos, avisos = [], []
+        from builds import atividade
         real_conf, real_salvar = conferencia.conferir, conferencia.salvar
+        real_reg = atividade.registrar
 
         def explode(*_a, **_k):
             raise RuntimeError("token invalido ou revogado")
 
         conferencia.conferir = explode
         conferencia.salvar = salvos.append
+        atividade.registrar = lambda *a, **k: avisos.append((a, k))
         self.addCleanup(lambda: setattr(conferencia, "conferir", real_conf))
         self.addCleanup(lambda: setattr(conferencia, "salvar", real_salvar))
+        self.addCleanup(lambda: setattr(atividade, "registrar", real_reg))
+        _sem_leituras_reais(self)
         fichas = conferencia.conferir_tudo(("builds",), log=lambda _t: None)
         self.assertIn("revogado", fichas["builds"]["erro"])
         self.assertEqual(len(salvos), 1)
         self.assertTrue(salvos[0]["dia"])
+        # E VIRA ALARME, nao so ficha (28/09/2026): a conferencia que morria
+        # so aparecia na pagina; no celular, silencio.
+        (args, kw), = avisos
+        self.assertEqual("conferencia", args[0])
+        self.assertIn("nao rodou", args[2])
+        self.assertEqual("RuntimeError", salvos[0]["avisos"]["noite"]["erro"])
+
+    def test_a_mesma_falha_na_mesma_noite_avisa_uma_vez(self):
+        # Token morto faz as quatro rodadas da noite falharem igual. Quatro
+        # avisos iguais no celular nao dizem nada que o primeiro nao disse.
+        from builds import atividade
+        avisos = []
+        real = (conferencia.conferir, conferencia.salvar, atividade.registrar)
+
+        def explode(*_a, **_k):
+            raise RuntimeError("token invalido ou revogado")
+
+        conferencia.conferir = explode
+        conferencia.salvar = lambda f: None
+        atividade.registrar = lambda *a, **k: avisos.append((a, k))
+
+        def restaurar():
+            (conferencia.conferir, conferencia.salvar,
+             atividade.registrar) = real
+
+        self.addCleanup(restaurar)
+        _sem_leituras_reais(self)
+        primeira = conferencia.conferir_tudo(("builds",), log=lambda _t: None)
+        conferencia.ultima = lambda canal="builds": primeira["builds"]
+        conferencia.conferir_tudo(("builds",), log=lambda _t: None)
+        self.assertEqual(1, len(avisos))
 
     def test_limpo_NAO_acende(self):
         # Alarme que sempre acende e alarme que ninguem le.

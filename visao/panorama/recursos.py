@@ -190,12 +190,31 @@ def _horas_de_criacao() -> list:
         return []
 
 
+def _tarefas_de_geracao() -> list:
+    """As `NeuralFights_gerar_HH` (duelos de madrugada), lidas do config dela.
+
+    Criadas em 27/09/2026 (01:02 a 05:02). Ate 28/09 esta lista nao as
+    conferia: se o Agendador as perdesse, a geracao de duelos pararia e
+    nenhuma tela diria — foi exatamente assim que o builds ficou sem estoque
+    de 22 a 26/09. Geracao desligada (`ativo: false`) nao cobra tarefa.
+    """
+    try:
+        from builds.pipeline import noite, tarefas_noite
+        config = noite.carregar()
+    except Exception:                                          # noqa: BLE001
+        return []
+    if not config.get("ativo", True):
+        return []
+    return [tarefas_noite.nome_da_tarefa(h) for h in config.get("horas") or ()]
+
+
 def _agendador() -> dict:
     try:
         from builds import grade, tarefas_windows
     except Exception as erro:                                  # noqa: BLE001
         return {"erro": f"{type(erro).__name__}: {erro}"}
     nomes = ([f"Historias_auto_{h:02d}" for h in _horas_de_criacao()]
+             + _tarefas_de_geracao()
              + [f"NeuralFights_postar_{h:02d}" for h in grade.HORAS]
              + ["NeuralFights_bot_telegram"])
     faltando, fracas = [], []

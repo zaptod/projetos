@@ -1,8 +1,9 @@
 # Métricas e conferências
 
-Documento de passagem. Tudo abaixo foi medido em 27/09/2026; onde um número da
-fotografia não reproduziu, está dito. O que eu não medi está marcado como
-**não medi**, nunca preenchido por suposição.
+Documento de passagem. A fotografia do §2 é de 27/09/2026; o que foi medido
+de novo na madrugada de 28/09 está com a data. Onde um número da fotografia
+não reproduziu, está dito. O que eu não medi está marcado como **não medi**,
+nunca preenchido por suposição.
 
 ## 1. Onde cada número mora
 
@@ -16,6 +17,8 @@ fotografia não reproduziu, está dito. O que eu não medi está marcado como
 | TikTok (views, tempo, curva, tráfego) | JSON do Studio → `*/outputs/_metricas_tiktok/*.json` | MEDIDO |
 | o que saiu, quando, visibilidade | os dois `publicados.jsonl` | MEDIDO |
 | ledger × canal | `*/outputs/_conferencia/<dia>.json` | MEDIDO |
+| a coleta da noite deu certo? | `random_builds/outputs/_metricas/_atualizado_em.json` (marca do dia, por parte) | MEDIDO |
+| noite sem conferência, canal parado, `youtube_id` | `builds.publicar.sinais` (a conta), gravado na ficha da conferência | MEDIDO |
 | "dias de estoque" | `ferramentas/postar.py: estoque()` | **SUPOSTO** (divisão; ver §5) |
 
 Dois canais, dois mundos de arquivo: builds em
@@ -64,6 +67,31 @@ O formato vem do `origem` do ledger, casado pelo `youtube_id`. Medianas:
 10,7% / 25 (n=35)**, torneio 19,9%/25 (n=1). Reproduz exato. Mas **33 dos 127
 vídeos ficaram sem formato**, porque a linha do ledger não tem `youtube_id`.
 
+**Duelo: 51,5% ou 34,0%?** (28/09). O agente de builds mediu no retrato local
+(`comparar_formatos` sobre `_metricas/*.json`, arquivos de 27/09 20:07)
+**34,0% de retenção média e 44 views medianas, n=7**. Os dois números medem
+coisas diferentes, e o de 34,0% está errado:
+
+- n=7 contra n=5: dois dos sete duelos em disco (`ReZ81HQB1pU`,
+  `YS7PiOSlmBc`, de 12/09) estão **privados** no canal — rascunhos do
+  "Publicar mesmo assim", com 0 view. A consulta por `dimensions=video` só
+  devolve linha de vídeo **visto**, então eles nunca entraram no 51,5%.
+- No disco eles entraram com **0% de retenção**: para vídeo sem view a
+  Analytics por vídeo devolve a linha `[0, 0, 0]`, e `retencao()` a gravava
+  como medida. Retenção de zero espectadores não existe.
+- 34,0% é **média** dos 7 com os dois zeros; a mediana dos mesmos 7 é 36,3%.
+  Tirando os dois privados: **mediana 51,45%, média 47,5% (n=5)**, e views
+  mediana **80** (Data API, vida toda) — o 78 era a contagem da Analytics
+  dentro da janela 01/08–27/09.
+
+Conserto (28/09): `comparar_formatos` deixa privado de fora (conta em
+`privados_fora`) e só faz média de retenção de vídeo com view; `retencao()`
+trata a linha de zeros como "sem dado". O número certo **com o disco de
+27/09** é 51,45% / 80 (n=5). Mas o ledger já tem **11 duelos no YouTube com
+id**, e o disco só tem 7: os quatro mais novos ficaram sem medida porque a
+coleta de builds falhou na madrugada de 28/09. O número de hoje é o da coleta
+seguinte (§3).
+
 Tráfego (mesma chamada com `dimensions=insightTrafficSourceType`, sem
 `video`): builds **SHORTS 4499 (64%) + YT_SEARCH 2399 (34%)**; histórias
 **SHORTS 93%**. O "99% vem do feed de Shorts" **só fecha somando busca**
@@ -86,7 +114,11 @@ Refazer: `tiktok_metricas.carregar_salvas(canal)` e mediana do campo `views`.
   emparelhada por pid), 5 últimos erros, Agendador do Windows, OAuth dos dois
   canais. Olha para dentro.
 - `confiabilidade` **22:30** — prometido × provado, válvula aberta, vídeo em
-  um destino só. Só formata; o número é de `panorama.confiabilidade`.
+  um destino só e, desde 28/09, **grade em falta, noite sem conferência,
+  canal parado, `youtube_id` faltando e métrica velha**. Só formata; o número
+  é de `panorama.confiabilidade`, que é o mesmo que a página do painel lê. É
+  por ele que "o relatório diário acusa métrica velha" sem tocar em
+  `remoto/relatorios.py` (que é do app e bot).
 - `auditoria` — **sem horário**: é pedido. Decodifica mp4, leva segundos.
 
 **Conferência noturna** (`builds.publicar.conferencia.conferir_tudo`, na
@@ -139,30 +171,135 @@ fechado (builds 3, histórias 5). Refazer: `_horario_da_grade` +
 `_dia_de_grade` sobre `metricas.publicados(canal)`. A confirmação pelo canal
 **não medi** (é rede).
 
-**Repetição:** cada rodada da noite com déficit escreve a sua linha de erro —
-até 4 avisos iguais por canal por noite. Não está deduplicado.
+Primeira rodada real (01:35 de 28/09): **builds 5/10, histórias 7/10** no dia
+de grade 27/09, e os dois acenderam. Em builds faltaram 06:37, 09:37, 12:07,
+15:37 e 21:37; em histórias, 17:57, 21:37 e 22:37.
+
+**Uma vez por dia de grade** (28/09). A conferência roda até quatro vezes por
+noite e cada rodada escrevia a sua linha: em 26/09 o mesmo alarme de
+histórias saiu às 01:32, 04:20 e 05:20. Agora a ficha guarda `avisos` —
+`grade: {dia_de_grade, deficit}` e `noite: {dia, erro, eventos, cobertura,
+noites}` — e a rodada seguinte herda da anterior (`ultima(canal)`, lida
+**antes** de gravar). A grade só avisa de novo se o déficit **crescer** no
+mesmo dia de grade; dia de grade novo avisa sempre. A ficha antiga, sem
+`avisos` (a das 01:35 de 28/09), conta como já avisada, porque aquela versão
+avisava todo déficit. O alarme de ledger `sujo` continua a cada rodada — não
+foi pedido.
+
+**Conferência que falha vira alarme** (28/09). Até então a exceção (token,
+rede) só virava ficha com `erro`: a página via, o celular não. Agora é uma
+linha de erro da fábrica `conferencia`, uma por noite para o mesmo tipo de
+erro. A ficha de erro também carrega `avisos`, `rodadas` e `sinais`.
+
+**Pedaços da parte cortada** (28/09): desde `10142b1` a linha de histórias
+cortada em dois Shorts guarda `youtube_ids`. A conferência passa a ler os
+outros ids: o pedaço 2 deixa de ser "órfão", e o pedaço privado vira
+rascunho **da linha** (`pedaco: true`) em vez de "privado fora do ledger". A
+grade continua pagando um horário por linha. Ainda aparece como `duplicados`
+(o `titulos.chave` tira o corte), o que não suja o veredito.
+
+**`rodadas`**: as horas em que a ficha do dia foi gravada. Sem isso, o botão
+do painel às 14:00 regravava a ficha e apagava o rastro de que a noite não
+rodou.
+
+**Gravação de uma vez** (28/09): `salvar` grava em `<dia>.json.tmp` e troca
+com `os.replace`. A página lê a ficha a cada 3 s e a madrugada a regrava a
+cada rodada; escrever por cima deixava o leitor ver JSON pela metade
+(`ultima()` → `{}` → "nunca rodou").
+
+### Os sinais de ausência (`builds/publicar/sinais.py`, 28/09)
+
+Todo alarme reagia a evento, e ausência não escreve linha. Três contas
+puras, as mesmas para a conferência (linha no diário, uma vez por noite) e
+para o panorama (relatório das 22:30 e painel):
+
+| Sinal | Conta | Acende quando | Caso vazio |
+| --- | --- | --- | --- |
+| noite sem conferência | a última ficha contra `noite_esperada(agora)` — a noite do dia D acaba quando o dia de grade de D abre (06:37) | a noite esperada não tem ficha com rodada **antes das 06:37** | nenhuma ficha = "nunca rodou" (acende) |
+| canal parado | eventos `inicio/ok/erro` do canal nas últimas 24 h, **fora** das fábricas que observam (`conferencia`, `metricas`, `apurador`) | menos eventos que horários da grade na janela lida (10 em 24 h) | diário vazio ou menos de 12 h lidas: `None`, não acende |
+| `youtube_id` | publicações do YouTube de 7 dias atrás até 24 h atrás (a reconciliação só roda de madrugada) | cobertura abaixo de 90% | nenhuma linha na janela: `None`, **não é 100%** |
+
+Por que tirar as fábricas que observam: a conferência escreve dois erros por
+noite justamente sobre o canal parado. Contados, fariam o morto parecer vivo.
+Por que o diário inteiro: `atividade.recentes()` lê só as últimas **1200
+linhas**, e histórias escreveu 1103 eventos em 27/09 — a janela de 24 h saía
+cortada sem aviso. `sinais.ler_diario()` lê o arquivo todo (a poda o mantém
+abaixo de 4000 linhas) e devolve `None` quando não abre.
+
+Medido com os dados reais às 03:22 de 28/09 (código novo, só leitura):
+**builds 43 eventos de trabalho em 24 h, histórias 159** (o diário cobre 24 h;
+mínimo 10). `youtube_id` de 21 a 27/09: **builds 1/1, histórias 54/54**.
+Nenhuma noite faltando. Os casos que teriam acendido: a noite de 21/09 (sem
+ficha nos dois canais), builds com **0 eventos em 25 e 26/09**, e histórias
+de 18 a 27/09 com a reconciliação morta.
+
+### A coleta da noite: marca por parte (28/09)
+
+`metricas.atualizar_uma_vez_por_dia` era "rode `atualizar_tudo` e grave a
+marca", com falha ou sem. Medido nos logs `auto_*.txt`: de **17 a 28/09 o
+YouTube falhou onze noites seguidas** (SSLError em 17, 19 e 28/09; NameError
+de 18 a 27/09); em 21/09 a coleta nem rodou. A marca foi gravada todas as
+noites, a rodada seguinte não tentava de novo, e o log dizia "metricas da
+noite atualizadas".
+
+Agora a coleta tem quatro **partes** (`builds`, `builds_tiktok`, `historias`,
+`historias_tiktok`), e a marca guarda uma ficha por parte: `estado`
+(`ok`/`vazio`/`erro`), `videos`, `quando`, `duracao_s`, `erro`, `tentativas`,
+`ultimo_ok` e, no YouTube, `chamadas`. **Só a parte que deu certo fica feita
+na noite**: a que falhou vira uma linha de erro da fábrica `metricas` (o
+apurador a investiga — foi um NameError de código que durou dez dias), uma
+por noite para o mesmo tipo de erro, e a próxima rodada tenta **só ela**. A
+marca antiga (sem `partes`) é lida: parte com 0 vídeos conta como não feita.
+`vazio` (nada para medir) é diferente de `ok` e de `erro`. `completa` diz se a
+noite fechou; `atualizar_uma_vez_por_dia` só devolve `True` (e o log só diz
+"atualizadas") quando fecha.
+
+**Chamadas contadas** (`metricas.CHAMADAS`, por `_get` e `_token`): `data`
+(Data API, 1 unidade cada, de 10.000 por dia), `analytics` (cota própria) e
+`token` (o refresh do OAuth). Uma queda de **conexão** (SSLError, timeout)
+tem uma segunda tentativa depois de 5 s — inclusive no refresh do token, que
+derrubou a coleta em 17 e 19/09; resposta ruim do Google não é repetida. Custo esperado de uma parte
+do YouTube: 1 `channels` + até 4 páginas de `playlistItems` + 1 `videos` a
+cada 50 ids na Data API, e 2 consultas por vídeo na Analytics.
+
+### As tarefas do Agendador que o panorama confere (28/09)
+
+`panorama.recursos._agendador` (a tela Recursos e o relatório `auditoria`)
+conferia `Historias_auto_HH`, `NeuralFights_postar_HH` e o bot. As cinco
+`NeuralFights_gerar_01` a `_05` (01:02 a 05:02, geração de duelos, criadas em
+27/09) entraram, lidas de `builds.pipeline.noite.carregar()["horas"]` e
+nomeadas por `tarefas_noite.nome_da_tarefa` — sem lista fixa; com `ativo:
+false` não são cobradas. O relatório `funcionamento` das 09:00 tem a sua
+própria lista em `remoto/relatorios.py` (app e bot) e **ainda não as
+confere**.
+
+`carregar_salvas('builds')` lia a própria marca como se fosse vídeo: **95
+registros, um sem id** (medido em 28/09). Agora pula a marca **pelo nome
+exato** — id do YouTube pode começar com `_` (`_bHp95XZpgc`).
 
 ## 4. As conferências que faltam, e o número que deveria acender
 
 | Falta | Hoje, medido | Acende quando |
 | --- | --- | --- |
-| canal sem evento no diário em 24 h | histórias 962 eventos, **builds 5** | qualquer canal com 0 |
 | estoque por formato zerado | `estoque_por_formato` diz `build: 7 dias`, e os 25 pendentes de build estão **todos** barrados por título | formato com 0 pronto de verdade |
-| cobertura de `youtube_id` no ledger | builds 120/129 (93%), **histórias 61/158 (39%)** | abaixo de ~90%: sem id não há métrica nem formato |
 | colisão de título | dos 33 pendentes de builds, **25 barrados (76%)** | fila barrada acima de ~30% |
 | publicação não pública no ledger | **5** (4 builds, 1 histórias) | qualquer uma acima de zero |
 
-Nenhuma dessas tem alarme hoje. E o caso que prova a falta:
-**a coleta do YouTube ficou dez dias quebrada e ninguém soube.** Na madrugada
-de 27/09, 01:20, o log de `historias/outputs/_logs/auto_20260927.txt` diz
-`[builds] metrica nao atualizou: name 'titulos' is not defined` (igual em
-histórias): `metricas.casar_ids` passou a usar `titulos.corte` em 17/09 sem o
-import no topo. `atualizar_tudo` engole a exceção, a marca do dia gravou
-`builds: 0, historias: 0`, e só o TikTok atualizou (60 e 50). O import foi
-consertado por outra sessão no commit `42dced8`, ainda em 27/09 — mas **os
-arquivos em disco continuam sendo de 16/09** até a próxima rodada, e
-`panorama.desempenho` só lê disco, sem dizer que o dado é velho. A conferência
-que falta é justamente esta: *a última coleta deu zero vídeo?*
+Nenhuma dessas tem alarme hoje (as duas primeiras são da publicação). Saíram
+desta tabela em 28/09, porque agora existem (§3): **canal sem evento em 24 h**
+e **cobertura de `youtube_id`** — que, aliás, mudou: histórias estava em
+61/158 (39%) em 27/09 e foi a **156/161 (97%)** na madrugada de 28/09, quando
+a reconciliação voltou a rodar; builds 125/133 (94%), com as linhas sem id em
+16 e 17/09.
+
+O caso que provava a falta — *a coleta do YouTube ficou dez dias quebrada e
+ninguém soube* — tinha duas metades. O NameError (`titulos` sem import) foi
+consertado por outra sessão em `42dced8`; histórias voltou a coletar às 01:29
+de 28/09 (**156 vídeos**, marca e disco concordando: 156 arquivos com
+`atualizado` de 28/09). A outra metade — falha engolida, marca gravada, log
+dizendo "atualizadas" — é o conserto da marca por parte (§3). Na mesma noite
+builds falhou por SSLError às 01:20 e a marca gravou `builds: 0`: é o caso que
+a versão nova repete na rodada seguinte.
 
 ## 5. Armadilhas medidas
 
@@ -183,9 +320,24 @@ que falta é justamente esta: *a última coleta deu zero vídeo?*
   `a973437` contava o dia que tinha acabado de começar e dava déficit 9 num
   dia 10/10. Um medidor que acende sempre é tão surdo quanto um que nunca
   acende. Conserto: dia de grade (§3).
-- **Painel com ✓ para grade furada.** `panorama.confiabilidade` e a página
-  Confiabilidade do painel só leem `veredito`: uma ficha `limpo` com `grade`
-  "em falta" aparece como `✓ casados/no_ledger`. Hoje só o diário acende.
+- **Painel com ✓ para grade furada.** Até 28/09 `panorama.confiabilidade` e a
+  página Confiabilidade só liam `veredito`: a ficha `limpo` com `grade` "em
+  falta" aparecia como `✓ 5/5`. Agora o resumo leva a grade, o alerta diz os
+  horários que faltaram, e a linha do cartão é `builds: ✕ grade 5/10 · ledger
+  ✓ 5/5` — o ✓ exige as duas coisas.
+- **Marca gravada com a coleta morta.** Onze noites (17 a 28/09) com o YouTube
+  falhando e a marca dizendo "feito". Marca que se grava sem olhar o
+  resultado é medidor verde. Conserto: marca por parte (§3).
+- **O observador contado como trabalho.** Contar os alarmes da conferência
+  como "evento do canal" faria o canal parado parecer vivo — ela escreve
+  sobre ele duas vezes por noite. `sinais` tira `conferencia`, `metricas` e
+  `apurador`, e tira `log` (2126 linhas do `estudio` em três dias).
+- **`atividade.recentes()` lê só 1200 linhas.** Num dia de histórias (1103
+  eventos em 27/09) uma janela de 24 h lida por ali sai cortada, sem aviso.
+  Para janela de tempo, `sinais.ler_diario()`.
+- **Id do YouTube que começa com `_`.** `_bHp95XZpgc.json` é vídeo. Filtro por
+  "começa com sublinhado" para pular a marca jogava um vídeo fora — medido
+  antes de ir ao ar (93 em vez de 94).
 - **"Dias de estoque" conta vídeo, não vídeo publicável.**
   `estoque_por_formato` não aplica pendências nem título repetido: diz
   `build: 7 dias` quando o real é 0. `estoque()` (que passa pelo mesmo funil
@@ -214,8 +366,8 @@ cd E:/projetos
 python -c "from builds.publicar import conferencia as c; [print(k, c.ultima(k).get('veredito'), c.ultima(k).get('dia_de_grade'), c.ultima(k).get('grade'), c.ultima(k).get('horarios_em_falta')) for k in ('builds','historias')]"
 PYTHONIOENCODING=utf-8 python -c "from remoto import relatorios; print(relatorios.montar('metas'))"
 PYTHONIOENCODING=utf-8 python -c "from remoto import relatorios; print(relatorios.montar('confiabilidade'))"
-python -c "from builds import atividade; import collections; e=atividade.recentes(1000); print(collections.Counter(x.get('canal') for x in e))"
-cat random_builds/outputs/_metricas/_atualizado_em.json   # 0 vídeos = coleta quebrada
+python -c "from builds.publicar import sinais as s; print(s.eventos_por_canal(s.ler_diario()))"
+python -c "from builds.publicar import metricas as m; import json; print(json.dumps({k: (v.get('estado'), v.get('ultimo_ok'), v.get('erro')) for k, v in m.partes_da_marca(m.ler_marca()).items()}, indent=1))"
 ```
 
 Nessa ordem eles respondem: o canal tem o que o ledger diz e a grade foi
@@ -229,10 +381,14 @@ ainda mede?
   chamada direta à Analytics, que não toca disco.
 - **Não tratar o que está em `_metricas/` como de hoje.** Confira
   `_atualizado_em.json` antes de citar número de disco.
-- **Não editar `random_builds/builds/publicar/*`**: é de outra sessão. O
-  `NameError` do §4 é para reportar, não para consertar. Exceção só com o ok
-  do Adrian, como o `conferencia.py` na noite de 27/09 — e fora de :25–:55,
-  porque a conferência roda de madrugada.
+- **Não editar `random_builds/builds/publicar/*` fora do que é desta parte.**
+  `conferencia.py` (ok do Adrian em 27/09), `metricas.py` e
+  `tiktok_metricas.py` (Semana 2 da rota aprovada em 27/09) e o `sinais.py`
+  (novo) foram mexidos por esta parte; os publicadores e o `postar.py`
+  continuam da publicação. Mudança **fora de :25–:55**, e nada pela metade no
+  disco nas rodadas da madrugada (01:28, 03:20, 04:20, 05:20): desenvolver
+  numa worktree (`E:/projetos-wt/metricas`, com `PYTHONPATH` apontando para
+  ela) e trazer os arquivos prontos de uma vez.
 - **Não chamar `conferencia.aceitar*` na rodada automática.** Aceitar rascunho
   é decisão de uma pessoa.
 - **Não somar plataformas nem canais.** Cada um tem ledger, credencial, pasta
@@ -247,6 +403,7 @@ ainda mede?
 | `*/outputs/_publicar/publicados.jsonl` | `builds.publicar.metricas` / `contos.publicar.serie`, no ato de publicar, sob a trava `ledger__<canal>` | escritor único: duas mãos no ledger é a divergência que a conferência existe para achar |
 | `atividade.jsonl` | cada fábrica, por `builds.atividade.registrar` (nunca levanta) | é observabilidade; quem mede não pode fabricar o fato que mede |
 | `*/outputs/_metricas*/` | `metricas.atualizar` e `tiktok_metricas.coletar`, chamados pela grade e pela madrugada | uma passada por dia, em um lugar só; conferir não é coletar |
-| `*/outputs/_conferencia/<dia>.json` | `conferencia.salvar`, na rodada da noite | a leitura do dia (`ultima`) é o que o painel e o bot mostram |
+| `*/outputs/_conferencia/<dia>.json` | `conferencia.salvar`, na rodada da noite (e o botão do painel) | a leitura do dia (`ultima`) é o que o painel e o bot mostram; `avisos` e `rodadas` são a memória da noite |
+| `_metricas/_atualizado_em.json` (marca do dia) | `metricas.atualizar_uma_vez_por_dia` | a marca decide o que a próxima rodada tenta; o panorama só a lê |
 | `rascunhos_aceitos.json` | só uma pessoa, por `--aceitar-rascunhos` | é decisão, não medida |
 | grade e horários | `builds.grade` (fonte única) | três cópias da grade já fizeram relatório dar meta batida por engano |

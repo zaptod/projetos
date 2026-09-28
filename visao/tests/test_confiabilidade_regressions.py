@@ -36,11 +36,24 @@ def _limpo():
             "fantasmas": [], "rascunhos": [], "orfaos": [], "so_sd": []}
 
 
-def _retrato(builds=(), historias=(), eventos=(), conferencias=None):
+def _marca_boa(quando=f"{DIA}T01:20:00"):
+    """A marca de uma noite em que as quatro partes da coleta deram certo."""
+    partes = {nome: {"chave": "noite", "estado": "ok", "videos": 5,
+                     "quando": quando, "ultimo_ok": quando,
+                     "videos_no_ultimo_ok": 5}
+              for nome in ("builds", "builds_tiktok", "historias",
+                           "historias_tiktok")}
+    return {"dia": "noite", "completa": True, "partes": partes}
+
+
+def _retrato(builds=(), historias=(), eventos=(), conferencias=None,
+             marca=None, agora=None):
     if conferencias is None:
         conferencias = {"builds": _limpo(), "historias": _limpo()}
     return C.hoje(DIA, builds=builds, historias=historias,
-                  eventos=eventos, conferencias=conferencias)
+                  eventos=eventos, conferencias=conferencias,
+                  marca=_marca_boa() if marca is None else marca,
+                  agora=agora)
 
 
 class OQueFoiAfirmado(unittest.TestCase):
@@ -284,6 +297,128 @@ class AConferencia(unittest.TestCase):
                                        "historias": _limpo()})
         self.assertTrue(any("parada desde" in a for a in ficha["alertas"]))
 
+    def test_uma_noite_so_sem_conferencia_ja_acende(self):
+        # A noite de 21/09/2026 faltou e a regra antiga (mais de dois dias)
+        # nunca teria dito nada: a ficha de 20/09 tinha um dia de idade.
+        ontem = dict(_limpo(), dia="2026-09-15")
+        ficha = _retrato(conferencias={"builds": ontem,
+                                       "historias": _limpo()})
+        (alerta,) = [a for a in ficha["alertas"] if "builds" in a]
+        self.assertIn("a noite de 16/09 não rodou", alerta)
+
+    def test_a_noite_nao_e_cobrada_antes_de_acabar(self):
+        # As 03:00 a noite de hoje ainda esta rodando: a ficha de ontem basta.
+        ontem = dict(_limpo(), dia="2026-09-15")
+        ficha = _retrato(conferencias={"builds": ontem,
+                                       "historias": dict(_limpo(),
+                                                         dia="2026-09-15")},
+                         agora=C.datetime(2026, 9, 16, 3, 0))
+        self.assertFalse(any("não rodou" in a for a in ficha["alertas"]))
+
+
+class AGradeNaPagina(unittest.TestCase):
+    """Ate 28/09/2026 a pagina mostrava "✓ 5/5" para um canal que cumpriu 5
+    de 10 horarios: so o veredito do ledger entrava no resumo."""
+
+    def _em_falta(self):
+        return dict(_limpo(), grade="em falta", dia_de_grade="2026-09-15",
+                    horarios_cumpridos=5, slots_da_grade=10,
+                    horarios_em_falta=["21:37", "22:37", "23:37", "00:37",
+                                       "20:37"])
+
+    def test_grade_em_falta_com_ledger_limpo_acende(self):
+        ficha = _retrato(conferencias={"builds": self._em_falta(),
+                                       "historias": _limpo()})
+        (alerta,) = [a for a in ficha["alertas"] if "grade de builds" in a]
+        self.assertIn("5 de 10 horários", alerta)
+        self.assertIn("15/09", alerta)
+        self.assertIn("00:37", alerta)
+        self.assertEqual("atencao", ficha["veredito"])
+        self.assertEqual("em falta", ficha["conferencia"]["builds"]["grade"])
+
+    def test_grade_cumprida_nao_acende(self):
+        cumprida = dict(self._em_falta(), grade="cumprida",
+                        horarios_cumpridos=10, horarios_em_falta=[])
+        ficha = _retrato(conferencias={"builds": cumprida,
+                                       "historias": _limpo()})
+        self.assertEqual([], ficha["alertas"])
+
+
+class OsSinaisDeAusencia(unittest.TestCase):
+
+    def test_canal_sem_evento_no_diario_acende(self):
+        # 25 e 26/09/2026: builds com zero eventos, historias com centenas.
+        agora = C.datetime(2026, 9, 16, 22, 30)
+        eventos = [{"ts": (agora - C.timedelta(hours=h)).astimezone()
+                    .isoformat(), "canal": "historias", "fabrica": "estudio",
+                    "status": "ok"} for h in range(0, 30)]
+        ficha = _retrato(eventos=eventos, agora=agora)
+        self.assertTrue(any(a.startswith("builds: 0 evento(s)")
+                            for a in ficha["alertas"]))
+        self.assertFalse(any(a.startswith("historias:")
+                             for a in ficha["alertas"]))
+
+    def test_diario_vazio_nao_inventa_canal_parado(self):
+        ficha = _retrato(eventos=())
+        self.assertFalse(any("evento(s) de trabalho" in a
+                             for a in ficha["alertas"]))
+
+    def test_linhas_recentes_sem_id_acendem(self):
+        velho = [dict(_yt(f"g{n}"), quando="2026-09-13T09:40:00",
+                      youtube_id="") for n in range(5)]
+        ficha = _retrato(builds=velho)
+        self.assertTrue(any("têm youtube_id" in a for a in ficha["alertas"]))
+
+
+class AMetricaVelha(unittest.TestCase):
+    """Onze noites sem metrica do YouTube (17 a 28/09/2026) e a pagina lia o
+    disco velho sem avisar."""
+
+    def test_marca_boa_nao_acende(self):
+        self.assertEqual([], _retrato()["alertas"])
+
+    def test_coleta_que_falhou_esta_noite_acende(self):
+        marca = _marca_boa()
+        marca["partes"]["builds"].update(
+            estado="erro", erro="ConnectionError: SSLEOFError")
+        ficha = _retrato(marca=marca)
+        (alerta,) = [a for a in ficha["alertas"] if "métrica" in a]
+        self.assertIn("do YouTube de builds", alerta)
+        self.assertIn("SSLEOFError", alerta)
+
+    def test_ultima_coleta_boa_antiga_e_velha(self):
+        marca = _marca_boa()
+        marca["partes"]["historias"]["ultimo_ok"] = "2026-09-14T01:20:00"
+        ficha = _retrato(marca=marca)
+        (alerta,) = [a for a in ficha["alertas"] if "métrica" in a]
+        self.assertIn("velha", alerta)
+        self.assertIn("14/09", alerta)
+
+    def test_nunca_coletou_e_alerta_e_nao_silencio(self):
+        # CASO ZERO: sem marca nenhuma no disco.
+        ficha = _retrato(marca={})
+        self.assertEqual(4, sum("nenhuma coleta boa" in a
+                                for a in ficha["alertas"]))
+
+    def test_marca_ilegivel_aparece(self):
+        # Arquivo que nao abre nao some: vira alerta proprio.
+        real = C._marca_das_metricas
+        C._marca_das_metricas = lambda: None
+        self.addCleanup(lambda: setattr(C, "_marca_das_metricas", real))
+        ficha = C.hoje(DIA, builds=(), historias=(), eventos=(),
+                       conferencias={"builds": _limpo(),
+                                     "historias": _limpo()},
+                       agora=C.datetime(2026, 9, 16, 22, 30))
+        self.assertTrue(any("não consegui ler a marca" in a
+                            for a in ficha["alertas"]))
+
+    def test_lista_incompleta_do_studio_acende(self):
+        marca = _marca_boa()
+        marca["partes"]["builds_tiktok"].update(lista="parada", casados=60,
+                                                envios=119)
+        ficha = _retrato(marca=marca)
+        self.assertTrue(any("60 de 119" in a for a in ficha["alertas"]))
+
 
 class ARegraDaCasa(unittest.TestCase):
 
@@ -300,7 +435,8 @@ class ARegraDaCasa(unittest.TestCase):
 
     def test_entrada_torta_nao_levanta(self):
         ficha = C.hoje(DIA, builds=[None, "x", {}], historias=[{"url": "y"}],
-                       eventos=[None, 3, {}], conferencias={"builds": None})
+                       eventos=[None, 3, {}], conferencias={"builds": None},
+                       marca={"partes": {"builds": "torto"}, "videos": 3})
         self.assertIn("veredito", ficha)
 
     def test_esta_no_resumo_do_panorama(self):

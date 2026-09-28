@@ -35,9 +35,18 @@ from .auditoria import _publicado
 # bastante para o acervo de antes do TikTok entrar na grade nao inflar o
 # numero; longo o bastante para a fila de atrasados aparecer inteira.
 JANELA_DESTINO_DIAS = 7
-# Conferencia mais velha que isto e conferencia que parou de rodar.
+# Conferencia mais velha que isto e conferencia que parou de rodar. Ficou
+# para quem ja lia o numero; a regra agora e a da NOITE (`sinais`): a de
+# 21/09/2026 faltou e, com a regra dos dois dias, ninguem teria sabido.
 CONFERENCIA_VELHA_DIAS = 2
 FORA_DE_HD = ("processando", "subindo", "sd")
+# Metrica que nao se renova ha mais que isto parou de ser coletada. A coleta
+# e uma por noite: uma noite e um dia de folga, e nada mais.
+METRICA_VELHA_H = 30
+ROTULO_DA_PARTE = {"builds": "do YouTube de builds",
+                   "historias": "do YouTube de historias",
+                   "builds_tiktok": "do TikTok de builds",
+                   "historias_tiktok": "do TikTok de historias"}
 
 
 def _ledger(modulo_nome: str) -> list:
@@ -51,12 +60,28 @@ def _ledger(modulo_nome: str) -> list:
         return []
 
 
-def _diario() -> list:
+def _diario() -> list | None:
+    """O diario INTEIRO. `None` = nao consegui ler (e nao "nada aconteceu").
+
+    Era `atividade.recentes(4000)`, que so le as ultimas 1200 linhas: num dia
+    de historias (1103 eventos em 27/09) a janela de 24 h saia cortada.
+    """
     try:
-        from builds import atividade
-        return list(atividade.recentes(4000) or [])
+        from builds.publicar import sinais
+        eventos = sinais.ler_diario()
     except Exception:
-        return []
+        return None
+    # Do mais novo para o mais velho, como `recentes()` entregava: a pagina
+    # e o relatorio mostram as primeiras aberturas da valvula da lista.
+    return None if eventos is None else list(reversed(eventos))
+
+
+def _marca_das_metricas() -> dict | None:
+    try:
+        from builds.publicar import metricas
+        return metricas.ler_marca()
+    except Exception:
+        return None
 
 
 def _conferencias() -> dict:
@@ -242,7 +267,75 @@ def _resumo_conferencia(ficha: dict, hoje: date) -> dict:
         "privados_fora": len(ficha.get("orfaos_privados") or []),
         "orfaos": len(ficha.get("orfaos") or []),
         "so_sd": len(ficha.get("so_sd") or []),
+        # A GRADE, e nao so o veredito. Ate 28/09/2026 esta pagina mostrava
+        # "✓ 5/5" para um canal com 5 de 10 horarios cumpridos: ledger
+        # coerente e grade cumprida sao perguntas diferentes. `None` = ficha
+        # de antes de 27/09, que nao sabia a grade.
+        "grade": ficha.get("grade"),
+        "dia_de_grade": ficha.get("dia_de_grade"),
+        "horarios_cumpridos": ficha.get("horarios_cumpridos"),
+        "slots_da_grade": ficha.get("slots_da_grade"),
+        "horarios_em_falta": list(ficha.get("horarios_em_falta") or []),
     }
+
+
+def _metricas(marca, agora: datetime) -> dict:
+    """`{parte: {estado, ultimo_ok, idade_h, velha, erro}}` da marca do dia.
+
+    `None` na entrada e "nao consegui ler a marca": fica `{"_ilegivel": ...}`
+    e vira alerta, em vez de sumir.
+    """
+    if marca is None:
+        return {"_ilegivel": True}
+    try:
+        from builds.publicar import metricas
+        partes = metricas.partes_da_marca(marca)
+        nomes = [metricas.nome_da_parte(c, p) for c, p in metricas.partes()]
+    except Exception:
+        partes, nomes = {}, list(ROTULO_DA_PARTE)
+    saida = {}
+    for nome in nomes:
+        ficha = partes.get(nome) if isinstance(partes.get(nome), dict) else {}
+        ultimo = str(ficha.get("ultimo_ok") or "")
+        try:
+            idade = (agora - datetime.fromisoformat(ultimo)).total_seconds() \
+                / 3600 if ultimo else None
+        except ValueError:
+            idade = None
+        saida[nome] = {
+            "estado": ficha.get("estado"),
+            "ultimo_ok": ultimo or None,
+            "idade_h": None if idade is None else round(idade, 1),
+            # NUNCA TEVE COLETA BOA tambem e velha: ausencia nao e frescor.
+            "velha": idade is None or idade > METRICA_VELHA_H,
+            "erro": ficha.get("erro"),
+            "videos": ficha.get("videos_no_ultimo_ok"),
+            "lista": ficha.get("lista"),
+            "casados": ficha.get("casados"),
+            "envios": ficha.get("envios"),
+        }
+    return saida
+
+
+def _sinais(linhas: dict, eventos, conferencias: dict,
+            agora: datetime) -> dict:
+    """Os tres sinais de ausencia, pelas mesmas contas da conferencia."""
+    try:
+        from builds.publicar import sinais
+    except Exception:
+        return {}
+    contagem = (sinais.eventos_por_canal(eventos, agora, canais=tuple(linhas))
+                if eventos is not None else None)
+    saida = {}
+    for canal, do_canal in linhas.items():
+        ficha = (conferencias or {}).get(canal)
+        saida[canal] = {
+            "noite": sinais.noites_sem_conferencia(
+                ficha if isinstance(ficha, dict) else {}, agora),
+            "eventos_24h": None if contagem is None else contagem.get(canal),
+            "cobertura_ids": sinais.cobertura_de_ids(do_canal, agora),
+        }
+    return saida
 
 
 def _alertas(ficha: dict) -> list:
@@ -279,24 +372,118 @@ def _alertas(ficha: dict) -> list:
                            f"{str(conf.get('erro'))[:80]}")
         elif estado == "nunca rodou":
             alertas.append(f"conferência de {canal} nunca rodou")
-        elif (conf.get("idade_dias") or 0) > CONFERENCIA_VELHA_DIAS:
-            alertas.append(f"conferência de {canal} parada desde "
-                           f"{conf.get('dia')}")
+        if conf.get("grade") == "em falta":
+            # A GRADE FURADA APARECE AQUI TAMBEM, e nao so no diario: a
+            # pagina dizia "✓" para o canal que cumpriu 5 de 10 horarios.
+            falta = ", ".join(conf.get("horarios_em_falta") or [])
+            alertas.append(
+                f"grade de {canal} em falta no dia "
+                f"{_dia_curto(conf.get('dia_de_grade'))}: "
+                f"{conf.get('horarios_cumpridos', 0)} de "
+                f"{conf.get('slots_da_grade', 0)} horários com vídeo público"
+                + (f" (faltaram {falta})" if falta else ""))
+    for canal, sinal in (ficha.get("sinais") or {}).items():
+        noite = sinal.get("noite")
+        estado = (ficha["conferencia"].get(canal) or {}).get("estado")
+        if noite and estado != "nunca rodou":
+            # A NOITE QUE FALTOU. A de 21/09/2026 passou sem conferencia, e
+            # a regra antiga (dois dias) nunca teria dito nada.
+            esperada = _dia_curto(noite.get("esperada"))
+            if not noite.get("ultima"):
+                alertas.append(f"conferência de {canal} nunca rodou")
+            elif noite["ultima"] < str(noite.get("esperada") or ""):
+                alertas.append(
+                    f"conferência de {canal} parada desde "
+                    f"{_dia_curto(noite.get('ultima'))}: a noite de "
+                    f"{esperada} não rodou")
+            else:
+                alertas.append(
+                    f"conferência de {canal}: a noite de {esperada} não rodou "
+                    "(só houve conferência feita à mão)")
+        eventos = sinal.get("eventos_24h") or {}
+        if eventos.get("poucos"):
+            alertas.append(
+                f"{canal}: {eventos.get('eventos', 0)} evento(s) de trabalho "
+                f"em {eventos.get('horas_cobertas', 0):.0f} h no diário, menos "
+                f"que os {eventos.get('minimo', 0)} horário(s) da grade — o "
+                "canal parou?")
+        cobertura = sinal.get("cobertura_ids") or {}
+        if cobertura.get("baixa"):
+            alertas.append(
+                f"{canal}: só {cobertura.get('com_id', 0)} de "
+                f"{cobertura.get('linhas', 0)} publicação(ões) recentes do "
+                f"YouTube têm youtube_id "
+                f"({100 * (cobertura.get('cobertura') or 0):.0f}%) — sem id "
+                "não há métrica")
+    alertas.extend(_alertas_de_metrica(ficha.get("metricas") or {}))
+    return alertas
+
+
+def _dia_curto(texto) -> str:
+    texto = str(texto or "")
+    return f"{texto[8:10]}/{texto[5:7]}" if len(texto) >= 10 else "?"
+
+
+def _alertas_de_metrica(metricas: dict) -> list:
+    """Metrica velha acende AQUI, que e o relatorio das 22:30.
+
+    Onze noites sem metrica do YouTube (17 a 28/09/2026) e a pagina lia o
+    disco velho sem avisar. Estado, e nao evento: enquanto a ultima coleta
+    boa de uma parte for de mais de `METRICA_VELHA_H` horas, o alerta fica.
+    """
+    if metricas.get("_ilegivel"):
+        return ["não consegui ler a marca das métricas (_atualizado_em.json)"]
+    alertas = []
+    for nome, parte in metricas.items():
+        rotulo = ROTULO_DA_PARTE.get(nome, nome)
+        if parte.get("estado") == "erro":
+            # A marca de antes de 28/09/2026 so guardava o numero: "0" sem
+            # o motivo. O motivo novo vem da excecao.
+            motivo = (str(parte["erro"])[:70] if parte.get("erro")
+                      else "a marca diz 0 vídeos, sem o motivo")
+            alertas.append(f"métrica {rotulo}: a coleta desta noite falhou "
+                           f"({motivo})")
+        elif parte.get("velha"):
+            if parte.get("ultimo_ok"):
+                alertas.append(
+                    f"métrica {rotulo} velha: a última coleta boa é de "
+                    f"{_dia_curto(parte['ultimo_ok'])} "
+                    f"{str(parte['ultimo_ok'])[11:16]} "
+                    f"({parte.get('idade_h', 0):.0f} h)")
+            else:
+                alertas.append(f"métrica {rotulo}: nenhuma coleta boa "
+                               "registrada")
+        if parte.get("lista") in ("parada", "tempo"):
+            alertas.append(
+                f"métrica {rotulo}: a lista do Studio veio incompleta "
+                f"({parte.get('casados')} de {parte.get('envios')} envios "
+                "casados)")
     return alertas
 
 
 def hoje(dia: str | None = None, *, builds=None, historias=None,
-         eventos=None, conferencias=None) -> dict:
-    """O retrato do dia. Tudo injetavel — e assim que se testa sem disco."""
+         eventos=None, conferencias=None, marca=None,
+         agora: datetime | None = None) -> dict:
+    """O retrato do dia. Tudo injetavel — e assim que se testa sem disco.
+
+    `marca` e a marca do dia das metricas (`{}` = nunca coletou; ausente =
+    le do disco). `agora` e o relogio dos sinais; sem ele, o de agora se o
+    dia e hoje, e o fim do dia se e um dia passado.
+    """
     referencia = date.fromisoformat(dia) if dia else date.today()
     dia = referencia.isoformat()
+    if agora is None:
+        agora = (datetime.now() if referencia >= date.today()
+                 else datetime.combine(referencia, datetime.max.time()))
     linhas = {
         "builds": _ledger("builds") if builds is None else list(builds),
         "historias": (_ledger("historias") if historias is None
                       else list(historias)),
     }
-    eventos = _diario() if eventos is None else list(eventos)
+    lidos = _diario() if eventos is None else list(eventos)
+    eventos = lidos or []
     conferencias = _conferencias() if conferencias is None else conferencias
+    marca = _marca_das_metricas() if marca is None else marca
 
     publicacoes = _publicacoes(linhas, dia)
     valvula, falhas, ignoradas = _do_diario(eventos, dia)
@@ -324,6 +511,10 @@ def hoje(dia: str | None = None, *, builds=None, historias=None,
         "falhas_ignoradas": ignoradas,
         "conferencia": {canal: _resumo_conferencia(f or {}, referencia)
                         for canal, f in (conferencias or {}).items()},
+        # O QUE FALTA, e nao so o que aconteceu errado: noite sem
+        # conferencia, canal que parou de trabalhar, linha sem id.
+        "sinais": _sinais(linhas, lidos, conferencias or {}, agora),
+        "metricas": _metricas(marca, agora),
         "quando": datetime.now().isoformat(timespec="seconds"),
     }
     ficha["alertas"] = _alertas(ficha)

@@ -213,7 +213,7 @@ class AtualizacaoDiariaTests(unittest.TestCase):
         metricas.reconciliar = lambda canal, log=print: 0
         metricas.atualizar = lambda log=print, canal="builds": [{"ok": canal}]
 
-        def quebra(canal, log=print):
+        def quebra(canal, log=print, **_k):
             raise RuntimeError("o TikTok pediu login")
         T.coletar = quebra
 
@@ -226,7 +226,7 @@ class AtualizacaoDiariaTests(unittest.TestCase):
         chamados = []
         metricas.reconciliar = lambda canal, log=print: 0
         metricas.atualizar = lambda log=print, canal="builds": []
-        T.coletar = lambda canal, log=print: chamados.append(canal) or []
+        T.coletar = lambda canal, log=print, **_k: chamados.append(canal) or []
         metricas.atualizar_tudo(log=lambda *_a: None)
         self.assertEqual(sorted(metricas.CANAIS), sorted(chamados))
 
@@ -234,6 +234,224 @@ class AtualizacaoDiariaTests(unittest.TestCase):
         """Quem ler a funcao precisa saber que teste nenhum pode chama-la crua."""
         self.assertIn("nunca chamar de teste sem dublar",
                       inspect.getdoc(T.coletar))
+
+
+# ------------------------------------------------------ o Studio de mentira
+BASE = 1_790_000_000   # um instante qualquer; os posts vao para tras dele
+
+
+def _bruto(n: int) -> dict:
+    """O item cru do `item_list`, do mais novo (n=0) para o mais velho."""
+    return {"item_id": f"t{n:04d}", "post_time": str(BASE - n * 3600),
+            "desc": f"post {n}", "duration": "60000", "play_count": "5"}
+
+
+class _Resposta:
+    def __init__(self, corpo):
+        self.url = ("https://www.tiktok.com/tiktok/creator/manage/item_list/"
+                    "v1/?locale=pt-BR")
+        self._corpo = corpo
+
+    def json(self):
+        return self._corpo
+
+
+class _Teclado:
+    def __init__(self, pagina):
+        self.pagina = pagina
+
+    def press(self, tecla):
+        self.pagina.teclas.append(tecla)
+        if self.pagina.end_carrega and tecla == "End":
+            self.pagina._proxima()
+
+
+class _Mouse:
+    def wheel(self, *_a):
+        # O DEFEITO MEDIDO: a roda sem o ponteiro sobre a lista nao rola o
+        # DIV dela, e nenhuma pagina nova e pedida.
+        pass
+
+
+class StudioDeMentira:
+    """Pagina com `total` posts: 50 na primeira resposta, 10 nas seguintes.
+
+    Cada rolagem do DIV (o `evaluate` do JS) pede a proxima pagina — e,
+    como o Studio de verdade, pede a primeira de novo junto (cursor 0,
+    `has_more=true`), o que nao pode apagar o fim da lista.
+    """
+
+    def __init__(self, total: int, *, end_carrega: bool = False):
+        self.total, self.cursor = total, 0
+        self.end_carrega = end_carrega
+        self.handlers, self.teclas = [], []
+        self.url = "https://www.tiktok.com/tiktokstudio/content"
+        self.keyboard, self.mouse = _Teclado(self), _Mouse()
+
+    def on(self, _evento, handler):
+        self.handlers.append(handler)
+
+    def _responder(self, inicio: int, tamanho: int):
+        fim = min(self.total, inicio + tamanho)
+        corpo = {"item_list": [_bruto(n) for n in range(inicio, fim)],
+                 "cursor": fim, "has_more": fim < self.total,
+                 "status_code": 0}
+        for handler in self.handlers:
+            handler(_Resposta(corpo))
+        return fim
+
+    def goto(self, *_a, **_k):
+        self.cursor = self._responder(0, 50)
+
+    def _proxima(self):
+        self._responder(0, 50)          # a repeticao da primeira pagina
+        if self.cursor < self.total:
+            self.cursor = self._responder(self.cursor, 10)
+
+    def evaluate(self, _js):
+        self._proxima()
+
+    def wait_for_timeout(self, _ms):
+        pass
+
+
+class AListaInteiraTests(unittest.TestCase):
+    """De 17 a 28/09/2026 a lista parou em 50 ou 60 posts toda noite: 60 de
+    119 envios casados em builds, 50 de 165 em historias."""
+
+    def _ler(self, pagina, **kw):
+        lista = T.Lista()
+        pagina.on("response", lambda r: lista.receber(r.json()))
+        pagina.goto()
+        motivo = T.ler_a_lista(pagina, lista, pausa_ms=0, **kw)
+        return lista, motivo
+
+    def test_a_rolagem_antiga_parava_na_primeira_pagina(self):
+        """O defeito, reproduzido: `mouse.wheel` nao pede pagina nova."""
+        pagina = StudioDeMentira(165)
+        lista = T.Lista()
+        pagina.on("response", lambda r: lista.receber(r.json()))
+        pagina.goto()
+        parado = 0
+        while parado < 3:                    # o laco que existia ate 28/09
+            antes = len(lista.itens)
+            pagina.mouse.wheel(0, 4000)
+            parado = parado + 1 if len(lista.itens) == antes else 0
+        self.assertEqual(50, len(lista.itens))
+        self.assertTrue(lista.tem_mais)
+
+    def test_le_ate_o_studio_dizer_que_acabou(self):
+        lista, motivo = self._ler(StudioDeMentira(165))
+        self.assertEqual(165, len(lista.itens))
+        self.assertEqual("completa", motivo)
+        self.assertIs(False, lista.tem_mais)
+
+    def test_a_repeticao_da_primeira_pagina_nao_apaga_o_fim(self):
+        # O Studio repede a primeira pagina a cada rolagem, com
+        # `has_more=true`. Se a ultima resposta mandasse, a lista nunca
+        # acabaria.
+        lista = T.Lista()
+        lista.receber({"item_list": [], "cursor": 172, "has_more": False})
+        lista.receber({"item_list": [_bruto(0)], "cursor": 50,
+                       "has_more": True})
+        self.assertIs(False, lista.tem_mais)
+        self.assertEqual(172, lista.fronteira)
+
+    def test_para_quando_ja_cobre_o_envio_mais_velho(self):
+        # So interessa o post que pode casar com o ledger: sem isto, uma
+        # conta com mil posts antigos seguraria o perfil a noite inteira.
+        antes_de = BASE - 70 * 3600
+        lista, motivo = self._ler(StudioDeMentira(400),
+                                  basta_antes_de=antes_de)
+        self.assertEqual("suficiente", motivo)
+        self.assertLessEqual(lista.mais_velho(), antes_de)
+        self.assertLess(len(lista.itens), 400)
+
+    def test_lista_que_empaca_diz_que_ficou_incompleta(self):
+        # Se o Studio mudar e a rolagem parar de pedir pagina, o resultado
+        # nao pode parecer lista inteira: e `parada`, com `has_more` ainda
+        # verdadeiro.
+        pagina = StudioDeMentira(165)
+        pagina.evaluate = lambda _js: None
+        lista, motivo = self._ler(pagina)
+        self.assertEqual("parada", motivo)
+        self.assertEqual(50, len(lista.itens))
+        self.assertTrue(lista.tem_mais)
+
+    def test_alterna_o_div_com_a_tecla_end(self):
+        pagina = StudioDeMentira(165, end_carrega=True)
+        pagina.evaluate = lambda _js: None
+        lista, motivo = self._ler(pagina)
+        self.assertEqual("completa", motivo)
+        self.assertIn("End", pagina.teclas)
+
+
+class ColetaQueNaoMedeTests(unittest.TestCase):
+    """Lista vazia e zero casados sao FALHA, e nao "coleta com 0 videos".
+
+    O navegador e dublado inteiro: nada aqui abre Chrome nem grava na pasta
+    de verdade.
+    """
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        from builds.identity import browser
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        reais = (browser.contexto_persistente, browser.pagina,
+                 metricas.publicados, metricas.PASTA)
+        self.addCleanup(self._restaurar, reais)
+        self.pagina = StudioDeMentira(0)
+        pagina = self.pagina
+
+        class _Contexto:
+            def __enter__(self):
+                return object()
+
+            def __exit__(self, *_a):
+                return False
+
+        browser.contexto_persistente = lambda **_k: _Contexto()
+        browser.pagina = lambda _ctx: pagina
+        metricas.PASTA = Path(self._tmp.name) / "_metricas"
+        self.envios = [{"plataforma": "tiktok",
+                        "quando": _quando(BASE - 5 * 3600, 3),
+                        "video_id": "g1"}]
+        metricas.publicados = lambda canal="builds": self.envios
+
+    @staticmethod
+    def _restaurar(reais):
+        from builds.identity import browser
+        (browser.contexto_persistente, browser.pagina,
+         metricas.publicados, metricas.PASTA) = reais
+
+    def test_studio_sem_post_nenhum_e_falha(self):
+        from builds.publicar.tiktok import TikTokFalhou
+        espera = T.ESPERA_LISTA_S
+        T.ESPERA_LISTA_S = 0.0
+        self.addCleanup(lambda: setattr(T, "ESPERA_LISTA_S", espera))
+        with self.assertRaises(TikTokFalhou) as erro:
+            T.coletar("builds", log=lambda *_a: None, analisar=False)
+        self.assertIn("nao carregou nenhum post", str(erro.exception))
+
+    def test_nenhum_envio_casado_e_falha(self):
+        from builds.publicar.tiktok import TikTokFalhou
+        self.pagina.total = 30
+        self.envios[0]["quando"] = _quando(BASE + 90 * 86400)
+        with self.assertRaises(TikTokFalhou) as erro:
+            T.coletar("builds", log=lambda *_a: None, analisar=False)
+        self.assertIn("nenhum dos 1 envio", str(erro.exception))
+
+    def test_o_resumo_diz_quantos_casaram_e_por_que_a_lista_parou(self):
+        self.pagina.total = 30
+        resumo = {}
+        salvos = T.coletar("builds", log=lambda *_a: None, analisar=False,
+                           resumo=resumo)
+        self.assertEqual(1, len(salvos))
+        self.assertEqual({"envios": 1, "posts": 30, "lista": "completa",
+                          "casados": 1}, resumo)
 
 
 if __name__ == "__main__":

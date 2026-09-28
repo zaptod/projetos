@@ -24,6 +24,7 @@ permite testar a deteccao do caso de 15/09 sem pedir nada ao YouTube.
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -78,7 +79,7 @@ def _horas_em_ordem(plataforma: str) -> list:
     return sorted(grade.horas_da_plataforma(plataforma), key=_minutos)
 
 
-def _abertura_e_fechamento(plataforma: str) -> tuple:
+def abertura_e_fechamento(plataforma: str) -> tuple:
     """(primeira, ultima) hora do DIA DE GRADE daquela plataforma.
 
     O dia de grade abre no horario que vem depois do MAIOR buraco da grade e
@@ -94,6 +95,13 @@ def _abertura_e_fechamento(plataforma: str) -> tuple:
 
     i = max(range(len(horas)), key=buraco_antes)
     return horas[i], horas[i - 1]
+
+
+# O NOME ANTIGO CONTINUA: `remoto/relatorios.py` (metas por dia de grade,
+# d68523e) chama `_abertura_e_fechamento`, `_horario_da_grade` e
+# `_dia_de_grade` daqui. Renomear sem apelido derrubava o relatorio das
+# 21:00 — ha teste de contrato em test_conferencia_deficit_regressions.
+_abertura_e_fechamento = abertura_e_fechamento
 
 
 def _horario_da_grade(quando: datetime, plataforma: str) -> tuple:
@@ -112,7 +120,7 @@ def _horario_da_grade(quando: datetime, plataforma: str) -> tuple:
 
 def _dia_de_grade(dia: date, hora: int, plataforma: str) -> date:
     """O dia de grade a que pertence o horario `hora` do dia `dia`."""
-    abertura, _ = _abertura_e_fechamento(plataforma)
+    abertura, _ = abertura_e_fechamento(plataforma)
     if _minutos(hora) >= _minutos(abertura):
         return dia
     return dia - timedelta(days=1)
@@ -129,7 +137,7 @@ def dia_de_grade_fechado(agora: datetime | None = None,
     agora = agora or datetime.now()
     dia, hora = _horario_da_grade(agora, plataforma)
     corrente = _dia_de_grade(dia, hora, plataforma)
-    _, fechamento = _abertura_e_fechamento(plataforma)
+    _, fechamento = abertura_e_fechamento(plataforma)
     return corrente if hora == fechamento else corrente - timedelta(days=1)
 
 
@@ -245,6 +253,22 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
                  "titulo": linha.get("titulo"),
                  "quando": linha.get("quando"),
                  "prova_ok": linha.get("prova_ok")}
+        # OS OUTROS PEDACOS DA MESMA LINHA (10142b1, 28/09/2026): a parte
+        # cortada em dois Shorts guarda `youtube_ids` com os dois. Sem isto o
+        # pedaco 2 no canal era "orfao" — e, privado, virava "privado fora
+        # do ledger" em vez de rascunho DESTA linha. A grade continua pagando
+        # um horario por linha (`achar`), nao um por pedaco.
+        for extra in linha.get("youtube_ids") or ():
+            pedaco = por_id.get(str(extra or ""))
+            if pedaco is None or pedaco is alvo:
+                continue
+            vistos.add(id(pedaco))
+            if str(pedaco.get("privacidade") or "").lower() in ("private",
+                                                               "privado"):
+                rascunhos.append({**ficha, "youtube_id": pedaco.get("id"),
+                                  "privacidade": pedaco.get("privacidade"),
+                                  "upload": pedaco.get("upload"),
+                                  "pedaco": True})
         if alvo is None:
             # O LEDGER AFIRMA E O CANAL NAO TEM. E o nome exato do defeito.
             fantasmas.append(ficha)
@@ -331,7 +355,7 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     # acabado de comecar: as 05:20 so o horario das 00:37 existia nele, e um
     # dia 10/10 dava deficit 9.
     dia_da_grade = dia_de_grade_fechado(agora, plataforma)
-    abertura, fechamento = _abertura_e_fechamento(plataforma)
+    abertura, fechamento = abertura_e_fechamento(plataforma)
     horas = _horas_em_ordem(plataforma)
     ordem = horas[horas.index(abertura):] + horas[:horas.index(abertura)]
     prometidos = len(ordem)
@@ -429,11 +453,20 @@ def buscar_no_canal(canal: str = "builds",
 
 
 def salvar(ficha: dict) -> Path:
+    """Grava a ficha do dia de uma vez: nunca fica meio arquivo no disco.
+
+    A pagina do painel le a ultima ficha a cada 3 s, e a madrugada regrava a
+    do dia a cada rodada (01:28, 03:20, 04:20, 05:20). Escrever direto por
+    cima deixava uma janela em que o leitor achava JSON pela metade — e
+    `ultima()` devolvia `{}`, que a pagina mostra como "nunca rodou".
+    """
     destino = pasta(ficha.get("canal", "builds"))
     destino.mkdir(parents=True, exist_ok=True)
     caminho = destino / f"{ficha.get('dia', 'hoje')}.json"
-    caminho.write_text(json.dumps(ficha, ensure_ascii=False, indent=1),
-                       encoding="utf-8")
+    provisorio = caminho.with_name(caminho.name + ".tmp")
+    provisorio.write_text(json.dumps(ficha, ensure_ascii=False, indent=1),
+                          encoding="utf-8")
+    os.replace(provisorio, caminho)
     return caminho
 
 
@@ -446,6 +479,94 @@ def ultima(canal: str = "builds") -> dict:
         return {}
 
 
+def _avisos_herdados(anterior: dict, dia: str) -> dict:
+    """Os avisos que ja chegaram ao celular, para a rodada seguinte nao repetir.
+
+    A conferencia roda ate quatro vezes por noite (01:28, 03:20, 04:20 e
+    05:20 em 27/09/2026), e cada rodada com deficit escrevia a sua linha de
+    erro: o mesmo aviso quatro vezes no celular, e alarme repetido e alarme
+    que se aprende a ignorar. A grade e herdada pelo DIA DE GRADE (todas as
+    rodadas da noite conferem o mesmo); o resto, pelo dia da ficha.
+    """
+    anterior = anterior if isinstance(anterior, dict) else {}
+    guardados = anterior.get("avisos")
+    guardados = guardados if isinstance(guardados, dict) else {}
+    grade_avisada = dict(guardados.get("grade") or {})
+    if (not grade_avisada and "avisos" not in anterior
+            and anterior.get("dia_de_grade")):
+        # A ficha das 01:35 de 28/09/2026 e de antes deste campo. Aquela
+        # versao avisava todo deficit maior que zero: o dela ja foi avisado.
+        grade_avisada = {"dia_de_grade": anterior.get("dia_de_grade"),
+                         "deficit": int(anterior.get("deficit") or 0)}
+    da_noite = dict(guardados.get("noite") or {})
+    if da_noite.get("dia") != dia:
+        da_noite = {"dia": dia}
+    return {"grade": grade_avisada, "noite": da_noite}
+
+
+def _rodadas(anterior: dict, dia: str, agora: datetime) -> list:
+    """As horas em que a conferencia rodou HOJE, esta inclusive.
+
+    A ficha do dia e regravada a cada rodada, e o botao do painel tambem
+    grava. Sem a lista, uma conferencia feita a mao as 14:00 apagava o
+    rastro de que a noite nao tinha rodado.
+    """
+    if isinstance(anterior, dict) and anterior.get("dia") == dia:
+        feitas = [str(r) for r in anterior.get("rodadas") or []]
+    else:
+        feitas = []
+    return feitas + [agora.strftime("%H:%M")]
+
+
+def _vigiar(canal: str, anterior: dict, contagem, agora: datetime) -> dict:
+    """Os sinais de vida do canal. Nenhum deles precisa de rede."""
+    from . import sinais
+    return {
+        "eventos_24h": None if contagem is None else contagem.get(canal),
+        "cobertura_ids": sinais.cobertura_de_ids(metricas.publicados(canal),
+                                                 agora),
+        "noites_puladas": sinais.noites_puladas(anterior, agora.date()),
+    }
+
+
+def _avisar_sinais(canal: str, vigia: dict, avisos: dict, atividade) -> None:
+    """Uma linha de erro por sinal, UMA vez por noite."""
+    noite = avisos["noite"]
+    puladas = vigia.get("noites_puladas") or []
+    if puladas and not noite.get("noites"):
+        # A NOITE QUE NAO RODOU. A de 21/09/2026 passou sem conferencia e
+        # sem coleta, e nenhuma ficha disse "faltei": ausencia nao escreve
+        # linha, entao a primeira rodada da noite seguinte escreve por ela.
+        atividade.registrar(
+            "conferencia", atividade.ERRO,
+            f"sinais {canal}: noite(s) sem conferencia: "
+            + ", ".join(f"{d[8:10]}/{d[5:7]}" for d in puladas), canal=canal)
+        noite["noites"] = puladas
+    eventos = vigia.get("eventos_24h") or {}
+    if eventos.get("poucos") and not noite.get("eventos"):
+        # O CANAL QUE PAROU. Builds passou 25 e 26/09/2026 com zero eventos
+        # no diario; o minimo e um por horario da grade que passou.
+        atividade.registrar(
+            "conferencia", atividade.ERRO,
+            f"sinais {canal}: {eventos.get('eventos', 0)} evento(s) de "
+            f"trabalho em {eventos.get('horas_cobertas', 0):.0f} h no diario, "
+            f"menos que os {eventos.get('minimo', 0)} horario(s) da grade "
+            "nesse tempo — o canal parou?", canal=canal)
+        noite["eventos"] = True
+    cobertura = vigia.get("cobertura_ids") or {}
+    if cobertura.get("baixa") and not noite.get("cobertura"):
+        # SEM ID NAO HA METRICA. De 17 a 27/09/2026 a reconciliacao morreu e
+        # historias chegou a 61 de 158 linhas com id.
+        atividade.registrar(
+            "conferencia", atividade.ERRO,
+            f"sinais {canal}: so {cobertura.get('com_id', 0)} de "
+            f"{cobertura.get('linhas', 0)} publicacao(oes) do YouTube de "
+            f"{str(cobertura.get('de'))[:10]} a {str(cobertura.get('ate'))[:10]}"
+            f" tem youtube_id ({100 * (cobertura.get('cobertura') or 0):.0f}%)"
+            " — a reconciliacao da madrugada parou?", canal=canal)
+        noite["cobertura"] = True
+
+
 def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
                   log=print, agora: datetime | None = None) -> dict:
     """Confere cada canal, grava e ACENDE o alarme quando esta sujo.
@@ -456,66 +577,115 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
     divergencia.
     """
     from .. import atividade
+    from . import sinais
 
+    relogio = agora or datetime.now()
+    dia = relogio.date().isoformat()
+    # O diario e lido UMA vez para os dois canais. `None` e "nao consegui
+    # ler", e nao "zero eventos": ficha sem numero, e nenhum alarme falso.
+    diario = sinais.ler_diario()
+    contagem = (None if diario is None
+                else sinais.eventos_por_canal(diario, relogio, canais=canais))
     fichas = {}
     for canal in canais:
+        # LIDA ANTES DE GRAVAR: a ficha anterior e a memoria do que ja foi
+        # avisado nesta noite.
+        anterior = ultima(canal)
+        avisos = _avisos_herdados(anterior, dia)
         try:
             ficha = conferir(canal, dias=dias, agora=agora)
         except Exception as exc:                               # noqa: BLE001
             # Servico da noite NAO derruba rodada. E o OAuth de um canal pode
             # estar morto sem que o outro esteja.
-            log(f"[conferencia] {canal}: {type(exc).__name__}: {exc}")
-            fichas[canal] = {"canal": canal,
-                             "dia": (agora or datetime.now()).date().isoformat(),
-                             "erro": f"{type(exc).__name__}: {exc}"}
-            # A FALHA TAMBEM VAI PARA DISCO. Sem isto a pagina via "nunca
-            # rodou" — medido em 16/09/2026, com os tres tokens revogados — e
-            # "nunca rodou" e "rodou e o token morreu" pedem acoes diferentes.
-            try:
-                salvar(fichas[canal])
-            except OSError:
-                pass
-            continue
-        salvar(ficha)
+            tipo = type(exc).__name__
+            log(f"[conferencia] {canal}: {tipo}: {exc}")
+            ficha = {"canal": canal, "dia": dia, "erro": f"{tipo}: {exc}"}
+            # A FALHA TAMBEM VIRA ALARME, e nao so ficha. Ate 28/09/2026 uma
+            # conferencia que morria (token, rede) so aparecia na pagina; no
+            # celular, silencio. Uma vez por noite para o mesmo tipo de erro.
+            if avisos["noite"].get("erro") != tipo:
+                atividade.registrar(
+                    "conferencia", atividade.ERRO,
+                    f"conferencia {canal} nao rodou: {tipo}: {exc}",
+                    canal=canal)
+                avisos["noite"]["erro"] = tipo
+        else:
+            log(f"[conferencia] {canal}: {ficha['casados']}/"
+                f"{ficha['no_ledger']} casados, {len(ficha['fantasmas'])} "
+                f"fantasma(s), {len(ficha['rascunhos'])} rascunho(s), "
+                f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora do "
+                f"ledger, {ficha.get('horarios_cumpridos', 0)}/"
+                f"{ficha.get('slots_da_grade', 0)} horarios cumpridos no dia de "
+                f"grade {ficha.get('dia_de_grade', '?')} — {ficha['veredito']}")
+            _alarmes_da_conferencia(canal, ficha, avisos, atividade)
+        try:
+            vigia = _vigiar(canal, anterior, contagem, relogio)
+            _avisar_sinais(canal, vigia, avisos, atividade)
+        except Exception as exc:                               # noqa: BLE001
+            # Sinal que quebra nao pode levar a conferencia do outro canal.
+            log(f"[conferencia] {canal}: sinais: {type(exc).__name__}: {exc}")
+            vigia = {"erro": f"{type(exc).__name__}: {exc}"}
+        ficha["sinais"] = vigia
+        ficha["avisos"] = avisos
+        ficha["rodadas"] = _rodadas(anterior, dia, relogio)
+        # A FALHA TAMBEM VAI PARA DISCO. Sem isto a pagina via "nunca rodou"
+        # — medido em 16/09/2026, com os tres tokens revogados — e "nunca
+        # rodou" e "rodou e o token morreu" pedem acoes diferentes.
+        try:
+            salvar(ficha)
+        except OSError as exc:
+            log(f"[conferencia] {canal}: nao gravei a ficha: {exc}")
         fichas[canal] = ficha
-        log(f"[conferencia] {canal}: {ficha['casados']}/{ficha['no_ledger']} "
-            f"casados, {len(ficha['fantasmas'])} fantasma(s), "
-            f"{len(ficha['rascunhos'])} rascunho(s), "
-            f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora do "
-            f"ledger, {ficha.get('horarios_cumpridos', 0)}/"
-            f"{ficha.get('slots_da_grade', 0)} horarios cumpridos no dia de "
-            f"grade {ficha.get('dia_de_grade', '?')} — {ficha['veredito']}")
-        if ficha["veredito"] == "sujo":
-            # FABRICA PROPRIA, e nao "publicacao". O alarme continua indo ao
-            # celular (o bot le todo erro do diario), mas o apurador ignora
-            # esta fabrica: em 16/09/2026 dois alarmes daqui dispararam um
-            # conserto automatico que editou codigo por causa de rascunhos
-            # no canal — achado de dados, nao defeito do fonte.
-            atividade.registrar(
-                "conferencia", atividade.ERRO,
-                f"conferencia {canal}/{ficha['plataforma']}: "
-                f"{len(ficha['fantasmas'])} no ledger sem video no canal, "
-                f"{len(ficha['rascunhos'])} rascunho(s), "
-                f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora "
-                f"do ledger em {ficha['janela_dias']} dia(s)", canal=canal)
-        if ficha.get("deficit"):
-            # ALARME PROPRIO PARA A GRADE FURADA. O builds ficou de 21 a 27/09
-            # sem publicar e a conferencia dizia "limpo" toda noite, porque
-            # ledger coerente e grade cumprida nao sao a mesma pergunta. Quem
-            # nao publica tem de acender aqui, e nao no relatorio diario, onde
-            # a linha "builds: 0/10" passou seis dias sem ser notada.
-            de, ate = (ficha.get("janela_da_grade") or ["?", "?"])[:2]
-            atividade.registrar(
-                "conferencia", atividade.ERRO,
-                f"grade {canal}/{ficha.get('plataforma')}: "
-                f"{ficha.get('horarios_cumpridos', 0)} de "
-                f"{ficha.get('slots_da_grade', 0)} horarios com video publico "
-                f"confirmado no canal, de {str(de)[:16].replace('T', ' ')} a "
-                f"{str(ate)[:16].replace('T', ' ')} ({ficha['deficit']} em "
-                f"falta: {', '.join(ficha.get('horarios_em_falta') or [])}; "
-                f"{ficha.get('linhas_no_dia_de_grade', 0)} linha(s) no ledger)",
-                canal=canal)
     return fichas
+
+
+def _alarmes_da_conferencia(canal: str, ficha: dict, avisos: dict,
+                            atividade) -> None:
+    """Ledger sujo (toda rodada) e grade furada (uma vez por dia de grade)."""
+    if ficha["veredito"] == "sujo":
+        # FABRICA PROPRIA, e nao "publicacao". O alarme continua indo ao
+        # celular (o bot le todo erro do diario), mas o apurador ignora esta
+        # fabrica: em 16/09/2026 dois alarmes daqui dispararam um conserto
+        # automatico que editou codigo por causa de rascunhos no canal —
+        # achado de dados, nao defeito do fonte.
+        atividade.registrar(
+            "conferencia", atividade.ERRO,
+            f"conferencia {canal}/{ficha['plataforma']}: "
+            f"{len(ficha['fantasmas'])} no ledger sem video no canal, "
+            f"{len(ficha['rascunhos'])} rascunho(s), "
+            f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora "
+            f"do ledger em {ficha['janela_dias']} dia(s)", canal=canal)
+    deficit = int(ficha.get("deficit") or 0)
+    ja = avisos["grade"]
+    ja_avisado = (int(ja.get("deficit") or 0)
+                  if ja.get("dia_de_grade") == ficha.get("dia_de_grade") else 0)
+    if deficit > ja_avisado:
+        # ALARME PROPRIO PARA A GRADE FURADA. O builds ficou de 21 a 27/09
+        # sem publicar e a conferencia dizia "limpo" toda noite, porque
+        # ledger coerente e grade cumprida nao sao a mesma pergunta. Quem nao
+        # publica tem de acender aqui, e nao no relatorio diario, onde a
+        # linha "builds: 0/10" passou seis dias sem ser notada.
+        #
+        # UMA VEZ POR DIA DE GRADE, e de novo so se o deficit CRESCER: as
+        # rodadas das 03:20, 04:20 e 05:20 conferem o mesmo dia que a das
+        # 01:28, e repetir o mesmo numero nao traz nada novo.
+        de, ate = (ficha.get("janela_da_grade") or ["?", "?"])[:2]
+        atividade.registrar(
+            "conferencia", atividade.ERRO,
+            f"grade {canal}/{ficha.get('plataforma')}: "
+            f"{ficha.get('horarios_cumpridos', 0)} de "
+            f"{ficha.get('slots_da_grade', 0)} horarios com video publico "
+            f"confirmado no canal, de {str(de)[:16].replace('T', ' ')} a "
+            f"{str(ate)[:16].replace('T', ' ')} ({deficit} em "
+            f"falta: {', '.join(ficha.get('horarios_em_falta') or [])}; "
+            f"{ficha.get('linhas_no_dia_de_grade', 0)} linha(s) no ledger)",
+            canal=canal)
+        avisos["grade"] = {"dia_de_grade": ficha.get("dia_de_grade"),
+                           "deficit": deficit}
+    elif ja.get("dia_de_grade") != ficha.get("dia_de_grade"):
+        # Dia de grade novo e sem deficit: a memoria do anterior nao serve.
+        avisos["grade"] = {"dia_de_grade": ficha.get("dia_de_grade"),
+                           "deficit": 0}
 
 
 def main(argv=None) -> int:
