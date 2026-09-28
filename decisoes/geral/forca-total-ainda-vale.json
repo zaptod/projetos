@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "O botão fica em Comando → Capacidade → Força total; mudar por ali também vale.",
+  "criado": "2026-09-28T19:22:46.357204",
+  "depende_de": [
+    {
+      "decisao": "teto-de-uso",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "forca-total-ainda-vale",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "como está no Teto de uso",
+      "id": "ligada",
+      "pede_comentario": false,
+      "rotulo": "Ligada, 20 min antes de renovar"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "a Mesa passa a nascer desligada",
+      "id": "so-quando-eu-pedir",
+      "pede_comentario": false,
+      "rotulo": "Só quando eu pedir"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "A Mesa de comando nasceu com a força total LIGADA (20 min antes de a janela de 5 h renovar, todos os agentes com trabalho em paralelo), porque é o que diz o Teto de uso aqui no Grimório. Mas às ~18h de 28/09 você disse \"voltamos ao normal\", e o orquestrador parou de usá-la. Qual vale?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Força total antes de renovar: ainda vale?",
+  "vigente": null
+}
