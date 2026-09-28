@@ -694,31 +694,17 @@ class Manipulador(BaseHTTPRequestHandler):
         return self._executar(pedido["acao"], pedido["args"])
 
     def _executar(self, nome: str, args: dict):
-        """Dentro da trava: preparar DE NOVO -> executar -> registrar.
+        """O segundo passo: `acoes.confirmar`, a MESMA funcao do Telegram.
 
-        De novo, com os args congelados: em 60 s a grade pode ter publicado
-        o mesmo video, e duas confirmacoes simultaneas (dois aparelhos, ou
-        dois servidores) nao podem passar juntas pelas guardas.
+        Ela prepara DE NOVO dentro da trava, com os args congelados: em 60 s
+        a grade pode ter publicado o mesmo video, e duas confirmacoes
+        simultaneas (dois aparelhos, o app e o bot, dois servidores) nao
+        podem passar juntas pelas guardas.
         """
         try:
-            with acoes.trava_de_acoes():
-                try:
-                    pedido = acoes.preparar(nome, args, self._id)
-                    resultado = acoes.executar(pedido["acao"], pedido["args"],
-                                               self._id)
-                except acoes.Recusa as exc:
-                    return self._erro(409, str(exc))
-                except Exception as exc:                     # noqa: BLE001
-                    resultado = f"falhou: {type(exc).__name__}: {exc}"
-                    ok = False
-                else:
-                    ok = True
-                try:
-                    acoes.registrar(self._id, nome, pedido["args"] if ok else args,
-                                    resultado, ok)
-                except Exception:                            # noqa: BLE001
-                    resultado += (" (o rastro não foi gravado; gerar e publicar "
-                                  "ficam bloqueados até ele voltar)")
+            ok, resultado = acoes.confirmar(nome, args, self._id)
+        except acoes.Recusa as exc:
+            return self._erro(409, str(exc))
         except OSError:
             return self._erro(503, "outra ação está em andamento; tente de novo")
         acoes.avisar_telegram(self._id, nome, resultado)

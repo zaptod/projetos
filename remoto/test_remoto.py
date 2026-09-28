@@ -200,6 +200,36 @@ class TabelaFechadaTests(BaseTemp):
         self.addCleanup(lambda: setattr(comandos, "procurar_video", original))
         self.assertIn("onde?", comandos.publicar("x instagram"))
 
+    def test_o_toque_na_confirmacao_cai_no_confirmar_e_so_nele(self):
+        """`/confirmar_<codigo>` e o link que o Telegram deixa tocar. Ele vira
+        o /confirmar com o codigo — nao abre porta para outro nome."""
+        self.assertIn("confirmar", comandos.TABELA)
+        resposta, _ = comandos.executar("/confirmar_abc123", chat=42)
+        self.assertIn("não conheço essa confirmação", resposta)
+        resposta, _ = comandos.executar("/confirmar", chat=42)
+        self.assertIn("mande o código", resposta)
+        for texto in ("/rodar_confirmar", "/exec_abc"):
+            self.assertIn("não conheço", comandos.executar(texto)[0])
+
+    def test_so_quem_precisa_recebe_o_chat(self):
+        vistos = []
+        comandos.TABELA["testechat"] = lambda args: vistos.append(args) or "ok"
+        self.addCleanup(lambda: comandos.TABELA.pop("testechat", None))
+        self.assertEqual(("ok", None), comandos.executar("/testechat x", chat=7))
+        self.assertEqual(["x"], vistos)
+
+    def test_o_bot_passa_o_chat_de_quem_pediu(self):
+        config.autorizar(42)
+        chamadas = []
+        original = comandos.executar
+        comandos.executar = lambda texto, chat=None: (
+            chamadas.append((texto, chat)) or ("ok", None))
+        self.addCleanup(setattr, comandos, "executar", original)
+        robo = bot_mod.Bot(telegram=TelegramFalso([_mensagem("/confirmar_ab12")]),
+                           log=lambda *_a: None)
+        robo.uma_volta(timeout=0)
+        self.assertEqual([("/confirmar_ab12", 42)], chamadas)
+
 
 class ProcurarVideoTests(unittest.TestCase):
     """17/09/2026: prefixo OU trecho, e o primeiro que aparecesse. O id da
@@ -463,6 +493,69 @@ class InstanciaUnicaTests(BaseTemp):
         self.addCleanup(setattr, travas, "trava", original_trava)
         self.assertEqual(principal.ligar(), 0)
         self.assertEqual(ligou, [], "nao podia ter ligado um segundo bot")
+
+    def test_o_bot_que_sobe_volta_a_vigiar_o_que_ficou_em_voo(self):
+        """O /publicar vigia a publicacao dentro do processo do bot. Bot que
+        reinicia no meio deixaria o "em voo" preso em "em_andamento" para
+        sempre (o app so concilia quando ELE sobe)."""
+        import contextlib
+        from builds import travas
+        from remoto import __main__ as principal
+        from remoto import acoes
+
+        ordem = []
+        reais = (principal.Bot, travas.trava, acoes.conciliar,
+                 principal._limpar_consertos_orfaos)
+        principal.Bot = lambda *a, **k: type(
+            "B", (), {"rodar": lambda _s: ordem.append("rodar")})()
+        acoes.conciliar = lambda: ordem.append("conciliar") or ["k1"]
+        principal._limpar_consertos_orfaos = lambda: None
+
+        @contextlib.contextmanager
+        def _livre(nome, esperar=0.0):
+            yield True
+
+        travas.trava = _livre
+
+        def restaurar():
+            (principal.Bot, travas.trava, acoes.conciliar,
+             principal._limpar_consertos_orfaos) = reais
+
+        self.addCleanup(restaurar)
+        self.assertEqual(principal.ligar(), 0)
+        self.assertEqual(["conciliar", "rodar"], ordem)
+
+    def test_conciliar_que_falha_nao_derruba_a_subida(self):
+        import contextlib
+        from builds import travas
+        from remoto import __main__ as principal
+        from remoto import acoes
+
+        ligou = []
+        reais = (principal.Bot, travas.trava, acoes.conciliar,
+                 principal._limpar_consertos_orfaos)
+        principal.Bot = lambda *a, **k: type(
+            "B", (), {"rodar": lambda _s: ligou.append(1)})()
+
+        def _explode():
+            raise OSError("disco")
+
+        acoes.conciliar = _explode
+        principal._limpar_consertos_orfaos = lambda: None
+
+        @contextlib.contextmanager
+        def _livre(nome, esperar=0.0):
+            yield True
+
+        travas.trava = _livre
+
+        def restaurar():
+            (principal.Bot, travas.trava, acoes.conciliar,
+             principal._limpar_consertos_orfaos) = reais
+
+        self.addCleanup(restaurar)
+        self.assertEqual(principal.ligar(), 0)
+        self.assertEqual([1], ligou)
 
 
 class TarefaDoBotTests(unittest.TestCase):
@@ -1539,6 +1632,87 @@ class ConteudoDosRelatoriosTests(BaseTemp):
         texto = relatorios.metas(datetime(2026, 9, 9, 21, 0))
         alvo = relatorios.grade.META_DIARIA_POR_PLATAFORMA["youtube"]
         self.assertIn(f"histórias: youtube 1/{alvo}", texto)
+
+    # ----------------------------------------------------- o dia de grade
+    # A grade vai das 06:37 ate as 00:37 do dia SEGUINTE, e a recuperacao das
+    # 23:37 as vezes so sai depois da meia-noite. Contado pelo calendario, o
+    # dia 27/09 perdia os horarios das 00:37 e da recuperacao, e o 28/09
+    # ganhava dois que nao eram dele. A conta e a da conferencia (fc17986).
+    def _sem_estoque(self):
+        patcher = mock.patch.object(relatorios, "_estoque", return_value={})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _dia_cheio(self, dia: str, seguinte: str, canais=("historias", "builds"),
+                   plataformas=("youtube", "tiktok"), atraso: int = 2):
+        """Os dez horarios de um dia de grade, 06:37 ate 00:37 do seguinte."""
+        for nome in canais:
+            modulo = _serie() if nome == "historias" else _metricas()
+            for plataforma in plataformas:
+                for hora in relatorios.grade.HORAS:
+                    quando = (f"{seguinte if hora == 0 else dia}T{hora:02d}:"
+                              f"{relatorios.grade.minuto(hora) + atraso:02d}:00")
+                    self._publicar(modulo, nome, quando, f"{nome}_{hora}",
+                                   "public", plataforma=plataforma)
+
+    def test_post_das_00h10_que_recupera_as_23h37_conta_no_dia_anterior(self):
+        self._sem_estoque()
+        self._publicar(_serie(), "historias", "2026-09-09T22:39:00",
+                       "historia_00003:celular:p01", "public")
+        # a recuperacao das 23:37 que so saiu depois da meia-noite
+        self._publicar(_serie(), "historias", "2026-09-10T00:10:00",
+                       "historia_00003:celular:p02", "public")
+        # o horario das 00:37 fecha o dia de grade de 09/09
+        self._publicar(_serie(), "historias", "2026-09-10T00:39:00",
+                       "historia_00003:celular:p03", "public")
+        # 06:40 ja e o dia de grade de 10/09
+        self._publicar(_serie(), "historias", "2026-09-10T06:40:00",
+                       "historia_00004:celular:p01", "public")
+        alvo = relatorios.grade.META_DIARIA_POR_PLATAFORMA["youtube"]
+
+        meia_noite = relatorios.metas(datetime(2026, 9, 10, 0, 20))
+        self.assertIn("— 09/09", meia_noite)
+        self.assertIn(f"histórias: youtube 2/{alvo}", meia_noite)
+
+        madrugada = relatorios.metas(datetime(2026, 9, 10, 5, 0))
+        self.assertIn(f"histórias: youtube 3/{alvo}", madrugada)
+        self.assertIn("09/09  📖3/20 ⚔️0/20  ✗", madrugada)
+
+        noite = relatorios.metas(datetime(2026, 9, 10, 21, 0))
+        self.assertIn("— 10/09", noite)
+        self.assertIn(f"histórias: youtube 1/{alvo}", noite)
+        self.assertIn("09/09  📖3/20", noite)
+        self.assertIn("10/09  📖1/20", noite)
+        hoje = noite.split("*Últimos")[0]
+        self.assertIn("06:40", hoje)
+        self.assertNotIn("00:10", hoje)
+        self.assertNotIn("00:39", hoje)
+
+    def test_dia_de_grade_cheio_bate_mesmo_cruzando_a_meia_noite(self):
+        """Pelo calendario este dia dava 9 + 1 e nunca batia a meta."""
+        self._sem_estoque()
+        self._dia_cheio("2026-09-09", "2026-09-10")
+        texto = relatorios.metas(datetime(2026, 9, 10, 5, 0))
+        self.assertIn("09/09  📖20/20 ⚔️20/20  ✓", texto)
+        self.assertIn("dias completos: 1/7", texto)
+        self.assertIn("✓ 📖 histórias: youtube 10/10 · tiktok 10/10", texto)
+
+    def test_o_dia_em_curso_fica_em_andamento_e_nao_reprovado(self):
+        self._sem_estoque()
+        self._publicar(_serie(), "historias", "2026-09-10T06:39:00",
+                       "historia_00004:celular:p01", "public")
+        texto = relatorios.metas(datetime(2026, 9, 10, 21, 0))
+        self.assertIn("10/09  📖1/20 ⚔️0/20  ⏳", texto)
+        self.assertIn("09/09  📖0/20 ⚔️0/20  ✗", texto)
+        fechado = relatorios.metas(datetime(2026, 9, 11, 1, 0))
+        self.assertIn("10/09  📖1/20 ⚔️0/20  ✗", fechado)
+
+    def test_a_hora_de_cada_post_diz_o_horario_que_ele_pagou(self):
+        self._sem_estoque()
+        self._publicar(_serie(), "historias", "2026-09-10T00:10:00",
+                       "historia_00003:celular:p02", "public")
+        texto = relatorios.metas(datetime(2026, 9, 10, 0, 20))
+        self.assertIn("00:10  histórias · público · horário das 23:37", texto)
 
     def test_a_meta_e_a_grade_inteira_e_nao_um_por_dia(self):
         """Correcao dele em 09/09: 'quero um video em todos esses horarios'."""

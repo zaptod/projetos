@@ -3,16 +3,40 @@
 > Parte do monorepo `e:/projetos`. O mapa de todos os projetos, quem depende de quem e como instalar está no [README da raiz](../README.md).
 
 
-Bot de Telegram que **avisa** quando algo quebra e **aceita comandos** do
-celular. Sem dependência nova: só `urllib` da biblioteca padrão.
+Duas portas para o celular:
 
-## Por que Telegram (e não um site)
+- o **bot de Telegram**, que **avisa** quando algo quebra e **aceita
+  comandos**. Sem dependência nova: só `urllib` da biblioteca padrão;
+- o **app do celular** (PWA), com a Vila, o diário, os vídeos, os relatórios
+  e a tela Comandos — servido **só dentro do tailnet** do Tailscale.
+
+> **`tailscale serve` sim, `tailscale funnel` nunca.** O `funnel` publica na
+> internet aberta; o `serve` só para os aparelhos do tailnet. O servidor do
+> app escuta apenas em `127.0.0.1:8931`, e a porta **8765 é proibida** no
+> código: é a do login OAuth do YouTube, e um servidor esquecido nela já
+> quebrou o login.
+
+## Por que um bot, e por que o app só no Tailscale
 
 A máquina do outro lado tem YouTube, TikTok, ChatGPT e PicassoIA **logados**.
-Um painel web precisaria de uma porta aberta para a internet — uma porta de
-entrada para tudo isso. O bot faz o contrário: **ele** liga para o Telegram,
-de dentro para fora. Nenhuma porta aberta, nenhum IP exposto, nenhum
-certificado para manter.
+Um painel web aberto na internet seria uma porta de entrada para tudo isso.
+O bot faz o contrário: **ele** liga para o Telegram, de dentro para fora.
+Nenhuma porta aberta, nenhum IP exposto, nenhum certificado para manter.
+
+O app não abre porta para a internet: quem o publica é o `tailscale serve`,
+que só atende quem está no tailnet, e o próprio servidor ainda confere o
+`Host` e exige um token de aparelho (pareado uma vez, por código de 6 dígitos
+que vale 5 minutos; o disco guarda só o hash do token).
+
+```bash
+python -m remoto.api_http --parear      # código de 6 dígitos para o app
+python -m remoto.api_http --aparelhos   # quem está pareado
+tailscale serve status                  # tem de dizer "tailnet only"
+```
+
+O servidor do app não se sobe à mão: a tarefa `NeuralFights_app_celular`
+roda `app_celular.cmd` de 10 em 10 minutos. O resto (guardas, dois passos,
+estado em disco, armadilhas) está em `docs/sessoes/app-e-bot.md`.
 
 ## Ligar (uma vez)
 
@@ -41,7 +65,8 @@ python -m remoto --esquecer 123456789  # tira um celular da lista
 | `/erros [n]` | os últimos problemas, com hora |
 | `/videos` | os vídeos prontos, com id |
 | `/ver <id>` | **manda o mp4 no chat** — assistir antes de aprovar |
-| `/publicar <id> [youtube\|tiktok\|ambos]` | sobe aquele vídeo |
+| `/publicar <id> [youtube\|tiktok\|ambos]` | pede para subir aquele vídeo como **público**: mostra o que vai acontecer e um `/confirmar_<código>` |
+| `/confirmar <código>` | o segundo passo (60 s, uma vez, só do chat que pediu) |
 | `/gerar` | uma build nova |
 | `/historias` | em que pé está o canal de histórias |
 | `/pausar [min]` · `/retomar` · `/parar` | controle da fila |
@@ -49,6 +74,14 @@ python -m remoto --esquecer 123456789  # tira um celular da lista
 Os comandos longos **não travam o chat**: eles disparam o processo e voltam
 na hora. O resultado chega pelos alertas — que é justamente para isso que o
 diário `atividade.jsonl` existe.
+
+O `/publicar` passa pelas **mesmas guardas do app, pela mesma função**
+(`acoes.preparar` e `acoes.confirmar`): vídeo já no ar, título repetido, a
+outra variante, a lista "a conferir", a postagem da grade perto ou rodando, o
+Chrome ocupado e qualquer publicação do app ainda sem desfecho. Ele entra no
+mesmo registro "em voo", então o app e o bot não mandam o mesmo vídeo duas
+vezes. Até 28/09/2026 ele chamava o `main.py publicar` direto, num passo só,
+sem nada disso — e o YouTube subia privado.
 
 ## As duas trancas
 
@@ -73,5 +106,7 @@ acesso remoto é a saída de emergência.
 ## Testes
 
 ```bash
-python -m unittest remoto.test_remoto -v   # 29, nenhum toca a rede
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # nenhum toca a rede
 ```
+
+O `--basetemp` vai para o `E:` de propósito: o `C:` vive perto de encher.

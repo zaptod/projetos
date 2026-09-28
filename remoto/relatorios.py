@@ -33,11 +33,12 @@ from builds import atividade, grade
 
 RAIZ = Path(__file__).resolve().parents[1]
 
-# UM VIDEO EM CADA HORARIO DA GRADE (6, 7, 8, 10, 12, 15, 17, 20), e nao um
-# por dia — correcao dele em 09/09/2026. A meta do dia so esta batida quando
-# os oito sairam; contar "pelo menos um" esconderia sete disparos perdidos.
-# Fonte unica: `builds.grade`. Antes esta tupla era uma copia da de
-# `ferramentas/postar.py`, e nada garantia que as duas contassem o mesmo dia.
+# UM VIDEO EM CADA HORARIO DA GRADE, e nao um por dia — correcao dele em
+# 09/09/2026. A meta do dia so esta batida quando todos os horarios sairam
+# (dez desde 15/09, em cada plataforma); contar "pelo menos um" esconderia
+# nove disparos perdidos. Fonte unica: `builds.grade`. Antes esta tupla era
+# uma copia da de `ferramentas/postar.py`, e nada garantia que as duas
+# contassem o mesmo dia.
 HORARIOS_DA_GRADE = grade.HORAS
 META_DIARIA_POR_CANAL = grade.META_DIARIA_POR_CANAL
 CANAIS = {
@@ -50,17 +51,49 @@ CANAIS = {
 PISO_DE_ESTOQUE = 1
 
 
-# ----------------------------------------------------------------- coleta
-def _slot_do_registro(quando: str):
-    """O horario da grade daquele registro, ou `None` se a data nao der.
+# --------------------------------------------------------- o dia de grade
+# A META E DO DIA DE GRADE, e nao do dia do calendario (28/09/2026). A grade
+# vai das 06:37 ate as 00:37 do dia SEGUINTE, e a recuperacao das 23:37 as
+# vezes so sai depois da meia-noite. Contado pelo calendario, o dia perdia o
+# horario das 00:37 e a recuperacao, e o seguinte ganhava dois que nao eram
+# dele: um dia cheio aparecia como 9 + 1 e nunca batia a meta.
+#
+# A regra e a da conferencia da madrugada (fc17986), e nao uma copia dela:
+# quem decide a que dia de grade um instante pertence e `conferencia.py`, a
+# partir de `builds.grade`. Se a grade mudar, os dois mudam juntos. As funcoes
+# sao internas de la; o acesso fica todo AQUI, num lugar so.
+def _conferencia():
+    from builds.publicar import conferencia
+    return conferencia
+
+
+def _instante(quando):
+    """O `quando` do ledger (hora local, sem fuso) como datetime, ou None.
 
     `None` nao vira zero nem palpite: registro sem data legivel nao paga
     horario nenhum, e e assim que ele aparece no placar (em falta).
     """
     try:
-        return grade.slot(datetime.fromisoformat(str(quando)[:19]))
-    except Exception:                                          # noqa: BLE001
+        return datetime.fromisoformat(str(quando)[:19])
+    except (TypeError, ValueError):
         return None
+
+
+def _dia_de_grade(instante: datetime, plataforma: str = "youtube") -> tuple:
+    """(dia de grade, hora da grade) a que o instante pertence.
+
+    00:10 de 28/09 e o horario das 23:37 de 27/09 (a recuperacao atrasada);
+    00:39 e o das 00:37, que fecha o dia de grade de 27/09; 06:40 ja e 28/09.
+    """
+    conferencia = _conferencia()
+    dia, hora = conferencia._horario_da_grade(instante, plataforma)
+    return conferencia._dia_de_grade(dia, hora, plataforma), hora
+
+
+def _janela_da_grade(plataforma: str = "youtube") -> str:
+    """"06:37 → 00:37": onde o dia de grade abre e onde fecha."""
+    abertura, fechamento = _conferencia()._abertura_e_fechamento(plataforma)
+    return f"{grade.horario(abertura)} → {grade.horario(fechamento)}"
 
 
 def _horarios_servidos(itens: list[dict]) -> dict:
@@ -100,23 +133,31 @@ def _publicacoes() -> list[dict]:
             quando = str(linha.get("quando") or "")
             if not quando:
                 continue
+            # A PLATAFORMA E O QUE FALTAVA AQUI, e a falta dava meta batida
+            # que nao foi: o placar somava YouTube e TikTok e comparava com o
+            # alvo de UMA plataforma. Em 27/09/2026 ele imprimiu "✓ histórias:
+            # 11/10 horários" com 5 no YouTube e 6 no TikTok — os dois
+            # destinos em falta, e um tique verde.
+            plataforma = str(linha.get("plataforma") or "").lower()
+            instante = _instante(quando)
+            # O HORARIO DA GRADE a que a publicacao pertence, e nao a hora do
+            # relogio: a rodada das 17:57 termina as 18:01, e a tarefa
+            # recuperada as 19:30 ainda e aquele disparo. Contar por slot
+            # tambem impede que dois videos no mesmo horario (a recuperacao e
+            # um extra) paguem dois horarios. Linha sem plataforma entra no
+            # dia pela regra do YouTube, mas nao paga horario.
+            dia, slot = ((None, None) if instante is None
+                         else _dia_de_grade(instante, plataforma or "youtube"))
             saida.append({
                 "canal": canal,
                 "quando": quando,
-                "dia": quando[:10],
+                "instante": instante,
+                # O DIA DE GRADE. Sem data legivel, o do calendario — para a
+                # linha ainda aparecer (como "sem data legivel"), e nao sumir.
+                "dia": dia.isoformat() if dia else quando[:10],
                 "hora": quando[11:16],
-                # A PLATAFORMA E O QUE FALTAVA AQUI, e a falta dava meta
-                # batida que nao foi: o placar somava YouTube e TikTok e
-                # comparava com o alvo de UMA plataforma. Em 27/09/2026 ele
-                # imprimiu "✓ histórias: 11/10 horários" com 5 no YouTube e
-                # 6 no TikTok — os dois destinos em falta, e um tique verde.
-                "plataforma": str(linha.get("plataforma") or "").lower(),
-                # O HORARIO DA GRADE a que a publicacao pertence, e nao a
-                # hora do relogio: a rodada das 17:57 termina as 18:01, e a
-                # tarefa recuperada as 19:30 ainda e aquele disparo. Contar
-                # por slot tambem impede que dois videos no mesmo horario
-                # (a recuperacao e um extra) paguem dois horarios.
-                "slot": _slot_do_registro(quando),
+                "plataforma": plataforma,
+                "slot": slot,
                 "video_id": linha.get("video_id"),
                 "titulo": linha.get("titulo") or "",
                 # `None` aqui e uma linha antiga, de antes de o registro
@@ -158,18 +199,30 @@ def _estoque() -> dict:
 
 # ------------------------------------------------------------------ metas
 def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
-    """Quantos videos, em que horario, em que canal. E se bateu a meta."""
+    """Quantos videos, em que horario, em que canal. E se bateu a meta.
+
+    "Hoje" e o DIA DE GRADE em curso (06:37 ate 00:37 do dia seguinte), e a
+    serie conta dias de grade. Pedido a meia-noite e meia, "hoje" ainda e o
+    dia de grade que esta fechando — e e ele que a recuperacao das 23:37 paga.
+    """
     agora = agora or datetime.now()
-    hoje = agora.strftime("%Y-%m-%d")
-    tudo = _publicacoes()
+    hoje, _ = _dia_de_grade(agora)
+    # O dia de grade que ainda nao fechou fica "em andamento" na serie, e nao
+    # reprovado: as 21h ainda faltam tres horarios, e um ✗ ali e mentira.
+    fechado = _conferencia().dia_de_grade_fechado(agora)
+    # So o que ja existia em `agora`: o relatorio de uma hora passada nao
+    # conta o que saiu depois dela.
+    tudo = [i for i in _publicacoes()
+            if i["instante"] is None or i["instante"] <= agora]
     por_dia = {}
     for item in tudo:
         por_dia.setdefault(item["dia"], []).append(item)
 
-    linhas = [f"🎯 *Metas* — {agora.strftime('%d/%m')}", ""]
+    linhas = [f"🎯 *Metas* — {hoje:%d/%m} (dia de grade, "
+              f"{_janela_da_grade()})", ""]
 
     # --- hoje, com hora e canal, que e literalmente o que ele pediu
-    de_hoje = por_dia.get(hoje) or []
+    de_hoje = por_dia.get(hoje.isoformat()) or []
     if de_hoje:
         linhas.append("*Hoje*")
         for item in de_hoje:
@@ -177,8 +230,13 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
             visto = item["visibilidade"]
             marca = {"public": "público", "private": "PRIVADO",
                      "unlisted": "não listado"}.get(visto, visto or "?")
+            # A hora do relogio e a do horario que ela pagou so aparecem as
+            # duas quando diferem: a recuperacao das 00:10 pagou o das 23:37.
+            pagou = ""
+            if item["slot"] is not None and item["hora"][:2] != f"{item['slot']:02d}":
+                pagou = f" · horário das {grade.horario(item['slot'])}"
             linhas.append(f"  {ficha.get('emoji', '•')} {item['hora']}  "
-                          f"{ficha.get('rotulo', item['canal'])} · {marca}")
+                          f"{ficha.get('rotulo', item['canal'])} · {marca}{pagou}")
     else:
         linhas.append("*Hoje* — nada publicado ainda")
 
@@ -187,7 +245,9 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
     # 27/09/2026: "✓ histórias: 11/10 horários" com 5 no YouTube e 6 no
     # TikTok — 11 linhas contra o alvo de uma plataforma so, tique verde num
     # dia em que os dois destinos ficaram em falta. Quem ja contava certo era
-    # a conferencia da noite (`slots_da_grade_hoje`/`deficit`); aqui nao.
+    # a conferencia da madrugada (`conferencia.conferir`: `horarios_cumpridos`
+    # e `deficit` do dia de grade que fechou, fc17986); agora aqui tambem, e
+    # pela mesma regra do dia de grade.
     linhas.append("")
     servidos_hoje = _horarios_servidos(de_hoje)
     for canal, ficha in CANAIS.items():
@@ -211,11 +271,11 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
                       f"data legível: não pagam horário")
 
     # --- a serie, que e onde se ve se e habito ou sorte
-    linhas += ["", f"*Últimos {dias} dias*"]
+    linhas += ["", f"*Últimos {dias} dias de grade*"]
     completos = 0
     for recuo in range(dias - 1, -1, -1):
-        dia = (agora - timedelta(days=recuo)).strftime("%Y-%m-%d")
-        itens = por_dia.get(dia) or []
+        dia = hoje - timedelta(days=recuo)
+        itens = por_dia.get(dia.isoformat()) or []
         servidos = _horarios_servidos(itens)
         bateu = _bateu_o_dia(servidos)
         completos += 1 if bateu else 0
@@ -228,12 +288,10 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
             f"{CANAIS[c]['emoji']}"
             f"{sum(servidos.get((c, p), 0) for p in grade.PLATAFORMAS)}"
             f"/{alvo_do_canal}" for c in CANAIS)
-        linhas.append(f"  {dia[8:10]}/{dia[5:7]}  {corpo}  "
-                      f"{'✓' if bateu else '✗'}")
-    total = {c: sum(1 for i in tudo
-                    if i["canal"] == c
-                    and i["dia"] >= (agora - timedelta(days=dias - 1)
-                                     ).strftime("%Y-%m-%d"))
+        marca = "✓" if bateu else ("⏳" if dia > fechado else "✗")
+        linhas.append(f"  {dia:%d/%m}  {corpo}  {marca}")
+    desde = (hoje - timedelta(days=dias - 1)).isoformat()
+    total = {c: sum(1 for i in tudo if i["canal"] == c and i["dia"] >= desde)
              for c in CANAIS}
     linhas.append("  " + " · ".join(
         f"{CANAIS[c]['rotulo']}: {total[c]}" for c in CANAIS))
@@ -246,7 +304,8 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
         mostrar = privados[-3:]
         linhas += ["", f"⚠ {len(privados)} vídeo(s) NÃO público(s):"]
         for item in mostrar:
-            linhas.append(f"  {item['dia'][8:10]}/{item['dia'][5:7]} "
+            # A data em que ELE saiu (calendario), e nao o dia de grade.
+            linhas.append(f"  {item['quando'][8:10]}/{item['quando'][5:7]} "
                           f"{item['video_id']} ({item['visibilidade']})")
         if len(privados) > len(mostrar):
             linhas.append(f"  … e mais {len(privados) - len(mostrar)}")

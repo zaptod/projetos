@@ -92,7 +92,7 @@ class Bot:
         if not config.autorizado(chat):
             self._parear(chat, texto)
             return
-        resposta, arquivo = comandos.executar(texto)
+        resposta, arquivo = comandos.executar(texto, chat=chat)
         self._responder(chat, resposta, arquivo)
 
     def _parear(self, chat, texto: str):

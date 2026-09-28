@@ -50,6 +50,13 @@ acrescenta e o que um botao no bolso exige a mais que um comando digitado:
   por aparelho, contado por TEMPO no `app_celular_acoes.jsonl` (com
   rotacao). Rastro que nao grava bloqueia gerar/publicar ate voltar. Cada
   acao vira um aviso no Telegram, por uma fila de uma thread so.
+
+  O /publicar DO TELEGRAM passa por aqui tambem (28/09/2026). Ate entao ele
+  chamava `main.py publicar` direto, num passo so, sem nenhuma destas guardas
+  e sem `--visibilidade` (o YouTube subia privado) — e podia mandar de novo o
+  video que o app acabara de mandar. Agora ele pede com `preparar` e confirma
+  com `confirmar`, as MESMAS funcoes do servidor, e entra no rastro, no teto
+  e no em voo como o aparelho `telegram:<chat>`.
 """
 from __future__ import annotations
 
@@ -95,6 +102,9 @@ def _pesadas() -> tuple:
     return PESADAS + tuple(outras)
 TRAVA_HISTORIAS = "historias__auto"
 MARCA_DO_APP = "pelo app"
+# Quem pede pelo bot entra como o aparelho `telegram:<chat>`: rastro, teto
+# por hora, em voo e avisos passam a dizer de onde veio o pedido.
+ORIGEM_TELEGRAM = "telegram"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DESLIGADO = (getattr(subprocess, "DETACHED_PROCESS", 0)
              | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
@@ -109,6 +119,26 @@ PASTA_A_CONFERIR = None
 
 class Recusa(Exception):
     """A acao nao vai acontecer; a mensagem e para a tela."""
+
+
+def aparelho_do_telegram(chat=None) -> str:
+    """O "aparelho" de um pedido feito pelo bot."""
+    return (f"{ORIGEM_TELEGRAM}:{chat}" if chat not in (None, "")
+            else ORIGEM_TELEGRAM)
+
+
+def pelo_telegram(aparelho) -> bool:
+    texto = str(aparelho or "")
+    return texto == ORIGEM_TELEGRAM or texto.startswith(ORIGEM_TELEGRAM + ":")
+
+
+def _pelo(aparelho) -> str:
+    """"pelo Telegram" ou "pelo app": de onde veio o pedido, nas mensagens."""
+    return "pelo Telegram" if pelo_telegram(aparelho) else MARCA_DO_APP
+
+
+def _do(aparelho) -> str:
+    return "do Telegram" if pelo_telegram(aparelho) else "do app"
 
 
 # ------------------------------------------------------------------ fontes
@@ -527,8 +557,12 @@ def _ler_a_conferir(plataforma: str = "tiktok") -> dict:
 
 
 def _marcar_do_app(video_id: str, chave: str, estado: str,
-                   plataforma: str = "tiktok") -> None:
-    """Grava (ou atualiza) a marca do app e RELE. Nao conseguiu = Recusa."""
+                   plataforma: str = "tiktok", origem: str = MARCA_DO_APP) -> None:
+    """Grava (ou atualiza) a marca do app e RELE. Nao conseguiu = Recusa.
+
+    `origem` e so o texto ("pelo app" ou "pelo Telegram"); quem manda na
+    marca e a chave em `"app"`, a mesma para os dois.
+    """
     nome = NOME_DESTINO[plataforma]
     with _trava_da_marca(plataforma):
         dados = _ler_marcas(plataforma)
@@ -536,7 +570,7 @@ def _marcar_do_app(video_id: str, chave: str, estado: str,
         if atual is not None and (atual or {}).get("app") != chave:
             raise Recusa(f"esse vídeo já está “a conferir” no {nome}")
         dados[video_id] = {"quando": _agora().isoformat(timespec="seconds"),
-                           "estado": f"{MARCA_DO_APP}: {estado}"[:200],
+                           "estado": f"{origem}: {estado}"[:200],
                            "plataforma": plataforma, "app": chave}
         try:
             _gravar_json(caminho_a_conferir(plataforma), dados)
@@ -615,8 +649,9 @@ def _carteiro() -> None:
 def avisar_telegram(aparelho: str, acao: str, resultado: str) -> None:
     """Enfileira. UMA thread entrega, na ordem; fila cheia descarta."""
     global _CARTEIRO
-    texto = _escapar_markdown(
-        f"📱 pelo app ({aparelho}): {acao} — {str(resultado)[:300]}")
+    quem = ("🤖 pelo Telegram" if pelo_telegram(aparelho)
+            else f"📱 pelo app ({aparelho})")
+    texto = _escapar_markdown(f"{quem}: {acao} — {str(resultado)[:300]}")
     with _CARTEIRO_TRAVA:
         if _CARTEIRO is None or not _CARTEIRO.is_alive():
             _CARTEIRO = threading.Thread(target=_carteiro, daemon=True,
@@ -662,9 +697,11 @@ def video_para_publicar(video_id: str, onde: str, agora: datetime | None = None,
         nome = " e ".join(NOME_DESTINO[d] for d in sorted(comum))
         situacao = ("ainda está em andamento" if item.get("estado") == "em_andamento"
                     else "está “a conferir”")
+        quem = item.get("aparelho")
         if item.get("id") == video.id:
-            raise Recusa(f"esse vídeo já foi mandado ao {nome} pelo app e {situacao}")
-        raise Recusa(f"outra publicação do app no {nome} ({item.get('id')}) "
+            raise Recusa(f"esse vídeo já foi mandado ao {nome} {_pelo(quem)} "
+                         f"e {situacao}")
+        raise Recusa(f"outra publicação {_do(quem)} no {nome} ({item.get('id')}) "
                      f"{situacao}; confira e libere antes")
 
     perto = postagem_em_curso(agora, onde)
@@ -738,7 +775,8 @@ def _minutos(args: dict) -> int | None:
 
 def _limite(aparelho: str, acoes: tuple, teto: int, nome: str) -> None:
     if usadas_na_ultima_hora(aparelho, acoes) >= teto:
-        raise Recusa(f"limite de {teto} {nome} por hora pelo app; tente mais tarde")
+        raise Recusa(f"limite de {teto} {nome} por hora {_pelo(aparelho)}; "
+                     "tente mais tarde")
 
 
 def _rastro_ok() -> None:
@@ -825,7 +863,7 @@ def preparar(acao: str, args, aparelho: str) -> dict:
                          "titulo": str(getattr(video, "titulo", "") or "")[:120]},
                 "dois_passos": True,
                 "texto": f"Publicar «{video.titulo}»{gancho} no {destinos}"
-                         f"{publico}? Não dá para desfazer pelo app."}
+                         f"{publico}? Não dá para desfazer {_pelo(aparelho)}."}
     return _preparar_do_catalogo(acao, args, aparelho)
 
 
@@ -878,6 +916,38 @@ def executar(acao: str, args: dict, aparelho: str = "") -> str:
     raise Recusa(f"ação desconhecida: {acao}")
 
 
+def confirmar(nome: str, args: dict, aparelho: str) -> tuple[bool, str]:
+    """O SEGUNDO passo, o mesmo para o app e para o bot: dentro da trava,
+    `preparar` DE NOVO -> `executar` -> `registrar`. Devolve (ok, texto).
+
+    De novo, com os args congelados no primeiro passo: em 60 s a grade pode
+    ter publicado o mesmo video, e duas confirmacoes simultaneas (o app e o
+    Telegram, dois aparelhos, dois servidores) nao podem passar juntas pelas
+    guardas. A trava vale entre threads e entre processos.
+
+    Levanta `Recusa` quando uma guarda barra agora (nada foi feito nem
+    registrado) e `OSError` quando a trava nao vem (outra acao em andamento).
+    `ok` falso e erro na execucao, que tambem vai para o rastro.
+    """
+    with trava_de_acoes():
+        try:
+            pedido = preparar(nome, args, aparelho)
+            resultado = executar(pedido["acao"], pedido["args"], aparelho)
+        except Recusa:
+            raise
+        except Exception as exc:                             # noqa: BLE001
+            ok, feitos = False, args
+            resultado = f"falhou: {type(exc).__name__}: {exc}"
+        else:
+            ok, feitos = True, pedido["args"]
+        try:
+            registrar(aparelho, nome, feitos, resultado, ok)
+        except Exception:                                    # noqa: BLE001
+            resultado += (" (o rastro não foi gravado; gerar e publicar "
+                          "ficam bloqueados até ele voltar)")
+    return ok, resultado
+
+
 def _disparar_publicacao(args: dict, aparelho: str) -> str:
     chave = secrets.token_hex(8)
     pasta = pasta_publicacoes() / chave
@@ -887,7 +957,8 @@ def _disparar_publicacao(args: dict, aparelho: str) -> str:
         try:
             for destino in destinos:
                 _marcar_do_app(args["id"], chave,
-                               f"publicação em andamento ({chave})", destino)
+                               f"publicação em andamento ({chave})", destino,
+                               origem=_pelo(aparelho))
                 marcados.append(destino)
             pasta.mkdir(parents=True, exist_ok=True)
             _mexer_no_voo(chave, {
@@ -1011,7 +1082,8 @@ def concluir_publicacao(chave: str) -> dict | None:
                                     else f"saída {codigo} sem linha do {nome}")
                 adotadas = 0
                 try:
-                    _marcar_do_app(video_id, chave, f"a conferir: {motivo}", destino)
+                    _marcar_do_app(video_id, chave, f"a conferir: {motivo}", destino,
+                                   origem=_pelo(item.get("aparelho")))
                     adotadas = _adotar_partes(video_id, chave, item.get("desde", ""),
                                               destino)
                 except Recusa as exc:
@@ -1020,8 +1092,8 @@ def concluir_publicacao(chave: str) -> dict | None:
                 # marca previa) e ja escreveu o ERRO no diario. So o app avisa
                 # quando o publicador ficou calado.
                 if not adotadas:
-                    _diario(f"{video_id}: publicado pelo app sem confirmação no "
-                            f"{nome} ({motivo[:120]}). Pode estar no ar — "
+                    _diario(f"{video_id}: publicado {_pelo(item.get('aparelho'))} "
+                            f"sem confirmação no {nome} ({motivo[:120]}). Pode estar no ar — "
                             "bloqueado até conferência (--em-voo / --liberar).",
                             video_id)
             elif not _retirar_marca_do_app(video_id, chave, destino):
@@ -1223,17 +1295,24 @@ def relatorio_do_video(video_id: str) -> list[str]:
 
 # ---------------------------------------------------------- confirmacoes
 class Pendentes:
-    """Pedidos de dois passos esperando o "sim". Em memoria, de uso unico."""
+    """Pedidos de dois passos esperando o "sim". Em memoria, de uso unico.
+
+    `codigo` gera o codigo de cada pedido. O app usa o longo (vai num JSON);
+    o bot usa um curto em hexadecimal, que cabe num `/confirmar_<codigo>` que
+    o Telegram deixa tocar. O dono vem junto nos dois, entao o codigo curto
+    nao e uma senha: e so o "sim" daquele pedido, daquele chat.
+    """
 
     LEMBRAR_S = 600
 
-    def __init__(self):
+    def __init__(self, codigo=None):
         self._trava = threading.Lock()
         self._itens: dict[str, dict] = {}
         # Codigos que existiram (usados ou vencidos) -> (dono, ate quando
         # lembrar). O toque duplo e o "sim" atrasado do proprio aparelho
         # nao sao chute.
         self._encerrados: dict[str, tuple] = {}
+        self._novo_codigo = codigo or (lambda: secrets.token_urlsafe(16))
 
     def _podar(self, agora: float) -> None:
         for codigo, item in list(self._itens.items()):
@@ -1245,9 +1324,11 @@ class Pendentes:
 
     def guardar(self, pedido: dict, dono: str) -> str:
         agora = time.time()
-        codigo = secrets.token_urlsafe(16)
         with self._trava:
             self._podar(agora)
+            codigo = self._novo_codigo()
+            while codigo in self._itens or codigo in self._encerrados:
+                codigo = self._novo_codigo()
             self._itens[codigo] = dict(pedido, dono=dono,
                                        expira=agora + CONFIRMAR_VALE_S)
         return codigo
@@ -1271,9 +1352,10 @@ class Pendentes:
         return (pedido, "ok")
 
 
-__all__ = ["CONFIRMAR_VALE_S", "LIMITE_POR_HORA", "Pendentes", "Recusa",
-           "alvos_de_pausa", "avisar_telegram", "conciliar", "concluir_publicacao",
-           "desfechos", "em_voo", "executar", "liberar", "preparar", "registrar",
+__all__ = ["CONFIRMAR_VALE_S", "LIMITE_POR_HORA", "ORIGEM_TELEGRAM", "Pendentes",
+           "Recusa", "alvos_de_pausa", "aparelho_do_telegram", "avisar_telegram",
+           "conciliar", "concluir_publicacao", "confirmar", "desfechos", "em_voo",
+           "executar", "liberar", "pelo_telegram", "preparar", "registrar",
            "relatorio_do_video", "situacao_da_filha", "soltar_marca",
            "trava_de_acoes", "usadas_na_ultima_hora", "video_para_publicar",
            "vivo_de_verdade"]

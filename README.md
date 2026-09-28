@@ -31,7 +31,7 @@ mimetizar/       canal alheio -> bíblia -> preset          (pacote: espelho)
 visao/           as quatro famílias de número              (pacote: panorama)
 painel/          o painel de controle: Vila e janelas de trabalho
 vila/            o motor de sprites da Vila + a Oficina
-remoto/          o bot de Telegram, para acompanhar do celular
+remoto/          o celular: o bot de Telegram e o app (PWA pelo Tailscale)
 ```
 
 Os cinco primeiros **produzem**; `mimetizar/` é o único que **estuda**. Ele
@@ -111,6 +111,19 @@ Nada de estado fica no repositório. Tudo vive em
 
 A variável `NEURAL_FIGHTS_RUNTIME_DIR` move tudo isso — é o que deixa os
 testes rodarem sem encostar no banco de verdade.
+
+## O celular
+
+Duas portas para comandar a máquina de fora: o bot de Telegram (ele liga para
+fora, nenhuma porta aberta) e o app do celular, uma PWA servida pelo Tailscale.
+A máquina tem YouTube, TikTok, ChatGPT e PicassoIA logados, então a regra é
+uma só:
+
+> **`tailscale serve` sim, `tailscale funnel` nunca.** O app só existe dentro
+> do tailnet; o servidor escuta apenas em `127.0.0.1:8931`, e a porta 8765 é
+> proibida (é a do login do YouTube).
+
+O detalhe está em `remoto/README.md` e em `docs/sessoes/app-e-bot.md`.
 
 ## Testar
 
