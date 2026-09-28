@@ -1,5 +1,17 @@
 # Painel e Vila
 
+<!-- decisoes:inicio -->
+## Decisões do Adrian (gerado — não edite à mão)
+
+Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adrian manda.** Para mudar uma, ele usa a tela Decisões do app.
+
+**Geral**
+- ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
+- ✅ **Modo de trabalho dos agentes** — Um projeto por vez (28/09/2026) `modo-de-trabalho`
+- ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (28/09/2026) `teto-de-uso`
+
+<!-- decisoes:fim -->
+
 Documento de passagem. Tudo abaixo foi conferido no código e na máquina em 27/09/2026.
 
 ## 1. Painel, flutuante, e como abrir
@@ -54,10 +66,16 @@ ação e a diferença entre o `.cmd` que está no disco e o que ele escreveria.
 fora do git**, como o `bot.cmd` e o `postar.cmd`: numa máquina nova, clone +
 `--instalar`. Sem o `oculto.vbs` (pacote `builds`) o instalador **recusa**, em
 vez de apontar a tarefa direto para o `.cmd`. A tarefa que está no ar foi
-criada à mão em 27/09 com os mesmos parâmetros e não foi recriada. O `.cmd`
-que está no disco continua o feito à mão até alguém rodar `--lancador`: a
-diferença são os comentários e a guarda "na dúvida não abre" (o modo a seco
-mostra o diff).
+criada à mão em 27/09 com os mesmos parâmetros e não foi recriada; só o
+`.cmd` foi reescrito pelo `--lancador` (28/09, 07:56), e a batida seguinte
+da tarefa rodou com ele sem abrir segunda Vila. O modo a seco diz se o `.cmd`
+do disco ainda é o que o instalador escreveria (`lancador_igual`). Medido na
+batida das 08:04, com a máquina carregada: a instância levou **~5 min** para
+terminar (o `wscript` viveu de 08:04:00 a 08:08:59; nesse tempo o Agendador
+mostra `267009` = "em execução", depois `0`). O prazo de 2 min do `.cmd` é o
+da consulta (`-OperationTimeoutSec`), não o da batida inteira; como a
+repetição é de 10 min e a regra é `IgnoreNew`, isso não acumula. Às 15:34 o
+resultado seguia `0`, com a mesma Vila desde 07:24.
 
 **A guarda contra roubar foco mora no `.cmd`**: a janela já tem instância única,
 mas o segundo lançamento **traz a janela para a frente de propósito** — é o que
@@ -88,9 +106,9 @@ agora, a linha de comando é a do `.cmd` (`pythonw -X utf8 -m painel.flutuante
 - `vida`: `pid`, `desde`, `visto` (o "estou viva", a cada 5 min) e `saiu`
   (`"menu"` quando alguém usou **Fechar de verdade**);
 - `quedas`: as últimas 10 vidas que acabaram **sem** passar pelo menu, com o
-  último `visto` (a hora da queda, com 5 min de folga), a hora em que a
-  seguinte `notada` e `windows_reiniciou` quando o Windows ligou depois do
-  último sinal. Queda nativa (crash) também deixa evento no Visualizador de
+  último `visto` (a hora da queda, com 5 min de folga), `notada` (quando a
+  seguinte subiu e percebeu) e `windows_reiniciou` quando o Windows ligou
+  depois do último sinal. Queda nativa (crash) também deixa evento no Visualizador de
   Eventos (Aplicativo, `pythonw.exe`, 1000/1001); morte de fora
   (TerminateProcess) só deixa rastro aqui;
 - `fechar_pedido`: quantas vezes o sistema pediu para fechar (WM_CLOSE) e a
