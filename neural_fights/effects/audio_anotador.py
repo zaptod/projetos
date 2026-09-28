@@ -127,6 +127,9 @@ class AnotadorDeAudio(AudioManager):
 
     def __init__(self, *, seed=0):
         self.t_video = 0.0
+        # Onda 16C: o PASSO do motor (60 Hz) em que o som foi pedido. Quem
+        # grava avanca junto com o t_video; None = nao anota o campo ``i``.
+        self.passo: int | None = None
         self.sons: list[dict] = []
         self._rng_pitch = random.Random(f"neural-fights:som:{seed}")
         self._pedido: str | None = None
@@ -188,6 +191,8 @@ class AnotadorDeAudio(AudioManager):
             entrada["pan"] = round(self._pan, 3)
         if self._posicao is not None:
             entrada["x"] = round(self._posicao[0], 2)
+        if self.passo is not None:
+            entrada["i"] = int(self.passo)
         self.sons.append(entrada)
 
     def arquivos(self) -> dict[str, Path]:

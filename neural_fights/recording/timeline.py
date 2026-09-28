@@ -70,6 +70,9 @@ from pathlib import Path
 
 FORMATO = "neural-fights/timeline"
 VERSAO = 1
+# Revisao ADITIVA dentro da v1: leitor da v1 continua valendo (o palco recusa
+# versao != 1). 2 = cada som traz o passo exato ``i`` (28/09/2026).
+REVISAO = 2
 # O motor pensa a 60 Hz (utils.config.FPS). A timeline guarda TODO passo:
 # o quadro k do video de 30 fps e o passo 2k, e o palco ainda tem o dobro de
 # amostras para camera lenta sem inventar quadro. Ver docs/palco/timeline.md.
@@ -1569,6 +1572,7 @@ class SondaTimeline:
         return {
             "formato": FORMATO,
             "versao": VERSAO,
+            "revisao": REVISAO,
             "hz": self.hz,
             "n": n,
             "duracao": round(n / self.hz, 4),
@@ -1818,6 +1822,7 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
         # O mesmo par do gravador (Onda 16A): a seed da luta semeia o pitch.
         from neural_fights.effects.audio_anotador import VERSAO_SONS, AnotadorDeAudio
         anotador = AnotadorDeAudio(seed=seed)
+        anotador.passo = 0
         versao_sons = VERSAO_SONS
         extras["audio"] = anotador
 
@@ -1842,6 +1847,7 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
             if anotador is not None:
                 # o relogio do som e o do gravador: o quadro que captura o passo
                 anotador.t_video = t_video
+                anotador.passo = indice
             if not headless:
                 pygame.event.pump()
             dt = sim.avancar_relogio(passo)

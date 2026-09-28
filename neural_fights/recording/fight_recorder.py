@@ -554,6 +554,7 @@ def gravar_luta(
     # mesma luta gravada de novo sai com o mesmo som.
     anotador = AnotadorDeAudio(seed=seed) if anotar_som else None
     if anotador is not None:
+        anotador.passo = 0   # Onda 16C: o som tambem leva o passo exato (``i``)
         extras["audio"] = anotador
     sim = Simulador(match_config=match_config, headless=False, seed=seed, **extras)
     sonda = SondaDeDano()
@@ -615,6 +616,7 @@ def gravar_luta(
                 # O som pedido neste passo de jogo aparece no quadro que o
                 # captura: o mesmo relogio de `eventos_dano`.
                 anotador.t_video = t_video
+                anotador.passo = indice
 
             pygame.event.pump()
             # avancar_relogio aplica o time_scale (simulacao.py:5513): durante

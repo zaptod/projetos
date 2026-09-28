@@ -204,6 +204,12 @@ class GravadorComTimelineTests(unittest.TestCase):
         self.assertEqual(self.doc["sons"],
                          {"versao": self.com["versao_sons"], "relogio": "video",
                           "itens": self.com["sons"]})
+        # revisao 2: cada som traz o passo exato, e o t de video e o do
+        # quadro que captura esse passo (ceil(i / 2) / 30)
+        self.assertEqual((self.doc["versao"], self.doc["revisao"]), (1, timeline.REVISAO))
+        for som in self.doc["sons"]["itens"]:
+            self.assertTrue(0 <= som["i"] < self.doc["n"], som)
+            self.assertAlmostEqual(som["t"], -(-som["i"] // 2) / 30, places=3)
 
     def test_o_palco_sem_desenhar_ve_a_mesma_luta_e_o_mesmo_som(self) -> None:
         """O palco simula SEM desenhar (4x mais barato): canais, eventos e
