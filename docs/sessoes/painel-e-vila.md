@@ -37,16 +37,38 @@ direito → **Fechar de verdade**. O mesmo menu troca tamanho, arte
 
 ## 2. Como a Vila se mantém no ar
 
-Tarefa **`NeuralFights_vila_flutuante`**, conferida hoje:
+Tarefa **`NeuralFights_vila_flutuante`**, conferida em 28/09:
 `wscript.exe //B //Nologo …\oculto.vbs E:\projetos\vila_flutuante.cmd`,
 repetição **PT10M** sem fim, último resultado `0`. O `//B` é o que faz **não
 haver janela preta** (mesmo padrão das outras 25 tarefas do projeto).
+
+**Quem instala** (desde 28/09): `python -m painel.flutuante.tarefa`
+(`flutuante/tarefa.py`). Sem bandeira é **a seco**: mostra a raiz, o pythonw, a
+ação e a diferença entre o `.cmd` que está no disco e o que ele escreveria.
+`--instalar` escreve o `.cmd` e cria (ou recria) a tarefa com
+`schtasks /Create … /SC MINUTE /MO 10 /RL LIMITED` + os ajustes de
+`builds.tarefas_windows.endurecer`; `--lancador` só reescreve o `.cmd`;
+`--desinstalar` remove a tarefa. Os caminhos **vêm do ambiente**: o
+`pythonw.exe` ao lado do Python que roda o instalador e a raiz dos dados
+(`caminhos.raiz_dos_dados`). Por isso o `vila_flutuante.cmd` é **gerado e fica
+fora do git**, como o `bot.cmd` e o `postar.cmd`: numa máquina nova, clone +
+`--instalar`. Sem o `oculto.vbs` (pacote `builds`) o instalador **recusa**, em
+vez de apontar a tarefa direto para o `.cmd`. A tarefa que está no ar foi
+criada à mão em 27/09 com os mesmos parâmetros e não foi recriada. O `.cmd`
+que está no disco continua o feito à mão até alguém rodar `--lancador`: a
+diferença são os comentários e a guarda "na dúvida não abre" (o modo a seco
+mostra o diff).
 
 **A guarda contra roubar foco mora no `.cmd`**: a janela já tem instância única,
 mas o segundo lançamento **traz a janela para a frente de propósito** — é o que
 faz o atalho funcionar, e repetir isso de 10 em 10 minutos roubaria o foco do
 dono o dia inteiro. Então o `.cmd` procura um `pythonw.exe` cuja linha de comando
 casa com `painel.flutuante|vila_flutuante` e **só lança se não houver nenhum**.
+E **na dúvida não abre** (desde 28/09): se a consulta ao WMI falhar ou passar
+de 2 min, o `.cmd` sai sem lançar e a próxima batida tenta de novo. Antes, o
+erro do WMI deixava a variável vazia e o `.cmd` lançava — o segundo lançamento
+que rouba o foco. O teste roda o `.cmd` gerado pelo `cmd` de verdade, com o WMI
+e o `Start-Process` trocados por dublê.
 
 Não duplicar instância: mutex nomeado `Local\NeuralFights_VilaFlutuante`
 (`flutuante/__main__.py`) e, em vez de sair calado, o segundo processo **pede
@@ -56,7 +78,9 @@ janela sumida não voltava nunca mais: bug de 17/09).
 
 **O PID muda, e isso não é defeito em si**: cada queda é reposta pela tarefa
 em até 10 min com um processo novo (em 27/09 foram três: a de antes das
-18:50, a 17020 e a 18316; a atual, 7720, nasceu às 20:54). Para saber o PID de
+18:50, a 17020 e a 18316; a 7720, que nasceu às 20:54, acabou no reinício do
+Windows às 07:21 de 28/09 — evento 1074 do winlogon —, e a 11728 subiu às
+07:24, já com a caixa-preta). Para saber o PID de
 agora, a linha de comando é a do `.cmd` (`pythonw -X utf8 -m painel.flutuante
 --medio`). Para saber **por que** a anterior acabou, leia a **caixa-preta** no
 `flutuante.json` (desde 28/09):
@@ -194,10 +218,13 @@ morte de fora sem rastro. As duas quedas coincidiram com uma sessão do
 Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
 `claude -p` do apurador às 20:52:37), mas o mecanismo não apareceu.
 
-- **`vila_flutuante.cmd` NÃO está no git** (`??` no `git status`) — e é o arquivo
-  que a tarefa chama. Máquina refeita a partir do repositório não sobe a Vila.
-  **Nenhum código instala a tarefa** tampouco: ela foi feita à mão, e `postar.py
-  --instalar`, `remoto --instalar` e `main.py auto --instalar` não a conhecem.
+- **O `.cmd` e a tarefa agora têm instalador** (§2). Entre o commit `a101a2e`
+  (27/09) e 28/09 o `vila_flutuante.cmd` esteve no git com os caminhos desta
+  máquina escritos à mão; hoje ele é gerado e ignorado. **Decisão pendente do
+  Adrian:** a tarefa acorda o PC a cada 10 min (`WakeToRun`, ligado pelo
+  `endurecer` como em todas) e a Vila herda a prioridade 7 da tarefa (roda em
+  `BelowNormal`). Para uma janela, acordar a máquina não serve para nada, mas a
+  tarefa do bot, também de 10 em 10, já faz o mesmo.
 - **`vila/` continua em uso pelo painel**, mesmo com a Vila antiga fora do app do
   celular: a página `paginas/vila.py` (mapa grande em pixel, de
   `vila/config.json`), o fallback da flutuante quando a arte clássica está
@@ -219,9 +246,13 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   `--gif` grava 5 s, `--medir-cpu SEG` mede a CPU. A `--prova` **não** passa pelo
   mutex: abre uma segunda janela de propósito, e é a forma segura de olhar sem
   mexer na do dono.
-- Testes desta parte (177): `painel/test_painel.py` (40),
+- Testes desta parte (189): `painel/test_painel.py` (40),
   `painel/test_flutuante.py` (92, com a caixa-preta e o WM_CLOSE de verdade),
-  `painel/test_vila_fofa.py` (28), `vila/test_motor.py` (17).
+  `painel/test_tarefa_da_vila.py` (12, o instalador e a guarda do `.cmd`
+  rodada pelo `cmd`), `painel/test_vila_fofa.py` (28), `vila/test_motor.py`
+  (17).
+- `python -m painel.flutuante.tarefa` (sem bandeira) confere o `.cmd` e a
+  tarefa sem escrever nada.
 
 **Não fazer:** matar o `pythonw` do dono (é a Vila na tela dele; a tarefa repõe
 em até 10 min, mas ele perde posição e tamanho); tirar a guarda do
@@ -243,7 +274,8 @@ na thread da interface; usar `ImageGrab`; apontar a tarefa direto para o `.cmd`
 | tarefas do Agendador | os instaladores de cada parte | `Get-ScheduledTask` |
 | `ferramentas/postar.py` | outra sessão | subprocesso, só as funções de fila |
 
-**Meus:** `painel/**`, `vila/**`, `vila_flutuante.pyw`, `vila_flutuante.cmd`, e
+**Meus:** `painel/**`, `vila/**`, `vila_flutuante.pyw`, o `vila_flutuante.cmd`
+(gerado pelo `flutuante/tarefa.py`), a tarefa `NeuralFights_vila_flutuante`, e
 em disco `flutuante.json` + `flutuante.sinal`. `vila/config.json` e
 `vila/sprites/` são da **Oficina** — quem edita mapa e papéis é ela, não o código
 do painel.

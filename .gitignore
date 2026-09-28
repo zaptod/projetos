@@ -29,6 +29,9 @@ outputs/bot.txt
 postar.cmd
 # Saida da postagem (o .cmd redireciona para ca).
 outputs/postar.txt
+# Lancador da Vila flutuante: gerado por `python -m painel.flutuante.tarefa
+# --instalar`, com o pythonw e a pasta de quem instalou dentro.
+vila_flutuante.cmd
 # Saida do app do celular (o app_celular.cmd redireciona para ca).
 outputs/app_celular.txt
 # Retratos crus do Studio do TikTok: JSON interno da conta DESTA maquina.
