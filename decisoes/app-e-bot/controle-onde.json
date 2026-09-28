@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T18:37:20.409226",
+  "depende_de": [],
+  "historico": [],
+  "id": "controle-onde",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\controle-onde\\7_quadro.png",
+      "rotulo": "Avisos hoje"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "avisos",
+      "pede_comentario": false,
+      "rotulo": "Nos Avisos (como está)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "bancada",
+      "pede_comentario": false,
+      "rotulo": "Na Bancada, junto dos comandos"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "vila",
+      "pede_comentario": false,
+      "rotulo": "Sempre à vista sobre a Vila"
+    }
+  ],
+  "pergunta": "No app novo, o Controle (pausar, retomar, parar) ficou dentro do objeto Avisos (quadro de cortiça). Onde você quer?",
+  "projeto": "app-e-bot",
+  "situacao": "pendente",
+  "titulo": "Onde fica pausar / retomar / parar",
+  "vigente": null
+}
