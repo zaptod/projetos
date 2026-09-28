@@ -9,6 +9,14 @@
     {
       "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\vila-zoom-celular\\1_vila_inicial.png",
       "rotulo": "Vila hoje"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\vila-zoom-celular\\1_vila_inteira.png",
+      "rotulo": "PERTO (nítida, 28/09)"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\vila-zoom-celular\\1_vila_inteira.png",
+      "rotulo": "LONGE: a Vila inteira (nítida, 28/09)"
     }
   ],
   "opcoes": [
