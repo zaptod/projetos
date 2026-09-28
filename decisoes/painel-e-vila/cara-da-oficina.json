@@ -3,7 +3,15 @@
   "contexto": "",
   "criado": "2026-09-28T17:31:05.479376",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "Eu descartei essa vila",
+      "em": "2026-09-28T18:33:00",
+      "opcao": "quente",
+      "origem": "app"
+    }
+  ],
   "id": "cara-da-oficina",
   "midias": [
     {
@@ -33,7 +41,11 @@
   ],
   "pergunta": "Qual cara a Oficina fica?",
   "projeto": "painel-e-vila",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Cara da Oficina",
-  "vigente": null
+  "vigente": {
+    "comentario": "Eu descartei essa vila",
+    "em": "2026-09-28T18:33:00",
+    "opcao": "quente"
+  }
 }

@@ -6,4 +6,4 @@ a fonte são os `<id>.json` desta pasta.
 Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
-- ⏳ **Cara da Oficina** — Qual cara a Oficina fica? `cara-da-oficina`
+- ✅ **Cara da Oficina** — Quente, igual à Vila (como está) (28/09/2026) · “Eu descartei essa vila” `cara-da-oficina`
