@@ -402,9 +402,19 @@ $("btn-parear").addEventListener("click", async () => {
 });
 
 // --------------------------------------------------------------- telas
+// O pergaminho abre já desenrolado no primeiro (antes abria vazio, com
+// "Escolha um pergaminho", e pedia um toque a mais para nada). Se ele já
+// escolheu outro, fica o que ele escolheu.
+function abrirPergaminho() {
+  const abas = $("abas-relatorio").children;
+  if (abas.length && ![...abas].some((b) => b.getAttribute("aria-pressed") === "true"))
+    abas[0].click();
+}
+
 const CARGAS = {vila: [carregarAgora, 15000], quadro: [carregarAgora, 15000],
                 diario: [carregarDiario, 5000],
-                videos: [null, 0], comandos: [null, 0], relatorios: [null, 0],
+                videos: [null, 0], comandos: [null, 0],
+                relatorios: [abrirPergaminho, 0],
                 decisoes: [null, 0]};
 
 function mostrar(nova) {

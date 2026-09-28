@@ -67,13 +67,22 @@ def _caminhos():
 
 
 # ------------------------------------------------------------------ arte
+# NITIDEZ (28/09/2026): a arte de 1x, ampliada ~2,3x pelo celular (e mais o
+# devicePixelRatio), chegava borrada. Agora o celular recebe a Vila DOBRADA
+# (`painel.flutuante.retrato`: as duas metades em fileiras, para caber em pe
+# inteira) desenhada de verdade em ESCALA_CELULAR, e o atlas tambem. O fundo
+# e o atlas de 1x continuam servidos: sao o que a casca antiga (a que ainda
+# nao atualizou pelo service worker) pede.
+ESCALA_CELULAR = 3
+
 _TRAVA_ARTE = threading.Lock()
 _FUNDOS: dict = {}
+_RETRATOS: dict = {}
 _ATLAS: dict = {}
 
 
 def png_do_fundo(noite: bool) -> bytes:
-    """Chao, ruas, predios e decoracao — a parte que nao se mexe."""
+    """Chao, ruas, predios e decoracao — a parte que nao se mexe (1x)."""
     with _TRAVA_ARTE:
         if noite not in _FUNDOS:
             imagem = _arte().compor_mundo(bool(noite)).convert("RGB")
@@ -83,45 +92,109 @@ def png_do_fundo(noite: bool) -> bytes:
         return _FUNDOS[noite]
 
 
-def atlas() -> dict:
-    """{png, mapa, largura, altura}: todo personagem, toda pose, num arquivo.
+def imagem_do_retrato(noite: bool) -> bytes:
+    """A Vila inteira em pe, em ESCALA_CELULAR, como WebP.
+
+    WebP e nao PNG: o fundo e opaco e a 3x o PNG passava de 1 MB; com
+    qualidade 90 fica em ~130 KB e a diferenca nao se ve (e grama).
+    """
+    from painel.flutuante import retrato
+
+    with _TRAVA_ARTE:
+        if noite not in _RETRATOS:
+            imagem = retrato.compor_retrato(bool(noite), ESCALA_CELULAR)
+            saco = io.BytesIO()
+            imagem.convert("RGB").save(saco, "WEBP", quality=90, method=6)
+            _RETRATOS[noite] = saco.getvalue()
+        return _RETRATOS[noite]
+
+
+def atlas(escala: int = 1) -> dict:
+    """{png, mapa, larg, alt, tamanho, escala}: todo personagem, toda pose.
 
     Sao ~10 habitantes x 8 poses x 2 olhos x 2 direcoes. Cada sprite custa
     milissegundos e o conjunto vira uma imagem so — o celular baixa uma vez
-    e depois so recorta.
+    e depois so recorta. `larg`/`alt` e o `mapa` estao em pixels DO ATLAS
+    (ja multiplicados pela escala); no mundo o sprite mede larg/escala.
     """
     from PIL import Image
 
+    escala = max(1, int(escala))
     with _TRAVA_ARTE:
-        if _ATLAS:
-            return _ATLAS
+        if escala in _ATLAS:
+            return _ATLAS[escala]
         arte = _arte()
         nomes = list(arte.LOTES)
-        larg, alt = arte.PERSONAGEM_W, arte.PERSONAGEM_H
+        larg, alt = arte.PERSONAGEM_W * escala, arte.PERSONAGEM_H * escala
         combos = [(nome, pose, olho, direcao) for nome in nomes
                   for pose in POSES for olho in OLHOS for direcao in DIRECOES]
+        # e os patos do lago (2 quadros x 2 lados), como na janela flutuante
+        patos = [(q, d) for q in (0, 1) for d in DIRECOES]
         colunas = 16
-        linhas = (len(combos) + colunas - 1) // colunas
+        linhas = (len(combos) + len(patos) + colunas - 1) // colunas
         folha = Image.new("RGBA", (colunas * larg, linhas * alt), (0, 0, 0, 0))
         mapa = {}
         for i, (nome, pose, olho, direcao) in enumerate(combos):
             x, y = (i % colunas) * larg, (i // colunas) * alt
             try:
-                sprite = arte.desenhar_personagem(nome, pose, olho, direcao)
+                sprite = arte.desenhar_personagem(nome, pose, olho, direcao,
+                                                  escala)
             except Exception:                                # noqa: BLE001
                 continue
             folha.paste(sprite, (x, y), sprite)
             mapa[f"{nome}|{pose}|{olho}|{direcao}"] = [x, y]
+        for j, (quadro, direcao) in enumerate(patos):
+            i = len(combos) + j
+            x, y = (i % colunas) * larg, (i // colunas) * alt
+            pato = arte.desenhar_pato(quadro, escala)
+            if direcao == "esq":
+                pato = pato.transpose(Image.FLIP_LEFT_RIGHT)
+            folha.paste(pato, (x, y), pato)
+            mapa[f"pato|{quadro}|{direcao}"] = [x, y]
         saco = io.BytesIO()
         folha.save(saco, "PNG", optimize=True)
-        _ATLAS.update({"png": saco.getvalue(), "mapa": mapa,
-                       "larg": larg, "alt": alt,
-                       "tamanho": [folha.width, folha.height]})
-        return _ATLAS
+        _ATLAS[escala] = {"png": saco.getvalue(), "mapa": mapa,
+                          "larg": larg, "alt": alt, "escala": escala,
+                          "tamanho": [folha.width, folha.height],
+                          "pato": [14, 11], "lago": list(arte.LAGO)}
+        return _ATLAS[escala]
+
+
+ENQUADRAMENTOS = ("perto", "longe")
+DECISAO_DO_ZOOM = ("painel-e-vila", "vila-zoom-celular")
+
+
+def enquadramento() -> str:
+    """Como a Vila abre no celular: a decisao do Adrian manda.
+
+    `perto`: uma fileira enche a altura, comecando na casa (como era);
+    `longe`: a Vila inteira de uma vez. Enquanto a decisao
+    `painel-e-vila/vila-zoom-celular` estiver pendente (ou ilegivel), fica o
+    que ja era: `perto`. A resposta dele vale na proxima abertura do app,
+    sem mexer em codigo.
+    """
+    import json
+
+    try:
+        from remoto import decisoes
+        item = json.loads(decisoes.caminho_item(*DECISAO_DO_ZOOM)
+                          .read_text(encoding="utf-8"))
+        opcao = (item.get("vigente") or {}).get("opcao")
+    except Exception:                                        # noqa: BLE001
+        opcao = None
+    return opcao if opcao in ENQUADRAMENTOS else "perto"
+
+
+def _info_do_atlas(folha: dict) -> dict:
+    return {"mapa": folha["mapa"], "larg": folha["larg"], "alt": folha["alt"],
+            "tamanho": folha["tamanho"], "escala": folha["escala"],
+            "pato": folha["pato"], "lago": folha["lago"]}
 
 
 def mundo() -> dict:
     """O que o app precisa saber uma vez: tamanho, lotes, portas, atlas."""
+    from painel.flutuante import retrato
+
     arte = _arte()
     dados = _dados()
     folha = atlas()
@@ -135,18 +208,26 @@ def mundo() -> dict:
                            "emoji": info.get("emoji", ""),
                            "faz": info.get("faz", "")}
                     for nome, info in dados.PREDIOS.items()},
-        "atlas": {"mapa": folha["mapa"], "larg": folha["larg"],
-                  "alt": folha["alt"], "tamanho": folha["tamanho"]},
+        "atlas": _info_do_atlas(folha),
+        # a Vila do celular em pe: geometria da dobra, e o atlas na escala
+        "retrato": {**retrato.geometria(), "escala": ESCALA_CELULAR,
+                    "atlas": _info_do_atlas(atlas(ESCALA_CELULAR)),
+                    "enquadramento": enquadramento()},
         "versao": versao(),
     }
 
 
 def versao() -> str:
-    """Muda quando a arte muda (o arquivo dela e a fonte de tudo)."""
+    """Muda quando a arte muda (os arquivos dela sao a fonte de tudo)."""
     from pathlib import Path
+
+    from painel.flutuante import retrato
     try:
-        estado = Path(_arte().__file__).stat()
-        return f"{int(estado.st_mtime)}-{estado.st_size}"
+        partes = []
+        for modulo in (_arte(), retrato):
+            estado = Path(modulo.__file__).stat()
+            partes.append(f"{int(estado.st_mtime)}-{estado.st_size}")
+        return f"{'.'.join(partes)}-{ESCALA_CELULAR}"
     except OSError:
         return "0"
 
@@ -269,4 +350,5 @@ def _noite() -> bool:
 MOTOR = Motor()
 
 
-__all__ = ["MOTOR", "atlas", "mundo", "png_do_fundo", "versao"]
+__all__ = ["ESCALA_CELULAR", "MOTOR", "atlas", "imagem_do_retrato", "mundo",
+           "png_do_fundo", "versao"]

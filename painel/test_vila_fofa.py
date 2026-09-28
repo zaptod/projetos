@@ -73,6 +73,25 @@ class Arte(unittest.TestCase):
         boneco = arte.desenhar_personagem("fabrica_que_nao_existe")
         self.assertGreater(boneco.getchannel("A").getextrema()[1], 0)
 
+    def test_escala_desenha_de_verdade_e_e_o_mesmo_desenho(self):
+        """O celular pede 3x: tamanho 3x, sem ampliar a de 1x, mesma arte."""
+        from PIL import Image, ImageChops, ImageStat
+        for fazer in (lambda e: arte.desenhar_predio("youtube", False, e),
+                      lambda e: arte.desenhar_personagem(
+                          "chatgpt", "parado", "abertos", "dir", e)):
+            um, tres = fazer(1), fazer(3)
+            self.assertEqual(tres.size, (um.width * 3, um.height * 3))
+            self.assertEqual(_hash(tres), _hash(fazer(3)))
+            # reduzida, a de 3x e a de 1x (media < 10 de 255 por canal)
+            reduzida = tres.resize(um.size, Image.LANCZOS)
+            media = ImageStat.Stat(ImageChops.difference(um, reduzida)).mean
+            self.assertLess(max(media), 10, media)
+            # e tem detalhe que a de 1x ampliada nao tem (nao e so ampliar)
+            ampliada = um.resize(tres.size, Image.LANCZOS)
+            self.assertNotEqual(_hash(ampliada), _hash(tres))
+        self.assertEqual(arte.compor_mundo(False, 2).size,
+                         (arte.LARGURA * 2, arte.ALTURA * 2))
+
     def test_sem_pixel_duro_ha_antialias(self):
         """Arte lisa: a borda do telhado tem tons intermediarios."""
         img = arte.desenhar_predio("youtube")
@@ -97,6 +116,56 @@ def _segmento_cruza(p0, p1, caixa, passos: int = 60) -> bool:
         if x0 < x < x1 and y0 < y < y1:
             return True
     return False
+
+
+class Retrato(unittest.TestCase):
+    """A Vila dobrada do celular (retrato.py): as duas metades em fileiras."""
+
+    def test_a_dobra_nao_corta_nada_ao_meio(self):
+        from painel.flutuante import retrato
+        d = retrato.DOBRA
+        coisas = [(lx * arte.TILE - 4, arte.PREDIO_W, nome)
+                  for nome, (lx, _ly) in list(arte.LOTES.items())
+                  + [("casa", arte.CASA)]]
+        coisas += [(tx * arte.TILE - 2, 36, "arvore")
+                   for tx, _ty in arte.ARVORES]
+        coisas += [(arte.BANCO[0] - 13, 26, "banco"),
+                   (arte.FONTE[0] - 20, 40, "fonte"),
+                   (arte.CANTEIRO[0] - 17, 34, "canteiro"),
+                   (arte.LAGO[0] - 34, 68, "lago")]
+        for x, largura, nome in coisas:
+            self.assertFalse(x < d < x + largura, (nome, x, largura))
+        # as travessas tambem (uma rua cortada no meio pareceria um toco)
+        for tx in arte.TRAVESSAS_X:
+            self.assertFalse(tx - 8 < d < tx + 8, tx)
+        # e o campo extra fica todo depois do mundo e dentro da fileira 2
+        for x, _y, _tom in retrato.ARVORES_EXTRA:
+            self.assertTrue(arte.LARGURA <= x and x + 36 <= 2 * d, x)
+
+    def test_ida_e_volta_do_mundo_para_o_retrato(self):
+        from painel.flutuante import retrato
+        pontos = list(arte.portas().values()) + [
+            (0, 0), (retrato.DOBRA - 1, 239), (retrato.DOBRA, 0), (703, 239)]
+        for x, y in pontos:
+            rx, ry = retrato.para_retrato(x, y)
+            self.assertTrue(0 <= rx < retrato.LARGURA, (x, y))
+            self.assertEqual(retrato.para_mundo(rx, ry), (x, y))
+        # ceu, sebe e pe nao sao mundo: o toque ali nao escolhe ninguem
+        for ry in (0, retrato.CEU - 1, retrato.CEU + arte.ALTURA + 1,
+                   retrato.ALTURA - 1):
+            self.assertIsNone(retrato.para_mundo(10, ry))
+
+    def test_retrato_deterministico_no_tamanho_certo(self):
+        from painel.flutuante import retrato
+        a = retrato.compor_retrato(False, 1)
+        self.assertEqual(a.size, (retrato.LARGURA, retrato.ALTURA))
+        self.assertEqual(_hash(a), _hash(retrato.compor_retrato(False, 1)))
+        self.assertNotEqual(_hash(a), _hash(retrato.compor_retrato(True, 1)))
+        # a fileira 1 e o mundo de verdade, pixel a pixel
+        mundo = arte.compor_mundo(False)
+        topo = (0, retrato.CEU, retrato.DOBRA, retrato.CEU + 100)
+        self.assertEqual(_hash(a.crop(topo)),
+                         _hash(mundo.crop((0, 0, retrato.DOBRA, 100))))
 
 
 class Caminhos(unittest.TestCase):

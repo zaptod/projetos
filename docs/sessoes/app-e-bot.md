@@ -65,10 +65,20 @@ Tudo vive em `remoto/`:
   ou o voltar do Android fecham (`history.pushState`). As animações são CSS
   puro e respeitam `prefers-reduced-motion`. Nenhum id sumiu do HTML:
   `test_app_vila_objetos.py` confere que todo id que o JS procura existe e
-  que cada área tem objeto. O zoom inicial enche a altura, com teto de 3x,
-  e por isso a arte do PC aparece ampliada (e um pouco borrada): mais
-  nitidez pede fundo em resolução maior, e isso é da parte painel-e-vila.
-  A prova de tela está em `prova_vila_objetos.py`, no scratchpad da sessão.
+  que cada área tem objeto.
+- **A Vila do app é nítida e dobrada desde 28/09** (painel-e-vila,
+  `painel/flutuante/retrato.py`): o PC manda a Vila em pé, as duas metades
+  do mundo em fileiras, desenhada em 3x (`/vilanova-retrato.webp`, e o atlas
+  em `/vilanova-atlas.png?escala=3`, com os patos). As rotas de 1x continuam
+  para a casca antiga. O canvas usa até 3 pixels por px (antes, 2). O
+  placar virou plaquinhas da madeira da prateleira e fica no céu, fora da
+  cena; a lupa (−/+) é uma aba presa na prateleira; o cartão do escolhido
+  sobe quando o prédio está na metade de baixo. Como a câmera abre (perto
+  ou a Vila inteira) é a decisão `painel-e-vila/vila-zoom-celular`, lida
+  pelo servidor (`vila_nova.enquadramento`); pendente = perto. Dois
+  defeitos achados na prova e consertados: o toque rodava duas vezes
+  (touchend + o mouseup de compatibilidade) e desmarcava o prédio; o
+  Pergaminho abria vazio ("Escolha um pergaminho") e agora abre no primeiro.
 
 Estado em disco, em `%LOCALAPPDATA%\neural-fights\`: `app_celular.json`
 (aparelhos pareados, só o hash do token), `app_celular_acoes.jsonl` (rastro),

@@ -63,6 +63,46 @@ def test_mundo_leva_o_que_o_app_precisa():
     assert m["versao"] and m["versao"] != "0"
 
 
+def test_celular_recebe_a_vila_dobrada_em_3x_e_o_atlas_em_3x():
+    """Nitidez (28/09): nada de ampliar a arte de 1x no celular."""
+    from painel.flutuante import retrato
+    e = vila_nova.ESCALA_CELULAR
+    img = vila_nova.imagem_do_retrato(False)
+    assert img[:4] == b"RIFF" and img[8:12] == b"WEBP"
+    assert vila_nova.imagem_do_retrato(False) is img          # guardada
+    assert vila_nova.imagem_do_retrato(True) != img
+    from io import BytesIO
+
+    from PIL import Image
+    assert Image.open(BytesIO(img)).size == (retrato.LARGURA * e,
+                                             retrato.ALTURA * e)
+    folha = vila_nova.atlas(e)
+    assert folha["larg"] == 26 * e and folha["escala"] == e
+    # os patos do lago vao junto, nos dois lados
+    assert {"pato|0|dir", "pato|1|esq"} <= set(folha["mapa"])
+    m = vila_nova.mundo()["retrato"]
+    assert m["escala"] == e and m["dobra"] == retrato.DOBRA
+    assert m["atlas"]["larg"] == 26 * e
+    assert m["enquadramento"] in vila_nova.ENQUADRAMENTOS
+
+
+def test_enquadramento_segue_a_decisao_e_pendente_fica_como_era(
+        tmp_path, monkeypatch):
+    import json
+
+    from remoto import decisoes
+    arquivo = tmp_path / "vila-zoom-celular.json"
+    monkeypatch.setattr(decisoes, "caminho_item", lambda p, i: arquivo)
+    assert vila_nova.enquadramento() == "perto"                # nao existe
+    arquivo.write_text(json.dumps({"vigente": None}), encoding="utf-8")
+    assert vila_nova.enquadramento() == "perto"                # pendente
+    arquivo.write_text(json.dumps({"vigente": {"opcao": "longe"}}),
+                       encoding="utf-8")
+    assert vila_nova.enquadramento() == "longe"
+    arquivo.write_text("{quebrado", encoding="utf-8")
+    assert vila_nova.enquadramento() == "perto"                # ilegivel
+
+
 # -------------------------------------------------------------- o motor
 class _Vida:
     """A vida de mentira: dois habitantes parados, e um diario de chamadas."""

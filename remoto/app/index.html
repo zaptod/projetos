@@ -39,10 +39,6 @@
     <div class="vila-caixa">
       <canvas id="vila-canvas" aria-label="A vila"></canvas>
       <div id="vila-placar" class="placar"></div>
-      <div class="vila-botoes">
-        <button class="acao" id="vila-menos" aria-label="Afastar">－</button>
-        <button class="acao" id="vila-mais" aria-label="Aproximar">＋</button>
-      </div>
       <div id="vila-escolhido" class="oculto"></div>
     </div>
   </section>
@@ -177,12 +173,17 @@
 
 <!-- a prateleira da vila: cada objeto abre uma área -->
 <nav id="nav" class="prateleira oculto">
-  <button class="objeto" data-tela="quadro"><span>📌</span>Avisos</button>
-  <button class="objeto" data-tela="diario"><span>📓</span>Diário</button>
-  <button class="objeto" data-tela="videos"><span>🎞</span>Cinema</button>
-  <button class="objeto" data-tela="comandos"><span>🛠</span>Bancada</button>
-  <button class="objeto" data-tela="relatorios"><span>📜</span>Pergaminhos</button>
-  <button class="objeto" data-tela="decisoes"><span>📖</span>Grimório</button>
+  <!-- a lupa mora na prateleira (uma aba de madeira), não solta na grama -->
+  <div class="vila-botoes" role="group" aria-label="Zoom da vila">
+    <button id="vila-menos" aria-label="Ver a vila inteira">−</button>
+    <button id="vila-mais" aria-label="Aproximar">+</button>
+  </div>
+  <button class="objeto" data-tela="quadro"><span>📌️</span>Avisos</button>
+  <button class="objeto" data-tela="diario"><span>📓️</span>Diário</button>
+  <button class="objeto" data-tela="videos"><span>🎞️</span>Cinema</button>
+  <button class="objeto" data-tela="comandos"><span>🛠️</span>Bancada</button>
+  <button class="objeto" data-tela="relatorios"><span>📜️</span>Pergaminhos</button>
+  <button class="objeto" data-tela="decisoes"><span>📖️</span>Grimório</button>
 </nav>
 
 <script src="app.js"></script>

@@ -25,6 +25,12 @@ from functools import lru_cache
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 S = 4                       # super-amostragem
+# ESCALA (28/09/2026): o celular amplia a Vila ate ~7 pixels do aparelho por
+# pixel do mundo, e a arte de 1x chegava borrada. Toda funcao de desenho
+# aceita `escala` e desenha DE VERDADE nesse tamanho (nada de ampliar a
+# imagem pronta). As coordenadas continuam em pixels do MUNDO: so o Pincel
+# sabe da escala. Com escala 1 o resultado e byte a byte o de antes (ha
+# teste), e e o que a janela flutuante usa.
 LARGURA, ALTURA = 704, 240
 RUA_Y = (88, 216)           # linha do meio das duas ruas
 TRAVESSAS_X = (280, 408)
@@ -80,67 +86,86 @@ def _c(cor, alfa=255):
     return (rgb(cor) if isinstance(cor, str) else tuple(cor[:3])) + (alfa,)
 
 
-class Pincel:
-    """ImageDraw em coordenadas da imagem FINAL (multiplica por S)."""
+def fator(escala: int = 1) -> int:
+    """Pixels internos por pixel do mundo. 1x: 4 (o de sempre); 2x e 3x:
+    super-amostragem 2 sobre a escala, que ja da o antialias e poupa
+    memoria (o mundo a 3x com 4 viraria 8448x2880 por camada)."""
+    return S if escala <= 1 else int(escala) * 2
 
-    def __init__(self, largura: float, altura: float):
-        self.img = Image.new("RGBA", (int(largura * S), int(altura * S)),
-                             (0, 0, 0, 0))
+
+class Pincel:
+    """ImageDraw em coordenadas do MUNDO (multiplica por `k`)."""
+
+    def __init__(self, largura: float, altura: float, escala: int = 1):
+        self.escala = max(1, int(escala))
+        self.k = fator(self.escala)
+        self.img = Image.new("RGBA", (int(largura * self.k),
+                                      int(altura * self.k)), (0, 0, 0, 0))
         # Cor com alfa aqui SUBSTITUI o pixel (a mancha de luz virava um
         # buraco transparente). Quem precisa de translucido desenha numa
         # camada propria e usa `alpha_composite` (ver as manchas do chao).
         self.d = ImageDraw.Draw(self.img)
 
-    @staticmethod
-    def _p(pontos):
-        return [(x * S, y * S) for x, y in pontos]
+    def _p(self, pontos):
+        k = self.k
+        return [(x * k, y * k) for x, y in pontos]
 
     def elipse(self, x0, y0, x1, y1, cor, borda=None, w=1.0):
-        self.d.ellipse([x0 * S, y0 * S, x1 * S, y1 * S], fill=_c(cor),
+        k = self.k
+        self.d.ellipse([x0 * k, y0 * k, x1 * k, y1 * k], fill=_c(cor),
                        outline=_c(borda) if borda else None,
-                       width=int(w * S) if borda else 0)
+                       width=int(w * k) if borda else 0)
 
     def circulo(self, cx, cy, r, cor, borda=None, w=1.0):
         self.elipse(cx - r, cy - r, cx + r, cy + r, cor, borda, w)
 
     def ret(self, x0, y0, x1, y1, r, cor, borda=None, w=1.0):
-        self.d.rounded_rectangle([x0 * S, y0 * S, x1 * S, y1 * S],
-                                 radius=r * S, fill=_c(cor),
+        k = self.k
+        self.d.rounded_rectangle([x0 * k, y0 * k, x1 * k, y1 * k],
+                                 radius=r * k, fill=_c(cor),
                                  outline=_c(borda) if borda else None,
-                                 width=int(w * S) if borda else 0)
+                                 width=int(w * k) if borda else 0)
 
     def poli(self, pontos, cor, borda=None, w=1.0):
         pts = self._p(pontos)
         self.d.polygon(pts, fill=_c(cor))
         if borda:
-            self.d.line(pts + [pts[0]], fill=_c(borda), width=int(w * S),
-                        joint="curve")
+            self.d.line(pts + [pts[0]], fill=_c(borda),
+                        width=int(w * self.k), joint="curve")
 
     def linha(self, pontos, cor, w=1.0):
         pts = self._p(pontos)
-        self.d.line(pts, fill=_c(cor), width=max(1, int(w * S)),
+        self.d.line(pts, fill=_c(cor), width=max(1, int(w * self.k)),
                     joint="curve")
         for x, y in (pts[0], pts[-1]):            # pontas redondas
-            r = w * S / 2
+            r = w * self.k / 2
             self.d.ellipse([x - r, y - r, x + r, y + r], fill=_c(cor))
 
     def arco(self, x0, y0, x1, y1, ini, fim, cor, w=1.0):
-        self.d.arc([x0 * S, y0 * S, x1 * S, y1 * S], ini, fim, fill=_c(cor),
-                   width=max(1, int(w * S)))
+        k = self.k
+        self.d.arc([x0 * k, y0 * k, x1 * k, y1 * k], ini, fim, fill=_c(cor),
+                   width=max(1, int(w * k)))
+
+    def desfocar(self, raio: float) -> None:
+        """Desfoque de `raio` pixels do MUNDO."""
+        self.img = self.img.filter(ImageFilter.GaussianBlur(raio * self.k))
 
     def final(self) -> Image.Image:
         w, h = self.img.size
-        return self.img.resize((w // S, h // S), Image.LANCZOS)
+        if self.escala == 1:            # o caminho de sempre, byte a byte
+            return self.img.resize((w // S, h // S), Image.LANCZOS)
+        return self.img.resize((w * self.escala // self.k,
+                                h * self.escala // self.k), Image.LANCZOS)
 
 
 def sombra(largura: float, altura: float, alfa: int = 70,
-           raio: float = 2.0) -> Image.Image:
+           raio: float = 2.0, escala: int = 1) -> Image.Image:
     """Uma sombra oval desfocada, ja no tamanho final."""
     margem = raio * 2
-    p = Pincel(largura + margem * 2, altura + margem * 2)
+    p = Pincel(largura + margem * 2, altura + margem * 2, escala)
     p.elipse(margem, margem, margem + largura, margem + altura,
              (30, 36, 20), None)
-    p.img = p.img.filter(ImageFilter.GaussianBlur(raio * S))
+    p.desfocar(raio)
     img = p.final()
     fator = alfa / 255
     img.putalpha(img.getchannel("A").point(lambda a: int(a * fator)))
@@ -177,14 +202,18 @@ def portas() -> dict:
     return saida
 
 
-def desenhar_chao() -> Image.Image:
+GRAMA_TOPO, GRAMA_BASE = "#a4d77e", "#7cc265"
+
+
+def desenhar_chao(escala: int = 1) -> Image.Image:
     rnd = random.Random(2917)
-    p = Pincel(LARGURA, ALTURA)
+    p = Pincel(LARGURA, ALTURA, escala)
+    k = p.k
     # grama em degrade (de cima para baixo)
-    topo, base = rgb("#a4d77e"), rgb("#7cc265")
-    for y in range(ALTURA * S):
-        p.d.line([(0, y), (LARGURA * S, y)],
-                 fill=mistura(topo, base, y / (ALTURA * S)) + (255,))
+    topo, base = rgb(GRAMA_TOPO), rgb(GRAMA_BASE)
+    for y in range(ALTURA * k):
+        p.d.line([(0, y), (LARGURA * k, y)],
+                 fill=mistura(topo, base, y / (ALTURA * k)) + (255,))
     # manchas suaves de luz e sombra, numa camada translucida propria
     for claro in (True, False):
         camada = Image.new("RGBA", p.img.size, (0, 0, 0, 0))
@@ -193,9 +222,9 @@ def desenhar_chao() -> Image.Image:
         for _ in range(45):
             x, y = rnd.uniform(0, LARGURA), rnd.uniform(0, ALTURA)
             r = rnd.uniform(10, 26)
-            d.ellipse([(x - r) * S, (y - r * 0.6) * S, (x + r) * S,
-                       (y + r * 0.6) * S], fill=cor + (255,))
-        camada = camada.filter(ImageFilter.GaussianBlur(4 * S))
+            d.ellipse([(x - r) * k, (y - r * 0.6) * k, (x + r) * k,
+                       (y + r * 0.6) * k], fill=cor + (255,))
+        camada = camada.filter(ImageFilter.GaussianBlur(4 * k))
         camada.putalpha(camada.getchannel("A").point(lambda a: a * 45 // 255))
         p.img.alpha_composite(camada)
     # tufos de grama
@@ -220,10 +249,13 @@ def desenhar_chao() -> Image.Image:
                  "#6fbf5e", "#4f9a44", 0.6)
     p.circulo(cx + 16, cy + 6, 1.4, "#ffc1d9")
 
-    # ruas: borda mais escura, miolo claro, pedrinhas
+    # ruas: borda mais escura, miolo claro, pedrinhas. Todas as bordas
+    # primeiro e so depois os miolos: um por um, a borda da calcada que
+    # chega na rua riscava um "U" por cima do miolo dela (28/09/2026).
+    ruas = []
+
     def rua(pontos, largura):
-        p.linha(pontos, "#d9b98a", largura + 3)
-        p.linha(pontos, "#f0dab0", largura)
+        ruas.append((pontos, largura))
 
     for ry in RUA_Y:
         rua([(-6, ry), (LARGURA + 6, ry)], 14)
@@ -236,6 +268,10 @@ def desenhar_chao() -> Image.Image:
         rua([(x, RUA_Y[0]), (x, y - 6)], 8)
     rua([(LAGO[0], LAGO[1] + 24), (LAGO[0], RUA_Y[1])], 8)
     rua([(112, RUA_Y[0]), (112, 76)], 8)          # sombra da arvore
+    for pontos, largura in ruas:
+        p.linha(pontos, "#d9b98a", largura + 3)
+    for pontos, largura in ruas:
+        p.linha(pontos, "#f0dab0", largura)
     for _ in range(140):
         x, y = rnd.uniform(0, LARGURA), rnd.uniform(0, ALTURA)
         if _sobre_rua(x, y, 5):
@@ -257,8 +293,8 @@ def desenhar_chao() -> Image.Image:
     return p.final()
 
 
-def desenhar_arvore(tom: str = "#5fb45a") -> Image.Image:
-    p = Pincel(36, 44)
+def desenhar_arvore(tom: str = "#5fb45a", escala: int = 1) -> Image.Image:
+    p = Pincel(36, 44, escala)
     p.ret(15.5, 24, 20.5, 40, 2, "#a0714a", "#83593a", 0.6)
     for cx, cy, r, t in ((12, 17, 10, 0.0), (24, 16, 10, 0.05),
                          (18, 10, 11, 0.12)):
@@ -271,8 +307,8 @@ def desenhar_arvore(tom: str = "#5fb45a") -> Image.Image:
     return p.final()
 
 
-def desenhar_banco() -> Image.Image:
-    p = Pincel(26, 16)
+def desenhar_banco(escala: int = 1) -> Image.Image:
+    p = Pincel(26, 16, escala)
     p.ret(2, 3, 24, 7, 1.5, "#c9905d", "#9c6a41", 0.6)
     p.ret(2, 8, 24, 11, 1.5, "#d9a06a", "#9c6a41", 0.6)
     for x in (4, 20):
@@ -280,8 +316,8 @@ def desenhar_banco() -> Image.Image:
     return p.final()
 
 
-def desenhar_fonte(quadro: int = 0) -> Image.Image:
-    p = Pincel(40, 30)
+def desenhar_fonte(quadro: int = 0, escala: int = 1) -> Image.Image:
+    p = Pincel(40, 30, escala)
     p.elipse(2, 12, 38, 28, "#c9c2d6", "#9a91ad", 0.8)
     p.elipse(5, 14, 35, 25, "#7fcdf0")
     p.ret(17, 6, 23, 18, 2, "#d8d2e3", "#9a91ad", 0.6)
@@ -294,8 +330,8 @@ def desenhar_fonte(quadro: int = 0) -> Image.Image:
     return p.final()
 
 
-def desenhar_canteiro() -> Image.Image:
-    p = Pincel(34, 18)
+def desenhar_canteiro(escala: int = 1) -> Image.Image:
+    p = Pincel(34, 18, escala)
     p.ret(1, 7, 33, 17, 4, "#a8744c", "#865634", 0.7)
     p.ret(3, 8, 31, 12, 3, "#7a5235")
     rnd = random.Random(4)
@@ -414,10 +450,11 @@ def _emblema(p: Pincel, nome: str, cx: float, cy: float, r: float) -> None:
         p.circulo(cx, cy, r * .5, COR_RESERVA)
 
 
-def desenhar_predio(nome: str, noite: bool = False) -> Image.Image:
+def desenhar_predio(nome: str, noite: bool = False,
+                    escala: int = 1) -> Image.Image:
     """72x64. O lote de 64x48 fica em (4, 16) desta imagem."""
     cor = CORES.get(nome, COR_RESERVA)
-    p = Pincel(PREDIO_W, PREDIO_H)
+    p = Pincel(PREDIO_W, PREDIO_H, escala)
     parede = "#fff3e2" if nome != "tiktok" else "#f1ecf7"
     p.ret(10, 28, 62, 62, 5, parede, "#dcc3a6", 1.0)
     p.ret(10, 52, 62, 62, 5, mistura(parede, "#e8d2b6", .6))
@@ -451,11 +488,11 @@ def desenhar_predio(nome: str, noite: bool = False) -> Image.Image:
         # A casa escurece, a placa e as janelas nao: e isso que faz a noite
         # parecer noite sem esconder de quem e o predio.
         corpo = _escurecer_imagem(corpo, .38)
-        placa = Pincel(PREDIO_W, PREDIO_H)
+        placa = Pincel(PREDIO_W, PREDIO_H, escala)
         placa.circulo(36, 22, 9.5, "#fff6e0", escurecer(cor, .2), 1.2)
         _emblema(placa, nome, 36, 22, 7.5)
         corpo.alpha_composite(placa.final())
-    janelas = Pincel(PREDIO_W, PREDIO_H)
+    janelas = Pincel(PREDIO_W, PREDIO_H, escala)
     vidro = "#ffd98a" if noite else "#c7e9fb"
     for x in (15, 47):
         janelas.ret(x, 38, x + 10, 48, 2.5, vidro, "#c7a57f", .8)
@@ -464,10 +501,10 @@ def desenhar_predio(nome: str, noite: bool = False) -> Image.Image:
             janelas.linha([(x + 2, 40), (x + 4, 40)], "#ffffff", .8)
     img = Image.new("RGBA", corpo.size, (0, 0, 0, 0))
     if noite:
-        brilho = Pincel(PREDIO_W, PREDIO_H)
+        brilho = Pincel(PREDIO_W, PREDIO_H, escala)
         for x in (20, 52):
             brilho.circulo(x, 43, 11, (255, 200, 110))
-        brilho.img = brilho.img.filter(ImageFilter.GaussianBlur(6 * S))
+        brilho.desfocar(6)
         luz = brilho.final()
         luz.putalpha(luz.getchannel("A").point(lambda a: int(a * .6)))
         img.alpha_composite(luz)
@@ -489,19 +526,20 @@ POSES = ("parado", "passo1", "passo2", "sentado", "acenar", "feliz",
 
 def desenhar_personagem(nome: str, pose: str = "parado",
                         olhos: str = "abertos",
-                        direcao: str = "dir") -> Image.Image:
+                        direcao: str = "dir", escala: int = 1) -> Image.Image:
     """26x32, pes em (13, 31). Cabeca grande, olhinhos, bochecha."""
     cor = CORES.get(nome, COR_RESERVA)
     indice = sorted(CORES).index(nome) if nome in CORES else 0
     pele = PELES[indice % len(PELES)]
     corpo = clarear(cor, .15)
     contorno = escurecer(cor, .35)
-    p = Pincel(PERSONAGEM_W, PERSONAGEM_H)
+    p = Pincel(PERSONAGEM_W, PERSONAGEM_H, escala)
+    k = p.k
     baixo = 3 if pose == "sentado" else 0
     # A sombra vem NO sprite: um item de Canvas a menos por habitante, e o
     # redesenho do Tk era o que pesava na CPU.
     # (translucida: o que vem por cima e opaco e substitui o pixel.)
-    p.d.ellipse([5 * S, 28.5 * S, 21 * S, 31.8 * S], fill=(50, 80, 40, 70))
+    p.d.ellipse([5 * k, 28.5 * k, 21 * k, 31.8 * k], fill=(50, 80, 40, 70))
 
     # pernas
     perna = "#5a4a5e"
@@ -608,8 +646,8 @@ def _acessorio(p: Pincel, tipo: str, cor, y0: float) -> None:
 
 
 # ============================================================ bichinhos
-def desenhar_pato(quadro: int = 0) -> Image.Image:
-    p = Pincel(14, 11)
+def desenhar_pato(quadro: int = 0, escala: int = 1) -> Image.Image:
+    p = Pincel(14, 11, escala)
     p.elipse(1, 4, 12, 10, "#ffffff", "#c8d3dd", .5)
     p.circulo(10, 3.8 + (quadro % 2) * .3, 2.6, "#ffffff", "#c8d3dd", .5)
     p.poli([(12, 3.8), (14, 4.3), (12, 5)], "#ffab2e")
@@ -650,7 +688,7 @@ def desenhar_passaro(quadro: int = 0) -> Image.Image:
 def desenhar_vagalume() -> Image.Image:
     p = Pincel(10, 10)
     p.circulo(5, 5, 4, (255, 240, 140))
-    p.img = p.img.filter(ImageFilter.GaussianBlur(1.5 * S))
+    p.desfocar(1.5)
     p.circulo(5, 5, 1.2, (255, 255, 210))
     return p.final()
 
@@ -745,49 +783,71 @@ def emote(simbolo: str, tamanho: int = 22) -> Image.Image:
 
 
 # ==================================================================== mundo
-def compor_mundo(noite: bool = False) -> Image.Image:
-    """O cenario estatico inteiro: chao, arvores, lago, predios."""
-    mundo = desenhar_chao()
+NOITE = (24, 30, 72)
+NOITE_CHAO = .52
+
+
+def noturno(img: Image.Image, t: float = NOITE_CHAO) -> Image.Image:
+    """O chao (opaco) de noite: o mesmo azul por cima de tudo."""
+    return Image.blend(img, Image.new("RGBA", img.size, NOITE + (255,)), t)
+
+
+def compor_mundo(noite: bool = False, escala: int = 1) -> Image.Image:
+    """O cenario estatico inteiro: chao, arvores, lago, predios.
+
+    Com `escala` > 1 a imagem sai `escala` vezes maior, desenhada nesse
+    tamanho; as posicoes continuam em pixels do mundo.
+    """
+    e = max(1, int(escala))
+    mundo = desenhar_chao(e)
     if noite:
-        escuro = Image.new("RGBA", mundo.size, (24, 30, 72, 255))
-        mundo = Image.blend(mundo, escuro, .52)
+        mundo = noturno(mundo)
     fixos = []
     for i, (tx, ty) in enumerate(ARVORES):
         tom = ["#5fb45a", "#6cc06a", "#56a86a"][i % 3]
-        fixos.append((ty * TILE + 44, desenhar_arvore(tom),
-                      (tx * TILE - 2, ty * TILE - 6)))
-    fixos.append((BANCO[1] + 8, desenhar_banco(),
-                  (BANCO[0] - 13, BANCO[1] - 8)))
-    fixos.append((FONTE[1] + 14, desenhar_fonte(),
-                  (FONTE[0] - 20, FONTE[1] - 16)))
-    fixos.append((CANTEIRO[1] + 9, desenhar_canteiro(),
-                  (CANTEIRO[0] - 17, CANTEIRO[1] - 9)))
+        fixos.append((ty * TILE + 44, desenhar_arvore(tom, e),
+                      (tx * TILE - 2, ty * TILE - 6), "arvore"))
+    fixos.append((BANCO[1] + 8, desenhar_banco(e),
+                  (BANCO[0] - 13, BANCO[1] - 8), "enfeite"))
+    fixos.append((FONTE[1] + 14, desenhar_fonte(0, e),
+                  (FONTE[0] - 20, FONTE[1] - 16), "enfeite"))
+    fixos.append((CANTEIRO[1] + 9, desenhar_canteiro(e),
+                  (CANTEIRO[0] - 17, CANTEIRO[1] - 9), "enfeite"))
     for nome, (lx, ly) in list(LOTES.items()) + [("casa", CASA)]:
-        fixos.append(((ly + 3) * TILE, desenhar_predio(nome, noite),
-                      (lx * TILE - 4, ly * TILE - 16)))
-    for _base, img, (x, y) in sorted(fixos, key=lambda f: f[0]):
-        sombra_img = sombra(img.width * .8, 6, 60)
-        mundo.alpha_composite(
-            sombra_img, (int(x + img.width * .1 - 4),
-                         int(y + img.height - 7)))
-        if noite and img.width == 36:          # arvore de noite: mais escura
-            img = Image.blend(img, Image.new("RGBA", img.size,
-                                             (24, 30, 72, 0)), .0)
-            img = _escurecer_imagem(img, .45)
-        elif noite and img.width in (26, 40, 34):
-            img = _escurecer_imagem(img, .4)
-        mundo.alpha_composite(img, (int(x), int(y)))
+        fixos.append(((ly + 3) * TILE, desenhar_predio(nome, noite, e),
+                      (lx * TILE - 4, ly * TILE - 16), "predio"))
+    for _base, img, (x, y), tipo in sorted(fixos, key=lambda f: f[0]):
+        assentar(mundo, img, x, y, tipo, noite, e)
     return mundo
+
+
+def assentar(fundo: Image.Image, img: Image.Image, x: float, y: float,
+             tipo: str, noite: bool, e: int = 1) -> None:
+    """Sombra no chao e o objeto por cima, com a noite de cada tipo.
+
+    `img` ja vem desenhada na escala `e`; `x`, `y` em pixels do mundo.
+    """
+    w = img.width / e                      # largura em pixels do mundo
+    sombra_img = sombra(w * .8, 6, 60, escala=e)
+    fundo.alpha_composite(
+        sombra_img, (int((x + w * .1 - 4) * e),
+                     int((y + img.height / e - 7) * e)))
+    if noite and tipo == "arvore":         # arvore de noite: mais escura
+        img = _escurecer_imagem(img, .45)
+    elif noite and tipo == "enfeite":
+        img = _escurecer_imagem(img, .4)
+    fundo.alpha_composite(img, (int(x * e), int(y * e)))
 
 
 def _escurecer_imagem(img: Image.Image, t: float) -> Image.Image:
     alfa = img.getchannel("A")
-    escuro = Image.new("RGBA", img.size, (24, 30, 72, 255))
+    escuro = Image.new("RGBA", img.size, NOITE + (255,))
     misturado = Image.blend(img, escuro, t)
     misturado.putalpha(alfa)
     return misturado
 
 
 __all__ = ["CORES", "DECORACOES", "LUGAR_DAS_DECORACOES", "POSES",
-           "compor_mundo", "desenhar_decoracao", "desenhar_personagem",
-           "desenhar_predio", "emote", "portas"]
+           "Pincel", "assentar", "compor_mundo", "desenhar_decoracao",
+           "desenhar_personagem", "desenhar_predio", "emote", "fator",
+           "noturno", "portas"]

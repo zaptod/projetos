@@ -167,7 +167,13 @@ aba, arte, enfeites e a caixa-preta da §2) — estado dela, não do sistema. Co
 5. **Arte fofa é o padrão** (`flutuante/arte.py`): "não quero isso pixelado".
    Pillow em 4× reduzido com LANCZOS (o Tk não suaviza nada), procedural e
    determinística (`random.Random(semente)`, com teste de bytes iguais). A
-   **clássica em pixel** continua no menu do botão direito.
+   **clássica em pixel** continua no menu do botão direito. **Desde 28/09
+   toda função de desenho aceita `escala`** e desenha de verdade nesse tamanho
+   (o `Pincel` guarda `k` pixels internos por pixel do mundo: 4 em 1×, 2×escala
+   acima disso); as coordenadas continuam em pixels do mundo. Com escala 1 o
+   resultado é byte a byte o de antes (medido nos 400 desenhos; só o chão mudou,
+   de propósito: as ruas agora pintam todas as bordas antes dos miolos, e sumiu
+   o "U" que a borda da calçada riscava por cima da rua em cada encontro).
 6. **Personagens com vida** (`flutuante/vida.py`): andam por um grafo de caminhos
    (ninguém atravessa casa), sentam no banco, regam flores, alimentam os patos,
    conversam quando se cruzam, comemoram ao terminar e consolam quem errou;
@@ -286,10 +292,11 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   `--gif` grava 5 s, `--medir-cpu SEG` mede a CPU. A `--prova` **não** passa pelo
   mutex: abre uma segunda janela de propósito, e é a forma segura de olhar sem
   mexer na do dono.
-- Testes desta parte (195): `painel/test_painel.py` (40),
+- Testes desta parte (199): `painel/test_painel.py` (40),
   `painel/test_flutuante.py` (92, com a caixa-preta e o WM_CLOSE de verdade),
   `painel/test_tarefa_da_vila.py` (12, o instalador e a guarda do `.cmd`
-  rodada pelo `cmd`), `painel/test_vila_fofa.py` (28), `vila/test_motor.py`
+  rodada pelo `cmd`), `painel/test_vila_fofa.py` (32, com a escala e a
+  Vila dobrada do celular), `vila/test_motor.py`
   (17) e `vila/test_editor.py` (6: sem cor literal, cabe na tela dele, nada
   espremido nem desmapeado pelo `pack`). Os da `vila/` entram no `testar.py`
   **pelo nome** (`vila/` é pacote de namespace e o `discover` recusa): teste
@@ -331,3 +338,20 @@ servidor**, não no celular), `painel.flutuante.dados` / `Caminhos` e
 mexer em `arte.py`, `vida.py` ou `dados.py` muda o app também** — são a mesma
 Vila, e foi essa a decisão (um segundo desenho em JavaScript divergiria na
 primeira mudança).
+
+**A Vila em pé do celular** (28/09, `flutuante/retrato.py`, só o app usa). O
+mundo é 704×240; no celular em pé, caber pela altura mostrava 2 prédios de 11
+(o erro dos outros ficava fora da tela) e a arte de 1× chegava ampliada e
+borrada. O retrato é a **mesma** Vila dobrada: a fileira de cima é o mundo de
+x=0 a `DOBRA`=420, a de baixo vai de 420 ao fim, completada por um campo de
+136 px (grama, árvores, uma placa onde a rua acaba); uma sebe entre as duas,
+céu com morros (nuvens de dia; estrelas e lua de noite) em cima e grama
+embaixo. A dobra em 420 é a única faixa em que nada fica cortado nas duas
+ruas (há teste). A vida continua em coordenadas do mundo: o app só converte
+com `para_retrato`/`para_mundo` (a mesma conta em `vila.js`). Vai em escala 3
+(WebP: 126 KB de dia, 95 KB de noite) e o atlas também (PNG de 673 KB,
+baixado uma vez por versão), com os patos do lago.
+**Como a câmera abre é decisão do Adrian** (`painel-e-vila/vila-zoom-celular`):
+o servidor lê o nó; pendente = `perto` (uma fileira enche a altura, na casa,
+como era); `longe` = a Vila inteira. Prova de tela: `prova_app.py` no
+scratchpad da sessão de 28/09 (Chrome headless, 390×844, instância 8934).

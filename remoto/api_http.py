@@ -526,7 +526,8 @@ class Manipulador(BaseHTTPRequestHandler):
 
         if rota in ESTATICOS:
             return self._estatico(*ESTATICOS[rota])
-        if rota in ("/vilanova.png", "/vilanova-atlas.png"):
+        if rota in ("/vilanova.png", "/vilanova-atlas.png",
+                    "/vilanova-retrato.webp"):
             # Abertas como o resto da casca (a rede ja e a tranca): sao o
             # cenario, nao dado. O que esta NELAS nao diz nada do sistema.
             return self._imagem_da_vila(rota)
@@ -767,16 +768,26 @@ class Manipulador(BaseHTTPRequestHandler):
         (a versao vem no `/api/vilanova`) e o que deixa o app guarda-las por
         um dia sem ficar preso a uma arte velha.
         """
+        consulta = parse_qs(urlsplit(self.path).query or "")
+        noite = (consulta.get("noite") or ["0"])[0] == "1"
+        tipo = "image/png"
         try:
             if rota == "/vilanova.png":
-                noite = (urlsplit(self.path).query or "").endswith("noite=1")
                 corpo = vila_nova.png_do_fundo(noite)
+            elif rota == "/vilanova-retrato.webp":
+                corpo = vila_nova.imagem_do_retrato(noite)
+                tipo = "image/webp"
             else:
-                corpo = vila_nova.atlas()["png"]
+                # so a escala do celular ou a de 1x: nada de o pedido
+                # escolher um tamanho qualquer e fazer o PC desenhar
+                escala = (vila_nova.ESCALA_CELULAR
+                          if (consulta.get("escala") or ["1"])[0]
+                          == str(vila_nova.ESCALA_CELULAR) else 1)
+                corpo = vila_nova.atlas(escala)["png"]
         except Exception:                                    # noqa: BLE001
             return self._erro(404, "a vila ainda nao tem cenario")
         self.send_response(200)
-        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Type", tipo)
         self.send_header("Content-Length", str(len(corpo)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "private, max-age=86400")
