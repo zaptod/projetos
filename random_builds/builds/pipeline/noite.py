@@ -58,9 +58,12 @@ PADRAO = {
     "minuto": 2,
     "dias_de_gordura": 2,
     "minutos_por_duelo": 5,
+    "minutos_por_build": 15,
     "minutos_por_imagem": 8,
     "minutos_por_payoff": 18,
     "maximo_de_duelos_por_rodada": 6,
+    "maximo_de_builds_por_rodada": 1,
+    "builds": True,
     "worker": True,
 }
 
@@ -185,9 +188,10 @@ def cota(config_publicacao: dict | None = None) -> dict:
     return {str(k): max(0, int(v)) for k, v in bruta.items()}
 
 
-def duelos_por_dia(config_publicacao: dict | None = None,
-                   horarios: int | None = None) -> float:
-    """Quantos horarios do dia a cota da ao duelo (4/8 de 10 = 5)."""
+def por_dia(formato: str, config_publicacao: dict | None = None,
+            horarios: int | None = None) -> float:
+    """Quantos horarios do dia a cota da ao formato (duelo 4/8 de 10 = 5,
+    build 3/8 de 10 = 3,75)."""
     if horarios is None:
         from .. import grade
         horarios = len(grade.HORAS)
@@ -195,7 +199,17 @@ def duelos_por_dia(config_publicacao: dict | None = None,
     total = sum(pesos.values())
     if total <= 0:
         return 0.0
-    return horarios * pesos.get("duelo", 0) / total
+    return horarios * pesos.get(formato, 0) / total
+
+
+def duelos_por_dia(config_publicacao: dict | None = None,
+                   horarios: int | None = None) -> float:
+    return por_dia("duelo", config_publicacao, horarios)
+
+
+def builds_por_dia(config_publicacao: dict | None = None,
+                   horarios: int | None = None) -> float:
+    return por_dia("build", config_publicacao, horarios)
 
 
 def teto_de_duelos(config: dict, config_publicacao: dict | None = None,
@@ -204,14 +218,74 @@ def teto_de_duelos(config: dict, config_publicacao: dict | None = None,
     return int(math.ceil(dias * duelos_por_dia(config_publicacao, horarios)))
 
 
+def teto_de_builds(config: dict, config_publicacao: dict | None = None,
+                   horarios: int | None = None) -> int:
+    dias = max(0.0, float(config.get("dias_de_gordura", 0)))
+    return int(math.ceil(dias * builds_por_dia(config_publicacao, horarios)))
+
+
 def estoque_de_duelos(videos=None, publicados=None) -> list:
-    """Os duelos que a publicacao ESCOLHERIA, do mais antigo ao mais novo.
+    """Os duelos que a publicacao ESCOLHERIA, do mais antigo ao mais novo."""
+    from ..publicar import catalogo
+    return estoque_do_formato(catalogo.DUELO, videos, publicados)
+
+
+def estoque_de_builds(videos=None, publicados=None) -> list:
+    """Os builds (A e B com titulo proprio) que a publicacao ESCOLHERIA."""
+    from ..publicar import catalogo
+    return estoque_do_formato(catalogo.BUILD, videos, publicados)
+
+
+# Pendencia que o WORKER resolve sozinho: imagem, payoff, re-render. Build
+# com qualquer outra (estreia impossivel, estreia nao gravada) nao esta "a
+# caminho" — e nao pode segurar a geracao de outra.
+_PENDENCIA_DO_WORKER = ("identity worker", "(PicassoIA)", "mp4 mais velho")
+
+
+def builds_em_preparo(videos=None, publicados=None, jobs=None) -> list[str]:
+    """As generation_* que VAO entrar no estoque sem ninguem mexer.
+
+    Build nova nasce com pendencia (sem imagem, sem payoff) e so entra na
+    fila quando o worker termina — o que pode levar mais de uma rodada,
+    porque o PicassoIA e dividido com as historias. Sem contar essas, a
+    rodada seguinte veria o estoque igual e geraria OUTRA roleta por hora.
+    So conta quem tem job VIVO na fila (pendente, com tentativa sobrando):
+    job esgotado nao anda sozinho, e contar ele seria um cemiterio de novo.
+    """
+    from ..publicar import catalogo, metricas
+    if publicados is None:
+        publicados = metricas.publicados()
+    if videos is None:
+        videos = catalogo.listar()
+    if jobs is None:
+        jobs = jobs_do_worker()
+    vivos = {j.get("generation_id") for j in jobs or ()}
+    saiu = {linha.get("video_id") for linha in publicados
+            if metricas.publicado(linha)}
+    preparo = []
+    for video in videos:
+        if (getattr(video, "origem", "") != catalogo.BUILD
+                or getattr(video, "perfil", "") != "celular"
+                or getattr(video, "variante", "A") != "A"
+                or video.id in saiu):
+            continue
+        pendencias = list(getattr(video, "pendencias", None) or ())
+        if not pendencias or video.fonte_id not in vivos:
+            continue
+        if all(any(m in p for m in _PENDENCIA_DO_WORKER) for p in pendencias):
+            preparo.append(video.fonte_id)
+    return sorted(set(preparo))
+
+
+def estoque_do_formato(origem: str, videos=None, publicados=None) -> list:
+    """O que a publicacao ESCOLHERIA daquele formato, do mais antigo ao mais
+    novo.
 
     O mesmo funil de `postar.proximo_build`, com as mesmas funcoes: saiu =
     `metricas.publicado`, titulo = `titulos.chave`. Fica de fora o que ja
     foi ao ar (em qualquer destino), o que tem pendencia e o que tem titulo
-    ja publicado. Dois duelos pendentes com o MESMO titulo contam como um:
-    o segundo so sairia repetindo o primeiro.
+    ja publicado. Dois pendentes com o MESMO titulo contam como um: o
+    segundo so sairia repetindo o primeiro.
     """
     from ..publicar import catalogo, metricas, titulos
     if publicados is None:
@@ -223,7 +297,7 @@ def estoque_de_duelos(videos=None, publicados=None) -> list:
     no_ar = titulos.ja_publicados(publicados)
     fila, vistos = [], set()
     for video in sorted(videos, key=lambda v: getattr(v, "quando", 0.0)):
-        if getattr(video, "origem", "") != catalogo.DUELO:
+        if getattr(video, "origem", "") != origem:
             continue
         if getattr(video, "perfil", "") != "celular":
             continue
@@ -257,9 +331,13 @@ def jobs_do_worker() -> list[dict]:
     from ..identity import config as icfg
     from ..identity import queue
     maximo = int(icfg.settings().get("max_attempts", 3))
+    # Build descartada (config/publicacao.json) nao anda: o claim a pula, e
+    # conta-la aqui a faria parecer "em preparo" para sempre.
+    descartadas = queue.geracoes_descartadas()
     return [j for j in queue.listar()
             if j.get("status") == queue.PENDENTE
-            and int(j.get("attempts", 0)) < maximo]
+            and int(j.get("attempts", 0)) < maximo
+            and j.get("generation_id") not in descartadas]
 
 
 # ------------------------------------------------------------------- diario
@@ -344,6 +422,20 @@ def _duelo_de_verdade():
     return gerar
 
 
+def _build_de_verdade():
+    """A roleta inteira (`generate-video`): build, insercao no banco, estreia,
+    render e a fila de identidade. O controller e criado so aqui: a rodada
+    que nao gera build nao paga o carregamento dele."""
+    from .controller import PipelineController
+    controlador = {}
+
+    def gerar() -> Path:
+        if "c" not in controlador:
+            controlador["c"] = PipelineController()
+        return controlador["c"].generate()
+    return gerar
+
+
 def _worker_de_verdade(so_provedor: str | None = None,
                        prazo: float | None = None) -> int:
     from ..identity import worker
@@ -354,7 +446,9 @@ def _worker_de_verdade(so_provedor: str | None = None,
 def rodar(*, config: dict | None = None, ensaio: bool = False,
           duelos: int | None = None, sem_worker: bool = False,
           relogio=None, gerar_duelo=None, drenar_worker=None,
-          jobs=None, estoque=None, proximo=None, tela=None) -> dict:
+          jobs=None, estoque=None, proximo=None, tela=None,
+          builds: int | None = None, gerar_build=None,
+          estoque_builds=None) -> dict:
     """Uma rodada. Devolve o que aconteceu; nunca levanta por conta da tarefa.
 
     `ensaio`: faz TODAS as conferencias e diz o que faria, sem gerar nada e
@@ -382,7 +476,8 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
                        sem_worker=sem_worker, relogio=relogio,
                        gerar_duelo=gerar_duelo, drenar_worker=drenar_worker,
                        jobs=jobs, estoque=estoque, proximo=proximo,
-                       travas=travas, controle=controle)
+                       travas=travas, controle=controle, builds=builds,
+                       gerar_build=gerar_build, estoque_builds=estoque_builds)
     finally:
         try:
             sys.stdout.flush()
@@ -392,7 +487,8 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
 
 
 def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
-            drenar_worker, jobs, estoque, proximo, travas, controle) -> dict:
+            drenar_worker, jobs, estoque, proximo, travas, controle,
+            builds=None, gerar_build=None, estoque_builds=None) -> dict:
     agora = relogio()
     rotulo = " (ENSAIO: nada e gerado)" if ensaio else ""
     print(f"[noite] disparo das {agora:%H:%M}{rotulo}")
@@ -422,11 +518,15 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
                                sem_worker=sem_worker, relogio=relogio,
                                gerar_duelo=gerar_duelo,
                                drenar_worker=drenar_worker, jobs=jobs,
-                               estoque=estoque, proximo=proximo)
+                               estoque=estoque, proximo=proximo,
+                               builds=builds, gerar_build=gerar_build,
+                               estoque_builds=estoque_builds)
         gasto = time.monotonic() - comeco
         resultado["segundos"] = round(gasto, 1)
         feitos = resultado.get("duelos") or []
+        roletas = resultado.get("builds") or []
         print(f"[noite] fim: {len(feitos)} duelo(s) novo(s), "
+              f"{len(roletas)} build(s) nova(s), "
               f"{resultado.get('jobs_do_worker', 0)} job(s) do worker, "
               f"{len(resultado.get('erros') or [])} erro(s), "
               f"{gasto / 60:.1f} min.")
@@ -435,56 +535,121 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
                 _registrar("erro", "geracao noturna: "
                            + "; ".join(resultado["erros"])[:280],
                            etapa="noite")
-            if feitos or resultado.get("jobs_do_worker"):
-                _registrar("ok", f"geracao noturna: {len(feitos)} duelo(s) "
-                           f"({', '.join(feitos)})"[:300], etapa="noite",
-                           dur_s=gasto)
+            if feitos or roletas or resultado.get("jobs_do_worker"):
+                _registrar("ok", f"geracao noturna: {len(feitos)} duelo(s), "
+                           f"{len(roletas)} build(s) "
+                           f"({', '.join(feitos + roletas)})"[:300],
+                           etapa="noite", dur_s=gasto)
         return resultado
 
 
+def planos(config: dict, *, duelos=None, builds=None, estoque=None,
+           estoque_builds=None) -> list[dict]:
+    """O que gerar nesta rodada, e em que ordem: a NECESSIDADE manda.
+
+    Decisao do Adrian em 28/09/2026: a roleta entra na geracao automatica
+    junto com o duelo, e quem tem MENOS DIAS de estoque vai primeiro — o
+    tempo da rodada (ate :25) nao da para os dois quando os dois estao
+    baixos, e o formato que acaba antes e o que deixa horario vazio.
+
+    Dias = estoque / horarios que a cota da ao formato por dia. Estoque de
+    build conta tambem as builds em preparo (o worker ainda termina).
+    Empate: duelo primeiro (mais barato, e o que o dado mais quer).
+
+    Pedido manual (`--duelos`/`--builds`): so o que foi pedido, ignorando o
+    teto; formato nao pedido fica de fora.
+    """
+    manual = duelos is not None or builds is not None
+    saida = []
+
+    na_fila = len(estoque() if estoque else estoque_de_duelos())
+    saida.append({
+        "formato": "duelo", "na_fila": na_fila,
+        "teto": teto_de_duelos(config), "por_dia": duelos_por_dia(),
+        "pedido": duelos, "maximo": int(config.get(
+            "maximo_de_duelos_por_rodada", 6)),
+        "minutos": float(config.get("minutos_por_duelo", 5)),
+        "ligado": True})
+
+    if estoque_builds:
+        na_fila_b = len(estoque_builds())
+    else:
+        na_fila_b = len(estoque_de_builds()) + len(builds_em_preparo())
+    saida.append({
+        "formato": "build", "na_fila": na_fila_b,
+        "teto": teto_de_builds(config), "por_dia": builds_por_dia(),
+        "pedido": builds, "maximo": int(config.get(
+            "maximo_de_builds_por_rodada", 1)),
+        "minutos": float(config.get("minutos_por_build", 15)),
+        "ligado": bool(config.get("builds", True))})
+
+    for plano in saida:
+        if manual:
+            plano["alvo"] = max(0, int(plano["pedido"] or 0))
+        elif not plano["ligado"]:
+            plano["alvo"] = 0
+        else:
+            plano["alvo"] = min(max(0, plano["teto"] - plano["na_fila"]),
+                                plano["maximo"])
+        plano["dias"] = (plano["na_fila"] / plano["por_dia"]
+                         if plano["por_dia"] > 0 else float("inf"))
+    ordem = {"duelo": 0, "build": 1}
+    saida.sort(key=lambda p: (p["dias"], ordem[p["formato"]]))
+    return saida
+
+
 def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
-               drenar_worker, jobs, estoque, proximo=None) -> dict:
+               drenar_worker, jobs, estoque, proximo=None, builds=None,
+               gerar_build=None, estoque_builds=None) -> dict:
     erros: list[str] = []
     feitos: list[str] = []
+    roletas: list[str] = []
     parou = ""
 
-    # ---- 1. duelos ate o teto
-    na_fila = len(estoque() if estoque else estoque_de_duelos())
-    teto = teto_de_duelos(config)
-    if duelos is not None:
-        alvo = max(0, int(duelos))
-        print(f"[noite] duelos no estoque que a grade escolheria: {na_fila} "
-              f"(teto {teto}). Pedido manual: {alvo}.")
-    else:
-        alvo = max(0, teto - na_fila)
-        alvo = min(alvo, int(config.get("maximo_de_duelos_por_rodada", 6)))
-        print(f"[noite] duelos no estoque que a grade escolheria: {na_fila} "
-              f"(teto {teto}). Vou gerar {alvo}.")
+    # ---- 1. duelos e builds ate o teto, quem tem menos dias primeiro
+    fila_de_planos = planos(config, duelos=duelos, builds=builds,
+                            estoque=estoque, estoque_builds=estoque_builds)
+    for plano in fila_de_planos:
+        rotulo = "duelos" if plano["formato"] == "duelo" else "builds"
+        origem = ("pedido manual" if plano["pedido"] is not None
+                  else "desligado no config" if not plano["ligado"]
+                  else f"teto {plano['teto']}")
+        print(f"[noite] {rotulo} no estoque que a grade escolheria: "
+              f"{plano['na_fila']} ({plano['dias']:.1f} dia(s); {origem}). "
+              f"Vou gerar {plano['alvo']}.")
 
-    if gerar_duelo is None:
-        gerar_duelo = _duelo_ensaiado() if ensaio else _duelo_de_verdade()
-    minutos_duelo = float(config.get("minutos_por_duelo", 5))
-    falhas = 0
-    for _ in range(alvo):
-        if not cabe(relogio(), minutos_duelo, config):
-            parou = "janela"
-            print(f"[noite] outro duelo ({minutos_duelo:.0f} min) nao cabe "
-                  f"antes de :{int(config['grade_proibida']['de']):02d} ou do "
-                  f"fim da janela. Fica para a proxima rodada.")
-            if not ensaio:
-                break
-        try:
-            pasta = gerar_duelo()
-        except Exception as exc:                               # noqa: BLE001
-            falhas += 1
-            erros.append(f"duelo: {type(exc).__name__}: {str(exc)[:160]}")
-            print(f"[noite] o duelo falhou: {type(exc).__name__}: {exc}")
-            if falhas >= FALHAS_SEGUIDAS:
-                print("[noite] duas falhas seguidas; paro os duelos.")
-                break
-            continue
+    geradores = {
+        "duelo": gerar_duelo or (_duelo_ensaiado() if ensaio
+                                 else _duelo_de_verdade()),
+        "build": gerar_build or (_build_ensaiado() if ensaio
+                                 else _build_de_verdade()),
+    }
+    for plano in fila_de_planos:
+        formato, minutos = plano["formato"], plano["minutos"]
+        destino = feitos if formato == "duelo" else roletas
         falhas = 0
-        feitos.append(Path(str(pasta)).name)
+        for _ in range(plano["alvo"]):
+            if not cabe(relogio(), minutos, config):
+                parou = "janela"
+                print(f"[noite] outro {formato} ({minutos:.0f} min) nao cabe "
+                      f"antes de :{int(config['grade_proibida']['de']):02d} ou "
+                      f"do fim da janela. Fica para a proxima rodada.")
+                if not ensaio:
+                    break
+            try:
+                pasta = geradores[formato]()
+            except Exception as exc:                           # noqa: BLE001
+                falhas += 1
+                erros.append(f"{formato}: {type(exc).__name__}: "
+                             f"{str(exc)[:160]}")
+                print(f"[noite] o {formato} falhou: {type(exc).__name__}: "
+                      f"{exc}")
+                if falhas >= FALHAS_SEGUIDAS:
+                    print(f"[noite] duas falhas seguidas; paro os {formato}s.")
+                    break
+                continue
+            falhas = 0
+            destino.append(Path(str(pasta)).name)
 
     # ---- 2. worker de identidade (capa e payoff das builds)
     feitos_worker = 0
@@ -553,12 +718,17 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
                 break
             pendentes = listar_jobs()
 
-    feito = "duelos" if feitos else ("worker" if feitos_worker else "nada")
-    return {"feito": feito, "duelos": feitos, "jobs_do_worker": feitos_worker,
-            "estoque_antes": na_fila, "teto": teto, "alvo": alvo,
+    duelo = next(p for p in fila_de_planos if p["formato"] == "duelo")
+    alvos = sum(p["alvo"] for p in fila_de_planos)
+    feito = ("duelos" if feitos else "builds" if roletas
+             else "worker" if feitos_worker else "nada")
+    return {"feito": feito, "duelos": feitos, "builds": roletas,
+            "jobs_do_worker": feitos_worker,
+            "estoque_antes": duelo["na_fila"], "teto": duelo["teto"],
+            "alvo": duelo["alvo"], "planos": fila_de_planos,
             "parou": parou, "erros": erros,
-            "motivo": "" if (feitos or feitos_worker or erros)
-            else ("estoque cheio" if alvo == 0 else parou or "nada feito")}
+            "motivo": "" if (feitos or roletas or feitos_worker or erros)
+            else ("estoque cheio" if alvos == 0 else parou or "nada feito")}
 
 
 # ---------------------------------------------------------------- ensaio
@@ -599,6 +769,17 @@ def _duelo_ensaiado():
     return gerar
 
 
+def _build_ensaiado():
+    """Duble da roleta: diz que geraria e para. Nada e sorteado nem gravado."""
+    contador = {"n": 0}
+
+    def gerar() -> Path:
+        contador["n"] += 1
+        print(f"[ensaio] build {contador['n']}: generate-video (nada gerado)")
+        return Path(f"ensaio_build_{contador['n']:02d}")
+    return gerar
+
+
 def _worker_ensaiado(so_provedor: str | None = None,
                      prazo: float | None = None) -> int:
     quando = (datetime.fromtimestamp(prazo).strftime("%H:%M")
@@ -625,8 +806,10 @@ def codigo_de_saida(resultado: dict) -> int:
     return 1 if resultado.get("erros") else 0
 
 
-__all__ = ["CONFIG", "TRAVA", "cabe", "carregar", "codigo_de_saida",
-           "diario_do_dia", "duelos_por_dia", "estoque_de_duelos",
+__all__ = ["CONFIG", "TRAVA", "builds_em_preparo", "builds_por_dia", "cabe",
+           "carregar", "codigo_de_saida", "diario_do_dia", "duelos_por_dia",
+           "estoque_de_builds", "estoque_de_duelos", "estoque_do_formato",
+           "planos", "por_dia", "teto_de_builds",
            "fim_da_folga", "jobs_do_worker", "minutos_do_job", "na_grade",
            "na_janela", "proximo_do_worker", "quantos_cabem", "rodar",
            "teto_de_duelos"]

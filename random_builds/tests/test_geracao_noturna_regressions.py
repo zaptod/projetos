@@ -50,6 +50,23 @@ def _fichas(*nomes, poder=None):
             for n in nomes}
 
 
+def setUpModule():
+    """Nenhum teste daqui gera duelo ou build DE VERDADE.
+
+    Medido em 28/09/2026: com a roleta na rodada, os testes que so passavam
+    `gerar_duelo` caiam no `generate-video` real (roleta, estreia, render)
+    - numa copia do projeto a suite gerou `generation_00001` e `00002` e
+    estourou o tempo sem imprimir resultado nenhum. O gerador real explode
+    aqui, fora do `try` da rodada, para o teste falhar alto.
+    """
+    for alvo in ("_duelo_de_verdade", "_build_de_verdade",
+                 "_worker_de_verdade"):
+        patcher = mock.patch.object(noite, alvo, side_effect=AssertionError(
+            f"teste chamou noite.{alvo}: passe um duble"))
+        patcher.start()
+        unittest.addModuleCleanup(patcher.stop)
+
+
 class _Video:
     def __init__(self, id_, titulo, origem="duelo", perfil="celular",
                  quando=0.0, pendencias=None):
@@ -264,6 +281,57 @@ class Estoque(unittest.TestCase):
         self.assertEqual(0, noite.teto_de_duelos({"dias_de_gordura": 2},
                                                  sem_duelo, horarios=10))
 
+    def test_teto_de_builds_vem_da_mesma_cota(self):
+        pub = {"grade": {"mistura": {"duelo": 4, "build": 3, "estreia": 1,
+                                     "torneio": 0}}}
+        self.assertEqual(3.75, noite.builds_por_dia(pub, horarios=10))
+        self.assertEqual(8, noite.teto_de_builds({"dias_de_gordura": 2},
+                                                 pub, horarios=10))
+
+    def test_estoque_de_builds_passa_pelo_mesmo_funil(self):
+        videos = [
+            _Video("generation_1:build:celular", "Ana: monge", "build",
+                   quando=1),                                    # conta
+            _Video("generation_1:build:celular:B", "Ana: monge", "build",
+                   quando=2),                                    # B, mesmo titulo
+            _Video("generation_2:build:celular", "Bia: druida", "build",
+                   quando=3, pendencias=["sem payoff"]),
+            _Video("duelo_3:duelo:celular", "E x F", quando=4),
+        ]
+        fila = noite.estoque_de_builds(videos=videos, publicados=[])
+        self.assertEqual(["generation_1:build:celular"], [v.id for v in fila])
+
+    def test_build_em_preparo_e_so_a_que_o_worker_termina_sozinho(self):
+        def build(gid, pendencias, variante="A", perfil="celular"):
+            video = _Video(f"{gid}:build:{perfil}"
+                           + (":B" if variante == "B" else ""),
+                           gid, "build", perfil=perfil,
+                           pendencias=pendencias)
+            video.fonte_id, video.variante = gid, variante
+            return video
+        payoff = "sem payoff (clipe do Digen): `identity worker`"
+        imagem = "sem imagem do personagem (PicassoIA)"
+        videos = [
+            build("generation_1", [payoff, imagem]),             # conta
+            build("generation_1", [payoff], variante="B"),       # B nao conta
+            build("generation_1", [payoff], perfil="normal"),    # 16:9 nao
+            build("generation_2", [payoff]),                     # job esgotado
+            build("generation_3", [payoff, "estreia impossivel: Seraphina "
+                                   "saiu do banco"]),            # cemiterio
+            build("generation_4", [payoff]),                     # ja saiu
+            build("generation_5", []),                           # ja no estoque
+        ]
+        jobs = [{"generation_id": g} for g in
+                ("generation_1", "generation_3", "generation_4",
+                 "generation_5")]
+        ledger = [{"video_id": "generation_4:build:celular",
+                   "publicado": True}]
+        self.assertEqual(["generation_1"], noite.builds_em_preparo(
+            videos=videos, publicados=ledger, jobs=jobs))
+        # O caso ZERO: sem job vivo, nada esta a caminho.
+        self.assertEqual([], noite.builds_em_preparo(
+            videos=videos, publicados=[], jobs=[]))
+
 
 # ================================================================= rodada
 class _Relogio:
@@ -292,7 +360,8 @@ class Rodada(unittest.TestCase):
             patcher = mock.patch.object(noite, alvo, valor)
             patcher.start()
             self.addCleanup(patcher.stop)
-        for alvo, valor in (("duelos_por_dia", lambda *a, **k: 5.0),):
+        for alvo, valor in (("duelos_por_dia", lambda *a, **k: 5.0),
+                            ("builds_por_dia", lambda *a, **k: 3.75)):
             patcher = mock.patch.object(noite, alvo, valor)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -308,9 +377,13 @@ class Rodada(unittest.TestCase):
         self.addCleanup(registrar.stop)
 
     def _rodar(self, relogio, na_fila=3, jobs=(), falhar=0, drenar=None,
-               proximo=None, **kw):
+               proximo=None, na_fila_builds=8, falhar_build=0, config=None,
+               **kw):
+        # `na_fila_builds=8` = o teto (2 dias x 3,75): os testes antigos, que
+        # so falam de duelo, nao geram build nenhuma.
         self.gerados = []
-        falhas = {"n": falhar}
+        self.ordem = []
+        falhas = {"n": falhar, "build": falhar_build}
 
         def gerar():
             if falhas["n"] > 0:
@@ -318,11 +391,23 @@ class Rodada(unittest.TestCase):
                 raise RuntimeError("pygame caiu")
             relogio.andar(4.3)
             self.gerados.append(relogio())
+            self.ordem.append("duelo")
             return Path(f"duelo_{len(self.gerados):05d}")
 
+        def gerar_build():
+            if falhas["build"] > 0:
+                falhas["build"] -= 1
+                raise RuntimeError("edge-tts caiu")
+            relogio.andar(10)                  # medido em 24/09: 10 min
+            self.ordem.append("build")
+            return Path(f"generation_{self.ordem.count('build'):05d}")
+
         lista = list(jobs)
-        return noite.rodar(config=dict(noite.PADRAO), relogio=relogio,
+        return noite.rodar(config=config or dict(noite.PADRAO),
+                           relogio=relogio,
                            gerar_duelo=gerar, estoque=lambda: [0] * na_fila,
+                           gerar_build=gerar_build,
+                           estoque_builds=lambda: [0] * na_fila_builds,
                            jobs=lambda: list(lista),
                            drenar_worker=drenar or (lambda **k: 0),
                            proximo=proximo or (lambda excluir=(): None),
@@ -496,6 +581,89 @@ class Rodada(unittest.TestCase):
             resultado = self._rodar(relogio)
         self.assertEqual("pausado", resultado["motivo"])
         self.assertEqual([], self.gerados)
+
+    # ---- builds (roleta) na rodada: decisao do Adrian de 28/09/2026
+    def test_build_com_menos_dias_vai_primeiro(self):
+        # duelos 3/5 = 0,6 dia; builds 0/3,75 = 0 dia: a roleta primeiro.
+        relogio = _Relogio(_as(1, 2))
+        resultado = self._rodar(relogio, na_fila=3, na_fila_builds=0)
+        # 01:02 build (10 min) -> 01:12; duelos de 5 min reservados cabem
+        # as 01:12 e as 01:16,3; as 01:20,6 terminaria depois de :25.
+        self.assertEqual(["build", "duelo", "duelo"], self.ordem)
+        self.assertEqual(["generation_00001"], resultado["builds"])
+        self.assertEqual("janela", resultado["parou"])
+        self.assertEqual(["build", "duelo"],
+                         [p["formato"] for p in resultado["planos"]])
+        self.assertTrue(any("1 build(s)" in r[1] for r in self.registros))
+
+    def test_duelo_com_menos_dias_vai_primeiro_e_a_build_espera(self):
+        # duelos 0 dia; builds 2/3,75 = 0,53 dia: duelos primeiro, e depois
+        # deles a build (reserva 15 min) nao cabe antes de :25.
+        relogio = _Relogio(_as(1, 2))
+        resultado = self._rodar(relogio, na_fila=0, na_fila_builds=2)
+        self.assertEqual(["duelo"] * 5, self.ordem)
+        self.assertEqual([], resultado["builds"])
+        self.assertEqual("janela", resultado["parou"])
+
+    def test_empate_de_dias_o_duelo_vai_primeiro(self):
+        relogio = _Relogio(_as(1, 2))
+        self._rodar(relogio, na_fila=0, na_fila_builds=0)
+        self.assertEqual("duelo", self.ordem[0])
+
+    def test_uma_build_por_rodada_e_so_ate_o_teto(self):
+        relogio = _Relogio(_as(1, 2))
+        resultado = self._rodar(relogio, na_fila=10, na_fila_builds=0)
+        self.assertEqual(["build"], self.ordem)
+        plano = next(p for p in resultado["planos"] if p["formato"] == "build")
+        self.assertEqual((8, 1), (plano["teto"], plano["alvo"]))
+        # No teto (8 = 2 dias x 3,75), nenhuma.
+        relogio = _Relogio(_as(1, 2))
+        resultado = self._rodar(relogio, na_fila=10, na_fila_builds=8)
+        self.assertEqual([], self.ordem)
+        self.assertEqual("estoque cheio", resultado["motivo"])
+
+    def test_build_desligada_no_config(self):
+        relogio = _Relogio(_as(1, 2))
+        config = {**noite.PADRAO, "builds": False}
+        self._rodar(relogio, na_fila=10, na_fila_builds=0, config=config)
+        self.assertEqual([], self.ordem)
+
+    def test_build_que_nao_cabe_nao_comeca(self):
+        # 01:12 + 15 min = 01:27: encosta na grade. Nada comeca.
+        relogio = _Relogio(_as(1, 12))
+        resultado = self._rodar(relogio, na_fila=10, na_fila_builds=0)
+        self.assertEqual([], self.ordem)
+        self.assertEqual("janela", resultado["parou"])
+
+    def test_pedido_manual_so_gera_o_que_foi_pedido(self):
+        relogio = _Relogio(_as(1, 2))
+        self._rodar(relogio, na_fila=0, na_fila_builds=0, builds=1)
+        self.assertEqual(["build"], self.ordem)
+        relogio = _Relogio(_as(1, 2))
+        resultado = self._rodar(relogio, na_fila=0, na_fila_builds=0,
+                                duelos=2)
+        self.assertEqual(["duelo", "duelo"], self.ordem)
+        self.assertEqual([], resultado["builds"])
+
+    def test_build_que_falha_nao_segura_os_duelos(self):
+        relogio = _Relogio(_as(1, 2))
+        resultado = self._rodar(relogio, na_fila=3, na_fila_builds=0,
+                                falhar_build=1)
+        self.assertEqual([], resultado["builds"])
+        self.assertTrue(resultado["duelos"])
+        self.assertEqual(1, len(resultado["erros"]))
+        self.assertIn("build", resultado["erros"][0])
+        self.assertEqual(1, noite.codigo_de_saida(resultado))
+
+    def test_ensaio_usa_o_duble_da_roleta(self):
+        relogio = _Relogio(_as(1, 2))
+        resultado = noite.rodar(
+            config=dict(noite.PADRAO), relogio=relogio, ensaio=True,
+            estoque=lambda: [0] * 10, estoque_builds=lambda: [],
+            jobs=lambda: [], drenar_worker=lambda **k: 0,
+            proximo=lambda excluir=(): None, tela=None)
+        self.assertEqual(["ensaio_build_01"], resultado["builds"])
+        self.assertEqual([], self.registros)
 
 
 class PrazoDentroDoWorker(unittest.TestCase):

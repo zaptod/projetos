@@ -84,6 +84,7 @@ python main.py som-da-luta E:\projetos\random_builds\outputs\duelo_00014 --desti
 python main.py noite --listar        # tarefas + duelos que a grade escolheria (e o teto)
 python main.py noite --ensaio        # faz todas as conferências e diz o que faria; não gera
 python main.py noite --duelos 8      # rodada manual: 8 ignorando o teto (o relógio ainda manda)
+python main.py noite --builds 1      # rodada manual: 1 roleta; com --duelos/--builds só o pedido sai
 python main.py noite --instalar      # (re)cria as tarefas; --remover apaga
 ```
 
@@ -97,13 +98,26 @@ repetido barraria o vídeo para sempre. Antes era "o último criado na roleta",
 e sem roleta nova isso deu 5 de 8 duelos com o mesmo p1 (Wren Telgyll, 27/09).
 
 **A rodada noturna** (`builds/pipeline/noite.py`, config em
-`config/geracao.json`): na janela 01h–06h, gera duelos até o teto
-(`dias_de_gordura` 2 × duelos/dia pela cota: 4/8 de 10 horários = 5 → **10
-duelos**) e depois roda o `identity worker` (capa e payoff das builds). O
-estoque é contado pelo **mesmo funil da escolha** (não publicado, sem
-pendência, título livre; dois pendentes com o mesmo título contam um). Nada
-começa se não termina antes de **:25** — cada duelo reserva 5 min —, e no
-máximo 6 duelos por rodada. O worker é chamado **um provedor por vez e com
+`config/geracao.json`): na janela 01h–06h, gera duelos **e builds (roleta,
+`generate-video` inteiro: build, inserção no banco, estreia, render e fila
+de identidade)** até o teto de cada um, e depois roda o `identity worker`
+(capa e payoff das builds). Teto = `dias_de_gordura` 2 × horários/dia pela
+cota: duelo 4/8 de 10 = 5 → **10 duelos**; build 3/8 de 10 = 3,75 → **8
+builds**. **Quem tem menos dias de estoque vai primeiro** (dias = estoque ÷
+horários/dia; empate, duelo) — decisão do Adrian de 28/09 ("Sim, gerar
+builds também"), porque a rodada até :25 não dá para os dois quando os dois
+estão baixos. O estoque é contado pelo **mesmo funil da escolha** (não
+publicado, sem pendência, título livre; dois pendentes com o mesmo título
+contam um); o de build soma as **builds em preparo** (A/celular não
+publicada, só com pendência que o worker resolve — imagem, payoff, mp4 mais
+velho — e com job vivo na fila), senão a rodada seguinte veria o estoque
+igual e faria outra roleta por hora. Nada começa se não termina antes de
+**:25** — duelo reserva 5 min, build 15 (medido 10 em 24/09) —, no máximo 6
+duelos e **1 build** por rodada; `"builds": false` no config desliga a
+roleta. A roleta não usa o PicassoIA: só enfileira; quem abre o site é o
+worker, com a trava de perfil (`travas.do_perfil`). Medido em 28/09, 20:07
+(`main.py noite --listar`): 10 duelos (2,0 dias, teto 10) e 14 builds (3,7
+dias, teto 8) — nesta noite nenhuma roleta sairia. O worker é chamado **um provedor por vez e com
 prazo**: imagem do PicassoIA reserva 8 min (medido 3,3–6), payoff do Digen
 18 (medido 12–15, com o re-render da build); o worker não começa job nem
 tentativa nova depois do prazo (`worker.drenar(so_provedor=, prazo=)`),
@@ -169,7 +183,7 @@ métrica): não mexer antes.
   teto e o worker de identidade (§2). Testadas antes de registrar com um
   ensaio de ponta a ponta pelo próprio Agendador (tarefa temporária →
   wscript → `gerar.cmd --ensaio` → trava → diário), que não gera nada.
-  **Build (roleta) continua manual**: nenhuma tarefa roda `generate-video`.
+  Desde 28/09 (noite) a mesma rodada gera também a roleta (§2).
 - **Personagens de agosto perdidos.** O banco foi refeito em 02/09 e as fichas
   de agosto saíram junto. Quem depende delas não volta: a estreia de uma build
   antiga é impossível, não pendente — `catalogo._falta_estreia()` diz isso com
@@ -265,7 +279,9 @@ métrica): não mexer antes.
 - Pendente:
   - **7 builds fora por título** que são a mesma build de outra (§4) —
     decisão do Adrian se ficam fora para sempre;
-  - **nenhuma tarefa gera build nem estreia**: a roleta continua manual.
+  - a roleta entrou na rodada noturna em 28/09 (§2); a estreia sai dentro
+    dela. Primeira roleta automática ainda não aconteceu (estoque acima do
+    teto).
 
 ## 6. Como conferir sem publicar
 
@@ -394,7 +410,8 @@ o comando recusa e diz qual.
   (`catalogo.salvar_texto`): valem sobre o título gerado, para o painel e para
   a grade. É onde moram os títulos próprios das variantes B (27/09/2026).
 - **Tarefas de geração** — `NeuralFights_gerar_01..05` (HH:02), família
-  minha (`builds/pipeline/tarefas_noite.py`), trava `builds__gerar`. Os
+  minha (`builds/pipeline/tarefas_noite.py`), trava `builds__gerar`; duelos
+  e roleta (a roleta escreve no banco pelo mesmo `exporter`). Os
   monitores de tarefa de outras partes (`remoto/relatorios.py`,
   `visao/panorama/recursos.py`) ainda listam só postagem e bot.
 - **Ledger da arena** — `outputs/_arena/ledger.json`, dono meu

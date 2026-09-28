@@ -199,10 +199,16 @@ def _noite(args) -> int:
               f"{noite.duelos_por_dia():.1f} por dia)")
         for video in fila:
             print(f"  {video.id}  {video.titulo}")
+        roletas = noite.estoque_de_builds()
+        preparo = noite.builds_em_preparo()
+        print(f"builds que a grade escolheria: {len(roletas)} + {len(preparo)} "
+              f"em preparo (teto {noite.teto_de_builds(config)}, "
+              f"{noite.builds_por_dia():.2f} por dia)"
+              + (f"; em preparo: {', '.join(preparo)}" if preparo else ""))
         print(f"diario de hoje: {noite.diario_do_dia()}")
         return 0
     resultado = noite.rodar(ensaio=args.ensaio, duelos=args.duelos,
-                            sem_worker=args.sem_worker)
+                            builds=args.builds, sem_worker=args.sem_worker)
     return noite.codigo_de_saida(resultado)
 
 
@@ -337,6 +343,9 @@ def main() -> None:
     noi.add_argument("--duelos", type=int, default=None, metavar="N",
                      help="gera N duelos ignorando o teto (rodada manual); "
                           "o relogio continua mandando")
+    noi.add_argument("--builds", type=int, default=None, metavar="N",
+                     help="gera N builds (generate-video) ignorando o teto; "
+                          "com --duelos ou --builds, so o pedido e gerado")
     noi.add_argument("--sem-worker", action="store_true",
                      help="nao roda o worker de identidade nesta rodada")
     noi.add_argument("--instalar", action="store_true",
