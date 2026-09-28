@@ -15,14 +15,18 @@
   "midias": [],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "capacidade-pelo-app"
+      ],
       "descricao": "",
       "id": "um",
       "pede_comentario": false,
       "rotulo": "Um projeto por vez"
     },
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "capacidade-pelo-app"
+      ],
       "descricao": "",
       "id": "paralelo",
       "pede_comentario": false,

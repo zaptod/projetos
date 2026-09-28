@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T19:22:47.678179",
+  "depende_de": [
+    {
+      "decisao": "modo-de-trabalho",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "capacidade-pelo-app",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "o orquestrador registra a mudança no Grimório",
+      "id": "substitui",
+      "pede_comentario": false,
+      "rotulo": "Substitui: o que eu mudo no app vira a regra"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "o orquestrador volta ao Grimório quando a tarefa acabar",
+      "id": "temporaria",
+      "pede_comentario": false,
+      "rotulo": "É temporário: o Grimório segue sendo a regra"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "Na Mesa de comando você muda os agentes em paralelo, o modo e o teto. Quando muda, isso substitui as decisões Modo de trabalho e Teto de uso do Grimório, ou vale só até você mudar de volta?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Capacidade mudada pelo app vira regra?",
+  "vigente": null
+}
