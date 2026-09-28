@@ -8,7 +8,15 @@
       "opcao": "seguir"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T18:29:54",
+      "opcao": "ligar",
+      "origem": "app"
+    }
+  ],
   "id": "hitstop",
   "midias": [],
   "opcoes": [
@@ -29,7 +37,11 @@
   ],
   "pergunta": "Ligar a pausa curta no momento do golpe? Deixa o vídeo um pouco mais longo.",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Hitstop: a pausinha no impacto",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T18:29:54",
+    "opcao": "ligar"
+  }
 }
