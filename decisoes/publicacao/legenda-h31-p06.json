@@ -3,7 +3,15 @@
   "contexto": "",
   "criado": "2026-09-28T17:31:46.247039",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T19:53:51",
+      "opcao": "corrigir",
+      "origem": "app"
+    }
+  ],
   "id": "legenda-h31-p06",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "A legenda da parte 6 da história 31 saiu incompleta no TikTok. Corrijo?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Legenda incompleta da h31 p06 no TikTok",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T19:53:51",
+    "opcao": "corrigir"
+  }
 }
