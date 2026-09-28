@@ -389,6 +389,26 @@ def adicionar(projeto: str, titulo: str, pergunta: str, opcoes, midias=(), *,
     return item
 
 
+def acrescentar_midias(item_id: str, midias, *, copiar: bool = False) -> dict:
+    """Mais midia num no que ja existe (ex.: um lote novo de clipes).
+
+    So acrescenta: a midia que ja estava continua no mesmo indice, entao o
+    celular que tinha um bilhete aberto nao passa a ver outro arquivo.
+    """
+    with _trava():
+        itens = carregar()
+        item = itens.get(item_id)
+        if item is None:
+            raise KeyError(item_id)
+        novas = _midias(midias, item_id, copiar)
+        if not novas:
+            raise Recusa("nenhuma mídia para acrescentar")
+        item["midias"] = list(item.get("midias") or []) + novas
+        _gravar_itens(itens, [item_id])
+        gerar_textos(itens)
+    return item
+
+
 def semear(item_id: str, opcao: str, em: str, comentario: str = "",
            nota: str = "") -> dict:
     """Uma decisao que ele JA tomou antes da arvore existir (com a data)."""
@@ -843,6 +863,12 @@ def main(argv=None) -> int:
     resp.add_argument("opcao")
     resp.add_argument("--comentario", default="")
     resp.add_argument("--sem-commit", action="store_true")
+    mid = sub.add_parser("midia", help="acrescenta mídia a uma decisão que já existe")
+    mid.add_argument("id")
+    mid.add_argument("--midia", action="append", default=[], required=True,
+                     help='"caminho" ou "caminho|RÓTULO" (repita)')
+    mid.add_argument("--copiar", action="store_true")
+    mid.add_argument("--commit", action="store_true", help="commita por caminho")
     arv = sub.add_parser("arvore")
     arv.add_argument("--projeto", choices=PROJETOS)
     sub.add_parser("gerar", help="regenera os READMEs e os blocos das sessões")
@@ -861,6 +887,15 @@ def main(argv=None) -> int:
                     print("commit:", commitar_por_caminho(
                         *_tudo_para_commit(),
                         f"decisão({item['projeto']}): nova — {item['titulo']}"))
+            return 0
+        if args.comando == "midia":
+            item = acrescentar_midias(args.id, args.midia, copiar=args.copiar)
+            print(f"{item['projeto']}/{item['id']}: {len(item['midias'])} mídia(s)")
+            if args.commit:
+                with _trava():
+                    print("commit:", commitar_por_caminho(
+                        *_tudo_para_commit(),
+                        f"decisão({item['projeto']}): mais mídia — {item['titulo']}"))
             return 0
         if args.comando == "listar":
             itens = carregar()

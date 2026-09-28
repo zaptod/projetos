@@ -499,6 +499,24 @@ def test_cli(mundo, capsys):
         D.main(["adicionar", "--projeto", "nenhum", "--titulo", "x"])
 
 
+def test_cli_acrescenta_midia_sem_mudar_os_indices(mundo, capsys):
+    _arvore(mundo)
+    antes = [m["caminho"] for m in D.carregar()["palco"]["midias"]]
+    (mundo.midia / "lote2.mp4").write_bytes(VIDEO)
+    assert D.main(["midia", "palco", "--midia", f"{mundo.midia / 'lote2.mp4'}|lote 2",
+                   "--commit"]) == 0
+    saida = capsys.readouterr().out
+    assert "builds/palco: 4 mídia(s)" in saida and "commit: ok" in saida
+    item = D.carregar()["palco"]
+    assert [m["caminho"] for m in item["midias"][:3]] == antes
+    assert item["midias"][3]["rotulo"] == "lote 2"
+    assert item["situacao"] == "bloqueada" and item["historico"] == []
+    with pytest.raises(D.Recusa, match="não existe"):
+        D.acrescentar_midias("palco", [(mundo.midia / "sumiu.mp4", "")])
+    with pytest.raises(KeyError):
+        D.acrescentar_midias("nao-existe", [(mundo.midia / "lote2.mp4", "")])
+
+
 def test_nao_ha_projeto_fora_da_lista(mundo):
     with pytest.raises(D.Recusa, match="projeto desconhecido"):
         D.adicionar("zombie", "X", "?", ["a"])
