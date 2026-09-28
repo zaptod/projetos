@@ -631,6 +631,29 @@ def _ja_foi_neste_horario(canal: str, plataforma: str = "youtube",
                       f"({feito.get('video_id')}). Nao repito o disparo."}
 
 
+def _ids_da_parte(provas) -> dict:
+    """O que a LINHA do ledger das historias ganha dos laudos de upload.
+
+    `youtube_id`: o do PRIMEIRO arquivo — e o que o campo sempre quis dizer
+    quando a parte vira pedacos (`recuperar.id_no_canal`). `youtube_ids`: os
+    de TODOS, na ordem do corte, so quando a parte virou mais de um Short e
+    todos tem id — com um faltando, a lista deslocaria o outro para a
+    posicao errada.
+
+    Por que a linha precisa: `serie.registrar` tira o id da URL, e pelo
+    navegador a "URL" e a frase "publicado no YouTube". A linha de 27/09
+    20:43 da `historia_00035:celular:p01` tem `youtube_id: null` e o laudo
+    dela, `OAjbMHMCutk`.
+    """
+    ids = [str((p or {}).get("youtube_id") or "") for p in provas or ()]
+    if not ids or not ids[0]:
+        return {}
+    extra = {"youtube_id": ids[0]}
+    if len(ids) > 1 and all(ids):
+        extra["youtube_ids"] = ids
+    return extra
+
+
 def postar_historia(*, so_ver: bool = False) -> dict:
     from contos.publicar import catalogo, serie
 
@@ -684,7 +707,8 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         serie.registrar(alvo, url, "youtube", None,
                         {"por": "postar.py", "visibilidade": visibilidade,
                          "prova": provas,
-                         "prova_ok": _prova_ok(provas)})
+                         "prova_ok": _prova_ok(provas),
+                         **_ids_da_parte(provas)})
     except Exception as exc:                                   # noqa: BLE001
         if _e_limite_diario(exc):
             cota = str(exc)

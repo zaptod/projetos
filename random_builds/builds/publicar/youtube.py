@@ -154,7 +154,10 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
         if not video_id:
             try:
                 from . import recuperar
-                video_id = recuperar.id_no_canal(
+                # O id DESTE ARQUIVO, e nao o da linha do ledger: com a parte
+                # cortada em dois Shorts, `id_no_canal` dava ao pedaco 2 o id
+                # do pedaco 1 (e a capa do 2 ia para o 1).
+                video_id = recuperar.id_do_video(
                     canal, getattr(video, "titulo", ""), datetime.now())
                 if video_id:
                     laudo["youtube_id"] = video_id

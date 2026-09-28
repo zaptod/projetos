@@ -330,6 +330,40 @@ def recuperaveis(canal: str = "builds", token: str | None = None,
 JANELA_DO_ID_MIN = 90.0
 
 
+def _perto(canal: str, titulo: str, quando, janela_min: float = None,
+           token: str | None = None) -> list:
+    """Os videos do canal com a MESMA chave de titulo, perto daquela hora.
+
+    Titulo vazio nao pergunta nada ao canal: sem chave nao ha o que casar.
+    """
+    from datetime import datetime, timedelta, timezone
+    janela = JANELA_DO_ID_MIN if janela_min is None else janela_min
+    chave = titulos.chave(titulo)
+    if not chave:
+        return []
+    if isinstance(quando, str):
+        quando = datetime.fromisoformat(quando)
+    if quando.tzinfo is None:
+        # O LEDGER GRAVA HORA LOCAL e o YouTube devolve UTC. Comparar os dois
+        # como se fossem o mesmo relogio daria 180 minutos de diferenca — bem
+        # dentro de uma janela generosa, e casando com o video errado.
+        quando = quando.astimezone()
+
+    perto = []
+    for video in videos_do_canal(canal, token):
+        if titulos.chave(video["titulo"]) != chave:
+            continue
+        try:
+            subiu = datetime.fromisoformat(video["quando"])
+        except ValueError:
+            continue
+        if subiu.tzinfo is None:
+            subiu = subiu.replace(tzinfo=timezone.utc)
+        if abs(subiu - quando) <= timedelta(minutes=janela):
+            perto.append(video)
+    return perto
+
+
 def ids_no_canal(canal: str, titulo: str, quando, janela_min: float = None,
                  token: str | None = None) -> list:
     """Os ids daquela linha do ledger no CANAL, em ordem. `[]` se nao der.
@@ -355,32 +389,7 @@ def ids_no_canal(canal: str, titulo: str, quando, janela_min: float = None,
     titulos iguais sem corte. Gravar o id errado e pior que nao gravar —
     a metrica mediria outro video, em silencio, para sempre.
     """
-    from datetime import datetime, timedelta, timezone
-    janela = JANELA_DO_ID_MIN if janela_min is None else janela_min
-    chave = titulos.chave(titulo)
-    if not chave:
-        return ""
-    if isinstance(quando, str):
-        quando = datetime.fromisoformat(quando)
-    if quando.tzinfo is None:
-        # O LEDGER GRAVA HORA LOCAL e o YouTube devolve UTC. Comparar os dois
-        # como se fossem o mesmo relogio daria 180 minutos de diferenca — bem
-        # dentro de uma janela generosa, e casando com o video errado.
-        quando = quando.astimezone()
-
-    perto = []
-    for video in videos_do_canal(canal, token):
-        if titulos.chave(video["titulo"]) != chave:
-            continue
-        try:
-            subiu = datetime.fromisoformat(video["quando"])
-        except ValueError:
-            continue
-        if subiu.tzinfo is None:
-            subiu = subiu.replace(tzinfo=timezone.utc)
-        if abs(subiu - quando) <= timedelta(minutes=janela):
-            perto.append(video)
-
+    perto = _perto(canal, titulo, quando, janela_min, token)
     if len(perto) == 1:
         return [perto[0]["id"]]
     if not perto:
@@ -412,6 +421,30 @@ def id_no_canal(canal: str, titulo: str, quando, janela_min: float = None,
     """
     ids = ids_no_canal(canal, titulo, quando, janela_min, token)
     return ids[0] if ids else ""
+
+
+def id_do_video(canal: str, titulo: str, quando, janela_min: float = None,
+                token: str | None = None) -> str:
+    """O id DESTE arquivo no canal — o pedaco certo, quando e pedaco. `""`
+    se nao der para afirmar.
+
+    `id_no_canal` responde pela LINHA do ledger (o primeiro pedaco), e era
+    ela que o publicador usava para o video que acabara de subir. Com a
+    parte cortada em dois Shorts, o segundo pedaco sobe minutos depois do
+    primeiro, `titulos.chave` da a mesma resposta para os dois, e a busca
+    devolve [pedaco 1, pedaco 2] — o laudo do pedaco 2 ganhava o id do
+    pedaco 1, e a capa do 2 ia para o 1. Latente: nenhuma linha do ledger
+    tem dois laudos desde que o laudo existe (conferido em 28/09/2026), mas
+    toda parte acima de 180 s passa por aqui.
+
+    Aqui o pedaco e casado pelo INDICE do corte (`titulos.corte`), e o video
+    inteiro so com um candidato inteiro. Dois candidatos com o mesmo indice
+    (um rascunho gemeo) e ambiguidade: vazio, nunca palpite.
+    """
+    alvo = titulos.corte(titulo)
+    candidatos = [v for v in _perto(canal, titulo, quando, janela_min, token)
+                  if titulos.corte(v["titulo"]) == alvo]
+    return candidatos[0]["id"] if len(candidatos) == 1 else ""
 
 
 def tornar_publico(video_id: str, canal: str = "builds",

@@ -132,7 +132,7 @@ class NoPublicadorTests(unittest.TestCase):
         return inspect.getsource(youtube.publicar_como_configurado)
 
     def test_pergunta_ao_canal_quando_falta_o_id(self):
-        self.assertIn("id_no_canal(", self._fonte())
+        self.assertIn("id_do_video(", self._fonte())
 
     def test_o_id_vai_para_o_extra_do_registro(self):
         """`registrar_publicacao` extrai o id da URL; sem URL a linha nascia
@@ -152,8 +152,98 @@ class NoPublicadorTests(unittest.TestCase):
         """Publicacao feita nao vira falha porque a consulta de conferencia
         nao respondeu."""
         fonte = self._fonte()
-        trecho = fonte[fonte.find("id_no_canal("):]
+        trecho = fonte[fonte.find("id_do_video("):]
         self.assertIn("except", trecho)
+
+
+
+class IdDoPedacoTests(unittest.TestCase):
+    """O id do ARQUIVO que acabou de subir, e nao o da linha do ledger.
+
+    MEDIDO EM 28/09/2026: nenhuma linha do ledger tem dois laudos desde que o
+    laudo existe (nenhuma parte passou de 180 s desde entao) — o defeito e
+    latente. Mas toda parte longa passaria por ele: o pedaco 2 sobe minutos
+    depois do pedaco 1, a busca por titulo acha os dois, e `id_no_canal`
+    devolve o PRIMEIRO. O laudo do pedaco 2 ganhava o id do pedaco 1, e a capa
+    do 2 ia parar no 1.
+    """
+    AGORA = datetime(2026, 9, 17, 15, 45, tzinfo=timezone(timedelta(hours=-3)))
+
+    def _com(self, videos):
+        return patch.object(recuperar, "videos_do_canal",
+                            lambda _c=None, _t=None: videos)
+
+    def _dois_pedacos(self):
+        return self._com([
+            _video("a", "A parte (Parte 4) (1 de 2)", "2026-09-17T18:41:00Z"),
+            _video("b", "A parte (Parte 4) (2 de 2)", "2026-09-17T18:44:00Z")])
+
+    def test_o_pedaco_2_ganha_o_id_do_pedaco_2(self):
+        with self._dois_pedacos():
+            self.assertEqual("b", recuperar.id_do_video(
+                "historias", "A parte (Parte 4) (2 de 2)", self.AGORA))
+            self.assertEqual("a", recuperar.id_no_canal(
+                "historias", "A parte (Parte 4) (2 de 2)", self.AGORA),
+                "o defeito: a resposta da LINHA para o arquivo do pedaco 2")
+
+    def test_o_pedaco_1_ganha_o_id_do_pedaco_1(self):
+        with self._dois_pedacos():
+            self.assertEqual("a", recuperar.id_do_video(
+                "historias", "A parte (Parte 4) (1 de 2)", self.AGORA))
+
+    def test_video_inteiro_nao_casa_com_pedaco(self):
+        with self._dois_pedacos():
+            self.assertEqual("", recuperar.id_do_video(
+                "historias", "A parte (Parte 4)", self.AGORA))
+
+    def test_video_inteiro_sozinho_e_o_dele(self):
+        with self._com([_video("x", "mesmo titulo", "2026-09-17T18:44:00Z")]):
+            self.assertEqual("x", recuperar.id_do_video(
+                "builds", "mesmo titulo", self.AGORA))
+
+    def test_o_mesmo_pedaco_duas_vezes_e_ambiguo(self):
+        with self._com([
+                _video("a", "A parte (Parte 4) (2 de 2)", "2026-09-17T18:41:00Z"),
+                _video("b", "A parte (Parte 4) (2 de 2)", "2026-09-17T18:44:00Z")]):
+            self.assertEqual("", recuperar.id_do_video(
+                "historias", "A parte (Parte 4) (2 de 2)", self.AGORA))
+
+
+class LinhaDaHistoriaTests(unittest.TestCase):
+    """A LINHA do ledger das historias guarda os ids de todos os pedacos.
+
+    `serie.registrar` tira o `youtube_id` da URL — e pelo navegador a "URL" e
+    a frase "publicado no YouTube", entao a linha nascia com `youtube_id:
+    null` mesmo com o laudo sabendo o id (a linha de 27/09 20:43 da
+    `historia_00035:celular:p01`: `null` na linha, `OAjbMHMCutk` no laudo).
+    """
+
+    def _postar(self):
+        import importlib.util
+        from pathlib import Path
+        caminho = Path(__file__).resolve().parents[2] / "ferramentas" / "postar.py"
+        spec = importlib.util.spec_from_file_location("postar_ids", caminho)
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        return modulo
+
+    def test_dois_pedacos_dois_ids_na_ordem(self):
+        extra = self._postar()._ids_da_parte(
+            [{"youtube_id": "a"}, {"youtube_id": "b"}])
+        self.assertEqual({"youtube_id": "a", "youtube_ids": ["a", "b"]}, extra)
+
+    def test_um_arquivo_so_o_id(self):
+        extra = self._postar()._ids_da_parte([{"youtube_id": "OAjbMHMCutk"}])
+        self.assertEqual({"youtube_id": "OAjbMHMCutk"}, extra)
+
+    def test_pedaco_sem_id_nao_inventa_nem_desloca(self):
+        """Com um pedaco sem id, a lista nao pode "subir" o outro para a
+        posicao errada: sem os dois, nao ha `youtube_ids`."""
+        extra = self._postar()._ids_da_parte([{}, {"youtube_id": "b"}])
+        self.assertEqual({}, extra)
+
+    def test_sem_laudo_nada(self):
+        self.assertEqual({}, self._postar()._ids_da_parte([]))
 
 
 if __name__ == "__main__":
