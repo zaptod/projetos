@@ -133,7 +133,7 @@ def main(argv=None) -> int:
     try:
         janela.mainloop()
     except KeyboardInterrupt:
-        janela.sair()
+        janela.sair("ctrl+c")
     return 0
 
 

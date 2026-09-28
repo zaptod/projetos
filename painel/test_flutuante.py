@@ -709,6 +709,77 @@ class Preferencias(unittest.TestCase):
         self.assertFalse(arquivo.with_suffix(".tmp").exists())
 
 
+class CaixaPreta(unittest.TestCase):
+    """Em 27/09 a Vila morreu tres vezes e so sobrou um PID trocado."""
+
+    FUSO = timezone(timedelta(hours=-3))
+
+    def _em(self, hora: int, minuto: int = 0) -> datetime:
+        return datetime(2026, 9, 27, hora, minuto, tzinfo=self.FUSO)
+
+    def test_vida_sem_saida_vira_queda_com_a_hora(self):
+        prefs = dict(preferencias.PADRAO)
+        preferencias.abrir_vida(prefs, 18316, agora=self._em(19, 14))
+        preferencias.marcar_visto(prefs, agora=self._em(20, 49))
+        queda = preferencias.abrir_vida(prefs, 7720, agora=self._em(20, 54),
+                                        ligado_em=self._em(8))
+        self.assertEqual(queda["pid"], 18316)
+        self.assertEqual(queda["visto"], "2026-09-27T20:49:00-03:00")
+        self.assertEqual(queda["notada"], "2026-09-27T20:54:00-03:00")
+        self.assertNotIn("windows_reiniciou", queda)
+        self.assertEqual(prefs["quedas"], [queda])
+        self.assertEqual(prefs["vida"]["pid"], 7720)
+        self.assertIsNone(prefs["vida"]["saiu"])
+
+    def test_fechar_de_verdade_nao_e_queda(self):
+        prefs = dict(preferencias.PADRAO)
+        preferencias.abrir_vida(prefs, 100, agora=self._em(10))
+        preferencias.marcar_saida(prefs, "menu", agora=self._em(11))
+        self.assertIsNone(preferencias.abrir_vida(prefs, 200,
+                                                  agora=self._em(12)))
+        self.assertIsNone(prefs["quedas"])
+
+    def test_mesmo_pid_e_arquivo_novo_nao_sao_queda(self):
+        prefs = dict(preferencias.PADRAO)
+        self.assertIsNone(preferencias.abrir_vida(prefs, 100))
+        self.assertIsNone(preferencias.abrir_vida(prefs, 100))
+        self.assertIsNone(prefs["quedas"])
+
+    def test_windows_que_religou_depois_do_ultimo_sinal(self):
+        prefs = dict(preferencias.PADRAO)
+        preferencias.abrir_vida(prefs, 100, agora=self._em(1))
+        queda = preferencias.abrir_vida(prefs, 200, agora=self._em(9),
+                                        ligado_em=self._em(8, 55))
+        self.assertTrue(queda["windows_reiniciou"])
+
+    def test_guarda_so_as_ultimas_quedas(self):
+        prefs = dict(preferencias.PADRAO)
+        for pid in range(1, preferencias.QUEDAS_GUARDADAS + 5):
+            preferencias.abrir_vida(prefs, pid)
+        self.assertEqual(len(prefs["quedas"]), preferencias.QUEDAS_GUARDADAS)
+        self.assertEqual(prefs["quedas"][-1]["pid"],
+                         preferencias.QUEDAS_GUARDADAS + 3)
+
+    def test_pedido_de_fechar_conta_e_sobrevive_ao_arquivo(self):
+        prefs = dict(preferencias.PADRAO)
+        prefs["fechar_pedido"] = {"vezes": "lixo"}
+        self.assertEqual(preferencias.anotar_pedido_de_fechar(prefs), 1)
+        self.assertEqual(preferencias.anotar_pedido_de_fechar(prefs), 2)
+        preferencias.abrir_vida(prefs, 100)
+        arquivo = Path(tempfile.mkdtemp()) / "flutuante.json"
+        self.assertTrue(preferencias.gravar(arquivo, prefs))
+        lidas = preferencias.ler(arquivo)
+        self.assertEqual(lidas["fechar_pedido"]["vezes"], 2)
+        self.assertEqual(lidas["vida"]["pid"], 100)
+
+    def test_inicio_do_windows_fica_no_passado(self):
+        ligado = preferencias.inicio_do_windows()
+        if sys.platform != "win32":
+            self.assertIsNone(ligado)
+            return
+        self.assertLess(ligado, datetime.now().astimezone())
+
+
 class FallbackDeSprite(unittest.TestCase):
     class _AtlasSemNada:
         def sprite(self, *a, **k):
@@ -1246,9 +1317,47 @@ class JanelaMonta(unittest.TestCase):
 
     def test_prova_nao_grava_preferencias(self):
         self.app.trocar("grande")
+        self.app.pedido_de_fechar()
         self.assertFalse(self.app.caminhos.preferencias.exists())
         self.app.prever_agora()
         self.assertEqual(self.coletor.pedidos, 1)
+
+    @unittest.skipUnless(sys.platform == "win32", "WM_CLOSE e do Windows")
+    def test_pedido_de_fechar_do_sistema_vira_o_icone(self):
+        """Medido em 28/09/2026: sem o protocolo, o WM_CLOSE destruia a
+        janela sem borda pelo padrao do Tk, e a Vila acabava calada."""
+        import ctypes
+
+        from painel.flutuante.captura import hwnd_da_janela
+        for mensagem, parametro in ((0x0010, 0),          # WM_CLOSE
+                                    (0x0112, 0xF060)):    # SC_CLOSE
+            self.app.trocar("medio")
+            self.app.update()
+            ctypes.windll.user32.PostMessageW(
+                ctypes.c_void_p(hwnd_da_janela(self.app)), mensagem,
+                parametro, 0)
+            prazo = time.monotonic() + 3
+            while self.app.modo != "icone" and time.monotonic() < prazo:
+                self.app.update()
+                time.sleep(0.02)
+            self.assertTrue(self.app.winfo_exists(), hex(mensagem))
+            self.assertEqual(self.app.modo, "icone", hex(mensagem))
+
+    def test_caixa_preta_da_janela_de_verdade(self):
+        """Com `persistir`, a janela anota a vida, o pedido de fechar e a
+        saida pelo menu — e a proxima NAO conta essa saida como queda."""
+        arquivo = self.app.caminhos.preferencias
+        self.app.persistir = True
+        self.app._comecar_vida()
+        self.app.pedido_de_fechar()
+        salvo = json.loads(arquivo.read_text(encoding="utf-8"))
+        self.assertEqual(salvo["vida"]["pid"], os.getpid())
+        self.assertEqual(salvo["fechar_pedido"]["vezes"], 1)
+        self.assertEqual(salvo["modo"], "icone")
+        self.app.sair()
+        salvo = json.loads(arquivo.read_text(encoding="utf-8"))
+        self.assertEqual(salvo["vida"]["saiu"], "menu")
+        self.assertIsNone(preferencias.abrir_vida(salvo, os.getpid() + 4))
 
 
 if __name__ == "__main__":

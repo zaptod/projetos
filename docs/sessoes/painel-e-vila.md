@@ -29,8 +29,11 @@ abas Diário/Postagem/Erros/Terminal); **GRANDE** até 1180×700, limitado pela 
 **O ícone é o "fechar".** `✕` e `−` **viram o ícone**, não fecham: janela sem
 borda não aparece na barra de tarefas nem no Alt-Tab, e fechar de verdade
 esconderia os alertas (`pystray` não está instalado; o ícone faz o papel da
-bandeja). Sair de vez: botão direito → **Fechar de verdade**. O mesmo menu troca
-tamanho, arte (fofa/clássica), "sempre por cima", prever agora e abrir o painel.
+bandeja). O pedido de fechar que vem **do sistema** (WM_CLOSE: "Finalizar
+tarefa", `taskkill` sem `/F`, o Alt+F4 das janelas comuns) também vira o
+ícone desde 28/09 — antes ele destruía a janela calada (ver §5). Sair de vez: botão
+direito → **Fechar de verdade**. O mesmo menu troca tamanho, arte
+(fofa/clássica), "sempre por cima", prever agora e abrir o painel.
 
 ## 2. Como a Vila se mantém no ar
 
@@ -51,8 +54,23 @@ para a viva aparecer** — `flutuante/sinal.py` escuta em 127.0.0.1 numa porta
 escolhida pelo sistema e grava porta + segredo em `flutuante.sinal` (sem isso,
 janela sumida não voltava nunca mais: bug de 17/09).
 
-Agora há **um** processo: PID 18316, `pythonw -m painel.flutuante --medio`, e o
-`flutuante.json` diz `modo: "icone"` — o dono recolheu para o ícone.
+**O PID muda, e isso não é defeito em si**: cada queda é reposta pela tarefa
+em até 10 min com um processo novo (em 27/09 foram três: a de antes das
+18:50, a 17020 e a 18316; a atual, 7720, nasceu às 20:54). Para saber o PID de
+agora, a linha de comando é a do `.cmd` (`pythonw -X utf8 -m painel.flutuante
+--medio`). Para saber **por que** a anterior acabou, leia a **caixa-preta** no
+`flutuante.json` (desde 28/09):
+
+- `vida`: `pid`, `desde`, `visto` (o "estou viva", a cada 5 min) e `saiu`
+  (`"menu"` quando alguém usou **Fechar de verdade**);
+- `quedas`: as últimas 10 vidas que acabaram **sem** passar pelo menu, com o
+  último `visto` (a hora da queda, com 5 min de folga), a hora em que a
+  seguinte `notada` e `windows_reiniciou` quando o Windows ligou depois do
+  último sinal. Queda nativa (crash) também deixa evento no Visualizador de
+  Eventos (Aplicativo, `pythonw.exe`, 1000/1001); morte de fora
+  (TerminateProcess) só deixa rastro aqui;
+- `fechar_pedido`: quantas vezes o sistema pediu para fechar (WM_CLOSE) e a
+  última. Hoje isso vira o ícone; a conta mostra se acontece na prática.
 
 ## 3. De onde vêm os dados
 
@@ -79,7 +97,8 @@ chama só as funções de **fila** — `fila_de_historias()`, `proximo_build()`,
 pode pular a primeira.
 
 O **único** arquivo que a janela escreve é `flutuante.json` (tamanho, posição,
-aba, arte, enfeites) — estado dela, não do sistema. Com `--prova`, nem isso.
+aba, arte, enfeites e a caixa-preta da §2) — estado dela, não do sistema. Com
+`--prova`, nem isso.
 
 ## 4. As regras de interface que valem como lei
 
@@ -136,11 +155,44 @@ aba, arte, enfeites) — estado dela, não do sistema. Com `--prova`, nem isso.
 - **Janela que sumia ao minimizar.** Sem barra de tarefas, `iconify`/`withdraw`
   desapareciam com ela para sempre; hoje `−` e `✕` viram o ícone, e há teste que
   proíbe essas chamadas.
+- **WM_CLOSE matava a Vila calada** (medido em 28/09). Janela Tk sem borda,
+  sem `protocol("WM_DELETE_WINDOW")`: o WM_CLOSE e o SC_CLOSE do sistema caem
+  no padrão do Tk, que **destrói a raiz** — o processo acaba sem passar pelo
+  `sair()` e sem deixar rastro. Agora o protocolo manda para o ícone
+  (`Janela.pedido_de_fechar`), e o teste posta WM_CLOSE e SC_CLOSE de verdade
+  na janela. Cuidado ao medir isso: tecla postada com `PostMessage`
+  (WM_SYSKEYDOWN + F4) **não** fecha nem janela Tk com borda, então ela não
+  serve para simular Alt+F4.
 
 ## 6. Estado de hoje e pendências
 
 No ar: a flutuante mergeada (`ee31d13`), a tarefa de 10 min com resultado `0`,
 uma instância só, arte fofa como padrão.
+
+**Por que a Vila reiniciou em 27/09 — investigado em 28/09, causa NÃO
+determinada.** Foram três mortes sem ninguém matar de propósito: antes das
+18:50 (o Adrian viu sumir), a 17020 (entre 18:55 e 19:14) e a 18316 (entre
+19:44 e 20:54), mais uma derrubada de propósito às 18:54 para testar a
+tarefa. Descartado, medindo:
+
+- **crash nativo**: o Windows registra crash de `pythonw.exe` nesta máquina
+  (há eventos 1001 de 31/08) e não há nenhum em 27/09; nem travamento (1002)
+  nem memória baixa (2004);
+- **alguém matando**: nenhum comando de matar processo nas transcrições das
+  sessões nessas janelas (as cinco pastas de projeto varridas);
+- **os testes do painel**: a Vila 7720 sobreviveu a cinco rodadas do
+  `testar.py` (que inclui os testes da flutuante) na madrugada seguinte;
+- **a tarefa**: não foi alterada desde 18:54:27;
+- **`taskkill /T` pegando órfão por PID reciclado** (o Claude Code encerra
+  árvores com `taskkill /PID … /T /F`, e o pai registrado da Vila atual é o
+  PID 17020, reciclado da Vila morta): testado com 3.705 processos
+  suspensos até reciclar o PID — o `taskkill /T` **poupou** o órfão.
+
+O que sobra, e que só a caixa-preta vai separar da próxima vez: um pedido de
+fechar do sistema (agora vira ícone), o **Fechar de verdade** do menu, ou
+morte de fora sem rastro. As duas quedas coincidiram com uma sessão do
+Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
+`claude -p` do apurador às 20:52:37), mas o mecanismo não apareceu.
 
 - **`vila_flutuante.cmd` NÃO está no git** (`??` no `git status`) — e é o arquivo
   que a tarefa chama. Máquina refeita a partir do repositório não sobe a Vila.
@@ -167,9 +219,9 @@ uma instância só, arte fofa como padrão.
   `--gif` grava 5 s, `--medir-cpu SEG` mede a CPU. A `--prova` **não** passa pelo
   mutex: abre uma segunda janela de propósito, e é a forma segura de olhar sem
   mexer na do dono.
-- Testes desta parte (168, não rodados agora): `painel/test_painel.py` (40),
-  `painel/test_flutuante.py` (83), `painel/test_vila_fofa.py` (28),
-  `vila/test_motor.py` (17).
+- Testes desta parte (177): `painel/test_painel.py` (40),
+  `painel/test_flutuante.py` (92, com a caixa-preta e o WM_CLOSE de verdade),
+  `painel/test_vila_fofa.py` (28), `vila/test_motor.py` (17).
 
 **Não fazer:** matar o `pythonw` do dono (é a Vila na tela dele; a tarefa repõe
 em até 10 min, mas ele perde posição e tamanho); tirar a guarda do

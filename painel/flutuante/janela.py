@@ -22,7 +22,9 @@ A REGRA DE THREAD, que e a unica que derruba o Tk: so esta classe chama
 """
 from __future__ import annotations
 
+import os
 import queue
+import time
 import tkinter as tk
 from datetime import datetime
 
@@ -547,12 +549,20 @@ class Janela(tk.Tk):
         self._botoes: list = []
         self._dica_flutuante = None
         self._escuta = None
+        self._visto_em = time.monotonic()
+        self.queda = None
 
         self.title("Vila — Neural Fights")
         self.configure(bg=self.t.borda_forte)
         self.overrideredirect(True)
+        # Sem isto, um WM_CLOSE ("Finalizar tarefa", `taskkill` sem /F, o
+        # Alt+F4 das janelas comuns) DESTROI a raiz pelo padrao do Tk e o
+        # processo acaba calado. Ver `pedido_de_fechar`.
+        self.protocol("WM_DELETE_WINDOW", self.pedido_de_fechar)
         self._aplicar_topo()
         self._menu = self._montar_menu()
+        if persistir:
+            self._comecar_vida()
         self.trocar(self.prefs["modo"], inicial=True)
         self.after(FILA_MS, self._drenar)
         self.after(TIQUE_MS, self._tique)
@@ -1185,6 +1195,12 @@ class Janela(tk.Tk):
                     text=texto_do_proximo(self.estado, agora))
         except tk.TclError:
             pass
+        if (self.persistir
+                and time.monotonic() - self._visto_em >= preferencias.VIVO_S):
+            # O "estou viva" da caixa-preta: e ele que da a HORA de uma queda.
+            self._visto_em = time.monotonic()
+            preferencias.marcar_visto(self.prefs)
+            self.guardar()
         if reagendar:
             self.after(TIQUE_MS, self._tique)
 
@@ -1320,11 +1336,46 @@ class Janela(tk.Tk):
         except tk.TclError:
             pass
 
-    def sair(self) -> None:
+    # ------------------------------------------------ vida e fim da janela
+    def _comecar_vida(self) -> None:
+        """A caixa-preta: anota quem esta no ar e se a anterior caiu.
+
+        Ver `preferencias.abrir_vida`. Nao aparece na tela: e para quem for
+        perguntar "por que a Vila reiniciou?" ter resposta no
+        `flutuante.json`, em vez de so um PID trocado.
+        """
+        self.queda = preferencias.abrir_vida(
+            self.prefs, os.getpid(),
+            ligado_em=preferencias.inicio_do_windows())
+        self._visto_em = time.monotonic()
+
+    def pedido_de_fechar(self) -> None:
+        """O SISTEMA pediu para fechar (WM_CLOSE): vira o icone, como o ✕.
+
+        Medido em 28/09/2026 com uma janela Tk sem borda: WM_CLOSE e o
+        SC_CLOSE do menu de sistema DESTROEM a raiz pelo padrao do Tk, e o
+        processo acaba sem passar pelo `sair()`. Quem manda isso: "Finalizar
+        tarefa", `taskkill` sem /F e, em janela comum, o Alt+F4. Fechar de
+        verdade continua existindo, mas so pelo menu (botao direito ->
+        Fechar de verdade) — a regra do icone.
+        """
+        if not self._vivo:
+            return
+        if self.persistir:
+            preferencias.anotar_pedido_de_fechar(self.prefs)
+        if self.modo != "icone":
+            self.trocar("icone")                   # o trocar() ja guarda
+        else:
+            self.guardar()
+
+    def sair(self, como: str = "menu") -> None:
         self._vivo = False
         self._esconder_dica_flutuante()
         if self._escuta is not None:
             self._escuta.parar()
+        if self.persistir:
+            # Saida de verdade: a proxima janela NAO conta isto como queda.
+            preferencias.marcar_saida(self.prefs, como)
         self.guardar()
         self.coletor.parar()
         self._parar_animacao()
