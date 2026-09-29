@@ -272,6 +272,34 @@ sementes 1–12, o cálculo sem vídeo repete o veredito gravado **semente por s
   dentro da página, saiu a 1,25× (`out/duelo-ritmo/prova/duelo-s15-regra.mp4`) e reprova do mesmo jeito (buraco de 10 s em 29,2 s). O 6/12 não muda.
 - Os mp4 e JSON: `E:\jogo_ZOMBIE\out\duelo-ritmo\duelo-s13.mp4` … `duelo-s24.mp4`; veredito em `out/duelo-ritmo/veredito.json`.
 
+## 3c. Duelo elaborado: a proposta (28/09, à noite)
+
+O Adrian respondeu "Quase: ajustar" ao `duelo-e-isso` (28/09, 18:40). Ele pediu planos dos humanos, habilidades, animações, comunicação e nacionalidade. A proposta, com arquivo e linha do que existe e do que falta, está em **`docs/zombie/duelo-elaborado.md`**. Seis nós novos no Grimório, todos dependentes de `duelo-e-isso=quase` (commit `3e03425`):
+
+- `duelo-plano-quem-escolhe`;
+- `duelo-leitura-do-plano`, com maquete;
+- `duelo-elenco`;
+- `duelo-nacionalidade`;
+- `duelo-voz`;
+- `duelo-arte`.
+
+**Até as respostas, o cenário não muda.**
+
+**Medido para a proposta**: sem vídeo, no Node, sementes **401–440**, HEAD `24b68cd`, 13 s. As sondas e as saídas estão em `E:\jogo_ZOMBIE\out\design\`, fora do git.
+
+- **O conselho decide por dentro e nada aparece.**
+  - Linha de lanças (`formMilitia`) em 31 de 40 rodadas.
+  - `shelterInPlace` em 40 de 40, sem abrigo nenhum na arena.
+  - Nas 15 rodadas em que o registro guardou o fim, a milícia foi **largada** (`council.dropped`) depois de uma mediana de **4,5 s** de jogo. Debandada: 0.
+- **Os guardas passam 41% do tempo fugindo** (`seekSafety`) e 25% lutando.
+- **A trégua é uma perseguição.** Falsificador escrito antes de medir: H1 ("trégua é guarda fugindo") cairia se a fatia de fuga na trégua não fosse maior que a do contato, ou ficasse abaixo de 50%.
+  - Deu **52,3% contra 41,4%**. H1 sobrevive, por pouco.
+  - O zumbi mais próximo fica a uma mediana de **3,6 tiles** na trégua e de 0,9 com contato.
+  - O guarda corre a 2,8 e o zumbi do duelo a 2,6: ninguém alcança ninguém.
+- **H2, pré-registrada no doc (§8)**: "uma linha que segura acaba com a trégua".
+  - Linha de base e medição depois do conserto nas sementes **441–540**.
+  - H2 cai se a reprovação no critério 1 não baixar de ~38–40% para **25% ou menos**, ou se o critério 4 sair de 30–70%.
+
 ## 4. O que foi medido e vale como conhecimento
 
 - **Chrome e Node não jogam sempre a mesma rodada (28/09).** O Chrome do gravador (153) e o Node da suíte e das prévias (24, V8 13.6) calculam `Math.sin`, `cos`, `atan2`,
@@ -319,6 +347,8 @@ sementes 1–12, o cálculo sem vídeo repete o veredito gravado **semente por s
   ele quis; se zumbi que corre e arena em ruína servem; e o que achou dos clipes, olhando no celular. O orquestrador leva a pergunta aberta, sem dizer qual venceu nem quais
   passaram. **Até a resposta, o cenário não muda.**
 - **Respondido às ~03:20 de 28/09**: "sim" aos dois commits do duelo (`dab114c`, `a372bdc`) e "sim" à velocidade por clipe. O lote 2 (§3b) é o teste dessa regra.
+- **Duelo elaborado (28/09, à noite)**: são seis nós pendentes do Adrian (§3c). O pacote mínimo que responde ao comentário dele custa **13–19 dias de sessão**. Com país
+  mecânico, soma de 5 a 7; com arte nova, de 5 a 15. Isso compete com o objetivo das semanas ("estabilizar o que existe"). Quando fazer é decisão dele.
 - **Regra de velocidade**: commitada em `24b68cd`. **Próximo alvo: a trégua** (critério 1, 5 de 12 no lote 2), sem mudar a luta antes da resposta dele; próxima faixa para gravar: 25–36.
 - **Publicar ou não**: decisão dele, e não antes de 7 dias seguidos sem horário perdido nos dois canais atuais (rotas de 27/09). O canal nunca publicou (§Contratos). A ponte
   JSON/mp4 → estoque do `postar.py` é da Semana 3.
@@ -333,8 +363,8 @@ sementes 1–12, o cálculo sem vídeo repete o veredito gravado **semente por s
 - **Não rodar gravação nem experimento em lote** sem autorização: horas de máquina, atropela as postagens.
 - **Não citar 1246 s × 572 s** como prova de nada (inimigo com defeito), nem os números do êxodo sem remedir.
 - **Não escolher semente, nem velocidade à mão por semente**, no duelo: o lote é uma faixa em sequência, todos reportados; a velocidade é a regra (`--velocidade auto`).
-  Faixas já usadas: 1–12 (lote 1), **13–24 (lote 2)**, 101–110 (calibração), 201–260 e 301–400 (prévia). A próxima faixa limpa para gravar é **25–36**; para prévia, 401 em
-  diante.
+  Faixas já usadas: 1–12 (lote 1), **13–24 (lote 2)**, 101–110 (calibração), 201–260 e 301–400 (prévia), 401–440 (sonda do duelo elaborado, §3c). Reservada: 441–540
+  (linha de base e teste da H2, §3c). A próxima faixa limpa para gravar é **25–36**; para prévia, **541** em diante.
 - **Não confiar num clipe gravado antes de um conserto de IA**: o `exodo-66` já não se reproduz (§3). O JSON do próprio clipe é a única fonte dos números dele.
 - **Não desenhar formato que dependa de a vila atravessar a horda** — está medido que ela não atravessa.
 - Não escrever arquivo grande no `C:` (o disco do sistema já encheu e derrubou rodada): tudo no `E:`.
