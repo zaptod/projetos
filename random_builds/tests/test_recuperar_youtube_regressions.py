@@ -361,6 +361,32 @@ class TornarPublicoTests(unittest.TestCase):
         self.assertIn("--com-edicao", str(caso.exception))
 
 
+class ChamadasContadasTests(unittest.TestCase):
+    """`recuperar._get` entra na conta de cota da coleta (`metricas.CHAMADAS`).
+
+    Desde 28/09/2026 `metricas.enviados` pagina as playlists por
+    `recuperar._ids_do_canal`; sem isto as paginas nao eram contadas e a
+    conta de cota da noite ficava por baixo."""
+
+    def _get(self, status):
+        import builds.publicar.metricas as M
+        antes = M.CHAMADAS.get("data", 0)
+        resposta = _Resposta(status)
+        resposta.json = lambda: {"items": []}
+        with patch("requests.get", lambda *_a, **_k: resposta):
+            try:
+                recuperar._get("tok", "playlistItems", playlistId="UUx")
+            except PublicacaoFalhou:
+                pass
+        return M.CHAMADAS.get("data", 0) - antes
+
+    def test_cada_pedido_conta_um(self):
+        self.assertEqual(1, self._get(200))
+
+    def test_recusa_tambem_gasta_cota(self):
+        self.assertEqual(1, self._get(403))
+
+
 class RecolherDuplicataTests(unittest.TestCase):
     """A volta a privado das duplicatas (decisao `duplicatas-publicas-builds`).
 

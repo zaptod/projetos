@@ -142,9 +142,11 @@ class AUniaoDasListas(_ComCanalFalso):
         self._canal(uu=["a"], uush=[], videos={"a": "public"}, declarados=1)
         antes = dict(metricas.CHAMADAS)
         metricas.enviados("tok")
-        # `channels` + um lote de `videos`. As paginas da playlist passam
-        # pela recuperacao e nao entram aqui (esta escrito em `enviados`).
-        self.assertEqual(2, metricas.CHAMADAS["data"] - antes["data"])
+        # `channels` + um lote de `videos` + as paginas da playlist, que
+        # passam por `recuperar._get` e contam la desde 28/09/2026: a `UU`
+        # le 2 passadas (a 2a nao acrescenta nada e para) e a `UUSH` vazia
+        # tambem 2 — 1 + 1 + 4 = 6. Antes dava 2, e a cota ficava por baixo.
+        self.assertEqual(6, metricas.CHAMADAS["data"] - antes["data"])
 
 
 class AListaCurta(_ComCanalFalso):

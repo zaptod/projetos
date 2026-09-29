@@ -102,7 +102,13 @@ def _token(canal: str, *, editar: bool = True) -> str:
 
 
 def _get(token: str, caminho: str, **params) -> dict:
+    """GET na Data API. CONTA em `metricas.CHAMADAS["data"]` (1 unidade de
+    cota cada): desde 28/09/2026 `metricas.enviados` le as playlists por
+    `_ids_do_canal`, e as paginas daqui ficavam fora da conta da coleta.
+    Conta ao pedir, e nao so no sucesso: recusa tambem gasta cota."""
     import requests
+    from . import metricas
+    metricas.CHAMADAS["data"] = metricas.CHAMADAS.get("data", 0) + 1
     r = requests.get(API + caminho, timeout=60, params=params,
                      headers={"Authorization": f"Bearer {token}"})
     if not r.ok:
