@@ -9,7 +9,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
 - ✅ **Modo de trabalho dos agentes** — Vários projetos em paralelo (29/09/2026) · “29/09 09:09, no chat: paralelo, até 2 agentes — nas palavras dele: Adrian pediu a fila em cards enquanto o prédio do Grok roda” `modo-de-trabalho`
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (29/09/2026) · “29/09 07:26, pela Mesa de comando: passou de 50% da sessão, para tudo” `teto-de-uso`
-- ✅ **Força total antes de renovar: ainda vale?** — Ligada, 20 min antes de renovar (29/09/2026) · “29/09 07:27, pela Mesa de comando: força total 20 min antes de renovar” `forca-total-ainda-vale`
+- ✅ **Força total antes de renovar: ainda vale?** — Só quando eu pedir (29/09/2026) · “29/09 13:28, pela Mesa de comando: força total só quando eu pedir” `forca-total-ainda-vale`
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
 - ✅ **Força total ligada pela Mesa: por quanto tempo?** — Até eu desligar (28/09/2026) `forca-total-pela-mesa`
 - ✅ **Teto também no limite semanal?** — Outro (comente) (28/09/2026) · “Controlo isso com a mesa” `teto-da-semana`

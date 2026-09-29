@@ -19,6 +19,16 @@
       "opcao": "ligada",
       "origem": "mesa",
       "tipo": "nada"
+    },
+    {
+      "alvo": "",
+      "em": "2026-09-29T13:28:12",
+      "evento": "2026-09-29T13:28:11",
+      "linha": 64,
+      "nota": "aplicada pela Mesa de comando: a config já vale",
+      "opcao": "so-quando-eu-pedir",
+      "origem": "mesa",
+      "tipo": "nada"
     }
   ],
   "contexto": "O botão fica em Comando → Capacidade → Força total; mudar por ali também vale.",
@@ -46,6 +56,14 @@
       "comentario": "29/09 07:27, pela Mesa de comando: força total 20 min antes de renovar",
       "em": "2026-09-29T07:27:17",
       "opcao": "ligada",
+      "origem": "mesa"
+    },
+    {
+      "anterior": "ligada",
+      "aparelho": "614c026b",
+      "comentario": "29/09 13:28, pela Mesa de comando: força total só quando eu pedir",
+      "em": "2026-09-29T13:28:11",
+      "opcao": "so-quando-eu-pedir",
       "origem": "mesa"
     }
   ],
@@ -79,8 +97,8 @@
   "situacao": "decidida",
   "titulo": "Força total antes de renovar: ainda vale?",
   "vigente": {
-    "comentario": "29/09 07:27, pela Mesa de comando: força total 20 min antes de renovar",
-    "em": "2026-09-29T07:27:17",
-    "opcao": "ligada"
+    "comentario": "29/09 13:28, pela Mesa de comando: força total só quando eu pedir",
+    "em": "2026-09-29T13:28:11",
+    "opcao": "so-quando-eu-pedir"
   }
 }
