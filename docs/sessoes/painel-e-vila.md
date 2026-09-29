@@ -69,7 +69,8 @@ haver janela preta** (mesmo padrão das outras 25 tarefas do projeto).
 ação e a diferença entre o `.cmd` que está no disco e o que ele escreveria.
 `--instalar` escreve o `.cmd` e cria (ou recria) a tarefa com
 `schtasks /Create … /SC MINUTE /MO 10 /RL LIMITED` + os ajustes de
-`builds.tarefas_windows.endurecer`; `--lancador` só reescreve o `.cmd`;
+`builds.tarefas_windows.endurecer`, **menos o de acordar o PC** (ver §6);
+`--ajustar` só reaplica esses ajustes na tarefa existente; `--lancador` só reescreve o `.cmd`;
 `--desinstalar` remove a tarefa. Os caminhos **vêm do ambiente**: o
 `pythonw.exe` ao lado do Python que roda o instalador e a raiz dos dados
 (`caminhos.raiz_dos_dados`). Por isso o `vila_flutuante.cmd` é **gerado e fica
@@ -260,11 +261,14 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
 
 - **O `.cmd` e a tarefa agora têm instalador** (§2). Entre o commit `a101a2e`
   (27/09) e 28/09 o `vila_flutuante.cmd` esteve no git com os caminhos desta
-  máquina escritos à mão; hoje ele é gerado e ignorado. **Decisão pendente do
-  Adrian:** a tarefa acorda o PC a cada 10 min (`WakeToRun`, ligado pelo
-  `endurecer` como em todas) e a Vila herda a prioridade 7 da tarefa (roda em
-  `BelowNormal`). Para uma janela, acordar a máquina não serve para nada, mas a
-  tarefa do bot, também de 10 em 10, já faz o mesmo.
+  máquina escritos à mão; hoje ele é gerado e ignorado. **A tarefa não acorda
+  mais o PC** (decisão do Adrian em 28/09, `tarefa-da-vila-acorda-o-pc` =
+  "tirar"): o `endurecer` liga o `WakeToRun` em todas as tarefas, e o
+  instalador o desliga **depois** dele (`sem_acordar`; na ordem inversa ele
+  religaria). `--ajustar` reaplica os ajustes na tarefa que já existe sem
+  recriá-la — foi assim que a tarefa no ar mudou em 28/09 (`WakeToRun=False`,
+  o resto igual, a Vila 11728 intocada). O modo a seco mostra `acorda_o_pc`.
+  A Vila segue herdando a prioridade 7 da tarefa (roda em `BelowNormal`).
 - **`vila/` continua em uso pelo painel**, mesmo com a Vila antiga fora do app do
   celular: a página `paginas/vila.py` (mapa grande em pixel, de
   `vila/config.json`), o fallback da flutuante quando a arte clássica está

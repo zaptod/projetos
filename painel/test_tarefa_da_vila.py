@@ -13,6 +13,10 @@ O que este arquivo trava:
 3. SEM JANELA PRETA. A tarefa e o `wscript` + `oculto.vbs`; sem eles o
    instalador recusa, em vez de apontar a tarefa direto para o .cmd.
 4. A SECO. Sem bandeira, nada e escrito nem criado.
+5. NAO ACORDA O PC (decisao do Adrian, 28/09/2026). O `endurecer` liga o
+   `WakeToRun` em todas as tarefas; o instalador o desliga DEPOIS dele (na
+   ordem inversa ele religaria), tanto ao criar quanto no `--ajustar`, que
+   mexe na tarefa viva sem recria-la.
 
 Rode da raiz:  python -m pytest painel/test_tarefa_da_vila.py -q
 """
@@ -150,12 +154,16 @@ class Instalar(unittest.TestCase):
         acao = (r'C:\Windows\System32\wscript.exe //B //Nologo "D:\rt\oculto.vbs"'
                 r' "D:\clone\vila_flutuante.cmd"')
         with mock.patch.object(tarefa, "acao", return_value=acao), \
+                mock.patch.object(tarefa, "sem_acordar",
+                                  return_value={"ok": True, "mensagem": ""}
+                                  ) as acordar, \
                 mock.patch("builds.tarefas_windows.endurecer",
                            return_value={"ok": True, "mensagem": ""}) as dura:
             ficha = tarefa.instalar()
         self.assertTrue(ficha["ok"], ficha)
         self.assertTrue(ficha["ajustada"])
         dura.assert_called_once_with(tarefa.TAREFA)
+        acordar.assert_called_once_with()
         criar = self.chamadas[0]
         self.assertEqual(criar[:3], ["/Create", "/TN", tarefa.TAREFA])
         self.assertEqual(criar[criar.index("/TR") + 1], acao)
@@ -177,11 +185,88 @@ class Instalar(unittest.TestCase):
                         side_effect=AssertionError("escreveu o vbs")), \
                 mock.patch("builds.tarefas_windows.endurecer",
                            side_effect=AssertionError("mexeu na tarefa")), \
+                mock.patch.object(tarefa, "_powershell",
+                                  side_effect=AssertionError("powershell")), \
+                mock.patch.object(tarefa, "acorda_o_pc", return_value=None), \
                 mock.patch("builtins.print"):
             self.assertIn(tarefa.main([]), (0, 1))
         escrever.assert_not_called()
         self.assertTrue(all(c[0] == "/Query" for c in self.chamadas),
                         self.chamadas)
+
+
+class NaoAcordaOPC(unittest.TestCase):
+    """Decisao do Adrian (28/09/2026): a tarefa da Vila NAO acorda o PC."""
+
+    def test_a_decisao_esta_no_codigo(self):
+        self.assertFalse(tarefa.ACORDA_O_PC)
+
+    def test_o_script_so_desliga_o_acordar(self):
+        scripts = []
+
+        def powershell(script):
+            scripts.append(script)
+            return subprocess.CompletedProcess([], 0, "", "")
+
+        with mock.patch.object(tarefa, "_powershell", powershell):
+            self.assertTrue(tarefa.sem_acordar()["ok"])
+        self.assertEqual(len(scripts), 1)
+        self.assertIn("$s.WakeToRun = $false", scripts[0])
+        self.assertIn("-Settings $s", scripts[0])
+        # conjunto novo apagaria o resto dos ajustes da tarefa
+        self.assertNotIn("New-ScheduledTaskSettingsSet", scripts[0])
+
+    def test_o_nome_embutido_e_o_da_vila(self):
+        with mock.patch("subprocess.run",
+                        return_value=subprocess.CompletedProcess(
+                            [], 0, b"False\r\n", b"")) as rodar:
+            self.assertIs(tarefa.acorda_o_pc(), False)
+        comando = rodar.call_args.args[0][-1]
+        self.assertIn(f"'{tarefa.TAREFA}'", comando)
+        self.assertNotIn("@NOME@", comando)
+
+    def test_ordem_endurecer_e_depois_desligar(self):
+        ordem = []
+        with mock.patch("builds.tarefas_windows.endurecer",
+                        side_effect=lambda nome: ordem.append("endurecer")
+                        or {"ok": True}), \
+                mock.patch.object(tarefa, "sem_acordar",
+                                  side_effect=lambda: ordem.append("acordar")
+                                  or {"ok": True}), \
+                mock.patch.object(tarefa, "_schtasks",
+                                  side_effect=AssertionError("recriou")):
+            self.assertTrue(tarefa.ajustar()["ok"])
+        self.assertEqual(ordem, ["endurecer", "acordar"])
+
+    def test_falha_ao_desligar_aparece(self):
+        with mock.patch("builds.tarefas_windows.endurecer",
+                        return_value={"ok": True}), \
+                mock.patch.object(tarefa, "sem_acordar",
+                                  return_value={"ok": False,
+                                                "mensagem": "acesso negado"}):
+            ficha = tarefa.ajustar()
+        self.assertFalse(ficha["ok"])
+        self.assertIn("acesso negado", ficha["mensagem"])
+
+    def test_leitura_que_falha_e_none_nunca_false(self):
+        with mock.patch.object(tarefa, "_powershell",
+                               return_value=subprocess.CompletedProcess(
+                                   [], 1, "", "nao existe")):
+            self.assertIsNone(tarefa.acorda_o_pc())
+        with mock.patch.object(tarefa, "_powershell",
+                               side_effect=subprocess.TimeoutExpired("ps", 60)):
+            self.assertIsNone(tarefa.acorda_o_pc())
+
+    def test_a_seco_so_le(self):
+        with mock.patch.object(tarefa, "instalada", return_value=True), \
+                mock.patch.object(tarefa, "acorda_o_pc", return_value=True), \
+                mock.patch.object(tarefa, "sem_acordar",
+                                  side_effect=AssertionError("mexeu")), \
+                mock.patch("builds.tarefas_windows.endurecer",
+                           side_effect=AssertionError("mexeu")):
+            ficha = tarefa.plano()
+        self.assertIs(ficha["acorda_o_pc"], True)
+        self.assertIs(ficha["acordar_igual"], False)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@
     python -m painel.flutuante.tarefa                 mostra o que faria (a seco)
     python -m painel.flutuante.tarefa --instalar      escreve o .cmd e cria a tarefa
     python -m painel.flutuante.tarefa --lancador      so reescreve o .cmd
+    python -m painel.flutuante.tarefa --ajustar       reaplica os ajustes na
+                                                      tarefa que ja existe
     python -m painel.flutuante.tarefa --desinstalar   remove a tarefa
 
 POR QUE EXISTE. Ate 28/09/2026 a tarefa `NeuralFights_vila_flutuante` e o
@@ -23,7 +25,13 @@ O QUE A TAREFA E, e cada pedaco tem motivo:
     a janela preta. NUNCA a tarefa direto no .cmd (volta o console): sem o
     `oculto.vbs`, este instalador RECUSA em vez de cair nisso;
   - os ajustes de bateria e de horario perdido de `builds.tarefas_windows`,
-    os mesmos de todas as tarefas do projeto;
+    os mesmos de todas as tarefas do projeto — MENOS o de acordar o PC.
+    O `endurecer` liga o `WakeToRun` em todas; para uma janela, acordar a
+    maquina de 10 em 10 minutos nao serve para nada (a tarefa do bot ja
+    acorda do mesmo jeito). Decisao do Adrian (28/09/2026,
+    `painel-e-vila/tarefa-da-vila-acorda-o-pc` = "tirar"). Por isso o
+    `sem_acordar` roda SEMPRE DEPOIS do `endurecer`: na ordem inversa o
+    `endurecer` religaria;
   - a GUARDA mora no .cmd: so lanca se nao houver Vila viva. A janela tem
     instancia unica, mas o segundo lancamento TRAZ A JANELA PARA A FRENTE de
     proposito (e o que faz o atalho funcionar); de 10 em 10 minutos isso
@@ -47,6 +55,8 @@ MINUTOS = 10
 # Quanto a consulta de processos pode levar antes de o .cmd desistir. O WMI
 # desta maquina ja levou mais de um minuto para responder (medido em 28/09).
 PRAZO_DA_CONSULTA_S = 120
+# Decisao do Adrian (28/09/2026): a tarefa da Vila NAO acorda o PC.
+ACORDA_O_PC = False
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -177,6 +187,79 @@ def _schtasks(argumentos: list) -> subprocess.CompletedProcess:
         _decodificar(feito.stderr or b""))
 
 
+# So o `WakeToRun`: parte do conjunto que a tarefa JA tem (o `endurecer` ja
+# passou), entao nada mais muda. `-Settings` com o proprio conjunto, como o
+# `endurecer` faz, e nao `-InputObject` (que regrava o principal).
+_SCRIPT_ACORDAR = """
+$ErrorActionPreference = 'Stop'
+$t = Get-ScheduledTask -TaskName @NOME@
+$s = $t.Settings
+$s.WakeToRun = @VALOR@
+Set-ScheduledTask -TaskName @NOME@ -Settings $s | Out-Null
+"""
+_SCRIPT_CONSULTA = """
+$ErrorActionPreference = 'Stop'
+(Get-ScheduledTask -TaskName @NOME@).Settings.WakeToRun
+"""
+
+
+def _powershell(script: str) -> subprocess.CompletedProcess:
+    """PowerShell sem janela, com o nome da tarefa embutido como literal
+    (`-Command` engole o resto da linha: `$args` nao funciona) e a saida
+    decodificada na mao (pagina de codigo do console)."""
+    feito = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+         script.replace("@NOME@", _literal_ps(TAREFA))],
+        capture_output=True, timeout=60, creationflags=NO_WINDOW)
+    return subprocess.CompletedProcess(
+        feito.args, feito.returncode, _decodificar(feito.stdout or b""),
+        _decodificar(feito.stderr or b""))
+
+
+def sem_acordar() -> dict:
+    """Desliga o `WakeToRun` da tarefa que ja existe (sem recria-la)."""
+    valor = "$true" if ACORDA_O_PC else "$false"
+    try:
+        proc = _powershell(_SCRIPT_ACORDAR.replace("@VALOR@", valor))
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"ok": False, "mensagem": f"{type(exc).__name__}: {exc}"}
+    return {"ok": proc.returncode == 0,
+            "mensagem": " ".join((proc.stdout + proc.stderr).split())[:300]}
+
+
+def acorda_o_pc():
+    """Como a tarefa esta AGORA: True/False, ou None se nao deu para ler
+    (tarefa ausente, PowerShell caido) — None nunca vira False."""
+    try:
+        proc = _powershell(_SCRIPT_CONSULTA)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    resposta = proc.stdout.strip().lower()
+    if proc.returncode != 0 or resposta not in ("true", "false"):
+        return None
+    return resposta == "true"
+
+
+def ajustar() -> dict:
+    """Os ajustes de depois do /Create, NA ORDEM: o `endurecer` (bateria e
+    horario perdido, e ele liga o acordar) e depois o `sem_acordar`.
+
+    Serve a tarefa recem-criada e a que ja esta no ar: nao recria nada, entao
+    a Vila viva nao e tocada."""
+    try:
+        from builds import tarefas_windows
+        dura = tarefas_windows.endurecer(TAREFA)
+    except Exception as exc:                                   # noqa: BLE001
+        dura = {"ok": False, "mensagem": f"{type(exc).__name__}: {exc}"}
+    acordar = sem_acordar()
+    falhas = []
+    if not dura.get("ok"):
+        falhas.append(f"bateria e horario perdido: {dura.get('mensagem')}")
+    if not acordar.get("ok"):
+        falhas.append(f"tirar o acordar: {acordar.get('mensagem')}")
+    return {"ok": not falhas, "mensagem": "; ".join(falhas)}
+
+
 def instalada() -> bool:
     return _schtasks(["/Query", "/TN", TAREFA]).returncode == 0
 
@@ -194,16 +277,12 @@ def instalar(minutos: int = MINUTOS) -> dict:
              "lancador": str(lancador), "acao": tr,
              "mensagem": (proc.stdout or proc.stderr or "").strip()}
     if ficha["ok"]:
-        try:
-            from builds import tarefas_windows
-            ajuste = tarefas_windows.endurecer(TAREFA)
-        except Exception as exc:                               # noqa: BLE001
-            ajuste = {"ok": False, "mensagem": f"{type(exc).__name__}: {exc}"}
+        ajuste = ajustar()
         ficha["ajustada"] = bool(ajuste.get("ok"))
         if not ficha["ajustada"]:
             ficha["mensagem"] = (
-                f"{ficha['mensagem']} (criada, mas os ajustes de bateria e de "
-                f"horario perdido falharam: {ajuste.get('mensagem')})").strip()
+                f"{ficha['mensagem']} (criada, mas os ajustes falharam: "
+                f"{ajuste.get('mensagem')})").strip()
     return ficha
 
 
@@ -239,6 +318,10 @@ def plano() -> dict:
         ficha["erro"] = (f"sem o pacote builds ({erro}): a tarefa abriria "
                          "janela preta, entao eu nao instalaria")
     ficha["tarefa_existe"] = instalada()
+    if ficha["tarefa_existe"]:
+        ficha["acorda_o_pc"] = acorda_o_pc()
+        if ficha["acorda_o_pc"] is not None:
+            ficha["acordar_igual"] = ficha["acorda_o_pc"] == ACORDA_O_PC
     return ficha
 
 
@@ -251,6 +334,10 @@ def main(argv=None) -> int:
                        help="escreve o .cmd e cria (ou recria) a tarefa")
     grupo.add_argument("--lancador", action="store_true",
                        help="so reescreve o .cmd; a tarefa fica como esta")
+    grupo.add_argument("--ajustar", action="store_true",
+                       help="reaplica os ajustes (bateria, horario perdido, "
+                            "sem acordar o PC) na tarefa que ja existe, sem "
+                            "recria-la")
     grupo.add_argument("--desinstalar", action="store_true",
                        help="remove a tarefa (o .cmd fica)")
     args = parser.parse_args(argv)
@@ -258,6 +345,10 @@ def main(argv=None) -> int:
     if args.instalar:
         ficha = instalar()
         print(("ok: " if ficha["ok"] else "FALHOU: ") + ficha["mensagem"])
+        return 0 if ficha["ok"] else 1
+    if args.ajustar:
+        ficha = ajustar()
+        print("ok: ajustada" if ficha["ok"] else "FALHOU: " + ficha["mensagem"])
         return 0 if ficha["ok"] else 1
     if args.desinstalar:
         ficha = desinstalar()
@@ -274,7 +365,7 @@ def main(argv=None) -> int:
     ficha = plano()
     print("A SECO — nada foi escrito nem criado.")
     for chave in ("raiz", "pythonw", "lancador", "acao", "tarefa_existe",
-                  "lancador_igual"):
+                  "lancador_igual", "acorda_o_pc", "acordar_igual"):
         if chave in ficha:
             print(f"  {chave}: {ficha[chave]}")
     if ficha.get("diferenca"):
@@ -283,7 +374,8 @@ def main(argv=None) -> int:
     if ficha.get("erro"):
         print(f"  ERRO: {ficha['erro']}")
         return 1
-    print("  para aplicar: --instalar (tarefa e .cmd) ou --lancador (so o .cmd)")
+    print("  para aplicar: --instalar (tarefa e .cmd), --lancador (so o .cmd)"
+          " ou --ajustar (so os ajustes da tarefa que ja existe)")
     return 0
 
 
