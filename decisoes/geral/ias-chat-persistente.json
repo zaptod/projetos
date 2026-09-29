@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-29T02:26:25",
+      "evento": "2026-09-29T02:25:49",
+      "linha": 49,
+      "nota": "regra da fase 2: um chat 'casa' por IA com resumo periódico",
+      "opcao": "persistente",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-29T01:29:04.957029",
   "depende_de": [],
