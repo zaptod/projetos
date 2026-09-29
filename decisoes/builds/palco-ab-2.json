@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "3bb5d57b",
+      "em": "2026-09-28T23:02:23",
+      "evento": "2026-09-28T21:39:58",
+      "linha": 21,
+      "nota": "16G: trocar o visual do duelo pelo palco",
+      "opcao": "trocar",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Mesmo duelo_00016, mesma seed e corte. Novo no palco: rostos do Kenney nas 24 expressões, efeitos por elemento (projétil, área, beam), HUD com nome, vida e plano, e o hitstop ligado (o lado do palco fica 0,8 s mais longo, 23,2 → 24,0 s; o mais curto congela no fim). O A/B passa duas vezes: a 1ª com o som de hoje, a 2ª com o do palco. A vitrine mostra todas as peças, página por página. Ainda sem arte: armas (os 54 estilos), acessórios de classe, orbe/summon/trap.",
   "criado": "2026-09-28T21:18:54.776870",
   "depende_de": [
