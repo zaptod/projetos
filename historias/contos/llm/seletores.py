@@ -407,17 +407,30 @@ GROK = {
     "raciocinio": [
         "div.thinking-container",
     ],
-    # A IMAGEM DA RESPOSTA: o Grok ainda NAO foi medido gerando imagem (a
-    # casa so tem texto). Vale a mesma regra do ChatGPT e do Gemini — dentro
-    # da resposta ao nosso turno, nova e terminada —, com o balao inteiro do
-    # assistente como recipiente, ate a primeira imagem real medir o
-    # recipiente proprio.
+    # A IMAGEM DA RESPOSTA (medido em 29/09/2026 17:5x, so leitura, na
+    # conversa "Circulo de cor vermelha" da conta, onde a sonda de 01:44
+    # pediu uma imagem; scratchpad/diag_grok2.py). A imagem gerada mora em
+    # `div[data-testid=assistant-message] ... div.streamdown-chat-md ...
+    # div[data-testid=Vyie8] > div.relative.group/image >
+    # div.rounded-2xl`, em dois <img> com o MESMO src
+    # `https://assets.grok.com/users/<id da conta>/generated/<uuid>/image.jpg`
+    # (um de fundo, sem alt; o da frente com alt "Imagem gerada"). O ANEXO do
+    # usuario tambem e assets.grok.com, mas `/users/<id>/<uuid>/preview-image`
+    # (sem `/generated/`), dentro de `button[aria-label='Abrir anexo']`; a
+    # foto do perfil ("pfp", 300x300) fica na barra lateral.
+    #
+    # O BALAO INTEIRO NAO BASTA: resposta de chat do Grok pode trazer imagem
+    # da WEB (busca, link com previa) — `src` novo, grande, dentro do nosso
+    # turno, e de terceiro. Por isso o recipiente e o `group/image` que TEM
+    # uma imagem `/generated/` da conta, e o `alt` final e exigido. A classe
+    # `Vyie8` e hash do build: nenhum seletor depende dela.
     "imagem_turno": [
         "div[data-testid='assistant-message']",
     ],
     "imagem_gerada": [
-        "div[data-testid='assistant-message']",
+        "div[class*='group/image']:has(img[src*='assets.grok.com/users/'][src*='/generated/'])",
     ],
+    "imagem_final_alt": ["Imagem gerada", "Generated image"],
     "limpar_resposta": True,
     # LOGADO e o editor ProseMirror (o textarea aparece so deslogado — por
     # isso ele NAO entra aqui: a sonda de 01:44 deu "logado" para a pagina

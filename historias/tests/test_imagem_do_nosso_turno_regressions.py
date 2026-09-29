@@ -205,6 +205,19 @@ class CasoZero(_Base):
             self.assertTrue(s.get("imagem_gerada"), ia)
         self.assertFalse(seletores.do_provedor("deepseek").get("imagem_gerada"))
 
+    def test_grok_nao_aceita_o_balao_inteiro(self):
+        # 29/09 17:5x: o recipiente do Grok era o balao inteiro do assistente,
+        # e resposta de chat do Grok pode trazer imagem da WEB (src novo,
+        # grande, no nosso turno). Medido: a gerada e
+        # assets.grok.com/users/<conta>/generated/<uuid>/image.jpg num
+        # `group/image`, com alt "Imagem gerada".
+        s = seletores.do_provedor("grok")
+        self.assertNotIn("div[data-testid='assistant-message']", s["imagem_gerada"])
+        for recipiente in s["imagem_gerada"]:
+            self.assertIn("/generated/", recipiente)
+            self.assertIn("assets.grok.com/users/", recipiente)
+        self.assertIn("Imagem gerada", s["imagem_final_alt"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -76,6 +76,56 @@ GEMINI = f"""
 <div class="sugestoes"><img src="{ANUNCIO}"></div>"""
 
 
+# GROK (medido em 29/09/2026 17:5x, scratchpad/diag_grok2.py, na conversa
+# "Circulo de cor vermelha" da conta): a imagem gerada em dois <img> com o
+# mesmo src assets.grok.com/users/<conta>/generated/<uuid>/image.jpg dentro de
+# `div.group/image`; o anexo do usuario em `/users/<conta>/<uuid>/preview-image`;
+# a foto do perfil na barra lateral. Aqui ainda: uma imagem da WEB dentro do
+# balao da resposta (busca/previa de link), que o balao inteiro aceitaria.
+GROK_CONTA = "https://assets.grok.com/users/203e1714"
+GROK_GERADA = f"{GROK_CONTA}/generated/d4c4bfa4/image.jpg"
+GROK_ANTIGA = f"{GROK_CONTA}/generated/0a0a0a0a/image.jpg"
+GROK_ANEXO = f"{GROK_CONTA}/c46dc88b/preview-image"
+GROK_PFP = f"{GROK_CONTA}/fQY8-profile-picture.webp"
+GROK_WEB = "https://imagens.exemplo.com/gato-da-web.jpg"
+
+
+def _grok_bolha_gerada(src):
+    return f"""
+  <div data-testid="assistant-message" class="message-bubble relative rounded-3xl">
+   <div class="thinking-container">Trabalhou por 11s</div>
+   <div class="streamdown-chat-md"><div class="not-prose flex flex-col gap-3">
+    <div class="flex flex-col sm:flex-row gap-3"><div data-testid="Vyie8" class="min-w-0 w-full">
+     <div class="relative group/image sm:w-fit sm:mx-auto">
+      <div class="relative rounded-2xl overflow-hidden p-0">
+       <div class="absolute inset-0"><img class="absolute object-cover w-full m-0" src="{src}"></div>
+       <img class="object-cover relative z-[200] block" alt="Imagem gerada" src="{src}">
+      </div></div></div></div></div></div></div>"""
+
+
+GROK = f"""
+<nav><button><span><img alt="pfp" src="{GROK_PFP}"></span></button></nav>
+<main>
+ <div data-testid="user-message" class="message-bubble">
+  <div id="response-1"><button aria-label="Abrir anexo"><img src="{GROK_ANEXO}"></button></div>
+  desenhe um cachorro</div>
+ {_grok_bolha_gerada(GROK_ANTIGA)}
+ <div data-testid="user-message" class="message-bubble">Crie uma imagem na proporção 1:1.
+Um gato laranja</div>
+ {_grok_bolha_gerada(GROK_GERADA)}
+</main>"""
+
+GROK_SO_WEB = f"""
+<main>
+ <div data-testid="user-message" class="message-bubble">Crie uma imagem na proporção 1:1.
+Um gato laranja</div>
+ <div data-testid="assistant-message" class="message-bubble">
+  <div class="response-content-markdown">Achei estas na web:
+   <div class="relative group/image"><div class="rounded-2xl"><img alt="Imagem gerada"
+     src="{GROK_WEB}"></div></div></div></div>
+</main>"""
+
+
 @unittest.skipUnless(LIGADO, "abre um Chrome headless: NF_TESTE_NAVEGADOR=1")
 class JSNoNavegador(unittest.TestCase):
     @classmethod
@@ -154,6 +204,43 @@ class JSNoNavegador(unittest.TestCase):
         marcado = self.page.evaluate(imagem._JS_MARCAR, [
             s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], ANUNCIO, []])
         self.assertFalse(marcado["imagem"])
+
+    def _cliente_grok(self, html):
+        from ias.imagem import png_de_teste
+        corpo = png_de_teste(320, 320, cor=(200, 120, 40))
+
+        def servir(route):
+            route.fulfill(status=200, content_type="image/png", body=corpo)
+
+        self.page.route("https://**/*", servir)
+        self.addCleanup(self.page.unroute, "https://**/*")
+        return self._cliente("grok", html)
+
+    def test_grok_pega_a_gerada_da_conta_e_nao_anexo_pfp_nem_antiga(self):
+        from ias import imagem
+        c = self._cliente_grok(GROK)
+        achado = c.imagens_da_resposta()
+        self.assertTrue(achado["ancorado"])
+        self.assertTrue(achado["resposta"])
+        self.assertIn("Um gato laranja", achado["turno"])
+        self.assertEqual([i["src"] for i in achado["imagens"]], [GROK_GERADA])  # 2 <img>, 1 src
+        gerada = achado["imagens"][0]
+        self.assertEqual(gerada["alt"], "Imagem gerada")
+        self.assertEqual((gerada["w"], gerada["h"]), (320, 320))
+        prontas = c.imagens_prontas(achado, antes={GROK_ANTIGA, GROK_ANEXO, GROK_PFP})
+        self.assertEqual([i["src"] for i in prontas], [GROK_GERADA])
+        s = c.sel
+        marcado = self.page.evaluate(imagem._JS_MARCAR, [
+            s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], GROK_GERADA, []])
+        self.assertEqual(marcado, {"imagem": True, "botao": False})
+
+    def test_grok_imagem_da_web_no_balao_nao_vale(self):
+        c = self._cliente_grok(GROK_SO_WEB)
+        achado = c.imagens_da_resposta()
+        self.assertTrue(achado["resposta"])
+        self.assertEqual(achado["imagens"], [])
+        self.assertEqual(achado["fora"], 1)                  # a da web, ignorada
+        self.assertEqual(c.imagens_prontas(achado), [])
 
     def test_sem_turno_do_usuario_caso_zero(self):
         c = self._cliente("chatgpt", "<main><p>nada</p></main>")
