@@ -16,6 +16,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Limpeza do disco (C: com 9 GB livres)** — Só o seguro (~1,2 GB) (29/09/2026) `limpeza-do-disco`
 - ✅ **E: com 17 GB livres — o cache do Google Drive (186 GB)** — Abrir o Google Drive e deixar ele terminar e limpar sozinho (recomendado primeiro) (29/09/2026) `limpeza-do-disco-e`
 - ⏳ **Grok: por onde entra na roda?** — Você pediu o Grok na roda das IAs. O login é seu (conta compartilhada não). Por onde? `ias-grok-acesso`
+- ⏳ **Quando você fala com uma IA e a pipeline precisa da mesma conta** — Cada IA tem UM login. Se você abrir conversa com o Gemini pelo app enquanto a rodada de histórias precisa dele, quem tem prioridade? `ias-prioridade-conversa`
 
 **Histórias**
 - ✅ **Vídeo reprovado ou não assistido** — Fica retido; só sai se o horário fosse ficar vazio (27/09/2026) `reprovado-ou-nao-assistido`
