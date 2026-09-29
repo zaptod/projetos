@@ -57,8 +57,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import (acoes, comandos_app, decisoes, orquestrador, painel_dados, tarefas,
-               vila_dados, vila_nova)
+from . import (acoes, claude_estado, comandos_app, decisoes, orquestrador, painel_dados,
+               tarefas, vila_dados, vila_nova)
 from .config import runtime_dir
 
 PORTA_PADRAO = 8931
@@ -688,6 +688,9 @@ class Manipulador(BaseHTTPRequestHandler):
             if achado:
                 return self._json(self._correio_caixa(achado.group(1),
                                                       _inteiro(consulta, "n", 60)))
+            if rota == "/api/claude":
+                # o interruptor do Claude (liberado / proibido), com o historico
+                return self._json(claude_estado.para_o_app())
             if rota == "/api/orquestrador/fluxo":
                 return self._json(painel_dados.FLUXO.ler())
             if rota == "/api/decisoes":
@@ -758,6 +761,8 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._responder_decisao()
         if rota in ("/api/orquestrador/comando", "/api/orquestrador/contestar"):
             return self._orquestrador(rota)
+        if rota == "/api/claude":
+            return self._interruptor_claude()
         achado = re.fullmatch(r"/api/correio/(deepseek|chatgpt|gemini|grok)(/visto)?", rota)
         if achado:
             return self._correio_post(achado.group(1), bool(achado.group(2)))
@@ -905,6 +910,38 @@ class Manipulador(BaseHTTPRequestHandler):
         acoes.avisar_texto(f"⚔ Adrian contestou uma decisão do orquestrador: "
                            f"nó {feito['no']} no Grimório")
         return self._json({"feito": True, **feito})
+
+    # ------------------------------------------------- interruptor do Claude
+    def _interruptor_claude(self):
+        """Liga ou desliga o uso automatico do Claude (29/09/2026).
+
+        Grava DIRETO no `claude.json`, sem passar pela fila do orquestrador:
+        com o Claude proibido o `esperar` nao acorda com comando, e um
+        "liberar" que fosse comando nunca seria aplicado. O pedido diz o
+        ALVO (`liberar: true|false`), nao "inverter": o toque repetido nao
+        desfaz o primeiro. A confirmacao em dois toques e da tela. So com
+        token; nao depende de `--acoes` (nada executa na maquina).
+        """
+        aparelho = self._aparelho()
+        if aparelho is None:
+            return
+        corpo = self._corpo()
+        if corpo is None:
+            return
+        if not isinstance(corpo.get("liberar"), bool):
+            return self._erro(400, "diga liberar: true ou false")
+        por = f"pelo app ({str(aparelho)[:30]})"
+        try:
+            feito = claude_estado.mudar(corpo["liberar"], por=por,
+                                        motivo=str(corpo.get("motivo") or "")[:200])
+        except OSError:
+            return self._erro(503, "o interruptor está ocupado; tente de novo")
+        estado = feito["estado"]
+        if feito["mudou"]:
+            acoes.avisar_texto(orquestrador.texto_do_aviso_claude(
+                estado["liberado"], "pelo app", estado["em"]))
+        return self._json({"feito": True, "mudou": feito["mudou"],
+                           "claude": claude_estado.para_o_app()})
 
     # -------------------------------------------------------- correio
     # A conversa do Adrian com cada IA (Vila das IAs, fase 2). O servidor

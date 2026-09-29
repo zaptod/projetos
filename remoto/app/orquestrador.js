@@ -64,6 +64,9 @@ function orqPendentes(nome) {
 function orqTextoEnviado(r) {
   if (r.comando && r.comando.repetido)
     return ["esse pedido já estava na fila do orquestrador; não mandei de novo", false];
+  const c = Orq.dados && Orq.dados.claude;
+  if (c && !c.liberado)
+    return ["guardado — o Claude está proibido; o comando sai quando você liberar", false];
   const v = r.vigia || {};
   if (v.situacao === "ouvindo") return ["enviado — o orquestrador está ouvindo e aplica em segundos", false];
   if (v.situacao === "acordou") return ["enviado — o orquestrador está aplicando outro pedido; este vem logo depois", false];
@@ -132,7 +135,8 @@ function orqFaixa(d) {
   let ruim = false;
   const v = d.vigia || null;
   // o aviso que importa primeiro: um pedido dele parado sem ninguém ouvindo
-  if (d.sem_ouvinte) {
+  // (com o Claude proibido, "guardado" não é defeito: a faixa do Claude diz)
+  if (d.sem_ouvinte && d.sem_ouvinte.tipo !== "guardado") {
     linhas.push(d.sem_ouvinte.texto);
     ruim = true;
   }
@@ -738,7 +742,11 @@ function orqDesenharLimites(d) {
     // NUNCA um número velho como se fosse atual: sem medição válida, sem barra.
     const texto = u.situacao === "velha"
       ? `Sem medição desde ${orqHoraEpoch(u.desde)}` + (u.motivo ? ` — ${u.motivo}` : "")
-      : "Sem medição ainda" + (u.motivo ? ` — ${u.motivo}` : "");
+      : u.situacao === "parada"
+        // Claude proibido: a sonda não roda, e número nenhum é o de agora
+        ? `${u.motivo[0].toUpperCase()}${u.motivo.slice(1)}`
+          + (u.desde ? ` · última medição às ${orqHoraEpoch(u.desde)}` : "")
+        : "Sem medição ainda" + (u.motivo ? ` — ${u.motivo}` : "");
     alvo.replaceChildren(el("div", {class: "orq-sem-medicao"}, texto),
       el("div", {class: "fraco"}, orqSonda(d)));
   } else {
@@ -1012,6 +1020,7 @@ async function orqCarregar() {
   try {
     const d = await api("/api/orquestrador");
     Orq.dados = d;
+    if (typeof claudeDesenhar === "function") claudeDesenhar(d.claude);
     orqFaixa(d);
     orqDesenharAgora(d);
     orqDesenharFila(d);
@@ -1032,7 +1041,8 @@ function orqMarcarSelo(d) {
   const obj = $("obj-orquestrador");
   const semOuvido = d.vigia ? d.vigia.situacao === "fora" || d.vigia.situacao === "fechada"
     : d.fora_do_ar;
-  obj.classList.toggle("selo-alerta", !!(d.sem_ouvinte || (semOuvido && d.pendentes)
+  const alerta = d.sem_ouvinte && d.sem_ouvinte.tipo !== "guardado";
+  obj.classList.toggle("selo-alerta", !!(alerta || (semOuvido && d.pendentes && !(d.claude && !d.claude.liberado))
     || d.fora_do_ar || (d.uso && d.uso.passou_teto)));
   obj.classList.toggle("selo-pendente", !!d.pendentes);
 }

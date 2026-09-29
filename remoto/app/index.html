@@ -100,6 +100,8 @@
   </section>
 
   <section id="tela-comandos" class="oculto livro bancada" aria-label="Bancada">
+    <div id="claude-bancada" class="claude-chave" role="group"
+         aria-label="Claude liberado ou proibido"></div>
     <!-- O Controle mora na Bancada, junto dos comandos (decisão do Adrian,
          app-e-bot/controle-onde, 28/09/2026). Antes ficava nos Avisos. -->
     <div class="cartao oculto" id="controle">
@@ -180,6 +182,11 @@
        publica o que faz; daqui o Adrian vê e manda. Os comandos ficam
        pendentes até o orquestrador aplicar (ou recusar, com o motivo). -->
   <section id="tela-orquestrador" class="oculto livro mesa" aria-label="Mesa de comando">
+    <!-- O interruptor do Claude (29/09): no topo, preso ao rolar. Grava
+         direto no PC (não é comando para o orquestrador). -->
+    <div id="claude-mesa" class="claude-chave" role="group"
+         aria-label="Claude liberado ou proibido"></div>
+    <div id="claude-faixa" class="claude-faixa oculto" role="status"></div>
     <div id="orq-faixa" class="orq-faixa oculto" role="status"></div>
     <div class="orq-atalhos" role="group" aria-label="Seções da mesa">
       <button class="acao" data-orq="orq-sec-agora">Agora</button>

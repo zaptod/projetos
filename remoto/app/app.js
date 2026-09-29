@@ -434,6 +434,83 @@ $("player").addEventListener("error", () => {
 });
 
 // -------------------------------------------------------- relatorios
+// ------------------------------------------------ o interruptor do Claude
+// Pedido do Adrian (29/09): "usar o Claude está proibido até segunda ordem,
+// crie algo no app para ligar e desligar isso". O toque grava DIRETO no PC
+// (`POST /api/claude`, com o alvo, não "inverter"): com o Claude proibido o
+// orquestrador não acorda com comando, então isto não pode ser comando.
+// Aparece no topo da Mesa (preso ao rolar) e na Bancada; dois toques: o
+// interruptor e o "Confirmar" do diálogo.
+const Claude = {dados: null, enviando: false};
+
+function claudeDesde(c) {
+  if (!c || !c.em) return c && c.origem === "sem_arquivo" ? "nunca foi mudado" : "";
+  return `desde ${quandoCurto(c.em)}` + (c.por ? ` · ${c.por}` : "");
+}
+
+function claudeDesenhar(c) {
+  if (!c) return;
+  Claude.dados = c;
+  const proibido = !c.liberado;
+  for (const id of ["claude-mesa", "claude-bancada"]) {
+    const alvo = $(id);
+    if (!alvo) continue;
+    const botao = el("button", {class: "claude-botao", type: "button",
+                                "aria-pressed": String(!proibido),
+                                "data-claude": proibido ? "proibido" : "liberado"},
+      el("span", {class: "claude-rotulo"}, "🤖 Claude: ",
+        el("strong", {}, proibido ? "PROIBIDO" : "LIBERADO")),
+      el("span", {class: "claude-desde"}, claudeDesde(c)),
+      el("span", {class: "claude-dica"},
+        proibido ? "tocar para liberar" : "tocar para proibir"));
+    botao.disabled = Claude.enviando;
+    botao.addEventListener("click", claudeTrocar);
+    alvo.replaceChildren(botao);
+    alvo.classList.toggle("proibido", proibido);
+    alvo.classList.toggle("liberado", !proibido);
+  }
+  const faixa = $("claude-faixa");
+  if (faixa) {
+    faixa.textContent = proibido
+      ? `Claude proibido ${c.desde_hhmm ? "desde " + c.desde_hhmm : ""}`.trim()
+        + " — nenhum agente, sonda ou apuração roda; os comandos ficam guardados."
+        + (c.origem === "ilegivel" ? ` (${c.motivo})` : "")
+      : "";
+    faixa.classList.toggle("oculto", !proibido);
+  }
+}
+
+async function claudeCarregar() {
+  try { claudeDesenhar(await api("/api/claude")); } catch (err) { /* a tela já avisa */ }
+}
+
+async function claudeTrocar() {
+  if (Claude.enviando || !Claude.dados) return;
+  const liberar = !Claude.dados.liberado;
+  const texto = liberar
+    ? "Liberar o Claude? A sonda de uso, o apurador e os agentes voltam a rodar, "
+      + "e o orquestrador acorda com os comandos que ficaram guardados."
+    : "Proibir o Claude? Nenhum agente é disparado, a sonda de uso e a apuração "
+      + "de erros param, e os comandos da Mesa ficam guardados até você liberar.";
+  if (await perguntar(texto) !== "confirmar") return;
+  Claude.enviando = true;
+  claudeDesenhar(Claude.dados);
+  try {
+    const r = await api("/api/claude", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({liberar})});
+    Claude.enviando = false;
+    claudeDesenhar(r.claude);
+    avisar(r.mudou ? (liberar ? "Claude liberado" : "Claude proibido")
+      + " — avisei no Telegram" : "já estava assim");
+    if (typeof orqCarregar === "function" && tela === "orquestrador") orqCarregar();
+  } catch (err) {
+    Claude.enviando = false;
+    claudeDesenhar(Claude.dados);
+    avisar("não consegui mudar: " + err.message, true);
+  }
+}
+
 function montarAbas() {
   const abas = $("abas-relatorio");
   for (const nome of RELATORIOS) {

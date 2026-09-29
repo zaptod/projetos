@@ -51,6 +51,10 @@ CLI (a do orquestrador):
     python -m remoto.orquestrador config | estado | uso | pulso | onde
     python -m remoto.orquestrador sonda                        # mede o uso uma vez
     python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
+    python -m remoto.orquestrador claude [status|liberar|proibir] [--motivo M]
+                                  # o interruptor do Claude (claude_estado.py): proibido,
+                                  # agente-inicio recusa (nem --forcar), a sonda para e o
+                                  # `esperar` segura os comandos ate liberar
 """
 from __future__ import annotations
 
@@ -68,6 +72,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from . import claude_estado
 from .config import runtime_dir
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -393,7 +398,14 @@ def eu(texto: str) -> dict:
 # ----------------------------------------------------------------- agentes
 def agente_inicio(parte: str, titulo: str, *, da_fila: str = "", relato: str = "",
                   forcar: bool = False, agente_id: str = "") -> dict:
-    """Um agente comecou. Recusa se passa da capacidade (sem `forcar`)."""
+    """Um agente comecou. Recusa se passa da capacidade (sem `forcar`).
+
+    Com o Claude PROIBIDO pelo Adrian (claude_estado), recusa sempre, mesmo
+    com `forcar`: o `--forcar` passa por cima da capacidade, nao da ordem dele.
+    """
+    proibido = claude_estado.motivo_proibido()
+    if proibido:
+        raise Recusa(f"{proibido}; nem o --forcar passa (só ele libera, pelo app)")
     with _trava():
         estado = ler_estado()
         config = ler_config()
@@ -724,10 +736,13 @@ def _gravar_vigia(dados: dict) -> bool:
     return False
 
 
-def vigia_pulsar(desde: str, pid: int | None = None) -> bool:
-    return _gravar_vigia({"situacao": "ouvindo", "pid": int(pid or os.getpid()),
-                          "desde": desde, "pulso_em": _agora_iso(),
-                          "pulso_s": VIGIA_PULSO_S})
+def vigia_pulsar(desde: str, pid: int | None = None, segurando: str = "") -> bool:
+    """`segurando`: ouvindo, mas sem acordar ninguem (Claude proibido)."""
+    dados = {"situacao": "ouvindo", "pid": int(pid or os.getpid()),
+             "desde": desde, "pulso_em": _agora_iso(), "pulso_s": VIGIA_PULSO_S}
+    if segurando:
+        dados["segurando"] = _curto(segurando, 200)
+    return _gravar_vigia(dados)
 
 
 def vigia_saiu(motivo: str, desde: str, pid: int | None = None) -> bool:
@@ -850,6 +865,11 @@ def situacao_do_vigia(agora: float | None = None, estado: dict | None = None) ->
             saida["situacao"] = "ouvindo"
             saida["texto"] = (f"O orquestrador está ouvindo (último pulso às "
                               f"{str(vigia.get('pulso_em'))[11:19]}).")
+            if vigia.get("segurando"):
+                # Claude proibido: o `esperar` esta vivo, mas nao acorda
+                saida["segurando"] = str(vigia["segurando"])
+                saida["texto"] = (f"O orquestrador está ouvindo, mas segurando: "
+                                  f"{vigia['segurando']}. Nada é aplicado até liberar.")
             return saida
         saiu_idade = _idade_s(vigia.get("saiu_em"), agora)
         if (vigia.get("situacao") == "saiu" and vigia.get("motivo") in
@@ -897,6 +917,14 @@ def sem_ouvinte(comandos: list[dict], vigia: dict, agora: float | None = None) -
     idades = [(i, c) for i, c in idades if i is not None]
     if not idades:
         return None
+    proibido = claude_estado.motivo_proibido()
+    if proibido:
+        # Nao e defeito nem ausencia: e a ordem dele. Os comandos ficam
+        # guardados e saem quando ele liberar (o `esperar` os devolve).
+        return {"tipo": "guardado", "comando": None, "desde": None, "idade_s": None,
+                "quantos": len(pendentes_),
+                "texto": (f"{proibido}: {len(pendentes_)} comando(s) guardado(s); "
+                          "saem quando ele liberar.")}
     idade, comando = max(idades, key=lambda x: x[0])
     if idade < SEM_OUVINTE_S or vigia.get("situacao") == "acordou":
         return None
@@ -923,25 +951,51 @@ def esperar(intervalo: float = 5.0, *, como_json: bool = False,
     Pulsa o `vigia.json` a cada `pulso_s` (e o estado a cada 5 min, que diz
     "a sessao esta aberta"). A saida fica registrada com o motivo, inclusive
     quando e interrompida; morto a forca, o pulso envelhece sozinho.
+
+    CLAUDE PROIBIDO (claude_estado, 29/09/2026): cada saida do `esperar`
+    acorda a sessao principal, e acordar e usar o Claude. Enquanto proibido,
+    ele NAO sai com comando nem com resposta nova: os comandos ficam
+    pendentes na fila e o cursor das decisoes nao anda. So sai quando o
+    estado volta a `liberado`, com `{"tipo": "claude_liberado"}` na frente e
+    tudo o que ficou guardado junto.
     """
     desde = _agora_iso()
     pid = os.getpid()
     ultimo_vigia = ultimo_estado = float("-inf")
     motivo = "interrompido"
+    segurou = False                 # esteve proibido enquanto esperava
     try:
         while True:
             agora = relogio()
+            estado_claude = claude_estado.ler()
             if agora - ultimo_vigia >= pulso_s:
-                vigia_pulsar(desde, pid)
+                if estado_claude["liberado"]:
+                    vigia_pulsar(desde, pid)
+                else:
+                    vigia_pulsar(desde, pid, segurando=estado_claude["texto"])
                 ultimo_vigia = agora
-            lista = pendentes()
-            novas, ultima = decisoes_novas()
-            if lista or novas:
-                _imprimir_pendentes([dict(c, tipo="comando") for c in lista] + novas,
-                                    como_json)
-                avancar_vistas(ultima)
-                motivo = "comando" if lista else "decisao_nova"
-                return 0
+            if not estado_claude["liberado"]:
+                segurou = True
+            else:
+                lista = pendentes()
+                novas, ultima = decisoes_novas()
+                if segurou:
+                    liberado_ = {"tipo": "claude_liberado", "em": estado_claude["em"],
+                                 "por": estado_claude["por"],
+                                 "motivo": estado_claude["motivo"],
+                                 "texto": estado_claude["texto"]}
+                    _imprimir_pendentes([liberado_]
+                                        + [dict(c, tipo="comando") for c in lista]
+                                        + novas, como_json)
+                    avancar_vistas(ultima)
+                    motivo = "claude_liberado"
+                    return 0
+                if lista or novas:
+                    _imprimir_pendentes([dict(c, tipo="comando") for c in lista] + novas,
+                                        como_json)
+                    avancar_vistas(ultima)
+                    motivo = "comando" if lista else "decisao_nova"
+                    return 0
             if agora - ultimo_estado > 300:
                 try:
                     pulso()
@@ -990,6 +1044,10 @@ class _AvisoSemOuvinte:
     def verificar(agora: float | None = None, avisar=None) -> str | None:
         """Uma olhada. Devolve o texto avisado (ou None)."""
         agora = time.time() if agora is None else agora
+        if claude_estado.motivo_proibido():
+            # Claude proibido: comando parado e a ordem dele, nao ausencia.
+            # Nada de "ninguem ouvindo" nem "voltou" enquanto durar.
+            return None
         if avisar is None:
             from .acoes import avisar_texto as avisar
         comandos, _ = comandos_com_situacao()
@@ -1550,7 +1608,19 @@ def medir(rodar=subprocess.run) -> tuple[dict | None, str]:
 
 
 def sondar(rodar=subprocess.run) -> dict:
-    """Mede e grava. Falha tambem e gravada: a tela nao pode mostrar o velho."""
+    """Mede e grava. Falha tambem e gravada: a tela nao pode mostrar o velho.
+
+    Com o Claude proibido, NAO chama o claude.exe e nao grava nada: devolve
+    o registro de antes com `parada` (a tela le a mesma coisa em `ler_uso`).
+    """
+    proibido = claude_estado.motivo_proibido()
+    if proibido:
+        try:
+            anterior = _ler_json(arquivo("uso.json"), {}) or {}
+        except Recusa:
+            anterior = {}
+        return dict(anterior if isinstance(anterior, dict) else {},
+                    parada=f"sonda parada: {proibido}")
     medicao, motivo = medir(rodar)
     with _trava():
         anterior = _ler_json(arquivo("uso.json"), {}) or {}
@@ -1581,7 +1651,8 @@ def ler_uso(agora: float | None = None) -> dict:
     """O uso como a tela deve mostrar: NUNCA um numero velho como se fosse atual.
 
     situacao: "ok" (medicao valida), "velha" (a sonda falhou depois dela,
-    passou do prazo, ou a janela ja renovou) ou "nunca". So "ok" leva numero.
+    passou do prazo, ou a janela ja renovou), "parada" (Claude proibido: a
+    sonda nao roda) ou "nunca". So "ok" leva numero.
     """
     agora = time.time() if agora is None else agora
     config = ler_config()
@@ -1603,6 +1674,20 @@ def ler_uso(agora: float | None = None) -> dict:
              "passou_teto": False, "forca_total_antes_min": config["forca_total_antes_min"],
              "janela_forca_total": False, "falhas_seguidas":
                  int(registro.get("falhas_seguidas") or 0)}
+    estado_claude = claude_estado.ler()
+    if not estado_claude["liberado"]:
+        # A sonda nao roda: numero nenhum e atual. Diz desde quando esta
+        # parada, e guarda so a hora da ultima medicao (o "desde").
+        saida["situacao"] = "parada"
+        saida["motivo"] = ("sonda parada: " + (
+            f"Claude proibido desde {claude_estado.hhmm(estado_claude['em'])}"
+            if estado_claude["em"] else estado_claude["texto"]))
+        try:
+            saida["desde"] = max(float(c[0].get("gravado_em") or 0)
+                                 for c in candidatos) if candidatos else None
+        except (TypeError, ValueError):
+            saida["desde"] = None
+        return saida
     if not candidatos:
         return saida
     try:
@@ -1675,7 +1760,7 @@ class _Sonda:
                 minutos = int(ler_config().get("sonda_min") or 0)
             except (Recusa, TypeError, ValueError):
                 minutos = PADRAO_CONFIG["sonda_min"]
-            if minutos > 0:
+            if minutos > 0 and claude_estado.liberado():
                 try:
                     sondar()
                 except Exception as exc:                     # noqa: BLE001
@@ -1929,6 +2014,8 @@ def para_o_app(agora: float | None = None) -> dict:
         # quem ouve os comandos (o `esperar`), e o aviso de pendente sem ouvinte
         "vigia": vigia,
         "sem_ouvinte": sem_ouvinte(comandos, vigia, agora),
+        # o interruptor do Claude (liberado / proibido), com quem e desde quando
+        "claude": claude_estado.para_o_app(),
         "estado": estado or _estado_vazio_sem_disco(),
         # a ORDEM da fila, num resumo: a tela devolve como `esperava` ao
         # reordenar (409 se a fila mudou no PC no meio do arrasto)
@@ -2050,6 +2137,9 @@ def _imprimir_pendentes(lista: list, como_json: bool) -> None:
         print(json.dumps(lista, ensure_ascii=False, indent=2))
         return
     for c in lista:
+        if c.get("tipo") == "claude_liberado":
+            print(f"claude_liberado  {c.get('texto')}")
+            continue
         if c.get("tipo") == "decisao_nova":
             if c.get("ilegivel"):
                 print(f"decisao_nova  #{c['n']}  linha ilegível no _eventos.jsonl")
@@ -2066,6 +2156,44 @@ def _imprimir_pendentes(lista: list, como_json: bool) -> None:
         print("leia com: python -m remoto.decisoes leitor")
     if not lista:
         print("nenhum comando pendente")
+
+
+def texto_do_aviso_claude(liberado: bool, por: str, em: str | None) -> str:
+    """O aviso do Telegram quando o interruptor muda (app ou CLI)."""
+    return (f"🤖 Claude {'liberado' if liberado else 'proibido'} {por} às "
+            f"{claude_estado.hhmm(em) if em else '?'}"
+            + ("" if liberado else
+               " — nenhum agente, sonda ou apuração roda; os comandos da Mesa "
+               "ficam guardados."))
+
+
+def _cli_claude(acao: str, *, motivo: str = "", por: str = "", avisar: bool = True,
+                entregar=None) -> int:
+    """`claude status|liberar|proibir`. Status: 0 liberado, 1 proibido."""
+    if acao == "status":
+        estado = claude_estado.ler()
+        print(estado["texto"])
+        for linha in claude_estado.historico(5):
+            print(f"  {linha.get('em')}  {'liberado' if linha.get('liberado') else 'proibido'}"
+                  f"  por {linha.get('por')}"
+                  + (f" — {linha.get('motivo')}" if linha.get("motivo") else ""))
+        return 0 if estado["liberado"] else 1
+    feito = claude_estado.mudar(acao == "liberar", por=por, motivo=motivo)
+    estado = feito["estado"]
+    print(estado["texto"] if feito["mudou"] else f"já estava assim: {estado['texto']}")
+    # Nada na linha do tempo do `estado.json`: gravar la renova o
+    # `atualizado_em`, que e o "sinal de vida" da sessao, e um toque no
+    # interruptor pelo app faria a Mesa dizer que a sessao esta no ar. O
+    # registro e o `claude_historico.jsonl`, que a Mesa mostra.
+    if feito["mudou"] and avisar:
+        texto = texto_do_aviso_claude(estado["liberado"], f"por {por}", estado["em"])
+        if entregar is None:
+            from . import acoes
+            acoes.avisar_texto(texto)
+            acoes._FILA_AVISOS.join()         # a CLI sai logo: espera a entrega
+        else:
+            entregar(texto)
+    return 0
 
 
 def main(argv=None) -> int:
@@ -2136,6 +2264,13 @@ def main(argv=None) -> int:
     acs.add_argument("--modo-permissao", default=None)
     for nome in ("config", "estado", "uso", "pulso", "onde", "sonda", "vigia"):
         sub.add_parser(nome)
+    cla = sub.add_parser("claude", help="o interruptor do Claude: status, liberar, proibir")
+    cla.add_argument("acao", nargs="?", default="status",
+                     choices=("status", "liberar", "proibir"))
+    cla.add_argument("--motivo", default="")
+    cla.add_argument("--por", default="orquestrador (CLI)")
+    cla.add_argument("--sem-aviso", action="store_true",
+                     help="não manda o aviso no Telegram")
     args = p.parse_args(argv)
     # Quem le esta saida (o orquestrador) le por pipe: no Windows seria cp1252,
     # e um emoji da arvore derrubava o `arvore` com UnicodeEncodeError.
@@ -2221,10 +2356,16 @@ def main(argv=None) -> int:
             print(json.dumps(ler_uso(), ensure_ascii=False, indent=2))
         elif args.cmd == "sonda":
             registro = sondar()
+            if registro.get("parada"):
+                print(registro["parada"], file=sys.stderr)
+                return 2
             print(json.dumps(registro, ensure_ascii=False, indent=2))
             return 0 if not registro.get("motivo") else 2
         elif args.cmd == "pulso":
             print(pulso())
+        elif args.cmd == "claude":
+            return _cli_claude(args.acao, motivo=args.motivo, por=args.por,
+                               avisar=not args.sem_aviso)
         else:
             print(f"pasta: {pasta()}")
             for nome in ("estado.json", "config.json", "comandos.jsonl",

@@ -287,6 +287,7 @@ def test_toda_resposta_json_leva_a_casca_e_o_relogio(servidor, mundo, tmp_path, 
     casca = tmp_path / "casca"
     casca.mkdir()
     for nome in {a for a, _t in api_http.ESTATICOS.values()}:
+        (casca / nome).parent.mkdir(parents=True, exist_ok=True)   # icones/ (29/09)
         (casca / nome).write_bytes((api_http.APP / nome).read_bytes())
     monkeypatch.setattr(api_http, "APP", casca)
     token = _parear(servidor)

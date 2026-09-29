@@ -228,8 +228,23 @@ def prompt_de(erros: list[dict]) -> str:
     return "\n".join(linhas)
 
 
+def claude_proibido() -> str:
+    """"" se o Adrian deixa usar o Claude; senao, o motivo (29/09/2026).
+
+    O interruptor mora em `claude.json` (remoto/claude_estado.py) e o app o
+    liga e desliga. E lido a cada chamada: o bot dispara `--apurar` como
+    processo novo, e o `claude -p` so sai daqui se o interruptor deixar.
+    """
+    from . import claude_estado
+    return claude_estado.motivo_proibido()
+
+
 def apurar(erros: list[dict], *, log=print) -> str | None:
     """Roda a sessao de leitura e devolve o texto do diagnostico."""
+    proibido = claude_proibido()
+    if proibido:
+        log(f"[apurador] apuração pulada: {proibido}.")
+        return None
     executavel = caminho_do_claude()
     if not executavel:
         log("[apurador] nao achei o executavel do Claude Code nesta maquina.")
@@ -815,6 +830,9 @@ def consertar(erros: list[dict], diagnostico: str, *, log=print) -> dict:
     `outputs/_apuracoes/conserto_<carimbo>.patch`: sem suite, sem commit, sem
     branch. Testar e `/testar_conserto <carimbo>`; aplicar e com uma pessoa.
     """
+    proibido = claude_proibido()
+    if proibido:
+        return {"mexeu": False, "motivo": proibido}
     executavel = caminho_do_claude()
     recusa = executavel_aceito(executavel)
     if recusa:
@@ -1022,6 +1040,19 @@ def uma_volta(*, log=print) -> dict:
         erros = pendentes()
         if not erros:
             return {"feito": False, "motivo": "nenhum erro novo"}
+        proibido = claude_proibido()
+        if proibido:
+            # NAO marca: os erros ficam para quando ele liberar (dentro da
+            # janela de JANELA_H). O diario diz que a apuracao foi pulada, e
+            # por que; `log` e nao `erro`, para nao virar alerta nem apuracao.
+            texto_pulado = (f"apuração pulada: {proibido} "
+                            f"({len(erros)} erro(s) guardado(s))")
+            log(f"[apurador] {texto_pulado}")
+            with contextlib.suppress(Exception):
+                from builds import atividade
+                atividade.registrar(FABRICA, "log", texto_pulado, "builds")
+            return {"feito": False, "motivo": texto_pulado, "pulada": True,
+                    "erros": len(erros)}
         texto = apurar(erros, log=log)
         # Marca mesmo quando a apuracao falha: senao o mesmo erro seria
         # tentado a cada volta, e um erro que o Claude nao consegue explicar

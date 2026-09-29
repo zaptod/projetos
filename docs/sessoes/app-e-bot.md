@@ -58,6 +58,8 @@ Tudo vive em `remoto/`:
 - `comandos.py`, `bot.py`, `api.py`, `relatorios.py`, `apurador.py` — o bot.
   O `/publicar` do bot **não publica** (ver §3.3).
 - `vigia_tailnet.py` — a vigia do tailnet, no laço do bot (ver §4).
+- `claude_estado.py` — o **interruptor do Claude** (29/09, §12.2): liberado
+  ou proibido, em `claude.json`; a sonda, o apurador e o orquestrador obedecem.
 - `app/conversa.js` + as rotas `/api/correio*` — a **conversa com cada IA**
   (29/09, Vila das IAs fase 2, §10). O correio e o carteiro moram em `ias/`
   (`correio.py`, `carteiro.py`), fora de `remoto/`: o servidor só lê e
@@ -111,7 +113,8 @@ Tudo vive em `remoto/`:
 Estado em disco, em `%LOCALAPPDATA%\neural-fights\`: `app_celular.json`
 (aparelhos pareados, só o hash do token), `app_celular_acoes.jsonl` (rastro),
 `orquestrador\` (a Mesa de comando, §7),
-`app_celular_em_voo.json` (publicações sem desfecho), `app_celular_tarefas/`
+`app_celular_em_voo.json` (publicações sem desfecho), `claude.json` +
+`claude_historico.jsonl` (o interruptor do Claude, §12.2), `app_celular_tarefas/`
 (uma pasta por tarefa), `remoto.json` (token do bot), `decisoes.lock` e
 `decisoes_midia\<id>\` (mídia copiada de pasta temporária; a mídia nunca vai
 para o git).
@@ -124,7 +127,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 643 testes (29/09)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 660 testes (29/09, 14h)
 python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 53 (o correio e o carteiro, §10)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
@@ -391,6 +394,7 @@ DOM e clicando.
 | `consequencias[]` em `decisoes/<projeto>/<id>.json` | o **orquestrador**, só pela CLI `leitor marcar` (e a Mesa, sozinha, nas respostas de capacidade) | o Grimório mostra "o que isto gerou" e o selo "não lida ainda" (§8) |
 | `%LOCALAPPDATA%\neural-fights\orquestrador\` | o **orquestrador** escreve `estado.json`, `decisoes_orquestrador.jsonl` e `comandos_aplicados.jsonl` pela CLI; o `aplicado` escreve `config.json` e `config_historico.jsonl`; o `esperar` escreve `vigia.json` (o pulso, §9); **esta sessão** escreve `comandos.jsonl`, `uso*.json(l)`, `acessos.json` e `aviso_sem_ouvinte.json` | ver §7; escrita atômica, sob `orquestrador.lock` |
 | bloco `decisoes:inicio/fim` em cada `docs/sessoes/<parte>.md` | **gerado** por `remoto/decisoes.py` | cada parte lê como entrada; não edite à mão (é regenerado a cada resposta) |
+| `claude.json` + `claude_historico.jsonl` (o interruptor do Claude, §12.2) | **esta sessão**: o servidor (`POST /api/claude`) e a CLI `orquestrador claude` gravam, por `claude_estado.mudar` (atômico, sob `claude.json.lock`) | a sonda, o apurador, o `agente-inicio` e o `esperar` só **leem**, a cada vez |
 | grade de postagem | `ferramentas/postar.py` | o app respeita a janela (−20/−25/−40 min conforme o destino, +18 min) e recusa se `postar.py` estiver vivo |
 | dia de grade | `builds.publicar.conferencia` | `relatorios.metas` usa `_horario_da_grade`, `_dia_de_grade`, `_abertura_e_fechamento` e `dia_de_grade_fechado`, todas atrás de `relatorios._conferencia()`. As três primeiras são **internas** de lá: se a conferência as renomear, o `/metas` responde "falhou" (e os testes do remoto acusam). Pedido em aberto: uma função pública `dia_de_grade(instante)` |
 
@@ -443,9 +447,11 @@ python -m remoto.orquestrador aplicado <id> [--recusado MOTIVO] [--nota N]
 python -m remoto.orquestrador esperar [--json]     # bloqueia até chegar comando; vale como pulso
 python -m remoto.orquestrador config | estado | uso | pulso | sonda | onde
 python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
+python -m remoto.orquestrador claude [status|liberar|proibir] [--motivo M] [--sem-aviso]   # §12.2
 ```
 
-- O `agente-inicio` **recusa** (código 3) em três casos:
+- O `agente-inicio` **recusa** (código 3) com o **Claude proibido** (§12.2),
+  e aí nem o `--forcar` passa. Liberado, recusa em três casos:
   - passou da capacidade (`um_por_vez` = 1 agente; nos outros modos, o
     `max_paralelo`);
   - a fila está pausada;
@@ -540,7 +546,8 @@ python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
   - as opções são manter, trocar pela alternativa, ou outro caminho;
   - também grava um comando `contestar`, para o orquestrador ver.
 
-**A sonda de uso** roda no servidor, a cada `sonda_min` do `config.json`
+**A sonda de uso** (com o Claude proibido ela não roda, e a tela diz "Sonda
+parada: Claude proibido desde HH:MM"; §12.2) roda no servidor, a cada `sonda_min` do `config.json`
 (padrão 10; 0 desliga). É a técnica do `~/.claude/vigia_uso.py`: `claude.exe
 -p ok --model haiku --output-format stream-json --verbose`, lendo o
 `rate_limit_event`. O `uso_sessao.json` do vigia entra como fonte extra
@@ -1144,3 +1151,90 @@ da Vila com o app aberto. Casca `v18`.
 atualiza o manifest (o Chrome confere de tempos em tempos, pode levar um
 dia) ou quando ele é reinstalado. Se o ícone velho ficar, remover da tela
 inicial e adicionar de novo.
+
+### 12.2 O interruptor "Claude liberado / proibido"
+
+O Adrian quer poder **proibir todo uso automático do Claude** e ligar e
+desligar pelo app. "Usar o Claude" é tudo que chama o Claude Code sozinho:
+
+| quem | o que faz com o Claude proibido |
+| --- | --- |
+| a **sonda de uso** do servidor (`claude.exe -p ok --model haiku`) | não roda (`_Sonda` pula; `sondar` devolve `parada` sem chamar nem gravar). `ler_uso` dá `situacao: "parada"` e a Mesa diz "Sonda parada: Claude proibido desde HH:MM · última medição às …", **sem barra nem número** |
+| o **apurador** do bot (`claude -p`) | `uma_volta` não chama o Claude, **não marca** os erros (ficam para quando liberar, dentro das 12 h) e escreve no diário `apurador/log` "apuração pulada: Claude proibido pelo Adrian desde HH:MM (N erro(s) guardado(s))". `apurar` e `consertar` também recusam sozinhos (guarda no ponto, não só no funil) |
+| `orquestrador agente-inicio` | recusa com código 3: "Claude proibido pelo Adrian desde HH:MM; nem o --forcar passa" — com ou sem `--forcar` |
+| `orquestrador esperar` | **não acorda** com comando nem com decisão nova (cada saída acorda a sessão principal, e isso é uso). Os comandos ficam pendentes e o cursor das decisões não anda. O `vigia.json` segue pulsando, com `segurando: "Claude proibido desde …"`. Sai **só** quando o estado volta a `liberado`, com `{"tipo": "claude_liberado", "em", "por", "motivo", "texto"}` na frente e os comandos e decisões guardados atrás (motivo da saída: `claude_liberado`) |
+| o aviso "ninguém ouvindo" | vira `guardado` na Mesa (sem faixa vermelha nem selo) e **não** manda Telegram: comando parado é a ordem dele, não ausência |
+
+O carteiro das IAs (`ias/`) abre navegador, não o Claude: não é afetado.
+
+**O estado** (`remoto/claude_estado.py`): `%LOCALAPPDATA%\neural-fights\claude.json`
+= `{liberado, em, por, motivo}`, escrita atômica sob `claude.json.lock`, e
+cada mudança anexada em `claude_historico.jsonl` (com o valor de antes).
+Pedir o que já vale não reescreve nada (toque duplo = uma linha).
+- **Ausente = liberado** (como tudo era antes), com `origem: "sem_arquivo"`;
+  a tela diz "nunca foi mudado", e a primeira leitura sem arquivo fica
+  registrada no histórico (na máquina real: 14:04:10, na subida do 8931).
+- **Ilegível = PROIBIDO** (falha fechado, como o resto do app).
+- Lido a cada chamada: ninguém guarda em memória. O bot dispara o
+  apurador como **processo novo** (`python -m remoto --apurar`), então o
+  bot em si **não precisa reiniciar** para o apurador obedecer.
+- `NF_CLAUDE_ESTADO` troca o arquivo (instância de teste); com
+  `NEURAL_FIGHTS_RUNTIME_DIR` (pytest, `testar.py`) ele mora lá; e o
+  `remoto/conftest.py` põe um `claude.json` por teste.
+
+**No app:** o botão grande "🤖 Claude: LIBERADO / PROIBIDO" (verde /
+vermelho, "desde HH:MM · pelo app (aparelho)", "tocar para liberar/proibir")
+fica no **topo da Mesa, preso ao rolar** (`position: sticky`), e no topo da
+**Bancada**. Dois toques: o botão e o "Confirmar" do diálogo, que explica o
+que muda. Com proibido, a Mesa mostra a faixa "Claude proibido desde HH:MM —
+nenhum agente, sonda ou apuração roda; os comandos ficam guardados.", e um
+comando mandado pela Mesa diz "guardado — o Claude está proibido; o comando
+sai quando você liberar". O toque grava **direto** no estado pelo servidor
+(`POST /api/claude {"liberar": true|false}` — o alvo, não "inverter"; só com
+token, sem depender de `--acoes`), porque com o Claude proibido um "liberar"
+que fosse comando nunca seria aplicado. `GET /api/claude` e o campo `claude`
+do `/api/orquestrador` trazem o estado e as últimas mudanças. Cada mudança
+manda no Telegram "🤖 Claude proibido pelo app às HH:MM — nenhum agente,
+sonda ou apuração roda; os comandos da Mesa ficam guardados." (ou
+"liberado"). A CLI manda o mesmo, com "por <quem>" (`--sem-aviso` cala). A
+mudança **não** entra na linha do tempo do `estado.json`: gravar lá renova o
+"sinal de vida" da sessão. Casca `v19`.
+
+Armadilha medida na prova: o `top` de um `position: sticky` dentro do livro
+conta da borda **interna do padding** (64 px + safe-area) e da moldura da
+Mesa (12 px). Com `top: 54px` ele parava em y = 130, cobrindo a tela; com
+-10 px (Bancada) e -22 px (Mesa) ele para em y = 54, logo abaixo do
+cabeçalho.
+
+**Testes** (`remoto/test_claude_estado.py`, 16, com dublê — nenhum chama o
+Claude): caso ZERO (sem arquivo), ilegível, gravação e histórico, a sonda
+pulada (e o laço), a CLI `sonda`, o apurador pulado (diário, sem marcar,
+`apurar` e `consertar`), o apurador liberado como antes, `agente-inicio`
+recusado com e sem `--forcar`, o `esperar` segurando e saindo só no liberar
+(inclusive com comando chegando no meio), o "guardado" sem Telegram, a CLI
+`claude` e a rota do app (401 sem token, 400 sem alvo, alternância, toque
+repetido, aviso). Suíte do `remoto/`: 660 verdes.
+
+**Prova de tela (29/09, 14:04):** 390×844, clicando, na 8934
+(`scratchpad/prova_claude.py` + `servidor_conversa.py`, `NF_CLAUDE_ESTADO`
+próprio, avisos num arquivo). 33 conferências, 0 erros de JS; telas em
+`E:\projetos-wt\_prova_claude\telas\`, relatório em `prova_claude.txt`:
+- o ícone novo nos `<link>`, e os três do manifest saem 200 `image/png`;
+- caso ZERO: "LIBERADO · nunca foi mudado", sem faixa;
+- tocar e **cancelar** não cria o `claude.json` nem avisa;
+- tocar e **confirmar**: `liberado: false`, "PROIBIDO · desde 14:04 · pelo
+  app", a faixa, e o aviso "Claude proibido pelo app às 14:04";
+- Limites: "Sonda parada: Claude proibido desde 14:04", sem nenhum "%";
+  rolado 3408 px até o fim, o botão segue em y = 54;
+- o "+" da capacidade dá o toast "guardado…"; `agente-inicio` com e sem
+  `--forcar` sai 3 com "Claude proibido pelo Adrian desde 14:04";
+- a Bancada mostra PROIBIDO; liberar por lá volta a LIBERADO e avisa, e a
+  Mesa perde a faixa. Histórico: padrão → proibido → liberado.
+
+**O 8931 foi reiniciado às 14:04:07** (`scratchpad/reiniciar_app.ps1`, pela
+tarefa, na janela :55–:10): PID 1920, escutando às 14:04:15, casca `v19`,
+`/api/claude` respondendo 401 sem token. O bot **não** foi reiniciado (ver
+acima: o apurador sobe como processo novo a cada volta).
+
+**Estado deixado:** liberado (arquivo ausente). Quem proíbe é o Adrian (ou o
+orquestrador, a pedido dele), pelo app ou pela CLI.

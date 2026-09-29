@@ -207,6 +207,7 @@ async function comandosMostrar() {
       }
     }, TAREFAS_MS);
   }
+  claudeCarregar();                       // o interruptor do Claude, no topo
   try {
     await comandosCarregarCatalogo();
     comandosDesenhar();
