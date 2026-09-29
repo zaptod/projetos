@@ -8,7 +8,15 @@
       "opcao": "quase"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T21:41:20",
+      "opcao": "pais",
+      "origem": "app"
+    }
+  ],
   "id": "duelo-plano-quem-escolhe",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "Cada duelo passa a mostrar UM plano dos humanos (parede de lanças, isca e emboscada, armadilhas, barricada, círculo). Quem escolhe qual plano entra em cada vídeo?",
   "projeto": "jogo-zombie",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Duelo: quem escolhe o plano?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T21:41:20",
+    "opcao": "pais"
+  }
 }
