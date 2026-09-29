@@ -18,7 +18,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ✅ **Grok: por onde entra na roda?** — grok.com com a sua conta X (gratuito; você loga uma vez) (29/09/2026) `ias-grok-acesso`
 - ✅ **Quando você fala com uma IA e a pipeline precisa da mesma conta** — Você: a pipeline espera a sua conversa terminar (29/09/2026) `ias-prioridade-conversa`
 - ✅ **Cada IA tem UM chat de longa duração ou um chat novo por assunto?** — Um chat 'casa' por IA, com resumo periódico (29/09/2026) `ias-chat-persistente`
-- ⏳ **Fichas das IAs (fase 1): li?** — As 7 fichas de capacidades (Grok, Gemini, ChatGPT, DeepSeek, PicassoIA, DreamFace, Digen) estao prontas em docs/ias/fichas.md e ias/fichas/*.json, medidas nas sessoes guiadas de 29/09 (01:44-02:40) e, para PicassoIA/DreamFace/Digen, pelo padrao em producao. A tabela esta na imagem. Fatos novos para voce ver: (1) a conta do Gemini mostra o selo PLUS em /usage (pool de 5 h + semanal), enquanto a decisao gemini-pago diz 'fica na gratuita'; (2) o PicassoIA limita a 2 geracoes em paralelo (+5 com creditos); (3) o DreamFace nunca gerou em producao; (4) no Grok, Auto/Expert/Heavy, 720p e 10s/15s pedem SuperGrok. `ias-fichas-lidas`
+- ✅ **Fichas das IAs (fase 1): li?** — Li; seguir para a fase 2 (falar com cada uma pelo app) (29/09/2026) `ias-fichas-lidas`
 
 **Jogo zombie**
 - ✅ **Formato do 1º vídeo** — Duelo (27/09/2026) `formato-do-primeiro-video`

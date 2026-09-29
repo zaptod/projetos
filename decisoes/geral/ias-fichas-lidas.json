@@ -3,7 +3,15 @@
   "contexto": "Ficou sem medir: tempo do OK no Grok e no Gemini (voce fechou antes do teste), limite de caracteres dos campos, imagem 1:1 com resolucao/alfa no Grok/Gemini/ChatGPT, Configuracoes > Uso do Grok, login/creditos de hoje do DreamFace e do Digen. Proximo: fase 2 (falar com cada uma pelo app), ja com as suas 3 decisoes de 02:24-02:26 (Grok pelo site com a conta X; voce tem prioridade sobre a pipeline; um chat 'casa' por IA).",
   "criado": "2026-09-29T02:39:20.098822",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T02:43:59",
+      "opcao": "seguir",
+      "origem": "app"
+    }
+  ],
   "id": "ias-fichas-lidas",
   "midias": [
     {
@@ -49,7 +57,11 @@
   ],
   "pergunta": "As 7 fichas de capacidades (Grok, Gemini, ChatGPT, DeepSeek, PicassoIA, DreamFace, Digen) estao prontas em docs/ias/fichas.md e ias/fichas/*.json, medidas nas sessoes guiadas de 29/09 (01:44-02:40) e, para PicassoIA/DreamFace/Digen, pelo padrao em producao. A tabela esta na imagem. Fatos novos para voce ver: (1) a conta do Gemini mostra o selo PLUS em /usage (pool de 5 h + semanal), enquanto a decisao gemini-pago diz 'fica na gratuita'; (2) o PicassoIA limita a 2 geracoes em paralelo (+5 com creditos); (3) o DreamFace nunca gerou em producao; (4) no Grok, Auto/Expert/Heavy, 720p e 10s/15s pedem SuperGrok.",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Fichas das IAs (fase 1): li?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T02:43:59",
+    "opcao": "seguir"
+  }
 }
