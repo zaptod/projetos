@@ -48,6 +48,8 @@ def main(argv=None) -> int:
     c.add_argument("--demora", type=float, default=2.0, help="(dublê) segundos por resposta")
     c.add_argument("--janela", type=float, default=20.0,
                    help="(dublê) segundos segurando a conta depois de responder")
+    c.add_argument("--saida", metavar="ARQUIVO",
+                   help="log aberto pelo Python (o >> do cmd tranca o arquivo entre tarefas)")
 
     m = sub.add_parser("correio", help="a caixa de uma IA: ler, enviar, marcar vistas")
     m.add_argument("ia", choices=("deepseek", "chatgpt", "gemini", "grok"))

@@ -939,9 +939,48 @@ conferências OK, 0 erros de JS; telas em
   PREDIOS` e a arte não têm o Grok; no app ele entra pelos chips da tela
   Conversar. Sem prédio, a resposta dele não vira balão no canvas (só no
   Telegram e na tela);
-- **tarefa do Windows para o carteiro** (`NeuralFights_carteiro`, como a do
-  app, a cada 10 min pelo `oculto.vbs`, com `carteiro.cmd`) — ver o fim
-  desta seção; sem ela, o carteiro sobe à mão;
+- **tarefa do Windows para o carteiro** (`NeuralFights_carteiro`): o
+  agente não pôde registrar; o XML e o comando estão no fim desta seção;
 - anexo no DeepSeek (seletores, historias);
 - o balão no canvas fica atrás do placar quando o prédio está na fileira de
   cima com a câmera no topo (o cartão mostra a resposta de qualquer jeito).
+
+**O envio REAL de ponta a ponta (29/09, 07:55–07:56):** pelo app (instância
+8936 com a casca nova, pareamento próprio e o correio **real**), "PEDIDO DE
+TEXTO: responda só OK" para o DeepSeek, com a tela fechada em seguida:
+- 07:55:04 a mensagem entrou na caixa (`%LOCALAPPDATA%\neural-fights\ias\deepseek\correio.jsonl`, id `9407c5ad`);
+- 07:55:56 `python -m ias carteiro --uma-vez` subiu, 07:56:00 abriu a **casa
+  nova** do DeepSeek (Chrome no perfil `deepseek__principal`, chat
+  `chat.deepseek.com/a/chat/s/cc2d815e-…`, guardado em `casa.json`);
+- 07:56:08 respondida: "OK", 8,6 s (`modelo: DeepSeek (site)`), 4 linhas no
+  correio (pendente → entregue → respondida → visto);
+- na Vila (8936), o habitante do DeepSeek ficou "trabalhando · conversa
+  Adrian · conta: principal" e o cartão mostrou "💬 OK"
+  (`E:\projetos-wt\_prova_conversa_real\telas\real_4_vila_resposta_real.png`);
+- 07:56:30 "aviso no Telegram entregue" (o app não estava olhando a caixa);
+- reaberta a tela, "respondida 07:56 em 9 s" e o balão "OK"
+  (`real_4_respondida.png`; relatório em `prova_real.txt`, log do carteiro em
+  `carteiro_real.log`).
+
+**O 8931 foi reiniciado às 07:55:02** (`scratchpad/reiniciar_app.ps1`, pela
+tarefa): PID 14896, escutando às 07:55:10, com a casca `v15` e as rotas do
+correio.
+
+**O carteiro como tarefa do Windows — fica para o Adrian.** O lançador
+`E:\projetos\carteiro.cmd` está no repositório (log aberto pelo Python com
+`--saida outputs\carteiro.txt`; segundo carteiro sai com código 3 pela
+trava `ias__carteiro`). A tarefa `NeuralFights_carteiro`, espelho da do app
+(a cada 10 min, `oculto.vbs`, sem janela), **não pôde ser registrada pelo
+agente** (a permissão da sessão barrou o `schtasks /create`). O XML pronto
+está em `E:\projetos-wt\_prova_conversa_real\carteiro_task.xml`; para
+registrar:
+
+```
+schtasks /create /tn NeuralFights_carteiro /xml E:\projetos-wt\_prova_conversa_real\carteiro_task.xml
+schtasks /run /tn NeuralFights_carteiro
+```
+
+Até lá o carteiro sobe à mão (`python -m ias carteiro --saida
+outputs\carteiro.txt`, uma vez; ele fica no ar). Com ele parado, a tela diz
+"o carteiro está parado (sinal HH:MM): a mensagem fica na caixa até ele
+voltar", e nada se perde.

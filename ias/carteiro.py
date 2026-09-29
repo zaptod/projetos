@@ -553,7 +553,15 @@ def avisar_telegram(texto: str) -> bool:
 
 def main(args) -> int:
     """`python -m ias carteiro`: um carteiro so por vez (trava propria)."""
+    import sys
     import builds.travas as travas
+    if getattr(args, "saida", None):
+        # O proprio Python abre o log: o `>>` do cmd tranca o arquivo e a
+        # segunda tarefa morre sem rastro (memoria agendador-arquivo-trancado).
+        alvo = Path(args.saida)
+        alvo.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(alvo, "a", encoding="utf-8", buffering=1)
+        sys.stdout = sys.stderr = fh
     nome = "ias__carteiro" + ("__duble" if args.duble else "")
     if args.duble:
         fabrica = fabrica_duble(responder=lambda t: f"OK (dublê) — recebi: {t[:80]}",
