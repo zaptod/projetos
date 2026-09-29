@@ -1,6 +1,6 @@
 {
   "comentario": true,
-  "contexto": "",
+  "contexto": "Atualizado em 29/09 17:5x (tarefa 80c3fa98), só o texto: o ChatGPT gerou pela Vila às 17:16 (0edfbdb5, PNG 1254x1254 pelo botão do site, 33 s). O Grok gera no chat (a imagem da sonda de 01:44 está na conta: JPG 784x1168 — pediu 1:1 e ele não respeita a proporção), mas os dois pedidos pela Vila de hoje (17:30 e 17:44) pararam no card 'Alta procura — tente novamente em breve, ou atualize para um acesso com maior prioridade' do grok.com.",
   "criado": "2026-09-29T15:58:47.926853",
   "depende_de": [],
   "historico": [],
@@ -29,7 +29,7 @@
       "rotulo": "Outro (comente)"
     }
   ],
-  "pergunta": "No 🎲 Livre (qualquer um livre), o carteiro pega o primeiro gerador da lista que gera hoje, faz a proporção, está em cota e tem a conta livre. Hoje a ordem é PicassoIA → Gemini → Grok → ChatGPT (ias/config.json, rodizio_imagem). PicassoIA é conta compartilhada com a pipeline (prova forte pelo histórico); Gemini é a conta da pipeline das histórias (a imagem sai em 2816x1536 original); Grok e ChatGPT não foram provados gerando imagem ainda.",
+  "pergunta": "No 🎲 Livre (qualquer um livre), o carteiro pega o primeiro gerador da lista que gera hoje, faz a proporção, está em cota e tem a conta livre. Hoje a ordem é PicassoIA → Gemini → Grok → ChatGPT (ias/config.json, rodizio_imagem). PicassoIA é conta compartilhada com a pipeline (prova forte pelo histórico); Gemini é a conta da pipeline das histórias (a imagem sai em 2816x1536 original); ChatGPT provado gerando imagem pela Vila (29/09 17:16); Grok ainda não (o grok.com respondeu 'Alta procura' às duas tentativas de 29/09).",
   "projeto": "geral",
   "situacao": "pendente",
   "titulo": "Rodízio de imagens: quem vem primeiro",

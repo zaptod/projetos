@@ -5,11 +5,13 @@
     "imagem": true,
     "leu_o_anexo": null,
     "multiplos": false,
-    "prova": null,
-    "seletor": "menu '+' do composer: UMA imagem de referencia (por isso o Editor Pro do PicassoIA junta personagem+arma antes)",
+    "prova": "%LOCALAPPDATA%\\neural-fights\\ias\\digen\\provas\\20260929_173520_anexo_composer_janela.png",
+    "seletor": "menu '+' do composer -> 'Upload image' -> input[type=file] (referencias.anexar; a miniatura com X e o icone de recorte aparece no composer)",
     "video": false
   },
-  "capturas": [],
+  "capturas": [
+    "%LOCALAPPDATA%\\neural-fights\\ias\\digen\\provas\\ (inicio, anexo, enviado, parede_upgrade; relatorios json)"
+  ],
   "casa": {
     "chat_longo": false,
     "fixar": false,
@@ -21,6 +23,14 @@
     "renomear": true
   },
   "catalogo_textos": [
+    {
+      "categoria": "upgrade",
+      "fonte": "sessao",
+      "nota": "aparece DEPOIS do clique em gerar ('Creating Task...'); o guarda da parede (client.tirar_parede_da_frente) FECHOU este dialogo no ESC como se fosse propaganda, e ERRO_GERACAO (insufficient/credits/quota/Generation failed) nao conhece o texto: a espera nao acusa (o fim dela nao foi medido: parei)",
+      "seletor": "[role='dialog'][data-slot='dialog-content'] (o mesmo da parede de promo)",
+      "texto": "Upgrade your plan to unlock this model",
+      "visto_em": "2026-09-29T17:36"
+    },
     {
       "categoria": "parede",
       "fonte": "codigo",
@@ -71,23 +81,24 @@
     }
   ],
   "cota": {
-    "creditos": null,
+    "creditos": 149,
     "o_que_o_site_diz": [
-      "chip de creditos: plano + saldo ('UltraMax, Meme 3, Pro Meme 0'); carrega em duas etapas (~15 s de placeholder 'Free, Meme 0')",
-      "diario 29/09 04:09 (UTC): 'geracao noturna: 3 duelo(s)' - a fila de video segue rodando"
+      "chip de creditos: 'Free, Meme 149, Pro Meme 0' (29/09 17:33)",
+      "ao enviar com Real Motion 3.5: Upgrade your plan to unlock this model — Meme 6,000 Meme / mo · Pro Meme 2,200 Pro Meme / mo · Up to 300 videos, industry-lowest pricing · Daily login +200 Meme · NEW Real Motion 3.5 Access (Outstanding Generation Quality) · NEW MiniMax H3, Now Live · NEW Nano Banana 2 Lite Unlimited · NEW Gemini Omni Flash Limited Offer (Access to Seedance 2.0 · Veo 3.1 · Grok) · $4.99 Upgrade Now (Save $5) · View all plans & details"
     ],
-    "plano": "ler do aria-label do chip (nao conferido hoje)",
-    "prova": null
+    "plano": "Free (chip 'Free, Meme 149, Pro Meme 0' lido as 17:33 e 17:34, depois dos 15 s de placeholder; em 22/08 era 'UltraMax')",
+    "prova": "%LOCALAPPDATA%\\neural-fights\\ias\\digen\\provas\\20260929_173600_parede_upgrade_janela.png"
   },
   "custo": {
     "gratis": [
-      "Real Motion incluso no plano (payoff nao custa credito)"
+      "abrir Space, anexar imagem e escrever o prompt (nada disso pede plano)"
     ],
     "pede_plano": [
-      "creditos para outros modelos/resolucoes; promo 'Real Motion 3.5 Fast'"
+      "Real Motion 3.5 no plano Free: 'Upgrade your plan to unlock this model' ao enviar (29/09 17:36, mesmo com 149 Meme no chip)",
+      "Kling/Runway/Veo/Seedance/Sora (image-to-video pagos; fora da lista branca do identity.json)"
     ]
   },
-  "duracao_s": null,
+  "duracao_s": 100.0,
   "ia": "digen",
   "imagem": {
     "alfa": null,
@@ -102,11 +113,11 @@
     "tempo_s": null
   },
   "login": {
-    "detalhe": "nao sondado hoje (padrao em producao). Em producao session.ensure_logged_in confere o composer ([aria-placeholder^='Describe your video'] / 'New Space'); credencial em digen_credentials.json e desafio (captcha/2FA/Cloudflare) resolvido a mao",
-    "estado": "nao_medido",
-    "prova": null
+    "detalhe": "29/09 17:33, pelo cliente de producao (session.ensure_logged_in: 'sessao ja valida'); avatar 'T' e a lista de Spaces de outras pessoas (conta COMPARTILHADA)",
+    "estado": "logado",
+    "prova": "%LOCALAPPDATA%\\neural-fights\\ias\\digen\\provas\\20260929_173352_inicio_janela.png"
   },
-  "medido_em": "2026-09-29T02:40:00",
+  "medido_em": "2026-09-29T17:36:00",
   "modelos": {
     "ativo": "Real Motion 3.5",
     "disponiveis": [
@@ -119,8 +130,8 @@
     "seletor": "selectors.BOTAO_MODELO (popover; DigenClient._ajustar_modelo)"
   },
   "pendencias": [
-    "login/creditos/modelo atuais nao conferidos hoje (`python main.py identity doctor --online` em random_builds faz isso sem gerar)",
-    "tempos de geracao: o diario tem 1 linha 'fila de Digen (video)' ok em 295 s (28/09); render_timeout 1800 s",
+    "video a partir de imagem NAO provado: a conta compartilhada esta no plano Free e o Real Motion 3.5 pede plano (29/09 17:36). Precisa de decisao do Adrian (Grimorio)",
+    "a fila de video das builds (payoff_video=true) deve bater na mesma parede: o guarda fecha o dialogo e ERRO_GERACAO nao conhece o texto (render_timeout 1800 s; nao medido)",
     "conta compartilhada: prova de origem MEDIA (space proprio + presets), nunca forte - o card nao traz o prompt"
   ],
   "perfil": "E:\\projetos\\random_builds\\.browser_profile\\digen",
@@ -139,7 +150,7 @@
   "versao": 1,
   "video": {
     "assiste": false,
-    "fonte": "producao: payoff das builds (render_timeout 1800 s; duracao/resolucao 'max'; aspect 9:16; min_interval 45 s)",
-    "gera": true
+    "fonte": "pede plano: 'Upgrade your plan to unlock this model' (Real Motion 3.5, conta no plano Free, 29/09 17:36). PROVA AO VIVO 17:34-17:36 (tarefa 80c3fa98): gato 0edfbdb5 (ChatGPT, 1254x1254) anexado num Space NOVO (digen.ai/en/space/2695372, 'The orange tabby cat'), presets RM3.5 / 8s / 480P / 1:1, envio -> 'Creating Task...' -> parede 'Upgrade your plan to unlock this model'. Parei (regra: nao contornar); nenhum video nasceu, nada foi baixado",
+    "gera": false
   }
 }

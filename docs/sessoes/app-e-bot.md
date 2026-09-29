@@ -19,7 +19,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Quando você fala com uma IA e a pipeline precisa da mesma conta** — Você: a pipeline espera a sua conversa terminar (29/09/2026) `ias-prioridade-conversa`
 - ✅ **Cada IA tem UM chat de longa duração ou um chat novo por assunto?** — Um chat 'casa' por IA, com resumo periódico (29/09/2026) `ias-chat-persistente`
 - ✅ **Fichas das IAs (fase 1): li?** — Li; seguir para a fase 2 (falar com cada uma pelo app) (29/09/2026) `ias-fichas-lidas`
-- ⏳ **Rodízio de imagens: quem vem primeiro** — No 🎲 Livre (qualquer um livre), o carteiro pega o primeiro gerador da lista que gera hoje, faz a proporção, está em cota e tem a conta livre. Hoje a ordem é PicassoIA → Gemini → Grok → ChatGPT (ias/config.json, rodizio_imagem). PicassoIA é conta compartilhada com a pipeline (prova forte pelo histórico); Gemini é a conta da pipeline das histórias (a imagem sai em 2816x1536 original); Grok e ChatGPT não foram provados gerando imagem ainda. `rodizio-de-imagens-quem-vem-primeiro`
+- ⏳ **Rodízio de imagens: quem vem primeiro** — No 🎲 Livre (qualquer um livre), o carteiro pega o primeiro gerador da lista que gera hoje, faz a proporção, está em cota e tem a conta livre. Hoje a ordem é PicassoIA → Gemini → Grok → ChatGPT (ias/config.json, rodizio_imagem). PicassoIA é conta compartilhada com a pipeline (prova forte pelo histórico); Gemini é a conta da pipeline das histórias (a imagem sai em 2816x1536 original); ChatGPT provado gerando imagem pela Vila (29/09 17:16); Grok ainda não (o grok.com respondeu 'Alta procura' às duas tentativas de 29/09). `rodizio-de-imagens-quem-vem-primeiro`
 - ⏳ **Digen no plano Free: o Real Motion 3.5 pede plano** — A conta COMPARTILHADA do Digen está no plano Free (chip 'Free, Meme 149, Pro Meme 0'). Em 29/09 17:36, gerando UM vídeo a partir do gato 0edfbdb5 (Real Motion 3.5, 8s, 480P, 1:1, Space novo), o site respondeu 'Upgrade your plan to unlock this model' (US$4.99). Nada foi gerado e eu parei. O que fazer com o vídeo a partir de imagem? `digen-plano-free`
 
 **App e bot**
@@ -1556,17 +1556,49 @@ xícara de café**.
     arquivo do PC **byte a byte**. O toque na Vila não achou o prédio do
     ChatGPT (o script entrou pelo chip, que abre o mesmo Criar).
 
+**Grok e Digen ao vivo (29/09, 17:30–17:56, tarefa 80c3fa98).**
+- **Grok pela Vila: não provado.** Dois pedidos pelo correio como o app faz
+  (`899d74b9` 17:30 e `7d2dd374` 17:44, "gato laranja…" 1:1), entregues pelo
+  carteiro PID 15260. A captura da janela nas duas: toast "Grok is
+  experiencing issues…" e, no lugar da resposta, o card **"Alta procura — Por
+  favor, tente novamente em breve, ou atualize para um acesso com maior
+  prioridade"** (botão Aprimorar, nunca clicado). A espera gastou os 420 s
+  (0 chars) e o pedido virou `falhou` com esse texto (`erro_site` no
+  primeiro; `indisponivel` no segundo, depois que o texto entrou no
+  `catalogo_textos` da ficha). Uma terceira tentativa e o reinício do
+  carteiro (para carregar o recipiente novo) foram barrados pela
+  permissão desta sessão: ficam para quem me chamou.
+- **O recipiente do Grok foi medido e apertado** (0b3a910), só leitura, na
+  conversa "Círculo de cor vermelha" da conta (a imagem que a sonda de 01:44
+  pediu): a gerada é `assets.grok.com/users/<conta>/generated/<uuid>/image.jpg`
+  num `div.group/image`, alt "Imagem gerada"; o anexo do usuário é
+  `/users/<conta>/<uuid>/preview-image`; a foto do perfil fica na barra
+  lateral. O balão inteiro aceitava uma imagem da **web** dentro da resposta
+  (medido no Chrome headless); o novo seletor não. Na casa real ele acha 1
+  imagem, 784x1168, e a sessão a baixa (JPG 784x1168, 109.323 bytes): o
+  pedido era 1:1 — o Grok não respeita a proporção escrita.
+- **Digen: parou na parede de plano.** Pelo `DigenClient` de produção, com a
+  trava do perfil (`scratchpad/digen_prova.py`): logado, chip **"Free, Meme
+  149, Pro Meme 0"**; Space novo, o gato `0edfbdb5` anexado (miniatura no
+  composer), RM3.5 / 8s / 480P / 1:1, enviar → "Creating Task…" → **"Upgrade
+  your plan to unlock this model"** (US$4.99). Parei (regra: não contornar);
+  nenhum vídeo, nada baixado. O guarda do cliente fecha esse diálogo no ESC
+  como se fosse propaganda e `ERRO_GERACAO` não conhece o texto — a fila de
+  vídeo das builds deve bater na mesma parede sem acusar. Capturas em
+  `%LOCALAPPDATA%\neural-fights\ias\digen\provas\`; decisão no Grimório
+  `geral/digen-plano-free`.
+
 **Pendências e o que é do Adrian:**
-- O Grok gerando imagem **não foi provado ao vivo**: o recipiente dele é o
-  balão inteiro do assistente, sem botão de baixar medido. A primeira
-  imagem real mede (`imagem_gerada` e `imagem_baixar` em
-  `contos/llm/seletores.py`);
+- O Grok gerando imagem **pela Vila** não foi provado (ver acima): falta
+  uma tentativa fora da "Alta procura", com o carteiro reiniciado no
+  recipiente novo; a espera não reconhece o card (gasta 420 s) e o botão de
+  baixar do Grok não foi medido;
 - `ias/sonda.py` (a sonda das fichas, fase 1) ainda tem o seu próprio
   `_imagens_da_resposta`, pela regra antiga; não é caminho de entrega, mas
   mediria o anúncio como "a imagem" do ChatGPT;
 - DreamFace: sem cliente com prova de origem e créditos 0 (01/09). Digen:
-  vídeo a partir de imagem é o **próximo passo** (a imagem gerada aqui pode
-  ser a entrada; o `DigenClient` das builds já anexa uma referência);
+  vídeo a partir de imagem pede plano hoje (conta Free; decisão
+  `digen-plano-free`); o anexo da imagem nossa funciona;
 - o rodízio é simples de propósito (ordem fixa, cota por falha recente); a
   fase 3 amplia (peso, custo, qualidade);
 - modelo: nenhum cliente troca de modelo de imagem hoje (o PicassoIA fica

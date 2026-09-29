@@ -19,7 +19,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Quando você fala com uma IA e a pipeline precisa da mesma conta** — Você: a pipeline espera a sua conversa terminar (29/09/2026) `ias-prioridade-conversa`
 - ✅ **Cada IA tem UM chat de longa duração ou um chat novo por assunto?** — Um chat 'casa' por IA, com resumo periódico (29/09/2026) `ias-chat-persistente`
 - ✅ **Fichas das IAs (fase 1): li?** — Li; seguir para a fase 2 (falar com cada uma pelo app) (29/09/2026) `ias-fichas-lidas`
-- ⏳ **Rodízio de imagens: quem vem primeiro** — No 🎲 Livre (qualquer um livre), o carteiro pega o primeiro gerador da lista que gera hoje, faz a proporção, está em cota e tem a conta livre. Hoje a ordem é PicassoIA → Gemini → Grok → ChatGPT (ias/config.json, rodizio_imagem). PicassoIA é conta compartilhada com a pipeline (prova forte pelo histórico); Gemini é a conta da pipeline das histórias (a imagem sai em 2816x1536 original); Grok e ChatGPT não foram provados gerando imagem ainda. `rodizio-de-imagens-quem-vem-primeiro`
+- ⏳ **Rodízio de imagens: quem vem primeiro** — No 🎲 Livre (qualquer um livre), o carteiro pega o primeiro gerador da lista que gera hoje, faz a proporção, está em cota e tem a conta livre. Hoje a ordem é PicassoIA → Gemini → Grok → ChatGPT (ias/config.json, rodizio_imagem). PicassoIA é conta compartilhada com a pipeline (prova forte pelo histórico); Gemini é a conta da pipeline das histórias (a imagem sai em 2816x1536 original); ChatGPT provado gerando imagem pela Vila (29/09 17:16); Grok ainda não (o grok.com respondeu 'Alta procura' às duas tentativas de 29/09). `rodizio-de-imagens-quem-vem-primeiro`
 - ⏳ **Digen no plano Free: o Real Motion 3.5 pede plano** — A conta COMPARTILHADA do Digen está no plano Free (chip 'Free, Meme 149, Pro Meme 0'). Em 29/09 17:36, gerando UM vídeo a partir do gato 0edfbdb5 (Real Motion 3.5, 8s, 480P, 1:1, Space novo), o site respondeu 'Upgrade your plan to unlock this model' (US$4.99). Nada foi gerado e eu parei. O que fazer com o vídeo a partir de imagem? `digen-plano-free`
 
 **Histórias**
@@ -98,7 +98,10 @@ esperar. O `provedor: gemini` de `agenda.json` é só o fallback de
 também tem o **Grok** (`grok.com`, perfil `grok__principal`, login pessoal do Adrian) — ele
 **não** está em nenhum papel: entrou pela Vila das IAs (`ias/`, `docs/ias/fichas.md`), que
 mede a ficha de capacidades de cada IA (o que gera, cota, textos de erro) sem mexer na
-pipeline. **Anexo no DeepSeek** (29/09, para o carteiro da Vila): a miniatura aparece
+pipeline. **Imagem da resposta do Grok** (29/09, 0b3a910): só vale o `div.group/image`
+com `img` `assets.grok.com/users/<conta>/generated/…` e alt "Imagem gerada" — o balão
+inteiro aceitava imagem da web (medido num Chrome headless); a gerada sai JPG 784x1168
+mesmo pedindo 1:1. **Anexo no DeepSeek** (29/09, para o carteiro da Vila): a miniatura aparece
 antes de o arquivo subir, então `seletores.DEEPSEEK["anexo_subindo"]` (o enviar com
 `ds-button--disabled`) faz `cliente.anexar` esperar o upload; só ele tem essa espera.
 O ChatGPT não assiste vídeo

@@ -25,6 +25,22 @@
   },
   "catalogo_textos": [
     {
+      "categoria": "indisponivel",
+      "fonte": "sessao",
+      "nota": "card no lugar da resposta, com o botao de parar ligado e 'Trabalhando para Ns' contando; nao e recusa nem cota da conta: e a fila da conta gratis em hora de pico. Carteiro 899d74b9 (29/09 17:30-17:37) esperou os 420 s",
+      "seletor": "div[data-testid='assistant-message'] (card 'Alta procura' + botao Aprimorar)",
+      "texto": "Por favor, tente novamente em breve, ou atualize para um acesso com maior prioridade",
+      "visto_em": "2026-09-29T17:30"
+    },
+    {
+      "categoria": "indisponivel",
+      "fonte": "sessao",
+      "nota": "toast no topo, junto do card 'Alta procura'",
+      "seletor": "(toast)",
+      "texto": "Grok is experiencing issues. We are working on restoring service as quickly as possible.",
+      "visto_em": "2026-09-29T17:30"
+    },
+    {
       "categoria": "upgrade",
       "fonte": "adrian",
       "nota": "conta gratis",
@@ -92,15 +108,15 @@
   "duracao_s": 409.0,
   "ia": "grok",
   "imagem": {
-    "alfa": null,
-    "arquivo": null,
+    "alfa": false,
+    "arquivo": "jpg",
     "gera": true,
-    "prova": "random_builds\\outputs\\_ias\\grok\\guia\\20260929_015724_935_janela.png",
+    "prova": "grok.com/c/69e8f088-58e9-44d1-8234-89086c256fbf ('Circulo de cor vermelha', pedido da sonda de 01:44): a imagem gerada NO CHAT, lida em 29/09 17:5x so leitura (scratchpad/diag_grok2.py e conferir_grok_casa_real.py)",
     "prova_origem": {
-      "nota": "o Imagine (grok.com/imagine) mostra em 'Geracoes' um circulo vermelho e dois mapas gerados nesta conta; nenhum foi baixado pela sessao, entao resolucao/alfa nao medidos. Prova de origem no Grok = post da propria conta (grok.com/imagine/post/<id>?scope=asset), aba Geracoes.",
-      "tipo": "nao comprovada"
+      "nota": "conta PESSOAL do Adrian. A gerada e assets.grok.com/users/<id da conta>/generated/<uuid>/image.jpg dentro de div.group/image da resposta ao nosso turno (alt 'Imagem gerada'); imagem da web ou anexo nunca tem /generated/. Baixada pela sessao: JPG 784x1168, 109.323 bytes (= naturalWidth da tela; botao de baixar nao medido). O pedido era 1:1 e saiu 784x1168: o Grok NAO respeita a proporcao escrita",
+      "tipo": "casa"
     },
-    "resolucao": null,
+    "resolucao": "784x1168",
     "tempo_s": null
   },
   "login": {
@@ -108,7 +124,7 @@
     "estado": "logado",
     "prova": "random_builds\\outputs\\_ias\\grok\\guia\\20260929_015310_728_janela.png"
   },
-  "medido_em": "2026-09-29T01:59:44",
+  "medido_em": "2026-09-29T17:55:00",
   "modelos": {
     "ativo": "Fast",
     "disponiveis": [
@@ -122,12 +138,13 @@
     "seletor": "button[aria-label='Seleção de modelo'] + [role='menuitemradio']"
   },
   "pendencias": [
-    "tempo da resposta 'OK' nao medido: a janela foi fechada por ele antes do testar_ok (proxima sessao guiada do Grok, 1 mensagem)",
-    "Configurações → Uso (a cota real, semanal) nao foi aberta: ler na proxima sessao, sem gastar nada",
-    "imagem 1:1 com prova: gerar UMA no Imagine e baixar do post da conta (scope=asset) para medir resolucao/alfa",
-    "botao de PARAR e testid do balao do usuario nao vistos (resposta veio rapida demais); seletores 'parar'/'turno_usuario' do GROK sao candidatos",
-    "limite de caracteres do campo nao medido",
-    "a sonda automatica de 01:44 deu 'logado' para a pagina ANONIMA (o textarea deslogado casava o seletor generico) e mandou 1-2 mensagens antes do login dele: 'Circulo de cor vermelha' na barra lateral"
+    "PROVA PELA VILA NAO FEITA: 899d74b9 (17:30) e 7d2dd374 (17:44), 'gato laranja' 1:1 pelo correio, pararam os dois no card 'Alta procura — Por favor, tente novamente em breve, ou atualize para um acesso com maior prioridade' com o toast 'Grok is experiencing issues' (fila da conta gratis); o carteiro esperou os 420 s e marcou falhou (erro_site e, com o catalogo desta ficha, indisponivel)",
+    "o carteiro em execucao (PID 15260, 17:25) ainda tem o recipiente ANTIGO (o balao inteiro); o novo (0b3a910) so vale depois de reiniciar o carteiro",
+    "a espera nao reconhece o card 'Alta procura': gasta os 420 s (o card some ao recarregar a pagina, entao o DOM dele nao foi medido)",
+    "proporcao: pedida 1:1, saiu 784x1168 (o chat ignora a proporcao escrita)",
+    "alt 'Generated image' (conta em ingles) e botao de baixar nao medidos",
+    "Configurações → Uso (a cota real, semanal) nao foi aberta",
+    "limite de caracteres do campo nao medido"
   ],
   "perfil": "C:\\Users\\adrian\\AppData\\Local\\neural-fights\\browser_profiles\\grok__principal",
   "rotulo": "Grok",
