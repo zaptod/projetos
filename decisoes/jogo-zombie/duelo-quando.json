@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T23:02:30",
+      "evento": "2026-09-28T21:45:27",
+      "linha": 28,
+      "nota": "o duelo elaborado (plano pelo país, ícone, misto+civis, país visual, balões, arte no palco Godot) entra depois das rotas de 3 semanas",
+      "opcao": "depois",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T21:37:00.120252",
   "depende_de": [
