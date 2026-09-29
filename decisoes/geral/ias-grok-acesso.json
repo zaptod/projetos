@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "O cliente de navegador é o mesmo dos outros (perfil próprio grok__principal). Você faz o login UMA vez no perfil; depois a automação usa. Cota e o que é grátis vão para a ficha.",
+  "criado": "2026-09-29T01:29:00.593402",
+  "depende_de": [],
+  "historico": [],
+  "id": "ias-grok-acesso",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "grok-site",
+      "pede_comentario": false,
+      "rotulo": "grok.com com a sua conta X (gratuito; você loga uma vez)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "premium",
+      "pede_comentario": false,
+      "rotulo": "X Premium / SuperGrok (pago; mais cota e imagem)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "api",
+      "pede_comentario": false,
+      "rotulo": "API da xAI (pago por uso; sem navegador)"
+    }
+  ],
+  "pergunta": "Você pediu o Grok na roda das IAs. O login é seu (conta compartilhada não). Por onde?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Grok: por onde entra na roda?",
+  "vigente": null
+}
