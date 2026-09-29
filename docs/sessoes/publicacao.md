@@ -26,7 +26,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Rascunhos e privados** — Manter (28/09/2026) `rascunhos-e-privados`
 - ✅ **Legenda incompleta da h31 p06 no TikTok** — Corrigir (28/09/2026) `legenda-h31-p06`
 - ✅ **A guarda de 1 post por horário conta pela hora do relógio** — Contar pelo horário da grade (recomendado) (29/09/2026) `guarda-hora-da-grade`
-- ⏳ **Teto de 2 por série/dia: dia do calendário ou dia de grade?** — A guarda de 1 post por horário agora conta pelo dia de grade (06:37→00:37). O teto de 2 posts por série/dia ainda conta pelo dia do CALENDÁRIO: uma parte às 00:37 conta para o dia seguinte. Alinho ao dia de grade? `teto-por-fonte-dia-de-grade`
+- ✅ **Teto de 2 por série/dia: dia do calendário ou dia de grade?** — Contar pelo dia de grade (igual à guarda) (29/09/2026) `teto-por-fonte-dia-de-grade`
 
 <!-- decisoes:fim -->
 

@@ -8,7 +8,15 @@
       "opcao": "grade"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T12:50:25",
+      "opcao": "grade",
+      "origem": "app"
+    }
+  ],
   "id": "teto-por-fonte-dia-de-grade",
   "midias": [],
   "opcoes": [
@@ -29,7 +37,11 @@
   ],
   "pergunta": "A guarda de 1 post por horário agora conta pelo dia de grade (06:37→00:37). O teto de 2 posts por série/dia ainda conta pelo dia do CALENDÁRIO: uma parte às 00:37 conta para o dia seguinte. Alinho ao dia de grade?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Teto de 2 por série/dia: dia do calendário ou dia de grade?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T12:50:25",
+    "opcao": "grade"
+  }
 }
