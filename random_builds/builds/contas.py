@@ -86,6 +86,12 @@ SERVICOS = {
                   "legado": RAIZ / ".browser_profile" / "dreamface",
                   "ajuda": "Segundo gerador de imagem: divide a fila de "
                            "cenas com o PicassoIA."},
+    # A Vila das IAs (29/09/2026). O login e PESSOAL do Adrian (conta do X),
+    # nao compartilhado: ninguem loga por ele. Sem `legado`: o perfil nasce
+    # direto em `browser_profiles/grok__principal`.
+    "grok": {"rotulo": "Grok", "tipo": "perfil", "publica": False,
+             "ajuda": "Chat da xAI (grok.com). Login manual UMA vez no perfil; "
+                      "a sonda `python -m ias sondar grok` diz o que a conta faz."},
 }
 
 

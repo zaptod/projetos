@@ -14,7 +14,7 @@ crescer.
 """
 from __future__ import annotations
 
-PROVEDORES = ("chatgpt", "gemini", "deepseek")
+PROVEDORES = ("chatgpt", "gemini", "deepseek", "grok")
 
 CHATGPT = {
     "url": "https://chatgpt.com/",
@@ -273,7 +273,105 @@ DEEPSEEK = {
     "limpar_resposta": True,
 }
 
-MAPA = {"chatgpt": CHATGPT, "gemini": GEMINI, "deepseek": DEEPSEEK}
+# O GROK (29/09/2026): pedido do Adrian para a Vila das IAs (plano
+# `vila-das-ias.md`, fase 1). O LOGIN E DELE (conta pessoal do X, nao
+# compartilhada; no `ias-grok-acesso` do Grimorio decide por onde) — o perfil
+# de Chrome e `grok__principal` e ninguem loga por ele.
+#
+# MEDIDO NA SESSAO GUIADA DE 29/09/2026 (01:44-02:00, `outputs/_ias/grok/`):
+# deslogado, o campo e um <textarea aria-label="Pergunte ao Grok qualquer
+# coisa">; LOGADO, e um <div contenteditable role="textbox" class="tiptap
+# ProseMirror" aria-label="Ask Grok anything"> (o idioma do aria muda com a
+# conta). Enviar = button[data-testid='chat-submit'] (aria "Enviar"); anexo
+# = button[data-testid='attach-button'] (aria "Anexar") com
+# input[type=file][name='files'] multiple e accept vazio; o modelo e o botao
+# aria "Seleção de modelo" (texto "Fast") e o menu tem [role=menuitemradio]
+# Fast / Build / Auto / Expert / Heavy — Auto/Expert/Heavy abrem
+# `#subscribe` (SuperGrok) na conta gratis, entao NAO ha `modelo_preferido`:
+# o cliente fica no que a conta tiver. Resposta/turno e "parar" ainda por
+# confirmar na sessao guiada.
+GROK = {
+    "url": "https://grok.com/",
+    "url_novo_chat": "https://grok.com/",
+    "modelo_botao": [
+        "button[aria-label='Seleção de modelo']",
+        "button[aria-label*='modelo' i]",
+        "button[aria-label*='model' i]",
+    ],
+    "modelo_opcao": [
+        "[role='menuitemradio']",
+        "[role='menuitem']",
+    ],
+    "campo": [
+        "div[data-testid='chat-input'] div[role='textbox']",
+        "div[role='textbox'][aria-label*='Ask Grok' i]",
+        "div[role='textbox'][aria-label*='Pergunte' i]",
+        "div.ProseMirror[contenteditable='true'][role='textbox']",
+        "div[contenteditable='true'][role='textbox']",
+        "textarea[aria-label*='Pergunte ao Grok' i]",
+        "textarea[aria-label*='Ask Grok' i]",
+    ],
+    "enviar": [
+        "button[data-testid='chat-submit']",
+        "button[aria-label='Enviar']",
+        "button[aria-label='Submit']",
+        "button[aria-label*='Send' i]",
+    ],
+    "parar": [
+        "button[aria-label^='Stop' i]",
+        "button[aria-label^='Parar' i]",
+        "button[aria-label^='Interromper' i]",
+    ],
+    # A resposta e <div role="article" aria-label="Grok"
+    # data-testid="assistant-message" class="message-bubble ..."> com o
+    # raciocinio num `div.thinking-container` ("Trabalhou por 9s") ANTES do
+    # texto (`div.response-content-markdown`). O balao do usuario nao tem
+    # testid medido: e o `message-bubble` que NAO e assistant-message.
+    "turno_usuario": [
+        "[data-testid='user-message']",
+        "div.message-bubble:not([data-testid='assistant-message'])",
+    ],
+    "resposta": [
+        "div[data-testid='assistant-message'] div.response-content-markdown",
+        "div[data-testid='assistant-message']",
+        "div.response-content-markdown",
+    ],
+    "raciocinio": [
+        "div.thinking-container",
+    ],
+    "limpar_resposta": True,
+    # LOGADO e o editor ProseMirror (o textarea aparece so deslogado — por
+    # isso ele NAO entra aqui: a sonda de 01:44 deu "logado" para a pagina
+    # anonima por causa dele).
+    "logado": [
+        "div[role='textbox'][aria-label*='Ask Grok' i]",
+        "div[role='textbox'][aria-label*='Pergunte' i]",
+        "div.ProseMirror[contenteditable='true'][role='textbox']",
+    ],
+    "login": [
+        "a[href*='/sign-in']",
+        "a[href*='accounts.x.ai']",
+        "a:has-text('Entrar')",
+        "a:has-text('Sign in')",
+    ],
+    "anexo_botao": [
+        "button[data-testid='attach-button']",
+        "button[aria-label='Anexar']",
+        "button[aria-label*='Attach' i]",
+    ],
+    "anexo_input": [
+        "input[type='file'][name='files']",
+        "input[type='file']",
+    ],
+    "anexo_prova": [
+        "button[aria-label='Remove image']",
+        "button[aria-label*='Remove' i]",
+        "button[aria-label*='Remover' i]",
+    ],
+}
+
+MAPA = {"chatgpt": CHATGPT, "gemini": GEMINI, "deepseek": DEEPSEEK,
+        "grok": GROK}
 
 
 def do_provedor(provedor: str) -> dict:
@@ -342,7 +440,8 @@ def resolver(page, candidatos, descricao: str, timeout: float = 15.0):
         raise SeletorNaoEncontrado(
             f"nao achei {descricao}.\nCandidatos tentados: {candidatos}\n"
             "O site provavelmente mudou. Rode: python main.py llm probe "
-            "--provedor <chatgpt|gemini|deepseek> e ajuste src/llm/seletores.py.")
+            "--provedor <chatgpt|gemini|deepseek|grok> e ajuste "
+            "contos/llm/seletores.py.")
     return alvo
 
 

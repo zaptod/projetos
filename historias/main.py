@@ -553,7 +553,8 @@ def main() -> int:
 
     llm = sub.add_parser("llm", help="login e diagnostico do ChatGPT/Gemini")
     llm.add_argument("acao", choices=("login", "probe"))
-    llm.add_argument("--provedor", default="chatgpt", choices=("chatgpt", "gemini", "deepseek"))
+    llm.add_argument("--provedor", default="chatgpt",
+                     choices=("chatgpt", "gemini", "deepseek", "grok"))
     llm.add_argument("--esperar", type=float, default=0.0,
                      help="no probe, segundos com a janela aberta antes de olhar")
 

@@ -1,0 +1,141 @@
+{
+  "anexos": {
+    "accept": "",
+    "arquivo": null,
+    "imagem": true,
+    "leu_o_anexo": null,
+    "multiplos": true,
+    "prova": "random_builds\\outputs\\_ias\\grok\\guia\\20260929_015724_935_janela.png",
+    "seletor": "button[data-testid='attach-button'] (aria 'Anexar'); no Imagine: 'Enviar mídia' -> input[type=file][name='files']; prova: button[aria-label='Remove image']",
+    "video": null
+  },
+  "capturas": [
+    "random_builds\\outputs\\_ias\\grok\\guia\\ (174 capturas de janela+pagina, eventos.jsonl com 259 eventos)",
+    "random_builds\\outputs\\_ias\\grok\\20260929_014432_dom_logado.json (DOM da pagina anonima: textarea aria 'Pergunte ao Grok qualquer coisa', attach-button, chat-submit, 'Seleção de modelo')"
+  ],
+  "catalogo_textos": [
+    {
+      "categoria": "upgrade",
+      "fonte": "adrian",
+      "nota": "conta gratis",
+      "seletor": "(banner no canto inferior direito e rodape do menu de modelo)",
+      "texto": "SuperGrok — Desbloquear recursos estendidos — Aprimorar",
+      "visto_em": "2026-09-29T01:54"
+    },
+    {
+      "categoria": "parede",
+      "fonte": "adrian",
+      "nota": "NAO e recusa: e a opcao paga; o cliente nunca deve clicar nelas",
+      "seletor": "div[role='dialog'] em url #subscribe; fecha em button[aria-label='Fechar']",
+      "texto": "#subscribe: dialogo de planos (Individual, 'Economize com anual', botao Fechar) — abre ao escolher Auto/Expert/Heavy, 720p, 10s/15s",
+      "visto_em": "2026-09-29T01:54"
+    },
+    {
+      "categoria": "upgrade",
+      "fonte": "adrian",
+      "nota": "",
+      "seletor": "(rodape das Configuracoes)",
+      "texto": "SuperGrok — Menos limites de uso, mais capacidades — Assine o Super",
+      "visto_em": "2026-09-29T01:59"
+    },
+    {
+      "categoria": "upgrade",
+      "fonte": "adrian",
+      "nota": "",
+      "seletor": "div[role='menuitem']:has-text('Atualizar plano') (menu da conta)",
+      "texto": "Atualizar plano",
+      "visto_em": "2026-09-29T01:59"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "adrian",
+      "nota": "como o DeepThink do DeepSeek: nunca entra na resposta (limpar_resposta)",
+      "seletor": "div[data-testid='assistant-message'] div.thinking-container",
+      "texto": "Trabalhou por 9s (rotulo do raciocinio, acima da resposta)",
+      "visto_em": "2026-09-29T01:58"
+    }
+  ],
+  "cota": {
+    "creditos": null,
+    "o_que_o_site_diz": [
+      "Configurações → Uso: barra com a porcentagem do POOL SEMANAL usado, detalhamento por produto (Chat, Imagine, Voice), data/hora do reset e Extra Usage Credits (resposta do proprio Grok, 01:58; a tela nao foi aberta)",
+      "SuperGrok: Menos limites de uso, mais capacidades"
+    ],
+    "plano": "gratuito (SuperGrok oferecido em 3 lugares)",
+    "prova": "random_builds\\outputs\\_ias\\grok\\guia\\20260929_015855_450_janela.png"
+  },
+  "custo": {
+    "gratis": [
+      "texto (Fast e Build)",
+      "anexo de imagem",
+      "Imagine: imagem (modo Velocidade), aspecto 2:3/3:2/Automatico...",
+      "Imagine: video 480p, 6s",
+      "Remover fundo / Fazer Video / Aspecto de proporcao no post"
+    ],
+    "pede_plano": [
+      "modelos Auto, Expert e Heavy (#subscribe)",
+      "video 720p",
+      "video 10s e 15s",
+      "Qualidade 2.0 (nao testado; ao lado de Velocidade)"
+    ]
+  },
+  "duracao_s": 409.0,
+  "ia": "grok",
+  "imagem": {
+    "alfa": null,
+    "arquivo": null,
+    "gera": true,
+    "prova": "random_builds\\outputs\\_ias\\grok\\guia\\20260929_015724_935_janela.png",
+    "prova_origem": {
+      "nota": "o Imagine (grok.com/imagine) mostra em 'Geracoes' um circulo vermelho e dois mapas gerados nesta conta; nenhum foi baixado pela sessao, entao resolucao/alfa nao medidos. Prova de origem no Grok = post da propria conta (grok.com/imagine/post/<id>?scope=asset), aba Geracoes.",
+      "tipo": "nao comprovada"
+    },
+    "resolucao": null,
+    "tempo_s": null
+  },
+  "login": {
+    "detalhe": "sessao guiada 01:52-01:59: barra lateral com 'Adrian Oliveira'; conta pessoal dele, criada em 22/09/2026 (accounts.x.ai); login feito por ele no perfil grok__principal as ~01:47",
+    "estado": "logado",
+    "prova": "random_builds\\outputs\\_ias\\grok\\guia\\20260929_015310_728_janela.png"
+  },
+  "medido_em": "2026-09-29T01:59:44",
+  "modelos": {
+    "ativo": "Fast",
+    "disponiveis": [
+      "Fast",
+      "Build (apps, Grok 4.6)",
+      "Auto (SuperGrok)",
+      "Expert (SuperGrok)",
+      "Heavy (SuperGrok)"
+    ],
+    "prova": "random_builds\\outputs\\_ias\\grok\\guia\\20260929_015437_075_janela.png",
+    "seletor": "button[aria-label='Seleção de modelo'] + [role='menuitemradio']"
+  },
+  "pendencias": [
+    "tempo da resposta 'OK' nao medido: a janela foi fechada por ele antes do testar_ok (proxima sessao guiada do Grok, 1 mensagem)",
+    "Configurações → Uso (a cota real, semanal) nao foi aberta: ler na proxima sessao, sem gastar nada",
+    "imagem 1:1 com prova: gerar UMA no Imagine e baixar do post da conta (scope=asset) para medir resolucao/alfa",
+    "botao de PARAR e testid do balao do usuario nao vistos (resposta veio rapida demais); seletores 'parar'/'turno_usuario' do GROK sao candidatos",
+    "limite de caracteres do campo nao medido",
+    "a sonda automatica de 01:44 deu 'logado' para a pagina ANONIMA (o textarea deslogado casava o seletor generico) e mandou 1-2 mensagens antes do login dele: 'Circulo de cor vermelha' na barra lateral"
+  ],
+  "perfil": "C:\\Users\\adrian\\AppData\\Local\\neural-fights\\browser_profiles\\grok__principal",
+  "rotulo": "Grok",
+  "site": "https://grok.com/",
+  "texto": {
+    "chars_aceitos_no_campo": null,
+    "gera": true,
+    "limite_chars_campo": null,
+    "prova": "random_builds\\outputs\\_ias\\grok\\guia\\20260929_015855_450_janela.png",
+    "resposta": "'ola' -> 'Ola! Como posso ajudar?' (01:58); 'como eu sei quando meus creditos...' -> resposta longa com 'Trabalhou por 9s'",
+    "tempo_ok_s": null
+  },
+  "tipo": "chat",
+  "trava": "perfil__grok__principal (travas.do_perfil('grok','geral'))",
+  "versao": 1,
+  "video": {
+    "assiste": null,
+    "fonte": "guia: Imagine > Vídeo (480p e 6s na conta gratis; 720p, 10s e 15s abrem #subscribe)",
+    "gera": true
+  }
+}

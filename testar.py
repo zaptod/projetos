@@ -84,6 +84,12 @@ SUITES = (
     ("remoto (bot)", RAIZ,
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "remoto",
       "-t", ".", "-p", "test_*.py"]),
+    # As fichas das IAs (Vila das IAs, fase 1, 29/09/2026): schema com o
+    # caso ZERO, o catalogo de textos com dubles e o protocolo por arquivos
+    # da sessao guiada. Mesmo `discover` dos vizinhos.
+    ("ias (fichas)", RAIZ,
+     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "ias",
+      "-t", ".", "-p", "test_*.py"]),
     # A `vila/` (motor em pixel e a Oficina dela) foi aposentada em
     # 28/09/2026 por decisao do Adrian; a Oficina de sprites nova mora no
     # painel e os testes dela (`painel/test_oficina_sprites.py`) entram no
