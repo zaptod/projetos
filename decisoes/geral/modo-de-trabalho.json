@@ -69,6 +69,16 @@
       "opcao": "um",
       "origem": "mesa",
       "tipo": "nada"
+    },
+    {
+      "alvo": "",
+      "em": "2026-09-29T01:26:51",
+      "evento": "2026-09-29T01:26:51",
+      "linha": 45,
+      "nota": "aplicada pela Mesa de comando: a config já vale",
+      "opcao": "paralelo",
+      "origem": "mesa",
+      "tipo": "nada"
     }
   ],
   "contexto": "",
@@ -151,6 +161,14 @@
       "em": "2026-09-29T01:20:36",
       "opcao": "um",
       "origem": "mesa"
+    },
+    {
+      "anterior": "um",
+      "aparelho": "614c026b",
+      "comentario": "29/09 01:26, pela Mesa de comando: força total, até 2 agentes",
+      "em": "2026-09-29T01:26:51",
+      "opcao": "paralelo",
+      "origem": "mesa"
     }
   ],
   "id": "modo-de-trabalho",
@@ -176,8 +194,8 @@
   "situacao": "decidida",
   "titulo": "Modo de trabalho dos agentes",
   "vigente": {
-    "comentario": "29/09 01:20, pela Mesa de comando: força total, até 1 agente",
-    "em": "2026-09-29T01:20:36",
-    "opcao": "um"
+    "comentario": "29/09 01:26, pela Mesa de comando: força total, até 2 agentes",
+    "em": "2026-09-29T01:26:51",
+    "opcao": "paralelo"
   }
 }
