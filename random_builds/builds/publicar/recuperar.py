@@ -519,7 +519,22 @@ def id_do_video(canal: str, titulo: str, quando, janela_min: float = None,
 
 def tornar_publico(video_id: str, canal: str = "builds",
                    token: str | None = None) -> dict:
-    """Privado -> publico, e CONFERE no canal que ficou.
+    """Privado -> publico, e CONFERE no canal que ficou."""
+    return mudar_visibilidade(video_id, "public", canal, token)
+
+
+VISIBILIDADES = ("public", "private", "unlisted")
+_ROTULO = {"public": "publico", "private": "privado", "unlisted": "nao listado"}
+
+
+def mudar_visibilidade(video_id: str, alvo: str, canal: str = "builds",
+                       token: str | None = None) -> dict:
+    """Troca a visibilidade de um video ja enviado, e CONFERE no canal.
+
+    Uma funcao so para os dois sentidos (28/09/2026): a volta a privado das
+    cinco duplicatas publicas precisava exatamente do mesmo cuidado com o
+    `status` e da mesma releitura — uma segunda copia disto envelheceria
+    separada.
 
     `videos.update` SUBSTITUI a parte inteira que se manda. Mandar apenas
     `{"privacyStatus": "public"}` apagaria `selfDeclaredMadeForKids`,
@@ -533,6 +548,8 @@ def tornar_publico(video_id: str, canal: str = "builds",
     estado mudou. A unica resposta que vale e reler o video.
     """
     import requests
+    if alvo not in VISIBILIDADES:
+        raise ValueError(f"visibilidade desconhecida: {alvo!r}")
     token = token or _token(canal)
     # A CONFERENCIA DO CANAL SE REFAZ AQUI, e nao so na listagem: esta e a
     # chamada que muda alguma coisa, e ela pode ser feita direto (pelo app,
@@ -546,10 +563,10 @@ def tornar_publico(video_id: str, canal: str = "builds",
         raise PublicacaoFalhou(f"{video_id}: o canal nao tem esse video.")
     status = dict(itens[0]["status"])
     antes = status.get("privacyStatus", "")
-    if antes == "public":
-        return {"id": video_id, "antes": antes, "depois": "public",
-                "mudou": False, "motivo": "ja estava publico"}
-    status["privacyStatus"] = "public"
+    if antes == alvo:
+        return {"id": video_id, "antes": antes, "depois": alvo,
+                "mudou": False, "motivo": f"ja estava {_ROTULO[alvo]}"}
+    status["privacyStatus"] = alvo
     # `status` do GET traz campos que o PUT recusa; mandar de volta o que ele
     # nao aceita da 400 e nao muda nada.
     for campo in ("uploadStatus", "privacyStatusReason", "rejectionReason",
@@ -574,6 +591,46 @@ def tornar_publico(video_id: str, canal: str = "builds",
     depois = (itens[0]["status"].get("privacyStatus", "")
               if itens else "nao consegui reler")
     return {"id": video_id, "antes": antes, "depois": depois,
-            "mudou": depois == "public",
-            "motivo": "" if depois == "public" else
-                      f"pedi publico e o canal diz '{depois}'"}
+            "mudou": depois == alvo,
+            "motivo": "" if depois == alvo else
+                      f"pedi {_ROTULO[alvo]} e o canal diz '{depois}'"}
+
+
+def recolher_duplicata(video_id: str, gemeo_id: str, canal: str = "builds",
+                       token: str | None = None) -> dict:
+    """Volta a PRIVADO um video publico que tem GEMEO publico de mesmo titulo.
+
+    DECISAO DO ADRIAN (28/09/2026, `duplicatas-publicas-builds`): as cinco
+    duplicatas que a recuperacao do YouTube devolveu ao ar voltam a privado;
+    os gemeos publicos ficam. Privado e reversivel (`tornar_publico`), e
+    apagar nao entra aqui.
+
+    A GUARDA E O PAR, e nao a lista de ids: um id trocado tiraria do ar um
+    video UNICO, e o canal nao avisa. Entao so muda se, relido agora, o gemeo
+    existe, esta PUBLICO, e tem o mesmo titulo (`titulos.chave`, o criterio
+    unico de "titulo igual"). Qualquer coisa fora disso devolve `mudou=False`
+    com o motivo, sem tocar no video.
+    """
+    token = token or _token(canal)
+    lidos = _get(token, "videos", part="snippet,status",
+                 id=f"{video_id},{gemeo_id}")
+    por_id = {v.get("id"): v for v in lidos.get("items") or ()}
+    for vid in (video_id, gemeo_id):
+        if vid not in por_id:
+            return {"id": video_id, "gemeo": gemeo_id, "mudou": False,
+                    "motivo": f"{vid} nao esta no canal {canal}"}
+    gemeo = por_id[gemeo_id]
+    if gemeo["status"].get("privacyStatus") != "public":
+        return {"id": video_id, "gemeo": gemeo_id, "mudou": False,
+                "motivo": f"o gemeo {gemeo_id} nao esta publico "
+                          f"({gemeo['status'].get('privacyStatus')})"}
+    titulo = por_id[video_id]["snippet"].get("title", "")
+    if titulos.chave(titulo) != titulos.chave(
+            gemeo["snippet"].get("title", "")):
+        return {"id": video_id, "gemeo": gemeo_id, "mudou": False,
+                "motivo": "os titulos nao sao iguais: "
+                          f"{titulo[:50]!r} x "
+                          f"{gemeo['snippet'].get('title', '')[:50]!r}"}
+    fora = mudar_visibilidade(video_id, "private", canal, token)
+    fora.update({"gemeo": gemeo_id, "titulo": titulo})
+    return fora

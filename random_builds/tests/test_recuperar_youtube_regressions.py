@@ -361,5 +361,92 @@ class TornarPublicoTests(unittest.TestCase):
         self.assertIn("--com-edicao", str(caso.exception))
 
 
+class RecolherDuplicataTests(unittest.TestCase):
+    """A volta a privado das duplicatas (decisao `duplicatas-publicas-builds`).
+
+    Caso medido em 28/09/2026: a recuperacao do YouTube devolveu ao ar
+    `UlIc_DXyFa4`, e o canal ja tinha `9U7UopBm3MM` publico com o mesmo
+    titulo. A decisao e voltar o primeiro a privado. O risco da ferramenta e
+    um id trocado tirar do ar um video UNICO — entao ela so muda com o par
+    relido: gemeo publico e de mesmo titulo.
+    """
+    CANAL = "UCA3Y1SaahhDsMj4JKGLbQ-Q"
+    TITULO = "Varo Emberjabor, Assassino (Crítico) — build 64/100 BUILD SOLIDA"
+
+    def setUp(self):
+        import builds.contas as C
+        self.addCleanup(setattr, C, "identidade", C.identidade)
+        self.addCleanup(setattr, C, "ativa", C.ativa)
+        C.ativa = lambda _s, _c="geral": "neural_fights"
+        C.identidade = lambda _s, _conta: {"id": self.CANAL}
+
+    def _rodar(self, gemeo_status="public", gemeo_titulo=None, depois="private",
+               sem_gemeo=False):
+        self.puts = []
+        par = [{"id": "UlIc_DXyFa4",
+                "snippet": {"title": self.TITULO},
+                "status": {"privacyStatus": "public"}}]
+        if not sem_gemeo:
+            par.append({"id": "9U7UopBm3MM",
+                        "snippet": {"title": gemeo_titulo or self.TITULO},
+                        "status": {"privacyStatus": gemeo_status}})
+        leituras = [
+            {"items": [{"status": {"privacyStatus": "public",
+                                   "selfDeclaredMadeForKids": False,
+                                   "license": "youtube"}}]},
+            {"items": [{"status": {"privacyStatus": depois}}]},
+        ]
+
+        def get(_t, caminho, **kw):
+            if caminho == "channels":
+                return {"items": [{"id": self.CANAL,
+                                   "snippet": {"title": "Neural fights"}}]}
+            if "snippet" in kw.get("part", ""):
+                return {"items": par}
+            return leituras.pop(0)
+
+        def put(_url, **kw):
+            import json as _j
+            self.puts.append(_j.loads(kw["data"].decode("utf-8")))
+            return _Resposta(200)
+
+        import builds.publicar.recuperar as R
+        with patch.object(R, "_get", get), \
+             patch.object(R, "_token", lambda _c: "tok"), \
+             patch("requests.put", put):
+            return R.recolher_duplicata("UlIc_DXyFa4", "9U7UopBm3MM", "builds")
+
+    def test_com_gemeo_publico_de_mesmo_titulo_vai_a_privado(self):
+        fora = self._rodar()
+        self.assertTrue(fora["mudou"])
+        self.assertEqual(("public", "private"), (fora["antes"], fora["depois"]))
+        self.assertEqual("private", self.puts[0]["status"]["privacyStatus"])
+        # O resto do status volta igual (mesma regra do `tornar_publico`).
+        self.assertIn("selfDeclaredMadeForKids", self.puts[0]["status"])
+
+    def test_gemeo_privado_NAO_muda_nada(self):
+        """Sem gemeo no ar, recolher tiraria o conteudo do canal."""
+        fora = self._rodar(gemeo_status="private")
+        self.assertFalse(fora["mudou"])
+        self.assertEqual([], self.puts)
+
+    def test_titulo_diferente_NAO_muda_nada(self):
+        """Id trocado: o 'gemeo' e outro video."""
+        fora = self._rodar(gemeo_titulo="Juan Hector, Gladiador — build 90")
+        self.assertFalse(fora["mudou"])
+        self.assertEqual([], self.puts)
+
+    def test_gemeo_fora_do_canal_NAO_muda_nada(self):
+        fora = self._rodar(sem_gemeo=True)
+        self.assertFalse(fora["mudou"])
+        self.assertIn("9U7UopBm3MM", fora["motivo"])
+        self.assertEqual([], self.puts)
+
+    def test_200_sem_mudar_nao_e_sucesso(self):
+        fora = self._rodar(depois="public")
+        self.assertFalse(fora["mudou"])
+        self.assertIn("privado", fora["motivo"])
+
+
 if __name__ == "__main__":
     unittest.main()
