@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-29T02:26:54",
+      "evento": "2026-09-29T02:26:15",
+      "linha": 50,
+      "nota": "esquecido pelo orquestrador: python -m remoto.api_http --esquecer 076f31d9",
+      "opcao": "esquecer",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-29T01:45:25.248252",
   "depende_de": [],
