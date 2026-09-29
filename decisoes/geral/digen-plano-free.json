@@ -1,0 +1,49 @@
+{
+  "comentario": true,
+  "contexto": "Captura da parede na mídia. A fila de vídeo das builds (payoff_video=true) usa o mesmo modelo e deve bater na mesma parede: o guarda do cliente fecha esse diálogo como se fosse propaganda e ERRO_GERACAO não conhece o texto, então a espera não acusa (render_timeout 1800 s; não medido até o fim). O Grok Imagine faz vídeo 480p/6s de graça na sua conta (ficha do Grok), ainda não provado.",
+  "criado": "2026-09-29T17:41:10.996999",
+  "depende_de": [],
+  "historico": [],
+  "id": "digen-plano-free",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\digen-plano-free\\20260929_173600_parede_upgrade_janela.png",
+      "rotulo": "a parede ao enviar"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "esperar",
+      "pede_comentario": false,
+      "rotulo": "Esperar o dono da conta (tento de novo quando o chip mostrar plano pago)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "precisa de uma prova ao vivo, como a do Digen",
+      "id": "grok-video",
+      "pede_comentario": false,
+      "rotulo": "Vídeo pelo Grok Imagine (sua conta, grátis 480p/6s)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "decisão de dinheiro: a automação nunca clica em compra",
+      "id": "assinar",
+      "pede_comentario": false,
+      "rotulo": "Assinar o plano do Digen"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "desligar",
+      "pede_comentario": false,
+      "rotulo": "Tirar o Digen da roda e desligar o vídeo do payoff das builds"
+    }
+  ],
+  "pergunta": "A conta COMPARTILHADA do Digen está no plano Free (chip 'Free, Meme 149, Pro Meme 0'). Em 29/09 17:36, gerando UM vídeo a partir do gato 0edfbdb5 (Real Motion 3.5, 8s, 480P, 1:1, Space novo), o site respondeu 'Upgrade your plan to unlock this model' (US$4.99). Nada foi gerado e eu parei. O que fazer com o vídeo a partir de imagem?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Digen no plano Free: o Real Motion 3.5 pede plano",
+  "vigente": null
+}

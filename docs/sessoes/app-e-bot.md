@@ -20,6 +20,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Cada IA tem UM chat de longa duração ou um chat novo por assunto?** — Um chat 'casa' por IA, com resumo periódico (29/09/2026) `ias-chat-persistente`
 - ✅ **Fichas das IAs (fase 1): li?** — Li; seguir para a fase 2 (falar com cada uma pelo app) (29/09/2026) `ias-fichas-lidas`
 - ⏳ **Rodízio de imagens: quem vem primeiro** — No 🎲 Livre (qualquer um livre), o carteiro pega o primeiro gerador da lista que gera hoje, faz a proporção, está em cota e tem a conta livre. Hoje a ordem é PicassoIA → Gemini → Grok → ChatGPT (ias/config.json, rodizio_imagem). PicassoIA é conta compartilhada com a pipeline (prova forte pelo histórico); Gemini é a conta da pipeline das histórias (a imagem sai em 2816x1536 original); Grok e ChatGPT não foram provados gerando imagem ainda. `rodizio-de-imagens-quem-vem-primeiro`
+- ⏳ **Digen no plano Free: o Real Motion 3.5 pede plano** — A conta COMPARTILHADA do Digen está no plano Free (chip 'Free, Meme 149, Pro Meme 0'). Em 29/09 17:36, gerando UM vídeo a partir do gato 0edfbdb5 (Real Motion 3.5, 8s, 480P, 1:1, Space novo), o site respondeu 'Upgrade your plan to unlock this model' (US$4.99). Nada foi gerado e eu parei. O que fazer com o vídeo a partir de imagem? `digen-plano-free`
 
 **App e bot**
 - ✅ **Quem publica pelo celular** — Só o app (28/09/2026) `quem-publica-pelo-celular`
