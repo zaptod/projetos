@@ -91,7 +91,9 @@ Conta de mão: 28/09 22:12 → (28/09, 21); 29/09 00:10 → (28/09, 23); 29/09
 horário, do placar `metas` do app (`relatorios._dia_de_grade` delega para ela)
 e da contagem de horários cumpridos da conferência. Decisão dele em 29/09
 (`guarda-hora-da-grade`): contar pelo horário da grade, nunca pela hora do
-relógio.
+relógio. O **"hoje" do teto por fonte** (`_saidas_hoje`) e dos horários que
+restam no aviso de variedade (`_horarios_que_restam`) também é o dia de
+grade, pela mesma chave (decisão `teto-por-fonte-dia-de-grade`, 29/09).
 
 **Cota por formato** (builds): `COTA_PADRAO = {duelo 4, build 3, estreia 1,
 torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
@@ -104,7 +106,7 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Upload avulso (`--so-youtube`) que atravessa uma rodada | `postar._horario_que_a_linha_tomaria`: recusa se uma rodada da grade **começa** dentro dos `DURACAO_DE_UM_UPLOAD_MIN = 20` min do upload (22:20 → "22:37"; 22:04 → livre) |
 | Título já publicado (fecha a fila) | `postar._sem_titulo_repetido`/`titulo_repetido`; regra em `titulos.chave/repetido` |
 | Variante A/B (`:B` tem o mesmo título) | `postar.VARIANTES`, `_e_variante`, e a própria chave de título |
-| Teto de 2 por fonte/dia, por destino | `TETO_POR_FONTE_NO_DIA`, `_fontes_cheias_hoje`, `_sem_fonte_cheia` |
+| Teto de 2 por fonte/dia **de grade**, por destino | `TETO_POR_FONTE_NO_DIA`, `_fontes_cheias_hoje`, `_sem_fonte_cheia`; a contagem é `_saidas_hoje` (dia = `conferencia.chave_do_horario(...)[0]`; linha sem data não conta) — os quatro caminhos (rodada de histórias, de builds, recuperação do TikTok e do YouTube) passam por ela |
 | Ordem das partes na fila | `fila_de_historias` (menor parte que falta; a anterior tem de existir) |
 | Ordem das partes **no destino** | `_em_ordem_no_destino` — pergunta ao TikTok, não ao ledger |
 | Parte barrada segura as seguintes | `proxima_historia` (`bloqueadas`/`adiadas`) |
@@ -132,8 +134,9 @@ diário.
   A marca `titulo_repetido` no aviso hoje é *detector de escape*: deve ser zero.
 - **Ordem da série é sagrada.** Fora de ordem só como último recurso no YouTube;
   no TikTok nunca, porque lá a recuperação é sempre extra.
-- **Teto de 2 partes da mesma história/geração por dia**, no perfil inteiro —
-  rodada normal, recuperação e reserva somadas.
+- **Teto de 2 partes da mesma história/geração por dia de grade** (06:37 →
+  00:37), no perfil inteiro — rodada normal, recuperação e reserva somadas
+  (dia de grade: decisão `teto-por-fonte-dia-de-grade`, 29/09).
 - **Builds antigos (29/08–09/09, `CORTE_DO_TIKTOK`) são gordura, não atraso**:
   só saem no TikTok quando falta vídeo novo (`reserva_do_tiktok`).
 - **Rascunhos do "Publicar mesmo assim" ficam** como gordura (15/09):
@@ -270,6 +273,19 @@ diário.
   (`BateComMetasEConferenciaTests`): 7 instantes com a mesma chave nos três
   lugares, 7 rodadas contra 3 linhas com a mesma resposta na guarda e no
   placar. Caso ZERO: ledger vazio libera todo horário nas duas plataformas.
+- **O teto por fonte contava pelo dia do calendário** (até 29/09): a
+  rodada das 00:37 abria um dia novo, e a `historia_00037` saiu p01 09:43 e
+  p02 12:10 de 28/09 e p03 00:38 de 29/09 — três partes no mesmo dia de
+  grade, nos dois destinos. Medido no ledger de histórias desde 17/09: 13
+  (destino, série, dia de grade) passaram de 2; pelo calendário o teto só
+  via 3 deles. → decisão `teto-por-fonte-dia-de-grade`: `_saidas_hoje`
+  compara `conferencia.chave_do_horario(quando)[0]` com o de agora. O
+  `_horarios_que_restam` foi junto (decisão técnica do orquestrador: é o
+  mesmo dia): conta os horários do dia de grade depois do corrente (+ o
+  corrente se vazio) — 21:37 → 4 (o 00:37 é do dia), 00:10 → 2 (era 10,
+  contra a capacidade de um dia quase fechado: o aviso falso de 28/09
+  voltaria), 06:37 → 10. Testes em `test_teto_por_fonte_regressions`
+  (`DiaDeGradeTests`, dia fixo 29/09) e `test_aviso_de_variedade_regressions`.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
@@ -372,9 +388,10 @@ ids na linha) fechou em `10142b1` (28/09).
   quase todos falsos à noite) e nem era avaliado sem fonte cheia. Agora
   `postar._avisar_variedade` compara a capacidade de hoje
   (`agenda.series_elegiveis` com o teto, menos o que cada série já levou
-  hoje) com `_horarios_que_restam` (os não vencidos + o corrente se nada
-  saiu nele, por `grade.slot`). Medido às 22:06: 4 séries, capacidade 6,
-  restam 2 → sem aviso. Com zero séries e horário pela frente, avisa.
+  hoje) com `_horarios_que_restam` (os do dia de grade depois do corrente +
+  o corrente se nada saiu nele, por `conferencia.chave_do_horario`; desde
+  29/09 o 00:37 conta no dia que ele fecha). Medido às 22:06 de 28/09: 4
+  séries, capacidade 6, restavam 2 (hoje seriam 3, com o 00:37) → sem aviso. Com zero séries e horário pela frente, avisa.
   Builds não são contados (`series_elegiveis` devolve `None`). O freio da
   criação continua na agenda (Histórias).
 

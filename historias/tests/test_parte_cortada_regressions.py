@@ -25,7 +25,10 @@ from types import SimpleNamespace
 
 from contos.pipeline import agenda
 
-HOJE = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+# Dia fixo: o teto conta pelo DIA DE GRADE (29/09/2026), e "hoje" do relogio
+# as 03:00 poria a linha das 09:37 num dia de grade que ainda nao abriu.
+HOJE = "2026-09-29"
+AGORA = __import__("datetime").datetime(2026, 9, 29, 15, 40)
 CORTADA = "publicado no YouTube | publicado no YouTube"
 
 
@@ -50,14 +53,15 @@ class TetoDoDia(unittest.TestCase):
         self.postar = _postar()
 
     def test_parte_cortada_em_dois_shorts_consome_uma_vaga_so(self):
-        cheias = self.postar._fontes_cheias_hoje([_linha(4)], "youtube")
+        cheias = self.postar._fontes_cheias_hoje([_linha(4)], "youtube",
+                                                 agora=AGORA)
         self.assertEqual(set(), cheias,
                          "uma parte cortada e UMA parte: com teto 2, a "
                          "historia ainda pode sair de novo hoje")
 
     def test_duas_partes_no_dia_fecham_a_historia(self):
         cheias = self.postar._fontes_cheias_hoje([_linha(4), _linha(5)],
-                                                 "youtube")
+                                                 "youtube", agora=AGORA)
         self.assertEqual({"historia_00003"}, cheias)
 
     def test_o_teto_continua_sendo_dois(self):

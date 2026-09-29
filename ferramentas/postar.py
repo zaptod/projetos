@@ -1216,7 +1216,7 @@ def _sem_a_conferir(fila: list, canal: str) -> list:
     return livres
 
 
-def _sem_fonte_cheia(fila: list, canal: str) -> list:
+def _sem_fonte_cheia(fila: list, canal: str, agora=None) -> list:
     """Tira da fila as historias/geracoes que ja bateram o teto HOJE.
 
     O teto vale por DESTINO, e a rodada normal leva o video aos dois. Basta
@@ -1234,10 +1234,10 @@ def _sem_fonte_cheia(fila: list, canal: str) -> list:
         publicados = _publicados_do_canal(canal)
     except Exception:                                          # noqa: BLE001
         return fila                    # "nao sei" nao pode barrar a rodada
-    cheias = (_fontes_cheias_hoje(publicados, "tiktok")
-              | _fontes_cheias_hoje(publicados, "youtube"))
+    cheias = (_fontes_cheias_hoje(publicados, "tiktok", agora)
+              | _fontes_cheias_hoje(publicados, "youtube", agora))
     if not cheias:
-        _avisar_variedade(canal, fila, publicados)
+        _avisar_variedade(canal, fila, publicados, agora)
         return fila
     livres = [v for v in fila if str(v.id).split(":")[0] not in cheias]
     barradas = len(fila) - len(livres)
@@ -1256,7 +1256,7 @@ def _sem_fonte_cheia(fila: list, canal: str) -> list:
     for vid in adiados:
         _linha(f"[postar] o pedido {vid} fica para amanha: a historia dele "
                f"ja saiu {TETO_POR_FONTE_NO_DIA}x hoje.")
-    _avisar_variedade(canal, livres, publicados)
+    _avisar_variedade(canal, livres, publicados, agora)
     return livres
 
 
@@ -1264,22 +1264,30 @@ def _horarios_que_restam(publicados, agora=None,
                          plataforma: str = "youtube") -> int:
     """Quantos horarios da grade AINDA vao receber video hoje neste canal.
 
-    Os que ainda nao venceram, mais o horario corrente se nada saiu nele
-    ainda (a rodada que esta escolhendo agora e a dele). "Saiu nele" e
-    `conferencia.chave_do_horario` da linha igual ao de agora, com
+    "Hoje" e o DIA DE GRADE (06:37 -> 00:37), o mesmo do teto por fonte
+    (`_saidas_hoje`, decisao `teto-por-fonte-dia-de-grade` de 29/09/2026):
+    a capacidade e os horarios tem de contar o MESMO dia, senao a rodada
+    das 00:37 comparava "o dia inteiro pela frente" (10) com a capacidade
+    de um dia que ja estava quase fechado, e o aviso falso de 28/09 voltava.
+
+    Os horarios do dia de grade depois do corrente, mais o corrente se nada
+    saiu nele ainda (a rodada que esta escolhendo agora e a dele). "Saiu
+    nele" e `conferencia.chave_do_horario` da linha igual ao de agora, com
     `metricas.publicado` — os criterios unicos (os mesmos da guarda
-    `publicou_neste_horario`), e nao a hora do relogio. Antes do primeiro
-    horario do dia (00:37), o dia inteiro esta pela frente.
+    `publicou_neste_horario`), e nao a hora do relogio.
+
+    Conta de mao (sem nada no horario corrente): 21:37 -> 21, 22, 23 e 00:37
+    = 4; 00:10 -> o 23:37 da vespera e o 00:37 = 2; 06:37 -> 10.
     """
     from datetime import datetime
     from builds.publicar import conferencia, metricas
     agora = agora or datetime.now()
-    horas = grade.horas_da_plataforma(plataforma)
-    vencidos = grade.vencidos(agora, plataforma)
-    restam = len(horas) - len(vencidos)
-    if not vencidos:
-        return restam
     corrente = conferencia.chave_do_horario(agora, plataforma)
+    abertura, _ = conferencia.abertura_e_fechamento(plataforma)
+    ordem = sorted(grade.horas_da_plataforma(plataforma),
+                   key=lambda h: (conferencia._minutos(h)
+                                  - conferencia._minutos(abertura)) % (24 * 60))
+    restam = len(ordem) - ordem.index(corrente[1]) - 1
     for linha in publicados or ():
         if str(linha.get("plataforma") or "youtube").lower() != plataforma:
             continue
@@ -1358,11 +1366,20 @@ def _saidas_hoje(publicados, plataforma: str = "tiktok", agora=None):
 
     A fonte sai do `video_id` (`historia_00003:celular:p04` -> `historia_00003`)
     porque a linha do ledger nem sempre tem `fonte_id`.
+
+    "HOJE" E O DIA DE GRADE (06:37 -> 00:37 do dia seguinte), pela mesma
+    `conferencia.chave_do_horario` da guarda de um por horario — decisao do
+    Adrian `teto-por-fonte-dia-de-grade` (29/09/2026). Pelo calendario, a
+    rodada das 00:37 abria um dia novo: a `historia_00037` saiu p01 09:43,
+    p02 12:10 (28/09) e p03 00:38 (29/09), tres partes no mesmo dia de grade.
+    No ledger de historias, desde 17/09, 13 (destino, serie, dia de grade)
+    passaram de 2; o calendario so via 3 deles. Linha sem data legivel nao
+    conta e nao derruba.
     """
     from collections import Counter
     from datetime import datetime
-    from builds.publicar import metricas
-    hoje = (agora or datetime.now()).strftime("%Y-%m-%d")
+    from builds.publicar import conferencia, metricas
+    hoje = conferencia.chave_do_horario(agora or datetime.now(), plataforma)[0]
     contagem = Counter()
     for linha in publicados or ():
         if linha.get("plataforma") != plataforma:
@@ -1372,7 +1389,8 @@ def _saidas_hoje(publicados, plataforma: str = "tiktok", agora=None):
         # de uma falha.
         if not metricas.publicado(linha):
             continue
-        if not (linha.get("quando") or "").startswith(hoje):
+        chave = conferencia.chave_do_horario(linha.get("quando"), plataforma)
+        if chave is None or chave[0] != hoje:
             continue
         vid = str(linha.get("video_id") or "")
         if vid:
@@ -1380,10 +1398,13 @@ def _saidas_hoje(publicados, plataforma: str = "tiktok", agora=None):
     return contagem
 
 
-def _fontes_cheias_hoje(publicados, plataforma: str = "tiktok") -> set:
-    """As fontes que ja bateram o teto do dia naquele destino (a contagem e
-    `_saidas_hoje`, a mesma que limita a capacidade no aviso de variedade)."""
-    return {fonte for fonte, n in _saidas_hoje(publicados, plataforma).items()
+def _fontes_cheias_hoje(publicados, plataforma: str = "tiktok",
+                        agora=None) -> set:
+    """As fontes que ja bateram o teto do dia (de grade) naquele destino (a
+    contagem e `_saidas_hoje`, a mesma que limita a capacidade no aviso de
+    variedade). `agora` e para o teste; os chamadores usam o relogio."""
+    return {fonte for fonte, n in
+            _saidas_hoje(publicados, plataforma, agora).items()
             if n >= TETO_POR_FONTE_NO_DIA}
 
 

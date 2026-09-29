@@ -41,7 +41,11 @@ def _postar():
 
 
 postar = _postar()
-HOJE = datetime.now().strftime("%Y-%m-%d")
+# UM DIA FIXO, e nao `datetime.now()`: desde 29/09/2026 o teto conta pelo DIA
+# DE GRADE (06:37 -> 00:37). Com "hoje" do relogio, a suite rodada as 03:00
+# poria as linhas das 10:00 num dia de grade que ainda nem abriu.
+HOJE = "2026-09-29"
+AGORA = datetime(2026, 9, 29, 15, 40)
 
 
 class _V:
@@ -59,31 +63,31 @@ class TetoPorFonteTests(unittest.TestCase):
     def test_duas_partes_no_dia_fecham_a_fonte(self):
         linhas = [_tiktok("h3:celular:p01", f"{HOJE}T10:00"),
                   _tiktok("h3:celular:p02", f"{HOJE}T12:00")]
-        self.assertEqual({"h3"}, postar._fontes_cheias_hoje(linhas))
+        self.assertEqual({"h3"}, postar._fontes_cheias_hoje(linhas, agora=AGORA))
 
     def test_uma_parte_no_dia_nao_fecha(self):
         linhas = [_tiktok("h3:celular:p01", f"{HOJE}T10:00")]
-        self.assertEqual(set(), postar._fontes_cheias_hoje(linhas))
+        self.assertEqual(set(), postar._fontes_cheias_hoje(linhas, agora=AGORA))
 
     def test_ontem_nao_conta(self):
         """O teto e por DIA: amanha a mesma historia pode andar de novo."""
         linhas = [_tiktok("h3:celular:p01", "2026-09-16T10:00"),
                   _tiktok("h3:celular:p02", "2026-09-16T12:00")]
-        self.assertEqual(set(), postar._fontes_cheias_hoje(linhas))
+        self.assertEqual(set(), postar._fontes_cheias_hoje(linhas, agora=AGORA))
 
     def test_o_youtube_nao_conta_para_o_teto_do_tiktok(self):
         linhas = [{"video_id": "h3:celular:p01", "plataforma": "youtube",
                    "quando": f"{HOJE}T10:00", "titulo": "x", "url": "u"},
                   {"video_id": "h3:celular:p02", "plataforma": "youtube",
                    "quando": f"{HOJE}T12:00", "titulo": "y", "url": "u"}]
-        self.assertEqual(set(), postar._fontes_cheias_hoje(linhas))
+        self.assertEqual(set(), postar._fontes_cheias_hoje(linhas, agora=AGORA))
 
     def test_conta_os_DOIS_caminhos_juntos(self):
         """Rodada normal e recuperacao publicam no mesmo perfil: o teto e
         sobre o que o perfil recebeu, venha de onde vier."""
         linhas = [_tiktok("h3:celular:p01", f"{HOJE}T10:00"),   # normal
                   _tiktok("h3:celular:p05", f"{HOJE}T12:00")]   # recuperacao
-        self.assertEqual({"h3"}, postar._fontes_cheias_hoje(linhas))
+        self.assertEqual({"h3"}, postar._fontes_cheias_hoje(linhas, agora=AGORA))
 
 
 class TetoNaRodadaNORMALTests(unittest.TestCase):
@@ -105,7 +109,7 @@ class TetoNaRodadaNORMALTests(unittest.TestCase):
     def _fila(self, ids, ledger):
         postar._publicados_do_canal = lambda _c: ledger
         return [v.id for v in postar._sem_fonte_cheia(
-            [_V(i) for i in ids], "historias")]
+            [_V(i) for i in ids], "historias", agora=AGORA)]
 
     def test_historia_que_ja_saiu_duas_vezes_hoje_sai_da_fila(self):
         ledger = [_tiktok("h3:celular:p01", f"{HOJE}T10:00"),
@@ -153,7 +157,7 @@ class SoContaOQueSaiuTests(unittest.TestCase):
                   {"video_id": "h3:celular:p02", "plataforma": "tiktok",
                    "quando": f"{HOJE}T12:00", "titulo": "y",
                    "url": "", "publicado": False}]
-        self.assertEqual(set(), postar._fontes_cheias_hoje(linhas))
+        self.assertEqual(set(), postar._fontes_cheias_hoje(linhas, agora=AGORA))
 
 
 class RodizioTests(unittest.TestCase):
@@ -183,6 +187,83 @@ class RodizioTests(unittest.TestCase):
         fila = [_V(f"h{n}:p{p:02d}") for n in (3, 4, 5) for p in (1, 2, 3)]
         self.assertEqual({v.id for v in fila},
                          {v.id for v in postar._em_rodizio(fila)})
+
+
+def _parte(n, quando):
+    return _tiktok(f"historia_00037:celular:p{n:02d}", quando)
+
+
+class DiaDeGradeTests(unittest.TestCase):
+    """O teto de 2 por serie conta pelo DIA DE GRADE, o mesmo da guarda de um
+    por horario (decisao do Adrian `teto-por-fonte-dia-de-grade`, 29/09/2026).
+
+    Medido no ledger de historias: a `historia_00037` saiu TRES vezes no dia
+    de grade de 28/09 — p01 as 09:43, p02 as 12:10 (28/09) e p03 as 00:38
+    (29/09), nos dois destinos. A rodada das 00:37 contava pelo calendario:
+    29/09 so tinha comecado, a h37 tinha zero saidas "hoje", e a terceira
+    parte do dia foi ao ar. O dia de grade vai das 06:37 as 00:37 do dia
+    seguinte (`conferencia.chave_do_horario`): o post das 00:37 FECHA o dia
+    anterior e nao abre o seguinte.
+    """
+
+    def test_o_caso_medido_a_rodada_das_00h37_ve_a_serie_cheia(self):
+        linhas = [_parte(1, "2026-09-28T09:43:10"),
+                  _parte(2, "2026-09-28T12:10:05")]
+        agora = datetime(2026, 9, 29, 0, 37, 20)
+        self.assertEqual({"historia_00037"},
+                         postar._fontes_cheias_hoje(linhas, agora=agora))
+        no_youtube = [dict(l, plataforma="youtube") for l in linhas]
+        self.assertEqual({"historia_00037"}, postar._fontes_cheias_hoje(
+            no_youtube, "youtube", agora=agora))
+
+    def test_a_parte_das_00h37_conta_para_o_dia_ANTERIOR(self):
+        """p03 as 00:38 de 29/09 e p04 as 09:40 de 29/09: no calendario sao
+        duas "hoje" e a serie fecharia ao meio-dia; no dia de grade, a das
+        00:38 e do dia 28 e o dia 29 so tem uma."""
+        linhas = [_parte(3, "2026-09-29T00:38:40"),
+                  _parte(4, "2026-09-29T09:40:00")]
+        agora = datetime(2026, 9, 29, 12, 7, 30)
+        self.assertEqual(set(),
+                         postar._fontes_cheias_hoje(linhas, agora=agora))
+        self.assertEqual({"historia_00037": 1},
+                         dict(postar._saidas_hoje(linhas, "tiktok", agora)))
+
+    def test_a_madrugada_ainda_e_o_dia_de_grade_anterior(self):
+        """Recuperacao atrasada as 03:00 paga o dia que ainda nao abriu o
+        seguinte (o proximo abre as 06:37)."""
+        linhas = [_parte(1, "2026-09-28T20:40:00"),
+                  _parte(2, "2026-09-29T03:00:00")]
+        self.assertEqual({"historia_00037"}, postar._fontes_cheias_hoje(
+            linhas, agora=datetime(2026, 9, 29, 5, 0)))
+        self.assertEqual(set(), postar._fontes_cheias_hoje(
+            linhas, agora=datetime(2026, 9, 29, 6, 37, 30)))
+
+    def test_ZERO_ledger_vazio_nao_fecha_nada(self):
+        self.assertEqual(set(), postar._fontes_cheias_hoje([], agora=AGORA))
+        self.assertEqual({}, dict(postar._saidas_hoje([], "tiktok", AGORA)))
+        self.assertEqual(set(), postar._fontes_cheias_hoje(None, agora=AGORA))
+
+    def test_ZERO_nada_no_dia_de_grade_corrente(self):
+        """Ledger cheio de ontem e hoje vazio: nenhuma serie esta cheia."""
+        linhas = [_parte(1, "2026-09-28T09:43:10"),
+                  _parte(2, "2026-09-28T12:10:05"),
+                  _parte(3, "2026-09-29T00:38:40")]
+        self.assertEqual(set(), postar._fontes_cheias_hoje(
+            linhas, agora=datetime(2026, 9, 29, 6, 40)))
+
+    def test_linha_sem_data_legivel_nao_conta_nem_derruba(self):
+        linhas = [_parte(1, ""), _parte(2, "ontem, acho"),
+                  _parte(3, f"{HOJE}T10:00")]
+        self.assertEqual({"historia_00037": 1},
+                         dict(postar._saidas_hoje(linhas, "tiktok", AGORA)))
+
+    def test_sem_agora_conta_pelo_dia_de_grade_do_relogio(self):
+        """Os chamadores de verdade nao passam `agora`: vale o relogio."""
+        from builds.publicar import conferencia
+        dia = conferencia.chave_do_horario(datetime.now(), "tiktok")[0]
+        linhas = [_parte(1, f"{dia:%Y-%m-%d}T09:40:00"),
+                  _parte(2, f"{dia:%Y-%m-%d}T12:10:00")]
+        self.assertEqual({"historia_00037"}, postar._fontes_cheias_hoje(linhas))
 
 
 if __name__ == "__main__":
