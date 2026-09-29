@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-29T15:58:47.926853",
+  "depende_de": [],
+  "historico": [],
+  "id": "rodizio-de-imagens-quem-vem-primeiro",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "prova de origem forte; disputa a conta com a pipeline de imagens",
+      "id": "picasso-primeiro",
+      "pede_comentario": false,
+      "rotulo": "PicassoIA primeiro (como está)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "imagem maior; gasta a cota de 5 h da conta que escreve as histórias",
+      "id": "gemini-primeiro",
+      "pede_comentario": false,
+      "rotulo": "Gemini primeiro"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "diga a ordem",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "No 🎲 Livre (qualquer um livre), o carteiro pega o primeiro gerador da lista que gera hoje, faz a proporção, está em cota e tem a conta livre. Hoje a ordem é PicassoIA → Gemini → Grok → ChatGPT (ias/config.json, rodizio_imagem). PicassoIA é conta compartilhada com a pipeline (prova forte pelo histórico); Gemini é a conta da pipeline das histórias (a imagem sai em 2816x1536 original); Grok e ChatGPT não foram provados gerando imagem ainda.",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Rodízio de imagens: quem vem primeiro",
+  "vigente": null
+}

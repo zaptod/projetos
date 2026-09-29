@@ -19,6 +19,7 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 - ✅ **Quando você fala com uma IA e a pipeline precisa da mesma conta** — Você: a pipeline espera a sua conversa terminar (29/09/2026) `ias-prioridade-conversa`
 - ✅ **Cada IA tem UM chat de longa duração ou um chat novo por assunto?** — Um chat 'casa' por IA, com resumo periódico (29/09/2026) `ias-chat-persistente`
 - ✅ **Fichas das IAs (fase 1): li?** — Li; seguir para a fase 2 (falar com cada uma pelo app) (29/09/2026) `ias-fichas-lidas`
+- ⏳ **Rodízio de imagens: quem vem primeiro** — No 🎲 Livre (qualquer um livre), o carteiro pega o primeiro gerador da lista que gera hoje, faz a proporção, está em cota e tem a conta livre. Hoje a ordem é PicassoIA → Gemini → Grok → ChatGPT (ias/config.json, rodizio_imagem). PicassoIA é conta compartilhada com a pipeline (prova forte pelo histórico); Gemini é a conta da pipeline das histórias (a imagem sai em 2816x1536 original); Grok e ChatGPT não foram provados gerando imagem ainda. `rodizio-de-imagens-quem-vem-primeiro`
 
 <!-- decisoes:fim -->
 
