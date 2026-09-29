@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T23:02:28",
+      "evento": "2026-09-28T21:44:17",
+      "linha": 26,
+      "nota": "registrada; ADIADA pela duelo-quando = depois da estabilização",
+      "opcao": "mudo",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "O jogo só exporta o TIPO do som no JSON (berro, sino, golpe, gemido); quem toca é a fábrica, que ainda não tem a ponte do zombie. Voz falada seria sintetizada na fábrica (edge-tts, como nos builds), com vozes pt-BR, pt-PT, es-AR, en-US, ja-JP e de-DE. Só você julga som: o Gemini não recebe o áudio. Detalhes: docs/zombie/duelo-elaborado.md §6.",
   "criado": "2026-09-28T21:35:02.729487",
   "depende_de": [
