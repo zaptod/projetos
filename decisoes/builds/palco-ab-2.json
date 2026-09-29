@@ -1,0 +1,55 @@
+{
+  "comentario": true,
+  "contexto": "Mesmo duelo_00016, mesma seed e corte. Novo no palco: rostos do Kenney nas 24 expressões, efeitos por elemento (projétil, área, beam), HUD com nome, vida e plano, e o hitstop ligado (o lado do palco fica 0,8 s mais longo, 23,2 → 24,0 s; o mais curto congela no fim). O A/B passa duas vezes: a 1ª com o som de hoje, a 2ª com o do palco. A vitrine mostra todas as peças, página por página. Ainda sem arte: armas (os 54 estilos), acessórios de classe, orbe/summon/trap.",
+  "criado": "2026-09-28T21:18:54.776870",
+  "depende_de": [
+    {
+      "decisao": "palco-seguir",
+      "opcao": "seguir"
+    }
+  ],
+  "historico": [],
+  "id": "palco-ab-2",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\palco-ab-2\\ab_celular.mp4",
+      "rotulo": "A/B · duelo 00016 (16E)"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\palco-ab-2\\palco_celular.mp4",
+      "rotulo": "Palco 16E · duelo 00016"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\palco-ab-2\\vitrine.mp4",
+      "rotulo": "Vitrine 16E · todas as peças"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "A troca começa pelo duelo; o pygame fica de reserva 2 semanas",
+      "id": "trocar",
+      "pede_comentario": false,
+      "rotulo": "Seguir: trocar o visual do duelo (16G)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ajustes",
+      "pede_comentario": true,
+      "rotulo": "Seguir, com ajustes (comente)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "mais-arte",
+      "pede_comentario": false,
+      "rotulo": "Ainda não: mais arte antes (armas e acessórios)"
+    }
+  ],
+  "pergunta": "Com a arte da 16E, o palco já está melhor que o visual de hoje para trocar o duelo (16G)?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Palco: A/B depois da arte (16E)",
+  "vigente": null
+}

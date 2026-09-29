@@ -15,6 +15,7 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
   - ✅ **Palco: o visual novo (A/B)** — Seguir: próxima etapa é a arte (16E) (28/09/2026) `palco-seguir`
     - ✅ **Chão da arena** — Foto de pedra CC0 escurecida (como está) (28/09/2026) `chao-da-arena`
     - ✅ **Hitstop: a pausinha no impacto** — Ligar (28/09/2026) `hitstop`
+    - ⏳ **Palco: A/B depois da arte (16E)** — Com a arte da 16E, o palco já está melhor que o visual de hoje para trocar o duelo (16G)? `palco-ab-2`
 - ✅ **Transição até o palco** — O visual atual segue, já com o som real (28/09/2026) `transicao`
   - ✅ **Som real da luta (16A)** — Aprovar: re-render do estoque na madrugada (28/09/2026) `som-real-16a`
     - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`
