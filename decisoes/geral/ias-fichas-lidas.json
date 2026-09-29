@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "289116c2",
+      "em": "2026-09-29T02:44:37",
+      "evento": "2026-09-29T02:43:59",
+      "linha": 53,
+      "nota": "fase 2 no topo da fila; começa na retomada das 03:53 (pausa segura)",
+      "opcao": "seguir",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Ficou sem medir: tempo do OK no Grok e no Gemini (voce fechou antes do teste), limite de caracteres dos campos, imagem 1:1 com resolucao/alfa no Grok/Gemini/ChatGPT, Configuracoes > Uso do Grok, login/creditos de hoje do DreamFace e do Digen. Proximo: fase 2 (falar com cada uma pelo app), ja com as suas 3 decisoes de 02:24-02:26 (Grok pelo site com a conta X; voce tem prioridade sobre a pipeline; um chat 'casa' por IA).",
   "criado": "2026-09-29T02:39:20.098822",
   "depende_de": [],
