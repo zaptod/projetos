@@ -28,14 +28,18 @@ Documento de passagem. Tudo abaixo foi conferido no código e na máquina em 27/
 
 | Peça | O que é | Como abrir |
 | --- | --- | --- |
-| **Painel** | três janelas grandes, cada uma um processo (`painel/app.py` + `painel/paginas/`) | `painel.bat` → `ferramentas/abrir.py painel`; ou `python -m painel` |
+| **Painel** | quatro janelas grandes, cada uma um processo (`painel/app.py` + `painel/paginas/`) | `painel.bat` → `ferramentas/abrir.py painel`; ou `python -m painel` |
+| **Oficina de sprites** | a quarta janela: folha de sprites do ChatGPT → peça do palco (`painel/paginas/oficina.py` + `painel/sprites/`) | botão **🎨 Oficina de sprites** na Vila; `ferramentas/abrir.py oficina`; `python -m painel --janela oficina` |
 | **Vila flutuante** | uma janela pequena, **sem borda do Windows**, sempre por cima, no lugar dos consoles pretos (`painel/flutuante/`) | dois cliques em `vila_flutuante.pyw`; `python -m painel.flutuante`; ou o botão **🪟 Vila flutuante** na página Vila |
 
-As três janelas (`painel/janelas.py`, `JANELAS`): **🏘 Vila** — o hub, uma página
-só, e daqui se abrem as outras; **🎬 Criação de vídeos** — auditoria,
-confiabilidade, fluxo, publicar, experimentos, vídeos, histórias, espelho,
-contas, reações (a única com `pipeline: True`, a faixa do freio de mão);
-**🎮 Jogo** — torneio, simulação, database, live, áudio.
+As quatro janelas (`painel/janelas.py`, `JANELAS`): **🏘 Vila** — o hub, uma
+página só (placar, as outras janelas, paralelismo e o diário com filtro por
+fábrica; o mapa em pixel saiu em 28/09, ver §6); **🎬 Criação de vídeos** —
+auditoria, confiabilidade, fluxo, publicar, experimentos, vídeos, histórias,
+espelho, contas, reações (a única com `pipeline: True`, a faixa do freio de
+mão); **🎮 Jogo** — torneio, simulação, database, live, áudio; **🎨 Oficina de
+sprites** (28/09) — uma página, cara quente (`cara-da-oficina` = "quente";
+trocar é a linha `"tema"` dela em `JANELAS`).
 
 `janelas.abrir()` usa `pythonw` + `DETACHED_PROCESS`: **fechar quem abriu não
 fecha quem foi aberto**. Decisão do Adrian (01/09/2026) — uma travar não pode
@@ -54,8 +58,9 @@ esconderia os alertas (`pystray` não está instalado; o ícone faz o papel da
 bandeja). O pedido de fechar que vem **do sistema** (WM_CLOSE: "Finalizar
 tarefa", `taskkill` sem `/F`, o Alt+F4 das janelas comuns) também vira o
 ícone desde 28/09 — antes ele destruía a janela calada (ver §5). Sair de vez: botão
-direito → **Fechar de verdade**. O mesmo menu troca tamanho, arte
-(fofa/clássica), "sempre por cima", prever agora e abrir o painel.
+direito → **Fechar de verdade**. O mesmo menu troca tamanho, "sempre por
+cima", prever agora e abrir o painel (a troca de arte saiu com a clássica,
+em 28/09; `"arte": "classico"` guardado volta para a fofa).
 
 ## 2. Como a Vila se mantém no ar
 
@@ -172,8 +177,9 @@ aba, arte, enfeites e a caixa-preta da §2) — estado dela, não do sistema. Co
    sozinha quando um comando começa.
 5. **Arte fofa é o padrão** (`flutuante/arte.py`): "não quero isso pixelado".
    Pillow em 4× reduzido com LANCZOS (o Tk não suaviza nada), procedural e
-   determinística (`random.Random(semente)`, com teste de bytes iguais). A
-   **clássica em pixel** continua no menu do botão direito. **Desde 28/09
+   determinística (`random.Random(semente)`, com teste de bytes iguais). É a
+   **única** desde 28/09: a clássica em pixel (`mundo.py`) foi aposentada
+   por decisão do Adrian (`aposentar-vila-pixel`). **Desde 28/09
    toda função de desenho aceita `escala`** e desenha de verdade nesse tamanho
    (o `Pincel` guarda `k` pixels internos por pixel do mundo: 4 em 1×, 2×escala
    acima disso); as coordenadas continuam em pixels do mundo. Com escala 1 o
@@ -186,8 +192,9 @@ aba, arte, enfeites e a caixa-preta da §2) — estado dela, não do sistema. Co
    publicação solta confete, e a cada 3 publicações do dia vem um enfeite.
 7. **O estado real sempre vence a animação.** Serviço trabalhando leva o
    habitante ao prédio com o balão do que está sendo feito, não importa o que ele
-   fazia; só quem está de folga passeia. Prédio **nunca some** (fallback em três
-   degraus no `mundo.py`) — sumir é o jeito mais silencioso de mentir. E nada se
+   fazia; só quem está de folga passeia. Prédio **nunca some** (todo prédio de
+   `dados.PREDIOS` tem lote em `arte.LOTES`, com teste) — sumir é o jeito mais
+   silencioso de mentir. E nada se
    perde no meio da graça: placa com a cor do estado, bandeira de conta em uso,
    balão e ❗ no erro.
 
@@ -269,30 +276,67 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   recriá-la — foi assim que a tarefa no ar mudou em 28/09 (`WakeToRun=False`,
   o resto igual, a Vila 11728 intocada). O modo a seco mostra `acorda_o_pc`.
   A Vila segue herdando a prioridade 7 da tarefa (roda em `BelowNormal`).
-- **`vila/` continua em uso pelo painel**, mesmo com a Vila antiga fora do app do
-  celular: a página `paginas/vila.py` (mapa grande em pixel, de
-  `vila/config.json`), o fallback da flutuante quando a arte clássica está
-  escolhida (`mundo.py` → `vila.gerar_base.predio_procedural`, `vila.motor`) e a
-  **Oficina** (`vila/editor.py`, pela página ou `python -m vila.editor`). O app
-  do celular não usa mais nada da `vila/`: o `_motor()` morto de
-  `remoto/vila_dados.py` saiu em 28/09. Ainda sobra lá a constante `ESCALA = 2`,
-  que ninguém lê — o arquivo é do app, então fica para a sessão dele.
-- A **Oficina entrou no sistema visual** em 28/09: usa a cara da **VILA** do
-  `estilo.py` (o conteúdo dela é pixel art, e o `estilo` explica por que
-  essa moldura é quente e o acento é âmbar) pelo kit `painel.widgets`; o
-  acento ficou só na célula escolhida, no item selecionado e no único botão
-  primário (**Salvar tudo**); título de coluna é discreto. O tamanho sai da
-  tela (`editor.geometria`: 1330×680 na dele, com o rodapé acima da barra
-  do Windows — antes os 1330×700 fixos o punham embaixo dela), a largura
-  mínima é a do conteúdo, e o que cede na altura é a folha, a lista de
-  papéis (agora com barra) e o mapa. Se o Adrian preferir a cara sóbria
-  (roxa) das janelas de trabalho, é trocar `estilo.VILA` por
-  `estilo.OFICINA` numa linha. Continuam **duas artes da mesma Vila** para
-  manter (o mapa grande em pixel e a fofa): não é bug, é custo.
+- **A Vila em pixel foi aposentada (28/09)**, por decisão do Adrian
+  (`aposentar-vila-pixel` = "aposentar", depois de "Eu descartei essa vila"
+  na `cara-da-oficina`). Saíram, com o histórico no git (commit desta
+  mudança): a pasta `vila/` inteira (motor, `gerar_base`, a Oficina antiga
+  `editor.py`, `config.json`, `sprites/` e os 23 testes), a arte clássica da
+  flutuante (`flutuante/mundo.py`, o item do menu e o `--arte`) e o mapa em
+  pixel da página Vila. Contado antes de apagar: importavam `vila` só
+  `paginas/vila.py`, `flutuante/mundo.py`, os próprios testes e o
+  `testar.py` (pelo nome); o `abrir.py oficina` chamava `vila.editor`; o app
+  do celular não usava mais nada. O que o mapa fazia e ainda serve ficou: o
+  filtro do diário virou uma caixa. Não mudou nada em `arte.py`, `vida.py`,
+  `dados.py`, `retrato.py` nem no app (provas de tela da flutuante média e
+  grande e do app, 28/09). Sobra em `dados.py` o reconhecimento do processo
+  `vila.editor` ("Oficina da Vila"), que agora nunca casa — o arquivo é da
+  Vila fofa e ficou intocado de propósito.
+- **Oficina de sprites (28/09)**, no lugar da antiga. Pedido do Adrian em
+  `builds/sprites-animados` = "limpar depois": uma interface que facilite
+  limpar, sanear e fatiar as folhas que ele gera no ChatGPT (o `piriri.py`
+  dele tirava o fundo com limiar 240 pixel a pixel). As contas moram em
+  `painel/sprites/` (sem Tk, numpy + Pillow, sem laço por pixel): `rotulos`
+  (componentes conectados por corridas — o scipy não está instalado),
+  `limpeza` (fundo por preenchimento das bordas ou cor-chave, com suavidade e
+  descontaminação; alfa mínimo; despill que troca a franja pela cor do
+  desenho em volta, e não apaga o verde de um ácido verde; linhas de grade
+  por "corrida longa que os vizinhos não têm"; ilhas), `fatiar` (linhas
+  desenhadas, vãos, colunas×linhas, ou por desenho), `alinhar` (âncora por
+  massa/caixa/pé, célula única, margem, largura máx. com LANCZOS),
+  `medidas`, `receita` (o estado; desfazer é voltar a receita), `lote` e
+  `exportar`. **Medido na 11243** (`fixtures/folha_acida_chatgpt.png`): 26
+  quadros pela grade 6×5; linhas de grade 10 → 0; px nas faixas da grade
+  52.134 → 0; franja verde forte 192.156 → 0 (nem escondida em pixel
+  transparente); pontinhos 4.462 → 0; buracos no desenho 0 (o `piriri.py`
+  abre 205); âncoras ±0,5 px; ~0,5 s por folha. **O que a folha tinha de
+  verdade:** ela já vem RGBA, e 256 mil pixels têm alfa 1–2 com cor
+  (0,255,0) — a "franja" e a grade que se viam eram esse fantasma; por isso
+  o limiar de branco não resolvia. **Exporta** no formato que o palco já lê
+  (`docs/palco/COMO-EDITAR.md`, seção "Folha de sprite animada", da 16E):
+  `efeitos/folhas/<nome>.png` + `.json` (origem, prova, receita, medidas),
+  a cena com `folha_animada.gd` em `skills/<skill>`,
+  `objetos/<tipo>/<elemento>` ou `eventos/<tipo>[_<tier>]`, e a linha de
+  `LICENCAS.md` num bloco próprio (`<!-- oficina:inicio -->`). Sem prova de
+  origem recusa; arquivo existente pede confirmação; beam não entra (o palco
+  não aceita folha nele). SpriteFrames `.tres` não: o palco não lê. Conferido
+  numa CÓPIA do palco com o Godot 4.7 headless: a biblioteca achou a cena
+  pelo nome e carregou a folha (1674×610, 6×5, 26 quadros). Soltar arquivo
+  na janela: `painel/arrastar.py` (WM_DROPFILES por ctypes; o
+  `tkinterdnd2` não está instalado).
+- **Prova de tela sem roubar o foco** (`painel/prova.py`, 28/09). Medido: um
+  `tk.Tk()` de um processo filho do VS Code vira a janela da frente no
+  primeiro `update_idletasks`, mesmo retirada; fora da tela o Tk não pinta
+  (foto branca). O que funciona: devolver o foco a quem tinha e mandar a
+  janela para o fundo (13 ms); coberta, o `PrintWindow` ainda a fotografa.
+  Vale para `python -m painel --prova` e para a `--prova` da flutuante.
 
 ## 7. Como conferir sem quebrar nada
 
-- `python -m painel --smoke` monta as três janelas, **uma por processo**, e passa
+- `python -m painel --janela oficina --arquivo F.png --prova saida.png`
+  fotografa uma janela no tamanho da tela dele (`--tamanho`, padrão
+  1366x705), sem roubar o foco; `--vista folha` mostra a folha final.
+  `python -m painel.sprites medir F.png` imprime as medidas sem janela.
+- `python -m painel --smoke` monta as quatro janelas, **uma por processo**, e passa
   por cada página (três Tk no mesmo processo dão "async handler deleted by the
   wrong thread"). Nenhuma suíte pega erro de layout.
 - `python -m painel.flutuante --prova saida.png` abre, espera os dados,
@@ -301,15 +345,17 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   `--gif` grava 5 s, `--medir-cpu SEG` mede a CPU. A `--prova` **não** passa pelo
   mutex: abre uma segunda janela de propósito, e é a forma segura de olhar sem
   mexer na do dono.
-- Testes desta parte (199): `painel/test_painel.py` (40),
-  `painel/test_flutuante.py` (92, com a caixa-preta e o WM_CLOSE de verdade),
-  `painel/test_tarefa_da_vila.py` (12, o instalador e a guarda do `.cmd`
-  rodada pelo `cmd`), `painel/test_vila_fofa.py` (32, com a escala e a
-  Vila dobrada do celular), `vila/test_motor.py`
-  (17) e `vila/test_editor.py` (6: sem cor literal, cabe na tela dele, nada
-  espremido nem desmapeado pelo `pack`). Os da `vila/` entram no `testar.py`
-  **pelo nome** (`vila/` é pacote de namespace e o `discover` recusa): teste
-  novo ali precisa entrar na lista.
+- Testes desta parte (223, todos pelo `discover` do painel):
+  `painel/test_painel.py` (40), `painel/test_flutuante.py` (88, com a
+  caixa-preta e o WM_CLOSE de verdade), `painel/test_tarefa_da_vila.py` (19,
+  o instalador, a guarda do `.cmd` rodada pelo `cmd` e o "não acorda o PC"),
+  `painel/test_vila_fofa.py` (32, com a escala e a Vila dobrada do celular),
+  `painel/test_oficina_sprites.py` (40: a 11243 medida, o `piriri.py`
+  medido do mesmo jeito, fundo branco que não fura o brilho, tela verde,
+  exportação no formato do palco, soltar arquivo, a página cabendo em
+  1366×768) e `painel/test_confiabilidade_grade.py` (4). As fixtures são
+  cópias das folhas do Adrian em `painel/sprites/fixtures/` (os originais
+  da raiz são dele).
 - `python -m painel.flutuante.tarefa` (sem bandeira) confere o `.cmd` e a
   tarefa sem escrever nada.
 
@@ -333,11 +379,17 @@ na thread da interface; usar `ImageGrab`; apontar a tarefa direto para o `.cmd`
 | tarefas do Agendador | os instaladores de cada parte | `Get-ScheduledTask` |
 | `ferramentas/postar.py` | outra sessão | subprocesso, só as funções de fila |
 
-**Meus:** `painel/**`, `vila/**`, `vila_flutuante.pyw`, o `vila_flutuante.cmd`
+**Meus:** `painel/**`, `vila_flutuante.pyw`, o `vila_flutuante.cmd`
 (gerado pelo `flutuante/tarefa.py`), a tarefa `NeuralFights_vila_flutuante`, e
-em disco `flutuante.json` + `flutuante.sinal`. `vila/config.json` e
-`vila/sprites/` são da **Oficina** — quem edita mapa e papéis é ela, não o código
-do painel.
+em disco `flutuante.json` + `flutuante.sinal`.
+
+**A Oficina de sprites escreve no palco** (dono: a sessão do palco), e só
+quando o Adrian aperta **Exportar**: `palco/biblioteca/efeitos/folhas/`, a
+cena em `efeitos/skills|objetos|eventos/` e o bloco `oficina` do
+`LICENCAS.md`. O formato é o da `folha_animada.gd` e da seção "Folha de
+sprite animada" de `docs/palco/COMO-EDITAR.md`: se ele mudar lá, o
+`painel/sprites/exportar.py` muda junto (o teste confere os campos do
+script).
 
 **O que o app do celular consome da Vila** (`remoto/vila_nova.py`, dono é a
 sessão do app): `painel.flutuante.arte` (fundo dia/noite e atlas de personagens,

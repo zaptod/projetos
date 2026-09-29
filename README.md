@@ -29,8 +29,8 @@ random_builds/   a roleta de builds -> vídeo publicado     (pacote: builds)
 historias/       o canal de histórias por IA               (pacote: contos)
 mimetizar/       canal alheio -> bíblia -> preset          (pacote: espelho)
 visao/           as quatro famílias de número              (pacote: panorama)
-painel/          o painel de controle: Vila e janelas de trabalho
-vila/            o motor de sprites da Vila + a Oficina
+painel/          o painel de controle: Vila, janelas de trabalho e a
+                 Oficina de sprites (folha do ChatGPT -> palco)
 remoto/          o celular: o bot de Telegram e o app (PWA pelo Tailscale)
 ```
 
@@ -153,7 +153,7 @@ Antes das suítes, três verificações baratas:
   projetos; aquele é o do que roda sozinho.
 - `docs/neural_fights/PROJECT_CONTEXT.md` — o jogo por dentro
 - `docs/historico/` — changelogs e prompts antigos
-- `random_builds/README.md`, `historias/README.md`, `vila/README.md`,
+- `random_builds/README.md`, `historias/README.md`,
   `remoto/README.md` — um por projeto
 - `ferramentas/` — utilitários de desenvolvimento e diagnósticos
   interativos (ficam fora dos testes de propósito: abrem janela e pedem

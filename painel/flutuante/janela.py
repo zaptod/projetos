@@ -34,10 +34,9 @@ from . import dados, preferencias
 from .caminhos import Caminhos
 from .coletor import Coletor
 from .cena import CenaFofa
-from .mundo import CenaVila
 
-# A arte fofa anda a 20 fps; a classica (pixel) nao precisa de tanto.
-ANIMACAO_MS = 70
+# A arte fofa anda a 20 fps. (A classica em pixel, que andava a 70 ms, foi
+# aposentada em 28/09/2026 por decisao do Adrian: `aposentar-vila-pixel`.)
 ANIMACAO_FOFA_MS = 50
 FILA_MS = 250
 TIQUE_MS = 1000
@@ -536,7 +535,6 @@ class Janela(tk.Tk):
         self.fila = self.coletor.fila
         self.estado: dict = {}
         self.modo = None
-        self._cache_mundo: dict = {}
         self._paineis: list = []
         self._cena = None
         self.hora_visual = hora
@@ -601,14 +599,6 @@ class Janela(tk.Tk):
         menu.add_command(label="Médio", command=lambda: self.trocar("medio"))
         menu.add_command(label="Grande", command=lambda: self.trocar("grande"))
         menu.add_command(label="Ícone", command=lambda: self.trocar("icone"))
-        menu.add_separator()
-        self._arte_var = tk.StringVar(value=self.prefs.get("arte", "fofa"))
-        menu.add_radiobutton(label="Arte fofa", value="fofa",
-                             variable=self._arte_var,
-                             command=self._trocar_arte)
-        menu.add_radiobutton(label="Arte clássica (pixel)", value="classico",
-                             variable=self._arte_var,
-                             command=self._trocar_arte)
         menu.add_separator()
         self._topo_var = tk.BooleanVar(value=bool(self.prefs["topo"]))
         menu.add_checkbutton(label="Sempre por cima",
@@ -822,18 +812,8 @@ class Janela(tk.Tk):
         self.guardar()
 
     def _criar_cena(self, pai):
-        if self.prefs.get("arte") == "classico":
-            return CenaVila(pai, self.t, self.detalhe_predio,
-                            self._cache_mundo)
         return CenaFofa(pai, self.t, self.detalhe_predio, self._cache_fofa,
                         hora=self.hora_visual)
-
-    def _trocar_arte(self) -> None:
-        self.prefs["arte"] = self._arte_var.get()
-        if self.modo in ("medio", "grande"):
-            self.trocar(self.modo)
-        else:
-            self.guardar()
 
     def restaurar(self) -> None:
         anterior = self.prefs.get("anterior") or "medio"
@@ -1081,8 +1061,7 @@ class Janela(tk.Tk):
         self._animacao = self.after(self._intervalo(), self._animar)
 
     def _intervalo(self) -> int:
-        return (ANIMACAO_FOFA_MS if isinstance(self._cena, CenaFofa)
-                else ANIMACAO_MS)
+        return ANIMACAO_FOFA_MS
 
     def _parar_animacao(self) -> None:
         if self._animacao is not None:

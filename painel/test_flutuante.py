@@ -11,7 +11,7 @@ O que este arquivo trava:
    erro que vale (2 h), bot no ar pela trava dele.
 4. RELOGIO. Proximo horario e contagem regressiva com relogio falso.
 5. FEED E PAINEIS. O texto que aparece, sem Tk.
-6. FALLBACK DE SPRITE. Predio sem arte nao some da Vila.
+6. PREDIO NUNCA SOME. Todo predio tem lote na arte fofa.
 7. OCULTAR CONSOLES. A seco nao altera nada; o lancador passa o codigo.
 8. A JANELA MONTA nos quatro tamanhos, e so ela chama `after`.
 
@@ -34,8 +34,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from painel.flutuante import (coletor, dados, janela, mundo, preferencias,
-                              previsao)
+from painel.flutuante import coletor, dados, janela, preferencias, previsao
 from painel.flutuante.caminhos import Caminhos
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -786,45 +785,27 @@ class CaixaPreta(unittest.TestCase):
         self.assertLess(ligado, datetime.now().astimezone())
 
 
-class FallbackDeSprite(unittest.TestCase):
-    class _AtlasSemNada:
-        def sprite(self, *a, **k):
-            raise KeyError("papel sem sprite atribuido")
+class PredioNuncaSome(unittest.TestCase):
+    """Todo predio que os dados conhecem tem lote na arte fofa, dentro do
+    mundo. (O fallback em tres degraus era da arte classica em pixel,
+    aposentada em 28/09/2026 junto com o `mundo.py`.)"""
 
-    def test_papel_ausente_cai_no_procedural(self):
-        img, origem = mundo.sprite_do_predio("deepseek", self._AtlasSemNada())
-        self.assertEqual(origem, "procedural")
-        self.assertEqual(img.size, (64, 48))
+    def test_todo_predio_tem_lote_dentro_do_mundo(self):
+        from painel.flutuante import arte
+        self.assertEqual(set(arte.LOTES), set(dados.PREDIOS))
+        for nome, (x, y) in list(arte.LOTES.items()) + [("casa", arte.CASA)]:
+            self.assertTrue(0 <= x * arte.TILE
+                            and x * arte.TILE + arte.PREDIO_W <= arte.LARGURA,
+                            nome)
+            self.assertTrue(0 <= y * arte.TILE < arte.ALTURA, nome)
 
-    def test_sem_vila_cai_no_vetorial(self):
-        with mock.patch.dict(sys.modules, {"vila.gerar_base": None}):
-            img, origem = mundo.sprite_do_predio("fabrica_nova", None)
-        self.assertEqual(origem, "vetorial")
-        self.assertEqual(img.size, (64, 48))
-
-    def test_mundo_sem_folha_ainda_tem_todos_os_predios(self):
-        img, origens, atlas = mundo.compor((None, None, None))
-        self.assertEqual(img.size, (mundo.LARGURA_PX, mundo.ALTURA_PX))
-        self.assertIsNone(atlas)
-        self.assertEqual(set(origens), set(dados.PREDIOS) | {"casa"})
-
-    def test_mundo_de_verdade_usa_os_papeis(self):
-        _img, origens, _atlas = mundo.compor()
-        self.assertEqual(origens["deepseek"], "sprite")
-        self.assertEqual(origens["youtube"], "sprite")
-
-    def test_lotes_nao_se_sobrepoem_e_cabem(self):
-        ocupados = set()
-        for nome, (x, y) in list(mundo.LOTES.items()) + [("casa", mundo.CASA)]:
-            celulas = {(x + dx, y + dy) for dx in range(4) for dy in range(3)}
-            self.assertFalse(celulas & ocupados, nome)
-            ocupados |= celulas
-            self.assertTrue(all(0 <= cx < mundo.LARG and 0 <= cy < mundo.ALT
-                                for cx, cy in celulas), nome)
-        self.assertEqual(set(mundo.LOTES), set(dados.PREDIOS))
-
-    def test_mapa_compacto_e_deterministico(self):
-        self.assertEqual(mundo.mapa_compacto(), mundo.mapa_compacto())
+    def test_a_arte_classica_saiu(self):
+        self.assertIsNone(importlib.util.find_spec("painel.flutuante.mundo"))
+        self.assertIsNone(importlib.util.find_spec("vila"))
+        self.assertEqual(preferencias.ARTES, ("fofa",))
+        arquivo = Path(tempfile.mkdtemp()) / "flutuante.json"
+        arquivo.write_text(json.dumps({"arte": "classico"}), encoding="utf-8")
+        self.assertEqual(preferencias.ler(arquivo)["arte"], "fofa")
 
 
 class TarefasOcultas(unittest.TestCase):

@@ -50,7 +50,6 @@ def main(argv=None) -> int:
                         help="dados de DEMONSTRACAO (so para provas e GIF)")
     parser.add_argument("--gif", metavar="GIF",
                         help="com --prova: grava tambem 5 s de animacao")
-    parser.add_argument("--arte", choices=("fofa", "classico"))
     parser.add_argument("--medir-cpu", type=float, metavar="SEG",
                         help="com --prova: mede a CPU deste processo por SEG")
     args = parser.parse_args(argv)
@@ -69,6 +68,14 @@ def main(argv=None) -> int:
 
     from .janela import Janela
 
+    # A prova nao pode roubar o foco de quem usa a maquina: a janela nova
+    # vira a da frente no primeiro desenho (medido em 28/09/2026), entao o
+    # foco volta para quem o tinha e ela vai para o fundo (`painel/prova.py`).
+    frente = None
+    if args.prova:
+        from ..prova import janela_da_frente
+        frente = janela_da_frente()
+
     # A prova nao pode mudar as preferencias de quem usa a janela.
     coletor = None
     if args.demo:
@@ -78,9 +85,6 @@ def main(argv=None) -> int:
                     topo=False if args.sem_topo else None,
                     persistir=not args.prova, coletor=coletor,
                     hora=args.hora)
-    if args.arte and args.arte != janela.prefs.get("arte"):
-        janela.prefs["arte"] = args.arte
-        janela.trocar(janela.modo)
     if args.aba and janela.modo == "medio":
         janela.aba(args.aba)
     if args.gaveta and not janela.prefs.get("gaveta"):
@@ -90,7 +94,11 @@ def main(argv=None) -> int:
     if args.prova:
         import time
 
+        from ..prova import discreta
         from .captura import capturar
+        if janela.prefs.get("topo"):
+            janela.attributes("-topmost", False)
+        discreta(janela, frente)
         quadros = []
         cpu = {}
 

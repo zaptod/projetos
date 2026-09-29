@@ -6,7 +6,7 @@
     python testar.py --lista     o que existe, sem executar
 
 Por que existe: o projeto virou seis bases de código (neural_fights,
-random_builds, historias, mimetizar, vila, remoto), o agregador de métricas mais o painel, cada uma com o seu
+random_builds, historias, mimetizar, remoto), o agregador de métricas mais o painel, cada uma com o seu
 jeito de rodar teste. "Testar tudo" virava cinco comandos em cinco pastas —
 e, na prática, ou se esquecia um ou não se testava. Um comando que falha em
 vermelho é a diferença entre confiar e torcer.
@@ -84,13 +84,10 @@ SUITES = (
     ("remoto (bot)", RAIZ,
      [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "remoto",
       "-t", ".", "-p", "test_*.py"]),
-    # Pelo NOME, e nao por `discover`: `vila/` e pacote de namespace (sem
-    # `__init__.py`), e o `discover` recusa ("not importable"). Arquivo de
-    # teste novo aqui entra nesta lista — o `test_editor` (a Oficina, 28/09)
-    # e o exemplo.
-    ("vila (sprites)", RAIZ,
-     [PY, "-X", "utf8", "-m", "unittest", "vila.test_motor",
-      "vila.test_editor"]),
+    # A `vila/` (motor em pixel e a Oficina dela) foi aposentada em
+    # 28/09/2026 por decisao do Adrian; a Oficina de sprites nova mora no
+    # painel e os testes dela (`painel/test_oficina_sprites.py`) entram no
+    # `discover` do painel logo abaixo.
     # `discover` pelo mesmo motivo do remoto: `test_flutuante` (a janela
     # flutuante, 17/09/2026) nasceria invisivel com o modulo pelo nome.
     ("painel (novo)", RAIZ,
@@ -167,7 +164,7 @@ def integridade() -> dict:
     alvos = []
     for projeto in (RAIZ / "random_builds", RAIZ / "historias",
                     RAIZ / "mimetizar", RAIZ / "remoto", RAIZ / "painel",
-                    RAIZ / "visao", RAIZ / "vila", RAIZ / "ferramentas"):
+                    RAIZ / "visao", RAIZ / "ferramentas"):
         if projeto.is_dir():
             for padrao in EXTENSOES_VIGIADAS:
                 alvos += list(projeto.rglob(padrao))

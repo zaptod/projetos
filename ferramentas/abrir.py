@@ -128,7 +128,8 @@ ALVOS = {
     "criacao": (["-m", "painel", "--janela", "criacao"],
                 "a janela de criacao de videos"),
     "jogo": (["-m", "painel", "--janela", "jogo"], "a janela do jogo"),
-    "oficina": (["-m", "vila.editor"], "a Oficina de sprites da Vila"),
+    "oficina": (["-m", "painel", "--janela", "oficina"],
+                "a Oficina de sprites (folhas do ChatGPT para o palco)"),
 }
 
 

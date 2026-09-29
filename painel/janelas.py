@@ -10,9 +10,11 @@ telas pesadas no mesmo processo disputam a mesma thread, e a animacao da Vila
 engasgaria enquanto a galeria de videos varre o disco. Em processos
 separados, cada uma tem o seu relogio.
 
-    VILA      o hub. Cara quente, o pixel art e o protagonista.
+    VILA      o hub: placar, diario, paralelismo e de onde se abrem as outras.
     CRIACAO   fluxo, publicar, videos, historias, contas, reacoes.
     JOGO      simulacao, torneio, database, live, audio.
+    OFICINA   a Oficina de sprites: folha do ChatGPT -> peca do palco
+              (28/09/2026, no lugar da Oficina da Vila em pixel, aposentada).
 
 O estado e compartilhado por ARQUIVO (o registro de contas, o diario, as
 travas), que ja era assim antes de existir uma segunda janela. Nenhuma
@@ -52,6 +54,11 @@ def _paginas_de_criacao() -> list:
             mimetizar.Pagina, contas.Pagina, extras.Reacoes]
 
 
+def _paginas_da_oficina() -> list:
+    from .paginas import oficina
+    return [oficina.Pagina]
+
+
 def _paginas_do_jogo() -> list:
     from .paginas import extras, jogo
     return [extras.Torneio, jogo.Simulacao, jogo.Database, jogo.Live,
@@ -71,6 +78,12 @@ JANELAS = {
     "jogo": {"titulo": "Jogo — Neural Fights", "tema": "oficina",
              "paginas": _paginas_do_jogo, "icone": "🎮",
              "descricao": "simulação, torneio, banco e live"},
+    # A cara QUENTE: decisao do Adrian para a Oficina
+    # (`painel-e-vila/cara-da-oficina` = "quente"). Trocar por "oficina"
+    # (a sobria, roxa) e esta linha so.
+    "oficina": {"titulo": "Oficina de sprites — Neural Fights",
+                "tema": "vila", "paginas": _paginas_da_oficina, "icone": "🎨",
+                "descricao": "limpar, fatiar e exportar folhas para o palco"},
 }
 
 

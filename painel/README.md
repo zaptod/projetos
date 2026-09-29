@@ -35,8 +35,8 @@ habitantes (`flutuante/vida.py`) passeiam por um grafo de caminhos, sentam
 no banco, regam flores, alimentam os patos, conversam quando se cruzam,
 comemoram ao terminar um trabalho e consolam quem está com erro; publicação
 nova solta confete, e a cada 3 publicações do dia a vila ganha um enfeite.
-O estado real sempre vence a animação. A arte em pixel continua no menu do
-botão direito ("Arte clássica"). `--demo` usa dados de demonstração (só
+O estado real sempre vence a animação. A arte em pixel ("clássica") foi
+aposentada em 28/09/2026 por decisão do Adrian. `--demo` usa dados de demonstração (só
 para provas), `--hora HH` finge dia/noite, `--gif` grava 5 s, e
 `--medir-cpu SEG` mede a CPU.
 

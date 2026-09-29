@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """A cena FOFA: desenha a `vida.Vida` num Canvas, com a arte do `arte.py`.
 
-Mesma interface da `mundo.CenaVila` (a arte classica em pixel, que continua
-como tema alternativo): `canvas`, `aplicar(predios)`, `passo()`,
-`predio_em(x, y)`. E mais `aplicar_estado(estado, colecao)` para o que so
-esta cena tem: noite, publicacoes, placar e enfeites.
+A unica cena da janela desde 28/09/2026 (a classica em pixel, `mundo.py`,
+foi aposentada por decisao do Adrian). A interface que a janela usa:
+`canvas`, `aplicar(predios)`, `passo()`, `predio_em(x, y)` e
+`aplicar_estado(estado, colecao)` (noite, publicacoes, placar e enfeites).
 
 O QUE NAO PODE SE PERDER no meio da graca: placa de cada predio com a cor
 do estado, bandeira de conta em uso, o balao do que esta sendo feito embaixo

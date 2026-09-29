@@ -25,7 +25,9 @@ PADRAO = {"modo": "medio", "anterior": "medio", "topo": True,
           "gaveta": False, "arte": "fofa", "colecao": None,
           # a caixa-preta (ver `abrir_vida`)
           "vida": None, "quedas": None, "fechar_pedido": None}
-ARTES = ("fofa", "classico")
+# So a fofa: a classica em pixel foi aposentada (28/09/2026). Quem tinha
+# "classico" guardado volta para a fofa pelo `ler`.
+ARTES = ("fofa",)
 # Um enfeite novo na Vila a cada N publicacoes do dia (o "passatempo").
 PUBLICACOES_POR_ENFEITE = 3
 ENFEITES = 6

@@ -455,12 +455,15 @@ class Cena(unittest.TestCase):
         self.assertFalse(self.cena._noite)
 
 
-class JanelaEscolheArte(unittest.TestCase):
-    def test_troca_entre_fofa_e_classica(self):
+class JanelaSoTemAFofa(unittest.TestCase):
+    """A arte classica em pixel foi aposentada (28/09/2026): a janela monta
+    a fofa, e o menu nao oferece mais a troca."""
+
+    def test_monta_a_fofa(self):
         import tempfile
         from pathlib import Path
 
-        from painel.flutuante import janela, mundo
+        from painel.flutuante import janela
         from painel.flutuante.caminhos import Caminhos
 
         class Parado:
@@ -477,12 +480,7 @@ class JanelaEscolheArte(unittest.TestCase):
         try:
             self.assertIsInstance(app._cena, CenaFofa)
             self.assertEqual(app._intervalo(), janela.ANIMACAO_FOFA_MS)
-            app._arte_var.set("classico")
-            app._trocar_arte()
-            self.assertIsInstance(app._cena, mundo.CenaVila)
-            app._arte_var.set("fofa")
-            app._trocar_arte()
-            self.assertIsInstance(app._cena, CenaFofa)
+            self.assertFalse(hasattr(app, "_trocar_arte"))
         finally:
             app.sair()
             del app
