@@ -1,0 +1,220 @@
+{
+  "anexos": {
+    "accept": null,
+    "arquivo": false,
+    "imagem": true,
+    "leu_o_anexo": null,
+    "multiplos": false,
+    "prova": null,
+    "seletor": "so no Editor Pro: button[aria-label='Carregar imagem'] + input[type=file] (uma imagem; a segunda substitui; prova = 'Remover imagem N') - picasso_selectors.BOTAO_ANEXO",
+    "video": false
+  },
+  "capturas": [
+    "random_builds\\outputs\\_ias\\picasso\\guia\\ (162 capturas + eventos.jsonl)",
+    "random_builds\\outputs\\_ias\\picasso\\guia\\20260929_022814_316_pagina.png (dialogo de modelos)"
+  ],
+  "casa": {
+    "chat_longo": false,
+    "fixar": false,
+    "fonte": "codigo em producao",
+    "limite_mensagens_por_conversa": null,
+    "memoria_entre_chats": false,
+    "nota": "nao e chat: cada geracao e independente e a pagina e sempre a mesma (PicassoClient.url_do_espaco = None); o historico da conta e compartilhado",
+    "projetos": false,
+    "renomear": false
+  },
+  "catalogo_textos": [
+    {
+      "categoria": "parede",
+      "fonte": "codigo",
+      "nota": "engole o clique no #submit-button; fecha no X ou ESC",
+      "seletor": "div[role='dialog'] / [data-slot='dialog-content'] (overlay fixed inset-0 z-50)",
+      "texto": "Planos e Créditos (diálogo de promoção/assinatura cobre a página)",
+      "visto_em": "2026-09-09"
+    },
+    {
+      "categoria": "upgrade",
+      "fonte": "codigo",
+      "nota": "ParedeDePlanos: sessão FREE numa conta com plano; reabrir o perfil resolve",
+      "seletor": "button:has-text('Assine para Gerar')",
+      "texto": "Assine para Gerar",
+      "visto_em": "2026-09-17"
+    },
+    {
+      "categoria": "upgrade",
+      "fonte": "docs",
+      "nota": "",
+      "seletor": "(cabeçalho)",
+      "texto": "FREE -> PRO+",
+      "visto_em": "2026-09-17"
+    },
+    {
+      "categoria": "conteudo",
+      "fonte": "codigo",
+      "nota": "recusa de conteúdo: reescrever o prompt resolve",
+      "seletor": "svg.lucide-shield-alert.text-destructive",
+      "texto": "CONTEÚDO ILEGAL (escudo shield-alert text-destructive no card)",
+      "visto_em": "2026-09-15"
+    },
+    {
+      "categoria": "erro_site",
+      "fonte": "codigo",
+      "nota": "reenviar igual resolve; não é conteúdo",
+      "seletor": "[class*='text-destructive'] sem escudo",
+      "texto": "card com ícone lucide-image quebrado em text-destructive (geração morreu do lado do site)",
+      "visto_em": "2026-09-09"
+    },
+    {
+      "categoria": "erro_site",
+      "fonte": "docs",
+      "nota": "",
+      "seletor": "#promptEnhancerRealtime",
+      "texto": "Aprimorador de Prompt: 'avaliação terminou' (falha passageira, parecia fim do grátis)",
+      "visto_em": "2026-09-14"
+    },
+    {
+      "categoria": "limite",
+      "fonte": "adrian",
+      "nota": "visto na sessao guiada logo apos 'Gerar GRATIS'; o plano diz '2 ilimitadas + 5 com Creditos em Paralelo'",
+      "seletor": "(tooltip sobre #submit-button)",
+      "texto": "Voce atingiu seu limite de geracoes em paralelo. Espere uma terminar.",
+      "visto_em": "2026-09-29T02:30"
+    },
+    {
+      "categoria": "conteudo",
+      "fonte": "logs",
+      "nota": "102 vezes nos logs auto_202609*: recusa de conteudo -> ConteudoRecusado -> suavizar/reescrever (moderacao.escalonar, reescritor pelo ChatGPT)",
+      "seletor": "card do historico (primeiro <p>) + svg.lucide-shield-alert",
+      "texto": "CONTEUDO ILEGAL Este conteudo e ilegal e proibido na nossa plataforma. Nao pode ser processado.",
+      "visto_em": "2026-09-25..28"
+    },
+    {
+      "categoria": "parede",
+      "fonte": "logs",
+      "nota": "3x nos logs; fechado por _tirar_parede_da_frente",
+      "seletor": "div[role='dialog'] (modal de login por cima da sessao valida)",
+      "texto": "Bem-vindo ao Picasso IA - Cadastre-se e gere gratuitamente - Continuar com Google OU E-mail Senha",
+      "visto_em": "2026-09-2x"
+    },
+    {
+      "categoria": "parede",
+      "fonte": "logs",
+      "nota": "2x nos logs; engole o clique - fecha no X/ESC",
+      "seletor": "div[role='dialog'][data-slot='dialog-content'] (overlay fixed inset-0 z-50)",
+      "texto": "Planos e Creditos - Compre um plano ou creditos sem sair da pagina - MELHORAR CREDITOS NOVO PLANOS",
+      "visto_em": "2026-09-2x"
+    },
+    {
+      "categoria": "upgrade",
+      "fonte": "adrian",
+      "nota": "",
+      "seletor": "(faixa verde no topo; button[aria-label='Fechar promocao'])",
+      "texto": "PRO+ -> ELITE - PICASSO IA VIDEO ILIMITADO - A Promo Termina em... / Obter Creditos / Explorar Modelos / MELHORAR",
+      "visto_em": "2026-09-29T02:30"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "logs",
+      "nota": "43x nos logs: o card nosso ainda nao nasceu ou o historico e de outra pessoa; a cena fica pendente",
+      "seletor": "(mensagem do worker, nao do site)",
+      "texto": "sem prova de origem (nenhum dos N card(s) do historico traz o prompt enviado). Nada baixado.",
+      "visto_em": "2026-09-25..28"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "adrian",
+      "nota": "o tempo estimado do site e maior que o real: o card mostrou 7.64s; producao mede 9-42 s por imagem",
+      "seletor": "#submit-button",
+      "texto": "Gerar GRATIS / TEMPO ESTIMADO = 1 min 6 s ... 1 min 42 s / USAR CREDITOS (toggle)",
+      "visto_em": "2026-09-29T02:28"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "docs",
+      "nota": "alarme falso; o Aprimorador esta DESLIGADO nas historias (trocava a acao por retrato)",
+      "seletor": "#promptEnhancerRealtime[aria-disabled]",
+      "texto": "Sua avaliacao gratuita terminou (Aprimorador de Prompt)",
+      "visto_em": "2026-09-14"
+    }
+  ],
+  "cota": {
+    "creditos": null,
+    "o_que_o_site_diz": [
+      "Gerar GRATIS (modelo ilimitado; creditos() devolve None de proposito)",
+      "2 ilimitadas + 5 com Creditos em Paralelo",
+      "Video ilimitado em 720p, 10s; Chat e Codigo IA ilimitados; 24+ Modelos ilimitados",
+      "Voce atingiu seu limite de geracoes em paralelo. Espere uma terminar."
+    ],
+    "plano": "conta com plano (ilimitado no PicassoIA Image); parede 'Assine para Gerar' = sessao ruim, reabrir o perfil (17/09)",
+    "prova": "random_builds\\outputs\\_ias\\picasso\\guia\\20260929_022959_940_pagina.png"
+  },
+  "custo": {
+    "gratis": [
+      "PicassoIA Image (ilimitado)",
+      "Editor Pro",
+      "24+ modelos da aba Ilimitados",
+      "video 720p/10s (site)"
+    ],
+    "pede_plano": [
+      "modelos com o icone de credito (relogio azul): SEEDANCE 2.5 LITE, GPT IMAGE 2.5 SUNBURST, GPT IMAGE 2.0",
+      "mais de 2 geracoes em paralelo (5 com creditos)"
+    ]
+  },
+  "duracao_s": null,
+  "ia": "picasso",
+  "imagem": {
+    "alfa": false,
+    "arquivo": null,
+    "gera": true,
+    "prova": "random_builds\\outputs\\_ias\\picasso\\guia\\20260929_023146_655_pagina.png",
+    "prova_origem": {
+      "nota": "conta COMPARTILHADA: o historico mostra geracoes de outras pessoas (na sessao de 02:31 o card do topo era uma garota anime de outro usuario). So o card com o paragrafo IGUAL ao prompt enviado, data legivel e nao anterior ao envio prova; sem prova nada vai ao disco. O bucket pub-*.r2.dev serve JPG (sem alfa); o worker converte para PNG RGB. 9:16 sai 1088x1920.",
+      "tipo": "card da aba Historico (?tab=history) com o NOSSO prompt (prova forte, proveniencia.prova_forte)"
+    },
+    "resolucao": [
+      1088,
+      1920
+    ],
+    "tempo_s": 38.0
+  },
+  "login": {
+    "detalhe": "sessao guiada 02:26-02:32 (compositor na tela, 'Gerar GRATIS'); em producao session.ensure_logged_in(sel=picasso_selectors) confere textarea#prompt / #submit-button (SESSAO_VIVA) e nunca digita senha (reCAPTCHA)",
+    "estado": "logado",
+    "prova": "random_builds\\outputs\\_ias\\picasso\\guia\\20260929_022959_940_pagina.png"
+  },
+  "medido_em": "2026-09-29T02:32:27",
+  "modelos": {
+    "ativo": "PicassoIA Image",
+    "disponiveis": [
+      "ativo na sessao: PicassoIA Image (config identity.json / imagens.json `modelo`)",
+      "aba Ilimitados (29/09): SEEDANCE 2.5 LITE (video), PICASSOIA VIDEO, PICASSOIA IMAGE EDITOR PRO, PICASSOIA IMAGE, GPT IMAGE 2.5 SUNBURST, GPT IMAGE 2.0, GPT 5 MINI, GPT OSS 20B ... (24+ modelos ilimitados; NANO BANANA 2 e GPT IMAGE 2.5 ilimitados ate 30/09)"
+    ],
+    "prova": "random_builds\\outputs\\_ias\\picasso\\guia\\20260929_022814_316_pagina.png",
+    "seletor": "button:has-text('picassoia image') (PicassoClient._modelo_atual); dialogo 'Buscar modelos' (Ctrl+K) com abas Ilimitados/Image/Video/Edit/Lipsync/Enhance"
+  },
+  "pendencias": [
+    "proporcoes do <select>: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3 (picasso_selectors.OPCOES_ASPECTO); quantidade 1 ou 2; formato webp/jpg/png nas Opcoes avancadas (visto 02:29)",
+    "limite do prompt: historias usam prompt_max_chars 900 (imagens.json); identity 1100-2200 por slot; o site nao mostrou maxlength - o teto de 5.000 caracteres citado na memoria nao foi confirmado na tela",
+    "tempos: imagem boa volta em 9-42 s (87 envios de 08/09); render_timeout 600->180 s com 3 reenvios identicos; ~38 s/cena com prova (00035, 27/09); card do site: 7.64 s",
+    "sessao guiada: ele gerou 'gere uma espada' (02:29:59) - imagem nao baixada pela sessao (a regra e so baixar com o card do historico)"
+  ],
+  "perfil": "E:\\projetos\\random_builds\\.browser_profile\\picasso (contas.perfil('picasso','historias'))",
+  "rotulo": "PicassoIA",
+  "site": "https://picassoia.com/pt/collection/text-to-image/picassoia-image",
+  "texto": {
+    "chars_aceitos_no_campo": null,
+    "gera": false,
+    "limite_chars_campo": null,
+    "prova": null,
+    "resposta": null,
+    "tempo_ok_s": null
+  },
+  "tipo": "imagem",
+  "trava": "perfil__picasso__078d33ec (travas.do_perfil('picasso','historias'); disputada com o worker de builds)",
+  "versao": 1,
+  "video": {
+    "assiste": false,
+    "fonte": "site: 'Video ilimitado em 720p, 10s' (PICASSOIA VIDEO, SEEDANCE 2.5 LITE) - nao usado em producao",
+    "gera": true
+  }
+}

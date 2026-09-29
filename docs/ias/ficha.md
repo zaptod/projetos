@@ -29,6 +29,7 @@ DOM) ficam em `random_builds/outputs/_ias/<ia>/` (fora do git).
 | `catalogo_textos` | lista | ver abaixo |
 | `cota` | bloco | `o_que_o_site_diz` (linhas curtas da tela que falam de plano/limite), `plano`, `creditos`, `prova` |
 | `custo` | bloco | `gratis` e `pede_plano` — só o que foi VISTO |
+| `casa` | bloco | para o chat "casa" de longa duração (decisão `ias-chat-persistente`, 29/09): `chat_longo` (aguenta?), `limite_mensagens_por_conversa`, `renomear`, `fixar`, `memoria_entre_chats`, `projetos`, `fonte`, `nota` |
 | `pendencias` | lista | o que não foi medido e por quê |
 | `capturas` | lista | caminhos das provas |
 

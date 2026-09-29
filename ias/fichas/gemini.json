@@ -12,6 +12,16 @@
   "capturas": [
     "random_builds\\outputs\\_ias\\gemini\\guia\\ (92 capturas, eventos.jsonl com 165 eventos)"
   ],
+  "casa": {
+    "chat_longo": true,
+    "fixar": true,
+    "fonte": "producao + guia 29/09 02:01-02:08",
+    "limite_mensagens_por_conversa": null,
+    "memoria_entre_chats": null,
+    "nota": "A pipeline ja usa UM chat por historia (biblia + 6 partes + revisoes, horas) — aguenta; a armadilha medida em chat longo e ler a resposta anterior (cliente._resposta_atual ancora no ultimo turno). O menu do chat na barra lateral tem 'Fixar' (aria medido em 17/09: 'Fixar Comparar defeitos...') e renomear. Gems existem (icone na barra). Limite de mensagens por conversa nao visto.",
+    "projetos": null,
+    "renomear": true
+  },
   "catalogo_textos": [
     {
       "categoria": "recusa_enlatada",
@@ -159,8 +169,9 @@
   },
   "medido_em": "2026-09-29T02:08:50",
   "modelos": {
-    "ativo": "Pro (ele deixou em 'Pro Estendido' ao fim)",
+    "ativo": "Pro (menu: 3.6 Flash / 3.5 Flash Lite / 3.1 Pro / Raciocinio complexo; +Estendido)",
     "disponiveis": [
+      "ativo na sessao: Pro (ele deixou em 'Pro Estendido' ao fim)",
       "3.6 Flash — Ajuda para tudo",
       "3.5 Flash Lite — Respostas mais rapidas",
       "3.1 Pro — Raciocinio avancado",

@@ -90,7 +90,11 @@ imagem_prompt: chatgpt                         (reescreve prompt recusado)
 O Gemini é o último no roteiro **porque é o único que assiste vídeo**: prendê-lo numa
 geração de horas tiraria o juiz do ar. Conta ocupada passa ao próximo livre, sem
 esperar. O `provedor: gemini` de `agenda.json` é só o fallback de
-`agenda.provedores_do_roteiro()` quando `llm.json` falta. O ChatGPT não assiste vídeo
+`agenda.provedores_do_roteiro()` quando `llm.json` falta. Desde 29/09/2026 `seletores.py`
+também tem o **Grok** (`grok.com`, perfil `grok__principal`, login pessoal do Adrian) — ele
+**não** está em nenhum papel: entrou pela Vila das IAs (`ias/`, `docs/ias/fichas.md`), que
+mede a ficha de capacidades de cada IA (o que gera, cota, textos de erro) sem mexer na
+pipeline. O ChatGPT não assiste vídeo
 nesta máquina (conta free: o mp4 entra como "Arquivo" opaco) — cai na folha de
 contato, um quadro por cena. **A conta do Gemini também é free** ("Faça upgrade para o
 Google AI Pro" na barra lateral).

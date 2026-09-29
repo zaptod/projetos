@@ -70,6 +70,13 @@ def vazia(ia: str) -> dict:
         "cota": {"o_que_o_site_diz": [], "plano": None, "creditos": None,
                  "prova": None},
         "custo": {"gratis": [], "pede_plano": []},
+        # A "CASA" (decisao dele em 29/09/2026, no ias-chat-persistente): cada
+        # IA tera UM chat de longa duracao com resumo periodico. O que importa
+        # para isso: o chat aguenta ficar longo? ha limite de mensagens por
+        # conversa? da para renomear/fixar? a IA lembra entre chats?
+        "casa": {"chat_longo": None, "limite_mensagens_por_conversa": None,
+                 "renomear": None, "fixar": None, "memoria_entre_chats": None,
+                 "projetos": None, "fonte": None, "nota": ""},
         "pendencias": [],
         "capturas": [],
     }
@@ -144,8 +151,10 @@ def salvar(ficha: dict, pasta: Path | None = None) -> Path:
         raise FichaInvalida("; ".join(problemas))
     alvo = caminho(ficha["ia"], pasta)
     alvo.parent.mkdir(parents=True, exist_ok=True)
-    alvo.write_text(json.dumps(ficha, ensure_ascii=False, indent=2,
-                               sort_keys=True) + "\n", encoding="utf-8")
+    # LF explicito: em modo texto o Windows gravaria CRLF e o git avisaria a
+    # cada commit ("CRLF will be replaced by LF").
+    with open(alvo, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(ficha, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     return alvo
 
 
@@ -217,6 +226,17 @@ def _anexos(ficha: dict) -> str:
     return ", ".join(partes) if partes else "—"
 
 
+def _video(ficha: dict) -> str:
+    """Chat: se ASSISTE (recebe mp4). Gerador: se GERA. Os dois quando ha."""
+    bloco = ficha.get("video") or {}
+    partes = []
+    if bloco.get("assiste") is not None:
+        partes.append("assiste" if bloco["assiste"] else "não assiste")
+    if bloco.get("gera") is not None:
+        partes.append("gera" if bloco["gera"] else "não gera")
+    return ", ".join(partes) if partes else "—"
+
+
 def _catalogo(ficha: dict) -> str:
     itens = ficha.get("catalogo_textos") or []
     if not itens:
@@ -263,10 +283,7 @@ COLUNAS = (
     ("modelo", _modelo),
     ("anexos", _anexos),
     ("imagem", _imagem),
-    ("vídeo", lambda f: _sim_nao((f.get("video") or {}).get("assiste"),
-                                  "assiste", "não assiste")
-     if (f.get("video") or {}).get("assiste") is not None
-     else _sim_nao((f.get("video") or {}).get("gera"), "gera", "não gera")),
+    ("vídeo", lambda f: _video(f)),
     ("campo", lambda f: (str((f.get("texto") or {}).get("chars_aceitos_no_campo"))
                          + " chars")
      if (f.get("texto") or {}).get("chars_aceitos_no_campo") is not None else "—"),

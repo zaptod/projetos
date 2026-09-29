@@ -1,0 +1,119 @@
+{
+  "anexos": {
+    "accept": null,
+    "arquivo": false,
+    "imagem": true,
+    "leu_o_anexo": null,
+    "multiplos": null,
+    "prova": null,
+    "seletor": "input[type='file'] (o '+' ao lado do prompt: imagem de referencia); aba 'Minha img'",
+    "video": false
+  },
+  "capturas": [],
+  "casa": {
+    "chat_longo": false,
+    "fixar": false,
+    "fonte": "codigo em producao",
+    "limite_mensagens_por_conversa": null,
+    "memoria_entre_chats": false,
+    "nota": "nao e chat",
+    "projetos": false,
+    "renomear": false
+  },
+  "catalogo_textos": [
+    {
+      "categoria": "limite",
+      "fonte": "codigo",
+      "nota": "dreamface_selectors.ERRO_GERACAO",
+      "seletor": "text=…",
+      "texto": "insufficient / not enough credits / out of credits",
+      "visto_em": "2026-09-01"
+    },
+    {
+      "categoria": "erro_site",
+      "fonte": "codigo",
+      "nota": "",
+      "seletor": "text=…",
+      "texto": "Generation failed / try again",
+      "visto_em": "2026-09-01"
+    },
+    {
+      "categoria": "login",
+      "fonte": "codigo",
+      "nota": "login é MODAL com reCAPTCHA: sempre manual",
+      "seletor": "text='Entrar/Cadastro'",
+      "texto": "Entrar/Cadastro (menu; sessão ausente)",
+      "visto_em": "2026-09-01"
+    }
+  ],
+  "cota": {
+    "creditos": 0,
+    "o_que_o_site_diz": [
+      "contador [class*='credit'] no topo direito: 0 na sondagem logada de 01/09/2026"
+    ],
+    "plano": "gratis (creditos 0 em 01/09)",
+    "prova": null
+  },
+  "custo": {
+    "gratis": [],
+    "pede_plano": [
+      "geracao (creditos)"
+    ]
+  },
+  "duracao_s": null,
+  "ia": "dreamface",
+  "imagem": {
+    "alfa": null,
+    "arquivo": null,
+    "gera": null,
+    "prova": null,
+    "prova_origem": {
+      "nota": "so ha seletores (dreamface_selectors.py) e o login manual; NENHUMA geracao em producao (0 linhas no diario, nada em historias/contos/imagens). Aspecto nasce em 4:3 (trocar para 9:16). Contador de creditos mostrou 0 na sondagem de 01/09.",
+      "tipo": "nao existe cliente"
+    },
+    "resolucao": null,
+    "tempo_s": null
+  },
+  "login": {
+    "detalhe": "nao sondado hoje (padrao em producao, ordem do Adrian 02:3x). Perfil existe desde 01/09/2026 (login manual: o modal tem reCAPTCHA; `main.py identity login --provedor dreamface` deixa a janela 15 min); sem linha no diario desde entao",
+    "estado": "nao_medido",
+    "prova": null
+  },
+  "medido_em": "2026-09-29T02:40:00",
+  "modelos": {
+    "ativo": null,
+    "disponiveis": [
+      "Dream Image 2.0",
+      "GPT Image 2",
+      "Seedream 5.0 Pro",
+      "Seedream 4.5",
+      "Seedream 4.0 (dreamface_selectors.MODELOS, sondagem de 01/09)"
+    ],
+    "prova": null,
+    "seletor": "button:has-text('Dream Image') / ('Seedream') / ('GPT Image') (popover)"
+  },
+  "pendencias": [
+    "NUNCA gerou em producao: e o 'segundo gerador' planejado em 01/09 e parado ali; sem cliente com prova de origem",
+    "login/creditos atuais nao conferidos (sem gastar nada: abrir /pt/image e ler o contador)",
+    "para entrar no rodizio de imagens da fase 3 precisa de cliente + prova de origem (aba 'Minha img'/Criacoes)"
+  ],
+  "perfil": "E:\\projetos\\random_builds\\.browser_profile\\dreamface",
+  "rotulo": "DreamFace",
+  "site": "https://www.dreamfaceapp.com/pt/image",
+  "texto": {
+    "chars_aceitos_no_campo": null,
+    "gera": false,
+    "limite_chars_campo": null,
+    "prova": null,
+    "resposta": null,
+    "tempo_ok_s": null
+  },
+  "tipo": "imagem",
+  "trava": "perfil__dreamface__6c931855",
+  "versao": 1,
+  "video": {
+    "assiste": false,
+    "fonte": "site: avatar/video em outra tela (/pt/avatar); nao usado",
+    "gera": null
+  }
+}

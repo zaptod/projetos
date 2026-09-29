@@ -1,0 +1,145 @@
+{
+  "anexos": {
+    "accept": null,
+    "arquivo": false,
+    "imagem": true,
+    "leu_o_anexo": null,
+    "multiplos": false,
+    "prova": null,
+    "seletor": "menu '+' do composer: UMA imagem de referencia (por isso o Editor Pro do PicassoIA junta personagem+arma antes)",
+    "video": false
+  },
+  "capturas": [],
+  "casa": {
+    "chat_longo": false,
+    "fixar": false,
+    "fonte": "codigo em producao",
+    "limite_mensagens_por_conversa": null,
+    "memoria_entre_chats": false,
+    "nota": "nao e chat: cada geracao vive num Space (pasta) proprio, criado pelo worker - o equivalente de 'projeto'",
+    "projetos": true,
+    "renomear": true
+  },
+  "catalogo_textos": [
+    {
+      "categoria": "parede",
+      "fonte": "codigo",
+      "nota": "client.tirar_parede_da_frente; fecha em button[data-slot='dialog-close']",
+      "seletor": "[role='dialog'][data-slot='dialog-content'] img[alt='Upgrade']",
+      "texto": "20% OFF Real Motion 3.5 Fast (modal 'Upgrade' cobre a página, 10-15 s após carregar)",
+      "visto_em": "2026-09-28"
+    },
+    {
+      "categoria": "limite",
+      "fonte": "codigo",
+      "nota": "selectors.ERRO_GERACAO",
+      "seletor": "text=…",
+      "texto": "insufficient / not enough credits / out of credits / quota",
+      "visto_em": "2026-08-22"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "codigo",
+      "nota": "ler cedo dá 0 falso; DigenClient.creditos espera",
+      "seletor": "button[aria-label*='Meme']",
+      "texto": "Free, Meme 0, Pro Meme 0 (placeholder do chip de créditos nos primeiros ~15 s)",
+      "visto_em": "2026-08-22"
+    },
+    {
+      "categoria": "erro_site",
+      "fonte": "codigo",
+      "nota": "",
+      "seletor": "text='Generation failed'",
+      "texto": "Generation failed",
+      "visto_em": "2026-08-22"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "codigo",
+      "nota": "Plano Free mostra 0 e o Real Motion e incluso: nao e erro (worker.credito_bloqueia)",
+      "seletor": "button[aria-label*='Meme']",
+      "texto": "Free, Meme 0, Pro Meme 0 -> UltraMax, Meme 3, Pro Meme 0 (aria-label do chip de creditos; o plano vem antes da virgula)",
+      "visto_em": "2026-08-22"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "codigo",
+      "nota": "",
+      "seletor": "[role='dialog']:not([data-slot])",
+      "texto": "Scan to download Digen App (cartao role=dialog SEM data-slot: nao e parede)",
+      "visto_em": "2026-09-28"
+    }
+  ],
+  "cota": {
+    "creditos": null,
+    "o_que_o_site_diz": [
+      "chip de creditos: plano + saldo ('UltraMax, Meme 3, Pro Meme 0'); carrega em duas etapas (~15 s de placeholder 'Free, Meme 0')",
+      "diario 29/09 04:09 (UTC): 'geracao noturna: 3 duelo(s)' - a fila de video segue rodando"
+    ],
+    "plano": "ler do aria-label do chip (nao conferido hoje)",
+    "prova": null
+  },
+  "custo": {
+    "gratis": [
+      "Real Motion incluso no plano (payoff nao custa credito)"
+    ],
+    "pede_plano": [
+      "creditos para outros modelos/resolucoes; promo 'Real Motion 3.5 Fast'"
+    ]
+  },
+  "duracao_s": null,
+  "ia": "digen",
+  "imagem": {
+    "alfa": null,
+    "arquivo": null,
+    "gera": false,
+    "prova": null,
+    "prova_origem": {
+      "nota": "gerador de VIDEO; prova de origem MEDIA = card novo no Space criado pelo worker + presets conferidos (RM3.5 / 3s / 480P no card; o card NAO mostra o prompt)",
+      "tipo": "nao se aplica"
+    },
+    "resolucao": null,
+    "tempo_s": null
+  },
+  "login": {
+    "detalhe": "nao sondado hoje (padrao em producao). Em producao session.ensure_logged_in confere o composer ([aria-placeholder^='Describe your video'] / 'New Space'); credencial em digen_credentials.json e desafio (captcha/2FA/Cloudflare) resolvido a mao",
+    "estado": "nao_medido",
+    "prova": null
+  },
+  "medido_em": "2026-09-29T02:40:00",
+  "modelos": {
+    "ativo": "Real Motion 3.5",
+    "disponiveis": [
+      "ativo na sessao: Real Motion 3.5 (identity.json `modelo`; o composer abrevia 'RM3.5')",
+      "Real Motion 3.5",
+      "Real Motion 3.5 Fast (promo 20% OFF, 28/09)",
+      "RM3.2 (ate 720P)"
+    ],
+    "prova": null,
+    "seletor": "selectors.BOTAO_MODELO (popover; DigenClient._ajustar_modelo)"
+  },
+  "pendencias": [
+    "login/creditos/modelo atuais nao conferidos hoje (`python main.py identity doctor --online` em random_builds faz isso sem gerar)",
+    "tempos de geracao: o diario tem 1 linha 'fila de Digen (video)' ok em 295 s (28/09); render_timeout 1800 s",
+    "conta compartilhada: prova de origem MEDIA (space proprio + presets), nunca forte - o card nao traz o prompt"
+  ],
+  "perfil": "E:\\projetos\\random_builds\\.browser_profile\\digen",
+  "rotulo": "Digen",
+  "site": "https://digen.ai/en/space",
+  "texto": {
+    "chars_aceitos_no_campo": null,
+    "gera": false,
+    "limite_chars_campo": null,
+    "prova": null,
+    "resposta": null,
+    "tempo_ok_s": null
+  },
+  "tipo": "video",
+  "trava": "perfil__digen__d5c5c47e",
+  "versao": 1,
+  "video": {
+    "assiste": false,
+    "fonte": "producao: payoff das builds (render_timeout 1800 s; duracao/resolucao 'max'; aspect 9:16; min_interval 45 s)",
+    "gera": true
+  }
+}

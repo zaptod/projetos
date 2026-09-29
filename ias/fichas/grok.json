@@ -13,6 +13,16 @@
     "random_builds\\outputs\\_ias\\grok\\guia\\ (174 capturas de janela+pagina, eventos.jsonl com 259 eventos)",
     "random_builds\\outputs\\_ias\\grok\\20260929_014432_dom_logado.json (DOM da pagina anonima: textarea aria 'Pergunte ao Grok qualquer coisa', attach-button, chat-submit, 'Seleção de modelo')"
   ],
+  "casa": {
+    "chat_longo": null,
+    "fixar": null,
+    "fonte": "guia 29/09 01:52-01:59 (pelo gravado, sem reabrir)",
+    "limite_mensagens_por_conversa": null,
+    "memoria_entre_chats": true,
+    "nota": "Configuracoes > Controle de dados: 'Personalize o Grok com seu historico de conversas (Beta)' LIGADO — ele lembra conversas anteriores (privadas nao). Barra lateral tem 'Projetos' (+ Adicionar projeto) e a lista 'Bate-papos' com titulos automaticos ('Friendly Portuguese Greeting'). Renomear/fixar nao foram vistos; limite por conversa nao medido.",
+    "projetos": true,
+    "renomear": null
+  },
   "catalogo_textos": [
     {
       "categoria": "upgrade",

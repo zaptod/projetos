@@ -12,6 +12,16 @@
   "capturas": [
     "random_builds\\outputs\\_ias\\deepseek\\guia\\ (capturas + eventos.jsonl + testes.jsonl)"
   ],
+  "casa": {
+    "chat_longo": true,
+    "fixar": null,
+    "fonte": "producao + guia 29/09 02:19-02:24",
+    "limite_mensagens_por_conversa": null,
+    "memoria_entre_chats": false,
+    "nota": "A pipeline escreve roteiros inteiros num chat so (Today/Yesterday/7 Days na barra: 'Parte 3 do roteiro', 'O Gol Deixado'...). Cada chat tem '...' (renomear/apagar nao abertos). Sem projetos, sem memoria entre chats. 'E so isso' (Adrian).",
+    "projetos": false,
+    "renomear": null
+  },
   "catalogo_textos": [
     {
       "categoria": "outro",
@@ -92,8 +102,9 @@
   },
   "medido_em": "2026-09-29T02:24:25",
   "modelos": {
-    "ativo": "DeepSeek (site) — sem seletor de modelo; DeepThink e Search sao toggles no compositor",
+    "ativo": "DeepSeek (site; toggles DeepThink/Search)",
     "disponiveis": [
+      "ativo na sessao: DeepSeek (site) — sem seletor de modelo; DeepThink e Search sao toggles no compositor",
       "DeepSeek (site)",
       "DeepThink (toggle, raciocinio)",
       "Search (toggle, busca)"

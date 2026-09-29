@@ -12,6 +12,16 @@
   "capturas": [
     "random_builds\\outputs\\_ias\\chatgpt\\guia\\ (capturas + eventos.jsonl + colado.jsonl com 9 itens dele + testes.jsonl)"
   ],
+  "casa": {
+    "chat_longo": null,
+    "fixar": null,
+    "fonte": "guia 29/09 02:10-02:17 (pelo gravado)",
+    "limite_mensagens_por_conversa": null,
+    "memoria_entre_chats": null,
+    "nota": "Barra lateral: 'Recentes' com os chats (titulos automaticos: 'Identificar dadsaw', 'Reescrita de prompt'...), 'Projetos', 'Biblioteca', 'Agendados'. O menu '...' do chat renomeia/arquiva (nao aberto na sessao). Conta Free: contexto menor e chat longo fica lento — nao medido. Fixar so dentro de Projetos (nao visto).",
+    "projetos": true,
+    "renomear": true
+  },
   "catalogo_textos": [
     {
       "categoria": "cloudflare",
@@ -112,8 +122,9 @@
   },
   "medido_em": "2026-09-29T02:17:03",
   "modelos": {
-    "ativo": "ChatGPT (conta Free: sem seletor de modelo na tela; so o pill 'Pensar', aria-pressed)",
+    "ativo": "padrao do Free (sem seletor; pill Pensar)",
     "disponiveis": [
+      "ativo na sessao: ChatGPT (conta Free: sem seletor de modelo na tela; so o pill 'Pensar', aria-pressed)",
       "padrao da conta Free",
       "Pensar (modo de raciocinio, pill no compositor)"
     ],
