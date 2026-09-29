@@ -1,0 +1,199 @@
+{
+  "anexos": {
+    "accept": null,
+    "arquivo": true,
+    "imagem": true,
+    "leu_o_anexo": null,
+    "multiplos": null,
+    "prova": "random_builds\\outputs\\_ias\\gemini\\guia\\20260929_020305_385_janela.png",
+    "seletor": "button[aria-label='Envio e ferramentas'] -> 'Enviar arquivos. Documentos, dados e arquivos de programação' / 'Adicionar do Drive' / 'Mais uploads' (Google Fotos, Importar código, Notebooks); remover = button[aria-label='fechar anexo']",
+    "video": true
+  },
+  "capturas": [
+    "random_builds\\outputs\\_ias\\gemini\\guia\\ (92 capturas, eventos.jsonl com 165 eventos)"
+  ],
+  "catalogo_textos": [
+    {
+      "categoria": "recusa_enlatada",
+      "fonte": "logs",
+      "nota": "frase sorteada de lista fixa; 18/169 revisões de vídeo; contos/llm/texto.RECUSA_ENLATADA",
+      "seletor": "model-response message-content .markdown",
+      "texto": "Sou uma IA com base em texto, e isso está além das minhas capacidades",
+      "visto_em": "2026-09-13..27"
+    },
+    {
+      "categoria": "recusa_enlatada",
+      "fonte": "logs",
+      "nota": "",
+      "seletor": "model-response message-content .markdown",
+      "texto": "Não fui programado para fazer isso",
+      "visto_em": "2026-09-27"
+    },
+    {
+      "categoria": "recusa_enlatada",
+      "fonte": "logs",
+      "nota": "",
+      "seletor": "model-response message-content .markdown",
+      "texto": "Fui criado apenas para processar e gerar texto",
+      "visto_em": "2026-09-28"
+    },
+    {
+      "categoria": "recusa_enlatada",
+      "fonte": "logs",
+      "nota": "",
+      "seletor": "model-response message-content .markdown",
+      "texto": "Não consigo criar esse tipo de vídeo",
+      "visto_em": "2026-09-27"
+    },
+    {
+      "categoria": "erro_site",
+      "fonte": "logs",
+      "nota": "devolve o prompt à caixa sem anexo; cliente._envio_devolvido",
+      "seletor": "(toast; devolve a pergunta à caixa)",
+      "texto": "Algo deu errado (1155)",
+      "visto_em": "2026-09-27"
+    },
+    {
+      "categoria": "upgrade",
+      "fonte": "docs",
+      "nota": "conta free; decisão gemini-pago = fica na gratuita",
+      "seletor": "(barra lateral)",
+      "texto": "Faça upgrade para o Google AI Pro",
+      "visto_em": "2026-09-27"
+    },
+    {
+      "categoria": "consentimento",
+      "fonte": "codigo",
+      "nota": "modal a cada vídeo; enquanto aberto o Enviar não faz nada",
+      "seletor": "[data-test-id='video-upload-consent-dialog-agree-button'] button",
+      "texto": "Confira se você tem os direitos sobre os conteúdos que enviar",
+      "visto_em": "2026-09-11"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "codigo",
+      "nota": "raciocínio preso >300 s; não é limite",
+      "seletor": "button:has-text('Responder agora')",
+      "texto": "Responder agora",
+      "visto_em": "2026-09-14"
+    },
+    {
+      "categoria": "limite",
+      "fonte": "logs",
+      "nota": "FALSO ALARME medido: era raciocínio preso (gemini-raciocinio-preso)",
+      "seletor": "(mensagem do cliente, não do site)",
+      "texto": "Verifique se a conta atingiu o limite de uso",
+      "visto_em": "2026-09-14"
+    },
+    {
+      "categoria": "limite",
+      "fonte": "adrian",
+      "nota": "a cota real: pool de 5 h + pool semanal; 'modelos e recursos avancados consomem mais'",
+      "seletor": "a[role='menuitem']:has-text('Limites de uso') no menu da conta -> /usage",
+      "texto": "Limites de uso (gemini.google.com/usage): Uso atual = periodo de 5 horas (2% as 02:05, redefinido as 03:01); Limite semanal = 13% (redefinido 1 de out., 12:01)",
+      "visto_em": "2026-09-29T02:05"
+    },
+    {
+      "categoria": "upgrade",
+      "fonte": "adrian",
+      "nota": "",
+      "seletor": "(pagina /usage)",
+      "texto": "Aumente o limite de uso em 2x com o AI Pro — R$ 96,99/mês — Fazer upgrade",
+      "visto_em": "2026-09-29T02:05"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "adrian",
+      "nota": "confirma seletores.GEMINI.parar (^='Parar')",
+      "seletor": "button[aria-label='Parar resposta']",
+      "texto": "Parar resposta",
+      "visto_em": "2026-09-29T02:04"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "adrian",
+      "nota": "o botao de download da imagem gerada no chat",
+      "seletor": "button[aria-label='Baixar imagem no tamanho original']",
+      "texto": "Baixar imagem no tamanho original",
+      "visto_em": "2026-09-29T02:04"
+    }
+  ],
+  "cota": {
+    "creditos": null,
+    "o_que_o_site_diz": [
+      "Limites de uso — PLUS: Uso atual (5 h) 2%, redefinido 03:01; Limite semanal 13%, redefinido 1 de out. 12:01",
+      "Aumente o limite de uso em 2x com o AI Pro (R$ 96,99/mês)"
+    ],
+    "plano": "PLUS (selo na pagina de limites; o site ainda oferece o AI Pro)",
+    "prova": "random_builds\\outputs\\_ias\\gemini\\guia\\20260929_020505_198_janela.png"
+  },
+  "custo": {
+    "gratis": [
+      "texto em Pro/Flash/Flash Lite (dentro do pool de 5 h e semanal)",
+      "imagem no chat ('crie uma banana')",
+      "anexos: arquivos, Drive, Google Fotos, codigo do GitHub, Notebooks",
+      "assistir video (producao)"
+    ],
+    "pede_plano": [
+      "AI Pro: 2x o limite de uso (R$ 96,99/mês)"
+    ]
+  },
+  "duracao_s": 451.0,
+  "ia": "gemini",
+  "imagem": {
+    "alfa": null,
+    "arquivo": null,
+    "gera": true,
+    "prova": "random_builds\\outputs\\_ias\\gemini\\guia\\ (capturas 02:04:3x-02:04:5x)",
+    "prova_origem": {
+      "nota": "'crie uma banana' (02:04) gerou imagem no chat com botao 'Baixar imagem no tamanho original'; menu '+' tem 'Criar imagem', 'Criar vídeo', 'Criar música'. Resolucao/alfa nao medidos.",
+      "tipo": "chat proprio (nao baixada pela sessao)"
+    },
+    "resolucao": null,
+    "tempo_s": null
+  },
+  "login": {
+    "detalhe": "sessao guiada 02:01-02:08: chat montou, 'Conta do Google: Adrian Oliveira'; a mesma conta que a pipeline das historias usa",
+    "estado": "logado",
+    "prova": "random_builds\\outputs\\_ias\\gemini\\guia\\20260929_020144_032_pagina.png"
+  },
+  "medido_em": "2026-09-29T02:08:50",
+  "modelos": {
+    "ativo": "Pro (ele deixou em 'Pro Estendido' ao fim)",
+    "disponiveis": [
+      "3.6 Flash — Ajuda para tudo",
+      "3.5 Flash Lite — Respostas mais rapidas",
+      "3.1 Pro — Raciocinio avancado",
+      "Raciocinio complexo — Solucao de problemas",
+      "sufixo 'Estendido' (Pro Estendido, Flash Estendido, Flash-Lite Estendido)"
+    ],
+    "prova": "random_builds\\outputs\\_ias\\gemini\\guia\\20260929_020305_385_janela.png",
+    "seletor": "button[aria-label^='Abrir seletor de modo. No momento: '] + gem-menu-item[role='menuitem'] (seletores.GEMINI.modelo_botao ja cobre via data-test-id)"
+  },
+  "pendencias": [
+    "tempo do 'OK' nao medido (janela fechada por ele antes do testar_ok)",
+    "imagem gerada no chat nao baixada: resolucao/alfa por medir (1 pedido)",
+    "limite de caracteres do campo nao medido",
+    "o selo 'PLUS' em /usage contradiz a nota de 27/09 ('conta free') e a decisao gemini-pago (fica na gratuita): confirmar com o Adrian se a conta esta num plano Plus",
+    "'Criar vídeo' e 'Criar música' existem no menu +: nao testados (cota)"
+  ],
+  "perfil": "C:\\Users\\adrian\\AppData\\Local\\neural-fights\\browser_profiles\\gemini__principal",
+  "rotulo": "Gemini",
+  "site": "https://gemini.google.com/app",
+  "texto": {
+    "chars_aceitos_no_campo": null,
+    "gera": true,
+    "limite_chars_campo": null,
+    "prova": "random_builds\\outputs\\_ias\\gemini\\guia\\20260929_020227_962_janela.png",
+    "resposta": "'voce escreve aqui, certo gemini?' -> 'Isso mesmo! Sou o Gemini...' (02:02, modelo Pro)",
+    "tempo_ok_s": null
+  },
+  "tipo": "chat",
+  "trava": "perfil__gemini__principal__7094d258",
+  "versao": 1,
+  "video": {
+    "assiste": true,
+    "fonte": "assiste: logs de producao (unico que recebe mp4 no parecer); gera: 'Criar vídeo' no menu + (nao testado)",
+    "gera": true
+  }
+}

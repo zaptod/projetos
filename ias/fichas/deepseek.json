@@ -1,0 +1,128 @@
+{
+  "anexos": {
+    "accept": null,
+    "arquivo": null,
+    "imagem": true,
+    "leu_o_anexo": null,
+    "multiplos": null,
+    "prova": "random_builds\\outputs\\_ias\\deepseek\\guia\\20260929_022242_202_pagina.png",
+    "seletor": "clipe (paperclip) a esquerda do botao de enviar -> input[type=file]; a miniatura aparece dentro do compositor (ele anexou uma imagem propria as 02:21)",
+    "video": false
+  },
+  "capturas": [
+    "random_builds\\outputs\\_ias\\deepseek\\guia\\ (capturas + eventos.jsonl + testes.jsonl)"
+  ],
+  "catalogo_textos": [
+    {
+      "categoria": "outro",
+      "fonte": "codigo",
+      "nota": "",
+      "seletor": "div.ds-think-content",
+      "texto": "Pensou por N segundos (raciocínio DeepThink, em inglês, nunca lido)",
+      "visto_em": "2026-09-17"
+    },
+    {
+      "categoria": "login",
+      "fonte": "codigo",
+      "nota": "",
+      "seletor": "div[role='button']:has-text('Entrar com Google')",
+      "texto": "Entrar com Google",
+      "visto_em": "2026-09-17"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "adrian",
+      "nota": "nunca entra na resposta (texto.limpar_resposta)",
+      "seletor": "div.ds-think-content",
+      "texto": "Thought for 1 second (rotulo do DeepThink; o raciocinio vem em ingles num bloco proprio)",
+      "visto_em": "2026-09-29T02:22"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "adrian",
+      "nota": "o candidato generico ja cobre; o de 17/09 nao casa mais",
+      "seletor": "textarea[placeholder*='DeepSeek' i]",
+      "texto": "placeholder do campo agora em ingles: 'Message DeepSeek' (era 'Mensagem para DeepSeek' em 17/09)",
+      "visto_em": "2026-09-29T02:19"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "adrian",
+      "nota": "",
+      "seletor": "(rodape do compositor)",
+      "texto": "AI-generated, for reference only (rodape)",
+      "visto_em": "2026-09-29T02:22"
+    }
+  ],
+  "cota": {
+    "creditos": null,
+    "o_que_o_site_diz": [
+      "nenhum aviso de plano ou limite na tela; conta gratis do site (config/llm.json)"
+    ],
+    "plano": "gratis (site, sem upsell na tela)",
+    "prova": "random_builds\\outputs\\_ias\\deepseek\\guia\\20260929_022242_202_pagina.png"
+  },
+  "custo": {
+    "gratis": [
+      "texto",
+      "DeepThink",
+      "Search",
+      "anexo de imagem"
+    ],
+    "pede_plano": []
+  },
+  "duracao_s": 330.0,
+  "ia": "deepseek",
+  "imagem": {
+    "alfa": null,
+    "arquivo": null,
+    "gera": false,
+    "prova": null,
+    "prova_origem": {
+      "motivo": "o site nao oferece geracao de imagem — 'o do DeepSeek e so isso' (Adrian, 02:2x)",
+      "tipo": "nao existe"
+    },
+    "resolucao": null,
+    "tempo_s": null
+  },
+  "login": {
+    "detalhe": "sessao guiada 02:19-02:24: chat montou; rodape 'Adrian Oliveira'; historico com os roteiros da pipeline (Parte 3 do roteiro, O Gol Deixado...)",
+    "estado": "logado",
+    "prova": "random_builds\\outputs\\_ias\\deepseek\\guia\\20260929_022242_202_pagina.png"
+  },
+  "medido_em": "2026-09-29T02:24:25",
+  "modelos": {
+    "ativo": "DeepSeek (site) — sem seletor de modelo; DeepThink e Search sao toggles no compositor",
+    "disponiveis": [
+      "DeepSeek (site)",
+      "DeepThink (toggle, raciocinio)",
+      "Search (toggle, busca)"
+    ],
+    "prova": "random_builds\\outputs\\_ias\\deepseek\\guia\\20260929_022242_202_pagina.png",
+    "seletor": "div[role='button']:has-text('DeepThink') / :has-text('Search') (seletores.DEEPSEEK.deepthink_botao)"
+  },
+  "pendencias": [
+    "itens nao mostrados (seletor de modelo, gerar imagem, erro de cota) = nao existe / nao se aplica, dito pelo Adrian as 02:2x",
+    "limite de caracteres do campo nao medido",
+    "mensagem de limite/servidor ocupado nao vista nesta sessao (o site costuma dizer 'The server is busy. Please try again later.' — categoria indisponivel, nao confirmada hoje)"
+  ],
+  "perfil": "C:\\Users\\adrian\\AppData\\Local\\neural-fights\\browser_profiles\\deepseek__principal",
+  "rotulo": "DeepSeek",
+  "site": "https://chat.deepseek.com/",
+  "texto": {
+    "chars_aceitos_no_campo": null,
+    "gera": true,
+    "limite_chars_campo": null,
+    "prova": "random_builds\\outputs\\_ias\\deepseek\\guia\\testes.jsonl + 20260929_022426_556_pagina.png",
+    "resposta": "OK (testar_ok na janela dele: 2 chars em 6 s; a pergunta dele 'ola, aqui e onde eu escrevo certo?' veio com DeepThink 'Thought for 1 second' em ingles e resposta em portugues)",
+    "tempo_ok_s": 6.8
+  },
+  "tipo": "chat",
+  "trava": "perfil__deepseek__principal__d399e1b8",
+  "versao": 1,
+  "video": {
+    "assiste": false,
+    "fonte": "nao existe / nao se aplica (dito pelo Adrian, 02:2x)",
+    "gera": false
+  }
+}

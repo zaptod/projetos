@@ -1,0 +1,148 @@
+{
+  "anexos": {
+    "accept": "upload-photos: image/* | upload-media: image/*,video/* | upload-files: (sem accept)",
+    "arquivo": true,
+    "imagem": true,
+    "leu_o_anexo": null,
+    "multiplos": true,
+    "prova": "random_builds\\outputs\\_ias\\chatgpt\\guia\\colado.jsonl (02:11:08, 02:13:59)",
+    "seletor": "button[data-testid='composer-plus-btn'] ('Adicionar arquivos e mais') -> input#upload-files / input[data-testid='upload-photos-input'] / input[data-testid='upload-media-input'] (colado por ele)",
+    "video": true
+  },
+  "capturas": [
+    "random_builds\\outputs\\_ias\\chatgpt\\guia\\ (capturas + eventos.jsonl + colado.jsonl com 9 itens dele + testes.jsonl)"
+  ],
+  "catalogo_textos": [
+    {
+      "categoria": "cloudflare",
+      "fonte": "codigo",
+      "nota": "só em janela headless; não é deslogado (probe.BARRADO)",
+      "seletor": "document.title",
+      "texto": "Um momento… / Just a moment…",
+      "visto_em": "2026-09-09"
+    },
+    {
+      "categoria": "login",
+      "fonte": "logs",
+      "nota": "probe de 31/08 deslogado: imagem e anexo pedem login",
+      "seletor": "button[aria-label='Criar imagem. Entre para usar.']",
+      "texto": "Criar imagem. Entre para usar.",
+      "visto_em": "2026-08-31"
+    },
+    {
+      "categoria": "login",
+      "fonte": "logs",
+      "nota": "",
+      "seletor": "button[aria-label*='Entre para usar']",
+      "texto": "Adicionar arquivos. Entre para usar.",
+      "visto_em": "2026-08-31"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "docs",
+      "nota": "",
+      "seletor": "div[data-testid*='attachment']",
+      "texto": "vídeo mp4 entra como 'Arquivo' opaco (conta free não assiste)",
+      "visto_em": "2026-09-12"
+    },
+    {
+      "categoria": "upgrade",
+      "fonte": "adrian",
+      "nota": "",
+      "seletor": "button:has-text('Fazer upgrade'), a:has-text('Ver planos')",
+      "texto": "Fazer upgrade (rodape, ao lado de 'Free') / Ver planos (topo)",
+      "visto_em": "2026-09-29T02:10"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "adrian",
+      "nota": "",
+      "seletor": "button[aria-pressed]:has-text('Pensar')",
+      "texto": "Pensar (pill de raciocinio no compositor)",
+      "visto_em": "2026-09-29T02:13"
+    },
+    {
+      "categoria": "outro",
+      "fonte": "adrian",
+      "nota": "a resposta pode trazer pills de citacao; o texto continua em div.markdown",
+      "seletor": "span[data-testid='webpage-citation-pill']",
+      "texto": "citacao de pagina web na resposta (o modelo pesquisou)",
+      "visto_em": "2026-09-29T02:12"
+    }
+  ],
+  "cota": {
+    "creditos": null,
+    "o_que_o_site_diz": [
+      "Free (rodape) — Fazer upgrade / Ver planos",
+      "nenhuma pagina de limites aberta; a cota do Free so aparece quando estoura"
+    ],
+    "plano": "Free",
+    "prova": "random_builds\\outputs\\_ias\\chatgpt\\guia\\20260929_021040_921_janela.png"
+  },
+  "custo": {
+    "gratis": [
+      "texto",
+      "Pensar",
+      "anexos (foto, midia, arquivo)",
+      "Criar imagem (existe no menu; limite do Free nao medido)"
+    ],
+    "pede_plano": [
+      "seletor de modelo (nao aparece no Free)",
+      "assistir video (docs)"
+    ]
+  },
+  "duracao_s": 430.0,
+  "ia": "chatgpt",
+  "imagem": {
+    "alfa": null,
+    "arquivo": null,
+    "gera": null,
+    "prova": "random_builds\\outputs\\_ias\\chatgpt\\guia\\20260929_021448_074_janela.png",
+    "prova_origem": {
+      "nota": "o menu + tem 'Criar imagem — Visualize qualquer coisa' e ele pos o compositor nesse modo (02:14), mas nao gerou; conta Free",
+      "tipo": "nao pedido"
+    },
+    "resolucao": null,
+    "tempo_s": null
+  },
+  "login": {
+    "detalhe": "sessao guiada 02:10-02:17: chat montou; rodape 'Adrian Oliv... Free' com botao 'Fazer upgrade'",
+    "estado": "logado",
+    "prova": "random_builds\\outputs\\_ias\\chatgpt\\guia\\20260929_021040_921_janela.png"
+  },
+  "medido_em": "2026-09-29T02:17:03",
+  "modelos": {
+    "ativo": "ChatGPT (conta Free: sem seletor de modelo na tela; so o pill 'Pensar', aria-pressed)",
+    "disponiveis": [
+      "padrao da conta Free",
+      "Pensar (modo de raciocinio, pill no compositor)"
+    ],
+    "prova": "random_builds\\outputs\\_ias\\chatgpt\\guia\\20260929_021304_161_janela.png",
+    "seletor": "button:has-text('Pensar') [aria-pressed] (colado por ele como seletor_modelo)"
+  },
+  "pendencias": [
+    "imagem 1:1 nao gerada (1 pedido em 'Criar imagem' mediria resolucao/alfa e o limite do Free)",
+    "limite de caracteres do campo nao medido",
+    "mensagem de limite do Free nao vista (so aparece ao estourar)",
+    "seletores CHATGPT ja batiam com o que ele colou (#prompt-textarea, send-button, composer-plus-btn): nada a mudar"
+  ],
+  "perfil": "C:\\Users\\adrian\\AppData\\Local\\neural-fights\\browser_profiles\\chatgpt__principal",
+  "rotulo": "ChatGPT",
+  "site": "https://chatgpt.com/",
+  "texto": {
+    "chars_aceitos_no_campo": null,
+    "gera": true,
+    "limite_chars_campo": null,
+    "prova": "random_builds\\outputs\\_ias\\chatgpt\\guia\\testes.jsonl + 20260929_021739_611_janela.png",
+    "resposta": "OK (testar_ok na janela dele: resposta pronta em 6 s, turno inteiro 15,9 s com as pausas humanas)",
+    "tempo_ok_s": 15.9
+  },
+  "tipo": "chat",
+  "trava": "perfil__chatgpt__principal__ae435251",
+  "versao": 1,
+  "video": {
+    "assiste": false,
+    "fonte": "docs 12/09: o mp4 entra como 'Arquivo' opaco na conta Free (parecer cai na folha de contato); o input upload-media aceita video/* mesmo assim",
+    "gera": null
+  }
+}
