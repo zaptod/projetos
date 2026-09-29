@@ -3,7 +3,15 @@
   "contexto": "Outros pesos no E: que não são das sessões: Lixeira do E: ($RECYCLE.BIN) 15,8 GB; downloads 24,6 GB; pagefile.sys 9,5 GB (memória virtual do Windows — não mexer). Os temporários das sessões no E: (~0,4 GB) estão no nó limpeza-do-disco.",
   "criado": "2026-09-29T00:51:23.177380",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T00:56:41",
+      "opcao": "abrir-drive",
+      "origem": "app"
+    }
+  ],
   "id": "limpeza-do-disco-e",
   "midias": [],
   "opcoes": [
@@ -38,7 +46,11 @@
   ],
   "pergunta": "E:\\.tmp.driveupload tem 186 GB: são cópias temporárias que o Google Drive para computador faz para subir arquivos (182 957 pedaços, de fev a 27/09). Os originais continuam nas suas pastas. O Drive não está rodando agora. O que faço?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "E: com 17 GB livres — o cache do Google Drive (186 GB)",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T00:56:41",
+    "opcao": "abrir-drive"
+  }
 }
