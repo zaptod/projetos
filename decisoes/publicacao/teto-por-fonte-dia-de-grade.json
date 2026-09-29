@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "8b0fbbbf",
+      "em": "2026-09-29T12:51:03",
+      "evento": "2026-09-29T12:50:25",
+      "linha": 61,
+      "nota": "na fila da publicação, 3º lugar",
+      "opcao": "grade",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-29T08:27:41.514217",
   "depende_de": [
