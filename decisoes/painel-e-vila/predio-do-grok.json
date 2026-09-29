@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-29T12:51:52",
+      "evento": "2026-09-29T12:51:34",
+      "linha": 63,
+      "nota": "mantido como está (db3f438)",
+      "opcao": "manter",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Medido: o mundo (704x240) não tinha outra vaga de 72 px. Mudar a fileira de lugar mudaria o resto da vila; hoje nada fora do lote dele mudou (conferido por hash). O emblema e a cor são só inspirados na marca.",
   "criado": "2026-09-29T09:39:33.555621",
   "depende_de": [],
