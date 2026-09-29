@@ -8,7 +8,15 @@
       "opcao": "quase"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T21:42:49",
+      "opcao": "misto-civis",
+      "origem": "app"
+    }
+  ],
   "id": "duelo-elenco",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "Hoje são seis lanceiros iguais. Quem luta no duelo, e com que habilidade cada um?",
   "projeto": "jogo-zombie",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Duelo: quem está no esquadrão?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T21:42:49",
+    "opcao": "misto-civis"
+  }
 }
