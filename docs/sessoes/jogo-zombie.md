@@ -7,7 +7,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 
 **Geral**
 - ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
-- ✅ **Modo de trabalho dos agentes** — Um projeto por vez (29/09/2026) · “29/09 07:03, pela Mesa de comando: força total, até 1 agente” `modo-de-trabalho`
+- ✅ **Modo de trabalho dos agentes** — Um projeto por vez (29/09/2026) · “29/09 07:27, pela Mesa de comando: um por vez” `modo-de-trabalho`
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (29/09/2026) · “29/09 07:26, pela Mesa de comando: passou de 50% da sessão, para tudo” `teto-de-uso`
 - ✅ **Força total antes de renovar: ainda vale?** — Só quando eu pedir (28/09/2026) · “28/09 22:26, pela Mesa de comando: força total só quando eu pedir” `forca-total-ainda-vale`
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
