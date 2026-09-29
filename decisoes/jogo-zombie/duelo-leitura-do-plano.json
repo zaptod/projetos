@@ -8,7 +8,15 @@
       "opcao": "quase"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T21:42:18",
+      "opcao": "icone",
+      "origem": "app"
+    }
+  ],
   "id": "duelo-leitura-do-plano",
   "midias": [
     {
@@ -59,7 +67,11 @@
   ],
   "pergunta": "O plano dos humanos precisa ser entendido em 1,5 s, no celular. Como ele aparece na tela?",
   "projeto": "jogo-zombie",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Duelo: como o espectador entende o plano?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T21:42:18",
+    "opcao": "icone"
+  }
 }
