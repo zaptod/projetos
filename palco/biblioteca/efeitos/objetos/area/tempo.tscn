@@ -1,0 +1,12 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://biblioteca/efeitos/objetos/objeto_cc0.gd" id="1_x"]
+[ext_resource type="Texture2D" path="res://biblioteca/efeitos/texturas/circulo_tempo.png" id="2_x"]
+[ext_resource type="Texture2D" path="res://biblioteca/efeitos/texturas/aneis_c.png" id="3_x"]
+
+[node name="AreaTempo" type="Node2D"]
+script = ExtResource("1_x")
+preenchimento = ExtResource("2_x")
+anel = ExtResource("3_x")
+giro = 0.35
+ponteiros = true

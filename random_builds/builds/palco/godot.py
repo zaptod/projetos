@@ -91,17 +91,21 @@ def rodar_script(script: str, argumentos: list | None = None, *, cfg: dict | Non
                    "--", *(argumentos or [])], timeout=timeout, cfg=cfg)
 
 
-def gravar_filme(job: Path, avi: Path, *, cfg: dict | None = None, posicao=None,
-                 timeout: float | None = None) -> dict:
+def gravar_filme(job: Path | None, avi: Path, *, cfg: dict | None = None, posicao=None,
+                 timeout: float | None = None, cena: str | None = None, argumentos: list | None = None) -> dict:
     """Grava o AVI (MJPEG + PCM 48 kHz). Devolve rc, saida e segundos; rc != 0
-    vira ErroPalco em quem chama, com o motivo de MOTIVOS."""
+    vira ErroPalco em quem chama, com o motivo de MOTIVOS. `cena` troca a cena
+    principal (a vitrine: res://ferramentas/vitrine.tscn)."""
     cfg = config.carregar() if cfg is None else cfg
     garantir_importado(cfg)
     comando = [config.godot(cfg), "--path", config.projeto(cfg)]
+    if cena:
+        comando.append(cena)
     posicao = posicao if posicao is not None else (cfg.get("janela") or {}).get("posicao")
     if posicao:
         comando += ["--position", f"{int(posicao[0])},{int(posicao[1])}"]
-    comando += ["--fixed-fps", str(int(cfg.get("fps", 30))), "--write-movie", str(avi), "--", f"--job={job}"]
+    comando += ["--fixed-fps", str(int(cfg.get("fps", 30))), "--write-movie", str(avi), "--",
+                *([f"--job={job}"] if job else []), *(argumentos or [])]
     inicio = time.time()
     rc, saida = _rodar(comando, timeout=float(timeout or cfg.get("timeout_s", 900)), cfg=cfg)
     return {"rc": rc, "saida": saida, "segundos": round(time.time() - inicio, 1),

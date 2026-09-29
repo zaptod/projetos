@@ -24,10 +24,12 @@ func _initialize() -> void:
 	_testar_timeline()
 	# todo script do palco compila (o que a biblioteca nao carregou acima)
 	for s in ["res://nucleo/palco.gd", "res://nucleo/sons.gd", "res://biblioteca/lutadores/rosto.gd",
-			"res://biblioteca/hud/hud_padrao.gd", "res://ferramentas/validar.gd"]:
+			"res://biblioteca/hud/hud_padrao.gd", "res://ferramentas/validar.gd", "res://ferramentas/vitrine.gd",
+			"res://biblioteca/efeitos/objetos/objeto_cc0.gd", "res://biblioteca/efeitos/folha_animada.gd"]:
 		var script = load(s)
 		_checar(script is GDScript and script.can_instantiate(), "compila: " + s)
 	_checar(load("res://palco.tscn") is PackedScene, "a cena principal carrega")
+	_checar(load("res://ferramentas/vitrine.tscn") is PackedScene, "a vitrine carrega")
 	print("testes do palco: %d checagens, %d falha(s)" % [feitos, falhas.size()])
 	quit(0 if falhas.is_empty() else 1)
 
@@ -89,7 +91,57 @@ func _testar_biblioteca() -> void:
 	for cena in [real.arma("X", "Y"), real.lutador("X", "Y"), real.objeto("projetil", "FOGO", "X"),
 			real.evento("acerto", "heavy"), real.arena("X", "Y"), real.hud()]:
 		_checar(cena is PackedScene, "biblioteca real resolve alguma peca")
-	_checar(real.reservas.size() == 6, "biblioteca real: 6 pedidos no _padrao (%d)" % real.reservas.size())
+	# o projetil de FOGO tem arte propria (16E): 5 dos 6 pedidos no _padrao
+	_checar(real.reservas.size() == 5, "biblioteca real: 5 pedidos no _padrao (%d)" % real.reservas.size())
+	# efeitos por (tipo x elemento): o par > o padrao do tipo > o padrao geral
+	var ef := Biblioteca.new()
+	ef.objeto("projetil", "GRAVITAÇÃO", "")
+	_checar(str(ef.escolhas.get("efeitos:projetil/GRAVITAÇÃO/", "")).ends_with("objetos/projetil/gravitacao.tscn"), "efeito: o par tipo x elemento")
+	ef.objeto("area", "ELEMENTO NOVO", "")
+	_checar(str(ef.escolhas.get("efeitos:area/ELEMENTO NOVO/", "")).ends_with("objetos/area/_padrao.tscn"), "efeito: elemento sem arte cai no padrao do TIPO")
+	ef.objeto("orbe", "FOGO", "")
+	_checar(str(ef.escolhas.get("efeitos:orbe/FOGO/", "")).ends_with("objetos/_padrao.tscn"), "efeito: tipo sem arte cai no padrao geral")
+	for tipo in ["projetil", "area", "beam"]:
+		for el in UtilPalco.PALETAS:
+			if el == "DEFAULT":
+				continue
+			var c := ef.objeto(tipo, el, "")
+			var peca_ef = c.instantiate()
+			_checar(peca_ef.get("aditivo") != null, "efeito %s/%s usa o objeto_cc0" % [tipo, el])
+			peca_ef.free()
+	# folha de sprite (formato da Oficina): evento toca uma volta e se apaga
+	var img := Image.create(64, 32, false, Image.FORMAT_RGBA8)
+	var folha = load("res://biblioteca/efeitos/folha_animada.gd").new()
+	folha.folha = ImageTexture.create_from_image(img)
+	folha.colunas = 4
+	folha.linhas = 2
+	folha.quadros = 6
+	folha.fps = 12.0
+	folha.laco = false
+	folha.configurar({"tipo": "acerto", "dir": 0.0}, {})
+	_checar(is_equal_approx(folha._vida(), 0.5), "folha: 6 quadros a 12 fps vivem 0,5 s")
+	for _q in 14:
+		folha.atualizar({}, {"dt_mundo": 1.0 / 30.0})
+	_checar(not folha.is_queued_for_deletion(), "folha: viva aos 0,47 s")
+	for _q in 2:
+		folha.atualizar({}, {"dt_mundo": 1.0 / 30.0})
+	_checar(folha.is_queued_for_deletion(), "folha: o evento se apaga no fim da volta")
+	# o rosto: as 24 expressoes do jogo e as pecas do Kenney carregam
+	_checar(RostoPalco.EXPRESSOES.size() == 24, "rosto: 24 expressoes (%d)" % RostoPalco.EXPRESSOES.size())
+	for nome in RostoPalco.PECAS:
+		var tex: Texture2D = RostoPalco.PECAS[nome]
+		_checar(tex != null and tex.get_width() >= 100, "rosto: peca %s carregou" % nome)
+	# nitidas a 408 px: com a bolinha de 408 px de diametro (R = 204 na tela),
+	# nenhuma peca de nenhuma das 24 expressoes e AMPLIADA (o png sempre diminui)
+	var maior := {}
+	for expr in RostoPalco.EXPRESSOES:
+		var r := RostoPalco.new(RostoPalco.Gravador.new(), 204.0, 1.0, 0, Color.RED, false)
+		r.desenhar(expr)
+		for nome in r.ampliacao:
+			maior[nome] = maxf(float(maior.get(nome, 0.0)), float(r.ampliacao[nome]))
+	_checar(maior.size() >= 12, "rosto: as expressoes usam as pecas do Kenney (%d)" % maior.size())
+	for nome in maior:
+		_checar(float(maior[nome]) <= 1.0, "rosto: %s nitida a 408 px (ampliada %.2fx)" % [nome, maior[nome]])
 	for chave in real.escolhas:
 		_checar(not str(real.escolhas[chave]).begins_with("(reserva"), "biblioteca real sem reserva embutida: " + chave)
 

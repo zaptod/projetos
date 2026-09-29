@@ -448,3 +448,8 @@ o comando recusa e diz qual.
   e medidas: `docs/palco/README.md`; como trocar arte e som:
   `docs/palco/COMO-EDITAR.md`. O `main.py` só importa `builds.palco` no ramo
   `palco`/`--palco`: erro no palco não derruba publicar nem a geração noturna.
+  **16E (28/09):** hitstop do render ligado pela decisão `hitstop` (+2,6% de
+  duração, medido em 23 duelos), as 24 expressões com as peças do Kenney
+  (CC0, 12×), efeitos por tipo × elemento com arte CC0, HUD do palco (nome,
+  vida, plano; `--hud`) e `main.py palco vitrine` (vídeo de revisão). O A/B
+  depois da arte é o nó `palco-ab-2` do Grimório.

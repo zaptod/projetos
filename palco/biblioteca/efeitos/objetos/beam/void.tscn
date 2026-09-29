@@ -1,0 +1,12 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://biblioteca/efeitos/objetos/objeto_cc0.gd" id="1_x"]
+[ext_resource type="Texture2D" path="res://biblioteca/efeitos/texturas/feixe_d.png" id="2_x"]
+[ext_resource type="Texture2D" path="res://biblioteca/efeitos/texturas/aro.png" id="3_x"]
+
+[node name="BeamVoid" type="Node2D"]
+script = ExtResource("1_x")
+corpo = ExtResource("2_x")
+ponta = ExtResource("3_x")
+aditivo = false
+nucleo_escuro = true

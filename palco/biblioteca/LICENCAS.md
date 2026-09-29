@@ -23,9 +23,52 @@ receita do chão).
 | `efeitos/sequencias/poeira_4x2.png` | Kenney Smoke Particles, `White puff/whitePuff00,03,06,10,13,17,20,24` (8 quadros de 256) | Kenney | CC0 | `license.txt` do zip; kenney.nl/assets/smoke-particles |
 | `arenas/texturas/pedra.jpg` | Poly Haven `stone_tiles_02_diff_2k.jpg` (dessaturado 45%, escurecido 42%, 512 com borrão leve) | Poly Haven | CC0 | polyhaven.com/a/stone_tiles_02 e polyhaven.com/license |
 
-O resto da biblioteca (lutador, rosto, armas, objetos, arena, HUD) é desenho
-vetorial em GDScript feito no repositório. O rosto é o port das 24 expressões
-de `neural_fights/effects/character_flair.py`.
+| `lutadores/rosto/*.png` (14 peças: `eye_open`, `eye_half_top`, `eye_half_top_wing`, `eye_half_bottom`, `eye_closed_up`, `eye_closed_down`, `eye_x`, `eyebrow_a`, `eyebrow_b`, `eyebrow_c`, `eyebrow_d`, `mouth_happy`, `mouth_sad`, `mouth_smirk`) | Kenney Shape Characters v1.0, `Vector/overview.svg` rasterizado a 8× pelo Godot e recortado por `main.py palco pecas-do-rosto` (máscara branca; o `eye_x` vem do rosto pronto `face_j`) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/shape-characters |
+
+O resto da biblioteca (lutador, armas, arena, HUD, os objetos sem arte e os
+extras do rosto: espiral, boca ondulada, gota, lágrima, veia) é desenho
+vetorial em GDScript feito no repositório. As 24 expressões são as de
+`neural_fights/effects/character_flair.py`, montadas com as peças acima
+(`lutadores/rosto.gd`).
 
 Peça nova de IA (PicassoIA, 16F) entra aqui com a prova de origem
 (conta compartilhada: histórico com o nosso prompt).
+
+<!-- efeitos_cc0:inicio (gerado por main.py palco efeitos-cc0) -->
+
+Efeitos por tipo x elemento (16E):
+
+| arquivo no palco | origem | autor | licença | prova |
+|---|---|---|---|---|
+| `efeitos/texturas/fogo.png` | Particle Pack v1.1, `fire_01.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/estrela_4.png` | Particle Pack v1.1, `star_07.png` (256 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/bola.png` | Particle Pack v1.1, `circle_05.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/raio.png` | Particle Pack v1.1, `spark_01.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/magia_estrela.png` | Particle Pack v1.1, `magic_05.png` (256 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/magia_anel.png` | Particle Pack v1.1, `magic_03.png` (256 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/magia_pontos.png` | Particle Pack v1.1, `magic_02.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/terra.png` | Particle Pack v1.1, `dirt_01.png` (256 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/giro_1.png` | Particle Pack v1.1, `twirl_01.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/giro_2.png` | Particle Pack v1.1, `twirl_02.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/giro_3.png` | Particle Pack v1.1, `twirl_03.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/arranhao.png` | Particle Pack v1.1, `scratch_01.png` (256 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/aro.png` | Particle Pack v1.1, `circle_04.png` (256 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/estrelinha.png` | Particle Pack v1.1, `star_04.png` (256 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/luz_aneis.png` | Particle Pack v1.1, `light_03.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/fumaca_anel.png` | Particle Pack v1.1, `smoke_10.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/raio_linha.png` | Particle Pack v1.1, `spark_07.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/particle-pack |
+| `efeitos/texturas/flor.png` | Light Masks v1.0, `shape_g.png` (256 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/aneis_a.png` | Light Masks v1.0, `circle_rings_a.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/aneis_c.png` | Light Masks v1.0, `circle_rings_c.png` (256 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/aneis_d.png` | Light Masks v1.0, `circle_rings_d.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/gelo_rachado.png` | Light Masks v1.0, `water_caustics_b.png` (recortado num disco) (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/aro_fino.png` | Light Masks v1.0, `ring_a.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/aro_duplo.png` | Light Masks v1.0, `ring_b.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/folhagem.png` | Light Masks v1.0, `foliage_canopy_d.png` (recortado num disco) (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/feixe_a.png` | Light Masks v1.0, `streaks_composed_a.png` (deitado em +x) (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/feixe_d.png` | Light Masks v1.0, `streaks_composed_d.png` (deitado em +x) (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/light-masks |
+| `efeitos/texturas/circulo_arcano.png` | 4 Summoning Circles, `circle6.png` (1000 -> 512, traco preto -> mascara) (512 px) | Luke.RUSTLTD | CC0 | opengameart.org/content/4-summoning-circles |
+| `efeitos/texturas/circulo_tempo.png` | 4 Summoning Circles, `circle4.png` (1000 -> 512, traco preto -> mascara) (512 px) | Luke.RUSTLTD | CC0 | opengameart.org/content/4-summoning-circles |
+| `efeitos/texturas/mancha.png` | Splat Pack v1.0, `splat03.png` (512 px) | Kenney | CC0 | `License.txt` do zip; kenney.nl/assets/splat-pack |
+
+<!-- efeitos_cc0:fim -->

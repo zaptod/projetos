@@ -97,6 +97,60 @@ def test_hitstop_em_python_conta_como_o_plano_do_godot():
     assert plano.quadros_de_hitstop(doc, seg, [[0.0, 5.0], [5.2, 4.0]]) == 5 + 4
 
 
+PALCO = Path(__file__).resolve().parents[2] / "palco"
+
+
+def test_rosto_monta_as_24_expressoes_do_jogo():
+    """As 24 do jogo (character_flair.EXPRESSOES), nem uma a mais nem a menos,
+    cada uma com o seu caso no rosto do palco (so o neutro cai no padrao)."""
+    import re
+    jogo = (Path(__file__).resolve().parents[2] / "neural_fights" / "effects" / "character_flair.py").read_text(
+        encoding="utf-8")
+    bloco = jogo[jogo.index("EXPRESSOES = {"):]
+    bloco = bloco[:bloco.index("}")]
+    do_jogo = re.findall(r'"(\w+)":\s*_expr_', bloco)
+    rosto = (PALCO / "biblioteca" / "lutadores" / "rosto.gd").read_text(encoding="utf-8")
+    lista = re.search(r"const EXPRESSOES := \[(.*?)\]", rosto, re.S).group(1)
+    no_palco = re.findall(r'"(\w+)"', lista)
+    assert len(do_jogo) == 24 and no_palco == do_jogo
+    casos = set(re.findall(r'^\t\t"(\w+)":', rosto, re.M))
+    assert casos == set(do_jogo) - {"neutro"}
+
+
+def test_pecas_do_rosto_sao_mascaras_brancas_com_licenca():
+    from PIL import Image
+    pasta = PALCO / "biblioteca" / "lutadores" / "rosto"
+    pecas = json.loads((pasta / "pecas.json").read_text(encoding="utf-8"))["pecas"]
+    assert len(pecas) == 14
+    licencas = (PALCO / "biblioteca" / "LICENCAS.md").read_text(encoding="utf-8")
+    for nome in pecas:
+        assert f"`{nome}`" in licencas, nome
+        img = Image.open(pasta / f"{nome}.png")
+        assert img.mode == "RGBA"
+        rgb = img.convert("RGB").getextrema()
+        assert all(lo == 255 for lo, _hi in rgb), f"{nome}: a cor vem do estilo, o png e branco"
+        assert (pasta / f"{nome}.png.import").read_text(encoding="utf-8").count("mipmaps/generate=true") == 1
+
+
+def test_efeitos_por_tipo_e_elemento_cobrem_os_12_elementos():
+    import re
+    from builds.palco import efeitos_cc0 as modulo
+    util = (PALCO / "nucleo" / "util.gd").read_text(encoding="utf-8")
+    elementos = {e.lower() for e in re.findall(r'^\t"(\w+)": \{"core"', util, re.M)} - {"default"}
+    assert len(elementos) == 12
+    licencas = (PALCO / "biblioteca" / "LICENCAS.md").read_text(encoding="utf-8")
+    for tipo in ("projetil", "area", "beam"):
+        pares = {el for (t, el) in modulo.TABELA if t == tipo}
+        assert pares == elementos | {"_padrao"}, tipo
+        for elemento in pares:
+            cena = (PALCO / "biblioteca" / "efeitos" / "objetos" / tipo / f"{elemento}.tscn").read_text(
+                encoding="utf-8")
+            assert "objeto_cc0.gd" in cena
+            for textura in re.findall(r'path="res://biblioteca/efeitos/texturas/(\w+)\.png"', cena):
+                assert (PALCO / "biblioteca" / "efeitos" / "texturas" / f"{textura}.png").is_file()
+                assert f"efeitos/texturas/{textura}.png" in licencas, textura
+
+
 def test_timeline_sintetica_segue_o_schema_da_16c():
     doc = sintetica.timeline_sintetica(2.0)
     assert doc["n"] == 120 and doc["formato"] == "neural-fights/timeline"
@@ -193,6 +247,17 @@ def test_hitstop_do_godot_bate_com_a_conta_em_python(pasta_e):
     assert rel["quadros"] == plano.quadros(3.0) + esperado
 
 
+@precisa_godot
+@pode_renderizar
+@pytest.mark.skipif(not TEM_FFMPEG, reason="sem ffmpeg/ffprobe")
+def test_vitrine_grava_e_confere_uma_pagina(pasta_e):
+    from builds.palco import vitrine
+    resumo = vitrine.gerar(pasta_e / "vitrine.mp4", so="ARMAS")
+    assert resumo["ok"] and resumo["quadros"] == 120
+    assert [p[0] for p in resumo["paginas"]] == ["ARMAS · os 8 tipos"]
+    assert all(d >= 2.0 for d in resumo["desvio_luma"])
+
+
 def _job(pasta: Path, segundos: float = 1.0) -> Path:
     tl = pasta / "t.json"
     tl.write_text(json.dumps(sintetica.timeline_sintetica(segundos)), encoding="utf-8")
@@ -256,10 +321,13 @@ def test_render_curto_conferido_e_sem_roubar_foco(pasta_e):
     finally:
         parar.set()
         vigia.join(2)
-    assert resumo["ok"] and resumo["quadros"] == 60
+    # 60 quadros da luta + o hitstop do render (ligado, 16E) nos acertos pesados
+    parados = resumo["hitstop"]["quadros"]
+    assert parados > 0
+    assert resumo["ok"] and resumo["quadros"] == 60 + parados
     assert resumo["sons"]["ids_distintos"] >= 6 and not resumo["sons"]["faltando"]
     m = resumo["medidas"]
-    assert m["quadros"] == 60 and abs(m["duracao_video"] - 2.0) < 0.05
+    assert m["quadros"] == 60 + parados and abs(m["duracao_video"] - (60 + parados) / 30) < 0.05
     assert m["lufs"] > -40 and m["media_db"] > -45
     info = checagens.sonda(pasta_e / "sint2.mp4")
     video = next(s for s in info["streams"] if s["codec_type"] == "video")

@@ -1,0 +1,10 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://biblioteca/efeitos/objetos/objeto_cc0.gd" id="1_x"]
+[ext_resource type="Texture2D" path="res://biblioteca/efeitos/texturas/raio_linha.png" id="2_x"]
+[ext_resource type="Texture2D" path="res://biblioteca/efeitos/texturas/raio.png" id="3_x"]
+
+[node name="BeamRaio" type="Node2D"]
+script = ExtResource("1_x")
+corpo = ExtResource("2_x")
+ponta = ExtResource("3_x")

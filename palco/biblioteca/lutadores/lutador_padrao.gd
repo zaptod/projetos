@@ -3,7 +3,8 @@ extends PecaPalco
 ## tamanho/2, o circulo que o jogo desenha), com arte vetorial suavizada.
 ##
 ## Camadas: sombra de contato no chao -> corpo (levantado por z, com squash)
-## -> rosto (as 24 expressoes, girando com o olhar) -> marcas de status.
+## -> rosto (as 24 expressoes com as pecas do Kenney, girando com o olhar)
+## -> marcas de status.
 ## Para trocar: crie lutadores/classes/<classe>.tscn ou lutadores/nomes/<nome>.tscn
 ## (veja docs/palco/COMO-EDITAR.md). Esta peca e a reserva de todas.
 
@@ -32,6 +33,8 @@ var _status: Array = []
 
 
 func configurar(dados: Dictionary, ctx: Dictionary) -> void:
+	# as pecas do rosto (12x) diminuem ate ~20 px na bolinha pequena: mipmaps
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	cor_corpo = UtilPalco.cor(dados.get("cor", 0xC83232))
 	cor_lado = UtilPalco.cor(dados.get("cor_lado", 0x3498DB))
 	raio_px = float(dados.get("raio_corpo", 0.85)) * UtilPalco.PX_POR_M
@@ -121,7 +124,7 @@ func _draw() -> void:
 			expr = "morto"
 		elif idx >= 0 and idx < _expressoes.size():
 			expr = str(_expressoes[idx])
-		RostoPalco.new(self, R, t_jogo, semente, cor, raio_tela < 11.0).desenhar(expr)
+		RostoPalco.new(self, R, t_jogo, semente, cor, raio_tela < 11.0, xf, estilo.cor_contorno).desenhar(expr)
 	draw_set_transform(centro, 0.0, esc)
 
 	# --- contorno (as mesmas regras de cor do jogo) ---

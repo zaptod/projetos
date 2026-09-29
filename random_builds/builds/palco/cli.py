@@ -9,6 +9,9 @@ Nada aqui publica nem entra no catalogo: tudo sai em outputs/_palco/.
     python main.py palco editor                     # abre o editor (APPDATA no E:)
     python main.py palco sintetica --destino T.json --duracao 2
     python main.py palco ab --duelo duelo_00016     # o duelo publicado x o palco
+    python main.py palco vitrine                    # video de revisao das pecas (16E)
+    python main.py palco pecas-do-rosto             # refaz as pecas do rosto do SVG do Kenney
+    python main.py palco efeitos-cc0                # refaz texturas e cenas de tipo x elemento
     python main.py duelo --seed N --palco [--ab]    # um duelo novo so no palco
 """
 from __future__ import annotations
@@ -16,7 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import ab, config, fonte, godot, render, sintetica
+from . import ab, config, fonte, godot, render, sintetica, vitrine
 from .config import ErroPalco
 
 
@@ -52,6 +55,16 @@ def construir_parser():
     pab.add_argument("--duelo", required=True, metavar="DUELO_ID", help="duelo ja gravado (duelo_00016)")
     pab.add_argument("--velho", default=None, metavar="MP4",
                      help="o lado de HOJE (padrao: o final_celular.mp4 do duelo)")
+    pab.add_argument("--hud", action="store_true", help="liga o HUD do palco (nome, vida e plano) no lado do palco")
+    pab.add_argument("--rotulo", default="PALCO 16E", help="rotulo do lado do palco no A/B")
+    pab.add_argument("--pasta", default=None, help="pasta de saida (padrao: outputs/_palco/ab_<duelo>)")
+    pvi = psub.add_parser("vitrine", help="video de revisao: as pecas da biblioteca animadas (16E)")
+    pvi.add_argument("--mp4", default=None, help="mp4 de saida (padrao: outputs/_palco/vitrine/vitrine.mp4)")
+    pvi.add_argument("--so", default=None, help="so as paginas cujo titulo contem isto (ex. rostos)")
+    pro = psub.add_parser("pecas-do-rosto", help="recorta as pecas do rosto do SVG do Kenney (CC0) a 12x")
+    pro.add_argument("--folha", default=None, help="png com as pecas lado a lado, para conferir")
+    pef = psub.add_parser("efeitos-cc0", help="texturas CC0 e cenas de efeito por tipo x elemento")
+    pef.add_argument("--so-cenas", action="store_true", help="so reescreve as cenas (nao traz texturas)")
     return pal
 
 
@@ -130,7 +143,8 @@ def render_da_seed(*, p1, p2, seed, arena, pasta: Path | None = None, sem_corte:
     return render.renderizar(arquivo, pasta / "palco_celular.mp4", estilo=estilo, hud=hud, quadros=quadros)
 
 
-def ab_do_duelo(duelo_id: str, velho: str | None = None) -> dict:
+def ab_do_duelo(duelo_id: str, velho: str | None = None, *, hud: bool = False, rotulo_palco: str = "PALCO 16D",
+                pasta: Path | None = None) -> dict:
     """O duelo ja gravado (visual de hoje) contra o palco: mesma seed, mesma
     arena, MESMO corte (o do fight.json)."""
     cfg = config.carregar()
@@ -152,10 +166,10 @@ def ab_do_duelo(duelo_id: str, velho: str | None = None) -> dict:
                         "o banco mudou desde a gravacao?")
     if trechos:
         doc["remapeamento"] = {"relogio": "gravacao", "trechos": trechos}
-    pasta = config.SAIDAS / f"ab_{duelo_id}"
+    pasta = Path(pasta) if pasta else config.SAIDAS / f"ab_{duelo_id}"
     pasta.mkdir(parents=True, exist_ok=True)
     arquivo = _salvar_timeline(doc, pasta / "timeline.gcpf")
-    resumo = render.renderizar(arquivo, pasta / "palco_celular.mp4")
+    resumo = render.renderizar(arquivo, pasta / "palco_celular.mp4", hud=hud)
     # O lado esquerdo e o visual de HOJE. Se a 16A ja refez este duelo com o
     # som REAL (outputs/_ouvir/par*_<id>/), e ele: os dois lados soam com os
     # mesmos arquivos do jogo e so o desenho muda. Senao, o publicado.
@@ -168,7 +182,7 @@ def ab_do_duelo(duelo_id: str, velho: str | None = None) -> dict:
         if refeitos:
             rotulo = "HOJE+SOM REAL"
     saida = ab.lado_a_lado(esquerda, pasta / "palco_celular.mp4", pasta / "ab_celular.mp4",
-                           rotulos=(rotulo, "PALCO 16D"))
+                           rotulos=(rotulo, rotulo_palco))
     # o quadro: o primeiro acerto forte que aparece no corte (ou 40% do video)
     t_quadro = float(resumo.get("duracao") or 10) * 0.4
     from . import plano
@@ -281,8 +295,23 @@ def executar(args) -> int:
                                encoding="utf-8")
             print(destino)
             return 0
+        if comando == "pecas-do-rosto":
+            from . import rosto_pecas
+            for nome, medida in rosto_pecas.gerar(folha=args.folha).items():
+                print(f"{nome:18s} {tuple(medida['px'])}")
+            return 0
+        if comando == "efeitos-cc0":
+            from . import efeitos_cc0
+            print(f"{efeitos_cc0.gerar(so_cenas=args.so_cenas)} cenas")
+            return 0
+        if comando == "vitrine":
+            resumo = vitrine.gerar(Path(args.mp4) if args.mp4 else None, so=args.so)
+            print(json.dumps({k: resumo.get(k) for k in ("saida", "quadros", "duracao", "paginas", "reservas", "tempo")},
+                             ensure_ascii=False, indent=1))
+            return 0
         if comando == "ab":
-            resumo = ab_do_duelo(args.duelo, args.velho)
+            resumo = ab_do_duelo(args.duelo, args.velho, hud=args.hud, rotulo_palco=args.rotulo,
+                                 pasta=Path(args.pasta) if args.pasta else None)
             print(json.dumps({"ab": resumo["ab"], "palco": resumo["saida"], "tempo": resumo["tempo"],
                               "sons_origem": resumo["sons_origem"]}, ensure_ascii=False, indent=1))
             return 0

@@ -1,0 +1,147 @@
+{
+ "_comentario": "gerado por main.py palco pecas-do-rosto (builds/palco/rosto_pecas.py); px = tamanho do png (com margem de 6 px), caixa_1x = a peca no overview.svg sem margem",
+ "escala": 12,
+ "margem": 6,
+ "pecas": {
+  "eye_open": {
+   "px": [
+    156,
+    156
+   ],
+   "caixa_1x": [
+    12,
+    12
+   ]
+  },
+  "eyebrow_a": {
+   "px": [
+    252,
+    72
+   ],
+   "caixa_1x": [
+    20,
+    5
+   ]
+  },
+  "eyebrow_b": {
+   "px": [
+    252,
+    96
+   ],
+   "caixa_1x": [
+    20,
+    7
+   ]
+  },
+  "eyebrow_c": {
+   "px": [
+    192,
+    72
+   ],
+   "caixa_1x": [
+    15,
+    5
+   ]
+  },
+  "eyebrow_d": {
+   "px": [
+    252,
+    108
+   ],
+   "caixa_1x": [
+    20,
+    8
+   ]
+  },
+  "eye_half_top": {
+   "px": [
+    156,
+    84
+   ],
+   "caixa_1x": [
+    12,
+    6
+   ]
+  },
+  "eye_half_top_wing": {
+   "px": [
+    257,
+    95
+   ],
+   "caixa_1x": [
+    21,
+    7
+   ]
+  },
+  "mouth_happy": {
+   "px": [
+    252,
+    96
+   ],
+   "caixa_1x": [
+    20,
+    7
+   ]
+  },
+  "mouth_sad": {
+   "px": [
+    252,
+    96
+   ],
+   "caixa_1x": [
+    20,
+    7
+   ]
+  },
+  "mouth_smirk": {
+   "px": [
+    182,
+    96
+   ],
+   "caixa_1x": [
+    14,
+    7
+   ]
+  },
+  "eye_half_bottom": {
+   "px": [
+    156,
+    84
+   ],
+   "caixa_1x": [
+    12,
+    6
+   ]
+  },
+  "eye_closed_down": {
+   "px": [
+    288,
+    144
+   ],
+   "caixa_1x": [
+    23,
+    11
+   ]
+  },
+  "eye_closed_up": {
+   "px": [
+    288,
+    144
+   ],
+   "caixa_1x": [
+    23,
+    11
+   ]
+  },
+  "eye_x": {
+   "px": [
+    204,
+    222
+   ],
+   "caixa_1x": [
+    16,
+    16
+   ]
+  }
+ }
+}

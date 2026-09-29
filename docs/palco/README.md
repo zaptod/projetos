@@ -44,7 +44,8 @@ python main.py palco validar --timeline T.gcpf                    # headless, se
 python main.py palco testes                                       # testes do núcleo (GDScript)
 python main.py palco editor                                       # abre o editor do Godot
 python main.py palco sintetica --destino T.json --duracao 2       # timeline de mentira
-python main.py palco ab --duelo duelo_00016                       # A/B: o duelo x o palco
+python main.py palco ab --duelo duelo_00016 [--hud]               # A/B: o duelo x o palco
+python main.py palco vitrine [--so rostos]                        # as peças animadas, para revisão (16E)
 python main.py duelo --seed N --palco                             # um duelo novo, só palco
 python main.py duelo --seed N --palco --ab                        # + visual de hoje, lado a lado
 ```
@@ -151,6 +152,12 @@ acusa se ela não bater com a do Godot; `palco validar` mostra os quadros com
 hitstop sem abrir janela. No A/B o palco fica mais longo que o lado de hoje:
 o mais curto congela no último quadro.
 
+**16E, medido em 28/09 (21h):** a vitrine (`palco vitrine`, 10 páginas, 39 s,
+1170 quadros) levou 97 s de Godot; o palco do `duelo_00016` com a arte da 16E,
+o HUD e o hitstop deu 721 quadros (24,03 s: 697 + 24 de hitstop) em 53 s de
+Godot e 22 s de x264. O A/B depois da arte está em
+`outputs/_palco/ab2_duelo_00016/ab_celular.mp4` (nó `palco-ab-2` do Grimório).
+
 **A/B do duelo_00016** (`outputs/_palco/ab_duelo_00016/ab_celular.mp4`): o
 lado esquerdo é o `_ouvir/par2_duelo_00016` da 16A (o visual de hoje já com o
 som real), o direito o palco; mesma seed, mesmo corte (23,23 s). O vídeo passa
@@ -158,10 +165,16 @@ duas vezes: a 1ª com o som da esquerda, a 2ª com o da direita (46,6 s).
 
 ## Pendente
 
-- **16E (biblioteca):** peças por classe e por estilo de arma (as 54), as 24
-  expressões como arte (hoje é o rosto vetorial portado do jogo), efeitos por
-  (tipo, elemento) além do padrão tingido, arenas com arte, HUD no palco,
-  `main.py palco vitrine`, e prender som em quadro de animação (API na peça).
+- **16E (biblioteca), feito em 28/09:** hitstop do render ligado; as 24
+  expressões montadas com as peças do Kenney (`lutadores/rosto/`, 12×);
+  efeitos por (tipo × elemento) para projétil, área e beam com arte CC0
+  (`objetos/<tipo>/<elemento>.tscn`); HUD do palco com nome, vida e plano
+  legíveis no celular (`--hud`); `main.py palco vitrine`.
+- **16E, falta:** peças por classe e por estilo de arma (as 54), acessórios
+  das 16 classes, arenas com arte, efeito de skill (evento) por elemento,
+  orbe/summon/trap/portal com arte, e prender som em quadro de animação (API
+  na peça). As armas e os acessórios dependem da IA (16F, com prova de
+  origem).
 - **Lacunas da timeline v1** (docs/palco/timeline.md): choque de projéteis, fim
   do projétil e o motivo, texto flutuante, eventos de movimento (pulo,
   aterrissagem, knockback). O palco usa o que existe.
