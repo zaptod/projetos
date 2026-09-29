@@ -1,5 +1,16 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T22:30:12",
+      "evento": "2026-09-28T22:30:12",
+      "nota": "aplicada pela Mesa de comando: a config já vale",
+      "opcao": "paralelo",
+      "origem": "mesa",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T15:08:26.677992",
   "depende_de": [],
@@ -22,6 +33,14 @@
       "aparelho": "614c026b",
       "comentario": "28/09 21:47, pela Mesa de comando: paralelo, até 3 agentes",
       "em": "2026-09-28T21:47:35",
+      "opcao": "paralelo",
+      "origem": "mesa"
+    },
+    {
+      "anterior": "paralelo",
+      "aparelho": "614c026b",
+      "comentario": "28/09 22:30, pela Mesa de comando: força total, até 3 agentes",
+      "em": "2026-09-28T22:30:12",
       "opcao": "paralelo",
       "origem": "mesa"
     }
@@ -49,8 +68,8 @@
   "situacao": "decidida",
   "titulo": "Modo de trabalho dos agentes",
   "vigente": {
-    "comentario": "28/09 21:47, pela Mesa de comando: paralelo, até 3 agentes",
-    "em": "2026-09-28T21:47:35",
+    "comentario": "28/09 22:30, pela Mesa de comando: força total, até 3 agentes",
+    "em": "2026-09-28T22:30:12",
     "opcao": "paralelo"
   }
 }
