@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-29T01:45:25.248252",
+  "depende_de": [],
+  "historico": [],
+  "id": "o-aparelho-pareado-em-17-09-ainda-e-seu",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "python -m remoto.api_http --esquecer 076f31d9",
+      "id": "esquecer",
+      "pede_comentario": false,
+      "rotulo": "Esquecer o de 17/09"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter os dois"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "medir",
+      "pede_comentario": false,
+      "rotulo": "Medir uma semana pelo log antes"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "Há 2 aparelhos pareados com o app: 076f31d9 (Android, desde 17/09) e 614c026b (Android, desde 24/09, o que manda os comandos da Mesa). Até 29/09 o log não dizia qual aparelho falava com o PC; agora diz. O de 17/09 continua podendo ler tudo e mandar comandos.",
+  "projeto": "app-e-bot",
+  "situacao": "pendente",
+  "titulo": "O aparelho pareado em 17/09 ainda é seu?",
+  "vigente": null
+}
