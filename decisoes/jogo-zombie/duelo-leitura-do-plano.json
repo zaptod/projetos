@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T23:02:25",
+      "evento": "2026-09-28T21:42:18",
+      "linha": 23,
+      "nota": "registrada; ADIADA pela duelo-quando = depois da estabilização",
+      "opcao": "icone",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Hoje nada do que a vila decide aparece: o gravador desliga as camadas do conselho e o jogo não desenha texto nenhum. A imagem 1 é MAQUETE desenhada por cima de um quadro real (não é o jogo). A imagem 2 é o duelo de hoje 3,5 s depois: os guardas já se espalharam. Custo: 2 a 3 dias no jogo (+1 a 2 na Publicação se a placa for desenhada pela fábrica, sem texto queimado). Placa no topo disputa espaço com a legenda da fábrica (~520 px do topo). Detalhes: docs/zombie/duelo-elaborado.md §6.",
   "criado": "2026-09-28T21:33:02.086616",
   "depende_de": [
