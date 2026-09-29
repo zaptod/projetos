@@ -29,7 +29,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`
 - ✅ **Sprites animados: como produzir** — Continuar com o modelo padrão e limpar depois (28/09/2026) · “Eu consegui gerar alguns spritesheet bons, veja o arquivo piriri.py , eu consegui esse usando o chat gpt, mas como o processo é moroso quero apenas uma interface gráfica que facilite ao máximo esse processo, como essa limpeza de fundo, saneamento e auto faturamento de frames, identificação e outras coisas úteis.” `sprites-animados`
 - ✅ **Palco: A/B depois da arte (16E)** — Seguir: trocar o visual do duelo (16G) (28/09/2026) `palco-ab-2`
-- ⏳ **Palco: os números de dano na tela** — O jogo mostra o número de cada golpe (a cor do efeito, roxo na execução) e o FATAL! no golpe final. A timeline agora traz esses textos. O palco deve desenhá-los? `palco-numeros-de-dano`
+- ✅ **Palco: os números de dano na tela** — Não (29/09/2026) `palco-numeros-de-dano`
 
 <!-- decisoes:fim -->
 

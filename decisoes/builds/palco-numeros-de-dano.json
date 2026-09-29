@@ -8,7 +8,15 @@
       "opcao": "trocar"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T00:01:28",
+      "opcao": "nao",
+      "origem": "app"
+    }
+  ],
   "id": "palco-numeros-de-dano",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "O jogo mostra o número de cada golpe (a cor do efeito, roxo na execução) e o FATAL! no golpe final. A timeline agora traz esses textos. O palco deve desenhá-los?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Palco: os números de dano na tela",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T00:01:28",
+    "opcao": "nao"
+  }
 }

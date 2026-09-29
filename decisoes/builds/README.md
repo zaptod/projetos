@@ -16,7 +16,7 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
     - ✅ **Chão da arena** — Foto de pedra CC0 escurecida (como está) (28/09/2026) `chao-da-arena`
     - ✅ **Hitstop: a pausinha no impacto** — Ligar (28/09/2026) `hitstop`
     - ✅ **Palco: A/B depois da arte (16E)** — Seguir: trocar o visual do duelo (16G) (28/09/2026) `palco-ab-2`
-      - ⏳ **Palco: os números de dano na tela** — O jogo mostra o número de cada golpe (a cor do efeito, roxo na execução) e o FATAL! no golpe final. A timeline agora traz esses textos. O palco deve desenhá-los? `palco-numeros-de-dano`
+      - ✅ **Palco: os números de dano na tela** — Não (29/09/2026) `palco-numeros-de-dano`
 - ✅ **Transição até o palco** — O visual atual segue, já com o som real (28/09/2026) `transicao`
   - ✅ **Som real da luta (16A)** — Aprovar: re-render do estoque na madrugada (28/09/2026) `som-real-16a`
     - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`
