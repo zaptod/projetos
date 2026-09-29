@@ -3,7 +3,15 @@
   "contexto": "Medido: o mundo (704x240) não tinha outra vaga de 72 px. Mudar a fileira de lugar mudaria o resto da vila; hoje nada fora do lote dele mudou (conferido por hash). O emblema e a cor são só inspirados na marca.",
   "criado": "2026-09-29T09:39:33.555621",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T12:51:34",
+      "opcao": "manter",
+      "origem": "app"
+    }
+  ],
   "id": "predio-do-grok",
   "midias": [
     {
@@ -48,7 +56,11 @@
   ],
   "pergunta": "O Grok entrou na Vila (29/09) na única vaga que havia sem mover casa: entre o DeepSeek e o ChatGPT, no lugar da árvore. Telhado grafite, emblema de foguete. A resposta dele agora vira balão em cima do prédio (e desvia para baixo quando o placar taparia). Mantém assim?",
   "projeto": "painel-e-vila",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "O prédio do Grok na Vila",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T12:51:34",
+    "opcao": "manter"
+  }
 }

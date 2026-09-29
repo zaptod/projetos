@@ -10,4 +10,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
   - ✅ **Aposentar a Vila em pixel e a Oficina** — Aposentar (tirar do painel e do código) (28/09/2026) `aposentar-vila-pixel`
 - ✅ **Zoom da Vila no celular** — Perto e grande (como está) (28/09/2026) · “Também adicionei suporte se eu deitar o celular, pode mudar as casas de lugar se for mais fácil, não ligo” `vila-zoom-celular`
   - ✅ **Ao girar, a Vila abre no prédio escolhido** — Abrir no prédio escolhido (como está agora) (29/09/2026) `girar-foca-o-predio`
-- ⏳ **O prédio do Grok na Vila** — O Grok entrou na Vila (29/09) na única vaga que havia sem mover casa: entre o DeepSeek e o ChatGPT, no lugar da árvore. Telhado grafite, emblema de foguete. A resposta dele agora vira balão em cima do prédio (e desvia para baixo quando o placar taparia). Mantém assim? `predio-do-grok`
+- ✅ **O prédio do Grok na Vila** — Manter (como está) (29/09/2026) `predio-do-grok`
