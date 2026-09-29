@@ -182,6 +182,13 @@ class CasoZero(_Base):
         self.assertEqual([], c.imagens_prontas(_estado([GATO], ancorado=False)))
         self.assertEqual([], c.imagens_prontas({}))
 
+    def test_turno_so_de_texto_nao_suja_o_log(self):
+        # a pipeline reescrevendo prompt no ChatGPT: nenhuma linha "imagem:"
+        pagina = _Pagina([_estado()] * 200, texto="Um prompt reescrito, calmo e seguro. " * 3)
+        c = self._cliente(pagina)
+        c.esperar_resposta(timeout=100, estabilidade=2)
+        self.assertEqual([], [m for m in self.logs if "imagem:" in m])
+
     def test_pagina_que_nao_responde_e_vazio(self):
         class _Quebrada:
             def evaluate(self, *_a):

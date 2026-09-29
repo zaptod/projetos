@@ -1489,7 +1489,8 @@ xícara de café**.
     "Criando/Gerando imagem" e conta as grandes **fora** (o anúncio), que
     vão ao log: "N imagem(ns) grande(s) FORA da resposta ignorada(s)";
   - a espera loga uma linha "imagem: …" a cada mudança do que vê (a medida
-    da geração ao vivo); texto parado com imagem a caminho não fecha a
+    da geração ao vivo; só quando há imagem, anúncio ou "gerando": a
+    pipeline reescrevendo prompt no ChatGPT não ganha a linha); texto parado com imagem a caminho não fecha a
     espera; no estouro vale a mesma régua (nada de prévia);
   - `baixar_da_resposta` **refaz a prova** na hora de baixar: nosso turno,
     a imagem ainda dentro da resposta, `src` fora da foto de antes do envio,
@@ -1504,11 +1505,12 @@ xícara de café**.
     balão `assistant-message` inteiro como recipiente até a primeira imagem
     real medir o dele.
 - **Testes:** `historias/tests/test_imagem_do_nosso_turno_regressions.py`
-  (12: antiga + nova no nosso turno → a nova; geração em andamento →
+  (13: antiga + nova no nosso turno → a nova; geração em andamento →
   espera; botão de parar → espera; sem imagem nova → falha; sem o alt
   final; sem a resposta ao nosso turno; texto parado esperando a imagem;
-  estouro com a mesma régua; caso ZERO: IA sem recipiente, página sem
-  turno, página que não responde); `ias/test_imagem.py` (+14: a prova
+  estouro com a mesma régua; turno só de texto não escreve "imagem:" no
+  log; caso ZERO: IA sem recipiente, página sem turno, página que não
+  responde); `ias/test_imagem.py` (+14: a prova
   refeita na hora de baixar, o anúncio aceito pela espera vira `falhou`
   sem arquivo pelo carteiro inteiro, a imagem antiga idem, o ChatGPT
   baixando pela tela cheia, a proporção, o `src` vazio que nunca baixa a

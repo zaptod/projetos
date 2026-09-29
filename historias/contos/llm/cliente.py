@@ -655,7 +655,8 @@ class ClienteLLM:
         e a medida do que a tela mostrou durante a geracao. Vazio = nada."""
         imagens = (achado or {}).get("imagens") or []
         fora = int((achado or {}).get("fora") or 0)
-        if not (achado or {}).get("resposta") and not fora:
+        # turno so de texto (a pipeline reescrevendo prompt) nao vai ao log
+        if not imagens and not fora and not (achado or {}).get("gerando"):
             return ""
         partes = [("resposta ao nosso turno na tela" if achado.get("resposta")
                    else "resposta ao nosso turno ainda nao apareceu")]
