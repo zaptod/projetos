@@ -40,7 +40,47 @@ def main(argv=None) -> int:
     e = sub.add_parser("eventos", help="os cliques gravados na sessao guiada, por passo")
     e.add_argument("ia", choices=IAS)
 
+    c = sub.add_parser("carteiro", help="entrega o correio do Adrian a cada IA (processo proprio)")
+    c.add_argument("--uma-vez", action="store_true", help="entrega o que ha e sai")
+    c.add_argument("--duble", action="store_true",
+                   help="sem navegador: um dublê responde (prova de tela e testes)")
+    c.add_argument("--intervalo", type=float, default=None, help="segundos entre olhadas")
+    c.add_argument("--demora", type=float, default=2.0, help="(dublê) segundos por resposta")
+    c.add_argument("--janela", type=float, default=20.0,
+                   help="(dublê) segundos segurando a conta depois de responder")
+
+    m = sub.add_parser("correio", help="a caixa de uma IA: ler, enviar, marcar vistas")
+    m.add_argument("ia", choices=("deepseek", "chatgpt", "gemini", "grok"))
+    m.add_argument("--enviar", metavar="TEXTO", help="deixa uma mensagem na caixa")
+    m.add_argument("--anexo", action="append", default=[], help="imagem a anexar")
+    m.add_argument("--n", type=int, default=20)
+    m.add_argument("--json", action="store_true")
+
     args = parser.parse_args(argv)
+
+    if args.cmd == "carteiro":
+        from . import carteiro
+        return carteiro.main(args)
+    if args.cmd == "correio":
+        from . import correio
+        if args.enviar:
+            msg = correio.enviar(args.ia, args.enviar, anexos=args.anexo)
+            print(json.dumps(msg, ensure_ascii=False))
+            return 0
+        itens = correio.historico(args.ia, args.n)
+        if args.json:
+            print(json.dumps(itens, ensure_ascii=False, indent=2))
+            return 0
+        if not itens:
+            print(f"caixa do {args.ia} vazia")
+        for m_ in itens:
+            print(f"{m_['em'][:16]} {m_['id']} [{m_['situacao']}] {m_['de']}: "
+                  f"{m_['texto'][:80]!r}")
+            if m_.get("resposta"):
+                print(f"    ↳ {m_['resposta'][:200]!r}")
+            if m_.get("erro"):
+                print(f"    ✗ {m_['erro']}")
+        return 0
 
     if args.cmd == "guia":
         from . import guia

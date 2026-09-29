@@ -1,0 +1,9 @@
+{
+  "_comment": "O carteiro da Vila das IAs (ias/carteiro.py). resumo_a_cada: a cada quantas mensagens respondidas na casa a IA e pedida a resumir o que foi combinado (casa_resumo.md). janela_conversa_s: depois de responder, quanto tempo o carteiro segura a conta esperando a proxima mensagem do Adrian para a mesma IA (decisao ias-prioridade-conversa: ele tem prioridade sobre a pipeline). espera_conta_max_s: quanto o carteiro espera a pipeline soltar a conta antes de marcar a mensagem como falhou (nunca mata). resposta_timeout_s: prazo de UMA resposta. headless: por IA; false = janela na tela do PC (ChatGPT em headless cai no Cloudflare).",
+  "resumo_a_cada": 12,
+  "janela_conversa_s": 90,
+  "espera_conta_max_s": 10800,
+  "resposta_timeout_s": 420,
+  "intervalo_s": 5,
+  "headless": {"deepseek": false, "chatgpt": false, "gemini": false, "grok": false}
+}

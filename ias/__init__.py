@@ -9,6 +9,8 @@ etc."
     python -m ias sondar <ia>|todas     refaz a sonda (abre o navegador)
     python -m ias fichas                imprime a tabela comparativa
     python -m ias tabela-png <saida>    a mesma tabela em PNG (para o Grimorio)
+    python -m ias carteiro [--uma-vez] [--duble]   fase 2: entrega o correio
+    python -m ias correio <ia> [--enviar TEXTO]    a caixa de uma IA
 
 O que mora aqui:
 
@@ -19,6 +21,12 @@ O que mora aqui:
                o codigo e os logs ja conheciam, mais o que a sonda ve.
   sonda.py     a sonda de verdade: abre o perfil com a TRAVA da conta, mede
                com o minimo de cota e guarda captura + texto lido como prova.
+  correio.py   FASE 2: a caixa de mensagens de cada IA de chat (jsonl so de
+               acrescimo em %LOCALAPPDATA%\\neural-fights\\ias\\<ia>\\), a
+               "casa" (o chat de longa duracao) e o estado do carteiro.
+  carteiro.py  FASE 2: o processo que entrega (trava da conta com prioridade
+               do Adrian, casa persistente, resumo periodico, erro legivel
+               pelo catalogo, Telegram quando o app nao esta olhando).
 
 Os clientes vem de `contos.llm` (ChatGPT, Gemini, DeepSeek, Grok) e de
 `builds.identity` (PicassoIA, DreamFace, Digen); este pacote nao abre Chrome
