@@ -7,7 +7,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 
 **Geral**
 - ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
-- ✅ **Modo de trabalho dos agentes** — Vários projetos em paralelo (29/09/2026) · “29/09 09:09, no chat: paralelo, até 2 agentes — nas palavras dele: Adrian pediu a fila em cards enquanto o prédio do Grok roda” `modo-de-trabalho`
+- ✅ **Modo de trabalho dos agentes** — Um projeto por vez (29/09/2026) · “29/09 15:21, pela Mesa de comando: paralelo, até 1 agente” `modo-de-trabalho`
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (29/09/2026) · “29/09 07:26, pela Mesa de comando: passou de 50% da sessão, para tudo” `teto-de-uso`
 - ✅ **Força total antes de renovar: ainda vale?** — Só quando eu pedir (29/09/2026) · “29/09 13:28, pela Mesa de comando: força total só quando eu pedir” `forca-total-ainda-vale`
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
@@ -64,6 +64,8 @@ Tudo vive em `remoto/`:
   (29/09, Vila das IAs fase 2, §10). O correio e o carteiro moram em `ias/`
   (`correio.py`, `carteiro.py`), fora de `remoto/`: o servidor só lê e
   escreve a caixa; quem abre navegador é o carteiro, em processo próprio.
+  Desde 29/09 (tarde) a mesma tela tem o **🎨 Criar** (pedir imagem), a
+  galeria e a tela cheia; o catálogo dos geradores é `ias/imagem.py` (§13).
 - `decisoes.py` + `app/decisoes.js` — a **árvore de decisões** do Adrian
   (28/09), uma aba por projeto no app. A fonte é o repositório:
   `decisoes/<projeto>/<id>.json` (ver §3.7). Tem também o **leitor de
@@ -127,8 +129,8 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 660 testes (29/09, 14h)
-python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 53 (o correio e o carteiro, §10)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 671 testes (29/09, 15h)
+python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 90 (correio, carteiro e imagem, §10 e §13)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -821,9 +823,9 @@ periódico) e `ias-grok-acesso` (grok.com com a conta X dele, perfil
 
 **Princípio.** Tudo passa pelo **correio** (arquivo), nunca direto: o app
 deixa a mensagem na caixa, o **carteiro** (processo próprio) entrega e grava
-a resposta. O servidor do app nunca abre navegador. Nesta fase conversam só
-as IAs de chat: DeepSeek, ChatGPT, Gemini e Grok (PicassoIA/DreamFace/Digen
-só geram imagem e ficam de fora).
+a resposta. O servidor do app nunca abre navegador. Conversam só as IAs de
+chat: DeepSeek, ChatGPT, Gemini e Grok. Os geradores de imagem entraram em
+29/09 à tarde pelo **Criar** (§13).
 
 **O correio** (`ias/correio.py`), em
 `%LOCALAPPDATA%\neural-fights\ias\<ia>\correio.jsonl` (`NF_IAS_PASTA` troca
@@ -1241,3 +1243,151 @@ acima: o apurador sobe como processo novo a cada volta).
 
 **Estado deixado:** liberado (arquivo ausente). Quem proíbe é o Adrian (ou o
 orquestrador, a pedido dele), pelo app ou pela CLI.
+
+## 13. Pedir imagem pelo app (29/09/2026, tarde)
+
+Demanda urgente do Adrian pela Mesa (14:29, `ca47239a`): "os modelos que
+geram imagem e etc, eu preciso ter suporte para isso também". Caso real que
+veio junto: às 14:24 ele pediu pelo **Conversar** do Gemini "gere uma imagem
+de um gato pra mim" (correio `dde066f1`); o Gemini desenhou, a tela ficou com
+0 caracteres, o carteiro esperou 420 s por texto e falhou com "raciocínio
+preso ou limite".
+
+**O que cada gerador faz hoje** (`ias/imagem.py: gerador()`, lido da ficha
+`ias/fichas/<ia>.json`; o app desenha o Criar disto):
+
+| IA | pelo app | como gera | prova de origem |
+| --- | --- | --- | --- |
+| PicassoIA | 🎨 Criar, 7 proporções (a ficha ganhou `imagem.proporcoes`) | o `PicassoClient` do identity no perfil das histórias, a espera que reenvia no estouro (`contos.imagens.worker._gerar_esperando`), **Aprimorador desligado à força** | **forte**: `proveniencia.comprovar` (o card do histórico com o NOSSO prompt); a URL é reivindicada em `origens.jsonl` (`ias_<id>`) |
+| Grok, Gemini, ChatGPT | 🎨 Criar (proporção escrita no pedido: 1:1, 3:4, 4:3, 9:16, 16:9) **e** imagem na conversa | o `ClienteLLM` na **casa** da IA, pelo `perguntar` de sempre | o turno nosso na tela (o último turno do usuário contém o pedido); vale a imagem que nasceu depois dele |
+| DreamFace | Criar **desabilitado**: "créditos 0 (ficha de 29/09…) · só há seletores… nenhuma geração em produção" | — | — |
+| Digen | Criar **desabilitado**: "gera VÍDEO a partir de uma imagem (Real Motion 3.5): próximo passo" | — | — |
+| 🎲 Livre | o **rodízio**: `rodizio_imagem` do `ias/config.json` (picasso → gemini → grok → chatgpt) | o primeiro que a ficha diz que gera, que faz a proporção, que está em cota e cuja conta está **livre agora** | a do gerador escolhido |
+
+ChatGPT: a ficha diz `gera: null` (não medido); a tela diz "ainda não
+medido: a primeira imagem mede". Nenhum dos três chats foi provado ao vivo
+gerando imagem: só o PicassoIA (prova real abaixo).
+
+**O correio** (`ias/correio.py`): as caixas agora são 8 (`CAIXAS`): as 4 de
+chat, `picasso`, `dreamface`, `digen` e `livre`. Um pedido é
+`pedir_imagem(caixa, prompt, proporcao=, modelo=)` →
+`{"tipo": "imagem", "texto": <prompt>, "proporcao", "modelo_pedido",
+"gerador": caixa | None (livre), ...}`; prompt até **5.000** caracteres.
+Mensagem sem `tipo` é texto (tudo antes de 29/09). Texto para quem não
+conversa continua recusado. Respondido, o registro ganha
+`imagem: {arquivo, largura, altura, bytes, formato, sha256, prova, forca}`.
+
+**O disco:** `%LOCALAPPDATA%\neural-fights\ias\<gerador>\imagens\<id>.<ext>`
+com os **bytes originais** (a extensão sai dos bytes: png, jpg, webp) e
+`<id>.prova.json` ao lado (a prova inteira). Sem prova (`comprovada`), nada
+vai ao disco. `arquivo_da_imagem(caixa, id)` só devolve arquivo de pedido
+**registrado e respondido**, com nome `<id>.<ext>` e dentro da pasta do
+gerador; nome adulterado no registro (`../../x`) dá `None`.
+
+**O carteiro** (`ias/carteiro.py`):
+- pega a pendente mais velha das 8 caixas. Pedido para gerador que a ficha
+  diz que não gera falha na hora, com o motivo, **sem abrir navegador**;
+- trava da conta como a conversa (espera a pipeline, nunca mata). O
+  PicassoIA usa `travas.do_perfil("picasso", "historias")`, a mesma do
+  worker das histórias e do de builds;
+- **parede de planos** ("Assine para Gerar"): fecha o navegador e reabre o
+  perfil **uma vez**, como o worker (17/09); de novo = falha "parede";
+- no chat, um pedido de imagem entra na **mesma sessão da casa** (e na janela
+  de conversa de 90 s, junto das mensagens de texto);
+- **motivo legível** (`imagem.classificar`): recusa do filtro → `conteudo`
+  ("recusou o prompt («CONTEÚDO ILEGAL»): reescreva o pedido"; o prompt dele
+  **não** é reescrito sozinho); sem prova → `sem_prova` ("nada foi
+  baixado"); texto do catálogo da ficha na tela ("Voce atingiu seu limite de
+  geracoes em paralelo") → `limite`; estouro → `indisponivel`; pausa do
+  PicassoIA no painel → `pausado`; o chat respondeu só texto → `sem_imagem`;
+- **cota:** falha `limite`/`upgrade`/`parede` tira o gerador do rodízio por
+  `cota_pausa_h` (6 h) (`imagem.fora_de_cota`);
+- **rodízio:** todas as contas ocupadas → espera (nota "rodízio: todas as
+  contas ocupadas"); ninguém que possa gerar → falha `rodizio` com os
+  motivos de cada um. O escolhido vai em `gerador` e `rodizio`;
+- **Telegram:** a imagem vai como **documento** (`sendDocument`, qualidade
+  original) quando o app não está olhando nem a caixa do pedido nem a do
+  gerador; a falha vai em texto;
+- `--duble` gera um PNG de verdade sem navegador (`imagem.png_de_teste`).
+
+**A resposta que é uma imagem** (o gato do `dde066f1`, commit 983083f):
+`ClienteLLM.esperar_resposta` agora também olha as imagens do turno
+(`imagens_da_resposta`): só vale imagem que **nasceu durante a espera**
+(o que já estava na tela na largada, como a miniatura de um anexo, não
+conta), depois do último turno do usuário, fora dele, com 256+ px, estável
+por `estabilidade` s e sem botão de parar. Ela volta em
+`imagens_na_resposta`; o carteiro baixa com a prova do turno
+(`SessaoReal.imagem_da_resposta`) e grava como a de um pedido pelo Criar
+(`gerador` = a IA da conversa). Só imagem, sem texto: a resposta vira
+"(imagem · 1024x1024 · 212 KB)". Imagem sem prova e sem texto: falha com o
+motivo. Só texto: como antes.
+
+**Rotas** (todas com token; pedir só com `--acoes`; ler nunca depende dele):
+
+| rota | o que faz |
+| --- | --- |
+| `GET /api/correio` | ganhou `imagens` (as caixas picasso, dreamface, digen, livre) e `geradores` (a ficha de cada um) |
+| `GET /api/correio/<caixa>` | as 8 caixas; `conversa`, `gerador`, `rodizio`, `geradores`; cada mensagem com imagem traz `imagem.url` (`/v/<bilhete>`, reaproveitado enquanto vale mais de 5 min: a tela relê a cada 6 s) e `imagem.nome` — **nunca** o caminho |
+| `POST /api/correio/<gerador|livre>/imagem` `{prompt, proporcao, modelo?}` | o pedido; 400 com o motivo da ficha (proporção que o gerador não oferece, DreamFace, Digen, modelo que não existe, vazio, > 5.000); 403 sem `--acoes`; direto, sem confirmação (decisão `mensagem-para-uma-ia-pelo-app-direto-ou`: gera na conta dele, não publica) |
+| `GET /api/imagem/<caixa>/<id 8 hex>` | o bilhete da imagem de um pedido registrado e respondido; 404 para pendente, adulterado ou inexistente |
+| `GET /api/imagens?ia=<gerador>` | a galeria (todas, ou as de um gerador; o rodízio conta no escolhido), com bilhete |
+| `POST /api/correio/<caixa>/visto` | vale para as 8 |
+
+Imagem pedida sem `Range` vem inteira com 200 até 24 MB
+(`IMAGEM_INTEIRA_MAX`; antes, 4 MB): um PNG do ChatGPT passa de 4 MB, e um
+`<img>` não remonta um 206.
+
+**No app** (`app/conversa.js`, casca `v20`):
+- o cartão do prédio tem **🎨 Criar** ao lado do 💬 Conversar (Grok, Gemini,
+  ChatGPT) ou sozinho (PicassoIA). No Digen ele aparece **desabilitado**,
+  com "🎨 não gera imagem hoje: … (próximo passo)";
+- a tela tem 8 chips (as 4 de chat, PicassoIA, DreamFace, Digen e 🎲 Livre)
+  e os modos da IA (💬 Conversar / 🎨 Criar / 🖼 Galeria);
+- o **Criar**: o aviso (modelo, nota da ficha, ou o motivo em vermelho), o
+  prompt (`maxlength` = o teto), a proporção (as da ficha) e o modelo (só
+  quando a ficha dá mais de um);
+- o balão do pedido: "🎨 prompt", "proporção 1:1 · rodízio → 🎨 PicassoIA",
+  e a situação: "na caixa" → "**gerando… (Xs)**" (anda a cada segundo pelo
+  relógio do PC, sem reler) → "gerada HH:MM em N s · modelo", ou
+  "falhou: motivo";
+- o balão da IA: a **miniatura**; tocar abre a **tela cheia** com ⬇ Baixar
+  (os bytes do PC, com o nome `<gerador>_<id>.<ext>`) e ↗ Compartilhar (a
+  folha do sistema, com o arquivo; sem suporte, "use ⬇ Baixar");
+- a **galeria** por IA (no 🎲 Livre, todas), em 3 colunas.
+
+**Testes:** `ias/test_imagem.py` (35: o pedido no correio, o caso ZERO,
+os geradores pela ficha, o carteiro gerando arquivo com prova e bytes
+originais, sem prova → nada no disco, recusa de conteúdo, cota → motivo e
+fora do rodízio, parede reabre uma vez / duas vezes falha, gerador que não
+gera não abre navegador, trava da pipeline espera, app olhando sem Telegram,
+imagem na casa do chat, o rodízio escolhendo o livre / pulando o fora de
+cota / esperando / desistindo com os motivos / pela proporção, a conversa
+que respondeu com imagem, e a `SessaoReal` baixando com a prova do turno);
+`remoto/test_imagem_app.py` (11: as listas de caixas batem, caso ZERO, 401,
+403, o pedido, as recusas com motivo, imagem só por bilhete de pedido
+respondido e byte a byte, pendente/adulterado/rota torta = 404, galeria,
+conversa com imagem, visto); e
+`historias/tests/test_resposta_com_imagem_regressions.py` (4). Nenhum abre
+navegador nem toca o `%LOCALAPPDATA%` real.
+
+**Prova de tela (dublê, 29/09 15:0x):** 390×844, clicando, na 8934
+(`scratchpad/servidor_conversa.py` + `prova_imagem.py`, correio em
+`E:\projetos-wt\_prova_imagem\ias`, carteiro `--duble --demora 8`). Todas
+as conferências OK, 0 erros de JS; telas em
+`E:\projetos-wt\_prova_imagem\telas\duble_*.png`, relatório em
+`prova_duble.txt`:
+- Digen: 🎨 Criar desabilitado, com "gera VÍDEO… (próximo passo)"; Grok:
+  Conversar e Criar lado a lado; PicassoIA: só Criar;
+- Criar · PicassoIA: 8 chips, modos Criar/Galeria, as 7 proporções, sem
+  seletor de modelo, o aviso com "PicassoIA Image" e "Aprimorador
+  desligado", o caso ZERO;
+- o pedido "a red circle on white" 1:1: "gerando… (6s)" → "(8s)" sem
+  recarregar, depois a miniatura carregada, "gerada 15:00 em 8 s · dublê",
+  a imagem e o `.prova.json` no disco;
+- tela cheia; ⬇ Baixar entrega o arquivo **byte a byte igual** ao do PC;
+  ↗ Compartilhar busca os bytes (`GET /v/` no log) para a folha do sistema;
+- galeria; DreamFace com "créditos 0" e tudo desabilitado; 🎲 Livre com a
+  ordem do rodízio e "rodízio → 🎨 PicassoIA"; falha "nada foi baixado"
+  aparece no balão; o Grok tem os três modos e a imagem fica na conversa.
+- A prova pegou um defeito: trocar de chip não redesenhava os modos (o Grok
+  aparecia com os modos do PicassoIA, sem 💬). Consertado antes do commit.

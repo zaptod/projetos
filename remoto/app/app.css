@@ -709,6 +709,36 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .conversa-anexo-rotulo { display: inline-block; cursor: pointer; }
 #conversa-anexo-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
+/* ---- pedir imagem (29/09, tarde): o "🎨 Criar", a imagem no balão, a
+   galeria e a tela cheia */
+.conversa-modos { margin-top: -6px; }
+.criar-aviso { margin-bottom: 6px; font-size: 13px; }
+.criar-aviso.erro { color: var(--erro); }
+.conversa-caixa select { font: inherit; font-size: 14px; padding: 4px 6px; border-radius: 6px;
+  border: 1px solid var(--linha); background: var(--fundo); color: var(--texto); }
+#criar-prompt { width: 100%; font: inherit; font-size: 15px; padding: 8px; border-radius: 8px;
+  border: 1px solid var(--linha); background: var(--fundo); color: var(--texto);
+  resize: vertical; min-height: 64px; }
+#criar-contagem { flex: 1; text-align: right; font-size: 12px; }
+.balao .miniatura { display: block; margin-top: 4px; max-width: 100%; max-height: 260px;
+  border-radius: 8px; border: 1px solid var(--linha); background: #efe6cf; cursor: zoom-in; }
+.balao .gerando { color: var(--ativo); }
+.conversa-galeria { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  margin-bottom: 12px; min-height: 120px; }
+.conversa-galeria .item { position: relative; aspect-ratio: 1; overflow: hidden;
+  border-radius: 8px; border: 1px solid var(--linha); background: #efe6cf; padding: 0; }
+.conversa-galeria .item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.conversa-galeria .item span { position: absolute; left: 0; right: 0; bottom: 0;
+  font-size: 10.5px; padding: 2px 4px; background: rgba(0, 0, 0, .55); color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conversa-galeria .vazia { grid-column: 1 / -1; }
+.imagem-tela { position: fixed; inset: 0; z-index: 60; background: rgba(10, 8, 4, .94);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom)); }
+.imagem-tela img { max-width: 100%; max-height: 72vh; object-fit: contain; border-radius: 6px; }
+.imagem-tela-legenda { color: #f3e9cf; font-size: 13px; margin-top: 8px; max-width: 100%;
+  max-height: 4.2em; overflow: hidden; text-align: center; overflow-wrap: anywhere; }
+.imagem-tela .botoes { justify-content: center; }
 .vila-resposta { margin-top: 4px; padding: 6px 8px; border-radius: 8px;
   background: rgba(255, 255, 255, .7); border: 1px solid var(--linha); font-size: 13.5px;
   white-space: pre-wrap; overflow-wrap: anywhere; max-height: 5.6em; overflow: hidden; }

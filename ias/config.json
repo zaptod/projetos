@@ -5,5 +5,18 @@
   "espera_conta_max_s": 10800,
   "resposta_timeout_s": 420,
   "intervalo_s": 5,
-  "headless": {"deepseek": false, "chatgpt": false, "gemini": false, "grok": false}
+  "headless": {
+    "deepseek": false,
+    "chatgpt": false,
+    "gemini": false,
+    "grok": false
+  },
+  "_comment_imagem": "Pedidos de imagem (29/09/2026). rodizio_imagem: a ordem do 'qualquer um livre' - o carteiro pega o primeiro que a ficha diz que gera, que esta em cota e cuja conta esta LIVRE agora. cota_pausa_h: depois de uma falha de limite/upgrade/parede, quantas horas o gerador fica fora do rodizio.",
+  "rodizio_imagem": [
+    "picasso",
+    "gemini",
+    "grok",
+    "chatgpt"
+  ],
+  "cota_pausa_h": 6
 }

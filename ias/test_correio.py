@@ -54,8 +54,11 @@ class CorreioCasoZero(_Base):
     def test_ia_que_nao_conversa_e_recusada(self):
         with self.assertRaises(correio.CorreioInvalido):
             correio.enviar("picasso", "oi")
+        # desde 29/09 o Digen tem caixa (pedidos de imagem); a que nao
+        # existe continua recusada
         with self.assertRaises(correio.CorreioInvalido):
-            correio.ler("digen")
+            correio.ler("dall-e")
+        self.assertEqual(correio.ler("digen"), [])
 
 
 class CorreioEscreveEDobra(_Base):

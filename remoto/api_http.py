@@ -71,11 +71,21 @@ CODIGO_VALE_S = 5 * 60
 CODIGO_TENTATIVAS = 5
 BILHETE_VALE_S = 10 * 60
 FATIA_MAX = 4 * 1024 * 1024
+IMAGEM_INTEIRA_MAX = 24 * 1024 * 1024
 CORPO_MAX = 4096
 # A conversa com uma IA leva imagem anexada (base64): so essa rota aceita
 # um corpo grande, e so com token.
 CORPO_CORREIO_MAX = 12 * 1024 * 1024
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
+# As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
+# e nao lido do `ias`, para a rota nunca aceitar o que o correio nao conhece;
+# `test_imagem_app` confere que as duas listas batem.
+CAIXAS_DO_CORREIO = ("deepseek", "chatgpt", "gemini", "grok", "picasso", "dreamface",
+                     "digen", "livre")
+GERADORES_DE_IMAGEM = ("picasso", "grok", "gemini", "chatgpt", "dreamface", "digen")
+CAIXAS_RE = "|".join(CAIXAS_DO_CORREIO)
+GERADORES_RE = "|".join(GERADORES_DE_IMAGEM)
+CORPO_PEDIDO_IMAGEM_MAX = 32 * 1024
 FALHAS_MAX = 20                          # por IP, na janela abaixo
 FALHAS_JANELA_S = 10 * 60
 # Uma conexao lenta (ou um POST que promete corpo e nao manda) nao pode
@@ -454,6 +464,17 @@ class Estado:
             self.bilhetes[chave] = (arquivo, agora + BILHETE_VALE_S, dono)
         return chave
 
+    def bilhete_reusado(self, arquivo: Path, dono: str, folga_s: float = 300.0) -> str:
+        """O bilhete que o aparelho ja tem para este arquivo, se ainda vale por
+        mais `folga_s`; senao, um novo. A conversa rele a caixa a cada 6 s:
+        sem isto, cada imagem ganharia um bilhete novo a cada releitura."""
+        agora = time.time()
+        with self.trava:
+            for chave, (caminho, expira, quem) in self.bilhetes.items():
+                if caminho == arquivo and quem == dono and expira - agora > folga_s:
+                    return chave
+        return self.bilhete(arquivo, dono)
+
     def arquivo_do_bilhete(self, chave: str) -> tuple:
         """(caminho, motivo): motivo e "ok", "vencido", "revogado" ou "inventado".
 
@@ -684,10 +705,22 @@ class Manipulador(BaseHTTPRequestHandler):
             # Telegram quando o app nao esta olhando aquela caixa.
             if rota == "/api/correio":
                 return self._json(self._correio_resumo())
-            achado = re.fullmatch(r"/api/correio/(deepseek|chatgpt|gemini|grok)", rota)
+            achado = re.fullmatch(rf"/api/correio/({CAIXAS_RE})", rota)
             if achado:
                 return self._json(self._correio_caixa(achado.group(1),
                                                       _inteiro(consulta, "n", 60)))
+            # A IMAGEM de um pedido: pela caixa e pelo id do pedido, NUNCA por
+            # caminho. So pedido registrado e respondido; o celular recebe um
+            # bilhete de 10 min para aquele arquivo e mais nada.
+            achado = re.fullmatch(rf"/api/imagem/({CAIXAS_RE})/([0-9a-f]{{8}})", rota)
+            if achado:
+                ficha = self._imagem_do_pedido(achado.group(1), achado.group(2))
+                if ficha is None:
+                    return self._erro(404, "imagem não existe")
+                return self._json(ficha)
+            if rota == "/api/imagens":
+                ia = (consulta.get("ia") or [""])[0][:20].lower()
+                return self._json(self._galeria(ia, _inteiro(consulta, "n", 60)))
             if rota == "/api/claude":
                 # o interruptor do Claude (liberado / proibido), com o historico
                 return self._json(claude_estado.para_o_app())
@@ -763,9 +796,15 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._orquestrador(rota)
         if rota == "/api/claude":
             return self._interruptor_claude()
-        achado = re.fullmatch(r"/api/correio/(deepseek|chatgpt|gemini|grok)(/visto)?", rota)
+        achado = re.fullmatch(rf"/api/correio/({GERADORES_RE}|livre)/imagem", rota)
         if achado:
-            return self._correio_post(achado.group(1), bool(achado.group(2)))
+            return self._pedir_imagem(achado.group(1))
+        achado = re.fullmatch(rf"/api/correio/({CAIXAS_RE})/visto", rota)
+        if achado:
+            return self._correio_post(achado.group(1), True)
+        achado = re.fullmatch(r"/api/correio/(deepseek|chatgpt|gemini|grok)", rota)
+        if achado:
+            return self._correio_post(achado.group(1), False)
         if rota != "/api/parear":
             return self._erro(404, "nao existe")
         if self.estado.bloqueado(self.client_address[0]):
@@ -959,22 +998,120 @@ class Manipulador(BaseHTTPRequestHandler):
                                        if ultima.get("resposta") else None),
                           "anexos": len(ultima.get("anexos") or [])}
             caixas.append({"ia": ia, **info, "ultima": ultima})
-        return {"ias": caixas, "carteiro": c.estado_do_carteiro(),
-                "enviar": bool(self.estado.com_acoes)}
+        # as caixas de imagem (PicassoIA, DreamFace, Digen e o rodizio): a Vila
+        # mostra a imagem nova do PicassoIA como mostra a resposta de um chat
+        imagens = []
+        for ia, info in c.resumo(("picasso", "dreamface", "digen", c.LIVRE)).items():
+            ultima = info.get("ultima")
+            if ultima:
+                ultima = {k: ultima.get(k) for k in (
+                    "id", "situacao", "resposta", "erro", "tipo", "gerador", "em",
+                    "atualizado_em")}
+                ultima["texto"] = str((info.get("ultima") or {}).get("texto") or "")[:200]
+            imagens.append({"ia": ia, **info, "ultima": ultima})
+        return {"ias": caixas, "imagens": imagens, "geradores": _imagem().geradores(),
+                "carteiro": c.estado_do_carteiro(), "enviar": bool(self.estado.com_acoes)}
+
+    def _mensagem_para_o_app(self, c, caixa: str, m: dict) -> dict:
+        """A mensagem como o celular a ve: anexo so pelo nome, e a imagem de um
+        pedido respondido so por bilhete (nunca o caminho)."""
+        saida = {**m, "anexos": [Path(a).name for a in (m.get("anexos") or [])]}
+        # o pedido pelo Criar, ou a conversa cuja resposta foi uma imagem
+        if isinstance(m.get("imagem"), dict):
+            info = {k: m["imagem"].get(k) for k in (
+                "arquivo", "largura", "altura", "bytes", "formato", "prova", "forca")}
+            caminho = c.arquivo_da_imagem(caixa, m["id"])
+            if caminho is not None:
+                info["url"] = f"/v/{self.estado.bilhete_reusado(caminho, self._dono)}"
+                info["nome"] = f"{m.get('gerador') or caixa}_{caminho.name}"
+            else:
+                info["url"] = None
+                info["sumiu"] = True
+            saida["imagem"] = info
+        return saida
 
     def _correio_caixa(self, ia: str, n: int) -> dict:
         c = _correio()
+        img = _imagem()
         c.registrar_presenca(f"correio:{ia}")
         casa = c.casa(ia)
-        mensagens = [{**m, "anexos": [Path(a).name for a in (m.get("anexos") or [])]}
-                     for m in c.historico(ia, n)]
+        mensagens = [self._mensagem_para_o_app(c, ia, m) for m in c.historico(ia, n)]
         return {"ia": ia, "rotulo": c.ROTULOS.get(ia, ia), "emoji": c.EMOJIS.get(ia, "•"),
+                "conversa": ia in c.CHATS,
+                "gerador": img.gerador(ia) if ia in c.GERADORES else None,
+                "rodizio": img.rodizio_ordem() if ia == c.LIVRE else None,
+                "geradores": img.geradores(),
                 "mensagens": mensagens,
                 "casa": {"geracao": casa.get("geracao"), "mensagens": casa.get("mensagens"),
                          "ultimo_resumo_em": casa.get("ultimo_resumo_em"),
                          "tem_resumo": bool(c.resumo_da_casa(ia).strip())},
                 "carteiro": c.estado_do_carteiro(), "ilegiveis": c.ilegiveis(ia),
                 "enviar": bool(self.estado.com_acoes)}
+
+    def _imagem_do_pedido(self, caixa: str, mid: str) -> dict | None:
+        c = _correio()
+        caminho = c.arquivo_da_imagem(caixa, mid)
+        if caminho is None:
+            return None
+        tipo = decisoes.tipo_da_midia(caminho)
+        if not tipo or not tipo.startswith("image/"):
+            return None
+        m = c.uma(caixa, mid) or {}
+        return {"url": f"/v/{self.estado.bilhete_reusado(caminho, self._dono)}",
+                "tipo": tipo, "nome": f"{m.get('gerador') or caixa}_{caminho.name}",
+                "vale_s": BILHETE_VALE_S}
+
+    def _galeria(self, ia: str, n: int) -> dict:
+        """As imagens geradas (todas, ou as de um gerador), da mais nova para a
+        mais velha, cada uma com o seu bilhete."""
+        c = _correio()
+        if ia and ia not in GERADORES_DE_IMAGEM:
+            return {"ia": ia, "imagens": [], "erro": "não gera imagem"}
+        itens = []
+        for m in c.imagens(ia or None, n):
+            caixa = m.get("caixa") or ""
+            item = self._mensagem_para_o_app(c, caixa, m)
+            if not (item.get("imagem") or {}).get("url"):
+                continue
+            itens.append({"caixa": caixa, "id": m["id"], "gerador": m.get("gerador"),
+                          "texto": str(m.get("texto") or "")[:300],
+                          "proporcao": m.get("proporcao"), "em": m.get("em"),
+                          "respondida_em": m.get("respondida_em"),
+                          "imagem": item["imagem"]})
+        return {"ia": ia or None, "imagens": itens}
+
+    def _pedir_imagem(self, caixa: str):
+        """Um PEDIDO DE IMAGEM entra na caixa (o carteiro gera). Faz o PC abrir
+        um navegador na conta dele: so com --acoes, como a conversa. Direto,
+        sem confirmacao (decisao `mensagem-para-uma-ia-pelo-app-direto-ou`: o
+        pedido fica na conta dele e nao sai para o mundo)."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        corpo = self._corpo(CORPO_PEDIDO_IMAGEM_MAX)
+        if corpo is None:
+            return
+        c, img = _correio(), _imagem()
+        prompt = str(corpo.get("prompt") or corpo.get("texto") or "")
+        proporcao = str(corpo.get("proporcao") or "").strip()
+        modelo = corpo.get("modelo")
+        try:
+            info = img.conferir_pedido(caixa, proporcao)
+            if modelo and modelo not in (info.get("modelos") or [modelo]):
+                raise c.CorreioInvalido(
+                    f"modelo {str(modelo)[:40]!r}: o {info.get('rotulo')} oferece "
+                    f"{', '.join(info.get('modelos') or []) or 'só o padrão'}")
+            mensagem = c.pedir_imagem(caixa, prompt, proporcao=proporcao,
+                                      modelo=str(modelo) if modelo else None)
+        except c.CorreioInvalido as exc:
+            return self._erro(400, str(exc))
+        except OSError:
+            return self._erro(503, "o correio está ocupado; tente de novo")
+        sys.stderr.write(f"{datetime.now():%d/%m %H:%M:%S} imagem {caixa} {mensagem['id']} "
+                         f"({len(prompt)} chars, {proporcao}) {self._id}\n")
+        return self._json({"feito": True, "mensagem": mensagem,
+                           "carteiro": c.estado_do_carteiro()})
 
     def _correio_post(self, ia: str, visto: bool):
         if self._aparelho() is None:
@@ -1093,8 +1230,11 @@ class Manipulador(BaseHTTPRequestHandler):
         # inteiro com 200: um 206 que ninguem pediu nao e garantido de
         # aparecer. Video segue sempre por Range, como antes.
         tipo = decisoes.tipo_da_midia(arquivo) or "video/mp4"
+        # A imagem gerada pelas IAs (29/09) pode passar da fatia (um PNG do
+        # ChatGPT tem 2-3 MB, e ha folga): ela vem inteira ate IMAGEM_MAX, que
+        # um `<img>` truncado num 206 nao remonta.
         if (tipo.startswith("image/") and not self.headers.get("Range")
-                and total <= FATIA_MAX):
+                and total <= max(FATIA_MAX, IMAGEM_INTEIRA_MAX)):
             try:
                 corpo = arquivo.read_bytes()
             except OSError:
@@ -1131,6 +1271,12 @@ class Manipulador(BaseHTTPRequestHandler):
                     falta -= len(pedaco)
         except (ConnectionError, OSError):
             pass          # o celular fechou o video no meio: normal
+
+
+def _imagem():
+    """O catalogo dos geradores de imagem (`ias.imagem`, lido das fichas)."""
+    from ias import imagem
+    return imagem
 
 
 def _correio():

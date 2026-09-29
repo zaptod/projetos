@@ -34,6 +34,11 @@ FUNCOES = [
     # a conversa com uma IA (fase 2 da Vila das IAs)
     "conversa-ias", "conversa-casa", "conversa-carteiro", "conversa-historico",
     "conversa-texto", "conversa-anexo", "conversa-anexo-nome", "conversa-enviar",
+    # pedir imagem (29/09, tarde): Criar, galeria e a tela cheia
+    "conversa-modos", "conversa-galeria", "conversa-criar", "conversa-caixa-texto",
+    "criar-aviso", "criar-prompt", "criar-proporcao", "criar-modelo", "criar-modelo-rotulo",
+    "criar-contagem", "criar-enviar", "imagem-tela", "imagem-tela-img",
+    "imagem-tela-legenda", "imagem-baixar", "imagem-compartilhar", "imagem-fechar",
     # o interruptor do Claude (29/09): no topo da Mesa e na Bancada
     "claude-mesa", "claude-faixa", "claude-bancada",
     # vila
@@ -106,7 +111,7 @@ def test_a_zona_de_perigo_e_a_publicacao_continuam_ligadas():
 def test_o_cache_da_casca_mudou_de_versao():
     # sem trocar o nome do cache, o celular seguiria com a casca antiga
     sw = (APP / "sw.js").read_text(encoding="utf-8")
-    assert "painel-casca-v19" in sw        # v18 = ícone novo; v19 = interruptor do Claude (29/09)
+    assert "painel-casca-v20" in sw        # v19 = interruptor do Claude; v20 = pedir imagem (29/09)
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw
 
 

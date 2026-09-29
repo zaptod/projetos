@@ -166,6 +166,16 @@
     "alfa": false,
     "arquivo": null,
     "gera": true,
+    "proporcoes": [
+      "1:1",
+      "16:9",
+      "9:16",
+      "4:3",
+      "3:4",
+      "3:2",
+      "2:3"
+    ],
+    "proporcoes_fonte": "select nativo do criador (picasso_selectors.OPCOES_ASPECTO), visto na sessao guiada de 29/09 02:29",
     "prova": "random_builds\\outputs\\_ias\\picasso\\guia\\20260929_023146_655_pagina.png",
     "prova_origem": {
       "nota": "conta COMPARTILHADA: o historico mostra geracoes de outras pessoas (na sessao de 02:31 o card do topo era uma garota anime de outro usuario). So o card com o paragrafo IGUAL ao prompt enviado, data legivel e nao anterior ao envio prova; sem prova nada vai ao disco. O bucket pub-*.r2.dev serve JPG (sem alfa); o worker converte para PNG RGB. 9:16 sai 1088x1920.",

@@ -157,7 +157,14 @@ async function vilaCarregarEstado() {
 const VILA_CONVERSA = new Set(["deepseek", "chatgpt", "gemini", "grok"]);
 
 function vilaCaixa(nome) {
-  return ((Vila.correio || {}).ias || []).find((c) => c.ia === nome) || null;
+  const c = Vila.correio || {};
+  // as caixas de chat e, desde 29/09 (tarde), as de imagem (PicassoIA...)
+  return [...(c.ias || []), ...(c.imagens || [])].find((x) => x.ia === nome) || null;
+}
+
+// quem gera imagem (pela ficha, vinda do PC): o "🎨 Criar" do cartão
+function vilaGerador(nome) {
+  return ((Vila.correio || {}).geradores || []).find((g) => g.ia === nome) || null;
 }
 
 // a última resposta ainda não vista daquela IA (o texto curto do balão)
@@ -598,9 +605,26 @@ function vilaMostrarEscolhido() {
       VILA_CONVERSA.has(nome) && typeof conversaAbrir === "function"
         ? (() => {
           const b = el("button", {class: "acao primario", id: "vila-conversar"}, "💬 Conversar");
-          b.addEventListener("click", () => conversaAbrir(nome, b));
+          b.addEventListener("click", () => conversaAbrir(nome, b, "texto"));
           return b;
-        })() : null));
+        })() : null,
+      vilaGerador(nome) && typeof conversaAbrir === "function"
+        ? (() => {
+          const g = vilaGerador(nome);
+          const b = el("button", {class: "acao" + (VILA_CONVERSA.has(nome) ? "" : " primario"),
+                                  id: "vila-criar"}, "🎨 Criar");
+          if (!g.disponivel) {
+            b.disabled = true;
+            b.title = g.motivo || "não gera imagem hoje";
+          }
+          b.addEventListener("click", () => conversaAbrir(nome, b, "imagem"));
+          return b;
+        })() : null),
+    vilaGerador(nome) && !vilaGerador(nome).disponivel
+      ? el("div", {class: "fraco", id: "vila-criar-motivo"},
+        `🎨 não gera imagem hoje: ${vilaGerador(nome).motivo}`
+          + (vilaGerador(nome).proximo_passo ? " (próximo passo)" : ""))
+      : null);
 }
 
 // o balão de fala em cima do prédio: a resposta que ele ainda não viu.

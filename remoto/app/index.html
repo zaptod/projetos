@@ -162,12 +162,27 @@
        entrega e traz a resposta; esta tela relê a caixa a cada 6 s. -->
   <section id="tela-conversa" class="oculto livro conversa" aria-label="Conversa com uma IA">
     <div class="abas" id="conversa-ias"></div>
+    <!-- 29/09 (tarde): quem gera imagem ganha "🎨 Criar" e a galeria -->
+    <div class="abas conversa-modos" id="conversa-modos"></div>
     <div class="cartao conversa-cabeca">
       <div id="conversa-casa" class="fraco"></div>
       <div id="conversa-carteiro" class="conversa-carteiro fraco"></div>
     </div>
     <div id="conversa-historico" class="conversa-historico"></div>
-    <div class="cartao conversa-caixa">
+    <div id="conversa-galeria" class="conversa-galeria oculto"></div>
+    <div class="cartao conversa-caixa oculto" id="conversa-criar">
+      <div id="criar-aviso" class="fraco criar-aviso"></div>
+      <textarea id="criar-prompt" rows="3" maxlength="5000"
+                placeholder="Descreva a imagem…"></textarea>
+      <div class="botoes criar-opcoes">
+        <label class="fraco">Proporção <select id="criar-proporcao"></select></label>
+        <label class="fraco oculto" id="criar-modelo-rotulo">Modelo
+          <select id="criar-modelo"></select></label>
+        <span id="criar-contagem" class="fraco"></span>
+        <button class="acao primario" id="criar-enviar">🎨 Criar</button>
+      </div>
+    </div>
+    <div class="cartao conversa-caixa" id="conversa-caixa-texto">
       <textarea id="conversa-texto" rows="3" placeholder="Escreva para a IA…"></textarea>
       <div class="botoes">
         <label class="acao conversa-anexo-rotulo">📎 Imagem
@@ -311,6 +326,16 @@
 </dialog>
 
 <div id="toast" class="toast oculto" role="status"></div>
+<!-- A imagem em tela cheia (29/09): baixar (bytes originais) e compartilhar. -->
+<div id="imagem-tela" class="imagem-tela oculto" role="dialog" aria-label="Imagem gerada">
+  <img id="imagem-tela-img" alt="">
+  <div id="imagem-tela-legenda" class="imagem-tela-legenda"></div>
+  <div class="botoes">
+    <button class="acao" id="imagem-baixar">⬇ Baixar</button>
+    <button class="acao" id="imagem-compartilhar">↗ Compartilhar</button>
+    <button class="acao primario" id="imagem-fechar">✕ Fechar</button>
+  </div>
+</div>
 
 <!-- a prateleira da vila: cada objeto abre uma área -->
 <nav id="nav" class="prateleira oculto">

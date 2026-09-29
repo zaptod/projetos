@@ -61,11 +61,17 @@ def test_caso_zero_todas_as_caixas_vazias_e_carteiro_nunca(servidor, caixa):   #
     assert d["mensagens"] == [] and d["rotulo"] == "Grok" and d["casa"]["geracao"] == 0
 
 
-def test_ia_que_nao_conversa_nao_tem_rota(servidor, caixa):   # noqa: F811
+def test_ia_que_nao_conversa_nao_tem_rota_de_texto(servidor, caixa):   # noqa: F811
     token = _parear(servidor)
-    resp, _ = _pedir(servidor, "GET", "/api/correio/picasso", token=token)
-    assert resp.status == 404
+    # desde 29/09 o PicassoIA tem caixa (pedidos de imagem): ler e 200, mas
+    # texto para ele continua sem rota; IA que o correio nao conhece e 404
+    resp, dados = _pedir(servidor, "GET", "/api/correio/picasso", token=token)
+    assert resp.status == 200
+    d = json.loads(dados)
+    assert d["conversa"] is False and d["gerador"]["ia"] == "picasso"
     resp, _ = _pedir(servidor, "POST", "/api/correio/picasso", {"texto": "x"}, token=token)
+    assert resp.status == 404
+    resp, _ = _pedir(servidor, "GET", "/api/correio/dall-e", token=token)
     assert resp.status == 404
 
 
