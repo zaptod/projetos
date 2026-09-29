@@ -646,8 +646,25 @@ def gravar(caminho: Path, linhas: list, carimbo: str) -> Path:
     return copia
 
 
+def so_dos_tipos(curas: list, tipos=()) -> list:
+    """So as curas dos `tipos` pedidos; sem pedido, todas.
+
+    POR QUE (28/09/2026): as cinco duplicatas do canal de builds voltaram a
+    privado por decisao do Adrian, e quatro linhas do ledger precisam da
+    cura `privado_de_proposito` — sem ela, a proxima gravacao as chamaria
+    de `rascunho_sem_gemeo` (os gemeos publicos sao de 27/08, ANTERIORES a
+    linha) e a fila as republicaria. So que a gravacao aplicava TODAS as
+    curas pendentes (244 outras, entre elas 5 `id_repetido` e 3
+    `rascunho_sem_gemeo` que mudam o que a fila ve), e nenhuma delas foi
+    decidida. O filtro deixa gravar so a decidida.
+    """
+    tipos = set(tipos or ())
+    return [c for c in curas if not tipos or c["tipo"] in tipos]
+
+
 def curar_canal(canal: str, videos: list, *, gravar_de_fato: bool,
-                privadas=(), carimbo: str = "", tentativas: int = 3) -> tuple:
+                privadas=(), carimbo: str = "", tentativas: int = 3,
+                tipos=()) -> tuple:
     """(linhas, curas, copia). Le, calcula e grava DENTRO da trava.
 
     A lista do canal chega pronta: a chamada de rede nao pode acontecer com
@@ -656,6 +673,8 @@ def curar_canal(canal: str, videos: list, *, gravar_de_fato: bool,
     sao recalculadas em cima do novo conteudo. Medido em 16/09/2026: entre a
     primeira rodada a seco e a segunda, os ledgers foram de 137 para 140 e
     de 112 para 113 linhas.
+
+    `tipos`: so essas curas sao relatadas e gravadas (`so_dos_tipos`).
     """
     caminho = metricas.registro_do_canal(canal)
     with trava_do_ledger(canal) as minha:
@@ -665,7 +684,9 @@ def curar_canal(canal: str, videos: list, *, gravar_de_fato: bool,
         for _ in range(max(1, tentativas)):
             bruto = ler_bruto(caminho)
             linhas = ler(caminho, bruto)
-            curas = calcular_curas(linhas, videos, canal, privadas=privadas)
+            curas = so_dos_tipos(
+                calcular_curas(linhas, videos, canal, privadas=privadas),
+                tipos)
             if not gravar_de_fato:
                 return linhas, curas, None
             if ler_bruto(caminho) != bruto:
@@ -689,6 +710,11 @@ def main(argv=None) -> int:
         default=[], metavar="VIDEO_ID",
         help="video_id que ficou privado POR DECISAO (repetivel): a linha "
              "vira publicado=true, estado=privado_de_proposito")
+    parser.add_argument(
+        "--so-tipo", dest="tipos", action="append", default=[],
+        metavar="TIPO",
+        help="so relata e grava as curas deste tipo (repetivel), p.ex. "
+             "privado_de_proposito; sem ele, todas")
     args = parser.parse_args(argv)
 
     if args.gravar:
@@ -710,7 +736,7 @@ def main(argv=None) -> int:
         videos = buscar_canal(canal)
         linhas, curas, copia = curar_canal(
             canal, videos, gravar_de_fato=args.gravar,
-            privadas=args.privadas, carimbo=carimbo)
+            privadas=args.privadas, carimbo=carimbo, tipos=args.tipos)
         (pasta / f"{canal}.json").write_text(
             json.dumps(curas, ensure_ascii=False, indent=1), encoding="utf-8")
         geral[canal] = resumo(curas)

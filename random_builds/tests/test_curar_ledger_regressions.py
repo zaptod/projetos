@@ -517,6 +517,44 @@ class GravacaoSegura(unittest.TestCase):
         self.assertEqual(1, len(list(self.pasta.glob("*.antes-cura-t3"))))
 
 
+class SoDosTiposPedidos(unittest.TestCase):
+    """28/09/2026: gravar a cura DECIDIDA sem arrastar as pendentes.
+
+    O caso medido: com `--privada-de-proposito` para as 4 linhas das
+    duplicatas que voltaram a privado, a seco dava 248 curas (233 formato,
+    5 id_repetido, 3 link_de_frase, 4 privado_de_proposito, 3
+    rascunho_sem_gemeo). So as 4 foram decididas.
+    """
+
+    def _linhas_e_videos(self):
+        dup = _yt("g58:build:celular", "O MAGO", url="https://youtu.be/dup",
+                  youtube_id="dup")
+        frase = _yt("g9:build:celular", "OUTRO")
+        return [dup, frase], [_video("dup", privacidade="private"),
+                              _video("pub", titulo="OUTRO")]
+
+    def test_sem_filtro_vem_tudo(self):
+        linhas, videos = self._linhas_e_videos()
+        curas = C.calcular_curas(linhas, videos,
+                                 privadas=["g58:build:celular"])
+        self.assertIn("privado_de_proposito", {c["tipo"] for c in curas})
+        self.assertGreater(len(curas), 1)
+
+    def test_com_filtro_so_o_tipo_pedido(self):
+        linhas, videos = self._linhas_e_videos()
+        curas = C.so_dos_tipos(
+            C.calcular_curas(linhas, videos, privadas=["g58:build:celular"]),
+            ["privado_de_proposito"])
+        self.assertEqual([(0, "privado_de_proposito", "alta")], _tipos(curas))
+        novas = C.aplicar(linhas, curas)
+        self.assertEqual("privado_de_proposito", novas[0]["estado"])
+        self.assertTrue(novas[0]["publicado"])
+        self.assertEqual(linhas[1], novas[1], "a outra linha nao muda")
+
+    def test_filtro_vazio_nao_filtra(self):
+        self.assertEqual([{"tipo": "x"}], C.so_dos_tipos([{"tipo": "x"}], ()))
+
+
 class ASecoEPadrao(unittest.TestCase):
 
     def setUp(self):
