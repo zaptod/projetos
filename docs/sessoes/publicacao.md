@@ -80,6 +80,17 @@ Use `grade.minuto(h)`, nunca a constante `MINUTO`; e `grade.slot(agora)` para
 saber a que horário a rodada pertence — :57 mais ~4 min de upload cruzam a hora,
 e a hora do relógio dava dois veredictos na mesma rodada.
 
+**"É o mesmo horário?" tem uma resposta só**: `conferencia.chave_do_horario
+(quando, plataforma)` → `(dia de grade, hora)`. Um post pertence ao horário que
+ele **cobre** — o último que já tinha vencido quando a linha foi gravada — e o
+dia de grade vai das 06:37 às 00:37 do dia seguinte (`abertura_e_fechamento`).
+Conta de mão: 28/09 22:12 → (28/09, 21); 29/09 00:10 → (28/09, 23); 29/09
+00:39 → (28/09, 0); 28/09 18:01 → (28/09, 17). É a chave da guarda de um por
+horário, do placar `metas` do app (`relatorios._dia_de_grade` delega para ela)
+e da contagem de horários cumpridos da conferência. Decisão dele em 29/09
+(`guarda-hora-da-grade`): contar pelo horário da grade, nunca pela hora do
+relógio.
+
 **Cota por formato** (builds): `COTA_PADRAO = {duelo 4, build 3, estreia 1,
 torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 `escolher_por_cota` é pura: vence o formato mais atrasado em `servidos/cota` nas
@@ -87,7 +98,8 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 
 | Guarda | Onde mora |
 | --- | --- |
-| Um por horário **por plataforma** | `postar.publicou_neste_horario` (janela = hora do relógio; fonte = ledger) |
+| Um por horário **por plataforma** | `postar.publicou_neste_horario` (identidade do horário = `conferencia.chave_do_horario`, nunca a hora do relógio; fonte = ledger; linha sem data não barra) |
+| Upload avulso (`--so-youtube`) que atravessa uma rodada | `postar._horario_que_a_linha_tomaria`: recusa se uma rodada da grade **começa** dentro dos `DURACAO_DE_UM_UPLOAD_MIN = 20` min do upload (22:20 → "22:37"; 22:04 → livre) |
 | Título já publicado (fecha a fila) | `postar._sem_titulo_repetido`/`titulo_repetido`; regra em `titulos.chave/repetido` |
 | Variante A/B (`:B` tem o mesmo título) | `postar.VARIANTES`, `_e_variante`, e a própria chave de título |
 | Teto de 2 por fonte/dia, por destino | `TETO_POR_FONTE_NO_DIA`, `_fontes_cheias_hoje`, `_sem_fonte_cheia` |
@@ -240,6 +252,22 @@ diário.
   junto as outras 244 curas pendentes (233 de formato, 5 `id_repetido`, 3
   `link_de_frase`, 3 `rascunho_sem_gemeo`), não decididas. Cópia:
   `publicados.jsonl.antes-cura-20260928_235920`; diff de 4 linhas.
+- **A guarda de um por horário contava pela hora do relógio** (até 29/09):
+  `publicou_neste_horario` comparava `strftime("%Y-%m-%dT%H")`, regra de
+  quando a grade era 6/7/8. Em 28/09 a `historia_00027:p01` subiu a mão às
+  22:12 e a rodada das 22:37 leu "YouTube já saiu nesta hora", levou essa
+  parte ao TikTok (onde já estava) e o horário ficou sem vídeo novo. Havia
+  três critérios de "mesmo horário" (a guarda pela hora do relógio,
+  `_horarios_que_restam` por `grade.slot` + dia do calendário, e o placar
+  de metas por `_horario_da_grade` + `_dia_de_grade` da conferência). →
+  decisão `guarda-hora-da-grade`: **um** critério, `conferencia.
+  chave_do_horario` (dia de grade, hora), nos três. Medido: 22:12 →
+  (28/09, 21), o 22:37 livre; 00:10 → (28/09, 23), a recuperação paga o
+  23:37 da véspera; dois posts no mesmo horário barrados, e o motivo diz
+  "horário das 22:37". Teste cruzado em `test_um_por_dia_regressions`
+  (`BateComMetasEConferenciaTests`): 7 instantes com a mesma chave nos três
+  lugares, 7 rodadas contra 3 linhas com a mesma resposta na guarda e no
+  placar. Caso ZERO: ledger vazio libera todo horário nas duas plataformas.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
@@ -297,9 +325,11 @@ ids na linha) fechou em `10142b1` (28/09).
   tinha saído; ela tentou levar a h27 p01 ao TikTok, onde já estava, e o
   horário ficou sem vídeo novo. → `--so-youtube` recusa quando a linha
   (gravada no fim, até `DURACAO_DE_UM_UPLOAD_MIN = 20`) cairia numa hora cuja
-  rodada ainda não passou (`_horario_que_a_linha_tomaria`). A guarda da
-  grade continua pela hora do relógio — trocar por `grade.slot` é conserto
-  pendente, e mexe numa guarda.
+  rodada ainda não passou (`_horario_que_a_linha_tomaria`). **Fechado em
+  29/09** (decisão `guarda-hora-da-grade`): a guarda conta pelo horário da
+  grade, por `conferencia.chave_do_horario` — a linha das 22:12 é do 21:37 e
+  o 22:37 fica livre (ver §4). A trava do `--so-youtube` ficou só para o
+  upload que atravessa uma rodada (22:04 → livre; 22:20 → recusa "22:37").
 - **NÃO usar `postar.py --recuperar --so historias`** para isso. O `--ver`
   de 28/09 lista 7 na fila, e o primeiro que ele tornaria público é
   `p-hNfT12nX8` — um *build* que caiu no canal de histórias em 31/08 (o
@@ -379,7 +409,8 @@ decodifica mp4 e vários caminhos escrevem no `atividade.jsonl`.
   `CORTE_DO_TIKTOK`, `RECUPERACAO_LIGADA`, `RESERVA_LIGADA`: são decisões dele.
 - Não criar um segundo critério de "publicado", de "título igual" ou de "horário
   da grade" (cada duplicata dessas já custou um defeito), nem usar a hora do
-  relógio onde cabe `grade.slot()`.
+  relógio onde cabe `grade.slot()` (a rodada) ou `conferencia.chave_do_horario()`
+  (a que horário uma linha do ledger pertence).
 - Não perguntar ao Gemini na hora de postar (`PEDIR_PARECER_NA_POSTAGEM=False`).
 
 ## Contratos com outras partes
@@ -389,6 +420,7 @@ decodifica mp4 e vários caminhos escrevem no `atividade.jsonl`.
 | `random_builds/outputs/_publicar/publicados.jsonl` | **publicação**, só por `metricas.acrescentar_ao_ledger` | conferência, métricas, auditoria, relatórios do bot, app |
 | `historias/outputs/_publicar/publicados.jsonl` | **publicação**, via `contos.publicar.serie.registrar` | idem |
 | `builds/grade.py` | **publicação** | agenda de histórias, painel flutuante, `remoto/relatorios.py`, auditoria, `youtube_web` |
+| `builds/publicar/conferencia.py` (`chave_do_horario`, `dia_de_grade_fechado`, `abertura_e_fechamento`) | **publicação** | `remoto/relatorios.py` (metas por dia de grade); há teste de contrato dos nomes em `test_conferencia_deficit_regressions` |
 | `_tiktok_a_conferir.json`, `_youtube_a_conferir.json` | **publicação** (`desfecho`), sob a trava `<plataforma>_a_conferir` | app e bot leem para mostrar pendência |
 | `_tiktok_desistencias.json` | **publicação** | — |
 | `historias/.../prioridade.json` | **o Adrian** (pedido manual) | publicação só lê |
