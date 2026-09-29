@@ -283,6 +283,12 @@ Conferência da madrugada: **limpo** nos dois canais (1/1 builds, 27/27
 histórias; zero fantasma, zero rascunho). Ledger: 244 linhas em builds, 320 em
 histórias, nenhuma `(video_id, plataforma)` duplicada.
 
+**Placar da suíte** (29/09, 15:10–15:19, `python testar.py --rapido`, TEMP
+em `E:\tmp_testes`, depois de `def83b4`/`3929f07` — guarda pela grade — e
+`c5bc4e0`): **tudo verde, 4733 testes + smoke do painel em 550 s**
+(random_builds 1656, historias 1251, neural_fights 1024, painel 272,
+mimetizar 178, remoto 178, panorama 91, ias 83).
+
 O assunto "parte longa vira dois Shorts `(1 de 2)`/`(2 de 2)`" foi commitado
 em `42dced8` (27/09, 19:58); a pendência dele (o id de cada pedaço e os dois
 ids na linha) fechou em `10142b1` (28/09).
