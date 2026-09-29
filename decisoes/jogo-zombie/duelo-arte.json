@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T23:02:29",
+      "evento": "2026-09-28T21:44:36",
+      "linha": 27,
+      "nota": "registrada; ADIADA pela duelo-quando = depois da estabilização",
+      "opcao": "godot",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Animação nova (estocada, flecha, armadilha que fecha, corda da linha, ícones) cabe em qualquer opção. A biblioteca CC0 já tem o 'top-down shooter' do Kenney (sobreviventes e zumbi vistos de cima), mas de arma de fogo, não de lança e arco. Arte por IA exige prova de origem de cada imagem (contas compartilhadas). Detalhes e custos: docs/zombie/duelo-elaborado.md §5 e §9.",
   "criado": "2026-09-28T21:35:03.007479",
   "depende_de": [
