@@ -3,7 +3,15 @@
   "contexto": "",
   "criado": "2026-09-29T02:40:37.268777",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T02:46:06",
+      "opcao": "matar",
+      "origem": "app"
+    }
+  ],
   "id": "rodada-travada-7300",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "O 'main.py auto' PID 7300 (disparo das 16:02 de 28/09) está parado desde 16:42 em 'historia_00038 renderizando a parte 3 / [voz]', segurando a trava historias__auto. Nenhuma rodada de histórias roda desde 18:22. A regra é 'nunca matar a rodada'. O que faço?",
   "projeto": "historias",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Rodada de histórias travada há 10 h segurando a trava",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T02:46:06",
+    "opcao": "matar"
+  }
 }
