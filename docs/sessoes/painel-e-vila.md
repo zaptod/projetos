@@ -338,6 +338,59 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   janela para o fundo (13 ms); coberta, o `PrintWindow` ainda a fotografa.
   Vale para `python -m painel --prova` e para a `--prova` da flutuante.
 
+## 6c. O prédio do Grok e o balão do correio (29/09/2026)
+
+Vila das IAs, fase 2 (`docs/sessoes/app-e-bot.md` §10): o Adrian conversa
+com Grok, Gemini, ChatGPT e DeepSeek pelo app, e a resposta não vista vira
+balão em cima do prédio. O Grok não tinha prédio (decisão
+`geral/ias-grok-acesso`: grok.com com a conta X dele, perfil
+`grok__principal`).
+
+- **Onde ele entrou.** O mundo (704×240) estava cheio: nenhuma vaga de
+  72×64 sem mover casa. A única de 72 px era **entre o DeepSeek e o
+  ChatGPT**, ocupada por uma árvore com um caminhozinho em x=112 (o ponto
+  "arvore" do passeio). O Grok ficou nela, no lote `(5.5, 1)` — meio tile
+  para cair no centro: 8 px de cada telhado vizinho. A árvore e o ponto do
+  passeio saíram (a árvore ficaria dentro da casa); o caminho da porta
+  (x=120) substitui o da árvore. Fica inteiro na fileira 1 do retrato
+  (x 84..156 < DOBRA) e na paisagem. Arte: telhado grafite (`#5c667c`),
+  emblema **foguetinho** (inspirado, nunca copiado), habitante de boné;
+  `dados.PREDIOS["grok"]` = 🚀 "conversa", `_SERVICO_PARA_PREDIO["grok"]`
+  (a trava `grok__principal` acende a bandeira dele).
+- **Nada fora dele mudou, medido.** Duas armadilhas que mudariam a vila
+  inteira: (1) as flores do chão sorteiam a cor **depois** de saber que
+  nascem — excluir um lote novo antes da cor embaralharia o sorteio de
+  todas; por isso `arte.LOTES_TARDIOS`: a flor sorteia igual e só não é
+  pintada; (2) a pele do habitante vinha de `sorted(CORES)` — "grok" no
+  meio mudaria a pele de picasso, tiktok e youtube; agora é
+  `ORDEM_DAS_PELES`, nome novo no fim. E as árvores ganharam o tom fixo
+  por árvore (era `i % 3` numa lista que perdeu o primeiro item). Conferido
+  por hash: mundo, retrato e paisagem (1× e 3×, dia e noite) só diferem em
+  x 84..156, y 4..83 do mundo, e nenhum habitante antigo mudou de bytes
+  (`PredioDoGrok.test_nada_fora_do_grok_mudou` guarda o md5 do mundo com a
+  região dele apagada).
+- **O balão atrás do placar** (app, `vila.js`). O balão da resposta ficava
+  70 px acima da porta; prédio da fileira de cima com a câmera no topo
+  (o "perto" em pé, e o deitado, que abre com a fileira encostada no
+  placar/cabeçalho), o balão caía atrás do placar. Agora
+  `vilaOndeFicaOBalao` (pura, testada no node) mede onde o topo do balão
+  cairia na tela: abaixo do fim do placar (`Vila.faixa[0]`), fica em cima
+  como antes; senão **desvia para baixo do prédio**, no caminho da porta,
+  com o rabo apontando para cima. É desenhado depois dos habitantes: é ele
+  a novidade, não quem está parado na porta. Dois vizinhos com resposta
+  (o Grok fica a 72 px dos dois) não se cobrem: o segundo sobe (ou desce)
+  um degrau. A janela flutuante **não** lê o correio (é só do app), então
+  não havia balão para desviar nela; o ❗ e os emotes dela já cabem no
+  canvas.
+- **Provas (29/09, 09:33):** flutuante média de dia e grande de noite
+  (`--prova --demo`, sem tocar na do dono) e o app na **8937** (a 8934
+  estava com a prova de outro agente) em 390×844 e 844×390, correio de
+  prova em `NF_IAS_PASTA` temporário com uma resposta do Grok e uma do
+  DeepSeek não vistas: em pé "perto" no Grok o balão desvia para baixo
+  (topo do balão a 355 px, placar até 96); na Vila inteira fica em cima
+  (217 ≥ 96); deitado idem (176 ≥ 34 e 76 ≥ 34); o cartão diz "🚀 Grok ·
+  conversa · 💬 Conversar"; zero erro de JS. Casca `v16`.
+
 ## 6b. O Guia das IAs (29/09/2026)
 
 Pedido do Adrian às 01:55: "cria uma interface gráfica flutuante pra eu
@@ -418,11 +471,13 @@ recolhida, IA escolhida a mão).
   `--gif` grava 5 s, `--medir-cpu SEG` mede a CPU. A `--prova` **não** passa pelo
   mutex: abre uma segunda janela de propósito, e é a forma segura de olhar sem
   mexer na do dono.
-- Testes desta parte (225, todos pelo `discover` do painel):
+- Testes desta parte (272, todos pelo `discover` do painel):
   `painel/test_painel.py` (40), `painel/test_flutuante.py` (88, com a
   caixa-preta e o WM_CLOSE de verdade), `painel/test_tarefa_da_vila.py` (19,
   o instalador, a guarda do `.cmd` rodada pelo `cmd` e o "não acorda o PC"),
-  `painel/test_vila_fofa.py` (34, com a escala e a Vila dobrada e a deitada do celular),
+  `painel/test_vila_fofa.py` (40, com a escala, a Vila dobrada e a deitada
+  do celular, o prédio do Grok nos dois arranjos com a vila intocada fora
+  dele, e o balão do correio do app rodado no node: desvio e caso zero),
   `painel/test_oficina_sprites.py` (40: a 11243 medida, o `piriri.py`
   medido do mesmo jeito, fundo branco que não fura o brilho, tela verde,
   exportação no formato do palco, soltar arquivo, a página cabendo em
@@ -480,6 +535,7 @@ primeira mudança).
 
 **A Vila em pé do celular** (28/09, `flutuante/retrato.py`, só o app usa). O
 mundo é 704×240; no celular em pé, caber pela altura mostrava 2 prédios de 11
+(12 desde o Grok, §6c)
 (o erro dos outros ficava fora da tela) e a arte de 1× chegava ampliada e
 borrada. O retrato é a **mesma** Vila dobrada: a fileira de cima é o mundo de
 x=0 a `DOBRA`=420, a de baixo vai de 420 ao fim, completada por um campo de
@@ -514,7 +570,7 @@ na borda de dentro), o placar **sobe para o cabeçalho** em plaquinhas de uma
 linha (o nó é movido para dentro do `header`; abaixo de 780 px fica só
 símbolo e número), e a Vila fica com a altura toda menos o cabeçalho
 (a 844×390: faixa de 42 a 390, "perto" em 1,45×, a Vila inteira em 1,09× —
-os 11 prédios de uma vez). O cartão do escolhido vai embaixo, do lado
+os 11 prédios de uma vez, 12 com o Grok). O cartão do escolhido vai embaixo, do lado
 oposto ao prédio. **Girar** não recarrega: troca o arranjo e a arte (cada
 fundo é baixado uma vez), o escolhido continua marcado e a câmera abre
 "perto" **nele** (sem escolhido, na casa); objeto aberto continua aberto.

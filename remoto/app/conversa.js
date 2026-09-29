@@ -11,8 +11,8 @@
 // "falhou: motivo". Enquanto esta tela está aberta o PC sabe que ele está
 // olhando (presença) e a resposta NÃO vai ao Telegram; fora dela, vai.
 //
-// O Grok não tem prédio na Vila ainda (é do painel-e-vila): daqui ele entra
-// pelos chips, junto das outras três.
+// Os chips trazem as quatro IAs (o Grok ganhou prédio na Vila em 29/09; os
+// chips continuam sendo o jeito de trocar de IA sem sair da tela).
 
 const Conversa = {ia: null, dados: null, relogio: null, anexo: null, enviando: false,
                   assinatura: "", rolarNoFim: true};

@@ -27,13 +27,13 @@ from . import arte
 TOPO_Y, BASE_Y = arte.RUA_Y
 INF = float("inf")
 
-# ponto de interesse: (posicao, rua de acesso, atividade, emotes possiveis)
+# ponto de interesse: (posicao, rua de acesso, atividade, emotes possiveis).
+# Havia um "arvore" em (112, 76): a arvore virou o lote do Grok (29/09/2026).
 PONTOS = {
     "banco": ((arte.BANCO[0], 110), "T", "sentado", ("☕", "😌", "")),
     "fonte": ((arte.FONTE[0], 104), "T", "olhar", ("✨", "😊", "")),
     "canteiro": ((arte.CANTEIRO[0], 104), "T", "regar", ("🌷", "💐")),
     "lago": ((arte.LAGO[0], 196), "B", "patos", ("🦆", "🍞")),
-    "arvore": ((112, 76), "T", "olhar", ("🍃", "🍎", "")),
     "casa": ((arte.portas()["casa"][0], 204), "B", "descansar",
              ("💤", "📖", "")),
 }

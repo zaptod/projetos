@@ -15,9 +15,14 @@ from __future__ import annotations
 
 import gc
 import hashlib
+import json
 import queue
+import re
+import shutil
+import subprocess
 import tkinter as tk
 import unittest
+from pathlib import Path
 
 from painel import estilo
 from painel.flutuante import arte, dados, preferencias, vida
@@ -128,7 +133,7 @@ class Retrato(unittest.TestCase):
                   for nome, (lx, _ly) in list(arte.LOTES.items())
                   + [("casa", arte.CASA)]]
         coisas += [(tx * arte.TILE - 2, 36, "arvore")
-                   for tx, _ty in arte.ARVORES]
+                   for tx, _ty, _tom in arte.ARVORES]
         coisas += [(arte.BANCO[0] - 13, 26, "banco"),
                    (arte.FONTE[0] - 20, 40, "fonte"),
                    (arte.CANTEIRO[0] - 17, 34, "canteiro"),
@@ -193,6 +198,153 @@ class Paisagem(unittest.TestCase):
         # nenhuma casa muda de lugar: a fileira e o mundo, pixel a pixel
         faixa = (0, paisagem.CEU, arte.LARGURA, paisagem.CEU + arte.ALTURA)
         self.assertEqual(_hash(a.crop(faixa)), _hash(arte.compor_mundo(False)))
+
+
+class PredioDoGrok(unittest.TestCase):
+    """O Grok entrou em 29/09/2026 (Vila das IAs, fase 2) na unica vaga do
+    mundo: entre o DeepSeek e o ChatGPT, onde havia uma arvore. Regras: o
+    predio existe nos dois arranjos do celular sem cortar, e NADA fora
+    dele mudou (uma flor que muda de lugar e uma mudanca sem dono)."""
+
+    # a imagem de 72 px do lote + o caminho da porta ate a rua, no mundo
+    REGIAO = (84, 0, 156, 92)
+    # md5 do mundo de dia (1x) com a regiao do Grok apagada, medido em
+    # 29/09 ANTES de o Grok entrar. Se isto falhar, algo fora do lote dele
+    # mudou (flores, arvores, ruas, vizinhos) — de proposito ou nao.
+    FORA_DO_GROK_ANTES = "6ee17eb9e869ca66e1313ed051ff8cb6"
+
+    def test_o_grok_e_predio_em_todo_lugar(self):
+        self.assertIn("grok", dados.PREDIOS)
+        self.assertEqual(dados.PREDIOS["grok"]["rotulo"], "Grok")
+        self.assertEqual(dados.ler_trava("grok__principal")["predio"], "grok")
+        self.assertIn("grok", arte.LOTES)
+        self.assertIn("grok", arte.CORES)
+        self.assertIn("grok", arte.ACESSORIOS)
+        self.assertIn("grok", arte.ORDEM_DAS_PELES)
+        self.assertEqual(set(arte.ORDEM_DAS_PELES), set(arte.CORES))
+
+    def test_cabe_entre_os_vizinhos_e_nos_dois_arranjos(self):
+        from painel.flutuante import paisagem, retrato
+        lx, ly = arte.LOTES["grok"]
+        x0 = lx * arte.TILE - 4
+        # telhado a 8 px dos telhados vizinhos (o telhado e a imagem menos
+        # 4 px de cada lado)
+        vizinhos = [(n, arte.LOTES[n][0] * arte.TILE - 4)
+                    for n in ("deepseek", "chatgpt")]
+        for nome, vx in vizinhos:
+            if vx < x0:
+                self.assertGreaterEqual(x0 + 4 - (vx + 68), 8, nome)
+            else:
+                self.assertGreaterEqual(vx + 4 - (x0 + 68), 8, nome)
+        # inteiro na fileira de cima do retrato e dentro da paisagem
+        self.assertLessEqual(x0 + arte.PREDIO_W, retrato.DOBRA)
+        self.assertLessEqual(x0 + arte.PREDIO_W, paisagem.LARGURA)
+        self.assertEqual(ly, 1)
+        # a porta e inteira (os nos do grafo e o app usam o numero)
+        px, py = arte.portas()["grok"]
+        self.assertIsInstance(px, int)
+        self.assertIsInstance(py, int)
+        # nenhuma arvore sobrou no lote, e o ponto "arvore" do passeio saiu
+        for tx, ty, _tom in arte.ARVORES:
+            self.assertFalse(x0 <= tx * arte.TILE - 2 < x0 + arte.PREDIO_W
+                             and ty == ly, (tx, ty))
+        self.assertNotIn("arvore", vida.PONTOS)
+
+    def test_tem_cara_propria_e_aparece_de_dia_e_de_noite(self):
+        caras = {_hash(arte.desenhar_predio(n)) for n in TODOS}
+        self.assertEqual(len(caras), len(TODOS))
+        lx, ly = arte.LOTES["grok"]
+        caixa = (int(lx * arte.TILE - 4), ly * arte.TILE - 16,
+                 int(lx * arte.TILE - 4) + arte.PREDIO_W,
+                 ly * arte.TILE - 16 + arte.PREDIO_H)
+        for noite in (False, True):
+            mundo = arte.compor_mundo(noite)
+            recorte = mundo.crop(caixa)
+            self.assertEqual(_hash(recorte),
+                             _hash(arte.compor_mundo(noite).crop(caixa)))
+            # a placa clara com o emblema esta la (de noite ela e creme,
+            # "#fff6e0", e nao escurece com a casa)
+            claros = sum(1 for px in recorte.getdata()
+                         if px[0] > 220 and px[1] > 220 and px[2] > 200)
+            self.assertGreater(claros, 40, noite)
+
+    def test_nada_fora_do_grok_mudou(self):
+        mundo = arte.compor_mundo(False, 1).copy()
+        mundo.paste((0, 0, 0, 0), self.REGIAO)
+        self.assertEqual(hashlib.md5(mundo.tobytes()).hexdigest(),
+                         self.FORA_DO_GROK_ANTES)
+        # e os habitantes de antes tem a mesma pele (a ordem das peles nao
+        # e mais a alfabetica: nome novo entra no fim)
+        self.assertEqual(arte.ORDEM_DAS_PELES[-1], "grok")
+        self.assertEqual(arte.ORDEM_DAS_PELES[:-1],
+                         sorted(n for n in arte.CORES if n != "grok"))
+
+
+def _funcoes_do_vila_js(*nomes) -> str:
+    """O fonte das funcoes puras do `remoto/app/vila.js`, para rodar no node."""
+    fonte = (Path(__file__).resolve().parents[1] / "remoto" / "app"
+             / "vila.js").read_text(encoding="utf-8")
+    partes = [m.group(0) for m in re.finditer(
+        r"^const VILA_BALAO_[^\n]*(?:\n  [^\n]*)*;", fonte, re.M)]
+    for nome in nomes:
+        m = re.search(rf"^function {nome}\(.*?^}}", fonte, re.M | re.S)
+        assert m, nome
+        partes.append(m.group(0))
+    return "\n".join(partes)
+
+
+@unittest.skipUnless(shutil.which("node"), "sem node")
+class BalaoDoCorreioNoApp(unittest.TestCase):
+    """O balao da resposta no canvas do celular (`vila.js`). Medido em
+    29/09: predio da fileira de cima com a camera no topo, o balao ficava
+    atras do placar. Agora desvia para baixo do predio."""
+
+    def _rodar(self, js: str):
+        codigo = _funcoes_do_vila_js("vilaOndeFicaOBalao",
+                                     "vilaDesenharCorreio") + "\n" + js
+        saida = subprocess.run(["node", "-e", codigo], capture_output=True,
+                               text=True, timeout=30)
+        self.assertEqual(saida.returncode, 0, saida.stderr)
+        return json.loads(saida.stdout)
+
+    def test_em_cima_quando_cabe_e_embaixo_quando_o_placar_taparia(self):
+        r = self._rodar("""
+          const porta = [120, 64 + 160];       // o Grok, na fileira 1 do retrato
+          const z = 2.85;
+          // camera no topo: a fileira comeca logo abaixo do placar (topo 120)
+          const topoFileira = 160 * z;
+          const a = vilaOndeFicaOBalao(porta[0], porta[1], z, topoFileira - 120, 120);
+          // camera mais embaixo: sobra ceu acima do predio
+          const b = vilaOndeFicaOBalao(porta[0], porta[1], z, topoFileira - 400, 120);
+          console.log(JSON.stringify({a, b}));
+        """)
+        self.assertTrue(r["a"]["paraCima"])
+        self.assertGreater(r["a"]["y"], 64 + 160, "abaixo do predio")
+        self.assertEqual(r["a"]["x"], 120, "no caminho da porta")
+        self.assertFalse(r["b"]["paraCima"])
+        self.assertLess(r["b"]["y"], 64 + 160, "em cima do predio")
+
+    def test_caso_zero_sem_correio_nao_desenha_nada(self):
+        r = self._rodar("""
+          const chamadas = [];
+          const ctx = new Proxy({}, {get: (_, k) => (...a) => { chamadas.push(k); return 0; }});
+          global.vilaBalaoDeFala = (...a) => chamadas.push("balao");
+          global.vilaDobrar = (x, y) => [x, y + 160];
+          global.vilaRespostaNova = () => "oi";
+          global.Vila = {correio: null, mundo: {portas: {grok: [120, 64]}},
+                         zoom: 1, panY: 0, faixa: [0, 800]};
+          vilaDesenharCorreio(ctx);
+          const semCorreio = chamadas.length;
+          Vila.correio = {ias: [{ia: "grok", nao_vistas: 1, ultima: {}}]};
+          vilaDesenharCorreio(ctx);
+          const comCorreio = chamadas.length;
+          Vila.correio = {ias: [{ia: "sem_predio", nao_vistas: 1, ultima: {}}]};
+          vilaDesenharCorreio(ctx);
+          console.log(JSON.stringify({semCorreio, comCorreio, semPredio: chamadas.length}));
+        """)
+        self.assertEqual(r["semCorreio"], 0)
+        self.assertEqual(r["comCorreio"], 1)
+        self.assertEqual(r["semPredio"], 1, "IA sem predio nao desenha")
 
 
 class Caminhos(unittest.TestCase):

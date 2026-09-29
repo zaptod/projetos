@@ -59,6 +59,9 @@ def test_mundo_leva_o_que_o_app_precisa():
     assert m["tamanho"] == [704, 240]
     assert "estudio" in m["lotes"] and "casa" in m["portas"]
     assert m["predios"]["picasso"]["rotulo"] and m["predios"]["picasso"]["emoji"]
+    # o Grok (29/09): predio, lote e porta, para o balao da resposta dele
+    assert m["predios"]["grok"]["rotulo"] == "Grok"
+    assert "grok" in m["lotes"] and "grok" in m["portas"]
     assert m["atlas"]["larg"] > 0 and m["atlas"]["mapa"]
     assert m["versao"] and m["versao"] != "0"
 

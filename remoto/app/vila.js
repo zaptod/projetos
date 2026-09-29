@@ -152,8 +152,8 @@ async function vilaCarregarEstado() {
   if (Vila.selecionado) vilaMostrarEscolhido();
 }
 
-// as IAs com que ele conversa pelo app (Vila das IAs, fase 2); o Grok entra
-// pelos chips da tela, porque ainda não tem prédio
+// as IAs com que ele conversa pelo app (Vila das IAs, fase 2); desde 29/09
+// o Grok também tem prédio (entre o DeepSeek e o ChatGPT)
 const VILA_CONVERSA = new Set(["deepseek", "chatgpt", "gemini", "grok"]);
 
 function vilaCaixa(nome) {
@@ -365,8 +365,6 @@ function vilaDesenhar() {
     const [px, py] = vilaDobrar(porta[0], porta[1]);
     vilaSelo(ctx, px + 22, py - 56, sinal, info.status === "erro");
   }
-  // a resposta de uma IA que ele ainda não viu (o correio, fase 2)
-  vilaDesenharCorreio(ctx);
 
   // habitantes, de trás para a frente (quem está mais embaixo cobre)
   const gente = [...(Vila.retrato.habitantes || [])].sort((a, b) => a.y - b.y);
@@ -382,6 +380,10 @@ function vilaDesenhar() {
     const [ex, ey] = vilaDobrar(x, y);
     vilaBalao(ctx, ex, ey - alt - 2, h.emote);
   }
+  // a resposta de uma IA que ele ainda não viu (o correio, fase 2), por
+  // cima de todo mundo: quando desvia para baixo do prédio, é ela a
+  // novidade, não o habitante parado na porta
+  vilaDesenharCorreio(ctx);
   ctx.restore();
 }
 
@@ -601,18 +603,38 @@ function vilaMostrarEscolhido() {
         })() : null));
 }
 
-// o balão de fala em cima do prédio: a resposta que ele ainda não viu
-function vilaBalaoDeFala(ctx, x, y, texto) {
+// o balão de fala em cima do prédio: a resposta que ele ainda não viu.
+// `y` é a ponta do rabo; com `paraCima`, o balão fica ABAIXO de y e o rabo
+// aponta para cima (é o desvio de quando o topo ficaria atrás do placar).
+const VILA_BALAO_ALTURA = 14, VILA_BALAO_RABO = 4, VILA_BALAO_ACIMA = 70,
+  VILA_BALAO_ABAIXO = 24;
+
+function vilaBalaoDeFala(ctx, x, y, texto, paraCima, ocupados) {
   const curto = texto.length > 26 ? texto.slice(0, 25) + "…" : texto;
   ctx.font = "8px system-ui, sans-serif";
   const largura = Math.min(150, ctx.measureText(curto).width + 12);
-  const altura = 14;
-  const ex = Math.round(x - largura / 2), ey = Math.round(y - altura);
+  const altura = VILA_BALAO_ALTURA, rabo = VILA_BALAO_RABO;
+  const ex = Math.round(x - largura / 2);
+  let ey = Math.round(paraCima ? y + rabo : y - rabo - altura);
+  // dois vizinhos com resposta (o Grok fica a 72 px do DeepSeek e do
+  // ChatGPT) não se cobrem: o segundo sobe (ou desce) um degrau
+  const lista = ocupados || [];
+  const cruza = () => lista.some((o) => ex < o[0] + o[2] && ex + largura > o[0]
+    && ey < o[1] + o[3] && ey + altura > o[1]);
+  for (let i = 0; i < 4 && cruza(); i++) ey += (paraCima ? 1 : -1) * (altura + 3);
+  lista.push([ex, ey, largura, altura]);
   ctx.beginPath();
   ctx.roundRect(ex, ey, largura, altura, 5);
-  ctx.moveTo(x - 4, ey + altura);
-  ctx.lineTo(x, ey + altura + 4);
-  ctx.lineTo(x + 4, ey + altura);
+  // o rabo vai até a ponta pedida (`y`), mesmo se o balão subiu um degrau
+  if (paraCima) {
+    ctx.moveTo(x - 4, ey);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + 4, ey);
+  } else {
+    ctx.moveTo(x - 4, ey + altura);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x + 4, ey + altura);
+  }
   ctx.fillStyle = "rgba(255, 255, 255, .96)";
   ctx.fill();
   ctx.lineWidth = .8;
@@ -625,13 +647,28 @@ function vilaBalaoDeFala(ctx, x, y, texto) {
   ctx.textBaseline = "alphabetic";
 }
 
+// Onde o balão da resposta fica, em coordenadas da imagem: em cima do
+// prédio, como sempre; mas se o topo dele ficaria atrás do placar (prédio
+// da fileira de cima com a câmera no topo, medido em 29/09), desvia para
+// BAIXO do prédio, no caminho da porta, com o rabo apontando para cima.
+// Pura, para o teste: recebe a porta na imagem, o zoom, o panY e o topo da
+// faixa livre da tela (o fim do placar).
+function vilaOndeFicaOBalao(px, py, zoom, panY, topoLivre) {
+  const topoNaTela = (py - VILA_BALAO_ACIMA - VILA_BALAO_RABO - VILA_BALAO_ALTURA)
+    * zoom - panY;
+  if (topoNaTela >= topoLivre) return {x: px + 22, y: py - VILA_BALAO_ACIMA, paraCima: false};
+  return {x: px, y: py + VILA_BALAO_ABAIXO, paraCima: true};
+}
+
 function vilaDesenharCorreio(ctx) {
+  const ocupados = [];
   for (const c of ((Vila.correio || {}).ias || [])) {
     const porta = Vila.mundo.portas[c.ia];
     const texto = vilaRespostaNova(c.ia);
     if (!porta || !texto) continue;
     const [px, py] = vilaDobrar(porta[0], porta[1]);
-    vilaBalaoDeFala(ctx, px + 22, py - 70, texto);
+    const b = vilaOndeFicaOBalao(px, py, Vila.zoom, Vila.panY, Vila.faixa[0]);
+    vilaBalaoDeFala(ctx, b.x, b.y, texto, b.paraCima, ocupados);
   }
 }
 

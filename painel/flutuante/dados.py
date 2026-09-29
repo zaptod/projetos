@@ -29,6 +29,7 @@ PREDIOS = {
     "deepseek": {"rotulo": "DeepSeek", "emoji": "🐋", "faz": "roteiro"},
     "chatgpt": {"rotulo": "ChatGPT", "emoji": "🤖", "faz": "roteiro"},
     "gemini": {"rotulo": "Gemini", "emoji": "✨", "faz": "roteiro e parecer"},
+    "grok": {"rotulo": "Grok", "emoji": "🚀", "faz": "conversa"},
     "picasso": {"rotulo": "PicassoIA", "emoji": "🎨", "faz": "imagens"},
     "digen": {"rotulo": "Digen", "emoji": "🎥", "faz": "vídeo do payoff"},
     "estudio": {"rotulo": "Estúdio", "emoji": "🎬", "faz": "render"},
@@ -50,7 +51,7 @@ _FABRICA_PARA_PREDIO = {
 _SERVICO_PARA_PREDIO = {
     "youtube_web": "youtube", "youtube": "youtube", "tiktok": "tiktok",
     "picasso": "picasso", "digen": "digen", "chatgpt": "chatgpt",
-    "gemini": "gemini", "deepseek": "deepseek",
+    "gemini": "gemini", "deepseek": "deepseek", "grok": "grok",
 }
 
 # Erro mais velho que isto sai da tela: o erro de ontem ja virou diario.

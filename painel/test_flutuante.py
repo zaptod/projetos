@@ -364,7 +364,8 @@ class CenaDaCaptura(unittest.TestCase):
         ociosos = [n for n, i in self.predios.items()
                    if i["status"] == "ocioso"]
         self.assertNotIn("estudio", ociosos)
-        self.assertEqual(len(ociosos), 8, "estudio e bot nao estao a toa")
+        self.assertEqual(len(ociosos), len(dados.PREDIOS) - 2,
+                         "estudio e bot nao estao a toa")
 
     def test_rodada_e_remessa_sao_trabalho_e_a_sessao_vai_para_o_fim(self):
         tipos = [v["tipo"] for v in self.vivos]

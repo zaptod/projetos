@@ -38,29 +38,48 @@ PREDIO_W, PREDIO_H = 72, 64  # a imagem do predio (o lote e 64x48)
 PERSONAGEM_W, PERSONAGEM_H = 26, 32
 
 LOTES = {
-    "deepseek": (1, 1), "chatgpt": (10, 1), "gemini": (19, 1),
-    "picasso": (28, 1), "digen": (37, 1),
+    "deepseek": (1, 1), "grok": (5.5, 1), "chatgpt": (10, 1),
+    "gemini": (19, 1), "picasso": (28, 1), "digen": (37, 1),
     "estudio": (1, 9), "arena": (7, 9), "youtube": (27, 9),
     "tiktok": (32, 9), "bot": (37, 9),
 }
 CASA = (20, 9)
 TILE = 16
+# O GROK (29/09/2026, Vila das IAs fase 2) entrou na unica vaga de 72 px do
+# mundo: entre o DeepSeek e o ChatGPT, onde havia uma arvore com um
+# caminhozinho em x=112 (o ponto "arvore" do passeio). Meio tile para cair
+# no centro da vaga: 8 px de cada telhado vizinho. Lote novo entra nesta
+# lista TAMBEM, para o resto da vila continuar byte a byte igual: o sorteio
+# das flores (`desenhar_chao`) so tira a cor de quem nasce, e excluir um
+# lote novo ANTES da cor embaralharia todas as flores. Aqui a flor sorteia
+# igual e so nao e pintada.
+LOTES_TARDIOS = ("grok",)
 
 CORES = {
     "deepseek": "#5b7cfa", "chatgpt": "#2fb489", "gemini": "#6f8ff0",
     "picasso": "#c678e6", "digen": "#ec7aa6", "estudio": "#f0a646",
     "arena": "#e2574c", "youtube": "#e8453c", "tiktok": "#3b3748",
-    "bot": "#8676e8", "casa": "#e07a5f",
+    "bot": "#8676e8", "casa": "#e07a5f", "grok": "#5c667c",
 }
 COR_RESERVA = "#a89684"
 PELES = ["#ffe0c7", "#f6d0b1", "#e9b996", "#ffe7d6", "#d9a47f"]
+# A pele de cada habitante vem da posicao do nome NESTA ordem (era
+# `sorted(CORES)`). Nome novo entra no fim: no meio, mudaria a pele de quem
+# ja existe.
+ORDEM_DAS_PELES = ["arena", "bot", "casa", "chatgpt", "deepseek", "digen",
+                   "estudio", "gemini", "picasso", "tiktok", "youtube",
+                   "grok"]
 
 # Pontos de interesse do passeio (a mesma geometria do `vida.py`).
 BANCO = (136, 116)
 FONTE = (344, 122)
 CANTEIRO = (528, 118)
 LAGO = (224, 164)
-ARVORES = [(6, 1), (15, 1), (24, 1), (33, 1), (42, 1), (42, 9), (42, 11)]
+# (tile x, tile y, tom). O tom era `i % 3` na ordem antiga, que tinha uma
+# arvore em (6, 1) — hoje o lote do Grok; fixado por arvore para nenhuma
+# outra mudar de cor.
+ARVORES = [(15, 1, "#6cc06a"), (24, 1, "#56a86a"), (33, 1, "#5fb45a"),
+           (42, 1, "#6cc06a"), (42, 9, "#56a86a"), (42, 11, "#5fb45a")]
 
 
 def rgb(cor: str) -> tuple:
@@ -182,8 +201,12 @@ def _sobre_rua(x: float, y: float, folga: float = 10) -> bool:
     return False
 
 
-def _sobre_lote(x: float, y: float, folga: float = 6) -> bool:
-    for lx, ly in list(LOTES.values()) + [CASA]:
+def _sobre_lote(x: float, y: float, folga: float = 6,
+                nomes=None) -> bool:
+    """Dentro de algum lote (a casa inclusive). `nomes` restringe a quais."""
+    todos = {**LOTES, "casa": CASA}
+    for nome in (todos if nomes is None else nomes):
+        lx, ly = todos[nome]
         if (lx * TILE - folga <= x <= (lx + 4) * TILE + folga
                 and ly * TILE - folga <= y <= (ly + 3) * TILE + 12):
             return True
@@ -198,7 +221,7 @@ def portas() -> dict:
     """{nome: (x_da_porta, y_da_calcada)} para predios e casa."""
     saida = {}
     for nome, (lx, ly) in list(LOTES.items()) + [("casa", CASA)]:
-        saida[nome] = ((lx + 2) * TILE, (ly + 3) * TILE)
+        saida[nome] = (int((lx + 2) * TILE), int((ly + 3) * TILE))
     return saida
 
 
@@ -267,7 +290,6 @@ def desenhar_chao(escala: int = 1) -> Image.Image:
     for x, y in (BANCO, FONTE, CANTEIRO):
         rua([(x, RUA_Y[0]), (x, y - 6)], 8)
     rua([(LAGO[0], LAGO[1] + 24), (LAGO[0], RUA_Y[1])], 8)
-    rua([(112, RUA_Y[0]), (112, 76)], 8)          # sombra da arvore
     for pontos, largura in ruas:
         p.linha(pontos, "#d9b98a", largura + 3)
     for pontos, largura in ruas:
@@ -278,14 +300,17 @@ def desenhar_chao(escala: int = 1) -> Image.Image:
             p.circulo(x, y, rnd.uniform(0.5, 1.1),
                       rnd.choice(["#e2c596", "#caa878", "#f7e8c8"]))
 
-    # flores
+    # flores (LOTES_TARDIOS: ver o comentario la em cima)
+    antigos = [n for n in list(LOTES) + ["casa"] if n not in LOTES_TARDIOS]
     for _ in range(120):
         x, y = rnd.uniform(6, LARGURA - 6), rnd.uniform(6, ALTURA - 6)
-        if _sobre_rua(x, y, 11) or _sobre_lote(x, y) \
+        if _sobre_rua(x, y, 11) or _sobre_lote(x, y, nomes=antigos) \
                 or _perto_de(x, y, LAGO, 40) or _perto_de(x, y, FONTE, 26):
             continue
         cor = rnd.choice(["#ff9fb8", "#ffd56b", "#ffffff", "#c9a7ff",
                           "#ff8a7a"])
+        if _sobre_lote(x, y, nomes=LOTES_TARDIOS):
+            continue                       # sorteou igual; so nao nasce
         for k in range(5):
             a = k * 2 * math.pi / 5
             p.circulo(x + math.cos(a) * 1.5, y + math.sin(a) * 1.5, 1.1, cor)
@@ -441,6 +466,23 @@ def _emblema(p: Pincel, nome: str, cx: float, cy: float, r: float) -> None:
                 (cx + r * .2, cy + r * .75)], "#7a6cf0")
         p.poli([(cx - r * .05, cy + r * .15), (cx + r * .85, cy - r * .6),
                 (cx + r * .05, cy + r * .6)], "#b9b0ff")
+    elif nome == "grok":                             # foguetinho
+        # a chama
+        p.poli([(cx - r * .95, cy + r * .9), (cx - r * .55, cy + r * .15),
+                (cx - r * .15, cy + r * .55)], "#ffb43c")
+        p.poli([(cx - r * .8, cy + r * .75), (cx - r * .5, cy + r * .22),
+                (cx - r * .22, cy + r * .5)], "#ff6b6b")
+        # as aletas
+        p.poli([(cx - r * .5, cy + r * .02), (cx - r * .82, cy + r * .1),
+                (cx - r * .6, cy + r * .42)], "#3a4052")
+        p.poli([(cx - r * .02, cy + r * .5), (cx - r * .1, cy + r * .82),
+                (cx - r * .42, cy + r * .6)], "#3a4052")
+        # o corpo, inclinado, com a escotilha
+        p.poli([(cx + r * .92, cy - r * .92), (cx + r * .3, cy - r * .88),
+                (cx - r * .52, cy + r * .06), (cx - r * .06, cy + r * .52),
+                (cx + r * .88, cy - r * .3)], "#eef1f8", "#3a4052", r * .12)
+        p.circulo(cx + r * .3, cy - r * .3, r * .2, "#5b86f0", "#3a4052",
+                  r * .08)
     elif nome == "casa":                             # coracao
         p.circulo(cx - r * .3, cy - r * .15, r * .38, "#ff6b81")
         p.circulo(cx + r * .3, cy - r * .15, r * .38, "#ff6b81")
@@ -518,7 +560,7 @@ ACESSORIOS = {
     "deepseek": "gorro", "chatgpt": "fones", "gemini": "estrela",
     "picasso": "boina", "digen": "bone", "estudio": "cachecol",
     "arena": "faixa", "youtube": "bone", "tiktok": "capuz",
-    "bot": "antena",
+    "bot": "antena", "grok": "bone",
 }
 POSES = ("parado", "passo1", "passo2", "sentado", "acenar", "feliz",
          "triste", "trabalhar")
@@ -529,7 +571,7 @@ def desenhar_personagem(nome: str, pose: str = "parado",
                         direcao: str = "dir", escala: int = 1) -> Image.Image:
     """26x32, pes em (13, 31). Cabeca grande, olhinhos, bochecha."""
     cor = CORES.get(nome, COR_RESERVA)
-    indice = sorted(CORES).index(nome) if nome in CORES else 0
+    indice = ORDEM_DAS_PELES.index(nome) if nome in ORDEM_DAS_PELES else 0
     pele = PELES[indice % len(PELES)]
     corpo = clarear(cor, .15)
     contorno = escurecer(cor, .35)
@@ -803,8 +845,7 @@ def compor_mundo(noite: bool = False, escala: int = 1) -> Image.Image:
     if noite:
         mundo = noturno(mundo)
     fixos = []
-    for i, (tx, ty) in enumerate(ARVORES):
-        tom = ["#5fb45a", "#6cc06a", "#56a86a"][i % 3]
+    for tx, ty, tom in ARVORES:
         fixos.append((ty * TILE + 44, desenhar_arvore(tom, e),
                       (tx * TILE - 2, ty * TILE - 6), "arvore"))
     fixos.append((BANCO[1] + 8, desenhar_banco(e),
