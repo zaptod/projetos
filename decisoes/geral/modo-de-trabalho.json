@@ -16,6 +16,14 @@
       "em": "2026-09-28T20:29:08",
       "opcao": "paralelo",
       "origem": "cli"
+    },
+    {
+      "anterior": "paralelo",
+      "aparelho": "614c026b",
+      "comentario": "28/09 21:47, pela Mesa de comando: paralelo, até 3 agentes",
+      "em": "2026-09-28T21:47:35",
+      "opcao": "paralelo",
+      "origem": "mesa"
     }
   ],
   "id": "modo-de-trabalho",
@@ -41,8 +49,8 @@
   "situacao": "decidida",
   "titulo": "Modo de trabalho dos agentes",
   "vigente": {
-    "comentario": "28/09 20:29, no chat: 'trabalhe em duas tarefas ao mesmo tempo' — max_paralelo 2",
-    "em": "2026-09-28T20:29:08",
+    "comentario": "28/09 21:47, pela Mesa de comando: paralelo, até 3 agentes",
+    "em": "2026-09-28T21:47:35",
     "opcao": "paralelo"
   }
 }
