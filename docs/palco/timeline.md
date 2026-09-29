@@ -280,7 +280,10 @@ posição dele).
 e `choque` (as duas cores, com tremor de câmera) com as texturas CC0 que a
 biblioteca já tinha (`vfx_padrao.gd`), e o `acerto` por projétil acende no
 `ponto`. `texto`, `movimento`, `projetil_fim` e `refletido` chegam às peças em
-`evento()` e não pedem peça (arte nova não entrou na 16C). O validador
+`evento()` e não pedem peça (arte nova não entrou na 16C). O `texto` fica
+SÓ na timeline: decisão `palco-numeros-de-dano` do Adrian (29/09, "Não"),
+nenhum número de dano na tela do palco; o teste do palco cobra que `texto`
+não está em `EVENTOS_COM_VFX`. O validador
 (`nucleo/timeline.gd` e `timeline_arquivo.validar`) confere os campos
 obrigatórios, o `motivo` e o `ponto`; tipo desconhecido, `revisao` maior que a
 conhecida e timeline antiga passam.
