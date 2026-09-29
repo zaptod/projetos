@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T23:02:27",
+      "evento": "2026-09-28T21:43:19",
+      "linha": 25,
+      "nota": "registrada; ADIADA pela duelo-quando = depois da estabilização",
+      "opcao": "so-visual",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Hoje, numa arena sem casas, metade do que a doutrina de cada país mexe não faz nada: o país muda traços, comunicação e cor, quase nada que se veja. Proposta: o país escolhe o plano preferido (DE armadilhas, US emboscada, PT barricada, BR lanças avançando, AR isca humana, JP círculo em duplas), ganha uma habilidade de assinatura, um adereço, a cor e o idioma do grito. As doutrinas de hoje são estereótipos de cultura pop ('Drama: todo boato vira fim do mundo'); a proposta troca a piada pelo que o país faz bem. Tabela: docs/zombie/duelo-elaborado.md §7.",
   "criado": "2026-09-28T21:34:37.420426",
   "depende_de": [
