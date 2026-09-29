@@ -47,10 +47,15 @@ ARVORES_EXTRA = [(716, 6, "#6cc06a"), (770, 30, "#5fb45a"),
 
 
 def geometria() -> dict:
-    """O que o app precisa para desenhar e para converter o toque."""
+    """O que o app precisa para desenhar e para converter o toque.
+
+    `fileiras`: [x0 do mundo, y no retrato] de cada fileira, de cima para
+    baixo. E o que o app usa para converter nos dois arranjos (em pe e
+    deitado, `paisagem.geometria`); o resto fica para a casca antiga.
+    """
     return {"dobra": DOBRA, "ceu": CEU, "sebe": SEBE, "pe": PE,
             "largura": LARGURA, "altura": ALTURA, "linha2": LINHA_2,
-            "fileira": arte.ALTURA}
+            "fileira": arte.ALTURA, "fileiras": [[0, CEU], [DOBRA, LINHA_2]]}
 
 
 def para_retrato(x: float, y: float) -> tuple:
@@ -139,52 +144,61 @@ def desenhar_placa(escala: int = 1) -> Image.Image:
     return p.final()
 
 
-def desenhar_ceu(noite: bool, escala: int) -> Image.Image:
-    """O ceu com morros ao longe; embaixo ele vira a grama da fileira 1."""
+# o ceu do retrato: nuvens (cx, cy, tamanho) e morros (cx, largura, altura)
+NUVENS = ((64, 96, 1.0), (214, 118, .8), (352, 78, 1.15), (160, 52, .7))
+MORROS_LONGE = ((40, 120, 26), (170, 150, 32), (320, 170, 28), (440, 120, 24))
+MORROS_PERTO = ((-10, 150, 14), (130, 170, 17), (270, 150, 13), (410, 170, 16))
+LUA = (352, 84)
+
+
+def desenhar_ceu(noite: bool, escala: int, largura: int = LARGURA,
+                 nuvens=NUVENS, morros_longe=MORROS_LONGE,
+                 morros_perto=MORROS_PERTO, lua=LUA) -> Image.Image:
+    """O ceu com morros ao longe; embaixo ele vira a grama da fileira 1.
+
+    `largura` e o resto existem para a Vila deitada (`paisagem.py`), que usa
+    o mesmo ceu com o mundo inteiro embaixo; com os padroes, e o do retrato.
+    """
     rnd = random.Random(90 if noite else 17)
-    p = arte.Pincel(LARGURA, CEU, escala)
+    p = arte.Pincel(largura, CEU, escala)
     if noite:
-        _degrade(p, LARGURA, CEU, "#10163a", "#34407a")
+        _degrade(p, largura, CEU, "#10163a", "#34407a")
     else:
-        _degrade(p, LARGURA, CEU, "#7cc4ec", "#d4f0fb")
+        _degrade(p, largura, CEU, "#7cc4ec", "#d4f0fb")
     if noite:
-        for _ in range(70):
-            x, y = rnd.uniform(2, LARGURA - 2), rnd.uniform(2, CEU - 34)
+        for _ in range(int(70 * largura / LARGURA)):
+            x, y = rnd.uniform(2, largura - 2), rnd.uniform(2, CEU - 34)
             r = rnd.choice((.45, .55, .7, .9))
             p.circulo(x, y, r, arte.mistura("#fff6d8", "#34407a",
                                             rnd.uniform(0, .5)))
         # lua crescente: um circulo claro menos um da cor do ceu
-        p.circulo(352, 84, 9, "#fff3c4")
-        p.circulo(357, 81, 8, arte.mistura("#10163a", "#34407a", 81 / CEU))
+        p.circulo(lua[0], lua[1], 9, "#fff3c4")
+        p.circulo(lua[0] + 5, lua[1] - 3, 8,
+                  arte.mistura("#10163a", "#34407a", (lua[1] - 3) / CEU))
     else:
-        for cx, cy, tam in ((64, 96, 1.0), (214, 118, .8), (352, 78, 1.15),
-                            (160, 52, .7)):
+        for cx, cy, tam in nuvens:
             _nuvem(p, cx, cy, tam)
     # morros: longe (mais claro, puxado para o ceu) e perto (a grama)
     longe = arte.mistura(arte.GRAMA_TOPO, "#d4f0fb", .45)
     perto = arte.mistura(arte.GRAMA_TOPO, "#ffffff", .08)
-    for cx, largura_m, alt in ((40, 120, 26), (170, 150, 32), (320, 170, 28),
-                               (440, 120, 24)):
+    for cx, largura_m, alt in morros_longe:
         p.elipse(cx - largura_m / 2, CEU - alt, cx + largura_m / 2,
                  CEU + alt, longe)
-    for cx, largura_m, alt in ((-10, 150, 14), (130, 170, 17), (270, 150, 13),
-                               (410, 170, 16)):
+    for cx, largura_m, alt in morros_perto:
         p.elipse(cx - largura_m / 2, CEU - alt, cx + largura_m / 2,
                  CEU + alt, perto)
-    p.ret(-2, CEU - 3, LARGURA + 2, CEU + 2, 0, arte.GRAMA_TOPO)
+    p.ret(-2, CEU - 3, largura + 2, CEU + 2, 0, arte.GRAMA_TOPO)
     ceu = p.final()
     if noite:
         # so os morros escurecem como o chao; o ceu ja e de noite
-        morros = arte.Pincel(LARGURA, CEU, escala)
-        for cx, largura_m, alt in ((40, 120, 26), (170, 150, 32),
-                                   (320, 170, 28), (440, 120, 24)):
+        morros = arte.Pincel(largura, CEU, escala)
+        for cx, largura_m, alt in morros_longe:
             morros.elipse(cx - largura_m / 2, CEU - alt, cx + largura_m / 2,
                           CEU + alt, arte.mistura(longe, "#34407a", .3))
-        for cx, largura_m, alt in ((-10, 150, 14), (130, 170, 17),
-                                   (270, 150, 13), (410, 170, 16)):
+        for cx, largura_m, alt in morros_perto:
             morros.elipse(cx - largura_m / 2, CEU - alt, cx + largura_m / 2,
                           CEU + alt, perto)
-        morros.ret(-2, CEU - 3, LARGURA + 2, CEU + 2, 0, arte.GRAMA_TOPO)
+        morros.ret(-2, CEU - 3, largura + 2, CEU + 2, 0, arte.GRAMA_TOPO)
         camada = arte.noturno(morros.final())
         camada.putalpha(morros.final().getchannel("A"))
         ceu.alpha_composite(camada)
@@ -242,12 +256,13 @@ def desenhar_sebe(noite: bool, escala: int) -> Image.Image:
     return img
 
 
-def desenhar_pe(noite: bool, escala: int) -> Image.Image:
+def desenhar_pe(noite: bool, escala: int, largura: int = LARGURA) -> Image.Image:
     """A grama embaixo da fileira 2, que desce ate a prateleira."""
     rnd = random.Random(5150)
-    p = arte.Pincel(LARGURA, PE, escala)
-    _degrade(p, LARGURA, PE, arte.GRAMA_BASE, "#62a64f")
-    _tufos_e_flores(p, rnd, LARGURA, PE, 60, 14)
+    p = arte.Pincel(largura, PE, escala)
+    _degrade(p, largura, PE, arte.GRAMA_BASE, "#62a64f")
+    _tufos_e_flores(p, rnd, largura, PE, int(60 * largura / LARGURA),
+                    int(14 * largura / LARGURA))
     pe = p.final()
     return arte.noturno(pe) if noite else pe
 

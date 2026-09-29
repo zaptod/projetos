@@ -168,6 +168,33 @@ class Retrato(unittest.TestCase):
                          _hash(mundo.crop((0, 0, retrato.DOBRA, 100))))
 
 
+class Paisagem(unittest.TestCase):
+    """A Vila deitada do celular (paisagem.py): o mundo inteiro numa fileira."""
+
+    def test_ida_e_volta_do_mundo_para_a_paisagem(self):
+        from painel.flutuante import paisagem
+        pontos = list(arte.portas().values()) + [(0, 0), (703, 239)]
+        for x, y in pontos:
+            px, py = paisagem.para_paisagem(x, y)
+            self.assertTrue(0 <= px < paisagem.LARGURA, (x, y))
+            self.assertEqual(paisagem.para_mundo(px, py), (x, y))
+        for py in (0, paisagem.CEU - 1, paisagem.CEU + arte.ALTURA,
+                   paisagem.ALTURA - 1):
+            self.assertIsNone(paisagem.para_mundo(10, py))
+        # as fileiras que o app usa dizem a mesma conta
+        self.assertEqual(paisagem.geometria()["fileiras"], [[0, paisagem.CEU]])
+
+    def test_paisagem_deterministica_e_a_fileira_e_o_mundo(self):
+        from painel.flutuante import paisagem
+        a = paisagem.compor_paisagem(False, 1)
+        self.assertEqual(a.size, (arte.LARGURA, paisagem.ALTURA))
+        self.assertEqual(_hash(a), _hash(paisagem.compor_paisagem(False, 1)))
+        self.assertNotEqual(_hash(a), _hash(paisagem.compor_paisagem(True, 1)))
+        # nenhuma casa muda de lugar: a fileira e o mundo, pixel a pixel
+        faixa = (0, paisagem.CEU, arte.LARGURA, paisagem.CEU + arte.ALTURA)
+        self.assertEqual(_hash(a.crop(faixa)), _hash(arte.compor_mundo(False)))
+
+
 class Caminhos(unittest.TestCase):
     def setUp(self):
         self.g = vida.montar_grafo()

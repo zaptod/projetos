@@ -100,8 +100,26 @@ def test_a_zona_de_perigo_e_a_publicacao_continuam_ligadas():
 def test_o_cache_da_casca_mudou_de_versao():
     # sem trocar o nome do cache, o celular seguiria com a casca antiga
     sw = (APP / "sw.js").read_text(encoding="utf-8")
-    assert "painel-casca-v12" in sw
+    assert "painel-casca-v13" in sw
     assert '"orquestrador.js"' in sw
+
+
+def test_a_vila_deitada_tem_arranjo_proprio():
+    # decisão vila-zoom-celular (28/09): "suporte se eu deitar o celular".
+    # A classe do CSS e o arranjo da arte saem da MESMA pergunta, e girar
+    # não recarrega nem desmarca (o cartão é redesenhado, não re-tocado).
+    vila = JS["vila.js"]
+    css = (APP / "app.css").read_text(encoding="utf-8")
+    assert 'matchMedia("(orientation: landscape)")' in vila
+    assert 'classList.toggle("deitado"' in vila
+    assert "/vilanova-${vilaArranjoDesenhado()}.webp" in vila
+    assert "location.reload" not in vila
+    assert "vilaMostrarEscolhido()" in vila.split("function vilaGirou")[1][:400]
+    for seletor in ("body.deitado nav.prateleira", "header .placar",
+                    "body.deitado #tela-vila .vila-caixa", "body.deitado .livro"):
+        assert seletor in css, seletor
+    from remoto import api_http
+    assert "/vilanova-paisagem.webp" in open(api_http.__file__, encoding="utf-8").read()
 
 
 def _secao(tela):

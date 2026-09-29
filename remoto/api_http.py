@@ -528,7 +528,7 @@ class Manipulador(BaseHTTPRequestHandler):
         if rota in ESTATICOS:
             return self._estatico(*ESTATICOS[rota])
         if rota in ("/vilanova.png", "/vilanova-atlas.png",
-                    "/vilanova-retrato.webp"):
+                    "/vilanova-retrato.webp", "/vilanova-paisagem.webp"):
             # Abertas como o resto da casca (a rede ja e a tranca): sao o
             # cenario, nao dado. O que esta NELAS nao diz nada do sistema.
             return self._imagem_da_vila(rota)
@@ -814,6 +814,10 @@ class Manipulador(BaseHTTPRequestHandler):
                 corpo = vila_nova.png_do_fundo(noite)
             elif rota == "/vilanova-retrato.webp":
                 corpo = vila_nova.imagem_do_retrato(noite)
+                tipo = "image/webp"
+            elif rota == "/vilanova-paisagem.webp":
+                # o celular deitado: o mundo inteiro numa fileira
+                corpo = vila_nova.imagem_da_paisagem(noite)
                 tipo = "image/webp"
             else:
                 # so a escala do celular ou a de 1x: nada de o pedido

@@ -544,3 +544,92 @@ nav.prateleira button.objeto { font-size: 10px; letter-spacing: -.03em;
 nav.prateleira button.objeto span { font-size: 26px; }
 /* o atalho da Mesa para a seção abaixo do cabeçalho fixo */
 .livro.mesa .cartao { scroll-margin-top: calc(72px + env(safe-area-inset-top)); }
+
+/* ================================================================
+   A Vila DEITADA (28/09/2026, decisão vila-zoom-celular: "também
+   adicionei suporte se eu deitar o celular"). A classe `deitado` vem do
+   vila.js, pela mesma pergunta que escolhe o arranjo da arte (a tela e a
+   conta nunca discordam). Deitado, sobra largura e falta altura: a
+   prateleira vira uma coluna à direita, o placar sobe para o cabeçalho, e
+   a Vila (o mundo inteiro numa fileira) fica com a altura quase toda.
+   ================================================================ */
+body.deitado { --coluna: calc(76px + env(safe-area-inset-right)); }
+body.pareado.deitado header {
+  padding-left: calc(16px + env(safe-area-inset-left));
+  padding-top: calc(6px + env(safe-area-inset-top)); padding-bottom: 10px;
+}
+body.pareado.deitado:not(.objeto-aberto) header { right: var(--coluna); padding-right: 12px; }
+body.deitado:not(.objeto-aberto) header h1 { flex: none; }
+body.deitado #tela-vila .vila-caixa { right: var(--coluna); }
+
+/* o placar no cabeçalho: plaquinhas de uma linha, entre o título e a conexão */
+header .placar {
+  flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: nowrap;
+  justify-content: center; gap: 6px; margin: 0; padding: 0;
+  overflow: hidden; pointer-events: none;
+}
+header .placar .numero {
+  flex: 0 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 4px;
+  padding: 2px 8px; border-radius: 8px; white-space: nowrap; color: #fff6d8;
+  background: linear-gradient(#8a6038, #6b4526); border: 2px solid #a47a4a;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .6); box-shadow: 0 3px 8px rgba(0, 0, 0, .25);
+}
+header .placar .n { font-size: 14px; font-weight: 650; }
+header .placar .fraco { font-size: 11px; color: #e6d6b0; overflow: hidden;
+  text-overflow: ellipsis; }
+header .placar > .fraco { color: #fff6d8; text-shadow: 0 1px 3px rgba(0, 0, 0, .7); }
+body:not(.pareado) header .placar, body.objeto-aberto header .placar { display: none; }
+/* celular deitado estreito: fica o símbolo e o número, que é o que decide */
+@media (max-width: 780px) {
+  header .placar .numero .fraco { display: none; }
+}
+
+/* a prateleira em pé, na coluna: a madeira corre na vertical */
+body.deitado nav.prateleira {
+  top: 0; bottom: 0; left: auto; right: 0; width: var(--coluna);
+  flex-direction: column; gap: 0;
+  padding: calc(4px + env(safe-area-inset-top)) env(safe-area-inset-right)
+           calc(4px + env(safe-area-inset-bottom)) 0;
+  border-top: 0; border-left: 3px solid #a47a4a;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, .06) 0 2px, transparent 2px 38px),
+    linear-gradient(90deg, #7a5433, #4e331d);
+  box-shadow: -6px 0 16px rgba(0, 0, 0, .45);
+}
+body.deitado nav.prateleira button.objeto {
+  flex: 1 1 0; min-height: 0; width: 100%; padding: 2px 2px 0; font-size: 10px;
+}
+body.deitado nav.prateleira button.objeto span { font-size: 21px; line-height: 1.1; }
+body.deitado nav.prateleira button.objeto.selo-pendente::after,
+body.deitado nav.prateleira button.objeto.selo-alerta::after { top: 2px; right: calc(50% - 18px); }
+/* a lupa: a mesma aba de madeira, presa na borda de dentro da coluna */
+body.deitado nav.prateleira .vila-botoes {
+  right: 100%; bottom: 12px; flex-direction: column-reverse;
+  padding: 4px 0 4px 3px; border-radius: 10px 0 0 10px;
+  border: 2px solid #a47a4a; border-right: 0;
+  background: linear-gradient(90deg, #8a6038, #7a5433);
+  box-shadow: -3px 0 8px rgba(0, 0, 0, .3);
+}
+body.deitado nav.prateleira .vila-botoes button { width: 38px; height: 36px; }
+body.deitado nav.prateleira .vila-botoes button + button {
+  border-left: 0; border-bottom: 1px solid rgba(0, 0, 0, .25); border-radius: 8px 0 0 0;
+}
+
+/* o cartão do escolhido: embaixo, do lado oposto ao prédio */
+body.deitado #tela-vila #vila-escolhido {
+  top: auto; bottom: 12px; left: 10px; right: auto; width: min(380px, 48%);
+  max-height: calc(100% - 70px); overflow-y: auto;
+}
+body.deitado #tela-vila #vila-escolhido.lado-dir { left: auto; right: 10px; }
+
+/* o objeto aberto: a folha usa a largura, e o entalhe do aparelho não come
+   o texto */
+body.deitado .livro {
+  padding: calc(56px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+           calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+}
+body.deitado .livro > * { max-width: 760px; }
+body.deitado .livro.mesa .cartao { scroll-margin-top: calc(60px + env(safe-area-inset-top)); }
+body.deitado video { max-height: calc(100vh - 120px); }
+body.deitado .toast { bottom: calc(16px + env(safe-area-inset-bottom)); }
+body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }

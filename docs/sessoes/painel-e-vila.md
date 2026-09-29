@@ -345,11 +345,11 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   `--gif` grava 5 s, `--medir-cpu SEG` mede a CPU. A `--prova` **não** passa pelo
   mutex: abre uma segunda janela de propósito, e é a forma segura de olhar sem
   mexer na do dono.
-- Testes desta parte (223, todos pelo `discover` do painel):
+- Testes desta parte (225, todos pelo `discover` do painel):
   `painel/test_painel.py` (40), `painel/test_flutuante.py` (88, com a
   caixa-preta e o WM_CLOSE de verdade), `painel/test_tarefa_da_vila.py` (19,
   o instalador, a guarda do `.cmd` rodada pelo `cmd` e o "não acorda o PC"),
-  `painel/test_vila_fofa.py` (32, com a escala e a Vila dobrada do celular),
+  `painel/test_vila_fofa.py` (34, com a escala e a Vila dobrada e a deitada do celular),
   `painel/test_oficina_sprites.py` (40: a 11243 medida, o `piriri.py`
   medido do mesmo jeito, fundo branco que não fura o brilho, tela verde,
   exportação no formato do palco, soltar arquivo, a página cabendo em
@@ -416,3 +416,33 @@ baixado uma vez por versão), com os patos do lago.
 o servidor lê o nó; pendente = `perto` (uma fileira enche a altura, na casa,
 como era); `longe` = a Vila inteira. Prova de tela: `prova_app.py` no
 scratchpad da sessão de 28/09 (Chrome headless, 390×844, instância 8934).
+
+**A Vila deitada do celular** (28/09, `flutuante/paisagem.py`, só o app
+usa). Na decisão `vila-zoom-celular` ("perto e grande") o Adrian comentou
+"também adicionei suporte se eu deitar o celular, pode mudar as casas de
+lugar se for mais fácil". Deitado não precisou mudar casa nenhuma: a tela é
+larga como o mundo, então o arranjo deitado é o **mundo inteiro numa fileira**
+(704×490 com o céu de morros em cima e o pé de grama embaixo; o céu é o
+mesmo `retrato.desenhar_ceu`, que ganhou `largura`, nuvens e morros por
+parâmetro — com os padrões o retrato saiu **byte a byte igual**, medido nos
+quatro desenhos de 1× e 3×). Vai em 3× como WebP (`/vilanova-paisagem.webp`:
+117 KB de dia, 92 KB de noite), com o mesmo atlas. O servidor manda as duas
+geometrias com a lista `fileiras` ([x0 do mundo, y na imagem]); o `vila.js`
+converte toque, sprite e câmera só por ela, nos dois arranjos. **Quem
+decide o arranjo** é `matchMedia("(orientation: landscape)")`, que também
+põe a classe `deitado` no body: a tela e a conta nunca discordam. Deitado,
+a prateleira vira **coluna à direita** (7 objetos de ~55 px, a lupa numa aba
+na borda de dentro), o placar **sobe para o cabeçalho** em plaquinhas de uma
+linha (o nó é movido para dentro do `header`; abaixo de 780 px fica só
+símbolo e número), e a Vila fica com a altura toda menos o cabeçalho
+(a 844×390: faixa de 42 a 390, "perto" em 1,45×, a Vila inteira em 1,09× —
+os 11 prédios de uma vez). O cartão do escolhido vai embaixo, do lado
+oposto ao prédio. **Girar** não recarrega: troca o arranjo e a arte (cada
+fundo é baixado uma vez), o escolhido continua marcado e a câmera abre
+"perto" **nele** (sem escolhido, na casa); objeto aberto continua aberto.
+Resize que não troca o arranjo (a barra do navegador) não reabre mais a
+câmera. Os objetos deitados usam até 760 px de largura e respeitam o
+entalhe (`safe-area`). Prova de tela: `deitado/prova_deitado.py` no
+scratchpad da sessão (844×390 e 390×844, girando nos dois sentidos com um
+prédio escolhido e com o Grimório aberto, os 7 objetos deitados até o fim
+da rolagem, abrir já deitado; dia e noite; zero erro de JS).

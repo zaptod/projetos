@@ -24,6 +24,15 @@
 // `retrato.para_retrato`. Como a câmera abre (perto, na casa, ou a Vila
 // inteira) é a decisão `vila-zoom-celular` do Adrian; pinça e "+"
 // aproximam, "−" afasta até a Vila inteira.
+//
+// A VILA DEITADA (28/09/2026, mesmo nó: "também adicionei suporte se eu
+// deitar o celular"). Com a tela mais larga que alta, o PC manda o mundo
+// INTEIRO numa fileira só (`painel/flutuante/paisagem.py`); a prateleira
+// vira uma coluna à direita e o placar sobe para o cabeçalho (CSS, pela
+// classe `deitado` no body), e a fileira fica com a altura quase toda.
+// Girar troca o arranjo na hora, sem recarregar: o prédio escolhido e o
+// objeto aberto continuam onde estavam. Os dois arranjos são uma lista de
+// FILEIRAS ([x0 do mundo, y na imagem]); toda conta passa por ela.
 
 const VILA_RETRATO_MS = 1000;
 const VILA_ESTADO_MS = 15000;
@@ -32,8 +41,12 @@ const VILA_ZOOM_MAX = 3;        // vezes o "vila inteira"
 const VILA_CEU = {dia: "#7cc4ec", noite: "#10163a"};
 const VILA_CHAO = {dia: "#62a64f", noite: "#3c5f4b"};
 
+const VILA_DEITADA = window.matchMedia("(orientation: landscape)");
+
 const Vila = {
   mundo: null, retrato: null, anterior: null, estado: null,
+  arranjo: "retrato",           // "retrato" (em pé, dobrada) | "paisagem"
+  fundos: {},                   // "arranjo|noite" -> imagem já baixada
   trocaEm: 0, selecionado: null,
   zoom: 1, zoomInteira: 1, panX: 0, panY: 0, ajustado: false, tocavel: false,
   modo: null,                   // "inteira" | "perto" | "livre" (o dedo mexeu)
@@ -43,20 +56,73 @@ const Vila = {
 };
 
 function vilaCanvas() { return document.getElementById("vila-canvas"); }
-function vilaGeo() { return Vila.mundo && Vila.mundo.retrato; }
+// a geometria do arranjo de agora (o deitado só existe com servidor novo)
+function vilaGeo() {
+  if (!Vila.mundo) return null;
+  return (Vila.arranjo === "paisagem" && Vila.mundo.paisagem) || Vila.mundo.retrato;
+}
+// o arranjo que está de fato na tela (sem o deitado no servidor, é o em pé)
+function vilaArranjoDesenhado() {
+  return vilaGeo() === Vila.mundo.paisagem ? "paisagem" : "retrato";
+}
+// o atlas é um só para os dois arranjos
+function vilaAtlasInfo() { return Vila.mundo.retrato.atlas; }
 
-// (x, y) do mundo -> (x, y) na vila em pé
-function vilaDobrar(x, y) {
+// As fileiras do arranjo: {x0, y} (onde o pedaço do mundo começa e em que
+// y da imagem ele está), de cima para baixo.
+function vilaFileiras() {
   const g = vilaGeo();
-  return x < g.dobra ? [x, y + g.ceu] : [x - g.dobra, y + g.linha2];
+  const lista = g.fileiras || [[0, g.ceu], [g.dobra, g.linha2]];
+  return lista.map(([x0, y]) => ({x0, y}));
 }
 
-// o inverso, para o toque; null no céu, na sebe e no pé
+// (x, y) do mundo -> (x, y) na imagem do arranjo
+function vilaDobrar(x, y) {
+  const fileiras = vilaFileiras();
+  let f = fileiras[0];
+  for (const outra of fileiras) if (x >= outra.x0) f = outra;
+  return [x - f.x0, y + f.y];
+}
+
+// o inverso, para o toque; null no céu, na sebe, no pé e fora do mundo
 function vilaDesdobrar(x, y) {
   const g = vilaGeo();
-  if (y >= g.ceu && y < g.ceu + g.fileira) return [x, y - g.ceu];
-  if (y >= g.linha2 && y < g.linha2 + g.fileira) return [x + g.dobra, y - g.linha2];
+  if (x < 0 || x >= g.largura) return null;
+  for (const f of vilaFileiras()) {
+    if (y >= f.y && y < f.y + g.fileira) return [x + f.x0, y - f.y];
+  }
   return null;
+}
+
+// o topo da primeira fileira e o pé da última, na imagem
+function vilaBloco() {
+  const g = vilaGeo(), fileiras = vilaFileiras();
+  return [fileiras[0].y, fileiras[fileiras.length - 1].y + g.fileira];
+}
+
+// Deitado ou em pé: a MESMA pergunta do CSS (a classe `deitado` no body),
+// para a tela e a conta nunca discordarem. Trocou? A câmera volta a abrir
+// como a decisão manda, no prédio escolhido (ou na casa), e o placar muda
+// de lugar. Nada recarrega: seleção e objeto aberto ficam.
+function vilaArranjar() {
+  const deitado = VILA_DEITADA.matches;
+  document.body.classList.toggle("deitado", deitado);
+  const placar = document.getElementById("vila-placar");
+  const conexao = document.getElementById("conexao");
+  const canvas = vilaCanvas();
+  if (placar && conexao && canvas) {
+    if (deitado && placar.parentElement !== conexao.parentElement) {
+      conexao.before(placar);
+    } else if (!deitado && placar.parentElement !== canvas.parentElement) {
+      canvas.after(placar);
+    }
+  }
+  const novo = deitado ? "paisagem" : "retrato";
+  if (canvas) canvas.dataset.arranjo = novo;
+  if (novo === Vila.arranjo) return false;
+  Vila.arranjo = novo;
+  if (Vila.modo !== "inteira") Vila.modo = "perto";
+  return true;
 }
 
 // ------------------------------------------------------------- dados
@@ -64,6 +130,7 @@ async function vilaCarregarRetrato(comMundo) {
   const dados = await api("/api/vilanova" + (comMundo ? "?mundo=1" : ""));
   if (dados.mundo) {
     Vila.mundo = dados.mundo;
+    vilaArranjar();
     vilaImagem("atlas", `/vilanova-atlas.png?escala=${dados.mundo.retrato.escala}`
       + `&v=${encodeURIComponent(dados.mundo.versao)}`);
   }
@@ -85,13 +152,27 @@ function vilaImagem(campo, url) {
   img.src = url;
 }
 
-// O fundo só troca quando a noite chega (ou o dia volta).
+// O fundo troca quando a noite chega (ou o dia volta) e quando o aparelho
+// gira. Cada um é baixado uma vez: girar de volta é instantâneo.
 function vilaCuidarDoFundo() {
+  if (!Vila.mundo) return;
   const noite = !!Vila.retrato?.noite;
-  if (Vila.fundo && noite === Vila.fundoNoite) return;
+  const chave = `${vilaArranjoDesenhado()}|${noite}`;
   Vila.fundoNoite = noite;
-  vilaImagem("fundo", `/vilanova-retrato.webp?v=${encodeURIComponent(
-    Vila.mundo?.versao || "")}&noite=${noite ? 1 : 0}`);
+  Vila.fundo = Vila.fundos[chave] || null;
+  if (Vila.fundo || Vila.fundos[chave] === false) return;
+  Vila.fundos[chave] = false;                // pedido em voo
+  const img = new Image();
+  img.onload = () => {
+    Vila.fundos[chave] = img;
+    if (`${vilaArranjoDesenhado()}|${!!Vila.retrato?.noite}` === chave) {
+      Vila.fundo = img;
+      vilaAjustar();
+    }
+  };
+  img.onerror = () => { delete Vila.fundos[chave]; };
+  img.src = `/vilanova-${vilaArranjoDesenhado()}.webp?v=${encodeURIComponent(
+    Vila.mundo.versao || "")}&noite=${noite ? 1 : 0}`;
 }
 
 // ------------------------------------------------------------ desenho
@@ -105,7 +186,13 @@ function vilaFaixaLivre(canvas) {
   if (placar && placar.offsetParent) {
     topo = placar.getBoundingClientRect().bottom - caixa.top + 8;
   }
-  if (nav && !nav.classList.contains("oculto")) {
+  if (document.body.classList.contains("deitado")) {
+    // deitado, a prateleira é uma coluna do lado: a altura toda é da Vila
+    // (a caixa da Vila já termina onde a coluna começa)
+    const titulo = document.getElementById("titulo");
+    if (titulo) topo = Math.max(topo, titulo.getBoundingClientRect().bottom - caixa.top + 6);
+    document.documentElement.style.setProperty("--prateleira", "0px");
+  } else if (nav && !nav.classList.contains("oculto")) {
     const r = nav.getBoundingClientRect();
     base = r.top - caixa.top - 8;
     // o cartão do escolhido se apoia na prateleira, seja qual for a altura
@@ -131,9 +218,9 @@ function vilaAjustar() {
   canvas.style.height = altura + "px";
   Vila.faixa = vilaFaixaLivre(canvas);
   const [topo, base] = Vila.faixa;
-  // "vila inteira": as duas fileiras e a sebe cabem na faixa livre
-  const fileiras = 2 * g.fileira + g.sebe;
-  Vila.zoomInteira = Math.min(largura / g.largura, (base - topo) / fileiras);
+  // "vila inteira": todas as fileiras (e a sebe, em pé) cabem na faixa livre
+  const [cima, baixo] = vilaBloco();
+  Vila.zoomInteira = Math.min(largura / g.largura, (base - topo) / (baixo - cima));
   // Como abre: a decisão `painel-e-vila/vila-zoom-celular` do Adrian, que o
   // servidor lê (pendente = "perto", como era). Não se escolhe aqui.
   if (!Vila.ajustado) Vila.modo = g.enquadramento === "longe" ? "inteira" : "perto";
@@ -142,11 +229,12 @@ function vilaAjustar() {
     Vila.zoom = Vila.zoomInteira;
   } else if (Vila.modo === "perto") {
     // uma fileira enche a altura livre (nada debaixo do placar), com a
-    // casa no meio na horizontal (o de antes)
+    // casa no meio na horizontal (o de antes); depois de girar com um
+    // prédio escolhido, é ele que fica no meio
     Vila.zoom = Math.min(Vila.zoomInteira * VILA_ZOOM_MAX, (base - topo) / g.fileira);
-    const casa = Vila.mundo.portas.casa || [g.dobra / 2, g.fileira / 2];
-    const [cx] = vilaDobrar(casa[0], casa[1]);
-    const cy = casa[0] < g.dobra ? g.ceu + g.fileira / 2 : g.linha2 + g.fileira / 2;
+    const foco = vilaFoco();
+    const [cx, fy] = vilaDobrar(foco[0], foco[1]);
+    const cy = fy - foco[1] + g.fileira / 2;
     Vila.panX = cx * Vila.zoom - largura / 2;
     Vila.panY = cy * Vila.zoom - (topo + base) / 2;
   }
@@ -154,6 +242,18 @@ function vilaAjustar() {
                        Math.min(Vila.zoom, Vila.zoomInteira * VILA_ZOOM_MAX));
   vilaLimitar();
   vilaMarcarZoom();
+}
+
+// o ponto do mundo em que a câmera "perto" abre: o prédio escolhido, o
+// habitante escolhido, ou a casa
+function vilaFoco() {
+  const tile = Vila.mundo.tile || 16;
+  const lote = Vila.selecionado && Vila.mundo.lotes[Vila.selecionado];
+  if (lote) return [(lote.x + 2) * tile, (lote.y + 1.5) * tile];
+  const morador = Vila.selecionado && (Vila.retrato?.habitantes || []).find(
+    (h) => h.nome === Vila.selecionado);
+  if (morador) return [morador.x, morador.y];
+  return Vila.mundo.portas.casa || [200, 120];
 }
 
 // entre dois retratos o habitante anda, em vez de pular de um ponto a outro
@@ -172,16 +272,11 @@ function vilaRetanguloDoLote(nome) {
   return [x, y, 4 * tile, 3 * tile];
 }
 
-// As duas fileiras, cada uma com o pedaço do mundo que mostra. Quem anda
-// perto da dobra aparece nas duas, cortado: sai de uma e entra na outra.
-function vilaFileiras() {
-  const g = vilaGeo();
-  return [{x0: 0, y: g.ceu}, {x0: g.dobra, y: g.linha2}];
-}
-
+// Cada fileira mostra um pedaço do mundo. Quem anda perto da dobra aparece
+// nas duas, cortado: sai de uma e entra na outra.
 function vilaSprite(ctx, h, x, y) {
   if (!Vila.atlas) return;
-  const info = vilaGeo().atlas;
+  const info = vilaAtlasInfo();
   const mapa = info.mapa;
   const pos = mapa[`${h.nome}|${h.pose}|${h.olhos}|${h.direcao}`]
     || mapa[`${h.nome}|parado|abertos|${h.direcao}`]
@@ -249,7 +344,7 @@ function vilaDesenhar() {
 
   // habitantes, de trás para a frente (quem está mais embaixo cobre)
   const gente = [...(Vila.retrato.habitantes || [])].sort((a, b) => a.y - b.y);
-  const alt = g.atlas.alt / g.atlas.escala;
+  const alt = vilaAtlasInfo().alt / vilaAtlasInfo().escala;
   for (const h of gente) {
     const [x, y] = vilaPosicao(h, t);
     vilaSprite(ctx, h, x, y);
@@ -267,7 +362,7 @@ function vilaDesenhar() {
 // Os dois patos do lago, na mesma volta da janela flutuante (cena.py):
 // só enfeite, e por isso é o único movimento que o celular inventa.
 function vilaPatos(ctx) {
-  const info = vilaGeo().atlas;
+  const info = vilaAtlasInfo();
   if (!info.pato || !info.lago || !Vila.atlas) return;
   const agora = performance.now() / 1000;
   const [w, h] = info.pato;
@@ -402,10 +497,17 @@ function vilaDesenharPainel() {
 
 function vilaSelecionar(nome) {
   Vila.selecionado = Vila.selecionado === nome ? null : nome;
+  vilaMostrarEscolhido();
+}
+
+// O cartão do escolhido. Separado do toque porque girar o aparelho o
+// redesenha (o lugar dele depende do arranjo) sem desmarcar ninguém.
+function vilaMostrarEscolhido() {
+  const nome = Vila.selecionado;
   const canvas = vilaCanvas();
-  if (canvas) canvas.dataset.selecionado = Vila.selecionado || "";
+  if (canvas) canvas.dataset.selecionado = nome || "";
   const alvo = document.getElementById("vila-escolhido");
-  if (!Vila.selecionado) { alvo.classList.add("oculto"); return; }
+  if (!nome || !Vila.mundo) { alvo.classList.add("oculto"); return; }
   const predio = Vila.mundo?.predios?.[nome] || {};
   const info = Vila.retrato?.predios?.[nome] || {};
   const morador = (Vila.retrato?.habitantes || []).find((h) => h.nome === nome);
@@ -416,9 +518,25 @@ function vilaSelecionar(nome) {
   if (Vila.mundo.lotes[nome]) ySel = vilaRetanguloDoLote(nome)[1] + 24;
   else if (morador) ySel = vilaDobrar(morador.x, morador.y)[1];
   const [topo, base] = Vila.faixa;
-  const emCima = ySel != null && ySel * Vila.zoom - Vila.panY > (topo + base) / 2;
-  alvo.classList.toggle("em-cima", emCima);
-  alvo.style.top = emCima ? `${Math.round(topo)}px` : "";
+  if (document.body.classList.contains("deitado")) {
+    // deitado sobra largura, não altura: o cartão fica embaixo, do lado
+    // oposto ao escolhido
+    let xSel = null;
+    if (Vila.mundo.lotes[nome]) {
+      const l = vilaRetanguloDoLote(nome);
+      xSel = l[0] + l[2] / 2;
+    } else if (morador) xSel = vilaDobrar(morador.x, morador.y)[0];
+    const largura = canvas ? canvas.clientWidth : 0;
+    const esquerda = xSel != null && xSel * Vila.zoom - Vila.panX < largura / 2;
+    alvo.classList.remove("em-cima");
+    alvo.classList.toggle("lado-dir", esquerda);
+    alvo.style.top = "";
+  } else {
+    const emCima = ySel != null && ySel * Vila.zoom - Vila.panY > (topo + base) / 2;
+    alvo.classList.remove("lado-dir");
+    alvo.classList.toggle("em-cima", emCima);
+    alvo.style.top = emCima ? `${Math.round(topo)}px` : "";
+  }
   alvo.replaceChildren(
     el("div", {class: "linha"},
       el("span", {class: "emoji"}, predio.emoji || "•"),
@@ -491,7 +609,8 @@ function vilaLimitar() {
   const largura = g.largura * z;
   Vila.panX = largura <= W ? -Math.round((W - largura) / 2)
     : Math.max(Math.min(Vila.panX, largura - W), 0);
-  const cima = g.ceu * z, baixo = (g.linha2 + g.fileira) * z;
+  const [c0, b0] = vilaBloco();
+  const cima = c0 * z, baixo = b0 * z;
   const sobra = (base - topo) - (baixo - cima);
   if (sobra >= 0) {
     // cabe: a sobra vai mais para o céu do que para a grama vazia de
@@ -628,7 +747,17 @@ function vilaParar() {
   clearInterval(Vila.relogioEstado); Vila.relogioEstado = null;
 }
 
-window.addEventListener("resize", () => { Vila.ajustado = false; vilaAjustar(); });
+// Girar (ou a barra do navegador aparecer) não reabre a câmera do zero:
+// só a troca de arranjo volta para o "perto" da decisão. E nada recarrega.
+function vilaGirou() {
+  const trocou = vilaArranjar();
+  vilaAjustar();
+  if (trocou) vilaCuidarDoFundo();
+  if (Vila.selecionado) vilaMostrarEscolhido();
+}
+window.addEventListener("resize", vilaGirou);
+VILA_DEITADA.addEventListener("change", vilaGirou);
+vilaArranjar();
 
 // O `app.js` monta a tela ANTES deste arquivo existir (ele carrega depois),
 // e naquele instante `vilaMostrar` ainda não estava definida. Sem esta

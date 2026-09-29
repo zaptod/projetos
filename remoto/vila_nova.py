@@ -78,6 +78,7 @@ ESCALA_CELULAR = 3
 _TRAVA_ARTE = threading.Lock()
 _FUNDOS: dict = {}
 _RETRATOS: dict = {}
+_PAISAGENS: dict = {}
 _ATLAS: dict = {}
 
 
@@ -107,6 +108,24 @@ def imagem_do_retrato(noite: bool) -> bytes:
             imagem.convert("RGB").save(saco, "WEBP", quality=90, method=6)
             _RETRATOS[noite] = saco.getvalue()
         return _RETRATOS[noite]
+
+
+def imagem_da_paisagem(noite: bool) -> bytes:
+    """A Vila inteira DEITADA (celular na horizontal), em ESCALA_CELULAR.
+
+    O mundo numa fileira so, com ceu e pe (`painel.flutuante.paisagem`);
+    decisao `vila-zoom-celular`: "pode mudar as casas de lugar", mas deitado
+    nao precisa. WebP pelo mesmo motivo do retrato.
+    """
+    from painel.flutuante import paisagem
+
+    with _TRAVA_ARTE:
+        if noite not in _PAISAGENS:
+            imagem = paisagem.compor_paisagem(bool(noite), ESCALA_CELULAR)
+            saco = io.BytesIO()
+            imagem.convert("RGB").save(saco, "WEBP", quality=90, method=6)
+            _PAISAGENS[noite] = saco.getvalue()
+        return _PAISAGENS[noite]
 
 
 def atlas(escala: int = 1) -> dict:
@@ -193,7 +212,7 @@ def _info_do_atlas(folha: dict) -> dict:
 
 def mundo() -> dict:
     """O que o app precisa saber uma vez: tamanho, lotes, portas, atlas."""
-    from painel.flutuante import retrato
+    from painel.flutuante import paisagem, retrato
 
     arte = _arte()
     dados = _dados()
@@ -213,6 +232,8 @@ def mundo() -> dict:
         "retrato": {**retrato.geometria(), "escala": ESCALA_CELULAR,
                     "atlas": _info_do_atlas(atlas(ESCALA_CELULAR)),
                     "enquadramento": enquadramento()},
+        # deitado: o mundo inteiro numa fileira (o atlas e o do retrato)
+        "paisagem": {**paisagem.geometria(), "escala": ESCALA_CELULAR},
         "versao": versao(),
     }
 
@@ -221,10 +242,10 @@ def versao() -> str:
     """Muda quando a arte muda (os arquivos dela sao a fonte de tudo)."""
     from pathlib import Path
 
-    from painel.flutuante import retrato
+    from painel.flutuante import paisagem, retrato
     try:
         partes = []
-        for modulo in (_arte(), retrato):
+        for modulo in (_arte(), retrato, paisagem):
             estado = Path(modulo.__file__).stat()
             partes.append(f"{int(estado.st_mtime)}-{estado.st_size}")
         return f"{'.'.join(partes)}-{ESCALA_CELULAR}"
@@ -350,5 +371,6 @@ def _noite() -> bool:
 MOTOR = Motor()
 
 
-__all__ = ["ESCALA_CELULAR", "MOTOR", "atlas", "imagem_do_retrato", "mundo",
+__all__ = ["ESCALA_CELULAR", "MOTOR", "atlas", "imagem_da_paisagem",
+           "imagem_do_retrato", "mundo",
            "png_do_fundo", "versao"]

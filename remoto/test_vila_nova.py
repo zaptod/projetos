@@ -86,6 +86,46 @@ def test_celular_recebe_a_vila_dobrada_em_3x_e_o_atlas_em_3x():
     assert m["enquadramento"] in vila_nova.ENQUADRAMENTOS
 
 
+def test_celular_deitado_recebe_o_mundo_inteiro_numa_fileira():
+    """Celular deitado (28/09, vila-zoom-celular): arranjo proprio, em 3x.
+
+    O app converte o mundo pela lista `fileiras` nos dois arranjos; em pe
+    sao duas (a dobra), deitado uma so, e o atlas e o mesmo.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    from painel.flutuante import arte, paisagem
+    e = vila_nova.ESCALA_CELULAR
+    img = vila_nova.imagem_da_paisagem(False)
+    assert img[:4] == b"RIFF" and img[8:12] == b"WEBP"
+    assert vila_nova.imagem_da_paisagem(False) is img         # guardada
+    assert vila_nova.imagem_da_paisagem(True) != img
+    assert Image.open(BytesIO(img)).size == (arte.LARGURA * e,
+                                             paisagem.ALTURA * e)
+    m = vila_nova.mundo()
+    assert m["paisagem"]["fileiras"] == [[0, paisagem.CEU]]
+    assert m["paisagem"]["largura"] == arte.LARGURA
+    assert m["paisagem"]["escala"] == e
+    assert len(m["retrato"]["fileiras"]) == 2
+
+
+def test_rota_da_vila_deitada_serve_webp(monkeypatch):
+    from remoto import api_http
+    monkeypatch.setattr(vila_nova, "imagem_da_paisagem", lambda noite: b"RIFFxxxxWEBP")
+    corpo = []
+
+    class Falso:
+        path = "/vilanova-paisagem.webp?noite=1"
+        send_response = send_header = end_headers = (lambda self, *a: None)
+        wfile = type("W", (), {"write": lambda self, b: corpo.append(b)})()
+        _erro = (lambda self, *a: corpo.append(("erro",) + a))
+
+    api_http.Manipulador._imagem_da_vila(Falso(), "/vilanova-paisagem.webp")
+    assert corpo == [b"RIFFxxxxWEBP"]
+
+
 def test_enquadramento_segue_a_decisao_e_pendente_fica_como_era(
         tmp_path, monkeypatch):
     import json
