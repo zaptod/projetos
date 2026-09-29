@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-29T07:58:58.606114",
+  "depende_de": [],
+  "historico": [],
+  "id": "mensagem-para-uma-ia-pelo-app-direto-ou",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "direto",
+      "pede_comentario": false,
+      "rotulo": "Direto (como está): escrevi, foi"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "confirmar",
+      "pede_comentario": false,
+      "rotulo": "Confirmar cada mensagem em dois passos"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "Desde 29/09 você fala com DeepSeek, ChatGPT, Gemini e Grok pelo app (Conversar no prédio). Hoje a mensagem vai DIRETO para a caixa e o carteiro entrega (uma conversa pede ritmo; cada mensagem gasta cota da conta e abre um Chrome no PC). Mantém direto, ou quer o mesmo 'sim' em dois passos das publicações?",
+  "projeto": "app-e-bot",
+  "situacao": "pendente",
+  "titulo": "Mensagem para uma IA pelo app: direto ou com confirmação?",
+  "vigente": null
+}
