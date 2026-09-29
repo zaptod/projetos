@@ -11,4 +11,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Onde fica pausar / retomar / parar** — Na Bancada, junto dos comandos (28/09/2026) `controle-onde`
 - ✅ **Aviso no Telegram: comando da Mesa sem ninguém ouvindo** — Manter os dois avisos (o de parado e o de voltou) (29/09/2026) `aviso-no-telegram-comando-da-mesa-sem-ni`
 - ✅ **O aparelho pareado em 17/09 ainda é seu?** — Esquecer o de 17/09 (29/09/2026) `o-aparelho-pareado-em-17-09-ainda-e-seu`
-- ⏳ **Mensagem para uma IA pelo app: direto ou com confirmação?** — Desde 29/09 você fala com DeepSeek, ChatGPT, Gemini e Grok pelo app (Conversar no prédio). Hoje a mensagem vai DIRETO para a caixa e o carteiro entrega (uma conversa pede ritmo; cada mensagem gasta cota da conta e abre um Chrome no PC). Mantém direto, ou quer o mesmo 'sim' em dois passos das publicações? `mensagem-para-uma-ia-pelo-app-direto-ou`
+- ✅ **Mensagem para uma IA pelo app: direto ou com confirmação?** — Direto (como está): escrevi, foi (29/09/2026) `mensagem-para-uma-ia-pelo-app-direto-ou`
