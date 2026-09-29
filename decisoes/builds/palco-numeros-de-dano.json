@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "c92a9678",
+      "em": "2026-09-29T00:07:46",
+      "evento": "2026-09-29T00:01:28",
+      "linha": 35,
+      "nota": "repassado à 16C em andamento: o palco não desenha número de dano",
+      "opcao": "nao",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "16C, 28/09: 44 textos num duelo de 29 s (duelo_00014). Desenhar texto não precisa de arte nova: é fonte e cor. Hoje o palco não mostra nenhum.",
   "criado": "2026-09-28T23:35:22.402245",
   "depende_de": [
