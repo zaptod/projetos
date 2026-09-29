@@ -470,11 +470,15 @@ def _rotulo_da_opcao(item: dict, opcao_id) -> str:
 
 def responder(item_id: str, opcao: str, comentario: str = "", *,
               aparelho: str = "", origem: str = "app",
-              commitar: bool = True) -> dict:
+              commitar: bool = True, esperava: str | None = None) -> dict:
     """Grava a resposta, recalcula a arvore, regenera os textos e commita.
 
     Devolve o evento, com `a_rever` (quem foi para "a rever") e `commit`
     ("ok", "nada" ou "falhou: ..."). O commit que falha NAO desfaz nada.
+
+    `esperava` e a hora da resposta vigente que a TELA tinha ("" = nenhuma).
+    Se a vigente mudou nesse meio-tempo (outra aba, outro aparelho, a Mesa),
+    recusa: a tela estava velha, e ele nao viu o que vale agora.
     """
     comentario = str(comentario or "").strip()[:COMENTARIO_MAX]
     with _trava():
@@ -482,6 +486,17 @@ def responder(item_id: str, opcao: str, comentario: str = "", *,
         item = itens.get(item_id)
         if item is None:
             raise KeyError(item_id)
+        if esperava is not None:
+            atual = str((item.get("vigente") or {}).get("em") or "")
+            if atual != str(esperava or ""):
+                if atual:
+                    rotulo = _rotulo_da_opcao(item, (item.get("vigente") or {}).get("opcao"))
+                    agora_vale = (f"agora vale “{rotulo}” "
+                                  f"(de {atual[:16].replace('T', ' ')})")
+                else:
+                    agora_vale = "agora ela está sem resposta"
+                raise Recusa(f"essa decisão mudou enquanto a tela estava aberta: {agora_vale}. "
+                             "Abri de novo com o que vale; responda outra vez se quiser.")
         faltam = [d for d in item.get("depende_de") or [] if not _satisfeita(d, itens)]
         if faltam:
             nomes = ", ".join(f"{itens[d['decisao']]['titulo']} = "

@@ -87,6 +87,7 @@ pre { white-space: pre-wrap; font: 13px/1.5 ui-monospace, Consolas, monospace;
   font-size: 14px;
 }
 .aviso button { flex: none; }
+.aviso.casca-nova { border-color: var(--ativo); color: var(--texto); }
 .botoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
 .campos { display: flex; gap: 10px; flex-wrap: wrap; }
 .campos label { display: flex; flex-direction: column; gap: 4px; font-size: 12px;
@@ -460,6 +461,11 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
 .orq-faixa { padding: 10px 12px; border-radius: 10px; margin-bottom: 12px;
   border: 2px solid #b8661b; background: #fbe9c8; color: #6b3a1a; font-size: 14px;
   position: relative; z-index: 1; }
+.orq-vigia { margin-top: 4px; font-size: 13px; }
+.decisoes-rodape { margin: 8px 4px 0; font-size: 12px; }
+.decisao-mudou { display: flex; gap: 10px; align-items: center;
+  justify-content: space-between; border: 2px solid var(--ativo); }
+.decisao-mudou.oculto { display: none; }
 .orq-faixa.ruim { border-color: #a8321f; background: #f8d9cf; color: #7a2012; font-weight: 600; }
 .orq-ficha {
   flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid;

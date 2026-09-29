@@ -116,7 +116,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 598 testes (28/09, noite)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 625 testes (29/09)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -139,6 +139,7 @@ python -m remoto.orquestrador onde | estado | config | uso | pendentes   # a Mes
 python -m remoto.orquestrador capacidade --max-paralelo N | --teto P | --forca-total on|off \
     [--modo M] --fonte chat|app [--porque "palavras dele"]            # vira regra (§7)
 python -m remoto.orquestrador eu "no que a sessão principal está"
+python -m remoto.orquestrador vigia       # quem ouve os comandos agora (código 1 = ninguém; §9)
 ```
 
 Instância de teste que não toca o real: `NF_ORQUESTRADOR_PASTA` (cópia do
@@ -377,7 +378,7 @@ DOM e clicando.
 | `app_celular_*.json(l)` e as tarefas | **esta sessão** | escrita sob `trava_arquivo`, reentrante por thread |
 | `decisoes/_eventos.jsonl` (no repositório) | **esta sessão** escreve (append, uma linha por resposta: `projeto`, `id`, `titulo`, `opcao`, `opcao_rotulo`, `comentario`, `em`, `anterior`, `a_rever`) | o **orquestrador** vigia (o `esperar` acorda com `decisao_nova`), lê pelo `leitor` e marca pelo `leitor marcar`; os itens novos ele registra pela CLI `python -m remoto.decisoes adicionar` |
 | `consequencias[]` em `decisoes/<projeto>/<id>.json` | o **orquestrador**, só pela CLI `leitor marcar` (e a Mesa, sozinha, nas respostas de capacidade) | o Grimório mostra "o que isto gerou" e o selo "não lida ainda" (§8) |
-| `%LOCALAPPDATA%\neural-fights\orquestrador\` | o **orquestrador** escreve `estado.json`, `decisoes_orquestrador.jsonl` e `comandos_aplicados.jsonl` pela CLI; o `aplicado` escreve `config.json` e `config_historico.jsonl`; **esta sessão** escreve `comandos.jsonl`, `uso*.json(l)` e `acessos.json` | ver §7; escrita atômica, sob `orquestrador.lock` |
+| `%LOCALAPPDATA%\neural-fights\orquestrador\` | o **orquestrador** escreve `estado.json`, `decisoes_orquestrador.jsonl` e `comandos_aplicados.jsonl` pela CLI; o `aplicado` escreve `config.json` e `config_historico.jsonl`; o `esperar` escreve `vigia.json` (o pulso, §9); **esta sessão** escreve `comandos.jsonl`, `uso*.json(l)`, `acessos.json` e `aviso_sem_ouvinte.json` | ver §7; escrita atômica, sob `orquestrador.lock` |
 | bloco `decisoes:inicio/fim` em cada `docs/sessoes/<parte>.md` | **gerado** por `remoto/decisoes.py` | cada parte lê como entrada; não edite à mão (é regenerado a cada resposta) |
 | grade de postagem | `ferramentas/postar.py` | o app respeita a janela (−20/−25/−40 min conforme o destino, +18 min) e recusa se `postar.py` estiver vivo |
 | dia de grade | `builds.publicar.conferencia` | `relatorios.metas` usa `_horario_da_grade`, `_dia_de_grade`, `_abertura_e_fechamento` e `dia_de_grade_fechado`, todas atrás de `relatorios._conferencia()`. As três primeiras são **internas** de lá: se a conferência as renomear, o `/metas` responde "falhou" (e os testes do remoto acusam). Pedido em aberto: uma função pública `dia_de_grade(instante)` |
@@ -407,6 +408,8 @@ troca, para a instância de teste.
 | `acessos.json` | o servidor ao subir, ou a CLI `acessos` |
 | `tarefas_historico.jsonl` (todo agente que terminou, uma vez; o `concluidos_hoje` se esvazia a cada dia) | a CLI, a cada escrita do estado |
 | `decisoes_vistas.json` (a última linha do `_eventos.jsonl` que o `esperar` já mostrou) | o `esperar` |
+| `vigia.json` (o pulso de quem ouve os comandos, a cada 30 s, e a saída com o motivo; §9) | o `esperar` |
+| `aviso_sem_ouvinte.json` (a ocorrência do aviso no Telegram) | o servidor |
 
 **CLI do orquestrador:**
 
@@ -493,7 +496,9 @@ python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
     agente que não existe, o `aplicado` **recusa**, e o orquestrador
     registra com `--recusado`.
 - **Fora do ar**: `estado.atualizado_em` com mais de 15 min. Todo comando da
-  CLI conta como pulso, e o `esperar` pulsa a cada 5 min.
+  CLI conta como pulso, e o `esperar` pulsa a cada 5 min. **Isso diz "a
+  sessão deu sinal", não "alguém ouve os comandos"**: desde 29/09 quem
+  responde a segunda pergunta é o pulso do vigia (§9).
 - **A sessão principal** (desde 28/09, noite; antes a Mesa só mostrava os
   agentes). No topo de Agora ficam:
   - o relato dela em uma linha, com a hora (`eu "..."`, em
@@ -556,7 +561,8 @@ da página 🧭 Fluxo do painel, lido em segundo plano (`painel_dados.FLUXO`,
 pendente **ou resposta nova do Adrian** no `_eventos.jsonl` (desde 28/09,
 noite: itens com `"tipo": "decisao_nova"`, ao lado dos comandos, que ganharam
 `"tipo": "comando"`). Aplique, registre com `aplicado`, leia as respostas com
-o `leitor` (§8) e rearme.
+o `leitor` (§8) e rearme. **Desligar o `esperar` deixa os pedidos dele
+parados** (a Mesa agora diz isso em vermelho, e o Telegram avisa; §9).
 
 **Prova de tela (28/09):** 390×844, clicando, na 8934 com cópia do estado e
 na 8935 vazia, com 0 erros de JS.
@@ -714,3 +720,70 @@ vazia. Foram 25 conferências pelo DOM e 0 erros de JS. Telas em
   anterior gerou ficou lá. O `esperar --json` saiu com `decisao_nova`
   `chao-da-arena`.
 - No caso ZERO, nenhum contador e nenhum cartão.
+
+## 9. Sincronia: o que a tela mostra contra o que acontece (29/09/2026)
+
+Pedido do Adrian: "cuide desse problema de sincronização que existe hoje no
+app". Levantado medindo (log `outputs/app_celular.txt`, `comandos.jsonl`,
+`comandos_aplicados.jsonl`, `estado.json`, `uso_historico.jsonl`); prova em
+`E:\projetos-wt\_prova_sinc\` (telas e `prova_8934.txt`).
+
+| dessincronia | medida | conserto |
+| --- | --- | --- |
+| comando sem ninguém ouvindo | "retomar a fila" 00:58:45 → 01:01:21 (2 min 36 s), `esperar` desligado desde o checkpoint; nos 9 comandos até 00:58, a espera foi de 12 s a 286 s | pulso do vigia; Mesa com três situações; aviso depois de 2 min; Telegram uma vez por ocorrência |
+| "no ar" com o vigia desligado | `fora_do_ar` olha `estado.atualizado_em`, que QUALQUER comando da CLI renova (relato, fila…) | o ouvido é o `vigia.json`, não o sinal da sessão |
+| toque repetido | 01:15:19: max_paralelo 4, 4 e 5 no mesmo segundo = 2 respostas e 2 commits no Grimório para uma mudança; e o alvo do "+" lia o pendente MAIS VELHO | a tela junta os toques (700 ms, só o valor final); o servidor não grava de novo um pedido idêntico pendente (menos o `priorizar`, que soma) |
+| casca velha aberta | o cache foi do v8 ao v13 em 28/09; o PWA volta do fundo com o mesmo JS, e casca velha ignora campo novo calada | `X-Casca` em toda resposta JSON e `<meta name="casca">` no `index.html`; na Vila, sem diálogo, recarrega sozinho; fora dela, uma faixa pede o toque; uma vez por versão |
+| relógio e fuso | as horas da API vão sem fuso; o PC está a ≤1 s do Google (−03:00); o celular não é medido | `Date` + `X-Fuso-Min` em toda resposta; "há X min" pelo relógio do PC (prova: celular em Tóquio diz "agora", antes "há 12 h") |
+| Grimório parado | carregava uma vez: a marca do leitor, um nó novo e a resposta de outra aba só apareciam ao reabrir | relê a cada 20 s ("atualizado às HH:MM"); o nó aberto só redesenha se ele não estiver no meio de uma resposta |
+| resposta dada numa tela velha | trocava a decisão por cima de outra que ele não viu (outra aba, outro aparelho, a Mesa) | `esperava` (a vigente que a tela mostrou): diferente = 409 "mudou enquanto a tela estava aberta", e a tela reabre com o que vale |
+| Vila acordando | o motor dorme 30 s sem pedido e guardava os prédios: em 00:55 o primeiro retrato era de 39 min antes (a leitura leva 104 ms) | leitura mais velha que 10 s é refeita antes de responder; falhou = prédios vazios, nunca os velhos |
+| previsão e fluxo guardados | a previsão (1,9 s para calcular) voltava a de horas atrás como se fosse agora, no primeiro pedido | `vencida` + `idade_s`; a tela diz "previsão há X; recalculando…" e busca de novo em 4 s |
+| `uso.json` | sem defeito: sonda a cada ~11,5 min; buracos só nos reinícios (19:22→19:55, 23:41→23:57) e a tela já diz "sem medição desde" | nada |
+| dois aparelhos | 2 pareados (`076f31d9` de 17/09 e `614c026b`); o log não dizia qual | o log leva a data e o id do aparelho |
+| "Agora" contra os agentes reais | a Mesa só sabe o que o orquestrador registra; do 8a6e221f a Mesa ficou 20 min sem relato até o fim | sessão fechada diz "os agentes da lista podem não estar rodando" |
+
+**O vigia** (`vigia.json` na pasta do orquestrador), escrito só pelo
+`esperar`:
+- `{"situacao": "ouvindo", "pid", "desde", "pulso_em", "pulso_s": 30}`, a
+  cada 30 s enquanto ele espera;
+- ao sair, `{"situacao": "saiu", "saiu_em", "motivo"}`: `comando`,
+  `decisao_nova`, `interrompido` ou `erro: …`. Morto à força, o pulso
+  envelhece e o PID some (`_pid_vivo`, por `OpenProcess`);
+- dois `esperar` juntos: a saída de um não apaga o pulso do outro.
+
+`situacao_do_vigia` (servidor e `python -m remoto.orquestrador vigia`):
+- **ouvindo**: pulso com menos de 90 s e o processo existe;
+- **acordou** ("aplicando"): saiu com um pedido há menos de 3 min;
+- **fora**: sessão com sinal nos últimos 15 min, vigia desligado há X;
+- **fechada**: nem vigia, nem sinal da sessão.
+
+`sem_ouvinte`: o pendente mais velho, passado de 2 min e sem ninguém ouvindo,
+vira "Ninguém está ouvindo agora; o comando será aplicado quando o
+orquestrador voltar" (faixa vermelha, selo vermelho na prateleira, o toast
+do envio já diz na hora). Ouvindo e ainda pendente é "preso". O servidor
+olha a cada 30 s (`AVISO_SEM_OUVINTE`) e manda UM aviso no Telegram por
+ocorrência, e um "voltou e aplicou … (ficou pendente X)" quando ela fecha. A
+ocorrência mora em `aviso_sem_ouvinte.json`: reiniciar o servidor no meio
+não repete o aviso.
+
+**Log do servidor** desde 29/09: `29/09 01:26:49 127.0.0.1 GET /api/x 200
+614c026b` (data, e o id do aparelho quando a rota pede token).
+
+**Prova de tela (29/09):** 390×844, clicando, na 8934 (estado copiado,
+Grimório clonado, casca copiada, avisos num arquivo) e na 8935 vazia. 0
+exceções de JS; o único erro do console é o 409 da resposta velha, de
+propósito.
+- A reprodução das 00:58 dá a faixa "Ninguém está ouvindo agora…", "o vigia
+  está desligado há 38 min" e o selo vermelho. Sai um aviso, e um só em 35 s.
+- Com o `esperar` ligado aparece "👂 ouvindo" e a faixa some. Depois vem o
+  "voltou e aplicou".
+- Três toques no "+" mostram "2 → 5" na hora e gravam um comando só (5). O
+  toast diz "está ouvindo", o `esperar` acorda com ele e a tela mostra
+  "⚙ aplicando".
+- Mudar um arquivo da casca recarrega sozinho na Vila. Na Mesa aparece a
+  faixa, e voltar à Vila recarrega.
+- Duas abas no Grimório: a parada mostra a resposta da outra em até 20 s. A
+  que estava no meio de uma resposta mostra "mudou no PC", e o "sim" dela
+  sai 409 e reabre com o que vale.
+- Celular em Tóquio: "sinal de vida 13:39 (agora)".

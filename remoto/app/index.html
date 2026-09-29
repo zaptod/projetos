@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#17251a">
+<meta name="casca" content="">
 <title>Painel</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icone.svg">
@@ -18,6 +19,10 @@
 <div id="aviso" class="aviso oculto" role="status">
   <span id="aviso-texto"></span>
   <button class="acao" id="btn-tentar">Tentar de novo</button>
+</div>
+<div id="casca-nova" class="aviso casca-nova oculto" role="status">
+  <span>O app mudou no PC. Esta tela ainda é a antiga.</span>
+  <button class="acao" id="btn-recarregar">Atualizar</button>
 </div>
 
 <main>
@@ -140,6 +145,11 @@
     <div id="decisoes-listas">
       <div class="abas" id="decisoes-abas"></div>
       <div id="decisoes-lista"></div>
+      <div id="decisoes-rodape" class="fraco decisoes-rodape"></div>
+    </div>
+    <div id="decisao-mudou" class="cartao decisao-mudou oculto" role="status">
+      <span>Esta decisão mudou no PC enquanto você olhava.</span>
+      <button class="acao" id="btn-decisao-mudou">Ver o que vale</button>
     </div>
     <div id="decisao-item" class="oculto"></div>
   </section>

@@ -270,3 +270,29 @@ def test_leitura_usa_a_sonda_que_nao_pega_trava(monkeypatch):
         "a Vila nao pode pegar trava nenhuma"))
     estado = vila_nova.Motor()._ler_estado()
     assert isinstance(estado, dict) and estado
+
+def test_acordar_depois_de_dormir_le_antes_de_responder(motor, monkeypatch):
+    # 29/09: depois de horas sem ninguem olhar, o primeiro retrato mostrava os
+    # predios de quando o motor dormiu (em 00:55, de 39 min antes)
+    m = motor.motor
+    m._predios = {"estudio": {"status": "trabalhando", "balao": "render"}}
+    m._lido_em = time.monotonic() - 39 * 60
+    motor.estado["estudio"] = {"status": "ocioso", "balao": ""}
+    monkeypatch.setattr(m, "_acordar", lambda: None)     # so a leitura do pedido
+    assert m.retrato()["predios"]["estudio"]["status"] == "ocioso"
+    lidas = motor.lido["vezes"]
+    m.retrato()                                           # leitura nova: nao rele
+    assert motor.lido["vezes"] == lidas
+
+
+def test_acordar_com_leitura_que_falha_nao_mostra_o_velho(motor, monkeypatch):
+    m = motor.motor
+    m._predios = {"estudio": {"status": "trabalhando"}}
+    m._lido_em = time.monotonic() - 39 * 60
+
+    def quebra():
+        raise OSError("diario sumiu")
+    monkeypatch.setattr(m, "_ler_estado", quebra)
+    monkeypatch.setattr(m, "_acordar", lambda: None)
+    r = m.retrato()
+    assert r["predios"] == {} and r["erro_de_leitura"] == "OSError"

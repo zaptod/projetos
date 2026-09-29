@@ -20,6 +20,7 @@ aplicou (`aplicado`). Tudo mora em `%LOCALAPPDATA%\\neural-fights\\orquestrador\
     comandos.jsonl               app           {id, em, comando, valor, aparelho}
     comandos_aplicados.jsonl     orquestrador  {id, em, resultado, motivo}
     uso.json, uso_historico.jsonl  servidor    a sonda do `rate_limit_event`
+    vigia.json                   `esperar`     o pulso de quem ouve os comandos (30 s) e a saida
     acessos.json                 gerado        agentes, conectores, contas (sem segredo), o que o app dispara
 
 A CONFIG SO MUDA QUANDO O ORQUESTRADOR ACEITA. O app grava o comando; o
@@ -43,7 +44,9 @@ CLI (a do orquestrador):
     python -m remoto.orquestrador pendentes [--json]
     python -m remoto.orquestrador aplicado <id> [--recusado MOTIVO] [--nota TEXTO]
     python -m remoto.orquestrador esperar [--intervalo S]     # sai quando chega comando
-                                                  # ou resposta nova do Adrian (decisao_nova)
+                                                  # ou resposta nova do Adrian (decisao_nova);
+                                                  # pulsa o vigia.json a cada 30 s
+    python -m remoto.orquestrador vigia                       # quem esta ouvindo (codigo 1 = ninguem)
     python -m remoto.orquestrador config | estado | uso | pulso | onde
     python -m remoto.orquestrador sonda                        # mede o uso uma vez
     python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
@@ -608,6 +611,367 @@ def pulso() -> str:
     return estado["atualizado_em"]
 
 
+# ================================================================ o vigia
+# O `esperar` e o OUVIDO do orquestrador: sem ele, comando do app fica
+# pendente. Em 29/09/2026 o "retomar a fila" ficou pendente 2 min 36 s
+# (00:58:45 -> 01:01:21) com o vigia desligado desde um checkpoint, e a Mesa
+# dizia "no ar", porque QUALQUER comando da CLI renova `estado.atualizado_em`.
+# "A sessao deu sinal" e "alguem esta ouvindo" sao coisas diferentes: o
+# `esperar` tem pulso proprio, `vigia.json`, reescrito a cada 30 s enquanto ele
+# espera, e a SAIDA dele fica registrada (com o motivo). Morto sem aviso
+# (processo encerrado a forca), o pulso envelhece e o PID nao existe mais.
+VIGIA_PULSO_S = 30
+VIGIA_VIVO_S = 90             # tres pulsos perdidos: nao esta ouvindo
+VIGIA_ACORDOU_S = 180         # saiu com um comando: esta aplicando, ate 3 min
+SEM_OUVINTE_S = 120           # pendente ha mais que isto sem ouvinte: avisa
+SITUACOES_DO_VIGIA = ("ouvindo", "acordou", "preso", "fora", "fechada")
+
+
+def _vigia() -> Path:
+    return arquivo("vigia.json")
+
+
+def _gravar_vigia(dados: dict) -> bool:
+    """Grava o pulso. Nunca derruba o `esperar`: um pulso perdido (o servidor
+    lendo o arquivo no instante do `os.replace`, no Windows) e so um pulso."""
+    alvo = _vigia()
+    temporario = alvo.with_name(f".vigia.{os.getpid()}.{threading.get_ident()}.tmp")
+    for _ in range(3):
+        try:
+            alvo.parent.mkdir(parents=True, exist_ok=True)
+            temporario.write_text(json.dumps(dados, ensure_ascii=False, indent=2) + "\n",
+                                  encoding="utf-8")
+            os.replace(temporario, alvo)
+            return True
+        except OSError:
+            time.sleep(0.2)
+    try:
+        temporario.unlink()
+    except OSError:
+        pass
+    return False
+
+
+def vigia_pulsar(desde: str, pid: int | None = None) -> bool:
+    return _gravar_vigia({"situacao": "ouvindo", "pid": int(pid or os.getpid()),
+                          "desde": desde, "pulso_em": _agora_iso(),
+                          "pulso_s": VIGIA_PULSO_S})
+
+
+def vigia_saiu(motivo: str, desde: str, pid: int | None = None) -> bool:
+    """O `esperar` saiu: com um comando, com resposta nova, interrompido ou
+    com erro. Outro `esperar` vivo (dois de uma vez) nao perde o pulso dele."""
+    pid = int(pid or os.getpid())
+    try:
+        atual = _ler_json(_vigia(), None)
+    except Recusa:
+        atual = None
+    if isinstance(atual, dict) and atual.get("pid") not in (None, pid) \
+            and atual.get("situacao") == "ouvindo":
+        idade = _idade_s(atual.get("pulso_em"), time.time())
+        if idade is not None and idade <= VIGIA_VIVO_S:
+            return False
+    ultimo = atual.get("pulso_em") if isinstance(atual, dict) and \
+        atual.get("pid") == pid else None
+    return _gravar_vigia({"situacao": "saiu", "pid": pid, "desde": desde,
+                          "pulso_em": ultimo or _agora_iso(), "saiu_em": _agora_iso(),
+                          "motivo": _curto(motivo, 200)})
+
+
+_KERNEL32 = None
+
+
+def _pid_vivo(pid) -> bool | None:
+    """O processo ainda existe? None quando nao da para saber (o pulso decide)."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if pid <= 0:
+        return None
+    if os.name != "nt":                                     # pragma: no cover
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except OSError:
+            return None
+        return True
+    global _KERNEL32
+    try:
+        import ctypes
+        from ctypes import wintypes
+        if _KERNEL32 is None:
+            k = ctypes.WinDLL("kernel32", use_last_error=True)
+            k.OpenProcess.restype = wintypes.HANDLE
+            k.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+            k.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+            k.GetExitCodeProcess.restype = wintypes.BOOL
+            k.CloseHandle.argtypes = (wintypes.HANDLE,)
+            _KERNEL32 = k
+        k = _KERNEL32
+        alca = k.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not alca:
+            # 87 = ERROR_INVALID_PARAMETER: nenhum processo com esse PID
+            return False if ctypes.get_last_error() == 87 else None
+        try:
+            codigo = wintypes.DWORD()
+            if not k.GetExitCodeProcess(alca, ctypes.byref(codigo)):
+                return None
+            return codigo.value == 259                 # STILL_ACTIVE
+        finally:
+            k.CloseHandle(alca)
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+def _hhmm(iso) -> str:
+    return str(iso or "")[11:16] or "?"
+
+
+def _ha(segundos) -> str:
+    if segundos is None:
+        return "?"
+    minutos = int(max(0, segundos) // 60)
+    if minutos < 1:
+        return "menos de 1 min"
+    if minutos < 60:
+        return f"{minutos} min"
+    return f"{minutos // 60} h {minutos % 60:02d} min"
+
+
+def situacao_do_vigia(agora: float | None = None, estado: dict | None = None) -> dict:
+    """Quem esta ouvindo os comandos do app, agora.
+
+    ouvindo  o `esperar` pulsou ha menos de 90 s e o processo existe;
+    acordou  ele saiu ha menos de 3 min com um comando ou resposta nova (esta
+             aplicando; volta a ouvir em seguida);
+    fora     a sessao deu sinal nos ultimos 15 min, mas o vigia esta desligado;
+    fechada  nem vigia, nem sinal da sessao ha mais de 15 min.
+    O texto vai pronto para a tela e para o Telegram, com a hora do PC.
+    """
+    agora = time.time() if agora is None else agora
+    if estado is None:
+        try:
+            estado = ler_estado() if arquivo("estado.json").is_file() else None
+        except Recusa:
+            estado = None
+    try:
+        vigia = _ler_json(_vigia(), None)
+    except Recusa:
+        vigia = None
+    if not isinstance(vigia, dict):
+        vigia = None
+    sessao_em = (estado or {}).get("atualizado_em")
+    sessao_idade = _idade_s(sessao_em, agora) if sessao_em else None
+    saida = {"situacao": "fechada", "texto": "", "pid": None, "desde": None,
+             "pulso_em": None, "pulso_idade_s": None, "saiu_em": None, "motivo": "",
+             "sem_ouvir_desde": None, "sem_ouvir_s": None, "sessao_em": sessao_em,
+             "sessao_idade_s": sessao_idade, "nunca_ligou": vigia is None}
+    if vigia:
+        saida.update({k: vigia.get(k) for k in ("pid", "desde", "pulso_em", "saiu_em")})
+        saida["motivo"] = str(vigia.get("motivo") or "")
+        saida["pulso_idade_s"] = _idade_s(vigia.get("pulso_em"), agora)
+        idade = saida["pulso_idade_s"]
+        if (vigia.get("situacao") == "ouvindo" and idade is not None
+                and idade <= VIGIA_VIVO_S and _pid_vivo(vigia.get("pid")) is not False):
+            saida["situacao"] = "ouvindo"
+            saida["texto"] = (f"O orquestrador está ouvindo (último pulso às "
+                              f"{str(vigia.get('pulso_em'))[11:19]}).")
+            return saida
+        saiu_idade = _idade_s(vigia.get("saiu_em"), agora)
+        if (vigia.get("situacao") == "saiu" and vigia.get("motivo") in
+                ("comando", "decisao_nova") and saiu_idade is not None
+                and saiu_idade <= VIGIA_ACORDOU_S):
+            saida["situacao"] = "acordou"
+            saida["texto"] = (f"O orquestrador acordou às {_hhmm(vigia.get('saiu_em'))} "
+                              "com um pedido e está aplicando; volta a ouvir em seguida.")
+            return saida
+        # desde quando ninguem ouve: a saida registrada, ou o ultimo pulso
+        desde = vigia.get("saiu_em") if vigia.get("situacao") == "saiu" \
+            else vigia.get("pulso_em")
+        saida["sem_ouvir_desde"] = desde
+        saida["sem_ouvir_s"] = _idade_s(desde, agora)
+    if sessao_idade is not None and sessao_idade <= FORA_DO_AR_S:
+        saida["situacao"] = "fora"
+        if vigia is None:
+            quanto = "o vigia nunca foi ligado"
+        else:
+            quanto = (f"o vigia está desligado há {_ha(saida['sem_ouvir_s'])} "
+                      f"(desde {_hhmm(saida['sem_ouvir_desde'])})")
+        saida["texto"] = (f"O orquestrador está fora: a sessão está aberta (sinal às "
+                          f"{_hhmm(sessao_em)}), mas {quanto}.")
+        return saida
+    agentes = len((estado or {}).get("agora") or [])
+    if sessao_em:
+        texto = (f"Sessão fechada: sem sinal do orquestrador desde {_hhmm(sessao_em)} "
+                 f"(há {_ha(sessao_idade)}).")
+    else:
+        texto = "Sessão fechada: o orquestrador nunca deu sinal aqui."
+    if agentes:
+        texto += (f" {'O agente da lista pode' if agentes == 1 else f'Os {agentes} agentes da lista podem'}"
+                  " não estar rodando.")
+    saida["texto"] = texto
+    return saida
+
+
+def sem_ouvinte(comandos: list[dict], vigia: dict, agora: float | None = None) -> dict | None:
+    """O aviso "ninguem esta ouvindo": o comando pendente MAIS VELHO, se passou
+    de 2 min e o vigia nao esta ouvindo. Ouvindo e ainda pendente e defeito
+    (o `esperar` le a cada 5 s): o aviso diz isso, e nao que ele saiu."""
+    agora = time.time() if agora is None else agora
+    pendentes_ = [c for c in comandos if c.get("situacao") == "pendente"]
+    idades = [(_idade_s(c.get("em"), agora), c) for c in pendentes_]
+    idades = [(i, c) for i, c in idades if i is not None]
+    if not idades:
+        return None
+    idade, comando = max(idades, key=lambda x: x[0])
+    if idade < SEM_OUVINTE_S or vigia.get("situacao") == "acordou":
+        return None
+    qual = (f"«{comando.get('rotulo') or comando.get('comando')}», pendente desde "
+            f"{_hhmm(comando.get('em'))} (há {_ha(idade)})")
+    if len(pendentes_) > 1:
+        qual += f", e mais {len(pendentes_) - 1}"
+    if vigia.get("situacao") == "ouvindo":
+        texto = (f"O orquestrador está ouvindo, mas o comando não saiu da fila: {qual}. "
+                 "Algo travou do lado dele.")
+        tipo = "preso"
+    else:
+        texto = ("Ninguém está ouvindo agora; o comando será aplicado quando o "
+                 f"orquestrador voltar. {qual}.")
+        tipo = "sem_ouvinte"
+    return {"tipo": tipo, "comando": comando.get("id"), "desde": comando.get("em"),
+            "idade_s": idade, "quantos": len(pendentes_), "texto": texto}
+
+
+def esperar(intervalo: float = 5.0, *, como_json: bool = False,
+            pulso_s: float = VIGIA_PULSO_S, relogio=time.time, dormir=time.sleep) -> int:
+    """Bloqueia ate chegar comando do app ou resposta nova do Adrian.
+
+    Pulsa o `vigia.json` a cada `pulso_s` (e o estado a cada 5 min, que diz
+    "a sessao esta aberta"). A saida fica registrada com o motivo, inclusive
+    quando e interrompida; morto a forca, o pulso envelhece sozinho.
+    """
+    desde = _agora_iso()
+    pid = os.getpid()
+    ultimo_vigia = ultimo_estado = float("-inf")
+    motivo = "interrompido"
+    try:
+        while True:
+            agora = relogio()
+            if agora - ultimo_vigia >= pulso_s:
+                vigia_pulsar(desde, pid)
+                ultimo_vigia = agora
+            lista = pendentes()
+            novas, ultima = decisoes_novas()
+            if lista or novas:
+                _imprimir_pendentes([dict(c, tipo="comando") for c in lista] + novas,
+                                    como_json)
+                avancar_vistas(ultima)
+                motivo = "comando" if lista else "decisao_nova"
+                return 0
+            if agora - ultimo_estado > 300:
+                try:
+                    pulso()
+                except OSError:
+                    pass                    # trava ocupada: o proximo pulso vem
+                ultimo_estado = agora
+            dormir(max(1.0, intervalo))
+    except Recusa as exc:
+        motivo = f"erro: {exc}"
+        raise
+    finally:
+        vigia_saiu(motivo, desde, pid)
+
+
+class _AvisoSemOuvinte:
+    """No servidor do app: comando pendente ha mais de 2 min sem ninguem
+    ouvindo vira UM aviso no Telegram por ocorrencia, e um "voltou" quando ela
+    fecha. A ocorrencia mora em `aviso_sem_ouvinte.json`: o servidor que
+    reinicia no meio dela nao avisa de novo."""
+
+    INTERVALO_S = 30
+
+    def __init__(self):
+        self._fio: threading.Thread | None = None
+        self._parar = threading.Event()
+
+    def iniciar(self) -> None:
+        if self._fio and self._fio.is_alive():
+            return
+        self._parar.clear()
+        self._fio = threading.Thread(target=self._laco, name="aviso-sem-ouvinte",
+                                     daemon=True)
+        self._fio.start()
+
+    def parar(self) -> None:
+        self._parar.set()
+
+    def _laco(self) -> None:
+        while not self._parar.wait(self.INTERVALO_S):
+            try:
+                self.verificar()
+            except Exception as exc:                         # noqa: BLE001
+                sys.stderr.write(f"aviso sem ouvinte: {type(exc).__name__}: {exc}\n")
+
+    @staticmethod
+    def verificar(agora: float | None = None, avisar=None) -> str | None:
+        """Uma olhada. Devolve o texto avisado (ou None)."""
+        agora = time.time() if agora is None else agora
+        if avisar is None:
+            from .acoes import avisar_texto as avisar
+        comandos, _ = comandos_com_situacao()
+        vigia = situacao_do_vigia(agora)
+        aviso = sem_ouvinte(comandos, vigia, agora)
+        caminho = arquivo("aviso_sem_ouvinte.json")
+        try:
+            registro = _ler_json(caminho, {}) or {}
+        except Recusa:
+            registro = {}
+        if not isinstance(registro, dict):
+            registro = {}
+        aberta = bool(registro.get("aberta"))
+        texto = None
+        if aviso and not aberta:
+            texto = f"⏳ Mesa de comando: {aviso['texto']}"
+            if aviso["tipo"] == "sem_ouvinte" and vigia.get("texto"):
+                texto += f"\n{vigia['texto']}"
+            registro = {"aberta": True, "comando": aviso["comando"],
+                        "desde": aviso["desde"], "avisado_em": _agora_iso()}
+        elif not aviso and aberta:
+            pendentes_ = [c for c in comandos if c.get("situacao") == "pendente"]
+            antigo = next((c for c in comandos if c.get("id") == registro.get("comando")),
+                          None)
+            if antigo and antigo.get("situacao") != "pendente":
+                demora = None
+                inicio = _idade_s(registro.get("desde"), agora)
+                fim = _idade_s(antigo.get("aplicado_em"), agora)
+                if inicio is not None and fim is not None:
+                    demora = inicio - fim
+                texto = (f"✓ Mesa de comando: o orquestrador voltou e "
+                         f"{'recusou' if antigo['situacao'] == 'recusado' else 'aplicou'} "
+                         f"«{antigo.get('rotulo')}» às {_hhmm(antigo.get('aplicado_em'))}"
+                         + (f" (ficou pendente {_ha(demora)})" if demora is not None else "")
+                         + ".")
+            elif pendentes_:
+                texto = (f"✓ Mesa de comando: o orquestrador voltou a ouvir às "
+                         f"{datetime.fromtimestamp(agora).strftime('%H:%M')}; "
+                         "o comando sai em instantes.")
+            else:
+                texto = "✓ Mesa de comando: não há mais comando esperando."
+            registro = {"aberta": False, "comando": registro.get("comando"),
+                        "fechada_em": _agora_iso()}
+        else:
+            return None
+        with _trava():
+            _gravar_json(caminho, registro)
+        avisar(texto)
+        return texto
+
+
+AVISO_SEM_OUVINTE = _AvisoSemOuvinte()
+
+
 # ================================================================ comandos
 # comando -> (precisa de valor?, rotulo para a tela)
 COMANDOS = {
@@ -709,6 +1073,22 @@ def gravar_comando(comando: str, valor=None, aparelho: str = "") -> dict:
     valor = validar_comando(comando, valor)
     agora = time.time()
     with _trava():
+        # O MESMO pedido ainda pendente nao entra de novo. Em 29/09 01:15:19,
+        # tres toques rapidos no "+" gravaram max_paralelo 4, 4 e 5 no mesmo
+        # segundo: o 4 repetido virou uma segunda resposta no Grimorio. So o
+        # "priorizar" soma (subir duas vezes e subir duas posicoes).
+        if comando != "priorizar":
+            lista, _ = comandos_com_situacao()
+            chave = json.dumps(valor, sort_keys=True, ensure_ascii=False)
+            igual = next((c for c in reversed(lista)
+                          if c["situacao"] == "pendente" and c.get("comando") == comando
+                          and json.dumps(c.get("valor"), sort_keys=True,
+                                         ensure_ascii=False) == chave
+                          and str(c.get("aparelho") or "") == str(aparelho or "")[:8]),
+                         None)
+            if igual is not None:
+                return {k: igual.get(k) for k in ("id", "em", "comando", "valor",
+                                                  "aparelho")} | {"repetido": True}
         comandos, _ = _ler_jsonl(arquivo("comandos.jsonl"))
         recentes = 0
         for c in comandos[-COMANDOS_NA_JANELA_MAX - 5:]:
@@ -1435,8 +1815,13 @@ def para_o_app(agora: float | None = None) -> dict:
         erros.append(str(exc))
         historico_config = []
     principal = (estado or {}).get("principal") or {}
+    vigia = situacao_do_vigia(agora, estado if existe else None)
     return {
         "agora": datetime.fromtimestamp(agora).isoformat(timespec="seconds"),
+        "agora_epoch": agora,
+        # quem ouve os comandos (o `esperar`), e o aviso de pendente sem ouvinte
+        "vigia": vigia,
+        "sem_ouvinte": sem_ouvinte(comandos, vigia, agora),
         "estado": estado or _estado_vazio_sem_disco(),
         "estado_existe": existe,
         "fora_do_ar": (not existe) or idade is None or idade > FORA_DO_AR_S,
@@ -1615,7 +2000,7 @@ def main(argv=None) -> int:
     acs = sub.add_parser("acessos", help="gera o acessos.json")
     acs.add_argument("--conector", action="append", default=None)
     acs.add_argument("--modo-permissao", default=None)
-    for nome in ("config", "estado", "uso", "pulso", "onde", "sonda"):
+    for nome in ("config", "estado", "uso", "pulso", "onde", "sonda", "vigia"):
         sub.add_parser(nome)
     args = p.parse_args(argv)
     # Quem le esta saida (o orquestrador) le por pipe: no Windows seria cp1252,
@@ -1676,20 +2061,14 @@ def main(argv=None) -> int:
             print(f"{linha['id']} {linha['resultado']}"
                   + (f" — {linha['nota']}" if linha.get("nota") else ""))
         elif args.cmd == "esperar":
-            ultimo_pulso = 0.0
-            while True:
-                lista = pendentes()
-                novas, ultima = decisoes_novas()
-                if lista or novas:
-                    _imprimir_pendentes([dict(c, tipo="comando") for c in lista] + novas,
-                                        args.json)
-                    avancar_vistas(ultima)
-                    break
-                # quem espera esta ouvindo: vale como pulso (a cada 5 min)
-                if time.time() - ultimo_pulso > 300:
-                    pulso()
-                    ultimo_pulso = time.time()
-                time.sleep(max(1.0, args.intervalo))
+            return esperar(args.intervalo, como_json=args.json)
+        elif args.cmd == "vigia":
+            situacao = situacao_do_vigia()
+            print(f"{situacao['situacao']}: {situacao['texto']}")
+            aviso = sem_ouvinte(comandos_com_situacao()[0], situacao)
+            if aviso:
+                print(aviso["texto"])
+            return 0 if situacao["situacao"] in ("ouvindo", "acordou") else 1
         elif args.cmd == "acessos":
             dados = gerar_acessos(conectores=args.conector,
                                   modo_permissao=args.modo_permissao)
@@ -1714,7 +2093,8 @@ def main(argv=None) -> int:
             for nome in ("estado.json", "config.json", "comandos.jsonl",
                          "comandos_aplicados.jsonl", "decisoes_orquestrador.jsonl",
                          "uso.json", "uso_historico.jsonl", "acessos.json",
-                         "config_historico.jsonl"):
+                         "config_historico.jsonl", "vigia.json",
+                         "aviso_sem_ouvinte.json"):
                 print(f"  {nome:<30} {'existe' if arquivo(nome).is_file() else '—'}")
         return 0
     except Recusa as exc:

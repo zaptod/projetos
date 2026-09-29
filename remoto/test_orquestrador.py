@@ -235,10 +235,11 @@ def test_forca_total_ligar_e_desligar(mundo):
 
 def test_teto_de_comandos_por_janela(mundo, monkeypatch):
     monkeypatch.setattr(O, "COMANDOS_NA_JANELA_MAX", 3)
-    for _ in range(3):
-        O.gravar_comando("mensagem", "oi")
+    # mensagens DIFERENTES: a mesma, ainda pendente, nem entra de novo
+    for n in range(3):
+        O.gravar_comando("mensagem", f"oi {n}")
     with pytest.raises(O.Recusa):
-        O.gravar_comando("mensagem", "oi")
+        O.gravar_comando("mensagem", "oi 3")
 
 
 # ================================================================== agentes

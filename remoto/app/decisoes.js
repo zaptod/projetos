@@ -9,7 +9,13 @@
 // devolve um bilhete de 10 minutos e o <video> toca por Range. Bilhete vencido
 // (pausou e voltou depois): pede outro e segue de onde parou.
 
-const Decisoes = {projeto: null, dados: null, aberta: null};
+const Decisoes = {projeto: null, dados: null, aberta: null, relogio: null, lidoEm: null,
+                  mexendo: false, assinatura: ""};
+// O Grimório carregava UMA vez: o que o orquestrador marcava (lida, o que
+// gerou), um nó novo e a resposta dada em outra aba só apareciam ao reabrir.
+// Agora relê a cada 20 s; a árvore redesenha sozinha, e o nó aberto só se
+// ele não estiver no meio de uma resposta (senão, a faixa pede o toque).
+const DECISOES_MS = 20000;
 const SITUACAO = {decidida: ["✅", "decidida"], pendente: ["⏳", "pendente"],
                   bloqueada: ["🔒", "bloqueada"], a_rever: ["↺", "a rever"]};
 // O leitor (28/09/2026): cada resposta dele é LIDA pelo orquestrador, que
@@ -26,15 +32,67 @@ const ORIGEM_NO_HISTORICO = {semente: "antes da árvore", mesa: "pela Mesa de co
 
 function decisoesParar() {
   for (const v of document.querySelectorAll("#tela-decisoes video")) v.pause();
+  clearInterval(Decisoes.relogio);
+  Decisoes.relogio = null;
+}
+
+// O que muda na tela: a situação, a vigente e as consequências de cada nó.
+function decisoesAssinatura(dados) {
+  return JSON.stringify(Object.values(dados.itens || {}).map((i) => [i.id, i.situacao,
+    i.vigente && i.vigente.em, i.nao_lidas, (i.consequencias || []).length,
+    (i.consequencias || []).map((c) => c.tarefa && c.tarefa.situacao)]));
+}
+
+function decisoesRodape() {
+  const alvo = $("decisoes-rodape");
+  if (!alvo) return;
+  const v = Decisoes.dados && Decisoes.dados.vigia;
+  const partes = [];
+  if (Decisoes.lidoEm) partes.push(`atualizado às ${hora(Decisoes.lidoEm)}`);
+  if (v && (v.situacao === "fora" || v.situacao === "fechada"))
+    partes.push("o orquestrador não está ouvindo: ele lê as suas respostas quando voltar");
+  alvo.textContent = partes.join(" · ");
+  alvo.classList.toggle("erro", !!(v && (v.situacao === "fora" || v.situacao === "fechada")));
+}
+
+function decisoesLigarRelogio() {
+  clearInterval(Decisoes.relogio);
+  Decisoes.relogio = setInterval(() => {
+    if (document.visibilityState === "visible" && tela === "decisoes") decisoesReler();
+  }, DECISOES_MS);
+}
+
+async function decisoesReler() {
+  let dados;
+  try { dados = await api("/api/decisoes"); } catch (err) { return; }
+  const mudou = decisoesAssinatura(dados) !== Decisoes.assinatura;
+  Decisoes.dados = dados;
+  Decisoes.assinatura = decisoesAssinatura(dados);
+  Decisoes.lidoEm = new Date(agoraPC()).toISOString();
+  decisoesRodape();
+  if (!mudou) return;
+  if (!Decisoes.aberta) { decisoesDesenharArvore(); return; }
+  const tocando = [...document.querySelectorAll("#tela-decisoes video")].some((x) => !x.paused);
+  if (Decisoes.mexendo || tocando || !dados.itens[Decisoes.aberta]) {
+    $("decisao-mudou").classList.remove("oculto");
+    return;
+  }
+  const rolagem = $("tela-decisoes").scrollTop;
+  decisoesAbrir(Decisoes.aberta);
+  $("tela-decisoes").scrollTop = rolagem;
 }
 
 async function decisoesMostrar() {
   decisoesParar();
   Decisoes.aberta = null;
   $("decisao-item").classList.add("oculto");
+  $("decisao-mudou").classList.add("oculto");
   $("decisoes-listas").classList.remove("oculto");
   try {
     Decisoes.dados = await api("/api/decisoes");
+    Decisoes.assinatura = decisoesAssinatura(Decisoes.dados);
+    Decisoes.lidoEm = new Date(agoraPC()).toISOString();
+    decisoesLigarRelogio();
     conexao(true);
   } catch (err) {
     conexao(false, err);
@@ -49,6 +107,7 @@ async function decisoesMostrar() {
     Decisoes.projeto = (esperando || Decisoes.dados.projetos[0]).id;
   }
   decisoesDesenharArvore();
+  decisoesRodape();
 }
 
 function decisoesDesenharArvore() {
@@ -219,6 +278,9 @@ function decisoesMidia(item, m, muitos) {
 
 function decisoesAbrir(id) {
   decisoesParar();
+  decisoesLigarRelogio();
+  Decisoes.mexendo = false;
+  $("decisao-mudou").classList.add("oculto");
   const {itens} = Decisoes.dados;
   const item = itens[id];
   Decisoes.aberta = id;
@@ -232,6 +294,7 @@ function decisoesAbrir(id) {
   const voltar = el("button", {class: "acao"}, "‹ Árvore");
   voltar.addEventListener("click", decisoesMostrar);
   caixa.append(el("div", {class: "botoes"}, voltar));
+
 
   const [icone, nome] = SITUACAO[item.situacao] || ["•", item.situacao];
   const cabeca = el("div", {class: "cartao"},
@@ -282,6 +345,7 @@ function decisoesAbrir(id) {
     if (item.situacao === "bloqueada") b.disabled = true;
     b.addEventListener("click", () => {
       marcada = o.id;
+      Decisoes.mexendo = true;
       for (const outro of botoes) outro.setAttribute("aria-pressed", String(outro === b));
       comentario.placeholder = o.pede_comentario
         ? "Esta opção pede um comentário" : "Comentário (opcional)";
@@ -304,6 +368,7 @@ function decisoesAbrir(id) {
                                      maxlength: "2000",
                                      placeholder: "Comentário (opcional)"});
   if (!item.comentario || item.situacao === "bloqueada") comentario.classList.add("oculto");
+  comentario.addEventListener("input", () => { Decisoes.mexendo = true; });
   escolha.append(comentario);
   const enviar = el("button", {class: "acao primario"}, "Responder");
   enviar.disabled = true;
@@ -312,9 +377,13 @@ function decisoesAbrir(id) {
     if (marcada === null) return;
     enviar.disabled = true;
     try {
+      // `esperava`: a resposta vigente que ESTA tela mostrou. Se outra aba ou
+      // outro aparelho respondeu no meio-tempo, o PC recusa (409) em vez de
+      // trocar por cima do que ele não viu.
       const r = await api("/api/decisao/responder", {
         method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({id: item.id, opcao: marcada, comentario: comentario.value}),
+        body: JSON.stringify({id: item.id, opcao: marcada, comentario: comentario.value,
+                              esperava: item.vigente ? item.vigente.em : ""}),
       });
       const ev = r.evento;
       let texto = "Registrado: " + ev.opcao_rotulo;
@@ -326,6 +395,14 @@ function decisoesAbrir(id) {
     } catch (err) {
       avisar(err.message, true);
       enviar.disabled = false;
+      if (err.status === 409 && /mudou enquanto/.test(err.message)) {
+        // a tela estava velha: abre de novo com o que vale agora
+        try {
+          Decisoes.dados = await api("/api/decisoes");
+          Decisoes.assinatura = decisoesAssinatura(Decisoes.dados);
+          decisoesAbrir(item.id);
+        } catch (e) { /* a conexão já avisa */ }
+      }
     }
   });
   escolha.append(el("div", {class: "botoes"}, enviar));
@@ -345,3 +422,13 @@ function decisoesAbrir(id) {
     caixa.append(hist);
   }
 }
+
+// mudou no PC enquanto ele mexia num no: o toque abre de novo com o que vale
+$("btn-decisao-mudou").addEventListener("click", async () => {
+  if (!Decisoes.aberta) return;
+  try {
+    Decisoes.dados = await api("/api/decisoes");
+    Decisoes.assinatura = decisoesAssinatura(Decisoes.dados);
+  } catch (err) { /* a conexao ja avisa */ }
+  decisoesAbrir(Decisoes.aberta);
+});

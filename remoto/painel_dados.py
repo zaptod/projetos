@@ -302,7 +302,12 @@ class _Previsao:
                 threading.Thread(target=self._calcular, daemon=True).start()
             if self._valor is None:
                 return {"calculando": True}
-            return dict(self._valor, idade_s=round(time.time() - self._quando))
+            # Vencida = de antes do recalculo que acabou de comecar. Depois de
+            # horas sem ninguem olhar, o primeiro pedido recebia a previsao de
+            # horas atras como se fosse agora; a tela agora diz a idade.
+            idade = time.time() - self._quando
+            return dict(self._valor, idade_s=round(idade),
+                        vencida=idade > PREVISAO_VALE_S)
 
 
 PREVISAO = _Previsao()
@@ -365,7 +370,8 @@ class _Fluxo(_Previsao):
                 threading.Thread(target=self._calcular, daemon=True).start()
             if self._valor is None:
                 return {"calculando": True}
-            return dict(self._valor, idade_s=round(time.time() - self._quando))
+            idade = time.time() - self._quando
+            return dict(self._valor, idade_s=round(idade), vencida=idade > FLUXO_VALE_S)
 
 
 FLUXO = _Fluxo()

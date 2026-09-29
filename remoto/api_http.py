@@ -100,6 +100,52 @@ ESTATICOS = {
 }
 
 
+# ================================================================ casca
+# A casca que o celular tem aberta pode ser mais velha que o servidor: o PWA
+# volta do fundo com o MESMO JavaScript de horas atras (em 28/09 o cache foi
+# do v8 ao v13), e uma casca velha ignora os campos novos da API calada. Toda
+# resposta JSON leva a versao da casca que esta no disco (`X-Casca`), e o
+# index.html sai com a sua (`<meta name="casca">`): diferente, o app recarrega.
+_CASCA = {"chave": None, "versao": ""}
+_CASCA_TRAVA = threading.Lock()
+
+
+def versao_da_casca() -> str:
+    """Um resumo do CONTEUDO dos arquivos da casca (refeito so quando o nome,
+    o tamanho ou a data de algum deles muda)."""
+    nomes = sorted({arquivo for arquivo, _tipo in ESTATICOS.values()})
+    chave = []
+    for nome in nomes:
+        try:
+            info = (APP / nome).stat()
+            chave.append((nome, info.st_size, info.st_mtime_ns))
+        except OSError:
+            chave.append((nome, None, None))
+    chave = tuple(chave)
+    with _CASCA_TRAVA:
+        if _CASCA["chave"] == chave:
+            return _CASCA["versao"]
+    resumo = hashlib.sha256()
+    for nome in nomes:
+        resumo.update(nome.encode("utf-8") + b"\0")
+        try:
+            resumo.update((APP / nome).read_bytes())
+        except OSError:
+            resumo.update(b"-")
+    versao = resumo.hexdigest()[:12]
+    with _CASCA_TRAVA:
+        _CASCA.update(chave=chave, versao=versao)
+    return versao
+
+
+def fuso_do_pc_min() -> int:
+    """Minutos a somar ao UTC para ter a hora do PC (-180 em Brasilia). As
+    horas da API vao SEM fuso ("2026-09-29T00:58:45"): com isto o celular as
+    le como hora do PC, mesmo com outro fuso ou o relogio adiantado."""
+    deslocamento = datetime.now().astimezone().utcoffset()
+    return int(deslocamento.total_seconds() // 60) if deslocamento else 0
+
+
 # ================================================================ config
 def caminho() -> Path:
     return Path(ARQUIVO) if ARQUIVO else runtime_dir() / "app_celular.json"
@@ -449,8 +495,12 @@ class Manipulador(BaseHTTPRequestHandler):
             caminho = "/v/…"
         metodo = str(getattr(self, "command", "") or "?")[:10]
         ip = self.client_address[0] if self.client_address else "?"
-        sys.stderr.write(f"{datetime.now():%H:%M:%S} {ip} {metodo} "
-                         f"{caminho[:80]} {status}\n")
+        # a data (o log atravessa a meia-noite) e o aparelho (atras do
+        # `tailscale serve` todo IP e 127.0.0.1): dois aparelhos se distinguem
+        aparelho = getattr(self, "_id", "") or ""
+        sys.stderr.write(f"{datetime.now():%d/%m %H:%M:%S} {ip} {metodo} "
+                         f"{caminho[:80]} {status}"
+                         f"{' ' + aparelho if aparelho else ''}\n")
 
     def log_request(self, code="-", size="-"):
         self._log(int(code) if str(code).isdigit() or hasattr(code, "value")
@@ -473,6 +523,11 @@ class Manipulador(BaseHTTPRequestHandler):
         corpo = json.dumps(dados, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self._cabecalhos_comuns("application/json; charset=utf-8", len(corpo))
+        # a casca do disco e o fuso do PC: o app confere os dois (o `Date`,
+        # com o relogio do PC, a biblioteca ja manda)
+        with contextlib.suppress(Exception):
+            self.send_header("X-Casca", versao_da_casca())
+            self.send_header("X-Fuso-Min", str(fuso_do_pc_min()))
         self.end_headers()
         self.wfile.write(corpo)
 
@@ -612,9 +667,17 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json(painel_dados.FLUXO.ler())
             if rota == "/api/decisoes":
                 try:
-                    return self._json(decisoes.para_o_app())
+                    dados = decisoes.para_o_app()
                 except decisoes.Recusa as exc:
                     return self._erro(409, str(exc))
+                # quem le as respostas dele (o `esperar` acorda com elas)
+                try:
+                    vigia = orquestrador.situacao_do_vigia()
+                    dados["vigia"] = {"situacao": vigia["situacao"],
+                                      "texto": vigia["texto"]}
+                except Exception:                            # noqa: BLE001
+                    dados["vigia"] = None
+                return self._json(dados)
             # A MIDIA DE UMA DECISAO: pelo id do item e pelo indice, NUNCA
             # por caminho. O caminho so existe no registro; o celular recebe
             # um bilhete de 10 minutos para aquele arquivo e mais nada.
@@ -756,10 +819,16 @@ class Manipulador(BaseHTTPRequestHandler):
         if corpo is None:
             return
         item_id = str(corpo.get("id") or "")[:60]
+        # O que a tela tinha na mao (a hora da resposta vigente, "" = nenhuma).
+        # Outra aba ou outro aparelho respondeu nesse meio-tempo: recusa, em
+        # vez de trocar a decisao por cima de uma resposta que ele nao viu.
+        extra = {}
+        if "esperava" in corpo:
+            extra["esperava"] = str(corpo.get("esperava") or "")[:40]
         try:
             evento = decisoes.responder(item_id, str(corpo.get("opcao") or "")[:60],
                                         str(corpo.get("comentario") or ""),
-                                        aparelho=self._id, origem="app")
+                                        aparelho=self._id, origem="app", **extra)
         except KeyError:
             return self._erro(404, "decisão desconhecida")
         except decisoes.Recusa as exc:
@@ -787,7 +856,13 @@ class Manipulador(BaseHTTPRequestHandler):
                 if nome not in orquestrador.DO_APP:
                     return self._erro(400, "comando desconhecido")
                 linha = orquestrador.gravar_comando(nome, corpo.get("valor"), self._id)
-                return self._json({"feito": True, "comando": linha})
+                # quem vai ler: a tela diz na hora se alguem esta ouvindo
+                try:
+                    vigia = orquestrador.situacao_do_vigia()
+                    vigia = {"situacao": vigia["situacao"], "texto": vigia["texto"]}
+                except Exception:                            # noqa: BLE001
+                    vigia = None
+                return self._json({"feito": True, "comando": linha, "vigia": vigia})
             feito = orquestrador.contestar(str(corpo.get("id") or "")[:20],
                                            str(corpo.get("comentario") or ""), self._id)
         except orquestrador.Recusa as exc:
@@ -841,6 +916,10 @@ class Manipulador(BaseHTTPRequestHandler):
             corpo = (APP / nome).read_bytes()
         except OSError:
             return self._erro(404, "nao existe")
+        if nome == "index.html":
+            corpo = corpo.replace(b'<meta name="casca" content="">',
+                                  f'<meta name="casca" content="{versao_da_casca()}">'
+                                  .encode("utf-8"), 1)
         self.send_response(200)
         self._cabecalhos_comuns(tipo, len(corpo), cache=True)
         if nome.endswith(".html"):
@@ -1116,7 +1195,8 @@ def main(argv=None) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 4
-    print(f"App do celular em http://{host}:{porta}/  (Ctrl+C para parar)"
+    print(f"{datetime.now():%d/%m/%Y %H:%M:%S} "
+          f"App do celular em http://{host}:{porta}/  (Ctrl+C para parar)"
           f"  — ações {'LIGADAS' if args.acoes else 'desligadas'}"
           f"{' (com publicar)' if args.acoes and args.publicar else ''}"
           f"{' (com a zona de perigo)' if args.acoes and args.perigosas else ''}")
@@ -1135,6 +1215,9 @@ def main(argv=None) -> int:
     # A Mesa de comando: a sonda de uso (a cada `sonda_min` do config.json do
     # orquestrador; 0 desliga) e o acessos.json com as chaves DESTE servidor.
     orquestrador.SONDA.iniciar()
+    # comando pendente ha mais de 2 min sem ninguem ouvindo: um aviso no
+    # Telegram por ocorrencia (e um quando o orquestrador volta)
+    orquestrador.AVISO_SEM_OUVINTE.iniciar()
     threading.Thread(target=_gerar_acessos, args=(args.acoes, args.publicar,
                                                   args.perigosas),
                      name="acessos", daemon=True).start()

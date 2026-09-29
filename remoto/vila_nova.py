@@ -40,6 +40,10 @@ from datetime import datetime, timezone
 TICK_S = 0.25                  # passo da simulacao
 LEITURA_S = 3.0                # releitura do diario e das travas
 PARAR_SEM_PEDIDO_S = 30.0      # sem ninguem olhando, o motor dorme
+# Acordou com uma leitura mais velha que isto: le ANTES de responder. Sem
+# isso, o primeiro retrato depois de horas parado mostrava os predios de
+# quando o motor dormiu (em 29/09, de 39 min antes).
+LEITURA_VELHA_S = 10.0
 POSES = ("parado", "passo1", "passo2", "sentado", "trabalhar", "acenar",
          "triste", "feliz")
 OLHOS = ("abertos", "fechados")
@@ -265,6 +269,7 @@ class Motor:
         self._ultimo_pedido = 0.0
         self._fio: threading.Thread | None = None
         self._ultima_leitura = 0.0
+        self._lido_em = 0.0            # monotonic da ultima leitura que DEU CERTO
         self._erro = ""
 
     # -------------------------------------------------------- leitura
@@ -301,6 +306,7 @@ class Motor:
                     predios = self._ler_estado()
                     with self._trava:
                         self._predios = predios
+                        self._lido_em = time.monotonic()
                         self._erro = ""
                     self._vida.aplicar(predios, agora)
                 except Exception as exc:                     # noqa: BLE001
@@ -326,6 +332,20 @@ class Motor:
     def retrato(self) -> dict:
         """Onde esta cada habitante agora, e como desenha-lo."""
         self._acordar()
+        with self._trava:
+            velha = time.monotonic() - self._lido_em > LEITURA_VELHA_S
+        if velha:
+            try:
+                predios = self._ler_estado()
+                with self._trava:
+                    self._predios = predios
+                    self._lido_em = time.monotonic()
+                    self._erro = ""
+            except Exception as exc:                         # noqa: BLE001
+                with self._trava:
+                    self._predios = {}     # velho demais para mostrar como agora
+                    self._lido_em = time.monotonic()   # a thread tenta de novo
+                    self._erro = f"{type(exc).__name__}"
         vida = _vida()
         agora = time.monotonic()
         # a primeira chamada pode chegar antes do primeiro giro

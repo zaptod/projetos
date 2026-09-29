@@ -15,6 +15,55 @@ let diarioDesde = "";
 let diarioFabrica = null;
 let timer = null;
 
+// A casca que ESTE aparelho tem aberta (o servidor escreve no index.html) e
+// o relógio do PC. O PWA volta do fundo com o mesmo JavaScript de horas
+// atrás; cada resposta diz a casca do disco (X-Casca), e diferente = recarregar.
+// As horas da API vêm sem fuso, na hora do PC: com o Date e o X-Fuso-Min das
+// respostas, "há X min" sai certo mesmo com o relógio do celular adiantado.
+const CASCA_MINHA = (document.querySelector('meta[name="casca"]') || {}).content || "";
+const Relogio = {desvio: 0, fuso: null};
+const Casca = {nova: null};
+
+function agoraPC() { return Date.now() + Relogio.desvio; }
+
+// Uma hora da API ("2026-09-29T00:58:45", sem fuso) como instante: é a hora
+// do PC, então usa o fuso DELE (o celular pode estar em outro).
+function dataPC(iso) {
+  const s = String(iso == null ? "" : iso);
+  const m = s.match(/^(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)(?::(\d\d))?(?:\.\d+)?$/);
+  if (!m || Relogio.fuso == null) return new Date(s);
+  return new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0))
+    - Relogio.fuso * 60000);
+}
+
+function lerRelogio(resp) {
+  const data = Date.parse(resp.headers.get("Date") || "");
+  // o Date tem 1 s de resolução: só corrige quando o desvio muda de verdade
+  if (!isNaN(data) && Math.abs(data - Date.now() - Relogio.desvio) > 1500)
+    Relogio.desvio = data - Date.now();
+  const fuso = Number(resp.headers.get("X-Fuso-Min"));
+  if (resp.headers.get("X-Fuso-Min") !== null && !isNaN(fuso)) Relogio.fuso = fuso;
+  const casca = resp.headers.get("X-Casca");
+  if (casca && casca !== CASCA_MINHA) cascaNova(casca);
+}
+
+// Recarregar só quando não perde nada: na Vila, sem diálogo aberto. Senão, a
+// faixa pede o toque. Uma vez por versão (o sessionStorage segura o laço).
+function cascaSegura() {
+  return tela === "vila" && !document.querySelector("dialog[open]");
+}
+
+function cascaNova(versao) {
+  Casca.nova = versao;
+  if (CASCA_MINHA && cascaSegura()
+      && sessionStorage.getItem("painel.recarreguei") !== versao) {
+    sessionStorage.setItem("painel.recarreguei", versao);
+    location.reload();
+    return;
+  }
+  $("casca-nova").classList.remove("oculto");
+}
+
 function el(tag, attrs = {}, ...filhos) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -25,7 +74,7 @@ function el(tag, attrs = {}, ...filhos) {
 }
 
 function hora(iso) {
-  const d = new Date(iso);
+  const d = dataPC(iso);
   return isNaN(d) ? String(iso).slice(11, 16)
     : d.toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
 }
@@ -57,6 +106,7 @@ async function api(caminho, opcoes = {}) {
     // rede, ou o Tailscale do celular desligado.
     throw new ErroApi("sem rede", 0);
   }
+  lerRelogio(resp);
   if (resp.status === 401) {
     localStorage.removeItem(TOKEN); mostrar();
     throw new ErroApi("não pareado", 401);
@@ -68,9 +118,9 @@ async function api(caminho, opcoes = {}) {
 }
 
 function quandoCurto(iso) {
-  const d = new Date(iso);
+  const d = dataPC(iso);
   if (isNaN(d)) return "";
-  const hoje = new Date().toDateString() === d.toDateString();
+  const hoje = new Date(agoraPC()).toDateString() === d.toDateString();
   return hoje ? hora(iso)
     : d.toLocaleDateString("pt-BR", {day: "2-digit", month: "2-digit"}) + " " + hora(iso);
 }
@@ -133,6 +183,10 @@ function desenharEstado(e) {
     const gordura = Object.entries(p.gordura || {})
       .map(([k, v]) => `${k}: ${v}`).join(" · ");
     if (gordura) prev.append(el("div", {class: "fraco"}, "estoque (dias) — " + gordura));
+    // Depois de muito tempo sem ninguém olhar, a primeira resposta é a
+    // previsão guardada: a tela diz a idade enquanto o PC recalcula.
+    if (p.vencida) prev.append(el("div", {class: "fraco previsao-velha"},
+      `previsão ${ha(p.idade_s)}; recalculando…`));
   }
 
   const fab = $("fabricas");
@@ -169,6 +223,14 @@ async function carregarAgora() {
     const e = await api("/api/estado");
     localStorage.setItem(ULTIMO, JSON.stringify({quando: new Date().toISOString(), e}));
     desenharEstado(e);
+    // a previsão velha está sendo refeita (leva ~2 s): busca de novo logo
+    if (e.previsao && (e.previsao.vencida || e.previsao.calculando)
+        && !carregarAgora.logo) {
+      carregarAgora.logo = setTimeout(() => {
+        carregarAgora.logo = null;
+        if (tela === "vila" || tela === "quadro") carregarAgora();
+      }, 4000);
+    }
     const erros = await api("/api/erros?n=6");
     $("erros").replaceChildren();
     desenharEventos($("erros"), erros.reverse(), "✓ nenhum erro registrado");
@@ -446,6 +508,13 @@ function mostrar(nova) {
     else b.removeAttribute("aria-current");
   }
   clearInterval(timer);
+  // casca nova esperando: voltar para a Vila é o momento seguro de recarregar
+  if (Casca.nova && CASCA_MINHA && pareado && cascaSegura()
+      && sessionStorage.getItem("painel.recarreguei") !== Casca.nova) {
+    sessionStorage.setItem("painel.recarreguei", Casca.nova);
+    location.reload();
+    return;
+  }
   if (typeof vilaParar === "function") vilaParar();
   if (typeof comandosParar === "function") comandosParar();
   if (typeof decisoesParar === "function") decisoesParar();
@@ -501,6 +570,10 @@ window.addEventListener("popstate", (e) => {
   mostrar((e.state && e.state.tela) || "vila");
 });
 $("btn-tentar").addEventListener("click", () => mostrar());
+$("btn-recarregar").addEventListener("click", () => {
+  if (Casca.nova) sessionStorage.setItem("painel.recarreguei", Casca.nova);
+  location.reload();
+});
 $("btn-todas").addEventListener("click", () => {
   diarioFabrica = null; diarioDesde = ""; $("diario").replaceChildren();
   carregarDiario();

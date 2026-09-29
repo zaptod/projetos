@@ -19,7 +19,14 @@ const ORQ_CHAVE = {max_paralelo: "agentes em paralelo", modo: "modo",
                    teto_sessao_pct: "teto de uso", forca_total_antes_min: "força total",
                    fila_pausada: "fila pausada"};
 
-const Orq = {dados: null, relogio: null, relogioFluxo: null, seloEm: 0};
+const Orq = {dados: null, relogio: null, relogioFluxo: null, seloEm: 0,
+             // toques rápidos viram UM envio, com o valor final (29/09 01:15:19:
+             // três toques no "+" gravaram 4, 4 e 5 no mesmo segundo)
+             alvoLocal: {}, adiado: {}, voando: new Set()};
+const ORQ_JUNTAR_MS = 700;
+// O que a tela diz de quem ouve os comandos (o `esperar` do orquestrador).
+const ORQ_VIGIA = {ouvindo: ["👂", "ouvindo", "ok"], acordou: ["⚙", "aplicando", "trabalhando"],
+                   fora: ["⚠", "fora", "erro"], fechada: ["■", "sessão fechada", "erro"]};
 
 function orqHora(iso) {
   if (!iso) return "—";
@@ -34,7 +41,7 @@ function orqHoraEpoch(s) {
 
 function orqFalta(s) {
   if (s == null) return "";
-  const m = Math.round((Number(s) * 1000 - Date.now()) / 60000);
+  const m = Math.round((Number(s) * 1000 - agoraPC()) / 60000);
   if (m <= 0) return "já renovou";
   if (m < 60) return `em ${m} min`;
   const h = Math.floor(m / 60);
@@ -42,8 +49,8 @@ function orqFalta(s) {
 }
 
 function orqDesde(iso) {
-  const d = new Date(iso);
-  return isNaN(d) ? "" : ha((Date.now() - d.getTime()) / 1000);
+  const d = dataPC(iso);
+  return isNaN(d) ? "" : ha((agoraPC() - d.getTime()) / 1000);
 }
 
 // Os comandos ainda não aplicados, do mais novo para o mais velho.
@@ -52,15 +59,55 @@ function orqPendentes(nome) {
   return lista.filter((c) => c.situacao === "pendente" && (!nome || c.comando === nome));
 }
 
+// O toast diz na hora se alguém está ouvindo: "pendente" sozinho parecia
+// "o app não obedece" (29/09 00:58: 2 min 36 s com o vigia desligado).
+function orqTextoEnviado(r) {
+  if (r.comando && r.comando.repetido)
+    return ["esse pedido já estava na fila do orquestrador; não mandei de novo", false];
+  const v = r.vigia || {};
+  if (v.situacao === "ouvindo") return ["enviado — o orquestrador está ouvindo e aplica em segundos", false];
+  if (v.situacao === "acordou") return ["enviado — o orquestrador está aplicando outro pedido; este vem logo depois", false];
+  if (v.situacao === "fora" || v.situacao === "fechada")
+    return ["enviado, mas ninguém está ouvindo agora; o comando será aplicado quando o "
+      + "orquestrador voltar", true];
+  return ["enviado — fica pendente até o orquestrador aplicar", false];
+}
+
 async function orqEnviar(comando, valor = null) {
+  // o mesmo pedido já a caminho (toque duplo): não sai de novo
+  const chave = comando + "|" + JSON.stringify(valor);
+  if (Orq.voando.has(chave)) return;
+  Orq.voando.add(chave);
   try {
-    await api("/api/orquestrador/comando", {
+    const r = await api("/api/orquestrador/comando", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({comando, valor}),
     });
-    avisar("enviado — fica pendente até o orquestrador aplicar");
+    const [texto, ruim] = orqTextoEnviado(r);
+    avisar(texto, ruim);
   } catch (err) { avisar(err.message, true); }
+  finally { Orq.voando.delete(chave); }
   orqCarregar();
+}
+
+// Um número que ele ajusta tocando várias vezes (o máximo de agentes): a tela
+// mostra o novo valor na hora e manda UM comando, o final, depois de 700 ms
+// sem toque. Voltar ao valor de antes não manda nada.
+function orqAjustar(nome, valor, chave) {
+  Orq.alvoLocal[nome] = valor;
+  if (Orq.dados) orqDesenharCapacidade(Orq.dados);
+  clearTimeout(Orq.adiado[nome]);
+  Orq.adiado[nome] = setTimeout(() => {
+    delete Orq.adiado[nome];
+    const final = Orq.alvoLocal[nome];
+    delete Orq.alvoLocal[nome];
+    const atual = Orq.dados ? Orq.dados.config[chave] : null;
+    if (final === orqAlvoServidor(nome, atual)) {
+      if (Orq.dados) orqDesenharCapacidade(Orq.dados);
+      return;
+    }
+    orqEnviar(nome, final);
+  }, ORQ_JUNTAR_MS);
 }
 
 // Um texto livre pelo diálogo de campos (o mesmo das fichas da Bancada).
@@ -83,10 +130,21 @@ function orqFaixa(d) {
   const faixa = $("orq-faixa");
   const linhas = [];
   let ruim = false;
+  const v = d.vigia || null;
+  // o aviso que importa primeiro: um pedido dele parado sem ninguém ouvindo
+  if (d.sem_ouvinte) {
+    linhas.push(d.sem_ouvinte.texto);
+    ruim = true;
+  }
   if (!d.estado_existe) {
     linhas.push("O orquestrador ainda não publicou nada aqui. Os comandos ficam pendentes.");
     ruim = true;
-  } else if (d.fora_do_ar) {
+  } else if (v && (v.situacao === "fora" || v.situacao === "fechada")) {
+    // "sessão aberta" e "alguém ouvindo" são coisas diferentes: qualquer
+    // comando da CLI renova o sinal, e só o `esperar` ouve os seus pedidos
+    linhas.push(v.texto + " Os comandos ficam pendentes até ele voltar a ouvir.");
+    ruim = true;
+  } else if (!v && d.fora_do_ar) {
     linhas.push(`Orquestrador fora do ar: sem sinal desde ${orqHora(d.estado.atualizado_em)}`
       + ` (${ha(d.idade_s)}). Os comandos ficam pendentes até a sessão voltar.`);
     ruim = true;
@@ -105,8 +163,8 @@ function orqFicha(parte) {
 }
 
 function orqIdade(iso) {
-  const t = new Date(iso).getTime();
-  return isNaN(t) ? null : (Date.now() - t) / 1000;
+  const t = dataPC(iso).getTime();
+  return isNaN(t) ? null : (agoraPC() - t) / 1000;
 }
 
 // A sessão principal (o orquestrador), em uma linha, com a hora: o relato
@@ -128,6 +186,14 @@ function orqDesenharPrincipal(d) {
   const sinal = d.estado.atualizado_em;
   partes.push(el("div", {class: d.fora_do_ar ? "erro" : "fraco"}, sinal
     ? `sinal de vida ${orqHora(sinal)} (${ha(d.idade_s)})` : "nunca deu sinal de vida"));
+  const v = d.vigia;
+  if (v && ORQ_VIGIA[v.situacao]) {
+    const [ic, rot, cls] = ORQ_VIGIA[v.situacao];
+    partes.push(el("div", {class: "orq-vigia"},
+      el("span", {class: "selo " + cls, id: "orq-vigia-selo"}, `${ic} ${rot}`),
+      el("span", {class: v.situacao === "ouvindo" || v.situacao === "acordou" ? "fraco" : "erro"},
+        " " + v.texto)));
+  }
   const linha = p.linha || [];
   if (linha.length) {
     partes.push(orqDetalhes(`Linha do tempo (${linha.length})`, linha.map((x) =>
@@ -267,19 +333,30 @@ async function orqPorNaFila() {
 }
 
 // ----------------------------------------------------------- capacidade
-function orqAlvo(nome, atual) {
+// O valor que vai valer: o pedido MAIS NOVO ainda pendente (a lista vem do
+// mais novo para o mais velho; antes pegava o mais velho, e com 4, 4 e 5
+// pendentes o "+" seguinte mandava 5 de novo), ou o que vale agora.
+function orqAlvoServidor(nome, atual) {
   const p = orqPendentes(nome);
-  return p.length ? p[p.length - 1].valor : atual;
+  return p.length ? p[0].valor : atual;
+}
+
+// ...e, por cima, o que ele está tocando agora e ainda não saiu (700 ms)
+function orqAlvo(nome, atual) {
+  return nome in Orq.alvoLocal ? Orq.alvoLocal[nome] : orqAlvoServidor(nome, atual);
 }
 
 function orqDesenharCapacidade(d) {
   const c = d.config;
   const alvoMax = orqAlvo("max_paralelo", c.max_paralelo);
-  $("orq-max").textContent = String(c.max_paralelo);
+  $("orq-max").textContent = String(c.max_paralelo)
+    + (alvoMax !== c.max_paralelo ? ` → ${alvoMax}` : "");
   $("orq-menos").disabled = alvoMax <= 1;
   $("orq-mais").disabled = alvoMax >= 8;
-  $("orq-menos").onclick = () => orqEnviar("max_paralelo", alvoMax - 1);
-  $("orq-mais").onclick = () => orqEnviar("max_paralelo", alvoMax + 1);
+  $("orq-menos").onclick = () => orqAjustar("max_paralelo",
+    Math.max(1, orqAlvo("max_paralelo", Orq.dados.config.max_paralelo) - 1), "max_paralelo");
+  $("orq-mais").onclick = () => orqAjustar("max_paralelo",
+    Math.min(8, orqAlvo("max_paralelo", Orq.dados.config.max_paralelo) + 1), "max_paralelo");
   $("orq-efetivo").textContent = c.modo === "um_por_vez"
     ? `No modo "um por vez" roda 1 agente, qualquer que seja o máximo.`
     : `Até ${d.paralelo_efetivo} agente(s) ao mesmo tempo.`;
@@ -646,7 +723,8 @@ function orqDesenharComandos(d) {
     return el("div", {class: "linha"},
       el("span", {class: "corpo"}, c.rotulo + (valor ? `: ${valor}` : ""),
         el("div", {class: "fraco"}, quandoCurto(c.em) + ` · ${ORQ_FONTE[c.fonte || "app"]}`
-          + (c.aplicado_em ? ` · ${c.situacao} ${orqHora(c.aplicado_em)}` : "")),
+          + (c.aplicado_em ? ` · ${c.situacao} ${orqHora(c.aplicado_em)}` : "")
+          + (c.situacao === "pendente" ? ` · pendente ${orqDesde(c.em)}` : "")),
         c.motivo ? el("div", {class: "erro"}, "motivo: " + c.motivo) : null,
         c.nota ? el("div", {class: "fraco"}, c.nota) : null),
       el("span", {class: "selo " + classe}, c.situacao));
@@ -676,7 +754,10 @@ async function orqCarregar() {
 // orquestrador fora do ar; âmbar = comando esperando.
 function orqMarcarSelo(d) {
   const obj = $("obj-orquestrador");
-  obj.classList.toggle("selo-alerta", !!(d.fora_do_ar || (d.uso && d.uso.passou_teto)));
+  const semOuvido = d.vigia ? d.vigia.situacao === "fora" || d.vigia.situacao === "fechada"
+    : d.fora_do_ar;
+  obj.classList.toggle("selo-alerta", !!(d.sem_ouvinte || (semOuvido && d.pendentes)
+    || d.fora_do_ar || (d.uso && d.uso.passou_teto)));
   obj.classList.toggle("selo-pendente", !!d.pendentes);
 }
 
