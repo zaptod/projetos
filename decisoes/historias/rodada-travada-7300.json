@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-29T07:03:24",
+      "evento": "2026-09-29T02:46:06",
+      "linha": 54,
+      "nota": "PID 7300 morto às 07:02 pelo orquestrador; trava historias__auto livre; a rodada das 07:20 retoma a 00038",
+      "opcao": "matar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-29T02:40:37.268777",
   "depende_de": [],
