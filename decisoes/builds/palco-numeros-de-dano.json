@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "16C, 28/09: 44 textos num duelo de 29 s (duelo_00014). Desenhar texto não precisa de arte nova: é fonte e cor. Hoje o palco não mostra nenhum.",
+  "criado": "2026-09-28T23:35:22.402245",
+  "depende_de": [
+    {
+      "decisao": "palco-ab-2",
+      "opcao": "trocar"
+    }
+  ],
+  "historico": [],
+  "id": "palco-numeros-de-dano",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Número de cada golpe, FATAL! e CLASH!",
+      "id": "sim",
+      "pede_comentario": false,
+      "rotulo": "Sim, como no jogo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Os números somem; fica o que marca o fim da luta",
+      "id": "so-final",
+      "pede_comentario": false,
+      "rotulo": "Só o FATAL! e a execução"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Luta limpa: nenhum texto sobre os lutadores",
+      "id": "nao",
+      "pede_comentario": false,
+      "rotulo": "Não"
+    }
+  ],
+  "pergunta": "O jogo mostra o número de cada golpe (a cor do efeito, roxo na execução) e o FATAL! no golpe final. A timeline agora traz esses textos. O palco deve desenhá-los?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Palco: os números de dano na tela",
+  "vigente": null
+}
