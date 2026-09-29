@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-29T00:01:13.331245",
+  "depende_de": [
+    {
+      "decisao": "vila-zoom-celular",
+      "opcao": "perto"
+    }
+  ],
+  "historico": [],
+  "id": "girar-foca-o-predio",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\girar-foca-o-predio\\03_deitado_youtube_escolhido.png",
+      "rotulo": "deitado com prédio escolhido"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\girar-foca-o-predio\\05_deitado_inteira.png",
+      "rotulo": "a Vila inteira deitada"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "predio",
+      "pede_comentario": false,
+      "rotulo": "Abrir no prédio escolhido (como está agora)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "casa",
+      "pede_comentario": false,
+      "rotulo": "Voltar a abrir sempre na casa"
+    }
+  ],
+  "pergunta": "Com o celular deitado agora: se você tinha um prédio escolhido e gira o aparelho, a Vila abre focada NESSE prédio (antes abria sempre na casa). Mantém assim?",
+  "projeto": "painel-e-vila",
+  "situacao": "pendente",
+  "titulo": "Ao girar, a Vila abre no prédio escolhido",
+  "vigente": null
+}

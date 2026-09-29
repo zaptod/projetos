@@ -41,7 +41,9 @@
   ],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "girar-foca-o-predio"
+      ],
       "descricao": "",
       "id": "perto",
       "pede_comentario": false,
