@@ -8,7 +8,15 @@
       "opcao": "quase"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T21:44:36",
+      "opcao": "godot",
+      "origem": "app"
+    }
+  ],
   "id": "duelo-arte",
   "midias": [],
   "opcoes": [
@@ -43,7 +51,11 @@
   ],
   "pergunta": "Os personagens hoje são figuras desenhadas por código (bolinha com cabeça, lança, zumbi com braços). Para mostrar papéis, habilidades e país, qual arte?",
   "projeto": "jogo-zombie",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Duelo: arte dos personagens",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T21:44:36",
+    "opcao": "godot"
+  }
 }
