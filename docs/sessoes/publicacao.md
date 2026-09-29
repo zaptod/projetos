@@ -21,6 +21,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **5 duplicatas públicas no canal de builds** — Voltar a privado (reversível) (28/09/2026) `duplicatas-publicas-builds`
 - ✅ **Rascunhos e privados** — Manter (28/09/2026) `rascunhos-e-privados`
 - ✅ **Legenda incompleta da h31 p06 no TikTok** — Corrigir (28/09/2026) `legenda-h31-p06`
+- ⏳ **A guarda de 1 post por horário conta pela hora do relógio** — A guarda que evita 2 posts no mesmo horário conta pela HORA DO RELÓGIO. Um upload manual às 22:12 contou como o post das 22:37 e o horário ficou sem vídeo novo. Troco a guarda para contar pelo HORÁRIO DA GRADE? `guarda-hora-da-grade`
 
 <!-- decisoes:fim -->
 

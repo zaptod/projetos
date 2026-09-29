@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Já existe uma trava que impede o --so-youtube de cair nesse caso. Trocar mexe numa guarda de publicação, por isso é decisão sua.",
+  "criado": "2026-09-29T01:16:06.376054",
+  "depende_de": [],
+  "historico": [],
+  "id": "guarda-hora-da-grade",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "grade",
+      "pede_comentario": false,
+      "rotulo": "Contar pelo horário da grade (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "relogio",
+      "pede_comentario": false,
+      "rotulo": "Manter pela hora do relógio"
+    }
+  ],
+  "pergunta": "A guarda que evita 2 posts no mesmo horário conta pela HORA DO RELÓGIO. Um upload manual às 22:12 contou como o post das 22:37 e o horário ficou sem vídeo novo. Troco a guarda para contar pelo HORÁRIO DA GRADE?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "A guarda de 1 post por horário conta pela hora do relógio",
+  "vigente": null
+}
