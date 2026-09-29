@@ -164,7 +164,15 @@ diário.
   legendas coladas perdeu dois parágrafos (o editor come o texto colado
   quando o Enter chega logo atrás; 85 de 230 letras no contador da tela) e
   o critério antigo de leitura a aprovou: a `historia_00031:celular:p06`
-  está no TikTok sem "Eu escrevo e conto…" e "O que você faria…". O modo vai
+  ficou no TikTok sem "Eu escrevo e conto…" e "O que você faria…" —
+  **corrigida em 28/09, 23:17** (decisão `legenda-h31-p06`) por
+  `tiktok.corrigir_legenda(tiktok_id, texto)`: abre o editor do post
+  (`/tiktokstudio/upload/post/<id>`, o lápis da lista), escreve com
+  `_escrever_legenda`, exige o campo **igual** ao texto antes de salvar (no
+  ensaio das 23:13 a digitação neste editor saiu embaralhada — o cursor
+  pulou — e a leitura por linha pegou, mas não confere ordem) e prova pelo
+  `desc` do `item_list` depois de salvar (`mesma_legenda`): post
+  `7690426388284771592`, 230 caracteres, igual ao catálogo. O modo vai
   ao ledger (`prova[].escrita`, `prova[].legenda_modo`); a foto da falha, a
   `outputs\_publicar\telas\`.
 - **Contador que mentia, de novo** (27/09): `estoque_por_formato` contava
