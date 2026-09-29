@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "7ce009d4",
+      "em": "2026-09-29T02:25:07",
+      "evento": "2026-09-29T02:24:46",
+      "linha": 47,
+      "nota": "grok.com com a conta X dele; o login já foi feito por ele às ~01:35 e o cliente do Grok entrou em 186b345",
+      "opcao": "grok-site",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "O cliente de navegador é o mesmo dos outros (perfil próprio grok__principal). Você faz o login UMA vez no perfil; depois a automação usa. Cota e o que é grátis vão para a ficha.",
   "criado": "2026-09-29T01:29:00.593402",
   "depende_de": [],
