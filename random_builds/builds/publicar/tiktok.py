@@ -640,6 +640,127 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         return estado
 
 
+# O EDITOR DE UM POST JA PUBLICADO. Achado em 28/09/2026 pelo lapis da lista
+# do Studio (`tiktokstudio/content`): ele abre esta pagina, com a legenda
+# editavel e os botoes "Salvar" / "Cancelar".
+URL_EDITAR = ("https://www.tiktok.com/tiktokstudio/upload/post/{id}"
+              "?from=creator_center")
+BOTAO_SALVAR = (
+    'button:has-text("Salvar")',
+    'button:has-text("Save")',
+)
+ESPERA_LISTA_DO_STUDIO_S = 60.0
+
+
+def mesma_legenda(no_ar: str | None, texto: str) -> bool:
+    """A legenda que o TikTok devolve e o texto, iguais?
+
+    Pelo espaco normalizado, e so por ele: o `desc` do Studio devolve os
+    paragrafos com o espaco que o editor guardou, e a pergunta aqui e se o
+    TEXTO e o mesmo — nao um criterio frouxo como "as primeiras palavras".
+    `None` (nao consegui ler) nunca e igual.
+    """
+    if no_ar is None:
+        return False
+    return " ".join(str(no_ar).split()) == " ".join(str(texto or "").split())
+
+
+def legenda_no_studio(page, tiktok_id: str,
+                      espera: float = ESPERA_LISTA_DO_STUDIO_S) -> str | None:
+    """O `desc` do post como o TikTok o guarda (JSON `item_list` do Studio).
+
+    E a mesma fonte das metricas (`tiktok_metricas`), e nao a tela: o campo
+    do editor mostra o que se digitou, o `item_list` mostra o que ficou
+    salvo. `None` se o post nao veio na primeira pagina da lista.
+    """
+    from .tiktok_metricas import LISTA, URL_CONTEUDO
+    achados: dict = {}
+
+    def ouvir(resp):
+        if LISTA not in resp.url:
+            return
+        try:
+            corpo = resp.json()
+        except Exception:                                      # noqa: BLE001
+            return
+        for bruto in corpo.get("item_list") or []:
+            achados[str(bruto.get("item_id"))] = str(bruto.get("desc") or "")
+
+    page.on("response", ouvir)
+    page.goto(URL_CONTEUDO, wait_until="domcontentloaded", timeout=90_000)
+    fim = time.time() + espera
+    while str(tiktok_id) not in achados and time.time() < fim:
+        page.wait_for_timeout(1000)
+    return achados.get(str(tiktok_id))
+
+
+def corrigir_legenda(tiktok_id: str, texto: str, *, canal: str = "historias",
+                     salvar: bool = True, progresso=None) -> dict:
+    """Reescreve a legenda de um post JA PUBLICADO e confere o que ficou.
+
+    Existe pela decisao `legenda-h31-p06` (28/09/2026): a legenda da
+    `historia_00031:celular:p06` saiu com 109 de 230 caracteres — o editor
+    comeu dois paragrafos colados e o criterio antigo de leitura aprovou.
+    A escrita e a MESMA do upload (`_escrever_legenda`: digita primeiro,
+    le o campo de volta exigindo cada linha), e a prova final e o `desc` que
+    o proprio TikTok devolve depois de salvar, comparado com o texto
+    (`mesma_legenda`). Com `salvar=False` escreve, confere o campo e sai sem
+    clicar em nada (o editor descarta ao fechar).
+    """
+    def passo(frase: str):
+        print(f"[tiktok] {frase}", flush=True)
+        if progresso:
+            progresso(frase)
+
+    laudo: dict = {"tiktok_id": str(tiktok_id), "canal": canal,
+                   "salvou": False, "no_ar": None, "conferida": False}
+    with atividade.fabrica("publicacao", f"TikTok: legenda de {tiktok_id}",
+                           canal=canal, etapa="publicar.tiktok.legenda",
+                           ref=str(tiktok_id)), \
+            contexto_persistente(headless=False,
+                                 profile=perfil_da_conta(canal)) as ctx:
+        page = _abrir(ctx, URL_EDITAR.format(id=tiktok_id))
+        passo("abrindo o editor do post...")
+        page.wait_for_timeout(5000)
+        if "login" in page.url:
+            raise TikTokFalhou("o TikTok pediu login; nada foi mudado.")
+        if not _escrever_legenda(page, texto, passo, laudo):
+            raise TikTokFalhou(
+                f"a legenda nao entrou no editor ({laudo.get('legenda')}); "
+                "nada foi salvo.")
+        # O CAMPO INTEIRO, NA ORDEM, antes de salvar. `_escrever_legenda`
+        # confere que cada linha esta la, nao a ordem — e no ensaio de
+        # 28/09, 23:13, a digitacao neste editor saiu EMBARALHADA (o cursor
+        # pulou e "Eu escrevo..." foi parar depois das hashtags). Salvar um
+        # texto fora de ordem trocaria uma legenda curta por uma errada.
+        campo = _primeiro(page, CAMPO_LEGENDA, timeout=10.0)
+        try:
+            laudo["campo"] = campo.inner_text() if campo is not None else None
+        except Exception:                                      # noqa: BLE001
+            laudo["campo"] = None
+        if not mesma_legenda(laudo["campo"], texto):
+            laudo["tela"] = escrita.fotografar(page, "tiktok_legenda_campo")
+            raise TikTokFalhou(
+                "o campo nao ficou IGUAL ao texto (ordem ou pedaco); nada foi "
+                f"salvo. Campo: {str(laudo['campo'])[:120]!r}")
+        if not salvar:
+            passo("legenda escrita e conferida no campo; NAO salvei.")
+            return laudo
+        botao = _primeiro(page, BOTAO_SALVAR, timeout=15.0)
+        if botao is None:
+            raise TikTokFalhou("nao achei o botao Salvar; nada foi salvo.")
+        botao.click(timeout=int(ESPERA_HABILITAR_S * 1000))
+        laudo["salvou"] = True
+        passo("Salvar clicado; conferindo no Studio...")
+        page.wait_for_timeout(8000)
+        laudo["tela"] = escrita.fotografar(page, "tiktok_legenda_salva")
+        laudo["no_ar"] = legenda_no_studio(page, tiktok_id)
+        laudo["conferida"] = mesma_legenda(laudo["no_ar"], texto)
+        passo("legenda no ar IGUAL ao texto." if laudo["conferida"] else
+              f"a legenda no ar NAO confere: {laudo['no_ar']!r}")
+    return laudo
+
+
 def main(argv=None) -> int:
     import argparse
 
