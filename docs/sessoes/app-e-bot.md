@@ -130,7 +130,7 @@ e um servidor esquecido nela já quebrou o login.
 
 ```bash
 python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 671 testes (29/09, 15h)
-python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 90 (correio, carteiro e imagem, §10 e §13)
+python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 93 (correio, carteiro e imagem, §10 e §13)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -1355,7 +1355,7 @@ Imagem pedida sem `Range` vem inteira com 200 até 24 MB
   folha do sistema, com o arquivo; sem suporte, "use ⬇ Baixar");
 - a **galeria** por IA (no 🎲 Livre, todas), em 3 colunas.
 
-**Testes:** `ias/test_imagem.py` (35: o pedido no correio, o caso ZERO,
+**Testes:** `ias/test_imagem.py` (38: o pedido no correio, o caso ZERO,
 os geradores pela ficha, o carteiro gerando arquivo com prova e bytes
 originais, sem prova → nada no disco, recusa de conteúdo, cota → motivo e
 fora do rodízio, parede reabre uma vez / duas vezes falha, gerador que não
@@ -1391,3 +1391,69 @@ as conferências OK, 0 erros de JS; telas em
   aparece no balão; o Grok tem os três modos e a imagem fica na conversa.
 - A prova pegou um defeito: trocar de chip não redesenhava os modos (o Grok
   aparecia com os modos do PicassoIA, sem 💬). Consertado antes do commit.
+
+**O gato do Gemini (`dde066f1`), de verdade:**
+- 15:23: reenviado **uma vez** depois do 983083f (delta `situacao:
+  pendente`, `nota: "reenviada uma vez…"`). A espera reconheceu a imagem em
+  **25 s** ("resposta com imagem (1024x559) e 0 chars"), contra os 420 s e a
+  falha de 14:31. Mas o download pelo `src` falhou: a sessão não devolveu
+  imagem e o `fetch` da página deu "Failed to fetch" (CORS do
+  googleusercontent);
+- diagnóstico na casa, só leitura (`scratchpad/diag_botao_gemini.py`): cada
+  imagem tem "Baixar imagem no tamanho original", que nasce **disabled** até
+  a imagem carregar (a conversa rola num container próprio; imagem fora da
+  vista não carrega). O clique busca `gg` (texto) e `rd-gg` (o JPEG inteiro)
+  e só então solta o download `Gemini_Generated_Image_*.jfif`. Com a API
+  síncrona do patchright o evento só chega dentro de uma chamada: esperar
+  com `time.sleep` o perde (`wait_for_timeout`, sim). E um `src` vazio fazia
+  o `fetch("")` baixar a própria página (864 KB de HTML) — agora recusado;
+- dd4f4dc: `imagem.baixar_pelo_botao` (só o Gemini tem botão medido,
+  `BOTAO_BAIXAR`), e depois o `src`;
+- o gato foi **recuperado da casa sem mandar nada de novo**
+  (`scratchpad/recuperar_gato.py`, com a trava da conta): o JPEG original,
+  **2816×1536, 2.992.466 bytes** (a tela mostrava 1024×559), com a prova do
+  turno, em `ias\gemini\imagens\dde066f1.jpg`; a mensagem virou
+  "respondida · (imagem · 2816x1536 · 2922 KB)" e o **Telegram recebeu o
+  documento**.
+
+**A prova real do PicassoIA (29/09, 15:41–15:43)**, pelo app de ponta a
+ponta: 8934 com o **correio real** (`servidor_conversa.py … --correio-real`)
+e o **carteiro real** (PID 8776, reiniciado às 15:40 com o código novo),
+390×844, clicando (`scratchpad/prova_imagem.py … real`). Todas as
+conferências OK, 0 erros de JS; telas em
+`E:\projetos-wt\_prova_imagem_real\telas\real_*.png`, relatório em
+`prova_real.txt`:
+- Vila → PicassoIA → 🎨 Criar → "a red circle on white", 1:1 → a tela
+  fechada (de volta à Vila);
+- o carteiro: sessão válida, proporção 1:1, quantidade 1, presets
+  `modelo=PICASSOIA IMAGE`, prompt de 21 chars enviado; "imagem pronta
+  (1024x1024) em 4s" — e **"a imagem que apareceu primeiro NÃO é a do nosso
+  prompt; vale a do card do histórico"**: a guarda da conta compartilhada
+  trabalhou ao vivo;
+- 15:42:47 "imagem gravada (2d16d86d.jpg, 21 KB, prova historico_prompt) em
+  68s"; 15:42:50 "aviso no Telegram entregue" (o documento);
+- de volta ao Criar: a miniatura carregada, "gerada 15:42 em 68 s ·
+  PICASSOIA IMAGE", "prova: card do histórico"; `2d16d86d.jpg` (1024×1024,
+  21.779 bytes) e `2d16d86d.prova.json` (`forca: forte`) em
+  `%LOCALAPPDATA%\neural-fights\ias\picasso\imagens\`; a imagem é um
+  círculo vermelho sobre branco;
+- tela cheia; ⬇ Baixar = o arquivo do PC **byte a byte**; ↗ Compartilhar
+  busca os bytes; galeria com a imagem.
+- A foto `real_7_gerada.png` mostrou o Criar (preso embaixo) cobrindo
+  metade da miniatura: ele deixou de ser `sticky` (`#conversa-criar {
+  position: static }`); conferido depois: miniatura em y 442–702, o Criar
+  começa em 760 (`real_10_criar_depois_do_ajuste.png`).
+
+**Pendências e o que é do Adrian:**
+- Grok e ChatGPT gerando imagem **não foram provados ao vivo** (nem o
+  Criar deles nem a imagem na conversa); o botão de baixar só foi medido no
+  Gemini. A primeira imagem de cada um mede (e pode pedir o botão deles em
+  `BOTAO_BAIXAR`);
+- DreamFace: sem cliente com prova de origem e créditos 0 (01/09). Digen:
+  vídeo a partir de imagem é o **próximo passo** (a imagem gerada aqui pode
+  ser a entrada; o `DigenClient` das builds já anexa uma referência);
+- o rodízio é simples de propósito (ordem fixa, cota por falha recente); a
+  fase 3 amplia (peso, custo, qualidade);
+- modelo: nenhum cliente troca de modelo de imagem hoje (o PicassoIA fica
+  no "PicassoIA Image" da URL do criador); o seletor aparece quando uma
+  ficha der mais de um.

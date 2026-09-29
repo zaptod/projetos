@@ -712,6 +712,9 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 /* ---- pedir imagem (29/09, tarde): o "🎨 Criar", a imagem no balão, a
    galeria e a tela cheia */
 .conversa-modos { margin-top: -6px; }
+/* o Criar é alto (aviso + prompt + proporção): preso embaixo, cobria metade
+   da miniatura a 390x844 (prova real, 15:42); ele fica no fim da folha */
+#conversa-criar { position: static; }
 .criar-aviso { margin-bottom: 6px; font-size: 13px; }
 .criar-aviso.erro { color: var(--erro); }
 .conversa-caixa select { font: inherit; font-size: 14px; padding: 4px 6px; border-radius: 6px;
