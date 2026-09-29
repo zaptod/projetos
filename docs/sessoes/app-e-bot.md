@@ -1105,5 +1105,12 @@ rodada das 10:24 mostra o texto; a prova agora espera até 12 s):
   Espere `#toast.oculto` antes do próximo toque. O clique de "Confirmar" do
   diálogo também espera um quadro no headless.
 
+**O 8931 foi reiniciado às 10:55:01** (`scratchpad/reiniciar_app.ps1`, pela
+tarefa, na janela :55–:10): PID 14360, escutando às 10:55:09, com o e298df7
+(a fila em cards) e o db3f438 (o prédio do Grok) juntos. Até esse reinício o
+servidor antigo servia a casca nova do disco com o código antigo em memória:
+uma reordenação pelo celular voltaria 409 "item da fila inválido" — por
+isso casca e código sobem no mesmo commit e o reinício vem logo atrás.
+
 **Fica para o Adrian decidir:** nada novo — reordenar continua sendo
 "comando pendente até o orquestrador aplicar", como o resto da Mesa.
