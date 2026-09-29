@@ -256,6 +256,12 @@ ids na linha) fechou em `10142b1` (28/09).
   `youtube_id`, e a parte retida que sai vai à lista "a conferir".
   **Não** use `historias/main.py publicar <id> --youtube`: não passa por
   guarda nenhuma e grava sem `prova`. As três são retidas (a IA reprovou).
+  Feito em 28/09: `00027:p01` → `-eM6_bHHzl0` (22:10) e `00032:p04` →
+  `YqbQUrY1nuE` (22:14), públicos, título e descrição idênticos ao catálogo
+  pela API, linhas 341/342 do ledger com `youtube_id`. **O Studio retomou o
+  upload inacabado de 27/09**: `YqbQUrY1nuE` era o rascunho de título
+  cortado e virou a publicação inteira (um só vídeo da p04 no canal). O
+  rascunho `fn1_Sy3RpMk` da h27 p01 segue privado (decisão: manter).
 - **NÃO usar `postar.py --recuperar --so historias`** para isso. O `--ver`
   de 28/09 lista 7 na fila, e o primeiro que ele tornaria público é
   `p-hNfT12nX8` — um *build* que caiu no canal de histórias em 31/08 (o
@@ -265,10 +271,10 @@ ids na linha) fechou em `10142b1` (28/09).
   duas vezes) e as p03 das h5 e h4 (`VLTo6aSjXJ8`, `iR1K7Up0y4k`), que o
   ledger dá como publicadas. A recuperação do YouTube só é ligada para
   builds de propósito.
-- **Rascunhos das falhas de escrita** (privados, ninguém apaga sem ele):
-  histórias `pPACnX6RZ18` ("final celular p03", 20/09), `fn1_Sy3RpMk` (h27
-  p01, descrição cortada, 22/09), `YqbQUrY1nuE` (h32 p04, título cortado,
-  upload nunca terminou, 27/09); builds `YUgFci9d_5Y` ("final celular",
+- **Rascunhos das falhas de escrita** (privados; decisão `rascunhos-e-privados`
+  de 28/09: manter, não apagar): histórias `pPACnX6RZ18` ("final celular p03",
+  20/09), `fn1_Sy3RpMk` (h27 p01, descrição cortada, 22/09) — o
+  `YqbQUrY1nuE` (h32 p04) deixou de ser rascunho em 28/09, ver acima; builds `YUgFci9d_5Y` ("final celular",
   duelo_00010, 27/09), `_9d1f2LPYw4` e `Vt04zdE4o1k` (15/09). Nenhum deles
   entra na recuperação de builds (descrição vazia).
 - **Variantes B**: em 27/09, 23:55, as 25 estavam fora da fila por título
