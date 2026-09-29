@@ -124,7 +124,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 636 testes (29/09)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 643 testes (29/09)
 python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 53 (o correio e o carteiro, §10)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
@@ -430,6 +430,7 @@ python -m remoto.orquestrador relato <id> "uma linha"
 python -m remoto.orquestrador agente-fim <id> [--situacao concluido|falhou|parado] [--commit H]...
 python -m remoto.orquestrador fila adicionar --parte P --item T [--posicao N]
 python -m remoto.orquestrador fila mover <id> subir|descer|topo
+python -m remoto.orquestrador fila ordenar <id> <id> ...   # a ordem final inteira (§11)
 python -m remoto.orquestrador fila remover <id>
 python -m remoto.orquestrador fila listar
 python -m remoto.orquestrador decisao --titulo T --escolha E [--porque P] [--alternativa A] [--parte P]
@@ -498,7 +499,9 @@ python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
   - `geral/teto-da-semana`: hoje nada para quando a semana enche; só a
     sessão tem teto.
 - O que o `aplicado` faz sozinho, por comando:
-  - `priorizar`: reordena a fila;
+  - `priorizar`: reordena a fila. Desde 29/09 a forma que o app manda é
+    `{"ordem": [ids...], "esperava": versão}` — a ordem final inteira, um
+    comando por reordenação (§11). `{item, direcao}` continua valendo;
   - `adicionar_a_fila` (`{parte, item}`) põe no fim, com `pedido: Adrian`;
     `tirar_da_fila` (id) tira, e recusa se o item não existe (desde 28/09,
     noite: antes a Mesa só subia e descia);
@@ -935,15 +938,14 @@ conferências OK, 0 erros de JS; telas em
 - o chip do Grok abre a caixa dele vazia.
 
 **Pendências desta fase:**
-- **prédio do Grok na Vila** (painel-e-vila): `painel/flutuante/dados.py:
-  PREDIOS` e a arte não têm o Grok; no app ele entra pelos chips da tela
-  Conversar. Sem prédio, a resposta dele não vira balão no canvas (só no
-  Telegram e na tela);
+- ~~**prédio do Grok na Vila**~~ — feito em 29/09 pela parte painel-e-vila
+  (db3f438: `remoto/app/vila.js`, `conversa.js`); o Grok tem prédio e a
+  resposta dele vira balão no canvas;
 - **tarefa do Windows para o carteiro** (`NeuralFights_carteiro`): o
   agente não pôde registrar; o XML e o comando estão no fim desta seção;
 - anexo no DeepSeek (seletores, historias);
-- o balão no canvas fica atrás do placar quando o prédio está na fileira de
-  cima com a câmera no topo (o cartão mostra a resposta de qualquer jeito).
+- ~~o balão no canvas fica atrás do placar~~ — feito no mesmo db3f438: o
+  balão desvia do placar.
 
 **O envio REAL de ponta a ponta (29/09, 07:55–07:56):** pelo app (instância
 8936 com a casca nova, pareamento próprio e o correio **real**), "PEDIDO DE
@@ -984,3 +986,124 @@ Até lá o carteiro sobe à mão (`python -m ias carteiro --saida
 outputs\carteiro.txt`, uma vez; ele fica no ar). Com ele parado, a tela diz
 "o carteiro está parado (sinal HH:MM): a mensagem fica na caixa até ele
 voltar", e nada se perde.
+
+## 11. A fila em cards que ele rearranja arrastando (29/09/2026)
+
+Pedido do Adrian pela Mesa (09:1x, `d04cce3f`): "mude a forma da fila para
+cards que eu possa rearranjar sem problemas". O que incomodava, medido no
+`comandos.jsonl`: para pôr um item no topo ele mandou **6 "subir" seguidos**,
+cada um um comando pendente até o orquestrador aplicar.
+
+**O comando.** `priorizar` ganhou a forma `{"ordem": [ids...], "esperava":
+versão}` — a ordem final inteira, **um comando por reordenação**, idempotente:
+- `fila_versao` (em `para_o_app`) é um resumo (sha1[:8]) da ORDEM dos ids; a
+  tela guarda o que viu e devolve como `esperava`. Diferente da atual = a fila
+  mudou no PC no meio do arrasto: o servidor responde **409 com
+  `codigo: "fila_mudou"`** (`orquestrador.FilaMudou`) e a `fila_versao` que
+  vale; a tela avisa "a fila mudou no PC enquanto você arrastava" e reabre
+  com a atual. Sem `esperava` (a CLI, uma casca antiga) não confere versão;
+- na entrada (`gravar_comando`) é **estrito**: id que a fila não tem, item
+  que a ordem não diz onde fica, id repetido → Recusa (409). Ordem igual à
+  atual **não vira comando**: a resposta traz `ja_estava: true` e a tela diz
+  "já estava nessa ordem". A mesma ordem nova duas vezes (toque duplo) é um
+  comando só, como os outros — só o `priorizar` de um item (`{item,
+  direcao}`, que continua valendo) soma;
+- no `aplicado` é **tolerante**, porque entre o toque e a aplicação o
+  orquestrador pode ter posto ou tirado um item: id que já saiu é pulado, e
+  item que entrou depois fica no fim; os dois vão para a nota do comando
+  ("2 item(ns) entrou(aram) depois e ficou(aram) no fim"). Ordem que já
+  vale na hora de aplicar dá nota "já estava assim";
+- a CLI ganhou `fila ordenar <id> <id> ...` (estrita como o app).
+
+**A tela** (`app/orquestrador.js`, seção "fila"): cada item é um card
+(`.orq-card`) com a cor da parte na borda esquerda e o emoji dela
+(`ORQ_PARTE`: 🧭 geral, 🎲 builds, 📖 historias, 📣 publicacao, 📊 metricas,
+📱 app-e-bot, 🏘 painel-e-vila, 🧟 jogo-zombie), o título, o id curto
+(`#abcd1234`) e a situação (pedido por Adrian, desde, ordem pedida
+(pendente), tirar pedido (pendente)). O menu `⋯` tem **⤒ topo**, **⤓ fim** e
+**✕ tirar** (com o diálogo de confirmação de sempre); topo e fim também
+mandam a ordem inteira. Os botões ↑/↓ saíram.
+- **Arrastar e soltar** por Pointer Events, sem biblioteca: a alça `⠿`
+  (`touch-action: none`) começa na hora; no resto do card é toque longo
+  (400 ms parado; mexer antes é rolagem normal). O card vira um fantasma
+  (`position: fixed`) que segue o dedo, o lugar dele fica como placeholder,
+  os vizinhos deslizam (FLIP leve, `transition: transform .15s`), e perto
+  da borda da tela rola sozinho. `prefers-reduced-motion` desliga as
+  transições. Um `touchmove` não passivo faz `preventDefault` só com o
+  arrasto ligado, para o navegador não cancelar o pointer.
+- **Enquanto o orquestrador não aplica**, os cards ficam **listrados**
+  (`.pendente`) na ordem pedida (o pendente mais novo de ordem inteira,
+  `orqOrdemMostrada`, com a mesma tolerância do `aplicado`). Aplicado, a
+  releitura de 10 s limpa as listras; **recusado**, os cards voltam ao lugar
+  e a situação diz "a última ordem pedida foi recusada: motivo" por 10 min.
+- **Sem briga com o PC:** durante o arrasto `orqDesenharFila` não redesenha
+  (`Orq.fila.arrastando`); o `Orq.dados` segue sendo relido, mas a versão
+  que vai no `esperava` é a da fila **desenhada** (`versaoVista`), capturada
+  antes do redesenho local — a prova pegou a primeira versão mandando a
+  versão nova, que batia sem ele ter visto a mudança (o 409 saía como "a
+  ordem não diz onde fica o item…").
+- `ErroApi` (`app.js`) agora leva `codigo` e `dados` do corpo do erro.
+- Casca `v17` (`sw.js`; o v16 foi o prédio do Grok, db3f438).
+
+**Testes** (`test_orquestrador.py`, +7): reordenação completa num comando
+(com `fila_versao` mudando e a linha do tempo), id desconhecido / faltando /
+repetido e as formas inválidas, ordem igual (`ja_estava`, toque duplo), a
+rota com `esperava` velho → 409 `fila_mudou` (e com a versão certa → 200;
+sem `esperava` → 200), o `aplicado` tolerante (item saiu, item entrou, "já
+estava assim"), o caso ZERO (fila vazia tem versão; ordem vazia "já estava";
+id qualquer é desconhecido; `esperava` errado é 409) e a CLI `fila ordenar`.
+Suíte do `remoto/`: 643 verdes.
+
+**Prova de tela (29/09, 10:3x):** 390×844, `is_mobile` + toque, na 8934
+(`scratchpad/prova_fila_cards.py` + `servidor_conversa.py`: estado próprio
+que nasce vazio, Grimório clonado, casca copiada). Arrasto simulado pelo
+`page.mouse` (Pointer Events), conferido pelo DOM e pelos arquivos; telas em
+`E:\projetos-wt\_prova_fila\telas\`, relatório em `prova_fila.txt`. 0 erros
+de JS (o único erro de console é o 409, de propósito). Na última rodada,
+43 de 44 conferências OK; a que falhou lia "tirar pedido (pendente)" no
+card 0,6 s depois do POST, antes da releitura (a tela `10b_tirado.png` da
+rodada das 10:24 mostra o texto; a prova agora espera até 12 s):
+- caso ZERO: "A fila está vazia.", nenhum card;
+- 5 itens pela CLI viram 5 cards, 4 cores, emoji e id curto;
+- arrastar o 5.º para o topo pela alça: fantasma, placeholder já no topo
+  antes de soltar; ao soltar, a tela mostra a ordem nova listrada e grava
+  **um** comando `priorizar` com a ordem inteira e `esperava` = a versão
+  vista; `aplicado` pela CLI limpa as listras em ≤ 15 s;
+- `⋯` → ⤓ fim manda a ordem inteira com o item no fim;
+- soltar no mesmo lugar: nenhum comando;
+- a fila muda no PC (CLI) durante o arrasto, com a releitura de 10 s no
+  meio: o arrasto sobrevive, ao soltar sai 409, toast "a fila mudou no PC
+  enquanto você arrastava", nenhum comando gravado, a tela reabre com os 6;
+- toque longo no corpo do card também arrasta;
+- `aplicado --recusado "motivo"`: os cards voltam e a situação diz o motivo;
+- ✕ tirar pede confirmação e vira `tirar_da_fila`; o card diz "tirar pedido
+  (pendente)" e sai quando aplicado;
+- "O que você mandou" descreve "a ordem inteira (N)".
+
+**Armadilhas da prova (não são do app):**
+- **Chrome headless segura os eventos de ponteiro na fila de entrada até o
+  próximo quadro.** Medido: `mouse.up()` volta em 5 ms, e o POST só saía na
+  chamada seguinte do driver; sem `setPointerCapture` era igual. Uma
+  captura de tela (força um quadro) ou um `mouse.move` de 1 px depois do
+  `down`/`up` entrega o evento em ~0,1 s. Sem isso o `pointerdown` do toque
+  longo chegava tarde, o timer de 400 ms começava atrasado, os moves o
+  cancelavam e o mouse **selecionava texto** em vez de arrastar. No celular
+  há quadros o tempo todo durante o arrasto.
+- **A API síncrona do patchright só entrega eventos (`request`, `console`)
+  dentro de uma chamada**: o carimbo de tempo de um `page.on("request")`
+  é o da chamada que bombeou o laço, não o do pedido. Meça pelos arquivos
+  do servidor.
+- **Um `MutationObserver` que escreve no DOM que observa trava a página**
+  (laço de microtarefas): a primeira versão do observador de toasts fez a
+  tela "congelar" depois de qualquer toast. Observe só `class` do `#toast`
+  (`attributeFilter`) e escreva uma vez por texto.
+- Com 6 cards a lista passa de 844 px: role o card até a vista antes de
+  medir o centro (`scroll_into_view_if_needed`), senão o toque cai fora da
+  viewport e não chega a ninguém.
+- **O toast fica 8 s por cima do que está embaixo** (`position: fixed`,
+  `z-index` 40): um toque logo depois de um aviso cai no toast, não no card.
+  Espere `#toast.oculto` antes do próximo toque. O clique de "Confirmar" do
+  diálogo também espera um quadro no headless.
+
+**Fica para o Adrian decidir:** nada novo — reordenar continua sendo
+"comando pendente até o orquestrador aplicar", como o resto da Mesa.

@@ -89,7 +89,11 @@ function ha(segundos) {
 }
 
 class ErroApi extends Error {
-  constructor(mensagem, status) { super(mensagem); this.status = status; }
+  // `codigo` é o que o servidor manda quando a tela precisa distinguir o
+  // motivo (ex.: "fila_mudou" no 409 da reordenação); `dados` é o corpo.
+  constructor(mensagem, status, dados = {}) {
+    super(mensagem); this.status = status; this.codigo = dados.codigo || ""; this.dados = dados;
+  }
 }
 
 async function api(caminho, opcoes = {}) {
@@ -113,7 +117,7 @@ async function api(caminho, opcoes = {}) {
   }
   let dados = {};
   try { dados = await resp.json(); } catch (err) { /* 502 do serve vem em texto */ }
-  if (!resp.ok) throw new ErroApi(dados.erro || `erro ${resp.status}`, resp.status);
+  if (!resp.ok) throw new ErroApi(dados.erro || `erro ${resp.status}`, resp.status, dados);
   return dados;
 }
 

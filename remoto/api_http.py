@@ -882,6 +882,11 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json({"feito": True, "comando": linha, "vigia": vigia})
             feito = orquestrador.contestar(str(corpo.get("id") or "")[:20],
                                            str(corpo.get("comentario") or ""), self._id)
+        except orquestrador.FilaMudou as exc:
+            # a tela distingue pelo codigo: reabre com a fila atual e avisa
+            return self._json({"erro": str(exc), "codigo": "fila_mudou",
+                               "fila_versao": orquestrador.fila_versao(
+                                   orquestrador.ler_estado()["fila"])}, 409)
         except orquestrador.Recusa as exc:
             return self._erro(409, str(exc))
         except OSError:

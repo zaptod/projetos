@@ -300,51 +300,293 @@ function orqSemNoticia(a) {
 }
 
 // ----------------------------------------------------------------- fila
+// A fila em CARDS que ele rearranja arrastando (29/09: "mude a forma da fila
+// para cards que eu possa rearranjar sem problemas" — antes, por um item no
+// topo eram 6 "subir" seguidos). Soltar manda UM comando, a ordem inteira,
+// com a versão da fila que a tela viu (`esperava`): se a fila mudou no PC
+// no meio do arrasto, o servidor responde 409 e a tela reabre com a atual.
+// Enquanto o orquestrador não aplica, os cards ficam listrados ("pendente")
+// na ordem pedida; recusado, voltam ao lugar.
+const ORQ_PARTE = {
+  geral: ["🧭", "#6b4526"], builds: ["🎲", "#8a4b1f"], historias: ["📖", "#5b3a7a"],
+  publicacao: ["📣", "#a8321f"], metricas: ["📊", "#2f6b7d"], "app-e-bot": ["📱", "#2f7d4f"],
+  "painel-e-vila": ["🏘", "#b8661b"], "jogo-zombie": ["🧟", "#4f6b2f"],
+};
+const ORQ_TOQUE_LONGO_MS = 400;
+const ORQ_RECUSA_RECENTE_S = 10 * 60;
+// o estado do arrasto e da ordem que acabou de ser pedida
+Orq.fila = {arrastando: false, versaoVista: null, ordemLocal: null, menuAberto: null};
+
+function orqParte(parte) {
+  return ORQ_PARTE[parte] || ["📌", "#6b6e76"];
+}
+
+// A ordem que a tela mostra: a que acabou de ser solta (POST a caminho), ou
+// o pedido de ordem inteira mais novo ainda pendente, ou a do servidor. Os
+// itens que a ordem pedida não conhece ficam no fim (o mesmo que o
+// orquestrador faz ao aplicar).
+function orqOrdemMostrada(fila) {
+  const pendentes = orqPendentes("priorizar").filter((c) => c.valor && c.valor.ordem);
+  const pedida = Orq.fila.ordemLocal || (pendentes.length ? pendentes[0].valor.ordem : null);
+  if (!pedida) return {fila, pendente: false};
+  const porId = new Map(fila.map((f) => [f.id, f]));
+  const nova = pedida.filter((id) => porId.has(id)).map((id) => porId.get(id));
+  const vistos = new Set(nova.map((f) => f.id));
+  const ordenada = nova.concat(fila.filter((f) => !vistos.has(f.id)));
+  const igual = ordenada.every((f, n) => f.id === fila[n].id);
+  return {fila: ordenada, pendente: !igual};
+}
+
+function orqUltimaOrdemRecusada() {
+  const c = ((Orq.dados && Orq.dados.comandos) || [])
+    .find((x) => x.comando === "priorizar" && x.valor && x.valor.ordem);
+  if (!c || c.situacao !== "recusado") return null;
+  const idade = orqIdade(c.aplicado_em || c.em);
+  return idade != null && idade < ORQ_RECUSA_RECENTE_S ? c : null;
+}
+
 function orqDesenharFila(d) {
-  const fila = d.estado.fila || [];
+  // no meio de um arrasto a tela não redesenha: a fila que mudou no PC
+  // aparece ao soltar (e o `esperava` diz ao servidor o que ele viu)
+  if (Orq.fila.arrastando) return;
+  const filaServidor = d.estado.fila || [];
+  Orq.fila.versaoVista = d.fila_versao || null;
   const pausada = d.config.fila_pausada;
   const pedPausa = orqPendentes("pausar_fila").length;
   const pedRetomar = orqPendentes("retomar_fila").length;
-  $("orq-fila-situacao").textContent = (pausada ? "⏸ fila pausada" : "▶ fila andando")
+  const {fila, pendente} = orqOrdemMostrada(filaServidor);
+  const recusada = orqUltimaOrdemRecusada();
+  const situacao = $("orq-fila-situacao");
+  // replaceChildren escreveria "null" por extenso: só o que existe
+  situacao.replaceChildren(...[(pausada ? "⏸ fila pausada" : "▶ fila andando")
     + (pedPausa ? " · pausar pedido (pendente)" : "")
-    + (pedRetomar ? " · retomar pedido (pendente)" : "");
-  $("orq-fila-situacao").className = pausada ? "erro" : "fraco";
-  const movendo = orqPendentes("priorizar");
+    + (pedRetomar ? " · retomar pedido (pendente)" : "")
+    + (pendente ? " · ordem pedida (pendente)" : "")
+    + (fila.length ? " · segure e arraste para reordenar" : ""),
+    recusada ? el("div", {class: "erro"}, "⚠ a última ordem pedida foi recusada"
+      + (recusada.motivo ? `: ${recusada.motivo}` : "") + " — os cards voltaram ao lugar") : null,
+  ].filter(Boolean));
+  situacao.className = pausada ? "erro" : "fraco";
   const tirando = new Set(orqPendentes("tirar_da_fila").map((c) => c.valor));
-  const pondo = orqPendentes("adicionar_a_fila").map((c) => el("div", {class: "linha"},
-    el("span", {class: "orq-ordem"}, "+"),
-    el("span", {class: "corpo"}, c.valor.item,
-      el("div", {class: "fraco"}, `${c.valor.parte} · pedido (pendente)`))));
+  const pondo = orqPendentes("adicionar_a_fila").map((c) => el("div", {class: "orq-card pendente"},
+    el("span", {class: "orq-card-cor"}), el("span", {class: "orq-card-alca fraco"}, "+"),
+    el("span", {class: "orq-card-corpo"}, el("strong", {}, c.valor.item),
+      el("div", {class: "fraco"}, `${orqParte(c.valor.parte)[0]} ${c.valor.parte} · pedido (pendente)`))));
   const alvo = $("orq-fila");
   if (!fila.length) {
     alvo.replaceChildren(el("div", {class: "fraco"}, "A fila está vazia."), ...pondo);
     return;
   }
-  alvo.replaceChildren(...fila.map((f, n) => {
-    const subir = el("button", {class: "acao", "aria-label": "Subir"}, "↑");
-    const descer = el("button", {class: "acao", "aria-label": "Descer"}, "↓");
-    subir.disabled = n === 0;
-    descer.disabled = n === fila.length - 1;
-    subir.addEventListener("click", () => orqEnviar("priorizar", {item: f.id, direcao: "subir"}));
-    descer.addEventListener("click", () => orqEnviar("priorizar", {item: f.id, direcao: "descer"}));
-    const tirar = el("button", {class: "acao perigo", "aria-label": "Tirar da fila"}, "✕");
-    tirar.disabled = tirando.has(f.id);
-    tirar.addEventListener("click", async () => {
-      const r = await perguntar(`Tirar «${f.item}» (${f.parte}) da fila?`);
-      if (r === "confirmar") orqEnviar("tirar_da_fila", f.id);
-    });
-    const pedido = movendo.filter((c) => c.valor && c.valor.item === f.id)
-      .map((c) => c.valor.direcao).join(", ");
-    return el("div", {class: "linha"},
-      el("span", {class: "orq-ordem"}, String(n + 1)),
-      el("span", {class: "corpo"}, f.item,
-        el("div", {class: "fraco"}, f.parte + (f.pedido ? ` · pedido por ${f.pedido}` : "")
-          + (f.desde ? ` · desde ${quandoCurto(f.desde)}` : "")
-          + (pedido ? ` · ${pedido} (pendente)` : "")
-          + (tirando.has(f.id) ? " · tirar pedido (pendente)" : ""))),
-      subir, descer, tirar);
-  }), ...pondo);
+  const ids = fila.map((f) => f.id);
+  alvo.replaceChildren(...fila.map((f, n) => orqCard(f, n, ids, pendente, tirando)), ...pondo);
 }
+
+function orqCard(f, n, ids, pendente, tirando) {
+  const [emoji, cor] = orqParte(f.parte);
+  const card = el("div", {class: "orq-card" + (pendente ? " pendente" : ""), "data-id": f.id,
+                          role: "listitem"});
+  card.style.setProperty("--parte-cor", cor);
+  const alca = el("button", {class: "orq-card-alca", "aria-label": `Arrastar ${f.item}`,
+                             title: "arraste para reordenar"}, "⠿");
+  const situacao = [`${emoji} ${f.parte}`, `#${String(f.id).slice(0, 8)}`];
+  if (f.pedido) situacao.push(`pedido por ${f.pedido}`);
+  if (f.desde) situacao.push(`desde ${quandoCurto(f.desde)}`);
+  if (pendente) situacao.push("ordem pedida (pendente)");
+  if (tirando.has(f.id)) situacao.push("tirar pedido (pendente)");
+  const corpo = el("span", {class: "orq-card-corpo"},
+    el("strong", {}, f.item), el("div", {class: "fraco"}, situacao.join(" · ")));
+  const menuBtn = el("button", {class: "orq-card-mais", "aria-label": "Mais opções",
+                                "aria-expanded": String(Orq.fila.menuAberto === f.id)}, "⋯");
+  const topo = el("button", {class: "acao"}, "⤒ topo");
+  const fim = el("button", {class: "acao"}, "⤓ fim");
+  const tirar = el("button", {class: "acao perigo"}, "✕ tirar");
+  topo.disabled = n === 0;
+  fim.disabled = n === ids.length - 1;
+  tirar.disabled = tirando.has(f.id);
+  topo.addEventListener("click", () => orqReordenar([f.id, ...ids.filter((i) => i !== f.id)]));
+  fim.addEventListener("click", () => orqReordenar([...ids.filter((i) => i !== f.id), f.id]));
+  tirar.addEventListener("click", async () => {
+    const r = await perguntar(`Tirar «${f.item}» (${f.parte}) da fila?`);
+    if (r === "confirmar") orqEnviar("tirar_da_fila", f.id);
+  });
+  const menu = el("div", {class: "orq-card-menu" + (Orq.fila.menuAberto === f.id ? "" : " oculto")},
+    topo, fim, tirar);
+  menuBtn.addEventListener("click", () => {
+    Orq.fila.menuAberto = Orq.fila.menuAberto === f.id ? null : f.id;
+    menu.classList.toggle("oculto", Orq.fila.menuAberto !== f.id);
+    menuBtn.setAttribute("aria-expanded", String(Orq.fila.menuAberto === f.id));
+  });
+  card.append(el("span", {class: "orq-card-cor", "aria-hidden": "true"}),
+    el("span", {class: "orq-ordem"}, String(n + 1)), alca, corpo, menuBtn, menu);
+  return card;
+}
+
+// Uma ordem nova (arrastar, topo ou fim): a tela mostra na hora, listrada, e
+// manda UM comando com a ordem inteira e a versão que viu.
+async function orqReordenar(ordem) {
+  const atual = ((Orq.dados && Orq.dados.estado.fila) || []).map((f) => f.id);
+  if (ordem.length === atual.length && ordem.every((id, n) => id === atual[n])) return;
+  // a versão que ele VIU é a da última fila desenhada — antes do redesenho
+  // abaixo, que já leria o Orq.dados novo (a releitura de 10 s corre durante
+  // o arrasto) e mandaria um `esperava` que bate sem ele ter visto a mudança
+  const esperava = Orq.fila.versaoVista || undefined;
+  Orq.fila.ordemLocal = ordem;
+  Orq.fila.menuAberto = null;
+  if (Orq.dados) orqDesenharFila(Orq.dados);
+  try {
+    const r = await api("/api/orquestrador/comando", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({comando: "priorizar", valor: {ordem, esperava}}),
+    });
+    if (r.comando && r.comando.ja_estava) avisar("a fila já estava nessa ordem");
+    else { const [texto, ruim] = orqTextoEnviado(r); avisar(texto, ruim); }
+  } catch (err) {
+    if (err.codigo === "fila_mudou") avisar("a fila mudou no PC enquanto você arrastava; "
+      + "reabri com a ordem atual — arraste de novo", true);
+    else avisar(err.message, true);
+  } finally {
+    // o que fica na tela é o do servidor: o pedido pendente (listrado) ou,
+    // recusado, a ordem de antes
+    Orq.fila.ordemLocal = null;
+  }
+  orqCarregar();
+}
+
+// ------------------------------------------------ arrastar e soltar (cards)
+// Pointer Events, sem biblioteca. A alça começa na hora; no resto do card é
+// toque longo (400 ms parado). O card vira um fantasma que segue o dedo e o
+// lugar dele fica como placeholder; os vizinhos deslizam (FLIP leve). Perto
+// da borda da tela, rola sozinho.
+function orqArrastavel(lista) {
+  const A = {ativo: false, id: null, card: null, fantasma: null, y0: 0, dy: 0, pointer: null,
+             timer: null, x0: 0, yIni: 0, rolagem: 0, ordemInicial: []};
+  const cards = () => [...lista.querySelectorAll(".orq-card[data-id]")];
+
+  function comecar(card, ev) {
+    if (A.ativo || !card || card.classList.contains("pendente") && Orq.fila.ordemLocal) return;
+    A.ativo = true;
+    Orq.fila.arrastando = true;
+    A.card = card;
+    A.pointer = ev.pointerId;
+    A.ordemInicial = cards().map((c) => c.dataset.id);
+    const r = card.getBoundingClientRect();
+    A.y0 = ev.clientY;
+    A.dy = 0;
+    const f = card.cloneNode(true);
+    f.classList.add("orq-card-fantasma");
+    f.classList.remove("placeholder");
+    f.style.top = `${r.top}px`; f.style.left = `${r.left}px`;
+    f.style.width = `${r.width}px`; f.style.height = `${r.height}px`;
+    document.body.append(f);
+    A.fantasma = f;
+    card.classList.add("placeholder");
+    try { card.setPointerCapture(ev.pointerId); } catch (e) { /* sem captura, segue */ }
+    if (navigator.vibrate) navigator.vibrate(12);
+    A.rolagem = requestAnimationFrame(rolar);
+  }
+
+  function mover(ev) {
+    if (!A.ativo || ev.pointerId !== A.pointer) return;
+    ev.preventDefault();
+    A.dy = ev.clientY - A.y0;
+    A.fantasma.style.transform = `translateY(${A.dy}px) scale(1.02)`;
+    encaixar(ev.clientY);
+  }
+
+  // o placeholder vai para onde o dedo está: antes do card cujo meio ele
+  // passou subindo, depois do card cujo meio passou descendo
+  function encaixar(y) {
+    const outros = cards().filter((c) => c !== A.card);
+    let alvo = null, antes = false;
+    for (const c of outros) {
+      const r = c.getBoundingClientRect();
+      const meio = r.top + r.height / 2;
+      if (y < meio) { alvo = c; antes = true; break; }
+      alvo = c; antes = false;
+    }
+    if (!alvo) return;
+    const irmaos = cards();
+    const posAtual = irmaos.indexOf(A.card);
+    const posAlvo = irmaos.indexOf(alvo) + (antes ? 0 : 1);
+    if (posAlvo === posAtual || posAlvo === posAtual + 1) return;
+    const antesRects = new Map(irmaos.map((c) => [c, c.getBoundingClientRect().top]));
+    if (antes) lista.insertBefore(A.card, alvo); else alvo.after(A.card);
+    // FLIP: cada vizinho sai de onde estava e desliza até o lugar novo
+    for (const c of irmaos) {
+      if (c === A.card) continue;
+      const delta = antesRects.get(c) - c.getBoundingClientRect().top;
+      if (!delta) continue;
+      c.style.transition = "none";
+      c.style.transform = `translateY(${delta}px)`;
+      requestAnimationFrame(() => {
+        c.style.transition = "";
+        c.style.transform = "";
+      });
+    }
+  }
+
+  function rolar() {
+    if (!A.ativo) return;
+    const alt = window.innerHeight;
+    const y = A.y0 + A.dy;
+    const margem = 70;
+    let passo = 0;
+    if (y < margem) passo = -Math.ceil((margem - y) / 6);
+    else if (y > alt - margem) passo = Math.ceil((y - (alt - margem)) / 6);
+    if (passo) { window.scrollBy(0, passo); encaixar(y); }
+    A.rolagem = requestAnimationFrame(rolar);
+  }
+
+  function soltar(ev, cancelado) {
+    if (!A.ativo || (ev && ev.pointerId !== A.pointer)) return;
+    A.ativo = false;
+    cancelAnimationFrame(A.rolagem);
+    const card = A.card, f = A.fantasma;
+    // o fantasma desliza até o buraco e some
+    const r = card.getBoundingClientRect();
+    f.style.transition = "transform .15s ease-out, opacity .15s";
+    f.style.transform = `translateY(${r.top - parseFloat(f.style.top)}px)`;
+    f.style.opacity = "0";
+    setTimeout(() => f.remove(), 160);
+    card.classList.remove("placeholder");
+    try { card.releasePointerCapture(A.pointer); } catch (e) { /* ok */ }
+    Orq.fila.arrastando = false;
+    A.card = A.fantasma = null;
+    const ordem = cards().map((c) => c.dataset.id);
+    const mudou = ordem.some((id, n) => id !== A.ordemInicial[n]);
+    if (cancelado || !mudou) {
+      if (Orq.dados) orqDesenharFila(Orq.dados);
+      return;
+    }
+    orqReordenar(ordem);
+  }
+
+  lista.addEventListener("pointerdown", (ev) => {
+    const card = ev.target.closest(".orq-card[data-id]");
+    if (!card || ev.button > 0) return;
+    if (ev.target.closest(".orq-card-alca")) { comecar(card, ev); return; }
+    if (ev.target.closest("button")) return;
+    // toque longo, parado: vira arrasto; mexer antes é rolagem normal
+    A.x0 = ev.clientX; A.yIni = ev.clientY;
+    clearTimeout(A.timer);
+    A.timer = setTimeout(() => { A.timer = null; comecar(card, ev); }, ORQ_TOQUE_LONGO_MS);
+  });
+  lista.addEventListener("pointermove", (ev) => {
+    if (A.timer && (Math.abs(ev.clientX - A.x0) > 8 || Math.abs(ev.clientY - A.yIni) > 8)) {
+      clearTimeout(A.timer); A.timer = null;
+    }
+    mover(ev);
+  });
+  lista.addEventListener("pointerup", (ev) => { clearTimeout(A.timer); A.timer = null; soltar(ev, false); });
+  lista.addEventListener("pointercancel", (ev) => { clearTimeout(A.timer); A.timer = null; soltar(ev, true); });
+  // com o arrasto ligado, o dedo não rola a página (e o navegador não
+  // cancela o pointer); antes do toque longo, rola normal
+  lista.addEventListener("touchmove", (ev) => { if (A.ativo) ev.preventDefault(); }, {passive: false});
+  lista.addEventListener("contextmenu", (ev) => {
+    if (ev.target.closest(".orq-card[data-id]")) ev.preventDefault();
+  });
+}
+orqArrastavel($("orq-fila"));
 
 // Pôr na fila: a parte e o que fazer. Vira comando; o orquestrador põe.
 async function orqPorNaFila() {
@@ -732,7 +974,7 @@ function orqValor(c) {
   const v = c.valor;
   if (v == null) return "";
   if (c.comando === "forca_total") return v ? `ligar (${v} min antes)` : "desligar";
-  if (c.comando === "priorizar") return `${v.direcao}`;
+  if (c.comando === "priorizar") return v.ordem ? `a ordem inteira (${v.ordem.length})` : `${v.direcao}`;
   if (c.comando === "contestar") return v.titulo || "";
   if (c.comando === "teto_uso") return `${v}%`;
   if (c.comando === "tirar_da_fila") {

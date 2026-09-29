@@ -754,3 +754,128 @@ def test_sem_config_a_mesa_nasce_como_o_grimorio_diz(mundo):
     (mundo.tmp / "orquestrador" / "config.json").unlink()
     assert O.ler_config()["teto_sessao_pct"] == 60        # agora o Grimorio diz 60
 
+
+
+# ================================================= a fila em cards (29/09)
+# Pedido do Adrian: "mude a forma da fila para cards que eu possa rearranjar
+# sem problemas". Antes, por um item no topo eram 6 "subir" seguidos. Agora o
+# `priorizar` leva a ordem final inteira, num comando so, idempotente.
+def _fila(*itens):
+    return [O.fila_adicionar("builds", nome)["id"] for nome in itens]
+
+
+def _ids():
+    return [f["id"] for f in O.ler_estado()["fila"]]
+
+
+def test_priorizar_pela_ordem_inteira_e_um_comando_so(mundo):
+    a, b, c, d = _fila("A", "B", "C", "D")
+    versao = O.para_o_app()["fila_versao"]
+    r = O.gravar_comando("priorizar", {"ordem": [d, a, b, c], "esperava": versao})
+    assert "ja_estava" not in r and len(O.pendentes()) == 1
+    O.aplicado(r["id"])
+    assert _ids() == [d, a, b, c]
+    assert [f["prioridade"] for f in O.ler_estado()["fila"]] == [1, 2, 3, 4]
+    assert O.pendentes() == []
+    # a versao acompanha a ordem, e e determinista
+    assert O.para_o_app()["fila_versao"] != versao
+    assert O.fila_versao(O.ler_estado()["fila"]) == O.para_o_app()["fila_versao"]
+    # a linha do tempo diz o que aconteceu, sem despejar os ids
+    assert "a ordem inteira" in O.ler_estado()["principal"]["movimento"]
+
+
+def test_priorizar_ordem_com_id_desconhecido_ou_faltando_e_recusada(mundo):
+    a, b = _fila("A", "B")
+    with pytest.raises(O.Recusa, match="não tem o item deadbeef"):
+        O.gravar_comando("priorizar", {"ordem": [b, a, "deadbeef"]})
+    with pytest.raises(O.Recusa, match="não diz onde fica"):
+        O.gravar_comando("priorizar", {"ordem": [b]})
+    with pytest.raises(O.Recusa, match="repete"):
+        O.gravar_comando("priorizar", {"ordem": [b, b]})
+    for ruim in ({"ordem": "a,b"}, {"ordem": [1, 2]}, {"ordem": [a, b], "esperava": "x"},
+                 {"ordem": ["../x"]}):
+        with pytest.raises(O.Recusa):
+            O.validar_comando("priorizar", ruim)
+    assert O.pendentes() == [] and _ids() == [a, b]
+    # a forma antiga segue valendo, por compatibilidade
+    O.aplicado(O.gravar_comando("priorizar", {"item": b, "direcao": "topo"})["id"])
+    assert _ids() == [b, a]
+
+
+def test_priorizar_ordem_igual_a_atual_nao_vira_comando(mundo):
+    a, b = _fila("A", "B")
+    r = O.gravar_comando("priorizar", {"ordem": [a, b]})
+    assert r["ja_estava"] is True and "id" not in r
+    assert O.pendentes() == []
+    # a MESMA ordem nova duas vezes (toque duplo) e um comando so
+    r1 = O.gravar_comando("priorizar", {"ordem": [b, a]}, "614c026b")
+    r2 = O.gravar_comando("priorizar", {"ordem": [b, a]}, "614c026b")
+    assert r2["repetido"] is True and r2["id"] == r1["id"]
+    assert len(O.pendentes()) == 1
+
+
+def test_priorizar_com_esperava_velho_da_409_com_codigo(servidor, mundo):
+    token = _parear(servidor)
+    a, b, c = _fila("A", "B", "C")
+    _, tela = _pedir(servidor, "GET", "/api/orquestrador", token=token)
+    visto = tela["fila_versao"]
+    # a fila muda no PC enquanto a tela esta aberta (o orquestrador pos um item)
+    d = O.fila_adicionar("geral", "D")["id"]
+    status, r = _pedir(servidor, "POST", "/api/orquestrador/comando",
+                       {"comando": "priorizar", "valor": {"ordem": [c, b, a], "esperava": visto}},
+                       token)
+    assert status == 409 and r["codigo"] == "fila_mudou" and "mudou no PC" in r["erro"]
+    assert r["fila_versao"] == O.fila_versao(O.ler_estado()["fila"]) != visto
+    assert O.pendentes() == [] and _ids() == [a, b, c, d]
+    # com a versao atual, entra; a resposta diz quem ouve, como sempre
+    status, r = _pedir(servidor, "POST", "/api/orquestrador/comando",
+                       {"comando": "priorizar", "valor": {"ordem": [d, c, b, a],
+                                                          "esperava": r["fila_versao"]}}, token)
+    assert status == 200 and r["comando"]["valor"]["ordem"] == [d, c, b, a]
+    # ordem igual a atual pela rota: 200, "ja estava", sem comando
+    status, r = _pedir(servidor, "POST", "/api/orquestrador/comando",
+                       {"comando": "priorizar", "valor": {"ordem": [a, b, c, d]}}, token)
+    assert status == 200 and r["comando"]["ja_estava"] is True
+    assert len(O.pendentes()) == 1
+    # sem `esperava` (a casca antiga, ou a CLI) nao confere versao
+    status, _ = _pedir(servidor, "POST", "/api/orquestrador/comando",
+                       {"comando": "priorizar", "valor": {"ordem": [b, a, c, d]}}, token)
+    assert status == 200
+
+
+def test_priorizar_ordem_no_aplicado_e_tolerante_a_fila_que_mudou(mundo):
+    # entre o toque e o `aplicado`, o orquestrador tirou um item e pos outro:
+    # o pedido nao e recusado, e a nota diz o que foi ajustado
+    a, b, c = _fila("A", "B", "C")
+    r = O.gravar_comando("priorizar", {"ordem": [c, b, a]})
+    O.fila_remover(a)
+    d = O.fila_adicionar("geral", "D")["id"]
+    linha = O.aplicado(r["id"])
+    assert _ids() == [c, b, d]
+    assert "já tinha(m) saído" in linha["nota"] and "ficou(aram) no fim" in linha["nota"]
+    # a ordem que, na hora de aplicar, ja vale: nota "ja estava assim"
+    r = O.gravar_comando("priorizar", {"ordem": [b, c, d]})
+    O.fila_ordenar([b, c, d])
+    assert O.aplicado(r["id"])["nota"] == "já estava assim"
+
+
+def test_priorizar_caso_zero_fila_vazia(mundo):
+    # caso ZERO: fila vazia tem versao, a ordem vazia "ja esta assim", e um id
+    # qualquer e desconhecido
+    tela = O.para_o_app()
+    assert tela["estado"]["fila"] == [] and tela["fila_versao"] == O.fila_versao([])
+    r = O.gravar_comando("priorizar", {"ordem": [], "esperava": tela["fila_versao"]})
+    assert r["ja_estava"] is True and O.pendentes() == []
+    with pytest.raises(O.Recusa, match="não tem o item"):
+        O.gravar_comando("priorizar", {"ordem": ["deadbeef"]})
+    with pytest.raises(O.FilaMudou):
+        O.gravar_comando("priorizar", {"ordem": [], "esperava": "00000000"})
+
+
+def test_fila_ordenar_pela_cli(mundo, capsys):
+    a, b, c = _fila("A", "B", "C")
+    assert O.main(["fila", "ordenar", c, a, b]) in (0, None)
+    assert _ids() == [c, a, b]
+    assert O.main(["fila", "ordenar", c, a, b]) in (0, None)       # igual: sem erro
+    assert O.main(["fila", "ordenar", c, a]) not in (0, None)      # falta o b
+    capsys.readouterr()

@@ -526,6 +526,35 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
 .orq-resumo .orq-passo { flex: 1; min-width: 0; text-align: center; }
 .orq-hora { flex: none; width: 3.2em; font-size: 12px; color: var(--fraco); }
 .orq-grimorio { margin-top: 6px; border-top: 1px solid var(--linha); }
+/* A fila em CARDS (29/09): cada item é um card com a cor da parte na borda,
+   uma alça (⠿) que arrasta na hora, e toque longo no resto do card. O card
+   solto vira um fantasma que segue o dedo; o lugar dele é o placeholder.
+   Listrado = ordem pedida, o orquestrador ainda não aplicou. */
+#orq-fila { display: flex; flex-direction: column; gap: 8px; position: relative; }
+.orq-card { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 0; flex-wrap: wrap;
+  border-radius: 10px; background: rgba(250, 242, 220, .92); border: 1px solid #b89968;
+  position: relative; overflow: hidden; color: #3b2a1a;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y;
+  transition: transform .15s ease-out, opacity .15s; }
+.orq-card-cor { position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+  background: var(--parte-cor, #6b6e76); }
+.orq-card .orq-ordem { margin-left: 12px; width: 1.4em; }
+.orq-card-alca { flex: none; border: 0; background: none; font-size: 22px; line-height: 1;
+  color: #8a4b1f; padding: 8px 6px; touch-action: none; cursor: grab; }
+.orq-card-corpo { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.orq-card-corpo .fraco { color: #7a6248; }
+.orq-card-mais { flex: none; border: 1px dashed #b89968; background: none; border-radius: 99px;
+  width: 34px; height: 34px; font-size: 18px; line-height: 1; color: #6b3a1a; }
+.orq-card-mais[aria-expanded="true"] { background: #6b4526; color: #fff1d6; }
+.orq-card-menu { flex-basis: 100%; display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 0 0 18px; }
+.orq-card-menu.oculto { display: none; }
+.orq-card.pendente { border-style: dashed;
+  background-image: repeating-linear-gradient(-45deg, transparent 0 8px, rgba(184, 102, 27, .16) 8px 16px); }
+.orq-card.placeholder { opacity: .35; border-style: dashed; background: #efe0bb; }
+.orq-card.placeholder > * { visibility: hidden; }
+.orq-card-fantasma { position: fixed; z-index: 30; margin: 0; pointer-events: none; opacity: .97;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .35); transition: none; }
+@media (prefers-reduced-motion: reduce) { .orq-card, .orq-card-fantasma { transition: none !important; } }
 /* o selo do objeto na prateleira */
 nav.prateleira button.objeto { position: relative; }
 nav.prateleira button.objeto.selo-pendente::after,

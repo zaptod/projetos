@@ -34,6 +34,7 @@ CLI (a do orquestrador):
     python -m remoto.orquestrador agente-fim <id> [--situacao concluido|falhou|parado] [--commit H]... [--relato R]
     python -m remoto.orquestrador fila adicionar --parte P --item T [--posicao N]
     python -m remoto.orquestrador fila mover <id> subir|descer|topo
+    python -m remoto.orquestrador fila ordenar <id> <id> ...   # a ordem final inteira
     python -m remoto.orquestrador fila remover <id>
     python -m remoto.orquestrador fila listar
     python -m remoto.orquestrador decisao --titulo T --escolha E [--porque P] [--alternativa A] [--parte P]
@@ -55,6 +56,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import re
@@ -89,6 +91,7 @@ FORA_DO_AR_S = 15 * 60
 TEXTO_MAX = 1000
 COMANDOS_JANELA_S = 10 * 60
 COMANDOS_NA_JANELA_MAX = 40
+FILA_MAX = 200                 # uma ordem maior que isso nao e uma fila
 SONDA_TIMEOUT_S = 180
 PASTA_SONDA = Path(r"E:\tmp_testes\sonda_uso")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -512,6 +515,75 @@ def fila_mover(item_id: str, direcao: str) -> list:
         _mover(estado["fila"], item_id, direcao)
         _gravar_estado(estado)
     return estado["fila"]
+
+
+def fila_versao(fila: list) -> str:
+    """A ORDEM da fila num resumo curto. A tela manda de volta como `esperava`
+    ao reordenar: diferente da atual = a fila mudou no PC enquanto ele
+    arrastava (409), e a tela reabre com a que vale. Vazia tem versao tambem."""
+    ids = ",".join(str(f.get("id") or "") for f in fila)
+    return hashlib.sha1(ids.encode("utf-8")).hexdigest()[:8]
+
+
+class FilaMudou(Recusa):
+    """A ordem que a tela viu (`esperava`) nao e mais a da fila."""
+
+
+def _ordenar(fila: list, ordem: list[str]) -> str:
+    """Reordena a fila pela lista de ids (a ordem final inteira). Devolve uma
+    nota (ou "").
+
+    No `aplicado` ela e TOLERANTE, porque a fila pode ter mudado entre o toque
+    e a aplicacao (o orquestrador pos ou tirou um item): id da ordem que ja
+    saiu e pulado, e item que entrou depois fica no fim, na ordem em que
+    estava. Os dois casos vao para a nota. Quem e estrito e o `gravar_comando`.
+    """
+    por_id = {f.get("id"): f for f in fila}
+    vistos: set[str] = set()
+    nova = []
+    for item_id in ordem:
+        if item_id in por_id and item_id not in vistos:
+            nova.append(por_id[item_id])
+            vistos.add(item_id)
+    sobras = [f for f in fila if f.get("id") not in vistos]
+    notas = []
+    fora = [i for i in ordem if i not in por_id]
+    if fora:
+        notas.append(f"{len(fora)} item(ns) da ordem já tinha(m) saído da fila")
+    if sobras:
+        notas.append(f"{len(sobras)} item(ns) entrou(aram) depois e ficou(aram) no fim")
+    if [f.get("id") for f in nova + sobras] == [f.get("id") for f in fila]:
+        notas.append("já estava assim")
+    fila[:] = nova + sobras
+    _numerar(fila)
+    return " · ".join(notas)
+
+
+def fila_ordenar(ordem: list[str]) -> list:
+    """A CLI: `fila ordenar <id> <id> ...`, estrita como o app."""
+    ordem = validar_comando("priorizar", {"ordem": list(ordem)})["ordem"]
+    with _trava():
+        estado = ler_estado()
+        _conferir_ordem(estado["fila"], ordem, None)
+        nota = _ordenar(estado["fila"], ordem)
+        if nota != "já estava assim":
+            _movimento(estado, "reordenou a fila")
+            _gravar_estado(estado)
+    return estado["fila"]
+
+
+def _conferir_ordem(fila: list, ordem: list[str], esperava: str | None) -> None:
+    """A regra estrita da entrada: cada id da ordem existe, nenhum da fila
+    falta, e a versao que a tela viu e a atual. Chame sob a trava."""
+    if esperava is not None and esperava != fila_versao(fila):
+        raise FilaMudou("a fila mudou no PC enquanto a tela estava aberta")
+    atuais = [f.get("id") for f in fila]
+    desconhecidos = [i for i in ordem if i not in atuais]
+    if desconhecidos:
+        raise Recusa(f"a fila não tem o item {desconhecidos[0]}")
+    faltam = [i for i in atuais if i not in ordem]
+    if faltam:
+        raise Recusa(f"a ordem não diz onde fica o item {faltam[0]}")
 
 
 def fila_remover(item_id: str) -> None:
@@ -1035,7 +1107,25 @@ def validar_comando(comando: str, valor):
         return valor
     if comando == "priorizar":
         if not isinstance(valor, dict):
-            raise Recusa("diga o item e a direção")
+            raise Recusa("diga o item e a direção, ou a ordem inteira")
+        if "ordem" in valor:
+            # a forma nova (29/09): a ordem final inteira, num comando so.
+            # Antes, por um item no topo eram 6 "subir" seguidos.
+            ordem = valor.get("ordem")
+            if not isinstance(ordem, list) or len(ordem) > FILA_MAX:
+                raise Recusa("a ordem é a lista dos ids da fila")
+            if any(not isinstance(i, str) or not _ID.fullmatch(i) for i in ordem):
+                raise Recusa("item da fila inválido")
+            if len(set(ordem)) != len(ordem):
+                raise Recusa("a ordem repete um item")
+            esperava = valor.get("esperava")
+            if esperava is not None and (not isinstance(esperava, str)
+                                         or not re.fullmatch(r"[0-9a-f]{8}", esperava)):
+                raise Recusa("esperava é a versão da fila que a tela mostrou")
+            saida = {"ordem": list(ordem)}
+            if esperava is not None:
+                saida["esperava"] = esperava
+            return saida
         item, direcao = valor.get("item"), valor.get("direcao")
         if not isinstance(item, str) or not _ID.fullmatch(item):
             raise Recusa("item da fila inválido")
@@ -1072,12 +1162,23 @@ def gravar_comando(comando: str, valor=None, aparelho: str = "") -> dict:
     """O app manda. Fica PENDENTE ate o orquestrador dizer `aplicado`."""
     valor = validar_comando(comando, valor)
     agora = time.time()
+    ordem_inteira = comando == "priorizar" and "ordem" in valor
     with _trava():
+        if ordem_inteira:
+            # Estrito na entrada: id que a fila nao tem, item que a ordem nao
+            # diz onde fica, ou a fila mudou no PC (`esperava`) = Recusa. A
+            # ordem igual a atual nao vira comando ("ja estava assim").
+            fila = ler_estado()["fila"]
+            _conferir_ordem(fila, valor["ordem"], valor.get("esperava"))
+            if valor["ordem"] == [f.get("id") for f in fila]:
+                return {"comando": comando, "valor": valor, "ja_estava": True,
+                        "aparelho": str(aparelho or "")[:8]}
         # O MESMO pedido ainda pendente nao entra de novo. Em 29/09 01:15:19,
         # tres toques rapidos no "+" gravaram max_paralelo 4, 4 e 5 no mesmo
         # segundo: o 4 repetido virou uma segunda resposta no Grimorio. So o
-        # "priorizar" soma (subir duas vezes e subir duas posicoes).
-        if comando != "priorizar":
+        # "priorizar" de um item soma (subir duas vezes e subir duas
+        # posicoes); o da ordem inteira e idempotente como os outros.
+        if comando != "priorizar" or ordem_inteira:
             lista, _ = comandos_com_situacao()
             chave = json.dumps(valor, sort_keys=True, ensure_ascii=False)
             igual = next((c for c in reversed(lista)
@@ -1248,6 +1349,10 @@ def _aplicar(nome: str, valor, fonte: str, cid: str, *, aparelho: str = "",
         _mudar_config("fila_pausada", False, fonte, cid)
     elif nome == "priorizar":
         estado = ler_estado()
+        if "ordem" in valor:
+            nota = _ordenar(estado["fila"], valor["ordem"])
+            _gravar_estado(estado)
+            return nota
         _mover(estado["fila"], valor["item"], valor["direcao"])
         _gravar_estado(estado)
     elif nome == "tirar_da_fila":
@@ -1290,6 +1395,8 @@ def _descrever(nome: str, valor) -> str:
         return f"{rotulo}: {'ligada' if valor else 'desligada'}"
     if nome == "teto_uso":
         return f"{rotulo}: {valor}%"
+    if nome == "priorizar" and isinstance(valor, dict) and "ordem" in valor:
+        return f"{rotulo}: {len(valor['ordem'])} item(ns), a ordem inteira"
     if isinstance(valor, dict):
         valor = " ".join(str(v) for v in valor.values())
     return f"{rotulo}: {_curto(valor, 80)}"
@@ -1823,6 +1930,9 @@ def para_o_app(agora: float | None = None) -> dict:
         "vigia": vigia,
         "sem_ouvinte": sem_ouvinte(comandos, vigia, agora),
         "estado": estado or _estado_vazio_sem_disco(),
+        # a ORDEM da fila, num resumo: a tela devolve como `esperava` ao
+        # reordenar (409 se a fila mudou no PC no meio do arrasto)
+        "fila_versao": fila_versao((estado or {}).get("fila") or []),
         "estado_existe": existe,
         "fora_do_ar": (not existe) or idade is None or idade > FORA_DO_AR_S,
         "idade_s": idade,
@@ -1989,6 +2099,8 @@ def main(argv=None) -> int:
     fmo.add_argument("direcao", choices=("subir", "descer", "topo"))
     frm = fsub.add_parser("remover")
     frm.add_argument("id")
+    ford = fsub.add_parser("ordenar", help="a ordem final inteira, um comando so")
+    ford.add_argument("ids", nargs="+")
     fsub.add_parser("listar")
     dec = sub.add_parser("decisao")
     dec.add_argument("--titulo", required=True)
@@ -2054,6 +2166,9 @@ def main(argv=None) -> int:
                 print("ok")
             elif args.acao == "remover":
                 fila_remover(args.id)
+                print("ok")
+            elif args.acao == "ordenar":
+                fila_ordenar(args.ids)
                 print("ok")
             else:
                 for f in ler_estado()["fila"]:
