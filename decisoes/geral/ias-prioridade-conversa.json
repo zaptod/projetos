@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-29T02:25:40",
+      "evento": "2026-09-29T02:25:16",
+      "linha": 48,
+      "nota": "regra da fase 2: a conversa do Adrian tem prioridade; a pipeline espera a trava",
+      "opcao": "voce",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-29T01:29:02.927921",
   "depende_de": [],
