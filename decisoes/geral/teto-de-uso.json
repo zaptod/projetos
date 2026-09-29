@@ -10,6 +10,16 @@
       "opcao": "outro",
       "origem": "semente",
       "tipo": "nada"
+    },
+    {
+      "alvo": "",
+      "em": "2026-09-29T07:26:39",
+      "evento": "2026-09-29T07:26:39",
+      "linha": 57,
+      "nota": "aplicada pela Mesa de comando: a config já vale",
+      "opcao": "cinquenta",
+      "origem": "mesa",
+      "tipo": "nada"
     }
   ],
   "contexto": "",
@@ -28,6 +38,14 @@
       "comentario": "28/09 21:48, pela Mesa de comando: passou de 100% da sessão, para tudo",
       "em": "2026-09-28T21:48:26",
       "opcao": "outro",
+      "origem": "mesa"
+    },
+    {
+      "anterior": "outro",
+      "aparelho": "614c026b",
+      "comentario": "29/09 07:26, pela Mesa de comando: passou de 50% da sessão, para tudo",
+      "em": "2026-09-29T07:26:39",
+      "opcao": "cinquenta",
       "origem": "mesa"
     }
   ],
@@ -54,8 +72,8 @@
   "situacao": "decidida",
   "titulo": "Teto de uso do Claude",
   "vigente": {
-    "comentario": "28/09 21:48, pela Mesa de comando: passou de 100% da sessão, para tudo",
-    "em": "2026-09-28T21:48:26",
-    "opcao": "outro"
+    "comentario": "29/09 07:26, pela Mesa de comando: passou de 50% da sessão, para tudo",
+    "em": "2026-09-29T07:26:39",
+    "opcao": "cinquenta"
   }
 }
