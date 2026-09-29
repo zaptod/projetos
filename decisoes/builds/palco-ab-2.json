@@ -8,7 +8,15 @@
       "opcao": "seguir"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T21:39:58",
+      "opcao": "trocar",
+      "origem": "app"
+    }
+  ],
   "id": "palco-ab-2",
   "midias": [
     {
@@ -49,7 +57,11 @@
   ],
   "pergunta": "Com a arte da 16E, o palco já está melhor que o visual de hoje para trocar o duelo (16G)?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Palco: A/B depois da arte (16E)",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T21:39:58",
+    "opcao": "trocar"
+  }
 }

@@ -28,7 +28,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Hitstop: a pausinha no impacto** — Ligar (28/09/2026) `hitstop`
 - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`
 - ✅ **Sprites animados: como produzir** — Continuar com o modelo padrão e limpar depois (28/09/2026) · “Eu consegui gerar alguns spritesheet bons, veja o arquivo piriri.py , eu consegui esse usando o chat gpt, mas como o processo é moroso quero apenas uma interface gráfica que facilite ao máximo esse processo, como essa limpeza de fundo, saneamento e auto faturamento de frames, identificação e outras coisas úteis.” `sprites-animados`
-- ⏳ **Palco: A/B depois da arte (16E)** — Com a arte da 16E, o palco já está melhor que o visual de hoje para trocar o duelo (16G)? `palco-ab-2`
+- ✅ **Palco: A/B depois da arte (16E)** — Seguir: trocar o visual do duelo (16G) (28/09/2026) `palco-ab-2`
 
 <!-- decisoes:fim -->
 
