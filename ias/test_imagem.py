@@ -454,6 +454,130 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
         self.assertEqual(saida["prova"]["metodo"], "turno_na_casa")
         self.assertEqual(saida["prova"]["casa_url"], "https://gemini.google.com/app/casa123")
 
+    def _gemini_com_botao(self, *, download=True, resposta=None, habilitado=True):
+        """Um Gemini falso com o botao "Baixar imagem no tamanho original": o
+        clique solta o evento de download (ou so a resposta de imagem)."""
+        original = imagem.png_de_teste(200, 120)
+        arquivo = Path(self._tmp.name) / "Gemini_Generated_Image.png"
+        arquivo.write_bytes(original)
+        cliques = []
+
+        class _Download:
+            suggested_filename = arquivo.name
+
+            @staticmethod
+            def path():
+                return str(arquivo)
+
+        class _Resposta:
+            headers = {"content-type": "image/png"}
+
+            class request:                                      # noqa: N801
+                resource_type = "fetch"
+
+            @staticmethod
+            def body():
+                return resposta
+
+        class _Pagina:
+            url = "https://gemini.google.com/app/casa"
+
+            def __init__(self):
+                self.ouvintes = {}
+
+            def evaluate(self, script, arg=None):
+                return 1 if "data-nf-baixar" in script else None
+
+            def locator(self, seletor):
+                assert seletor == "[data-nf-baixar='1']"
+                return alvo
+
+            def on(self, evento, funcao):
+                self.ouvintes[evento] = funcao
+
+            def remove_listener(self, evento, funcao):
+                self.ouvintes.pop(evento, None)
+
+            def wait_for_timeout(self, ms):
+                pass
+
+        pagina = _Pagina()
+
+        class _Alvo:
+            first = None
+
+            def scroll_into_view_if_needed(self, timeout=None):
+                pass
+
+            def evaluate(self, script):
+                return habilitado
+
+            def hover(self, timeout=None, force=False):
+                pass
+
+            def click(self, timeout=None, force=False):
+                cliques.append(force)
+                if resposta is not None:
+                    pagina.ouvintes["response"](_Resposta())
+                if download:
+                    pagina.ouvintes["download"](_Download())
+
+        alvo = _Alvo()
+        alvo.first = alvo
+
+        class _Ctx:
+            class request:                                      # noqa: N801
+                @staticmethod
+                def get(url, timeout=None):
+                    raise AssertionError("o src nao devia ser usado")
+
+        class _Cli:
+            provedor = "gemini"
+            sel = {"turno_usuario": ["user-query"]}
+            ajustes = {}
+            modelo_atual = "Pro"
+            ctx = _Ctx()
+            page = pagina
+            imagens_na_resposta = [{"src": "https://lh3/gato", "w": 1024, "h": 559}]
+
+            def imagens_da_resposta(self):
+                return {"ancorado": True, "turno": "gere um gato", "imagens": []}
+        return _Cli(), original, cliques
+
+    def test_gemini_baixa_pelo_botao_do_tamanho_original(self):
+        """15:23: o `src` da tela nao baixou (CORS); o botao do site baixa."""
+        cli, original, cliques = self._gemini_com_botao()
+        saida = carteiro_mod.SessaoReal(cli, log=lambda *_a: None).imagem_da_resposta(
+            "gere um gato")
+        self.assertEqual(saida["bytes"], original)            # bytes do site, intactos
+        self.assertEqual(saida["prova"]["download"], "botao_tamanho_original")
+        self.assertEqual(cliques, [False])
+        self.assertEqual(cli.page.ouvintes, {})               # ouvintes removidos
+
+    def test_sem_evento_de_download_vale_a_resposta_de_imagem(self):
+        jpeg = b"\xff\xd8\xff\xe0" + b"j" * 4000
+        cli, _, _ = self._gemini_com_botao(download=False, resposta=jpeg)
+        # relogio falso: os 90 s de espera pelo download passam em 18 voltas
+        import types
+        agora = [0.0]
+
+        def monotonic():
+            agora[0] += 5.0
+            return agora[0]
+        self.addCleanup(setattr, imagem, "time", imagem.time)
+        imagem.time = types.SimpleNamespace(monotonic=monotonic, sleep=lambda _s: None)
+        saida = imagem.baixar_da_resposta(cli, "gere um gato", log=lambda *_a: None)
+        self.assertEqual(saida["bytes"], jpeg)
+
+    def test_botao_desabilitado_nao_clica_e_diz_por_que(self):
+        cli, _, cliques = self._gemini_com_botao(habilitado=False)
+        cli.imagens_na_resposta = [{"src": "", "w": None, "h": None}]
+        with self.assertRaises(imagem.ImagemFalhou) as erro:
+            imagem.baixar_da_resposta(cli, "gere um gato", log=lambda *_a: None)
+        self.assertIn("desabilitado", str(erro.exception))
+        self.assertIn("sem URL de imagem", str(erro.exception))   # e nao baixa a pagina
+        self.assertEqual(cliques, [])
+
     def test_turno_que_nao_e_o_nosso_nao_baixa(self):
         gato = {"src": "https://lh3.googleusercontent.com/gato", "w": 1024, "h": 1024}
         cli, _ = self._cliente("outra pergunta de outra pessoa", [gato])

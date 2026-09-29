@@ -496,26 +496,171 @@ _JS_BAIXAR = (
 def baixar(ctx, page, src: str, timeout_s: float = 120.0) -> bytes:
     """Os bytes da imagem, como o site serve (sem recomprimir). http(s) pela
     sessao do navegador (os cookies da conta); blob:/data:, ou http recusado,
-    pelo `fetch` dentro da propria pagina."""
+    pelo `fetch` dentro da propria pagina. O erro diz o que cada caminho deu."""
     src = str(src or "")
+    tentativas = []
+    if not src.startswith(("http", "blob:", "data:image/")):
+        # medido em 29/09 15:4x: `fetch("")` na pagina baixa a PROPRIA pagina
+        # (864 KB de HTML); sem URL de imagem nao ha o que baixar
+        raise ImagemFalhou(f"sem URL de imagem para baixar ({src[:40]!r})", "download")
     if src.startswith("http"):
         try:
             resposta = ctx.request.get(src, timeout=float(timeout_s) * 1000)
-            if resposta.ok:
-                corpo = resposta.body()
-                if len(corpo) >= BYTES_MIN:
-                    return corpo
-        except Exception:                                      # noqa: BLE001
-            if page is None:
-                raise
-        if page is None:
-            raise ImagemFalhou(f"o download de {src[:80]} falhou", "download")
+            corpo = resposta.body() if resposta.ok else b""
+            if len(corpo) >= BYTES_MIN and extensao(corpo):
+                return corpo
+            tentativas.append(f"sessão: HTTP {resposta.status}, {len(corpo)} bytes"
+                              + ("" if not corpo or extensao(corpo) else ", não é imagem"))
+        except Exception as exc:                               # noqa: BLE001
+            tentativas.append(f"sessão: {type(exc).__name__}")
     if page is None:
-        raise ImagemFalhou("imagem sem URL baixável", "download")
-    achado = page.evaluate(_JS_BAIXAR, src) or {}
-    if not achado.get("b64"):
-        raise ImagemFalhou(f"o download da imagem falhou ({achado.get('erro')})", "download")
-    return base64.b64decode(achado["b64"])
+        raise ImagemFalhou(f"o download de {src[:80]} falhou ({'; '.join(tentativas)})",
+                           "download")
+    try:
+        achado = page.evaluate(_JS_BAIXAR, src) or {}
+    except Exception as exc:                                   # noqa: BLE001
+        achado = {"erro": " ".join(str(exc).split())[:80]}
+    if achado.get("b64"):
+        corpo = base64.b64decode(achado["b64"])
+        if len(corpo) >= BYTES_MIN and extensao(corpo):
+            return corpo
+        achado = {"erro": f"{len(corpo)} bytes que não são imagem"}
+    tentativas.append(f"página: {achado.get('erro')}")
+    raise ImagemFalhou(f"o download da imagem falhou ({'; '.join(tentativas)})", "download")
+
+
+# O BOTAO DE BAIXAR NO TAMANHO ORIGINAL, por IA. Medido no Gemini em 29/09
+# 15:3x (scratchpad/diag_gemini_imagem.py, na casa, sem mandar nada): cada
+# imagem gerada tem "Baixar imagem no tamanho original" (e "Copiar imagem",
+# "Compartilhar imagem"), no DOM sem precisar de hover. E o caminho da
+# qualidade original: as 15:23 o `src` da tela (1024x559) nao baixou nem pela
+# sessao nem pelo fetch da pagina (CORS do googleusercontent).
+BOTAO_BAIXAR = {
+    "gemini": ["button[aria-label='Baixar imagem no tamanho original']",
+               "button[aria-label='Download full size image']"],
+}
+
+# Marca o ULTIMO botao de baixar que vem DEPOIS do ultimo turno do usuario
+# (a mesma prova de posicao da imagem). Devolve quantos havia depois dele.
+_JS_MARCAR_BOTAO = (
+    "([usuarios, botoes]) => {"
+    " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
+    "   & Node.DOCUMENT_POSITION_FOLLOWING);"
+    " for (const v of document.querySelectorAll('[data-nf-baixar]'))"
+    "   v.removeAttribute('data-nf-baixar');"
+    " let usuario = null;"
+    " for (const s of usuarios) {"
+    "   let els = [];"
+    "   try { els = [...document.querySelectorAll(s)]; } catch (e) { continue; }"
+    "   const ultimo = els[els.length - 1];"
+    "   if (ultimo && (!usuario || depois(usuario, ultimo))) usuario = ultimo;"
+    " }"
+    " if (!usuario) return 0;"
+    " let achados = [];"
+    " for (const s of botoes) {"
+    "   try { achados = achados.concat([...document.querySelectorAll(s)]); }"
+    "   catch (e) { continue; }"
+    " }"
+    " achados = achados.filter(b => depois(usuario, b));"
+    " if (!achados.length) return 0;"
+    " achados.sort((a, b) => depois(a, b) ? -1 : 1);"
+    " achados[achados.length - 1].setAttribute('data-nf-baixar', '1');"
+    " return achados.length; }")
+
+
+def baixar_pelo_botao(cliente, timeout_s: float = 90.0, log=print) -> bytes | None:
+    """Os bytes pelo botao do proprio site (tamanho original), ou None quando a
+    IA nao tem o botao medido ou ele nao esta depois do nosso turno.
+
+    Medido no Gemini em 29/09 15:5x (scratchpad/diag_botao_gemini.py): o
+    botao nasce `disabled` ate a imagem carregar; o clique mostra "Fazendo o
+    download no tamanho original...", o site busca `gg` (texto, ~500 bytes) e
+    depois `rd-gg` (o JPEG inteiro: 2.992.466 bytes para a imagem que a tela
+    mostrava em 1024x559) e so entao sai o evento de download
+    (`Gemini_Generated_Image_*.jfif`). Com a API sincrona os eventos so
+    chegam DENTRO de uma chamada: a espera e `wait_for_timeout`, nunca
+    `time.sleep`. Se o download nao vier, vale a maior resposta de imagem que
+    o clique buscou (os mesmos bytes).
+    """
+    seletores = BOTAO_BAIXAR.get(str(getattr(cliente, "provedor", "")))
+    if not seletores:
+        return None
+    page = cliente.page
+    n = page.evaluate(_JS_MARCAR_BOTAO,
+                      [list(cliente.sel.get("turno_usuario") or []), list(seletores)])
+    if not n:
+        return None
+    alvo = page.locator("[data-nf-baixar='1']").first
+    try:
+        alvo.scroll_into_view_if_needed(timeout=5000)
+    except Exception:                                          # noqa: BLE001
+        pass
+    habilitado = False
+    for volta in range(60):                     # ate 30 s: a imagem carregando
+        if volta % 10 == 0:
+            # a imagem so carrega NA VISTA do container com rolagem propria:
+            # "rolar se preciso" nem sempre rola (o botao ja parece visivel)
+            try:
+                alvo.evaluate("el => el.scrollIntoView({block: 'center'})")
+                alvo.hover(timeout=2000, force=True)
+            except Exception:                                  # noqa: BLE001
+                pass
+        try:
+            habilitado = bool(alvo.evaluate(
+                "el => !el.disabled && el.getAttribute('disabled') === null"))
+        except Exception:                                      # noqa: BLE001
+            habilitado = False
+        if habilitado:
+            break
+        page.wait_for_timeout(500)
+    if not habilitado:
+        raise ImagemFalhou("o botão de baixar ficou desabilitado por 30 s (a imagem "
+                           "não carregou na tela)", "download")
+    baixados, respostas = [], []
+
+    def _baixou(download):
+        baixados.append(download)
+
+    def _respondeu(resposta):
+        try:
+            if (resposta.request.resource_type in ("fetch", "xhr")
+                    and str(resposta.headers.get("content-type") or "").startswith("image/")):
+                respostas.append(resposta)
+        except Exception:                                      # noqa: BLE001
+            pass
+
+    page.on("download", _baixou)
+    page.on("response", _respondeu)
+    try:
+        alvo.click(timeout=10000)
+        fim = time.monotonic() + float(timeout_s)
+        while time.monotonic() < fim and not baixados:
+            page.wait_for_timeout(500)
+        if baixados:
+            caminho = baixados[-1].path()
+            corpo = Path(caminho).read_bytes() if caminho else b""
+            log(f"[{cliente.provedor}] baixada pelo botão do site: "
+                f"{baixados[-1].suggested_filename} ({len(corpo)} bytes)")
+            return corpo
+        melhor = b""
+        for resposta in respostas:
+            try:
+                corpo = resposta.body()
+            except Exception:                                  # noqa: BLE001
+                continue
+            if len(corpo) > len(melhor) and extensao(corpo):
+                melhor = corpo
+        if melhor:
+            log(f"[{cliente.provedor}] o download não veio em {timeout_s:.0f}s; uso a "
+                f"resposta de imagem que o botão buscou ({len(melhor)} bytes)")
+            return melhor
+        raise ImagemFalhou(f"cliquei em baixar e nada veio em {timeout_s:.0f}s", "download")
+    finally:
+        for evento, funcao in (("download", _baixou), ("response", _respondeu)):
+            try:
+                page.remove_listener(evento, funcao)
+            except Exception:                                  # noqa: BLE001
+                pass
 
 
 def _normal(texto: str) -> str:
@@ -538,16 +683,38 @@ def baixar_da_resposta(cliente, prompt: str, proporcao: str | None = None,
     if not (achado or {}).get("ancorado") or (trecho and trecho not in _normal(turno)):
         raise SemProva("o último turno na casa não é o seu pedido: não baixo imagem "
                        "que não sei de onde veio")
-    corpo = baixar(cliente.ctx, cliente.page, visto["src"],
-                   float((cliente.ajustes or {}).get("download_timeout", 120)))
-    log(f"[{cliente.provedor}] imagem da resposta baixada ({visto.get('w')}x{visto.get('h')}, "
-        f"{len(corpo)} bytes)")
+    # primeiro o botao do site (tamanho original); depois o `src` da tela
+    corpo, como, falhas = b"", "", []
+    try:
+        corpo = baixar_pelo_botao(cliente, log=log)
+        if corpo is None:
+            falhas.append("botão: não há botão de baixar depois do seu turno")
+            corpo = b""
+        elif not (len(corpo) >= BYTES_MIN and extensao(corpo)):
+            falhas.append(f"botão: {len(corpo)} bytes que não são imagem")
+            corpo = b""
+        else:
+            como = "botao_tamanho_original"
+    except Exception as exc:                                   # noqa: BLE001
+        falhas.append(f"botão: {type(exc).__name__}: {' '.join(str(exc).split())[:100]}")
+    if not como:
+        if falhas and BOTAO_BAIXAR.get(str(getattr(cliente, "provedor", ""))):
+            log(f"[{cliente.provedor}] {falhas[-1]}; tento o src da tela")
+        try:
+            corpo = baixar(cliente.ctx, cliente.page, visto["src"],
+                           float((cliente.ajustes or {}).get("download_timeout", 120)))
+            como = "src_da_tela"
+        except ImagemFalhou as exc:
+            raise ImagemFalhou("; ".join(falhas + [str(exc)]), "download") from exc
+    log(f"[{cliente.provedor}] imagem da resposta baixada ({como}; na tela "
+        f"{visto.get('w')}x{visto.get('h')}, {len(corpo)} bytes)")
     prova = {"comprovada": True, "metodo": "turno_na_casa", "forca": "casa",
              "provedor": cliente.provedor, "casa_url": str(cliente.page.url or ""),
              "turno_usuario": turno[:200],
              "prompt_sha256": hashlib.sha256(_normal(prompt).encode("utf-8")).hexdigest()[:16],
              "src": str(visto["src"])[:300], "na_tela": [visto.get("w"), visto.get("h")],
-             "imagens_na_resposta": len(imagens), "verificado_em": correio.agora()}
+             "imagens_na_resposta": len(imagens), "download": como,
+             "verificado_em": correio.agora()}
     if proporcao:
         prova["proporcao"] = str(proporcao)
     return {"bytes": corpo, "prova": prova,
