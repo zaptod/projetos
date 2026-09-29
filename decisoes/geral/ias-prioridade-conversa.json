@@ -3,7 +3,15 @@
   "contexto": "",
   "criado": "2026-09-29T01:29:02.927921",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T02:25:16",
+      "opcao": "voce",
+      "origem": "app"
+    }
+  ],
   "id": "ias-prioridade-conversa",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Cada IA tem UM login. Se você abrir conversa com o Gemini pelo app enquanto a rodada de histórias precisa dele, quem tem prioridade?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Quando você fala com uma IA e a pipeline precisa da mesma conta",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T02:25:16",
+    "opcao": "voce"
+  }
 }
