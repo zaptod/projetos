@@ -255,7 +255,7 @@ ids na linha) fechou em `10142b1` (28/09).
 
 **Problemas abertos** (atualizado em 28/09, 07:45)
 
-- **Três partes de histórias estão só no TikTok** e o YouTube nunca vai
+- **(Fechado em 29/09)** **Três partes de histórias estavam só no TikTok** e o YouTube nunca ia
   recebê-las sozinho: `historia_00022:p03` (falhou 20/09), `00027:p01` (22/09)
   e `00032:p04` (27/09). A fila das histórias conta *qualquer* destino como
   publicado, e não existe "YouTube atrasado" para histórias. **A `h32 p05`
@@ -275,6 +275,17 @@ ids na linha) fechou em `10142b1` (28/09).
   upload inacabado de 27/09**: `YqbQUrY1nuE` era o rascunho de título
   cortado e virou a publicação inteira (um só vídeo da p04 no canal). O
   rascunho `fn1_Sy3RpMk` da h27 p01 segue privado (decisão: manter).
+  **A `00022:p03` subiu em 29/09, 01:07** → `CoDUmCFHAwc` (a de 28/09
+  caiu com a rede antes do upload): público, título e descrição (com as
+  hashtags, `descricao_completa`) idênticos ao catálogo pela API, único
+  público com essa `titulos.chave`, linha 347 do ledger com `youtube_id` e
+  `prova_ok`. O Studio **não** retomou o rascunho `pPACnX6RZ18` ("final
+  celular p03", 20/09, descrição vazia): é um upload antigo, não inacabado
+  da véspera como o da h32. Fica privado (decisão: manter). A série "A
+  Ouvinte" está completa e em ordem de título no YouTube (p01–p03). As
+  três partes da decisão `partes-so-no-tiktok` estão fechadas. A capa
+  personalizada deu 403 (sem permissão de miniatura no canal de histórias;
+  97 vezes no log, não é novo).
   **Efeito colateral medido**: a linha da h27 p01 (22:12) caiu na hora do
   relógio 22, e `publicou_neste_horario` (janela = hora do relógio, não
   `grade.slot`) fez a rodada das 22:37 achar que o YouTube das histórias já
