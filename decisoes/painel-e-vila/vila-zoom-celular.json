@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "5282bb94",
+      "em": "2026-09-28T23:02:21",
+      "evento": "2026-09-28T19:10:10",
+      "linha": 11,
+      "nota": "comentário: suporte a celular deitado; pode mudar as casas de lugar",
+      "opcao": "perto",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "O borrado está sendo consertado agora (arte na resolução do aparelho); isto é só sobre o enquadramento.",
   "criado": "2026-09-28T18:37:10.968334",
   "depende_de": [],
