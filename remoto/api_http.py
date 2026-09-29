@@ -72,6 +72,10 @@ CODIGO_TENTATIVAS = 5
 BILHETE_VALE_S = 10 * 60
 FATIA_MAX = 4 * 1024 * 1024
 CORPO_MAX = 4096
+# A conversa com uma IA leva imagem anexada (base64): so essa rota aceita
+# um corpo grande, e so com token.
+CORPO_CORREIO_MAX = 12 * 1024 * 1024
+IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 FALHAS_MAX = 20                          # por IP, na janela abaixo
 FALHAS_JANELA_S = 10 * 60
 # Uma conexao lenta (ou um POST que promete corpo e nao manda) nao pode
@@ -97,6 +101,7 @@ ESTATICOS = {
     "/comandos.js": ("comandos.js", "text/javascript; charset=utf-8"),
     "/decisoes.js": ("decisoes.js", "text/javascript; charset=utf-8"),
     "/orquestrador.js": ("orquestrador.js", "text/javascript; charset=utf-8"),
+    "/conversa.js": ("conversa.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -663,6 +668,15 @@ class Manipulador(BaseHTTPRequestHandler):
                 # A Mesa de comando: o que o orquestrador publicou, o uso, os
                 # comandos e a situacao de cada um. So leitura, e limpo.
                 return self._json(_limpo(orquestrador.para_o_app()))
+            # O CORREIO (Vila das IAs, fase 2): a caixa de cada IA de chat.
+            # Ler registra a PRESENCA: o carteiro so manda a resposta ao
+            # Telegram quando o app nao esta olhando aquela caixa.
+            if rota == "/api/correio":
+                return self._json(self._correio_resumo())
+            achado = re.fullmatch(r"/api/correio/(deepseek|chatgpt|gemini|grok)", rota)
+            if achado:
+                return self._json(self._correio_caixa(achado.group(1),
+                                                      _inteiro(consulta, "n", 60)))
             if rota == "/api/orquestrador/fluxo":
                 return self._json(painel_dados.FLUXO.ler())
             if rota == "/api/decisoes":
@@ -701,7 +715,7 @@ class Manipulador(BaseHTTPRequestHandler):
         return self._erro(404, "nao existe")
 
     # ------------------------------------------------------------ POST
-    def _corpo(self) -> dict | None:
+    def _corpo(self, maximo: int = CORPO_MAX) -> dict | None:
         """O JSON do POST, ou None (com a resposta de erro ja enviada)."""
         tipo = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
         if tipo != "application/json":
@@ -711,7 +725,7 @@ class Manipulador(BaseHTTPRequestHandler):
             tamanho = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             tamanho = -1
-        if not 0 < tamanho <= CORPO_MAX:
+        if not 0 < tamanho <= maximo:
             self._erro(413, "corpo invalido")
             return None
         try:
@@ -733,6 +747,9 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._responder_decisao()
         if rota in ("/api/orquestrador/comando", "/api/orquestrador/contestar"):
             return self._orquestrador(rota)
+        achado = re.fullmatch(r"/api/correio/(deepseek|chatgpt|gemini|grok)(/visto)?", rota)
+        if achado:
+            return self._correio_post(achado.group(1), bool(achado.group(2)))
         if rota != "/api/parear":
             return self._erro(404, "nao existe")
         if self.estado.bloqueado(self.client_address[0]):
@@ -873,6 +890,78 @@ class Manipulador(BaseHTTPRequestHandler):
                            f"nó {feito['no']} no Grimório")
         return self._json({"feito": True, **feito})
 
+    # -------------------------------------------------------- correio
+    # A conversa do Adrian com cada IA (Vila das IAs, fase 2). O servidor
+    # NUNCA abre navegador: deixa a mensagem na caixa (`ias.correio`) e quem
+    # entrega e o carteiro, em processo proprio (`python -m ias carteiro`).
+    def _correio_resumo(self) -> dict:
+        c = _correio()
+        c.registrar_presenca("app")
+        caixas = []
+        for ia, info in c.resumo().items():
+            ultima = info.get("ultima")
+            if ultima:
+                ultima = {**ultima, "texto": str(ultima.get("texto") or "")[:200],
+                          "resposta": (str(ultima["resposta"])[:300]
+                                       if ultima.get("resposta") else None),
+                          "anexos": len(ultima.get("anexos") or [])}
+            caixas.append({"ia": ia, **info, "ultima": ultima})
+        return {"ias": caixas, "carteiro": c.estado_do_carteiro(),
+                "enviar": bool(self.estado.com_acoes)}
+
+    def _correio_caixa(self, ia: str, n: int) -> dict:
+        c = _correio()
+        c.registrar_presenca(f"correio:{ia}")
+        casa = c.casa(ia)
+        mensagens = [{**m, "anexos": [Path(a).name for a in (m.get("anexos") or [])]}
+                     for m in c.historico(ia, n)]
+        return {"ia": ia, "rotulo": c.ROTULOS.get(ia, ia), "emoji": c.EMOJIS.get(ia, "•"),
+                "mensagens": mensagens,
+                "casa": {"geracao": casa.get("geracao"), "mensagens": casa.get("mensagens"),
+                         "ultimo_resumo_em": casa.get("ultimo_resumo_em"),
+                         "tem_resumo": bool(c.resumo_da_casa(ia).strip())},
+                "carteiro": c.estado_do_carteiro(), "ilegiveis": c.ilegiveis(ia),
+                "enviar": bool(self.estado.com_acoes)}
+
+    def _correio_post(self, ia: str, visto: bool):
+        if self._aparelho() is None:
+            return
+        c = _correio()
+        if visto:
+            corpo = self._corpo()
+            if corpo is None:
+                return
+            return self._json({"feito": True, "vistas": c.marcar_vistas(ia)})
+        # Enviar faz o PC abrir um navegador na conta dele: e uma acao, e
+        # so existe com --acoes (a leitura fica sempre).
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        corpo = self._corpo(CORPO_CORREIO_MAX)
+        if corpo is None:
+            return
+        texto = str(corpo.get("texto") or "")
+        anexos = []
+        try:
+            for item in (corpo.get("anexos") or [])[:4]:
+                if not isinstance(item, dict):
+                    continue
+                import base64
+                try:
+                    conteudo = base64.b64decode(str(item.get("b64") or ""), validate=True)
+                except (ValueError, TypeError):
+                    return self._erro(400, "anexo ilegível")
+                anexos.append(c.guardar_anexo(ia, str(item.get("nome") or "imagem.png"),
+                                              conteudo))
+            mensagem = c.enviar(ia, texto, de="adrian", anexos=anexos)
+        except c.CorreioInvalido as exc:
+            return self._erro(400, str(exc))
+        except OSError:
+            return self._erro(503, "o correio está ocupado; tente de novo")
+        sys.stderr.write(f"{datetime.now():%d/%m %H:%M:%S} correio {ia} {mensagem['id']} "
+                         f"({len(texto)} chars, {len(anexos)} anexo(s)) {self._id}\n")
+        return self._json({"feito": True, "mensagem": mensagem,
+                           "carteiro": c.estado_do_carteiro()})
+
     # ------------------------------------------------------- arquivos
     def _imagem_da_vila(self, rota: str):
         """O fundo da Vila (dia/noite) e o atlas dos personagens.
@@ -989,6 +1078,13 @@ class Manipulador(BaseHTTPRequestHandler):
                     falta -= len(pedaco)
         except (ConnectionError, OSError):
             pass          # o celular fechou o video no meio: normal
+
+
+def _correio():
+    """O modulo do correio (tarde, para os testes trocarem e para o servidor
+    subir mesmo sem o pacote `ias` no caminho)."""
+    from ias import correio
+    return correio
 
 
 def _limpo(dados):

@@ -57,6 +57,10 @@ Tudo vive em `remoto/`:
 - `comandos.py`, `bot.py`, `api.py`, `relatorios.py`, `apurador.py` — o bot.
   O `/publicar` do bot **não publica** (ver §3.3).
 - `vigia_tailnet.py` — a vigia do tailnet, no laço do bot (ver §4).
+- `app/conversa.js` + as rotas `/api/correio*` — a **conversa com cada IA**
+  (29/09, Vila das IAs fase 2, §10). O correio e o carteiro moram em `ias/`
+  (`correio.py`, `carteiro.py`), fora de `remoto/`: o servidor só lê e
+  escreve a caixa; quem abre navegador é o carteiro, em processo próprio.
 - `decisoes.py` + `app/decisoes.js` — a **árvore de decisões** do Adrian
   (28/09), uma aba por projeto no app. A fonte é o repositório:
   `decisoes/<projeto>/<id>.json` (ver §3.7). Tem também o **leitor de
@@ -119,7 +123,8 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 625 testes (29/09)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 636 testes (29/09)
+python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 53 (o correio e o carteiro, §10)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -143,6 +148,8 @@ python -m remoto.orquestrador capacidade --max-paralelo N | --teto P | --forca-t
     [--modo M] --fonte chat|app [--porque "palavras dele"]            # vira regra (§7)
 python -m remoto.orquestrador eu "no que a sessão principal está"
 python -m remoto.orquestrador vigia       # quem ouve os comandos agora (código 1 = ninguém; §9)
+python -m ias carteiro [--uma-vez] [--duble]   # o carteiro do correio (§10); --duble não abre navegador
+python -m ias correio <ia> [--enviar TEXTO] [--json]   # a caixa de uma IA
 ```
 
 Instância de teste que não toca o real: `NF_ORQUESTRADOR_PASTA` (cópia do
@@ -790,3 +797,150 @@ propósito.
   que estava no meio de uma resposta mostra "mudou no PC", e o "sim" dela
   sai 409 e reabre com o que vale.
 - Celular em Tóquio: "sinal de vida 13:39 (agora)".
+
+## 10. A conversa com cada IA: correio, carteiro e a tela Conversar (29/09/2026)
+
+Vila das IAs, fase 2 (plano `~/.claude/plans/vila-das-ias.md`; o Adrian
+liberou em `geral/ias-fichas-lidas`). Pedido dele: "que eu possa falar com
+cada uma individualmente pelo app". Três decisões do Grimório mandam aqui:
+`ias-prioridade-conversa` (ele tem prioridade sobre a pipeline na mesma
+conta), `ias-chat-persistente` (um chat "casa" por IA, com resumo
+periódico) e `ias-grok-acesso` (grok.com com a conta X dele, perfil
+`grok__principal`).
+
+**Princípio.** Tudo passa pelo **correio** (arquivo), nunca direto: o app
+deixa a mensagem na caixa, o **carteiro** (processo próprio) entrega e grava
+a resposta. O servidor do app nunca abre navegador. Nesta fase conversam só
+as IAs de chat: DeepSeek, ChatGPT, Gemini e Grok (PicassoIA/DreamFace/Digen
+só geram imagem e ficam de fora).
+
+**O correio** (`ias/correio.py`), em
+`%LOCALAPPDATA%\neural-fights\ias\<ia>\correio.jsonl` (`NF_IAS_PASTA` troca
+a raiz, para a instância de teste). Registro **só de acréscimo**: a primeira
+linha de uma mensagem é o registro inteiro; as seguintes, com o mesmo `id`,
+são deltas. Ler é dobrar por id; meia linha e delta órfão são pulados e
+contados (`ilegiveis`). Uma linha por `write`, sob trava de arquivo ao lado.
+Formato dobrado:
+
+```json
+{"id": "3679ee70", "em": "2026-09-29T07:33:46", "de": "adrian", "para": "deepseek",
+ "thread": "casa:deepseek", "texto": "...", "anexos": ["...\\anexos\\20260929_073346_ab12_foto.png"],
+ "situacao": "pendente|entregue|respondida|falhou", "resposta": null, "erro": null,
+ "categoria": null, "nota": null, "entregue_em": "...", "respondida_em": "...",
+ "dur_s": 4.0, "modelo": "...", "visto": true, "atualizado_em": "..."}
+```
+
+Na mesma pasta: `casa.json` (a URL do chat de longa duração, a geração, o
+contador de mensagens, `falhas_seguidas`), `casa_resumo.md` (o último resumo
+que a IA fez) e a pasta `anexos`. Na raiz `ias`: `carteiro.json` (o estado
+do carteiro, com PID e pulso) e `presenca.json` (a última vez que o app
+pediu cada caixa). O caso ZERO existe: sem pasta, tudo é vazio e
+`estado_do_carteiro` diz `nunca`.
+
+**O carteiro** (`python -m ias carteiro`, `ias/carteiro.py`; config em
+`ias/config.json`):
+- pega a pendente mais velha entre todas as caixas; pega a **trava da conta**
+  (`travas.do_perfil(ia, "geral")`) em passos de 20 s. Se a pipeline estiver
+  com ela, espera, escreve `nota: "esperando a pipeline soltar a conta"` na
+  mensagem e "esperando_trava" no `carteiro.json`; **nunca mata**. Passado
+  `espera_conta_max_s` (3 h) a mensagem falha com o motivo;
+- com a conta, abre o `ClienteLLM` (`abrir_cliente`, trava reentrante) no
+  chat **casa**: navega para a URL de `casa.json` e só aceita com **prova**
+  (um turno nosso na tela e a URL sem redirecionar). Sem casa, casa que não
+  abre, ou duas falhas seguidas → **casa nova**, e o `casa_resumo.md` entra
+  como primeira mensagem (`PROLOGO_CASA_NOVA`);
+- `perguntar` com anexos (só imagens); marca `entregue` antes e `respondida`
+  (com `dur_s` e `modelo`) depois. Enquanto espera, o log do cliente pulsa o
+  `carteiro.json` (a resposta pode levar minutos);
+- **prioridade dele**: depois de responder, segura a conta por
+  `janela_conversa_s` (90 s) esperando a próxima mensagem para a mesma IA —
+  a pipeline, que pede a trava com paciência curta, cai para outro provedor;
+- a cada `resumo_a_cada` (12) mensagens respondidas na casa, pede à IA um
+  resumo (`PEDIDO_RESUMO`) e grava `casa_resumo.md` (não vira mensagem do
+  correio);
+- **erro legível**: `classificar_erro` olha o tipo da exceção (login caído,
+  conta ocupada), os `catalogo_textos` da ficha da IA (fase 1) contra o texto
+  visível da página, a varredura `catalogo.varrer` e só então a exceção crua
+  → `erro` + `categoria` na mensagem ("o site diz: «…»");
+- **diário**: o próprio cliente registra cada turno (`papel=conversa`,
+  `ref=Adrian`, canal `adrian`): a Vila mostra o habitante "conversa Adrian";
+- **Telegram**: a resposta (ou a falha) vai em texto puro aos autorizados
+  **quando o app não está olhando** aquela caixa (`presenca.json`, 45 s);
+  com a tela aberta, só o balão;
+- um carteiro por vez (trava `ias__carteiro`); `--uma-vez` entrega o que há
+  e sai; `--duble` responde sem navegador, com trava própria por IA
+  (`ias__duble__<ia>`, nunca a da conta) e aviso no log — é o da prova de
+  tela. O ritmo humano é o do `ClienteLLM`; um Chrome por vez; `headless`
+  por IA no config (todos `false`: ChatGPT em headless cai no Cloudflare).
+- **Anexo no DeepSeek ainda não entra**: os seletores `anexo_prova` dele
+  estão vazios em `contos/llm/seletores.py`, e o carteiro recusa na hora
+  ("mande sem anexo") em vez de esperar 120 s pela miniatura. É da parte
+  historias.
+
+**No app.** Tocar num prédio de IA de chat → o cartão tem **💬 Conversar**
+→ `tela-conversa` (`app/conversa.js`), por cima da Vila: chips das quatro
+IAs (o **Grok** entra por aqui, porque não tem prédio), a casa (geração,
+mensagens, último resumo), a linha do carteiro (pronto / entregando ao X /
+esperando a conta / parado / nunca rodou), o histórico em balões (os dele à
+direita com a situação — "na caixa, esperando o carteiro", "entregue ·
+esperando a resposta…", "respondida HH:MM em N s · modelo", "falhou:
+motivo" — e os da IA à esquerda), a caixa de texto e o anexo de imagem
+(base64 no POST). Relê a cada 6 s sem recarregar; a tela aberta marca as
+respostas como **vistas**. Na Vila, uma resposta **não vista** vira balão de
+fala em cima do prédio (`vilaDesenharCorreio`, canvas) e entra no cartão
+(`.vila-resposta`); a Vila relê o correio junto do `/api/vila` (15 s). Na
+Mesa, "Agora" ganhou a linha do carteiro (`#orq-carteiro`: estado, a quem
+está entregando, as caixas com pendentes e não vistas). Casca `v15`.
+
+Rotas (todas com token; ler nunca depende de `--acoes`):
+
+| rota | o que faz |
+| --- | --- |
+| `GET /api/correio` | as quatro caixas (pendentes, em andamento, não vistas, última) + o carteiro; registra presença `app` |
+| `GET /api/correio/<ia>?n=60` | o histórico da caixa, a casa e o carteiro; registra presença `correio:<ia>` |
+| `POST /api/correio/<ia>` `{texto, anexos:[{nome, b64}]}` | deixa a mensagem na caixa (pendente). **Só com `--acoes`** (faz o PC abrir um navegador na conta dele); corpo até 12 MB; anexo só png/jpg/webp até 8 MB; texto vazio = 400 |
+| `POST /api/correio/<ia>/visto` | marca as respondidas/falhadas como vistas |
+
+`orquestrador.para_o_app()` leva `carteiro` (estado + caixas) e nunca quebra
+a Mesa se o pacote `ias` faltar.
+
+**Testes** (`ias/test_correio.py`, 29; `remoto/test_correio_app.py`, 11):
+o caso ZERO do correio e da Mesa; dobra por id, ilegíveis, vistas, anexo;
+o carteiro entregando (casa, Telegram), falhando (motivo pelo catálogo, pela
+tela e pela exceção), a prioridade (trava ocupada → espera, registra, nunca
+mata; presa além do limite → falhou sem abrir navegador), a janela de
+conversa numa sessão só, casa reaberta, casa inutilizável → nova com o
+resumo, duas falhas → casa nova, o resumo periódico; e as rotas (401,
+403 sem `--acoes`, 404 para IA que não conversa, histórico, envio, anexo,
+visto, o `conversa.js` servido). Nenhum abre navegador nem toca o
+`%LOCALAPPDATA%` real.
+
+**Prova de tela (29/09, 07:33–07:48):** 390×844, clicando, na 8934
+(`scratchpad/servidor_conversa.py`: estado copiado, Grimório clonado, casca
+copiada, correio em `E:\projetos-wt\_prova_conversa\ias`) com o carteiro
+**dublê** (`python -m ias carteiro --duble --demora 4 --janela 8`). 22
+conferências OK, 0 erros de JS; telas em
+`E:\projetos-wt\_prova_conversa\telas\duble_*.png`, relatório em
+`prova_duble.txt`:
+- o toque no prédio do DeepSeek abre o cartão com 💬 Conversar; a tela abre
+  com os quatro chips (Grok incluído) e o caso ZERO;
+- a mensagem aparece "na caixa, esperando o carteiro" e vira "respondida
+  07:33 em 4 s · dublê" sem recarregar; o correio tem as 4 linhas (pendente,
+  entregue, respondida, visto);
+- uma segunda mensagem pela CLI com a tela fechada aparece no cartão do
+  DeepSeek como "💬 OK (dublê) — recebi: …" (não vista) e o balão no canvas;
+- a Mesa diz "📮 Carteiro: pronto · caixas: 🐋 DeepSeek · 1 resposta(s) não
+  vista(s)"; durante a entrega dizia "entregando ao DeepSeek desde 07:34";
+- o chip do Grok abre a caixa dele vazia.
+
+**Pendências desta fase:**
+- **prédio do Grok na Vila** (painel-e-vila): `painel/flutuante/dados.py:
+  PREDIOS` e a arte não têm o Grok; no app ele entra pelos chips da tela
+  Conversar. Sem prédio, a resposta dele não vira balão no canvas (só no
+  Telegram e na tela);
+- **tarefa do Windows para o carteiro** (`NeuralFights_carteiro`, como a do
+  app, a cada 10 min pelo `oculto.vbs`, com `carteiro.cmd`) — ver o fim
+  desta seção; sem ela, o carteiro sobe à mão;
+- anexo no DeepSeek (seletores, historias);
+- o balão no canvas fica atrás do placar quando o prédio está na fileira de
+  cima com a câmera no topo (o cartão mostra a resposta de qualquer jeito).

@@ -12,7 +12,8 @@ from pathlib import Path
 APP = Path(__file__).resolve().parent / "app"
 HTML = (APP / "index.html").read_text(encoding="utf-8")
 JS = {n: (APP / n).read_text(encoding="utf-8")
-      for n in ("app.js", "vila.js", "comandos.js", "decisoes.js", "orquestrador.js")}
+      for n in ("app.js", "vila.js", "comandos.js", "decisoes.js", "orquestrador.js",
+                "conversa.js")}
 
 # as áreas de antes da reforma, cada uma com o seu objeto na vila
 OBJETOS = {"quadro": "Avisos", "diario": "Diário", "videos": "Cinema",
@@ -29,7 +30,10 @@ FUNCOES = [
     "orq-agora", "orq-fila", "orq-pausar-fila", "orq-retomar-fila", "orq-max",
     "orq-mais", "orq-menos", "orq-modos", "orq-teto", "orq-forca", "orq-limites",
     "orq-grafico", "orq-decisoes", "orq-acessos", "orq-fluxo", "orq-mensagem",
-    "orq-enviar", "orq-comandos", "orq-faixa", "obj-orquestrador",
+    "orq-enviar", "orq-comandos", "orq-faixa", "obj-orquestrador", "orq-carteiro",
+    # a conversa com uma IA (fase 2 da Vila das IAs)
+    "conversa-ias", "conversa-casa", "conversa-carteiro", "conversa-historico",
+    "conversa-texto", "conversa-anexo", "conversa-anexo-nome", "conversa-enviar",
     # vila
     "vila-canvas", "vila-placar", "vila-escolhido", "vila-mais", "vila-menos",
     # diário
@@ -100,8 +104,8 @@ def test_a_zona_de_perigo_e_a_publicacao_continuam_ligadas():
 def test_o_cache_da_casca_mudou_de_versao():
     # sem trocar o nome do cache, o celular seguiria com a casca antiga
     sw = (APP / "sw.js").read_text(encoding="utf-8")
-    assert "painel-casca-v14" in sw
-    assert '"orquestrador.js"' in sw
+    assert "painel-casca-v15" in sw
+    assert '"orquestrador.js"' in sw and '"conversa.js"' in sw
 
 
 def test_a_vila_deitada_tem_arranjo_proprio():

@@ -1842,8 +1842,30 @@ def para_o_app(agora: float | None = None) -> dict:
         "comandos": list(reversed(comandos)),
         "pendentes": sum(1 for c in comandos if c.get("situacao") == "pendente"),
         "acessos": acessos,
+        # o carteiro da Vila das IAs (fase 2): aparece em "Agora" quando esta
+        # entregando, e a caixa de cada IA com os pendentes
+        "carteiro": carteiro_para_a_mesa(),
         "erros": erros,
     }
+
+
+def carteiro_para_a_mesa() -> dict | None:
+    """O carteiro (`ias.carteiro`) e as caixas do correio, para o Agora.
+
+    Nunca derruba a Mesa: sem o pacote `ias`, ou com o correio ilegivel,
+    devolve None e a tela nao mostra a linha.
+    """
+    try:
+        from ias import correio
+        estado = correio.estado_do_carteiro()
+        caixas = [{"ia": ia, "rotulo": info["rotulo"], "emoji": info["emoji"],
+                   "pendentes": info["pendentes"], "em_andamento": info["em_andamento"],
+                   "nao_vistas": info["nao_vistas"]}
+                  for ia, info in correio.resumo().items()]
+        return {**estado, "caixas": caixas,
+                "pendentes": sum(c["pendentes"] + c["em_andamento"] for c in caixas)}
+    except Exception:                                        # noqa: BLE001
+        return None
 
 
 def _estado_vazio_sem_disco() -> dict:

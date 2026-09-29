@@ -153,6 +153,27 @@
     </div>
     <div id="decisao-item" class="oculto"></div>
   </section>
+  <!-- A conversa com uma IA (Vila das IAs, fase 2): abre pelo "Conversar" do
+       cartão do prédio. A mensagem vai para o correio do PC; o carteiro
+       entrega e traz a resposta; esta tela relê a caixa a cada 6 s. -->
+  <section id="tela-conversa" class="oculto livro conversa" aria-label="Conversa com uma IA">
+    <div class="abas" id="conversa-ias"></div>
+    <div class="cartao conversa-cabeca">
+      <div id="conversa-casa" class="fraco"></div>
+      <div id="conversa-carteiro" class="conversa-carteiro fraco"></div>
+    </div>
+    <div id="conversa-historico" class="conversa-historico"></div>
+    <div class="cartao conversa-caixa">
+      <textarea id="conversa-texto" rows="3" placeholder="Escreva para a IA…"></textarea>
+      <div class="botoes">
+        <label class="acao conversa-anexo-rotulo">📎 Imagem
+          <input type="file" id="conversa-anexo" accept="image/png,image/jpeg,image/webp" hidden>
+        </label>
+        <span id="conversa-anexo-nome" class="fraco"></span>
+        <button class="acao primario" id="conversa-enviar">Enviar</button>
+      </div>
+    </div>
+  </section>
   <!-- A Mesa de comando: o orquestrador (a sessão principal do Claude Code)
        publica o que faz; daqui o Adrian vê e manda. Os comandos ficam
        pendentes até o orquestrador aplicar (ou recusar, com o motivo). -->
@@ -174,6 +195,7 @@
       <div id="orq-resumo" class="orq-resumo"></div>
       <h3 class="orq-sub" id="orq-agentes-titulo">Agentes</h3>
       <div id="orq-agora"></div>
+      <div id="orq-carteiro" class="orq-carteiro fraco"></div>
       <div id="orq-concluidos" class="fraco"></div>
     </div>
     <div class="cartao" id="orq-sec-fila">
@@ -302,5 +324,6 @@
 <script src="comandos.js"></script>
 <script src="decisoes.js"></script>
 <script src="orquestrador.js"></script>
+<script src="conversa.js"></script>
 </body>
 </html>

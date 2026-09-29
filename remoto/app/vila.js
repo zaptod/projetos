@@ -142,8 +142,32 @@ async function vilaCarregarRetrato(comMundo) {
 }
 
 async function vilaCarregarEstado() {
-  Vila.estado = (await api("/api/vila")).estado;
+  // o correio (a conversa dele com cada IA) vem junto: uma resposta que ele
+  // ainda não viu vira balão em cima do prédio e entra no cartão
+  const [vila, correio] = await Promise.all([
+    api("/api/vila"), api("/api/correio").catch(() => null)]);
+  Vila.estado = vila.estado;
+  Vila.correio = correio;
   vilaDesenharPainel();
+  if (Vila.selecionado) vilaMostrarEscolhido();
+}
+
+// as IAs com que ele conversa pelo app (Vila das IAs, fase 2); o Grok entra
+// pelos chips da tela, porque ainda não tem prédio
+const VILA_CONVERSA = new Set(["deepseek", "chatgpt", "gemini", "grok"]);
+
+function vilaCaixa(nome) {
+  return ((Vila.correio || {}).ias || []).find((c) => c.ia === nome) || null;
+}
+
+// a última resposta ainda não vista daquela IA (o texto curto do balão)
+function vilaRespostaNova(nome) {
+  const c = vilaCaixa(nome);
+  if (!c || !c.nao_vistas || !c.ultima) return null;
+  const u = c.ultima;
+  if (u.situacao === "respondida" && u.resposta) return u.resposta;
+  if (u.situacao === "falhou") return "✗ " + (u.erro || "falhou");
+  return null;
 }
 
 function vilaImagem(campo, url) {
@@ -341,6 +365,8 @@ function vilaDesenhar() {
     const [px, py] = vilaDobrar(porta[0], porta[1]);
     vilaSelo(ctx, px + 22, py - 56, sinal, info.status === "erro");
   }
+  // a resposta de uma IA que ele ainda não viu (o correio, fase 2)
+  vilaDesenharCorreio(ctx);
 
   // habitantes, de trás para a frente (quem está mais embaixo cobre)
   const gente = [...(Vila.retrato.habitantes || [])].sort((a, b) => a.y - b.y);
@@ -537,6 +563,8 @@ function vilaMostrarEscolhido() {
     alvo.classList.toggle("em-cima", emCima);
     alvo.style.top = emCima ? `${Math.round(topo)}px` : "";
   }
+  const resposta = vilaRespostaNova(nome);
+  const caixa = vilaCaixa(nome);
   alvo.replaceChildren(
     el("div", {class: "linha"},
       el("span", {class: "emoji"}, predio.emoji || "•"),
@@ -547,6 +575,13 @@ function vilaMostrarEscolhido() {
         info.erro ? el("div", {class: "erro"}, info.erro) : null,
         (info.contas || []).length
           ? el("div", {class: "fraco"}, "conta: " + info.contas.join(", "))
+          : null,
+        resposta ? el("div", {class: "vila-resposta"}, "💬 " + resposta.slice(0, 160)
+          + (resposta.length > 160 ? "…" : "")) : null,
+        caixa && (caixa.pendentes || caixa.em_andamento)
+          ? el("div", {class: "fraco"}, caixa.em_andamento
+            ? "sua mensagem foi entregue; esperando a resposta"
+            : `${caixa.pendentes} mensagem(ns) sua(s) na caixa`)
           : null),
       el("span", {class: "selo " + (info.status || "ocioso")},
         info.status || "")),
@@ -557,7 +592,47 @@ function vilaMostrarEscolhido() {
           diarioFabrica = nome; abrir("diario", b);
         });
         return b;
-      })()));
+      })(),
+      VILA_CONVERSA.has(nome) && typeof conversaAbrir === "function"
+        ? (() => {
+          const b = el("button", {class: "acao primario", id: "vila-conversar"}, "💬 Conversar");
+          b.addEventListener("click", () => conversaAbrir(nome, b));
+          return b;
+        })() : null));
+}
+
+// o balão de fala em cima do prédio: a resposta que ele ainda não viu
+function vilaBalaoDeFala(ctx, x, y, texto) {
+  const curto = texto.length > 26 ? texto.slice(0, 25) + "…" : texto;
+  ctx.font = "8px system-ui, sans-serif";
+  const largura = Math.min(150, ctx.measureText(curto).width + 12);
+  const altura = 14;
+  const ex = Math.round(x - largura / 2), ey = Math.round(y - altura);
+  ctx.beginPath();
+  ctx.roundRect(ex, ey, largura, altura, 5);
+  ctx.moveTo(x - 4, ey + altura);
+  ctx.lineTo(x, ey + altura + 4);
+  ctx.lineTo(x + 4, ey + altura);
+  ctx.fillStyle = "rgba(255, 255, 255, .96)";
+  ctx.fill();
+  ctx.lineWidth = .8;
+  ctx.strokeStyle = "#8a5a2e";
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#2b2016";
+  ctx.fillText(curto, x, ey + altura / 2 + 0.5, largura - 8);
+  ctx.textBaseline = "alphabetic";
+}
+
+function vilaDesenharCorreio(ctx) {
+  for (const c of ((Vila.correio || {}).ias || [])) {
+    const porta = Vila.mundo.portas[c.ia];
+    const texto = vilaRespostaNova(c.ia);
+    if (!porta || !texto) continue;
+    const [px, py] = vilaDobrar(porta[0], porta[1]);
+    vilaBalaoDeFala(ctx, px + 22, py - 70, texto);
+  }
 }
 
 // ------------------------------------------------------------ toque

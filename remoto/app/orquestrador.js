@@ -203,6 +203,39 @@ function orqDesenharPrincipal(d) {
   alvo.replaceChildren(...partes);
 }
 
+// O carteiro da Vila das IAs (fase 2): aparece em Agora quando está
+// entregando (ou esperando a pipeline soltar a conta), e a caixa de cada IA
+// com o que ainda está pendente. Sem carteiro nunca rodado, a linha só diz isso.
+const ORQ_CARTEIRO = {entregando: ["📮", "entregando", "trabalhando"],
+                      esperando_trava: ["⏳", "esperando a conta", "trabalhando"],
+                      resumindo: ["📝", "resumindo a casa", "trabalhando"],
+                      ocioso: ["📮", "pronto", "fraco"], parado: ["■", "parado", "erro"],
+                      nunca: ["·", "nunca rodou", "fraco"]};
+
+function orqDesenharCarteiro(c) {
+  const alvo = $("orq-carteiro");
+  if (!c) { alvo.replaceChildren(); return; }
+  const [ic, rot, cls] = ORQ_CARTEIRO[c.situacao] || ORQ_CARTEIRO.ocioso;
+  const rotulo = (c.caixas || []).find((x) => x.ia === c.ia);
+  const partes = [`${ic} Carteiro: ${rot}`];
+  if (c.situacao === "entregando" || c.situacao === "esperando_trava" || c.situacao === "resumindo") {
+    partes.push(`ao ${rotulo ? rotulo.rotulo : c.ia || "?"}`
+      + (c.desde ? ` desde ${orqHora(c.desde)}` : ""));
+  } else if (c.pulso_em) {
+    partes.push(`(sinal ${orqHora(c.pulso_em)})`);
+  }
+  const caixas = (c.caixas || []).filter((x) => x.pendentes || x.em_andamento || x.nao_vistas);
+  const linha = el("div", {class: "orq-carteiro-linha " + cls}, partes.join(" "));
+  if (c.nota) linha.appendChild(el("div", {class: "fraco"}, c.nota));
+  const detalhes = caixas.length
+    ? el("div", {class: "fraco"}, "caixas: " + caixas.map((x) =>
+      `${x.emoji} ${x.rotulo} ${x.pendentes ? x.pendentes + " pendente(s)" : ""}`
+      + `${x.em_andamento ? " entregue, esperando" : ""}`
+      + `${x.nao_vistas ? " · " + x.nao_vistas + " resposta(s) não vista(s)" : ""}`).join(" · "))
+    : el("div", {class: "fraco"}, "caixas vazias");
+  alvo.replaceChildren(linha, detalhes);
+}
+
 // O resumo que responde "cabe mais um?": vagas, uso contra o teto, fila.
 function orqDesenharResumo(d) {
   const ocupadas = (d.estado.agora || []).length;
@@ -251,6 +284,7 @@ function orqDesenharAgora(d) {
         botao);
     }));
   }
+  orqDesenharCarteiro(d.carteiro);
   const feitos = d.estado.concluidos_hoje || [];
   $("orq-concluidos").textContent = feitos.length
     ? "Hoje: " + feitos.map((c) => `${c.titulo} (${c.situacao}`

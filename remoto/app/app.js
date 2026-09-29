@@ -3,7 +3,7 @@ const TOKEN = "painel.token";
 const ULTIMO = "painel.ultimo_estado";
 const CONTATO = "painel.ultimo_contato";
 // A Vila é a tela; as outras áreas são objetos dela, com nome de objeto.
-const TITULOS = {vila: "Vila", quadro: "Quadro de avisos", diario: "Diário",
+const TITULOS = {vila: "Vila", conversa: "Conversa", quadro: "Quadro de avisos", diario: "Diário",
                  videos: "Cinema", comandos: "Bancada",
                  relatorios: "Pergaminhos", decisoes: "Grimório",
                  orquestrador: "Mesa de comando"};
@@ -483,7 +483,7 @@ const CARGAS = {vila: [carregarAgora, 15000], quadro: [carregarAgora, 15000],
                 diario: [carregarDiario, 5000],
                 videos: [null, 0], comandos: [null, 0],
                 relatorios: [abrirPergaminho, 0],
-                decisoes: [null, 0], orquestrador: [null, 0]};
+                decisoes: [null, 0], orquestrador: [null, 0], conversa: [null, 0]};
 
 function mostrar(nova) {
   if (nova && nova !== tela && nova === "diario") {
@@ -519,6 +519,7 @@ function mostrar(nova) {
   if (typeof comandosParar === "function") comandosParar();
   if (typeof decisoesParar === "function") decisoesParar();
   if (typeof orquestradorParar === "function") orquestradorParar();
+  if (typeof conversaParar === "function") conversaParar();
   if (!pareado) return;
   // o quadro de avisos mostra a gente e as travas, que vêm da vida da vila
   if ((tela === "vila" || tela === "quadro") && typeof vilaMostrar === "function") {
@@ -532,6 +533,9 @@ function mostrar(nova) {
   }
   if (tela === "orquestrador" && typeof orquestradorMostrar === "function") {
     orquestradorMostrar();
+  }
+  if (tela === "conversa" && typeof conversaMostrar === "function") {
+    conversaMostrar();
   }
   carregarAcoes().then(() => { if (tela === "videos") carregarVideos(); });
   const [carga, intervalo] = CARGAS[tela];
