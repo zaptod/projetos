@@ -608,6 +608,8 @@ class Janela(tk.Tk):
                          command=self.prever_agora)
         menu.add_command(label="Abrir o painel completo",
                          command=self.abrir_painel)
+        menu.add_command(label="Abrir o guia das IAs (colar HTML)",
+                         command=self.abrir_guia)
         menu.add_separator()
         # O unico jeito de FECHAR de verdade: o ✕ e o − viram o icone, que
         # continua visivel e traz a janela de volta com um clique.
@@ -846,6 +848,8 @@ class Janela(tk.Tk):
              "tamanho médio" if self.modo == "grande" else "tamanho grande"),
             ("⟳", "prever", self.prever_agora,
              "prever agora o que sai no próximo horário"),
+            ("◈", "guia", self.abrir_guia,
+             "abrir o guia das IAs: colar o HTML/seletor de cada coisa"),
         ]
         for texto, nome, acao, dica in botoes:
             self._botao(barra, texto, acao, dica, nome=nome).pack(
@@ -1194,6 +1198,17 @@ class Janela(tk.Tk):
             janelas.abrir("vila")
         except Exception:                                    # noqa: BLE001
             self._dica("não consegui abrir o painel")
+
+    def abrir_guia(self) -> None:
+        """A janela do guia das IAs (`flutuante/guia/`), em OUTRO processo:
+        ela e do mapeamento das IAs, nao da Vila, e uma travar nao pode
+        derrubar a outra."""
+        try:
+            from .. import janelas
+            janelas.abrir_guia()
+            self._dica("abrindo o guia das IAs…")
+        except Exception:                                    # noqa: BLE001
+            self._dica("não consegui abrir o guia")
 
     def detalhe_predio(self, nome: str) -> None:
         info = (self.estado.get("predios") or {}).get(nome) or {}

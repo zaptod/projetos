@@ -37,6 +37,7 @@ Documento de passagem. Tudo abaixo foi conferido no código e na máquina em 27/
 | **Painel** | quatro janelas grandes, cada uma um processo (`painel/app.py` + `painel/paginas/`) | `painel.bat` → `ferramentas/abrir.py painel`; ou `python -m painel` |
 | **Oficina de sprites** | a quarta janela: folha de sprites do ChatGPT → peça do palco (`painel/paginas/oficina.py` + `painel/sprites/`) | botão **🎨 Oficina de sprites** na Vila; `ferramentas/abrir.py oficina`; `python -m painel --janela oficina` |
 | **Vila flutuante** | uma janela pequena, **sem borda do Windows**, sempre por cima, no lugar dos consoles pretos (`painel/flutuante/`) | dois cliques em `vila_flutuante.pyw`; `python -m painel.flutuante`; ou o botão **🪟 Vila flutuante** na página Vila |
+| **Guia das IAs** (29/09) | a janela onde o Adrian **cola o HTML/seletor/texto** de cada coisa que mostra na sessão guiada da Vila das IAs (`painel/flutuante/guia/`), sem borda, por cima, canto direito | `python -m painel.flutuante.guia`; o botão **◈** na barra da Vila flutuante ou o menu dela (botão direito → "Abrir o guia das IAs") |
 
 As quatro janelas (`painel/janelas.py`, `JANELAS`): **🏘 Vila** — o hub, uma
 página só (placar, as outras janelas, paralelismo e o diário com filtro por
@@ -336,6 +337,71 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   janela para o fundo (13 ms); coberta, o `PrintWindow` ainda a fotografa.
   Vale para `python -m painel --prova` e para a `--prova` da flutuante.
 
+## 6b. O Guia das IAs (29/09/2026)
+
+Pedido do Adrian às 01:55: "cria uma interface gráfica flutuante pra eu
+colar os htmls e etc tb". Contexto: a Vila das IAs (plano
+`vila-das-ias.md`, fase 1). O agente do guia (`ias/guia.py`, sessão
+`historias`) abre o navegador de cada IA **visível** e ele mostra onde
+escreve, manda, anexa, troca de modelo; esta janela fica ao lado para ele
+colar o HTML do elemento (copiado do DevTools), seletores, textos de
+erro/cota e observações. **A interface com o agente é só por arquivo**, em
+`random_builds/outputs/_ias/` — nada aqui importa `ias` nem `historias`:
+
+- **leio** `_atual.json` (`{"ia": "grok", "passo": "onde escreve", "desde":
+  iso}`, o agente escreve a cada passo); sem ele a janela cai na primeira IA
+  e diz "sem _atual.json: o agente ainda não disse qual IA" (caso zero com
+  teste); clicar no nome da IA escolhe a mão ou volta a "seguir o agente";
+- **escrevo** `<ia>/guia/colado.jsonl`, append de UMA linha por item:
+  `{"id", "em", "ia", "papel", "tipo", "conteudo", "previa"}` +
+  `"passo"` (do `_atual.json`) + `"seletor_sugerido"` (o seletor **como
+  ficou depois de ele editar** — o nome é o que `ias/guia.py` lê) +
+  `"cortado": true` quando o conteúdo passou de 100 mil caracteres.
+  `papel` ∈ {campo_texto, enviar, resposta, seletor_modelo, anexo,
+  gerar_imagem, erro_cota, observacao} (os oito botões) e os marcadores
+  `proximo` (o agente avança o passo) e `mensagem` (texto curto ao agente);
+  `tipo` ∈ {html, seletor, texto}.
+- **apagar é lápide, o arquivo nunca encolhe**: `{"papel": "apagado",
+  "alvo": id}`. O agente lê por **contagem de linhas** (`ler_colado`);
+  reescrever o arquivo com uma linha a menos faria o item seguinte cair num
+  índice que ele já passou, e ele nunca o veria. `ler_itens` esconde alvo e
+  lápide; o ✕ pede dois cliques.
+
+**O que ela faz com o que foi colado** (`guia/colado.py`, sem Tk, com
+teste): detecta o tipo (HTML se começa com `<`; seletor se tem cara de
+CSS/XPath — uma frase com aspas e "erro:" é texto); a prévia é uma linha
+(tag, `#id`, role, aria, testid, placeholder, «texto visível», "+N dentro");
+e o **seletor robusto** vem por `data-testid` > id estável > `aria-label` >
+role+placeholder/name > placeholder/name > `type=submit`/contenteditable >
+texto visível (`button:has-text('…')`, o botão antes do div que o embrulha)
+> role só > tag só. **Nunca por classe** e nunca por id gerado
+(`parece_gerado`: hash hex, número comprido, `:r5:` do React/radix,
+prefixos `css-`/`sc-`/`headlessui-`, bloco de 5+ com letras e dígitos
+misturados, bloco sem vogal). Sem âncora, devolve só a tag com "edite antes
+de gravar". Ele edita o seletor na caixa antes de gravar; uma colada nova
+não apaga o que ele editou. Ctrl+V em qualquer lugar da janela **troca** o
+conteúdo da caixa (um item por colada); nas duas entradas de texto a colagem
+é a normal.
+
+**Janela** (`guia/janela.py`): tema da Vila, 400×660 por padrão (cabe em
+1366×768 com a lista ainda com espaço; teste mede todo botão dentro),
+canto direito, arrastável pela barra, redimensionável pelo ◢, `−` recolhe
+para uma faixa de 34 px com a IA e o passo (nunca `iconify`/`withdraw`,
+teste), `✕` **fecha de verdade** — diferente da Vila, não há alerta que
+fechar esconderia, e o ◈ da Vila reabre. Instância única por mutex
+`Local\NeuralFights_GuiaIAs` + `guia.sinal` (o segundo lançamento traz a
+viva). **Abrir não rouba o foco do navegador**: se a janela nova virou a da
+frente no primeiro desenho, `devolver_foco` devolve a quem tinha (mesma
+medição de `painel/prova.py`). Só a `JanelaGuia` chama `after`; a escuta
+do sinal publica numa fila. Lê `_atual.json` e o jsonl por mtime a cada
+1,5 s, na thread do Tk (arquivos de bytes).
+
+**Prova:** `python -m painel.flutuante.guia --prova f.png --demo --colar
+demo` (itens de demonstração em memória, o textarea do Grok na caixa; nada
+vai para o disco nem para as preferências). Testes: `painel/test_guia.py`
+(41). Preferências em `guia.json` no runtime (posição, tamanho, por cima,
+recolhida, IA escolhida a mão).
+
 ## 7. Como conferir sem quebrar nada
 
 - `python -m painel --janela oficina --arquivo F.png --prova saida.png`
@@ -359,7 +425,9 @@ Claude Code encerrando processos (a `TaskStop` das 19:04:39 e o fim do
   `painel/test_oficina_sprites.py` (40: a 11243 medida, o `piriri.py`
   medido do mesmo jeito, fundo branco que não fura o brilho, tela verde,
   exportação no formato do palco, soltar arquivo, a página cabendo em
-  1366×768) e `painel/test_confiabilidade_grade.py` (4). As fixtures são
+  1366×768), `painel/test_guia.py` (41, o guia das IAs: detector, prévia,
+  seletor robusto, jsonl com lápide, caso zero e a janela cabendo) e
+  `painel/test_confiabilidade_grade.py` (4). As fixtures são
   cópias das folhas do Adrian em `painel/sprites/fixtures/` (os originais
   da raiz são dele).
 - `python -m painel.flutuante.tarefa` (sem bandeira) confere o `.cmd` e a
@@ -387,7 +455,10 @@ na thread da interface; usar `ImageGrab`; apontar a tarefa direto para o `.cmd`
 
 **Meus:** `painel/**`, `vila_flutuante.pyw`, o `vila_flutuante.cmd`
 (gerado pelo `flutuante/tarefa.py`), a tarefa `NeuralFights_vila_flutuante`, e
-em disco `flutuante.json` + `flutuante.sinal`.
+em disco `flutuante.json` + `flutuante.sinal`; do guia (§6b), `guia.json` +
+`guia.sinal` no runtime e `random_builds/outputs/_ias/<ia>/guia/colado.jsonl`
+(append; o agente do guia, `ias/guia.py`, só lê). O `_atual.json` da mesma
+pasta é dele: eu só leio.
 
 **A Oficina de sprites escreve no palco** (dono: a sessão do palco), e só
 quando o Adrian aperta **Exportar**: `palco/biblioteca/efeitos/folhas/`, a

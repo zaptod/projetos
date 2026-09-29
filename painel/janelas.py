@@ -132,4 +132,17 @@ def abrir_flutuante() -> subprocess.Popen:
         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
 
 
-__all__ = ["JANELAS", "abrir", "abrir_flutuante", "montar"]
+def abrir_guia() -> subprocess.Popen:
+    """A janela do guia das IAs (`python -m painel.flutuante.guia`), sem
+    console. Se ja houver uma aberta, a nova pede para ela aparecer e sai."""
+    executavel = Path(PY)
+    sem_console = executavel.with_name(
+        executavel.name.replace("python.exe", "pythonw.exe"))
+    interpretador = sem_console if sem_console.is_file() else executavel
+    return subprocess.Popen(
+        [str(interpretador), "-X", "utf8", "-m", "painel.flutuante.guia"],
+        cwd=str(RAIZ),
+        creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+
+
+__all__ = ["JANELAS", "abrir", "abrir_flutuante", "abrir_guia", "montar"]

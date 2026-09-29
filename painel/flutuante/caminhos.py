@@ -83,6 +83,22 @@ class Caminhos:
         # Porta local + segredo da instancia viva (ver `sinal.py`).
         return self.runtime / "flutuante.sinal"
 
+    # ---- a janela do GUIA das IAs (`flutuante/guia/`), 29/09/2026
+    @property
+    def guia_preferencias(self) -> Path:
+        # O unico arquivo que a janela do guia escreve fora de `_ias/`.
+        return self.runtime / "guia.json"
+
+    @property
+    def guia_sinal(self) -> Path:
+        return self.runtime / "guia.sinal"
+
+    @property
+    def ias(self) -> Path:
+        # `_atual.json` (o agente do guia escreve, a janela le) e
+        # `<ia>/guia/colado.jsonl` (a janela escreve, o agente le).
+        return self.raiz / "random_builds" / "outputs" / "_ias"
+
     @property
     def ledgers(self) -> dict:
         return {
