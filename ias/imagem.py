@@ -51,7 +51,8 @@ PROPORCOES_DO_CHAT = ("1:1", "3:4", "4:3", "9:16", "16:9")
 PROPORCOES_DO_PICASSO = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3")
 PROVA_DA_VIA = {
     "picasso": "o card do histórico da conta com o SEU prompt (prova forte)",
-    "chat": "o turno do pedido na casa da IA; vale a imagem que nasce depois dele",
+    "chat": ("o turno do pedido na casa da IA; vale a imagem NOVA dentro da resposta "
+             "a ele, com a geração terminada"),
 }
 # Categorias de falha que tiram o gerador do rodizio por `cota_pausa_h`.
 CATEGORIAS_DE_COTA = ("limite", "upgrade", "parede")

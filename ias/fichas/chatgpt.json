@@ -104,16 +104,16 @@
   "duracao_s": 430.0,
   "ia": "chatgpt",
   "imagem": {
-    "alfa": null,
-    "arquivo": null,
-    "gera": null,
-    "prova": "random_builds\\outputs\\_ias\\chatgpt\\guia\\20260929_021448_074_janela.png",
+    "alfa": false,
+    "arquivo": "png",
+    "gera": true,
+    "prova": "random_builds\\outputs\\_ias\\chatgpt\\imagem\\20260929_171626_criando_imagem.png e 20260929_171659_gato_pronto.png",
     "prova_origem": {
-      "nota": "o menu + tem 'Criar imagem — Visualize qualquer coisa' e ele pos o compositor nesse modo (02:14), mas nao gerou; conta Free",
-      "tipo": "nao pedido"
+      "nota": "medido em 29/09 17:16 pelo carteiro (correio 0edfbdb5, 'Crie um gato para mim' 1:1, conta Free): 'Criando imagem' com o botao de parar, a imagem revela de cima para baixo e o botao de parar SOME antes de ela terminar; a final mora em div#image-<uuid> (imagegen-image), alt 'Imagem gerada: <titulo>', PNG 1254x1254 RGB (~2,5 MB); o 'Baixar' fica na tela cheia e entrega os mesmos bytes do src. Embaixo da resposta o ChatGPT pode por um ANUNCIO com miniatura 512x512 no mesmo turno (d228c94f).",
+      "tipo": "turno na casa (dentro da resposta, src novo)"
     },
-    "resolucao": null,
-    "tempo_s": null
+    "resolucao": "1254x1254",
+    "tempo_s": 33
   },
   "login": {
     "detalhe": "sessao guiada 02:10-02:17: chat montou; rodape 'Adrian Oliv... Free' com botao 'Fazer upgrade'",
@@ -132,10 +132,10 @@
     "seletor": "button:has-text('Pensar') [aria-pressed] (colado por ele como seletor_modelo)"
   },
   "pendencias": [
-    "imagem 1:1 nao gerada (1 pedido em 'Criar imagem' mediria resolucao/alfa e o limite do Free)",
     "limite de caracteres do campo nao medido",
     "mensagem de limite do Free nao vista (so aparece ao estourar)",
-    "seletores CHATGPT ja batiam com o que ele colou (#prompt-textarea, send-button, composer-plus-btn): nada a mudar"
+    "seletores CHATGPT ja batiam com o que ele colou (#prompt-textarea, send-button, composer-plus-btn): nada a mudar",
+    "limite de imagens do Free nao medido (1 imagem em 29/09 17:16 passou)"
   ],
   "perfil": "C:\\Users\\adrian\\AppData\\Local\\neural-fights\\browser_profiles\\chatgpt__principal",
   "rotulo": "ChatGPT",

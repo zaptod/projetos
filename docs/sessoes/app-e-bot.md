@@ -131,7 +131,7 @@ e um servidor esquecido nela já quebrou o login.
 
 ```bash
 python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 671 testes (29/09, 15h)
-python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 107 (correio, carteiro e imagem, §10 e §13)
+python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 108 (correio, carteiro e imagem, §10 e §13)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -1265,9 +1265,9 @@ preso ou limite".
 | Digen | Criar **desabilitado**: "gera VÍDEO a partir de uma imagem (Real Motion 3.5): próximo passo" | — | — |
 | 🎲 Livre | o **rodízio**: `rodizio_imagem` do `ias/config.json` (picasso → gemini → grok → chatgpt) | o primeiro que a ficha diz que gera, que faz a proporção, que está em cota e cuja conta está **livre agora** | a do gerador escolhido |
 
-ChatGPT: a ficha diz `gera: null` (não medido); a tela diz "ainda não
-medido: a primeira imagem mede". Nenhum dos três chats foi provado ao vivo
-gerando imagem: só o PicassoIA (prova real abaixo).
+ChatGPT: medido ao vivo em 29/09 17:16 (o gato do `0edfbdb5`, abaixo): a
+ficha diz `gera: true`, PNG 1254x1254 em ~33 s. O Gemini também gerou de
+verdade (o gato do `dde066f1`). O Grok **não** foi provado gerando imagem.
 
 **O correio** (`ias/correio.py`): as caixas agora são 8 (`CAIXAS`): as 4 de
 chat, `picasso`, `dreamface`, `digen` e `livre`. Um pedido é
@@ -1518,6 +1518,42 @@ xícara de café**.
   `historias/tests/test_imagem_js_no_navegador.py` (5), que roda o JS num
   **Chrome headless de verdade** com a estrutura medida (anúncio incluído)
   — só com `NF_TESTE_NAVEGADOR=1`, fora da suíte normal.
+- **Conferido na casa real do Gemini** (só leitura,
+  `scratchpad/conferir_js_casa_real.py`): o JS novo acha 1 imagem, a do
+  último turno, no `generated-image`; nada "fora"; o botão marcado é o
+  "Baixar imagem no tamanho original" do mesmo recipiente.
+- **A prova real (29/09, 16:44–17:20).** O `d228c94f` virou `falhou`
+  ("imagem errada: não era do nosso turno…"), com `imagem` vazia; o
+  arquivo errado e a prova foram para `ias\chatgpt\imagens\_erradas\`. O
+  carteiro foi reiniciado com o código novo (PID 4564, 16:41). O pedido foi
+  reenviado **uma vez**, pelo 🎨 Criar do ChatGPT na instância 8934 com o
+  correio real (`scratchpad/prova_gato_chatgpt.py`, 390x844, clicando),
+  e a tela foi fechada. Resultado, `0edfbdb5`:
+  - 16:44–17:16 o carteiro **esperou a pipeline** (a rodada das histórias
+    abriu o ChatGPT às 16:37 para reescrever prompt bloqueado e o segurou até
+    o fim das imagens), sem forçar;
+  - log da espera: 17:16:22 "a IA diz que ainda está gerando"; 17:16:47 "1
+    no recipiente (1254x1254, alt «Imagem gerada: Gato tigrado aconchegado
+    na cama»); 1 final e nova"; aceita às 17:16:54 (33 s); 17:16:57
+    "baixada pelo botão do site: ChatGPT Image … .png (2481992 bytes)";
+    17:17:32 "aviso no Telegram entregue" (o `sendDocument` respondeu ok);
+  - a prova gravada: `dentro_da_resposta`, `src_novo`,
+    `imagens_antes_do_envio: 3`, `download: botao_tamanho_original`;
+    arquivo `0edfbdb5.png`, PNG 1254x1254, 2.481.992 bytes: um gato;
+  - **capturas da janela durante a geração** (PrintWindow, a cada ~3 s,
+    `scratchpad/vigia_janela_chatgpt.py`; em
+    `E:\projetos-wt\_prova_gato_chatgpt\janela\`): 17:16:26 "Criando
+    imagem" com o botão de parar; 17:16:45 a imagem **revelando de cima
+    para baixo com o botão de parar já sumido** ("Iniciar Voz") — o botão
+    sozinho não prova que acabou, e por isso a estabilidade de 5 s; 17:16:49
+    completa; 17:16:55 a tela cheia aberta pelo carteiro com o botão de
+    baixar. Desta vez não houve anúncio (`ignoradas_fora_da_resposta: 0`);
+  - no app (`E:\projetos-wt\_prova_gato_chatgpt\telas\`): o `d228c94f`
+    aparece "16:02 · falhou: imagem errada: não era do nosso turno…", e o
+    reenvio "16:44 · gerada 17:16 em 40 s · chatgpt" com a miniatura do
+    gato (`5_gerada_no_app.png`); a tela cheia abre, e o ⬇ Baixar entrega o
+    arquivo do PC **byte a byte**. O toque na Vila não achou o prédio do
+    ChatGPT (o script entrou pelo chip, que abre o mesmo Criar).
 
 **Pendências e o que é do Adrian:**
 - O Grok gerando imagem **não foi provado ao vivo**: o recipiente dele é o

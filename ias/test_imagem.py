@@ -159,8 +159,19 @@ class GeradoresPelaFicha(unittest.TestCase):
         for chat in ("grok", "gemini", "chatgpt"):
             self.assertTrue(por_ia[chat]["disponivel"], chat)
             self.assertEqual(por_ia[chat]["via"], "chat")
-        # ChatGPT: a ficha nao mediu ("gera": null) e a tela diz isso
-        self.assertIn("não medido", por_ia["chatgpt"]["nota"])
+        # ChatGPT: medido em 29/09 17:16 (o gato do 0edfbdb5): a tela nao diz
+        # mais "nao medido"
+        self.assertNotIn("não medido", por_ia["chatgpt"]["nota"])
+
+    def test_ficha_que_nao_mediu_diz_na_tela(self):
+        original = imagem.fichas.carregar
+        try:
+            imagem.fichas.carregar = lambda ia: {"imagem": {"gera": None}}
+            info = imagem.gerador("grok")
+            self.assertTrue(info["disponivel"])
+            self.assertIn("não medido", info["nota"])
+        finally:
+            imagem.fichas.carregar = original
 
     def test_quem_nao_gera_diz_por_que(self):
         por_ia = {g["ia"]: g for g in imagem.geradores()}
