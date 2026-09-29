@@ -12,7 +12,7 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 - ✅ **Força total antes de renovar: ainda vale?** — Ligada, 20 min antes de renovar (28/09/2026) `forca-total-ainda-vale`
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
 - ✅ **Força total ligada pela Mesa: por quanto tempo?** — Até eu desligar (28/09/2026) `forca-total-pela-mesa`
-- ⏳ **Teto também no limite semanal?** — Hoje só a sessão de 5 h tem teto (50%): passou, os agentes param. A semana aparece na Mesa, mas nada para quando ela enche. Quer um teto na semana também? `teto-da-semana`
+- ✅ **Teto também no limite semanal?** — Outro (comente) (28/09/2026) · “Controlo isso com a mesa” `teto-da-semana`
 
 <!-- decisoes:fim -->
 

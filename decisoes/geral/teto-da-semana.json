@@ -3,7 +3,15 @@
   "contexto": "Medido às 20:47 de 28/09: sessão 24%, semana 16% (renova 05/10 09:00).",
   "criado": "2026-09-28T20:56:20.198971",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "Controlo isso com a mesa",
+      "em": "2026-09-28T21:46:31",
+      "opcao": "outro",
+      "origem": "app"
+    }
+  ],
   "id": "teto-da-semana",
   "midias": [],
   "opcoes": [
@@ -38,7 +46,11 @@
   ],
   "pergunta": "Hoje só a sessão de 5 h tem teto (50%): passou, os agentes param. A semana aparece na Mesa, mas nada para quando ela enche. Quer um teto na semana também?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Teto também no limite semanal?",
-  "vigente": null
+  "vigente": {
+    "comentario": "Controlo isso com a mesa",
+    "em": "2026-09-28T21:46:31",
+    "opcao": "outro"
+  }
 }
