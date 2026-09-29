@@ -3,7 +3,15 @@
   "contexto": "",
   "criado": "2026-09-29T01:45:23.965607",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T02:26:32",
+      "opcao": "manter",
+      "origem": "app"
+    }
+  ],
   "id": "aviso-no-telegram-comando-da-mesa-sem-ni",
   "midias": [],
   "opcoes": [
@@ -38,7 +46,11 @@
   ],
   "pergunta": "Quando um comando seu na Mesa fica mais de 2 min pendente porque o orquestrador não está ouvindo, o app agora te avisa no Telegram (um aviso por ocorrência) e avisa de novo quando ele volta e aplica. Fica assim?",
   "projeto": "app-e-bot",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Aviso no Telegram: comando da Mesa sem ninguém ouvindo",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T02:26:32",
+    "opcao": "manter"
+  }
 }
