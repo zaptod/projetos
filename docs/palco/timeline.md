@@ -27,7 +27,10 @@ daqui, em **metros, graus e segundos**.
 - Eventos têm `i` (passo) e `t` (`i / 60`). A lista `sons` (Onda 16A) usa o `t`
   do gravador, que é quantizado ao quadro de 1/30 s: um som pedido num passo
   ímpar aparece no passo par seguinte, o primeiro quadro que mostra aquele
-  passo.
+  passo. **Desde a revisão 2** cada som traz também o `i`, o passo exato em
+  que o jogo o pediu: `t = ceil(i / 2) / 30` (há teste cobrando). O palco
+  que toca a 60 Hz ou em câmera lenta usa `i / 60`; quem mistura o mp4 de
+  30 fps continua no `t`.
 
 ## Unidades e coordenadas
 
@@ -39,7 +42,7 @@ altura do pulo (o render desenha o corpo em `(x, y − z)`). Ângulos em **graus
 ## O documento
 
 ```text
-formato: "neural-fights/timeline"   versao: 1   hz: 60   n: <passos>   duracao: n/60
+formato: "neural-fights/timeline"   versao: 1   revisao: 2   hz: 60   n: <passos>   duracao: n/60
 luta:        seed, p1, p2, cenario, camera_modo, camera_largura_min_m, camera_espera_zoom_in
 tela_referencia: [1080, 1920]       a tela para a qual a câmera foi calculada
 arena:       formato, largura, altura, min, max, centro, raio, paredes, cores, tema,
@@ -208,7 +211,10 @@ subiu, vida que caiu, cooldown que saltou). Todo evento tem `i`, `t` e `tipo`.
 ### `sons` (o formato da 16A)
 
 A seção é a lista do `AnotadorDeAudio` da Onda 16A **sem tradução**:
-`{"versao": 1, "relogio": "video", "itens": [{t, id, volume, pitch, pan?, x?}]}`.
+`{"versao": 1, "relogio": "video", "itens": [{t, i, id, volume, pitch, pan?, x?}]}`.
+O `i` (revisão 2) é o passo do motor em que o som foi pedido; o `t` continua o
+do quadro que mostra esse passo (`ceil(i / 2) / 30`). Timeline de revisão 1
+não tem `i`: o leitor usa `t × 60`.
 Formato, relógio e mistura estão no contrato da 16A (`docs/palco/sons.md`).
 Sai preenchida pelo gravador (`gravar_luta(timeline=...)`) e pelo
 `gravar_timeline` fora do headless (os dois injetam o anotador); `null` quando
@@ -388,8 +394,10 @@ Ainda não feito:
 2. O remapeamento na timeline gravada pelo gravador: o corte de tédio é
    decidido depois da gravação (`planejar_corte_tedio`); hoje quem o preenche
    é o palco, a partir dos eventos.
-3. Decidir com a 16A se o anotador passa a carimbar o som no passo (`i / 60`)
-   em vez do quadro de 1/30 s quando houver timeline.
+3. ~~Decidir com a 16A se o anotador passa a carimbar o som no passo~~:
+   feito na revisão 2 (`ac270f2`) sem trocar o relógio — o som ganhou o `i` e
+   o `t` de vídeo ficou, porque é ele que a mistura do mp4 e o corte de tédio
+   usam.
 
 ## Versão
 
@@ -397,3 +405,12 @@ Ainda não feito:
 leitor ignora o que não conhece). Mudar o significado, a unidade ou o relógio
 de algo que existe sobe a versão. `timeline_arquivo.validar(doc)` é o schema em
 código: lista vazia = válido.
+
+**`revisao`** conta as mudanças ADITIVAS dentro da v1, para quem quiser saber
+o que um arquivo traz sem procurar campo por campo. O palco recusa `versao`
+diferente de 1 e aceita qualquer `revisao`; arquivo sem o campo é revisão 1.
+
+| revisão | data | o que entrou |
+|---|---|---|
+| 1 | 28/09/2026 (`3097a37`) | a v1 |
+| 2 | 28/09/2026 (`ac270f2`) | `i` em cada item de `sons` |

@@ -22,6 +22,7 @@ Uma lista JSON de objetos, na ordem em que o jogo pediu (`t` não decresce):
 | campo    | tipo e precisão      | unidade                       | quando          |
 |----------|----------------------|-------------------------------|-----------------|
 | `t`      | float, 3 casas       | segundos, relógio do VÍDEO    | sempre          |
+| `i`      | int                  | passo do motor (60 Hz)        | desde 28/09 (revisão 2 da timeline) |
 | `id`     | string               | chave do som no jogo          | sempre          |
 | `volume` | float 0..1, 4 casas  | ganho linear                  | sempre          |
 | `pitch`  | float > 0, 4 casas   | razão de velocidade de leitura| sempre          |
@@ -46,6 +47,12 @@ Uma lista JSON de objetos, na ordem em que o jogo pediu (`t` não decresce):
   o vídeo não repetir o mesmo golpe 25 vezes.
 - **`pan`** e **`x`**: anotados para quem quiser espacializar (o palco). O jogo
   ao vivo não faz estéreo e a mistura do vídeo de hoje também não usa.
+- **`i`** é o passo exato do motor em que o jogo pediu o som (`ac270f2`, a
+  revisão 2 da timeline): o mesmo relógio das trilhas e dos eventos da
+  timeline (`i / 60` s). Quem grava (`fight_recorder` e `gravar_timeline`)
+  avança `AnotadorDeAudio.passo` junto com o `t_video`; sem isso
+  (`passo = None`) o campo não sai. É aditivo: o `t` não mudou e a mistura
+  do mp4 continua lendo só o `t`.
 
 ## Relógio: `t` é tempo de VÍDEO
 
@@ -58,7 +65,12 @@ Uma lista JSON de objetos, na ordem em que o jogo pediu (`t` não decresce):
   anda menos: `t` fica no relógio do vídeo (o som cai quando a imagem mostra),
   e o som não é esticado.
 - `arena_start` sai em `t = 0` (pedido na configuração da partida, antes do
-  primeiro passo).
+  primeiro passo), com `i = 0`.
+- **`t` e `i` juntos:** `t = ceil(i / 2) / 30` na gravação bruta (um som
+  pedido num passo ímpar aparece no quadro do passo par seguinte; há teste
+  cobrando). No corte de tédio (abaixo) o `t` vai para o relógio do CLIPE e
+  o `i` **fica**: ele continua dizendo em que passo da timeline (gravação
+  bruta) o som nasceu.
 
 ## Onde a lista mora, e o corte de tédio
 
@@ -117,7 +129,12 @@ Uma lista JSON de objetos, na ordem em que o jogo pediu (`t` não decresce):
 não muda a versão; mudar o significado de um campo existente (unidade, relógio)
 sobe.
 
-## Exemplo (duelo real, relógio do vídeo)
+O `i` entrou assim em 28/09/2026: `versao_sons` continua 1; quem quiser
+saber se a lista tem `i` olha a `revisao` da timeline (≥ 2) ou o próprio
+item. Lista gravada antes disso (os `fight.json` de antes de 28/09 à
+tarde) não tem o campo.
+
+## Exemplo (duelo real, relógio do vídeo; gravado antes do `i`)
 
 ```json
 [
