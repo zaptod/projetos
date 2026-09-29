@@ -3,7 +3,15 @@
   "contexto": "",
   "criado": "2026-09-29T01:45:25.248252",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T02:26:15",
+      "opcao": "esquecer",
+      "origem": "app"
+    }
+  ],
   "id": "o-aparelho-pareado-em-17-09-ainda-e-seu",
   "midias": [],
   "opcoes": [
@@ -38,7 +46,11 @@
   ],
   "pergunta": "Há 2 aparelhos pareados com o app: 076f31d9 (Android, desde 17/09) e 614c026b (Android, desde 24/09, o que manda os comandos da Mesa). Até 29/09 o log não dizia qual aparelho falava com o PC; agora diz. O de 17/09 continua podendo ler tudo e mandar comandos.",
   "projeto": "app-e-bot",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "O aparelho pareado em 17/09 ainda é seu?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T02:26:15",
+    "opcao": "esquecer"
+  }
 }
