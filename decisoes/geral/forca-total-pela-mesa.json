@@ -3,7 +3,15 @@
   "contexto": "A regra automática (força total nos 20 min antes de renovar) não muda; isto é só o botão do modo na Mesa.",
   "criado": "2026-09-28T20:56:18.964965",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T21:45:54",
+      "opcao": "ate-desligar",
+      "origem": "app"
+    }
+  ],
   "id": "forca-total-pela-mesa",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Na Mesa de comando, o modo 'Força total' deixa os agentes passarem do teto de uso. Desde hoje, o que você muda na Mesa vira regra no Grimório. Se você tocar em 'Força total', ela vale até a janela de 5 h renovar (e volta ao modo de antes), ou até você desligar?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Força total ligada pela Mesa: por quanto tempo?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T21:45:54",
+    "opcao": "ate-desligar"
+  }
 }
