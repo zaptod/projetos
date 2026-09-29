@@ -9,6 +9,14 @@
       "em": "2026-09-28",
       "opcao": "cinquenta",
       "origem": "semente"
+    },
+    {
+      "anterior": "cinquenta",
+      "aparelho": "614c026b",
+      "comentario": "28/09 21:48, pela Mesa de comando: passou de 100% da sessão, para tudo",
+      "em": "2026-09-28T21:48:26",
+      "opcao": "outro",
+      "origem": "mesa"
     }
   ],
   "id": "teto-de-uso",
@@ -34,8 +42,8 @@
   "situacao": "decidida",
   "titulo": "Teto de uso do Claude",
   "vigente": {
-    "comentario": "",
-    "em": "2026-09-28",
-    "opcao": "cinquenta"
+    "comentario": "28/09 21:48, pela Mesa de comando: passou de 100% da sessão, para tudo",
+    "em": "2026-09-28T21:48:26",
+    "opcao": "outro"
   }
 }
