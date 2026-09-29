@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-29T01:04:34",
+      "evento": "2026-09-29T00:56:41",
+      "linha": 37,
+      "nota": "orquestrador abriu o Google Drive às 01:1x; acompanhar se o cache de 186 GB diminui",
+      "opcao": "abrir-drive",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Outros pesos no E: que não são das sessões: Lixeira do E: ($RECYCLE.BIN) 15,8 GB; downloads 24,6 GB; pagefile.sys 9,5 GB (memória virtual do Windows — não mexer). Os temporários das sessões no E: (~0,4 GB) estão no nó limpeza-do-disco.",
   "criado": "2026-09-29T00:51:23.177380",
   "depende_de": [],
