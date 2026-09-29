@@ -8,7 +8,15 @@
       "opcao": "quase"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-28T21:45:27",
+      "opcao": "depois",
+      "origem": "app"
+    }
+  ],
   "id": "duelo-quando",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "O pacote mínimo do duelo elaborado custa 13–19 dias de sessão (proposta em docs/zombie/duelo-elaborado.md). Isso compete com o objetivo das semanas, que é estabilizar o que existe. Quando entra?",
   "projeto": "jogo-zombie",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Duelo elaborado: quando fazer",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-28T21:45:27",
+    "opcao": "depois"
+  }
 }

@@ -24,7 +24,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ✅ **Duelo: o que o país muda?** — Só cor, nomes, adereço e idioma (28/09/2026) `duelo-nacionalidade`
 - ✅ **Duelo: os humanos falam em voz alta?** — Sem voz: só texto nos balões (28/09/2026) `duelo-voz`
 - ✅ **Duelo: arte dos personagens** — Levar o duelo ao palco Godot (Onda 16) (28/09/2026) `duelo-arte`
-- ⏳ **Duelo elaborado: quando fazer** — O pacote mínimo do duelo elaborado custa 13–19 dias de sessão (proposta em docs/zombie/duelo-elaborado.md). Isso compete com o objetivo das semanas, que é estabilizar o que existe. Quando entra? `duelo-quando`
+- ✅ **Duelo elaborado: quando fazer** — Depois da estabilização (rotas de 3 semanas) (28/09/2026) `duelo-quando`
 
 <!-- decisoes:fim -->
 
