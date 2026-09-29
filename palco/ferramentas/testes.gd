@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_testar_plano()
 	_testar_biblioteca()
 	_testar_timeline()
+	_testar_revisao_3()
 	# todo script do palco compila (o que a biblioteca nao carregou acima)
 	for s in ["res://nucleo/palco.gd", "res://nucleo/sons.gd", "res://biblioteca/lutadores/rosto.gd",
 			"res://biblioteca/hud/hud_padrao.gd", "res://ferramentas/validar.gd", "res://ferramentas/vitrine.gd",
@@ -194,3 +195,58 @@ func _testar_timeline() -> void:
 	_checar(absf(absf(float(a["ang"])) - 180.0) < 0.01, "angulo pelo caminho curto (%s)" % str(a["ang"]))
 	var b := Timeline.amostra({"x": [0.0, 2.0], "expr": [3, 7]}, ["x", "expr"], 0.5)
 	_checar(is_equal_approx(float(b["x"]), 1.0) and int(b["expr"]) == 3, "continuo interpola, discreto pega o passo de baixo")
+
+
+## Revisao 3 da timeline: os eventos novos passam, os malformados nao, e a
+## timeline antiga (sem nenhum deles e sem `revisao`) continua valida.
+func _testar_revisao_3() -> void:
+	var antiga := Timeline.de_dicionario(_doc(10))
+	_checar(antiga.revisao() == 1, "sem o campo, a revisao e 1")
+	var novos := [
+		{"i": 2, "t": 2 / 60.0, "tipo": "acerto", "alvo": "p2", "ponto": [1.5, 2.5], "projetil": 7},
+		{"i": 2, "t": 2 / 60.0, "tipo": "projetil_fim", "id": 7, "objeto": "projetil", "dono": "p1",
+			"motivo": "acerto", "alvo": "p2", "x": 1.5, "y": 2.5, "elemento": "FOGO"},
+		{"i": 2, "t": 2 / 60.0, "tipo": "explosao", "origem": "impacto", "x": 1.5, "y": 2.5, "elemento": "FOGO", "tamanho": 1.2},
+		{"i": 3, "t": 3 / 60.0, "tipo": "choque", "origem": "projeteis", "x": 3.0, "y": 3.0, "cor1": 0xFF0000, "cor2": 0x0000FF},
+		{"i": 3, "t": 3 / 60.0, "tipo": "refletido", "id": 8, "de": "p1", "para": "p2", "x": 3.0, "y": 3.0},
+		{"i": 4, "t": 4 / 60.0, "tipo": "texto", "texto_id": 1, "texto": "FATAL!", "estilo": "fatal", "x": 1.0, "y": 1.0},
+		{"i": 4, "t": 4 / 60.0, "tipo": "movimento", "slot": "p1", "gatilho": "dash", "vfx": ["afterimage", "linhas"], "x": 1.0, "y": 1.0},
+		{"i": 5, "t": 5 / 60.0, "tipo": "tipo_que_ainda_nao_existe", "qualquer": 1},
+	]
+	var d := _doc(10)
+	d["revisao"] = 99
+	d["eventos"] = novos
+	var tl := Timeline.de_dicionario(d)
+	_checar(tl.validar().is_empty(), "revisao 3 valida: %s" % str(tl.validar()))
+	_checar(tl.revisao() == 99, "revisao maior que a conhecida continua valida")
+	var ruins := {
+		"motivo desconhecido": func(e): e[1]["motivo"] = "evaporou",
+		"texto sem texto": func(e): e[5].erase("texto"),
+		"ponto torto": func(e): e[0]["ponto"] = [1.0],
+		"movimento sem lista": func(e): e[6]["vfx"] = "afterimage",
+		"explosao sem x": func(e): e[2].erase("x"),
+	}
+	for nome in ruins:
+		var dr := _doc(10)
+		var evs: Array = novos.duplicate(true)
+		ruins[nome].call(evs)
+		dr["eventos"] = evs
+		_checar(not Timeline.de_dicionario(dr).validar().is_empty(), "revisao 3 recusa: " + nome)
+	var dz := _doc(10)
+	dz["revisao"] = 0
+	_checar(not Timeline.de_dicionario(dz).validar().is_empty(), "revisao 0 recusada")
+	# explosao e choque viram efeito com o que a biblioteca ja tem; texto e
+	# movimento nao pedem peca
+	_checar(Timeline.EVENTOS_COM_VFX.has("explosao") and Timeline.EVENTOS_COM_VFX.has("choque"), "explosao e choque desenham")
+	_checar(not Timeline.EVENTOS_COM_VFX.has("texto") and not Timeline.EVENTOS_COM_VFX.has("movimento"), "texto e movimento nao desenham")
+	var cena: PackedScene = load("res://biblioteca/efeitos/eventos/_padrao.tscn")
+	for ev in [novos[2], novos[3], {"i": 1, "tipo": "explosao", "origem": "area", "x": 0.0, "y": 0.0, "cor": 0xFF6432, "tamanho": 2.0}]:
+		var no = cena.instantiate()
+		no.configurar(ev, {})
+		for _q in 3:
+			no.atualizar({}, {"dt_mundo": 1.0 / 30.0})
+		_checar(not no.is_queued_for_deletion(), "vfx %s/%s vivo no 3o quadro" % [ev["tipo"], ev.get("origem", "")])
+		for _q in 20:
+			no.atualizar({}, {"dt_mundo": 1.0 / 30.0})
+		_checar(no.is_queued_for_deletion(), "vfx %s/%s se apaga" % [ev["tipo"], ev.get("origem", "")])
+		no.free()

@@ -10,6 +10,29 @@ extends RefCounted
 
 const FORMATO := "neural-fights/timeline"
 const VERSAO := 1
+# Revisao ADITIVA mais nova que o palco conhece (docs/palco/timeline.md). Uma
+# timeline de revisao MAIOR continua valida: o leitor ignora o que nao conhece.
+const REVISAO := 3
+# Eventos que viram efeito na tela (os outros vao so para as pecas, em
+# evento()). Revisao 3: explosao (a paleta do elemento) e choque (duas cores),
+# com as texturas CC0 que a biblioteca ja tem.
+const EVENTOS_COM_VFX := {
+	"acerto": true, "dano": true, "cura": true, "bloqueio": true, "parry": true,
+	"esquiva": true, "desvio": true, "dash": true, "parede": true, "wall_splat": true,
+	"ko": true, "escudo_quebrou": true, "skill": true, "agarrao_desfecho": true,
+	"obstaculo": true, "explosao": true, "choque": true,
+}
+# Campos obrigatorios dos eventos da revisao 3 (o mesmo que
+# timeline.CAMPOS_EVENTOS_R3 no Python). Timeline antiga nao tem nenhum.
+const CAMPOS_EVENTO := {
+	"projetil_fim": ["id", "objeto", "motivo", "x", "y"],
+	"explosao": ["x", "y", "origem"],
+	"choque": ["x", "y", "origem"],
+	"refletido": ["id", "de", "para", "x", "y"],
+	"texto": ["texto_id", "texto", "estilo", "x", "y"],
+	"movimento": ["gatilho", "vfx", "x", "y"],
+}
+const MOTIVOS_FIM := ["choque", "explodiu", "expirou", "voltou", "trap", "acerto", "bloqueado", "sumiu"]
 
 const CANAIS_LUTADOR := [
 	"x", "y", "z", "ang", "vx", "vy", "hp", "mp", "est", "expr", "acao", "plano",
@@ -109,6 +132,8 @@ func validar() -> PackedStringArray:
 		e.append("formato %s != %s" % [str(dados.get("formato")), FORMATO])
 	if not _eh_numero(dados.get("versao")) or int(dados.get("versao")) != VERSAO:
 		e.append("versao %s != %d" % [str(dados.get("versao")), VERSAO])
+	if dados.has("revisao") and (not _eh_numero(dados.get("revisao")) or int(dados.get("revisao")) < 1):
+		e.append("revisao invalida: %s" % str(dados.get("revisao")))
 	if not _eh_numero(dados.get("hz")) or hz <= 0:
 		e.append("hz invalido: %s" % str(dados.get("hz")))
 	if not _eh_numero(dados.get("n")) or n <= 0:
@@ -199,6 +224,29 @@ func _conferir_eventos(e: PackedStringArray) -> void:
 		if i < anterior:
 			e.append("evento %d (%s): i=%d volta no tempo (anterior %d)" % [k, ev.get("tipo"), i, anterior])
 		anterior = i
+		_conferir_campos(e, k, ev)
+
+
+## Os campos dos eventos da revisao 3 e o `ponto` do acerto por projetil.
+## Tipo desconhecido passa (o leitor ignora o que nao conhece).
+func _conferir_campos(e: PackedStringArray, k: int, ev: Dictionary) -> void:
+	var tipo := str(ev.get("tipo"))
+	if tipo == "acerto" and ev.has("ponto"):
+		var p = ev.get("ponto")
+		if typeof(p) != TYPE_ARRAY or p.size() != 2 or not _eh_numero(p[0]) or not _eh_numero(p[1]):
+			e.append("evento %d (acerto): ponto %s nao e [x, y]" % [k, str(p)])
+	if not CAMPOS_EVENTO.has(tipo):
+		return
+	for campo in CAMPOS_EVENTO[tipo]:
+		if ev.get(campo) == null:
+			e.append("evento %d (%s) sem %s" % [k, tipo, campo])
+			return
+	if not _eh_numero(ev.get("x")) or not _eh_numero(ev.get("y")):
+		e.append("evento %d (%s): x/y nao sao numeros" % [k, tipo])
+	if tipo == "projetil_fim" and not MOTIVOS_FIM.has(str(ev.get("motivo"))):
+		e.append("evento %d (projetil_fim): motivo %s desconhecido" % [k, str(ev.get("motivo"))])
+	if tipo == "movimento" and typeof(ev.get("vfx")) != TYPE_ARRAY:
+		e.append("evento %d (movimento): vfx nao e lista" % k)
 
 
 func _conferir_sons(e: PackedStringArray) -> void:
@@ -257,6 +305,11 @@ func _conferir_remapeamento(e: PackedStringArray) -> void:
 # ------------------------------------------------------------------ leitura
 func duracao() -> float:
 	return float(n) / float(hz)
+
+
+## Revisao da timeline (1 quando o arquivo nao traz o campo).
+func revisao() -> int:
+	return int(dados.get("revisao", 1)) if _eh_numero(dados.get("revisao", 1)) else 1
 
 
 func cabecalho_lutador(slot: String) -> Dictionary:

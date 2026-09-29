@@ -42,7 +42,7 @@ altura do pulo (o render desenha o corpo em `(x, y − z)`). Ângulos em **graus
 ## O documento
 
 ```text
-formato: "neural-fights/timeline"   versao: 1   revisao: 2   hz: 60   n: <passos>   duracao: n/60
+formato: "neural-fights/timeline"   versao: 1   revisao: 3   hz: 60   n: <passos>   duracao: n/60
 luta:        seed, p1, p2, cenario, camera_modo, camera_largura_min_m, camera_espera_zoom_in
 tela_referencia: [1080, 1920]       a tela para a qual a câmera foi calculada
 arena:       formato, largura, altura, min, max, centro, raio, paredes, cores, tema,
@@ -186,7 +186,7 @@ subiu, vida que caiu, cooldown que saltou). Todo evento tem `i`, `t` e `tipo`.
 
 | tipo | campos | de onde sai |
 |---|---|---|
-| `acerto` | alvo, autor, dano, dano_pct, golpes, categoria, tier, critico?, golpe? + hitstop? (quando o golpe congelou o mundo), x, y, z, dir | vida que caiu + `hits_sofridos` que subiu; `tier` = tier de impacto do autor (`LIMIARES_FORCA`); `critico` pelo `criticos_melee` do autor; `golpe` = LEVE..EPICO do hit-stop |
+| `acerto` | alvo, autor, dano, dano_pct, golpes, categoria, tier, critico?, golpe? + hitstop? (quando o golpe congelou o mundo), x, y, z, dir, ponto? + projetil? (revisão 3: o impacto de projétil) | vida que caiu + `hits_sofridos` que subiu; `tier` = tier de impacto do autor (`LIMIARES_FORCA`); `critico` pelo `criticos_melee` do autor; `golpe` = LEVE..EPICO do hit-stop |
 | `dano` | alvo, dano, categoria, x, y | vida que caiu SEM golpe (DoT, encanto, custo) |
 | `cura` | alvo, valor, x, y | vida que subiu mais de 0,5 |
 | `primeiro_sangue` | slot (quem bateu) | o primeiro acerto |
@@ -207,6 +207,83 @@ subiu, vida que caiu, cooldown que saltou). Todo evento tem `i`, `t` e `tipo`.
 | `plano` | slot, plano, rotulo | `brain.plano` trocou |
 | `virada` | slot (novo líder) | a mesma regra da legenda (histerese 5%, a cada 0,25 s de jogo, depois de 3 s) |
 | `ko` | vencedor, perdedor, empate, x, y | `round_finalizado` virou verdade |
+
+### Eventos da revisão 3 (o que o render acendia e a v1 não dizia)
+
+Tirados das **listas de VFX que o motor cria** (`impact_flashes`,
+`magic_clashes`, `block_effects`, `magic_vfx.explosions`, `textos` e as cinco
+do `MovementAnimationManager`) e do **último estado de cada projétil**. A sonda
+continua só LENDO: reconhece o que já viu numa lista pela identidade do
+objeto, lembrada por `weakref` (não prolonga a vida de nada; um `id`
+reciclado conta como objeto novo), e o que já existia antes do primeiro passo
+é linha de base, não evento. Em ordem de impacto visual:
+
+| tipo | campos | de onde sai |
+|---|---|---|
+| `projetil_fim` | id (da trilha), objeto (`projetil`, `projetil_arma`, `orbe`), dono (o de agora, depois de refletido), motivo, x, y, elemento?, alvo? (`p1`/`p2`), alvo_objeto? (id da trap/summon), defesa? | a trilha que voava no passo anterior e não voa neste (sai no passo `i1 + 1`, uma vez por trilha) |
+| `explosao` | origem (`impacto` = a `DramaticExplosion` do acerto de projétil, com o elemento; `area` = o flash "explosion" do timer, do raio de explosão e do meteoro, com a cor), x, y, tamanho, elemento?, cor?, projetil? | objeto novo em `magic_vfx.explosions` ou flash `explosion` novo |
+| `choque` | origem (`projeteis` ou `armas`), x, y, cor1, cor2, projeteis? (as duas trilhas) | `MagicClash` novo; `projeteis` quando trilhas acabaram no ponto (`_executar_clash_magico`), senão é o choque de armas (`efeito_clash`) |
+| `refletido` | id, de, para, x, y | o dono da MESMA trilha mudou entre dois passos (`combat.refletir_projetil`); o `dono` fixo da trilha continua o primeiro |
+| `texto` | texto_id, texto, estilo, cor, x, y, valor?, cor_base?, slot?, execucao?, acumulado? | `FloatingText` novo em `sim.textos`; `acumulado` = o número que SOMOU no texto que já estava na tela (hit no mesmo alvo em < 0,35 s), com o mesmo `texto_id` |
+| `movimento` | slot, gatilho, vfx[], x, y, dir?, intensidade?, dash? | os VFX de movimento que nasceram no passo, UM evento por lutador |
+
+**`motivo` do `projetil_fim`**, na ordem em que o motor decide
+(`simulacao._atualizar_projeteis`; o primeiro sinal que bate vence):
+
+| motivo | o sinal |
+|---|---|
+| `choque` | `MagicClash` novo perto do ponto (o choque roda ANTES de o projétil andar) |
+| `explodiu` | o timer de explosão acabava neste passo (`explosion_timer <= dt`) |
+| `expirou` | a vida acabava neste passo (`vida <= dt`; o `atualizar` do projétil roda antes de qualquer colisão) |
+| `voltou` | estava retornando e chegou ao dono |
+| `trap` | uma trap (que não é do dono) perdeu vida ou sumiu neste passo, com o projétil ao alcance |
+| `acerto` | o flash `magic` (só o acerto de projétil o acende, na posição do projétil) casou com a trilha; o ORBE não acende flash e acaba por eliminação (vida, choque, trap ou colisão: o que sobra é acerto) |
+| `bloqueado` | `defesa`: `escudo` (`BlockEffect` novo, o Orbital), `parry` (flash `clash` sem `MagicClash`), `dash` (o alvo em dash ao alcance: `_efeito_desvio_dash`) |
+| `sumiu` | nenhum sinal: um caminho do motor que a sonda não conhece |
+
+O ponto do fim é o final EXATO quando o objeto ainda existe (o alvo guarda o
+projétil como fonte de impacto por ~1 s), o flash do acerto quando houver, e
+senão a última amostra mais o último deslocamento (o motor anda antes de
+colidir). O acerto em lutador ganha `ponto` (onde o projétil estava, como o
+flash do render) e `projetil` (a trilha); projétil que nasce e acerta no MESMO
+passo não tem trilha, e o acerto leva só o `ponto`.
+
+**Conferido contra o motor** (28/09/2026): o motor INSTRUMENTADO (embrulhos em
+`_executar_clash_magico`, `_resolver_colisao_projetil_traps`, nos três efeitos
+de bloqueio, no `atualizar` de cada projétil e em `refletir_projetil`, que
+chamam o original e só anotam) contra o que a sonda deduziu, em 29 lutas (as
+5 de referência e 24 pares sorteados do banco, até 90 s cada): **865 de 865
+fins com o motivo do motor** (355 acertos, 316 por validade, 96 choques, 91
+desvios com dash, 3 traps, 3 explosões por timer, 1 escudo).
+`voltou` e `parry` não apareceram. Antes de acertar a regra, 11 erros em 458:
+10 orbes tomados por desvio (orbe não tem bloqueio) e um acerto cujo flash foi
+para um orbe que orbitava ao lado do alvo. O teste
+`RevisaoTresContraOMotorTests` repete a conferência numa luta de arremesso do
+banco.
+
+**`estilo` do `texto`**: `dano` (número; a `cor` é a final, com o degrau de
+tamanho do `FloatingText.TIERS`, e a `cor_base` a do efeito), `execucao` (o
+número roxo do bônus de condição >= 5), `fatal` (`FATAL!`; `execucao: true`
+no roxo da execução), `cura` (`+N`), `clash` (`CLASH!`), `outro`. O `slot` é o
+lutador mais perto (o texto nasce 30 a 50 px acima do alvo).
+
+**`gatilho` do `movimento`**: `dash` (afterimage; `dash` = `dash_forward`,
+`dash_backward`, `dash_lateral`), `knockback` (motion blur ou as linhas cor
+`(255, 200, 150)`, com `dir` e `intensidade`), `recuperacao` (o flash do fim do
+atordoamento), `aterrissagem` e `pulo` (a poeira com `z` cruzando os limiares
+do motor), `corrida` (linhas de velocidade sem afterimage), `poeira`. `vfx`
+lista o que nasceu: `afterimage`, `blur`, `linhas`, `poeira`, `recuperacao`.
+Poeira, linhas e flash não guardam o dono: é o lutador mais perto (nascem na
+posição dele).
+
+**O palco (Godot)** desenha `explosao` (a paleta do elemento; a da área, a cor)
+e `choque` (as duas cores, com tremor de câmera) com as texturas CC0 que a
+biblioteca já tinha (`vfx_padrao.gd`), e o `acerto` por projétil acende no
+`ponto`. `texto`, `movimento`, `projetil_fim` e `refletido` chegam às peças em
+`evento()` e não pedem peça (arte nova não entrou na 16C). O validador
+(`nucleo/timeline.gd` e `timeline_arquivo.validar`) confere os campos
+obrigatórios, o `motivo` e o `ponto`; tipo desconhecido, `revisao` maior que a
+conhecida e timeline antiga passam.
 
 ### `sons` (o formato da 16A)
 
@@ -321,28 +398,31 @@ sonda que consumisse um número a mudaria).
 A sonda custa ~1 ms por passo (1,6 a 2,2 s num duelo de 29 s), com
 `hash_estado` desligado (ele é só para teste).
 
+**Revisão 3, medido (28/09/2026)** no `duelo_00014` (1080×1920, fora do
+headless, sem desenhar, como o palco roda): **0 divergências de hash em 1766
+passos** com e sem a sonda, e o `random` global no MESMO estado no fim; o
+`hash_estado` passou a ver também as listas de movimento, as explosões e o
+texto de cada `FloatingText`, que a sonda agora lê. A luta inteira levou 1,09 s
+sem a sonda e 1,64 s com ela. O arquivo cresceu 5,5% (JSON 987.072 →
+1.041.807 bytes; zstd 117.762 → 124.795): 68 `projetil_fim`, 47 `explosao`,
+44 `texto`, 88 `movimento`, 3 `choque`. O gravador de verdade (desenhando a
+cada passo, com o som) continua com o mesmo hash por passo, os mesmos golpes e
+os mesmos sons com e sem a sonda, e a timeline dele e a do palco sem desenhar
+têm os mesmos eventos (os testes pesados, `NF_RECORDING_GATE=1`).
+
 ## O que o render atual mostra e a v1 ainda NÃO expressa
 
 Para ninguém perder nada na troca. "Derivável" = o palco reconstrói com o que
 já está na timeline.
 
-1. **Choque de projéteis (`magic_clashes`)**: dois projéteis que se anulam no
-   ar não geram evento. Falta `choque`.
-2. **Fim de projétil e o porquê**: a trilha acaba em `i1`, mas não diz se
-   acertou, expirou, bateu numa trap ou foi bloqueado; a explosão elemental no
-   ponto de impacto (`spawn_explosion`, flash, onda de choque) não tem evento
-   próprio. O acerto em lutador aparece (`acerto`), o resto não.
-3. **Reflexão de projétil**: `refletir_projetil` troca o dono em pleno voo; a
-   trilha guarda o `dono` da primeira amostra. Falta `refletido` (evento ou
-   canal de dono).
-4. **Texto flutuante**: a cor do número por efeito, o roxo da "execução"
-   (`bonus_condicao >= 5`) e o "FATAL!" têm só `dano`, `categoria` e o `ko`;
-   crítico só existe no corpo a corpo.
-5. **Eventos de movimento** (`_detectar_eventos_movimento`: pulo, aterrissagem,
-   knockback forte, recuperação): afterimages, poeira, linhas de velocidade,
-   motion blur e o flash de recuperação do `MovementAnimationManager`. Só o
-   squash (`esc_x`/`esc_y`) e o `dash` estão na v1; pulo e aterrissagem são
-   deriváveis de `z`.
+1. ~~Choque de projéteis~~: `choque` (revisão 3).
+2. ~~Fim de projétil e o porquê, explosão no ponto de impacto~~:
+   `projetil_fim` e `explosao` (revisão 3).
+3. ~~Reflexão de projétil~~: `refletido` (revisão 3).
+4. ~~Texto flutuante~~: `texto` (revisão 3). Continua: crítico só existe no
+   corpo a corpo.
+5. ~~Eventos de movimento~~: `movimento` (revisão 3). O motion blur e o flash
+   de recuperação entram como `vfx`; a animação deles é do palco.
 6. **Estado extra do animador de arma**: o lado da Adaga Gêmea que golpeia
    (`dagger_side`), o giro do mangual (`mangual_spin_speed`) e o tremor da arma
    no impacto (`weapon_anim_shake`, sorteado no `random` global). O ângulo e o
@@ -367,9 +447,7 @@ já está na timeline.
 12. **Orbital**: o render desenha a peça a 1× o raio, mas a hitbox é um setor
     de 1,5× o raio; a v1 grava a peça como o render (`comprimento_m`) e a
     hitbox à parte (`alcance_m`). Decidir qual o palco mostra.
-13. **Posição do impacto de projétil**: o render acende o flash na posição do
-    projétil; o evento `acerto` traz o centro do alvo e a direção (`dir`). O
-    ponto exato é a última amostra da trilha do projétil (derivável).
+13. ~~Posição do impacto de projétil~~: `acerto.ponto` (revisão 3).
 14. **Fora da luta** (não é lacuna da timeline): o HUD do vídeo, identidade,
     veredito, legendas, voz e música continuam na edição em Python até a 16G;
     o HUD do jogo, o placar de série e o cartaz de vitória já estão desligados
@@ -414,3 +492,4 @@ diferente de 1 e aceita qualquer `revisao`; arquivo sem o campo é revisão 1.
 |---|---|---|
 | 1 | 28/09/2026 (`3097a37`) | a v1 |
 | 2 | 28/09/2026 (`ac270f2`) | `i` em cada item de `sons` |
+| 3 | 28/09/2026 | eventos `projetil_fim`, `explosao`, `choque`, `refletido`, `texto`, `movimento`; `ponto` e `projetil` no `acerto` |

@@ -35,16 +35,21 @@ import zlib
 from pathlib import Path
 
 from neural_fights.recording.timeline import (
+    CAMPOS_EVENTOS_R3,
     CANAIS_EFEITO,
     CANAIS_OBJETO,
+    DEFESAS,
     EXPRESSOES,
     FASES,
     FLAGS,
     FORMATO,
+    GATILHOS_MOVIMENTO,
+    MOTIVOS_FIM,
     NOMES_CANAIS_CAMERA,
     NOMES_CANAIS_GLOBAIS,
     NOMES_CANAIS_LUTADOR,
     VERSAO,
+    VFX_MOVIMENTO,
 )
 
 MAGICO = b"GCPF"
@@ -161,6 +166,10 @@ def validar(doc: dict) -> list[str]:
     versao = doc.get("versao")
     if not isinstance(versao, int) or versao < 1 or versao > VERSAO:
         problemas.append(f"versao {versao!r} fora de 1..{VERSAO}")
+    revisao = doc.get("revisao", 1)
+    if not isinstance(revisao, int) or revisao < 1:
+        # revisao MAIOR que a conhecida e valida: e aditiva por definicao
+        problemas.append(f"revisao {revisao!r} invalida")
     hz = doc.get("hz")
     n = doc.get("n")
     if not isinstance(hz, int) or hz <= 0:
@@ -245,6 +254,8 @@ def validar(doc: dict) -> list[str]:
         anterior = i
         if not isinstance(evento.get("tipo"), str):
             problemas.append(f"evento sem tipo no passo {i}")
+            continue
+        problemas.extend(_problemas_do_evento(evento))
 
     sons = doc.get("sons")
     if sons is not None:
@@ -266,6 +277,42 @@ def validar(doc: dict) -> list[str]:
             if trecho[0] < fim_anterior - 1e-6:
                 problemas.append(f"trechos sobrepostos em {trecho!r}")
             fim_anterior = trecho[0] + trecho[1]
+    return problemas
+
+
+def _numero(valor) -> bool:
+    return isinstance(valor, (int, float)) and not isinstance(valor, bool)
+
+
+def _problemas_do_evento(evento: dict) -> list[str]:
+    """Os campos dos eventos da revisao 3 e o ``ponto`` do acerto. Evento de
+    tipo que o schema nao conhece passa (o leitor ignora), e timeline antiga
+    nao tem nenhum destes: continua valida."""
+    tipo, i = evento["tipo"], evento["i"]
+    problemas = []
+    ponto = evento.get("ponto")
+    if tipo == "acerto" and ponto is not None and not (
+            isinstance(ponto, list) and len(ponto) == 2 and all(map(_numero, ponto))):
+        problemas.append(f"acerto no passo {i}: ponto {ponto!r} nao e [x, y]")
+    campos = CAMPOS_EVENTOS_R3.get(tipo)
+    if campos is None:
+        return problemas
+    faltam = [campo for campo in campos if evento.get(campo) is None]
+    if faltam:
+        return problemas + [f"{tipo} no passo {i} sem {', '.join(faltam)}"]
+    for campo in ("x", "y"):
+        if not _numero(evento[campo]):
+            problemas.append(f"{tipo} no passo {i}: {campo} nao e numero")
+    if tipo == "projetil_fim":
+        if evento["motivo"] not in MOTIVOS_FIM:
+            problemas.append(f"projetil_fim no passo {i}: motivo {evento['motivo']!r}")
+        if evento.get("defesa") is not None and evento["defesa"] not in DEFESAS:
+            problemas.append(f"projetil_fim no passo {i}: defesa {evento['defesa']!r}")
+    elif tipo == "movimento":
+        if evento["gatilho"] not in GATILHOS_MOVIMENTO:
+            problemas.append(f"movimento no passo {i}: gatilho {evento['gatilho']!r}")
+        if not isinstance(evento["vfx"], list) or any(v not in VFX_MOVIMENTO for v in evento["vfx"]):
+            problemas.append(f"movimento no passo {i}: vfx {evento['vfx']!r}")
     return problemas
 
 

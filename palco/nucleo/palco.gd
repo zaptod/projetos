@@ -20,14 +20,10 @@ const RC_SEM_DESENHO := 4
 const EXEMPLO := "res://exemplos/exemplo.timeline.json"
 const ESTILO := "res://biblioteca/estilo.tres"
 const PX := UtilPalco.PX_POR_M
-# Eventos que viram efeito na tela. Os outros (tell, plano, virada, combo,
-# primeiro_sangue...) sao da edicao/HUD; as pecas recebem todos em evento().
-const EVENTOS_COM_VFX := {
-	"acerto": true, "dano": true, "cura": true, "bloqueio": true, "parry": true,
-	"esquiva": true, "desvio": true, "dash": true, "parede": true, "wall_splat": true,
-	"ko": true, "escudo_quebrou": true, "skill": true, "agarrao_desfecho": true,
-	"obstaculo": true,
-}
+# Eventos que viram efeito na tela (a lista mora em Timeline). Os outros
+# (tell, plano, virada, combo, texto, movimento, projetil_fim...) sao da
+# edicao/HUD; as pecas recebem todos em evento().
+const EVENTOS_COM_VFX := Timeline.EVENTOS_COM_VFX
 const TREMOR_TIER := {"light": 0.10, "medium": 0.2, "heavy": 0.38, "colossal": 0.6}
 # Marcas da animacao "golpe" de uma arma, por fase (1..5). Portugues ou ingles.
 const MARCAS := {
@@ -522,7 +518,11 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 	if not EVENTOS_COM_VFX.has(tipo):
 		return
 	var pos := Vector2.ZERO
-	if tipo == "acerto":
+	if tipo == "acerto" and typeof(ev.get("ponto")) == TYPE_ARRAY:
+		# revisao 3: o acerto por projetil traz o PONTO do impacto (onde o
+		# projetil estava), como o flash do render
+		pos = Vector2(float(ev["ponto"][0]), float(ev["ponto"][1])) * PX
+	elif tipo == "acerto":
 		# no ponto do corpo do alvo que encara o autor
 		var dir := deg_to_rad(float(ev.get("dir", 0.0)))
 		var raio := float(cab.get(str(ev.get("alvo")), {}).get("raio_corpo", 0.85))
@@ -556,6 +556,9 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 		"ko":
 			trauma += 0.8
 			clarao.color.a = 0.55
+		"choque":
+			# o render treme a camera no choque de projeteis (aplicar_shake 11)
+			trauma += 0.35
 	trauma = minf(trauma, 1.0)
 
 

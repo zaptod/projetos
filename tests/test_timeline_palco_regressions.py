@@ -15,6 +15,7 @@ verdade, e estes testes travam as duas:
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import random
 import shutil
@@ -517,6 +518,415 @@ class ArquivoTests(unittest.TestCase):
                     self.assertIn(f"MD5={esperado}", processo.stdout, processo.stdout + processo.stderr)
                     self.assertIn("NOME=Sábia", processo.stdout)
             shutil.rmtree(projeto / ".godot", ignore_errors=True)
+
+
+# ---------------------------------------------------------------- revisao 3
+# Os eventos que o render acendia e a v1 nao dizia. A sonda DEDUZ o motivo do
+# fim de cada projetil (ela so le o estado depois do passo); a verdade vem do
+# motor INSTRUMENTADO: embrulhos que chamam o original e so anotam.
+SEED_PROJETEIS = 20260928
+SEGUNDOS_PROJETEIS = 60.0
+
+
+@lru_cache(maxsize=1)
+def _lutadores_de_projetil() -> tuple[str, str] | None:
+    """Os dois primeiros do banco com arma de ARREMESSO ou ARCO: luta com
+    muito projetil (fim por acerto, validade, desvio e choque no ar)."""
+    from neural_fights.data.database import carregar_database
+
+    armas, personagens = carregar_database()
+    tipo = {a["nome"]: a.get("tipo") for a in armas}
+    nomes = [p["nome"] for p in personagens if tipo.get(p.get("nome_arma")) in ("Arremesso", "Arco")]
+    return (nomes[0], nomes[1]) if len(nomes) >= 2 else None
+
+
+def _parametros_projeteis(**extra) -> dict:
+    p1, p2 = _lutadores_de_projetil()
+    return {"p1": p1, "p2": p2, "seed": SEED_PROJETEIS, "cenario": CENARIO,
+            "resolucao": RESOLUCAO, "camera_modo": "DIRETOR",
+            "max_duracao": SEGUNDOS_PROJETEIS, **extra}
+
+
+def _luta_instrumentada() -> dict:
+    """A luta de projeteis com a sonda E a verdade do motor, no mesmo passo:
+    ``{"doc", "verdade": {trilha: motivo}, "reflexoes": [(passo, trilha)]}``."""
+    import functools
+    from unittest import mock
+
+    import neural_fights.core.combat as combat
+    from neural_fights.simulation.simulacao import Simulador
+
+    estado = {"sonda": None}
+    verdade: dict = {}
+    reflexoes: list = []
+
+    def trilha_de(obj):
+        sonda = estado["sonda"]
+        registro = sonda._vivas.get(("obj", id(obj))) if sonda is not None else None
+        if registro is None or timeline._referido(registro[1]) is not obj:
+            return None   # nasceu e morreu no mesmo passo: nunca teve trilha
+        return registro[0].id
+
+    def marcar(obj, motivo):
+        ident = trilha_de(obj)
+        if ident is not None:
+            verdade.setdefault(ident, motivo)
+
+    originais = {nome: getattr(Simulador, nome) for nome in (
+        "_executar_clash_magico", "_resolver_colisao_projetil_traps",
+        "_efeito_bloqueio", "_efeito_desvio_dash", "_efeito_parry")}
+
+    def choque(sim, a, b):
+        marcar(a, "choque")
+        marcar(b, "choque")
+        return originais["_executar_clash_magico"](sim, a, b)
+
+    def trap(sim, proj, ox, oy):
+        bateu = originais["_resolver_colisao_projetil_traps"](sim, proj, ox, oy)
+        if bateu:
+            marcar(proj, "trap")
+        return bateu
+
+    def defesa(nome, rotulo):
+        def embrulho(sim, proj, *resto):
+            marcar(proj, rotulo)
+            return originais[nome](sim, proj, *resto)
+        return embrulho
+
+    def vida_propria(classe):
+        original = classe.atualizar
+
+        @functools.wraps(original)   # o Simulador le a aridade pela assinatura
+        def atualizar(obj, *a, **k):
+            ativo = getattr(obj, "ativo", True)
+            saida = original(obj, *a, **k)
+            if ativo and not getattr(obj, "ativo", True):
+                if getattr(obj, "explodiu", False):
+                    marcar(obj, "explodiu")
+                elif getattr(obj, "retornando", False):
+                    marcar(obj, "voltou")
+                elif getattr(obj, "vida", 1.0) <= 1e-9:
+                    marcar(obj, "expirou")
+            return saida
+        return mock.patch.object(classe, "atualizar", atualizar)
+
+    refletir_original = combat.refletir_projetil
+
+    def refletir(proj, novo_dono):
+        ident = trilha_de(proj)
+        refletiu = refletir_original(proj, novo_dono)
+        if refletiu and ident is not None:
+            reflexoes.append(ident)
+        return refletiu
+
+    iniciar_sonda = timeline.SondaTimeline.__init__
+
+    def lembrar_sonda(sonda, *a, **k):
+        iniciar_sonda(sonda, *a, **k)
+        estado["sonda"] = sonda
+
+    embrulhos = [
+        mock.patch.object(Simulador, "_executar_clash_magico", choque),
+        mock.patch.object(Simulador, "_resolver_colisao_projetil_traps", trap),
+        mock.patch.object(Simulador, "_efeito_bloqueio", defesa("_efeito_bloqueio", "bloqueado:escudo")),
+        mock.patch.object(Simulador, "_efeito_desvio_dash", defesa("_efeito_desvio_dash", "bloqueado:dash")),
+        mock.patch.object(Simulador, "_efeito_parry", defesa("_efeito_parry", "bloqueado:parry")),
+        vida_propria(combat.Projetil), vida_propria(combat.ArmaProjetil),
+        vida_propria(combat.FlechaProjetil), vida_propria(combat.OrbeMagico),
+        mock.patch.object(combat, "refletir_projetil", refletir),
+        mock.patch.object(timeline.SondaTimeline, "__init__", lembrar_sonda),
+    ]
+    for embrulho in embrulhos:
+        embrulho.start()
+    try:
+        saida = timeline.gravar_timeline(**_parametros_projeteis())
+    finally:
+        for embrulho in reversed(embrulhos):
+            embrulho.stop()
+    return {"doc": saida["timeline"], "verdade": verdade, "reflexoes": reflexoes}
+
+
+@unittest.skipIf(_lutadores_de_projetil() is None, "o banco nao tem dois lutadores de arremesso/arco")
+class RevisaoTresContraOMotorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        saida = _luta_instrumentada()
+        cls.doc, cls.verdade, cls.reflexoes = saida["doc"], saida["verdade"], saida["reflexoes"]
+        cls.eventos = cls.doc["eventos"]
+        cls.fins = [e for e in cls.eventos if e["tipo"] == "projetil_fim"]
+
+    def test_schema_valido_e_revisao_3(self) -> None:
+        self.assertEqual(timeline_arquivo.validar(self.doc), [])
+        self.assertEqual((self.doc["versao"], self.doc["revisao"]), (1, 3))
+
+    def test_o_motivo_de_cada_fim_e_o_do_motor(self) -> None:
+        """Medido em 28/09/2026 em 29 lutas: 865 de 865 fins com o motivo do
+        motor (acerto, validade, choque, desvio com dash, escudo, trap,
+        explosao por timer). O que o motor nao anotou saiu pelo acerto."""
+        self.assertGreaterEqual(len(self.fins), 10, "a luta nao teve projetil que prove algo")
+        errados = []
+        for fim in self.fins:
+            deduzido = fim["motivo"] + (":" + fim["defesa"] if "defesa" in fim else "")
+            real = self.verdade.get(fim["id"], "acerto")
+            if deduzido != real:
+                errados.append((fim["i"], fim["id"], real, deduzido))
+        self.assertEqual(errados, [], "(passo, trilha, motor, sonda)")
+        self.assertGreaterEqual(len({f["motivo"] for f in self.fins}), 2)
+
+    def test_cada_projetil_acaba_uma_vez_no_passo_em_que_a_trilha_acaba(self) -> None:
+        trilhas = {o["id"]: o for o in self.doc["trilhas"]["objetos"]}
+        ids = [f["id"] for f in self.fins]
+        self.assertEqual(len(ids), len(set(ids)))
+        for fim in self.fins:
+            self.assertEqual(fim["i"], trilhas[fim["id"]]["i1"] + 1, fim)
+
+    def test_reflexao_e_a_do_motor(self) -> None:
+        refletidos = [e["id"] for e in self.eventos if e["tipo"] == "refletido"]
+        self.assertEqual(sorted(refletidos), sorted(self.reflexoes))
+
+    def test_acerto_por_projetil_traz_o_ponto_do_impacto(self) -> None:
+        acertos = {(e["i"], e["alvo"]): e for e in self.eventos if e["tipo"] == "acerto"}
+        com_ponto = 0
+        for fim in self.fins:
+            if fim["motivo"] != "acerto" or fim.get("alvo") not in ("p1", "p2"):
+                continue
+            acerto = acertos.get((fim["i"], fim["alvo"]))
+            if acerto is None:
+                continue   # acerto que nao tirou vida (escudo, i-frame) nao e evento
+            self.assertIn("ponto", acerto, acerto)
+            com_ponto += 1
+            # o ponto e o do projetil, a no maximo um corpo e meio do alvo
+            self.assertLess(math.dist(acerto["ponto"], (acerto["x"], acerto["y"])), 3.0, acerto)
+        self.assertGreater(com_ponto, 0, "nenhum acerto por projetil com o ponto")
+
+    def test_texto_e_movimento_saem_das_listas_do_render(self) -> None:
+        textos = [e for e in self.eventos if e["tipo"] == "texto"]
+        movimentos = [e for e in self.eventos if e["tipo"] == "movimento"]
+        self.assertTrue(textos, "nenhum texto flutuante")
+        self.assertTrue(movimentos, "nenhum VFX de movimento")
+        self.assertLessEqual({e["estilo"] for e in textos}, set(timeline.ESTILOS_TEXTO))
+        self.assertLessEqual({e["gatilho"] for e in movimentos}, set(timeline.GATILHOS_MOVIMENTO))
+        if self.doc["resultado"]["motivo"] == "knockout":
+            self.assertIn("fatal", {e["estilo"] for e in textos}, "KO sem o FATAL!")
+
+
+@unittest.skipIf(_lutadores_de_projetil() is None, "o banco nao tem dois lutadores de arremesso/arco")
+class RevisaoTresNaoMudaALutaTests(unittest.TestCase):
+    """A sonda agora LE mais: as listas de VFX do render, os textos e o
+    estado final dos projeteis. Mesmo contrato: hash de estado por passo com e
+    sem ela, na luta de projeteis e FORA do headless (onde os VFX nascem)."""
+
+    @staticmethod
+    def _rodar(sonda: bool) -> tuple[dict, int]:
+        saida = timeline.gravar_timeline(**_parametros_projeteis(), sonda=sonda, hashes=True)
+        return saida, hash(random.getstate())
+
+    def test_hash_por_passo_e_random_global_no_fim(self) -> None:
+        (sem, random_sem), (com, random_com) = self._rodar(False), self._rodar(True)
+        self.assertGreater(len(sem["hashes"]), 600)
+        self.assertEqual(len(sem["hashes"]), len(com["hashes"]))
+        self.assertIsNone(_primeira_divergencia(sem["hashes"], com["hashes"]))
+        self.assertEqual(random_sem, random_com, "o random global terminou em outro estado")
+        self.assertEqual(sem["resultado"], com["resultado"])
+        de_novo, _ = self._rodar(True)
+        self.assertEqual(com["timeline"]["eventos"], de_novo["timeline"]["eventos"],
+                         "mesma seed, outros eventos")
+
+
+def _sim_falso():
+    """Um Simulador de mentira com as listas que a revisao 3 le."""
+    def lutador(nome, x):
+        return SimpleNamespace(pos=[x, 0.0], vida=100.0, vida_max=100.0, z=0.0,
+                               raio_fisico=0.4, contadores_luta={"hits_sofridos": 0},
+                               dados=SimpleNamespace(nome=nome, tamanho=1.6))
+    return SimpleNamespace(
+        p1=lutador("A", 0.0), p2=lutador("B", 5.0), match_config={}, projeteis=[],
+        impact_flashes=[], magic_clashes=[], block_effects=[], textos=[],
+        magic_vfx=SimpleNamespace(explosions=[]),
+        movement_anims=SimpleNamespace(afterimage_trails=[], dust_clouds=[], speed_lines=[],
+                                       motion_blurs=[], recovery_flashes=[]))
+
+
+def _projetil(sim, dono, x, **extra):
+    campos = {"x": x, "y": 0.0, "raio": 0.2, "vel": 12.0, "vida": 1.0, "ativo": True,
+              "eh_skill": True, "nome": "Bola", "cor": (255, 80, 0), "dono": getattr(sim, dono)}
+    return SimpleNamespace(**{**campos, **extra})
+
+
+def _px(x, y=0.0):
+    return x * timeline.PPM, y * timeline.PPM
+
+
+class RevisaoTresComFakesTests(unittest.TestCase):
+    """Cada sinal isolado, num fake de contrato: o que a sonda deduz dele."""
+
+    def _dois_passos(self, sim, entre):
+        sonda = timeline.SondaTimeline()
+        sonda.on_inicio(sim)
+        sonda.on_frame(sim)
+        entre()
+        sonda.on_frame(sim)
+        doc = sonda.documento()
+        self.assertEqual(timeline_arquivo.validar(doc), [])
+        return [e for e in doc["eventos"] if e["i"] == 1]
+
+    def test_acerto_com_o_ponto_do_flash(self) -> None:
+        sim = _sim_falso()
+        proj = _projetil(sim, "p1", 4.2)
+        sim.projeteis.append(proj)
+
+        def acerta():
+            sim.projeteis.clear()
+            proj.x, proj.ativo = 4.4, False
+            x, y = _px(4.4)
+            sim.impact_flashes.append(SimpleNamespace(tipo="magic", x=x, y=y, cor=(255, 80, 0)))
+            sim.magic_vfx.explosions.append(SimpleNamespace(x=x, y=y, elemento="FOGO", tamanho=0.9))
+            sim.p2.vida = 90.0
+            sim.p2.contadores_luta = {"hits_sofridos": 1}
+
+        eventos = self._dois_passos(sim, acerta)
+        fim = next(e for e in eventos if e["tipo"] == "projetil_fim")
+        self.assertEqual((fim["motivo"], fim["alvo"], fim["x"]), ("acerto", "p2", 4.4))
+        acerto = next(e for e in eventos if e["tipo"] == "acerto")
+        self.assertEqual((acerto["ponto"], acerto["projetil"]), ([4.4, 0.0], fim["id"]))
+        explosao = next(e for e in eventos if e["tipo"] == "explosao")
+        self.assertEqual((explosao["elemento"], explosao["projetil"]), ("FOGO", fim["id"]))
+
+    def test_expirou_choque_e_reflexao(self) -> None:
+        sim = _sim_falso()
+        velho = _projetil(sim, "p1", 1.0, vida=0.01)
+        a = _projetil(sim, "p1", 2.4)
+        b = _projetil(sim, "p2", 2.6)
+        volta = _projetil(sim, "p2", 3.5)
+        sim.projeteis.extend([velho, a, b, volta])
+
+        def passo():
+            velho.vida, velho.ativo = 0.0, False
+            a.ativo = b.ativo = False
+            sim.projeteis[:] = [volta]
+            x, y = _px(2.5)
+            sim.magic_clashes.append(SimpleNamespace(x=x, y=y, cor1=(255, 0, 0), cor2=(0, 0, 255)))
+            volta.dono = sim.p1   # combat.refletir_projetil
+
+        eventos = self._dois_passos(sim, passo)
+        motivos = {e["id"]: e["motivo"] for e in eventos if e["tipo"] == "projetil_fim"}
+        self.assertEqual(sorted(motivos.values()), ["choque", "choque", "expirou"])
+        choque = next(e for e in eventos if e["tipo"] == "choque")
+        self.assertEqual((choque["origem"], len(choque["projeteis"])), ("projeteis", 2))
+        refletido = next(e for e in eventos if e["tipo"] == "refletido")
+        self.assertEqual((refletido["de"], refletido["para"]), ("p2", "p1"))
+
+    def test_bloqueio_de_escudo_e_trap(self) -> None:
+        sim = _sim_falso()
+        contra_escudo = _projetil(sim, "p1", 4.3)
+        contra_trap = _projetil(sim, "p2", 1.5)
+        muro = SimpleNamespace(x=1.2, y=0.0, largura=0.4, altura=2.0, vida=50.0, vida_max=50.0,
+                               vida_timer=5.0, duracao=5.0, ativo=True, nome="Muro",
+                               dono=sim.p1, cor=(90, 90, 90))
+        sim.traps = [muro]
+        sim.projeteis.extend([contra_escudo, contra_trap])
+
+        def passo():
+            contra_escudo.ativo = contra_trap.ativo = False
+            sim.projeteis.clear()
+            x, y = _px(4.5)
+            sim.block_effects.append(SimpleNamespace(x=x, y=y, cor=(255, 255, 255), angulo=180.0))
+            muro.vida = 40.0
+
+        eventos = self._dois_passos(sim, passo)
+        fins = {e["dono"]: e for e in eventos if e["tipo"] == "projetil_fim"}
+        self.assertEqual((fins["p1"]["motivo"], fins["p1"]["defesa"]), ("bloqueado", "escudo"))
+        self.assertEqual(fins["p2"]["motivo"], "trap")
+
+    def test_texto_novo_acumulado_e_fatal_da_execucao(self) -> None:
+        sim = _sim_falso()
+        x, y = _px(5.0, -0.6)
+        numero = SimpleNamespace(texto="12", valor=12.0, cor=(255, 255, 255),
+                                 cor_base=(255, 255, 255), x=x, y=y, vida=1.0)
+        velho = SimpleNamespace(texto="7", valor=7.0, cor=(1, 2, 3), cor_base=(1, 2, 3),
+                                x=0.0, y=0.0, vida=1.0)
+        sim.textos.append(velho)   # ja estava na tela: linha de base, nao evento
+        sonda = timeline.SondaTimeline()
+        sonda.on_inicio(sim)
+        sim.textos.append(numero)
+        sonda.on_frame(sim)
+        numero.valor, numero.texto = 20.0, "20"
+        sim.textos.append(SimpleNamespace(texto="FATAL!", valor=None, cor=timeline.COR_FATAL_EXECUCAO,
+                                          cor_base=timeline.COR_FATAL_EXECUCAO, x=x, y=y, vida=1.0))
+        sonda.on_frame(sim)
+        textos = [e for e in sonda.documento()["eventos"] if e["tipo"] == "texto"]
+        self.assertEqual([(e["i"], e["texto"], e["estilo"]) for e in textos],
+                         [(0, "12", "dano"), (1, "20", "dano"), (1, "FATAL!", "fatal")])
+        self.assertEqual(textos[0]["texto_id"], textos[1]["texto_id"])
+        self.assertTrue(textos[1]["acumulado"])
+        self.assertTrue(textos[2]["execucao"])
+        self.assertEqual(textos[0]["slot"], "p2")
+
+    def test_movimento_agrupa_por_lutador_e_diz_o_gatilho(self) -> None:
+        from neural_fights.effects.movement import MovementType
+
+        sim = _sim_falso()
+        sim.p2.z = 0.5
+
+        def passo():
+            sim.p2.z = 0.0
+            anims = sim.movement_anims
+            anims.afterimage_trails.append(SimpleNamespace(lutador=sim.p1,
+                                                           movimento_tipo=MovementType.DASH_FORWARD))
+            anims.speed_lines.append(SimpleNamespace(x=0.0, y=0.0, direcao=math.pi, lines=[
+                SimpleNamespace(cor=(10, 20, 30))]))
+            anims.dust_clouds.append(SimpleNamespace(x=_px(5.0)[0], y=0.0))
+
+        eventos = [e for e in self._dois_passos(sim, passo) if e["tipo"] == "movimento"]
+        por_slot = {e["slot"]: e for e in eventos}
+        self.assertEqual(por_slot["p1"]["gatilho"], "dash")
+        self.assertEqual(por_slot["p1"]["vfx"], ["afterimage", "linhas"])
+        self.assertEqual(por_slot["p1"]["dash"], "dash_forward")
+        self.assertEqual(por_slot["p2"]["gatilho"], "aterrissagem")
+
+
+class ValidadorRevisaoTresTests(unittest.TestCase):
+    def _doc(self, eventos, **cabecalho):
+        sonda = timeline.SondaTimeline()
+        sim = _sim_falso()
+        sonda.on_inicio(sim)
+        for _ in range(5):
+            sonda.on_frame(sim)
+        doc = sonda.documento()
+        doc.update(cabecalho)
+        doc["eventos"] = eventos
+        return doc
+
+    def test_timeline_antiga_continua_valida(self) -> None:
+        doc = self._doc([{"i": 1, "t": 1 / 60, "tipo": "acerto", "alvo": "p2"}])
+        del doc["revisao"]
+        self.assertEqual(timeline_arquivo.validar(doc), [])
+        self.assertEqual(timeline_arquivo.validar(self._doc([], revisao=2)), [])
+        self.assertEqual(timeline_arquivo.validar(self._doc([], revisao=99)), [],
+                         "revisao maior e aditiva: continua valida")
+        self.assertTrue(timeline_arquivo.validar(self._doc([], revisao=0)))
+
+    def test_eventos_novos_malformados_sao_recusados(self) -> None:
+        bons = [
+            {"i": 1, "t": 0.0167, "tipo": "projetil_fim", "id": 3, "objeto": "projetil",
+             "motivo": "acerto", "x": 1.0, "y": 2.0},
+            {"i": 1, "t": 0.0167, "tipo": "acerto", "alvo": "p2", "ponto": [1.0, 2.0]},
+            {"i": 2, "t": 0.0333, "tipo": "evento_do_futuro"},
+        ]
+        self.assertEqual(timeline_arquivo.validar(self._doc(bons)), [])
+        ruins = {
+            "motivo": {"i": 1, "t": 0.0167, "tipo": "projetil_fim", "id": 3, "objeto": "projetil",
+                       "motivo": "evaporou", "x": 1.0, "y": 2.0},
+            "sem x": {"i": 1, "t": 0.0167, "tipo": "explosao", "origem": "area", "y": 2.0},
+            "ponto": {"i": 1, "t": 0.0167, "tipo": "acerto", "ponto": [1.0]},
+            "gatilho": {"i": 1, "t": 0.0167, "tipo": "movimento", "gatilho": "voo", "vfx": [],
+                        "x": 0.0, "y": 0.0},
+            "vfx": {"i": 1, "t": 0.0167, "tipo": "movimento", "gatilho": "dash",
+                    "vfx": ["fumaca"], "x": 0.0, "y": 0.0},
+        }
+        for nome, evento in ruins.items():
+            with self.subTest(nome):
+                self.assertTrue(timeline_arquivo.validar(self._doc([evento])), nome)
 
 
 if __name__ == "__main__":

@@ -27,7 +27,11 @@ Resumo do documento (``SondaTimeline.documento()``):
                                letterbox.
 - ``eventos``                  acerto (com tier), bloqueio, parry, esquiva,
                                agarrao e desfecho, parede, KO, skill, combo,
-                               virada...
+                               virada... e, na revisao 3, o que o render
+                               acendia: fim de projetil com o motivo,
+                               explosao, choque, reflexao, texto flutuante,
+                               movimento e o ponto do acerto por projetil
+                               (lidos das listas de VFX, por identidade).
 - ``sons``                     o formato da Onda 16A (``docs/palco/sons.md``),
                                preenchida pelo anotador de som quando a luta
                                roda com ele (gravador e ``gravar_timeline``).
@@ -71,8 +75,11 @@ from pathlib import Path
 FORMATO = "neural-fights/timeline"
 VERSAO = 1
 # Revisao ADITIVA dentro da v1: leitor da v1 continua valendo (o palco recusa
-# versao != 1). 2 = cada som traz o passo exato ``i`` (28/09/2026).
-REVISAO = 2
+# versao != 1). 2 = cada som traz o passo exato ``i`` (28/09/2026). 3 = os
+# eventos que o render acendia e a v1 nao dizia: fim de projetil com o motivo,
+# explosao, choque, reflexao, texto flutuante e movimento, e o PONTO do
+# impacto no acerto por projetil (28/09/2026).
+REVISAO = 3
 # O motor pensa a 60 Hz (utils.config.FPS). A timeline guarda TODO passo:
 # o quadro k do video de 30 fps e o passo 2k, e o palco ainda tem o dobro de
 # amostras para camera lenta sem inventar quadro. Ver docs/palco/timeline.md.
@@ -131,6 +138,50 @@ PASSO_LIDERANCA = 0.25
 # Categorias de dano que nao sao golpe (DoT, encanto, retaliacao...). Mesmo
 # criterio do contador ``hits_sofridos`` do Lutador (entities.py).
 _CATEGORIAS_SEM_GOLPE = ("dot", "encant", "retaliacao")
+
+# ---------------------------------------------------------------- revisao 3
+# Por que um projetil (ou orbe) deixou de existir. A ORDEM e a da decisao:
+# o primeiro sinal que bate vence (ver SondaTimeline._motivo_do_fim).
+MOTIVOS_FIM = ("choque", "explodiu", "expirou", "voltou", "trap", "acerto",
+               "bloqueado", "sumiu")
+DEFESAS = ("escudo", "parry", "dash")
+# O que disparou os VFX de movimento de um lutador num passo
+# (simulacao._detectar_eventos_movimento e o knockback dos golpes).
+GATILHOS_MOVIMENTO = ("dash", "knockback", "recuperacao", "aterrissagem", "pulo",
+                      "corrida", "poeira")
+VFX_MOVIMENTO = ("afterimage", "blur", "linhas", "poeira", "recuperacao")
+ESTILOS_TEXTO = ("dano", "execucao", "fatal", "cura", "clash", "outro")
+# Cores que o motor usa como SINAL (simulacao.py): o numero roxo da execucao
+# (bonus de condicao >= 5), o FATAL! da execucao e as linhas do knockback.
+COR_EXECUCAO = (200, 110, 255)
+COR_FATAL_EXECUCAO = (190, 90, 255)
+COR_LINHAS_KNOCKBACK = (255, 200, 150)
+# Folga de distancia (m) ao casar um VFX com o projetil que o causou: o VFX
+# nasce onde o projetil estava DEPOIS de andar neste passo, e a sonda so tem
+# a amostra do passo anterior quando o objeto ja morreu.
+FOLGA_M = 0.35
+# As listas de VFX lidas por identidade: (nome, caminho a partir do sim).
+_LISTAS_VFX = (
+    ("flash", ("impact_flashes",)),
+    ("choque", ("magic_clashes",)),
+    ("bloqueio", ("block_effects",)),
+    ("explosao", ("magic_vfx", "explosions")),
+    ("afterimage", ("movement_anims", "afterimage_trails")),
+    ("blur", ("movement_anims", "motion_blurs")),
+    ("linhas", ("movement_anims", "speed_lines")),
+    ("poeira", ("movement_anims", "dust_clouds")),
+    ("recuperacao", ("movement_anims", "recovery_flashes")),
+)
+# Campos obrigatorios dos eventos da revisao 3 (o schema em codigo; o palco
+# confere os mesmos em nucleo/timeline.gd).
+CAMPOS_EVENTOS_R3 = {
+    "projetil_fim": ("id", "objeto", "motivo", "x", "y"),
+    "explosao": ("x", "y", "origem"),
+    "choque": ("x", "y", "origem"),
+    "refletido": ("id", "de", "para", "x", "y"),
+    "texto": ("texto_id", "texto", "estilo", "x", "y"),
+    "movimento": ("gatilho", "vfx", "x", "y"),
+}
 
 # Canais por lutador: (nome, unidade, significado). A ORDEM e a do documento.
 CANAIS_LUTADOR = (
@@ -284,6 +335,19 @@ def _perguntar(obj, metodo: str, padrao=False):
         return funcao()
     except Exception:
         return padrao
+
+
+def _lista(valor) -> list:
+    """Copia rasa de uma lista do jogo, tolerando None e fake sem lista."""
+    try:
+        return list(valor or ())
+    except TypeError:
+        return []
+
+
+def _em_metros(obj) -> tuple[float, float]:
+    """(x, y) de um VFX do motor (que vive em PIXELS do mundo) em metros."""
+    return _real(getattr(obj, "x", 0.0)) / PPM, _real(getattr(obj, "y", 0.0)) / PPM
 
 
 def _slot_do_dono(sim, dono) -> str | None:
@@ -469,6 +533,19 @@ class SondaTimeline:
         self._vivas: dict = {}
         self._mem: dict = {}
         self._t_jogo = 0.0
+        self._dt = 1.0 / self.hz
+        # Revisao 3. Projeteis e orbes em voo: id da trilha -> o ultimo estado
+        # (so numeros e a referencia fraca), do passo anterior e deste.
+        self._voando: dict = {}
+        self._voando_agora: dict = {}
+        self._reflexoes: list = []
+        # nome da lista de VFX -> {id(obj): weakref}: o que a sonda ja viu.
+        self._vfx_vistos: dict = {}
+        # id(texto) -> (weakref, texto_id, valor): textos flutuantes vivos.
+        self._textos: dict = {}
+        self._proximo_texto = 1
+        # slot atingido por projetil neste passo -> {ponto, projetil}
+        self._impactos: dict = {}
 
     # ------------------------------------------------------------ inicio
     def on_inicio(self, sim, **luta) -> None:
@@ -496,6 +573,9 @@ class SondaTimeline:
             "lutadores": [self._cabecalho_lutador(sim, slot) for slot in ("p1", "p2")],
         }
         self._mem = self._memoria_inicial(sim)
+        # o que ja existe antes do primeiro passo e linha de base, nao evento
+        self._vfx_novos(sim)
+        self._eventos_de_texto(sim, {}, base=True)
 
     def _cabecalho_arena(self, sim) -> dict | None:
         arena = getattr(sim, "arena", None)
@@ -749,7 +829,13 @@ class SondaTimeline:
         escala = _num(sim, "time_scale", 1.0)
         if t_jogo is None:
             t_jogo = self._t_jogo + escala / self.hz
-        self._t_jogo = _real(t_jogo)
+        novo_t = _real(t_jogo)
+        # o dt de JOGO deste passo: e o que o motor descontou da vida de
+        # cada projetil (a regra do "expirou")
+        self._dt = max(0.0, novo_t - self._t_jogo)
+        self._t_jogo = novo_t
+        self._voando_agora = {}
+        self._reflexoes = []
         self._amostrar_globais(sim)
         self._amostrar_camera(sim)
         for slot in ("p1", "p2"):
@@ -757,6 +843,7 @@ class SondaTimeline:
         self._amostrar_objetos(sim, i)
         self._amostrar_efeitos(sim, i)
         self._detectar_eventos(sim, i)
+        self._voando = self._voando_agora
 
     def _amostrar_globais(self, sim) -> None:
         hitstop = getattr(getattr(sim, "game_feel", None), "hit_stop", None)
@@ -1057,6 +1144,7 @@ class SondaTimeline:
                 _r(getattr(proj, "raio", 0.0)), _r(angulo, 1),
                 _r(1.0 - _frac(_num(proj, "vida"), vida0)),
             ))
+            self._lembrar_voo(sim, trilha, proj, ("obj", id(proj)))
 
         for slot in ("p1", "p2"):
             lutador = getattr(sim, slot, None)
@@ -1072,6 +1160,7 @@ class SondaTimeline:
                     _r(getattr(orbe, "raio_visual", getattr(orbe, "raio", 0.0))),
                     self.tabelas["estados_orbe"].indice(str(getattr(orbe, "estado", "") or "")),
                 ))
+                self._lembrar_voo(sim, trilha, orbe, ("obj", id(orbe)))
 
         for area in list(getattr(sim, "areas", None) or ()):
             if not getattr(area, "ativo", True):
@@ -1302,6 +1391,19 @@ class SondaTimeline:
                  for slot, l in lutadores.items() if l is not None}
         antes_de = {slot: dict(mem["lutadores"].get(slot, {}).get("contadores") or {})
                     for slot in lutadores}
+        # Revisao 3: o que nasceu nas listas de VFX e por que cada projetil
+        # que voava sumiu. ANTES do laco: o acerto por projetil leva o ponto.
+        novos = self._vfx_novos(sim)
+        feridos = {}
+        for slot, lutador in lutadores.items():
+            if lutador is None:
+                continue
+            memoria = mem["lutadores"].get(slot) or {}
+            queda = _real(memoria.get("vida"), _num(lutador, "vida")) - _num(lutador, "vida")
+            golpes = (int(agora.get(slot, {}).get("hits_sofridos", 0) or 0)
+                      - int((antes_de.get(slot) or {}).get("hits_sofridos", 0) or 0))
+            feridos[slot] = queda > 1e-6 and golpes > 0
+        eventos_r3 = self._analisar_voos(sim, lutadores, novos, feridos)
         for slot, lutador in lutadores.items():
             if lutador is None:
                 continue
@@ -1342,7 +1444,7 @@ class SondaTimeline:
                         tier=self._tier_do(outro), critico=critico,
                         x=_r(x), y=_r(y), z=_r(_num(lutador, "z")),
                         dir=_r(math.degrees(math.atan2(y - autor_y, x - autor_x)), 1),
-                        **extra)
+                        **extra, **self._impactos.get(slot, {}))
                     if not mem["primeiro_sangue"]:
                         mem["primeiro_sangue"] = True
                         self._evento(i, "primeiro_sangue", slot=outro_slot)
@@ -1429,6 +1531,9 @@ class SondaTimeline:
 
         self._detectar_paredes(sim, i, lutadores)
         self._detectar_obstaculos(sim, i)
+        for evento in (eventos_r3 + self._eventos_de_texto(sim, lutadores)
+                       + self._eventos_de_movimento(sim, novos, lutadores)):
+            self._evento(i, evento.pop("tipo"), **evento)
 
         fim = bool(getattr(sim, "round_finalizado", False))
         if fim and not mem["round_fim"]:
@@ -1513,6 +1618,480 @@ class SondaTimeline:
                     self._evento(i, "obstaculo", indice=indice,
                                  obstaculo=str(getattr(obs, "tipo", "") or ""))
         self._mem["obstaculos"] = agora
+
+    # ------------------------------------------------------------ revisao 3
+    # O que o render acende e a v1 nao dizia, tirado das listas de VFX que o
+    # motor cria (so LIDAS, reconhecidas por identidade) e do ultimo estado de
+    # cada projetil. Ver docs/palco/timeline.md, "Eventos da revisao 3".
+    def _lembrar_voo(self, sim, trilha: _Trilha, obj, chave) -> None:
+        """Guarda o estado de voo de um projetil/orbe vivo NESTE passo: e o
+        que a sonda tem para dizer por que ele sumiu, no passo em que sumir
+        (o objeto quase sempre ja morreu entao). So numeros e a referencia
+        fraca que ``_trilha`` ja guardou. O dono que muda entre dois passos da
+        MESMA trilha e a reflexao (``combat.refletir_projetil``)."""
+        dono = _slot_do_dono(sim, getattr(obj, "dono", None))
+        x, y = _real(getattr(obj, "x", 0.0)), _real(getattr(obj, "y", 0.0))
+        antes = self._voando.get(trilha.id)
+        if (antes is not None and dono is not None and antes["dono"] is not None
+                and dono != antes["dono"]):
+            self._reflexoes.append({"tipo": "refletido", "id": trilha.id,
+                                    "de": antes["dono"], "para": dono,
+                                    "x": _r(x), "y": _r(y)})
+        registro = self._vivas.get(chave)
+        timer = getattr(obj, "explosion_timer", None)
+        self._voando_agora[trilha.id] = {
+            "id": trilha.id,
+            "objeto": trilha.fixos.get("tipo"),
+            "elemento": trilha.fixos.get("elemento") or None,
+            "ref": registro[1] if registro is not None else None,
+            "x": x, "y": y,
+            # o deslocamento do ultimo passo: onde ele estaria DEPOIS de andar
+            # no passo em que sumiu (o motor move antes de colidir)
+            "dx": 0.0 if antes is None else x - antes["x"],
+            "dy": 0.0 if antes is None else y - antes["y"],
+            "r": max(0.0, _num(obj, "raio", _num(obj, "raio_visual"))),
+            "vel": abs(_num(obj, "vel")),
+            "vida": _num(obj, "vida", 1.0),
+            "retornando": bool(getattr(obj, "retornando", False)),
+            "timer": None if timer is None else _real(timer),
+            "explodiu": bool(getattr(obj, "explodiu", False)),
+            "dono": dono,
+        }
+
+    def _vfx_novos(self, sim) -> dict:
+        """Os objetos de VFX que NASCERAM desde o passo anterior, lista a lista
+        (``_LISTAS_VFX``). A sonda reconhece o que ja viu pela identidade,
+        lembrada por ``weakref``: nao prolonga a vida de nada, e um ``id``
+        reciclado (objeto novo no endereco de um morto) conta como novo."""
+        novos = {}
+        for nome, caminho in _LISTAS_VFX:
+            dono = sim
+            for parte in caminho[:-1]:
+                dono = getattr(dono, parte, None)
+            itens = _lista(getattr(dono, caminho[-1], None)) if dono is not None else []
+            vistos = self._vfx_vistos.get(nome, {})
+            atuais = {}
+            nascidos = []
+            for obj in itens:
+                ref = vistos.get(id(obj))
+                if ref is None or _referido(ref) is not obj:
+                    ref = _referencia(obj)
+                    nascidos.append(obj)
+                atuais[id(obj)] = ref
+            self._vfx_vistos[nome] = atuais
+            novos[nome] = nascidos
+        return novos
+
+    def _distancia(self, slot: str, lutador, x: float, y: float) -> float:
+        """Distancia do ponto ao lutador AGORA ou no passo anterior (a menor):
+        o golpe acontece no meio do passo, e o knockback do mesmo passo ja
+        levou o corpo para longe (1,2 m num passo, medido no duelo_00014)."""
+        lx, ly = _xy(getattr(lutador, "pos", None))
+        d = math.hypot(lx - x, ly - y)
+        canais = self.lutadores.get(slot) if isinstance(slot, str) else None
+        if canais and len(canais["x"]) >= 2:
+            d = min(d, math.hypot(_real(canais["x"][-2]) - x, _real(canais["y"][-2]) - y))
+        return d
+
+    def _mais_perto(self, lutadores: dict, x: float, y: float, *, exceto=None,
+                    limite: float | None = None) -> str | None:
+        melhor, distancia = None, None
+        for slot, lutador in lutadores.items():
+            if lutador is None or slot == exceto:
+                continue
+            d = self._distancia(slot, lutador, x, y)
+            if (limite is None or d <= limite) and (distancia is None or d < distancia):
+                melhor, distancia = slot, d
+        return melhor
+
+    def _danificados(self, tipo: str, i: int) -> list[tuple]:
+        """Traps/summons que perderam vida NESTE passo ou deixaram de existir
+        nele: ``(id, x, y, raio, dono)``. Sao os alvos que um projetil pode ter
+        encontrado antes de um lutador."""
+        saida = []
+        for trilha in self.objetos:
+            if trilha.fixos.get("tipo") != tipo or trilha.i1 not in (i, i - 1):
+                continue
+            hp = trilha.canais.get("hp") or []
+            if trilha.i1 == i and not (len(hp) >= 2 and hp[-1] < hp[-2] - 1e-9):
+                continue
+            if tipo == "trap":
+                raio = math.hypot(_real(trilha.fixos.get("largura")),
+                                  _real(trilha.fixos.get("altura"))) / 2.0
+            else:
+                raio = _real(trilha.fixos.get("raio"), 0.8)
+            saida.append((trilha.id, _real(trilha.canais["x"][-1]),
+                          _real(trilha.canais["y"][-1]), raio, trilha.fixos.get("dono")))
+        return saida
+
+    def _analisar_voos(self, sim, lutadores: dict, novos: dict, feridos: dict) -> list[dict]:
+        """Por que cada projetil/orbe que voava no passo anterior sumiu neste,
+        onde cada impacto de projetil aconteceu, explosoes e choques.
+
+        Devolve os eventos ``refletido``, ``choque``, ``projetil_fim`` e
+        ``explosao`` (nesta ordem) e deixa em ``self._impactos`` o ponto do
+        impacto por lutador atingido, para o ``acerto`` do mesmo passo.
+        """
+        self._impactos = {}
+        dt = self._dt
+        eventos: list[dict] = list(self._reflexoes)
+
+        def candidato(m: dict, acabou: bool) -> dict:
+            obj = _referido(m["ref"]) if (acabou and m["ref"] is not None) else None
+            x, y = m["x"], m["y"]
+            if obj is not None:
+                # ainda vivo (a fonte de impacto fica lembrada pelo alvo por
+                # ~1 s): o ponto FINAL exato, e nao a amostra do passo anterior
+                x, y = _real(getattr(obj, "x", x), x), _real(getattr(obj, "y", y), y)
+            elif acabou:
+                # morto: a ultima amostra MAIS o ultimo deslocamento (o motor
+                # anda antes de colidir; so o choque acontece antes de andar)
+                x, y = x + m["dx"], y + m["dy"]
+            return {"m": m, "obj": obj, "x": x, "y": y, "antes": (m["x"], m["y"]),
+                    "tol": m["r"] + m["vel"] * dt + FOLGA_M}
+
+        fins = [candidato(m, True) for tid, m in self._voando.items()
+                if tid not in self._voando_agora]
+        todos = fins + [candidato(m, False) for m in self._voando_agora.values()]
+
+        def perto(x: float, y: float, lista: list, extra: float = 0.0):
+            melhor, distancia = None, None
+            for c in lista:
+                cx, cy = c.get("ponto", (c["x"], c["y"]))
+                d = math.hypot(cx - x, cy - y)
+                if d <= c["tol"] + extra and (distancia is None or d < distancia):
+                    melhor, distancia = c, d
+            return melhor
+
+        # 1. o ponto de impacto: o flash "magic" nasce na posicao do projetil
+        #    no instante do acerto (simulacao._atualizar_projeteis). Orbe nao
+        #    acende flash (um orbe orbitando ao lado do alvo roubava o flash
+        #    do projetil que acertou); e quem sumiu vem antes de quem continua
+        #    voando (so o perfurante acerta e segue).
+        def sem_orbe(lista):
+            return [c for c in lista if c["m"]["objeto"] != "orbe" and "ponto" not in c]
+
+        orfaos = []
+        for flash in novos.get("flash", ()):
+            if str(getattr(flash, "tipo", "")) != "magic":
+                continue
+            px, py = _em_metros(flash)
+            c = perto(px, py, sem_orbe(fins)) or perto(px, py, sem_orbe(todos[len(fins):]))
+            if c is not None:
+                c["ponto"] = (px, py)
+            else:
+                # projetil que nasceu e acertou no MESMO passo: nunca teve
+                # trilha (medido: a flecha de 93 de dano do Orion, passo 105)
+                orfaos.append((px, py))
+        # 2. choque no ar: MagicClash no ponto medio dos dois, que somem juntos
+        for clash in novos.get("choque", ()):
+            cx, cy = _em_metros(clash)
+            pares = [c for c in fins if "motivo" not in c
+                     and math.hypot(c["antes"][0] - cx, c["antes"][1] - cy) <= c["tol"] + 0.5]
+            for c in pares:
+                c["motivo"] = "choque"
+                if c["obj"] is None:
+                    c["x"], c["y"] = c["antes"]
+            eventos.append({
+                "tipo": "choque", "x": _r(cx), "y": _r(cy),
+                "origem": "projeteis" if pares else "armas",
+                "cor1": _cor(getattr(clash, "cor1", None)),
+                "cor2": _cor(getattr(clash, "cor2", None)),
+                "projeteis": [c["m"]["id"] for c in pares] or None,
+            })
+        # 3. o motivo de cada fim
+        traps = self._danificados("trap", self.i)
+        summons = self._danificados("summon", self.i)
+        for c in fins:
+            m = c["m"]
+            motivo, extra = c.get("motivo"), {}
+            if motivo is None:
+                motivo, extra = self._motivo_do_fim(c, lutadores, novos, feridos,
+                                                    traps, summons, dt)
+            if motivo == "acerto" and extra.get("alvo") in ("p1", "p2"):
+                self._impactos.setdefault(extra["alvo"], {
+                    "ponto": [_r(c.get("ponto", (c["x"], c["y"]))[0]),
+                              _r(c.get("ponto", (c["x"], c["y"]))[1])],
+                    "projetil": m["id"]})
+            ponto = c.get("ponto")
+            eventos.append({
+                "tipo": "projetil_fim", "id": m["id"], "objeto": m["objeto"],
+                "dono": m["dono"], "motivo": motivo,
+                "x": _r(ponto[0] if ponto else c["x"]), "y": _r(ponto[1] if ponto else c["y"]),
+                "elemento": m["elemento"], **extra,
+            })
+        for px, py in orfaos:
+            alvo = self._alvo_do_impacto(lutadores, feridos, px, py, None, FOLGA_M)
+            if alvo is not None:
+                self._impactos.setdefault(alvo, {"ponto": [_r(px), _r(py)]})
+        # o perfurante acerta e continua voando: o ponto vale do mesmo jeito
+        for c in todos[len(fins):]:
+            if "ponto" in c:
+                alvo = self._alvo_do_impacto(lutadores, feridos, *c["ponto"],
+                                             c["m"]["dono"], c["tol"])
+                if alvo is not None:
+                    self._impactos.setdefault(alvo, {
+                        "ponto": [_r(c["ponto"][0]), _r(c["ponto"][1])],
+                        "projetil": c["m"]["id"]})
+        # 4. explosoes: a DramaticExplosion do acerto de projetil (elemento) e
+        #    o flash "explosion" das areas (timer, raio de explosao, meteoro)
+        for explosao in novos.get("explosao", ()):
+            ex, ey = _em_metros(explosao)
+            c = self._casar(ex, ey, fins, todos[len(fins):], perto)
+            eventos.append({
+                "tipo": "explosao", "origem": "impacto", "x": _r(ex), "y": _r(ey),
+                "elemento": str(getattr(explosao, "elemento", "") or "") or None,
+                "tamanho": _r(getattr(explosao, "tamanho", 1.0), 2),
+                "projetil": None if c is None else c["m"]["id"],
+            })
+        for flash in novos.get("flash", ()):
+            if str(getattr(flash, "tipo", "")) != "explosion":
+                continue
+            ex, ey = _em_metros(flash)
+            c = self._casar(ex, ey, fins, todos[len(fins):], perto)
+            eventos.append({
+                "tipo": "explosao", "origem": "area", "x": _r(ex), "y": _r(ey),
+                "elemento": None if c is None else c["m"]["elemento"],
+                "cor": _cor(getattr(flash, "cor", None)),
+                "tamanho": _r(_num(flash, "tamanho_base", 30.0) / 30.0, 2),
+                "projetil": None if c is None else c["m"]["id"],
+            })
+        return eventos
+
+    @staticmethod
+    def _casar(x: float, y: float, fins: list, voando: list, perto):
+        """O projetil (nao orbe) de uma explosao: quem sumiu neste passo antes
+        de quem continua voando, com meio metro a mais de folga."""
+        for lista in (fins, voando):
+            c = perto(x, y, [c for c in lista if c["m"]["objeto"] != "orbe"], 0.5)
+            if c is not None:
+                return c
+        return None
+
+    def _alvo_do_impacto(self, lutadores: dict, feridos: dict, x: float, y: float,
+                         dono, tol: float) -> str | None:
+        """Quem o projetil acertou: o lutador (que nao e o dono) que APANHOU
+        neste passo com o ponto ao alcance; senao o mais perto ao alcance
+        (o acerto que o escudo ou a esquiva zeraram tambem acende o flash)."""
+        limite = self._alcance_do_corpo(lutadores) + tol
+        for slot, lutador in lutadores.items():
+            if (lutador is not None and slot != dono and feridos.get(slot)
+                    and self._distancia(slot, lutador, x, y) <= limite + 1.0):
+                return slot
+        return self._mais_perto(lutadores, x, y, exceto=dono, limite=limite)
+
+    @staticmethod
+    def _alcance_do_corpo(lutadores: dict) -> float:
+        """O maior raio DESENHADO dos dois (o projetil acerta o raio fisico
+        x 1,2, sempre menor que isso): a folga para achar quem foi atingido."""
+        return max((_num(getattr(l, "dados", None), "tamanho", 1.7) / 2.0
+                    for l in lutadores.values() if l is not None), default=0.85)
+
+    def _motivo_do_fim(self, c: dict, lutadores: dict, novos: dict, feridos: dict,
+                       traps: list, summons: list, dt: float) -> tuple[str, dict]:
+        """O motivo de UM fim de voo, na ordem em que o motor decide
+        (``simulacao._atualizar_projeteis``): o choque ja veio; o proprio
+        ``atualizar`` do projetil (timer de explosao, vida, retorno) roda antes
+        de qualquer colisao; depois trap, bloqueio/desvio e o alvo."""
+        m, obj = c["m"], c["obj"]
+        fx, fy = c["x"], c["y"]
+        folga = 1e-6
+        if obj is not None:
+            explodiu = bool(getattr(obj, "explodiu", False)) and not m["explodiu"]
+            vida_acabou = _num(obj, "vida", 1.0) <= 1e-9
+        else:
+            explodiu = m["timer"] is not None and not m["explodiu"] and m["timer"] <= dt + folga
+            vida_acabou = m["vida"] <= dt + folga
+        if explodiu:
+            return "explodiu", {}
+        if vida_acabou:
+            return "expirou", {}
+        dono = lutadores.get(m["dono"]) if m["dono"] else None
+        if m["retornando"] and dono is not None:
+            dx, dy = _xy(getattr(dono, "pos", None))
+            if math.hypot(dx - fx, dy - fy) <= max(0.5, m["vel"] * dt) + c["tol"]:
+                return "voltou", {}
+        for ident, tx, ty, raio, dono_trap in traps:
+            if dono_trap != m["dono"] and math.hypot(tx - fx, ty - fy) <= raio + c["tol"]:
+                return "trap", {"alvo_objeto": ident}
+        if m["objeto"] == "orbe":
+            # o orbe so acaba por vida, choque, trap ou colisao com o alvo
+            # (simulacao._atualizar_orbes_magicos; nao ha bloqueio de orbe):
+            # o que sobrou e acerto, mesmo quando o dano foi zero
+            alvo = self._alvo_do_impacto(lutadores, feridos, fx, fy, m["dono"], c["tol"])
+            if alvo is None:
+                alvo = next((s for s, l in lutadores.items()
+                             if l is not None and s != m["dono"]), None)
+            return "acerto", {"alvo": alvo}
+        if "ponto" in c:
+            px, py = c["ponto"]
+            alvo = self._alvo_do_impacto(lutadores, feridos, px, py, m["dono"], c["tol"])
+            if alvo is not None:
+                return "acerto", {"alvo": alvo}
+            for ident, sx, sy, raio, _dono in summons:
+                if math.hypot(sx - px, sy - py) <= raio + c["tol"]:
+                    return "acerto", {"alvo_objeto": ident}
+            return "acerto", {}
+        for bloqueio in novos.get("bloqueio", ()):
+            bx, by = _em_metros(bloqueio)
+            if math.hypot(bx - fx, by - fy) <= c["tol"] + 0.5:
+                return "bloqueado", {"defesa": "escudo",
+                                     "alvo": self._mais_perto(lutadores, bx, by)}
+        for flash in novos.get("flash", ()):
+            if str(getattr(flash, "tipo", "")) != "clash":
+                continue
+            px, py = _em_metros(flash)
+            if math.hypot(px - fx, py - fy) <= c["tol"]:
+                return "bloqueado", {"defesa": "parry",
+                                     "alvo": self._mais_perto(lutadores, px, py,
+                                                              exceto=m["dono"])}
+        for slot, lutador in lutadores.items():
+            if lutador is None or slot == m["dono"]:
+                continue
+            flags = self.lutadores[slot]["flags"][-2:]
+            em_dash = any(int(v) & (1 << FLAGS.index("dash")) for v in flags)
+            alcance = _num(lutador, "raio_fisico", 0.425) + 0.5 + c["tol"]
+            if em_dash and self._distancia(slot, lutador, fx, fy) <= alcance:
+                return "bloqueado", {"defesa": "dash", "alvo": slot}
+        # rede de seguranca: o flash do acerto nao casou (o teto de VFX, por
+        # exemplo), mas o alvo apanhou neste passo com o projetil ao alcance
+        for slot, lutador in lutadores.items():
+            if lutador is None or slot == m["dono"] or not feridos.get(slot):
+                continue
+            if (self._distancia(slot, lutador, fx, fy)
+                    <= _num(lutador, "raio_fisico", 0.425) * 1.2 + c["tol"]):
+                return "acerto", {"alvo": slot}
+        for ident, sx, sy, raio, _dono in summons:
+            if math.hypot(sx - fx, sy - fy) <= raio + c["tol"]:
+                return "acerto", {"alvo_objeto": ident}
+        return "sumiu", {}
+
+    @staticmethod
+    def _estilo_do_texto(texto: str, valor, cor_base) -> str:
+        if texto == "FATAL!":
+            return "fatal"
+        if valor is not None:
+            return "execucao" if cor_base == COR_EXECUCAO else "dano"
+        if texto.startswith("+"):
+            return "cura"
+        if texto == "CLASH!":
+            return "clash"
+        return "outro"
+
+    def _eventos_de_texto(self, sim, lutadores: dict, *, base: bool = False) -> list[dict]:
+        """Texto flutuante novo (numero de dano com a cor do efeito, a
+        execucao em roxo, "FATAL!", cura, "CLASH!") e o numero que ACUMULOU
+        (``FloatingText.acumular``: hit no mesmo alvo em < 0,35 s soma no
+        texto que ja esta na tela). ``texto_id`` liga os dois."""
+        eventos = []
+        atuais = {}
+        for txt in _lista(getattr(sim, "textos", None)):
+            valor = getattr(txt, "valor", None)
+            registro = self._textos.get(id(txt))
+            if registro is not None and _referido(registro[0]) is txt:
+                atuais[id(txt)] = (registro[0], registro[1], valor)
+                if (not base and valor is not None and registro[2] is not None
+                        and _real(valor) != _real(registro[2])):
+                    eventos.append(self._texto(txt, registro[1], lutadores, acumulado=True))
+                continue
+            ident = self._proximo_texto
+            self._proximo_texto += 1
+            atuais[id(txt)] = (_referencia(txt), ident, valor)
+            if not base:
+                eventos.append(self._texto(txt, ident, lutadores))
+        self._textos = atuais
+        return eventos
+
+    def _texto(self, txt, ident: int, lutadores: dict, *, acumulado: bool = False) -> dict:
+        texto = str(getattr(txt, "texto", "") or "")
+        valor = getattr(txt, "valor", None)
+        cor = getattr(txt, "cor", None)
+        cor_base = getattr(txt, "cor_base", cor)
+        try:
+            base = tuple(int(v) for v in tuple(cor_base)[:3])
+        except (TypeError, ValueError):
+            base = None
+        x, y = _em_metros(txt)
+        estilo = self._estilo_do_texto(texto, valor, base)
+        # o texto nasce acima do alvo (30 a 50 px): o dono e quem esta perto
+        slot = None if estilo == "clash" else self._mais_perto(lutadores, x, y + 0.8, limite=3.0)
+        return {
+            "tipo": "texto", "texto_id": ident, "texto": texto,
+            "valor": None if valor is None else _r(valor, 2),
+            "estilo": estilo, "cor": _cor(cor),
+            "cor_base": None if _cor(cor_base) == _cor(cor) else _cor(cor_base),
+            "execucao": True if (estilo == "fatal" and base == COR_FATAL_EXECUCAO) else None,
+            "acumulado": True if acumulado else None,
+            "slot": slot, "x": _r(x), "y": _r(y),
+        }
+
+    def _eventos_de_movimento(self, sim, novos: dict, lutadores: dict) -> list[dict]:
+        """Os VFX de movimento que nasceram neste passo, um evento por
+        lutador: afterimage (dash), motion blur (knockback), linhas de
+        velocidade, poeira e o flash de recuperacao do
+        ``MovementAnimationManager``. Poeira e linhas nao dizem o dono nem o
+        tipo; o dono e o lutador mais perto (nascem na posicao dele) e o
+        gatilho sai do conjunto e da altura (``z``) do lutador."""
+        grupos: dict = {}
+
+        def grupo(slot) -> dict:
+            return grupos.setdefault(slot, {"vfx": []})
+
+        for obj in novos.get("afterimage", ()):
+            g = grupo(_slot_do_dono(sim, getattr(obj, "lutador", None)))
+            g["vfx"].append("afterimage")
+            tipo = getattr(getattr(obj, "movimento_tipo", None), "name", None)
+            if tipo:
+                g["tipo"] = str(tipo).lower()
+        for obj in novos.get("blur", ()):
+            g = grupo(_slot_do_dono(sim, getattr(obj, "lutador", None)))
+            g["vfx"].append("blur")
+            g["dir"] = _r(math.degrees(_num(obj, "direcao")), 1)
+            g["intensidade"] = _r(_num(obj, "intensidade", 1.0), 2)
+        for nome in ("linhas", "poeira", "recuperacao"):
+            for obj in novos.get(nome, ()):
+                g = grupo(self._mais_perto(lutadores, *_em_metros(obj)))
+                g["vfx"].append(nome)
+                if nome == "linhas":
+                    g.setdefault("dir", _r(math.degrees(_num(obj, "direcao")), 1))
+                    linhas = _lista(getattr(obj, "lines", None))
+                    cor = getattr(linhas[0], "cor", None) if linhas else None
+                    try:
+                        cor = tuple(int(v) for v in tuple(cor)[:3])
+                    except (TypeError, ValueError):
+                        cor = None
+                    if cor == COR_LINHAS_KNOCKBACK:
+                        g["linhas_knockback"] = True
+                g.setdefault("xy", _em_metros(obj))
+        eventos = []
+        for slot in ("p1", "p2", None):
+            g = grupos.get(slot)
+            if not g:
+                continue
+            vfx = [nome for nome in VFX_MOVIMENTO if nome in g["vfx"]]
+            z = self.lutadores[slot]["z"][-2:] if slot in self.lutadores else []
+            if "afterimage" in vfx:
+                gatilho = "dash"
+            elif "blur" in vfx or g.get("linhas_knockback"):
+                gatilho = "knockback"
+            elif "recuperacao" in vfx:
+                gatilho = "recuperacao"
+            elif len(z) == 2 and z[0] > 0.15 and z[1] <= 0.05:
+                gatilho = "aterrissagem"
+            elif len(z) == 2 and z[0] <= 0.05 and z[1] > 0.1:
+                gatilho = "pulo"
+            elif "linhas" in vfx:
+                gatilho = "corrida"
+            else:
+                gatilho = "poeira"
+            lutador = lutadores.get(slot) if slot else None
+            x, y = _xy(getattr(lutador, "pos", None)) if lutador is not None else g.get("xy", (0.0, 0.0))
+            eventos.append({
+                "tipo": "movimento", "slot": slot, "gatilho": gatilho, "vfx": vfx,
+                "x": _r(x), "y": _r(y), "dir": g.get("dir"),
+                "intensidade": g.get("intensidade"), "dash": g.get("tipo"),
+            })
+        return eventos
 
     @staticmethod
     def _tier_do(lutador) -> str | None:
@@ -1708,10 +2287,20 @@ def _estado_visual(sim) -> tuple:
             estado.is_attacking, estado.attack_timer, estado.current_phase.value,
             estado.angle_offset, estado.lunge, estado.attack_pattern))
     arena = getattr(sim, "arena", None)
+    # revisao 3: a sonda passou a LER estas listas; se um dia mexer nelas
+    # (esvaziar, reordenar, somar num texto), e aqui que aparece
+    movimento = getattr(sim, "movement_anims", None)
+    magia = getattr(sim, "magic_vfx", None)
     return (
         tuple(len(getattr(sim, nome, None) or ()) for nome in (
             "particulas", "textos", "shockwaves", "impact_flashes", "hit_sparks",
             "decals", "block_effects", "dash_trails", "magic_clashes")),
+        tuple(len(getattr(movimento, nome, None) or ()) for nome in (
+            "afterimage_trails", "dust_clouds", "speed_lines", "motion_blurs",
+            "recovery_flashes")),
+        len(getattr(magia, "explosions", None) or ()),
+        tuple((getattr(t, "texto", None), getattr(t, "vida", None))
+              for t in getattr(sim, "textos", None) or ()),
         len(getattr(arena, "colisoes_recentes", None) or ()),
         getattr(sim, "tempo_visual", None),
         tuple(animador),

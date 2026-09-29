@@ -1,6 +1,7 @@
 extends PecaPalco
 ## VFX PADRAO dos eventos da luta: faisca de acerto por TIER, defesa, parede,
-## esquiva, dash, skill, KO, escudo quebrado, cura, destrocos.
+## esquiva, dash, skill, KO, escudo quebrado, cura, destrocos e (revisao 3 da
+## timeline) a explosao no ponto do impacto e o choque de projeteis no ar.
 ##
 ## Arte CC0 (biblioteca/LICENCAS.md): mascaras BRANCAS do Kenney tingidas pela
 ## cor do tier ou pela paleta do ELEMENTO, em mistura aditiva (a camada
@@ -74,6 +75,20 @@ func configurar(evento: Dictionary, ctx: Dictionary) -> void:
 		"cura":
 			vida = 0.7
 			cor = Color8(120, 255, 140)
+		"explosao":
+			# a paleta do ELEMENTO (a DramaticExplosion do render); a da area
+			# (timer, raio de explosao, meteoro) traz so a cor
+			vida = 0.55
+			var el := str(evento.get("elemento", ""))
+			if el != "" and el.to_upper() != "DEFAULT":
+				cor = UtilPalco.cor(UtilPalco.paleta(el).get("mid")[0])
+			elif evento.has("cor"):
+				cor = UtilPalco.cor(evento.get("cor"))
+			else:
+				cor = UtilPalco.cor(UtilPalco.paleta("DEFAULT").get("mid")[0])
+		"choque":
+			vida = 0.5
+			cor = UtilPalco.cor(evento.get("cor1", 0xFFE664))
 		_:
 			vida = 0.3
 			cor = Color8(255, 120, 120)
@@ -207,6 +222,24 @@ func _desenhar_luz() -> void:
 				_luz.draw_line(c - Vector2(0, 12), c + Vector2(0, 12), Color(cor.r, cor.g, cor.b, some), 6.0, true)
 		"escudo_quebrou":
 			_mascara(_luz, TEX_ONDA, M * (1.5 + 2.0 * sai), Color(cor.r, cor.g, cor.b, 0.7 * some))
+		"explosao":
+			var tam := clampf(float(dados.get("tamanho", 1.0)), 0.4, 3.0) * esc
+			if idade < 0.1:
+				_mascara(_luz, TEX_BRILHO, M * 1.3 * tam, Color(1, 1, 0.95, 0.9))
+			_mascara(_luz, TEX_BRILHO, M * (0.9 + 0.6 * f) * tam, Color(cor.r, cor.g, cor.b, 0.7 * some))
+			_mascara(_luz, TEX_ONDA, M * (0.5 + 1.7 * sai) * tam, Color(cor.r, cor.g, cor.b, 0.85 * some))
+			for k in 10:
+				var a := k * TAU / 10.0 + _r(k) * 0.5
+				var d := Vector2(cos(a), sin(a))
+				var dist := M * tam * (0.25 + 0.75 * sai)
+				_luz.draw_line(d * dist, d * (dist + M * 0.25 * tam * some), Color(cor.r, cor.g, cor.b, some), maxf(2.0, 5.0 * some), true)
+		"choque":
+			var cor2 := UtilPalco.cor(dados.get("cor2", 0xFFFFFF))
+			if idade < 0.08:
+				_mascara(_luz, TEX_BRILHO, M * 1.8, Color(1, 1, 1, 0.9))
+			_mascara(_luz, TEX_ESTRELA_LARGA, M * 1.9 * (1.2 - 0.5 * f), Color(cor.r, cor.g, cor.b, some), Vector2.ZERO, _r(1) * TAU + f)
+			_mascara(_luz, TEX_ONDA, M * (0.7 + 2.3 * sai), Color(cor2.r, cor2.g, cor2.b, 0.8 * some))
+			_mascara(_luz, TEX_ONDA, M * (0.4 + 1.5 * sai), Color(cor.r, cor.g, cor.b, 0.6 * some))
 		"parede", "wall_splat", "obstaculo", "dash":
 			pass
 		_:

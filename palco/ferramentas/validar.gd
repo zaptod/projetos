@@ -34,8 +34,11 @@ func _initialize() -> void:
 				bib.arma(str(arma.get("tipo", "")), str(arma.get("estilo", "")))
 		for o in tl.trilhas().get("objetos", []):
 			bib.objeto(str(o.get("tipo", "")), str(o.get("elemento", "")), str(o.get("nome", "")))
+		# so o que vira efeito na tela pede peca (texto, movimento e
+		# projetil_fim da revisao 3 sao da edicao: nao caem no _padrao)
 		for ev in tl.dados.get("eventos", []):
-			bib.evento(str(ev.get("tipo", "")), str(ev.get("tier", "")))
+			if Timeline.EVENTOS_COM_VFX.has(str(ev.get("tipo", ""))):
+				bib.evento(str(ev.get("tipo", "")), str(ev.get("tier", "")))
 	for e in erros:
 		printerr("validar: ", e)
 	# o plano de quadros que o render faria, com o hitstop do ESTILO GLOBAL:
@@ -57,8 +60,15 @@ func _initialize() -> void:
 			plano.com_hitstop(paradas)
 		quadros = plano.total()
 		parados = quadros - sem
+	var por_tipo := {}
+	if typeof(tl.dados.get("eventos")) == TYPE_ARRAY:
+		for ev in tl.dados["eventos"]:
+			if typeof(ev) == TYPE_DICTIONARY:
+				var t := str(ev.get("tipo", ""))
+				por_tipo[t] = int(por_tipo.get(t, 0)) + 1
 	var resumo := {
 		"ok": erros.is_empty(), "legivel": true, "erros": erros, "timeline": caminho,
+		"revisao": tl.revisao(), "eventos_por_tipo": por_tipo,
 		"passos": tl.n, "hz": tl.hz, "duracao": tl.duracao(),
 		"eventos": tl.dados.get("eventos", []).size() if typeof(tl.dados.get("eventos")) == TYPE_ARRAY else -1,
 		"sons": (tl.dados["sons"].get("itens", []).size() if typeof(tl.dados.get("sons")) == TYPE_DICTIONARY else 0),

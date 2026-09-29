@@ -29,6 +29,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`
 - ✅ **Sprites animados: como produzir** — Continuar com o modelo padrão e limpar depois (28/09/2026) · “Eu consegui gerar alguns spritesheet bons, veja o arquivo piriri.py , eu consegui esse usando o chat gpt, mas como o processo é moroso quero apenas uma interface gráfica que facilite ao máximo esse processo, como essa limpeza de fundo, saneamento e auto faturamento de frames, identificação e outras coisas úteis.” `sprites-animados`
 - ✅ **Palco: A/B depois da arte (16E)** — Seguir: trocar o visual do duelo (16G) (28/09/2026) `palco-ab-2`
+- ⏳ **Palco: os números de dano na tela** — O jogo mostra o número de cada golpe (a cor do efeito, roxo na execução) e o FATAL! no golpe final. A timeline agora traz esses textos. O palco deve desenhá-los? `palco-numeros-de-dano`
 
 <!-- decisoes:fim -->
 
@@ -441,6 +442,14 @@ o comando recusa e diz qual.
   `neural_fights.recording.timeline.gravar_timeline(desenhar=False)`, que é o
   que o palco usa: mesma luta, mesma câmera e mesmo som do gravador, 10× mais
   rápido (medido no `duelo_00014`). Os vídeos de hoje não gravam timeline.
+  **Revisão 3 (28/09, ainda `versao: 1`):** os eventos que o render acendia e
+  a v1 não dizia — `projetil_fim` com o motivo (acerto, validade, choque,
+  desvio/escudo/parry, trap, explosão por timer, retorno), `explosao`,
+  `choque`, `refletido`, `texto` (cor por efeito, execução, `FATAL!`) e
+  `movimento` (afterimage, poeira, linhas) — e o `ponto` do acerto por
+  projétil. O motivo foi conferido contra o motor instrumentado
+  (`RevisaoTresContraOMotorTests`); o palco desenha `explosao` e `choque` com
+  a arte que já tinha.
 - **O palco** (Onda 16D) — o projeto Godot `palco/` desenha a luta a partir da
   timeline e grava o vídeo COM o som do jogo; o lado Python é
   `builds/palco/` (`main.py palco ...`, `main.py duelo --palco [--ab]`).
