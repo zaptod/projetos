@@ -131,7 +131,7 @@ e um servidor esquecido nela já quebrou o login.
 
 ```bash
 python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 671 testes (29/09, 15h)
-python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 93 (correio, carteiro e imagem, §10 e §13)
+python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 107 (correio, carteiro e imagem, §10 e §13)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -1260,7 +1260,7 @@ preso ou limite".
 | IA | pelo app | como gera | prova de origem |
 | --- | --- | --- | --- |
 | PicassoIA | 🎨 Criar, 7 proporções (a ficha ganhou `imagem.proporcoes`) | o `PicassoClient` do identity no perfil das histórias, a espera que reenvia no estouro (`contos.imagens.worker._gerar_esperando`), **Aprimorador desligado à força** | **forte**: `proveniencia.comprovar` (o card do histórico com o NOSSO prompt); a URL é reivindicada em `origens.jsonl` (`ias_<id>`) |
-| Grok, Gemini, ChatGPT | 🎨 Criar (proporção escrita no pedido: 1:1, 3:4, 4:3, 9:16, 16:9) **e** imagem na conversa | o `ClienteLLM` na **casa** da IA, pelo `perguntar` de sempre | o turno nosso na tela (o último turno do usuário contém o pedido); vale a imagem que nasceu depois dele |
+| Grok, Gemini, ChatGPT | 🎨 Criar (proporção escrita no pedido: 1:1, 3:4, 4:3, 9:16, 16:9) **e** imagem na conversa | o `ClienteLLM` na **casa** da IA, pelo `perguntar` de sempre | o turno nosso na tela (o último turno do usuário contém o pedido) **e** a imagem dentro da resposta a ele, no recipiente de imagem gerada, com `src` que não existia antes do envio e a geração terminada (desde 29/09 16h, ver "O gato do ChatGPT e o anúncio") |
 | DreamFace | Criar **desabilitado**: "créditos 0 (ficha de 29/09…) · só há seletores… nenhuma geração em produção" | — | — |
 | Digen | Criar **desabilitado**: "gera VÍDEO a partir de uma imagem (Real Motion 3.5): próximo passo" | — | — |
 | 🎲 Livre | o **rodízio**: `rodizio_imagem` do `ias/config.json` (picasso → gemini → grok → chatgpt) | o primeiro que a ficha diz que gera, que faz a proporção, que está em cota e cuja conta está **livre agora** | a do gerador escolhido |
@@ -1311,12 +1311,17 @@ gerador; nome adulterado no registro (`../../x`) dá `None`.
   gerador; a falha vai em texto;
 - `--duble` gera um PNG de verdade sem navegador (`imagem.png_de_teste`).
 
-**A resposta que é uma imagem** (o gato do `dde066f1`, commit 983083f):
+**A resposta que é uma imagem** (o gato do `dde066f1`, commit 983083f;
+a régua foi apertada em 29/09 16h, ver o anúncio abaixo):
 `ClienteLLM.esperar_resposta` agora também olha as imagens do turno
-(`imagens_da_resposta`): só vale imagem que **nasceu durante a espera**
-(o que já estava na tela na largada, como a miniatura de um anexo, não
-conta), depois do último turno do usuário, fora dele, com 256+ px, estável
-por `estabilidade` s e sem botão de parar. Ela volta em
+(`imagens_da_resposta`): só vale imagem que está na **resposta ao nosso
+turno** (`imagem_turno`: o primeiro turno do assistente depois do último
+turno do usuário), dentro de um **recipiente de imagem gerada**
+(`imagem_gerada`), com `src` que **não existia na página antes do envio**
+(`enviar` tira a foto, `_srcs_antes_do_envio`), carregada, com 256+ px,
+**sem borrão**, com o `alt` de imagem final quando a IA tem um medido
+(`imagem_final_alt`), sem "Criando imagem" na resposta, sem botão de parar e
+estável por 5 s (`imagem_estabilidade`). Ela volta em
 `imagens_na_resposta`; o carteiro baixa com a prova do turno
 (`SessaoReal.imagem_da_resposta`) e grava como a de um pedido pelo Criar
 (`gerador` = a IA da conversa). Só imagem, sem texto: a resposta vira
@@ -1445,11 +1450,81 @@ conferências OK, 0 erros de JS; telas em
   position: static }`); conferido depois: miniatura em y 442–702, o Criar
   começa em 760 (`real_10_criar_depois_do_ajuste.png`).
 
+**O gato do ChatGPT e o anúncio (`d228c94f`, 29/09 16:02; defeito
+`f9b134e9`).** O Adrian pediu "Crie um gato para mim" pelo 🎨 Criar do
+ChatGPT. O correio disse "imagem pronta · 512x512 · 35 KB" em 32 s, com
+prova `turno_na_casa`, e o arquivo era a foto de uma **mesa de som com uma
+xícara de café**.
+- **Causa, medida na tela** (a casa aberta só para leitura, sem mandar
+  nada: `scratchpad/diag_chatgpt_imagem.py` e `diag_chatgpt_baixar.py`;
+  captura em `E:\projetos-wt\_prova_imagem_chatgpt\diag\casa_viewport.png`):
+  a mesa de som é a miniatura de um **anúncio** que o ChatGPT põe embaixo da
+  resposta ("CAVN AI · AI Music Videos · Anúncio", 512x512,
+  `images.openai.com/static-rsc-5/…`). Ele fica **dentro do mesmo**
+  `section[data-turn=assistant]` do gato, e depois dele na página. A regra
+  antiga ("depois do último turno do usuário") pegava a **última** imagem
+  grande depois do turno: o anúncio. O gato de verdade (1254x1254, "Imagem
+  gerada: Retrato Aconchegante de Gato Tigrado", `backend-api/estuary/
+  content`) estava na tela e foi ignorado. Não havia imagem antiga na casa
+  (só texto): "dentro do turno" sozinho também não bastaria.
+- **O que o DOM do ChatGPT tem** (29/09): turnos em `section[data-turn=
+  user|assistant]` (`data-testid=conversation-turn-N`); a resposta só de
+  imagem **não** tem `data-message-author-role`; a imagem gerada mora em
+  `div#image-<uuid>` com a classe `group/imagegen-image`, em três `<img>`
+  com o mesmo `src` (uma sob fundo borrado). O "Baixar" só existe na
+  visualização em tela cheia (clique na imagem → `[role=dialog]
+  button[aria-label=Baixar]`) e entrega os **mesmos bytes** do `src`
+  (PNG 1254x1254, 2.587.976 bytes, mesmo sha256).
+- **O Gemini** (medido do mesmo jeito, `diag_gemini_recipiente.py`): a
+  imagem mora em `model-response … generated-image > single-image`, com o
+  botão "Baixar imagem no tamanho original" no mesmo `single-image`; a regra
+  antiga acertava por sorte (não há anúncio lá).
+- **O conserto** (`contos/llm/cliente.py`, `seletores.py`, `ias/imagem.py`):
+  - seletores novos por IA: `imagem_turno`, `imagem_gerada`,
+    `imagem_final_alt` (ChatGPT: "Imagem gerada"/"Generated image"),
+    `imagem_baixar` e `imagem_abrir_para_baixar` (ChatGPT). O `BOTAO_BAIXAR`
+    de `ias/imagem.py` saiu: o botão vem dos seletores;
+  - o JS devolve só as imagens do recipiente, por `src` (as três cópias
+    viram uma; "borrada" só se todas estiverem), diz se a resposta mostra
+    "Criando/Gerando imagem" e conta as grandes **fora** (o anúncio), que
+    vão ao log: "N imagem(ns) grande(s) FORA da resposta ignorada(s)";
+  - a espera loga uma linha "imagem: …" a cada mudança do que vê (a medida
+    da geração ao vivo); texto parado com imagem a caminho não fecha a
+    espera; no estouro vale a mesma régua (nada de prévia);
+  - `baixar_da_resposta` **refaz a prova** na hora de baixar: nosso turno,
+    a imagem ainda dentro da resposta, `src` fora da foto de antes do envio,
+    geração terminada. Falhou uma = `SemProva`, **nada no disco**. A prova
+    gravada ganha `dentro_da_resposta`, `src_novo`,
+    `imagens_antes_do_envio`, `ignoradas_fora_da_resposta` e o `alt`;
+  - o botão de baixar é o do mesmo recipiente da imagem escolhida (antes:
+    o último da página depois do turno); o do ChatGPT abre a tela cheia,
+    baixa e fecha com Escape; arquivo com forma diferente da imagem da tela
+    (proporção, 3%) não vale e cai no `src`;
+  - IA sem os dois seletores não procura imagem (o DeepSeek); o Grok usa o
+    balão `assistant-message` inteiro como recipiente até a primeira imagem
+    real medir o dele.
+- **Testes:** `historias/tests/test_imagem_do_nosso_turno_regressions.py`
+  (12: antiga + nova no nosso turno → a nova; geração em andamento →
+  espera; botão de parar → espera; sem imagem nova → falha; sem o alt
+  final; sem a resposta ao nosso turno; texto parado esperando a imagem;
+  estouro com a mesma régua; caso ZERO: IA sem recipiente, página sem
+  turno, página que não responde); `ias/test_imagem.py` (+14: a prova
+  refeita na hora de baixar, o anúncio aceito pela espera vira `falhou`
+  sem arquivo pelo carteiro inteiro, a imagem antiga idem, o ChatGPT
+  baixando pela tela cheia, a proporção, o `src` vazio que nunca baixa a
+  página); e
+  `historias/tests/test_imagem_js_no_navegador.py` (5), que roda o JS num
+  **Chrome headless de verdade** com a estrutura medida (anúncio incluído)
+  — só com `NF_TESTE_NAVEGADOR=1`, fora da suíte normal.
+
 **Pendências e o que é do Adrian:**
-- Grok e ChatGPT gerando imagem **não foram provados ao vivo** (nem o
-  Criar deles nem a imagem na conversa); o botão de baixar só foi medido no
-  Gemini. A primeira imagem de cada um mede (e pode pedir o botão deles em
-  `BOTAO_BAIXAR`);
+- O Grok gerando imagem **não foi provado ao vivo**: o recipiente dele é o
+  balão inteiro do assistente, sem botão de baixar medido. A primeira
+  imagem real mede (`imagem_gerada` e `imagem_baixar` em
+  `contos/llm/seletores.py`);
+- `ias/sonda.py` (a sonda das fichas, fase 1) ainda tem o seu próprio
+  `_imagens_da_resposta`, pela regra antiga; não é caminho de entrega, mas
+  mediria o anúncio como "a imagem" do ChatGPT;
 - DreamFace: sem cliente com prova de origem e créditos 0 (01/09). Digen:
   vídeo a partir de imagem é o **próximo passo** (a imagem gerada aqui pode
   ser a entrada; o `DigenClient` das builds já anexa uma referência);

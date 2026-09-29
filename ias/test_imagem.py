@@ -415,11 +415,17 @@ class ConversaQueRespondeComImagem(_Base):
 class SessaoRealBaixaAImagemDaResposta(_Base):
     """`SessaoReal.imagem_da_resposta` com um cliente falso: prova do turno."""
 
-    def _cliente(self, turno, imagens):
+    def _cliente(self, turno, imagens, *, na_tela=None, antes=(), resposta=True,
+                 gerando=False, fora=0):
+        """Um cliente falso: `imagens` e o que a espera aceitou; `na_tela` e o
+        que esta AGORA dentro da resposta ao nosso turno (padrao: as mesmas);
+        `antes` e a foto da pagina antes do envio (None = sem foto)."""
         corpo = imagem.png_de_teste(300, 300)
+        baixados = []
 
         class _Resp:
             ok = True
+            status = 200
 
             def body(self):
                 return corpo
@@ -428,22 +434,30 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
             class request:                                      # noqa: N801
                 @staticmethod
                 def get(url, timeout=None):
+                    baixados.append(url)
                     return _Resp()
 
         class _Pagina:
             url = "https://gemini.google.com/app/casa123"
 
+        dentro = list(imagens if na_tela is None else na_tela)
+
         class _Cli:
             provedor = "gemini"
+            sel = {}
             ajustes = {}
             modelo_atual = "Pro"
             ctx = _Ctx()
             page = _Pagina()
             imagens_na_resposta = imagens
+            _srcs_antes_do_envio = None if antes is None else set(antes)
 
             def imagens_da_resposta(self):
-                return {"ancorado": True, "turno": turno, "imagens": imagens}
-        return _Cli(), corpo
+                return {"ancorado": True, "turno": turno, "resposta": resposta,
+                        "gerando": gerando, "imagens": dentro, "fora": fora}
+        cli = _Cli()
+        cli.baixados = baixados
+        return cli, corpo
 
     def test_baixa_com_a_prova_do_turno(self):
         gato = {"src": "https://lh3.googleusercontent.com/gato", "w": 1024, "h": 1024}
@@ -457,7 +471,7 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
     def _gemini_com_botao(self, *, download=True, resposta=None, habilitado=True):
         """Um Gemini falso com o botao "Baixar imagem no tamanho original": o
         clique solta o evento de download (ou so a resposta de imagem)."""
-        original = imagem.png_de_teste(200, 120)
+        original = imagem.png_de_teste(352, 192)      # a forma do original: 2816x1536 / 8
         arquivo = Path(self._tmp.name) / "Gemini_Generated_Image.png"
         arquivo.write_bytes(original)
         cliques = []
@@ -486,7 +500,10 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
                 self.ouvintes = {}
 
             def evaluate(self, script, arg=None):
-                return 1 if "data-nf-baixar" in script else None
+                if "data-nf-imagem" in script:
+                    # a imagem achada DENTRO da resposta, e o botao dela
+                    return {"imagem": arg[3] == "https://lh3/gato", "botao": True}
+                return None
 
             def locator(self, seletor):
                 assert seletor == "[data-nf-baixar='1']"
@@ -531,17 +548,21 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
                 def get(url, timeout=None):
                     raise AssertionError("o src nao devia ser usado")
 
+        from contos.llm import seletores
+
         class _Cli:
             provedor = "gemini"
-            sel = {"turno_usuario": ["user-query"]}
+            sel = seletores.GEMINI
             ajustes = {}
             modelo_atual = "Pro"
             ctx = _Ctx()
             page = pagina
             imagens_na_resposta = [{"src": "https://lh3/gato", "w": 1024, "h": 559}]
+            _srcs_antes_do_envio = set()
 
             def imagens_da_resposta(self):
-                return {"ancorado": True, "turno": "gere um gato", "imagens": []}
+                return {"ancorado": True, "turno": "gere um gato", "resposta": True,
+                        "imagens": list(self.imagens_na_resposta)}
         return _Cli(), original, cliques
 
     def test_gemini_baixa_pelo_botao_do_tamanho_original(self):
@@ -571,12 +592,16 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
 
     def test_botao_desabilitado_nao_clica_e_diz_por_que(self):
         cli, _, cliques = self._gemini_com_botao(habilitado=False)
-        cli.imagens_na_resposta = [{"src": "", "w": None, "h": None}]
         with self.assertRaises(imagem.ImagemFalhou) as erro:
             imagem.baixar_da_resposta(cli, "gere um gato", log=lambda *_a: None)
         self.assertIn("desabilitado", str(erro.exception))
-        self.assertIn("sem URL de imagem", str(erro.exception))   # e nao baixa a pagina
         self.assertEqual(cliques, [])
+
+    def test_src_vazio_nunca_baixa_a_pagina(self):
+        """`fetch("")` baixava a propria pagina (864 KB de HTML)."""
+        with self.assertRaises(imagem.ImagemFalhou) as erro:
+            imagem.baixar(None, None, "")
+        self.assertIn("sem URL de imagem", str(erro.exception))
 
     def test_turno_que_nao_e_o_nosso_nao_baixa(self):
         gato = {"src": "https://lh3.googleusercontent.com/gato", "w": 1024, "h": 1024}
@@ -589,6 +614,291 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
         cli, _ = self._cliente("oi", [])
         sessao = carteiro_mod.SessaoReal(cli, log=lambda *_a: None)
         self.assertIsNone(sessao.imagem_da_resposta("oi"))
+
+
+# ================================== a imagem tem de ser a do NOSSO turno
+GATO_CHATGPT = {"src": "https://chatgpt.com/backend-api/estuary/content?id=file_gato",
+                "w": 1254, "h": 1254, "pronta": True, "borrada": False,
+                "alt": "Imagem gerada: Retrato Aconchegante de Gato Tigrado"}
+ANUNCIO = {"src": "https://images.openai.com/static-rsc-5/mesa-de-som", "w": 512, "h": 512,
+           "pronta": True, "borrada": False, "alt": ""}
+
+
+class ImagemSoDoNossoTurno(_Base):
+    """29/09/2026, 16:02 (correio d228c94f): "Crie um gato" ao ChatGPT voltou
+    "imagem pronta" com a foto de uma MESA DE SOM — a miniatura de um anuncio
+    que o ChatGPT pos no mesmo turno. Na hora de baixar, a prova e refeita:
+    dentro da resposta ao nosso turno, nova, e com a geracao terminada."""
+
+    _cliente = SessaoRealBaixaAImagemDaResposta._cliente
+    PEDIDO = "Crie uma imagem na proporção 1:1. Responda só com a imagem, sem texto.\n\nCrie um gato"
+
+    def _baixar(self, cli):
+        return imagem.baixar_da_resposta(cli, self.PEDIDO, "1:1", log=lambda *_a: None)
+
+    def test_imagem_nova_dentro_da_resposta_baixa_com_a_prova(self):
+        cli, corpo = self._cliente(self.PEDIDO, [GATO_CHATGPT],
+                                   antes={"https://antiga/do-turno-anterior"}, fora=1)
+        saida = self._baixar(cli)
+        self.assertEqual(saida["bytes"], corpo)
+        prova = saida["prova"]
+        self.assertTrue(prova["dentro_da_resposta"])
+        self.assertTrue(prova["src_novo"])
+        self.assertEqual(prova["imagens_antes_do_envio"], 1)
+        self.assertEqual(prova["ignoradas_fora_da_resposta"], 1)
+        self.assertTrue(prova["alt"].startswith("Imagem gerada"))
+        self.assertEqual(cli.baixados, [GATO_CHATGPT["src"]])
+
+    def test_imagem_fora_da_resposta_nao_baixa_nada(self):
+        # o anuncio foi aceito pela espera (codigo velho), mas NAO esta dentro
+        # da resposta ao nosso turno: nada e baixado
+        cli, _ = self._cliente(self.PEDIDO, [ANUNCIO], na_tela=[GATO_CHATGPT], fora=1)
+        with self.assertRaises(imagem.SemProva) as erro:
+            self._baixar(cli)
+        self.assertIn("não está dentro da resposta", str(erro.exception))
+        self.assertEqual(cli.baixados, [])
+
+    def test_sem_resposta_ao_nosso_turno_nao_baixa(self):
+        cli, _ = self._cliente(self.PEDIDO, [GATO_CHATGPT], resposta=False)
+        with self.assertRaises(imagem.SemProva):
+            self._baixar(cli)
+        self.assertEqual(cli.baixados, [])
+
+    def test_imagem_que_ja_estava_na_pagina_antes_do_envio_nao_baixa(self):
+        cli, _ = self._cliente(self.PEDIDO, [GATO_CHATGPT], antes={GATO_CHATGPT["src"]})
+        with self.assertRaises(imagem.SemProva) as erro:
+            self._baixar(cli)
+        self.assertIn("já estava na página", str(erro.exception))
+        self.assertEqual(cli.baixados, [])
+
+    def test_sem_a_foto_de_antes_do_envio_nao_baixa(self):
+        cli, _ = self._cliente(self.PEDIDO, [GATO_CHATGPT], antes=None)
+        with self.assertRaises(imagem.SemProva) as erro:
+            self._baixar(cli)
+        self.assertIn("antes do envio", str(erro.exception))
+
+    def test_ainda_gerando_nao_baixa_a_previa(self):
+        cli, _ = self._cliente(self.PEDIDO, [GATO_CHATGPT], gerando=True)
+        with self.assertRaises(imagem.SemProva) as erro:
+            self._baixar(cli)
+        self.assertIn("gerando", str(erro.exception))
+        self.assertEqual(cli.baixados, [])
+
+    def test_caso_zero_nada_na_resposta_e_none(self):
+        cli, _ = self._cliente(self.PEDIDO, [], na_tela=[], antes=set())
+        self.assertIsNone(self._baixar(cli))
+        self.assertEqual(cli.baixados, [])
+
+    def test_proporcao_do_arquivo_contra_a_tela(self):
+        # Gemini: a tela mostra 1024x559 e o original e 2816x1536 (mesma forma)
+        self.assertTrue(imagem.mesma_proporcao(imagem.png_de_teste(2816 // 8, 1536 // 8),
+                                               {"w": 1024, "h": 559}))
+        self.assertFalse(imagem.mesma_proporcao(imagem.png_de_teste(64, 64),
+                                                {"w": 1024, "h": 559}))
+        self.assertTrue(imagem.mesma_proporcao(imagem.png_de_teste(64, 64), {"w": 0}))
+
+
+class ChatGPTBaixaPelaTelaCheia(_Base):
+    """Medido em 29/09 16:1x: o "Baixar" do ChatGPT so existe na tela cheia,
+    que abre com o clique na imagem; entrega o PNG original."""
+
+    def _chatgpt(self, *, botao_aparece=True, original=None):
+        from contos.llm import seletores
+        original = original or imagem.png_de_teste(96, 96)
+        arquivo = Path(self._tmp.name) / "ChatGPT Image.png"
+        arquivo.write_bytes(original)
+        passos = []
+
+        class _Download:
+            suggested_filename = arquivo.name
+
+            @staticmethod
+            def path():
+                return str(arquivo)
+
+        class _Loc:
+            def __init__(self, nome):
+                self.nome = nome
+                self.first = self
+
+            def count(self):
+                return 1 if (self.nome != "dialogo" or pagina.aberta) else 0
+
+            def scroll_into_view_if_needed(self, timeout=None):
+                pass
+
+            def evaluate(self, script):
+                return True                                     # habilitado
+
+            def hover(self, timeout=None, force=False):
+                pass
+
+            def click(self, timeout=None, force=False):
+                passos.append(f"clique:{self.nome}")
+                if self.nome == "imagem":
+                    pagina.aberta = botao_aparece
+                else:
+                    pagina.ouvintes["download"](_Download())
+
+        class _Teclado:
+            @staticmethod
+            def press(tecla):
+                passos.append(f"tecla:{tecla}")
+                pagina.aberta = False
+
+        class _Pagina:
+            url = "https://chatgpt.com/c/casa"
+            keyboard = _Teclado()
+
+            def __init__(self):
+                self.ouvintes = {}
+                self.aberta = False
+
+            def evaluate(self, script, arg=None):
+                if "data-nf-imagem" in script:
+                    passos.append("marcar")
+                    # no ChatGPT o botao nao esta no turno: so a imagem e marcada
+                    assert arg[4] == []
+                    return {"imagem": arg[3] == GATO_CHATGPT["src"], "botao": False}
+                return None
+
+            def locator(self, seletor):
+                if seletor == "[data-nf-imagem='1']":
+                    return _Loc("imagem")
+                assert seletor.startswith("[role='dialog']"), seletor
+                return _Loc("dialogo")
+
+            def on(self, evento, funcao):
+                self.ouvintes[evento] = funcao
+
+            def remove_listener(self, evento, funcao):
+                self.ouvintes.pop(evento, None)
+
+            def wait_for_timeout(self, ms):
+                pass
+
+        pagina = _Pagina()
+
+        class _Ctx:
+            class request:                                      # noqa: N801
+                @staticmethod
+                def get(url, timeout=None):
+                    passos.append("src")
+
+                    class _R:
+                        ok, status = True, 200
+
+                        @staticmethod
+                        def body():
+                            return imagem.png_de_teste(80, 80, cor=(1, 2, 3))
+                    return _R()
+
+        class _Cli:
+            provedor = "chatgpt"
+            sel = seletores.CHATGPT
+            ajustes = {}
+            modelo_atual = ""
+            ctx = _Ctx()
+            page = pagina
+            imagens_na_resposta = [dict(GATO_CHATGPT)]
+            _srcs_antes_do_envio = {ANUNCIO["src"]}
+
+            def imagens_da_resposta(self):
+                return {"ancorado": True, "turno": "crie um gato", "resposta": True,
+                        "imagens": [dict(GATO_CHATGPT)], "fora": 1}
+        return _Cli(), original, passos
+
+    def test_abre_a_imagem_baixa_e_fecha(self):
+        cli, original, passos = self._chatgpt()
+        saida = imagem.baixar_da_resposta(cli, "crie um gato", log=lambda *_a: None)
+        self.assertEqual(saida["bytes"], original)
+        self.assertEqual(saida["prova"]["download"], "botao_tamanho_original")
+        self.assertEqual(passos, ["marcar", "clique:imagem", "clique:dialogo", "tecla:Escape"])
+        self.assertEqual(cli.page.ouvintes, {})
+
+    def test_tela_cheia_sem_botao_fecha_e_cai_no_src(self):
+        cli, _, passos = self._chatgpt(botao_aparece=False)
+        saida = imagem.baixar_da_resposta(cli, "crie um gato", log=lambda *_a: None)
+        self.assertEqual(saida["prova"]["download"], "src_da_tela")
+        self.assertIn("tecla:Escape", passos)
+        self.assertEqual(passos[-1], "src")
+
+    def test_arquivo_de_outra_forma_nao_vale_e_cai_no_src(self):
+        # o botao entregou um arquivo 2:1 para uma imagem 1:1 na tela
+        cli, _, passos = self._chatgpt(original=imagem.png_de_teste(128, 64))
+        saida = imagem.baixar_da_resposta(cli, "crie um gato", log=lambda *_a: None)
+        self.assertEqual(saida["prova"]["download"], "src_da_tela")
+        self.assertEqual(passos[-1], "src")
+
+
+class CarteiroComAImagemDeForaDoTurno(_Base):
+    """O caminho inteiro do d228c94f pelo carteiro: a sessao real com um
+    cliente cuja resposta so tem imagem FORA do nosso turno. O pedido falha
+    com o motivo e NADA vai ao disco."""
+
+    def _fabrica(self, na_resposta, antes):
+        class _Cli:
+            provedor = "chatgpt"
+            sel = {}
+            ajustes = {}
+            modelo_atual = ""
+            ctx = None
+
+            class page:                                         # noqa: N801
+                url = "https://chatgpt.com/c/casa"
+
+            def __init__(self):
+                self.imagens_na_resposta = []
+                self._srcs_antes_do_envio = None
+                self.pedido = ""
+
+            def perguntar(self, texto, anexos=None):
+                self.pedido = texto
+                self._srcs_antes_do_envio = set(antes)
+                self.imagens_na_resposta = list(na_resposta)
+                return ""
+
+            def imagens_da_resposta(self):
+                return {"ancorado": True, "turno": self.pedido, "resposta": True,
+                        "imagens": [i for i in na_resposta if i is not ANUNCIO],
+                        "fora": 1}
+
+        class _Sessao(carteiro_mod.SessaoReal):
+            def abrir_casa(self, url):
+                return False
+
+            def novo_chat(self):
+                pass
+
+            def url(self):
+                return "https://chatgpt.com/c/casa"
+
+            def texto_visivel(self):
+                return ""
+
+        @contextmanager
+        def _abrir(ia):
+            yield _Sessao(_Cli(), log=lambda *_a: None)
+        return _abrir
+
+    def test_anuncio_aceito_pela_espera_vira_falha_sem_arquivo(self):
+        c = _novo(fabrica=self._fabrica([ANUNCIO], antes=set()))
+        m = correio.pedir_imagem("chatgpt", "Crie um gato para mim", proporcao="1:1")
+        fim = c.uma_volta()
+        self.assertEqual(fim["situacao"], "falhou")
+        self.assertEqual(fim["categoria"], "sem_prova")
+        self.assertIn("não está dentro da resposta", fim["erro"])
+        self.assertIsNone(correio.arquivo_da_imagem("chatgpt", m["id"]))
+        self.assertFalse(correio.pasta_imagens("chatgpt").exists()
+                         and any(correio.pasta_imagens("chatgpt").iterdir()))
+
+    def test_imagem_antiga_da_pagina_vira_falha_sem_arquivo(self):
+        c = _novo(fabrica=self._fabrica([GATO_CHATGPT], antes={GATO_CHATGPT["src"]}))
+        m = correio.pedir_imagem("chatgpt", "Crie um gato para mim", proporcao="1:1")
+        fim = c.uma_volta()
+        self.assertEqual(fim["situacao"], "falhou")
+        self.assertIn("já estava na página", fim["erro"])
+        self.assertIsNone(correio.arquivo_da_imagem("chatgpt", m["id"]))
 
 
 # ================================================================ rodizio

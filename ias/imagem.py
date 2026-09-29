@@ -529,25 +529,38 @@ def baixar(ctx, page, src: str, timeout_s: float = 120.0) -> bytes:
     raise ImagemFalhou(f"o download da imagem falhou ({'; '.join(tentativas)})", "download")
 
 
-# O BOTAO DE BAIXAR NO TAMANHO ORIGINAL, por IA. Medido no Gemini em 29/09
-# 15:3x (scratchpad/diag_gemini_imagem.py, na casa, sem mandar nada): cada
-# imagem gerada tem "Baixar imagem no tamanho original" (e "Copiar imagem",
-# "Compartilhar imagem"), no DOM sem precisar de hover. E o caminho da
-# qualidade original: as 15:23 o `src` da tela (1024x559) nao baixou nem pela
-# sessao nem pelo fetch da pagina (CORS do googleusercontent).
-BOTAO_BAIXAR = {
-    "gemini": ["button[aria-label='Baixar imagem no tamanho original']",
-               "button[aria-label='Download full size image']"],
-}
+# O BOTAO DE BAIXAR NO TAMANHO ORIGINAL, por IA: `imagem_baixar` nos
+# seletores do cliente (`contos/llm/seletores.py`).
+# - Gemini (medido em 29/09 15:3x, scratchpad/diag_gemini_imagem.py): cada
+#   imagem gerada tem "Baixar imagem no tamanho original" no seu
+#   `single-image`, no DOM sem hover. E o caminho da qualidade original: as
+#   15:23 o `src` da tela (1024x559) nao baixou nem pela sessao nem pelo fetch
+#   da pagina (CORS do googleusercontent).
+# - ChatGPT (medido em 29/09 16:1x, scratchpad/diag_chatgpt_baixar.py): o
+#   botao "Baixar" so existe na visualizacao em tela cheia, que abre com o
+#   clique na imagem (`imagem_abrir_para_baixar`); o arquivo e o PNG original
+#   (1254x1254, os mesmos bytes do src `estuary/content`).
+# - Grok: nao medido; baixa pelo `src`.
+def botoes_de_baixar(cliente) -> list:
+    """Os seletores do botao de baixar desta IA (vazio = nao medido)."""
+    return list((getattr(cliente, "sel", None) or {}).get("imagem_baixar") or [])
 
-# Marca o ULTIMO botao de baixar que vem DEPOIS do ultimo turno do usuario
-# (a mesma prova de posicao da imagem). Devolve quantos havia depois dele.
-_JS_MARCAR_BOTAO = (
-    "([usuarios, botoes]) => {"
+
+# Marca a imagem escolhida (pelo src) DENTRO da resposta ao nosso turno, no
+# recipiente de imagem gerada, e o botao de baixar do MESMO recipiente (sem
+# ele, o ultimo da resposta). A mesma prova de posicao de
+# `ClienteLLM._JS_IMAGENS`. Devolve {imagem, botao}.
+_JS_MARCAR = (
+    "([usuarios, turnos, recipientes, src, botoes]) => {"
     " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
     "   & Node.DOCUMENT_POSITION_FOLLOWING);"
-    " for (const v of document.querySelectorAll('[data-nf-baixar]'))"
-    "   v.removeAttribute('data-nf-baixar');"
+    " const todos = (raiz, lista) => { let out = [];"
+    "   for (const s of lista) {"
+    "     try { if (raiz !== document && raiz.matches(s)) out.push(raiz); } catch (e) {}"
+    "     try { out = out.concat([...raiz.querySelectorAll(s)]); } catch (e) {} }"
+    "   return out; };"
+    " for (const v of document.querySelectorAll('[data-nf-baixar], [data-nf-imagem]')) {"
+    "   v.removeAttribute('data-nf-baixar'); v.removeAttribute('data-nf-imagem'); }"
     " let usuario = null;"
     " for (const s of usuarios) {"
     "   let els = [];"
@@ -555,22 +568,65 @@ _JS_MARCAR_BOTAO = (
     "   const ultimo = els[els.length - 1];"
     "   if (ultimo && (!usuario || depois(usuario, ultimo))) usuario = ultimo;"
     " }"
-    " if (!usuario) return 0;"
-    " let achados = [];"
-    " for (const s of botoes) {"
-    "   try { achados = achados.concat([...document.querySelectorAll(s)]); }"
-    "   catch (e) { continue; }"
+    " if (!usuario) return {imagem: false, botao: false};"
+    " let resposta = null;"
+    " for (const t of todos(document, turnos)) {"
+    "   if (!depois(usuario, t) || t.contains(usuario) || usuario.contains(t)) continue;"
+    "   if (!resposta || depois(t, resposta)) resposta = t;"
     " }"
-    " achados = achados.filter(b => depois(usuario, b));"
-    " if (!achados.length) return 0;"
-    " achados.sort((a, b) => depois(a, b) ? -1 : 1);"
-    " achados[achados.length - 1].setAttribute('data-nf-baixar', '1');"
-    " return achados.length; }")
+    " if (!resposta) return {imagem: false, botao: false};"
+    " let alvo = null, caixa = null;"
+    " for (const cx of todos(resposta, recipientes)) {"
+    "   for (const im of cx.querySelectorAll('img')) {"
+    "     if (!alvo && (im.currentSrc || im.src || '') === src) { alvo = im; caixa = cx; } } }"
+    " if (!alvo) return {imagem: false, botao: false};"
+    " alvo.setAttribute('data-nf-imagem', '1');"
+    " let botao = null;"
+    " if (botoes.length) {"
+    "   let achados = todos(caixa, botoes);"
+    "   if (!achados.length) achados = todos(resposta, botoes);"
+    "   if (achados.length) botao = achados[achados.length - 1]; }"
+    " if (botao) botao.setAttribute('data-nf-baixar', '1');"
+    " return {imagem: true, botao: !!botao}; }")
 
 
-def baixar_pelo_botao(cliente, timeout_s: float = 90.0, log=print) -> bytes | None:
+def _primeiro_presente(page, seletores):
+    for seletor in seletores:
+        try:
+            alvo = page.locator(seletor)
+            if alvo.count():
+                return alvo.first
+        except Exception:                                      # noqa: BLE001
+            continue
+    return None
+
+
+def _dimensoes_dos_bytes(corpo: bytes) -> tuple:
+    try:
+        import io
+
+        from PIL import Image
+        with Image.open(io.BytesIO(corpo)) as img:
+            return tuple(int(x) for x in img.size)
+    except Exception:                                          # noqa: BLE001
+        return (None, None)
+
+
+def mesma_proporcao(corpo: bytes, visto: dict, folga: float = 0.03) -> bool:
+    """Os bytes baixados tem a proporcao da imagem que a tela mostrava? (o
+    Gemini mostra 1024x559 e o original e 2816x1536: a mesma forma). Sem
+    medida de um dos lados, nao ha como recusar: True."""
+    largura, altura = _dimensoes_dos_bytes(corpo)
+    w, h = int((visto or {}).get("w") or 0), int((visto or {}).get("h") or 0)
+    if not (largura and altura and w and h):
+        return True
+    return abs((largura / altura) / (w / h) - 1.0) <= folga
+
+
+def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.0,
+                      log=print) -> bytes | None:
     """Os bytes pelo botao do proprio site (tamanho original), ou None quando a
-    IA nao tem o botao medido ou ele nao esta depois do nosso turno.
+    IA nao tem o botao medido ou ele nao esta junto da imagem da resposta.
 
     Medido no Gemini em 29/09 15:5x (scratchpad/diag_botao_gemini.py): o
     botao nasce `disabled` ate a imagem carregar; o clique mostra "Fazendo o
@@ -580,24 +636,50 @@ def baixar_pelo_botao(cliente, timeout_s: float = 90.0, log=print) -> bytes | No
     (`Gemini_Generated_Image_*.jfif`). Com a API sincrona os eventos so
     chegam DENTRO de uma chamada: a espera e `wait_for_timeout`, nunca
     `time.sleep`. Se o download nao vier, vale a maior resposta de imagem que
-    o clique buscou (os mesmos bytes).
+    o clique buscou (os mesmos bytes). No ChatGPT o botao esta na tela cheia:
+    clica na imagem, baixa e fecha com Escape.
     """
-    seletores = BOTAO_BAIXAR.get(str(getattr(cliente, "provedor", "")))
+    seletores = botoes_de_baixar(cliente)
     if not seletores:
         return None
+    s = getattr(cliente, "sel", None) or {}
+    abrir = bool(s.get("imagem_abrir_para_baixar"))
     page = cliente.page
-    n = page.evaluate(_JS_MARCAR_BOTAO,
-                      [list(cliente.sel.get("turno_usuario") or []), list(seletores)])
-    if not n:
+    marcado = page.evaluate(_JS_MARCAR, [
+        list(s.get("turno_usuario") or []), list(s.get("imagem_turno") or []),
+        list(s.get("imagem_gerada") or []), str((visto or {}).get("src") or ""),
+        [] if abrir else list(seletores)])
+    if not isinstance(marcado, dict) or not marcado.get("imagem"):
         return None
-    alvo = page.locator("[data-nf-baixar='1']").first
-    try:
-        alvo.scroll_into_view_if_needed(timeout=5000)
-    except Exception:                                          # noqa: BLE001
-        pass
+    if abrir:
+        imagem_na_tela = page.locator("[data-nf-imagem='1']").first
+        try:
+            imagem_na_tela.scroll_into_view_if_needed(timeout=5000)
+        except Exception:                                      # noqa: BLE001
+            pass
+        page.wait_for_timeout(700)
+        imagem_na_tela.click(timeout=10000)
+        alvo = None
+        for _ in range(40):                     # ate 20 s: a tela cheia abrindo
+            alvo = _primeiro_presente(page, seletores)
+            if alvo is not None:
+                break
+            page.wait_for_timeout(500)
+        if alvo is None:
+            _fechar_tela_cheia(page)
+            raise ImagemFalhou("abri a imagem e o botão de baixar não apareceu em 20 s",
+                               "download")
+    else:
+        if not marcado.get("botao"):
+            return None
+        alvo = page.locator("[data-nf-baixar='1']").first
+        try:
+            alvo.scroll_into_view_if_needed(timeout=5000)
+        except Exception:                                      # noqa: BLE001
+            pass
     habilitado = False
     for volta in range(60):                     # ate 30 s: a imagem carregando
-        if volta % 10 == 0:
+        if volta % 10 == 0 and not abrir:
             # a imagem so carrega NA VISTA do container com rolagem propria:
             # "rolar se preciso" nem sempre rola (o botao ja parece visivel)
             try:
@@ -614,6 +696,8 @@ def baixar_pelo_botao(cliente, timeout_s: float = 90.0, log=print) -> bytes | No
             break
         page.wait_for_timeout(500)
     if not habilitado:
+        if abrir:
+            _fechar_tela_cheia(page)
         raise ImagemFalhou("o botão de baixar ficou desabilitado por 30 s (a imagem "
                            "não carregou na tela)", "download")
     baixados, respostas = [], []
@@ -661,6 +745,16 @@ def baixar_pelo_botao(cliente, timeout_s: float = 90.0, log=print) -> bytes | No
                 page.remove_listener(evento, funcao)
             except Exception:                                  # noqa: BLE001
                 pass
+        if abrir:
+            _fechar_tela_cheia(page)
+
+
+def _fechar_tela_cheia(page) -> None:
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(600)
+    except Exception:                                          # noqa: BLE001
+        pass
 
 
 def _normal(texto: str) -> str:
@@ -670,38 +764,66 @@ def _normal(texto: str) -> str:
 def baixar_da_resposta(cliente, prompt: str, proporcao: str | None = None,
                        log=print) -> dict | None:
     """A imagem que a ULTIMA resposta do chat trouxe (`cliente.imagens_na_resposta`,
-    que `ClienteLLM.esperar_resposta` preenche), baixada com a prova do turno:
-    o ultimo turno do usuario na tela tem de ser o NOSSO pedido. None se a
-    resposta nao trouxe imagem. Levanta `SemProva` se o turno nao bate."""
+    que `ClienteLLM.esperar_resposta` preenche), baixada com a PROVA:
+
+    1. o ultimo turno do usuario na tela e o NOSSO pedido;
+    2. a imagem esta, agora, DENTRO da resposta a ele, no recipiente de imagem
+       gerada (d228c94f, 29/09 16:02: um ANUNCIO no mesmo turno virou "o
+       gato");
+    3. o src dela NAO existia na pagina antes do envio;
+    4. a IA nao diz mais que esta gerando.
+
+    None se a resposta nao trouxe imagem. Levanta `SemProva` (nada vai ao
+    disco) se uma das quatro falhar."""
     imagens = list(getattr(cliente, "imagens_na_resposta", None) or [])
     if not imagens:
         return None
     visto = imagens[-1]
-    achado = cliente.imagens_da_resposta() if hasattr(cliente, "imagens_da_resposta") else {}
-    turno = str((achado or {}).get("turno") or "")
+    achado = (cliente.imagens_da_resposta() if hasattr(cliente, "imagens_da_resposta")
+              else {}) or {}
+    turno = str(achado.get("turno") or "")
     trecho = _normal(prompt)[:60]
-    if not (achado or {}).get("ancorado") or (trecho and trecho not in _normal(turno)):
+    if not achado.get("ancorado") or (trecho and trecho not in _normal(turno)):
         raise SemProva("o último turno na casa não é o seu pedido: não baixo imagem "
                        "que não sei de onde veio")
+    src = str(visto.get("src") or "")
+    na_resposta = {str(i.get("src") or "") for i in achado.get("imagens") or []}
+    if not achado.get("resposta") or not src or src not in na_resposta:
+        raise SemProva("a imagem não está dentro da resposta ao seu pedido (anúncio, "
+                       "sugestão ou imagem de outro turno): nada foi gravado")
+    antes = getattr(cliente, "_srcs_antes_do_envio", None)
+    if antes is None:
+        raise SemProva("sem a foto da página antes do envio, não sei se a imagem é "
+                       "nova: nada foi gravado")
+    if src in antes or (visto.get("src_attr") and visto.get("src_attr") in antes):
+        raise SemProva("a imagem já estava na página antes do envio: não é a resposta "
+                       "ao seu pedido; nada foi gravado")
+    if achado.get("gerando"):
+        raise SemProva("a IA ainda diz que está gerando a imagem: não baixo a prévia")
     # primeiro o botao do site (tamanho original); depois o `src` da tela
     corpo, como, falhas = b"", "", []
     try:
-        corpo = baixar_pelo_botao(cliente, log=log)
+        corpo = baixar_pelo_botao(cliente, visto, log=log)
         if corpo is None:
-            falhas.append("botão: não há botão de baixar depois do seu turno")
+            falhas.append("botão: não há botão de baixar junto da imagem")
             corpo = b""
         elif not (len(corpo) >= BYTES_MIN and extensao(corpo)):
             falhas.append(f"botão: {len(corpo)} bytes que não são imagem")
+            corpo = b""
+        elif not mesma_proporcao(corpo, visto):
+            falhas.append("botão: o arquivo baixado não tem a forma da imagem da tela "
+                          f"({_dimensoes_dos_bytes(corpo)} contra {visto.get('w')}x"
+                          f"{visto.get('h')})")
             corpo = b""
         else:
             como = "botao_tamanho_original"
     except Exception as exc:                                   # noqa: BLE001
         falhas.append(f"botão: {type(exc).__name__}: {' '.join(str(exc).split())[:100]}")
     if not como:
-        if falhas and BOTAO_BAIXAR.get(str(getattr(cliente, "provedor", ""))):
+        if falhas and botoes_de_baixar(cliente):
             log(f"[{cliente.provedor}] {falhas[-1]}; tento o src da tela")
         try:
-            corpo = baixar(cliente.ctx, cliente.page, visto["src"],
+            corpo = baixar(cliente.ctx, cliente.page, src,
                            float((cliente.ajustes or {}).get("download_timeout", 120)))
             como = "src_da_tela"
         except ImagemFalhou as exc:
@@ -712,7 +834,11 @@ def baixar_da_resposta(cliente, prompt: str, proporcao: str | None = None,
              "provedor": cliente.provedor, "casa_url": str(cliente.page.url or ""),
              "turno_usuario": turno[:200],
              "prompt_sha256": hashlib.sha256(_normal(prompt).encode("utf-8")).hexdigest()[:16],
-             "src": str(visto["src"])[:300], "na_tela": [visto.get("w"), visto.get("h")],
+             "src": src[:300], "na_tela": [visto.get("w"), visto.get("h")],
+             "alt": str(visto.get("alt") or "")[:160],
+             "dentro_da_resposta": True, "src_novo": True,
+             "imagens_antes_do_envio": len(antes),
+             "ignoradas_fora_da_resposta": int(achado.get("fora") or 0),
              "imagens_na_resposta": len(imagens), "download": como,
              "verificado_em": correio.agora()}
     if proporcao:

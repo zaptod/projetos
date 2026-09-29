@@ -304,6 +304,10 @@ class ClienteLLM:
 
     def enviar(self, prompt: str) -> None:
         """Cola o prompt e envia. Levanta se nao houver prova de envio."""
+        # a foto das imagens da pagina ANTES do envio: a imagem da resposta
+        # tem de ser nova (d228c94f, 29/09/2026). `None` = sem foto.
+        self._srcs_antes_do_envio = (self._foto_das_imagens()
+                                     if self.olha_imagem() else None)
         campo = sel.resolver(self.page, self.sel["campo"], "o campo de prompt")
         campo.click()
         _pausa(self.rng, 0.2, 0.5)
@@ -516,13 +520,34 @@ class ClienteLLM:
     # A RESPOSTA PODE SER UMA IMAGEM (29/09/2026). As 14:24 o Adrian pediu pelo
     # app "gere uma imagem de um gato" ao Gemini; o Gemini desenhou, a tela
     # ficou com 0 caracteres de texto, e a espera gastou os 420 s inteiros e
-    # disse "raciocinio preso ou limite". As imagens que valem sao as que
-    # nascem DEPOIS do ultimo turno do usuario (a mesma prova de posicao do
-    # texto), fora dele (um anexo nosso) e grandes (icone e avatar nao).
+    # disse "raciocinio preso ou limite".
+    #
+    # "DEPOIS DO NOSSO TURNO" NAO BASTA (29/09/2026, 16:02, correio
+    # d228c94f). "Crie um gato" ao ChatGPT voltou como "imagem pronta" com a
+    # foto de uma MESA DE SOM: era a miniatura (512x512, images.openai.com/
+    # static-rsc) de um ANUNCIO ("CAVN AI · AI Music Videos · Anuncio") que o
+    # ChatGPT poe embaixo da resposta — dentro do MESMO section[data-turn=
+    # assistant] do gato (medido na tela, scratchpad/diag_chatgpt_baixar.py).
+    # O gato (1254x1254, backend-api/estuary) estava la e foi ignorado.
+    # Agora so vale imagem que esta:
+    #  - no turno do assistente que RESPONDE ao nosso (`imagem_turno`: o
+    #    primeiro depois do ultimo turno do usuario);
+    #  - dentro de um recipiente de imagem GERADA (`imagem_gerada`: no
+    #    ChatGPT o div#image-<uuid> "imagegen-image", no Gemini o
+    #    generated-image) — anuncio, sugestao e anexo nunca estao la;
+    #  - com src que NAO existia na pagina antes do envio (`enviar` tira a
+    #    foto) — e so quando a geracao acabou (sem borrao, sem "Criando
+    #    imagem", sem botao de parar, estavel; ver `esperar_resposta`).
+    # IA sem os dois seletores nao tem imagem na resposta (falha fechada).
     _JS_IMAGENS = (
-        "([usuarios]) => {"
+        "([usuarios, turnos, recipientes, gerando]) => {"
         " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
         "   & Node.DOCUMENT_POSITION_FOLLOWING);"
+        " const todos = (raiz, lista) => { let out = [];"
+        "   for (const s of lista) {"
+        "     try { if (raiz !== document && raiz.matches(s)) out.push(raiz); } catch (e) {}"
+        "     try { out = out.concat([...raiz.querySelectorAll(s)]); } catch (e) {} }"
+        "   return out; };"
         " let usuario = null;"
         " for (const s of usuarios) {"
         "   let els = [];"
@@ -530,27 +555,150 @@ class ClienteLLM:
         "   const ultimo = els[els.length - 1];"
         "   if (ultimo && (!usuario || depois(usuario, ultimo))) usuario = ultimo;"
         " }"
-        " if (!usuario) return {ancorado: false, turno: '', imagens: []};"
-        " const imagens = [...document.querySelectorAll('img')]"
-        "   .filter(im => depois(usuario, im) && !usuario.contains(im))"
-        "   .map(im => ({src: im.currentSrc || im.src || '', w: im.naturalWidth || 0,"
-        "                h: im.naturalHeight || 0, pronta: !!im.complete}))"
-        "   .filter(i => i.src && i.w >= 256 && i.h >= 256);"
+        " if (!usuario) return {ancorado: false, turno: '', resposta: false,"
+        "   gerando: false, imagens: [], fora: 0};"
+        " let resposta = null;"
+        " for (const t of todos(document, turnos)) {"
+        "   if (!depois(usuario, t) || t.contains(usuario) || usuario.contains(t)) continue;"
+        "   if (!resposta || depois(t, resposta)) resposta = t;"
+        " }"
+        " const porSrc = new Map();"
+        " if (resposta) {"
+        "   for (const cx of todos(resposta, recipientes)) {"
+        "     for (const im of cx.querySelectorAll('img')) {"
+        "       const src = im.currentSrc || im.src || '';"
+        "       if (!src || usuario.contains(im)) continue;"
+        "       let borrada = false;"
+        "       for (let e = im; e && e !== cx.parentElement; e = e.parentElement) {"
+        "         const f = getComputedStyle(e).filter || '';"
+        "         if (f.includes('blur')) { borrada = true; break; } }"
+        "       const i = {src, src_attr: im.getAttribute('src') || '',"
+        "         w: im.naturalWidth || 0, h: im.naturalHeight || 0,"
+        "         pronta: !!im.complete && (im.naturalWidth || 0) > 0,"
+        "         alt: (im.alt || '').slice(0, 160), borrada};"
+        "       const velho = porSrc.get(src);"
+        "       if (!velho) { porSrc.set(src, i); continue; }"
+        "       velho.borrada = velho.borrada && i.borrada;"
+        "       velho.pronta = velho.pronta || i.pronta;"
+        "       velho.alt = velho.alt || i.alt;"
+        "       velho.w = Math.max(velho.w, i.w); velho.h = Math.max(velho.h, i.h);"
+        "     }"
+        "   }"
+        " }"
+        " const imagens = [...porSrc.values()];"
+        " const dentro = new Set(imagens.map(i => i.src));"
+        " const fora = [...document.querySelectorAll('img')].filter(im =>"
+        "   depois(usuario, im) && !usuario.contains(im) && (im.naturalWidth || 0) >= 256"
+        "   && !dentro.has(im.currentSrc || im.src || '')).length;"
+        " let emGeracao = false;"
+        " if (resposta && gerando) {"
+        "   try { emGeracao = new RegExp(gerando, 'i').test("
+        "     (resposta.innerText || '').slice(0, 3000)); } catch (e) {} }"
         " return {ancorado: true, turno: (usuario.innerText || '').slice(0, 600),"
-        "         imagens}; }")
+        "         resposta: !!resposta, gerando: emGeracao, imagens, fora}; }")
+
+    # A FOTO DA PAGINA ANTES DO ENVIO: todo src de imagem que ja existe. A
+    # imagem da resposta tem de ser NOVA (nao estar aqui).
+    _JS_TODAS_AS_IMAGENS = (
+        "() => { const out = [];"
+        " for (const im of document.querySelectorAll('img')) {"
+        "   if (im.currentSrc) out.push(im.currentSrc);"
+        "   const a = im.getAttribute('src'); if (a) out.push(a);"
+        "   if (im.src) out.push(im.src); }"
+        " return out; }")
+
+    # O texto que a IA mostra ENQUANTO desenha (o ChatGPT: "Criando imagem",
+    # com o previa borrada nitidando). Com ele na resposta, a imagem ainda
+    # nao e a final.
+    GERANDO_IMAGEM_PADRAO = (r"(criando|gerando|creating|generating)\s+"
+                             r"(a |uma |sua |your |an )?(imagem|image)")
+
+    def olha_imagem(self) -> bool:
+        """Esta IA tem onde procurar imagem na resposta? (os tres seletores)"""
+        return bool(self.sel.get("turno_usuario") and self.sel.get("imagem_turno")
+                    and self.sel.get("imagem_gerada"))
+
+    def _foto_das_imagens(self) -> set:
+        """Os src de TODAS as imagens da pagina agora (nunca levanta)."""
+        try:
+            achado = self.page.evaluate(self._JS_TODAS_AS_IMAGENS)
+        except Exception:                                      # noqa: BLE001
+            return set()
+        return {str(s) for s in (achado or []) if s} if isinstance(achado, list) else set()
 
     def imagens_da_resposta(self) -> dict:
-        """`{"ancorado", "turno", "imagens": [{src, w, h, pronta}]}` do turno
-        atual. Nunca levanta (pagina que nao responde = nenhuma imagem)."""
+        """`{"ancorado", "turno", "resposta", "gerando", "fora", "imagens":
+        [{src, src_attr, w, h, pronta, alt, borrada}]}`: as imagens DENTRO da
+        resposta ao ultimo turno do usuario, nos recipientes de imagem gerada.
+        Nunca levanta (pagina que nao responde = nenhuma imagem)."""
+        vazio = {"ancorado": False, "turno": "", "resposta": False, "gerando": False,
+                 "imagens": [], "fora": 0}
+        if not self.olha_imagem():
+            return vazio
         try:
             achado = self.page.evaluate(
-                self._JS_IMAGENS, [list(self.sel.get("turno_usuario") or [])])
+                self._JS_IMAGENS, [list(self.sel.get("turno_usuario") or []),
+                                   list(self.sel.get("imagem_turno") or []),
+                                   list(self.sel.get("imagem_gerada") or []),
+                                   str(self.sel.get("imagem_gerando")
+                                       or self.GERANDO_IMAGEM_PADRAO)])
         except Exception:                                      # noqa: BLE001
             achado = None
         if not isinstance(achado, dict):
-            return {"ancorado": False, "turno": "", "imagens": []}
+            return vazio
         achado.setdefault("imagens", [])
         return achado
+
+    @staticmethod
+    def _estado_da_imagem(achado: dict, prontas: list) -> str:
+        """Uma linha do que a espera ve da imagem (vai ao log so quando muda):
+        e a medida do que a tela mostrou durante a geracao. Vazio = nada."""
+        imagens = (achado or {}).get("imagens") or []
+        fora = int((achado or {}).get("fora") or 0)
+        if not (achado or {}).get("resposta") and not fora:
+            return ""
+        partes = [("resposta ao nosso turno na tela" if achado.get("resposta")
+                   else "resposta ao nosso turno ainda nao apareceu")]
+        if imagens:
+            ultima = imagens[-1]
+            partes.append(
+                f"{len(imagens)} no recipiente (a ultima {ultima.get('w')}x{ultima.get('h')}"
+                + (", borrada" if ultima.get("borrada") else "")
+                + ("" if ultima.get("pronta") else ", carregando")
+                + (f", alt «{str(ultima.get('alt'))[:40]}»" if ultima.get("alt") else "")
+                + ")")
+        if prontas:
+            partes.append(f"{len(prontas)} final(is) e nova(s)")
+        if achado.get("gerando"):
+            partes.append("a IA diz que ainda esta gerando")
+        if fora:
+            partes.append(f"{fora} imagem(ns) grande(s) FORA da resposta ignorada(s) "
+                          "(anuncio, sugestao)")
+        return "; ".join(partes)
+
+    def imagens_prontas(self, achado: dict, antes=()) -> list:
+        """Das imagens da resposta, as que ja sao a FINAL: carregadas, 256+ px,
+        sem borrao, com o `alt` de imagem final (quando a IA tem um medido) e
+        com src que nao estava na pagina `antes` do envio. Sem a resposta ao
+        nosso turno na tela, nenhuma."""
+        if not (achado or {}).get("ancorado") or not achado.get("resposta"):
+            return []
+        antes = set(antes or ())
+        finais = [str(a).lower() for a in (self.sel.get("imagem_final_alt") or [])]
+        saida = []
+        for i in achado.get("imagens") or []:
+            src = i.get("src")
+            if not src or src in antes or (i.get("src_attr") and i.get("src_attr") in antes):
+                continue
+            if not i.get("pronta") or i.get("borrada"):
+                continue
+            if int(i.get("w") or 0) < 256 or int(i.get("h") or 0) < 256:
+                continue
+            if finais and not any(str(i.get("alt") or "").lower().startswith(f)
+                                  for f in finais):
+                continue
+            saida.append(i)
+        return saida
 
     def _resposta_no_dom(self):
         """`{"texto", "ancorado"}`, ou `None` se a pagina nao respondeu."""
@@ -673,29 +821,43 @@ class ClienteLLM:
         apressado = diagnosticado = False
         # a imagem que a resposta trouxe (quem chama baixa; ver `_JS_IMAGENS`)
         self.imagens_na_resposta = []
-        # (src da ultima imagem, desde quando, tamanho do texto naquela hora)
+        # (assinatura das imagens prontas, desde quando, tamanho do texto)
         imagem_vista = (None, 0.0, -1)
-        # O que JA estava na tela quando a espera comecou nao e resposta: a
-        # miniatura de um anexo nosso renderizada fora do balao, por exemplo.
-        # So conta imagem que NASCEU durante a espera.
-        olha_imagem = bool(self.sel.get("turno_usuario"))
-        ja_na_tela = ({i.get("src") for i in self.imagens_da_resposta().get("imagens") or []}
-                      if olha_imagem else set())
+        # A imagem tem de ser NOVA: fora da foto de antes do envio (`enviar`).
+        # Sem a foto (quem chamou nao passou por `enviar`), vale o que ja
+        # estava na resposta quando a espera comecou. Com ela, NAO: a previa
+        # que o ChatGPT ja mostra no primeiro segundo tem o src da final.
+        procura_imagem = self.olha_imagem()
+        ja_na_tela = set()
+        if procura_imagem:
+            antes = getattr(self, "_srcs_antes_do_envio", None)
+            ja_na_tela = (set(antes) if antes is not None else
+                          {i.get("src") for i in
+                           self.imagens_da_resposta().get("imagens") or []})
+        # a previa do ChatGPT nitida em passos: mais folga que a do texto
+        estavel_imagem = max(float(estabilidade),
+                             float(self.ajustes.get("imagem_estabilidade", 5.0)))
+        ultimo_estado_imagem = None
 
         while time.monotonic() < fim:
             texto = self._resposta_nova()
             calado = len(texto.strip()) < 40
             prontas = []
-            if olha_imagem:
+            achado = {}
+            if procura_imagem:
                 achado = self.imagens_da_resposta()
-                if achado.get("ancorado"):
-                    prontas = [i for i in achado.get("imagens") or []
-                               if i.get("pronta") and i.get("src") not in ja_na_tela]
+                prontas = self.imagens_prontas(achado, ja_na_tela)
+                estado = self._estado_da_imagem(achado, prontas)
+                if estado != ultimo_estado_imagem:
+                    ultimo_estado_imagem = estado
+                    if estado:
+                        self.log(f"[{self.provedor}] imagem: {estado}")
             if prontas:
-                src = prontas[-1].get("src")
-                if src != imagem_vista[0] or len(texto) != imagem_vista[2]:
-                    imagem_vista = (src, time.monotonic(), len(texto))
-                elif (time.monotonic() - imagem_vista[1] >= estabilidade
+                assinatura = tuple((i.get("src"), i.get("w"), i.get("h")) for i in prontas)
+                if assinatura != imagem_vista[0] or len(texto) != imagem_vista[2]:
+                    imagem_vista = (assinatura, time.monotonic(), len(texto))
+                elif (time.monotonic() - imagem_vista[1] >= estavel_imagem
+                      and not achado.get("gerando")
                       and sel.encontrar(self.page, self.sel["parar"],
                                         timeout=0.3) is None):
                     self.imagens_na_resposta = prontas
@@ -746,13 +908,18 @@ class ClienteLLM:
                 parado_desde = None
             elif not escrevendo and texto.strip():
                 parado_desde = parado_desde or time.monotonic()
-                if time.monotonic() - parado_desde >= estabilidade:
+                # Texto parado com a imagem ainda a caminho ("Aqui esta o seu
+                # gato" + a previa nitidando): quem fecha e o ramo da imagem,
+                # quando ela for a final e estavel.
+                imagem_a_caminho = procura_imagem and (
+                    bool(prontas) or (achado.get("gerando") and len(texto.strip()) < 300))
+                if (time.monotonic() - parado_desde >= estabilidade
+                        and not imagem_a_caminho):
                     decorrido = time.monotonic() - inicio
                     self.log(f"[{self.provedor}] resposta pronta: "
                              f"{len(texto)} chars em {decorrido:.0f}s")
                     self._ultima_resposta = texto
-                    # texto e imagem juntos: a imagem que ja esta pronta vai
-                    self.imagens_na_resposta = prontas
+                    self.imagens_na_resposta = []
                     return texto
             decorrido = time.monotonic() - inicio
             if decorrido - ultimo_aviso >= 20:
@@ -762,10 +929,13 @@ class ClienteLLM:
             time.sleep(1.0)
 
         texto = self._resposta_nova()
-        if olha_imagem:
-            self.imagens_na_resposta = [
-                i for i in self.imagens_da_resposta().get("imagens") or []
-                if i.get("pronta") and i.get("src") not in ja_na_tela]
+        if procura_imagem:
+            # no estouro, a MESMA regua: so a imagem final, fora de geracao
+            achado = self.imagens_da_resposta()
+            ainda_gerando = (achado.get("gerando") or sel.encontrar(
+                self.page, self.sel["parar"], timeout=0.3) is not None)
+            self.imagens_na_resposta = ([] if ainda_gerando
+                                        else self.imagens_prontas(achado, ja_na_tela))
         if texto.strip() or self.imagens_na_resposta:
             self.log(f"[{self.provedor}] espera estourou em {timeout:.0f}s; "
                      "uso o que ja veio.")

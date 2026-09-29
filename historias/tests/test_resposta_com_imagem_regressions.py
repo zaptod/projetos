@@ -35,6 +35,7 @@ class _Pagina:
             self.chamadas += 1
             lista = next(self.imagens, None)
             return {"ancorado": True, "turno": "gere uma imagem de um gato",
+                    "resposta": True, "gerando": False, "fora": 0,
                     "imagens": lista if lista is not None else []}
         if argumento is not None:
             return {"texto": self.texto, "ancorado": True}

@@ -52,6 +52,33 @@ CHATGPT = {
         "article[data-testid^='conversation-turn'] div.markdown",
         "div.agent-turn div.markdown",
     ],
+    # A IMAGEM DA RESPOSTA (medido na casa em 29/09/2026, 16:1x,
+    # scratchpad/diag_chatgpt_imagem.py e diag_chatgpt_baixar.py). O turno e
+    # `section[data-turn=assistant]` (data-testid conversation-turn-N); a
+    # resposta so de imagem NAO tem `data-message-author-role`. A imagem
+    # gerada mora em `div#image-<uuid>` (classe `group/imagegen-image`), em
+    # tres <img> com o mesmo src (backend-api/estuary/content, 1254x1254); a
+    # final tem alt "Imagem gerada: <titulo>". No MESMO section, embaixo, vem
+    # um ANUNCIO ("Anuncio", miniatura 512x512 de images.openai.com/
+    # static-rsc) — foi ele que virou "o gato" do d228c94f. Por isso a
+    # imagem so vale dentro do recipiente `imagegen-image`.
+    "imagem_turno": [
+        "section[data-turn='assistant']",
+        "article[data-turn='assistant']",
+    ],
+    "imagem_gerada": [
+        "div[id^='image-'][class*='imagegen-image']",
+        "[class*='imagegen-image']",
+    ],
+    "imagem_final_alt": ["Imagem gerada", "Generated image"],
+    # O botao de baixar fica na visualizacao em tela cheia (o clique na
+    # imagem abre um dialogo): `[role=dialog] button[aria-label=Baixar]`.
+    # Medido: entrega os MESMOS bytes do src (PNG 1254x1254, 2.587.976 bytes).
+    "imagem_abrir_para_baixar": True,
+    "imagem_baixar": [
+        "[role='dialog'] button[aria-label='Baixar']",
+        "[role='dialog'] button[aria-label='Download']",
+    ],
     "logado": [
         "#prompt-textarea",
         "div[contenteditable='true'][id='prompt-textarea']",
@@ -152,6 +179,23 @@ GEMINI = {
         "message-content.model-response-text",
         "div.model-response-text",
         "model-response",
+    ],
+    # A IMAGEM DA RESPOSTA (medido na casa em 29/09/2026, 16:2x,
+    # scratchpad/diag_gemini_recipiente.py): `model-response > ... >
+    # generated-image > single-image.generated-image > ... > img.image`
+    # (lh3.googleusercontent.com/gg/...; a tela mostra 1024x559, o original e
+    # 2816x1536). O botao "Baixar imagem no tamanho original" fica no mesmo
+    # `single-image` (ver `ias/imagem.py`).
+    "imagem_turno": [
+        "model-response",
+    ],
+    "imagem_gerada": [
+        "generated-image",
+        "single-image.generated-image",
+    ],
+    "imagem_baixar": [
+        "button[aria-label='Baixar imagem no tamanho original']",
+        "button[aria-label='Download full size image']",
     ],
     "logado": [
         "rich-textarea div.ql-editor[contenteditable='true']",
@@ -362,6 +406,17 @@ GROK = {
     ],
     "raciocinio": [
         "div.thinking-container",
+    ],
+    # A IMAGEM DA RESPOSTA: o Grok ainda NAO foi medido gerando imagem (a
+    # casa so tem texto). Vale a mesma regra do ChatGPT e do Gemini — dentro
+    # da resposta ao nosso turno, nova e terminada —, com o balao inteiro do
+    # assistente como recipiente, ate a primeira imagem real medir o
+    # recipiente proprio.
+    "imagem_turno": [
+        "div[data-testid='assistant-message']",
+    ],
+    "imagem_gerada": [
+        "div[data-testid='assistant-message']",
     ],
     "limpar_resposta": True,
     # LOGADO e o editor ProseMirror (o textarea aparece so deslogado — por
