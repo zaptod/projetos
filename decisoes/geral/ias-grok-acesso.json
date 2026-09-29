@@ -3,7 +3,15 @@
   "contexto": "O cliente de navegador é o mesmo dos outros (perfil próprio grok__principal). Você faz o login UMA vez no perfil; depois a automação usa. Cota e o que é grátis vão para a ficha.",
   "criado": "2026-09-29T01:29:00.593402",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T02:24:46",
+      "opcao": "grok-site",
+      "origem": "app"
+    }
+  ],
   "id": "ias-grok-acesso",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Você pediu o Grok na roda das IAs. O login é seu (conta compartilhada não). Por onde?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Grok: por onde entra na roda?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T02:24:46",
+    "opcao": "grok-site"
+  }
 }
