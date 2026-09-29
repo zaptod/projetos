@@ -28,7 +28,9 @@
   "midias": [],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "teto-por-fonte-dia-de-grade"
+      ],
       "descricao": "",
       "id": "grade",
       "pede_comentario": false,
