@@ -513,6 +513,45 @@ class ClienteLLM:
         " }"
         " return {texto: '', ancorado: !!usuario}; }")
 
+    # A RESPOSTA PODE SER UMA IMAGEM (29/09/2026). As 14:24 o Adrian pediu pelo
+    # app "gere uma imagem de um gato" ao Gemini; o Gemini desenhou, a tela
+    # ficou com 0 caracteres de texto, e a espera gastou os 420 s inteiros e
+    # disse "raciocinio preso ou limite". As imagens que valem sao as que
+    # nascem DEPOIS do ultimo turno do usuario (a mesma prova de posicao do
+    # texto), fora dele (um anexo nosso) e grandes (icone e avatar nao).
+    _JS_IMAGENS = (
+        "([usuarios]) => {"
+        " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
+        "   & Node.DOCUMENT_POSITION_FOLLOWING);"
+        " let usuario = null;"
+        " for (const s of usuarios) {"
+        "   let els = [];"
+        "   try { els = [...document.querySelectorAll(s)]; } catch (e) { continue; }"
+        "   const ultimo = els[els.length - 1];"
+        "   if (ultimo && (!usuario || depois(usuario, ultimo))) usuario = ultimo;"
+        " }"
+        " if (!usuario) return {ancorado: false, turno: '', imagens: []};"
+        " const imagens = [...document.querySelectorAll('img')]"
+        "   .filter(im => depois(usuario, im) && !usuario.contains(im))"
+        "   .map(im => ({src: im.currentSrc || im.src || '', w: im.naturalWidth || 0,"
+        "                h: im.naturalHeight || 0, pronta: !!im.complete}))"
+        "   .filter(i => i.src && i.w >= 256 && i.h >= 256);"
+        " return {ancorado: true, turno: (usuario.innerText || '').slice(0, 600),"
+        "         imagens}; }")
+
+    def imagens_da_resposta(self) -> dict:
+        """`{"ancorado", "turno", "imagens": [{src, w, h, pronta}]}` do turno
+        atual. Nunca levanta (pagina que nao responde = nenhuma imagem)."""
+        try:
+            achado = self.page.evaluate(
+                self._JS_IMAGENS, [list(self.sel.get("turno_usuario") or [])])
+        except Exception:                                      # noqa: BLE001
+            achado = None
+        if not isinstance(achado, dict):
+            return {"ancorado": False, "turno": "", "imagens": []}
+        achado.setdefault("imagens", [])
+        return achado
+
     def _resposta_no_dom(self):
         """`{"texto", "ancorado"}`, ou `None` se a pagina nao respondeu."""
         try:
@@ -632,10 +671,40 @@ class ClienteLLM:
         # disso o site ainda pode estar limpando o campo do envio.
         devolvido_apos = float(self.ajustes.get("devolvido_apos_s", 20))
         apressado = diagnosticado = False
+        # a imagem que a resposta trouxe (quem chama baixa; ver `_JS_IMAGENS`)
+        self.imagens_na_resposta = []
+        # (src da ultima imagem, desde quando, tamanho do texto naquela hora)
+        imagem_vista = (None, 0.0, -1)
+        # O que JA estava na tela quando a espera comecou nao e resposta: a
+        # miniatura de um anexo nosso renderizada fora do balao, por exemplo.
+        # So conta imagem que NASCEU durante a espera.
+        olha_imagem = bool(self.sel.get("turno_usuario"))
+        ja_na_tela = ({i.get("src") for i in self.imagens_da_resposta().get("imagens") or []}
+                      if olha_imagem else set())
 
         while time.monotonic() < fim:
             texto = self._resposta_nova()
             calado = len(texto.strip()) < 40
+            prontas = []
+            if olha_imagem:
+                achado = self.imagens_da_resposta()
+                if achado.get("ancorado"):
+                    prontas = [i for i in achado.get("imagens") or []
+                               if i.get("pronta") and i.get("src") not in ja_na_tela]
+            if prontas:
+                src = prontas[-1].get("src")
+                if src != imagem_vista[0] or len(texto) != imagem_vista[2]:
+                    imagem_vista = (src, time.monotonic(), len(texto))
+                elif (time.monotonic() - imagem_vista[1] >= estabilidade
+                      and sel.encontrar(self.page, self.sel["parar"],
+                                        timeout=0.3) is None):
+                    self.imagens_na_resposta = prontas
+                    decorrido = time.monotonic() - inicio
+                    self.log(f"[{self.provedor}] resposta com imagem "
+                             f"({prontas[-1].get('w')}x{prontas[-1].get('h')}) "
+                             f"e {len(texto)} chars em {decorrido:.0f}s")
+                    self._ultima_resposta = texto
+                    return texto
             # "Sem texto" e MENOS DE 40 caracteres, e nao vazio: as 7:29 de
             # 14/09/2026 a pagina mostrou 10 chars (o rotulo do raciocinio)
             # por minutos, o clique nunca veio e a revisao gastou 900 s.
@@ -682,6 +751,8 @@ class ClienteLLM:
                     self.log(f"[{self.provedor}] resposta pronta: "
                              f"{len(texto)} chars em {decorrido:.0f}s")
                     self._ultima_resposta = texto
+                    # texto e imagem juntos: a imagem que ja esta pronta vai
+                    self.imagens_na_resposta = prontas
                     return texto
             decorrido = time.monotonic() - inicio
             if decorrido - ultimo_aviso >= 20:
@@ -691,7 +762,11 @@ class ClienteLLM:
             time.sleep(1.0)
 
         texto = self._resposta_nova()
-        if texto.strip():
+        if olha_imagem:
+            self.imagens_na_resposta = [
+                i for i in self.imagens_da_resposta().get("imagens") or []
+                if i.get("pronta") and i.get("src") not in ja_na_tela]
+        if texto.strip() or self.imagens_na_resposta:
             self.log(f"[{self.provedor}] espera estourou em {timeout:.0f}s; "
                      "uso o que ja veio.")
             self._ultima_resposta = texto
