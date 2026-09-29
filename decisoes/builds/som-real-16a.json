@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T22:40:50",
+      "evento": "2026-09-28T18:26:26",
+      "linha": 1,
+      "nota": "virou a tarefa agendada de re-render do estoque com o som real, na madrugada (fora da Mesa); lida à mão pelo orquestrador em 28/09",
+      "opcao": "aprovar",
+      "origem": "semente",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T15:08:28.089802",
   "depende_de": [

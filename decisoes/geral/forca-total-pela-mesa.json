@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T22:40:54",
+      "evento": "2026-09-28T21:45:54",
+      "linha": 29,
+      "nota": "aplicada na Mesa de comando (capacidade, teto, força total); lida à mão pelo orquestrador em 28/09",
+      "opcao": "ate-desligar",
+      "origem": "semente",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "A regra automática (força total nos 20 min antes de renovar) não muda; isto é só o botão do modo na Mesa.",
   "criado": "2026-09-28T20:56:18.964965",
   "depende_de": [],

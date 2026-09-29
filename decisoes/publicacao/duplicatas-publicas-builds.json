@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "8a6e221f",
+      "em": "2026-09-28T22:40:53",
+      "evento": "2026-09-28T19:54:26",
+      "linha": 17,
+      "nota": "Publicação: aplicar as 4 decisões; lida à mão pelo orquestrador em 28/09",
+      "opcao": "privado",
+      "origem": "semente",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Pares recuperado → gêmeo: UlIc_DXyFa4→9U7UopBm3MM, BM5BkPe56yo→XxOuPbJ2vtA, EgganpfYcR0→Jb7gIFumNQQ, y2H4ZzNIlEM→xNZFFoMYQjk, eopdwaZ0swA→UsDYI-pRqZ8.",
   "criado": "2026-09-28T17:31:42.344554",
   "depende_de": [],

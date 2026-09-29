@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "e4957f28",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T19:06:54",
+      "linha": 10,
+      "nota": "aposentada no 45c2b08; lida à mão pelo orquestrador em 28/09",
+      "opcao": "aposentar",
+      "origem": "semente",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Aposentar = tirar do painel e do código, com o histórico preservado no git. A Vila fofa (painel/flutuante) não muda.",
   "criado": "2026-09-28T18:57:42.977874",
   "depende_de": [

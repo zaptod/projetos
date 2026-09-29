@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "8a6e221f",
+      "em": "2026-09-28T22:40:53",
+      "evento": "2026-09-28T19:54:09",
+      "linha": 16,
+      "nota": "Publicação: aplicar as 4 decisões; lida à mão pelo orquestrador em 28/09",
+      "opcao": "subir",
+      "origem": "semente",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Subir é pelo historias/main.py publicar <id> --youtube, que fura as guardas da grade; nas h27 e h32 a ordem das partes no YouTube já se perdeu.",
   "criado": "2026-09-28T17:31:40.771607",
   "depende_de": [],

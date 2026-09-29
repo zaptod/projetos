@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T22:40:54",
+      "evento": "2026-09-28T21:46:31",
+      "linha": 30,
+      "nota": "aplicada na Mesa de comando (capacidade, teto, força total); lida à mão pelo orquestrador em 28/09",
+      "opcao": "outro",
+      "origem": "semente",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Medido às 20:47 de 28/09: sessão 24%, semana 16% (renova 05/10 09:00).",
   "criado": "2026-09-28T20:56:20.198971",
   "depende_de": [],

@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "e4957f28",
+      "em": "2026-09-28T22:40:51",
+      "evento": "2026-09-28T18:32:22",
+      "linha": 6,
+      "nota": "lida à mão pelo orquestrador em 28/09",
+      "opcao": "tirar",
+      "origem": "semente",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T17:31:02.227605",
   "depende_de": [],

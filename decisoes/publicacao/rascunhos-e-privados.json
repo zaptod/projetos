@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "8a6e221f",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T19:52:11",
+      "linha": 14,
+      "nota": "Publicação: aplicar as 4 decisões; lida à mão pelo orquestrador em 28/09",
+      "opcao": "manter",
+      "origem": "semente",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "A lista está no relatório da publicação de 28/09, §8.",
   "criado": "2026-09-28T17:31:44.525780",
   "depende_de": [],

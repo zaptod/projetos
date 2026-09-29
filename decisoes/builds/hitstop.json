@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "ec0e8556",
+      "em": "2026-09-28T22:40:50",
+      "evento": "2026-09-28T18:29:54",
+      "linha": 4,
+      "nota": "o hitstop entrou na 16E; lida à mão pelo orquestrador em 28/09",
+      "opcao": "ligar",
+      "origem": "semente",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T15:08:28.263933",
   "depende_de": [

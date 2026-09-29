@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "676aeab8",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T18:46:06",
+      "linha": 9,
+      "nota": "o Controle foi para a Bancada antes, no 0c35af7; lida à mão pelo orquestrador em 28/09",
+      "opcao": "bancada",
+      "origem": "semente",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T18:37:20.409226",
   "depende_de": [],

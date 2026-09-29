@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "e4957f28",
+      "em": "2026-09-28T22:40:51",
+      "evento": "2026-09-28T19:57:43",
+      "linha": 19,
+      "nota": "a Oficina de sprites (45c2b08), pelo comentário dele; lida à mão pelo orquestrador em 28/09",
+      "opcao": "limpar-depois",
+      "origem": "semente",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T15:26:53.914250",
   "depende_de": [

@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "ec0e8556",
+      "em": "2026-09-28T22:40:50",
+      "evento": "2026-09-28T18:28:57",
+      "linha": 2,
+      "nota": "Onda 16E: rostos, hitstop e A/B novo do palco; lida à mão pelo orquestrador em 28/09",
+      "opcao": "seguir",
+      "origem": "semente",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "O A/B passa duas vezes: a 1ª com o som de hoje, a 2ª com o do palco.",
   "criado": "2026-09-28T15:08:28.187815",
   "depende_de": [

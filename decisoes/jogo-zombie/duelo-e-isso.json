@@ -1,5 +1,87 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "13f6a1e6",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T18:40:38",
+      "linha": 8,
+      "nota": "o comentário virou a proposta do duelo elaborado e 7 perguntas; lida à mão pelo orquestrador em 28/09",
+      "opcao": "quase",
+      "origem": "semente",
+      "tipo": "tarefa"
+    },
+    {
+      "alvo": "jogo-zombie/duelo-plano-quem-escolhe",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T18:40:38",
+      "linha": 8,
+      "nota": "o comentário virou a proposta do duelo elaborado e 7 perguntas; lida à mão pelo orquestrador em 28/09",
+      "opcao": "quase",
+      "origem": "semente",
+      "tipo": "no"
+    },
+    {
+      "alvo": "jogo-zombie/duelo-leitura-do-plano",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T18:40:38",
+      "linha": 8,
+      "nota": "o comentário virou a proposta do duelo elaborado e 7 perguntas; lida à mão pelo orquestrador em 28/09",
+      "opcao": "quase",
+      "origem": "semente",
+      "tipo": "no"
+    },
+    {
+      "alvo": "jogo-zombie/duelo-elenco",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T18:40:38",
+      "linha": 8,
+      "nota": "o comentário virou a proposta do duelo elaborado e 7 perguntas; lida à mão pelo orquestrador em 28/09",
+      "opcao": "quase",
+      "origem": "semente",
+      "tipo": "no"
+    },
+    {
+      "alvo": "jogo-zombie/duelo-nacionalidade",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T18:40:38",
+      "linha": 8,
+      "nota": "o comentário virou a proposta do duelo elaborado e 7 perguntas; lida à mão pelo orquestrador em 28/09",
+      "opcao": "quase",
+      "origem": "semente",
+      "tipo": "no"
+    },
+    {
+      "alvo": "jogo-zombie/duelo-voz",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T18:40:38",
+      "linha": 8,
+      "nota": "o comentário virou a proposta do duelo elaborado e 7 perguntas; lida à mão pelo orquestrador em 28/09",
+      "opcao": "quase",
+      "origem": "semente",
+      "tipo": "no"
+    },
+    {
+      "alvo": "jogo-zombie/duelo-arte",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T18:40:38",
+      "linha": 8,
+      "nota": "o comentário virou a proposta do duelo elaborado e 7 perguntas; lida à mão pelo orquestrador em 28/09",
+      "opcao": "quase",
+      "origem": "semente",
+      "tipo": "no"
+    },
+    {
+      "alvo": "jogo-zombie/duelo-quando",
+      "em": "2026-09-28T22:40:52",
+      "evento": "2026-09-28T18:40:38",
+      "linha": 8,
+      "nota": "o comentário virou a proposta do duelo elaborado e 7 perguntas; lida à mão pelo orquestrador em 28/09",
+      "opcao": "quase",
+      "origem": "semente",
+      "tipo": "no"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T15:08:28.930565",
   "depende_de": [

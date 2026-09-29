@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "painel-e-vila/aposentar-vila-pixel",
+      "em": "2026-09-28T22:40:51",
+      "evento": "2026-09-28T18:33:00",
+      "linha": 7,
+      "nota": "o comentário “Eu descartei essa vila” virou a pergunta de aposentar; lida à mão pelo orquestrador em 28/09",
+      "opcao": "quente",
+      "origem": "semente",
+      "tipo": "no"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T17:31:05.479376",
   "depende_de": [],

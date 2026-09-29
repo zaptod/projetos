@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T22:40:55",
+      "evento": "2026-09-28T21:48:26",
+      "linha": 32,
+      "nota": "aplicada na Mesa de comando (capacidade, teto, força total); lida à mão pelo orquestrador em 28/09",
+      "opcao": "outro",
+      "origem": "semente",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T15:08:26.894590",
   "depende_de": [],
