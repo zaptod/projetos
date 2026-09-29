@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-29T02:27:14",
+      "evento": "2026-09-29T02:26:32",
+      "linha": 51,
+      "nota": "já é o comportamento atual (cf2de19)",
+      "opcao": "manter",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-29T01:45:23.965607",
   "depende_de": [],
