@@ -96,7 +96,10 @@ esperar. O `provedor: gemini` de `agenda.json` é só o fallback de
 também tem o **Grok** (`grok.com`, perfil `grok__principal`, login pessoal do Adrian) — ele
 **não** está em nenhum papel: entrou pela Vila das IAs (`ias/`, `docs/ias/fichas.md`), que
 mede a ficha de capacidades de cada IA (o que gera, cota, textos de erro) sem mexer na
-pipeline. O ChatGPT não assiste vídeo
+pipeline. **Anexo no DeepSeek** (29/09, para o carteiro da Vila): a miniatura aparece
+antes de o arquivo subir, então `seletores.DEEPSEEK["anexo_subindo"]` (o enviar com
+`ds-button--disabled`) faz `cliente.anexar` esperar o upload; só ele tem essa espera.
+O ChatGPT não assiste vídeo
 nesta máquina (conta free: o mp4 entra como "Arquivo" opaco) — cai na folha de
 contato, um quadro por cena. **A conta do Gemini também é free** ("Faça upgrade para o
 Google AI Pro" na barra lateral).

@@ -1,12 +1,12 @@
 {
   "anexos": {
-    "accept": null,
-    "arquivo": null,
+    "accept": "imagens (.png .jpg .jpeg .webp .gif .bmp .svg .tif/.tiff .avif ...), .pdf, texto/codigo (.txt .md .csv .json .py .js ...) e Office (.doc/.docx .ppt/.pptx .xls/.xlsx); video nao",
+    "arquivo": true,
     "imagem": true,
-    "leu_o_anexo": null,
-    "multiplos": null,
-    "prova": "random_builds\\outputs\\_ias\\deepseek\\guia\\20260929_022242_202_pagina.png",
-    "seletor": "clipe (paperclip) a esquerda do botao de enviar -> input[type=file]; a miniatura aparece dentro do compositor (ele anexou uma imagem propria as 02:21)",
+    "leu_o_anexo": true,
+    "multiplos": true,
+    "prova": "random_builds\\outputs\\_ias\\deepseek\\anexo\\20260929_145600_teste_real.png (+ _teste_real.json; medidas sem envio 20260929_143159_* e 20260929_143306_*)",
+    "seletor": "input[type=file] ja no DOM (o clipe so abre o seletor do Windows). Prova: imagem = div[role=button] com img[src^='blob:'] (alt = nome do arquivo); arquivo = chip com o nome e 'TXT 59B'. Subiu = o botao de enviar sai de ds-button--disabled (PNG de 3,2 MB: miniatura em 0,07 s, pronto em 2,8 s). seletores.DEEPSEEK anexo_prova/anexo_subindo",
     "video": false
   },
   "capturas": [
@@ -115,7 +115,8 @@
   "pendencias": [
     "itens nao mostrados (seletor de modelo, gerar imagem, erro de cota) = nao existe / nao se aplica, dito pelo Adrian as 02:2x",
     "limite de caracteres do campo nao medido",
-    "mensagem de limite/servidor ocupado nao vista nesta sessao (o site costuma dizer 'The server is busy. Please try again later.' — categoria indisponivel, nao confirmada hoje)"
+    "mensagem de limite/servidor ocupado nao vista nesta sessao (o site costuma dizer 'The server is busy. Please try again later.' — categoria indisponivel, nao confirmada hoje)",
+    "anexo: PDF/Office nao testados com envio (so o chip do .txt foi visto, sem enviar); limite de tamanho do arquivo nao medido"
   ],
   "perfil": "C:\\Users\\adrian\\AppData\\Local\\neural-fights\\browser_profiles\\deepseek__principal",
   "rotulo": "DeepSeek",
@@ -124,6 +125,7 @@
     "chars_aceitos_no_campo": null,
     "gera": true,
     "limite_chars_campo": null,
+    "nota_anexo": "teste 29/09 14:56 pelo caminho do carteiro (SessaoReal): circulo_vermelho.png -> 'Vermelho' em 9,3 s; o DeepThink descreveu 'a red circle on a white background' (le a imagem, nao so OCR)",
     "prova": "random_builds\\outputs\\_ias\\deepseek\\guia\\testes.jsonl + 20260929_022426_556_pagina.png",
     "resposta": "OK (testar_ok na janela dele: 2 chars em 6 s; a pergunta dele 'ola, aqui e onde eu escrevo certo?' veio com DeepThink 'Thought for 1 second' em ingles e resposta em portugues)",
     "tempo_ok_s": 6.8

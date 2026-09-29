@@ -747,6 +747,7 @@ class ClienteLLM:
         while time.monotonic() < fim:
             agora = self._provas_de_anexo()
             if agora >= alvo:
+                self._esperar_subir(fim, espera)
                 self.log(f"[{self.provedor}] {len(arquivos)} anexo(s) "
                          "confirmado(s) na tela.")
                 return len(arquivos)
@@ -754,6 +755,7 @@ class ClienteLLM:
 
         agora = self._provas_de_anexo()
         if agora > antes:
+            self._esperar_subir(time.monotonic() + 10.0, espera)
             self.log(f"[{self.provedor}] so {agora - antes} de "
                      f"{len(arquivos)} anexos apareceram em {espera:.0f}s; "
                      "sigo com o que subiu.")
@@ -844,6 +846,27 @@ class ClienteLLM:
         raise LLMFalhou(
             f"o video nao terminou de subir em {espera / 60:.0f} min "
             "(a duracao nunca apareceu ao lado do nome do arquivo).")
+
+    def _esperar_subir(self, fim: float, espera: float) -> None:
+        """Espera o site dizer que o upload TERMINOU (`anexo_subindo` some).
+
+        So para quem tem o seletor (o DeepSeek, desde 29/09/2026): la a
+        miniatura aparece em 0,07 s e o arquivo de 3,2 MB so termina em
+        2,8 s — o botao de enviar fica desabilitado nesse intervalo, e mandar
+        o prompt ali e clicar num botao morto. Os outros sites seguem com a
+        miniatura como prova, sem espera nova.
+        """
+        candidatos = self.sel.get("anexo_subindo") or []
+        if not candidatos:
+            return
+        while sel.encontrar(self.page, candidatos, timeout=0) is not None:
+            if time.monotonic() >= fim:
+                raise LLMFalhou(
+                    f"a miniatura do anexo apareceu no {self.provedor}, mas o "
+                    f"arquivo nao terminou de subir em {espera:.0f}s (o botao "
+                    "de enviar continua desabilitado). Arquivo grande demais "
+                    "para a conta, ou o site recusou o formato.")
+            time.sleep(0.5)
 
     def _provas_de_anexo(self) -> int:
         """Quantas miniaturas de anexo estao na tela agora."""

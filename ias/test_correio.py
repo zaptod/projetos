@@ -427,6 +427,40 @@ class CatalogoViraMotivo(unittest.TestCase):
         self.assertLess(len(motivo), 260)
 
 
+class SessaoRealComAnexo(unittest.TestCase):
+    """O anexo so e recusado na hora para quem NAO sabe prova-lo na tela.
+
+    Ate 29/09/2026 o DeepSeek estava nesse caso (`anexo_prova` vazio); o site
+    aceita imagem, e a prova (miniatura + botao de enviar de volta) entrou em
+    `contos/llm/seletores.py` (tarefa dc176b96)."""
+
+    def _sessao(self, provedor, sel_):
+        chamadas = []
+
+        class _Cli:
+            pass
+        cli = _Cli()
+        cli.provedor, cli.sel = provedor, sel_
+        cli.perguntar = lambda texto, anexos=None: chamadas.append(anexos) or "vermelho"
+        return carteiro_mod.SessaoReal(cli, log=lambda *_a: None), chamadas
+
+    def test_imagem_para_o_deepseek_chega_ao_cliente(self):
+        from contos.llm import seletores
+        sessao, chamadas = self._sessao("deepseek", seletores.DEEPSEEK)
+        self.assertEqual(sessao.perguntar("que cor?", anexos=["a.png"]), "vermelho")
+        self.assertEqual(chamadas, [["a.png"]])
+
+    def test_quem_nao_prova_anexo_recusa_na_hora_com_motivo(self):
+        from contos.llm.cliente import LLMFalhou
+        sessao, chamadas = self._sessao("outra", {"anexo_prova": []})
+        with self.assertRaises(LLMFalhou) as erro:
+            sessao.perguntar("que cor?", anexos=["a.png"])
+        self.assertIn("mande sem anexo", str(erro.exception))
+        self.assertEqual(chamadas, [])
+        # sem anexo, passa
+        self.assertEqual(sessao.perguntar("oi"), "vermelho")
+
+
 class ConfigDoCarteiro(unittest.TestCase):
     def test_config_json_tem_as_chaves_e_padroes_sensatos(self):
         c = carteiro_mod.config()

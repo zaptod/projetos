@@ -883,10 +883,13 @@ pediu cada caixa). O caso ZERO existe: sem pasta, tudo é vazio e
   (`ias__duble__<ia>`, nunca a da conta) e aviso no log — é o da prova de
   tela. O ritmo humano é o do `ClienteLLM`; um Chrome por vez; `headless`
   por IA no config (todos `false`: ChatGPT em headless cai no Cloudflare).
-- **Anexo no DeepSeek ainda não entra**: os seletores `anexo_prova` dele
-  estão vazios em `contos/llm/seletores.py`, e o carteiro recusa na hora
-  ("mande sem anexo") em vez de esperar 120 s pela miniatura. É da parte
-  historias.
+- **Anexo no DeepSeek entra desde 29/09 (15h)**: `anexo_prova` e
+  `anexo_subindo` preenchidos em `contos/llm/seletores.py` (parte
+  historias, tarefa dc176b96); teste real pelo caminho do carteiro:
+  círculo vermelho → "Vermelho" em 9,3 s. O carteiro só recusa na hora
+  ("mande sem anexo") quem tiver `anexo_prova` vazio. **O carteiro que já
+  estava no ar carregou o módulo antigo**: só aceita anexo para o DeepSeek
+  depois de reiniciado.
 
 **No app.** Tocar num prédio de IA de chat → o cartão tem **💬 Conversar**
 → `tela-conversa` (`app/conversa.js`), por cima da Vila: chips das quatro
@@ -950,7 +953,7 @@ conferências OK, 0 erros de JS; telas em
   resposta dele vira balão no canvas;
 - **tarefa do Windows para o carteiro** (`NeuralFights_carteiro`): o
   agente não pôde registrar; o XML e o comando estão no fim desta seção;
-- anexo no DeepSeek (seletores, historias);
+- ~~anexo no DeepSeek (seletores, historias)~~ — feito em 29/09 (ver acima);
 - ~~o balão no canvas fica atrás do placar~~ — feito no mesmo db3f438: o
   balão desvia do placar.
 

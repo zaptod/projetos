@@ -263,11 +263,35 @@ DEEPSEEK = {
         "div[role='button']:has-text('Entrar com Google')",
         "div.ds-button:has-text('Entrar com Google')",
     ],
+    # ANEXO (medido em 29/09/2026: sessao guiada das 02:21 e de novo as
+    # 14:32 no perfil, sem enviar; capturas em
+    # `random_builds/outputs/_ias/deepseek/anexo/`). O clipe a esquerda do
+    # enviar e so a porta do `input[type=file]`, que ja esta no DOM (multiple;
+    # accept de imagens, PDF, texto/codigo e Office) — por isso nao ha
+    # `anexo_botao`. Imagem vira MINIATURA: `div[role=button]` com
+    # `<img src="blob:..." alt="<nome do arquivo>">`; arquivo que nao e imagem
+    # vira CHIP com o nome e "TXT 59B". Nenhum dos dois tem aria-label, e as
+    # classes sao hashes do build. As duas formas ficam NUM seletor so (lista
+    # com virgula): `_provas_de_anexo` pega o maior numero entre os
+    # seletores, e em seletores separados um PNG + um TXT contariam 1.
     "anexo_botao": [],
     "anexo_input": [
         "input[type='file']",
     ],
-    "anexo_prova": [],
+    "anexo_prova": [
+        "div[role='button']:has(img[src^='blob:']), "
+        "div:text-matches('^[A-Za-z0-9]{1,5} [0-9.,]+ ?[KMG]?B$')",
+        "div[role='button']:has(img[src^='blob:'])",
+    ],
+    # A MINIATURA NAO PROVA QUE SUBIU: ela aparece em 0,07 s, e um PNG de
+    # 3,2 MB so terminou de subir em 2,8 s — ate la o spinner gira dentro
+    # dela e o botao de enviar fica `ds-button--disabled` (com anexo pronto
+    # ele volta, mesmo com a caixa vazia). `cliente.anexar` espera este
+    # seletor sumir antes de devolver.
+    "anexo_subindo": [
+        "div[role='button'].ds-button--primary.ds-button--circle"
+        ".ds-button--disabled",
+    ],
     # A resposta vem em markdown carregado e pode trazer rotulo de
     # raciocinio: `llm/texto.limpar_resposta` passa antes do parser.
     "limpar_resposta": True,
