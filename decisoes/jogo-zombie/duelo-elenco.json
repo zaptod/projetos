@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T23:02:26",
+      "evento": "2026-09-28T21:42:49",
+      "linha": 24,
+      "nota": "registrada; ADIADA pela duelo-quando = depois da estabilização",
+      "opcao": "misto-civis",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "O jogo já tem lança (golpeia por cima de cerca), arco com fogo segurado, armadilha que prende 3 s, isca que chocalha, formações e escolta em círculo. Falta: habilidade ativa por papel (empurrão, grito de reunião) e desenho próprio (hoje quem segura arco é desenhado com lança). Detalhes: docs/zombie/duelo-elaborado.md §4.",
   "criado": "2026-09-28T21:34:37.174428",
   "depende_de": [
