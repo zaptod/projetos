@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "O jogo já tem lança (golpeia por cima de cerca), arco com fogo segurado, armadilha que prende 3 s, isca que chocalha, formações e escolta em círculo. Falta: habilidade ativa por papel (empurrão, grito de reunião) e desenho próprio (hoje quem segura arco é desenhado com lança). Detalhes: docs/zombie/duelo-elaborado.md §4.",
+  "criado": "2026-09-28T21:34:37.174428",
+  "depende_de": [
+    {
+      "decisao": "duelo-e-isso",
+      "opcao": "quase"
+    }
+  ],
+  "historico": [],
+  "id": "duelo-elenco",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Sem custo novo; o plano muda só a formação. Menos para contar.",
+      "id": "seis-lancas",
+      "pede_comentario": false,
+      "rotulo": "Seis lanceiros iguais (como hoje)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Capitão (dá a ordem, grito de reunião), 2-3 lanceiros (estocada que empurra), 1 arqueiro (segura o fogo), 1 armadilheiro (armadilha ou isca). 3 a 5 dias; mexe no equilíbrio.",
+      "id": "misto",
+      "pede_comentario": false,
+      "rotulo": "Esquadrão misto com papéis"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O mesmo esquadrão escoltando 2-3 civis desarmados: dá o que perder e o que salvar. 5 a 8 dias; mais difícil de equilibrar (dois jeitos de perder).",
+      "id": "misto-civis",
+      "pede_comentario": false,
+      "rotulo": "Misto + civis para proteger"
+    }
+  ],
+  "pergunta": "Hoje são seis lanceiros iguais. Quem luta no duelo, e com que habilidade cada um?",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "Duelo: quem está no esquadrão?",
+  "vigente": null
+}

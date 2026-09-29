@@ -1,0 +1,49 @@
+{
+  "comentario": true,
+  "contexto": "Animação nova (estocada, flecha, armadilha que fecha, corda da linha, ícones) cabe em qualquer opção. A biblioteca CC0 já tem o 'top-down shooter' do Kenney (sobreviventes e zumbi vistos de cima), mas de arma de fogo, não de lança e arco. Arte por IA exige prova de origem de cada imagem (contas compartilhadas). Detalhes e custos: docs/zombie/duelo-elaborado.md §5 e §9.",
+  "criado": "2026-09-28T21:35:03.007479",
+  "depende_de": [
+    {
+      "decisao": "duelo-e-isso",
+      "opcao": "quase"
+    }
+  ],
+  "historico": [],
+  "id": "duelo-arte",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Mantém o estilo de hoje; ganha 3 silhuetas (arqueiro, capitão, armadilheiro), adereço por país e as animações. 3 a 5 dias; risco baixo.",
+      "id": "codigo",
+      "pede_comentario": false,
+      "rotulo": "Figuras de código, com animação nova"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Figuras de verdade, grátis; faltam peças (lança, arco) e o estilo é moderno. 5 a 8 dias.",
+      "id": "cc0",
+      "pede_comentario": false,
+      "rotulo": "Sprites CC0 (Kenney) vistos de cima"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Personagem por papel e por país, do jeito que você quiser. 8 a 12 dias, mais prova de origem de cada imagem.",
+      "id": "ia",
+      "pede_comentario": false,
+      "rotulo": "Arte própria por IA (PicassoIA)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O mesmo palco dos builds desenharia a partida. 10 a 15 dias; espera a Onda 16 ficar pronta.",
+      "id": "godot",
+      "pede_comentario": false,
+      "rotulo": "Levar o duelo ao palco Godot (Onda 16)"
+    }
+  ],
+  "pergunta": "Os personagens hoje são figuras desenhadas por código (bolinha com cabeça, lança, zumbi com braços). Para mostrar papéis, habilidades e país, qual arte?",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "Duelo: arte dos personagens",
+  "vigente": null
+}

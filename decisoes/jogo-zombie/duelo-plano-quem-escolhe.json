@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "Medido hoje (40 duelos, sem vídeo): o conselho já decide por dentro (forma a linha de lanças em 31 de 40), mas larga a linha em ~4,5 s e os guardas passam 41% do tempo fugindo; nada disso aparece no vídeo. Proposta completa e custos: docs/zombie/duelo-elaborado.md. Planos (mecânica, 3 planos): 5 a 8 dias; risco médio-alto (cada plano muda quem vence e é re-medido em 100 sementes).",
+  "criado": "2026-09-28T21:32:31.694861",
+  "depende_de": [
+    {
+      "decisao": "duelo-e-isso",
+      "opcao": "quase"
+    }
+  ],
+  "historico": [],
+  "id": "duelo-plano-quem-escolhe",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "A IA escolhe pelo que vê (quantos zumbis, de onde, o que tem no estoque). Mais fiel ao jogo; o plano varia sozinho e nem sempre é o mais bonito.",
+      "id": "conselho",
+      "pede_comentario": false,
+      "rotulo": "O conselho da vila escolhe"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Cada vídeo é 'o plano X' (título fácil); a semente decide o resto. Mais controlável, menos IA na tela. Um pouco mais barato (4 a 6 dias).",
+      "id": "fixo",
+      "pede_comentario": false,
+      "rotulo": "Um plano por vídeo, fixo no cenário"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Cada nação tem seu plano preferido (DE armadilhas, US emboscada, PT barricada...). Liga o plano à nacionalidade; só faz sentido se o país mudar a mecânica.",
+      "id": "pais",
+      "pede_comentario": false,
+      "rotulo": "O país escolhe"
+    }
+  ],
+  "pergunta": "Cada duelo passa a mostrar UM plano dos humanos (parede de lanças, isca e emboscada, armadilhas, barricada, círculo). Quem escolhe qual plano entra em cada vídeo?",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "Duelo: quem escolhe o plano?",
+  "vigente": null
+}

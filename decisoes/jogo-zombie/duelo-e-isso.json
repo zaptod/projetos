@@ -125,7 +125,14 @@
       "rotulo": "É isso"
     },
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "duelo-arte",
+        "duelo-elenco",
+        "duelo-leitura-do-plano",
+        "duelo-nacionalidade",
+        "duelo-plano-quem-escolhe",
+        "duelo-voz"
+      ],
       "descricao": "",
       "id": "quase",
       "pede_comentario": true,

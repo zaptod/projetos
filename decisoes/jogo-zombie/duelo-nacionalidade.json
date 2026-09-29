@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "Hoje, numa arena sem casas, metade do que a doutrina de cada país mexe não faz nada: o país muda traços, comunicação e cor, quase nada que se veja. Proposta: o país escolhe o plano preferido (DE armadilhas, US emboscada, PT barricada, BR lanças avançando, AR isca humana, JP círculo em duplas), ganha uma habilidade de assinatura, um adereço, a cor e o idioma do grito. As doutrinas de hoje são estereótipos de cultura pop ('Drama: todo boato vira fim do mundo'); a proposta troca a piada pelo que o país faz bem. Tabela: docs/zombie/duelo-elaborado.md §7.",
+  "criado": "2026-09-28T21:34:37.420426",
+  "depende_de": [
+    {
+      "decisao": "duelo-e-isso",
+      "opcao": "quase"
+    }
+  ],
+  "historico": [],
+  "id": "duelo-nacionalidade",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Elenco neutro; país entra depois, como série. Sem custo agora.",
+      "id": "sem-pais",
+      "pede_comentario": false,
+      "rotulo": "Estreia sem país"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O país aparece, mas a luta é a mesma para todos. 1 a 2 dias; risco baixo.",
+      "id": "so-visual",
+      "pede_comentario": false,
+      "rotulo": "Só cor, nomes, adereço e idioma"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Cada país luta diferente (plano, assinatura) e aparece diferente. 6 a 9 dias; cada país precisa vencer entre 30% e 70% em 100 sementes.",
+      "id": "mecanica",
+      "pede_comentario": false,
+      "rotulo": "Mecânica + visual + voz"
+    }
+  ],
+  "pergunta": "O jogo já tem seis países (BR, PT, AR, US, JP, DE). No duelo, o que a nacionalidade muda de verdade?",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "Duelo: o que o país muda?",
+  "vigente": null
+}

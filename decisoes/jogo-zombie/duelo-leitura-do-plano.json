@@ -1,0 +1,65 @@
+{
+  "comentario": true,
+  "contexto": "Hoje nada do que a vila decide aparece: o gravador desliga as camadas do conselho e o jogo não desenha texto nenhum. A imagem 1 é MAQUETE desenhada por cima de um quadro real (não é o jogo). A imagem 2 é o duelo de hoje 3,5 s depois: os guardas já se espalharam. Custo: 2 a 3 dias no jogo (+1 a 2 na Publicação se a placa for desenhada pela fábrica, sem texto queimado). Placa no topo disputa espaço com a legenda da fábrica (~520 px do topo). Detalhes: docs/zombie/duelo-elaborado.md §6.",
+  "criado": "2026-09-28T21:33:02.086616",
+  "depende_de": [
+    {
+      "decisao": "duelo-e-isso",
+      "opcao": "quase"
+    }
+  ],
+  "historico": [],
+  "id": "duelo-leitura-do-plano",
+  "midias": [
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\design\\maquete-leitura-do-plano.png",
+      "rotulo": "maquete: placa, balão, ícone"
+    },
+    {
+      "caminho": "E:\\jogo_ZOMBIE\\out\\design\\hoje-s16-3s5-guardas-espalhados.png",
+      "rotulo": "hoje: semente 16, 3,5 s"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "'PLANO: PAREDE DE LANÇAS' no primeiro segundo e meio. Diz o plano inteiro; não diz quem manda.",
+      "id": "placa",
+      "pede_comentario": false,
+      "rotulo": "Placa no topo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O capitão grita a ordem ('FECHA A LINHA!'), quem vê avisa ('VINDO!'), o mordido confessa. Dá voz aos personagens; no máximo 1 balão novo a cada 1,5 s.",
+      "id": "balao",
+      "pede_comentario": false,
+      "rotulo": "Balão de fala"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Estrela no capitão, espadas nos lanceiros, medo em quem foge. Não precisa de idioma; diz o papel, não o plano.",
+      "id": "icone",
+      "pede_comentario": false,
+      "rotulo": "Ícone na cabeça"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "A placa diz o plano, o balão mostra a ordem e o que dá errado. Mais completo; mais texto na tela.",
+      "id": "placa-e-balao",
+      "pede_comentario": false,
+      "rotulo": "Placa + balão"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Sem texto: a formação, as armadilhas e a corda da linha falam sozinhas. Mais limpo; arrisca ninguém entender o plano.",
+      "id": "so-movimento",
+      "pede_comentario": false,
+      "rotulo": "Só o movimento"
+    }
+  ],
+  "pergunta": "O plano dos humanos precisa ser entendido em 1,5 s, no celular. Como ele aparece na tela?",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "Duelo: como o espectador entende o plano?",
+  "vigente": null
+}

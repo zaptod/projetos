@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "O jogo só exporta o TIPO do som no JSON (berro, sino, golpe, gemido); quem toca é a fábrica, que ainda não tem a ponte do zombie. Voz falada seria sintetizada na fábrica (edge-tts, como nos builds), com vozes pt-BR, pt-PT, es-AR, en-US, ja-JP e de-DE. Só você julga som: o Gemini não recebe o áudio. Detalhes: docs/zombie/duelo-elaborado.md §6.",
+  "criado": "2026-09-28T21:35:02.729487",
+  "depende_de": [
+    {
+      "decisao": "duelo-e-isso",
+      "opcao": "quase"
+    }
+  ],
+  "historico": [],
+  "id": "duelo-voz",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Sem custo de áudio; o vídeo depende da música e dos efeitos que a fábrica puser.",
+      "id": "mudo",
+      "pede_comentario": false,
+      "rotulo": "Sem voz: só texto nos balões"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "'LINHA!', 'AGORA!', 'CORRE!' no idioma do país, na hora em que o jogo decide. 2 a 3 dias do lado da Publicação.",
+      "id": "gritos",
+      "pede_comentario": false,
+      "rotulo": "Gritos curtos sintetizados"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Sino, golpes, estalo de armadilha e gemidos, que o jogo já marca no JSON. 1 a 2 dias na fábrica.",
+      "id": "efeitos",
+      "pede_comentario": false,
+      "rotulo": "Só efeitos, sem palavras"
+    }
+  ],
+  "pergunta": "Os guardas já gritam por dentro do jogo (~20 gritos e ~4 sinos por duelo), mas o vídeo sai mudo. Eles devem ter voz?",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "Duelo: os humanos falam em voz alta?",
+  "vigente": null
+}
