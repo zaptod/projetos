@@ -8,7 +8,15 @@
       "opcao": "perto"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T00:02:35",
+      "opcao": "predio",
+      "origem": "app"
+    }
+  ],
   "id": "girar-foca-o-predio",
   "midias": [
     {
@@ -38,7 +46,11 @@
   ],
   "pergunta": "Com o celular deitado agora: se você tinha um prédio escolhido e gira o aparelho, a Vila abre focada NESSE prédio (antes abria sempre na casa). Mantém assim?",
   "projeto": "painel-e-vila",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Ao girar, a Vila abre no prédio escolhido",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T00:02:35",
+    "opcao": "predio"
+  }
 }
