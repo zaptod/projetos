@@ -13,4 +13,5 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
     - ⏳ **Duelo: o que o país muda?** — O jogo já tem seis países (BR, PT, AR, US, JP, DE). No duelo, o que a nacionalidade muda de verdade? `duelo-nacionalidade`
     - ⏳ **Duelo: os humanos falam em voz alta?** — Os guardas já gritam por dentro do jogo (~20 gritos e ~4 sinos por duelo), mas o vídeo sai mudo. Eles devem ter voz? `duelo-voz`
     - ⏳ **Duelo: arte dos personagens** — Os personagens hoje são figuras desenhadas por código (bolinha com cabeça, lança, zumbi com braços). Para mostrar papéis, habilidades e país, qual arte? `duelo-arte`
+    - ⏳ **Duelo elaborado: quando fazer** — O pacote mínimo do duelo elaborado custa 13–19 dias de sessão (proposta em docs/zombie/duelo-elaborado.md). Isso compete com o objetivo das semanas, que é estabilizar o que existe. Quando entra? `duelo-quando`
 - ✅ **Velocidade por clipe** — Sim (28/09/2026) `velocidade-por-clipe`

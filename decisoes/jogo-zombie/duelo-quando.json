@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-09-28T21:37:00.120252",
+  "depende_de": [
+    {
+      "decisao": "duelo-e-isso",
+      "opcao": "quase"
+    }
+  ],
+  "historico": [],
+  "id": "duelo-quando",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "agora",
+      "pede_comentario": false,
+      "rotulo": "Agora, em paralelo com o resto"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "depois",
+      "pede_comentario": false,
+      "rotulo": "Depois da estabilização (rotas de 3 semanas)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "aos-poucos",
+      "pede_comentario": false,
+      "rotulo": "Aos poucos: só o barato primeiro (leitura do plano + comunicação, 4–6 dias)"
+    }
+  ],
+  "pergunta": "O pacote mínimo do duelo elaborado custa 13–19 dias de sessão (proposta em docs/zombie/duelo-elaborado.md). Isso compete com o objetivo das semanas, que é estabilizar o que existe. Quando entra?",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "Duelo elaborado: quando fazer",
+  "vigente": null
+}
