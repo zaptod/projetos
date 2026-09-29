@@ -485,13 +485,32 @@ def test_o_texto_que_vai_ao_celular_passa_pelo_filtro(servidor):
 REAIS_GERAL = D.RAIZ / "decisoes" / "geral"
 NOS_DA_CAPACIDADE = ("modo-de-trabalho", "teto-de-uso", "forca-total-ainda-vale",
                      "capacidade-pelo-app")
+# As respostas sao as que valiam a esta hora: a estrutura (arestas, opcoes) vem
+# dos nos reais, mas as RESPOSTAS mudam quando ele mexe na Mesa (21:47, 21:48,
+# 22:26 e 22:30 de 28/09 quebraram 4 testes que liam a vigente de hoje).
+FOTO_DO_GRIMORIO = "2026-09-28T21:00:00"
+
+
+def _na_foto(item: dict) -> dict:
+    historico = [h for h in item.get("historico") or []
+                 if str(h.get("em", "")) <= FOTO_DO_GRIMORIO]
+    item["historico"] = historico
+    item.pop("consequencias", None)
+    if historico:
+        ultimo = historico[-1]
+        item["vigente"] = {"opcao": ultimo["opcao"], "em": ultimo["em"],
+                           "comentario": ultimo.get("comentario", "")}
+        item["situacao"] = "decidida"
+    else:
+        item["vigente"], item["situacao"] = None, "pendente"
+    return item
 
 
 def _grimorio_geral(mundo, *, dependencia_antiga=False):
     destino = mundo.repo / "decisoes" / "geral"
     destino.mkdir(parents=True, exist_ok=True)
     for no in NOS_DA_CAPACIDADE:
-        item = json.loads((REAIS_GERAL / f"{no}.json").read_text(encoding="utf-8"))
+        item = _na_foto(json.loads((REAIS_GERAL / f"{no}.json").read_text(encoding="utf-8")))
         if dependencia_antiga and no == "capacidade-pelo-app":
             item["depende_de"] = [{"decisao": "modo-de-trabalho", "opcao": "*"}]
         if dependencia_antiga and no == "forca-total-ainda-vale":

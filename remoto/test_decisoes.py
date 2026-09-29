@@ -391,7 +391,7 @@ def test_a_arvore_vai_ao_app_sem_caminho(servidor, mundo):
                                       "opcao_rotulo": "Godot 4", "ok": False}
     builds = next(p for p in corpo["projetos"] if p["id"] == "builds")
     assert builds["contagem"] == {"bloqueada": 2, "pendente": 1, "decidida": 0,
-                                  "a_rever": 0}
+                                  "a_rever": 0, "nao_lidas": 0}
 
 
 def test_video_toca_por_range(servidor, mundo):

@@ -175,6 +175,15 @@ dialog p { margin: 0 0 10px; overflow-wrap: anywhere; }
   border-radius: 8px; border: 1px solid var(--linha); background: var(--fundo);
   color: var(--texto); resize: vertical; }
 .cartao > .selo { display: inline-block; }
+/* o leitor: resposta ainda não lida pelo orquestrador, e o que ela gerou */
+.selo.nao-lida { color: var(--ativo); margin-left: 6px; font-weight: 400; }
+.contador-nao-lidas .selo.nao-lida { margin-left: 0; }
+.nao-lidas-n { display: inline-block; margin-left: 5px; min-width: 16px; padding: 0 4px;
+  border-radius: 99px; background: var(--ativo); color: var(--fundo); font-size: 11px;
+  line-height: 16px; text-align: center; }
+.no-gerou { margin-top: 1px; font-size: 12px; }
+.gerou .linha { align-items: flex-start; }
+.gerou .link { text-align: left; }
 
 /* ================================================================
    A Vila é a tela (28/09/2026). As outras áreas são OBJETOS da vila,

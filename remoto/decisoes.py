@@ -39,6 +39,9 @@ que falha nao desfaz a decisao: ela vale, e o aviso diz que o commit ficou.
     python -m remoto.decisoes gerar      # regenera READMEs e blocos das sessoes
     python -m remoto.decisoes tirar-dependencia <id> <decisao> --nota N [--sem-commit]
     python -m remoto.decisoes onde
+    python -m remoto.decisoes leitor [--todos] [--projeto P] [--json]   # respostas nao lidas
+    python -m remoto.decisoes leitor marcar <N|id@em|projeto/id> \\
+        --gerou tarefa:<id>|no:<projeto/id>|nada [--gerou ...] [--nota N] [--sem-commit]
 """
 from __future__ import annotations
 
@@ -573,6 +576,270 @@ def tirar_dependencia(item_id: str, decisao_id: str, nota: str, *,
     return saida
 
 
+# ================================================================= o leitor
+# Pedido do Adrian pela Mesa, 28/09/2026 21:50: "Quero que voce crie um
+# leitor de decisoes tomadas, para saber se isso gera mais ramificacoes
+# ainda". Cada resposta dele (uma linha do `_eventos.jsonl`) e LIDA pelo
+# orquestrador, que registra o que ela gerou: uma tarefa da Mesa, um no novo
+# (ramo) ou nada. O registro mora no proprio no, em `consequencias[]`, e vai
+# para o git. "Lida" nao tem arquivo proprio: uma resposta esta lida quando o
+# no dela tem uma consequencia de um evento igual ou mais novo (ler a ultima
+# resposta cobre as anteriores, que ela substituiu).
+TIPOS_DE_CONSEQUENCIA = ("tarefa", "no", "nada")
+_ID_TAREFA = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
+NOTA_MAX = 500
+
+
+def ler_eventos() -> list[dict]:
+    """Toda linha do `_eventos.jsonl`, com `n` (a linha, de 1) e `chave`.
+
+    Linha ilegivel volta como `{"n", "ilegivel": True}`: some calada, ela
+    seria uma resposta dele que ninguem leu e ninguem ve.
+    """
+    try:
+        bruto = caminho_eventos().read_bytes().decode("utf-8", errors="replace")
+    except FileNotFoundError:
+        return []
+    except OSError as exc:
+        raise Recusa(f"_eventos.jsonl não pôde ser lido: {exc}") from exc
+    eventos = []
+    for n, linha in enumerate(bruto.splitlines(), start=1):
+        if not linha.strip():
+            continue
+        try:
+            evento = json.loads(linha)
+        except ValueError:
+            evento = None
+        if not (isinstance(evento, dict) and evento.get("id") and evento.get("em")):
+            eventos.append({"n": n, "ilegivel": True})
+            continue
+        evento["n"] = n
+        evento["chave"] = f"{evento['id']}@{evento['em']}"
+        eventos.append(evento)
+    return eventos
+
+
+def _cobre(consequencia: dict, evento: dict) -> bool:
+    """A consequencia foi registrada lendo este evento ou um mais novo?
+
+    Pela hora e, no mesmo segundo (o toque duplo de 28/09 19:57:42/43), pela
+    linha do arquivo, que so cresce."""
+    marca, em = str(consequencia.get("evento") or ""), str(evento.get("em"))
+    if marca != em:
+        return marca > em
+    if not consequencia.get("linha"):     # as primeiras marcas (28/09 22:26) nao tinham
+        return True
+    return int(consequencia["linha"]) >= int(evento.get("n") or 0)
+
+
+def _lida(evento: dict, itens: dict) -> bool:
+    item = itens.get(evento.get("id")) or {}
+    return any(_cobre(c, evento) for c in item.get("consequencias") or [])
+
+
+def _sinais(evento: dict, itens: dict) -> dict:
+    """(a) o que a opcao desbloqueia, (b) o que foi para "a rever", (c) se ha
+    comentario livre, que so uma leitura (LLM) diz se vira tarefa ou ramo."""
+    item = itens.get(evento.get("id")) or {}
+    opcao = next((o for o in item.get("opcoes") or []
+                  if o.get("id") == evento.get("opcao")), {})
+
+    def nos(ids):
+        return [{"id": i, "projeto": itens[i]["projeto"], "titulo": itens[i]["titulo"],
+                 "situacao": itens[i].get("situacao")} if i in itens
+                else {"id": i, "projeto": "", "titulo": i, "situacao": "sumiu"}
+                for i in ids]
+
+    comentario = str(evento.get("comentario") or "").strip()
+    vigente = (item.get("vigente") or {}).get("opcao")
+    return {"desbloqueia": nos(opcao.get("desbloqueia") or []),
+            "a_rever": nos(evento.get("a_rever") or []),
+            "comentario": comentario,
+            "precisa_de_leitura": bool(comentario),
+            "existe": bool(item),
+            "ainda_vale": bool(item) and vigente == evento.get("opcao")}
+
+
+def leitor(*, todos: bool = False, projeto: str | None = None,
+           itens: dict | None = None) -> list[dict]:
+    """As respostas ainda nao lidas (ou todas), da mais velha para a mais nova."""
+    itens = carregar() if itens is None else itens
+    saida = []
+    for evento in ler_eventos():
+        if evento.get("ilegivel"):
+            saida.append(dict(evento, lida=False))
+            continue
+        if projeto and evento.get("projeto") != projeto:
+            continue
+        lida = _lida(evento, itens)
+        if lida and not todos:
+            continue
+        registro = dict(evento, lida=lida, **_sinais(evento, itens))
+        if todos:
+            registro["consequencias"] = [
+                c for c in (itens.get(evento["id"]) or {}).get("consequencias") or []
+                if c.get("evento") == evento["em"]
+                and int(c.get("linha") or evento["n"]) == evento["n"]]
+        saida.append(registro)
+    return saida
+
+
+def nao_lidas_por_no(itens: dict | None = None) -> dict:
+    """{id do no: quantas respostas dele ainda nao foram lidas}."""
+    itens = carregar() if itens is None else itens
+    contagem: dict = {}
+    for evento in ler_eventos():
+        if evento.get("ilegivel") or _lida(evento, itens):
+            continue
+        contagem[evento["id"]] = contagem.get(evento["id"], 0) + 1
+    return contagem
+
+
+def achar_evento(ref: str, eventos: list[dict] | None = None) -> dict:
+    """`N` ou `#N` (a linha), `id@em` ou `[projeto/]id` (a ULTIMA resposta dele)."""
+    eventos = ler_eventos() if eventos is None else eventos
+    ref = str(ref or "").strip()
+    validos = [e for e in eventos if not e.get("ilegivel")]
+    if re.fullmatch(r"#?\d+", ref):
+        n = int(ref.lstrip("#"))
+        achado = next((e for e in eventos if e["n"] == n), None)
+        if achado is None:
+            raise Recusa(f"o _eventos.jsonl não tem a linha {n}")
+        if achado.get("ilegivel"):
+            raise Recusa(f"a linha {n} do _eventos.jsonl está ilegível")
+        return achado
+    if "@" in ref:
+        achado = next((e for e in validos if e["chave"] == ref), None)
+        if achado is None:
+            raise Recusa(f"nenhuma resposta {ref}")
+        return achado
+    projeto, _, item_id = ref.rpartition("/")
+    dele = [e for e in validos if e["id"] == item_id
+            and (not projeto or e.get("projeto") == projeto)]
+    if not dele:
+        raise Recusa(f"nenhuma resposta de {ref} no _eventos.jsonl")
+    return dele[-1]
+
+
+def _consequencia(bruta: str) -> tuple[str, str]:
+    """"tarefa:<id>", "no:<projeto/id>" ou "nada" -> (tipo, alvo)."""
+    tipo, _, alvo = str(bruta or "").strip().partition(":")
+    tipo, alvo = tipo.strip().lower(), alvo.strip()
+    if tipo == "nada" and not alvo:
+        return "nada", ""
+    if tipo == "tarefa" and _ID_TAREFA.fullmatch(alvo):
+        return "tarefa", alvo
+    if tipo == "no" and alvo:
+        return "no", alvo
+    raise Recusa(f"--gerou inválido: {bruta!r} (tarefa:<id>, no:<projeto/id> ou nada)")
+
+
+def marcar(ref: str, gerou, nota: str = "", *, origem: str = "leitor",
+           commitar: bool = True) -> dict:
+    """Registra o que uma resposta gerou e a marca como lida.
+
+    `no:X` liga o ramo X a esta resposta por `depende_de` (decisao + a opcao
+    que ele escolheu), se ainda nao estiver ligado: o ramo nasce da resposta,
+    e trocar a resposta manda o ramo para "a rever". So liga a uma resposta
+    que ainda vale. Repetir a mesma marca nao duplica nada.
+    """
+    pedidos = [_consequencia(g) for g in (gerou or [])]
+    if not pedidos:
+        raise Recusa("diga o que a resposta gerou: --gerou tarefa:<id>|no:<projeto/id>|nada")
+    if any(t == "nada" for t, _ in pedidos) and len(pedidos) > 1:
+        raise Recusa("“nada” não combina com tarefa ou nó")
+    nota = " ".join(str(nota or "").split())[:NOTA_MAX]
+    with _trava():
+        itens = carregar()
+        evento = achar_evento(ref)
+        item = itens.get(evento["id"])
+        if item is None:
+            raise Recusa(f"a decisão {evento['id']} não existe mais")
+        consequencias = list(item.get("consequencias") or [])
+        ja = {(c.get("evento"), int(c.get("linha") or 0), c.get("tipo"), c.get("alvo"))
+              for c in consequencias}
+        ligados, novas = [], []
+        for tipo, alvo in pedidos:
+            if tipo == "no":
+                projeto, _, filho_id = alvo.rpartition("/")
+                filho = itens.get(filho_id)
+                if filho is None or (projeto and filho["projeto"] != projeto):
+                    raise Recusa(f"o nó {alvo} não existe (crie antes com `adicionar`)")
+                if filho_id == item["id"]:
+                    raise Recusa("uma resposta não gera ela mesma")
+                alvo = f"{filho['projeto']}/{filho_id}"
+                if not any(d.get("decisao") == item["id"]
+                           for d in filho.get("depende_de") or []):
+                    if (item.get("vigente") or {}).get("opcao") != evento["opcao"]:
+                        raise Recusa(
+                            f"essa resposta de {item['id']} não vale mais (a vigente é "
+                            f"{_rotulo_da_opcao(item, (item.get('vigente') or {}).get('opcao'))});"
+                            " ligue o ramo à resposta atual")
+                    filho["depende_de"] = list(filho.get("depende_de") or []) + [
+                        {"decisao": item["id"], "opcao": evento["opcao"]}]
+                    ligados.append(filho_id)
+            chave = (evento["em"], evento["n"], tipo, alvo)
+            if chave in ja:
+                continue
+            ja.add(chave)
+            novas.append({"alvo": alvo, "em": _agora(), "evento": evento["em"],
+                          "linha": evento["n"], "nota": nota, "opcao": evento["opcao"],
+                          "origem": origem, "tipo": tipo})
+        if ligados:
+            _topologica(itens)                  # ciclo = Recusa, nada gravado
+            _sincronizar_arestas(itens)
+            recalcular(itens)
+        item["consequencias"] = consequencias + novas
+        _gravar_itens(itens, sorted(itens))
+        gerar_textos(itens)
+        saida = {"evento": evento, "novas": novas, "ligados": ligados,
+                 "commit": "desligado"}
+        if commitar and (novas or ligados):
+            resumo = ", ".join(("nada" if c["tipo"] == "nada" else
+                                f"{'tarefa' if c['tipo'] == 'tarefa' else 'nó'} {c['alvo']}")
+                               for c in novas) or "ramos ligados"
+            saida["commit"] = commitar_por_caminho(
+                *_tudo_para_commit(),
+                f"decisão({item['projeto']}): lida — {item['titulo']} gerou {resumo}"[:200])
+        elif commitar:
+            saida["commit"] = "nada"
+    return saida
+
+
+def _tarefas_da_mesa() -> tuple[dict, str]:
+    """({id: situacao da tarefa}, erro). A Mesa ilegivel NAO vira "nenhuma"."""
+    try:
+        from . import orquestrador
+        return orquestrador.situacao_das_tarefas(), ""
+    except Exception as exc:                                  # noqa: BLE001
+        return {}, f"a Mesa não pôde ser lida: {exc}"[:200]
+
+
+def consequencias_para_o_app(item: dict, itens: dict, tarefas: dict,
+                             erro_da_mesa: str = "") -> list[dict]:
+    saida = []
+    for c in item.get("consequencias") or []:
+        publico = {k: c.get(k) for k in ("tipo", "alvo", "nota", "em", "evento", "linha",
+                                          "opcao", "origem")}
+        publico["opcao_rotulo"] = _rotulo_da_opcao(item, c.get("opcao"))
+        if c.get("tipo") == "tarefa":
+            achada = tarefas.get(c.get("alvo"))
+            publico["tarefa"] = achada or {
+                "situacao": "sem_leitura" if erro_da_mesa else "desconhecida",
+                "titulo": "", "parte": ""}
+        elif c.get("tipo") == "no":
+            filho_id = str(c.get("alvo") or "").rpartition("/")[2]
+            filho = itens.get(filho_id)
+            publico["no"] = ({"id": filho_id, "titulo": filho["titulo"],
+                              "projeto": filho["projeto"],
+                              "situacao": filho.get("situacao"), "existe": True}
+                             if filho else {"id": filho_id, "titulo": filho_id,
+                                            "projeto": "", "situacao": None,
+                                            "existe": False})
+        saida.append(publico)
+    return saida
+
+
 # ================================================================ textos
 def _data(em) -> str:
     texto = str(em or "")
@@ -804,8 +1071,12 @@ def commitar_por_caminho(caminhos, sessoes, mensagem: str) -> str:
 
 
 # ============================================================ para o app
-def _publico(item: dict, itens: dict) -> dict:
-    """O item como o celular o ve: SEM caminho de arquivo."""
+def _publico(item: dict, itens: dict, leitura: dict | None = None) -> dict:
+    """O item como o celular o ve: SEM caminho de arquivo.
+
+    `leitura` = {"nao_lidas": {...}, "tarefas": {...}, "erro_da_mesa": ""}:
+    o que o leitor sabe (lida ou nao, e o que a resposta gerou)."""
+    leitura = leitura or {"nao_lidas": {}, "tarefas": {}, "erro_da_mesa": ""}
     midias = []
     for n, m in enumerate(item.get("midias") or []):
         caminho = resolver_caminho(m.get("caminho", ""))
@@ -836,20 +1107,32 @@ def _publico(item: dict, itens: dict) -> dict:
             "historico": historico,
             "a_rever_se_mudar": [{"id": d, "titulo": itens[d]["titulo"]}
                                  for d in a_rever_se_mudar(itens, item["id"])],
+            "nao_lidas": leitura["nao_lidas"].get(item["id"], 0),
+            "consequencias": consequencias_para_o_app(item, itens, leitura["tarefas"],
+                                                      leitura["erro_da_mesa"]),
             "criado": item.get("criado")}
 
 
 def para_o_app() -> dict:
     itens = carregar()
+    nao_lidas = nao_lidas_por_no(itens)
+    tarefas, erro_da_mesa = ({}, "")
+    if any(c.get("tipo") == "tarefa" for i in itens.values()
+           for c in i.get("consequencias") or []):
+        tarefas, erro_da_mesa = _tarefas_da_mesa()
+    leitura = {"nao_lidas": nao_lidas, "tarefas": tarefas, "erro_da_mesa": erro_da_mesa}
+    ilegiveis = sum(1 for e in ler_eventos() if e.get("ilegivel"))
     projetos = []
     for projeto in PROJETOS:
         dele = [i for i in itens.values() if i["projeto"] == projeto]
-        projetos.append({"id": projeto, "rotulo": ROTULOS[projeto],
-                         "contagem": {s: sum(1 for i in dele if i.get("situacao") == s)
-                                      for s in SITUACOES}})
+        contagem = {s: sum(1 for i in dele if i.get("situacao") == s) for s in SITUACOES}
+        contagem["nao_lidas"] = sum(nao_lidas.get(i["id"], 0) for i in dele)
+        projetos.append({"id": projeto, "rotulo": ROTULOS[projeto], "contagem": contagem})
     return {"projetos": projetos,
             "arvores": {p: _arvore_para_o_app(itens, p) for p in PROJETOS},
-            "itens": {k: _publico(v, itens) for k, v in itens.items()}}
+            "itens": {k: _publico(v, itens, leitura) for k, v in itens.items()},
+            "leitor": {"nao_lidas": sum(nao_lidas.values()),
+                       "eventos_ilegiveis": ilegiveis, "erro_da_mesa": erro_da_mesa}}
 
 
 def _arvore_para_o_app(itens: dict, projeto: str) -> list[dict]:
@@ -909,6 +1192,43 @@ def texto_do_aviso(evento: dict) -> str:
 
 
 # ==================================================================== cli
+def _imprimir_leitor(lista: list[dict], todos: bool) -> None:
+    def nomes(nos):
+        return ", ".join(f"{n['projeto']}/{n['id']} [{n['situacao']}]" for n in nos) or "nada"
+
+    for ev in lista:
+        if ev.get("ilegivel"):
+            print(f"#{ev['n']}  LINHA ILEGÍVEL no _eventos.jsonl (leia à mão)")
+            print()
+            continue
+        quando = str(ev.get("em", ""))[5:16].replace("T", " ")
+        marca = "lida" if ev.get("lida") else "NÃO LIDA"
+        print(f"#{ev['n']}  {ev['projeto']}/{ev['id']}  {quando}  [{marca}]")
+        troca = (f" (antes: {ev['anterior']})"
+                 if ev.get("anterior") and ev["anterior"] != ev.get("opcao") else "")
+        print(f"    {ev.get('titulo')} → {ev.get('opcao_rotulo')}{troca}")
+        if not ev.get("existe"):
+            print("    ⚠ o nó não existe mais")
+        elif not ev.get("ainda_vale"):
+            print("    ⚠ esta resposta já foi trocada por outra")
+        print(f"    (a) desbloqueia: {nomes(ev.get('desbloqueia') or [])}")
+        print(f"    (b) a rever: {nomes(ev.get('a_rever') or [])}")
+        if ev.get("precisa_de_leitura"):
+            print(f"    (c) COMENTÁRIO — precisa de leitura: “{ev['comentario']}”")
+        else:
+            print("    (c) sem comentário")
+        for c in ev.get("consequencias") or []:
+            print(f"    gerou: {c['tipo']} {c.get('alvo') or ''}"
+                  + (f" — {c['nota']}" if c.get("nota") else ""))
+        print()
+    if not lista:
+        print("todas as respostas foram lidas" if not todos else "nenhuma resposta ainda")
+    else:
+        faltam = sum(1 for e in lista if not e.get("lida"))
+        print(f"{faltam} não lida(s). Marque com: python -m remoto.decisoes leitor marcar "
+              "<N> --gerou tarefa:<id>|no:<projeto/id>|nada [--nota N]")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m remoto.decisoes",
                                      description="a árvore de decisões do Adrian")
@@ -953,6 +1273,18 @@ def main(argv=None) -> int:
     arv.add_argument("--projeto", choices=PROJETOS)
     sub.add_parser("gerar", help="regenera os READMEs e os blocos das sessões")
     sub.add_parser("onde")
+    lei = sub.add_parser("leitor", help="as respostas ainda não lidas, e o que geraram")
+    lei.add_argument("--todos", action="store_true", help="também as já lidas")
+    lei.add_argument("--projeto", choices=PROJETOS)
+    lei.add_argument("--json", action="store_true")
+    lsub = lei.add_subparsers(dest="acao")
+    mar = lsub.add_parser("marcar", help="registra o que uma resposta gerou e a marca lida")
+    mar.add_argument("evento", help="N (a linha), id@em ou [projeto/]id (a última dele)")
+    mar.add_argument("--gerou", action="append", default=[], required=True,
+                     help="tarefa:<id da Mesa> | no:<projeto/id> | nada (repita)")
+    mar.add_argument("--nota", default="")
+    mar.add_argument("--origem", default="leitor", choices=("leitor", "semente"))
+    mar.add_argument("--sem-commit", action="store_true")
     args = parser.parse_args(argv)
     # Quem le esta saida (o orquestrador) le por pipe: no Windows seria cp1252,
     # e um emoji da arvore derrubava o `arvore` com UnicodeEncodeError.
@@ -1019,6 +1351,23 @@ def main(argv=None) -> int:
                     print(f"# {ROTULOS[projeto]}")
                     print("\n".join(linhas))
                     print()
+            return 0
+        if args.comando == "leitor":
+            if args.acao == "marcar":
+                feito = marcar(args.evento, args.gerou, args.nota, origem=args.origem,
+                               commitar=not args.sem_commit)
+                ev = feito["evento"]
+                print(f"#{ev['n']} {ev['projeto']}/{ev['id']} lida · "
+                      f"{len(feito['novas'])} consequência(s) nova(s)"
+                      + (f" · ramos ligados: {', '.join(feito['ligados'])}"
+                         if feito["ligados"] else "")
+                      + f" · commit: {feito['commit']}")
+                return 0
+            lista = leitor(todos=args.todos, projeto=args.projeto)
+            if args.json:
+                print(json.dumps(lista, ensure_ascii=False, indent=2))
+                return 0
+            _imprimir_leitor(lista, args.todos)
             return 0
         if args.comando == "gerar":
             textos = gerar_textos()

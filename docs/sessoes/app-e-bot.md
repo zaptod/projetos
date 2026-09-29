@@ -51,7 +51,8 @@ Tudo vive em `remoto/`:
 - `vigia_tailnet.py` — a vigia do tailnet, no laço do bot (ver §4).
 - `decisoes.py` + `app/decisoes.js` — a **árvore de decisões** do Adrian
   (28/09), uma aba por projeto no app. A fonte é o repositório:
-  `decisoes/<projeto>/<id>.json` (ver §3.7).
+  `decisoes/<projeto>/<id>.json` (ver §3.7). Tem também o **leitor de
+  decisões tomadas** (§8): o que cada resposta dele gerou.
 - `orquestrador.py` + `app/orquestrador.js` — a **Mesa de comando** (28/09):
   o orquestrador publica o que faz, o app mostra e manda comandos, e a
   sonda de uso roda no servidor (ver §7).
@@ -110,7 +111,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 574 testes (28/09, noite)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 598 testes (28/09, noite)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
@@ -126,6 +127,9 @@ python -m remoto.decisoes responder <id> <opcao> [--comentario C] [--sem-commit]
 python -m remoto.decisoes gerar          # regenera os READMEs e os blocos das sessões
 python -m remoto.decisoes tirar-dependencia <id> <decisao> --nota N   # aresta errada sai; a resposta fica
 python -m remoto.decisoes onde
+python -m remoto.decisoes leitor [--todos] [--projeto P] [--json]    # respostas não lidas (§8)
+python -m remoto.decisoes leitor marcar <N|id@em|projeto/id> --gerou tarefa:<id>|no:<projeto/id>|nada \
+    [--gerou ...] [--nota N] [--sem-commit]                          # o que ela gerou; vira lida
 python -m remoto.orquestrador onde | estado | config | uso | pendentes   # a Mesa (§7)
 python -m remoto.orquestrador capacidade --max-paralelo N | --teto P | --forca-total on|off \
     [--modo M] --fonte chat|app [--porque "palavras dele"]            # vira regra (§7)
@@ -195,6 +199,8 @@ DOM e clicando.
    - A mídia não vai para o git: o JSON aponta para o arquivo (caminho do
      repositório, `%LOCALAPPDATA%\...` ou absoluto), e a tela avisa "mídia
      não existe mais".
+   - O que cada resposta gerou fica no próprio nó, em `consequencias[]`
+     (§8). "Lida" não tem arquivo: sai dessa lista.
 
 ## 4. Armadilhas medidas (já quebraram)
 
@@ -364,7 +370,8 @@ DOM e clicando.
 | `atividade.jsonl` (diário) | `builds.atividade` | o app lê; escreve **uma** linha (`etapa app.a_conferir`) quando marca algo a conferir |
 | travas de perfil | `builds.travas` | só a sonda de leitura |
 | `app_celular_*.json(l)` e as tarefas | **esta sessão** | escrita sob `trava_arquivo`, reentrante por thread |
-| `decisoes/_eventos.jsonl` (no repositório) | **esta sessão** escreve (append, uma linha por resposta: `projeto`, `id`, `titulo`, `opcao`, `opcao_rotulo`, `comentario`, `em`, `anterior`, `a_rever`) | o **orquestrador** vigia; os itens novos ele registra pela CLI `python -m remoto.decisoes adicionar` |
+| `decisoes/_eventos.jsonl` (no repositório) | **esta sessão** escreve (append, uma linha por resposta: `projeto`, `id`, `titulo`, `opcao`, `opcao_rotulo`, `comentario`, `em`, `anterior`, `a_rever`) | o **orquestrador** vigia (o `esperar` acorda com `decisao_nova`), lê pelo `leitor` e marca pelo `leitor marcar`; os itens novos ele registra pela CLI `python -m remoto.decisoes adicionar` |
+| `consequencias[]` em `decisoes/<projeto>/<id>.json` | o **orquestrador**, só pela CLI `leitor marcar` (e a Mesa, sozinha, nas respostas de capacidade) | o Grimório mostra "o que isto gerou" e o selo "não lida ainda" (§8) |
 | `%LOCALAPPDATA%\neural-fights\orquestrador\` | o **orquestrador** escreve `estado.json`, `decisoes_orquestrador.jsonl` e `comandos_aplicados.jsonl` pela CLI; o `aplicado` escreve `config.json` e `config_historico.jsonl`; **esta sessão** escreve `comandos.jsonl`, `uso*.json(l)` e `acessos.json` | ver §7; escrita atômica, sob `orquestrador.lock` |
 | bloco `decisoes:inicio/fim` em cada `docs/sessoes/<parte>.md` | **gerado** por `remoto/decisoes.py` | cada parte lê como entrada; não edite à mão (é regenerado a cada resposta) |
 | grade de postagem | `ferramentas/postar.py` | o app respeita a janela (−20/−25/−40 min conforme o destino, +18 min) e recusa se `postar.py` estiver vivo |
@@ -393,6 +400,8 @@ troca, para a instância de teste.
 | `comandos_aplicados.jsonl` | CLI `aplicado` e `capacidade` |
 | `uso.json` + `uso_historico.jsonl` | a sonda do servidor |
 | `acessos.json` | o servidor ao subir, ou a CLI `acessos` |
+| `tarefas_historico.jsonl` (todo agente que terminou, uma vez; o `concluidos_hoje` se esvazia a cada dia) | a CLI, a cada escrita do estado |
+| `decisoes_vistas.json` (a última linha do `_eventos.jsonl` que o `esperar` já mostrou) | o `esperar` |
 
 **CLI do orquestrador:**
 
@@ -539,7 +548,10 @@ da página 🧭 Fluxo do painel, lido em segundo plano (`painel_dados.FLUXO`,
 
 **Vigiar os comandos** (o orquestrador, em background):
 `python -m remoto.orquestrador esperar --json` sai quando há comando
-pendente. Aplique, registre com `aplicado` e rearme.
+pendente **ou resposta nova do Adrian** no `_eventos.jsonl` (desde 28/09,
+noite: itens com `"tipo": "decisao_nova"`, ao lado dos comandos, que ganharam
+`"tipo": "comando"`). Aplique, registre com `aplicado`, leia as respostas com
+o `leitor` (§8) e rearme.
 
 **Prova de tela (28/09):** 390×844, clicando, na 8934 com cópia do estado e
 na 8935 vazia, com 0 erros de JS.
@@ -573,3 +585,127 @@ na 8935 vazia, com 0 erros de JS.
   "pedido por Adrian". O ✕ pediu confirmação, e o item saiu.
 - Limites: "força total a partir de 22:30".
 - O histórico do nó no Grimório diz "pela Mesa de comando" e "no chat".
+
+## 8. O leitor de decisões tomadas (28/09/2026, noite)
+
+Pedido do Adrian pela Mesa, às 21:50: "Quero que você crie um leitor de
+decisões tomadas, para saber se isso gera mais ramificações ainda". Desenho:
+seção "Leitor de decisões tomadas" de `~/.claude/plans/orquestrador-no-app.md`.
+
+**O que é.** Cada resposta dele (uma linha do `_eventos.jsonl`) é **lida**
+pelo orquestrador, que registra o que ela gerou: uma tarefa da Mesa, um nó
+novo (ramo) ou nada. O registro fica **no próprio nó**, em `consequencias[]`,
+e vai para o git. "Lida" não tem arquivo próprio: uma resposta está lida
+quando o nó dela tem uma consequência daquele evento ou de um mais novo. Ler
+a última resposta cobre as anteriores (o toque duplo de 19:57:42/43 em
+`sprites-animados` se resolve com uma marca). No mesmo segundo, quem desempata
+é a `linha` do arquivo.
+
+**`python -m remoto.decisoes leitor`** lista as não lidas, da mais velha para
+a mais nova, com três sinais:
+- (a) os nós que a opção `desbloqueia`, com a situação de cada um;
+- (b) os nós que foram para `a_rever`;
+- (c) `COMENTÁRIO — precisa de leitura`, quando ele escreveu texto livre: só
+  uma leitura (LLM) diz se isso abre tarefa ou ramo.
+
+Também avisa quando a resposta já foi trocada por outra, ou quando o nó
+sumiu. Linha ilegível no `_eventos.jsonl` aparece como "LINHA ILEGÍVEL" e
+nunca some. `--todos` mostra as lidas, com o que geraram; `--json` para
+máquina.
+
+**`leitor marcar <evento> --gerou ... [--gerou ...] [--nota N]`**:
+- `<evento>` é `N` (a linha), `id@em` ou `[projeto/]id` (a última resposta
+  daquele nó);
+- `--gerou tarefa:<id da Mesa>`, `no:<projeto/id>` ou `nada` (o `nada` não
+  combina com os outros);
+- commita por caminho: "decisão(<projeto>): lida — <título> gerou …". Com
+  `--sem-commit`, não commita;
+- `no:X` **liga o ramo** a esta resposta por `depende_de` (decisão + a opção
+  que ele escolheu), se ainda não estiver ligado. O ramo precisa existir
+  (crie antes com `adicionar`). Ligar a uma resposta que não vale mais é
+  recusado. Ciclo também é recusado, e nada é gravado;
+- repetir a mesma marca não duplica nada.
+
+Formato de cada item de `consequencias[]` (chaves ordenadas, como o resto):
+
+```json
+{"alvo": "e4957f28", "em": "2026-09-28T22:40:51", "evento": "2026-09-28T19:57:43",
+ "linha": 19, "nota": "...", "opcao": "limpar-depois", "origem": "leitor",
+ "tipo": "tarefa"}
+```
+
+- `tipo` é `tarefa`, `no` ou `nada`;
+- `alvo` é o id da Mesa, `projeto/id` ou `""`;
+- `evento` e `linha` dizem qual resposta foi lida;
+- `origem` é `leitor`, `semente` ou `mesa`.
+
+**A Mesa marca sozinha** as respostas de capacidade (`modo-de-trabalho`,
+`teto-de-uso` e `forca-total-ainda-vale`, pelo `aplicado` ou pelo
+`capacidade --fonte chat`). Elas nascem lidas, com `nada` e origem `mesa`: a
+config já vale. A resposta e a marca saem num commit só, com a mensagem de
+sempre. As duas primeiras (22:26 e 22:30) foram gravadas antes de existir a
+`linha`, e continuam valendo.
+
+**O `esperar`** também acorda com resposta nova e ainda não lida
+(`"tipo": "decisao_nova"`; §7). O cursor fica no `decisoes_vistas.json`: sem
+ele, o `esperar` começa do fim, porque o passado é do `leitor`.
+
+**No Grimório (app):**
+- cada decisão mostra o cartão **"O que isto gerou"**:
+  - as tarefas, com o estado vindo ao vivo da Mesa: concluída, em andamento,
+    parando, na fila, falhou, parada, "fora da Mesa" (id que ela não
+    conhece) ou "Mesa ilegível" (nunca vira "nenhuma");
+  - os ramos, que abrem ao tocar, mesmo de outro projeto (o "‹ Árvore" volta
+    para a árvore dele);
+  - "nada novo", com a nota. A nota de uma leitura aparece uma vez só;
+- o selo **"não lida ainda"** fica no alto do nó até a marca, e aparece
+  "não lida" na árvore;
+- a árvore mostra "gerou: 1 tarefa · 7 ramos";
+- cada aba tem o número de não lidas, e a raiz do projeto tem o cartão
+  "N respostas suas ainda não lidas pelo orquestrador".
+
+Para a tarefa não virar "fora da Mesa" no dia seguinte, a Mesa guarda todo
+agente que terminou em `tarefas_historico.jsonl` (uma vez; o
+`concluidos_hoje` se esvazia a cada dia). O agente que sai da fila guarda o
+id do item (`da_fila`), e a decisão que apontou para o item o acompanha.
+
+**Semeado em 28/09**: o que o orquestrador já tinha lido à mão entrou com
+origem `semente`:
+- `builds/som-real-16a` → nada (re-render agendado na madrugada, fora da
+  Mesa);
+- `palco-seguir` e `hitstop` → `ec0e8556`;
+- `generation-00077` → `5c54c4b9`;
+- `sprites-animados` → `e4957f28`;
+- `painel-e-vila/tarefa-da-vila-acorda-o-pc` e `aposentar-vila-pixel` →
+  `e4957f28`;
+- `cara-da-oficina` → o nó `aposentar-vila-pixel`;
+- `jogo-zombie/duelo-e-isso` → `13f6a1e6` e os 7 nós `duelo-*`;
+- `app-e-bot/controle-onde` → `676aeab8`;
+- as 4 de `publicacao/*` → `8a6e221f`;
+- `geral/*` → nada.
+
+Ficaram **10 não lidas**, para o orquestrador ler:
+- `builds/chao-da-arena`;
+- `builds/palco-ab-2` (a 16G);
+- `painel-e-vila/vila-zoom-celular` (o comentário sobre deitar o celular
+  precisa de leitura);
+- as 7 respostas dos `duelo-*`.
+
+**Prova de tela (28/09, noite):** 390×844, clicando, na 8934 (cópia da
+Mesa e clone do Grimório, avisos num arquivo em vez do Telegram) e na 8935
+vazia. Foram 25 conferências pelo DOM e 0 erros de JS. Telas em
+`E:\projetos-wt\_prova_leitor\telas\`.
+- As abas dizem Builds 2, Painel e Vila 1, Jogo zombie 7, Geral 0. A raiz
+  de Builds diz "2 respostas suas ainda não lidas".
+- Cara da Oficina → o ramo Aposentar; tocar abre o nó, que mostra
+  `e4957f28` "concluída".
+- Duelo: é isso? → 1 tarefa (`13f6a1e6`, concluída) e 7 ramos. O ramo
+  "voz" tem "não lida ainda".
+- `8a6e221f` aparece "em andamento", ao vivo.
+- `leitor marcar` pela CLI commitou no clone. O Builds caiu para 1, e o
+  Chão mostrou `59bf5cfb`: na fila, e depois em andamento, quando o
+  orquestrador de verdade o disparou com `--da-fila`.
+- Responder de novo pelo app devolveu "não lida ainda", e o que a resposta
+  anterior gerou ficou lá. O `esperar --json` saiu com `decisao_nova`
+  `chao-da-arena`.
+- No caso ZERO, nenhum contador e nenhum cartão.

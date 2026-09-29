@@ -43,6 +43,7 @@ CLI (a do orquestrador):
     python -m remoto.orquestrador pendentes [--json]
     python -m remoto.orquestrador aplicado <id> [--recusado MOTIVO] [--nota TEXTO]
     python -m remoto.orquestrador esperar [--intervalo S]     # sai quando chega comando
+                                                  # ou resposta nova do Adrian (decisao_nova)
     python -m remoto.orquestrador config | estado | uso | pulso | onde
     python -m remoto.orquestrador sonda                        # mede o uso uma vez
     python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
@@ -213,7 +214,60 @@ def ler_estado() -> dict:
 
 def _gravar_estado(estado: dict) -> None:
     estado["atualizado_em"] = _agora_iso()
+    _arquivar_concluidos(estado)
     _gravar_json(arquivo("estado.json"), estado)
+
+
+def _arquivar_concluidos(estado: dict) -> None:
+    """Todo concluido vai para `tarefas_historico.jsonl`, uma vez.
+
+    O `concluidos_hoje` se esvazia a cada dia. Sem o arquivo, a tarefa que uma
+    decisao gerou (Grimorio, "o que isto gerou") viraria "desconhecida" no dia
+    seguinte ao fim dela.
+    """
+    concluidos = [c for c in estado.get("concluidos_hoje") or [] if c.get("id")]
+    if not concluidos:
+        return
+    caminho = arquivo("tarefas_historico.jsonl")
+    ja, _ = _ler_jsonl(caminho)
+    vistos = {(t.get("id"), t.get("fim")) for t in ja}
+    for c in concluidos:
+        if (c["id"], c.get("fim")) not in vistos:
+            _anexar(caminho, c)
+            vistos.add((c["id"], c.get("fim")))
+
+
+SITUACAO_DA_TAREFA = {"trabalhando": "andamento", "parando": "parando",
+                      "concluido": "concluida", "falhou": "falhou", "parado": "parada"}
+
+
+def situacao_das_tarefas() -> dict:
+    """{id: {situacao, titulo, parte, commits, desde, fim}} de toda tarefa que a
+    Mesa conhece: o historico, os concluidos, a fila e o agora (o mais novo
+    vale). Um item da fila que virou agente responde pelos dois ids.
+    Arquivo ilegivel = Recusa (nunca "nenhuma tarefa")."""
+    historico, _ = _ler_jsonl(arquivo("tarefas_historico.jsonl"))
+    estado = _ler_json(arquivo("estado.json"), None) or {}
+    if not isinstance(estado, dict):
+        raise Recusa("estado.json está ilegível")
+    saida: dict = {}
+
+    def por(registro: dict, situacao: str) -> None:
+        ficha = {"situacao": situacao, "titulo": registro.get("titulo")
+                 or registro.get("item") or "", "parte": registro.get("parte", ""),
+                 "commits": list(registro.get("commits") or []),
+                 "desde": registro.get("desde"), "fim": registro.get("fim")}
+        for chave in (registro.get("id"), registro.get("da_fila")):
+            if chave:
+                saida[chave] = ficha
+
+    for registro in historico + list(estado.get("concluidos_hoje") or []):
+        por(registro, SITUACAO_DA_TAREFA.get(registro.get("situacao"), "concluida"))
+    for registro in estado.get("fila") or []:
+        por(registro, "fila")
+    for registro in estado.get("agora") or []:
+        por(registro, SITUACAO_DA_TAREFA.get(registro.get("situacao"), "andamento"))
+    return saida
 
 
 def padrao_do_grimorio() -> dict:
@@ -365,6 +419,9 @@ def agente_inicio(parte: str, titulo: str, *, da_fila: str = "", relato: str = "
         agente = {"id": novo_id, "parte": _curto(parte, 40), "titulo": _curto(titulo, 200),
                   "desde": _agora_iso(), "situacao": "trabalhando",
                   "relato": _curto(relato), "relato_em": _agora_iso() if relato else None}
+        if item_da_fila is not None:
+            # a decisao que gerou o item da fila acha o agente pelo id antigo
+            agente["da_fila"] = da_fila
         estado["agora"].append(agente)
         if item_da_fila is not None:
             estado["fila"] = [f for f in estado["fila"] if f.get("id") != da_fila]
@@ -499,6 +556,48 @@ def mudar_modo(modo: str, origem: str = "orquestrador", comando_id: str = "") ->
         estado["modo"] = modo
         _movimento(estado, f"modo operacional: {ROTULO_MODO[modo]}")
         _gravar_estado(estado)
+
+
+# ======================================================= respostas do Adrian
+def _vistas() -> Path:
+    return arquivo("decisoes_vistas.json")
+
+
+def decisoes_novas() -> tuple[list[dict], int]:
+    """(respostas novas e ainda nao lidas, ultima linha vista).
+
+    O cursor (`decisoes_vistas.json`, a ultima linha do `_eventos.jsonl` que o
+    `esperar` ja mostrou) guarda o lugar entre um `esperar` e outro: resposta
+    que chega enquanto ninguem espera acorda o proximo. Sem cursor, ele nasce
+    no fim (o passado e do `leitor`, nao do `esperar`). Quem chama avanca o
+    cursor com `avancar_vistas` DEPOIS de mostrar.
+    """
+    from . import decisoes
+    try:
+        eventos = decisoes.ler_eventos()
+    except decisoes.Recusa as exc:
+        raise Recusa(f"Grimório: {exc}") from exc
+    ultima = max((e["n"] for e in eventos), default=0)
+    cursor = _ler_json(_vistas(), None)
+    if not isinstance(cursor, dict) or not isinstance(cursor.get("linhas"), int):
+        avancar_vistas(ultima)
+        return [], ultima
+    if cursor["linhas"] > ultima:            # o arquivo encolheu: recomeca do fim
+        avancar_vistas(ultima)
+        return [], ultima
+    if cursor["linhas"] == ultima:
+        return [], ultima
+    try:
+        todas = decisoes.leitor(todos=True)
+    except decisoes.Recusa as exc:
+        raise Recusa(f"Grimório: {exc}") from exc
+    novas = [dict(e, tipo="decisao_nova") for e in todas
+             if e["n"] > cursor["linhas"] and not e.get("lida")]
+    return novas, ultima
+
+
+def avancar_vistas(linha: int) -> None:
+    _gravar_json(_vistas(), {"linhas": int(linha), "em": _agora_iso()})
 
 
 def pulso() -> str:
@@ -714,7 +813,20 @@ def registrar_no_grimorio(chave: str, config: dict, fonte: str, *,
         comentario += f" — nas palavras dele: {_curto(porque, 300)}"
     try:
         evento = decisoes.responder(no, opcao, comentario, aparelho=aparelho,
-                                    origem="mesa" if fonte == "app" else fonte)
+                                    origem="mesa" if fonte == "app" else fonte,
+                                    commitar=False)
+        # A capacidade ja vale quando o no e respondido: a resposta nasce LIDA
+        # (gerou nada alem da config), e o leitor nao a cobra do orquestrador.
+        try:
+            decisoes.marcar(f"{no}@{evento['em']}", ["nada"],
+                            "aplicada pela Mesa de comando: a config já vale",
+                            origem="mesa", commitar=False)
+        except Exception:                                     # noqa: BLE001
+            pass                                  # fica "não lida": o leitor mostra
+        with decisoes._trava():
+            evento["commit"] = decisoes.commitar_por_caminho(
+                *decisoes._tudo_para_commit(),
+                f"decisão({evento['projeto']}): {evento['titulo']} → {evento['opcao_rotulo']}")
     except KeyError:
         return f"Grimório: não existe o nó {no}"
     except decisoes.Recusa as exc:
@@ -1421,8 +1533,20 @@ def _imprimir_pendentes(lista: list, como_json: bool) -> None:
         print(json.dumps(lista, ensure_ascii=False, indent=2))
         return
     for c in lista:
+        if c.get("tipo") == "decisao_nova":
+            if c.get("ilegivel"):
+                print(f"decisao_nova  #{c['n']}  linha ilegível no _eventos.jsonl")
+                continue
+            print(f"decisao_nova  #{c['n']}  {c['projeto']}/{c['id']} → {c['opcao_rotulo']}"
+                  + ("  [COMENTÁRIO: precisa de leitura]" if c.get("precisa_de_leitura")
+                     else "")
+                  + (f"  desbloqueia {len(c['desbloqueia'])}" if c.get("desbloqueia") else "")
+                  + (f"  a rever {len(c['a_rever'])}" if c.get("a_rever") else ""))
+            continue
         print(f"{c['id']}  {c['em']}  {c['comando']}  "
               f"{json.dumps(c.get('valor'), ensure_ascii=False)}")
+    if lista and any(c.get("tipo") == "decisao_nova" for c in lista):
+        print("leia com: python -m remoto.decisoes leitor")
     if not lista:
         print("nenhum comando pendente")
 
@@ -1484,7 +1608,8 @@ def main(argv=None) -> int:
     apl.add_argument("id")
     apl.add_argument("--recusado", default="", metavar="MOTIVO")
     apl.add_argument("--nota", default="")
-    esp = sub.add_parser("esperar", help="bloqueia até chegar comando do app")
+    esp = sub.add_parser("esperar",
+                         help="bloqueia até chegar comando do app ou resposta nova no Grimório")
     esp.add_argument("--intervalo", type=float, default=5.0)
     esp.add_argument("--json", action="store_true")
     acs = sub.add_parser("acessos", help="gera o acessos.json")
@@ -1554,8 +1679,11 @@ def main(argv=None) -> int:
             ultimo_pulso = 0.0
             while True:
                 lista = pendentes()
-                if lista:
-                    _imprimir_pendentes(lista, args.json)
+                novas, ultima = decisoes_novas()
+                if lista or novas:
+                    _imprimir_pendentes([dict(c, tipo="comando") for c in lista] + novas,
+                                        args.json)
+                    avancar_vistas(ultima)
                     break
                 # quem espera esta ouvindo: vale como pulso (a cada 5 min)
                 if time.time() - ultimo_pulso > 300:
