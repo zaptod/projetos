@@ -150,11 +150,16 @@ class SoNoYoutubeTests(unittest.TestCase):
 
 class HorarioQueALinhaTomariaTests(unittest.TestCase):
     """Conta de mao (grade 00:37 06:37 09:37 12:07 15:37 17:57 20:37 21:37
-    22:37 23:37; upload de ate 20 min):
-      22:04 -> toca a hora 22, rodada 22:37 ainda por vir  -> "22:37"
-      22:45 -> hora 22 ja rodou; 23:05 cai na hora 23      -> "23:37"
-      00:55 -> horas 0 (ja rodou) e 1 (sem rodada)         -> ""
-      18:10 -> hora 18 sem rodada; 18:30 ainda na 18       -> ""
+    22:37 23:37; upload de ate 20 min; a guarda conta pelo horario da grade
+    desde 29/09/2026, `guarda-hora-da-grade`):
+      22:04 -> linha ate 22:24, cobre o das 21:37; 22:37 livre -> ""
+               (era "22:37" quando a guarda contava pela hora do relogio)
+      22:20 -> a rodada das 22:37 comeca no meio do upload    -> "22:37"
+      22:45 -> linha ate 23:05, ainda o das 22:37             -> ""
+      00:20 -> a das 00:37 comeca no meio                     -> "00:37"
+      00:55 -> nenhuma rodada ate 01:15                       -> ""
+      18:10 -> nenhuma ate 18:30                              -> ""
+      23:50 -> a janela cruza a meia-noite sem rodada         -> ""
     """
 
     def setUp(self):
@@ -165,10 +170,13 @@ class HorarioQueALinhaTomariaTests(unittest.TestCase):
         return self.p._horario_que_a_linha_tomaria(datetime(2026, 9, 28, h, m))
 
     def test_casos_medidos(self):
-        self.assertEqual("22:37", self._em(22, 4))
-        self.assertEqual("23:37", self._em(22, 45))
+        self.assertEqual("", self._em(22, 4))
+        self.assertEqual("22:37", self._em(22, 20))
+        self.assertEqual("", self._em(22, 45))
+        self.assertEqual("00:37", self._em(0, 20))
         self.assertEqual("", self._em(0, 55))
         self.assertEqual("", self._em(18, 10))
+        self.assertEqual("", self._em(23, 50))
 
 
 if __name__ == "__main__":

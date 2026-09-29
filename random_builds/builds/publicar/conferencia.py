@@ -152,6 +152,39 @@ def _instante_local(ts) -> datetime | None:
     return quando
 
 
+def chave_do_horario(quando, plataforma: str = "youtube") -> tuple | None:
+    """(dia de grade, hora da grade) a que `quando` pertence.
+
+    E A IDENTIDADE DE UM HORARIO DA GRADE, a mesma nos tres lugares que
+    perguntam "e o mesmo horario?": a guarda de um post por horario
+    (`postar.publicou_neste_horario`, decisao `guarda-hora-da-grade` de
+    29/09/2026), o placar de metas (`remoto.relatorios._dia_de_grade`) e a
+    contagem de horarios cumpridos de `conferir`. Um post pertence ao
+    horario que ele COBRE — o ultimo que ja venceu quando a linha foi
+    gravada —, nunca a hora do relogio: em 28/09 a linha das 22:12 (upload
+    avulso da h27 p01) contou como o post das 22:37 e aquele horario ficou
+    sem video novo.
+
+    `quando` e um datetime local ou o `quando` do ledger (texto). Texto
+    ilegivel devolve None: linha sem data nao paga horario nem barra
+    ninguem.
+
+    Conta de mao (grade 00:37 06:37 09:37 12:07 15:37 17:57 20:37 21:37
+    22:37 23:37; o dia de grade abre as 06:37):
+      28/09 22:12 -> (28/09, 21)   cobre o das 21:37; o das 22:37 fica livre
+      28/09 22:40 -> (28/09, 22)   o post das 22:37
+      29/09 00:10 -> (28/09, 23)   a recuperacao atrasada paga o 23:37 de 28
+      29/09 00:39 -> (28/09, 0)    o 00:37 fecha o dia de grade de 28/09
+      28/09 18:01 -> (28/09, 17)   a rodada das 17:57 que cruzou a hora
+    """
+    instante = (quando if isinstance(quando, datetime)
+                else _instante_local(quando))
+    if instante is None:
+        return None
+    dia, hora = _horario_da_grade(instante, plataforma)
+    return _dia_de_grade(dia, hora, plataforma), hora
+
+
 ACEITOS_MOTIVO = ("decisão do Adrian 15/09/2026: os rascunhos do "
                   "\"Publicar mesmo assim\" ficam de gordura")
 
@@ -770,7 +803,8 @@ def main(argv=None) -> int:
 
 
 __all__ = ["ACEITOS_MOTIVO", "DIAS_PADRAO", "aceitar_rascunhos",
-           "aceitar", "arquivo_de_aceitos", "buscar_no_canal", "conferir",
+           "aceitar", "arquivo_de_aceitos", "buscar_no_canal",
+           "chave_do_horario", "conferir",
            "conferir_tudo", "dia_de_grade_fechado", "main", "pasta",
            "rascunhos_aceitos",
            "salvar", "ultima"]

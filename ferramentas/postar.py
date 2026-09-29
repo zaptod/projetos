@@ -674,8 +674,17 @@ def publicou_neste_horario(canal: str, plataforma: str = "youtube",
     certo para nao perder o horario, e que por definicao cria disparo fora da
     hora.
 
-    A janela e a HORA DO RELOGIO porque a grade nunca tem dois horarios na
-    mesma hora: 6, 7 e 8 sao seguidos, e isso basta para separa-los.
+    O HORARIO E O DA GRADE, NAO A HORA DO RELOGIO (decisao dele em
+    29/09/2026, `guarda-hora-da-grade`). Ate entao a janela era a hora do
+    relogio, e em 28/09 a `historia_00027:p01`, subida a mao as 22:12,
+    contou como o post das 22:37: a rodada leu "YouTube ja saiu nesta hora",
+    levou essa parte ao TikTok (onde ja estava) e o horario ficou sem video
+    novo. Um post pertence ao horario que ele COBRE — o ultimo que ja tinha
+    vencido quando a linha foi gravada — e a identidade desse horario e
+    `conferencia.chave_do_horario` (dia de grade, hora), a mesma do placar
+    de metas e da conferencia. Assim a linha das 22:12 e do 21:37, a
+    recuperacao das 00:10 e do 23:37 da vespera, e a rodada das 17:57 que
+    grava as 18:01 continua sendo a das 17:57.
 
     A fonte e o LEDGER, e nao um arquivo de controle novo: ele ja e a verdade
     sobre o que foi publicado, e uma segunda fonte que discordasse dele seria
@@ -686,15 +695,17 @@ def publicou_neste_horario(canal: str, plataforma: str = "youtube",
     primeira postagem bloquear a segunda.
     """
     from datetime import datetime
+    from builds.publicar import conferencia
     agora = agora or datetime.now()
-    marca = agora.strftime("%Y-%m-%dT%H")
     alvo = str(plataforma).lower()
+    horario = conferencia.chave_do_horario(agora, alvo)
     for linha in _publicados_do_canal(canal):
-        if not str(linha.get("quando") or "").startswith(marca):
-            continue
         # Linha antiga, de antes de o registro guardar plataforma, conta como
         # YouTube: era o unico destino que existia.
-        if str(linha.get("plataforma") or "youtube").lower() == alvo:
+        if str(linha.get("plataforma") or "youtube").lower() != alvo:
+            continue
+        # Linha sem data legivel da None, e None nunca e igual a um horario.
+        if conferencia.chave_do_horario(linha.get("quando"), alvo) == horario:
             return linha
     return None
 
@@ -717,14 +728,20 @@ def _ja_foi_neste_horario(canal: str, plataforma: str = "youtube",
     `agora` e injetavel para o teste nao depender do relogio da maquina —
     uma guarda que so da para testar as 17h nao e uma guarda testada.
     """
+    from builds.publicar import conferencia
     feito = publicou_neste_horario(canal, plataforma, agora)
     if feito is None:
         return None
     hora = str(feito.get("quando") or "")[11:16]
+    # A hora do relogio E o horario da grade que ela cobriu: quem le o log
+    # da rodada das 22:37 precisa ver que a linha das 22:40 e deste horario.
+    chave = conferencia.chave_do_horario(feito.get("quando"), plataforma)
+    da_grade = f", horario das {grade.horario(chave[1])}" if chave else ""
     return {"canal": canal, "plataforma": plataforma,
             "feito": False, "repetido": True,
             "motivo": f"ja publiquei as {hora} no {plataforma} "
-                      f"({feito.get('video_id')}). Nao repito o disparo."}
+                      f"({feito.get('video_id')}){da_grade}. "
+                      "Nao repito o disparo."}
 
 
 def _ids_da_parte(provas) -> dict:
@@ -880,27 +897,32 @@ DURACAO_DE_UM_UPLOAD_MIN = 20
 
 
 def _horario_que_a_linha_tomaria(agora=None) -> str:
-    """O horario da grade que uma publicacao AVULSA feita agora esvaziaria.
+    """A rodada da grade que COMECARIA no meio de um upload avulso feito agora.
 
-    `publicou_neste_horario` olha a HORA DO RELOGIO da linha. Medido em
-    28/09/2026: a `historia_00027:p01` subiu a mao as 22:12 e a rodada das
-    22:37 leu "YouTube ja saiu nesta hora", tentou levar ESSA parte ao TikTok
-    (onde ela ja estava) e o horario das historias ficou sem video novo. A
-    linha e gravada no FIM do upload, entao conta toda hora que o upload pode
-    tocar ate terminar; uma hora cuja rodada ainda nao passou fica tomada.
-    Devolve "HH:MM" dessa rodada, ou "" quando nao ha nenhuma.
+    Ate 29/09/2026 `publicou_neste_horario` olhava a hora do relogio, e
+    esta trava contava toda hora que o upload tocasse: o caso medido em
+    28/09 (a `historia_00027:p01` subiu a mao as 22:04, linha as 22:12, e
+    a rodada das 22:37 leu "YouTube ja saiu nesta hora"). Com a guarda
+    contando pelo horario da grade (`conferencia.chave_do_horario`), a
+    linha das 22:12 cobre o das 21:37 e o das 22:37 fica livre — esse caso
+    nao precisa mais de trava.
+
+    O que ainda toma um horario e o upload que ATRAVESSA uma rodada: comecado
+    as 22:20, a linha cai as 22:40, no horario das 22:37; a rodada, que
+    comecou ao mesmo tempo, ou le a linha e pula (horario sem video novo) ou
+    nao le e sai um segundo post no mesmo horario. A linha e gravada no FIM
+    do upload (ate `DURACAO_DE_UM_UPLOAD_MIN`). Devolve "HH:MM" da rodada
+    que comeca dentro dessa janela, ou "" quando nenhuma comeca.
     """
     from datetime import datetime, timedelta
     agora = agora or datetime.now()
     fim = agora + timedelta(minutes=DURACAO_DE_UM_UPLOAD_MIN)
-    hora = agora.replace(minute=0, second=0, microsecond=0)
-    while hora <= fim:
-        h = hora.hour
-        if h in grade.HORAS:
-            rodada = hora.replace(minute=grade.minuto(h))
-            if rodada > agora:
+    zero = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    for dias in (0, 1):                       # a janela pode cruzar a meia-noite
+        for h in grade.HORAS:
+            rodada = zero + timedelta(days=dias, hours=h, minutes=grade.minuto(h))
+            if agora < rodada <= fim:
                 return grade.horario(h)
-        hora += timedelta(hours=1)
     return ""
 
 
@@ -1244,33 +1266,28 @@ def _horarios_que_restam(publicados, agora=None,
 
     Os que ainda nao venceram, mais o horario corrente se nada saiu nele
     ainda (a rodada que esta escolhendo agora e a dele). "Saiu nele" e
-    `grade.slot(quando)` da linha igual ao slot de agora, no mesmo dia, com
-    `metricas.publicado` — os criterios unicos, e nao a hora do relogio.
-    Antes do primeiro horario do dia (00:37), o dia inteiro esta pela frente.
+    `conferencia.chave_do_horario` da linha igual ao de agora, com
+    `metricas.publicado` — os criterios unicos (os mesmos da guarda
+    `publicou_neste_horario`), e nao a hora do relogio. Antes do primeiro
+    horario do dia (00:37), o dia inteiro esta pela frente.
     """
     from datetime import datetime
-    from builds.publicar import metricas
+    from builds.publicar import conferencia, metricas
     agora = agora or datetime.now()
     horas = grade.horas_da_plataforma(plataforma)
     vencidos = grade.vencidos(agora, plataforma)
     restam = len(horas) - len(vencidos)
     if not vencidos:
         return restam
-    atual = vencidos[-1]
-    hoje = agora.strftime("%Y-%m-%d")
+    corrente = conferencia.chave_do_horario(agora, plataforma)
     for linha in publicados or ():
-        quando = str(linha.get("quando") or "")
-        if not quando.startswith(hoje):
-            continue
         if str(linha.get("plataforma") or "youtube").lower() != plataforma:
             continue
         if not metricas.publicado(linha):
             continue
-        try:
-            if grade.slot(datetime.fromisoformat(quando)) == atual:
-                return restam
-        except ValueError:
-            continue
+        if conferencia.chave_do_horario(linha.get("quando"),
+                                        plataforma) == corrente:
+            return restam
     return restam + 1
 
 

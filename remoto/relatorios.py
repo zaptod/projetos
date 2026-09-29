@@ -84,10 +84,12 @@ def _dia_de_grade(instante: datetime, plataforma: str = "youtube") -> tuple:
 
     00:10 de 28/09 e o horario das 23:37 de 27/09 (a recuperacao atrasada);
     00:39 e o das 00:37, que fecha o dia de grade de 27/09; 06:40 ja e 28/09.
+
+    E `conferencia.chave_do_horario`, a mesma chave da guarda de um post por
+    horario (`postar.publicou_neste_horario`, 29/09/2026): o placar e a
+    guarda nao podem discordar sobre a que horario um post pertence.
     """
-    conferencia = _conferencia()
-    dia, hora = conferencia._horario_da_grade(instante, plataforma)
-    return conferencia._dia_de_grade(dia, hora, plataforma), hora
+    return _conferencia().chave_do_horario(instante, plataforma)
 
 
 def _janela_da_grade(plataforma: str = "youtube") -> str:
