@@ -13,6 +13,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
 - ✅ **Força total ligada pela Mesa: por quanto tempo?** — Até eu desligar (28/09/2026) `forca-total-pela-mesa`
 - ✅ **Teto também no limite semanal?** — Outro (comente) (28/09/2026) · “Controlo isso com a mesa” `teto-da-semana`
+- ⏳ **Limpeza do disco (C: com 9 GB livres)** — O C: tem só 9 GB livres. O que eu limpo? Nada disso é código nem vídeo publicado. `limpeza-do-disco`
 
 **Publicação**
 - ✅ **As 3 partes só no TikTok (00022:p03, 00027:p01, 00032:p04)** — Subir no YouTube (28/09/2026) `partes-so-no-tiktok`

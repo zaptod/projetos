@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "SEGURO (~1,2 GB): pastas de prova e teste das sessões (E:\\projetos-wt\\prova_*, _prova_*, _pytest_app, worktree metricas já integrada, E:\\tmp_testes, o worktree velho .claude\\worktrees\\agent-a8977…) e scratchpads de sessões antigas do Claude (C:\\...\\Temp\\claude, menos a sessão atual). CACHES DOS NAVEGADORES (~1,7 GB no C:): Cache e Code Cache dos perfis logados — o login fica. BLOBS DO TIKTOK (~6,3 GB no C:): cópias locais de uploads que o TikTok Studio guarda no IndexedDB do perfil tiktok__historinhas; o login está nos cookies, mas eu movo antes para o E:, testo o login e só então apago. NÃO MEXO: os perfis em si (os logins), E:\\projetos-wt\\deepseek (branch feat/deepseek-roteiro, 531 MB, pode ter trabalho), os vídeos dos testes que estão no Grimório, a arte CC0 e o Godot.",
+  "criado": "2026-09-29T00:37:21.177922",
+  "depende_de": [],
+  "historico": [],
+  "id": "limpeza-do-disco",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "seguro",
+      "pede_comentario": false,
+      "rotulo": "Só o seguro (~1,2 GB)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "caches",
+      "pede_comentario": false,
+      "rotulo": "Seguro + caches dos navegadores (~2,9 GB, ~1,7 no C:)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "tudo",
+      "pede_comentario": false,
+      "rotulo": "Seguro + caches + blobs do TikTok com teste de login (~9 GB, ~8 no C:)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "nada",
+      "pede_comentario": false,
+      "rotulo": "Não limpar agora"
+    }
+  ],
+  "pergunta": "O C: tem só 9 GB livres. O que eu limpo? Nada disso é código nem vídeo publicado.",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Limpeza do disco (C: com 9 GB livres)",
+  "vigente": null
+}
