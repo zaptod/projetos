@@ -14,6 +14,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ✅ **Força total ligada pela Mesa: por quanto tempo?** — Até eu desligar (28/09/2026) `forca-total-pela-mesa`
 - ✅ **Teto também no limite semanal?** — Outro (comente) (28/09/2026) · “Controlo isso com a mesa” `teto-da-semana`
 - ⏳ **Limpeza do disco (C: com 9 GB livres)** — O C: tem só 9 GB livres. O que eu limpo? Nada disso é código nem vídeo publicado. `limpeza-do-disco`
+- ⏳ **E: com 17 GB livres — o cache do Google Drive (186 GB)** — E:\.tmp.driveupload tem 186 GB: são cópias temporárias que o Google Drive para computador faz para subir arquivos (182 957 pedaços, de fev a 27/09). Os originais continuam nas suas pastas. O Drive não está rodando agora. O que faço? `limpeza-do-disco-e`
 
 **Jogo zombie**
 - ✅ **Formato do 1º vídeo** — Duelo (27/09/2026) `formato-do-primeiro-video`

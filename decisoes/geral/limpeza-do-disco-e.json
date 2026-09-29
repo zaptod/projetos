@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Outros pesos no E: que não são das sessões: Lixeira do E: ($RECYCLE.BIN) 15,8 GB; downloads 24,6 GB; pagefile.sys 9,5 GB (memória virtual do Windows — não mexer). Os temporários das sessões no E: (~0,4 GB) estão no nó limpeza-do-disco.",
+  "criado": "2026-09-29T00:51:23.177380",
+  "depende_de": [],
+  "historico": [],
+  "id": "limpeza-do-disco-e",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "abrir-drive",
+      "pede_comentario": false,
+      "rotulo": "Abrir o Google Drive e deixar ele terminar e limpar sozinho (recomendado primeiro)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "apagar",
+      "pede_comentario": false,
+      "rotulo": "Apagar o cache com o Drive fechado (o Drive sobe de novo o que faltar a partir dos originais)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "apagar-e-lixeira",
+      "pede_comentario": false,
+      "rotulo": "Apagar o cache e esvaziar a Lixeira do E: (~200 GB)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "nada",
+      "pede_comentario": false,
+      "rotulo": "Não mexer"
+    }
+  ],
+  "pergunta": "E:\\.tmp.driveupload tem 186 GB: são cópias temporárias que o Google Drive para computador faz para subir arquivos (182 957 pedaços, de fev a 27/09). Os originais continuam nas suas pastas. O Drive não está rodando agora. O que faço?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "E: com 17 GB livres — o cache do Google Drive (186 GB)",
+  "vigente": null
+}
