@@ -222,14 +222,17 @@ diário.
   `titulos.chave`; a troca é `recuperar.mudar_visibilidade` (o mesmo cuidado
   do `tornar_publico` com o `status`, e releitura). Conferido pela API: os 5
   `private`, os 5 gêmeos `public` — e os gêmeos são de **27/08** (o de
-  `UsDYI-pRqZ8`, 13/09), anteriores às linhas. O ledger **não** foi
-  reescrito: as linhas 84, 88, 90 e 98 (`generation_00058/00060`, build e
-  estreia) seguem `publicado` com o id que agora é privado — a fila não
-  republica, mas a conferência vai acusá-las. A cura certa é
-  `privado_de_proposito` para esses 4 `video_id`; só que `curar_ledger.py
-  --gravar` aplicaria junto as outras 244 curas pendentes (233 de formato, 5
-  `id_repetido`, 3 `link_de_frase`, 3 `rascunho_sem_gemeo`), e isso não foi
-  decidido. `metricas.enviados` (reconciliação de ids) ainda lê só a `UU`.
+  `UsDYI-pRqZ8`, 13/09), anteriores às linhas. No ledger, as 4 linhas de
+  `generation_00058/00060` (build e estreia) ganharam `estado:
+  privado_de_proposito` (`publicado` segue verdadeiro) em 28/09, 23:59: sem
+  isso, a próxima cura as chamaria de `rascunho_sem_gemeo` (gêmeo anterior à
+  linha não conta) e a fila as republicaria — os gêmeos de 27/08 não estão
+  no ledger, a guarda de título não os vê. Gravado com o filtro novo
+  `curar_ledger.py --gravar --so-tipo privado_de_proposito
+  --privada-de-proposito <video_id>…`, porque `--gravar` sozinho aplicaria
+  junto as outras 244 curas pendentes (233 de formato, 5 `id_repetido`, 3
+  `link_de_frase`, 3 `rascunho_sem_gemeo`), não decididas. Cópia:
+  `publicados.jsonl.antes-cura-20260928_235920`; diff de 4 linhas.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
