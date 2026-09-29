@@ -446,3 +446,37 @@ class ARegraDaCasa(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AListaCurtaNaPagina(unittest.TestCase):
+    """28/09/2026: a conferencia de builds via 125 dos 151 publicos do canal.
+    Lista curta para o veredito do ledger, e a pagina tem de dizer isso."""
+
+    def _curta(self, declarados=151):
+        return dict(_limpo(), veredito="incompleta",
+                    lista={"videos": 170, "publicos": 149,
+                           "declarados": declarados, "completa": False,
+                           "motivo": "curta"})
+
+    def test_lista_curta_acende_com_os_numeros(self):
+        ficha = _retrato(conferencias={"builds": self._curta(),
+                                       "historias": _limpo()})
+        (alerta,) = [a for a in ficha["alertas"] if "builds" in a]
+        self.assertIn("149 públicos e o canal declara 151", alerta)
+        self.assertEqual("atencao", ficha["veredito"])
+        self.assertEqual("incompleta",
+                         ficha["conferencia"]["builds"]["estado"])
+
+    def test_canal_que_nao_disse_quantos(self):
+        ficha = _retrato(conferencias={"builds": self._curta(-1),
+                                       "historias": _limpo()})
+        (alerta,) = [a for a in ficha["alertas"] if "builds" in a]
+        self.assertIn("não disse quantos", alerta)
+
+    def test_lista_inteira_nao_acende(self):
+        inteira = dict(_limpo(), lista={"videos": 3, "publicos": 3,
+                                        "declarados": 3, "completa": True,
+                                        "motivo": ""})
+        ficha = _retrato(conferencias={"builds": inteira,
+                                       "historias": _limpo()})
+        self.assertEqual([], ficha["alertas"])

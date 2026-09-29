@@ -17,7 +17,7 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 <!-- decisoes:fim -->
 
 Documento de passagem. A fotografia do §2 é de 27/09/2026; o que foi medido
-de novo na madrugada de 28/09 está com a data. Onde um número da fotografia
+de novo em 28/09 (madrugada e noite) está com a data e a hora. Onde um número da fotografia
 não reproduziu, está dito. O que eu não medi está marcado como **não medi**,
 nunca preenchido por suposição.
 
@@ -217,6 +217,69 @@ rascunho **da linha** (`pedaco: true`) em vez de "privado fora do ledger". A
 grade continua pagando um horário por linha. Ainda aparece como `duplicados`
 (o `titulos.chave` tira o corte), o que não suja o veredito.
 
+### A lista do canal: `UU` + `UUSH`, e o número que o canal declara (28/09, noite)
+
+A playlist de envios (`UU`) **não traz todos os Shorts**. `metricas.enviados`
+— que alimenta a conferência, a reconciliação e o `curar_ledger` — lia só
+ela. Medido com o código antigo e o novo, só leitura, 28/09:
+
+| canal | hora | leitura | vídeos | públicos | canal declara | chamadas HTTP |
+| --- | --- | --- | --- | --- | --- | --- |
+| builds | 21:55 | só `UU` (antiga) | 178 linhas, **143 ids** | **125** | 151 | 9 |
+| builds | 22:13 | só `UU` (antiga) | 178 linhas, 143 ids | **120** | 146 | 9 |
+| builds | 22:12 | `UU`+`UUSH` (nova) | **170** | **147** | 146 | 23 |
+| histórias | 22:13 | só `UU` (antiga) | 196 | 187 | 187 | 9 |
+| histórias | 22:12 | `UU`+`UUSH` (nova) | 196 | 187 | 187 | 25 |
+
+(O declarado caiu de 151 para 146 entre 21:55 e 22:12 — a volta a privado
+das cinco duplicatas, pela publicação.) Em histórias a `UU` vem completa; em
+builds a leitura antiga ficava **cega para 26 públicos** e ainda repetia 35
+linhas. As chamadas: `channels` 1, `playlistItems` 14–16 (duas listas, e
+`_todos_os_ids` passa de novo até a lista parar de mexer — no mínimo duas
+passadas), `videos` 8 (4 de `enviados`, 4 de `estatisticas`). Uma noite de
+quatro rodadas nos dois canais ≈ **200 unidades** das 10.000 do dia.
+
+O que mudou:
+
+- `enviados` lê a união pela **mesma** função da recuperação
+  (`recuperar._ids_do_canal`, de `6fa9ad6`) — não é cópia — e devolve
+  `ListaDoCanal`, que leva `declarados` (`statistics.videoCount`, na mesma
+  chamada do `channels`). Sem teto: o de 200 ia cortar histórias (196).
+  Traz `privacidade`. `publicado_em` passou a ser o do vídeo; o do item da
+  playlist era igual nos 200 medidos.
+- `metricas.conferir_lista(lista)` → `{videos, publicos, declarados,
+  completa, motivo}`. Público **distinto** contra o declarado; `None` só
+  para lista que não veio do canal (dublês). Canal que não diz o número
+  (`-1`) ou credencial sem canal: **nunca** completa.
+- Conferência com lista curta: veredito **`incompleta`** — nem `limpo`, nem
+  `sujo` por fantasma (ausência não prova nada com vídeo faltando). O que foi
+  **achado** (rascunho, privado fora do ledger) continua sujando. A grade
+  continua contada: vídeo faltando só a faz dar menos. A ficha leva `lista`;
+  alarme próprio no diário **uma vez por noite** (`avisos.noite.lista`);
+  panorama acusa "sem veredito do ledger"; a linha de comando sai com 1.
+- Reconciliação com lista curta **acusa no log e segue**: casar só dá id a
+  vídeo achado, com hora e dono conferidos; parar derrubaria a coleta.
+
+**O que ainda não fecha:**
+
+- às **21:58** a união deu **149 públicos contra 151** — teria acendido. Um
+  público, `V61uLqU_PfI` (31/08), não está em **nenhuma** das duas listas
+  (achado cruzando com os ids do ledger). O número declarado é piso, não
+  prova: lista com público a mais e outro faltando passa.
+- **privado que falta é invisível**: `videoCount` só conta público. Oito
+  privados do ledger de builds (12 a 14/09, entre eles `ReZ81HQB1pU` e
+  `YS7PiOSlmBc`) não estão em nenhuma lista, e dois ids do ledger
+  (`FZsl4NDq6k4`, `p-hNfT12nX8`) o `videos` nem devolve. Para eles a
+  conferência continua cega.
+- as páginas da `playlistItems` passam por `recuperar._get` e **não entram em
+  `metricas.CHAMADAS`**: na marca da coleta, a reconciliação conta só
+  `channels` + `videos`. O número acima foi medido por fora (contando o
+  `requests.get`). Contar ali é uma linha em `recuperar.py`, que é da
+  publicação.
+
+Refazer (só leitura, sem gravar ficha):
+`python -c "from builds.publicar import conferencia as c, metricas as m; l=c.buscar_no_canal('builds'); print(m.conferir_lista(l))"`.
+
 **`rodadas`**: as horas em que a ficha do dia foi gravada. Sem isso, o botão
 do painel às 14:00 regravava a ficha e apagava o rastro de que a noite não
 rodou.
@@ -279,7 +342,9 @@ noite fechou; `atualizar_uma_vez_por_dia` só devolve `True` (e o log só diz
 tem uma segunda tentativa depois de 5 s — inclusive no refresh do token, que
 derrubou a coleta em 17 e 19/09; resposta ruim do Google não é repetida. Custo esperado de uma parte
 do YouTube: 1 `channels` + até 4 páginas de `playlistItems` + 1 `videos` a
-cada 50 ids na Data API, e 2 consultas por vídeo na Analytics. **Medido**
+cada 50 ids na Data API, e 2 consultas por vídeo na Analytics. Desde a noite
+de 28/09 a reconciliação lê `UU`+`UUSH` (14–16 páginas, que **não** entram na
+marca — ver "A lista do canal" acima) e 1 `videos` a cada 50. **Medido**
 (builds, 08:13 de 28/09): **8 `data`, 226 `analytics`, 2 `token`, 405 s**
 para 126 linhas do ledger / 121 vídeos. Histórias com o contador novo:
 **não medi** (a próxima noite grava).
@@ -398,10 +463,11 @@ a versão nova repete na rodada seguinte.
   `estoque_por_formato` não aplica pendências nem título repetido: diz
   `build: 7 dias` quando o real é 0. `estoque()` (que passa pelo mesmo funil
   de `proximo_build`) diz **builds 0 dias, abaixo do piso** — acredite neste.
-- **Leitura do canal que perdia vídeo entre páginas.** `enviados()` sai da
-  playlist de uploads (não do `search`, que é eventual) e pagina até o teto;
-  o padrão é 200 e os canais já têm 166 e 185 uploads. Teto baixo = "vídeo
-  sumido" que na verdade é página não lida.
+- **Leitura do canal que perdia vídeo entre páginas — e entre listas.**
+  `enviados()` sai das playlists (não do `search`, que é eventual). Até
+  28/09 lia só a de envios, com teto de 200: em builds, 26 públicos de fora;
+  em histórias (196) o teto ia cortar em dias. Agora é `UU` + `UUSH` sem
+  teto, e a lista se confere contra o `videoCount` do canal (§3).
 - **Sufixo "(1 de 2)" que não casa.** O ledger guarda "(Parte 4)" e o canal
   guarda "(Parte 4) (1 de 2)": `titulos.chave` tira o corte e mantém a parte.
   Sem isso, cinco vídeos no ar foram reportados como "fantasmas". Quem

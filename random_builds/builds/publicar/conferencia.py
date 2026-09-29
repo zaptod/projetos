@@ -399,6 +399,21 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     # coerente (nao afirma nada) e grade furada. Misturar as duas faria toda
     # ficha de dia parcial nascer suja e apagaria o significado de `sujo`.
     sujo = bool(fantasmas or rascunhos or orfaos_privados)
+
+    # A LISTA DO CANAL VEIO INTEIRA? Ate 28/09/2026 a lista era so a playlist
+    # de envios (`UU`), e ela nao traz todos os Shorts: as 21:55 daquele dia
+    # a conferencia de builds via 125 publicos e o canal declarava 151. Com
+    # video faltando, "o ledger afirma e o canal nao tem" (fantasma) nao
+    # prova nada — entao o veredito do ledger PARA: nem limpo, nem sujo por
+    # ausencia. O que foi ACHADO no canal (rascunho, privado fora do ledger)
+    # continua sujando: video que faltou na lista nao desfaz video que veio.
+    # A grade continua sendo contada: video faltando so a faz dar MENOS
+    # horarios cumpridos, nunca "cumprida" por engano.
+    lista = metricas.conferir_lista(no_canal)
+    incompleta = bool(lista) and not lista["completa"]
+    if incompleta:
+        sujo = bool(rascunhos or orfaos_privados)
+    veredito = "sujo" if sujo else ("incompleta" if incompleta else "limpo")
     return {
         "canal": canal, "plataforma": plataforma,
         "dia": hoje.isoformat(), "janela_dias": int(dias),
@@ -422,7 +437,8 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
         "so_sd": so_sd, "duplicados": duplicados,
         "mesmo_video": mesmo_video,
         "taxa": round(len(casados) / len(linhas), 3) if linhas else 1.0,
-        "veredito": "sujo" if sujo else "limpo",
+        "lista": lista,
+        "veredito": veredito,
         "quando": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -444,7 +460,10 @@ def buscar_no_canal(canal: str = "builds",
     ids = [v.get("youtube_id") or v.get("id") for v in enviados]
     ids = [i for i in ids if i]
     detalhes = metricas.estatisticas(ids, token) if ids else {}
-    saida = []
+    # `declarados` VAI JUNTO: e com ele que `conferir` sabe se a lista veio
+    # inteira. Uma lista nova sem ele faria toda lista parecer completa.
+    saida = metricas.ListaDoCanal()
+    saida.declarados = getattr(enviados, "declarados", None)
     for v in enviados:
         vid = v.get("youtube_id") or v.get("id")
         saida.append({**(detalhes.get(vid) or {}),
@@ -641,7 +660,20 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
 
 def _alarmes_da_conferencia(canal: str, ficha: dict, avisos: dict,
                             atividade) -> None:
-    """Ledger sujo (toda rodada) e grade furada (uma vez por dia de grade)."""
+    """Lista curta (uma vez por noite), ledger sujo (toda rodada) e grade
+    furada (uma vez por dia de grade)."""
+    lista = ficha.get("lista") or {}
+    if lista and not lista.get("completa") and not avisos["noite"].get("lista"):
+        # A LISTA CURTA E UM ALARME PROPRIO, e nao um "limpo" calado: a
+        # conferencia que nao ve o canal inteiro nao pode dizer que o ledger
+        # bate. Uma vez por noite — as quatro rodadas veem a mesma lista.
+        atividade.registrar(
+            "conferencia", atividade.ERRO,
+            f"conferencia {canal}/{ficha.get('plataforma')}: lista do canal "
+            f"incompleta — {lista.get('motivo')}. Sem veredito do ledger "
+            f"(fantasma nao prova nada com video faltando).", canal=canal)
+        avisos["noite"]["lista"] = (f"{lista.get('publicos')}/"
+                                    f"{lista.get('declarados')}")
     if ficha["veredito"] == "sujo":
         # FABRICA PROPRIA, e nao "publicacao". O alarme continua indo ao
         # celular (o bot le todo erro do diario), mas o apurador ignora esta
@@ -711,7 +743,12 @@ def main(argv=None) -> int:
         if ficha.get("erro"):
             print(f"[{canal}] NAO DEU PARA CONFERIR: {ficha['erro']}")
             continue
-        sujo = sujo or ficha.get("veredito") == "sujo"
+        # LISTA CURTA NAO SAI COM CODIGO 0: quem chama pela saida do
+        # processo leria "tudo certo" numa conferencia que nao viu o canal.
+        sujo = sujo or ficha.get("veredito") in ("sujo", "incompleta")
+        lista = ficha.get("lista") or {}
+        if lista and not lista.get("completa"):
+            print(f"[{canal}] LISTA DO CANAL INCOMPLETA: {lista.get('motivo')}")
         print(f"[{canal}] {len(ficha.get('rascunhos_aceitos') or [])} "
               f"rascunho(s) ja aceito(s), {len(ficha.get('orfaos') or [])} "
               f"orfao(s) de {ficha.get('no_canal_na_janela', 0)} video(s) "

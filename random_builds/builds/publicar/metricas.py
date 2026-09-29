@@ -389,46 +389,113 @@ def estatisticas(youtube_ids: list[str], token: str) -> dict:
     return saida
 
 
-def enviados(token: str, quantos: int = 200) -> list[dict]:
-    """Os uploads mais recentes do canal: `{youtube_id, titulo, publicado_em}`.
+class ListaDoCanal(list):
+    """Os videos do canal, levando junto quantos PUBLICOS o canal declara
+    (`statistics.videoCount`, lido na mesma chamada do `channels`).
 
-    Sai da playlist de uploads e nao do `search`, porque `search` e eventual:
+    `declarados`: `None` quando a lista nao veio do canal (os dubles dos
+    testes, que nao tem o que conferir); `-1` quando o canal nao disse — e
+    ai a lista nao pode ser dada por inteira.
+    """
+    declarados = None
+
+
+def enviados(token: str, quantos: int | None = None) -> list[dict]:
+    """Os videos do canal: `{youtube_id, titulo, publicado_em, privacidade}`.
+
+    Sai das playlists do canal e nao do `search`, porque `search` e eventual:
     video publicado ha minutos costuma nao aparecer nele, e e exatamente esse
     que precisamos casar.
+
+    A PLAYLIST DE ENVIOS NAO TRAZ TODOS OS SHORTS. Medido em 28/09/2026 as
+    21:55, canal de builds: `statistics.videoCount` 151 publicos; a leitura
+    antiga (so a `UU`) trazia 178 linhas, 143 ids distintos e 125 publicos.
+    A lista agora e a UNIAO de envios com Shorts, lida pela MESMA funcao da
+    recuperacao (`recuperar._ids_do_canal`: `UU` + `UUSH`, sem repetir,
+    passando de novo ate a playlist parar de mexer) — e nao uma copia dela,
+    que envelheceria separada. Depois, os videos por id (1 unidade a cada
+    50), que dao titulo, hora e privacidade. `publicado_em` e o do video; o
+    do item da playlist era igual nos 200 medidos.
+
+    Quem precisa saber se a lista veio inteira pergunta a `conferir_lista`:
+    a lista leva `declarados`. `quantos` corta a lista (e ela vai dar curta,
+    de proposito); o padrao e o canal inteiro — o teto antigo de 200 ia
+    cortar o canal de historias, que ja tem 195.
+
+    As paginas da playlist passam pelo `_get` da recuperacao e NAO entram em
+    `CHAMADAS`; so o `channels` e os `videos` daqui entram.
     """
+    from . import recuperar
     cabecalho = {"Authorization": f"Bearer {token}"}
     resposta = _get("data", API_CANAIS, timeout=30, headers=cabecalho,
-                    params={"part": "contentDetails", "mine": "true"})
+                    params={"part": "contentDetails,statistics",
+                            "mine": "true"})
     if not resposta.ok:
         raise RuntimeError(motivo_da_recusa(resposta))
+    saida = ListaDoCanal()
+    saida.declarados = -1
     itens = resposta.json().get("items") or []
     if not itens:
-        return []
+        return saida
     lista = (itens[0].get("contentDetails", {})
              .get("relatedPlaylists", {}).get("uploads"))
     if not lista:
-        return []
-    saida, pagina = [], None
-    while len(saida) < quantos:
-        params = {"part": "snippet", "playlistId": lista, "maxResults": 50}
-        if pagina:
-            params["pageToken"] = pagina
-        resposta = _get("data", API_UPLOADS, timeout=30, headers=cabecalho,
-                        params=params)
+        return saida
+    saida.declarados = recuperar._declarados(itens[0])
+    ids = recuperar._ids_do_canal(token, lista)
+    if quantos is not None:
+        ids = ids[:max(0, int(quantos))]
+    for i in range(0, len(ids), 50):
+        resposta = _get("data", API_VIDEOS, timeout=30, headers=cabecalho,
+                        params={"part": "snippet,status",
+                                "id": ",".join(ids[i:i + 50]),
+                                "maxResults": 50})
         if not resposta.ok:
             raise RuntimeError(motivo_da_recusa(resposta))
-        dados = resposta.json()
-        for item in dados.get("items", []):
+        for item in resposta.json().get("items", []):
             snip = item.get("snippet") or {}
-            vid = (snip.get("resourceId") or {}).get("videoId")
-            if vid:
-                saida.append({"youtube_id": vid,
-                              "titulo": snip.get("title") or "",
-                              "publicado_em": snip.get("publishedAt")})
-        pagina = dados.get("nextPageToken")
-        if not pagina:
-            break
+            saida.append({"youtube_id": item.get("id"),
+                          "titulo": snip.get("title") or "",
+                          "publicado_em": snip.get("publishedAt"),
+                          "privacidade": (item.get("status") or {})
+                          .get("privacyStatus")})
     return saida
+
+
+def conferir_lista(lista) -> dict | None:
+    """A lista do canal veio inteira? `None` quando nao ha como saber.
+
+    `{videos, publicos, declarados, completa, motivo}`. Conta PUBLICO
+    DISTINTO, porque `statistics.videoCount` conta publicos: privado nao
+    entra na conta nem do lado do canal. Por isso privado que falta nao tem
+    como ser visto aqui — medido em 28/09/2026, oito privados do ledger de
+    builds nao estavam em nenhuma das duas listas.
+
+    Caso zero: canal que declara 0 com lista vazia e lista INTEIRA; canal
+    que nao declarou (`-1`) nunca e.
+    """
+    declarados = getattr(lista, "declarados", None)
+    if declarados is None:
+        return None
+    ids, publicos = set(), set()
+    for v in lista or ():
+        vid = v.get("youtube_id") or v.get("id")
+        if not vid:
+            continue
+        ids.add(vid)
+        if v.get("privacidade") == "public":
+            publicos.add(vid)
+    if declarados < 0:
+        motivo = ("o canal nao disse quantos publicos tem: nao da para "
+                  "saber se a lista veio inteira")
+    elif len(publicos) < declarados:
+        motivo = (f"a lista do canal trouxe {len(publicos)} publicos e o "
+                  f"canal declara {declarados}")
+    else:
+        motivo = ""
+    return {"videos": len(ids), "publicos": len(publicos),
+            "declarados": int(declarados), "completa": not motivo,
+            "motivo": motivo}
 
 
 def _chave_de_titulo(texto: str) -> str:
@@ -556,6 +623,14 @@ def reconciliar(canal: str = "builds", log=print) -> int:
     # A rede vem ANTES da trava: segurar o ledger durante uma chamada a API
     # faria a postagem esperar por ela.
     videos = enviados(token)
+    # LISTA CURTA ACUSA, MAS NAO PARA ESTA. Casar e so dar id a linha cujo
+    # video foi achado, com hora e dono conferidos: com video faltando, a
+    # linha dele fica sem id (e o sinal de cobertura acusa), nunca com o id
+    # errado. Parar aqui derrubaria a coleta de metricas da noite inteira.
+    conferida = conferir_lista(videos)
+    if conferida and not conferida["completa"]:
+        log(f"[{canal}] ATENCAO: {conferida['motivo']} — a reconciliacao "
+            "pode deixar linha sem id.")
     from .. import travas
     with travas.trava(nome_da_trava(canal), esperar=30.0) as minha:
         if not minha:

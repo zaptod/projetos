@@ -276,6 +276,9 @@ def _resumo_conferencia(ficha: dict, hoje: date) -> dict:
         "horarios_cumpridos": ficha.get("horarios_cumpridos"),
         "slots_da_grade": ficha.get("slots_da_grade"),
         "horarios_em_falta": list(ficha.get("horarios_em_falta") or []),
+        # A LISTA DO CANAL (28/09/2026): `None` e ficha de antes, ou lista
+        # que nao veio do canal. Incompleta = o veredito do ledger parou.
+        "lista": ficha.get("lista"),
     }
 
 
@@ -372,6 +375,17 @@ def _alertas(ficha: dict) -> list:
                            f"{str(conf.get('erro'))[:80]}")
         elif estado == "nunca rodou":
             alertas.append(f"conferência de {canal} nunca rodou")
+        lista = conf.get("lista") or {}
+        if lista and not lista.get("completa"):
+            # LISTA CURTA NAO E "LIMPO". A conferencia que nao viu o canal
+            # inteiro nao da veredito do ledger, e isso tem de aparecer.
+            declarados = lista.get("declarados")
+            alertas.append(
+                f"conferência de {canal} sem veredito do ledger: "
+                + (f"a lista do canal trouxe {lista.get('publicos', '?')} "
+                   f"públicos e o canal declara {declarados}"
+                   if isinstance(declarados, int) and declarados >= 0 else
+                   "o canal não disse quantos vídeos públicos tem"))
         if conf.get("grade") == "em falta":
             # A GRADE FURADA APARECE AQUI TAMBEM, e nao so no diario: a
             # pagina dizia "✓" para o canal que cumpriu 5 de 10 horarios.
