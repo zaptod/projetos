@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "d6dac416",
+      "em": "2026-09-29T02:27:35",
+      "evento": "2026-09-29T02:26:46",
+      "linha": 52,
+      "nota": "na fila da publicação (fila pausada pelo Adrian)",
+      "opcao": "grade",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Já existe uma trava que impede o --so-youtube de cair nesse caso. Trocar mexe numa guarda de publicação, por isso é decisão sua.",
   "criado": "2026-09-29T01:16:06.376054",
   "depende_de": [],
