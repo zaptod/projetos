@@ -208,9 +208,20 @@ diário.
   declarados, 139 vídeos na `UU` (115 públicos); a `UUSH` (Shorts) tem 145;
   a união, 169. → `recuperar.videos_do_canal` lê `UU` + `UUSH`, e
   `recuperaveis` para (`ListaIncompleta`) se a lista tiver menos públicos do
-  que o canal declara. **As 5 duplicatas seguem no ar** — voltar a privado
-  é decisão dele. `metricas.enviados` (reconciliação de ids) ainda lê só a
-  `UU`.
+  que o canal declara. **Em 28/09, 21:58, as 5 voltaram a privado** (decisão
+  `duplicatas-publicas-builds`), por `recuperar.recolher_duplicata(id,
+  gemeo)`: só muda se, relido na hora, o gêmeo está público e tem a mesma
+  `titulos.chave`; a troca é `recuperar.mudar_visibilidade` (o mesmo cuidado
+  do `tornar_publico` com o `status`, e releitura). Conferido pela API: os 5
+  `private`, os 5 gêmeos `public` — e os gêmeos são de **27/08** (o de
+  `UsDYI-pRqZ8`, 13/09), anteriores às linhas. O ledger **não** foi
+  reescrito: as linhas 84, 88, 90 e 98 (`generation_00058/00060`, build e
+  estreia) seguem `publicado` com o id que agora é privado — a fila não
+  republica, mas a conferência vai acusá-las. A cura certa é
+  `privado_de_proposito` para esses 4 `video_id`; só que `curar_ledger.py
+  --gravar` aplicaria junto as outras 244 curas pendentes (233 de formato, 5
+  `id_repetido`, 3 `link_de_frase`, 3 `rascunho_sem_gemeo`), e isso não foi
+  decidido. `metricas.enviados` (reconciliação de ids) ainda lê só a `UU`.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
@@ -237,9 +248,14 @@ ids na linha) fechou em `10142b1` (28/09).
   publicado, e não existe "YouTube atrasado" para histórias. **A `h32 p05`
   saiu às 06:38 de 28/09 nos dois destinos** (`a5zqcwa-drY`): no YouTube a
   série tem p01–p03 e p05, sem a p04 (`_em_ordem_no_destino` só olha o
-  TikTok). Subir cada uma é
-  `python historias/main.py publicar <id> --youtube` (registra no ledger,
-  mas NÃO passa pelas guardas da grade nem grava `prova`). Decisão do Adrian.
+  TikTok). Decisão do Adrian (28/09): subir. O caminho é
+  `python ferramentas/postar.py --so-youtube <video_id>` (com `--ver`, só
+  confere): duplicata pelo ledger e pelo canal (público de mesma
+  `titulos.chave`), lista "a conferir", trava de render e
+  `vistoriar_parte` (áudio, prova de origem); grava a linha com `prova` e
+  `youtube_id`, e a parte retida que sai vai à lista "a conferir".
+  **Não** use `historias/main.py publicar <id> --youtube`: não passa por
+  guarda nenhuma e grava sem `prova`. As três são retidas (a IA reprovou).
 - **NÃO usar `postar.py --recuperar --so historias`** para isso. O `--ver`
   de 28/09 lista 7 na fila, e o primeiro que ele tornaria público é
   `p-hNfT12nX8` — um *build* que caiu no canal de histórias em 31/08 (o
@@ -269,8 +285,16 @@ ids na linha) fechou em `10142b1` (28/09).
 - **Duplicatas da `historia_00003` no canal**: 6 conteúdos no ar duas vezes (o
   vídeo inteiro *e* os dois pedaços). Medido em 17/09, **não reverificado hoje**.
   Nenhum código corrige isso — é limpeza no canal, decisão dele.
-- Histórias avisam "só 4 séries elegíveis, o dia precisa de 5": com teto 2 e dez
-  horários falta **variedade**, não partes. O conserto é na agenda (Histórias).
+- **Aviso de variedade** (consertado em 28/09): "só N série(s) elegível(is),
+  o dia precisa de 5" comparava com o dia inteiro a qualquer hora (164 no log,
+  quase todos falsos à noite) e nem era avaliado sem fonte cheia. Agora
+  `postar._avisar_variedade` compara a capacidade de hoje
+  (`agenda.series_elegiveis` com o teto, menos o que cada série já levou
+  hoje) com `_horarios_que_restam` (os não vencidos + o corrente se nada
+  saiu nele, por `grade.slot`). Medido às 22:06: 4 séries, capacidade 6,
+  restam 2 → sem aviso. Com zero séries e horário pela frente, avisa.
+  Builds não são contados (`series_elegiveis` devolve `None`). O freio da
+  criação continua na agenda (Histórias).
 
 ## 6. Como conferir, sem publicar nada
 

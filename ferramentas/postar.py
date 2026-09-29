@@ -859,6 +859,103 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     return ficha
 
 
+def _publico_no_canal(alvo, canal: str = "historias") -> str:
+    """O id de um video PUBLICO do canal com o mesmo titulo, ou "".
+
+    A pergunta ao CANAL, e nao ao ledger: a parte que so saiu no TikTok pode
+    ter subido ao YouTube por um caminho que nao gravou linha (o rascunho
+    gemeo de 15/09 e isso). `recuperar.videos_do_canal` le envios + Shorts;
+    o criterio de titulo e `titulos.chave`, que guarda o "(Parte N/M)".
+    """
+    from builds.publicar import recuperar, titulos
+    alvo_chave = titulos.chave(getattr(alvo, "titulo", ""))
+    for v in recuperar.videos_do_canal(canal):
+        if (v.get("privacidade") == "public"
+                and titulos.chave(v.get("titulo", "")) == alvo_chave):
+            return str(v.get("id") or "?")
+    return ""
+
+
+def subir_so_no_youtube(video_id: str, *, so_ver: bool = False) -> dict:
+    """Leva ao YouTube UMA parte de historia que so saiu no TikTok.
+
+    DECISAO DO ADRIAN (28/09/2026, `partes-so-no-tiktok`): as partes
+    `historia_00022:p03`, `00027:p01` e `00032:p04` estao no TikTok e nunca
+    vao ao YouTube sozinhas (a fila conta qualquer destino como publicado).
+    O caminho que existia, `historias/main.py publicar <id> --youtube`, nao
+    passa por guarda nenhuma e registra sem `prova` nem `youtube_id`. Aqui
+    passam as que fazem sentido para uma parte avulsa:
+
+      - duplicata: ja no YouTube pelo ledger (`serie.ja_publicado`), titulo
+        no ar pelo ledger (`titulo_repetido`) e titulo PUBLICO no canal
+        (`_publico_no_canal`);
+      - lista "a conferir" do YouTube (a unica guarda que falha fechada);
+      - historia sendo renderizada;
+      - a vistoria da parte (`qualidade.vistoriar_parte`): audio mudo,
+        imagem sem prova de origem, cena sem imagem, narracao cortada.
+
+    Ficam de fora, de proposito, as da GRADE: um-por-horario, teto por fonte,
+    ordem da serie (a decisao aceita que a ordem ja se perdeu em h27 e h32) e
+    o parecer da IA (a parte ja esta publica no TikTok). A linha do ledger e
+    a mesma da rodada, com `prova` e `youtube_id`, mais `por` dizendo de onde
+    veio.
+    """
+    from contos.publicar import catalogo, qualidade, serie
+    from contos.roteiro import roteiro as R
+    from builds import travas
+
+    def recusa(motivo: str) -> dict:
+        return {"canal": "historias", "feito": False, "alvo": video_id,
+                "motivo": motivo}
+
+    alvo = _video_por_id(video_id)
+    if alvo is None:
+        return recusa("a parte nao esta no catalogo")
+    ja = serie.ja_publicado(alvo.id, "youtube")
+    if ja:
+        return recusa(f"ja esta no YouTube pelo ledger ({ja.get('quando')})")
+    if titulo_repetido(alvo, "historias", "youtube"):
+        return recusa("o titulo ja esta no ar no YouTube (ledger)")
+    no_canal = _publico_no_canal(alvo, "historias")
+    if no_canal:
+        return recusa(f"o canal ja tem um video publico com este titulo "
+                      f"({no_canal})")
+    if not _sem_a_conferir([alvo], "historias"):
+        return recusa("esta na lista 'a conferir' do YouTube")
+    if travas.ocupada(f"historias__render__{alvo.fonte_id}"):
+        return recusa("a historia esta sendo renderizada")
+    laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte, alvo.caminho,
+                                      R.carregar(alvo.fonte_id))
+    if not laudo["ok"]:
+        return recusa("a vistoria reprovou: "
+                      + "; ".join(laudo["erros"])[:300])
+    ficha = {"canal": "historias", "feito": False, "alvo": alvo.id,
+             "titulo": alvo.titulo, "parte": alvo.parte,
+             "partes": alvo.partes, "avisos": laudo.get("avisos", [])}
+    retencao = _retencao(alvo)
+    if retencao:
+        ficha["retido"] = retencao
+    if so_ver:
+        ficha["motivo"] = "so vendo: passaria pelas guardas"
+        return ficha
+    visibilidade = _visibilidade_das_historias()
+    provas: list = []
+    url = catalogo.publicar_youtube(alvo, visibilidade, provas=provas)
+    serie.registrar(alvo, url, "youtube", None,
+                    {"por": "postar.py --so-youtube",
+                     "visibilidade": visibilidade, "prova": provas,
+                     "prova_ok": _prova_ok(provas),
+                     **_ids_da_parte(provas)})
+    ficha.update({"feito": bool(url), "url": url,
+                  "ids": [str((p or {}).get("youtube_id") or "")
+                          for p in provas]})
+    # A RETIDA QUE SAI FICA A CONFERIR, como na grade (valvula de 28/09):
+    # quem decidiu subir foi uma pessoa, mas quem confere o video tambem.
+    if retencao and ficha["feito"]:
+        _marcar_retido(alvo, retencao)
+    return ficha
+
+
 def _video_por_id(video_id: str):
     """O item do catalogo com aquele id. `None` se ele nao existe mais."""
     from contos.publicar import catalogo
@@ -1086,6 +1183,7 @@ def _sem_fonte_cheia(fila: list, canal: str) -> list:
     cheias = (_fontes_cheias_hoje(publicados, "tiktok")
               | _fontes_cheias_hoje(publicados, "youtube"))
     if not cheias:
+        _avisar_variedade(canal, fila, publicados)
         return fila
     livres = [v for v in fila if str(v.id).split(":")[0] not in cheias]
     barradas = len(fila) - len(livres)
@@ -1104,27 +1202,106 @@ def _sem_fonte_cheia(fila: list, canal: str) -> list:
     for vid in adiados:
         _linha(f"[postar] o pedido {vid} fica para amanha: a historia dele "
                f"ja saiu {TETO_POR_FONTE_NO_DIA}x hoje.")
-    # SERIES DISTINTAS, e nao partes: com teto de 2 por fonte, dez horarios
-    # exigem pelo menos cinco series diferentes. O freio da producao conta
-    # PARTES, entao ele ve estoque cheio enquanto o dia fica com horario
-    # vazio por falta de VARIEDADE. O conserto do freio e na agenda; aqui
-    # fica o aviso, que e o que torna a fome visivel.
-    import math
-    fontes = {str(v.id).split(":")[0] for v in livres}
-    try:
-        from builds import grade
-        precisa = math.ceil(len(grade.HORAS) / max(1, TETO_POR_FONTE_NO_DIA))
-    except Exception:                                          # noqa: BLE001
-        precisa = 5
-    if fontes and len(fontes) < precisa:
-        _linha(f"[postar] ATENCAO {canal}: so {len(fontes)} serie(s) "
-               f"elegivel(is) hoje, e o dia precisa de {precisa} para encher "
-               f"os horarios. Falta VARIEDADE, nao partes.")
+    _avisar_variedade(canal, livres, publicados)
     return livres
 
 
-def _fontes_cheias_hoje(publicados, plataforma: str = "tiktok") -> set:
-    """As fontes que ja bateram o teto do dia naquele destino.
+def _horarios_que_restam(publicados, agora=None,
+                         plataforma: str = "youtube") -> int:
+    """Quantos horarios da grade AINDA vao receber video hoje neste canal.
+
+    Os que ainda nao venceram, mais o horario corrente se nada saiu nele
+    ainda (a rodada que esta escolhendo agora e a dele). "Saiu nele" e
+    `grade.slot(quando)` da linha igual ao slot de agora, no mesmo dia, com
+    `metricas.publicado` — os criterios unicos, e nao a hora do relogio.
+    Antes do primeiro horario do dia (00:37), o dia inteiro esta pela frente.
+    """
+    from datetime import datetime
+    from builds.publicar import metricas
+    agora = agora or datetime.now()
+    horas = grade.horas_da_plataforma(plataforma)
+    vencidos = grade.vencidos(agora, plataforma)
+    restam = len(horas) - len(vencidos)
+    if not vencidos:
+        return restam
+    atual = vencidos[-1]
+    hoje = agora.strftime("%Y-%m-%d")
+    for linha in publicados or ():
+        quando = str(linha.get("quando") or "")
+        if not quando.startswith(hoje):
+            continue
+        if str(linha.get("plataforma") or "youtube").lower() != plataforma:
+            continue
+        if not metricas.publicado(linha):
+            continue
+        try:
+            if grade.slot(datetime.fromisoformat(quando)) == atual:
+                return restam
+        except ValueError:
+            continue
+    return restam + 1
+
+
+def _capacidade_de_hoje(fila: list, publicados, agora=None) -> dict | None:
+    """O que as series da fila ainda entregam HOJE. `None` = nao sei contar.
+
+    `agenda.series_elegiveis` responde "quantas partes seguidas cada serie
+    entrega com o teto do dia" (ordem das partes; a parte que falta segura
+    as seguintes). Aqui cada serie e limitada tambem pelo que ela JA levou
+    hoje: a que saiu uma vez so entrega mais uma. A contagem de hoje e a de
+    `_fontes_cheias_hoje` (`_saidas_hoje`), pelo destino mais cheio.
+    Builds (`generation_*`) dao `None`: `series_elegiveis` so conta historia.
+    """
+    try:
+        from contos.pipeline import agenda
+    except Exception:                                          # noqa: BLE001
+        return None
+    conta = agenda.series_elegiveis(fila, publicados, TETO_POR_FONTE_NO_DIA)
+    if conta is None:
+        return None
+    ja = [_saidas_hoje(publicados, p, agora) for p in grade.PLATAFORMAS]
+    capacidade, series = 0, 0
+    for fonte, dela in conta["por_serie"].items():
+        usadas = max(c.get(fonte, 0) for c in ja)
+        entrega = max(0, min(dela["entrega"], TETO_POR_FONTE_NO_DIA - usadas))
+        capacidade += entrega
+        series += 1 if entrega else 0
+    return {"capacidade": capacidade, "series": series}
+
+
+def _avisar_variedade(canal: str, fila: list, publicados, agora=None) -> str:
+    """O aviso de falta de VARIEDADE, so quando ela falta para o RESTO do dia.
+
+    POR QUE (28/09/2026): o aviso comparava as series distintas da fila com
+    as cinco que o dia INTEIRO precisa (10 horarios / teto 2), a qualquer
+    hora. As 21:37, com tres horarios pela frente, "so 4 serie(s)
+    elegivel(is) hoje, e o dia precisa de 5" era falso — quatro series
+    cobrem tres horarios com folga — e o log tem 164 desses avisos. E sem
+    nenhuma fonte cheia ele nem era avaliado (a funcao voltava antes). Agora
+    compara a capacidade de hoje (`_capacidade_de_hoje`) com os horarios que
+    restam (`_horarios_que_restam`). Com ZERO series e horario pela frente,
+    avisa: e o caso em que a falta e total.
+
+    Devolve a frase (vazia quando nao avisa), para o teste.
+    """
+    try:
+        cap = _capacidade_de_hoje(fila, publicados, agora)
+        restam = _horarios_que_restam(publicados, agora)
+    except Exception:                                          # noqa: BLE001
+        return ""                      # aviso nunca derruba a fila
+    if cap is None or restam <= 0 or cap["capacidade"] >= restam:
+        return ""
+    frase = (f"[postar] ATENCAO {canal}: so {cap['series']} serie(s) "
+             f"elegivel(is) hoje; elas cobrem {cap['capacidade']} dos "
+             f"{restam} horario(s) que restam (teto de "
+             f"{TETO_POR_FONTE_NO_DIA} por serie). Falta VARIEDADE, nao "
+             f"partes.")
+    _linha(frase)
+    return frase
+
+
+def _saidas_hoje(publicados, plataforma: str = "tiktok", agora=None):
+    """`Counter` fonte -> quantas vezes saiu HOJE naquele destino.
 
     Conta pelo LEDGER e por DATA, e nao por rodada: a rodada normal e a
     recuperacao publicam por caminhos diferentes, e o teto so faz sentido se
@@ -1136,7 +1313,7 @@ def _fontes_cheias_hoje(publicados, plataforma: str = "tiktok") -> set:
     from collections import Counter
     from datetime import datetime
     from builds.publicar import metricas
-    hoje = datetime.now().strftime("%Y-%m-%d")
+    hoje = (agora or datetime.now()).strftime("%Y-%m-%d")
     contagem = Counter()
     for linha in publicados or ():
         if linha.get("plataforma") != plataforma:
@@ -1151,7 +1328,13 @@ def _fontes_cheias_hoje(publicados, plataforma: str = "tiktok") -> set:
         vid = str(linha.get("video_id") or "")
         if vid:
             contagem[vid.split(":")[0]] += 1
-    return {fonte for fonte, n in contagem.items()
+    return contagem
+
+
+def _fontes_cheias_hoje(publicados, plataforma: str = "tiktok") -> set:
+    """As fontes que ja bateram o teto do dia naquele destino (a contagem e
+    `_saidas_hoje`, a mesma que limita a capacidade no aviso de variedade)."""
+    return {fonte for fonte, n in _saidas_hoje(publicados, plataforma).items()
             if n >= TETO_POR_FONTE_NO_DIA}
 
 
@@ -2824,7 +3007,17 @@ def main(argv=None) -> int:
     parser.add_argument("--recuperar", action="store_true",
                         help="devolve ao ar UM video que ficou privado no "
                              "canal por defeito nosso (com --ver, lista)")
+    parser.add_argument("--so-youtube", metavar="VIDEO_ID",
+                        help="leva ao YouTube UMA parte de historia que so "
+                             "saiu no TikTok, com as guardas de duplicata e "
+                             "a vistoria (com --ver, so confere)")
     args = parser.parse_args(argv)
+
+    if args.so_youtube:
+        r = subir_so_no_youtube(args.so_youtube, so_ver=args.ver)
+        _linha(json.dumps(r, ensure_ascii=False, default=str))
+        return 0 if r["feito"] or (args.ver and "so vendo" in
+                                   str(r.get("motivo"))) else 1
 
     if args.recuperar:
         r = recuperar_no_youtube(so_ver=args.ver, canal=args.so or "builds")
