@@ -262,6 +262,15 @@ ids na linha) fechou em `10142b1` (28/09).
   upload inacabado de 27/09**: `YqbQUrY1nuE` era o rascunho de título
   cortado e virou a publicação inteira (um só vídeo da p04 no canal). O
   rascunho `fn1_Sy3RpMk` da h27 p01 segue privado (decisão: manter).
+  **Efeito colateral medido**: a linha da h27 p01 (22:12) caiu na hora do
+  relógio 22, e `publicou_neste_horario` (janela = hora do relógio, não
+  `grade.slot`) fez a rodada das 22:37 achar que o YouTube das histórias já
+  tinha saído; ela tentou levar a h27 p01 ao TikTok, onde já estava, e o
+  horário ficou sem vídeo novo. → `--so-youtube` recusa quando a linha
+  (gravada no fim, até `DURACAO_DE_UM_UPLOAD_MIN = 20`) cairia numa hora cuja
+  rodada ainda não passou (`_horario_que_a_linha_tomaria`). A guarda da
+  grade continua pela hora do relógio — trocar por `grade.slot` é conserto
+  pendente, e mexe numa guarda.
 - **NÃO usar `postar.py --recuperar --so historias`** para isso. O `--ver`
   de 28/09 lista 7 na fila, e o primeiro que ele tornaria público é
   `p-hNfT12nX8` — um *build* que caiu no canal de histórias em 31/08 (o

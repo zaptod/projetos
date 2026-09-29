@@ -71,6 +71,7 @@ class SoNoYoutubeTests(unittest.TestCase):
         self.p._retencao = lambda _a: self.retencao
         self.p._marcar_retido = lambda a, r: self.marcou.append((a.id, r))
         self.p._visibilidade_das_historias = lambda: "public"
+        self.p._horario_que_a_linha_tomaria = lambda *_a: ""
 
     def _publicar(self, alvo, visibilidade, provas=None, **_k):
         self.publicou.append((alvo.id, visibilidade))
@@ -133,10 +134,41 @@ class SoNoYoutubeTests(unittest.TestCase):
         self.p.subir_so_no_youtube(_V.id, so_ver=True)
         self.assertEqual([], self.marcou)
 
+    def test_hora_de_rodada_por_vir_recusa(self):
+        """22:04 de 28/09: a linha cai na hora 22 e a rodada das 22:37 le
+        'YouTube ja saiu nesta hora' — foi o que aconteceu com a h27 p01."""
+        self.p._horario_que_a_linha_tomaria = lambda *_a: "22:37"
+        r = self.p.subir_so_no_youtube(_V.id)
+        self.assertIn("22:37", r["motivo"])
+        self.assertEqual([], self.publicou)
+
     def test_fora_do_catalogo_recusa(self):
         r = self.p.subir_so_no_youtube("historia_00099:celular:p01")
         self.assertFalse(r["feito"])
         self.assertEqual([], self.publicou)
+
+
+class HorarioQueALinhaTomariaTests(unittest.TestCase):
+    """Conta de mao (grade 00:37 06:37 09:37 12:07 15:37 17:57 20:37 21:37
+    22:37 23:37; upload de ate 20 min):
+      22:04 -> toca a hora 22, rodada 22:37 ainda por vir  -> "22:37"
+      22:45 -> hora 22 ja rodou; 23:05 cai na hora 23      -> "23:37"
+      00:55 -> horas 0 (ja rodou) e 1 (sem rodada)         -> ""
+      18:10 -> hora 18 sem rodada; 18:30 ainda na 18       -> ""
+    """
+
+    def setUp(self):
+        self.p = _postar()
+
+    def _em(self, h, m):
+        from datetime import datetime
+        return self.p._horario_que_a_linha_tomaria(datetime(2026, 9, 28, h, m))
+
+    def test_casos_medidos(self):
+        self.assertEqual("22:37", self._em(22, 4))
+        self.assertEqual("23:37", self._em(22, 45))
+        self.assertEqual("", self._em(0, 55))
+        self.assertEqual("", self._em(18, 10))
 
 
 if __name__ == "__main__":

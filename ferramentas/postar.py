@@ -876,6 +876,34 @@ def _publico_no_canal(alvo, canal: str = "historias") -> str:
     return ""
 
 
+DURACAO_DE_UM_UPLOAD_MIN = 20
+
+
+def _horario_que_a_linha_tomaria(agora=None) -> str:
+    """O horario da grade que uma publicacao AVULSA feita agora esvaziaria.
+
+    `publicou_neste_horario` olha a HORA DO RELOGIO da linha. Medido em
+    28/09/2026: a `historia_00027:p01` subiu a mao as 22:12 e a rodada das
+    22:37 leu "YouTube ja saiu nesta hora", tentou levar ESSA parte ao TikTok
+    (onde ela ja estava) e o horario das historias ficou sem video novo. A
+    linha e gravada no FIM do upload, entao conta toda hora que o upload pode
+    tocar ate terminar; uma hora cuja rodada ainda nao passou fica tomada.
+    Devolve "HH:MM" dessa rodada, ou "" quando nao ha nenhuma.
+    """
+    from datetime import datetime, timedelta
+    agora = agora or datetime.now()
+    fim = agora + timedelta(minutes=DURACAO_DE_UM_UPLOAD_MIN)
+    hora = agora.replace(minute=0, second=0, microsecond=0)
+    while hora <= fim:
+        h = hora.hour
+        if h in grade.HORAS:
+            rodada = hora.replace(minute=grade.minuto(h))
+            if rodada > agora:
+                return grade.horario(h)
+        hora += timedelta(hours=1)
+    return ""
+
+
 def subir_so_no_youtube(video_id: str, *, so_ver: bool = False) -> dict:
     """Leva ao YouTube UMA parte de historia que so saiu no TikTok.
 
@@ -908,6 +936,10 @@ def subir_so_no_youtube(video_id: str, *, so_ver: bool = False) -> dict:
         return {"canal": "historias", "feito": False, "alvo": video_id,
                 "motivo": motivo}
 
+    tomaria = _horario_que_a_linha_tomaria()
+    if tomaria:
+        return recusa(f"a linha deste upload cairia na hora da rodada das "
+                      f"{tomaria}, e ela acharia que o YouTube ja saiu")
     alvo = _video_por_id(video_id)
     if alvo is None:
         return recusa("a parte nao esta no catalogo")
