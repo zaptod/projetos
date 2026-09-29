@@ -282,6 +282,15 @@ def test_estatico_so_os_arquivos_da_tabela(servidor):
     for rota in ("/app.js", "/app.css", "/sw.js", "/manifest.webmanifest"):
         resp, _ = _pedir(servidor, "GET", rota)
         assert resp.status == 200, rota
+    # o ícone (29/09) é binário e sai inteiro, com o tipo certo
+    for rota, tipo in (("/icones/icone-512.png", "image/png"),
+                       ("/apple-touch-icon.png", "image/png"),
+                       ("/favicon.ico", "image/x-icon")):
+        resp, dados = _pedir(servidor, "GET", rota)
+        assert resp.status == 200 and resp.getheader("Content-Type") == tipo, rota
+        assert len(dados) == int(resp.getheader("Content-Length")) > 100, rota
+    resp, _ = _pedir(servidor, "GET", "/icone.svg")
+    assert resp.status == 404
     for rota in ("/../api_http.py", "/app/index.html", "/api_http.py",
                  "/%2e%2e/config.py"):
         resp, _ = _pedir(servidor, "GET", rota)

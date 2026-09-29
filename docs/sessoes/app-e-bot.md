@@ -1114,3 +1114,33 @@ isso casca e código sobem no mesmo commit e o reinício vem logo atrás.
 
 **Fica para o Adrian decidir:** nada novo — reordenar continua sendo
 "comando pendente até o orquestrador aplicar", como o resto da Mesa.
+
+## 12. O ícone novo e o interruptor do Claude (29/09/2026)
+
+Pedido do Adrian (13:4x, `9c2ee626`): "troque o ícone do app por esse, e
+agora depois dessa interação usar o Claude está proibido até segunda ordem,
+crie algo no app para ligar e desligar isso."
+
+### 12.1 O ícone
+
+O cérebro de circuitos com as casinhas e o "ai". A fonte (2816×1536, 5,5 MB,
+com fundo desfocado) **não está no repositório**: fica em
+`%LOCALAPPDATA%\neural-fights\icone_fonte\fonte_icone_novo.png`, com o
+gerador `gerar_icones.py` ao lado. O recorte acha a borda escura do quadrado
+pelo **salto de brilho** (o fundo embaixo do ícone também é escuro, então um
+limiar fixo falhava): x 816–1999, y 181–1365, raio do canto ~256 px, máscara
+antisserrilhada em 4x e LANCZOS. Cor da borda: `#09256f`.
+
+Em `remoto/app/icones/`: `icone-192.png` e `icone-512.png` (`any`,
+transparentes fora do quadrado), `icone-maskable-512.png` (fundo cheio
+`#09256f`, ícone a 80%: 10% de margem de cada lado), `apple-touch-icon.png`
+180 (opaco: o iOS pinta transparência de preto), `favicon-32/16.png` e
+`favicon.ico` (16/32/48). O `icone.svg` saiu (a rota dá 404). O manifest tem
+`theme_color` e `background_color` = `#09256f` (a tela de abertura casa com o
+ícone); o `<meta name="theme-color">` do `index.html` segue `#17251a`, a cor
+da Vila com o app aberto. Casca `v18`.
+
+**No celular:** o Android só troca o ícone de um PWA já instalado quando
+atualiza o manifest (o Chrome confere de tempos em tempos, pode levar um
+dia) ou quando ele é reinstalado. Se o ícone velho ficar, remover da tela
+inicial e adicionar de novo.

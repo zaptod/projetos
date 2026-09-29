@@ -104,8 +104,48 @@ def test_a_zona_de_perigo_e_a_publicacao_continuam_ligadas():
 def test_o_cache_da_casca_mudou_de_versao():
     # sem trocar o nome do cache, o celular seguiria com a casca antiga
     sw = (APP / "sw.js").read_text(encoding="utf-8")
-    assert "painel-casca-v17" in sw        # v16 = prédio do Grok; v17 = fila em cards (29/09)
+    assert "painel-casca-v18" in sw        # v17 = fila em cards; v18 = ícone novo (29/09)
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw
+
+
+def test_o_icone_novo_esta_no_manifest_na_casca_e_no_servidor():
+    # 29/09: o cérebro de circuitos com as casinhas. Os PNGs são gerados de
+    # uma fonte FORA do repositório (5,5 MB); aqui conferimos o que o celular
+    # recebe: tamanhos certos, um maskable, o apple-touch e o favicon.
+    import json
+
+    from PIL import Image
+
+    from remoto import api_http
+    manifest = json.loads((APP / "manifest.webmanifest").read_text(encoding="utf-8"))
+    vistos = {}
+    for icone in manifest["icons"]:
+        arq = APP / icone["src"]
+        with Image.open(arq) as im:
+            lado = f"{im.size[0]}x{im.size[1]}"
+        assert lado == icone["sizes"], icone
+        assert icone["type"] == "image/png"
+        vistos.setdefault(icone["purpose"], []).append(lado)
+        assert "/" + icone["src"] in api_http.ESTATICOS, icone["src"]
+    assert sorted(vistos["any"]) == ["192x192", "512x512"]
+    assert vistos["maskable"] == ["512x512"]
+    # o maskable é opaco (o Android recorta o círculo/gota dele por cima)
+    with Image.open(APP / "icones" / "icone-maskable-512.png") as im:
+        assert im.mode == "RGB"
+    assert manifest["theme_color"] == manifest["background_color"] == "#09256f"
+    assert "icone.svg" not in HTML and "icone.svg" not in json.dumps(manifest)
+    assert 'rel="apple-touch-icon" href="icones/apple-touch-icon.png"' in HTML
+    assert 'href="icones/favicon-32.png"' in HTML
+    for nome, lado in (("apple-touch-icon.png", 180), ("favicon-32.png", 32),
+                       ("favicon-16.png", 16)):
+        with Image.open(APP / "icones" / nome) as im:
+            assert im.size == (lado, lado), nome
+    assert api_http.ESTATICOS["/favicon.ico"][0] == "icones/favicon.ico"
+    assert (APP / "icones" / "favicon.ico").exists()
+    # a fonte grande NÃO entra no repositório
+    assert not list((APP / "icones").glob("fonte*"))
+    sw = (APP / "sw.js").read_text(encoding="utf-8")
+    assert '"icones/icone-192.png"' in sw and "icone.svg" not in sw
 
 
 def test_a_vila_deitada_tem_arranjo_proprio():
