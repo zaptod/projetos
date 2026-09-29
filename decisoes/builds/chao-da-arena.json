@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-28T23:02:20",
+      "evento": "2026-09-28T18:29:38",
+      "linha": 3,
+      "nota": "fica como está",
+      "opcao": "pedra",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-09-28T15:08:28.227320",
   "depende_de": [
