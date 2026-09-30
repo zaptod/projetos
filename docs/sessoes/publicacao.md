@@ -22,7 +22,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Rodízio de imagens: quem vem primeiro** — Gemini primeiro (29/09/2026) `rodizio-de-imagens-quem-vem-primeiro`
 - ✅ **Digen no plano Free: o Real Motion 3.5 pede plano** — Tirar o Digen da roda e desligar o vídeo do payoff das builds (29/09/2026) `digen-plano-free`
 - ✅ **Fila: tarefas pesadas podem rodar de dia?** — Rodar de dia, 2 em paralelo (30/09/2026) · “Atualmente prefiro que rode de dia, eu estou trabalhando durante o dia, e de madrugada quando tem esse trabalho pesado o Pc faz muito barulho, por isso prefiro que esse trabalho pesado aconteça de dia, mas tome cuidado para não quebrar o processo, achei uma boa forma de encaixar isso, o ideal seria processar nos horários vagos tendo uma gordura boa pra semana, um planejamento como segunda fazemos as histórias e biuds da semana toda e dps ficamos apenas para mudanças” `fila-pesada-de-dia`
-- ⏳ **Lote: janela do trabalho pesado de dia** — Em que faixa do dia a máquina pode fazer trabalho pesado (fora da meia hora em volta de cada post)? `lote-janela-de-dia`
+- ✅ **Lote: janela do trabalho pesado de dia** — 07h às 22h (recomendado) (30/09/2026) `lote-janela-de-dia`
 - ⏳ **Lote: em quais dias produzir** — A segunda sozinha não cabe (histórias pedem 36–48 h em série). Como fazer? `lote-dias`
 - ⏳ **Lote: vídeo de até 6 dias** — Com lote, o vídeo de domingo foi feito na segunda, e mudança de molde só entra no lote seguinte. Aceita? `lote-frescor`
 - ⏳ **Lote: estoque zero de madrugada** — Se o estoque zerar de madrugada (22h–07h), o que a máquina faz? `lote-estoque-zero-de-madrugada`
