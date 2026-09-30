@@ -3,7 +3,15 @@
   "contexto": "Contraria a regra de 10/09 (gordura de um dia, totalmente nova). Plano completo em C:\\Users\\adrian\\.claude\\plans\\lote-semanal-de-dia.md. Medido 30/09: histórias precisam de 36–48 h/semana em série (12 histórias), builds ~20 h; o lote NÃO cabe só na segunda.",
   "criado": "2026-09-30T10:05:35.560263",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-30T10:11:29",
+      "opcao": "sim",
+      "origem": "app"
+    }
+  ],
   "id": "lote-frescor",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "Com lote, o vídeo de domingo foi feito na segunda, e mudança de molde só entra no lote seguinte. Aceita?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Lote: vídeo de até 6 dias",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-30T10:11:29",
+    "opcao": "sim"
+  }
 }

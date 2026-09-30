@@ -24,7 +24,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ✅ **Fila: tarefas pesadas podem rodar de dia?** — Rodar de dia, 2 em paralelo (30/09/2026) · “Atualmente prefiro que rode de dia, eu estou trabalhando durante o dia, e de madrugada quando tem esse trabalho pesado o Pc faz muito barulho, por isso prefiro que esse trabalho pesado aconteça de dia, mas tome cuidado para não quebrar o processo, achei uma boa forma de encaixar isso, o ideal seria processar nos horários vagos tendo uma gordura boa pra semana, um planejamento como segunda fazemos as histórias e biuds da semana toda e dps ficamos apenas para mudanças” `fila-pesada-de-dia`
 - ✅ **Lote: janela do trabalho pesado de dia** — 07h às 22h (recomendado) (30/09/2026) `lote-janela-de-dia`
 - ✅ **Lote: em quais dias produzir** — Histórias seg–qua, builds seg–ter (recomendado) (30/09/2026) `lote-dias`
-- ⏳ **Lote: vídeo de até 6 dias** — Com lote, o vídeo de domingo foi feito na segunda, e mudança de molde só entra no lote seguinte. Aceita? `lote-frescor`
+- ✅ **Lote: vídeo de até 6 dias** — Aceito; mudança crítica ganha re-render (recomendado) (30/09/2026) `lote-frescor`
 - ⏳ **Lote: estoque zero de madrugada** — Se o estoque zerar de madrugada (22h–07h), o que a máquina faz? `lote-estoque-zero-de-madrugada`
 - ⏳ **Lote: piso de reposição (qui–dom)** — Abaixo de quantos dias de estoque a máquina volta a criar fora do lote? `lote-piso-de-reposicao`
 - ⏳ **Lote: como trocar da madrugada para o dia** — Quando desligar as tarefas da madrugada? `lote-transicao`
