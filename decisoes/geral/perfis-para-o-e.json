@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "5bc42650",
+      "em": "2026-09-30T12:06:58",
+      "evento": "2026-09-30T12:06:29",
+      "linha": 82,
+      "nota": "precisa de janela sem navegador aberto e o carteiro parado",
+      "opcao": "mover",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "C: tem ~13 GB livres; cada perfil ocupa 0,3–1 GB. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:44.862754",
   "depende_de": [
