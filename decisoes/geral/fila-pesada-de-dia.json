@@ -3,7 +3,15 @@
   "contexto": "A regra de trabalho pesado 01h–06h existe para não disputar a máquina com a publicação (posts em :37). Ontem à noite o Claude estava proibido (23:26→09:05), então elas não rodaram. Capacidade atual: 2 agentes.",
   "criado": "2026-09-30T09:15:33.247883",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "Atualmente prefiro que rode de dia, eu estou trabalhando durante o dia, e de madrugada quando tem esse trabalho pesado o Pc faz muito barulho, por isso prefiro que esse trabalho pesado aconteça de dia, mas tome cuidado para não quebrar o processo, achei uma boa forma de encaixar isso, o ideal seria processar nos horários vagos tendo uma gordura boa pra semana, um planejamento como segunda fazemos as histórias e biuds da semana toda e dps ficamos apenas para mudanças",
+      "em": "2026-09-30T09:36:51",
+      "opcao": "de-dia-livre",
+      "origem": "app"
+    }
+  ],
   "id": "fila-pesada-de-dia",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Você apertou 'retomar a fila' 3 vezes, mas as 3 tarefas de builds que sobraram (re-render do som real dos duelos 17–23, 16G duelo pelo palco, 16F armas) são pesadas e a regra é rodá-las só de 01h a 06h. Rodo de dia?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Fila: tarefas pesadas podem rodar de dia?",
-  "vigente": null
+  "vigente": {
+    "comentario": "Atualmente prefiro que rode de dia, eu estou trabalhando durante o dia, e de madrugada quando tem esse trabalho pesado o Pc faz muito barulho, por isso prefiro que esse trabalho pesado aconteça de dia, mas tome cuidado para não quebrar o processo, achei uma boa forma de encaixar isso, o ideal seria processar nos horários vagos tendo uma gordura boa pra semana, um planejamento como segunda fazemos as histórias e biuds da semana toda e dps ficamos apenas para mudanças",
+    "em": "2026-09-30T09:36:51",
+    "opcao": "de-dia-livre"
+  }
 }

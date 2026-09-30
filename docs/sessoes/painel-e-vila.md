@@ -21,7 +21,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Fichas das IAs (fase 1): li?** — Li; seguir para a fase 2 (falar com cada uma pelo app) (29/09/2026) `ias-fichas-lidas`
 - ✅ **Rodízio de imagens: quem vem primeiro** — Gemini primeiro (29/09/2026) `rodizio-de-imagens-quem-vem-primeiro`
 - ✅ **Digen no plano Free: o Real Motion 3.5 pede plano** — Tirar o Digen da roda e desligar o vídeo do payoff das builds (29/09/2026) `digen-plano-free`
-- ⏳ **Fila: tarefas pesadas podem rodar de dia?** — Você apertou 'retomar a fila' 3 vezes, mas as 3 tarefas de builds que sobraram (re-render do som real dos duelos 17–23, 16G duelo pelo palco, 16F armas) são pesadas e a regra é rodá-las só de 01h a 06h. Rodo de dia? `fila-pesada-de-dia`
+- ✅ **Fila: tarefas pesadas podem rodar de dia?** — Rodar de dia, 2 em paralelo (30/09/2026) · “Atualmente prefiro que rode de dia, eu estou trabalhando durante o dia, e de madrugada quando tem esse trabalho pesado o Pc faz muito barulho, por isso prefiro que esse trabalho pesado aconteça de dia, mas tome cuidado para não quebrar o processo, achei uma boa forma de encaixar isso, o ideal seria processar nos horários vagos tendo uma gordura boa pra semana, um planejamento como segunda fazemos as histórias e biuds da semana toda e dps ficamos apenas para mudanças” `fila-pesada-de-dia`
 
 **Painel e Vila**
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
