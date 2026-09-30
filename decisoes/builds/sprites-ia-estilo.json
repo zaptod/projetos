@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-30T12:08:20",
+      "opcao": "mestra",
+      "origem": "app"
+    }
+  ],
   "id": "sprites-ia-estilo",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "Como garantir que todos os sprites gerados pareçam do mesmo jogo?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Sprites: como manter o mesmo estilo",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-30T12:08:20",
+    "opcao": "mestra"
+  }
 }
