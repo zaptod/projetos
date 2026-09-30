@@ -958,12 +958,20 @@ def esperar(intervalo: float = 5.0, *, como_json: bool = False,
     pendentes na fila e o cursor das decisoes nao anda. So sai quando o
     estado volta a `liberado`, com `{"tipo": "claude_liberado"}` na frente e
     tudo o que ficou guardado junto.
+
+    A PROIBICAO QUE CHEGA NO MEIO (30/09/2026, pedido dele: "quando eu
+    proibir e uma ordem para tudo que esta rodando parar em um checkpoint
+    seguro"): se o `esperar` comecou liberado e o estado vira proibido, ele
+    sai UMA vez com `{"tipo": "claude_proibido"}` para o orquestrador parar os
+    agentes. Sem isso a sessao nao sabia da ordem e os agentes seguiam. O
+    `esperar` seguinte, ja comecando proibido, segura como sempre.
     """
     desde = _agora_iso()
     pid = os.getpid()
     ultimo_vigia = ultimo_estado = float("-inf")
     motivo = "interrompido"
     segurou = False                 # esteve proibido enquanto esperava
+    comecou_liberado = claude_estado.ler()["liberado"]
     try:
         while True:
             agora = relogio()
@@ -974,6 +982,13 @@ def esperar(intervalo: float = 5.0, *, como_json: bool = False,
                 else:
                     vigia_pulsar(desde, pid, segurando=estado_claude["texto"])
                 ultimo_vigia = agora
+            if not estado_claude["liberado"] and comecou_liberado:
+                _imprimir_pendentes([{"tipo": "claude_proibido", "em": estado_claude["em"],
+                                      "por": estado_claude["por"],
+                                      "motivo": estado_claude["motivo"],
+                                      "texto": estado_claude["texto"]}], como_json)
+                motivo = "claude_proibido"
+                return 0
             if not estado_claude["liberado"]:
                 segurou = True
             else:

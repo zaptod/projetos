@@ -239,6 +239,30 @@ def test_esperar_proibido_no_meio_nao_acorda_com_comando(mundo, capsys):  # noqa
     assert [s["tipo"] for s in saida] == ["claude_liberado", "comando"]
 
 
+def test_esperar_acorda_na_hora_quando_ele_proibe_no_meio(mundo, capsys):  # noqa: F811
+    # 30/09: ele proibiu às 12:11 e os agentes seguiram até 12:57, porque o
+    # `esperar` que começou liberado só segurava calado. A proibição é ordem
+    # de parar: sai uma vez com claude_proibido, sem levar comando junto.
+    voltas = []
+
+    def dormir(_s):
+        voltas.append(1)
+        if len(voltas) == 2:
+            O.gravar_comando("pausar_fila", None, "celular")
+            _proibir()
+
+    relogio = iter(range(0, 10_000, 5))
+    assert O.esperar(0, como_json=True, relogio=lambda: next(relogio),
+                     dormir=dormir) == 0
+    assert len(voltas) == 2
+    saida = json.loads(capsys.readouterr().out)
+    assert [s["tipo"] for s in saida] == ["claude_proibido"]
+    assert "proibido" in saida[0]["texto"].lower()
+    assert len(O.pendentes()) == 1           # o comando fica para o liberar
+    vigia = json.loads(O.arquivo("vigia.json").read_text(encoding="utf-8"))
+    assert vigia["situacao"] == "saiu" and vigia["motivo"] == "claude_proibido"
+
+
 def test_sem_ouvinte_com_o_claude_proibido_e_guardado_e_nao_avisa(mundo):  # noqa: F811
     O.gravar_comando("pausar_fila", None, "celular")
     comandos, _ = O.comandos_com_situacao()
