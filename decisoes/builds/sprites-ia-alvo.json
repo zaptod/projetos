@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T12:03:11",
+      "evento": "2026-09-30T12:02:45",
+      "linha": 78,
+      "nota": "abriu estilo, juiz e formato (aresta corrigida); a F0 começa quando a árvore base fechar",
+      "opcao": "os-dois",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "A Oficina e o palco já leem folhas de efeito (a do piriri, feita no ChatGPT, provou o caminho); a de arma ainda não existe (16F). Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:41.417965",
   "depende_de": [],
