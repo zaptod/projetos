@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "8ad2e673",
+      "em": "2026-09-30T18:08:03",
+      "evento": "2026-09-30T18:07:43",
+      "linha": 89,
+      "nota": "só a corrente precisa de rework (animação + mecânica); o resto do palco está aprovado",
+      "opcao": "ajustar",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "16G: o mesmo duelo com a edição de hoje (HUD, textos, som, música) por cima do palco Godot (B), contra o visual atual (A). Nada foi trocado na produção e nada foi publicado.\n\nMedido (A x B): duelo_00031 com 729 x 729 quadros (24,4 s), 105/105 golpes no mesmo quadro, K.O. em 20,83 s nos dois. duelo_00030 com 489 x 489 quadros (16,4 s), 18/18 golpes, K.O. em 12,77 s nos dois. Som da luta a -17,1 LUFS (00031) e -16,9 LUFS (00030), 0% calado, nenhum quadro preto. No 00030 a imagem congela depois do K.O. (de 14,6 s até o fim) no A e no B: isso já vem do A. Hitstop (você decidiu ligar): deu 0 quadros nos dois, porque os 4 lutadores são de tier leve e o leve vale 0 s. A pausinha só aparece com lutador médio para cima.\n\nGemini (olhou só o B, não ouve som, pergunta \"o que está errado\"):\n- 00031: PIOR = a explosão do K.O. (00:20) cobre os lutadores e o golpe. Também: nome flutuante cortado na borda esquerda (00:01); nomes flutuantes um em cima do outro (00:11); texto de arma e classe minúsculo e escuro (00:00).\n- 00030: PIOR = rostos sobrepostos no Tyr no fim (00:11). Também: textos secundários escuros e sobrepostos (00:00); a bola da corrente parece solta do lutador (00:04); cabo e lâmina do machado parecem voar separados (00:09).\n\nVisto nos quadros: no 00030 os dois lutadores são azuis e o HUD é azul x vermelho (no A também). Os nomes do palco saem na cor p1/p2, não na cor do lutador. O nome do vencedor fica em cima da explosão. Os \"rostos sobrepostos\" do fim são os dois lutadores colados depois do K.O., com o nome \"Tyr\" escrito no rosto do de cima; no A eles também ficam colados, mas sem nome por cima. A arena não enche a tela: sobra uma faixa escura embaixo, igual no A.\n\nO som só você julga: no lado a lado, a 1ª passada toca o som do A e a 2ª o do B.",
   "criado": "2026-09-30T17:10:31.315398",
   "depende_de": [
