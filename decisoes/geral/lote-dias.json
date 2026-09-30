@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "e0bb2f77",
+      "em": "2026-09-30T10:12:54",
+      "evento": "2026-09-30T10:11:00",
+      "linha": 71,
+      "nota": "lote semanal: histórias e0bb2f77, builds 0753683a, publicação 0f36380b, app 890bfd33",
+      "opcao": "seg-qua",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Plano completo em C:\\Users\\adrian\\.claude\\plans\\lote-semanal-de-dia.md. Medido 30/09: histórias precisam de 36–48 h/semana em série (12 histórias), builds ~20 h; o lote NÃO cabe só na segunda.",
   "criado": "2026-09-30T10:05:35.159700",
   "depende_de": [],
