@@ -31,3 +31,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Contas extras de IA: quais** — 4 ChatGPT Free (30/09/2026) · “Quero achar uma forma de fazer com que essas contas sejam diferentes aos olhos da open aí, ou mudar o IP quando fazer a requisição, qualquer coisa assim mas a minha ideia é, tenho vários email Outlook, crio várias contas free, giro entre elas mudando o IP de requisição e consigo gerar imagens infinitas” `contas-ia-extras`
   - ✅ **Contas de IA: como alternar** — Por papel; transborda quando a cota estoura (recomendado) (30/09/2026) `contas-ia-rodizio`
   - ⏳ **Perfis de navegador: mudar para o E:?** — Mudar as pastas de perfil das IAs do C: para o E:? `perfis-para-o-e`
+- ⏳ **Imagens em volume: qual caminho dentro das regras** — Disfarçar contas ou trocar IP para driblar o limite da OpenAI eu não vou construir. Qual destes caminhos seguimos para ter imagem em volume? `contas-ia-caminho`

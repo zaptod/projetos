@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Fazer várias contas grátis parecerem pessoas diferentes (IP, impressão digital do navegador) para somar cota é exatamente o que os termos da OpenAI proíbem (burlar limites) e é o padrão que eles detectam — o risco é banir TODAS, inclusive a sua principal. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T12:06:09.074809",
+  "depende_de": [],
+  "historico": [],
+  "id": "contas-ia-caminho",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Gemini primeiro (sua decisão), PicassoIA sem teto, ChatGPT principal e Grok — cada uma no próprio limite; a esteira gera em lote e espera a cota renovar",
+      "id": "rodizio-entre-ias",
+      "pede_comentario": false,
+      "rotulo": "Rodízio entre as IAs que já temos (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Limite de imagens bem maior, sem risco nos termos; custo mensal",
+      "id": "plus",
+      "pede_comentario": false,
+      "rotulo": "Uma conta ChatGPT paga para a esteira"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "OpenAI/xAI/Google pela API oficial: sem navegador, sem cota de chat, paga por imagem",
+      "id": "api",
+      "pede_comentario": false,
+      "rotulo": "API de imagem paga por uso"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Uso normal de cada uma (ex.: uma para a esteira, outra para conversa), sem rotação para burlar limite",
+      "id": "contas-proprias",
+      "pede_comentario": false,
+      "rotulo": "Contas extras suas, cada uma com papel próprio, sem disfarce"
+    }
+  ],
+  "pergunta": "Disfarçar contas ou trocar IP para driblar o limite da OpenAI eu não vou construir. Qual destes caminhos seguimos para ter imagem em volume?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Imagens em volume: qual caminho dentro das regras",
+  "vigente": null
+}
