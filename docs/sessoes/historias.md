@@ -44,13 +44,13 @@ Esta parte **cria**: roteiro num LLM, uma imagem por cena no PicassoIA, narraç�
 um mp4 por parte, uma IA assiste, e o vídeo aprovado fica no estoque. **Não
 publica** — quem publica é `ferramentas/postar.py` (`publicacao.md`).
 
-Mapa (sob `E:\projetos\historias\`): `contos/pipeline/` tem `agenda.py` (1186 linhas, o
-cérebro: rodada automática, freios, escolha do tipo), `controller.py` (a pipeline),
+Mapa (sob `E:\projetos\historias\`): `contos/pipeline/` tem `agenda.py` (1764 linhas, o
+cérebro: plano do lote, rodada que emenda passos, freios, escolha do tipo), `controller.py` (a pipeline),
 `reparo.py`/`conserto_de_cena.py`, `conferir.py` e `tarefas.py` (tarefas
 `Historias_auto_HH` + `auto.cmd`, gerado e gitignorado); `contos/llm/` (`cliente.py`,
 `seletores.py`, `papeis.py`, `probe.py`); `contos/roteiro/` (`serie.py`, 1062 linhas:
 bíblia, partes, modo livre, tipos; `gerar.py`; `roteiro.py`, o parser); `contos/imagens/`
-(`worker.py`, `composicao.py`, `reescritor.py`); `contos/publicar/` (`catalogo.py`,
+(`worker.py`, `composicao.py`, `reescritor.py`, `cota.py` — teto diário do PicassoIA); `contos/publicar/` (`catalogo.py`,
 `qualidade.py`, `parecer.py`, `tipos.py`, `serie.py`); e `config/` (`roteiro.json`, 32 KB
 com moldes, tipos, ganchos e linguagem, mais `agenda.json`, `llm.json`, `imagens.json`,
 `render.json`, `publicacao.json`).
@@ -58,16 +58,16 @@ com moldes, tipos, ganchos e linguagem, mais `agenda.json`, `llm.json`, `imagens
 ## 1. Como nasce uma história
 
 O Agendador chama `main.py auto` (sem bandeira) nos horários de `config/agenda.json`
-(`1,2,3,4,5` e `07:02, 10:02, 12:32, 16:02, 18:22, 21:02, 22:02, 23:02, 00:02`). A
-rodada nunca levanta exceção: devolve dicionário, escreve em
+(desde 30/09: `07:02` a `21:02` de hora em hora, com `12:32` e `18:22` por causa dos
+posts das 12:07 e 17:57; e `22:02, 23:02, 00:02, 01:20…05:20` para o estoque zero e a
+transição). A rodada nunca levanta exceção: devolve dicionário, escreve em
 `outputs/_logs/auto_<data>.txt`, e o `main.py` decide o código de saída.
 
-1. **Trava** `historias__auto` com `esperar=0.0` — disparo que acha rodada em andamento
+1. **Plano antes da trava** (`agenda.planejar`, só lê): diz o modo da hora e se há o que
+   fazer. Disparo sem trabalho sai sem disputar nada. Ver §1a.
+2. **Trava** `historias__auto` com `esperar=0.0` — disparo que acha rodada em andamento
    sai na hora (esperar empurraria a fila para o disparo seguinte). A **pausa da Vila**
    (`identity/controle`) também segura a rodada.
-2. **Janela pesada 01h–06h**. Fora dela (`modo_dia`) a rodada só faz o que evita ficar
-   sem vídeo: conserta barrados e cria se o estoque estiver magro. Métrica e revisão do
-   estoque são só de madrugada.
 3. **Termina incompleta antes de criar** (`incompletas()`): parte sem texto é reescrita,
    imagem que falta é gerada, parte sem vídeo é renderizada.
 4. **Roteiro**, num chat só: bíblia (premissa, elenco, descrição física do protagonista
@@ -85,6 +85,49 @@ roteiro 3 min 36 s, imagens 26 min 23 s (~38 s/cena), render 16 min 44 s, **tota
 43 min 43 s, render 34 min 27 s (~5 min 45 s/parte), **total 1 h 22 min**. Parecer:
 ~1 min por parte. `minutos_por_historia: 150` é a estimativa conservadora que decide
 se outra história cabe antes de a janela fechar.
+
+## 1a. O lote semanal de dia (desde 30/09/2026)
+
+Decisões do Adrian no Grimório (`geral/fila-pesada-de-dia` e `geral/lote-*`), cada uma
+uma chave de `config/agenda.json` — nenhum número mora no código. Plano medido em
+`C:\Users\adrian\.claude\plans\lote-semanal-de-dia.md`.
+
+| modo (`agenda.modo_da_hora`) | quando | o que faz |
+|---|---|---|
+| `lote` | `dias_de_lote` [0,1,2] (seg–qua), dentro da `janela_pesada` 07h–22h, a partir de `lote_a_partir_de` (2026-10-05) | termina incompleta, conserta (`reparos_por_rodada`) e **emenda** histórias até `alvo_do_lote` |
+| `reposicao` | qui–dom na janela (e seg–qua antes do 1º lote) | conserta (`reparos_de_dia`), termina incompleta; **cria só abaixo de `piso_de_reposicao`** (20) |
+| `madrugada` | 01h–06h enquanto existir `madrugada_na_transicao` | o esquema antigo: uma história por disparo até o teto de `dias_de_gordura` |
+| `zero` | fora da janela, sem vídeo para o próximo horário (`estoque_zero`: nenhum aprovado, ou nenhuma série com a próxima parte aprovada) | **libera tudo** (`estoque_zero_libera_a_noite`): conserta e cria até haver vídeo |
+| `noite` | fora da janela, com vídeo | nada |
+
+- **Alvo do lote** = horários da grade de agora até a **próxima** segunda 07h
+  (`alvo_do_lote.cobrir_ate_o_dia/hora`) + o piso. Medido com a grade de 10: segunda 07:02
+  = 70 + 20 = **90**; terça 07:02 = 80; quarta 07:02 = 70; quarta 22:00 = 64. Como a
+  cobertura é até a mesma segunda nos três dias, **segunda perdida (PC desligado) é
+  compensada** por terça e quarta sem nada especial.
+- **A rodada emenda** (`_emendar`): depois de cada passo que criou/terminou uma história
+  **sem erro**, faz um plano novo e segue enquanto `criar`; passo que falhou, só consertou
+  ou bateu teto encerra a rodada (o próximo disparo tenta de novo). Teto
+  `passos_por_rodada` (12). O aviso do Telegram, o erro no diário e a duração saem **por
+  passo** (`_fechar_passo`).
+- **Folga da grade** (`folga_da_grade` {antes 15, depois 15}): `esperar_a_grade` roda
+  antes de cada passo, antes da história nova e antes de **cada render de parte**
+  (`_terminar(guarda=...)`) e dorme até a postagem passar. O que já está rodando termina.
+  Se a janela fechar (22h), o render que falta fica para o próximo disparo.
+- **Serviço do dia** (`_servico_do_dia`: métrica, tempos, conferência) roda no 1º passo
+  da janela, uma vez por dia (`outputs/_servico_do_dia.json`, chave de métrica
+  `dia-AAAA-MM-DD`). O **parecer do estoque** (`revisar_estoque`) roda a cada passo dentro
+  de qualquer janela pesada (a chave ainda se chama `revisar_estoque_a_noite`).
+- **Impedimentos** (não cria, avisa **uma vez por dia**, `_avisos_do_dia.json`): teto do
+  PicassoIA batido (`contos/imagens/cota.py`) ou disco (`disco_a_vigiar` C:) abaixo de
+  `disco_livre_minimo_gb` (5).
+- **Transição** (decisão `geral/lote-transicao`): o esquema de dia roda validado um dia
+  inteiro antes de a madrugada parar. **Para desligar a madrugada: apagar
+  `madrugada_na_transicao` do config.** As tarefas das 01h–05h ficam: são elas que
+  enxergam o estoque zero de madrugada.
+- **Conferir sem gerar**: `python main.py auto --listar` termina com a linha `agora: modo
+  … -> TRABALHA/sai`. Testes: `tests/test_lote_semanal_regressions.py` (relógio
+  congelado, `_trabalhar` dublado, OUTPUTS desviado).
 
 ## 2. Quem escreve e quem julga
 
@@ -199,9 +242,19 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   do reparo pergunta de novo num chat novo e,
   recusada duas vezes, vira falha do provedor em vez de "nenhum motivo tem conserto".
 - **Parede de planos do PicassoIA**: o diálogo de assinatura cobre a página e engole o
-  clique, mesmo em conta com plano. `worker.gerar()` fecha o navegador e **reabre o perfil
-  uma vez**; só se voltar morre como `NaoRodou` (a história fica pendente e a próxima
-  rodada tenta). Antes de alarmar "acabou o grátis", reabrir o perfil e tentar gerar.
+  clique, mesmo em conta com plano. `worker.gerar()` fecha o navegador e **reabre o
+  perfil** `reaberturas_na_parede` vezes (2 desde 30/09, `config/imagens.json`, com
+  `pausa_antes_de_reabrir_s` entre elas); só se voltar morre como `NaoRodou` (a história
+  fica pendente e a próxima rodada tenta). Antes de alarmar "acabou o grátis", reabrir o
+  perfil e tentar gerar.
+- **Teto diário do PicassoIA** (30/09, para o lote): `contos/imagens/cota.py` conta os
+  **envios** das histórias por dia em `outputs/_picasso_por_dia.json` (envio = imagem
+  gerada do lado do site, aproveitada ou não; medido 20–30/09: 90–191 prontas/dia e
+  envios 10–30 % acima). `teto_de_imagens_por_dia` (450; 0 = sem teto; decisão pendente
+  no Grimório `historias/teto-diario-picasso`) é conferido **antes de cada envio**: ao
+  bater, `worker.TetoDoDia` (subclasse de `NaoRodou`: o reparo adia sem gastar
+  tentativa) fecha o navegador depois de registrar a cena já provada, e a agenda para de
+  criar e avisa uma vez no dia. Prova de origem continua obrigatória.
 - **Colagem / díptico**: `composicao.e_colagem()` acha calhas atravessando a imagem, e
   colagem **se refaz com o mesmo prompt** (quem errou foi o desenho). Não pega colagem sem
   calha, e moldura não é colagem (conserta sem gerar de novo).
@@ -295,8 +348,10 @@ Em Python, sem efeito: `agenda.aprovados_no_estoque()`, `barrados_no_estoque()`,
 
 **O que NÃO fazer:** `python main.py auto` sem bandeira **é a rodada de verdade** (abre
 navegador, gasta PicassoIA, 1–4 h) — só com `--listar`/`--instalar`/`--remover`. Nada de
-`gerar`, `imagens`, `video`, `tudo`, `llm login`, `llm probe` numa sessão de leitura. Nada
-entre **01h e 06h** (a criação segura as contas) nem pesado entre **:25 e :55** (postagem).
+`gerar`, `imagens`, `video`, `tudo`, `llm login`, `llm probe` numa sessão de leitura. A
+criação segura as contas **das 07h às 22h** (e 01h–06h enquanto durar a transição, §1a):
+nada de navegador de LLM/PicassoIA à mão nessas horas, nem pesado entre **:25 e :55**
+(postagem), nem gravar código de produção ali (o `postar.py` importa a `agenda`).
 `pytest` avulso já escreveu no diário de produção: rode pelo `testar.py`, e nenhum teste
 chama `agenda.rodar()` sem dublê de `_trabalhar`. Não mexa em `ferramentas/postar.py`,
 `builds/grade.py` nem no ledger.

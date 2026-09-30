@@ -31,7 +31,7 @@ import json
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from builds.publicar.metricas import publicado as _publicado
@@ -46,11 +46,23 @@ TRAVA = "historias__auto"
 HORAS_VALIDAS = range(24)
 
 
-# A JANELA DO TRABALHO PESADO. Pedido dele em 13/09/2026: "fazer o trabalho
-# pesado de madrugada e deixar os ajustes e deliverys para o dia". Pesado e o
-# que abre navegador e segura a maquina por horas: roteiro, imagem, render,
-# parecer do Gemini, conserto, metrica do TikTok. De dia a maquina so publica
-# e avisa.
+# O RELOGIO E O SONO PASSAM POR AQUI, e nao por `datetime.now()`/`time.sleep`
+# espalhados: os testes do lote (30/09/2026) congelam o relogio numa segunda
+# 07:02 ou numa quinta 00:02 e trocam o sono por um que so avanca o relogio.
+def _relogio() -> datetime:
+    return datetime.now()
+
+
+def _dormir(segundos: float) -> None:
+    time.sleep(max(0.0, float(segundos)))
+
+
+# A JANELA DO TRABALHO PESADO. Era a madrugada (13/09/2026: "fazer o trabalho
+# pesado de madrugada e deixar os ajustes e deliverys para o dia"); desde
+# 30/09/2026 e o DIA, 07h-22h, porque de madrugada o PC faz barulho (Grimorio
+# `geral/fila-pesada-de-dia` e `geral/lote-janela-de-dia`). Pesado e o que
+# abre navegador e segura a maquina por horas: roteiro, imagem, render,
+# parecer do Gemini, conserto, metrica do TikTok. Ver `planejar`.
 #
 # Config sem `janela_pesada` roda a qualquer hora, como antes: e o que os
 # testes e quem roda na mao esperam.
@@ -84,10 +96,13 @@ def chave_da_noite(agora, janela: dict | None) -> str:
 
     23h do dia 12 e 3h do dia 13 sao a mesma noite, "2026-09-12". Pela data
     do calendario seriam duas, e o que e "uma vez por noite" rodaria duas.
-    """
-    from datetime import timedelta
 
-    if janela and int(agora.hour) < int(janela["fim"]) % 24:
+    Janela que NAO atravessa a meia-noite (a de dia, 07h-22h) e a data do
+    calendario: sem esta guarda, as 10h de 30/09 dariam "2026-09-29".
+    """
+    atravessa = (janela and int(janela["inicio"]) % 24
+                 > int(janela["fim"]) % 24)
+    if atravessa and int(agora.hour) < int(janela["fim"]) % 24:
         return (agora - timedelta(days=1)).strftime("%Y-%m-%d")
     return agora.strftime("%Y-%m-%d")
 
@@ -139,55 +154,348 @@ def falta_video(aprovados: int, agora, piso: int = 1) -> bool:
     return int(aprovados) < horarios_restantes(agora) + int(piso)
 
 
-def modo_dia(config: dict, agora) -> dict | None:
-    """O que a rodada faz fora da janela. `None` quando nao ha nada a fazer.
+# ------------------------------------------------------------------ o lote
+#
+# DECISOES DO ADRIAN, 30/09/2026 (Grimorio `geral/lote-*`), e cada uma vira
+# uma chave de `config/agenda.json`, nunca um numero no codigo:
+#
+#   janela_pesada        07h-22h: trabalho pesado so de dia (barulho a noite)
+#   dias_de_lote         seg-qua: as historias da semana saem em lote
+#   alvo_do_lote         o lote cobre ate segunda 07h + o piso de reposicao
+#   piso_de_reposicao    qui-dom so consertam; criam so abaixo de 20 (2 dias)
+#   estoque zero         de madrugada, sem video para o proximo horario,
+#                        LIBERA TUDO: o canal nao pode parar
+#   lote_a_partir_de     o 1o lote e seg 05/10; antes disso, dia de lote se
+#                        comporta como dia de reposicao
+#   madrugada_na_transicao  o esquema antigo (01h-06h) continua ate o de dia
+#                        rodar validado um dia inteiro; tirar a chave desliga
+#   folga_da_grade       passo novo nao comeca na meia hora em volta de cada
+#                        horario da grade (inclusive 12:07 e 17:57)
 
-    Conserta sempre que ha video barrado: esperar a madrugada deixava a fila
-    parada o dia inteiro. Metrica e revisao do estoque continuam so de
-    madrugada.
 
-    CRIA TAMBEM QUANDO O ESTOQUE ESTA MAGRO, e nao so quando ja falta video
-    para hoje (15/09/2026). A conta que obrigou a mudanca: a grade nova
-    consome 10 partes por dia e a janela de 01h-06h so cabe UMA historia (4h40
-    de janela, 2h12 por historia, e a rodada das 04:20 nao comeca outra porque
-    precisaria de 150 min e so tem 100). Sao 6 produzidas contra 10
-    publicadas: -4 por dia. Esperar "faltar" e viver raspando o fundo, que e o
-    contrario da regra dele — a prioridade e nao ficar sem video.
+def dias_de_lote(config: dict) -> set:
+    """Os dias da semana do lote (0 = segunda)."""
+    return {int(d) % 7 for d in (config.get("dias_de_lote") or [])}
 
-    O trabalho cabe onde a maquina ja estava parada: medidos em 15/09, os
-    buracos entre uma publicacao e a proxima sao de 2h10 a 2h55 (06:47, 09:47,
-    12:42, 15:47, 18:07), e uma historia leva 2h12.
+
+def lote_valendo(config: dict, agora) -> bool:
+    """Hoje e dia de lote? Antes de `lote_a_partir_de`, nao.
+
+    Data torta no config NAO liga o lote: o erro barato e cair na reposicao,
+    que ainda cria abaixo do piso.
     """
-    barrados = len(barrados_no_estoque())
-    lista = aprovados_no_estoque()
-    aprovados = len(lista)
-    urgente = falta_video(aprovados, agora,
-                          int(config.get("piso_de_estoque") or 1))
-    # `teto` 0 e o freio DESLIGADO (ver `teto_de_estoque`): sem teto nao existe
-    # "magro", senao a rodada de dia passaria a criar sem parar.
-    teto = teto_de_estoque(config)
-    falta = falta_serie(config, lista) if teto else None
-    magro = bool(teto) and (aprovados < teto or bool(falta))
-    if not barrados and not urgente and not magro:
+    desde = config.get("lote_a_partir_de")
+    if desde:
+        try:
+            if agora.date() < datetime.strptime(str(desde),
+                                                "%Y-%m-%d").date():
+                return False
+        except ValueError:
+            return False
+    return agora.weekday() in dias_de_lote(config)
+
+
+def postagens_entre(inicio, fim) -> int:
+    """Quantos horarios da grade caem em (inicio, fim]. Da GRADE, com minuto."""
+    from builds import grade
+
+    total, dia = 0, inicio.date()
+    while dia <= fim.date():
+        for hora, minuto in grade.GRADE:
+            momento = datetime(dia.year, dia.month, dia.day, hora, minuto)
+            if inicio < momento <= fim:
+                total += 1
+        dia += timedelta(days=1)
+    return total
+
+
+def fim_da_cobertura(config: dict, agora):
+    """Ate quando o lote precisa cobrir: a PROXIMA segunda 07h (config).
+
+    "Proxima" e estritamente depois de agora: na segunda 07:02 e a segunda
+    seguinte — o lote daquela segunda produz a semana inteira. Na terca e na
+    quarta e a mesma segunda, entao a meta NAO recomeca: se a segunda nao
+    produziu (PC desligado), a terca e a quarta herdam a diferenca sozinhas.
+    """
+    alvo = config.get("alvo_do_lote") or {}
+    padrao_dia = min(dias_de_lote(config) or {0})
+    dia = int(alvo.get("cobrir_ate_o_dia", padrao_dia)) % 7
+    padrao_hora = (config.get("janela_pesada") or {}).get("inicio", 0)
+    hora = int(alvo.get("cobrir_ate_a_hora", padrao_hora)) % 24
+    base = agora.replace(hour=hora, minute=0, second=0, microsecond=0)
+    base += timedelta(days=(dia - agora.weekday()) % 7)
+    if base <= agora:
+        base += timedelta(days=7)
+    return base
+
+
+def piso_de_reposicao(config: dict) -> int:
+    """Abaixo disto, qui-dom criam. Sem a chave, o teto de sempre (2 dias)."""
+    valor = config.get("piso_de_reposicao")
+    if valor is None:
+        return teto_de_estoque(config)
+    return max(0, int(valor))
+
+
+def alvo_do_lote(config: dict, agora) -> int:
+    """Videos aprovados que a fila precisa ter AGORA num dia de lote.
+
+    Os horarios da grade de agora ate `fim_da_cobertura` (segunda 07h), mais
+    o piso de reposicao (`alvo_do_lote.mais_o_piso`). Medido com a grade de
+    10 horarios: segunda 07:02 = 70 + 20 = 90; quarta 22:00 = 44 + 20 = 64.
+    """
+    alvo = config.get("alvo_do_lote") or {}
+    total = postagens_entre(agora, fim_da_cobertura(config, agora))
+    if alvo.get("mais_o_piso", True):
+        total += piso_de_reposicao(config)
+    return total
+
+
+def postagem_perto(config: dict, agora):
+    """O horario da grade (datetime) a menos de `folga_da_grade` de agora.
+
+    `None` quando nao ha postagem perto (ou o config nao tem folga). Olha a
+    grade de ontem, hoje e amanha, para as 23:50 enxergarem o 00:37.
+    """
+    folga = config.get("folga_da_grade")
+    if not folga:
         return None
-    motivos = []
-    if barrados:
-        motivos.append(f"{barrados} video(s) barrado(s)")
-    if urgente:
-        motivos.append(f"so {aprovados} aprovado(s) para "
-                       f"{horarios_restantes(agora)} horario(s) de hoje")
-    elif magro and aprovados < teto:
-        motivos.append(f"{aprovados} aprovado(s) para um teto de {teto}")
-    elif magro:
-        motivos.append(falta["motivo"])
-    criar = urgente or magro
-    return {"por_que": " e ".join(motivos),
-            "config": {**config, "janela_pesada": None,
-                       "revisar_estoque_a_noite": False,
-                       "retomar_incompletas": criar,
-                       "reparos_por_rodada":
-                           int(config.get("reparos_de_dia") or 2),
-                       "so_consertar": not criar}}
+    from builds import grade
+
+    antes = timedelta(minutes=int(folga.get("antes", 15)))
+    depois = timedelta(minutes=int(folga.get("depois", 15)))
+    for delta in (-1, 0, 1):
+        dia = (agora + timedelta(days=delta)).date()
+        for hora, minuto in grade.GRADE:
+            post = datetime(dia.year, dia.month, dia.day, hora, minuto)
+            if post - antes <= agora <= post + depois:
+                return post
+    return None
+
+
+def esperar_a_grade(config: dict, log=print) -> bool:
+    """Segura o PROXIMO passo enquanto uma postagem esta perto.
+
+    O passo que ja esta rodando termina (quem decide isso e quem chama: esta
+    funcao so roda ENTRE passos). Devolve False quando a janela fechou
+    enquanto esperava — ai nao se comeca nada.
+    """
+    folga = config.get("folga_da_grade") or {}
+    depois = timedelta(minutes=int(folga.get("depois", 15)), seconds=5)
+    avisou = False
+    for _ in range(6):
+        agora = _relogio()
+        post = postagem_perto(config, agora)
+        if post is None:
+            break
+        fim = post + depois
+        if not avisou:
+            log(f"[auto] postagem das {post:%H:%M} perto: nao comeco passo "
+                f"novo ate {fim:%H:%M}.")
+            avisou = True
+        _dormir(max(1.0, (fim - agora).total_seconds()))
+    return na_janela(_relogio().hour, config.get("janela_pesada"))
+
+
+def estoque_zero(aprovados, config: dict | None = None) -> bool:
+    """Nao ha video para o PROXIMO horario?
+
+    Zero aprovado e zero. Com aprovados, olha as series: se nenhuma tem a
+    PROXIMA parte aprovada (a ordem e sagrada), nada sai no proximo horario
+    mesmo com video no disco. Nao saber contar NAO e zero: o erro barato de
+    madrugada e nao fazer barulho.
+    """
+    aprovados = list(aprovados or ())
+    if not aprovados:
+        return True
+    try:
+        conta = series_elegiveis(aprovados, None,
+                                 teto_por_historia(config or {}))
+    except Exception:                                          # noqa: BLE001
+        return False
+    return bool(conta) and conta.get("elegiveis", 1) == 0
+
+
+def _livre_gb(caminho: str) -> float:
+    import shutil
+    return shutil.disk_usage(caminho).free / (1024 ** 3)
+
+
+def disco_apertado(config: dict) -> str | None:
+    """Texto quando o disco vigiado tem menos que o minimo; senao None.
+
+    Plano do lote (30/09/2026): C: estava com 13 GB e o lote nao comeca com
+    menos de `disco_livre_minimo_gb`. Nao conseguir medir nao para nada.
+    """
+    try:
+        minimo = float(config.get("disco_livre_minimo_gb") or 0)
+    except (TypeError, ValueError):
+        return None
+    if minimo <= 0:
+        return None
+    alvo = str(config.get("disco_a_vigiar") or "C:/")
+    try:
+        livre = _livre_gb(alvo)
+    except OSError:
+        return None
+    if livre >= minimo:
+        return None
+    return f"so {livre:.1f} GB livres em {alvo} (minimo {minimo:g} GB)"
+
+
+def _impedimento_de_criar(config: dict) -> str | None:
+    """O que impede criar AGORA, mesmo com falta de video. Nunca levanta."""
+    try:
+        from ..imagens import cota
+        texto = cota.motivo()
+    except Exception:                                          # noqa: BLE001
+        texto = None
+    return texto or disco_apertado(config)
+
+
+def _marca_do_servico() -> Path:
+    return OUTPUTS / "_servico_do_dia.json"
+
+
+def servico_pendente(agora) -> bool:
+    """O servico do dia (metrica, tempos, conferencia) ainda nao rodou hoje?"""
+    try:
+        with open(_marca_do_servico(), encoding="utf-8") as fh:
+            dados = json.load(fh)
+    except (OSError, ValueError):
+        return True
+    return (dados or {}).get("data") != agora.strftime("%Y-%m-%d")
+
+
+def _marcar_servico(agora) -> None:
+    try:
+        destino = _marca_do_servico()
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text(json.dumps({"data": agora.strftime("%Y-%m-%d"),
+                                       "em": agora.isoformat(
+                                           timespec="seconds")}),
+                           encoding="utf-8")
+    except OSError:
+        pass
+
+
+def modo_da_hora(config: dict, agora) -> str:
+    """'livre' | 'lote' | 'reposicao' | 'madrugada' | 'noite'."""
+    janela = config.get("janela_pesada")
+    if not janela:
+        return "livre"
+    if na_janela(agora.hour, janela):
+        return "lote" if lote_valendo(config, agora) else "reposicao"
+    transicao = config.get("madrugada_na_transicao")
+    if transicao and na_janela(agora.hour, transicao):
+        return "madrugada"
+    return "noite"
+
+
+def planejar(config: dict, agora, *, aprovados=None, barrados=None,
+             pendentes=None) -> dict:
+    """O que a rodada faz agora. Nunca abre navegador.
+
+    Devolve `{modo, fazer, criar, emendar, meta, aprovados, barrados,
+    por_que, motivo, config}`. `config` e o config EFETIVO que `_trabalhar`
+    recebe (teto, so_consertar, retomar, servico do dia). `motivo` e o do
+    dicionario da rodada quando `fazer` e False.
+
+    livre      config sem janela: roda como sempre rodou (testes, mao)
+    lote       seg-qua 07h-22h: cria ate `alvo_do_lote`, emendando
+    reposicao  qui-dom 07h-22h: conserta; cria so abaixo do piso
+    madrugada  transicao: o esquema antigo das 01h-06h, uma historia por
+               disparo, ate o teto de sempre
+    noite      fora de tudo: nada, a nao ser o estoque zero (libera tudo)
+    """
+    modo = modo_da_hora(config, agora)
+    if modo == "livre":
+        return {"modo": modo, "fazer": True, "criar": True, "emendar": False,
+                "por_que": "config sem janela", "config": config}
+    if modo == "madrugada":
+        return {"modo": modo, "fazer": True, "criar": True, "emendar": False,
+                "por_que": "madrugada da transicao (o esquema antigo roda "
+                           "ate o de dia ser validado)",
+                "config": {**config,
+                           "janela_pesada": config["madrugada_na_transicao"],
+                           "servico_do_dia": False}}
+    lista = aprovados_no_estoque() if aprovados is None else list(aprovados)
+    n = len(lista)
+    if modo == "noite":
+        if not (config.get("estoque_zero_libera_a_noite", True)
+                and estoque_zero(lista, config)):
+            janela = config["janela_pesada"]
+            return {"modo": modo, "fazer": False, "criar": False,
+                    "emendar": False, "aprovados": n,
+                    "motivo": "fora da janela",
+                    "por_que": (f"fora da janela do trabalho pesado "
+                                f"({int(janela['inicio']):02d}h as "
+                                f"{int(janela['fim']):02d}h) e com video "
+                                f"para o proximo horario ({n} aprovado(s))"),
+                    "config": config}
+        impedido = _impedimento_de_criar(config)
+        piso = max(1, piso_de_reposicao(config))
+        return {"modo": "zero", "fazer": not impedido,
+                "criar": not impedido, "emendar": True, "aprovados": n,
+                "meta": piso, "motivo": "impedido" if impedido else "",
+                "impedimento": impedido,
+                "por_que": ("ESTOQUE ZERO de madrugada: nenhum video para o "
+                            "proximo horario; libera tudo (decisao de "
+                            "30/09/2026)")
+                           + (f", mas {impedido}" if impedido else ""),
+                "config": {**config, "janela_pesada": None,
+                           "teto_de_estoque": piso, "so_consertar": False,
+                           "retomar_incompletas": True,
+                           "revisar_estoque_a_noite": False,
+                           "servico_do_dia": False,
+                           "reparos_por_rodada":
+                               int(config.get("reparos_de_dia") or 2)}}
+
+    lista_barrados = barrados_no_estoque() if barrados is None else barrados
+    nb = len(lista_barrados or ())
+    # HISTORIA PELA METADE E CONSERTO, nao criacao: ja foi paga (roteiro,
+    # imagens) e o lote de quarta pode fechar as 22h no meio de uma. Sem
+    # isto ela esperaria ate segunda, envelhecendo.
+    ni = len(incompletas() if pendentes is None else pendentes)
+    servico = servico_pendente(agora)
+    if modo == "lote":
+        meta = alvo_do_lote(config, agora)
+        reparos = int(config.get("reparos_por_rodada") or 6)
+        rotulo = f"lote: {n} aprovado(s) para um alvo de {meta}"
+    else:
+        meta = piso_de_reposicao(config)
+        reparos = int(config.get("reparos_de_dia") or 2)
+        rotulo = f"reposicao: {n} aprovado(s), piso {meta}"
+    criar = n < meta
+    impedido = _impedimento_de_criar(config) if criar else None
+    if impedido:
+        criar = False
+    motivos = [rotulo]
+    if nb:
+        motivos.append(f"{nb} barrado(s)")
+    if ni:
+        motivos.append(f"{ni} historia(s) pela metade")
+    if servico:
+        motivos.append("servico do dia pendente")
+    if impedido:
+        motivos.append(f"NAO crio: {impedido}")
+    retomar = bool(ni) and not _impedimento_de_criar(config)
+    fazer = bool(criar or nb or servico or retomar)
+    if fazer:
+        motivo = ""
+    elif impedido:
+        motivo = "impedido"
+    else:
+        motivo = "estoque cheio"
+    return {"modo": modo, "fazer": fazer, "criar": criar, "emendar": True,
+            "meta": meta, "aprovados": n, "barrados": nb, "motivo": motivo,
+            "impedimento": impedido, "por_que": "; ".join(motivos),
+            "config": {**config,
+                       "teto_de_estoque": max(1, meta),
+                       "so_consertar": not criar,
+                       "retomar_incompletas": bool(criar or retomar),
+                       "reparos_por_rodada": reparos,
+                       "servico_do_dia": servico}}
 
 
 def _diario(destino: Path, tela=print):
@@ -313,7 +621,8 @@ def _cronometrar(resultado: dict, gasto: float) -> None:
     try:
         if resultado.get("motivo") in ("ja rodando", "pausado",
                                        "agenda desligada", "fora da janela",
-                                       "sem tempo na janela", "estoque cheio"):
+                                       "sem tempo na janela", "estoque cheio",
+                                       "impedido"):
             return
         from builds import atividade
         atividade.registrar(
@@ -340,9 +649,9 @@ def mensagem(resultado: dict, segundos: float) -> str | None:
     """
     if resultado.get("feito") != "historia":
         motivo = resultado.get("motivo") or ""
-        if motivo in ("ja rodando", "pausado", "agenda desligada", "fora da janela",
-                    "sem tempo na janela", "so consertar",
-                      "estoque cheio"):
+        if motivo in ("ja rodando", "pausado", "agenda desligada",
+                      "fora da janela", "sem tempo na janela",
+                      "so consertar", "estoque cheio", "impedido"):
             return None
         return (f"❌ *a criacao automatica falhou*\n{motivo}\n"
                 f"{(resultado.get('erro') or '')[:300]}")
@@ -619,12 +928,17 @@ def rodar(*, config: dict | None = None, headless: bool = False,
 
     O Agendador nao le excecao: o que ele ve e o codigo de saida. Entao aqui
     tudo vira dicionario e log, e quem decide o codigo de saida e o `main.py`.
+
+    Desde o lote de 30/09/2026 a rodada EMENDA passos: num dia de lote ela
+    cria historia atras de historia ate o alvo, a janela fechar ou um passo
+    falhar. Os disparos seguintes do dia encontram a trava ocupada e saem; se
+    a rodada morrer, o proximo disparo recomeca de onde ela parou.
     """
     from builds import travas
     from builds.identity import controle
 
     config = config or carregar()
-    agora = datetime.now()
+    agora = _relogio()
     destino = OUTPUTS / "_logs" / f"auto_{agora:%Y%m%d}.txt"
     log = _diario(destino, tela)
     log(f"[auto] disparo das {agora:%H:%M}")
@@ -638,22 +952,23 @@ def rodar(*, config: dict | None = None, headless: bool = False,
             "nada; o proximo disparo tenta de novo.")
         return {"feito": "nada", "motivo": "pausado"}
 
-    janela = config.get("janela_pesada")
-    if not na_janela(agora.hour, janela):
-        # DE DIA SO O QUE EVITA FICAR SEM VIDEO. Pedido dele em 13/09/2026,
-        # logo depois de montar a rotina de madrugada: "esse tipo de problema
-        # eu quero que seja resolvido a qualquer momento, a prioridade e nao
-        # ficar sem video". Fora da janela a rodada nao coleta metrica nem
-        # revisa o estoque: ela conserta o que esta barrado e, se o estoque
-        # aprovado nao cobre o resto do dia, cria historia tambem.
-        dia = modo_dia(config, agora)
-        if not dia:
-            log(f"[auto] fora da janela do trabalho pesado "
-                f"({int(janela['inicio']):02d}h as {int(janela['fim']):02d}h),"
-                " sem video barrado e com estoque para o dia. Saindo.")
-            return {"feito": "nada", "motivo": "fora da janela"}
-        log(f"[auto] fora da janela, mas {dia['por_que']}: sigo em modo dia.")
-        config = dia["config"]
+    # O PLANO VEM ANTES DA TRAVA: o disparo que nao tem nada a fazer (noite
+    # com video, reposicao com estoque cheio) sai sem disputar nada. A tarefa
+    # perdida que roda quando o PC volta de manha tambem cai aqui.
+    plano = planejar(config, agora)
+    if not plano.get("fazer"):
+        log(f"[auto] {plano.get('por_que')}. Saindo.")
+        if (plano.get("motivo") == "impedido"
+                and config.get("avisar_telegram", True)):
+            _avisar_uma_vez_por_dia(
+                "impedido-" + ("picasso" if "PicassoIA" in str(
+                    plano.get("impedimento")) else "disco"),
+                f"⚠️ *historias: nao crio agora*\n{plano.get('impedimento')}",
+                agora, log)
+        return {"feito": "nada", "motivo": plano.get("motivo") or
+                "fora da janela", "modo": plano.get("modo")}
+    if plano.get("modo") != "livre":
+        log(f"[auto] modo {plano['modo']}: {plano.get('por_que')}.")
 
     with travas.trava(TRAVA, esperar=0.0) as minha:
         if not minha:
@@ -676,7 +991,7 @@ def rodar(*, config: dict | None = None, headless: bool = False,
             # a hora e ecoa na tela quando existe tela de verdade.
             comeco = time.monotonic()
             try:
-                resultado = _trabalhar(config, headless, print)
+                return _emendar(config, plano, headless, print)
             except Exception as exc:                           # noqa: BLE001
                 # A rodada nao pode morrer calada: o unico jeito de descobrir
                 # seria abrir o log, e quem abre o log ja desconfiou de algo.
@@ -686,51 +1001,136 @@ def rodar(*, config: dict | None = None, headless: bool = False,
                 if config.get("avisar_telegram", True):
                     avisar(mensagem(resultado, time.monotonic() - comeco))
                 raise
-            if resultado.get("erros") or resultado.get("motivo") not in (
-                    None, "", "ja rodando", "pausado", "agenda desligada", "fora da janela",
-                    "sem tempo na janela", "so consertar",
-                    "estoque cheio"):
-                # TODO ERRO NO MESMO LUGAR. `atividade.jsonl` e o ledger de
-                # onde o bot tira os alertas e onde a apuracao automatica
-                # procura o que investigar. As etapas ja registravam (imagens,
-                # LLM); a rodada em si nao, entao uma falha DELA nao chegava
-                # nem no Telegram nem no Claude.
-                _registrar_erro(resultado)
-            # A DURACAO DA RODADA PASSA A IR PARA O DISCO. Ela ja era medida
-            # aqui desde sempre, e ia so para o TEXTO do Telegram — lida uma
-            # vez, nunca somada. Uma linha faz dela serie.
-            _cronometrar(resultado, time.monotonic() - comeco)
-            if config.get("avisar_telegram", True):
-                texto = mensagem(resultado, time.monotonic() - comeco)
-                if texto:
-                    avisar(texto)
-            return resultado
         finally:
             sys.stdout, sys.stderr = anterior_out, anterior_err
 
 
-def _servico_da_noite(config: dict, headless: bool, log) -> None:
-    """O que so a madrugada faz. Nunca derruba a rodada: e servico.
+def _emendar(config: dict, plano: dict, headless: bool, log) -> dict:
+    """Os passos da rodada, um atras do outro. Devolve o ULTIMO resultado.
 
-    1. METRICA do YouTube e do TikTok, uma vez por noite. Estava na primeira
-       postagem do dia, as 06:07, e a coleta do TikTok segura o Studio por
-       ate 12 minutos: era trabalho pesado caindo na hora em que o dia comeca.
-    2. PARECER DO GEMINI em todo video pendente sem veredito numerado por
-       cena. De dia a postagem so LE o que a madrugada decidiu.
-    3. FECHAR O DIA DE ONTEM em tempos por etapa. O diario e podado acima de
+    So emenda quando o plano manda (`emendar`) e o passo anterior CRIOU ou
+    TERMINOU uma historia sem erro: passo que nao andou (so conserto, estoque
+    cheio, imagem faltando, teto do PicassoIA) encerra a rodada, e o proximo
+    disparo tenta de novo. Isso impede o laco de insistir no mesmo defeito.
+
+    Entre um passo e outro: a folga da grade (nao comeca nada perto de uma
+    postagem), a janela (22h fecha) e um plano NOVO, com o estoque de agora.
+    """
+    efetivo = plano["config"]
+    emendar = bool(plano.get("emendar"))
+    limite = (max(1, int(config.get("passos_por_rodada") or 1))
+              if emendar else 1)
+    passos, historias, resultado = 0, [], None
+    while True:
+        if emendar and not esperar_a_grade(efetivo, log):
+            log("[auto] a janela do trabalho pesado fechou; nao comeco passo "
+                "novo.")
+            break
+        comeco = time.monotonic()
+        resultado = _trabalhar(efetivo, headless, log)
+        passos += 1
+        _fechar_passo(resultado, time.monotonic() - comeco, config)
+        if resultado.get("feito") == "historia" and resultado.get(
+                "historia_id"):
+            historias.append(resultado["historia_id"])
+        if passos >= limite:
+            if emendar:
+                log(f"[auto] {passos} passo(s) nesta rodada (teto "
+                    "`passos_por_rodada`); o proximo disparo continua.")
+            break
+        if (resultado.get("feito") not in ("historia", "texto")
+                or resultado.get("erros")):
+            break
+        plano = planejar(config, _relogio())
+        if not plano.get("criar"):
+            log(f"[auto] paro de emendar: {plano.get('por_que')}.")
+            break
+        efetivo = plano["config"]
+        log(f"[auto] emendo o passo {passos + 1} ({plano['modo']}): "
+            f"{plano.get('por_que')}.")
+    if resultado is None:
+        return {"feito": "nada", "motivo": "sem tempo na janela", "passos": 0}
+    saida = {**resultado, "passos": passos}
+    if len(historias) > 1:
+        saida["historias"] = historias
+    return saida
+
+
+def _fechar_passo(resultado: dict, gasto: float, config: dict) -> None:
+    """Erro no diario, duracao no disco e aviso no Telegram — por PASSO.
+
+    Era o fim da rodada; com a rodada emendando historias o dia inteiro, o
+    aviso de cada historia pronta sairia so no fim do dia (ou nunca, se a
+    ultima falhasse).
+    """
+    if resultado.get("erros") or resultado.get("motivo") not in (
+            None, "", "ja rodando", "pausado", "agenda desligada",
+            "fora da janela", "sem tempo na janela", "so consertar",
+            "estoque cheio", "impedido"):
+        # TODO ERRO NO MESMO LUGAR. `atividade.jsonl` e o ledger de
+        # onde o bot tira os alertas e onde a apuracao automatica
+        # procura o que investigar. As etapas ja registravam (imagens,
+        # LLM); a rodada em si nao, entao uma falha DELA nao chegava
+        # nem no Telegram nem no Claude.
+        _registrar_erro(resultado)
+    # A DURACAO DA RODADA VAI PARA O DISCO. Ela ja era medida aqui desde
+    # sempre, e ia so para o TEXTO do Telegram — lida uma vez, nunca somada.
+    _cronometrar(resultado, gasto)
+    if config.get("avisar_telegram", True):
+        texto = mensagem(resultado, gasto)
+        if texto:
+            avisar(texto)
+
+
+def _avisar_uma_vez_por_dia(chave: str, texto: str, agora, log=print) -> bool:
+    """Aviso que se repetiria a cada disparo sai UMA vez por dia."""
+    marca = OUTPUTS / "_avisos_do_dia.json"
+    hoje = agora.strftime("%Y-%m-%d")
+    try:
+        with open(marca, encoding="utf-8") as fh:
+            dados = json.load(fh)
+        if not isinstance(dados, dict):
+            dados = {}
+    except (OSError, ValueError):
+        dados = {}
+    if dados.get(chave) == hoje:
+        return False
+    dados = {k: v for k, v in dados.items() if v == hoje}
+    dados[chave] = hoje
+    try:
+        marca.parent.mkdir(parents=True, exist_ok=True)
+        marca.write_text(json.dumps(dados), encoding="utf-8")
+    except OSError:
+        pass
+    return avisar(texto, log=log)
+
+
+def _servico_do_dia(config: dict, headless: bool, log) -> None:
+    """O servico do 1o disparo do dia. Nunca derruba a rodada: e servico.
+
+    Era da madrugada (`_servico_da_noite`, 13 a 29/09/2026); com o pesado de
+    dia (30/09) a metrica passou para o primeiro disparo da janela, as 07:02.
+    Roda uma vez por dia (`outputs/_servico_do_dia.json`).
+
+    1. METRICA do YouTube e do TikTok. A coleta do TikTok segura o Studio
+       por ate 12 minutos.
+    2. FECHAR O DIA DE ONTEM em tempos por etapa. O diario e podado acima de
        4000 linhas, entao a medicao fina dura menos de um dia nele: sem esta
        consolidacao, a serie que diz "o que piorou" nunca existiria.
-    """
-    from datetime import datetime as _relogio
+    3. CONFERENCIA do canal.
 
-    janela = config.get("janela_pesada")
+    O parecer do Gemini no estoque (`revisar_estoque`) NAO mora aqui: ele
+    roda a cada passo da janela, para a historia feita as 10h ser assistida
+    no passo seguinte, e nao no dia seguinte.
+    """
+    agora = _relogio()
     try:
         from builds.publicar import metricas
-        chave = f"noite-{chave_da_noite(_relogio.now(), janela)}"
+        chave = f"dia-{agora:%Y-%m-%d}"
         if metricas.atualizar_uma_vez_por_dia(log=log, chave=chave):
-            log("[auto] metricas da noite atualizadas.")
+            log("[auto] metricas do dia atualizadas.")
     except Exception as exc:                                   # noqa: BLE001
-        log(f"[auto] a metrica da noite falhou: {type(exc).__name__}: {exc}")
+        log(f"[auto] a metrica do dia falhou: {type(exc).__name__}: {exc}")
     try:
         from builds import tempos
         destino = tempos.consolidar()
@@ -744,12 +1144,7 @@ def _servico_da_noite(config: dict, headless: bool, log) -> None:
     except Exception as exc:                                   # noqa: BLE001
         log(f"[auto] a conferencia do canal falhou: "
             f"{type(exc).__name__}: {exc}")
-    if config.get("revisar_estoque_a_noite", True):
-        try:
-            revisar_estoque(config, headless=headless, log=log)
-        except Exception as exc:                               # noqa: BLE001
-            log(f"[auto] a revisao do estoque falhou: "
-                f"{type(exc).__name__}: {exc}")
+    _marcar_servico(agora)
 
 
 def revisar_estoque(config: dict, *, headless: bool = False,
@@ -759,8 +1154,6 @@ def revisar_estoque(config: dict, *, headless: bool = False,
     Para quando a janela aperta. Video que ja tem veredito por cena e pulado,
     aprovado ou nao: o aprovado esta pronto e o reprovado e do reparador.
     """
-    from datetime import datetime as _relogio
-
     from ..publicar import catalogo, parecer, qualidade, serie
     from ..roteiro import roteiro as R
     from . import conserto_de_cena as C
@@ -776,7 +1169,7 @@ def revisar_estoque(config: dict, *, headless: bool = False,
     quem_assiste = (list(parecer.ASSISTEM_VIDEO) or ["gemini"])[0]
     segunda_chance = []
     for video in pendentes:
-        if minutos_ate_fechar(_relogio.now(), janela) < margem:
+        if minutos_ate_fechar(_relogio(), janela) < margem:
             log("[auto] a janela esta fechando; paro a revisao do estoque.")
             break
         # NAO ASSISTIDO VOLTA AO GEMINI (27/09/2026). A passada dele nao foi
@@ -824,7 +1217,7 @@ def revisar_estoque(config: dict, *, headless: bool = False,
     # mesmo mp4 da parte 1 da historia 34, recusado as 01:35, foi assistido
     # 4 de 4 vezes as 23:55.
     for video, roteiro, laudo in segunda_chance:
-        if minutos_ate_fechar(_relogio.now(), janela) < margem:
+        if minutos_ate_fechar(_relogio(), janela) < margem:
             break
         try:
             veredito = parecer.pedir(video, roteiro, video.parte, laudo=laudo,
@@ -853,12 +1246,22 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
     pipeline = Pipeline()
     janela = config.get("janela_pesada")
     if janela:
-        sobra = minutos_ate_fechar(datetime.now(), janela)
+        sobra = minutos_ate_fechar(_relogio(), janela)
         if sobra < float(config.get("minutos_minimos") or 90):
             log(f"[auto] faltam {sobra:.0f} min para a janela fechar. Nao "
-                "comeco trabalho pesado: ele invadiria o dia.")
+                "comeco trabalho pesado: ele invadiria a hora do silencio.")
             return {"feito": "nada", "motivo": "sem tempo na janela"}
-        _servico_da_noite(config, headless, log)
+    if config.get("servico_do_dia"):
+        _servico_do_dia(config, headless, log)
+    if janela and config.get("revisar_estoque_a_noite", True):
+        # A chave guarda o nome antigo (era so de madrugada); hoje vale para
+        # qualquer janela pesada: parecer do Gemini no que ainda nao foi
+        # olhado, antes de consertar e de criar.
+        try:
+            revisar_estoque(config, headless=headless, log=log)
+        except Exception as exc:                               # noqa: BLE001
+            log(f"[auto] a revisao do estoque falhou: "
+                f"{type(exc).__name__}: {exc}")
 
     if config.get("retomar_incompletas", True):
         pendentes = incompletas()
@@ -874,14 +1277,15 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
                 f"texto das partes {faltam}. Retomo antes de qualquer imagem "
                 "— serie truncada nao pode virar video.")
             return _retomar_texto(pipeline, alvo["historia_id"], faltam,
-                                  headless, log)
+                                  headless, log,
+                                  guarda=_guarda_da_grade(config, log))
         if pendentes:
             alvo = pendentes[0]
             log(f"[auto] terminando {alvo['historia_id']} antes de criar "
                 f"outra: {alvo['imagens_faltando']} imagem(ns) e "
                 f"{len(alvo['partes_sem_video'])} video(s) pendentes.")
             return _terminar(pipeline, alvo["historia_id"], headless, log,
-                             criada=False)
+                             criada=False, guarda=_guarda_da_grade(config, log))
 
     # CONSERTAR VEM ANTES DE CRIAR, e a ordem e a coisa toda. Um video
     # barrado ja custou roteiro, imagens e render; recuperar ele e mais
@@ -925,10 +1329,8 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
             if not falta:
                 # "teto: 20 = um dia de grade" ficou errado em 15/09/2026,
                 # quando a gordura passou a dois dias (`dias_de_gordura`).
-                dias = dias_de_gordura(config)
                 log(f"[auto] ja ha {estoque} video(s) novo(s) na fila "
-                    f"(teto: {teto} = {dias} dia(s) de grade). Nao crio mais "
-                    "ate baixar.")
+                    f"(teto: {teto}). Nao crio mais ate baixar.")
                 return {"feito": "nada", "motivo": "estoque cheio",
                         "estoque": estoque}
             # A RODADA CRIA UMA HISTORIA SO, entao este gatilho nunca da mais
@@ -937,13 +1339,18 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
                 f"{falta['motivo']}: crio mais uma.")
             _registrar_gatilho_de_serie(falta)
 
+    # A HISTORIA NOVA E UM PASSO NOVO: nao comeca perto de uma postagem
+    # (a postagem abre os mesmos navegadores e disputa a maquina).
+    guarda = _guarda_da_grade(config, log)
+    if guarda is not None and not guarda():
+        return {"feito": "nada", "motivo": "sem tempo na janela"}
     if janela:
-        sobra = minutos_ate_fechar(datetime.now(), janela)
+        sobra = minutos_ate_fechar(_relogio(), janela)
         precisa = float(config.get("minutos_por_historia") or 240)
         if sobra < precisa:
             log(f"[auto] faltam {sobra:.0f} min para a janela fechar e uma "
                 f"historia leva ~{precisa:.0f}. Nao comeco outra: ela "
-                "invadiria o dia.")
+                "invadiria a hora do silencio.")
             return {"feito": "nada", "motivo": "sem tempo na janela"}
     escritores = provedores_do_roteiro(config)
     tipo = tipo_mais_magro()
@@ -983,7 +1390,8 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
         return {"feito": "nada", "motivo": "historia impublicavel",
                 "historia_id": historia_id,
                 "erro": "; ".join(linguagem.resumo(achados))[:300]}
-    return _terminar(pipeline, historia_id, headless, log, criada=True)
+    return _terminar(pipeline, historia_id, headless, log, criada=True,
+                     guarda=guarda)
 
 
 def estoque_por_tipo(aprovados=None) -> dict:
@@ -1229,7 +1637,7 @@ def provedores_do_roteiro(config: dict) -> list:
 
 
 def _retomar_texto(pipeline, historia_id: str, faltam: list,
-                   headless: bool, log) -> dict:
+                   headless: bool, log, *, guarda=None) -> dict:
     """Escreve as partes que faltam e so entao segue para imagem e video."""
     from ..roteiro import gerar as G
     from ..roteiro import roteiro as R
@@ -1258,12 +1666,29 @@ def _retomar_texto(pipeline, historia_id: str, faltam: list,
     if R.partes_que_faltam(R.carregar(historia_id)):
         return {"feito": "texto", "historia_id": historia_id,
                 "motivo": "retomada parcial; o proximo disparo continua"}
-    return _terminar(pipeline, historia_id, headless, log, criada=False)
+    return _terminar(pipeline, historia_id, headless, log, criada=False,
+                     guarda=guarda)
+
+
+def _guarda_da_grade(config: dict, log):
+    """A pergunta "posso comecar o proximo passo?" para quem so tem um log.
+
+    `None` quando o config nao tem `folga_da_grade` (testes, quem roda na
+    mao): ai nao se espera nada, como sempre foi.
+    """
+    if not config.get("folga_da_grade"):
+        return None
+    return lambda: esperar_a_grade(config, log)
 
 
 def _terminar(pipeline, historia_id: str, headless: bool, log,
-              *, criada: bool) -> dict:
-    """Imagens que faltam e depois os videos. Cada etapa reporta o que deu."""
+              *, criada: bool, guarda=None) -> dict:
+    """Imagens que faltam e depois os videos. Cada etapa reporta o que deu.
+
+    `guarda()` roda antes de cada render de parte (cada uma e um passo de
+    ~6 min de CPU): espera a postagem que estiver perto e devolve False se a
+    janela fechou — ai as partes que faltam ficam para o proximo disparo.
+    """
     from ..imagens import fila
     from ..roteiro import roteiro as R
 
@@ -1314,6 +1739,12 @@ def _terminar(pipeline, historia_id: str, headless: bool, log,
                 "renderizo agora — o proximo disparo tenta as imagens de novo.")
             resultado["erros"].append(
                 f"parte {n}: {faltando[n]} imagem(ns) faltando, video adiado")
+            continue
+        if guarda is not None and not guarda():
+            log(f"[auto] parte {n}: a janela do trabalho pesado fechou; o "
+                "render fica para o proximo disparo.")
+            resultado["erros"].append(
+                f"parte {n}: render adiado, a janela fechou")
             continue
         log(f"[auto] {historia_id}: renderizando a parte {n}...")
         try:

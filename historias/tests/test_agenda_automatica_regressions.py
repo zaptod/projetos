@@ -31,10 +31,10 @@ from contos.pipeline import agenda, tarefas                    # noqa: E402
 RAIZ = Path(__file__).resolve().parents[1]
 
 # O que ele pediu. Se alguém mexer no config sem querer, o teste conta.
-# De madrugada (01h-06h desde 15/09/2026) e, de dia, 25 min depois de cada
-# publicacao da grade das horas vagas, so para nao ficar sem video.
+# Desde o lote de 30/09/2026: um disparo por hora na janela de dia (07h-21h),
+# e a noite (22h, 23h, 00h e 01h-05h) para o estoque zero e a transicao.
 # `carregar` devolve ordenado.
-HORAS_PEDIDAS = [0, 1, 2, 3, 4, 5, 7, 10, 12, 16, 18, 21, 22, 23]
+HORAS_PEDIDAS = [0, 1, 2, 3, 4, 5] + list(range(7, 24))
 
 
 class ConfigTests(unittest.TestCase):
@@ -267,31 +267,34 @@ class JanelaPesadaTests(unittest.TestCase):
         self.assertEqual(400, agenda.minutos_ate_fechar(
             datetime(2026, 9, 12, 23, 20), self.JANELA))
 
-    def test_a_agenda_cobre_a_madrugada_e_os_horarios_da_grade(self):
-        from builds import grade
+    def test_a_agenda_cobre_o_dia_e_a_noite_sem_cair_em_postagem(self):
+        """Lote de 30/09/2026: o pesado e de DIA, 07h-22h.
+
+        Um disparo por hora na janela (a rodada emenda o dia; os disparos do
+        meio so recomecam se ela morrer), e nenhum deles na meia hora em
+        volta de um horario da grade — o 12:07 e o 17:57 inclusive.
+        """
+        from datetime import datetime
         config = agenda.carregar()
         janela = config["janela_pesada"]
-        # 15/09/2026: o pesado comeca DEPOIS do ultimo post (00:37).
-        self.assertEqual((1, 6), (janela["inicio"], janela["fim"]))
-        noite = [h for h in config["horas"] if agenda.na_janela(h, janela)]
-        dia = [h for h in config["horas"] if not agenda.na_janela(h, janela)]
-        self.assertEqual([1, 2, 3, 4, 5], noite)
-        # Um disparo de dia 25 min depois de cada publicacao (a das 00:37 cai
-        # dentro da janela, na rodada da 01:20).
-        for h in grade.HORAS:
-            if h == 0:
-                continue
-            esperado = h * 60 + grade.minuto(h) + 25
-            hora = esperado // 60 % 24
-            self.assertIn(hora, dia, h)
-            self.assertEqual(f"{hora:02d}:{esperado % 60:02d}",
-                             agenda.horario_do_disparo(config, hora), h)
+        self.assertEqual((7, 22), (janela["inicio"], janela["fim"]))
+        dia = [h for h in config["horas"] if agenda.na_janela(h, janela)]
+        self.assertEqual(list(range(7, 22)), dia)
+        transicao = config["madrugada_na_transicao"]
+        self.assertEqual([1, 2, 3, 4, 5],
+                         [h for h in config["horas"]
+                          if agenda.na_janela(h, transicao)])
+        for h in config["horas"]:
+            hh, mm = agenda.horario_do_disparo(config, h).split(":")
+            momento = datetime(2026, 10, 5, int(hh), int(mm))
+            self.assertIsNone(agenda.postagem_perto(config, momento),
+                              f"disparo das {hh}:{mm} cai perto de um post")
 
     def test_fora_da_janela_sai_antes_da_trava_e_nao_e_erro(self):
         """A tarefa perdida roda quando o PC volta, de manha: tem de sair."""
         fonte = Path(agenda.__file__).read_text(encoding="utf-8")
         corpo = fonte[fonte.index("def rodar("):]
-        self.assertLess(corpo.index("na_janela("),
+        self.assertLess(corpo.index("planejar("),
                         corpo.index("travas.trava("))
         self.assertGreaterEqual(fonte.count('"fora da janela"'), 3)
 
@@ -308,12 +311,6 @@ class ModoDiaTests(unittest.TestCase):
     "esse tipo de problema eu quero que seja resolvido a qualquer momento, a
     prioridade e nao ficar sem video."
     """
-
-    def _dublar(self, barrados: int, aprovados: int):
-        for nome, n in (("barrados_no_estoque", barrados),
-                        ("aprovados_no_estoque", aprovados)):
-            self.addCleanup(setattr, agenda, nome, getattr(agenda, nome))
-            setattr(agenda, nome, lambda n=n: [object()] * n)
 
     def test_horarios_que_ainda_faltam_hoje(self):
         from datetime import datetime
@@ -333,53 +330,6 @@ class ModoDiaTests(unittest.TestCase):
         meio_dia = datetime(2026, 9, 13, 13, 0)
         self.assertTrue(agenda.falta_video(6, meio_dia))
         self.assertFalse(agenda.falta_video(7, meio_dia))
-
-    def test_de_dia_sem_barrado_e_com_estoque_sai(self):
-        from datetime import datetime
-        # ACIMA DO TETO (2 dias de grade = 20): com 11 a rodada teria o que
-        # fazer, porque desde 15/09/2026 estoque magro tambem cria.
-        self._dublar(barrados=0, aprovados=25)
-        self.assertIsNone(agenda.modo_dia({}, datetime(2026, 9, 13, 13, 0)))
-
-    def test_de_dia_com_estoque_magro_cria_antes_de_faltar(self):
-        """A conta de 15/09/2026: a madrugada faz 6 e a grade consome 10.
-
-        Esperar `falta_video` era reabastecer raspando o fundo. Abaixo do teto
-        a rodada de dia ja cria, nos buracos de 2h+ entre as publicacoes.
-        """
-        from datetime import datetime
-        meio_dia = datetime(2026, 9, 13, 13, 0)
-        self._dublar(barrados=0, aprovados=11)
-        self.assertFalse(agenda.falta_video(11, meio_dia))   # nao e emergencia
-        dia = agenda.modo_dia({}, meio_dia)
-        self.assertFalse(dia["config"]["so_consertar"])
-        self.assertTrue(dia["config"]["retomar_incompletas"])
-        self.assertIn("teto", dia["por_que"])
-
-    def test_freio_desligado_nao_inventa_estoque_magro(self):
-        """`teto_de_estoque: 0` e a valvula de escape: nada de "magro"."""
-        from datetime import datetime
-        self._dublar(barrados=0, aprovados=1)
-        dia = agenda.modo_dia({"teto_de_estoque": 0},
-                              datetime(2026, 9, 13, 23, 50))
-        self.assertIsNone(dia)
-
-    def test_de_dia_com_barrado_conserta_e_nao_cria(self):
-        from datetime import datetime
-        self._dublar(barrados=5, aprovados=25)
-        dia = agenda.modo_dia({"reparos_de_dia": 2},
-                              datetime(2026, 9, 13, 13, 0))
-        self.assertTrue(dia["config"]["so_consertar"])
-        self.assertIsNone(dia["config"]["janela_pesada"])
-        self.assertFalse(dia["config"]["revisar_estoque_a_noite"])
-        self.assertEqual(2, dia["config"]["reparos_por_rodada"])
-
-    def test_de_dia_faltando_video_cria_tambem(self):
-        from datetime import datetime
-        self._dublar(barrados=0, aprovados=1)
-        dia = agenda.modo_dia({}, datetime(2026, 9, 13, 13, 0))
-        self.assertFalse(dia["config"]["so_consertar"])
-        self.assertTrue(dia["config"]["retomar_incompletas"])
 
     def test_so_consertar_para_antes_de_criar(self):
         fonte = Path(agenda.__file__).read_text(encoding="utf-8")
@@ -972,11 +922,11 @@ class EstoqueNovoContraReservaTests(unittest.TestCase):
         trabalhar = fonte[fonte.index("def _trabalhar("):]
         corpo = trabalhar[trabalhar.index("teto = teto_de_estoque(config)"):]
         self.assertIn("dias_de_estoque_novo()", corpo[:400])
-        # E o de `modo_dia` conta a mesma coisa, pela mesma razao: video
-        # barrado no disco nao e estoque.
-        dia = fonte[fonte.index("def modo_dia("):fonte.index("def _diario(")]
-        self.assertIn("lista = aprovados_no_estoque()", dia)
-        self.assertIn("aprovados = len(lista)", dia)
+        # E o de `planejar` (o lote, 30/09/2026) conta a mesma coisa, pela
+        # mesma razao: video barrado no disco nao e estoque.
+        dia = fonte[fonte.index("def planejar("):fonte.index("def _diario(")]
+        self.assertIn("aprovados_no_estoque()", dia)
+        self.assertIn("n = len(lista)", dia)
 
 
 class FilaPrefereONovoTests(unittest.TestCase):

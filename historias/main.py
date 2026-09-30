@@ -297,8 +297,20 @@ def cmd_auto(args, pipeline) -> int:
         pendentes = agenda.incompletas()
         for p in pendentes:
             print(f"  pendente: {p['historia_id']} - "
-                  f"{p['imagens_faltando']} imagem(ns), "
-                  f"{len(p['partes_sem_video'])} video(s)")
+                  f"{p.get('imagens_faltando', 0)} imagem(ns), "
+                  f"{len(p.get('partes_sem_video') or [])} video(s)")
+        # O QUE UM DISPARO FARIA AGORA (lote de 30/09/2026): so le, nao abre
+        # navegador. E o jeito de validar o esquema de dia sem esperar a hora.
+        try:
+            from datetime import datetime
+            plano = agenda.planejar(config, datetime.now(),
+                                    pendentes=pendentes)
+            print(f"\nagora: modo {plano['modo']} - {plano.get('por_que')}"
+                  + (" -> TRABALHA" if plano.get("fazer") else " -> sai")
+                  + (" (cria)" if plano.get("criar") else ""))
+        except Exception as exc:                               # noqa: BLE001
+            print(f"\nagora: nao consegui planejar ({type(exc).__name__}: "
+                  f"{exc})")
         return 0
 
     # Sem bandeira: E a rodada. E isto que a tarefa do Windows chama.

@@ -48,6 +48,27 @@ CONFIG = json.loads((RAIZ / "config" / "imagens.json").read_text(
     encoding="utf-8"))
 
 
+# DESDE O TETO DIARIO (30/09/2026) `_gerar_esperando` CONTA cada envio em
+# `outputs/_picasso_por_dia.json`. Sem desviar o contador, cada rodada da
+# suite somaria envios de mentira no contador de PRODUCAO e comeria o teto
+# do dia da conta compartilhada.
+_CONTADOR = {}
+
+
+def setUpModule():
+    import tempfile
+    from contos.imagens import cota
+    _CONTADOR["tmp"] = tempfile.TemporaryDirectory()
+    _CONTADOR["original"] = cota.CONTADOR
+    cota.CONTADOR = Path(_CONTADOR["tmp"].name) / "_picasso_por_dia.json"
+
+
+def tearDownModule():
+    from contos.imagens import cota
+    cota.CONTADOR = _CONTADOR["original"]
+    _CONTADOR["tmp"].cleanup()
+
+
 class ClienteFalso:
     """Um PicassoIA de mentira: falha as N primeiras esperas, depois entrega."""
 

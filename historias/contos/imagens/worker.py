@@ -33,7 +33,7 @@ from builds.identity import provedores as _rb_identity_provedores
 from builds.identity import proveniencia as _rb_identity_proveniencia
 import builds.atividade as _rb_atividade
 import builds.travas as _rb_travas
-from . import composicao, fila
+from . import composicao, cota, fila
 
 RAIZ = Path(__file__).resolve().parents[2]
 
@@ -112,6 +112,12 @@ def _gerar_esperando(cliente, prompt: str, config: dict, ajustes: dict,
     espera = int(ajustes.get("render_timeout", 150))
     tentativas = max(1, int(config.get("tentativas_por_espera", 3)))
     for volta in range(1, tentativas + 1):
+        # O TETO DO DIA E CONFERIDO A CADA ENVIO, e nao so ao abrir: e aqui
+        # que um laco (reenvio, refeita, recusa em cadeia) gastaria a conta
+        # compartilhada. Conta ANTES de enviar: envio que o site recebeu e
+        # imagem gerada do lado dele, aproveitada ou nao.
+        _conferir_cota(config)
+        cota.contar()
         antes = cliente.submit_prompt(
             prompt, aspect=str(config.get("aspect", "9:16")))
         try:
@@ -163,6 +169,27 @@ class NaoRodou(RuntimeError):
     """Motivo humano para a passada nao ter acontecido (trava, pausa, login)."""
 
 
+class TetoDoDia(NaoRodou, cota.TetoDoDia):
+    """O teto diario de envios ao PicassoIA bateu (`cota`, 30/09/2026).
+
+    E `NaoRodou` de proposito: para o reparo, isto e "a maquina nao podia
+    agora" (adiado, sem gastar tentativa do video), e nao falha do video.
+    """
+
+
+def _conferir_cota(config: dict) -> None:
+    """Levanta `TetoDoDia` (e registra no diario) se o teto do dia bateu."""
+    texto = cota.motivo(config)
+    if not texto:
+        return
+    try:
+        _rb_atividade.registrar("picasso", _rb_atividade.LOG, texto,
+                                "historias", etapa="imagens.teto_do_dia")
+    except Exception:                                          # noqa: BLE001
+        pass
+    raise TetoDoDia(texto)
+
+
 def _pausado(alvo: str = "picasso"):
     """(pausado?, motivo) segundo o interruptor compartilhado."""
     try:
@@ -192,19 +219,34 @@ def gerar(historia_id: str, *, limite: int | None = None,
     que resolveu na madrugada. Se a parede voltar, a rodada para como erro de
     infraestrutura (`NaoRodou`): a historia continua pendente e a proxima
     rodada tenta de novo; o video nao e abandonado.
+
+    QUANTAS REABERTURAS (30/09/2026): `reaberturas_na_parede` no
+    `config/imagens.json` (padrao 1, como era). O lote de dia pede ~330
+    imagens por dia, e a parede de 17/09 veio depois de 112 numa noite:
+    com o lote, cair nela no meio de uma historia deixa de ser raro. Entre
+    uma reabertura e outra, `pausa_antes_de_reabrir_s`.
     """
     Parede = _rb_identity_picasso_client.ParedeDePlanos
     try:
-        return _gerar(historia_id, limite=limite, headless=headless,
-                      parte=parte, log=log)
-    except Parede as exc:
-        log(f"[imagens] {exc}. Fecho o navegador e reabro o perfil uma vez.")
-    try:
-        return _gerar(historia_id, limite=limite, headless=headless,
-                      parte=parte, log=log)
-    except Parede as exc:
-        _registrar_parede(historia_id, exc)
-        raise NaoRodou(f"{exc} (de novo, depois de reabrir o perfil)") from exc
+        ajustes = fila.carregar_config()
+    except Exception:                                          # noqa: BLE001
+        ajustes = {}
+    reaberturas = max(0, int(ajustes.get("reaberturas_na_parede", 1)))
+    pausa = float(ajustes.get("pausa_antes_de_reabrir_s", 0) or 0)
+    for volta in range(reaberturas + 1):
+        try:
+            return _gerar(historia_id, limite=limite, headless=headless,
+                          parte=parte, log=log)
+        except Parede as exc:
+            if volta >= reaberturas:
+                _registrar_parede(historia_id, exc)
+                raise NaoRodou(f"{exc} (de novo, depois de reabrir o perfil "
+                               f"{reaberturas}x)") from exc
+            log(f"[imagens] {exc}. Fecho o navegador e reabro o perfil "
+                f"({volta + 1}/{reaberturas}).")
+            if pausa:
+                time.sleep(pausa)
+    raise AssertionError("inalcancavel")
 
 
 def _registrar_parede(historia_id: str, exc) -> None:
@@ -239,6 +281,8 @@ def _gerar(historia_id: str, *, limite: int | None = None,
     if pausado:
         raise NaoRodou(f"nao abri o PicassoIA: {motivo}. "
                        "Retome pelo painel (faixa PIPELINE) e rode de novo.")
+    # Teto do dia batido: nem abre o navegador (30/09/2026, `cota`).
+    _conferir_cota(config)
 
     if limite:
         pendentes = pendentes[:limite]
@@ -255,6 +299,7 @@ def _gerar(historia_id: str, *, limite: int | None = None,
     geradas, erros, recusadas = 0, [], []
     morreu = False
     parede = None
+    teto_batido = None
     moderacao = _rb_identity_moderacao
     ConteudoRecusado = _rb_identity_client.ConteudoRecusado
     from .reescritor import Reescritor
@@ -382,9 +427,18 @@ def _gerar(historia_id: str, *, limite: int | None = None,
                                 + (" com outro enquadramento."
                                    if com_variacao else "."))
                             time.sleep(float(ajustes.get("min_interval", 8)))
-                            alvo, antes = _gerar_esperando(
-                                cliente, pedido, config, ajustes, log,
-                                rotulo)
+                            try:
+                                alvo, antes = _gerar_esperando(
+                                    cliente, pedido, config, ajustes, log,
+                                    rotulo)
+                            except TetoDoDia as exc:
+                                # A imagem PROVADA que ja esta no disco fica
+                                # e e registrada abaixo; a passada para
+                                # depois desta cena.
+                                teto_batido = exc
+                                log(f"[imagens] {rotulo}: {exc}; fica a "
+                                    "imagem anterior.")
+                                break
                             nova = proveniencia.comprovar(
                                 cliente, historia_id, rotulo,
                                 cliente.prompt_enviado, cliente.enviado_em,
@@ -447,6 +501,13 @@ def _gerar(historia_id: str, *, limite: int | None = None,
                             f"- {exc}")
                         time.sleep(float(ajustes.get("min_interval", 8)) / 2)
                         continue
+                    except TetoDoDia as exc:
+                        # PARA A PASSADA INTEIRA, e nao so a cena: o teto e
+                        # do dia, e a cena seguinte bateria nele de novo.
+                        # Sobe depois de fechar o navegador (como a parede).
+                        teto_batido, morreu = exc, True
+                        log(f"[imagens] {rotulo}: {exc}. Paro aqui.")
+                        break
                     except Exception as exc:
                         falha_tecnica = exc
                         erros.append(f"{rotulo}: {type(exc).__name__}: {exc}")
@@ -491,13 +552,15 @@ def _gerar(historia_id: str, *, limite: int | None = None,
                                  "ate o ultimo nivel. Reescreva o prompt de "
                                  "imagem desta cena no roteiro.")
                     log(f"[imagens] {rotulo}: {erros[-1]}")
-                if morreu:
+                if morreu or teto_batido is not None:
                     break
 
     if reescritor is not None:
         reescritor.fechar()
     if parede is not None:
         raise parede
+    if teto_batido is not None:
+        raise teto_batido
 
     faltam = len(fila.pendentes(historia_id, roteiro, parte))
     if recusadas:

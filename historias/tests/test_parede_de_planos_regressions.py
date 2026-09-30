@@ -83,6 +83,14 @@ class OWorker(unittest.TestCase):
         self.addCleanup(setattr, worker, "_registrar_parede", reais[1])
         worker._registrar_parede = (
             lambda hid, exc: self.registros.append((hid, str(exc))))
+        # UMA reabertura, como era ate 30/09/2026: desde o lote o numero vem
+        # do config (`reaberturas_na_parede`), e o que estes testes guardam e
+        # a regra "reabre e, se voltar, para como infraestrutura" — o numero
+        # do config tem teste proprio (test_lote_semanal_regressions).
+        from contos.imagens import fila as _fila
+        self.addCleanup(setattr, _fila, "carregar_config",
+                        _fila.carregar_config)
+        _fila.carregar_config = lambda: {"reaberturas_na_parede": 1}
 
     def _roteiro(self, *respostas):
         fila = list(respostas)
