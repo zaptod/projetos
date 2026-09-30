@@ -53,7 +53,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Esteira de sprites: por onde começa** — As duas frentes (30/09/2026) `sprites-ia-alvo`
 - ✅ **Sprites: peça parada ou quadro a quadro?** — Peça + Godot; folha só no impacto (recomendado) (30/09/2026) `sprites-ia-formato`
 - ✅ **Sprites: como manter o mesmo estilo** — Imagem-mestra aprovada por você (recomendado) (30/09/2026) `sprites-ia-estilo`
-- ⏳ **Sprites: fundo pedido ao ChatGPT** — Que fundo pedir, já que o ChatGPT entrega sem transparência (medido)? `sprites-ia-fundo`
+- ✅ **Sprites: fundo pedido ao ChatGPT** — Magenta liso (verde nos roxos) (recomendado) (30/09/2026) `sprites-ia-fundo`
 
 <!-- decisoes:fim -->
 

@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-30T12:38:19",
+      "opcao": "chroma",
+      "origem": "app"
+    }
+  ],
   "id": "sprites-ia-fundo",
   "midias": [],
   "opcoes": [
@@ -29,7 +37,11 @@
   ],
   "pergunta": "Que fundo pedir, já que o ChatGPT entrega sem transparência (medido)?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Sprites: fundo pedido ao ChatGPT",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-30T12:38:19",
+    "opcao": "chroma"
+  }
 }
