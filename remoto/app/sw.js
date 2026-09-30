@@ -1,6 +1,6 @@
 // Guarda so a CASCA do app (html, icone, manifest) para abrir sem rede.
 // Dados e videos nunca entram no cache: eles vem sempre do PC.
-const CASCA = "painel-casca-v21";
+const CASCA = "painel-casca-v22";
 const ARQUIVOS = ["./", "index.html", "app.js", "vila.js", "comandos.js",
                   "decisoes.js", "orquestrador.js", "conversa.js", "app.css",
                   "manifest.webmanifest", "icones/icone-192.png",
@@ -25,11 +25,16 @@ self.addEventListener("fetch", (e) => {
   // rede primeiro (a casca nova chega logo), cache quando o PC nao responde
   // So resposta 200 da propria origem entra no cache: um 404 ou 429
   // guardado viraria a casca quebrada ate a proxima atualizacao.
+  // Resposta que nao e 200 (o 502 do `tailscale serve` quando o PC nao
+  // atende a tempo) tambem cai na copia guardada: antes o 502 ia direto
+  // para a pagina, e o script que ele substituia sumia (30/09: o
+  // conversa.js, e com ele o "Conversar" e o "Criar").
   e.respondWith(fetch(e.request).then((resp) => {
     if (resp.status === 200 && resp.type === "basic") {
       const copia = resp.clone();
       caches.open(CASCA).then((c) => c.put(e.request, copia));
+      return resp;
     }
-    return resp;
+    return caches.match(e.request).then((guardada) => guardada || resp);
   }).catch(() => caches.match(e.request)));
 });

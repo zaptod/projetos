@@ -690,3 +690,39 @@ mostrar();
 // Service worker so existe em contexto seguro (HTTPS do `tailscale serve`).
 if ("serviceWorker" in navigator && window.isSecureContext)
   navigator.serviceWorker.register("sw.js").catch(() => {});
+
+// Um pedaço do app que não chegou (30/09, tarefa 74856214). No log do PC,
+// a carga de 12:01:17 de 30/09 não recebeu o conversa.js (a de 14:54:07 de
+// 29/09 perdeu ele e o vila.js): sem ele, o cartão do prédio mostrava só
+// "Ver no diário", sem "Conversar" nem "Criar", e nada dizia por quê. Ele
+// ficou 1h13 sem conseguir falar com as IAs; a carga de 13:15:09 recebeu o
+// arquivo e a conversa abriu 5 s depois. Agora: uma recarga sozinho (uma
+// vez só, o sessionStorage segura o laço); se ainda faltar, a faixa diz o
+// nome do arquivo e pede o toque. O `load` vem depois de todos os scripts,
+// inclusive os que falharam.
+const MODULOS = [["vila.js", "vilaMostrar"], ["comandos.js", "comandosMostrar"],
+                 ["decisoes.js", "decisoesMostrar"],
+                 ["orquestrador.js", "orquestradorMostrar"], ["conversa.js", "conversaAbrir"]];
+
+function modulosQueFaltam() {
+  return MODULOS.filter(([, funcao]) => typeof window[funcao] !== "function")
+    .map(([arquivo]) => arquivo);
+}
+
+window.addEventListener("load", () => {
+  const faltam = modulosQueFaltam();
+  document.documentElement.dataset.modulos = faltam.length ? faltam.join(",") : "ok";
+  if (!faltam.length) {
+    sessionStorage.removeItem("painel.modulos");
+    return;
+  }
+  if (!sessionStorage.getItem("painel.modulos")) {
+    sessionStorage.setItem("painel.modulos", faltam.join(","));
+    location.reload();
+    return;
+  }
+  $("modulo-faltando-texto").textContent = `Parte do app não chegou do PC (${faltam.join(", ")})`
+    + (faltam.includes("conversa.js") ? ": sem ela não dá para conversar nem pedir imagem." : ".");
+  $("modulo-faltando").classList.remove("oculto");
+});
+$("btn-recarregar-modulos").addEventListener("click", () => location.reload());

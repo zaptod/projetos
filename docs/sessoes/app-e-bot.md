@@ -291,6 +291,13 @@ DOM e clicando.
   aceita a opção). O agente não pôde rodar o comando: a permissão da sessão
   barrou. Fica para o Adrian rodar à mão. Depois disso, conferir o backend
   `Running`, o `serve status` intacto e "tailnet only".
+- **Script da casca que não chega some calado** (30/09, §15). A fila de
+  escuta do servidor era 5; no Windows a conexão que passa da fila leva RST,
+  e o `tailscale serve` troca a recusa por 502. O arquivo nem aparece no
+  `app_celular.txt`. Sem o `conversa.js`, o cartão do prédio mostra só "Ver
+  no diário". Para conferir no log: toda carga (`GET /`) tem de ter os seis
+  `.js` logo depois. Uma lista de `.js` depois de `GET /sw.js` é o precache
+  do service worker, não carga da página.
 - **Nos testes do bot, `comandos._rodar` é um `Popen` de verdade.** O
   `/publicar` antigo chamava o `main.py publicar` real por ali. O fixture
   `bot` de `test_acoes.py` troca esse caminho, as guardas, o disparo e a
@@ -1676,3 +1683,74 @@ e o relatório novo) e o **app** (o relatório de metas dos Pergaminhos). A
 casca do app e a `previsao` são lidas do disco a cada vez. A **janela
 flutuante** (`NeuralFights_vila_flutuante`, parte painel-e-vila) só mostra a
 seção nova depois de reiniciar; até lá segue com a GORDURA antiga.
+
+## 15. O script que não chegava: sem "Conversar" nem "Criar" (30/09/2026)
+
+Tarefa 74856214 da Mesa. Às 13:10 ele disse, pelo app: "Não estou
+conseguindo conversar nem pedir imagens pras IAs".
+
+**O que o log do 8931 mostrava.** A carga da página de 12:01:17 recebeu
+`/`, `app.css`, `app.js`, `vila.js`, `comandos.js`, `decisoes.js` e
+`orquestrador.js`, mas **não o `conversa.js`**. (A lista das 12:01:21, logo
+depois do `GET /sw.js`, é o precache do service worker, não carga da
+página.) Sem esse arquivo, `conversaAbrir` não existe, e o `vila.js` só
+desenha "💬 Conversar" e "🎨 Criar" quando ela existe. O cartão do prédio
+ficou só com "Ver no diário": às 13:06:55 ele tocou nesse botão, o único
+que havia. Entre 12:01 e 13:15 não houve nenhum `GET /api/correio/<ia>`. A
+carga de 13:15:09 recebeu o `conversa.js`, e a conversa do Gemini abriu às
+13:15:14.
+
+Varrendo o log inteiro, a mesma coisa aconteceu às 14:54:07 de 29/09: a
+carga perdeu o `vila.js` e o `conversa.js`, e nenhuma conversa abriu até a
+carga das 15:07.
+
+**Reproduzido num Chrome de verdade** (412×915, instância de teste na 8934
+com o estado copiado para `E:\projetos-wt\_prova_conversa30`, scripts em
+`scratchpad/sonda_*30.py`):
+- com o `conversa.js` respondendo 502, o cartão do DeepSeek ficou
+  `['Ver no diário']`, e o do PicassoIA também;
+- com tudo carregado, conversar e Criar funcionaram tocando: o POST chegou
+  e a mensagem entrou na caixa de teste.
+
+**A causa, medida.** O `Servidor` herdava `request_queue_size = 5` do
+socketserver. No Windows, a conexão que chega além dessa fila leva RST. Uma
+carga abre cerca de 8 conexões de uma vez (os scripts), enquanto o surto
+de `/api` da carga anterior ainda está em voo. O `tailscale serve` troca a
+recusa por 502, e o service worker repassava o 502 para a página.
+
+A medida foi feita no navegador, recarregando no `load` como o app faz
+(`scratchpad/medir_fila_test.py`):
+
+| fila | cargas | cargas que perderam script |
+| --- | --- | --- |
+| 5 | 145 | 22 (`ERR_CONNECTION_REFUSED`) |
+| 64 | 170 | 0 |
+
+Os testes de navegador novos também falhavam 5 de 8 vezes com a fila em 5;
+com 64, passaram 10 de 10.
+
+**O conserto:**
+- `api_http.Servidor.request_queue_size = 64`;
+- `sw.js`: uma resposta diferente de 200 (o 502) cai na cópia guardada. Só
+  quando não há cópia o erro segue para a página. Casca `v22`;
+- `app.js`: no `load`, confere se cada script chegou (a lista `MODULOS`,
+  com a função de entrada de cada um). Se faltar algum, recarrega **uma**
+  vez sozinho (a trava é o `sessionStorage` `painel.modulos`). Se ainda
+  faltar, a faixa `#modulo-faltando` mostra o nome do arquivo e um botão
+  "Recarregar". O `<html data-modulos>` diz `ok` ou a lista do que falta,
+  para as provas de tela.
+
+**Testes** (`remoto/test_app_modulos.py`):
+- a fila da classe e a do servidor criado são pelo menos 64;
+- todo `<script>` do `index.html` está na lista `MODULOS`, e cada função
+  da lista existe no topo do arquivo dela. Renomear a função sem mexer na
+  lista daria recarga e faixa falsas;
+- o `sw.js` roda no **Node**, com `caches` e `fetch` dublês: 502 e rede
+  caída caem na cópia, 200 vem da rede, e sem cópia o 502 segue;
+- com `NF_TESTE_NAVEGADOR=1`: um 502 no `conversa.js` faz uma recarga e
+  volta `ok`; um 502 que não passa faz uma recarga só e mostra a faixa, sem
+  laço.
+
+**Reinício:** o 8931 foi reiniciado às 13:57:35 (PID 12968, com
+`scratchpad/reiniciar_app.ps1`) e serve a casca `v22`. **No celular:**
+fechar o app e abrir de novo, uma vez.

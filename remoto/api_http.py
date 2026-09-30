@@ -1329,8 +1329,18 @@ class Servidor(ThreadingHTTPServer):
 
     Passou do teto, a conexao e fechada na hora (sem thread). O celular
     abre poucas; mais que isso e defeito ou abuso.
+
+    A fila de escuta (`listen`) era a do socketserver, 5: no Windows, a
+    sexta conexao que chega antes do `accept` leva RST. Uma carga da pagina
+    abre ~8 de uma vez (os scripts) com as /api da carga anterior ainda em
+    voo, e o `tailscale serve` troca a recusa por 502. Medido em 30/09
+    (tarefa 74856214), recarregando no `load` como o app faz: com 5, 22 de
+    145 cargas perderam um script por ERR_CONNECTION_REFUSED; com 64, 0 de
+    170. Foi assim que o celular ficou sem o conversa.js (sem "Conversar"
+    nem "Criar") das 12:01 as 13:15 de 30/09.
     """
     daemon_threads = True
+    request_queue_size = 64
 
     def __init__(self, *args, **kwargs):
         self.vagas = threading.BoundedSemaphore(CONEXOES_MAX)
