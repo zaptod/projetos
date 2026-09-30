@@ -45,6 +45,7 @@ python main.py palco testes                                       # testes do n�
 python main.py palco editor                                       # abre o editor do Godot
 python main.py palco sintetica --destino T.json --duracao 2       # timeline de mentira
 python main.py palco ab --duelo duelo_00016 [--hud]               # A/B: o duelo x o palco
+python main.py palco ab --duelo duelo_00031 --edicao              # 16G: B = palco + a MESMA edicao do duelo
 python main.py palco vitrine [--so rostos]                        # as peças animadas, para revisão (16E)
 python main.py duelo --seed N --palco                             # um duelo novo, só palco
 python main.py duelo --seed N --palco --ab                        # + visual de hoje, lado a lado
@@ -178,6 +179,39 @@ duas vezes: a 1ª com o som da esquerda, a 2ª com o da direita (46,6 s).
 - **Lacunas da timeline v1** (docs/palco/timeline.md): choque de projéteis, fim
   do projétil e o motivo, texto flutuante, eventos de movimento (pulo,
   aterrissagem, knockback). O palco usa o que existe.
-- **16G:** a edição do duelo (identidade, HUD, veredito, música) sobre o clipe
-  do palco, o perfil 16:9, o palco na geração noturna, e medir o render com a
-  sessão bloqueada. Só depois da aprovação do Adrian.
+- **16G, o que falta:** o perfil 16:9 (o palco só desenha 9:16), trocar o
+  duelo de produção, o palco na geração, e medir o render com a sessão
+  bloqueada. Só depois da aprovação do Adrian (nó `palco-duelo-ab`).
+
+## 16G, primeira metade: o A/B com a edição (30/09/2026)
+
+`palco ab --duelo X --edicao` (`builds/palco/edicao.py`) faz o lado B com a
+MESMA edição do duelo: re-simula a luta pela seed do `fight.json` (vencedor e
+duração têm de bater), o palco desenha com o mesmo corte **sem o HUD dele**, e
+o `edit_plan.json` do A é copiado trocando só o clipe. O que tem hora (barras,
+plano, callouts, `luta.sons`, veredito) passa pelo relógio do palco:
+`plano.paradas_de_hitstop` diz onde o hitstop para a imagem, e o que vem depois
+anda o mesmo tanto. O `VideoRenderer` de sempre monta o B, com a música da
+mesma seed; a capa não usa quadro do vídeo e é a mesma. O A é o
+`final_celular.mp4` do duelo, intocado. Saída em `outputs/_palco/g16_<id>/`
+(`final_celular.mp4` = B, `ab_celular.mp4` lado a lado, `medidas.json`).
+Se o gameplay composto cair no transcode simples (sem HUD), é erro.
+
+Medido (os dois duelos mais recentes com o som real, sem escolher):
+
+| | `duelo_00031` (sem corte) | `duelo_00030` (corte de tédio) |
+|---|---|---|
+| quadros A / B | 729 / 729, 1080×1920 | 489 / 489, 1080×1920 |
+| clipe de luta: pygame / palco / pedido | 726 / 730 / 730 | 486 / 489 / 489 |
+| momentos de golpe no mesmo quadro | 105 de 105 (maior diferença 0) | 18 de 18 (0,004 s) |
+| K.O. A / B | 20,83 / 20,833 s | 12,77 / 12,767 s |
+| hitstop | 0 quadros (só golpes leves ou < 3%) | 0 quadros |
+| trecho de luta A = B | -17,1 LUFS, média -14,9 dB, 0% calado | -16,9 LUFS, -15,5 dB, 0% calado |
+| sons | 98, 21 ids, nenhum sem arquivo | 56 (4 caem no corte), 21 ids |
+| preto / congelado ≥ 0,5 s | nenhum / nenhum | nenhum / A 14,57 s e B 14,73 s até o fim (depois do K.O., a cena para) |
+| tempo | Godot 100 s + x264 33 s; A/B ~4 min | Godot 48 s + 18 s; ~2 min |
+
+O clipe do pygame tem 3-4 quadros a menos do que declara (o renderer repete o
+último); o do palco tem o que o corte pede. O som do B é o mesmo mix do A
+(`luta.sons` pelo mesmo `som_da_luta`): sem hitstop nestes dois, o que muda
+no A/B é só o desenho.

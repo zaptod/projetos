@@ -501,3 +501,10 @@ o comando recusa e diz qual.
   (CC0, 12×), efeitos por tipo × elemento com arte CC0, HUD do palco (nome,
   vida, plano; `--hud`) e `main.py palco vitrine` (vídeo de revisão). O A/B
   depois da arte é o nó `palco-ab-2` do Grimório.
+  **16G, primeira metade (30/09):** `main.py palco ab --duelo X --edicao`
+  (`builds/palco/edicao.py`) faz o B com a MESMA edição do duelo (o
+  `edit_plan.json` do A com só o clipe trocado e as horas no relógio do
+  palco), fora do catálogo, em `outputs/_palco/g16_<id>/`. A/B de
+  `duelo_00031` e `duelo_00030`: mesmos quadros, mesmos golpes no mesmo
+  quadro, mesmo som (0% calado); medidas em `docs/palco/README.md`. A troca do
+  duelo de produção espera o nó `palco-duelo-ab`; só 9:16 (o 16:9 falta).
