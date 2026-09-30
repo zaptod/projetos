@@ -21,6 +21,6 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
   - ✅ **Som real da luta (16A)** — Aprovar: re-render do estoque na madrugada (28/09/2026) `som-real-16a`
     - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`
 - ✅ **Esteira de sprites: por onde começa** — As duas frentes (30/09/2026) `sprites-ia-alvo`
-  - 🔒 **Sprites: peça parada ou quadro a quadro?** — Para as habilidades, o ChatGPT desenha peças isoladas (o Godot anima) ou folhas de animação? · espera Esteira de sprites: por onde começa = Efeitos das habilidades (recomendado) `sprites-ia-formato`
-    - 🔒 **Sprites: fundo pedido ao ChatGPT** — Que fundo pedir, já que o ChatGPT entrega sem transparência (medido)? · espera Sprites: peça parada ou quadro a quadro? = decidida `sprites-ia-fundo`
   - ⏳ **Sprites: como manter o mesmo estilo** — Como garantir que todos os sprites gerados pareçam do mesmo jogo? `sprites-ia-estilo`
+- ⏳ **Sprites: peça parada ou quadro a quadro?** — Para as habilidades, o ChatGPT desenha peças isoladas (o Godot anima) ou folhas de animação? `sprites-ia-formato`
+  - 🔒 **Sprites: fundo pedido ao ChatGPT** — Que fundo pedir, já que o ChatGPT entrega sem transparência (medido)? · espera Sprites: peça parada ou quadro a quadro? = decidida `sprites-ia-fundo`
