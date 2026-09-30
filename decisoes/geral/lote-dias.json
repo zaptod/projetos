@@ -3,7 +3,15 @@
   "contexto": "Plano completo em C:\\Users\\adrian\\.claude\\plans\\lote-semanal-de-dia.md. Medido 30/09: histórias precisam de 36–48 h/semana em série (12 histórias), builds ~20 h; o lote NÃO cabe só na segunda.",
   "criado": "2026-09-30T10:05:35.159700",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-30T10:11:00",
+      "opcao": "seg-qua",
+      "origem": "app"
+    }
+  ],
   "id": "lote-dias",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "A segunda sozinha não cabe (histórias pedem 36–48 h em série). Como fazer?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Lote: em quais dias produzir",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-30T10:11:00",
+    "opcao": "seg-qua"
+  }
 }
