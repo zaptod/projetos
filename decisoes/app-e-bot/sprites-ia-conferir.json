@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T12:08:56",
+      "evento": "2026-09-30T12:08:39",
+      "linha": 85,
+      "nota": "tela 'Conferir sprites' no app (F1; na F0 basta Telegram/app simples)",
+      "opcao": "tela-no-app",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:43.255007",
   "depende_de": [
