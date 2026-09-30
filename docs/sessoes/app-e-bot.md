@@ -898,8 +898,12 @@ pediu cada caixa). O caso ZERO existe: sem pasta, tudo é vazio e
   correio);
 - **erro legível**: `classificar_erro` olha o tipo da exceção (login caído,
   conta ocupada), os `catalogo_textos` da ficha da IA (fase 1) contra o texto
-  visível da página, a varredura `catalogo.varrer` e só então a exceção crua
-  → `erro` + `categoria` na mensagem ("o site diz: «…»");
+  **que surgiu depois do envio** (`tela_do_turno`: a página é fotografada
+  antes e `catalogo.linhas_novas` tira o que já estava lá, por contagem), a
+  varredura `catalogo.varrer` e só então a exceção crua → `erro` +
+  `categoria` na mensagem ("o site diz: «…»"). Nunca a página inteira: em
+  30/09 o botão fixo "Fazer upgrade" do rodapé do ChatGPT Free virou o motivo
+  de `82e154e4` e `5030f732` e escondeu a exceção de verdade;
 - **diário**: o próprio cliente registra cada turno (`papel=conversa`,
   `ref=Adrian`, canal `adrian`): a Vila mostra o habitante "conversa Adrian";
 - **Telegram**: a resposta (ou a falha) vai em texto puro aos autorizados

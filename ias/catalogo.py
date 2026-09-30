@@ -29,9 +29,10 @@ PADROES = (
         r"|verify you are human|confirme que (?:voce|você) (?:e|é) humano"
         r"|are you a robot)\b", re.IGNORECASE)),
     ("limite", re.compile(
-        r"(?:limite\s+(?:de\s+)?(?:uso|mensagens|diari|di[aá]rio|atingid|alcanc)"
+        r"\b(?:limite\s+(?:de\s+)?(?:uso|mensagens|diari|di[aá]rio|atingid|alcanc)"
+        r"|limite\s+(?:do|de)\s+(?:plano|imagens?|gera[cç])"
         r"|atingiu\s+(?:o\s+)?(?:seu\s+)?limite|voc[eê]\s+atingiu"
-        r"|you(?:'ve| have)\s+(?:reached|hit)\s+(?:your|the)\s+(?:\w+\s+)?limit"
+        r"|you(?:'ve| have)\s+(?:reached|hit)\s+(?:your|the)\s+(?:\w+\s+){0,3}limit"
         r"|(?:usage|rate|message|daily)\s+limit|too many (?:requests|messages)"
         r"|limit(?:e)?\s+(?:reached|exceeded)|cota\s+(?:esgotad|excedid|atingid)"
         r"|quota\s+(?:exceeded|reached)|sem\s+cr[eé]ditos?|no\s+credits?"
@@ -42,7 +43,8 @@ PADROES = (
         r"|resets? (?:in|at)\s+\d+|redefin\w+\s+(?:em|às|as)\s+\d+)",
         re.IGNORECASE)),
     ("upgrade", re.compile(
-        r"(?:fa[cç]a\s+(?:o\s+)?upgrade|fazer\s+upgrade|upgrade\s+(?:to|para|now|do\s+plano)"
+        r"\b(?:fa[cç]a\s+(?:o\s+)?upgrade\b|fazer\s+upgrade\b"
+        r"|upgrade\s+(?:to|para|now|do\s+plano)\b"
         r"|assine\s+(?:para|o|agora)|assinar\s+(?:o\s+)?(?:plano|pro|plus)"
         r"|subscribe\s+to|get\s+(?:plus|pro|premium|supergrok)"
         r"|(?:experimente|try)\s+(?:o\s+)?(?:gemini\s+advanced|google\s+ai\s+pro"
@@ -131,6 +133,40 @@ def varrer(texto_visivel: str, *, fonte: str = "sonda",
         saida.append(item(categoria, limpo, seletor=seletor, fonte=fonte,
                           visto_em=visto_em))
     return saida
+
+
+def _chave_da_linha(linha) -> str:
+    return " ".join(str(linha or "").split()).casefold()
+
+
+def linhas_novas(antes, depois) -> str:
+    """As linhas de `depois` que NAO estavam em `antes`, contando repeticoes.
+
+    E o que a pagina ganhou desde o envio: a resposta do nosso turno e o
+    aviso/dialogo que surgiu depois. O que ja estava la (o "Fazer upgrade"
+    fixo do rodape do ChatGPT Free, o "Faca upgrade para o Google AI Pro" da
+    barra lateral do Gemini) sai — em 30/09 esse botao virou o motivo de
+    dois pedidos de imagem que falharam por outra coisa. Por contagem: se o
+    aviso aparece de novo DENTRO da resposta, a segunda ocorrencia fica.
+    `antes` pode ser texto ou lista de textos (a pagina e o que enviamos).
+    """
+    if isinstance(antes, (list, tuple)):
+        antes = "\n".join(str(a or "") for a in antes)
+    sobra: dict = {}
+    for linha in str(antes or "").splitlines():
+        chave = _chave_da_linha(linha)
+        if chave:
+            sobra[chave] = sobra.get(chave, 0) + 1
+    saida = []
+    for linha in str(depois or "").splitlines():
+        chave = _chave_da_linha(linha)
+        if not chave:
+            continue
+        if sobra.get(chave, 0) > 0:
+            sobra[chave] -= 1
+            continue
+        saida.append(linha)
+    return "\n".join(saida)
 
 
 def juntar(existentes: list, novos: list) -> list:

@@ -88,6 +88,12 @@ class SessaoReal:
     def __init__(self, cliente, log=_log_padrao):
         self.cliente = cliente
         self.log = log
+        # a pagina ANTES do envio (e o que enviamos): o classificador de erro
+        # so le o que surgiu depois (`texto_do_turno`), nunca o rodape fixo
+        self._antes: list | None = None
+
+    def _marcar_antes(self, *enviado) -> None:
+        self._antes = [self.texto_visivel(), *(str(t or "") for t in enviado)]
 
     @property
     def modelo(self) -> str:
@@ -131,6 +137,7 @@ class SessaoReal:
             raise LLMFalhou(
                 f"o cliente do {c.provedor} ainda nao sabe confirmar anexo na tela "
                 "(seletores `anexo_prova` vazios em contos/llm/seletores.py): mande sem anexo")
+        self._marcar_antes(texto)
         return c.perguntar(texto, anexos=list(anexos) if anexos else None)
 
     def gerar_imagem(self, prompt: str, proporcao: str, mensagem_id: str = "") -> dict:
@@ -138,6 +145,7 @@ class SessaoReal:
         do nosso turno (`imagem.gerar_no_chat`, pelo `perguntar` de sempre: o
         turno vai ao diario como os de texto)."""
         from . import imagem
+        self._marcar_antes(imagem.pedido_de_imagem(prompt, proporcao))
         return imagem.gerar_no_chat(self.cliente, prompt, proporcao, log=self.log)
 
     def imagem_da_resposta(self, prompt: str) -> dict | None:
@@ -159,6 +167,29 @@ class SessaoReal:
         except Exception:                                      # noqa: BLE001
             return ""
 
+    def texto_do_turno(self) -> str:
+        """So o que a pagina ganhou desde o envio (a resposta do nosso turno e
+        o aviso que surgiu depois). Sem envio marcado: nada — a pagina inteira
+        traz botoes fixos ("Fazer upgrade" no rodape do Free) que nao sao o
+        motivo de falha nenhuma (30/09: 82e154e4 e 5030f732)."""
+        if self._antes is None:
+            return ""
+        return catalogo.linhas_novas(self._antes, self.texto_visivel())
+
+
+def tela_do_turno(sessao) -> str:
+    """O texto que o classificador de erro le: o do nosso turno quando a
+    sessao sabe separa-lo, senao o visivel (dubles antigos)."""
+    ler = getattr(sessao, "texto_do_turno", None)
+    if not callable(ler):
+        ler = getattr(sessao, "texto_visivel", None)
+    if not callable(ler):
+        return ""
+    try:
+        return str(ler() or "")
+    except Exception:                                          # noqa: BLE001
+        return ""
+
 
 @contextmanager
 def sessao_real(ia: str, *, headless: bool = False, log=_log_padrao,
@@ -174,13 +205,15 @@ def sessao_real(ia: str, *, headless: bool = False, log=_log_padrao,
 class SessaoDuble:
     """O dublê: responde sem navegador. `respostas` e uma funcao texto->texto
     (ou um texto fixo); `falhar` e uma excecao a levantar; `tela` e o texto
-    'visivel' que o classificador de erro vai ler."""
+    'visivel' depois da falha; `tela_antes` e a pagina antes do envio (o
+    rodape fixo): o classificador so le o que `tela` tem a mais."""
 
     def __init__(self, ia: str, *, responder=None, falhar=None, tela: str = "",
                  casa_abre: bool = True, demora_s: float = 0.0, dormir=time.sleep,
                  imagem_falhar=None, imagem_sem_prova: bool = False,
-                 responder_com_imagem: bool = False):
+                 responder_com_imagem: bool = False, tela_antes: str = ""):
         self.ia = ia
+        self.tela_antes = tela_antes
         self.responder_com_imagem = responder_com_imagem
         self.responder = responder or (lambda texto: "OK (dublê)")
         self.falhar = falhar
@@ -235,6 +268,10 @@ class SessaoDuble:
     def texto_visivel(self) -> str:
         return self.tela
 
+    def texto_do_turno(self) -> str:
+        enviados = [t.get("texto") or "" for t in self.turnos[-1:]]
+        return catalogo.linhas_novas([self.tela_antes, *enviados], self.tela)
+
 
 def fabrica_duble(**ajustes):
     """Uma fabrica de sessoes dublê com os mesmos ajustes para toda IA."""
@@ -268,7 +305,7 @@ def motivo_da_tela(ia: str, tela: str = "") -> tuple | None:
     for item in conhecidos:
         texto = " ".join(str(item.get("texto") or "").split()).lower()
         if (item.get("categoria") in CATEGORIAS_DE_TELA and len(texto) >= 12
-                and texto in tela_baixa):
+                and re.search(r"(?<!\w)" + re.escape(texto) + r"(?!\w)", tela_baixa)):
             return (item["categoria"], f"o site diz: «{item['texto'][:160]}»")
     for item in catalogo.varrer(str(tela)):
         if item["categoria"] in CATEGORIAS_DE_TELA:
@@ -638,11 +675,9 @@ class Carteiro:
         except Exception as exc:                               # noqa: BLE001
             if relancar_parede and type(exc).__name__ == "ParedeDePlanos":
                 raise _Reabrir() from exc
-            tela = ""
-            try:
-                tela = sessao.texto_visivel()
-            except Exception:                                  # noqa: BLE001
-                pass
+            # so o que surgiu depois do envio: o botao fixo "Fazer upgrade"
+            # do rodape do ChatGPT Free nao e motivo (30/09)
+            tela = tela_do_turno(sessao)
             categoria, motivo = imagem.classificar(ia, exc, tela)
             self.log(f"[carteiro] {ia} {mid} (imagem) falhou: {motivo}")
             if casa is not None:
@@ -695,7 +730,7 @@ class Carteiro:
             resposta = sessao.perguntar(mensagem.get("texto") or "",
                                         anexos=mensagem.get("anexos") or None)
         except Exception as exc:                               # noqa: BLE001
-            categoria, motivo = classificar_erro(ia, exc, sessao.texto_visivel())
+            categoria, motivo = classificar_erro(ia, exc, tela_do_turno(sessao))
             self.log(f"[carteiro] {ia} {mid} falhou: {motivo}")
             casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
             correio.gravar_casa(ia, casa)
@@ -950,6 +985,7 @@ def main(args) -> int:
 
 
 __all__ = ["Carteiro", "SessaoDuble", "SessaoReal", "fabrica_duble", "motivo_da_tela",
+           "tela_do_turno",
            "avisar_telegram_arquivo",
            "classificar_erro", "config", "sessao_real", "avisar_telegram",
            "PEDIDO_RESUMO", "PROLOGO_CASA_NOVA"]

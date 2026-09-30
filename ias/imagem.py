@@ -412,10 +412,14 @@ class SessaoPicasso:
         self.config = config
         self.log = log
         self.modelo = "PicassoIA Image"
+        self._antes: list | None = None
 
     def gerar_imagem(self, prompt: str, proporcao: str, mensagem_id: str = "") -> dict:
         from builds.identity import proveniencia
         from contos.imagens import worker
+        # a pagina antes do pedido: o erro so le o que surgiu depois (um
+        # "Planos e Créditos" fixo no menu nao e motivo de falha)
+        self._antes = [self.texto_visivel(), str(prompt or "")]
         pausado, motivo = worker._pausado("picasso")
         if pausado:
             raise Pausado(f"o PicassoIA está pausado no painel ({motivo}): "
@@ -454,6 +458,12 @@ class SessaoPicasso:
                 "() => document.body ? document.body.innerText : ''") or ""
         except Exception:                                      # noqa: BLE001
             return ""
+
+    def texto_do_turno(self) -> str:
+        if self._antes is None:
+            return ""
+        from . import catalogo
+        return catalogo.linhas_novas(self._antes, self.texto_visivel())
 
 
 def config_do_picasso() -> dict:
