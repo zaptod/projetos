@@ -3,7 +3,15 @@
   "contexto": "Fazer várias contas grátis parecerem pessoas diferentes (IP, impressão digital do navegador) para somar cota é exatamente o que os termos da OpenAI proíbem (burlar limites) e é o padrão que eles detectam — o risco é banir TODAS, inclusive a sua principal. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T12:06:09.074809",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-30T12:07:56",
+      "opcao": "contas-proprias",
+      "origem": "app"
+    }
+  ],
   "id": "contas-ia-caminho",
   "midias": [],
   "opcoes": [
@@ -38,7 +46,11 @@
   ],
   "pergunta": "Disfarçar contas ou trocar IP para driblar o limite da OpenAI eu não vou construir. Qual destes caminhos seguimos para ter imagem em volume?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Imagens em volume: qual caminho dentro das regras",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-30T12:07:56",
+    "opcao": "contas-proprias"
+  }
 }
