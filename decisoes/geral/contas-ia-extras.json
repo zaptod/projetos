@@ -3,7 +3,15 @@
   "contexto": "Várias contas Free da mesma IA para somar cota provavelmente fere os termos da OpenAI/xAI (risco de banir inclusive a sua conta pessoal). O perfil chatgpt__plus já existe no disco, fora do registro. O login de cada conta é sempre seu. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:43.657792",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "Quero achar uma forma de fazer com que essas contas sejam diferentes aos olhos da open aí, ou mudar o IP quando fazer a requisição, qualquer coisa assim mas a minha ideia é, tenho vários email Outlook, crio várias contas free, giro entre elas mudando o IP de requisição e consigo gerar imagens infinitas",
+      "em": "2026-09-30T12:05:26",
+      "opcao": "varias-gratis",
+      "origem": "app"
+    }
+  ],
   "id": "contas-ia-extras",
   "midias": [],
   "opcoes": [
@@ -41,7 +49,11 @@
   ],
   "pergunta": "Quantas contas de cada IA e com que papel?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Contas extras de IA: quais",
-  "vigente": null
+  "vigente": {
+    "comentario": "Quero achar uma forma de fazer com que essas contas sejam diferentes aos olhos da open aí, ou mudar o IP quando fazer a requisição, qualquer coisa assim mas a minha ideia é, tenho vários email Outlook, crio várias contas free, giro entre elas mudando o IP de requisição e consigo gerar imagens infinitas",
+    "em": "2026-09-30T12:05:26",
+    "opcao": "varias-gratis"
+  }
 }

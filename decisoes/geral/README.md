@@ -28,6 +28,6 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Lote: piso de reposição (qui–dom)** — 2 dias = 20 vídeos (recomendado) (30/09/2026) `lote-piso-de-reposicao`
 - ✅ **Lote: como trocar da madrugada para o dia** — Esquema de dia validado 1 dia antes de desligar a madrugada; 1º lote seg 05/10 (recomendado) (30/09/2026) `lote-transicao`
 - ✅ **Sprites: o que o Grok decide sozinho** — Aconselha; aprova só depois de calibrado (recomendado) (30/09/2026) `sprites-ia-juiz`
-- ⏳ **Contas extras de IA: quais** — Quantas contas de cada IA e com que papel? `contas-ia-extras`
-  - 🔒 **Contas de IA: como alternar** — Com mais de uma conta da mesma IA, como o sistema escolhe qual usar? · espera Contas extras de IA: quais = decidida `contas-ia-rodizio`
-  - 🔒 **Perfis de navegador: mudar para o E:?** — Mudar as pastas de perfil das IAs do C: para o E:? · espera Contas extras de IA: quais = 4 ChatGPT Free `perfis-para-o-e`
+- ✅ **Contas extras de IA: quais** — 4 ChatGPT Free (30/09/2026) · “Quero achar uma forma de fazer com que essas contas sejam diferentes aos olhos da open aí, ou mudar o IP quando fazer a requisição, qualquer coisa assim mas a minha ideia é, tenho vários email Outlook, crio várias contas free, giro entre elas mudando o IP de requisição e consigo gerar imagens infinitas” `contas-ia-extras`
+  - ⏳ **Contas de IA: como alternar** — Com mais de uma conta da mesma IA, como o sistema escolhe qual usar? `contas-ia-rodizio`
+  - ⏳ **Perfis de navegador: mudar para o E:?** — Mudar as pastas de perfil das IAs do C: para o E:? `perfis-para-o-e`
