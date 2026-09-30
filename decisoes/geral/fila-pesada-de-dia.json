@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "209ab977",
+      "em": "2026-09-30T09:37:42",
+      "evento": "2026-09-30T09:36:51",
+      "linha": 69,
+      "nota": "pesado de dia, 2 em paralelo; lote semanal vira plano para aprovar",
+      "opcao": "de-dia-livre",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "A regra de trabalho pesado 01h–06h existe para não disputar a máquina com a publicação (posts em :37). Ontem à noite o Claude estava proibido (23:26→09:05), então elas não rodaram. Capacidade atual: 2 agentes.",
   "criado": "2026-09-30T09:15:33.247883",
   "depende_de": [],
