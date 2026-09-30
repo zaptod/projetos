@@ -31,7 +31,16 @@ from pathlib import Path
 
 from builds import atividade, grade
 
-from . import lote
+try:
+    from . import lote
+except ImportError:
+    # carregado solto por caminho (o teste cruzado de historias usa
+    # spec_from_file_location): o lote.py so importa a stdlib
+    import importlib.util as _importlib_util
+    _spec = _importlib_util.spec_from_file_location(
+        "remoto_lote_solto", Path(__file__).with_name("lote.py"))
+    lote = _importlib_util.module_from_spec(_spec)
+    _spec.loader.exec_module(lote)
 
 RAIZ = Path(__file__).resolve().parents[1]
 
