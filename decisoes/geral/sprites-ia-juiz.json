@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-30T12:03:14",
+      "opcao": "calibrar",
+      "origem": "app"
+    }
+  ],
   "id": "sprites-ia-juiz",
   "midias": [],
   "opcoes": [
@@ -42,7 +50,11 @@
   ],
   "pergunta": "O Grok só aconselha ou pode aprovar sprite sem você?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Sprites: o que o Grok decide sozinho",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-30T12:03:14",
+    "opcao": "calibrar"
+  }
 }

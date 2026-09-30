@@ -12,4 +12,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Aviso no Telegram: comando da Mesa sem ninguém ouvindo** — Manter os dois avisos (o de parado e o de voltou) (29/09/2026) `aviso-no-telegram-comando-da-mesa-sem-ni`
 - ✅ **O aparelho pareado em 17/09 ainda é seu?** — Esquecer o de 17/09 (29/09/2026) `o-aparelho-pareado-em-17-09-ainda-e-seu`
 - ✅ **Mensagem para uma IA pelo app: direto ou com confirmação?** — Direto (como está): escrevi, foi (29/09/2026) `mensagem-para-uma-ia-pelo-app-direto-ou`
-- 🔒 **Sprites: onde você aprova** — Onde os sprites chegam para você aprovar? · espera Sprites: o que o Grok decide sozinho = decidida `sprites-ia-conferir`
+- ⏳ **Sprites: onde você aprova** — Onde os sprites chegam para você aprovar? `sprites-ia-conferir`
