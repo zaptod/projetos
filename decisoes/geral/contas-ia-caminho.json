@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T12:08:16",
+      "evento": "2026-09-30T12:07:56",
+      "linha": 83,
+      "nota": "contas extras dele, papel próprio, sem disfarce: entra na F2 da esteira (registro com papel/plano/dono, abrir_cliente(conta), cota por conta); login é dele",
+      "opcao": "contas-proprias",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Fazer várias contas grátis parecerem pessoas diferentes (IP, impressão digital do navegador) para somar cota é exatamente o que os termos da OpenAI proíbem (burlar limites) e é o padrão que eles detectam — o risco é banir TODAS, inclusive a sua principal. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T12:06:09.074809",
   "depende_de": [],
