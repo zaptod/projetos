@@ -3,7 +3,15 @@
   "contexto": "Plano completo em C:\\Users\\adrian\\.claude\\plans\\lote-semanal-de-dia.md. Medido 30/09: histórias precisam de 36–48 h/semana em série (12 histórias), builds ~20 h; o lote NÃO cabe só na segunda.",
   "criado": "2026-09-30T10:05:35.923761",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-30T10:11:56",
+      "opcao": "tudo",
+      "origem": "app"
+    }
+  ],
   "id": "lote-estoque-zero-de-madrugada",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Se o estoque zerar de madrugada (22h–07h), o que a máquina faz?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Lote: estoque zero de madrugada",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-30T10:11:56",
+    "opcao": "tudo"
+  }
 }

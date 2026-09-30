@@ -25,7 +25,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Lote: janela do trabalho pesado de dia** — 07h às 22h (recomendado) (30/09/2026) `lote-janela-de-dia`
 - ✅ **Lote: em quais dias produzir** — Histórias seg–qua, builds seg–ter (recomendado) (30/09/2026) `lote-dias`
 - ✅ **Lote: vídeo de até 6 dias** — Aceito; mudança crítica ganha re-render (recomendado) (30/09/2026) `lote-frescor`
-- ⏳ **Lote: estoque zero de madrugada** — Se o estoque zerar de madrugada (22h–07h), o que a máquina faz? `lote-estoque-zero-de-madrugada`
+- ✅ **Lote: estoque zero de madrugada** — Libera tudo (30/09/2026) `lote-estoque-zero-de-madrugada`
 - ⏳ **Lote: piso de reposição (qui–dom)** — Abaixo de quantos dias de estoque a máquina volta a criar fora do lote? `lote-piso-de-reposicao`
 - ⏳ **Lote: como trocar da madrugada para o dia** — Quando desligar as tarefas da madrugada? `lote-transicao`
 
