@@ -17,7 +17,7 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
     - ✅ **Hitstop: a pausinha no impacto** — Ligar (28/09/2026) `hitstop`
     - ✅ **Palco: A/B depois da arte (16E)** — Seguir: trocar o visual do duelo (16G) (28/09/2026) `palco-ab-2`
       - ✅ **Palco: os números de dano na tela** — Não (29/09/2026) `palco-numeros-de-dano`
-      - ⏳ **Duelo: trocar o visual para o palco?** — O duelo passa a sair com o visual do palco (Godot) no lugar do atual? `palco-duelo-ab`
+      - ✅ **Duelo: trocar o visual para o palco?** — Ajustar primeiro (diga o quê no comentário) (30/09/2026) · “A corrente a animaçao dela é muito feia, e suaecanica é idêntica a da espada, quero um rework completo nela mas de resto tudo está perfeito” `palco-duelo-ab`
 - ✅ **Transição até o palco** — O visual atual segue, já com o som real (28/09/2026) `transicao`
   - ✅ **Som real da luta (16A)** — Aprovar: re-render do estoque na madrugada (28/09/2026) `som-real-16a`
     - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`

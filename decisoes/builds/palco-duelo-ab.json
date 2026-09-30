@@ -8,7 +8,15 @@
       "opcao": "trocar"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "A corrente a animaçao dela é muito feia, e suaecanica é idêntica a da espada, quero um rework completo nela mas de resto tudo está perfeito",
+      "em": "2026-09-30T18:07:43",
+      "opcao": "ajustar",
+      "origem": "app"
+    }
+  ],
   "id": "palco-duelo-ab",
   "midias": [
     {
@@ -53,7 +61,11 @@
   ],
   "pergunta": "O duelo passa a sair com o visual do palco (Godot) no lugar do atual?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Duelo: trocar o visual para o palco?",
-  "vigente": null
+  "vigente": {
+    "comentario": "A corrente a animaçao dela é muito feia, e suaecanica é idêntica a da espada, quero um rework completo nela mas de resto tudo está perfeito",
+    "em": "2026-09-30T18:07:43",
+    "opcao": "ajustar"
+  }
 }
