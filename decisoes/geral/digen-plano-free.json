@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T09:37:44",
+      "evento": "2026-09-29T21:07:14",
+      "linha": 66,
+      "nota": "aplicar payoff_video=false foi barrado pela permissão; está com o Adrian",
+      "opcao": "desligar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Captura da parede na mídia. A fila de vídeo das builds (payoff_video=true) usa o mesmo modelo e deve bater na mesma parede: o guarda do cliente fecha esse diálogo como se fosse propaganda e ERRO_GERACAO não conhece o texto, então a espera não acusa (render_timeout 1800 s; não medido até o fim). O Grok Imagine faz vídeo 480p/6s de graça na sua conta (ficha do Grok), ainda não provado.",
   "criado": "2026-09-29T17:41:10.996999",
   "depende_de": [],
