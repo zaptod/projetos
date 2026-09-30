@@ -41,10 +41,14 @@ class FreioContaAprovadosTests(unittest.TestCase):
         self.assertIn("qualidade.liberado", fonte)
         self.assertIn('veredito.get("ok")', fonte)
 
-    def test_o_numero_do_freio_sai_dos_aprovados(self):
+    def test_o_numero_do_freio_sai_da_publicacao(self):
+        """Desde 30/09/2026: o numero da publicacao, com os aprovados como
+        rede quando ela nao sabe contar."""
         import inspect
-        self.assertIn("aprovados_no_estoque()",
+        self.assertIn("estoque_publicavel()",
                       inspect.getsource(agenda.dias_de_estoque_novo))
+        self.assertIn("aprovados_no_estoque()",
+                      inspect.getsource(agenda.estoque_publicavel))
 
     def test_vistoria_que_explode_conta_como_estoque(self):
         """Errar para o lado de NAO criar: um ffprobe travado nao pode virar

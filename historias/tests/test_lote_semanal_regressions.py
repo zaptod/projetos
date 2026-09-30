@@ -66,6 +66,10 @@ class _Mundo(unittest.TestCase):
         self.estoque, self.barrados = [], []
         self._trocar(agenda, "aprovados_no_estoque",
                      lambda: list(self.estoque))
+        # O numero que decide criar e o da publicacao (30/09/2026); aqui o
+        # mesmo estoque de mentira, sem abrir o `postar.py`.
+        self._trocar(agenda, "estoque_publicavel",
+                     lambda: len(self.estoque))
         self._trocar(agenda, "barrados_no_estoque",
                      lambda: list(self.barrados))
         self._trocar(agenda, "incompletas", lambda: [])
@@ -434,8 +438,17 @@ class ParedeDePlanosTests(unittest.TestCase):
         from contos.imagens import fila
         config = fila.carregar_config()
         self.assertGreaterEqual(int(config["reaberturas_na_parede"]), 1)
-        self.assertGreater(int(config["teto_de_imagens_por_dia"]), 0)
+        # "Sem teto" (decisao `historias/teto-diario-picasso`, 30/09 11:26):
+        # 0 e o "sem teto" que `cota.teto` entende.
+        self.assertEqual(0, int(config["teto_de_imagens_por_dia"]))
         self.assertTrue(config["exigir_prova_de_origem"])
+
+    def test_sem_teto_no_config_real_nada_impede(self):
+        from contos.imagens import cota, fila
+        config = fila.carregar_config()
+        self.assertEqual(0, cota.teto(config))
+        self.assertFalse(cota.batido(config))
+        self.assertIsNone(cota.motivo(config))
 
 
 class DiscoTests(_Mundo):

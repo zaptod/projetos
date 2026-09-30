@@ -419,9 +419,12 @@ def planejar(config: dict, agora, *, aprovados=None, barrados=None,
                 "config": {**config,
                            "janela_pesada": config["madrugada_na_transicao"],
                            "servico_do_dia": False}}
-    lista = aprovados_no_estoque() if aprovados is None else list(aprovados)
-    n = len(lista)
     if modo == "noite":
+        # A NOITE PERGUNTA OUTRA COISA: "sai algo no PROXIMO horario?". A
+        # retida sai quando o horario ia ficar vazio, entao aqui ela conta.
+        lista = (aprovados_no_estoque() if aprovados is None
+                 else list(aprovados))
+        n = len(lista)
         if not (config.get("estoque_zero_libera_a_noite", True)
                 and estoque_zero(lista, config)):
             janela = config["janela_pesada"]
@@ -458,14 +461,18 @@ def planejar(config: dict, agora, *, aprovados=None, barrados=None,
     # isto ela esperaria ate segunda, envelhecendo.
     ni = len(incompletas() if pendentes is None else pendentes)
     servico = servico_pendente(agora)
+    # O NUMERO DA PUBLICACAO (30/09/2026): `estoque_publicavel`, o mesmo do
+    # `postar.py --ver`. Lista passada por quem chama (teste, mao) vale.
+    n = (estoque_publicavel() if aprovados is None
+         else len(list(aprovados)))
     if modo == "lote":
         meta = alvo_do_lote(config, agora)
         reparos = int(config.get("reparos_por_rodada") or 6)
-        rotulo = f"lote: {n} aprovado(s) para um alvo de {meta}"
+        rotulo = f"lote: {n} publicavel(is) para um alvo de {meta}"
     else:
         meta = piso_de_reposicao(config)
         reparos = int(config.get("reparos_de_dia") or 2)
-        rotulo = f"reposicao: {n} aprovado(s), piso {meta}"
+        rotulo = f"reposicao: {n} publicavel(is), piso {meta}"
     criar = n < meta
     impedido = _impedimento_de_criar(config) if criar else None
     if impedido:
@@ -770,8 +777,62 @@ def dias_de_gordura(config: dict | None = None) -> int:
     return max(1, int(config.get("dias_de_gordura") or 2))
 
 
+# O `ferramentas/postar.py`, carregado pelo caminho como o painel e o bot o
+# carregam (`painel/flutuante/previsao.py`, `remoto/relatorios.py`).
+POSTAR = RAIZ.parent / "ferramentas" / "postar.py"
+_POSTAR_CARREGADO = None
+
+
+def _postar():
+    global _POSTAR_CARREGADO
+    if _POSTAR_CARREGADO is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_postar_da_agenda",
+                                                      POSTAR)
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        _POSTAR_CARREGADO = modulo
+    return _POSTAR_CARREGADO
+
+
+def estoque_publicavel() -> int:
+    """Quantas partes de historia a PUBLICACAO tem para os proximos horarios.
+
+    UMA CONTAGEM SO (30/09/2026). As 11:02 a agenda contou 29 "aprovados" e
+    entrou em "so consertar" (piso 20); as 11:21 o `postar.py --ver` contou
+    8 (0,8 dia). Medido as 11:25: dos 27 da agenda, 20 eram partes RETIDAS
+    (18 com o veto da IA, 2 so pela folha) — a vistoria mecanica deixa passar
+    o veto vencido, e a publicacao so solta a retida quando o horario ia
+    ficar vazio (decisao `reprovado-ou-nao-assistido`). Os 8 da publicacao
+    sao os 7 que sobram mais a h41 p01, que a vistoria barrava. O freio
+    contava como estoque o que a escolha nao usa, e o canal secaria em menos
+    de um dia sem ninguem criar.
+
+    Agora o numero que decide criar E o de `postar.pendentes_por_canal()` —
+    o mesmo que o `--ver` mostra e que a gordura/alerta usam: a fila da
+    escolha (`fila_de_historias`) sem as retidas. Nenhum criterio duplicado:
+    se a publicacao mudar o que conta, a agenda muda junto.
+
+    Nao deu para contar (`-1` ou excecao): cai no `aprovados_no_estoque`,
+    que conta a mais — o erro barato e criar de menos, nao sem parar.
+    """
+    try:
+        n = int(_postar().pendentes_por_canal().get("historias", -1))
+    except Exception:                                          # noqa: BLE001
+        n = -1
+    if n >= 0:
+        return n
+    return len(aprovados_no_estoque())
+
+
 def dias_de_estoque_novo() -> int:
-    """Dias de video pronto feitos com a ABORDAGEM ATUAL.
+    """O estoque que decide criar: `estoque_publicavel()` (30/09/2026).
+
+    O nome ficou (o freio de `_trabalhar` e os testes o chamam); a conta e a
+    da publicacao. O texto abaixo e a historia de antes, e o porque de ela
+    ter passado a olhar so o que a vistoria aprova.
+
+    Dias de video pronto feitos com a ABORDAGEM ATUAL.
 
     E este o numero que decide se vale criar mais, e nao o estoque total. O
     estoque velho (Gemini Flash, sem molde, sem revisao, sem alavancas) e
@@ -795,7 +856,7 @@ def dias_de_estoque_novo() -> int:
     a fila inteira. O freio roda oito vezes por dia: o custo e irrelevante
     perto de descobrir tarde que o canal ficou sem o que publicar.
     """
-    return len(aprovados_no_estoque())
+    return estoque_publicavel()
 
 
 def aprovados_no_estoque() -> list:

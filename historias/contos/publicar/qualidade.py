@@ -50,6 +50,19 @@ PRETO_AREA = 0.80
 PRETO_MIN_S = 0.5
 PRETO_PIXEL = 0.10
 PRETO_FPS = 4
+# CENA NOTURNA NAO E TELA PRETA (30/09/2026). A h41 p01 foi barrada tres
+# vezes (05:31, 07:08, 10:08) por "a metade de cima fica preta 85,0-91,8 s", e
+# o reparo re-renderizava sem mudar nada. O trecho e a cena 14 ("sozinha, no
+# escuro", cemiterio a noite), cuja PROPRIA imagem tem 82% dos pixels abaixo
+# do limiar do pixel: o quadro mostra a mulher iluminada pelo celular. Quando
+# todas as cenas do plano que caem no trecho tem imagem no disco e cada uma e,
+# ela mesma, pelo menos IMAGEM_ESCURA_AREA escura, o trecho vira AVISO, nao
+# erro. O cartao de cena sem imagem continua erro (a cena nao tem arquivo) e
+# imagem clara que saiu preta tambem (o render quebrou). 0,70: com as laterais
+# do 1:1 no dividido, imagem abaixo disso nem chega aos 80% do quadro.
+IMAGEM_ESCURA_AREA = 0.70
+# Sobreposicao minima entre o trecho e a cena para a cena contar (transicao).
+IMAGEM_ESCURA_SOBRA_S = 0.25
 
 
 def _formato_no_arquivo(dados: dict | None) -> dict | None:
@@ -421,8 +434,94 @@ def _gravar_memo(chave: str, trechos: list, gasto: float) -> None:
             pass
 
 
-def erros_de_preto(caminho: Path, layout: str) -> dict:
-    """`trechos_pretos` virado laudo: erro se achou, aviso se nao mediu."""
+def fracao_escura(arquivo: Path) -> float | None:
+    """Fracao dos pixels da IMAGEM abaixo do limiar do pixel do detector.
+
+    O mesmo `PRETO_PIXEL` do blackdetect, na luma de 0-255. `None` = nao
+    abriu (entao nao explica nada).
+    """
+    try:
+        from PIL import Image
+        with Image.open(arquivo) as imagem:
+            histograma = imagem.convert("L").histogram()
+    except Exception:                                          # noqa: BLE001
+        return None
+    total = sum(histograma)
+    if not total:
+        return None
+    limiar = int(round(PRETO_PIXEL * 255))
+    return sum(histograma[:limiar + 1]) / total
+
+
+def trechos_de_imagem_escura(historia_id: str, parte: int, trechos,
+                             duracao: float | None = None) -> dict:
+    """`{trecho: explicacao}` dos trechos pretos que sao a PROPRIA imagem.
+
+    Le o plano do render (`edit_plan.json`: cada evento de cena com `start`,
+    `duration` e `arquivo`). Um trecho so e explicado quando TODAS as cenas
+    que caem nele (mais de `IMAGEM_ESCURA_SOBRA_S`) tem o arquivo no disco e
+    cada imagem tem pelo menos `IMAGEM_ESCURA_AREA` de pixels escuros. Plano
+    ausente, de outro render (duracao diferente em mais de 1 s) ou cena sem
+    arquivo: nada explicado — o erro fica. Nunca levanta.
+    """
+    try:
+        from ..video import plano
+        with open(plano.caminho_do_plano(historia_id, parte),
+                  encoding="utf-8-sig") as fh:
+            dados = json.load(fh) or {}
+    except Exception:                                          # noqa: BLE001
+        return {}
+    try:
+        total = float(dados.get("total_duration") or 0.0)
+        if duracao and total and abs(total - float(duracao)) > 1.0:
+            return {}
+    except (TypeError, ValueError):
+        return {}
+    eventos = [e for e in (dados.get("events") or [])
+               if isinstance(e, dict) and e.get("type") == "cena"]
+    medidas: dict = {}
+    saida = {}
+    for trecho in trechos or ():
+        try:
+            a, b = float(trecho[0]), float(trecho[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        cenas = {}
+        for evento in eventos:
+            try:
+                inicio = float(evento.get("start") or 0.0)
+                fim = inicio + float(evento.get("duration") or 0.0)
+            except (TypeError, ValueError):
+                cenas = None
+                break
+            if min(b, fim) - max(a, inicio) > IMAGEM_ESCURA_SOBRA_S:
+                cenas[evento.get("n")] = evento.get("arquivo")
+        if not cenas:
+            continue
+        partes_do_texto = []
+        for n, arquivo in cenas.items():
+            if not arquivo or not Path(arquivo).is_file():
+                partes_do_texto = None
+                break
+            if arquivo not in medidas:
+                medidas[arquivo] = fracao_escura(Path(arquivo))
+            fracao = medidas[arquivo]
+            if fracao is None or fracao < IMAGEM_ESCURA_AREA:
+                partes_do_texto = None
+                break
+            partes_do_texto.append(f"cena {n} ({fracao:.0%} escura)")
+        if partes_do_texto:
+            saida[(round(a, 2), round(b, 2))] = ", ".join(partes_do_texto)
+    return saida
+
+
+def erros_de_preto(caminho: Path, layout: str, explicar=None) -> dict:
+    """`trechos_pretos` virado laudo: erro se achou, aviso se nao mediu.
+
+    `explicar(trechos) -> {trecho: texto}` tira do erro o trecho que e a
+    propria imagem escura da cena (`trechos_de_imagem_escura`): ele vira
+    aviso. O memo guarda os trechos medidos, nunca a explicacao.
+    """
     import time as _t
     caminho = Path(caminho)
     try:
@@ -455,11 +554,24 @@ def erros_de_preto(caminho: Path, layout: str) -> dict:
     if trechos is None:
         avisos.append("nao consegui medir trechos pretos (ffmpeg falhou)")
     elif trechos:
-        onde = ("a metade de cima (a imagem)" if layout == "dividido"
-                else "a imagem")
-        lista = ", ".join(f"{a:.1f}-{b:.1f}s" for a, b in trechos[:4])
-        erros.append(f"{onde} fica preta em {len(trechos)} trecho(s) "
-                     f"({lista}): cena sem imagem ou render quebrado")
+        explicados = {}
+        if explicar is not None:
+            try:
+                explicados = explicar(list(trechos)) or {}
+            except Exception:                                  # noqa: BLE001
+                explicados = {}
+        reais = [t for t in trechos
+                 if (round(float(t[0]), 2), round(float(t[1]), 2))
+                 not in explicados]
+        for (a, b), texto in explicados.items():
+            avisos.append(f"trecho escuro {a:.1f}-{b:.1f}s: a propria imagem "
+                          f"e noturna ({texto}), nao e render quebrado")
+        if reais:
+            onde = ("a metade de cima (a imagem)" if layout == "dividido"
+                    else "a imagem")
+            lista = ", ".join(f"{a:.1f}-{b:.1f}s" for a, b in reais[:4])
+            erros.append(f"{onde} fica preta em {len(reais)} trecho(s) "
+                         f"({lista}): cena sem imagem ou render quebrado")
     return {"erros": erros, "avisos": avisos, "trechos": trechos, "s": gasto}
 
 
@@ -628,7 +740,10 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
     laudo["erros"].extend(ritmo["erros"])
     laudo["avisos"].extend(ritmo["avisos"])
     if laudo.get("existe") and laudo.get("video"):
-        preto = erros_de_preto(caminho, str(feito.get("layout") or "vertical"))
+        duracao = laudo.get("duracao")
+        preto = erros_de_preto(caminho, str(feito.get("layout") or "vertical"),
+                               explicar=lambda trechos: trechos_de_imagem_escura(
+                                   historia_id, parte, trechos, duracao))
         laudo["erros"].extend(preto["erros"])
         laudo["avisos"].extend(preto["avisos"])
         laudo["trechos_pretos"] = preto["trechos"]

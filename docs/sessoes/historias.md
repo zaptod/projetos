@@ -100,6 +100,19 @@ uma chave de `config/agenda.json` — nenhum número mora no código. Plano medi
 | modo (`agenda.modo_da_hora`) | quando | o que faz |
 |---|---|---|
 | `lote` | `dias_de_lote` [0,1,2] (seg–qua), dentro da `janela_pesada` 07h–22h, a partir de `lote_a_partir_de` (2026-10-05) | termina incompleta, conserta (`reparos_por_rodada`) e **emenda** histórias até `alvo_do_lote` |
+- **O número que decide criar é o da publicação** (30/09/2026): `agenda.estoque_publicavel()`
+  = `postar.pendentes_por_canal()["historias"]` (o `postar.py` carregado pelo caminho, como
+  o painel e o bot fazem) — a fila da escolha **sem as retidas**, o mesmo número do `--ver`.
+  Vale para o piso/alvo de `planejar` e para o freio de `_trabalhar`
+  (`dias_de_estoque_novo`). Às 11:02 a agenda contou 29 "aprovados" e ficou em "só
+  consertar"; às 11:21 o `--ver` contou 8. Medido às 11:25: dos 27 da agenda, **20 eram
+  retidas** (18 com veto da IA — a vistoria mecânica deixa passar o veto vencido —, 2 só
+  pela folha); os 8 da publicação eram os 7 restantes mais a h41 p01, que a vistoria
+  barrava. Publicação que não sabe contar (`-1`/exceção) cai em `aprovados_no_estoque`
+  (conta a mais). A `noite`/`zero` continua com `aprovados_no_estoque`: ali a pergunta é
+  "sai algo no próximo horário?", e a retida sai quando o horário ia ficar vazio.
+  Testes: `tests/test_estoque_unico_regressions.py`.
+
 | `reposicao` | qui–dom na janela (e seg–qua antes do 1º lote) | conserta (`reparos_de_dia`), termina incompleta; **cria só abaixo de `piso_de_reposicao`** (20) |
 | `madrugada` | 01h–06h enquanto existir `madrugada_na_transicao` | o esquema antigo: uma história por disparo até o teto de `dias_de_gordura` |
 | `zero` | fora da janela, sem vídeo para o próximo horário (`estoque_zero`: nenhum aprovado, ou nenhuma série com a próxima parte aprovada) | **libera tudo** (`estoque_zero_libera_a_noite`): conserta e cria até haver vídeo |
@@ -255,8 +268,8 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
 - **Teto diário do PicassoIA** (30/09, para o lote): `contos/imagens/cota.py` conta os
   **envios** das histórias por dia em `outputs/_picasso_por_dia.json` (envio = imagem
   gerada do lado do site, aproveitada ou não; medido 20–30/09: 90–191 prontas/dia e
-  envios 10–30 % acima). `teto_de_imagens_por_dia` (450; 0 = sem teto; decisão pendente
-  no Grimório `historias/teto-diario-picasso`) é conferido **antes de cada envio**: ao
+  envios 10–30 % acima). `teto_de_imagens_por_dia` (**0 = sem teto desde 30/09 11:26**,
+  decisão `historias/teto-diario-picasso`: "Sem teto"; era 450) é conferido **antes de cada envio**: ao
   bater, `worker.TetoDoDia` (subclasse de `NaoRodou`: o reparo adia sem gastar
   tentativa) fecha o navegador depois de registrar a cena já provada, e a agenda para de
   criar e avisa uma vez no dia. Prova de origem continua obrigatória.
@@ -266,7 +279,15 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
 - **Imagem faltando não renderiza**: antes só a agenda pulava a parte incompleta; hoje
   `main.py video`, `tudo()` e o botão do painel também.
 - **Trecho preto na vistoria**: `qualidade.trechos_pretos()` — área ≥80 % escura por >0,5 s
-  é **erro**. Os limiares são medidos: com 40 %, cena noturna reprovava.
+  é **erro**. Os limiares são medidos: com 40 %, cena noturna reprovava. **Cena noturna
+  de verdade** (30/09): a h41 p01 foi barrada 3 vezes (05:31, 07:08, 10:08) por "preta
+  85,0–91,8 s" e o reparo só re-renderizava igual. Era a cena 14 (cemitério à noite), com
+  a própria imagem **85 %** abaixo do limiar do pixel (as outras 13: 20–49 %); o quadro
+  mostra a mulher iluminada pelo celular (máx. de luma 250–255). Agora
+  `trechos_de_imagem_escura` lê o `edit_plan.json`: se **todas** as cenas no trecho têm
+  arquivo e cada imagem tem ≥ `IMAGEM_ESCURA_AREA` (0,70) escura, o trecho vira **aviso**.
+  Cena sem arquivo (o cartão), imagem clara que saiu preta e plano de outro render
+  continuam **erro**. No memo de 228 vídeos, só a h41 p01 tinha trecho preto.
 - **A vistoria é cara e roda muitas vezes**: `aprovados_no_estoque()` levou 107 s para 19
   vídeos (28/09, 02:55, máquina ocupada): 51 s de decode do áudio, 35 s do detector de
   colagem nas 266 imagens, 17 s de ffprobe, 4 s do resto — e a mesma passada roda 2 a 5
@@ -388,8 +409,9 @@ de folha. **`aprovado` continua sendo a palavra do revisor** e não mudou de sen
 ler, use `parecer.situacao(ficha)` (nas fichas antigas, sem o campo, deduz de `aprovado`
 + `vista`), `parecer.situacao_do_video(video_ou_id)` (pelo id, como `veto_por_id`) ou
 `parecer.nao_assistido(video_ou_id)`. O estoque desta parte (`qualidade.liberado`,
-`aprovados_no_estoque`) **ainda conta** `nao_assistido` como aprovado — muda junto com a
-válvula, não antes.
+`aprovados_no_estoque`) **ainda conta** `nao_assistido` como aprovado — mas desde 30/09 o
+número que **decide criar** é o da publicação (`agenda.estoque_publicavel`, §1a), que já
+tira as retidas.
 
 **O diário** é `builds.atividade.registrar(...)` com `canal="historias"` e `etapa` (ex.:
 `imagens.parede_de_planos`, `criacao.series`) — é o que o bot de apuração lê para

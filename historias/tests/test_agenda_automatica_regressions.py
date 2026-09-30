@@ -908,7 +908,9 @@ class EstoqueNovoContraReservaTests(unittest.TestCase):
             self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))
             setattr(alvo, nome, falso)
         self.assertEqual(agenda.dias_de_estoque(), 4)        # total
-        self.assertEqual(agenda.dias_de_estoque_novo(), 2)   # so a marcada
+        # so a marcada. Desde 30/09/2026 o freio conta pela publicacao
+        # (`estoque_publicavel`); o filtro do modelo mora nos aprovados.
+        self.assertEqual(len(agenda.aprovados_no_estoque()), 2)
 
     def test_o_teto_olha_o_estoque_NOVO(self):
         """Em `_trabalhar`, o freio compara com o estoque NOVO e aprovado.
@@ -922,11 +924,14 @@ class EstoqueNovoContraReservaTests(unittest.TestCase):
         trabalhar = fonte[fonte.index("def _trabalhar("):]
         corpo = trabalhar[trabalhar.index("teto = teto_de_estoque(config)"):]
         self.assertIn("dias_de_estoque_novo()", corpo[:400])
-        # E o de `planejar` (o lote, 30/09/2026) conta a mesma coisa, pela
-        # mesma razao: video barrado no disco nao e estoque.
+        # E o de `planejar` (o lote, 30/09/2026) conta a mesma coisa: desde
+        # 30/09 11h, o numero da PUBLICACAO (`estoque_publicavel`), porque
+        # retida e barrado no disco nao sao estoque.
         dia = fonte[fonte.index("def planejar("):fonte.index("def _diario(")]
-        self.assertIn("aprovados_no_estoque()", dia)
-        self.assertIn("n = len(lista)", dia)
+        self.assertIn("estoque_publicavel()", dia)
+        self.assertIn("estoque_publicavel()",
+                      fonte[fonte.index("def dias_de_estoque_novo("):
+                            fonte.index("def aprovados_no_estoque(")])
 
 
 class FilaPrefereONovoTests(unittest.TestCase):

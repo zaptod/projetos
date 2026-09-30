@@ -103,6 +103,128 @@ class LaudoDoPreto(unittest.TestCase):
         gravar.assert_not_called()
 
 
+class CenaNoturnaNaoETelaPreta(unittest.TestCase):
+    """30/09/2026: a h41 p01 barrada 3x por "preta 85,0-91,8 s". Era a cena
+    14, cemiterio a noite, com a propria imagem 85% abaixo do limiar."""
+
+    def setUp(self):
+        import json
+
+        from contos.roteiro import roteiro as R
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.outputs = Path(pasta.name)
+        patcher = mock.patch.object(R, "OUTPUTS", self.outputs)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.cenas = self.outputs / "historia_teste" / "cenas"
+        self.cenas.mkdir(parents=True)
+        self.json = json
+
+    def _imagem(self, nome: str, escura: float) -> Path:
+        """Imagem com `escura` da area em luma 8 e o resto em 200."""
+        from PIL import Image
+        im = Image.new("L", (100, 100), 200)
+        linhas = int(round(100 * escura))
+        if linhas:
+            im.paste(8, (0, 0, 100, linhas))
+        destino = self.cenas / nome
+        im.convert("RGB").save(destino)
+        return destino
+
+    def _plano(self, eventos, total=20.0):
+        pasta = self.outputs / "historia_teste" / "partes" / "p01"
+        pasta.mkdir(parents=True, exist_ok=True)
+        (pasta / "edit_plan.json").write_text(self.json.dumps(
+            {"total_duration": total, "events": eventos}), encoding="utf-8")
+
+    @staticmethod
+    def _cena(n, inicio, duracao, arquivo):
+        return {"type": "cena", "n": n, "start": inicio,
+                "duration": duracao, "arquivo": str(arquivo)}
+
+    def test_fracao_escura_da_imagem(self):
+        self.assertAlmostEqual(0.85, Q.fracao_escura(
+            self._imagem("a.png", 0.85)), places=2)
+        self.assertIsNone(Q.fracao_escura(self.cenas / "nao_existe.png"))
+
+    def test_imagem_noturna_explica_o_trecho(self):
+        noite = self._imagem("p01_cena_02.png", 0.85)
+        dia = self._imagem("p01_cena_01.png", 0.30)
+        self._plano([self._cena(1, 0.0, 10.0, dia),
+                     self._cena(2, 10.0, 5.0, noite),
+                     self._cena(2, 15.0, 5.0, noite)])
+        explicados = Q.trechos_de_imagem_escura("historia_teste", 1,
+                                                [(10.1, 19.8)], 20.0)
+        self.assertEqual([(10.1, 19.8)], list(explicados))
+        self.assertIn("cena 2", explicados[(10.1, 19.8)])
+
+    def test_imagem_clara_que_saiu_preta_continua_erro(self):
+        dia = self._imagem("p01_cena_01.png", 0.30)
+        self._plano([self._cena(1, 0.0, 20.0, dia)])
+        self.assertEqual({}, Q.trechos_de_imagem_escura(
+            "historia_teste", 1, [(3.0, 6.0)], 20.0))
+
+    def test_cena_sem_arquivo_o_cartao_continua_erro(self):
+        self._plano([self._cena(1, 0.0, 20.0,
+                                self.cenas / "p01_cena_01.png")])
+        self.assertEqual({}, Q.trechos_de_imagem_escura(
+            "historia_teste", 1, [(3.0, 6.0)], 20.0))
+
+    def test_trecho_que_pega_cena_clara_nao_e_explicado(self):
+        noite = self._imagem("p01_cena_02.png", 0.85)
+        dia = self._imagem("p01_cena_01.png", 0.30)
+        self._plano([self._cena(1, 0.0, 10.0, dia),
+                     self._cena(2, 10.0, 10.0, noite)])
+        self.assertEqual({}, Q.trechos_de_imagem_escura(
+            "historia_teste", 1, [(8.0, 14.0)], 20.0))
+
+    def test_plano_de_outro_render_nao_explica(self):
+        noite = self._imagem("p01_cena_01.png", 0.85)
+        self._plano([self._cena(1, 0.0, 20.0, noite)], total=20.0)
+        self.assertEqual({}, Q.trechos_de_imagem_escura(
+            "historia_teste", 1, [(3.0, 6.0)], 35.0))
+
+    def test_sem_plano_nao_explica(self):
+        self.assertEqual({}, Q.trechos_de_imagem_escura(
+            "historia_teste", 1, [(3.0, 6.0)], 20.0))
+
+    def test_no_laudo_o_explicado_vira_aviso_e_o_resto_erro(self):
+        mp4 = self.outputs / "x.mp4"
+        mp4.write_bytes(b"x" * 10)
+        Q._PRETOS_MEDIDOS.clear()
+        self.addCleanup(Q._PRETOS_MEDIDOS.clear)
+        with mock.patch.object(Q, "trechos_pretos",
+                               return_value=[(2.0, 3.0), (85.0, 91.75)]):
+            laudo = Q.erros_de_preto(
+                mp4, "dividido",
+                explicar=lambda t: {(85.0, 91.75): "cena 14 (85% escura)"})
+        self.assertEqual(1, len(laudo["erros"]))
+        self.assertIn("2.0-3.0s", laudo["erros"][0])
+        self.assertNotIn("85.0", laudo["erros"][0])
+        self.assertTrue(any("cena 14" in a for a in laudo["avisos"]))
+        # o memo guarda o que foi MEDIDO, nunca a explicacao
+        self.assertEqual([(2.0, 3.0), (85.0, 91.75)], laudo["trechos"])
+
+    def test_explicacao_que_quebra_mantem_o_erro(self):
+        mp4 = self.outputs / "y.mp4"
+        mp4.write_bytes(b"y" * 10)
+        Q._PRETOS_MEDIDOS.clear()
+        self.addCleanup(Q._PRETOS_MEDIDOS.clear)
+
+        def _quebra(_t):
+            raise RuntimeError("plano ilegivel")
+
+        with mock.patch.object(Q, "trechos_pretos",
+                               return_value=[(2.0, 3.0)]):
+            laudo = Q.erros_de_preto(mp4, "dividido", explicar=_quebra)
+        self.assertEqual(1, len(laudo["erros"]))
+
+    def test_a_vistoria_da_parte_pede_a_explicacao(self):
+        fonte = inspect.getsource(Q.vistoriar_parte)
+        self.assertIn("trechos_de_imagem_escura(", fonte)
+
+
 class MemoEmDisco(unittest.TestCase):
     """Revisao de 17/09/2026: cada rodada da agenda e um processo novo e
     media a fila inteira de novo (3-5 min por rodada)."""
