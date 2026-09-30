@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T12:08:36",
+      "evento": "2026-09-30T12:08:20",
+      "linha": 84,
+      "nota": "imagem-mestra aprovada por ele: 1º passo da F0",
+      "opcao": "mestra",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:42.106695",
   "depende_de": [
