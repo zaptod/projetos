@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "Hoje o palco desenha uma vara rígida de 3 m; a pasta de estilos de arma está vazia e o CC0 não tem corrente. Plano: C:\\Users\\adrian\\.claude\\plans\\corrente-rework.md.",
+  "criado": "2026-09-30T18:15:21.861127",
+  "depende_de": [
+    {
+      "decisao": "corrente-mecanica",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "corrente-arte",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Elo, cabo e 6 cabeças, com prova de origem; os elos se mexem de verdade (física simples)",
+      "id": "picasso-modular",
+      "pede_comentario": false,
+      "rotulo": "PicassoIA em peças (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Linha grossa com textura, sem IA; mais rápido, menos bonito",
+      "id": "vetor",
+      "pede_comentario": false,
+      "rotulo": "Desenho vetorial melhorado"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Espera a prova mínima da esteira ficar pronta",
+      "id": "esteira",
+      "pede_comentario": false,
+      "rotulo": "Pela esteira de sprites (ChatGPT + Grok)"
+    }
+  ],
+  "pergunta": "De onde vem a arte da corrente animada em elos?",
+  "projeto": "builds",
+  "situacao": "bloqueada",
+  "titulo": "Corrente: arte no palco",
+  "vigente": null
+}

@@ -1,0 +1,49 @@
+{
+  "comentario": true,
+  "contexto": "Medido: o motor não tem mecânica de corrente — é o mesmo setor da espada com outros números; no duelo_00030 os acertos saíram no preparo, com a bola a 3,4–3,7 m do alvo. As 3 opções mudam o desfecho das seeds com corrente. Plano: C:\\Users\\adrian\\.claude\\plans\\corrente-rework.md.",
+  "criado": "2026-09-30T18:15:21.126421",
+  "depende_de": [],
+  "historico": [],
+  "id": "corrente-mecanica",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "corrente-arte",
+        "corrente-estilos",
+        "corrente-seeds-antigas"
+      ],
+      "descricao": "Só acerta onde a bola passa; dano cresce com a velocidade; empurra para o lado; perto demais ela não acerta. ~2 dias",
+      "id": "bola-fisica",
+      "pede_comentario": false,
+      "rotulo": "Bola física com momento (recomendado)"
+    },
+    {
+      "desbloqueia": [
+        "corrente-arte",
+        "corrente-estilos",
+        "corrente-seeds-antigas"
+      ],
+      "descricao": "Prende o alvo 0,4–0,6 s e puxa para o dono emendar o golpe; counter de quem luta de longe. ~1 dia a mais",
+      "id": "enlace",
+      "pede_comentario": false,
+      "rotulo": "Enlaçar e puxar"
+    },
+    {
+      "desbloqueia": [
+        "corrente-arte",
+        "corrente-estilos",
+        "corrente-seeds-antigas"
+      ],
+      "descricao": "Anel ao redor do corpo com até 3 cargas; risco de parecer o Orbital. ~1,5 dia",
+      "id": "giro",
+      "pede_comentario": false,
+      "rotulo": "Giro que acumula"
+    }
+  ],
+  "pergunta": "Qual jeito de lutar substitui o golpe igual ao da espada?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Corrente: mecânica própria",
+  "vigente": null
+}

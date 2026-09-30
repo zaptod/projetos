@@ -1,0 +1,35 @@
+{
+  "comentario": true,
+  "contexto": "Afeta regerar vídeos antigos com a mesma seed; os já publicados não mudam. Plano: C:\\Users\\adrian\\.claude\\plans\\corrente-rework.md.",
+  "criado": "2026-09-30T18:15:22.210804",
+  "depende_de": [
+    {
+      "decisao": "corrente-mecanica",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "corrente-seeds-antigas",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Simples; lutas novas usam a corrente nova",
+      "id": "aceitar-versao",
+      "pede_comentario": false,
+      "rotulo": "Aceitar e carimbar a versão do motor na luta (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Mantém as antigas iguais; mais código para manter",
+      "id": "bandeira",
+      "pede_comentario": false,
+      "rotulo": "Chave só para lutas novas"
+    }
+  ],
+  "pergunta": "Com a corrente nova, a mesma seed dá outra luta. Como tratar?",
+  "projeto": "builds",
+  "situacao": "bloqueada",
+  "titulo": "Corrente: lutas antigas mudam",
+  "vigente": null
+}

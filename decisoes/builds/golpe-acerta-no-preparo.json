@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Achado medindo a corrente: no duelo_00030 a espada também acertou 9 de 9 vezes no 1º tick do golpe (t=0,05), antes do balanço; e o desenho do golpe tem um relógio diferente do motor (a arma já parou na tela e o golpe ainda conecta). Você disse que o resto está perfeito — por isso é pergunta, não tarefa.",
+  "criado": "2026-09-30T18:15:22.576247",
+  "depende_de": [],
+  "historico": [],
+  "id": "golpe-acerta-no-preparo",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O resto fica como está; revemos depois do A/B da corrente",
+      "id": "so-corrente",
+      "pede_comentario": false,
+      "rotulo": "Só a corrente agora (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O acerto passa a sair no momento do impacto; muda o desfecho de muitas seeds e pede nova rodada de qualidade",
+      "id": "todas",
+      "pede_comentario": false,
+      "rotulo": "Consertar em todas as armas"
+    }
+  ],
+  "pergunta": "O acerto no preparo (antes de a arma chegar) vale consertar para TODAS as armas?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Todas as armas: o golpe acerta antes de bater",
+  "vigente": null
+}

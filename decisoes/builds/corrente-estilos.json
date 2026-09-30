@@ -1,0 +1,35 @@
+{
+  "comentario": true,
+  "contexto": "Estilos: Kusarigama, Mangual, Chicote, Corrente com Peso, Meteor Hammer, Rope Dart. Plano: C:\\Users\\adrian\\.claude\\plans\\corrente-rework.md.",
+  "criado": "2026-09-30T18:15:21.491986",
+  "depende_de": [
+    {
+      "decisao": "corrente-mecanica",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "corrente-estilos",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Mangual, Meteor e Peso com momento; Chicote, Kusarigama e Rope Dart ganham o enlace",
+      "id": "duas-familias",
+      "pede_comentario": false,
+      "rotulo": "Pesadas e leves (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Todos com a base escolhida",
+      "id": "uma",
+      "pede_comentario": false,
+      "rotulo": "Uma só para todos"
+    }
+  ],
+  "pergunta": "Uma mecânica para os 6 estilos, ou duas famílias?",
+  "projeto": "builds",
+  "situacao": "bloqueada",
+  "titulo": "Corrente: os 6 estilos",
+  "vigente": null
+}
