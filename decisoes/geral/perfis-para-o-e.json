@@ -8,7 +8,15 @@
       "opcao": "varias-gratis"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-30T12:06:29",
+      "opcao": "mover",
+      "origem": "app"
+    }
+  ],
   "id": "perfis-para-o-e",
   "midias": [],
   "opcoes": [
@@ -29,7 +37,11 @@
   ],
   "pergunta": "Mudar as pastas de perfil das IAs do C: para o E:?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Perfis de navegador: mudar para o E:?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-30T12:06:29",
+    "opcao": "mover"
+  }
 }
