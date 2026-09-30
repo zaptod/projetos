@@ -3,7 +3,15 @@
   "contexto": "Lote de dia (30/09): seg–qua pedem ~330 imagens/dia. Medido nos logs de 20–30/09: 90 a 191 imagens prontas por dia, e os envios passam das prontas em 10–30% (recusas, reenvios, refeitas, sem prova). Em 17/09 o botão virou 'Assine para Gerar' depois de 112 imagens e reabrir o perfil resolveu (agora reabre até 2x sozinho). Deixei 450 no config/imagens.json (teto_de_imagens_por_dia) até você escolher.",
   "criado": "2026-09-30T10:36:51.209947",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-30T11:26:11",
+      "opcao": "sem-teto",
+      "origem": "app"
+    }
+  ],
   "id": "teto-diario-picasso",
   "midias": [],
   "opcoes": [
@@ -38,7 +46,11 @@
   ],
   "pergunta": "Quantos envios de imagem por dia as histórias podem fazer na conta compartilhada do PicassoIA? Ao bater, a geração para e avisa no Telegram.",
   "projeto": "historias",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Histórias: teto diário de imagens no PicassoIA",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-30T11:26:11",
+    "opcao": "sem-teto"
+  }
 }
