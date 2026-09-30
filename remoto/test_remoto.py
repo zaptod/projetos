@@ -1573,6 +1573,15 @@ class EnvioPeriodicoTests(BaseTemp):
         self.assertIn("corpo de metas", bot.tg.textos())
 
 
+_RESUMO_DO_LOTE = {
+    "canais": {"historias": {"texto": "lote 6/69 (0,6 dia) · piso 20 "
+                                      "⚠ abaixo do piso"},
+               "builds": {"texto": "lote 17/69 (1,7 dia) · piso 20 "
+                                   "⚠ abaixo do piso"}},
+    "cobertura": "alvo = 49 horário(s) até seg 05/10 07h + piso",
+    "calendario": "próximo lote: seg 05/10", "erros": []}
+
+
 class ConteudoDosRelatoriosTests(BaseTemp):
     """O texto responde a pergunta que ele foi criado para responder."""
 
@@ -1583,6 +1592,13 @@ class ConteudoDosRelatoriosTests(BaseTemp):
             self._ledgers[nome] = modulo.REGISTRO
             modulo.REGISTRO = self.pasta / f"{nome}.jsonl"
         self.addCleanup(self._devolver)
+        # O lote da semana carrega o `postar.py` de verdade e conta o
+        # catalogo real: aqui ele e um resumo fixo (o lote tem teste proprio,
+        # em `test_lote.py`).
+        patcher = mock.patch.object(relatorios, "_lote",
+                                    return_value=_RESUMO_DO_LOTE)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _devolver(self):
         _serie().REGISTRO = self._ledgers["historias"]
@@ -1673,7 +1689,8 @@ class ConteudoDosRelatoriosTests(BaseTemp):
     # dia 27/09 perdia os horarios das 00:37 e da recuperacao, e o 28/09
     # ganhava dois que nao eram dele. A conta e a da conferencia (fc17986).
     def _sem_estoque(self):
-        patcher = mock.patch.object(relatorios, "_estoque", return_value={})
+        patcher = mock.patch.object(relatorios, "_lote",
+                                    return_value={"canais": {}, "erros": []})
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -1817,6 +1834,28 @@ class ConteudoDosRelatoriosTests(BaseTemp):
     def test_relatorio_desconhecido_responde_sem_quebrar(self):
         self.assertIn("não conheço", relatorios.montar("inventado"))
 
+    # ------------------------------------------------ o lote da semana
+    def test_metas_traz_o_lote_da_semana(self):
+        texto = relatorios.metas(datetime(2026, 9, 30, 21, 0))
+        self.assertIn("*Lote da semana* — alvo = 49 horário(s)", texto)
+        self.assertIn("📖 histórias: lote 6/69", texto)
+        self.assertIn("⚔️ builds: lote 17/69", texto)
+        self.assertIn("próximo lote: seg 05/10", texto)
+
+    def test_metas_sem_conseguir_contar_diz_isso_e_nao_some(self):
+        """Caso ZERO: antes, sem estoque legivel a secao sumia inteira."""
+        self._sem_estoque()
+        texto = relatorios.metas(datetime(2026, 9, 30, 21, 0))
+        self.assertIn("*Lote da semana*", texto)
+        secao = texto.split("*Lote da semana*")[1]
+        self.assertEqual(2, secao.count("não deu para contar"))
+        self.assertNotIn("✓", secao)
+
+    def test_o_piso_de_um_dia_saiu_do_relatorio(self):
+        """O piso e o do `postar` (20 videos), nao uma copia de 1 dia."""
+        self.assertFalse(hasattr(relatorios, "PISO_DE_ESTOQUE"))
+        self.assertFalse(hasattr(relatorios, "_estoque"))
+
 
 class ComandosDeRelatorioTests(BaseTemp):
     def test_os_dois_estao_na_tabela(self):
@@ -1827,6 +1866,24 @@ class ComandosDeRelatorioTests(BaseTemp):
         texto = comandos.ajuda()
         self.assertIn("/metas", texto)
         self.assertIn("/funcionamento", texto)
+
+    def test_lote_e_so_leitura_e_responde_o_resumo(self):
+        from remoto import lote
+        self.assertIs(comandos.TABELA["lote"], comandos.lote)
+        self.assertIn("/lote", comandos.ajuda())
+        with mock.patch.object(lote, "resumo",
+                               return_value=_RESUMO_DO_LOTE):
+            resposta, arquivo = comandos.executar("/lote")
+        self.assertIsNone(arquivo)
+        self.assertIn("*Lote da semana*", resposta)
+        self.assertIn("builds: lote 17/69", resposta)
+
+    def test_lote_que_explode_vira_resposta(self):
+        from remoto import lote
+        with mock.patch.object(lote, "resumo",
+                               side_effect=RuntimeError("boom")):
+            resposta, _ = comandos.executar("/lote")
+        self.assertIn("não deu para contar", resposta)
 
 
 if __name__ == "__main__":

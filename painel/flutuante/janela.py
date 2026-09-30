@@ -322,21 +322,8 @@ def pedacos_da_postagem(estado: dict) -> list:
     p.append(("prever agora", ("link",)))
     p.append(("  (vistoria e parecer só na hora do post)\n", ("fraco",)))
 
-    gordura = previsao.get("gordura") or {}
-    if gordura:
-        p.append(("GORDURA\n", ("titulo",)))
-        for canal, icone in (("historias", "📚"), ("builds", "🧱")):
-            dias = gordura.get(canal)
-            if dias is None:
-                continue
-            if dias < 0:
-                p.append((f"  {icone} {canal}: não consegui contar\n",
-                          ("erro",)))
-            elif dias < 1:
-                p.append((f"  {icone} {canal}: {dias} dia(s)  ⚠ abaixo do "
-                          "piso\n", ("erro",)))
-            else:
-                p.append((f"  {icone} {canal}: {dias} dia(s)\n", ("ok",)))
+    if previsao and not previsao.get("falhou"):
+        _secao_do_lote(p, previsao.get("lote"))
 
     # O BOT VEM ANTES DOS PUBLICADOS: se ele caiu, os avisos do celular
     # pararam — e isso e mais urgente que a lista do que ja foi.
@@ -344,6 +331,31 @@ def pedacos_da_postagem(estado: dict) -> list:
     _secao_de_publicados(p, estado.get("publicados") or [])
     _secao_do_agendador(p, estado.get("tarefas"))
     return p
+
+
+def _secao_do_lote(p: list, lote: dict | None) -> None:
+    """O estoque contra o lote da semana, como o /lote do bot.
+
+    O texto e a regra vem prontos de `remoto.lote.resumo` (pela previsao):
+    aqui so a cor. Ate 30/09/2026 esta secao era a GORDURA com piso de UM
+    dia (`dias < 1`), enquanto a criacao ja repunha abaixo de 20 videos.
+    Sem o resumo, diz que nao contou — secao que some parece estoque bom.
+    """
+    p.append(("LOTE DA SEMANA\n", ("titulo",)))
+    canais = (lote or {}).get("canais") or {}
+    if not canais:
+        p.append(("  não deu para contar o estoque\n", ("erro",)))
+        return
+    if lote.get("cobertura"):
+        p.append((f"  {lote['cobertura']}\n", ("fraco",)))
+    for canal, icone in (("historias", "📚"), ("builds", "🧱")):
+        f = canais.get(canal) or {}
+        marca = ("erro" if not f.get("contou") or f.get("magro")
+                 else "aviso" if f.get("faltam") else "ok")
+        texto = f.get("texto") or "não deu para contar o estoque"
+        p.append((f"  {icone} {canal}: {texto}\n", (marca,)))
+    if lote.get("calendario"):
+        p.append((f"  {lote['calendario']}\n", ("fraco",)))
 
 
 def _secao_do_agendador(p: list, agendador: dict | None) -> None:

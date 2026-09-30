@@ -31,6 +31,8 @@ from pathlib import Path
 
 from builds import atividade, grade
 
+from . import lote
+
 RAIZ = Path(__file__).resolve().parents[1]
 
 # UM VIDEO EM CADA HORARIO DA GRADE, e nao um por dia — correcao dele em
@@ -41,14 +43,12 @@ RAIZ = Path(__file__).resolve().parents[1]
 # contassem o mesmo dia.
 HORARIOS_DA_GRADE = grade.HORAS
 META_DIARIA_POR_CANAL = grade.META_DIARIA_POR_CANAL
-CANAIS = {
-    "historias": {"emoji": "📖", "rotulo": "histórias"},
-    "builds": {"emoji": "⚔️", "rotulo": "builds"},
-}
-# UM DIA, o mesmo alvo do `ferramentas/postar.py`. Era 14 ate 10/09/2026:
-# com a meta de estoque em um dia, alertar a partir de duas semanas seria
-# alertar sempre.
-PISO_DE_ESTOQUE = 1
+CANAIS = lote.CANAIS
+# O PISO DO ESTOQUE NAO MORA MAIS AQUI (30/09/2026). Era `PISO_DE_ESTOQUE = 1`
+# dia (14 ate 10/09), uma copia do alvo antigo do `postar.py`; com o lote
+# semanal o piso virou 20 videos (`postar.piso_de_alerta`), e a copia dizia
+# "1 dia(s)" sem alerta com 17 builds, abaixo do piso da criacao. Agora a
+# secao do estoque e o `remoto.lote`, que pergunta ao `postar`.
 
 
 # --------------------------------------------------------- o dia de grade
@@ -186,17 +186,9 @@ def _builds() -> list[dict]:
         return []
 
 
-def _estoque() -> dict:
-    """Quantos dias de video pronto cada canal tem. `{}` se nao der para ver."""
-    try:
-        import importlib.util
-        caminho = RAIZ / "ferramentas" / "postar.py"
-        spec = importlib.util.spec_from_file_location("postar_rel", caminho)
-        modulo = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(modulo)
-        return modulo.estoque() or {}
-    except Exception:                                          # noqa: BLE001
-        return {}
+def _lote(agora: datetime | None = None) -> dict:
+    """O lote da semana (`remoto.lote.resumo`). Nunca levanta."""
+    return lote.resumo(agora)
 
 
 # ------------------------------------------------------------------ metas
@@ -312,17 +304,11 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
         if len(privados) > len(mostrar):
             linhas.append(f"  … e mais {len(privados) - len(mostrar)}")
 
-    # --- estoque: a meta de amanha se decide hoje
-    dias_de_estoque = _estoque()
-    if dias_de_estoque:
-        linhas += ["", "*Estoque*"]
-        for canal, ficha in CANAIS.items():
-            valor = dias_de_estoque.get(canal)
-            if valor is None:
-                continue
-            alerta = " ⚠ abaixo do piso" if valor < PISO_DE_ESTOQUE else ""
-            linhas.append(f"  {ficha['emoji']} {ficha['rotulo']}: "
-                          f"{valor} dia(s){alerta}")
+    # --- estoque: a meta de amanha se decide hoje. E o lote da semana: o
+    # estoque contra o alvo ate segunda, o piso e a janela de cada canal.
+    # A SECAO SEMPRE APARECE. Antes, sem conseguir contar, ela sumia — e um
+    # relatorio sem a linha do estoque parece um estoque sem problema.
+    linhas += [""] + lote.linhas(_lote(agora))
     return "\n".join(linhas)
 
 

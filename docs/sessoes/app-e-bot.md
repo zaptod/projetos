@@ -42,7 +42,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Aviso no Telegram: comando da Mesa sem ninguém ouvindo** — Manter os dois avisos (o de parado e o de voltou) (29/09/2026) `aviso-no-telegram-comando-da-mesa-sem-ni`
 - ✅ **O aparelho pareado em 17/09 ainda é seu?** — Esquecer o de 17/09 (29/09/2026) `o-aparelho-pareado-em-17-09-ainda-e-seu`
 - ✅ **Mensagem para uma IA pelo app: direto ou com confirmação?** — Direto (como está): escrevi, foi (29/09/2026) `mensagem-para-uma-ia-pelo-app-direto-ou`
-- ⏳ **Sprites: onde você aprova** — Onde os sprites chegam para você aprovar? `sprites-ia-conferir`
+- ✅ **Sprites: onde você aprova** — Tela 'Conferir sprites' no app (recomendado) (30/09/2026) `sprites-ia-conferir`
 
 <!-- decisoes:fim -->
 
@@ -72,6 +72,8 @@ Tudo vive em `remoto/`:
   fábricas, travas, placar).
 - `comandos.py`, `bot.py`, `api.py`, `relatorios.py`, `apurador.py` — o bot.
   O `/publicar` do bot **não publica** (ver §3.3).
+- `lote.py` — o lote da semana (estoque x alvo até segunda, piso, janela):
+  um resumo para o /lote, o relatório de metas, o painel e o app (§14).
 - `vigia_tailnet.py` — a vigia do tailnet, no laço do bot (ver §4).
 - `claude_estado.py` — o **interruptor do Claude** (29/09, §12.2): liberado
   ou proibido, em `claude.json`; a sonda, o apurador e o orquestrador obedecem.
@@ -413,6 +415,7 @@ DOM e clicando.
 | bloco `decisoes:inicio/fim` em cada `docs/sessoes/<parte>.md` | **gerado** por `remoto/decisoes.py` | cada parte lê como entrada; não edite à mão (é regenerado a cada resposta) |
 | `claude.json` + `claude_historico.jsonl` (o interruptor do Claude, §12.2) | **esta sessão**: o servidor (`POST /api/claude`) e a CLI `orquestrador claude` gravam, por `claude_estado.mudar` (atômico, sob `claude.json.lock`) | a sonda, o apurador, o `agente-inicio` e o `esperar` só **leem**, a cada vez |
 | grade de postagem | `ferramentas/postar.py` | o app respeita a janela (−20/−25/−40 min conforme o destino, +18 min) e recusa se `postar.py` estiver vivo |
+| estoque e lote da semana (§14) | `ferramentas/postar.py` (`estoque_do_lote`, `piso_de_alerta`) e `contos.pipeline.agenda` (`lote_valendo`, config) | `remoto/lote.py` **só lê** e formata; nenhum número de piso ou alvo mora em `remoto/`. Se o `postar` renomear `estoque_do_lote`, o /lote, o relatório, o painel e o app dizem "não deu para contar" (e `test_lote.py` acusa) |
 | dia de grade | `builds.publicar.conferencia` | `relatorios.metas` usa `_horario_da_grade`, `_dia_de_grade`, `_abertura_e_fechamento` e `dia_de_grade_fechado`, todas atrás de `relatorios._conferencia()`. As três primeiras são **internas** de lá: se a conferência as renomear, o `/metas` responde "falhou" (e os testes do remoto acusam). Pedido em aberto: uma função pública `dia_de_grade(instante)` |
 
 ## 7. A Mesa de comando (o orquestrador no app, 28/09/2026)
@@ -1627,3 +1630,49 @@ xícara de café**.
 - modelo: nenhum cliente troca de modelo de imagem hoje (o PicassoIA fica
   no "PicassoIA Image" da URL do criador); o seletor aparece quando uma
   ficha der mais de um.
+
+## 14. O lote da semana no bot, no painel e no app (30/09/2026)
+
+Tarefa 1e396735 da Mesa, parte app-e-bot do plano "lote semanal de dia"
+(`~/.claude/plans/lote-semanal-de-dia.md`; decisões `geral/lote-*`: janela
+07–22h, histórias seg–qua, builds seg–ter, piso de reposição 20 vídeos,
+1º lote seg 05/10).
+
+**O defeito medido.** O relatório de metas (`PISO_DE_ESTOQUE = 1` dia) e o
+painel flutuante (`dias < 1`) ainda alertavam abaixo de UM dia, enquanto a
+criação já repunha abaixo de 20 vídeos. Às 11:53 de 30/09: histórias 6
+vídeos (0,6 dia), builds 17 (1,7 dia), piso 20 nos dois. O relatório dizia
+"builds: 1 dia(s)" sem alerta; agora diz "lote 17/69 · piso 20 ⚠ abaixo do
+piso". E, sem conseguir contar, a seção de estoque **sumia** do relatório.
+
+**Um cálculo, três telas.** `remoto/lote.py`:
+- `resumo(agora, postar=None)` — um dict pronto para JSON, sempre com os dois
+  canais. Os números vêm de `postar.estoque_do_lote` (o funil da escolha,
+  sem retidas; o piso de `piso_de_alerta`; o alvo = horários da grade até
+  seg 07h + piso). A janela e os dias de lote vêm do config de quem cria
+  (`agenda.json`, `geracao.json`); "lote em curso até qua 07/10 22h" /
+  "próximo lote: seg 05/10" vem de `agenda.lote_valendo`. Cada canal leva um
+  `texto` pronto e uma `situacao` (`sem_conta`, `abaixo_do_piso`, `sem_alvo`,
+  `falta`, `cobre`). Nunca levanta.
+- `linhas(resumo)` — o Markdown do Telegram; `texto()` — o /lote.
+
+Quem mostra:
+- **relatório de metas** (21:00 e `/metas`): a seção "*Lote da semana*"
+  substitui "*Estoque*" e aparece sempre;
+- **`/lote`** no bot (só leitura, na tabela e na `/ajuda`);
+- **painel flutuante**: a `previsao` (subprocesso) põe `lote` no JSON; a
+  janela troca GORDURA por LOTE DA SEMANA (vermelho: abaixo do piso ou sem
+  contagem). A `previsao` ainda manda `gordura` (dias inteiros do mesmo
+  lote) só para a janela antiga, até ela reiniciar;
+- **app** (Avisos, bloco da previsão): as mesmas linhas; casca `v21`.
+
+**Caso ZERO** (`remoto/test_lote.py`): zero vídeo = "lote 0/69 ⚠ abaixo do
+piso"; `-1`, canal ausente ou `postar` que explode = "não deu para contar o
+estoque", nunca "✓ cobre"; um teste usa o `estoque_do_lote` e o
+`piso_de_alerta` **de verdade** com a contagem dada.
+
+**O que exige reinício** (não feito pelo agente): o **bot** (para o `/lote`
+e o relatório novo) e o **app** (o relatório de metas dos Pergaminhos). A
+casca do app e a `previsao` são lidas do disco a cada vez. A **janela
+flutuante** (`NeuralFights_vila_flutuante`, parte painel-e-vila) só mostra a
+seção nova depois de reiniciar; até lá segue com a GORDURA antiga.

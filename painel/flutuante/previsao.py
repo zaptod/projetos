@@ -20,7 +20,13 @@ de FILA, que leem catalogo e ledger:
   builds     `proximo_build()` — o funil inteiro (pendencia, titulo repetido,
              cota por formato, audio mudo). Mede o audio do escolhido, que e
              leitura.
-  gordura    `estoque()` — os mesmos dias que o `--ver` imprime.
+  lote       `remoto.lote.resumo()` — o estoque contra o lote da semana
+             (`postar.estoque_do_lote`: o funil da escolha, o piso de
+             `piso_de_alerta` e o alvo ate segunda), a janela e o proximo
+             lote. O mesmo resumo do /lote do bot e do relatorio de metas;
+             a janela e o app so mostram o `texto` de cada canal.
+  gordura    os dias inteiros do mesmo lote, so para a janela que ainda nao
+             reiniciou desde 30/09/2026 (ela le `gordura`). Nao e outra conta.
 """
 from __future__ import annotations
 
@@ -65,9 +71,14 @@ def prever(raiz: Path) -> dict:
     except Exception as exc:                                 # noqa: BLE001
         saida["erros"].append(f"builds: {type(exc).__name__}: {exc}")
     try:
-        saida["gordura"] = dict(postar.estoque())
+        from remoto import lote
+        saida["lote"] = lote.resumo(postar=postar)
+        saida["erros"] += [f"lote: {e}" for e in saida["lote"]["erros"]]
+        saida["gordura"] = {
+            canal: (int(f["dias"]) if f["contou"] else -1)
+            for canal, f in saida["lote"]["canais"].items()}
     except Exception as exc:                                 # noqa: BLE001
-        saida["erros"].append(f"gordura: {type(exc).__name__}: {exc}")
+        saida["erros"].append(f"lote: {type(exc).__name__}: {exc}")
     for canal in ("historias", "builds"):
         try:
             saida["atrasados_tiktok"][canal] = len(

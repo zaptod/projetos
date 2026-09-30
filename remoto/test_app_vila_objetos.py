@@ -111,7 +111,7 @@ def test_a_zona_de_perigo_e_a_publicacao_continuam_ligadas():
 def test_o_cache_da_casca_mudou_de_versao():
     # sem trocar o nome do cache, o celular seguiria com a casca antiga
     sw = (APP / "sw.js").read_text(encoding="utf-8")
-    assert "painel-casca-v20" in sw        # v19 = interruptor do Claude; v20 = pedir imagem (29/09)
+    assert "painel-casca-v21" in sw        # v20 = pedir imagem (29/09); v21 = lote da semana (30/09)
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw
 
 

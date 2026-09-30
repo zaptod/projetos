@@ -73,6 +73,7 @@ def ajuda(_args: str = "") -> str:
         "/gerar — uma build nova (roleta + vídeo)\n"
         "/historias — em que pé está o canal de histórias\n"
         "/metas — quantos vídeos, em que horário, em que canal\n"
+        "/lote — o estoque contra o lote da semana (piso e janela)\n"
         "/funcionamento — tempos, erros e agendamento das últimas 24h\n"
         "/confiabilidade — o que saiu hoje e o que dá para provar\n"
         "/testar\\_conserto <carimbo> — a suíte com um remendo proposto\n"
@@ -247,6 +248,16 @@ def metas(_args: str = "") -> str:
     return relatorios.montar("metas")
 
 
+def lote(_args: str = "") -> str:
+    """O lote da semana: estoque x alvo ate segunda, piso e janela. So le.
+
+    O mesmo `remoto.lote.resumo` do relatorio de metas, do painel e do app
+    (lote semanal de dia, decisoes de 30/09/2026).
+    """
+    from . import lote as _lote
+    return _lote.texto()
+
+
 def funcionamento(_args: str = "") -> str:
     from . import relatorios
     return relatorios.montar("funcionamento")
@@ -319,6 +330,7 @@ TABELA = {
     "gerar": gerar,
     "historias": historias,
     "metas": metas,
+    "lote": lote,
     "funcionamento": funcionamento,
     "relatorio": funcionamento,
     "confiabilidade": confiabilidade,

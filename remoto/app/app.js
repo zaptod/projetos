@@ -184,9 +184,24 @@ function desenharEstado(e) {
         (v.partes > 1 ? ` · parte ${v.parte}/${v.partes}` : ""))));
     item("📖", p.historias);
     item("⚔", p.builds);
-    const gordura = Object.entries(p.gordura || {})
-      .map(([k, v]) => `${k}: ${v}`).join(" · ");
-    if (gordura) prev.append(el("div", {class: "fraco"}, "estoque (dias) — " + gordura));
+    // O lote da semana (30/09): o texto e a regra vêm prontos do PC
+    // (remoto.lote.resumo, o mesmo do /lote do bot); aqui só a cor.
+    // Sem o resumo, diz que não contou: linha que some parece estoque bom.
+    const lote = p.lote || {};
+    const canais = lote.canais || {};
+    if (!Object.keys(canais).length) {
+      prev.append(el("div", {class: "erro"}, "lote da semana — não deu para contar o estoque"));
+    } else {
+      prev.append(el("div", {class: "fraco"},
+        "lote da semana" + (lote.cobertura ? " — " + lote.cobertura : "")));
+      for (const [canal, emoji] of [["historias", "📖"], ["builds", "⚔"]]) {
+        const f = canais[canal] || {};
+        const ruim = !f.contou || f.magro;
+        prev.append(el("div", {class: ruim ? "erro" : f.faltam ? "fraco" : "ok"},
+          `${emoji} ${f.texto || "não deu para contar o estoque"}`));
+      }
+      if (lote.calendario) prev.append(el("div", {class: "fraco"}, lote.calendario));
+    }
     // Depois de muito tempo sem ninguém olhar, a primeira resposta é a
     // previsão guardada: a tela diz a idade enquanto o PC recalcula.
     if (p.vencida) prev.append(el("div", {class: "fraco previsao-velha"},

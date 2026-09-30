@@ -650,7 +650,19 @@ class FeedEPaineis(unittest.TestCase):
                               "titulo": "O Fim (Parte 6/6)"},
                 "builds": None,
                 "fila_historias": [{"id": "historia_00017:celular:p01"}],
-                "gordura": {"historias": 2, "builds": 0},
+                "lote": {
+                    "canais": {
+                        "historias": {"contou": True, "magro": False,
+                                      "faltam": 0,
+                                      "texto": "lote 70/69 (7,0 dia) · "
+                                               "piso 20 ✓ cobre"},
+                        "builds": {"contou": True, "magro": True,
+                                   "faltam": 69,
+                                   "texto": "lote 0/69 (0,0 dia) · piso 20 "
+                                            "⚠ abaixo do piso"}},
+                    "cobertura": "alvo = 49 horário(s) até seg 05/10 07h "
+                                 "+ piso",
+                    "calendario": "próximo lote: seg 05/10"},
                 "atrasados_tiktok": {"historias": 6, "builds": 0},
             },
             "previsao_em": datetime(2026, 9, 17, 2, 15),
@@ -663,7 +675,16 @@ class FeedEPaineis(unittest.TestCase):
         self.assertIn("historia_00016 p06", texto)
         self.assertIn("nada pronto para sair", texto)
         self.assertIn("depois: historia_00017 p01", texto)
-        self.assertIn("0 dia(s)  ⚠ abaixo do piso", texto)
+        self.assertIn("LOTE DA SEMANA", texto)
+        self.assertIn("🧱 builds: lote 0/69 (0,0 dia) · piso 20 ⚠ abaixo do "
+                      "piso", texto)
+        self.assertIn("próximo lote: seg 05/10", texto)
+        cores = dict((t.strip(), m) for t, m in
+                     janela.pedacos_da_postagem(estado))
+        self.assertEqual(("erro",), cores[
+            "🧱 builds: lote 0/69 (0,0 dia) · piso 20 ⚠ abaixo do piso"])
+        self.assertEqual(("ok",), cores[
+            "📚 historias: lote 70/69 (7,0 dia) · piso 20 ✓ cobre"])
         self.assertIn("FORA DO AR", texto)
         self.assertIn("(sem prova)", texto)
         self.assertLess(texto.index("BOT DO TELEGRAM"),
@@ -672,6 +693,34 @@ class FeedEPaineis(unittest.TestCase):
         self.assertIn("previsão ainda não lida", janela.texto_da_fila({}))
         self.assertIn("falhou", janela.texto_da_fila(
             {"previsao": {"falhou": "Erro: x"}}))
+
+    def test_lote_sem_resumo_diz_que_nao_contou(self):
+        """Caso ZERO: previsao sem o lote (ou a antiga, so com `gordura`).
+        A GORDURA de antes sumia quando nao havia numero — e alertava so
+        abaixo de 1 dia."""
+        for previsao in ({"historias": None, "builds": None},
+                         {"historias": None, "gordura": {"builds": 0}},
+                         {"historias": None, "lote": {"canais": {}}}):
+            pedacos = janela.pedacos_da_postagem({"previsao": previsao})
+            texto = "".join(t for t, _m in pedacos)
+            self.assertIn("LOTE DA SEMANA\n  não deu para contar o estoque",
+                          texto)
+            self.assertNotIn("GORDURA", texto)
+        fonte = Path(janela.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("elif dias < 1", fonte)
+        self.assertNotIn('previsao.get("gordura")', fonte)
+
+    def test_canal_sem_contagem_no_lote_fica_vermelho(self):
+        estado = {"previsao": {"lote": {"canais": {
+            "historias": {"contou": False, "magro": False,
+                          "texto": "não deu para contar o estoque · alvo 69"}
+        }}}}
+        pedacos = janela.pedacos_da_postagem(estado)
+        cores = dict((t.strip(), m) for t, m in pedacos)
+        self.assertEqual(("erro",), cores[
+            "📚 historias: não deu para contar o estoque · alvo 69"])
+        self.assertEqual(("erro",), cores[
+            "🧱 builds: não deu para contar o estoque"])
 
 
 class Preferencias(unittest.TestCase):
@@ -957,8 +1006,13 @@ class Previsao(unittest.TestCase):
         "def proximo_build():\n"
         "    print('[postar] 3 build(s) fora da fila')\n"
         "    return None\n"
-        "def estoque():\n"
-        "    return {'historias': 2, 'builds': 0}\n"
+        "def estoque_do_lote(agora=None):\n"
+        "    return {'historias': {'videos': 25, 'dias': 2.5, 'piso': 20,\n"
+        "                          'magro': False, 'horarios': 49,\n"
+        "                          'alvo': 69, 'faltam': 44},\n"
+        "            'builds': {'videos': 0, 'dias': 0.0, 'piso': 20,\n"
+        "                       'magro': True, 'horarios': 49,\n"
+        "                       'alvo': 69, 'faltam': 69}}\n"
         "def atrasados_no_tiktok(canal='historias'):\n"
         "    raise RuntimeError('sem rede')\n")
 
@@ -978,6 +1032,10 @@ class Previsao(unittest.TestCase):
         self.assertEqual(len(dados_["fila_historias"]), 1)
         self.assertIsNone(dados_["builds"])
         self.assertEqual(dados_["gordura"], {"historias": 2, "builds": 0})
+        lote = dados_["lote"]["canais"]
+        self.assertEqual(lote["builds"]["situacao"], "abaixo_do_piso")
+        self.assertTrue(lote["historias"]["texto"].startswith(
+            "lote 25/69 (2,5 dia) · piso 20"))
         self.assertEqual(dados_["erros"], [])
         self.assertIn("[postar] barulho", dados_["avisos"])
         self.assertIn("[postar] 3 build(s) fora da fila", dados_["avisos"])
