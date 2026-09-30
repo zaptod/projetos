@@ -38,6 +38,8 @@ PERFIS = RAIZ / ".browser_profile"
 # erro (e o Telegram, um alerta). So a de numero exato: as seguintes voltam
 # a ser aviso, para um login caido nao virar um alerta por rodada.
 FALHAS_PARA_ERRO = 3
+# Onde fica a tela da pagina que nao montou (`ClienteLLM.conferir_sessao`).
+PASTA_EM_BRANCO = RAIZ / "outputs" / "_logs" / "llm_em_branco"
 
 
 class LLMFalhou(RuntimeError):
@@ -136,11 +138,7 @@ class ClienteLLM:
         self.page.goto(url, wait_until="domcontentloaded",
                        timeout=int(timeout * 1000))
         self._esperar_montar()
-        if not self.logado():
-            raise NaoLogado(
-                f"a sessao do {self.provedor} nao esta valida neste perfil.\n"
-                f"Rode uma vez: python main.py llm login --provedor {self.provedor} "
-                "(a janela abre, voce entra na conta, e o login fica salvo).")
+        self.conferir_sessao()
         self.turnos = 0
         self._ultima_resposta = ""
         self.modelo_atual = self.escolher_modelo()
@@ -305,10 +303,99 @@ class ClienteLLM:
                 return
             time.sleep(0.5)
 
-    def logado(self) -> bool:
+    # A PAGINA QUE NAO MONTOU NAO E LOGIN CAIDO (30/09/2026). 09:16, so
+    # leitura: o grok.com abriu EM BRANCO no perfil `grok__principal` (titulo
+    # "Grok", nada na tela, o app nao montou em 45 s, nenhum HTTP >= 400). O
+    # `logado()` de antes respondia True para isso ("nao vi a tela de login"):
+    # a abertura dizia "chat novo aberto" e o envio morria depois com "o site
+    # provavelmente mudou". A resposta certa e "nao consegui olhar" — `None`
+    # nunca vira `False` (probe.sessao_valida, 09/09), e tambem nao vira True.
+    TEXTO_EM_BRANCO = 80
+
+    def estado_da_pagina(self) -> str:
+        """O que a pagina aberta mostra, sem clicar em nada. Nunca levanta.
+
+        "logado"    o campo de quem esta logado (`logado`) esta na tela;
+        "deslogado" a tela de login (`login`) esta na tela — a UNICA prova que
+                    vira `NaoLogado`;
+        "barrado"   o desafio anti-bot no titulo ("Um momento…", `probe.BARRADO`);
+        "em_branco" nem campo nem login, e menos de `TEXTO_EM_BRANCO`
+                    caracteres visiveis: o app nao montou;
+        "nao_sei"   ha conteudo, mas nao o que eu conheco (ou a pagina nao
+                    respondeu): segue como sempre seguiu — se o site mudou, o
+                    envio diz qual seletor faltou.
+        """
+        self._pagina_vista = ("", 0)
         if sel.encontrar(self.page, self.sel["logado"], timeout=6.0) is not None:
-            return True
-        return sel.encontrar(self.page, self.sel["login"], timeout=1.0) is None
+            return "logado"
+        if sel.encontrar(self.page, self.sel["login"], timeout=1.0) is not None:
+            return "deslogado"
+        if sel.encontrar(self.page, self.sel["campo"], timeout=1.0) is not None:
+            return "nao_sei"
+        try:
+            titulo = " ".join(str(self.page.title() or "").split())
+            texto = " ".join(str(self.page.evaluate(
+                "() => (document.body && document.body.innerText) || ''") or "").split())
+        except Exception:                                      # noqa: BLE001
+            return "nao_sei"
+        self._pagina_vista = (titulo, len(texto))
+        from .probe import BARRADO
+        if any(marca in titulo.lower() for marca in BARRADO):
+            return "barrado"
+        if len(texto) < self.TEXTO_EM_BRANCO:
+            return "em_branco"
+        return "nao_sei"
+
+    def conferir_sessao(self) -> str:
+        """Depois de `_esperar_montar`: `NaoLogado` SO com a tela de login na
+        frente; `SiteIndisponivel` (pausa o rodizio, como o "Alta procura")
+        para a pagina que nao montou ou o desafio anti-bot, com a tela salva
+        em `PASTA_EM_BRANCO`. Devolve o estado."""
+        estado = self.estado_da_pagina()
+        if estado == "deslogado":
+            raise NaoLogado(
+                f"a sessao do {self.provedor} nao esta valida neste perfil (a tela "
+                "de login esta na frente).\n"
+                f"Rode uma vez: python main.py llm login --provedor {self.provedor} "
+                "(a janela abre, voce entra na conta, e o login fica salvo).")
+        if estado in ("em_branco", "barrado"):
+            titulo, chars = getattr(self, "_pagina_vista", ("", 0))
+            if estado == "barrado":
+                oque = (f"o {self.provedor} parou no desafio anti-bot "
+                        f"(título {titulo!r})")
+            else:
+                espera = float(self.ajustes.get("hydration_timeout", 45))
+                oque = (f"o {self.provedor} não montou a página em {espera:.0f} s "
+                        f"(título {titulo!r}, {chars} caracteres visíveis)")
+            tela = self._salvar_tela(PASTA_EM_BRANCO)
+            self.log(f"[{self.provedor}] {oque}; não é o login"
+                     + (f" (tela em {tela})" if tela else "") + ".")
+            raise SiteIndisponivel(
+                f"{oque}: o site não carregou — não é o login; não reabro agora."
+                + (f" Tela em _logs/{tela.parent.name}/{tela.name}." if tela else ""))
+        if estado == "nao_sei":
+            self.log(f"[{self.provedor}] não reconheço a página (sem o campo de quem "
+                     "está logado e sem a tela de login); sigo — se o site mudou, "
+                     "o envio diz o que faltou.")
+        return estado
+
+    def _salvar_tela(self, pasta):
+        """A captura do proprio navegador (a do Windows devolve quadro velho
+        com o monitor apagado). O caminho, ou None. Nunca levanta."""
+        try:
+            pasta = Path(pasta)
+            pasta.mkdir(parents=True, exist_ok=True)
+            destino = pasta / f"{self.provedor}_{time.strftime('%Y%m%d_%H%M%S')}.png"
+            self.page.screenshot(path=str(destino))
+            return destino
+        except Exception:                                      # noqa: BLE001
+            return None
+
+    def logado(self) -> bool:
+        """Compatibilidade: False SO com a tela de login na frente. Para
+        decidir a abertura use `conferir_sessao` — a pagina em branco nao e
+        login caido, e tambem nao e "logado"."""
+        return self.estado_da_pagina() != "deslogado"
 
     # -------------------------------------------------------------- envio
     def _texto_do_campo(self, campo) -> str:

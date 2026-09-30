@@ -1015,6 +1015,83 @@ class AltaProcuraDoGrok(_Base):
         self.assertEqual(imagem.fora_de_cota("picasso"), "")
 
 
+class PaginaEmBrancoDoGrok(_Base):
+    """30/09 09:16: o grok.com abriu EM BRANCO no perfil `grok__principal` (o
+    app nao montou em 45 s, nenhum HTTP >= 400). O cliente agora levanta
+    `SiteIndisponivel` NA ABERTURA (antes dizia "chat novo aberto" e morria no
+    envio). Aqui, o carteiro: nao abandona a casa (nem casa nova, nem falha
+    contada contra ela), marca `indisponivel` com pausa, e o rodizio pula o
+    Grok. O login caido continua como era."""
+
+    MOTIVO = ("o grok não montou a página em 45 s (título 'Grok', 0 caracteres "
+              "visíveis): o site não carregou — não é o login; não reabro agora.")
+
+    def _fabrica(self, exc=None):
+        from contos.llm.cliente import SiteIndisponivel
+        erro = exc or SiteIndisponivel(self.MOTIVO)
+        criadas = []
+
+        class _EmBranco(carteiro_mod.SessaoDuble):
+            def abrir_casa(self, url):
+                raise erro
+
+            def novo_chat(self):
+                self.casas_novas += 1
+                raise erro
+
+        @contextmanager
+        def abrir(ia):
+            sessao = _EmBranco(ia)
+            criadas.append(sessao)
+            yield sessao
+
+        abrir.criadas = criadas
+        return abrir
+
+    def _casa_antiga(self):
+        correio.gravar_casa("grok", {**correio.casa("grok"), "url": "https://grok.com/c/1",
+                                     "geracao": 3, "mensagens": 9})
+
+    def test_casa_em_branco_nao_vira_casa_nova(self):
+        self._casa_antiga()
+        fabrica = self._fabrica()
+        c = _novo(fabrica=fabrica)
+        correio.enviar("grok", "oi")
+        fim = c.uma_volta()
+        self.assertEqual(fim["situacao"], "falhou")
+        self.assertEqual(fim["categoria"], "indisponivel")
+        self.assertIn("não é o login", fim["erro"])
+        self.assertEqual(fabrica.criadas[0].casas_novas, 0, "nao abre chat novo no site fora")
+        casa = correio.casa("grok")
+        self.assertEqual((casa["url"], casa["geracao"], casa["mensagens"]),
+                         ("https://grok.com/c/1", 3, 9))
+        self.assertEqual(int(casa.get("falhas_seguidas") or 0), 0,
+                         "a casa nao tem culpa: duas falhas assim a abandonariam")
+
+    def test_pedido_de_imagem_em_branco_tira_o_grok_do_rodizio(self):
+        c = _novo(fabrica=self._fabrica(), ajustes={"rodizio_imagem": ["grok", "chatgpt"]})
+        correio.pedir_imagem("livre", "um gato laranja", proporcao="1:1")
+        fim = c.uma_volta()
+        self.assertEqual(fim["situacao"], "falhou")
+        self.assertEqual(fim["categoria"], "indisponivel")
+        self.assertEqual(fim["gerador"], "grok")
+        self.assertTrue(fim.get("pausa_rodizio"))
+        self.assertIn("indisponivel", imagem.fora_de_cota("grok"))
+        c2 = _novo(ajustes={"rodizio_imagem": ["grok", "chatgpt"]})
+        correio.pedir_imagem("livre", "x", proporcao="1:1")
+        self.assertEqual(c2.uma_volta()["gerador"], "chatgpt")
+
+    def test_login_caido_continua_como_era(self):
+        from contos.llm.cliente import NaoLogado
+        self._casa_antiga()
+        c = _novo(fabrica=self._fabrica(NaoLogado("a sessao do grok nao esta valida")))
+        correio.enviar("grok", "oi")
+        fim = c.uma_volta()
+        self.assertEqual(fim["categoria"], "login")
+        self.assertFalse(fim.get("pausa_rodizio"))
+        self.assertEqual(correio.casa("grok")["falhas_seguidas"], 1)
+
+
 class Disco(_Base):
     def test_guardar_recusa_o_que_nao_e_imagem(self):
         with self.assertRaises(imagem.ImagemInvalida):

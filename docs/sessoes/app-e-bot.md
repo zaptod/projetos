@@ -21,7 +21,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Fichas das IAs (fase 1): li?** — Li; seguir para a fase 2 (falar com cada uma pelo app) (29/09/2026) `ias-fichas-lidas`
 - ✅ **Rodízio de imagens: quem vem primeiro** — Gemini primeiro (29/09/2026) `rodizio-de-imagens-quem-vem-primeiro`
 - ✅ **Digen no plano Free: o Real Motion 3.5 pede plano** — Tirar o Digen da roda e desligar o vídeo do payoff das builds (29/09/2026) `digen-plano-free`
-- ⏳ **Fila: tarefas pesadas podem rodar de dia?** — Você apertou 'retomar a fila' 3 vezes, mas as 3 tarefas de builds que sobraram (re-render do som real dos duelos 17–23, 16G duelo pelo palco, 16F armas) são pesadas e a regra é rodá-las só de 01h a 06h. Rodo de dia? `fila-pesada-de-dia`
+- ✅ **Fila: tarefas pesadas podem rodar de dia?** — Rodar de dia, 2 em paralelo (30/09/2026) · “Atualmente prefiro que rode de dia, eu estou trabalhando durante o dia, e de madrugada quando tem esse trabalho pesado o Pc faz muito barulho, por isso prefiro que esse trabalho pesado aconteça de dia, mas tome cuidado para não quebrar o processo, achei uma boa forma de encaixar isso, o ideal seria processar nos horários vagos tendo uma gordura boa pra semana, um planejamento como segunda fazemos as histórias e biuds da semana toda e dps ficamos apenas para mudanças” `fila-pesada-de-dia`
 
 **App e bot**
 - ✅ **Quem publica pelo celular** — Só o app (28/09/2026) `quem-publica-pelo-celular`
@@ -1592,8 +1592,11 @@ xícara de café**.
 **Pendências e o que é do Adrian:**
 - O Grok gerando imagem **pela Vila** não foi provado (ver acima): falta
   uma tentativa fora da "Alta procura", com o carteiro reiniciado no
-  recipiente novo; a espera não reconhece o card (gasta 420 s) e o botão de
-  baixar do Grok não foi medido;
+  recipiente novo. A espera **já reconhece** o card desde 02df6bd (sai em
+  segundos com `SiteIndisponivel`, `indisponivel` + `pausa_rodizio`), e o
+  grok.com **em branco** na abertura (30/09 09:16) também vira
+  `SiteIndisponivel` em vez de "chat aberto" (a casa não é abandonada nem
+  conta falha). O botão de baixar do Grok não foi medido;
 - ~~`ias/sonda.py` com o seu próprio `_imagens_da_resposta`~~ — resolvido
   em 29/09 (tarefa 4c0615e6): a sonda pede com `imagem.pedido_de_imagem`,
   espera com `ClienteLLM.esperar_resposta` e baixa com

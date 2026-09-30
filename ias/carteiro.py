@@ -106,9 +106,9 @@ class SessaoReal:
         c.page.goto(url, wait_until="domcontentloaded",
                     timeout=int(float(c.ajustes.get("navigation_timeout", 90)) * 1000))
         c._esperar_montar()
-        if not c.logado():
-            from contos.llm.cliente import NaoLogado
-            raise NaoLogado(f"a sessao do {c.provedor} nao esta valida neste perfil")
+        # login caido SO com a tela de login na frente; a pagina que nao
+        # montou (30/09, o grok.com em branco) e `SiteIndisponivel`
+        c.conferir_sessao()
         turno = sel.encontrar_oculto(c.page, c.sel.get("turno_usuario") or [], timeout=10.0)
         if turno is None:
             self.log(f"[carteiro] {c.provedor}: a casa abriu sem nenhum turno nosso na tela")
@@ -521,13 +521,20 @@ class Carteiro:
             if pendente is not None and pendente["situacao"] in ("pendente", "entregue"):
                 categoria, motivo = classificar_erro(ia, exc)
                 self.log(f"[carteiro] {ia} {mid}: {motivo}")
+                # o site fora na abertura (pagina em branco, 30/09): o rodizio
+                # tira o gerador por `cota_pausa_h`, como no "Alta procura"
+                pausa = ({"pausa_rodizio": True} if getattr(exc, "pausa_rodizio", False)
+                         else {})
                 ultima = correio.atualizar(caixa, mid, situacao="falhou", erro=motivo,
                                            categoria=categoria, falhou_em=correio.agora(),
-                                           nota=None)
+                                           nota=None, **pausa)
                 self._anunciar(caixa, ultima)
-                casa = correio.casa(ia)
-                casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
-                correio.gravar_casa(ia, casa)
+                # ...e nao conta contra a casa: na 2a falha ela seria trocada
+                # por uma nova sem ter culpa
+                if type(exc).__name__ != "SiteIndisponivel":
+                    casa = correio.casa(ia)
+                    casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
+                    correio.gravar_casa(ia, casa)
         finally:
             self._estado("ocioso")
         return ultima
@@ -570,7 +577,9 @@ class Carteiro:
             try:
                 aberta = bool(sessao.abrir_casa(casa["url"]))
             except Exception as exc:                           # noqa: BLE001
-                if type(exc).__name__ == "NaoLogado":
+                # login caido ou site fora (pagina em branco): um chat novo
+                # daria no mesmo, e a casa seria abandonada sem culpa
+                if type(exc).__name__ in ("NaoLogado", "SiteIndisponivel"):
                     raise
                 self.log(f"[carteiro] {ia}: a casa nao abriu ({type(exc).__name__}); "
                          "comeco uma nova")

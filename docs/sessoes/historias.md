@@ -21,7 +21,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Fichas das IAs (fase 1): li?** — Li; seguir para a fase 2 (falar com cada uma pelo app) (29/09/2026) `ias-fichas-lidas`
 - ✅ **Rodízio de imagens: quem vem primeiro** — Gemini primeiro (29/09/2026) `rodizio-de-imagens-quem-vem-primeiro`
 - ✅ **Digen no plano Free: o Real Motion 3.5 pede plano** — Tirar o Digen da roda e desligar o vídeo do payoff das builds (29/09/2026) `digen-plano-free`
-- ⏳ **Fila: tarefas pesadas podem rodar de dia?** — Você apertou 'retomar a fila' 3 vezes, mas as 3 tarefas de builds que sobraram (re-render do som real dos duelos 17–23, 16G duelo pelo palco, 16F armas) são pesadas e a regra é rodá-las só de 01h a 06h. Rodo de dia? `fila-pesada-de-dia`
+- ✅ **Fila: tarefas pesadas podem rodar de dia?** — Rodar de dia, 2 em paralelo (30/09/2026) · “Atualmente prefiro que rode de dia, eu estou trabalhando durante o dia, e de madrugada quando tem esse trabalho pesado o Pc faz muito barulho, por isso prefiro que esse trabalho pesado aconteça de dia, mas tome cuidado para não quebrar o processo, achei uma boa forma de encaixar isso, o ideal seria processar nos horários vagos tendo uma gordura boa pra semana, um planejamento como segunda fazemos as histórias e biuds da semana toda e dps ficamos apenas para mudanças” `fila-pesada-de-dia`
 
 **Histórias**
 - ✅ **Vídeo reprovado ou não assistido** — Fica retido; só sai se o horário fosse ficar vazio (27/09/2026) `reprovado-ou-nao-assistido`
@@ -112,7 +112,16 @@ visto em duas voltas seguidas, levanta `SiteIndisponivel` (categoria `indisponiv
 `pausa_rodizio`: o rodízio da Vila tira o Grok por `cota_pausa_h`). Provedor sem
 `indisponivel` não olha — ChatGPT, Gemini e DeepSeek não mudam. O DOM do card **não** foi
 medido (não estava mais na conversa em 30/09): se ele morar fora do `assistant-message`, a
-espera volta a gastar o prazo. **Anexo no DeepSeek** (29/09, para o carteiro da Vila): a miniatura aparece
+espera volta a gastar o prazo. **Página em branco não é login caído** (30/09): às 09:16 o
+grok.com abriu em branco no `grok__principal` (título "Grok", nada na tela, o app não montou
+em 45 s, nenhum HTTP ≥ 400). O `logado()` de antes respondia **True** para isso ("não vi a
+tela de login"): a abertura dizia "chat novo aberto" e o envio morria depois com "o site
+provavelmente mudou". Agora `cliente.estado_da_pagina()` tem cinco respostas e
+`conferir_sessao()` (em `abrir()` e na casa do carteiro) decide: `deslogado` → `NaoLogado`
+**só** com a tela de login visível; `em_branco` (nem campo nem login e < 80 caracteres
+visíveis) e `barrado` (título anti-bot, `probe.BARRADO`) → `SiteIndisponivel` (pausa o
+rodízio) com a tela em `outputs/_logs/llm_em_branco/`; `nao_sei` (página com conteúdo que
+não reconheço) segue como antes. Vale para os quatro provedores. **Anexo no DeepSeek** (29/09, para o carteiro da Vila): a miniatura aparece
 antes de o arquivo subir, então `seletores.DEEPSEEK["anexo_subindo"]` (o enviar com
 `ds-button--disabled`) faz `cliente.anexar` esperar o upload; só ele tem essa espera.
 O ChatGPT não assiste vídeo
