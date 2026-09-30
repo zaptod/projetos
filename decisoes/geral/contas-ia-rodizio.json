@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T12:06:39",
+      "evento": "2026-09-30T12:05:54",
+      "linha": 81,
+      "nota": "vale entre contas/IAs dentro das regras (sem disfarce); o transbordo segue o caminho escolhido em contas-ia-caminho",
+      "opcao": "papel-e-cota",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:43.978188",
   "depende_de": [
