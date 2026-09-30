@@ -11,4 +11,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Zoom da Vila no celular** — Perto e grande (como está) (28/09/2026) · “Também adicionei suporte se eu deitar o celular, pode mudar as casas de lugar se for mais fácil, não ligo” `vila-zoom-celular`
   - ✅ **Ao girar, a Vila abre no prédio escolhido** — Abrir no prédio escolhido (como está agora) (29/09/2026) `girar-foca-o-predio`
 - ✅ **O prédio do Grok na Vila** — Manter (como está) (29/09/2026) `predio-do-grok`
-- ⏳ **IAs: navegadores abertos ao mesmo tempo** — Quantos navegadores de IA abertos ao mesmo tempo, no máximo? `ias-navegadores-max`
+- ✅ **IAs: navegadores abertos ao mesmo tempo** — 2 (recomendado) (30/09/2026) `ias-navegadores-max`
