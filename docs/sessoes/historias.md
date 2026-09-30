@@ -26,7 +26,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Lote: em quais dias produzir** — Histórias seg–qua, builds seg–ter (recomendado) (30/09/2026) `lote-dias`
 - ✅ **Lote: vídeo de até 6 dias** — Aceito; mudança crítica ganha re-render (recomendado) (30/09/2026) `lote-frescor`
 - ✅ **Lote: estoque zero de madrugada** — Libera tudo (30/09/2026) `lote-estoque-zero-de-madrugada`
-- ⏳ **Lote: piso de reposição (qui–dom)** — Abaixo de quantos dias de estoque a máquina volta a criar fora do lote? `lote-piso-de-reposicao`
+- ✅ **Lote: piso de reposição (qui–dom)** — 2 dias = 20 vídeos (recomendado) (30/09/2026) `lote-piso-de-reposicao`
 - ⏳ **Lote: como trocar da madrugada para o dia** — Quando desligar as tarefas da madrugada? `lote-transicao`
 
 **Histórias**
