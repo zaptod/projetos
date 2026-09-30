@@ -232,6 +232,10 @@ class AvisoDoTelegramTests(unittest.TestCase):
         `subprocess.run` a mais antes do envio. Aqui a pergunta e o TEXTO do
         aviso; o estoque tem teste proprio (test_estoque_pelo_funil)."""
         m.estoque = lambda por_dia=None: {"historias": 1, "builds": 1}
+        # Desde 30/09/2026 o aviso conta em VIDEOS (`estoque_do_lote`, pelo
+        # piso de reposicao): sem isto ele media o audio dos builds reais.
+        m.pendentes_por_canal = lambda: {"historias": 10, "builds": 10}
+        m.retidos_por_canal = lambda: {}
         m.estoque_por_formato = lambda por_dia=None: {}
 
     @staticmethod

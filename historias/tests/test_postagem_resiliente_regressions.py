@@ -306,6 +306,9 @@ class AvisoDaFalhaDoYouTubeTests(unittest.TestCase):
         m = _postar()
         enviado = []
         m.estoque = lambda: {}
+        # desde 30/09/2026 o aviso conta em VIDEOS (`estoque_do_lote`)
+        m.pendentes_por_canal = lambda: {}
+        m.retidos_por_canal = lambda: {}
         m.estoque_por_formato = lambda: {}
         m._conta_do_destino = lambda servico, canal: "conta"
         original = subprocess.run

@@ -1013,7 +1013,13 @@ class FilaPrefereONovoTests(unittest.TestCase):
         self.assertEqual([2, 3], partes3)
 
     def test_entre_as_nao_comecadas_a_mais_nova_ganha(self):
+        """Entre as FRESCAS. Desde 30/09/2026 (decisao `lote-frescor`) a
+        que vai passar de 6 dias vem antes; as h4/h8/h10 de verdade tem
+        roteiro de 10-12/09 e seriam todas "vencendo" — esse caso esta em
+        test_lote_na_publicacao_regressions."""
+        from datetime import datetime
         postar = self._postar()
+        postar._criado_da_fonte = lambda f, partes=(): datetime.now()
         from contos.publicar import catalogo, serie
 
         def _video(h):

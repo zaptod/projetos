@@ -49,7 +49,7 @@ Esta parte **escolhe** qual vídeo sai, **publica** nos dois destinos e
 
 | Peça | Arquivo |
 | --- | --- |
-| A rodada inteira: escolha, guardas, avisos, recuperações | `E:\projetos\ferramentas\postar.py` (2868 linhas — é o cérebro) |
+| A rodada inteira: escolha, guardas, avisos, recuperações | `E:\projetos\ferramentas\postar.py` (3740 linhas — é o cérebro) |
 | Grade: horários, minuto, cota por plataforma | `E:\projetos\random_builds\builds\grade.py` |
 | Título comparável ("isto já está no ar?") | `...\builds\publicar\titulos.py` |
 | Ledger, `publicado()`, `prova_ok()`, reconciliação, métricas | `...\publicar\metricas.py` |
@@ -71,8 +71,10 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
 4. Depois, e nunca no lugar: **recuperação do TikTok** (1 por canal, saiu no
    YouTube e nunca chegou lá), **recuperação do YouTube** (1, ficou privado no
    canal) e **reserva do TikTok** (só se builds não levou nada lá neste horário).
-5. `avisar()` no Telegram, estoque em dias, e **saída 1** se tentou e nada saiu
-   (era `return 0` fixo, e o Agendador registrava sucesso em rodada vazia).
+5. `avisar()` no Telegram, estoque em vídeos e dias contra o piso de
+   reposição, e **saída 1** se tentou e nada saiu (era `return 0` fixo, e o
+   Agendador registrava sucesso em rodada vazia). Na noite de quarta (22h →
+   qui 07h), `avisar_lote_nao_fechou()` (ver §3, lote semanal).
 
 O registro é assimétrico de propósito: **histórias registram por fora**
 (`serie.registrar`), **builds por dentro** do publicador — porque
@@ -116,6 +118,8 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Variante A/B (`:B` tem o mesmo título) | `postar.VARIANTES`, `_e_variante`, e a própria chave de título |
 | Teto de 2 por fonte/dia **de grade**, por destino | `TETO_POR_FONTE_NO_DIA`, `_fontes_cheias_hoje`, `_sem_fonte_cheia`; a contagem é `_saidas_hoje` (dia = `conferencia.chave_do_horario(...)[0]`; linha sem data não conta) — os quatro caminhos (rodada de histórias, de builds, recuperação do TikTok e do YouTube) passam por ela |
 | Ordem das partes na fila | `fila_de_historias` (menor parte que falta; a anterior tem de existir) |
+| Frescor: série que vai passar de 6 dias sai antes das outras novas | `_ordenar_pela_serie` (pura; chamada por `fila_de_historias` ANTES dos crivos) + `_series_vencendo`: idade (`_criado_da_fonte` = `criado_em` do roteiro, senão o mp4 mais velho) + `ceil(partes pendentes / TETO_POR_FONTE_NO_DIA)` + `FOLGA_DE_FRESCOR_DIAS` (1) ≥ `PRAZO_DE_FRESCOR_DIAS` (6). Ordem: comecadas (mais velha) → vencendo (a que nasceu primeiro) → novas (a mais nova). Sem data, não reordena |
+| Piso de alerta do estoque | `piso_de_alerta(canal)`: `piso_de_reposicao` de `historias/config/agenda.json` (20); builds usa o de `random_builds/config/geracao.json` se existir, senão o mesmo. Sem config: `DIAS_DO_PISO_SEM_CONFIG` (2) × horários. `estoque_do_lote` (vídeos, dias, alvo e o que falta até segunda 07h) é o que o aviso e o log mostram |
 | Ordem das partes **no destino** | `_em_ordem_no_destino` — pergunta ao TikTok, não ao ledger |
 | Parte barrada segura as seguintes | `proxima_historia` (`bloqueadas`/`adiadas`) |
 | "A conferir" (clique sem confirmação; e áudio mudo, com `estado` começando por `[audio] `) | `desfecho.a_conferir`/`marcas` + `postar._sem_a_conferir`/`_com_as_raizes`. Só a marca `[audio] ` sai sozinha (`desfecho.soltar_marca` com prefixo); a de clique só por conferência humana |
@@ -152,6 +156,19 @@ diário.
 - **Quem decide publicar de verdade é uma pessoa**: `postar_automatico: false`
   é para o botão do painel; a grade passa `postar=True` explícito.
 - **O nome da conta é o destino**: `youtube_web` publica, `youtube` só lê.
+- **Lote semanal** (decisões `geral/lote-*`, 30/09): trabalho pesado de dia
+  (07–22h); histórias seg–qua, builds seg–ter; qui–dom só repõem abaixo do
+  **piso de 20 vídeos (2 dias)**; 1º lote seg 05/10. Aqui isso vira três
+  coisas: o **piso de alerta** é o piso de reposição lido do config
+  (`piso_de_alerta`, nunca número no código); **vídeo de até 6 dias**
+  (`lote-frescor`: "aceito; mudança crítica ganha re-render") — a fila põe
+  na frente das novas a série que ia passar do prazo, sem furar a comecada;
+  e **"o lote não fechou"**: na noite do último dia de lote (qua 22h → qui
+  07h: rodadas 22:37, 23:37, 00:37, 06:37), se o estoque de um canal está
+  abaixo do alvo da agenda (`alvo_do_lote`: horários até a próxima segunda
+  07h + piso; qua 22:00 = 44 + 20 = 64), um aviso no Telegram, **uma vez por
+  semana por canal** (marca `_lote_avisado.json` ao lado do ledger, gravada
+  só se o Telegram aceitou). Antes de `lote_a_partir_de` não avisa.
 - **Válvula de qualidade** (plano de 27/09, S2): retido = "a IA reprovou" ou
   "parecer só pela folha"; retido só sai quando não houver outro candidato
   para o horário, e quando sai fica marcado na lista "a conferir". Refina a
@@ -294,6 +311,23 @@ diário.
   contra a capacidade de um dia quase fechado: o aviso falso de 28/09
   voltaria), 06:37 → 10. Testes em `test_teto_por_fonte_regressions`
   (`DiaDeGradeTests`, dia fixo 29/09) e `test_aviso_de_variedade_regressions`.
+- **"A mais nova primeiro" com lote** (medido em 30/09, antes do 1º lote):
+  entre as séries não começadas saía a mais nova (regra de 08/09). Com as
+  histórias nascendo seg–qua, a de segunda ficava atrás das de terça e
+  quarta a semana inteira, e o piso que sobra de uma semana só saía quando
+  nada mais novo existisse. Simulação de 4 semanas de lote (histórias de 6
+  partes a cada 3h45 seg–qua até `alvo_do_lote`, reposição abaixo do piso,
+  10 horários, teto 2 por dia de grade; semanas 2–4, 210 publicações), o
+  que sai com mais de 6 dias: regra antiga **24, a pior com 14,8 dias**;
+  "vencendo" sem folga 15 (pior 7,1); **com 1 dia de folga 2 (pior 6,1)**,
+  igual ao FIFO puro — os 2 são do volume do lote (o piso feito na quarta
+  sai na terça seguinte), não da ordem. → `_ordenar_pela_serie`. No
+  estoque real de 30/09 11:05 a fila saiu **idêntica** parte por parte (31
+  partes): a h34 (nascida 26/09, 4,0 dias, a mais velha) virou "vencendo",
+  mas o rodízio de tipo já a punha na frente da h41; nada passava de 6 dias.
+  Builds: 7 variantes B (`generation_00030`–`00041`) com 13,0 dias de mp4,
+  que já saem primeiro (o build é FIFO dentro do formato) — nada a
+  reordenar. Testes: `historias/tests/test_lote_na_publicacao_regressions.py`.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
@@ -319,6 +353,14 @@ em `42dced8` (27/09, 19:58); a pendência dele (o id de cada pedaço e os dois
 ids na linha) fechou em `10142b1` (28/09).
 
 **Problemas abertos** (atualizado em 28/09, 07:45)
+
+- **Dois outros pisos de 1 dia** (30/09): o relatório do bot
+  (`remoto/relatorios.py`, `PISO_DE_ESTOQUE = 1`) e o painel flutuante
+  (`painel/flutuante/janela.py`, `dias < 1`) ainda chamam de "abaixo do
+  piso" menos de 1 dia; o piso decidido é 20 vídeos (2 dias) e aqui ele é
+  `postar.piso_de_alerta(canal)`. São da parte app-e-bot (tarefa do lote
+  890bfd33): o conserto é eles perguntarem a `piso_de_alerta`, não copiar o
+  20.
 
 - **(Fechado em 29/09)** **Três partes de histórias estavam só no TikTok** e o YouTube nunca ia
   recebê-las sozinho: `historia_00022:p03` (falhou 20/09), `00027:p01` (22/09)
@@ -410,6 +452,7 @@ cd E:\projetos
 python -m builds.publicar.conferencia --canal builds --dias 3     # ledger x canal (só lê a API)
 python -m builds.publicar.conferencia --canal historias --dias 3
 python ferramentas/curar_ledger.py                                # A SECO: só relata o que mudaria
+python ferramentas/postar.py --ver   # o que postaria; gordura em vídeos/dias, alvo até segunda 07h, frescor
 python random_builds/main.py metricas                             # último dado salvo, sem rede
 type outputs\postar.txt                                           # log das rodadas (enorme; leia o fim)
 type random_builds\outputs\_conferencia\2026-09-27.json
@@ -456,6 +499,9 @@ decodifica mp4 e vários caminhos escrevem no `atividade.jsonl`.
 | `builds/publicar/conferencia.py` (`chave_do_horario`, `dia_de_grade_fechado`, `abertura_e_fechamento`) | **publicação** | `remoto/relatorios.py` (metas por dia de grade); há teste de contrato dos nomes em `test_conferencia_deficit_regressions` |
 | `_tiktok_a_conferir.json`, `_youtube_a_conferir.json` | **publicação** (`desfecho`), sob a trava `<plataforma>_a_conferir` | app e bot leem para mostrar pendência |
 | `_tiktok_desistencias.json` | **publicação** | — |
+| `_lote_avisado.json` (ao lado de cada ledger: `{"semana": "AAAA-MM-DD"}` da quarta avisada) | **publicação** (`avisar_lote_nao_fechou`) | — |
+| `historias/config/agenda.json` (`piso_de_reposicao`, `alvo_do_lote`, `dias_de_lote`, `janela_pesada`, `lote_a_partir_de`) e `contos.pipeline.agenda` (`piso_de_reposicao`, `fim_da_cobertura`, `postagens_entre`, `lote_valendo`, `dias_de_lote`) | parte **Histórias** (valores: o Adrian) | publicação lê para o piso, o alvo e a noite de quarta |
+| `random_builds/config/geracao.json` (`piso_de_reposicao`, se a parte Builds o puser) via `builds.pipeline.noite.carregar` | parte **Builds** | publicação lê o piso de builds |
 | `historias/.../prioridade.json` | **o Adrian** (pedido manual) | publicação só lê |
 | `atividade.jsonl` (diário) | **todos escrevem**, ninguém é dono | bot avisa no celular, apurador investiga erro, página de confiabilidade soma |
 | travas `ledger__<canal>`, `<plataforma>_a_conferir` | **publicação** | `historias__render__<fonte>` é da parte Histórias (aqui só se lê) |

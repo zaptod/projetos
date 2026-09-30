@@ -206,6 +206,9 @@ def fila_de_historias() -> list:
        RECENTE — e onde esta o conteudo feito com a abordagem nova. Postar da
        mais antiga para a mais nova (como era) faria as melhorias de 08/09
        aparecerem so depois de 38 dias de estoque velho.
+       EXCETO a que vai passar do prazo de frescor (6 dias, decisao
+       `lote-frescor` de 30/09/2026): essa vem antes das outras novas, a mais
+       velha primeiro (`_ordenar_pela_serie`).
 
     Dentro de uma historia, sempre a MENOR parte que falta.
     """
@@ -232,11 +235,11 @@ def fila_de_historias() -> list:
     pendentes = [v for v in videos if v.id not in ja
                  and all((v.fonte_id, n) in tem
                          for n in range(1, int(v.parte or 1)))]
-    fila = sorted(pendentes, key=lambda v: (
-        0 if v.fonte_id in comecadas else 1,   # terminar antes de comecar
-        v.fonte_id if v.fonte_id in comecadas  # entre as comecadas: a mais velha
-        else _ao_contrario(v.fonte_id),        # entre as novas: a mais nova
-        v.parte or 0))
+    # A QUE VAI PASSAR DO PRAZO DE FRESCOR vem antes das outras novas
+    # (30/09/2026, decisao `lote-frescor`): ver `_ordenar_pela_serie`.
+    criado = {f: _criado_da_fonte(f, [v for v in videos if v.fonte_id == f])
+              for f in {v.fonte_id for v in pendentes}}
+    fila = _ordenar_pela_serie(pendentes, comecadas, criado)
     # FURAR A FILA PELO CAMINHO NORMAL. Pedido dele em 14/09/2026: ver o
     # formato novo no ar ja, e nao depois de tres series terminarem. O video
     # pedido vai para a frente e passa pelas MESMAS guardas (vistoria, parecer,
@@ -310,6 +313,129 @@ def _ao_contrario(texto: str) -> str:
     """
     numero = "".join(c for c in texto if c.isdigit())
     return f"{10 ** 9 - int(numero or 0):012d}"
+
+
+# ------------------------------------------------------------------ frescor
+# "ACEITO VIDEO DE ATE 6 DIAS; mudanca critica ganha re-render" — decisao do
+# Adrian em 30/09/2026 (Grimorio `geral/lote-frescor`), junto com o lote
+# semanal: as historias da semana nascem de segunda a quarta, e o video de
+# domingo foi feito na segunda. E um valor dele, como `TETO_POR_FONTE_NO_DIA`.
+PRAZO_DE_FRESCOR_DIAS = 6
+
+# UM DIA DE FOLGA no aviso de "vai vencer", MEDIDO e nao chutado. Simulacao
+# de 4 semanas de lote (historias de 6 partes a cada 3h45 de seg a qua,
+# 07-22h, ate `agenda.alvo_do_lote`; reposicao abaixo do piso; 10 horarios;
+# teto de 2 por serie no dia de grade), contando o que sai com mais de 6
+# dias nas semanas 2 a 4 (210 publicacoes):
+#   "a mais nova primeiro" (ate 30/09) ....... 24, a pior com 14,8 dias
+#   vencendo sem folga (idade + saida >= 6) .. 15, a pior com 7,1 dias
+#   vencendo com 1 dia de folga .............. 2, a pior com 6,1 dias
+#   a mais VELHA primeiro, sempre (FIFO) ..... 2, a pior com 6,1 dias
+# Sem folga, a serie so e vista vencendo quando as comecadas (que vem antes,
+# sempre) ja ocupam o dia; com um dia, fica igual ao FIFO. Os 2 que sobram
+# sao do volume do lote (o piso feito na quarta sai na terca seguinte), e
+# nao da ordem.
+FOLGA_DE_FRESCOR_DIAS = 1
+
+_CRIADOS_LEMBRADOS: dict = {}
+
+
+def _criado_da_fonte(fonte_id: str, partes=()):
+    """Quando a historia NASCEU (`datetime`), ou `None` se nao da para saber.
+
+    O `criado_em` do roteiro: "o video de domingo foi feito na segunda" fala
+    da historia, e nao do mp4 — o reparo re-renderiza partes todo dia (a
+    h34 nasceu em 26/09 e a p01 foi regravada em 29/09), e o mtime faria a
+    historia velha parecer nova. Sem roteiro legivel, o mp4 MAIS VELHO da
+    serie. Lembrado por fonte durante o processo, como o tipo.
+    """
+    from datetime import datetime
+    if fonte_id in _CRIADOS_LEMBRADOS:
+        return _CRIADOS_LEMBRADOS[fonte_id]
+    quando = None
+    try:
+        from contos.roteiro import roteiro as R
+        texto = str(R.carregar(fonte_id).get("criado_em") or "")
+        quando = datetime.fromisoformat(texto) if texto else None
+    except Exception:                                          # noqa: BLE001
+        quando = None
+    if quando is None:
+        marcas = []
+        for v in partes or ():
+            try:
+                marcas.append(float(getattr(v, "quando", 0) or 0))
+            except (TypeError, ValueError):
+                continue
+        marcas = [m for m in marcas if m > 0]
+        quando = datetime.fromtimestamp(min(marcas)) if marcas else None
+    _CRIADOS_LEMBRADOS[fonte_id] = quando
+    return quando
+
+
+def _idade_em_dias(quando, agora=None):
+    """Dias desde `quando` (`datetime`); `None` quando nao se sabe."""
+    from datetime import datetime
+    if quando is None:
+        return None
+    try:
+        return ((agora or datetime.now()) - quando).total_seconds() / 86400
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
+def _series_vencendo(pendentes, criado: dict, agora=None) -> set:
+    """As historias cuja ULTIMA parte, no ritmo do teto, passaria do prazo.
+
+    Uma serie de N partes pendentes leva `ceil(N / TETO_POR_FONTE_NO_DIA)`
+    dias de grade para sair inteira. Se a idade dela mais esse tempo, mais
+    `FOLGA_DE_FRESCOR_DIAS`, chega a `PRAZO_DE_FRESCOR_DIAS`, ela nao pode
+    mais esperar atras das mais novas. Conta de mao: nascida seg 10:00, 6
+    partes (3 dias) -> vence a partir de qua 10:00 (2 + 3 + 1 = 6).
+
+    ZERO: sem pendente, ou sem data de nascimento, nada vence — "nao sei"
+    nunca reordena a fila.
+    """
+    from collections import Counter
+    restam = Counter(v.fonte_id for v in pendentes or ())
+    teto = max(1, int(TETO_POR_FONTE_NO_DIA))
+    saida = set()
+    for fonte, n in restam.items():
+        idade = _idade_em_dias(criado.get(fonte), agora)
+        if idade is None:
+            continue
+        if (idade + -(-n // teto) + FOLGA_DE_FRESCOR_DIAS
+                >= PRAZO_DE_FRESCOR_DIAS):
+            saida.add(fonte)
+    return saida
+
+
+def _ordenar_pela_serie(pendentes, comecadas, criado: dict,
+                        agora=None) -> list:
+    """A ordem da fila de historias, pura (sem disco): tres grupos.
+
+    0. As COMECADAS, a mais velha primeiro — compromisso com quem ja viu.
+    1. As que VAO PASSAR DO PRAZO de frescor (`_series_vencendo`), a que
+       nasceu primeiro na frente.
+    2. As outras novas, a MAIS NOVA primeiro (a regra de 08/09).
+
+    Dentro de cada historia, a menor parte que falta. O grupo 1 e de
+    30/09/2026: com o lote (historias de seg a qua), "a mais nova primeiro"
+    empurra a historia de segunda para depois das de quarta a semana
+    inteira, e o estoque que sobra da semana (o piso de 20) so saia quando
+    nada mais novo existisse — com 12 dias.
+    """
+    vencendo = _series_vencendo(pendentes, criado, agora)
+
+    def chave(v):
+        fonte = v.fonte_id
+        if fonte in comecadas:
+            return (0, fonte, v.parte or 0)
+        if fonte in vencendo:
+            nasceu = criado[fonte].strftime("%Y%m%d%H%M%S")
+            return (1, f"{nasceu}|{fonte}", v.parte or 0)
+        return (2, _ao_contrario(fonte), v.parte or 0)
+
+    return sorted(pendentes, key=chave)
 
 
 # A IA VETA, MAS NAO CALA A GRADE. Quando nao da para PERGUNTAR (conta
@@ -2703,15 +2829,42 @@ def instalar(hora: str = HORA_PADRAO, *, nome: str | None = None) -> dict:
     return ficha
 
 
-# Abaixo disto o canal corre risco de ficar sem video novo. Nao e o momento
-# de agir — e o momento de AVISAR, porque uma historia leva ~2h para nascer e
+# Abaixo do PISO o canal corre risco de ficar sem video novo. Nao e o momento
+# de agir — e o momento de AVISAR, porque uma historia leva ~4h para nascer e
 # o build depende do outro projeto: descobrir no dia em que acabou e tarde.
 #
-# UM DIA, e nao duas semanas: era 14 ate 10/09/2026, quando ele pediu "gordura
-# de apenas um dia em tudo, mas totalmente nova". Com a meta em um dia, alertar
-# a partir de duas semanas seria alertar sempre — e alarme que toca sempre
-# ninguem escuta. Aqui o piso e o proprio alvo: abaixo de um dia, avisa.
-PISO_DE_ALERTA = 1
+# O PISO E O DE REPOSICAO DECIDIDO, lido do config de quem cria, e nao um
+# numero daqui. Historico: 14 dias ate 10/09/2026; 1 dia ("gordura de apenas
+# um dia em tudo") ate 30/09/2026, quando o lote semanal trouxe a decisao
+# `geral/lote-piso-de-reposicao`: "2 dias = 20 videos" — abaixo disso qui-dom
+# voltam a criar. Alertar com outro numero seria o alerta e a criacao
+# discordando sobre o que e "pouco". Mora em `historias/config/agenda.json`
+# (`piso_de_reposicao`); o de builds, em `random_builds/config/geracao.json`
+# se a parte Builds o puser la, e senao o mesmo (a decisao e geral).
+#
+# Sem config legivel: os mesmos 2 dias da decisao, em horarios da grade.
+DIAS_DO_PISO_SEM_CONFIG = 2
+
+# "Sem estoque de um FORMATO" (builds): menos de um dia da cota dele. Nao e o
+# piso do canal — e o aviso de que a grade vai passar a cota para os outros.
+DIAS_DE_FORMATO_SECO = 1
+
+
+def piso_de_alerta(canal: str) -> int:
+    """O piso de reposicao do canal, em VIDEOS. Nunca levanta."""
+    if canal == "builds":
+        try:
+            from builds.pipeline import noite
+            valor = noite.carregar().get("piso_de_reposicao")
+            if valor is not None:
+                return max(0, int(valor))
+        except Exception:                                      # noqa: BLE001
+            pass
+    try:
+        from contos.pipeline import agenda
+        return agenda.piso_de_reposicao(agenda.carregar())
+    except Exception:                                          # noqa: BLE001
+        return DIAS_DO_PISO_SEM_CONFIG * (len(HORAS_PADRAO) or 1)
 
 
 def pendentes_por_canal() -> dict:
@@ -2763,7 +2916,7 @@ def estoque(por_dia: int | None = None) -> dict:
     OITO horarios (6, 7, 8, 10, 12, 15, 17, 20). Os mesmos 55 pendentes que
     eram "55 dias" viraram sete.
 
-    Dividir e o conserto obvio, e ele importa porque o PISO_DE_ALERTA existe
+    Dividir e o conserto obvio, e ele importa porque o piso de alerta existe
     justamente para avisar ANTES de faltar: com a conta velha o alerta so
     dispararia quando ja faltasse menos de dois dias de verdade.
     """
@@ -2772,6 +2925,123 @@ def estoque(por_dia: int | None = None) -> dict:
     for canal, quantos in pendentes_por_canal().items():
         dias[canal] = quantos if quantos < 0 else quantos // por_dia
     return dias
+
+
+def estoque_do_lote(agora=None, pendentes: dict | None = None) -> dict:
+    """Por canal: videos prontos, dias, piso e o que falta ate SEGUNDA 07h.
+
+    `{canal: {"videos", "dias", "piso", "magro", "fim", "horarios", "alvo",
+    "faltam"}}`. O lote semanal (decisoes de 30/09/2026) produz de segunda a
+    quarta para cobrir ate a proxima segunda 07h mais o piso; a pergunta que
+    importa no meio da semana e "o estoque chega la?".
+
+    O FIM E O ALVO SAO OS DA AGENDA de historias (`fim_da_cobertura`,
+    `postagens_entre`, `alvo_do_lote.mais_o_piso`): o aviso e a criacao
+    medem com a mesma regua. So o piso e o de cada canal.
+
+    `videos` e o funil da escolha (`pendentes_por_canal`), sem retidos.
+    `-1` quando nao deu para contar; `magro` e so para conta que deu
+    (ZERO videos e magro). Sem a agenda, `fim`/`alvo`/`faltam` ficam `None`.
+    """
+    from datetime import datetime
+    agora = agora or datetime.now()
+    por_dia = len(HORAS_PADRAO) or 1
+    if pendentes is None:
+        pendentes = pendentes_por_canal()
+    fim, horarios, mais_o_piso = None, None, True
+    try:
+        from contos.pipeline import agenda
+        config = agenda.carregar()
+        fim = agenda.fim_da_cobertura(config, agora)
+        horarios = agenda.postagens_entre(agora, fim)
+        mais_o_piso = bool((config.get("alvo_do_lote") or {})
+                           .get("mais_o_piso", True))
+    except Exception:                                          # noqa: BLE001
+        fim, horarios = None, None
+    saida = {}
+    for canal, videos in pendentes.items():
+        piso = piso_de_alerta(canal)
+        contou = videos is not None and videos >= 0
+        ficha = {"videos": videos,
+                 "dias": (videos / por_dia) if contou else -1,
+                 "piso": piso, "magro": bool(contou and videos < piso),
+                 "fim": fim, "horarios": horarios,
+                 "alvo": None, "faltam": None}
+        if horarios is not None:
+            ficha["alvo"] = horarios + (piso if mais_o_piso else 0)
+            if contou:
+                ficha["faltam"] = max(0, ficha["alvo"] - videos)
+        saida[canal] = ficha
+    return saida
+
+
+def _dias(n: float) -> str:
+    """`1,2` — dias com uma casa, virgula brasileira."""
+    return f"{n:.1f}".replace(".", ",")
+
+
+def linhas_do_estoque(lote: dict) -> list:
+    """O estoque por canal em texto, para o log e para o `--ver`."""
+    semana = ("seg", "ter", "qua", "qui", "sex", "sab", "dom")
+    linhas = []
+    for canal, f in lote.items():
+        if f["videos"] is None or f["videos"] < 0:
+            linhas.append(f"  gordura {canal:<10} nao deu para contar")
+            continue
+        alerta = (f"  <<< ABAIXO DO PISO ({f['piso']} videos)"
+                  if f["magro"] else "")
+        linhas.append(f"  gordura {canal:<10} {f['videos']:>4} video(s) = "
+                      f"{_dias(f['dias'])} dia(s){alerta}")
+        if f["fim"] is not None:
+            por_dia = len(HORAS_PADRAO) or 1
+            quando = (f"{semana[f['fim'].weekday()]} "
+                      f"{f['fim']:%d/%m %Hh}")
+            linhas.append(
+                f"          ate {quando}: {f['horarios']} horario(s) = "
+                f"{_dias(f['horarios'] / por_dia)} dia(s); com o piso, "
+                f"alvo {f['alvo']} -> "
+                + (f"faltam {f['faltam']}" if f["faltam"] else "cobre"))
+    return linhas
+
+
+def frescor_do_estoque(agora=None) -> dict:
+    """`{canal: {"mais_velho": dias | None, "acima": n, "videos": n}}`.
+
+    O prazo e `PRAZO_DE_FRESCOR_DIAS` (6, decisao `lote-frescor`). Historias
+    pela data em que a historia nasceu (`_criado_da_fonte`), sem as retidas
+    (nao sao estoque); builds pelo mp4 (`quando`), no funil da escolha.
+    So o `--ver` pergunta: e mais uma passada no catalogo. Canal que nao deu
+    para ler fica de fora.
+    """
+    from datetime import datetime
+    agora = agora or datetime.now()
+    saida = {}
+    try:
+        fila = [v for v in fila_de_historias() if not _retencao(v)]
+        idades = [_idade_em_dias(_criado_da_fonte(v.fonte_id, [v]), agora)
+                  for v in fila]
+        saida["historias"] = idades
+    except Exception:                                          # noqa: BLE001
+        pass
+    try:
+        idades = []
+        for v in _builds_prontos():
+            try:
+                idades.append(_idade_em_dias(
+                    datetime.fromtimestamp(float(v.quando)), agora))
+            except (TypeError, ValueError, OSError):
+                idades.append(None)
+        saida["builds"] = idades
+    except Exception:                                          # noqa: BLE001
+        pass
+    fichas = {}
+    for canal, idades in saida.items():
+        sabidas = [i for i in idades if i is not None]
+        fichas[canal] = {
+            "videos": len(idades),
+            "mais_velho": max(sabidas) if sabidas else None,
+            "acima": len([i for i in sabidas if i > PRAZO_DE_FRESCOR_DIAS])}
+    return fichas
 
 
 def estoque_por_formato(por_dia: int | None = None) -> dict:
@@ -2918,10 +3188,16 @@ def avisar(resultados: list) -> None:
             linhas.append(f"    ⏭ pulei {str(recusado)[:90]}")
         linhas.append("")
 
-    dias = estoque()
+    try:
+        lote = estoque_do_lote(agora)
+    except Exception:                                          # noqa: BLE001
+        lote = {}
     linhas.append("*Estoque* — " + " · ".join(
-        f"{CANAIS.get(c, {}).get('emoji', '•')} {n} dia(s)"
-        for c, n in dias.items()))
+        f"{CANAIS.get(c, {}).get('emoji', '•')} "
+        + (f"{f['videos']} vídeo(s), {_dias(f['dias'])} dia(s)"
+           if f["videos"] is not None and f["videos"] >= 0
+           else "não deu para contar")
+        for c, f in lote.items()))
     try:
         retidos = {c: n for c, n in retidos_por_canal().items() if n > 0}
     except Exception:                                          # noqa: BLE001
@@ -2931,10 +3207,11 @@ def avisar(resultados: list) -> None:
             f"{CANAIS.get(c, {}).get('emoji', '•')} {n} parte(s)"
             for c, n in retidos.items())
             + " (fora da gordura: so saem no lugar do vazio)")
-    magros = [c for c, n in dias.items() if 0 <= n < PISO_DE_ALERTA]
+    magros = [f"{CANAIS.get(c, {}).get('rotulo', c)} ({f['videos']} de "
+              f"{f['piso']})" for c, f in lote.items() if f["magro"]]
     if magros:
-        linhas.append(f"⚠️ *{', '.join(magros)}* abaixo de {PISO_DE_ALERTA} "
-                      "dia(s): sem vídeo novo o canal para.")
+        linhas.append(f"⚠️ *abaixo do piso de reposição*: "
+                      f"{', '.join(magros)} — sem vídeo novo o canal para.")
     # Por FORMATO: o total do canal esconde um formato secando. Com a grade
     # alternando, o duelo pode acabar enquanto o numero geral segue folgado
     # — e a comparacao da Onda 15 perde um dos lados sem ninguem ver.
@@ -2945,7 +3222,8 @@ def avisar(resultados: list) -> None:
     if por_formato:
         linhas.append("    por formato — " + " · ".join(
             f"{o} {n}d" for o, n in sorted(por_formato.items())))
-        secos = [o for o, n in por_formato.items() if n < PISO_DE_ALERTA]
+        secos = [o for o, n in por_formato.items()
+                 if n < DIAS_DE_FORMATO_SECO]
         if secos:
             linhas.append(f"⚠️ sem estoque de *{', '.join(sorted(secos))}*: "
                           "a grade passa a cota para os outros formatos.")
@@ -2996,6 +3274,139 @@ def avisar_limite_diario(detalhe: str, *, publicados: int = 0) -> bool:
         return proc.returncode == 0
     except Exception:                                          # noqa: BLE001
         return False
+
+
+def _fechamento_do_lote(config: dict, agora):
+    """O fim do ULTIMO dia de lote (qua 22:00) se agora e a noite dele.
+
+    "Noite" vai do fim da janela pesada daquele dia ate ela abrir no dia
+    seguinte (qua 22:00 -> qui 07:00): as rodadas das 22:37, 23:37, 00:37 e
+    06:37. Uma rodada que falhe (PC desligado) nao leva o aviso junto.
+    `None` fora dela, sem dias de lote ou janela no config, e antes de
+    `lote_a_partir_de` (`agenda.lote_valendo`: sem lote, nao ha o que fechar).
+    """
+    from datetime import timedelta
+    from contos.pipeline import agenda
+    dias = agenda.dias_de_lote(config)
+    janela = config.get("janela_pesada") or {}
+    if not dias or "fim" not in janela or "inicio" not in janela:
+        return None
+    ultimo, fim = max(dias), int(janela["fim"]) % 24
+    inicio = int(janela["inicio"]) % 24
+    for atras in (0, 1):
+        fecha = (agora - timedelta(days=atras)).replace(
+            hour=fim, minute=0, second=0, microsecond=0)
+        if fecha.weekday() != ultimo:
+            continue
+        abre = (fecha + timedelta(days=1)).replace(hour=inicio)
+        if fecha <= agora < abre and agenda.lote_valendo(config, fecha):
+            return fecha
+    return None
+
+
+def _arquivo_do_aviso_do_lote(canal: str):
+    """Ao lado do `publicados.jsonl` do canal, como as desistencias."""
+    from builds.publicar import metricas
+    return metricas.registro_do_canal(canal).parent / "_lote_avisado.json"
+
+
+def _lote_ja_avisado(canal: str, semana: str) -> bool:
+    try:
+        dados = json.loads(_arquivo_do_aviso_do_lote(canal)
+                           .read_text(encoding="utf-8"))
+        return isinstance(dados, dict) and dados.get("semana") == semana
+    except (OSError, ValueError):
+        return False
+
+
+def _marcar_lote_avisado(canal: str, semana: str) -> None:
+    try:
+        caminho = _arquivo_do_aviso_do_lote(canal)
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        caminho.write_text(json.dumps({"semana": semana}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _mandar_no_telegram(texto: str) -> bool:
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "remoto", "--avisar", texto],
+            cwd=str(RAIZ), capture_output=True, timeout=90,
+            creationflags=NO_WINDOW)
+        return proc.returncode == 0
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def avisar_lote_nao_fechou(agora=None, *, lote: dict | None = None,
+                           config: dict | None = None) -> list:
+    """Na noite de quarta, avisa se o estoque de algum canal ficou abaixo do alvo.
+
+    Plano do lote semanal (30/09/2026): historias seg-qua, builds seg-ter;
+    de quinta a domingo so se repoe abaixo do piso. Se o lote nao chegou ao
+    alvo (`estoque_do_lote`: horarios ate a proxima segunda 07h + o piso),
+    a semana corre sem gordura — e quarta 22h e a ultima hora em que isso
+    ainda e noticia, e nao susto. UMA VEZ POR SEMANA POR CANAL (marca ao
+    lado do ledger, gravada so se o Telegram aceitou: aviso que nao chegou
+    tenta de novo na rodada seguinte da mesma noite).
+
+    CASO ZERO: estoque zero avisa (0 < alvo). Canal que nao deu para contar
+    avisa tambem, dizendo isso — silencio nao pode parecer "fechou". Sem o
+    alvo (agenda ilegivel) nao ha regua, e nao avisa.
+
+    Devolve os canais avisados (para o teste e para o log).
+    """
+    from datetime import datetime
+    agora = agora or datetime.now()
+    try:
+        from contos.pipeline import agenda
+        config = config if config is not None else agenda.carregar()
+        fecha = _fechamento_do_lote(config, agora)
+    except Exception:                                          # noqa: BLE001
+        return []
+    if fecha is None:
+        return []
+    semana = fecha.strftime("%Y-%m-%d")
+    lote = lote if lote is not None else estoque_do_lote(agora)
+    faltando = []
+    for canal, f in lote.items():
+        if f.get("alvo") is None or _lote_ja_avisado(canal, semana):
+            continue
+        videos = f.get("videos")
+        if videos is not None and videos >= f["alvo"]:
+            continue
+        faltando.append((canal, f))
+    if not faltando:
+        return []
+    semana_pt = ("seg", "ter", "qua", "qui", "sex", "sab", "dom")
+    linhas = [f"📦 *O lote da semana não fechou* — "
+              f"{semana_pt[fecha.weekday()]} {fecha:%d/%m}, {fecha:%H}h", ""]
+    for canal, f in faltando:
+        ficha = CANAIS.get(canal, {"emoji": "•", "rotulo": canal})
+        fim = f.get("fim")
+        ate = (f"até {semana_pt[fim.weekday()]} {fim:%d/%m %H}h"
+               if fim is not None else "até segunda")
+        if f.get("videos") is None or f["videos"] < 0:
+            linhas.append(f"{ficha['emoji']} *{ficha['rotulo']}*: não deu "
+                          f"para contar o estoque; o alvo é {f['alvo']}.")
+            continue
+        linhas.append(f"{ficha['emoji']} *{ficha['rotulo']}*: {f['videos']} "
+                      f"vídeo(s) prontos; o alvo era {f['alvo']} "
+                      f"({f['horarios']} horários {ate} + piso {f['piso']}). "
+                      f"Faltam {f['faltam']}.")
+    linhas += ["", "De quinta a domingo a criação só repõe abaixo do piso: "
+                   "o que faltar até segunda sai da reposição ou vira "
+                   "horário vazio."]
+    if not _mandar_no_telegram("\n".join(linhas)):
+        _linha("[postar] o aviso 'o lote nao fechou' nao saiu; tento na "
+               "proxima rodada desta noite.")
+        return []
+    for canal, _f in faltando:
+        _marcar_lote_avisado(canal, semana)
+    _linha(f"[postar] avisei: o lote nao fechou "
+           f"({', '.join(c for c, _f in faltando)}).")
+    return [c for c, _f in faltando]
 
 
 def escoar_historias(*, limite: int = 0, so_ver: bool = False) -> dict:
@@ -3261,9 +3672,23 @@ def main(argv=None) -> int:
                    f"({type(exc).__name__}: {exc})"[:140])
 
     _linha()
-    for canal, dias in estoque().items():
-        alerta = "  <<< ABAIXO DO PISO" if 0 <= dias < PISO_DE_ALERTA else ""
-        _linha(f"  gordura {canal:<10} {dias:>4} dia(s){alerta}")
+    # EM VIDEOS E EM DIAS, e o que falta ate SEGUNDA 07h (o lote semanal,
+    # 30/09/2026): "tenho 1 dia" nao diz se a semana fecha.
+    try:
+        for texto in linhas_do_estoque(estoque_do_lote()):
+            _linha(texto)
+    except Exception as exc:                                   # noqa: BLE001
+        _linha(f"  gordura: nao deu para contar ({type(exc).__name__})")
+    if args.ver:
+        try:
+            for canal, f in frescor_do_estoque().items():
+                velho = ("?" if f["mais_velho"] is None
+                         else _dias(f["mais_velho"]))
+                _linha(f"  frescor {canal:<10} o mais velho tem {velho} "
+                       f"dia(s); {f['acima']} de {f['videos']} acima de "
+                       f"{PRAZO_DE_FRESCOR_DIAS}")
+        except Exception as exc:                               # noqa: BLE001
+            _linha(f"  frescor: nao deu para medir ({type(exc).__name__})")
     for canal, quantos in retidos_por_canal().items():
         if quantos:
             _linha(f"  retidos {canal:<10} {quantos:>4} parte(s) (a IA "
@@ -3285,6 +3710,13 @@ def main(argv=None) -> int:
     # publicaram ZERO eram justamente as que precisavam avisar.
     if not args.ver:
         avisar(resultados)
+        # NA NOITE DE QUARTA, e so nela (a funcao olha o relogio antes de
+        # contar qualquer coisa): o lote chegou ao alvo? Nunca derruba a
+        # rodada nem mexe no codigo de saida.
+        try:
+            avisar_lote_nao_fechou()
+        except Exception as exc:                               # noqa: BLE001
+            _linha(f"[postar] aviso do lote falhou ({type(exc).__name__})")
     # A METRICA SAIU DAQUI em 13/09/2026. A coleta do TikTok segura o Studio
     # por ate 12 minutos, e rodava na postagem das 06:07, no comeco do dia.
     # Agora ela e servico da madrugada (`agenda._servico_da_noite`), junto com
