@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Plano completo em C:\\Users\\adrian\\.claude\\plans\\lote-semanal-de-dia.md. Medido 30/09: histórias precisam de 36–48 h/semana em série (12 histórias), builds ~20 h; o lote NÃO cabe só na segunda.",
+  "criado": "2026-09-30T10:05:35.923761",
+  "depende_de": [],
+  "historico": [],
+  "id": "lote-estoque-zero-de-madrugada",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "sem barulho",
+      "id": "nada",
+      "pede_comentario": false,
+      "rotulo": "Nada pesado; sai retido/vetado com arquivo inteiro ou o horário fica vazio (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "rápido (~1,5 min cada), pouco barulho",
+      "id": "so-duelo",
+      "pede_comentario": false,
+      "rotulo": "Libera só duelo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "canal nunca para, mas volta o barulho",
+      "id": "tudo",
+      "pede_comentario": false,
+      "rotulo": "Libera tudo"
+    }
+  ],
+  "pergunta": "Se o estoque zerar de madrugada (22h–07h), o que a máquina faz?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Lote: estoque zero de madrugada",
+  "vigente": null
+}

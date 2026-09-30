@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Plano completo em C:\\Users\\adrian\\.claude\\plans\\lote-semanal-de-dia.md. Medido 30/09: histórias precisam de 36–48 h/semana em série (12 histórias), builds ~20 h; o lote NÃO cabe só na segunda.",
+  "criado": "2026-09-30T10:05:34.812196",
+  "depende_de": [],
+  "historico": [],
+  "id": "lote-janela-de-dia",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "~12 h úteis por pista por dia",
+      "id": "07-22",
+      "pede_comentario": false,
+      "rotulo": "07h às 22h (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "menos barulho à noite, mas o lote de histórias vai até quinta",
+      "id": "08-20",
+      "pede_comentario": false,
+      "rotulo": "08h às 20h"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "mais tempo, barulho até 23h",
+      "id": "07-23",
+      "pede_comentario": false,
+      "rotulo": "07h às 23h"
+    }
+  ],
+  "pergunta": "Em que faixa do dia a máquina pode fazer trabalho pesado (fora da meia hora em volta de cada post)?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Lote: janela do trabalho pesado de dia",
+  "vigente": null
+}
