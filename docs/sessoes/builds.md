@@ -388,8 +388,26 @@ intermediário pode passar disso (até +1 dB, em float, no `00014`: quatro
 `energy_impact` no mesmo quadro), e a mixagem final — float, com `alimiter` e
 `loudnorm` TP -1,5 — fecha com pico de -0,9 a -1,4 dB.
 
-O juiz do som é o Adrian (o Gemini não recebe áudio). **O re-render do
-estoque espera a aprovação dele**, e roda de madrugada.
+O juiz do som é o Adrian (o Gemini não recebe áudio). Ele aprovou em 28/09
+(`som-real-16a`); desde 30/09 o pesado roda **de dia** (`fila-pesada-de-dia`).
+
+**Re-render do estoque feito em 30/09 (09:55–09:58, de dia):** dos duelos
+`00012`–`00023`, só **`00022` e `00023`** ainda estavam no estoque — os
+`00012`–`00021` foram ao ar (YouTube e TikTok) entre 28 e 29/09 com o
+sintetizado, porque o re-render da madrugada de 29/09 foi desarmado antes de
+começar; trocar o arquivo de um publicado não muda o que foi ao ar. Medido no
+trecho de luta (`seg_000`, celular), antes → depois: `00022` -15,4 → -17,3
+LUFS, média -15,8 → -14,2 dB, **29% → 0% calado** (57 sons, 9 arquivos);
+`00023` -14,6 → -18,3 LUFS, -15,8 → -14,3 dB, **40% → 0%** (60 sons, 9
+arquivos). Vídeo inteiro -15,4 e -15,3 LUFS, duração igual (20,4 e 13,0 s).
+~1,5 min por duelo. Como foi feito, para não pegar a publicação no meio: o
+render vai para uma cópia (`som-da-luta <id> --destino E:\tmp_somdaluta\copia\<id>`)
+e a troca no lugar é `os.replace` arquivo por arquivo (mp4, jsons, pastas
+`_segments_*`), fora de :25–:55 e de [post-12, post+18] (12:07 e 17:57 não
+são :37), sem `postar.py` rodando; arquivo aberto por quem lê faz a troca
+falhar e voltar. Os originais ficaram em `E:\tmp_somdaluta\antes\`. O
+render no lugar (`som-da-luta <id>` sem `--destino`) ainda escreve o mp4
+direto, não atômico. Os duelos `00024`+ já nascem com o som real.
 
 **Estoque com a luta muda** (`som-da-luta --listar`; a régua da LUTA da
 guarda da publicação desde 6f09b80: média do trecho < -60 dB ou trecho sem
@@ -401,6 +419,11 @@ Aciaegir saíram do banco em 02/09 e a luta não re-simula. **Descartada em
 28/09** (decisão `generation-00077`, build e estreia; §4). A
 `generation_00066/estreia` (-91 dB) foi descartada pela decisão 5 do Adrian
 (`config/publicacao.json` → `descartados`).
+
+(Retrato de 28/09; o de 30/09, depois do re-render, é: 25 no estoque, 10
+com o som real — `duelo_00022`–`00031` — e 15 com o sintetizado, todos
+builds: as variantes B de `generation_00026`–`00041`, os A de `00026`–`00029`
+que estão fora por título, e a `00085`, com pendência de payoff.)
 
 Os outros 36 estão com o sintetizado. Sete deles ficam calados em 57–63% do
 trecho (`duelo_00014`, `00016`, `00017`, `generation_00029` A e B,
