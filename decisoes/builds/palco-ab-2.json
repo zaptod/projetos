@@ -47,6 +47,7 @@
   "opcoes": [
     {
       "desbloqueia": [
+        "palco-duelo-ab",
         "palco-numeros-de-dano"
       ],
       "descricao": "A troca começa pelo duelo; o pygame fica de reserva 2 semanas",
