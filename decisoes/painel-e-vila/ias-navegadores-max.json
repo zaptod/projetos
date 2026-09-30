@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T12:09:16",
+      "evento": "2026-09-30T12:09:01",
+      "linha": 86,
+      "nota": "semáforo global de 2 navegadores (F2)",
+      "opcao": "dois",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "16 GB de RAM e HD 4600; cada perfil do Chrome usa 0,3–1 GB. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:44.440207",
   "depende_de": [
