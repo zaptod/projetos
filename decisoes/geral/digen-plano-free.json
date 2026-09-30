@@ -3,7 +3,15 @@
   "contexto": "Captura da parede na mídia. A fila de vídeo das builds (payoff_video=true) usa o mesmo modelo e deve bater na mesma parede: o guarda do cliente fecha esse diálogo como se fosse propaganda e ERRO_GERACAO não conhece o texto, então a espera não acusa (render_timeout 1800 s; não medido até o fim). O Grok Imagine faz vídeo 480p/6s de graça na sua conta (ficha do Grok), ainda não provado.",
   "criado": "2026-09-29T17:41:10.996999",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-09-29T21:07:14",
+      "opcao": "desligar",
+      "origem": "app"
+    }
+  ],
   "id": "digen-plano-free",
   "midias": [
     {
@@ -43,7 +51,11 @@
   ],
   "pergunta": "A conta COMPARTILHADA do Digen está no plano Free (chip 'Free, Meme 149, Pro Meme 0'). Em 29/09 17:36, gerando UM vídeo a partir do gato 0edfbdb5 (Real Motion 3.5, 8s, 480P, 1:1, Space novo), o site respondeu 'Upgrade your plan to unlock this model' (US$4.99). Nada foi gerado e eu parei. O que fazer com o vídeo a partir de imagem?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Digen no plano Free: o Real Motion 3.5 pede plano",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-09-29T21:07:14",
+    "opcao": "desligar"
+  }
 }
