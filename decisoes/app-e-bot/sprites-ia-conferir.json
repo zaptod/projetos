@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T11:50:43.255007",
+  "depende_de": [
+    {
+      "decisao": "sprites-ia-juiz",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "sprites-ia-conferir",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Prévia animada, notas do Grok, Aprovar / Refazer com comentário / Descartar",
+      "id": "tela-no-app",
+      "pede_comentario": false,
+      "rotulo": "Tela 'Conferir sprites' no app (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "webp com botões",
+      "id": "telegram",
+      "pede_comentario": false,
+      "rotulo": "Pelo Telegram"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Enche a árvore",
+      "id": "grimorio",
+      "pede_comentario": false,
+      "rotulo": "Um nó por sprite no Grimório"
+    }
+  ],
+  "pergunta": "Onde os sprites chegam para você aprovar?",
+  "projeto": "app-e-bot",
+  "situacao": "bloqueada",
+  "titulo": "Sprites: onde você aprova",
+  "vigente": null
+}

@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "16 GB de RAM e HD 4600; cada perfil do Chrome usa 0,3–1 GB. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T11:50:44.440207",
+  "depende_de": [
+    {
+      "decisao": "contas-ia-extras",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "ias-navegadores-max",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Esteira em lotes sequenciais",
+      "id": "dois",
+      "pede_comentario": false,
+      "rotulo": "2 (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Mais rápido; a máquina sofre",
+      "id": "tres",
+      "pede_comentario": false,
+      "rotulo": "3"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Seguro e lento",
+      "id": "um",
+      "pede_comentario": false,
+      "rotulo": "1"
+    }
+  ],
+  "pergunta": "Quantos navegadores de IA abertos ao mesmo tempo, no máximo?",
+  "projeto": "painel-e-vila",
+  "situacao": "bloqueada",
+  "titulo": "IAs: navegadores abertos ao mesmo tempo",
+  "vigente": null
+}

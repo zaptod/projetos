@@ -1,0 +1,47 @@
+{
+  "comentario": true,
+  "contexto": "A Oficina e o palco já leem folhas de efeito (a do piriri, feita no ChatGPT, provou o caminho); a de arma ainda não existe (16F). Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T11:50:41.417965",
+  "depende_de": [],
+  "historico": [],
+  "id": "sprites-ia-alvo",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "sprites-ia-estilo",
+        "sprites-ia-formato",
+        "sprites-ia-juiz"
+      ],
+      "descricao": "Por skill do contrato; a folha do piriri já provou o caminho",
+      "id": "habilidades",
+      "pede_comentario": false,
+      "rotulo": "Efeitos das habilidades (recomendado)"
+    },
+    {
+      "desbloqueia": [
+        "sprites-ia-estilo",
+        "sprites-ia-juiz"
+      ],
+      "descricao": "54 estilos, peça única; antes a Oficina precisa exportar arma",
+      "id": "armas",
+      "pede_comentario": false,
+      "rotulo": "Armas"
+    },
+    {
+      "desbloqueia": [
+        "sprites-ia-estilo",
+        "sprites-ia-juiz"
+      ],
+      "descricao": "Dobra o trabalho e a cota",
+      "id": "os-dois",
+      "pede_comentario": false,
+      "rotulo": "As duas frentes"
+    }
+  ],
+  "pergunta": "O que a esteira ChatGPT desenha → Grok julga produz primeiro?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Esteira de sprites: por onde começa",
+  "vigente": null
+}

@@ -1,0 +1,48 @@
+{
+  "comentario": true,
+  "contexto": "Juiz de IA tende a concordar (memórias 'pergunta dirigida' e 'juiz fraco'). Proposta: ele lista defeitos, recebe controles escondidos (sprites ruins de propósito) e a concordância com você é medida. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T11:50:42.832090",
+  "depende_de": [
+    {
+      "decisao": "sprites-ia-alvo",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "sprites-ia-juiz",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "sprites-ia-conferir"
+      ],
+      "descricao": "Refaz até 2x; você confere até ele concordar ≥85% em 20 casos e pegar 100% dos controles",
+      "id": "calibrar",
+      "pede_comentario": false,
+      "rotulo": "Aconselha; aprova só depois de calibrado (recomendado)"
+    },
+    {
+      "desbloqueia": [
+        "sprites-ia-conferir"
+      ],
+      "descricao": "Tudo passa por você",
+      "id": "so-aconselha",
+      "pede_comentario": false,
+      "rotulo": "Nunca aprova sozinho"
+    },
+    {
+      "desbloqueia": [
+        "sprites-ia-conferir"
+      ],
+      "descricao": "Rápido e arriscado",
+      "id": "aprova",
+      "pede_comentario": false,
+      "rotulo": "Aprova sozinho já"
+    }
+  ],
+  "pergunta": "O Grok só aconselha ou pode aprovar sprite sem você?",
+  "projeto": "geral",
+  "situacao": "bloqueada",
+  "titulo": "Sprites: o que o Grok decide sozinho",
+  "vigente": null
+}

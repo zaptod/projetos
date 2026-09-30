@@ -28,6 +28,8 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Lote: estoque zero de madrugada** — Libera tudo (30/09/2026) `lote-estoque-zero-de-madrugada`
 - ✅ **Lote: piso de reposição (qui–dom)** — 2 dias = 20 vídeos (recomendado) (30/09/2026) `lote-piso-de-reposicao`
 - ✅ **Lote: como trocar da madrugada para o dia** — Esquema de dia validado 1 dia antes de desligar a madrugada; 1º lote seg 05/10 (recomendado) (30/09/2026) `lote-transicao`
+- ⏳ **Contas extras de IA: quais** — Quantas contas de cada IA e com que papel? `contas-ia-extras`
+- 🔒 3 bloqueada(s), esperando outra decisão: ver `decisoes/geral/README.md`
 
 **Publicação**
 - ✅ **As 3 partes só no TikTok (00022:p03, 00027:p01, 00032:p04)** — Subir no YouTube (28/09/2026) `partes-so-no-tiktok`

@@ -28,6 +28,8 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Lote: estoque zero de madrugada** — Libera tudo (30/09/2026) `lote-estoque-zero-de-madrugada`
 - ✅ **Lote: piso de reposição (qui–dom)** — 2 dias = 20 vídeos (recomendado) (30/09/2026) `lote-piso-de-reposicao`
 - ✅ **Lote: como trocar da madrugada para o dia** — Esquema de dia validado 1 dia antes de desligar a madrugada; 1º lote seg 05/10 (recomendado) (30/09/2026) `lote-transicao`
+- ⏳ **Contas extras de IA: quais** — Quantas contas de cada IA e com que papel? `contas-ia-extras`
+- 🔒 3 bloqueada(s), esperando outra decisão: ver `decisoes/geral/README.md`
 
 **Builds**
 - ✅ **Variantes B** — Título próprio para cada uma (27/09/2026) `variantes-b`
@@ -45,6 +47,8 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Sprites animados: como produzir** — Continuar com o modelo padrão e limpar depois (28/09/2026) · “Eu consegui gerar alguns spritesheet bons, veja o arquivo piriri.py , eu consegui esse usando o chat gpt, mas como o processo é moroso quero apenas uma interface gráfica que facilite ao máximo esse processo, como essa limpeza de fundo, saneamento e auto faturamento de frames, identificação e outras coisas úteis.” `sprites-animados`
 - ✅ **Palco: A/B depois da arte (16E)** — Seguir: trocar o visual do duelo (16G) (28/09/2026) `palco-ab-2`
 - ✅ **Palco: os números de dano na tela** — Não (29/09/2026) `palco-numeros-de-dano`
+- ⏳ **Esteira de sprites: por onde começa** — O que a esteira ChatGPT desenha → Grok julga produz primeiro? `sprites-ia-alvo`
+- 🔒 3 bloqueada(s), esperando outra decisão: ver `decisoes/builds/README.md`
 
 <!-- decisoes:fim -->
 

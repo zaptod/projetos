@@ -28,6 +28,8 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Lote: estoque zero de madrugada** — Libera tudo (30/09/2026) `lote-estoque-zero-de-madrugada`
 - ✅ **Lote: piso de reposição (qui–dom)** — 2 dias = 20 vídeos (recomendado) (30/09/2026) `lote-piso-de-reposicao`
 - ✅ **Lote: como trocar da madrugada para o dia** — Esquema de dia validado 1 dia antes de desligar a madrugada; 1º lote seg 05/10 (recomendado) (30/09/2026) `lote-transicao`
+- ⏳ **Contas extras de IA: quais** — Quantas contas de cada IA e com que papel? `contas-ia-extras`
+- 🔒 3 bloqueada(s), esperando outra decisão: ver `decisoes/geral/README.md`
 
 **Painel e Vila**
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
@@ -36,6 +38,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Aposentar a Vila em pixel e a Oficina** — Aposentar (tirar do painel e do código) (28/09/2026) `aposentar-vila-pixel`
 - ✅ **Ao girar, a Vila abre no prédio escolhido** — Abrir no prédio escolhido (como está agora) (29/09/2026) `girar-foca-o-predio`
 - ✅ **O prédio do Grok na Vila** — Manter (como está) (29/09/2026) `predio-do-grok`
+- 🔒 1 bloqueada(s), esperando outra decisão: ver `decisoes/painel-e-vila/README.md`
 
 <!-- decisoes:fim -->
 

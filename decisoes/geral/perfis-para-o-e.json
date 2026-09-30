@@ -1,0 +1,35 @@
+{
+  "comentario": true,
+  "contexto": "C: tem ~13 GB livres; cada perfil ocupa 0,3–1 GB. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T11:50:44.862754",
+  "depende_de": [
+    {
+      "decisao": "contas-ia-extras",
+      "opcao": "varias-gratis"
+    }
+  ],
+  "historico": [],
+  "id": "perfis-para-o-e",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Uma vez, com todas as IAs fechadas; os logins seguem junto",
+      "id": "mover",
+      "pede_comentario": false,
+      "rotulo": "Mover para o E: (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter no C:"
+    }
+  ],
+  "pergunta": "Mudar as pastas de perfil das IAs do C: para o E:?",
+  "projeto": "geral",
+  "situacao": "bloqueada",
+  "titulo": "Perfis de navegador: mudar para o E:?",
+  "vigente": null
+}

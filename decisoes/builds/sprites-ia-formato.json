@@ -1,0 +1,48 @@
+{
+  "comentario": true,
+  "contexto": "IA erra continuidade entre quadros. Animação modular = peça isolada animada no palco com partículas/shader. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T11:50:41.737808",
+  "depende_de": [
+    {
+      "decisao": "sprites-ia-alvo",
+      "opcao": "habilidades"
+    }
+  ],
+  "historico": [],
+  "id": "sprites-ia-formato",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "sprites-ia-fundo"
+      ],
+      "descricao": "O que voa é peça isolada animada no palco; o estouro é uma folha 4×4",
+      "id": "hibrido",
+      "pede_comentario": false,
+      "rotulo": "Peça + Godot; folha só no impacto (recomendado)"
+    },
+    {
+      "desbloqueia": [
+        "sprites-ia-fundo"
+      ],
+      "descricao": "Como o piriri",
+      "id": "folha",
+      "pede_comentario": false,
+      "rotulo": "Sempre folha 4×4"
+    },
+    {
+      "desbloqueia": [
+        "sprites-ia-fundo"
+      ],
+      "descricao": "Tudo animado no Godot",
+      "id": "pecas",
+      "pede_comentario": false,
+      "rotulo": "Sempre peça isolada"
+    }
+  ],
+  "pergunta": "Para as habilidades, o ChatGPT desenha peças isoladas (o Godot anima) ou folhas de animação?",
+  "projeto": "builds",
+  "situacao": "bloqueada",
+  "titulo": "Sprites: peça parada ou quadro a quadro?",
+  "vigente": null
+}

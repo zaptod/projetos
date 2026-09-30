@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T11:50:42.106695",
+  "depende_de": [
+    {
+      "decisao": "sprites-ia-alvo",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "sprites-ia-estilo",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Anexada a todo pedido e usada pelo juiz",
+      "id": "mestra",
+      "pede_comentario": false,
+      "rotulo": "Imagem-mestra aprovada por você (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Mais barato, deriva mais",
+      "id": "texto",
+      "pede_comentario": false,
+      "rotulo": "Só um texto fixo de estilo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Usa a memória do chat; frágil",
+      "id": "chat-por-elemento",
+      "pede_comentario": false,
+      "rotulo": "Uma conversa por elemento"
+    }
+  ],
+  "pergunta": "Como garantir que todos os sprites gerados pareçam do mesmo jogo?",
+  "projeto": "builds",
+  "situacao": "bloqueada",
+  "titulo": "Sprites: como manter o mesmo estilo",
+  "vigente": null
+}

@@ -1,0 +1,35 @@
+{
+  "comentario": true,
+  "contexto": "A Oficina tira fundo com despill/franja; branco falha em gelo, luz e raio. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T11:50:42.484390",
+  "depende_de": [
+    {
+      "decisao": "sprites-ia-formato",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "sprites-ia-fundo",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "A Oficina tira com despill",
+      "id": "chroma",
+      "pede_comentario": false,
+      "rotulo": "Magenta liso (verde nos roxos) (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Falha em gelo, luz e raio",
+      "id": "branco",
+      "pede_comentario": false,
+      "rotulo": "Branco, como o piriri"
+    }
+  ],
+  "pergunta": "Que fundo pedir, já que o ChatGPT entrega sem transparência (medido)?",
+  "projeto": "builds",
+  "situacao": "bloqueada",
+  "titulo": "Sprites: fundo pedido ao ChatGPT",
+  "vigente": null
+}

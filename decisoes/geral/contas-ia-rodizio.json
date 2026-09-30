@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
+  "criado": "2026-09-30T11:50:43.978188",
+  "depende_de": [
+    {
+      "decisao": "contas-ia-extras",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "contas-ia-rodizio",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Cada conta tem seu papel; se estourar, passa à próxima livre",
+      "id": "papel-e-cota",
+      "pede_comentario": false,
+      "rotulo": "Por papel; transborda quando a cota estoura (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Sem papéis",
+      "id": "por-cota",
+      "pede_comentario": false,
+      "rotulo": "Uma até a cota, depois a próxima"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Espalha o uso",
+      "id": "alternar",
+      "pede_comentario": false,
+      "rotulo": "Uma por pedido"
+    }
+  ],
+  "pergunta": "Com mais de uma conta da mesma IA, como o sistema escolhe qual usar?",
+  "projeto": "geral",
+  "situacao": "bloqueada",
+  "titulo": "Contas de IA: como alternar",
+  "vigente": null
+}
