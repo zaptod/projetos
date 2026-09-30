@@ -26,4 +26,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Lote: vídeo de até 6 dias** — Aceito; mudança crítica ganha re-render (recomendado) (30/09/2026) `lote-frescor`
 - ✅ **Lote: estoque zero de madrugada** — Libera tudo (30/09/2026) `lote-estoque-zero-de-madrugada`
 - ✅ **Lote: piso de reposição (qui–dom)** — 2 dias = 20 vídeos (recomendado) (30/09/2026) `lote-piso-de-reposicao`
-- ⏳ **Lote: como trocar da madrugada para o dia** — Quando desligar as tarefas da madrugada? `lote-transicao`
+- ✅ **Lote: como trocar da madrugada para o dia** — Esquema de dia validado 1 dia antes de desligar a madrugada; 1º lote seg 05/10 (recomendado) (30/09/2026) `lote-transicao`
