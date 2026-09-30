@@ -21,6 +21,7 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 - ✅ **Fichas das IAs (fase 1): li?** — Li; seguir para a fase 2 (falar com cada uma pelo app) (29/09/2026) `ias-fichas-lidas`
 - ✅ **Rodízio de imagens: quem vem primeiro** — Gemini primeiro (29/09/2026) `rodizio-de-imagens-quem-vem-primeiro`
 - ✅ **Digen no plano Free: o Real Motion 3.5 pede plano** — Tirar o Digen da roda e desligar o vídeo do payoff das builds (29/09/2026) `digen-plano-free`
+- ⏳ **Fila: tarefas pesadas podem rodar de dia?** — Você apertou 'retomar a fila' 3 vezes, mas as 3 tarefas de builds que sobraram (re-render do som real dos duelos 17–23, 16G duelo pelo palco, 16F armas) são pesadas e a regra é rodá-las só de 01h a 06h. Rodo de dia? `fila-pesada-de-dia`
 
 <!-- decisoes:fim -->
 

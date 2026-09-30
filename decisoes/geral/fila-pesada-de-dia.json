@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "A regra de trabalho pesado 01h–06h existe para não disputar a máquina com a publicação (posts em :37). Ontem à noite o Claude estava proibido (23:26→09:05), então elas não rodaram. Capacidade atual: 2 agentes.",
+  "criado": "2026-09-30T09:15:33.247883",
+  "depende_de": [],
+  "historico": [],
+  "id": "fila-pesada-de-dia",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Mantém a regra; rodam hoje de 01h a 06h se o Claude estiver liberado",
+      "id": "madrugada",
+      "pede_comentario": false,
+      "rotulo": "Esperar a madrugada"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Começa já, uma por vez, sem mudar código em execução na janela da publicação",
+      "id": "de-dia-fora-janela",
+      "pede_comentario": false,
+      "rotulo": "Rodar de dia, fora de :25–:55"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Usa as duas vagas agora; mais risco de pesar na máquina perto das :37",
+      "id": "de-dia-livre",
+      "pede_comentario": false,
+      "rotulo": "Rodar de dia, 2 em paralelo"
+    }
+  ],
+  "pergunta": "Você apertou 'retomar a fila' 3 vezes, mas as 3 tarefas de builds que sobraram (re-render do som real dos duelos 17–23, 16G duelo pelo palco, 16F armas) são pesadas e a regra é rodá-las só de 01h a 06h. Rodo de dia?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Fila: tarefas pesadas podem rodar de dia?",
+  "vigente": null
+}
