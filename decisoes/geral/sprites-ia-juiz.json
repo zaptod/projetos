@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T12:03:29",
+      "evento": "2026-09-30T12:03:14",
+      "linha": 79,
+      "nota": "abriu sprites-ia-conferir",
+      "opcao": "calibrar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Juiz de IA tende a concordar (memórias 'pergunta dirigida' e 'juiz fraco'). Proposta: ele lista defeitos, recebe controles escondidos (sprites ruins de propósito) e a concordância com você é medida. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:42.832090",
   "depende_de": [
