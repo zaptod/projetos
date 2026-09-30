@@ -30,6 +30,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import IAS, catalogo, ficha as fichas
+from .imagem import pedido_de_imagem
 
 RAIZ_REPO = Path(__file__).resolve().parents[1]
 PASTA_PROVAS = RAIZ_REPO / "random_builds" / "outputs" / "_ias"
@@ -48,9 +49,10 @@ CHARS_DE_PROVA = 120_000
 PEDIDO_OK = "PEDIDO DE TEXTO: responda só OK"
 PEDIDO_ANEXO = ("PEDIDO DE TEXTO: o anexo é um círculo de que cor? "
                 "Responda com uma palavra.")
-PEDIDO_IMAGEM = ("Gere uma imagem quadrada (proporção 1:1): a red circle on a "
-                 "white background, flat, minimal, no text.")
 PROMPT_GERADOR = "a red circle on a white background, flat, minimal, no text"
+# O MESMO texto que o carteiro manda (`ias.imagem.pedido_de_imagem`): a ficha
+# mede o pedido que a producao faz, e `baixar_da_resposta` confere o turno.
+PEDIDO_IMAGEM = pedido_de_imagem(PROMPT_GERADOR, "1:1")
 
 CHATS = ("gemini", "chatgpt", "deepseek", "grok")
 GERADORES = ("picasso", "dreamface", "digen")
@@ -348,69 +350,35 @@ def _accept_do_anexo(cliente, ficha: dict, log) -> None:
     log(f"[sonda] anexo: accept={accept!r} multiple={bloco['multiplos']}")
 
 
-def _imagens_da_resposta(cliente) -> list:
-    """`[{src, w, h}]` das imagens dentro do ULTIMO turno do assistente."""
-    js = (
-        "([respostas, usuarios]) => {"
-        " const depois = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);"
-        " let usuario = null;"
-        " for (const s of usuarios) { let els = [];"
-        "   try { els = [...document.querySelectorAll(s)]; } catch (e) { continue; }"
-        "   const u = els[els.length - 1]; if (u && (!usuario || depois(usuario, u))) usuario = u; }"
-        " for (const s of respostas) { let els = [];"
-        "   try { els = [...document.querySelectorAll(s)]; } catch (e) { continue; }"
-        "   if (usuario) els = els.filter(e => depois(usuario, e));"
-        "   if (!els.length) continue;"
-        "   const alvo = els[els.length - 1];"
-        "   return [...alvo.querySelectorAll('img')]"
-        "     .filter(i => i.naturalWidth >= 64 && i.naturalHeight >= 64)"
-        "     .map(i => ({src: i.currentSrc || i.src, w: i.naturalWidth, h: i.naturalHeight,"
-        "                 alt: i.alt || ''}));"
-        " }"
-        " return []; }")
-    try:
-        achado = cliente.page.evaluate(js, [list(cliente.sel.get("resposta") or []),
-                                            list(cliente.sel.get("turno_usuario") or [])])
-        return achado if isinstance(achado, list) else []
-    except Exception:                                          # noqa: BLE001
-        return []
-
-
-def _baixar_imagem(cliente, src: str, destino: Path) -> Path | None:
-    """Traz a imagem da resposta para o disco (blob:, data: ou https)."""
-    import base64
-    js = ("async (src) => { const r = await fetch(src); const b = await r.blob();"
-          " const buf = await b.arrayBuffer();"
-          " let s = ''; const bytes = new Uint8Array(buf);"
-          " for (let i = 0; i < bytes.length; i += 0x8000)"
-          "   s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));"
-          " return {tipo: b.type, b64: btoa(s)}; }")
-    corpo = None
-    try:
-        achado = cliente.page.evaluate(js, src)
-        if isinstance(achado, dict) and achado.get("b64"):
-            corpo = base64.b64decode(achado["b64"])
-    except Exception:                                          # noqa: BLE001
-        corpo = None
-    if corpo is None and src.startswith("http"):
-        try:
-            resposta = cliente.ctx.request.get(src, timeout=60_000)
-            if resposta.ok:
-                corpo = resposta.body()
-        except Exception:                                      # noqa: BLE001
-            corpo = None
-    if not corpo or len(corpo) < 512:
-        return None
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_bytes(corpo)
-    return destino
-
-
 def _imagem_no_chat(ia: str, cliente, ficha: dict, pasta: Path, log) -> None:
-    """Pede UMA imagem 1:1 e mede o que voltou (ou o texto que veio no lugar)."""
-    from contos.llm import seletores as sel, texto as txt
+    """Pede UMA imagem 1:1 e mede o que voltou (ou o texto que veio no lugar).
+
+    Nenhuma regra propria para ACHAR a imagem: o mesmo caminho do carteiro.
+    A regra antiga desta sonda ("img de 64+ px no ultimo turno do
+    assistente") pegaria a miniatura do ANUNCIO que o ChatGPT poe no mesmo
+    section da resposta (defeito do gato, d228c94f, 29/09/2026; consertado
+    no carteiro em 136730b). Agora:
+      - `ClienteLLM.enviar` tira a foto das imagens de antes do envio;
+      - `ClienteLLM.esperar_resposta` so aceita imagem no recipiente de
+        imagem gerada da resposta ao NOSSO turno, com src novo e a geracao
+        terminada (sem borrao, sem "Criando imagem", sem parar, estavel);
+      - `ias.imagem.baixar_da_resposta` refaz essa prova na hora de baixar
+        (pelo botao do site, ou pelo src) e devolve a prova que o carteiro
+        grava. Sem prova, nada vai ao disco e a ficha nao diz "gera".
+    O pedido e o mesmo do carteiro (`ias.imagem.pedido_de_imagem`).
+    """
+    from contos.llm import texto as txt
+
+    from . import imagem as img
     page = cliente.page
     bloco = ficha["imagem"]
+    if not cliente.olha_imagem():
+        # sem os recipientes medidos, nenhuma imagem teria prova: nao gasta
+        bloco["gera"] = None
+        ficha["pendencias"].append(
+            "imagem nao pedida: faltam os seletores de imagem gerada desta IA "
+            "(turno_usuario/imagem_turno/imagem_gerada em contos.llm.seletores)")
+        return
     inicio = time.monotonic()
     try:
         cliente.enviar(PEDIDO_IMAGEM)
@@ -418,59 +386,73 @@ def _imagem_no_chat(ia: str, cliente, ficha: dict, pasta: Path, log) -> None:
         bloco["gera"] = None
         ficha["pendencias"].append(f"pedido de imagem nao enviado: {type(exc).__name__}: {str(exc)[:100]}")
         return
-    fim = inicio + PRAZO_IMAGEM_S
-    imagens, texto, parado_desde = [], "", None
-    while time.monotonic() < fim:
-        imagens = _imagens_da_resposta(cliente)
-        texto = cliente._resposta_nova()
-        escrevendo = sel.encontrar(page, cliente.sel["parar"], timeout=0.3) is not None
-        if imagens and not escrevendo:
-            break
-        if not escrevendo and texto.strip():
-            parado_desde = parado_desde or time.monotonic()
-            if time.monotonic() - parado_desde >= 6.0 and time.monotonic() - inicio > 20:
-                break
-        else:
-            parado_desde = None
-        time.sleep(2.0)
+    texto, falha = "", None
+    try:
+        texto = cliente.esperar_resposta(PRAZO_IMAGEM_S, estabilidade=2.0)
+    except Exception as exc:                                   # noqa: BLE001
+        falha = f"{type(exc).__name__}: {' '.join(str(exc).split())[:120]}"
     decorrido = time.monotonic() - inicio
     bloco["tempo_s"] = round(decorrido, 1)
     bloco["prova"] = _captura(page, pasta, "imagem", ficha, log)
-    cliente._ultima_resposta = texto
+    seletor_resposta = (cliente.sel.get("resposta") or [None])[0]
     if txt.e_recusa_enlatada(texto):
         ficha["catalogo_textos"] = catalogo.juntar(ficha["catalogo_textos"], [
-            catalogo.item("recusa_enlatada", texto, seletor=(cliente.sel.get("resposta") or [None])[0],
+            catalogo.item("recusa_enlatada", texto, seletor=seletor_resposta,
                           visto_em=fichas.agora(), nota="ao pedir imagem 1:1")])
-    novos = catalogo.varrer(texto, visto_em=fichas.agora(),
-                            seletor=(cliente.sel.get("resposta") or [None])[0])
+    novos = catalogo.varrer(texto, visto_em=fichas.agora(), seletor=seletor_resposta)
     ficha["catalogo_textos"] = catalogo.juntar(ficha["catalogo_textos"], novos)
-    if not imagens:
+    if falha:
+        # nem texto nem imagem final no prazo: nao e "nao gera", e nao medido
+        bloco["gera"] = None
+        ficha["pendencias"].append(f"pedido de imagem sem resposta final: {falha}")
+        log(f"[sonda] {ia}: pedido de imagem sem resposta em {decorrido:.0f}s ({falha})")
+        return
+    try:
+        saida = img.baixar_da_resposta(cliente, PEDIDO_IMAGEM, "1:1", log=log)
+    except img.SemProva as exc:
+        bloco["gera"] = None
+        ficha["pendencias"].append(f"imagem na tela sem prova de ser a resposta ao nosso "
+                                   f"pedido (nada gravado): {exc}")
+        log(f"[sonda] {ia}: imagem sem prova: {exc}")
+        return
+    except img.ImagemFalhou as exc:
+        # a prova passou (so falha depois dela): gera, mas medida pela tela
+        visto = (list(getattr(cliente, "imagens_na_resposta", None) or []) or [{}])[-1]
+        bloco["gera"] = True
+        bloco["resolucao"] = [visto.get("w"), visto.get("h")]
+        bloco["prova_origem"] = {"tipo": "chat proprio (nosso turno, nosso prompt)",
+                                 "url_chat": page.url, "prompt": PEDIDO_IMAGEM,
+                                 "src": str(visto.get("src") or "")[:200],
+                                 "na_tela": [visto.get("w"), visto.get("h")],
+                                 "comprovada": True}
+        ficha["pendencias"].append(f"imagem gerada mas nao baixada (medida so pela tela): {exc}")
+        return
+    if saida is None:
         bloco["gera"] = False
         bloco["prova_origem"] = {"tipo": "chat proprio", "url_chat": page.url,
-                                 "prompt": PEDIDO_IMAGEM, "resposta": texto[:300]}
+                                 "prompt": PEDIDO_IMAGEM, "resposta": texto[:300],
+                                 "motivo": ("respondeu sem imagem gerada: "
+                                            f"«{' '.join(texto.split())[:160]}»")}
         log(f"[sonda] {ia}: sem imagem em {decorrido:.0f}s; resposta: {texto[:120]!r}")
         return
-    escolhida = imagens[-1]
-    destino = pasta / f"{_carimbo()}_circulo_{ia}.png"
-    arquivo = _baixar_imagem(cliente, escolhida["src"], destino)
+    corpo = saida["bytes"]
+    destino = pasta / f"{_carimbo()}_circulo_{ia}{img.extensao(corpo) or '.png'}"
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_bytes(corpo)
     bloco["gera"] = True
     bloco["prova_origem"] = {"tipo": "chat proprio (nosso turno, nosso prompt)",
                              "url_chat": page.url, "prompt": PEDIDO_IMAGEM,
-                             "src": str(escolhida["src"])[:200],
-                             "na_tela": [escolhida["w"], escolhida["h"]],
-                             "comprovada": True}
-    if arquivo is None:
-        bloco["resolucao"] = [escolhida["w"], escolhida["h"]]
-        ficha["pendencias"].append("imagem gerada mas nao baixada (medida so pela tela)")
-        return
+                             **saida["prova"]}
     try:
-        largura, altura, alfa = _medir_png(arquivo)
+        largura, altura, alfa = _medir_png(destino)
         bloco["resolucao"] = [largura, altura]
         bloco["alfa"] = alfa
-        bloco["arquivo"] = str(arquivo)
-        log(f"[sonda] {ia}: imagem {largura}x{altura} alfa={alfa} em {decorrido:.0f}s")
+        bloco["arquivo"] = str(destino)
+        log(f"[sonda] {ia}: imagem {largura}x{altura} alfa={alfa} em {decorrido:.0f}s "
+            f"({saida['prova'].get('download')})")
     except Exception as exc:                                   # noqa: BLE001
-        bloco["resolucao"] = [escolhida["w"], escolhida["h"]]
+        na_tela = saida["prova"].get("na_tela") or [None, None]
+        bloco["resolucao"] = list(na_tela)
         ficha["pendencias"].append(f"arquivo da imagem ilegivel ({type(exc).__name__})")
 
 

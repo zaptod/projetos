@@ -1593,9 +1593,16 @@ xícara de café**.
   uma tentativa fora da "Alta procura", com o carteiro reiniciado no
   recipiente novo; a espera não reconhece o card (gasta 420 s) e o botão de
   baixar do Grok não foi medido;
-- `ias/sonda.py` (a sonda das fichas, fase 1) ainda tem o seu próprio
-  `_imagens_da_resposta`, pela regra antiga; não é caminho de entrega, mas
-  mediria o anúncio como "a imagem" do ChatGPT;
+- ~~`ias/sonda.py` com o seu próprio `_imagens_da_resposta`~~ — resolvido
+  em 29/09 (tarefa 4c0615e6): a sonda pede com `imagem.pedido_de_imagem`,
+  espera com `ClienteLLM.esperar_resposta` e baixa com
+  `imagem.baixar_da_resposta` (recipiente da resposta ao nosso turno, src
+  novo, geração terminada); a regra antiga e o `_baixar_imagem` saíram. No
+  dublê de `ias/test_sonda.py` o código velho dava `gera: True` só com o
+  anúncio e baixava o anúncio (512x512) no lugar do círculo (300x300); o
+  novo dá `gera: False` e baixa o círculo. Sem resposta final no prazo, ou
+  imagem sem prova, a ficha fica `gera: None` (não medido), nunca `True`.
+  Não rodada ao vivo;
 - DreamFace: sem cliente com prova de origem e créditos 0 (01/09). Digen:
   vídeo a partir de imagem pede plano hoje (conta Free; decisão
   `digen-plano-free`); o anexo da imagem nossa funciona;
