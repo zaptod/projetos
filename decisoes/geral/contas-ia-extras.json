@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T12:06:07",
+      "evento": "2026-09-30T12:05:26",
+      "linha": 80,
+      "nota": "disfarçar contas/trocar IP para driblar o limite da OpenAI não será construído (evasão de detecção, contra os termos); caminhos dentro das regras em geral/contas-ia-caminho",
+      "opcao": "varias-gratis",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Várias contas Free da mesma IA para somar cota provavelmente fere os termos da OpenAI/xAI (risco de banir inclusive a sua conta pessoal). O perfil chatgpt__plus já existe no disco, fora do registro. O login de cada conta é sempre seu. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:43.657792",
   "depende_de": [],
