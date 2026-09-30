@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T13:00:19",
+      "evento": "2026-09-30T12:38:19",
+      "linha": 88,
+      "nota": "magenta liso; árvore da F0 completa",
+      "opcao": "chroma",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "A Oficina tira fundo com despill/franja; branco falha em gelo, luz e raio. Plano: C:\\Users\\adrian\\.claude\\plans\\esteira-de-sprites-por-ia.md.",
   "criado": "2026-09-30T11:50:42.484390",
   "depende_de": [
