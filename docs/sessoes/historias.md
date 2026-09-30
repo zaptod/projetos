@@ -102,7 +102,17 @@ mede a ficha de capacidades de cada IA (o que gera, cota, textos de erro) sem me
 pipeline. **Imagem da resposta do Grok** (29/09, 0b3a910): só vale o `div.group/image`
 com `img` `assets.grok.com/users/<conta>/generated/…` e alt "Imagem gerada" — o balão
 inteiro aceitava imagem da web (medido num Chrome headless); a gerada sai JPG 784x1168
-mesmo pedindo 1:1. **Anexo no DeepSeek** (29/09, para o carteiro da Vila): a miniatura aparece
+mesmo pedindo 1:1. **"Alta procura" do Grok** (30/09): em 29/09 (17:30 e 17:44) o grok.com
+pôs no lugar da resposta o card "Alta procura — Por favor, tente novamente em breve, ou
+atualize para um acesso com maior prioridade" (botão "Aprimorar", nunca clicado) e a espera
+leu "0 chars" por 420 s, duas vezes. Agora `cliente.aviso_do_site()` lê o turno do
+assistente que responde ao nosso **menos** a resposta e o raciocínio, casa
+`seletores.GROK["indisponivel"]` com borda de palavra (teto de 400 chars: card é curto) e,
+visto em duas voltas seguidas, levanta `SiteIndisponivel` (categoria `indisponivel`,
+`pausa_rodizio`: o rodízio da Vila tira o Grok por `cota_pausa_h`). Provedor sem
+`indisponivel` não olha — ChatGPT, Gemini e DeepSeek não mudam. O DOM do card **não** foi
+medido (não estava mais na conversa em 30/09): se ele morar fora do `assistant-message`, a
+espera volta a gastar o prazo. **Anexo no DeepSeek** (29/09, para o carteiro da Vila): a miniatura aparece
 antes de o arquivo subir, então `seletores.DEEPSEEK["anexo_subindo"]` (o enviar com
 `ds-button--disabled`) faz `cliente.anexar` esperar o upload; só ele tem essa espera.
 O ChatGPT não assiste vídeo

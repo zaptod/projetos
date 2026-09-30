@@ -204,7 +204,11 @@ def fora_de_cota(ia: str, horas: float | None = None, agora: datetime | None = N
         for m in correio.ler(caixa):
             if correio.tipo(m) != "imagem" or m.get("gerador") != ia:
                 continue
-            if m.get("situacao") != "falhou" or m.get("categoria") not in CATEGORIAS_DE_COTA:
+            if m.get("situacao") != "falhou":
+                continue
+            # `pausa_rodizio`: o aviso do site no lugar da resposta ("Alta
+            # procura" do Grok, `indisponivel`) tambem tira o gerador da roda
+            if m.get("categoria") not in CATEGORIAS_DE_COTA and not m.get("pausa_rodizio"):
                 continue
             try:
                 quando = datetime.fromisoformat(str(m.get("falhou_em") or m.get("em")))
@@ -296,6 +300,10 @@ def classificar(ia: str, exc: BaseException, tela: str = "") -> tuple:
     if nome == "ParedeDePlanos":
         return ("parede", f"o {rotulo} pediu assinatura («Assine para Gerar») mesmo "
                           "depois de reabrir o perfil: confira a conta logada no PC")
+    if nome == "SiteIndisponivel":
+        # o card "Alta procura" do Grok no lugar da resposta (29/09)
+        return ("indisponivel", f"o {rotulo} está sem vaga agora (fila da conta grátis): "
+                                f"{texto[:300]}")
     from .carteiro import classificar_erro, motivo_da_tela
     achado = motivo_da_tela(ia, tela)
     if achado:

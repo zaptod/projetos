@@ -63,6 +63,27 @@ class EnvioTruncado(LLMFalhou):
     """
 
 
+class SiteIndisponivel(LLMFalhou):
+    """O SITE pos um aviso NO LUGAR da resposta ao nosso turno.
+
+    29/09/2026, 17:30 e 17:44, dois pedidos de imagem ao Grok pelo carteiro
+    da Vila: no lugar da resposta veio o card "Alta procura — Por favor, tente
+    novamente em breve, ou atualize para um acesso com maior prioridade" (com
+    o botao "Aprimorar", que NUNCA se clica: e o plano pago) e, no topo, o
+    aviso "Grok is experiencing issues". A espera nao reconhecia o card e
+    gastou os 420 s inteiros, duas vezes (outputs/carteiro.txt; tela em
+    historias/outputs/_logs/llm_calado/grok_20260929_174936.png).
+
+    Nao e recusa nem cota da conta: e a fila da conta gratis em hora de pico.
+    Reenviar na hora nao adianta, entao quem chama nao reenvia; o carteiro
+    marca `indisponivel` e o rodizio de imagens tira a IA por `cota_pausa_h`
+    (`pausa_rodizio`).
+    """
+
+    categoria = "indisponivel"
+    pausa_rodizio = True
+
+
 def perfil_de(provedor: str, canal: str = "geral") -> Path:
     """A pasta de Chrome daquele LLM, na conta ativa.
 
@@ -701,6 +722,88 @@ class ClienteLLM:
             saida.append(i)
         return saida
 
+    # O AVISO DO SITE NO LUGAR DA RESPOSTA (29/09/2026; ver `SiteIndisponivel`).
+    # O que se le e o turno do assistente que RESPONDE ao nosso (o primeiro
+    # depois do ultimo turno do usuario, `turno_assistente`) MENOS o conteudo
+    # de resposta de verdade (`resposta`) e o raciocinio (`raciocinio`). O
+    # card do Grok nao esta no markdown da resposta: medido pelo log de 29/09,
+    # 420 s com "0 chars" lidos pelo seletor de resposta e o card na tela.
+    # Assim uma resposta que so CITA "alta procura" no texto nao sobra aqui; e
+    # se o DOM mudar e ela sobrar, o teto de `AVISO_MAXIMO` segura (card e
+    # curto, resposta nao). `pagina`: o aviso do topo em qualquer lugar da
+    # pagina (so vai ao log: ele sozinho nao encerra a espera).
+    AVISO_MAXIMO = 400
+    _JS_AVISO = (
+        "([usuarios, turnos, conteudos, pagina]) => {"
+        " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
+        "   & Node.DOCUMENT_POSITION_FOLLOWING);"
+        " let aviso = false;"
+        " if (pagina) { try { aviso = new RegExp(pagina, 'i').test("
+        "   (document.body && document.body.innerText) || ''); } catch (e) {} }"
+        " let usuario = null;"
+        " for (const s of usuarios) {"
+        "   let els = [];"
+        "   try { els = [...document.querySelectorAll(s)]; } catch (e) { continue; }"
+        "   const ultimo = els[els.length - 1];"
+        "   if (ultimo && (!usuario || depois(usuario, ultimo))) usuario = ultimo;"
+        " }"
+        " if (!usuario) return {ancorado: false, turno: false, resto: '', pagina: aviso};"
+        " let turno = null;"
+        " for (const s of turnos) {"
+        "   let els = [];"
+        "   try { els = [...document.querySelectorAll(s)]; } catch (e) { continue; }"
+        "   for (const t of els) {"
+        "     if (!depois(usuario, t) || t.contains(usuario) || usuario.contains(t)) continue;"
+        "     if (!turno || depois(t, turno)) turno = t;"
+        "   }"
+        " }"
+        " if (!turno) return {ancorado: true, turno: false, resto: '', pagina: aviso};"
+        " let resto = turno.innerText || '';"
+        " for (const s of conteudos) {"
+        "   let els = [];"
+        "   try { els = [...turno.querySelectorAll(s)]; } catch (e) { continue; }"
+        "   for (const el of els) {"
+        "     const t = el.innerText || '';"
+        "     if (t.trim()) resto = resto.split(t).join(' ');"
+        "   }"
+        " }"
+        " return {ancorado: true, turno: true, resto: resto.slice(0, 4000),"
+        "         pagina: aviso}; }")
+
+    def aviso_do_site(self) -> dict:
+        """`{"texto", "pagina"}`: `texto` e o aviso que o site pos no lugar da
+        resposta ao nosso turno (casado com `indisponivel`, com borda de
+        palavra), ou `""`; `pagina` diz se o aviso do topo esta na tela.
+        Provedor sem `indisponivel` medido nao olha (e nada muda nele).
+        Nunca levanta."""
+        vazio = {"texto": "", "pagina": False}
+        padroes = [str(p) for p in (self.sel.get("indisponivel") or []) if p]
+        turnos = list(self.sel.get("turno_assistente") or [])
+        if not padroes or not turnos or not self.sel.get("turno_usuario"):
+            return vazio
+        conteudos = [s for s in (list(self.sel.get("resposta") or [])
+                                 + list(self.sel.get("raciocinio") or []))
+                     if s not in turnos]
+        try:
+            achado = self.page.evaluate(
+                self._JS_AVISO, [list(self.sel.get("turno_usuario") or []), turnos,
+                                 conteudos, str(self.sel.get("indisponivel_pagina") or "")])
+        except Exception:                                      # noqa: BLE001
+            return vazio
+        if not isinstance(achado, dict):
+            return vazio
+        pagina = bool(achado.get("pagina"))
+        resto = " ".join(str(achado.get("resto") or "").split())
+        if not resto or len(resto) > self.AVISO_MAXIMO:
+            return {"texto": "", "pagina": pagina}
+        for padrao in padroes:
+            try:
+                if re.search(padrao, resto, re.IGNORECASE):
+                    return {"texto": resto, "pagina": pagina}
+            except re.error:
+                continue
+        return {"texto": "", "pagina": pagina}
+
     def _resposta_no_dom(self):
         """`{"texto", "ancorado"}`, ou `None` se a pagina nao respondeu."""
         try:
@@ -839,9 +942,38 @@ class ClienteLLM:
         estavel_imagem = max(float(estabilidade),
                              float(self.ajustes.get("imagem_estabilidade", 5.0)))
         ultimo_estado_imagem = None
+        # o aviso do site no lugar da resposta (`SiteIndisponivel`): so quem
+        # tem os textos medidos olha, e ele tem de aparecer em DUAS voltas
+        # seguidas (um quadro no meio da montagem nao encerra a espera)
+        olha_aviso = bool(self.sel.get("indisponivel"))
+        aviso_seguido = 0
+        avisou_pagina = False
 
         while time.monotonic() < fim:
             texto = self._resposta_nova()
+            if olha_aviso:
+                aviso = self.aviso_do_site()
+                if aviso["texto"]:
+                    aviso_seguido += 1
+                    if aviso_seguido >= 2:
+                        decorrido = time.monotonic() - inicio
+                        self.log(f"[{self.provedor}] o site pos um aviso no lugar da "
+                                 f"resposta em {decorrido:.0f}s: «{aviso['texto'][:160]}»")
+                        if not diagnosticado:
+                            diagnosticado = True
+                            self._diagnosticar_calado()
+                        raise SiteIndisponivel(
+                            f"o {self.provedor} respondeu com o aviso do site no lugar da "
+                            f"resposta: «{aviso['texto'][:200]}»"
+                            + (" (e o aviso no topo: o site diz que está com problemas)"
+                               if aviso["pagina"] else "")
+                            + "; não reenvio agora.")
+                else:
+                    aviso_seguido = 0
+                    if aviso["pagina"] and not avisou_pagina:
+                        avisou_pagina = True
+                        self.log(f"[{self.provedor}] o site avisa no topo que está com "
+                                 "problemas; sigo esperando a resposta.")
             calado = len(texto.strip()) < 40
             prontas = []
             achado = {}

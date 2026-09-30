@@ -407,6 +407,24 @@ GROK = {
     "raciocinio": [
         "div.thinking-container",
     ],
+    # O AVISO DO SITE NO LUGAR DA RESPOSTA (29/09/2026, 17:30 e 17:44; ver
+    # `cliente.SiteIndisponivel`): o card "Alta procura — Por favor, tente
+    # novamente em breve, ou atualize para um acesso com maior prioridade"
+    # (botao "Aprimorar", que nunca se clica) no turno do assistente, e o
+    # toast "Grok is experiencing issues. We are working on restoring service
+    # as quickly as possible." no topo. Os padroes casam no texto do turno que
+    # SOBRA fora da resposta e do raciocinio, com borda de palavra dos dois
+    # lados. `indisponivel_pagina` e regex de JS, procurada na pagina inteira:
+    # so vai ao log.
+    "turno_assistente": [
+        "div[data-testid='assistant-message']",
+    ],
+    "indisponivel": [
+        r"(?<!\w)alta\s+procura(?!\w)",
+        r"(?<!\w)atualize\s+para\s+um\s+acesso\s+com\s+maior\s+prioridade(?!\w)",
+        r"(?<!\w)grok\s+is\s+experiencing\s+issues(?!\w)",
+    ],
+    "indisponivel_pagina": r"\bexperiencing issues\b",
     # A IMAGEM DA RESPOSTA (medido em 29/09/2026 17:5x, so leitura, na
     # conversa "Circulo de cor vermelha" da conta, onde a sonda de 01:44
     # pediu uma imagem; scratchpad/diag_grok2.py). A imagem gerada mora em

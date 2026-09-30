@@ -289,6 +289,10 @@ def classificar_erro(ia: str, exc: BaseException, tela: str = "") -> tuple:
                          f"faça login de novo (python main.py llm login --provedor {ia})")
     if nome == "ContaOcupada":
         return ("conta_ocupada", "a conta está em uso pela pipeline; tente de novo")
+    if nome == "SiteIndisponivel":
+        # o card "Alta procura" do Grok (29/09): o cliente ja leu o aviso
+        # no nosso turno; nao cai no `tente novamente` generico (erro_site)
+        return ("indisponivel", " ".join(str(exc).split())[:400])
     achado = motivo_da_tela(ia, tela)
     if achado:
         return achado
@@ -635,9 +639,12 @@ class Carteiro:
             if casa is not None:
                 casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
                 correio.gravar_casa(ia, casa)
+            # o aviso do site ("Alta procura"): o rodizio tira o gerador por
+            # `cota_pausa_h`, como numa falha de cota (`imagem.fora_de_cota`)
+            pausa = {"pausa_rodizio": True} if getattr(exc, "pausa_rodizio", False) else {}
             atualizada = correio.atualizar(caixa, mid, situacao="falhou", erro=motivo,
                                            categoria=categoria, falhou_em=correio.agora(),
-                                           gerador=ia)
+                                           gerador=ia, **pausa)
             self._anunciar(caixa, atualizada)
             return atualizada
         reivindicar = getattr(sessao, "reivindicar", None)

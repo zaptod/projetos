@@ -968,6 +968,53 @@ class Rodizio(_Base):
 
 
 # ================================================================ disco
+class AltaProcuraDoGrok(_Base):
+    """29/09 17:30 e 17:44: o card "Alta procura" do grok.com no lugar da
+    resposta. O cliente agora sai em segundos com `SiteIndisponivel`; aqui, o
+    carteiro marca `indisponivel` (e nao o `erro_site` do 1o pedido, pelo
+    "tente novamente" generico) e o rodizio tira o Grok por `cota_pausa_h`."""
+
+    CARD = ("o grok respondeu com o aviso do site no lugar da resposta: «Alta procura "
+            "Por favor, tente novamente em breve, ou atualize para um acesso com maior "
+            "prioridade Aprimorar»; não reenvio agora.")
+
+    def _exc(self):
+        from contos.llm.cliente import SiteIndisponivel
+        return SiteIndisponivel(self.CARD)
+
+    def test_classificadores_dizem_indisponivel(self):
+        cat, motivo = carteiro_mod.classificar_erro("grok", self._exc())
+        self.assertEqual(cat, "indisponivel")
+        self.assertIn("Alta procura", motivo)
+        cat, motivo = imagem.classificar("grok", self._exc(), tela="Tente novamente")
+        self.assertEqual(cat, "indisponivel")
+        self.assertIn("Alta procura", motivo)
+
+    def test_pedido_ao_grok_falha_indisponivel_e_sai_do_rodizio(self):
+        c = _novo(fabrica=carteiro_mod.fabrica_duble(imagem_falhar=self._exc()))
+        m = correio.pedir_imagem("grok", "um gato laranja", proporcao="1:1")
+        fim = c.uma_volta()
+        self.assertEqual(fim["situacao"], "falhou")
+        self.assertEqual(fim["categoria"], "indisponivel")
+        self.assertTrue(fim.get("pausa_rodizio"))
+        self.assertIsNone(correio.arquivo_da_imagem("grok", m["id"]))
+        self.assertIn("indisponivel", imagem.fora_de_cota("grok"))
+        self.assertEqual(imagem.fora_de_cota("grok", horas=0), "")
+        # o proximo "qualquer um livre" com o Grok primeiro pula para o seguinte
+        c2 = _novo(ajustes={"rodizio_imagem": ["grok", "chatgpt"]})
+        correio.pedir_imagem("livre", "x", proporcao="1:1")
+        self.assertEqual(c2.uma_volta()["gerador"], "chatgpt")
+
+    def test_indisponivel_sem_pausa_continua_no_rodizio(self):
+        # caso zero: o `indisponivel` de antes (EsperaEstourou do PicassoIA,
+        # "sem cliente") NAO tira ninguem da roda — so o aviso do site
+        antiga = correio.pedir_imagem("picasso", "y", proporcao="1:1")
+        correio.atualizar("picasso", antiga["id"], situacao="falhou", categoria="indisponivel",
+                          erro="não devolveu a imagem (3 tentativas)", falhou_em=correio.agora(),
+                          gerador="picasso")
+        self.assertEqual(imagem.fora_de_cota("picasso"), "")
+
+
 class Disco(_Base):
     def test_guardar_recusa_o_que_nao_e_imagem(self):
         with self.assertRaises(imagem.ImagemInvalida):
