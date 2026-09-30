@@ -89,6 +89,13 @@ def quadros_de_hitstop(doc: dict, segundos_por_tier: dict, remapeamento=None, fp
     So para o acerto que tirou pelo menos `dano_min` da vida do alvo: o tier e
     do AUTOR (a forca dele), nao do golpe, e sem este piso o tique de um
     projetil de 1% parava o video como uma machadada."""
+    return sum(paradas_de_hitstop(doc, segundos_por_tier, remapeamento, fps).values())
+
+
+def paradas_de_hitstop(doc: dict, segundos_por_tier: dict, remapeamento=None, fps: int = 30) -> dict[int, int]:
+    """{quadro-base do acerto: quadros parados logo depois dele} — ONDE o
+    hitstop para o video, e nao so quanto. A edicao do duelo por cima do palco
+    (16G) usa isto para levar HUD, callouts e som ao relogio do palco."""
     dano_min = float(segundos_por_tier.get("dano_min", 0.0))
     hz = int(doc["hz"])
     duracao = int(doc["n"]) / hz
@@ -104,4 +111,14 @@ def quadros_de_hitstop(doc: dict, segundos_por_tier: dict, remapeamento=None, fp
         quantos = arredondar(segundos * fps)
         if base >= 0 and quantos > 0:
             paradas[base] = max(paradas.get(base, 0), quantos)
-    return sum(paradas.values())
+    return paradas
+
+
+def atraso_de_hitstop(paradas: dict[int, int], t: float, fps: int = 30) -> float:
+    """Quanto o instante `t` do clipe SEM hitstop anda no video COM hitstop.
+
+    O quadro-base b vai para b + (parados antes dele): o proprio acerto aparece
+    no quadro dele e so DEPOIS a imagem para (espelho de
+    `PlanoQuadros._aplicar_paradas`)."""
+    quadro = arredondar(float(t) * fps)
+    return sum(q for b, q in paradas.items() if b < quadro) / fps

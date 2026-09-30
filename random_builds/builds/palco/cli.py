@@ -9,6 +9,7 @@ Nada aqui publica nem entra no catalogo: tudo sai em outputs/_palco/.
     python main.py palco editor                     # abre o editor (APPDATA no E:)
     python main.py palco sintetica --destino T.json --duracao 2
     python main.py palco ab --duelo duelo_00016     # o duelo publicado x o palco
+    python main.py palco ab --duelo duelo_00031 --edicao   # 16G: B = palco + a MESMA edicao do duelo
     python main.py palco vitrine                    # video de revisao das pecas (16E)
     python main.py palco pecas-do-rosto             # refaz as pecas do rosto do SVG do Kenney
     python main.py palco efeitos-cc0                # refaz texturas e cenas de tipo x elemento
@@ -58,6 +59,9 @@ def construir_parser():
     pab.add_argument("--hud", action="store_true", help="liga o HUD do palco (nome, vida e plano) no lado do palco")
     pab.add_argument("--rotulo", default="PALCO 16E", help="rotulo do lado do palco no A/B")
     pab.add_argument("--pasta", default=None, help="pasta de saida (padrao: outputs/_palco/ab_<duelo>)")
+    pab.add_argument("--edicao", action="store_true",
+                     help="16G: o B e o palco com a MESMA edicao do duelo (HUD, identidade, callouts, "
+                          "veredito, som, musica); o A e o final do duelo, intocado. Saida: _palco/g16_<duelo>")
     pvi = psub.add_parser("vitrine", help="video de revisao: as pecas da biblioteca animadas (16E)")
     pvi.add_argument("--mp4", default=None, help="mp4 de saida (padrao: outputs/_palco/vitrine/vitrine.mp4)")
     pvi.add_argument("--so", default=None, help="so as paginas cujo titulo contem isto (ex. rostos)")
@@ -308,6 +312,11 @@ def executar(args) -> int:
             resumo = vitrine.gerar(Path(args.mp4) if args.mp4 else None, so=args.so)
             print(json.dumps({k: resumo.get(k) for k in ("saida", "quadros", "duracao", "paginas", "reservas", "tempo")},
                              ensure_ascii=False, indent=1))
+            return 0
+        if comando == "ab" and args.edicao:
+            from . import edicao
+            medidas = edicao.ab_com_edicao(args.duelo, pasta=Path(args.pasta) if args.pasta else None)
+            print(json.dumps(medidas, ensure_ascii=False, indent=1, default=str))
             return 0
         if comando == "ab":
             resumo = ab_do_duelo(args.duelo, args.velho, hud=args.hud, rotulo_palco=args.rotulo,
