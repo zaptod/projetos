@@ -22,5 +22,5 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
     - ✅ **generation_00077: luta muda, lutadores fora do banco** — Descartar, como a 00066 (28/09/2026) `generation-00077`
 - ✅ **Esteira de sprites: por onde começa** — As duas frentes (30/09/2026) `sprites-ia-alvo`
   - ✅ **Sprites: como manter o mesmo estilo** — Imagem-mestra aprovada por você (recomendado) (30/09/2026) `sprites-ia-estilo`
-- ⏳ **Sprites: peça parada ou quadro a quadro?** — Para as habilidades, o ChatGPT desenha peças isoladas (o Godot anima) ou folhas de animação? `sprites-ia-formato`
-  - 🔒 **Sprites: fundo pedido ao ChatGPT** — Que fundo pedir, já que o ChatGPT entrega sem transparência (medido)? · espera Sprites: peça parada ou quadro a quadro? = decidida `sprites-ia-fundo`
+- ✅ **Sprites: peça parada ou quadro a quadro?** — Peça + Godot; folha só no impacto (recomendado) (30/09/2026) `sprites-ia-formato`
+  - ⏳ **Sprites: fundo pedido ao ChatGPT** — Que fundo pedir, já que o ChatGPT entrega sem transparência (medido)? `sprites-ia-fundo`
