@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-09-30T09:37:45",
+      "evento": "2026-09-29T21:08:05",
+      "linha": 67,
+      "nota": "trocar rodizio_imagem foi barrado pela permissão; está com o Adrian",
+      "opcao": "gemini-primeiro",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Atualizado em 29/09 17:5x (tarefa 80c3fa98), só o texto: o ChatGPT gerou pela Vila às 17:16 (0edfbdb5, PNG 1254x1254 pelo botão do site, 33 s). O Grok gera no chat (a imagem da sonda de 01:44 está na conta: JPG 784x1168 — pediu 1:1 e ele não respeita a proporção), mas os dois pedidos pela Vila de hoje (17:30 e 17:44) pararam no card 'Alta procura — tente novamente em breve, ou atualize para um acesso com maior prioridade' do grok.com.",
   "criado": "2026-09-29T15:58:47.926853",
   "depende_de": [],
