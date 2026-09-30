@@ -121,6 +121,26 @@ def test_midia_aponta_e_nao_vai_para_o_git(mundo, monkeypatch):
         assert D.resolver_caminho(m["caminho"]).is_file()
 
 
+def test_copiar_midias_de_mesmo_nome_nao_sobrescreve(mundo, monkeypatch):
+    """30/09/2026, palco-duelo-ab: o `final_celular.mp4` do A e o do B foram
+    para o mesmo arquivo copiado, e o rotulo "B palco" tocava o A."""
+    monkeypatch.setenv("LOCALAPPDATA", str(mundo.tmp / "local"))
+    a, b = mundo.midia / "a" / "final.mp4", mundo.midia / "b" / "final.mp4"
+    for arq, dado in ((a, VIDEO), (b, VIDEO[::-1])):
+        arq.parent.mkdir()
+        arq.write_bytes(dado)
+    item = D.adicionar("builds", "AB", "?", ["sim"], id="ab",
+                       midias=[(a, "A"), (b, "B")], copiar=True)
+    lidos = [D.resolver_caminho(m["caminho"]).read_bytes() for m in item["midias"]]
+    assert lidos == [VIDEO, VIDEO[::-1]]
+    c = mundo.midia / "c" / "final.mp4"
+    c.parent.mkdir()
+    c.write_bytes(IMAGEM)
+    depois = D.acrescentar_midias("ab", [(c, "C")], copiar=True)
+    lidos = [D.resolver_caminho(m["caminho"]).read_bytes() for m in depois["midias"]]
+    assert lidos == [VIDEO, VIDEO[::-1], IMAGEM]
+
+
 @pytest.mark.parametrize("midia,trecho", [("nao_existe.mp4", "não existe"),
                                           ("segredo.txt", "não toca")])
 def test_midia_que_nao_existe_ou_nao_toca_nao_entra(mundo, midia, trecho):

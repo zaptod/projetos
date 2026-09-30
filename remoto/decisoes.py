@@ -326,6 +326,23 @@ def _opcoes(brutas) -> list[dict]:
     return saida
 
 
+def _destino_livre(pasta: Path, nome: str) -> Path:
+    """Nome que ainda nao existe na pasta da midia copiada.
+
+    Duas midias com o mesmo nome (o `final_celular.mp4` do A e o do B, o
+    `ab_celular.mp4` de dois duelos) iam para o MESMO arquivo: a segunda
+    sobrescrevia a primeira e o no mostrava o A com o rotulo do B (30/09/2026,
+    palco-duelo-ab). Tambem protege a midia de um no que ja existe quando
+    `acrescentar_midias` copia outro arquivo de mesmo nome."""
+    destino = pasta / nome
+    base, sufixo = Path(nome).stem, Path(nome).suffix
+    n = 2
+    while destino.exists():
+        destino = pasta / f"{base}-{n}{sufixo}"
+        n += 1
+    return destino
+
+
 def _midias(brutas, item_id: str, copiar: bool) -> list[dict]:
     saida = []
     for bruta in brutas or []:
@@ -342,7 +359,7 @@ def _midias(brutas, item_id: str, copiar: bool) -> list[dict]:
             raise Recusa(f"tipo de mídia que o celular não toca: {caminho.suffix} "
                          f"(aceito: {', '.join(sorted(TIPOS))})")
         if copiar:
-            destino = pasta_midia_local() / item_id / caminho.name
+            destino = _destino_livre(pasta_midia_local() / item_id, caminho.name)
             destino.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(caminho, destino)
             caminho = destino
