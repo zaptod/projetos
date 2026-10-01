@@ -195,7 +195,7 @@ func _instanciar(cena: PackedScene, pai: Node) -> Node:
 
 func _ctx_base() -> Dictionary:
 	return {"estilo": estilo, "quadro": maxi(quadro, 0), "fps": FPS, "t_jogo": tj_ant, "dt_mundo": 0.0,
-		"zoom": 1.0, "px_por_m": PX, "palco": self, "timeline": tl, "corte": false, "tela": tela}
+		"zoom": 1.0, "px_por_m": PX, "palco": self, "timeline": tl, "corte": false, "tela": tela, "passo": 0.0}
 
 
 func _montar_cena(arena: Dictionary) -> void:
@@ -324,7 +324,8 @@ func _desenhar_quadro(f: int) -> void:
 	var cam := tl.camera(p)
 	var zoom := tela.x / maxf(50.0, float(cam.get("lv", 10.0)) * PX)
 	var ctx := {"estilo": estilo, "quadro": f, "fps": FPS, "t_jogo": tj, "dt_mundo": dt_mundo,
-		"zoom": zoom, "px_por_m": PX, "palco": self, "timeline": tl, "corte": corte, "tela": tela}
+		"zoom": zoom, "px_por_m": PX, "palco": self, "timeline": tl, "corte": corte, "tela": tela,
+		"passo": p}
 
 	var status := {"p1": [], "p2": []}
 	for e in tl.vivas("efeitos", i):
@@ -416,7 +417,10 @@ func _arma(slot: String, s: Dictionary, p: float, corte: bool, ctx: Dictionary) 
 	_seek_golpe(no, int(s.get("golpe_fase", 0)), float(s.get("golpe_p", 0.0)), float(ctx["t_jogo"]))
 	var linha: Line2D = rastro[slot]
 	var fase := int(s.get("golpe_fase", 0))
-	if estilo.rastro_arma and fase >= 2 and fase <= 4 and not morto:
+	if no.get("rastro_proprio") == true:
+		# a peca desenha o rastro dela (a corrente nova: o da BOLA)
+		linha.clear_points()
+	elif estilo.rastro_arma and fase >= 2 and fase <= 4 and not morto:
 		if not corte and linha.get_point_count() > 0:
 			# o passo do meio (60 Hz) deixa o arco do rastro liso
 			var meio := tl.lutador(slot, maxf(0.0, p - 1.0))

@@ -707,7 +707,7 @@ class FightSessionSerieTests(unittest.TestCase):
         fichas = {"Kael": {"forca": 7.0, "mana": 4.0},
                   "Lyra": {"forca": 4.0, "mana": 8.0}}
 
-        def falso_simular(p1, p2, cenario, base_seed):
+        def falso_simular(p1, p2, cenario, base_seed, corrente_v2=None):
             indice = len(self.chamadas)
             self.chamadas.append(base_seed)
             return {"vencedor": self.VENCEDORES[indice], "duracao": 20.0,

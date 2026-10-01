@@ -23,10 +23,12 @@ func _initialize() -> void:
 	_testar_biblioteca()
 	_testar_timeline()
 	_testar_revisao_3()
+	_testar_revisao_4()
 	# todo script do palco compila (o que a biblioteca nao carregou acima)
 	for s in ["res://nucleo/palco.gd", "res://nucleo/sons.gd", "res://biblioteca/lutadores/rosto.gd",
 			"res://biblioteca/hud/hud_padrao.gd", "res://ferramentas/validar.gd", "res://ferramentas/vitrine.gd",
-			"res://biblioteca/efeitos/objetos/objeto_cc0.gd", "res://biblioteca/efeitos/folha_animada.gd"]:
+			"res://biblioteca/efeitos/objetos/objeto_cc0.gd", "res://biblioteca/efeitos/folha_animada.gd",
+			"res://biblioteca/armas/tipos/corrente.gd"]:
 		var script = load(s)
 		_checar(script is GDScript and script.can_instantiate(), "compila: " + s)
 	_checar(load("res://palco.tscn") is PackedScene, "a cena principal carrega")
@@ -195,6 +197,119 @@ func _testar_timeline() -> void:
 	_checar(absf(absf(float(a["ang"])) - 180.0) < 0.01, "angulo pelo caminho curto (%s)" % str(a["ang"]))
 	var b := Timeline.amostra({"x": [0.0, 2.0], "expr": [3, 7]}, ["x", "expr"], 0.5)
 	_checar(is_equal_approx(float(b["x"]), 1.0) and int(b["expr"]) == 3, "continuo interpola, discreto pega o passo de baixo")
+
+
+## Revisao 4: a bola da corrente nova. Doc sintetico: a bola gira em volta da
+## mao (1,5 m, 9 m/s), o golpe 2 comeca no passo 20 e os passos 41..44 sao
+## hitstop (o tempo de jogo nao anda e nada se mexe).
+func _doc_corrente(n: int) -> Dictionary:
+	var d := _doc(n)
+	var raio := 0.8
+	var mao := Vector2(raio * 0.9, raio * 0.15)
+	var bx := []
+	var by := []
+	var bvx := []
+	var bvy := []
+	var tj := []
+	var gid := []
+	var t := 0.0
+	for k in n:
+		var kk := mini(k, 40) if k <= 44 else k - 4
+		var a := kk * 0.1
+		bx.append(mao.x + cos(a) * 1.5)
+		by.append(mao.y + sin(a) * 1.5)
+		bvx.append(-sin(a) * 9.0)
+		bvy.append(cos(a) * 9.0)
+		if k > 0 and not (k >= 41 and k <= 44):
+			t += 1.0 / 60.0
+		tj.append(t)
+		gid.append(1 if k < 20 else 2)
+	var lp1: Dictionary = d["trilhas"]["lutadores"]["p1"]
+	lp1["bola_x"] = bx
+	lp1["bola_y"] = by
+	lp1["bola_vx"] = bvx
+	lp1["bola_vy"] = bvy
+	lp1["golpe_id"] = gid
+	d["trilhas"]["global"]["tj"] = tj
+	d["revisao"] = 4
+	d["lutadores"][0]["arma"] = {"tipo": "Corrente", "estilo": "Mangual", "cor": 0xC0C0C0,
+		"corrente": {"comp_m": 2.0, "n_elos": 16, "cabeca": "bola_espinhos", "material": "elos",
+			"familia": "pesada", "raio_bola_m": 0.25, "v_ref_ms": 20.0,
+			"mao": {"avanco_r": 0.9, "lateral_r": 0.15}}}
+	return d
+
+
+func _testar_revisao_4() -> void:
+	var tl := Timeline.de_dicionario(_doc_corrente(80))
+	_checar(tl.validar().is_empty(), "revisao 4 valida: %s" % str(tl.validar()))
+	_checar(not tl.corrente_do("p1").is_empty() and tl.corrente_do("p2").is_empty(), "corrente_do so de quem tem bola")
+	var ruins := {
+		"canal da bola faltando": func(d): d["trilhas"]["lutadores"]["p1"].erase("bola_vy"),
+		"canal da bola curto": func(d): d["trilhas"]["lutadores"]["p1"]["bola_x"].pop_back(),
+		"cabecalho sem canais": func(d): d["lutadores"][1]["arma"] = d["lutadores"][0]["arma"],
+		"canais sem cabecalho": func(d): d["lutadores"][0]["arma"].erase("corrente"),
+		"sem n_elos": func(d): d["lutadores"][0]["arma"]["corrente"].erase("n_elos"),
+	}
+	for nome in ruins:
+		var dr := _doc_corrente(80)
+		ruins[nome].call(dr)
+		_checar(not Timeline.de_dicionario(dr).validar().is_empty(), "revisao 4 recusa: " + nome)
+	var s := tl.lutador("p1", 10.5)
+	var bx: Array = tl.canal_lutador("p1", "bola_x")
+	_checar(s.has("bola_x") and is_equal_approx(float(s["bola_x"]), (float(bx[10]) + float(bx[11])) / 2.0),
+		"bola_x interpola entre os passos")
+	_checar(not tl.lutador("p2", 3.0).has("bola_x"), "lutador sem corrente nao tem bola")
+
+	var cena: PackedScene = load("res://biblioteca/armas/tipos/corrente.tscn")
+	_checar(cena is PackedScene, "a peca da corrente carrega")
+	var no = cena.instantiate()
+	var dados: Dictionary = tl.cabecalho_lutador("p1")["arma"].duplicate(true)
+	dados["slot"] = "p1"
+	dados["raio_corpo"] = 0.8
+	no.configurar(dados, {})
+	var quadro := func(p: float) -> PackedVector2Array:
+		no.atualizar(tl.lutador("p1", p), {"timeline": tl, "passo": p})
+		return no._pontos.duplicate()
+	var a := quadro.call(60.0) as PackedVector2Array
+	_checar(no._ativo and a.size() >= 5, "a corrente nova desenha (%d pontos)" % a.size())
+	var mao := Vector2(0.72, 0.12) * UtilPalco.PX_POR_M
+	var bola := Vector2(float(bx[60]), float(tl.canal_lutador("p1", "bola_y")[60])) * UtilPalco.PX_POR_M
+	_checar(a[0].distance_to(mao) < 0.01, "a ponta da corrente na mao")
+	_checar(a[a.size() - 1].distance_to(bola) < 0.01, "a outra ponta na bola (%s x %s)" % [a[a.size() - 1], bola])
+	var segs := PackedFloat32Array()
+	for j in range(1, a.size()):
+		segs.append(a[j].distance_to(a[j - 1]))
+	var mn := 1e9
+	var mx := 0.0
+	for v in segs:
+		mn = minf(mn, v)
+		mx = maxf(mx, v)
+	_checar(mx - mn < 0.05 * mx, "elos do mesmo tamanho (%.2f..%.2f)" % [mn, mx])
+	var total := 0.0
+	for v in segs:
+		total += v
+	_checar(total <= 2.0 * UtilPalco.PX_POR_M + 0.5 and total >= a[0].distance_to(a[a.size() - 1]) - 0.5,
+		"a corrente nao passa do comprimento (%.1f px)" % total)
+	# sem estado: ir e voltar (seek, corte de tedio) da a MESMA corrente
+	quadro.call(5.0)
+	quadro.call(33.5)
+	var de_novo := quadro.call(60.0) as PackedVector2Array
+	_checar(de_novo == a, "sem estado: o mesmo passo da a mesma corrente depois de um seek")
+	# hitstop: o tempo de jogo parado congela a corrente com o mundo
+	var h1 := quadro.call(41.0) as PackedVector2Array
+	var h2 := quadro.call(44.0) as PackedVector2Array
+	_checar(h1 == h2, "no hitstop a corrente fica parada")
+	# a janela nunca passa de 60 passos e respeita o inicio do golpe
+	_checar(no._inicio(25) == 20, "a integracao parte do inicio do golpe (%d)" % no._inicio(25))
+	_checar(79 - no._inicio(79) <= 60, "janela de no maximo 60 passos (%d)" % no._inicio(79))
+	no.free()
+	# luta SEM a chave: a mesma peca cai na corrente antiga, sem erro
+	var velha = cena.instantiate()
+	var d_velha := {"tipo": "Corrente", "estilo": "Mangual", "slot": "p1", "raio_corpo": 0.8}
+	velha.configurar(d_velha, {})
+	velha.atualizar(Timeline.de_dicionario(_doc(10)).lutador("p1", 2.0), {"timeline": Timeline.de_dicionario(_doc(10)), "passo": 2.0})
+	_checar(not velha._ativo and velha.rastro_proprio == false, "sem a bola, a corrente antiga (e o rastro de antes)")
+	velha.free()
 
 
 ## Revisao 3 da timeline: os eventos novos passam, os malformados nao, e a

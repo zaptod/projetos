@@ -12,7 +12,7 @@ const FORMATO := "neural-fights/timeline"
 const VERSAO := 1
 # Revisao ADITIVA mais nova que o palco conhece (docs/palco/timeline.md). Uma
 # timeline de revisao MAIOR continua valida: o leitor ignora o que nao conhece.
-const REVISAO := 3
+const REVISAO := 4
 # Eventos que viram efeito na tela (os outros vao so para as pecas, em
 # evento()). Revisao 3: explosao (a paleta do elemento) e choque (duas cores),
 # com as texturas CC0 que a biblioteca ja tem.
@@ -41,6 +41,9 @@ const CANAIS_LUTADOR := [
 	"arma_gy", "arma_px", "arma_py", "arma_puxada", "hb_on", "hb_ang", "hb_larg",
 	"escudo", "combo", "flash", "flash_cor", "esc_x", "esc_y",
 ]
+# Revisao 4: a bola da corrente nova (so no lutador cuja arma tem
+# `corrente` no cabecalho; o mesmo que timeline.NOMES_CANAIS_BOLA no Python).
+const CANAIS_BOLA := ["bola_x", "bola_y", "bola_vx", "bola_vy"]
 const CANAIS_CAMERA := ["x", "y", "zoom", "lv", "av", "ox", "oy"]
 const CANAIS_GLOBAIS := ["tj", "escala", "hitstop", "letterbox", "fim"]
 const CANAIS_OBJETO := {
@@ -67,6 +70,7 @@ const _CONTINUOS := {
 	"arma_px": true, "arma_py": true, "arma_puxada": true, "escudo": true, "flash": true,
 	"esc_x": true, "esc_y": true, "zoom": true, "lv": true, "av": true, "ox": true,
 	"oy": true, "tj": true, "r": true, "larg": true, "prog": true, "rest": true,
+	"bola_x": true, "bola_y": true, "bola_vx": true, "bola_vy": true,
 }
 const _ANGULOS := {"ang": true, "arma_ang": true, "hb_ang": true}
 
@@ -151,6 +155,7 @@ func validar() -> PackedStringArray:
 	else:
 		for slot in ["p1", "p2"]:
 			_conferir_canais(e, "trilhas.lutadores.%s" % slot, lut.get(slot), CANAIS_LUTADOR, n)
+			_conferir_corrente(e, slot, lut.get(slot))
 	var cab = dados.get("lutadores")
 	if typeof(cab) != TYPE_ARRAY or cab.size() != 2:
 		e.append("cabecalho `lutadores` precisa de 2 entradas")
@@ -183,6 +188,28 @@ func _conferir_canais(e: PackedStringArray, onde: String, bloco, canais: Array, 
 			e.append("%s.%s ausente" % [onde, c])
 		elif arr.size() != tamanho:
 			e.append("%s.%s tem %d amostras, esperado %d" % [onde, c, arr.size(), tamanho])
+
+
+## Revisao 4: `arma.corrente` no cabecalho e os canais `bola_*` andam juntos
+## (o mesmo que timeline_arquivo._problemas_da_corrente no Python).
+func _conferir_corrente(e: PackedStringArray, slot: String, bloco) -> void:
+	var c := corrente_do(slot)
+	var tem := []
+	if typeof(bloco) == TYPE_DICTIONARY:
+		for nome in CANAIS_BOLA:
+			if bloco.has(nome):
+				tem.append(nome)
+	if c.is_empty():
+		if not tem.is_empty():
+			e.append("%s: canais %s sem arma.corrente no cabecalho" % [slot, str(tem)])
+		return
+	if not _eh_numero(c.get("comp_m")) or float(c.get("comp_m")) <= 0.0:
+		e.append("%s.arma.corrente.comp_m invalido" % slot)
+	if not _eh_numero(c.get("n_elos")) or int(c.get("n_elos")) < 2:
+		e.append("%s.arma.corrente.n_elos invalido" % slot)
+	if typeof(c.get("cabeca")) != TYPE_STRING or str(c.get("cabeca")).is_empty():
+		e.append("%s.arma.corrente.cabeca ausente" % slot)
+	_conferir_canais(e, "trilhas.lutadores.%s" % slot, bloco, CANAIS_BOLA, n)
 
 
 func _conferir_intervalos(e: PackedStringArray, onde: String, lista, canais_por_tipo: Dictionary) -> void:
@@ -319,6 +346,23 @@ func cabecalho_lutador(slot: String) -> Dictionary:
 	return {}
 
 
+## Revisao 4: o cabecalho `arma.corrente` do lutador ({comp_m, n_elos,
+## cabeca, material, familia, raio_bola_m, v_ref_ms, mao}); vazio = a arma
+## dele nao tem bola nesta luta (corrente antiga, ou timeline < 4).
+func corrente_do(slot: String) -> Dictionary:
+	var arma = cabecalho_lutador(slot).get("arma")
+	if typeof(arma) == TYPE_DICTIONARY and typeof(arma.get("corrente")) == TYPE_DICTIONARY:
+		return arma["corrente"]
+	return {}
+
+
+## Um canal cru do lutador (lista com um valor por passo; vazia se nao ha).
+func canal_lutador(slot: String, nome: String) -> Array:
+	var bloco: Dictionary = trilhas().get("lutadores", {}).get(slot, {})
+	var arr = bloco.get(nome)
+	return arr if typeof(arr) == TYPE_ARRAY else []
+
+
 func tabela(nome: String) -> Array:
 	return dados.get("tabelas", {}).get(nome, [])
 
@@ -359,7 +403,7 @@ static func amostra(bloco: Dictionary, canais: Array, p: float, desloc: int = 0)
 
 func lutador(slot: String, p: float) -> Dictionary:
 	var bloco: Dictionary = trilhas().get("lutadores", {}).get(slot, {})
-	var s := amostra(bloco, CANAIS_LUTADOR, p)
+	var s := amostra(bloco, CANAIS_LUTADOR + CANAIS_BOLA, p)
 	# O progresso do golpe so interpola dentro da MESMA fase.
 	var i := clampi(int(floor(p)), 0, n - 1)
 	var j := clampi(i + 1, 0, n - 1)

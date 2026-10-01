@@ -45,6 +45,7 @@ from neural_fights.recording.timeline import (
     FORMATO,
     GATILHOS_MOVIMENTO,
     MOTIVOS_FIM,
+    NOMES_CANAIS_BOLA,
     NOMES_CANAIS_CAMERA,
     NOMES_CANAIS_GLOBAIS,
     NOMES_CANAIS_LUTADOR,
@@ -156,6 +157,36 @@ def carregar(caminho) -> dict:
 
 
 # ------------------------------------------------------------ o schema
+def _problemas_da_corrente(doc: dict, slot: str, canais: dict, n: int) -> list[str]:
+    """Revisao 4: ``arma.corrente`` no cabecalho e os canais ``bola_*`` andam
+    JUNTOS (um sem o outro e erro). Timeline sem nenhum dos dois passa."""
+    cabecalho = next((c for c in doc.get("lutadores") or () if isinstance(c, dict)
+                      and c.get("slot") == slot), {}) or {}
+    bloco = (cabecalho.get("arma") or {}).get("corrente") if isinstance(cabecalho.get("arma"), dict) else None
+    tem_canais = [nome for nome in NOMES_CANAIS_BOLA if nome in canais]
+    if bloco is None and not tem_canais:
+        return []
+    if bloco is None:
+        return [f"{slot}: canais {tem_canais} sem arma.corrente no cabecalho"]
+    problemas = []
+    if not isinstance(bloco, dict):
+        return [f"{slot}.arma.corrente nao e objeto"]
+    comp, elos = bloco.get("comp_m"), bloco.get("n_elos")
+    if not isinstance(comp, (int, float)) or comp <= 0:
+        problemas.append(f"{slot}.arma.corrente.comp_m invalido: {comp!r}")
+    if not isinstance(elos, int) or elos < 2:
+        problemas.append(f"{slot}.arma.corrente.n_elos invalido: {elos!r}")
+    if not isinstance(bloco.get("cabeca"), str) or not bloco.get("cabeca"):
+        problemas.append(f"{slot}.arma.corrente.cabeca ausente")
+    for nome in NOMES_CANAIS_BOLA:
+        valores = canais.get(nome)
+        if not isinstance(valores, list):
+            problemas.append(f"trilhas.lutadores.{slot}.{nome}: ausente (arma.corrente no cabecalho)")
+        elif len(valores) != n:
+            problemas.append(f"trilhas.lutadores.{slot}.{nome}: {len(valores)} valores, esperado {n}")
+    return problemas
+
+
 def validar(doc: dict) -> list[str]:
     """Problemas do documento contra o schema v1 (lista vazia = valido)."""
     problemas: list[str] = []
@@ -222,6 +253,7 @@ def validar(doc: dict) -> list[str]:
                     if not (valor == -1 and nome in ("acao", "plano", "tell")):
                         problemas.append(f"{slot}.{nome}: indice {valor!r} fora da tabela")
                         break
+        problemas.extend(_problemas_da_corrente(doc, slot, canais, n))
 
     ids = set()
     for grupo, canais_por_tipo in (("objetos", CANAIS_OBJETO), ("efeitos", CANAIS_EFEITO)):

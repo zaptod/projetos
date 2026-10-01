@@ -657,7 +657,9 @@ class RevisaoTresContraOMotorTests(unittest.TestCase):
 
     def test_schema_valido_e_revisao_3(self) -> None:
         self.assertEqual(timeline_arquivo.validar(self.doc), [])
-        self.assertEqual((self.doc["versao"], self.doc["revisao"]), (1, 3))
+        # revisao 3 trouxe estes eventos; a 4 (a bola da corrente) e aditiva
+        self.assertEqual(self.doc["versao"], 1)
+        self.assertGreaterEqual(self.doc["revisao"], 3)
 
     def test_o_motivo_de_cada_fim_e_o_do_motor(self) -> None:
         """Medido em 28/09/2026 em 29 lutas: 865 de 865 fins com o motivo do

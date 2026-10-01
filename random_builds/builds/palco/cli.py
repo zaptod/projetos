@@ -4,6 +4,7 @@ Nada aqui publica nem entra no catalogo: tudo sai em outputs/_palco/.
 
     python main.py palco render --timeline T.json --mp4 X.mp4
     python main.py palco render --seed 883770751 --p1 "A" --p2 "B" --arena Torre
+    python main.py palco render --seed 30010 --p1 "A" --p2 "B" --corrente-v2   # corrente nova SO aqui
     python main.py palco validar --timeline T.json
     python main.py palco testes
     python main.py palco editor                     # abre o editor (APPDATA no E:)
@@ -11,6 +12,7 @@ Nada aqui publica nem entra no catalogo: tudo sai em outputs/_palco/.
     python main.py palco ab --duelo duelo_00016     # o duelo publicado x o palco
     python main.py palco ab --duelo duelo_00031 --edicao   # 16G: B = palco + a MESMA edicao do duelo
     python main.py palco vitrine                    # video de revisao das pecas (16E)
+    python main.py palco corrente-ab --seed N --p1 A --p2 B   # corrente antiga x nova, lado a lado
     python main.py palco pecas-do-rosto             # refaz as pecas do rosto do SVG do Kenney
     python main.py palco efeitos-cc0                # refaz texturas e cenas de tipo x elemento
     python main.py duelo --seed N --palco [--ab]    # um duelo novo so no palco
@@ -45,6 +47,8 @@ def construir_parser():
     ren.add_argument("--hud", action="store_true", help="liga o HUD do palco (nome e vida)")
     ren.add_argument("--quadros", type=int, default=None, help="so os N primeiros quadros (previa)")
     ren.add_argument("--manter-avi", action="store_true", help="nao apaga o AVI intermediario")
+    ren.add_argument("--corrente-v2", action="store_true",
+                     help="com --seed: liga a corrente nova SO nesta luta (vitrine; nada publica)")
     val = psub.add_parser("validar", help="valida uma timeline no Godot, sem janela")
     val.add_argument("--timeline", required=True)
     psub.add_parser("testes", help="roda os testes do nucleo do palco no Godot, sem janela")
@@ -65,6 +69,13 @@ def construir_parser():
     pvi = psub.add_parser("vitrine", help="video de revisao: as pecas da biblioteca animadas (16E)")
     pvi.add_argument("--mp4", default=None, help="mp4 de saida (padrao: outputs/_palco/vitrine/vitrine.mp4)")
     pvi.add_argument("--so", default=None, help="so as paginas cujo titulo contem isto (ex. rostos)")
+    pca = psub.add_parser("corrente-ab", help="a MESMA seed com a corrente antiga e a nova, lado a lado (nada publica)")
+    pca.add_argument("--seed", type=int, required=True)
+    pca.add_argument("--p1", required=True)
+    pca.add_argument("--p2", required=True)
+    pca.add_argument("--arena", default=None)
+    pca.add_argument("--quadros", type=int, default=None, help="so os N primeiros quadros de cada lado")
+    pca.add_argument("--pasta", default=None, help="pasta de saida (padrao: outputs/_palco/corrente_ab_<seed>)")
     pro = psub.add_parser("pecas-do-rosto", help="recorta as pecas do rosto do SVG do Kenney (CC0) a 12x")
     pro.add_argument("--folha", default=None, help="png com as pecas lado a lado, para conferir")
     pef = psub.add_parser("efeitos-cc0", help="texturas CC0 e cenas de efeito por tipo x elemento")
@@ -127,12 +138,13 @@ def _salvar_timeline(doc: dict, destino: Path) -> Path:
 
 
 def render_da_seed(*, p1, p2, seed, arena, pasta: Path | None = None, sem_corte: bool = False,
-                   estilo: dict | None = None, hud: bool = False, quadros: int | None = None) -> dict:
+                   estilo: dict | None = None, hud: bool = False, quadros: int | None = None,
+                   corrente_v2: bool | None = None) -> dict:
     cfg = config.carregar()
     p1, p2, seed, cenario = escolher_luta(p1=p1, p2=p2, seed=seed, arena=arena)
     duelo_cfg = cfg.get("duelo") or {}
     print(f"[palco] {p1} x {p2} | seed {seed} | {cenario} | simulando (sem desenhar)...", flush=True)
-    doc, usada = fonte.timeline_da_luta(p1=p1, p2=p2, seed=seed, cenario=cenario,
+    doc, usada = fonte.timeline_da_luta(p1=p1, p2=p2, seed=seed, cenario=cenario, corrente_v2=corrente_v2,
                                         camera_largura_min_m=duelo_cfg.get("camera_largura_min_m"),
                                         camera_espera_zoom_in=duelo_cfg.get("camera_espera_zoom_in"))
     corte = None if sem_corte else fonte.corte_de_tedio(doc, _gameplay_duelo())
@@ -147,6 +159,23 @@ def render_da_seed(*, p1, p2, seed, arena, pasta: Path | None = None, sem_corte:
     return render.renderizar(arquivo, pasta / "palco_celular.mp4", estilo=estilo, hud=hud, quadros=quadros)
 
 
+def corrente_ab(*, p1: str, p2: str, seed: int, arena: str | None = None, quadros: int | None = None,
+                pasta: Path | None = None) -> dict:
+    """A corrente ANTIGA x a NOVA na mesma seed, no palco, lado a lado.
+
+    A chave so vale nestas duas lutas (nada vai ao catalogo). A mecanica nova
+    muda a luta: os dois lados comecam iguais e se separam no primeiro golpe
+    de corrente; e isso que o A/B mostra."""
+    pasta = Path(pasta) if pasta else config.SAIDAS / f"corrente_ab_{seed}"
+    lados = {}
+    for nome, chave in (("antiga", False), ("nova", True)):
+        lados[nome] = render_da_seed(p1=p1, p2=p2, seed=seed, arena=arena, pasta=pasta / nome, quadros=quadros,
+                                     corrente_v2=chave)
+    saida = ab.lado_a_lado(pasta / "antiga" / "palco_celular.mp4", pasta / "nova" / "palco_celular.mp4",
+                           pasta / "ab_corrente.mp4", rotulos=("CORRENTE ANTIGA", "CORRENTE NOVA"))
+    return {"ab": str(saida), "antiga": lados["antiga"].get("saida"), "nova": lados["nova"].get("saida")}
+
+
 def ab_do_duelo(duelo_id: str, velho: str | None = None, *, hud: bool = False, rotulo_palco: str = "PALCO 16D",
                 pasta: Path | None = None) -> dict:
     """O duelo ja gravado (visual de hoje) contra o palco: mesma seed, mesma
@@ -159,8 +188,10 @@ def ab_do_duelo(duelo_id: str, velho: str | None = None, *, hud: bool = False, r
     duelo_cfg = cfg.get("duelo") or {}
     print(f"[palco] A/B de {duelo_id}: {luta['p1']} x {luta['p2']} | seed {luta['seed']} | {luta['cenario']}",
           flush=True)
+    from ..tournament.runner import corrente_da_luta
     doc, _usada = fonte.timeline_da_luta(p1=luta["p1"], p2=luta["p2"], seed=int(luta["seed"]),
                                          cenario=luta["cenario"], tentativas=1,
+                                         corrente_v2=corrente_da_luta(luta, fight),
                                          camera_largura_min_m=duelo_cfg.get("camera_largura_min_m"),
                                          camera_espera_zoom_in=duelo_cfg.get("camera_espera_zoom_in"))
     res = doc.get("resultado") or {}
@@ -236,7 +267,9 @@ def duelo_no_palco(*, p1=None, p2=None, seed=None, arena=None, com_ab: bool = Fa
         (pasta / "fight.json").write_text(json.dumps(fight, ensure_ascii=False, indent=1), encoding="utf-8")
         luta = fight["luta"]
         duelo_cfg = config.carregar().get("duelo") or {}
+        from ..tournament.runner import corrente_da_luta
         doc, _ = fonte.timeline_da_luta(p1=p1, p2=p2, seed=int(luta["seed"]), cenario=cenario, tentativas=1,
+                                        corrente_v2=corrente_da_luta(luta, fight),
                                         camera_largura_min_m=duelo_cfg.get("camera_largura_min_m"),
                                         camera_espera_zoom_in=duelo_cfg.get("camera_espera_zoom_in"))
         trechos = [[float(a), float(b), 1.0] for a, b in luta["clipes"]["celular"]["trechos"]]
@@ -261,7 +294,8 @@ def executar(args) -> int:
                 resumo = render_da_seed(p1=args.p1, p2=args.p2, seed=args.seed, arena=args.arena,
                                         pasta=Path(args.mp4).parent if args.mp4 else None,
                                         sem_corte=args.sem_corte, estilo=estilo, hud=args.hud,
-                                        quadros=args.quadros)
+                                        quadros=args.quadros,
+                                        corrente_v2=True if args.corrente_v2 else None)
             elif args.timeline:
                 saida = Path(args.mp4) if args.mp4 else config.SAIDAS / (Path(args.timeline).stem + ".mp4")
                 resumo = render.renderizar(args.timeline, saida, estilo=estilo, hud=args.hud,
@@ -312,6 +346,11 @@ def executar(args) -> int:
             resumo = vitrine.gerar(Path(args.mp4) if args.mp4 else None, so=args.so)
             print(json.dumps({k: resumo.get(k) for k in ("saida", "quadros", "duracao", "paginas", "reservas", "tempo")},
                              ensure_ascii=False, indent=1))
+            return 0
+        if comando == "corrente-ab":
+            resumo = corrente_ab(p1=args.p1, p2=args.p2, seed=args.seed, arena=args.arena, quadros=args.quadros,
+                                 pasta=Path(args.pasta) if args.pasta else None)
+            print(json.dumps(resumo, ensure_ascii=False, indent=1))
             return 0
         if comando == "ab" and args.edicao:
             from . import edicao

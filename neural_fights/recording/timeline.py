@@ -78,8 +78,10 @@ VERSAO = 1
 # versao != 1). 2 = cada som traz o passo exato ``i`` (28/09/2026). 3 = os
 # eventos que o render acendia e a v1 nao dizia: fim de projetil com o motivo,
 # explosao, choque, reflexao, texto flutuante e movimento, e o PONTO do
-# impacto no acerto por projetil (28/09/2026).
-REVISAO = 3
+# impacto no acerto por projetil (28/09/2026). 4 = a bola da corrente nova
+# (CORRENTE_V2): canais ``bola_*`` e o cabecalho ``arma.corrente`` de quem
+# luta com ela (01/10/2026).
+REVISAO = 4
 # O motor pensa a 60 Hz (utils.config.FPS). A timeline guarda TODO passo:
 # o quadro k do video de 30 fps e o passo 2k, e o palco ainda tem o dobro de
 # amostras para camera lenta sem inventar quadro. Ver docs/palco/timeline.md.
@@ -225,6 +227,30 @@ CANAIS_LUTADOR = (
     ("esc_y", "fator", "squash/stretch do corpo"),
 )
 NOMES_CANAIS_LUTADOR = tuple(nome for nome, _u, _d in CANAIS_LUTADOR)
+
+# Revisao 4: a bola da corrente nova (core/corrente.py, chave CORRENTE_V2).
+# So existem no lutador cuja arma tem bola NESTA luta (``arma.corrente`` no
+# cabecalho); a mao e derivavel (x, y, ang e a ``empunhadura`` do cabecalho:
+# a mesma conta de ``corrente.mao``). No chao, como a hitbox: quem desenha o
+# lutador levantado por ``z`` sobe a bola junto.
+CANAIS_BOLA = (
+    ("bola_x", "m", "centro da bola (cabeca da corrente)"),
+    ("bola_y", "m", "centro da bola"),
+    ("bola_vx", "m/s", "velocidade da bola (a do motor, no fim do passo)"),
+    ("bola_vy", "m/s", "velocidade da bola"),
+)
+NOMES_CANAIS_BOLA = tuple(nome for nome, _u, _d in CANAIS_BOLA)
+# Cabeca da corrente por estilo (o palco escolhe o desenho por ela) e o
+# material do que liga a mao a cabeca. Estilo novo: bola de espinhos e elos.
+CABECA_POR_ESTILO = {
+    "Mangual": "bola_espinhos", "Flail (Mangual)": "bola_espinhos",
+    "Meteor Hammer": "martelo", "Corrente com Peso": "peso",
+    "Chicote": "ponta", "Kusarigama": "foice", "Rope Dart": "dardo",
+}
+MATERIAL_POR_ESTILO = {"Chicote": "couro", "Rope Dart": "corda", "Meteor Hammer": "corda"}
+# Um elo a cada 0,16 raio do corpo (o desenho; a fisica do palco usa menos
+# segmentos e distribui os elos ao longo da curva).
+ELO_R = 0.16
 
 CANAIS_CAMERA = (
     ("x", "m", "centro da camera"),
@@ -546,6 +572,8 @@ class SondaTimeline:
         self._proximo_texto = 1
         # slot atingido por projetil neste passo -> {ponto, projetil}
         self._impactos: dict = {}
+        # Revisao 4: slot -> a arma tem bola (corrente nova) nesta luta.
+        self._com_bola: dict = {}
 
     # ------------------------------------------------------------ inicio
     def on_inicio(self, sim, **luta) -> None:
@@ -566,6 +594,14 @@ class SondaTimeline:
             "camera_espera_zoom_in": _r(getattr(cam, "diretor_espera_zoom_in", 0.0), 3),
         }
         info_luta.update({k: v for k, v in luta.items() if v is not None})
+        # Revisao 4: a chave da corrente nova DESTA luta (ausente no
+        # match_config = a padrao do motor, hoje desligada).
+        info_luta["corrente_v2"] = self._chave_corrente(config)
+        self._com_bola = {slot: self._tem_bola(getattr(sim, slot, None)) for slot in ("p1", "p2")}
+        for slot, tem in self._com_bola.items():
+            if tem:
+                for nome in NOMES_CANAIS_BOLA:
+                    self.lutadores[slot][nome] = []
         self.cabecalho = {
             "luta": info_luta,
             "tela_referencia": tela,
@@ -576,6 +612,49 @@ class SondaTimeline:
         # o que ja existe antes do primeiro passo e linha de base, nao evento
         self._vfx_novos(sim)
         self._eventos_de_texto(sim, {}, base=True)
+
+    @staticmethod
+    def _chave_corrente(config) -> bool:
+        try:
+            from neural_fights.core import corrente
+            return bool(corrente.chave_ligada(config))
+        except Exception:  # pragma: no cover
+            return bool((config or {}).get("corrente_v2", False))
+
+    @staticmethod
+    def _tem_bola(lutador) -> bool:
+        """A arma deste lutador tem bola NESTA luta? (so le: ``v2_ativa``
+        olha o atributo que o Simulador poe com a chave e o catalogo)."""
+        if lutador is None:
+            return False
+        try:
+            from neural_fights.core import corrente
+            return bool(corrente.v2_ativa(lutador))
+        except Exception:
+            return False
+
+    def _cabecalho_corrente(self, lutador) -> dict | None:
+        """``arma.corrente`` (revisao 4): o que o palco precisa para desenhar a
+        corrente presa na mao e na bola. Numeros do motor, nada inventado."""
+        if not self._tem_bola(lutador):
+            return None
+        from neural_fights.core import corrente
+
+        arma = getattr(getattr(lutador, "dados", None), "arma_obj", None)
+        estilo = str(getattr(arma, "estilo", "") or "")
+        raio = corrente.raio_corpo(lutador)
+        comp = corrente.comprimento(arma, raio)
+        return {
+            "comp_m": _r(comp),
+            "n_elos": int(max(8, min(40, round(comp / max(raio * ELO_R, 1e-6))))),
+            "cabeca": CABECA_POR_ESTILO.get(estilo, "bola_espinhos"),
+            "material": MATERIAL_POR_ESTILO.get(estilo, "elos"),
+            "familia": corrente.familia(arma),
+            "raio_bola_m": _r(corrente.raio_bola(arma, raio)),
+            "v_ref_ms": _r(corrente.velocidade_nominal(lutador), 2),
+            # a MAO da corrente (corrente.mao): no olhar, sem o avanco do golpe
+            "mao": {"avanco_r": corrente.GRIP_OFFSET_R, "lateral_r": corrente.GRIP_LATERAL_R},
+        }
 
     def _cabecalho_arena(self, sim) -> dict | None:
         arena = getattr(sim, "arena", None)
@@ -715,6 +794,9 @@ class SondaTimeline:
                 "abertura_graus": 10.0,
                 "comprimento_m": _r(max(raio * 0.3, raio * mult - distancia_grip - separacao * 0.3)),
             }
+        bloco_corrente = self._cabecalho_corrente(lutador)
+        if bloco_corrente is not None:
+            documento["corrente"] = bloco_corrente
         return documento
 
     @staticmethod
@@ -1078,6 +1160,27 @@ class SondaTimeline:
         )
         for lista, valor in zip(canais.values(), valores):
             lista.append(valor)
+        if getattr(self, "_com_bola", {}).get(slot):
+            self._amostrar_bola(canais, lutador)
+
+    @staticmethod
+    def _amostrar_bola(canais: dict, lutador) -> None:
+        """Revisao 4: onde a bola esta no FIM do passo. Le ``corrente_bola``
+        sem cria-la (``corrente.bola_de`` criaria); antes de o motor cria-la,
+        a bola esta na mao, parada."""
+        bola = getattr(lutador, "corrente_bola", None)
+        if bola is not None:
+            x, y = _real(getattr(bola, "x", 0.0)), _real(getattr(bola, "y", 0.0))
+            vx, vy = _real(getattr(bola, "vx", 0.0)), _real(getattr(bola, "vy", 0.0))
+        else:
+            try:
+                from neural_fights.core import corrente
+                x, y = corrente.mao(lutador)
+            except Exception:
+                x, y = _xy(getattr(lutador, "pos", None))
+            vx = vy = 0.0
+        for nome, valor in zip(NOMES_CANAIS_BOLA, (_r(x), _r(y), _r(vx, 2), _r(vy, 2))):
+            canais[nome].append(valor)
 
     # ------------------------------------------------------------ objetos
     def _trilha(self, colecao: list, chave, objeto, i: int, fixos, canais) -> _Trilha:

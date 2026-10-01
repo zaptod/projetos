@@ -221,12 +221,36 @@ def selecionar_participantes(fonte: str, quantidade: int, rng) -> list[str]:
 
 
 # ---------------------------------------------------------------- gravacao
-def simular_luta(p1: str, p2: str, cenario: str, base_seed: int) -> dict:
+def chave_corrente_padrao() -> bool:
+    """A chave da corrente nova para uma luta NOVA: o padrao do motor
+    (`neural_fights/utils/config.py: CORRENTE_V2`, hoje desligada).
+
+    Toda luta nova carimba o valor no fight.json (`corrente_v2`) e quem a
+    re-simula repassa o carimbo; luta sem o campo e False. Assim trocar o
+    padrao um dia nao muda luta nenhuma ja gravada (decisao
+    `corrente-seeds-antigas`).
+    """
+    from neural_fights.utils.config import CORRENTE_V2
+    return bool(CORRENTE_V2)
+
+
+def corrente_da_luta(luta: dict | None, fight: dict | None = None) -> bool:
+    """O carimbo de uma luta GRAVADA: o do round, senao o do confronto,
+    senao False (luta de antes do carimbo = a corrente antiga)."""
+    for fonte in (luta, fight):
+        if isinstance(fonte, dict) and "corrente_v2" in fonte:
+            return bool(fonte["corrente_v2"])
+    return False
+
+
+def simular_luta(p1: str, p2: str, cenario: str, base_seed: int,
+                 corrente_v2: bool | None = None) -> dict:
     """Caminho rapido, sem video: usado por --generation-only e lotes."""
     from neural_fights.simulation.headless import run_headless_match
 
+    chave = chave_corrente_padrao() if corrente_v2 is None else bool(corrente_v2)
     config = {"p1_nome": p1, "p2_nome": p2, "cenario": cenario,
-              "best_of": 1, "portrait_mode": False}
+              "best_of": 1, "portrait_mode": False, "corrente_v2": chave}
     resultado = None
     for tentativa in range(3):  # empate = refaz com seed derivada
         resultado = run_headless_match(
@@ -240,7 +264,7 @@ def simular_luta(p1: str, p2: str, cenario: str, base_seed: int) -> dict:
     hp = (resultado.p1_hp_ratio if vencedor == p1 else resultado.p2_hp_ratio)
     return {"vencedor": resultado.winner, "duracao": resultado.duration,
             "motivo": resultado.reason, "seed": resultado.seed,
-            "hp_vencedor": max(0.0, hp) * 100}
+            "hp_vencedor": max(0.0, hp) * 100, "corrente_v2": chave}
 
 
 def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
@@ -248,7 +272,8 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
                      perfis: tuple[str, ...] = ("celular", "normal"), *,
                      gameplay: dict | None = None,
                      resolucoes: dict | None = None,
-                     origem: str = "luta") -> dict:
+                     origem: str = "luta",
+                     corrente_v2: bool | None = None) -> dict:
     """Grava a luta (um mp4 por formato), corta o tedio e devolve o bruto.
 
     A gravacao e a fonte da verdade do resultado: a luta e simulada uma vez
@@ -259,8 +284,12 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
     O corte e decidido UMA vez, na gravacao de referencia, e aplicado aos
     dois formatos: mesmos golpes, mesmos segundos. A serie de HP e os eventos
     narrativos voltam ja no relogio do clipe cortado.
+
+    `corrente_v2` (None = o padrao de hoje) vai CARIMBADO para o gravador e
+    volta no bruto: e o que o fight.json guarda para re-simular igual.
     """
     gameplay = {**GAMEPLAY_PADRAO, **(gameplay or {})}
+    chave = chave_corrente_padrao() if corrente_v2 is None else bool(corrente_v2)
     resolucoes = resolucoes or RESOLUCAO_POR_PERFIL
     pasta = Path(pasta)
     pasta.mkdir(parents=True, exist_ok=True)
@@ -277,6 +306,7 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
             "sem_hud": bool(gameplay.get("sem_hud", True)),
             "camera_largura_min": gameplay.get("camera_largura_min"),
             "camera_espera_zoom": gameplay.get("camera_espera_zoom"),
+            "corrente_v2": chave,
         } for perfil in perfis]
         gravacoes = capture.gravar_em_paralelo(tarefas, trabalhadores=len(tarefas))
 
@@ -319,6 +349,8 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
         "motivo": referencia.get("motivo", "knockout"),
         "seed": referencia.get("seed", base_seed),
         "hp_vencedor": referencia.get("hp_vencedor") or 0.0,
+        # a chave que o gravador USOU (o carimbo; o padrao se ele nao disser)
+        "corrente_v2": bool(referencia.get("corrente_v2", chave)),
         "clipes": clipes,
         "serie_hp": remap["serie_hp"],
         "serie_plano": remap.get("serie_plano") or [],
@@ -443,7 +475,7 @@ def _evento_base(p1: str, p2: str, bruto: dict, fichas: dict, gerados: set,
     }
     for chave in ("clipes", "serie_hp", "serie_plano", "eventos_narrativos",
                   "eventos_dano", "sons", "ko_em_clipe", "duracao_clipe", "camera",
-                  "metricas_video"):
+                  "metricas_video", "corrente_v2"):
         if bruto.get(chave) is not None:
             evento[chave] = bruto[chave]
     return evento
@@ -466,7 +498,8 @@ class TournamentSession:
     def gerar(self, seed: int | None = None, fonte: str = "misto",
               quantidade: int = 8, nome: str = "Torneio Neural Fights",
               progresso=None, gravar_em: Path | None = None,
-              perfis: tuple[str, ...] = ("celular", "normal")) -> dict:
+              perfis: tuple[str, ...] = ("celular", "normal"),
+              corrente_v2: bool | None = None) -> dict:
         """Roda o torneio. Com `gravar_em`, cada luta e GRAVADA em video."""
         from neural_fights.tournament.tournament_mode import Tournament
 
@@ -476,6 +509,7 @@ class TournamentSession:
         self._gravar_em = Path(gravar_em) if gravar_em else None
         self._perfis = tuple(perfis)
         self._rng_arena = engine.fork("torneio:arenas")
+        self._corrente_v2 = chave_corrente_padrao() if corrente_v2 is None else bool(corrente_v2)
 
         participantes = selecionar_participantes(fonte, quantidade, rng)
         fichas = fichas_do_banco()
@@ -516,6 +550,7 @@ class TournamentSession:
         campeao = torneio.champion
         return {
             "seed": seed,
+            "corrente_v2": self._corrente_v2,
             "nome": nome,
             "fonte": fonte,
             "participantes": participantes,
@@ -537,14 +572,16 @@ class TournamentSession:
         p1, p2 = match.fighter1_name, match.fighter2_name
         cenario = self._rng_arena.choice(ARENAS_DE_VIDEO)
         base_seed = seed + match.match_id * 17
+        chave = getattr(self, "_corrente_v2", None)
 
         if getattr(self, "_gravar_em", None):
             bruto = gravar_confronto(p1, p2, cenario, base_seed,
                                      self._gravar_em / "gameplay",
                                      f"{match.match_id:02d}", self._perfis,
-                                     gameplay=self.gameplay, origem="torneio")
+                                     gameplay=self.gameplay, origem="torneio",
+                                     corrente_v2=chave)
         else:
-            bruto = simular_luta(p1, p2, cenario, base_seed)
+            bruto = simular_luta(p1, p2, cenario, base_seed, corrente_v2=chave)
 
         evento = {
             "match_id": match.match_id,
@@ -605,14 +642,19 @@ class FightSession:
               cenario: str | None = None, gravar_em: Path | None = None,
               perfis: tuple[str, ...] = ("celular", "normal"),
               origem: str = "luta", estreia_de: str | None = None,
-              ledger=None, progresso=None, melhor_de: int = 1) -> dict:
+              ledger=None, progresso=None, melhor_de: int = 1,
+              corrente_v2: bool | None = None) -> dict:
         """Roda o confronto. `melhor_de` precisa ser impar.
 
         A serie para assim que alguem chega a `melhor_de // 2 + 1` vitorias:
         um 2 x 0 nao gasta gravacao com o terceiro round. Cada round e uma
         gravacao propria (seed derivada e prefixo distintos) na MESMA arena —
         e o mesmo confronto, nao tres lutas soltas.
+
+        `corrente_v2` (None = o padrao de hoje) e carimbado no JSON e em
+        cada round: re-simular a luta depois usa o carimbo, nunca o padrao.
         """
+        chave = chave_corrente_padrao() if corrente_v2 is None else bool(corrente_v2)
         if melhor_de < 1 or melhor_de % 2 == 0:
             raise ValueError(f"melhor_de precisa ser impar e >= 1: {melhor_de}")
         seed = seed if seed is not None else RandomEngine.new_seed()
@@ -640,9 +682,10 @@ class FightSession:
                 bruto = gravar_confronto(p1, p2, cenario, semente,
                                          Path(gravar_em) / "gameplay",
                                          f"{indice:02d}", tuple(perfis),
-                                         gameplay=self.gameplay, origem=origem)
+                                         gameplay=self.gameplay, origem=origem,
+                                         corrente_v2=chave)
             else:
-                bruto = simular_luta(p1, p2, cenario, semente)
+                bruto = simular_luta(p1, p2, cenario, semente, corrente_v2=chave)
 
             evento = {
                 "match_id": indice, "rodada": indice,
@@ -673,6 +716,7 @@ class FightSession:
         decisiva = rounds[-1]
         return {
             "seed": seed,
+            "corrente_v2": chave,
             "kind": "fight",
             "origem": origem,
             "estreia_de": estreia_de,

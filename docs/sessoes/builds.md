@@ -523,10 +523,10 @@ Para ligar numa luta:
 - `qualidade_luta --corrente-v2`.
 
 Para ligar em produção, a ordem é:
-1. o `random_builds` carimba `corrente_v2` no `fight.json` de toda luta nova
-   e repassa o carimbo quando re-simula (`som-da-luta`, `--rerender`); sem
-   carimbo vale False;
-2. só então se troca o padrão.
+1. ~~o `random_builds` carimba `corrente_v2` no `fight.json` de toda luta nova
+   e repassa o carimbo quando re-simula; sem carimbo vale False~~ — **feito
+   na F2 (01/10, abaixo)**;
+2. só então se troca o padrão (decisão do Adrian, depois da arte e do A/B).
 
 Com a chave desligada, o Simulador não cria nem um atributo novo.
 
@@ -565,6 +565,57 @@ Ledger (`neural_fights/data/alvos_qualidade.json`):
 - `brain._analisar_projeteis_vindo` divide por `vel_proj` zero. A luta
   `Aurora o Bravo × Jin a Protetora`, seed 21026, morre com
   `ZeroDivisionError` aos 24,1 s, num processo novo e no código antigo.
+
+### F2 + F3 (01/10/2026, noite): a bola na timeline e a corrente no palco
+
+**Carimbo (F2).** Toda luta nova grava `corrente_v2` no `fight.json` (no
+confronto e em cada round), com o valor que o gravador USOU
+(`runner.chave_corrente_padrao()` = `utils/config.py: CORRENTE_V2`, hoje
+False; `FightSession.gerar`/`TournamentSession.gerar(corrente_v2=...)` passa
+outro). O gravador recebe a chave explícita (`--corrente-v2` /
+`--sem-corrente-v2`, `capture.gravar_uma(corrente_v2=)`) e devolve
+`corrente_v2` no resultado. Quem re-simula lê `runner.corrente_da_luta(luta,
+fight)` — round, senão confronto, senão **False** — e repassa: `som-da-luta`
+(`som_real.anotar_luta`), `palco ab`, `palco ab --edicao`, `duelo --palco
+--ab`. O `--rerender` (duelo, fight, build) não re-simula: reaproveita o clipe
+e regrava o `fight.json` que leu, então o carimbo (ou a falta dele) fica como
+está. Luta antiga sem o campo: re-simula com False, igual a hoje.
+
+**Timeline revisão 4 (F2).** Canais `bola_x/bola_y/bola_vx/bola_vy` e o
+cabeçalho `arma.corrente{comp_m, n_elos, cabeca, material, familia,
+raio_bola_m, v_ref_ms, mao}` só de quem tem bola na luta; `luta.corrente_v2`
+em toda timeline. Contrato em `docs/palco/timeline.md`. Sem a chave, nada
+disso aparece e o resto da timeline é a revisão 3.
+
+**A peça (F3).** `palco/biblioteca/armas/tipos/corrente.{tscn,gd}`: Verlet
+SEM ESTADO — a cada quadro reintegra da âncora mais recente (início do
+golpe, repouso da bola ou grade de 30 passos; nunca mais que 60 passos),
+pontas presas na mão (derivada de `x, y, ang` + `mao`) e na bola; o passo em
+que `tj` não anda (hitstop) não anda a corrente; salto (empurrão, puxão do
+enlace) refaz a corrente na forma de descanso em vez de esticar. Elos
+alternados frente/lado por código com contorno `#14141A`; `couro` (Chicote)
+e `corda` (Meteor Hammer, Rope Dart) são cordões que afinam; cabeça por
+estilo; rastro da bola proporcional a `v / v_ref`. Sem a chave, a mesma peça
+desenha a corrente antiga (e o palco mantém o rastro genérico).
+
+**Medido.** Render repetido bit a bit igual (Celeste a Impiedosa, Mangual ×
+Emi Ossarhamar, Chicote; seed 30010; 450 quadros com corte de tédio e
+hitstop): mp4 `dedef7bb…` nos dois, `framemd5` igual. Paridade Python×Godot
+em 8 passos (inteiros e fracionários): canais a 1e-9, mão e pontas a 0,1 mm.
+Na luta inteira (1700 passos): ~4,4 ms por quadro por corrente; a corrente
+desenhada passa de 5% do comprimento em 5 de 1700 quadros (máx. 8,4%).
+
+**Vitrines** (`outputs/_palco/corrente_f3/`, nada publica):
+`b/palco_celular.mp4` (chave ligada só nela) e `ab/ab_corrente.mp4` (mesma
+seed, antiga × nova; as lutas se separam no primeiro golpe de corrente).
+Comandos:
+`python main.py palco render --seed 30010 --p1 "Celeste a Impiedosa" --p2 "Emi Ossarhamar" --corrente-v2 --quadros 450`
+e `python main.py palco corrente-ab --seed 30010 --p1 "Celeste a Impiedosa" --p2 "Emi Ossarhamar"`.
+
+**Armadilha de worktree.** `neural_fights` está instalado em modo editável
+apontando para `E:\projetos`: rodar o `main.py` de outra worktree usa o
+`neural_fights` de `E:\projetos`, não o da worktree (a 1ª vitrine saiu com a
+revisão 3 por isso). Na worktree, `PYTHONPATH=<worktree>`.
 
 ## Contratos com outras partes
 

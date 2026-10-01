@@ -14,7 +14,8 @@ extends Node2D
 ## `ctx` (Dictionary) traz: estilo (EstiloPalco), quadro, fps, t_jogo (s de
 ## jogo, congela no hitstop), dt_mundo (s de jogo andados desde o quadro
 ## anterior; 0 no corte e no hitstop), zoom (px de tela por px do mundo),
-## px_por_m, palco (o no do palco) e timeline.
+## px_por_m, palco (o no do palco), timeline e passo (o passo FRACIONARIO
+## da timeline que este quadro mostra: a peca sem estado le dali para tras).
 
 ## Raio (px) com que a peca foi DESENHADA. O palco escala a peca para o raio
 ## real: um lutador com raio_ref 100 e raio 0,93 m aparece com escala 0,93.

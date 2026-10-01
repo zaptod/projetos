@@ -696,6 +696,9 @@ def gravar_luta(
             "hp_final": hp,
             "hp_vencedor": None if empate else hp["p1" if vencedor == p1 else "p2"],
             "seed": seed,
+            # A chave da corrente que ESTA luta usou (carimbo ou padrao do
+            # motor): quem grava o fight.json a guarda para re-simular igual.
+            "corrente_v2": bool(getattr(sim, "corrente_v2", False)),
             "cenario": cenario,
             "portrait": bool(match_config["portrait_mode"]),
             "resolucao": [largura, altura],
@@ -801,6 +804,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeline", default=None, metavar="CAMINHO",
                         help="grava tambem a timeline v1 do palco (Onda 16C); "
                              ".gcpf = container zstd que o Godot abre, senao JSON")
+    # Chave da corrente nova (core/corrente.py). Nenhuma das duas = nao
+    # carimba (vale o padrao do motor). Quem re-simula uma luta gravada passa
+    # o que o fight.json guardou; luta antiga sem o campo = --sem-corrente-v2.
+    chave = parser.add_mutually_exclusive_group()
+    chave.add_argument("--corrente-v2", dest="corrente_v2", action="store_const", const=True,
+                       default=None, help="carimba corrente_v2=True no match_config")
+    chave.add_argument("--sem-corrente-v2", dest="corrente_v2", action="store_const", const=False,
+                       help="carimba corrente_v2=False (a corrente antiga)")
     return parser
 
 
@@ -821,6 +832,7 @@ def main(argv: list[str] | None = None) -> int:
             resolucao=args.resolucao,
             anotar_som=not args.sem_som,
             timeline=args.timeline,
+            corrente_v2=args.corrente_v2,
         )
     except Exception as erro:  # o chamador precisa do motivo, nao de um traceback
         resultado = {"sucesso": False, "erro": f"{type(erro).__name__}: {erro}",

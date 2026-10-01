@@ -74,6 +74,21 @@ partes iguais. Uma animação `parado` (opcional) toca em loop fora do golpe.
 Anime o que é enfeite (brilho, rastro, balanço); a posição e o ângulo da arma
 vêm da luta.
 
+### A corrente (`armas/tipos/corrente.tscn`, 01/10/2026)
+
+A corrente não é uma peça rígida: com a corrente nova (chave `CORRENTE_V2`,
+timeline revisão 4) a bola tem posição própria no motor e a peça
+`tipos/corrente.gd` desenha a corrente **presa na mão e na bola**, reintegrada
+a cada quadro (Verlet sem estado, até 60 passos atrás). Sem a chave, a mesma
+peça desenha a corrente antiga da arma padrão. Por enquanto os elos são
+desenhados por código (frente/lado alternados, contorno `#14141A`); a cabeça
+sai de `arma.corrente.cabeca` (`bola_espinhos`, `martelo`, `peso`, `ponta`,
+`foice`, `dardo`) e o que liga a mão à cabeça de `material` (`elos`, `couro`,
+`corda`). A arte de verdade vem pela esteira de sprites e entra trocando o
+desenho dos elos e da cabeça nesta peça (a física continua a mesma).
+Para ver: `python main.py palco render --seed N --p1 A --p2 B --corrente-v2`
+(a chave liga só nessa luta) ou `python main.py palco corrente-ab ...`.
+
 ## 4. Trocar um lutador
 
 - `palco/biblioteca/lutadores/classes/<classe>.tscn` vale para a classe

@@ -42,8 +42,9 @@ altura do pulo (o render desenha o corpo em `(x, y − z)`). Ângulos em **graus
 ## O documento
 
 ```text
-formato: "neural-fights/timeline"   versao: 1   revisao: 3   hz: 60   n: <passos>   duracao: n/60
-luta:        seed, p1, p2, cenario, camera_modo, camera_largura_min_m, camera_espera_zoom_in
+formato: "neural-fights/timeline"   versao: 1   revisao: 4   hz: 60   n: <passos>   duracao: n/60
+luta:        seed, p1, p2, cenario, camera_modo, camera_largura_min_m, camera_espera_zoom_in,
+             corrente_v2 (revisão 4: a chave da corrente nova DESTA luta)
 tela_referencia: [1080, 1920]       a tela para a qual a câmera foi calculada
 arena:       formato, largura, altura, min, max, centro, raio, paredes, cores, tema,
              efeitos (clima), obstaculos[] (tipo, x, y, largura, altura, cor, solido...)
@@ -139,13 +140,38 @@ que acerta); `anim_*` é o que o pygame mostra hoje. O `seek` do palco usa
 
 **Corrente V2** (rework de 01/10/2026, `neural_fights/core/corrente.py`; chave
 `corrente_v2` da luta, DESLIGADA por padrão). Com a chave, a bola tem posição e
-velocidade próprias no motor e o golpe acerta onde ela passa. Nesta revisão:
+velocidade próprias no motor e o golpe acerta onde ela passa. Com a chave:
 `arma_ang` de quem usa corrente aponta da mão para a BOLA; `arma_px/py`
 continua com o comprimento antigo fixo (4 raios); `hb_*` e `golpe_janela`
-continuam descrevendo o setor antigo, que a chave deixa de usar. Os canais da
-bola (posição, velocidade e comprimento em uso) e o cabeçalho
-`corrente{comp_m, n_elos, cabeca}` ficam para a revisão 4 (F2 do plano). Até
-lá, a posição da bola está em `lutador.corrente_bola` (`x`, `y`, `vx`, `vy`).
+continuam descrevendo o setor antigo, que a chave deixa de usar.
+
+**Revisão 4 (01/10/2026): a bola.** Só no lutador cuja arma tem bola NESTA
+luta (chave ligada e `physics: chain` no catálogo), e sempre os dois juntos
+(o validador recusa um sem o outro):
+
+| canal | unidade | o que é |
+|---|---|---|
+| `bola_x`, `bola_y` | m | centro da bola no fim do passo (no chão, como a hitbox: quem desenha o lutador levantado por `z` sobe a bola junto) |
+| `bola_vx`, `bola_vy` | m/s | velocidade da bola (a do motor) |
+
+e no cabeçalho, `arma.corrente`:
+
+| campo | o que é |
+|---|---|
+| `comp_m` | corrente da mão ao centro da bola (`corrente.comprimento`: `comp_corrente + comp_ponta` do banco, 2,6 a 3,6 raios) |
+| `n_elos` | quantos elos desenhar (um a cada 0,16 raio, de 8 a 40) |
+| `cabeca` | `bola_espinhos` (Mangual), `martelo` (Meteor Hammer), `peso` (Corrente com Peso), `ponta` (Chicote), `foice` (Kusarigama), `dardo` (Rope Dart) |
+| `material` | `elos`, `couro` (Chicote) ou `corda` (Meteor Hammer, Rope Dart) |
+| `familia` | `pesada` (momento) ou `leve` (enlace), a decisão `corrente-estilos` |
+| `raio_bola_m` | raio da cabeça (o do toque no acerto) |
+| `v_ref_ms` | velocidade de referência do v² (`corrente.velocidade_nominal`): o rastro do palco é proporcional a `v / v_ref` |
+| `mao` | `{avanco_r, lateral_r}`: a MÃO da corrente é `(x, y) + R(ang)·(avanco_r, lateral_r)·raio_corpo` — no olhar, sem o avanço do golpe; a mesma conta de `corrente.mao` |
+
+A mão não tem canal: é derivável de `x`, `y`, `ang` e `mao` (há teste
+cobrando que a bola nunca passa de `comp_m` dessa mão). O comprimento EM USO
+também não: o palco usa a distância mão-bola com 6% de folga, limitada a
+`comp_m` (o braço recolhe a corrente na guarda). Luta sem a chave não tem
+nada disso e sai igual à revisão 3, mais `luta.corrente_v2: false`.
 
 **Geometria honesta.** A arma nasce na mão e `empunhadura + comprimento` é o
 `raio_corpo × range_mult` da hitbox (a mesma conta de `Simulador.desenhar_arma`).
@@ -506,3 +532,10 @@ diferente de 1 e aceita qualquer `revisao`; arquivo sem o campo é revisão 1.
 | 1 | 28/09/2026 (`3097a37`) | a v1 |
 | 2 | 28/09/2026 (`ac270f2`) | `i` em cada item de `sons` |
 | 3 | 28/09/2026 | eventos `projetil_fim`, `explosao`, `choque`, `refletido`, `texto`, `movimento`; `ponto` e `projetil` no `acerto` |
+| 4 | 01/10/2026 | a bola da corrente nova: canais `bola_x/bola_y/bola_vx/bola_vy` e cabeçalho `arma.corrente` de quem tem bola; `luta.corrente_v2` |
+
+**Paridade Python × Godot (revisão 4).** `palco/ferramentas/paridade_corrente.gd`
+lê a timeline como o palco e escreve o que leu (canais interpolados, mão, bola
+e a corrente que a peça desenharia); `random_builds/tests/test_palco_corrente_regressions.py`
+refaz as contas em Python e compara: canais a 1e-9, mão e pontas a 0,1 mm (o
+`Vector2` do Godot é float32).

@@ -34,7 +34,8 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
                timeout: float = 600.0, resolucao: tuple[int, int] | None = None,
                sem_hud: bool = False,
                camera_largura_min: float | None = None,
-               camera_espera_zoom: float | None = None) -> dict:
+               camera_espera_zoom: float | None = None,
+               corrente_v2: bool | None = None) -> dict:
     """Roda o gravador oficial num subprocesso e devolve o resultado da luta.
 
     `resolucao` grava em tamanho nativo (1080x1920 para o celular) — sem o
@@ -43,6 +44,10 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
 
     `saida=None` roda e desenha a MESMA luta sem codificar mp4 (Onda 16A): e
     assim que se anota o som de uma luta cujo clipe ja existe.
+
+    `corrente_v2` e a chave da corrente nova DESTA luta (core/corrente.py):
+    True/False carimba no match_config; None nao carimba (vale o padrao do
+    motor). Quem re-simula passa o que o fight.json guardou.
     """
     comando = [
         sys.executable, "-X", "utf8",
@@ -64,6 +69,8 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
         comando += ["--camera-espera-zoom", str(float(camera_espera_zoom))]
     if sem_hud:
         comando.append("--sem-hud")
+    if corrente_v2 is not None:
+        comando.append("--corrente-v2" if corrente_v2 else "--sem-corrente-v2")
 
     ambiente = dict(os.environ)
     ambiente.setdefault("SDL_VIDEODRIVER", "dummy")

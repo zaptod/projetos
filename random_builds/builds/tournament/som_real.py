@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from . import capture, highlights
 from .runner import (PORTRAIT_POR_PERFIL, RESOLUCAO_POR_PERFIL,
-                     camera_do_perfil)
+                     camera_do_perfil, corrente_da_luta)
 
 # Tolerancias da conferencia: o fight.json guarda o tempo dos golpes com 3
 # casas e a duracao com 1.
@@ -64,8 +64,13 @@ def conferir(luta: dict, resultado: dict, trechos: list) -> None:
             raise LutaDiferente(f"golpe diferente: {list(antes)[:3]} x {list(depois)[:3]}")
 
 
-def anotar_luta(luta: dict, gameplay: dict, origem: str) -> list[dict]:
-    """Os sons da luta, no relogio do clipe, sem regravar o video."""
+def anotar_luta(luta: dict, gameplay: dict, origem: str,
+                fight: dict | None = None) -> list[dict]:
+    """Os sons da luta, no relogio do clipe, sem regravar o video.
+
+    A chave da corrente e a que a luta GRAVOU (`corrente_v2` do round ou do
+    fight.json; sem o campo, a antiga): re-simular com o padrao de hoje
+    mudaria a luta de quem tem corrente."""
     perfil, clipe = _referencia(luta)
     trechos = [(float(a), float(b)) for a, b in (clipe.get("trechos") or [])]
     if not trechos:
@@ -78,7 +83,8 @@ def anotar_luta(luta: dict, gameplay: dict, origem: str) -> list[dict]:
         resolucao=tuple(resolucao) if resolucao else None,
         sem_hud=bool(gameplay.get("sem_hud", True)),
         camera_largura_min=gameplay.get("camera_largura_min"),
-        camera_espera_zoom=gameplay.get("camera_espera_zoom"))
+        camera_espera_zoom=gameplay.get("camera_espera_zoom"),
+        corrente_v2=corrente_da_luta(luta, fight))
     if not resultado.get("sucesso"):
         raise RuntimeError(f"re-simulacao falhou: {resultado.get('erro')}")
     if "sons" not in resultado:
@@ -105,7 +111,7 @@ def anotar_fight(fight: dict, gameplay: dict, origem: str, *, forcar: bool = Fal
             continue
         if isinstance(luta.get("sons"), list) and not forcar:
             continue
-        luta["sons"] = anotar_luta(luta, gameplay, origem)
+        luta["sons"] = anotar_luta(luta, gameplay, origem, fight)
         feitos += 1
         if progresso:
             progresso(luta)
