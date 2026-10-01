@@ -637,8 +637,10 @@ class WeaponAnimationState:
 
 
 class WeaponAnimator:
-    def __init__(self):
+    def __init__(self, seed=None):
         self.states = {}
+        # A animacao e somente visual: nao pode avancar o RNG do combate.
+        self.rng = random.Random(seed)
         self.easings = {
             "linear": Easing.linear,
             "ease_in_quad": Easing.ease_in_quad,
@@ -654,6 +656,10 @@ class WeaponAnimator:
             "ease_spring": Easing.ease_spring,
             "ease_snap": Easing.ease_snap,
         }
+
+    def reset(self, seed=None):
+        self.states.clear()
+        self.rng.seed(seed)
 
     def get_state(self, fighter_id):
         if fighter_id not in self.states:
@@ -801,7 +807,7 @@ class WeaponAnimator:
             state.scale = 1.0
             if profile.shake_on_impact:
                 shake = profile.shake_intensity * (1 - phase_progress)
-                state.shake_offset = (random.uniform(-shake, shake), random.uniform(-shake, shake))
+                state.shake_offset = (self.rng.uniform(-shake, shake), self.rng.uniform(-shake, shake))
             if profile.spark_on_impact and phase_progress < 0.1:
                 self._spawn_sparks(state, profile)
         elif current_phase == AttackPhase.FOLLOW_THROUGH:
@@ -841,8 +847,8 @@ class WeaponAnimator:
                 state.lunge = 0.42
                 if profile.shake_on_impact:
                     sh = profile.shake_intensity * (1 - t)
-                    state.shake_offset = (random.uniform(-sh, sh),
-                                          random.uniform(-sh, sh))
+                    state.shake_offset = (self.rng.uniform(-sh, sh),
+                                          self.rng.uniform(-sh, sh))
                 if profile.spark_on_impact and t < 0.1:
                     self._spawn_sparks(state, profile)
             elif current_phase == AP.FOLLOW_THROUGH:
@@ -870,8 +876,8 @@ class WeaponAnimator:
                 state.lunge = 0.34
                 if profile.shake_on_impact:
                     sh = profile.shake_intensity * 1.4 * (1 - t)
-                    state.shake_offset = (random.uniform(-sh, sh),
-                                          random.uniform(-sh, sh))
+                    state.shake_offset = (self.rng.uniform(-sh, sh),
+                                          self.rng.uniform(-sh, sh))
                 if profile.spark_on_impact and t < 0.15:
                     self._spawn_sparks(state, profile)
             elif current_phase == AP.FOLLOW_THROUGH:
@@ -995,8 +1001,8 @@ class WeaponAnimator:
                 shake_h = profile.shake_intensity * shake_decay * 2.2
                 shake_v = profile.shake_intensity * shake_decay * 1.4
                 state.shake_offset = (
-                    random.uniform(-shake_h, shake_h),
-                    random.uniform(-shake_v, shake_v) + shake_v * 0.5  # tendência para baixo
+                    self.rng.uniform(-shake_h, shake_h),
+                    self.rng.uniform(-shake_v, shake_v) + shake_v * 0.5  # tendência para baixo
                 )
             
             # Sparks e poeira no frame do impacto
@@ -1005,15 +1011,14 @@ class WeaponAnimator:
                 # Segundo burst de sparks um pouco depois (ricochete)
             elif 0.25 < phase_progress < 0.32:
                 for _ in range(profile.spark_count // 4):
-                    import random as _r
-                    angle = _r.uniform(0, math.pi * 2)
-                    speed = _r.uniform(30, 80)  # bounce mais lento
+                    angle = self.rng.uniform(0, math.pi * 2)
+                    speed = self.rng.uniform(30, 80)  # bounce mais lento
                     state.spark_list.append({
                         "vx": math.cos(angle) * speed,
                         "vy": math.sin(angle) * speed,
-                        "life": _r.uniform(0.12, 0.22),
+                        "life": self.rng.uniform(0.12, 0.22),
                         "timer": 0.0,
-                        "size": _r.uniform(1.5, 3.5),
+                        "size": self.rng.uniform(1.5, 3.5),
                         "color": profile.spark_color,
                     })
 
@@ -1029,8 +1034,8 @@ class WeaponAnimator:
             if profile.shake_on_impact and phase_progress < 0.4:
                 residual = profile.shake_intensity * 0.25 * (1.0 - phase_progress / 0.4)
                 state.shake_offset = (
-                    random.uniform(-residual, residual),
-                    random.uniform(-residual, residual)
+                    self.rng.uniform(-residual, residual),
+                    self.rng.uniform(-residual, residual)
                 )
             else:
                 state.shake_offset = (0, 0)
@@ -1107,8 +1112,8 @@ class WeaponAnimator:
             shake_mult = 1.5 if cross_mode else 1.0
             if profile.shake_on_impact:
                 shake = profile.shake_intensity * impact_decay * shake_mult
-                state.shake_offset = (random.uniform(-shake, shake),
-                                      random.uniform(-shake, shake))
+                state.shake_offset = (self.rng.uniform(-shake, shake),
+                                      self.rng.uniform(-shake, shake))
             if phase_progress < 0.12:
                 self._spawn_sparks(state, profile)
 
@@ -1142,14 +1147,14 @@ class WeaponAnimator:
 
     def _spawn_sparks(self, state, profile):
         for _ in range(profile.spark_count):
-            angle = random.uniform(0, math.pi * 2)
-            speed = random.uniform(50, 150)
+            angle = self.rng.uniform(0, math.pi * 2)
+            speed = self.rng.uniform(50, 150)
             state.spark_list.append({
                 "vx": math.cos(angle) * speed,
                 "vy": math.sin(angle) * speed,
-                "life": random.uniform(0.1, 0.25),
+                "life": self.rng.uniform(0.1, 0.25),
                 "timer": 0.0,
-                "size": random.uniform(2, 5),
+                "size": self.rng.uniform(2, 5),
                 "color": profile.spark_color,
             })
 
@@ -1434,10 +1439,14 @@ class BowDrawEffect:
 
 
 class WeaponAnimationManager:
-    def __init__(self):
-        self.animator = WeaponAnimator()
+    def __init__(self, seed=None):
+        self.animator = WeaponAnimator(seed)
         self.trail_renderer = WeaponTrailRenderer()
         self.active_effects = []
+
+    def reset(self, seed=None):
+        self.animator.reset(seed)
+        self.active_effects.clear()
 
     def start_attack(self, fighter_id, weapon_type, position, angle, weapon_style="", weapon_color=(255, 255, 255)):
         self.animator.start_attack(fighter_id, weapon_type, weapon_style)
@@ -1544,4 +1553,11 @@ def get_weapon_animation_manager():
     global _weapon_animation_manager
     if _weapon_animation_manager is None:
         _weapon_animation_manager = WeaponAnimationManager()
+    return _weapon_animation_manager
+
+
+def reset_weapon_animation_manager(seed=None):
+    """Descarta os estados visuais que pertenciam a luta anterior."""
+    global _weapon_animation_manager
+    _weapon_animation_manager = WeaponAnimationManager(seed)
     return _weapon_animation_manager

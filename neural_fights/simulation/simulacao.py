@@ -380,6 +380,15 @@ class Simulador:
             base_seed = random.getrandbits(128)
         else:
             base_seed = self.seed
+
+        # O manager de arma e singleton de render, mas seus estados e RNG sao
+        # do round. Lutadores novos podem reciclar ids de um round anterior.
+        from neural_fights.effects.weapon_animations import (
+            reset_weapon_animation_manager,
+        )
+        reset_weapon_animation_manager(
+            f"neural-fights:weapon-animation:{base_seed}:{generation}"
+        )
         self.p1.configurar_rng_runtime(
             random.Random(f"neural-fights:{base_seed}:{generation}:p1")
         )

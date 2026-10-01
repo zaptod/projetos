@@ -376,6 +376,46 @@ print(json.dumps(saida))
 """
 
 
+class DeterminismoAnimadorTests(unittest.TestCase):
+    def test_mesma_luta_bate_processo_novo_apos_outra_luta(self):
+        principal = (
+            "Aurora o Bravo", "Jin a Protetora", 9020, {}, False,
+        )
+        intermediaria = (
+            "Octavia o Lendário", "Nyx a Impiedosa", 30010, {}, False,
+        )
+        processo_novo = json.loads(_rodar(_LUTA.format(lutas=[principal])))[0]
+        mesmo_processo = json.loads(_rodar(_LUTA.format(
+            lutas=[principal, intermediaria, principal],
+        )))
+
+        self.assertEqual(mesmo_processo[0], processo_novo)
+        self.assertEqual(mesmo_processo[2], processo_novo)
+
+    def test_animador_nao_avanca_random_global_e_reseta_estados(self):
+        from neural_fights.effects.weapon_animations import WeaponAnimationManager
+
+        random.seed(9182)
+        proximo_esperado = random.random()
+        random.seed(9182)
+        manager = WeaponAnimationManager(seed="luta-teste")
+        fighter_id = 777
+        manager.start_attack(
+            fighter_id, "Reta", (0.0, 0.0), 0.0, weapon_style="Martelo",
+        )
+        for _ in range(40):
+            manager.get_weapon_transform(
+                fighter_id, "Reta", 0.0, (1.0, 0.0), 1.0 / 60.0,
+                weapon_style="Martelo",
+            )
+
+        self.assertEqual(random.random(), proximo_esperado)
+        self.assertIn(fighter_id, manager.animator.states)
+        manager.reset("outra-luta")
+        self.assertEqual(manager.animator.states, {})
+        self.assertEqual(manager.active_effects, [])
+
+
 class LutaAntigaIdenticaTests(unittest.TestCase):
     """Chave desligada (o padrão) = a luta antiga, bit a bit.
 
