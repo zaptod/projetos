@@ -630,6 +630,8 @@ def criar(tarefa_id: str, arquivo_tarefa: Path, permitidos, *, modelo=None,
     tarefa_id = validar_id(tarefa_id)
     permitidos = _validar_permitidos(permitidos)
     modelo = validar_modelo(modelo) if modelo is not None else modelo_configurado()
+    if esforco is None:
+        esforco = esforco_configurado()
     if esforco is not None and esforco not in ESFORCOS:
         raise Recusa(f"esforço é {', '.join(ESFORCOS)}")
     try:
@@ -673,6 +675,21 @@ def modelo_configurado() -> str | None:
         return orquestrador.ler_config().get("modelo_codex") or None
     except Exception:                                        # noqa: BLE001
         return None
+
+
+# Decisao do Adrian (geral/codex-esforco, 01/10 19:37): "medio por padrao, alto
+# nas dificeis". O `ultra` do ~/.codex/config.toml e dele (o Codex interativo)
+# e nao vale para o despachante; `--esforco high` na tarefa dificil.
+ESFORCO_PADRAO = "medium"
+
+
+def esforco_configurado() -> str:
+    """O `esforco_codex` da Mesa, ou o padrao decidido (medium)."""
+    try:
+        from . import orquestrador
+        return orquestrador.ler_config().get("esforco_codex") or ESFORCO_PADRAO
+    except Exception:                                        # noqa: BLE001
+        return ESFORCO_PADRAO
 
 
 # ================================================================= rodar

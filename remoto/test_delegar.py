@@ -113,6 +113,19 @@ def test_criar_faz_worktree_branch_e_tarefa_com_as_regras(mundo):
         _criar(mundo)
 
 
+def test_criar_sem_esforco_usa_o_medio_decidido_e_nao_o_ultra_do_codex(mundo, monkeypatch):
+    # geral/codex-esforco (01/10): medio por padrao, alto nas dificeis; o
+    # `ultra` do ~/.codex/config.toml nao vale para o despachante
+    monkeypatch.setattr(delegar, "esforco_configurado", lambda: delegar.ESFORCO_PADRAO)
+    e = _criar(mundo)
+    assert e["esforco"] == "medium"
+
+
+def test_criar_com_esforco_explicito_vence_o_padrao(mundo):
+    e = _criar(mundo, esforco="high")
+    assert e["esforco"] == "high"
+
+
 def test_criar_recusa_sem_lista_id_torto_e_caminho_que_sobe(mundo):
     with pytest.raises(delegar.Recusa, match="caminhos"):
         _criar(mundo, permitidos=())
