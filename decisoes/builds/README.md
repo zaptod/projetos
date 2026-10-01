@@ -25,8 +25,8 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
   - ✅ **Sprites: como manter o mesmo estilo** — Imagem-mestra aprovada por você (recomendado) (30/09/2026) `sprites-ia-estilo`
 - ✅ **Sprites: peça parada ou quadro a quadro?** — Peça + Godot; folha só no impacto (recomendado) (30/09/2026) `sprites-ia-formato`
   - ✅ **Sprites: fundo pedido ao ChatGPT** — Magenta liso (verde nos roxos) (recomendado) (30/09/2026) `sprites-ia-fundo`
-- ⏳ **Corrente: mecânica própria** — Qual jeito de lutar substitui o golpe igual ao da espada? `corrente-mecanica`
-  - 🔒 **Corrente: os 6 estilos** — Uma mecânica para os 6 estilos, ou duas famílias? · espera Corrente: mecânica própria = decidida `corrente-estilos`
-  - 🔒 **Corrente: arte no palco** — De onde vem a arte da corrente animada em elos? · espera Corrente: mecânica própria = decidida `corrente-arte`
-  - 🔒 **Corrente: lutas antigas mudam** — Com a corrente nova, a mesma seed dá outra luta. Como tratar? · espera Corrente: mecânica própria = decidida `corrente-seeds-antigas`
+- ✅ **Corrente: mecânica própria** — Bola física com momento (recomendado) (01/10/2026) `corrente-mecanica`
+  - ⏳ **Corrente: os 6 estilos** — Uma mecânica para os 6 estilos, ou duas famílias? `corrente-estilos`
+  - ⏳ **Corrente: arte no palco** — De onde vem a arte da corrente animada em elos? `corrente-arte`
+  - ⏳ **Corrente: lutas antigas mudam** — Com a corrente nova, a mesma seed dá outra luta. Como tratar? `corrente-seeds-antigas`
 - ⏳ **Todas as armas: o golpe acerta antes de bater** — O acerto no preparo (antes de a arma chegar) vale consertar para TODAS as armas? `golpe-acerta-no-preparo`

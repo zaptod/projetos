@@ -3,7 +3,15 @@
   "contexto": "Medido: o motor não tem mecânica de corrente — é o mesmo setor da espada com outros números; no duelo_00030 os acertos saíram no preparo, com a bola a 3,4–3,7 m do alvo. As 3 opções mudam o desfecho das seeds com corrente. Plano: C:\\Users\\adrian\\.claude\\plans\\corrente-rework.md.",
   "criado": "2026-09-30T18:15:21.126421",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-01T14:29:23",
+      "opcao": "bola-fisica",
+      "origem": "app"
+    }
+  ],
   "id": "corrente-mecanica",
   "midias": [],
   "opcoes": [
@@ -43,7 +51,11 @@
   ],
   "pergunta": "Qual jeito de lutar substitui o golpe igual ao da espada?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Corrente: mecânica própria",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-01T14:29:23",
+    "opcao": "bola-fisica"
+  }
 }
