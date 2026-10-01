@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T14:30:33",
+      "evento": "2026-10-01T14:30:10",
+      "linha": 94,
+      "nota": "chave só para lutas novas (CORRENTE_V2)",
+      "opcao": "bandeira",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Afeta regerar vídeos antigos com a mesma seed; os já publicados não mudam. Plano: C:\\Users\\adrian\\.claude\\plans\\corrente-rework.md.",
   "criado": "2026-09-30T18:15:22.210804",
   "depende_de": [
