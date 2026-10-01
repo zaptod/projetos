@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T15:18:21",
+      "evento": "2026-10-01T15:18:04",
+      "linha": 101,
+      "nota": "Gemini segue no navegador; o Codex faz a linha de comando; a revisão cruzada do diff fica com o agente barato",
+      "opcao": "navegador",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "01/10 15:1x: login feito, mas o Gemini CLI responde 'This client is no longer supported for Gemini Code Assist for individuals — migrate to Antigravity'. O Codex funcionou na hora (respondeu OK). O Gemini no navegador (revisão de vídeo) continua funcionando como hoje.",
   "criado": "2026-10-01T15:14:02.547245",
   "depende_de": [],
