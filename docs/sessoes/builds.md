@@ -119,8 +119,8 @@ python main.py som-da-luta --listar                  # estoque com a luta muda +
 python main.py som-da-luta duelo_00014 generation_00029   # anota e re-renderiza NO LUGAR
 python main.py som-da-luta E:\projetos\random_builds\outputs\duelo_00014 --destino outputs\_ouvir\teste --perfis celular   # numa cópia
 
-# GERAÇÃO NOTURNA — o que as tarefas NeuralFights_gerar_01..05 (HH:02) chamam
-python main.py noite --listar        # tarefas + duelos que a grade escolheria (e o teto)
+# GERAÇÃO (lote de dia desde 30/09) — o que as tarefas NeuralFights_gerar_HH chamam
+python main.py noite --listar        # tarefas + estoque da publicação + o modo e as metas de agora
 python main.py noite --ensaio        # faz todas as conferências e diz o que faria; não gera
 python main.py noite --duelos 8      # rodada manual: 8 ignorando o teto (o relógio ainda manda)
 python main.py noite --builds 1      # rodada manual: 1 roleta; com --duelos/--builds só o pedido sai
@@ -136,37 +136,60 @@ nenhuma ordem: o título do duelo é `{p1} x {p2}` e a guarda de título
 repetido barraria o vídeo para sempre. Antes era "o último criado na roleta",
 e sem roleta nova isso deu 5 de 8 duelos com o mesmo p1 (Wren Telgyll, 27/09).
 
-**A rodada noturna** (`builds/pipeline/noite.py`, config em
-`config/geracao.json`): na janela 01h–06h, gera duelos **e builds (roleta,
-`generate-video` inteiro: build, inserção no banco, estreia, render e fila
-de identidade)** até o teto de cada um, e depois roda o `identity worker`
-(capa e payoff das builds). Teto = `dias_de_gordura` 2 × horários/dia pela
-cota: duelo 4/8 de 10 = 5 → **10 duelos**; build 3/8 de 10 = 3,75 → **8
-builds**. **Quem tem menos dias de estoque vai primeiro** (dias = estoque ÷
-horários/dia; empate, duelo) — decisão do Adrian de 28/09 ("Sim, gerar
-builds também"), porque a rodada até :25 não dá para os dois quando os dois
-estão baixos. O estoque é contado pelo **mesmo funil da escolha** (não
-publicado, sem pendência, título livre; dois pendentes com o mesmo título
-contam um); o de build soma as **builds em preparo** (A/celular não
-publicada, só com pendência que o worker resolve — imagem, payoff, mp4 mais
-velho — e com job vivo na fila), senão a rodada seguinte veria o estoque
-igual e faria outra roleta por hora. Nada começa se não termina antes de
-**:25** — duelo reserva 5 min, build 15 (medido 10 em 24/09) —, no máximo 6
-duelos e **1 build** por rodada; `"builds": false` no config desliga a
-roleta. A roleta não usa o PicassoIA: só enfileira; quem abre o site é o
-worker, com a trava de perfil (`travas.do_perfil`). Medido em 28/09, 20:07
-(`main.py noite --listar`): 10 duelos (2,0 dias, teto 10) e 14 builds (3,7
-dias, teto 8) — nesta noite nenhuma roleta sairia. O worker é chamado **um provedor por vez e com
-prazo**: imagem do PicassoIA reserva 8 min (medido 3,3–6), payoff do Digen
-18 (medido 12–15, com o re-render da build); o worker não começa job nem
-tentativa nova depois do prazo (`worker.drenar(so_provedor=, prazo=)`),
-porque job que falha é repescado na mesma passada e `limite` não segurava o
-tempo. Resíduo conhecido: o Digen tem espera própria de até 30 min, então um
-payoff muito lento ainda pode passar de :25 — de madrugada não há post
-nessa janela (00:37 e 06:37 são os vizinhos). Trava `builds__gerar` entre
-processos (a rodada que encontra outra em andamento sai). A saída vai para
-`outputs/_logs/gerar_AAAAMMDD.txt` (com hora) e `gerar_saida.txt` (o resto);
-o lançador `gerar.cmd` é gerado pelo `--instalar` e não vai para o git.
+**A rodada** (`builds/pipeline/noite.py`, config em `config/geracao.json`)
+gera duelos **e builds (roleta, `generate-video` inteiro: build, inserção no
+banco, estreia, render e fila de identidade)** e depois roda o `identity
+worker` (capa e payoff das builds). **Desde 30/09/2026 é o lote semanal de
+dia** (decisões do Adrian no Grimório `geral/lote-*`: barulho de madrugada).
+Quem decide o que cada disparo faz é `noite.planejar`, **antes da trava**, o
+mesmo desenho da agenda das histórias:
+
+| modo | quando | o que faz |
+|---|---|---|
+| `lote` | seg–ter (`dias_de_lote [0,1]`), 07h–22h, a partir de `lote_a_partir_de` 05/10 | gera até o alvo: horários da grade até a próxima segunda 07h + o piso (seg 07:02 = 70 + 20 = **90**; ter 07:02 = 80), dividido pela cota (4/3/1 → **45 duelos, 34 builds, 12 estreias** na segunda) |
+| `reposicao` | qua–dom 07h–22h (e seg–ter antes de 05/10) | só gera se o canal tem menos que o **piso de 20** (2 dias); metas 10/8/3 |
+| `madrugada` | 01h–06h enquanto existir `madrugada_na_transicao` | o esquema antigo: teto de gordura (10 duelos, 8 builds), no máximo 6 duelos e 1 build por disparo |
+| `zero` | fora da janela com **estoque zero** | libera tudo (`estoque_zero_libera_a_noite`), até o piso |
+| `noite` | fora de tudo, com estoque | nada |
+
+A estreia só nasce dentro da roleta: a meta da build é a maior das duas
+faltas (build e estreia). **Quem tem menos dias de estoque vai primeiro**
+(dias = estoque ÷ horários/dia pela cota; empate, duelo) — decisão do Adrian
+de 28/09. **O número que decide é o da publicação** (`noite.contar_estoque`
+= `postar._builds_prontos` agrupado por formato, o mesmo que
+`pendentes_por_canal()["builds"]`, o `--ver` e o alerta de piso contam; o
+piso da publicação, `postar.piso_de_alerta("builds")`, lê o
+`piso_de_reposicao` daqui); o de build soma as **builds em preparo** (A/celular
+não publicada, só com pendência que o worker resolve e com job vivo na fila).
+As histórias contaram por critério próprio em 30/09 e erraram 27 × 8.
+
+**Relógio.** Nada roda na **meia hora em volta de cada um dos 10 horários**
+(`folga_da_grade` 15/15, `builds.grade.GRADE`, inclusive 12:07 e 17:57): um
+passo só começa se termina antes de post−15. A regra velha (`grade_proibida`
+:25–:55 de toda hora) está `null` no config — tirava metade do dia e não via
+12:07 nem 17:57; o padrão do código ainda a tem, para config ilegível
+(`PADRAO` = esquema antigo de madrugada). Uma rodada dura até 55 min
+(`rodada_de_dia`) e o disparo seguinte continua; com job de identidade
+esperando, a geração para 20 min antes e o resto é do worker. De dia: até 11
+duelos e 3 builds por rodada. Duelo reserva 5 min, build 15, imagem 8,
+payoff 18. **Disco:** com menos de 5 GB livres no C: nada novo é gerado
+(o worker ainda termina o que já foi pago). O `som-da-luta` usa a mesma
+régua da grade (`sonorizar.cabe_agora` → `noite.fora_da_grade`).
+
+**Disparos** (`horas`): 07:02 a 21:02 de hora em hora, com **12:32** e
+**18:22** (12:02 e 18:02 caem na folga de 12:07 e 17:57); 22:02, 23:02 e
+00:02 (só estoque zero); 01:02–05:02 (transição e estoque zero). **Para
+desligar a madrugada depois de validado o dia: apagar
+`madrugada_na_transicao` do `geracao.json`** — as tarefas 01–05 continuam, só
+para o estoque zero. `"builds": false` desliga a roleta; `"ativo": false`,
+tudo. A roleta não usa o PicassoIA: só enfileira; quem abre o site é o
+worker, com a trava de perfil (`travas.do_perfil`), **um provedor por vez e
+com prazo** (`worker.drenar(so_provedor=, prazo=)`); resíduo: o Digen tem
+espera própria de até 30 min. Trava `builds__gerar` entre processos (a rodada
+que encontra outra em andamento sai). A saída vai para
+`outputs/_logs/gerar_AAAAMMDD.txt` (com hora, e o modo de cada disparo) e
+`gerar_saida.txt` (o resto); o lançador `gerar.cmd` é gerado pelo
+`--instalar` e não vai para o git.
 
 Pré-requisito real: **personagem com ficha no banco do neural_fights**. Duelo,
 fight e torneio leem `fichas_do_banco()`; sem ficha não há quem lute e o duelo
@@ -339,9 +362,10 @@ cd E:\projetos
 python ferramentas/postar.py --ver --so builds   # diz o que postaria e SAI
 ```
 Estoque por formato existe em código (`postar.estoque_por_formato()`, medido
-contra a cota de cada um) e aparece no aviso do Telegram. O de duelo que a
-geração noturna usa (`noite.estoque_de_duelos()`) passa pelo funil da
-escolha e aparece em `main.py noite --listar`.
+contra a cota de cada um) e aparece no aviso do Telegram. O que a geração
+usa para decidir (`noite.contar_estoque()`) é a mesma lista da publicação,
+por formato, e aparece em `main.py noite --listar` junto com o modo e as
+metas de agora.
 
 **O que NÃO fazer:** não rodar `main.py publicar <id> --youtube/--tiktok`
 (publica de verdade), nem `postar.py` sem `--ver`, nem `--instalar`. Não usar
@@ -349,8 +373,9 @@ escolha e aparece em `main.py noite --listar`.
 a pendência é a única coisa que segurou a estreia muda. Não apagar pasta de
 `outputs/`: o ledger e as métricas referenciam o id. Não editar
 `neural_fights/data/personagens.json` esperando mexer no banco vivo (é o
-snapshot do pacote). Não refazer o banco: foi isso que matou agosto. E evitar
-gerar vídeo entre :25 e :55, que é a janela da grade.
+snapshot do pacote). Não refazer o banco: foi isso que matou agosto. E não
+gerar vídeo na meia hora em volta de cada horário da grade
+(`noite.fora_da_grade`; até 30/09 a regra era :25–:55 de toda hora).
 
 ## 7. O som da luta (Onda 16A, 28/09/2026)
 
@@ -471,9 +496,13 @@ o comando recusa e diz qual.
 - **Títulos editados** — `outputs/_publicar/_textos/<id>.json`
   (`catalogo.salvar_texto`): valem sobre o título gerado, para o painel e para
   a grade. É onde moram os títulos próprios das variantes B (27/09/2026).
-- **Tarefas de geração** — `NeuralFights_gerar_01..05` (HH:02), família
-  minha (`builds/pipeline/tarefas_noite.py`), trava `builds__gerar`; duelos
-  e roleta (a roleta escreve no banco pelo mesmo `exporter`). Os
+- **Tarefas de geração** — `NeuralFights_gerar_HH` (as `horas` do
+  `geracao.json`: 01–05 e 07–00 desde 30/09, §2), família minha
+  (`builds/pipeline/tarefas_noite.py`, `hora_e_minuto` aceita `"12:32"`),
+  trava `builds__gerar`; duelos e roleta (a roleta escreve no banco pelo mesmo
+  `exporter`). O `piso_de_reposicao` do `geracao.json` é o piso que a
+  publicação alerta (`postar.piso_de_alerta("builds")`), e `janela_pesada`/
+  `dias_de_lote` aparecem no painel do lote (`remoto/lote.py`). Os
   monitores de tarefa de outras partes (`remoto/relatorios.py`,
   `visao/panorama/recursos.py`) ainda listam só postagem e bot.
 - **Ledger da arena** — `outputs/_arena/ledger.json`, dono meu

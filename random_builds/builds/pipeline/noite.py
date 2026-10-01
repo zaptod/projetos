@@ -33,6 +33,22 @@ QUATRO CUIDADOS, cada um vindo de uma coisa que ja quebrou:
 
 O p1 sai do RODIZIO (`arena/rodizio.py`), nao do "ultimo criado": 5 dos 8
 duelos de 27/09 eram do mesmo personagem.
+
+O LOTE SEMANAL DE DIA (decisoes do Adrian em 30/09/2026, Grimorio
+`geral/lote-*`). O trabalho pesado saiu da madrugada por causa do barulho:
+janela 07h-22h; SEG-TER (`dias_de_lote`) a rodada produz ate cobrir a proxima
+segunda 07h mais o piso; QUI-DOM (e a quarta, de reserva) so repoem abaixo do
+piso de 20 videos (2 dias); ESTOQUE ZERO de madrugada libera tudo (o canal
+nao para); a madrugada antiga continua (`madrugada_na_transicao`) ate o
+esquema de dia rodar validado um dia; o 1o lote e seg 05/10. A janela da
+grade deixou de ser ":25 a :55 de toda hora" e virou a meia hora em volta de
+cada um dos 10 horarios (`folga_da_grade`, inclusive 12:07 e 17:57). Quem
+decide o que a rodada faz e `planejar`, ANTES da trava — o mesmo desenho de
+`contos.pipeline.agenda.planejar`.
+
+O ESTOQUE QUE DECIDE E O DA PUBLICACAO (`contar_estoque`): o funil de
+`postar._builds_prontos`, que e literalmente `pendentes_por_canal()["builds"]`.
+As historias erraram isso no mesmo dia (a agenda contou 27, o `--ver` 8).
 """
 from __future__ import annotations
 
@@ -50,6 +66,9 @@ LOGS = OUTPUTS / "_logs"
 
 TRAVA = "builds__gerar"
 
+# O PADRAO E O ESQUEMA ANTIGO (madrugada 01h-06h, :25 a :55 proibido): e o
+# que vale se `geracao.json` sumir ou ficar ilegivel — nada pesado de dia sem
+# config que o diga. Sem `dias_de_lote` o modo e "livre" (ver `modo_da_hora`).
 PADRAO = {
     "ativo": True,
     "janela_pesada": {"inicio": 1, "fim": 6},
@@ -114,50 +133,87 @@ def na_grade(minuto: int, proibida: dict | None) -> bool:
     return int(minuto) >= de or int(minuto) < ate
 
 
-def cabe(agora: datetime, minutos: float, config: dict) -> bool:
+def perto_da_grade(instante: datetime, folga: dict | None):
+    """O horario da grade (datetime) a menos de `folga_da_grade` do instante.
+
+    `None` quando nao ha postagem perto (ou nao ha folga no config). Olha a
+    grade de ontem, hoje e amanha, para as 23:50 enxergarem o 00:37. Os
+    horarios vem de `builds.grade.GRADE`, com o minuto de cada um: 12:07 e
+    17:57 nao sao :37, e a regra velha (":25 a :55") nao os protegia.
+    Intervalo fechado dos dois lados, como em `agenda.postagem_perto`.
+    """
+    if not folga:
+        return None
+    from .. import grade
+
+    antes = timedelta(minutes=int(folga.get("antes", 15)))
+    depois = timedelta(minutes=int(folga.get("depois", 15)))
+    for delta in (-1, 0, 1):
+        dia = (instante + timedelta(days=delta)).date()
+        for hora, minuto in grade.GRADE:
+            post = datetime(dia.year, dia.month, dia.day, hora, minuto)
+            if post - antes <= instante <= post + depois:
+                return post
+    return None
+
+
+def fora_da_grade(instante: datetime, config: dict) -> bool:
+    """Este instante esta livre das postagens? As duas regras, se houver:
+    a velha (`grade_proibida`, minuto :25 a :55 de toda hora) e a do lote
+    (`folga_da_grade`, a meia hora em volta de cada horario)."""
+    if na_grade(instante.minute, config.get("grade_proibida")):
+        return False
+    return perto_da_grade(instante, config.get("folga_da_grade")) is None
+
+
+def cabe(agora: datetime, minutos: float, config: dict,
+         limite: datetime | None = None) -> bool:
     """Um trabalho de `minutos` comecando AGORA termina sem encostar em nada?
 
-    Confere minuto a minuto (o trabalho mais longo e de 8 min): cada instante
-    tem de estar na janela pesada e fora da janela da grade. O ultimo
-    instante conta — terminar as :25 em ponto ja e encostar.
+    Confere minuto a minuto (o trabalho mais longo e de 18 min): cada instante
+    tem de estar na janela pesada, fora da grade e antes do `limite` da
+    rodada (se houver). O ultimo instante conta — terminar em cima da borda
+    ja e encostar.
     """
     janela = config.get("janela_pesada")
-    proibida = config.get("grade_proibida")
     passos = max(1, int(math.ceil(float(minutos))))
     for i in range(passos + 1):
         instante = agora + timedelta(minutes=min(float(minutos), i))
         if not na_janela(instante.hour, janela):
             return False
-        if na_grade(instante.minute, proibida):
+        if not fora_da_grade(instante, config):
+            return False
+        if limite is not None and instante >= limite:
             return False
     return True
 
 
 def quantos_cabem(agora: datetime, minutos: float, config: dict,
-                  maximo: int = 50) -> int:
+                  maximo: int = 50, limite: datetime | None = None) -> int:
     """Quantos trabalhos de `minutos`, um atras do outro, cabem a partir de
     AGORA."""
     n = 0
     while n < maximo and cabe(agora + timedelta(minutes=n * float(minutos)),
-                              minutos, config):
+                              minutos, config, limite):
         n += 1
     return n
 
 
 def fim_da_folga(agora: datetime, config: dict,
-                 horizonte_min: int = 24 * 60) -> datetime:
+                 horizonte_min: int = 24 * 60,
+                 limite: datetime | None = None) -> datetime:
     """O primeiro minuto, a partir de AGORA, em que nada pode estar rodando
-    (janela da grade ou fim da janela pesada). E dele que sai o prazo que o
-    worker recebe: prazo = fim da folga - quanto um job leva."""
+    (postagem perto, fim da janela pesada ou fim da rodada). E dele que sai o
+    prazo que o worker recebe: prazo = fim da folga - quanto um job leva."""
     janela = config.get("janela_pesada")
-    proibida = config.get("grade_proibida")
     base = agora.replace(second=0, microsecond=0)
     for i in range(horizonte_min + 1):
         instante = base + timedelta(minutes=i)
         if instante < agora:
             continue
         if (not na_janela(instante.hour, janela)
-                or na_grade(instante.minute, proibida)):
+                or not fora_da_grade(instante, config)
+                or (limite is not None and instante >= limite)):
             return instante
     return base + timedelta(minutes=horizonte_min)
 
@@ -175,6 +231,259 @@ def minutos_do_job(provedor: str, config: dict) -> float:
         return float(config.get("minutos_por_payoff", 18))
     return float(config.get("minutos_por_imagem",
                             config.get("minutos_por_job_do_worker", 8)))
+
+
+# ------------------------------------------------------------------ o lote
+#
+# DECISOES DO ADRIAN, 30/09/2026 (Grimorio `geral/lote-*`), cada uma uma
+# chave de `config/geracao.json`, nunca um numero no codigo:
+#
+#   janela_pesada          07h-22h: trabalho pesado so de dia
+#   dias_de_lote           seg-ter: as builds da semana saem em lote
+#   alvo_do_lote           o lote cobre ate segunda 07h + o piso
+#   piso_de_reposicao      qua-dom so repoem abaixo de 20 (2 dias); a
+#                          publicacao le o mesmo numero (`postar.piso_de_alerta`)
+#   estoque_zero_libera_a_noite   sem video nenhum, a noite gera: o canal
+#                          nao para, mesmo com barulho
+#   lote_a_partir_de       o 1o lote e seg 05/10; antes disso dia de lote
+#                          se comporta como reposicao
+#   madrugada_na_transicao o esquema antigo (01h-06h) continua ate o de dia
+#                          rodar validado um dia inteiro; apagar desliga
+#   folga_da_grade         nada roda na meia hora em volta de cada horario
+#   rodada_de_dia          quanto uma rodada dura (o disparo seguinte
+#                          continua) e quanto dela fica para o worker
+#   disco_livre_minimo_gb  abaixo disso em `disco_a_vigiar`, nada e gerado
+#
+# As contas de calendario (`fim_da_cobertura`, `postagens_entre`) sao as da
+# agenda das historias, reescritas aqui porque `builds` nao importa `contos`;
+# o `postar.estoque_do_lote` usa as de la, e com os mesmos numeros no config
+# (segunda, 07h) as duas dao o mesmo alvo.
+
+def dias_de_lote(config: dict) -> set:
+    """Os dias da semana do lote (0 = segunda)."""
+    return {int(d) % 7 for d in (config.get("dias_de_lote") or [])}
+
+
+def lote_valendo(config: dict, agora: datetime) -> bool:
+    """Hoje e dia de lote? Antes de `lote_a_partir_de`, nao. Data torta NAO
+    liga o lote: o erro barato e cair na reposicao, que ainda cria abaixo do
+    piso."""
+    desde = config.get("lote_a_partir_de")
+    if desde:
+        try:
+            if agora.date() < datetime.strptime(str(desde),
+                                                "%Y-%m-%d").date():
+                return False
+        except ValueError:
+            return False
+    return agora.weekday() in dias_de_lote(config)
+
+
+def postagens_entre(inicio: datetime, fim: datetime) -> int:
+    """Quantos horarios da grade caem em (inicio, fim]."""
+    from .. import grade
+
+    total, dia = 0, inicio.date()
+    while dia <= fim.date():
+        for hora, minuto in grade.GRADE:
+            momento = datetime(dia.year, dia.month, dia.day, hora, minuto)
+            if inicio < momento <= fim:
+                total += 1
+        dia += timedelta(days=1)
+    return total
+
+
+def fim_da_cobertura(config: dict, agora: datetime) -> datetime:
+    """Ate quando o lote cobre: a PROXIMA segunda 07h (estritamente depois de
+    agora). Na terca e a mesma segunda: se a segunda nao produziu (PC
+    desligado), a terca herda a diferenca sozinha."""
+    alvo = config.get("alvo_do_lote") or {}
+    dia = int(alvo.get("cobrir_ate_o_dia", min(dias_de_lote(config) or {0})))
+    hora = int(alvo.get("cobrir_ate_a_hora",
+                        (config.get("janela_pesada") or {}).get("inicio", 0)))
+    base = agora.replace(hour=hora % 24, minute=0, second=0, microsecond=0)
+    base += timedelta(days=(dia % 7 - agora.weekday()) % 7)
+    if base <= agora:
+        base += timedelta(days=7)
+    return base
+
+
+def piso_de_reposicao(config: dict) -> int:
+    """Abaixo disto a reposicao cria. Sem a chave: `dias_de_gordura` x
+    horarios da grade (os mesmos 2 dias = 20)."""
+    valor = config.get("piso_de_reposicao")
+    if valor is None:
+        from .. import grade
+        return int(max(0.0, float(config.get("dias_de_gordura", 2)))
+                   * len(grade.HORAS))
+    return max(0, int(valor))
+
+
+def alvo_do_lote(config: dict, agora: datetime) -> int:
+    """Videos que o canal precisa ter AGORA num dia de lote: os horarios da
+    grade ate `fim_da_cobertura` mais o piso. Medido com a grade de 10
+    horarios: segunda 07:02 = 70 + 20 = 90; terca 07:02 = 80."""
+    alvo = config.get("alvo_do_lote") or {}
+    total = postagens_entre(agora, fim_da_cobertura(config, agora))
+    if alvo.get("mais_o_piso", True):
+        total += piso_de_reposicao(config)
+    return total
+
+
+def metas_por_formato(meta: int, config_publicacao: dict | None = None
+                      ) -> dict:
+    """A meta do canal dividida pela COTA da grade (a mesma que escolhe):
+    `ceil(meta x peso / soma)`. Com duelo 4, build 3, estreia 1 e meta 90:
+    45, 34 e 12. Formato de cota zero (torneio) nao tem meta."""
+    pesos = cota(config_publicacao)
+    total = sum(pesos.values())
+    if total <= 0 or meta <= 0:
+        return {f: 0 for f in ("duelo", "build", "estreia")}
+    saida = {}
+    for formato in ("duelo", "build", "estreia"):
+        saida[formato] = int(math.ceil(meta * pesos.get(formato, 0) / total
+                                       - 1e-9))
+    return saida
+
+
+def _livre_gb(caminho: str) -> float:
+    import shutil
+    return shutil.disk_usage(caminho).free / (1024 ** 3)
+
+
+def disco_apertado(config: dict) -> str | None:
+    """Texto quando o disco vigiado tem menos que o minimo; senao None.
+    Plano do lote (30/09/2026): o lote nao comeca com menos de 5 GB no C:.
+    Nao conseguir medir nao para nada."""
+    try:
+        minimo = float(config.get("disco_livre_minimo_gb") or 0)
+    except (TypeError, ValueError):
+        return None
+    if minimo <= 0:
+        return None
+    alvo = str(config.get("disco_a_vigiar") or "C:/")
+    try:
+        livre = _livre_gb(alvo)
+    except OSError:
+        return None
+    if livre >= minimo:
+        return None
+    return f"so {livre:.1f} GB livres em {alvo} (minimo {minimo:g} GB)"
+
+
+def modo_da_hora(config: dict, agora: datetime) -> str:
+    """'livre' | 'lote' | 'reposicao' | 'madrugada' | 'noite'.
+
+    `livre` e o config sem `dias_de_lote` (o PADRAO, os testes antigos, a
+    mao): a rodada como era antes do lote — janela, grade e teto de gordura.
+    """
+    if "dias_de_lote" not in config:
+        return "livre"
+    janela = config.get("janela_pesada")
+    if not janela or na_janela(agora.hour, janela):
+        return "lote" if lote_valendo(config, agora) else "reposicao"
+    transicao = config.get("madrugada_na_transicao")
+    if transicao and na_janela(agora.hour, transicao):
+        return "madrugada"
+    return "noite"
+
+
+def _config_de_dia(config: dict) -> dict:
+    """Os maximos por rodada de dia (`rodada_de_dia`) no lugar dos da noite."""
+    dia = config.get("rodada_de_dia") or {}
+    efetivo = dict(config)
+    for chave, destino in (("maximo_de_duelos", "maximo_de_duelos_por_rodada"),
+                           ("maximo_de_builds", "maximo_de_builds_por_rodada")):
+        if dia.get(chave) is not None:
+            efetivo[destino] = int(dia[chave])
+    return efetivo
+
+
+def planejar(config: dict, agora: datetime, *, contagem: dict | None = None,
+             config_publicacao: dict | None = None) -> dict:
+    """O que a rodada faz agora. Nunca gera nada. Roda ANTES da trava.
+
+    Devolve `{modo, fazer, criar, meta, metas, total, por_que, motivo,
+    impedimento, limite_min, config}`. `metas` e a meta de cada formato
+    (`None` = o teto de gordura de sempre); `config` e o EFETIVO que
+    `_trabalhar` recebe; `limite_min` e quanto a rodada dura (`None` = so o
+    relogio da janela e da grade manda).
+
+    livre      config sem `dias_de_lote`: a rodada de antes do lote
+    lote       seg-ter 07h-22h (a partir de `lote_a_partir_de`): ate o alvo
+    reposicao  os outros dias 07h-22h: cria so abaixo do piso
+    madrugada  transicao: o esquema antigo, ate o teto de gordura
+    zero       fora da janela com estoque ZERO: libera tudo, ate o piso
+    noite      fora de tudo com estoque: nada
+    """
+    modo = modo_da_hora(config, agora)
+    minutos = (config.get("rodada_de_dia") or {}).get("minutos")
+    limite_min = float(minutos) if minutos else None
+    if modo == "livre":
+        return {"modo": modo, "fazer": True, "criar": True, "metas": None,
+                "por_que": "config sem lote (o esquema de antes)",
+                "motivo": "", "impedimento": None, "limite_min": None,
+                "config": config}
+    if modo == "madrugada":
+        return {"modo": modo, "fazer": True, "criar": True, "metas": None,
+                "por_que": "madrugada da transicao (o esquema antigo roda ate "
+                           "o de dia ser validado)",
+                "motivo": "", "impedimento": None, "limite_min": limite_min,
+                "config": {**config,
+                           "janela_pesada": config["madrugada_na_transicao"]}}
+
+    if contagem is None:
+        contagem = contar_estoque()
+    total = int(contagem.get("total", 0))
+    piso = piso_de_reposicao(config)
+
+    if modo == "noite":
+        janela = config.get("janela_pesada") or {}
+        if not (config.get("estoque_zero_libera_a_noite", True)
+                and total <= 0):
+            return {"modo": modo, "fazer": False, "criar": False,
+                    "metas": None, "total": total, "motivo": "fora da janela",
+                    "impedimento": None, "limite_min": limite_min,
+                    "por_que": (f"fora da janela do trabalho pesado "
+                                f"({int(janela.get('inicio', 0)):02d}h as "
+                                f"{int(janela.get('fim', 0)):02d}h) e com "
+                                f"{total} video(s) no estoque"),
+                    "config": config}
+        impedido = disco_apertado(config)
+        meta = max(1, piso)
+        return {"modo": "zero", "fazer": not impedido,
+                "criar": not impedido, "meta": meta,
+                "metas": metas_por_formato(meta, config_publicacao),
+                "total": total, "motivo": "impedido" if impedido else "",
+                "impedimento": impedido, "limite_min": limite_min,
+                "por_que": ("ESTOQUE ZERO fora da janela: nenhum video para o "
+                            "proximo horario; libera tudo (decisao de "
+                            "30/09/2026)")
+                           + (f", mas {impedido}" if impedido else ""),
+                "config": {**_config_de_dia(config), "janela_pesada": None}}
+
+    if modo == "lote":
+        meta = alvo_do_lote(config, agora)
+        rotulo = f"lote: {total} video(s) para um alvo de {meta}"
+    else:
+        meta = piso
+        rotulo = f"reposicao: {total} video(s), piso {meta}"
+    criar = total < meta
+    impedido = disco_apertado(config) if criar else None
+    if impedido:
+        criar = False
+    motivos = [rotulo]
+    if impedido:
+        motivos.append(f"NAO gero: {impedido}")
+    elif not criar:
+        motivos.append("so o worker")
+    return {"modo": modo, "fazer": True, "criar": criar, "meta": meta,
+            "metas": (metas_por_formato(meta, config_publicacao) if criar
+                      else {"duelo": 0, "build": 0, "estreia": 0}),
+            "total": total, "motivo": "impedido" if impedido else "",
+            "impedimento": impedido, "limite_min": limite_min,
+            "por_que": "; ".join(motivos),
+            "config": _config_de_dia(config)}
 
 
 # ------------------------------------------------------------------ estoque
@@ -222,6 +531,57 @@ def teto_de_builds(config: dict, config_publicacao: dict | None = None,
                    horarios: int | None = None) -> int:
     dias = max(0.0, float(config.get("dias_de_gordura", 0)))
     return int(math.ceil(dias * builds_por_dia(config_publicacao, horarios)))
+
+
+# O `ferramentas/postar.py`, carregado pelo caminho como a agenda das
+# historias o carrega (`contos.pipeline.agenda._postar`): `builds` nao importa
+# `ferramentas`, e o numero que decide gerar tem de ser o da publicacao.
+POSTAR = RAIZ.parent / "ferramentas" / "postar.py"
+_POSTAR_CARREGADO = None
+
+
+def _postar():
+    global _POSTAR_CARREGADO
+    if _POSTAR_CARREGADO is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_postar_da_geracao",
+                                                      POSTAR)
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        _POSTAR_CARREGADO = modulo
+    return _POSTAR_CARREGADO
+
+
+def contar_estoque() -> dict:
+    """`{"total", "duelo", "build", "estreia", "torneio", "fonte"}`: o que a
+    PUBLICACAO tem para os proximos horarios.
+
+    UMA CONTAGEM SO (30/09/2026). `postar.pendentes_por_canal()["builds"]` e
+    `len(postar._builds_prontos())` — o funil da escolha (nao publicado em
+    nenhum destino, celular, sem pendencia, titulo livre, som). Aqui a MESMA
+    lista, agrupada por formato numa passada so (medir o som custa 0,3-0,65 s
+    por video). O `--ver`, o alerta de piso e o `estoque_do_lote` usam esse
+    numero; decidir gerar por outro seria o erro das historias em 30/09
+    (a agenda contou 27 "aprovados", a publicacao tinha 8).
+
+    Nao deu para carregar a publicacao: cai no funil daqui
+    (`estoque_do_formato`, sem a medida de som), e `fonte` diz isso.
+    """
+    try:
+        prontos = list(_postar()._builds_prontos())
+        fonte = "publicacao"
+    except Exception as exc:                                   # noqa: BLE001
+        from ..publicar import catalogo
+        prontos = []
+        for origem in (catalogo.DUELO, catalogo.BUILD, "estreia", "torneio"):
+            prontos.extend(estoque_do_formato(origem))
+        fonte = f"geracao (publicacao ilegivel: {type(exc).__name__})"
+    saida = {"total": len(prontos), "duelo": 0, "build": 0, "estreia": 0,
+             "torneio": 0, "fonte": fonte}
+    for video in prontos:
+        origem = str(getattr(video, "origem", "") or "")
+        saida[origem] = saida.get(origem, 0) + 1
+    return saida
 
 
 def estoque_de_duelos(videos=None, publicados=None) -> list:
@@ -448,7 +808,7 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
           relogio=None, gerar_duelo=None, drenar_worker=None,
           jobs=None, estoque=None, proximo=None, tela=None,
           builds: int | None = None, gerar_build=None,
-          estoque_builds=None) -> dict:
+          estoque_builds=None, contagem=None) -> dict:
     """Uma rodada. Devolve o que aconteceu; nunca levanta por conta da tarefa.
 
     `ensaio`: faz TODAS as conferencias e diz o que faria, sem gerar nada e
@@ -456,10 +816,13 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
     ponta (tarefa -> .cmd -> python -> trava -> diario) antes de registrar.
 
     `duelos`: quantos gerar, ignorando o teto (a rodada manual). O relogio
-    continua mandando: o que nao couber antes de :25 fica para a proxima.
+    continua mandando: o que nao couber antes da proxima postagem fica para
+    a proxima.
 
-    Os parametros `relogio`, `gerar_duelo`, `drenar_worker`, `jobs` e
-    `estoque` existem para os testes trocarem o mundo por dubles.
+    Os parametros `relogio`, `gerar_duelo`, `drenar_worker`, `jobs`,
+    `estoque`, `estoque_builds` e `contagem` (o estoque da publicacao por
+    formato, ver `contar_estoque`) existem para os testes trocarem o mundo
+    por dubles.
     """
     from .. import travas
     from ..identity import controle
@@ -477,7 +840,8 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
                        gerar_duelo=gerar_duelo, drenar_worker=drenar_worker,
                        jobs=jobs, estoque=estoque, proximo=proximo,
                        travas=travas, controle=controle, builds=builds,
-                       gerar_build=gerar_build, estoque_builds=estoque_builds)
+                       gerar_build=gerar_build, estoque_builds=estoque_builds,
+                       contagem=contagem)
     finally:
         try:
             sys.stdout.flush()
@@ -486,9 +850,26 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
         sys.stdout, sys.stderr = anterior_out, anterior_err
 
 
+def _contagem_para_o_plano(contagem, estoque, estoque_builds):
+    """O estoque que `planejar` recebe. Duble de teste vale; senao a
+    publicacao (`contar_estoque`)."""
+    if callable(contagem):
+        return contagem()
+    if contagem is not None:
+        return dict(contagem)
+    if estoque is not None or estoque_builds is not None:
+        # Testes antigos so dublavam as listas por formato.
+        duelos = len(estoque()) if estoque else 0
+        roletas = len(estoque_builds()) if estoque_builds else 0
+        return {"total": duelos + roletas, "duelo": duelos, "build": roletas,
+                "estreia": 0, "fonte": "duble"}
+    return None
+
+
 def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
             drenar_worker, jobs, estoque, proximo, travas, controle,
-            builds=None, gerar_build=None, estoque_builds=None) -> dict:
+            builds=None, gerar_build=None, estoque_builds=None,
+            contagem=None) -> dict:
     agora = relogio()
     rotulo = " (ENSAIO: nada e gerado)" if ensaio else ""
     print(f"[noite] disparo das {agora:%H:%M}{rotulo}")
@@ -500,27 +881,78 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
         print("[noite] a pipeline esta PAUSADA (pagina Vila). Saindo.")
         return {"feito": "nada", "motivo": "pausado"}
 
-    janela = config.get("janela_pesada")
-    if not na_janela(agora.hour, janela):
-        texto = (f"[noite] fora da janela do trabalho pesado "
-                 f"({int(janela['inicio']):02d}h as {int(janela['fim']):02d}h).")
+    # ---- o plano, ANTES da trava (o mesmo desenho da agenda das historias)
+    modo = modo_da_hora(config, agora)
+    contado = _contagem_para_o_plano(contagem, estoque, estoque_builds)
+    if contado is None:
+        try:
+            contado = contar_estoque()
+            print(f"[noite] estoque da publicacao: {contado['total']} "
+                  f"video(s) ({contado['duelo']} duelo(s), "
+                  f"{contado['build']} build(s), {contado['estreia']} "
+                  f"estreia(s); fonte: {contado['fonte']}).")
+        except Exception as exc:                               # noqa: BLE001
+            print(f"[noite] nao deu para contar o estoque: "
+                  f"{type(exc).__name__}: {exc}")
+    try:
+        plano = planejar(config, agora, contagem=contado)
+    except Exception as exc:                                   # noqa: BLE001
+        # Nao saber contar NAO libera a noite nem para o dia: cai no esquema
+        # de antes do lote, que tem teto proprio.
+        print(f"[noite] o plano falhou ({type(exc).__name__}: {exc}); "
+              f"sigo pelo teto de gordura.")
+        plano = {"modo": modo, "fazer": modo != "noite", "criar": True,
+                 "metas": None, "motivo": "fora da janela",
+                 "por_que": "plano ilegivel", "impedimento": None,
+                 "limite_min": None, "config": config}
+    modo = plano["modo"]
+    efetivo = plano["config"]
+    if modo != "livre":
+        print(f"[noite] modo {modo}: {plano['por_que']}.")
+
+    if modo == "livre":
+        janela = config.get("janela_pesada")
+        if not na_janela(agora.hour, janela):
+            texto = (f"[noite] fora da janela do trabalho pesado "
+                     f"({int(janela['inicio']):02d}h as "
+                     f"{int(janela['fim']):02d}h).")
+            if not ensaio:
+                print(texto + " Saindo.")
+                return {"feito": "nada", "motivo": "fora da janela",
+                        "modo": modo}
+            print(texto + " Numa rodada real eu sairia aqui; o ensaio segue.")
+    elif not plano["fazer"]:
         if not ensaio:
-            print(texto + " Saindo.")
-            return {"feito": "nada", "motivo": "fora da janela"}
-        print(texto + " Numa rodada real eu sairia aqui; o ensaio segue.")
+            print("[noite] nada a fazer agora. Saindo.")
+            return {"feito": "nada", "motivo": plano.get("motivo") or "nada",
+                    "modo": modo, "plano": plano}
+        print("[noite] numa rodada real eu sairia aqui; o ensaio segue com a "
+              "regra do dia.")
+        efetivo = _config_de_dia(config)
+
+    limite = None
+    if plano.get("limite_min") and duelos is None and builds is None:
+        limite = agora + timedelta(minutes=float(plano["limite_min"]))
 
     with travas.trava(TRAVA, esperar=0.0) as minha:
         if not minha:
             print("[noite] ja tem uma rodada de geracao em andamento. Saindo.")
-            return {"feito": "nada", "motivo": "ja rodando"}
+            return {"feito": "nada", "motivo": "ja rodando", "modo": modo}
         comeco = time.monotonic()
-        resultado = _trabalhar(config=config, ensaio=ensaio, duelos=duelos,
+        resultado = _trabalhar(config=efetivo, ensaio=ensaio, duelos=duelos,
                                sem_worker=sem_worker, relogio=relogio,
                                gerar_duelo=gerar_duelo,
                                drenar_worker=drenar_worker, jobs=jobs,
                                estoque=estoque, proximo=proximo,
                                builds=builds, gerar_build=gerar_build,
-                               estoque_builds=estoque_builds)
+                               estoque_builds=estoque_builds,
+                               metas=plano.get("metas"), contagem=contado,
+                               limite=limite)
+        resultado["modo"] = modo
+        resultado["plano"] = plano
+        if (plano.get("impedimento") and not resultado.get("duelos")
+                and not resultado.get("builds")):
+            resultado["motivo"] = "impedido"
         gasto = time.monotonic() - comeco
         resultado["segundos"] = round(gasto, 1)
         feitos = resultado.get("duelos") or []
@@ -532,11 +964,11 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
               f"{gasto / 60:.1f} min.")
         if not ensaio:
             if resultado.get("erros"):
-                _registrar("erro", "geracao noturna: "
+                _registrar("erro", f"geracao ({modo}): "
                            + "; ".join(resultado["erros"])[:280],
                            etapa="noite")
             if feitos or roletas or resultado.get("jobs_do_worker"):
-                _registrar("ok", f"geracao noturna: {len(feitos)} duelo(s), "
+                _registrar("ok", f"geracao ({modo}): {len(feitos)} duelo(s), "
                            f"{len(roletas)} build(s) "
                            f"({', '.join(feitos + roletas)})"[:300],
                            etapa="noite", dur_s=gasto)
@@ -544,17 +976,22 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
 
 
 def planos(config: dict, *, duelos=None, builds=None, estoque=None,
-           estoque_builds=None) -> list[dict]:
+           estoque_builds=None, metas=None, contagem=None) -> list[dict]:
     """O que gerar nesta rodada, e em que ordem: a NECESSIDADE manda.
 
     Decisao do Adrian em 28/09/2026: a roleta entra na geracao automatica
     junto com o duelo, e quem tem MENOS DIAS de estoque vai primeiro — o
-    tempo da rodada (ate :25) nao da para os dois quando os dois estao
-    baixos, e o formato que acaba antes e o que deixa horario vazio.
+    tempo da rodada nao da para os dois quando os dois estao baixos, e o
+    formato que acaba antes e o que deixa horario vazio.
 
     Dias = estoque / horarios que a cota da ao formato por dia. Estoque de
     build conta tambem as builds em preparo (o worker ainda termina).
     Empate: duelo primeiro (mais barato, e o que o dado mais quer).
+
+    `metas` (do `planejar`): a meta de cada formato no lote, na reposicao e
+    no estoque zero; sem ela, o teto de gordura de sempre. A roleta tambem
+    atende a meta da ESTREIA — ela so nasce dentro do `generate-video`.
+    `contagem`: o estoque da publicacao por formato (`contar_estoque`).
 
     Pedido manual (`--duelos`/`--builds`): so o que foi pedido, ignorando o
     teto; formato nao pedido fica de fora.
@@ -562,26 +999,43 @@ def planos(config: dict, *, duelos=None, builds=None, estoque=None,
     manual = duelos is not None or builds is not None
     saida = []
 
-    na_fila = len(estoque() if estoque else estoque_de_duelos())
+    if estoque:
+        na_fila = len(estoque())
+    elif contagem is not None:
+        na_fila = int(contagem.get("duelo", 0))
+    else:
+        na_fila = len(estoque_de_duelos())
     saida.append({
         "formato": "duelo", "na_fila": na_fila,
-        "teto": teto_de_duelos(config), "por_dia": duelos_por_dia(),
+        "teto": (int(metas.get("duelo", 0)) if metas is not None
+                 else teto_de_duelos(config)),
+        "por_dia": duelos_por_dia(),
         "pedido": duelos, "maximo": int(config.get(
             "maximo_de_duelos_por_rodada", 6)),
         "minutos": float(config.get("minutos_por_duelo", 5)),
         "ligado": True})
 
+    preparo = 0
     if estoque_builds:
         na_fila_b = len(estoque_builds())
     else:
-        na_fila_b = len(estoque_de_builds()) + len(builds_em_preparo())
-    saida.append({
+        preparo = len(builds_em_preparo())
+        base = (int(contagem.get("build", 0)) if contagem is not None
+                else len(estoque_de_builds()))
+        na_fila_b = base + preparo
+    plano_b = {
         "formato": "build", "na_fila": na_fila_b,
-        "teto": teto_de_builds(config), "por_dia": builds_por_dia(),
+        "teto": (int(metas.get("build", 0)) if metas is not None
+                 else teto_de_builds(config)),
+        "por_dia": builds_por_dia(),
         "pedido": builds, "maximo": int(config.get(
             "maximo_de_builds_por_rodada", 1)),
         "minutos": float(config.get("minutos_por_build", 15)),
-        "ligado": bool(config.get("builds", True))})
+        "ligado": bool(config.get("builds", True))}
+    if metas is not None and contagem is not None and metas.get("estreia"):
+        plano_b["estreias"] = int(contagem.get("estreia", 0)) + preparo
+        plano_b["meta_estreia"] = int(metas["estreia"])
+    saida.append(plano_b)
 
     for plano in saida:
         if manual:
@@ -589,8 +1043,10 @@ def planos(config: dict, *, duelos=None, builds=None, estoque=None,
         elif not plano["ligado"]:
             plano["alvo"] = 0
         else:
-            plano["alvo"] = min(max(0, plano["teto"] - plano["na_fila"]),
-                                plano["maximo"])
+            falta = plano["teto"] - plano["na_fila"]
+            if "meta_estreia" in plano:
+                falta = max(falta, plano["meta_estreia"] - plano["estreias"])
+            plano["alvo"] = min(max(0, falta), plano["maximo"])
         plano["dias"] = (plano["na_fila"] / plano["por_dia"]
                          if plano["por_dia"] > 0 else float("inf"))
     ordem = {"duelo": 0, "build": 1}
@@ -598,25 +1054,60 @@ def planos(config: dict, *, duelos=None, builds=None, estoque=None,
     return saida
 
 
+def _limite_da_geracao(config, limite, pendentes_no_comeco: bool,
+                       sem_worker: bool):
+    """Ate quando a GERACAO pode comecar passo: o fim da rodada menos a
+    reserva do worker (`rodada_de_dia.reserva_do_worker`), so quando ha job
+    esperando — sem job, a rodada inteira e da geracao."""
+    if limite is None:
+        return None
+    reserva = float((config.get("rodada_de_dia") or {})
+                    .get("reserva_do_worker") or 0)
+    if (reserva <= 0 or sem_worker or not config.get("worker", True)
+            or not pendentes_no_comeco):
+        return limite
+    return limite - timedelta(minutes=reserva)
+
+
 def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
                drenar_worker, jobs, estoque, proximo=None, builds=None,
-               gerar_build=None, estoque_builds=None) -> dict:
+               gerar_build=None, estoque_builds=None, metas=None,
+               contagem=None, limite=None) -> dict:
     erros: list[str] = []
     feitos: list[str] = []
     roletas: list[str] = []
     parou = ""
+    listar_jobs = jobs or jobs_do_worker
 
-    # ---- 1. duelos e builds ate o teto, quem tem menos dias primeiro
+    # ---- 1. duelos e builds ate a meta, quem tem menos dias primeiro
     fila_de_planos = planos(config, duelos=duelos, builds=builds,
-                            estoque=estoque, estoque_builds=estoque_builds)
+                            estoque=estoque, estoque_builds=estoque_builds,
+                            metas=metas, contagem=contagem)
     for plano in fila_de_planos:
         rotulo = "duelos" if plano["formato"] == "duelo" else "builds"
         origem = ("pedido manual" if plano["pedido"] is not None
                   else "desligado no config" if not plano["ligado"]
+                  else f"meta {plano['teto']}" if metas is not None
                   else f"teto {plano['teto']}")
+        extra = ""
+        if "meta_estreia" in plano:
+            extra = (f"; estreias {plano['estreias']}, meta "
+                     f"{plano['meta_estreia']}")
         print(f"[noite] {rotulo} no estoque que a grade escolheria: "
-              f"{plano['na_fila']} ({plano['dias']:.1f} dia(s); {origem}). "
-              f"Vou gerar {plano['alvo']}.")
+              f"{plano['na_fila']} ({plano['dias']:.1f} dia(s); {origem}"
+              f"{extra}). Vou gerar {plano['alvo']}.")
+
+    pendentes_no_comeco = False
+    if limite is not None and any(p["alvo"] for p in fila_de_planos):
+        try:
+            pendentes_no_comeco = bool(listar_jobs())
+        except Exception:                                      # noqa: BLE001
+            pendentes_no_comeco = False
+    limite_geracao = _limite_da_geracao(config, limite, pendentes_no_comeco,
+                                        sem_worker)
+    if limite is not None:
+        print(f"[noite] rodada ate {limite:%H:%M}; passo novo de geracao so "
+              f"se termina ate {limite_geracao:%H:%M}.")
 
     geradores = {
         "duelo": gerar_duelo or (_duelo_ensaiado() if ensaio
@@ -629,11 +1120,11 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
         destino = feitos if formato == "duelo" else roletas
         falhas = 0
         for _ in range(plano["alvo"]):
-            if not cabe(relogio(), minutos, config):
+            if not cabe(relogio(), minutos, config, limite_geracao):
                 parou = "janela"
                 print(f"[noite] outro {formato} ({minutos:.0f} min) nao cabe "
-                      f"antes de :{int(config['grade_proibida']['de']):02d} ou "
-                      f"do fim da janela. Fica para a proxima rodada.")
+                      f"antes da proxima postagem, do fim da janela ou do "
+                      f"fim da rodada. Fica para a proxima.")
                 if not ensaio:
                     break
             try:
@@ -654,7 +1145,6 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
     # ---- 2. worker de identidade (capa e payoff das builds)
     feitos_worker = 0
     if config.get("worker", True) and not sem_worker:
-        listar_jobs = jobs or jobs_do_worker
         try:
             pendentes = listar_jobs()
         except Exception as exc:                               # noqa: BLE001
@@ -691,13 +1181,14 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
                 break
             minutos_job = minutos_do_job(provedor, config)
             agora = relogio()
-            if not cabe(agora, minutos_job, config):
+            if not cabe(agora, minutos_job, config, limite):
                 print(f"[noite] worker: um job de {provedor} "
-                      f"({minutos_job:.0f} min) nao cabe antes da janela da "
-                      f"grade. Fica para a proxima.")
+                      f"({minutos_job:.0f} min) nao cabe antes da proxima "
+                      f"postagem ou do fim da rodada. Fica para a proxima.")
                 parou = parou or "janela"
                 break
-            prazo = fim_da_folga(agora, config) - timedelta(minutes=minutos_job)
+            prazo = (fim_da_folga(agora, config, limite=limite)
+                     - timedelta(minutes=minutos_job))
             print(f"[noite] worker: {provedor}, jobs novos ate "
                   f"{prazo:%H:%M} ({minutos_job:.0f} min cada).")
             try:
@@ -806,7 +1297,12 @@ def codigo_de_saida(resultado: dict) -> int:
     return 1 if resultado.get("erros") else 0
 
 
-__all__ = ["CONFIG", "TRAVA", "builds_em_preparo", "builds_por_dia", "cabe",
+__all__ = ["CONFIG", "TRAVA", "alvo_do_lote", "contar_estoque",
+           "disco_apertado", "fim_da_cobertura", "fora_da_grade",
+           "lote_valendo", "metas_por_formato", "modo_da_hora",
+           "perto_da_grade", "piso_de_reposicao", "planejar",
+           "postagens_entre",
+           "builds_em_preparo", "builds_por_dia", "cabe",
            "carregar", "codigo_de_saida", "diario_do_dia", "duelos_por_dia",
            "estoque_de_builds", "estoque_de_duelos", "estoque_do_formato",
            "planos", "por_dia", "teto_de_builds",

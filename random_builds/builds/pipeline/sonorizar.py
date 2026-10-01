@@ -104,14 +104,20 @@ def _gravar(caminho: Path, dados: dict, *, manter_data: bool = False) -> None:
 
 # ------------------------------------------------------------------ relogio
 def cabe_agora(minutos: float, agora: datetime | None = None) -> bool:
-    """Um trabalho de `minutos` comecando agora termina antes de :25?"""
+    """Um trabalho de `minutos` comecando agora termina longe das postagens?
+
+    A regra e a da geracao (`noite.fora_da_grade`): desde 30/09/2026 a meia
+    hora em volta de cada horario da grade (`folga_da_grade`), e nao mais
+    ":25 a :55 de toda hora". Janela pesada nao entra: o re-render e manual.
+    """
     from . import noite
-    proibida = noite.carregar().get("grade_proibida")
+    config = noite.carregar()
     agora = agora or datetime.now()
     passos = max(1, int(minutos) + 1)
     for i in range(passos + 1):
-        instante = agora.timestamp() + 60 * min(float(minutos), i)
-        if noite.na_grade(datetime.fromtimestamp(instante).minute, proibida):
+        instante = datetime.fromtimestamp(
+            agora.timestamp() + 60 * min(float(minutos), i))
+        if not noite.fora_da_grade(instante, config):
             return False
     return True
 

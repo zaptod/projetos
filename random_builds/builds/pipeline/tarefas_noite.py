@@ -33,8 +33,21 @@ PREFIXO = "NeuralFights_gerar"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def nome_da_tarefa(hora: int) -> str:
-    return f"{PREFIXO}_{int(hora):02d}"
+def hora_e_minuto(horario, minuto: int = 2) -> tuple[int, int]:
+    """`5` -> (5, minuto); `"12:32"` -> (12, 32).
+
+    Desde o lote de dia (30/09/2026) as `horas` do `geracao.json` misturam as
+    duas formas: 12:02 e 18:02 caem na folga das postagens de 12:07 e 17:57 e
+    viram 12:32 e 18:22, como na agenda das historias.
+    """
+    if isinstance(horario, str) and ":" in horario:
+        hora, _, mm = horario.partition(":")
+        return int(hora) % 24, int(mm) % 60
+    return int(horario) % 24, int(minuto) % 60
+
+
+def nome_da_tarefa(hora) -> str:
+    return f"{PREFIXO}_{hora_e_minuto(hora)[0]:02d}"
 
 
 def caminho_do_lancador() -> Path:
@@ -94,14 +107,15 @@ def instalar(horas: list, minuto: int = 2) -> list[dict]:
     """Cria (ou substitui) uma tarefa diaria por hora. Devolve o que deu."""
     lancador = escrever_lancador()
     saida = []
-    for hora in horas:
+    for horario in horas:
+        hora, mm = hora_e_minuto(horario, minuto)
         nome = nome_da_tarefa(hora)
         proc = _schtasks(["/Create", "/TN", nome,
                           "/TR", tarefas_windows.acao_oculta(lancador),
                           "/SC", "DAILY",
-                          "/ST", f"{int(hora):02d}:{int(minuto):02d}",
+                          "/ST", f"{hora:02d}:{mm:02d}",
                           "/RL", "LIMITED", "/F"])
-        ficha = {"hora": int(hora), "minuto": int(minuto), "tarefa": nome,
+        ficha = {"hora": hora, "minuto": mm, "tarefa": nome,
                  "ok": proc.returncode == 0,
                  "mensagem": (proc.stdout or proc.stderr or "").strip()}
         if ficha["ok"]:
@@ -124,7 +138,8 @@ def remover(horas: list | None = None) -> list[dict]:
         nome = nome_da_tarefa(hora)
         proc = _schtasks(["/Delete", "/TN", nome, "/F"])
         if proc.returncode == 0:
-            saida.append({"hora": int(hora), "tarefa": nome, "removida": True})
+            saida.append({"hora": hora_e_minuto(hora)[0], "tarefa": nome,
+                          "removida": True})
     return saida
 
 
@@ -147,6 +162,6 @@ def listar() -> list[dict]:
     return sorted(achadas, key=lambda t: t["tarefa"])
 
 
-__all__ = ["PREFIXO", "caminho_do_lancador", "caminho_da_saida",
+__all__ = ["PREFIXO", "caminho_do_lancador", "caminho_da_saida", "hora_e_minuto",
            "conteudo_do_lancador", "escrever_lancador", "instalar", "listar",
            "nome_da_tarefa", "remover"]

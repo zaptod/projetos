@@ -193,18 +193,27 @@ def _noite(args) -> int:
         for tarefa in tarefas:
             print(f"  {tarefa['tarefa']:24s} proximo: {tarefa['proximo']:22s} "
                   f"{tarefa['situacao']}")
+        # O NUMERO QUE DECIDE e o da publicacao (`contar_estoque`), o mesmo
+        # do `postar.py --ver`; as listas abaixo sao so para ler os titulos.
+        contagem = noite.contar_estoque()
+        print(f"estoque da publicacao: {contagem['total']} video(s) = "
+              f"{contagem['duelo']} duelo(s), {contagem['build']} build(s), "
+              f"{contagem['estreia']} estreia(s) (fonte: {contagem['fonte']})")
+        from datetime import datetime
+        agora = datetime.now()
+        plano = noite.planejar(config, agora, contagem=contagem)
+        print(f"agora ({agora:%a %H:%M}): modo {plano['modo']} - "
+              f"{plano['por_que']}"
+              + (f"; metas {plano['metas']}" if plano.get("metas") else ""))
         fila = noite.estoque_de_duelos()
-        teto = noite.teto_de_duelos(config)
-        print(f"duelos que a grade escolheria: {len(fila)} (teto {teto}, "
-              f"{noite.duelos_por_dia():.1f} por dia)")
+        print(f"duelos (titulos): {len(fila)} ({noite.duelos_por_dia():.1f} "
+              f"por dia; teto da madrugada {noite.teto_de_duelos(config)})")
         for video in fila:
             print(f"  {video.id}  {video.titulo}")
-        roletas = noite.estoque_de_builds()
         preparo = noite.builds_em_preparo()
-        print(f"builds que a grade escolheria: {len(roletas)} + {len(preparo)} "
-              f"em preparo (teto {noite.teto_de_builds(config)}, "
-              f"{noite.builds_por_dia():.2f} por dia)"
-              + (f"; em preparo: {', '.join(preparo)}" if preparo else ""))
+        print(f"builds em preparo: {len(preparo)} ({noite.builds_por_dia():.2f} "
+              f"por dia; teto da madrugada {noite.teto_de_builds(config)})"
+              + (f": {', '.join(preparo)}" if preparo else ""))
         print(f"diario de hoje: {noite.diario_do_dia()}")
         return 0
     resultado = noite.rodar(ensaio=args.ensaio, duelos=args.duelos,
@@ -335,8 +344,10 @@ def main() -> None:
 
     noi = sub.add_parser(
         "noite",
-        help="geracao noturna: duelos ate o teto de gordura e o worker de "
-             "identidade (e o que as tarefas NeuralFights_gerar_HH chamam)")
+        help="geracao do canal de builds (lote de dia seg-ter, reposicao "
+             "abaixo do piso, estoque zero a noite): duelos, roleta e o "
+             "worker de identidade (e o que as tarefas NeuralFights_gerar_HH "
+             "chamam)")
     noi.add_argument("--ensaio", action="store_true",
                      help="confere tudo e diz o que faria, sem gerar nada "
                           "(duble do teste de ponta a ponta)")
@@ -354,7 +365,8 @@ def main() -> None:
     noi.add_argument("--remover", action="store_true",
                      help="remove as tarefas NeuralFights_gerar_HH")
     noi.add_argument("--listar", action="store_true",
-                     help="mostra as tarefas e o estoque de duelos")
+                     help="mostra as tarefas, o estoque da publicacao e o que "
+                          "a rodada faria agora")
 
     are = sub.add_parser("arena", help="carreira dos personagens entre videos")
     asub = are.add_subparsers(dest="arena_command", required=True)

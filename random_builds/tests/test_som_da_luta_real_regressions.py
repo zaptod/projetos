@@ -397,11 +397,18 @@ class SonorizarTests(unittest.TestCase):
 
 
 class RelogioEEstoqueTests(unittest.TestCase):
-    def test_nada_comeca_se_encosta_em_25(self):
-        self.assertTrue(sonorizar.cabe_agora(10, datetime(2026, 9, 28, 3, 0)))
-        self.assertFalse(sonorizar.cabe_agora(10, datetime(2026, 9, 28, 3, 20)))
-        self.assertFalse(sonorizar.cabe_agora(2, datetime(2026, 9, 28, 3, 30)))
-        self.assertTrue(sonorizar.cabe_agora(4, datetime(2026, 9, 28, 3, 56)))
+    def test_nada_comeca_se_encosta_na_folga_da_postagem(self):
+        # Desde 30/09/2026 a regra e a meia hora em volta de cada horario da
+        # grade (config real), e nao ":25 a :55 de toda hora": sem post
+        # perto, 03:20 pode; o post das 09:37 fecha 09:22 a 09:52.
+        self.assertTrue(sonorizar.cabe_agora(10, datetime(2026, 9, 28, 3, 20)))
+        self.assertTrue(sonorizar.cabe_agora(10, datetime(2026, 9, 28, 9, 0)))
+        self.assertFalse(sonorizar.cabe_agora(10, datetime(2026, 9, 28, 9, 15)))
+        self.assertFalse(sonorizar.cabe_agora(2, datetime(2026, 9, 28, 9, 40)))
+        self.assertTrue(sonorizar.cabe_agora(4, datetime(2026, 9, 28, 9, 53)))
+        # 12:07 e 17:57 nao sao :37 — a regra velha nao os via.
+        self.assertFalse(sonorizar.cabe_agora(5, datetime(2026, 9, 28, 12, 0)))
+        self.assertFalse(sonorizar.cabe_agora(5, datetime(2026, 9, 28, 18, 5)))
 
     def test_alvos(self):
         raiz = Path("out")

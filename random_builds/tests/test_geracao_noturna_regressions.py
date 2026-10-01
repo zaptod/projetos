@@ -851,13 +851,21 @@ class Lancador(unittest.TestCase):
                         .startswith("wscript"))
         self.assertEqual(2, endurecer.call_count)
 
-    def test_as_horas_do_config_ficam_na_madrugada_e_fora_da_grade(self):
+    def test_as_horas_do_config_comecam_fora_da_folga_da_grade(self):
+        # Lote de dia (30/09/2026): cada disparo cai na janela de dia, na
+        # madrugada da transicao ou na noite do estoque zero, e um duelo
+        # comecado nele termina antes da folga da proxima postagem.
         config = noite.carregar()
-        for hora in config["horas"]:
-            self.assertTrue(noite.na_janela(hora, config["janela_pesada"]),
-                            hora)
-        self.assertFalse(noite.na_grade(config["minuto"],
-                                        config["grade_proibida"]))
+        dia = datetime(2026, 10, 1)                       # uma quinta
+        for horario in config["horas"]:
+            hora, minuto = tarefas_noite.hora_e_minuto(horario,
+                                                       config["minuto"])
+            inicio = dia.replace(hour=hora, minute=minuto)
+            self.assertTrue(noite.cabe(inicio, config["minutos_por_duelo"],
+                                       {**config, "janela_pesada": None}),
+                            horario)
+        nomes = [tarefas_noite.nome_da_tarefa(h) for h in config["horas"]]
+        self.assertEqual(len(nomes), len(set(nomes)))
 
 
 class SaidaDoMain(unittest.TestCase):
