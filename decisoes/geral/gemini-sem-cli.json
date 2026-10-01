@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "01/10 15:1x: login feito, mas o Gemini CLI responde 'This client is no longer supported for Gemini Code Assist for individuals — migrate to Antigravity'. O Codex funcionou na hora (respondeu OK). O Gemini no navegador (revisão de vídeo) continua funcionando como hoje.",
+  "criado": "2026-10-01T15:14:02.547245",
+  "depende_de": [],
+  "historico": [],
+  "id": "gemini-sem-cli",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Como hoje: revisão de vídeo e roteiro pelo perfil gemini__principal; o Codex faz o trabalho de linha de comando",
+      "id": "navegador",
+      "pede_comentario": false,
+      "rotulo": "Seguir com o Gemini no navegador (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Funciona no CLI, mas é cobrança/limite da API, separado da assinatura AI Pro",
+      "id": "api",
+      "pede_comentario": false,
+      "rotulo": "Chave de API do Google AI Studio"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "A suíte nova do Google; ainda não sei se tem modo sem janela para o orquestrador usar",
+      "id": "antigravity",
+      "pede_comentario": false,
+      "rotulo": "Investigar o Antigravity"
+    }
+  ],
+  "pergunta": "O Gemini CLI recusou o login do AI Pro. Como usamos o Gemini fora do navegador?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Gemini: o CLI não aceita a conta pessoal",
+  "vigente": null
+}

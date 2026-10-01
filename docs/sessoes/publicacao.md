@@ -38,6 +38,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Codex: commita ou só propõe** — Só propõe o diff (recomendado) (01/10/2026) `codex-commita`
 - ✅ **Gemini CLI também, ou só o Codex?** — Os dois (recomendado) (01/10/2026) `gemini-cli-tambem`
 - ✅ **Codex e Gemini: teto de uso** — 50% da janela de 5 h de cada (recomendado) (01/10/2026) `teto-dos-delegados`
+- ⏳ **Gemini: o CLI não aceita a conta pessoal** — O Gemini CLI recusou o login do AI Pro. Como usamos o Gemini fora do navegador? `gemini-sem-cli`
 
 **Publicação**
 - ✅ **As 3 partes só no TikTok (00022:p03, 00027:p01, 00032:p04)** — Subir no YouTube (28/09/2026) `partes-so-no-tiktok`
