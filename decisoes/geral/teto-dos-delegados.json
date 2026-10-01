@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-01T14:31:27",
+      "opcao": "metade",
+      "origem": "app"
+    }
+  ],
   "id": "teto-dos-delegados",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "Até quanto da cota de cada um eu posso usar?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Codex e Gemini: teto de uso",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-01T14:31:27",
+    "opcao": "metade"
+  }
 }

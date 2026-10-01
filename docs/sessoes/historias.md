@@ -37,7 +37,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Codex e Gemini: quem confere o trabalho** — Validador + agente barato (recomendado) (01/10/2026) `quem-confere-delegado`
 - ✅ **Codex: commita ou só propõe** — Só propõe o diff (recomendado) (01/10/2026) `codex-commita`
 - ✅ **Gemini CLI também, ou só o Codex?** — Os dois (recomendado) (01/10/2026) `gemini-cli-tambem`
-- ⏳ **Codex e Gemini: teto de uso** — Até quanto da cota de cada um eu posso usar? `teto-dos-delegados`
+- ✅ **Codex e Gemini: teto de uso** — 50% da janela de 5 h de cada (recomendado) (01/10/2026) `teto-dos-delegados`
 
 **Histórias**
 - ✅ **Vídeo reprovado ou não assistido** — Fica retido; só sai se o horário fosse ficar vazio (27/09/2026) `reprovado-ou-nao-assistido`
