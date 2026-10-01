@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-01T14:31:09",
+      "opcao": "so-diff",
+      "origem": "app"
+    }
+  ],
   "id": "codex-commita",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "O Codex pode commitar ou só entregar o diff?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Codex: commita ou só propõe",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-01T14:31:09",
+    "opcao": "so-diff"
+  }
 }
