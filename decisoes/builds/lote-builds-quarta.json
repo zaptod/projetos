@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Medido: 34 builds + 45 duelos ≈ 12 h de geração fora o worker pela régua do config (duelo 5 min, build 15) = ~1,4 dia da janela útil (15 disparos de 55 min, 20 min de cada um para o worker). Nos logs de 29/09–01/10 o real foi menor: build+estreia+render 7,7 min (generation_00089), duelo 1,5–2,5 min — ~0,7 dia rodando sozinho. Não medido: a pista das histórias rodando em paralelo seg–qua, e o payoff do Digen ainda ligado no identity.json (01/10 05:02: 31 min num job só). Hoje dias_de_lote=[0,1]: a quarta só repõe abaixo do piso de 20. Com a quarta no lote, ela só gera se o estoque estiver abaixo do alvo da própria quarta (~70 às 07:02); se a terça fechou, a quarta não faz nada.",
+  "criado": "2026-10-01T15:00:24.490998",
+  "depende_de": [],
+  "historico": [],
+  "id": "lote-builds-quarta",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "a quarta só repõe abaixo do piso de 20",
+      "id": "seg-ter",
+      "pede_comentario": false,
+      "rotulo": "Só seg–ter"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "fecha o lote se a terça não der; se a terça fechou, a quarta não gera nada",
+      "id": "seg-qua",
+      "pede_comentario": false,
+      "rotulo": "seg–qua para as builds também (recomendado)"
+    }
+  ],
+  "pergunta": "O lote semanal das builds (45 duelos, 34 builds e 12 estreias na segunda) roda só seg–ter, ou a quarta também vale como dia de lote quando a terça não fechar?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Lote das builds: a quarta entra?",
+  "vigente": null
+}

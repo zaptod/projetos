@@ -30,3 +30,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
   - ✅ **Corrente: arte no palco** — Pela esteira de sprites (ChatGPT + Grok) (01/10/2026) `corrente-arte`
   - ✅ **Corrente: lutas antigas mudam** — Chave só para lutas novas (01/10/2026) `corrente-seeds-antigas`
 - ✅ **Todas as armas: o golpe acerta antes de bater** — Só a corrente agora (recomendado) (01/10/2026) `golpe-acerta-no-preparo`
+- ⏳ **Lote das builds: a quarta entra?** — O lote semanal das builds (45 duelos, 34 builds e 12 estreias na segunda) roda só seg–ter, ou a quarta também vale como dia de lote quando a terça não fechar? `lote-builds-quarta`
