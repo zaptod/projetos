@@ -32,3 +32,8 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
   - ✅ **Contas de IA: como alternar** — Por papel; transborda quando a cota estoura (recomendado) (30/09/2026) `contas-ia-rodizio`
   - ✅ **Perfis de navegador: mudar para o E:?** — Mover para o E: (recomendado) (30/09/2026) `perfis-para-o-e`
 - ✅ **Imagens em volume: qual caminho dentro das regras** — Contas extras suas, cada uma com papel próprio, sem disfarce (30/09/2026) `contas-ia-caminho`
+- ⏳ **Codex e Gemini: o que delegar primeiro** — Na fase de teste, o que vai para o Codex e o Gemini? `delegar-o-que-primeiro`
+- ⏳ **Codex e Gemini: quem confere o trabalho** — Quem confere o que o Codex fez antes de entrar no projeto? `quem-confere-delegado`
+  - 🔒 **Codex: commita ou só propõe** — O Codex pode commitar ou só entregar o diff? · espera Codex e Gemini: quem confere o trabalho = decidida `codex-commita`
+- ⏳ **Gemini CLI também, ou só o Codex?** — Conecto o Gemini pela linha de comando também? `gemini-cli-tambem`
+  - 🔒 **Codex e Gemini: teto de uso** — Até quanto da cota de cada um eu posso usar? · espera Gemini CLI também, ou só o Codex? = decidida `teto-dos-delegados`

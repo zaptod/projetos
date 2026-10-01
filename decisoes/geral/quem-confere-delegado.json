@@ -1,0 +1,43 @@
+{
+  "comentario": true,
+  "contexto": "Em qualquer opção um validador automático roda os testes de novo e recusa diff fora dos caminhos permitidos. Plano: C:\\Users\\adrian\\.claude\\plans\\delegar-codex-gemini.md.",
+  "criado": "2026-10-01T14:03:40.213840",
+  "depende_de": [],
+  "historico": [],
+  "id": "quem-confere-delegado",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "codex-commita"
+      ],
+      "descricao": "E o orquestrador lê quando mexe em produção",
+      "id": "validador-mais-barato",
+      "pede_comentario": false,
+      "rotulo": "Validador + agente barato (recomendado)"
+    },
+    {
+      "desbloqueia": [
+        "codex-commita"
+      ],
+      "descricao": "Mais seguro, mais caro",
+      "id": "claude",
+      "pede_comentario": false,
+      "rotulo": "Sempre o orquestrador"
+    },
+    {
+      "desbloqueia": [
+        "codex-commita"
+      ],
+      "descricao": "Revisão cruzada, sem Claude",
+      "id": "gemini",
+      "pede_comentario": false,
+      "rotulo": "O Gemini confere"
+    }
+  ],
+  "pergunta": "Quem confere o que o Codex fez antes de entrar no projeto?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Codex e Gemini: quem confere o trabalho",
+  "vigente": null
+}

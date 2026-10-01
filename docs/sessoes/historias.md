@@ -33,6 +33,10 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Contas de IA: como alternar** — Por papel; transborda quando a cota estoura (recomendado) (30/09/2026) `contas-ia-rodizio`
 - ✅ **Perfis de navegador: mudar para o E:?** — Mover para o E: (recomendado) (30/09/2026) `perfis-para-o-e`
 - ✅ **Imagens em volume: qual caminho dentro das regras** — Contas extras suas, cada uma com papel próprio, sem disfarce (30/09/2026) `contas-ia-caminho`
+- ⏳ **Codex e Gemini: o que delegar primeiro** — Na fase de teste, o que vai para o Codex e o Gemini? `delegar-o-que-primeiro`
+- ⏳ **Codex e Gemini: quem confere o trabalho** — Quem confere o que o Codex fez antes de entrar no projeto? `quem-confere-delegado`
+- ⏳ **Gemini CLI também, ou só o Codex?** — Conecto o Gemini pela linha de comando também? `gemini-cli-tambem`
+- 🔒 2 bloqueada(s), esperando outra decisão: ver `decisoes/geral/README.md`
 
 **Histórias**
 - ✅ **Vídeo reprovado ou não assistido** — Fica retido; só sai se o horário fosse ficar vazio (27/09/2026) `reprovado-ou-nao-assistido`

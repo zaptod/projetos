@@ -1,0 +1,43 @@
+{
+  "comentario": true,
+  "contexto": "O Gemini CLI lê vídeo e ÁUDIO (o navegador não ouvia), mas no Windows 10 não tem sandbox seguro: só leitura. Ainda não se sabe se divide a cota com o Gemini do navegador (revisão de vídeo). Plano: C:\\Users\\adrian\\.claude\\plans\\delegar-codex-gemini.md.",
+  "criado": "2026-10-01T14:03:41.085181",
+  "depende_de": [],
+  "historico": [],
+  "id": "gemini-cli-tambem",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [
+        "teto-dos-delegados"
+      ],
+      "descricao": "Gemini CLI só leitura: revisão, logs, áudio",
+      "id": "os-dois",
+      "pede_comentario": false,
+      "rotulo": "Os dois (recomendado)"
+    },
+    {
+      "desbloqueia": [
+        "teto-dos-delegados"
+      ],
+      "descricao": "O Gemini segue só no navegador",
+      "id": "so-codex",
+      "pede_comentario": false,
+      "rotulo": "Só o Codex agora"
+    },
+    {
+      "desbloqueia": [
+        "teto-dos-delegados"
+      ],
+      "descricao": "Depende de medir a cota",
+      "id": "gemini-tudo",
+      "pede_comentario": false,
+      "rotulo": "Gemini CLI substitui o navegador"
+    }
+  ],
+  "pergunta": "Conecto o Gemini pela linha de comando também?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Gemini CLI também, ou só o Codex?",
+  "vigente": null
+}

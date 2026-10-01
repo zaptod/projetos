@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "As cotas reais só se medem depois do login (/status no Codex, /stats no Gemini). Plano: C:\\Users\\adrian\\.claude\\plans\\delegar-codex-gemini.md.",
+  "criado": "2026-10-01T14:03:41.506273",
+  "depende_de": [
+    {
+      "decisao": "gemini-cli-tambem",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "teto-dos-delegados",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Igual à regra do Claude",
+      "id": "metade",
+      "pede_comentario": false,
+      "rotulo": "50% da janela de 5 h de cada (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Enquanto a cota não for medida",
+      "id": "n-tarefas",
+      "pede_comentario": false,
+      "rotulo": "N tarefas por janela"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O que sobrar volta para o Claude",
+      "id": "esgotar",
+      "pede_comentario": false,
+      "rotulo": "Até esgotar"
+    }
+  ],
+  "pergunta": "Até quanto da cota de cada um eu posso usar?",
+  "projeto": "geral",
+  "situacao": "bloqueada",
+  "titulo": "Codex e Gemini: teto de uso",
+  "vigente": null
+}

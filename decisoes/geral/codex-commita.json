@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "O sandbox do Codex já deixa o .git só leitura. Plano: C:\\Users\\adrian\\.claude\\plans\\delegar-codex-gemini.md.",
+  "criado": "2026-10-01T14:03:40.649902",
+  "depende_de": [
+    {
+      "decisao": "quem-confere-delegado",
+      "opcao": "*"
+    }
+  ],
+  "historico": [],
+  "id": "codex-commita",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Eu aplico e commito por caminho, sem push",
+      "id": "so-diff",
+      "pede_comentario": false,
+      "rotulo": "Só propõe o diff (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Exige afrouxar o sandbox",
+      "id": "branch",
+      "pede_comentario": false,
+      "rotulo": "Commita na branch da pasta isolada"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Não recomendado",
+      "id": "direto",
+      "pede_comentario": false,
+      "rotulo": "Commita no projeto"
+    }
+  ],
+  "pergunta": "O Codex pode commitar ou só entregar o diff?",
+  "projeto": "geral",
+  "situacao": "bloqueada",
+  "titulo": "Codex: commita ou só propõe",
+  "vigente": null
+}

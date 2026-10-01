@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Plus e Pro comprados para poupar o Claude (semana em 69%). O Codex roda numa pasta isolada, sem rede e sem poder commitar; eu confiro e aplico. Antes, você instala e faz o login dos dois (passos no plano). Plano: C:\\Users\\adrian\\.claude\\plans\\delegar-codex-gemini.md.",
+  "criado": "2026-10-01T14:03:39.891075",
+  "depende_de": [],
+  "historico": [],
+  "id": "delegar-o-que-primeiro",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Codex: gravar o vídeo ao lado e renomear (9e3fe028) e os 2 testes do painel (7e88a9f8)",
+      "id": "consertos",
+      "pede_comentario": false,
+      "rotulo": "Consertos com teste (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O Gemini revisa diffs e logs longos",
+      "id": "revisao",
+      "pede_comentario": false,
+      "rotulo": "Revisões"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O Codex escreve testes de regressão",
+      "id": "regressao",
+      "pede_comentario": false,
+      "rotulo": "Testes que faltam"
+    }
+  ],
+  "pergunta": "Na fase de teste, o que vai para o Codex e o Gemini?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Codex e Gemini: o que delegar primeiro",
+  "vigente": null
+}
