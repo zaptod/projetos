@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T14:33:09",
+      "evento": "2026-10-01T14:31:01",
+      "linha": 97,
+      "nota": "anotado; delegação começa quando ele fizer os logins (F0)",
+      "opcao": "validador-mais-barato",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Em qualquer opção um validador automático roda os testes de novo e recusa diff fora dos caminhos permitidos. Plano: C:\\Users\\adrian\\.claude\\plans\\delegar-codex-gemini.md.",
   "criado": "2026-10-01T14:03:40.213840",
   "depende_de": [],
