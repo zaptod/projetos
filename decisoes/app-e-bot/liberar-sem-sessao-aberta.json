@@ -3,7 +3,15 @@
   "contexto": "01/10: você liberou às 13:30, o vigia acordou na hora, mas a sessão do VS Code tinha sido fechada (o processo saiu de noite) — não havia ninguém para receber. O vigia é filho da sessão: sem sessão aberta, nada roda. Hoje o app só avisa no Telegram quando um comando fica 2 min sem ouvinte.",
   "criado": "2026-10-01T13:59:02.054454",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "Quero que seja tudo automatizado",
+      "em": "2026-10-01T14:28:02",
+      "opcao": "headless",
+      "origem": "app"
+    }
+  ],
   "id": "liberar-sem-sessao-aberta",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Quando você libera pelo app e a sessão do Claude no VS Code está fechada, o que deve acontecer?",
   "projeto": "app-e-bot",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Liberar o Claude com a sessão fechada",
-  "vigente": null
+  "vigente": {
+    "comentario": "Quero que seja tudo automatizado",
+    "em": "2026-10-01T14:28:02",
+    "opcao": "headless"
+  }
 }
