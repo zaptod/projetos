@@ -48,7 +48,7 @@ CLI (a do orquestrador):
                                                   # ou resposta nova do Adrian (decisao_nova);
                                                   # pulsa o vigia.json a cada 30 s
     python -m remoto.orquestrador vigia                       # quem esta ouvindo (codigo 1 = ninguem)
-    python -m remoto.orquestrador config | estado | uso | pulso | onde
+    python -m remoto.orquestrador config | estado | uso | pulso | onde | modelos
     python -m remoto.orquestrador sonda                        # mede o uso uma vez
     python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
     python -m remoto.orquestrador claude [status|liberar|proibir] [--motivo M]
@@ -90,7 +90,13 @@ ROTULO_MODO = {"um_por_vez": "Um por vez", "paralelo": "Paralelo",
 # (`padrao_do_grimorio`: modo-de-trabalho, teto-de-uso, forca-total-ainda-vale).
 PADRAO_CONFIG = {"max_paralelo": 1, "modo": "um_por_vez", "teto_sessao_pct": 50,
                  "forca_total_antes_min": 20, "fila_pausada": False,
-                 "sonda_min": 10}
+                 "sonda_min": 10,
+                 # os modelos (01/10/2026): None = o padrao de cada um
+                 "modelo_agentes": None, "modelo_codex": None}
+# As chaves que o Grimorio diz (capacidade). So a falta DELAS faz o
+# `ler_config` reler as decisoes: uma chave nova qualquer (os modelos) nao
+# pode transformar cada leitura numa leitura do Grimorio inteiro.
+CHAVES_DO_GRIMORIO = ("max_paralelo", "modo", "teto_sessao_pct", "forca_total_antes_min")
 MAX_PARALELO = 8
 FORA_DO_AR_S = 15 * 60
 TEXTO_MAX = 1000
@@ -321,7 +327,7 @@ def ler_config() -> dict:
     dados = _ler_json(arquivo("config.json"), {})
     if not isinstance(dados, dict):
         raise Recusa("config.json está ilegível")
-    faltam = [k for k in PADRAO_CONFIG if k not in dados]
+    faltam = [k for k in CHAVES_DO_GRIMORIO if k not in dados]
     padrao = padrao_do_grimorio() if faltam else PADRAO_CONFIG
     return {**padrao, **{k: v for k, v in dados.items() if k in PADRAO_CONFIG}}
 
@@ -1117,6 +1123,144 @@ class _AvisoSemOuvinte:
 AVISO_SEM_OUVINTE = _AvisoSemOuvinte()
 
 
+# ================================================================= modelos
+# Pedido do Adrian (01/10/2026, tarefa 52dc403c): "suporte para mudar o modelo
+# tanto do Claude quanto do Codex e do Gemini". Cada seletor da Mesa vira um
+# COMANDO (pendente ate o orquestrador aplicar); vale no `aplicado`:
+#   modelo_agentes  config.json  o `model` dos AGENTES que o orquestrador
+#                   dispara. O da sessao principal so o Adrian troca (/model).
+#   modelo_codex    config.json  o `-m` do `codex exec` (remoto/delegar.py);
+#                   None = o do ~/.codex/config.toml
+#   modelo_gemini   historias/config/llm.json, bloco "gemini" ->
+#                   `modelo_preferido`: a ordem que o ClienteLLM procura no menu
+#                   do site (o Gemini e o do NAVEGADOR: decisao gemini-sem-cli)
+MODELOS_CLAUDE = (
+    ("opus", "Opus", "o mais forte; gasta mais da janela"),
+    ("sonnet", "Sonnet", "o equilíbrio entre força e custo"),
+    ("haiku", "Haiku", "rápido e barato, para tarefa simples"),
+    ("fable", "Fable", ""),
+)
+# O menu do site medido em 29/09 (ias/fichas/gemini.json) e o que os logs
+# mostram o cliente escolhendo ("3.1 Pro Raciocínio avançado", "3.5 Flash Lite
+# Respostas mais rápidas"). A lista e uma ORDEM DE QUEDA por texto: o primeiro
+# que aparecer no menu ganha (`ClienteLLM._tentar_modelo`).
+MODELOS_GEMINI = (
+    ("pro", "3.1 Pro — raciocínio avançado", ["pro", "flash"]),
+    ("raciocinio", "Raciocínio complexo — solução de problemas",
+     ["raciocínio complexo", "raciocinio complexo", "pro"]),
+    ("flash", "3.6 Flash — ajuda para tudo", ["3.6 flash", "flash"]),
+    ("flash-lite", "3.5 Flash Lite — respostas mais rápidas",
+     ["flash lite", "flash-lite", "flash"]),
+)
+LLM_JSON = None                 # os testes apontam para uma copia
+
+
+def llm_json() -> Path:
+    return Path(LLM_JSON) if LLM_JSON else RAIZ / "historias" / "config" / "llm.json"
+
+
+def _json_do_llm(dados: dict) -> str:
+    """O `llm.json` na forma em que ele e escrito a mao: um nivel aberto, e o
+    resto numa linha so (listas e blocos curtos). Mudar o modelo vira um diff
+    de UMA linha, nao do arquivo inteiro (ha teste de ida e volta)."""
+    def linha(v):
+        return json.dumps(v, ensure_ascii=False)
+    saida = []
+    itens = list(dados.items())
+    for i, (k, v) in enumerate(itens):
+        fim = "," if i < len(itens) - 1 else ""
+        inteiro = linha(v)
+        if isinstance(v, dict) and len(inteiro) > 100:
+            corpo = ",\n".join(f"        {linha(kk)}: {linha(vv)}" for kk, vv in v.items())
+            saida.append(f"    {linha(k)}: {{\n{corpo}\n    }}{fim}")
+        else:
+            saida.append(f"    {linha(k)}: {inteiro}{fim}")
+    return "{\n" + "\n".join(saida) + "\n}\n"
+
+
+def gemini_vigente() -> dict:
+    """{"id": ..., "ordem": [...]} do `llm.json`; id None = o padrao do codigo,
+    "outro" = uma ordem escrita a mao que nao e nenhuma das opcoes."""
+    try:
+        dados = json.loads(llm_json().read_text(encoding="utf-8-sig"))
+        ordem = (dados.get("gemini") or {}).get("modelo_preferido")
+    except (OSError, ValueError, AttributeError):
+        return {"id": None, "ordem": None, "erro": "llm.json ilegível"}
+    if not ordem:
+        return {"id": None, "ordem": None}
+    achado = next((m[0] for m in MODELOS_GEMINI if list(m[2]) == list(ordem)), "outro")
+    return {"id": achado, "ordem": list(ordem)}
+
+
+def gravar_gemini(modelo_id: str | None) -> bool:
+    """Grava (ou tira) o `modelo_preferido` do Gemini. Devolve se mudou."""
+    caminho = llm_json()
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise Recusa(f"não consegui ler o {caminho.name}: {exc}") from exc
+    if not isinstance(dados, dict):
+        raise Recusa(f"{caminho.name} está ilegível")
+    bloco = dict(dados.get("gemini") or {})
+    antes = bloco.get("modelo_preferido")
+    if modelo_id is None:
+        bloco.pop("modelo_preferido", None)
+    else:
+        bloco["modelo_preferido"] = list(next(m[2] for m in MODELOS_GEMINI
+                                              if m[0] == modelo_id))
+    if bloco.get("modelo_preferido") == antes:
+        return False
+    if bloco:
+        dados["gemini"] = bloco
+    else:
+        dados.pop("gemini", None)
+    temporario = caminho.with_name(f".{caminho.name}.{os.getpid()}.tmp")
+    temporario.write_text(_json_do_llm(dados), encoding="utf-8", newline="\n")
+    os.replace(temporario, caminho)
+    return True
+
+
+def modelos_para_o_app(config: dict) -> dict:
+    """Os tres seletores: as opcoes, o que vale e de onde vem. Nunca levanta."""
+    try:
+        from . import delegar
+        codex = delegar.modelos_codex()
+    except Exception:                                        # noqa: BLE001
+        codex = {"modelos": [], "fonte": "", "padrao": {"modelo": "", "esforco": ""}}
+    padrao = codex.get("padrao") or {}
+    gemini = gemini_vigente()
+    return {
+        "claude": {
+            "vigente": config.get("modelo_agentes"),
+            "opcoes": [{"id": i, "rotulo": r, "nota": n} for i, r, n in MODELOS_CLAUDE],
+            "padrao": "o orquestrador escolhe por tarefa",
+            "nota": ("Vale para os AGENTES que o orquestrador dispara. O modelo da sessão "
+                     "principal só você troca, com /model no Claude Code."),
+        },
+        "codex": {
+            "vigente": config.get("modelo_codex"),
+            "opcoes": [{"id": m["id"], "rotulo": m["nome"], "nota": m.get("descricao", "")}
+                       for m in codex.get("modelos") or []],
+            "padrao": (f"{padrao.get('modelo') or 'o do Codex'}"
+                       + (f", esforço {padrao['esforco']}" if padrao.get("esforco") else "")),
+            "fonte": codex.get("fonte", ""),
+            "livre": True,
+            "nota": ("Vale para as próximas tarefas delegadas (a que já roda segue no "
+                     "dela). Padrão = o do ~/.codex/config.toml."),
+        },
+        "gemini": {
+            "vigente": gemini.get("id"),
+            "ordem": gemini.get("ordem"),
+            "erro": gemini.get("erro"),
+            "opcoes": [{"id": i, "rotulo": r, "nota": " → ".join(o)}
+                       for i, r, o in MODELOS_GEMINI],
+            "padrao": "Pro, senão Flash (o dos seletores)",
+            "nota": ("É o Gemini do NAVEGADOR: muda também o da pipeline (qualidade e "
+                     "vídeo das histórias) a partir do próximo chat aberto."),
+        },
+    }
+
+
 # ================================================================ comandos
 # comando -> (precisa de valor?, rotulo para a tela)
 COMANDOS = {
@@ -1132,6 +1276,9 @@ COMANDOS = {
     "adicionar_a_fila": "pôr na fila",
     "mensagem": "mensagem",
     "contestar": "contestou uma decisão",
+    "modelo_agentes": "modelo dos agentes (Claude)",
+    "modelo_codex": "modelo do Codex",
+    "modelo_gemini": "modelo do Gemini (navegador)",
 }
 # o que o app pode mandar pela rota de comando (o contestar tem rota propria)
 DO_APP = tuple(c for c in COMANDOS if c != "contestar")
@@ -1228,6 +1375,25 @@ def validar_comando(comando: str, valor):
         if not isinstance(valor, dict):
             raise Recusa("contestar leva a decisão e o nó")
         return {k: _curto(valor.get(k), 300) for k in ("decisao", "titulo", "no", "comentario")}
+    if comando == "modelo_agentes":
+        if valor in (None, ""):
+            return None
+        if not isinstance(valor, str) or valor not in {m[0] for m in MODELOS_CLAUDE}:
+            raise Recusa("modelo dos agentes: " + ", ".join(m[0] for m in MODELOS_CLAUDE))
+        return valor
+    if comando == "modelo_codex":
+        from . import delegar
+        try:
+            return delegar.validar_modelo(valor if isinstance(valor, str) or valor is None
+                                          else "?")
+        except delegar.Recusa as exc:
+            raise Recusa(str(exc)) from None
+    if comando == "modelo_gemini":
+        if valor in (None, ""):
+            return None
+        if not isinstance(valor, str) or valor not in {m[0] for m in MODELOS_GEMINI}:
+            raise Recusa("modelo do Gemini: " + ", ".join(m[0] for m in MODELOS_GEMINI))
+        return valor
     raise Recusa(f"comando desconhecido: {comando}")        # pragma: no cover
 
 
@@ -1416,6 +1582,17 @@ def _aplicar(nome: str, valor, fonte: str, cid: str, *, aparelho: str = "",
             return "já estava assim"
         return registrar_no_grimorio(chave, ler_config(), fonte, aparelho=aparelho,
                                      porque=porque)
+    if nome in ("modelo_agentes", "modelo_codex"):
+        return "" if _mudar_config(nome, valor, fonte, cid) else "já estava assim"
+    if nome == "modelo_gemini":
+        antes = gemini_vigente().get("id")
+        if not gravar_gemini(valor):
+            return "já estava assim"
+        _anexar(arquivo("config_historico.jsonl"),
+                {"em": _agora_iso(), "chave": "modelo_gemini", "de": antes, "para": valor,
+                 "origem": fonte, "comando": cid})
+        return ("historias/config/llm.json mudou (vale no próximo chat do Gemini): "
+                "commite por caminho")
     if nome == "pausar_fila":
         _mudar_config("fila_pausada", True, fonte, cid)
     elif nome == "retomar_fila":
@@ -1462,6 +1639,8 @@ def _efeito(comando: dict) -> str:
 
 def _descrever(nome: str, valor) -> str:
     rotulo = COMANDOS.get(nome, nome)
+    if nome.startswith("modelo_") and valor is None:
+        return f"{rotulo}: o padrão"
     if valor is None:
         return rotulo
     if nome == "forca_total":
@@ -2057,8 +2236,25 @@ def para_o_app(agora: float | None = None) -> dict:
         # o carteiro da Vila das IAs (fase 2): aparece em "Agora" quando esta
         # entregando, e a caixa de cada IA com os pendentes
         "carteiro": carteiro_para_a_mesa(),
+        # o Codex (01/10): o cartao da Oficina e os tres seletores de modelo
+        "delegados": delegados_para_a_mesa(),
+        "modelos": modelos_para_o_app(config),
         "erros": erros,
     }
+
+
+def delegados_para_a_mesa() -> dict | None:
+    """O resumo das tarefas do Codex para o cartao da Mesa. Nunca derruba a Mesa."""
+    try:
+        from . import delegar
+        d = delegar.para_o_app(n=5)
+        return {"total": len(delegar.listar()), "rodando": d["rodando"], "uso": d["uso"],
+                "teto": d["config"].get("teto_codex_pct"),
+                "ultimas": [{k: t.get(k) for k in ("id", "titulo", "situacao", "inicio",
+                                                   "fim", "modelo")}
+                            for t in d["delegados"]]}
+    except Exception:                                        # noqa: BLE001
+        return None
 
 
 def carteiro_para_a_mesa() -> dict | None:
@@ -2277,7 +2473,7 @@ def main(argv=None) -> int:
     acs = sub.add_parser("acessos", help="gera o acessos.json")
     acs.add_argument("--conector", action="append", default=None)
     acs.add_argument("--modo-permissao", default=None)
-    for nome in ("config", "estado", "uso", "pulso", "onde", "sonda", "vigia"):
+    for nome in ("config", "estado", "uso", "pulso", "onde", "sonda", "vigia", "modelos"):
         sub.add_parser(nome)
     cla = sub.add_parser("claude", help="o interruptor do Claude: status, liberar, proibir")
     cla.add_argument("acao", nargs="?", default="status",
@@ -2367,6 +2563,13 @@ def main(argv=None) -> int:
                              ensure_ascii=False, indent=2))
         elif args.cmd == "estado":
             _imprimir_estado(ler_estado())
+        elif args.cmd == "modelos":
+            m = modelos_para_o_app(ler_config())
+            print(f"agentes (Claude): {m['claude']['vigente'] or 'padrão'} "
+                  f"(o orquestrador passa no `model` de cada subagente)")
+            print(f"Codex: {m['codex']['vigente'] or 'padrão = ' + m['codex']['padrao']}")
+            print(f"Gemini (navegador): {m['gemini']['vigente'] or 'padrão'}"
+                  + (f" -> {m['gemini']['ordem']}" if m['gemini'].get('ordem') else ""))
         elif args.cmd == "uso":
             print(json.dumps(ler_uso(), ensure_ascii=False, indent=2))
         elif args.cmd == "sonda":

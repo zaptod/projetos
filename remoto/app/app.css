@@ -772,3 +772,63 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .claude-faixa { padding: 10px 12px; border-radius: 10px; margin-bottom: 12px;
   border: 2px solid #a8321f; background: #f8d9cf; color: #7a2012; font-weight: 600;
   font-size: 14px; position: relative; z-index: 1; }
+
+/* ================================================================
+   Oficina do Codex (01/10/2026): o que o orquestrador delegou ao Codex,
+   ao vivo. Bancada de ferramentas: aço escuro e luz de lâmpada.
+   ================================================================ */
+.livro.oficina {
+  --cartao: #f3efe6; --linha: #b9b1a1;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, .03) 0 2px, transparent 2px 22px),
+    radial-gradient(ellipse at 50% 0%, #5b6470 0%, #2f353d 60%, #22272d 100%);
+}
+.livro.oficina .cartao { background: rgba(243, 239, 230, .96); border-color: #8d8576; }
+.livro.oficina .cartao h2 { color: #3c4652; font-family: Georgia, serif; }
+.livro.oficina:not(.oculto) { animation: surgir .3s ease-out; }
+.ofi-nav { margin-bottom: 8px; }
+.ofi-nav .acao, #oficina-voltar-lista { background: #3c4652; color: #f3efe6; border-color: #22272d; }
+.ofi-cartao { display: block; width: 100%; text-align: left; margin: 8px 0 0;
+  padding: 10px 12px; border-radius: 10px; border: 1px solid #b9b1a1;
+  border-left: 5px solid #8d8576; background: #fbf8f1; color: var(--texto); font: inherit; }
+.ofi-cartao.rodando { border-left-color: var(--ativo); }
+.ofi-cartao.terminou { border-left-color: var(--ok); }
+.ofi-cartao.falhou, .ofi-cartao.parado, .ofi-cartao.sumiu { border-left-color: var(--erro); }
+.ofi-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.ofi-topo .selo { flex: none; }
+.ofi-extra { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; margin-top: 2px; }
+.ofi-cartao .ok, .ofi-extra .ok { color: var(--ok); }
+.ofi-cartao .erro, .ofi-extra .erro { color: var(--erro); }
+#oficina-abas { margin: 10px 0 6px; flex-wrap: wrap; }
+#oficina-seguir[aria-pressed="true"] { border-color: var(--ok); color: var(--ok); }
+.ofi-eventos { max-height: 62vh; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid #d3cbbb; border-radius: 8px; background: #fffdf8; padding: 2px 0; }
+.ofi-ev { display: flex; gap: 8px; padding: 5px 8px; border-bottom: 1px solid #eee6d6;
+  font-size: 13.5px; align-items: flex-start; }
+.ofi-ev:last-child { border-bottom: 0; }
+.ofi-ev-icone { flex: none; width: 1.4em; text-align: center; }
+.ofi-ev .orq-hora { flex: none; color: var(--fraco); font-size: 12px; min-width: 3.2em; }
+.ofi-ev-corpo { flex: 1; min-width: 0; }
+.ofi-ev-texto { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ofi-ev.le .ofi-ev-texto, .ofi-ev.roda .ofi-ev-texto, .ofi-ev.testa .ofi-ev-texto {
+  font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+.ofi-ev.pensa .ofi-ev-texto { color: var(--fraco); font-style: italic; }
+.ofi-ev.mensagem { background: #f1f6ee; }
+.ofi-ev.muda { background: #fff6e2; }
+.ofi-ev.falhou, .ofi-ev.erro { background: #fbe5df; }
+.ofi-ev.despachante, .ofi-ev.sessao { color: #4b5563; }
+.ofi-pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, Consolas, monospace;
+  background: #f6f2ea; border-radius: 6px; padding: 8px; margin: 4px 0 0; max-height: 50vh; overflow: auto; }
+.ofi-diff { margin-top: 8px; border: 1px solid #d3cbbb; border-radius: 8px; background: #fffdf8;
+  max-height: 62vh; overflow: auto; font: 12px/1.35 ui-monospace, Consolas, monospace; }
+.ofi-diff-linha { white-space: pre; padding: 0 8px; }
+.ofi-diff-linha.mais { background: #e3f4dc; color: #1f5a16; }
+.ofi-diff-linha.menos { background: #fbe1dc; color: #8a2414; }
+.ofi-diff-linha.bloco { color: #3b5aa8; background: #eef2fb; }
+.ofi-diff-linha.cab { font-weight: 700; color: #3c4652; background: #ece7dc; }
+.orq-modelo-nota { margin: 2px 0 6px; }
+.orq-modelo-livre { display: flex; gap: 6px; margin-top: 6px; }
+.orq-modelo-livre input { flex: 1; min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .livro.oficina:not(.oculto) { animation: none; } }
+button.orq-codex-tarefa { width: 100%; text-align: left; background: transparent; border: 0;
+  border-top: 1px dashed #c9ad78; border-radius: 0; padding: 8px 2px; color: inherit; font: inherit; }

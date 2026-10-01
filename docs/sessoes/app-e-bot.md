@@ -153,7 +153,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 671 testes (29/09, 15h)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 748 testes (01/10, 18h)
 python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 108 (correio, carteiro e imagem, §10 e §13)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
@@ -174,6 +174,7 @@ python -m remoto.decisoes leitor [--todos] [--projeto P] [--json]    # respostas
 python -m remoto.decisoes leitor marcar <N|id@em|projeto/id> --gerou tarefa:<id>|no:<projeto/id>|nada \
     [--gerou ...] [--nota N] [--sem-commit]                          # o que ela gerou; vira lida
 python -m remoto.orquestrador onde | estado | config | uso | pendentes   # a Mesa (§7)
+python -m remoto.delegar listar | ver --id X | uso | modelos   # o Codex delegado (§16)
 python -m remoto.orquestrador capacidade --max-paralelo N | --teto P | --forca-total on|off \
     [--modo M] --fonte chat|app [--porque "palavras dele"]            # vira regra (§7)
 python -m remoto.orquestrador eu "no que a sessão principal está"
@@ -479,7 +480,7 @@ python -m remoto.orquestrador modo um_por_vez|paralelo|forca_total   # operacion
 python -m remoto.orquestrador pendentes [--json]
 python -m remoto.orquestrador aplicado <id> [--recusado MOTIVO] [--nota N]
 python -m remoto.orquestrador esperar [--json]     # bloqueia até chegar comando; vale como pulso
-python -m remoto.orquestrador config | estado | uso | pulso | sonda | onde
+python -m remoto.orquestrador config | estado | uso | pulso | sonda | onde | modelos   # modelos: §16.3
 python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
 python -m remoto.orquestrador claude [status|liberar|proibir] [--motivo M] [--sem-aviso]   # §12.2
 ```
@@ -1765,3 +1766,215 @@ com 64, passaram 10 de 10.
 **Reinício:** o 8931 foi reiniciado às 13:57:35 (PID 12968, com
 `scratchpad/reiniciar_app.ps1`) e serve a casca `v22`. **No celular:**
 fechar o app e abrir de novo, uma vez.
+
+## 16. O despachante do Codex, a Oficina e os Modelos (01/10/2026)
+
+Tarefa 52dc403c da Mesa. Pedido do Adrian (17:2x): "quero algo no app para
+poder ver o trabalho do Codex em tempo real também; também quero suporte
+para mudar o modelo tanto do Claude quanto do Codex e do Gemini". Contexto:
+plano `~/.claude/plans/delegar-codex-gemini.md` (F1) e as decisões
+`geral/delegar-*`, `codex-commita` (só propõe o diff), `teto-dos-delegados`
+(50% da janela de 5 h) e `gemini-sem-cli` (o Gemini segue no navegador).
+
+### 16.1 O despachante (`python -m remoto.delegar`)
+
+```bash
+python -m remoto.delegar criar --id X --tarefa arq.md --permitido "remoto/**" [--permitido ...] \
+    [--modelo M] [--esforco low|medium|high|xhigh|max|ultra] [--titulo T]
+python -m remoto.delegar rodar --id X [--fundo] [--forcar]     # --forcar: só se o Adrian mandou
+python -m remoto.delegar corrigir --id X --texto arq.md [--fundo] [--forcar]
+python -m remoto.delegar parar --id X          # o despachante mata o Codex em ~2 s
+python -m remoto.delegar diff --id X           # código 4 = recusado
+python -m remoto.delegar testar --id X --cmd "python -m pytest remoto/test_x.py -q"   # código 5 = falhou
+python -m remoto.delegar aplicar --id X [--sem-testes]
+python -m remoto.delegar limpar --id X | --orfas
+python -m remoto.delegar listar | ver --id X | uso | modelos | onde
+```
+
+- **criar**: `git worktree add E:\projetos-wt\codex-<id> -b delegar/codex-<id>
+  HEAD`. A tarefa vai para `.codex_tarefa.md` na worktree, junto com as
+  regras de `remoto/delegar_prompt.md` (não commitar, só os caminhos
+  permitidos, sem binário, diff pequeno, teste junto, `-p no:cacheprovider`,
+  resposta em português) e a lista de caminhos. Sem `--modelo`, vale o
+  `modelo_codex` da Mesa; sem ele, o do `~/.codex/config.toml`.
+- **rodar**: `node codex.js exec --json --sandbox workspace-write -C <wt> -o
+  resposta.md [-m M] -`, com o **prompt por stdin**. O `codex.cmd` do npm
+  passa pelo cmd.exe, que estraga aspas; por isso o despachante chama o
+  `node` com o `codex.js` direto. Cada evento vai **ao vivo** para
+  `eventos.jsonl` (`{"n", "em", "ev"}`), e os tokens de cada `turn.completed`
+  somam no `estado.json`. No fim, o diff sai sozinho.
+- **corrigir**: `exec resume <thread_id> -c sandbox_mode="workspace-write"
+  -`. O `resume` NÃO aceita `--sandbox`. O `thread_id` vem do
+  `thread.started`, e não do `--last`.
+- **Guardas para começar**: o interruptor do Claude (proibido = recusa, e
+  vale para o Codex), nada começa entre :30 e :45 (`janela_sem_comecar`, do
+  plano), um delegado por vez e o teto. **Durante a rodada**, o interruptor
+  é olhado a cada 2 s: proibido mata o Codex na hora (`taskkill /T /F`). O
+  teto é olhado a cada 30 s, e passou dele, para também. Outros motivos de
+  parada: o pedido `parar` e o prazo (`rodar_timeout_s`, 1 h). Rodada que
+  cai fica `parado` ou `falhou`, com o motivo, e **nunca** some como
+  "rodando". Quando o PID morreu, a Oficina mostra "o processo sumiu".
+- **O teto é medido.** O `codex exec --json` não traz o uso; os
+  `rollout-*.jsonl` que o Codex grava em `~/.codex/sessions/AAAA/MM/DD/`
+  trazem. O despachante lê o último `token_count`:
+  `rate_limits.primary.used_percent`, janela de 300 min. Medido em 01/10:
+  16% às 15:24, 36% às 16:24, plano plus, semana em 6%. Janela renovada
+  depois da medição conta como 0%. Sem medição nenhuma, o despachante
+  **recusa** (falha fechado), a não ser que o `tokens_janela_max` do
+  `delegados\config.json` dê um teto por contagem de tokens.
+- **diff**: `git add -A` na worktree (sem os `.codex_*.md`), o
+  `git diff --cached --binary <base>` **em bytes** (com `text=True` o CRLF
+  viraria LF), e o validador. O validador recusa: caminho fora da lista,
+  caminho proibido (`palco/**`, `decisoes/**`, `ias/config.json`,
+  `identity.json`, imagens, vídeo, `.env`, `auth.json`, `piriri.py`…),
+  binário, mais de 800 linhas ou de 20 arquivos, ou diff vazio.
+- **testar**: o comando roda na worktree com `TEMP`/`TMP` em
+  `E:\tmp_pytest\delegados\<id>` e `--basetemp` lá dentro. O resultado
+  guarda o `diff_sha`.
+- **aplicar**: recusa nestes casos:
+  - entre :25 e :55;
+  - com publicação em voo (`publicacao_filha`, `main.py … publicar`,
+    `postar.py`: a mesma busca do `reiniciar_app.ps1`; não conseguir olhar
+    também recusa);
+  - sem testes, com testes que falharam, ou com o diff mudado depois deles
+    (o `--sem-testes` passa por cima disso).
+
+  Depois roda `git apply --check` e, se passar, o `git apply`, e imprime o
+  `git commit -- <arquivos>`. O commit é do orquestrador.
+- **limpar**: `git worktree remove --force` e `git branch -D`.
+- Tudo de uma tarefa fica em
+  `%LOCALAPPDATA%\neural-fights\delegados\<id>\` (`NF_DELEGADOS_PASTA`
+  troca): `estado.json`, `eventos.jsonl`, `resposta.md`, `tarefa.md`,
+  `correcao_N.md`, `diff.patch`, `diff.json`, `testes.log`, `log.txt` e
+  `codex_stderr.log`.
+
+**O "Directory not empty" do `worktree remove` (as duas de 01/10), medido.**
+As pastas `codex-9e3fe028` e `codex-e28cc01b` ficaram fora do git, cada uma
+com um `.pytest_cache` que nem o `icacls` lê ("Acesso negado"). A causa: o
+sandbox "elevated" do Codex roda os comandos com **outro usuário** do
+Windows, e o Python 3.13+ cria a pasta temporária do cache (`mkdtemp`) com
+uma ACL só do dono. Daí em diante a pasta não sai mais sem administrador.
+Para que isso não se repita, o ambiente do Codex leva `PYTEST_ADDOPTS=-p
+no:cacheprovider` e `PYTHONDONTWRITEBYTECODE=1`, e o prompt também pede.
+Se ainda sobrar alguma pasta, o `limpar` apaga o que der, move o resto para
+`E:\projetos-wt\_lixo_codex\` e imprime o comando de administrador (`takeown
+/F … /R /D Y`, `icacls … /grant`, `rmdir`). O `limpar --orfas` faz o mesmo
+com as `codex-*` que o git não conhece.
+
+**Testes** (`remoto/test_delegar.py`, com o dublê `remoto/duble_codex.py`: o
+Codex de verdade **nunca** é chamado, e um teste confere isso). Cobrem:
+criar, rodar e corrigir; o stdin, os argumentos e o ambiente sem segredo; a
+falha; o Claude proibido antes e no meio (mata em segundos); o parar; o teto
+medido, renovado e desconhecido; a contagem; o horário; um por vez; o
+validador; o CRLF intacto; testar, aplicar (janela, voo, sha) e o `apply
+--check` que recusa; o limpar com a pasta trancada; as órfãs; a leitura por
+offset (meia linha e linha ilegível); o resumo dos eventos; o uso em hora
+local; os modelos; o `--fundo`; e o caso ZERO.
+
+### 16.2 A Oficina do Codex (`app/oficina.js`, `tela-oficina`)
+
+Abre pela Mesa: o atalho **Codex** leva ao cartão "🔧 Oficina do Codex"
+(quantas tarefas, quantas rodando, o uso do Codex), e o botão abre a tela.
+O "‹ Mesa" volta (`history`). Não entrou na prateleira: com 8 objetos, cada
+um ficaria com ~48 px, e "Pergaminhos" já ocupa os 55 px de hoje.
+
+- **Lista** (relê a cada 10 s): cada tarefa com selo (▶ rodando, ✓ terminou,
+  ✕ falhou, ■ parada, ⚠ o processo sumiu), título, id, modelo, tokens,
+  diff (passa ou recusado, com o motivo), testes e "aplicado". No alto fica
+  a barra da janela de 5 h do Codex, com a marca do teto.
+- **Tarefa**: as abas Ao vivo, Diff, Testes, Pedido e Resposta. **Ao vivo**:
+  cada evento com ícone, hora e texto:
+  - 📖 lê (`Get-Content`, `rg`, `git diff`…);
+  - ▶ roda;
+  - 🧪 testa (pytest);
+  - ✎ muda (os arquivos);
+  - 💬 diz;
+  - 🧠 pensa;
+  - ☑ o plano;
+  - ✕ erro.
+
+  A saída do comando fica num "saída" que abre ao tocar. A tela segue o fim
+  (o botão "⇣ seguindo o fim" desliga isso).
+- **Leitura incremental por offset**: a primeira carga pede `desde=-1`, ou
+  seja, a cauda: 384 KB, começando numa linha inteira. Depois disso, de 3 em
+  3 s, a tela pede só os bytes novos (`desde=<offset>`), e o servidor nunca
+  lê mais que 384 KB por pedido nem devolve meia linha. O pesado (pedido,
+  resposta, diff de até 200 KB, cauda dos testes) só vai na primeira carga,
+  ou com `completo=1`, quando a tarefa sai de "rodando". Parada, a tela
+  relê de 15 em 15 s.
+- **Só leitura**: não há rota POST da Oficina (há teste disso). Aplicar
+  continua com o orquestrador. Todo texto passa por `_limpo`.
+
+| rota | o que faz |
+| --- | --- |
+| `GET /api/delegados` | `delegar.para_o_app()`: as 30 tarefas mais novas (sem caminho de disco), o uso do Codex, o config |
+| `GET /api/delegado/<id>?desde=N[&completo=1]` | a tarefa, os eventos novos resumidos (`delegar.resumir`), o `offset` e o `mais` (há mais para ler); 404 para id desconhecido ou torto |
+
+O `/api/orquestrador` ganhou `delegados` (o resumo para o cartão da Mesa) e
+`modelos`.
+
+### 16.3 Modelos (na Mesa)
+
+O atalho é **Modelos**. São três seletores, e cada um vira **comando**,
+pendente até o orquestrador aplicar, como a capacidade. Ao lado de cada um
+aparece o que está valendo e o que foi pedido.
+
+| seletor | opções | onde vale (no `aplicado`) |
+| --- | --- | --- |
+| Claude (agentes que eu disparo) | padrão, opus, sonnet, haiku, fable | `config.json` → `modelo_agentes`. É o `model` dos subagentes que o orquestrador dispara. **O da sessão principal só o Adrian troca, com `/model`** (a tela diz) |
+| Codex | padrão (o do `config.toml`: hoje `gpt-5.6-sol`, esforço `ultra`), a lista do `~/.codex/models_cache.json` (visibility "list": gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5) e "outro…", com campo livre validado | `config.json` → `modelo_codex`; o `criar` usa |
+| Gemini (navegador) | padrão (Pro, senão Flash), 3.1 Pro, Raciocínio complexo, 3.6 Flash e 3.5 Flash Lite: o menu do site medido em 29/09 (`ias/fichas/gemini.json`) | `historias/config/llm.json` → `"gemini": {"modelo_preferido": [...]}`, regravado com a mesma forma. O `ClienteLLM.escolher_modelo` passou a ler esse bloco (`_preferido_do_config`); sem ele, vale o dos seletores. **Muda o Gemini da pipeline também** (qualidade e vídeo das histórias), e o orquestrador commita o `llm.json` por caminho |
+
+- `ler_config` só relê o Grimório quando falta uma chave de capacidade
+  (antes, qualquer chave nova faria cada leitura ler todas as decisões).
+- Os modelos não viram nó no Grimório: são config, e o histórico fica no
+  `config_historico` (inclusive `modelo_gemini`).
+- Testes: `remoto/test_oficina_e_modelos.py` e
+  `historias/tests/test_modelo_pelo_app_regressions.py`.
+
+### 16.4 Prova, reinício e o que falta
+
+**Prova de tela (01/10, 18:01–18:03):** 390×844, clicando, numa instância
+de teste na 8934 (`scratchpad/prova_oficina.py`), com pareamento próprio,
+orquestrador vazio, delegados num git de brinquedo e o **dublê** no modo
+`aos_poucos` (um evento por segundo). As telas estão em
+`E:\projetos-wt\_prova_oficina\<hora>\telas\`. Foram 24 de 25
+conferências pelo DOM, com 0 erros de JS. A que falhou era da própria prova:
+ela esperava `gpt-6-sol`, e a tela mostra o nome de exibição `GPT-6-Sol`.
+- O cartão da Mesa mostrou "1 tarefa(s) · Codex: 36% da janela de 5 h
+  (teto 50%) · medido 16:29".
+- Modelos: o Claude com 4 opções e a nota do `/model`, o Codex com 7 mais
+  "outro…" (que abre o campo livre), o Gemini com 4. Cada troca virou
+  comando pendente. Depois do `aplicado`, a nota disse "valendo"; o `llm.json`
+  da cópia ganhou `["3.6 flash", "flash"]`.
+- Oficina: a lista, a tarefa "rodando" com 9 → 21 eventos sem recarregar, o
+  📖 nos `Get-Content`, a virada para "terminou" sozinha, o diff colorido
+  com "passa no validador", a resposta, o "‹ Tarefas" e o "‹ Mesa".
+- **A prova pegou um defeito:** `replaceChildren(..., null)` escrevia
+  "nullnull" na cabeça da tarefa (o `el` pula `null`, o `replaceChildren`
+  não). Foi consertado antes do commit, e a nota dos modelos também.
+
+**O 8931 foi reiniciado às 18:04:06** (`scratchpad/reiniciar_app.ps1`, na
+janela :55–:10): PID 14812, escutando às 18:04:11, casca `v23`, com o
+`/oficina.js` em 200 e o `/api/delegados` em 401 sem token. **No celular:**
+fechar o app e abrir de novo, uma vez.
+
+**As órfãs de 01/10:** o `limpar --orfas` tirou as `codex-9e3fe028` e
+`codex-e28cc01b` (74 e 75 MB). Sobraram só os dois `.pytest_cache` trancados,
+em `E:\projetos-wt\_lixo_codex\`. Para apagar, como administrador, o
+comando que o `limpar` imprime.
+
+**Pendências:**
+- **F1 do plano:** falta passar **3 tarefas reais** pelo caminho todo, com o
+  custo de Claude medido. O despachante só foi provado com o dublê; o
+  formato dos eventos foi medido numa rodada real mínima (`exec --json
+  --ephemeral --sandbox read-only`, 27.494 tokens de entrada, 24.064 do
+  cache).
+- **O orquestrador precisa ler o `modelo_agentes`** do `config.json` ao
+  disparar agentes (o app só grava; quem passa o `model` é ele).
+- **O `llm.json` muda no `aplicado`**, e o commit é do orquestrador, por
+  caminho.
+- **Não feito:** o selo do Codex na prateleira (o "Comando" segue com os
+  selos de sempre) e a escolha de **esforço** do Codex pelo app. O padrão
+  do `config.toml` está em `ultra`, o mais caro; o despachante aceita
+  `--esforco`, mas o app não mostra.

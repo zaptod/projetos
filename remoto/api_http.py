@@ -57,8 +57,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import (acoes, claude_estado, comandos_app, decisoes, orquestrador, painel_dados,
-               tarefas, vila_dados, vila_nova)
+from . import (acoes, claude_estado, comandos_app, decisoes, delegar, orquestrador,
+               painel_dados, tarefas, vila_dados, vila_nova)
 from .config import runtime_dir
 
 PORTA_PADRAO = 8931
@@ -123,6 +123,7 @@ ESTATICOS = {
     "/decisoes.js": ("decisoes.js", "text/javascript; charset=utf-8"),
     "/orquestrador.js": ("orquestrador.js", "text/javascript; charset=utf-8"),
     "/conversa.js": ("conversa.js", "text/javascript; charset=utf-8"),
+    "/oficina.js": ("oficina.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -700,6 +701,19 @@ class Manipulador(BaseHTTPRequestHandler):
                 # A Mesa de comando: o que o orquestrador publicou, o uso, os
                 # comandos e a situacao de cada um. So leitura, e limpo.
                 return self._json(_limpo(orquestrador.para_o_app()))
+            # A OFICINA DO CODEX (01/10): o que foi delegado, ao vivo. So
+            # leitura; os eventos novos por offset (`desde`), sem reler o
+            # arquivo inteiro a cada 3 s.
+            if rota == "/api/delegados":
+                return self._json(_limpo(delegar.para_o_app()))
+            achado = re.fullmatch(r"/api/delegado/([a-z0-9][a-z0-9-]{2,39})", rota)
+            if achado:
+                ficha = delegar.detalhe_para_o_app(
+                    achado.group(1), _inteiro(consulta, "desde", -1),
+                    completo=(consulta.get("completo") or ["0"])[0] == "1")
+                if ficha is None:
+                    return self._erro(404, "essa tarefa não existe")
+                return self._json(_limpo(ficha))
             # O CORREIO (Vila das IAs, fase 2): a caixa de cada IA de chat.
             # Ler registra a PRESENCA: o carteiro so manda a resposta ao
             # Telegram quando o app nao esta olhando aquela caixa.

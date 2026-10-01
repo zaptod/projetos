@@ -17,7 +17,8 @@ const ORQ_PARTES = ["geral", "builds", "historias", "publicacao", "metricas", "a
 const ORQ_FONTE = {app: "pelo app", chat: "pelo chat", orquestrador: "pelo orquestrador"};
 const ORQ_CHAVE = {max_paralelo: "agentes em paralelo", modo: "modo",
                    teto_sessao_pct: "teto de uso", forca_total_antes_min: "força total",
-                   fila_pausada: "fila pausada"};
+                   fila_pausada: "fila pausada", modelo_agentes: "modelo dos agentes (Claude)",
+                   modelo_codex: "modelo do Codex", modelo_gemini: "modelo do Gemini"};
 
 const Orq = {dados: null, relogio: null, relogioFluxo: null, seloEm: 0,
              // toques rápidos viram UM envio, com o valor final (29/09 01:15:19:
@@ -704,13 +705,13 @@ function orqDesenharGrimorio(d) {
 
 function orqDesenharHistoricoCapacidade(d) {
   const h = d.historico_config || [];
-  const texto = (v) => v == null ? "desligada" : v === true ? "sim" : v === false ? "não"
-    : String(v);
+  const texto = (v, chave) => v == null ? (String(chave).startsWith("modelo_") ? "padrão" : "desligada")
+    : v === true ? "sim" : v === false ? "não" : String(v);
   $("orq-cap-historico").replaceChildren(orqDetalhes(`Histórico das mudanças (${h.length})`,
     h.length ? h.map((x) => el("div", {class: "linha"},
       el("span", {class: "orq-hora"}, quandoCurto(x.em)),
-      el("span", {class: "corpo"}, `${ORQ_CHAVE[x.chave] || x.chave}: ${texto(x.de)} → `
-        + `${texto(x.para)}`, el("div", {class: "fraco"}, ORQ_FONTE[x.origem] || x.origem))))
+      el("span", {class: "corpo"}, `${ORQ_CHAVE[x.chave] || x.chave}: ${texto(x.de, x.chave)} → `
+        + `${texto(x.para, x.chave)}`, el("div", {class: "fraco"}, ORQ_FONTE[x.origem] || x.origem))))
       : [el("div", {class: "fraco"}, "Nada mudou ainda.")]));
 }
 
@@ -980,7 +981,7 @@ async function orqCarregarFluxo() {
 // ------------------------------------------------------------- comandos
 function orqValor(c) {
   const v = c.valor;
-  if (v == null) return "";
+  if (v == null) return String(c.comando || "").startsWith("modelo_") ? "o padrão" : "";
   if (c.comando === "forca_total") return v ? `ligar (${v} min antes)` : "desligar";
   if (c.comando === "priorizar") return v.ordem ? `a ordem inteira (${v.ordem.length})` : `${v.direcao}`;
   if (c.comando === "contestar") return v.titulo || "";
@@ -1015,6 +1016,117 @@ function orqDesenharComandos(d) {
   }));
 }
 
+// ------------------------------------------------------- Codex (01/10)
+// O cartão da Oficina: quantas tarefas, quantas rodando, o uso do Codex.
+function orqDesenharCodex(d) {
+  const c = d.delegados;
+  const alvo = $("orq-codex");
+  if (!c) {
+    alvo.replaceChildren(el("div", {class: "fraco"}, "Não deu para ler as tarefas do Codex."));
+    return;
+  }
+  const u = c.uso || {};
+  const linhas = [el("div", {class: c.rodando ? "trabalhando" : "fraco"},
+    c.total ? `${c.total} tarefa(s) delegada(s)` + (c.rodando ? ` · ▶ ${c.rodando} rodando agora` : "")
+      : "Nenhuma tarefa delegada ainda.")];
+  linhas.push(el("div", {class: u.pct != null && c.teto != null && u.pct >= c.teto ? "erro" : "fraco"},
+    u.pct != null ? `Codex: ${Math.round(u.pct)}% da janela de 5 h (teto ${c.teto}%)`
+      + (u.medido_em ? ` · medido ${quandoCurto(u.medido_em)}` : "")
+      : "Codex: uso sem medição"));
+  for (const t of (c.ultimas || []).slice(0, 3)) {
+    const [sim, texto, classe] = (typeof OFI_SITUACAO !== "undefined" && OFI_SITUACAO[t.situacao])
+      || ["·", t.situacao, "fraco"];
+    const b = el("button", {class: "linha orq-codex-tarefa"},
+      el("span", {class: "corpo"}, t.titulo || t.id,
+        el("div", {class: "fraco"}, `#${t.id} · ${t.modelo || "modelo padrão"}`
+          + (t.inicio ? ` · ${quandoCurto(t.inicio)}` : ""))),
+      el("span", {class: "selo " + classe}, `${sim} ${texto}`));
+    b.addEventListener("click", () => {
+      abrir("oficina", b);
+      if (typeof ofiAbrir === "function") ofiAbrir(t.id);
+    });
+    linhas.push(b);
+  }
+  alvo.replaceChildren(...linhas);
+}
+
+// ------------------------------------------------------ modelos (01/10)
+// Três seletores; cada troca vira COMANDO (pendente até o orquestrador
+// aplicar), e ao lado fica o que vale. O do Claude é o dos AGENTES que o
+// orquestrador dispara: o da sessão principal só o Adrian troca (/model).
+const ORQ_MODELO_REGEX = /^[a-z0-9][a-z0-9._-]{1,48}$/;
+
+function orqSelectModelo(sel, comando, m, extra = []) {
+  if (document.activeElement === sel) return;           // ele está escolhendo
+  const pend = orqPendentes(comando);
+  const alvo = pend.length ? pend[0].valor : m.vigente;
+  const opcoes = [el("option", {value: ""}, `padrão (${m.padrao})`),
+    // no Claude a nota é curta e ajuda a escolher; nos outros ela é longa
+    // (inglês do Codex, a ordem de queda do Gemini) e fica na linha de baixo
+    ...m.opcoes.map((o) => el("option", {value: o.id}, o.rotulo
+      + (comando === "modelo_agentes" && o.nota ? ` — ${o.nota}` : "")))];
+  if (alvo && !m.opcoes.some((o) => o.id === alvo))
+    opcoes.push(el("option", {value: alvo}, alvo));
+  opcoes.push(...extra);
+  sel.replaceChildren(...opcoes);
+  sel.value = alvo || "";
+}
+
+function orqNotaModelo(alvo, comando, m, rotulo) {
+  const pend = orqPendentes(comando);
+  const nome = (v) => v == null || v === "" ? "padrão"
+    : ((m.opcoes.find((o) => o.id === v) || {}).rotulo || v);
+  alvo.replaceChildren(...[
+    el("div", {}, el("strong", {}, "valendo: "), nome(m.vigente)
+      + (m.ordem ? ` (procura: ${m.ordem.join(" → ")})` : "")),
+    pend.length ? el("div", {class: "trabalhando"},
+      `pedido: ${nome(pend[0].valor)} — esperando o orquestrador aplicar`) : null,
+    m.erro ? el("div", {class: "erro"}, m.erro) : null,
+    el("div", {}, m.nota || ""),
+    m.fonte ? el("div", {}, `lista: ${m.fonte}`) : null].filter((x) => x != null));
+}
+
+function orqDesenharModelos(d) {
+  const m = d.modelos;
+  if (!m) return;
+  const claude = $("orq-modelo-claude");
+  orqSelectModelo(claude, "modelo_agentes", m.claude);
+  claude.onchange = () => orqEnviar("modelo_agentes", claude.value || null);
+  orqNotaModelo($("orq-modelo-claude-nota"), "modelo_agentes", m.claude);
+
+  const codex = $("orq-modelo-codex");
+  orqSelectModelo(codex, "modelo_codex", m.codex,
+    m.codex.livre ? [el("option", {value: "__outro__"}, "outro… (digitar o nome)")] : []);
+  codex.onchange = () => {
+    const outro = codex.value === "__outro__";
+    $("orq-modelo-codex-livre").classList.toggle("oculto", !outro);
+    if (outro) { $("orq-modelo-codex-nome").focus(); return; }
+    orqEnviar("modelo_codex", codex.value || null);
+  };
+  orqNotaModelo($("orq-modelo-codex-nota"), "modelo_codex", m.codex);
+
+  const gemini = $("orq-modelo-gemini");
+  orqSelectModelo(gemini, "modelo_gemini", m.gemini);
+  gemini.onchange = () => orqEnviar("modelo_gemini", gemini.value || null);
+  orqNotaModelo($("orq-modelo-gemini-nota"), "modelo_gemini", m.gemini);
+
+  const pedidos = ["modelo_agentes", "modelo_codex", "modelo_gemini"].flatMap((n) => orqPendentes(n));
+  $("orq-modelos-pendente").textContent = pedidos.length
+    ? `${pedidos.length} troca(s) esperando o orquestrador.` : "";
+}
+
+$("orq-modelo-codex-pedir").addEventListener("click", () => {
+  const nome = $("orq-modelo-codex-nome").value.trim().toLowerCase();
+  if (!ORQ_MODELO_REGEX.test(nome)) {
+    avisar("nome de modelo inválido: letras minúsculas, números, ponto e hífen", true);
+    return;
+  }
+  $("orq-modelo-codex-livre").classList.add("oculto");
+  $("orq-modelo-codex-nome").value = "";
+  orqEnviar("modelo_codex", nome);
+});
+$("orq-abrir-oficina").addEventListener("click", (e) => abrir("oficina", e.currentTarget));
+
 // ---------------------------------------------------------------- ciclo
 async function orqCarregar() {
   try {
@@ -1023,8 +1135,10 @@ async function orqCarregar() {
     if (typeof claudeDesenhar === "function") claudeDesenhar(d.claude);
     orqFaixa(d);
     orqDesenharAgora(d);
+    orqDesenharCodex(d);
     orqDesenharFila(d);
     orqDesenharCapacidade(d);
+    orqDesenharModelos(d);
     orqDesenharLimites(d);
     orqDesenharDecisoes(d);
     orqDesenharAcessos(d);

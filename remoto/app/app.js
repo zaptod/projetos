@@ -6,7 +6,7 @@ const CONTATO = "painel.ultimo_contato";
 const TITULOS = {vila: "Vila", conversa: "Conversa", quadro: "Quadro de avisos", diario: "Diário",
                  videos: "Cinema", comandos: "Bancada",
                  relatorios: "Pergaminhos", decisoes: "Grimório",
-                 orquestrador: "Mesa de comando"};
+                 orquestrador: "Mesa de comando", oficina: "Oficina do Codex"};
 const RELATORIOS = ["metas", "funcionamento", "confiabilidade", "auditoria"];
 const $ = (id) => document.getElementById(id);
 
@@ -579,7 +579,8 @@ const CARGAS = {vila: [carregarAgora, 15000], quadro: [carregarAgora, 15000],
                 diario: [carregarDiario, 5000],
                 videos: [null, 0], comandos: [null, 0],
                 relatorios: [abrirPergaminho, 0],
-                decisoes: [null, 0], orquestrador: [null, 0], conversa: [null, 0]};
+                decisoes: [null, 0], orquestrador: [null, 0], conversa: [null, 0],
+                oficina: [null, 0]};
 
 function mostrar(nova) {
   if (nova && nova !== tela && nova === "diario") {
@@ -616,6 +617,7 @@ function mostrar(nova) {
   if (typeof decisoesParar === "function") decisoesParar();
   if (typeof orquestradorParar === "function") orquestradorParar();
   if (typeof conversaParar === "function") conversaParar();
+  if (typeof oficinaParar === "function") oficinaParar();
   if (!pareado) return;
   // o quadro de avisos mostra a gente e as travas, que vêm da vida da vila
   if ((tela === "vila" || tela === "quadro") && typeof vilaMostrar === "function") {
@@ -632,6 +634,9 @@ function mostrar(nova) {
   }
   if (tela === "conversa" && typeof conversaMostrar === "function") {
     conversaMostrar();
+  }
+  if (tela === "oficina" && typeof oficinaMostrar === "function") {
+    oficinaMostrar();
   }
   carregarAcoes().then(() => { if (tela === "videos") carregarVideos(); });
   const [carga, intervalo] = CARGAS[tela];
@@ -654,7 +659,9 @@ function abrir(nova, origem) {
     secao.style.setProperty("--oy", `${Math.round(r.top + r.height / 2)}px`);
   }
   secao.scrollTop = 0;
-  if (tela === "vila" && nova !== "vila") history.pushState({tela: nova}, "");
+  // A Oficina abre por cima da Mesa: o voltar do Android volta para a Mesa.
+  if ((tela === "vila" && nova !== "vila") || (nova === "oficina" && tela !== "oficina"))
+    history.pushState({tela: nova}, "");
   mostrar(nova);
 }
 
@@ -702,7 +709,8 @@ if ("serviceWorker" in navigator && window.isSecureContext)
 // inclusive os que falharam.
 const MODULOS = [["vila.js", "vilaMostrar"], ["comandos.js", "comandosMostrar"],
                  ["decisoes.js", "decisoesMostrar"],
-                 ["orquestrador.js", "orquestradorMostrar"], ["conversa.js", "conversaAbrir"]];
+                 ["orquestrador.js", "orquestradorMostrar"], ["conversa.js", "conversaAbrir"],
+                 ["oficina.js", "oficinaMostrar"]];
 
 function modulosQueFaltam() {
   return MODULOS.filter(([, funcao]) => typeof window[funcao] !== "function")

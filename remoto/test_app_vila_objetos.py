@@ -13,7 +13,7 @@ APP = Path(__file__).resolve().parent / "app"
 HTML = (APP / "index.html").read_text(encoding="utf-8")
 JS = {n: (APP / n).read_text(encoding="utf-8")
       for n in ("app.js", "vila.js", "comandos.js", "decisoes.js", "orquestrador.js",
-                "conversa.js")}
+                "conversa.js", "oficina.js")}
 
 # as áreas de antes da reforma, cada uma com o seu objeto na vila
 OBJETOS = {"quadro": "Avisos", "diario": "Diário", "videos": "Cinema",
@@ -41,6 +41,11 @@ FUNCOES = [
     "imagem-tela-legenda", "imagem-baixar", "imagem-compartilhar", "imagem-fechar",
     # o interruptor do Claude (29/09): no topo da Mesa e na Bancada
     "claude-mesa", "claude-faixa", "claude-bancada",
+    # o Codex (01/10): o cartao da Mesa, a Oficina e os tres seletores de modelo
+    "orq-codex", "orq-abrir-oficina", "orq-modelo-claude", "orq-modelo-codex",
+    "orq-modelo-gemini", "orq-modelo-codex-livre", "orq-modelo-codex-nome",
+    "tela-oficina", "oficina-lista", "oficina-uso", "oficina-tarefa", "oficina-eventos",
+    "oficina-diff", "oficina-testes", "oficina-pedido", "oficina-resposta", "oficina-abas",
     # vila
     "vila-canvas", "vila-placar", "vila-escolhido", "vila-mais", "vila-menos",
     # diário
@@ -94,7 +99,7 @@ def test_titulos_e_cargas_cobrem_todas_as_areas():
     fonte = JS["app.js"]
     titulos = re.search(r"const TITULOS = \{(.*?)\};", fonte, re.S).group(1)
     cargas = re.search(r"const CARGAS = \{(.*?)\};", fonte, re.S).group(1)
-    for tela in [*OBJETOS, "vila"]:
+    for tela in [*OBJETOS, "vila", "oficina"]:
         assert re.search(rf"\b{tela}:", titulos), tela
         assert re.search(rf"\b{tela}:", cargas), tela
 
@@ -112,9 +117,10 @@ def test_o_cache_da_casca_mudou_de_versao():
     # sem trocar o nome do cache, o celular seguiria com a casca antiga
     sw = (APP / "sw.js").read_text(encoding="utf-8")
     # v20 = pedir imagem (29/09); v21 = lote da semana (30/09); v22 = modulo
-    # que nao chegou (30/09, tarde: o 502 cai na copia guardada)
-    assert "painel-casca-v22" in sw
-    assert '"orquestrador.js"' in sw and '"conversa.js"' in sw
+    # que nao chegou (30/09, tarde: o 502 cai na copia guardada); v23 = a
+    # Oficina do Codex e os Modelos (01/10)
+    assert "painel-casca-v23" in sw
+    assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
 
 
 def test_o_icone_novo_esta_no_manifest_na_casca_e_no_servidor():

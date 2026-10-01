@@ -211,8 +211,10 @@
     <div id="orq-faixa" class="orq-faixa oculto" role="status"></div>
     <div class="orq-atalhos" role="group" aria-label="Seções da mesa">
       <button class="acao" data-orq="orq-sec-agora">Agora</button>
+      <button class="acao" data-orq="orq-sec-codex">Codex</button>
       <button class="acao" data-orq="orq-sec-fila">Fila</button>
       <button class="acao" data-orq="orq-sec-capacidade">Capacidade</button>
+      <button class="acao" data-orq="orq-sec-modelos">Modelos</button>
       <button class="acao" data-orq="orq-sec-limites">Limites</button>
       <button class="acao" data-orq="orq-sec-decisoes">Decisões</button>
       <button class="acao" data-orq="orq-sec-acessos">Acessos</button>
@@ -227,6 +229,15 @@
       <div id="orq-agora"></div>
       <div id="orq-carteiro" class="orq-carteiro fraco"></div>
       <div id="orq-concluidos" class="fraco"></div>
+    </div>
+    <!-- O Codex (01/10): o que o orquestrador delegou a ele; a Oficina mostra
+         ao vivo. Só leitura: aplicar continua com o orquestrador. -->
+    <div class="cartao" id="orq-sec-codex">
+      <h2>🔧 Oficina do Codex</h2>
+      <div id="orq-codex"></div>
+      <div class="botoes">
+        <button class="acao primario" id="orq-abrir-oficina">Abrir a Oficina</button>
+      </div>
     </div>
     <div class="cartao" id="orq-sec-fila">
       <h2>Fila</h2>
@@ -268,6 +279,31 @@
       <div id="orq-grimorio" class="orq-grimorio"></div>
       <div id="orq-cap-historico"></div>
     </div>
+    <!-- Os modelos (01/10): cada seletor vira comando, como a capacidade. -->
+    <div class="cartao" id="orq-sec-modelos">
+      <h2>Modelos</h2>
+      <div class="orq-controle">
+        <label class="corpo" for="orq-modelo-claude">Claude (agentes que eu disparo)</label>
+        <select id="orq-modelo-claude"></select>
+      </div>
+      <div class="fraco orq-modelo-nota" id="orq-modelo-claude-nota"></div>
+      <div class="orq-controle">
+        <label class="corpo" for="orq-modelo-codex">Codex</label>
+        <select id="orq-modelo-codex"></select>
+      </div>
+      <div class="orq-modelo-livre oculto" id="orq-modelo-codex-livre">
+        <input id="orq-modelo-codex-nome" maxlength="49" autocapitalize="off" autocomplete="off"
+               spellcheck="false" placeholder="nome do modelo (ex.: gpt-6-sol)">
+        <button class="acao" id="orq-modelo-codex-pedir">Pedir</button>
+      </div>
+      <div class="fraco orq-modelo-nota" id="orq-modelo-codex-nota"></div>
+      <div class="orq-controle">
+        <label class="corpo" for="orq-modelo-gemini">Gemini (navegador)</label>
+        <select id="orq-modelo-gemini"></select>
+      </div>
+      <div class="fraco orq-modelo-nota" id="orq-modelo-gemini-nota"></div>
+      <div class="fraco" id="orq-modelos-pendente"></div>
+    </div>
     <div class="cartao" id="orq-sec-limites">
       <h2>Limites</h2>
       <div id="orq-teto-aviso" class="orq-alerta oculto" role="alert"></div>
@@ -301,6 +337,39 @@
       <h2>O que você mandou</h2>
       <div class="fraco">Pelo app e pelo chat, do mais novo para o mais velho.</div>
       <div id="orq-comandos"></div>
+    </div>
+  </section>
+  <!-- A Oficina do Codex (01/10): as tarefas delegadas, ao vivo. Abre pela Mesa. -->
+  <section id="tela-oficina" class="oculto livro oficina" aria-label="Oficina do Codex">
+    <div class="botoes ofi-nav">
+      <button class="acao" id="oficina-voltar-mesa">‹ Mesa</button>
+    </div>
+    <div class="cartao" id="oficina-lista-cartao">
+      <h2>Oficina do Codex</h2>
+      <div class="fraco">O que o orquestrador delegou ao Codex. Aqui é só olhar: quem aplica
+        é o orquestrador, depois de conferir o diff e rodar os testes de novo.</div>
+      <div id="oficina-uso"></div>
+      <div id="oficina-erros" class="erro"></div>
+      <div id="oficina-lista"></div>
+    </div>
+    <div class="cartao oculto" id="oficina-tarefa">
+      <div class="botoes">
+        <button class="acao" id="oficina-voltar-lista">‹ Tarefas</button>
+        <button class="acao" id="oficina-seguir" aria-pressed="true">⇣ seguindo o fim</button>
+      </div>
+      <div id="oficina-cabeca"></div>
+      <div class="abas" id="oficina-abas" role="group" aria-label="O que ver da tarefa">
+        <button class="acao" data-aba="vivo" aria-pressed="true">Ao vivo</button>
+        <button class="acao" data-aba="diff" aria-pressed="false">Diff</button>
+        <button class="acao" data-aba="testes" aria-pressed="false">Testes</button>
+        <button class="acao" data-aba="pedido" aria-pressed="false">Pedido</button>
+        <button class="acao" data-aba="resposta" aria-pressed="false">Resposta</button>
+      </div>
+      <div id="oficina-eventos" class="ofi-eventos" role="log" aria-live="polite"></div>
+      <div id="oficina-diff" class="oculto"></div>
+      <div id="oficina-testes" class="oculto"></div>
+      <pre id="oficina-pedido" class="ofi-pre oculto"></pre>
+      <pre id="oficina-resposta" class="ofi-pre oculto"></pre>
     </div>
   </section>
 </main>
@@ -365,5 +434,6 @@
 <script src="decisoes.js"></script>
 <script src="orquestrador.js"></script>
 <script src="conversa.js"></script>
+<script src="oficina.js"></script>
 </body>
 </html>

@@ -178,7 +178,7 @@ class ClienteLLM:
             if pensa == self.RACIOCINIO_DA_CONTA:
                 return nome + " (DeepThink como a conta estiver)"
             return nome + (" + DeepThink" if pensa else "")
-        ordem = preferido or self.sel.get("modelo_preferido")
+        ordem = preferido or self._preferido_do_config() or self.sel.get("modelo_preferido")
         if not ordem or not self.sel.get("modelo_botao"):
             return ""
         ultimo = ""
@@ -197,6 +197,26 @@ class ClienteLLM:
                  f"forte depois de {self.TENTATIVAS_DE_MODELO} tentativas; "
                  f"a historia vai sair em {ultimo or 'modelo desconhecido'}.")
         return ultimo
+
+    def _preferido_do_config(self):
+        """A ordem de modelos que o Adrian escolheu pelo app (01/10/2026).
+
+        Mora no bloco do provedor no `config/llm.json`
+        (`"gemini": {"modelo_preferido": ["3.6 flash", "flash"]}`), gravado
+        pela Mesa de comando; sem ela, vale a dos seletores (o mais forte).
+        Lista vazia, torta ou ilegivel = None. Nunca levanta.
+        """
+        try:
+            from . import papeis
+            ordem = papeis.ajustes(self.provedor).get("modelo_preferido")
+        except Exception:                                      # noqa: BLE001
+            return None
+        if isinstance(ordem, str):
+            ordem = [ordem]
+        if not isinstance(ordem, (list, tuple)):
+            return None
+        limpa = [str(o).strip() for o in ordem if isinstance(o, str) and str(o).strip()]
+        return limpa or None
 
     RACIOCINIO_DA_CONTA = "como_a_conta"
 
