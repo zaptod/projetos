@@ -36,7 +36,7 @@
   ],
   "pergunta": "O Codex pode commitar ou só entregar o diff?",
   "projeto": "geral",
-  "situacao": "bloqueada",
+  "situacao": "pendente",
   "titulo": "Codex: commita ou só propõe",
   "vigente": null
 }

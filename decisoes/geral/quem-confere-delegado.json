@@ -3,7 +3,15 @@
   "contexto": "Em qualquer opção um validador automático roda os testes de novo e recusa diff fora dos caminhos permitidos. Plano: C:\\Users\\adrian\\.claude\\plans\\delegar-codex-gemini.md.",
   "criado": "2026-10-01T14:03:40.213840",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-01T14:31:01",
+      "opcao": "validador-mais-barato",
+      "origem": "app"
+    }
+  ],
   "id": "quem-confere-delegado",
   "midias": [],
   "opcoes": [
@@ -37,7 +45,11 @@
   ],
   "pergunta": "Quem confere o que o Codex fez antes de entrar no projeto?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Codex e Gemini: quem confere o trabalho",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-01T14:31:01",
+    "opcao": "validador-mais-barato"
+  }
 }

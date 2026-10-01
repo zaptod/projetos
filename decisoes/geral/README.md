@@ -33,7 +33,7 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
   - ✅ **Perfis de navegador: mudar para o E:?** — Mover para o E: (recomendado) (30/09/2026) `perfis-para-o-e`
 - ✅ **Imagens em volume: qual caminho dentro das regras** — Contas extras suas, cada uma com papel próprio, sem disfarce (30/09/2026) `contas-ia-caminho`
 - ✅ **Codex e Gemini: o que delegar primeiro** — Consertos com teste (recomendado) (01/10/2026) `delegar-o-que-primeiro`
-- ⏳ **Codex e Gemini: quem confere o trabalho** — Quem confere o que o Codex fez antes de entrar no projeto? `quem-confere-delegado`
-  - 🔒 **Codex: commita ou só propõe** — O Codex pode commitar ou só entregar o diff? · espera Codex e Gemini: quem confere o trabalho = decidida `codex-commita`
+- ✅ **Codex e Gemini: quem confere o trabalho** — Validador + agente barato (recomendado) (01/10/2026) `quem-confere-delegado`
+  - ⏳ **Codex: commita ou só propõe** — O Codex pode commitar ou só entregar o diff? `codex-commita`
 - ⏳ **Gemini CLI também, ou só o Codex?** — Conecto o Gemini pela linha de comando também? `gemini-cli-tambem`
   - 🔒 **Codex e Gemini: teto de uso** — Até quanto da cota de cada um eu posso usar? · espera Gemini CLI também, ou só o Codex? = decidida `teto-dos-delegados`
