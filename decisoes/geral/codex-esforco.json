@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T19:39:33",
+      "evento": "2026-10-01T19:37:44",
+      "linha": 103,
+      "nota": "aplicado: esforco medium por padrão no despachante",
+      "opcao": "medio",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Hoje é 'ultra', o mais caro da sua cota do Plus (a janela de 5 h estava em 36% às 16:29). Os 2 consertos de hoje eram pequenos. Esforço menor = mais tarefas por janela; maior = mais cuidado em tarefa difícil.",
   "criado": "2026-10-01T18:11:18.850742",
   "depende_de": [],
