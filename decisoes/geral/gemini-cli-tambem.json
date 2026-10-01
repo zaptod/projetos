@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T14:33:20",
+      "evento": "2026-10-01T14:31:18",
+      "linha": 99,
+      "nota": "anotado; delegação começa quando ele fizer os logins (F0)",
+      "opcao": "os-dois",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "O Gemini CLI lê vídeo e ÁUDIO (o navegador não ouvia), mas no Windows 10 não tem sandbox seguro: só leitura. Ainda não se sabe se divide a cota com o Gemini do navegador (revisão de vídeo). Plano: C:\\Users\\adrian\\.claude\\plans\\delegar-codex-gemini.md.",
   "criado": "2026-10-01T14:03:41.085181",
   "depende_de": [],
