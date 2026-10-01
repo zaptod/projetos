@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T14:30:14",
+      "evento": "2026-10-01T14:30:00",
+      "linha": 93,
+      "nota": "arte pela esteira de sprites: depende da F0 da esteira (e8cade1b)",
+      "opcao": "esteira",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Hoje o palco desenha uma vara rígida de 3 m; a pasta de estilos de arma está vazia e o CC0 não tem corrente. Plano: C:\\Users\\adrian\\.claude\\plans\\corrente-rework.md.",
   "criado": "2026-09-30T18:15:21.861127",
   "depende_de": [
