@@ -126,6 +126,13 @@ OBSTACULO_DANO_ARREMESSO = 999.0
 # 10% = 0,3. Sem portao eram ~44/luta (~4,3 s de tela parada por luta).
 HITSTOP_DANO_MIN_PCT = 0.06   # fracao da vida_max do ALVO
 
+# === CORRENTE V2 (rework da corrente, 01/10/2026) ===
+# Bola fisica com momento + enlace dos estilos leves (core/corrente.py).
+# DESLIGADA: a luta que nao carimba ``corrente_v2`` no match_config roda a
+# corrente antiga, identica bit a bit (decisao ``corrente-seeds-antigas``:
+# chave so para lutas novas). Ligar em producao e decisao do Adrian (A/B).
+CORRENTE_V2 = False
+
 # ============================================================
 # ONDA 11B: qualidade 1-a-1 das skills
 # ============================================================

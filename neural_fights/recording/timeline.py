@@ -2354,7 +2354,8 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
                     fps_video: int = 30, max_duracao: float = 120.0,
                     cauda_pos_ko: float = 3.5, headless: bool = False,
                     desenhar: bool = False, sonda: bool = True, hashes: bool = False,
-                    roster_provider=None, anotar_som: bool | None = None) -> dict:
+                    roster_provider=None, anotar_som: bool | None = None,
+                    corrente_v2: bool | None = None) -> dict:
     """Roda a luta com o MESMO laco do gravador e devolve a timeline.
 
     Os mesmos numeros de ``fight_recorder.gravar_luta`` (60 Hz, captura a cada
@@ -2372,6 +2373,8 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
     - ``anotar_som`` (padrao: sim, fora do headless) poe o ``AnotadorDeAudio``
       da Onda 16A no lugar do AudioManager, como o gravador, e a secao
       ``sons`` sai preenchida com o som REAL da luta.
+    - ``corrente_v2`` carimba a chave da corrente nova no match_config
+      (``None`` = nao carimba = a corrente antiga, como toda luta gravada).
 
     Devolve ``{"resultado", "timeline" (dict ou None), "hashes" (lista ou None)}``.
     """
@@ -2400,6 +2403,9 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
         match_config["camera_espera_zoom_in"] = float(camera_espera_zoom_in)
     if nomes_exibicao:
         match_config["nomes_exibicao"] = dict(nomes_exibicao)
+    if corrente_v2 is not None:
+        # Chave da corrente nova (core/corrente.py). Ausente = a antiga.
+        match_config["corrente_v2"] = bool(corrente_v2)
     extras = {}
     if roster_provider is not None:
         extras["roster_provider"] = roster_provider

@@ -489,6 +489,7 @@ def gravar_luta(
     anotar_som: bool = True,
     som_no_video: bool = True,
     timeline: str | Path | None = None,
+    corrente_v2: bool | None = None,
 ) -> dict:
     """Roda a luta desenhando cada frame e devolve o resultado + timestamps.
 
@@ -509,6 +510,9 @@ def gravar_luta(
     Godot abre nativo (zstd); outro sufixo, JSON. O resultado leva o CAMINHO,
     nunca o documento (~1 MB). A timeline nunca derruba a gravacao: falha vira
     ``erro_timeline`` no resultado.
+
+    ``corrente_v2`` carimba a chave da corrente nova (bola fisica + enlace)
+    no match_config; ``None`` nao carimba e a luta usa a corrente antiga.
     """
     # Import tardio: o Simulador puxa pygame, e o driver precisa ja estar
     # escolhido (feito no topo do modulo).
@@ -546,6 +550,11 @@ def gravar_luta(
         match_config["camera_espera_zoom_in"] = float(camera_espera_zoom_in)
     if nomes_exibicao:
         match_config["nomes_exibicao"] = dict(nomes_exibicao)
+    # Corrente nova (core/corrente.py): so entra quando quem grava pede.
+    # Ausente = a corrente antiga — e o que toda luta gravada antes usa, entao
+    # a regeracao de uma luta antiga continua a mesma.
+    if corrente_v2 is not None:
+        match_config["corrente_v2"] = bool(corrente_v2)
 
     extras = {}
     if roster_provider is not None:

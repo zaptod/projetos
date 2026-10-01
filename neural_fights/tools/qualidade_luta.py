@@ -94,6 +94,15 @@ class FonteDeDados:
         arma = self._armas.get(self._chars[nome].get("nome_arma", ""))
         return str(getattr(arma, "tipo", "")) if arma is not None else ""
 
+    def familia_corrente_de(self, nome: str) -> str:
+        """Corrente: ``"Corrente/pesada"`` ou ``"Corrente/leve"``; senao ''."""
+        from neural_fights.core import corrente
+
+        arma = self._armas.get(self._chars[nome].get("nome_arma", ""))
+        if not corrente.eh_corrente(arma):
+            return ""
+        return f"Corrente/{corrente.familia(arma)}"
+
     def nomes_por_tipo(self) -> dict[str, list[str]]:
         grupos: dict[str, list[str]] = {}
         for nome in self.nomes:
@@ -247,6 +256,9 @@ def executar_luta(spec: dict[str, Any], fonte: FonteDeDados) -> dict[str, Any]:
             "p2_nome": spec["p2"],
             "cenario": spec.get("cenario", CENARIO_PADRAO),
             "best_of": 1,
+            # A chave so entra quando a spec a pede: sem ela o match_config
+            # e o mesmo de antes do rework (luta antiga identica).
+            **({"corrente_v2": bool(spec["corrente_v2"])} if "corrente_v2" in spec else {}),
         },
         seed=spec["seed"],
         max_duration=120.0,
@@ -265,6 +277,8 @@ def executar_luta(spec: dict[str, Any], fonte: FonteDeDados) -> dict[str, Any]:
         luta["classe_p2"] = fonte.classe_de(spec["p2"])
         luta["tipo_p1"] = fonte.tipo_arma_de(spec["p1"])
         luta["tipo_p2"] = fonte.tipo_arma_de(spec["p2"])
+        luta["familia_p1"] = fonte.familia_corrente_de(spec["p1"])
+        luta["familia_p2"] = fonte.familia_corrente_de(spec["p2"])
     return luta
 
 
@@ -680,12 +694,29 @@ def agregar(lutas: list[dict[str, Any]]) -> dict[str, Any]:
     resumo["winrate_tipo_min"], resumo["winrate_tipo_max"] = _extremos_de_winrate(
         quadro_tipos, minimo_lutas=12
     )
+    quadro_familias = _winrates_por_rotulo(com_vencedor, "familia_p1", "familia_p2")
+    registro_corrente = quadro_tipos.get("Corrente") or {}
+    resumo["winrate_corrente"] = (
+        registro_corrente["vitorias"] / registro_corrente["lutas"]
+        if registro_corrente.get("lutas") else None
+    )
+    # Corrente: no acerto, a bola estava no corpo do alvo? (alvo K4)
+    acertos_corrente = sum(int(luta.get("corrente_acertos", 0) or 0) for luta in ok)
+    contatos_corrente = sum(int(luta.get("corrente_contatos", 0) or 0) for luta in ok)
+    folgas = [f for luta in ok for f in (luta.get("corrente_folgas_m") or ())]
+    resumo["corrente_acertos"] = acertos_corrente
+    resumo["corrente_contato_no_acerto"] = (
+        contatos_corrente / acertos_corrente if acertos_corrente else None
+    )
+    resumo["corrente_folga_p50_m"] = percentil(folgas, 0.5) if folgas else None
+    resumo["corrente_folga_p90_m"] = percentil(folgas, 0.9) if folgas else None
     resumo["divergencia_presets_l1"] = _divergencia_presets(ok)
     resumo["razao_duracao_celulas"] = _razao_duracao_matriz(ok)
 
     resumo["_quadros"] = {
         "classes": quadro_classes,
         "tipos": quadro_tipos,
+        "corrente_familias": quadro_familias,
     }
     return resumo
 
@@ -850,6 +881,11 @@ def build_parser() -> SafeArgumentParser:
     parser.add_argument("--out", help="grava o relatorio completo em JSON")
     parser.add_argument("--progresso", action="store_true")
     parser.add_argument(
+        "--corrente-v2",
+        action="store_true",
+        help="roda o corpus com a corrente nova (bola fisica + enlace); padrao = a antiga",
+    )
+    parser.add_argument(
         "--vfx",
         action="store_true",
         help="mede o volume visual (objetos de VFX por frame) e avalia os alvos de limpeza da luta",
@@ -1004,6 +1040,8 @@ def main(argv: list[str] | None = None) -> int:
         return dump_timeline(args, fonte)
 
     specs = corpus_smoke(fonte) if args.corpus == "smoke" else corpus_completo(fonte)
+    if args.corrente_v2:
+        specs = [dict(spec, corrente_v2=True) for spec in specs]
     inicio = time.perf_counter()
     lutas = rodar_corpus(specs, fonte, progresso=args.progresso)
     duracao_execucao = time.perf_counter() - inicio
@@ -1028,6 +1066,7 @@ def main(argv: list[str] | None = None) -> int:
                 "corpus": args.corpus,
                 "dados": fonte.modo,
                 "onda": args.onda,
+                "corrente_v2": bool(args.corrente_v2),
             },
             "resumo": {k: v for k, v in resumo.items() if not k.startswith("_")},
             "quadros": resumo.get("_quadros", {}),
@@ -1039,6 +1078,10 @@ def main(argv: list[str] | None = None) -> int:
                     "vencedor_slot": luta.get("vencedor_slot"),
                     "reason": luta.get("reason"),
                     "error": luta.get("error"),
+                    "golpes": luta.get("golpes"),
+                    "hp_final_vencedor": luta.get("hp_final_vencedor"),
+                    "corrente_acertos": luta.get("corrente_acertos"),
+                    "corrente_contatos": luta.get("corrente_contatos"),
                 }
                 for luta in lutas
             ],

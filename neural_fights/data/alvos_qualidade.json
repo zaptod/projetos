@@ -678,5 +678,20 @@
     "enforce_onda": 99,
     "min_lutas": 0,
     "descricao": "Meta aspiracional: <= 8 inversoes de zoom por minuto em qualquer matchup. Kiting exige um zoom que siga a DISTANCIA MEDIA (filtro de ~3 s) em vez da instantanea."
+  },
+  "K4_corrente_contato": {
+    "metrica": "corrente_contato_no_acerto",
+    "min": 1.0,
+    "enforce_onda": 99,
+    "min_lutas": 30,
+    "descricao": "Rework da corrente (01/10/2026): no acerto de arma de corrente a BOLA esta no corpo do alvo (caminho varrido no tick contra raio do corpo + raio da bola). Linha de base (corrente antiga, completo engine): 67/1263 = 5,3%, folga mediana 1,08 m, p90 1,86 m (o setor da espada acertava no preparo com a bola longe). Corrente V2 (--corrente-v2): 100% (1269/1269 no completo engine de 01/10/2026; folga mediana -0,20 m = bola dentro do corpo). Enforce 99 enquanto CORRENTE_V2 estiver desligada em producao; ao ligar, desce para a onda corrente e o nightly roda com --corrente-v2."
+  },
+  "B2c_corrente_winrate": {
+    "metrica": "winrate_corrente",
+    "min": 0.4,
+    "max": 0.6,
+    "enforce_onda": 6,
+    "min_lutas": 120,
+    "descricao": "Rework da corrente: a mecanica nova nao pode desequilibrar o tipo. Linha de base (antiga, completo engine): 77/157 = 0,490 (pesadas 46/103, leves 31/54). Corrente V2 (--corrente-v2): 73/158 = 0,462 (pesadas 43/104, leves 30/54); os outros tipos mudam no maximo 1 vitoria (B2 0,338-0,626)."
   }
 }

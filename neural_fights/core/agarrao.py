@@ -230,9 +230,66 @@ def aplicar_desfecho(ini, alvo, desfecho: str, ex: float, ey: float):
     return desfecho, revertido, ini, alvo
 
 
+# ---------------------------------------------------------------------------
+# ENLACE (corrente V2, rework 01/10/2026): as correntes LEVES (Chicote,
+# Kusarigama, Rope Dart) não empurram — enrolam. O alvo fica travado como no
+# agarrão (``agarrao_timer`` com papel "enlacado": sem IA, movimento ou
+# golpe) e é puxado para o anel da corrente do dono, que emenda o golpe.
+# O ciclo (relógio, lock, interrupção por dano) vive no Simulador, como o do
+# agarrão; aqui só as contas, puras e sem RNG.
+# ---------------------------------------------------------------------------
+
+ENLACE_DURACAO_S = (0.4, 0.6)
+
+
+def duracao_enlace(arma) -> float:
+    """0,4–0,6 s: corrente mais comprida enrola por mais tempo."""
+    try:
+        total = float(getattr(arma, "comp_corrente", 80.0) or 80.0) + float(
+            getattr(arma, "comp_ponta", 20.0) or 20.0
+        )
+    except (TypeError, ValueError):
+        total = 100.0
+    frac = min(1.0, max(0.0, (total - 90.0) / 50.0))
+    minimo, maximo = ENLACE_DURACAO_S
+    return minimo + (maximo - minimo) * frac
+
+
+def distancia_do_enlace(ini, alvo) -> float:
+    """Até onde o enlace puxa: para dentro do anel da corrente do dono.
+
+    80% da distância ideal do golpe (o alvo chega perto, mas fora da zona
+    morta) e nunca menos que os corpos encostados.
+    """
+    from neural_fights.core import corrente
+
+    soma = float(getattr(ini, "raio_fisico", 0.4) or 0.4) + float(
+        getattr(alvo, "raio_fisico", 0.4) or 0.4
+    )
+    return max(soma + 0.3, corrente.alcances(ini)["ideal"] * 0.8)
+
+
+def passo_enlace(pos_ini, pos_alvo, distancia: float, restante: float, dt: float):
+    """Deslocamento do alvo neste tick: vence o excesso até ``distancia``
+    em partes iguais pelo tempo que falta do enlace (como o lunge do agarrão)."""
+    ex = float(pos_ini[0]) - float(pos_alvo[0])
+    ey = float(pos_ini[1]) - float(pos_alvo[1])
+    d = math.hypot(ex, ey)
+    excesso = d - float(distancia)
+    if excesso <= 0.0 or d < 1e-9 or dt <= 0.0:
+        return 0.0, 0.0
+    frac = min(1.0, dt / max(float(restante) + dt, 1e-9))
+    passo = excesso * frac
+    return ex / d * passo, ey / d * passo
+
+
 __all__ = [
     "DESFECHOS",
+    "ENLACE_DURACAO_S",
     "aplicar_desfecho",
+    "distancia_do_enlace",
+    "duracao_enlace",
+    "passo_enlace",
     "iniciativa",
     "pesos_desfecho",
     "sortear_desfecho",

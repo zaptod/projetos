@@ -41,6 +41,7 @@ from neural_fights.core.combat import criar_metadata_impacto
 from neural_fights.core.physics import intersect_line_circle, colisao_linha_linha, normalizar_angulo
 from neural_fights.utils.fonts import get_fonte, get_fonte_impact, get_fonte_mono
 from neural_fights.core.hitbox import sistema_hitbox, verificar_hit, atualizar_debug, DEBUG_VISUAL
+from neural_fights.core import corrente as _corrente
 from neural_fights.core.arena import set_arena  # v9.0 Sistema de Arena
 from neural_fights.ai import CombatChoreographer  # Sistema de Coreografia v5.0
 from neural_fights.core.game_feel import GameFeelManager, HitStopManager  # Sistema de Game Feel v8.0
@@ -386,6 +387,17 @@ class Simulador:
             random.Random(f"neural-fights:{base_seed}:{generation}:p2")
         )
         sistema_hitbox.limpar_historico()
+
+        # Corrente V2 (rework 01/10/2026): chave da LUTA, do match_config
+        # (padrao ``config.CORRENTE_V2`` = desligada). Desligada, NADA da
+        # corrente nova roda nem e alocado (nem atributo novo): ids de
+        # objeto entram no estado do animador de arma entre rounds, e a luta
+        # antiga tem de sair identica bit a bit.
+        if _corrente.chave_ligada(self.match_config):
+            self.corrente_v2 = True
+            self._enlaces = []
+            for lutador in (self.p1, self.p2):
+                _corrente.preparar_lutador(lutador)
 
         self.particulas = []; self.decals = []; self.textos = []; self.shockwaves = []; self.projeteis = []
         self.impact_flashes = []; self.magic_clashes = []; self.block_effects = []
@@ -2180,8 +2192,10 @@ class Simulador:
             # Onda 10A: o agarrão resolve ANTES do tick dos lutadores —
             # o lock zera a IA no mesmo frame em que começa.
             self._atualizar_agarrao(dt)
+            if self.__dict__.get("corrente_v2", False):
+                self._atualizar_enlaces(dt)
             self._atualizar_lutadores(dt)
-            
+
             # === ATUALIZA COOLDOWNS DE SOM DE PAREDE ===
             if hasattr(self, '_wall_sound_cooldown'):
                 for lutador_id in list(self._wall_sound_cooldown.keys()):
@@ -2227,6 +2241,10 @@ class Simulador:
             
             self.resolver_fisica_corpos(dt)
             self._detectar_standoff(dt)
+            if self.__dict__.get("corrente_v2", False):
+                # A bola anda DEPOIS dos corpos (a mao ja esta no lugar do
+                # tick) e ANTES do acerto (o caminho varrido e o do tick).
+                self._atualizar_correntes(dt)
             self.verificar_colisoes_combate()
             if self._detectar_resultado_round():
                 return
@@ -3404,6 +3422,82 @@ class Simulador:
         self._standoff_t = 0.0
         self._standoff_t_fase = 0.0
 
+    # =====================================================================
+    # CORRENTE V2: BOLA FÍSICA E ENLACE (rework 01/10/2026)
+    # =====================================================================
+
+    def _atualizar_correntes(self, dt):
+        """Avança a bola de cada corrente (core/corrente.py). Só com a chave."""
+        for lutador, inimigo in ((self.p1, self.p2), (self.p2, self.p1)):
+            if lutador.morto or not _corrente.v2_ativa(lutador):
+                continue
+            _corrente.atualizar_bola(lutador, inimigo, dt)
+
+    def _iniciar_enlace(self, ini, alvo):
+        """Corrente LEVE acertou: prende o alvo 0,4-0,6 s e o puxa (agarrao.py)."""
+        from neural_fights.core import agarrao as _ag
+
+        if alvo.morto or ini.morto:
+            return False
+        if getattr(alvo, "agarrao_timer", 0.0) > 0.0 or self.__dict__.get("_agarrao") is not None:
+            return False
+        enlaces = self.__dict__.setdefault("_enlaces", [])
+        if any(e["alvo"] is alvo for e in enlaces):
+            return False
+        arma = getattr(ini.dados, "arma_obj", None)
+        duracao = _ag.duracao_enlace(arma)
+        alvo.agarrao_timer = duracao
+        alvo.agarrao_papel = "enlacado"
+        alvo.agarrao_interrompido = False
+        alvo.vel[0] = 0.0
+        alvo.vel[1] = 0.0
+        alvo.atacando = False
+        alvo.timer_animacao = 0.0
+        enlaces.append({
+            "ini": ini, "alvo": alvo, "restante": duracao,
+            "distancia": _ag.distancia_do_enlace(ini, alvo),
+        })
+        ini.contadores_luta["enlaces"] = ini.contadores_luta.get("enlaces", 0) + 1
+        brain = getattr(alvo, "brain", None)
+        if brain is not None:
+            brain.tell_atual = {
+                "tipo": "enlace", "papel": "alvo", "modo": None,
+                "ate": getattr(brain, "tempo_combate", 0.0) + duracao,
+            }
+        return True
+
+    def _atualizar_enlaces(self, dt):
+        """O Simulador é o dono do relógio do enlace: puxa e re-afirma o lock."""
+        from neural_fights.core import agarrao as _ag
+
+        vivos = []
+        for enlace in self.__dict__.get("_enlaces", ()):
+            ini, alvo = enlace["ini"], enlace["alvo"]
+            fim = (
+                ini.morto or alvo.morto
+                or getattr(alvo, "agarrao_interrompido", False)
+                or getattr(alvo, "agarrao_papel", None) != "enlacado"
+            )
+            if not fim:
+                enlace["restante"] -= dt
+                fim = enlace["restante"] <= 0.0
+            if fim:
+                if getattr(alvo, "agarrao_papel", None) == "enlacado":
+                    alvo.agarrao_timer = 0.0
+                    alvo.agarrao_papel = None
+                continue
+            px, py = _ag.passo_enlace(
+                (ini.pos[0], ini.pos[1]), (alvo.pos[0], alvo.pos[1]),
+                enlace["distancia"], enlace["restante"], dt,
+            )
+            alvo.pos[0] += px
+            alvo.pos[1] += py
+            alvo.agarrao_timer = max(alvo.agarrao_timer, enlace["restante"])
+            alvo.vel[0] = 0.0
+            alvo.vel[1] = 0.0
+            vivos.append(enlace)
+        self._enlaces = vivos
+
     def _cancelar_agarrao(self):
         ag = self._agarrao
         self._agarrao = None
@@ -4028,7 +4122,12 @@ class Simulador:
         
         # Usa o novo sistema modular para armas melee
         acertou, motivo = verificar_hit(atacante, defensor)
-        
+        # Corrente V2: o contato da bola (ponto, velocidade, v² e direção).
+        contato_corrente = (
+            _corrente.contato_do_golpe(atacante)
+            if acertou and _corrente.v2_ativa(atacante) else None
+        )
+
         if acertou:
             # === v10.1: MARCA ALVO COMO ATINGIDO NESTE ATAQUE ===
             if hasattr(atacante, 'alvos_atingidos_neste_ataque'):
@@ -4041,6 +4140,12 @@ class Simulador:
             
             # Usa o novo sistema de dano modificado
             dano_base = arma.dano * (atacante.dados.forca / 2.0)
+            if contato_corrente is not None:
+                # Dano ∝ v² da bola no contato (0,6-1,4 da velocidade da arma)
+                # e o efeito sai de onde a bola bateu.
+                dano_base *= contato_corrente["mult"]
+                dx = int(contato_corrente["ponto"][0] * PPM)
+                dy = int(contato_corrente["ponto"][1] * PPM)
             dano, is_critico = (
                 atacante.calcular_dano_ataque(dano_base, defensor)
                 if hasattr(atacante, "calcular_dano_ataque")
@@ -4052,6 +4157,9 @@ class Simulador:
             # O vetor base é calculado uma única vez. Game Feel pode reduzi-lo
             # (inclusive a zero) e o resultado passa a ser a fonte de verdade.
             direcao_impacto = math.atan2(vy, vx)
+            if contato_corrente is not None:
+                # O empurrão vai na direção em que a bola corria.
+                direcao_impacto = contato_corrente["direcao"]
             pos_impacto = (dx / PPM, dy / PPM)
             knockback_final = calcular_knockback_com_forca(
                 atacante,
@@ -4059,7 +4167,10 @@ class Simulador:
                 direcao_impacto,
                 dano,
             )
-            
+            if contato_corrente is not None and contato_corrente["familia"] == "leve":
+                # Leve enlaça em vez de empurrar: o puxão vem do enlace.
+                knockback_final = (0.0, 0.0)
+
             # === ÁUDIO v10.0 - SOM DE ATAQUE (baseado no dano) ===
             tipo_ataque = arma.tipo if arma else "SOCO"
             if self.audio:
@@ -4182,6 +4293,14 @@ class Simulador:
 
             if not impacto_aplicado:
                 return False
+
+            # Corrente V2, família leve: o golpe enlaça (prende e puxa).
+            if (
+                contato_corrente is not None
+                and contato_corrente["familia"] == "leve"
+                and not morreu
+            ):
+                self._iniciar_enlace(atacante, defensor)
 
             # Passe 4 (arte): KILL-DRAMA — o golpe que MATA é cinematográfico:
             # FATAL! em tier próprio, letterbox e hold de 0,5s no congelamento.

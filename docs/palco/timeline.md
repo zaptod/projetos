@@ -137,6 +137,16 @@ que acerta); `anim_*` é o que o pygame mostra hoje. O `seek` do palco usa
 14 `transformado`, 15 `lancado`, 16 `oculto` (portal: o render não desenha),
 17 `no_ar`. Acrescentar bit no fim não muda a versão.
 
+**Corrente V2** (rework de 01/10/2026, `neural_fights/core/corrente.py`; chave
+`corrente_v2` da luta, DESLIGADA por padrão). Com a chave, a bola tem posição e
+velocidade próprias no motor e o golpe acerta onde ela passa. Nesta revisão:
+`arma_ang` de quem usa corrente aponta da mão para a BOLA; `arma_px/py`
+continua com o comprimento antigo fixo (4 raios); `hb_*` e `golpe_janela`
+continuam descrevendo o setor antigo, que a chave deixa de usar. Os canais da
+bola (posição, velocidade e comprimento em uso) e o cabeçalho
+`corrente{comp_m, n_elos, cabeca}` ficam para a revisão 4 (F2 do plano). Até
+lá, a posição da bola está em `lutador.corrente_bola` (`x`, `y`, `vx`, `vy`).
+
 **Geometria honesta.** A arma nasce na mão e `empunhadura + comprimento` é o
 `raio_corpo × range_mult` da hitbox (a mesma conta de `Simulador.desenhar_arma`).
 A ponta está no **plano do chão**, como a hitbox: quem desenha o lutador

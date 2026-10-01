@@ -663,6 +663,20 @@ class SistemaHitbox:
         
         # Armas de corrente: verifica colisão por arco/varredura
         elif hitbox.tipo == "Corrente":
+            # Corrente V2 (rework 01/10/2026): acerta onde a BOLA passa
+            # (core/corrente.py), não um setor centrado no olhar. Só com a
+            # chave da luta ligada; desligada segue o setor antigo abaixo.
+            if getattr(atacante, "corrente_v2", False):
+                from neural_fights.core import corrente as _corrente
+
+                acertou, motivo = _corrente.verificar_golpe(atacante, defensor)
+                if acertou:
+                    self.hits_registrados.append({
+                        'atacante': atacante.dados.nome,
+                        'defensor': defensor.dados.nome,
+                        'tipo': hitbox.tipo
+                    })
+                return acertou, motivo
             # Verifica se está atacando
             if not hitbox.ativo:
                 debug_log(f"  {atacante.dados.nome}: Corrente mas não está atacando", "MISS")

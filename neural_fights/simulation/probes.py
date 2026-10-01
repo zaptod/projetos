@@ -136,6 +136,15 @@ class FightQualityProbe:
             lista: list[tuple[float, str]] = []
             lutador.registro_eventos_dano = lista
             self._registros[slot] = lista
+        # Corrente (rework 01/10/2026): no acerto de arma de corrente, a
+        # bola estava no corpo do alvo? Medido aqui, so LENDO o estado no fim
+        # do passo (o acerto e o ultimo ato de combate do passo; posicoes,
+        # angulo da arma e trilha da bola ainda sao os do golpe). O acerto e
+        # o alvo entrando em ``alvos_atingidos_neste_ataque`` do atacante —
+        # o evento de dano nao serve: dano refletido no atacante sai com a
+        # mesma categoria do golpe (medido: Cedric da Luz x Adelaide a Justa).
+        self._contatos_corrente: list[dict] = []
+        self._golpe_corrente: dict[str, tuple] = {}
         self._amostrar_hp(sim)
 
     def on_frame(self, sim, dt: float) -> None:
@@ -148,6 +157,7 @@ class FightQualityProbe:
                 for dano, categoria in lista:
                     self._eventos.append((self.t, slot, dano, categoria))
                 lista.clear()
+            self._medir_contato_corrente(sim, slot)
 
             brain = getattr(getattr(sim, slot), "brain", None)
             if brain is not None:
@@ -245,6 +255,21 @@ class FightQualityProbe:
             self._amostrar_hp(sim)
             self._proxima_amostra_hp += PASSO_HP
 
+    def _medir_contato_corrente(self, sim, slot: str) -> None:
+        """O lutador ``slot`` (com corrente) acertou alguem neste passo?"""
+        from neural_fights.core import corrente
+
+        atacante = getattr(sim, slot)
+        if not corrente.eh_corrente(getattr(getattr(atacante, "dados", None), "arma_obj", None)):
+            return
+        defensor = getattr(sim, "p2" if slot == "p1" else "p1")
+        atingidos = getattr(atacante, "alvos_atingidos_neste_ataque", None) or ()
+        golpe = (getattr(atacante, "ataque_id", 0), id(defensor) in atingidos)
+        anterior = self._golpe_corrente.get(slot)
+        self._golpe_corrente[slot] = golpe
+        if golpe[1] and golpe != anterior:
+            self._contatos_corrente.append(corrente.medir_contato(atacante, defensor))
+
     def _fechar_corrida_standoff(self) -> None:
         if self._standoff_max_t >= JANELA_STANDOFF:
             self._frames_standoff += self._standoff_run
@@ -309,6 +334,12 @@ class FightQualityProbe:
         met["pct_frames_parado_em_range"] = (
             self._parado_em_range["p1"] + self._parado_em_range["p2"]
         ) / (2 * frames)
+
+        # Corrente: contato da bola no acerto (alvo K4).
+        contatos = list(getattr(self, "_contatos_corrente", ()) or ())
+        met["corrente_acertos"] = len(contatos)
+        met["corrente_contatos"] = sum(1 for c in contatos if c.get("contato"))
+        met["corrente_folgas_m"] = [round(float(c.get("folga_m", 0.0)), 4) for c in contatos]
 
         # Onda 8A: taxa de percepcao de projeteis (None sem projeteis).
         proj_frames = self._proj_frames["p1"] + self._proj_frames["p2"]

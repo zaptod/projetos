@@ -487,6 +487,84 @@ clipe; `00014`, `00016` e `00022` são os pares. As builds de antes de 11/09
 (motor mudou na 15C) e as de elenco de agosto provavelmente não re-simulam:
 o comando recusa e diz qual.
 
+## 8. A corrente nova (rework, F0+F1 de 01/10/2026)
+
+Pedido do Adrian (`palco-duelo-ab`): a corrente tinha a mesma mecânica da
+espada. Decisões dele: bola física com momento, pesadas (Mangual, Meteor
+Hammer, Corrente com Peso) com momento e leves (Chicote, Kusarigama, Rope
+Dart) com enlace, e chave só para lutas novas. Plano em
+`C:\Users\adrian\.claude\plans\corrente-rework.md`.
+
+**O que existe:** `neural_fights/core/corrente.py`. A bola tem posição e
+velocidade próprias, integradas em subpassos de no máximo 1/120 s, e fica presa
+à mão pelo comprimento da corrente (`comp_corrente + comp_ponta` do banco,
+entre 2,6 e 3,6 raios). O braço guia a bola por um servo de ângulo, no relógio
+do MOTOR: preparo, golpe e follow.
+- Acerto: a bola tem de varrer o corpo do alvo no tick, rápida o bastante,
+  na fase de golpe.
+- Dano: proporcional a v², com clamp entre 0,6 e 1,4.
+- Empurrão: na direção da bola.
+- Zona morta: natural; o braço encurta a corrente até 50%.
+- Leves: em vez de empurrar, enlaçam. O alvo fica preso 0,4–0,6 s e é puxado
+  (`core/agarrao.py`: `duracao_enlace`, `passo_enlace`).
+- IA: anel de distância própria, e o matchup antigo deixa de sobrescrever a
+  distância.
+
+A corrente não usa RNG e não lê nada do animador. O campo `physics: chain`
+passou a decidir quem tem bola, e `mod_velocidade` a escalar o braço.
+`mod_dano` continua sem uso, documentado no módulo.
+
+**Chave `CORRENTE_V2` — DESLIGADA.** Ela é lida do `match_config["corrente_v2"]`
+da luta. Na falta dele, vale `neural_fights/utils/config.py: CORRENTE_V2 = False`.
+Para ligar numa luta:
+- `gravar_luta(..., corrente_v2=True)`;
+- `gravar_timeline(..., corrente_v2=True)`;
+- `qualidade_luta --corrente-v2`.
+
+Para ligar em produção, a ordem é:
+1. o `random_builds` carimba `corrente_v2` no `fight.json` de toda luta nova
+   e repassa o carimbo quando re-simula (`som-da-luta`, `--rerender`); sem
+   carimbo vale False;
+2. só então se troca o padrão.
+
+Com a chave desligada, o Simulador não cria nem um atributo novo.
+
+**Medido** (corpus completo, fixture engine, 546 lutas):
+
+| | antiga (F0) | V2 |
+|---|---|---|
+| bola no corpo no acerto (`corrente_contato_no_acerto`) | **5,3%** (67/1263), folga mediana 1,08 m | **100%** (1269/1269), folga −0,20 m |
+| winrate Corrente | 49,0% (77/157) | 46,2% (73/158) |
+| pesadas / leves | 46/103 · 31/54 | 43/104 · 30/54 |
+| B2 (tipo mín./máx.) | 0,331 / 0,616 | 0,338 / 0,626 |
+
+Os outros tipos mudam no máximo uma vitória. Um alvo da onda 11 passa raspando
+do limite: `D5_janela_seca_meta` foi de 5,94 para 6,02 (limite 6,0). Na
+contagem, são 55 lutas com seca acima de 6 s contra 54; onze lutas com
+corrente subiram e dez desceram, e a p90 só das lutas com corrente caiu
+(6,25 → 6,22).
+
+A referência do v² também foi medida, não escolhida. Com 85% da corrente, o
+acerto mediano saía a 0,62 dela, 77% dos golpes caíam no piso e a Corrente ia
+para 38% de vitórias. Hoje a referência está em 55%.
+
+Ledger (`neural_fights/data/alvos_qualidade.json`):
+- `K4_corrente_contato` (mín. 1,0): `enforce_onda` 99 até a troca;
+- `B2c_corrente_winrate` (0,40–0,60).
+
+**Achados de passagem** (não consertados, fora do escopo):
+- O animador de arma é um singleton que guarda estado por `id` de lutador e
+  nunca é zerado. Num processo com várias lutas (o corpus, ou `noite
+  --duelos N`), ids reciclados mudam lutas.
+  - Com o código ANTIGO, 5 das 546 lutas do corpus dão outro resultado no
+    mesmo processo do que num processo novo.
+  - Zerando o animador a cada luta, o antigo e o novo com a chave desligada
+    dão 546/546 iguais.
+  - A timeline já zera por precaução (`_zerar_animador_de_arma`).
+- `brain._analisar_projeteis_vindo` divide por `vel_proj` zero. A luta
+  `Aurora o Bravo × Jin a Protetora`, seed 21026, morre com
+  `ZeroDivisionError` aos 24,1 s, num processo novo e no código antigo.
+
 ## Contratos com outras partes
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre

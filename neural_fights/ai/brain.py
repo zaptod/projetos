@@ -2734,7 +2734,15 @@ class AIBrain:
         )
         
         perc["estrategia_recomendada"] = avaliacao["recomendacao"]
-        
+
+        # Corrente V2: a distância vem do anel que a BOLA alcança
+        # (core/corrente.py); as estimativas do matchup foram afinadas para a
+        # corrente antiga e a levavam para dentro da zona morta.
+        if getattr(p, "corrente_v2", False) and getattr(
+            getattr(p.dados, "arma_obj", None), "tipo", ""
+        ) == "Corrente":
+            return
+
         # Ajusta alcance ideal baseado no matchup
         if perc["matchup_favoravel"] > 0.3:
             # Matchup favorável - fico na minha distância ideal
@@ -3887,6 +3895,30 @@ class AIBrain:
             return True
         # ── CORRENTE / MANGUAL (zona morta!) ──
         # v2.0: lógica separada para Mangual vs outras correntes
+        if arma_tipo == "Corrente" and getattr(p, "corrente_v2", False):
+            # Corrente V2: as faixas saem do anel que a BOLA toca
+            # (core/corrente.py). Colado no alvo a bola passa por fora do
+            # corpo ou sai lenta: abre espaço (de lado, sem fugir da troca —
+            # recuar demais alongava as secas da luta) em vez de apertar o
+            # corpo-a-corpo, que é onde a corrente antiga lutava.
+            from neural_fights.core import corrente as _corrente
+
+            alc = _corrente.alcances(p)
+            if distancia < max(alc["morta"] * 1.3, alc["ideal"] * 0.5):
+                if roll < 0.5:
+                    self.acao_atual = "RECUAR"
+                else:
+                    self.acao_atual = self.rng.choice(["CIRCULAR", "FLANQUEAR"])
+            elif distancia <= alc["max"] * 0.95:
+                if inimigo_hp_pct < 0.25:
+                    self.acao_atual = "MATAR"
+                elif roll < 0.65:
+                    self.acao_atual = self.rng.choice(["MATAR", "ESMAGAR", "COMBATE"])
+                else:
+                    self.acao_atual = self.rng.choice(["CIRCULAR", "FLANQUEAR"])
+            else:
+                self.acao_atual = self.rng.choice(["APROXIMAR", "PRESSIONAR"])
+            return True
         if arma_tipo == "Corrente":
             arma_estilo = getattr(arma, 'estilo', '') if arma else ''
             try:
@@ -4836,6 +4868,11 @@ class AIBrain:
             return alcance_base + comp * 0.75
         
         elif tipo == "Corrente":
+            if getattr(p, "corrente_v2", False):
+                # Corrente V2: o alcance é o anel que a BOLA toca
+                # (core/corrente.py) — a zona morta sai da mesma conta.
+                from neural_fights.core import corrente as _corrente
+                return _corrente.alcances(p)["max"]
             # Corrente: alcance longo mas zona morta grande
             comp = getattr(arma, 'comp_corrente', 80) / PPM
             zona_morta = alcance_base * profile.get("min_range_ratio", 0.25)

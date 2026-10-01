@@ -2668,7 +2668,13 @@ class Lutador:
                 alcance_ataque *= 1.3
             except (ImportError, AttributeError, KeyError, TypeError, ValueError, ZeroDivisionError):
                 alcance_ataque = self.raio_fisico * 3.0  # Fallback generoso
-            
+
+            # Corrente V2: o golpe sai quando o alvo está no anel que a BOLA
+            # alcança (core/corrente.py), não no setor antigo de 4 raios.
+            if arma_tipo == "Corrente" and getattr(self, "corrente_v2", False):
+                from neural_fights.core import corrente as _corrente
+                alcance_ataque = _corrente.alcances(self)["max"]
+
             # Ajustes APENAS para armas ranged (não sobrescreve corpo-a-corpo!)
             # Onda 4: fonte única no catálogo de tipos. O motor disparava de
             # 20/12/8m hard-coded enquanto a IA se posicionava por
