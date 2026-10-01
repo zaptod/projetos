@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-01T14:30:00",
+      "opcao": "esteira",
+      "origem": "app"
+    }
+  ],
   "id": "corrente-arte",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "De onde vem a arte da corrente animada em elos?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Corrente: arte no palco",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-01T14:30:00",
+    "opcao": "esteira"
+  }
 }
