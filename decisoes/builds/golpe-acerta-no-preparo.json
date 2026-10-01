@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T14:33:06",
+      "evento": "2026-10-01T14:30:28",
+      "linha": 95,
+      "nota": "anotado; delegação começa quando ele fizer os logins (F0)",
+      "opcao": "so-corrente",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado medindo a corrente: no duelo_00030 a espada também acertou 9 de 9 vezes no 1º tick do golpe (t=0,05), antes do balanço; e o desenho do golpe tem um relógio diferente do motor (a arma já parou na tela e o golpe ainda conecta). Você disse que o resto está perfeito — por isso é pergunta, não tarefa.",
   "criado": "2026-09-30T18:15:22.576247",
   "depende_de": [],
