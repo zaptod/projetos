@@ -62,7 +62,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Corrente: mecânica própria** — Bola física com momento (recomendado) (01/10/2026) `corrente-mecanica`
 - ✅ **Corrente: os 6 estilos** — Pesadas e leves (recomendado) (01/10/2026) `corrente-estilos`
 - ✅ **Corrente: arte no palco** — Pela esteira de sprites (ChatGPT + Grok) (01/10/2026) `corrente-arte`
-- ⏳ **Corrente: lutas antigas mudam** — Com a corrente nova, a mesma seed dá outra luta. Como tratar? `corrente-seeds-antigas`
+- ✅ **Corrente: lutas antigas mudam** — Chave só para lutas novas (01/10/2026) `corrente-seeds-antigas`
 - ⏳ **Todas as armas: o golpe acerta antes de bater** — O acerto no preparo (antes de a arma chegar) vale consertar para TODAS as armas? `golpe-acerta-no-preparo`
 
 <!-- decisoes:fim -->
