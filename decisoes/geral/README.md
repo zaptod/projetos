@@ -35,5 +35,5 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Codex e Gemini: o que delegar primeiro** — Consertos com teste (recomendado) (01/10/2026) `delegar-o-que-primeiro`
 - ✅ **Codex e Gemini: quem confere o trabalho** — Validador + agente barato (recomendado) (01/10/2026) `quem-confere-delegado`
   - ✅ **Codex: commita ou só propõe** — Só propõe o diff (recomendado) (01/10/2026) `codex-commita`
-- ⏳ **Gemini CLI também, ou só o Codex?** — Conecto o Gemini pela linha de comando também? `gemini-cli-tambem`
-  - 🔒 **Codex e Gemini: teto de uso** — Até quanto da cota de cada um eu posso usar? · espera Gemini CLI também, ou só o Codex? = decidida `teto-dos-delegados`
+- ✅ **Gemini CLI também, ou só o Codex?** — Os dois (recomendado) (01/10/2026) `gemini-cli-tambem`
+  - ⏳ **Codex e Gemini: teto de uso** — Até quanto da cota de cada um eu posso usar? `teto-dos-delegados`
