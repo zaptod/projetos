@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """O lote semanal de dia do canal de builds (decisoes do Adrian, 30/09/2026).
 
-O trabalho pesado saiu da madrugada (barulho): janela 07h-22h; seg-ter o
-lote gera ate cobrir a proxima segunda 07h + o piso; os outros dias so
+O trabalho pesado saiu da madrugada (barulho): janela 07h-22h; seg-qua o
+lote gera (a quarta desde 01/10/2026, no `builds/lote-builds-quarta`) ate cobrir a proxima segunda 07h + o piso; os outros dias so
 repoem abaixo do piso de 20; estoque ZERO fora da janela libera tudo; a
 madrugada antiga continua na transicao; nada roda na meia hora em volta de
 cada horario da grade. O que este arquivo trava, sempre com relogio
@@ -193,6 +193,33 @@ class CasosDoPlano(_Base):
         self.assertEqual("lote", resultado["modo"])
         self.assertTrue(self.ordem)
 
+    def test_quarta_fecha_o_lote_se_a_terca_nao_deu(self):
+        # Decisao de 01/10/2026 (`builds/lote-builds-quarta`): a quarta e dia
+        # de lote. O alvo dela e o que falta ate a segunda 07h + o piso:
+        # 8 horarios na quarta + 40 de qui-dom + 2 na segunda = 50 + 20 = 70.
+        self.assertEqual(70, noite.alvo_do_lote(self.config, _as(QUA, 7, 2)))
+        relogio = _Relogio(_as(QUA, 7, 2))
+        resultado = self._rodar(relogio, _contagem(duelo=20, build=15,
+                                                   estreia=5))
+        self.assertEqual("lote", resultado["modo"])
+        self.assertTrue(self.ordem)
+
+    def test_quarta_nao_gera_se_a_terca_fechou(self):
+        # Com o alvo da quarta cheio (a terca fechou), a quarta nao faz nada.
+        relogio = _Relogio(_as(QUA, 7, 2))
+        resultado = self._rodar(relogio, _contagem(duelo=35, build=27,
+                                                   estreia=9))
+        self.assertEqual("lote", resultado["modo"])
+        self.assertEqual([], self.ordem)
+        self.assertEqual("estoque cheio", resultado["motivo"])
+
+    def test_quinta_continua_reposicao(self):
+        relogio = _Relogio(_as(QUI + timedelta(days=7), 10, 2))
+        resultado = self._rodar(relogio, _contagem(duelo=10, build=8,
+                                                   estreia=3))
+        self.assertEqual("reposicao", resultado["modo"])
+        self.assertEqual([], self.ordem)
+
     def test_segunda_09h30_nao_comeca_passo_novo(self):
         relogio = _Relogio(_as(SEG, 9, 30))
         resultado = self._rodar(relogio, _contagem())
@@ -349,7 +376,9 @@ class OConfigTemAsDecisoes(unittest.TestCase):
     def test_decisoes_de_30_09(self):
         config = noite.carregar()
         self.assertEqual({"inicio": 7, "fim": 22}, config["janela_pesada"])
-        self.assertEqual([0, 1], config["dias_de_lote"])
+        # seg-qua desde 01/10/2026 (no `builds/lote-builds-quarta`: a quarta
+        # fecha o lote se a terca nao der).
+        self.assertEqual([0, 1, 2], config["dias_de_lote"])
         self.assertEqual(20, config["piso_de_reposicao"])
         self.assertTrue(config["estoque_zero_libera_a_noite"])
         self.assertEqual("2026-10-05", config["lote_a_partir_de"])

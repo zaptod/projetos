@@ -344,7 +344,7 @@ def main() -> None:
 
     noi = sub.add_parser(
         "noite",
-        help="geracao do canal de builds (lote de dia seg-ter, reposicao "
+        help="geracao do canal de builds (lote de dia seg-qua, reposicao "
              "abaixo do piso, estoque zero a noite): duelos, roleta e o "
              "worker de identidade (e o que as tarefas NeuralFights_gerar_HH "
              "chamam)")

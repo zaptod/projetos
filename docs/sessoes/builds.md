@@ -148,8 +148,8 @@ mesmo desenho da agenda das histórias:
 
 | modo | quando | o que faz |
 |---|---|---|
-| `lote` | seg–ter (`dias_de_lote [0,1]`), 07h–22h, a partir de `lote_a_partir_de` 05/10 | gera até o alvo: horários da grade até a próxima segunda 07h + o piso (seg 07:02 = 70 + 20 = **90**; ter 07:02 = 80), dividido pela cota (4/3/1 → **45 duelos, 34 builds, 12 estreias** na segunda) |
-| `reposicao` | qua–dom 07h–22h (e seg–ter antes de 05/10) | só gera se o canal tem menos que o **piso de 20** (2 dias); metas 10/8/3 |
+| `lote` | seg–qua (`dias_de_lote [0,1,2]`), 07h–22h, a partir de `lote_a_partir_de` 05/10 | gera até o alvo: horários da grade até a próxima segunda 07h + o piso (seg 07:02 = 70 + 20 = **90**; ter 07:02 = 80; qua 07:02 = 70), dividido pela cota (4/3/1 → **45 duelos, 34 builds, 12 estreias** na segunda). A quarta entrou em 01/10 (nó `builds/lote-builds-quarta`): ela só gera se a terça não fechou — com o alvo cheio, não faz nada |
+| `reposicao` | qui–dom 07h–22h (e seg–qua antes de 05/10) | só gera se o canal tem menos que o **piso de 20** (2 dias); metas 10/8/3 |
 | `madrugada` | 01h–06h enquanto existir `madrugada_na_transicao` | o esquema antigo: teto de gordura (10 duelos, 8 builds), no máximo 6 duelos e 1 build por disparo |
 | `zero` | fora da janela com **estoque zero** | libera tudo (`estoque_zero_libera_a_noite`), até o piso |
 | `noite` | fora de tudo, com estoque | nada |
@@ -173,8 +173,11 @@ passo só começa se termina antes de post−15. A regra velha (`grade_proibida`
 (`PADRAO` = esquema antigo de madrugada). Uma rodada dura até 55 min
 (`rodada_de_dia`) e o disparo seguinte continua; com job de identidade
 esperando, a geração para 20 min antes e o resto é do worker. De dia: até 11
-duelos e 3 builds por rodada. Duelo reserva 5 min, build 15, imagem 8,
-payoff 18. **Disco:** com menos de 5 GB livres no C: nada novo é gerado
+duelos e 3 builds por rodada. Duelo reserva 5 min, build **27**, imagem 8,
+payoff 18. A build era 15 até 01/10: o primeiro disparo de dia (15:02,
+`generation_00090`, com a pista das histórias rodando junto) levou **26,1
+min** e terminou 15:28, 6 min dentro da folga do post das 15:37; sozinha, de
+madrugada, a mesma coisa leva 7,7 min (`generation_00089`). **Disco:** com menos de 5 GB livres no C: nada novo é gerado
 (o worker ainda termina o que já foi pago). O `som-da-luta` usa a mesma
 régua da grade (`sonorizar.cabe_agora` → `noite.fora_da_grade`).
 

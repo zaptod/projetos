@@ -36,8 +36,9 @@ duelos de 27/09 eram do mesmo personagem.
 
 O LOTE SEMANAL DE DIA (decisoes do Adrian em 30/09/2026, Grimorio
 `geral/lote-*`). O trabalho pesado saiu da madrugada por causa do barulho:
-janela 07h-22h; SEG-TER (`dias_de_lote`) a rodada produz ate cobrir a proxima
-segunda 07h mais o piso; QUI-DOM (e a quarta, de reserva) so repoem abaixo do
+janela 07h-22h; SEG-QUA (`dias_de_lote`; a quarta desde 01/10/2026, no
+`builds/lote-builds-quarta`: fecha o lote se a terca nao der) a rodada produz
+ate cobrir a proxima segunda 07h mais o piso; QUI-DOM so repoem abaixo do
 piso de 20 videos (2 dias); ESTOQUE ZERO de madrugada libera tudo (o canal
 nao para); a madrugada antiga continua (`madrugada_na_transicao`) ate o
 esquema de dia rodar validado um dia; o 1o lote e seg 05/10. A janela da
@@ -239,9 +240,10 @@ def minutos_do_job(provedor: str, config: dict) -> float:
 # chave de `config/geracao.json`, nunca um numero no codigo:
 #
 #   janela_pesada          07h-22h: trabalho pesado so de dia
-#   dias_de_lote           seg-ter: as builds da semana saem em lote
+#   dias_de_lote           seg-qua: as builds da semana saem em lote (a
+#                          quarta desde 01/10, `builds/lote-builds-quarta`)
 #   alvo_do_lote           o lote cobre ate segunda 07h + o piso
-#   piso_de_reposicao      qua-dom so repoem abaixo de 20 (2 dias); a
+#   piso_de_reposicao      qui-dom so repoem abaixo de 20 (2 dias); a
 #                          publicacao le o mesmo numero (`postar.piso_de_alerta`)
 #   estoque_zero_libera_a_noite   sem video nenhum, a noite gera: o canal
 #                          nao para, mesmo com barulho
@@ -410,7 +412,7 @@ def planejar(config: dict, agora: datetime, *, contagem: dict | None = None,
     relogio da janela e da grade manda).
 
     livre      config sem `dias_de_lote`: a rodada de antes do lote
-    lote       seg-ter 07h-22h (a partir de `lote_a_partir_de`): ate o alvo
+    lote       seg-qua 07h-22h (`dias_de_lote`; a partir de `lote_a_partir_de`): ate o alvo
     reposicao  os outros dias 07h-22h: cria so abaixo do piso
     madrugada  transicao: o esquema antigo, ate o teto de gordura
     zero       fora da janela com estoque ZERO: libera tudo, ate o piso
