@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T14:33:08",
+      "evento": "2026-10-01T14:30:50",
+      "linha": 96,
+      "nota": "anotado; delegação começa quando ele fizer os logins (F0)",
+      "opcao": "consertos",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Plus e Pro comprados para poupar o Claude (semana em 69%). O Codex roda numa pasta isolada, sem rede e sem poder commitar; eu confiro e aplico. Antes, você instala e faz o login dos dois (passos no plano). Plano: C:\\Users\\adrian\\.claude\\plans\\delegar-codex-gemini.md.",
   "criado": "2026-10-01T14:03:39.891075",
   "depende_de": [],
