@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Hoje é 'ultra', o mais caro da sua cota do Plus (a janela de 5 h estava em 36% às 16:29). Os 2 consertos de hoje eram pequenos. Esforço menor = mais tarefas por janela; maior = mais cuidado em tarefa difícil.",
+  "criado": "2026-10-01T18:11:18.850742",
+  "depende_de": [],
+  "historico": [],
+  "id": "codex-esforco",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Eu escolho alto quando a tarefa pede; rende mais tarefas por janela",
+      "id": "medio",
+      "pede_comentario": false,
+      "rotulo": "Médio por padrão, alto nas difíceis (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Meio-termo",
+      "id": "alto",
+      "pede_comentario": false,
+      "rotulo": "Alto sempre"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Máximo cuidado, gasta mais rápido",
+      "id": "ultra",
+      "pede_comentario": false,
+      "rotulo": "Ultra sempre (como está)"
+    }
+  ],
+  "pergunta": "Com que esforço o Codex trabalha por padrão?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Codex: quanto ele pensa",
+  "vigente": null
+}
