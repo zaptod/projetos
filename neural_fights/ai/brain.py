@@ -1592,7 +1592,12 @@ class AIBrain:
                 
                 if diff_ang < 45:  # Vindo na minha direção
                     vel_proj = getattr(proj, 'vel', 10.0)
-                    tempo_impacto = dist / vel_proj
+                    if vel_proj == 0:
+                        if dist != 0.0:
+                            continue  # projétil estacionário distante
+                        tempo_impacto = 0.0  # já está em cima do lutador
+                    else:
+                        tempo_impacto = dist / vel_proj
                     
                     if tempo_impacto < resultado["tempo_impacto"]:
                         resultado["vindo"] = True
