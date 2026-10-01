@@ -3,7 +3,15 @@
   "contexto": "01/10 15:1x: login feito, mas o Gemini CLI responde 'This client is no longer supported for Gemini Code Assist for individuals — migrate to Antigravity'. O Codex funcionou na hora (respondeu OK). O Gemini no navegador (revisão de vídeo) continua funcionando como hoje.",
   "criado": "2026-10-01T15:14:02.547245",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-01T15:18:04",
+      "opcao": "navegador",
+      "origem": "app"
+    }
+  ],
   "id": "gemini-sem-cli",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "O Gemini CLI recusou o login do AI Pro. Como usamos o Gemini fora do navegador?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Gemini: o CLI não aceita a conta pessoal",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-01T15:18:04",
+    "opcao": "navegador"
+  }
 }
