@@ -43,6 +43,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **O aparelho pareado em 17/09 ainda é seu?** — Esquecer o de 17/09 (29/09/2026) `o-aparelho-pareado-em-17-09-ainda-e-seu`
 - ✅ **Mensagem para uma IA pelo app: direto ou com confirmação?** — Direto (como está): escrevi, foi (29/09/2026) `mensagem-para-uma-ia-pelo-app-direto-ou`
 - ✅ **Sprites: onde você aprova** — Tela 'Conferir sprites' no app (recomendado) (30/09/2026) `sprites-ia-conferir`
+- ⏳ **Liberar o Claude com a sessão fechada** — Quando você libera pelo app e a sessão do Claude no VS Code está fechada, o que deve acontecer? `liberar-sem-sessao-aberta`
 
 <!-- decisoes:fim -->
 
