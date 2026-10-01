@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T14:28:26",
+      "evento": "2026-10-01T14:28:02",
+      "linha": 90,
+      "nota": "virou tarefa: orquestrador sem janela",
+      "opcao": "headless",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "01/10: você liberou às 13:30, o vigia acordou na hora, mas a sessão do VS Code tinha sido fechada (o processo saiu de noite) — não havia ninguém para receber. O vigia é filho da sessão: sem sessão aberta, nada roda. Hoje o app só avisa no Telegram quando um comando fica 2 min sem ouvinte.",
   "criado": "2026-10-01T13:59:02.054454",
   "depende_de": [],
