@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-01T14:30:04",
+      "evento": "2026-10-01T14:29:37",
+      "linha": 92,
+      "nota": "pesadas com momento, leves com enlace",
+      "opcao": "duas-familias",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Estilos: Kusarigama, Mangual, Chicote, Corrente com Peso, Meteor Hammer, Rope Dart. Plano: C:\\Users\\adrian\\.claude\\plans\\corrente-rework.md.",
   "criado": "2026-09-30T18:15:21.491986",
   "depende_de": [
