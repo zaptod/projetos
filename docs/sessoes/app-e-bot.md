@@ -39,7 +39,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Gemini CLI também, ou só o Codex?** — Os dois (recomendado) (01/10/2026) `gemini-cli-tambem`
 - ✅ **Codex e Gemini: teto de uso** — 50% da janela de 5 h de cada (recomendado) (01/10/2026) `teto-dos-delegados`
 - ✅ **Gemini: o CLI não aceita a conta pessoal** — Seguir com o Gemini no navegador (recomendado) (01/10/2026) `gemini-sem-cli`
-- ⏳ **Codex: quanto ele pensa** — Com que esforço o Codex trabalha por padrão? `codex-esforco`
+- ✅ **Codex: quanto ele pensa** — Médio por padrão, alto nas difíceis (recomendado) (01/10/2026) `codex-esforco`
 
 **App e bot**
 - ✅ **Quem publica pelo celular** — Só o app (28/09/2026) `quem-publica-pelo-celular`
