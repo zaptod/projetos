@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import subprocess
 from pathlib import Path
@@ -816,7 +817,7 @@ class VideoRenderer:
         fim poe o arquivo no nivel que as plataformas esperam (-14 LUFS): o
         video saia a -30 dB de media, que no celular e "mudo". Qualquer
         falha do ffmpeg entrega o concat como esta — o video nunca deixa de
-        existir por causa da mixagem.
+        existir por causa da mixagem. A publicacao no destino agora e atomica.
         """
         sr = int(self.audio_cfg.get("sample_rate", 44100))
         alvo = float(self.audio_cfg.get("loudnorm", -14))
@@ -858,15 +859,22 @@ class VideoRenderer:
             ultimo = "[base]"
         cadeia.append(f"{ultimo}alimiter=limit=0.89,loudnorm=I={alvo}:TP=-1.5:LRA=11,"
                       f"aresample={sr}[out]")
+        temporario = out_path.with_name(
+            f"{out_path.stem}.tmp-{os.getpid()}.mp4")
         cmd = ["ffmpeg", "-y", "-loglevel", "error", *entradas,
                "-filter_complex", ";".join(cadeia),
                "-map", "0:v", "-map", "[out]", "-c:v", "copy",
-               "-c:a", "aac", "-b:a", "160k", "-ar", str(sr), str(out_path)]
-        result = subprocess.run(cmd, capture_output=True, text=True, creationflags=NO_WINDOW)
-        if result.returncode != 0:
-            print(f"[render] mixagem final falhou ({result.stderr[-300:]}); "
-                  "o video sai sem trilha/voz", flush=True)
-            out_path.write_bytes(video.read_bytes())
+               "-c:a", "aac", "-b:a", "160k", "-ar", str(sr), str(temporario)]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    creationflags=NO_WINDOW)
+            if result.returncode != 0:
+                print(f"[render] mixagem final falhou ({(result.stderr or '')[-300:]}); "
+                      "o video sai sem trilha/voz", flush=True)
+                temporario.write_bytes(video.read_bytes())
+            os.replace(temporario, out_path)
+        finally:
+            temporario.unlink(missing_ok=True)
 
     # ------------------------------------------------------------------ frames
     def _bg(self) -> Image.Image:
