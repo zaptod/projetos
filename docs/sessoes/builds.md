@@ -60,7 +60,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Sprites: fundo pedido ao ChatGPT** — Magenta liso (verde nos roxos) (recomendado) (30/09/2026) `sprites-ia-fundo`
 - ✅ **Duelo: trocar o visual para o palco?** — Ajustar primeiro (diga o quê no comentário) (30/09/2026) · “A corrente a animaçao dela é muito feia, e suaecanica é idêntica a da espada, quero um rework completo nela mas de resto tudo está perfeito” `palco-duelo-ab`
 - ✅ **Corrente: mecânica própria** — Bola física com momento (recomendado) (01/10/2026) `corrente-mecanica`
-- ⏳ **Corrente: os 6 estilos** — Uma mecânica para os 6 estilos, ou duas famílias? `corrente-estilos`
+- ✅ **Corrente: os 6 estilos** — Pesadas e leves (recomendado) (01/10/2026) `corrente-estilos`
 - ⏳ **Corrente: arte no palco** — De onde vem a arte da corrente animada em elos? `corrente-arte`
 - ⏳ **Corrente: lutas antigas mudam** — Com a corrente nova, a mesma seed dá outra luta. Como tratar? `corrente-seeds-antigas`
 - ⏳ **Todas as armas: o golpe acerta antes de bater** — O acerto no preparo (antes de a arma chegar) vale consertar para TODAS as armas? `golpe-acerta-no-preparo`

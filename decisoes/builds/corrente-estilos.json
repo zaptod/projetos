@@ -8,7 +8,15 @@
       "opcao": "*"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-01T14:29:37",
+      "opcao": "duas-familias",
+      "origem": "app"
+    }
+  ],
   "id": "corrente-estilos",
   "midias": [],
   "opcoes": [
@@ -29,7 +37,11 @@
   ],
   "pergunta": "Uma mecânica para os 6 estilos, ou duas famílias?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Corrente: os 6 estilos",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-01T14:29:37",
+    "opcao": "duas-familias"
+  }
 }
