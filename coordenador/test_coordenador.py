@@ -59,7 +59,7 @@ def test_religa_com_espera_crescente_e_limite_avisa():
     def quebra(_):
         iniciou.append(1)
         raise OSError("nao subiu")
-    s, relogio = supervisor(processos=lambda: [], iniciar=quebra, avisar=avisos.append)
+    s, relogio = supervisor(processos=lambda: [{"pid": 4, "comando": "System"}], iniciar=quebra, avisar=avisos.append)
     s.pulso()
     relogio.andar(4); s.pulso()
     assert len(iniciou) == 1
@@ -105,7 +105,7 @@ def test_comandos_so_os_novos_e_acao_fora_do_catalogo_recusada():
     feitos = []
     fila = [{"id": "1", "comando": "mensagem", "valor": "oi"},
             {"id": "2", "comando": "pc_acao", "valor": "nao-existe"}]
-    s, _ = supervisor(processos=lambda: [], comandos=lambda: fila,
+    s, _ = supervisor(processos=lambda: [{"pid": 4, "comando": "System"}], comandos=lambda: fila,
                       aplicar=lambda ident, **kw: feitos.append((ident, kw)))
     s.processar_comandos()
     assert feitos[0][0] == "2" and "recusado" in feitos[0][1]
@@ -138,3 +138,28 @@ def test_xml_tem_logon_reinicio_e_bateria():
     xml = xml_tarefa("wscript.exe")
     assert "LogonTrigger" in xml and "RestartOnFailure" in xml and "PT1M" in xml
     assert "DisallowStartIfOnBatteries>false" in xml
+
+
+def test_lista_de_processos_vazia_nao_derruba_nada():
+    # 01/10 23:56: a consulta do Windows voltou vazia e o coordenador "religou" tudo.
+    iniciou = []
+    s, _ = supervisor(processos=lambda: [{"pid": 12, "comando": "app --ja"}],
+                      iniciar=lambda _: iniciou.append(1) or 13)
+    s.pulso()
+    s.processos = lambda: []
+    s.pulso()
+    assert iniciou == [] and s.estado["app"]["situacao"] == "rodando"
+
+
+def test_uma_ausencia_so_nao_religa_a_segunda_religa():
+    iniciou = []
+    vivos = [{"pid": 12, "comando": "app --ja"}]
+    s, relogio = supervisor(processos=lambda: list(vivos) + [{"pid": 4, "comando": "System"}],
+                            iniciar=lambda _: iniciou.append(1) or 13)
+    s.pulso()
+    vivos.clear()
+    relogio.andar(5); s.pulso()
+    assert iniciou == []
+    relogio.andar(5); s.pulso()
+    relogio.andar(6); s.pulso()
+    assert iniciou

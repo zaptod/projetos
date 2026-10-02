@@ -104,6 +104,7 @@ class Supervisor:
         self.desde = agora_iso(self.relogio())
         self.falhas = {n: [] for n in self.servicos}
         self.saudes_ruins = {n: 0 for n in self.servicos}
+        self.ausencias = {n: 0 for n in self.servicos}
         self.eventos = []
         self.avisos_mensagem = set()
         self.estado = {n: {"situacao": "parado", "pid": None, "desde": None,
@@ -266,6 +267,11 @@ class Supervisor:
         ficha, estado = self.servicos[nome], self.estado[nome]
         achado = self._adotar(ficha, processos)
         if achado is None:
+            # Uma ausencia so nao basta: o processo pode estar trocando de pid ou
+            # a listagem pode ter vindo pela metade. Religa na segunda seguida.
+            self.ausencias[nome] = self.ausencias.get(nome, 0) + 1
+            if self.ausencias[nome] < 2 and estado.get("pid"):
+                return
             if estado["situacao"] != "falhou":
                 estado.update(situacao="caiu", pid=None, saude="ruim")
                 self.evento(nome, "caiu", "processo ausente")
@@ -276,6 +282,7 @@ class Supervisor:
                     estado["proximo_reinicio"] = agora_iso(self.relogio() + timedelta(seconds=ESPERAS[0]))
                 self.religar(nome, "ausente")
             return
+        self.ausencias[nome] = 0
         if state_pid := achado.get("pid"):
             if estado["pid"] != state_pid:
                 estado.update(pid=state_pid, situacao="rodando",
@@ -365,6 +372,14 @@ class Supervisor:
 
     def pulso(self):
         processos = self.processos()
+        # 01/10 23:56: a consulta do Windows as vezes volta vazia (lenta ou
+        # falhou) e o coordenador achava que TUDO tinha caido e subia de novo.
+        # Lista vazia nao e prova de queda: pula a verificacao neste pulso.
+        if not processos:
+            self.log("[coordenador] lista de processos vazia; pulo a verificacao")
+            self.processar_comandos()
+            self.gravar(self.resumo())
+            return
         for nome in self.servicos:
             if self.estado[nome]["situacao"] != "desligado":
                 self.verificar_servico(nome, processos)
