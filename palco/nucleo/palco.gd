@@ -286,8 +286,8 @@ func _process(delta: float) -> void:
 			printerr("[palco] ERRO: " + avisos[-1])
 			_sair(RC_SEM_DESENHO)
 			return
-	elif quadro >= total and job.is_empty():
-		# previa no editor (sem job): recomeca do inicio
+	elif quadro >= total and (job.is_empty() or bool(job.get("preview", false))):
+		# Previa do editor ou do simulador manual: recomeca do inicio.
 		quadro = 0
 		_limpar_transitorios()
 	if quadro >= total:
@@ -295,7 +295,7 @@ func _process(delta: float) -> void:
 	_desenhar_quadro(quadro)
 	# Com job (o Python chamou), o ultimo quadro SEMPRE encerra, com ou sem
 	# Movie Maker: um render nunca pode ficar rodando em loop.
-	if (movie or not job.is_empty()) and quadro >= total - 1:
+	if (movie or (not job.is_empty() and not bool(job.get("preview", false)))) and quadro >= total - 1:
 		_escrever_relatorio(true, 0)
 		get_tree().quit(0)
 

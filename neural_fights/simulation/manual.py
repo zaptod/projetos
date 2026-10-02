@@ -37,6 +37,11 @@ OUTROS:
 =============================================================================
 """
 
+import argparse
+import random
+import subprocess
+from types import SimpleNamespace
+
 import pygame
 import copy
 import math
@@ -61,15 +66,75 @@ ROXO = (150, 50, 200)
 LARANJA = (255, 150, 50)
 
 
+def exportar_timeline_do_manual(simulador, destino=None):
+    """Exporta a luta atual pelo mesmo gravador que alimenta o palco."""
+    from pathlib import Path
+
+    from neural_fights.recording import timeline_arquivo
+    from random_builds.builds.palco import config, fonte
+
+    p1 = simulador.p1.dados.nome
+    p2 = simulador.p2.dados.nome
+    seed = int(simulador.seed)
+    cenario = str(simulador.match_config.get("cenario") or "Arena")
+    documento, seed_usada = fonte.timeline_da_luta(
+        p1=p1,
+        p2=p2,
+        seed=seed,
+        cenario=cenario,
+        tentativas=1,
+        corrente_v2=getattr(simulador, "corrente_v2", None),
+    )
+    if destino is None:
+        destino = config.SAIDAS / f"manual_{seed_usada}" / "timeline.gcpf"
+    destino = Path(destino)
+    timeline_arquivo.salvar(documento, destino, compressao="zstd")
+    return destino, documento
+
+
+def _exportar_timeline_em_processo_separado(simulador, destino=None):
+    """O Simulador manual esta vivo; o gravador roda em outro processo."""
+    from pathlib import Path
+
+    from random_builds.builds.palco import config
+
+    seed = int(simulador.seed)
+    if destino is None:
+        destino = config.SAIDAS / f"manual_{seed}" / "timeline.gcpf"
+    destino = Path(destino).resolve()
+    comando = [
+        sys.executable, "-m", "neural_fights.simulation.manual", "--exportar-palco",
+        "--p1", simulador.p1.dados.nome,
+        "--p2", simulador.p2.dados.nome,
+        "--seed", str(seed),
+        "--cenario", str(simulador.match_config.get("cenario") or "Arena"),
+        "--palco-saida", str(destino),
+    ]
+    corrente_v2 = getattr(simulador, "corrente_v2", None)
+    if corrente_v2 is not None:
+        comando += ["--corrente-v2", "1" if corrente_v2 else "0"]
+    feito = subprocess.run(comando, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if feito.returncode != 0:
+        detalhe = (feito.stderr or feito.stdout or "sem detalhe").strip()
+        raise RuntimeError(f"exportacao da timeline falhou: {detalhe[-900:]}")
+    from neural_fights.recording import timeline_arquivo
+
+    return destino, timeline_arquivo.carregar(destino)
+
+
 class SimuladorManual(Simulador):
     """
     Simulador com controle manual do jogador e menus de configuração
     """
     
-    def __init__(self, match_config=None):
+    def __init__(self, match_config=None, *, seed=None):
         if match_config is None:
             match_config = self.criar_match_config_padrao()
-        super().__init__(match_config=match_config)
+        # O palco re-simula por seed; sem uma seed fixa nao ha como garantir
+        # que a luta aberta la e a que esta sendo testada aqui.
+        if seed is None:
+            seed = random.SystemRandom().randrange(2 ** 63)
+        super().__init__(match_config=match_config, seed=seed)
 
         try:
             self._inicializar_modo_manual()
@@ -108,6 +173,7 @@ class SimuladorManual(Simulador):
         self.menu_scroll = 0
         self.menu_selecionado = 0
         self.slot_skill_editando = None  # 0-4 para editar slot de skill
+        self.status_palco = "G=Ver no palco | Shift+G=Renderizar mp4"
         
         # Carregar dados
         self.todas_skills = self._carregar_todas_skills()
@@ -131,6 +197,7 @@ class SimuladorManual(Simulador):
         print("  WASD/Setas = Mover    | SPACE = Pular     | SHIFT = Correr")
         print("  J/Z = Atacar          | 1-5 = Skills      | T = Trocar P1/P2")
         print("  R = Reset luta        | E = Dummy/IA      | ESC = Sair")
+        print("  G = Ver no palco      | SHIFT+G = Renderizar mp4 no palco")
         print("")
         print("MENUS:")
         print("  TAB = Menu de Skills (trocar habilidades)")
@@ -338,6 +405,12 @@ class SimuladorManual(Simulador):
         if pygame.K_r in self.keys_just_pressed:
             self.resetar_luta()
             print("Luta resetada!")
+
+        # G = abre a previa do palco; Shift+G renderiza e abre o mp4.
+        if pygame.K_g in self.keys_just_pressed:
+            modo_palco = "mp4" if (pygame.key.get_mods() & pygame.KMOD_SHIFT) else "janela"
+            self.ver_no_palco(modo_palco)
+            return True
         
         # === MOVIMENTO ===
         p = self.controlando
@@ -596,6 +669,9 @@ class SimuladorManual(Simulador):
         self.controlando = self.p1 if controlava_p1 else self.p2
 
         self.best_of_series.reset_series()
+        # Reset manual significa recomecar esta mesma luta, nao usar uma
+        # geracao de RNG diferente da seed que o palco recebe.
+        self._rng_generation = 0
         self._configurar_partida_atual()
 
         if self.modo_oponente == "DUMMY":
@@ -603,6 +679,30 @@ class SimuladorManual(Simulador):
             oponente.brain = None
 
         self.atualizar_skills_disponiveis()
+
+    def ver_no_palco(self, modo="janela", destino=None):
+        """Exporta a seed/lutadores atuais e pede ao palco para mostra-los."""
+        try:
+            from random_builds.builds.palco import godot, render
+
+            timeline, documento = _exportar_timeline_em_processo_separado(self, destino)
+            resultado = documento.get("resultado") or {}
+            if modo == "mp4":
+                saida = timeline.with_suffix(".mp4")
+                render.renderizar(timeline, saida)
+                godot.abrir_arquivo(saida)
+                self.status_palco = f"MP4 do palco aberto: {saida}"
+            else:
+                godot.abrir_previa(timeline)
+                self.status_palco = (
+                    f"Palco aberto: {timeline.name} | vencedor: {resultado.get('vencedor')}"
+                )
+            print(self.status_palco)
+            return timeline
+        except Exception as erro:
+            self.status_palco = f"Palco falhou: {erro}"
+            print(self.status_palco)
+            return None
     
     def desenhar_menu_skills(self, surface):
         """Desenha o menu de seleção de skills"""
@@ -894,12 +994,15 @@ class SimuladorManual(Simulador):
         
         # Controles
         ctrl1 = "WASD=Mover | J=Atacar | 1-5=Skills | SPACE=Pular | SHIFT=Correr"
-        ctrl2 = "TAB=Skills | Q=Personagem | E=Dummy/IA | T=Trocar | R=Reset | ESC=Sair"
+        ctrl2 = "TAB=Skills | Q=Personagem | G=Palco | Shift+G=MP4 | R=Reset | ESC=Sair"
         
         ctrl_txt1 = self.font_pequena.render(ctrl1, True, CINZA)
         ctrl_txt2 = self.font_pequena.render(ctrl2, True, CINZA)
         surface.blit(ctrl_txt1, (LARGURA//2 - ctrl_txt1.get_width()//2, ALTURA - 35))
         surface.blit(ctrl_txt2, (LARGURA//2 - ctrl_txt2.get_width()//2, ALTURA - 18))
+
+        palco_txt = self.font_pequena.render(self.status_palco[:110], True, AMARELO)
+        surface.blit(palco_txt, (10, ALTURA - 68))
         
         # === DEBUG INFO ===
         if self.mostrar_debug:
@@ -991,13 +1094,38 @@ class SimuladorManual(Simulador):
                 print(f"{'='*40}")
                 print("Pressione R para resetar ou ESC para sair")
         
-def main():
+def main(argv=None):
     """Ponto de entrada"""
+    parser = argparse.ArgumentParser(description="Modo manual do Neural Fights")
+    parser.add_argument("--seed", type=int, default=None, help="seed da luta manual")
+    parser.add_argument("--palco", choices=("janela", "mp4"), default=None,
+                        help="exporta a luta ao palco e abre a janela ou o mp4")
+    parser.add_argument("--palco-saida", default=None, help="arquivo da timeline do palco")
+    parser.add_argument("--exportar-palco", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--p1", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--p2", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--cenario", default="Arena", help=argparse.SUPPRESS)
+    parser.add_argument("--corrente-v2", choices=("0", "1"), default=None, help=argparse.SUPPRESS)
+    args, _desconhecidos = parser.parse_known_args(argv)
+    if args.exportar_palco:
+        if not args.p1 or not args.p2 or not args.palco_saida:
+            parser.error("--exportar-palco exige --p1, --p2 e --palco-saida")
+        simulador = SimpleNamespace(
+            p1=SimpleNamespace(dados=SimpleNamespace(nome=args.p1)),
+            p2=SimpleNamespace(dados=SimpleNamespace(nome=args.p2)),
+            seed=args.seed,
+            match_config={"cenario": args.cenario},
+            corrente_v2=None if args.corrente_v2 is None else args.corrente_v2 == "1",
+        )
+        exportar_timeline_do_manual(simulador, args.palco_saida)
+        return 0
     print("\nIniciando NEURAL FIGHTS - Modo de Teste Manual v2.0...")
     print("Carregando...")
 
     try:
-        sim = SimuladorManual()
+        sim = SimuladorManual(seed=args.seed)
+        if args.palco:
+            return 0 if sim.ver_no_palco(args.palco, args.palco_saida) else 1
         sim.executar()
     except Exception as exc:
         print(f"Erro: {exc}", file=sys.stderr)

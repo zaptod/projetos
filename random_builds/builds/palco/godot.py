@@ -16,6 +16,7 @@ Os codigos de saida do palco viram mensagem aqui; qualquer rc != 0 e erro.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -39,7 +40,11 @@ _FORA = {".godot", "_saida", "_logs", "_userdata"}
 
 def ambiente(cfg: dict | None = None) -> dict:
     env = dict(os.environ)
-    env["APPDATA"] = str(config.appdata(cfg))
+    try:
+        env["APPDATA"] = str(config.appdata(cfg))
+    except OSError as erro:
+        destino = (cfg or {}).get("appdata") or "<projeto do palco>/_userdata"
+        raise ErroPalco(f"APPDATA do Godot inacessivel em {destino}: {erro}") from erro
     return env
 
 
@@ -89,6 +94,50 @@ def rodar_script(script: str, argumentos: list | None = None, *, cfg: dict | Non
     garantir_importado(cfg)
     return _rodar([config.godot(cfg), "--headless", "--path", config.projeto(cfg), "--script", script,
                    "--", *(argumentos or [])], timeout=timeout, cfg=cfg)
+
+
+def abrir_previa(timeline, *, cfg: dict | None = None) -> Path:
+    """Abre a timeline no palco em loop, com os mesmos sons do render."""
+    from . import sons
+
+    cfg = config.carregar() if cfg is None else cfg
+    timeline = Path(timeline).resolve()
+    if not timeline.is_file():
+        raise ErroPalco(f"timeline para previa nao encontrada em {timeline}")
+    projeto = config.projeto(cfg)
+    exe = config.godot(cfg)
+    garantir_importado(cfg)
+    try:
+        from neural_fights.recording import timeline_arquivo
+        documento = timeline_arquivo.carregar(timeline)
+    except (OSError, ValueError) as erro:
+        raise ErroPalco(f"nao consegui ler a timeline {timeline}: {erro}") from erro
+    itens = ((documento.get("sons") or {}).get("itens") or [])
+    job = timeline.with_suffix(".previsao.json")
+    job.write_text(json.dumps({
+        "timeline": str(timeline),
+        "preview": True,
+        "sons_arquivos": sons.arquivos_de_som(item.get("id") for item in itens),
+    }, ensure_ascii=False, indent=1), encoding="utf-8")
+    janela = exe.with_name(exe.name.replace("_console", ""))
+    processo = subprocess.Popen(
+        [str(janela if janela.is_file() else exe), "--path", str(projeto), "--", f"--job={job}"],
+        cwd=str(projeto), env=ambiente(cfg), creationflags=SEM_JANELA_DE_CONSOLE,
+    )
+    if processo.poll() is not None:
+        raise ErroPalco(f"o Godot nao abriu a previa (codigo {processo.returncode})")
+    return job
+
+
+def abrir_arquivo(caminho) -> None:
+    """Abre o mp4 produzido pelo palco no aplicativo padrao do Windows."""
+    caminho = Path(caminho).resolve()
+    if not caminho.is_file():
+        raise ErroPalco(f"mp4 do palco nao encontrado em {caminho}")
+    try:
+        os.startfile(str(caminho))
+    except AttributeError as erro:
+        raise ErroPalco(f"nao sei abrir o mp4 fora do Windows: {caminho}") from erro
 
 
 def gravar_filme(job: Path | None, avi: Path, *, cfg: dict | None = None, posicao=None,
