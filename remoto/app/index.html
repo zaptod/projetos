@@ -461,6 +461,31 @@
     </div>
     <div class="cartao"><div id="diario"></div></div>
   </section>
+  <section id="tela-arena" class="oculto livro arena" aria-label="Arena">
+    <div class="cartao">
+      <h2>⚔️ Arena</h2>
+      <label class="arena-label">P1
+        <input id="arena-p1-busca" class="arena-busca" type="search" placeholder="Buscar personagem">
+      </label>
+      <div id="arena-p1-lista" class="arena-lista"></div>
+      <div id="arena-vs" class="arena-vs">VS</div>
+      <label class="arena-label">P2
+        <input id="arena-p2-busca" class="arena-busca" type="search" placeholder="Buscar personagem">
+      </label>
+      <div id="arena-p2-lista" class="arena-lista"></div>
+    </div>
+    <div class="cartao">
+      <div class="campos">
+        <label>Mapa <select id="arena-mapa"></select></label>
+        <label>Semente (opcional)
+          <span class="arena-semente"><input id="arena-semente" type="number" min="0" max="9223372036854775807" placeholder="aleatória"><button id="arena-dado" class="acao" type="button" aria-label="Sortear semente">🎲</button></span>
+        </label>
+      </div>
+      <button id="arena-lutar" class="acao primario arena-lutar" type="button" disabled>⚔️ LUTAR (render no PC)</button>
+      <p id="arena-progresso" class="fraco"></p>
+    </div>
+    <div class="cartao"><h2>Últimas lutas</h2><div id="arena-lutas"></div></div>
+  </section>
 </main>
 
 <dialog id="dialogo-campos">
@@ -501,7 +526,7 @@
   </div>
 </div>
 
-<!-- a prateleira da vila: quatro objetos, um por pergunta (02/10/2026).
+  <!-- a prateleira da vila: objetos, um por pergunta (02/10/2026).
      `data-tela` é a aba que abre da primeira vez; depois, a última usada. -->
 <nav id="nav" class="prateleira oculto">
   <!-- a lupa mora na prateleira (uma aba de madeira), não solta na grama -->
@@ -513,6 +538,7 @@
   <button class="objeto" id="obj-decidir" data-objeto="decidir" data-tela="decisoes"><span>📖️</span>Decidir</button>
   <button class="objeto" id="obj-mandar" data-objeto="mandar" data-tela="comandos"><span>📯️</span>Mandar</button>
   <button class="objeto" id="obj-ver" data-objeto="ver" data-tela="videos"><span>🔭️</span>Ver</button>
+  <button class="objeto" id="obj-arena" data-objeto="arena" data-tela="arena"><span>⚔️</span>Arena</button>
 </nav>
 
 <script src="app.js"></script>

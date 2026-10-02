@@ -68,6 +68,7 @@ PORTA_PADRAO = 8931
 PORTAS_PROIBIDAS = {8765}                # OAuth do YouTube
 REDE_TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
 APP = Path(__file__).resolve().parent / "app"
+PASTA_ARENA = None                    # os testes apontam para outro lugar
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 CODIGO_VALE_S = 5 * 60
@@ -177,6 +178,65 @@ def sprites_a_conferir() -> list[dict]:
                           "previa_url": urls.get("previa.gif") or urls.get("previa.webp"),
                           "tamanho_real_url": urls.get("tamanho_real.png")})
     return sorted(saida, key=lambda d: (d["perfil"], d["id"]))
+
+
+def pasta_da_arena() -> Path:
+    """A Arena fica nos outputs do palco, separada das tarefas do app."""
+    if PASTA_ARENA:
+        return Path(PASTA_ARENA)
+    return Path(__file__).resolve().parents[1] / "random_builds" / "outputs" / "_palco" / "arena"
+
+
+def opcoes_da_arena() -> dict:
+    """Catalogo pequeno, so com os campos que a tela precisa para montar a luta."""
+    from neural_fights.core.arena import LISTA_MAPAS, get_mapa_info
+    from neural_fights.data.database import carregar_armas, carregar_personagens
+    from neural_fights.utils.palette import cor_classe, rgb_to_hex
+
+    armas = {arma.nome: arma for arma in carregar_armas()}
+    personagens = []
+    for personagem in carregar_personagens():
+        arma = armas.get(personagem.nome_arma)
+        personagens.append({"nome": personagem.nome, "classe": personagem.classe,
+                            "cor_classe": rgb_to_hex(cor_classe(personagem.classe)),
+                            "arma": personagem.nome_arma,
+                            "tipo_arma": getattr(arma, "tipo", "")})
+    mapas = [{"id": nome, **get_mapa_info(nome)} for nome in LISTA_MAPAS]
+    return {"personagens": sorted(personagens, key=lambda p: p["nome"].casefold()), "mapas": mapas}
+
+
+def _ler_json(caminho: Path) -> dict:
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return dados if isinstance(dados, dict) else {}
+
+
+def lutas_da_arena(n: int = 20) -> list[dict]:
+    """As ultimas lutas, com a situacao da tarefa que realmente as produziu."""
+    try:
+        pastas = sorted((p for p in pasta_da_arena().iterdir() if p.is_dir()), reverse=True)
+    except OSError:
+        return []
+    saida = []
+    for pasta in pastas[:max(1, min(n, 20))]:
+        ficha = _ler_json(pasta / "luta.json")
+        if not ficha:
+            continue
+        tarefa = tarefas.uma(str(ficha.get("tarefa") or "")) or {}
+        mp4 = pasta / "luta.mp4"
+        if mp4.is_file():
+            situacao = "pronta"
+        elif tarefa.get("situacao") == "rodando":
+            situacao = "rodando"
+        else:
+            situacao = "falhou"
+        saida.append({"id": pasta.name, "p1": ficha.get("p1"), "p2": ficha.get("p2"),
+                      "mapa": ficha.get("mapa"), "semente": ficha.get("semente"),
+                      "vencedor": ficha.get("vencedor"), "situacao": situacao,
+                      "video": mp4.is_file()})
+    return saida
 
 # Rotas estaticas: nome publico -> (arquivo, tipo). Nada de juntar a URL
 # com uma pasta.
@@ -767,6 +827,19 @@ class Manipulador(BaseHTTPRequestHandler):
         self._id = self._dono[:8]
         return aparelho
 
+    def _aparelho_do_video_da_arena(self, consulta: dict) -> str | None:
+        """`video src` nao envia Authorization; esta e a unica rota com `?t`."""
+        bruto = self.headers.get("Authorization", "")
+        token = bruto[7:].strip() if bruto.lower().startswith("bearer ") else ""
+        if not token:
+            token = str((consulta.get("t") or [""])[0])
+        aparelho = aparelho_do_token(token)
+        if aparelho is None and not self._barrar_chute():
+            self._erro(401, "nao pareado")
+        self._dono = _hash(token) if aparelho is not None else ""
+        self._id = self._dono[:8]
+        return aparelho
+
     # ------------------------------------------------------------- GET
     def do_GET(self):
         if not self._passou_rede():
@@ -789,6 +862,9 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._video_por_bilhete(rota[3:])
         if rota.startswith("/p/"):
             return self._pagina_por_bilhete(rota[3:])
+        achado = re.fullmatch(r"/api/arena/video/([a-zA-Z0-9][a-zA-Z0-9_-]{0,59})\.mp4", rota)
+        if achado:
+            return self._video_da_arena(achado.group(1), consulta)
         if not rota.startswith("/api/"):
             return self._erro(404, "nao existe")
         if self._aparelho() is None:
@@ -797,6 +873,15 @@ class Manipulador(BaseHTTPRequestHandler):
         try:
             if rota == "/api/sprites/conferir":
                 return self._json({"itens": sprites_a_conferir()})
+            if rota == "/api/arena/opcoes":
+                return self._json(opcoes_da_arena())
+            if rota == "/api/arena/lutas":
+                lutas = lutas_da_arena()
+                token = self.headers.get("Authorization", "")[7:].strip()
+                for luta in lutas:
+                    if luta.pop("video"):
+                        luta["video_url"] = f"/api/arena/video/{luta['id']}.mp4?t={token}"
+                return self._json({"lutas": lutas})
             achado = re.fullmatch(r"/api/sprites/arquivo/(palco|vila)/([a-z0-9][a-z0-9_-]{0,63})/([^/]+)", rota)
             if achado:
                 return self._arquivo_sprite(achado.group(1), achado.group(2), achado.group(3))
@@ -994,6 +1079,8 @@ class Manipulador(BaseHTTPRequestHandler):
         if not self._passou_rede():
             return
         rota = urlsplit(self.path).path
+        if rota == "/api/arena/luta":
+            return self._arena_luta()
         if rota in ("/api/acao", "/api/acao/confirmar"):
             return self._acao(rota)
         if rota == "/api/decisao/responder":
@@ -1109,6 +1196,45 @@ class Manipulador(BaseHTTPRequestHandler):
                            "estado": resultado.get("estado")})
 
     # ---------------------------------------------------------- acoes
+    def _arena_luta(self):
+        """A unica acao da Arena: nao divide a GPU do Godot com outro render."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as acoes estao desligadas neste servidor")
+        corpo = self._corpo()
+        if corpo is None:
+            return
+        opcoes = opcoes_da_arena()
+        nomes = {p["nome"] for p in opcoes["personagens"]}
+        mapas = {m["id"] for m in opcoes["mapas"]}
+        p1, p2, mapa = corpo.get("p1"), corpo.get("p2"), corpo.get("mapa")
+        if p1 not in nomes or p2 not in nomes or p1 == p2 or mapa not in mapas:
+            return self._erro(400, "lutadores ou mapa invalidos")
+        try:
+            semente = int(corpo.get("semente")) if corpo.get("semente") is not None else secrets.randbelow(2 ** 63)
+        except (TypeError, ValueError):
+            return self._erro(400, "semente invalida")
+        if not 0 <= semente < 2 ** 63:
+            return self._erro(400, "semente invalida")
+        chave = f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
+        pasta = pasta_da_arena() / chave
+        with self.estado.trava:
+            if tarefas.rodando("arena"):
+                return self._erro(409, "ja ha um render da Arena rodando")
+            pasta.mkdir(parents=True, exist_ok=True)
+            (pasta / "luta.json").write_text(json.dumps({"tarefa": chave, "p1": p1, "p2": p2,
+                "mapa": mapa, "semente": semente}, ensure_ascii=False), encoding="utf-8")
+            try:
+                tarefas.iniciar("arena", f"Arena: {p1} x {p2}",
+                    [sys.executable, "-m", "remoto.arena", "--p1", p1, "--p2", p2,
+                     "--mapa", mapa, "--semente", str(semente), "--pasta", str(pasta)],
+                    Path(__file__).resolve().parents[1], self._id,
+                    {"p1": p1, "p2": p2, "mapa": mapa, "semente": semente}, chave)
+            except (OSError, ValueError) as exc:
+                return self._erro(503, f"nao consegui iniciar a Arena: {exc}")
+        return self._json({"id": chave, "semente": semente}, 202)
+
     def _acao(self, rota: str):
         if self._aparelho() is None:
             return
@@ -1614,7 +1740,7 @@ class Manipulador(BaseHTTPRequestHandler):
         if nome.endswith(".html"):
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; img-src 'self' blob:; media-src 'self'; "
+                "default-src 'self'; img-src 'self' blob:; media-src 'self' blob:; "
                 "style-src 'self'; script-src 'self'; connect-src 'self'; "
                 "manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
                 "form-action 'none'; frame-ancestors 'none'")
@@ -1681,6 +1807,42 @@ class Manipulador(BaseHTTPRequestHandler):
                     falta -= len(pedaco)
         except (ConnectionError, OSError):
             pass          # o celular fechou o video no meio: normal
+
+    def _video_da_arena(self, luta_id: str, consulta: dict):
+        """MP4 da Arena pelo id conhecido e token da URL, com Range para avancar."""
+        if self._aparelho_do_video_da_arena(consulta) is None:
+            return
+        arquivo = pasta_da_arena() / luta_id / "luta.mp4"
+        if not arquivo.is_file():
+            return self._erro(404, "video nao encontrado")
+        try:
+            total = arquivo.stat().st_size
+        except OSError:
+            return self._erro(404, "arquivo sumiu")
+        inicio, fim = intervalo(self.headers.get("Range", ""), total)
+        if inicio is None:
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{total}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        tamanho = fim - inicio + 1
+        self.send_response(206)
+        self._cabecalhos_comuns("video/mp4", tamanho)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Range", f"bytes {inicio}-{fim}/{total}")
+        self.end_headers()
+        try:
+            with open(arquivo, "rb") as fh:
+                fh.seek(inicio)
+                while tamanho > 0:
+                    pedaco = fh.read(min(65536, tamanho))
+                    if not pedaco:
+                        break
+                    self.wfile.write(pedaco)
+                    tamanho -= len(pedaco)
+        except (ConnectionError, OSError):
+            pass
 
     def _pagina_por_bilhete(self, chave: str):
         pagina, motivo = self.estado.pagina_do_bilhete(chave)

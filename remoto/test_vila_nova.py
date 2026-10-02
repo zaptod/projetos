@@ -264,6 +264,18 @@ def test_olhar_de_novo_acorda_o_motor(motor, monkeypatch):
     assert _esperar(lambda: motor.motor._vida.ticks > parou + 2)
 
 
+def test_thread_acordada_tarde_ainda_da_o_primeiro_tick(motor, monkeypatch):
+    """Uma thread que ficou na fila nao pode morrer antes de comecar."""
+    m = motor.motor
+    m._ultimo_pedido = time.monotonic() - 10
+    monkeypatch.setattr(vila_nova, "PARAR_SEM_PEDIDO_S", 1.0)
+    monkeypatch.setattr(m, "_ler_estado", lambda: {})
+    monkeypatch.setattr(vila_nova.time, "sleep", lambda s: setattr(
+        m, "_ultimo_pedido", time.monotonic() - 2))
+    m._girar()
+    assert m._vida.ticks == 1
+
+
 def test_leitura_usa_a_sonda_que_nao_pega_trava(monkeypatch):
     """`_ler_estado` de verdade: ele NAO pode segurar trava de perfil."""
     from builds import travas

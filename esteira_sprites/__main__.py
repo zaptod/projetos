@@ -116,8 +116,17 @@ def _repedir(item_id: str, dados: dict) -> bool:
     return True
 
 
+# 02/10/2026, o Adrian: "por que voce ainda esta gerando os sprites quando eu ja
+# disse pra parar". A esteira inteira esta DESLIGADA: ele faz os sprites dele e
+# importa pelo Atelie. Ligar de novo so com ordem dele.
+ESTEIRA_LIGADA = False
+
+
 def ciclo() -> dict:
     """Uma passada da producao continua: anda tudo e completa o que esta em voo."""
+    if not ESTEIRA_LIGADA:
+        return {"perfil": config.PERFIL, "andou": 0, "em_voo": 0, "novos": [],
+                "desligada": "o Adrian mandou parar (02/10/2026)"}
     andou = avancar()
     em_voo = sum(1 for i in config.itens() if (d := ficha.ler(i["id"])) and d.get("estado") in EM_VOO)
     novos = []

@@ -322,6 +322,11 @@ class Motor:
         if self._vida is None:
             self._vida = vida.Vida(list(dados.PREDIOS))
         anterior = time.monotonic()
+        # A thread pode ficar alguns instantes na fila do Windows antes de
+        # ganhar CPU. O prazo de quem olha comeca quando ela de fato acorda;
+        # senao, com um prazo curto, ela morre antes do primeiro tick.
+        with self._trava:
+            self._ultimo_pedido = max(self._ultimo_pedido, anterior)
         while True:
             agora = time.monotonic()
             with self._trava:

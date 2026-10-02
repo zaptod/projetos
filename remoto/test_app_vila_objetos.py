@@ -22,7 +22,8 @@ JS = {n: (APP / n).read_text(encoding="utf-8")
 # os quatro objetos da prateleira (02/10/2026): o rótulo e a aba que abre
 # da primeira vez (`data-tela`)
 OBJETOS = {"agora": ("Agora", "agora"), "decidir": ("Decidir", "decisoes"),
-           "mandar": ("Mandar", "comandos"), "ver": ("Ver", "videos")}
+           "mandar": ("Mandar", "comandos"), "ver": ("Ver", "videos"),
+           "arena": ("Arena", "arena")}
 
 # o que cada área faz hoje e não pode sumir (id no HTML)
 FUNCOES = [
@@ -57,6 +58,9 @@ FUNCOES = [
     "diario", "diario-filtro", "btn-todas",
     # vídeos: gerar, tocar e publicar (a publicação usa o diálogo de destinos)
     "gerar-cartao", "btn-gerar", "restantes", "player", "videos",
+    # Arena: dois lutadores, mapa, semente, render e histórico de MP4s
+    "arena-p1-busca", "arena-p1-lista", "arena-vs", "arena-p2-busca", "arena-p2-lista",
+    "arena-mapa", "arena-semente", "arena-dado", "arena-lutar", "arena-progresso", "arena-lutas",
     # comandos: o histórico ("Últimos que você mandou"), o log e o catálogo
     # (inclui a zona de perigo)
     "comandos-ultimos", "tarefas-lista", "tarefa-log", "btn-fechar-log", "comandos-grupos",
@@ -129,8 +133,8 @@ def test_o_cache_da_casca_mudou_de_versao():
     # Oficina do Codex e os Modelos (01/10); v24 = Biblioteca; v26 = Coordenador;
     # v29 = os quatro objetos, um por pergunta (02/10); v30 = a Vila toca as
     # folhas da esteira (02/10); v31 = Assembleia (02/10); v32 = conferência
-    # de sprites pelo celular.
-    assert "painel-casca-v32" in sw
+    # de sprites pelo celular; v33 = Arena.
+    assert "painel-casca-v33" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

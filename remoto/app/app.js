@@ -7,7 +7,7 @@ const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex",
                  coordenador: "Agora · Coordenador", decisoes: "Decidir", sprites: "Decidir · Sprites", assembleias: "Decidir · Assembleia",
                  comandos: "Mandar", conversa: "Mandar · IAs",
                  videos: "Ver · Cinema", biblioteca: "Ver · Biblioteca",
-                 relatorios: "Ver · Pergaminhos", diario: "Ver · Diário"};
+                 relatorios: "Ver · Pergaminhos", diario: "Ver · Diário", arena: "Arena"};
 // Os QUATRO objetos da prateleira, um por pergunta (decisão do Adrian,
 // app-e-bot/app-reorganizar, 02/10/2026: "Voce realmente acha que o app está
 // bem organizado?"). Antes eram 7 objetos e mais 4 telas que só abriam por
@@ -25,6 +25,7 @@ const OBJETOS = {
   mandar: [["comandos", "🛠️", "Comandos"], ["conversa", "💬", "IAs"]],
   ver: [["videos", "🎞️", "Cinema"], ["biblioteca", "📚", "Biblioteca"],
         ["relatorios", "📜", "Pergaminhos"], ["diario", "📓", "Diário"]],
+  arena: [["arena", "⚔️", "Arena"]],
 };
 const ABA_DO_OBJETO = {};             // a última aba usada de cada objeto
 
@@ -601,6 +602,98 @@ $("btn-parear").addEventListener("click", async () => {
 // O pergaminho abre já desenrolado no primeiro (antes abria vazio, com
 // "Escolha um pergaminho", e pedia um toque a mais para nada). Se ele já
 // escolheu outro, fica o que ele escolheu.
+let arenaOpcoes = null;
+let arenaP1 = null;
+let arenaP2 = null;
+
+function arenaCartoes(id, escolhido, outro) {
+  const lista = $(id);
+  const busca = $(id.replace("-lista", "-busca")).value.trim().toLocaleLowerCase("pt-BR");
+  lista.replaceChildren();
+  for (const p of arenaOpcoes.personagens) {
+    if (busca && !p.nome.toLocaleLowerCase("pt-BR").includes(busca)) continue;
+    const cor = String(p.cor_classe || "").replace("#", "");
+    const b = el("button", {class: "arena-personagem arena-cor-" + cor
+      + (p.nome === escolhido ? " escolhido" : ""), type: "button"},
+      el("span", {class: "arena-bolinha", "aria-hidden": "true"}),
+      el("span", {class: "arena-pessoa"}, el("strong", {}, p.nome),
+        el("small", {}, `${p.classe} · ${p.arma}${p.tipo_arma ? " (" + p.tipo_arma + ")" : ""}`)));
+    b.disabled = p.nome === outro;
+    b.addEventListener("click", () => {
+      if (id === "arena-p1-lista") arenaP1 = p.nome; else arenaP2 = p.nome;
+      desenharArenaEscolhas();
+    });
+    lista.append(b);
+  }
+}
+
+function desenharArenaEscolhas() {
+  if (!arenaOpcoes) return;
+  arenaCartoes("arena-p1-lista", arenaP1, arenaP2);
+  arenaCartoes("arena-p2-lista", arenaP2, arenaP1);
+  $("arena-vs").textContent = arenaP1 && arenaP2 ? `${arenaP1}  VS  ${arenaP2}` : "VS";
+  $("arena-lutar").disabled = !arenaP1 || !arenaP2;
+}
+
+function desenharLutas(lutas) {
+  const lista = $("arena-lutas");
+  lista.replaceChildren();
+  if (!lutas.length) lista.append(el("p", {class: "fraco"}, "Nenhuma luta ainda."));
+  for (const luta of lutas) {
+    const cartao = el("article", {class: "arena-luta"},
+      el("strong", {}, `${luta.p1} × ${luta.p2}`),
+      el("span", {class: `selo ${luta.situacao === "falhou" ? "erro" : luta.situacao === "pronta" ? "ok" : "trabalhando"}`}, luta.situacao),
+      el("div", {class: "fraco"}, `${luta.mapa} · semente ${luta.semente}`));
+    if (luta.video_url) cartao.append(el("video", {controls: "", playsinline: "", preload: "metadata", src: luta.video_url}));
+    if (luta.vencedor) cartao.append(el("div", {class: "arena-vencedor"}, `Venceu: ${luta.vencedor}`));
+    const revanche = el("button", {class: "acao", type: "button"}, "Revanche");
+    revanche.addEventListener("click", () => lutarArena(luta));
+    cartao.append(revanche);
+    lista.append(cartao);
+  }
+}
+
+async function carregarArena() {
+  try {
+    if (!arenaOpcoes) {
+      arenaOpcoes = await api("/api/arena/opcoes");
+      arenaP1 = arenaOpcoes.personagens[0] && arenaOpcoes.personagens[0].nome;
+      arenaP2 = arenaOpcoes.personagens[1] && arenaOpcoes.personagens[1].nome;
+      for (const mapa of arenaOpcoes.mapas)
+        $("arena-mapa").append(el("option", {value: mapa.id}, `${mapa.icone || "🗺️"} ${mapa.nome}`));
+      desenharArenaEscolhas();
+    }
+    const dados = await api("/api/arena/lutas");
+    desenharLutas(dados.lutas || []);
+    conexao(true);
+  } catch (err) { conexao(false, err); }
+}
+
+async function lutarArena(revanche = null) {
+  const mapa = revanche ? revanche.mapa : $("arena-mapa").value;
+  const valor = revanche ? revanche.semente : $("arena-semente").value.trim();
+  const corpo = {p1: revanche ? revanche.p1 : arenaP1, p2: revanche ? revanche.p2 : arenaP2, mapa};
+  if (valor) corpo.semente = Number(valor);
+  const botao = $("arena-lutar");
+  botao.disabled = true;
+  $("arena-progresso").textContent = "Enviando para renderizar no PC…";
+  try {
+    const feita = await api("/api/arena/luta", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)});
+    $("arena-semente").value = feita.semente;
+    $("arena-progresso").textContent = "Renderizando no PC… a luta vai aparecer abaixo.";
+    await carregarArena();
+  } catch (err) {
+    $("arena-progresso").textContent = err.message;
+  } finally { botao.disabled = !arenaP1 || !arenaP2; }
+}
+
+$("arena-p1-busca").addEventListener("input", desenharArenaEscolhas);
+$("arena-p2-busca").addEventListener("input", desenharArenaEscolhas);
+$("arena-dado").addEventListener("click", () => {
+  $("arena-semente").value = String(Math.floor(Math.random() * 2147483647));
+});
+$("arena-lutar").addEventListener("click", () => lutarArena());
+
 function abrirPergaminho() {
   const abas = $("abas-relatorio").children;
   if (abas.length && ![...abas].some((b) => b.getAttribute("aria-pressed") === "true"))
@@ -612,7 +705,8 @@ const CARGAS = {vila: [carregarAgora, 15000], agora: [carregarAgora, 15000],
                 videos: [null, 0], comandos: [null, 0],
                 relatorios: [abrirPergaminho, 0],
                 decisoes: [null, 0], sprites: [null, 0], assembleias: [null, 0], conversa: [null, 0],
-                oficina: [null, 0], biblioteca: [null, 0], coordenador: [null, 0]};
+                oficina: [null, 0], biblioteca: [null, 0], coordenador: [null, 0],
+                arena: [carregarArena, 3000]};
 
 // As abas de um objeto (Agora, Mandar e Ver têm mais de uma tela): a mesma
 // fileira no topo de cada tela dele, montada daqui (uma lista só, OBJETOS).

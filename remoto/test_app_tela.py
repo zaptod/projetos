@@ -28,6 +28,7 @@ TELAS = {
     "decidir": ("decisoes", "sprites", "assembleias"),
     "mandar": ("comandos", "conversa"),
     "ver": ("videos", "biblioteca", "relatorios", "diario"),
+    "arena": ("arena",),
 }
 # Deixe aqui, explicitamente, qualquer 404 que seja normal para uma tela.
 # Hoje nao ha nenhum: um novo 404 de API precisa ser explicado antes de entrar.

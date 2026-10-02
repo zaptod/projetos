@@ -590,6 +590,41 @@ nav.prateleira button.objeto { font-size: 13px; letter-spacing: .01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 nav.prateleira button.objeto span { font-size: 30px; }
 
+/* ---- Arena: os lutadores continuam legiveis e tocaveis em 390 px */
+.livro.arena { background: radial-gradient(ellipse at top, #322319, #17100d 70%); --cartao: #2d211a;
+  --texto: #f7e8cb; --fraco: #c7ae91; --linha: #70513a; --acento: #c65b28; }
+.livro.arena .cartao { background: rgba(45, 33, 26, .96); border-style: solid; }
+.livro.arena .cartao h2 { color: #f2bb65; }
+.arena-label { display: block; font-size: 12px; color: var(--fraco); }
+.arena-busca { font-size: 14px; letter-spacing: normal; text-align: left; padding: 7px; }
+.arena-lista { max-height: 170px; overflow-y: auto; margin: 5px 0; border: 1px solid var(--linha); border-radius: 8px; }
+.arena-personagem { display: flex; align-items: center; width: 100%; gap: 8px; padding: 7px; border: 0;
+  border-bottom: 1px solid var(--linha); background: transparent; color: var(--texto); text-align: left; font: inherit; }
+.arena-personagem:last-child { border-bottom: 0; }
+.arena-personagem.escolhido { background: rgba(198, 91, 40, .25); box-shadow: inset 4px 0 currentColor; }
+.arena-personagem:disabled { opacity: .42; }
+.arena-bolinha { width: 12px; height: 12px; flex: none; border-radius: 50%; background: #c8c8c8; }
+.arena-cor-cd7f32 .arena-bolinha { background: #cd7f32; } .arena-cor-ff4444 .arena-bolinha { background: #ff4444; }
+.arena-cor-b8860b .arena-bolinha { background: #b8860b; } .arena-cor-4682b4 .arena-bolinha { background: #4682b4; }
+.arena-cor-800080 .arena-bolinha { background: #800080; } .arena-cor-505050 .arena-bolinha { background: #505050; }
+.arena-cor-2f2f2f .arena-bolinha { background: #2f2f2f; } .arena-cor-ffd700 .arena-bolinha { background: #ffd700; }
+.arena-cor-6495ed .arena-bolinha { background: #6495ed; } .arena-cor-ff6600 .arena-bolinha { background: #ff6600; }
+.arena-cor-87ceeb .arena-bolinha { background: #87ceeb; } .arena-cor-4b0082 .arena-bolinha { background: #4b0082; }
+.arena-cor-ffcc00 .arena-bolinha { background: #ffcc00; } .arena-cor-228b22 .arena-bolinha { background: #228b22; }
+.arena-cor-9932cc .arena-bolinha { background: #9932cc; } .arena-cor-f5f5dc .arena-bolinha { background: #f5f5dc; }
+.arena-pessoa { min-width: 0; display: flex; flex-direction: column; }
+.arena-pessoa small { color: var(--fraco); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arena-vs { margin: 8px 0; text-align: center; color: #f2bb65; font: 700 20px Georgia, serif; }
+.arena-semente { display: flex; gap: 5px; }
+.arena-semente input { min-width: 0; font-size: 14px; letter-spacing: normal; text-align: left; padding: 8px; }
+.arena-semente .acao { padding: 6px 8px; }
+.arena-lutar { width: 100%; margin-top: 12px; font-weight: 700; }
+.arena-luta { padding: 10px 0; border-top: 1px solid var(--linha); }
+.arena-luta:first-child { border-top: 0; padding-top: 0; }
+.arena-luta .selo { margin-left: 8px; }
+.arena-luta video { margin: 8px 0; }
+.arena-vencedor { color: #a9da82; font-weight: 600; margin-bottom: 6px; }
+
 /* ---- as abas de um objeto (Agora, Mandar, Ver): uma régua de madeira no
    topo de cada tela dele; a aba aberta é uma ficha de pergaminho */
 .abas-objeto { display: flex; gap: 4px; margin-bottom: 12px; padding: 4px;

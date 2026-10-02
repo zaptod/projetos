@@ -26,6 +26,7 @@ deixa estado pela metade (foi o motivo de existir a parada limpa do
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import time
 from datetime import datetime, timedelta
@@ -54,13 +55,15 @@ def _ler_json(caminho: Path):
 
 
 def iniciar(acao: str, rotulo: str, comando: list, cwd, aparelho: str = "",
-            args: dict | None = None) -> str:
+            args: dict | None = None, chave: str | None = None) -> str:
     """Sobe a tarefa e devolve a chave. Levanta OSError se nao subir."""
     import secrets
 
     from . import acoes
 
-    chave = f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
+    chave = chave or f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
+    if not re.fullmatch(r"[\w.-]{1,60}", chave):
+        raise ValueError("chave de tarefa invalida")
     pasta = pasta_das_tarefas() / chave
     pasta.mkdir(parents=True, exist_ok=True)
     ficha = {"chave": chave, "acao": acao, "rotulo": rotulo,

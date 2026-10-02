@@ -2163,3 +2163,16 @@ Em **Decidir > Assembleia**, o app mostra as deliberações abertas e as atas
 fechadas. Em **Mandar**, o cartão “Convocar assembleia” exige a pergunta e o
 campo “O que está em jogo”; as IAs recomendam, mas somente Adrian decide no
 Grimório. A convocação e as respostas passam pelo correio e pelo carteiro.
+
+## Arena
+
+**⚔️ Arena** é o quinto objeto da prateleira. Ela consulta os personagens e
+mapas do jogo, escolhe P1, P2, mapa e semente, e pede ao PC uma luta
+reproduzível. O celular não abre o Godot: a tarefa desligada exporta a
+timeline do manual e renderiza o MP4 no palco. Só um render da Arena roda por
+vez, para não dividir a GPU do Godot.
+
+As lutas ficam em `random_builds/outputs/_palco/arena/<id>/`. A tela mostra as
+20 mais recentes, incluindo falhas e vencedor; o MP4 toca inline por Range. O
+token vai em `?t=` somente nessa URL de vídeo, porque `<video>` não envia o
+cabeçalho Authorization.

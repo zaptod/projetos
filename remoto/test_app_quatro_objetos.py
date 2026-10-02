@@ -90,6 +90,11 @@ ONDE_FICOU = {
         "tela-relatorios", "abas-relatorio", "relatorio",
         "tela-diario", "diario-filtro", "diario-filtro-nome", "btn-todas", "diario",
     ],
+    "arena": [
+        "tela-arena", "arena-p1-busca", "arena-p1-lista", "arena-vs",
+        "arena-p2-busca", "arena-p2-lista", "arena-mapa", "arena-semente",
+        "arena-dado", "arena-lutar", "arena-progresso", "arena-lutas",
+    ],
     "fora": [
         "btn-voltar", "titulo", "conexao", "aviso", "aviso-texto", "btn-tentar", "casca-nova",
         "btn-recarregar", "modulo-faltando", "modulo-faltando-texto", "btn-recarregar-modulos",
@@ -192,23 +197,25 @@ def _secao(tela):
 # ----------------------------------------------------------------- testes
 def test_a_lista_cravada_cobre_os_209_ids_de_antes_sem_repetir():
     todos = [i for lista in ONDE_FICOU.values() for i in lista] + list(SAIRAM)
-    assert len(todos) == len(set(todos)) == 209
+    assert len(todos) == len(set(todos)) == 221
 
 
-def test_os_quatro_objetos_e_nada_mais_na_prateleira():
+def test_os_cinco_objetos_e_nada_mais_na_prateleira():
     objetos = _objetos()
-    assert list(objetos) == ["agora", "decidir", "mandar", "ver"]
+    assert list(objetos) == ["agora", "decidir", "mandar", "ver", "arena"]
     assert objetos["agora"] == ["agora", "oficina", "coordenador"]
     assert objetos["decidir"] == ["decisoes", "sprites", "assembleias"]
     assert objetos["mandar"] == ["comandos", "conversa"]
     assert objetos["ver"] == ["videos", "biblioteca", "relatorios", "diario"]
+    assert objetos["arena"] == ["arena"]
     botoes = re.findall(r'<button class="objeto" id="obj-(\w+)" data-objeto="(\w+)" '
                         r'data-tela="([\w-]+)"><span>[^<]*</span>([^<]+)</button>', HTML)
     assert [(o, rotulo) for o, _d, _t, rotulo in botoes] == [
-        ("agora", "Agora"), ("decidir", "Decidir"), ("mandar", "Mandar"), ("ver", "Ver")]
+        ("agora", "Agora"), ("decidir", "Decidir"), ("mandar", "Mandar"), ("ver", "Ver"),
+        ("arena", "Arena")]
     for obj_id, objeto, aba, _rotulo in botoes:
         assert obj_id == objeto and aba == objetos[objeto][0]
-    assert HTML.count('class="objeto"') == 4
+    assert HTML.count('class="objeto"') == 5
 
 
 def test_nenhuma_tela_so_abre_por_dentro_de_outra():
