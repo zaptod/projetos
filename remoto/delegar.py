@@ -116,6 +116,7 @@ PADRAO_CONFIG = {
     "janela_sem_aplicar": [25, 55],   # a janela da postagem
     "rodar_timeout_s": 3600,
     "testes_timeout_s": 1800,
+    "delegados_paralelo": 1,      # quantos Codex ao mesmo tempo (cada um na sua worktree)
 }
 
 # Medidos em 01/10/2026 no `~/.codex/models_cache.json` (visibility "list"),
@@ -750,9 +751,14 @@ def _preparar_rodada(tarefa_id: str, tipo: str, forcar: bool) -> tuple[dict, dic
             raise Recusa(f"a tarefa {tarefa_id} já está rodando (pid {estado.get('pid')})")
         if tipo == "corrigir" and not estado.get("thread_id"):
             raise Recusa("não há conversa para corrigir: rode primeiro")
-        outro = next((e for e in listar() if e.get("id") != tarefa_id and _rodando(e)), None)
-        if outro:
-            raise Recusa(f"um delegado por vez: {outro['id']} está rodando")
+        # 01/10 23:1x, pedido do Adrian: "utilize o Codex na capacidade maxima".
+        # O teto de simultaneos vem do config (padrao 1); cada um tem a propria
+        # worktree, entao rodar junto nao mistura arquivo.
+        limite = max(1, int(config.get("delegados_paralelo", 1) or 1))
+        outros = [e for e in listar() if e.get("id") != tarefa_id and _rodando(e)]
+        if len(outros) >= limite:
+            nomes = ", ".join(e["id"] for e in outros)
+            raise Recusa(f"no máximo {limite} delegado(s) ao mesmo tempo: {nomes} rodando")
         if not Path(estado["worktree"]).is_dir():
             raise Recusa(f"a worktree sumiu: {estado['worktree']}")
         estado.update(situacao="rodando", pid=os.getpid(), pid_codex=None,
