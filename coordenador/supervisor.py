@@ -60,11 +60,12 @@ ESPERA_ENTREGA_S = 600   # quanto o reinicio por codigo velho espera uma entrega
 def _pid_vivo(pid: int) -> bool:
     """Existe um processo com esse pid? (tasklist, sem psutil)."""
     try:
-        saida = subprocess.run(["tasklist", "/FI", f"PID eq {int(pid)}", "/NH", "/FO", "CSV"],
-                               capture_output=True, text=True, check=False).stdout
+        feito = subprocess.run(["tasklist", "/FI", f"PID eq {int(pid)}", "/NH", "/FO", "CSV"],
+                               capture_output=True, text=True, encoding="cp850",
+                               errors="replace", check=False)
     except OSError:
         return True          # na duvida, nao rouba a trava de ninguem
-    return f'"{int(pid)}"' in saida
+    return f'"{int(pid)}"' in (feito.stdout or "")
 
 
 class TravaUnica:
