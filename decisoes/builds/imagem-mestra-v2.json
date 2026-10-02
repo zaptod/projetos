@@ -1,0 +1,83 @@
+{
+  "comentario": true,
+  "contexto": "Medido na esteira (fundo magenta é removido por código): 1 neon tem brilho rosa que se confunde com o magenta (precisaria fundo verde); 6 pintado tem bordas texturizadas (sobra franja); 7 vetor pôs sombra no fundo e a bola de fogo encosta na borda; 8 Grok saiu pixel art e retrato (não respeita 1:1); 9 PicassoIA veio com magenta escuro (o recorte erra). 2, 3, 4 e 5 (ChatGPT) estão limpos para a esteira. Comentário pode pedir mistura (ex.: 'o 3 com as cores do 1').",
+  "criado": "2026-10-02T00:37:58.662700",
+  "depende_de": [],
+  "historico": [],
+  "id": "imagem-mestra-v2",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\imagem-mestra-v2\\quadro_estilos.jpg",
+      "rotulo": "OS 9 LADO A LADO"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\imagem-mestra-v2\\ac199953.png",
+      "rotulo": "3 GACHA PREMIUM"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\imagem-mestra-v2\\d422ff29.png",
+      "rotulo": "2 ANIME"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\imagem-mestra-v2\\56f52d74.png",
+      "rotulo": "4 QUADRINHO"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\imagem-mestra-v2\\a0c3355c.png",
+      "rotulo": "5 MINIMAL PREMIUM"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\imagem-mestra-v2\\7c87342a.png",
+      "rotulo": "1 NEON"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Samurai, dourado e vermelho, muito detalhe e personalidade; limpo para a esteira",
+      "id": "gacha",
+      "pede_comentario": false,
+      "rotulo": "3 Gacha premium (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Cel-shading de jogo de luta, energia e contraste",
+      "id": "anime",
+      "pede_comentario": false,
+      "rotulo": "2 Anime"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Tinta pesada e retícula, cores fortes",
+      "id": "quadrinho",
+      "pede_comentario": false,
+      "rotulo": "4 Quadrinho"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Mais limpo e legível no celular, estilo Supercell",
+      "id": "minimal",
+      "pede_comentario": false,
+      "rotulo": "5 Minimal premium"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Cyber-arcade com brilho (a esteira passa a usar fundo verde)",
+      "id": "neon",
+      "pede_comentario": false,
+      "rotulo": "1 Neon"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": false,
+      "rotulo": "Outro (6 a 9) ou mistura — diga no comentário"
+    }
+  ],
+  "pergunta": "Você pediu algo mais estiloso. Testei 9 estilos em 4 IAs com os mesmos 4 elementos. Qual vira a referência de TODOS os sprites (lutas e Vila)?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Imagem-mestra: qual estilo (9 testes)?",
+  "vigente": null
+}
