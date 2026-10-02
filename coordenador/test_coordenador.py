@@ -93,6 +93,19 @@ def test_carteiro_entregando_adia_codigo_velho():
     assert not parou
 
 
+def test_carteiro_entregando_espera_no_maximo_dez_minutos(monkeypatch):
+    # 02/10 00:04: "ele nunca vai parar de rodar" - a espera tem teto.
+    from coordenador import supervisor as mod
+    monkeypatch.setattr(mod.Supervisor, "_interromper_entrega", lambda self: None)
+    parou = []
+    s, relogio = supervisor(servicos=ficha("carteiro", True), processos=lambda: [{"pid": 10, "comando": "carteiro"}],
+                            git=lambda *_: True, carteiro=lambda: {"situacao": "entregando"}, parar=parou.append)
+    s.pulso()
+    assert not parou
+    relogio.andar(mod.ESPERA_ENTREGA_S + 1); s.pulso()
+    assert parou == [10]
+
+
 def test_proibido_para_delegados_sem_parar_servico():
     delegados, parou = [], []
     s, _ = supervisor(processos=lambda: [{"pid": 7, "comando": "app"}], claude_proibido=lambda: "proibido",
@@ -163,3 +176,13 @@ def test_uma_ausencia_so_nao_religa_a_segunda_religa():
     relogio.andar(5); s.pulso()
     relogio.andar(6); s.pulso()
     assert iniciou
+
+
+def test_trava_de_processo_morto_e_retomada(tmp_path):
+    # 02/10: o coordenador morto deixava o .lock e nenhum outro subia mais.
+    from coordenador.supervisor import TravaUnica
+    caminho = tmp_path / "c.lock"
+    caminho.write_text("999999", encoding="utf-8")
+    assert TravaUnica(caminho).adquirir(vivo=lambda pid: False)
+    caminho.write_text("4242", encoding="utf-8")
+    assert not TravaUnica(caminho).adquirir(vivo=lambda pid: True)

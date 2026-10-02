@@ -54,21 +54,48 @@ def publicacao_rodando(processos):
                for p in processos)
 
 
+ESPERA_ENTREGA_S = 600   # quanto o reinicio por codigo velho espera uma entrega do carteiro
+
+
+def _pid_vivo(pid: int) -> bool:
+    """Existe um processo com esse pid? (tasklist, sem psutil)."""
+    try:
+        saida = subprocess.run(["tasklist", "/FI", f"PID eq {int(pid)}", "/NH", "/FO", "CSV"],
+                               capture_output=True, text=True, check=False).stdout
+    except OSError:
+        return True          # na duvida, nao rouba a trava de ninguem
+    return f'"{int(pid)}"' in saida
+
+
 class TravaUnica:
     def __init__(self, caminho=None):
         self.caminho = Path(caminho or pasta() / "coordenador.lock")
         self.adquirida = False
 
-    def adquirir(self):
+    def adquirir(self, vivo=None):
+        """Uma trava de processo MORTO e retomada: sem isso, o coordenador que
+        morre de repente deixa o arquivo e nenhum outro sobe mais (02/10)."""
+        vivo = vivo or _pid_vivo
         self.caminho.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            fd = os.open(self.caminho, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(str(os.getpid()))
-            self.adquirida = True
-            return True
-        except FileExistsError:
-            return False
+        for _ in range(2):
+            try:
+                fd = os.open(self.caminho, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(str(os.getpid()))
+                self.adquirida = True
+                return True
+            except FileExistsError:
+                try:
+                    dono = int(self.caminho.read_text(encoding="utf-8").strip() or "0")
+                except (OSError, ValueError):
+                    dono = 0
+                if dono and vivo(dono):
+                    return False
+                try:
+                    self.caminho.unlink()
+                except OSError:
+                    return False
+        return False
 
     def soltar(self):
         if self.adquirida:
@@ -105,6 +132,7 @@ class Supervisor:
         self.falhas = {n: [] for n in self.servicos}
         self.saudes_ruins = {n: 0 for n in self.servicos}
         self.ausencias = {n: 0 for n in self.servicos}
+        self.velho_desde = {}
         self.eventos = []
         self.avisos_mensagem = set()
         self.estado = {n: {"situacao": "parado", "pid": None, "desde": None,
@@ -222,8 +250,26 @@ class Supervisor:
         except ImportError:
             pass
         if nome == "carteiro" and self.carteiro().get("situacao") == "entregando":
-            return False, "carteiro entregando"
+            # 02/10 00:04: um pedido condenado segurou o carteiro velho por 7 min
+            # e o Adrian: "ele nunca vai parar de rodar". Espera no maximo
+            # ESPERA_ENTREGA_S desde que o codigo ficou velho; depois reinicia
+            # e a mensagem do meio fica marcada como interrompida.
+            desde = self.velho_desde.get(nome)
+            if desde is None or (agora - desde).total_seconds() < ESPERA_ENTREGA_S:
+                return False, "carteiro entregando"
+            self._interromper_entrega()
         return True, ""
+
+    def _interromper_entrega(self):
+        try:
+            from ias import correio
+            atual = correio.estado_do_carteiro()
+            if atual.get("situacao") == "entregando" and atual.get("ia") and atual.get("mensagem_id"):
+                correio.atualizar(atual["ia"], atual["mensagem_id"], situacao="falhou",
+                                  erro="interrompida: o coordenador reiniciou o carteiro com o codigo novo",
+                                  categoria="interrompida")
+        except Exception as exc:  # noqa: BLE001 - reiniciar vale mais que marcar
+            self.log(f"[coordenador] nao marquei a entrega interrompida: {exc}")
 
     def _limite(self, nome):
         agora = self.relogio().timestamp()
@@ -300,6 +346,7 @@ class Supervisor:
         self.saudes_ruins[nome] = 0
         if self.git(ficha, estado["desde"]):
             if not estado["codigo_velho"]:
+                self.velho_desde[nome] = self.relogio()
                 estado["codigo_velho"] = True
                 self.evento(nome, "codigo_velho", "codigo mudou desde o inicio")
             ok, espera = self.seguro(nome, processos)
