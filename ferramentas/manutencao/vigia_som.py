@@ -39,6 +39,20 @@ def tem_sons(pasta: Path) -> bool:
     return isinstance(luta.get("sons"), list) and bool(luta["sons"])
 
 
+def precisa_renderizar(pasta: Path) -> bool:
+    """So repete quando o som ainda nao chegou aos finais publicaveis."""
+    fight = pasta / "fight.json"
+    if not tem_sons(pasta) or not fight.is_file():
+        return True
+    try:
+        data_fight = fight.stat().st_mtime_ns
+        return any(not (final := pasta / f"final_{perfil}.mp4").is_file()
+                   or final.stat().st_mtime_ns < data_fight
+                   for perfil in ("celular", "normal"))
+    except OSError:
+        return True
+
+
 def esperar_ate(hora: int, minuto: int) -> bool:
     alvo = datetime.now().replace(hour=hora, minute=minuto, second=30, microsecond=0)
     if alvo < datetime.now() - timedelta(minutes=20):
@@ -73,6 +87,9 @@ def vigiar(proc: subprocess.Popen, log_render: Path) -> str:
 
 
 def rodada(repo: Path, alvos: list[str], temp: Path, log_render: Path) -> list[str]:
+    alvos = [alvo for alvo in alvos if precisa_renderizar(repo / "outputs" / alvo)]
+    if not alvos:
+        return []
     sys.path.insert(0, str(repo))
     from builds import travas
     with travas.trava("builds__gerar", esperar=300.0) as minha:
@@ -81,17 +98,13 @@ def rodada(repo: Path, alvos: list[str], temp: Path, log_render: Path) -> list[s
             return alvos
         temp.mkdir(parents=True, exist_ok=True)
         ambiente = dict(os.environ, TEMP=str(temp), TMP=str(temp), PYTHONUTF8="1")
-        inicio = time.time()
         comando = [PY, "-u", "-X", "utf8", "main.py", "som-da-luta", *alvos]
         log_render.parent.mkdir(parents=True, exist_ok=True)
         with log_render.open("a", encoding="utf-8") as fh:
             proc = subprocess.Popen(comando, cwd=repo, env=ambiente, stdin=subprocess.DEVNULL,
                                     stdout=fh, stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
             motivo = vigiar(proc, log_render)
-        faltam = [alvo for alvo in alvos if not (tem_sons(repo / "outputs" / alvo) and
-                   all((repo / "outputs" / alvo / f"final_{perfil}.mp4").is_file() and
-                       (repo / "outputs" / alvo / f"final_{perfil}.mp4").stat().st_mtime > inicio
-                       for perfil in ("celular", "normal")))]
+        faltam = [alvo for alvo in alvos if precisa_renderizar(repo / "outputs" / alvo)]
         print(f"render terminou: codigo {proc.returncode}; faltam {faltam}; {motivo}")
         return faltam
 

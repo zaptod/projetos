@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 
 AQUI = Path(__file__).resolve().parent
+
+
+def modulo_vigia_som():
+    spec = importlib.util.spec_from_file_location("vigia_som", AQUI / "vigia_som.py")
+    assert spec and spec.loader
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
 
 
 def rodar(*args: object, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -67,6 +77,25 @@ def test_scripts_exibem_ajuda() -> None:
         r = rodar(AQUI / script, "--help")
         assert r.returncode == 0, (script, r.stderr)
         assert "uso:" in r.stdout.lower() or "usage:" in r.stdout.lower()
+
+
+def test_vigia_som_so_repete_rerender_quando_o_fight_mudou(tmp_path: Path) -> None:
+    vigia_som = modulo_vigia_som()
+    pasta = tmp_path / "duelo_00017"
+    pasta.mkdir()
+    fight = pasta / "fight.json"
+    fight.write_text(json.dumps({"luta": {"sons": [{"id": "hit"}]}}), encoding="utf-8")
+    finais = [pasta / f"final_{perfil}.mp4" for perfil in ("celular", "normal")]
+    for final in finais:
+        final.write_bytes(b"mp4")
+    os.utime(fight, ns=(1_000_000_000, 1_000_000_000))
+    for final in finais:
+        os.utime(final, ns=(2_000_000_000, 2_000_000_000))
+
+    assert not vigia_som.precisa_renderizar(pasta)
+
+    os.utime(fight, ns=(3_000_000_000, 3_000_000_000))
+    assert vigia_som.precisa_renderizar(pasta)
 
 
 def test_nao_ha_referencia_a_pasta_temporaria_da_sessao() -> None:
