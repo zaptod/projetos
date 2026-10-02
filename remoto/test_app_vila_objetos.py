@@ -5,6 +5,10 @@ A reforma mexeu só na casca (html, css, js). O risco é função perdida: um
 botão que sumiu do HTML e que o JavaScript ainda procura (e então falha em
 silêncio), ou uma área que ficou sem objeto para abrir. Estes testes leem os
 arquivos da PWA e conferem as duas coisas.
+
+Desde 02/10/2026 a prateleira tem QUATRO objetos, um por pergunta (decisão do
+Adrian, app-e-bot/app-reorganizar). A lista cravada de cada função antiga e
+onde ela ficou mora em `test_app_quatro_objetos.py`.
 """
 import re
 from pathlib import Path
@@ -15,22 +19,22 @@ JS = {n: (APP / n).read_text(encoding="utf-8")
       for n in ("app.js", "vila.js", "comandos.js", "decisoes.js", "orquestrador.js",
                 "coordenador.js", "conversa.js", "oficina.js", "biblioteca.js")}
 
-# as áreas de antes da reforma, cada uma com o seu objeto na vila
-OBJETOS = {"quadro": "Avisos", "diario": "Diário", "videos": "Cinema",
-           "comandos": "Bancada", "relatorios": "Pergaminhos",
-           "decisoes": "Grimório", "orquestrador": "Comando"}
+# os quatro objetos da prateleira (02/10/2026): o rótulo e a aba que abre
+# da primeira vez (`data-tela`)
+OBJETOS = {"agora": ("Agora", "agora"), "decidir": ("Decidir", "decisoes"),
+           "mandar": ("Mandar", "comandos"), "ver": ("Ver", "videos")}
 
 # o que cada área faz hoje e não pode sumir (id no HTML)
 FUNCOES = [
-    # quadro de avisos: estado, erros, travas
+    # o antigo quadro de avisos (em Agora desde 02/10): estado, erros, travas
     "vila-gente", "proxima", "pausa", "previsao", "fabricas", "erros", "vila-travas",
-    # o controle (pausar/retomar/parar): na Bancada desde 28/09
+    # o controle (pausar/retomar/parar): junto dos comandos desde 28/09
     "controle", "alvo-pausa", "prazo-pausa", "btn-pausar", "btn-retomar", "btn-parar",
-    # mesa de comando (o orquestrador)
+    # o orquestrador (a antiga Mesa de comando, hoje em Agora, Mandar e Decidir)
     "orq-agora", "orq-fila", "orq-pausar-fila", "orq-retomar-fila", "orq-max",
     "orq-mais", "orq-menos", "orq-modos", "orq-teto", "orq-forca", "orq-limites",
     "orq-grafico", "orq-decisoes", "orq-acessos", "orq-fluxo", "orq-mensagem",
-    "orq-enviar", "orq-comandos", "orq-faixa", "obj-orquestrador", "orq-carteiro",
+    "orq-enviar", "orq-comandos", "orq-faixa", "obj-agora", "orq-carteiro",
     # a conversa com uma IA (fase 2 da Vila das IAs)
     "conversa-ias", "conversa-casa", "conversa-carteiro", "conversa-historico",
     "conversa-texto", "conversa-anexo", "conversa-anexo-nome", "conversa-enviar",
@@ -39,8 +43,9 @@ FUNCOES = [
     "criar-aviso", "criar-prompt", "criar-proporcao", "criar-modelo", "criar-modelo-rotulo",
     "criar-contagem", "criar-enviar", "imagem-tela", "imagem-tela-img",
     "imagem-tela-legenda", "imagem-baixar", "imagem-compartilhar", "imagem-fechar",
-    # o interruptor do Claude (29/09): no topo da Mesa e na Bancada
-    "claude-mesa", "claude-faixa", "claude-bancada",
+    # o interruptor do Claude (29/09): uma vez só, em Mandar, desde 02/10;
+    # a faixa "proibido" fica em Agora
+    "claude-faixa", "claude-bancada",
     # o Codex (01/10): o cartao da Mesa, a Oficina e os tres seletores de modelo
     "orq-codex", "orq-abrir-oficina", "orq-modelo-claude", "orq-modelo-codex",
     "orq-modelo-gemini", "orq-modelo-codex-livre", "orq-modelo-codex-nome",
@@ -52,8 +57,9 @@ FUNCOES = [
     "diario", "diario-filtro", "btn-todas",
     # vídeos: gerar, tocar e publicar (a publicação usa o diálogo de destinos)
     "gerar-cartao", "btn-gerar", "restantes", "player", "videos",
-    # comandos: tarefas, log e o catálogo (inclui a zona de perigo)
-    "tarefas-lista", "tarefa-log", "btn-fechar-log", "comandos-grupos",
+    # comandos: o histórico ("Últimos que você mandou"), o log e o catálogo
+    # (inclui a zona de perigo)
+    "comandos-ultimos", "tarefas-lista", "tarefa-log", "btn-fechar-log", "comandos-grupos",
     # relatórios e decisões
     "abas-relatorio", "relatorio", "decisoes-abas", "decisoes-lista",
     "decisao-item",
@@ -71,11 +77,11 @@ def _ids(texto):
 
 
 def test_cada_area_tem_objeto_na_vila_e_uma_secao():
-    telas = dict(re.findall(
-        r'data-tela="([^"]+)"><span>[^<]*</span>([^<]+)</button>', HTML))
-    assert telas == OBJETOS
-    for tela in OBJETOS:
-        assert f'id="tela-{tela}"' in HTML
+    objetos = {o: (rotulo.strip(), aba) for o, aba, rotulo in re.findall(
+        r'data-objeto="([^"]+)" data-tela="([^"]+)"><span>[^<]*</span>([^<]+)</button>', HTML)}
+    assert objetos == OBJETOS
+    for _rotulo, aba in OBJETOS.values():
+        assert f'id="tela-{aba}"' in HTML
     # a vila é a tela de fundo, sem objeto para ela mesma
     assert 'id="tela-vila"' in HTML and 'data-tela="vila"' not in HTML
 
@@ -99,7 +105,9 @@ def test_titulos_e_cargas_cobrem_todas_as_areas():
     fonte = JS["app.js"]
     titulos = re.search(r"const TITULOS = \{(.*?)\};", fonte, re.S).group(1)
     cargas = re.search(r"const CARGAS = \{(.*?)\};", fonte, re.S).group(1)
-    for tela in [*OBJETOS, "vila", "oficina"]:
+    telas = set(re.findall(r'<section id="tela-([\w-]+)"', HTML)) - {"parear"}
+    assert {"vila", "agora", "oficina", "coordenador", "comandos"} <= telas
+    for tela in telas:
         assert re.search(rf"\b{tela}:", titulos), tela
         assert re.search(rf"\b{tela}:", cargas), tela
 
@@ -118,8 +126,9 @@ def test_o_cache_da_casca_mudou_de_versao():
     sw = (APP / "sw.js").read_text(encoding="utf-8")
     # v20 = pedir imagem (29/09); v21 = lote da semana (30/09); v22 = modulo
     # que nao chegou (30/09, tarde: o 502 cai na copia guardada); v23 = a
-    # Oficina do Codex e os Modelos (01/10); v24 = Biblioteca; v26 = Coordenador
-    assert "painel-casca-v28" in sw
+    # Oficina do Codex e os Modelos (01/10); v24 = Biblioteca; v26 = Coordenador;
+    # v29 = os quatro objetos, um por pergunta (02/10)
+    assert "painel-casca-v29" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw
@@ -189,21 +198,27 @@ def _secao(tela):
     return HTML[inicio:fim]
 
 
-def test_o_controle_mora_na_bancada():
-    # decisão do Adrian (app-e-bot/controle-onde, 28/09/2026): "Na Bancada"
-    bancada, avisos = _secao("comandos"), _secao("quadro")
+def test_o_controle_mora_junto_dos_comandos():
+    # decisão do Adrian (app-e-bot/controle-onde, 28/09/2026): "Na Bancada,
+    # junto dos comandos". Desde 02/10 a Bancada é o objeto Mandar; e o
+    # antigo quadro de avisos (onde ele morava antes) virou Agora.
+    mandar, agora = _secao("comandos"), _secao("agora")
     for i in ("controle", "alvo-pausa", "prazo-pausa", "btn-pausar", "btn-retomar",
               "btn-parar"):
-        assert f'id="{i}"' in bancada, i
-        assert f'id="{i}"' not in avisos, i
+        assert f'id="{i}"' in mandar, i
+        assert f'id="{i}"' not in agora, i
 
 
-def test_a_mesa_tem_as_oito_secoes_e_o_servidor_serve_o_js():
-    mesa = _secao("orquestrador")
-    for sec in ("agora", "fila", "capacidade", "limites", "decisoes", "acessos",
-                "fluxo", "mensagem"):
-        assert f'id="orq-sec-{sec}"' in mesa, sec
-        assert f'data-orq="orq-sec-{sec}"' in mesa, sec
+def test_as_secoes_da_antiga_mesa_moram_nos_objetos_e_o_servidor_serve_o_js():
+    # a Mesa tinha 12 seções e uma fileira de atalhos (data-orq) para rolar
+    # até elas; desde 02/10 cada seção mora no objeto da pergunta dela
+    onde = {"agora": ("agora", "codex", "fila", "capacidade", "modelos", "limites",
+                      "fluxo", "acessos"),
+            "comandos": ("mensagem", "comandos"), "decisoes": ("decisoes",)}
+    for tela, secoes in onde.items():
+        for sec in secoes:
+            assert f'id="orq-sec-{sec}"' in _secao(tela), (tela, sec)
+    assert "data-orq=" not in HTML
     from remoto import api_http
     assert api_http.ESTATICOS["/orquestrador.js"][0] == "orquestrador.js"
     assert '<script src="orquestrador.js"></script>' in HTML

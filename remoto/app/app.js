@@ -3,11 +3,36 @@ const TOKEN = "painel.token";
 const ULTIMO = "painel.ultimo_estado";
 const CONTATO = "painel.ultimo_contato";
 // A Vila é a tela; as outras áreas são objetos dela, com nome de objeto.
-const TITULOS = {vila: "Vila", conversa: "Conversa", quadro: "Quadro de avisos", diario: "Diário",
-                 videos: "Cinema", comandos: "Bancada",
-                 relatorios: "Pergaminhos", decisoes: "Grimório",
-                 orquestrador: "Mesa de comando", oficina: "Oficina do Codex",
-                 biblioteca: "Biblioteca", coordenador: "🛰 Coordenador"};
+const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex",
+                 coordenador: "Agora · Coordenador", decisoes: "Decidir",
+                 comandos: "Mandar", conversa: "Mandar · IAs",
+                 videos: "Ver · Cinema", biblioteca: "Ver · Biblioteca",
+                 relatorios: "Ver · Pergaminhos", diario: "Ver · Diário"};
+// Os QUATRO objetos da prateleira, um por pergunta (decisão do Adrian,
+// app-e-bot/app-reorganizar, 02/10/2026: "Voce realmente acha que o app está
+// bem organizado?"). Antes eram 7 objetos e mais 4 telas que só abriam por
+// dentro de outras. Cada objeto tem as suas telas como ABAS; a primeira é a
+// que abre da primeira vez, e depois volta a última que ele usou.
+//   Agora   — o que está rodando e o que vem a seguir;
+//   Decidir — o Grimório;
+//   Mandar  — todos os botões de comando (e a conversa com as IAs);
+//   Ver     — Cinema, Biblioteca, Pergaminhos e Diário.
+// (o ️ pede o desenho colorido: sem ele 🛰 e 🎞 saem como glifo de texto)
+const OBJETOS = {
+  agora: [["agora", "⏳", "Agora"], ["oficina", "🔧", "Codex"],
+          ["coordenador", "🛰️", "Coordenador"]],
+  decidir: [["decisoes", "📖", "Grimório"]],
+  mandar: [["comandos", "🛠️", "Comandos"], ["conversa", "💬", "IAs"]],
+  ver: [["videos", "🎞️", "Cinema"], ["biblioteca", "📚", "Biblioteca"],
+        ["relatorios", "📜", "Pergaminhos"], ["diario", "📓", "Diário"]],
+};
+const ABA_DO_OBJETO = {};             // a última aba usada de cada objeto
+
+function objetoDe(nome) {
+  for (const [objeto, abas] of Object.entries(OBJETOS))
+    if (abas.some(([t]) => t === nome)) return objeto;
+  return null;
+}
 const RELATORIOS = ["metas", "funcionamento", "confiabilidade", "auditoria"];
 const $ = (id) => document.getElementById(id);
 
@@ -248,7 +273,7 @@ async function carregarAgora() {
         && !carregarAgora.logo) {
       carregarAgora.logo = setTimeout(() => {
         carregarAgora.logo = null;
-        if (tela === "vila" || tela === "quadro") carregarAgora();
+        if (tela === "vila" || tela === "agora") carregarAgora();
       }, 4000);
     }
     const erros = await api("/api/erros?n=6");
@@ -400,8 +425,8 @@ async function agir(acao, args = {}) {
     avisar(err.message, true);
   }
   carregarAcoes();
-  if (tela === "vila" || tela === "quadro") carregarAgora();
-  // o Controle mora na Bancada: a lista de tarefas mostra o efeito
+  if (tela === "vila" || tela === "agora") carregarAgora();
+  // o Controle mora em Mandar: o histórico dos comandos mostra o efeito
   if (tela === "comandos" && typeof comandosCarregarTarefas === "function")
     comandosCarregarTarefas().catch(() => {});
 }
@@ -457,9 +482,11 @@ $("player").addEventListener("error", () => {
 // crie algo no app para ligar e desligar isso". O toque grava DIRETO no PC
 // (`POST /api/claude`, com o alvo, não "inverter"): com o Claude proibido o
 // orquestrador não acorda com comando, então isto não pode ser comando.
-// Aparece no topo da Mesa (preso ao rolar) e na Bancada; dois toques: o
-// interruptor e o "Confirmar" do diálogo.
+// Aparece UMA vez, no topo de Mandar, preso ao rolar (até 02/10 estava na
+// Mesa e na Bancada); dois toques: o interruptor e o "Confirmar" do diálogo.
+// Em Agora fica só a faixa que diz que está proibido (o porquê de nada rodar).
 const Claude = {dados: null, enviando: false};
+const CLAUDE_INTERRUPTORES = ["claude-bancada"];
 
 function claudeDesde(c) {
   if (!c || !c.em) return c && c.origem === "sem_arquivo" ? "nunca foi mudado" : "";
@@ -470,7 +497,7 @@ function claudeDesenhar(c) {
   if (!c) return;
   Claude.dados = c;
   const proibido = !c.liberado;
-  for (const id of ["claude-mesa", "claude-bancada"]) {
+  for (const id of CLAUDE_INTERRUPTORES) {
     const alvo = $(id);
     if (!alvo) continue;
     const botao = el("button", {class: "claude-botao", type: "button",
@@ -521,7 +548,8 @@ async function claudeTrocar() {
     claudeDesenhar(r.claude);
     avisar(r.mudou ? (liberar ? "Claude liberado" : "Claude proibido")
       + " — avisei no Telegram" : "já estava assim");
-    if (typeof orqCarregar === "function" && tela === "orquestrador") orqCarregar();
+    if (typeof orqCarregar === "function" && (tela === "agora" || tela === "comandos"))
+      orqCarregar();
   } catch (err) {
     Claude.enviando = false;
     claudeDesenhar(Claude.dados);
@@ -578,12 +606,36 @@ function abrirPergaminho() {
     abas[0].click();
 }
 
-const CARGAS = {vila: [carregarAgora, 15000], quadro: [carregarAgora, 15000],
+const CARGAS = {vila: [carregarAgora, 15000], agora: [carregarAgora, 15000],
                 diario: [carregarDiario, 5000],
                 videos: [null, 0], comandos: [null, 0],
                 relatorios: [abrirPergaminho, 0],
-                decisoes: [null, 0], orquestrador: [null, 0], conversa: [null, 0],
+                decisoes: [null, 0], conversa: [null, 0],
                 oficina: [null, 0], biblioteca: [null, 0], coordenador: [null, 0]};
+
+// As abas de um objeto (Agora, Mandar e Ver têm mais de uma tela): a mesma
+// fileira no topo de cada tela dele, montada daqui (uma lista só, OBJETOS).
+// Trocar de aba não empilha histórico: o voltar do Android fecha o objeto.
+function montarAbasDosObjetos() {
+  for (const [objeto, abas] of Object.entries(OBJETOS)) {
+    if (abas.length < 2) continue;
+    for (const [nome] of abas) {
+      const secao = $("tela-" + nome);
+      if (!secao) continue;
+      const fileira = el("div", {class: "abas-objeto", role: "tablist",
+                                 "aria-label": `Abas de ${objeto}`});
+      for (const [alvo, emoji, rotulo] of abas) {
+        const b = el("button", {class: "aba-objeto", type: "button", role: "tab",
+                                "data-aba-tela": alvo, "aria-selected": String(alvo === nome)},
+          el("span", {class: "aba-emoji", "aria-hidden": "true"}, emoji),
+          el("span", {class: "aba-rotulo"}, rotulo));
+        b.addEventListener("click", () => { if (tela !== alvo) abrir(alvo, b); });
+        fileira.append(b);
+      }
+      secao.prepend(fileira);
+    }
+  }
+}
 
 function mostrar(nova) {
   if (nova && nova !== tela && nova === "diario") {
@@ -603,10 +655,14 @@ function mostrar(nova) {
   $("nav").classList.toggle("oculto", !pareado || tela !== "vila");
   $("btn-voltar").classList.toggle("oculto", !pareado || tela === "vila");
   $("titulo").textContent = pareado ? TITULOS[tela] : "Parear";
-  for (const b of document.querySelectorAll("[data-tela]")) {
-    if (b.dataset.tela === tela) b.setAttribute("aria-current", "page");
+  const objeto = objetoDe(tela);
+  if (objeto) ABA_DO_OBJETO[objeto] = tela;
+  for (const b of document.querySelectorAll("nav.prateleira [data-objeto]")) {
+    if (b.dataset.objeto === objeto) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   }
+  for (const b of document.querySelectorAll(".aba-objeto"))
+    b.setAttribute("aria-selected", String(b.dataset.abaTela === tela));
   clearInterval(timer);
   // casca nova esperando: voltar para a Vila é o momento seguro de recarregar
   if (Casca.nova && CASCA_MINHA && pareado && cascaSegura()
@@ -624,8 +680,8 @@ function mostrar(nova) {
   if (typeof oficinaParar === "function") oficinaParar();
   if (typeof bibliotecaParar === "function") bibliotecaParar();
   if (!pareado) return;
-  // o quadro de avisos mostra a gente e as travas, que vêm da vida da vila
-  if ((tela === "vila" || tela === "quadro") && typeof vilaMostrar === "function") {
+  // Agora mostra a gente e as travas, que vêm da vida da vila
+  if ((tela === "vila" || tela === "agora") && typeof vilaMostrar === "function") {
     vilaMostrar();
   }
   if (tela === "comandos" && typeof comandosMostrar === "function") {
@@ -634,8 +690,16 @@ function mostrar(nova) {
   if (tela === "decisoes" && typeof decisoesMostrar === "function") {
     decisoesMostrar();
   }
-  if (tela === "orquestrador" && typeof orquestradorMostrar === "function") {
+  // o orquestrador alimenta Agora (tudo, com o fluxo), Mandar ("o que você
+  // mandou") e Decidir (o que ele decidiu sozinho, uma leitura ao abrir)
+  if (tela === "agora" && typeof orquestradorMostrar === "function") {
     orquestradorMostrar();
+  }
+  if (tela === "comandos" && typeof orquestradorMostrar === "function") {
+    orquestradorMostrar(false);
+  }
+  if (tela === "decisoes" && typeof orqCarregar === "function") {
+    orqCarregar();
   }
   if (tela === "conversa" && typeof conversaMostrar === "function") {
     conversaMostrar();
@@ -661,20 +725,28 @@ function mostrar(nova) {
 
 // Abrir um objeto da vila. A animação sai de onde o objeto está (--ox,
 // --oy), e o "voltar" do Android fecha o objeto em vez de sair do app.
+// Entre abas do MESMO objeto não há animação de abrir de novo (a cortina do
+// Cinema, a capa do Diário) e o histórico é trocado, não empilhado.
 function abrir(nova, origem) {
   const secao = $("tela-" + nova);
   if (!secao) return;
-  if (origem) {
+  const mesmoObjeto = tela !== nova && objetoDe(nova) && objetoDe(nova) === objetoDe(tela);
+  secao.classList.toggle("sem-abrir", !!mesmoObjeto);
+  if (origem && !mesmoObjeto) {
     const r = origem.getBoundingClientRect();
     secao.style.setProperty("--ox", `${Math.round(r.left + r.width / 2)}px`);
     secao.style.setProperty("--oy", `${Math.round(r.top + r.height / 2)}px`);
   }
   secao.scrollTop = 0;
-  // A Oficina abre por cima da Mesa: o voltar do Android volta para a Mesa.
-  if ((tela === "vila" && nova !== "vila")
-      || ((nova === "oficina" || nova === "biblioteca" || nova === "coordenador") && tela !== nova))
-    history.pushState({tela: nova}, "");
+  if (mesmoObjeto) history.replaceState({tela: nova}, "");
+  else if (tela !== nova) history.pushState({tela: nova}, "");
   mostrar(nova);
+}
+
+// Um objeto da prateleira abre a última aba que ele usou (da primeira vez,
+// a do `data-tela`).
+function abrirObjeto(botao) {
+  abrir(ABA_DO_OBJETO[botao.dataset.objeto] || botao.dataset.tela, botao);
 }
 
 function voltarParaVila() {
@@ -682,11 +754,11 @@ function voltarParaVila() {
   else mostrar("vila");
 }
 
-for (const b of document.querySelectorAll("[data-tela]"))
-  b.addEventListener("click", () => abrir(b.dataset.tela, b));
+for (const b of document.querySelectorAll("nav.prateleira [data-objeto]"))
+  b.addEventListener("click", () => abrirObjeto(b));
 $("btn-voltar").addEventListener("click", voltarParaVila);
-$("orq-abrir-biblioteca").addEventListener("click", (e) => abrir("biblioteca", e.currentTarget));
-$("orq-abrir-coordenador").addEventListener("click", (e) => abrir("coordenador", e.currentTarget));
+// o coordenador em uma linha, em Agora: tocar abre a aba dele
+$("coord-mesa").addEventListener("click", (e) => abrir("coordenador", e.currentTarget));
 window.addEventListener("popstate", (e) => {
   mostrar((e.state && e.state.tela) || "vila");
 });
@@ -706,6 +778,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") mostrar();
 });
 montarAbas();
+montarAbasDosObjetos();
 mostrar();
 
 // Service worker so existe em contexto seguro (HTTPS do `tailscale serve`).

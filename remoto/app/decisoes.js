@@ -17,8 +17,9 @@ const Decisoes = {projeto: null, dados: null, aberta: null, relogio: null, lidoE
 // ele não estiver no meio de uma resposta (senão, a faixa pede o toque).
 const DECISOES_MS = 20000;
 
-// O livro na prateleira mostra quantas escolhas esperam por você (pendentes e
-// "a rever", o mesmo "esperando" do servidor), em qualquer tela do app.
+// O objeto Decidir (o Grimório) na prateleira mostra quantas escolhas esperam
+// por você (pendentes e "a rever", o mesmo "esperando" do servidor), em
+// qualquer tela do app. O botão é o de `data-tela="decisoes"`.
 const GRIMORIO_SELO_MS = 60000;
 let grimorioSeloEm = 0;
 

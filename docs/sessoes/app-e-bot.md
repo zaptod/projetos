@@ -102,33 +102,36 @@ Tudo vive em `remoto/`:
   o orquestrador publica o que faz, o app mostra e manda comandos, e a
   sonda de uso roda no servidor (ver §7).
 - `biblioteca.py` + `app/biblioteca.js` — a **Biblioteca** (01/10): registro
-  manual atômico e leitura de páginas, planos e relatórios. A Mesa abre pelo
-  atalho 📚 Biblioteca; o app só lê Markdown de raízes permitidas.
+  manual atômico e leitura de páginas, planos e relatórios. É a aba 📚
+  Biblioteca de Ver (até 02/10, um atalho dentro da Mesa); o app só lê
+  Markdown de raízes permitidas.
 - `app/` — a PWA (`index.html`, `app.js`, `vila.js`, `comandos.js`,
   `decisoes.js`, `orquestrador.js`).
 - **Desde 28/09 a Vila é a tela inteira** (pedido do Adrian: "o app focado
-  na vila, e as outras entram de forma temática"). Não há mais barra de
-  abas. Uma prateleira de madeira embaixo tem sete objetos:
-  - 📌 Avisos (`tela-quadro`): o estado, a próxima postagem, fábricas,
-    erros e paralelismo;
-  - 📓 Diário;
-  - 🎞 Cinema (vídeos, gerar e publicar);
-  - 🛠 Bancada: o **Controle** (pausar, retomar, parar) em cima, as
-    tarefas e os Comandos, com a zona de perigo. O Controle saiu dos Avisos
-    em 28/09 (decisão `app-e-bot/controle-onde`: "Na Bancada");
-  - 📜 Pergaminhos (relatórios);
-  - 📖 Grimório (Decisões): a capa abre e a página vira;
-  - 🗺 Comando (`tela-orquestrador`): a Mesa de comando, um mapa de
-    campanha que se desdobra sobre a mesa de guerra (§7).
+  na vila, e as outras entram de forma temática"). Não há barra de abas
+  embaixo: uma prateleira de madeira tem os objetos. **Desde 02/10 são
+  quatro, um por pergunta** (decisão `app-e-bot/app-reorganizar`, §18):
+  - ⏳ **Agora** (`tela-agora`, o mapa da mesa de guerra): o que está
+    rodando e o que vem a seguir. Abas: Agora · 🔧 Codex (a Oficina) ·
+    🛰 Coordenador (painel e conversa com ele);
+  - 📖 **Decidir** (`tela-decisoes`): o Grimório, com o contador de escolhas
+    pendentes no objeto, e "O que o orquestrador decidiu sozinho";
+  - 📯 **Mandar** (`tela-comandos`, a bancada): o interruptor do Claude (uma
+    vez só), o **Controle** (decisão `controle-onde`), gerar, o catálogo com
+    o histórico sob cada botão, a mensagem para o orquestrador, "Controlar o
+    PC" e "Últimos que você mandou". Abas: 🛠 Comandos · 💬 IAs (a conversa);
+  - 🔭 **Ver**: abas 🎞 Cinema · 📚 Biblioteca · 📜 Pergaminhos · 📓 Diário.
 
-  Com sete objetos, cada um tem ~55 px a 390 px de largura: rótulo em
-  10 px numa linha só (medido na prova: os sete cabem).
+  Com quatro objetos, cada um tem ~96 px a 390 px (eram sete, com ~53 px e
+  rótulo de 10 px); rótulo de 13 px, inteiro (medido na prova de 02/10).
 
   Cada objeto abre por cima da Vila (ela fica parada atrás), e o "‹ Vila"
-  ou o voltar do Android fecham (`history.pushState`). As animações são CSS
-  puro e respeitam `prefers-reduced-motion`. Nenhum id sumiu do HTML:
-  `test_app_vila_objetos.py` confere que todo id que o JS procura existe e
-  que cada área tem objeto.
+  ou o voltar do Android fecham (`history.pushState`; trocar de aba usa
+  `replaceState`, então o voltar fecha o objeto direto). As animações são
+  CSS puro e respeitam `prefers-reduced-motion`. `test_app_vila_objetos.py`
+  confere que todo id que o JS procura existe, e `test_app_quatro_objetos.py`
+  crava a lista de antes (207 ids, 34 rotas, 43 handlers) e onde cada um
+  ficou.
 - **A Vila do app é nítida e dobrada desde 28/09** (painel-e-vila,
   `painel/flutuante/retrato.py`): o PC manda a Vila em pé, as duas metades
   do mundo em fileiras, desenhada em 3x (`/vilanova-retrato.webp`, e o atlas
@@ -160,7 +163,7 @@ e um servidor esquecido nela já quebrou o login.
 ## 2. Como rodar e conferir sem publicar nada
 
 ```bash
-python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # 748 testes (01/10, 18h)
+python -m pytest remoto/ -q --basetemp=E:/projetos-wt/_pytest_app/x   # com o coordenador/ junto: 858 (02/10, 01h)
 python -m pytest ias/ -q --basetemp=E:/projetos-wt/_pytest_app/x      # 108 (correio, carteiro e imagem, §10 e §13)
 python -m ruff check remoto/
 python -m remoto.api_http --local --porta 8934 --acoes                # instância de teste
@@ -442,6 +445,14 @@ DOM e clicando.
 
 ## 7. A Mesa de comando (o orquestrador no app, 28/09/2026)
 
+> **Desde 02/10/2026 a Mesa não é mais uma tela** (§18). Os mesmos ids e o
+> mesmo `orquestrador.js` vivem em três objetos: **Agora** (sessão
+> principal, agentes, Codex, fila e, recolhidos no fim, capacidade, modelos,
+> limites, fluxo e acessos), **Mandar** (mensagem e "O que você mandou") e
+> **Decidir** (o que ele decidiu sozinho, com o Contestar). A fileira de 12
+> atalhos (`data-orq`) saiu. O que segue descreve o funcionamento, que não
+> mudou.
+
 Pedido do Adrian: ver no que o orquestrador trabalha e controlar fluxo,
 acessos, decisões, capacidade e agentes paralelos, com os limites de sessão
 e semana à vista. Desenho: `~/.claude/plans/orquestrador-no-app.md`.
@@ -662,7 +673,9 @@ na 8935 vazia, com 0 erros de JS.
 
 ## 7.1 Coordenador no app (01/10/2026)
 
-O atalho **🛰 Coordenador** da Mesa abre o retrato de
+A aba **🛰 Coordenador** de Agora (até 02/10, um atalho da Mesa; a linha
+"Coordenador: no ar · N/M serviços ok" em Agora também abre) mostra o
+retrato de
 `%LOCALAPPDATA%\neural-fights\coordenador\estado.json`: pulso, serviços,
 ações fechadas do PC e eventos. A rota `/api/coordenador` só lê esse arquivo;
 `/api/coordenador/comando` exige aparelho pareado e `--acoes`, valida o
@@ -691,10 +704,11 @@ chega depois pelo `avisar_telegram`. O bot não pensa nem executa nada. Os
 comandos com `/` não mudaram. Testes: `remoto/test_comandos_coordenador.py`
 e as rotas em `remoto/test_coordenador_app.py`.
 
-**Não feito:** o nome do cache do `sw.js` continua `painel-casca-v26`. O
-`test_app_vila_objetos.py` crava o v26 e está fora dos caminhos desta
-entrega; a casca nova chega igual pelo `X-Casca` (hash do conteúdo) e pelo
-"rede primeiro" do service worker. Subir para v27 = mudar os dois juntos.
+**Desde 02/10 (§18):** o "Controlar o PC" (as ações fechadas do PC) mora em
+Mandar, com os outros botões de comando; os serviços (com Reiniciar, Parar e
+Ligar de cada um), o Trabalho, os eventos e a Conversa ficam na aba
+Coordenador. O cache do `sw.js` está em `painel-casca-v29` (o
+`test_app_vila_objetos.py` crava o mesmo número: mudar os dois juntos).
 
 ## 8. O leitor de decisões tomadas (28/09/2026, noite)
 
@@ -1269,8 +1283,9 @@ Pedir o que já vale não reescreve nada (toque duplo = uma linha).
 
 **No app:** o botão grande "🤖 Claude: LIBERADO / PROIBIDO" (verde /
 vermelho, "desde HH:MM · pelo app (aparelho)", "tocar para liberar/proibir")
-fica no **topo da Mesa, preso ao rolar** (`position: sticky`), e no topo da
-**Bancada**. Dois toques: o botão e o "Confirmar" do diálogo, que explica o
+fica **uma vez só, no topo de Mandar, preso ao rolar** (`position: sticky`;
+até 02/10 aparecia também no topo da Mesa). Em Agora fica só a faixa
+"Claude proibido desde…", que explica por que nada roda. Dois toques: o botão e o "Confirmar" do diálogo, que explica o
 que muda. Com proibido, a Mesa mostra a faixa "Claude proibido desde HH:MM —
 nenhum agente, sonda ou apuração roda; os comandos ficam guardados.", e um
 comando mandado pela Mesa diz "guardado — o Claude está proibido; o comando
@@ -1916,10 +1931,10 @@ local; os modelos; o `--fundo`; e o caso ZERO.
 
 ### 16.2 A Oficina do Codex (`app/oficina.js`, `tela-oficina`)
 
-Abre pela Mesa: o atalho **Codex** leva ao cartão "🔧 Oficina do Codex"
-(quantas tarefas, quantas rodando, o uso do Codex), e o botão abre a tela.
-O "‹ Mesa" volta (`history`). Não entrou na prateleira: com 8 objetos, cada
-um ficaria com ~48 px, e "Pergaminhos" já ocupa os 55 px de hoje.
+Desde 02/10 é a aba **🔧 Codex** de Agora (§18). O cartão "🔧 Codex" de
+Agora (quantas tarefas, quantas rodando, o uso do Codex, as 3 últimas) tem
+"Ver ao vivo", que troca para a aba; tocar numa tarefa abre ela direto. O
+antigo "‹ Mesa" virou a aba Agora.
 
 - **Lista** (relê a cada 10 s): cada tarefa com selo (▶ rodando, ✓ terminou,
   ✕ falhou, ■ parada, ⚠ o processo sumiu), título, id, modelo, tokens,
@@ -1956,9 +1971,11 @@ um ficaria com ~48 px, e "Pergaminhos" já ocupa os 55 px de hoje.
 O `/api/orquestrador` ganhou `delegados` (o resumo para o cartão da Mesa) e
 `modelos`.
 
-### 16.3 Modelos (na Mesa)
+### 16.3 Modelos (em Agora, recolhido)
 
-O atalho é **Modelos**. São três seletores, e cada um vira **comando**,
+Desde 02/10 é o cartão recolhido **Modelos** no fim de Agora; o título já
+diz o que vale ("Claude padrão · Codex GPT-5.6-Terra · Gemini padrão"). São
+três seletores, e cada um vira **comando**,
 pendente até o orquestrador aplicar, como a capacidade. Ao lado de cada um
 aparece o que está valendo e o que foi pedido.
 
@@ -2026,9 +2043,9 @@ comando que o `limpar` imprime.
 
 `remoto/biblioteca.py` guarda o registro manual de forma atômica em
 `%LOCALAPPDATA%\neural-fights\biblioteca\itens.json` e junta planos, relatórios
-do Palco e sessões como fontes somente de leitura. Na Mesa, o atalho **📚
-Biblioteca** abre a tela com abas, busca e leitor de Markdown seguro; páginas
-`https` abrem em outra aba.
+do Palco e sessões como fontes somente de leitura. A aba **📚 Biblioteca**
+de Ver (até 02/10, um atalho da Mesa) tem abas, busca e leitor de Markdown
+seguro; páginas `https` abrem em outra aba.
 
 ### Paginas locais e marcacoes (01/10/2026)
 
@@ -2044,3 +2061,80 @@ As marcacoes da pagina usam token: `GET /api/biblioteca/estado/<pagina>` devolve
 mesmo mapa atualizado. O estado fica em `estado/<pagina>.json`. A esteira usa
 `python -m remoto.biblioteca marcar --pagina ID --doc X --estado pronto`; para
 consultar, `ver-estado --pagina ID`.
+
+## 18. Quatro objetos, um por pergunta (02/10/2026)
+
+Pergunta do Adrian (02/10, 00:59): "E esse TAREFAS da bancada serve pra
+que?? Voce realmente acha que o app está bem organizado?". O diagnóstico:
+7 objetos na prateleira, mais 4 telas que só abriam por dentro de outras
+(Coordenador, Biblioteca, Oficina do Codex e Conversa), a Mesa com 12
+seções, o interruptor do Claude duas vezes, "Tarefas" na Bancada (só o
+histórico dos botões, ACIMA deles e quase sempre vazio) com o mesmo nome da
+"Fila" da Mesa (o trabalho dos agentes), e os erros nos Avisos e no Diário.
+Ele escolheu no Grimório `app-e-bot/app-reorganizar` = **"4 objetos, um por
+pergunta"** (01:03).
+
+**Como funciona.** `OBJETOS` em `app.js` é a lista única: objeto → abas
+(`[tela, emoji, rótulo]`). A primeira aba é a de abrir (`data-tela` no
+botão); depois, o objeto reabre na última usada (`ABA_DO_OBJETO`).
+`montarAbasDosObjetos` põe a mesma régua de madeira no topo de cada tela de
+um objeto com mais de uma aba. Trocar de aba usa `replaceState` (o voltar do
+Android e o "‹ Vila" fecham o objeto direto) e marca a tela com
+`sem-abrir`, que desliga a animação de abrir (as cortinas do Cinema, a capa
+do Diário). Nenhum arquivo novo, nenhuma rota nova: a casca v29 roda no
+servidor que já estava no ar (conferido no 8931 às 02:0x: os nove arquivos
+em 200, sem reinício).
+
+**Função antiga → onde ficou** (a lista cravada, id a id, está em
+`remoto/test_app_quatro_objetos.py`):
+
+| antes | agora |
+| --- | --- |
+| 📌 Avisos: próxima postagem, previsão, lote, fábricas, erros, paralelismo, "na vila agora" | **Agora**: cartões "Próxima postagem" e "Fábricas" (fábricas, erros recentes, na vila agora e paralelismo num cartão só) |
+| 🗺 Mesa › Agora (sessão principal, resumo, agentes, carteiro, feitos hoje) | **Agora** › "Rodando agora", no topo |
+| 🗺 Mesa › Codex (cartão) e 🔧 Oficina (tela escondida) | **Agora**: cartão "🔧 Codex" com "Ver ao vivo" → aba **Codex** (a Oficina inteira) |
+| 🗺 Mesa › 🛰 Coordenador (atalho) e a tela escondida | **Agora**: a linha "Coordenador: no ar…" → aba **Coordenador** (Trabalho, Serviços com Reiniciar/Parar/Ligar, eventos, 💬 Conversa e propostas) |
+| 🛰 Coordenador › "Controlar o PC" | **Mandar**, cartão "Controlar o PC" |
+| 🗺 Mesa › Fila (cards, arrastar, pôr, pausar, retomar) | **Agora** › "Fila de trabalho" |
+| 🗺 Mesa › Capacidade, Modelos, Limites | **Agora**, recolhidos no fim; o título diz o que vale ("Paralelo · até 6 · teto 50%", "sessão 44% · teto 50%") |
+| 🗺 Mesa › Fluxo, Acessos | **Agora**, recolhidos no fim (escolha minha: são "o que está rodando"/consulta) |
+| 🗺 Mesa › Decisões que tomei sozinho (Contestar) | **Decidir**, recolhido "O que o orquestrador decidiu sozinho" embaixo da árvore |
+| 🗺 Mesa › Mensagem e "O que você mandou" | **Mandar**, cartão "Mensagem para o orquestrador", com "O que você mandou" logo abaixo do Enviar |
+| 🗺 Mesa › interruptor do Claude + 🛠 Bancada › interruptor | **Mandar**, uma vez só, preso no topo; em Agora fica só a faixa "proibido" |
+| 🗺 Mesa › a fileira de 12 atalhos (`data-orq`) | saiu: cada seção mora no objeto da pergunta dela |
+| selo da Mesa (teto, fora do ar, pendente) | no objeto **Agora** (`obj-agora`) |
+| 📖 Grimório e o selo de escolhas pendentes | **Decidir** (o selo segue `data-tela="decisoes"`) |
+| 🛠 Bancada › Controle (pausar/retomar/parar) | **Mandar**, primeiro cartão (decisão `controle-onde`) |
+| 🎞 Cinema › "＋ Gerar build" | **Mandar**, cartão "Gerar" (botão de comando) |
+| 🎞 Cinema › vídeos, tocar, Publicar por vídeo | **Ver** › Cinema (Publicar fica junto do vídeo) |
+| 🛠 Bancada › catálogo e zona de perigo | **Mandar**, igual |
+| 🛠 Bancada › "Tarefas" (acima dos botões) | **Mandar**: as 2 últimas de cada comando logo abaixo do botão (tocar abre o log ali) e "Últimos que você mandou" embaixo de tudo, que some quando vazia. O nome "Tarefas" saiu |
+| 💬 Conversa (só pelo prédio da Vila) | **Mandar** › aba **IAs** (e continua abrindo pelo prédio) |
+| 📚 Biblioteca (atalho da Mesa) | **Ver** › aba Biblioteca |
+| 📜 Pergaminhos, 📓 Diário | **Ver** › abas Pergaminhos e Diário |
+| "‹ Mesa" da Oficina | a aba Agora |
+
+**Testes:** `remoto/test_app_quatro_objetos.py` (11): a lista cravada cobre
+os 207 ids de antes sem repetir; cada um existe e mora numa tela do objeto
+certo (ou fora de objeto: Vila, pareamento, diálogos); os 7 que saíram
+têm substituto; as 34 rotas ainda são chamadas; os handlers por id ainda
+estão ligados; toda tela é aba de um objeto (nenhuma escondida); a ordem de
+Agora e os recolhidos; o interruptor uma vez só; "Últimos" abaixo dos botões
+e escondido quando vazio; os selos; a troca de aba. `test_app_vila_objetos.py`
+foi ajustado (objetos, Controle, seções da antiga Mesa, casca v29).
+
+**Prova de tela (02/10, 01:41):** instância isolada na 8937
+(`scratchpad/prova_reorg.py`): LOCALAPPDATA próprio com cópias do estado,
+casca da worktree, ações dubladas (preparar/confirmar não executam), sonda
+desligada, Claude num arquivo próprio, decisões num clone com uma pendente
+de teste. Chrome headless, 390×844 e 844×390, clicando em cada objeto e
+cada aba: 161 conferências, 0 erro de JS, 0 erro de console. Telas em
+`E:\projetos-wt\_prova_reorg\014125\telas\`. A prova pegou dois defeitos,
+consertados antes da entrega: 🛰 e 🎞 nas abas saíam como glifo de texto
+(faltava o `\uFE0F`), e o "Fechar" do log aberto sob um comando herdava
+`width: 100%` dos botões do catálogo.
+
+**Inventário da Vila:** `PRATELEIRA` em `esteira_sprites/inventario_vila.py`
+tem os 4 objetos (⏳ ampulheta, 📖 grimório roxo com chroma verde, 📯
+corneta de mensageiro, 🔭 luneta); as 7 antigas e os 3 ícones de dentro da
+Mesa saíram (nenhum tinha arte). Inventário regenerado: 133 itens.

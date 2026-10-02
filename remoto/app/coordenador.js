@@ -1,5 +1,8 @@
 "use strict";
 // O supervisor so publica estado; cada toque abaixo vira um pedido pendente.
+// Desde 02/10/2026 o painel dele e a Conversa sao a aba Coordenador de Agora,
+// e o "Controlar o PC" (as acoes fechadas do PC) mora em Mandar, com os outros
+// botoes de comando; os mesmos ids, desenhados por `coordDesenhar`.
 
 const COORD_MS = 5000;
 const Coord = {dados: null, relogio: null, pedidos: new Map()};
@@ -69,7 +72,10 @@ function coordDesenhar(dados) {
     topo.replaceChildren(el("h2", {}, "Coordenador"),
       el("div", {class: "grande coord-fora"}, "FORA DO AR"),
       el("div", {class: "fraco"}, dados.motivo || "sem pulso recente"));
-    $("coord-servicos").replaceChildren(); $("coord-acoes").replaceChildren(); $("coord-eventos").replaceChildren();
+    $("coord-servicos").replaceChildren(); $("coord-eventos").replaceChildren();
+    // em Mandar o cartão não pode ficar vazio sem dizer por quê
+    $("coord-acoes").replaceChildren(el("span", {class: "fraco"},
+      "O coordenador está fora do ar: nada a controlar agora."));
     coordTrabalho(null);
     return;
   }
@@ -83,7 +89,9 @@ function coordDesenhar(dados) {
   $("coord-servicos").replaceChildren(...Object.entries(servicos).map(([nome, s]) =>
     coordServico(nome, s && typeof s === "object" ? s : {}, eventos)));
   const acoes = Array.isArray(dados.acoes_pc) ? dados.acoes_pc : [];
-  $("coord-acoes").replaceChildren(...acoes.filter((a) => a && a.id).map((acao) => {
+  if (!acoes.some((a) => a && a.id)) {
+    $("coord-acoes").replaceChildren(el("span", {class: "fraco"}, "Nenhuma ação do PC publicada."));
+  } else $("coord-acoes").replaceChildren(...acoes.filter((a) => a && a.id).map((acao) => {
     const pendente = coordPedido("pc_acao", acao.id);
     const botao = el("button", {class: `acao${acao.perigo ? " perigo" : ""}`, type: "button"}, acao.rotulo || acao.id);
     botao.disabled = !!pendente;

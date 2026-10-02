@@ -1,16 +1,21 @@
 "use strict";
-// A tela Comandos: tudo o que dá para mandar fazer do celular.
+// O objeto Mandar: tudo o que dá para mandar fazer do celular.
 //
 // Nada aqui sabe QUAIS são os comandos: o servidor manda o catálogo
 // (/api/catalogo) com os campos de cada um, e esta tela se monta sozinha.
 // Uma segunda lista de botões escrita aqui divergiria do servidor na
 // primeira mudança — e seria a tela mentindo sobre o que existe.
 //
-// O que é pesado vira TAREFA: o pedido devolve uma chave, e o log aparece
-// aqui, ao vivo, enquanto o processo roda no PC.
+// O que é pesado vira uma tarefa no PC: o pedido devolve uma chave, e o log
+// aparece ao vivo enquanto o processo roda. ONDE aparece (02/10/2026, pedido
+// do Adrian: "E esse TAREFAS da bancada serve pra que??"): logo abaixo do
+// botão que o disparou (as últimas daquele comando) e, embaixo de todos os
+// botões, a lista "Últimos que você mandou" — que some quando está vazia.
+// Antes era um cartão "Tarefas" ACIMA dos botões, quase sempre vazio.
 
 const TAREFAS_MS = 4000;
 const LOG_MS = 2000;
+const HISTORICO_POR_COMANDO = 2;      // quantas linhas sob cada botão
 
 const Comandos = {
   catalogo: null, tarefas: [], aberta: null, desde: 0,
@@ -33,6 +38,9 @@ async function comandosCarregarTarefas() {
 function comandosDesenhar() {
   const alvo = $("comandos-grupos");
   const cat = Comandos.catalogo;
+  // o log aberto pode estar dentro de um comando: volta para casa antes de
+  // redesenhar (um elemento fora da página não é achado pelo id)
+  comandosFecharLog();
   alvo.replaceChildren();
   if (!cat || !cat.acoes.length) {
     alvo.append(el("div", {class: "fraco"},
@@ -50,11 +58,13 @@ function comandosDesenhar() {
         {class: "acao" + (grupo.nome === "perigo" ? " perigo" : "")},
         acao.rotulo);
       botao.addEventListener("click", () => comandosPedir(acao));
-      caixa.append(el("div", {class: "comando"}, botao,
-        el("div", {class: "fraco"}, acao.descricao || "")));
+      caixa.append(el("div", {class: "comando", "data-acao": acao.nome}, botao,
+        el("div", {class: "fraco"}, acao.descricao || ""),
+        el("div", {class: "comando-historico", "data-historico": acao.nome})));
     }
     alvo.append(caixa);
   }
+  comandosDesenharTarefas();
 }
 
 // O formulário sai da ficha: cada campo vira o controle do seu tipo.
@@ -135,35 +145,45 @@ async function comandosPreencherIds(entrada, tipo) {
   }
 }
 
-// -------------------------------------------------------------- tarefas
-function comandosDesenharTarefas() {
-  const alvo = $("tarefas-lista");
-  if (!Comandos.tarefas.length) {
-    alvo.replaceChildren(el("div", {class: "fraco"},
-      "nenhuma tarefa ainda. O que você mandar fazer aparece aqui."));
-    return;
-  }
-  alvo.replaceChildren(...Comandos.tarefas.map((t) => {
-    const quando = t.inicio ? t.inicio.slice(11, 16) : "";
-    const selo = t.situacao === "rodando" ? "trabalhando"
-      : (t.codigo === 0 ? "ok" : "erro");
-    const texto = t.situacao === "rodando" ? "rodando"
-      : t.situacao === "sumiu" ? "sumiu"
-        : (t.codigo === 0 ? "pronto" : `saiu ${t.codigo}`);
-    const linha = el("div", {class: "linha"},
-      el("span", {class: "corpo"}, t.rotulo || t.acao,
-        el("div", {class: "fraco"}, `${quando} · ${t.acao}`)),
-      el("span", {class: "selo " + selo}, texto));
-    linha.addEventListener("click", () => comandosAbrirLog(t.chave));
-    return linha;
-  }));
+// ------------------------------------------- o que você mandou (histórico)
+function comandosLinha(t, ancora) {
+  const quando = t.inicio ? quandoCurto(t.inicio) : "";
+  const selo = t.situacao === "rodando" ? "trabalhando"
+    : (t.codigo === 0 ? "ok" : "erro");
+  const texto = t.situacao === "rodando" ? "rodando"
+    : t.situacao === "sumiu" ? "sumiu"
+      : (t.codigo === 0 ? "pronto" : `saiu ${t.codigo}`);
+  const linha = el("div", {class: "linha comando-linha", "data-chave": t.chave,
+                           role: "button", tabindex: "0", title: "ver o log"},
+    el("span", {class: "corpo"}, t.rotulo || t.acao,
+      el("div", {class: "fraco"}, `${quando} · ${t.acao} · ver o log`)),
+    el("span", {class: "selo " + selo}, texto));
+  linha.addEventListener("click", () => comandosAbrirLog(t.chave, ancora || null));
+  return linha;
 }
 
-async function comandosAbrirLog(chave) {
+function comandosDesenharTarefas() {
+  // logo abaixo de cada botão: as últimas que ELE disparou
+  for (const caixa of document.querySelectorAll("#comandos-grupos [data-historico]")) {
+    const minhas = Comandos.tarefas.filter((t) => t.acao === caixa.dataset.historico)
+      .slice(0, HISTORICO_POR_COMANDO);
+    caixa.replaceChildren(...minhas.map((t) => comandosLinha(t, caixa.parentElement)));
+  }
+  // embaixo de todos os botões: tudo, do mais novo para o mais velho; vazio
+  // não ocupa lugar
+  $("comandos-ultimos").classList.toggle("oculto", !Comandos.tarefas.length);
+  $("tarefas-lista").replaceChildren(...Comandos.tarefas.map((t) => comandosLinha(t, null)));
+}
+
+// O log abre logo abaixo de onde ele tocou: sob o comando, ou no fim da lista
+// "Últimos que você mandou" (a casa dele).
+async function comandosAbrirLog(chave, ancora = null) {
   Comandos.aberta = chave;
   Comandos.desde = 0;
+  const caixaLog = $("tarefa-caixa");
+  (ancora || $("comandos-ultimos")).append(caixaLog);
   $("tarefa-log").textContent = "abrindo…";
-  $("tarefa-caixa").classList.remove("oculto");
+  caixaLog.classList.remove("oculto");
   await comandosLerLog();
   clearInterval(Comandos.relogioLog);
   Comandos.relogioLog = setInterval(() => {
@@ -195,7 +215,9 @@ function comandosFecharLog() {
   Comandos.aberta = null;
   clearInterval(Comandos.relogioLog);
   Comandos.relogioLog = null;
-  $("tarefa-caixa").classList.add("oculto");
+  const caixaLog = $("tarefa-caixa");
+  caixaLog.classList.add("oculto");
+  $("comandos-ultimos").append(caixaLog);          // de volta para casa
 }
 
 // --------------------------------------------------------- ciclo de vida
@@ -204,10 +226,13 @@ async function comandosMostrar() {
     Comandos.relogio = setInterval(() => {
       if (document.visibilityState === "visible") {
         comandosCarregarTarefas().catch(() => {});
+        // "Controlar o PC": as ações do coordenador moram aqui
+        if (typeof coordCarregar === "function") coordCarregar();
       }
     }, TAREFAS_MS);
   }
   claudeCarregar();                       // o interruptor do Claude, no topo
+  if (typeof coordCarregar === "function") coordCarregar();
   try {
     await comandosCarregarCatalogo();
     comandosDesenhar();

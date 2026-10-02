@@ -47,7 +47,11 @@
   </section>
 
   <!-- A Vila é a tela inteira. As outras áreas são objetos dela
-       (a prateleira lá embaixo) e abrem por cima, cada uma com o seu tema. -->
+       (a prateleira lá embaixo) e abrem por cima, cada uma com o seu tema.
+       Desde 02/10/2026 são QUATRO objetos, um por pergunta (decisão do
+       Adrian, app-e-bot/app-reorganizar): Agora, Decidir, Mandar e Ver. Os
+       que têm mais de uma tela ganham abas no topo (montadas pelo app.js a
+       partir de OBJETOS). -->
   <section id="tela-vila" class="oculto">
     <div class="vila-caixa">
       <canvas id="vila-canvas" aria-label="A vila"></canvas>
@@ -56,59 +60,235 @@
     </div>
   </section>
 
-  <section id="tela-quadro" class="oculto livro quadro" aria-label="Quadro de avisos">
-    <div class="cartao">
-      <h2>Na vila agora</h2>
-      <div id="vila-gente"></div>
+  <!-- ============================================================ AGORA
+       "O que está rodando e o que vem a seguir": a sessão principal, os
+       agentes, o Codex, a fila, o coordenador, a próxima postagem, as
+       fábricas, os erros e o paralelismo. Capacidade, modelos, limites,
+       fluxo e acessos ficam recolhidos no fim. (Juntou o antigo Quadro de
+       avisos e a Mesa de comando, menos o que é de mandar.) -->
+  <section id="tela-agora" class="oculto livro mesa" aria-label="Agora">
+    <div id="claude-faixa" class="claude-faixa oculto" role="status"></div>
+    <div id="orq-faixa" class="orq-faixa oculto" role="status"></div>
+    <div class="cartao" id="orq-sec-agora">
+      <h2>Rodando agora</h2>
+      <div id="orq-principal" class="orq-principal"></div>
+      <div id="orq-resumo" class="orq-resumo"></div>
+      <h3 class="orq-sub" id="orq-agentes-titulo">Agentes</h3>
+      <div id="orq-agora"></div>
+      <div id="orq-carteiro" class="orq-carteiro fraco"></div>
+      <div id="orq-concluidos" class="fraco"></div>
     </div>
-    <div class="cartao">
+    <!-- o coordenador em uma linha; tocar abre a aba dele -->
+    <button class="coord-mesa" id="coord-mesa" type="button">Coordenador: carregando…</button>
+    <!-- O Codex (01/10): o que o orquestrador delegou a ele; a aba Codex
+         mostra ao vivo. Só leitura: aplicar continua com o orquestrador. -->
+    <div class="cartao" id="orq-sec-codex">
+      <h2>🔧 Codex</h2>
+      <div id="orq-codex"></div>
+      <div class="botoes">
+        <button class="acao primario" id="orq-abrir-oficina">Ver ao vivo</button>
+      </div>
+    </div>
+    <div class="cartao" id="orq-sec-fila">
+      <h2>Fila de trabalho</h2>
+      <div id="orq-fila-situacao" class="fraco"></div>
+      <div id="orq-fila" role="list" aria-label="Fila do orquestrador (arraste para reordenar)"></div>
+      <div class="botoes">
+        <button class="acao" id="orq-adicionar-fila">+ Pôr na fila</button>
+        <button class="acao" id="orq-pausar-fila">⏸ Pausar a fila</button>
+        <button class="acao" id="orq-retomar-fila">▶ Retomar a fila</button>
+      </div>
+      <div class="fraco">Pausada, o orquestrador não dispara ninguém da fila; quem já está
+        trabalhando segue.</div>
+    </div>
+    <div class="cartao" id="agora-postagem">
       <h2>Próxima postagem</h2>
       <div class="grande" id="proxima">—</div>
       <div class="fraco" id="pausa"></div>
       <div id="previsao"></div>
     </div>
-    <div class="cartao">
+    <!-- fábricas, erros e paralelismo num lugar só (antes: Avisos e Diário) -->
+    <div class="cartao" id="agora-fabricas">
       <h2>Fábricas</h2>
       <div id="fabricas"></div>
-    </div>
-    <div class="cartao">
-      <h2>Erros recentes</h2>
+      <h3 class="orq-sub">Erros recentes</h3>
       <div id="erros"></div>
-    </div>
-    <div class="cartao">
-      <h2>Paralelismo</h2>
+      <h3 class="orq-sub">Na vila agora</h3>
+      <div id="vila-gente"></div>
+      <h3 class="orq-sub">Paralelismo</h3>
       <div id="vila-travas"></div>
     </div>
+    <details class="cartao recolhido" id="orq-sec-capacidade">
+      <summary><h2>Capacidade</h2><span class="recolhido-resumo" id="orq-capacidade-resumo"></span></summary>
+      <div class="orq-controle">
+        <span class="corpo">Agentes em paralelo</span>
+        <button class="acao" id="orq-menos" aria-label="Menos agentes">−</button>
+        <span class="orq-numero" id="orq-max">1</span>
+        <button class="acao" id="orq-mais" aria-label="Mais agentes">+</button>
+      </div>
+      <div class="fraco" id="orq-efetivo"></div>
+      <div class="orq-controle">
+        <span class="corpo">Modo</span>
+      </div>
+      <div class="abas" id="orq-modos"></div>
+      <div class="fraco" id="orq-modo-ajuda"></div>
+      <div class="orq-controle">
+        <label class="corpo" for="orq-teto">Teto de uso da sessão</label>
+        <select id="orq-teto"></select>
+      </div>
+      <div class="orq-controle">
+        <span class="corpo">Força total antes de renovar</span>
+        <button class="acao" id="orq-forca" aria-pressed="false">desligada</button>
+      </div>
+      <div class="fraco">A regra: nos últimos minutos antes de a janela de 5 h renovar, o teto
+        deixa de valer e todos os agentes com trabalho rodam.</div>
+      <div class="fraco" id="orq-capacidade-pendente"></div>
+      <div id="orq-grimorio" class="orq-grimorio"></div>
+      <div id="orq-cap-historico"></div>
+    </details>
+    <!-- Os modelos (01/10): cada seletor vira comando, como a capacidade. -->
+    <details class="cartao recolhido" id="orq-sec-modelos">
+      <summary><h2>Modelos</h2><span class="recolhido-resumo" id="orq-modelos-resumo"></span></summary>
+      <div class="orq-controle">
+        <label class="corpo" for="orq-modelo-claude">Claude (agentes que eu disparo)</label>
+        <select id="orq-modelo-claude"></select>
+      </div>
+      <div class="fraco orq-modelo-nota" id="orq-modelo-claude-nota"></div>
+      <div class="orq-controle">
+        <label class="corpo" for="orq-modelo-codex">Codex</label>
+        <select id="orq-modelo-codex"></select>
+      </div>
+      <div class="orq-modelo-livre oculto" id="orq-modelo-codex-livre">
+        <input id="orq-modelo-codex-nome" maxlength="49" autocapitalize="off" autocomplete="off"
+               spellcheck="false" placeholder="nome do modelo (ex.: gpt-6-sol)">
+        <button class="acao" id="orq-modelo-codex-pedir">Pedir</button>
+      </div>
+      <div class="fraco orq-modelo-nota" id="orq-modelo-codex-nota"></div>
+      <div class="orq-controle">
+        <label class="corpo" for="orq-modelo-gemini">Gemini (navegador)</label>
+        <select id="orq-modelo-gemini"></select>
+      </div>
+      <div class="fraco orq-modelo-nota" id="orq-modelo-gemini-nota"></div>
+      <div class="fraco" id="orq-modelos-pendente"></div>
+    </details>
+    <details class="cartao recolhido" id="orq-sec-limites">
+      <summary><h2>Limites</h2><span class="recolhido-resumo" id="orq-limites-resumo"></span></summary>
+      <div id="orq-teto-aviso" class="orq-alerta oculto" role="alert"></div>
+      <div id="orq-limites"></div>
+      <div id="orq-grafico" class="orq-grafico"></div>
+      <div id="orq-grafico-leitura" class="fraco"></div>
+    </details>
+    <details class="cartao recolhido" id="orq-sec-fluxo">
+      <summary><h2>Fluxo</h2></summary>
+      <div id="orq-fluxo-trabalho"></div>
+      <div id="orq-fluxo"></div>
+    </details>
+    <details class="cartao recolhido" id="orq-sec-acessos">
+      <summary><h2>Acessos</h2></summary>
+      <div id="orq-acessos"></div>
+    </details>
   </section>
-
-  <section id="tela-diario" class="oculto livro diario" aria-label="Diário">
-    <div class="cartao oculto" id="diario-filtro">
+  <!-- A aba Codex de Agora (antes: a Oficina, que só abria pela Mesa). -->
+  <section id="tela-oficina" class="oculto livro oficina" aria-label="Codex ao vivo">
+    <div class="cartao" id="oficina-lista-cartao">
+      <h2>Oficina do Codex</h2>
+      <div class="fraco">O que o orquestrador delegou ao Codex. Aqui é só olhar: quem aplica
+        é o orquestrador, depois de conferir o diff e rodar os testes de novo.</div>
+      <div id="oficina-uso"></div>
+      <div id="oficina-erros" class="erro"></div>
+      <div id="oficina-lista"></div>
+    </div>
+    <div class="cartao oculto" id="oficina-tarefa">
       <div class="botoes">
-        <span class="corpo" id="diario-filtro-nome"></span>
-        <button class="acao" id="btn-todas">Todas as fábricas</button>
+        <button class="acao" id="oficina-voltar-lista">‹ Tarefas do Codex</button>
+        <button class="acao" id="oficina-seguir" aria-pressed="true">⇣ seguindo o fim</button>
+      </div>
+      <div id="oficina-cabeca"></div>
+      <div class="abas" id="oficina-abas" role="group" aria-label="O que ver da tarefa">
+        <button class="acao" data-aba="vivo" aria-pressed="true">Ao vivo</button>
+        <button class="acao" data-aba="diff" aria-pressed="false">Diff</button>
+        <button class="acao" data-aba="testes" aria-pressed="false">Testes</button>
+        <button class="acao" data-aba="pedido" aria-pressed="false">Pedido</button>
+        <button class="acao" data-aba="resposta" aria-pressed="false">Resposta</button>
+      </div>
+      <div id="oficina-eventos" class="ofi-eventos" role="log" aria-live="polite"></div>
+      <div id="oficina-diff" class="oculto"></div>
+      <div id="oficina-testes" class="oculto"></div>
+      <pre id="oficina-pedido" class="ofi-pre oculto"></pre>
+      <pre id="oficina-resposta" class="ofi-pre oculto"></pre>
+    </div>
+  </section>
+  <!-- A aba Coordenador de Agora: os serviços, o trabalho e a conversa com ele. -->
+  <section id="tela-coordenador" class="oculto livro coordenador" aria-label="Coordenador">
+    <div class="cartao" id="coord-topo"></div>
+    <!-- 02/10: o cerebro (Conversa e propostas) e o vigia de trabalho -->
+    <div class="abas" id="coord-abas" role="group" aria-label="Coordenador">
+      <button class="acao" data-aba="painel" aria-pressed="true">Painel</button>
+      <button class="acao" data-aba="conversa" aria-pressed="false">💬 Conversa</button>
+    </div>
+    <div id="coord-painel">
+      <div class="cartao">
+        <h2>Trabalho</h2>
+        <div id="coord-trabalho"></div>
+      </div>
+      <div class="cartao">
+        <h2>Serviços</h2>
+        <div id="coord-servicos"></div>
+      </div>
+      <div class="cartao">
+        <h2>O que aconteceu</h2>
+        <div id="coord-eventos"></div>
       </div>
     </div>
-    <div class="cartao"><div id="diario"></div></div>
-  </section>
-
-  <section id="tela-videos" class="oculto livro cinema" aria-label="Cinema">
-    <div class="cartao oculto" id="gerar-cartao">
-      <div class="botoes">
-        <button class="acao primario" id="btn-gerar">＋ Gerar build</button>
-        <span class="fraco" id="restantes"></span>
+    <div id="coord-conversa" class="oculto">
+      <div class="cartao">
+        <h2>Propostas</h2>
+        <div class="fraco">O que ele quer fazer e precisa do seu sim (vale 30 min).</div>
+        <div id="coord-propostas"></div>
+      </div>
+      <div class="cartao">
+        <h2>Conversa</h2>
+        <div id="coord-cerebro" class="fraco"></div>
+        <div id="coord-mensagens" class="coord-mensagens"></div>
+        <div class="coord-escrever">
+          <textarea id="coord-texto" rows="2" maxlength="4000"
+                    placeholder="Fale com o coordenador" aria-label="Mensagem para o coordenador"></textarea>
+          <button class="acao" id="coord-enviar" type="button">Enviar</button>
+        </div>
       </div>
     </div>
-    <div class="cartao oculto" id="player-cartao">
-      <div class="fraco" id="player-titulo"></div>
-      <video id="player" controls playsinline preload="metadata"></video>
-    </div>
-    <div class="cartao"><div id="videos"></div></div>
   </section>
 
-  <section id="tela-comandos" class="oculto livro bancada" aria-label="Bancada">
+  <!-- =========================================================== DECIDIR
+       O Grimório: a árvore das decisões do Adrian. O selo da prateleira
+       conta as escolhas que esperam por ele. -->
+  <section id="tela-decisoes" class="oculto livro grimorio" aria-label="Decidir">
+    <div id="decisoes-listas">
+      <div class="abas" id="decisoes-abas"></div>
+      <div id="decisoes-lista"></div>
+      <div id="decisoes-rodape" class="fraco decisoes-rodape"></div>
+      <!-- o que o orquestrador escolheu sem perguntar; contestar vira nó -->
+      <details class="cartao recolhido" id="orq-sec-decisoes">
+        <summary><h2>O que o orquestrador decidiu sozinho</h2><span class="recolhido-resumo" id="orq-decisoes-resumo"></span></summary>
+        <div id="orq-decisoes"></div>
+      </details>
+    </div>
+    <div id="decisao-mudou" class="cartao decisao-mudou oculto" role="status">
+      <span>Esta decisão mudou no PC enquanto você olhava.</span>
+      <button class="acao" id="btn-decisao-mudou">Ver o que vale</button>
+    </div>
+    <div id="decisao-item" class="oculto"></div>
+  </section>
+
+  <!-- ============================================================ MANDAR
+       Tudo o que dá para mandar fazer: o interruptor do Claude (uma vez
+       só), o Controle, gerar, o catálogo (com o histórico de cada comando
+       logo abaixo do botão), a mensagem para o orquestrador, o controle do
+       PC e, embaixo, os últimos que você mandou. -->
+  <section id="tela-comandos" class="oculto livro bancada" aria-label="Mandar">
     <div id="claude-bancada" class="claude-chave" role="group"
          aria-label="Claude liberado ou proibido"></div>
-    <!-- O Controle mora na Bancada, junto dos comandos (decisão do Adrian,
+    <!-- O Controle mora junto dos comandos (decisão do Adrian,
          app-e-bot/controle-onde, 28/09/2026). Antes ficava nos Avisos. -->
     <div class="cartao oculto" id="controle">
       <h2>Controle</h2>
@@ -132,8 +312,39 @@
         <button class="acao perigo" id="btn-parar">⏹ Parar</button>
       </div>
     </div>
-    <div class="cartao">
-      <h2>Tarefas</h2>
+    <div class="cartao oculto" id="gerar-cartao">
+      <h2>Gerar</h2>
+      <div class="botoes">
+        <button class="acao primario" id="btn-gerar">＋ Gerar build</button>
+        <span class="fraco" id="restantes"></span>
+      </div>
+    </div>
+    <div id="comandos-grupos"></div>
+    <div class="cartao" id="orq-sec-mensagem">
+      <h2>Mensagem para o orquestrador</h2>
+      <textarea id="orq-mensagem" class="decisao-comentario" rows="3" maxlength="1000"
+                placeholder="o que você quer que ele saiba ou faça"></textarea>
+      <div class="botoes">
+        <button class="acao primario" id="orq-enviar">Enviar</button>
+      </div>
+      <!-- logo abaixo do botão: o que você mandou ao orquestrador (pelo app
+           e pelo chat), com a situação de cada pedido -->
+      <div id="orq-sec-comandos">
+        <h3 class="orq-sub">O que você mandou</h3>
+        <div class="fraco">Pelo app e pelo chat, do mais novo para o mais velho; a resposta
+          dele aparece aqui.</div>
+        <div id="orq-comandos"></div>
+      </div>
+    </div>
+    <div class="cartao" id="coord-controlar">
+      <h2>Controlar o PC</h2>
+      <div id="coord-acoes" class="botoes"></div>
+      <div id="coord-confirmar" class="coord-confirmar oculto"></div>
+    </div>
+    <!-- Embaixo dos botões, e só quando há algo: o que você mandou fazer
+         (cada comando também mostra o seu, logo abaixo do botão). -->
+    <div class="cartao oculto" id="comandos-ultimos">
+      <h2>Últimos que você mandou</h2>
       <div id="tarefas-lista"></div>
       <div id="tarefa-caixa" class="oculto">
         <div class="botoes">
@@ -143,29 +354,11 @@
         <pre id="tarefa-log" class="log"></pre>
       </div>
     </div>
-    <div id="comandos-grupos"></div>
   </section>
-
-  <section id="tela-relatorios" class="oculto livro pergaminho" aria-label="Pergaminhos">
-    <div class="abas" id="abas-relatorio"></div>
-    <div class="cartao"><pre id="relatorio">Escolha um pergaminho.</pre></div>
-  </section>
-
-  <section id="tela-decisoes" class="oculto livro grimorio" aria-label="Grimório">
-    <div id="decisoes-listas">
-      <div class="abas" id="decisoes-abas"></div>
-      <div id="decisoes-lista"></div>
-      <div id="decisoes-rodape" class="fraco decisoes-rodape"></div>
-    </div>
-    <div id="decisao-mudou" class="cartao decisao-mudou oculto" role="status">
-      <span>Esta decisão mudou no PC enquanto você olhava.</span>
-      <button class="acao" id="btn-decisao-mudou">Ver o que vale</button>
-    </div>
-    <div id="decisao-item" class="oculto"></div>
-  </section>
-  <!-- A conversa com uma IA (Vila das IAs, fase 2): abre pelo "Conversar" do
-       cartão do prédio. A mensagem vai para o correio do PC; o carteiro
-       entrega e traz a resposta; esta tela relê a caixa a cada 6 s. -->
+  <!-- A aba IAs de Mandar: a conversa com uma IA (Vila das IAs, fase 2).
+       Também abre pelo "Conversar" do cartão do prédio. A mensagem vai para
+       o correio do PC; o carteiro entrega e traz a resposta; esta tela relê
+       a caixa a cada 6 s. -->
   <section id="tela-conversa" class="oculto livro conversa" aria-label="Conversa com uma IA">
     <div class="abas" id="conversa-ias"></div>
     <!-- 29/09 (tarde): quem gera imagem ganha "🎨 Criar" e a galeria -->
@@ -199,192 +392,16 @@
       </div>
     </div>
   </section>
-  <!-- A Mesa de comando: o orquestrador (a sessão principal do Claude Code)
-       publica o que faz; daqui o Adrian vê e manda. Os comandos ficam
-       pendentes até o orquestrador aplicar (ou recusar, com o motivo). -->
-  <section id="tela-orquestrador" class="oculto livro mesa" aria-label="Mesa de comando">
-    <!-- O interruptor do Claude (29/09): no topo, preso ao rolar. Grava
-         direto no PC (não é comando para o orquestrador). -->
-    <div id="claude-mesa" class="claude-chave" role="group"
-         aria-label="Claude liberado ou proibido"></div>
-    <div id="claude-faixa" class="claude-faixa oculto" role="status"></div>
-    <div id="orq-faixa" class="orq-faixa oculto" role="status"></div>
-    <div id="coord-mesa" class="coord-mesa" role="status">Coordenador: carregando…</div>
-    <div class="orq-atalhos" role="group" aria-label="Seções da mesa">
-      <button class="acao" data-orq="orq-sec-agora">Agora</button>
-      <button class="acao" data-orq="orq-sec-codex">Codex</button>
-      <button class="acao" id="orq-abrir-biblioteca">📚 Biblioteca</button>
-      <button class="acao" id="orq-abrir-coordenador">🛰 Coordenador</button>
-      <button class="acao" data-orq="orq-sec-fila">Fila</button>
-      <button class="acao" data-orq="orq-sec-capacidade">Capacidade</button>
-      <button class="acao" data-orq="orq-sec-modelos">Modelos</button>
-      <button class="acao" data-orq="orq-sec-limites">Limites</button>
-      <button class="acao" data-orq="orq-sec-decisoes">Decisões</button>
-      <button class="acao" data-orq="orq-sec-acessos">Acessos</button>
-      <button class="acao" data-orq="orq-sec-fluxo">Fluxo</button>
-      <button class="acao" data-orq="orq-sec-mensagem">Mensagem</button>
+
+  <!-- =============================================================== VER
+       Quatro abas: Cinema, Biblioteca, Pergaminhos e Diário. Cada uma
+       guarda o seu tema; trocar de aba não repete a animação de abrir. -->
+  <section id="tela-videos" class="oculto livro cinema" aria-label="Cinema">
+    <div class="cartao oculto" id="player-cartao">
+      <div class="fraco" id="player-titulo"></div>
+      <video id="player" controls playsinline preload="metadata"></video>
     </div>
-    <div class="cartao" id="orq-sec-agora">
-      <h2>Agora</h2>
-      <div id="orq-principal" class="orq-principal"></div>
-      <div id="orq-resumo" class="orq-resumo"></div>
-      <h3 class="orq-sub" id="orq-agentes-titulo">Agentes</h3>
-      <div id="orq-agora"></div>
-      <div id="orq-carteiro" class="orq-carteiro fraco"></div>
-      <div id="orq-concluidos" class="fraco"></div>
-    </div>
-    <!-- O Codex (01/10): o que o orquestrador delegou a ele; a Oficina mostra
-         ao vivo. Só leitura: aplicar continua com o orquestrador. -->
-    <div class="cartao" id="orq-sec-codex">
-      <h2>🔧 Oficina do Codex</h2>
-      <div id="orq-codex"></div>
-      <div class="botoes">
-        <button class="acao primario" id="orq-abrir-oficina">Abrir a Oficina</button>
-      </div>
-    </div>
-    <div class="cartao" id="orq-sec-fila">
-      <h2>Fila</h2>
-      <div id="orq-fila-situacao" class="fraco"></div>
-      <div id="orq-fila" role="list" aria-label="Fila do orquestrador (arraste para reordenar)"></div>
-      <div class="botoes">
-        <button class="acao" id="orq-adicionar-fila">+ Pôr na fila</button>
-        <button class="acao" id="orq-pausar-fila">⏸ Pausar a fila</button>
-        <button class="acao" id="orq-retomar-fila">▶ Retomar a fila</button>
-      </div>
-      <div class="fraco">Pausada, o orquestrador não dispara ninguém da fila; quem já está
-        trabalhando segue.</div>
-    </div>
-    <div class="cartao" id="orq-sec-capacidade">
-      <h2>Capacidade</h2>
-      <div class="orq-controle">
-        <span class="corpo">Agentes em paralelo</span>
-        <button class="acao" id="orq-menos" aria-label="Menos agentes">−</button>
-        <span class="orq-numero" id="orq-max">1</span>
-        <button class="acao" id="orq-mais" aria-label="Mais agentes">+</button>
-      </div>
-      <div class="fraco" id="orq-efetivo"></div>
-      <div class="orq-controle">
-        <span class="corpo">Modo</span>
-      </div>
-      <div class="abas" id="orq-modos"></div>
-      <div class="fraco" id="orq-modo-ajuda"></div>
-      <div class="orq-controle">
-        <label class="corpo" for="orq-teto">Teto de uso da sessão</label>
-        <select id="orq-teto"></select>
-      </div>
-      <div class="orq-controle">
-        <span class="corpo">Força total antes de renovar</span>
-        <button class="acao" id="orq-forca" aria-pressed="false">desligada</button>
-      </div>
-      <div class="fraco">A regra: nos últimos minutos antes de a janela de 5 h renovar, o teto
-        deixa de valer e todos os agentes com trabalho rodam.</div>
-      <div class="fraco" id="orq-capacidade-pendente"></div>
-      <div id="orq-grimorio" class="orq-grimorio"></div>
-      <div id="orq-cap-historico"></div>
-    </div>
-    <!-- Os modelos (01/10): cada seletor vira comando, como a capacidade. -->
-    <div class="cartao" id="orq-sec-modelos">
-      <h2>Modelos</h2>
-      <div class="orq-controle">
-        <label class="corpo" for="orq-modelo-claude">Claude (agentes que eu disparo)</label>
-        <select id="orq-modelo-claude"></select>
-      </div>
-      <div class="fraco orq-modelo-nota" id="orq-modelo-claude-nota"></div>
-      <div class="orq-controle">
-        <label class="corpo" for="orq-modelo-codex">Codex</label>
-        <select id="orq-modelo-codex"></select>
-      </div>
-      <div class="orq-modelo-livre oculto" id="orq-modelo-codex-livre">
-        <input id="orq-modelo-codex-nome" maxlength="49" autocapitalize="off" autocomplete="off"
-               spellcheck="false" placeholder="nome do modelo (ex.: gpt-6-sol)">
-        <button class="acao" id="orq-modelo-codex-pedir">Pedir</button>
-      </div>
-      <div class="fraco orq-modelo-nota" id="orq-modelo-codex-nota"></div>
-      <div class="orq-controle">
-        <label class="corpo" for="orq-modelo-gemini">Gemini (navegador)</label>
-        <select id="orq-modelo-gemini"></select>
-      </div>
-      <div class="fraco orq-modelo-nota" id="orq-modelo-gemini-nota"></div>
-      <div class="fraco" id="orq-modelos-pendente"></div>
-    </div>
-    <div class="cartao" id="orq-sec-limites">
-      <h2>Limites</h2>
-      <div id="orq-teto-aviso" class="orq-alerta oculto" role="alert"></div>
-      <div id="orq-limites"></div>
-      <div id="orq-grafico" class="orq-grafico"></div>
-      <div id="orq-grafico-leitura" class="fraco"></div>
-    </div>
-    <div class="cartao" id="orq-sec-decisoes">
-      <h2>Decisões que tomei sozinho</h2>
-      <div id="orq-decisoes"></div>
-    </div>
-    <div class="cartao" id="orq-sec-acessos">
-      <h2>Acessos</h2>
-      <div id="orq-acessos"></div>
-    </div>
-    <div class="cartao" id="orq-sec-fluxo">
-      <h2>Fluxo</h2>
-      <div id="orq-fluxo-trabalho"></div>
-      <div id="orq-fluxo"></div>
-    </div>
-    <div class="cartao" id="orq-sec-mensagem">
-      <h2>Mensagem para o orquestrador</h2>
-      <textarea id="orq-mensagem" class="decisao-comentario" rows="3" maxlength="1000"
-                placeholder="o que você quer que ele saiba ou faça"></textarea>
-      <div class="fraco">A resposta dele aparece em “O que você mandou”, logo abaixo.</div>
-      <div class="botoes">
-        <button class="acao primario" id="orq-enviar">Enviar</button>
-      </div>
-    </div>
-    <div class="cartao" id="orq-sec-comandos">
-      <h2>O que você mandou</h2>
-      <div class="fraco">Pelo app e pelo chat, do mais novo para o mais velho.</div>
-      <div id="orq-comandos"></div>
-    </div>
-  </section>
-  <section id="tela-coordenador" class="oculto livro coordenador" aria-label="Coordenador">
-    <div class="cartao" id="coord-topo"></div>
-    <!-- 02/10: o cerebro (Conversa e propostas) e o vigia de trabalho -->
-    <div class="abas" id="coord-abas" role="group" aria-label="Coordenador">
-      <button class="acao" data-aba="painel" aria-pressed="true">Painel</button>
-      <button class="acao" data-aba="conversa" aria-pressed="false">💬 Conversa</button>
-    </div>
-    <div id="coord-painel">
-      <div class="cartao">
-        <h2>Trabalho</h2>
-        <div id="coord-trabalho"></div>
-      </div>
-      <div class="cartao">
-        <h2>Serviços</h2>
-        <div id="coord-servicos"></div>
-      </div>
-      <div class="cartao">
-        <h2>Controlar o PC</h2>
-        <div id="coord-acoes" class="botoes"></div>
-        <div id="coord-confirmar" class="coord-confirmar oculto"></div>
-      </div>
-      <div class="cartao">
-        <h2>O que aconteceu</h2>
-        <div id="coord-eventos"></div>
-      </div>
-    </div>
-    <div id="coord-conversa" class="oculto">
-      <div class="cartao">
-        <h2>Propostas</h2>
-        <div class="fraco">O que ele quer fazer e precisa do seu sim (vale 30 min).</div>
-        <div id="coord-propostas"></div>
-      </div>
-      <div class="cartao">
-        <h2>Conversa</h2>
-        <div id="coord-cerebro" class="fraco"></div>
-        <div id="coord-mensagens" class="coord-mensagens"></div>
-        <div class="coord-escrever">
-          <textarea id="coord-texto" rows="2" maxlength="4000"
-                    placeholder="Fale com o coordenador" aria-label="Mensagem para o coordenador"></textarea>
-          <button class="acao" id="coord-enviar" type="button">Enviar</button>
-        </div>
-      </div>
-    </div>
+    <div class="cartao"><div id="videos"></div></div>
   </section>
   <!-- A Biblioteca (01/10): paginas publicadas, planos e relatorios, so leitura. -->
   <section id="tela-biblioteca" class="oculto livro biblioteca" aria-label="Biblioteca">
@@ -408,38 +425,18 @@
       <div id="biblioteca-texto" class="biblioteca-texto"></div>
     </div>
   </section>
-  <!-- A Oficina do Codex (01/10): as tarefas delegadas, ao vivo. Abre pela Mesa. -->
-  <section id="tela-oficina" class="oculto livro oficina" aria-label="Oficina do Codex">
-    <div class="botoes ofi-nav">
-      <button class="acao" id="oficina-voltar-mesa">‹ Mesa</button>
-    </div>
-    <div class="cartao" id="oficina-lista-cartao">
-      <h2>Oficina do Codex</h2>
-      <div class="fraco">O que o orquestrador delegou ao Codex. Aqui é só olhar: quem aplica
-        é o orquestrador, depois de conferir o diff e rodar os testes de novo.</div>
-      <div id="oficina-uso"></div>
-      <div id="oficina-erros" class="erro"></div>
-      <div id="oficina-lista"></div>
-    </div>
-    <div class="cartao oculto" id="oficina-tarefa">
+  <section id="tela-relatorios" class="oculto livro pergaminho" aria-label="Pergaminhos">
+    <div class="abas" id="abas-relatorio"></div>
+    <div class="cartao"><pre id="relatorio">Escolha um pergaminho.</pre></div>
+  </section>
+  <section id="tela-diario" class="oculto livro diario" aria-label="Diário">
+    <div class="cartao oculto" id="diario-filtro">
       <div class="botoes">
-        <button class="acao" id="oficina-voltar-lista">‹ Tarefas</button>
-        <button class="acao" id="oficina-seguir" aria-pressed="true">⇣ seguindo o fim</button>
+        <span class="corpo" id="diario-filtro-nome"></span>
+        <button class="acao" id="btn-todas">Todas as fábricas</button>
       </div>
-      <div id="oficina-cabeca"></div>
-      <div class="abas" id="oficina-abas" role="group" aria-label="O que ver da tarefa">
-        <button class="acao" data-aba="vivo" aria-pressed="true">Ao vivo</button>
-        <button class="acao" data-aba="diff" aria-pressed="false">Diff</button>
-        <button class="acao" data-aba="testes" aria-pressed="false">Testes</button>
-        <button class="acao" data-aba="pedido" aria-pressed="false">Pedido</button>
-        <button class="acao" data-aba="resposta" aria-pressed="false">Resposta</button>
-      </div>
-      <div id="oficina-eventos" class="ofi-eventos" role="log" aria-live="polite"></div>
-      <div id="oficina-diff" class="oculto"></div>
-      <div id="oficina-testes" class="oculto"></div>
-      <pre id="oficina-pedido" class="ofi-pre oculto"></pre>
-      <pre id="oficina-resposta" class="ofi-pre oculto"></pre>
     </div>
+    <div class="cartao"><div id="diario"></div></div>
   </section>
 </main>
 
@@ -481,20 +478,18 @@
   </div>
 </div>
 
-<!-- a prateleira da vila: cada objeto abre uma área -->
+<!-- a prateleira da vila: quatro objetos, um por pergunta (02/10/2026).
+     `data-tela` é a aba que abre da primeira vez; depois, a última usada. -->
 <nav id="nav" class="prateleira oculto">
   <!-- a lupa mora na prateleira (uma aba de madeira), não solta na grama -->
   <div class="vila-botoes" role="group" aria-label="Zoom da vila">
     <button id="vila-menos" aria-label="Ver a vila inteira">−</button>
     <button id="vila-mais" aria-label="Aproximar">+</button>
   </div>
-  <button class="objeto" data-tela="quadro"><span>📌️</span>Avisos</button>
-  <button class="objeto" data-tela="diario"><span>📓️</span>Diário</button>
-  <button class="objeto" data-tela="videos"><span>🎞️</span>Cinema</button>
-  <button class="objeto" data-tela="comandos"><span>🛠️</span>Bancada</button>
-  <button class="objeto" data-tela="relatorios"><span>📜️</span>Pergaminhos</button>
-  <button class="objeto" data-tela="decisoes"><span>📖️</span>Grimório</button>
-  <button class="objeto" id="obj-orquestrador" data-tela="orquestrador"><span>🗺️</span>Comando</button>
+  <button class="objeto" id="obj-agora" data-objeto="agora" data-tela="agora"><span>⏳️</span>Agora</button>
+  <button class="objeto" id="obj-decidir" data-objeto="decidir" data-tela="decisoes"><span>📖️</span>Decidir</button>
+  <button class="objeto" id="obj-mandar" data-objeto="mandar" data-tela="comandos"><span>📯️</span>Mandar</button>
+  <button class="objeto" id="obj-ver" data-objeto="ver" data-tela="videos"><span>🔭️</span>Ver</button>
 </nav>
 
 <script src="app.js"></script>

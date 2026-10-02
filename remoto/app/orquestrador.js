@@ -1,6 +1,13 @@
 "use strict";
-// A Mesa de comando: o orquestrador (a sessão principal do Claude Code)
-// publica o que faz em arquivos no PC; esta tela mostra e manda comandos.
+// O orquestrador (a sessão principal do Claude Code) publica o que faz em
+// arquivos no PC; o app mostra e manda comandos. Até 02/10/2026 tudo isto era
+// uma tela só, a Mesa de comando, com 12 seções. Agora (decisão do Adrian,
+// app-e-bot/app-reorganizar) os mesmos ids moram em três objetos:
+//   Agora   — sessão principal, agentes, Codex, fila, e recolhidos no fim a
+//             capacidade, os modelos, os limites, o fluxo e os acessos;
+//   Mandar  — a mensagem para o orquestrador e "O que você mandou";
+//   Decidir — o que ele decidiu sozinho (com o Contestar).
+// Um `orqCarregar` desenha tudo; cada objeto chama o que precisa.
 //
 // Nada aqui muda nada sozinho: cada toque vira um COMANDO que fica
 // "pendente" até o orquestrador aplicar (ou recusar, com o motivo). A
@@ -675,6 +682,10 @@ function orqDesenharCapacidade(d) {
     .map((p) => `${p.rotulo}: ${orqValor(p)}`);
   $("orq-capacidade-pendente").textContent = pedidos.length
     ? "Pedido, esperando o orquestrador: " + pedidos.join(" · ") : "";
+  // recolhida no fim de Agora: a linha do título já diz o que vale
+  const modo = (d.modos.find((m) => m.id === c.modo) || {}).rotulo || c.modo;
+  orqResumoRecolhido("orq-capacidade-resumo", `${modo} · até ${d.paralelo_efetivo}`
+    + ` · teto ${c.teto_sessao_pct}%` + (pedidos.length ? " · pedido pendente" : ""), false);
   orqDesenharGrimorio(d);
   orqDesenharHistoricoCapacidade(d);
 }
@@ -734,11 +745,24 @@ function orqBarra(rotulo, pct, renova, teto) {
       + (teto != null ? ` · teto ${teto}%` : "")));
 }
 
+// A linha do título de um cartão recolhido (Capacidade, Modelos, Limites):
+// o que vale, sem precisar abrir.
+function orqResumoRecolhido(id, texto, ruim) {
+  const alvo = $(id);
+  if (!alvo) return;
+  alvo.textContent = texto;
+  alvo.classList.toggle("erro", !!ruim);
+}
+
 function orqDesenharLimites(d) {
   const u = d.uso || {};
   const alvo = $("orq-limites");
   const aviso = $("orq-teto-aviso");
   aviso.classList.add("oculto");
+  orqResumoRecolhido("orq-limites-resumo", u.situacao === "ok" && u.medicao
+    ? `sessão ${Math.round(u.medicao.sessao_pct)}% · teto ${u.teto}%`
+      + (u.passou_teto ? " · passou do teto" : "")
+    : u.situacao === "parada" ? "sonda parada" : "sem medição", u.passou_teto);
   if (u.situacao !== "ok" || !u.medicao) {
     // NUNCA um número velho como se fosse atual: sem medição válida, sem barra.
     const texto = u.situacao === "velha"
@@ -856,6 +880,8 @@ function orqGrafico(pontos, teto) {
 function orqDesenharDecisoes(d) {
   const alvo = $("orq-decisoes");
   const lista = d.decisoes || [];
+  orqResumoRecolhido("orq-decisoes-resumo", lista.length ? `${lista.length} registrada(s)` : "nenhuma",
+    false);
   if (!lista.length) {
     alvo.replaceChildren(el("div", {class: "fraco"}, "Nenhuma decisão registrada."));
     return;
@@ -952,7 +978,7 @@ async function orqCarregarFluxo() {
     const f = await api("/api/orquestrador/fluxo");
     if (f.calculando) {
       alvo.replaceChildren(el("div", {class: "fraco"}, "lendo a pipeline…"));
-      setTimeout(() => { if (tela === "orquestrador") orqCarregarFluxo(); }, 3000);
+      setTimeout(() => { if (tela === "agora") orqCarregarFluxo(); }, 3000);
       return;
     }
     if (f.falhou) {
@@ -1113,6 +1139,10 @@ function orqDesenharModelos(d) {
   const pedidos = ["modelo_agentes", "modelo_codex", "modelo_gemini"].flatMap((n) => orqPendentes(n));
   $("orq-modelos-pendente").textContent = pedidos.length
     ? `${pedidos.length} troca(s) esperando o orquestrador.` : "";
+  const nome = (x) => x.vigente == null || x.vigente === "" ? "padrão"
+    : ((x.opcoes.find((o) => o.id === x.vigente) || {}).rotulo || x.vigente);
+  orqResumoRecolhido("orq-modelos-resumo", (pedidos.length ? "troca pendente · " : "")
+    + `Claude ${nome(m.claude)} · Codex ${nome(m.codex)} · Gemini ${nome(m.gemini)}`, false);
 }
 
 $("orq-modelo-codex-pedir").addEventListener("click", () => {
@@ -1150,10 +1180,10 @@ async function orqCarregar() {
   } catch (err) { conexao(false, err); }
 }
 
-// O objeto na prateleira avisa sem abrir: vermelho = passou do teto ou
-// orquestrador fora do ar; âmbar = comando esperando.
+// O objeto Agora, na prateleira, avisa sem abrir: vermelho = passou do teto
+// ou orquestrador fora do ar; âmbar = comando esperando.
 function orqMarcarSelo(d) {
-  const obj = $("obj-orquestrador");
+  const obj = $("obj-agora");
   const semOuvido = d.vigia ? d.vigia.situacao === "fora" || d.vigia.situacao === "fechada"
     : d.fora_do_ar;
   const alerta = d.sem_ouvinte && d.sem_ouvinte.tipo !== "guardado";
@@ -1168,14 +1198,18 @@ async function orquestradorSelo() {
   try { orqMarcarSelo(await api("/api/orquestrador")); } catch (err) { /* a vila já avisa */ }
 }
 
-function orquestradorMostrar() {
+// `comFluxo`: só Agora mostra o fluxo das builds (Mandar só precisa do
+// "O que você mandou", relido a cada 10 s como antes).
+function orquestradorMostrar(comFluxo = true) {
   orqCarregar();
-  orqCarregarFluxo();
   clearInterval(Orq.relogio);
   clearInterval(Orq.relogioFluxo);
+  Orq.relogioFluxo = null;
   Orq.relogio = setInterval(() => {
     if (document.visibilityState === "visible") orqCarregar();
   }, ORQ_MS);
+  if (!comFluxo) return;
+  orqCarregarFluxo();
   Orq.relogioFluxo = setInterval(() => {
     if (document.visibilityState === "visible") orqCarregarFluxo();
   }, ORQ_FLUXO_MS);
@@ -1195,5 +1229,7 @@ $("orq-enviar").addEventListener("click", async () => {
   await orqEnviar("mensagem", texto);
   $("orq-mensagem").value = "";
 });
-for (const b of document.querySelectorAll("[data-orq]"))
-  b.addEventListener("click", () => $(b.dataset.orq).scrollIntoView({behavior: "smooth"}));
+// Decidir lê o orquestrador uma vez ao abrir; abrir o recolhido relê
+$("orq-sec-decisoes").addEventListener("toggle", (e) => {
+  if (e.currentTarget.open) orqCarregar();
+});

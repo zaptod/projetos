@@ -4,6 +4,7 @@
 //
 // Pedido do Adrian: "quero algo no app para poder ver o trabalho do Codex em
 // tempo real". Só leitura nesta versão: aplicar continua com o orquestrador.
+// Desde 02/10/2026 é a aba "Codex" do objeto Agora (antes só abria pela Mesa).
 // A lista relê a cada 10 s; a tarefa aberta pede só os eventos NOVOS (por
 // offset no eventos.jsonl) a cada 3 s enquanto ela roda, sem travar o PC.
 
@@ -292,10 +293,7 @@ function oficinaParar() {
 for (const b of document.querySelectorAll("#oficina-abas button"))
   b.addEventListener("click", () => ofiMostrarAba(b.dataset.aba));
 $("oficina-voltar-lista").addEventListener("click", ofiFechar);
-$("oficina-voltar-mesa").addEventListener("click", () => {
-  if (history.state && history.state.tela === "oficina") history.back();
-  else mostrar("orquestrador");
-});
+// o antigo "‹ Mesa" virou a aba "Agora" (a Oficina é a aba Codex de Agora)
 $("oficina-seguir").addEventListener("click", () => {
   Ofi.seguir = !Ofi.seguir;
   $("oficina-seguir").setAttribute("aria-pressed", String(Ofi.seguir));

@@ -110,19 +110,18 @@ ANIMACOES = (
 )
 
 PRATELEIRA = (
-    # (tela, rotulo no app, emoji de hoje, desenho, prioridade, onde)
-    ("quadro", "Avisos", "📌", "quadro de cortiça com três papéis presos por tachinhas", "P1", "prateleira"),
-    ("diario", "Diário", "📓", "diário de capa de couro com uma fita marcadora", "P1", "prateleira"),
-    ("videos", "Cinema", "🎞️", "rolo de filme com a fita saindo", "P1", "prateleira"),
-    ("comandos", "Bancada", "🛠️", "martelo e chave inglesa cruzados", "P1", "prateleira"),
-    ("relatorios", "Pergaminhos", "📜", "dois pergaminhos enrolados com fita", "P1", "prateleira"),
-    ("decisoes", "Grimório", "📖", "grimório: livro grosso de capa roxa com fecho dourado e uma estrela",
+    # (objeto, rotulo no app, emoji de hoje, desenho, prioridade, onde)
+    # Desde 02/10/2026 sao QUATRO objetos, um por pergunta (decisao do Adrian,
+    # app-e-bot/app-reorganizar): o que estava em Avisos, Diario, Cinema,
+    # Bancada, Pergaminhos, Grimorio e Mesa de comando (e as telas que so
+    # abriam por dentro da Mesa) virou aba de um deles. As abas seguem com
+    # emoji; so o objeto da prateleira pede desenho.
+    ("agora", "Agora", "⏳", "ampulheta de madeira escura com areia dourada escorrendo", "P1", "prateleira"),
+    ("decidir", "Decidir", "📖", "grimório: livro grosso de capa roxa com fecho dourado e uma estrela",
      "P1", "prateleira"),
-    ("orquestrador", "Mesa de comando", "🗺️", "mapa aberto sobre uma mesinha, com alfinetes", "P1", "prateleira"),
-    ("biblioteca", "Biblioteca", "📚", "pilha de três livros coloridos", "P3", "dentro da Mesa de comando"),
-    ("coordenador", "Coordenador", "🛰", "satélite com painéis azuis", "P3", "dentro da Mesa de comando"),
-    ("oficina", "Oficina do Codex", "(sem ícone)", "bigorna com uma engrenagem em cima", "P3",
-     "dentro da Mesa de comando"),
+    ("mandar", "Mandar", "📯", "corneta de mensageiro de latão dourado com uma fita vermelha amarrada",
+     "P1", "prateleira"),
+    ("ver", "Ver", "🔭", "luneta de latão com faixas de couro marrom, apontada para cima", "P1", "prateleira"),
 )
 DECORACAO = {
     "bandeirolas": ("varal de bandeirolas triangulares coloridas (rosa, amarelo, verde-água, azul, lilás) "
@@ -458,19 +457,19 @@ def _interface() -> list[dict]:
             caminho_existente=f"painel/flutuante/arte.py desenhar_decoracao('{nome}')",
             fonte="painel/flutuante/arte.py DECORACOES, LUGAR_DAS_DECORACOES",
             presenca_txt="janela flutuante, conforme as publicações desbloqueiam a coleção"))
-    for tela, rotulo, emoji, desenho, prio, onde in PRATELEIRA:
-        chroma = VERDE if tela == "decisoes" else MAGENTA
+    for objeto, rotulo, emoji, desenho, prio, onde in PRATELEIRA:
+        # o grimório é roxo: o chroma magenta comeria a capa
+        chroma = VERDE if objeto == "decidir" else MAGENTA
         i.append(_item(
-            grupo="objetos", subgrupo="prateleira" if onde == "prateleira" else "mesa",
-            id=f"objeto_{tela}", prioridade=prio,
-            descricao=f"Ícone do objeto '{rotulo}' do app: {desenho}. Silhueta simples, legível a 28 px.",
-            nome_arquivo=f"objetos/{tela}.png", tamanho="512x512 (aparece com ~28 px no celular)",
+            grupo="objetos", subgrupo=onde,
+            id=f"objeto_{objeto}", prioridade=prio,
+            descricao=f"Ícone do objeto '{rotulo}' do app: {desenho}. Silhueta simples, legível a 30 px.",
+            nome_arquivo=f"objetos/{objeto}.png", tamanho="512x512 (aparece com ~30 px no celular)",
             fundo=_fundo(chroma), chroma=chroma, arte_atual="emoji",
             caminho_existente=f"remoto/app/index.html (emoji {emoji})",
-            fonte="remoto/app/index.html nav.prateleira; remoto/app/app.js TITULOS",
-            presenca_txt=("sempre: a prateleira embaixo da Vila no app" if onde == "prateleira"
-                          else "botão dentro da Mesa de comando"),
-            notas="Pequeno de propósito: com 28 px, detalhe miúdo não aparece."))
+            fonte="remoto/app/index.html nav.prateleira; remoto/app/app.js OBJETOS",
+            presenca_txt="sempre: a prateleira embaixo da Vila no app (4 objetos, um por pergunta)",
+            notas="Pequeno de propósito: com 30 px, detalhe miúdo não aparece."))
     return i
 
 
