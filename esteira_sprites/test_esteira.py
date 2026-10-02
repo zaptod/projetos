@@ -246,7 +246,15 @@ def test_lote_pula_bloqueado_e_opcional(ambiente, monkeypatch):
     from esteira_sprites import __main__ as cli
     pedidos = []
     monkeypatch.setattr(cli, "pedir", lambda item: pedidos.append(item))
-    assert cli.lote("P1", 5) == ["fogo_teste", "trevas_teste", "folha_teste"]
+    # 02/10: as folhas animadas por IA estao desligadas (o Adrian faz as dele)
+    assert cli.lote("P1", 5) == ["fogo_teste", "trevas_teste"]
+    pedidos.clear()
+    monkeypatch.setattr(cli, "FOLHAS_POR_IA", True)
+    for i in ("fogo_teste", "trevas_teste"):
+        f = ficha.ler(i) or ficha.nova(config.item(i))
+        f["estado"] = "pedido"
+        ficha.gravar(f)
+    assert cli.lote("P1", 5) == ["folha_teste"]
     assert "bloqueado" not in pedidos and "opcional" not in pedidos
 
 

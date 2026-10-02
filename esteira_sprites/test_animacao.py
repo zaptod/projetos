@@ -223,6 +223,7 @@ def test_perfil_padrao_continua_o_palco(perfil_limpo, monkeypatch):
 
 
 def test_lote_da_vila_espera_a_mestra_e_pula_a_externa(perfil_limpo, monkeypatch):
+    monkeypatch.setattr(cli, "FOLHAS_POR_IA", True)       # o item de teste e uma folha
     config.usar("vila", _inventario_vila(perfil_limpo / "inv_vila.json"))
     pedidos = []
     monkeypatch.setattr(cli, "pedir", lambda item: pedidos.append(item))

@@ -63,6 +63,12 @@ def _decisao_tomada(item: dict) -> bool:
     return dados.get("situacao") == "decidida"
 
 
+# 02/10/2026, o Adrian: "achei suas animacoes um lixo... eu mesmo vou fazer
+# esses sprites". As FOLHAS animadas nao sao mais pedidas a IA; ele importa as
+# dele pelo Atelie do app. Pecas paradas (predios, chao) continuam.
+FOLHAS_POR_IA = False
+
+
 def lote(prioridade: str, n: int) -> list[str]:
     escolhidos = []
     if config.perfil().exige_mestra and not config.mestra().is_file():
@@ -73,6 +79,7 @@ def lote(prioridade: str, n: int) -> list[str]:
     for item in itens:
         if (item.get("prioridade") != prioridade or item.get("bloqueio") or item.get("opcional")
                 or item.get("externo") or item["id"] == "imagem_mestra"
+                or (item.get("tipo") == "folha" and not FOLHAS_POR_IA)
                 or not _decisao_tomada(item)):
             continue
         existente = ficha.ler(item["id"])
