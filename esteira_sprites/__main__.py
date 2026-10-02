@@ -122,6 +122,41 @@ def ciclo() -> dict:
     return {"perfil": config.PERFIL, "andou": andou, "em_voo": em_voo + len(novos), "novos": novos}
 
 
+# Decisao painel-e-vila/folhas-chatgpt-ocupado (Adrian, 02/10/2026): folha
+# espera ate COBERTURA_MIN pelo ChatGPT; se ele continuar ocupado (a criacao de
+# historias segura a conta por horas), o Gemini faz. Se o juiz reprovar, o
+# proximo pedido volta ao ChatGPT (o gerador padrao da folha).
+COBERTURA_MIN = 20
+
+
+def _cobrir_chatgpt_ocupado(item_id: str, dados: dict) -> bool:
+    from datetime import datetime
+    t = (dados.get("tentativas") or [{}])[-1]
+    if t.get("caixa") != "chatgpt" or t.get("cobertura"):
+        return False
+    m = correio.uma("chatgpt", t.get("correio_id") or "") or {}
+    if m.get("situacao") != "pendente":
+        return False                       # ja entregue ou respondida: segue
+    try:
+        idade = (datetime.now() - datetime.fromisoformat(str(m.get("em"))[:19])).total_seconds() / 60
+    except ValueError:
+        return False
+    if idade < COBERTURA_MIN:
+        return False
+    correio.atualizar("chatgpt", t["correio_id"], situacao="falhou", categoria="interrompida",
+                      erro=f"o ChatGPT ficou ocupado {idade:.0f} min; o Gemini cobre (decisao "
+                           "folhas-chatgpt-ocupado)")
+    ficha.registrar(dados, "cobertura", de="chatgpt", para="gemini", espera_min=round(idade))
+    ficha.gravar(dados)
+    # a tentativa que nunca saiu nao conta: o pedido vai igual ao Gemini
+    dados = ficha.ler(item_id)
+    dados["tentativas"].pop()
+    ficha.gravar(dados)
+    pedir(item_id, str(t.get("motivo") or ""), prompt_pronto=str(t.get("prompt") or ""),
+          caixa="gemini", cobertura=True)
+    return True
+
+
 def avancar() -> int:
     feitos = 0
     for item in config.itens():
@@ -129,6 +164,9 @@ def avancar() -> int:
         if not dados:
             continue
         estado = dados.get("estado")
+        if estado == "pedido" and _cobrir_chatgpt_ocupado(item["id"], dados):
+            feitos += 1
+            continue
         if estado == "refazer":
             feitos += bool(_repedir(item["id"], dados))
         elif estado == "pedido":

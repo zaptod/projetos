@@ -24,6 +24,8 @@ def tentativas_contadas(dados: dict) -> int:
 
 
 def juiz_do(tentativa: dict) -> str:
+    if tentativa.get("cobertura"):
+        return "gemini"          # o ChatGPT esta ocupado: quem julga a cobertura e o Gemini
     return "chatgpt" if tentativa.get("caixa") == "gemini" else "gemini"
 
 

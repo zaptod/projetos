@@ -290,3 +290,35 @@ def test_pedir_atualiza_o_item_da_ficha(ambiente, monkeypatch):
     monkeypatch.setattr(pedir, "marcar", lambda *_: None)
     pedir.pedir("fogo_teste")
     assert ficha.ler("fogo_teste")["item"] == config.item("fogo_teste")
+
+
+def test_gemini_cobre_a_folha_quando_o_chatgpt_esta_ocupado(ambiente, monkeypatch):
+    """Decisao folhas-chatgpt-ocupado (02/10/2026)."""
+    cli = importlib.import_module("esteira_sprites.__main__")
+    dados = ficha.nova(dict(config.item("fogo_teste"), tipo="folha"))
+    dados["estado"] = "pedido"
+    dados["tentativas"] = [{"caixa": "chatgpt", "correio_id": "c1", "prompt": "P" * 90, "motivo": ""}]
+    ficha.gravar(dados)
+    msgs = {"c1": {"situacao": "pendente", "em": "2026-10-02T09:00:00"}}
+    monkeypatch.setattr(cli.correio, "uma", lambda caixa, mid: msgs.get(mid))
+    atualizados = []
+    monkeypatch.setattr(cli.correio, "atualizar", lambda caixa, mid, **k: atualizados.append((caixa, mid, k)))
+    pedidos = []
+    monkeypatch.setattr(cli, "pedir", lambda *a, **k: pedidos.append((a, k)))
+
+    class _Agora:
+        @staticmethod
+        def now():
+            from datetime import datetime
+            return datetime(2026, 10, 2, 9, 10)
+    import datetime as dt
+    monkeypatch.setattr(dt, "datetime", type("D", (dt.datetime,), {"now": staticmethod(_Agora.now)}))
+    assert cli._cobrir_chatgpt_ocupado("fogo_teste", ficha.ler("fogo_teste")) is False   # 10 min: espera
+    monkeypatch.setattr(dt, "datetime", type("D", (dt.datetime,), {
+        "now": staticmethod(lambda: dt.datetime.fromisoformat("2026-10-02T09:25:00"))}))
+    assert cli._cobrir_chatgpt_ocupado("fogo_teste", ficha.ler("fogo_teste")) is True    # 25 min: cobre
+    assert atualizados[0][0] == "chatgpt" and atualizados[0][2]["situacao"] == "falhou"
+    assert pedidos[0][1]["caixa"] == "gemini" and pedidos[0][1]["cobertura"] is True
+    assert pedidos[0][1]["prompt_pronto"] == "P" * 90
+    assert ficha.ler("fogo_teste")["tentativas"] == []        # a que nunca saiu nao conta
+    assert juiz.juiz_do({"caixa": "gemini", "cobertura": True}) == "gemini"
