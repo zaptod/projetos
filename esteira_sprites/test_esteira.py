@@ -242,3 +242,26 @@ def test_avancar_sem_resposta_e_idempotente(ambiente):
     ficha.gravar(dados)
     assert cli.avancar() == 0
     assert cli.avancar() == 0 and ficha.ler("fogo_teste")["estado"] == "pedido"
+
+
+def test_juiz_que_falha_nao_gasta_tentativa(ambiente, monkeypatch):
+    dados = ficha.nova(config.item("fogo_teste"))
+    dados["estado"] = "julgado"
+    dados["tentativas"] = [{"juiz_id": "g1", "caminhos": {}, "juiz_caixa": "gemini"}]
+    ficha.gravar(dados)
+    monkeypatch.setattr(juiz.correio, "uma", lambda *_: {"situacao": "falhou", "erro": "ERR_NAME_NOT_RESOLVED"})
+    refeitos = []
+    monkeypatch.setattr(pedir, "pedir", lambda *a, **k: refeitos.append(a))
+    # rede fora no juiz: pergunta de novo, sem pedir outra imagem (02/10/2026)
+    for _ in range(juiz.JUIZ_FALHAS_MAX - 1):
+        assert juiz.colher("fogo_teste") and ficha.ler("fogo_teste")["estado"] == "medido"
+        d = ficha.ler("fogo_teste")
+        d["estado"] = "julgado"
+        ficha.gravar(d)
+    assert juiz.colher("fogo_teste") and ficha.ler("fogo_teste")["estado"] == "a_conferir"
+    assert refeitos == [] and len(ficha.ler("fogo_teste")["tentativas"]) == 1
+
+
+def test_contar_desde_reabre_as_tentativas():
+    assert juiz.tentativas_contadas({"tentativas": [{}] * 6, "contar_desde": 5}) == 1
+    assert juiz.tentativas_contadas({"tentativas": [{}] * 4}) == 4

@@ -93,8 +93,8 @@ ALVO_EM_VOO = 4
 
 def _repedir(item_id: str, dados: dict) -> bool:
     """`refazer` (falha do correio, imagem sem prova, ou pedido manual) volta a pedir."""
-    from .juiz import MAX_TENTATIVAS
-    if len(dados.get("tentativas", [])) >= MAX_TENTATIVAS:
+    from .juiz import MAX_TENTATIVAS, tentativas_contadas
+    if tentativas_contadas(dados) >= MAX_TENTATIVAS:
         dados["estado"] = "a_conferir"
         ficha.registrar(dados, "tentativas_esgotadas")
         ficha.gravar(dados)

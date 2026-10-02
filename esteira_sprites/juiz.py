@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image
 from ias import correio
 
 from . import config, ficha, prompt
@@ -15,20 +15,26 @@ from . import config, ficha, prompt
 # e o Gemini julga), para ninguem aprovar o proprio desenho.
 JUIZ = "gemini"
 MAX_TENTATIVAS = 4
+JUIZ_FALHAS_MAX = 3
+
+
+def tentativas_contadas(dados: dict) -> int:
+    """Tentativas desde o ultimo reinicio do julgamento (`contar_desde`)."""
+    return len(dados.get("tentativas", [])) - int(dados.get("contar_desde") or 0)
 
 
 def juiz_do(tentativa: dict) -> str:
     return "chatgpt" if tentativa.get("caixa") == "gemini" else "gemini"
 
 
-def _xadrez(origem: str, destino: Path) -> Path:
+# Fundo LISO onde o desenho vai morar: o xadrez de transparencia enganava o juiz,
+# que achava o quadriculado parte da imagem e reprovava tudo (02/10/2026).
+FUNDO_DE_VISTA = {"vila": "#8cc96e", "palco": "#2a2d3a"}
+
+
+def _sobre_fundo(origem: str, destino: Path) -> Path:
     arte = Image.open(origem).convert("RGBA")
-    fundo = Image.new("RGBA", arte.size, "#B0B0B0")
-    desenho = ImageDraw.Draw(fundo)
-    for y in range(0, arte.height, 12):
-        for x in range(0, arte.width, 12):
-            if (x // 12 + y // 12) % 2:
-                desenho.rectangle((x, y, x + 11, y + 11), fill="#D8D8D8")
+    fundo = Image.new("RGBA", arte.size, FUNDO_DE_VISTA.get(config.PERFIL, "#2a2d3a"))
     fundo.alpha_composite(arte)
     fundo.save(destino, "PNG")
     return destino
@@ -107,8 +113,9 @@ def _pergunta(item: dict, rotulos: list[str], usado: str = "", medidas: list[str
               f"O QUE É ESTE DESENHO: {str(item.get('descricao') or item['id']).strip()}"]
     tipo = ("folha de animação" if prompt.animacao(item) is not None
             else "folha de quadros" if item.get("tipo") == "folha" else "peça parada")
-    linhas.append(f"FORMATO: {tipo}; {item.get('tamanho') or 'tamanho livre'}; fundo transparente "
-                  "(o xadrez cinza é só para mostrar a transparência).")
+    linhas.append(f"FORMATO: {tipo}. O desenho já tem fundo TRANSPARENTE; nos anexos ele aparece sobre "
+                  "uma cor lisa só para você ver (verde = a grama da Vila, escuro = a arena). O tamanho em "
+                  "pixels da imagem NÃO importa: ela é reduzida depois; julgue o desenho, não a resolução.")
     uso = item.get("presenca_txt") or ""
     if uso:
         linhas.append(f"QUANDO APARECE: {uso}.")
@@ -146,8 +153,8 @@ def perguntar(item_id: str) -> bool:
     # o controle e cego: o juiz nao sabe que a arte foi estragada de proposito
     limpo = tentativa["caminhos"]["limpo"]
     origem = str(_estragado(limpo, pasta / "controle_estragado.png")) if controle else limpo
-    anexos = [str(_xadrez(origem, pasta / "para_juiz.png"))]
-    rotulos = ["o desenho em tamanho de entrega"]
+    anexos = [str(_sobre_fundo(origem, pasta / "para_juiz.png"))]
+    rotulos = ["o desenho grande, sobre a cor lisa do lugar onde ele vai ficar"]
     if prompt.animacao(item) is not None:
         gif = tentativa.get("caminhos", {}).get("previa_gif")
         if gif and Path(gif).is_file() and not controle:
@@ -208,7 +215,14 @@ def colher(item_id: str) -> bool:
         return False
     veredito = ler_json(mensagem.get("resposta") or "") if mensagem["situacao"] == "respondida" else None
     if veredito is None:
-        veredito = {"defeitos": [{"o_que": mensagem.get("erro") or "juiz sem JSON", "gravidade": "grave"}], "notas": {}}
+        # o JUIZ falhou (rede fora, sem JSON): nao e defeito do desenho e nao gasta
+        # tentativa; pergunta de novo, ate JUIZ_FALHAS_MAX vezes (02/10/2026)
+        falhas = tentativa.get("juiz_falhas", 0) + 1
+        tentativa["juiz_falhas"] = falhas
+        ficha.registrar(dados, "juiz_falhou", motivo=str(mensagem.get("erro") or mensagem.get("resposta") or "")[:300])
+        dados["estado"] = "medido" if falhas < JUIZ_FALHAS_MAX else "a_conferir"
+        ficha.gravar(dados)
+        return True
     tentativa["veredito"] = veredito
     graves = [_defeito_acionavel(d) for d in veredito["defeitos"] if d.get("gravidade") == "grave"]
     # a medida reprovou: e grave mesmo que o juiz nao diga
@@ -217,7 +231,7 @@ def colher(item_id: str) -> bool:
         tentativa["juiz_fraco"] = True
         ficha.registrar(dados, "juiz_fraco", motivo="controle sem defeito grave")
     if graves and not tentativa.get("controle"):
-        if len(dados["tentativas"]) < MAX_TENTATIVAS:
+        if tentativas_contadas(dados) < MAX_TENTATIVAS:
             from .pedir import pedir
             corrigido = str(veredito.get("prompt_corrigido") or "").strip()
             ficha.registrar(dados, "juiz_respondeu", veredito=veredito)
