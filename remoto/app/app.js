@@ -257,6 +257,8 @@ async function carregarAgora() {
     conexao(true);
     // o selo da Mesa de comando na prateleira (teto, fora do ar, pendentes)
     if (tela === "vila" && typeof orquestradorSelo === "function") orquestradorSelo();
+    // o selo do Grimório (escolhas esperando) vale em qualquer tela
+    if (typeof grimorioSelo === "function") grimorioSelo();
   } catch (err) {
     const ultimo = JSON.parse(localStorage.getItem(ULTIMO) || "null");
     if (ultimo) desenharEstado(ultimo.e);

@@ -61,7 +61,7 @@ def test_caso_zero(servidor, caixa):                           # noqa: F811
     assert all(c["ultima"] is None for c in d["imagens"])
     resp, dados = _pedir(servidor, "GET", "/api/correio/livre", token=token)
     d = json.loads(dados)
-    assert d["mensagens"] == [] and d["rodizio"][0] == "picasso"
+    assert d["mensagens"] == [] and d["rodizio"][0] == "gemini"  # decidido em 01/10
     resp, _ = _pedir(servidor, "GET", "/api/imagem/picasso/abcdef12", token=token)
     assert resp.status == 404
 

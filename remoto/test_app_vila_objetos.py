@@ -119,7 +119,7 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v20 = pedir imagem (29/09); v21 = lote da semana (30/09); v22 = modulo
     # que nao chegou (30/09, tarde: o 502 cai na copia guardada); v23 = a
     # Oficina do Codex e os Modelos (01/10); v24 = Biblioteca; v26 = Coordenador
-    assert "painel-casca-v26" in sw
+    assert "painel-casca-v27" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

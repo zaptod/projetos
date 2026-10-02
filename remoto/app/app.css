@@ -565,6 +565,18 @@ nav.prateleira button.objeto.selo-alerta::after {
   border-radius: 50%; background: #f0a04b; border: 2px solid #3b2412;
 }
 nav.prateleira button.objeto.selo-alerta::after { background: #ff5b45; }
+/* o Grimório conta as escolhas que esperam por você */
+nav.prateleira button.objeto.selo-contador::after {
+  content: attr(data-pendentes); position: absolute; top: 2px; right: calc(50% - 26px);
+  min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border-radius: 9px;
+  background: #ff5b45; color: #fff; border: 2px solid #3b2412;
+  font: bold 11px/14px system-ui, sans-serif; text-align: center; text-shadow: none;
+  animation: selo-pulsa 1.6s ease-in-out infinite;
+}
+@keyframes selo-pulsa { 50% { transform: scale(1.18); } }
+@media (prefers-reduced-motion: reduce) {
+  nav.prateleira button.objeto.selo-contador::after { animation: none; }
+}
 @keyframes desdobrar-mapa {
   0% { transform: perspective(1200px) rotateX(-80deg) scaleY(.2); opacity: .2; }
   60% { transform: perspective(1200px) rotateX(8deg) scaleY(1); opacity: 1; }
@@ -659,6 +671,7 @@ body.deitado nav.prateleira button.objeto {
 body.deitado nav.prateleira button.objeto span { font-size: 21px; line-height: 1.1; }
 body.deitado nav.prateleira button.objeto.selo-pendente::after,
 body.deitado nav.prateleira button.objeto.selo-alerta::after { top: 2px; right: calc(50% - 18px); }
+body.deitado nav.prateleira button.objeto.selo-contador::after { top: 0; right: calc(50% - 24px); }
 /* a lupa: a mesma aba de madeira, presa na borda de dentro da coluna */
 body.deitado nav.prateleira .vila-botoes {
   right: 100%; bottom: 12px; flex-direction: column-reverse;

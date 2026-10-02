@@ -16,6 +16,28 @@ const Decisoes = {projeto: null, dados: null, aberta: null, relogio: null, lidoE
 // Agora relê a cada 20 s; a árvore redesenha sozinha, e o nó aberto só se
 // ele não estiver no meio de uma resposta (senão, a faixa pede o toque).
 const DECISOES_MS = 20000;
+
+// O livro na prateleira mostra quantas escolhas esperam por você (pendentes e
+// "a rever", o mesmo "esperando" do servidor), em qualquer tela do app.
+const GRIMORIO_SELO_MS = 60000;
+let grimorioSeloEm = 0;
+
+function grimorioMarcarSelo(dados) {
+  const obj = document.querySelector('nav.prateleira button.objeto[data-tela="decisoes"]');
+  if (!obj || !dados) return;
+  const n = Object.values(dados.itens || {})
+    .filter((i) => i.situacao === "pendente" || i.situacao === "a_rever").length;
+  obj.classList.toggle("selo-contador", n > 0);
+  if (n > 0) obj.dataset.pendentes = n > 9 ? "9+" : String(n);
+  else delete obj.dataset.pendentes;
+  obj.title = n ? `${n} escolha${n > 1 ? "s" : ""} esperando você` : "Grimório";
+}
+
+async function grimorioSelo() {
+  if (Date.now() - grimorioSeloEm < GRIMORIO_SELO_MS) return;
+  grimorioSeloEm = Date.now();
+  try { grimorioMarcarSelo(await api("/api/decisoes")); } catch (err) { /* a vila já avisa */ }
+}
 const SITUACAO = {decidida: ["✅", "decidida"], pendente: ["⏳", "pendente"],
                   bloqueada: ["🔒", "bloqueada"], a_rever: ["↺", "a rever"]};
 // O leitor (28/09/2026): cada resposta dele é LIDA pelo orquestrador, que
@@ -67,6 +89,7 @@ async function decisoesReler() {
   try { dados = await api("/api/decisoes"); } catch (err) { return; }
   const mudou = decisoesAssinatura(dados) !== Decisoes.assinatura;
   Decisoes.dados = dados;
+  grimorioMarcarSelo(dados);
   Decisoes.assinatura = decisoesAssinatura(dados);
   Decisoes.lidoEm = new Date(agoraPC()).toISOString();
   decisoesRodape();
@@ -90,6 +113,7 @@ async function decisoesMostrar() {
   $("decisoes-listas").classList.remove("oculto");
   try {
     Decisoes.dados = await api("/api/decisoes");
+    grimorioMarcarSelo(Decisoes.dados);
     Decisoes.assinatura = decisoesAssinatura(Decisoes.dados);
     Decisoes.lidoEm = new Date(agoraPC()).toISOString();
     decisoesLigarRelogio();
@@ -399,6 +423,7 @@ function decisoesAbrir(id) {
         // a tela estava velha: abre de novo com o que vale agora
         try {
           Decisoes.dados = await api("/api/decisoes");
+          grimorioMarcarSelo(Decisoes.dados);
           Decisoes.assinatura = decisoesAssinatura(Decisoes.dados);
           decisoesAbrir(item.id);
         } catch (e) { /* a conexão já avisa */ }
@@ -428,6 +453,7 @@ $("btn-decisao-mudou").addEventListener("click", async () => {
   if (!Decisoes.aberta) return;
   try {
     Decisoes.dados = await api("/api/decisoes");
+    grimorioMarcarSelo(Decisoes.dados);
     Decisoes.assinatura = decisoesAssinatura(Decisoes.dados);
   } catch (err) { /* a conexao ja avisa */ }
   decisoesAbrir(Decisoes.aberta);
