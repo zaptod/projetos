@@ -668,7 +668,7 @@ class ClienteLLM:
     #    imagem", sem botao de parar, estavel; ver `esperar_resposta`).
     # IA sem os dois seletores nao tem imagem na resposta (falha fechada).
     _JS_IMAGENS = (
-        "([usuarios, turnos, recipientes, gerando]) => {"
+        "([usuarios, turnos, recipientes, gerando, emCurso]) => {"
         " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
         "   & Node.DOCUMENT_POSITION_FOLLOWING);"
         " const todos = (raiz, lista) => { let out = [];"
@@ -722,6 +722,8 @@ class ClienteLLM:
         " if (resposta && gerando) {"
         "   try { emGeracao = new RegExp(gerando, 'i').test("
         "     (resposta.innerText || '').slice(0, 3000)); } catch (e) {} }"
+        " if (resposta && !emGeracao && (emCurso || []).length"
+        "     && todos(resposta, emCurso).length) emGeracao = true;"
         " return {ancorado: true, turno: (usuario.innerText || '').slice(0, 600),"
         "         resposta: !!resposta, gerando: emGeracao, imagens, fora}; }")
 
@@ -769,7 +771,8 @@ class ClienteLLM:
                                    list(self.sel.get("imagem_turno") or []),
                                    list(self.sel.get("imagem_gerada") or []),
                                    str(self.sel.get("imagem_gerando")
-                                       or self.GERANDO_IMAGEM_PADRAO)])
+                                       or self.GERANDO_IMAGEM_PADRAO),
+                                   list(self.sel.get("imagem_em_geracao") or [])])
         except Exception:                                      # noqa: BLE001
             achado = None
         if not isinstance(achado, dict):
@@ -814,6 +817,8 @@ class ClienteLLM:
             return []
         antes = set(antes or ())
         finais = [str(a).lower() for a in (self.sel.get("imagem_final_alt") or [])]
+        finais_re = [re.compile(str(p), re.I)
+                     for p in (self.sel.get("imagem_final_alt_re") or [])]
         saida = []
         for i in achado.get("imagens") or []:
             src = i.get("src")
@@ -823,8 +828,10 @@ class ClienteLLM:
                 continue
             if int(i.get("w") or 0) < 256 or int(i.get("h") or 0) < 256:
                 continue
-            if finais and not any(str(i.get("alt") or "").lower().startswith(f)
-                                  for f in finais):
+            alt = str(i.get("alt") or "").lower()
+            if (finais or finais_re) and not (
+                    any(alt.startswith(f) for f in finais)
+                    or any(p.search(alt) for p in finais_re)):
                 continue
             saida.append(i)
         return saida

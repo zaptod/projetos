@@ -66,6 +66,51 @@ CHATGPT_GERANDO = f"""
    <img src="{GATO}"></div></div></section>
 </main>"""
 
+# O CARTAO NOVO (medido em 02/10/2026 00:0x, conta Plus; o 869758fa ficou 420 s
+# em "0 chars" com a imagem na tela). Sem `data-message-author-role` nem
+# `section[data-turn]`: o usuario e `div[data-user-message-bubble=true]`, o
+# turno do assistente e o div com o `h4[data-conversation-role=assistant]`
+# como filho, e a imagem e um item da `generated-image-gallery` com os botoes
+# "Editar a imagem gerada 1" e "Compartilhar imagem gerada 1" no mesmo item.
+NOVA_ANTIGA = _png(300, 300, (10, 10, 200))
+NOVA = _png(330, 330, (255, 0, 255))
+
+
+def _novo_par(pedido, src, *, pronta=True, anuncio=False):
+    botoes = ("""<div><div><div><button type="button" aria-label="Editar a imagem gerada 1">Editar</button></div>
+      <div><span data-state="closed"><button type="button" aria-label="Compartilhar imagem gerada 1">
+      <svg><path d="M16.6663 10.1681C17.0335"></path></svg></button></span></div></div></div>"""
+              if pronta else "")
+    extra = (f'<div class="ad"><img src="{ANUNCIO}"><i>Anúncio</i></div>' if anuncio else "")
+    return f"""
+ <div data-turn-key="u-{len(pedido)}">
+  <div class="block-BQZwFn"><h4 class="sr-only">Você disse:</h4>
+   <div data-chatgpt-search-unit-key="fallback-turn-0:0:user">
+    <div data-user-message-bubble="true"><div dir="auto">{pedido}</div></div></div></div>
+  <div class="block-BQZwFn"><span hidden data-chatgpt-agent-turn-start></span>
+   <h4 data-conversation-role="assistant" tabindex="-1" class="sr-only">ChatGPT disse:</h4>
+   <div data-chatgpt-search-message-ids="a1"><div>
+    <div data-testid="generated-image-gallery"><div>
+     <div data-image-transparency-backdrop-scope="" class="group/generated-image-preview">
+      <button type="button" data-testid="generated-image-preview" aria-label="Imagem 1 gerada">
+       <img width="1254" height="1254" alt="Imagem 1 gerada" src="{src}"></button>
+      <div></div>{botoes}
+     </div></div></div>{extra}</div></div></div>
+ </div>"""
+
+
+_PEDIDO_NOVO = ("Crie uma imagem na proporção 1:1. Responda só com a imagem, sem texto."
+                "\n\nCreate ONE square style reference sheet")
+CHATGPT_NOVO = f"""<main>
+{_novo_par("desenhe um cachorro", NOVA_ANTIGA)}
+{_novo_par(_PEDIDO_NOVO, NOVA, anuncio=True)}
+</main>"""
+
+CHATGPT_NOVO_GERANDO = f"""<main>
+{_novo_par("desenhe um cachorro", NOVA_ANTIGA)}
+{_novo_par("Crie uma imagem na proporção 1:1.", NOVA, pronta=False)}
+</main>"""
+
 GEMINI = f"""
 <user-query>Você disse gere um gato</user-query>
 <model-response><div class="markdown">
@@ -204,6 +249,81 @@ class JSNoNavegador(unittest.TestCase):
         marcado = self.page.evaluate(imagem._JS_MARCAR, [
             s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], ANUNCIO, []])
         self.assertFalse(marcado["imagem"])
+
+    def test_chatgpt_cartao_novo_pega_a_do_nosso_turno(self):
+        """02/10: o cartao novo da conta Plus. Antes do conserto: ancorado
+        False (nenhum `data-message-author-role`), zero imagens, e o carteiro
+        ficou 420 s em "0 chars" com a imagem pronta na tela."""
+        c = self._cliente("chatgpt", CHATGPT_NOVO)
+        achado = c.imagens_da_resposta()
+        self.assertTrue(achado["ancorado"])
+        self.assertTrue(achado["resposta"])
+        self.assertFalse(achado["gerando"])
+        self.assertIn("Create ONE square", achado["turno"])
+        self.assertNotIn("Você disse", achado["turno"])
+        self.assertEqual([i["src"] for i in achado["imagens"]], [NOVA])  # nao a do cachorro
+        self.assertEqual(achado["imagens"][0]["alt"], "Imagem 1 gerada")
+        self.assertEqual(achado["fora"], 1)                  # o anuncio, ignorado
+        prontas = c.imagens_prontas(achado, antes={NOVA_ANTIGA, ANUNCIO})
+        self.assertEqual([i["src"] for i in prontas], [NOVA])
+        # a que ja estava na pagina antes do envio nao vale
+        self.assertEqual(c.imagens_prontas(achado, antes={NOVA}), [])
+
+    def test_chatgpt_cartao_novo_sem_botoes_esta_em_geracao(self):
+        c = self._cliente("chatgpt", CHATGPT_NOVO_GERANDO)
+        achado = c.imagens_da_resposta()
+        self.assertTrue(achado["resposta"])
+        self.assertTrue(achado["gerando"])
+        self.assertEqual(achado["imagens"], [])
+        self.assertEqual(c.imagens_prontas(achado), [])
+
+    def test_chatgpt_cartao_novo_marca_o_compartilhar_do_mesmo_item(self):
+        from ias import imagem
+        c = self._cliente("chatgpt", CHATGPT_NOVO)
+        s = c.sel
+        marcado = self.page.evaluate(imagem._JS_MARCAR, [
+            s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], NOVA, [],
+            s["imagem_abrir"]])
+        self.assertEqual(marcado, {"imagem": True, "botao": False, "abrir": True})
+        self.assertEqual(self.page.locator("[data-nf-abrir='1']").count(), 1)
+        self.assertEqual(self.page.locator("[data-nf-abrir='1']").get_attribute("aria-label"),
+                         "Compartilhar imagem gerada 1")
+        # o Compartilhar marcado e o do item da NOSSA imagem, nao o do cachorro
+        self.assertEqual(self.page.locator("[data-nf-abrir='1']").evaluate(
+            "b => b.closest('[data-testid=generated-image-gallery]')"
+            ".querySelector('img').getAttribute('src')"), NOVA)
+        # a imagem do turno antigo nunca e marcada
+        marcado = self.page.evaluate(imagem._JS_MARCAR, [
+            s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], NOVA_ANTIGA, [],
+            s["imagem_abrir"]])
+        self.assertFalse(marcado["imagem"])
+
+    def test_chatgpt_dom_novo_resposta_de_texto(self):
+        """02/10: no DOM novo a resposta de TEXTO tambem nao tinha seletor
+        (zero `data-message-author-role`): o "APROVADO" do nosso turno e lido,
+        o "REPROVADO" do turno anterior nao."""
+        def par(pedido, resposta):
+            return f"""
+ <div class="block-BQZwFn"><h4 class="sr-only">Você disse:</h4>
+  <div data-user-message-bubble="true"><div dir="auto">{pedido}</div></div></div>
+ <div class="block-BQZwFn"><h4 data-conversation-role="assistant" class="sr-only">ChatGPT disse:</h4>
+  <div data-chatgpt-selection-message-id="m-{len(pedido)}" class="group flex">
+   <div data-markdown-text-style="assistant-message" dir="auto"><p>{resposta}</p></div></div></div>"""
+        html = f"<main>{par('primeira folha', 'REPROVADO')}{par('segunda folha revisada', 'APROVADO')}</main>"
+        c = self._cliente("chatgpt", html)
+        self.assertEqual(c._resposta_atual().strip(), "APROVADO")
+        self.assertTrue(c._ancorado)
+
+    def test_chatgpt_cartao_antigo_sem_abridor_clica_na_imagem(self):
+        """O cartao de 29/09 nao tem o Compartilhar: `abrir` False, e quem
+        chama clica na imagem como antes."""
+        from ias import imagem
+        c = self._cliente("chatgpt", CHATGPT)
+        s = c.sel
+        marcado = self.page.evaluate(imagem._JS_MARCAR, [
+            s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], GATO, [],
+            s["imagem_abrir"]])
+        self.assertEqual(marcado, {"imagem": True, "botao": False, "abrir": False})
 
     def _cliente_grok(self, html):
         from ias.imagem import png_de_teste

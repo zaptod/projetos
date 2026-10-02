@@ -569,8 +569,13 @@ def botoes_de_baixar(cliente) -> list:
 # recipiente de imagem gerada, e o botao de baixar do MESMO recipiente (sem
 # ele, o ultimo da resposta). A mesma prova de posicao de
 # `ClienteLLM._JS_IMAGENS`. Devolve {imagem, botao}.
+#
+# `abridores` (opcional): o botao do MESMO recipiente que abre o dialogo de
+# baixar (o "Compartilhar imagem gerada N" do cartao novo do ChatGPT, 02/10),
+# marcado com `data-nf-abrir`. Sem ele no recipiente, quem chama clica na
+# propria imagem (o caminho do cartao antigo).
 _JS_MARCAR = (
-    "([usuarios, turnos, recipientes, src, botoes]) => {"
+    "([usuarios, turnos, recipientes, src, botoes, abridores]) => {"
     " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
     "   & Node.DOCUMENT_POSITION_FOLLOWING);"
     " const todos = (raiz, lista) => { let out = [];"
@@ -578,8 +583,10 @@ _JS_MARCAR = (
     "     try { if (raiz !== document && raiz.matches(s)) out.push(raiz); } catch (e) {}"
     "     try { out = out.concat([...raiz.querySelectorAll(s)]); } catch (e) {} }"
     "   return out; };"
-    " for (const v of document.querySelectorAll('[data-nf-baixar], [data-nf-imagem]')) {"
-    "   v.removeAttribute('data-nf-baixar'); v.removeAttribute('data-nf-imagem'); }"
+    " for (const v of document.querySelectorAll("
+    "     '[data-nf-baixar], [data-nf-imagem], [data-nf-abrir]')) {"
+    "   v.removeAttribute('data-nf-baixar'); v.removeAttribute('data-nf-imagem');"
+    "   v.removeAttribute('data-nf-abrir'); }"
     " let usuario = null;"
     " for (const s of usuarios) {"
     "   let els = [];"
@@ -606,7 +613,14 @@ _JS_MARCAR = (
     "   if (!achados.length) achados = todos(resposta, botoes);"
     "   if (achados.length) botao = achados[achados.length - 1]; }"
     " if (botao) botao.setAttribute('data-nf-baixar', '1');"
-    " return {imagem: true, botao: !!botao}; }")
+    " let abridor = null;"
+    " if ((abridores || []).length) {"
+    "   const achados = todos(caixa, abridores);"
+    "   if (achados.length) abridor = achados[achados.length - 1]; }"
+    " if (abridor) abridor.setAttribute('data-nf-abrir', '1');"
+    " const saida = {imagem: true, botao: !!botao};"
+    " if ((abridores || []).length) saida.abrir = !!abridor;"
+    " return saida; }")
 
 
 def _primeiro_presente(page, seletores):
@@ -667,17 +681,20 @@ def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.
     marcado = page.evaluate(_JS_MARCAR, [
         list(s.get("turno_usuario") or []), list(s.get("imagem_turno") or []),
         list(s.get("imagem_gerada") or []), str((visto or {}).get("src") or ""),
-        [] if abrir else list(seletores)])
+        [] if abrir else list(seletores), list(s.get("imagem_abrir") or []) if abrir else []])
     if not isinstance(marcado, dict) or not marcado.get("imagem"):
         return None
     if abrir:
-        imagem_na_tela = page.locator("[data-nf-imagem='1']").first
+        # o botao do proprio recipiente que abre o dialogo (cartao novo do
+        # ChatGPT: "Compartilhar imagem gerada N"); sem ele, a imagem
+        clicar = page.locator("[data-nf-abrir='1']" if marcado.get("abrir")
+                              else "[data-nf-imagem='1']").first
         try:
-            imagem_na_tela.scroll_into_view_if_needed(timeout=5000)
+            clicar.scroll_into_view_if_needed(timeout=5000)
         except Exception:                                      # noqa: BLE001
             pass
         page.wait_for_timeout(700)
-        imagem_na_tela.click(timeout=10000)
+        clicar.click(timeout=10000)
         alvo = None
         for _ in range(40):                     # ate 20 s: a tela cheia abrindo
             alvo = _primeiro_presente(page, seletores)

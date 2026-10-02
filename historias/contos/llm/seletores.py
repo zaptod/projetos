@@ -44,13 +44,23 @@ CHATGPT = {
         "button[aria-label^='Interromper' i]",
     ],
     # A mensagem do USUARIO ja na conversa: prova de que o envio entrou.
+    # 02/10/2026 00:0x (conta Plus, scratchpad/diag_estrutura.py): a conversa
+    # NAO tem mais `data-message-author-role` nem `section[data-turn]`. O balao
+    # do usuario e `div[data-user-message-bubble=true]` (o texto do pedido, sem
+    # o "Voce disse:" do h4 escondido).
     "turno_usuario": [
         "div[data-message-author-role='user']",
+        "div[data-user-message-bubble='true']",
     ],
     "resposta": [
         "div[data-message-author-role='assistant']",
         "article[data-testid^='conversation-turn'] div.markdown",
         "div.agent-turn div.markdown",
+        # o DOM novo (02/10/2026, medido na conversa "Revisao de cenas": o
+        # "APROVADO" mora em `div[data-markdown-text-style=assistant-message]`
+        # dentro de `div[data-chatgpt-selection-message-id]`). Sem ele a
+        # resposta de TEXTO tambem ficaria em "0 chars".
+        "div[data-markdown-text-style='assistant-message']",
     ],
     # A IMAGEM DA RESPOSTA (medido na casa em 29/09/2026, 16:1x,
     # scratchpad/diag_chatgpt_imagem.py e diag_chatgpt_baixar.py). O turno e
@@ -62,19 +72,56 @@ CHATGPT = {
     # um ANUNCIO ("Anuncio", miniatura 512x512 de images.openai.com/
     # static-rsc) — foi ele que virou "o gato" do d228c94f. Por isso a
     # imagem so vale dentro do recipiente `imagegen-image`.
+    #
+    # O CARTAO NOVO (02/10/2026 00:0x, conta Plus "zaptod"; o 869758fa ficou
+    # 420 s em "0 chars" com a imagem na tela). O turno do assistente e o div
+    # que tem, como filho, `h4[data-conversation-role=assistant]` (o "ChatGPT
+    # disse:" escondido). A imagem: `[data-testid=generated-image-gallery]` >
+    # um item por imagem com `button[data-testid=generated-image-preview]`
+    # (aria "Imagem 1 gerada") > <img> com src `blob:`, alt "Imagem 1 gerada",
+    # 1254x1254 natural. No MESMO item, embaixo, os botoes "Editar a imagem
+    # gerada 1" e "Compartilhar imagem gerada 1". O item so vale COM esses
+    # botoes (prova de geracao terminada; sem eles e `imagem_em_geracao`).
+    # Os rotulos em ingles sao palpite (a conta e pt-BR), nao medida.
     "imagem_turno": [
         "section[data-turn='assistant']",
         "article[data-turn='assistant']",
+        "div:has(> h4[data-conversation-role='assistant'])",
     ],
     "imagem_gerada": [
         "div[id^='image-'][class*='imagegen-image']",
         "[class*='imagegen-image']",
+        "[data-testid='generated-image-gallery'] "
+        "div:has(> button[data-testid='generated-image-preview'])"
+        ":has(button[aria-label^='Compartilhar imagem gerada'],"
+        " button[aria-label^='Editar a imagem gerada'],"
+        " button[aria-label^='Share generated image'],"
+        " button[aria-label^='Edit generated image'])",
+    ],
+    # o item da galeria SEM os botoes: a imagem ainda nao e a final
+    "imagem_em_geracao": [
+        "[data-testid='generated-image-gallery'] "
+        "div:has(> button[data-testid='generated-image-preview'])"
+        ":not(:has(button[aria-label^='Compartilhar imagem gerada'],"
+        " button[aria-label^='Editar a imagem gerada'],"
+        " button[aria-label^='Share generated image'],"
+        " button[aria-label^='Edit generated image']))",
     ],
     "imagem_final_alt": ["Imagem gerada", "Generated image"],
-    # O botao de baixar fica na visualizacao em tela cheia (o clique na
-    # imagem abre um dialogo): `[role=dialog] button[aria-label=Baixar]`.
-    # Medido: entrega os MESMOS bytes do src (PNG 1254x1254, 2.587.976 bytes).
+    # o alt do cartao novo tem o numero no meio: "Imagem 1 gerada"
+    "imagem_final_alt_re": [r"^imagem \d+ gerada", r"^generated image \d+",
+                            r"^image \d+ generated"],
+    # O botao de baixar fica num DIALOGO. No cartao antigo ele abria com o
+    # clique na imagem (tela cheia); no novo, o caminho que o Adrian mostrou
+    # (02/10) e o "Compartilhar imagem gerada N" do proprio item, cujo dialogo
+    # tem `button[aria-label=Baixar]` (medido; o visualizador da imagem tambem
+    # tem um "Baixar", e o clique na imagem continua sendo a reserva).
+    # Medido em 29/09: entrega os MESMOS bytes do src (PNG 1254x1254).
     "imagem_abrir_para_baixar": True,
+    "imagem_abrir": [
+        "button[aria-label^='Compartilhar imagem gerada']",
+        "button[aria-label^='Share generated image']",
+    ],
     "imagem_baixar": [
         "[role='dialog'] button[aria-label='Baixar']",
         "[role='dialog'] button[aria-label='Download']",

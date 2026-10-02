@@ -177,7 +177,15 @@ mede a ficha de capacidades de cada IA (o que gera, cota, textos de erro) sem me
 pipeline. **Imagem da resposta do Grok** (29/09, 0b3a910): só vale o `div.group/image`
 com `img` `assets.grok.com/users/<conta>/generated/…` e alt "Imagem gerada" — o balão
 inteiro aceitava imagem da web (medido num Chrome headless); a gerada sai JPG 784x1168
-mesmo pedindo 1:1. **"Alta procura" do Grok** (30/09): em 29/09 (17:30 e 17:44) o grok.com
+mesmo pedindo 1:1. **DOM novo do ChatGPT** (02/10, conta Plus "zaptod"): a conversa não
+tem mais `data-message-author-role` nem `section[data-turn]` — usuário em
+`div[data-user-message-bubble=true]`, turno do assistente = o div com
+`h4[data-conversation-role=assistant]`, texto em `div[data-markdown-text-style=
+assistant-message]`, imagem num item da `generated-image-gallery` (src `blob:`, alt
+"Imagem 1 gerada") que só vale com os botões "Editar/Compartilhar imagem gerada N" (sem
+eles = ainda gerando); baixar = "Compartilhar imagem gerada N" → `[role=dialog]
+button[aria-label=Baixar]`. Sem isso o 869758fa ficou 420 s em "0 chars" com a imagem na
+tela — e o texto do ChatGPT (escritor/juiz) também leria "0 chars". **"Alta procura" do Grok** (30/09): em 29/09 (17:30 e 17:44) o grok.com
 pôs no lugar da resposta o card "Alta procura — Por favor, tente novamente em breve, ou
 atualize para um acesso com maior prioridade" (botão "Aprimorar", nunca clicado) e a espera
 leu "0 chars" por 420 s, duas vezes. Agora `cliente.aviso_do_site()` lê o turno do
