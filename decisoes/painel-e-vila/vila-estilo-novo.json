@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-02T00:21:30",
+      "evento": "2026-10-02T00:20:50",
+      "linha": 107,
+      "nota": "aplicando",
+      "opcao": "mesmo-do-neural",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Hoje a Vila é desenhada por código e ficou feia para o padrão atual. A imagem-mestra do Neural (bolinha de capacete, contorno escuro, 2 tons) está pendente no Grimório. As animações (andar, trabalhar, conversar) passam por um validador de quadros (pés que não deslizam, tamanho que não pula, loop fechado) antes do Grok e de você.",
   "criado": "2026-10-02T00:20:21.288280",
   "depende_de": [],
