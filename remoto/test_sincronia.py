@@ -128,10 +128,12 @@ def test_acordou_com_comando_e_aplicando_ate_3_min(mundo, monkeypatch):
 
 
 def test_sem_ouvinte_so_depois_de_2_min_e_preso_quando_ouvindo(mundo, monkeypatch):
-    _comando_de(mundo, 119)
+    # 100 s e nao 119: com a maquina carregada a suite levava >1 s ate aqui e o
+    # comando "de 119 s" ja tinha 120,004 s (barrou a entrega da Arena, 02/10)
+    _comando_de(mundo, 100)
     fora = {"situacao": "fora"}
     assert O.sem_ouvinte(O.comandos_com_situacao()[0], fora) is None
-    assert O.sem_ouvinte(O.comandos_com_situacao()[0], fora, time.time() + 2)["tipo"] \
+    assert O.sem_ouvinte(O.comandos_com_situacao()[0], fora, time.time() + 21)["tipo"] \
         == "sem_ouvinte"
     # ouvindo e ainda pendente depois de 2 min: travou do lado dele
     preso = O.sem_ouvinte(O.comandos_com_situacao()[0], {"situacao": "ouvindo"},
