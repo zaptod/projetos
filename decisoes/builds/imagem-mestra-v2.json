@@ -3,7 +3,15 @@
   "contexto": "Medido na esteira (fundo magenta é removido por código): 1 neon tem brilho rosa que se confunde com o magenta (precisaria fundo verde); 6 pintado tem bordas texturizadas (sobra franja); 7 vetor pôs sombra no fundo e a bola de fogo encosta na borda; 8 Grok saiu pixel art e retrato (não respeita 1:1); 9 PicassoIA veio com magenta escuro (o recorte erra). 2, 3, 4 e 5 (ChatGPT) estão limpos para a esteira. Comentário pode pedir mistura (ex.: 'o 3 com as cores do 1').",
   "criado": "2026-10-02T00:37:58.662700",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-02T00:48:39",
+      "opcao": "anime",
+      "origem": "app"
+    }
+  ],
   "id": "imagem-mestra-v2",
   "midias": [
     {
@@ -77,7 +85,11 @@
   ],
   "pergunta": "Você pediu algo mais estiloso. Testei 9 estilos em 4 IAs com os mesmos 4 elementos. Qual vira a referência de TODOS os sprites (lutas e Vila)?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Imagem-mestra: qual estilo (9 testes)?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-02T00:48:39",
+    "opcao": "anime"
+  }
 }
