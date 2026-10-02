@@ -218,7 +218,7 @@ def test_correcao_que_nao_comeca_em_10_min_avisa(mundo):
 
 def test_validador_recusou_avisa_e_nao_aplica(mundo):
     d = mundo.delegar
-    d.novo("fora", mundo.depois, ok=False, motivos=["fora da lista permitida: palco/x.gd"])
+    d.novo("fora", mundo.depois, ok=False, motivos=["o Codex não mudou nada: palco/x.gd"])
     mundo.vigia.passo()
     assert not d.feitas("testar") and not d.feitas("aplicar")
     assert any("fora precisa de olho" in a and "palco/x.gd" in a for a in mundo.avisos)

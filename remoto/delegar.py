@@ -114,8 +114,10 @@ RUIDO = ("**/.teste_tmp/**", ".teste_tmp/**", "**/.pytest_cache/**", ".pytest_ca
 PROIBIDOS = ("ias/config.json", "random_builds/config/identity.json",
              "palco/biblioteca/LICENCAS.md", "palco/biblioteca/efeitos/objetos/projetil/fogo.tscn",
              "palco/biblioteca/efeitos/folhas/**",
-             "decisoes/**", ".claude/**", ".github/**", "*.png", "*.jpg", "*.jpeg",
-             "*.webp", "*.gif", "*.mp4", "*.mp3", "*.wav", "*.sqlite*", "*.exe",
+             # imagem entra (com aviso): arte reduzida da Vila e trabalho (02/10);
+             # video e audio pesados nao vao para o git
+             "decisoes/**", ".claude/**", ".github/**",
+             "*.mp4", "*.mp3", "*.wav", "*.sqlite*", "*.exe",
              "*.dll", "*auth.json", ".env*", "*credentials*", ".codex*", "piriri.py")
 
 PADRAO_CONFIG = {
@@ -1036,25 +1038,34 @@ def _casa(caminho: str, padrao: str) -> bool:
 
 
 def validar_diff(arquivos: list[dict], permitidos: list[str], config: dict) -> list[str]:
-    """Os motivos de recusa (vazio = passa)."""
-    motivos = []
+    """Os motivos de recusa (vazio = passa).
+
+    Desde 02/10/2026 so recusa a entrega VAZIA. O Adrian: "QUE IDIOTICE E ESSA
+    DE FORA DA LISTA PERMITIDA, VOCE ESTA ME FAZENDO GASTAR TOKENS PRA MUDANCAS
+    QUE NAO ACONTECEM". Arquivo fora da lista, binario ou diff grande nao joga
+    o trabalho fora: entra, e fica nos `avisos_do_diff`. Os arquivos do Adrian
+    (PROIBIDOS) e o lixo de teste saem do diff em `coletar`, sem recusar o resto.
+    """
     if not arquivos:
         return ["o Codex não mudou nada"]
+    return []
+
+
+def avisos_do_diff(arquivos: list[dict], permitidos: list[str], config: dict) -> list[str]:
+    """O que vale olhar na entrega, sem barrar nada."""
+    avisos = []
     for a in arquivos:
         c = a["caminho"]
-        if any(_casa(c, p) for p in PROIBIDOS):
-            motivos.append(f"caminho proibido: {c}")
-        elif not any(_casa(c, p) for p in permitidos):
-            motivos.append(f"fora da lista permitida: {c}")
+        if permitidos and not any(_casa(c, p) for p in permitidos):
+            avisos.append(f"fora da lista (entrou): {c}")
         if a.get("binario"):
-            motivos.append(f"arquivo binário: {c}")
+            avisos.append(f"binário (entrou): {c}")
     linhas = sum(a["mais"] + a["menos"] for a in arquivos)
     if linhas > int(config["diff_max_linhas"]):
-        motivos.append(f"diff grande: {linhas} linhas (máximo {config['diff_max_linhas']})")
+        avisos.append(f"diff grande: {linhas} linhas")
     if len(arquivos) > int(config["diff_max_arquivos"]):
-        motivos.append(f"arquivos demais: {len(arquivos)} (máximo "
-                       f"{config['diff_max_arquivos']})")
-    return motivos
+        avisos.append(f"muitos arquivos: {len(arquivos)}")
+    return avisos
 
 
 def coletar(tarefa_id: str) -> dict:
@@ -1070,7 +1081,14 @@ def coletar(tarefa_id: str) -> dict:
     # nao e mudanca do Codex: sai do indice antes de medir.
     mudados = _git("diff", "--cached", "--no-renames", "--name-only", estado["base"],
                    cwd=wt).stdout.splitlines()
+    deixados = []
     for caminho in mudados:
+        c = caminho.strip().replace("\\", "/")
+        if any(_casa(c, p) for p in PROIBIDOS):
+            # arquivo do Adrian: sai do diff (fica na worktree), o resto segue
+            _git("reset", "-q", "--", caminho, cwd=wt, verificar=False)
+            deixados.append(f"{c} (protegido: config, segredo, decisão, mídia pesada ou arquivo seu)")
+            continue
         igual = _git("diff", "--cached", "--quiet", "--ignore-cr-at-eol", estado["base"],
                      "--", caminho, cwd=wt, verificar=False)
         if igual.returncode == 0:
@@ -1097,15 +1115,17 @@ def coletar(tarefa_id: str) -> dict:
     patch = feito.stdout
     config = ler_config()
     motivos = validar_diff(arquivos, estado.get("permitidos") or [], config)
+    avisos = avisos_do_diff(arquivos, estado.get("permitidos") or [], config)
     sha = hashlib.sha1(patch).hexdigest()[:12]
     resumo = {"em": _agora_iso(), "sha": sha, "arquivos": arquivos,
               "linhas": sum(a["mais"] + a["menos"] for a in arquivos),
-              "ok": not motivos, "motivos": motivos, "bytes": len(patch)}
+              "ok": not motivos, "motivos": motivos, "avisos": avisos,
+              "deixados": deixados, "bytes": len(patch)}
     destino = pasta_da(tarefa_id)
     (destino / "diff.patch").write_bytes(patch)
     _gravar_json(destino / "diff.json", resumo)
     _mudar_estado(tarefa_id, diff={k: resumo[k] for k in ("em", "sha", "linhas", "ok",
-                                                          "motivos")}
+                                                          "motivos", "avisos", "deixados")}
                   | {"arquivos": len(arquivos)})
     return resumo
 

@@ -307,39 +307,48 @@ def test_um_delegado_por_vez(mundo):
 
 
 # ------------------------------------------------------------------ diff
-@pytest.mark.parametrize("modo,motivo", [("fora", "fora da lista permitida: outro/fora.py"),
-                                         ("binario", "arquivo binário: remoto/foto.png"),
-                                         ("nada", "não mudou nada")])
-def test_validador_recusa(mundo, monkeypatch, modo, motivo):
-    monkeypatch.setenv("NF_DUBLE_MODO", modo)
+def test_validador_so_recusa_entrega_vazia(mundo, monkeypatch):
+    monkeypatch.setenv("NF_DUBLE_MODO", "nada")
     _criar(mundo)
     e = delegar.rodar("t01")
     assert e["diff"]["ok"] is False
-    assert any(motivo in m for m in e["diff"]["motivos"]), e["diff"]
+    assert any("não mudou nada" in m for m in e["diff"]["motivos"]), e["diff"]
 
 
-def test_validador_proibidos_e_tamanho():
-    config = dict(delegar.PADRAO_CONFIG, diff_max_linhas=10, diff_max_arquivos=1)
-    arquivos = [{"caminho": "palco/biblioteca/LICENCAS.md", "mais": 1, "menos": 0, "binario": False},
-                {"caminho": "ias/config.json", "mais": 20, "menos": 0, "binario": False}]
-    motivos = delegar.validar_diff(arquivos, ["**"], config)
-    assert "caminho proibido: palco/biblioteca/LICENCAS.md" in motivos
-    assert "caminho proibido: ias/config.json" in motivos
-    assert any("diff grande: 21" in m for m in motivos)
-    assert any("arquivos demais: 2" in m for m in motivos)
-    ok = [{"caminho": "remoto/a.py", "mais": 3, "menos": 1, "binario": False}]
-    assert delegar.validar_diff(ok, ["remoto/**"], config) == []
-    assert delegar.validar_diff(ok, ["remoto/a.py"], config) == []
-    assert delegar.validar_diff(ok, ["historias/**"], config) == [
-        "fora da lista permitida: remoto/a.py"]
-
-
-def test_diff_nao_leva_os_arquivos_do_despachante(mundo):
+@pytest.mark.parametrize("modo,aviso", [("fora", "fora da lista (entrou): outro/fora.py"),
+                                        ("binario", "binário (entrou): remoto/foto.png")])
+def test_fora_da_lista_e_binario_entram_com_aviso(mundo, monkeypatch, modo, aviso):
+    """02/10/2026, o Adrian: recusar por 'fora da lista' jogava trabalho fora."""
+    monkeypatch.setenv("NF_DUBLE_MODO", modo)
     _criar(mundo)
+    e = delegar.rodar("t01")
+    assert e["diff"]["ok"] is True, e["diff"]
+    assert aviso in e["diff"]["avisos"], e["diff"]
+
+
+def test_validador_nao_recusa_por_tamanho_nem_lista():
+    config = dict(delegar.PADRAO_CONFIG, diff_max_linhas=10, diff_max_arquivos=1)
+    arquivos = [{"caminho": "remoto/a.py", "mais": 1, "menos": 0, "binario": False},
+                {"caminho": "ias/b.py", "mais": 20, "menos": 0, "binario": False}]
+    assert delegar.validar_diff(arquivos, ["historias/**"], config) == []
+    avisos = delegar.avisos_do_diff(arquivos, ["historias/**"], config)
+    assert "fora da lista (entrou): remoto/a.py" in avisos
+    assert any("diff grande: 21" in a for a in avisos)
+    assert any("muitos arquivos: 2" in a for a in avisos)
+    assert delegar.validar_diff([], ["**"], config) == ["o Codex não mudou nada"]
+
+
+def test_arquivo_do_adrian_sai_do_diff_e_o_resto_entra(mundo):
+    e = _criar(mundo)
     delegar.rodar("t01")
-    patch = (delegar.pasta_da("t01") / "diff.patch").read_bytes()
-    assert b".codex_tarefa.md" not in patch
-    assert b"remoto/novo.py" in patch and b"Y = 2\r\n" in patch     # CRLF intacto
+    wt = Path(e["worktree"])
+    (wt / "palco" / "biblioteca").mkdir(parents=True, exist_ok=True)
+    (wt / "palco" / "biblioteca" / "LICENCAS.md").write_text("mexido pelo Codex", encoding="utf-8")
+    resumo = delegar.coletar("t01")
+    caminhos = [a["caminho"] for a in resumo["arquivos"]]
+    assert "palco/biblioteca/LICENCAS.md" not in caminhos
+    assert resumo["ok"] and any("LICENCAS.md" in d for d in resumo["deixados"])
+    assert "remoto/novo.py" in caminhos
 
 
 def test_diff_ignora_sobras_de_teste_e_fim_de_linha(mundo):
