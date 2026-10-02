@@ -6,7 +6,6 @@ Padrão visual alinhado com a Forja de Armas
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox
-import math
 
 from neural_fights.models import Personagem, get_class_data
 from neural_fights.models.constants import KIT_PAPEIS, sortear_kit
@@ -14,7 +13,8 @@ from neural_fights.core.skills import get_skill_data
 from neural_fights.data import salvar_lista_chars
 from neural_fights.ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS, 
-    COR_TEXTO, COR_TEXTO_DIM, COR_WARNING, COR_DANGER, CORES_CLASSE, CATEGORIAS_CLASSE
+    COR_TEXTO, COR_TEXTO_DIM, COR_WARNING, COR_DANGER, CORES_CLASSE, CATEGORIAS_CLASSE,
+    COR_BORDA, desenhar_lutador,
 )
 
 
@@ -58,7 +58,8 @@ class TelaPersonagens(tk.Frame):
         main.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Esquerda: Wizard Steps
-        self.frame_wizard = tk.Frame(main, bg=COR_BG_SECUNDARIO, width=420)
+        self.frame_wizard = tk.Frame(main, bg=COR_BG_SECUNDARIO, width=360,
+                                     highlightthickness=2, highlightbackground=COR_BORDA)
         self.frame_wizard.pack(side="left", fill="y", padx=(0, 10))
         self.frame_wizard.pack_propagate(False)
         
@@ -67,7 +68,8 @@ class TelaPersonagens(tk.Frame):
         self.frame_centro.pack(side="left", fill="both", expand=True, padx=(0, 10))
         
         # Direita: Lista de personagens
-        self.frame_lista = tk.Frame(main, bg=COR_BG_SECUNDARIO, width=280)
+        self.frame_lista = tk.Frame(main, bg=COR_BG_SECUNDARIO, width=300,
+                                    highlightthickness=2, highlightbackground=COR_BORDA)
         self.frame_lista.pack(side="right", fill="y")
         self.frame_lista.pack_propagate(False)
         
@@ -81,7 +83,7 @@ class TelaPersonagens(tk.Frame):
 
     def criar_header(self):
         """Cria o header com navegação e progresso"""
-        header = tk.Frame(self, bg=COR_HEADER, height=60)
+        header = tk.Frame(self, bg=COR_HEADER, height=68)
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
         
@@ -104,12 +106,12 @@ class TelaPersonagens(tk.Frame):
         self.frame_progresso.pack(side="right", padx=20)
         
         self.labels_progresso = []
-        nomes_passos = ["Identidade", "Classe", "Personalidade", "Atributos", "Visual", "Equipamento"]
+        nomes_passos = ["Nome", "Classe", "Jeito", "Atributos", "Visual", "Arma"]
         for i, nome in enumerate(nomes_passos, 1):
             cor = COR_SUCCESS if i == 1 else COR_TEXTO_DIM
             lbl = tk.Label(
                 self.frame_progresso, text=f"{i}.{nome}",
-                font=("Arial", 9), bg=COR_HEADER, fg=cor
+                font=("Segoe UI Semibold", 8), bg=COR_HEADER, fg=cor
             )
             lbl.pack(side="left", padx=5)
             self.labels_progresso.append(lbl)
@@ -136,7 +138,7 @@ class TelaPersonagens(tk.Frame):
         self.lbl_passo_desc = tk.Label(
             self.frame_wizard, text="", 
             font=("Arial", 10), bg=COR_BG_SECUNDARIO, fg=COR_TEXTO_DIM,
-            wraplength=400
+            wraplength=1
         )
         self.lbl_passo_desc.pack(pady=(0, 15))
         
@@ -149,14 +151,18 @@ class TelaPersonagens(tk.Frame):
         self.scrollbar_wizard = ttk.Scrollbar(self.frame_conteudo_container, orient="vertical", command=self.canvas_wizard.yview)
         
         self.frame_conteudo_passo = tk.Frame(self.canvas_wizard, bg=COR_BG_SECUNDARIO)
-        
-        self.canvas_wizard.create_window((0, 0), window=self.frame_conteudo_passo, anchor="nw")
+        self._labels_wrap = []
+
+        self._janela_passo = self.canvas_wizard.create_window(
+            (0, 0), window=self.frame_conteudo_passo, anchor="nw"
+        )
         self.canvas_wizard.configure(yscrollcommand=self.scrollbar_wizard.set)
         
         self.canvas_wizard.pack(side="left", fill="both", expand=True)
         self.scrollbar_wizard.pack(side="right", fill="y")
         
         self.frame_conteudo_passo.bind("<Configure>", lambda e: self.canvas_wizard.configure(scrollregion=self.canvas_wizard.bbox("all")))
+        self.canvas_wizard.bind("<Configure>", self._ajustar_largura_textos, add="+")
         
         # Scroll inteligente - rastreia qual canvas está ativo
         self.canvas_armas = None  # Será criado no passo de equipamento
@@ -301,7 +307,7 @@ class TelaPersonagens(tk.Frame):
         scroll = ttk.Scrollbar(frame_tree)
         scroll.pack(side="right", fill="y")
         
-        cols = ("Nome", "Classe", "Arma")
+        cols = ("Nome", "Classe")
         self.tree = ttk.Treeview(
             frame_tree, columns=cols, show="headings", height=15,
             yscrollcommand=scroll.set
@@ -309,11 +315,9 @@ class TelaPersonagens(tk.Frame):
         scroll.config(command=self.tree.yview)
         
         self.tree.heading("Nome", text="Nome")
-        self.tree.column("Nome", width=70)
+        self.tree.column("Nome", width=165, minwidth=145, stretch=True)
         self.tree.heading("Classe", text="Classe")
-        self.tree.column("Classe", width=100)
-        self.tree.heading("Arma", text="Arma")
-        self.tree.column("Arma", width=80)
+        self.tree.column("Classe", width=100, minwidth=90, stretch=True)
         
         self.tree.pack(fill="both", expand=True)
         self.tree.bind("<<TreeviewSelect>>", self.selecionar_personagem)
@@ -352,6 +356,7 @@ class TelaPersonagens(tk.Frame):
         # Limpa conteúdo anterior
         for widget in self.frame_conteudo_passo.winfo_children():
             widget.destroy()
+        self._labels_wrap = []
         
         # Limpa referência ao canvas de armas (será recriado se necessário)
         self.canvas_armas = None
@@ -387,6 +392,16 @@ class TelaPersonagens(tk.Frame):
         
         self.atualizar_preview()
         self.criar_resumo_stats()
+        self.after_idle(self._ajustar_largura_textos)
+
+    def _ajustar_largura_textos(self, _event=None):
+        """Recalcula a quebra usando a largura real do painel, nao uma constante."""
+        largura = max(120, self.canvas_wizard.winfo_width() - 14)
+        self.canvas_wizard.itemconfigure(self._janela_passo, width=largura)
+        self.lbl_passo_desc.configure(wraplength=largura)
+        for label in self._labels_wrap:
+            if label.winfo_exists():
+                label.configure(wraplength=largura - 4)
         self.atualizar_info_classe()
 
     def passo_anterior(self):
@@ -424,10 +439,13 @@ class TelaPersonagens(tk.Frame):
             font=("Arial", 11, "bold"), bg=COR_BG_SECUNDARIO, fg=COR_TEXTO
         ).pack(anchor="w")
         
-        tk.Label(
+        ajuda_nome = tk.Label(
             frame_nome, text="Escolha um nome memorável que será lembrado pelos espectadores", 
-            font=("Arial", 9), bg=COR_BG_SECUNDARIO, fg=COR_TEXTO_DIM
-        ).pack(anchor="w", pady=(0, 5))
+            font=("Arial", 9), bg=COR_BG_SECUNDARIO, fg=COR_TEXTO_DIM,
+            justify="left", wraplength=1
+        )
+        ajuda_nome.pack(anchor="w", pady=(0, 5))
+        self._labels_wrap.append(ajuda_nome)
         
         self.entry_nome = tk.Entry(
             frame_nome, font=("Arial", 14), bg=COR_BG, fg=COR_TEXTO,
@@ -441,10 +459,13 @@ class TelaPersonagens(tk.Frame):
         frame_sugestoes = tk.Frame(self.frame_conteudo_passo, bg=COR_BG_SECUNDARIO)
         frame_sugestoes.pack(fill="x", pady=10)
         
-        tk.Label(
+        dica = tk.Label(
             frame_sugestoes, text="Dica: Nomes curtos e marcantes funcionam melhor em vídeos!", 
-            font=("Arial", 9, "italic"), bg=COR_BG_SECUNDARIO, fg=COR_WARNING
-        ).pack(anchor="w")
+            font=("Arial", 9, "italic"), bg=COR_BG_SECUNDARIO, fg=COR_WARNING,
+            justify="left", wraplength=1
+        )
+        dica.pack(anchor="w")
+        self._labels_wrap.append(dica)
         
         # História/Background (placeholder)
         frame_lore = tk.Frame(self.frame_conteudo_passo, bg=COR_BG)
@@ -455,10 +476,12 @@ class TelaPersonagens(tk.Frame):
             font=("Arial", 10, "bold"), bg=COR_BG, fg=COR_TEXTO_DIM
         ).pack(anchor="w", padx=10, pady=5)
         
-        tk.Label(
+        lore = tk.Label(
             frame_lore, text="Futuramente você poderá criar a história do seu personagem aqui...", 
-            font=("Arial", 9), bg=COR_BG, fg=COR_TEXTO_DIM, wraplength=380
-        ).pack(anchor="w", padx=10, pady=(0, 10))
+            font=("Arial", 9), bg=COR_BG, fg=COR_TEXTO_DIM, justify="left", wraplength=1
+        )
+        lore.pack(anchor="w", padx=10, pady=(0, 10))
+        self._labels_wrap.append(lore)
 
     def _on_nome_change(self, event=None):
         """Callback quando o nome muda"""
@@ -1164,113 +1187,21 @@ class TelaPersonagens(tk.Frame):
     
     def atualizar_preview(self):
         """Atualiza o preview do personagem"""
-        self.canvas_preview.delete("all")
-        
-        cx, cy = 150, 150
-        
-        # Cor do personagem
-        r = max(0, min(255, self.dados_char["cor_r"]))
-        g = max(0, min(255, self.dados_char["cor_g"]))
-        b = max(0, min(255, self.dados_char["cor_b"]))
-        cor_char = f"#{r:02x}{g:02x}{b:02x}"
-        
-        # Tamanho baseado na altura (escala visual)
-        tamanho = self.dados_char["tamanho"]
-        raio = min(40 + (tamanho - 1.0) * 30, 80)  # Entre 40 e 80 pixels
-        
-        # Aura da classe
-        classe_data = get_class_data(self.dados_char["classe"])
-        cor_aura = classe_data.get("cor_aura", (200, 200, 200))
-        cor_aura_hex = f"#{cor_aura[0]:02x}{cor_aura[1]:02x}{cor_aura[2]:02x}"
-        
-        # Desenha aura (círculo maior, semi-transparente via stipple)
-        self.canvas_preview.create_oval(
-            cx - raio - 15, cy - raio - 15, 
-            cx + raio + 15, cy + raio + 15,
-            outline=cor_aura_hex, width=3, dash=(3, 3)
-        )
-        
-        # Desenha corpo
-        self.canvas_preview.create_oval(
-            cx - raio, cy - raio, 
-            cx + raio, cy + raio,
-            fill=cor_char, outline="white", width=2
-        )
-        
-        # Desenha olhos (indicando direção)
-        olho_offset = raio * 0.3
-        olho_raio = raio * 0.15
-        self.canvas_preview.create_oval(
-            cx + olho_offset - olho_raio, cy - olho_offset - olho_raio,
-            cx + olho_offset + olho_raio, cy - olho_offset + olho_raio,
-            fill="white", outline=""
-        )
-        self.canvas_preview.create_oval(
-            cx + olho_offset - olho_raio, cy + olho_offset - olho_raio,
-            cx + olho_offset + olho_raio, cy + olho_offset + olho_raio,
-            fill="white", outline=""
-        )
-        
-        # Desenha arma se houver
+        arma_obj = None
         nome_arma = self.dados_char["arma"]
         if nome_arma:
             arma_obj = next((a for a in self.controller.lista_armas if a.nome == nome_arma), None)
-            if arma_obj:
-                cor_arma = f"#{arma_obj.r:02x}{arma_obj.g:02x}{arma_obj.b:02x}"
-                
-                if "Reta" in arma_obj.tipo or "Dupla" in arma_obj.tipo:
-                    # Espada/lança
-                    comp = min(arma_obj.comp_lamina / 2, 40)
-                    self.canvas_preview.create_line(
-                        cx + raio, cy, 
-                        cx + raio + comp, cy - 10,
-                        fill=cor_arma, width=4
-                    )
-                elif "Arco" in arma_obj.tipo:
-                    # Arco
-                    self.canvas_preview.create_arc(
-                        cx + raio - 10, cy - 25, 
-                        cx + raio + 20, cy + 25,
-                        start=60, extent=240, style="arc",
-                        outline=cor_arma, width=3
-                    )
-                elif "Orbital" in arma_obj.tipo:
-                    # Escudo/orbital
-                    self.canvas_preview.create_arc(
-                        cx - raio - 20, cy - raio - 20,
-                        cx + raio + 20, cy + raio + 20,
-                        start=-30, extent=60, style="arc",
-                        outline=cor_arma, width=5
-                    )
-                elif "Mágica" in arma_obj.tipo:
-                    # Orbes mágicos
-                    for i in range(3):
-                        ang = math.radians(120 * i - 30)
-                        ox = cx + math.cos(ang) * (raio + 15)
-                        oy = cy + math.sin(ang) * (raio + 15)
-                        self.canvas_preview.create_oval(
-                            ox - 6, oy - 6, ox + 6, oy + 6,
-                            fill=cor_arma, outline="white"
-                        )
-                else:
-                    # Genérico
-                    self.canvas_preview.create_line(
-                        cx + raio, cy, 
-                        cx + raio + 30, cy,
-                        fill=cor_arma, width=3
-                    )
-        
-        # Nome do personagem
+        personagem = type("Preview", (), self.dados_char)()
+        desenhar_lutador(self.canvas_preview, personagem, arma_obj, centro=(150, 140))
+        cor_aura = get_class_data(self.dados_char["classe"]).get("cor_aura", (200, 200, 200))
+        cor_aura_hex = f"#{cor_aura[0]:02x}{cor_aura[1]:02x}{cor_aura[2]:02x}"
         nome = self.dados_char["nome"] or "???"
         self.canvas_preview.create_text(
-            cx, cy + raio + 30,
-            text=nome, font=("Impact", 14), fill="white"
+            150, 255, text=nome, font=("Bahnschrift SemiBold", 14), fill="white"
         )
-        
-        # Classe
         classe_nome = self.dados_char["classe"].split(" (")[0]
         self.canvas_preview.create_text(
-            cx, cy + raio + 50,
+            150, 277,
             text=classe_nome, font=("Arial", 10), fill=cor_aura_hex
         )
 
@@ -1287,9 +1218,7 @@ class TelaPersonagens(tk.Frame):
         for p in self.controller.lista_personagens:
             classe = getattr(p, "classe", "Guerreiro (Força Bruta)")
             classe_curta = classe.split(" (")[0]
-            self.tree.insert("", "end", values=(
-                p.nome, classe_curta, p.nome_arma or "Nenhuma"
-            ))
+            self.tree.insert("", "end", values=(p.nome, classe_curta))
         
         # Atualiza preview se estiver no passo de equipamento
         if self.passo_atual == 5:

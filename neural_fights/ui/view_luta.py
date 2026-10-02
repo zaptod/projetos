@@ -4,16 +4,40 @@ Tela de seleção de lutadores para batalha
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
+import threading
 
 from neural_fights.data.database import carregar_match_config, salvar_match_config
 from neural_fights.simulation import simulacao
 from neural_fights.ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT,
-    COR_TEXTO, COR_TEXTO_DIM, COR_P1, COR_P2, CORES_CLASSE
+    COR_TEXTO, COR_TEXTO_DIM, COR_SUCCESS, COR_P1, COR_P2, COR_BORDA, BotaoCanvas,
+    desenhar_lutador,
 )
 
 
 BEST_OF_VALIDOS = (1, 3, 5)
+
+
+def exportar_palco_selecao(p1_nome, p2_nome, cenario, modo):
+    """Exporta a selecao do launcher pelo contrato escondido do manual."""
+    from random_builds.builds.palco import config, godot, render
+    from neural_fights.simulation import manual
+
+    destino = config.SAIDAS / "launcher" / f"{p1_nome}_vs_{p2_nome}.gcpf"
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    codigo = manual.main([
+        "--exportar-palco", "--p1", p1_nome, "--p2", p2_nome,
+        "--cenario", cenario, "--palco-saida", str(destino),
+    ])
+    if codigo not in (None, 0):
+        raise RuntimeError("a exportacao da timeline nao foi concluida")
+    if modo == "mp4":
+        saida = destino.with_suffix(".mp4")
+        render.renderizar(destino, saida)
+        godot.abrir_arquivo(saida)
+        return saida
+    godot.abrir_previa(destino)
+    return destino
 
 
 def carregar_best_of_inicial():
@@ -40,6 +64,7 @@ class TelaLuta(tk.Frame):
         
         self.personagem_p1 = None
         self.personagem_p2 = None
+        self._palco_em_andamento = False
         
         self.setup_ui()
 
@@ -62,19 +87,37 @@ class TelaLuta(tk.Frame):
             font=("Arial", 18, "bold"), bg=COR_HEADER, fg=COR_TEXTO
         ).pack(side="left", padx=20)
 
-        # === FOOTER (botão iniciar) ===
-        footer = tk.Frame(self, bg=COR_BG)
-        footer.pack(fill="x", side="bottom", pady=15)
+        # === FOOTER (acoes da arena) ===
+        footer = tk.Frame(self, bg=COR_BG, height=92)
+        footer.pack(fill="x", side="bottom", pady=(4, 8))
+        footer.pack_propagate(False)
+        acoes = tk.Frame(footer, bg=COR_BG)
+        acoes.pack(fill="x", pady=(0, 3))
         
         self.btn_iniciar = tk.Button(
-            footer, text="⚔️  INICIAR BATALHA  ⚔️",
+            acoes, text="⚔️  INICIAR BATALHA  ⚔️",
             font=("Arial", 16, "bold"), 
             bg=COR_TEXTO_DIM, fg=COR_TEXTO,
-            bd=0, padx=40, pady=12,
+            bd=0, padx=16, pady=10,
             state="disabled",
             command=self.iniciar_luta
         )
-        self.btn_iniciar.pack()
+        self.btn_iniciar.pack(side="left", padx=6, expand=True)
+        self.btn_palco = BotaoCanvas(
+            acoes, "▶ VER NO PALCO (GODOT)", command=lambda: self._iniciar_palco("janela"),
+            width=190, height=40, bg=COR_BG,
+        )
+        self.btn_palco.pack(side="left", padx=6, expand=True)
+        self.btn_mp4 = BotaoCanvas(
+            acoes, "🎬 RENDERIZAR MP4", command=lambda: self._iniciar_palco("mp4"),
+            width=160, height=40, cor=COR_SUCCESS, bg=COR_BG,
+        )
+        self.btn_mp4.pack(side="left", padx=6, expand=True)
+        self.lbl_progresso_palco = tk.Label(
+            footer, text="", font=("Segoe UI", 9), bg=COR_BG, fg=COR_TEXTO_DIM,
+            wraplength=700, justify="center",
+        )
+        self.lbl_progresso_palco.pack(fill="x", padx=8)
 
         # === ÁREA PRINCIPAL ===
         main = tk.Frame(self, bg=COR_BG)
@@ -87,7 +130,8 @@ class TelaLuta(tk.Frame):
         main.grid_rowconfigure(0, weight=1)
 
         # === PLAYER 1 ===
-        frame_p1 = tk.Frame(main, bg=COR_BG_SECUNDARIO, bd=2, relief="ridge")
+        frame_p1 = tk.Frame(main, bg=COR_BG_SECUNDARIO, bd=2, relief="ridge",
+                            highlightbackground=COR_BORDA, highlightthickness=2)
         frame_p1.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         
         # Título P1
@@ -114,10 +158,11 @@ class TelaLuta(tk.Frame):
         frame_lista_p1.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
         self.listbox_p1 = tk.Listbox(
-            frame_lista_p1, bg=COR_BG, fg=COR_TEXTO,
+            frame_lista_p1, bg=COR_BG_SECUNDARIO, fg=COR_TEXTO,
             selectbackground=COR_P1, selectforeground=COR_TEXTO,
-            font=("Arial", 11), bd=0, highlightthickness=1,
-            highlightcolor=COR_P1, activestyle="none"
+            font=("Segoe UI Semibold", 11), bd=0, relief="flat", selectborderwidth=0,
+            highlightthickness=1, highlightbackground=COR_BORDA, highlightcolor=COR_P1,
+            activestyle="none"
         )
         scroll_p1 = ttk.Scrollbar(frame_lista_p1, orient="vertical", command=self.listbox_p1.yview)
         self.listbox_p1.configure(yscrollcommand=scroll_p1.set)
@@ -188,7 +233,8 @@ class TelaLuta(tk.Frame):
         tk.Label(frame_vs, text="", bg=COR_BG).pack(expand=True)  # Espaçador
 
         # === PLAYER 2 ===
-        frame_p2 = tk.Frame(main, bg=COR_BG_SECUNDARIO, bd=2, relief="ridge")
+        frame_p2 = tk.Frame(main, bg=COR_BG_SECUNDARIO, bd=2, relief="ridge",
+                            highlightbackground=COR_BORDA, highlightthickness=2)
         frame_p2.grid(row=0, column=2, sticky="nsew", padx=5, pady=5)
         
         # Título P2
@@ -215,10 +261,11 @@ class TelaLuta(tk.Frame):
         frame_lista_p2.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
         self.listbox_p2 = tk.Listbox(
-            frame_lista_p2, bg=COR_BG, fg=COR_TEXTO,
+            frame_lista_p2, bg=COR_BG_SECUNDARIO, fg=COR_TEXTO,
             selectbackground=COR_P2, selectforeground=COR_TEXTO,
-            font=("Arial", 11), bd=0, highlightthickness=1,
-            highlightcolor=COR_P2, activestyle="none"
+            font=("Segoe UI Semibold", 11), bd=0, relief="flat", selectborderwidth=0,
+            highlightthickness=1, highlightbackground=COR_BORDA, highlightcolor=COR_P2,
+            activestyle="none"
         )
         scroll_p2 = ttk.Scrollbar(frame_lista_p2, orient="vertical", command=self.listbox_p2.yview)
         self.listbox_p2.configure(yscrollcommand=scroll_p2.set)
@@ -227,6 +274,7 @@ class TelaLuta(tk.Frame):
         scroll_p2.pack(side="right", fill="y")
         
         self.listbox_p2.bind("<<ListboxSelect>>", lambda e: self._on_select_p2())
+        self._atualizar_botao()
 
     def atualizar_dados(self):
         """Atualiza listas de personagens"""
@@ -297,27 +345,14 @@ class TelaLuta(tk.Frame):
         
         lbl_nome.config(text=p.nome)
         
-        cx, cy = 100, 100
-        cor = f"#{p.cor_r:02x}{p.cor_g:02x}{p.cor_b:02x}"
         classe = getattr(p, 'classe', 'Guerreiro')
-        cor_classe = CORES_CLASSE.get(classe, "#808080")
-        
-        # Aura
-        canvas.create_oval(cx-60, cy-60, cx+60, cy+60, outline=cor_classe, width=2, dash=(4,2))
-        
-        # Personagem
-        raio = min(p.tamanho * 6, 40)
-        canvas.create_oval(cx-raio, cy-raio, cx+raio, cy+raio, fill=cor, outline=cor_borda, width=3)
-        
-        # Classe
-        canvas.create_text(cx, cy+70, text=classe, font=("Arial", 10, "bold"), fill=cor_classe)
-        
-        # Arma
+        cx, cy = 100, 93
+        arma = None
         if p.nome_arma:
             arma = next((a for a in self.controller.lista_armas if a.nome == p.nome_arma), None)
-            if arma:
-                cor_arma = f"#{arma.r:02x}{arma.g:02x}{arma.b:02x}"
-                canvas.create_line(cx+raio, cy, cx+raio+40, cy, fill=cor_arma, width=4)
+        desenhar_lutador(canvas, p, arma, cor_borda=cor_borda, centro=(100, 93), escala=.78)
+        # Classe
+        canvas.create_text(cx, cy+70, text=classe, font=("Arial", 10, "bold"), fill=COR_TEXTO_DIM)
         
         # Stats
         arma_txt = p.nome_arma if p.nome_arma else "Mãos Vazias"
@@ -328,8 +363,12 @@ class TelaLuta(tk.Frame):
         """Atualiza estado do botão"""
         if self.personagem_p1 and self.personagem_p2:
             self.btn_iniciar.config(state="normal", bg=COR_ACCENT)
+            self.btn_palco.configurar(ativo=not self._palco_em_andamento)
+            self.btn_mp4.configurar(ativo=not self._palco_em_andamento)
         else:
             self.btn_iniciar.config(state="disabled", bg=COR_TEXTO_DIM)
+            self.btn_palco.configurar(ativo=False)
+            self.btn_mp4.configurar(ativo=False)
 
     def _abrir_seletor_mapa(self):
         """Abre a janela de seleção de mapa"""
@@ -375,6 +414,45 @@ class TelaLuta(tk.Frame):
             messagebox.showerror("Erro", f"Simulação falhou:\n{e}")
         finally:
             self.controller.deiconify()
+
+    def _iniciar_palco(self, modo):
+        """Roda exportacao/render fora da thread do Tk para nao congelar a arena."""
+        if not self.personagem_p1 or not self.personagem_p2 or self._palco_em_andamento:
+            return
+        self._palco_em_andamento = True
+        self._atualizar_botao()
+        acao = "Renderizando MP4" if modo == "mp4" else "Abrindo previa Godot"
+        self.lbl_progresso_palco.config(text=f"{acao}: exportando timeline...")
+
+        def trabalho():
+            try:
+                saida = exportar_palco_selecao(
+                    self.personagem_p1.nome, self.personagem_p2.nome,
+                    self.var_cenario.get(), modo,
+                )
+            except (FileNotFoundError, ModuleNotFoundError) as erro:
+                mensagem = f"Dependencia ausente para o palco: {erro}"
+                self.after(0, lambda: self._finalizar_palco(mensagem, erro=True))
+            except Exception as erro:
+                detalhe = str(erro)
+                if "ffmpeg" in detalhe.lower():
+                    mensagem = f"ffmpeg ausente ou indisponivel: {detalhe}"
+                elif "godot" in detalhe.lower():
+                    mensagem = f"Godot ausente ou indisponivel: {detalhe}"
+                else:
+                    mensagem = detalhe
+                self.after(0, lambda: self._finalizar_palco(mensagem, erro=True))
+            else:
+                self.after(0, lambda: self._finalizar_palco(f"Concluido: {saida}"))
+
+        threading.Thread(target=trabalho, daemon=True).start()
+
+    def _finalizar_palco(self, mensagem, erro=False):
+        self._palco_em_andamento = False
+        self.lbl_progresso_palco.config(text=mensagem)
+        self._atualizar_botao()
+        if erro:
+            messagebox.showerror("Palco indisponivel", mensagem)
 
     # Compatibilidade
     def atualizar_previews(self, event=None):
@@ -465,7 +543,7 @@ class SeletorMapa(tk.Toplevel):
                 text=f"{info['icone']}  {info['nome']}",
                 font=("Arial", 10), bg=COR_BG_SECUNDARIO, fg=COR_TEXTO,
                 bd=1, relief="ridge", anchor="w", padx=10,
-                width=24, height=2,
+                wraplength=220, height=2,
                 command=lambda k=mapa_key: self._selecionar_mapa(k)
             )
             btn.pack(fill="x", pady=2, padx=5)

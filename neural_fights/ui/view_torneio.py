@@ -10,13 +10,15 @@ from tkinter import messagebox
 import threading
 
 from neural_fights.tournament.tournament_mode import Tournament, TournamentRunner
+from neural_fights.ui.theme import COR_ACCENT, COR_BG, COR_BG_SECUNDARIO, COR_SUCCESS
+from neural_fights.ui.main import area_util_tela
 
 
 class MatchCard(ctk.CTkFrame):
     """Card visual para uma luta"""
     
     def __init__(self, parent, match, on_select=None, is_current=False):
-        super().__init__(parent, corner_radius=8)
+        super().__init__(parent, corner_radius=12, border_width=2, border_color="#080911")
         self.match = match
         self.on_select = on_select
         
@@ -37,11 +39,11 @@ class MatchCard(ctk.CTkFrame):
         
         # Fighter 1
         f1_style = {"font": ("Arial", 12, "bold"), "text_color": "gold"} if match.winner_name == match.fighter1_name else {"font": ("Arial", 12)}
-        ctk.CTkLabel(self, text=match.fighter1_name[:25], **f1_style).grid(row=0, column=1, sticky="w", padx=5)
+        ctk.CTkLabel(self, text=match.fighter1_name, wraplength=220, **f1_style).grid(row=0, column=1, sticky="w", padx=5)
         
         # Fighter 2
         f2_style = {"font": ("Arial", 12, "bold"), "text_color": "gold"} if match.winner_name == match.fighter2_name else {"font": ("Arial", 12)}
-        ctk.CTkLabel(self, text=match.fighter2_name[:25], **f2_style).grid(row=1, column=1, sticky="w", padx=5)
+        ctk.CTkLabel(self, text=match.fighter2_name, wraplength=220, **f2_style).grid(row=1, column=1, sticky="w", padx=5)
         
         # Botão de ação
         if (
@@ -65,9 +67,14 @@ class TournamentWindow(ctk.CTkToplevel):
     """Janela principal do modo torneio"""
     
     def __init__(self, parent=None):
+        ctk.set_appearance_mode("dark")
         super().__init__(parent)
         self.title("🏆 Neural Fights - Modo Torneio")
-        self.geometry("1100x750")
+        esquerda, topo, largura, altura = area_util_tela(self)
+        self.geometry(f"{min(1100, largura)}x{min(750, altura)}+{esquerda}+{topo}")
+        self.maxsize(largura, altura)
+        self.minsize(min(900, largura), min(620, altura))
+        self.configure(fg_color=COR_BG)
         
         self.tournament = Tournament("Campeonato Neural Fights")
         self.runner = TournamentRunner(self.tournament)
@@ -79,11 +86,13 @@ class TournamentWindow(ctk.CTkToplevel):
     def build_ui(self):
         """Constrói a interface"""
         # Header
-        header = ctk.CTkFrame(self, height=60, fg_color=("gray85", "gray15"))
+        header = ctk.CTkFrame(self, height=60, fg_color=COR_BG_SECUNDARIO,
+                              border_width=2, border_color="#080911")
         header.pack(fill="x", padx=10, pady=5)
         header.pack_propagate(False)
         
-        ctk.CTkLabel(header, text="🏆 MODO TORNEIO", font=("Impact", 24)).pack(side="left", padx=20)
+        ctk.CTkLabel(header, text="🏆 MODO TORNEIO", font=("Bahnschrift SemiBold", 24),
+                     text_color=COR_ACCENT).pack(side="left", padx=20)
         
         self.progress_label = ctk.CTkLabel(header, text="", font=("Arial", 14))
         self.progress_label.pack(side="right", padx=20)
@@ -96,23 +105,25 @@ class TournamentWindow(ctk.CTkToplevel):
         main.grid_rowconfigure(0, weight=1)
         
         # Left - Bracket
-        left_frame = ctk.CTkFrame(main)
+        left_frame = ctk.CTkFrame(main, fg_color=COR_BG_SECUNDARIO, border_width=2,
+                                  border_color="#080911")
         left_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         
         ctk.CTkLabel(left_frame, text="📋 Bracket", font=("Arial", 16, "bold")).pack(pady=10)
         
-        self.bracket_scroll = ctk.CTkScrollableFrame(left_frame)
+        self.bracket_scroll = ctk.CTkScrollableFrame(left_frame, fg_color=COR_BG)
         self.bracket_scroll.pack(fill="both", expand=True, padx=5, pady=5)
         
         # Right - Controls
-        right_frame = ctk.CTkFrame(main, width=350)
+        right_frame = ctk.CTkFrame(main, width=350, fg_color=COR_BG_SECUNDARIO,
+                                   border_width=2, border_color="#080911")
         right_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
         right_frame.pack_propagate(False)
         
         # Luta Atual
         ctk.CTkLabel(right_frame, text="⚔️ Luta Selecionada", font=("Arial", 14, "bold")).pack(pady=10)
         
-        self.current_match_frame = ctk.CTkFrame(right_frame, fg_color=("gray75", "gray25"))
+        self.current_match_frame = ctk.CTkFrame(right_frame, fg_color=COR_BG)
         self.current_match_frame.pack(fill="x", padx=10, pady=5)
         
         self.fighter1_label = ctk.CTkLabel(self.current_match_frame, text="-", font=("Arial", 16))
@@ -126,7 +137,7 @@ class TournamentWindow(ctk.CTkToplevel):
         # Botão Iniciar Luta
         self.btn_fight = ctk.CTkButton(right_frame, text="▶️ INICIAR LUTA (Pygame)", 
                                        font=("Arial", 14, "bold"), height=50,
-                                       fg_color="#e74c3c", hover_color="#c0392b",
+                                       fg_color=COR_ACCENT, hover_color="#d73455",
                                        command=self.launch_fight)
         self.btn_fight.pack(pady=15, padx=20, fill="x")
         
@@ -137,7 +148,7 @@ class TournamentWindow(ctk.CTkToplevel):
         winner_frame.pack(fill="x", padx=10)
         
         self.btn_win1 = ctk.CTkButton(winner_frame, text="Fighter 1 Venceu", 
-                                      fg_color="#27ae60", hover_color="#1e8449",
+                                      fg_color=COR_SUCCESS, hover_color="#20adce",
                                       command=lambda: self.register_winner(1))
         self.btn_win1.pack(side="left", expand=True, padx=2, fill="x")
         

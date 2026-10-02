@@ -27,6 +27,7 @@ from neural_fights.ui.theme import (
     COR_TEXTO,
     COR_TEXTO_DIM,
     CORES_RARIDADE,
+    COR_BORDA,
 )
 
 
@@ -143,7 +144,8 @@ class TelaArmas(tk.Frame):
         main.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Esquerda: Wizard Steps
-        self.frame_wizard = tk.Frame(main, bg=COR_BG_SECUNDARIO, width=400)
+        self.frame_wizard = tk.Frame(main, bg=COR_BG_SECUNDARIO, width=360,
+                                     highlightthickness=2, highlightbackground=COR_BORDA)
         self.frame_wizard.pack(side="left", fill="y", padx=(0, 10))
         self.frame_wizard.pack_propagate(False)
         
@@ -152,7 +154,8 @@ class TelaArmas(tk.Frame):
         self.frame_centro.pack(side="left", fill="both", expand=True, padx=(0, 10))
         
         # Direita: Lista de armas
-        self.frame_lista = tk.Frame(main, bg=COR_BG_SECUNDARIO, width=300)
+        self.frame_lista = tk.Frame(main, bg=COR_BG_SECUNDARIO, width=300,
+                                    highlightthickness=2, highlightbackground=COR_BORDA)
         self.frame_lista.pack(side="right", fill="y")
         self.frame_lista.pack_propagate(False)
         
@@ -166,7 +169,7 @@ class TelaArmas(tk.Frame):
 
     def criar_header(self):
         """Cria o header com navegação"""
-        header = tk.Frame(self, bg=COR_HEADER, height=60)
+        header = tk.Frame(self, bg=COR_HEADER, height=68)
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
         
@@ -194,7 +197,8 @@ class TelaArmas(tk.Frame):
             cor = COR_SUCCESS if i == 1 else COR_TEXTO_DIM
             lbl = tk.Label(
                 self.frame_progresso, text=f"{i}.{nome}",
-                font=("Arial", 9), bg=COR_HEADER, fg=cor
+                font=("Segoe UI Semibold", 8), bg=COR_HEADER, fg=cor,
+                wraplength=60, justify="center"
             )
             lbl.pack(side="left", padx=5)
             self.labels_progresso.append(lbl)
@@ -221,7 +225,7 @@ class TelaArmas(tk.Frame):
         self.lbl_passo_desc = tk.Label(
             self.frame_wizard, text="", 
             font=("Arial", 10), bg=COR_BG_SECUNDARIO, fg=COR_TEXTO_DIM,
-            wraplength=380
+            wraplength=330
         )
         self.lbl_passo_desc.pack(pady=(0, 15))
         
@@ -335,7 +339,7 @@ class TelaArmas(tk.Frame):
         
         for col in cols:
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=90)
+            self.tree.column(col, width=105, minwidth=85, stretch=True)
         
         self.tree.pack(fill="both", expand=True)
         self.tree.bind("<<TreeviewSelect>>", self.selecionar_arma)
@@ -467,7 +471,7 @@ class TelaArmas(tk.Frame):
             tk.Label(
                 frame, text=dados["descricao"],
                 font=("Arial", 8), bg=COR_BG, fg=COR_TEXTO_DIM,
-                wraplength=170
+                wraplength=145
             ).pack(anchor="w", padx=10, pady=(0, 5))
         
         frame_tipos.columnconfigure(0, weight=1)

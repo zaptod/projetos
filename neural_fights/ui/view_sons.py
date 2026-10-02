@@ -18,14 +18,10 @@ from neural_fights.effects.audio_paths import (
     resolve_sound_file,
     save_sound_config,
 )
-
-# Cores do tema
-COR_FUNDO = "#2C3E50"
-COR_TEXTO = "#ECF0F1"
-COR_CARD = "#34495E"
-COR_ACCENT = "#3498DB"
-COR_SUCCESS = "#2ECC71"
-COR_WARNING = "#F39C12"
+from neural_fights.ui.theme import (
+    COR_ACCENT, COR_BG as COR_FUNDO, COR_CARD, COR_SUCCESS, COR_TEXTO,
+    COR_WARNING,
+)
 
 
 # ============================================================================

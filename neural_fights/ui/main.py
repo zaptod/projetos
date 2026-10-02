@@ -1,6 +1,7 @@
 # main.py
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
+import ctypes
 
 from neural_fights.data import database
 
@@ -9,17 +10,44 @@ from neural_fights.ui.view_armas import TelaArmas
 from neural_fights.ui.view_chars import TelaPersonagens
 from neural_fights.ui.view_luta import TelaLuta
 from neural_fights.ui.view_sons import TelaSons
+from neural_fights.ui.theme import (
+    BotaoCanvas, CartaoMenu, COR_BG, COR_ACCENT, COR_TEXTO_DIM, criar_titulo,
+)
 
 # Configurações Visuais Globais
-COR_FUNDO = "#2C3E50"
+COR_FUNDO = COR_BG
 COR_TEXTO = "#ECF0F1"
+
+
+def area_util_tela(root):
+    """Retorna a work area do Windows, sem deixar a barra cobrir o launcher."""
+    try:
+        class Rect(ctypes.Structure):
+            _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                       ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+        rect = Rect()
+        if ctypes.windll.user32.SystemParametersInfoW(48, 0, ctypes.byref(rect), 0):
+            return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+    except (AttributeError, OSError):
+        pass
+    return 0, 0, root.winfo_screenwidth(), max(620, root.winfo_screenheight() - 40)
 
 class SistemaApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Neural Fights - Launcher & Gerenciador")
-        self.geometry("1000x750")
+        esquerda, topo, largura, altura = area_util_tela(self)
+        largura_inicial, altura_inicial = min(1280, largura), min(720, altura)
+        self.geometry(f"{largura_inicial}x{altura_inicial}+{esquerda}+{topo}")
+        self.maxsize(largura, altura)
+        self.minsize(min(900, largura), min(620, altura))
         self.configure(bg=COR_FUNDO)
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("Treeview", background=COR_BG, fieldbackground=COR_BG,
+                        foreground=COR_TEXTO, rowheight=30, font=("Segoe UI", 9))
+        style.configure("Treeview.Heading", background=COR_ACCENT, foreground=COR_TEXTO,
+                        font=("Segoe UI Semibold", 9))
 
         # Carrega dados iniciais
         self.lista_armas = []
@@ -75,36 +103,32 @@ class MenuPrincipal(tk.Frame):
         super().__init__(parent)
         self.configure(bg=COR_FUNDO)
         
-        # Título
-        tk.Label(self, text="NEURAL FIGHTS", font=("Impact", 40), 
-                 bg=COR_FUNDO, fg="#E74C3C").pack(pady=(60, 10))
-        
-        tk.Label(self, text="Sistema de Gerenciamento e Simulação", font=("Helvetica", 14), 
-                 bg=COR_FUNDO, fg="#BDC3C7").pack(pady=(0, 50))
-
-        # Estilo dos Botões
-        btn_style = {
-            "font": ("Helvetica", 14, "bold"), 
-            "width": 30, 
-            "pady": 10,
-            "bg": "#34495E",
-            "fg": "white",
-            "activebackground": "#2980B9",
-            "activeforeground": "white",
-            "relief": "flat"
-        }
-
-        # Botões de Navegação
-        tk.Button(self, text="⚔️  FORJAR ARMAS", command=lambda: controller.show_frame("TelaArmas"), **btn_style).pack(pady=10)
-        tk.Button(self, text="👤  CRIAR PERSONAGENS", command=lambda: controller.show_frame("TelaPersonagens"), **btn_style).pack(pady=10)
-        tk.Button(self, text="🎮  SIMULAÇÃO (LUTA)", command=lambda: controller.show_frame("TelaLuta"), **btn_style).pack(pady=10)
-        tk.Button(self, text="🏆  MODO TORNEIO", command=lambda: self.abrir_torneio(controller), **btn_style).pack(pady=10)
-        tk.Button(self, text="🔊  CONFIGURAR SONS", command=lambda: controller.show_frame("TelaSons"), **btn_style).pack(pady=10)
-        tk.Button(self, text="💬  INTERAÇÕES SOCIAIS", command=lambda: controller.show_frame("TelaInteracoes"), **btn_style).pack(pady=10)
+        titulo = tk.Canvas(self, height=88, bg=COR_FUNDO, highlightthickness=0)
+        titulo.pack(fill="x", pady=(18, 0))
+        titulo.bind("<Configure>", lambda event: (titulo.delete("all"), criar_titulo(titulo, "NEURAL FIGHTS", event.width)))
+        tk.Label(self, text="Sistema de Gerenciamento e Simulação", font=("Segoe UI", 13),
+                 bg=COR_FUNDO, fg=COR_TEXTO_DIM).pack(pady=(0, 10))
+        menu = tk.Frame(self, bg=COR_FUNDO)
+        menu.pack(fill="both", expand=True, padx=90, pady=(0, 8))
+        menu.grid_columnconfigure(0, weight=1, uniform="menu")
+        menu.grid_columnconfigure(1, weight=1, uniform="menu")
+        menu.grid_rowconfigure((0, 1, 2), weight=1)
+        botoes = (
+            ("⚒", "FORJAR ARMAS", "Crie e ajuste o arsenal", lambda: controller.show_frame("TelaArmas")),
+            ("♟", "CRIAR PERSONAGENS", "Monte novos campeões", lambda: controller.show_frame("TelaPersonagens")),
+            ("⚔", "SIMULAÇÃO (LUTA)", "Escolha a arena e lute", lambda: controller.show_frame("TelaLuta")),
+            ("♛", "MODO TORNEIO", "Dispute o bracket", lambda: self.abrir_torneio(controller)),
+            ("♫", "CONFIGURAR SONS", "Ajuste efeitos e volume", lambda: controller.show_frame("TelaSons")),
+            ("✦", "INTERAÇÕES SOCIAIS", "Feedback da comunidade", lambda: controller.show_frame("TelaInteracoes")),
+        )
+        for indice, (icone, texto, descricao, comando) in enumerate(botoes):
+            CartaoMenu(menu, icone, texto, descricao, comando).grid(
+                row=indice // 2, column=indice % 2, sticky="nsew", padx=8, pady=6
+            )
         
         # Botão Sair
-        tk.Button(self, text="SAIR", command=controller.quit, 
-                  font=("Helvetica", 12, "bold"), bg="#C0392B", fg="white", width=15).pack(side="bottom", pady=40)
+        BotaoCanvas(self, "SAIR", command=controller.quit, cor=COR_ACCENT,
+                     width=130, height=32, bg=COR_FUNDO).pack(side="bottom", pady=8)
     
     def abrir_torneio(self, controller):
         """Abre a janela do modo torneio"""
@@ -142,14 +166,14 @@ class TelaInteracoes(tk.Frame):
         super().__init__(parent)
         self.configure(bg=COR_FUNDO)
         
-        tk.Label(self, text="Interações Sociais & Feedback", font=("Helvetica", 24, "bold"), 
-                 bg=COR_FUNDO, fg="white").pack(pady=50)
+        tk.Label(self, text="INTERAÇÕES SOCIAIS & FEEDBACK", font=("Bahnschrift SemiBold", 24),
+                 bg=COR_FUNDO, fg=COR_ACCENT).pack(pady=50)
         
         tk.Label(self, text="Módulo em desenvolvimento...\nAqui você verá likes, comentários e evolução da IA.", 
                  font=("Helvetica", 12), bg=COR_FUNDO, fg="#BDC3C7").pack(pady=20)
         
-        tk.Button(self, text="Voltar ao Menu", font=("Arial", 12), bg="#E67E22", fg="white",
-                  command=lambda: controller.show_frame("MenuPrincipal")).pack(pady=50)
+        BotaoCanvas(self, "VOLTAR AO MENU", command=lambda: controller.show_frame("MenuPrincipal"),
+                     width=190, bg=COR_FUNDO).pack(pady=50)
 
 def main():
     """Inicia o launcher."""
