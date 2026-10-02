@@ -1,0 +1,39 @@
+<title>Inventário de Sprites</title>
+<style>
+body { font: 15px system-ui, sans-serif; max-width: 980px; margin: 2rem auto; padding: 0 1rem; }
+#lista { display: grid; gap: .7rem; } article { border: 1px solid #ddd; border-radius: .5rem; padding: .7rem; }
+.meta { color: #666; font-size: .9em; } button { margin-right: .3rem; }
+</style>
+<main><h1>Inventário de Sprites</h1><p id="contagem"></p><section id="lista"></section></main>
+<script>
+const ITENS = /*__DADOS__*/[];
+const PAGINA_APP = "__PAGINA_APP__";
+const estados = ["falta", "esteira", "pronto", "pular"];
+const lista = document.getElementById("lista");
+document.getElementById("contagem").textContent = ITENS.length + " itens";
+for (const item of ITENS.sort((a, b) => a.ordem - b.ordem)) {
+  const card = document.createElement("article");
+  const titulo = document.createElement("strong");
+  titulo.textContent = item.id;
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.textContent = [item.grupo, item.prioridade, item.nome_arquivo].filter(Boolean).join(" · ");
+  card.append(titulo, meta);
+  for (const estado of estados) {
+    const botao = document.createElement("button");
+    botao.textContent = estado;
+    botao.addEventListener("click", () => salvar(item.id, estado));
+    card.append(botao);
+  }
+  lista.append(card);
+}
+async function salvar(id, estado) {
+  if (!PAGINA_APP || PAGINA_APP.startsWith("__")) return;
+  const token = localStorage.getItem("painel.token");
+  if (!token) return;
+  await fetch("/api/biblioteca/estado/" + PAGINA_APP, {
+    method: "POST", headers: {Authorization: "Bearer " + token, "Content-Type": "application/json"},
+    body: JSON.stringify({doc_id: id, estado})
+  });
+}
+</script>
