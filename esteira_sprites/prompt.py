@@ -62,7 +62,7 @@ def _palco(item: dict, defeitos: str) -> str:
     partes = [
         "Arte 2D para Neural Fights.",
         ESTILO,
-        f"Desenhe: {item.get('descricao') or item.get('nome_arquivo') or item['id']}.",
+        f"Desenhe: {str(item.get('descricao') or item.get('nome_arquivo') or item['id']).rstrip('. ')}.",
         "Sem texto, numeros, grade desenhada ou moldura.",
         f"Fundo liso uniforme {fundo}, sem sombra no fundo.",
     ]
