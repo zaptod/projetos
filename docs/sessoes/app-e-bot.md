@@ -707,7 +707,7 @@ e as rotas em `remoto/test_coordenador_app.py`.
 **Desde 02/10 (§18):** o "Controlar o PC" (as ações fechadas do PC) mora em
 Mandar, com os outros botões de comando; os serviços (com Reiniciar, Parar e
 Ligar de cada um), o Trabalho, os eventos e a Conversa ficam na aba
-Coordenador. O cache do `sw.js` está em `painel-casca-v30` (v30, 02/10: a
+Coordenador. O cache do `sw.js` está em `painel-casca-v31` (v31, 02/10: a Assembleia; v30, 02/10: a
 Vila toca as folhas da esteira, ver `docs/sessoes/painel-e-vila.md` §6d; o
 `test_app_vila_objetos.py` crava o mesmo número: mudar os dois juntos).
 
@@ -2139,3 +2139,9 @@ consertados antes da entrega: 🛰 e 🎞 nas abas saíam como glifo de texto
 tem os 4 objetos (⏳ ampulheta, 📖 grimório roxo com chroma verde, 📯
 corneta de mensageiro, 🔭 luneta); as 7 antigas e os 3 ícones de dentro da
 Mesa saíram (nenhum tinha arte). Inventário regenerado: 133 itens.
+# Assembleia
+
+Em **Decidir > Assembleia**, o app mostra as deliberações abertas e as atas
+fechadas. Em **Mandar**, o cartão “Convocar assembleia” exige a pergunta e o
+campo “O que está em jogo”; as IAs recomendam, mas somente Adrian decide no
+Grimório. A convocação e as respostas passam pelo correio e pelo carteiro.

@@ -4,7 +4,7 @@ const ULTIMO = "painel.ultimo_estado";
 const CONTATO = "painel.ultimo_contato";
 // A Vila é a tela; as outras áreas são objetos dela, com nome de objeto.
 const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex",
-                 coordenador: "Agora · Coordenador", decisoes: "Decidir",
+                 coordenador: "Agora · Coordenador", decisoes: "Decidir", assembleias: "Decidir · Assembleia",
                  comandos: "Mandar", conversa: "Mandar · IAs",
                  videos: "Ver · Cinema", biblioteca: "Ver · Biblioteca",
                  relatorios: "Ver · Pergaminhos", diario: "Ver · Diário"};
@@ -21,7 +21,7 @@ const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex",
 const OBJETOS = {
   agora: [["agora", "⏳", "Agora"], ["oficina", "🔧", "Codex"],
           ["coordenador", "🛰️", "Coordenador"]],
-  decidir: [["decisoes", "📖", "Grimório"]],
+  decidir: [["decisoes", "📖", "Grimório"], ["assembleias", "🏛️", "Assembleia"]],
   mandar: [["comandos", "🛠️", "Comandos"], ["conversa", "💬", "IAs"]],
   ver: [["videos", "🎞️", "Cinema"], ["biblioteca", "📚", "Biblioteca"],
         ["relatorios", "📜", "Pergaminhos"], ["diario", "📓", "Diário"]],
@@ -610,7 +610,7 @@ const CARGAS = {vila: [carregarAgora, 15000], agora: [carregarAgora, 15000],
                 diario: [carregarDiario, 5000],
                 videos: [null, 0], comandos: [null, 0],
                 relatorios: [abrirPergaminho, 0],
-                decisoes: [null, 0], conversa: [null, 0],
+                decisoes: [null, 0], assembleias: [null, 0], conversa: [null, 0],
                 oficina: [null, 0], biblioteca: [null, 0], coordenador: [null, 0]};
 
 // As abas de um objeto (Agora, Mandar e Ver têm mais de uma tela): a mesma
@@ -689,6 +689,9 @@ function mostrar(nova) {
   }
   if (tela === "decisoes" && typeof decisoesMostrar === "function") {
     decisoesMostrar();
+  }
+  if (tela === "assembleias" && typeof assembleiasMostrar === "function") {
+    assembleiasMostrar();
   }
   // o orquestrador alimenta Agora (tudo, com o fluxo), Mandar ("o que você
   // mandou") e Decidir (o que ele decidiu sozinho, uma leitura ao abrir)
@@ -796,6 +799,7 @@ if ("serviceWorker" in navigator && window.isSecureContext)
 // inclusive os que falharam.
 const MODULOS = [["vila.js", "vilaMostrar"], ["comandos.js", "comandosMostrar"],
                  ["decisoes.js", "decisoesMostrar"],
+                 ["assembleia.js", "assembleiasMostrar"],
                  ["orquestrador.js", "orquestradorMostrar"], ["coordenador.js", "coordenadorMostrar"],
                  ["conversa.js", "conversaAbrir"],
                  ["oficina.js", "oficinaMostrar"], ["biblioteca.js", "bibliotecaMostrar"]];

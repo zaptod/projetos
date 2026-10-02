@@ -54,3 +54,8 @@ Pedido do Adrian (02/10, 00:1x): "as tarefas no app estao todas paradas, quero a
 Memoria em `trabalho_memoria.json` (vistos, aplicados, corrigidos, olho, esperando, avisos de parada, nos por dia): reiniciar o coordenador nao repete aviso.
 
 **Para ligar:** o `python -m coordenador rodar` ja monta os dois (`__main__.montar`). O coordenador que esta rodando so pega o codigo novo quando reiniciar (a tarefa `NeuralFights_coordenador`); nada foi reiniciado nesta entrega.
+# Assembleia
+
+No pulso, o supervisor chama o avanço da Assembleia em thread de fundo no
+máximo a cada cinco minutos; falhas desse passo são registradas sem parar o
+supervisor nem o carteiro.

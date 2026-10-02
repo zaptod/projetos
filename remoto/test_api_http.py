@@ -128,6 +128,18 @@ def _parear(srv):
     return json.loads(dados)["token"]
 
 
+def test_assembleia_exige_pareamento_e_acoes(servidor, monkeypatch):
+    """Consultar e convocar seguem as mesmas trancas da bancada."""
+    from ias import assembleia
+    resp, _ = _pedir(servidor, "GET", "/api/assembleias")
+    assert resp.status == 401
+    token = _parear(servidor)
+    monkeypatch.setattr(assembleia, "listar", lambda: [])
+    assert _pedir(servidor, "GET", "/api/assembleias", token=token)[0].status == 200
+    resp, _ = _pedir(servidor, "POST", "/api/assembleia", {"pergunta": "x"}, token=token)
+    assert resp.status == 403
+
+
 # ------------------------------------------------------------------ rede
 @pytest.mark.parametrize("ip,local,esperado", [
     ("100.95.104.33", False, True),

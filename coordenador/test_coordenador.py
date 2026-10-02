@@ -45,6 +45,16 @@ def test_adota_existente_sem_duplicar():
     assert iniciou == []
 
 
+def test_assembleia_avanca_em_fundo_no_maximo_a_cada_cinco_minutos():
+    chamadas = []
+    s, relogio = supervisor(assembleia=lambda: chamadas.append("avancou"),
+                            em_fundo=lambda nome, funcao: funcao() or True)
+    s.avancar_assembleia(); s.avancar_assembleia()
+    assert chamadas == ["avancou"]
+    relogio.andar(300); s.avancar_assembleia()
+    assert chamadas == ["avancou", "avancou"]
+
+
 def test_adotado_guarda_a_hora_em_que_o_processo_nasceu():
     # 01/10: adotar com a hora da adocao fez o bot (vivo desde 28/09) sair
     # "codigo em dia"; o codigo velho tem de ser medido contra o nascimento.

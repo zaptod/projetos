@@ -121,6 +121,7 @@ ESTATICOS = {
     "/vila.js": ("vila.js", "text/javascript; charset=utf-8"),
     "/comandos.js": ("comandos.js", "text/javascript; charset=utf-8"),
     "/decisoes.js": ("decisoes.js", "text/javascript; charset=utf-8"),
+    "/assembleia.js": ("assembleia.js", "text/javascript; charset=utf-8"),
     "/orquestrador.js": ("orquestrador.js", "text/javascript; charset=utf-8"),
     "/coordenador.js": ("coordenador.js", "text/javascript; charset=utf-8"),
     "/conversa.js": ("conversa.js", "text/javascript; charset=utf-8"),
@@ -852,6 +853,11 @@ class Manipulador(BaseHTTPRequestHandler):
                 except Exception:                            # noqa: BLE001
                     dados["vigia"] = None
                 return self._json(dados)
+            if rota == "/api/assembleias":
+                # A assembleia so delibera; este endpoint expõe o estado que
+                # tambem vai virar contexto de um no no Grimorio.
+                from ias import assembleia
+                return self._json({"assembleias": _limpo(assembleia.listar())})
             # A MIDIA DE UMA DECISAO: pelo id do item e pelo indice, NUNCA
             # por caminho. O caminho so existe no registro; o celular recebe
             # um bilhete de 10 minutos para aquele arquivo e mais nada.
@@ -905,6 +911,8 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._acao(rota)
         if rota == "/api/decisao/responder":
             return self._responder_decisao()
+        if rota == "/api/assembleia":
+            return self._abrir_assembleia()
         if rota in ("/api/orquestrador/comando", "/api/orquestrador/contestar"):
             return self._orquestrador(rota)
         if rota == "/api/coordenador/comando":
@@ -1056,6 +1064,26 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._erro(503, "as decisões estão ocupadas; tente de novo")
         acoes.avisar_texto(decisoes.texto_do_aviso(evento))
         return self._json({"feito": True, "evento": evento})
+
+    def _abrir_assembleia(self):
+        """Convoca a deliberacao pelo correio; so o carteiro a entrega."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as acoes estao desligadas neste servidor")
+        corpo = self._corpo(maximo=20_000)
+        if corpo is None:
+            return
+        from ias import assembleia
+        try:
+            ident = assembleia.abrir(corpo.get("pergunta"), corpo.get("opcoes"),
+                                     corpo.get("participantes"), corpo.get("projeto", "geral"),
+                                     corpo.get("contexto", ""))
+        except (assembleia.Recusa, ValueError) as exc:
+            return self._erro(400, str(exc))
+        except OSError:
+            return self._erro(503, "nao consegui guardar a assembleia")
+        return self._json({"feito": True, "id": ident})
 
     def _orquestrador(self, rota: str):
         """Um comando para o orquestrador, ou "Contestar" uma decisao dele.

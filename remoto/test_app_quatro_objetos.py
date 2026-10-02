@@ -121,7 +121,7 @@ ROTAS_DE_ANTES = [
     "/api/biblioteca/bilhete/", "/api/biblioteca/doc/", "/api/catalogo", "/api/claude",
     "/api/coordenador", "/api/coordenador/comando", "/api/coordenador/conversa",
     "/api/coordenador/falar", "/api/coordenador/proposta/", "/api/correio", "/api/correio/",
-    "/api/decisao/", "/api/decisao/responder", "/api/decisoes", "/api/delegados",
+    "/api/assembleia", "/api/assembleias", "/api/decisao/", "/api/decisao/responder", "/api/decisoes", "/api/delegados",
     "/api/diario", "/api/erros", "/api/estado", "/api/imagens", "/api/orquestrador",
     "/api/orquestrador/comando", "/api/orquestrador/contestar", "/api/orquestrador/fluxo",
     "/api/relatorio/", "/api/tarefa/", "/api/tarefas", "/api/video/", "/api/videos",
@@ -198,7 +198,7 @@ def test_os_quatro_objetos_e_nada_mais_na_prateleira():
     objetos = _objetos()
     assert list(objetos) == ["agora", "decidir", "mandar", "ver"]
     assert objetos["agora"] == ["agora", "oficina", "coordenador"]
-    assert objetos["decidir"] == ["decisoes"]
+    assert objetos["decidir"] == ["decisoes", "assembleias"]
     assert objetos["mandar"] == ["comandos", "conversa"]
     assert objetos["ver"] == ["videos", "biblioteca", "relatorios", "diario"]
     botoes = re.findall(r'<button class="objeto" id="obj-(\w+)" data-objeto="(\w+)" '

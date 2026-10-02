@@ -156,7 +156,7 @@ class Supervisor:
                  iniciar=None, parar=None, avisar=None, porta=None, carteiro=None,
                  git=None, comandos=None, aplicar=None, claude_proibido=None,
                  delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
-                 cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None):
+                 cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None, assembleia=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
         self.iniciar = iniciar or self._iniciar
@@ -187,9 +187,11 @@ class Supervisor:
         self.esteira = esteira
         self.esteira_em = None
         self.ultima_esteira = {}
+        self.assembleia = assembleia
         self.em_fundo = em_fundo or self._em_fundo
         self.fundos = {}
         self.vigia_em = None
+        self.assembleia_em = None
         self.trabalho = {}
         self.reinicio_pedido = set()
         self.estado = {n: {"situacao": "parado", "pid": None, "desde": None,
@@ -521,6 +523,16 @@ class Supervisor:
                     for p, r in notaveis.items()))
         self.em_fundo("esteira", passo)
 
+    def avancar_assembleia(self):
+        """O correio entrega devagar; a assembleia so precisa de um pulso/5 min."""
+        if not self.assembleia:
+            return          # so o `montar()` de producao a liga: teste nunca toca o correio real
+        agora = self.relogio()
+        if self.assembleia_em is not None and (agora - self.assembleia_em).total_seconds() < 300:
+            return
+        self.assembleia_em = agora
+        self.em_fundo("assembleia", lambda: self.assembleia())
+
     def pedir_reinicio(self, nome):
         """O vigia aplicou codigo deste servico: reinicia no proximo momento seguro."""
         if nome in self.servicos:
@@ -552,6 +564,7 @@ class Supervisor:
         if not processos:
             self.log("[coordenador] lista de processos vazia; pulo a verificacao")
             self.processar_comandos()
+            self.avancar_assembleia()
             self.gravar(self.resumo())
             return
         for nome in self.servicos:
@@ -565,6 +578,7 @@ class Supervisor:
         self.processar_cerebro()
         self.vigiar_trabalho()
         self.rodar_esteira()
+        self.avancar_assembleia()
         self.gravar(self.resumo())
 
     def resumo(self):
