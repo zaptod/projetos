@@ -212,6 +212,7 @@
     <div class="orq-atalhos" role="group" aria-label="Seções da mesa">
       <button class="acao" data-orq="orq-sec-agora">Agora</button>
       <button class="acao" data-orq="orq-sec-codex">Codex</button>
+      <button class="acao" id="orq-abrir-biblioteca">📚 Biblioteca</button>
       <button class="acao" data-orq="orq-sec-fila">Fila</button>
       <button class="acao" data-orq="orq-sec-capacidade">Capacidade</button>
       <button class="acao" data-orq="orq-sec-modelos">Modelos</button>
@@ -339,6 +340,28 @@
       <div id="orq-comandos"></div>
     </div>
   </section>
+  <!-- A Biblioteca (01/10): paginas publicadas, planos e relatorios, so leitura. -->
+  <section id="tela-biblioteca" class="oculto livro biblioteca" aria-label="Biblioteca">
+    <div class="cartao" id="biblioteca-listas">
+      <h2>Biblioteca</h2>
+      <input id="biblioteca-busca" type="search" placeholder="Buscar artefatos"
+             aria-label="Buscar na biblioteca">
+      <div class="abas" id="biblioteca-abas" role="group" aria-label="Grupos da biblioteca">
+        <button class="acao" data-aba="paginas" aria-pressed="true">Páginas</button>
+        <button class="acao" data-aba="planos" aria-pressed="false">Planos</button>
+        <button class="acao" data-aba="relatorios" aria-pressed="false">Relatórios</button>
+        <button class="acao" data-aba="tudo" aria-pressed="false">Tudo</button>
+      </div>
+      <div id="biblioteca-lista"></div>
+    </div>
+    <div class="cartao oculto" id="biblioteca-leitor">
+      <div class="botoes biblioteca-nav">
+        <button class="acao" id="biblioteca-voltar-lista">‹ Biblioteca</button>
+        <strong id="biblioteca-titulo"></strong>
+      </div>
+      <div id="biblioteca-texto" class="biblioteca-texto"></div>
+    </div>
+  </section>
   <!-- A Oficina do Codex (01/10): as tarefas delegadas, ao vivo. Abre pela Mesa. -->
   <section id="tela-oficina" class="oculto livro oficina" aria-label="Oficina do Codex">
     <div class="botoes ofi-nav">
@@ -435,5 +458,6 @@
 <script src="orquestrador.js"></script>
 <script src="conversa.js"></script>
 <script src="oficina.js"></script>
+<script src="biblioteca.js"></script>
 </body>
 </html>

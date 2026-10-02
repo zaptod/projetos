@@ -829,6 +829,42 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .orq-modelo-nota { margin: 2px 0 6px; }
 .orq-modelo-livre { display: flex; gap: 6px; margin-top: 6px; }
 .orq-modelo-livre input { flex: 1; min-width: 0; }
+/* ================================================================
+   Biblioteca (01/10/2026): uma estante clara, legivel no telefone.
+   ================================================================ */
+.livro.biblioteca {
+  --cartao: #fff9e9; --linha: #cbb98f;
+  background: repeating-linear-gradient(0deg, rgba(100, 68, 28, .05) 0 2px, transparent 2px 28px),
+    linear-gradient(135deg, #705134, #38261b);
+}
+.livro.biblioteca .cartao { background: rgba(255, 249, 233, .97); color: #38291c; }
+.livro.biblioteca .fraco { color: #725e48; }
+.livro.biblioteca:not(.oculto) { animation: surgir .3s ease-out; }
+#biblioteca-busca { font: inherit; letter-spacing: normal; text-align: left; padding: 8px;
+  margin-bottom: 10px; background: #fffdf6; color: #38291c; }
+.biblioteca-cartao { display: block; width: 100%; margin-top: 8px; padding: 10px 12px;
+  text-align: left; font: inherit; color: #38291c; text-decoration: none; background: #fffdf6;
+  border: 1px solid #cbb98f; border-left: 5px solid #8a673c; border-radius: 9px;
+  overflow-wrap: anywhere; }
+button.biblioteca-cartao { cursor: pointer; }
+.biblioteca-cartao .fraco + .fraco { margin-top: 3px; }
+.biblioteca-nav { margin: 0 0 10px; align-items: baseline; }
+.biblioteca-texto { overflow-wrap: anywhere; line-height: 1.55; }
+.biblioteca-texto h1, .biblioteca-texto h2, .biblioteca-texto h3 { color: #513b24; }
+.biblioteca-texto table { display: block; overflow-x: auto; border-collapse: collapse; max-width: 100%; }
+.biblioteca-texto th, .biblioteca-texto td { border: 1px solid #cbb98f; padding: 5px 7px; text-align: left; }
+.biblioteca-texto th { background: #f3e6c9; }
+.biblioteca-texto pre { padding: 8px; overflow: auto; background: #f3e6c9; border-radius: 7px; }
+.biblioteca-texto code { font-family: ui-monospace, Consolas, monospace; }
+.biblioteca-texto a { color: #2458a3; }
+@media (prefers-color-scheme: dark) {
+  .livro.biblioteca { background: linear-gradient(135deg, #4c3727, #241b16); }
+  .livro.biblioteca .cartao, #biblioteca-busca, .biblioteca-cartao { color: #f5ead4; background: #33291f; }
+  .livro.biblioteca .fraco { color: #d1bfa4; }
+  .biblioteca-texto h1, .biblioteca-texto h2, .biblioteca-texto h3 { color: #f5dfad; }
+  .biblioteca-texto th, .biblioteca-texto pre { background: #4a3929; }
+  .biblioteca-texto a { color: #9fc0ff; }
+}
 @media (prefers-reduced-motion: reduce) { .livro.oficina:not(.oculto) { animation: none; } }
 button.orq-codex-tarefa { width: 100%; text-align: left; background: transparent; border: 0;
   border-top: 1px dashed #c9ad78; border-radius: 0; padding: 8px 2px; color: inherit; font: inherit; }

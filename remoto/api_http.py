@@ -57,7 +57,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import (acoes, claude_estado, comandos_app, decisoes, delegar, orquestrador,
+from . import (acoes, biblioteca, claude_estado, comandos_app, decisoes, delegar, orquestrador,
                painel_dados, tarefas, vila_dados, vila_nova)
 from .config import runtime_dir
 
@@ -124,6 +124,7 @@ ESTATICOS = {
     "/orquestrador.js": ("orquestrador.js", "text/javascript; charset=utf-8"),
     "/conversa.js": ("conversa.js", "text/javascript; charset=utf-8"),
     "/oficina.js": ("oficina.js", "text/javascript; charset=utf-8"),
+    "/biblioteca.js": ("biblioteca.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -670,6 +671,14 @@ class Manipulador(BaseHTTPRequestHandler):
                     return self._json({"grupos": [], "acoes": []})
                 return self._json(
                     comandos_app.catalogo(self.estado.com_perigosas))
+            if rota == "/api/biblioteca":
+                return self._json(biblioteca.para_o_app())
+            achado = re.fullmatch(r"/api/biblioteca/doc/([a-z0-9-]{1,64})", rota)
+            if achado:
+                texto = biblioteca.ler_documento(achado.group(1))
+                if texto is None:
+                    return self._erro(404, "documento nao encontrado")
+                return self._json({"texto": texto})
             if rota == "/api/tarefas":
                 return self._json({"tarefas": tarefas.listar(
                     _inteiro(consulta, "n", 20))})

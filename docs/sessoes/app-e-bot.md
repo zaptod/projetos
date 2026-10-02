@@ -98,6 +98,9 @@ Tudo vive em `remoto/`:
 - `orquestrador.py` + `app/orquestrador.js` — a **Mesa de comando** (28/09):
   o orquestrador publica o que faz, o app mostra e manda comandos, e a
   sonda de uso roda no servidor (ver §7).
+- `biblioteca.py` + `app/biblioteca.js` — a **Biblioteca** (01/10): registro
+  manual atômico e leitura de páginas, planos e relatórios. A Mesa abre pelo
+  atalho 📚 Biblioteca; o app só lê Markdown de raízes permitidas.
 - `app/` — a PWA (`index.html`, `app.js`, `vila.js`, `comandos.js`,
   `decisoes.js`, `orquestrador.js`).
 - **Desde 28/09 a Vila é a tela inteira** (pedido do Adrian: "o app focado
@@ -1979,3 +1982,11 @@ comando que o `limpar` imprime.
   selos de sempre) e a escolha de **esforço** do Codex pelo app. O padrão
   do `config.toml` está em `ultra`, o mais caro; o despachante aceita
   `--esforco`, mas o app não mostra.
+
+## 17. Biblioteca de artefatos (01/10/2026)
+
+`remoto/biblioteca.py` guarda o registro manual de forma atômica em
+`%LOCALAPPDATA%\neural-fights\biblioteca\itens.json` e junta planos, relatórios
+do Palco e sessões como fontes somente de leitura. Na Mesa, o atalho **📚
+Biblioteca** abre a tela com abas, busca e leitor de Markdown seguro; páginas
+`https` abrem em outra aba.

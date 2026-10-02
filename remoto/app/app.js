@@ -6,7 +6,8 @@ const CONTATO = "painel.ultimo_contato";
 const TITULOS = {vila: "Vila", conversa: "Conversa", quadro: "Quadro de avisos", diario: "Diário",
                  videos: "Cinema", comandos: "Bancada",
                  relatorios: "Pergaminhos", decisoes: "Grimório",
-                 orquestrador: "Mesa de comando", oficina: "Oficina do Codex"};
+                 orquestrador: "Mesa de comando", oficina: "Oficina do Codex",
+                 biblioteca: "Biblioteca"};
 const RELATORIOS = ["metas", "funcionamento", "confiabilidade", "auditoria"];
 const $ = (id) => document.getElementById(id);
 
@@ -580,7 +581,7 @@ const CARGAS = {vila: [carregarAgora, 15000], quadro: [carregarAgora, 15000],
                 videos: [null, 0], comandos: [null, 0],
                 relatorios: [abrirPergaminho, 0],
                 decisoes: [null, 0], orquestrador: [null, 0], conversa: [null, 0],
-                oficina: [null, 0]};
+                oficina: [null, 0], biblioteca: [null, 0]};
 
 function mostrar(nova) {
   if (nova && nova !== tela && nova === "diario") {
@@ -618,6 +619,7 @@ function mostrar(nova) {
   if (typeof orquestradorParar === "function") orquestradorParar();
   if (typeof conversaParar === "function") conversaParar();
   if (typeof oficinaParar === "function") oficinaParar();
+  if (typeof bibliotecaParar === "function") bibliotecaParar();
   if (!pareado) return;
   // o quadro de avisos mostra a gente e as travas, que vêm da vida da vila
   if ((tela === "vila" || tela === "quadro") && typeof vilaMostrar === "function") {
@@ -637,6 +639,9 @@ function mostrar(nova) {
   }
   if (tela === "oficina" && typeof oficinaMostrar === "function") {
     oficinaMostrar();
+  }
+  if (tela === "biblioteca" && typeof bibliotecaMostrar === "function") {
+    bibliotecaMostrar();
   }
   carregarAcoes().then(() => { if (tela === "videos") carregarVideos(); });
   const [carga, intervalo] = CARGAS[tela];
@@ -660,7 +665,8 @@ function abrir(nova, origem) {
   }
   secao.scrollTop = 0;
   // A Oficina abre por cima da Mesa: o voltar do Android volta para a Mesa.
-  if ((tela === "vila" && nova !== "vila") || (nova === "oficina" && tela !== "oficina"))
+  if ((tela === "vila" && nova !== "vila")
+      || ((nova === "oficina" || nova === "biblioteca") && tela !== nova))
     history.pushState({tela: nova}, "");
   mostrar(nova);
 }
@@ -673,6 +679,7 @@ function voltarParaVila() {
 for (const b of document.querySelectorAll("[data-tela]"))
   b.addEventListener("click", () => abrir(b.dataset.tela, b));
 $("btn-voltar").addEventListener("click", voltarParaVila);
+$("orq-abrir-biblioteca").addEventListener("click", (e) => abrir("biblioteca", e.currentTarget));
 window.addEventListener("popstate", (e) => {
   mostrar((e.state && e.state.tela) || "vila");
 });
@@ -710,7 +717,7 @@ if ("serviceWorker" in navigator && window.isSecureContext)
 const MODULOS = [["vila.js", "vilaMostrar"], ["comandos.js", "comandosMostrar"],
                  ["decisoes.js", "decisoesMostrar"],
                  ["orquestrador.js", "orquestradorMostrar"], ["conversa.js", "conversaAbrir"],
-                 ["oficina.js", "oficinaMostrar"]];
+                 ["oficina.js", "oficinaMostrar"], ["biblioteca.js", "bibliotecaMostrar"]];
 
 function modulosQueFaltam() {
   return MODULOS.filter(([, funcao]) => typeof window[funcao] !== "function")
