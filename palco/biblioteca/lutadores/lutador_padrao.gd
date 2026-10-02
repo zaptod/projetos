@@ -69,7 +69,7 @@ func _sincronizar_pecas() -> void:
 	if float(_s.get("escudo", 0.0)) > 0.0:
 		desejadas["estados/escudo_bolha"] = {"tipo": "estado", "nome": "escudo_bolha"}
 	for efeito in _s.get("_efeitos", []):
-		var categoria := {"status": "status", "buff": "buffs", "canal": "canais", "transformacao": "transformacoes"}.get(efeito.get("tipo"), "")
+		var categoria: String = str({"status": "status", "buff": "buffs", "canal": "canais", "transformacao": "transformacoes"}.get(efeito.get("tipo"), ""))
 		var nome := str(efeito.get("status", efeito.get("nome", "")))
 		if categoria != "" and nome != "":
 			desejadas[categoria + "/" + UtilPalco.slug(nome)] = efeito
