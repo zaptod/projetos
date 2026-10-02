@@ -45,6 +45,15 @@ def test_adota_existente_sem_duplicar():
     assert iniciou == []
 
 
+def test_adotado_guarda_a_hora_em_que_o_processo_nasceu():
+    # 01/10: adotar com a hora da adocao fez o bot (vivo desde 28/09) sair
+    # "codigo em dia"; o codigo velho tem de ser medido contra o nascimento.
+    s, _ = supervisor(processos=lambda: [{"pid": 12, "comando": "app --ja",
+                                          "inicio": "2026-09-28T12:58:17"}])
+    s.pulso()
+    assert s.estado["app"]["desde"] == "2026-09-28T12:58:17"
+
+
 def test_religa_com_espera_crescente_e_limite_avisa():
     iniciou, avisos = [], []
     def quebra(_):

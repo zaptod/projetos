@@ -19,14 +19,31 @@ WScript.Quit shell.Run("cmd.exe /c """ & WScript.Arguments(0) & """", 0, True)
 '''
 
 
+def _sid_do_usuario() -> str:
+    """O SID de quem instala: o schtasks recusa LogonTrigger/Principal sem UserId."""
+    try:
+        saida = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True,
+                               text=True, check=True).stdout.strip()
+        return saida.split(",")[-1].strip().strip('"')
+    except (OSError, subprocess.CalledProcessError, IndexError):
+        return ""
+
+
 def xml_tarefa(comando: str = r"C:\Windows\System32\wscript.exe",
-               argumentos: str = r"//B //Nologo %LOCALAPPDATA%\neural-fights\oculto.vbs E:\projetos\coordenador.cmd") -> str:
-    """XML importavel: logon, recuperacao persistente e bateria permitida."""
+               argumentos: str | None = None, sid: str | None = None) -> str:
+    """XML importavel: logon + a cada 5 min (a trava unica impede o segundo),
+    recuperacao persistente e bateria permitida. Caminhos sem %VAR%: o
+    Agendador nao expande variavel em Arguments (01/10: a 1a versao nao subia)."""
+    if argumentos is None:
+        vbs = Path(os.environ.get("LOCALAPPDATA", "")) / "neural-fights" / "oculto.vbs"
+        argumentos = f'//B //Nologo "{vbs}" "E:\\projetos\\coordenador.cmd"'
+    sid = _sid_do_usuario() if sid is None else sid
+    usuario = f"<UserId>{sid}</UserId>" if sid else ""
     return f'''<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
-  <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
-  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><Enabled>true</Enabled></Settings>
+  <Triggers><LogonTrigger><Enabled>true</Enabled>{usuario}</LogonTrigger><TimeTrigger><StartBoundary>2026-10-01T00:00:00</StartBoundary><Repetition><Interval>PT5M</Interval></Repetition><Enabled>true</Enabled></TimeTrigger></Triggers>
+  <Principals><Principal id="Author">{usuario}<LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><StartWhenAvailable>true</StartWhenAvailable><Enabled>true</Enabled></Settings>
   <Actions Context="Author"><Exec><Command>{comando}</Command><Arguments>{argumentos}</Arguments><WorkingDirectory>E:\\projetos</WorkingDirectory></Exec></Actions>
 </Task>'''
 

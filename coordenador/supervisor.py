@@ -32,7 +32,8 @@ def carregar_servicos(caminho=None):
 
 def processos_windows(rodar=subprocess.run):
     """[{pid, comando}], isolado para que testes nao dependam do Windows."""
-    script = "Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"
+    script = ("Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine,"
+              "@{n='Inicio';e={$_.CreationDate.ToString('s')}} | ConvertTo-Json -Compress")
     try:
         resultado = rodar(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
                           capture_output=True, text=True, check=False)
@@ -41,7 +42,10 @@ def processos_windows(rodar=subprocess.run):
         return []
     if isinstance(dados, dict):
         dados = [dados]
-    return [{"pid": int(p.get("ProcessId")), "comando": str(p.get("CommandLine") or "")}
+    # `inicio` e a hora em que o processo NASCEU: adotar com a hora da adocao
+    # escondia codigo velho (01/10: o bot rodava desde 28/09 e saiu "em dia").
+    return [{"pid": int(p.get("ProcessId")), "comando": str(p.get("CommandLine") or ""),
+             "inicio": str(p.get("Inicio") or "") or None}
             for p in dados if p.get("ProcessId")]
 
 
@@ -274,7 +278,8 @@ class Supervisor:
             return
         if state_pid := achado.get("pid"):
             if estado["pid"] != state_pid:
-                estado.update(pid=state_pid, desde=estado["desde"] or agora_iso(self.relogio()), situacao="rodando")
+                estado.update(pid=state_pid, situacao="rodando",
+                              desde=achado.get("inicio") or estado["desde"] or agora_iso(self.relogio()))
         estado["saude"] = self._saude(nome, True)
         if estado["saude"] == "ruim":
             self.saudes_ruins[nome] += 1
