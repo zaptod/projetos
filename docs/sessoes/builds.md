@@ -68,6 +68,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Corrente: lutas antigas mudam** — Chave só para lutas novas (01/10/2026) `corrente-seeds-antigas`
 - ✅ **Todas as armas: o golpe acerta antes de bater** — Só a corrente agora (recomendado) (01/10/2026) `golpe-acerta-no-preparo`
 - ✅ **Lote das builds: a quarta entra?** — seg–qua para as builds também (recomendado) (01/10/2026) `lote-builds-quarta`
+- ⏳ **Imagem-mestra do estilo: aprovar?** — Esta é a referência de estilo que vai junto em TODO pedido de sprite e que o Grok usa para julgar. Aprova? `imagem-mestra-v1`
 
 <!-- decisoes:fim -->
 

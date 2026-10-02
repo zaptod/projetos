@@ -1,0 +1,35 @@
+{
+  "comentario": true,
+  "contexto": "Gerada pelo ChatGPT Plus em 01/10 23:35 (pedido 869758fa, 1254×1254, fundo magenta): bolinha com capacete, espada, bola de fogo e impacto, contorno escuro, 2 tons. Aprovada, a esteira começa os sprites P1 na ordem do inventário.",
+  "criado": "2026-10-02T00:15:14.324027",
+  "depende_de": [],
+  "historico": [],
+  "id": "imagem-mestra-v1",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\imagem-mestra-v1\\869758fa.png",
+      "rotulo": "IMAGEM-MESTRA"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "A esteira começa os P1 agora",
+      "id": "aprovar",
+      "pede_comentario": false,
+      "rotulo": "Aprovar como está"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Novo pedido com o seu ajuste",
+      "id": "refazer",
+      "pede_comentario": true,
+      "rotulo": "Refazer (diga o que mudar no comentário)"
+    }
+  ],
+  "pergunta": "Esta é a referência de estilo que vai junto em TODO pedido de sprite e que o Grok usa para julgar. Aprova?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Imagem-mestra do estilo: aprovar?",
+  "vigente": null
+}
