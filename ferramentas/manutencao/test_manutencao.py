@@ -71,6 +71,7 @@ def test_scripts_exibem_ajuda() -> None:
 
 def test_nao_ha_referencia_a_pasta_temporaria_da_sessao() -> None:
     proibido = "AppData" + "\\Local\\Temp\\claude"
+    # so o fonte versionado: o __pycache__ deste proprio teste guarda a string
     for arquivo in AQUI.rglob("*"):
-        if arquivo.is_file():
-            assert proibido.encode() not in arquivo.read_bytes()
+        if arquivo.is_file() and arquivo.suffix in {".py", ".md", ".html", ".ps1", ".cmd"}:
+            assert proibido.encode() not in arquivo.read_bytes(), arquivo
