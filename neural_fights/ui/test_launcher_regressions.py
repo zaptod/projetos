@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from neural_fights.ui import view_luta
-from neural_fights.ui.theme import desenhar_lutador
+from neural_fights.ui.theme import _renderizar_preview_lutador, desenhar_lutador
 
 
 class CanvasGravador:
@@ -44,6 +44,19 @@ def test_preview_dupla_desenha_duas_laminas():
 
     laminas = [chamada for chamada in canvas.chamadas if chamada[2].get("tags") == "lamina"]
     assert len(laminas) == 4  # contorno e cor para cada uma das duas laminas
+
+
+def test_preview_rasteriza_os_oito_tipos_de_arma_em_quatro_vezes():
+    personagem = SimpleNamespace(classe="Piromante (Fogo)", tamanho=1.8)
+    imagens = []
+    for tipo in ("Reta", "Dupla", "Corrente", "Arco", "Arremesso", "Orbital", "Mágica", "Transformável"):
+        arma = SimpleNamespace(tipo=tipo, r=80, g=160, b=255, comp_lamina=70)
+        imagem = _renderizar_preview_lutador(personagem, arma, "#ff6600", 42)
+        imagens.append(imagem.tobytes())
+        assert imagem.size == (336, 336)
+        assert imagem.getbbox() is not None
+
+    assert len(set(imagens)) == 8
 
 
 def test_exportar_palco_selecao_chama_manual_e_render(monkeypatch, tmp_path):

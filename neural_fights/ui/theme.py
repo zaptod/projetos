@@ -1,5 +1,6 @@
 """Tema visual compartilhado do launcher Neural Fights."""
 
+import math
 import tkinter as tk
 from PIL import Image, ImageDraw, ImageTk
 
@@ -92,13 +93,14 @@ class BotaoCanvas(tk.Canvas):
 
 
 class CartaoMenu(tk.Canvas):
-    """Cartao grande rasterizado em 2x para o menu nao ficar serrilhado."""
+    """Cartao grande rasterizado com cor propria para o menu."""
 
-    def __init__(self, parent, icone, titulo, descricao, command, cor=COR_ACCENT):
+    def __init__(self, parent, icone, titulo, descricao, command, cor=COR_ACCENT,
+                 destaque=False):
         super().__init__(parent, height=112, bg=COR_BG, highlightthickness=0, bd=0,
                          cursor="hand2")
         self._icone, self._titulo, self._descricao = icone, titulo, descricao
-        self._command, self._cor, self._foto = command, cor, None
+        self._command, self._cor, self._destaque, self._foto = command, cor, destaque, None
         self.bind("<Configure>", lambda _event: self._desenhar())
         self.bind("<Enter>", lambda _event: self._desenhar(hover=True))
         self.bind("<Leave>", lambda _event: self._desenhar())
@@ -107,23 +109,37 @@ class CartaoMenu(tk.Canvas):
 
     def _desenhar(self, hover=False):
         largura, altura = max(self.winfo_width(), 80), max(self.winfo_height(), 80)
-        escala = 2
+        escala = 4
         imagem = Image.new("RGBA", (largura * escala, altura * escala), (0, 0, 0, 0))
         desenho = ImageDraw.Draw(imagem)
         cor = COR_SUCCESS if hover else self._cor
         caixa = (4 * escala, 4 * escala, (largura - 4) * escala, (altura - 4) * escala)
-        desenho.rounded_rectangle(caixa, radius=18 * escala, fill=cor, outline=COR_BORDA,
-                                  width=4 * escala)
+        rgb = tuple(int(cor[indice:indice + 2], 16) for indice in (1, 3, 5))
+        escura = tuple(max(0, int(componente * .25)) for componente in rgb)
+        raio = 18 * escala
+        for y in range(caixa[1], caixa[3] + 1):
+            fracao = (y - caixa[1]) / max(1, caixa[3] - caixa[1])
+            faixa = tuple(int(escura[i] * (1 - fracao) + rgb[i] * fracao)
+                          for i in range(3))
+            distancia = min(y - caixa[1], caixa[3] - y)
+            recuo = 0 if distancia >= raio else raio - int((raio ** 2 - (raio - distancia) ** 2) ** .5)
+            desenho.line((caixa[0] + recuo, y, caixa[2] - recuo, y), fill=faixa)
+        borda = "#f6c95b" if self._destaque else COR_BORDA
+        desenho.rounded_rectangle(caixa, radius=raio, outline=borda,
+                                  width=(5 if self._destaque else 4) * escala)
+        icone_caixa = (15 * escala, 18 * escala, 63 * escala, 66 * escala)
+        desenho.ellipse(icone_caixa, fill=tuple(min(255, valor + 35) for valor in rgb),
+                         outline=borda, width=2 * escala)
         imagem = imagem.resize((largura, altura), Image.Resampling.LANCZOS)
         self._foto = ImageTk.PhotoImage(imagem)
         self.delete("all")
         self.create_image(0, 0, image=self._foto, anchor="nw")
-        self.create_text(37, altura // 2, text=self._icone, font=("Segoe UI Emoji", 24),
+        self.create_text(39, altura // 2, text=self._icone, font=("Segoe UI Emoji", 31),
                          fill=COR_TEXTO)
         self.create_text(70, altura // 2 - 16, text=self._titulo,
                          font=("Bahnschrift SemiBold", 15), fill=COR_TEXTO, anchor="w")
         self.create_text(70, altura // 2 + 16, text=self._descricao,
-                         font=("Segoe UI", 9), fill=COR_BORDA, anchor="w")
+                         font=("Segoe UI", 9), fill="#eef0ff", anchor="w")
 
 
 def criar_titulo(canvas, texto, largura=None):
@@ -140,7 +156,7 @@ def criar_titulo(canvas, texto, largura=None):
 
 def desenhar_lutador(canvas, personagem, arma=None, cor_borda=COR_BORDA,
                      centro=None, escala=1.0):
-    """Preview cel-shaded em alta resolucao, reduzido para o Canvas."""
+    """Preview do lutador na mesma linguagem visual do palco Godot."""
     canvas.delete("all")
     largura = max(canvas.winfo_width(), int(canvas.cget("width") or 200))
     altura = max(canvas.winfo_height(), int(canvas.cget("height") or 200))
@@ -159,62 +175,160 @@ def desenhar_lutador(canvas, personagem, arma=None, cor_borda=COR_BORDA,
     raio = max(24, min(52, int((getattr(personagem, "tamanho", 1.7) * 23) * escala)))
     if not hasattr(canvas, "tk"):
         return _desenhar_lutador_teste(canvas, personagem, arma, cor_borda, cx, cy, raio, corpo)
-    fator = 2
-    tamanho = int((raio * 2 + 74) * fator)
-    imagem = Image.new("RGBA", (tamanho, tamanho), (0, 0, 0, 0))
-    desenho = ImageDraw.Draw(imagem)
-    meio = tamanho // 2
-    raio_px = raio * fator
-    def cor_escura(valor, proporcao=.62):
-        valor = valor.lstrip("#")
-        return tuple(int(int(valor[i:i + 2], 16) * proporcao) for i in (0, 2, 4))
-    corpo_rgb = tuple(int(corpo[i:i + 2], 16) for i in (1, 3, 5))
-    caixa = (meio - raio_px, meio - raio_px, meio + raio_px, meio + raio_px)
-    desenho.ellipse((caixa[0] - 6, caixa[1] - 6, caixa[2] + 6, caixa[3] + 6), fill=COR_BORDA)
-    desenho.ellipse(caixa, fill=corpo_rgb)
-    mascara = Image.new("L", (tamanho, tamanho), 0)
-    ImageDraw.Draw(mascara).ellipse(caixa, fill=255)
-    sombra = Image.new("RGBA", (tamanho, tamanho), (0, 0, 0, 0))
-    ImageDraw.Draw(sombra).ellipse((caixa[0], meio - raio_px // 8, caixa[2], caixa[3] + raio_px // 2),
-                                   fill=cor_escura(corpo) + (190,))
-    imagem.alpha_composite(Image.composite(sombra, Image.new("RGBA", (tamanho, tamanho)), mascara))
-    desenho = ImageDraw.Draw(imagem)
-    desenho.ellipse((meio - raio_px * .58, meio - raio_px * .7,
-                     meio - raio_px * .05, meio - raio_px * .18), fill=(255, 255, 255, 95))
-    olho_x, olho_y, olho_r = meio + raio_px * .23, meio - raio_px * .18, max(8, raio_px * .15)
-    for deslocamento in (-raio_px * .24, raio_px * .24):
-        caixa_olho = (olho_x - olho_r, olho_y + deslocamento - olho_r,
-                      olho_x + olho_r, olho_y + deslocamento + olho_r)
-        desenho.ellipse(caixa_olho, fill=COR_TEXTO, outline=COR_BORDA, width=3)
-        desenho.ellipse((olho_x, olho_y + deslocamento - olho_r * .5,
-                         olho_x + olho_r, olho_y + deslocamento + olho_r * .5), fill=COR_BORDA)
-    desenho.line((olho_x - olho_r, olho_y - raio_px * .36, olho_x + olho_r,
-                  olho_y - raio_px * .43), fill=COR_BORDA, width=3)
-    if arma is not None:
-        _pintar_arma(desenho, arma, meio, meio, raio_px)
-    imagem = imagem.resize((tamanho // fator, tamanho // fator), Image.Resampling.LANCZOS)
+    imagem = _renderizar_preview_lutador(personagem, arma, corpo, raio)
     foto = ImageTk.PhotoImage(imagem)
     canvas._foto_lutador = foto
     canvas.create_image(cx, cy, image=foto, tags="lutador")
 
 
+def _renderizar_preview_lutador(personagem, arma, corpo, raio):
+    """Rasteriza em 4x para manter contorno, cel e arma nitidos."""
+    fator = 4
+    raio *= fator
+    tamanho = int(raio * 8)
+    meio = tamanho // 2
+    imagem = Image.new("RGBA", (tamanho, tamanho), (0, 0, 0, 0))
+    desenho = ImageDraw.Draw(imagem)
+    corpo_rgb = tuple(int(corpo[i:i + 2], 16) for i in (1, 3, 5))
+    sombra = tuple(int(valor * .72) for valor in corpo_rgb)
+    contorno = max(3, int(raio * .08))
+    caixa = (meio - raio, meio - raio, meio + raio, meio + raio)
+    desenho.ellipse((caixa[0] - contorno, caixa[1] - contorno,
+                     caixa[2] + contorno, caixa[3] + contorno), fill=COR_BORDA)
+    desenho.ellipse(caixa, fill=sombra)
+    mascara = Image.new("L", (tamanho, tamanho), 0)
+    mascara_desenho = ImageDraw.Draw(mascara)
+    mascara_desenho.ellipse(caixa, fill=255)
+    mascara_desenho.rectangle((0, meio + 1, tamanho, tamanho), fill=0)
+    base = Image.new("RGBA", (tamanho, tamanho), corpo_rgb + (255,))
+    base.putalpha(mascara)
+    imagem.alpha_composite(base)
+    desenho = ImageDraw.Draw(imagem)
+    desenho.ellipse((meio - raio * .58, meio - raio * .70, meio - raio * .27,
+                     meio - raio * .39), fill=(255, 255, 255, 175))
+    _pintar_rosto(desenho, personagem, meio, raio)
+    if arma is not None:
+        _pintar_arma(desenho, arma, meio, meio, raio)
+    return imagem.resize((tamanho // fator, tamanho // fator), Image.Resampling.LANCZOS)
+
+
+def _pintar_rosto(desenho, personagem, meio, raio):
+    """Olhos e expressoes neutras do rosto do palco, voltados para a arma."""
+    classe = str(getattr(personagem, "classe", ""))
+    expressao = next((nome for chave, nome in {
+        "Berserker": "furia", "Gladiador": "determinado", "Cavaleiro": "firmeza",
+        "Assassino": "focado", "Ladino": "confiante", "Ninja": "concentrado",
+        "Duelista": "animado", "Mago": "alerta", "Piromante": "furia",
+        "Criomante": "glacial", "Necromante": "tedio", "Paladino": "determinado",
+        "Druida": "animado", "Feiticeiro": "extase", "Monge": "firmeza",
+    }.items() if chave in classe), "neutro")
+    olho_r = max(6, int(raio * .19))
+    olho_x = meio + int(raio * .20)
+    olhos = [(olho_x, meio - int(raio * .35)), (olho_x, meio + int(raio * .35))]
+    for x, y in olhos:
+        desenho.ellipse((x - olho_r - 2, y - olho_r - 2, x + olho_r + 2, y + olho_r + 2),
+                        fill=COR_BORDA)
+        desenho.ellipse((x - olho_r, y - olho_r, x + olho_r, y + olho_r), fill=(250, 250, 252))
+        pupila = int(olho_r * .48)
+        desenho.ellipse((x + int(olho_r * .22) - pupila, y - pupila,
+                         x + int(olho_r * .22) + pupila, y + pupila), fill=COR_BORDA)
+    espessura = max(3, int(raio * .075))
+    if expressao in {"furia", "determinado", "focado", "firmeza"}:
+        desenho.line((olho_x - olho_r, olhos[0][1] - olho_r * 1.25,
+                      olho_x + olho_r, olhos[0][1] - olho_r * .65), fill=COR_BORDA,
+                     width=espessura)
+        desenho.line((olho_x - olho_r, olhos[1][1] - olho_r * .65,
+                      olho_x + olho_r, olhos[1][1] - olho_r * 1.25), fill=COR_BORDA,
+                     width=espessura)
+    elif expressao in {"confiante", "glacial", "tedio", "concentrado"}:
+        desenho.line((olho_x - olho_r, olhos[0][1] - olho_r * .65,
+                      olho_x + olho_r, olhos[0][1] - olho_r * .65), fill=COR_BORDA,
+                     width=espessura)
+    boca_x = meio + int(raio * .57)
+    if expressao in {"animado", "confiante", "berserk"}:
+        desenho.arc((boca_x - olho_r, meio - olho_r, boca_x + olho_r, meio + olho_r),
+                    25, 135, fill=COR_BORDA, width=espessura)
+    else:
+        desenho.line((boca_x - olho_r * .65, meio, boca_x + olho_r * .65, meio),
+                     fill=COR_BORDA, width=espessura)
+
+
 def _pintar_arma(desenho, arma, meio, meio_y, raio):
-    """Pinta cabo e laminas com contorno em escala alta."""
+    """Pinta a silhueta dos oito tipos de arma da peca padrao do palco."""
     ar, ag, ab = (int(getattr(arma, chave, 180)) for chave in ("r", "g", "b"))
     cor = (ar, ag, ab, 255)
-    comprimento = max(58, min(120, int(getattr(arma, "comp_lamina", 70) * 1.1)))
-    def lamina(sinal=1, deslocamento=0):
-        inicio = (meio + sinal * (raio - 7), meio_y + deslocamento)
-        fim = (inicio[0] + sinal * comprimento, inicio[1] - 30)
-        cabo = (inicio[0] - sinal * 38, inicio[1] + 17)
-        desenho.line((cabo, inicio), fill=COR_BORDA, width=15)
-        desenho.line((cabo, inicio), fill=(117, 66, 29, 255), width=7)
-        desenho.line((inicio, fim), fill=COR_BORDA, width=19)
-        desenho.line((inicio, fim), fill=cor, width=11)
-        desenho.line((inicio, fim), fill=(255, 255, 255, 130), width=2)
-    if "Dupla" in str(getattr(arma, "tipo", "Reta")):
-        lamina(1, -raio * .32)
-        lamina(-1, raio * .32)
+    metal = tuple(int(200 * .7 + valor * .3) for valor in cor[:3]) + (255,)
+    largura = max(6, int(raio * .10))
+    comprimento = int(raio * 1.8)
+    tipo = str(getattr(arma, "tipo", "Reta")).lower()
+
+    def poligono(pontos, preenchimento):
+        desenho.polygon(pontos, fill=preenchimento)
+        desenho.line(pontos + [pontos[0]], fill=COR_BORDA, width=max(3, largura // 2), joint="curve")
+
+    def lamina(sinal=1, deslocamento=0, curta=False):
+        inicio = (meio + sinal * int(raio * .88), meio_y + int(deslocamento))
+        fim = (inicio[0] + sinal * (int(comprimento * (.62 if curta else 1))),
+               inicio[1] - int(raio * .32))
+        cabo = (inicio[0] - sinal * int(raio * .55), inicio[1] + int(raio * .18))
+        desenho.line((cabo, inicio), fill=COR_BORDA, width=largura * 2)
+        desenho.line((cabo, inicio), fill=(112, 80, 46, 255), width=largura)
+        desenho.line((inicio[0], inicio[1] - largura * 1.5, inicio[0], inicio[1] + largura * 1.5),
+                     fill=COR_BORDA, width=largura * 2)
+        desenho.line((inicio[0], inicio[1] - largura * 1.5, inicio[0], inicio[1] + largura * 1.5),
+                     fill=cor, width=max(3, largura))
+        perpendicular = largura * .85
+        poligono([(inicio[0], inicio[1] - perpendicular),
+                  (fim[0] - sinal * largura * 2, fim[1] - perpendicular), fim,
+                  (fim[0] - sinal * largura * 2, fim[1] + perpendicular),
+                  (inicio[0], inicio[1] + perpendicular)], metal)
+        desenho.line((inicio, fim), fill=(255, 255, 255, 180), width=max(2, largura // 4))
+
+    if "dupla" in tipo:
+        lamina(1, -raio * .31)
+        lamina(-1, raio * .31)
+    elif "corrente" in tipo:
+        inicio = (meio + int(raio * .9), meio_y)
+        fim = (inicio[0] + comprimento, inicio[1] - int(raio * .18))
+        desenho.line((meio + int(raio * .25), meio_y + int(raio * .1), inicio[0], inicio[1]),
+                     fill=(112, 80, 46, 255), width=largura)
+        for indice in range(5):
+            x = int(inicio[0] + (fim[0] - inicio[0]) * (indice + .5) / 5)
+            y = int(inicio[1] + (fim[1] - inicio[1]) * (indice + .5) / 5)
+            desenho.ellipse((x - largura, y - largura, x + largura, y + largura),
+                            outline=COR_BORDA, width=max(2, largura // 3))
+        desenho.ellipse((fim[0] - largura * 2, fim[1] - largura * 2,
+                         fim[0] + largura * 2, fim[1] + largura * 2), fill=metal,
+                        outline=COR_BORDA, width=max(3, largura // 2))
+    elif "arco" in tipo:
+        x = meio + int(raio * .8)
+        caixa = (x, meio_y - int(raio * .95), x + comprimento, meio_y + int(raio * .95))
+        desenho.arc(caixa, 105, 255, fill=COR_BORDA, width=largura * 2)
+        desenho.arc(caixa, 105, 255, fill=(112, 80, 46, 255), width=largura)
+        desenho.line((x + int(comprimento * .16), meio_y - int(raio * .88),
+                      x + int(comprimento * .16), meio_y + int(raio * .88)), fill=(235, 235, 242), width=2)
+    elif "arremesso" in tipo:
+        lamina(curta=True)
+    elif "orbital" in tipo:
+        for angulo in (-.7, .45, 1.55):
+            x = meio + int(raio * .72 + comprimento * .45 * math.cos(angulo))
+            y = meio_y + int(comprimento * .28 * math.sin(angulo))
+            desenho.ellipse((x - largura * 2, y - largura * 2, x + largura * 2, y + largura * 2),
+                            fill=metal, outline=COR_BORDA, width=max(3, largura // 2))
+    elif "mágica" in tipo or "magica" in tipo:
+        x, y = meio + int(raio * 1.5), meio_y
+        poligono([(x, y - largura * 3), (x + largura * 2, y), (x, y + largura * 3),
+                  (x - largura * 2, y)], cor)
+    elif "transform" in tipo:
+        x = meio + int(raio * .8)
+        desenho.line((meio + int(raio * .3), meio_y, x + comprimento, meio_y),
+                     fill=COR_BORDA, width=largura * 2)
+        desenho.line((meio + int(raio * .3), meio_y, x + comprimento, meio_y),
+                     fill=(112, 80, 46, 255), width=largura)
+        poligono([(x + comprimento - largura * 3, meio_y - largura * 4),
+                  (x + comprimento + largura, meio_y - largura * 3),
+                  (x + comprimento, meio_y + largura * 2),
+                  (x + comprimento - largura * 4, meio_y + largura)], metal)
     else:
         lamina()
 

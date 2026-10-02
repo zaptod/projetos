@@ -11,7 +11,8 @@ from neural_fights.ui.view_chars import TelaPersonagens
 from neural_fights.ui.view_luta import TelaLuta
 from neural_fights.ui.view_sons import TelaSons
 from neural_fights.ui.theme import (
-    BotaoCanvas, CartaoMenu, COR_BG, COR_ACCENT, COR_TEXTO_DIM, criar_titulo,
+    BotaoCanvas, CartaoMenu, COR_BG, COR_ACCENT, COR_TEXTO_DIM, CORES_CLASSE,
+    CORES_RARIDADE, criar_titulo,
 )
 
 # Configurações Visuais Globais
@@ -121,8 +122,14 @@ class MenuPrincipal(tk.Frame):
             ("♫", "CONFIGURAR SONS", "Ajuste efeitos e volume", lambda: controller.show_frame("TelaSons")),
             ("✦", "INTERAÇÕES SOCIAIS", "Feedback da comunidade", lambda: controller.show_frame("TelaInteracoes")),
         )
+        cores_menu = (
+            list(CORES_RARIDADE.values())[4], list(CORES_CLASSE.values())[8],
+            list(CORES_RARIDADE.values())[5], list(CORES_CLASSE.values())[7],
+            list(CORES_CLASSE.values())[10], list(CORES_CLASSE.values())[14],
+        )
         for indice, (icone, texto, descricao, comando) in enumerate(botoes):
-            CartaoMenu(menu, icone, texto, descricao, comando).grid(
+            CartaoMenu(menu, icone, texto, descricao, comando, cores_menu[indice],
+                       destaque=indice == 2).grid(
                 row=indice // 2, column=indice % 2, sticky="nsew", padx=8, pady=6
             )
         
