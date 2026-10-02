@@ -161,7 +161,7 @@ def test_passar_grava_a_previa_e_o_juiz_recebe_o_gif(perfil_limpo, monkeypatch):
     monkeypatch.setattr(juiz.correio, "enviar", lambda *a, **k: enviados.append((a, k)) or {"id": "g1"})
     assert juiz.perguntar("hab_teste")
     texto, anexos = enviados[0][0][1], enviados[0][1]["anexos"]
-    assert "NA ANIMACAO" in texto and "pes deslizando" in texto
+    assert "julgue a ANIMAÇÃO" in texto and "base deslizando" in texto
     assert gif in anexos
 
 

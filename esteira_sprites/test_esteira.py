@@ -120,8 +120,35 @@ def test_juiz_pergunta_defeitos_e_le_json(ambiente, monkeypatch):
     ficha.gravar(dados)
     enviados = []
     monkeypatch.setattr(juiz.correio, "enviar", lambda *a, **k: enviados.append((a, k)) or {"id": "g1"})
-    assert juiz.perguntar("fogo_teste") and "o que esta errado" in enviados[0][0][1].lower()
+    monkeypatch.setattr(juiz, "_controle", lambda _d: False)
+    assert juiz.perguntar("fogo_teste")
+    texto = enviados[0][0][1]
     assert enviados[0][0][0] == "gemini"  # o Grok respondia mal (02/10)
+    # o juiz sabe O QUE e o desenho, PARA QUE serve e o que cada anexo e (02/10)
+    item = config.item("fogo_teste")
+    assert "O JOGO:" in texto and "PARA QUE SERVE A SUA RESPOSTA" in texto
+    assert str(item.get("descricao") or item["id"]).strip() in texto
+    assert "ANEXOS: 1)" in texto and "está errado PARA ESSE USO" in texto
+
+
+def test_controle_do_juiz_e_cego(ambiente, monkeypatch):
+    limpo = imagem(ambiente / "limpo.png")
+    dados = ficha.nova(config.item("fogo_teste"))
+    dados["estado"] = "medido"
+    dados["tentativas"] = [{"caminhos": {"limpo": str(limpo)}}]
+    ficha.gravar(dados)
+    enviados = []
+    monkeypatch.setattr(juiz, "_controle", lambda _d: True)
+    monkeypatch.setattr(juiz.correio, "enviar", lambda *a, **k: enviados.append((a, k)) or {"id": "g1"})
+    assert juiz.perguntar("fogo_teste")
+    # avisar que e controle entregava a resposta ao juiz
+    assert "controle" not in enviados[0][0][1].lower() and "estragad" not in enviados[0][0][1].lower()
+    assert ficha.ler("fogo_teste")["tentativas"][-1]["controle"] is True
+
+
+def test_tamanho_real_vem_do_inventario():
+    assert juiz._tamanho_real({"tamanho": "folha 1024; no mundo 26x32 (x3 no celular)"}) == (78, 96)
+    assert juiz._tamanho_real({"tamanho": "1024x1024"}) is None
     assert juiz.ler_json("lixo {\"defeitos\":[],\"notas\":{}} fim")["defeitos"] == []
 
 

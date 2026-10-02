@@ -14,10 +14,6 @@ from . import config, ficha, prompt
 # dos videos e aceita anexo. O ChatGPT fica livre para gerar as imagens.
 JUIZ = "gemini"
 
-TEXTO_ANIMACAO = ("Isto e uma folha de ANIMACAO em ciclo (cada linha da folha e um ciclo; o GIF "
-                  "anexo toca os ciclos lado a lado). Liste o que esta errado NA ANIMACAO "
-                  "(continuidade, pes deslizando, pulos de tamanho, membros que somem).")
-
 
 def _xadrez(origem: str, destino: Path) -> Path:
     arte = Image.open(origem).convert("RGBA")
@@ -60,30 +56,99 @@ def _fichas() -> list[dict]:
     return saida
 
 
+# O que o juiz precisa saber para julgar: o que e o desenho e para que serve.
+# Sem isso ele so tinha "notas" soltas e respondia generico (Adrian, 02/10/2026).
+JOGO = {
+    "palco": ("Neural Fights: jogo de luta automática entre bolinhas guerreiras vistas de cima, "
+              "gravado como vídeo vertical para YouTube Shorts e TikTok e assistido no celular."),
+    "vila": ("A Vila: tela inicial do app do celular do Neural Fights, uma cidadezinha vista de "
+             "frente e levemente de cima, onde cada IA tem um prédio e um habitante (uma bolinha "
+             "sem braços e pernas). O app desenha nome, selos e estado por cima da arte."),
+}
+GRAVIDADE = ("Gravidade: 'grave' = não dá para usar como está (não se lê no tamanho real, foge do "
+             "estilo da referência, desenho cortado ou incompleto, linha ou quadro faltando, fundo "
+             "ou moldura que não devia existir, coisa diferente do que foi pedido); 'media' = dá "
+             "para usar mas se nota (cor fora, contorno falhando, detalhe confuso); 'leve' = "
+             "polimento.")
+
+
+def _tamanho_real(item: dict) -> tuple[int, int] | None:
+    """O tamanho em que o desenho aparece na tela do celular, quando o inventario diz."""
+    m = re.search(r"no mundo (\d+)x(\d+)(?: \(x(\d+) no celular\))?", str(item.get("tamanho") or ""))
+    if not m:
+        return None
+    escala = int(m.group(3) or 1)
+    return int(m.group(1)) * escala, int(m.group(2)) * escala
+
+
+def _no_tamanho_real(origem: str, tamanho: tuple[int, int], destino: Path) -> Path:
+    """O desenho reduzido ao tamanho da tela, sobre a grama da Vila, ampliado 2x sem suavizar."""
+    arte = Image.open(origem).convert("RGBA")
+    caixa = arte.getbbox() or (0, 0, arte.width, arte.height)
+    arte = arte.crop(caixa)
+    arte.thumbnail(tamanho, Image.LANCZOS)
+    fundo = Image.new("RGBA", (tamanho[0] + 16, tamanho[1] + 16), "#8cc96e")
+    fundo.alpha_composite(arte, ((fundo.width - arte.width) // 2, (fundo.height - arte.height) // 2))
+    fundo = fundo.resize((fundo.width * 2, fundo.height * 2), Image.NEAREST)
+    fundo.save(destino, "PNG")
+    return destino
+
+
+def _pergunta(item: dict, rotulos: list[str]) -> str:
+    perfil = item.get("perfil") or config.PERFIL
+    linhas = ["PEDIDO DE TEXTO. Você é o diretor de arte que aprova sprites para um jogo.",
+              "O JOGO: " + JOGO.get(perfil, JOGO["palco"]),
+              f"O QUE É ESTE DESENHO: {str(item.get('descricao') or item['id']).strip()}"]
+    tipo = ("folha de animação" if prompt.animacao(item) is not None
+            else "folha de quadros" if item.get("tipo") == "folha" else "peça parada")
+    linhas.append(f"FORMATO: {tipo}; {item.get('tamanho') or 'tamanho livre'}; fundo transparente "
+                  "(o xadrez cinza é só para mostrar a transparência).")
+    uso = item.get("presenca_txt") or ""
+    if uso:
+        linhas.append(f"QUANDO APARECE: {uso}.")
+    if item.get("notas"):
+        linhas.append(f"OBSERVAÇÃO: {item['notas']}")
+    linhas.append("ANEXOS: " + "; ".join(f"{n}) {r}" for n, r in enumerate(rotulos, 1)) + ".")
+    linhas.append("PARA QUE SERVE A SUA RESPOSTA: o que você marcar como 'grave' faz o desenho ser "
+                  "pedido de novo com os seus defeitos escritos no pedido; sem grave, ele vai para o "
+                  "Adrian aprovar. Então seja específico e acionável (onde, o quê, como corrigir).")
+    linhas.append("Liste o que está errado PARA ESSE USO; nunca diga só que está bom. " + GRAVIDADE)
+    linhas.append('Responda JSON estrito: {"defeitos":[{"o_que":str,"onde":str,"como_corrigir":str,'
+                  '"gravidade":"leve|media|grave"}],"notas":{"le_no_tamanho_real":0-3,'
+                  '"igual_a_referencia":0-3,"e_o_que_foi_pedido":0-3,"recorte":0-3,'
+                  '"continuidade":0-3}} (continuidade só em animação; senão 3).')
+    return "\n".join(linhas)
+
+
 def perguntar(item_id: str) -> bool:
     dados = ficha.ler(item_id)
     if not dados or dados.get("estado") != "medido":
         return False
+    item = dados["item"]
     tentativa = dados["tentativas"][-1]
     pasta = ficha.caminho(item_id).parent
-    visual = _xadrez(tentativa["caminhos"]["limpo"], pasta / "para_juiz.png")
-    anexos = [str(visual)]
-    if config.mestra().is_file():
-        anexos.append(str(config.mestra()))
     controle = _controle(dados)
-    if controle:
-        anexos[0] = str(_estragado(tentativa["caminhos"]["limpo"], pasta / "controle_estragado.png"))
-    texto = ("Liste o que esta errado neste sprite; nunca responda se esta bom. "
-             "Responda JSON estrito: {\"defeitos\":[{\"o_que\":str,\"gravidade\":\"leve|media|grave\"}],"
-             "\"notas\":{\"silhueta\":0-3,\"estilo\":0-3,\"cor_do_elemento\":0-3,\"continuidade\":0-3,\"recorte\":0-3}}.")
-    if prompt.animacao(dados["item"]) is not None:
-        # animacao: a folha E o ciclo tocando (GIF), e a pergunta e da animacao
+    # o controle e cego: o juiz nao sabe que a arte foi estragada de proposito
+    limpo = tentativa["caminhos"]["limpo"]
+    origem = str(_estragado(limpo, pasta / "controle_estragado.png")) if controle else limpo
+    anexos = [str(_xadrez(origem, pasta / "para_juiz.png"))]
+    rotulos = ["o desenho em tamanho de entrega"]
+    if prompt.animacao(item) is not None:
         gif = tentativa.get("caminhos", {}).get("previa_gif")
         if gif and Path(gif).is_file() and not controle:
-            anexos.insert(1, gif)
-        texto = TEXTO_ANIMACAO + " " + texto
-    if controle:
-        texto += " Este e um controle deliberadamente estragado; aponte o defeito grave."
+            anexos.append(gif)
+            rotulos.append("o GIF com os ciclos tocando lado a lado (julgue a ANIMAÇÃO: "
+                           "continuidade, base deslizando, pulos de tamanho, partes que somem)")
+    tamanho = _tamanho_real(item)
+    if tamanho:
+        anexos.append(str(_no_tamanho_real(origem, tamanho, pasta / "tamanho_real.png")))
+        rotulos.append(f"o desenho no tamanho em que aparece no celular ({tamanho[0]}x{tamanho[1]} px, "
+                       "ampliado 2x sem suavizar, sobre a grama): tem de ser legível assim")
+    if config.mestra().is_file():
+        anexos.append(str(config.mestra()))
+        rotulos.append("a imagem-mestra aprovada: o ESTILO a seguir (traço, contorno, sombra, "
+                       "cores); não o conteúdo")
+    texto = _pergunta(item, rotulos)
     mensagem = correio.enviar(JUIZ, texto, de="esteira_sprites", anexos=anexos)
     tentativa["juiz_id"] = mensagem["id"]
     tentativa["juiz_caixa"] = JUIZ
@@ -92,6 +157,16 @@ def perguntar(item_id: str) -> bool:
     ficha.registrar(dados, "juiz_pedido", correio_id=mensagem["id"], controle=controle)
     ficha.gravar(dados)
     return True
+
+
+def _defeito_acionavel(defeito: dict) -> str:
+    """O defeito como vai no pedido refeito: o que, onde e como corrigir."""
+    texto = str(defeito.get("o_que") or "defeito grave")
+    if defeito.get("onde"):
+        texto += f" (em {defeito['onde']})"
+    if defeito.get("como_corrigir"):
+        texto += f": {defeito['como_corrigir']}"
+    return texto
 
 
 def ler_json(texto: str) -> dict | None:
@@ -119,7 +194,7 @@ def colher(item_id: str) -> bool:
     if veredito is None:
         veredito = {"defeitos": [{"o_que": mensagem.get("erro") or "juiz sem JSON", "gravidade": "grave"}], "notas": {}}
     tentativa["veredito"] = veredito
-    graves = [d.get("o_que", "defeito grave") for d in veredito["defeitos"] if d.get("gravidade") == "grave"]
+    graves = [_defeito_acionavel(d) for d in veredito["defeitos"] if d.get("gravidade") == "grave"]
     if tentativa.get("controle") and not graves:
         tentativa["juiz_fraco"] = True
         ficha.registrar(dados, "juiz_fraco", motivo="controle sem defeito grave")
