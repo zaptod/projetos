@@ -104,7 +104,10 @@ RUIDO = ("**/.teste_tmp/**", ".teste_tmp/**", "**/.pytest_cache/**", ".pytest_ca
          # pastas temporarias que os testes do Codex deixam (01/10: .temp-delegar-*,
          # .pytest-tmp*, .tmp_pytest*) - nao sao trabalho dele
          ".temp-delegar-*/**", "**/.temp-delegar-*/**", ".pytest-tmp*/**", "**/.pytest-tmp*/**",
-         ".tmp_pytest*/**", "**/.tmp_pytest*/**", ".tmp/**")
+         ".tmp_pytest*/**", "**/.tmp_pytest*/**", ".tmp/**",
+         # 02/10: a pasta temporaria dos testes caiu na raiz (tmp_pytest<id>bt, a
+         # barra comida) e o Codex deixou capturas em _tmp_tela/; nenhum e trabalho
+         "tmp_pytest*/**", "_tmp*/**", "**/_tmp*/**")
 # O que o Codex nunca mexe, qualquer que seja a lista da tarefa.
 # 01/10 23:5x: era "palco/**" inteiro e barrou a entrega das buscas do palco;
 # o que e do Adrian no palco sao so estes tres (as artes dele, sem commit).

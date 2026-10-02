@@ -351,10 +351,15 @@ def test_diff_ignora_sobras_de_teste_e_fim_de_linha(mundo):
     (wt / ".teste_tmp" / "locks").mkdir(parents=True)
     (wt / ".teste_tmp" / "locks" / "x.lock").write_bytes(b"\x00\x01")
     (wt / "README.md").write_bytes(b"x\r\n")                 # so o fim de linha
+    # 02/10: as capturas do teste de tela e o basetemp sem barra
+    (wt / "_tmp_tela" / "tela_app").mkdir(parents=True)
+    (wt / "_tmp_tela" / "tela_app" / "a.png").write_bytes(b"\x89PNG")
+    (wt / "tmp_pytestdelegadost01bt").mkdir()
+    (wt / "tmp_pytestdelegadost01bt" / "x.json").write_text("{}")
     resumo = delegar.coletar("t01")
     caminhos = [a["caminho"] for a in resumo["arquivos"]]
     assert "README.md" not in caminhos
-    assert not any(".teste_tmp" in c for c in caminhos)
+    assert not any(".teste_tmp" in c or "_tmp_tela" in c or "tmp_pytest" in c for c in caminhos)
     assert "remoto/novo.py" in caminhos and resumo["ok"], resumo["motivos"]
 
 
