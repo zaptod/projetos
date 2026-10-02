@@ -112,7 +112,8 @@ class Supervisor:
     def __init__(self, *, servicos=None, relogio=datetime.now, processos=processos_windows,
                  iniciar=None, parar=None, avisar=None, porta=None, carteiro=None,
                  git=None, comandos=None, aplicar=None, claude_proibido=None,
-                 delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ):
+                 delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
+                 cerebro=None, vigia_trabalho=None, em_fundo=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
         self.iniciar = iniciar or self._iniciar
@@ -136,6 +137,14 @@ class Supervisor:
         self.velho_desde = {}
         self.eventos = []
         self.avisos_mensagem = set()
+        # O cerebro (`cerebro.atender`) e o vigia de trabalho so existem quando
+        # o `__main__` os liga: nos testes, ausentes = nada de Codex nem git.
+        self.cerebro, self.vigia_trabalho = cerebro, vigia_trabalho
+        self.em_fundo = em_fundo or self._em_fundo
+        self.fundos = {}
+        self.vigia_em = None
+        self.trabalho = {}
+        self.reinicio_pedido = set()
         self.estado = {n: {"situacao": "parado", "pid": None, "desde": None,
                            "reinicios_24h": 0, "ultimo_erro": "", "codigo_velho": False,
                            "saude": "desconhecida", "proximo_reinicio": None,
@@ -345,7 +354,7 @@ class Supervisor:
                 self.religar(nome, "saude ruim")
             return
         self.saudes_ruins[nome] = 0
-        if self.git(ficha, estado["desde"]):
+        if nome in self.reinicio_pedido or self.git(ficha, estado["desde"]):
             if not estado["codigo_velho"]:
                 self.velho_desde[nome] = self.relogio()
                 estado["codigo_velho"] = True
@@ -354,6 +363,7 @@ class Supervisor:
             if ok:
                 self.parar(achado["pid"])
                 self.religar(nome, "codigo velho", forcar=True)
+                self.reinicio_pedido.discard(nome)
                 self.evento(nome, "reiniciou", "codigo atualizado")
             else:
                 estado.update(motivo_espera=espera, proximo_reinicio=None)
@@ -387,6 +397,8 @@ class Supervisor:
         """O alerta e uma vez por mensagem; ela continua pendente para Claude."""
         if not self.comandos:
             return
+        if self.cerebro and not self.claude_proibido():
+            return            # sem ouvinte ha 60 s, o cerebro atende a mensagem
         try:
             from remoto.orquestrador import sem_ouvinte, situacao_do_vigia
             aviso = sem_ouvinte(self.comandos(), situacao_do_vigia())
@@ -400,6 +412,49 @@ class Supervisor:
                         "o coordenador executa so comandos do app")
             self.avisos_mensagem.add(ident)
             self.evento("", "aviso", "mensagem guardada sem ouvinte")
+
+    # ------------------------------------------------ cerebro e vigia de trabalho
+    def _em_fundo(self, nome, funcao):
+        """Uma thread por tarefa: pensar e testar levam minutos e o pulso de
+        5 s nao pode esperar. Se a anterior ainda roda, esta vez passa."""
+        import threading
+        atual = self.fundos.get(nome)
+        if atual is not None and atual.is_alive():
+            return False
+
+        def rodar():
+            try:
+                funcao()
+            except Exception as exc:  # noqa: BLE001 - a thread nao derruba o laco
+                self.evento("", f"{nome}_erro", f"{type(exc).__name__}: {exc}")
+        self.fundos[nome] = threading.Thread(target=rodar, name=f"coordenador-{nome}", daemon=True)
+        self.fundos[nome].start()
+        return True
+
+    def processar_cerebro(self):
+        if not self.cerebro:
+            return
+        self.em_fundo("cerebro", lambda: self.cerebro(comandos=self.comandos, aplicar=self.aplicar,
+                                                       avisar=self.avisar))
+
+    def vigiar_trabalho(self):
+        if not self.vigia_trabalho:
+            return
+        from .vigia_trabalho import INTERVALO_S
+        agora = self.relogio()
+        if self.vigia_em is not None and (agora - self.vigia_em).total_seconds() < INTERVALO_S:
+            return
+        self.vigia_em = agora
+
+        def passo():
+            self.trabalho = self.vigia_trabalho.passo()
+        self.em_fundo("vigia", passo)
+
+    def pedir_reinicio(self, nome):
+        """O vigia aplicou codigo deste servico: reinicia no proximo momento seguro."""
+        if nome in self.servicos:
+            self.reinicio_pedido.add(nome)
+            self.evento(nome, "reinicio_pedido", "entrega do Codex aplicada")
 
     def reiniciar_tudo(self):
         for nome in self.servicos:
@@ -436,12 +491,16 @@ class Supervisor:
                 self.parar_delegado(ident)
         self.processar_comandos()
         self.avisar_mensagem_sem_ouvinte()
+        self.processar_cerebro()
+        self.vigiar_trabalho()
         self.gravar(self.resumo())
 
     def resumo(self):
         return {"pid": os.getpid(), "desde": self.desde, "pulso_em": agora_iso(self.relogio()),
                 "versao": self._versao(), "servicos": self.estado,
-                "acoes_pc": acoes_pc.catalogo(), "eventos": self.eventos[-100:]}
+                "acoes_pc": acoes_pc.catalogo(), "eventos": self.eventos[-100:],
+                "cerebro": {"ligado": bool(self.cerebro)},
+                "trabalho": self.trabalho}
 
     @staticmethod
     def _versao():

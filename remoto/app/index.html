@@ -344,18 +344,46 @@
   </section>
   <section id="tela-coordenador" class="oculto livro coordenador" aria-label="Coordenador">
     <div class="cartao" id="coord-topo"></div>
-    <div class="cartao">
-      <h2>Serviços</h2>
-      <div id="coord-servicos"></div>
+    <!-- 02/10: o cerebro (Conversa e propostas) e o vigia de trabalho -->
+    <div class="abas" id="coord-abas" role="group" aria-label="Coordenador">
+      <button class="acao" data-aba="painel" aria-pressed="true">Painel</button>
+      <button class="acao" data-aba="conversa" aria-pressed="false">💬 Conversa</button>
     </div>
-    <div class="cartao">
-      <h2>Controlar o PC</h2>
-      <div id="coord-acoes" class="botoes"></div>
-      <div id="coord-confirmar" class="coord-confirmar oculto"></div>
+    <div id="coord-painel">
+      <div class="cartao">
+        <h2>Trabalho</h2>
+        <div id="coord-trabalho"></div>
+      </div>
+      <div class="cartao">
+        <h2>Serviços</h2>
+        <div id="coord-servicos"></div>
+      </div>
+      <div class="cartao">
+        <h2>Controlar o PC</h2>
+        <div id="coord-acoes" class="botoes"></div>
+        <div id="coord-confirmar" class="coord-confirmar oculto"></div>
+      </div>
+      <div class="cartao">
+        <h2>O que aconteceu</h2>
+        <div id="coord-eventos"></div>
+      </div>
     </div>
-    <div class="cartao">
-      <h2>O que aconteceu</h2>
-      <div id="coord-eventos"></div>
+    <div id="coord-conversa" class="oculto">
+      <div class="cartao">
+        <h2>Propostas</h2>
+        <div class="fraco">O que ele quer fazer e precisa do seu sim (vale 30 min).</div>
+        <div id="coord-propostas"></div>
+      </div>
+      <div class="cartao">
+        <h2>Conversa</h2>
+        <div id="coord-cerebro" class="fraco"></div>
+        <div id="coord-mensagens" class="coord-mensagens"></div>
+        <div class="coord-escrever">
+          <textarea id="coord-texto" rows="2" maxlength="4000"
+                    placeholder="Fale com o coordenador" aria-label="Mensagem para o coordenador"></textarea>
+          <button class="acao" id="coord-enviar" type="button">Enviar</button>
+        </div>
+      </div>
     </div>
   </section>
   <!-- A Biblioteca (01/10): paginas publicadas, planos e relatorios, so leitura. -->

@@ -78,7 +78,8 @@ def ajuda(_args: str = "") -> str:
         "/confiabilidade — o que saiu hoje e o que dá para provar\n"
         "/testar\\_conserto <carimbo> — a suíte com um remendo proposto\n"
         "/pausar [minutos] · /retomar · /parar\n"
-        "/ajuda — isto aqui")
+        "/ajuda — isto aqui\n"
+        "Texto sem / vai para o 🛰 coordenador, que responde aqui.")
 
 
 def status(_args: str = "") -> str:
@@ -344,11 +345,28 @@ TABELA = {
 }
 
 
+def falar_ao_coordenador(texto: str) -> str:
+    """Texto sem `/` e uma mensagem para o coordenador (02/10/2026).
+
+    O bot NAO pensa nem executa nada: so grava o pedido na entrada do cerebro
+    (`coordenador.cerebro.registrar_entrada`) e responde que recebeu. Quem
+    pensa (Codex so leitura) e quem age (lista fechada) e o coordenador, que
+    manda a resposta por aqui mesmo, pelo envio de sempre."""
+    try:
+        from coordenador import cerebro
+        cerebro.registrar_entrada(texto, "telegram")
+    except Exception as exc:      # nenhuma mensagem derruba o bot
+        return (f"não consegui guardar sua mensagem para o coordenador "
+                f"({type(exc).__name__}). Os comandos com / continuam: /ajuda")
+    return ("🛰 recebido, pensando… o coordenador responde aqui. "
+            "Os comandos com / continuam: /ajuda")
+
+
 def executar(texto: str):
     """(resposta, arquivo_ou_None) para o texto que chegou do celular."""
     texto = (texto or "").strip()
     if not texto.startswith("/"):
-        return ("mande /ajuda para ver o que eu faço.", None)
+        return (falar_ao_coordenador(texto), None)
     corpo = texto[1:]
     nome, _, args = corpo.partition(" ")
     nome = nome.split("@")[0].lower()       # /status@meubot

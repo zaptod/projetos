@@ -142,3 +142,91 @@ def test_post_sem_acoes_e_recusado(mundo):
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+# ------------------------------------------------ o cerebro (02/10/2026)
+@pytest.fixture
+def cerebro_isolado(tmp_path, monkeypatch):
+    """A pasta do cerebro e a do teste; executar uma proposta nao toca o PC."""
+    from coordenador import cerebro
+    monkeypatch.setenv("NF_COORDENADOR_PASTA", str(tmp_path / "coordenador"))
+    executadas = []
+    monkeypatch.setattr(cerebro, "_executar_proposta",
+                        lambda acao: executadas.append(acao) or "executada (dublê)")
+    monkeypatch.setattr(cerebro, "executadas", executadas, raising=False)
+    return cerebro
+
+
+def test_falar_grava_a_entrada_e_a_conversa(servidor, cerebro_isolado):
+    token = _parear(servidor)
+    status, dados = _pedir(servidor, "POST", "/api/coordenador/falar",
+                           {"texto": "como estão os serviços?"}, token)
+    assert status == 200 and dados["feito"] is True
+    assert [e["texto"] for e in cerebro_isolado.entradas_novas()] == ["como estão os serviços?"]
+    status, dados = _pedir(servidor, "GET", "/api/coordenador/conversa", token=token)
+    assert status == 200
+    assert dados["conversa"][-1]["de"] == "adrian" and dados["propostas"] == []
+    assert "limite_hora" in dados["cerebro"]
+
+
+def test_falar_longo_com_acento_passa_dos_4_kb(servidor, cerebro_isolado):
+    texto = "ação " * 700                        # 3500 caracteres, mais de 4 KB em UTF-8
+    status, _ = _pedir(servidor, "POST", "/api/coordenador/falar", {"texto": texto},
+                       _parear(servidor))
+    assert status == 200 and len(cerebro_isolado.entradas_novas()) == 1
+
+
+def test_falar_vazio_e_recusado(servidor, cerebro_isolado):
+    status, _ = _pedir(servidor, "POST", "/api/coordenador/falar", {"texto": "  "},
+                       _parear(servidor))
+    assert status == 400
+
+
+def test_proposta_confirmada_pelo_app_executa_e_a_vencida_nao(servidor, cerebro_isolado):
+    from datetime import datetime, timedelta
+    viva = cerebro_isolado.propor({"tipo": "pc_acao", "valor": "suspender", "porque": "x",
+                                   "perigo": True})
+    velha = cerebro_isolado.propor({"tipo": "pc_acao", "valor": "suspender", "porque": "x",
+                                    "perigo": True}, agora=datetime.now() - timedelta(minutes=31))
+    token = _parear(servidor)
+    status, dados = _pedir(servidor, "GET", "/api/coordenador/conversa", token=token)
+    assert [p["situacao"] for p in dados["propostas"]] == ["vencida", "pendente"]
+    status, dados = _pedir(servidor, "POST", f"/api/coordenador/proposta/{viva['id']}",
+                           {"decisao": "confirmar"}, token)
+    assert status == 200 and dados["feito"] is True
+    assert [a["valor"] for a in cerebro_isolado.executadas] == ["suspender"]
+    status, _ = _pedir(servidor, "POST", f"/api/coordenador/proposta/{velha['id']}",
+                       {"decisao": "confirmar"}, token)
+    assert status == 409 and len(cerebro_isolado.executadas) == 1
+    status, _ = _pedir(servidor, "POST", "/api/coordenador/proposta/0123456789ab",
+                       {"decisao": "confirmar"}, token)
+    assert status == 404
+    status, _ = _pedir(servidor, "POST", f"/api/coordenador/proposta/{viva['id']}",
+                       {"decisao": "talvez"}, token)
+    assert status == 400
+
+
+@pytest.mark.parametrize("metodo,rota,corpo", [
+    ("GET", "/api/coordenador/conversa", None),
+    ("POST", "/api/coordenador/falar", {"texto": "oi"}),
+    ("POST", "/api/coordenador/proposta/0123456789ab", {"decisao": "confirmar"}),
+])
+def test_rotas_do_cerebro_exigem_pareamento(servidor, cerebro_isolado, metodo, rota, corpo):
+    status, _ = _pedir(servidor, metodo, rota, corpo)
+    assert status == 401
+
+
+@pytest.mark.parametrize("rota,corpo", [
+    ("/api/coordenador/falar", {"texto": "oi"}),
+    ("/api/coordenador/proposta/0123456789ab", {"decisao": "confirmar"}),
+])
+def test_rotas_do_cerebro_que_agem_exigem_acoes(mundo, cerebro_isolado, rota, corpo):
+    srv = api_http.criar_servidor("127.0.0.1", 0, local=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        status, _ = _pedir(srv, "POST", rota, corpo, _parear(srv))
+        assert status == 403
+        assert cerebro_isolado.entradas_novas() == []
+    finally:
+        srv.shutdown()
+        srv.server_close()

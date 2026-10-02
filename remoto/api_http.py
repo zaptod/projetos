@@ -792,6 +792,10 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json(_limpo(orquestrador.para_o_app()))
             if rota == "/api/coordenador":
                 return self._json(_limpo(coordenador_para_o_app()))
+            if rota == "/api/coordenador/conversa":
+                # O cerebro (02/10): a conversa e as propostas. So leitura.
+                from coordenador import cerebro as coord_cerebro
+                return self._json(_limpo(coord_cerebro.para_o_app()))
             # A OFICINA DO CODEX (01/10): o que foi delegado, ao vivo. So
             # leitura; os eventos novos por offset (`desde`), sem reler o
             # arquivo inteiro a cada 3 s.
@@ -901,6 +905,11 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._orquestrador(rota)
         if rota == "/api/coordenador/comando":
             return self._coordenador_comando()
+        if rota == "/api/coordenador/falar":
+            return self._coordenador_falar()
+        achado = re.fullmatch(r"/api/coordenador/proposta/([0-9a-f]{12})", rota)
+        if achado:
+            return self._coordenador_proposta(achado.group(1))
         if rota == "/api/claude":
             return self._interruptor_claude()
         achado = re.fullmatch(r"/api/biblioteca/bilhete/([a-z0-9-]{1,64})", rota)
@@ -1115,6 +1124,51 @@ class Manipulador(BaseHTTPRequestHandler):
         except OSError:
             return self._erro(503, "o orquestrador está ocupado; tente de novo")
         return self._json({"feito": True, "comando": linha})
+
+    def _coordenador_falar(self):
+        """A aba Conversa: a mensagem vai para a entrada do cerebro, a mesma do
+        Telegram. Exige `--acoes`: o que ele pensa pode reiniciar servico."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        corpo = self._corpo(maximo=20_000)        # 4000 caracteres com acento passam de 4 KB
+        if corpo is None:
+            return
+        texto = corpo.get("texto")
+        if not isinstance(texto, str) or not texto.strip():
+            return self._erro(400, "a mensagem está vazia")
+        if len(texto) > 4000:
+            return self._erro(400, "a mensagem passa de 4000 caracteres")
+        from coordenador import cerebro as coord_cerebro
+        try:
+            item = coord_cerebro.registrar_entrada(texto, "app")
+        except (OSError, ValueError) as exc:
+            return self._erro(503, f"não consegui guardar a mensagem: {exc}")
+        return self._json({"feito": True, "id": item["id"], "em": item["em"]})
+
+    def _coordenador_proposta(self, ident: str):
+        """Confirmar ou recusar uma proposta do cerebro (vence em 30 min)."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        corpo = self._corpo()
+        if corpo is None:
+            return
+        decisao = corpo.get("decisao")
+        if decisao not in ("confirmar", "recusar"):
+            return self._erro(400, "decisão é confirmar ou recusar")
+        from coordenador import cerebro as coord_cerebro
+        try:
+            feito = coord_cerebro.decidir_proposta(ident, decisao, aparelho=self._id)
+        except LookupError:
+            return self._erro(404, "proposta desconhecida")
+        except OSError:
+            return self._erro(503, "o coordenador está ocupado; tente de novo")
+        if not feito.get("feito"):
+            return self._erro(409, str(feito.get("motivo") or "a proposta não vale mais"))
+        return self._json(_limpo(feito))
 
     # ------------------------------------------------- interruptor do Claude
     def _interruptor_claude(self):

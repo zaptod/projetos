@@ -667,6 +667,34 @@ ações fechadas do PC e eventos. A rota `/api/coordenador` só lê esse arquivo
 `/api/coordenador/comando` exige aparelho pareado e `--acoes`, valida o
 catálogo publicado e deixa o pedido pendente para o orquestrador aplicar.
 
+**02/10/2026: o cérebro e o vigia de trabalho** (detalhes em
+`docs/sessoes/coordenador.md`). A tela ganhou duas abas:
+- **Painel**: o de antes, mais o cartão **Trabalho** (o retrato do vigia,
+  chave `trabalho` do `estado.json`): entregas que precisam de olho, que
+  esperam a janela, em correção, aplicadas (com o commit), o Codex rodando,
+  os itens da Mesa com os minutos sem relato, o que espera o Adrian e a fila.
+- **💬 Conversa**: o histórico (`conversa.jsonl`, do Telegram e do app), a
+  caixa de escrever e os cartões de **proposta** (Confirmar em dois toques,
+  Recusar; os caminhos do `delegar_codex` aparecem antes do sim).
+
+| rota | o que faz |
+| --- | --- |
+| `GET /api/coordenador/conversa` | `cerebro.para_o_app()`: conversa (100), propostas (vencidas marcadas na leitura) e o uso do cérebro. Só pareamento |
+| `POST /api/coordenador/falar` `{texto}` | grava na entrada do cérebro (a mesma do Telegram). Pareamento **e** `--acoes` (o que ele pensa pode reiniciar serviço) |
+| `POST /api/coordenador/proposta/<id>` `{decisao: confirmar\|recusar}` | `cerebro.decidir_proposta`. Pareamento e `--acoes`; 404 desconhecida, 409 vencida/já decidida |
+
+**Bot:** texto sem `/` deixou de ser "mande /ajuda": vira mensagem para o
+coordenador (`comandos.falar_ao_coordenador`), que responde "🛰 recebido,
+pensando… (os comandos com / continuam: /ajuda)"; a resposta do cérebro
+chega depois pelo `avisar_telegram`. O bot não pensa nem executa nada. Os
+comandos com `/` não mudaram. Testes: `remoto/test_comandos_coordenador.py`
+e as rotas em `remoto/test_coordenador_app.py`.
+
+**Não feito:** o nome do cache do `sw.js` continua `painel-casca-v26`. O
+`test_app_vila_objetos.py` crava o v26 e está fora dos caminhos desta
+entrega; a casca nova chega igual pelo `X-Casca` (hash do conteúdo) e pelo
+"rede primeiro" do service worker. Subir para v27 = mudar os dois juntos.
+
 ## 8. O leitor de decisões tomadas (28/09/2026, noite)
 
 Pedido do Adrian pela Mesa, às 21:50: "Quero que você crie um leitor de

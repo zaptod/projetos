@@ -70,8 +70,10 @@ function coordDesenhar(dados) {
       el("div", {class: "grande coord-fora"}, "FORA DO AR"),
       el("div", {class: "fraco"}, dados.motivo || "sem pulso recente"));
     $("coord-servicos").replaceChildren(); $("coord-acoes").replaceChildren(); $("coord-eventos").replaceChildren();
+    coordTrabalho(null);
     return;
   }
+  coordTrabalho(dados.trabalho);
   topo.replaceChildren(el("h2", {}, "Coordenador"),
     el("div", {class: "grande coord-vivo"}, "NO AR"),
     el("div", {class: "fraco"}, `desde ${quandoCurto(dados.desde) || "—"} · versão ${dados.versao || "—"}`));
@@ -137,10 +139,162 @@ async function coordCarregar() {
   try { coordDesenhar(await api("/api/coordenador")); conexao(true); } catch (err) { conexao(false, err); }
 }
 
+// ------------------------------------------------ o vigia de trabalho (02/10)
+function coordLinha(texto, classe = "") {
+  return el("div", {class: `coord-trabalho-linha ${classe}`.trim()}, texto);
+}
+
+function coordTrabalho(t) {
+  const caixa = $("coord-trabalho");
+  if (!t || !t.em) {
+    caixa.replaceChildren(coordLinha("O vigia de trabalho ainda não passou.", "fraco"));
+    return;
+  }
+  const linhas = [coordLinha(`visto ${quandoCurto(t.em) || "—"}`
+    + (t.resumo_em ? ` · último resumo ${quandoCurto(t.resumo_em)}` : ""), "fraco")];
+  if (t.proibido) linhas.push(coordLinha(`${t.proibido}: só observo`, "coord-aviso"));
+  for (const o of t.olho || []) linhas.push(coordLinha(`⚠ ${o.id}: ${o.motivo}`, "coord-erro"));
+  for (const [id, motivo] of Object.entries(t.esperando || {})) linhas.push(coordLinha(`⏳ ${id}: ${motivo}`, "coord-aviso"));
+  for (const id of t.corrigindo || []) linhas.push(coordLinha(`🔧 ${id}: o Codex está corrigindo`));
+  for (const a of (t.aplicados || []).slice().reverse()) linhas.push(coordLinha(`✓ ${a.id} → ${a.commit}`));
+  for (const r of t.rodando || []) linhas.push(coordLinha(`▶ Codex: ${r.titulo || r.id}`));
+  for (const m of t.mesa || []) {
+    const parada = typeof m.sem_relato_min === "number" && m.sem_relato_min >= 45;
+    linhas.push(coordLinha(`🗺 ${m.titulo || m.id}` + (typeof m.sem_relato_min === "number"
+      ? ` · ${m.sem_relato_min} min sem relato` : ""), parada ? "coord-aviso" : ""));
+  }
+  const espera = t.espera_adrian || {};
+  linhas.push(coordLinha(`Espera você: ${espera.decisoes ?? "?"} decisão(ões) no Grimório, `
+    + `${espera.propostas ?? "?"} proposta(s)`));
+  if (t.fila) linhas.push(coordLinha(`Fila: ${t.fila.n} item(ns)`
+    + ((t.fila.primeiros || [])[0] ? ` · ${t.fila.primeiros[0]}` : ""), "fraco"));
+  if ((t.antigos || []).length) linhas.push(coordLinha(`${t.antigos.length} entrega(s) antiga(s) sem aplicar (de antes do vigia)`, "fraco"));
+  caixa.replaceChildren(...linhas);
+}
+
+// ------------------------------------------------ a Conversa com o cerebro (02/10)
+const CoordConv = {aba: "painel", enviando: false, armado: null};
+
+function coordAba(aba) {
+  CoordConv.aba = aba;
+  for (const b of document.querySelectorAll("#coord-abas [data-aba]")) {
+    b.setAttribute("aria-pressed", String(b.dataset.aba === aba));
+  }
+  $("coord-painel").classList.toggle("oculto", aba !== "painel");
+  $("coord-conversa").classList.toggle("oculto", aba !== "conversa");
+  if (aba === "conversa") coordConversaCarregar();
+}
+
+function coordMensagem(m) {
+  const de = m.de === "adrian" ? "adrian" : "coordenador";
+  const quem = de === "adrian" ? "você" : "🛰 coordenador";
+  const pelo = m.origem === "telegram" ? " · pelo Telegram" : "";
+  return el("div", {class: `coord-msg ${de}`}, m.texto || "",
+    el("span", {class: "fraco"}, `${quem} · ${quandoCurto(m.em) || ""}${pelo}`));
+}
+
+function coordProposta(p) {
+  const card = el("div", {class: "coord-proposta"});
+  card.append(el("div", {}, el("strong", {}, p.texto || p.id)));
+  if (p.porque) card.append(el("div", {class: "fraco"}, `por quê: ${p.porque}`));
+  const valor = (p.acao && p.acao.valor) || {};
+  if (p.acao && p.acao.tipo === "delegar_codex" && Array.isArray(valor.permitidos)) {
+    card.append(el("div", {class: "coord-aviso"}, `Caminhos que o Codex pode mexer: ${valor.permitidos.join(", ")}`));
+  }
+  if (p.situacao !== "pendente") {
+    card.append(el("div", {class: "fraco"}, `${p.situacao}${p.nota ? ` · ${p.nota}` : ""}`));
+    return card;
+  }
+  card.append(el("div", {class: "fraco"}, `vale até ${quandoCurto(p.vence_em) || "—"}`));
+  const botoes = el("div", {class: "botoes"});
+  const sim = el("button", {class: "acao perigo", type: "button"},
+    CoordConv.armado === p.id ? "Tocar de novo para confirmar" : "Confirmar");
+  sim.addEventListener("click", () => {
+    if (CoordConv.armado !== p.id) {           // dois toques: o primeiro so arma
+      CoordConv.armado = p.id;
+      sim.textContent = "Tocar de novo para confirmar";
+      setTimeout(() => { if (CoordConv.armado === p.id) { CoordConv.armado = null; sim.textContent = "Confirmar"; } }, 4000);
+      return;
+    }
+    CoordConv.armado = null;
+    coordDecidir(p.id, "confirmar");
+  });
+  const nao = el("button", {class: "acao", type: "button"}, "Recusar");
+  nao.addEventListener("click", () => coordDecidir(p.id, "recusar"));
+  botoes.append(sim, nao);
+  card.append(botoes);
+  return card;
+}
+
+function coordConversaDesenhar(dados) {
+  const conversa = Array.isArray(dados.conversa) ? dados.conversa : [];
+  const propostas = Array.isArray(dados.propostas) ? dados.propostas : [];
+  const cerebro = dados.cerebro || {};
+  $("coord-cerebro").textContent = cerebro.proibido
+    ? `${cerebro.proibido}: ele não pensa até você liberar.`
+    : `Pensou ${cerebro.pensamentos_na_hora ?? 0} de ${cerebro.limite_hora ?? "?"} vezes nesta hora.`;
+  const pendentes = propostas.filter((p) => p.situacao === "pendente");
+  const recentes = propostas.filter((p) => p.situacao !== "pendente").slice(0, 5);
+  $("coord-propostas").replaceChildren(...(pendentes.length || recentes.length
+    ? [...pendentes, ...recentes].map(coordProposta)
+    : [el("div", {class: "fraco"}, "Nenhuma proposta.")]));
+  const caixa = $("coord-mensagens");
+  const noFim = caixa.scrollHeight - caixa.scrollTop - caixa.clientHeight < 40;
+  const itens = conversa.map(coordMensagem);
+  // "pensando…" enquanto houver entrada sem resposta (nao so a ultima linha:
+  // confirmar uma proposta escreve uma linha do coordenador no meio)
+  const ultima = conversa[conversa.length - 1];
+  if (cerebro.na_fila > 0 || (ultima && ultima.de === "adrian" && !ultima.entrada)) {
+    itens.push(el("div", {class: "coord-msg coordenador fraco"},
+      cerebro.na_fila > 1 ? `pensando… (${cerebro.na_fila} na fila)` : "pensando…"));
+  }
+  caixa.replaceChildren(...(itens.length ? itens : [el("div", {class: "fraco"}, "Escreva abaixo: ele lê o estado do PC e responde aqui.")]));
+  if (noFim) caixa.scrollTop = caixa.scrollHeight;
+}
+
+async function coordConversaCarregar() {
+  try { coordConversaDesenhar(await api("/api/coordenador/conversa")); } catch (err) { conexao(false, err); }
+}
+
+async function coordFalar() {
+  const campo = $("coord-texto");
+  const texto = campo.value.trim();
+  if (!texto || CoordConv.enviando) return;
+  CoordConv.enviando = true;
+  $("coord-enviar").disabled = true;
+  try {
+    await api("/api/coordenador/falar", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({texto})});
+    campo.value = "";
+  } catch (err) { avisar(err.message, true); }
+  CoordConv.enviando = false;
+  $("coord-enviar").disabled = false;
+  coordConversaCarregar();
+}
+
+async function coordDecidir(id, decisao) {
+  try {
+    await api(`/api/coordenador/proposta/${encodeURIComponent(id)}`, {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({decisao})});
+    avisar(decisao === "confirmar" ? "confirmada" : "recusada");
+  } catch (err) { avisar(err.message, true); }
+  coordConversaCarregar();
+}
+
+$("coord-enviar").addEventListener("click", coordFalar);
+for (const b of document.querySelectorAll("#coord-abas [data-aba]")) {
+  b.addEventListener("click", () => coordAba(b.dataset.aba));
+}
+
 function coordenadorMostrar() {
   coordCarregar();
+  if (CoordConv.aba === "conversa") coordConversaCarregar();
   clearInterval(Coord.relogio);
-  Coord.relogio = setInterval(() => { if (document.visibilityState === "visible") coordCarregar(); }, COORD_MS);
+  Coord.relogio = setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    coordCarregar();
+    if (CoordConv.aba === "conversa") coordConversaCarregar();
+  }, COORD_MS);
 }
 
 function coordenadorParar() {

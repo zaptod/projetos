@@ -608,6 +608,19 @@ nav.prateleira button.objeto span { font-size: 26px; }
 .coord-confirmar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px;
   padding: 8px; border: 1px solid var(--erro); border-radius: 8px; color: var(--erro); }
 .coord-evento-hora { flex: none; width: 4.2em; font-size: 12px; color: var(--fraco); }
+/* 02/10: a Conversa com o cerebro, as propostas e o Trabalho do vigia */
+.coord-trabalho-linha { padding: 3px 0; font-size: 14px; overflow-wrap: anywhere; }
+.coord-mensagens { display: flex; flex-direction: column; gap: 6px; max-height: 55vh;
+  overflow-y: auto; margin: 8px 0; }
+.coord-msg { max-width: 88%; padding: 7px 10px; border-radius: 12px; white-space: pre-wrap;
+  overflow-wrap: anywhere; font-size: 14px; border: 1px solid var(--linha); }
+.coord-msg.adrian { align-self: flex-end; background: rgba(92, 193, 133, .16); }
+.coord-msg.coordenador { align-self: flex-start; }
+.coord-msg .fraco { display: block; font-size: 11px; margin-top: 2px; }
+.coord-escrever { display: flex; gap: 6px; align-items: flex-end; }
+.coord-escrever textarea { flex: 1; min-width: 0; font: inherit; padding: 6px; border-radius: 8px; }
+.coord-proposta { padding: 8px 0; border-top: 1px solid var(--linha); overflow-wrap: anywhere; }
+.coord-proposta:first-child { border-top: 0; }
 @media (prefers-color-scheme: dark) {
   .livro.coordenador { background: radial-gradient(ellipse at top, #344452, #1d252d); }
   .livro.coordenador .cartao { background: rgba(30, 33, 39, .96); }

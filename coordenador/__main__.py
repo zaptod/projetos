@@ -75,6 +75,21 @@ def tarefas_antigas(ligar, rodar=subprocess.run):
         rodar(["schtasks", "/change", "/tn", nome, "/enable" if ligar else "/disable"], check=True)
 
 
+def montar() -> Supervisor:
+    """O supervisor de producao: comandos do app, o cerebro (Codex so leitura)
+    e o vigia de trabalho, que usa o mesmo criterio de momento seguro e pede
+    o reinicio ao proprio supervisor."""
+    from remoto.orquestrador import aplicado, pendentes
+
+    from . import cerebro
+    from .vigia_trabalho import VigiaTrabalho
+    s = Supervisor(comandos=pendentes, aplicar=aplicado, cerebro=cerebro.atender)
+    s.vigia_trabalho = VigiaTrabalho(
+        avisar=s.avisar, evento=lambda tipo, texto: s.evento("", tipo, texto),
+        seguro=lambda: s.seguro(""), pedir_reinicio=s.pedir_reinicio)
+    return s
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m coordenador")
     sub = parser.add_subparsers(dest="acao", required=True)
@@ -88,8 +103,7 @@ def main(argv=None):
     sub.add_parser("religar-tarefas-antigas")
     args = parser.parse_args(argv)
     if args.acao == "rodar":
-        from remoto.orquestrador import aplicado, pendentes
-        return Supervisor(comandos=pendentes, aplicar=aplicado).rodar()
+        return montar().rodar()
     if args.acao == "status":
         import json
         print(json.dumps(ler_estado(), ensure_ascii=False, indent=2))
