@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-02T02:10:25",
+      "evento": "2026-10-02T01:15:49",
+      "linha": 111,
+      "nota": "vigia_aplica=true no config do coordenador, a pedido do Adrian",
+      "opcao": "sim",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "O vigia novo coleta a entrega, passa o validador e os testes, espera o momento seguro, aplica, commita e pede reinício. A decisão vigente geral/codex-commita diz 'eu aplico e commito por caminho', então ele está DESLIGADO por enquanto (vigia_aplica=false): entrega validada e testada fica 'pronta para aplicar' e eu aplico. Ligado, poupa o Claude e o Codex não fica parado esperando.",
   "criado": "2026-10-02T01:14:25.631097",
   "depende_de": [],
