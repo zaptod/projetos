@@ -10,7 +10,7 @@ from neural_fights.data.database import carregar_match_config, salvar_match_conf
 from neural_fights.simulation import simulacao
 from neural_fights.ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT,
-    COR_TEXTO, COR_TEXTO_DIM, COR_SUCCESS, COR_P1, COR_P2, COR_BORDA, BotaoCanvas,
+    COR_TEXTO, COR_TEXTO_DIM, COR_SUCCESS, COR_P1, COR_P2, COR_BORDA,
     desenhar_lutador,
 )
 
@@ -105,17 +105,19 @@ class TelaLuta(tk.Frame):
             state="disabled",
             command=self.iniciar_luta
         )
-        self.btn_iniciar.pack(side="left", padx=6, expand=True)
-        self.btn_palco = BotaoCanvas(
-            acoes, "▶ VER NO PALCO (GODOT)", command=lambda: self._iniciar_palco("janela"),
-            width=190, height=40, bg=COR_BG,
+        self.btn_iniciar.pack(side="left", padx=6, expand=True, fill="x")
+        self.btn_palco = tk.Button(
+            acoes, text="▶ VER NO PALCO (GODOT)", command=lambda: self._iniciar_palco("janela"),
+            font=("Arial", 16, "bold"), bg=COR_ACCENT, fg=COR_TEXTO,
+            bd=0, padx=16, pady=10,
         )
-        self.btn_palco.pack(side="left", padx=6, expand=True)
-        self.btn_mp4 = BotaoCanvas(
-            acoes, "🎬 RENDERIZAR MP4", command=lambda: self._iniciar_palco("mp4"),
-            width=160, height=40, cor=COR_SUCCESS, bg=COR_BG,
+        self.btn_palco.pack(side="left", padx=6, expand=True, fill="x")
+        self.btn_mp4 = tk.Button(
+            acoes, text="🎬 RENDERIZAR MP4", command=lambda: self._iniciar_palco("mp4"),
+            font=("Arial", 16, "bold"), bg=COR_SUCCESS, fg=COR_TEXTO,
+            bd=0, padx=16, pady=10,
         )
-        self.btn_mp4.pack(side="left", padx=6, expand=True)
+        self.btn_mp4.pack(side="left", padx=6, expand=True, fill="x")
         self.lbl_progresso_palco = tk.Label(
             footer, text="", font=("Segoe UI", 9), bg=COR_BG, fg=COR_TEXTO_DIM,
             wraplength=700, justify="center",
@@ -353,7 +355,7 @@ class TelaLuta(tk.Frame):
         arma = None
         if p.nome_arma:
             arma = next((a for a in self.controller.lista_armas if a.nome == p.nome_arma), None)
-        desenhar_lutador(canvas, p, arma, cor_borda=cor_borda, centro=(100, 93), escala=.78)
+        desenhar_lutador(canvas, p, arma, cor_borda=cor_borda, centro=(100, 93))
         # Classe
         canvas.create_text(cx, cy+70, text=classe, font=("Arial", 10, "bold"), fill=COR_TEXTO_DIM)
         
@@ -366,12 +368,13 @@ class TelaLuta(tk.Frame):
         """Atualiza estado do botão"""
         if self.personagem_p1 and self.personagem_p2:
             self.btn_iniciar.config(state="normal", bg=COR_ACCENT)
-            self.btn_palco.configurar(ativo=not self._palco_em_andamento)
-            self.btn_mp4.configurar(ativo=not self._palco_em_andamento)
+            estado = "disabled" if self._palco_em_andamento else "normal"
+            self.btn_palco.config(state=estado)
+            self.btn_mp4.config(state=estado)
         else:
             self.btn_iniciar.config(state="disabled", bg=COR_TEXTO_DIM)
-            self.btn_palco.configurar(ativo=False)
-            self.btn_mp4.configurar(ativo=False)
+            self.btn_palco.config(state="disabled")
+            self.btn_mp4.config(state="disabled")
 
     def _abrir_seletor_mapa(self):
         """Abre a janela de seleção de mapa"""

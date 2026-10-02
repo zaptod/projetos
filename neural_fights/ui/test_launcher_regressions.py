@@ -46,6 +46,17 @@ def test_preview_dupla_desenha_duas_laminas():
     assert len(laminas) == 4  # contorno e cor para cada uma das duas laminas
 
 
+def test_preview_ocupa_60_por_cento_sem_artefato_tracejado():
+    canvas = CanvasGravador()
+    personagem = SimpleNamespace(cor_r=200, cor_g=50, cor_b=50, tamanho=1.7)
+
+    desenhar_lutador(canvas, personagem)
+
+    corpo = next(chamada for chamada in canvas.chamadas if chamada[2].get("tags") == "corpo")
+    assert corpo[1] == (40, 36, 160, 156)
+    assert not any(chamada[2].get("dash") for chamada in canvas.chamadas)
+
+
 def test_preview_rasteriza_os_oito_tipos_de_arma_em_quatro_vezes():
     personagem = SimpleNamespace(classe="Piromante (Fogo)", tamanho=1.8)
     imagens = []

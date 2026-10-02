@@ -127,9 +127,6 @@ class CartaoMenu(tk.Canvas):
         borda = "#f6c95b" if self._destaque else COR_BORDA
         desenho.rounded_rectangle(caixa, radius=raio, outline=borda,
                                   width=(5 if self._destaque else 4) * escala)
-        icone_caixa = (15 * escala, 18 * escala, 63 * escala, 66 * escala)
-        desenho.ellipse(icone_caixa, fill=tuple(min(255, valor + 35) for valor in rgb),
-                         outline=borda, width=2 * escala)
         imagem = imagem.resize((largura, altura), Image.Resampling.LANCZOS)
         self._foto = ImageTk.PhotoImage(imagem)
         self.delete("all")
@@ -172,7 +169,9 @@ def desenhar_lutador(canvas, personagem, arma=None, cor_borda=COR_BORDA,
         corpo = next((cor for nome, cor in CORES_CLASSE.items()
                       if classe and nome.startswith(classe.split(" ")[0])), None)
     corpo = corpo or f"#{r:02x}{g:02x}{b:02x}"
-    raio = max(24, min(52, int((getattr(personagem, "tamanho", 1.7) * 23) * escala)))
+    tamanho_personagem = float(getattr(personagem, "tamanho", 1.7))
+    ajuste_tamanho = max(-.03, min(.03, (tamanho_personagem - 1.7) * .02))
+    raio = max(24, int(min(largura, altura) * (.30 + ajuste_tamanho) * escala))
     if not hasattr(canvas, "tk"):
         return _desenhar_lutador_teste(canvas, personagem, arma, cor_borda, cx, cy, raio, corpo)
     imagem = _renderizar_preview_lutador(personagem, arma, corpo, raio)
@@ -259,7 +258,7 @@ def _pintar_arma(desenho, arma, meio, meio_y, raio):
     cor = (ar, ag, ab, 255)
     metal = tuple(int(200 * .7 + valor * .3) for valor in cor[:3]) + (255,)
     largura = max(6, int(raio * .10))
-    comprimento = int(raio * 1.8)
+    comprimento = int(raio * .55)
     tipo = str(getattr(arma, "tipo", "Reta")).lower()
 
     def poligono(pontos, preenchimento):
@@ -288,10 +287,12 @@ def _pintar_arma(desenho, arma, meio, meio_y, raio):
         lamina(1, -raio * .31)
         lamina(-1, raio * .31)
     elif "corrente" in tipo:
+        cabo = (meio + int(raio * .48), meio_y + int(raio * .16))
         inicio = (meio + int(raio * .9), meio_y)
         fim = (inicio[0] + comprimento, inicio[1] - int(raio * .18))
-        desenho.line((meio + int(raio * .25), meio_y + int(raio * .1), inicio[0], inicio[1]),
-                     fill=(112, 80, 46, 255), width=largura)
+        desenho.line((cabo, inicio), fill=COR_BORDA, width=largura * 2)
+        desenho.line((cabo, inicio), fill=(112, 80, 46, 255), width=largura)
+        desenho.line((inicio, fim), fill=COR_BORDA, width=max(3, largura // 2))
         for indice in range(5):
             x = int(inicio[0] + (fim[0] - inicio[0]) * (indice + .5) / 5)
             y = int(inicio[1] + (fim[1] - inicio[1]) * (indice + .5) / 5)
@@ -301,22 +302,36 @@ def _pintar_arma(desenho, arma, meio, meio_y, raio):
                          fim[0] + largura * 2, fim[1] + largura * 2), fill=metal,
                         outline=COR_BORDA, width=max(3, largura // 2))
     elif "arco" in tipo:
-        x = meio + int(raio * .8)
+        cabo = (meio + int(raio * .48), meio_y)
+        x = meio + int(raio * .92)
+        desenho.line((cabo, (x, meio_y)), fill=COR_BORDA, width=largura * 2)
+        desenho.line((cabo, (x, meio_y)), fill=(112, 80, 46, 255), width=largura)
         caixa = (x, meio_y - int(raio * .95), x + comprimento, meio_y + int(raio * .95))
         desenho.arc(caixa, 105, 255, fill=COR_BORDA, width=largura * 2)
         desenho.arc(caixa, 105, 255, fill=(112, 80, 46, 255), width=largura)
-        desenho.line((x + int(comprimento * .16), meio_y - int(raio * .88),
-                      x + int(comprimento * .16), meio_y + int(raio * .88)), fill=(235, 235, 242), width=2)
+        corda_x = x + int(comprimento * .16)
+        desenho.line((corda_x, meio_y - int(raio * .88), corda_x, meio_y + int(raio * .88)),
+                     fill=(235, 235, 242), width=2)
+        desenho.line((corda_x, meio_y, x + comprimento + largura, meio_y), fill=COR_BORDA, width=largura)
+        desenho.line((corda_x, meio_y, x + comprimento + largura, meio_y), fill=metal, width=max(2, largura // 2))
     elif "arremesso" in tipo:
         lamina(curta=True)
     elif "orbital" in tipo:
-        for angulo in (-.7, .45, 1.55):
-            x = meio + int(raio * .72 + comprimento * .45 * math.cos(angulo))
-            y = meio_y + int(comprimento * .28 * math.sin(angulo))
+        cabo = (meio + int(raio * .48), meio_y)
+        base = (meio + int(raio * .92), meio_y)
+        desenho.line((cabo, base), fill=COR_BORDA, width=largura * 2)
+        desenho.line((cabo, base), fill=(112, 80, 46, 255), width=largura)
+        for angulo in (-.65, 0, .65):
+            x = base[0] + int(comprimento * .38 * math.cos(angulo))
+            y = base[1] + int(comprimento * .38 * math.sin(angulo))
+            desenho.line((base, (x, y)), fill=COR_BORDA, width=max(3, largura // 2))
             desenho.ellipse((x - largura * 2, y - largura * 2, x + largura * 2, y + largura * 2),
                             fill=metal, outline=COR_BORDA, width=max(3, largura // 2))
     elif "mágica" in tipo or "magica" in tipo:
-        x, y = meio + int(raio * 1.5), meio_y
+        cabo = (meio + int(raio * .48), meio_y)
+        x, y = meio + int(raio * 1.12), meio_y
+        desenho.line((cabo, (x, y)), fill=COR_BORDA, width=largura * 2)
+        desenho.line((cabo, (x, y)), fill=(112, 80, 46, 255), width=largura)
         poligono([(x, y - largura * 3), (x + largura * 2, y), (x, y + largura * 3),
                   (x - largura * 2, y)], cor)
     elif "transform" in tipo:
@@ -335,8 +350,6 @@ def _pintar_arma(desenho, arma, meio, meio_y, raio):
 
 def _desenhar_lutador_teste(canvas, personagem, arma, cor_borda, cx, cy, raio, corpo):
     """Fallback sem Tk para os dublês de Canvas nos testes."""
-    canvas.create_oval(cx - raio - 8, cy - raio - 8, cx + raio + 8, cy + raio + 8,
-                       outline=COR_SUCCESS, width=2, dash=(4, 3))
     canvas.create_oval(cx - raio, cy - raio, cx + raio, cy + raio,
                        fill=corpo, outline=cor_borda, width=5, tags="corpo")
     # Olhos apontados para a direita, como a pose neutra do palco.
