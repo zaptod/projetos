@@ -24,9 +24,11 @@ def tentativas_contadas(dados: dict) -> int:
 
 
 def juiz_do(tentativa: dict) -> str:
-    if tentativa.get("cobertura"):
-        return "gemini"          # o ChatGPT esta ocupado: quem julga a cobertura e o Gemini
-    return "chatgpt" if tentativa.get("caixa") == "gemini" else "gemini"
+    # 02/10/2026 15h: o Gemini como juiz recusou ("sou uma IA com base em texto")
+    # ou travou na maioria dos julgamentos, mesmo em conversa nova. O Adrian:
+    # "VOCE AINDA ESTA FAZENDO AS MESMAS PERGUNTAS PRO GEMINI????". Juiz = ChatGPT,
+    # sempre; se ele estiver ocupado, o julgamento espera (nao vai ao Gemini).
+    return "chatgpt"
 
 
 # Fundo LISO onde o desenho vai morar: o xadrez de transparencia enganava o juiz,

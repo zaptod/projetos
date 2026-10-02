@@ -123,7 +123,7 @@ def test_juiz_pergunta_defeitos_e_le_json(ambiente, monkeypatch):
     monkeypatch.setattr(juiz, "_controle", lambda _d: False)
     assert juiz.perguntar("fogo_teste")
     texto = enviados[0][0][1]
-    assert enviados[0][0][0] == "gemini"  # o Grok respondia mal (02/10)
+    assert enviados[0][0][0] == "chatgpt"  # Grok e Gemini julgavam mal (02/10)
     # o juiz sabe O QUE e o desenho, PARA QUE serve e o que cada anexo e (02/10)
     item = config.item("fogo_teste")
     assert "O JOGO:" in texto and "PARA QUE SERVE A SUA RESPOSTA" in texto
@@ -201,7 +201,7 @@ def test_gerador_e_juiz_cruzados():
     assert pedir.gerador_do({"tipo": "folha"}) == "chatgpt"
     assert pedir.gerador_do({"tipo": "peca"}) == "gemini"
     assert juiz.juiz_do({"caixa": "gemini"}) == "chatgpt"
-    assert juiz.juiz_do({"caixa": "chatgpt"}) == "gemini"
+    assert juiz.juiz_do({"caixa": "chatgpt"}) == "chatgpt"   # o Gemini julgava mal (02/10)
 
 
 def test_a_pergunta_leva_o_prompt_usado_e_as_medidas():
@@ -321,4 +321,4 @@ def test_gemini_cobre_a_folha_quando_o_chatgpt_esta_ocupado(ambiente, monkeypatc
     assert pedidos[0][1]["caixa"] == "gemini" and pedidos[0][1]["cobertura"] is True
     assert pedidos[0][1]["prompt_pronto"] == "P" * 90
     assert ficha.ler("fogo_teste")["tentativas"] == []        # a que nunca saiu nao conta
-    assert juiz.juiz_do({"caixa": "gemini", "cobertura": True}) == "gemini"
+    assert juiz.juiz_do({"caixa": "gemini", "cobertura": True}) == "chatgpt"
