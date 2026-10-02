@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Muda todas as 77 folhas dos habitantes (11 IAs x 7 animações). O inventário saiu com pernas; nada foi gerado ainda (espera a imagem-mestra).",
+  "criado": "2026-10-02T01:01:09.271083",
+  "depende_de": [],
+  "historico": [],
+  "id": "vila-habitante-forma",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Sem pernas, quica para andar; combina 100% com os lutadores e é mais fácil de animar certo.",
+      "id": "bolinha",
+      "pede_comentario": false,
+      "rotulo": "Bolinha do Neural"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Anda de verdade; mais 'vila', mais trabalho para a animação passar no validador.",
+      "id": "pernas",
+      "pede_comentario": false,
+      "rotulo": "Cartoon de cabeça grande com pernas"
+    }
+  ],
+  "pergunta": "O habitante da Vila é bolinha do Neural ou personagem com pernas?",
+  "projeto": "painel-e-vila",
+  "situacao": "pendente",
+  "titulo": "Vila: forma dos habitantes",
+  "vigente": null
+}
