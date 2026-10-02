@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "O Compartilhar pode criar um link compartilhável da imagem na sua conta; o visualizador baixa igual sem passar pelo compartilhamento. Os dois funcionam no código consertado (e8470c8).",
+  "criado": "2026-10-02T00:15:15.811025",
+  "depende_de": [],
+  "historico": [],
+  "id": "chatgpt-baixar-por",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Sem criar link público",
+      "id": "visualizador",
+      "pede_comentario": false,
+      "rotulo": "Visualizador (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Como você mostrou",
+      "id": "compartilhar",
+      "pede_comentario": false,
+      "rotulo": "Compartilhar"
+    }
+  ],
+  "pergunta": "Para baixar a imagem gerada, uso o Compartilhar (o caminho que você mostrou) ou o visualizador (clicar na imagem → Baixar)?",
+  "projeto": "app-e-bot",
+  "situacao": "pendente",
+  "titulo": "ChatGPT: baixar pelo Compartilhar ou pelo visualizador?",
+  "vigente": null
+}
