@@ -844,8 +844,15 @@ class Carteiro:
                 self._fora_da_casa = True
                 return self._turno_imagem(caixa or ia, ia, sessao, mensagem, None)
             return self._turno_imagem(caixa or ia, ia, sessao, mensagem, casa)
-        if getattr(self, "_fora_da_casa", False):
-            # depois de uma imagem em conversa nova, o texto volta para a casa
+        # Pedido COM ANEXO (o juiz dos sprites) tambem vai em conversa nova
+        # (02/10/2026, 14h): na casa, cheia de imagens, o Gemini recusou 17 de 31
+        # julgamentos ("sou uma IA com base em texto") e travou 12 por 420 s.
+        avulsa = bool(mensagem.get("anexos")) and callable(getattr(sessao, "novo_chat", None))
+        if avulsa:
+            sessao.novo_chat()
+            self._fora_da_casa = True
+        elif getattr(self, "_fora_da_casa", False):
+            # depois de uma conversa avulsa, o texto volta para a casa
             self._fora_da_casa = False
             casa.update(self._abrir_casa(ia, sessao))
         mid = str(mensagem["id"])
@@ -863,8 +870,9 @@ class Carteiro:
                 return correio.uma(ia, mid)
             categoria, motivo = classificar_erro(ia, exc, tela_do_turno(sessao))
             self.log(f"[carteiro] {ia} {mid} falhou: {motivo}")
-            casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
-            correio.gravar_casa(ia, casa)
+            if not avulsa:
+                casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
+                correio.gravar_casa(ia, casa)
             atualizada = correio.atualizar(ia, mid, situacao="falhou", erro=motivo,
                                            categoria=categoria, falhou_em=correio.agora())
             self._anunciar(ia, atualizada)
@@ -905,10 +913,11 @@ class Carteiro:
                     return atualizada
                 extra = {"nota": f"a resposta trouxe uma imagem que não foi guardada: "
                                  f"{motivo}"[:300]}
-        casa["url"] = sessao.url() or casa.get("url")
-        casa["mensagens"] = int(casa.get("mensagens") or 0) + 1
-        casa["falhas_seguidas"] = 0
-        correio.gravar_casa(ia, casa)
+        if not avulsa:
+            casa["url"] = sessao.url() or casa.get("url")
+            casa["mensagens"] = int(casa.get("mensagens") or 0) + 1
+            casa["falhas_seguidas"] = 0
+            correio.gravar_casa(ia, casa)
         atualizada = correio.atualizar(
             ia, mid, situacao="respondida", resposta=resposta,
             respondida_em=correio.agora(), dur_s=round(dur, 1),
@@ -916,8 +925,8 @@ class Carteiro:
         self.entregues += 1
         self.log(f"[carteiro] {ia} {mid}: respondida ({len(resposta)} chars em {dur:.0f}s)")
         self._anunciar(ia, atualizada)
-        if (casa["mensagens"] - int(casa.get("resumo_mensagens") or 0)
-                >= int(self.ajustes.get("resumo_a_cada", 12))):
+        if not avulsa and (int(casa.get("mensagens") or 0) - int(casa.get("resumo_mensagens") or 0)
+                           >= int(self.ajustes.get("resumo_a_cada", 12))):
             self._resumir(ia, sessao, casa)
         return atualizada
 

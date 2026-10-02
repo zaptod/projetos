@@ -510,3 +510,23 @@ class ConfigDoCarteiro(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CarteiroAnexoEmConversaNova(_Base):
+    def test_pedido_com_anexo_vai_em_conversa_nova_e_nao_mexe_na_casa(self):
+        """02/10/2026: na casa cheia de imagens o Gemini recusava/travava o juiz."""
+        fabrica = carteiro_mod.fabrica_duble(responder=lambda t: '{"defeitos":[]}')
+        c = _novo(fabrica)
+        correio.enviar("gemini", "oi")                       # firma a casa
+        c.uma_volta()
+        casa_antes = dict(correio.casa("gemini"))
+        anexo = correio.guardar_anexo("gemini", "a.png", b"\x89PNG")
+        m = correio.enviar("gemini", "julgue", anexos=[str(anexo)])
+        fim = c.uma_volta()
+        self.assertEqual(fim["id"], m["id"])
+        self.assertEqual(fim["situacao"], "respondida")
+        sessao = fabrica.criadas[-1]
+        self.assertGreaterEqual(sessao.casas_novas, 1)
+        casa = correio.casa("gemini")
+        self.assertEqual(casa.get("url"), casa_antes.get("url"))
+        self.assertEqual(casa.get("mensagens"), casa_antes.get("mensagens"))
