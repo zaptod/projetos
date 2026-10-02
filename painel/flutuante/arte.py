@@ -24,6 +24,8 @@ from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from . import arte_pronta
+
 S = 4                       # super-amostragem
 # ESCALA (28/09/2026): o celular amplia a Vila ate ~7 pixels do aparelho por
 # pixel do mundo, e a arte de 1x chegava borrada. Toda funcao de desenho
@@ -226,11 +228,12 @@ def portas() -> dict:
 
 
 GRAMA_TOPO, GRAMA_BASE = "#a4d77e", "#7cc265"
+GRAMA_PRONTA = "cenario/chao_grama.png"
+TERRA_PRONTA = "cenario/caminho_terra.png"
 
 
-def desenhar_chao(escala: int = 1) -> Image.Image:
-    rnd = random.Random(2917)
-    p = Pincel(LARGURA, ALTURA, escala)
+def _grama_de_codigo(p: Pincel, rnd: random.Random) -> None:
+    """A grama desenhada: degrade, manchas de luz e tufos."""
     k = p.k
     # grama em degrade (de cima para baixo)
     topo, base = rgb(GRAMA_TOPO), rgb(GRAMA_BASE)
@@ -259,6 +262,21 @@ def desenhar_chao(escala: int = 1) -> Image.Image:
         p.linha([(x - 1.5, y), (x - 2.5, y - 3)], tom, 0.8)
         p.linha([(x, y), (x, y - 4)], tom, 0.8)
         p.linha([(x + 1.5, y), (x + 2.5, y - 3)], tom, 0.8)
+
+
+def desenhar_chao(escala: int = 1) -> Image.Image:
+    rnd = random.Random(2917)
+    p = Pincel(LARGURA, ALTURA, escala)
+    k = p.k
+    # A ARTE DA ESTEIRA (02/10/2026), quando aprovada: a grama e a terra
+    # sao texturas que emendam nos 4 lados, ladrilhadas no tamanho do mundo
+    # (`arte_pronta`). Sem elas, o desenho de codigo de sempre, byte a byte.
+    grama = arte_pronta.ladrilhar(GRAMA_PRONTA, LARGURA * k, ALTURA * k, k)
+    terra = arte_pronta.ladrilhar(TERRA_PRONTA, LARGURA * k, ALTURA * k, k)
+    if grama is not None:
+        p.img.paste(grama, (0, 0))
+    else:
+        _grama_de_codigo(p, rnd)
 
     # lago (entre a arena e a travessa)
     cx, cy = LAGO
@@ -292,14 +310,25 @@ def desenhar_chao(escala: int = 1) -> Image.Image:
     rua([(LAGO[0], LAGO[1] + 24), (LAGO[0], RUA_Y[1])], 8)
     for pontos, largura in ruas:
         p.linha(pontos, "#d9b98a", largura + 3)
-    for pontos, largura in ruas:
-        p.linha(pontos, "#f0dab0", largura)
+    if terra is None:
+        for pontos, largura in ruas:
+            p.linha(pontos, "#f0dab0", largura)
+    else:
+        # a textura recortada no formato dos miolos; a borda segue de codigo
+        mascara = Pincel(LARGURA, ALTURA, escala)
+        for pontos, largura in ruas:
+            mascara.linha(pontos, "#ffffff", largura)
+        p.img.paste(terra, (0, 0), mascara.img.getchannel("A"))
     for _ in range(140):
         x, y = rnd.uniform(0, LARGURA), rnd.uniform(0, ALTURA)
         if _sobre_rua(x, y, 5):
-            p.circulo(x, y, rnd.uniform(0.5, 1.1),
-                      rnd.choice(["#e2c596", "#caa878", "#f7e8c8"]))
+            raio = rnd.uniform(0.5, 1.1)
+            cor = rnd.choice(["#e2c596", "#caa878", "#f7e8c8"])
+            if terra is None:            # a textura ja tem as pedrinhas
+                p.circulo(x, y, raio, cor)
 
+    if grama is not None:                # a textura ja tem as florzinhas
+        return p.final()
     # flores (LOTES_TARDIOS: ver o comentario la em cima)
     antigos = [n for n in list(LOTES) + ["casa"] if n not in LOTES_TARDIOS]
     for _ in range(120):
@@ -492,9 +521,30 @@ def _emblema(p: Pincel, nome: str, cx: float, cy: float, r: float) -> None:
         p.circulo(cx, cy, r * .5, COR_RESERVA)
 
 
+def _predio_pronto(nome: str, noite: bool, escala: int) -> Image.Image | None:
+    """O predio da esteira (`predios/<nome>.png`), encaixado nos 72x64 do
+    mundo com a base no chao. De noite, a versao `_noite` se foi aprovada;
+    senao a de dia escurecida como a de codigo. O nome, a bandeira e o selo
+    de estado continuam por cima, desenhados pela cena: o estado real manda.
+    """
+    if noite:
+        img = arte_pronta.ajustada(f"predios/{nome}_noite.png", PREDIO_W,
+                                   PREDIO_H, escala)
+        if img is not None:
+            return img.copy()
+    img = arte_pronta.ajustada(f"predios/{nome}.png", PREDIO_W, PREDIO_H,
+                               escala)
+    if img is None:
+        return None
+    return _escurecer_imagem(img, .38) if noite else img.copy()
+
+
 def desenhar_predio(nome: str, noite: bool = False,
                     escala: int = 1) -> Image.Image:
     """72x64. O lote de 64x48 fica em (4, 16) desta imagem."""
+    pronto = _predio_pronto(nome, noite, escala)
+    if pronto is not None:
+        return pronto
     cor = CORES.get(nome, COR_RESERVA)
     p = Pincel(PREDIO_W, PREDIO_H, escala)
     parede = "#fff3e2" if nome != "tiktok" else "#f1ecf7"
@@ -568,8 +618,20 @@ POSES = ("parado", "passo1", "passo2", "sentado", "acenar", "feliz",
 
 def desenhar_personagem(nome: str, pose: str = "parado",
                         olhos: str = "abertos",
-                        direcao: str = "dir", escala: int = 1) -> Image.Image:
-    """26x32, pes em (13, 31). Cabeca grande, olhinhos, bochecha."""
+                        direcao: str = "dir", escala: int = 1,
+                        quadro: int = 0) -> Image.Image:
+    """26x32, pes em (13, 31). Cabeca grande, olhinhos, bochecha.
+
+    Com a folha da esteira aprovada (`habitantes/<nome>/<animacao>.png`),
+    e o `quadro` do ciclo da direcao (a linha da folha), no tamanho do
+    mundo e com o pe na mesma linha; `olhos` nao conta (a folha pisca
+    sozinha). Sem folha, o desenho de codigo de sempre.
+    """
+    escolha = arte_pronta.habitante(nome, pose, direcao)
+    if escolha is not None:
+        folha, ciclo = escolha
+        return folha.sprite(ciclo, quadro, PERSONAGEM_W, PERSONAGEM_H,
+                            escala).copy()
     cor = CORES.get(nome, COR_RESERVA)
     indice = ORDEM_DAS_PELES.index(nome) if nome in ORDEM_DAS_PELES else 0
     pele = PELES[indice % len(PELES)]
@@ -652,6 +714,16 @@ def desenhar_personagem(nome: str, pose: str = "parado",
     if direcao == "esq":
         img = img.transpose(Image.FLIP_LEFT_RIGHT)
     return img
+
+
+def quadro_do_habitante(nome: str, pose: str, direcao: str,
+                        t: float) -> int:
+    """Qual quadro da folha toca no instante `t` (0 sem folha aprovada)."""
+    escolha = arte_pronta.habitante(nome, pose, direcao)
+    if escolha is None:
+        return 0
+    folha, ciclo = escolha
+    return folha.indice(ciclo, t)
 
 
 def _acessorio(p: Pincel, tipo: str, cor, y0: float) -> None:
@@ -891,4 +963,4 @@ def _escurecer_imagem(img: Image.Image, t: float) -> Image.Image:
 __all__ = ["CORES", "DECORACOES", "LUGAR_DAS_DECORACOES", "POSES",
            "Pincel", "assentar", "compor_mundo", "desenhar_decoracao",
            "desenhar_personagem", "desenhar_predio", "emote", "fator",
-           "noturno", "portas"]
+           "noturno", "portas", "quadro_do_habitante"]

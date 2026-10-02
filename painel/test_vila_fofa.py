@@ -25,10 +25,27 @@ import unittest
 from pathlib import Path
 
 from painel import estilo
-from painel.flutuante import arte, dados, preferencias, vida
+from painel.flutuante import arte, arte_pronta, dados, preferencias, vida
 from painel.flutuante.cena import CenaFofa, e_noite
 
 TODOS = list(dados.PREDIOS)
+_SEM_ARTE: str | None = None
+
+
+def setUpModule():
+    """Estes contratos sao do DESENHO DE CODIGO (bytes e hashes medidos
+    antes da arte da esteira): a arte aprovada em `painel/flutuante/
+    arte_vila` fica de fora. O carregador tem os testes dele em
+    `test_arte_pronta.py`."""
+    global _SEM_ARTE
+    import tempfile
+    _SEM_ARTE = tempfile.mkdtemp(prefix="vila_sem_arte_")
+    arte_pronta.usar(_SEM_ARTE)
+
+
+def tearDownModule():
+    arte_pronta.usar(None)
+    shutil.rmtree(_SEM_ARTE or "", ignore_errors=True)
 
 
 def _hash(img) -> str:

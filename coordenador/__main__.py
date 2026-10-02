@@ -78,12 +78,15 @@ def tarefas_antigas(ligar, rodar=subprocess.run):
 def montar() -> Supervisor:
     """O supervisor de producao: comandos do app, o cerebro (Codex so leitura)
     e o vigia de trabalho, que usa o mesmo criterio de momento seguro e pede
-    o reinicio ao proprio supervisor."""
+    o reinicio ao proprio supervisor; e a esteira de sprites (palco e vila),
+    um `ciclo` (anda tudo e mantem a producao cheia) a cada 5 min."""
     from remoto.orquestrador import aplicado, pendentes
 
     from . import cerebro
     from .vigia_trabalho import VigiaTrabalho
-    s = Supervisor(comandos=pendentes, aplicar=aplicado, cerebro=cerebro.atender)
+    from .supervisor import ciclo_das_esteiras
+    s = Supervisor(comandos=pendentes, aplicar=aplicado, cerebro=cerebro.atender,
+                   esteira=ciclo_das_esteiras)
     s.vigia_trabalho = VigiaTrabalho(
         avisar=s.avisar, evento=lambda tipo, texto: s.evento("", tipo, texto),
         seguro=lambda: s.seguro(""), pedir_reinicio=s.pedir_reinicio)

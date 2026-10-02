@@ -84,11 +84,33 @@ _FUNDOS: dict = {}
 _RETRATOS: dict = {}
 _PAISAGENS: dict = {}
 _ATLAS: dict = {}
+_ARTE_VISTA: list = [None]
+
+
+def _arte_pronta():
+    from painel.flutuante import arte_pronta
+    return arte_pronta
+
+
+def _arte_em_dia() -> str:
+    """A ARTE DA ESTEIRA (02/10/2026): uma peca aprovada depois que o
+    servidor subiu entra sem reinicia-lo. A assinatura da pasta
+    `painel/flutuante/arte_vila` (so `stat`) mudou: os fundos e os atlas
+    guardados em memoria vao fora e sao compostos de novo no proximo
+    pedido; a `versao()` muda junto e o celular baixa a arte nova.
+    Chamada com `_TRAVA_ARTE` na mao."""
+    vista = _arte_pronta().conferir()
+    if vista != _ARTE_VISTA[0]:
+        for guardados in (_FUNDOS, _RETRATOS, _PAISAGENS, _ATLAS):
+            guardados.clear()
+        _ARTE_VISTA[0] = vista
+    return vista
 
 
 def png_do_fundo(noite: bool) -> bytes:
     """Chao, ruas, predios e decoracao — a parte que nao se mexe (1x)."""
     with _TRAVA_ARTE:
+        _arte_em_dia()
         if noite not in _FUNDOS:
             imagem = _arte().compor_mundo(bool(noite)).convert("RGB")
             saco = io.BytesIO()
@@ -106,6 +128,7 @@ def imagem_do_retrato(noite: bool) -> bytes:
     from painel.flutuante import retrato
 
     with _TRAVA_ARTE:
+        _arte_em_dia()
         if noite not in _RETRATOS:
             imagem = retrato.compor_retrato(bool(noite), ESCALA_CELULAR)
             saco = io.BytesIO()
@@ -124,6 +147,7 @@ def imagem_da_paisagem(noite: bool) -> bytes:
     from painel.flutuante import paisagem
 
     with _TRAVA_ARTE:
+        _arte_em_dia()
         if noite not in _PAISAGENS:
             imagem = paisagem.compor_paisagem(bool(noite), ESCALA_CELULAR)
             saco = io.BytesIO()
@@ -144,6 +168,7 @@ def atlas(escala: int = 1) -> dict:
 
     escala = max(1, int(escala))
     with _TRAVA_ARTE:
+        _arte_em_dia()
         if escala in _ATLAS:
             return _ATLAS[escala]
         arte = _arte()
@@ -238,6 +263,8 @@ def mundo() -> dict:
                     "enquadramento": enquadramento()},
         # deitado: o mundo inteiro numa fileira (o atlas e o do retrato)
         "paisagem": {**paisagem.geometria(), "escala": ESCALA_CELULAR},
+        # as folhas da esteira que o celular toca sozinho (rota /arte-vila/)
+        "arte": _arte_pronta().para_o_app(),
         "versao": versao(),
     }
 
@@ -252,7 +279,9 @@ def versao() -> str:
         for modulo in (_arte(), retrato, paisagem):
             estado = Path(modulo.__file__).stat()
             partes.append(f"{int(estado.st_mtime)}-{estado.st_size}")
-        return f"{'.'.join(partes)}-{ESCALA_CELULAR}"
+        with _TRAVA_ARTE:
+            arte_ia = _arte_em_dia()
+        return f"{'.'.join(partes)}-{ESCALA_CELULAR}-{arte_ia}"
     except OSError:
         return "0"
 
@@ -352,11 +381,19 @@ class Motor:
         if self._vida is None:
             time.sleep(0.05)
         habitantes = []
+        prontas = _arte_pronta()
         if self._vida is not None:
             for nome, h in self._vida.habitantes.items():
                 pose, olhos, direcao, pulo = self._vida.pose(h, agora)
                 x, y = self._vida.posicao_de_desenho(h)
+                # a folha da esteira (se aprovada): o celular toca o ciclo
+                # da direcao no fps do .json, defasado pela `fase`
+                escolha = prontas.habitante(nome, pose, direcao)
+                folha = ({"animacao": prontas.animacao_do_habitante(nome, pose),
+                          "ciclo": escolha[1], "fase": round(h.fase, 2)}
+                         if escolha else None)
                 habitantes.append({
+                    "arte": folha,
                     "nome": nome, "x": round(x, 1), "y": round(y - pulo, 1),
                     "pose": pose, "olhos": olhos, "direcao": direcao,
                     "emote": h.emote if h.emote_ate > agora else "",

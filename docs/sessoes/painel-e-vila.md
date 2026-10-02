@@ -213,7 +213,9 @@ aba, arte, enfeites e a caixa-preta da §2) — estado dela, não do sistema. Co
    Pillow em 4× reduzido com LANCZOS (o Tk não suaviza nada), procedural e
    determinística (`random.Random(semente)`, com teste de bytes iguais). É a
    **única** desde 28/09: a clássica em pixel (`mundo.py`) foi aposentada
-   por decisão do Adrian (`aposentar-vila-pixel`). **Desde 28/09
+   por decisão do Adrian (`aposentar-vila-pixel`). **Desde 02/10 a arte
+   aprovada pela esteira vence o desenho de código, item a item** (§6d);
+   sem a peça, o de sempre. **Desde 28/09
    toda função de desenho aceita `escala`** e desenha de verdade nesse tamanho
    (o `Pincel` guarda `k` pixels internos por pixel do mundo: 4 em 1×, 2×escala
    acima disso); as coordenadas continuam em pixels do mundo. Com escala 1 o
@@ -417,6 +419,68 @@ balão em cima do prédio. O Grok não tinha prédio (decisão
   (217 ≥ 96); deitado idem (176 ≥ 34 e 76 ≥ 34); o cartão diz "🚀 Grok ·
   conversa · 💬 Conversar"; zero erro de JS. Casca `v16`.
 
+## 6d. A arte da esteira na Vila (02/10/2026)
+
+Pergunta do Adrian às 02:1x: "POR QUE A VILA AINDA ESTA DO MESMO JEITO?". A
+esteira (`esteira_sprites --perfil vila`, inventário
+`docs/vila/inventario_vila.json`, estilo `vila-estilo-novo` = "mesmo do
+Neural", habitante `vila-habitante-forma` = bolinha) já aprovava arte para
+`painel/flutuante/arte_vila/<nome_arquivo>` com um `.json` ao lado, mas
+**nada** na Vila lia essa pasta.
+
+- **O carregador** é `flutuante/arte_pronta.py` (sem Tk). Item a item, pelo
+  `nome_arquivo`: só entra PNG que está **no inventário** e na pasta;
+  inventário ilegível = nenhuma arte. `arte.py` pergunta a ele primeiro e,
+  sem a peça, desenha o de sempre **byte a byte** (há teste). Hoje lê:
+  `cenario/chao_grama.png` (ladrilha o mundo; 128 px do mundo por
+  ladrilho, a grama de código, os tufos e as flores saem), `cenario/
+  caminho_terra.png` (recortada no formato dos miolos das ruas; a borda
+  `#d9b98a` segue de código, as pedrinhas de código saem; 96 px),
+  `predios/<nome>.png` (encaixado nos 72×64 do mundo sem deformar, base no
+  chão; de noite a `_noite.png` se aprovada, senão escurece 0,38) e
+  `habitantes/<nome>/<animação>.png`. Textura sem "no mundo WxH" no
+  inventário usa a tabela `LADO_DO_LADRILHO`. O campo que completa a Vila em
+  pé e a grama de baixo (`retrato.py`, `paisagem.py`) continuam o mesmo
+  ladrilho (parâmetro `origem`), sem emenda com o mundo.
+- **Folhas animadas**: grade e ciclos do `.json` da esteira (sem ele, os do
+  inventário). Ciclo = linha; `dir` → `direita`, `esq` → `esquerda`;
+  quadro = `int(t × fps)` em laço, ou parado no último sem laço. Pose →
+  animação: parado/passo1-2 (andar)/trabalhar/acenar (conversar)/triste/
+  feliz (comemorar)/sentado; sem a folha da pose cai na `parado` e depois na
+  `andar` (habitante com arte nunca volta a ter pernas no meio). A célula
+  tem a altura do mundo (32) e o pé é a linha mais baixa com desenho em
+  qualquer célula, a mesma para todas. A janela pede o quadro com
+  `arte.quadro_do_habitante(..., agora + h.fase)`.
+- **Sem reiniciar**: `arte_pronta.conferir()` (só `stat`) devolve a
+  assinatura da pasta; a cena confere a cada 30 s e o servidor do app a cada
+  pedido de imagem; mudou, joga fora mundo, atlas e personagens prontos. A
+  `versao()` do app leva a assinatura, então o celular baixa a arte nova.
+  O código novo em si só entra quando a Vila e o app reiniciarem.
+- **No app**: o fundo (retrato e paisagem) já vem composto do PC com a arte.
+  Os habitantes com folha não vêm do atlas: o `mundo` traz
+  `arte.habitantes[nome][animação]` (url, grade, ciclos, pé, tamanho no
+  mundo), o retrato traz `arte: {animacao, ciclo, fase}` por habitante e o
+  `vila.js` escolhe o quadro pelo relógio (`vilaQuadroDaFolha`, a mesma
+  conta da janela, testada no node). A folha vem pela rota **só de
+  leitura** `/arte-vila/<nome_arquivo>`, aberta como o cenário
+  (`/vilanova-*`): consulta exata no índice, nada de juntar URL com pasta.
+  Casca `v30`.
+- **Aprovadas em 02/10** (olhadas antes; as duas texturas emendam sem
+  costura num 2×2): casa, grama e terra. As três estavam em `julgado` com o
+  juiz (então o Grok) sem resposta útil — o da casa respondeu sobre a
+  imagem-mestra, não sobre a casa — e o `colher` refaria a casa; foram
+  movidas para `a_conferir` com o motivo no histórico e aprovadas pelo
+  `aprovar`. Os habitantes ainda não (a folha do ChatGPT está em `refazer`).
+- **Provas** (scratchpad da sessão, `arte_vila/`): app isolado na 8941
+  (LOCALAPPDATA próprio, sem `--acoes`) em 390×844, antes e depois, e a
+  Vila inteira; flutuante grande `--demo --hora 14` antes (pasta vazia por
+  `NF_ARTE_VILA`) e depois, e de noite. Zero erro de JS.
+- **Testes**: `painel/test_arte_pronta.py` (17: tem arte → usa, não tem →
+  recai byte a byte, `.json` → ciclo, rota, recarga, a conta do `vila.js`),
+  dois em `remoto/test_vila_nova.py`. Os contratos de bytes do desenho de
+  código (`test_vila_fofa.py`) rodam com a arte apontada para uma pasta
+  vazia (`setUpModule`).
+
 ## 6b. O Guia das IAs (29/09/2026)
 
 Pedido do Adrian às 01:55: "cria uma interface gráfica flutuante pra eu
@@ -504,6 +568,7 @@ recolhida, IA escolhida a mão).
   `painel/test_vila_fofa.py` (40, com a escala, a Vila dobrada e a deitada
   do celular, o prédio do Grok nos dois arranjos com a vila intocada fora
   dele, e o balão do correio do app rodado no node: desvio e caso zero),
+  `painel/test_arte_pronta.py` (17, a arte da esteira, §6d),
   `painel/test_oficina_sprites.py` (40: a 11243 medida, o `piriri.py`
   medido do mesmo jeito, fundo branco que não fura o brilho, tela verde,
   exportação no formato do palco, soltar arquivo, a página cabendo em
@@ -534,6 +599,11 @@ na thread da interface; usar `ImageGrab`; apontar a tarefa direto para o `.cmd`
 | `relatorios.json`, `bot.txt`, `postar.txt`, `auto_saida.txt` | quem os gera | leio a cauda |
 | tarefas do Agendador | os instaladores de cada parte | `Get-ScheduledTask` |
 | `ferramentas/postar.py` | outra sessão | subprocesso, só as funções de fila |
+
+**A esteira escreve em `painel/flutuante/arte_vila/`** (dono do conteúdo:
+a esteira, `esteira_sprites/aprovar.py`, só quando uma peça é aprovada);
+eu só leio, pelo `arte_pronta.py` (§6d). O coordenador roda o `ciclo` da
+esteira (palco e vila) no máximo a cada 5 min.
 
 **Meus:** `painel/**`, `vila_flutuante.pyw`, o `vila_flutuante.cmd`
 (gerado pelo `flutuante/tarefa.py`), a tarefa `NeuralFights_vila_flutuante`, e

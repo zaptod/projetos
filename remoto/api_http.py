@@ -698,6 +698,10 @@ class Manipulador(BaseHTTPRequestHandler):
             # Abertas como o resto da casca (a rede ja e a tranca): sao o
             # cenario, nao dado. O que esta NELAS nao diz nada do sistema.
             return self._imagem_da_vila(rota)
+        if rota.startswith("/arte-vila/"):
+            # a arte aprovada pela esteira, so leitura e aberta como o
+            # cenario acima (a rede e a tranca)
+            return self._arte_da_vila(rota)
         if rota.startswith("/v/"):
             return self._video_por_bilhete(rota[3:])
         if rota.startswith("/p/"):
@@ -1404,6 +1408,29 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._erro(404, "a vila ainda nao tem cenario")
         self.send_response(200)
         self.send_header("Content-Type", tipo)
+        self.send_header("Content-Length", str(len(corpo)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "private, max-age=86400")
+        self.end_headers()
+        self.wfile.write(corpo)
+
+    def _arte_da_vila(self, rota: str):
+        """`/arte-vila/<nome_arquivo>`: uma folha aprovada pela esteira.
+
+        Nada de juntar a URL com uma pasta: `arte_pronta.arquivo_publico`
+        so devolve o que esta no indice (peca do inventario que existe em
+        `painel/flutuante/arte_vila`). O resto e 404, inclusive `..`.
+        """
+        try:
+            from painel.flutuante import arte_pronta
+            arquivo = arte_pronta.arquivo_publico(rota)
+            corpo = arquivo.read_bytes() if arquivo is not None else None
+        except (OSError, ValueError):
+            corpo = None
+        if corpo is None:
+            return self._erro(404, "nao existe")
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
         self.send_header("Content-Length", str(len(corpo)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "private, max-age=86400")

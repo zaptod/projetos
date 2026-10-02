@@ -59,7 +59,7 @@ def compor_paisagem(noite: bool = False, escala: int = 3) -> Image.Image:
     tela.paste(retrato.desenhar_ceu(noite, e, LARGURA, NUVENS, MORROS_LONGE,
                                     MORROS_PERTO, LUA), (0, 0))
     tela.paste(arte.compor_mundo(noite, e), (0, CEU * e))
-    tela.paste(retrato.desenhar_pe(noite, e, LARGURA),
+    tela.paste(retrato.desenhar_pe(noite, e, LARGURA, x0=0),
                (0, (CEU + arte.ALTURA) * e))
     return tela
 

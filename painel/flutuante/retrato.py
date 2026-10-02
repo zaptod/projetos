@@ -30,7 +30,7 @@ import random
 
 from PIL import Image
 
-from . import arte
+from . import arte, arte_pronta
 
 DOBRA = 420
 EXTRA = 2 * DOBRA - arte.LARGURA        # 136 de campo a direita da fileira 2
@@ -110,6 +110,17 @@ def _tufos_e_flores(p: arte.Pincel, rnd: random.Random, largura: float,
         p.circulo(x, y, 0.8, "#ffb43c")
 
 
+def _grama_pronta(p: arte.Pincel, x0: float, y0: float) -> bool:
+    """A grama da esteira (se aprovada) no Pincel inteiro, continuando o
+    ladrilho do mundo a partir de (x0, y0) do mundo. False = nao ha."""
+    textura = arte_pronta.ladrilhar(arte.GRAMA_PRONTA, p.img.width,
+                                    p.img.height, p.k, origem=(x0, y0))
+    if textura is None:
+        return False
+    p.img.paste(textura, (0, 0))
+    return True
+
+
 def desenhar_campo_extra(noite: bool, escala: int) -> Image.Image:
     """O campo que completa a fileira de baixo: grama, flores e arvores.
 
@@ -118,8 +129,9 @@ def desenhar_campo_extra(noite: bool, escala: int) -> Image.Image:
     """
     rnd = random.Random(4211)
     p = arte.Pincel(EXTRA, arte.ALTURA, escala)
-    _degrade(p, EXTRA, arte.ALTURA, arte.GRAMA_TOPO, arte.GRAMA_BASE)
-    _tufos_e_flores(p, rnd, EXTRA, arte.ALTURA, 26, 12)
+    if not _grama_pronta(p, arte.LARGURA, 0):
+        _degrade(p, EXTRA, arte.ALTURA, arte.GRAMA_TOPO, arte.GRAMA_BASE)
+        _tufos_e_flores(p, rnd, EXTRA, arte.ALTURA, 26, 12)
     campo = p.final()
     if noite:
         campo = arte.noturno(campo)
@@ -256,13 +268,18 @@ def desenhar_sebe(noite: bool, escala: int) -> Image.Image:
     return img
 
 
-def desenhar_pe(noite: bool, escala: int, largura: int = LARGURA) -> Image.Image:
-    """A grama embaixo da fileira 2, que desce ate a prateleira."""
+def desenhar_pe(noite: bool, escala: int, largura: int = LARGURA,
+               x0: float = DOBRA) -> Image.Image:
+    """A grama embaixo da fileira 2, que desce ate a prateleira.
+
+    `x0`: onde a fileira de cima comeca no mundo (a grama da esteira
+    continua o ladrilho dela; o desenho de codigo nao usa)."""
     rnd = random.Random(5150)
     p = arte.Pincel(largura, PE, escala)
-    _degrade(p, largura, PE, arte.GRAMA_BASE, "#62a64f")
-    _tufos_e_flores(p, rnd, largura, PE, int(60 * largura / LARGURA),
-                    int(14 * largura / LARGURA))
+    if not _grama_pronta(p, x0, arte.ALTURA):
+        _degrade(p, largura, PE, arte.GRAMA_BASE, "#62a64f")
+        _tufos_e_flores(p, rnd, largura, PE, int(60 * largura / LARGURA),
+                        int(14 * largura / LARGURA))
     pe = p.final()
     return arte.noturno(pe) if noite else pe
 

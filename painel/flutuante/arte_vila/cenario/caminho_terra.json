@@ -1,0 +1,48 @@
+{
+  "id": "caminho_terra",
+  "tipo": "peca",
+  "quadros": 1,
+  "grade": null,
+  "animacao": null,
+  "medidas": {
+    "transparentes": 0,
+    "costura": 13.46,
+    "vizinhos": 4.66
+  },
+  "fonte": "E:\\projetos\\outputs\\_ias\\esteira_sprites\\vila\\caminho_terra\\limpo.png",
+  "prova": "E:\\projetos\\outputs\\_ias\\esteira_sprites\\vila\\caminho_terra\\prova.json",
+  "prova_conteudo": {
+    "id": "db2987d1",
+    "gerador": "chatgpt",
+    "arquivo": "db2987d1.png",
+    "bytes": 2024792,
+    "sha256": "3d5943be7f25308153285db64875cc5d3ec8c5bf199a5b6375221ebea1ac2a2e",
+    "formato": "png",
+    "largura": 1254,
+    "altura": 1254,
+    "gravado_em": "2026-10-02T01:20:05",
+    "prova": {
+      "comprovada": true,
+      "metodo": "turno_na_casa",
+      "forca": "casa",
+      "provedor": "chatgpt",
+      "casa_url": "https://chatgpt.com/c/6abf2472-e01c-83e8-bea9-5228c34c3ca3",
+      "turno_usuario": "Crie uma imagem na proporção 1:1. Responda só com a imagem, sem texto.\n\nArte para a Vila do Neural Fights, no MESMO estilo dos lutadores do Neural Fights: Estilo anime cel-shading de jogo de luta mode",
+      "prompt_sha256": "0b713251b0a006ae",
+      "src": "blob:https://chatgpt.com/760b3f57-4a85-421f-8374-0103184434e7",
+      "na_tela": [
+        1254,
+        1254
+      ],
+      "alt": "Imagem 1 gerada",
+      "dentro_da_resposta": true,
+      "src_novo": true,
+      "imagens_antes_do_envio": 6,
+      "ignoradas_fora_da_resposta": 0,
+      "imagens_na_resposta": 1,
+      "download": "botao_tamanho_original",
+      "verificado_em": "2026-10-02T01:20:05",
+      "proporcao": "1:1"
+    }
+  }
+}

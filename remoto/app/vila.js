@@ -52,6 +52,7 @@ const Vila = {
   modo: null,                   // "inteira" | "perto" | "livre" (o dedo mexeu)
   faixa: [0, 0],                // [topo, base] livres entre placar e prateleira
   fundo: null, fundoNoite: null, atlas: null,
+  folhas: {},                   // url da folha da esteira -> imagem (ou false)
   fio: null, relogioRetrato: null, relogioEstado: null,
 };
 
@@ -303,9 +304,50 @@ function vilaRetanguloDoLote(nome) {
   return [x, y, 4 * tile, 3 * tile];
 }
 
+// A ARTE DA ESTEIRA (02/10/2026). Habitante com folha aprovada não vem do
+// atlas: o PC diz qual animação e qual ciclo (a linha da direção) e manda a
+// folha pela rota só de leitura /arte-vila/; aqui só se escolhe o quadro
+// pelo relógio, no fps do .json. É a mesma conta da janela flutuante
+// (`arte_pronta.Folha.indice`), e a folha é baixada uma vez.
+function vilaQuadroDaFolha(ciclo, t) {
+  const n = (ciclo.quadros || []).length || 1;
+  const passo = Math.floor(Math.max(0, t) * (ciclo.fps || 1));
+  const i = ciclo.loop === false ? Math.min(passo, n - 1) : passo % n;
+  return (ciclo.quadros || [0])[i];
+}
+
+function vilaFolha(url) {
+  const pronta = Vila.folhas[url];
+  if (pronta || pronta === false) return pronta || null;
+  Vila.folhas[url] = false;                  // pedido em voo
+  const img = new Image();
+  img.onload = () => { Vila.folhas[url] = img; };
+  img.onerror = () => { delete Vila.folhas[url]; };
+  img.src = url;
+  return null;
+}
+
+// o retângulo da folha e onde ele cai no mundo (null = sem arte pronta)
+function vilaQuadroDoHabitante(h, agora) {
+  const pedido = h.arte;
+  const info = pedido && Vila.mundo?.arte?.habitantes?.[h.nome]?.[pedido.animacao];
+  const ciclo = info && info.ciclos[pedido.ciclo];
+  if (!ciclo) return null;
+  const q = vilaQuadroDaFolha(ciclo, agora + (pedido.fase || 0));
+  const [cols, lins] = info.grade;
+  const cw = info.tamanho[0] / cols, ch = info.tamanho[1] / lins;
+  const alt = info.mundo[1];
+  return {url: info.url, sx: (q % cols) * cw, sy: Math.floor(q / cols) * ch,
+          sw: cw, sh: ch, larg: cw * alt / ch, alt,
+          topo: -1 - info.pe * alt};       // em relação ao pé
+}
+
 // Cada fileira mostra um pedaço do mundo. Quem anda perto da dobra aparece
 // nas duas, cortado: sai de uma e entra na outra.
 function vilaSprite(ctx, h, x, y) {
+  const quadro = vilaQuadroDoHabitante(h, performance.now() / 1000);
+  const folha = quadro && vilaFolha(quadro.url);
+  if (folha) return vilaSpriteDaFolha(ctx, folha, quadro, x, y);
   if (!Vila.atlas) return;
   const info = vilaAtlasInfo();
   const mapa = info.mapa;
@@ -324,6 +366,25 @@ function vilaSprite(ctx, h, x, y) {
     ctx.clip();
     ctx.drawImage(Vila.atlas, pos[0], pos[1], info.larg, info.alt,
                   rx - larg / 2, f.y + y - alt, larg, alt);
+    ctx.restore();
+  }
+}
+
+function vilaSpriteDaFolha(ctx, folha, q, x, y) {
+  const g = vilaGeo();
+  for (const f of vilaFileiras()) {
+    const rx = x - f.x0;
+    if (rx + q.larg / 2 < 0 || rx - q.larg / 2 > g.largura) continue;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, f.y - q.alt, g.largura, g.fileira + q.alt);
+    ctx.clip();
+    ctx.fillStyle = "rgba(50, 80, 40, 0.27)";   // a sombra no chão
+    ctx.beginPath();
+    ctx.ellipse(rx, f.y + y - 1.85, 8, 1.65, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.drawImage(folha, q.sx, q.sy, q.sw, q.sh,
+                  rx - q.larg / 2, f.y + y + q.topo, q.larg, q.alt);
     ctx.restore();
   }
 }

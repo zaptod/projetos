@@ -18,7 +18,7 @@ import time
 import tkinter as tk
 from datetime import datetime
 
-from . import arte, dados
+from . import arte, arte_pronta, dados
 from .vida import Vida
 
 LARGURA, ALTURA = arte.LARGURA, arte.ALTURA
@@ -78,12 +78,28 @@ class CenaFofa:
             self._cache[chave] = arte.compor_mundo(noite).convert("RGB")
         return self._foto(chave, lambda: self._cache[chave])
 
-    def _personagem(self, nome, pose, olhos, direcao):
-        chave = ("p", nome, pose, olhos, direcao)
+    def _personagem(self, nome, pose, olhos, direcao, quadro=0):
+        chave = ("p", nome, pose, olhos, direcao, quadro)
         if chave not in self._cache:
-            self._cache[chave] = arte.desenhar_personagem(nome, pose, olhos,
-                                                          direcao)
+            self._cache[chave] = arte.desenhar_personagem(
+                nome, pose, olhos, direcao, quadro=quadro)
         return self._foto(chave, lambda: self._cache[chave])
+
+    def _conferir_arte(self) -> None:
+        """Uma peca nova aprovada pela esteira entra sem reiniciar a Vila:
+        a assinatura da pasta (so `stat`, a cada 30 s) mudou, o mundo e os
+        habitantes prontos vao para o lixo e sao desenhados de novo."""
+        vista = arte_pronta.conferir()
+        if self._cache.get("arte_vista", vista) != vista:
+            for chave in [c for c in self._cache
+                          if isinstance(c, tuple) and c and c[0] in ("mundo", "p")]:
+                del self._cache[chave]
+            for chave in [c for c in self._fotos
+                          if isinstance(c, tuple) and c and c[0] in ("mundo", "p")]:
+                del self._fotos[chave]
+            self._imagem_atual.clear()
+            self._atualizar_noite(forcar=True)
+        self._cache["arte_vista"] = vista
 
     def _generica(self, chave, fabricar):
         if chave not in self._cache:
@@ -286,12 +302,16 @@ class CenaFofa:
         for nome, h in self.vida.habitantes.items():
             itens = self._itens[nome]
             pose, olhos, direcao, pulo = self.vida.pose(h, agora)
+            # folha da esteira: o quadro do ciclo, defasado por habitante
+            quadro = arte.quadro_do_habitante(nome, pose, direcao,
+                                              agora + h.fase)
             x, y = self.vida.posicao_de_desenho(h)
             # Balanco so andando: parado, o boneco fica quieto e o Tk nao
             # recebe nada (e isso que deixa a CPU baixa com a vila calma).
             balanco = math.sin(h.passo_t * 12) * 1.2 if h.andando else 0.0
             self._trocar_imagem(itens["corpo"],
-                                self._personagem(nome, pose, olhos, direcao))
+                                self._personagem(nome, pose, olhos, direcao,
+                                                 quadro))
             topo = y - pulo + balanco
             self._mover(itens["corpo"], x, topo)
             # emote em cima da cabeca
@@ -355,6 +375,7 @@ class CenaFofa:
         self._trocar_imagem(self._fonte, self._generica(
             ("fonte", quadro), lambda q=quadro: arte.desenhar_fonte(q)))
         if int(agora) % 30 == 0:
+            self._conferir_arte()
             self._atualizar_noite()
         if self._noite:
             for i, item in enumerate(self._vagalumes):

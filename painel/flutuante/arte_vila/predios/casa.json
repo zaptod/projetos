@@ -1,0 +1,54 @@
+{
+  "id": "predio_casa",
+  "tipo": "peca",
+  "quadros": 1,
+  "grade": null,
+  "animacao": null,
+  "medidas": {
+    "transparencia": 804013,
+    "franja": {
+      "visivel": 0,
+      "oculta": 0
+    },
+    "linhas_de_grade": 0,
+    "pontinhos": 0,
+    "pixels_na_borda": 0,
+    "contorno_falta": 0.0
+  },
+  "fonte": "E:\\projetos\\outputs\\_ias\\esteira_sprites\\vila\\predio_casa\\limpo.png",
+  "prova": "E:\\projetos\\outputs\\_ias\\esteira_sprites\\vila\\predio_casa\\prova.json",
+  "prova_conteudo": {
+    "id": "88c8531e",
+    "gerador": "chatgpt",
+    "arquivo": "88c8531e.png",
+    "bytes": 1699275,
+    "sha256": "5e42e92a868f5f95bf824caf5ceb91c92e9bc550a11c25a8cab0011241688949",
+    "formato": "png",
+    "largura": 1254,
+    "altura": 1254,
+    "gravado_em": "2026-10-02T01:14:59",
+    "prova": {
+      "comprovada": true,
+      "metodo": "turno_na_casa",
+      "forca": "casa",
+      "provedor": "chatgpt",
+      "casa_url": "https://chatgpt.com/c/6abf2472-e01c-83e8-bea9-5228c34c3ca3",
+      "turno_usuario": "Crie uma imagem na proporção 1:1. Responda só com a imagem, sem texto.\n\nArte para a Vila do Neural Fights, no MESMO estilo dos lutadores do Neural Fights: Estilo anime cel-shading de jogo de luta mode",
+      "prompt_sha256": "dda4abdfe493e42f",
+      "src": "blob:https://chatgpt.com/b072f1e3-00c4-45b0-8b2e-b55579670329",
+      "na_tela": [
+        1254,
+        1254
+      ],
+      "alt": "Imagem 1 gerada",
+      "dentro_da_resposta": true,
+      "src_novo": true,
+      "imagens_antes_do_envio": 5,
+      "ignoradas_fora_da_resposta": 0,
+      "imagens_na_resposta": 1,
+      "download": "botao_tamanho_original",
+      "verificado_em": "2026-10-02T01:14:59",
+      "proporcao": "1:1"
+    }
+  }
+}

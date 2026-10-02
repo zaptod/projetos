@@ -7,6 +7,7 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -55,6 +56,48 @@ def publicacao_rodando(processos):
 
 
 ESPERA_ENTREGA_S = 600   # quanto o reinicio por codigo velho espera uma entrega do carteiro
+
+# A ESTEIRA DE SPRITES (02/10/2026): ninguem chamava o `avancar` e 10 imagens
+# ficaram paradas entre "pedido" e "julgado". O pulso agora roda o `ciclo`
+# de cada perfil (anda tudo e mantem a producao cheia, commit 708a767), no
+# maximo uma vez a cada 5 min, numa thread propria.
+ESTEIRA_INTERVALO_S = 300
+ESTEIRA_PERFIS = ("palco", "vila")
+ESTEIRA_PRAZO_S = 240
+
+
+def ciclo_das_esteiras(rodar=subprocess.run, python=None, raiz=RAIZ):
+    """`python -m esteira_sprites --perfil <p> ciclo` para palco e vila.
+
+    Subprocesso, e nao import: o perfil da esteira e global no processo
+    (`config.usar`), e uma rodada que quebra nao leva o coordenador junto.
+    O `ciclo` imprime uma linha JSON ({perfil, andou, em_voo, novos}).
+    Devolve {perfil: {"codigo", "andou", "novos", "em_voo", "saida"}}.
+    """
+    saida = {}
+    for perfil in ESTEIRA_PERFIS:
+        comando = [python or sys.executable, "-X", "utf8", "-m", "esteira_sprites",
+                   "--perfil", perfil, "ciclo"]
+        try:
+            r = rodar(comando, cwd=str(raiz), capture_output=True, text=True,
+                      encoding="utf-8", errors="replace", timeout=ESTEIRA_PRAZO_S,
+                      check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            saida[perfil] = {"codigo": None, "andou": 0, "novos": [], "em_voo": None,
+                             "saida": type(exc).__name__}
+            continue
+        linhas = (r.stdout or "").strip().splitlines()
+        try:
+            dados = json.loads(linhas[-1]) if linhas else {}
+        except ValueError:
+            dados = {}
+        dados = dados if isinstance(dados, dict) else {}
+        texto = (r.stderr or "").strip().splitlines()[-1:] if r.returncode else linhas[-1:]
+        saida[perfil] = {"codigo": r.returncode, "andou": int(dados.get("andou") or 0),
+                         "novos": list(dados.get("novos") or []),
+                         "em_voo": dados.get("em_voo"),
+                         "saida": (texto[0] if texto else "")[:200]}
+    return saida
 
 
 def _pid_vivo(pid: int) -> bool:
@@ -113,7 +156,7 @@ class Supervisor:
                  iniciar=None, parar=None, avisar=None, porta=None, carteiro=None,
                  git=None, comandos=None, aplicar=None, claude_proibido=None,
                  delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
-                 cerebro=None, vigia_trabalho=None, em_fundo=None):
+                 cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
         self.iniciar = iniciar or self._iniciar
@@ -140,6 +183,10 @@ class Supervisor:
         # O cerebro (`cerebro.atender`) e o vigia de trabalho so existem quando
         # o `__main__` os liga: nos testes, ausentes = nada de Codex nem git.
         self.cerebro, self.vigia_trabalho = cerebro, vigia_trabalho
+        # a esteira de sprites idem: so o `montar()` de producao a liga
+        self.esteira = esteira
+        self.esteira_em = None
+        self.ultima_esteira = {}
         self.em_fundo = em_fundo or self._em_fundo
         self.fundos = {}
         self.vigia_em = None
@@ -450,6 +497,30 @@ class Supervisor:
             self.trabalho = self.vigia_trabalho.passo()
         self.em_fundo("vigia", passo)
 
+    def rodar_esteira(self):
+        """Um `ciclo` da esteira (palco e vila) a cada ESTEIRA_INTERVALO_S."""
+        if not self.esteira:
+            return
+        agora = self.relogio()
+        desde = (agora - self.esteira_em).total_seconds() if self.esteira_em else None
+        if desde is not None and desde < ESTEIRA_INTERVALO_S:
+            return
+        self.esteira_em = agora
+
+        def passo():
+            resultado = self.esteira() or {}
+            self.ultima_esteira = {"em": agora_iso(self.relogio()), "perfis": resultado}
+            # so vira evento o que andou ou quebrou: 288 rodadas por dia
+            # empurrariam para fora os 100 eventos que o app mostra
+            notaveis = {p: r for p, r in resultado.items()
+                        if r.get("andou") or r.get("novos") or r.get("codigo") != 0}
+            if notaveis:
+                self.evento("", "esteira", "; ".join(
+                    f"{p}: {r.get('andou', 0)} andou, {len(r.get('novos') or [])} novo(s)"
+                    + (f", codigo {r.get('codigo')} {r.get('saida', '')}" if r.get("codigo") != 0 else "")
+                    for p, r in notaveis.items()))
+        self.em_fundo("esteira", passo)
+
     def pedir_reinicio(self, nome):
         """O vigia aplicou codigo deste servico: reinicia no proximo momento seguro."""
         if nome in self.servicos:
@@ -493,6 +564,7 @@ class Supervisor:
         self.avisar_mensagem_sem_ouvinte()
         self.processar_cerebro()
         self.vigiar_trabalho()
+        self.rodar_esteira()
         self.gravar(self.resumo())
 
     def resumo(self):
@@ -500,7 +572,7 @@ class Supervisor:
                 "versao": self._versao(), "servicos": self.estado,
                 "acoes_pc": acoes_pc.catalogo(), "eventos": self.eventos[-100:],
                 "cerebro": {"ligado": bool(self.cerebro)},
-                "trabalho": self.trabalho}
+                "trabalho": self.trabalho, "esteira": self.ultima_esteira}
 
     @staticmethod
     def _versao():

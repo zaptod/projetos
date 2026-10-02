@@ -186,3 +186,88 @@ def test_trava_de_processo_morto_e_retomada(tmp_path):
     assert TravaUnica(caminho).adquirir(vivo=lambda pid: False)
     caminho.write_text("4242", encoding="utf-8")
     assert not TravaUnica(caminho).adquirir(vivo=lambda pid: True)
+
+
+# ------------------------------------------------ a esteira de sprites (02/10)
+def test_esteira_roda_no_pulso_no_maximo_uma_vez_a_cada_5_min():
+    # 02/10: ninguem chamava a esteira e 10 imagens ficaram paradas
+    rodadas = []
+    s, relogio = supervisor(processos=lambda: [{"pid": 12, "comando": "app --ja"}],
+                            esteira=lambda: rodadas.append(1) or {},
+                            em_fundo=lambda nome, f: f())
+    s.pulso()
+    assert rodadas == [1]
+    relogio.andar(5); s.pulso()
+    relogio.andar(289); s.pulso()
+    assert rodadas == [1]
+    relogio.andar(6); s.pulso()
+    assert rodadas == [1, 1]
+    assert s.resumo()["esteira"]["perfis"] == {}
+
+
+def test_sem_esteira_ligada_o_pulso_nao_chama_nada():
+    s, _ = supervisor(processos=lambda: [{"pid": 12, "comando": "app --ja"}],
+                      em_fundo=lambda nome, f: (_ for _ in ()).throw(AssertionError(nome)))
+    s.pulso()                       # o cerebro e o vigia tambem estao desligados
+    assert s.esteira is None and s.ultima_esteira == {}
+
+
+def test_esteira_so_vira_evento_quando_anda_ou_quebra():
+    parado = {"codigo": 0, "andou": 0, "novos": [], "em_voo": 4, "saida": "{}"}
+    resultados = [{"palco": dict(parado), "vila": dict(parado)},
+                  {"palco": {**parado, "andou": 2, "novos": ["fogo"]},
+                   "vila": {**parado, "codigo": 1, "saida": "ValueError: x"}}]
+    s, relogio = supervisor(processos=lambda: [{"pid": 12, "comando": "app --ja"}],
+                            esteira=lambda: resultados.pop(0),
+                            em_fundo=lambda nome, f: f())
+    s.pulso()
+    assert not [e for e in s.eventos if e["tipo"] == "esteira"]
+    relogio.andar(300); s.pulso()
+    evento = [e for e in s.eventos if e["tipo"] == "esteira"][-1]["texto"]
+    assert "palco: 2 andou, 1 novo(s)" in evento
+    assert "vila: 0 andou" in evento and "codigo 1" in evento
+
+
+def test_ciclo_das_esteiras_chama_palco_e_vila_em_subprocesso():
+    import json
+    import subprocess
+
+    from coordenador.supervisor import ESTEIRA_PERFIS, ciclo_das_esteiras
+    chamadas = []
+
+    def rodar(comando, **kw):
+        chamadas.append((comando, kw))
+        if "vila" in comando:
+            raise subprocess.TimeoutExpired(comando, kw["timeout"])
+        linha = json.dumps({"perfil": "palco", "andou": 3, "em_voo": 4, "novos": ["a"]})
+        return subprocess.CompletedProcess(comando, 0, stdout="aviso\n" + linha + "\n",
+                                           stderr="")
+
+    saida = ciclo_das_esteiras(rodar=rodar, python="py.exe", raiz="E:/x")
+    assert ESTEIRA_PERFIS == ("palco", "vila")
+    assert [c[0] for c in chamadas] == [
+        ["py.exe", "-X", "utf8", "-m", "esteira_sprites", "--perfil", p, "ciclo"]
+        for p in ESTEIRA_PERFIS]
+    assert all(kw["cwd"] == "E:/x" and kw["timeout"] for _, kw in chamadas)
+    assert saida["palco"]["andou"] == 3 and saida["palco"]["novos"] == ["a"]
+    assert saida["palco"]["codigo"] == 0 and saida["palco"]["em_voo"] == 4
+    assert saida["vila"]["codigo"] is None and saida["vila"]["saida"] == "TimeoutExpired"
+
+
+def test_ciclo_com_saida_que_nao_e_json_nao_derruba():
+    import subprocess
+
+    from coordenador.supervisor import ciclo_das_esteiras
+    saida = ciclo_das_esteiras(
+        rodar=lambda c, **kw: subprocess.CompletedProcess(c, 1, stdout="",
+                                                           stderr="Traceback\nErro: x"),
+        python="py.exe")
+    assert saida["palco"] == {"codigo": 1, "andou": 0, "novos": [], "em_voo": None,
+                              "saida": "Erro: x"}
+
+
+def test_o_coordenador_de_producao_liga_a_esteira():
+    import inspect
+
+    from coordenador import __main__ as principal
+    assert "esteira=ciclo_das_esteiras" in inspect.getsource(principal.montar)

@@ -707,7 +707,8 @@ e as rotas em `remoto/test_coordenador_app.py`.
 **Desde 02/10 (§18):** o "Controlar o PC" (as ações fechadas do PC) mora em
 Mandar, com os outros botões de comando; os serviços (com Reiniciar, Parar e
 Ligar de cada um), o Trabalho, os eventos e a Conversa ficam na aba
-Coordenador. O cache do `sw.js` está em `painel-casca-v29` (o
+Coordenador. O cache do `sw.js` está em `painel-casca-v30` (v30, 02/10: a
+Vila toca as folhas da esteira, ver `docs/sessoes/painel-e-vila.md` §6d; o
 `test_app_vila_objetos.py` crava o mesmo número: mudar os dois juntos).
 
 ## 8. O leitor de decisões tomadas (28/09/2026, noite)

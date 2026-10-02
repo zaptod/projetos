@@ -157,7 +157,7 @@ class _Vida:
             nome: types.SimpleNamespace(
                 nome=nome, pos=[10.0 * i, 20.0], emote="✨",
                 emote_ate=time.monotonic() + 60, balao="fazendo algo",
-                modo="passeio", atividade="sentado")
+                modo="passeio", atividade="sentado", fase=1.5 * i)
             for i, nome in enumerate(nomes)}
         self.aplicados = []
         self.ticks = 0
@@ -299,3 +299,58 @@ def test_acordar_com_leitura_que_falha_nao_mostra_o_velho(motor, monkeypatch):
     monkeypatch.setattr(m, "_acordar", lambda: None)
     r = m.retrato()
     assert r["predios"] == {} and r["erro_de_leitura"] == "OSError"
+
+
+# ------------------------------------------- a arte da esteira (02/10/2026)
+@pytest.fixture
+def arte_de_teste(tmp_path):
+    """Uma pasta de arte aprovada e um inventario so do teste."""
+    import json
+
+    from PIL import Image
+
+    from painel.flutuante import arte_pronta
+    pasta = tmp_path / "arte_vila"
+    pasta.mkdir()
+    anim = {"grade": [4, 4], "ciclos": [
+        {"nome": n, "quadros": list(range(4 * i, 4 * i + 4)), "fps": 4, "loop": True}
+        for i, n in enumerate(("frente", "esquerda", "direita", "costas"))]}
+    itens = [{"nome_arquivo": "predios/casa.png", "tamanho": "no mundo 72x64"},
+             {"nome_arquivo": "habitantes/estudio/parado.png",
+              "tamanho": "no mundo 26x32", "animacao": anim}]
+    inventario = tmp_path / "inventario.json"
+    inventario.write_text(json.dumps({"itens": itens}), encoding="utf-8")
+    arte_pronta.usar(pasta, inventario)
+
+    def aprovar(nome, tamanho=(256, 256), cor=(200, 40, 40, 255)):
+        destino = pasta / nome
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        img = Image.new("RGBA", tamanho, (0, 0, 0, 0))
+        img.paste(Image.new("RGBA", (tamanho[0] // 2, tamanho[1] // 2), cor),
+                  (tamanho[0] // 4, tamanho[1] // 4))
+        img.save(destino)
+    yield aprovar
+    arte_pronta.usar(None)
+
+
+def test_peca_aprovada_com_o_servidor_no_ar_troca_o_fundo_e_a_versao(arte_de_teste):
+    versao = vila_nova.versao()
+    fundo = vila_nova.png_do_fundo(False)
+    retrato = vila_nova.imagem_do_retrato(False)
+    assert vila_nova.png_do_fundo(False) is fundo           # guardado
+    arte_de_teste("predios/casa.png")
+    assert vila_nova.versao() != versao                     # o celular rebaixa
+    assert vila_nova.png_do_fundo(False) != fundo           # sem reiniciar
+    assert vila_nova.imagem_do_retrato(False) != retrato
+
+
+def test_retrato_e_mundo_dizem_qual_folha_e_qual_ciclo(motor, arte_de_teste):
+    arte_de_teste("habitantes/estudio/parado.png")
+    r = motor.motor.retrato()
+    por_nome = {h["nome"]: h for h in r["habitantes"]}
+    assert por_nome["estudio"]["arte"] == {"animacao": "parado", "ciclo": "direita",
+                                           "fase": 0.0}
+    assert por_nome["picasso"]["arte"] is None              # cai no atlas
+    folhas = vila_nova.mundo()["arte"]["habitantes"]
+    assert folhas["estudio"]["parado"]["url"].startswith("/arte-vila/habitantes/estudio/parado.png")
+    assert folhas["estudio"]["parado"]["ciclos"]["direita"]["quadros"] == [8, 9, 10, 11]
