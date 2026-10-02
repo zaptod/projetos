@@ -1120,7 +1120,9 @@ def testar(tarefa_id: str, cmd: str, *, timeout_s: float | None = None) -> dict:
     temp = temp_testes() / "delegados" / validar_id(tarefa_id)
     temp.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "TEMP": str(temp), "TMP": str(temp),
-           "PYTEST_ADDOPTS": f"-p no:cacheprovider --basetemp={temp / 'bt'}"}
+           # barra normal: o pytest le o ADDOPTS com shlex e come a barra invertida,
+           # e o basetemp caia DENTRO da worktree (tmp_pytestdelegados<id>bt, 02/10/2026)
+           "PYTEST_ADDOPTS": f"-p no:cacheprovider --basetemp={(temp / 'bt').as_posix()}"}
     inicio = time.monotonic()
     log = pasta_da(tarefa_id) / "testes.log"
     with open(log, "w", encoding="utf-8", errors="replace") as fh:

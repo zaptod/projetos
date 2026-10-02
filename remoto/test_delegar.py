@@ -364,6 +364,11 @@ def test_testar_aplicar_e_limpar(mundo, monkeypatch):
     delegar.rodar("t01")
     with pytest.raises(delegar.Recusa, match="rode os testes"):
         delegar.aplicar("t01", processos=[])
+    # o basetemp vai com barra normal: com barra invertida o shlex do pytest a comia
+    # e a pasta caia dentro da worktree (02/10/2026)
+    cmd = f'"{sys.executable}" -c "import os,shlex; print(shlex.split(os.environ[\'PYTEST_ADDOPTS\'])[-1])"'
+    r = delegar.testar("t01", cmd)
+    assert r["resumo"] == "--basetemp=" + (mundo.tmp / "temp" / "delegados" / "t01" / "bt").as_posix()
     cmd = f'"{sys.executable}" -c "import os,sys; print(os.environ[\'TEMP\']); sys.exit(1)"'
     r = delegar.testar("t01", cmd)
     assert r["ok"] is False and r["codigo"] == 1
