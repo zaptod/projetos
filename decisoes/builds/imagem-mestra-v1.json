@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-02T00:20:55",
+      "evento": "2026-10-02T00:20:23",
+      "linha": 105,
+      "nota": "refazer 'mais estiloso': 4 direções novas pedidas ao ChatGPT e ao Gemini",
+      "opcao": "refazer",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Gerada pelo ChatGPT Plus em 01/10 23:35 (pedido 869758fa, 1254×1254, fundo magenta): bolinha com capacete, espada, bola de fogo e impacto, contorno escuro, 2 tons. Aprovada, a esteira começa os sprites P1 na ordem do inventário.",
   "criado": "2026-10-02T00:15:14.324027",
   "depende_de": [],
