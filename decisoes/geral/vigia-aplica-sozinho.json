@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "O vigia novo coleta a entrega, passa o validador e os testes, espera o momento seguro, aplica, commita e pede reinício. A decisão vigente geral/codex-commita diz 'eu aplico e commito por caminho', então ele está DESLIGADO por enquanto (vigia_aplica=false): entrega validada e testada fica 'pronta para aplicar' e eu aplico. Ligado, poupa o Claude e o Codex não fica parado esperando.",
+  "criado": "2026-10-02T01:14:25.631097",
+  "depende_de": [],
+  "historico": [],
+  "id": "vigia-aplica-sozinho",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Validador + testes verdes bastam; ele commita e reinicia no momento seguro.",
+      "id": "sim",
+      "pede_comentario": false,
+      "rotulo": "Sim, aplica sozinho"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Docs, testes e ferramentas aplica sozinho; remoto/, ias/, painel/, publicação ficam para o Claude ler.",
+      "id": "so-fora-producao",
+      "pede_comentario": false,
+      "rotulo": "Só fora de produção"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Fica como está: o vigia só prepara e avisa.",
+      "id": "nao",
+      "pede_comentario": false,
+      "rotulo": "Não, o Claude aplica"
+    }
+  ],
+  "pergunta": "Quando o Codex termina, o vigia pode aplicar e commitar sozinho?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Vigia do coordenador: aplica entrega do Codex sozinho?",
+  "vigente": null
+}

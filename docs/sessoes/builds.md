@@ -40,6 +40,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Codex e Gemini: teto de uso** — 50% da janela de 5 h de cada (recomendado) (01/10/2026) `teto-dos-delegados`
 - ✅ **Gemini: o CLI não aceita a conta pessoal** — Seguir com o Gemini no navegador (recomendado) (01/10/2026) `gemini-sem-cli`
 - ✅ **Codex: quanto ele pensa** — Médio por padrão, alto nas difíceis (recomendado) (01/10/2026) `codex-esforco`
+- ⏳ **Vigia do coordenador: aplica entrega do Codex sozinho?** — Quando o Codex termina, o vigia pode aplicar e commitar sozinho? `vigia-aplica-sozinho`
 
 **Builds**
 - ✅ **Variantes B** — Título próprio para cada uma (27/09/2026) `variantes-b`
