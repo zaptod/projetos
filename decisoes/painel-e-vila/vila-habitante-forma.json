@@ -3,7 +3,15 @@
   "contexto": "Muda todas as 77 folhas dos habitantes (11 IAs x 7 animações). O inventário saiu com pernas; nada foi gerado ainda (espera a imagem-mestra).",
   "criado": "2026-10-02T01:01:09.271083",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-02T01:02:55",
+      "opcao": "bolinha",
+      "origem": "app"
+    }
+  ],
   "id": "vila-habitante-forma",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "O habitante da Vila é bolinha do Neural ou personagem com pernas?",
   "projeto": "painel-e-vila",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Vila: forma dos habitantes",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-02T01:02:55",
+    "opcao": "bolinha"
+  }
 }

@@ -13,4 +13,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **O prédio do Grok na Vila** — Manter (como está) (29/09/2026) `predio-do-grok`
 - ✅ **IAs: navegadores abertos ao mesmo tempo** — 2 (recomendado) (30/09/2026) `ias-navegadores-max`
 - ✅ **Vila repaginada: qual estilo?** — Mesmo estilo do Neural (cartoon, contorno escuro) (recomendado) (02/10/2026) `vila-estilo-novo`
-- ⏳ **Vila: forma dos habitantes** — O habitante da Vila é bolinha do Neural ou personagem com pernas? `vila-habitante-forma`
+- ✅ **Vila: forma dos habitantes** — Bolinha do Neural (02/10/2026) `vila-habitante-forma`
