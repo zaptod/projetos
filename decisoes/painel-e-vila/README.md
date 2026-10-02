@@ -14,3 +14,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **IAs: navegadores abertos ao mesmo tempo** — 2 (recomendado) (30/09/2026) `ias-navegadores-max`
 - ✅ **Vila repaginada: qual estilo?** — Mesmo estilo do Neural (cartoon, contorno escuro) (recomendado) (02/10/2026) `vila-estilo-novo`
 - ✅ **Vila: forma dos habitantes** — Bolinha do Neural (02/10/2026) `vila-habitante-forma`
+- ⏳ **Folhas de sprite com o ChatGPT ocupado pelas histórias** — Quando a criação de histórias está com o ChatGPT, quem faz as folhas animadas? `folhas-chatgpt-ocupado`

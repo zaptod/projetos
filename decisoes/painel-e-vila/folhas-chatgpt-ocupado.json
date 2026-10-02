@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Hoje (02/10 10h) a criação de histórias segura a conta do ChatGPT por ~4 h por história (o estoque de histórias está em meio dia, então ela vai rodar o dia todo). As folhas animadas (habitantes da Vila, acertos e efeitos do palco) são do ChatGPT, por decisão sua, e ficam paradas enquanto isso. As peças paradas (prédios, chão) e o juiz vão pelo Gemini e já voltaram a andar. Para terminar os sprites hoje, alguém tem de fazer as folhas.",
+  "criado": "2026-10-02T10:06:13.888688",
+  "depende_de": [],
+  "historico": [],
+  "id": "folhas-chatgpt-ocupado",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Folha espera até 20 min pelo ChatGPT; se ele continuar ocupado, vai para o Gemini. O juiz e a medida reprovam se ficar pior, e aí ela volta para o ChatGPT.",
+      "id": "gemini-cobre",
+      "pede_comentario": false,
+      "rotulo": "O Gemini cobre quando o ChatGPT está ocupado"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "As folhas só saem nos intervalos das histórias; hoje talvez não terminem.",
+      "id": "esperar",
+      "pede_comentario": false,
+      "rotulo": "Esperar o ChatGPT"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O roteiro das histórias vai para o DeepSeek/Gemini hoje e o ChatGPT fica com os sprites.",
+      "id": "historias-outro-llm",
+      "pede_comentario": false,
+      "rotulo": "Histórias usam outro LLM hoje"
+    }
+  ],
+  "pergunta": "Quando a criação de histórias está com o ChatGPT, quem faz as folhas animadas?",
+  "projeto": "painel-e-vila",
+  "situacao": "pendente",
+  "titulo": "Folhas de sprite com o ChatGPT ocupado pelas histórias",
+  "vigente": null
+}
