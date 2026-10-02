@@ -223,8 +223,10 @@ class SessaoDuble:
     def __init__(self, ia: str, *, responder=None, falhar=None, tela: str = "",
                  casa_abre: bool = True, demora_s: float = 0.0, dormir=time.sleep,
                  imagem_falhar=None, imagem_sem_prova: bool = False,
-                 responder_com_imagem: bool = False, tela_antes: str = ""):
+                 responder_com_imagem: bool = False, tela_antes: str = "",
+                 antes_de_gerar=None):
         self.ia = ia
+        self.antes_de_gerar = antes_de_gerar
         self.tela_antes = tela_antes
         self.responder_com_imagem = responder_com_imagem
         self.responder = responder or (lambda texto: "OK (dublê)")
@@ -245,6 +247,8 @@ class SessaoDuble:
 
     def gerar_imagem(self, prompt: str, proporcao: str, mensagem_id: str = "") -> dict:
         self.turnos.append({"texto": prompt, "anexos": [], "imagem": proporcao})
+        if self.antes_de_gerar:
+            self.antes_de_gerar(prompt)          # o teste pode recusar a 1a vez
         return self._imagem.gerar_imagem(prompt, proporcao, mensagem_id)
 
     def imagem_da_resposta(self, prompt: str) -> dict | None:
@@ -323,6 +327,14 @@ def motivo_da_tela(ia: str, tela: str = "") -> tuple | None:
         if item["categoria"] in CATEGORIAS_DE_TELA:
             return (item["categoria"], f"o site diz: «{item['texto'][:160]}»")
     return None
+
+
+# A internet caiu, nao o site: volta para a fila (02/10/2026)
+REDE_CAIU = re.compile(r"net::ERR_(NAME_NOT_RESOLVED|INTERNET_DISCONNECTED|NETWORK_CHANGED|"
+                       r"CONNECTION_(RESET|CLOSED|REFUSED|TIMED_OUT)|TIMED_OUT|ADDRESS_UNREACHABLE)")
+REDE_TENTATIVAS = 5
+REFORCO_IMAGEM = ("GERE UMA IMAGEM (não responda com texto; use a geração de imagem). "
+                  "A imagem pedida é esta:\n")
 
 
 def classificar_erro(ia: str, exc: BaseException, tela: str = "") -> tuple:
@@ -570,9 +582,15 @@ class Carteiro:
                 try:
                     with self.fabrica(ia) as sessao:
                         casa = self._abrir_casa(ia, sessao)
+                        self._fora_da_casa = False
                         if recuperar_imagem:
                             onde, atual = recuperar_imagem
-                            ultima = self._turno_imagem(onde, ia, sessao, atual, casa,
+                            # a imagem foi feita numa conversa propria: volta nela
+                            url_img = (correio.uma(onde, str(atual["id"])) or {}).get("chat_imagem_url")
+                            if url_img:
+                                sessao.abrir_casa(url_img)
+                            ultima = self._turno_imagem(onde, ia, sessao, atual,
+                                                        None if url_img else casa,
                                                         recuperar=True)
                         else:
                             fila = [(caixa, mensagem)]
@@ -598,6 +616,8 @@ class Carteiro:
             # A sessao nem abriu (login caido, Chrome ocupado, site fora):
             # a mensagem que estava na mao falha com o motivo legivel.
             pendente = correio.uma(caixa, mid)
+            if pendente is not None and self._rede_caiu(caixa, pendente, exc):
+                pendente = None
             if pendente is not None and pendente["situacao"] in ("pendente", "entregue"):
                 categoria, motivo = classificar_erro(ia, exc)
                 self.log(f"[carteiro] {ia} {mid}: {motivo}")
@@ -649,6 +669,24 @@ class Carteiro:
         finally:
             self._estado("ocioso")
         return ultima
+
+    def _rede_caiu(self, caixa: str, mensagem: dict, exc: BaseException) -> bool:
+        """A internet/DNS caiu (net::ERR_NAME_NOT_RESOLVED...): nao e culpa do
+        pedido nem da IA. O pedido volta para a fila e o carteiro espera, ate
+        REDE_TENTATIVAS vezes; so entao falha (02/10/2026: 7 falhas assim)."""
+        if not REDE_CAIU.search(type(exc).__name__ + " " + str(exc)):
+            return False
+        mid = str(mensagem["id"])
+        n = int(mensagem.get("rede_tentativas") or 0) + 1
+        if n > REDE_TENTATIVAS:
+            return False
+        espera = min(60 * n, 300)
+        self.log(f"[carteiro] {caixa} {mid}: a rede caiu; volta para a fila e espero {espera}s "
+                 f"({n}/{REDE_TENTATIVAS})")
+        correio.atualizar(caixa, mid, situacao="pendente", rede_tentativas=n,
+                          nota=f"a rede caiu; tento de novo em {espera // 60} min ({n}/{REDE_TENTATIVAS})")
+        self.dormir(espera)
+        return True
 
     def _abrir_casa(self, ia: str, sessao) -> dict:
         casa = correio.casa(ia)
@@ -717,13 +755,36 @@ class Carteiro:
             if recuperar:
                 resultado = sessao.recuperar_imagem(prompt, proporcao)
             else:
-                resultado = sessao.gerar_imagem(prompt, proporcao, mid)
+                try:
+                    resultado = sessao.gerar_imagem(prompt, proporcao, mid)
+                except Exception as recusa:                    # noqa: BLE001
+                    novo = getattr(sessao, "novo_chat", None)
+                    if not (type(recusa).__name__ == "SemImagem" and callable(novo)):
+                        raise
+                    # "sou um modelo de linguagem, nao gero imagens" (6 vezes em
+                    # 02/10): mais UMA vez, em conversa nova e dizendo que e imagem
+                    self.log(f"[carteiro] {ia} {mid}: recusou a imagem; tento uma vez "
+                             "em conversa nova")
+                    correio.atualizar(caixa, mid, nota="recusou a imagem; tentando de novo "
+                                                       "em conversa nova")
+                    novo()
+                    resultado = sessao.gerar_imagem(REFORCO_IMAGEM + prompt, proporcao, mid)
             salvo = imagem.guardar(ia, mid, resultado.get("bytes") or b"",
                                    resultado.get("prova") or {})
         except Exception as exc:                               # noqa: BLE001
+            if self._rede_caiu(caixa, mensagem, exc):
+                return correio.uma(caixa, mid)
             if relancar_parede and type(exc).__name__ == "ParedeDePlanos":
                 raise _Reabrir() from exc
-            if (casa is not None and "TargetClosed" in (type(exc).__name__ + str(exc))):
+            if "TargetClosed" in (type(exc).__name__ + str(exc)) and not recuperar and (
+                    casa is not None or getattr(self, "_fora_da_casa", False)):
+                if casa is None:
+                    try:
+                        url_img = sessao.url()
+                    except Exception:                          # noqa: BLE001
+                        url_img = ""
+                    if url_img:
+                        correio.atualizar(caixa, mid, chat_imagem_url=url_img)
                 raise _ReabrirImagem(caixa, mensagem) from exc
             # so o que surgiu depois do envio: o botao fixo "Fazer upgrade"
             # do rodape do ChatGPT Free nao e motivo (30/09)
@@ -768,7 +829,19 @@ class Carteiro:
     def _um_turno(self, ia: str, sessao, casa: dict, mensagem: dict,
                   caixa: str | None = None) -> dict:
         if correio.tipo(mensagem) == "imagem":
+            # Imagem SEMPRE em conversa nova (02/10/2026): na casa, o Gemini lembrava
+            # dos turnos de texto e do juiz e recusava ("como conversamos, nao
+            # consigo gerar imagens"). A casa fica so para texto.
+            novo = getattr(sessao, "novo_chat", None)
+            if callable(novo):
+                novo()
+                self._fora_da_casa = True
+                return self._turno_imagem(caixa or ia, ia, sessao, mensagem, None)
             return self._turno_imagem(caixa or ia, ia, sessao, mensagem, casa)
+        if getattr(self, "_fora_da_casa", False):
+            # depois de uma imagem em conversa nova, o texto volta para a casa
+            self._fora_da_casa = False
+            casa.update(self._abrir_casa(ia, sessao))
         mid = str(mensagem["id"])
         desde = correio.agora()
         correio.atualizar(ia, mid, situacao="entregue", entregue_em=desde, nota=None)
@@ -780,6 +853,8 @@ class Carteiro:
             resposta = sessao.perguntar(mensagem.get("texto") or "",
                                         anexos=mensagem.get("anexos") or None)
         except Exception as exc:                               # noqa: BLE001
+            if self._rede_caiu(ia, mensagem, exc):
+                return correio.uma(ia, mid)
             categoria, motivo = classificar_erro(ia, exc, tela_do_turno(sessao))
             self.log(f"[carteiro] {ia} {mid} falhou: {motivo}")
             casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1

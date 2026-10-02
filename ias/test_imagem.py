@@ -353,10 +353,13 @@ class CarteiroGeraImagem(_Base):
         fim = correio.uma("grok", m["id"])
         self.assertEqual(fim["situacao"], "respondida")
         self.assertEqual(fim["imagem"]["arquivo"], f"{m['id']}.png")
-        self.assertEqual(len(fabrica.criadas), 1)      # a MESMA sessao (a casa)
+        self.assertEqual(len(fabrica.criadas), 1)      # a MESMA sessao do navegador...
         self.assertEqual([t.get("imagem") for t in fabrica.criadas[0].turnos
                           if t.get("imagem")], ["3:4"])
-        self.assertEqual(correio.casa("grok")["mensagens"], 2)
+        # ...mas a imagem vai numa conversa NOVA e nao entra na casa (02/10/2026:
+        # na casa o Gemini lembrava do texto e recusava gerar)
+        self.assertEqual(fabrica.criadas[0].casas_novas, 2)   # a casa (nova) + a da imagem
+        self.assertEqual(correio.casa("grok")["mensagens"], 1)
         self.assertTrue(correio.arquivo_da_imagem("grok", m["id"]).is_file())
 
     def test_imagem_do_chat_sem_imagem_vira_motivo(self):
@@ -408,7 +411,10 @@ class CarteiroGeraImagem(_Base):
         self.assertEqual(fim["situacao"], "respondida")
         self.assertEqual([s.geradas for s in criadas], [1, 0])
         self.assertEqual([s.recuperadas for s in criadas], [0, 1])
-        self.assertEqual(aberturas, [(1, "https://gemini.google.com/app/casa")])
+        # a casa abre, e a recuperacao volta na conversa PROPRIA da imagem (02/10)
+        self.assertEqual(aberturas, [(1, "https://gemini.google.com/app/casa")] * 2)
+        self.assertEqual(correio.uma("gemini", m["id"])["chat_imagem_url"],
+                         "https://gemini.google.com/app/casa")
         self.assertTrue(correio.arquivo_da_imagem("gemini", m["id"]).is_file())
 
 
@@ -1245,3 +1251,48 @@ class Disco(_Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CarteiroImagemNovaERede(_Base):
+    def test_texto_depois_da_imagem_volta_para_a_casa(self):
+        fabrica = carteiro_mod.fabrica_duble()
+        c = _novo(fabrica=fabrica)
+        correio.enviar("grok", "oi")
+        correio.pedir_imagem("grok", "um gato", proporcao="1:1")
+        c.ajustes["janela_conversa_s"] = 1
+        c.uma_volta()
+        url_casa = correio.casa("grok")["url"]
+        # a 1a conversa nova e a casa; a 2a e a da imagem, que nunca vira casa
+        self.assertIn("/grok/c/1-", url_casa or "")
+
+    def test_recusa_de_imagem_tenta_uma_vez_em_conversa_nova(self):
+        tentativas = []
+
+        def gerar(prompt):
+            tentativas.append(prompt)
+            if len(tentativas) == 1:
+                raise imagem.SemImagem("o Gemini respondeu sem imagem: «sou um modelo de linguagem»")
+            return None
+        fabrica = carteiro_mod.fabrica_duble(antes_de_gerar=gerar)
+        c = _novo(fabrica=fabrica)
+        m = correio.pedir_imagem("gemini", "um gato", proporcao="1:1")
+        fim = c.uma_volta()
+        self.assertEqual(fim["situacao"], "respondida")
+        self.assertTrue(tentativas[1].startswith(carteiro_mod.REFORCO_IMAGEM))
+        self.assertTrue(correio.arquivo_da_imagem("gemini", m["id"]).is_file())
+
+    def test_rede_caida_volta_para_a_fila(self):
+        fabrica = carteiro_mod.fabrica_duble(
+            imagem_falhar=RuntimeError("Page.goto: net::ERR_NAME_NOT_RESOLVED at https://gemini.google.com/app"))
+        c = _novo(fabrica=fabrica)
+        esperas = []
+        c.dormir = esperas.append
+        m = correio.pedir_imagem("gemini", "um gato", proporcao="1:1")
+        c.uma_volta()
+        atual = correio.uma("gemini", m["id"])
+        self.assertEqual(atual["situacao"], "pendente")
+        self.assertEqual(atual["rede_tentativas"], 1)
+        self.assertEqual(esperas, [60])
+        for _ in range(carteiro_mod.REDE_TENTATIVAS):
+            c.uma_volta()
+        self.assertEqual(correio.uma("gemini", m["id"])["situacao"], "falhou")
