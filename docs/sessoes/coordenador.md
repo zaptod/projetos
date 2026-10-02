@@ -49,6 +49,12 @@ Pedido do Adrian (02/10, 00:1x): "as tarefas no app estao todas paradas, quero a
 4. **Resumo de andamento:** Telegram + evento `trabalho_resumo`, so com novidade e no maximo a cada 60 min. O retrato vai sempre no `estado.json`, chave `trabalho` (formato no docstring do modulo), e o app mostra no cartao "Trabalho".
 5. **Claude proibido:** so observa (nao coleta, nao testa, nao aplica, nao corrige, nao fecha a Mesa, nao cria no); avisos de parada e resumo continuam.
 
+**Prova de tela obrigatoria (02/10):** se o diff validado tocar
+`remoto/app/**` ou `remoto/api_http.py`, o vigia prefixa os testes com
+`NF_TESTE_NAVEGADOR=1`. Assim o `remoto/test_app_tela.py` abre o Chrome contra
+o servidor isolado antes de aplicar a entrega; qualquer falha tem o mesmo
+destino de um teste vermelho: a entrega nao e aplicada.
+
 **Desligar so o aplicar:** `{"vigia_aplica": false}` no `config.json` da pasta do coordenador. A entrega validada e testada fica em `esperando` ("pronta para aplicar") e o orquestrador aplica; o resto do vigia segue.
 
 Memoria em `trabalho_memoria.json` (vistos, aplicados, corrigidos, olho, esperando, avisos de parada, nos por dia): reiniciar o coordenador nao repete aviso.

@@ -2150,6 +2150,13 @@ Descartar exigem celular pareado; as três ações só aparecem no servidor com
 `--acoes`, e Descartar pede o segundo toque. As imagens são buscadas com o
 token do pareamento, nunca por caminho do PC.
 
+**Prova de tela (02/10):** `remoto/test_app_tela.py`, com
+`NF_TESTE_NAVEGADOR=1`, sobe um servidor loopback isolado, LOCALAPPDATA e
+fixtures proprios (decisao pendente, assembleia e sprite com PNG real). No
+Chrome headless abre a Vila, os quatro objetos e todas as abas em 390x844 e
+844x390; falha para erro de pagina/console/CSP, imagem visivel sem largura ou
+API da tela em 4xx/5xx. As capturas ficam em `E:\tmp_pytest\tela_app\`.
+
 # Assembleia
 
 Em **Decidir > Assembleia**, o app mostra as deliberações abertas e as atas

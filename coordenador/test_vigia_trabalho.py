@@ -170,6 +170,18 @@ def test_terminou_valido_verde_e_seguro_aplica_commita_por_caminho_e_limpa(mundo
     assert len(d.feitas("aplicar")) == 1
 
 
+@pytest.mark.parametrize("arquivo", ["remoto/app/decisoes.js", "remoto\\api_http.py"])
+def test_mudanca_na_casca_ou_csp_liga_a_prova_de_tela(mundo, arquivo):
+    d = mundo.delegar
+    d.novo("tela-" + arquivo.rsplit(".", 1)[0].replace("/", "-").replace("\\", "-"),
+           mundo.depois, arquivos=(arquivo,))
+    ident = next(iter(d.tarefas))
+    d.testes[ident] = [verde()]
+    mundo.vigia.passo()
+    assert d.feitas("testar") == [
+        ("testar", ident, "set NF_TESTE_NAVEGADOR=1&& python -m pytest remoto -q")]
+
+
 def test_testes_vermelhos_corrige_uma_vez_e_na_segunda_avisa(mundo):
     d = mundo.delegar
     d.novo("teimoso", mundo.depois)

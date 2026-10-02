@@ -152,6 +152,13 @@ def comando_de_teste(estado: dict, arquivos: list[str]) -> str | None:
     return "python -m pytest " + " ".join(pastas) + " -q"
 
 
+def precisa_da_prova_de_tela(arquivos: list[str]) -> bool:
+    """A casca ou a CSP mudou: o pytest precisa abrir o app de verdade."""
+    caminhos = [str(a).replace("\\", "/") for a in arquivos]
+    return any(caminho == "remoto/api_http.py" or caminho.startswith("remoto/app/")
+               for caminho in caminhos)
+
+
 def servicos_afetados(arquivos: list[str], servicos: dict) -> list[str]:
     saida = []
     for nome, ficha in servicos.items():
@@ -444,6 +451,10 @@ class VigiaTrabalho:
             if cmd is None:
                 testes = {"ok": True, "sem_testes": True, "resumo": "só documentação"}
             else:
+                if precisa_da_prova_de_tela(arquivos):
+                    # `delegar.testar` usa cmd.exe: a prova, marcada para nao
+                    # abrir Chrome nas suites comuns, entra nesta entrega.
+                    cmd = "set NF_TESTE_NAVEGADOR=1&& " + cmd
                 try:
                     testes = self.delegar.testar(did, cmd)
                 except Exception as exc:                      # noqa: BLE001
