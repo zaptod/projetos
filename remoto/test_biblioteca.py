@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from remoto import biblioteca
+from remoto import api_http, biblioteca
 from remoto.test_api_http import _parear, _pedir, mundo, servidor  # noqa: F401
 
 
@@ -82,6 +82,71 @@ def test_rotas_sao_so_leitura_e_pedem_aparelho(servidor, acervo):  # noqa: F811
     resposta, bruto = _pedir(servidor, "GET", f"/api/biblioteca/doc/{item['id']}", token=token)
     assert resposta.status == 200 and json.loads(bruto)["texto"] == "# Rota\ntexto"
     assert _pedir(servidor, "POST", "/api/biblioteca", {"x": 1}, token=token)[0].status == 404
+
+
+def test_pagina_local_vai_por_bilhete_e_ganha_esqueleto(servidor, acervo):  # noqa: F811
+    html = acervo.docs / "inventario.html"
+    html.write_text("<title>Inventario</title><style>.x{color:red}</style><main>oi</main>",
+                    encoding="utf-8")
+    pagina = biblioteca.adicionar("Inventario", "pagina", url="https://claude.ai/inventario")
+    assert biblioteca.main(["guardar", "--id", pagina["id"], "--html", str(html)]) == 0
+    assert (biblioteca.pasta_paginas() / f'{pagina["id"]}.html').is_file()
+    token = _parear(servidor)
+    assert _pedir(servidor, "POST", f'/api/biblioteca/bilhete/{pagina["id"]}')[0].status == 401
+    resposta, bruto = _pedir(servidor, "POST", f'/api/biblioteca/bilhete/{pagina["id"]}',
+                              token=token)
+    assert resposta.status == 200
+    url = json.loads(bruto)["url"]
+    assert url.startswith("/p/")
+    resposta, bruto = _pedir(servidor, "GET", url)
+    texto = bruto.decode("utf-8")
+    assert resposta.status == 200
+    assert texto.startswith("<!doctype html>") and "viewport-fit=cover" in texto
+    assert "body{margin:0}" in texto and "<main>oi</main>" in texto
+    csp = resposta.getheader("Content-Security-Policy")
+    assert "cdnjs.cloudflare.com" in csp and "connect-src 'self'" in csp
+    assert resposta.getheader("X-Content-Type-Options") == "nosniff"
+    assert _pedir(servidor, "GET", "/p/")[0].status == 404
+    assert _pedir(servidor, "GET", "/p/bilhete-inventado")[0].status == 404
+
+
+def test_pagina_com_html_completo_nao_e_envolvida_e_bilhete_vence(servidor, acervo,
+                                                                   monkeypatch):  # noqa: F811
+    html = acervo.docs / "completa.html"
+    html.write_text("<!doctype html><html><head><title>Completa</title></head><body>x</body></html>",
+                    encoding="utf-8")
+    pagina = biblioteca.adicionar("Completa", "pagina", html=html)
+    token = _parear(servidor)
+    _, bruto = _pedir(servidor, "POST", f'/api/biblioteca/bilhete/{pagina["id"]}', token=token)
+    url = json.loads(bruto)["url"]
+    resposta, bruto = _pedir(servidor, "GET", url)
+    assert resposta.status == 200 and bruto.decode("utf-8") == html.read_text(encoding="utf-8")
+    agora = api_http.time.time()
+    monkeypatch.setattr(api_http.time, "time",
+                        lambda: agora + api_http.BILHETE_VALE_S + 1)
+    assert _pedir(servidor, "GET", url)[0].status == 404
+
+
+def test_estado_da_pagina_pede_token_valida_e_cli_grava(servidor, acervo, capsys):  # noqa: F811
+    pagina = biblioteca.adicionar("Inventario", "pagina", url="https://claude.ai/inventario")
+    rota = f'/api/biblioteca/estado/{pagina["id"]}'
+    assert _pedir(servidor, "GET", rota)[0].status == 401
+    token = _parear(servidor)
+    resposta, bruto = _pedir(servidor, "GET", rota, token=token)
+    assert resposta.status == 200 and json.loads(bruto) == {}
+    resposta, bruto = _pedir(servidor, "POST", rota,
+                              {"doc_id": "sprite_01", "estado": "pronto"}, token=token)
+    assert resposta.status == 200
+    assert json.loads(bruto)["sprite_01"]["estado"] == "pronto"
+    assert _pedir(servidor, "POST", rota,
+                  {"doc_id": "sprite_01", "estado": "errado"}, token=token)[0].status == 400
+    assert _pedir(servidor, "POST", rota,
+                  {"doc_id": "../torto", "estado": "pronto"}, token=token)[0].status == 400
+    assert biblioteca.main(["marcar", "--pagina", pagina["id"], "--doc", "sprite_02",
+                            "--estado", "esteira"]) == 0
+    assert biblioteca.ver_estado(pagina["id"])["sprite_02"]["estado"] == "esteira"
+    assert biblioteca.main(["ver-estado", "--pagina", pagina["id"]]) == 0
+    assert "sprite_02" in capsys.readouterr().out
 
 
 def test_markdown_escapa_script(tmp_path):

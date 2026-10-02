@@ -88,6 +88,17 @@ function bibliotecaCartao(item) {
   const meta = [item.tipo, ...(item.tags || [])].join(" · ");
   const corpo = [el("strong", {}, item.titulo), el("div", {class: "fraco"}, meta)];
   if (item.descricao) corpo.push(el("div", {class: "fraco"}, item.descricao));
+  if (item.tipo === "pagina" && item.arquivo) {
+    const botao = el("button", {class: "biblioteca-cartao", type: "button"}, ...corpo);
+    botao.addEventListener("click", () => bibliotecaAbrirPagina(item));
+    const bloco = el("div", {}, botao);
+    if (/^https:\/\//.test(item.url || "")) {
+      bloco.append(el("a", {class: "biblioteca-original", href: item.url,
+                         target: "_blank", rel: "noopener"},
+                      "original (precisa de login)"));
+    }
+    return bloco;
+  }
   if (item.tipo === "pagina" && /^https:\/\//.test(item.url || "")) {
     return el("a", {class: "biblioteca-cartao", href: item.url, target: "_blank", rel: "noopener"}, ...corpo);
   }
@@ -102,6 +113,23 @@ function bibliotecaDesenhar() {
     item.tipo, ...(item.tags || [])].join(" ").toLocaleLowerCase().includes(termo));
   $("biblioteca-lista").replaceChildren(...(itens.length ? itens.map(bibliotecaCartao) :
     [el("div", {class: "fraco"}, "Nenhum artefato neste grupo.")]));
+}
+
+async function bibliotecaAbrirPagina(item) {
+  // Abrir antes do await conserva o gesto do toque. Se houver bloqueio de
+  // popup, a navegacao na propria aba deixa o voltar normal da Biblioteca.
+  const aba = window.open("", "_blank");
+  if (aba) aba.opener = null;
+  try {
+    const dados = await api(`/api/biblioteca/bilhete/${encodeURIComponent(item.id)}`,
+                            {method: "POST"});
+    if (aba) aba.location.replace(dados.url);
+    else window.location.assign(dados.url);
+    conexao(true);
+  } catch (err) {
+    if (aba) aba.close();
+    conexao(false, err);
+  }
 }
 
 async function bibliotecaAbrir(item) {

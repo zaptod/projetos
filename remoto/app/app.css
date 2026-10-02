@@ -847,6 +847,7 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
   border: 1px solid #cbb98f; border-left: 5px solid #8a673c; border-radius: 9px;
   overflow-wrap: anywhere; }
 button.biblioteca-cartao { cursor: pointer; }
+.biblioteca-original { display: inline-block; margin: 3px 0 0 12px; font-size: .8em; }
 .biblioteca-cartao .fraco + .fraco { margin-top: 3px; }
 .biblioteca-nav { margin: 0 0 10px; align-items: baseline; }
 .biblioteca-texto { overflow-wrap: anywhere; line-height: 1.55; }

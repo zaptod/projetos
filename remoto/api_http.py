@@ -442,10 +442,13 @@ class Estado:
         self.trava = threading.Lock()
         # bilhete -> (caminho, expira, hash do token do aparelho)
         self.bilhetes: dict[str, tuple] = {}
+        # Paginas usam a mesma ideia, mas nunca aceitam bilhetes de midia.
+        self.bilhetes_paginas: dict[str, tuple] = {}
         # Bilhetes que EXISTIRAM e venceram. O celular que deixa o video
         # parado 10 minutos e da play de novo nao esta chutando: sem esta
         # lembranca, ele contaria para o bloqueio.
         self.vencidos: dict[str, float] = {}
+        self.vencidos_paginas: dict[str, float] = {}
         self.falhas: dict[str, list] = {}        # ip -> [instantes]
 
     def _podar(self, agora: float) -> None:
@@ -457,6 +460,14 @@ class Estado:
             antigos = sorted(self.vencidos, key=self.vencidos.get)
             for chave in antigos[:len(self.vencidos) - VENCIDOS_MAX]:
                 del self.vencidos[chave]
+        for chave, (_, expira, _dono) in list(self.bilhetes_paginas.items()):
+            if expira <= agora:
+                del self.bilhetes_paginas[chave]
+                self.vencidos_paginas[chave] = expira
+        if len(self.vencidos_paginas) > VENCIDOS_MAX:
+            antigos = sorted(self.vencidos_paginas, key=self.vencidos_paginas.get)
+            for chave in antigos[:len(self.vencidos_paginas) - VENCIDOS_MAX]:
+                del self.vencidos_paginas[chave]
 
     def bilhete(self, arquivo: Path, dono: str) -> str:
         agora = time.time()
@@ -488,6 +499,26 @@ class Estado:
             self._podar(time.time())
             achado = self.bilhetes.get(chave)
             vencido = chave in self.vencidos
+        if achado is None:
+            return (None, "vencido" if vencido else "inventado")
+        if not aparelho_existe(achado[2]):
+            return (None, "revogado")
+        return (achado[0], "ok")
+
+    def bilhete_pagina(self, pagina: str, dono: str) -> str:
+        agora = time.time()
+        with self.trava:
+            self._podar(agora)
+            chave = secrets.token_urlsafe(24)
+            self.bilhetes_paginas[chave] = (pagina, agora + BILHETE_VALE_S, dono)
+        return chave
+
+    def pagina_do_bilhete(self, chave: str) -> tuple:
+        """(id da pagina, motivo), equivalente a arquivo_do_bilhete."""
+        with self.trava:
+            self._podar(time.time())
+            achado = self.bilhetes_paginas.get(chave)
+            vencido = chave in self.vencidos_paginas
         if achado is None:
             return (None, "vencido" if vencido else "inventado")
         if not aparelho_existe(achado[2]):
@@ -530,7 +561,7 @@ class Manipulador(BaseHTTPRequestHandler):
             caminho = urlsplit(bruto).path
         except ValueError:
             caminho = "?"
-        if "/v/" in bruto:
+        if "/v/" in bruto or "/p/" in bruto:
             caminho = "/v/…"
         metodo = str(getattr(self, "command", "") or "?")[:10]
         ip = self.client_address[0] if self.client_address else "?"
@@ -628,6 +659,8 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._imagem_da_vila(rota)
         if rota.startswith("/v/"):
             return self._video_por_bilhete(rota[3:])
+        if rota.startswith("/p/"):
+            return self._pagina_por_bilhete(rota[3:])
         if not rota.startswith("/api/"):
             return self._erro(404, "nao existe")
         if self._aparelho() is None:
@@ -673,6 +706,12 @@ class Manipulador(BaseHTTPRequestHandler):
                     comandos_app.catalogo(self.estado.com_perigosas))
             if rota == "/api/biblioteca":
                 return self._json(biblioteca.para_o_app())
+            achado = re.fullmatch(r"/api/biblioteca/estado/([a-z0-9-]{1,64})", rota)
+            if achado:
+                try:
+                    return self._json(biblioteca.ver_estado(achado.group(1)))
+                except ValueError:
+                    return self._erro(404, "pagina nao encontrada")
             achado = re.fullmatch(r"/api/biblioteca/doc/([a-z0-9-]{1,64})", rota)
             if achado:
                 texto = biblioteca.ler_documento(achado.group(1))
@@ -819,6 +858,12 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._orquestrador(rota)
         if rota == "/api/claude":
             return self._interruptor_claude()
+        achado = re.fullmatch(r"/api/biblioteca/bilhete/([a-z0-9-]{1,64})", rota)
+        if achado:
+            return self._biblioteca_bilhete(achado.group(1))
+        achado = re.fullmatch(r"/api/biblioteca/estado/([a-z0-9-]{1,64})", rota)
+        if achado:
+            return self._biblioteca_estado(achado.group(1))
         achado = re.fullmatch(rf"/api/correio/({GERADORES_RE}|livre)/imagem", rota)
         if achado:
             return self._pedir_imagem(achado.group(1))
@@ -840,6 +885,27 @@ class Manipulador(BaseHTTPRequestHandler):
             self.estado.falhou(self.client_address[0])
             return self._erro(403, "codigo errado ou vencido")
         return self._json({"token": token})
+
+    def _biblioteca_bilhete(self, pagina: str):
+        if self._aparelho() is None:
+            return
+        if biblioteca.ler_pagina(pagina) is None:
+            return self._erro(404, "pagina nao encontrada")
+        return self._json({"url": f"/p/{self.estado.bilhete_pagina(pagina, self._dono)}",
+                           "vale_s": BILHETE_VALE_S})
+
+    def _biblioteca_estado(self, pagina: str):
+        if self._aparelho() is None:
+            return
+        corpo = self._corpo()
+        if corpo is None:
+            return
+        try:
+            dados = biblioteca.marcar(pagina, str(corpo.get("doc_id") or ""),
+                                      str(corpo.get("estado") or ""))
+        except ValueError as exc:
+            return self._erro(400, str(exc))
+        return self._json(dados)
 
     # ---------------------------------------------------------- acoes
     def _acao(self, rota: str):
@@ -1294,6 +1360,37 @@ class Manipulador(BaseHTTPRequestHandler):
                     falta -= len(pedaco)
         except (ConnectionError, OSError):
             pass          # o celular fechou o video no meio: normal
+
+    def _pagina_por_bilhete(self, chave: str):
+        pagina, motivo = self.estado.pagina_do_bilhete(chave)
+        if motivo == "vencido":
+            return self._erro(404, "bilhete vencido; abra a pagina de novo")
+        if motivo == "revogado":
+            return self._erro(403, "aparelho esquecido")
+        if pagina is None:
+            if not self._barrar_chute():
+                self._erro(404, "bilhete desconhecido")
+            return
+        fragmento = biblioteca.ler_pagina(pagina)
+        if fragmento is None:
+            return self._erro(404, "pagina nao encontrada")
+        if not re.search(r"<html(?:\s|>)", fragmento, re.IGNORECASE):
+            fragmento = ("<!doctype html>\n<html lang=\"pt-BR\">\n<head>\n"
+                         "<meta charset=\"utf-8\">\n"
+                         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">\n"
+                         "<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>\n"
+                         "</head>\n<body>\n" + fragmento + "\n</body>\n</html>\n")
+        corpo = fragmento.encode("utf-8")
+        self.send_response(200)
+        self._cabecalhos_comuns("text/html; charset=utf-8", len(corpo))
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+            "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+        self.end_headers()
+        self.wfile.write(corpo)
 
 
 def _imagem():

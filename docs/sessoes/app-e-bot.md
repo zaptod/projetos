@@ -1990,3 +1990,18 @@ comando que o `limpar` imprime.
 do Palco e sessões como fontes somente de leitura. Na Mesa, o atalho **📚
 Biblioteca** abre a tela com abas, busca e leitor de Markdown seguro; páginas
 `https` abrem em outra aba.
+
+### Paginas locais e marcacoes (01/10/2026)
+
+Uma pagina pode ter uma copia HTML local: `python -m remoto.biblioteca guardar
+--id ID --html pagina.html` (ou `adicionar --tipo pagina --html pagina.html`).
+O app pede `POST /api/biblioteca/bilhete/<id>` autenticado e abre o HTML por
+`GET /p/<bilhete>`, sem login no claude.ai. A copia fica em `paginas/`, limitada
+a 16 MB; o link original permanece apenas como referencia.
+
+As marcacoes da pagina usam token: `GET /api/biblioteca/estado/<pagina>` devolve
+`{"doc_id":{"estado":"pronto","em":"ISO-8601"}}`; `POST` recebe
+`{"doc_id":"X","estado":"falta|esteira|pronto|pular"}` e devolve esse
+mesmo mapa atualizado. O estado fica em `estado/<pagina>.json`. A esteira usa
+`python -m remoto.biblioteca marcar --pagina ID --doc X --estado pronto`; para
+consultar, `ver-estado --pagina ID`.
