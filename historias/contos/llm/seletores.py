@@ -81,7 +81,8 @@ CHATGPT = {
     # (aria "Imagem 1 gerada") > <img> com src `blob:`, alt "Imagem 1 gerada",
     # 1254x1254 natural. No MESMO item, embaixo, os botoes "Editar a imagem
     # gerada 1" e "Compartilhar imagem gerada 1". O item so vale COM esses
-    # botoes (prova de geracao terminada; sem eles e `imagem_em_geracao`).
+    # botoes (prova de geracao terminada; sem eles e `imagem_em_geracao`) —
+    # so a PRESENCA deles conta; nenhum dos dois e clicado.
     # Os rotulos em ingles sao palpite (a conta e pt-BR), nao medida.
     "imagem_turno": [
         "section[data-turn='assistant']",
@@ -111,16 +112,20 @@ CHATGPT = {
     # o alt do cartao novo tem o numero no meio: "Imagem 1 gerada"
     "imagem_final_alt_re": [r"^imagem \d+ gerada", r"^generated image \d+",
                             r"^image \d+ generated"],
-    # O botao de baixar fica num DIALOGO. No cartao antigo ele abria com o
-    # clique na imagem (tela cheia); no novo, o caminho que o Adrian mostrou
-    # (02/10) e o "Compartilhar imagem gerada N" do proprio item, cujo dialogo
-    # tem `button[aria-label=Baixar]` (medido; o visualizador da imagem tambem
-    # tem um "Baixar", e o clique na imagem continua sendo a reserva).
-    # Medido em 29/09: entrega os MESMOS bytes do src (PNG 1254x1254).
+    # O botao de baixar fica no VISUALIZADOR da imagem (decisao do Adrian,
+    # Grimorio app-e-bot/chatgpt-baixar-por = "Visualizador", 02/10): o clique
+    # na PREVIA do proprio item (`button[data-testid=generated-image-preview]`,
+    # que embrulha o <img>) abre o `div[role=dialog]` "Previa da imagem" (h2
+    # sr-only), com `button[aria-label=Baixar]` (sem texto), "Compartilhar" e
+    # "Fechar visualizador" (medido em 02/10 00:07, scratchpad/diag_menus.py,
+    # so leitura). O "Compartilhar imagem gerada N" do item e o "Compartilhar"
+    # do visualizador NUNCA sao clicados: o dialogo dele cria LINK PUBLICO da
+    # imagem na conta (`ias.imagem` recusa clicar em rotulo de compartilhar).
+    # Cartao antigo (29/09): sem a previa, quem chama clica no proprio <img>
+    # (tela cheia com o mesmo "Baixar"); entrega os MESMOS bytes do src.
     "imagem_abrir_para_baixar": True,
     "imagem_abrir": [
-        "button[aria-label^='Compartilhar imagem gerada']",
-        "button[aria-label^='Share generated image']",
+        "button[data-testid='generated-image-preview']",
     ],
     "imagem_baixar": [
         "[role='dialog'] button[aria-label='Baixar']",

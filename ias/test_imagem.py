@@ -711,14 +711,19 @@ class ImagemSoDoNossoTurno(_Base):
 
 class ChatGPTBaixaPelaTelaCheia(_Base):
     """Medido em 29/09 16:1x: o "Baixar" do ChatGPT so existe na tela cheia,
-    que abre com o clique na imagem; entrega o PNG original."""
+    que abre com o clique na imagem; entrega o PNG original. No cartao novo
+    (02/10) o clique e na PREVIA do item, que abre o visualizador com o mesmo
+    "Baixar"; o "Compartilhar" nunca e clicado (decisao do Adrian: o dialogo
+    dele cria link publico da imagem)."""
 
-    def _chatgpt(self, *, botao_aparece=True, original=None):
+    def _chatgpt(self, *, botao_aparece=True, original=None, cartao_novo=False,
+                 rotulo_abrir="Imagem 1 gerada", rotulo_baixar="Baixar"):
         from contos.llm import seletores
         original = original or imagem.png_de_teste(96, 96)
         arquivo = Path(self._tmp.name) / "ChatGPT Image.png"
         arquivo.write_bytes(original)
         passos = []
+        rotulos = {"imagem": "", "previa": rotulo_abrir, "dialogo": rotulo_baixar}
 
         class _Download:
             suggested_filename = arquivo.name
@@ -739,6 +744,8 @@ class ChatGPTBaixaPelaTelaCheia(_Base):
                 pass
 
             def evaluate(self, script):
+                if "aria-label" in script:                      # o rotulo
+                    return rotulos[self.nome]
                 return True                                     # habilitado
 
             def hover(self, timeout=None, force=False):
@@ -746,7 +753,9 @@ class ChatGPTBaixaPelaTelaCheia(_Base):
 
             def click(self, timeout=None, force=False):
                 passos.append(f"clique:{self.nome}")
-                if self.nome == "imagem":
+                if "ompartilh" in rotulos[self.nome]:
+                    passos.append("COMPARTILHOU")
+                if self.nome in ("imagem", "previa"):
                     pagina.aberta = botao_aparece
                 else:
                     pagina.ouvintes["download"](_Download())
@@ -770,12 +779,17 @@ class ChatGPTBaixaPelaTelaCheia(_Base):
                     passos.append("marcar")
                     # no ChatGPT o botao nao esta no turno: so a imagem e marcada
                     assert arg[4] == []
-                    return {"imagem": arg[3] == GATO_CHATGPT["src"], "botao": False}
+                    # quem abre o visualizador e a previa do item
+                    assert arg[5] == seletores.CHATGPT["imagem_abrir"], arg[5]
+                    return {"imagem": arg[3] == GATO_CHATGPT["src"], "botao": False,
+                            "abrir": bool(cartao_novo)}
                 return None
 
             def locator(self, seletor):
                 if seletor == "[data-nf-imagem='1']":
                     return _Loc("imagem")
+                if seletor == "[data-nf-abrir='1']":
+                    return _Loc("previa")
                 assert seletor.startswith("[role='dialog']"), seletor
                 return _Loc("dialogo")
 
@@ -826,6 +840,47 @@ class ChatGPTBaixaPelaTelaCheia(_Base):
         self.assertEqual(saida["prova"]["download"], "botao_tamanho_original")
         self.assertEqual(passos, ["marcar", "clique:imagem", "clique:dialogo", "tecla:Escape"])
         self.assertEqual(cli.page.ouvintes, {})
+
+    def test_cartao_novo_abre_pela_previa_baixa_e_fecha(self):
+        """02/10 (decisao do Adrian, "Visualizador"): o clique e na previa do
+        proprio item, nunca no "Compartilhar imagem gerada N"."""
+        cli, original, passos = self._chatgpt(cartao_novo=True)
+        saida = imagem.baixar_da_resposta(cli, "crie um gato", log=lambda *_a: None)
+        self.assertEqual(saida["bytes"], original)
+        self.assertEqual(saida["prova"]["download"], "botao_tamanho_original")
+        self.assertEqual(passos, ["marcar", "clique:previa", "clique:dialogo", "tecla:Escape"])
+        self.assertNotIn("COMPARTILHOU", passos)
+
+    def test_abridor_de_compartilhar_nunca_e_clicado(self):
+        """Se o seletor de abrir voltar a achar o "Compartilhar imagem gerada
+        N" (o caminho de e8470c8), o clique e recusado e a imagem vem pelo
+        src: o dialogo dele cria link publico."""
+        cli, _, passos = self._chatgpt(cartao_novo=True,
+                                       rotulo_abrir="Compartilhar imagem gerada 1")
+        falas = []
+        saida = imagem.baixar_da_resposta(cli, "crie um gato", log=falas.append)
+        self.assertEqual(saida["prova"]["download"], "src_da_tela")
+        self.assertNotIn("COMPARTILHOU", passos)
+        self.assertEqual([p for p in passos if p.startswith("clique")], [])
+        self.assertTrue(any("compartilhar" in f for f in falas), falas)
+
+    def test_botao_de_baixar_de_compartilhar_nunca_e_clicado(self):
+        """O "Compartilhar" do proprio visualizador tambem nao: abre, recusa,
+        fecha com Escape e cai no src."""
+        cli, _, passos = self._chatgpt(cartao_novo=True, rotulo_baixar="Compartilhar")
+        saida = imagem.baixar_da_resposta(cli, "crie um gato", log=lambda *_a: None)
+        self.assertEqual(saida["prova"]["download"], "src_da_tela")
+        self.assertNotIn("COMPARTILHOU", passos)
+        self.assertNotIn("clique:dialogo", passos)
+        self.assertIn("tecla:Escape", passos)
+
+    def test_seletores_do_chatgpt_nao_apontam_para_compartilhar(self):
+        from contos.llm import seletores
+        for chave in ("imagem_abrir", "imagem_baixar"):
+            for seletor in seletores.CHATGPT[chave]:
+                self.assertNotRegex(seletor.lower(), "compartilh|share", chave)
+        self.assertEqual(seletores.CHATGPT["imagem_abrir"],
+                         ["button[data-testid='generated-image-preview']"])
 
     def test_tela_cheia_sem_botao_fecha_e_cai_no_src(self):
         cli, _, passos = self._chatgpt(botao_aparece=False)

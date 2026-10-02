@@ -40,7 +40,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Codex e Gemini: teto de uso** — 50% da janela de 5 h de cada (recomendado) (01/10/2026) `teto-dos-delegados`
 - ✅ **Gemini: o CLI não aceita a conta pessoal** — Seguir com o Gemini no navegador (recomendado) (01/10/2026) `gemini-sem-cli`
 - ✅ **Codex: quanto ele pensa** — Médio por padrão, alto nas difíceis (recomendado) (01/10/2026) `codex-esforco`
-- ⏳ **Vigia do coordenador: aplica entrega do Codex sozinho?** — Quando o Codex termina, o vigia pode aplicar e commitar sozinho? `vigia-aplica-sozinho`
+- ✅ **Vigia do coordenador: aplica entrega do Codex sozinho?** — Sim, aplica sozinho (02/10/2026) `vigia-aplica-sozinho`
 
 **Histórias**
 - ✅ **Vídeo reprovado ou não assistido** — Fica retido; só sai se o horário fosse ficar vazio (27/09/2026) `reprovado-ou-nao-assistido`
@@ -184,8 +184,10 @@ tem mais `data-message-author-role` nem `section[data-turn]` — usuário em
 `h4[data-conversation-role=assistant]`, texto em `div[data-markdown-text-style=
 assistant-message]`, imagem num item da `generated-image-gallery` (src `blob:`, alt
 "Imagem 1 gerada") que só vale com os botões "Editar/Compartilhar imagem gerada N" (sem
-eles = ainda gerando); baixar = "Compartilhar imagem gerada N" → `[role=dialog]
-button[aria-label=Baixar]`. Sem isso o 869758fa ficou 420 s em "0 chars" com a imagem na
+eles = ainda gerando); baixar = clique na prévia (`button[data-testid=generated-image-preview]`)
+→ visualizador `div[role=dialog]` "Prévia da imagem" → `button[aria-label=Baixar]`; o
+Compartilhar nunca é clicado (decisão do Adrian 02/10: cria link público;
+`ias.imagem._recusar_compartilhar`). Sem isso o 869758fa ficou 420 s em "0 chars" com a imagem na
 tela — e o texto do ChatGPT (escritor/juiz) também leria "0 chars". **"Alta procura" do Grok** (30/09): em 29/09 (17:30 e 17:44) o grok.com
 pôs no lugar da resposta o card "Alta procura — Por favor, tente novamente em breve, ou
 atualize para um acesso com maior prioridade" (botão "Aprimorar", nunca clicado) e a espera

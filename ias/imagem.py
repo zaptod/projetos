@@ -558,7 +558,10 @@ def baixar(ctx, page, src: str, timeout_s: float = 120.0) -> bytes:
 # - ChatGPT (medido em 29/09 16:1x, scratchpad/diag_chatgpt_baixar.py): o
 #   botao "Baixar" so existe na visualizacao em tela cheia, que abre com o
 #   clique na imagem (`imagem_abrir_para_baixar`); o arquivo e o PNG original
-#   (1254x1254, os mesmos bytes do src `estuary/content`).
+#   (1254x1254, os mesmos bytes do src `estuary/content`). No cartao novo
+#   (02/10) o clique e na PREVIA do item (`imagem_abrir`), que abre o
+#   visualizador com o mesmo "Baixar". O "Compartilhar" NUNCA e clicado
+#   (decisao do Adrian, 02/10: o dialogo dele cria link publico da imagem).
 # - Grok: nao medido; baixa pelo `src`.
 def botoes_de_baixar(cliente) -> list:
     """Os seletores do botao de baixar desta IA (vazio = nao medido)."""
@@ -570,19 +573,26 @@ def botoes_de_baixar(cliente) -> list:
 # ele, o ultimo da resposta). A mesma prova de posicao de
 # `ClienteLLM._JS_IMAGENS`. Devolve {imagem, botao}.
 #
-# `abridores` (opcional): o botao do MESMO recipiente que abre o dialogo de
-# baixar (o "Compartilhar imagem gerada N" do cartao novo do ChatGPT, 02/10),
-# marcado com `data-nf-abrir`. Sem ele no recipiente, quem chama clica na
-# propria imagem (o caminho do cartao antigo).
+# `abridores` (opcional): o botao do MESMO recipiente que abre o visualizador
+# com o "Baixar" (a previa `generated-image-preview` do cartao novo do
+# ChatGPT, 02/10), marcado com `data-nf-abrir`. Sem ele no recipiente, quem
+# chama clica na propria imagem (o caminho do cartao antigo).
+#
+# Botao com rotulo de COMPARTILHAR nunca e marcado, nem como abridor nem como
+# botao de baixar (decisao do Adrian, 02/10: o "Compartilhar" do ChatGPT cria
+# link publico da imagem na conta).
 _JS_MARCAR = (
     "([usuarios, turnos, recipientes, src, botoes, abridores]) => {"
     " const depois = (a, b) => !!(a.compareDocumentPosition(b)"
     "   & Node.DOCUMENT_POSITION_FOLLOWING);"
+    " const partilha = el => /compartilh|share/i.test("
+    "   (el.getAttribute('aria-label') || '') + ' ' + (el.innerText || ''));"
     " const todos = (raiz, lista) => { let out = [];"
     "   for (const s of lista) {"
     "     try { if (raiz !== document && raiz.matches(s)) out.push(raiz); } catch (e) {}"
     "     try { out = out.concat([...raiz.querySelectorAll(s)]); } catch (e) {} }"
     "   return out; };"
+    " const clicaveis = (raiz, lista) => todos(raiz, lista).filter(el => !partilha(el));"
     " for (const v of document.querySelectorAll("
     "     '[data-nf-baixar], [data-nf-imagem], [data-nf-abrir]')) {"
     "   v.removeAttribute('data-nf-baixar'); v.removeAttribute('data-nf-imagem');"
@@ -609,18 +619,41 @@ _JS_MARCAR = (
     " alvo.setAttribute('data-nf-imagem', '1');"
     " let botao = null;"
     " if (botoes.length) {"
-    "   let achados = todos(caixa, botoes);"
-    "   if (!achados.length) achados = todos(resposta, botoes);"
+    "   let achados = clicaveis(caixa, botoes);"
+    "   if (!achados.length) achados = clicaveis(resposta, botoes);"
     "   if (achados.length) botao = achados[achados.length - 1]; }"
     " if (botao) botao.setAttribute('data-nf-baixar', '1');"
     " let abridor = null;"
     " if ((abridores || []).length) {"
-    "   const achados = todos(caixa, abridores);"
+    "   const achados = clicaveis(caixa, abridores);"
     "   if (achados.length) abridor = achados[achados.length - 1]; }"
     " if (abridor) abridor.setAttribute('data-nf-abrir', '1');"
     " const saida = {imagem: true, botao: !!botao};"
     " if ((abridores || []).length) saida.abrir = !!abridor;"
     " return saida; }")
+
+
+# O rotulo (aria-label + texto) do botao que vai ser clicado. Rotulo de
+# compartilhar nunca e clicado (decisao do Adrian, 02/10, Grimorio
+# app-e-bot/chatgpt-baixar-por = "Visualizador"): no ChatGPT o dialogo do
+# "Compartilhar" cria LINK PUBLICO da imagem na conta. Vale para qualquer
+# IA e para qualquer seletor que alguem ponha no config.
+_COMPARTILHAR = re.compile(r"compartilh|share", re.I)
+_JS_ROTULO = ("el => ((el.getAttribute('aria-label') || '') + ' '"
+              " + (el.innerText || '')).trim()")
+
+
+def _recusar_compartilhar(alvo, papel: str) -> None:
+    """Levanta `ImagemFalhou` se o botao tem rotulo de compartilhar (ou se
+    o rotulo nao pode ser lido: sem ler, nao clico)."""
+    try:
+        rotulo = alvo.evaluate(_JS_ROTULO)
+    except Exception as exc:                                   # noqa: BLE001
+        raise ImagemFalhou(f"não consegui ler o rótulo do {papel} "
+                           f"({type(exc).__name__}): não clico", "download") from exc
+    if isinstance(rotulo, str) and _COMPARTILHAR.search(rotulo):
+        raise ImagemFalhou(f"o {papel} é de compartilhar («{rotulo[:60]}»): nunca "
+                           "clico em compartilhar (cria link público)", "download")
 
 
 def _primeiro_presente(page, seletores):
@@ -669,8 +702,9 @@ def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.
     (`Gemini_Generated_Image_*.jfif`). Com a API sincrona os eventos so
     chegam DENTRO de uma chamada: a espera e `wait_for_timeout`, nunca
     `time.sleep`. Se o download nao vier, vale a maior resposta de imagem que
-    o clique buscou (os mesmos bytes). No ChatGPT o botao esta na tela cheia:
-    clica na imagem, baixa e fecha com Escape.
+    o clique buscou (os mesmos bytes). No ChatGPT o botao esta no
+    visualizador: clica na previa do item (cartao novo) ou na imagem (cartao
+    antigo), baixa e fecha com Escape. Botao de compartilhar nunca e clicado.
     """
     seletores = botoes_de_baixar(cliente)
     if not seletores:
@@ -685,8 +719,8 @@ def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.
     if not isinstance(marcado, dict) or not marcado.get("imagem"):
         return None
     if abrir:
-        # o botao do proprio recipiente que abre o dialogo (cartao novo do
-        # ChatGPT: "Compartilhar imagem gerada N"); sem ele, a imagem
+        # o botao do proprio recipiente que abre o visualizador (cartao novo
+        # do ChatGPT: a previa `generated-image-preview`); sem ele, a imagem
         clicar = page.locator("[data-nf-abrir='1']" if marcado.get("abrir")
                               else "[data-nf-imagem='1']").first
         try:
@@ -694,9 +728,10 @@ def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.
         except Exception:                                      # noqa: BLE001
             pass
         page.wait_for_timeout(700)
+        _recusar_compartilhar(clicar, "botão de abrir a imagem")
         clicar.click(timeout=10000)
         alvo = None
-        for _ in range(40):                     # ate 20 s: a tela cheia abrindo
+        for _ in range(40):                     # ate 20 s: o visualizador abrindo
             alvo = _primeiro_presente(page, seletores)
             if alvo is not None:
                 break
@@ -736,6 +771,12 @@ def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.
             _fechar_tela_cheia(page)
         raise ImagemFalhou("o botão de baixar ficou desabilitado por 30 s (a imagem "
                            "não carregou na tela)", "download")
+    try:
+        _recusar_compartilhar(alvo, "botão de baixar")
+    except ImagemFalhou:
+        if abrir:
+            _fechar_tela_cheia(page)
+        raise
     baixados, respostas = [], []
 
     def _baixou(download):

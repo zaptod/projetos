@@ -277,7 +277,9 @@ class JSNoNavegador(unittest.TestCase):
         self.assertEqual(achado["imagens"], [])
         self.assertEqual(c.imagens_prontas(achado), [])
 
-    def test_chatgpt_cartao_novo_marca_o_compartilhar_do_mesmo_item(self):
+    def test_chatgpt_cartao_novo_marca_a_previa_do_mesmo_item(self):
+        """02/10 (decisao do Adrian, "Visualizador"): quem abre o "Baixar" e a
+        previa do item da NOSSA imagem, nunca o "Compartilhar imagem gerada N"."""
         from ias import imagem
         c = self._cliente("chatgpt", CHATGPT_NOVO)
         s = c.sel
@@ -285,18 +287,80 @@ class JSNoNavegador(unittest.TestCase):
             s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], NOVA, [],
             s["imagem_abrir"]])
         self.assertEqual(marcado, {"imagem": True, "botao": False, "abrir": True})
-        self.assertEqual(self.page.locator("[data-nf-abrir='1']").count(), 1)
-        self.assertEqual(self.page.locator("[data-nf-abrir='1']").get_attribute("aria-label"),
-                         "Compartilhar imagem gerada 1")
-        # o Compartilhar marcado e o do item da NOSSA imagem, nao o do cachorro
-        self.assertEqual(self.page.locator("[data-nf-abrir='1']").evaluate(
-            "b => b.closest('[data-testid=generated-image-gallery]')"
-            ".querySelector('img').getAttribute('src')"), NOVA)
+        abrir = self.page.locator("[data-nf-abrir='1']")
+        self.assertEqual(abrir.count(), 1)
+        self.assertEqual(abrir.get_attribute("data-testid"), "generated-image-preview")
+        self.assertEqual(abrir.get_attribute("aria-label"), "Imagem 1 gerada")
+        # a previa marcada e a da NOSSA imagem, nao a do cachorro
+        self.assertEqual(abrir.evaluate("b => b.querySelector('img').getAttribute('src')"),
+                         NOVA)
         # a imagem do turno antigo nunca e marcada
         marcado = self.page.evaluate(imagem._JS_MARCAR, [
             s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], NOVA_ANTIGA, [],
             s["imagem_abrir"]])
         self.assertFalse(marcado["imagem"])
+
+    def test_chatgpt_compartilhar_nunca_e_marcado(self):
+        """Mesmo que alguem ponha de volta o seletor do "Compartilhar imagem
+        gerada N" (o caminho de e8470c8), o JS nao o marca: `abrir` False e
+        quem chama clica na propria imagem."""
+        from ias import imagem
+        c = self._cliente("chatgpt", CHATGPT_NOVO)
+        s = c.sel
+        marcado = self.page.evaluate(imagem._JS_MARCAR, [
+            s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], NOVA, [],
+            ["button[aria-label^='Compartilhar imagem gerada']"]])
+        self.assertEqual(marcado, {"imagem": True, "botao": False, "abrir": False})
+        self.assertEqual(self.page.locator("[data-nf-abrir]").count(), 0)
+        # nem como botao de baixar
+        marcado = self.page.evaluate(imagem._JS_MARCAR, [
+            s["turno_usuario"], s["imagem_turno"], s["imagem_gerada"], NOVA,
+            ["button[aria-label^='Compartilhar imagem gerada']"]])
+        self.assertEqual(marcado, {"imagem": True, "botao": False})
+
+    def test_chatgpt_baixa_pelo_visualizador_sem_clicar_em_compartilhar(self):
+        """O caminho inteiro num Chrome de verdade: clica na previa, o
+        visualizador (`div[role=dialog]` "Previa da imagem", medido em 02/10
+        00:07) abre com "Baixar", "Compartilhar" e "Fechar visualizador"; o
+        "Baixar" solta o download; Escape fecha. Nenhum "Compartilhar" (nem o
+        do item, nem o do visualizador) e clicado."""
+        from ias import imagem
+        png = imagem.png_de_teste(330, 330, cor=(255, 0, 255))
+        b64 = base64.b64encode(png).decode("ascii")
+        c = self._cliente("chatgpt", CHATGPT_NOVO)
+        self.page.evaluate("""(b64) => {
+          window.__compartilhou = 0; window.__baixou = 0;
+          document.addEventListener('click', ev => {
+            const b = ev.target.closest('button');
+            if (b && /compartilh/i.test(b.getAttribute('aria-label') || ''))
+              window.__compartilhou++; }, true);
+          const abrir = (img) => {
+            const d = document.createElement('div');
+            d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true');
+            d.id = 'visualizador';
+            d.innerHTML = '<h2 class="sr-only">Prévia da imagem</h2>'
+              + '<button type="button" aria-label="Baixar"><svg></svg></button>'
+              + '<button type="button" aria-label="Compartilhar">Compartilhar</button>'
+              + '<button type="button" aria-label="Fechar visualizador"></button>'
+              + '<img alt="Imagem 1 gerada" src="' + img.src + '">';
+            d.querySelector("[aria-label=Baixar]").addEventListener('click', () => {
+              window.__baixou++;
+              const bytes = Uint8Array.from(atob(b64), ch => ch.charCodeAt(0));
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(new Blob([bytes], {type: 'image/png'}));
+              a.download = 'ChatGPT Image.png'; document.body.appendChild(a); a.click(); });
+            document.body.appendChild(d); };
+          for (const p of document.querySelectorAll('[data-testid=generated-image-preview]'))
+            p.addEventListener('click', () => abrir(p.querySelector('img')));
+          document.addEventListener('keydown', ev => {
+            if (ev.key === 'Escape') document.getElementById('visualizador')?.remove(); });
+        }""", b64)
+        visto = {"src": NOVA, "w": 330, "h": 330}
+        corpo = imagem.baixar_pelo_botao(c, visto, timeout_s=15, log=lambda *_a: None)
+        self.assertEqual(corpo, png)
+        self.assertEqual(self.page.evaluate("window.__baixou"), 1)
+        self.assertEqual(self.page.evaluate("window.__compartilhou"), 0)
+        self.assertEqual(self.page.locator("#visualizador").count(), 0)   # Escape fechou
 
     def test_chatgpt_dom_novo_resposta_de_texto(self):
         """02/10: no DOM novo a resposta de TEXTO tambem nao tinha seletor
@@ -315,8 +379,8 @@ class JSNoNavegador(unittest.TestCase):
         self.assertTrue(c._ancorado)
 
     def test_chatgpt_cartao_antigo_sem_abridor_clica_na_imagem(self):
-        """O cartao de 29/09 nao tem o Compartilhar: `abrir` False, e quem
-        chama clica na imagem como antes."""
+        """O cartao de 29/09 nao tem a previa da galeria: `abrir` False, e
+        quem chama clica na imagem como antes."""
         from ias import imagem
         c = self._cliente("chatgpt", CHATGPT)
         s = c.sel
