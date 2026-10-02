@@ -291,6 +291,9 @@ def test_estatico_so_os_arquivos_da_tabela(servidor):
     assert resp.status == 200 and b"<html" in dados
     csp = resp.getheader("Content-Security-Policy")
     assert "frame-ancestors 'none'" in csp and "unsafe-inline" not in csp
+    # as imagens com token (Sprites, 02/10/2026) viram blob: — sem isso a CSP
+    # as bloqueava e o celular mostrava imagem quebrada
+    assert "img-src 'self' blob:" in csp
     assert b"<script>" not in dados and b"<style>" not in dados
     for rota in ("/app.js", "/app.css", "/sw.js", "/manifest.webmanifest"):
         resp, _ = _pedir(servidor, "GET", rota)

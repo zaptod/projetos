@@ -1614,7 +1614,7 @@ class Manipulador(BaseHTTPRequestHandler):
         if nome.endswith(".html"):
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; img-src 'self'; media-src 'self'; "
+                "default-src 'self'; img-src 'self' blob:; media-src 'self'; "
                 "style-src 'self'; script-src 'self'; connect-src 'self'; "
                 "manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
                 "form-action 'none'; frame-ancestors 'none'")
