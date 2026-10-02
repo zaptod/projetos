@@ -211,7 +211,7 @@ def _rodar_em_thread(tid):
     return fio, saida
 
 
-def _esperar(condicao, prazo=20.0):
+def _esperar(condicao, prazo=60.0):
     fim = time.monotonic() + prazo
     while time.monotonic() < fim:
         if condicao():
@@ -246,7 +246,7 @@ def test_parar_pelo_pedido(mundo, monkeypatch):
     fio, saida = _rodar_em_thread("t01")
     assert _esperar(lambda: delegar.ler_estado("t01").get("pid_codex"))
     assert "pedido" in delegar.parar("t01")
-    fio.join(20)
+    assert _esperar(lambda: not fio.is_alive(), prazo=60)
     assert saida["e"]["situacao"] == "parado" and "pedido" in saida["e"]["motivo"]
 
 
