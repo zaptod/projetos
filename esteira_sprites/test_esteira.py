@@ -162,21 +162,51 @@ def test_controle_juiz_fraco_fica_registrado(ambiente, monkeypatch):
     assert ficha.ler("fogo_teste")["tentativas"][-1]["juiz_fraco"]
 
 
-def test_grave_refaz_duas_vezes_e_depois_confere(ambiente, monkeypatch):
+def test_grave_refaz_com_o_prompt_do_juiz_e_depois_confere(ambiente, monkeypatch):
     dados = ficha.nova(config.item("fogo_teste"))
     dados["estado"] = "julgado"
-    dados["tentativas"] = [{"juiz_id": "g1", "caminhos": {}}]
+    dados["tentativas"] = [{"juiz_id": "g1", "caminhos": {}, "prompt": "p0"}]
     ficha.gravar(dados)
-    monkeypatch.setattr(juiz.correio, "uma", lambda *_: {"situacao": "respondida", "resposta": "{\"defeitos\":[{\"o_que\":\"corte\",\"gravidade\":\"grave\"}],\"notas\":{}}"})
+    corrigido = "Arte 2D para Neural Fights. " + "Bola de fogo inteira, sem partículas soltas. " * 3
+    resposta = {"defeitos": [{"o_que": "corte", "gravidade": "grave"}],
+                "prompt_corrigido": corrigido, "notas": {}}
+    monkeypatch.setattr(juiz.correio, "uma", lambda *_: {"situacao": "respondida",
+                                                          "resposta": "ok " + json.dumps(resposta)})
     refeitos = []
-    monkeypatch.setattr(pedir, "pedir", lambda item, motivo: refeitos.append((item, motivo)))
-    assert juiz.colher("fogo_teste") and refeitos == [("fogo_teste", "corte")]
+    monkeypatch.setattr(pedir, "pedir", lambda item, motivo, prompt_pronto="": refeitos.append(
+        (item, motivo, prompt_pronto)))
+    # o prompt reescrito pelo juiz vai DIRETO ao gerador (02/10/2026)
+    assert juiz.colher("fogo_teste") and refeitos == [("fogo_teste", "corte", corrigido.strip())]
     dados = ficha.ler("fogo_teste")
     dados["estado"] = "julgado"
-    dados["tentativas"] *= 3
+    dados["tentativas"] *= juiz.MAX_TENTATIVAS
     dados["tentativas"][-1]["juiz_id"] = "g1"
     ficha.gravar(dados)
     assert juiz.colher("fogo_teste") and ficha.ler("fogo_teste")["estado"] == "a_conferir"
+
+
+def test_medida_reprovada_vai_ao_juiz_e_conta_como_grave(ambiente, monkeypatch):
+    dados = ficha.nova(config.item("fogo_teste"))
+    dados["estado"] = "julgado"
+    dados["tentativas"] = [{"juiz_id": "g1", "caminhos": {}, "portao_reprovou": ["pontinhos soltos: 3"]}]
+    ficha.gravar(dados)
+    monkeypatch.setattr(juiz.correio, "uma", lambda *_: {"situacao": "respondida",
+                                                          "resposta": '{"defeitos":[],"notas":{}}'})
+    refeitos = []
+    monkeypatch.setattr(pedir, "pedir", lambda item, motivo, prompt_pronto="": refeitos.append(motivo))
+    assert juiz.colher("fogo_teste") and refeitos == ["pontinhos soltos: 3"]
+
+
+def test_gerador_e_juiz_cruzados():
+    assert pedir.gerador_do({"tipo": "folha"}) == "chatgpt"
+    assert pedir.gerador_do({"tipo": "peca"}) == "gemini"
+    assert juiz.juiz_do({"caixa": "gemini"}) == "chatgpt"
+    assert juiz.juiz_do({"caixa": "chatgpt"}) == "gemini"
+
+
+def test_a_pergunta_leva_o_prompt_usado_e_as_medidas():
+    texto = juiz._pergunta({"id": "x", "descricao": "fogo"}, ["o desenho"], "PROMPT ORIGINAL", ["grade: 3"])
+    assert "<<<\nPROMPT ORIGINAL\n>>>" in texto and "grade: 3" in texto and "prompt_corrigido" in texto
 
 
 def test_aprovar_exporta_com_prova_e_recusa_sem_ela(ambiente, monkeypatch):

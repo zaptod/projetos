@@ -148,8 +148,11 @@ def passar(item_id: str) -> bool:
         dados["estado"] = "medido"
         ficha.registrar(dados, "portao_aprovou", medidas=resultado["medidas"])
     else:
-        dados["estado"] = "refazer"
+        # reprovado pela medida tambem vai ao juiz: ele ve a imagem, o prompt usado
+        # e o que a medida achou, e devolve o prompt corrigido (02/10/2026)
+        dados["estado"] = "medido"
         tentativa["motivo"] = "; ".join(resultado["erros"])
+        tentativa["portao_reprovou"] = list(resultado["erros"])
         ficha.registrar(dados, "portao_reprovou", motivo=tentativa["motivo"])
     ficha.gravar(dados)
     return True

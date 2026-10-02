@@ -85,6 +85,43 @@ def lote(prioridade: str, n: int) -> list[str]:
     return escolhidos
 
 
+EM_VOO = ("pedido", "gerado", "limpo", "medido", "julgado")
+# quantos itens ficam em producao ao mesmo tempo por perfil: o carteiro faz um
+# por vez por conta, entao mais que isso so enche a fila
+ALVO_EM_VOO = 4
+
+
+def _repedir(item_id: str, dados: dict) -> bool:
+    """`refazer` (falha do correio, imagem sem prova, ou pedido manual) volta a pedir."""
+    from .juiz import MAX_TENTATIVAS
+    if len(dados.get("tentativas", [])) >= MAX_TENTATIVAS:
+        dados["estado"] = "a_conferir"
+        ficha.registrar(dados, "tentativas_esgotadas")
+        ficha.gravar(dados)
+        return True
+    ultima = (dados.get("tentativas") or [{}])[-1]
+    motivo = str(ultima.get("erro") or ultima.get("motivo") or "")
+    if ultima.get("erro") and ultima.get("prompt"):
+        # o gerador falhou: o mesmo prompt de novo, igual (memoria imagem-estouro-de-espera)
+        pedir(item_id, motivo, prompt_pronto=ultima["prompt"])
+    else:
+        pedir(item_id, motivo)
+    return True
+
+
+def ciclo() -> dict:
+    """Uma passada da producao continua: anda tudo e completa o que esta em voo."""
+    andou = avancar()
+    em_voo = sum(1 for i in config.itens() if (d := ficha.ler(i["id"])) and d.get("estado") in EM_VOO)
+    novos = []
+    for prioridade in ("P1", "P2", "P3"):
+        falta = ALVO_EM_VOO - em_voo - len(novos)
+        if falta <= 0:
+            break
+        novos += lote(prioridade, falta)
+    return {"perfil": config.PERFIL, "andou": andou, "em_voo": em_voo + len(novos), "novos": novos}
+
+
 def avancar() -> int:
     feitos = 0
     for item in config.itens():
@@ -92,7 +129,9 @@ def avancar() -> int:
         if not dados:
             continue
         estado = dados.get("estado")
-        if estado == "pedido":
+        if estado == "refazer":
+            feitos += bool(_repedir(item["id"], dados))
+        elif estado == "pedido":
             feitos += bool(colher(item["id"]))
         elif estado == "gerado":
             feitos += bool(limpar(item["id"]))
@@ -139,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     p_lote.add_argument("--prioridade", required=True)
     p_lote.add_argument("--n", type=int, default=5)
     sub.add_parser("avancar")
+    sub.add_parser("ciclo", help="anda tudo e mantem a producao cheia (o coordenador chama)")
     sub.add_parser("status")
     p_aprovar = sub.add_parser("aprovar")
     p_aprovar.add_argument("item")
@@ -161,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(lote(args.prioridade, args.n)))
     elif args.comando == "avancar":
         print(avancar())
+    elif args.comando == "ciclo":
+        print(json.dumps(ciclo(), ensure_ascii=False))
     elif args.comando == "status":
         for estado, quantidade in sorted(status().items()):
             print(f"{estado}: {quantidade}")

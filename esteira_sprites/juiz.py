@@ -10,9 +10,15 @@ from ias import correio
 
 from . import config, ficha, prompt
 
-# Quem julga. O Grok respondia mal (Adrian, 02/10/2026); o Gemini ja e os olhos
-# dos videos e aceita anexo. O ChatGPT fica livre para gerar as imagens.
+# Quem julga. O Grok respondia mal (Adrian, 02/10/2026). Juiz cruzado: quem nao
+# gerou julga (peca parada sai do Gemini e o ChatGPT julga; folha sai do ChatGPT
+# e o Gemini julga), para ninguem aprovar o proprio desenho.
 JUIZ = "gemini"
+MAX_TENTATIVAS = 4
+
+
+def juiz_do(tentativa: dict) -> str:
+    return "chatgpt" if tentativa.get("caixa") == "gemini" else "gemini"
 
 
 def _xadrez(origem: str, destino: Path) -> Path:
@@ -94,7 +100,7 @@ def _no_tamanho_real(origem: str, tamanho: tuple[int, int], destino: Path) -> Pa
     return destino
 
 
-def _pergunta(item: dict, rotulos: list[str]) -> str:
+def _pergunta(item: dict, rotulos: list[str], usado: str = "", medidas: list[str] | None = None) -> str:
     perfil = item.get("perfil") or config.PERFIL
     linhas = ["PEDIDO DE TEXTO. Você é o diretor de arte que aprova sprites para um jogo.",
               "O JOGO: " + JOGO.get(perfil, JOGO["palco"]),
@@ -109,12 +115,21 @@ def _pergunta(item: dict, rotulos: list[str]) -> str:
     if item.get("notas"):
         linhas.append(f"OBSERVAÇÃO: {item['notas']}")
     linhas.append("ANEXOS: " + "; ".join(f"{n}) {r}" for n, r in enumerate(rotulos, 1)) + ".")
-    linhas.append("PARA QUE SERVE A SUA RESPOSTA: o que você marcar como 'grave' faz o desenho ser "
-                  "pedido de novo com os seus defeitos escritos no pedido; sem grave, ele vai para o "
-                  "Adrian aprovar. Então seja específico e acionável (onde, o quê, como corrigir).")
+    if usado:
+        linhas.append("O PROMPT QUE GEROU ESTA IMAGEM (entre <<< e >>>):\n<<<\n" + usado.strip() + "\n>>>")
+    if medidas:
+        linhas.append("O VALIDADOR AUTOMÁTICO JÁ REPROVOU, MEDINDO: " + "; ".join(medidas)
+                      + ". Isso é grave por definição: o prompt corrigido tem de evitar cada um.")
+    linhas.append("PARA QUE SERVE A SUA RESPOSTA: se houver defeito grave, o seu 'prompt_corrigido' "
+                  "vai DIRETO ao gerador de imagem, sem ninguém editar, e a imagem é feita de novo; "
+                  "sem grave, ela vai para o Adrian aprovar.")
     linhas.append("Liste o que está errado PARA ESSE USO; nunca diga só que está bom. " + GRAVIDADE)
+    linhas.append("COMO ESCREVER O prompt_corrigido: parta do prompt que gerou a imagem, mantenha o que "
+                  "funcionou e mude só o que causou cada defeito grave, dizendo ao gerador o que fazer "
+                  "(não o que estava errado). Prompt inteiro, pronto para colar, em português, sem "
+                  "comentários. Sem defeito grave, deixe vazio.")
     linhas.append('Responda JSON estrito: {"defeitos":[{"o_que":str,"onde":str,"como_corrigir":str,'
-                  '"gravidade":"leve|media|grave"}],"notas":{"le_no_tamanho_real":0-3,'
+                  '"gravidade":"leve|media|grave"}],"prompt_corrigido":str,"notas":{"le_no_tamanho_real":0-3,'
                   '"igual_a_referencia":0-3,"e_o_que_foi_pedido":0-3,"recorte":0-3,'
                   '"continuidade":0-3}} (continuidade só em animação; senão 3).')
     return "\n".join(linhas)
@@ -127,7 +142,7 @@ def perguntar(item_id: str) -> bool:
     item = dados["item"]
     tentativa = dados["tentativas"][-1]
     pasta = ficha.caminho(item_id).parent
-    controle = _controle(dados)
+    controle = _controle(dados) and not tentativa.get("controle_feito")
     # o controle e cego: o juiz nao sabe que a arte foi estragada de proposito
     limpo = tentativa["caminhos"]["limpo"]
     origem = str(_estragado(limpo, pasta / "controle_estragado.png")) if controle else limpo
@@ -148,10 +163,11 @@ def perguntar(item_id: str) -> bool:
         anexos.append(str(config.mestra()))
         rotulos.append("a imagem-mestra aprovada: o ESTILO a seguir (traço, contorno, sombra, "
                        "cores); não o conteúdo")
-    texto = _pergunta(item, rotulos)
-    mensagem = correio.enviar(JUIZ, texto, de="esteira_sprites", anexos=anexos)
+    texto = _pergunta(item, rotulos, tentativa.get("prompt") or "", tentativa.get("portao_reprovou"))
+    caixa = juiz_do(tentativa)
+    mensagem = correio.enviar(caixa, texto, de="esteira_sprites", anexos=anexos)
     tentativa["juiz_id"] = mensagem["id"]
-    tentativa["juiz_caixa"] = JUIZ
+    tentativa["juiz_caixa"] = caixa
     tentativa["controle"] = controle
     dados["estado"] = "julgado"
     ficha.registrar(dados, "juiz_pedido", correio_id=mensagem["id"], controle=controle)
@@ -195,16 +211,26 @@ def colher(item_id: str) -> bool:
         veredito = {"defeitos": [{"o_que": mensagem.get("erro") or "juiz sem JSON", "gravidade": "grave"}], "notas": {}}
     tentativa["veredito"] = veredito
     graves = [_defeito_acionavel(d) for d in veredito["defeitos"] if d.get("gravidade") == "grave"]
+    # a medida reprovou: e grave mesmo que o juiz nao diga
+    graves += [m for m in tentativa.get("portao_reprovou") or [] if m not in graves]
     if tentativa.get("controle") and not graves:
         tentativa["juiz_fraco"] = True
         ficha.registrar(dados, "juiz_fraco", motivo="controle sem defeito grave")
-    if graves:
-        if len(dados["tentativas"]) <= 2:
+    if graves and not tentativa.get("controle"):
+        if len(dados["tentativas"]) < MAX_TENTATIVAS:
             from .pedir import pedir
+            corrigido = str(veredito.get("prompt_corrigido") or "").strip()
+            ficha.registrar(dados, "juiz_respondeu", veredito=veredito)
             ficha.gravar(dados)
-            pedir(item_id, "; ".join(graves))
+            # o prompt do juiz vai direto; sem ele, o de sempre com os defeitos
+            pedir(item_id, "; ".join(graves), prompt_pronto=corrigido if len(corrigido) >= 80 else "")
             return True
         dados["estado"] = "a_conferir"
+    elif tentativa.get("controle"):
+        # o controle era estragado de proposito: a arte de verdade vai ao juiz de novo
+        tentativa["controle"] = False
+        tentativa["controle_feito"] = True
+        dados["estado"] = "medido"
     else:
         dados["estado"] = "a_conferir"
     ficha.registrar(dados, "juiz_respondeu", veredito=veredito)
