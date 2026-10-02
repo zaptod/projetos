@@ -8,7 +8,7 @@ import types
 import urllib.parse
 
 from remoto import api_http, arena, tarefas
-from remoto.test_api_http import _parear, _pedir
+from remoto.test_api_http import _parear, _pedir, mundo, servidor  # noqa: F401 (fixtures do pytest)
 
 
 def _opcoes():
