@@ -342,6 +342,22 @@ def test_diff_nao_leva_os_arquivos_do_despachante(mundo):
     assert b"remoto/novo.py" in patch and b"Y = 2\r\n" in patch     # CRLF intacto
 
 
+def test_diff_ignora_sobras_de_teste_e_fim_de_linha(mundo):
+    # 01/10: toda entrega saia "RECUSADO" por travas do pytest em .teste_tmp e
+    # pelo editing.json que a worktree mostra mudado so no fim de linha.
+    e = _criar(mundo)
+    delegar.rodar("t01")
+    wt = Path(e["worktree"])
+    (wt / ".teste_tmp" / "locks").mkdir(parents=True)
+    (wt / ".teste_tmp" / "locks" / "x.lock").write_bytes(b"\x00\x01")
+    (wt / "README.md").write_bytes(b"x\r\n")                 # so o fim de linha
+    resumo = delegar.coletar("t01")
+    caminhos = [a["caminho"] for a in resumo["arquivos"]]
+    assert "README.md" not in caminhos
+    assert not any(".teste_tmp" in c for c in caminhos)
+    assert "remoto/novo.py" in caminhos and resumo["ok"], resumo["motivos"]
+
+
 # ------------------------------------------------------- testar e aplicar
 def test_testar_aplicar_e_limpar(mundo, monkeypatch):
     _criar(mundo)

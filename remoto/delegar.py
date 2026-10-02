@@ -97,6 +97,10 @@ TETO_A_CADA_S = 30.0          # e o teto (le o rollout)
 
 # Os arquivos do despachante na worktree: nunca entram no diff.
 NOSSOS = (".codex_tarefa.md", ".codex_resposta.md", ".codex_correcao.md")
+# Sobras do ambiente, nao trabalho do Codex (01/10: o Adrian viu "RECUSADO" em
+# tudo e era isto): temporarios de teste, caches e travas que o pytest deixa.
+RUIDO = ("**/.teste_tmp/**", ".teste_tmp/**", "**/.pytest_cache/**", ".pytest_cache/**",
+         "**/__pycache__/**", "**/*.pyc", "**/*.lock")
 # O que o Codex nunca mexe, qualquer que seja a lista da tarefa.
 PROIBIDOS = ("ias/config.json", "random_builds/config/identity.json", "palco/**",
              "decisoes/**", ".claude/**", ".github/**", "*.png", "*.jpg", "*.jpeg",
@@ -1042,8 +1046,18 @@ def coletar(tarefa_id: str) -> dict:
     wt = Path(estado["worktree"])
     if not wt.is_dir():
         raise Recusa(f"a worktree sumiu: {wt}")
-    excluir = [f":(exclude){n}" for n in NOSSOS]
+    excluir = ([f":(exclude){n}" for n in NOSSOS]
+               + [f":(exclude,glob){n}" for n in RUIDO])
     _git("add", "-A", "--", ".", *excluir, cwd=wt)
+    # Arquivo que so mudou o fim de linha (CRLF da worktree, ex. editing.json)
+    # nao e mudanca do Codex: sai do indice antes de medir.
+    mudados = _git("diff", "--cached", "--no-renames", "--name-only", estado["base"],
+                   cwd=wt).stdout.splitlines()
+    for caminho in mudados:
+        igual = _git("diff", "--cached", "--quiet", "--ignore-cr-at-eol", estado["base"],
+                     "--", caminho, cwd=wt, verificar=False)
+        if igual.returncode == 0:
+            _git("reset", "-q", "--", caminho, cwd=wt, verificar=False)
     numstat = _git("diff", "--cached", "--no-renames", "--numstat", estado["base"],
                    cwd=wt).stdout
     arquivos = []
