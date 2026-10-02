@@ -762,6 +762,25 @@ def _px(x, y=0.0):
 class RevisaoTresComFakesTests(unittest.TestCase):
     """Cada sinal isolado, num fake de contrato: o que a sonda deduz dele."""
 
+    def test_objetos_da_skill_e_orbe_guardam_nome_e_elemento(self) -> None:
+        """O catalogo, e nao a heuristica do nome, e a fonte da timeline."""
+        sonda = timeline.SondaTimeline()
+        for nome, elemento in (
+            ("Corrente em Cadeia", "RAIO"),
+            ("Muro Ardente", "FOGO"),
+            ("Fotossíntese", "NATUREZA"),
+            ("Fúria do Trovão", "RAIO"),
+            ("Desintegrar", "ARCANO"),
+            ("Forma Sanguinária", "SANGUE"),
+        ):
+            with self.subTest(nome=nome):
+                self.assertEqual(sonda._elemento(SimpleNamespace(nome=nome)), elemento)
+
+        sim = _sim_falso()
+        orbe = SimpleNamespace(dono=sim.p1, cor=(100, 100, 255))
+        fixos = sonda._fixos_basicos(sim, orbe, "orbe")
+        self.assertEqual((fixos["nome"], fixos["elemento"]), ("Mágica", "ARCANO"))
+
     def _dois_passos(self, sim, entre):
         sonda = timeline.SondaTimeline()
         sonda.on_inicio(sim)

@@ -1202,19 +1202,27 @@ class SondaTimeline:
         self._vivas[chave] = (trilha, None if objeto is None else _referencia(objeto))
         return trilha
 
-    def _elemento(self, objeto) -> str:
+    def _elemento(self, objeto, nome: str = "") -> str:
+        nome = nome or str(getattr(objeto, "nome", "") or "")
         try:
+            from neural_fights.core.skills import get_skill_data
             from neural_fights.utils.palette import resolver_elemento
-            return str(resolver_elemento(objeto, str(getattr(objeto, "nome", "") or ""), None))
+            return str(resolver_elemento(objeto, nome, get_skill_data(nome) or {}))
         except Exception:
             return str(getattr(objeto, "elemento", "") or "")
 
     def _fixos_basicos(self, sim, objeto, tipo: str) -> dict:
+        nome = str(getattr(objeto, "nome", "") or "")
+        if not nome and tipo == "orbe":
+            nome = "Mágica"
+        elemento = self._elemento(objeto, nome)
+        if tipo == "orbe" and elemento == "DEFAULT":
+            elemento = "ARCANO"
         return {
             "tipo": tipo,
-            "nome": str(getattr(objeto, "nome", "") or ""),
+            "nome": nome,
             "dono": _slot_do_dono(sim, getattr(objeto, "dono", None)),
-            "elemento": self._elemento(objeto),
+            "elemento": elemento,
             "cor": _cor(getattr(objeto, "cor", None)),
         }
 
