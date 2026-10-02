@@ -368,6 +368,49 @@ class CarteiroGeraImagem(_Base):
         self.assertEqual(fim["categoria"], "sem_imagem")
         self.assertIn("não posso", fim["erro"])
 
+    def test_chrome_fechado_no_download_reabre_sem_gerar_de_novo(self):
+        """A segunda sessao recupera a imagem ja na casa, sem novo pedido a IA."""
+        criadas, aberturas = [], []
+
+        class _Sessao:
+            def __init__(self, numero):
+                self.numero = numero
+                self.geradas = self.recuperadas = 0
+
+            def abrir_casa(self, url):
+                aberturas.append((self.numero, url))
+                return self.numero == 1 and bool(url)
+
+            def novo_chat(self):
+                pass
+
+            def gerar_imagem(self, prompt, proporcao, mensagem_id):
+                self.geradas += 1
+                raise RuntimeError("TargetClosedError: browser fechou no download")
+
+            def recuperar_imagem(self, prompt, proporcao):
+                self.recuperadas += 1
+                return {"bytes": imagem.png_de_teste(),
+                        "prova": {"comprovada": True, "metodo": "duble", "forca": "teste"}}
+
+            def url(self):
+                return "https://gemini.google.com/app/casa"
+
+        @contextmanager
+        def fabrica(ia):
+            sessao = _Sessao(len(criadas))
+            criadas.append(sessao)
+            yield sessao
+
+        c = _novo(fabrica=fabrica)
+        m = correio.pedir_imagem("gemini", "um gato", proporcao="1:1")
+        fim = c.uma_volta()
+        self.assertEqual(fim["situacao"], "respondida")
+        self.assertEqual([s.geradas for s in criadas], [1, 0])
+        self.assertEqual([s.recuperadas for s in criadas], [0, 1])
+        self.assertEqual(aberturas, [(1, "https://gemini.google.com/app/casa")])
+        self.assertTrue(correio.arquivo_da_imagem("gemini", m["id"]).is_file())
+
 
 # ======================================================= conversa com imagem
 class ConversaQueRespondeComImagem(_Base):
@@ -479,7 +522,8 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
         self.assertEqual(saida["prova"]["metodo"], "turno_na_casa")
         self.assertEqual(saida["prova"]["casa_url"], "https://gemini.google.com/app/casa123")
 
-    def _gemini_com_botao(self, *, download=True, resposta=None, habilitado=True):
+    def _gemini_com_botao(self, *, download=True, resposta=None, habilitado=True,
+                          reserva=None, fecha_no_download=False):
         """Um Gemini falso com o botao "Baixar imagem no tamanho original": o
         clique solta o evento de download (ou so a resposta de imagem)."""
         original = imagem.png_de_teste(352, 192)      # a forma do original: 2816x1536 / 8
@@ -492,6 +536,8 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
 
             @staticmethod
             def path():
+                if fecha_no_download:
+                    raise RuntimeError("TargetClosedError: browser fechou")
                 return str(arquivo)
 
         class _Resposta:
@@ -557,7 +603,16 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
             class request:                                      # noqa: N801
                 @staticmethod
                 def get(url, timeout=None):
-                    raise AssertionError("o src nao devia ser usado")
+                    if reserva is None:
+                        raise AssertionError("o src nao devia ser usado")
+
+                    class _R:
+                        ok, status = True, 200
+
+                        @staticmethod
+                        def body():
+                            return reserva
+                    return _R()
 
         from contos.llm import seletores
 
@@ -600,6 +655,15 @@ class SessaoRealBaixaAImagemDaResposta(_Base):
         imagem.time = types.SimpleNamespace(monotonic=monotonic, sleep=lambda _s: None)
         saida = imagem.baixar_da_resposta(cli, "gere um gato", log=lambda *_a: None)
         self.assertEqual(saida["bytes"], jpeg)
+
+    def test_chrome_fecha_no_download_usa_a_reserva_do_src(self):
+        """O `Download.path` cai com o navegador, mas o src ja foi guardado."""
+        reserva = imagem.png_de_teste(352, 192)
+        cli, _, cliques = self._gemini_com_botao(reserva=reserva, fecha_no_download=True)
+        saida = imagem.baixar_da_resposta(cli, "gere um gato", log=lambda *_a: None)
+        self.assertEqual(saida["bytes"], reserva)
+        self.assertEqual(saida["prova"]["download"], "src_da_tela")
+        self.assertEqual(cliques, [False])
 
     def test_botao_desabilitado_nao_clica_e_diz_por_que(self):
         cli, _, cliques = self._gemini_com_botao(habilitado=False)
@@ -838,7 +902,8 @@ class ChatGPTBaixaPelaTelaCheia(_Base):
         saida = imagem.baixar_da_resposta(cli, "crie um gato", log=lambda *_a: None)
         self.assertEqual(saida["bytes"], original)
         self.assertEqual(saida["prova"]["download"], "botao_tamanho_original")
-        self.assertEqual(passos, ["marcar", "clique:imagem", "clique:dialogo", "tecla:Escape"])
+        self.assertEqual(passos, ["src", "marcar", "clique:imagem", "clique:dialogo",
+                                  "tecla:Escape"])
         self.assertEqual(cli.page.ouvintes, {})
 
     def test_cartao_novo_abre_pela_previa_baixa_e_fecha(self):
@@ -848,7 +913,8 @@ class ChatGPTBaixaPelaTelaCheia(_Base):
         saida = imagem.baixar_da_resposta(cli, "crie um gato", log=lambda *_a: None)
         self.assertEqual(saida["bytes"], original)
         self.assertEqual(saida["prova"]["download"], "botao_tamanho_original")
-        self.assertEqual(passos, ["marcar", "clique:previa", "clique:dialogo", "tecla:Escape"])
+        self.assertEqual(passos, ["src", "marcar", "clique:previa", "clique:dialogo",
+                                  "tecla:Escape"])
         self.assertNotIn("COMPARTILHOU", passos)
 
     def test_abridor_de_compartilhar_nunca_e_clicado(self):
@@ -887,14 +953,14 @@ class ChatGPTBaixaPelaTelaCheia(_Base):
         saida = imagem.baixar_da_resposta(cli, "crie um gato", log=lambda *_a: None)
         self.assertEqual(saida["prova"]["download"], "src_da_tela")
         self.assertIn("tecla:Escape", passos)
-        self.assertEqual(passos[-1], "src")
+        self.assertEqual(passos[0], "src")
 
     def test_arquivo_de_outra_forma_nao_vale_e_cai_no_src(self):
         # o botao entregou um arquivo 2:1 para uma imagem 1:1 na tela
         cli, _, passos = self._chatgpt(original=imagem.png_de_teste(128, 64))
         saida = imagem.baixar_da_resposta(cli, "crie um gato", log=lambda *_a: None)
         self.assertEqual(saida["prova"]["download"], "src_da_tela")
-        self.assertEqual(passos[-1], "src")
+        self.assertEqual(passos[0], "src")
 
 
 class CarteiroComAImagemDeForaDoTurno(_Base):

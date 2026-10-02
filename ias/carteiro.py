@@ -154,6 +154,18 @@ class SessaoReal:
         from . import imagem
         return imagem.baixar_da_resposta(self.cliente, prompt, log=self.log)
 
+    def recuperar_imagem(self, prompt: str, proporcao: str) -> dict:
+        """Baixa a imagem ja pronta na casa reaberta, sem novo envio a IA."""
+        from . import imagem
+        pedido = imagem.pedido_de_imagem(prompt, proporcao)
+        achado = self.cliente.imagens_da_resposta()
+        self.cliente.imagens_na_resposta = self.cliente.imagens_prontas(achado)
+        self.cliente._srcs_antes_do_envio = set()
+        saida = imagem.baixar_da_resposta(self.cliente, pedido, proporcao, log=self.log)
+        if saida is None:
+            raise imagem.SemImagem("a imagem nao estava mais na casa reaberta")
+        return saida
+
     def url(self) -> str:
         try:
             return str(self.cliente.page.url or "")
@@ -347,6 +359,13 @@ def classificar_erro(ia: str, exc: BaseException, tela: str = "") -> tuple:
 # ================================================================= carteiro
 class _Reabrir(Exception):
     """Parede de planos na primeira volta: fechar o navegador e reabrir."""
+
+
+class _ReabrirImagem(Exception):
+    """O Chrome caiu baixando: reabre uma vez sem pedir a imagem de novo."""
+
+    def __init__(self, caixa: str, mensagem: dict):
+        self.caixa, self.mensagem = caixa, mensagem
 
 
 class Carteiro:
@@ -546,17 +565,35 @@ class Carteiro:
         if ia not in correio.CHATS:
             return self._imagem_fora_do_chat(caixa, ia, mensagem, desde)
         try:
-            with self.fabrica(ia) as sessao:
-                casa = self._abrir_casa(ia, sessao)
-                fila = [(caixa, mensagem)]
-                while fila:
-                    onde, atual = fila.pop(0)
-                    ultima = self._um_turno(ia, sessao, casa, atual, caixa=onde)
-                    if ultima["situacao"] != "respondida":
-                        break
-                    proxima = self._esperar_proxima(ia)
-                    if proxima is not None:
-                        fila.append((ia, proxima))
+            recuperar_imagem = None
+            for volta in (1, 2):
+                try:
+                    with self.fabrica(ia) as sessao:
+                        casa = self._abrir_casa(ia, sessao)
+                        if recuperar_imagem:
+                            onde, atual = recuperar_imagem
+                            ultima = self._turno_imagem(onde, ia, sessao, atual, casa,
+                                                        recuperar=True)
+                        else:
+                            fila = [(caixa, mensagem)]
+                            while fila:
+                                onde, atual = fila.pop(0)
+                                ultima = self._um_turno(ia, sessao, casa, atual, caixa=onde)
+                                if ultima["situacao"] != "respondida":
+                                    break
+                                proxima = self._esperar_proxima(ia)
+                                if proxima is not None:
+                                    fila.append((ia, proxima))
+                    break
+                except _ReabrirImagem as exc:
+                    if volta == 2:
+                        raise
+                    recuperar_imagem = (exc.caixa, exc.mensagem)
+                    recuperado = str(exc.mensagem["id"])
+                    self.log(f"[carteiro] {ia} {recuperado}: Chrome fechou no download; "
+                             "reabro a casa uma vez sem pedir outra imagem")
+                    correio.atualizar(exc.caixa, recuperado, nota="Chrome fechou no download; "
+                                                                 "reabrindo para recuperar a imagem")
         except Exception as exc:                               # noqa: BLE001
             # A sessao nem abriu (login caido, Chrome ocupado, site fora):
             # a mensagem que estava na mao falha com o motivo legivel.
@@ -636,6 +673,7 @@ class Carteiro:
         nova = correio.casa_vazia(ia)
         nova["geracao"] = int(casa.get("geracao") or 0) + 1
         nova["aberta_em"] = correio.agora()
+        nova["url"] = sessao.url()
         if resumo.strip():
             try:
                 sessao.perguntar(PROLOGO_CASA_NOVA + resumo.strip())
@@ -651,7 +689,8 @@ class Carteiro:
         return nova
 
     def _turno_imagem(self, caixa: str, ia: str, sessao, mensagem: dict,
-                      casa: dict | None, relancar_parede: bool = False) -> dict:
+                      casa: dict | None, relancar_parede: bool = False,
+                      recuperar: bool = False) -> dict:
         """UM pedido de imagem: gera, exige prova, grava os bytes originais com
         a prova ao lado, e so entao marca respondida. Sem prova, nada vai ao
         disco e o pedido falha com o motivo."""
@@ -675,12 +714,17 @@ class Carteiro:
         prompt = str(mensagem.get("texto") or "")
         proporcao = str(mensagem.get("proporcao") or info["proporcao_padrao"])
         try:
-            resultado = sessao.gerar_imagem(prompt, proporcao, mid)
+            if recuperar:
+                resultado = sessao.recuperar_imagem(prompt, proporcao)
+            else:
+                resultado = sessao.gerar_imagem(prompt, proporcao, mid)
             salvo = imagem.guardar(ia, mid, resultado.get("bytes") or b"",
                                    resultado.get("prova") or {})
         except Exception as exc:                               # noqa: BLE001
             if relancar_parede and type(exc).__name__ == "ParedeDePlanos":
                 raise _Reabrir() from exc
+            if (casa is not None and "TargetClosed" in (type(exc).__name__ + str(exc))):
+                raise _ReabrirImagem(caixa, mensagem) from exc
             # so o que surgiu depois do envio: o botao fixo "Fazer upgrade"
             # do rodape do ChatGPT Free nao e motivo (30/09)
             tela = tela_do_turno(sessao)

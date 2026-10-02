@@ -877,8 +877,23 @@ def baixar_da_resposta(cliente, prompt: str, proporcao: str | None = None,
                        "ao seu pedido; nada foi gravado")
     if achado.get("gerando"):
         raise SemProva("a IA ainda diz que está gerando a imagem: não baixo a prévia")
-    # primeiro o botao do site (tamanho original); depois o `src` da tela
-    corpo, como, falhas = b"", "", []
+    # Guardo o `src` ANTES de abrir o visualizador e disparar o download. O
+    # Chrome pode morrer logo depois do evento; nesse caso `Download.path()`
+    # tambem morre junto, mas os bytes da imagem ja estao seguros aqui.
+    corpo, como, falhas, reserva = b"", "", [], b""
+    try:
+        reserva = baixar(cliente.ctx, cliente.page, src,
+                         float((cliente.ajustes or {}).get("download_timeout", 120)))
+        if not (len(reserva) >= BYTES_MIN and extensao(reserva)):
+            falhas.append(f"src antes: {len(reserva)} bytes que não são imagem")
+            reserva = b""
+        elif not mesma_proporcao(reserva, visto):
+            falhas.append("src antes: o arquivo não tem a forma da imagem da tela "
+                          f"({_dimensoes_dos_bytes(reserva)} contra {visto.get('w')}x"
+                          f"{visto.get('h')})")
+            reserva = b""
+    except Exception as exc:                                   # noqa: BLE001
+        falhas.append(f"src antes: {type(exc).__name__}: {' '.join(str(exc).split())[:100]}")
     try:
         corpo = baixar_pelo_botao(cliente, visto, log=log)
         if corpo is None:
@@ -897,14 +912,19 @@ def baixar_da_resposta(cliente, prompt: str, proporcao: str | None = None,
     except Exception as exc:                                   # noqa: BLE001
         falhas.append(f"botão: {type(exc).__name__}: {' '.join(str(exc).split())[:100]}")
     if not como:
-        if falhas and botoes_de_baixar(cliente):
-            log(f"[{cliente.provedor}] {falhas[-1]}; tento o src da tela")
-        try:
-            corpo = baixar(cliente.ctx, cliente.page, src,
-                           float((cliente.ajustes or {}).get("download_timeout", 120)))
-            como = "src_da_tela"
-        except ImagemFalhou as exc:
-            raise ImagemFalhou("; ".join(falhas + [str(exc)]), "download") from exc
+        if reserva:
+            if falhas and botoes_de_baixar(cliente):
+                log(f"[{cliente.provedor}] {falhas[-1]}; uso a reserva do src da tela")
+            corpo, como = reserva, "src_da_tela"
+        else:
+            if falhas and botoes_de_baixar(cliente):
+                log(f"[{cliente.provedor}] {falhas[-1]}; tento o src da tela")
+            try:
+                corpo = baixar(cliente.ctx, cliente.page, src,
+                               float((cliente.ajustes or {}).get("download_timeout", 120)))
+                como = "src_da_tela"
+            except ImagemFalhou as exc:
+                raise ImagemFalhou("; ".join(falhas + [str(exc)]), "download") from exc
     log(f"[{cliente.provedor}] imagem da resposta baixada ({como}; na tela "
         f"{visto.get('w')}x{visto.get('h')}, {len(corpo)} bytes)")
     prova = {"comprovada": True, "metodo": "turno_na_casa", "forca": "casa",
