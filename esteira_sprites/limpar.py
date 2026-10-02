@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from painel.sprites import receita
+from painel.sprites import fundo_auto, receita
 
 from . import ficha, prompt
 
@@ -45,6 +45,10 @@ def limpar(item_id: str) -> bool:
         with Image.open(origem) as imagem:
             res = receita.processar(imagem, r)
         saida = res.folha if item.get("tipo") == "folha" else res.limpo
+        # a IA as vezes ignora o chroma pedido e desenha xadrez ou branco: o
+        # fundo automatico descobre qual e e tira (02/10/2026: 7 passaram assim)
+        saida, achado = fundo_auto.remover(saida)
+        tentativa["fundo_detectado"] = achado["tipo"]
         Image.fromarray(saida, "RGBA").save(destino, "PNG")
         tentativa["receita"] = r.para_dict()
     tentativa["caminhos"]["limpo"] = str(destino)

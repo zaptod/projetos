@@ -4,8 +4,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
-from painel.sprites import exportar, receita
+from painel.sprites import exportar, fundo_auto, receita
 
 from . import config, ficha, prompt
 from .pedir import marcar
@@ -63,6 +64,12 @@ def aprovar(item_id: str, biblioteca: str | Path | None = None) -> dict:
     prova = tentativa.get("caminhos", {}).get("prova")
     if not prova or not Path(prova).is_file():
         raise ValueError("recusa sem prova do carteiro")
+    if not prompt.opaco(dados.get("item") or {}):
+        # nunca exporta com o fundo grudado (02/10/2026: 7 passaram e foram a Vila)
+        with Image.open(tentativa["caminhos"]["limpo"]) as imagem:
+            sobra = fundo_auto.sobra_de_fundo(np.asarray(imagem.convert("RGBA")))
+        if sobra > 0.02:
+            raise ValueError(f"fundo grudado: {sobra:.0%} da borda continua opaca; limpe antes")
     if dados.get("perfil", config.PERFIL) == "vila":
         saida = _exportar_vila(dados, prova, biblioteca)
         dados["estado"] = "na_biblioteca"

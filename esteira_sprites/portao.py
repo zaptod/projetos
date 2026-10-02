@@ -6,12 +6,14 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from painel.sprites import medidas
+from painel.sprites import fundo_auto, medidas
 
 from . import animacao, ficha, prompt
 
 LIMITE_FRANJA = 0
 LIMITE_PONTINHOS = 0
+# borda que continua opaca depois da limpeza = fundo grudado (02/10/2026)
+LIMITE_FUNDO = 0.02
 LIMITE_PROPORCAO = 0.10
 LIMITE_COSTURA_FATOR = 3.0   # textura opaca: emenda ate 3x o salto entre vizinhos
 LIMITE_COSTURA_MIN = 12.0    # ...e nunca reprova abaixo disto (niveis 0..255)
@@ -96,6 +98,10 @@ def validar(item: dict, caminho: str | Path) -> dict:
     erros = []
     if not valores["transparencia"]:
         erros.append("nao sobrou transparencia (0 pixels alfa=0)")
+    sobra = fundo_auto.sobra_de_fundo(arr)
+    valores["fundo_na_borda"] = round(sobra, 3)
+    if sobra > LIMITE_FUNDO:
+        erros.append(f"fundo grudado: {sobra:.0%} da borda continua opaca (limite {LIMITE_FUNDO:.0%})")
     total_franja = franja["visivel"] + franja["oculta"]
     if total_franja > LIMITE_FRANJA:
         erros.append(f"franja de chroma: {total_franja} px (limite {LIMITE_FRANJA})")
