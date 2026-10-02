@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-02T01:06:00",
+      "evento": "2026-10-02T00:48:39",
+      "linha": 108,
+      "nota": "aplicado: mestra aprovada + lotes P1 com o estilo; habitante bolinha no inventário",
+      "opcao": "anime",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Medido na esteira (fundo magenta é removido por código): 1 neon tem brilho rosa que se confunde com o magenta (precisaria fundo verde); 6 pintado tem bordas texturizadas (sobra franja); 7 vetor pôs sombra no fundo e a bola de fogo encosta na borda; 8 Grok saiu pixel art e retrato (não respeita 1:1); 9 PicassoIA veio com magenta escuro (o recorte erra). 2, 3, 4 e 5 (ChatGPT) estão limpos para a esteira. Comentário pode pedir mistura (ex.: 'o 3 com as cores do 1').",
   "criado": "2026-10-02T00:37:58.662700",
   "depende_de": [],
