@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Hoje a Vila é desenhada por código e ficou feia para o padrão atual. A imagem-mestra do Neural (bolinha de capacete, contorno escuro, 2 tons) está pendente no Grimório. As animações (andar, trabalhar, conversar) passam por um validador de quadros (pés que não deslizam, tamanho que não pula, loop fechado) antes do Grok e de você.",
+  "criado": "2026-10-02T00:20:21.288280",
+  "depende_de": [],
+  "historico": [],
+  "id": "vila-estilo-novo",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Tudo com a mesma cara: app, Vila e lutas",
+      "id": "mesmo-do-neural",
+      "pede_comentario": false,
+      "rotulo": "Mesmo estilo do Neural (cartoon, contorno escuro) (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Clima de vilarejo de jogo antigo; anima bem com poucos quadros",
+      "id": "pixel",
+      "pede_comentario": false,
+      "rotulo": "Pixel art aconchegante"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Mais rico e profundo; mais caro de animar e de validar",
+      "id": "isometrico",
+      "pede_comentario": false,
+      "rotulo": "Isométrico pintado"
+    }
+  ],
+  "pergunta": "A Vila vai ser redesenhada pela esteira (ChatGPT desenha, validador + Grok conferem, você aprova). Qual o estilo?",
+  "projeto": "painel-e-vila",
+  "situacao": "pendente",
+  "titulo": "Vila repaginada: qual estilo?",
+  "vigente": null
+}

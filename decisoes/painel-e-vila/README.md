@@ -12,3 +12,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
   - ✅ **Ao girar, a Vila abre no prédio escolhido** — Abrir no prédio escolhido (como está agora) (29/09/2026) `girar-foca-o-predio`
 - ✅ **O prédio do Grok na Vila** — Manter (como está) (29/09/2026) `predio-do-grok`
 - ✅ **IAs: navegadores abertos ao mesmo tempo** — 2 (recomendado) (30/09/2026) `ias-navegadores-max`
+- ⏳ **Vila repaginada: qual estilo?** — A Vila vai ser redesenhada pela esteira (ChatGPT desenha, validador + Grok conferem, você aprova). Qual o estilo? `vila-estilo-novo`
