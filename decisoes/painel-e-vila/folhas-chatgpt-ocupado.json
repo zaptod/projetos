@@ -3,7 +3,15 @@
   "contexto": "Hoje (02/10 10h) a criação de histórias segura a conta do ChatGPT por ~4 h por história (o estoque de histórias está em meio dia, então ela vai rodar o dia todo). As folhas animadas (habitantes da Vila, acertos e efeitos do palco) são do ChatGPT, por decisão sua, e ficam paradas enquanto isso. As peças paradas (prédios, chão) e o juiz vão pelo Gemini e já voltaram a andar. Para terminar os sprites hoje, alguém tem de fazer as folhas.",
   "criado": "2026-10-02T10:06:13.888688",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-02T10:52:07",
+      "opcao": "gemini-cobre",
+      "origem": "app"
+    }
+  ],
   "id": "folhas-chatgpt-ocupado",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Quando a criação de histórias está com o ChatGPT, quem faz as folhas animadas?",
   "projeto": "painel-e-vila",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Folhas de sprite com o ChatGPT ocupado pelas histórias",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-02T10:52:07",
+    "opcao": "gemini-cobre"
+  }
 }
