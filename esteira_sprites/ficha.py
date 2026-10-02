@@ -28,7 +28,7 @@ def ler(item_id: str) -> dict | None:
 
 
 def nova(item: dict) -> dict:
-    return {"item_id": item["id"], "item": item, "estado": "pedido",
+    return {"item_id": item["id"], "item": item, "perfil": config.PERFIL, "estado": "pedido",
             "tentativas": [], "criado_em": agora(), "atualizado_em": agora()}
 
 

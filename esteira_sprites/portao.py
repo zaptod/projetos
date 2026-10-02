@@ -8,11 +8,13 @@ from PIL import Image
 
 from painel.sprites import medidas
 
-from . import ficha, prompt
+from . import animacao, ficha, prompt
 
 LIMITE_FRANJA = 0
 LIMITE_PONTINHOS = 0
 LIMITE_PROPORCAO = 0.10
+LIMITE_COSTURA_FATOR = 3.0   # textura opaca: emenda ate 3x o salto entre vizinhos
+LIMITE_COSTURA_MIN = 12.0    # ...e nunca reprova abaixo disto (niveis 0..255)
 
 
 def _arr(caminho: str) -> np.ndarray:
@@ -46,8 +48,35 @@ def _folha(arr: np.ndarray) -> tuple[list[str], dict]:
     return erros, valores
 
 
+def _costura(arr: np.ndarray) -> tuple[float, float]:
+    """(salto na emenda, salto tipico entre vizinhos), em niveis de 0..255."""
+    rgb = arr[..., :3].astype(np.float32)
+    emenda = max(float(np.abs(rgb[:, 0] - rgb[:, -1]).mean()),
+                 float(np.abs(rgb[0] - rgb[-1]).mean()))
+    tipico = max(float(np.abs(np.diff(rgb, axis=1)).mean()),
+                 float(np.abs(np.diff(rgb, axis=0)).mean()))
+    return round(emenda, 2), round(tipico, 2)
+
+
+def _validar_opaco(arr: np.ndarray) -> dict:
+    """Textura opaca (chao, caminho): sem chroma; tem de emendar nos lados."""
+    emenda, tipico = _costura(arr)
+    limite = max(LIMITE_COSTURA_FATOR * tipico, LIMITE_COSTURA_MIN)
+    valores = {"transparentes": int((arr[..., 3] < 255).sum()),
+               "costura": emenda, "vizinhos": tipico}
+    erros = []
+    if valores["transparentes"]:
+        erros.append(f"textura opaca com {valores['transparentes']} px transparentes (limite 0)")
+    if emenda > limite:
+        erros.append(f"a textura nao emenda: salto de {emenda:.1f} na costura contra {tipico:.1f} "
+                     f"entre vizinhos (limite {limite:.1f})")
+    return {"aprovado": not erros, "erros": erros, "medidas": valores}
+
+
 def validar(item: dict, caminho: str | Path) -> dict:
     arr = _arr(str(caminho))
+    if prompt.opaco(item):
+        return _validar_opaco(arr)
     alfa = arr[..., 3]
     cor_hex = prompt.fundo_do(item)
     cor = [int(cor_hex[i:i + 2], 16) for i in (1, 3, 5)]
@@ -76,11 +105,34 @@ def validar(item: dict, caminho: str | Path) -> dict:
         erros.append(f"pontinhos soltos: {pontos} (limite {LIMITE_PONTINHOS})")
     if borda:
         erros.append(f"peca encosta na borda: {borda} px")
-    if item.get("tipo") == "folha":
+    if prompt.animacao(item) is not None:
+        # folha em ciclo: o validador de animacao conta os quadros pela
+        # grade do item e mede ancora, escala, paleta, loop e contorno
+        anim_erros, anim_valores = animacao.validar(arr, item)
+        erros.extend(anim_erros)
+        valores["animacao"] = anim_valores
+    elif item.get("tipo") == "folha":
         folhas, valores_folha = _folha(arr)
         erros.extend(folhas)
         valores.update(valores_folha)
+    elif item.get("contorno"):
+        falta = animacao.contorno_falta(arr)
+        valores["contorno_falta"] = falta
+        if falta > animacao.CONTORNO_FALTA_MAX:
+            erros.append(f"contorno escuro falta em {falta * 100:.0f}% do perimetro "
+                         f"(limite {animacao.CONTORNO_FALTA_MAX * 100:.0f}%)")
     return {"aprovado": not erros, "erros": erros, "medidas": valores}
+
+
+def _previa(dados: dict, tentativa: dict) -> None:
+    """GIF/WebP do ciclo para o juiz e a tela de conferir (mesmo reprovado)."""
+    item = dados["item"]
+    if prompt.animacao(item) is None:
+        return
+    destino = ficha.caminho(dados["item_id"]).parent / "previa"
+    saida = animacao.previa(_arr(tentativa["caminhos"]["limpo"]), item, destino)
+    tentativa["caminhos"]["previa_gif"] = saida.get("gif", "")
+    tentativa["caminhos"]["previa_webp"] = saida.get("webp", "")
 
 
 def passar(item_id: str) -> bool:
@@ -89,6 +141,7 @@ def passar(item_id: str) -> bool:
         return False
     tentativa = dados["tentativas"][-1]
     resultado = validar(dados["item"], tentativa["caminhos"]["limpo"])
+    _previa(dados, tentativa)
     tentativa["medidas"] = resultado["medidas"]
     tentativa["portao"] = resultado
     if resultado["aprovado"]:

@@ -2,23 +2,32 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 from collections import Counter
 from pathlib import Path
 
+import numpy as np
 from ias import correio
+from PIL import Image
 
-from . import config, ficha
+from . import animacao, config, ficha, prompt
 from .aprovar import aprovar, descartar, refazer
 from .colher import colher
 from .juiz import colher as colher_juiz
 from .juiz import perguntar
 from .limpar import limpar
 from .pedir import pedir
-from .portao import passar
+from .portao import passar, validar
+
+
+MESTRA_COMPARTILHADA = ("a Vila usa a imagem-mestra do Neural (decisao painel-e-vila/"
+                        "vila-estilo-novo): gere e aprove pelo perfil palco")
 
 
 def mestra() -> dict:
+    if config.PERFIL != "palco":
+        raise ValueError(MESTRA_COMPARTILHADA)
     texto = ("Imagem-mestra aprovada para sprites pixel-art de Neural Fights: "
              "bolinha com rosto, arma, projetil e impacto; contorno #14141A, "
              "cel de 2 tons, luz superior esquerda, fundo magenta #FF00FF.")
@@ -26,6 +35,8 @@ def mestra() -> dict:
 
 
 def mestra_aprovar(caminho: str) -> Path:
+    if config.PERFIL != "palco":
+        raise ValueError(MESTRA_COMPARTILHADA)
     origem = Path(caminho)
     if not origem.is_file():
         raise ValueError("imagem-mestra inexistente")
@@ -37,9 +48,14 @@ def mestra_aprovar(caminho: str) -> Path:
 
 def lote(prioridade: str, n: int) -> list[str]:
     escolhidos = []
+    if config.perfil().exige_mestra and not config.mestra().is_file():
+        # sem a mestra, cada pedido sairia num estilo; nada e pedido
+        print(f"perfil {config.PERFIL}: espera a imagem-mestra aprovada ({config.mestra()})")
+        return escolhidos
     itens = sorted(config.itens(), key=lambda i: (i.get("ordem") is None, i.get("ordem") or 999999))
     for item in itens:
-        if item.get("prioridade") != prioridade or item.get("bloqueio") or item.get("opcional"):
+        if (item.get("prioridade") != prioridade or item.get("bloqueio") or item.get("opcional")
+                or item.get("externo")):
             continue
         existente = ficha.ler(item["id"])
         if existente and existente.get("estado") in ("pedido", "gerado", "limpo", "medido", "julgado", "a_conferir", "aprovado", "na_biblioteca"):
@@ -76,9 +92,26 @@ def status() -> Counter:
                    if (d := ficha.ler(i["id"])))
 
 
+def medir(item_id: str, png: str) -> dict:
+    """O portao num png solto, com a previa ao lado (`<nome>_previa.gif`)."""
+    item = config.item(item_id)
+    resultado = validar(item, png)
+    if prompt.animacao(item) is not None:
+        arr = np.asarray(Image.open(png).convert("RGBA"))
+        resultado["previa"] = animacao.previa(arr, item, Path(png).with_name(Path(png).stem + "_previa"))
+    return resultado
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Esteira de sprites")
+    parser.add_argument("--perfil", choices=sorted(config.PERFIS), default="palco",
+                        help="biblia de estilo, pasta das fichas e destino (padrao: palco)")
+    parser.add_argument("--inventario", default=None,
+                        help="outro inventario JSON (padrao: o do perfil)")
     sub = parser.add_subparsers(dest="comando", required=True)
+    p_medir = sub.add_parser("medir", help="passa um png pelo portao sem ficha (calibrar)")
+    p_medir.add_argument("item")
+    p_medir.add_argument("png")
     sub.add_parser("mestra")
     mestre = sub.add_parser("mestra-aprovar")
     mestre.add_argument("caminho")
@@ -97,7 +130,10 @@ def main(argv: list[str] | None = None) -> int:
     p_descartar = sub.add_parser("descartar")
     p_descartar.add_argument("item")
     args = parser.parse_args(argv)
-    if args.comando == "mestra":
+    config.usar(args.perfil, args.inventario)
+    if args.comando == "medir":
+        print(json.dumps(medir(args.item, args.png), ensure_ascii=False, indent=2))
+    elif args.comando == "mestra":
         print(mestra()["id"])
     elif args.comando == "mestra-aprovar":
         print(mestra_aprovar(args.caminho))

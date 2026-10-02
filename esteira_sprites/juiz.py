@@ -8,7 +8,11 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 from ias import correio
 
-from . import config, ficha
+from . import config, ficha, prompt
+
+TEXTO_ANIMACAO = ("Isto e uma folha de ANIMACAO em ciclo (cada linha da folha e um ciclo; o GIF "
+                  "anexo toca os ciclos lado a lado). Liste o que esta errado NA ANIMACAO "
+                  "(continuidade, pes deslizando, pulos de tamanho, membros que somem).")
 
 
 def _xadrez(origem: str, destino: Path) -> Path:
@@ -41,9 +45,10 @@ def _controle(dados: dict) -> bool:
 
 def _fichas() -> list[dict]:
     saida = []
-    if not config.RAIZ.exists():
+    raiz = config.pasta_do_perfil()
+    if not raiz.exists():
         return saida
-    for caminho in config.RAIZ.glob("*/ficha.json"):
+    for caminho in raiz.glob("*/ficha.json"):
         try:
             saida.append(json.loads(caminho.read_text(encoding="utf-8")))
         except ValueError:
@@ -67,6 +72,12 @@ def perguntar(item_id: str) -> bool:
     texto = ("Liste o que esta errado neste sprite; nunca responda se esta bom. "
              "Responda JSON estrito: {\"defeitos\":[{\"o_que\":str,\"gravidade\":\"leve|media|grave\"}],"
              "\"notas\":{\"silhueta\":0-3,\"estilo\":0-3,\"cor_do_elemento\":0-3,\"continuidade\":0-3,\"recorte\":0-3}}.")
+    if prompt.animacao(dados["item"]) is not None:
+        # animacao: a folha E o ciclo tocando (GIF), e a pergunta e da animacao
+        gif = tentativa.get("caminhos", {}).get("previa_gif")
+        if gif and Path(gif).is_file() and not controle:
+            anexos.insert(1, gif)
+        texto = TEXTO_ANIMACAO + " " + texto
     if controle:
         texto += " Este e um controle deliberadamente estragado; aponte o defeito grave."
     mensagem = correio.enviar("grok", texto, de="esteira_sprites", anexos=anexos)
