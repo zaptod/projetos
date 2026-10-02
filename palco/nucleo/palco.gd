@@ -21,8 +21,8 @@ const EXEMPLO := "res://exemplos/exemplo.timeline.json"
 const ESTILO := "res://biblioteca/estilo.tres"
 const PX := UtilPalco.PX_POR_M
 # Eventos que viram efeito na tela (a lista mora em Timeline). Os outros
-# (tell, plano, virada, combo, texto, movimento, projetil_fim...) sao da
-# edicao/HUD; as pecas recebem todos em evento().
+# (tell, plano, virada, combo, texto...) sao da edicao/HUD; as pecas recebem
+# todos em evento().
 const EVENTOS_COM_VFX := Timeline.EVENTOS_COM_VFX
 const TREMOR_TIER := {"light": 0.10, "medium": 0.2, "heavy": 0.38, "colossal": 0.6}
 # Marcas da animacao "golpe" de uma arma, por fase (1..5). Portugues ou ingles.
@@ -327,16 +327,16 @@ func _desenhar_quadro(f: int) -> void:
 		"zoom": zoom, "px_por_m": PX, "palco": self, "timeline": tl, "corte": corte, "tela": tela,
 		"passo": p}
 
-	var status := {"p1": [], "p2": []}
+	var efeitos_lutador := {"p1": [], "p2": []}
 	for e in tl.vivas("efeitos", i):
-		if e.get("tipo") == "status" and status.has(e.get("alvo")):
-			var a := tl.amostra_trilha(e, p)
-			status[e["alvo"]].append({"status": e.get("status"), "cor": e.get("cor"), "estilo": e.get("estilo"),
-				"prioridade": e.get("prioridade", 0), "rest": a.get("rest", 0.0)})
+		if efeitos_lutador.has(e.get("alvo")):
+			var efeito: Dictionary = e.duplicate(true)
+			efeito.merge(tl.amostra_trilha(e, p), true)
+			efeitos_lutador[e["alvo"]].append(efeito)
 	var amostras := {}
 	for slot in ["p1", "p2"]:
 		var s := tl.lutador(slot, p)
-		s["_status"] = status[slot]
+		s["_efeitos"] = efeitos_lutador[slot]
 		amostras[slot] = s
 		var no = lut[slot]
 		no.position = Vector2(float(s["x"]), float(s["y"])) * PX
@@ -546,7 +546,21 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 	# O KO vai para o CHAO (abaixo dos lutadores): no A/B de 28/09 a explosao
 	# por cima cobria o corpo caido, que e o que o desfecho tem de mostrar.
 	var camada := camada_solo if tipo == "ko" else camada_efeitos
-	var no = _instanciar(bib.evento(tipo, str(ev.get("tier", ""))), camada)
+	var variante := ""
+	if tipo == "movimento":
+		variante = str(ev.get("gatilho", ""))
+	elif tipo == "projetil_fim":
+		variante = str(ev.get("motivo", ""))
+	elif tipo == "agarrao_desfecho":
+		variante = str(ev.get("modo", ""))
+	elif tipo == "acerto":
+		if bool(ev.get("critico", false)):
+			variante = "critico"
+		else:
+			var arma: Dictionary = cab.get(str(ev.get("autor", "")), {}).get("arma", {})
+			var tipo_arma := UtilPalco.slug(str(arma.get("tipo", "")))
+			variante = "projetil_arma" if tipo_arma in ["arremesso", "arco"] else str(arma.get("arquetipo_animacao", ""))
+	var no = _instanciar(bib.evento(tipo, str(ev.get("tier", "")), str(ev.get("elemento", "")), variante), camada)
 	no.position = pos
 	if no.has_method("configurar"):
 		no.configurar(ev, ctx)

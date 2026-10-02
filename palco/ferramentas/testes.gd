@@ -104,6 +104,20 @@ func _testar_biblioteca() -> void:
 	_checar(str(ef.escolhas.get("efeitos:area/ELEMENTO NOVO/", "")).ends_with("objetos/area/_padrao.tscn"), "efeito: elemento sem arte cai no padrao do TIPO")
 	ef.objeto("orbe", "FOGO", "")
 	_checar(str(ef.escolhas.get("efeitos:orbe/FOGO/", "")).ends_with("objetos/_padrao.tscn"), "efeito: tipo sem arte cai no padrao geral")
+	# Eventos chegam com variantes da timeline; a arte especifica vem antes da
+	# de elemento, tier e do padrao. Sem a busca, estas pecas nunca eram vistas.
+	var acerto := Biblioteca.candidatos_evento("acerto", "heavy", "", "critico")
+	_checar(acerto[0] == "eventos/acerto_critico" and acerto[1] == "" and acerto[2] == "eventos/acerto_heavy" and acerto[-1] == "eventos/_padrao",
+		"evento: critico > tier > padrao")
+	var explosao := Biblioteca.candidatos_evento("explosao", "", "GRAVITACAO")
+	_checar(explosao[0] == "" and explosao[1] == "eventos/explosao_gravitacao" and explosao[-1] == "eventos/_padrao",
+		"evento: elemento > padrao")
+	var movimento := Biblioteca.candidatos_evento("movimento", "", "", "aterrissagem")
+	_checar(movimento[0] == "eventos/movimento_aterrissagem" and movimento[-1] == "eventos/_padrao",
+		"evento: gatilho de movimento > padrao")
+	var peca_lutador := Biblioteca.candidatos_peca_lutador("buffs", "Velocidade Arcana")
+	_checar(peca_lutador[0] == "buffs/velocidade_arcana" and peca_lutador[1] == "buffs/_padrao",
+		"lutador: aura da skill > padrao")
 	for tipo in ["projetil", "area", "beam"]:
 		for el in UtilPalco.PALETAS:
 			if el == "DEFAULT":
@@ -350,10 +364,11 @@ func _testar_revisao_3() -> void:
 	var dz := _doc(10)
 	dz["revisao"] = 0
 	_checar(not Timeline.de_dicionario(dz).validar().is_empty(), "revisao 0 recusada")
-	# explosao e choque viram efeito com o que a biblioteca ja tem; texto e
-	# movimento nao pedem peca
+	# explosao, choque, movimento e fim de projetil viram efeito; texto fica
+	# para a edicao/HUD.
 	_checar(Timeline.EVENTOS_COM_VFX.has("explosao") and Timeline.EVENTOS_COM_VFX.has("choque"), "explosao e choque desenham")
-	_checar(not Timeline.EVENTOS_COM_VFX.has("texto") and not Timeline.EVENTOS_COM_VFX.has("movimento"), "texto e movimento nao desenham")
+	_checar(Timeline.EVENTOS_COM_VFX.has("movimento") and Timeline.EVENTOS_COM_VFX.has("projetil_fim") and not Timeline.EVENTOS_COM_VFX.has("texto"),
+		"movimento e projetil_fim desenham; texto nao")
 	var cena: PackedScene = load("res://biblioteca/efeitos/eventos/_padrao.tscn")
 	for ev in [novos[2], novos[3], {"i": 1, "tipo": "explosao", "origem": "area", "x": 0.0, "y": 0.0, "cor": 0xFF6432, "tamanho": 2.0}]:
 		var no = cena.instantiate()

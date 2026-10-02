@@ -155,10 +155,12 @@ Para um render só, sem mexer no arquivo:
 
 | peça | arquivo (ordem de busca) |
 |---|---|
-| efeito de evento | `efeitos/eventos/<tipo>_<tier>.tscn` > `efeitos/eventos/<tipo>.tscn` > `efeitos/eventos/_padrao.tscn` (tipos: `acerto`, `bloqueio`, `parry`, `esquiva`, `dash`, `parede`, `wall_splat`, `ko`, `skill`, `escudo_quebrou`, `cura`; tiers: `light`, `medium`, `heavy`, `colossal`) |
+| efeito de evento | `efeitos/eventos/<tipo>_<variante>.tscn` > `<tipo>_<elemento>.tscn` > `<tipo>_<tier>.tscn` > `<tipo>.tscn` > `_padrao.tscn`. Variante: `critico`, modo de `agarrao_desfecho`, arquétipo de `acerto`, `gatilho` de `movimento` ou `motivo` de `projetil_fim`; elemento vale para `skill` e `explosao`. |
 | projétil, área, beam... | `efeitos/skills/<skill>.tscn` > `efeitos/objetos/<tipo>/<elemento>.tscn` > `efeitos/objetos/<tipo>/_padrao.tscn` > `efeitos/objetos/_padrao.tscn` |
 | HUD (nome, vida, plano) | `hud/_padrao.tscn` (liga com `--hud`) |
 | arena | `arenas/<nome>.tscn` (ex. `salao_da_torre.tscn`) > `arenas/temas/<tema>.tscn` > `arenas/_padrao.tscn` |
+
+As camadas de um lutador usam `lutadores/estados/<nome>.tscn`, `status/<nome>.tscn`, `buffs/<nome>.tscn`, `canais/<nome>.tscn` e `transformacoes/<nome>.tscn`; em cada pasta, `_padrao.tscn` é a reserva. Sem cena nessas pastas, o desenho procedimental atual continua visível.
 
 **Efeitos por tipo × elemento (16E).** Projétil, área e beam têm uma cena
 por elemento (os 12: `fogo`, `gelo`, `raio`, `trevas`, `luz`, `natureza`,

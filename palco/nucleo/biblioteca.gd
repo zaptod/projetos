@@ -10,7 +10,9 @@ extends RefCounted
 ##   armas    estilos/<estilo> > tipos/<tipo> > _padrao
 ##   lutador  nomes/<nome> > classes/<classe> > classes/<classe sem parenteses> > _padrao
 ##   objeto   skills/<skill> > <tipo>/<elemento> > <tipo>/_padrao > _padrao
-##   evento   eventos/<tipo>_<tier> > eventos/<tipo> > eventos/_padrao
+##   evento   eventos/<tipo>_<variante> > eventos/<tipo>_<elemento> >
+##            eventos/<tipo>_<tier> > eventos/<tipo> > eventos/_padrao
+##   peca de lutador  lutadores/<categoria>/<nome> > <categoria>/_padrao
 ##   arena    <nome> > temas/<tema> > _padrao
 ##   hud      _padrao
 ##   som      sons/<id>.wav|.ogg|.mp3 (so sobrepoe a biblioteca do jogo)
@@ -105,12 +107,36 @@ func objeto(tipo: String, elemento: String, nome: String) -> PackedScene:
 	])
 
 
-func evento(tipo: String, tier: String) -> PackedScene:
-	return _cena("efeitos", "evento/%s/%s" % [tipo, tier], [
-		"eventos/%s_%s" % [tipo, tier] if tier != "" else "",
-		"eventos/" + tipo,
+static func candidatos_evento(tipo: String, tier := "", elemento := "", variante := "") -> Array:
+	var nome := UtilPalco.slug(tipo)
+	return [
+		"eventos/%s_%s" % [nome, UtilPalco.slug(variante)] if variante != "" else "",
+		"eventos/%s_%s" % [nome, UtilPalco.slug(elemento)] if elemento != "" else "",
+		"eventos/%s_%s" % [nome, UtilPalco.slug(tier)] if tier != "" else "",
+		"eventos/" + nome,
 		"eventos/_padrao",
-	])
+	]
+
+
+func evento(tipo: String, tier := "", elemento := "", variante := "") -> PackedScene:
+	return _cena("efeitos", "evento/%s/%s/%s/%s" % [tipo, tier, elemento, variante],
+		candidatos_evento(tipo, tier, elemento, variante))
+
+
+static func candidatos_peca_lutador(categoria: String, nome: String) -> Array:
+	var pasta := UtilPalco.slug(categoria)
+	return [
+		"%s/%s" % [pasta, UtilPalco.slug(nome)] if nome != "" else "",
+		"%s/_padrao" % pasta,
+	]
+
+
+func tem_peca_lutador(categoria: String, nome: String) -> bool:
+	return not _achar("lutadores", candidatos_peca_lutador(categoria, nome)).is_empty()
+
+
+func peca_lutador(categoria: String, nome: String) -> PackedScene:
+	return _cena("lutadores", "peca/%s/%s" % [categoria, nome], candidatos_peca_lutador(categoria, nome))
 
 
 func arena(nome: String, tema: String) -> PackedScene:

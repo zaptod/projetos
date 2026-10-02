@@ -10,7 +10,7 @@ Cada linha saiu do código ou dos dados; o campo `fonte` do JSON diz de onde. A 
 - **Só 1 tem arte da esteira**: o projétil de FOGO, a folha do piriri, que ainda está sem commit. Outros **85 têm arte CC0 provisória**, a trocar.
 - **132 são desenho de código** e **295 não têm nada**. Faltam **427**.
 - **82 são opcionais**: uma peça compartilhada (tipo×elemento, por exemplo) já cobre. Sem eles, o mínimo é **431 itens**.
-- **178 itens pedem uma mudança pequena no palco** antes de aparecer (o palco ainda não procura o nome). **28 estão bloqueados** por falta de dado na timeline: a forma 2 da Transformável, os encantamentos e a corrente em elos, que espera a revisão 4. Tudo está na seção "Mudanças de busca".
+- **65 itens ainda pedem uma mudança pequena no palco** antes de aparecer (o palco ainda não procura o nome). **28 estão bloqueados** por falta de dado na timeline: a forma 2 da Transformável, os encantamentos e a corrente em elos, que espera a revisão 4. Tudo está na seção "Mudanças de busca".
 
 | prioridade | total | ia | cc0 | vetor | nenhuma | folhas | opcionais | bloqueados |
 |---|---|---|---|---|---|---|---|---|
@@ -79,14 +79,14 @@ hud      _padrao
 
 ## Mudanças de busca que destravam itens
 
-Hoje o palco não acha estes itens pelo nome. Cada linha é uma mudança pequena no palco ou na timeline, para o builds fazer. Este inventário não mexe em código.
+As linhas sem **feito** ainda pedem uma mudança pequena no palco ou na timeline. Este inventário não mexe em código.
 
 | o que falta | itens que destrava | onde |
 |---|---|---|
-| evento por **elemento**: `eventos/<tipo>_<elemento>` (para `skill` e `explosao`, que já trazem `elemento`) | 13 impactos e 13 conjurações por elemento | `biblioteca.gd evento()` |
-| evento por **campo**: `eventos/acerto_critico`, `eventos/agarrao_desfecho_<modo>`, `eventos/acerto_<arquétipo do autor>` | crítico, 4 desfechos de agarrão, 4 impactos por arma | `biblioteca.gd evento()` + `palco.gd _evento` |
-| `movimento` e `projetil_fim` em `EVENTOS_COM_VFX`, com busca por `gatilho`/`motivo` | 6 de movimento e 2 de fim de projétil | `timeline.gd`, `palco.gd` |
-| o lutador carregar peças de `lutadores/{estados,status,buffs,transformacoes,canais}/` | corpo, 10 estados, 29 status, 32 auras de skill | `lutador_padrao.gd` |
+| **feito:** evento por **elemento**: `eventos/<tipo>_<elemento>` (para `skill` e `explosao`, que já trazem `elemento`) | 13 impactos e 13 conjurações por elemento | `biblioteca.gd evento()` |
+| **feito:** evento por **campo**: `eventos/acerto_critico`, `eventos/agarrao_desfecho_<modo>`, `eventos/acerto_<arquétipo do autor>` | crítico, 4 desfechos de agarrão, 4 impactos por arma | `biblioteca.gd evento()` + `palco.gd _evento` |
+| **feito:** `movimento` e `projetil_fim` em `EVENTOS_COM_VFX`, com busca por `gatilho`/`motivo` | 6 de movimento e 2 de fim de projétil | `timeline.gd`, `palco.gd` |
+| **feito:** o lutador carrega peças de `lutadores/{estados,status,buffs,transformacoes,canais}/` | 9 estados emitidos, 29 status, 32 auras de skill | `lutador_padrao.gd` |
 | o rosto trocar 7 extras vetoriais por `peca()` | 7 peças do rosto | `rosto.gd` |
 | o orbe da Mágica usar o **estilo** da arma do dono (hoje sai sem nome e DEFAULT; o dono já traz `arma.estilo` no cabeçalho) | 6 orbes por estilo | `palco.gd _objetos` (ou `timeline.py`) |
 | o projétil de arma usar o **estilo** do dono (Kunai, Bumerangue e Machados saem como `faca`; a besta, como `flecha`) | virote e arte própria em voo por estilo | `palco.gd _objetos` (ou `timeline.py`) |
@@ -394,7 +394,7 @@ São as 118 skills do contrato (`catalogo_de_contratos()`), por tipo: 34 PROJETI
 - impacto: 13 folhas;
 - conjuração: 1 folha genérica tingida.
 
-Arte **própria** só onde a forma não é "bola/círculo de energia": 40 skills com forma própria, 5 erupções, as 3 explosões de projétil-área, os dashes, as invocações e as barreiras. Buff, transformação e canal são **auras sobre o lutador**, que o palco ainda não procura.
+Arte **própria** só onde a forma não é "bola/círculo de energia": 40 skills com forma própria, 5 erupções, as 3 explosões de projétil-área, os dashes, as invocações e as barreiras. Buff, transformação e canal são **auras sobre o lutador**, procuradas em `lutadores/{buffs,transformacoes,canais}/`.
 
 Ícone de skill: o palco e o HUD não mostram ícone, então não entra. Se o HUD mostrar o kit um dia, são 118 ícones de 128×128.
 

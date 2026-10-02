@@ -15,9 +15,11 @@ const FLAG_CONGELADO := 1 << 3
 const FLAG_INVENCIVEL := 1 << 4
 const FLAG_CANALIZANDO := 1 << 5
 const FLAG_ADRENALINA := 1 << 6
+const FLAG_AGARRADO := 1 << 7
 const FLAG_INTANGIVEL := 1 << 9
 const FLAG_SUPER_ARMOR := 1 << 10
 const FLAG_BLOQUEANDO := 1 << 11
+const FLAG_TEMPO_PARADO := 1 << 12
 const FLAG_DORMINDO := 1 << 13
 const FLAG_TRANSFORMADO := 1 << 14
 const FLAG_OCULTO := 1 << 16
@@ -30,6 +32,7 @@ var _s: Dictionary = {}
 var _ctx: Dictionary = {}
 var _expressoes: Array = []
 var _status: Array = []
+var _pecas := {}
 
 
 func configurar(dados: Dictionary, ctx: Dictionary) -> void:
@@ -45,8 +48,58 @@ func configurar(dados: Dictionary, ctx: Dictionary) -> void:
 func atualizar(amostra: Dictionary, ctx: Dictionary) -> void:
 	_s = amostra
 	_ctx = ctx
-	_status = amostra.get("_status", [])
+	_status = []
+	for efeito in amostra.get("_efeitos", []):
+		if efeito.get("tipo") == "status":
+			_status.append(efeito)
+	_sincronizar_pecas()
 	queue_redraw()
+
+
+func _sincronizar_pecas() -> void:
+	var desejadas := {}
+	for par in [
+		[FLAG_ATORDOADO, "atordoado"], [FLAG_BLOQUEANDO, "bloqueando"],
+		[FLAG_SUPER_ARMOR, "super_armor"], [FLAG_AGARRADO, "agarrado"],
+		[FLAG_TEMPO_PARADO, "tempo_parado"], [FLAG_CONGELADO, "congelado"],
+		[FLAG_ADRENALINA, "adrenalina"], [FLAG_DORMINDO, "dormindo"],
+	]:
+		if _flag(int(par[0])):
+			desejadas["estados/" + str(par[1])] = {"tipo": "estado", "nome": par[1]}
+	if float(_s.get("escudo", 0.0)) > 0.0:
+		desejadas["estados/escudo_bolha"] = {"tipo": "estado", "nome": "escudo_bolha"}
+	for efeito in _s.get("_efeitos", []):
+		var categoria := {"status": "status", "buff": "buffs", "canal": "canais", "transformacao": "transformacoes"}.get(efeito.get("tipo"), "")
+		var nome := str(efeito.get("status", efeito.get("nome", "")))
+		if categoria != "" and nome != "":
+			desejadas[categoria + "/" + UtilPalco.slug(nome)] = efeito
+	for chave in desejadas:
+		var partes: PackedStringArray = str(chave).split("/")
+		var categoria: String = partes[0]
+		var nome: String = partes[1]
+		if not _pecas.has(chave):
+			var palco = _ctx.get("palco")
+			var bib: Biblioteca = palco.bib if palco != null else null
+			# Sem arte (nem _padrao), o desenho procedural abaixo continua sendo
+			# a reserva visual; quando a cena chegar, ela sobrepoe esse desenho.
+			if bib == null or not bib.tem_peca_lutador(categoria, nome):
+				continue
+			var nova = bib.peca_lutador(categoria, nome).instantiate()
+			add_child(nova)
+			_pecas[chave] = nova
+			if nova.has_method("configurar"):
+				nova.configurar(desejadas[chave], _ctx)
+		var peca = _pecas.get(chave)
+		if peca != null:
+			var ref = peca.get("raio_ref")
+			peca.position = Vector2(0, -float(_s.get("z", 0.0)) * UtilPalco.PX_POR_M)
+			peca.scale = Vector2.ONE * raio_px / maxf(1.0, float(ref) if ref != null else 100.0)
+			if peca.has_method("atualizar"):
+				peca.atualizar(desejadas[chave], _ctx)
+	for chave in _pecas.keys():
+		if not desejadas.has(chave):
+			_pecas[chave].queue_free()
+			_pecas.erase(chave)
 
 
 func _flag(bit: int) -> bool:

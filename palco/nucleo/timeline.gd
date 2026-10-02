@@ -20,7 +20,8 @@ const EVENTOS_COM_VFX := {
 	"acerto": true, "dano": true, "cura": true, "bloqueio": true, "parry": true,
 	"esquiva": true, "desvio": true, "dash": true, "parede": true, "wall_splat": true,
 	"ko": true, "escudo_quebrou": true, "skill": true, "agarrao_desfecho": true,
-	"obstaculo": true, "explosao": true, "choque": true,
+	"obstaculo": true, "explosao": true, "choque": true, "movimento": true,
+	"projetil_fim": true,
 }
 # Campos obrigatorios dos eventos da revisao 3 (o mesmo que
 # timeline.CAMPOS_EVENTOS_R3 no Python). Timeline antiga nao tem nenhum.
