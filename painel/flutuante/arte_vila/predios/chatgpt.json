@@ -1,0 +1,58 @@
+{
+  "id": "predio_chatgpt",
+  "tipo": "peca",
+  "quadros": 1,
+  "grade": null,
+  "animacao": null,
+  "medidas": {
+    "transparencia": 0,
+    "franja": {
+      "visivel": 0,
+      "oculta": 0
+    },
+    "linhas_de_grade": 4096,
+    "pontinhos": 0,
+    "pixels_na_borda": 8188,
+    "contorno_falta": 0.0
+  },
+  "tamanho_original": [
+    2048,
+    2048
+  ],
+  "fonte": "E:\\projetos\\outputs\\_ias\\esteira_sprites\\vila\\predio_chatgpt\\limpo.png",
+  "prova": "E:\\projetos\\outputs\\_ias\\esteira_sprites\\vila\\predio_chatgpt\\prova.json",
+  "prova_conteudo": {
+    "id": "7243c325",
+    "gerador": "gemini",
+    "arquivo": "7243c325.jpg",
+    "bytes": 2030352,
+    "sha256": "1fc3950926ee4b0427efd08c5b3f02fff7478690eb94bddb376cfaae8e40f4d9",
+    "formato": "jpg",
+    "largura": 2048,
+    "altura": 2048,
+    "gravado_em": "2026-10-02T16:20:32",
+    "prova": {
+      "comprovada": true,
+      "metodo": "turno_na_casa",
+      "forca": "casa",
+      "provedor": "gemini",
+      "casa_url": "https://gemini.google.com/app/3b31bbe584ad4e6e",
+      "turno_usuario": "Você disse Crie uma imagem na proporção 1:1. Responda só com a imagem, sem texto. Arte para a Vila do Neural F…\n\nCrie uma imagem na proporção 1:1. Responda só com a imagem, sem texto.\n\n\n\n\nArte para a ",
+      "prompt_sha256": "bdeff6073cce05bd",
+      "src": "https://lh3.googleusercontent.com/gg-dl/AHiVA1k_s0RSAG4y0xQneOD4esol4TecLy0yS9kRB_XlGewiIASLTMAx5ZjpCIWCi5py5QfHG_UIzoGMcKXEEuivS1hvbA2P9ytC9GH9Zm6YjhoWZVkEfFf9X5ddu6yNIVd7I4sCrX41mC90VgFINpXIVjEMP6kKC95UOKA6Ncr5cidO0Un8KA=s1024-rj",
+      "na_tela": [
+        1024,
+        1024
+      ],
+      "alt": ", gerada com IA",
+      "dentro_da_resposta": true,
+      "src_novo": true,
+      "imagens_antes_do_envio": 5,
+      "ignoradas_fora_da_resposta": 0,
+      "imagens_na_resposta": 1,
+      "download": "botao_tamanho_original",
+      "verificado_em": "2026-10-02T16:20:32",
+      "proporcao": "1:1"
+    }
+  }
+}
