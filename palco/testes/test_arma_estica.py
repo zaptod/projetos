@@ -48,6 +48,15 @@ def test_o_palco_estica_toda_peca_que_nao_se_desenha_no_comprimento():
     assert "static func esticar_arma(no: Node2D, comprimento_px: float)" in util
     padrao = (RAIZ / "biblioteca" / "armas" / "arma_padrao.gd").read_text(encoding="utf-8")
     assert "var desenha_comprimento := true" in padrao
+    assert "var arm_sec := {}" in palco
+    assert 'if UtilPalco.slug(str(arma.get("tipo", ""))) == "dupla":' in palco
+    assert "func _arma_segunda(" in palco
+    assert "var grip_espelhada := centro * 2.0 - grip" in palco
+    assert "var ponta_espelhada := grip_espelhada - (ponta - grip)" in palco
+    assert "if cos(no.rotation) < 0.0:" in palco
+    assert '"dupla":\n\t\t\t_lamina(L, w * 0.85, 0.28)' in padrao
+    teste = (RAIZ / "testes" / "arma_estica.gd").read_text(encoding="utf-8")
+    assert "_testar_arma_dupla()" in teste
 
 
 def _exportar_espada(pasta: Path) -> tuple[Path, Path]:

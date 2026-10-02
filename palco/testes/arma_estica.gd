@@ -54,6 +54,7 @@ func _initialize() -> void:
 			_testar_peca(cena, float(meta["comprimento_ref"]), Vector2(e[0], e[1]), Vector2(p[0], p[1]), "cena da Oficina")
 			print("cena da Oficina: conferida (", args["--cena"], ")")
 	_testar_padrao()
+	_testar_arma_dupla()
 	_testar_sem_script()
 
 	for no in lixo:
@@ -96,6 +97,16 @@ func _quadro(no: Node2D, s: Dictionary) -> void:
 	var linha := Line2D.new()
 	lixo.append(linha)
 	palco.arm = {"p1": no}
+	palco.arm_sec = {}          # a segunda lamina do teste da dupla nao vaza para os outros
+	palco.rastro = {"p1": linha}
+	palco._arma("p1", s, 0.0, false, {"t_jogo": 0.0, "estilo": palco.estilo, "quadro": 0})
+
+
+func _quadro_dupla(primeira: Node2D, segunda: Node2D, s: Dictionary) -> void:
+	var linha := Line2D.new()
+	lixo.append(linha)
+	palco.arm = {"p1": primeira}
+	palco.arm_sec = {"p1": segunda}
 	palco.rastro = {"p1": linha}
 	palco._arma("p1", s, 0.0, false, {"t_jogo": 0.0, "estilo": palco.estilo, "quadro": 0})
 
@@ -149,6 +160,23 @@ func _testar_padrao() -> void:
 	lixo.append(corrente)
 	UtilPalco.esticar_arma(corrente, 500.0)
 	_checar(corrente.scale == Vector2.ONE, "corrente: nao e esticada por escala")
+
+
+## A segunda peca de Dupla fica na outra mao, aponta para o lado oposto e
+## inverte Y ao apontar para a esquerda: assim a arte nao fica de cabeca para baixo.
+func _testar_arma_dupla() -> void:
+	var primeira := _cena_de_codigo(100.0, Vector2.ZERO).instantiate()
+	var segunda := _cena_de_codigo(100.0, Vector2.ZERO).instantiate()
+	lixo.append(primeira)
+	lixo.append(segunda)
+	var s := _amostra(Vector2(1.0, 0.0), Vector2(3.0, 0.0))
+	s["x"] = 0.0
+	s["y"] = 0.0
+	_quadro_dupla(primeira, segunda, s)
+	_checar(_perto(segunda.position, Vector2(-100.0, 0.0)), "dupla: empunhadura espelhada fica na outra mao")
+	# a arte tem 100 px e e esticada 2x: a ponta e o ponto LOCAL (100, 0)
+	_checar(_perto(segunda.transform * Vector2(100.0, 0.0), Vector2(-300.0, 0.0)), "dupla: ponta espelhada aponta para o outro lado")
+	_checar(segunda.scale.y < 0.0, "dupla: lamina que aponta para a esquerda espelha Y")
 
 
 ## Peca SEM script (uma imagem solta): como antes, escala por 100 px.

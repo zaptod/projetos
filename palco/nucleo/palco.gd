@@ -56,6 +56,7 @@ var sons_por_quadro := {}
 var eventos_por_quadro := {}
 var lut := {}
 var arm := {}
+var arm_sec := {}          # segunda lamina da arma Dupla, espelhada na outra mao
 var cab := {}
 var rotulo := {}
 var rastro := {}
@@ -241,6 +242,14 @@ func _montar_cena(arena: Dictionary) -> void:
 			if anim != null:
 				anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 			arm[slot] = na
+			if UtilPalco.slug(str(arma.get("tipo", ""))) == "dupla":
+				var segunda = _instanciar(bib.arma(str(arma.get("tipo", "")), str(arma.get("estilo", ""))), camada_armas)
+				if segunda.has_method("configurar"):
+					segunda.configurar(dados_arma, ctx)
+				var anim_segunda := segunda.get_node_or_null("Anim") as AnimationPlayer
+				if anim_segunda != null:
+					anim_segunda.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+				arm_sec[slot] = segunda
 			var cor_rastro := UtilPalco.cor(arma.get("cor", 0xFFFFFF))
 			grad.set_color(1, Color(cor_rastro.lightened(0.5), 0.7))
 		if estilo.mostrar_nomes:
@@ -414,7 +423,8 @@ func _arma(slot: String, s: Dictionary, p: float, corte: bool, ctx: Dictionary) 
 	UtilPalco.esticar_arma(no, L)
 	if no.has_method("atualizar"):
 		no.atualizar(s, ctx)
-	_seek_golpe(no, int(s.get("golpe_fase", 0)), float(s.get("golpe_p", 0.0)), float(ctx["t_jogo"]))
+		_seek_golpe(no, int(s.get("golpe_fase", 0)), float(s.get("golpe_p", 0.0)), float(ctx["t_jogo"]))
+	_arma_segunda(slot, s, z, ctx, grip, ponta)
 	var linha: Line2D = rastro[slot]
 	var fase := int(s.get("golpe_fase", 0))
 	if no.get("rastro_proprio") == true:
@@ -433,6 +443,32 @@ func _arma(slot: String, s: Dictionary, p: float, corte: bool, ctx: Dictionary) 
 		linha.remove_point(0)
 		if linha.get_point_count() > 0:
 			linha.remove_point(0)
+
+
+## A segunda lamina da Dupla e a imagem central da primeira no corpo: a
+## empunhadura cai na outra mao e a ponta aponta para o lado oposto. Espelhar
+## Y quando ela aponta para a esquerda conserva o lado de cima da arte.
+func _arma_segunda(slot: String, s: Dictionary, z: float, ctx: Dictionary,
+		grip: Vector2, ponta: Vector2) -> void:
+	var no = arm_sec.get(slot)
+	if no == null:
+		return
+	no.visible = (int(s.get("flags", 0)) & (1 << 16)) == 0
+	var centro := Vector2(float(s["x"]), float(s["y"]) - z) * PX
+	var grip_espelhada := centro * 2.0 - grip
+	var ponta_espelhada := grip_espelhada - (ponta - grip)
+	var L := grip_espelhada.distance_to(ponta_espelhada)
+	no.position = grip_espelhada
+	no.rotation = (ponta_espelhada - grip_espelhada).angle() if L > 0.5 else PI
+	s["_comprimento_px"] = L
+	UtilPalco.esticar_arma(no, L)
+	if cos(no.rotation) < 0.0:
+		no.scale.y = -absf(no.scale.y)
+	else:
+		no.scale.y = absf(no.scale.y)
+	if no.has_method("atualizar"):
+		no.atualizar(s, ctx)
+		_seek_golpe(no, int(s.get("golpe_fase", 0)), float(s.get("golpe_p", 0.0)), float(ctx["t_jogo"]))
 
 
 ## A animacao "golpe" da peca vai para o PROGRESSO DA FASE do motor

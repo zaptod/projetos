@@ -64,13 +64,7 @@ func _draw() -> void:
 	var L := _L
 	match UtilPalco.slug(tipo):
 		"dupla":
-			var sep := raio_px * float(duas.get("separacao_r", 0.55))
-			var abre := deg_to_rad(float(duas.get("abertura_graus", 10.0)))
-			var Ld := float(duas.get("comprimento_m", L / UtilPalco.PX_POR_M)) * UtilPalco.PX_POR_M
-			for lado in [-1.0, 1.0]:
-				draw_set_transform(Vector2(0, sep * lado), abre * lado)
-				_lamina(Ld, w * 0.85, 0.28)
-			draw_set_transform(Vector2.ZERO)
+			_lamina(L, w * 0.85, 0.28)
 		"corrente":
 			_corrente(L, w)
 		"arco":
