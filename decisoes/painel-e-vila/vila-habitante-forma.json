@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-02T01:06:02",
+      "evento": "2026-10-02T01:02:55",
+      "linha": 109,
+      "nota": "aplicado: mestra aprovada + lotes P1 com o estilo; habitante bolinha no inventário",
+      "opcao": "bolinha",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Muda todas as 77 folhas dos habitantes (11 IAs x 7 animações). O inventário saiu com pernas; nada foi gerado ainda (espera a imagem-mestra).",
   "criado": "2026-10-02T01:01:09.271083",
   "depende_de": [],
