@@ -175,6 +175,19 @@ dialog p { margin: 0 0 10px; overflow-wrap: anywhere; }
 .decisao-comentario { width: 100%; margin-top: 10px; font: inherit; padding: 8px;
   border-radius: 8px; border: 1px solid var(--linha); background: var(--fundo);
   color: var(--texto); resize: vertical; }
+/* ---- sprites: a conferência cabe na largura do celular */
+.sprite-cartao { border-top: 1px solid var(--linha); padding: 12px 0; }
+.sprite-cartao:first-child { border-top: 0; padding-top: 0; }
+.sprite-cabeca { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sprite-cabeca strong { min-width: 0; overflow-wrap: anywhere; }
+.sprite-imagens { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;
+  margin: 8px 0; }
+.sprite-imagens img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 8px; }
+.sprite-palco .sprite-imagens img { background: #17251a; }
+.sprite-vila .sprite-imagens img { background: #4b9d4b; }
+.sprite-defeitos { font-size: 13px; margin: 6px 0; overflow-wrap: anywhere; }
+.sprite-cartao textarea { width: 100%; font: inherit; padding: 7px; border-radius: 8px;
+  border: 1px solid var(--linha); background: var(--fundo); color: var(--texto); resize: vertical; }
 .cartao > .selo { display: inline-block; }
 /* o leitor: resposta ainda não lida pelo orquestrador, e o que ela gerou */
 .selo.nao-lida { color: var(--ativo); margin-left: 6px; font-weight: 400; }

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from remoto import api_http, painel_dados
+from esteira_sprites import config as sprites_config
 
 
 # ------------------------------------------------------------------ dubles
@@ -550,3 +551,86 @@ def test_diario_e_relatorio_saem_limpos(servidor, mundo, monkeypatch):
                           token=token)
         assert json.loads(dados) == {"texto": "ver [link]"}
     assert chamadas == ["funcionamento"]             # guardado, sem refazer
+
+
+# ----------------------------------------------------------- sprites
+@pytest.fixture
+def sprites_temporarios(tmp_path, monkeypatch):
+    """Fichas pequenas, nunca as da esteira que esta rodando no PC."""
+    raiz = tmp_path / "esteira_sprites"
+    monkeypatch.setattr(sprites_config, "RAIZ", raiz)
+    antigo = sprites_config.PERFIL
+
+    def criar(perfil, item_id, estado="a_conferir"):
+        pasta = raiz / ("vila" if perfil == "vila" else "") / item_id
+        pasta.mkdir(parents=True)
+        limpo = pasta / "limpo.png"
+        limpo.write_bytes(b"png de teste")
+        (pasta / "previa.gif").write_bytes(b"gif de teste")
+        ficha = {"item_id": item_id, "perfil": perfil, "estado": estado,
+                 "item": {"id": item_id, "descricao": f"sprite {item_id}"},
+                 "tentativas": [{"caminhos": {"limpo": str(limpo),
+                                                "previa_gif": str(pasta / "previa.gif")},
+                                 "veredito": {"defeitos": [{"gravidade": "grave",
+                                                               "o_que": "corte",
+                                                               "onde": "direita",
+                                                               "como_corrigir": "refazer"}]},
+                                 "portao_reprovou": ["borda"]}]}
+        (pasta / "ficha.json").write_text(json.dumps(ficha), encoding="utf-8")
+        return pasta
+
+    yield criar
+    sprites_config.usar(antigo)
+
+
+def test_sprites_lista_arquivos_e_vazio(servidor, sprites_temporarios, monkeypatch):
+    pasta_fogo = sprites_temporarios("palco", "fogo")
+    (pasta_fogo / "tamanho_real.png").write_bytes(b"tamanho de teste")
+    sprites_temporarios("vila", "folha")
+    sprites_temporarios("palco", "fora", "pedido")
+    token = _parear(servidor)
+    resp, corpo = _pedir(servidor, "GET", "/api/sprites/conferir", token=token)
+    assert resp.status == 200
+    itens = json.loads(corpo)["itens"]
+    assert [(i["perfil"], i["id"]) for i in itens] == [("palco", "fogo"), ("vila", "folha")]
+    assert itens[0]["veredito"]["defeitos"][0]["onde"] == "direita"
+    assert itens[0]["portao_reprovou"] == ["borda"]
+    assert itens[0]["imagens"]["limpo.png"].endswith("/palco/fogo/limpo.png")
+    assert itens[0]["tamanho_real_url"].endswith("/palco/fogo/tamanho_real.png")
+    resp, corpo = _pedir(servidor, "GET", "/api/sprites/arquivo/palco/fogo/limpo.png", token=token)
+    assert resp.status == 200 and corpo == b"png de teste"
+    assert _pedir(servidor, "GET", "/api/sprites/arquivo/palco/fogo/segredo.png", token=token)[0].status == 404
+    assert _pedir(servidor, "GET", "/api/sprites/arquivo/palco/fogo/../limpo.png", token=token)[0].status == 404
+    for ficha in (sprites_config.RAIZ / "fogo" / "ficha.json", sprites_config.RAIZ / "vila" / "folha" / "ficha.json"):
+        dados = json.loads(ficha.read_text(encoding="utf-8")); dados["estado"] = "pedido"
+        ficha.write_text(json.dumps(dados), encoding="utf-8")
+    assert json.loads(_pedir(servidor, "GET", "/api/sprites/conferir", token=token)[1])["itens"] == []
+
+
+def test_sprites_acoes_exigem_acoes_e_refazer_reabre_contagem(servidor, sprites_temporarios, monkeypatch):
+    sprites_temporarios("palco", "fogo")
+    token = _parear(servidor)
+    rota = "/api/sprites/palco/fogo/refazer"
+    assert _pedir(servidor, "POST", rota, {"motivo": "mais brilho"}, token)[0].status == 403
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    resp, _ = _pedir(servidor, "POST", rota, {"motivo": "mais brilho"}, token)
+    assert resp.status == 200
+    dados = json.loads((sprites_config.RAIZ / "fogo" / "ficha.json").read_text(encoding="utf-8"))
+    assert dados["estado"] == "refazer" and dados["contar_desde"] == 1
+    assert dados["tentativas"][-1]["motivo"] == "mais brilho"
+    dados["estado"] = "a_conferir"
+    (sprites_config.RAIZ / "fogo" / "ficha.json").write_text(json.dumps(dados), encoding="utf-8")
+    assert _pedir(servidor, "POST", "/api/sprites/palco/fogo/descartar", {}, token)[0].status == 200
+    assert json.loads((sprites_config.RAIZ / "fogo" / "ficha.json").read_text(encoding="utf-8"))["estado"] == "descartado"
+
+
+def test_sprite_aprovar_chama_a_funcao_da_esteira(servidor, sprites_temporarios, monkeypatch):
+    sprites_temporarios("vila", "folha")
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    chamado = []
+    monkeypatch.setattr(api_http.sprites_aprovar, "aprovar",
+                        lambda item_id: chamado.append(item_id) or {"estado": "na_biblioteca"})
+    token = _parear(servidor)
+    resp, corpo = _pedir(servidor, "POST", "/api/sprites/vila/folha/aprovar", {}, token)
+    assert resp.status == 200 and chamado == ["folha"]
+    assert json.loads(corpo)["estado"] == "na_biblioteca"

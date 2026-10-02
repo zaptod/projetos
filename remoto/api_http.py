@@ -60,6 +60,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from . import (acoes, biblioteca, claude_estado, comandos_app, decisoes, delegar, orquestrador,
                painel_dados, tarefas, vila_dados, vila_nova)
 from .config import runtime_dir
+from esteira_sprites import aprovar as sprites_aprovar
+from esteira_sprites import config as sprites_config
+from esteira_sprites import juiz as sprites_juiz
 
 PORTA_PADRAO = 8931
 PORTAS_PROIBIDAS = {8765}                # OAuth do YouTube
@@ -95,6 +98,85 @@ CONEXOES_MAX = 32
 VENCIDOS_MAX = 1000                      # bilhetes vencidos que ainda lembramos
 
 ARQUIVO = None                           # os testes apontam para outro lugar
+
+# A esteira ainda escolhe o perfil por modulo. As chamadas do celular podem
+# chegar em threads diferentes, entao a troca fica inteira dentro desta trava.
+_TRAVA_SPRITES = threading.Lock()
+_SPRITES_ARQUIVOS = {
+    "limpo.png": ("limpo", "image/png"),
+    "previa.gif": ("previa_gif", "image/gif"),
+    "previa.webp": ("previa_webp", "image/webp"),
+    "tamanho_real.png": ("tamanho_real", "image/png"),
+    "para_juiz.png": ("para_juiz", "image/png"),
+}
+_SPRITES_ID_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
+
+
+def _ficha_sprite(perfil: str, item_id: str) -> dict | None:
+    """Le uma ficha sem mudar o perfil global da esteira."""
+    if perfil not in sprites_config.PERFIS or not _SPRITES_ID_RE.fullmatch(item_id):
+        return None
+    subpasta = sprites_config.PERFIS[perfil].subpasta
+    caminho_ficha = sprites_config.RAIZ / subpasta / item_id / "ficha.json"
+    try:
+        dados = json.loads(caminho_ficha.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return dados if isinstance(dados, dict) and dados.get("item_id") == item_id else None
+
+
+def _arquivo_sprite(dados: dict, nome: str) -> Path | None:
+    chave_tipo = _SPRITES_ARQUIVOS.get(nome)
+    if chave_tipo is None:
+        return None
+    perfil, item_id = dados.get("perfil"), dados.get("item_id")
+    if nome in ("tamanho_real.png", "para_juiz.png") and perfil in sprites_config.PERFIS:
+        subpasta = sprites_config.PERFIS[perfil].subpasta
+        arquivo = sprites_config.RAIZ / subpasta / str(item_id) / nome
+        return arquivo if arquivo.is_file() else None
+    tentativa = (dados.get("tentativas") or [{}])[-1]
+    caminhos = tentativa.get("caminhos") if isinstance(tentativa, dict) else None
+    caminho = caminhos.get(chave_tipo[0]) if isinstance(caminhos, dict) else None
+    try:
+        arquivo = Path(caminho)
+    except TypeError:
+        return None
+    return arquivo if arquivo.name == nome and arquivo.is_file() else None
+
+
+def sprites_a_conferir() -> list[dict]:
+    """Resumo publico ao celular; nunca devolve caminhos do PC."""
+    saida = []
+    for perfil, definicao in sprites_config.PERFIS.items():
+        pasta = sprites_config.RAIZ / definicao.subpasta
+        try:
+            fichas = list(pasta.glob("*/ficha.json"))
+        except OSError:
+            continue
+        for caminho_ficha in fichas:
+            try:
+                dados = json.loads(caminho_ficha.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            item_id = str(dados.get("item_id") or "")
+            if (dados.get("estado") != "a_conferir" or not _SPRITES_ID_RE.fullmatch(item_id)
+                    or dados.get("perfil") != perfil):
+                continue
+            tentativa = (dados.get("tentativas") or [{}])[-1]
+            urls = {}
+            for nome in _SPRITES_ARQUIVOS:
+                if _arquivo_sprite(dados, nome) is not None:
+                    urls[nome] = f"/api/sprites/arquivo/{perfil}/{item_id}/{nome}"
+            item = dados.get("item") if isinstance(dados.get("item"), dict) else {}
+            saida.append({"perfil": perfil, "id": item_id,
+                          "descricao": item.get("descricao") or item_id,
+                          "tentativas": sprites_juiz.tentativas_contadas(dados),
+                          "veredito": tentativa.get("veredito") if isinstance(tentativa, dict) else None,
+                          "portao_reprovou": tentativa.get("portao_reprovou") if isinstance(tentativa, dict) else [],
+                          "imagens": urls, "limpo_url": urls.get("limpo.png"),
+                          "previa_url": urls.get("previa.gif") or urls.get("previa.webp"),
+                          "tamanho_real_url": urls.get("tamanho_real.png")})
+    return sorted(saida, key=lambda d: (d["perfil"], d["id"]))
 
 # Rotas estaticas: nome publico -> (arquivo, tipo). Nada de juntar a URL
 # com uma pasta.
@@ -713,6 +795,11 @@ class Manipulador(BaseHTTPRequestHandler):
             return
 
         try:
+            if rota == "/api/sprites/conferir":
+                return self._json({"itens": sprites_a_conferir()})
+            achado = re.fullmatch(r"/api/sprites/arquivo/(palco|vila)/([a-z0-9][a-z0-9_-]{0,63})/([^/]+)", rota)
+            if achado:
+                return self._arquivo_sprite(achado.group(1), achado.group(2), achado.group(3))
             if rota == "/api/estado":
                 return self._json(painel_dados.estado())
             if rota == "/api/diario":
@@ -911,6 +998,9 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._acao(rota)
         if rota == "/api/decisao/responder":
             return self._responder_decisao()
+        achado = re.fullmatch(r"/api/sprites/(palco|vila)/([a-z0-9][a-z0-9_-]{0,63})/(aprovar|refazer|descartar)", rota)
+        if achado:
+            return self._acao_sprite(*achado.groups())
         if rota == "/api/assembleia":
             return self._abrir_assembleia()
         if rota in ("/api/orquestrador/comando", "/api/orquestrador/contestar"):
@@ -972,6 +1062,51 @@ class Manipulador(BaseHTTPRequestHandler):
         except ValueError as exc:
             return self._erro(400, str(exc))
         return self._json(dados)
+
+    # ---------------------------------------------------------- sprites
+    def _arquivo_sprite(self, perfil: str, item_id: str, nome: str):
+        dados = _ficha_sprite(perfil, item_id)
+        arquivo = _arquivo_sprite(dados, nome) if dados else None
+        if arquivo is None:
+            return self._erro(404, "arquivo de sprite nao existe")
+        try:
+            corpo = arquivo.read_bytes()
+        except OSError:
+            return self._erro(404, "arquivo de sprite sumiu")
+        self.send_response(200)
+        self._cabecalhos_comuns(_SPRITES_ARQUIVOS[nome][1], len(corpo))
+        self.end_headers()
+        self.wfile.write(corpo)
+
+    def _acao_sprite(self, perfil: str, item_id: str, acao: str):
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as acoes estao desligadas neste servidor")
+        corpo = self._corpo()
+        if corpo is None:
+            return
+        motivo = str(corpo.get("motivo") or "").strip()
+        if acao == "refazer" and not motivo:
+            return self._erro(400, "diga o que mudar")
+        with _TRAVA_SPRITES:
+            anterior = sprites_config.PERFIL
+            try:
+                sprites_config.usar(perfil)
+                if acao == "aprovar":
+                    resultado = sprites_aprovar.aprovar(item_id)
+                elif acao == "refazer":
+                    resultado = sprites_aprovar.refazer(item_id, motivo)
+                else:
+                    resultado = sprites_aprovar.descartar(item_id)
+            except ValueError as exc:
+                return self._erro(409, str(exc))
+            except OSError:
+                return self._erro(503, "a esteira esta ocupada; tente de novo")
+            finally:
+                sprites_config.usar(anterior)
+        return self._json({"feito": True, "acao": acao,
+                           "estado": resultado.get("estado")})
 
     # ---------------------------------------------------------- acoes
     def _acao(self, rota: str):

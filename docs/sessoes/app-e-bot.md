@@ -2139,6 +2139,17 @@ consertados antes da entrega: 🛰 e 🎞 nas abas saíam como glifo de texto
 tem os 4 objetos (⏳ ampulheta, 📖 grimório roxo com chroma verde, 📯
 corneta de mensageiro, 🔭 luneta); as 7 antigas e os 3 ícones de dentro da
 Mesa saíram (nenhum tinha arte). Inventário regenerado: 133 itens.
+# Sprites para conferir
+
+**Decidir > 🎨 Sprites** mostra as fichas que a esteira deixou em
+`a_conferir`, dos perfis palco e Vila. O selo do objeto soma as escolhas do
+Grimório e os sprites aguardando. Cada cartão traz a arte limpa, a animação
+quando houver, o veredito do juiz e os motivos do portão; a Vila aparece sobre
+verde e o palco sobre fundo escuro. Aprovar, Refazer (com “o que mudar”) e
+Descartar exigem celular pareado; as três ações só aparecem no servidor com
+`--acoes`, e Descartar pede o segundo toque. As imagens são buscadas com o
+token do pareamento, nunca por caminho do PC.
+
 # Assembleia
 
 Em **Decidir > Assembleia**, o app mostra as deliberações abertas e as atas

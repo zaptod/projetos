@@ -59,6 +59,7 @@ ONDE_FICOU = {
     "decidir": [
         "tela-decisoes", "decisoes-listas", "decisoes-abas", "decisoes-lista",
         "decisoes-rodape", "decisao-mudou", "btn-decisao-mudou", "decisao-item",
+        "tela-sprites", "sprites-lista",
         # o que o orquestrador decidiu sozinho (com o Contestar)
         "orq-sec-decisoes", "orq-decisoes",
     ],
@@ -189,16 +190,16 @@ def _secao(tela):
 
 
 # ----------------------------------------------------------------- testes
-def test_a_lista_cravada_cobre_os_207_ids_de_antes_sem_repetir():
+def test_a_lista_cravada_cobre_os_209_ids_de_antes_sem_repetir():
     todos = [i for lista in ONDE_FICOU.values() for i in lista] + list(SAIRAM)
-    assert len(todos) == len(set(todos)) == 207
+    assert len(todos) == len(set(todos)) == 209
 
 
 def test_os_quatro_objetos_e_nada_mais_na_prateleira():
     objetos = _objetos()
     assert list(objetos) == ["agora", "decidir", "mandar", "ver"]
     assert objetos["agora"] == ["agora", "oficina", "coordenador"]
-    assert objetos["decidir"] == ["decisoes", "assembleias"]
+    assert objetos["decidir"] == ["decisoes", "sprites", "assembleias"]
     assert objetos["mandar"] == ["comandos", "conversa"]
     assert objetos["ver"] == ["videos", "biblioteca", "relatorios", "diario"]
     botoes = re.findall(r'<button class="objeto" id="obj-(\w+)" data-objeto="(\w+)" '

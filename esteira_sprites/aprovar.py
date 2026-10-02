@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 from PIL import Image
@@ -13,8 +12,7 @@ from .pedir import marcar
 
 
 def _exportar_vila(dados: dict, prova: str, biblioteca: str | Path | None) -> dict:
-    """A Vila nao e Godot: a folha limpa vai como esta, com um .json ao lado
-    (grade, ciclos, fps, loop, prova). Nunca sobrescreve."""
+    """Exporta a arte da Vila reduzida, com metadados ao lado. Nunca sobrescreve."""
     item = dados["item"]
     raiz = Path(biblioteca or config.PERFIS["vila"].biblioteca)
     destino = raiz / item["nome_arquivo"]
@@ -24,7 +22,15 @@ def _exportar_vila(dados: dict, prova: str, biblioteca: str | Path | None) -> di
         raise FileExistsError(", ".join(existentes))
     tentativa = dados["tentativas"][-1]
     destino.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(tentativa["caminhos"]["limpo"], destino)
+    # A folha da IA vem em resolucao de trabalho; a Vila so precisa de 256 px
+    # por celula. Guardar o original na ficha basta para auditoria, sem inflar
+    # o repositorio a cada aprovacao.
+    with Image.open(tentativa["caminhos"]["limpo"]) as origem:
+        tamanho_original = list(origem.size)
+        imagem = origem.copy()
+    limite = 1024 if item.get("tipo") == "folha" else 512
+    imagem.thumbnail((limite, limite), Image.LANCZOS)
+    imagem.save(destino, format="PNG", optimize=True)
     try:
         conteudo_prova = json.loads(Path(prova).read_text(encoding="utf-8"))
     except ValueError:
@@ -33,6 +39,7 @@ def _exportar_vila(dados: dict, prova: str, biblioteca: str | Path | None) -> di
         "id": item["id"], "tipo": item.get("tipo"), "quadros": item.get("quadros"),
         "grade": list(prompt.grade(item)) if item.get("tipo") == "folha" else None,
         "animacao": prompt.animacao(item), "medidas": tentativa.get("medidas"),
+        "tamanho_original": tamanho_original,
         "fonte": tentativa["caminhos"]["limpo"], "prova": prova, "prova_conteudo": conteudo_prova,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"folha": str(destino), "metadados": str(meta)}
@@ -82,6 +89,11 @@ def refazer(item_id: str, motivo: str) -> dict:
     dados = ficha.ler(item_id)
     if not dados:
         raise ValueError("ficha inexistente")
+    # O proximo `pedir` cria uma tentativa nova. Ela nao deve herdar o teto
+    # das imagens anteriores quando foi o Adrian quem pediu outra mudanca.
+    dados["contar_desde"] = len(dados.get("tentativas", []))
+    if dados.get("tentativas"):
+        dados["tentativas"][-1]["motivo"] = motivo
     dados["estado"] = "refazer"
     ficha.registrar(dados, "refazer", motivo=motivo)
     ficha.gravar(dados)

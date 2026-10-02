@@ -78,6 +78,20 @@ imprime as medidas e grava `<nome>_previa.gif` (e `.webp`) ao lado.
 de `remoto/app`). Rode de novo quando a Vila ganhar prédio, habitante ou enfeite;
 o teste `test_inventario_vila_cobre_a_vila_de_hoje` acusa o esquecimento.
 
+## Conferência pelo celular e exportação
+
+`GET /api/sprites/conferir` lista somente fichas `a_conferir` dos dois perfis,
+com tentativas desde `contar_desde`, veredito, portão e URLs fechadas dos
+arquivos da ficha. O app usa essa lista em **Decidir > 🎨 Sprites**. As ações
+pareadas `POST /api/sprites/<perfil>/<id>/aprovar|refazer|descartar` exigem
+`--acoes`; em `refazer`, o motivo vira o motivo do próximo pedido e reinicia
+`contar_desde` antes dele.
+
+Na Vila, a exportação salva PNG otimizado: peça até 512 px no maior lado,
+folha até 1024 px (256 px por célula 4×4), com LANCZOS. O `.json` ao lado
+guarda `tamanho_original`, para a prova continuar auditável sem versionar a
+arte grande da IA.
+
 ## Armadilhas
 
 - O pedido de imagem do correio (`ias.correio.pedir_imagem`) **não leva anexo**:

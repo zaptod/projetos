@@ -62,7 +62,7 @@ FUNCOES = [
     "comandos-ultimos", "tarefas-lista", "tarefa-log", "btn-fechar-log", "comandos-grupos",
     # relatórios e decisões
     "abas-relatorio", "relatorio", "decisoes-abas", "decisoes-lista",
-    "decisao-item",
+    "decisao-item", "sprites-lista",
     # confirmação em dois passos e campos das fichas
     "dialogo", "dialogo-texto", "dialogo-destinos", "dialogo-sim",
     "dialogo-prazo", "dialogo-campos", "campos-corpo", "btn-campos-ok",
@@ -128,8 +128,9 @@ def test_o_cache_da_casca_mudou_de_versao():
     # que nao chegou (30/09, tarde: o 502 cai na copia guardada); v23 = a
     # Oficina do Codex e os Modelos (01/10); v24 = Biblioteca; v26 = Coordenador;
     # v29 = os quatro objetos, um por pergunta (02/10); v30 = a Vila toca as
-    # folhas da esteira (02/10); v31 = Assembleia (02/10)
-    assert "painel-casca-v31" in sw
+    # folhas da esteira (02/10); v31 = Assembleia (02/10); v32 = conferência
+    # de sprites pelo celular.
+    assert "painel-casca-v32" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

@@ -227,6 +227,21 @@ def test_aprovar_exporta_com_prova_e_recusa_sem_ela(ambiente, monkeypatch):
         aprovar_mod.aprovar("fogo_teste", ambiente / "outra")
 
 
+def test_exportar_vila_reduz_png_e_guarda_tamanho_original(ambiente):
+    aprovar_mod = importlib.import_module("esteira_sprites.aprovar")
+    limpo = ambiente / "grande.png"
+    Image.new("RGBA", (1600, 900), (10, 100, 200, 255)).save(limpo)
+    prova = ambiente / "prova.json"
+    prova.write_text("{}", encoding="utf-8")
+    dados = {"item": {"id": "casa", "nome_arquivo": "predios/casa.png", "tipo": "peca"},
+             "tentativas": [{"caminhos": {"limpo": str(limpo)}, "medidas": {}}]}
+    saida = aprovar_mod._exportar_vila(dados, str(prova), ambiente / "biblioteca")
+    with Image.open(saida["folha"]) as exportada:
+        assert exportada.size == (512, 288)
+    meta = json.loads(Path(saida["metadados"]).read_text(encoding="utf-8"))
+    assert meta["tamanho_original"] == [1600, 900]
+
+
 def test_lote_pula_bloqueado_e_opcional(ambiente, monkeypatch):
     from esteira_sprites import __main__ as cli
     pedidos = []

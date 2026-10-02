@@ -10,7 +10,7 @@
 // (pausou e voltou depois): pede outro e segue de onde parou.
 
 const Decisoes = {projeto: null, dados: null, aberta: null, relogio: null, lidoEm: null,
-                  mexendo: false, assinatura: ""};
+                  mexendo: false, assinatura: "", grimorioPendentes: 0, spritesPendentes: 0};
 // O Grimório carregava UMA vez: o que o orquestrador marcava (lida, o que
 // gerou), um nó novo e a resposta dada em outra aba só apareciam ao reabrir.
 // Agora relê a cada 20 s; a árvore redesenha sozinha, e o nó aberto só se
@@ -22,22 +22,118 @@ const DECISOES_MS = 20000;
 // qualquer tela do app. O botão é o de `data-tela="decisoes"`.
 const GRIMORIO_SELO_MS = 60000;
 let grimorioSeloEm = 0;
+let spritesSeloEm = 0;
 
 function grimorioMarcarSelo(dados) {
   const obj = document.querySelector('nav.prateleira button.objeto[data-tela="decisoes"]');
   if (!obj || !dados) return;
-  const n = Object.values(dados.itens || {})
+  Decisoes.grimorioPendentes = Object.values(dados.itens || {})
     .filter((i) => i.situacao === "pendente" || i.situacao === "a_rever").length;
+  marcarSeloDecidir(obj);
+}
+
+function marcarSeloDecidir(obj = document.querySelector('nav.prateleira button.objeto[data-tela="decisoes"]')) {
+  if (!obj) return;
+  const n = Decisoes.grimorioPendentes + Decisoes.spritesPendentes;
   obj.classList.toggle("selo-contador", n > 0);
   if (n > 0) obj.dataset.pendentes = n > 9 ? "9+" : String(n);
   else delete obj.dataset.pendentes;
-  obj.title = n ? `${n} escolha${n > 1 ? "s" : ""} esperando você` : "Grimório";
+  obj.title = n ? `${n} item${n > 1 ? "ns" : ""} esperando você` : "Decidir";
 }
 
 async function grimorioSelo() {
   if (Date.now() - grimorioSeloEm < GRIMORIO_SELO_MS) return;
   grimorioSeloEm = Date.now();
   try { grimorioMarcarSelo(await api("/api/decisoes")); } catch (err) { /* a vila já avisa */ }
+}
+
+async function spritesImagem(url) {
+  const resp = await fetch(url, {headers: {Authorization: `Bearer ${localStorage.getItem(TOKEN) || ""}`}});
+  if (!resp.ok) throw new Error("imagem indisponível");
+  return URL.createObjectURL(await resp.blob());
+}
+
+function spritesDefeitos(item) {
+  const defeitos = (item.veredito && item.veredito.defeitos) || [];
+  const linhas = defeitos.map((d) => [d.gravidade, d.o_que || d.defeito, d.onde, d.como_corrigir]
+    .filter(Boolean).join(" · "));
+  for (const motivo of item.portao_reprovou || []) linhas.push(`portão: ${motivo}`);
+  return linhas.length ? linhas : ["O juiz não apontou defeito grave."];
+}
+
+async function spritesAcao(item, acao, motivo = "") {
+  await api(`/api/sprites/${encodeURIComponent(item.perfil)}/${encodeURIComponent(item.id)}/${acao}`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({motivo}),
+  });
+  avisar(`${item.id}: ${acao} registrado`);
+  spritesMostrar();
+}
+
+function spritesCartao(item) {
+  const caixa = el("article", {class: `sprite-cartao sprite-${item.perfil}`},
+    el("div", {class: "sprite-cabeca"},
+      el("strong", {}, item.descricao),
+      el("span", {class: "selo"}, `${item.perfil} · tentativa ${item.tentativas}`)));
+  const imagens = el("div", {class: "sprite-imagens"});
+  const limpa = item.imagens["limpo.png"];
+  const previa = item.imagens["previa.gif"] || item.imagens["previa.webp"];
+  for (const [url, rotulo] of [[limpa, "arte limpa"], [previa, "animação"],
+                                [item.imagens["tamanho_real.png"], "tamanho real"]]) {
+    if (!url) continue;
+    const imagem = el("img", {alt: `${rotulo}: ${item.descricao}`});
+    spritesImagem(url).then((src) => { imagem.src = src; }).catch(() => { imagem.alt = "imagem indisponível"; });
+    imagens.append(imagem);
+  }
+  if (imagens.childElementCount) caixa.append(imagens);
+  caixa.append(el("div", {class: "sprite-defeitos"},
+    ...spritesDefeitos(item).map((texto) => el("div", {}, texto))));
+  const motivo = el("textarea", {rows: "2", maxlength: "1000", placeholder: "O que mudar"});
+  const aprovar = el("button", {class: "acao primario", type: "button"}, "Aprovar");
+  const refazer = el("button", {class: "acao", type: "button"}, "Refazer");
+  const descartar = el("button", {class: "acao perigo", type: "button"}, "Descartar");
+  aprovar.addEventListener("click", () => spritesAcao(item, "aprovar").catch((err) => avisar(err.message, true)));
+  refazer.addEventListener("click", () => {
+    if (!motivo.value.trim()) { motivo.focus(); return; }
+    spritesAcao(item, "refazer", motivo.value).catch((err) => avisar(err.message, true));
+  });
+  let confirmar = false;
+  descartar.addEventListener("click", () => {
+    if (!confirmar) {
+      confirmar = true; descartar.textContent = "Toque de novo para descartar";
+      setTimeout(() => { confirmar = false; descartar.textContent = "Descartar"; }, 4000);
+      return;
+    }
+    spritesAcao(item, "descartar").catch((err) => avisar(err.message, true));
+  });
+  caixa.append(motivo, el("div", {class: "botoes"}, aprovar, refazer, descartar));
+  return caixa;
+}
+
+async function spritesMostrar() {
+  const alvo = $("sprites-lista");
+  if (!alvo) return;
+  try {
+    const dados = await api("/api/sprites/conferir");
+    Decisoes.spritesPendentes = (dados.itens || []).length;
+    marcarSeloDecidir();
+    alvo.replaceChildren(...(dados.itens || []).map(spritesCartao));
+    if (!(dados.itens || []).length) alvo.append(el("div", {class: "fraco"}, "Nenhum sprite esperando."));
+    conexao(true);
+  } catch (err) {
+    alvo.replaceChildren(el("div", {class: "erro"}, "Não consegui carregar: " + err.message));
+    conexao(false, err);
+  }
+}
+
+async function spritesSelo() {
+  if (Date.now() - spritesSeloEm < GRIMORIO_SELO_MS) return;
+  spritesSeloEm = Date.now();
+  try {
+    const dados = await api("/api/sprites/conferir");
+    Decisoes.spritesPendentes = (dados.itens || []).length;
+    marcarSeloDecidir();
+  } catch (err) { /* a vila já avisa */ }
 }
 const SITUACAO = {decidida: ["✅", "decidida"], pendente: ["⏳", "pendente"],
                   bloqueada: ["🔒", "bloqueada"], a_rever: ["↺", "a rever"]};

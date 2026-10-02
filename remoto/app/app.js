@@ -4,7 +4,7 @@ const ULTIMO = "painel.ultimo_estado";
 const CONTATO = "painel.ultimo_contato";
 // A Vila é a tela; as outras áreas são objetos dela, com nome de objeto.
 const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex",
-                 coordenador: "Agora · Coordenador", decisoes: "Decidir", assembleias: "Decidir · Assembleia",
+                 coordenador: "Agora · Coordenador", decisoes: "Decidir", sprites: "Decidir · Sprites", assembleias: "Decidir · Assembleia",
                  comandos: "Mandar", conversa: "Mandar · IAs",
                  videos: "Ver · Cinema", biblioteca: "Ver · Biblioteca",
                  relatorios: "Ver · Pergaminhos", diario: "Ver · Diário"};
@@ -21,7 +21,7 @@ const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex",
 const OBJETOS = {
   agora: [["agora", "⏳", "Agora"], ["oficina", "🔧", "Codex"],
           ["coordenador", "🛰️", "Coordenador"]],
-  decidir: [["decisoes", "📖", "Grimório"], ["assembleias", "🏛️", "Assembleia"]],
+  decidir: [["decisoes", "📖", "Grimório"], ["sprites", "🎨", "Sprites"], ["assembleias", "🏛️", "Assembleia"]],
   mandar: [["comandos", "🛠️", "Comandos"], ["conversa", "💬", "IAs"]],
   ver: [["videos", "🎞️", "Cinema"], ["biblioteca", "📚", "Biblioteca"],
         ["relatorios", "📜", "Pergaminhos"], ["diario", "📓", "Diário"]],
@@ -284,6 +284,7 @@ async function carregarAgora() {
     if (tela === "vila" && typeof orquestradorSelo === "function") orquestradorSelo();
     // o selo do Grimório (escolhas esperando) vale em qualquer tela
     if (typeof grimorioSelo === "function") grimorioSelo();
+    if (typeof spritesSelo === "function") spritesSelo();
   } catch (err) {
     const ultimo = JSON.parse(localStorage.getItem(ULTIMO) || "null");
     if (ultimo) desenharEstado(ultimo.e);
@@ -610,7 +611,7 @@ const CARGAS = {vila: [carregarAgora, 15000], agora: [carregarAgora, 15000],
                 diario: [carregarDiario, 5000],
                 videos: [null, 0], comandos: [null, 0],
                 relatorios: [abrirPergaminho, 0],
-                decisoes: [null, 0], assembleias: [null, 0], conversa: [null, 0],
+                decisoes: [null, 0], sprites: [null, 0], assembleias: [null, 0], conversa: [null, 0],
                 oficina: [null, 0], biblioteca: [null, 0], coordenador: [null, 0]};
 
 // As abas de um objeto (Agora, Mandar e Ver têm mais de uma tela): a mesma
@@ -690,6 +691,7 @@ function mostrar(nova) {
   if (tela === "decisoes" && typeof decisoesMostrar === "function") {
     decisoesMostrar();
   }
+  if (tela === "sprites" && typeof spritesMostrar === "function") spritesMostrar();
   if (tela === "assembleias" && typeof assembleiasMostrar === "function") {
     assembleiasMostrar();
   }
