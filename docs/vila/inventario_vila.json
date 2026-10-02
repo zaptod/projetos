@@ -1,5 +1,5 @@
 {
-  "gerado_em": "2026-10-02T00:47:44",
+  "gerado_em": "2026-10-02T01:05:50",
   "tarefa": "49e52521",
   "perfil": "vila",
   "convencoes": {
@@ -213,11 +213,11 @@
       "grupo": "habitantes",
       "subgrupo": "chatgpt",
       "id": "habitante_chatgpt_parado",
-      "descricao": "Habitante do ChatGPT (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa verde-água (#2fb489), fones de ouvido grandes, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do ChatGPT (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo verde-água (#2fb489), fones de ouvido grandes, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/chatgpt/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -239,7 +239,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -296,11 +296,11 @@
       "grupo": "habitantes",
       "subgrupo": "chatgpt",
       "id": "habitante_chatgpt_andar",
-      "descricao": "Habitante do ChatGPT (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa verde-água (#2fb489), fones de ouvido grandes, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do ChatGPT (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo verde-água (#2fb489), fones de ouvido grandes, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/chatgpt/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -322,7 +322,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -451,11 +451,11 @@
       "grupo": "habitantes",
       "subgrupo": "deepseek",
       "id": "habitante_deepseek_parado",
-      "descricao": "Habitante do DeepSeek (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul (#5b7cfa), gorro de lã com pompom branco, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do DeepSeek (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul (#5b7cfa), gorro de lã com pompom branco, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/deepseek/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -477,7 +477,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -534,11 +534,11 @@
       "grupo": "habitantes",
       "subgrupo": "deepseek",
       "id": "habitante_deepseek_andar",
-      "descricao": "Habitante do DeepSeek (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul (#5b7cfa), gorro de lã com pompom branco, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do DeepSeek (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul (#5b7cfa), gorro de lã com pompom branco, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/deepseek/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -560,7 +560,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -641,11 +641,11 @@
       "grupo": "habitantes",
       "subgrupo": "grok",
       "id": "habitante_grok_parado",
-      "descricao": "Habitante do Grok (conversa): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa cinza-azulado (#5c667c), boné de aba reta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Grok (conversa): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo cinza-azulado (#5c667c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/grok/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -667,7 +667,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -724,11 +724,11 @@
       "grupo": "habitantes",
       "subgrupo": "grok",
       "id": "habitante_grok_andar",
-      "descricao": "Habitante do Grok (conversa): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa cinza-azulado (#5c667c), boné de aba reta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Grok (conversa): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo cinza-azulado (#5c667c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/grok/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -750,7 +750,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -855,11 +855,11 @@
       "grupo": "habitantes",
       "subgrupo": "gemini",
       "id": "habitante_gemini_parado",
-      "descricao": "Habitante do Gemini (roteiro e parecer): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, pele #e9b996, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Gemini (roteiro e parecer): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/gemini/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -881,7 +881,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -938,11 +938,11 @@
       "grupo": "habitantes",
       "subgrupo": "gemini",
       "id": "habitante_gemini_andar",
-      "descricao": "Habitante do Gemini (roteiro e parecer): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, pele #e9b996, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Gemini (roteiro e parecer): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/gemini/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -964,7 +964,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1045,11 +1045,11 @@
       "grupo": "habitantes",
       "subgrupo": "picasso",
       "id": "habitante_picasso_parado",
-      "descricao": "Habitante do PicassoIA (imagens): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa lilás (#c678e6), boina de pintor, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do PicassoIA (imagens): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo lilás (#c678e6), boina de pintor, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/picasso/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P1",
@@ -1071,7 +1071,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1128,11 +1128,11 @@
       "grupo": "habitantes",
       "subgrupo": "picasso",
       "id": "habitante_picasso_andar",
-      "descricao": "Habitante do PicassoIA (imagens): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa lilás (#c678e6), boina de pintor, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do PicassoIA (imagens): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo lilás (#c678e6), boina de pintor, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/picasso/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P1",
@@ -1154,7 +1154,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1235,11 +1235,11 @@
       "grupo": "habitantes",
       "subgrupo": "digen",
       "id": "habitante_digen_parado",
-      "descricao": "Habitante do Digen (vídeo do payoff): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa rosa (#ec7aa6), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Digen (vídeo do payoff): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo rosa (#ec7aa6), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/digen/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P1",
@@ -1261,7 +1261,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1318,11 +1318,11 @@
       "grupo": "habitantes",
       "subgrupo": "digen",
       "id": "habitante_digen_andar",
-      "descricao": "Habitante do Digen (vídeo do payoff): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa rosa (#ec7aa6), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Digen (vídeo do payoff): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo rosa (#ec7aa6), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/digen/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P1",
@@ -1344,7 +1344,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1425,11 +1425,11 @@
       "grupo": "habitantes",
       "subgrupo": "estudio",
       "id": "habitante_estudio_parado",
-      "descricao": "Habitante do Estúdio (render): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa laranja (#f0a646), cachecol vermelho, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Estúdio (render): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo laranja (#f0a646), cachecol vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/estudio/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -1451,7 +1451,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1508,11 +1508,11 @@
       "grupo": "habitantes",
       "subgrupo": "estudio",
       "id": "habitante_estudio_andar",
-      "descricao": "Habitante do Estúdio (render): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa laranja (#f0a646), cachecol vermelho, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Estúdio (render): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo laranja (#f0a646), cachecol vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/estudio/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -1534,7 +1534,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1615,11 +1615,11 @@
       "grupo": "habitantes",
       "subgrupo": "arena",
       "id": "habitante_arena_parado",
-      "descricao": "Habitante do Arena (lutas): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho (#e2574c), faixa de lutador amarrada na testa, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Arena (lutas): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho (#e2574c), faixa de lutador amarrada na testa, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/arena/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -1641,7 +1641,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1698,11 +1698,11 @@
       "grupo": "habitantes",
       "subgrupo": "arena",
       "id": "habitante_arena_andar",
-      "descricao": "Habitante do Arena (lutas): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho (#e2574c), faixa de lutador amarrada na testa, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Arena (lutas): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho (#e2574c), faixa de lutador amarrada na testa, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/arena/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -1724,7 +1724,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1805,11 +1805,11 @@
       "grupo": "habitantes",
       "subgrupo": "youtube",
       "id": "habitante_youtube_parado",
-      "descricao": "Habitante do YouTube (upload): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho vivo (#e8453c), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do YouTube (upload): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho vivo (#e8453c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/youtube/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -1831,7 +1831,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1888,11 +1888,11 @@
       "grupo": "habitantes",
       "subgrupo": "youtube",
       "id": "habitante_youtube_andar",
-      "descricao": "Habitante do YouTube (upload): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho vivo (#e8453c), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do YouTube (upload): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho vivo (#e8453c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/youtube/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -1914,7 +1914,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -1995,11 +1995,11 @@
       "grupo": "habitantes",
       "subgrupo": "tiktok",
       "id": "habitante_tiktok_parado",
-      "descricao": "Habitante do TikTok (post): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do TikTok (post): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/tiktok/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -2021,7 +2021,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -2078,11 +2078,11 @@
       "grupo": "habitantes",
       "subgrupo": "tiktok",
       "id": "habitante_tiktok_andar",
-      "descricao": "Habitante do TikTok (post): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do TikTok (post): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/tiktok/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P1",
@@ -2104,7 +2104,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -2185,11 +2185,11 @@
       "grupo": "habitantes",
       "subgrupo": "bot",
       "id": "habitante_bot_parado",
-      "descricao": "Habitante do Bot (Telegram): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar; no 3º quadro de cada linha ele pisca. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Bot (Telegram): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'parado': respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/bot/parado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P1",
@@ -2211,7 +2211,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -2268,11 +2268,11 @@
       "grupo": "habitantes",
       "subgrupo": "bot",
       "id": "habitante_bot_andar",
-      "descricao": "Habitante do Bot (Telegram): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'andar': caminhada no lugar: contato, passagem, contato com a outra perna, passagem. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Bot (Telegram): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'andar': quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/bot/andar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P1",
@@ -2294,7 +2294,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -2519,11 +2519,11 @@
       "grupo": "habitantes",
       "subgrupo": "chatgpt",
       "id": "habitante_chatgpt_trabalhar",
-      "descricao": "Habitante do ChatGPT (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa verde-água (#2fb489), fones de ouvido grandes, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do ChatGPT (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo verde-água (#2fb489), fones de ouvido grandes, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/chatgpt/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -2545,7 +2545,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -2602,11 +2602,11 @@
       "grupo": "habitantes",
       "subgrupo": "deepseek",
       "id": "habitante_deepseek_trabalhar",
-      "descricao": "Habitante do DeepSeek (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul (#5b7cfa), gorro de lã com pompom branco, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do DeepSeek (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul (#5b7cfa), gorro de lã com pompom branco, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/deepseek/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -2628,7 +2628,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -2685,11 +2685,11 @@
       "grupo": "habitantes",
       "subgrupo": "grok",
       "id": "habitante_grok_trabalhar",
-      "descricao": "Habitante do Grok (conversa): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa cinza-azulado (#5c667c), boné de aba reta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Grok (conversa): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo cinza-azulado (#5c667c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/grok/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -2711,7 +2711,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -2768,11 +2768,11 @@
       "grupo": "habitantes",
       "subgrupo": "gemini",
       "id": "habitante_gemini_trabalhar",
-      "descricao": "Habitante do Gemini (roteiro e parecer): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, pele #e9b996, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Gemini (roteiro e parecer): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/gemini/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -2794,7 +2794,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -2851,11 +2851,11 @@
       "grupo": "habitantes",
       "subgrupo": "picasso",
       "id": "habitante_picasso_trabalhar",
-      "descricao": "Habitante do PicassoIA (imagens): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa lilás (#c678e6), boina de pintor, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do PicassoIA (imagens): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo lilás (#c678e6), boina de pintor, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/picasso/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P2",
@@ -2877,7 +2877,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -2934,11 +2934,11 @@
       "grupo": "habitantes",
       "subgrupo": "digen",
       "id": "habitante_digen_trabalhar",
-      "descricao": "Habitante do Digen (vídeo do payoff): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa rosa (#ec7aa6), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Digen (vídeo do payoff): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo rosa (#ec7aa6), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/digen/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P2",
@@ -2960,7 +2960,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3017,11 +3017,11 @@
       "grupo": "habitantes",
       "subgrupo": "estudio",
       "id": "habitante_estudio_trabalhar",
-      "descricao": "Habitante do Estúdio (render): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa laranja (#f0a646), cachecol vermelho, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Estúdio (render): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo laranja (#f0a646), cachecol vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/estudio/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -3043,7 +3043,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3100,11 +3100,11 @@
       "grupo": "habitantes",
       "subgrupo": "arena",
       "id": "habitante_arena_trabalhar",
-      "descricao": "Habitante do Arena (lutas): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho (#e2574c), faixa de lutador amarrada na testa, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Arena (lutas): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho (#e2574c), faixa de lutador amarrada na testa, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/arena/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -3126,7 +3126,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3183,11 +3183,11 @@
       "grupo": "habitantes",
       "subgrupo": "youtube",
       "id": "habitante_youtube_trabalhar",
-      "descricao": "Habitante do YouTube (upload): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho vivo (#e8453c), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do YouTube (upload): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho vivo (#e8453c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/youtube/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -3209,7 +3209,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3266,11 +3266,11 @@
       "grupo": "habitantes",
       "subgrupo": "tiktok",
       "id": "habitante_tiktok_trabalhar",
-      "descricao": "Habitante do TikTok (post): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do TikTok (post): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/tiktok/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -3292,7 +3292,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3349,11 +3349,11 @@
       "grupo": "habitantes",
       "subgrupo": "bot",
       "id": "habitante_bot_trabalhar",
-      "descricao": "Habitante do Bot (Telegram): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'trabalhar': mãos ocupadas na frente do corpo, digitando e martelando no ar. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Bot (Telegram): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'trabalhar': concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/bot/trabalhar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P2",
@@ -3375,7 +3375,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3432,11 +3432,11 @@
       "grupo": "habitantes",
       "subgrupo": "chatgpt",
       "id": "habitante_chatgpt_conversar",
-      "descricao": "Habitante do ChatGPT (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa verde-água (#2fb489), fones de ouvido grandes, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do ChatGPT (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo verde-água (#2fb489), fones de ouvido grandes, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/chatgpt/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -3458,7 +3458,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3515,11 +3515,11 @@
       "grupo": "habitantes",
       "subgrupo": "deepseek",
       "id": "habitante_deepseek_conversar",
-      "descricao": "Habitante do DeepSeek (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul (#5b7cfa), gorro de lã com pompom branco, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do DeepSeek (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul (#5b7cfa), gorro de lã com pompom branco, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/deepseek/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -3541,7 +3541,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3598,11 +3598,11 @@
       "grupo": "habitantes",
       "subgrupo": "grok",
       "id": "habitante_grok_conversar",
-      "descricao": "Habitante do Grok (conversa): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa cinza-azulado (#5c667c), boné de aba reta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Grok (conversa): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo cinza-azulado (#5c667c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/grok/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -3624,7 +3624,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3681,11 +3681,11 @@
       "grupo": "habitantes",
       "subgrupo": "gemini",
       "id": "habitante_gemini_conversar",
-      "descricao": "Habitante do Gemini (roteiro e parecer): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, pele #e9b996, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Gemini (roteiro e parecer): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/gemini/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -3707,7 +3707,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3764,11 +3764,11 @@
       "grupo": "habitantes",
       "subgrupo": "picasso",
       "id": "habitante_picasso_conversar",
-      "descricao": "Habitante do PicassoIA (imagens): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa lilás (#c678e6), boina de pintor, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do PicassoIA (imagens): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo lilás (#c678e6), boina de pintor, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/picasso/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P2",
@@ -3790,7 +3790,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3847,11 +3847,11 @@
       "grupo": "habitantes",
       "subgrupo": "digen",
       "id": "habitante_digen_conversar",
-      "descricao": "Habitante do Digen (vídeo do payoff): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa rosa (#ec7aa6), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Digen (vídeo do payoff): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo rosa (#ec7aa6), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/digen/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P2",
@@ -3873,7 +3873,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -3930,11 +3930,11 @@
       "grupo": "habitantes",
       "subgrupo": "estudio",
       "id": "habitante_estudio_conversar",
-      "descricao": "Habitante do Estúdio (render): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa laranja (#f0a646), cachecol vermelho, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Estúdio (render): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo laranja (#f0a646), cachecol vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/estudio/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -3956,7 +3956,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4013,11 +4013,11 @@
       "grupo": "habitantes",
       "subgrupo": "arena",
       "id": "habitante_arena_conversar",
-      "descricao": "Habitante do Arena (lutas): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho (#e2574c), faixa de lutador amarrada na testa, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Arena (lutas): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho (#e2574c), faixa de lutador amarrada na testa, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/arena/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -4039,7 +4039,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4096,11 +4096,11 @@
       "grupo": "habitantes",
       "subgrupo": "youtube",
       "id": "habitante_youtube_conversar",
-      "descricao": "Habitante do YouTube (upload): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho vivo (#e8453c), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do YouTube (upload): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho vivo (#e8453c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/youtube/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -4122,7 +4122,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4179,11 +4179,11 @@
       "grupo": "habitantes",
       "subgrupo": "tiktok",
       "id": "habitante_tiktok_conversar",
-      "descricao": "Habitante do TikTok (post): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do TikTok (post): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/tiktok/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -4205,7 +4205,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4262,11 +4262,11 @@
       "grupo": "habitantes",
       "subgrupo": "bot",
       "id": "habitante_bot_conversar",
-      "descricao": "Habitante do Bot (Telegram): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'conversar': acena e gesticula falando. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Bot (Telegram): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'conversar': inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/bot/conversar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P2",
@@ -4288,7 +4288,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4345,11 +4345,11 @@
       "grupo": "habitantes",
       "subgrupo": "chatgpt",
       "id": "habitante_chatgpt_triste",
-      "descricao": "Habitante do ChatGPT (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa verde-água (#2fb489), fones de ouvido grandes, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do ChatGPT (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo verde-água (#2fb489), fones de ouvido grandes, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/chatgpt/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -4371,7 +4371,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4428,11 +4428,11 @@
       "grupo": "habitantes",
       "subgrupo": "deepseek",
       "id": "habitante_deepseek_triste",
-      "descricao": "Habitante do DeepSeek (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul (#5b7cfa), gorro de lã com pompom branco, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do DeepSeek (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul (#5b7cfa), gorro de lã com pompom branco, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/deepseek/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -4454,7 +4454,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4511,11 +4511,11 @@
       "grupo": "habitantes",
       "subgrupo": "grok",
       "id": "habitante_grok_triste",
-      "descricao": "Habitante do Grok (conversa): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa cinza-azulado (#5c667c), boné de aba reta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Grok (conversa): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo cinza-azulado (#5c667c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/grok/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -4537,7 +4537,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4594,11 +4594,11 @@
       "grupo": "habitantes",
       "subgrupo": "gemini",
       "id": "habitante_gemini_triste",
-      "descricao": "Habitante do Gemini (roteiro e parecer): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, pele #e9b996, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Gemini (roteiro e parecer): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/gemini/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -4620,7 +4620,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4677,11 +4677,11 @@
       "grupo": "habitantes",
       "subgrupo": "picasso",
       "id": "habitante_picasso_triste",
-      "descricao": "Habitante do PicassoIA (imagens): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa lilás (#c678e6), boina de pintor, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do PicassoIA (imagens): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo lilás (#c678e6), boina de pintor, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/picasso/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P2",
@@ -4703,7 +4703,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4760,11 +4760,11 @@
       "grupo": "habitantes",
       "subgrupo": "digen",
       "id": "habitante_digen_triste",
-      "descricao": "Habitante do Digen (vídeo do payoff): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa rosa (#ec7aa6), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Digen (vídeo do payoff): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo rosa (#ec7aa6), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/digen/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P2",
@@ -4786,7 +4786,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4843,11 +4843,11 @@
       "grupo": "habitantes",
       "subgrupo": "estudio",
       "id": "habitante_estudio_triste",
-      "descricao": "Habitante do Estúdio (render): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa laranja (#f0a646), cachecol vermelho, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Estúdio (render): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo laranja (#f0a646), cachecol vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/estudio/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -4869,7 +4869,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -4926,11 +4926,11 @@
       "grupo": "habitantes",
       "subgrupo": "arena",
       "id": "habitante_arena_triste",
-      "descricao": "Habitante do Arena (lutas): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho (#e2574c), faixa de lutador amarrada na testa, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Arena (lutas): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho (#e2574c), faixa de lutador amarrada na testa, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/arena/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -4952,7 +4952,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -5009,11 +5009,11 @@
       "grupo": "habitantes",
       "subgrupo": "youtube",
       "id": "habitante_youtube_triste",
-      "descricao": "Habitante do YouTube (upload): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho vivo (#e8453c), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do YouTube (upload): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho vivo (#e8453c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/youtube/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -5035,7 +5035,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -5092,11 +5092,11 @@
       "grupo": "habitantes",
       "subgrupo": "tiktok",
       "id": "habitante_tiktok_triste",
-      "descricao": "Habitante do TikTok (post): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do TikTok (post): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/tiktok/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P2",
@@ -5118,7 +5118,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -5175,11 +5175,11 @@
       "grupo": "habitantes",
       "subgrupo": "bot",
       "id": "habitante_bot_triste",
-      "descricao": "Habitante do Bot (Telegram): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'triste': ombros caídos, olhar para baixo, um suspiro. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Bot (Telegram): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'triste': afunda um pouco achatado, olhar para baixo, um suspiro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/bot/triste.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P2",
@@ -5201,7 +5201,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -5891,11 +5891,11 @@
       "grupo": "habitantes",
       "subgrupo": "chatgpt",
       "id": "habitante_chatgpt_comemorar",
-      "descricao": "Habitante do ChatGPT (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa verde-água (#2fb489), fones de ouvido grandes, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do ChatGPT (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo verde-água (#2fb489), fones de ouvido grandes, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/chatgpt/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -5917,7 +5917,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -5974,11 +5974,11 @@
       "grupo": "habitantes",
       "subgrupo": "deepseek",
       "id": "habitante_deepseek_comemorar",
-      "descricao": "Habitante do DeepSeek (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul (#5b7cfa), gorro de lã com pompom branco, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do DeepSeek (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul (#5b7cfa), gorro de lã com pompom branco, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/deepseek/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6000,7 +6000,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6057,11 +6057,11 @@
       "grupo": "habitantes",
       "subgrupo": "grok",
       "id": "habitante_grok_comemorar",
-      "descricao": "Habitante do Grok (conversa): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa cinza-azulado (#5c667c), boné de aba reta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Grok (conversa): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo cinza-azulado (#5c667c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/grok/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6083,7 +6083,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6140,11 +6140,11 @@
       "grupo": "habitantes",
       "subgrupo": "gemini",
       "id": "habitante_gemini_comemorar",
-      "descricao": "Habitante do Gemini (roteiro e parecer): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, pele #e9b996, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Gemini (roteiro e parecer): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/gemini/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6166,7 +6166,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6223,11 +6223,11 @@
       "grupo": "habitantes",
       "subgrupo": "picasso",
       "id": "habitante_picasso_comemorar",
-      "descricao": "Habitante do PicassoIA (imagens): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa lilás (#c678e6), boina de pintor, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do PicassoIA (imagens): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo lilás (#c678e6), boina de pintor, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/picasso/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P3",
@@ -6249,7 +6249,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6306,11 +6306,11 @@
       "grupo": "habitantes",
       "subgrupo": "digen",
       "id": "habitante_digen_comemorar",
-      "descricao": "Habitante do Digen (vídeo do payoff): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa rosa (#ec7aa6), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Digen (vídeo do payoff): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo rosa (#ec7aa6), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/digen/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P3",
@@ -6332,7 +6332,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6389,11 +6389,11 @@
       "grupo": "habitantes",
       "subgrupo": "estudio",
       "id": "habitante_estudio_comemorar",
-      "descricao": "Habitante do Estúdio (render): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa laranja (#f0a646), cachecol vermelho, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Estúdio (render): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo laranja (#f0a646), cachecol vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/estudio/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6415,7 +6415,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6472,11 +6472,11 @@
       "grupo": "habitantes",
       "subgrupo": "arena",
       "id": "habitante_arena_comemorar",
-      "descricao": "Habitante do Arena (lutas): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho (#e2574c), faixa de lutador amarrada na testa, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Arena (lutas): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho (#e2574c), faixa de lutador amarrada na testa, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/arena/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6498,7 +6498,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6555,11 +6555,11 @@
       "grupo": "habitantes",
       "subgrupo": "youtube",
       "id": "habitante_youtube_comemorar",
-      "descricao": "Habitante do YouTube (upload): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho vivo (#e8453c), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do YouTube (upload): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho vivo (#e8453c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/youtube/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6581,7 +6581,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6638,11 +6638,11 @@
       "grupo": "habitantes",
       "subgrupo": "tiktok",
       "id": "habitante_tiktok_comemorar",
-      "descricao": "Habitante do TikTok (post): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do TikTok (post): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/tiktok/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6664,7 +6664,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6721,11 +6721,11 @@
       "grupo": "habitantes",
       "subgrupo": "bot",
       "id": "habitante_bot_comemorar",
-      "descricao": "Habitante do Bot (Telegram): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'comemorar': braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula). O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Bot (Telegram): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'comemorar': estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código). A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/bot/comemorar.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P3",
@@ -6747,7 +6747,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6804,11 +6804,11 @@
       "grupo": "habitantes",
       "subgrupo": "chatgpt",
       "id": "habitante_chatgpt_sentado",
-      "descricao": "Habitante do ChatGPT (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa verde-água (#2fb489), fones de ouvido grandes, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do ChatGPT (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo verde-água (#2fb489), fones de ouvido grandes, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/chatgpt/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6830,7 +6830,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6887,11 +6887,11 @@
       "grupo": "habitantes",
       "subgrupo": "deepseek",
       "id": "habitante_deepseek_sentado",
-      "descricao": "Habitante do DeepSeek (roteiro): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul (#5b7cfa), gorro de lã com pompom branco, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do DeepSeek (roteiro): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul (#5b7cfa), gorro de lã com pompom branco, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/deepseek/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6913,7 +6913,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -6970,11 +6970,11 @@
       "grupo": "habitantes",
       "subgrupo": "grok",
       "id": "habitante_grok_sentado",
-      "descricao": "Habitante do Grok (conversa): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa cinza-azulado (#5c667c), boné de aba reta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Grok (conversa): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo cinza-azulado (#5c667c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/grok/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -6996,7 +6996,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -7053,11 +7053,11 @@
       "grupo": "habitantes",
       "subgrupo": "gemini",
       "id": "habitante_gemini_sentado",
-      "descricao": "Habitante do Gemini (roteiro e parecer): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, pele #e9b996, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Gemini (roteiro e parecer): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo azul-claro (#6f8ff0), presilha de estrela amarela no cabelo, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/gemini/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -7079,7 +7079,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -7136,11 +7136,11 @@
       "grupo": "habitantes",
       "subgrupo": "picasso",
       "id": "habitante_picasso_sentado",
-      "descricao": "Habitante do PicassoIA (imagens): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa lilás (#c678e6), boina de pintor, pele #ffe7d6, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do PicassoIA (imagens): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo lilás (#c678e6), boina de pintor, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/picasso/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P3",
@@ -7162,7 +7162,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -7219,11 +7219,11 @@
       "grupo": "habitantes",
       "subgrupo": "digen",
       "id": "habitante_digen_sentado",
-      "descricao": "Habitante do Digen (vídeo do payoff): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa rosa (#ec7aa6), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Digen (vídeo do payoff): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo rosa (#ec7aa6), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/digen/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P3",
@@ -7245,7 +7245,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -7302,11 +7302,11 @@
       "grupo": "habitantes",
       "subgrupo": "estudio",
       "id": "habitante_estudio_sentado",
-      "descricao": "Habitante do Estúdio (render): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa laranja (#f0a646), cachecol vermelho, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Estúdio (render): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo laranja (#f0a646), cachecol vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/estudio/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -7328,7 +7328,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -7385,11 +7385,11 @@
       "grupo": "habitantes",
       "subgrupo": "arena",
       "id": "habitante_arena_sentado",
-      "descricao": "Habitante do Arena (lutas): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho (#e2574c), faixa de lutador amarrada na testa, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Arena (lutas): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho (#e2574c), faixa de lutador amarrada na testa, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/arena/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -7411,7 +7411,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -7468,11 +7468,11 @@
       "grupo": "habitantes",
       "subgrupo": "youtube",
       "id": "habitante_youtube_sentado",
-      "descricao": "Habitante do YouTube (upload): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa vermelho vivo (#e8453c), boné de aba reta, pele #ffe0c7, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do YouTube (upload): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo vermelho vivo (#e8453c), boné de aba reta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/youtube/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -7494,7 +7494,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -7551,11 +7551,11 @@
       "grupo": "habitantes",
       "subgrupo": "tiktok",
       "id": "habitante_tiktok_sentado",
-      "descricao": "Habitante do TikTok (post): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, pele #d9a47f, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do TikTok (post): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo grafite (#3b3748), moletom de capuz com duas listras, ciano e vermelho, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/tiktok/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "magenta #FF00FF",
       "chroma": "#FF00FF",
       "prioridade": "P3",
@@ -7577,7 +7577,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",
@@ -7634,11 +7634,11 @@
       "grupo": "habitantes",
       "subgrupo": "bot",
       "id": "habitante_bot_sentado",
-      "descricao": "Habitante do Bot (Telegram): personagem cartoon chibi, cabeça grande e corpinho pequeno (~2 cabeças de altura), roupa violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, pele #f6d0b1, olhos grandes e bochechas rosadas. Animação 'sentado': sentado, balançando as pernas. O mesmo personagem em todas as folhas dele.",
+      "descricao": "Habitante do Bot (Telegram): uma BOLINHA redonda como os lutadores do Neural Fights, SEM braços e SEM pernas, corpo violeta (#8676e8), anteninha na cabeça com uma bolinha na ponta, rosto expressivo com olhos grandes e bochechas rosadas. Animação 'sentado': acomodado e meio achatado, balançando devagar de um lado para o outro. A mesma bolinha em todas as folhas dela.",
       "nome_arquivo": "habitantes/bot/sentado.png",
       "tipo": "folha",
       "quadros": 16,
-      "tamanho": "folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
+      "tamanho": "folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px do pé da célula; no mundo 26x32 (x3 no celular)",
       "fundo": "verde #00FF00 (o objeto é roxo/rosa)",
       "chroma": "#00FF00",
       "prioridade": "P3",
@@ -7660,7 +7660,7 @@
           4
         ],
         "ancora": "pes",
-        "escala": true,
+        "escala": false,
         "ciclos": [
           {
             "nome": "frente",

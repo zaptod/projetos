@@ -82,27 +82,30 @@ TELHADO = {
 }
 
 # (nome, prioridade, fps, pose de hoje, o ciclo, quando aparece)
+# O habitante e uma BOLINHA do Neural, sem bracos e sem pernas (decisao
+# painel-e-vila/vila-habitante-forma, 02/10/2026): tudo e achatar/esticar,
+# inclinar e o rosto. O pulo e do codigo: a base fica no chao da celula.
 ANIMACOES = (
     ("parado", "P1", 4, "parado (+ olhos fechados ao piscar)",
-     "respiração leve no lugar; no 3º quadro de cada linha ele pisca",
+     "respiração leve no lugar (estica e achata um pouco); no 3º quadro de cada linha ele pisca",
      "sempre que para: na porta, na esquina, no ponto de passeio"),
     ("andar", "P1", 8, "passo1/passo2",
-     "caminhada no lugar: contato, passagem, contato com a outra perna, passagem",
+     "quicando no lugar: achata ao tocar o chão, estica ao subir, volta redonda (a altura do pulo é do código)",
      "sempre: é como todo habitante anda pela rua"),
     ("trabalhar", "P2", 8, "trabalhar",
-     "mãos ocupadas na frente do corpo, digitando e martelando no ar",
+     "concentrado, inclina para a frente no ritmo, com uma ferramenta pequena flutuando ao lado (não tem mãos)",
      "quando o serviço dele trabalha DE VERDADE (estado real) e ao regar o canteiro"),
     ("conversar", "P2", 6, "acenar",
-     "acena e gesticula falando",
+     "inclina de um lado para o outro falando, boca abrindo e fechando, olhos animados",
      "nos encontros da rua, no lago dando comida aos patos e ao animar um amigo"),
     ("triste", "P2", 4, "triste",
-     "ombros caídos, olhar para baixo, um suspiro",
+     "afunda um pouco achatado, olhar para baixo, um suspiro",
      "quando o prédio dele está com erro (estado real)"),
     ("comemorar", "P3", 8, "feliz",
-     "braços para cima, agacha e estica no lugar (o pulo é do código: os pés ficam no chão da célula)",
+     "estica para cima e achata no lugar com olhos fechados de alegria e estrelinhas (o pulo é do código)",
      "quando sai uma publicação (festa) e quando acaba um trabalho"),
     ("sentado", "P3", 4, "sentado",
-     "sentado, balançando as pernas",
+     "acomodado e meio achatado, balançando devagar de um lado para o outro",
      "de folga, no banco da praça"),
 )
 
@@ -227,19 +230,18 @@ def _habitante(nome: str, anim: tuple) -> dict:
     acao, prio, fps, pose_hoje, ciclo, quando = anim
     info = dados.PREDIOS[nome]
     cor = arte.CORES[nome]
-    pele = arte.PELES[arte.ORDEM_DAS_PELES.index(nome) % len(arte.PELES)]
     acessorio = ACESSORIO.get(arte.ACESSORIOS.get(nome, ""), "")
     return _item(
         grupo="habitantes", subgrupo=nome, id=f"habitante_{nome}_{acao}",
-        descricao=(f"Habitante do {info['rotulo']} ({info['faz']}): personagem cartoon chibi, cabeça "
-                   f"grande e corpinho pequeno (~2 cabeças de altura), roupa {NOME_DA_COR[nome]} "
-                   f"({cor}), {acessorio}, pele {pele}, olhos grandes e bochechas rosadas. "
-                   f"Animação '{acao}': {ciclo}. O mesmo personagem em todas as folhas dele."),
+        descricao=(f"Habitante do {info['rotulo']} ({info['faz']}): uma BOLINHA redonda como os "
+                   f"lutadores do Neural Fights, SEM braços e SEM pernas, corpo {NOME_DA_COR[nome]} "
+                   f"({cor}), {acessorio}, rosto expressivo com olhos grandes e bochechas rosadas. "
+                   f"Animação '{acao}': {ciclo}. A mesma bolinha em todas as folhas dela."),
         nome_arquivo=f"habitantes/{nome}/{acao}.png", tipo="folha",
-        tamanho=("folha 1024x1024 (célula 256x256); personagem com ~200 px de altura, pés a ~24 px "
+        tamanho=("folha 1024x1024 (célula 256x256); bolinha com ~180 px de diâmetro, base a ~24 px "
                  "do pé da célula; no mundo 26x32 (x3 no celular)"),
         fundo=_fundo(_chroma(nome)), chroma=_chroma(nome), prioridade=prio,
-        animacao={"ciclo": True, "grade": [4, 4], "ancora": "pes", "escala": True,
+        animacao={"ciclo": True, "grade": [4, 4], "ancora": "pes", "escala": False,
                   "ciclos": _ciclos_por_direcao(fps)},
         caminho_existente=f"painel/flutuante/arte.py desenhar_personagem('{nome}', pose={pose_hoje}) (desenho de código)",
         fonte="painel/flutuante/arte.py CORES, ACESSORIOS, PELES; painel/flutuante/vida.py Vida.pose; remoto/vila_nova.py POSES",

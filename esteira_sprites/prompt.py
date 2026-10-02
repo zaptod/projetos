@@ -119,8 +119,8 @@ def _vila(item: dict, defeitos: str) -> str:
                 texto += f", {ciclo['descricao']}"
             partes.append(texto + ".")
         if anim and anim.get("ancora") == "pes":
-            partes.append("Os pés tocam a MESMA linha de chão em todos os quadros, no centro da célula; "
-                          "nenhum membro some de um quadro para o outro.")
+            partes.append("A base do desenho toca a MESMA linha de chão em todos os quadros, no centro "
+                          "da célula; nenhuma parte some de um quadro para o outro.")
     elif not opaco(item):
         partes.append("Peça parada: um objeto único, centrado, sem tocar a borda.")
     if config.mestra().is_file():
