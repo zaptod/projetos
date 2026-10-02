@@ -295,7 +295,7 @@ def test_um_delegado_por_vez(mundo):
     _criar(mundo, tid="t01")
     _criar(mundo, tid="t02")
     delegar._mudar_estado("t01", situacao="rodando", pid=os.getpid())
-    with pytest.raises(delegar.Recusa, match="um delegado por vez: t01"):
+    with pytest.raises(delegar.Recusa, match=r"no máximo 1 delegado\(s\) ao mesmo tempo: t01"):
         delegar.rodar("t02")
     with pytest.raises(delegar.Recusa, match="já está rodando"):
         delegar.rodar("t01")

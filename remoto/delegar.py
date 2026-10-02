@@ -436,7 +436,7 @@ def uso_codex(agora: float | None = None, *, rollout: Path | None = None) -> dic
 
 def tokens_na_janela(agora: float | None = None, janela_s: float = 5 * 3600) -> int:
     """Tokens que os delegados gastaram nas ultimas 5 h (o teto de reserva)."""
-    agora = time.time() if agora is None else agora
+    agora = _agora().timestamp() if agora is None else agora
     total = 0
     for estado in listar():
         for rodada in estado.get("rodadas") or []:
