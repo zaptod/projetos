@@ -12,6 +12,9 @@ const METAL_ESCURO := Color8(118, 122, 134)
 const MADEIRA := Color8(112, 80, 46)
 const MADEIRA_ESCURA := Color8(72, 50, 30)
 
+## Esta peca se desenha no comprimento da timeline (`_comprimento_px`): o
+## palco nao a estica por escala (UtilPalco.esticar_arma).
+var desenha_comprimento := true
 var tipo := "Reta"
 var estilo_arma := ""
 var cor_arma := Color.WHITE

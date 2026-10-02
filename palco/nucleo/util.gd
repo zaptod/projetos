@@ -79,3 +79,21 @@ static func m(valor: float) -> float:
 
 static func mv(x: float, y: float) -> Vector2:
 	return Vector2(x, y) * PX_POR_M
+
+
+## Estica a ARMA ate o comprimento da timeline (px do mundo, empunhadura ->
+## ponta). A peca montada pelas regras de COMO-EDITAR §3 (uma imagem, uma
+## cena com o `peca.gd`, com ou sem `atualizar`) desenha `comprimento_ref`
+## px ao longo de +x a partir da origem, que e a empunhadura: a escala
+## uniforme comprimento / comprimento_ref leva a ponta ao alcance real e a
+## mao nao sai do lugar. A peca que ja se desenha NO comprimento (a arma
+## padrao e as filhas, `desenha_comprimento`, que leem `_comprimento_px`)
+## fica em escala 1, como antes.
+static func esticar_arma(no: Node2D, comprimento_px: float) -> void:
+	if no.get("desenha_comprimento") == true:
+		no.scale = Vector2.ONE
+		return
+	var ref = no.get("comprimento_ref")
+	var k := comprimento_px / maxf(1.0, float(ref) if ref != null else 100.0)
+	# escala zero quebra a inversa do transform (do_mundo, a camera)
+	no.scale = Vector2.ONE * maxf(k, 0.01)

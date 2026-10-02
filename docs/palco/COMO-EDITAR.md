@@ -61,7 +61,23 @@ você confere se a sua peça nova foi usada.
    ou `palco/biblioteca/armas/tipos/<tipo>.tscn` (todas as armas do tipo).
    Ordem de busca: **estilo > tipo > `_padrao`**.
 5. **O palco estica a peça para o comprimento REAL da hitbox** e a gira para
-   onde o golpe está: o que você desenha é o que acerta.
+   onde o golpe está: o que você desenha é o que acerta. A escala é
+   `comprimento / comprimento_ref`, a cada quadro e em volta da origem (a mão
+   não sai do lugar), e vale também para a cena com o `peca.gd` (até
+   02/10/2026 ela ficava no tamanho desenhado). Só a peça que se desenha no
+   comprimento (`desenha_comprimento = true`, a arma padrão e a corrente,
+   que leem `_comprimento_px`) não é escalada.
+
+### Pela Oficina de sprites (16F)
+
+Na Oficina, tipo **arma (peça parada)** e o **estilo** no nome (`Espada
+Longa`). A arte (1 quadro só; o inventário pede 4:1, fundo magenta) vira
+`armas/estilos/<estilo>.png`, `.tscn` e `.json`. A empunhadura é a borda
+esquerda do desenho, na altura do meio do cabo, e a ponta é a borda direita.
+Se a arma tiver outro formato, clique a mão na prévia: a âncora vira a
+empunhadura. Se a arte estiver torta, a cena gira o Sprite2D até a ponta
+cair em +x. O `.json` guarda empunhadura, ponta, `comprimento_ref` e a prova
+de origem, e sem prova a Oficina não exporta.
 
 ### O golpe animado (opcional)
 

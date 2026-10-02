@@ -1150,11 +1150,8 @@ class Pagina:
         if not hasattr(self, "lbl_destino"):
             return
         ident = self.identidade()
-        destino = exportar.destino_da_cena(ident)
-        nome = exportar.slug(ident.nome) or "?"
-        self.lbl_destino.configure(
-            text=f"efeitos/folhas/{nome}.png\n"
-                 + (f"efeitos/{destino}.tscn" if destino else "(sem cena)"))
+        # a exportacao diz para onde vai (arma vai para armas/estilos/<slug>)
+        self.lbl_destino.configure(text=exportar.rotulo_dos_arquivos(ident))
         quadros = len(self.resultado.alinhado.quadros) if self.resultado else 0
         celula = self.resultado.alinhado.celula if self.resultado else (0, 0)
         problemas = exportar.problemas(ident, quadros, celula)

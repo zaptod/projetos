@@ -409,11 +409,11 @@ func _arma(slot: String, s: Dictionary, p: float, corte: bool, ctx: Dictionary) 
 	no.position = grip
 	no.rotation = (ponta - grip).angle() if L > 0.5 else deg_to_rad(float(s.get("arma_ang", 0.0)))
 	s["_comprimento_px"] = L
+	# Antes a escala so valia para a peca SEM `atualizar`: a cena com o
+	# peca.gd (que tem atualizar vazio) ficava no tamanho desenhado (16F).
+	UtilPalco.esticar_arma(no, L)
 	if no.has_method("atualizar"):
 		no.atualizar(s, ctx)
-	else:
-		var ref = no.get("comprimento_ref")
-		no.scale = Vector2.ONE * L / maxf(1.0, float(ref) if ref != null else 100.0)
 	_seek_golpe(no, int(s.get("golpe_fase", 0)), float(s.get("golpe_p", 0.0)), float(ctx["t_jogo"]))
 	var linha: Line2D = rastro[slot]
 	var fase := int(s.get("golpe_fase", 0))
