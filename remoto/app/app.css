@@ -596,6 +596,7 @@ nav.prateleira button.objeto span { font-size: 30px; }
 .livro.arena .cartao { background: rgba(45, 33, 26, .96); border-style: solid; }
 .livro.arena .cartao h2 { color: #f2bb65; }
 .arena-label { display: block; font-size: 12px; color: var(--fraco); }
+#arena-mapa, #arena-mapa option { color: #2b1d14; background: #ead9b0; font-weight: 600; }
 .arena-busca { font-size: 14px; letter-spacing: normal; text-align: left; padding: 7px; }
 .arena-lista { max-height: 170px; overflow-y: auto; margin: 5px 0; border: 1px solid var(--linha); border-radius: 8px; }
 .arena-personagem { display: flex; align-items: center; width: 100%; gap: 8px; padding: 7px; border: 0;

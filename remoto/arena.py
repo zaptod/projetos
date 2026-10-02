@@ -32,7 +32,7 @@ def executar(p1: str, p2: str, mapa: str, semente: int, pasta: Path) -> None:
     ficha.update({"p1": p1, "p2": p2, "mapa": mapa, "semente": semente,
                   "vencedor": (resultado or {}).get("vencedor")})
     (pasta / "luta.json").write_text(json.dumps(ficha, ensure_ascii=False), encoding="utf-8")
-    renderizar(documento, mp4)
+    renderizar(timeline, mp4)          # o arquivo, nao o dict: com o dict o render quebrava (02/10)
 
 
 def main(argv=None) -> int:

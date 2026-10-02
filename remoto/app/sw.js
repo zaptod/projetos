@@ -1,6 +1,6 @@
 // Guarda so a CASCA do app (html, icone, manifest) para abrir sem rede.
 // Dados e videos nunca entram no cache: eles vem sempre do PC.
-const CASCA = "painel-casca-v33";
+const CASCA = "painel-casca-v34";
 const ARQUIVOS = ["./", "index.html", "app.js", "vila.js", "comandos.js",
                   "decisoes.js", "assembleia.js", "orquestrador.js", "coordenador.js", "conversa.js", "oficina.js", "biblioteca.js", "app.css",
                   "manifest.webmanifest", "icones/icone-192.png",

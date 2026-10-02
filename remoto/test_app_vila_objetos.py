@@ -134,7 +134,7 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v29 = os quatro objetos, um por pergunta (02/10); v30 = a Vila toca as
     # folhas da esteira (02/10); v31 = Assembleia (02/10); v32 = conferência
     # de sprites pelo celular; v33 = Arena.
-    assert "painel-casca-v33" in sw
+    assert "painel-casca-v34" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

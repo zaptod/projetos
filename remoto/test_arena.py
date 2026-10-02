@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import sys
 import types
 import urllib.parse
@@ -25,7 +26,8 @@ def test_worker_exporta_e_renderiza_com_duble(tmp_path, monkeypatch):
                         types.SimpleNamespace(carregar=lambda caminho: {"resultado": {"vencedor": "Ana"}}))
 
     def renderizar(timeline, mp4):
-        assert timeline["resultado"]["vencedor"] == "Ana"
+        # o render recebe o ARQUIVO da timeline (com o dict quebrava de verdade, 02/10)
+        assert isinstance(timeline, Path) and timeline.name == "timeline.gcpf"
         mp4.write_bytes(b"mp4 falso")
     monkeypatch.setitem(sys.modules, "random_builds.builds.palco.render",
                         types.SimpleNamespace(renderizar=renderizar))
