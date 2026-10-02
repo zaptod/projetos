@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-02T00:21:29",
+      "evento": "2026-10-02T00:20:37",
+      "linha": 106,
+      "nota": "aplicando",
+      "opcao": "visualizador",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "O Compartilhar pode criar um link compartilhável da imagem na sua conta; o visualizador baixa igual sem passar pelo compartilhamento. Os dois funcionam no código consertado (e8470c8).",
   "criado": "2026-10-02T00:15:15.811025",
   "depende_de": [],
