@@ -1110,6 +1110,9 @@ def main(argv=None):
     if args.exportar_palco:
         if not args.p1 or not args.p2 or not args.palco_saida:
             parser.error("--exportar-palco exige --p1, --p2 e --palco-saida")
+        if args.seed is None:
+            import random
+            args.seed = random.randint(1, 2**31 - 1)      # sem semente: uma nova
         simulador = SimpleNamespace(
             p1=SimpleNamespace(dados=SimpleNamespace(nome=args.p1)),
             p2=SimpleNamespace(dados=SimpleNamespace(nome=args.p2)),

@@ -25,9 +25,12 @@ def exportar_palco_selecao(p1_nome, p2_nome, cenario, modo):
 
     destino = config.SAIDAS / "launcher" / f"{p1_nome}_vs_{p2_nome}.gcpf"
     destino.parent.mkdir(parents=True, exist_ok=True)
+    import random
+    # sem --seed a exportacao quebrava em int(None) e o Godot nunca abria (02/10)
+    semente = random.randint(1, 2**31 - 1)
     codigo = manual.main([
         "--exportar-palco", "--p1", p1_nome, "--p2", p2_nome,
-        "--cenario", cenario, "--palco-saida", str(destino),
+        "--cenario", cenario, "--palco-saida", str(destino), "--seed", str(semente),
     ])
     if codigo not in (None, 0):
         raise RuntimeError("a exportacao da timeline nao foi concluida")

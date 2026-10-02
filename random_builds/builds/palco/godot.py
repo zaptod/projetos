@@ -96,6 +96,22 @@ def rodar_script(script: str, argumentos: list | None = None, *, cfg: dict | Non
                    "--", *(argumentos or [])], timeout=timeout, cfg=cfg)
 
 
+def _tamanho_da_previa() -> list:
+    """A previa em 9:16 com a altura da area util da tela (02/10/2026: abria em
+    286x519 no canto e o Adrian "nao conseguia ver o palco")."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        area = wintypes.RECT()
+        ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(area), 0)  # SPI_GETWORKAREA
+        altura = max(480, area.bottom - area.top - 60)
+        largura = int(altura * 9 / 16)
+        # sem --position: com ele a janela abria fora da tela (x=-879); o Godot centraliza
+        return ["--resolution", f"{largura}x{altura}"]
+    except Exception:                                          # noqa: BLE001
+        return ["--resolution", "405x720"]
+
+
 def abrir_previa(timeline, *, cfg: dict | None = None) -> Path:
     """Abre a timeline no palco em loop, com os mesmos sons do render."""
     from . import sons
@@ -121,7 +137,8 @@ def abrir_previa(timeline, *, cfg: dict | None = None) -> Path:
     }, ensure_ascii=False, indent=1), encoding="utf-8")
     janela = exe.with_name(exe.name.replace("_console", ""))
     processo = subprocess.Popen(
-        [str(janela if janela.is_file() else exe), "--path", str(projeto), "--", f"--job={job}"],
+        [str(janela if janela.is_file() else exe), "--path", str(projeto),
+         *_tamanho_da_previa(), "--", f"--job={job}"],
         cwd=str(projeto), env=ambiente(cfg), creationflags=SEM_JANELA_DE_CONSOLE,
     )
     if processo.poll() is not None:

@@ -81,6 +81,8 @@ def test_exportar_palco_selecao_chama_manual_e_render(monkeypatch, tmp_path):
     argumentos = next(item[1] for item in chamadas if item[0] == "manual")
     assert argumentos[:5] == ["--exportar-palco", "--p1", "P1", "--p2", "P2"]
     assert "--cenario" in argumentos
+    # sem --seed a exportacao quebrava em int(None) e o Godot nunca abria (02/10)
+    assert "--seed" in argumentos and int(argumentos[argumentos.index("--seed") + 1]) > 0
     assert any(item[0] == "render" for item in chamadas)
     assert any(item[0] == "arquivo" for item in chamadas)
 
