@@ -1145,6 +1145,7 @@ async function orqCarregar() {
     orqDesenharFluxoTrabalho(d);
     orqDesenharComandos(d);
     orqMarcarSelo(d);
+    if (typeof coordenadorMesa === "function") coordenadorMesa();
     conexao(true);
   } catch (err) { conexao(false, err); }
 }

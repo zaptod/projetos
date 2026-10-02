@@ -454,6 +454,8 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
 .livro.mesa .cartao { position: relative; z-index: 1;
   background: rgba(250, 242, 220, .92); border-style: dashed; border-color: #b89968; }
 .livro.mesa .cartao h2 { color: #6b3a1a; }
+.coord-mesa { position: sticky; top: 38px; z-index: 4; margin-bottom: 8px; padding: 7px 10px;
+  border-radius: 8px; background: #dcebd9; border: 1px solid #6a9b65; color: #25502a; font-size: 13px; }
 .orq-atalhos { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 10px;
   scrollbar-width: none; position: relative; z-index: 1; }
 .orq-atalhos button { flex: none; font-family: Georgia, serif; font-size: 13px;
@@ -579,6 +581,26 @@ nav.prateleira button.objeto { font-size: 10px; letter-spacing: -.03em;
 nav.prateleira button.objeto span { font-size: 26px; }
 /* o atalho da Mesa para a seção abaixo do cabeçalho fixo */
 .livro.mesa .cartao { scroll-margin-top: calc(72px + env(safe-area-inset-top)); }
+
+/* ================================================================
+   Coordenador: painel de supervisao, compacto para a tela de 390 px.
+   ================================================================ */
+.livro.coordenador { background: radial-gradient(ellipse at top, #e4eef5, #bac9d6); }
+.livro.coordenador .cartao { background: rgba(255, 255, 255, .94); }
+.coord-vivo { color: var(--ok); }
+.coord-fora, .coord-erro { color: var(--erro); }
+.coord-servico { padding: 10px 0; border-top: 1px solid var(--linha); }
+.coord-servico:first-child { padding-top: 0; border-top: 0; }
+.coord-linha { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.coord-aviso { margin-top: 4px; color: var(--ativo); font-size: 13px; }
+.coord-confirmar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px;
+  padding: 8px; border: 1px solid var(--erro); border-radius: 8px; color: var(--erro); }
+.coord-evento-hora { flex: none; width: 4.2em; font-size: 12px; color: var(--fraco); }
+@media (prefers-color-scheme: dark) {
+  .livro.coordenador { background: radial-gradient(ellipse at top, #344452, #1d252d); }
+  .livro.coordenador .cartao { background: rgba(30, 33, 39, .96); }
+  .coord-mesa { background: #23442b; border-color: #5cc185; color: #dff5e4; }
+}
 
 /* ================================================================
    A Vila DEITADA (28/09/2026, decisão vila-zoom-celular: "também

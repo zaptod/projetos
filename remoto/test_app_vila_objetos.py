@@ -13,7 +13,7 @@ APP = Path(__file__).resolve().parent / "app"
 HTML = (APP / "index.html").read_text(encoding="utf-8")
 JS = {n: (APP / n).read_text(encoding="utf-8")
       for n in ("app.js", "vila.js", "comandos.js", "decisoes.js", "orquestrador.js",
-                "conversa.js", "oficina.js", "biblioteca.js")}
+                "coordenador.js", "conversa.js", "oficina.js", "biblioteca.js")}
 
 # as áreas de antes da reforma, cada uma com o seu objeto na vila
 OBJETOS = {"quadro": "Avisos", "diario": "Diário", "videos": "Cinema",
@@ -118,10 +118,11 @@ def test_o_cache_da_casca_mudou_de_versao():
     sw = (APP / "sw.js").read_text(encoding="utf-8")
     # v20 = pedir imagem (29/09); v21 = lote da semana (30/09); v22 = modulo
     # que nao chegou (30/09, tarde: o 502 cai na copia guardada); v23 = a
-    # Oficina do Codex e os Modelos (01/10); v24 = Biblioteca
-    assert "painel-casca-v25" in sw
+    # Oficina do Codex e os Modelos (01/10); v24 = Biblioteca; v26 = Coordenador
+    assert "painel-casca-v26" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
+    assert '"coordenador.js"' in sw
 
 
 def test_o_icone_novo_esta_no_manifest_na_casca_e_no_servidor():

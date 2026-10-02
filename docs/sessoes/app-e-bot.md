@@ -657,6 +657,14 @@ na 8935 vazia, com 0 erros de JS.
 - Limites: "força total a partir de 22:30".
 - O histórico do nó no Grimório diz "pela Mesa de comando" e "no chat".
 
+## 7.1 Coordenador no app (01/10/2026)
+
+O atalho **🛰 Coordenador** da Mesa abre o retrato de
+`%LOCALAPPDATA%\neural-fights\coordenador\estado.json`: pulso, serviços,
+ações fechadas do PC e eventos. A rota `/api/coordenador` só lê esse arquivo;
+`/api/coordenador/comando` exige aparelho pareado e `--acoes`, valida o
+catálogo publicado e deixa o pedido pendente para o orquestrador aplicar.
+
 ## 8. O leitor de decisões tomadas (28/09/2026, noite)
 
 Pedido do Adrian pela Mesa, às 21:50: "Quero que você crie um leitor de

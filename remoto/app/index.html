@@ -209,10 +209,12 @@
          aria-label="Claude liberado ou proibido"></div>
     <div id="claude-faixa" class="claude-faixa oculto" role="status"></div>
     <div id="orq-faixa" class="orq-faixa oculto" role="status"></div>
+    <div id="coord-mesa" class="coord-mesa" role="status">Coordenador: carregando…</div>
     <div class="orq-atalhos" role="group" aria-label="Seções da mesa">
       <button class="acao" data-orq="orq-sec-agora">Agora</button>
       <button class="acao" data-orq="orq-sec-codex">Codex</button>
       <button class="acao" id="orq-abrir-biblioteca">📚 Biblioteca</button>
+      <button class="acao" id="orq-abrir-coordenador">🛰 Coordenador</button>
       <button class="acao" data-orq="orq-sec-fila">Fila</button>
       <button class="acao" data-orq="orq-sec-capacidade">Capacidade</button>
       <button class="acao" data-orq="orq-sec-modelos">Modelos</button>
@@ -340,6 +342,22 @@
       <div id="orq-comandos"></div>
     </div>
   </section>
+  <section id="tela-coordenador" class="oculto livro coordenador" aria-label="Coordenador">
+    <div class="cartao" id="coord-topo"></div>
+    <div class="cartao">
+      <h2>Serviços</h2>
+      <div id="coord-servicos"></div>
+    </div>
+    <div class="cartao">
+      <h2>Controlar o PC</h2>
+      <div id="coord-acoes" class="botoes"></div>
+      <div id="coord-confirmar" class="coord-confirmar oculto"></div>
+    </div>
+    <div class="cartao">
+      <h2>O que aconteceu</h2>
+      <div id="coord-eventos"></div>
+    </div>
+  </section>
   <!-- A Biblioteca (01/10): paginas publicadas, planos e relatorios, so leitura. -->
   <section id="tela-biblioteca" class="oculto livro biblioteca" aria-label="Biblioteca">
     <div class="cartao" id="biblioteca-listas">
@@ -456,6 +474,7 @@
 <script src="comandos.js"></script>
 <script src="decisoes.js"></script>
 <script src="orquestrador.js"></script>
+<script src="coordenador.js"></script>
 <script src="conversa.js"></script>
 <script src="oficina.js"></script>
 <script src="biblioteca.js"></script>

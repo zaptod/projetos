@@ -122,6 +122,7 @@ ESTATICOS = {
     "/comandos.js": ("comandos.js", "text/javascript; charset=utf-8"),
     "/decisoes.js": ("decisoes.js", "text/javascript; charset=utf-8"),
     "/orquestrador.js": ("orquestrador.js", "text/javascript; charset=utf-8"),
+    "/coordenador.js": ("coordenador.js", "text/javascript; charset=utf-8"),
     "/conversa.js": ("conversa.js", "text/javascript; charset=utf-8"),
     "/oficina.js": ("oficina.js", "text/javascript; charset=utf-8"),
     "/biblioteca.js": ("biblioteca.js", "text/javascript; charset=utf-8"),
@@ -177,6 +178,46 @@ def fuso_do_pc_min() -> int:
 # ================================================================ config
 def caminho() -> Path:
     return Path(ARQUIVO) if ARQUIVO else runtime_dir() / "app_celular.json"
+
+
+COMANDOS_COORDENADOR = ("servico_reiniciar", "servico_parar", "servico_ligar", "pc_acao")
+
+
+def caminho_coordenador() -> Path:
+    """O estado publicado pelo coordenador; esta API so o le."""
+    return runtime_dir() / "coordenador" / "estado.json"
+
+
+def estado_coordenador() -> dict | None:
+    """Le o retrato do coordenador sem deixar uma falha de disco virar 500."""
+    try:
+        with caminho_coordenador().open(encoding="utf-8-sig") as arquivo:
+            dados = json.load(arquivo)
+    except Exception:                                      # noqa: BLE001 - leitura opcional
+        return None
+    return dados if isinstance(dados, dict) else None
+
+
+def _instante_coordenador(valor) -> float | None:
+    if not isinstance(valor, str) or not valor:
+        return None
+    try:
+        return datetime.fromisoformat(valor.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def coordenador_para_o_app() -> dict:
+    """Estado do supervisor com idade e pulso calculados no servidor."""
+    dados = estado_coordenador()
+    if dados is None:
+        return {"vivo": False, "motivo": "o coordenador não está rodando"}
+    agora = time.time()
+    pulso = _instante_coordenador(dados.get("pulso_em"))
+    desde = _instante_coordenador(dados.get("desde"))
+    dados["vivo"] = pulso is not None and 0 <= agora - pulso < 30
+    dados["idade_s"] = int(max(0, agora - desde)) if desde is not None else None
+    return dados
 
 
 _TRAVAS_THREADS: dict[str, threading.RLock] = {}
@@ -749,6 +790,8 @@ class Manipulador(BaseHTTPRequestHandler):
                 # A Mesa de comando: o que o orquestrador publicou, o uso, os
                 # comandos e a situacao de cada um. So leitura, e limpo.
                 return self._json(_limpo(orquestrador.para_o_app()))
+            if rota == "/api/coordenador":
+                return self._json(_limpo(coordenador_para_o_app()))
             # A OFICINA DO CODEX (01/10): o que foi delegado, ao vivo. So
             # leitura; os eventos novos por offset (`desde`), sem reler o
             # arquivo inteiro a cada 3 s.
@@ -856,6 +899,8 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._responder_decisao()
         if rota in ("/api/orquestrador/comando", "/api/orquestrador/contestar"):
             return self._orquestrador(rota)
+        if rota == "/api/coordenador/comando":
+            return self._coordenador_comando()
         if rota == "/api/claude":
             return self._interruptor_claude()
         achado = re.fullmatch(r"/api/biblioteca/bilhete/([a-z0-9-]{1,64})", rota)
@@ -1038,6 +1083,38 @@ class Manipulador(BaseHTTPRequestHandler):
         acoes.avisar_texto(f"⚔ Adrian contestou uma decisão do orquestrador: "
                            f"nó {feito['no']} no Grimório")
         return self._json({"feito": True, **feito})
+
+    def _coordenador_comando(self):
+        """Guarda um pedido fechado para o coordenador aplicar no PC."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        corpo = self._corpo()
+        if corpo is None:
+            return
+        comando = corpo.get("cmd")
+        valor = corpo.get("valor")
+        if not isinstance(comando, str) or comando not in COMANDOS_COORDENADOR:
+            return self._erro(400, "comando desconhecido")
+        estado = estado_coordenador() or {}
+        servicos = estado.get("servicos") if isinstance(estado.get("servicos"), dict) else {}
+        acoes_pc = estado.get("acoes_pc") if isinstance(estado.get("acoes_pc"), list) else []
+        if comando == "pc_acao":
+            acao = next((a for a in acoes_pc if isinstance(a, dict) and a.get("id") == valor), None)
+            if acao is None:
+                return self._erro(400, "ação desconhecida")
+            if acao.get("perigo") is True and corpo.get("confirmar") is not True:
+                return self._erro(400, "confirme a ação perigosa")
+        elif not isinstance(valor, str) or valor not in servicos:
+            return self._erro(400, "serviço desconhecido")
+        try:
+            linha = orquestrador.gravar_comando(comando, valor, aparelho=self._id)
+        except orquestrador.Recusa as exc:
+            return self._erro(409, str(exc))
+        except OSError:
+            return self._erro(503, "o orquestrador está ocupado; tente de novo")
+        return self._json({"feito": True, "comando": linha})
 
     # ------------------------------------------------- interruptor do Claude
     def _interruptor_claude(self):

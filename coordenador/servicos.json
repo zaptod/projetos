@@ -1,0 +1,48 @@
+{
+  "servicos": [
+    {
+      "nome": "app",
+      "comando": ["C:\\Python314\\python.exe", "-u", "-X", "utf8", "-m", "remoto.api_http", "--local", "--porta", "8931", "--acoes", "--publicar", "--perigosas"],
+      "cwd": "E:\\projetos",
+      "log": "E:\\projetos\\outputs\\app_celular.txt",
+      "janela": "oculta",
+      "assinatura": "-m\\s+remoto\\.api_http.*--porta\\s+8931",
+      "saude": "porta 8931",
+      "modulos": ["remoto"],
+      "reinicio_seguro": true
+    },
+    {
+      "nome": "bot",
+      "comando": ["C:\\Python314\\python.exe", "-u", "-X", "utf8", "-m", "remoto"],
+      "cwd": "E:\\projetos",
+      "log": "E:\\projetos\\outputs\\bot.txt",
+      "janela": "oculta",
+      "assinatura": "-m\\s+remoto(?:\\s|$)",
+      "saude": "processo vivo",
+      "modulos": ["remoto"],
+      "reinicio_seguro": false
+    },
+    {
+      "nome": "carteiro",
+      "comando": ["C:\\Python314\\python.exe", "-u", "-X", "utf8", "-m", "ias", "carteiro", "--saida", "E:\\projetos\\outputs\\carteiro.txt"],
+      "cwd": "E:\\projetos",
+      "log": "E:\\projetos\\outputs\\carteiro.txt",
+      "janela": "oculta",
+      "assinatura": "-m\\s+ias\\s+carteiro",
+      "saude": "pulso carteiro",
+      "modulos": ["ias", "historias/contos/llm"],
+      "reinicio_seguro": true
+    },
+    {
+      "nome": "vila",
+      "comando": ["C:\\Python314\\pythonw.exe", "-X", "utf8", "-m", "painel.flutuante", "--medio"],
+      "cwd": "E:\\projetos",
+      "log": "E:\\projetos\\outputs\\vila_flutuante.txt",
+      "janela": "normal",
+      "assinatura": "-m\\s+painel\\.flutuante",
+      "saude": "processo vivo",
+      "modulos": ["painel"],
+      "reinicio_seguro": false
+    }
+  ]
+}

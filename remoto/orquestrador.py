@@ -1279,6 +1279,12 @@ COMANDOS = {
     "modelo_agentes": "modelo dos agentes (Claude)",
     "modelo_codex": "modelo do Codex",
     "modelo_gemini": "modelo do Gemini (navegador)",
+    # Estes quatro sao consumidos pelo coordenador residente, sem IA. Os
+    # demais continuam pertencendo a sessao principal.
+    "servico_reiniciar": "reiniciar servico",
+    "servico_parar": "parar servico",
+    "servico_ligar": "ligar servico",
+    "pc_acao": "acao do PC",
 }
 # o que o app pode mandar pela rota de comando (o contestar tem rota propria)
 DO_APP = tuple(c for c in COMANDOS if c != "contestar")
@@ -1288,6 +1294,14 @@ def validar_comando(comando: str, valor):
     """O valor normalizado, ou Recusa. A regra mora aqui, nao na tela."""
     if comando not in COMANDOS:
         raise Recusa(f"comando desconhecido: {comando}")
+    if comando in ("servico_reiniciar", "servico_parar", "servico_ligar"):
+        if valor not in ("app", "bot", "carteiro", "vila"):
+            raise Recusa("servico desconhecido")
+        return valor
+    if comando == "pc_acao":
+        if not isinstance(valor, str) or not valor.strip() or len(valor) > 100:
+            raise Recusa("acao do PC invalida")
+        return valor.strip()
     if comando == "max_paralelo":
         if isinstance(valor, bool):
             raise Recusa("max_paralelo é um número de 1 a 8")
