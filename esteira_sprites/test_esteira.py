@@ -265,3 +265,13 @@ def test_juiz_que_falha_nao_gasta_tentativa(ambiente, monkeypatch):
 def test_contar_desde_reabre_as_tentativas():
     assert juiz.tentativas_contadas({"tentativas": [{}] * 6, "contar_desde": 5}) == 1
     assert juiz.tentativas_contadas({"tentativas": [{}] * 4}) == 4
+
+
+def test_pedir_atualiza_o_item_da_ficha(ambiente, monkeypatch):
+    velho = dict(config.item("fogo_teste"), descricao="desenho de antes")
+    dados = ficha.nova(velho)
+    ficha.gravar(dados)
+    monkeypatch.setattr(pedir.correio, "pedir_imagem", lambda *a, **k: {"id": "m1"})
+    monkeypatch.setattr(pedir, "marcar", lambda *_: None)
+    pedir.pedir("fogo_teste")
+    assert ficha.ler("fogo_teste")["item"] == config.item("fogo_teste")

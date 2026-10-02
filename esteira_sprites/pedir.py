@@ -27,6 +27,9 @@ def pedir(item_id: str, defeitos: str = "", prompt_pronto: str = "") -> dict:
         # a mestra da Vila e a do Neural: quem pede e aprova e o perfil palco
         raise ValueError(f"{item_id} vem de fora deste perfil ({item['externo']}); nao se pede aqui")
     dados = ficha.ler(item_id) or ficha.nova(item)
+    # o item vem SEMPRE do inventario de agora: a copia velha da ficha fez o juiz
+    # e o portao julgarem o habitante bolinha como o boneco de pernas (02/10/2026)
+    dados["item"] = item
     texto = prompt_pronto.strip() or prompt.montar(item, defeitos)
     caixa = gerador_do(item)
     mensagem = correio.pedir_imagem(caixa, texto, proporcao="1:1")
