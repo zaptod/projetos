@@ -100,9 +100,17 @@ NOSSOS = (".codex_tarefa.md", ".codex_resposta.md", ".codex_correcao.md")
 # Sobras do ambiente, nao trabalho do Codex (01/10: o Adrian viu "RECUSADO" em
 # tudo e era isto): temporarios de teste, caches e travas que o pytest deixa.
 RUIDO = ("**/.teste_tmp/**", ".teste_tmp/**", "**/.pytest_cache/**", ".pytest_cache/**",
-         "**/__pycache__/**", "**/*.pyc", "**/*.lock")
+         "**/__pycache__/**", "**/*.pyc", "**/*.lock",
+         # pastas temporarias que os testes do Codex deixam (01/10: .temp-delegar-*,
+         # .pytest-tmp*, .tmp_pytest*) - nao sao trabalho dele
+         ".temp-delegar-*/**", "**/.temp-delegar-*/**", ".pytest-tmp*/**", "**/.pytest-tmp*/**",
+         ".tmp_pytest*/**", "**/.tmp_pytest*/**", ".tmp/**")
 # O que o Codex nunca mexe, qualquer que seja a lista da tarefa.
-PROIBIDOS = ("ias/config.json", "random_builds/config/identity.json", "palco/**",
+# 01/10 23:5x: era "palco/**" inteiro e barrou a entrega das buscas do palco;
+# o que e do Adrian no palco sao so estes tres (as artes dele, sem commit).
+PROIBIDOS = ("ias/config.json", "random_builds/config/identity.json",
+             "palco/biblioteca/LICENCAS.md", "palco/biblioteca/efeitos/objetos/projetil/fogo.tscn",
+             "palco/biblioteca/efeitos/folhas/**",
              "decisoes/**", ".claude/**", ".github/**", "*.png", "*.jpg", "*.jpeg",
              "*.webp", "*.gif", "*.mp4", "*.mp3", "*.wav", "*.sqlite*", "*.exe",
              "*.dll", "*auth.json", ".env*", "*credentials*", ".codex*", "piriri.py")

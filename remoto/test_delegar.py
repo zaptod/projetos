@@ -320,10 +320,10 @@ def test_validador_recusa(mundo, monkeypatch, modo, motivo):
 
 def test_validador_proibidos_e_tamanho():
     config = dict(delegar.PADRAO_CONFIG, diff_max_linhas=10, diff_max_arquivos=1)
-    arquivos = [{"caminho": "palco/x.tscn", "mais": 1, "menos": 0, "binario": False},
+    arquivos = [{"caminho": "palco/biblioteca/LICENCAS.md", "mais": 1, "menos": 0, "binario": False},
                 {"caminho": "ias/config.json", "mais": 20, "menos": 0, "binario": False}]
     motivos = delegar.validar_diff(arquivos, ["**"], config)
-    assert "caminho proibido: palco/x.tscn" in motivos
+    assert "caminho proibido: palco/biblioteca/LICENCAS.md" in motivos
     assert "caminho proibido: ias/config.json" in motivos
     assert any("diff grande: 21" in m for m in motivos)
     assert any("arquivos demais: 2" in m for m in motivos)
