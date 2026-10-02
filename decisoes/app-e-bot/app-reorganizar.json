@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Hoje: 7 objetos na prateleira e mais 4 telas escondidas (Coordenador, Biblioteca, Oficina do Codex, Conversa), que só abrem por dentro de outras. A Mesa tem 12 seções. O interruptor do Claude aparece duas vezes (Mesa e Bancada). 'Tarefas' quer dizer duas coisas: na Bancada é só o histórico dos botões que você apertou ali (e fica ACIMA dos botões, quase sempre vazio); na Mesa a 'Fila' é o trabalho dos agentes. Avisos, Diário e Pergaminhos se sobrepõem (erros aparecem em dois lugares). Comente o que mais te incomoda.",
+  "criado": "2026-10-02T01:00:02.015264",
+  "depende_de": [],
+  "historico": [],
+  "id": "app-reorganizar",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Agora (o que está rodando: agentes, Codex, fila, serviços, próxima postagem, erros) · Decidir (Grimório, com o selo) · Mandar (todos os botões + o histórico logo abaixo de cada botão + Claude liberado/proibido uma vez só) · Ver (Cinema, Biblioteca, Pergaminhos, Diário em abas). Vila continua como fundo.",
+      "id": "por-pergunta",
+      "pede_comentario": false,
+      "rotulo": "4 objetos, um por pergunta"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Tirar duplicatas (Claude 1x, erros 1x), mover o histórico de Tarefas para dentro de cada comando, pôr Coordenador/Biblioteca/Oficina na prateleira e recolher as seções da Mesa que você não usa.",
+      "id": "enxugar",
+      "pede_comentario": false,
+      "rotulo": "Manter os objetos e só enxugar"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Sessão guiada: você abre o app e aponta o que usa e o que sobra; eu reorganizo pelo que você mostrou.",
+      "id": "mostrar",
+      "pede_comentario": false,
+      "rotulo": "Você me mostra na tela o que usa"
+    }
+  ],
+  "pergunta": "Como reorganizo o app?",
+  "projeto": "app-e-bot",
+  "situacao": "pendente",
+  "titulo": "App: reorganizar as telas",
+  "vigente": null
+}
