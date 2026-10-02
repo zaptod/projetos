@@ -490,6 +490,12 @@ class Carteiro:
                     if avisou:
                         self.log(f"[carteiro] a conta do {ia} soltou; entregando {mid}")
                     return self._entregar_com_a_conta(caixa, ia, mensagem, desde)
+            if avisou and caixa != correio.LIVRE:
+                # chegou trabalho para uma conta LIVRE: larga esta espera (a
+                # mensagem continua pendente) e vai entregar a outra
+                outra = self._primeira_com_conta_livre(mensagem)
+                if outra["id"] != mensagem["id"] and str(outra.get("para")) != ia:
+                    return mensagem
             if not avisou:
                 avisou = True
                 self.log(f"[carteiro] a conta do {ia} ({nome}) esta com a pipeline; "
@@ -1012,7 +1018,37 @@ class Carteiro:
         if mensagem is None:
             self._estado("ocioso")
             return None
-        return self.entregar(mensagem)
+        return self.entregar(self._primeira_com_conta_livre(mensagem))
+
+    def _primeira_com_conta_livre(self, mais_velha: dict) -> dict:
+        """A mais velha cuja conta esta LIVRE agora; se nenhuma, a mais velha.
+
+        02/10/2026: a criacao de historias segurou a conta do ChatGPT por horas
+        e o carteiro ficou parado esperando por ela, com 16 pedidos do Gemini
+        (conta livre) na fila atras. Uma conta ocupada nao trava as outras."""
+        candidatas = []
+        for caixa in correio.CAIXAS:
+            candidatas.extend(correio.pendentes(caixa))
+        candidatas.sort(key=lambda m: (str(m.get("em") or ""), m["id"]))
+        vistas = set()
+        for m in candidatas:
+            ia = str(m.get("para") or "")
+            if ia == correio.LIVRE:
+                return m                     # o rodizio ja procura quem esta livre
+            if ia in vistas:
+                continue
+            vistas.add(ia)
+            try:
+                with self.trava(self.nome_da_trava(ia), esperar=0.0) as minha:
+                    livre = bool(minha)
+            except Exception:                                  # noqa: BLE001
+                livre = False
+            if livre:
+                if m["id"] != mais_velha["id"]:
+                    self.log(f"[carteiro] a conta do {mais_velha.get('para')} esta ocupada; "
+                             f"adianto {m['id']} do {ia}, que esta livre")
+                return m
+        return mais_velha
 
     def rodar(self, *, uma_vez: bool = False, intervalo: float | None = None,
               parar=None) -> int:

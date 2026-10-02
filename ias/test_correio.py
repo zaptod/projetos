@@ -291,6 +291,40 @@ class CarteiroPrioridade(_Base):
         self.assertTrue(any("esperando a pipeline soltar" in str(x.get("nota")) for x in linhas))
         self.assertIsNone(fim.get("nota"))
 
+    def test_conta_ocupada_nao_trava_as_outras(self):
+        """02/10/2026: as historias seguraram o ChatGPT por horas e 16 pedidos
+        do Gemini (conta livre) ficaram parados atras."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def trava(nome, esperar=0.0):
+            yield "chatgpt" not in nome            # so a do ChatGPT esta ocupada
+        fabrica = carteiro_mod.fabrica_duble(responder=lambda t: "OK")
+        registros = []
+        c = _novo(fabrica, trava=trava, log=registros.append)
+        velha = correio.enviar("chatgpt", "primeiro, mas a conta esta ocupada")
+        nova = correio.enviar("gemini", "depois, conta livre")
+        fim = c.uma_volta()
+        self.assertEqual(fim["id"], nova["id"])
+        self.assertEqual(fim["situacao"], "respondida")
+        self.assertEqual(correio.uma("chatgpt", velha["id"])["situacao"], "pendente")
+
+    def test_espera_larga_quando_chega_trabalho_para_conta_livre(self):
+        from contextlib import contextmanager
+        chamadas = []
+
+        @contextmanager
+        def trava(nome, esperar=0.0):
+            chamadas.append(nome)
+            if len(chamadas) == 3:                 # durante a espera chega um do Gemini
+                correio.enviar("gemini", "chegou agora")
+            yield "chatgpt" not in nome
+        c = _novo(carteiro_mod.fabrica_duble(), trava=trava)
+        m = correio.enviar("chatgpt", "a conta esta com a pipeline")
+        volta = c.entregar(m)
+        self.assertEqual(volta["id"], m["id"])     # largou a espera, ainda pendente
+        self.assertEqual(correio.uma("chatgpt", m["id"])["situacao"], "pendente")
+
     def test_conta_presa_alem_do_limite_falha_com_motivo(self):
         fabrica = carteiro_mod.fabrica_duble()
         relogio = [0.0]
