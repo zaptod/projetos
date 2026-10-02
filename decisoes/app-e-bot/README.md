@@ -15,4 +15,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Sprites: onde você aprova** — Tela 'Conferir sprites' no app (recomendado) (30/09/2026) `sprites-ia-conferir`
 - ✅ **Liberar o Claude com a sessão fechada** — Rodar o orquestrador sem janela (01/10/2026) · “Quero que seja tudo automatizado” `liberar-sem-sessao-aberta`
 - ✅ **ChatGPT: baixar pelo Compartilhar ou pelo visualizador?** — Visualizador (recomendado) (02/10/2026) `chatgpt-baixar-por`
-- ⏳ **App: reorganizar as telas** — Como reorganizo o app? `app-reorganizar`
+- ✅ **App: reorganizar as telas** — 4 objetos, um por pergunta (02/10/2026) `app-reorganizar`

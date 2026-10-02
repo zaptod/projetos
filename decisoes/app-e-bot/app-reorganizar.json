@@ -3,7 +3,15 @@
   "contexto": "Hoje: 7 objetos na prateleira e mais 4 telas escondidas (Coordenador, Biblioteca, Oficina do Codex, Conversa), que só abrem por dentro de outras. A Mesa tem 12 seções. O interruptor do Claude aparece duas vezes (Mesa e Bancada). 'Tarefas' quer dizer duas coisas: na Bancada é só o histórico dos botões que você apertou ali (e fica ACIMA dos botões, quase sempre vazio); na Mesa a 'Fila' é o trabalho dos agentes. Avisos, Diário e Pergaminhos se sobrepõem (erros aparecem em dois lugares). Comente o que mais te incomoda.",
   "criado": "2026-10-02T01:00:02.015264",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-02T01:03:25",
+      "opcao": "por-pergunta",
+      "origem": "app"
+    }
+  ],
   "id": "app-reorganizar",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Como reorganizo o app?",
   "projeto": "app-e-bot",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "App: reorganizar as telas",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-02T01:03:25",
+    "opcao": "por-pergunta"
+  }
 }
