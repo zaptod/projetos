@@ -9,6 +9,13 @@ from __future__ import annotations
 
 from . import config
 
+# O estilo escolhido pelo Adrian no Grimorio (builds/imagem-mestra-v2 = "2 Anime",
+# 02/10/2026): o mesmo texto que gerou a imagem-mestra, para o palco e a Vila.
+# O ChatGPT nao recebe anexo, entao o estilo tem de ir escrito.
+ESTILO = ("Estilo anime cel-shading de jogo de luta moderno: formas dinâmicas, brilhos marcados, "
+          "contorno preto forte de tinta com espessura variada, contraste de cor dramático, "
+          "luz do alto à esquerda, legível pequeno. Nada de pixel art, nada de 3D.")
+
 ROXOS_OU_ROSAS = ("TREVAS", "ARCANO", "VOID", "TEMPO", "GRAVITACAO",
                    "ROXO", "ROXA", "ROSA", "MAGENTA")
 
@@ -53,9 +60,9 @@ def _palco(item: dict, defeitos: str) -> str:
     fundo = fundo_do(item)
     tipo = item.get("tipo", "peca")
     partes = [
-        "Sprite pixel-art para Neural Fights.",
+        "Arte 2D para Neural Fights.",
+        ESTILO,
         f"Desenhe: {item.get('descricao') or item.get('nome_arquivo') or item['id']}.",
-        "Contorno #14141A de 3-4 px; cel shading de exatamente 2 tons; luz do alto a esquerda; cores saturadas e legiveis pequenos.",
         "Sem texto, numeros, grade desenhada ou moldura.",
         f"Fundo liso uniforme {fundo}, sem sombra no fundo.",
     ]
@@ -67,7 +74,7 @@ def _palco(item: dict, defeitos: str) -> str:
         if "arma" in texto or "projetil" in texto:
             partes.append("Arma ou projetil aponta para a direita.")
     if config.mestra().is_file():
-        partes.append("Siga rigorosamente o estilo da imagem-mestra aprovada anexada a este pedido.")
+        partes.append("Siga rigorosamente o estilo da imagem-mestra aprovada do Neural Fights.")
     if defeitos:
         partes.append(f"Corrija estes defeitos da tentativa anterior: {defeitos}.")
     return " ".join(partes)
@@ -83,9 +90,8 @@ def _onde(quadros: list, colunas: int) -> str:
 def _vila(item: dict, defeitos: str) -> str:
     desenho = str(item.get("descricao") or item.get("nome_arquivo") or item["id"]).rstrip(". ")
     partes = [
-        "Arte cartoon para a Vila do Neural Fights, no MESMO estilo dos lutadores do Neural Fights:",
-        "contorno escuro #14141A de 3-4 px em volta de cada forma; cel shading de exatamente 2 tons;",
-        "luz do alto à esquerda; cores saturadas e formas simples, legíveis pequenas. Nada de pixel art.",
+        "Arte para a Vila do Neural Fights, no MESMO estilo dos lutadores do Neural Fights:",
+        ESTILO,
     ]
     if not opaco(item):
         partes.append("Vista de frente, levemente de cima (3/4), como uma vila de jogo.")

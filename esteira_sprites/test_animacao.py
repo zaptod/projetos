@@ -202,7 +202,7 @@ def test_perfil_vila_usa_a_biblia_e_a_pasta_da_vila(perfil_limpo, monkeypatch):
     assert cli.main(["--perfil", "vila", "--inventario", str(inventario), "pedir", "hab_teste"]) == 0
     assert config.PERFIL == "vila" and config.INVENTARIO == inventario
     assert "MESMO estilo dos lutadores do Neural Fights" in pedidos[0]
-    assert "pixel-art" not in pedidos[0]
+    assert "Estilo anime cel-shading" in pedidos[0]
     assert "Linha 1: frente (4 quadros, em laço" in pedidos[0]
     ficha_vila = config.RAIZ / "vila" / "hab_teste" / "ficha.json"
     assert ficha_vila.is_file() and json.loads(ficha_vila.read_text(encoding="utf-8"))["perfil"] == "vila"
@@ -217,7 +217,7 @@ def test_perfil_padrao_continua_o_palco(perfil_limpo, monkeypatch):
                         lambda caixa, texto, **k: pedidos.append(texto) or {"id": "img1"})
     monkeypatch.setattr(pedir, "marcar", lambda *_: None)
     assert cli.main(["--inventario", str(inventario), "pedir", "hab_teste"]) == 0
-    assert config.PERFIL == "palco" and "Sprite pixel-art para Neural Fights" in pedidos[0]
+    assert config.PERFIL == "palco" and "Arte 2D para Neural Fights" in pedidos[0]
     assert (config.RAIZ / "hab_teste" / "ficha.json").is_file()
     assert not (config.RAIZ / "vila").exists()
 
@@ -234,6 +234,29 @@ def test_lote_da_vila_espera_a_mestra_e_pula_a_externa(perfil_limpo, monkeypatch
         cli.mestra()
     with pytest.raises(ValueError, match="vem de fora"):
         pedir.pedir("imagem_mestra")
+
+
+def test_lote_pula_a_mestra_e_espera_a_decisao_do_grupo(perfil_limpo, monkeypatch):
+    itens = [{"id": "imagem_mestra", "tipo": "peca", "prioridade": "P1", "ordem": 0},
+             {"id": "hab_a", "grupo": "habitantes", "tipo": "peca", "prioridade": "P1", "ordem": 1},
+             {"id": "casa", "grupo": "predios", "tipo": "peca", "prioridade": "P1", "ordem": 2}]
+    inventario = perfil_limpo / "inv.json"
+    inventario.write_text(json.dumps({"itens": itens}), encoding="utf-8")
+    config.usar("palco", inventario)
+    config.mestra().parent.mkdir(parents=True)
+    salvar(boneco(), config.mestra())
+    decisoes = perfil_limpo / "decisoes"
+    (decisoes / "painel-e-vila").mkdir(parents=True)
+    arquivo = decisoes / "painel-e-vila" / "vila-habitante-forma.json"
+    arquivo.write_text('{"situacao": "pendente"}', encoding="utf-8")
+    monkeypatch.setattr(cli, "DECISOES", decisoes)
+    pedidos = []
+    monkeypatch.setattr(cli, "pedir", lambda item: pedidos.append(item))
+    # a mestra ja aprovada nunca vira pedido; habitante espera a forma
+    assert cli.lote("P1", 5) == ["casa"]
+    arquivo.write_text('{"situacao": "decidida"}', encoding="utf-8")
+    monkeypatch.setattr(cli.ficha, "ler", lambda _id: None)
+    assert cli.lote("P1", 5) == ["hab_a", "casa"]
 
 
 def test_aprovar_da_vila_copia_a_folha_com_metadados(perfil_limpo):

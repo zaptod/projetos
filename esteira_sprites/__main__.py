@@ -46,6 +46,23 @@ def mestra_aprovar(caminho: str) -> Path:
     return destino
 
 
+# Grupos cujo desenho depende de uma escolha do Adrian no Grimório: sem ela,
+# o lote não gasta imagem num formato que pode ser trocado.
+ESPERA_DECISAO = {"habitantes": ("painel-e-vila", "vila-habitante-forma")}
+DECISOES = Path(__file__).resolve().parents[1] / "decisoes"
+
+
+def _decisao_tomada(item: dict) -> bool:
+    chave = ESPERA_DECISAO.get(str(item.get("grupo") or ""))
+    if not chave:
+        return True
+    try:
+        dados = json.loads((DECISOES / chave[0] / f"{chave[1]}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return dados.get("situacao") == "decidida"
+
+
 def lote(prioridade: str, n: int) -> list[str]:
     escolhidos = []
     if config.perfil().exige_mestra and not config.mestra().is_file():
@@ -55,7 +72,8 @@ def lote(prioridade: str, n: int) -> list[str]:
     itens = sorted(config.itens(), key=lambda i: (i.get("ordem") is None, i.get("ordem") or 999999))
     for item in itens:
         if (item.get("prioridade") != prioridade or item.get("bloqueio") or item.get("opcional")
-                or item.get("externo")):
+                or item.get("externo") or item["id"] == "imagem_mestra"
+                or not _decisao_tomada(item)):
             continue
         existente = ficha.ler(item["id"])
         if existente and existente.get("estado") in ("pedido", "gerado", "limpo", "medido", "julgado", "a_conferir", "aprovado", "na_biblioteca"):
