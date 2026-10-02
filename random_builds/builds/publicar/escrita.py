@@ -191,7 +191,10 @@ def estado(campo, texto: str) -> str:
         return "escrita"
     if not atual:
         return "ficou vazia"
-    visto = " ".join(sem_emoji(atual).split())
+    # a hashtag sai dos DOIS lados: o lutador "Kuro #2" (duelo_00023, 02/10/2026)
+    # nunca batia — o esperado perdia o "#2" e o lido nao — e o video era adiado
+    # para sempre nos dois destinos com o titulo certo na tela
+    visto = " ".join(p for p in sem_emoji(atual).split() if not p.startswith("#"))
     faltam = [linha for linha in linhas_de_conteudo(texto) if linha not in visto]
     return "ficou incompleta" if faltam else "escrita"
 

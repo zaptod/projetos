@@ -340,6 +340,14 @@ class LeituraExigeCadaLinhaTests(unittest.TestCase):
         self.assertEqual("escrita",
                          escrita.estado(self._Lido(lido), self.LEGENDA_H31_P06))
 
+    def test_nome_com_cerquilha_no_meio_do_titulo(self):
+        """duelo_00023, 02/10/2026: o lutador "Kuro #2" fazia o titulo certo
+        na tela ser lido como incompleto, e o video era adiado nos dois
+        destinos em todo horario."""
+        titulo = "Kuro #2 x Orion o Implacável"
+        self.assertEqual("escrita", escrita.estado(self._Lido(titulo), titulo))
+        self.assertEqual("ficou incompleta", escrita.estado(self._Lido("Kuro #2 x Ori"), titulo))
+
     def test_texto_inteiro_e_escrita(self):
         self.assertEqual("escrita", escrita.estado(
             self._Lido(self.LEGENDA_H31_P06), self.LEGENDA_H31_P06))
