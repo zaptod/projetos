@@ -127,6 +127,18 @@ class LimiteDeVerdade(unittest.TestCase):
         for frase in ("refazer upgrade", "fazer upgrades em lote", "casino credits"):
             self.assertIsNone(catalogo.classificar(frase), frase)
 
+    def test_palpite_na_excecao_nao_vira_limite(self):
+        palpite = ("cliquei em enviar mas nada mudou na tela: o campo continua "
+                   "com o texto e nenhuma resposta comecou. Pode ser limite de "
+                   "uso da conta ou um desafio na tela - abra a janela e olhe.")
+        categoria, motivo = carteiro_mod.classificar_erro("gemini", LLMFalhou(palpite))
+        self.assertEqual(categoria, "erro")
+        self.assertIn("Pode ser limite de uso", motivo)
+
+        categoria, _ = carteiro_mod.classificar_erro(
+            "gemini", LLMFalhou(palpite), "Você atingiu o limite de uso")
+        self.assertEqual(categoria, "limite")
+
 
 # ============================================================ o carteiro
 class CarteiroLeSoONossoTurno(_Base):

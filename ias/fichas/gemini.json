@@ -89,14 +89,6 @@
     },
     {
       "categoria": "limite",
-      "fonte": "logs",
-      "nota": "FALSO ALARME medido: era raciocínio preso (gemini-raciocinio-preso)",
-      "seletor": "(mensagem do cliente, não do site)",
-      "texto": "Verifique se a conta atingiu o limite de uso",
-      "visto_em": "2026-09-14"
-    },
-    {
-      "categoria": "limite",
       "fonte": "adrian",
       "nota": "a cota real: pool de 5 h + pool semanal; 'modelos e recursos avancados consomem mais'",
       "seletor": "a[role='menuitem']:has-text('Limites de uso') no menu da conta -> /usage",

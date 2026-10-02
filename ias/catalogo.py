@@ -209,8 +209,6 @@ CONHECIDOS = {
              fonte="codigo", visto_em="2026-09-11", nota="modal a cada vídeo; enquanto aberto o Enviar não faz nada"),
         item("outro", "Responder agora", seletor="button:has-text('Responder agora')",
              fonte="codigo", visto_em="2026-09-14", nota="raciocínio preso >300 s; não é limite"),
-        item("limite", "Verifique se a conta atingiu o limite de uso", seletor="(mensagem do cliente, não do site)",
-             fonte="logs", visto_em="2026-09-14", nota="FALSO ALARME medido: era raciocínio preso (gemini-raciocinio-preso)"),
     ],
     "chatgpt": [
         item("cloudflare", "Um momento… / Just a moment…", seletor="document.title",

@@ -319,6 +319,7 @@ def classificar_erro(ia: str, exc: BaseException, tela: str = "") -> tuple:
     A ordem: o tipo da excecao (login caido, conta ocupada), depois os textos
     conhecidos da FICHA da IA (`catalogo_textos`, medidos na fase 1), depois
     o que a tela mostra agora (`catalogo.varrer`), e so entao a excecao crua.
+    "limite" exige evidencia da tela: um palpite na excecao nao pausa a IA.
     """
     nome = type(exc).__name__
     if nome == "NaoLogado":
@@ -334,7 +335,12 @@ def classificar_erro(ia: str, exc: BaseException, tela: str = "") -> tuple:
     if achado:
         return achado
     mensagem = " ".join(str(exc).split())[:220]
-    categoria = catalogo.classificar(mensagem) or "erro"
+    categoria = catalogo.classificar(mensagem)
+    # A excecao pode orientar quem vai olhar a janela, mas nao e evidencia de
+    # cota. So `motivo_da_tela`, acima, pode marcar limite.
+    if categoria == "limite":
+        categoria = None
+    categoria = categoria or "erro"
     return (categoria, f"{nome}: {mensagem}" if mensagem else nome)
 
 
