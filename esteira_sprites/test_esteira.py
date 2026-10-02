@@ -121,6 +121,7 @@ def test_juiz_pergunta_defeitos_e_le_json(ambiente, monkeypatch):
     enviados = []
     monkeypatch.setattr(juiz.correio, "enviar", lambda *a, **k: enviados.append((a, k)) or {"id": "g1"})
     assert juiz.perguntar("fogo_teste") and "o que esta errado" in enviados[0][0][1].lower()
+    assert enviados[0][0][0] == "gemini"  # o Grok respondia mal (02/10)
     assert juiz.ler_json("lixo {\"defeitos\":[],\"notas\":{}} fim")["defeitos"] == []
 
 

@@ -10,6 +10,10 @@ from ias import correio
 
 from . import config, ficha, prompt
 
+# Quem julga. O Grok respondia mal (Adrian, 02/10/2026); o Gemini ja e os olhos
+# dos videos e aceita anexo. O ChatGPT fica livre para gerar as imagens.
+JUIZ = "gemini"
+
 TEXTO_ANIMACAO = ("Isto e uma folha de ANIMACAO em ciclo (cada linha da folha e um ciclo; o GIF "
                   "anexo toca os ciclos lado a lado). Liste o que esta errado NA ANIMACAO "
                   "(continuidade, pes deslizando, pulos de tamanho, membros que somem).")
@@ -80,8 +84,9 @@ def perguntar(item_id: str) -> bool:
         texto = TEXTO_ANIMACAO + " " + texto
     if controle:
         texto += " Este e um controle deliberadamente estragado; aponte o defeito grave."
-    mensagem = correio.enviar("grok", texto, de="esteira_sprites", anexos=anexos)
+    mensagem = correio.enviar(JUIZ, texto, de="esteira_sprites", anexos=anexos)
     tentativa["juiz_id"] = mensagem["id"]
+    tentativa["juiz_caixa"] = JUIZ
     tentativa["controle"] = controle
     dados["estado"] = "julgado"
     ficha.registrar(dados, "juiz_pedido", correio_id=mensagem["id"], controle=controle)
@@ -106,7 +111,8 @@ def colher(item_id: str) -> bool:
     if not dados or dados.get("estado") != "julgado":
         return False
     tentativa = dados["tentativas"][-1]
-    mensagem = correio.uma("grok", tentativa["juiz_id"])
+    # fichas antigas nao guardavam a caixa: eram todas do Grok
+    mensagem = correio.uma(tentativa.get("juiz_caixa") or "grok", tentativa["juiz_id"])
     if not mensagem or mensagem.get("situacao") not in ("respondida", "falhou"):
         return False
     veredito = ler_json(mensagem.get("resposta") or "") if mensagem["situacao"] == "respondida" else None
