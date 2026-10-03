@@ -18,9 +18,11 @@ async function equipeSelo() {
 
 function equipePedidoPermissao(t) {
   const p = t.pedido_permissao || {};
-  const linha = el("div", {class: "linha"}, el("span", {class: "corpo"},
-    `${t.cargo || "trabalhador"} pede ${p.o_que || "permissao"}`,
-    el("div", {class: "fraco"}, `${p.por_que || ""} · alvo: ${p.alvo || ""}`)));
+  // cartao em COLUNA: em linha, os botoes espremiam o texto a uma letra (03/10)
+  const linha = el("div", {class: "equipe-cartao equipe-permissao"},
+    el("div", {class: "equipe-titulo"}, `${t.cargo || "trabalhador"} pede: ${p.o_que || "permissão"}`),
+    el("div", {class: "fraco"}, [p.por_que, p.alvo ? `alvo: ${p.alvo}` : ""].filter(Boolean).join(" · ")),
+    el("div", {class: "fraco"}, t.titulo || t.id));
   const acoes = el("div", {class: "botoes"});
   if (p.decisao_id) {
     acoes.append(el("span", {class: "fraco"}, "Decida no Grimorio para retomar."));
@@ -43,39 +45,53 @@ function equipePedidoPermissao(t) {
   return linha;
 }
 
+// So os botoes que fazem sentido na situacao (antes eram os 5 em todos, 03/10).
+const EQUIPE_ACOES = {
+  rodando: ["ver", "renovar", "parar"], criado: ["ver", "parar"],
+  terminou: ["ver", "corrigir", "aplicar"], parado: ["ver", "corrigir"],
+  falhou: ["ver", "corrigir"], aguardando_permissao: ["ver"],
+};
+const EQUIPE_ROTULO = {ver: "Ver ao vivo", renovar: "Renovar", parar: "Parar",
+                       corrigir: "Corrigir", aplicar: "Aplicar"};
+
 function equipeLinha(t) {
-  const acoes = el("div", {class: "botoes"},
-    el("button", {class: "acao", type: "button"}, "Ver ao vivo"),
-    el("button", {class: "acao", type: "button"}, "Renovar agora"),
-    el("button", {class: "acao", type: "button"}, "Corrigir"),
-    el("button", {class: "acao", type: "button"}, "Aplicar"),
-    el("button", {class: "acao", type: "button"}, "Parar"));
-  acoes.children[0].addEventListener("click", () => abrir("oficina"));
   async function mandar(acao, corpo = {}) {
     try { await api(`/api/equipe/${encodeURIComponent(t.id)}/${acao}`, {method: "POST",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)}); equipeCarregar(); }
     catch (err) { avisar(err.message, true); }
   }
-  acoes.children[1].addEventListener("click", () => mandar("renovar"));
-  acoes.children[2].addEventListener("click", () => {
-    const texto = prompt("O que corrigir?"); if (texto) mandar("corrigir", {texto});
-  });
-  acoes.children[3].addEventListener("click", () => mandar("aplicar"));
-  acoes.children[4].addEventListener("click", async () => {
-    try { await api(`/api/equipe/${encodeURIComponent(t.id)}/parar`, {method: "POST",
-      headers: {"Content-Type": "application/json"}, body: "{}"}); equipeCarregar(); }
-    catch (err) { avisar(err.message, true); }
-  });
-  return el("div", {class: "linha"}, el("span", {class: "corpo"},
-    `${t.cargo || "trabalhador"} · ${(t.ia || "codex").toUpperCase()} · ${t.titulo || t.id}`,
-    el("div", {class: "fraco"}, `${t.situacao} · ${t.rodadas || 0} turnos · ${t.renovacoes || 0} renovações`)), acoes);
+  const acoes = el("div", {class: "botoes"});
+  for (const nome of EQUIPE_ACOES[t.situacao] || ["ver"]) {
+    const b = el("button", {class: "acao" + (nome === "aplicar" ? " primario" : ""), type: "button"},
+                 EQUIPE_ROTULO[nome]);
+    b.addEventListener("click", () => {
+      if (nome === "ver") abrir("oficina");
+      else if (nome === "corrigir") { const texto = prompt("O que corrigir?"); if (texto) mandar("corrigir", {texto}); }
+      else mandar(nome);
+    });
+    acoes.append(b);
+  }
+  return el("div", {class: `equipe-cartao equipe-${t.situacao || "x"}`},
+    el("div", {class: "equipe-titulo"}, t.titulo || t.id),
+    el("div", {class: "fraco"}, `${t.cargo || "trabalhador"} · ${(t.ia || "codex").toUpperCase()} · `
+      + `${t.situacao} · ${t.rodadas || 0} turnos · ${t.renovacoes || 0} renovações`),
+    acoes);
 }
 
 async function equipeCarregar() {
   try {
     const dados = await api("/api/equipe");
-    const lista = $("equipe-lista"); lista.replaceChildren(...(dados.trabalhadores || []).map(equipeLinha));
-    if (!(dados.trabalhadores || []).length) lista.append(el("div", {class: "fraco"}, "Nenhum trabalhador contratado."));
+    // ativos em cima; os ja terminados recolhidos (eram uma parede de cartoes)
+    const todos = dados.trabalhadores || [];
+    const ativos = todos.filter((t) => ["rodando", "criado", "aguardando_permissao"].includes(t.situacao));
+    const resto = todos.filter((t) => !ativos.includes(t));
+    const lista = $("equipe-lista"); lista.replaceChildren(...ativos.map(equipeLinha));
+    if (!ativos.length) lista.append(el("div", {class: "fraco"}, "Ninguém trabalhando agora."));
+    if (resto.length) {
+      const det = el("details", {class: "equipe-concluidos"}, el("summary", {}, `Terminados (${resto.length})`));
+      det.append(...resto.map(equipeLinha));
+      lista.append(det);
+    }
     const cargo = $("equipe-cargo"), atual = cargo.value;
     cargo.replaceChildren(...(dados.cargos || []).map((c) => el("option", {value: c}, c)));
     cargo.value = atual || (dados.cargos || [])[0] || "";

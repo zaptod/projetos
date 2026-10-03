@@ -1010,3 +1010,13 @@ button.orq-codex-tarefa { width: 100%; text-align: left; background: transparent
   .coord-escrever { flex-wrap: wrap; }
   .coord-escrever textarea { flex: 1 1 100%; }
 }
+
+/* Equipe (03/10): cartao em coluna -- texto em cima, botoes embaixo, quebrando */
+.equipe-cartao { display: flex; flex-direction: column; gap: 4px; padding: 8px 0;
+  border-top: 1px solid var(--linha); min-width: 0; }
+.equipe-cartao .botoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.equipe-titulo { font-weight: 600; overflow-wrap: anywhere; }
+.equipe-permissao { border: 2px solid #e0a040; border-radius: 10px; padding: 8px 10px; margin: 6px 0; }
+.equipe-rodando .equipe-titulo::before { content: "● "; color: #2e9d55; }
+.equipe-falhou .equipe-titulo::before, .equipe-parado .equipe-titulo::before { content: "● "; color: #c0392b; }
+.equipe-concluidos summary { cursor: pointer; padding: 8px 0; color: var(--fraco); }
