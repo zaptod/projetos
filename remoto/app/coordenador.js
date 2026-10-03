@@ -328,9 +328,13 @@ async function coordDecidir(id, decisao) {
   coordConversaCarregar();
 }
 
+let pedidoEnviando = false;
 async function pedidoRapido(novo = false) {
   const campo = $("pedido-texto"), texto = campo.value.trim();
-  if (!texto && !novo) return;
+  // toque duplo mandava o pedido duas vezes e o 2º virava "continuação" (03/10)
+  if ((!texto && !novo) || pedidoEnviando) return;
+  pedidoEnviando = true;
+  $("pedido-enviar").disabled = $("pedido-novo").disabled = true;
   try {
     const r = await coordEnviar(texto, novo);
     campo.value = "";
@@ -338,6 +342,10 @@ async function pedidoRapido(novo = false) {
       : r.para === "cerebro" ? "Pergunta de estado: o cérebro responde na Conversa."
       : r.continuacao ? "Continuação enviada ao mesmo orquestrador." : "Pedido recebido.");
   } catch (err) { avisar(err.message, true); }
+  finally {
+    pedidoEnviando = false;
+    $("pedido-enviar").disabled = $("pedido-novo").disabled = false;
+  }
   pedidosCarregar();
 }
 

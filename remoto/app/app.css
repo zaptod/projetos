@@ -998,3 +998,15 @@ button.biblioteca-cartao { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .livro.oficina:not(.oculto) { animation: none; } }
 button.orq-codex-tarefa { width: 100%; text-align: left; background: transparent; border: 0;
   border-top: 1px dashed #c9ad78; border-radius: 0; padding: 8px 2px; color: inherit; font: inherit; }
+
+/* 03/10: o Pedir ganha a caixa das outras telas, e a linha da Conversa quebra
+   em tela estreita (o textarea ficava com 135 px e cortava o texto) */
+.pedir-caixa {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; padding: 8px;
+  border-radius: 8px; border: 1px solid var(--linha); background: var(--fundo);
+  color: var(--texto); resize: vertical; min-height: 72px; margin: 6px 0;
+}
+@media (max-width: 520px) {
+  .coord-escrever { flex-wrap: wrap; }
+  .coord-escrever textarea { flex: 1 1 100%; }
+}

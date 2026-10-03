@@ -69,6 +69,15 @@
   <section id="tela-agora" class="oculto livro mesa" aria-label="Agora">
     <div id="claude-faixa" class="claude-faixa oculto" role="status"></div>
     <div id="orq-faixa" class="orq-faixa oculto" role="status"></div>
+    <div class="cartao pedir-cartao" id="pedir-cartao">
+      <h2>📝 Pedir</h2>
+      <div class="fraco">Um pedido livre vai ao orquestrador do servidor e fica acompanhado aqui.</div>
+      <textarea id="pedido-texto" class="pedir-caixa" aria-label="Pedido ao orquestrador" rows="3" maxlength="4000" placeholder="O que você precisa?"></textarea>
+      <div class="botoes"><button class="acao primario" id="pedido-enviar" type="button">Pedir</button>
+        <button class="acao" id="pedido-novo" type="button">Novo assunto</button>
+        <button class="acao" id="pedido-conversa" type="button">Ver a conversa</button></div>
+      <div id="pedido-estado"></div>
+    </div>
     <div class="cartao" id="orq-sec-agora">
       <h2>Rodando agora</h2>
       <div id="orq-principal" class="orq-principal"></div>
@@ -77,15 +86,6 @@
       <div id="orq-agora"></div>
       <div id="orq-carteiro" class="orq-carteiro fraco"></div>
       <div id="orq-concluidos" class="fraco"></div>
-    </div>
-    <div class="cartao">
-      <h2>📝 Pedir</h2>
-      <div class="fraco">Um pedido livre vai ao orquestrador do servidor e fica acompanhado aqui.</div>
-      <textarea id="pedido-texto" rows="2" maxlength="4000" placeholder="O que você precisa?"></textarea>
-      <div class="botoes"><button class="acao primario" id="pedido-enviar" type="button">Pedir</button>
-        <button class="acao" id="pedido-novo" type="button">Novo assunto</button>
-        <button class="acao" id="pedido-conversa" type="button">Ver a conversa</button></div>
-      <div id="pedido-estado"></div>
     </div>
     <!-- o coordenador em uma linha; tocar abre a aba dele -->
     <button class="coord-mesa" id="coord-mesa" type="button">Coordenador: carregando…</button>
