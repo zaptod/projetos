@@ -39,6 +39,66 @@ class ImagensFaltando(RuntimeError):
     """Render recusado: a parte ainda nao tem todas as imagens."""
 
 
+# Etapas do diario que FECHAM uma passada de imagens (`ok`/`erro`).
+_FIM_DA_PASSADA = ("imagens", "imagens.morreu_calada")
+
+
+def apurar_passadas_mortas(log=print) -> list[dict]:
+    """Passada de imagens que comecou e nunca terminou vira ERRO no diario.
+
+    03/10/2026: a historia_00054 abriu as imagens as 09:18, registrou a
+    refeita da p01_cena_10 as 09:25 e depois nada — nem `ok` nem `erro` — e
+    nenhum processo das historias estava vivo a tarde. O diario so ganha linha
+    no inicio, no fim e nas refeitas (cena pronta vai so para o log), entao um
+    processo derrubado de fora (taskkill, fechar a janela, desligar) nao deixa
+    rastro nenhum: a Vila e o bot de apuracao nunca ficam sabendo.
+
+    Aqui, antes de abrir uma passada nova: todo `inicio` de imagens das
+    historias cujo processo NAO existe mais (pid conferido, `_vivo` False) e
+    que nao tem `ok`/`erro` da mesma historia depois dele ganha um `erro`
+    com o pid, a hora e quantas cenas ficaram pendentes. Processo vivo ou
+    pid desconhecido (None) nao e morte. Devolve o que registrou.
+    """
+    atividade = _rb_atividade
+    try:
+        eventos = list(reversed(atividade.recentes(1200, fabrica="picasso")))
+    except Exception:                                          # noqa: BLE001
+        return []
+    abertas: dict = {}
+    for ev in eventos:
+        if ev.get("canal") != "historias":
+            continue
+        etapa, status, ref = ev.get("etapa"), ev.get("status"), ev.get("ref")
+        if not ref:
+            continue
+        if etapa == "imagens" and status == "inicio":
+            abertas.setdefault(ref, []).append(ev)
+        elif etapa in _FIM_DA_PASSADA and status in ("ok", "erro"):
+            # O fim fecha toda passada ANTERIOR da mesma historia: o pid do
+            # fim de uma passada morta (o registro abaixo) e o de quem apurou.
+            abertas.pop(ref, None)
+    mortas = []
+    for ref, inicios in abertas.items():
+        for ev in inicios:
+            if atividade._vivo(ev.get("pid")) is not False:
+                continue
+            faltam = "?"
+            try:
+                faltam = len(fila.pendentes(ref, R.carregar(ref), None))
+            except Exception:                                  # noqa: BLE001
+                pass
+            texto = (f"{ref}: a passada de imagens de {ev.get('ts')} (pid "
+                     f"{ev.get('pid')}) morreu sem registrar o fim — processo "
+                     f"encerrado de fora; {faltam} cena(s) pendente(s)")
+            atividade.registrar("picasso", "erro", texto, "historias",
+                                etapa="imagens.morreu_calada", ref=ref)
+            log(f"[imagens] {texto}")
+            mortas.append({"ref": ref, "pid": ev.get("pid"),
+                           "ts": ev.get("ts"), "faltam": faltam})
+            break        # uma linha por historia basta
+    return mortas
+
+
 def carregar_config(nome: str) -> dict:
     with open(RAIZ / "config" / nome, encoding="utf-8-sig") as fh:
         return json.load(fh)
@@ -205,15 +265,19 @@ class Pipeline:
                 log=print) -> dict:
         from ..imagens import worker
         atividade = _rb_atividade
+        apurar_passadas_mortas(log=log)
         comeco = _time.monotonic()
         atividade.registrar("picasso", "inicio", historia_id, "historias",
                             etapa="imagens", ref=historia_id)
         try:
             resultado = worker.gerar(historia_id, limite=limite,
                                      headless=headless, parte=parte, log=log)
-        except Exception as exc:
-            atividade.registrar("picasso", "erro", str(exc)[:200], "historias",
-                                etapa="imagens", ref=historia_id,
+        except BaseException as exc:
+            # BaseException, e nao Exception: Ctrl+C/Ctrl+Break e SystemExit
+            # tambem encerram a passada, e sem isto saiam sem linha no diario.
+            atividade.registrar("picasso", "erro",
+                                (str(exc) or type(exc).__name__)[:200],
+                                "historias", etapa="imagens", ref=historia_id,
                                 dur_s=_time.monotonic() - comeco)
             raise
         atividade.registrar(

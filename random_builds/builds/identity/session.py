@@ -61,6 +61,37 @@ def _esperar_humano(page, ajustes: dict, motivo: str, sel=selectors,
         "pedem de novo.")
 
 
+# Quantas vezes abrir a pagina de criacao quando o `goto` estoura o tempo.
+# 03/10/2026, 14:19: a historia_00053 morreu inteira num unico
+# "Page.goto: Timeout 60000ms exceeded" ao abrir o PicassoIA, numa manha de
+# rede instavel (ERR_NAME_NOT_RESOLVED as 06:47). Um estouro e sobre a rede,
+# nao sobre a conta: abrir de novo a MESMA URL e o certo. Duas, nao mais —
+# se a segunda tambem estoura, a rede caiu de verdade e a passada para.
+ABERTURAS = 2
+
+
+def _e_estouro(exc: BaseException) -> bool:
+    """Estouro de tempo do Playwright/patchright (ou o embutido)."""
+    return (isinstance(exc, TimeoutError)
+            or type(exc).__name__ == "TimeoutError")
+
+
+def _abrir(page, url: str, timeout_ms: int, provedor: str,
+           rng: random.Random) -> None:
+    """`page.goto` que tenta de novo quando so o tempo estourou."""
+    for volta in range(1, ABERTURAS + 1):
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            return
+        except Exception as exc:
+            if not _e_estouro(exc) or volta >= ABERTURAS:
+                raise
+            print(f"[{provedor}] a pagina nao abriu em {timeout_ms / 1000:.0f}s "
+                  f"({(str(exc).splitlines() or [''])[0][:120]}); abrindo de novo "
+                  f"({volta + 1}/{ABERTURAS})...", flush=True)
+            pausa_humana(rng)
+
+
 def ensure_logged_in(page, ajustes: dict | None = None,
                      rng: random.Random | None = None, sel=selectors,
                      provedor: str | None = None) -> None:
@@ -68,8 +99,9 @@ def ensure_logged_in(page, ajustes: dict | None = None,
     ajustes = ajustes if ajustes is not None else config.settings(provedor)
     rng = rng or random.Random()
 
-    page.goto(sel.URL_CRIACAO, wait_until="domcontentloaded",
-              timeout=int(float(ajustes.get("navigation_timeout", 60)) * 1000))
+    _abrir(page, sel.URL_CRIACAO,
+           int(float(ajustes.get("navigation_timeout", 60)) * 1000),
+           provedor, rng)
     esperar_hidratacao(page, float(ajustes.get("hydration_timeout", 45)))
     pausa_humana(rng)
 
