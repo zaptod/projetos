@@ -92,14 +92,15 @@ AGENTES = RAIZ / ".claude" / "agents"
 _ID = re.compile(r"[a-z0-9][a-z0-9-]{2,39}")
 _MODELO_LIVRE = re.compile(r"[a-z0-9][a-z0-9._-]{1,48}")
 ESFORCOS = ("low", "medium", "high", "xhigh", "max", "ultra")
-SITUACOES = ("criado", "rodando", "terminou", "falhou", "parado")
+SITUACOES = ("criado", "rodando", "terminou", "falhou", "parado", "aguardando_permissao",
+             "negado")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 TAREFA_MAX = 100_000          # bytes do .md da tarefa
 GUARDA_S = 2.0                # de quanto em quanto o interruptor e olhado
 TETO_A_CADA_S = 30.0          # e o teto (le o rollout)
 
 # Os arquivos do despachante na worktree: nunca entram no diff.
-NOSSOS = (".codex_tarefa.md", ".codex_resposta.md", ".codex_correcao.md")
+NOSSOS = (".codex_tarefa.md", ".codex_resposta.md", ".codex_correcao.md", ".permissao.json")
 # Sobras do ambiente, nao trabalho do Codex (01/10: o Adrian viu "RECUSADO" em
 # tudo e era isto): temporarios de teste, caches e travas que o pytest deixa.
 RUIDO = ("**/.teste_tmp/**", ".teste_tmp/**", "**/.pytest_cache/**", ".pytest_cache/**",
@@ -144,6 +145,21 @@ PADRAO_CONFIG = {
                   "consertar": "claude", "conferir": "claude"},
 }
 
+CATEGORIAS_PERMISSAO = ("repositorio_externo", "caminho_protegido", "publicar", "conta",
+                        "push", "rede", "instalar", "apagar", "decisao_de_produto")
+REGRAS_PERMISSAO = ("gerente_aceita", "perguntar_ao_adrian", "negar")
+PADRAO_PERMISSOES = {
+    "repos_conhecidos": [r"E:\jogo_ZOMBIE", r"E:\projetos"],
+    "regras": {"repositorio_externo": "perguntar_ao_adrian",
+               "caminho_protegido": "perguntar_ao_adrian", "instalar": "perguntar_ao_adrian",
+               "rede": "gerente_aceita", "apagar": "perguntar_ao_adrian",
+               "publicar": "perguntar_ao_adrian", "push": "perguntar_ao_adrian",
+               "conta": "negar", "decisao_de_produto": "perguntar_ao_adrian"},
+    "cargos": {"jogo-zombie": {"*": "gerente_aceita", "publicar": "perguntar_ao_adrian",
+                                  "conta": "negar", "push": "perguntar_ao_adrian",
+                                  "decisao_de_produto": "perguntar_ao_adrian"}},
+}
+
 # Medidos em 01/10/2026 no `~/.codex/models_cache.json` (visibility "list"),
 # para quando o cache nao existir. O campo livre aceita outro nome valido.
 MODELOS_DOCUMENTADOS = ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol",
@@ -170,6 +186,11 @@ def pasta() -> Path:
 
 def repo() -> Path:
     return Path(REPO) if REPO else RAIZ
+
+
+def repo_da(estado: dict) -> Path:
+    """Repositorio principal da tarefa; estados antigos continuam no repo padrao."""
+    return Path(estado.get("repo") or repo())
 
 
 def wt_raiz() -> Path:
@@ -238,6 +259,102 @@ def _gravar_json(caminho: Path, dados) -> None:
     tmp = caminho.with_name(f".{caminho.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, caminho)
+
+
+def _mesmo_caminho(a, b) -> bool:
+    return os.path.normcase(os.path.abspath(str(a))) == os.path.normcase(os.path.abspath(str(b)))
+
+
+def _repo_valido(caminho) -> Path:
+    alvo = Path(str(caminho or "")).expanduser()
+    if not str(alvo):
+        raise Recusa("repositorio vazio")
+    feito = _git("rev-parse", "--show-toplevel", cwd=alvo, verificar=False)
+    if feito.returncode != 0:
+        raise Recusa(f"repositorio invalido: {alvo}")
+    return Path(feito.stdout.strip())
+
+
+def _frontmatter_cargo(cargo: str) -> dict:
+    try:
+        texto = (AGENTES / f"{cargo}.md").read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        raise Recusa(f"nao li o cargo {cargo}: {exc}") from exc
+    if not texto.startswith("---"):
+        return {}
+    partes = texto.split("---", 2)
+    if len(partes) < 3:
+        return {}
+    dados = {}
+    for linha in partes[1].splitlines():
+        chave, separador, valor = linha.partition(":")
+        if separador:
+            dados[chave.strip().lower()] = valor.strip().strip('"')
+    return dados
+
+
+def dados_do_cargo(cargo: str) -> dict:
+    cargo = str(cargo or "").strip().lower()
+    if not cargo:
+        return {}
+    if cargo not in cargos():
+        raise Recusa("cargo desconhecido: " + cargo)
+    return _frontmatter_cargo(cargo)
+
+
+def _permissoes_path() -> Path:
+    return pasta() / "permissoes.json"
+
+
+def ler_permissoes() -> dict:
+    dados = _ler_json(_permissoes_path(), {})
+    if not isinstance(dados, dict):
+        raise Recusa("permissoes.json esta ilegivel")
+    saida = {**PADRAO_PERMISSOES, **dados}
+    saida["regras"] = {**PADRAO_PERMISSOES["regras"], **(dados.get("regras") or {})}
+    saida["cargos"] = {**PADRAO_PERMISSOES["cargos"], **(dados.get("cargos") or {})}
+    return saida
+
+
+def gravar_permissoes(mudancas: dict) -> dict:
+    if not isinstance(mudancas, dict):
+        raise Recusa("politica de permissoes invalida")
+    atual = ler_permissoes()
+    regras = mudancas.get("regras", atual["regras"])
+    cargos_regras = mudancas.get("cargos", atual["cargos"])
+    conhecidos = mudancas.get("repos_conhecidos", atual["repos_conhecidos"])
+    if (not isinstance(regras, dict) or not isinstance(cargos_regras, dict)
+            or not isinstance(conhecidos, list)):
+        raise Recusa("politica de permissoes invalida")
+    for categoria, regra in regras.items():
+        if categoria not in CATEGORIAS_PERMISSAO or regra not in REGRAS_PERMISSAO:
+            raise Recusa("regra de permissao invalida")
+    for cargo, por_categoria in cargos_regras.items():
+        if not isinstance(por_categoria, dict) or any(
+                categoria not in CATEGORIAS_PERMISSAO + ("*",) or regra not in REGRAS_PERMISSAO
+                for categoria, regra in por_categoria.items()):
+            raise Recusa("regra por cargo invalida: " + str(cargo))
+    dados = {"repos_conhecidos": [str(x) for x in conhecidos], "regras": regras,
+             "cargos": cargos_regras}
+    _gravar_json(_permissoes_path(), dados)
+    return ler_permissoes()
+
+
+def regra_de_permissao(cargo: str, categoria: str, alvo: str = "") -> str:
+    if categoria not in CATEGORIAS_PERMISSAO:
+        raise Recusa("categoria de permissao invalida")
+    if categoria == "conta":
+        return "negar"
+    politica = ler_permissoes()
+    por_cargo = politica["cargos"].get(str(cargo or "").lower(), {})
+    regra = por_cargo.get(categoria, por_cargo.get("*"))
+    if regra:
+        return regra
+    if categoria == "repositorio_externo":
+        conhecidos = politica.get("repos_conhecidos") or []
+        return ("gerente_aceita" if any(_mesmo_caminho(alvo, x) for x in conhecidos)
+                else "perguntar_ao_adrian")
+    return politica["regras"][categoria]
 
 
 def ler_config() -> dict:
@@ -702,8 +819,14 @@ def compor_prompt(tarefa: str, permitidos: list[str]) -> str:
     except OSError:
         regras = ""
     lista = "\n".join(f"- `{p}`" for p in permitidos)
+    permissao = ("\n# Se precisar de permissao\n\n"
+                 "Se precisar de algo fora do seu escopo, NAO desista nem invente. "
+                 "Escreva `.permissao.json` na raiz da worktree e termine, com exatamente "
+                 "`{\"o_que\": \"...\", \"categoria\": \"...\", \"por_que\": \"...\", "
+                 "\"alvo\": \"...\"}`. Categorias: repositorio_externo, caminho_protegido, "
+                 "publicar, conta, push, rede, instalar, apagar, decisao_de_produto.\n")
     return (f"{regras.strip()}\n\n# A tarefa\n\n{tarefa.strip()}\n\n"
-            f"# Caminhos permitidos\n\n{lista}\n")
+            f"# Caminhos permitidos\n\n{lista}\n{permissao}")
 
 
 def _validar_permitidos(permitidos) -> list[str]:
@@ -721,14 +844,13 @@ def _validar_permitidos(permitidos) -> list[str]:
 
 def criar(tarefa_id: str, arquivo_tarefa: Path, permitidos, *, modelo=None,
           esforco: str | None = None, titulo: str = "", ia: str = IA,
-          cargo: str = "") -> dict:
+          cargo: str = "", repo_tarefa=None) -> dict:
     tarefa_id = validar_id(tarefa_id)
     ia = validar_ia(ia)
+    cargo = str(cargo or "").strip().lower()
+    dados_cargo = dados_do_cargo(cargo) if cargo else {}
     if ia == "claude":
-        cargo = str(cargo or "").strip().lower()
         prompt_do_cargo(cargo)       # valida antes de criar a worktree
-    elif cargo:
-        cargo = str(cargo).strip().lower()
     permitidos = _validar_permitidos(permitidos)
     modelo = (validar_modelo(modelo) if ia == "codex" and modelo is not None
               else (modelo_claude_configurado() if ia == "claude" and modelo is None
@@ -744,6 +866,8 @@ def criar(tarefa_id: str, arquivo_tarefa: Path, permitidos, *, modelo=None,
     if not bruto.strip() or len(bruto) > TAREFA_MAX:
         raise Recusa("a tarefa está vazia ou passa de 100 KB")
     tarefa = bruto.decode("utf-8-sig", errors="replace")
+    repo_tarefa = _repo_valido(repo_tarefa or dados_cargo.get("repo") or repo())
+    testes_cmd = str(dados_cargo.get("testes") or "").strip() or None
     destino = pasta_da(tarefa_id)
     wt = worktree_de(tarefa_id)
     with _trava():
@@ -751,8 +875,8 @@ def criar(tarefa_id: str, arquivo_tarefa: Path, permitidos, *, modelo=None,
             raise Recusa(f"a tarefa {tarefa_id} já existe")
         if wt.exists():
             raise Recusa(f"a pasta {wt} já existe (limpe antes: limpar --orfas)")
-        base = _git("rev-parse", "HEAD").stdout.strip()
-        _git("worktree", "add", str(wt), "-b", branch_de(tarefa_id), base)
+        base = _git("rev-parse", "HEAD", cwd=repo_tarefa).stdout.strip()
+        _git("worktree", "add", str(wt), "-b", branch_de(tarefa_id), base, cwd=repo_tarefa)
         destino.mkdir(parents=True, exist_ok=True)
         (destino / "tarefa.md").write_text(tarefa, encoding="utf-8")
         (wt / ".codex_tarefa.md").write_text(compor_prompt(tarefa, permitidos),
@@ -761,11 +885,13 @@ def criar(tarefa_id: str, arquivo_tarefa: Path, permitidos, *, modelo=None,
         estado = {"id": tarefa_id, "ia": ia, "cargo": cargo, "situacao": "criado", "criado_em": _agora_iso(),
                   "titulo": _cortar(titulo or primeira, 160), "modelo": modelo,
                   "esforco": esforco, "worktree": str(wt), "branch": branch_de(tarefa_id),
+                  "repo": str(repo_tarefa), "testes_cmd": testes_cmd,
                   "base": base, "permitidos": permitidos, "thread_id": None, "pid": None,
                   "pid_codex": None, "inicio": None, "fim": None, "motivo": "",
                   "tokens": {"entrada": 0, "cache": 0, "saida": 0, "raciocinio": 0},
                   "rodadas": [], "renovacoes": [], "eventos_n": 0, "diff": None, "testes": None,
-                  "aplicado": None, "limpo": None}
+                  "aplicado": None, "limpo": None, "pedido_permissao": None,
+                  "permissoes": []}
         _gravar_estado(estado)
     _log(tarefa_id, f"criada: worktree {wt} (base {base[:8]}), modelo {modelo or 'padrão'}")
     return estado
@@ -1109,10 +1235,138 @@ def _encerrar(tarefa_id: str, rodada: _Rodada, codigo) -> None:
         coletar(tarefa_id)
     except Recusa as exc:
         _log(tarefa_id, f"diff: {exc}")
+    pedido = pedido_de_permissao(tarefa_id)
+    if pedido:
+        registrar_pedido_permissao(tarefa_id, pedido)
+
+
+def _texto_da_resposta(tarefa_id: str) -> str:
+    try:
+        return (pasta_da(tarefa_id) / "resposta.md").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def pedido_de_permissao(tarefa_id: str) -> dict | None:
+    """Le o protocolo do trabalhador ou reconhece a desistência por escopo."""
+    caminho = Path(ler_estado(tarefa_id)["worktree"]) / ".permissao.json"
+    try:
+        bruto = json.loads(caminho.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        bruto = None
+    except (OSError, ValueError):
+        bruto = None
+    if isinstance(bruto, dict):
+        pedido = {chave: str(bruto.get(chave) or "").strip()
+                  for chave in ("o_que", "categoria", "por_que", "alvo")}
+        if pedido["categoria"] in CATEGORIAS_PERMISSAO and all(pedido.values()):
+            return pedido
+    estado = ler_estado(tarefa_id)
+    resposta = _texto_da_resposta(tarefa_id).lower()
+    desistiu = ("fora dos caminhos permitidos", "não tenho permissão", "nao tenho permissao",
+                "ampliar o escopo")
+    if estado.get("diff", {}).get("ok") is False and any(trecho in resposta for trecho in desistiu):
+        return {"o_que": "ampliar o escopo da tarefa", "categoria": "caminho_protegido",
+                "por_que": "o trabalhador informou que esta fora dos caminhos permitidos",
+                "alvo": "escopo atual da tarefa"}
+    return None
+
+
+def registrar_pedido_permissao(tarefa_id: str, pedido: dict) -> dict:
+    estado = ler_estado(tarefa_id)
+    if estado.get("situacao") == "aguardando_permissao" and estado.get("pedido_permissao"):
+        return estado
+    pedido = {chave: str(pedido.get(chave) or "").strip()
+              for chave in ("o_que", "categoria", "por_que", "alvo")}
+    pedido["regra"] = regra_de_permissao(estado.get("cargo", ""), pedido["categoria"], pedido["alvo"])
+    pedido["em"] = _agora_iso()
+    if pedido["categoria"] == "decisao_de_produto":
+        try:
+            from . import decisoes
+            item, _ = decisoes.adicionar_e_commitar(
+                "geral", "Permissao: " + pedido["o_que"][:60], pedido["por_que"][:500],
+                [{"id": "permitir", "rotulo": "Permitir", "descricao": pedido["alvo"][:200]},
+                 {"id": "negar", "rotulo": "Negar", "descricao": "Encerrar esta tarefa"}],
+                contexto=f"pedido de permissao da tarefa {tarefa_id}")
+            pedido["decisao_id"] = item["id"]
+        except Exception as exc:                              # noqa: BLE001
+            _log(tarefa_id, f"nao criei o no da decisao de produto: {exc}")
+    estado.update(situacao="aguardando_permissao", motivo="aguardando permissao: " + pedido["o_que"],
+                  pedido_permissao=pedido)
+    _gravar_estado(estado)
+    _log(tarefa_id, "permissao pedida: " + pedido["categoria"] + " — " + pedido["o_que"])
+    return estado
+
+
+def _recriar_worktree_no_repo(estado: dict, novo_repo: Path) -> None:
+    """Troca somente a worktree descartável, preservando pedido e histórico."""
+    velho_repo = repo_da(estado)
+    wt = Path(estado["worktree"])
+    _git("worktree", "remove", "--force", str(wt), cwd=velho_repo, verificar=False)
+    _git("branch", "-D", estado["branch"], cwd=velho_repo, verificar=False)
+    if wt.exists():
+        raise Recusa("nao consegui remover a worktree anterior para trocar de repositorio")
+    base = _git("rev-parse", "HEAD", cwd=novo_repo).stdout.strip()
+    _git("worktree", "add", str(wt), "-b", estado["branch"], base, cwd=novo_repo)
+    tarefa = (pasta_da(estado["id"]) / "tarefa.md").read_text(encoding="utf-8")
+    (wt / ".codex_tarefa.md").write_text(compor_prompt(tarefa, estado["permitidos"]), encoding="utf-8")
+    estado.update(repo=str(novo_repo), base=base, thread_id=None)
+
+
+def decidir_permissao(tarefa_id: str, permitir: bool, *, sempre: bool = False) -> dict:
+    """Registra a decisão; quem chama escolhe se a retomada roda no fundo."""
+    with _trava():
+        estado = ler_estado(tarefa_id)
+        pedido = estado.get("pedido_permissao") or {}
+        if estado.get("situacao") != "aguardando_permissao" or not pedido:
+            raise Recusa("nao ha permissao pendente nessa tarefa")
+        categoria = pedido.get("categoria")
+        if categoria == "conta":
+            permitir = False
+        registro = {"em": _agora_iso(), "pedido": pedido, "decisao": "permitir" if permitir else "negar"}
+        estado["permissoes"] = list(estado.get("permissoes") or []) + [registro]
+        if not permitir:
+            estado.update(situacao="negado", motivo="permissao negada: " + str(pedido.get("o_que") or ""),
+                          pedido_permissao=None)
+            _gravar_estado(estado)
+            _log(tarefa_id, estado["motivo"])
+            return estado
+        if sempre:
+            politica = ler_permissoes()
+            cargo = str(estado.get("cargo") or "")
+            por_cargo = dict(politica["cargos"].get(cargo) or {})
+            por_cargo[categoria] = "gerente_aceita"
+            politica["cargos"][cargo] = por_cargo
+            gravar_permissoes(politica)
+        if categoria == "repositorio_externo":
+            novo_repo = _repo_valido(pedido.get("alvo"))
+            if not _mesmo_caminho(novo_repo, repo_da(estado)):
+                _recriar_worktree_no_repo(estado, novo_repo)
+        try:
+            (Path(estado["worktree"]) / ".permissao.json").unlink()
+        except OSError:
+            pass
+        estado.update(situacao="criado", motivo="permissao concedida: " + str(pedido.get("o_que") or ""),
+                      pedido_permissao=None, pid=None, pid_codex=None)
+        _gravar_estado(estado)
+    _log(tarefa_id, "permissao concedida: " + str(pedido.get("categoria") or ""))
+    return estado
+
+
+def retomar_permissao(tarefa_id: str, *, forcar: bool = False) -> dict:
+    estado = ler_estado(tarefa_id)
+    if estado.get("situacao") != "criado" or not str(estado.get("motivo") or "").startswith("permissao concedida:"):
+        raise Recusa("a tarefa nao esta pronta para retomar por permissao")
+    texto = estado["motivo"]
+    if estado.get("thread_id"):
+        arquivo = pasta_da(tarefa_id) / "permissao_concedida.md"
+        arquivo.write_text(texto, encoding="utf-8")
+        return corrigir(tarefa_id, arquivo, forcar=forcar)
+    return rodar(tarefa_id, forcar=forcar)
 
 
 def rodar(tarefa_id: str, *, forcar: bool = False) -> dict:
-    wt = worktree_de(tarefa_id)
+    wt = Path(ler_estado(tarefa_id)["worktree"])
     try:
         tarefa = (wt / ".codex_tarefa.md").read_text(encoding="utf-8")
     except OSError as exc:
@@ -1297,11 +1551,11 @@ def coletar(tarefa_id: str) -> dict:
 
 
 # ================================================================ testar
-def testar(tarefa_id: str, cmd: str, *, timeout_s: float | None = None) -> dict:
+def testar(tarefa_id: str, cmd: str | None = None, *, timeout_s: float | None = None) -> dict:
     estado = ler_estado(tarefa_id)
     if _rodando(estado):
         raise Recusa("o Codex ainda está rodando nessa worktree")
-    cmd = str(cmd or "").strip()
+    cmd = str(cmd or estado.get("testes_cmd") or "").strip()
     if not cmd:
         raise Recusa("diga o comando dos testes (--cmd)")
     resumo = coletar(tarefa_id)
@@ -1385,10 +1639,11 @@ def aplicar(tarefa_id: str, *, sem_testes: bool = False, processos=None) -> dict
         if not testes.get("ok"):
             raise Recusa(f"os testes falharam (código {testes.get('codigo')})")
     patch = pasta_da(tarefa_id) / "diff.patch"
-    feito = _git("apply", "--check", str(patch), verificar=False)
+    alvo_repo = repo_da(estado)
+    feito = _git("apply", "--check", str(patch), cwd=alvo_repo, verificar=False)
     if feito.returncode != 0:
         raise Recusa("git apply --check recusou: " + (feito.stderr or feito.stdout).strip()[:400])
-    _git("apply", str(patch))
+    _git("apply", str(patch), cwd=alvo_repo)
     arquivos = [a["caminho"] for a in resumo["arquivos"]]
     aplicado = {"em": _agora_iso(), "sha": resumo["sha"], "arquivos": arquivos,
                 "sem_testes": sem_testes}
@@ -1434,13 +1689,14 @@ def limpar(tarefa_id: str) -> dict:
         raise Recusa("o Codex ainda está rodando; pare antes (delegar parar)")
     wt = Path(estado["worktree"])
     saida = {"worktree": str(wt), "sobrou": None}
-    feito = _git("worktree", "remove", "--force", str(wt), verificar=False)
+    alvo_repo = repo_da(estado)
+    feito = _git("worktree", "remove", "--force", str(wt), cwd=alvo_repo, verificar=False)
     if feito.returncode != 0 or wt.exists():
         saida["git"] = (feito.stderr or feito.stdout).strip()[:300]
         if wt.exists():
             saida.update(_mover_para_o_lixo(wt, wt.name))
-        _git("worktree", "prune", verificar=False)
-    _git("branch", "-D", estado["branch"], verificar=False)
+        _git("worktree", "prune", cwd=alvo_repo, verificar=False)
+    _git("branch", "-D", estado["branch"], cwd=alvo_repo, verificar=False)
     _mudar_estado(tarefa_id, limpo={"em": _agora_iso(), **{k: v for k, v in saida.items()
                                                           if k != "worktree"}})
     _log(tarefa_id, "limpa" + (f"; sobrou {saida['sobrou']}" if saida.get("sobrou") else ""))
@@ -1481,7 +1737,9 @@ def _vivo_para_tela(estado: dict) -> dict:
             "rodadas": len(estado.get("rodadas") or []), "renovacoes": len(estado.get("renovacoes") or []), "diff": estado.get("diff"),
             "testes": estado.get("testes"), "aplicado": estado.get("aplicado"),
             "limpo": bool(estado.get("limpo")), "ultimo_evento_em": mexido,
-            "permitidos": estado.get("permitidos") or [], "erro": estado.get("erro")}
+            "permitidos": estado.get("permitidos") or [], "erro": estado.get("erro"),
+            "pedido_permissao": estado.get("pedido_permissao"),
+            "permissoes": estado.get("permissoes") or []}
 
 
 def para_o_app(n: int = 30) -> dict:
@@ -1507,8 +1765,12 @@ def equipe_para_o_app(n: int = 60) -> dict:
         retrato = (RAIZ / "docs" / "handoff" / "ATUAL.md").read_text(encoding="utf-8")
     except OSError:
         retrato = ""
-    return {"trabalhadores": [_vivo_para_tela(e) for e in listar()[:n]],
-            "cargos": cargos(), "config": ler_config(), "nota": nota, "retrato": retrato}
+    trabalhadores = [_vivo_para_tela(e) for e in listar()[:n]]
+    return {"trabalhadores": trabalhadores, "cargos": cargos(), "config": ler_config(),
+            "permissoes": ler_permissoes(),
+            "pedidos_permissao": [t for t in trabalhadores if t.get("pedido_permissao")],
+            "cargos_detalhes": {cargo: dados_do_cargo(cargo) for cargo in cargos()},
+            "nota": nota, "retrato": retrato}
 
 
 def detalhe_para_o_app(tarefa_id: str, desde: int = -1, completo: bool = False) -> dict | None:
@@ -1571,9 +1833,10 @@ def main(argv=None) -> int:
     c.add_argument("--modelo")
     c.add_argument("--ia", choices=IAS, default="codex")
     c.add_argument("--cargo", default="")
+    c.add_argument("--repo")
     c.add_argument("--esforco", choices=ESFORCOS)
     c.add_argument("--titulo", default="")
-    for nome in ("rodar", "corrigir", "renovar"):
+    for nome in ("rodar", "corrigir", "renovar", "retomar"):
         r = sub.add_parser(nome)
         r.add_argument("--id", required=True)
         r.add_argument("--fundo", action="store_true")
@@ -1585,7 +1848,7 @@ def main(argv=None) -> int:
         sub.add_parser(nome).add_argument("--id", required=True)
     t = sub.add_parser("testar")
     t.add_argument("--id", required=True)
-    t.add_argument("--cmd", required=True)
+    t.add_argument("--cmd")
     a = sub.add_parser("aplicar")
     a.add_argument("--id", required=True)
     a.add_argument("--sem-testes", action="store_true")
@@ -1599,8 +1862,8 @@ def main(argv=None) -> int:
         if args.acao == "criar":
             _imprimir(criar(args.id, Path(args.tarefa), args.permitido, modelo=args.modelo,
                             esforco=args.esforco, titulo=args.titulo, ia=args.ia,
-                            cargo=args.cargo))
-        elif args.acao in ("rodar", "corrigir", "renovar"):
+                            cargo=args.cargo, repo_tarefa=args.repo))
+        elif args.acao in ("rodar", "corrigir", "renovar", "retomar"):
             if args.fundo:
                 resto = [x for x in argv if x != "--fundo"]
                 print(f"despachante no fundo: pid {no_fundo(resto, validar_id(args.id))}")
@@ -1608,6 +1871,8 @@ def main(argv=None) -> int:
                 _imprimir(rodar(args.id, forcar=args.forcar))
             elif args.acao == "renovar":
                 _imprimir(renovar(args.id, forcar=args.forcar))
+            elif args.acao == "retomar":
+                _imprimir(retomar_permissao(args.id, forcar=args.forcar))
             else:
                 _imprimir(corrigir(args.id, Path(args.texto), forcar=args.forcar))
         elif args.acao == "diff":

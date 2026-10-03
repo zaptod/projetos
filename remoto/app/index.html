@@ -229,6 +229,10 @@
   </section>
   <!-- A aba Coordenador de Agora: os serviços, o trabalho e a conversa com ele. -->
   <section id="tela-equipe" class="oculto livro oficina" aria-label="Equipe">
+    <div class="cartao" id="equipe-permissoes-cartao">
+      <h2>⛔ Pedidos de permissao</h2>
+      <div id="equipe-pedidos-permissao"></div>
+    </div>
     <div class="cartao">
       <h2>👥 Equipe</h2>
       <div id="equipe-lista"></div>
@@ -236,8 +240,14 @@
     <details class="cartao recolhido"><summary><h2>Contratar</h2></summary>
       <select id="equipe-cargo" aria-label="Cargo"></select>
       <select id="equipe-ia" aria-label="IA"><option value="codex">Codex</option><option value="claude">Claude</option></select>
+      <input id="equipe-repo" maxlength="400" placeholder="Repositorio (opcional; vem do cargo)">
       <textarea id="equipe-tarefa" rows="4" maxlength="12000" placeholder="Tarefa do trabalhador"></textarea>
       <button class="acao primario" id="equipe-contratar">Contratar</button>
+    </details>
+    <details class="cartao recolhido"><summary><h2>Politica de permissoes</h2></summary>
+      <div class="fraco">Categorias e regras por cargo: gerente_aceita, perguntar_ao_adrian ou negar.</div>
+      <textarea id="equipe-politica-permissoes" rows="12" maxlength="12000" aria-label="Politica de permissoes"></textarea>
+      <button class="acao" id="equipe-salvar-permissoes">Salvar politica</button>
     </details>
     <details class="cartao recolhido"><summary><h2>Gerente</h2></summary>
       <div id="equipe-gerente" class="fraco"></div>

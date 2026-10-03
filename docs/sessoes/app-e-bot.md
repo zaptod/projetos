@@ -2222,3 +2222,8 @@ cabeçalho Authorization.
 Em Agora, a aba **Equipe** lista os trabalhadores do servidor e abre a
 Oficina para o log ao vivo. Contratar, parar, renovar, corrigir e aplicar
 exigem pareamento e o servidor iniciado com `--acoes`.
+
+No topo da aba ficam os cartões de permissao pendentes, com quem pediu, motivo,
+alvo e os botoes Permitir, Negar e Permitir sempre para o cargo. A mesma aba
+edita `delegados/permissoes.json` e mostra o repositorio preenchido pelo cargo
+ao contratar. As mutacoes tambem exigem pareamento e `--acoes`.

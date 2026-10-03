@@ -287,6 +287,7 @@ async function carregarAgora() {
     // o selo do Grimório (escolhas esperando) vale em qualquer tela
     if (typeof grimorioSelo === "function") grimorioSelo();
     if (typeof spritesSelo === "function") spritesSelo();
+    if (typeof equipeSelo === "function") equipeSelo();
   } catch (err) {
     const ultimo = JSON.parse(localStorage.getItem(ULTIMO) || "null");
     if (ultimo) desenharEstado(ultimo.e);

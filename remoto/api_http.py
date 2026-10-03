@@ -1145,6 +1145,11 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._equipe("contratar")
         if rota == "/api/equipe/config":
             return self._equipe("config")
+        if rota == "/api/equipe/permissoes":
+            return self._equipe("permissoes")
+        achado = re.fullmatch(r"/api/equipe/([a-z0-9][a-z0-9-]{2,39})/permissao", rota)
+        if achado:
+            return self._equipe("permissao", achado.group(1))
         achado = re.fullmatch(r"/api/equipe/([a-z0-9][a-z0-9-]{2,39})/(parar|renovar|corrigir|aplicar)", rota)
         if achado:
             return self._equipe(achado.group(2), achado.group(1))
@@ -1507,6 +1512,18 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._erro(409, str(exc))
         except OSError:
             return self._erro(503, "as decisões estão ocupadas; tente de novo")
+        # Uma decisao de produto pedida pelo trabalhador tambem e permissao:
+        # responder o no fecha o cartao e retoma (ou encerra) a tarefa.
+        for trabalhador in delegar.listar():
+            pedido = trabalhador.get("pedido_permissao") or {}
+            if pedido.get("decisao_id") != item_id:
+                continue
+            try:
+                retomada = delegar.decidir_permissao(trabalhador["id"], evento["opcao"] == "permitir")
+                if retomada.get("situacao") == "criado":
+                    delegar.no_fundo(["retomar", "--id", trabalhador["id"]], trabalhador["id"])
+            except delegar.Recusa:
+                pass
         acoes.avisar_texto(decisoes.texto_do_aviso(evento))
         return self._json({"feito": True, "evento": evento})
 
@@ -1542,10 +1559,13 @@ class Manipulador(BaseHTTPRequestHandler):
         try:
             if acao_equipe == "config":
                 return self._json({"feito": True, "config": delegar.gravar_config(corpo)})
+            if acao_equipe == "permissoes":
+                return self._json({"feito": True, "permissoes": delegar.gravar_permissoes(corpo)})
             if acao_equipe == "contratar":
                 cargo = str(corpo.get("cargo") or "").lower()
                 ia = str(corpo.get("ia") or "codex").lower()
                 tarefa = str(corpo.get("tarefa") or "").strip()
+                repo_tarefa = str(corpo.get("repo") or "").strip() or None
                 if not tarefa or len(tarefa) > 12_000:
                     return self._erro(400, "tarefa invalida")
                 if cargo not in delegar.cargos() or ia not in delegar.IAS:
@@ -1555,7 +1575,8 @@ class Manipulador(BaseHTTPRequestHandler):
                 pedido.parent.mkdir(parents=True, exist_ok=True)
                 pedido.write_text(tarefa, encoding="utf-8")
                 estado = delegar.criar(ident, pedido, ["remoto/**", "coordenador/**", "docs/**"],
-                                       ia=ia, cargo=cargo, titulo=tarefa.splitlines()[0])
+                                       ia=ia, cargo=cargo, titulo=tarefa.splitlines()[0],
+                                       repo_tarefa=repo_tarefa)
                 delegar.no_fundo(["rodar", "--id", ident], ident)
                 return self._json({"feito": True, "trabalhador": _limpo(estado)})
             if acao_equipe == "parar":
@@ -1569,6 +1590,18 @@ class Manipulador(BaseHTTPRequestHandler):
                 pedido = delegar.pasta_da(ident) / "correcao_app.md"
                 pedido.write_text(texto, encoding="utf-8")
                 return self._json({"feito": True, "trabalhador": _limpo(delegar.corrigir(ident, pedido))})
+            if acao_equipe == "permissao":
+                decisao = str(corpo.get("decisao") or "").lower()
+                if decisao not in ("permitir", "negar"):
+                    return self._erro(400, "decisao de permissao invalida")
+                atual = delegar.ler_estado(ident)
+                if (atual.get("pedido_permissao") or {}).get("decisao_id"):
+                    return self._erro(409, "responda a decisao no Grimorio para retomar a tarefa")
+                estado = delegar.decidir_permissao(ident, decisao == "permitir",
+                                                    sempre=bool(corpo.get("sempre")))
+                if decisao == "permitir" and estado.get("situacao") == "criado":
+                    delegar.no_fundo(["retomar", "--id", ident], ident)
+                return self._json({"feito": True, "trabalhador": _limpo(estado)})
             return self._json({"feito": True, "resultado": delegar.aplicar(ident)})
         except delegar.Recusa as exc:
             return self._erro(409, str(exc))

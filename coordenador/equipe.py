@@ -37,7 +37,7 @@ class GerenteEquipe:
         self.mesa, self.despachante = mesa, despachante
         self.avisar, self.evento, self.relogio = avisar, evento, relogio
         self.ultimo = None
-        self.estado = {"conferidos": {}, "voltas": {}}
+        self.estado = {"conferidos": {}, "voltas": {}, "permissoes": {}}
 
     def _pode_passar(self):
         agora = self.relogio()
@@ -83,8 +83,38 @@ class GerenteEquipe:
             self.estado["conferidos"][ident] = conferencia
             self.evento("equipe_conferencia", f"conferente para {ident}")
 
+    def _permissoes_pendentes(self, ligado: bool):
+        """O gerente so executa a regra automatica quando esta ligado.
+
+        Desligado, o mesmo pedido continua visivel para o Adrian em vez de
+        morrer por falta de um gerente residente.
+        """
+        for trabalhador in self.despachante.listar():
+            if trabalhador.get("situacao") != "aguardando_permissao":
+                continue
+            pedido = trabalhador.get("pedido_permissao") or {}
+            ident = str(trabalhador.get("id") or "")
+            categoria = str(pedido.get("categoria") or "")
+            regra = self.despachante.regra_de_permissao(trabalhador.get("cargo", ""), categoria,
+                                                        pedido.get("alvo", ""))
+            if categoria == "conta" or regra == "negar":
+                self.despachante.decidir_permissao(ident, False)
+                self.avisar(f"❌ permissao negada para {ident}: {pedido.get('o_que')}")
+                continue
+            if regra == "gerente_aceita" and ligado:
+                self.despachante.decidir_permissao(ident, True)
+                self.despachante.no_fundo(["retomar", "--id", ident], ident)
+                self.evento("equipe_permissao", f"permissao aceita; retomei {ident}")
+                continue
+            if ident not in self.estado["permissoes"]:
+                self.estado["permissoes"][ident] = pedido
+                self.avisar(f"❓ permissao de {ident}: {pedido.get('o_que')} — {pedido.get('por_que')}")
+                self.evento("equipe_permissao", f"permissao espera Adrian: {ident}")
+
     def passo(self):
         if not self._pode_passar():
+            # Mesmo desligado, a fila de perguntas nao depende do gerente.
+            self._permissoes_pendentes(False)
             return {"ligado": False, **self.estado}
         estado_mesa = self.mesa.ler_estado()
         ativos = [t for t in self.despachante.listar() if t.get("situacao") == "rodando"]
@@ -94,4 +124,5 @@ class GerenteEquipe:
                 self._contratar(item)
                 break
         self._conferir_aplicadas()
+        self._permissoes_pendentes(True)
         return {"ligado": True, "ativos": len(ativos), **self.estado}

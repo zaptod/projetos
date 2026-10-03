@@ -12,6 +12,8 @@ cwd e as variaveis de ambiente que importam) e se comporta conforme
     fora     cria outro/fora.py (fora da lista permitida)
     binario  cria remoto/foto.png
     nada     responde sem mudar nada
+    permissao escreve .permissao.json e responde sem mudar nada
+    escopo   desiste pelo texto antigo, sem escrever o protocolo
 """
 from __future__ import annotations
 
@@ -93,7 +95,16 @@ def main() -> int:
     if mudancas:
         emitir({"type": "item.completed", "item": {"id": "item_2", "type": "file_change",
                                                    "changes": mudancas, "status": "completed"}})
-    texto = f"Feito ({modo}). Mudei {len(mudancas)} arquivo(s)."
+    if modo == "permissao":
+        (cwd / ".permissao.json").write_text(json.dumps({
+            "o_que": "usar o repositorio do jogo", "categoria": "repositorio_externo",
+            "por_que": "o jogo mora em outro repositorio", "alvo": "E:\\jogo_ZOMBIE"}),
+            encoding="utf-8")
+        texto = "Pedi permissao para usar o repositorio externo."
+    elif modo == "escopo":
+        texto = "O jogo esta fora dos caminhos permitidos; preciso ampliar o escopo."
+    else:
+        texto = f"Feito ({modo}). Mudei {len(mudancas)} arquivo(s)."
     emitir({"type": "item.completed", "item": {"id": "item_3", "type": "agent_message",
                                                "text": texto}})
     emitir({"type": "turn.completed", "usage": {"input_tokens": 1000, "cached_input_tokens": 800,

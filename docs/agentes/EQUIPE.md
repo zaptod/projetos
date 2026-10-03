@@ -48,6 +48,17 @@ Adrian ──► ORQUESTRADOR (chat principal)
    - `delegar limpar`.
 6. **Responder:** poucas linhas, dizendo o que foi conferido.
 
+## Permissoes do trabalhador
+
+Um trabalhador que precisar sair do escopo nao encerra uma entrega vazia: escreve
+`.permissao.json` na worktree com `o_que`, `categoria`, `por_que` e `alvo`.
+O despachante deixa a tarefa em `aguardando_permissao`; tambem reconhece a antiga
+desistencia por "fora dos caminhos permitidos". A politica editavel em
+`delegados/permissoes.json` decide entre o gerente aceitar, perguntar ao Adrian ou
+negar. Com o gerente desligado, toda regra automatica vira pergunta ao Adrian.
+`jogo-zombie` trabalha no repositorio proprio e tem autorizacao permanente do
+gerente, exceto publicar, conta, push e decisoes de produto.
+
 ## Renovação do chat
 Veja o `CLAUDE.md` §2. `/renovar` fecha com a NOTA e o retrato, e `/assumir` abre o chat seguinte. O hook de início injeta o `docs/handoff/ATUAL.md`, e o de pré-compactação regenera o retrato.
 # Organograma soberano

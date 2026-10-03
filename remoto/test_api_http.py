@@ -177,6 +177,24 @@ def test_assembleia_exige_pareamento_e_acoes(servidor, monkeypatch):
     assert resp.status == 403
 
 
+def test_permissao_da_equipe_exige_pareamento_e_acoes(servidor, monkeypatch):
+    from remoto import delegar
+    pedido = {"decisao": "permitir"}
+    assert _pedir(servidor, "POST", "/api/equipe/perm-1/permissao", pedido)[0].status == 401
+    token = _parear(servidor)
+    assert _pedir(servidor, "POST", "/api/equipe/perm-1/permissao", pedido, token)[0].status == 403
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    estado = {"id": "perm-1", "pedido_permissao": {"categoria": "rede"}}
+    monkeypatch.setattr(delegar, "ler_estado", lambda ident: estado)
+    monkeypatch.setattr(delegar, "decidir_permissao", lambda ident, permitir, sempre=False:
+                        {"id": ident, "situacao": "criado"})
+    retomadas = []
+    monkeypatch.setattr(delegar, "no_fundo", lambda args, ident: retomadas.append((args, ident)))
+    resp, bruto = _pedir(servidor, "POST", "/api/equipe/perm-1/permissao", pedido, token)
+    assert resp.status == 200 and json.loads(bruto)["feito"] is True
+    assert retomadas == [(["retomar", "--id", "perm-1"], "perm-1")]
+
+
 # ------------------------------------------------------------------ rede
 @pytest.mark.parametrize("ip,local,esperado", [
     ("100.95.104.33", False, True),

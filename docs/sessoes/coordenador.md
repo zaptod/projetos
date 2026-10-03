@@ -59,6 +59,15 @@ destino de um teste vermelho: a entrega nao e aplicada.
 
 Memoria em `trabalho_memoria.json` (vistos, aplicados, corrigidos, olho, esperando, avisos de parada, nos por dia): reiniciar o coordenador nao repete aviso.
 
+## Permissoes dos trabalhadores (03/10)
+
+Cada tarefa guarda seu `repo` e `testes_cmd`; worktree, coleta, teste, aplicar,
+commit do vigia e limpeza usam esse repositorio. `criar --repo` troca o repo da
+tarefa, e o cargo `jogo-zombie` declara `E:\jogo_ZOMBIE` e `npx vitest run`.
+Quando um trabalhador sai do escopo, `.permissao.json` o deixa em
+`aguardando_permissao`; o gerente retoma regras automaticas e pede o Adrian nas
+outras. O pedido continua chegando ao Adrian mesmo com o gerente desligado.
+
 **Para ligar:** o `python -m coordenador rodar` ja monta os dois (`__main__.montar`). O coordenador que esta rodando so pega o codigo novo quando reiniciar (a tarefa `NeuralFights_coordenador`); nada foi reiniciado nesta entrega.
 # Assembleia
 

@@ -472,7 +472,10 @@ class VigiaTrabalho:
                                      "sozinho está desligado no config.json do coordenador")
             return
         try:
-            sujos = self.sujos(arquivos)
+            repo_tarefa = Path(d["repo"]) if d.get("repo") else None
+            if repo_tarefa is None and hasattr(self.delegar, "repo"):
+                repo_tarefa = self.delegar.repo()
+            sujos = self.sujos(arquivos, repo=repo_tarefa) if repo_tarefa else self.sujos(arquivos)
         except Exception as exc:                              # noqa: BLE001
             self._olho(mem, did, f"não consegui conferir a árvore principal: {exc}")
             return
@@ -493,7 +496,8 @@ class VigiaTrabalho:
         mensagem = (f"{primeira_linha(self._resposta(did), d.get('titulo'))} "
                     f"(feito pelo Codex, validado pelo vigia)\n\n{CO_AUTOR}\n")
         try:
-            commit = self.commitar(arquivos, mensagem)
+            commit = (self.commitar(arquivos, mensagem, repo=repo_tarefa)
+                      if repo_tarefa else self.commitar(arquivos, mensagem))
         except Exception as exc:                              # noqa: BLE001
             self._olho(mem, did, f"aplicado na árvore, mas o commit falhou ({exc}); "
                        "os arquivos estão lá sem commit: " + ", ".join(arquivos[:8]))

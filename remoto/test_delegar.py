@@ -161,6 +161,24 @@ def test_criar_recusa_sem_lista_id_torto_e_caminho_que_sobe(mundo):
     assert not (mundo.tmp / "wt").exists() or not list((mundo.tmp / "wt").iterdir())
 
 
+def test_criar_guarda_o_repo_explicito_e_o_padrao_do_cargo(mundo, monkeypatch):
+    outro = mundo.tmp / "zombie"
+    outro.mkdir()
+    _git(outro, "init", "-q")
+    _git(outro, "config", "user.email", "t@t")
+    _git(outro, "config", "user.name", "t")
+    (outro / "src").mkdir()
+    (outro / "src" / "jogo.ts").write_text("export {}\n", encoding="utf-8")
+    _git(outro, "add", "-A")
+    _git(outro, "commit", "-qm", "base")
+    e = delegar.criar("repo-explicito", mundo.tarefa, ["src/**"], repo_tarefa=outro)
+    assert Path(e["repo"]) == outro and Path(e["worktree"]).parent == mundo.tmp / "wt"
+    monkeypatch.setattr(delegar, "dados_do_cargo", lambda cargo: {
+        "repo": str(outro), "testes": "npx vitest run"} if cargo == "jogo-zombie" else {})
+    e = delegar.criar("zombie-padrao", mundo.tarefa, ["src/**"], cargo="jogo-zombie")
+    assert Path(e["repo"]) == outro and e["testes_cmd"] == "npx vitest run"
+
+
 # ------------------------------------------------------------------ rodar
 def test_rodar_grava_eventos_ao_vivo_tokens_resposta_e_diff(mundo):
     _criar(mundo, modelo="gpt-6-luna")
@@ -215,6 +233,39 @@ def test_falha_do_codex_fica_falhou_com_o_codigo(mundo, monkeypatch):
     assert e["situacao"] == "falhou" and "código 2" in e["motivo"]
     resumo = [delegar.resumir(x) for x in _eventos("t01")]
     assert any(r["tipo"] == "erro" and "limite de uso" in r["texto"] for r in resumo)
+
+
+# ---------------------------------------------------------- permissao
+@pytest.mark.parametrize("modo", ["permissao", "escopo"])
+def test_pedido_de_permissao_ou_desistencia_por_escopo_para_a_tarefa(mundo, monkeypatch, modo):
+    monkeypatch.setenv("NF_DUBLE_MODO", modo)
+    _criar(mundo)
+    e = delegar.rodar("t01")
+    assert e["situacao"] == "aguardando_permissao"
+    pedido = e["pedido_permissao"]
+    assert pedido["categoria"] in delegar.CATEGORIAS_PERMISSAO
+    if modo == "permissao":
+        assert pedido["alvo"] == r"E:\jogo_ZOMBIE"
+    else:
+        assert pedido["categoria"] == "caminho_protegido"
+
+
+def test_decidir_permissao_retomada_politica_e_conta_negada(mundo, monkeypatch):
+    monkeypatch.setenv("NF_DUBLE_MODO", "permissao")
+    _criar(mundo)
+    delegar.rodar("t01")
+    # O alvo do dublê não existe; a permissão de outro tipo retoma a mesma conversa.
+    estado = delegar.ler_estado("t01")
+    estado["pedido_permissao"].update(categoria="rede", alvo="localhost")
+    delegar._gravar_estado(estado)
+    e = delegar.decidir_permissao("t01", True, sempre=True)
+    assert e["situacao"] == "criado"
+    assert delegar.ler_permissoes()["cargos"][""]["rede"] == "gerente_aceita"
+    monkeypatch.setenv("NF_DUBLE_MODO", "ok")
+    assert delegar.retomar_permissao("t01")["situacao"] == "terminou"
+    delegar._mudar_estado("t01", situacao="aguardando_permissao", pedido_permissao={
+        "o_que": "entrar numa conta", "categoria": "conta", "por_que": "x", "alvo": "x"})
+    assert delegar.decidir_permissao("t01", True)["situacao"] == "negado"
 
 
 # ------------------------------------------------------------- guardas
