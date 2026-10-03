@@ -54,7 +54,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ✅ **Duelo: arte dos personagens** — Levar o duelo ao palco Godot (Onda 16) (28/09/2026) `duelo-arte`
 - ✅ **Duelo elaborado: quando fazer** — Depois da estabilização (rotas de 3 semanas) (28/09/2026) `duelo-quando`
 - ✅ **MVP do duelo: o que entra no primeiro vídeo** — Pacote mínimo do duelo elaborado (03/10/2026) `mvp-corte`
-- ⏳ **Commitar os consertos do MVP no jogo?** — Três consertos de 03/10 estão prontos e testados no E:\jogo_ZOMBIE, mas não commitados: a regra da sessão do jogo é commitar só com o seu sim. Commito? `mvp-commit-consertos`
+- ✅ **Commitar os consertos do MVP no jogo?** — Sim, commitar os 3 (recomendado) (03/10/2026) `mvp-commit-consertos`
 
 <!-- decisoes:fim -->
 
