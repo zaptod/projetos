@@ -870,6 +870,16 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .orq-carteiro-linha.trabalhando { color: var(--ativo); }
 .orq-carteiro-linha.erro { color: var(--erro); }
 
+/* Atelie: grade de passos pequena o bastante para 390 px. */
+.atelie-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.atelie-campos input, .atelie-campos select { width: 100%; box-sizing: border-box; }
+.atelie-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.atelie-slot { min-height: 58px; text-align: left; font: inherit; overflow: hidden; }
+.atelie-slot img { width: 34px; height: 34px; object-fit: contain; vertical-align: middle; margin-right: 4px; }
+.atelie-espelho { display: inline-block; margin: 8px 0; }
+.atelie-previas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.atelie-previas img { width: 100%; max-height: 120px; object-fit: contain; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 12px 12px; }
+
 /* ---- o interruptor do Claude (29/09): no topo, preso ao rolar. Compacto
    (uma faixa de ~52 px), para não cobrir a Mesa quando fica preso. */
 /* O `top` do sticky conta da borda INTERNA do padding do livro (64 px +

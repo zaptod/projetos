@@ -8,6 +8,8 @@ vai para `tmp_path` e as fontes de `painel_dados` sao dubles.
 from __future__ import annotations
 
 import http.client
+import base64
+import io
 import json
 import socket
 import subprocess
@@ -18,6 +20,7 @@ import types
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from remoto import api_http, painel_dados
 from esteira_sprites import config as sprites_config
@@ -127,6 +130,39 @@ def _parear(srv):
     resp, dados = _pedir(srv, "POST", "/api/parear", {"codigo": codigo, "nome": "moto"})
     assert resp.status == 200
     return json.loads(dados)["token"]
+
+
+def _imagem_atelie():
+    imagem = Image.new("RGB", (20, 20), "#ff00ff")
+    for x in range(5, 15):
+        for y in range(4, 17):
+            imagem.putpixel((x, y), (30, 80, 200))
+    saida = io.BytesIO()
+    imagem.save(saida, "PNG")
+    return base64.b64encode(saida.getvalue()).decode("ascii")
+
+
+def test_atelie_exige_pareamento_acoes_e_slot_existente(servidor):
+    pedido = {"imagem": _imagem_atelie(), "opcoes": {"sujeito": "lutador",
+              "slot": "nao-existe", "nome": "teste"}}
+    assert _pedir(servidor, "POST", "/api/atelie/importar", pedido)[0].status == 401
+    token = _parear(servidor)
+    assert _pedir(servidor, "POST", "/api/atelie/importar", pedido, token)[0].status == 403
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    assert _pedir(servidor, "POST", "/api/atelie/importar", pedido, token)[0].status == 400
+    pedido["opcoes"]["slot"] = "parado_direita"
+    resposta, bruto = _pedir(servidor, "POST", "/api/atelie/importar", pedido, token)
+    assert resposta.status == 200
+    dados = json.loads(bruto)
+    assert dados["quadros"] == 1 and dados["limpa"].startswith("/api/atelie/arquivo/")
+
+
+def test_atelie_limita_corpo_antes_de_ler(servidor):
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    resposta, _ = _pedir(servidor, "POST", "/api/atelie/importar",
+                         {"imagem": "x" * (api_http.ATELIE_MAX + 70000)}, token)
+    assert resposta.status == 413
 
 
 def test_assembleia_exige_pareamento_e_acoes(servidor, monkeypatch):

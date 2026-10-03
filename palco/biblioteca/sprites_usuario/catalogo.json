@@ -1,0 +1,58 @@
+{
+  "sujeitos": {
+    "lutador": {
+      "rotulo": "Lutador",
+      "slots": [
+        {"id": "parado_direita", "rotulo": "Parado direita", "direcao": "direita", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": "parado_esquerda"},
+        {"id": "parado_esquerda", "rotulo": "Parado esquerda", "direcao": "esquerda", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": "parado_direita"},
+        {"id": "andar_direita", "rotulo": "Andar direita", "direcao": "direita", "fps": 10, "laco": true, "ancora": "pes", "espelho_de": "andar_esquerda"},
+        {"id": "andar_esquerda", "rotulo": "Andar esquerda", "direcao": "esquerda", "fps": 10, "laco": true, "ancora": "pes", "espelho_de": "andar_direita"},
+        {"id": "correr_direita", "rotulo": "Correr direita", "direcao": "direita", "fps": 14, "laco": true, "ancora": "pes", "espelho_de": "correr_esquerda"},
+        {"id": "correr_esquerda", "rotulo": "Correr esquerda", "direcao": "esquerda", "fps": 14, "laco": true, "ancora": "pes", "espelho_de": "correr_direita"},
+        {"id": "pular_direita", "rotulo": "Pular direita", "direcao": "direita", "fps": 10, "laco": false, "ancora": "pes", "espelho_de": "pular_esquerda"},
+        {"id": "pular_esquerda", "rotulo": "Pular esquerda", "direcao": "esquerda", "fps": 10, "laco": false, "ancora": "pes", "espelho_de": "pular_direita"},
+        {"id": "cair_direita", "rotulo": "Cair direita", "direcao": "direita", "fps": 10, "laco": true, "ancora": "pes", "espelho_de": "cair_esquerda"},
+        {"id": "cair_esquerda", "rotulo": "Cair esquerda", "direcao": "esquerda", "fps": 10, "laco": true, "ancora": "pes", "espelho_de": "cair_direita"},
+        {"id": "ataque_leve_direita", "rotulo": "Ataque leve direita", "direcao": "direita", "fps": 12, "laco": false, "ancora": "pes", "espelho_de": "ataque_leve_esquerda"},
+        {"id": "ataque_leve_esquerda", "rotulo": "Ataque leve esquerda", "direcao": "esquerda", "fps": 12, "laco": false, "ancora": "pes", "espelho_de": "ataque_leve_direita"},
+        {"id": "ataque_pesado_direita", "rotulo": "Ataque pesado direita", "direcao": "direita", "fps": 10, "laco": false, "ancora": "pes", "espelho_de": "ataque_pesado_esquerda"},
+        {"id": "ataque_pesado_esquerda", "rotulo": "Ataque pesado esquerda", "direcao": "esquerda", "fps": 10, "laco": false, "ancora": "pes", "espelho_de": "ataque_pesado_direita"},
+        {"id": "especial_direita", "rotulo": "Especial direita", "direcao": "direita", "fps": 12, "laco": false, "ancora": "pes", "espelho_de": "especial_esquerda"},
+        {"id": "especial_esquerda", "rotulo": "Especial esquerda", "direcao": "esquerda", "fps": 12, "laco": false, "ancora": "pes", "espelho_de": "especial_direita"},
+        {"id": "defender_direita", "rotulo": "Defender direita", "direcao": "direita", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": "defender_esquerda"},
+        {"id": "defender_esquerda", "rotulo": "Defender esquerda", "direcao": "esquerda", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": "defender_direita"},
+        {"id": "esquivar_direita", "rotulo": "Esquivar direita", "direcao": "direita", "fps": 12, "laco": false, "ancora": "pes", "espelho_de": "esquivar_esquerda"},
+        {"id": "esquivar_esquerda", "rotulo": "Esquivar esquerda", "direcao": "esquerda", "fps": 12, "laco": false, "ancora": "pes", "espelho_de": "esquivar_direita"},
+        {"id": "tomar_dano_direita", "rotulo": "Tomar dano direita", "direcao": "direita", "fps": 10, "laco": false, "ancora": "pes", "espelho_de": "tomar_dano_esquerda"},
+        {"id": "tomar_dano_esquerda", "rotulo": "Tomar dano esquerda", "direcao": "esquerda", "fps": 10, "laco": false, "ancora": "pes", "espelho_de": "tomar_dano_direita"},
+        {"id": "atordoado", "rotulo": "Atordoado", "direcao": "frente", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": null},
+        {"id": "morrer_direita", "rotulo": "Morrer direita", "direcao": "direita", "fps": 10, "laco": false, "ancora": "pes", "espelho_de": "morrer_esquerda"},
+        {"id": "morrer_esquerda", "rotulo": "Morrer esquerda", "direcao": "esquerda", "fps": 10, "laco": false, "ancora": "pes", "espelho_de": "morrer_direita"},
+        {"id": "vitoria", "rotulo": "Vitoria", "direcao": "frente", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": null}
+      ]
+    },
+    "habitante": {
+      "rotulo": "Habitante da Vila",
+      "slots": [
+        {"id": "parado_direita", "rotulo": "Parado direita", "direcao": "direita", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": "parado_esquerda"},
+        {"id": "parado_esquerda", "rotulo": "Parado esquerda", "direcao": "esquerda", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": "parado_direita"},
+        {"id": "parado_frente", "rotulo": "Parado frente", "direcao": "frente", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": null},
+        {"id": "parado_costas", "rotulo": "Parado costas", "direcao": "costas", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": null},
+        {"id": "andar_direita", "rotulo": "Andar direita", "direcao": "direita", "fps": 10, "laco": true, "ancora": "pes", "espelho_de": "andar_esquerda"},
+        {"id": "andar_esquerda", "rotulo": "Andar esquerda", "direcao": "esquerda", "fps": 10, "laco": true, "ancora": "pes", "espelho_de": "andar_direita"},
+        {"id": "andar_frente", "rotulo": "Andar frente", "direcao": "frente", "fps": 10, "laco": true, "ancora": "pes", "espelho_de": null},
+        {"id": "andar_costas", "rotulo": "Andar costas", "direcao": "costas", "fps": 10, "laco": true, "ancora": "pes", "espelho_de": null},
+        {"id": "conversar_direita", "rotulo": "Conversar direita", "direcao": "direita", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": "conversar_esquerda"},
+        {"id": "conversar_esquerda", "rotulo": "Conversar esquerda", "direcao": "esquerda", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": "conversar_direita"},
+        {"id": "conversar_frente", "rotulo": "Conversar frente", "direcao": "frente", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": null},
+        {"id": "conversar_costas", "rotulo": "Conversar costas", "direcao": "costas", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": null},
+        {"id": "trabalhar", "rotulo": "Trabalhar", "direcao": "frente", "fps": 8, "laco": true, "ancora": "base", "espelho_de": null},
+        {"id": "triste", "rotulo": "Triste", "direcao": "frente", "fps": 8, "laco": true, "ancora": "pes", "espelho_de": null},
+        {"id": "comemorar", "rotulo": "Comemorar", "direcao": "frente", "fps": 10, "laco": true, "ancora": "pes", "espelho_de": null},
+        {"id": "sentado", "rotulo": "Sentado", "direcao": "frente", "fps": 8, "laco": true, "ancora": "base", "espelho_de": null}
+      ]
+    },
+    "arma": {"rotulo": "Arma", "slots": [{"id": "parada", "rotulo": "Arma", "direcao": "direita", "fps": 1, "laco": false, "ancora": "base", "espelho_de": null}]},
+    "efeito": {"rotulo": "Efeito", "slots": [{"id": "efeito", "rotulo": "Efeito", "direcao": "centro", "fps": 12, "laco": false, "ancora": "centro", "espelho_de": null}]}
+  }
+}

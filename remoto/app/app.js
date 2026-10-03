@@ -7,7 +7,8 @@ const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex",
                  coordenador: "Agora · Coordenador", decisoes: "Decidir", sprites: "Decidir · Sprites", assembleias: "Decidir · Assembleia",
                  comandos: "Mandar", conversa: "Mandar · IAs",
                  videos: "Ver · Cinema", biblioteca: "Ver · Biblioteca",
-                 relatorios: "Ver · Pergaminhos", diario: "Ver · Diário", arena: "Arena"};
+                 relatorios: "Ver · Pergaminhos", diario: "Ver · Diário", arena: "Arena",
+                 atelie: "Arena · Ateliê"};
 // Os QUATRO objetos da prateleira, um por pergunta (decisão do Adrian,
 // app-e-bot/app-reorganizar, 02/10/2026: "Voce realmente acha que o app está
 // bem organizado?"). Antes eram 7 objetos e mais 4 telas que só abriam por
@@ -25,7 +26,7 @@ const OBJETOS = {
   mandar: [["comandos", "🛠️", "Comandos"], ["conversa", "💬", "IAs"]],
   ver: [["videos", "🎞️", "Cinema"], ["biblioteca", "📚", "Biblioteca"],
         ["relatorios", "📜", "Pergaminhos"], ["diario", "📓", "Diário"]],
-  arena: [["arena", "⚔️", "Arena"]],
+  arena: [["arena", "⚔️", "Arena"], ["atelie", "🖌️", "Ateliê"]],
 };
 const ABA_DO_OBJETO = {};             // a última aba usada de cada objeto
 
@@ -705,7 +706,7 @@ const CARGAS = {vila: [carregarAgora, 15000], agora: [carregarAgora, 15000],
                 videos: [null, 0], comandos: [null, 0],
                 relatorios: [abrirPergaminho, 0],
                 decisoes: [null, 0], sprites: [null, 0], assembleias: [null, 0], conversa: [null, 0],
-                oficina: [null, 0], biblioteca: [null, 0], coordenador: [null, 0],
+                oficina: [null, 0], biblioteca: [null, 0], atelie: [null, 0], coordenador: [null, 0],
                 arena: [carregarArena, 3000]};
 
 // As abas de um objeto (Agora, Mandar e Ver têm mais de uma tela): a mesma
@@ -774,6 +775,7 @@ function mostrar(nova) {
   if (typeof conversaParar === "function") conversaParar();
   if (typeof oficinaParar === "function") oficinaParar();
   if (typeof bibliotecaParar === "function") bibliotecaParar();
+  if (typeof atelieParar === "function") atelieParar();
   if (!pareado) return;
   // Agora mostra a gente e as travas, que vêm da vida da vila
   if ((tela === "vila" || tela === "agora") && typeof vilaMostrar === "function") {
@@ -809,6 +811,7 @@ function mostrar(nova) {
   if (tela === "biblioteca" && typeof bibliotecaMostrar === "function") {
     bibliotecaMostrar();
   }
+  if (tela === "atelie" && typeof atelieMostrar === "function") atelieMostrar();
   if (tela === "coordenador" && typeof coordenadorMostrar === "function") {
     coordenadorMostrar();
   }
@@ -898,7 +901,8 @@ const MODULOS = [["vila.js", "vilaMostrar"], ["comandos.js", "comandosMostrar"],
                  ["assembleia.js", "assembleiasMostrar"],
                  ["orquestrador.js", "orquestradorMostrar"], ["coordenador.js", "coordenadorMostrar"],
                  ["conversa.js", "conversaAbrir"],
-                 ["oficina.js", "oficinaMostrar"], ["biblioteca.js", "bibliotecaMostrar"]];
+                 ["oficina.js", "oficinaMostrar"], ["biblioteca.js", "bibliotecaMostrar"],
+                 ["atelie.js", "atelieMostrar"]];
 
 function modulosQueFaltam() {
   return MODULOS.filter(([, funcao]) => typeof window[funcao] !== "function")

@@ -28,7 +28,7 @@ TELAS = {
     "decidir": ("decisoes", "sprites", "assembleias"),
     "mandar": ("comandos", "conversa"),
     "ver": ("videos", "biblioteca", "relatorios", "diario"),
-    "arena": ("arena",),
+    "arena": ("arena", "atelie"),
 }
 # Deixe aqui, explicitamente, qualquer 404 que seja normal para uma tela.
 # Hoje nao ha nenhum: um novo 404 de API precisa ser explicado antes de entrar.
@@ -66,6 +66,7 @@ def tela_isolada(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(local))
     monkeypatch.setenv("NF_IAS_PASTA", str(tmp_path / "ias"))
     monkeypatch.setattr(api_http, "ARQUIVO", local / "app_celular.json")
+    monkeypatch.setattr(api_http, "PASTA_ARENA", tmp_path / "arena")      # nunca as lutas reais
     monkeypatch.setattr(biblioteca, "PASTA", local / "biblioteca")
     atividade = _AtividadeFalsa()
     monkeypatch.setattr(painel_dados, "_atividade", lambda: atividade)
@@ -172,7 +173,12 @@ def test_o_app_abre_vila_objetos_e_abas_sem_erros_de_tela(tela_isolada, tamanho)
         page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
         def resposta(resp):
-            if not resp.url.startswith(base + "/api/") or resp.status < 400:
+            if resp.status < 400:
+                return
+            if not resp.url.startswith(base + "/api/"):
+                # recurso fora da /api (imagem da Vila, video, arte) tambem conta,
+                # e com a URL: so "Failed to load resource 401" nao diz qual (02/10)
+                api_erros.append(f"{resp.status} {resp.url[len(base):].split('?', 1)[0]}")
                 return
             rota = resp.url[len(base):].split("?", 1)[0]
             if resp.status == 404 and rota in API_404_ESPERADOS:
@@ -188,7 +194,7 @@ def test_o_app_abre_vila_objetos_e_abas_sem_erros_de_tela(tela_isolada, tamanho)
         # As promessas de fetch da ultima aba ainda podem terminar depois do clique.
         time.sleep(0.4)
         assert not pageerrors, pageerrors
-        assert not console_errors, console_errors
+        assert not console_errors, (console_errors, api_erros)
         assert not imagens_quebradas, imagens_quebradas
         assert not api_erros, api_erros
         nav.close()

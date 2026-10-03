@@ -17,7 +17,7 @@ APP = Path(__file__).resolve().parent / "app"
 HTML = (APP / "index.html").read_text(encoding="utf-8")
 JS = {n: (APP / n).read_text(encoding="utf-8")
       for n in ("app.js", "vila.js", "comandos.js", "decisoes.js", "orquestrador.js",
-                "coordenador.js", "conversa.js", "oficina.js", "biblioteca.js")}
+                "coordenador.js", "conversa.js", "oficina.js", "biblioteca.js", "atelie.js")}
 
 # os quatro objetos da prateleira (02/10/2026): o rótulo e a aba que abre
 # da primeira vez (`data-tela`)
@@ -67,6 +67,10 @@ FUNCOES = [
     # relatórios e decisões
     "abas-relatorio", "relatorio", "decisoes-abas", "decisoes-lista",
     "decisao-item", "sprites-lista",
+    # Atelie: passos importados pelo Adrian, em Ver
+    "atelie-sujeito", "atelie-nome", "atelie-slots", "atelie-editor", "atelie-arquivo",
+    "atelie-tolerancia", "atelie-modo", "atelie-colunas", "atelie-linhas", "atelie-espelho",
+    "atelie-refazer", "atelie-salvar", "atelie-descartar", "atelie-previas",
     # confirmação em dois passos e campos das fichas
     "dialogo", "dialogo-texto", "dialogo-destinos", "dialogo-sim",
     "dialogo-prazo", "dialogo-campos", "campos-corpo", "btn-campos-ok",
@@ -133,12 +137,13 @@ def test_o_cache_da_casca_mudou_de_versao():
     # Oficina do Codex e os Modelos (01/10); v24 = Biblioteca; v26 = Coordenador;
     # v29 = os quatro objetos, um por pergunta (02/10); v30 = a Vila toca as
     # folhas da esteira (02/10); v31 = Assembleia (02/10); v32 = conferência
-    # de sprites pelo celular; v33 = Arena.
-    assert "painel-casca-v34" in sw
+    # de sprites pelo celular; v33 = Arena; v34 = mapa legivel; v35 = Atelie.
+    assert "painel-casca-v35" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw
     assert '"assembleia.js"' in sw
+    assert '"atelie.js"' in sw
 
 
 def test_o_icone_novo_esta_no_manifest_na_casca_e_no_servidor():

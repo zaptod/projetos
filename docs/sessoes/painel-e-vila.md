@@ -588,6 +588,14 @@ fazer a janela chamar `postar.py --ver`, `travas.ocupada()` ou `panorama.resumo(
 na thread da interface; usar `ImageGrab`; apontar a tarefa direto para o `.cmd`
 (volta a janela preta) ou mexer no `oculto.vbs`.
 
+## Atelie de sprites
+
+`painel/sprites/importar.py` e a parte sem interface do Atelie. Ele reutiliza
+a limpeza por borda da Oficina, tira ilhas pequenas, fatiar por componentes,
+grade ou tira e o alinhamento por pes/base/centro. Cada slot configuravel em
+`palco/biblioteca/sprites_usuario/catalogo.json` salva PNG, JSON e previa GIF
+sem ligar a arte importada ao palco ou a Vila.
+
 ## Contratos com outras partes
 
 **Só LEIO, nunca escrevo:**

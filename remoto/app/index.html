@@ -448,6 +448,31 @@
       <div id="biblioteca-texto" class="biblioteca-texto"></div>
     </div>
   </section>
+  <section id="tela-atelie" class="oculto livro atelie" aria-label="Ateliê de sprites">
+    <div class="cartao">
+      <h2>🖌️ Ateliê</h2>
+      <div class="fraco">Escolha um passo, importe o seu sprite e confira antes de salvar.</div>
+      <div class="campos atelie-campos">
+        <label>Sujeito <select id="atelie-sujeito"></select></label>
+        <label>Nome <input id="atelie-nome" maxlength="64" placeholder="novo-personagem"></label>
+      </div>
+      <div id="atelie-slots" class="atelie-slots"></div>
+    </div>
+    <div id="atelie-editor" class="cartao oculto">
+      <h2 id="atelie-slot-titulo">Importar</h2>
+      <input id="atelie-arquivo" type="file" accept="image/png,image/jpeg,image/webp,image/*" capture="environment">
+      <div class="campos atelie-campos">
+        <label>Tolerância <input id="atelie-tolerancia" type="range" min="0" max="128" value="24"></label>
+        <label>Corte <select id="atelie-modo"><option value="auto">automático</option><option value="grade">grade</option><option value="tira">tira</option></select></label>
+        <label>Colunas <input id="atelie-colunas" type="number" min="1" value="1"></label>
+        <label>Linhas <input id="atelie-linhas" type="number" min="1" value="1"></label>
+      </div>
+      <label class="acao atelie-espelho"><input id="atelie-espelho" type="checkbox"> ↔ gerar lado oposto espelhando</label>
+      <div class="botoes"><button class="acao" id="atelie-refazer">Refazer</button><button class="acao primario" id="atelie-salvar">Salvar no slot</button><button class="acao" id="atelie-descartar">Descartar</button></div>
+      <div id="atelie-aviso" class="fraco"></div>
+      <div id="atelie-previas" class="atelie-previas"></div>
+    </div>
+  </section>
   <section id="tela-relatorios" class="oculto livro pergaminho" aria-label="Pergaminhos">
     <div class="abas" id="abas-relatorio"></div>
     <div class="cartao"><pre id="relatorio">Escolha um pergaminho.</pre></div>
@@ -551,5 +576,6 @@
 <script src="conversa.js"></script>
 <script src="oficina.js"></script>
 <script src="biblioteca.js"></script>
+<script src="atelie.js"></script>
 </body>
 </html>

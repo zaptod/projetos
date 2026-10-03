@@ -121,7 +121,7 @@ SAIRAM = {
 TELAS_DE_ANTES = {"quadro": "agora", "orquestrador": "agora", "oficina": "agora",
                   "coordenador": "agora", "decisoes": "decidir", "comandos": "mandar",
                   "conversa": "mandar", "videos": "ver", "biblioteca": "ver",
-                  "relatorios": "ver", "diario": "ver"}
+                  "atelie": "arena", "relatorios": "ver", "diario": "ver"}
 ROTAS_DE_ANTES = [
     "/api/acao", "/api/acao/confirmar", "/api/acoes", "/api/biblioteca",
     "/api/biblioteca/bilhete/", "/api/biblioteca/doc/", "/api/catalogo", "/api/claude",
@@ -207,7 +207,7 @@ def test_os_cinco_objetos_e_nada_mais_na_prateleira():
     assert objetos["decidir"] == ["decisoes", "sprites", "assembleias"]
     assert objetos["mandar"] == ["comandos", "conversa"]
     assert objetos["ver"] == ["videos", "biblioteca", "relatorios", "diario"]
-    assert objetos["arena"] == ["arena"]
+    assert objetos["arena"] == ["arena", "atelie"]
     botoes = re.findall(r'<button class="objeto" id="obj-(\w+)" data-objeto="(\w+)" '
                         r'data-tela="([\w-]+)"><span>[^<]*</span>([^<]+)</button>', HTML)
     assert [(o, rotulo) for o, _d, _t, rotulo in botoes] == [

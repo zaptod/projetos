@@ -82,7 +82,10 @@ def remover(arr: np.ndarray, tolerancia: float = 24, suavidade: float = 16) -> t
     if sobra_de_fundo(saida) > 0.02:
         anel = _anel(arr)
         modas = _modas(anel[anel[:, 3] >= 128][:, :3], 2)
-        if info["tipo"] == "liso" and len(modas) == 2:
+        if (info["tipo"] == "liso" and len(modas) == 2
+                and _neutra(modas[0][0]) and _neutra(modas[1][0])):
+            # so xadrez de verdade (dois cinzas/brancos): desenho que encosta na
+            # borda nao pode virar "a segunda cor do xadrez" e ser apagado
             outra = {"tipo": "xadrez", "cores": [modas[0][0], modas[1][0]]}
         else:
             outra = {"tipo": "liso", "cores": [modas[0][0]]}

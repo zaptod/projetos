@@ -38,10 +38,12 @@ esquecido nela ja quebrou o login.
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import hmac
 import ipaddress
+import io
 import json
 import os
 import re
@@ -57,18 +59,22 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from PIL import Image
+
 from . import (acoes, biblioteca, claude_estado, comandos_app, decisoes, delegar, orquestrador,
                painel_dados, tarefas, vila_dados, vila_nova)
 from .config import runtime_dir
 from esteira_sprites import aprovar as sprites_aprovar
 from esteira_sprites import config as sprites_config
 from esteira_sprites import juiz as sprites_juiz
+from painel.sprites import importar as sprites_importar
 
 PORTA_PADRAO = 8931
 PORTAS_PROIBIDAS = {8765}                # OAuth do YouTube
 REDE_TAILSCALE = ipaddress.ip_network("100.64.0.0/10")
 APP = Path(__file__).resolve().parent / "app"
 PASTA_ARENA = None                    # os testes apontam para outro lugar
+ID_DE_LUTA = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,59}")   # a lista e a rota do video, iguais
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 CODIGO_VALE_S = 5 * 60
@@ -80,6 +86,8 @@ CORPO_MAX = 4096
 # A conversa com uma IA leva imagem anexada (base64): so essa rota aceita
 # um corpo grande, e so com token.
 CORPO_CORREIO_MAX = 12 * 1024 * 1024
+ATELIE_MAX = sprites_importar.MAX_BYTES
+ATELIE_BIBLIOTECA = Path(__file__).resolve().parents[1] / "palco" / "biblioteca" / "sprites_usuario"
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 # As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
 # e nao lido do `ias`, para a rota nunca aceitar o que o correio nao conhece;
@@ -216,7 +224,10 @@ def _ler_json(caminho: Path) -> dict:
 def lutas_da_arena(n: int = 20) -> list[dict]:
     """As ultimas lutas, com a situacao da tarefa que realmente as produziu."""
     try:
-        pastas = sorted((p for p in pasta_da_arena().iterdir() if p.is_dir()), reverse=True)
+        # so o que a rota do video aceita (02/10: uma pasta "_prova" aparecia na
+        # lista e o video dela caia no 401)
+        pastas = sorted((p for p in pasta_da_arena().iterdir()
+                         if p.is_dir() and ID_DE_LUTA.fullmatch(p.name)), reverse=True)
     except OSError:
         return []
     saida = []
@@ -269,6 +280,7 @@ ESTATICOS = {
     "/conversa.js": ("conversa.js", "text/javascript; charset=utf-8"),
     "/oficina.js": ("oficina.js", "text/javascript; charset=utf-8"),
     "/biblioteca.js": ("biblioteca.js", "text/javascript; charset=utf-8"),
+    "/atelie.js": ("atelie.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -628,6 +640,8 @@ class Estado:
         self.bilhetes: dict[str, tuple] = {}
         # Paginas usam a mesma ideia, mas nunca aceitam bilhetes de midia.
         self.bilhetes_paginas: dict[str, tuple] = {}
+        # Previa ainda nao e biblioteca: fica na memoria, separada por aparelho.
+        self.atelie: dict[str, dict] = {}
         # Bilhetes que EXISTIRAM e venceram. O celular que deixa o video
         # parado 10 minutos e da play de novo nao esta chutando: sem esta
         # lembranca, ele contaria para o bloqueio.
@@ -785,6 +799,12 @@ class Manipulador(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(corpo)
 
+    def _bytes(self, corpo: bytes, tipo: str):
+        self.send_response(200)
+        self._cabecalhos_comuns(tipo, len(corpo))
+        self.end_headers()
+        self.wfile.write(corpo)
+
     def _erro(self, status: int, motivo: str):
         self._json({"erro": motivo}, status)
 
@@ -862,7 +882,7 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._video_por_bilhete(rota[3:])
         if rota.startswith("/p/"):
             return self._pagina_por_bilhete(rota[3:])
-        achado = re.fullmatch(r"/api/arena/video/([a-zA-Z0-9][a-zA-Z0-9_-]{0,59})\.mp4", rota)
+        achado = re.fullmatch(r"/api/arena/video/(" + ID_DE_LUTA.pattern + r")\.mp4", rota)
         if achado:
             return self._video_da_arena(achado.group(1), consulta)
         if not rota.startswith("/api/"):
@@ -882,6 +902,11 @@ class Manipulador(BaseHTTPRequestHandler):
                     if luta.pop("video"):
                         luta["video_url"] = f"/api/arena/video/{luta['id']}.mp4?t={token}"
                 return self._json({"lutas": lutas})
+            if rota == "/api/atelie":
+                return self._atelie_catalogo(consulta)
+            achado = re.fullmatch(r"/api/atelie/arquivo/([a-z0-9_-]{8,40})/(original|limpa|folha|previa|quadro-\d+)", rota)
+            if achado:
+                return self._atelie_arquivo(*achado.groups())
             achado = re.fullmatch(r"/api/sprites/arquivo/(palco|vila)/([a-z0-9][a-z0-9_-]{0,63})/([^/]+)", rota)
             if achado:
                 return self._arquivo_sprite(achado.group(1), achado.group(2), achado.group(3))
@@ -1085,6 +1110,8 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._acao(rota)
         if rota == "/api/decisao/responder":
             return self._responder_decisao()
+        if rota == "/api/atelie/importar":
+            return self._atelie_importar()
         achado = re.fullmatch(r"/api/sprites/(palco|vila)/([a-z0-9][a-z0-9_-]{0,63})/(aprovar|refazer|descartar)", rota)
         if achado:
             return self._acao_sprite(*achado.groups())
@@ -1128,6 +1155,143 @@ class Manipulador(BaseHTTPRequestHandler):
             self.estado.falhou(self.client_address[0])
             return self._erro(403, "codigo errado ou vencido")
         return self._json({"token": token})
+
+    # ------------------------------------------------------------ atelie
+    def _atelie_catalogo(self, consulta):
+        sujeito = (consulta.get("sujeito") or [""])[0]
+        try:
+            dados = sprites_importar.catalogo()
+            if sujeito:
+                slots = dados["sujeitos"][sujeito]["slots"]
+                nome = (consulta.get("nome") or [""])[0]
+                if nome and not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", nome):
+                    return self._erro(400, "nome invalido")
+                pasta = ATELIE_BIBLIOTECA / sujeito / nome if nome else None
+                dados = {"sujeitos": {sujeito: {**dados["sujeitos"][sujeito],
+                    "slots": [{**s, "vazio": not bool(pasta and (pasta / f"{s['id']}.png").is_file())}
+                              for s in slots]}}}
+            return self._json(dados)
+        except KeyError:
+            return self._erro(400, "sujeito inexistente")
+
+    @staticmethod
+    def _atelie_png(arr) -> bytes:
+        saida = io.BytesIO()
+        Image.fromarray(arr, "RGBA").save(saida, "PNG", optimize=True)
+        return saida.getvalue()
+
+    @staticmethod
+    def _atelie_gif(quadros, fps: float) -> bytes:
+        imagens = [Image.fromarray(q, "RGBA").convert("RGB") for q in quadros]
+        if not imagens:
+            imagens = [Image.new("RGB", (1, 1))]
+        saida = io.BytesIO()
+        imagens[0].save(saida, "GIF", save_all=True, append_images=imagens[1:],
+                        duration=max(20, round(1000 / max(1, float(fps)))), loop=0)
+        return saida.getvalue()
+
+    def _atelie_arquivo(self, sessao: str, parte: str):
+        with self.estado.trava:
+            dados = self.estado.atelie.get(sessao)
+        if not dados or dados["dono"] != self._dono:
+            return self._erro(404, "previa nao existe")
+        corpo = dados["arquivos"].get(parte)
+        if corpo is None:
+            return self._erro(404, "imagem nao existe")
+        return self._bytes(corpo, "image/gif" if parte == "previa" else "image/png")
+
+    def _atelie_corpo(self):
+        """(imagem, opcoes) de JSON/base64 ou multipart, limitado antes de ler."""
+        try:
+            tamanho = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            tamanho = -1
+        if not 0 < tamanho <= ATELIE_MAX + 65536:
+            self._erro(413, "imagem deve ter ate 20 MB")
+            return None
+        bruto = self.rfile.read(tamanho)
+        tipo = self.headers.get("Content-Type", "")
+        if tipo.startswith("application/json"):
+            try:
+                dados = json.loads(bruto.decode("utf-8"))
+                imagem = base64.b64decode(dados.get("imagem", ""), validate=True)
+                opcoes = dados.get("opcoes") or dados
+            except (ValueError, TypeError, UnicodeDecodeError):
+                self._erro(400, "imagem invalida")
+                return None
+            return imagem, opcoes if isinstance(opcoes, dict) else {}
+        achado = re.search(r"boundary=([^;]+)", tipo)
+        if not tipo.startswith("multipart/form-data") or not achado:
+            self._erro(415, "envie multipart ou JSON/base64")
+            return None
+        partes = bruto.split(b"--" + achado.group(1).strip('"').encode())
+        campos = {}
+        for parte in partes:
+            cabeca, separador, valor = parte.partition(b"\r\n\r\n")
+            nome = re.search(br'name="([^"\\]+)"', cabeca)
+            if not separador or not nome:
+                continue
+            if valor.endswith(b"\r\n"):
+                valor = valor[:-2]
+            campos[nome.group(1).decode("utf-8", "ignore")] = valor
+        try:
+            opcoes = json.loads(campos.get("opcoes", b"{}").decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            opcoes = {}
+        return campos.get("imagem", b""), opcoes if isinstance(opcoes, dict) else {}
+
+    def _atelie_importar(self):
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as acoes estao desligadas neste servidor")
+        pedido = self._atelie_corpo()
+        if pedido is None:
+            return
+        imagem, opcoes = pedido
+        try:
+            sujeito = str(opcoes.get("sujeito") or "")
+            slot_id = str(opcoes.get("slot") or "")
+            slot = sprites_importar.slot_do_catalogo(sujeito, slot_id)
+            resultado = sprites_importar.processar(
+                sprites_importar.abrir_bytes(imagem), tolerancia=float(opcoes.get("tolerancia", 24)),
+                modo=str(opcoes.get("modo") or "auto"), colunas=int(opcoes.get("colunas") or 0),
+                linhas=int(opcoes.get("linhas") or 0), ancora=slot.get("ancora", "pes"),
+                excluir=opcoes.get("excluir") or [], ordem=opcoes.get("ordem") or None)
+        except (TypeError, ValueError) as exc:
+            return self._erro(400, str(exc))
+        nome = str(opcoes.get("nome") or "novo")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", nome):
+            return self._erro(400, "nome invalido")
+        sessao = secrets.token_urlsafe(12).replace("-", "_")
+        arquivos = {"original": self._atelie_png(resultado.original),
+                    "limpa": self._atelie_png(resultado.limpo),
+                    "folha": self._atelie_png(resultado.folha),
+                    "previa": self._atelie_gif(resultado.alinhado.quadros, slot.get("fps", 8))}
+        arquivos.update({f"quadro-{i}": self._atelie_png(q)
+                         for i, q in enumerate(resultado.alinhado.quadros)})
+        if opcoes.get("salvar"):
+            try:
+                sprites_importar.salvar(resultado, ATELIE_BIBLIOTECA / sujeito / nome,
+                                        slot, str(opcoes.get("arquivo") or "imagem"),
+                                        substituir=bool(opcoes.get("substituir")))
+                if opcoes.get("espelhar") and slot.get("espelho_de"):
+                    oposto = sprites_importar.slot_do_catalogo(sujeito, slot["espelho_de"])
+                    sprites_importar.salvar(sprites_importar.espelhar(resultado),
+                                            ATELIE_BIBLIOTECA / sujeito / nome, oposto,
+                                            str(opcoes.get("arquivo") or "imagem"),
+                                            substituir=bool(opcoes.get("substituir")))
+            except FileExistsError:
+                return self._erro(409, "slot ja tem imagem; confirme substituir")
+        with self.estado.trava:
+            self.estado.atelie[sessao] = {"dono": self._dono, "arquivos": arquivos}
+        raiz = f"/api/atelie/arquivo/{sessao}"
+        return self._json({"sessao": sessao, "quadros": len(resultado.alinhado.quadros),
+                           "avisos": resultado.avisos, "original": f"{raiz}/original",
+                           "limpa": f"{raiz}/limpa", "folha": f"{raiz}/folha",
+                           "previa": f"{raiz}/previa",
+                           "quadros_urls": [f"{raiz}/quadro-{i}" for i in range(len(resultado.alinhado.quadros))],
+                           "salvo": bool(opcoes.get("salvar"))})
 
     def _biblioteca_bilhete(self, pagina: str):
         if self._aparelho() is None:

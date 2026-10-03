@@ -2157,6 +2157,15 @@ Chrome headless abre a Vila, os quatro objetos e todas as abas em 390x844 e
 844x390; falha para erro de pagina/console/CSP, imagem visivel sem largura ou
 API da tela em 4xx/5xx. As capturas ficam em `E:\tmp_pytest\tela_app\`.
 
+# Atelie
+
+Em **Ver > Atelie**, Adrian escolhe sujeito, nome e um slot do catalogo de
+passos. A imagem (PNG, JPG ou WebP, ate 20 MB) vai somente ao PC pareado e,
+com `--acoes`, volta como original, limpa, quadros e GIF por URLs autenticadas
+convertidas em `blob:` no celular. Ajustar tolerancia, corte/grade/tira, fps e
+espelhamento refaz a previa; salvar e o unico passo que escreve em
+`palco/biblioteca/sprites_usuario/`.
+
 # Assembleia
 
 Em **Decidir > Assembleia**, o app mostra as deliberações abertas e as atas
