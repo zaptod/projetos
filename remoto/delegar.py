@@ -83,9 +83,12 @@ REPO = None                   # a arvore principal (E:\projetos)
 WT_RAIZ = None                # E:\projetos-wt
 TEMP_TESTES = None            # E:\tmp_pytest
 CODEX = None                  # [executavel, ...] do codex; None = achar no PATH
+CLAUDE = None                 # executavel do Claude; None = achar como o apurador
 CODEX_HOME = None             # ~/.codex (so leitura: sessions, models_cache, config.toml)
 
 IA = "codex"
+IAS = ("codex", "claude")
+AGENTES = RAIZ / ".claude" / "agents"
 _ID = re.compile(r"[a-z0-9][a-z0-9-]{2,39}")
 _MODELO_LIVRE = re.compile(r"[a-z0-9][a-z0-9._-]{1,48}")
 ESFORCOS = ("low", "medium", "high", "xhigh", "max", "ultra")
@@ -125,11 +128,20 @@ PADRAO_CONFIG = {
     "tokens_janela_max": None,    # teto por contagem, so quando o uso nao e medido
     "diff_max_linhas": 800,
     "diff_max_arquivos": 20,
-    "janela_sem_comecar": [30, 45],   # minutos da hora em que nada comeca
-    "janela_sem_aplicar": [25, 55],   # a janela da postagem
+    # 03/10/2026, o Adrian: "NÃO FICA ESPERANDO HORÁRIO, ISSO ME IRRITA DEMAIS".
+    # Sem janela de relógio: quem barra é a PUBLICAÇÃO EM VOO de verdade
+    # (`aplicar` olha os processos). Para voltar, ponha [de, ate] no config.
+    "janela_sem_comecar": None,
+    "janela_sem_aplicar": None,
     "rodar_timeout_s": 3600,
     "testes_timeout_s": 1800,
     "delegados_paralelo": 1,      # quantos Codex ao mesmo tempo (cada um na sua worktree)
+    "renovar_apos_turnos": 60,
+    "renovar_apos_min": 90,
+    "modelo_claude": None,
+    "gerente_ligado": False,
+    "regra_ia": {"construir": "codex", "implementar": "codex", "investigar": "claude",
+                  "consertar": "claude", "conferir": "claude"},
 }
 
 # Medidos em 01/10/2026 no `~/.codex/models_cache.json` (visibility "list"),
@@ -233,6 +245,30 @@ def ler_config() -> dict:
     if not isinstance(dados, dict):
         raise Recusa("config.json dos delegados está ilegível")
     return {**PADRAO_CONFIG, **{k: v for k, v in dados.items() if k in PADRAO_CONFIG}}
+
+
+def gravar_config(mudancas: dict) -> dict:
+    """Config operacional da Equipe, validada antes de virar estado do servidor."""
+    if not isinstance(mudancas, dict):
+        raise Recusa("config da equipe invalida")
+    aceitas = {"gerente_ligado", "renovar_apos_turnos", "renovar_apos_min",
+               "delegados_paralelo", "regra_ia", "modelo_claude"}
+    novas = {k: v for k, v in mudancas.items() if k in aceitas}
+    if "gerente_ligado" in novas and not isinstance(novas["gerente_ligado"], bool):
+        raise Recusa("gerente_ligado e booleano")
+    for chave in ("renovar_apos_turnos", "renovar_apos_min", "delegados_paralelo"):
+        if chave in novas and (not isinstance(novas[chave], int) or not 1 <= novas[chave] <= 999):
+            raise Recusa(chave + " deve ser de 1 a 999")
+    if "regra_ia" in novas:
+        if not isinstance(novas["regra_ia"], dict) or any(v not in IAS for v in novas["regra_ia"].values()):
+            raise Recusa("regra_ia invalida")
+    with _trava():
+        atual = _ler_json(pasta() / "config.json", {})
+        if not isinstance(atual, dict):
+            raise Recusa("config.json dos delegados esta ilegivel")
+        atual.update(novas)
+        _gravar_json(pasta() / "config.json", atual)
+    return ler_config()
 
 
 def ler_estado(tarefa_id: str) -> dict:
@@ -373,6 +409,46 @@ def validar_modelo(modelo) -> str | None:
     if not _MODELO_LIVRE.fullmatch(modelo):
         raise Recusa("modelo do Codex: letras minúsculas, números, ponto e hífen")
     return modelo
+
+
+def validar_ia(ia: str) -> str:
+    ia = str(ia or IA).strip().lower()
+    if ia not in IAS:
+        raise Recusa("ia e codex ou claude")
+    return ia
+
+
+def cargos() -> list[str]:
+    """Os cargos sao arquivos versionados; nao ha uma lista paralela no app."""
+    try:
+        return sorted(p.stem for p in AGENTES.glob("*.md")
+                      if re.fullmatch(r"[a-z0-9-]+", p.stem))
+    except OSError:
+        return []
+
+
+def prompt_do_cargo(cargo: str) -> str:
+    cargo = str(cargo or "").strip().lower()
+    if cargo not in cargos():
+        raise Recusa("cargo desconhecido: " + cargo)
+    try:
+        texto = (AGENTES / f"{cargo}.md").read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        raise Recusa(f"nao li o cargo {cargo}: {exc}") from exc
+    # O frontmatter identifica o arquivo para humanos; o resto e o sistema.
+    if texto.startswith("---"):
+        _, _, texto = texto.split("---", 2)
+    return texto.strip()
+
+
+def comando_claude() -> list[str]:
+    if CLAUDE:
+        return list(CLAUDE) if not isinstance(CLAUDE, str) else [CLAUDE]
+    from .apurador import caminho_do_claude
+    achado = caminho_do_claude()
+    if not achado:
+        raise Recusa("o Claude Code nao esta instalado")
+    return [achado]
 
 
 # ===================================================================== uso
@@ -644,10 +720,19 @@ def _validar_permitidos(permitidos) -> list[str]:
 
 
 def criar(tarefa_id: str, arquivo_tarefa: Path, permitidos, *, modelo=None,
-          esforco: str | None = None, titulo: str = "") -> dict:
+          esforco: str | None = None, titulo: str = "", ia: str = IA,
+          cargo: str = "") -> dict:
     tarefa_id = validar_id(tarefa_id)
+    ia = validar_ia(ia)
+    if ia == "claude":
+        cargo = str(cargo or "").strip().lower()
+        prompt_do_cargo(cargo)       # valida antes de criar a worktree
+    elif cargo:
+        cargo = str(cargo).strip().lower()
     permitidos = _validar_permitidos(permitidos)
-    modelo = validar_modelo(modelo) if modelo is not None else modelo_configurado()
+    modelo = (validar_modelo(modelo) if ia == "codex" and modelo is not None
+              else (modelo_claude_configurado() if ia == "claude" and modelo is None
+                    else modelo_configurado() if modelo is None else str(modelo).strip()))
     if esforco is None:
         esforco = esforco_configurado()
     if esforco is not None and esforco not in ESFORCOS:
@@ -673,13 +758,13 @@ def criar(tarefa_id: str, arquivo_tarefa: Path, permitidos, *, modelo=None,
         (wt / ".codex_tarefa.md").write_text(compor_prompt(tarefa, permitidos),
                                              encoding="utf-8")
         primeira = next((l.strip("# ").strip() for l in tarefa.splitlines() if l.strip()), "")
-        estado = {"id": tarefa_id, "ia": IA, "situacao": "criado", "criado_em": _agora_iso(),
+        estado = {"id": tarefa_id, "ia": ia, "cargo": cargo, "situacao": "criado", "criado_em": _agora_iso(),
                   "titulo": _cortar(titulo or primeira, 160), "modelo": modelo,
                   "esforco": esforco, "worktree": str(wt), "branch": branch_de(tarefa_id),
                   "base": base, "permitidos": permitidos, "thread_id": None, "pid": None,
                   "pid_codex": None, "inicio": None, "fim": None, "motivo": "",
                   "tokens": {"entrada": 0, "cache": 0, "saida": 0, "raciocinio": 0},
-                  "rodadas": [], "eventos_n": 0, "diff": None, "testes": None,
+                  "rodadas": [], "renovacoes": [], "eventos_n": 0, "diff": None, "testes": None,
                   "aplicado": None, "limpo": None}
         _gravar_estado(estado)
     _log(tarefa_id, f"criada: worktree {wt} (base {base[:8]}), modelo {modelo or 'padrão'}")
@@ -691,6 +776,16 @@ def modelo_configurado() -> str | None:
     try:
         from . import orquestrador
         return orquestrador.ler_config().get("modelo_codex") or None
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+def modelo_claude_configurado() -> str | None:
+    """Modelo dos trabalhadores Claude; a Mesa e a fonte, nunca o VS Code."""
+    try:
+        from . import orquestrador
+        config = orquestrador.ler_config()
+        return config.get("modelo_claude") or config.get("modelo_agentes") or None
     except Exception:                                        # noqa: BLE001
         return None
 
@@ -745,9 +840,6 @@ def _matar(proc: subprocess.Popen) -> None:
 
 def _preparar_rodada(tarefa_id: str, tipo: str, forcar: bool) -> tuple[dict, dict]:
     """As guardas, e marca `rodando` (sob a trava: um delegado por vez)."""
-    motivo = claude_estado.motivo_proibido()
-    if motivo:
-        raise Recusa(motivo + " (vale para o Codex também)")
     config = ler_config()
     agora = _agora()
     if _janela(config["janela_sem_comecar"], agora) and not forcar:
@@ -758,11 +850,14 @@ def _preparar_rodada(tarefa_id: str, tipo: str, forcar: bool) -> tuple[dict, dic
         uso = conferir_teto(config)
     with _trava():
         estado = ler_estado(tarefa_id)
+        motivo = claude_estado.motivo_proibido() if estado.get("ia") == "claude" else ""
+        if motivo:
+            raise Recusa(motivo)
         if estado.get("limpo"):
             raise Recusa(f"a tarefa {tarefa_id} já foi limpa")
         if _rodando(estado):
             raise Recusa(f"a tarefa {tarefa_id} já está rodando (pid {estado.get('pid')})")
-        if tipo == "corrigir" and not estado.get("thread_id"):
+        if tipo == "corrigir" and estado.get("ia") == "codex" and not estado.get("thread_id"):
             raise Recusa("não há conversa para corrigir: rode primeiro")
         # 01/10 23:1x, pedido do Adrian: "utilize o Codex na capacidade maxima".
         # O teto de simultaneos vem do config (padrao 1); cada um tem a propria
@@ -814,9 +909,10 @@ class _Rodada:
         if self.motivo_parada:
             return
         self.motivo_parada = motivo
-        self.anotar({"type": "delegar.parado", "texto": f"parei o Codex: {motivo}",
+        nome = "Claude" if self.estado.get("ia") == "claude" else "Codex"
+        self.anotar({"type": "delegar.parado", "texto": f"parei o {nome}: {motivo}",
                      "ok": False})
-        _log(self.id, f"parei o Codex: {motivo}")
+        _log(self.id, f"parei o {nome}: {motivo}")
         if self.proc is not None:
             _matar(self.proc)
 
@@ -826,7 +922,8 @@ class _Rodada:
         proximo_teto = time.monotonic() + TETO_A_CADA_S
         teto = self.config["teto_codex_pct"]
         while not self.fim.wait(GUARDA_S):
-            motivo = claude_estado.motivo_proibido()
+            motivo = (claude_estado.motivo_proibido()
+                      if self.estado.get("ia") == "claude" else "")
             if motivo:
                 self.parar(motivo)
                 return
@@ -839,7 +936,16 @@ class _Rodada:
             if time.monotonic() > proximo_teto:
                 proximo_teto = time.monotonic() + TETO_A_CADA_S
                 uso = uso_codex()
-                if uso["pct"] is not None and uso["pct"] >= teto:
+                if self.estado.get("ia") == "claude":
+                    try:
+                        uso = __import__("remoto.orquestrador", fromlist=["ler_uso"]).ler_uso()
+                        passou = bool(uso.get("passou_teto"))
+                    except Exception:                        # noqa: BLE001
+                        passou = False
+                    if passou:
+                        self.parar("o Claude passou do teto de uso da Mesa")
+                        return
+                elif uso["pct"] is not None and uso["pct"] >= teto:
                     self.parar(f"o Codex passou do teto: {uso['pct']:.0f}% da janela "
                                f"de 5 h (teto {teto}%)")
                     return
@@ -866,7 +972,8 @@ class _Rodada:
                 _gravar_estado(estado)
 
     def rodar(self) -> int:
-        _log(self.id, "codex: " + " ".join(a if " " not in a else repr(a)
+        nome = "claude" if self.estado.get("ia") == "claude" else "codex"
+        _log(self.id, nome + ": " + " ".join(a if " " not in a else repr(a)
                                            for a in self.args[-12:]))
         erro = open(pasta_da(self.id) / "codex_stderr.log", "ab")
         try:
@@ -887,10 +994,12 @@ class _Rodada:
         vigia.start()
         try:
             try:
-                self.proc.stdin.write(self.prompt.encode("utf-8"))
-                self.proc.stdin.close()
+                if self.estado.get("ia") == "codex":
+                    self.proc.stdin.write(self.prompt.encode("utf-8"))
+                    self.proc.stdin.close()
             except OSError:
                 pass
+            resposta = ""
             for bruta in self.proc.stdout:
                 texto = bruta.decode("utf-8", errors="replace").strip()
                 if not texto:
@@ -902,11 +1011,15 @@ class _Rodada:
                 except ValueError:
                     ev = {"type": "texto", "texto": texto[:2000]}
                 self.anotar(ev)
+                if self.estado.get("ia") == "claude" and isinstance(ev.get("result"), str):
+                    resposta = ev["result"]
                 try:
                     self.contar(ev)
                 except Recusa:
                     pass
             codigo = self.proc.wait()
+            if resposta:
+                (pasta_da(self.id) / "resposta.md").write_text(resposta, encoding="utf-8")
         finally:
             self.fim.set()
             erro.close()
@@ -919,17 +1032,35 @@ def _rodada(tarefa_id: str, tipo: str, prompt: str, *, forcar: bool = False) -> 
     estado, config = _preparar_rodada(tarefa_id, tipo, forcar)
     wt = Path(estado["worktree"])
     resposta = pasta_da(tarefa_id) / "resposta.md"
-    base = comando_codex() + ["exec"]
-    modelo = ["-m", estado["modelo"]] if estado.get("modelo") else []
-    esforco = (["-c", f'model_reasoning_effort="{estado["esforco"]}"']
-               if estado.get("esforco") else [])
-    if tipo == "rodar":
-        args = base + ["--json", "--sandbox", "workspace-write", "-C", str(wt), "-o",
-                       str(resposta), *modelo, *esforco, "-"]
+    if estado.get("ia") == "claude":
+        sistema = prompt_do_cargo(estado.get("cargo") or "")
+        regra = ("Trabalhe somente nesta worktree: " + str(wt) + ". "
+                 "Nao leia nem escreva fora dela; caminhos relativos tambem sao desta worktree.")
+        # Claude recebe uma sessao nova por tarefa/renovacao. O stream-json vai
+        # direto para eventos.jsonl, como o --json do Codex.
+        permitido = ["Read", "Glob", "Grep", "Bash"] if estado.get("cargo") == "conferente" \
+            else ["Read", "Glob", "Grep", "Edit", "Write", "Bash"]
+        args = comando_claude() + ["-p", regra + "\n\n" + prompt,
+                                   "--append-system-prompt", sistema,
+                                   "--output-format", "stream-json", "--verbose",
+                                   "--permission-mode", "dontAsk", "--allowedTools",
+                                   ",".join(permitido), "--add-dir", str(wt)]
+        if estado.get("cargo") == "conferente":
+            args += ["--disallowedTools", "Edit,Write"]
+        if estado.get("modelo"):
+            args += ["--model", estado["modelo"]]
     else:
+        base = comando_codex() + ["exec"]
+        modelo = ["-m", estado["modelo"]] if estado.get("modelo") else []
+        esforco = (["-c", f'model_reasoning_effort="{estado["esforco"]}"']
+                   if estado.get("esforco") else [])
+        if tipo == "rodar":
+            args = base + ["--json", "--sandbox", "workspace-write", "-C", str(wt), "-o",
+                           str(resposta), *modelo, *esforco, "-"]
+        else:
         # `resume` NAO aceita --sandbox (medido em 01/10): vai por -c
-        args = base + ["resume", estado["thread_id"], "--json", "-o", str(resposta),
-                       "-c", 'sandbox_mode="workspace-write"', *modelo, *esforco, "-"]
+            args = base + ["resume", estado["thread_id"], "--json", "-o", str(resposta),
+                           "-c", 'sandbox_mode="workspace-write"', *modelo, *esforco, "-"]
     rodada = _Rodada(estado, config, args, prompt)
     codigo = -1
     try:
@@ -1000,6 +1131,41 @@ def corrigir(tarefa_id: str, arquivo_texto: Path, *, forcar: bool = False) -> di
     n = len([p for p in destino.glob("correcao_*.md")]) + 1
     (destino / f"correcao_{n}.md").write_text(texto, encoding="utf-8")
     return _rodada(tarefa_id, "corrigir", texto, forcar=forcar)
+
+
+def _retrato_da_passagem() -> str:
+    """O retrato e medido pelo servidor; falhar aqui nao perde a nota."""
+    try:
+        feito = subprocess.run([sys.executable, "-m", "ferramentas.handoff", "mostrar"],
+                               cwd=str(repo()), capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=60, creationflags=NO_WINDOW)
+        return (feito.stdout or "")[-20_000:]
+    except (OSError, subprocess.TimeoutExpired):
+        return "(retrato indisponivel)"
+
+
+def renovar(tarefa_id: str, *, forcar: bool = False) -> dict:
+    """Fecha uma conversa e abre outra, sem transportar conversa escondida."""
+    estado = ler_estado(tarefa_id)
+    if _rodando(estado):
+        raise Recusa("a tarefa ainda esta rodando; pare ou espere a rodada terminar")
+    wt = Path(estado["worktree"])
+    pedido = ("Escreva agora a NOTA de passagem em `.handoff.md`: o que esta em andamento, "
+              "o que falta e as armadilhas. Nao altere nenhum outro arquivo.")
+    _rodada(tarefa_id, "corrigir", pedido, forcar=forcar)
+    try:
+        nota = (wt / ".handoff.md").read_text(encoding="utf-8-sig")
+    except OSError:
+        nota = "(o trabalhador nao escreveu a nota de passagem)"
+    with _trava():
+        estado = ler_estado(tarefa_id)
+        estado["renovacoes"] = list(estado.get("renovacoes") or []) + [{
+            "em": _agora_iso(), "nota": nota[:20_000]}]
+        estado["thread_id"] = None
+        _gravar_estado(estado)
+    tarefa = (wt / ".codex_tarefa.md").read_text(encoding="utf-8")
+    prompt = tarefa + "\n\n# NOTA de passagem\n\n" + nota + "\n\n# RETRATO\n\n" + _retrato_da_passagem()
+    return _rodada(tarefa_id, "rodar", prompt, forcar=forcar)
 
 
 def parar(tarefa_id: str) -> str:
@@ -1308,11 +1474,11 @@ def _vivo_para_tela(estado: dict) -> dict:
     except OSError:
         mexido = None
     return {"id": estado.get("id"), "ia": estado.get("ia", IA), "situacao": situacao,
-            "titulo": estado.get("titulo", ""), "modelo": estado.get("modelo"),
+            "cargo": estado.get("cargo", ""), "titulo": estado.get("titulo", ""), "modelo": estado.get("modelo"),
             "esforco": estado.get("esforco"), "criado_em": estado.get("criado_em"),
             "inicio": estado.get("inicio"), "fim": estado.get("fim"),
             "motivo": estado.get("motivo", ""), "tokens": estado.get("tokens") or {},
-            "rodadas": len(estado.get("rodadas") or []), "diff": estado.get("diff"),
+            "rodadas": len(estado.get("rodadas") or []), "renovacoes": len(estado.get("renovacoes") or []), "diff": estado.get("diff"),
             "testes": estado.get("testes"), "aplicado": estado.get("aplicado"),
             "limpo": bool(estado.get("limpo")), "ultimo_evento_em": mexido,
             "permitidos": estado.get("permitidos") or [], "erro": estado.get("erro")}
@@ -1329,6 +1495,20 @@ def para_o_app(n: int = 30) -> dict:
     return {"delegados": lista, "uso": uso_codex(), "config": config,
             "rodando": sum(1 for d in lista if d["situacao"] == "rodando"),
             "claude": claude_estado.ler().get("liberado"), "erros": erros}
+
+
+def equipe_para_o_app(n: int = 60) -> dict:
+    """A Equipe mostra estado do servidor; a Oficina reaproveita o detalhe."""
+    try:
+        nota = (RAIZ / "docs" / "handoff" / "NOTA.md").read_text(encoding="utf-8")
+    except OSError:
+        nota = ""
+    try:
+        retrato = (RAIZ / "docs" / "handoff" / "ATUAL.md").read_text(encoding="utf-8")
+    except OSError:
+        retrato = ""
+    return {"trabalhadores": [_vivo_para_tela(e) for e in listar()[:n]],
+            "cargos": cargos(), "config": ler_config(), "nota": nota, "retrato": retrato}
 
 
 def detalhe_para_o_app(tarefa_id: str, desde: int = -1, completo: bool = False) -> dict | None:
@@ -1389,9 +1569,11 @@ def main(argv=None) -> int:
     c.add_argument("--tarefa", required=True)
     c.add_argument("--permitido", action="append", default=[])
     c.add_argument("--modelo")
+    c.add_argument("--ia", choices=IAS, default="codex")
+    c.add_argument("--cargo", default="")
     c.add_argument("--esforco", choices=ESFORCOS)
     c.add_argument("--titulo", default="")
-    for nome in ("rodar", "corrigir"):
+    for nome in ("rodar", "corrigir", "renovar"):
         r = sub.add_parser(nome)
         r.add_argument("--id", required=True)
         r.add_argument("--fundo", action="store_true")
@@ -1416,13 +1598,16 @@ def main(argv=None) -> int:
     try:
         if args.acao == "criar":
             _imprimir(criar(args.id, Path(args.tarefa), args.permitido, modelo=args.modelo,
-                            esforco=args.esforco, titulo=args.titulo))
-        elif args.acao in ("rodar", "corrigir"):
+                            esforco=args.esforco, titulo=args.titulo, ia=args.ia,
+                            cargo=args.cargo))
+        elif args.acao in ("rodar", "corrigir", "renovar"):
             if args.fundo:
                 resto = [x for x in argv if x != "--fundo"]
                 print(f"despachante no fundo: pid {no_fundo(resto, validar_id(args.id))}")
             elif args.acao == "rodar":
                 _imprimir(rodar(args.id, forcar=args.forcar))
+            elif args.acao == "renovar":
+                _imprimir(renovar(args.id, forcar=args.forcar))
             else:
                 _imprimir(corrigir(args.id, Path(args.texto), forcar=args.forcar))
         elif args.acao == "diff":

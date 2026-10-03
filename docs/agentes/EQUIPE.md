@@ -50,3 +50,10 @@ Adrian ──► ORQUESTRADOR (chat principal)
 
 ## Renovação do chat
 Veja o `CLAUDE.md` §2. `/renovar` fecha com a NOTA e o retrato, e `/assumir` abre o chat seguinte. O hook de início injeta o `docs/handoff/ATUAL.md`, e o de pré-compactação regenera o retrato.
+# Organograma soberano
+
+1. **Servidor**: coordenador, `remoto/` e `remoto/delegar.py` guardam o estado,
+   contratam, renovam, aplicam e dispensam.
+2. **App**: o painel Agora e a aba **Equipe** sao o comando do Adrian.
+3. **Trabalhadores**: Claude, Codex/GPT e VS Code sao sessoes descartaveis em
+   worktrees; nunca sao fonte da verdade.

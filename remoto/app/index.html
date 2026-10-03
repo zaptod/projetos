@@ -219,6 +219,27 @@
     </div>
   </section>
   <!-- A aba Coordenador de Agora: os serviços, o trabalho e a conversa com ele. -->
+  <section id="tela-equipe" class="oculto livro oficina" aria-label="Equipe">
+    <div class="cartao">
+      <h2>👥 Equipe</h2>
+      <div id="equipe-lista"></div>
+    </div>
+    <details class="cartao recolhido"><summary><h2>Contratar</h2></summary>
+      <select id="equipe-cargo" aria-label="Cargo"></select>
+      <select id="equipe-ia" aria-label="IA"><option value="codex">Codex</option><option value="claude">Claude</option></select>
+      <textarea id="equipe-tarefa" rows="4" maxlength="12000" placeholder="Tarefa do trabalhador"></textarea>
+      <button class="acao primario" id="equipe-contratar">Contratar</button>
+    </details>
+    <details class="cartao recolhido"><summary><h2>Gerente</h2></summary>
+      <div id="equipe-gerente" class="fraco"></div>
+      <label><input id="equipe-gerente-ligado" type="checkbox"> gerente ligado</label>
+      <label>renovar turnos <input id="equipe-renovar-turnos" type="number" min="1" max="999"></label>
+      <label>renovar minutos <input id="equipe-renovar-min" type="number" min="1" max="999"></label>
+      <button class="acao" id="equipe-salvar-gerente">Salvar gerente</button>
+      <pre id="equipe-passagem" class="ofi-pre"></pre>
+    </details>
+  </section>
+  <!-- A aba Coordenador de Agora: os serviços, o trabalho e a conversa com ele. -->
   <section id="tela-coordenador" class="oculto livro coordenador" aria-label="Coordenador">
     <div class="cartao" id="coord-topo"></div>
     <!-- 02/10: o cerebro (Conversa e propostas) e o vigia de trabalho -->
@@ -575,6 +596,7 @@
 <script src="coordenador.js"></script>
 <script src="conversa.js"></script>
 <script src="oficina.js"></script>
+<script src="equipe.js"></script>
 <script src="biblioteca.js"></script>
 <script src="atelie.js"></script>
 </body>

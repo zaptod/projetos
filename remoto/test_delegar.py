@@ -98,6 +98,29 @@ def _criar(mundo, tid="t01", permitidos=("remoto/**",), **kw):
     return delegar.criar(tid, mundo.tarefa, list(permitidos), **kw)
 
 
+def test_claude_monta_stream_cargo_e_worktree_presa(mundo, monkeypatch):
+    _criar(mundo, ia="claude", cargo="conferente")
+    visto = {}
+
+    class Rodada:
+        def __init__(self, estado, config, args, prompt):
+            self.n, self.motivo_parada, self.args = 0, "", args
+            visto["args"] = args
+
+        def rodar(self):
+            return 0
+
+    monkeypatch.setattr(delegar, "comando_claude", lambda: ["claude-falso"])
+    monkeypatch.setattr(delegar, "_Rodada", Rodada)
+    delegar._rodada("t01", "rodar", "tarefa", forcar=True)
+    args = visto["args"]
+    assert args[:2] == ["claude-falso", "-p"]
+    assert "--append-system-prompt" in args and "--output-format" in args
+    assert args[args.index("--output-format") + 1] == "stream-json"
+    assert args[args.index("--permission-mode") + 1] == "dontAsk"
+    assert args[args.index("--add-dir") + 1] == str(delegar.worktree_de("t01"))
+
+
 # ------------------------------------------------------------------ criar
 def test_criar_faz_worktree_branch_e_tarefa_com_as_regras(mundo):
     e = _criar(mundo, modelo="gpt-6-luna")
@@ -195,8 +218,8 @@ def test_falha_do_codex_fica_falhou_com_o_codigo(mundo, monkeypatch):
 
 
 # ------------------------------------------------------------- guardas
-def test_claude_proibido_nao_comeca_e_nao_chama_o_codex(mundo):
-    _criar(mundo)
+def test_claude_proibido_barra_o_trabalhador_claude_sem_parar_o_codex(mundo):
+    _criar(mundo, ia="claude", cargo="conferente")
     claude_estado.mudar(False, por="teste")
     with pytest.raises(delegar.Recusa, match="proibido"):
         delegar.rodar("t01")
@@ -220,22 +243,20 @@ def _esperar(condicao, prazo=60.0):
     return False
 
 
-def test_claude_proibido_no_meio_mata_o_codex_na_hora(mundo, monkeypatch):
+def test_claude_proibido_no_meio_nao_mata_o_codex(mundo, monkeypatch):
     monkeypatch.setenv("NF_DUBLE_MODO", "lento")
     _criar(mundo)
     fio, saida = _rodar_em_thread("t01")
     assert _esperar(lambda: delegar.ler_estado("t01").get("pid_codex"))
     assert _esperar(lambda: len(_chamadas(mundo)) == 1)
     pid = _chamadas(mundo)[0]["pid"]
-    antes = time.monotonic()
     claude_estado.mudar(False, por="teste")
+    # O interruptor e do Claude: o Codex segue ate o servidor pedir parada.
+    assert _esperar(fio.is_alive, prazo=3)
+    assert pid and "pedido" in delegar.parar("t01")
     fio.join(20)
-    assert not fio.is_alive() and time.monotonic() - antes < 10
-    e = saida["e"]
-    assert e["situacao"] == "parado" and "proibido" in e["motivo"]
-    from remoto.orquestrador import _pid_vivo
-    assert _esperar(lambda: _pid_vivo(pid) is False, 10)
-    assert any(x["ev"]["type"] == "delegar.parado" for x in _eventos("t01"))
+    assert not fio.is_alive()
+    assert saida["e"]["situacao"] == "parado"
 
 
 def test_parar_pelo_pedido(mundo, monkeypatch):
@@ -284,9 +305,12 @@ def test_sem_medicao_recusa_a_nao_ser_pela_contagem(mundo):
         delegar.rodar("t01")
 
 
-def test_horario_sem_comecar(mundo, monkeypatch):
+def test_horario_sem_comecar_so_se_configurado(mundo, monkeypatch):
+    """03/10/2026: sem janela de relogio por padrao ("NAO FICA ESPERANDO HORARIO")."""
     _criar(mundo)
     monkeypatch.setattr(delegar, "_agora", lambda: datetime(2026, 10, 1, 18, 35))
+    assert delegar.PADRAO_CONFIG["janela_sem_comecar"] is None
+    monkeypatch.setitem(delegar.PADRAO_CONFIG, "janela_sem_comecar", [30, 45])
     with pytest.raises(delegar.Recusa, match=":30 e :45"):
         delegar.rodar("t01")
 
@@ -391,11 +415,7 @@ def test_testar_aplicar_e_limpar(mundo, monkeypatch):
         delegar.aplicar("t01", processos=[])
     r = delegar.testar("t01", f'"{sys.executable}" -c "print(\'2 passed\')"')
     assert r["ok"] and r["resumo"] == "2 passed"
-    # a janela da postagem e a publicacao em voo
-    monkeypatch.setattr(delegar, "_agora", lambda: datetime(2026, 10, 1, 18, 30))
-    with pytest.raises(delegar.Recusa, match=":25–:55"):
-        delegar.aplicar("t01", processos=[])
-    monkeypatch.setattr(delegar, "_agora", lambda: AGORA)
+    # a publicacao EM VOO barra; o relogio nao (03/10/2026)
     with pytest.raises(delegar.Recusa, match="publicação em voo"):
         delegar.aplicar("t01", processos=["python -m remoto.publicacao_filha x"])
     with pytest.raises(delegar.Recusa, match="publicação em voo"):

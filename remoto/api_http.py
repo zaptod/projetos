@@ -279,6 +279,7 @@ ESTATICOS = {
     "/coordenador.js": ("coordenador.js", "text/javascript; charset=utf-8"),
     "/conversa.js": ("conversa.js", "text/javascript; charset=utf-8"),
     "/oficina.js": ("oficina.js", "text/javascript; charset=utf-8"),
+    "/equipe.js": ("equipe.js", "text/javascript; charset=utf-8"),
     "/biblioteca.js": ("biblioteca.js", "text/javascript; charset=utf-8"),
     "/atelie.js": ("atelie.js", "text/javascript; charset=utf-8"),
 }
@@ -1003,6 +1004,8 @@ class Manipulador(BaseHTTPRequestHandler):
             # arquivo inteiro a cada 3 s.
             if rota == "/api/delegados":
                 return self._json(_limpo(delegar.para_o_app()))
+            if rota == "/api/equipe":
+                return self._json(_limpo(delegar.equipe_para_o_app()))
             achado = re.fullmatch(r"/api/delegado/([a-z0-9][a-z0-9-]{2,39})", rota)
             if achado:
                 ficha = delegar.detalhe_para_o_app(
@@ -1128,6 +1131,13 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._coordenador_proposta(achado.group(1))
         if rota == "/api/claude":
             return self._interruptor_claude()
+        if rota == "/api/equipe/contratar":
+            return self._equipe("contratar")
+        if rota == "/api/equipe/config":
+            return self._equipe("config")
+        achado = re.fullmatch(r"/api/equipe/([a-z0-9][a-z0-9-]{2,39})/(parar|renovar|corrigir|aplicar)", rota)
+        if achado:
+            return self._equipe(achado.group(2), achado.group(1))
         achado = re.fullmatch(r"/api/biblioteca/bilhete/([a-z0-9-]{1,64})", rota)
         if achado:
             return self._biblioteca_bilhete(achado.group(1))
@@ -1509,6 +1519,51 @@ class Manipulador(BaseHTTPRequestHandler):
         except OSError:
             return self._erro(503, "nao consegui guardar a assembleia")
         return self._json({"feito": True, "id": ident})
+
+    def _equipe(self, acao_equipe: str, ident: str = ""):
+        """Contratos da Equipe: pareamento e --acoes antes de qualquer mutacao."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as acoes estao desligadas neste servidor")
+        corpo = self._corpo(maximo=20_000)
+        if corpo is None:
+            return
+        try:
+            if acao_equipe == "config":
+                return self._json({"feito": True, "config": delegar.gravar_config(corpo)})
+            if acao_equipe == "contratar":
+                cargo = str(corpo.get("cargo") or "").lower()
+                ia = str(corpo.get("ia") or "codex").lower()
+                tarefa = str(corpo.get("tarefa") or "").strip()
+                if not tarefa or len(tarefa) > 12_000:
+                    return self._erro(400, "tarefa invalida")
+                if cargo not in delegar.cargos() or ia not in delegar.IAS:
+                    return self._erro(400, "cargo ou ia desconhecido")
+                ident = "app-" + secrets.token_hex(4)
+                pedido = delegar.pasta_da(ident) / "pedido.md"
+                pedido.parent.mkdir(parents=True, exist_ok=True)
+                pedido.write_text(tarefa, encoding="utf-8")
+                estado = delegar.criar(ident, pedido, ["remoto/**", "coordenador/**", "docs/**"],
+                                       ia=ia, cargo=cargo, titulo=tarefa.splitlines()[0])
+                delegar.no_fundo(["rodar", "--id", ident], ident)
+                return self._json({"feito": True, "trabalhador": _limpo(estado)})
+            if acao_equipe == "parar":
+                return self._json({"feito": True, "resultado": delegar.parar(ident)})
+            if acao_equipe == "renovar":
+                return self._json({"feito": True, "trabalhador": _limpo(delegar.renovar(ident))})
+            if acao_equipe == "corrigir":
+                texto = str(corpo.get("texto") or "").strip()
+                if not texto:
+                    return self._erro(400, "diga a correcao")
+                pedido = delegar.pasta_da(ident) / "correcao_app.md"
+                pedido.write_text(texto, encoding="utf-8")
+                return self._json({"feito": True, "trabalhador": _limpo(delegar.corrigir(ident, pedido))})
+            return self._json({"feito": True, "resultado": delegar.aplicar(ident)})
+        except delegar.Recusa as exc:
+            return self._erro(409, str(exc))
+        except OSError:
+            return self._erro(503, "a equipe esta ocupada; tente de novo")
 
     def _orquestrador(self, rota: str):
         """Um comando para o orquestrador, ou "Contestar" uma decisao dele.

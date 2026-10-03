@@ -2185,3 +2185,8 @@ As lutas ficam em `random_builds/outputs/_palco/arena/<id>/`. A tela mostra as
 20 mais recentes, incluindo falhas e vencedor; o MP4 toca inline por Range. O
 token vai em `?t=` somente nessa URL de vídeo, porque `<video>` não envia o
 cabeçalho Authorization.
+# Aba Equipe
+
+Em Agora, a aba **Equipe** lista os trabalhadores do servidor e abre a
+Oficina para o log ao vivo. Contratar, parar, renovar, corrigir e aplicar
+exigem pareamento e o servidor iniciado com `--acoes`.

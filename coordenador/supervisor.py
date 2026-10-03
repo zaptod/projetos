@@ -156,7 +156,8 @@ class Supervisor:
                  iniciar=None, parar=None, avisar=None, porta=None, carteiro=None,
                  git=None, comandos=None, aplicar=None, claude_proibido=None,
                  delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
-                 cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None, assembleia=None):
+                 cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None, assembleia=None,
+                 gerente_equipe=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
         self.iniciar = iniciar or self._iniciar
@@ -183,6 +184,8 @@ class Supervisor:
         # O cerebro (`cerebro.atender`) e o vigia de trabalho so existem quando
         # o `__main__` os liga: nos testes, ausentes = nada de Codex nem git.
         self.cerebro, self.vigia_trabalho = cerebro, vigia_trabalho
+        self.gerente_equipe = gerente_equipe
+        self.equipe = {}
         # a esteira de sprites idem: so o `montar()` de producao a liga
         self.esteira = esteira
         self.esteira_em = None
@@ -299,15 +302,9 @@ class Supervisor:
         processos = self.processos() if processos is None else processos
         if publicacao_rodando(processos):
             return False, "publicacao em andamento"
+        # 03/10/2026: sem janela de relógio ("NÃO FICA ESPERANDO HORÁRIO"). A trava
+        # é a publicação em voo, acima; o resto pode reiniciar na hora.
         agora = self.relogio()
-        try:
-            from random_builds.builds.grade import GRADE
-            for h, m in GRADE:
-                horario = agora.replace(hour=h, minute=m, second=0, microsecond=0)
-                if horario - timedelta(minutes=12) <= agora <= horario + timedelta(minutes=18):
-                    return False, "janela da grade"
-        except ImportError:
-            pass
         if nome == "carteiro" and self.carteiro().get("situacao") == "entregando":
             # 02/10 00:04: um pedido condenado segurou o carteiro velho por 7 min
             # e o Adrian: "ele nunca vai parar de rodar". Espera no maximo
@@ -499,6 +496,11 @@ class Supervisor:
             self.trabalho = self.vigia_trabalho.passo()
         self.em_fundo("vigia", passo)
 
+    def gerenciar_equipe(self):
+        if not self.gerente_equipe:
+            return
+        self.em_fundo("equipe", lambda: setattr(self, "equipe", self.gerente_equipe.passo()))
+
     def rodar_esteira(self):
         """Um `ciclo` da esteira (palco e vila) a cada ESTEIRA_INTERVALO_S."""
         if not self.esteira:
@@ -577,6 +579,7 @@ class Supervisor:
         self.avisar_mensagem_sem_ouvinte()
         self.processar_cerebro()
         self.vigiar_trabalho()
+        self.gerenciar_equipe()
         self.rodar_esteira()
         self.avancar_assembleia()
         self.gravar(self.resumo())
@@ -586,7 +589,7 @@ class Supervisor:
                 "versao": self._versao(), "servicos": self.estado,
                 "acoes_pc": acoes_pc.catalogo(), "eventos": self.eventos[-100:],
                 "cerebro": {"ligado": bool(self.cerebro)},
-                "trabalho": self.trabalho, "esteira": self.ultima_esteira}
+                "trabalho": self.trabalho, "equipe": self.equipe, "esteira": self.ultima_esteira}
 
     @staticmethod
     def _versao():

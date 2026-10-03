@@ -3,7 +3,7 @@ const TOKEN = "painel.token";
 const ULTIMO = "painel.ultimo_estado";
 const CONTATO = "painel.ultimo_contato";
 // A Vila é a tela; as outras áreas são objetos dela, com nome de objeto.
-const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex",
+const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex", equipe: "Agora · Equipe",
                  coordenador: "Agora · Coordenador", decisoes: "Decidir", sprites: "Decidir · Sprites", assembleias: "Decidir · Assembleia",
                  comandos: "Mandar", conversa: "Mandar · IAs",
                  videos: "Ver · Cinema", biblioteca: "Ver · Biblioteca",
@@ -20,7 +20,7 @@ const TITULOS = {vila: "Vila", agora: "Agora", oficina: "Agora · Codex",
 //   Ver     — Cinema, Biblioteca, Pergaminhos e Diário.
 // (o ️ pede o desenho colorido: sem ele 🛰 e 🎞 saem como glifo de texto)
 const OBJETOS = {
-  agora: [["agora", "⏳", "Agora"], ["oficina", "🔧", "Codex"],
+  agora: [["agora", "⏳", "Agora"], ["oficina", "🔧", "Codex"], ["equipe", "👥", "Equipe"],
           ["coordenador", "🛰️", "Coordenador"]],
   decidir: [["decisoes", "📖", "Grimório"], ["sprites", "🎨", "Sprites"], ["assembleias", "🏛️", "Assembleia"]],
   mandar: [["comandos", "🛠️", "Comandos"], ["conversa", "💬", "IAs"]],
@@ -703,7 +703,7 @@ function abrirPergaminho() {
 
 const CARGAS = {vila: [carregarAgora, 15000], agora: [carregarAgora, 15000],
                 diario: [carregarDiario, 5000],
-                videos: [null, 0], comandos: [null, 0],
+                videos: [null, 0], comandos: [null, 0], equipe: [null, 0],
                 relatorios: [abrirPergaminho, 0],
                 decisoes: [null, 0], sprites: [null, 0], assembleias: [null, 0], conversa: [null, 0],
                 oficina: [null, 0], biblioteca: [null, 0], atelie: [null, 0], coordenador: [null, 0],
@@ -774,6 +774,7 @@ function mostrar(nova) {
   if (typeof coordenadorParar === "function") coordenadorParar();
   if (typeof conversaParar === "function") conversaParar();
   if (typeof oficinaParar === "function") oficinaParar();
+  if (typeof equipeParar === "function") equipeParar();
   if (typeof bibliotecaParar === "function") bibliotecaParar();
   if (typeof atelieParar === "function") atelieParar();
   if (!pareado) return;
@@ -808,6 +809,7 @@ function mostrar(nova) {
   if (tela === "oficina" && typeof oficinaMostrar === "function") {
     oficinaMostrar();
   }
+  if (tela === "equipe" && typeof equipeMostrar === "function") equipeMostrar();
   if (tela === "biblioteca" && typeof bibliotecaMostrar === "function") {
     bibliotecaMostrar();
   }
@@ -901,7 +903,7 @@ const MODULOS = [["vila.js", "vilaMostrar"], ["comandos.js", "comandosMostrar"],
                  ["assembleia.js", "assembleiasMostrar"],
                  ["orquestrador.js", "orquestradorMostrar"], ["coordenador.js", "coordenadorMostrar"],
                  ["conversa.js", "conversaAbrir"],
-                 ["oficina.js", "oficinaMostrar"], ["biblioteca.js", "bibliotecaMostrar"],
+                 ["oficina.js", "oficinaMostrar"], ["equipe.js", "equipeMostrar"], ["biblioteca.js", "bibliotecaMostrar"],
                  ["atelie.js", "atelieMostrar"]];
 
 function modulosQueFaltam() {

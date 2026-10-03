@@ -68,7 +68,7 @@ def _git() -> list[str]:
 
 
 def _delegados() -> list[str]:
-    linhas = ["## Entregas do Codex (delegados)"]
+    linhas = ["## Trabalhadores do servidor (delegados)"]
     pasta = LOCAL / "delegados"
     aplicados = {x.get("id") for x in (_json(LOCAL / "coordenador" / "estado.json")
                                        .get("trabalho") or {}).get("aplicados", [])}
@@ -89,7 +89,8 @@ def _delegados() -> list[str]:
             extra = f" — **PRECISA DE OLHO**: {str(olho[ident])[:160]}"
         elif situ == "terminou":
             extra = " — terminou e NÃO foi aplicado"
-        linhas.append(f"- `{ident}`: {situ} ({str(e.get('titulo') or '')[:80]}){extra}")
+        linhas.append(f"- `{ident}`: {e.get('cargo') or 'sem cargo'} / {e.get('ia') or 'codex'} / "
+                      f"{situ} ({str(e.get('titulo') or '')[:80]}){extra}")
     if not achou:
         linhas.append("- nenhuma entrega pendurada")
     return linhas

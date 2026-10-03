@@ -65,3 +65,8 @@ Memoria em `trabalho_memoria.json` (vistos, aplicados, corrigidos, olho, esperan
 No pulso, o supervisor chama o avanço da Assembleia em thread de fundo no
 máximo a cada cinco minutos; falhas desse passo são registradas sem parar o
 supervisor nem o carteiro.
+# Gerente da equipe
+
+O gerente roda no pulso do coordenador, no maximo uma vez por minuto. Nasce
+desligado (`gerente_ligado: false`); o Adrian o liga pelo app. Ele tira itens
+da fila, contrata uma sessao em worktree e pede conferencia depois da entrega.

@@ -51,6 +51,10 @@ ONDE_FICOU = {
         "oficina-tarefa", "oficina-voltar-lista", "oficina-seguir", "oficina-cabeca",
         "oficina-abas", "oficina-eventos", "oficina-diff", "oficina-testes", "oficina-pedido",
         "oficina-resposta",
+        # a Equipe tambem e aba de Agora; a Oficina reaproveita o ao vivo
+        "tela-equipe", "equipe-lista", "equipe-cargo", "equipe-ia", "equipe-tarefa",
+        "equipe-contratar", "equipe-gerente", "equipe-gerente-ligado", "equipe-renovar-turnos",
+        "equipe-renovar-min", "equipe-salvar-gerente", "equipe-passagem",
         # o Coordenador (aba Coordenador; a conversa com ele incluída)
         "coord-mesa", "tela-coordenador", "coord-topo", "coord-abas", "coord-painel",
         "coord-trabalho", "coord-servicos", "coord-eventos", "coord-conversa",
@@ -197,13 +201,13 @@ def _secao(tela):
 # ----------------------------------------------------------------- testes
 def test_a_lista_cravada_cobre_os_209_ids_de_antes_sem_repetir():
     todos = [i for lista in ONDE_FICOU.values() for i in lista] + list(SAIRAM)
-    assert len(todos) == len(set(todos)) == 221
+    assert len(todos) == len(set(todos)) == 233
 
 
 def test_os_cinco_objetos_e_nada_mais_na_prateleira():
     objetos = _objetos()
     assert list(objetos) == ["agora", "decidir", "mandar", "ver", "arena"]
-    assert objetos["agora"] == ["agora", "oficina", "coordenador"]
+    assert objetos["agora"] == ["agora", "oficina", "equipe", "coordenador"]
     assert objetos["decidir"] == ["decisoes", "sprites", "assembleias"]
     assert objetos["mandar"] == ["comandos", "conversa"]
     assert objetos["ver"] == ["videos", "biblioteca", "relatorios", "diario"]

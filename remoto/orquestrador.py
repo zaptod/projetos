@@ -92,7 +92,7 @@ PADRAO_CONFIG = {"max_paralelo": 1, "modo": "um_por_vez", "teto_sessao_pct": 50,
                  "forca_total_antes_min": 20, "fila_pausada": False,
                  "sonda_min": 10,
                  # os modelos (01/10/2026): None = o padrao de cada um
-                 "modelo_agentes": None, "modelo_codex": None}
+                 "modelo_agentes": None, "modelo_claude": None, "modelo_codex": None}
 # As chaves que o Grimorio diz (capacidade). So a falta DELAS faz o
 # `ler_config` reler as decisoes: uma chave nova qualquer (os modelos) nao
 # pode transformar cada leitura numa leitura do Grimorio inteiro.
@@ -1231,7 +1231,7 @@ def modelos_para_o_app(config: dict) -> dict:
     gemini = gemini_vigente()
     return {
         "claude": {
-            "vigente": config.get("modelo_agentes"),
+            "vigente": config.get("modelo_claude") or config.get("modelo_agentes"),
             "opcoes": [{"id": i, "rotulo": r, "nota": n} for i, r, n in MODELOS_CLAUDE],
             "padrao": "o orquestrador escolhe por tarefa",
             "nota": ("Vale para os AGENTES que o orquestrador dispara. O modelo da sessão "
@@ -1277,6 +1277,7 @@ COMANDOS = {
     "mensagem": "mensagem",
     "contestar": "contestou uma decisão",
     "modelo_agentes": "modelo dos agentes (Claude)",
+    "modelo_claude": "modelo dos trabalhadores Claude",
     "modelo_codex": "modelo do Codex",
     "modelo_gemini": "modelo do Gemini (navegador)",
     # Estes quatro sao consumidos pelo coordenador residente, sem IA. Os
@@ -1389,7 +1390,7 @@ def validar_comando(comando: str, valor):
         if not isinstance(valor, dict):
             raise Recusa("contestar leva a decisão e o nó")
         return {k: _curto(valor.get(k), 300) for k in ("decisao", "titulo", "no", "comentario")}
-    if comando == "modelo_agentes":
+    if comando in ("modelo_agentes", "modelo_claude"):
         if valor in (None, ""):
             return None
         if not isinstance(valor, str) or valor not in {m[0] for m in MODELOS_CLAUDE}:
@@ -1596,7 +1597,7 @@ def _aplicar(nome: str, valor, fonte: str, cid: str, *, aparelho: str = "",
             return "já estava assim"
         return registrar_no_grimorio(chave, ler_config(), fonte, aparelho=aparelho,
                                      porque=porque)
-    if nome in ("modelo_agentes", "modelo_codex"):
+    if nome in ("modelo_agentes", "modelo_claude", "modelo_codex"):
         return "" if _mudar_config(nome, valor, fonte, cid) else "já estava assim"
     if nome == "modelo_gemini":
         antes = gemini_vigente().get("id")

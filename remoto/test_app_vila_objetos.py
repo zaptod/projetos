@@ -114,7 +114,7 @@ def test_titulos_e_cargas_cobrem_todas_as_areas():
     titulos = re.search(r"const TITULOS = \{(.*?)\};", fonte, re.S).group(1)
     cargas = re.search(r"const CARGAS = \{(.*?)\};", fonte, re.S).group(1)
     telas = set(re.findall(r'<section id="tela-([\w-]+)"', HTML)) - {"parear"}
-    assert {"vila", "agora", "oficina", "coordenador", "comandos"} <= telas
+    assert {"vila", "agora", "oficina", "equipe", "coordenador", "comandos"} <= telas
     for tela in telas:
         assert re.search(rf"\b{tela}:", titulos), tela
         assert re.search(rf"\b{tela}:", cargas), tela
@@ -137,8 +137,8 @@ def test_o_cache_da_casca_mudou_de_versao():
     # Oficina do Codex e os Modelos (01/10); v24 = Biblioteca; v26 = Coordenador;
     # v29 = os quatro objetos, um por pergunta (02/10); v30 = a Vila toca as
     # folhas da esteira (02/10); v31 = Assembleia (02/10); v32 = conferência
-    # de sprites pelo celular; v33 = Arena; v34 = mapa legivel; v35 = Atelie.
-    assert "painel-casca-v35" in sw
+    # de sprites pelo celular; v33 = Arena; v34 = mapa legivel; v35 = Atelie; v36 = Equipe.
+    assert "painel-casca-v36" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

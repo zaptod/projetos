@@ -84,6 +84,7 @@ def montar() -> Supervisor:
 
     from . import cerebro
     from .vigia_trabalho import VigiaTrabalho
+    from .equipe import GerenteEquipe
     from .supervisor import ciclo_das_esteiras
     from ias.assembleia import avancar as avancar_assembleia
     s = Supervisor(comandos=pendentes, aplicar=aplicado, cerebro=cerebro.atender,
@@ -91,6 +92,8 @@ def montar() -> Supervisor:
     s.vigia_trabalho = VigiaTrabalho(
         avisar=s.avisar, evento=lambda tipo, texto: s.evento("", tipo, texto),
         seguro=lambda: s.seguro(""), pedir_reinicio=s.pedir_reinicio)
+    s.gerente_equipe = GerenteEquipe(avisar=s.avisar,
+                                     evento=lambda tipo, texto: s.evento("", tipo, texto))
     return s
 
 

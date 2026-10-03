@@ -24,7 +24,7 @@ from esteira_sprites import config as sprites_config
 NAVEGADOR = os.environ.get("NF_TESTE_NAVEGADOR") == "1"
 CAPTURAS = Path(os.environ.get("TEMP", r"E:\tmp_pytest")) / "tela_app"
 TELAS = {
-    "agora": ("agora", "oficina", "coordenador"),
+    "agora": ("agora", "oficina", "equipe", "coordenador"),
     "decidir": ("decisoes", "sprites", "assembleias"),
     "mandar": ("comandos", "conversa"),
     "ver": ("videos", "biblioteca", "relatorios", "diario"),
