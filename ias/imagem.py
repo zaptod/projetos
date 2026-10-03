@@ -190,8 +190,26 @@ def _config() -> dict:
 
 
 def rodizio_ordem() -> list:
-    ordem = _config().get("rodizio_imagem") or ["picasso", "gemini", "grok", "chatgpt"]
-    return [str(g).lower() for g in ordem if str(g).lower() in correio.GERADORES]
+    """Os geradores do rodizio, do que gerou ha MAIS tempo ao mais recente: assim
+    eles DIVIDEM o trabalho em vez de o primeiro da lista levar tudo (03/10/2026)."""
+    ordem = _config().get("rodizio_imagem") or ["gemini", "chatgpt", "picasso"]
+    ordem = [str(g).lower() for g in ordem if str(g).lower() in correio.GERADORES]
+    ultima = ultima_imagem_por_gerador()
+    return sorted(ordem, key=lambda g: (ultima.get(g, ""), ordem.index(g)))
+
+
+def ultima_imagem_por_gerador() -> dict:
+    """{gerador: quando gerou (ou tentou) a ultima imagem}, de todas as caixas."""
+    ultima: dict = {}
+    for caixa in correio.CAIXAS:
+        for m in correio.ler(caixa):
+            if correio.tipo(m) != "imagem":
+                continue
+            g = str(m.get("gerador") or (caixa if caixa in correio.GERADORES else "")).lower()
+            quando = str(m.get("respondida_em") or m.get("falhou_em") or m.get("entregue_em") or "")
+            if g and quando > ultima.get(g, ""):
+                ultima[g] = quando
+    return ultima
 
 
 def fora_de_cota(ia: str, horas: float | None = None, agora: datetime | None = None) -> str:

@@ -524,6 +524,7 @@ class Carteiro:
         desde = correio.agora()
         inicio = self.relogio()
         limite = float(self.ajustes.get("espera_conta_max_s", 10800))
+        # do que gerou ha mais tempo ao mais recente: os geradores DIVIDEM (03/10)
         ordem = [g for g in (self.ajustes.get("rodizio_imagem") or imagem.rodizio_ordem())
                  if g in correio.GERADORES]
         horas = float(self.ajustes.get("cota_pausa_h", 6))

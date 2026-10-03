@@ -11,12 +11,11 @@
     "gemini": false,
     "grok": false
   },
-  "_comment_imagem": "Pedidos de imagem (29/09/2026). rodizio_imagem: a ordem do 'qualquer um livre' - o carteiro pega o primeiro que a ficha diz que gera, que esta em cota e cuja conta esta LIVRE agora. cota_pausa_h: depois de uma falha de limite/upgrade/parede, quantas horas o gerador fica fora do rodizio.",
+  "_comment_imagem": "Pedidos de imagem. rodizio_imagem (03/10/2026, o Adrian: 'quero que o Gemini, o ChatGPT e o Picasso dividam o trabalho de gerar imagens'): os tres DIVIDEM - o carteiro escolhe, entre os livres e em cota, o que gerou imagem ha MAIS tempo. cota_pausa_h: depois de uma falha de limite/upgrade/parede, quantas horas o gerador fica fora do rodizio.",
   "rodizio_imagem": [
     "gemini",
-    "picasso",
-    "grok",
-    "chatgpt"
+    "chatgpt",
+    "picasso"
   ],
   "cota_pausa_h": 6
 }

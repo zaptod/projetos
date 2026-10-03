@@ -1296,3 +1296,19 @@ class CarteiroImagemNovaERede(_Base):
         for _ in range(carteiro_mod.REDE_TENTATIVAS):
             c.uma_volta()
         self.assertEqual(correio.uma("gemini", m["id"])["situacao"], "falhou")
+
+
+class RodizioDivide(_Base):
+    """03/10/2026: Gemini, ChatGPT e Picasso DIVIDEM - vai quem gerou ha mais tempo."""
+
+    def test_quem_gerou_ha_mais_tempo_vem_primeiro(self):
+        from unittest import mock
+        with mock.patch.object(imagem, "_config", lambda: {"rodizio_imagem": ["gemini", "chatgpt", "picasso"]}):
+            self.assertEqual(imagem.rodizio_ordem(), ["gemini", "chatgpt", "picasso"])  # ninguem gerou
+            m = correio.pedir_imagem("gemini", "um gato", proporcao="1:1")
+            correio.atualizar("gemini", m["id"], situacao="respondida", gerador="gemini",
+                              respondida_em="2026-10-03T10:00:00")
+            m = correio.pedir_imagem("picasso", "um gato", proporcao="1:1")
+            correio.atualizar("picasso", m["id"], situacao="respondida", gerador="picasso",
+                              respondida_em="2026-10-03T09:00:00")
+            self.assertEqual(imagem.rodizio_ordem(), ["chatgpt", "picasso", "gemini"])
