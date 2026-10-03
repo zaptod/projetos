@@ -1,0 +1,55 @@
+{
+  "comentario": true,
+  "contexto": "Hoje o duelo gera mp4 + JSON sem erro: 6 guardas de lança contra 4 zumbis rápidos numa praça em ruínas, com a velocidade escolhida por clipe. Medido hoje sem vídeo, em 100 sementes novas (441–540): 56 de 100 passam nos critérios do duelo (contato cedo, desfecho, 20–35 s). As que reprovam reprovam quase todas por TRÉGUA: um guarda foge, o zumbi corre atrás e ninguém alcança ninguém. Consertei hoje a rodada que nunca acabava (2 em 400: um zumbi preso no canto do mapa). Pesa na escolha: (1) em 28/09 você respondeu 'Quase: ajustar' a este duelo e decidiu o duelo elaborado para DEPOIS da estabilização (duelo-quando); as opções B e C trazem parte dele para agora. (2) Nas três opções falta a ponte da Publicação: título no 1º segundo, placa do veredito, som (o mp4 sai mudo), estoque e métricas do canal. São 2–3 dias, no outro repositório. (3) Pelas rotas de 27/09, o canal só publica depois de 7 dias seguidos sem horário perdido nos dois canais atuais. Os vídeos anexados são do lote de 28/09, anteriores ao conserto de hoje.",
+  "criado": "2026-10-03T00:47:13.479425",
+  "depende_de": [
+    {
+      "decisao": "formato-do-primeiro-video",
+      "opcao": "duelo"
+    }
+  ],
+  "historico": [],
+  "id": "mvp-corte",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\mvp-corte\\duelo-s16.mp4",
+      "rotulo": "hoje: semente 16 (vila vence, passa)"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\mvp-corte\\duelo-s17.mp4",
+      "rotulo": "hoje: semente 17 (horda vence, passa)"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\mvp-corte\\duelo-s22.mp4",
+      "rotulo": "hoje: semente 22 (reprova por trégua)"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O QUE É: o cenário como está, mais o conserto de hoje. Só vai ao estoque o clipe que passa no juiz (~55% das sementes). A Publicação põe título, veredito e som de efeitos a partir do JSON. PARA QUE SERVE: pôr o canal no ar mais cedo e medir retenção de verdade antes de investir no elaborado. CUSTO: ~1 dia no jogo (metade feita hoje) + 2–3 dias da ponte. CONTRA: é o duelo a que você respondeu 'Quase' — sem plano visível e sem fala.",
+      "id": "a",
+      "pede_comentario": false,
+      "rotulo": "Duelo de hoje, embalado"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O QUE É: o pedaço mais barato do duelo elaborado, com o que você já decidiu. O capitão anuncia o plano com ícone na cabeça; a linha de lanças SEGURA o contato em vez de se espalhar; tem estocada animada e balões de texto ('VINDO! 4 PELO LESTE', 'FUI MORDIDO!', 'CORRE!'). Um plano só, sem país mecânico, arte em código. PARA QUE SERVE: o vídeo mostra 'qual plano' e 'como se comunicam', que você pediu, e ataca o defeito medido (a trégua derruba ~44% das sementes). Uma hipótese com falsificador já escrito (H2) diz se a linha resolve. CUSTO: 5–8 dias no jogo + 2–3 da ponte. RISCO: se a H2 cair, a trégua volta como problema. Muda duelo-quando de 'depois' para 'aos poucos'.",
+      "id": "b",
+      "pede_comentario": false,
+      "rotulo": "Um plano visível: parede de lanças que segura (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O QUE É: 3 planos escolhidos pelo país (lanças, isca e emboscada, armadilhas); elenco misto com civis; efeitos visuais; balões; país na cor, nos nomes e no adereço; arte levada ao palco Godot, como você decidiu em duelo-arte. PARA QUE SERVE: estrear já no formato completo que você descreveu em 28/09. CUSTO: 13–19 dias + 10–15 do palco Godot, ou seja, 4 a 6 semanas até o 1º vídeo. CONTRA: compete com a estabilização; cada plano e cada país têm de passar de novo nos critérios em 100 sementes.",
+      "id": "c",
+      "pede_comentario": false,
+      "rotulo": "Pacote mínimo do duelo elaborado"
+    }
+  ],
+  "pergunta": "Você pediu (03/10, 00:33) para terminar o jogo e ter um MVP para postar. O que entra no primeiro vídeo do canal zombie, e o que fica para depois?",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "MVP do duelo: o que entra no primeiro vídeo",
+  "vigente": null
+}

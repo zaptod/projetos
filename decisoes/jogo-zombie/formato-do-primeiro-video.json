@@ -16,7 +16,8 @@
   "opcoes": [
     {
       "desbloqueia": [
-        "duelo-e-isso"
+        "duelo-e-isso",
+        "mvp-corte"
       ],
       "descricao": "",
       "id": "duelo",

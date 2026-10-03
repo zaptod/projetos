@@ -14,4 +14,5 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
     - ✅ **Duelo: os humanos falam em voz alta?** — Sem voz: só texto nos balões (28/09/2026) `duelo-voz`
     - ✅ **Duelo: arte dos personagens** — Levar o duelo ao palco Godot (Onda 16) (28/09/2026) `duelo-arte`
     - ✅ **Duelo elaborado: quando fazer** — Depois da estabilização (rotas de 3 semanas) (28/09/2026) `duelo-quando`
+  - ⏳ **MVP do duelo: o que entra no primeiro vídeo** — Você pediu (03/10, 00:33) para terminar o jogo e ter um MVP para postar. O que entra no primeiro vídeo do canal zombie, e o que fica para depois? `mvp-corte`
 - ✅ **Velocidade por clipe** — Sim (28/09/2026) `velocidade-por-clipe`
