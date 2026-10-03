@@ -48,7 +48,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Reprovados que já estão no ar** — Manter no ar (28/09/2026) `reprovados-no-ar`
 - ✅ **Rodada de histórias travada há 10 h segurando a trava** — Matar o PID 7300 agora e deixar a próxima rodada retomar a 00038 (29/09/2026) `rodada-travada-7300`
 - ✅ **Histórias: teto diário de imagens no PicassoIA** — Sem teto (30/09/2026) `teto-diario-picasso`
-- ⏳ **Imagens das histórias: como dividir entre Gemini, ChatGPT e PicassoIA** — As imagens de uma história saem de um gerador só, ou dividem cena a cena? `imagens-divisao`
+- ✅ **Imagens das histórias: como dividir entre Gemini, ChatGPT e PicassoIA** — Um gerador por história (recomendado) (03/10/2026) `imagens-divisao`
 
 <!-- decisoes:fim -->
 

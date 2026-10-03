@@ -3,7 +3,15 @@
   "contexto": "Você pediu que Gemini, ChatGPT e PicassoIA dividam a geração. Hoje as histórias usam SÓ o PicassoIA. Cada gerador tem um traço: numa mesma história, cenas de geradores diferentes podem mudar o rosto e o estilo do personagem no meio do vídeo. A prova de origem continua valendo para os três.",
   "criado": "2026-10-03T16:11:26.714741",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-03T16:42:24",
+      "opcao": "por-historia",
+      "origem": "app"
+    }
+  ],
   "id": "imagens-divisao",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "As imagens de uma história saem de um gerador só, ou dividem cena a cena?",
   "projeto": "historias",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Imagens das histórias: como dividir entre Gemini, ChatGPT e PicassoIA",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-03T16:42:24",
+    "opcao": "por-historia"
+  }
 }
