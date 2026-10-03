@@ -659,3 +659,40 @@ def test_nenhum_teste_resolve_o_codex_de_verdade():
 def test_cli_recusa_com_codigo_3(mundo, capsys):
     assert delegar.main(["rodar", "--id", "naoexiste"]) == 3
     assert "recusado" in capsys.readouterr().err
+
+
+def test_aplicar_resolve_sozinho_o_conflito_da_casca(mundo):
+    """03/10/2026: as permissoes pararam no `--check` por causa da versao da casca."""
+    sw = mundo.repo / "remoto" / "sw.js"
+    sw.write_text('const CASCA = "painel-casca-v10";\nconst X = 1;\n', encoding="utf-8")
+    _git(mundo.repo, "add", "-A")
+    _git(mundo.repo, "commit", "-qm", "casca v10")
+    e = _criar(mundo)
+    delegar.rodar("t01")
+    wt = Path(e["worktree"])
+    (wt / "remoto" / "sw.js").write_text('const CASCA = "painel-casca-v11";\nconst X = 1;\nconst NOVO = 2;\n',
+                                         encoding="utf-8")
+    # enquanto isso, a arvore principal tambem subiu a casca
+    sw.write_text('const CASCA = "painel-casca-v12";\nconst X = 1;\n', encoding="utf-8")
+    _git(mundo.repo, "commit", "-qam", "casca v12 na principal")
+    delegar.testar("t01", f'"{sys.executable}" -c "print(1)"')
+    feito = delegar.aplicar("t01", processos=[])
+    texto = sw.read_text(encoding="utf-8")
+    assert "<<<<<<<" not in texto and "const NOVO = 2;" in texto
+    assert "painel-casca-v13" in texto           # a maior (12) + 1
+    assert "remoto/sw.js" in feito["arquivos"]
+
+
+def test_aplicar_com_conflito_de_verdade_devolve_a_arvore_limpa(mundo):
+    e = _criar(mundo)
+    delegar.rodar("t01")
+    wt = Path(e["worktree"])
+    (wt / "remoto" / "existente.py").write_bytes(b"A = 1\r\n")
+    (mundo.repo / "remoto" / "existente.py").write_bytes(b"A = 2\r\n")
+    _git(mundo.repo, "commit", "-qam", "outro lado")
+    delegar.testar("t01", f'"{sys.executable}" -c "print(1)"')
+    with pytest.raises(delegar.Recusa, match="conflito de merge"):
+        delegar.aplicar("t01", processos=[])
+    assert (mundo.repo / "remoto" / "existente.py").read_bytes() == b"A = 2\r\n"
+    assert not (mundo.repo / "remoto" / "novo.py").exists()
+    assert _git(mundo.repo, "status", "--short").strip() == ""

@@ -354,9 +354,58 @@ class VigiaTrabalho:
     def _olho(self, mem: dict, ident: str, motivo: str) -> None:
         mem["olho"][ident] = {"motivo": motivo[:400], "em": _iso(self.relogio())}
         mem["esperando"].pop(ident, None)
-        texto = f"entrega do Codex {ident} precisa de olho: {motivo[:400]}"
+        # 03/10/2026, o Adrian: "VOCE AINDA BARRA O CODEX DE RESOLVER O PROBLEMA".
+        # Entrega travada nao fica esperando ninguem: um INTEGRADOR e contratado
+        # na hora para juntar, testar e entregar de novo (uma vez por entrega).
+        integrador = self._contratar_integrador(mem, ident, motivo)
+        texto = (f"entrega {ident} travou ({motivo[:300]}); "
+                 + (f"o integrador {integrador} já está resolvendo" if integrador
+                    else "precisa de olho"))
         self.avisar("⚠ " + texto)
         self._novidade(mem, "olho", texto)
+
+    def _contratar_integrador(self, mem: dict, ident: str, motivo: str) -> str | None:
+        if ident.startswith("integrar-") or "não mudou nada" in motivo:
+            return None                   # nao integra integrador; vazio vira permissao
+        feitos = mem.setdefault("integrando", {})
+        if ident in feitos:
+            return feitos[ident]
+        criar, no_fundo = getattr(self.delegar, "criar", None), getattr(self.delegar, "no_fundo", None)
+        if not (callable(criar) and callable(no_fundo)):
+            return None
+        novo = ("integrar-" + ident)[:40]
+        try:
+            pasta = self.delegar.pasta_da(ident)
+            pedido = pasta / "integrar.md"
+            pedido.write_text(
+                f"A entrega `{ident}` travou no vigia: {motivo}\n\n"
+                f"O diff dela está em `{pasta / 'diff.patch'}` e a tarefa original em "
+                f"`{pasta / 'tarefa.md'}`. Na SUA worktree (que saiu do HEAD atual):\n"
+                "1. aplique com `git apply -3`; resolva cada conflito JUNTANDO os dois lados "
+                "(as duas funções têm de ficar); a casca do app (`painel-casca-vN`) fica na "
+                "maior versão + 1, igual em `remoto/app/sw.js` e `remoto/test_app_vila_objetos.py`;\n"
+                "2. se o motivo foi teste falhando, conserte o código (não o teste, a não ser "
+                "que o teste seja instável de tempo — aí dê folga);\n"
+                "3. rode os testes da parte com -p no:cacheprovider até ficarem verdes.\n"
+                "A sua entrega É a entrega original, já integrada. Não desista: se precisar de "
+                "algo fora do escopo, peça permissão (.permissao.json).\n", encoding="utf-8")
+            ia = "claude"
+            try:
+                from remoto.orquestrador import claude_estado
+                if not claude_estado.ler().get("liberado", True):
+                    ia = "codex"
+            except Exception:                                 # noqa: BLE001
+                pass
+            permitidos = (self.delegar.ler_estado(ident).get("permitidos") or ["**"])
+            criar(novo, pedido, permitidos, ia=ia, cargo="integrador",
+                  titulo=f"Integrar {ident}")
+            no_fundo(["rodar", "--id", novo], novo)
+        except Exception as exc:                              # noqa: BLE001
+            self.evento("trabalho_integrador", f"{ident}: não contratei o integrador ({exc})")
+            return None
+        feitos[ident] = novo
+        self._novidade(mem, "integrando", f"{ident} travou; contratei o integrador {novo}")
+        return novo
 
     # --------------------------------------------------------------- passo
     def passo(self) -> dict:
@@ -480,8 +529,9 @@ class VigiaTrabalho:
             self._olho(mem, did, f"não consegui conferir a árvore principal: {exc}")
             return
         if sujos:
-            self._olho(mem, did, "a árvore principal tem mudança não commitada em "
-                       + ", ".join(sujos[:5]))
+            # alguem esta mexendo nesses arquivos agora: espera, nao abandona
+            mem["esperando"][did] = ("a árvore principal tem mudança não commitada em "
+                                     + ", ".join(sujos[:5]))
             return
         try:
             aplicado = self.delegar.aplicar(did, sem_testes=bool(testes.get("sem_testes")))

@@ -196,7 +196,7 @@ def test_testes_vermelhos_corrige_uma_vez_e_na_segunda_avisa(mundo):
     d.coletas["teimoso"]["sha"] = "bbb"
     mundo.vigia.passo()
     assert len(mundo.corrigidos) == 1 and not d.feitas("aplicar")
-    assert any("teimoso precisa de olho" in a for a in mundo.avisos)
+    assert any("teimoso travou" in a and "precisa de olho" in a for a in mundo.avisos)
     # e nao mexe mais
     n = len(d.chamadas)
     mundo.vigia.passo()
@@ -221,7 +221,8 @@ def test_validador_recusou_avisa_e_nao_aplica(mundo):
     d.novo("fora", mundo.depois, ok=False, motivos=["o Codex não mudou nada: palco/x.gd"])
     mundo.vigia.passo()
     assert not d.feitas("testar") and not d.feitas("aplicar")
-    assert any("fora precisa de olho" in a and "palco/x.gd" in a for a in mundo.avisos)
+    assert any("fora travou" in a and "palco/x.gd" in a and "precisa de olho" in a
+               for a in mundo.avisos)
     assert mundo.vigia.ultimo["olho"][0]["id"] == "fora"
 
 
@@ -256,7 +257,7 @@ def test_arvore_principal_suja_no_arquivo_avisa_e_nao_aplica(mundo):
     d.testes["sujo"] = [verde()]
     mundo.sujos[:] = ["remoto/x.py"]
     mundo.vigia.passo()
-    assert not d.feitas("aplicar") and any("não commitada" in a for a in mundo.avisos)
+    assert not d.feitas("aplicar") and not mundo.vigia.ultimo["olho"]   # espera, nao abandona (03/10)
 
 
 def test_com_o_aplicar_desligado_a_entrega_pronta_espera_o_orquestrador(mundo, tmp_path):
@@ -502,3 +503,39 @@ def test_extrair_duvida():
     assert extrair_duvida("Feito.\n\n## Testes\n10 passed") == ""
     texto = "## Precisa de decisão\nCobrar por vídeo?\n\n## Testes\nok"
     assert extrair_duvida(texto) == "Cobrar por vídeo?"
+
+
+
+def test_entrega_travada_contrata_o_integrador(mundo):
+    """03/10/2026: "VOCE AINDA BARRA O CODEX DE RESOLVER O PROBLEMA"."""
+    d = mundo.delegar
+    criados, rodados = [], []
+    d.criar = lambda ident, pedido, permitidos, **kw: criados.append((ident, kw)) or {"id": ident}
+    d.no_fundo = lambda args, ident: rodados.append(ident)
+    d.ler_estado = lambda ident: {"permitidos": ["remoto/**"]}
+
+    def aplicar(ident, sem_testes=False):
+        raise Exception("conflito de merge em: remoto/x.py")
+    d.aplicar = aplicar
+    d.novo("trava", mundo.depois)
+    d.testes["trava"] = [{"ok": True, "codigo": 0, "resumo": "1 passed"}]
+    mundo.vigia.passo()
+    assert criados and criados[0][0] == "integrar-trava"
+    assert criados[0][1]["cargo"] == "integrador"
+    assert rodados == ["integrar-trava"]
+    assert (d.pasta / "trava" / "integrar.md").is_file()
+    assert any("integrador integrar-trava já está resolvendo" in a for a in mundo.avisos)
+    mundo.vigia.passo()                          # nao contrata de novo
+    assert len(criados) == 1
+
+
+def test_arvore_suja_espera_em_vez_de_abandonar(mundo):
+    d = mundo.delegar
+    mundo.sujos = ["remoto/x.py"]
+    d.novo("suja", mundo.depois)
+    d.testes["suja"] = [{"ok": True, "codigo": 0, "resumo": "1 passed"}]
+    mundo.vigia.passo()
+    assert not d.feitas("aplicar")
+    assert not mundo.vigia.ultimo["olho"]
+    assert "suja" in mundo.vigia.ultimo.get("esperando", {}) or any(
+        e.get("id") == "suja" for e in mundo.vigia.ultimo.get("esperando", []))

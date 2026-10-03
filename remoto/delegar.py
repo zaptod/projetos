@@ -1640,16 +1640,108 @@ def aplicar(tarefa_id: str, *, sem_testes: bool = False, processos=None) -> dict
             raise Recusa(f"os testes falharam (código {testes.get('codigo')})")
     patch = pasta_da(tarefa_id) / "diff.patch"
     alvo_repo = repo_da(estado)
-    feito = _git("apply", "--check", str(patch), cwd=alvo_repo, verificar=False)
-    if feito.returncode != 0:
-        raise Recusa("git apply --check recusou: " + (feito.stderr or feito.stdout).strip()[:400])
-    _git("apply", str(patch), cwd=alvo_repo)
     arquivos = [a["caminho"] for a in resumo["arquivos"]]
+    feito = _git("apply", "--check", str(patch), cwd=alvo_repo, verificar=False)
+    if feito.returncode == 0:
+        _git("apply", str(patch), cwd=alvo_repo)
+    elif _git("status", "--porcelain", "--", *arquivos, cwd=alvo_repo,
+              verificar=False).stdout.strip():
+        # mudanca NAO commitada nesses arquivos: o merge de 3 vias passaria por cima
+        raise Recusa("git apply --check recusou e há mudança não commitada nos mesmos "
+                     "arquivos: " + (feito.stderr or feito.stdout).strip()[:300])
+    else:
+        # 03/10/2026: o "--check" parava a entrega inteira por um conflito bobo (a
+        # versao da casca no sw.js). Agora tenta o merge de 3 vias e resolve sozinho
+        # os conflitos conhecidos; so desiste (e devolve a arvore como estava) se
+        # sobrar conflito de verdade -- e ai o vigia contrata o integrador.
+        _git("apply", "-3", str(patch), cwd=alvo_repo, verificar=False)
+        restantes = _resolver_conflitos_conhecidos(alvo_repo)
+        if restantes:
+            _desfazer_aplicacao(alvo_repo, arquivos)
+            raise Recusa("conflito de merge em: " + ", ".join(restantes[:8]))
+        _git("reset", "-q", "--", *arquivos, cwd=alvo_repo, verificar=False)
     aplicado = {"em": _agora_iso(), "sha": resumo["sha"], "arquivos": arquivos,
                 "sem_testes": sem_testes}
     _mudar_estado(tarefa_id, aplicado=aplicado)
     _log(tarefa_id, f"aplicado na árvore principal: {', '.join(arquivos)}")
     return aplicado
+
+
+_CONFLITO = re.compile(r"<<<<<<< [^\n]*\n(.*?)=======\n(.*?)>>>>>>> [^\n]*\n", re.S)
+_CASCA = re.compile(r"painel-casca-v(\d+)")
+
+
+def _resolver_conflitos_conhecidos(repo: Path) -> list[str]:
+    """Resolve o que da para resolver sem pensar; devolve os que sobraram.
+
+    Conhecido = conflito em que os dois lados so diferem na versao da casca do
+    app (`painel-casca-vN`) ou em comentario: fica a versao MAIOR + 1, e o resto
+    dos dois lados junto. Qualquer outro conflito sobra para o integrador."""
+    sujos = _git("diff", "--name-only", "--diff-filter=U", cwd=repo, verificar=False).stdout.split()
+    restantes = []
+    for nome in sujos:
+        caminho = Path(repo) / nome
+        try:
+            texto = caminho.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            restantes.append(nome)
+            continue
+        versoes = [int(v) for v in _CASCA.findall(texto)]
+        resolvido = True
+
+        def juntar(m):
+            nonlocal resolvido
+            nosso, deles = m.group(1), m.group(2)
+            so_casca = (_CASCA.sub("", nosso).strip() == _CASCA.sub("", deles).strip()
+                        and (_CASCA.search(nosso) or _CASCA.search(deles)))
+            comentario = all(l.lstrip().startswith(("#", "//")) or not l.strip()
+                             for l in (nosso + deles).splitlines())
+            if so_casca:
+                return _CASCA.sub(f"painel-casca-v{max(versoes) + 1}", nosso)
+            if comentario:
+                return nosso + deles
+            resolvido = False
+            return m.group(0)
+        novo = _CONFLITO.sub(juntar, texto)
+        if not resolvido or "<<<<<<<" in novo:
+            restantes.append(nome)
+            continue
+        if versoes:
+            # a casca sobe junto em todos os lugares que a citam
+            novo = _CASCA.sub(f"painel-casca-v{max(versoes) + 1}", novo)
+        caminho.write_text(novo, encoding="utf-8")
+    maior = _maior_casca(repo)
+    if not restantes and maior:
+        # o sw.js e o teste que crava a versao andam juntos
+        for nome in ("remoto/app/sw.js", "remoto/test_app_vila_objetos.py"):
+            alvo = Path(repo) / nome
+            if alvo.is_file():
+                texto = alvo.read_text(encoding="utf-8")
+                alvo.write_text(_CASCA.sub(f"painel-casca-v{maior}", texto), encoding="utf-8")
+    return restantes
+
+
+def _maior_casca(repo: Path) -> int:
+    maior = 0
+    for nome in ("remoto/app/sw.js", "remoto/test_app_vila_objetos.py"):
+        alvo = Path(repo) / nome
+        if alvo.is_file():
+            maior = max([maior] + [int(v) for v in _CASCA.findall(alvo.read_text(encoding="utf-8"))])
+    return maior
+
+
+def _desfazer_aplicacao(repo: Path, arquivos: list[str]) -> None:
+    """Volta os arquivos da entrega ao HEAD (o vigia so aplica com eles limpos)."""
+    _git("reset", "-q", "--", *arquivos, cwd=repo, verificar=False)
+    for nome in arquivos:
+        no_head = _git("cat-file", "-e", f"HEAD:{nome}", cwd=repo, verificar=False).returncode == 0
+        if no_head:
+            _git("checkout", "HEAD", "--", nome, cwd=repo, verificar=False)
+        else:
+            try:
+                (Path(repo) / nome).unlink()
+            except OSError:
+                pass
 
 
 # ================================================================ limpar
