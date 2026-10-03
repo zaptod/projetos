@@ -134,6 +134,10 @@ def _abrir_todas_as_telas(page, tamanho):
 
     def capturar(nome):
         _esperar_tela(page, nome)
+        if nome == "equipe":
+            page.locator("#tela-equipe details").evaluate_all(
+                "cartoes => cartoes.forEach((cartao) => { cartao.open = true; })")
+            assert page.locator("#tela-equipe").evaluate("tela => tela.scrollWidth <= tela.clientWidth")
         quebradas.extend(f"{nome}: {imagem}" for imagem in _imagens_visiveis_quebradas(page))
         page.screenshot(path=str(CAPTURAS / f"{tamanho[0]}x{tamanho[1]}-{nome}.png"),
                         full_page=True)

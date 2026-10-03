@@ -661,6 +661,15 @@ details.recolhido[open] > summary { margin-bottom: 8px; }
   overflow-wrap: anywhere; }
 .recolhido-resumo.erro { color: var(--erro); font-weight: 600; }
 
+/* Equipe: os controles de contratar ocupam uma linha por vez no celular. */
+#tela-equipe .recolhido > select, #tela-equipe .recolhido > input,
+#tela-equipe .recolhido > textarea {
+  display: block; box-sizing: border-box; width: 100%; margin: 8px 0;
+}
+#tela-equipe .recolhido > label {
+  display: flex; align-items: center; gap: 6px; margin: 8px 0;
+}
+
 /* ---- Mandar: o histórico de cada comando logo abaixo do botão */
 .comando-historico { margin: 4px 0 0 8px; padding-left: 8px; border-left: 2px solid var(--linha); }
 .comando-historico:empty { display: none; }
