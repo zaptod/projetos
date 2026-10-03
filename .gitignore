@@ -51,3 +51,5 @@ outputs/_experimentos/
 # copias inteiras do repositorio dentro do repositorio.
 .claude/*
 !.claude/agents/
+!.claude/commands/
+!.claude/settings.json

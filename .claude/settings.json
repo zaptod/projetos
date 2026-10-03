@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Python314/python.exe -X utf8 E:/projetos/ferramentas/handoff.py mostrar",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Python314/python.exe -X utf8 E:/projetos/ferramentas/handoff.py gerar --motivo compactacao",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
