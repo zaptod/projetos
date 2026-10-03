@@ -97,7 +97,8 @@ class APassadaMorta(unittest.TestCase):
             mock.patch.object(at, "recentes",
                               lambda n=60, fabrica=None:
                               list(reversed(self.eventos))),
-            mock.patch.object(at, "_vivo", lambda pid: pid in self.vivos),
+            mock.patch.object(at, "_vivo",
+                              lambda pid: None if not pid else pid in self.vivos),
             mock.patch.object(at, "registrar",
                               lambda *a, **k: self.registros.append((a, k))),
             mock.patch.object(controller.R, "carregar", lambda hid: {}),
@@ -141,6 +142,18 @@ class APassadaMorta(unittest.TestCase):
         self.vivos = {111}
         self.eventos = [_ev("inicio")]
         self.assertEqual([], self._apurar())
+
+    def test_pid_vazio_ou_ausente_nao_e_morte(self):
+        for pid, ausente in (("", False), (None, True)):
+            with self.subTest(pid=pid, ausente=ausente):
+                inicio = _ev("inicio", pid=pid)
+                if ausente:
+                    del inicio["pid"]
+                self.eventos = [inicio]
+                diario = [dict(evento) for evento in self.eventos]
+                self.assertEqual([], self._apurar())
+                self.assertEqual([], self.registros)
+                self.assertEqual(diario, self.eventos)
 
     def test_builds_nao_entra(self):
         self.eventos = [_ev("inicio", canal="builds")]
