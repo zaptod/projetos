@@ -54,7 +54,16 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 
 Documento de passagem — escrito em 27/09/2026 pela sessão dona desta parte.
 
-Esta parte **cria**: roteiro num LLM, uma imagem por cena no PicassoIA, narração,
+As imagens usam `config/imagens.json`: `geradores_imagem` limita a roda a Gemini,
+ChatGPT e PicassoIA. Enquanto a decisão `imagens-divisao` estiver pendente, vale
+`por-historia`: a primeira cena fixa o gerador que está há mais tempo sem gerar,
+e as demais usam o mesmo; duas falhas da mesma cena movem só ela ao próximo. Em
+`por-cena`, cada pedido entra na caixa `livre`. O worker só copia o arquivo que
+o correio respondeu com prova de origem para `cenas/`; sem prova, a cena continua
+pendente.
+
+Esta parte **cria**: roteiro num LLM, uma imagem por cena pelo correio (Gemini,
+ChatGPT ou PicassoIA), narração,
 um mp4 por parte, uma IA assiste, e o vídeo aprovado fica no estoque. **Não
 publica** — quem publica é `ferramentas/postar.py` (`publicacao.md`).
 

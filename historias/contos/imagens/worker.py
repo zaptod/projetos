@@ -18,7 +18,9 @@ Tres regras que vieram de bug real no outro projeto e valem igual aqui:
 """
 from __future__ import annotations
 
+import json
 import re
+import shutil
 import time
 from pathlib import Path
 
@@ -210,8 +212,163 @@ def _pausado(alvo: str = "picasso"):
     return False, ""
 
 
+def _ordem_de_geradores(config: dict) -> list[str]:
+    """Os geradores permitidos, do que trabalhou ha mais tempo ao ultimo."""
+    from ias import imagem
+
+    permitidos = [str(g).lower() for g in config.get("geradores_imagem", [])]
+    ordem = [g for g in imagem.rodizio_ordem() if g in permitidos]
+    horas = float(config.get("cota_pausa_h", 6))
+    return [g for g in ordem if imagem.gerador(g).get("disponivel")
+            and not imagem.fora_de_cota(g, horas)]
+
+
+def _entregar_imagem(pedido: dict, prazo_s: float):
+    """Entrega sincronicamente pelo correio; o prazo e do cliente da casa."""
+    from ias.carteiro import Carteiro
+
+    carteiro = Carteiro(ajustes={"resposta_timeout_s": prazo_s},
+                        avisar=lambda _texto: False,
+                        avisar_arquivo=lambda _caminho, _legenda: False)
+    return carteiro.entregar(pedido)
+
+
+def _imagem_do_correio(caixa: str, mensagem_id: str, resposta: dict) -> tuple:
+    """(arquivo, gerador, prova, erro, categoria), apenas se ha prova gravada."""
+    from ias import correio
+
+    atual = correio.uma(caixa, mensagem_id) or resposta or {}
+    if atual.get("situacao") != "respondida":
+        return None, "", None, str(atual.get("erro") or "o correio nao respondeu"), \
+            str(atual.get("categoria") or "erro")
+    resumo = atual.get("imagem") if isinstance(atual.get("imagem"), dict) else {}
+    if not resumo.get("prova"):
+        return None, "", None, "imagem sem prova de origem", "sem_prova"
+    origem = correio.arquivo_da_imagem(caixa, mensagem_id)
+    if origem is None or not origem.is_file():
+        return None, "", None, "o arquivo provado nao esta no correio", "arquivo"
+    try:
+        registro = json.loads(origem.with_suffix(".prova.json").read_text(encoding="utf-8"))
+        prova = registro.get("prova") if isinstance(registro, dict) else None
+    except (OSError, ValueError):
+        prova = None
+    if not isinstance(prova, dict) or not prova.get("comprovada"):
+        return None, "", None, "imagem sem prova de origem", "sem_prova"
+    gerador = str(atual.get("gerador") or "")
+    return origem, gerador, prova, "", ""
+
+
+def _pedir_uma_imagem(caixa: str, prompt: str, proporcao: str, prazo_s: float,
+                       entregador) -> tuple:
+    """Pede, espera a entrega e devolve somente um arquivo com prova."""
+    from ias import correio
+
+    pedido = correio.pedir_imagem(caixa, prompt, proporcao=proporcao,
+                                  de="historias")
+    resposta = entregador(pedido, prazo_s)
+    origem, gerador, prova, erro, categoria = _imagem_do_correio(
+        caixa, str(pedido["id"]), resposta)
+    return origem, gerador, prova, erro, categoria, str(pedido["id"])
+
+
+def _gerar_pelo_correio(historia_id: str, *, limite: int | None = None,
+                        parte: int | None = None, headless: bool = False,
+                        log=print, entregador=None) -> dict:
+    """Gera cenas pelo correio, conservando o arquivo e a prova da entrega."""
+    from ias import correio
+    from ..roteiro import roteiro as R
+
+    roteiro = R.carregar(historia_id)
+    config = fila.carregar_config()
+    config["aspect"] = fila.aspecto_da_historia(historia_id)
+    pendentes = fila.pendentes(historia_id, roteiro, parte)
+    if limite:
+        pendentes = pendentes[:limite]
+    if not pendentes:
+        return {"geradas": 0, "faltam": 0, "erros": [], "recusadas": []}
+
+    divisao = str(config.get("divisao") or "por-historia")
+    prazo_s = float(config.get("espera_correio_s", 420))
+    entregador = entregador or _entregar_imagem
+    ordem = _ordem_de_geradores(config)
+    if divisao == "por-historia" and not ordem:
+        raise NaoRodou("nenhum gerador de imagem esta livre ou em cota")
+    fixado = fila.gerador_da_historia(historia_id)
+    if divisao == "por-historia" and not fixado:
+        fixado = ordem[0]
+        fila.definir_gerador_da_historia(historia_id, fixado)
+        log(f"[imagens] {historia_id}: {fixado} fixado para a historia.")
+
+    geradas, erros, recusadas = 0, [], []
+    protagonista = str(roteiro.get("protagonista") or "")
+    moderacao = _rb_identity_moderacao
+    from .reescritor import Reescritor
+    reescritor = (Reescritor(str(config.get("llm_provedor", "chatgpt")),
+                             headless=headless, log=log)
+                  if config.get("reescrever_com_llm", True) else None)
+    for linha in pendentes:
+        n, numero_parte = linha["n"], linha.get("parte", 1)
+        bloco = next(p for p in roteiro["partes"] if p["n"] == numero_parte)
+        cena = next(c for c in bloco["cenas"] if c["n"] == n)
+        prompt = fila.prompt_da_cena(cena, config, protagonista,
+                                     estilo=fila.estilo_do_roteiro(roteiro),
+                                     elenco=str(roteiro.get("elenco") or ""))
+        rotulo = f"p{numero_parte:02d}_cena_{n:02d}"
+        ultima_recusa, salvo = None, False
+        degraus = moderacao.escalonar(
+            prompt, max_nivel=int(config.get("suavizacao_max", 3)),
+            preventivo=bool(config.get("suavizar_antes", True)))
+        for nivel, tentativa, _mudancas in _com_reescrita(
+                degraus, reescritor, lambda: ultima_recusa,
+                int(config.get("reescritas_max", 2)), log, rotulo):
+            caixas = [correio.LIVRE] if divisao == "por-cena" else [fixado]
+            if divisao == "por-historia":
+                caixas.extend(g for g in ordem if g != fixado)
+            for caixa in caixas:
+                tentativas = 1 if caixa == correio.LIVRE else 2
+                for _volta in range(tentativas):
+                    origem, gerador, prova, erro, categoria, pedido = _pedir_uma_imagem(
+                        caixa, tentativa, config["aspect"], prazo_s, entregador)
+                    gerador = gerador or caixa
+                    if origem is not None:
+                        destino = Path(linha["arquivo"])
+                        destino.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(origem, destino)
+                        fila.registrar(historia_id, n, prompt=tentativa, arquivo=destino,
+                                       prova=prova,
+                                       parte=numero_parte, nivel=nivel, gerador=gerador,
+                                       pedido=pedido)
+                        geradas += 1
+                        salvo = True
+                        break
+                    if categoria == "conteudo":
+                        ultima_recusa = erro
+                        break
+                    falhas = fila.registrar_falha_de_gerador(
+                        historia_id, n, parte=numero_parte, gerador=gerador, motivo=erro)
+                    if falhas >= 2:
+                        log(f"[imagens] {rotulo}: {gerador} falhou 2x; tento o proximo.")
+                        break
+                if salvo:
+                    break
+            if salvo:
+                break
+        if salvo:
+            continue
+        if ultima_recusa:
+            fila.registrar_recusa(historia_id, n, parte=numero_parte,
+                                  motivo=ultima_recusa, prompt=prompt,
+                                  ultima_tentativa=tentativa)
+            recusadas.append(rotulo)
+        else:
+            erros.append(f"{rotulo}: imagem nao entregue com prova de origem")
+    faltam = len(fila.pendentes(historia_id, roteiro, parte))
+    return {"geradas": geradas, "faltam": faltam, "erros": erros, "recusadas": recusadas}
+
+
 def gerar(historia_id: str, *, limite: int | None = None,
-          headless: bool = False, parte: int | None = None, log=print) -> dict:
+          headless: bool = False, parte: int | None = None, log=print,
+          entregador=None) -> dict:
     """Gera as imagens que faltam. Devolve {geradas, faltam, erros}.
 
     PAREDE DE PLANOS (17/09/2026): se o PicassoIA pedir assinatura numa conta
@@ -226,11 +383,16 @@ def gerar(historia_id: str, *, limite: int | None = None,
     com o lote, cair nela no meio de uma historia deixa de ser raro. Entre
     uma reabertura e outra, `pausa_antes_de_reabrir_s`.
     """
-    Parede = _rb_identity_picasso_client.ParedeDePlanos
     try:
         ajustes = fila.carregar_config()
     except Exception:                                          # noqa: BLE001
         ajustes = {}
+    # Configuracoes antigas continuam no caminho PicassoIA; a configuracao
+    # nova declara os tres geradores e passa pelo correio.
+    if ajustes.get("geradores_imagem"):
+        return _gerar_pelo_correio(historia_id, limite=limite, parte=parte,
+                                   headless=headless, log=log, entregador=entregador)
+    Parede = _rb_identity_picasso_client.ParedeDePlanos
     reaberturas = max(0, int(ajustes.get("reaberturas_na_parede", 1)))
     pausa = float(ajustes.get("pausa_antes_de_reabrir_s", 0) or 0)
     for volta in range(reaberturas + 1):

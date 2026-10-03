@@ -244,10 +244,42 @@ def _meta(historia_id: str) -> dict:
         return {}
 
 
+def _gravar_meta(historia_id: str, dados: dict) -> None:
+    caminho = pasta_da_historia(historia_id) / "imagens.json"
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    with open(caminho, "w", encoding="utf-8") as fh:
+        json.dump(dados, fh, ensure_ascii=False, indent=2)
+
+
+def gerador_da_historia(historia_id: str) -> str:
+    """O gerador fixado para a historia, ou ``""`` antes da primeira cena."""
+    return str(_meta(historia_id).get("gerador_imagem") or "")
+
+
+def definir_gerador_da_historia(historia_id: str, gerador: str) -> None:
+    """Fixa o gerador que dara unidade visual a uma historia."""
+    dados = _meta(historia_id)
+    dados["gerador_imagem"] = str(gerador or "")
+    _gravar_meta(historia_id, dados)
+
+
+def registrar_falha_de_gerador(historia_id: str, n: int, *, parte: int = 1,
+                                gerador: str, motivo: str) -> int:
+    """Registra uma falha de entrega e devolve quantas a cena ja teve nele."""
+    dados = _meta(historia_id)
+    chave = f"{int(parte)}:{int(n)}"
+    falhas = dados.setdefault("falhas_de_geracao", {}).setdefault(chave, [])
+    falhas.append({"gerador": str(gerador), "motivo": str(motivo)[:400],
+                   "quando": datetime.now().isoformat(timespec="seconds")})
+    _gravar_meta(historia_id, dados)
+    return sum(1 for falha in falhas if falha.get("gerador") == gerador)
+
+
 def registrar(historia_id: str, n: int, *, prompt: str, arquivo: Path,
               prova: dict | None = None, url: str = "",
               parte: int = 1, nivel: int | str = 0,
-              refeita: dict | None = None) -> None:
+              refeita: dict | None = None, gerador: str = "",
+              pedido: str = "") -> None:
     """Anota prompt e prova daquela cena (append idempotente por cena).
 
     `nivel` registra qual foi o tratamento: 0 (original), 1-3 (suavizacao
@@ -259,7 +291,6 @@ def registrar(historia_id: str, n: int, *, prompt: str, arquivo: Path,
     variacao de enquadramento adianta alguma coisa (experimento de
     17/09/2026, sem medida ate agora).
     """
-    caminho = pasta_da_historia(historia_id) / "imagens.json"
     dados = _meta(historia_id)
     chave = f"{int(parte)}:{int(n)}"
     # `nivel` pode ser int ou str ("llm 1", etc). Se for 0 ou falsy, vira None.
@@ -268,6 +299,8 @@ def registrar(historia_id: str, n: int, *, prompt: str, arquivo: Path,
         "prompt": prompt,
         "arquivo": Path(arquivo).name,
         "url": url,
+        "gerador": str(gerador or ""),
+        "pedido": str(pedido or ""),
         "suavizacao": nivel_para_salvar,
         "prova": {"comprovada": bool((prova or {}).get("comprovada")),
                   "forca": (prova or {}).get("forca"),
@@ -277,9 +310,7 @@ def registrar(historia_id: str, n: int, *, prompt: str, arquivo: Path,
         dados["cenas"][chave]["refeita"] = dict(refeita)
     # A cena passou: se estava marcada como recusada, deixa de estar.
     (dados.get("recusadas") or {}).pop(chave, None)
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    with open(caminho, "w", encoding="utf-8") as fh:
-        json.dump(dados, fh, ensure_ascii=False, indent=2)
+    _gravar_meta(historia_id, dados)
 
 
 def registrar_recusa(historia_id: str, n: int, *, parte: int = 1,
@@ -291,7 +322,6 @@ def registrar_recusa(historia_id: str, n: int, *, parte: int = 1,
     aqui falta imagem, e o motivo foi este" — sem isso a cena reaparece como
     simples pendencia e ninguem descobre por que nunca gera.
     """
-    caminho = pasta_da_historia(historia_id) / "imagens.json"
     dados = _meta(historia_id)
     dados.setdefault("recusadas", {})[f"{int(parte)}:{int(n)}"] = {
         "motivo": str(motivo)[:400], "prompt": prompt,
@@ -300,9 +330,7 @@ def registrar_recusa(historia_id: str, n: int, *, parte: int = 1,
         "ultima_tentativa": ultima_tentativa or prompt,
         "quando": datetime.now().isoformat(timespec="seconds"),
     }
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    with open(caminho, "w", encoding="utf-8") as fh:
-        json.dump(dados, fh, ensure_ascii=False, indent=2)
+    _gravar_meta(historia_id, dados)
 
 
 def recusadas(historia_id: str) -> dict:
