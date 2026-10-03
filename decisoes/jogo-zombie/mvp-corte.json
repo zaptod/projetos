@@ -8,7 +8,15 @@
       "opcao": "duelo"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-03T13:06:00",
+      "opcao": "c",
+      "origem": "app"
+    }
+  ],
   "id": "mvp-corte",
   "midias": [
     {
@@ -49,7 +57,11 @@
   ],
   "pergunta": "Você pediu (03/10, 00:33) para terminar o jogo e ter um MVP para postar. O que entra no primeiro vídeo do canal zombie, e o que fica para depois?",
   "projeto": "jogo-zombie",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "MVP do duelo: o que entra no primeiro vídeo",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-03T13:06:00",
+    "opcao": "c"
+  }
 }
