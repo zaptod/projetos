@@ -54,6 +54,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ✅ **Duelo: arte dos personagens** — Levar o duelo ao palco Godot (Onda 16) (28/09/2026) `duelo-arte`
 - ✅ **Duelo elaborado: quando fazer** — Depois da estabilização (rotas de 3 semanas) (28/09/2026) `duelo-quando`
 - ⏳ **MVP do duelo: o que entra no primeiro vídeo** — Você pediu (03/10, 00:33) para terminar o jogo e ter um MVP para postar. O que entra no primeiro vídeo do canal zombie, e o que fica para depois? `mvp-corte`
+- ⏳ **Commitar os consertos do MVP no jogo?** — Três consertos de 03/10 estão prontos e testados no E:\jogo_ZOMBIE, mas não commitados: a regra da sessão do jogo é commitar só com o seu sim. Commito? `mvp-commit-consertos`
 
 <!-- decisoes:fim -->
 
@@ -63,6 +64,9 @@ Escrito em 27/09/2026 pela sessão dona. Tudo abaixo foi conferido lendo o repos
 Atualizado em 28/09/2026 (Semana 1 das rotas): commits `d9f6382`, `dab114c`, `a372bdc` e `24b68cd`, o êxodo remedido, e o cenário **`duelo`** — o formato que o Adrian
 escolheu em 27/09 — com critérios escritos antes de medir, o lote 1 que reprovou (3/12), a velocidade por clipe que ele aprovou às ~03:20, o **lote 2 que passou na barra
 (6/12)** e a divergência Chrome × Node (§3b, §4).
+Atualizado em 03/10/2026 (MVP, pedido do Adrian às 00:33: "quero terminar o jogo para termos um MVP para postar"): o nó **`mvp-corte`** no Grimório (§6), o conserto da
+rodada sem fim (sementes 19 e 125, §3b), o veredito por clipe no JSON (`criterios_duelo`, §Contratos), o gravador imune a arquivo salvo durante a gravação, o produtor de
+lote `scripts/duel-batch.mjs` (§1) e a prova gravada nas sementes 25–27 (§3d). **Nada disso está commitado** (§2).
 
 ## 1. O que é, e como rodar
 
@@ -77,7 +81,7 @@ partida = semente + comandos.
 ```
 npm install
 npm run dev        # Vite em http://localhost:5173
-npm test           # Vitest: 75 arquivos, 348 testes no 24b68cd, verdes em 28/09 08:07. 66–77 s com a máquina livre, 104–174 s
+npm test           # Vitest: 75 arquivos, 348 testes no 24b68cd, verdes em 28/09 08:07; 350 na árvore de 03/10 (43 s, máquina livre). 66–77 s com a máquina livre, 104–174 s
                    # disputada. Com um jogo aberto levou 592 s e 3 testes estouraram o tempo: rodar de novo, não "consertar"
 npm run typecheck  |  npm run bench  |  npm run experiment   (ver §4)
 ```
@@ -95,7 +99,19 @@ npm run record -- --cenario duelo --seed 13 --velocidade auto --tiles 22 --escal
 do §3b (a mais lenta de 1× a 3× que põe o clipe em até 30 s). Tem de ser na página, e não no Node do `record.mjs`: os dois motores divergem (§4). O JSON traz a velocidade
 escolhida em `velocidade`.
 
-**Lote de duelos de madrugada, com um comando só** (vigia armado antes; não fica no git, porque `out/` é ignorado):
+**Lote de duelos para o estoque** (03/10, no repositório, sem janela de horário — quando rodar é de quem chama, hoje a fila de dia):
+
+```
+node scripts/duel-batch.mjs --de 601 --ate 612 --pasta out/lote-601-612
+```
+
+Grava a faixa em sequência com a receita do duelo, pula semente já gravada, para com um arquivo `PARAR` na pasta, guarda `codigo.txt`/`codigo.patch`, escreve `lote.log` e,
+no fim, `veredito.json` pelo juiz. Cada JSON de clipe já traz o próprio veredito em `criterios_duelo`. Desde 03/10 o gravador sobe o Vite **sem recarga a quente**
+(`hmr: false`): antes, salvar qualquer arquivo do jogo durante uma gravação recarregava a página e matava o clipe com `Cannot read properties of undefined (reading
+'next')` — aconteceu às 00:48, e o controle com a recarga ligada repetiu o erro.
+
+**Lote de duelos de madrugada, com um comando só** (a ferramenta antiga, fora do git; a janela dela é a madrugada, e a decisão `fila-pesada-de-dia` de 30/09 passou o
+pesado para o dia) (vigia armado antes; não fica no git, porque `out/` é ignorado):
 
 ```
 bash E:/jogo_ZOMBIE/out/ferramentas/lote-duelos.sh 25 36 duelo-lote3
@@ -121,8 +137,16 @@ pretas. Isso muda o enquadramento de `exodo` e `limpeza` (36 de largura) se fore
 
 ## 2. Estado da branch `feat/m15-polish`
 
-HEAD = **`24b68cd`**, árvore limpa. Os commits de 27–28/09, todos com o "sim" do Adrian, por caminho explícito e sem push. A branch não foi mergeada na `main` e não tem
+HEAD = **`24b68cd`**. Os commits de 27–28/09, todos com o "sim" do Adrian, por caminho explícito e sem push. A branch não foi mergeada na `main` e não tem
 remoto.
+
+**Desde 03/10 a árvore NÃO está limpa**: sete arquivos modificados e um novo, com a suíte verde (75 arquivos, **350 testes**, 43 s), o `tsc` limpo e o `vite build` verde
+às 01:03. O orquestrador pediu commit, mas a regra desta sessão é commitar só com o "sim" do Adrian; a pergunta virou o nó `mvp-commit-consertos`. Os três commits, por caminho, com a mensagem pronta,
+estão em `E:\jogo_ZOMBIE\out\mvp\COMMITS.txt`:
+
+1. `fix(sim)`: o zumbi que nasce no canto sai andando — `src/sim/agents/spawn.ts`, `src/sim/agents/combat.test.ts`, `src/sim/round/scenarios.ts` (só comentário);
+2. `fix(record)`: o gravador sobrevive a um arquivo salvo e ao `DevToolsActivePort` ocupado — `scripts/record.mjs`;
+3. `feat(record)`: o veredito de cada clipe no JSON e o produtor de lote — `src/record/duel.ts`, `src/record/duel.test.ts`, `src/record/main.ts`, `scripts/duel-batch.mjs`.
 
 - `d9f6382` (27/09 23:58) `chore: ignore recordings, and settle the exodus figures` — o `.gitignore` com `out/` e o comentário do êxodo com os três critérios. O número
   do comentário foi **corrigido antes do commit**: o rascunho dizia "7 vitórias em 10", e a remedição deu 6 (§3).
@@ -296,11 +320,46 @@ sementes 1–12, o cálculo sem vídeo repete o veredito gravado **semente por s
 - **Passam 6 de 12** (13, 14, 16, 17, 18, 24): é a barra, então o falsificador ("menos de 6") **não** disparou. Esperado era ~55% (6–7).
 - **Equilíbrio**: vila 5, horda 6, uma sem desfecho — dentro de 30–70%. O critério 4 passa; o juiz dá `aprovado: true`.
 - **O tamanho deixou de reprovar** em todo clipe que tem desfecho (24,9–30,9 s). A semente 19 é uma rodada que **nunca acaba** (600 s de jogo sem veredito na prévia): a 3× o
-  clipe bate o teto de 45 s. É o único "sem desfecho" em 24 gravações.
+  clipe bate o teto de 45 s. É o único "sem desfecho" em 24 gravações. **Era defeito, consertado em 03/10** (§3d): um zumbi preso no canto do mapa.
 - **O que sobra é a trégua**: 15, 20, 21, 22 e 23 têm 8,3–9,9 s de vídeo sem contato nenhum, mais de 30% do clipe. **É o próximo alvo** (fila §6).
 - \* A semente 15 foi gravada a 1,5× porque a primeira versão da regra perguntava ao Node, e o Node joga essa rodada diferente do Chrome (§4). Regravada às 08:02 com a regra
   dentro da página, saiu a 1,25× (`out/duelo-ritmo/prova/duelo-s15-regra.mp4`) e reprova do mesmo jeito (buraco de 10 s em 29,2 s). O 6/12 não muda.
 - Os mp4 e JSON: `E:\jogo_ZOMBIE\out\duelo-ritmo\duelo-s13.mp4` … `duelo-s24.mp4`; veredito em `out/duelo-ritmo/veredito.json`.
+
+## 3d. MVP (03/10/2026): a rodada sem fim e a prova
+
+**A rodada que nunca acabava era um zumbi preso no canto.** A sonda, com hipóteses e falsificadores escritos antes, está em `out/design/sonda-sem-fim.test.ts`; a saída
+está em `sem-fim-19.json` e `sem-fim-125.json`. Na semente 19, o guarda mordido vai se isolar sozinho no canto (0,3; 0,3) e vira zumbi ali. O zumbi tem raio 0,32 e o aldeão, 0,3: o corpo
+novo passa das duas bordas. O `tryMove` recusa todo passo que deixa parte do corpo fora do mapa, e testa x e y separados. Por isso ele **nunca mais anda**: deslocamento 0 de 15 s
+até 600 s. Os cinco guardas que sobram vagam a 12–28 tiles dele. A semente 125 é igual, no canto (0,3; 39,7). Em 1–400, essas duas eram as **únicas** sem veredito.
+
+- **Conserto**: `becomeZombie` (`src/sim/agents/spawn.ts`) põe o corpo de quem vira dentro do mapa, com deslocamento de no máximo a diferença de raio. Teste novo em
+  `combat.test.ts`, que **falha sem o conserto** (conferido com `git stash`).
+- **Efeito medido sem vídeo**, antes → depois:
+  - sementes 1–400: sem desfecho **2 → 0**; passam **211 → 211**; vila 202 → 201;
+  - sementes 441–540: passam **53 → 56**; vila 54 → 57; reprovam no critério 1 **45 → 43**.
+  - O desfecho muda em 53 das 400 sementes. Por construção, todas são rodadas em que alguém virou zumbi encostado numa borda: o reforço de bordas mexe só ali (horda nasce a 1 tile ou mais da borda) e não mexe nos totais.
+  - **Os lotes 1 e 2 (sementes 1–24) foram gravados antes do conserto e não se reproduzem mais.** Os números deles descrevem aquele build.
+  - Arquivos em `E:\jogo_ZOMBIE\out\mvp\previa-*.json` (`-HEAD24b68cd` antes e `-canto` depois).
+- **H2 (§3c) tem agora linha de base**: no build com o conserto, **43 de 100** reprovam no critério 1 em 441–540. A H2 cai se, com a linha que segura, isso não baixar para
+  **25 ou menos**.
+
+**A prova: sementes 25, 26 e 27**, as três primeiras da faixa limpa. Foram pré-registradas antes de gravar (`out/mvp/prova/PRE-REGISTRO.txt`), sem escolher, com a receita do
+duelo e o código da árvore (`codigo*.patch`).
+
+| semente | vencedor | velocidade | 1º contato (s) | maior buraco (s) | vídeo (s) | passa |
+|---|---|---|---|---|---|---|
+| 25 | vila | 1 | 1,45 | 7,50 | 28,17 | **sim** |
+| 26 | vila | 1 | 0,00 | 6,10 | 28,17 | **sim** |
+| 27 | vila | 1 | 5,80 | 10,85 | 26,57 | não (contato tarde e trégua) |
+
+- Mp4 1080×1920 com faixa de áudio (muda), aldeão a 81–82 px. O `criterios_duelo` de cada JSON bate com o juiz da pasta. As três repetem a prévia do Node ao centésimo.
+- Três clipes não medem taxa. Três vitórias da vila seguidas acontecem em ~12% das vezes com p = 0,5.
+- **Duas falhas do gravador apareceram e foram consertadas.**
+  1. Às 00:48, um comentário salvo em `scenarios.ts` recarregou a página sob o gravador, por causa da recarga a quente do Vite. O controle, com a recarga ligada, repetiu o erro; com `hmr: false`, a gravação passou.
+  2. A semente 27 falhou em 2 s com `EBUSY` ao ler o `DevToolsActivePort`, que o Chrome ainda escrevia. Ela foi regravada pelo `duel-batch.mjs`, que pulou 25 e 26.
+- Custo: 117–134 s de relógio por clipe; prévias de 400 sementes em ~70 s.
+- Arquivos: `E:\jogo_ZOMBIE\out\mvp\prova\duelo-s25.mp4`, `duelo-s26.mp4`, `duelo-s27.mp4`, cada um com o seu `.json`, e `veredito.json`.
 
 ## 3c. Duelo elaborado: a proposta (28/09, à noite)
 
@@ -329,6 +388,7 @@ O Adrian respondeu "Quase: ajustar" ao `duelo-e-isso` (28/09, 18:40). Ele pediu 
 - **H2, pré-registrada no doc (§8)**: "uma linha que segura acaba com a trégua".
   - Linha de base e medição depois do conserto nas sementes **441–540**.
   - H2 cai se a reprovação no critério 1 não baixar de ~38–40% para **25% ou menos**, ou se o critério 4 sair de 30–70%.
+  - **Linha de base medida em 03/10** (§3d), no build com o conserto do canto: **43 de 100** reprovam no critério 1 em 441–540.
 
 ## 4. O que foi medido e vale como conhecimento
 
@@ -379,7 +439,16 @@ O Adrian respondeu "Quase: ajustar" ao `duelo-e-isso` (28/09, 18:40). Ele pediu 
 - **Respondido às ~03:20 de 28/09**: "sim" aos dois commits do duelo (`dab114c`, `a372bdc`) e "sim" à velocidade por clipe. O lote 2 (§3b) é o teste dessa regra.
 - **Duelo elaborado (28/09, à noite)**: são seis nós pendentes do Adrian (§3c). O pacote mínimo que responde ao comentário dele custa **13–19 dias de sessão**. Com país
   mecânico, soma de 5 a 7; com arte nova, de 5 a 15. Isso compete com o objetivo das semanas ("estabilizar o que existe"). Quando fazer é decisão dele.
-- **Regra de velocidade**: commitada em `24b68cd`. **Próximo alvo: a trégua** (critério 1, 5 de 12 no lote 2), sem mudar a luta antes da resposta dele; próxima faixa para gravar: 25–36.
+- **Regra de velocidade**: commitada em `24b68cd`. **Próximo alvo: a trégua** (critério 1, 5 de 12 no lote 2), sem mudar a luta antes da resposta dele; próxima faixa para gravar: 601–612 (§7).
+- **MVP (03/10)**: `mvp-corte` no Grimório. As opções são:
+  - (a) o duelo de hoje embalado, só com os clipes que passam no juiz;
+  - (b) **recomendada**: um plano visível, a parede de lanças que segura, com ícone e balões; 5–8 dias;
+  - (c) o pacote mínimo do elaborado no palco Godot, de 4 a 6 semanas.
+
+  O que é comum às três já foi feito (§3d). Depois da resposta, falta em qualquer opção a **ponte da Publicação**: título no 1º segundo, placa do veredito, som (o mp4 sai
+  mudo; o JSON traz `eventos_som`), estoque do `postar.py` filtrando por `criterios_duelo.passa`, `CANAIS` das métricas e `ID_DE_VIDEO` da confiabilidade. As opções (b) e
+  (c) trazem para agora parte do que `duelo-quando` mandou para depois da estabilização: a resposta ao `mvp-corte` revê esse nó.
+- **Commit dos consertos de 03/10**: nó `mvp-commit-consertos`, com os comandos em `out/mvp/COMMITS.txt` (§2).
 - **Publicar ou não**: decisão dele, e não antes de 7 dias seguidos sem horário perdido nos dois canais atuais (rotas de 27/09). O canal nunca publicou (§Contratos). A ponte
   JSON/mp4 → estoque do `postar.py` é da Semana 3.
 - **O experimento de 4 braços** (pensante × lobotomizada × silenciosa × nascendo fora, remedido depois do conserto da horda) **ocupa a máquina por horas** e não foi rodado. Precisa
@@ -394,7 +463,9 @@ O Adrian respondeu "Quase: ajustar" ao `duelo-e-isso` (28/09, 18:40). Ele pediu 
 - **Não citar 1246 s × 572 s** como prova de nada (inimigo com defeito), nem os números do êxodo sem remedir.
 - **Não escolher semente, nem velocidade à mão por semente**, no duelo: o lote é uma faixa em sequência, todos reportados; a velocidade é a regra (`--velocidade auto`).
   Faixas já usadas: 1–12 (lote 1), **13–24 (lote 2)**, 101–110 (calibração), 201–260 e 301–400 (prévia), 401–440 (sonda do duelo elaborado, §3c). Reservada: 441–540
-  (linha de base e teste da H2, §3c). A próxima faixa limpa para gravar é **25–36**; para prévia, **541** em diante.
+  (linha de base e teste da H2, §3c; a linha de base foi medida em 03/10). **25–27: prova do MVP (§3d).** Para prévia, **541–600** em diante.
+  A próxima faixa para gravar passa a ser **601–612**, nunca olhada. O motivo: a prévia de 1–400 de 03/10, que mediu o conserto do canto, listou o antes e o depois
+  das 53 sementes que mudaram, e entre elas estavam a **28, a 31 e a 36**. Com isso, 28–36 deixou de ser faixa limpa. As linhas de 25–27 só foram lidas depois do pré-registro.
 - **Não confiar num clipe gravado antes de um conserto de IA**: o `exodo-66` já não se reproduz (§3). O JSON do próprio clipe é a única fonte dos números dele.
 - **Não desenhar formato que dependa de a vila atravessar a horda** — está medido que ela não atravessa.
 - Não escrever arquivo grande no `C:` (o disco do sistema já encheu e derrubou rodada): tudo no `E:`.
@@ -423,6 +494,8 @@ eventos_narrativos [ {t, tipo, slot, n?, quantidade?, x, y} ]      (callouts; x,
               aconteceu à vila, não num lugar)
 eventos_som  [ [t, "grito"|"golpe"|"gemido"|..., intensidade, x] ] (desenho de som)
 metricas_video { frames, zoom_p50, diametro_agente_p50 }
+criterios_duelo { vencedor, contato, buraco, duracao, diametro,           (só no duelo, desde 03/10 —
+                  cedo, desfecho, curto, legivel, passa }                  ainda não commitado, §2)
 arquivo  (caminho absoluto do mp4)
 ```
 
@@ -431,7 +504,9 @@ vai na descrição). O mp4 sai com faixa de áudio silenciosa para o `concat -c 
 
 **Para a ponte da Semana 3 (duelo):** `cenario` vem `"duelo"`; `ko_em_video` só é preenchido quando a vila **cai** — quando a vila vence, o instante do veredito está em
 `eventos_narrativos` com `tipo: "vila_resistiu"`. A **`velocidade` muda de clipe para clipe** (1× a 3×, regra do §3b): quem mostrar "tempo de jogo" na tela tem de ler o
-campo, nunca supor. O veredito do lote (quais clipes passam nos critérios) sai de `scripts/duel-verdict.mjs --json`, em `out/<pasta>/veredito.json`.
+campo, nunca supor. O veredito do lote (quais clipes passam nos critérios) sai de `scripts/duel-verdict.mjs --json`, em `out/<pasta>/veredito.json`. Desde 03/10 cada
+JSON de duelo traz o veredito do próprio clipe em `criterios_duelo` (critérios 1–3 e o tamanho do aldeão; os critérios 4–5 são do lote e ficam no `veredito.json`):
+dá para o estoque filtrar por `criterios_duelo.passa` lendo só o JSON, sem rodar Node. Se o filtro vale é parte da resposta ao `mvp-corte`.
 
 **O canal no registro de contas.** `random_builds/builds/contas.py` tem `"zombie": "Jogo zombie (gravações da partida)"`, com o comentário de 15/09/2026 dizendo que o jogo mora em
 outro repositório, só grava o mp4, e não tem login nem publicação própria. No registro (`%LOCALAPPDATA%\neural-fights\contas.json`) as contas ativas do canal `zombie` são:
