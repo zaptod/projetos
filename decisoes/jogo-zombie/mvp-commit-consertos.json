@@ -1,0 +1,30 @@
+{
+  "comentario": false,
+  "contexto": "O que são: (1) a rodada do duelo que nunca acabava — um zumbi preso no canto do mapa (2 em 400 sementes); (2) o gravador não morre mais quando um arquivo é salvo durante a gravação nem quando o Chrome demora a liberar um arquivo; (3) cada clipe de duelo traz no próprio JSON se passou nos critérios, e um comando grava um lote inteiro. A suíte está verde (75 arquivos, 350 testes). Os commits são 3, feitos arquivo por arquivo e sem push; os comandos estão em E:\\jogo_ZOMBIE\\out\\mvp\\COMMITS.txt. Isto não muda o que o duelo é: não decide nada do mvp-corte.",
+  "criado": "2026-10-03T01:06:38.796166",
+  "depende_de": [],
+  "historico": [],
+  "id": "mvp-commit-consertos",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Commita na branch feat/m15-polish, por caminho, sem push. Serve para o próximo trabalho do duelo partir de um ponto salvo.",
+      "id": "sim",
+      "pede_comentario": false,
+      "rotulo": "Sim, commitar os 3 (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Os arquivos ficam modificados na árvore até você olhar.",
+      "id": "nao",
+      "pede_comentario": false,
+      "rotulo": "Ainda não"
+    }
+  ],
+  "pergunta": "Três consertos de 03/10 estão prontos e testados no E:\\jogo_ZOMBIE, mas não commitados: a regra da sessão do jogo é commitar só com o seu sim. Commito?",
+  "projeto": "jogo-zombie",
+  "situacao": "pendente",
+  "titulo": "Commitar os consertos do MVP no jogo?",
+  "vigente": null
+}

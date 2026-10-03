@@ -16,3 +16,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
     - ✅ **Duelo elaborado: quando fazer** — Depois da estabilização (rotas de 3 semanas) (28/09/2026) `duelo-quando`
   - ⏳ **MVP do duelo: o que entra no primeiro vídeo** — Você pediu (03/10, 00:33) para terminar o jogo e ter um MVP para postar. O que entra no primeiro vídeo do canal zombie, e o que fica para depois? `mvp-corte`
 - ✅ **Velocidade por clipe** — Sim (28/09/2026) `velocidade-por-clipe`
+- ⏳ **Commitar os consertos do MVP no jogo?** — Três consertos de 03/10 estão prontos e testados no E:\jogo_ZOMBIE, mas não commitados: a regra da sessão do jogo é commitar só com o seu sim. Commito? `mvp-commit-consertos`
