@@ -1,5 +1,17 @@
 {
   "comentario": false,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-03T13:55:42",
+      "evento": "2026-10-03T13:08:31",
+      "linha": 114,
+      "nota": "commitados 4ec3ae4 40cfb37 27f8ff7 (vitest 350 verde)",
+      "opcao": "sim",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "O que são: (1) a rodada do duelo que nunca acabava — um zumbi preso no canto do mapa (2 em 400 sementes); (2) o gravador não morre mais quando um arquivo é salvo durante a gravação nem quando o Chrome demora a liberar um arquivo; (3) cada clipe de duelo traz no próprio JSON se passou nos critérios, e um comando grava um lote inteiro. A suíte está verde (75 arquivos, 350 testes). Os commits são 3, feitos arquivo por arquivo e sem push; os comandos estão em E:\\jogo_ZOMBIE\\out\\mvp\\COMMITS.txt. Isto não muda o que o duelo é: não decide nada do mvp-corte.",
   "criado": "2026-10-03T01:06:38.796166",
   "depende_de": [],
