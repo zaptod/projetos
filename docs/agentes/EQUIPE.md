@@ -52,6 +52,16 @@ Adrian ──► ORQUESTRADOR (chat principal)
 Veja o `CLAUDE.md` §2. `/renovar` fecha com a NOTA e o retrato, e `/assumir` abre o chat seguinte. O hook de início injeta o `docs/handoff/ATUAL.md`, e o de pré-compactação regenera o retrato.
 # Organograma soberano
 
+O pedido livre do Adrian entra pelo app (Agora > **Pedir** ou Coordenador >
+**Conversa**) ou por texto no Telegram. O servidor o guarda como `pedido`
+(`coordenador/pedidos.py`) e contrata um trabalhador de cargo
+**orquestrador**; portanto nao depende de uma janela do VS Code. Continuacoes
+vao ao mesmo trabalhador vivo; **Novo assunto** ou `/novo` abre outro. Depois
+que o vigia aplica a entrega, um `conferente` olha; so entao o pedido vira
+conferido. O app mostra recebido, trabalhando, em espera (com o motivo),
+entregue, conferido, respondido ou falhou, alem dos eventos resumidos.
+Detalhes em `docs/sessoes/app-e-bot.md`.
+
 1. **Servidor**: coordenador, `remoto/` e `remoto/delegar.py` guardam o estado,
    contratam, renovam, aplicam e dispensam.
 2. **App**: o painel Agora e a aba **Equipe** sao o comando do Adrian.

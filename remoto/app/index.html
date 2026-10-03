@@ -78,6 +78,15 @@
       <div id="orq-carteiro" class="orq-carteiro fraco"></div>
       <div id="orq-concluidos" class="fraco"></div>
     </div>
+    <div class="cartao">
+      <h2>📝 Pedir</h2>
+      <div class="fraco">Um pedido livre vai ao orquestrador do servidor e fica acompanhado aqui.</div>
+      <textarea id="pedido-texto" rows="2" maxlength="4000" placeholder="O que você precisa?"></textarea>
+      <div class="botoes"><button class="acao primario" id="pedido-enviar" type="button">Pedir</button>
+        <button class="acao" id="pedido-novo" type="button">Novo assunto</button>
+        <button class="acao" id="pedido-conversa" type="button">Ver a conversa</button></div>
+      <div id="pedido-estado"></div>
+    </div>
     <!-- o coordenador em uma linha; tocar abre a aba dele -->
     <button class="coord-mesa" id="coord-mesa" type="button">Coordenador: carregando…</button>
     <!-- O Codex (01/10): o que o orquestrador delegou a ele; a aba Codex
@@ -268,13 +277,19 @@
         <div id="coord-propostas"></div>
       </div>
       <div class="cartao">
+        <h2>Pedidos</h2>
+        <div class="fraco">Cada pedido vai a um orquestrador do servidor: recebido, trabalhando, em espera (com o motivo), entregue, conferido.</div>
+        <div id="coord-pedidos"></div>
+      </div>
+      <div class="cartao">
         <h2>Conversa</h2>
         <div id="coord-cerebro" class="fraco"></div>
         <div id="coord-mensagens" class="coord-mensagens"></div>
         <div class="coord-escrever">
           <textarea id="coord-texto" rows="2" maxlength="4000"
-                    placeholder="Fale com o coordenador" aria-label="Mensagem para o coordenador"></textarea>
+                    placeholder="Pergunte o estado ou faça um pedido" aria-label="Mensagem para o coordenador"></textarea>
           <button class="acao" id="coord-enviar" type="button">Enviar</button>
+          <button class="acao" id="coord-novo" type="button">Novo assunto</button>
         </div>
       </div>
     </div>

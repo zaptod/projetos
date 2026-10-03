@@ -996,9 +996,19 @@ class Manipulador(BaseHTTPRequestHandler):
             if rota == "/api/coordenador":
                 return self._json(_limpo(coordenador_para_o_app()))
             if rota == "/api/coordenador/conversa":
-                # O cerebro (02/10): a conversa e as propostas. So leitura.
-                from coordenador import cerebro as coord_cerebro
-                return self._json(_limpo(coord_cerebro.para_o_app()))
+                # O cerebro (02/10): a conversa e as propostas. Os pedidos
+                # (03/10): a conversa do orquestrador do servidor, na MESMA
+                # linha do tempo, e o estado de cada pedido. So leitura.
+                from coordenador import cerebro as coord_cerebro, pedidos
+                dados = coord_cerebro.para_o_app()
+                mesa = pedidos.para_o_app()
+                dados["conversa"] = sorted(
+                    list(dados.get("conversa") or []) + list(mesa["conversa"]),
+                    key=lambda linha: str(linha.get("em") or ""))[-150:]
+                dados["pedidos"] = mesa["pedidos"]
+                dados["pedidos_na_fila"] = mesa["na_fila"]
+                dados["novo_assunto"] = mesa["novo_assunto"]
+                return self._json(_limpo(dados))
             # A OFICINA DO CODEX (01/10): o que foi delegado, ao vivo. So
             # leitura; os eventos novos por offset (`desde`), sem reler o
             # arquivo inteiro a cada 3 s.
@@ -1648,16 +1658,34 @@ class Manipulador(BaseHTTPRequestHandler):
         if corpo is None:
             return
         texto = corpo.get("texto")
+        novo = corpo.get("novo") is True
+        if novo and (texto is None or (isinstance(texto, str) and not texto.strip())):
+            # "Novo assunto" sem texto: o proximo pedido abre outro orquestrador
+            from coordenador import pedidos
+            try:
+                pedidos.novo_assunto("app")
+            except OSError as exc:
+                return self._erro(503, f"não consegui guardar: {exc}")
+            return self._json({"feito": True, "novo_assunto": True})
         if not isinstance(texto, str) or not texto.strip():
             return self._erro(400, "a mensagem está vazia")
         if len(texto) > 4000:
             return self._erro(400, "a mensagem passa de 4000 caracteres")
-        from coordenador import cerebro as coord_cerebro
+        # 03/10: pergunta curta de estado ("o app está no ar?") vai ao cerebro,
+        # que responde em segundos; o resto é PEDIDO e vai a um trabalhador
+        # `orquestrador` do servidor (coordenador/pedidos.py)
+        from coordenador import cerebro as coord_cerebro, pedidos
         try:
-            item = coord_cerebro.registrar_entrada(texto, "app")
+            if not novo and pedidos.e_de_estado(texto):
+                entrada = coord_cerebro.registrar_entrada(texto, "app")
+                return self._json({"feito": True, "id": entrada["id"], "em": entrada["em"],
+                                   "situacao": "recebido", "para": "cerebro"})
+            item = pedidos.registrar(texto, "app", novo=novo)
         except (OSError, ValueError) as exc:
             return self._erro(503, f"não consegui guardar a mensagem: {exc}")
-        return self._json({"feito": True, "id": item["id"], "em": item["em"]})
+        return self._json({"feito": True, "id": item["id"], "em": item["atualizado_em"],
+                           "situacao": item["situacao"], "para": "orquestrador",
+                           "continuacao": bool(item.get("continuacao"))})
 
     def _coordenador_proposta(self, ident: str):
         """Confirmar ou recusar uma proposta do cerebro (vence em 30 min)."""

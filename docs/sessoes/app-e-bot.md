@@ -62,6 +62,38 @@ consegue operar esta parte lendo só isto.
 
 ## 1. O que é, e onde mora
 
+### Pedido livre ao orquestrador (03/10/2026)
+
+O texto livre do app (**Agora > Pedir** e **Coordenador > Conversa**) e do
+Telegram (texto sem `/`) passa por `coordenador.pedidos.e_de_estado`:
+
+- pergunta curta de estado ("o app está no ar?") vai ao cérebro
+  (`coordenador/cerebro.py`, Codex só leitura, responde em segundos);
+- o resto é **pedido**: `pedidos.registrar` grava em
+  `%LOCALAPPDATA%\neural-fights\coordenador\pedidos.json` e volta na hora. O
+  pulso do coordenador (`pedidos.passo`, numa thread) contrata um trabalhador
+  `orquestrador` (`remoto.delegar`, `.claude/agents/orquestrador.md`) por
+  `delegar.no_fundo`; nada roda Claude/Codex dentro do app, do bot ou do pulso.
+
+Ciclo: recebido → trabalhando → entregue → (o vigia testa e aplica) →
+conferente (`mesa-conf-<id>`, o mesmo id do gerente da equipe) → conferido ou
+falhou. Sem mudança de código: respondido. Qualquer passo pode virar **em
+espera** com o motivo (Claude proibido ou acima do teto, sem evento há 10 min —
+medido pela hora do `eventos.jsonl` —, `rodar` recusado pelo paralelo/janela);
+o pulso retoma a cada 2 min. Pedido de construir com o Claude impedido vai ao
+Codex (trabalhador novo `<id>-N`, com o cargo junto da tarefa).
+
+Continuação: o texto seguinte vai ao MESMO orquestrador enquanto o pedido
+estiver vivo (`corrigir` no fundo, com o pedido inteiro, quando a rodada
+acabar). Se a entrega dele já foi aplicada, vai a um orquestrador novo.
+**Novo assunto** (app, `POST /api/coordenador/falar {"novo": true}`) ou
+`/novo` (Telegram) faz o próximo pedido abrir outro.
+
+A conversa do app junta, por hora, as linhas do cérebro e as do orquestrador
+(progresso resumido, no máximo uma por minuto). A resposta final vai à
+conversa e ao Telegram (`MESA.avisar = supervisor.avisar`, ligado no
+`coordenador/__main__.py`).
+
 Duas portas de saída para o Adrian comandar o sistema de fora do PC:
 
 | Peça | O que é | Sobe por |

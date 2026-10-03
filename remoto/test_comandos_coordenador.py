@@ -15,14 +15,32 @@ def cerebro(tmp_path, monkeypatch):
     return modulo
 
 
-def test_texto_livre_grava_a_entrada_e_responde_recebido(cerebro):
-    resposta, arquivo = comandos.executar("reinicia o carteiro, por favor")
+def test_pergunta_de_estado_grava_a_entrada_e_responde_recebido(cerebro):
+    resposta, arquivo = comandos.executar("o carteiro está rodando?")
     assert arquivo is None
     assert resposta.startswith("🛰 recebido, pensando") and "/ajuda" in resposta
     entradas = cerebro.entradas_novas()
     assert [(e["texto"], e["origem"]) for e in entradas] == [
-        ("reinicia o carteiro, por favor", "telegram")]
+        ("o carteiro está rodando?", "telegram")]
     assert cerebro.conversa()[-1]["de"] == "adrian"
+
+
+def test_texto_livre_vira_pedido_do_orquestrador(cerebro):
+    """03/10: o resto e PEDIDO; um trabalhador `orquestrador` do servidor
+    atende, sem o VS Code. /novo abre outro assunto."""
+    from coordenador import pedidos
+    resposta, _ = comandos.executar("reinicia o carteiro, por favor")
+    assert resposta.startswith("🧭 recebido") and "/ajuda" in resposta
+    assert cerebro.entradas_novas() == []
+    lista = pedidos.para_o_app()["pedidos"]
+    assert [(p["texto"], p["origem"]) for p in lista] == [
+        ("reinicia o carteiro, por favor", "telegram")]
+    resposta, _ = comandos.executar("e o bot também")
+    assert "MESMO orquestrador" in resposta
+    assert len(pedidos.para_o_app()["pedidos"]) == 1
+    assert "assunto novo" in comandos.executar("/novo")[0]
+    comandos.executar("outra coisa")
+    assert len(pedidos.para_o_app()["pedidos"]) == 2
 
 
 def test_comando_com_barra_continua_igual(cerebro, monkeypatch):
@@ -34,9 +52,12 @@ def test_comando_com_barra_continua_igual(cerebro, monkeypatch):
 def test_falha_ao_guardar_responde_sem_derrubar_o_bot(cerebro, monkeypatch):
     def quebra(*a, **k):
         raise OSError("disco cheio")
+    from coordenador import pedidos
     monkeypatch.setattr(cerebro, "registrar_entrada", quebra)
-    resposta, _ = comandos.executar("oi")
-    assert "não consegui guardar" in resposta and "/ajuda" in resposta
+    monkeypatch.setattr(pedidos, "registrar", quebra)
+    for texto in ("oi", "o app está no ar?"):
+        resposta, _ = comandos.executar(texto)
+        assert "não consegui guardar" in resposta and "/ajuda" in resposta
 
 
 def test_sem_pasta_escolhida_o_pytest_nao_escreve_na_entrada_real(monkeypatch):

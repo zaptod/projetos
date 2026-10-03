@@ -141,6 +141,7 @@ async function coordenadorMesa() {
   try { $("coord-mesa").textContent = coordResumo(await api("/api/coordenador")); } catch (err) {
     $("coord-mesa").textContent = "Coordenador: FORA DO AR";
   }
+  if (typeof pedidosCarregar === "function") pedidosCarregar();
 }
 
 async function coordCarregar() {
@@ -195,7 +196,7 @@ function coordAba(aba) {
 
 function coordMensagem(m) {
   const de = m.de === "adrian" ? "adrian" : "coordenador";
-  const quem = de === "adrian" ? "você" : "🛰 coordenador";
+  const quem = de === "adrian" ? "você" : m.de === "orquestrador" ? "🧭 orquestrador" : "🛰 coordenador";
   const pelo = m.origem === "telegram" ? " · pelo Telegram" : "";
   return el("div", {class: `coord-msg ${de}`}, m.texto || "",
     el("span", {class: "fraco"}, `${quem} · ${quandoCurto(m.em) || ""}${pelo}`));
@@ -234,29 +235,58 @@ function coordProposta(p) {
   return card;
 }
 
+// Os pedidos (03/10): cada pedido livre vai a um trabalhador `orquestrador`
+// do servidor; o estado dele aparece aqui e no cartão "Pedir" do Agora.
+const PEDIDO_ROTULO = {recebido: "recebido", trabalhando: "trabalhando", esperando: "em espera",
+  esperando_voce: "esperando você no Grimório", entregue: "entregue",
+  conferido: "conferido", respondido: "respondido", falhou: "falhou"};
+
+function pedidoLinha(p) {
+  const rotulo = PEDIDO_ROTULO[p.situacao] || p.situacao || "recebido";
+  const titulo = String(p.texto || p.id).split("\n")[0];
+  return el("div", {class: "coord-proposta"},
+    el("strong", {}, `${rotulo} · ${titulo.slice(0, 120)}`),
+    el("div", {class: "fraco"}, [p.ia ? `${p.ia} orquestrador` : "", p.trabalhador || "",
+      p.progresso || "", quandoCurto(p.atualizado_em) || ""].filter(Boolean).join(" · ")),
+    p.motivo ? el("div", {class: "coord-aviso"}, p.motivo) : null);
+}
+
+function pedidosDesenhar(dados) {
+  const pedidos = Array.isArray(dados.pedidos) ? dados.pedidos : [];
+  const vivos = pedidos.filter((p) => !["conferido", "respondido", "falhou"].includes(p.situacao));
+  const recentes = [...vivos, ...pedidos.filter((p) => !vivos.includes(p))].slice(0, 6);
+  const lista = recentes.length ? recentes.map(pedidoLinha)
+    : [el("div", {class: "fraco"}, "Nenhum pedido ainda.")];
+  if (dados.novo_assunto) lista.unshift(el("div", {class: "coord-aviso"}, "O próximo pedido abre um orquestrador novo."));
+  $("coord-pedidos").replaceChildren(...lista);
+  $("pedido-estado").replaceChildren(...lista.slice(0, 3).map((n) => n.cloneNode(true)));
+}
+
 function coordConversaDesenhar(dados) {
   const conversa = Array.isArray(dados.conversa) ? dados.conversa : [];
   const propostas = Array.isArray(dados.propostas) ? dados.propostas : [];
   const cerebro = dados.cerebro || {};
-  $("coord-cerebro").textContent = cerebro.proibido
-    ? `${cerebro.proibido}: ele não pensa até você liberar.`
-    : `Pensou ${cerebro.pensamentos_na_hora ?? 0} de ${cerebro.limite_hora ?? "?"} vezes nesta hora.`;
+  $("coord-cerebro").textContent = (cerebro.proibido
+    ? `${cerebro.proibido}: o cérebro não pensa até você liberar.`
+    : `Pensou ${cerebro.pensamentos_na_hora ?? 0} de ${cerebro.limite_hora ?? "?"} vezes nesta hora.`)
+    + " Pergunta curta de estado vai ao cérebro; pedido vai ao 🧭 orquestrador do servidor.";
   const pendentes = propostas.filter((p) => p.situacao === "pendente");
   const recentes = propostas.filter((p) => p.situacao !== "pendente").slice(0, 5);
   $("coord-propostas").replaceChildren(...(pendentes.length || recentes.length
     ? [...pendentes, ...recentes].map(coordProposta)
     : [el("div", {class: "fraco"}, "Nenhuma proposta.")]));
+  pedidosDesenhar(dados);
   const caixa = $("coord-mensagens");
   const noFim = caixa.scrollHeight - caixa.scrollTop - caixa.clientHeight < 40;
   const itens = conversa.map(coordMensagem);
-  // "pensando…" enquanto houver entrada sem resposta (nao so a ultima linha:
-  // confirmar uma proposta escreve uma linha do coordenador no meio)
+  // "pensando…" enquanto houver entrada do cerebro sem resposta; a linha do
+  // pedido nao conta (o orquestrador responde "recebido" na hora)
   const ultima = conversa[conversa.length - 1];
-  if (cerebro.na_fila > 0 || (ultima && ultima.de === "adrian" && !ultima.entrada)) {
+  if (cerebro.na_fila > 0 || (ultima && ultima.de === "adrian" && !ultima.entrada && !ultima.pedido)) {
     itens.push(el("div", {class: "coord-msg coordenador fraco"},
       cerebro.na_fila > 1 ? `pensando… (${cerebro.na_fila} na fila)` : "pensando…"));
   }
-  caixa.replaceChildren(...(itens.length ? itens : [el("div", {class: "fraco"}, "Escreva abaixo: ele lê o estado do PC e responde aqui.")]));
+  caixa.replaceChildren(...(itens.length ? itens : [el("div", {class: "fraco"}, "Escreva abaixo: uma pergunta de estado ou um pedido.")]));
   if (noFim) caixa.scrollTop = caixa.scrollHeight;
 }
 
@@ -264,16 +294,25 @@ async function coordConversaCarregar() {
   try { coordConversaDesenhar(await api("/api/coordenador/conversa")); } catch (err) { conexao(false, err); }
 }
 
-async function coordFalar() {
+async function pedidosCarregar() {
+  try { pedidosDesenhar(await api("/api/coordenador/conversa")); } catch (err) { /* o cartão espera o próximo pulso */ }
+}
+
+async function coordEnviar(texto, novo) {
+  return api("/api/coordenador/falar", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(texto ? {texto, novo} : {novo: true})});
+}
+
+async function coordFalar(novo = false) {
   const campo = $("coord-texto");
   const texto = campo.value.trim();
-  if (!texto || CoordConv.enviando) return;
+  if ((!texto && !novo) || CoordConv.enviando) return;
   CoordConv.enviando = true;
   $("coord-enviar").disabled = true;
   try {
-    await api("/api/coordenador/falar", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({texto})});
+    await coordEnviar(texto, novo);
     campo.value = "";
+    if (novo && !texto) avisar("O próximo pedido abre um orquestrador novo.");
   } catch (err) { avisar(err.message, true); }
   CoordConv.enviando = false;
   $("coord-enviar").disabled = false;
@@ -289,7 +328,24 @@ async function coordDecidir(id, decisao) {
   coordConversaCarregar();
 }
 
-$("coord-enviar").addEventListener("click", coordFalar);
+async function pedidoRapido(novo = false) {
+  const campo = $("pedido-texto"), texto = campo.value.trim();
+  if (!texto && !novo) return;
+  try {
+    const r = await coordEnviar(texto, novo);
+    campo.value = "";
+    avisar(!texto ? "O próximo pedido abre um orquestrador novo."
+      : r.para === "cerebro" ? "Pergunta de estado: o cérebro responde na Conversa."
+      : r.continuacao ? "Continuação enviada ao mesmo orquestrador." : "Pedido recebido.");
+  } catch (err) { avisar(err.message, true); }
+  pedidosCarregar();
+}
+
+$("coord-enviar").addEventListener("click", () => coordFalar(false));
+$("coord-novo").addEventListener("click", () => coordFalar(true));
+$("pedido-enviar").addEventListener("click", () => pedidoRapido(false));
+$("pedido-novo").addEventListener("click", () => pedidoRapido(true));
+$("pedido-conversa").addEventListener("click", (e) => { CoordConv.aba = "conversa"; abrir("coordenador", e.currentTarget); coordAba("conversa"); });
 for (const b of document.querySelectorAll("#coord-abas [data-aba]")) {
   b.addEventListener("click", () => coordAba(b.dataset.aba));
 }

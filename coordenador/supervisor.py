@@ -157,7 +157,7 @@ class Supervisor:
                  git=None, comandos=None, aplicar=None, claude_proibido=None,
                  delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
                  cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None, assembleia=None,
-                 gerente_equipe=None):
+                 gerente_equipe=None, pedidos=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
         self.iniciar = iniciar or self._iniciar
@@ -185,6 +185,7 @@ class Supervisor:
         # o `__main__` os liga: nos testes, ausentes = nada de Codex nem git.
         self.cerebro, self.vigia_trabalho = cerebro, vigia_trabalho
         self.gerente_equipe = gerente_equipe
+        self.pedidos = pedidos
         self.equipe = {}
         # a esteira de sprites idem: so o `montar()` de producao a liga
         self.esteira = esteira
@@ -501,6 +502,11 @@ class Supervisor:
             return
         self.em_fundo("equipe", lambda: setattr(self, "equipe", self.gerente_equipe.passo()))
 
+    def processar_pedidos(self):
+        """Pedidos livres sobrevivem a uma sessao fechada do VS Code."""
+        if self.pedidos:
+            self.em_fundo("pedidos", self.pedidos)
+
     def rodar_esteira(self):
         """Um `ciclo` da esteira (palco e vila) a cada ESTEIRA_INTERVALO_S."""
         if not self.esteira:
@@ -578,6 +584,7 @@ class Supervisor:
         self.processar_comandos()
         self.avisar_mensagem_sem_ouvinte()
         self.processar_cerebro()
+        self.processar_pedidos()
         self.vigiar_trabalho()
         self.gerenciar_equipe()
         self.rodar_esteira()

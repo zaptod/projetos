@@ -260,6 +260,9 @@ def test_olhar_de_novo_acorda_o_motor(motor, monkeypatch):
     assert _esperar(lambda: not any(f.name == "vila-nova" and f.is_alive()
                                     for f in threading.enumerate()), 5)
     parou = motor.motor._vida.ticks
+    # folga (03/10): com 0,1 s de prazo, a suíte inteira carregada fazia o
+    # motor dormir de novo antes de 3 ticks e o teste falhava sem relação
+    monkeypatch.setattr(vila_nova, "PARAR_SEM_PEDIDO_S", 5.0)
     motor.motor.retrato()
     assert _esperar(lambda: motor.motor._vida.ticks > parou + 2)
 

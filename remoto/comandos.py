@@ -78,8 +78,10 @@ def ajuda(_args: str = "") -> str:
         "/confiabilidade — o que saiu hoje e o que dá para provar\n"
         "/testar\\_conserto <carimbo> — a suíte com um remendo proposto\n"
         "/pausar [minutos] · /retomar · /parar\n"
+        "/novo — o próximo pedido abre outro orquestrador\n"
         "/ajuda — isto aqui\n"
-        "Texto sem / vai para o 🛰 coordenador, que responde aqui.")
+        "Texto sem / é um pedido: vai a um 🧭 orquestrador do servidor "
+        "(pergunta curta de estado vai ao 🛰 coordenador). A resposta vem aqui.")
 
 
 def status(_args: str = "") -> str:
@@ -348,18 +350,40 @@ TABELA = {
 def falar_ao_coordenador(texto: str) -> str:
     """Texto sem `/` e uma mensagem para o coordenador (02/10/2026).
 
-    O bot NAO pensa nem executa nada: so grava o pedido na entrada do cerebro
-    (`coordenador.cerebro.registrar_entrada`) e responde que recebeu. Quem
-    pensa (Codex so leitura) e quem age (lista fechada) e o coordenador, que
-    manda a resposta por aqui mesmo, pelo envio de sempre."""
+    O bot NAO pensa nem executa nada: so grava e responde que recebeu.
+    Desde 03/10, pergunta curta de estado ("o app esta no ar?") vai a entrada
+    do cerebro (`coordenador.cerebro.registrar_entrada`, responde em
+    segundos); o resto e PEDIDO (`coordenador.pedidos.registrar`), que um
+    trabalhador `orquestrador` do servidor atende sem o VS Code aberto. As
+    respostas chegam por aqui mesmo, pelo envio de sempre."""
     try:
-        from coordenador import cerebro
-        cerebro.registrar_entrada(texto, "telegram")
+        from coordenador import cerebro, pedidos
+        if pedidos.e_de_estado(texto):
+            cerebro.registrar_entrada(texto, "telegram")
+            return ("🛰 recebido, pensando… o coordenador responde aqui. "
+                    "Os comandos com / continuam: /ajuda")
+        item = pedidos.registrar(texto, "telegram")
     except Exception as exc:      # nenhuma mensagem derruba o bot
         return (f"não consegui guardar sua mensagem para o coordenador "
                 f"({type(exc).__name__}). Os comandos com / continuam: /ajuda")
-    return ("🛰 recebido, pensando… o coordenador responde aqui. "
-            "Os comandos com / continuam: /ajuda")
+    if item.get("continuacao"):
+        return ("🧭 recebido; vai ao MESMO orquestrador do pedido aberto. "
+                "Assunto novo: /novo antes. Os comandos com / continuam: /ajuda")
+    return ("🧭 recebido; um orquestrador do servidor vai atender e eu aviso aqui "
+            "quando estiver conferido. Os comandos com / continuam: /ajuda")
+
+
+def novo(_args: str = "") -> str:
+    """/novo — o proximo texto abre outro orquestrador (outro assunto)."""
+    try:
+        from coordenador import pedidos
+        pedidos.novo_assunto("telegram")
+    except Exception as exc:      # noqa: BLE001
+        return f"não consegui abrir um assunto novo ({type(exc).__name__})."
+    return "🧭 assunto novo: o próximo texto vai a um orquestrador novo."
+
+
+TABELA["novo"] = novo
 
 
 def executar(texto: str):

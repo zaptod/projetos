@@ -170,10 +170,37 @@ def test_falar_grava_a_entrada_e_a_conversa(servidor, cerebro_isolado):
 
 
 def test_falar_longo_com_acento_passa_dos_4_kb(servidor, cerebro_isolado):
+    from coordenador import pedidos
     texto = "ação " * 700                        # 3500 caracteres, mais de 4 KB em UTF-8
-    status, _ = _pedir(servidor, "POST", "/api/coordenador/falar", {"texto": texto},
-                       _parear(servidor))
-    assert status == 200 and len(cerebro_isolado.entradas_novas()) == 1
+    status, dados = _pedir(servidor, "POST", "/api/coordenador/falar", {"texto": texto},
+                           _parear(servidor))
+    assert status == 200 and dados["para"] == "orquestrador"
+    assert [p["texto"] for p in pedidos.para_o_app()["pedidos"]] == [texto.strip()]
+
+
+def test_pedido_vira_item_do_orquestrador_e_aparece_na_conversa(servidor, cerebro_isolado):
+    """03/10: o pedido livre nao vai ao cerebro (so leitura): vira `pedido`,
+    que o pulso do coordenador entrega a um trabalhador `orquestrador`."""
+    from coordenador import pedidos
+    token = _parear(servidor)
+    status, dados = _pedir(servidor, "POST", "/api/coordenador/falar",
+                           {"texto": "conserte o botão de reiniciar do app"}, token)
+    assert status == 200 and dados["para"] == "orquestrador" and dados["situacao"] == "recebido"
+    assert cerebro_isolado.entradas_novas() == []
+    status, dados2 = _pedir(servidor, "POST", "/api/coordenador/falar",
+                            {"texto": "e o de parar também"}, token)
+    assert dados2["id"] == dados["id"] and dados2["continuacao"] is True
+    status, _ = _pedir(servidor, "POST", "/api/coordenador/falar", {"novo": True}, token)
+    assert status == 200 and pedidos.para_o_app()["novo_assunto"] is True
+    status, dados3 = _pedir(servidor, "POST", "/api/coordenador/falar",
+                            {"texto": "outra coisa"}, token)
+    assert dados3["id"] != dados["id"]
+    status, conversa = _pedir(servidor, "GET", "/api/coordenador/conversa", token=token)
+    assert status == 200 and conversa["propostas"] == []           # o cerebro continua la
+    assert [p["id"] for p in conversa["pedidos"]] == [dados3["id"], dados["id"]]
+    textos = [m["texto"] for m in conversa["conversa"]]
+    assert "conserte o botão de reiniciar do app" in textos and "e o de parar também" in textos
+    assert any(m.get("de") == "orquestrador" for m in conversa["conversa"])
 
 
 def test_falar_vazio_e_recusado(servidor, cerebro_isolado):
@@ -227,6 +254,8 @@ def test_rotas_do_cerebro_que_agem_exigem_acoes(mundo, cerebro_isolado, rota, co
         status, _ = _pedir(srv, "POST", rota, corpo, _parear(srv))
         assert status == 403
         assert cerebro_isolado.entradas_novas() == []
+        from coordenador import pedidos
+        assert pedidos.para_o_app()["pedidos"] == []
     finally:
         srv.shutdown()
         srv.server_close()

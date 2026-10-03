@@ -83,17 +83,22 @@ def montar() -> Supervisor:
     from remoto.orquestrador import aplicado, pendentes
 
     from . import cerebro
+    from . import pedidos
     from .vigia_trabalho import VigiaTrabalho
     from .equipe import GerenteEquipe
     from .supervisor import ciclo_das_esteiras
     from ias.assembleia import avancar as avancar_assembleia
     s = Supervisor(comandos=pendentes, aplicar=aplicado, cerebro=cerebro.atender,
+                   pedidos=pedidos.passo,
                    esteira=ciclo_das_esteiras, assembleia=avancar_assembleia)
     s.vigia_trabalho = VigiaTrabalho(
         avisar=s.avisar, evento=lambda tipo, texto: s.evento("", tipo, texto),
         seguro=lambda: s.seguro(""), pedir_reinicio=s.pedir_reinicio)
     s.gerente_equipe = GerenteEquipe(avisar=s.avisar,
                                      evento=lambda tipo, texto: s.evento("", tipo, texto))
+    # a resposta final de um pedido vai tambem ao Telegram, de onde quer que
+    # ele tenha vindo
+    pedidos.MESA.avisar = s.avisar
     return s
 
 
