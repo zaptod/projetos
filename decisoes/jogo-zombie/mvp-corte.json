@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-03T13:55:36",
+      "evento": "2026-10-03T13:06:00",
+      "linha": 113,
+      "nota": "trabalhador do servidor (jogo-zombie, repo E:\\jogo_ZOMBIE) contratado para a 1a fatia",
+      "opcao": "c",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Hoje o duelo gera mp4 + JSON sem erro: 6 guardas de lança contra 4 zumbis rápidos numa praça em ruínas, com a velocidade escolhida por clipe. Medido hoje sem vídeo, em 100 sementes novas (441–540): 56 de 100 passam nos critérios do duelo (contato cedo, desfecho, 20–35 s). As que reprovam reprovam quase todas por TRÉGUA: um guarda foge, o zumbi corre atrás e ninguém alcança ninguém. Consertei hoje a rodada que nunca acabava (2 em 400: um zumbi preso no canto do mapa). Pesa na escolha: (1) em 28/09 você respondeu 'Quase: ajustar' a este duelo e decidiu o duelo elaborado para DEPOIS da estabilização (duelo-quando); as opções B e C trazem parte dele para agora. (2) Nas três opções falta a ponte da Publicação: título no 1º segundo, placa do veredito, som (o mp4 sai mudo), estoque e métricas do canal. São 2–3 dias, no outro repositório. (3) Pelas rotas de 27/09, o canal só publica depois de 7 dias seguidos sem horário perdido nos dois canais atuais. Os vídeos anexados são do lote de 28/09, anteriores ao conserto de hoje.",
   "criado": "2026-10-03T00:47:13.479425",
   "depende_de": [
