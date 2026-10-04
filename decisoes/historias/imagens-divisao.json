@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-e1e84dcc",
+      "em": "2026-10-04T13:06:40",
+      "evento": "2026-10-03T16:42:24",
+      "linha": 115,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "por-historia",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Você pediu que Gemini, ChatGPT e PicassoIA dividam a geração. Hoje as histórias usam SÓ o PicassoIA. Cada gerador tem um traço: numa mesma história, cenas de geradores diferentes podem mudar o rosto e o estilo do personagem no meio do vídeo. A prova de origem continua valendo para os três.",
   "criado": "2026-10-03T16:11:26.714741",
   "depende_de": [],
