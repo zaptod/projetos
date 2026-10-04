@@ -3,7 +3,15 @@
   "contexto": "Hoje o gerente está DESLIGADO: os itens da fila da Mesa só andam se alguém mandar, e as permissões do tipo 'gerente aceita' viram pergunta para você. Ligado, ele pega cada item da fila e contrata o trabalhador do cargo certo (Codex para construir, Claude para investigar/consertar), respeitando o limite de paralelo e o teto de uso; manda toda entrega aplicada para o conferente; e aceita sozinho as permissões que a sua política deixa (rede, repositório conhecido). Publicar, contas, push e decisões de produto continuam sempre com você.",
   "criado": "2026-10-04T13:52:20.952254",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-04T13:54:34",
+      "opcao": "ligar",
+      "origem": "app"
+    }
+  ],
   "id": "gerente-ligado",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "O gerente do servidor pode tocar a fila e as permissões sozinho?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Ligar o gerente da equipe (a fila anda sozinha)?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-04T13:54:34",
+    "opcao": "ligar"
+  }
 }
