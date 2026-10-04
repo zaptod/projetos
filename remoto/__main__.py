@@ -194,14 +194,23 @@ def _teste_em_texto(carimbo: str, resultado: dict) -> str:
                if resultado.get("ultima") else ""))
 
 
-def avisar(texto: str) -> bool:
-    """Manda `texto` para todo mundo da lista branca. True se alguem recebeu."""
+def avisar(texto: str, *, chave: str | None = None) -> bool:
+    """Manda `texto` para todo mundo da lista branca. True se alguem recebeu.
+
+    Passa pelo porteiro (`avisos.liberar`): o mesmo texto (fora hora e data)
+    so sai de novo no dia seguinte ou quando muda. Calado conta como True —
+    o aviso ja chegou, e quem chamou nao deve registrar falha por isso.
+    """
+    from . import avisos
     from .api import Telegram
 
     destinos = config.carregar()["autorizados"]
     if not destinos:
         print("[remoto] ninguem autorizado ainda; nada a avisar.")
         return False
+    if not avisos.liberar(texto, chave=chave, origem="remoto --avisar"):
+        print("[remoto] aviso repetido (mesmo texto ha menos de um dia); calado.")
+        return True
     tg = Telegram(config.token())
     entregues = 0
     for chat in destinos:

@@ -1077,13 +1077,20 @@ class Carteiro:
                 self.dormir(intervalo)
 
 
-def avisar_telegram(texto: str) -> bool:
-    """Um aviso em texto puro para os autorizados (sem Markdown: ids com `_`)."""
+def avisar_telegram(texto: str, *, chave: str | None = None) -> bool:
+    """Um aviso em texto puro para os autorizados (sem Markdown: ids com `_`).
+
+    E por aqui que sai tudo o que o coordenador avisa; passa pelo porteiro
+    (`remoto.avisos`): o mesmo texto, fora hora e data, so uma vez por dia.
+    """
+    from remoto import avisos
     from remoto import config as rconfig
     from remoto.api import Telegram
     destinos = rconfig.carregar().get("autorizados") or []
     if not destinos:
         return False
+    if not avisos.liberar(texto, chave=chave, origem="carteiro.avisar_telegram"):
+        return True
     tg = Telegram(rconfig.token())
     entregues = 0
     for chat in destinos:

@@ -8,11 +8,14 @@ e o proximo teste (de outro arquivo) acharia o Claude proibido.
 """
 import pytest
 
-from remoto import claude_estado
+from remoto import avisos, claude_estado
 
 
 @pytest.fixture(autouse=True)
 def _claude_isolado(tmp_path, monkeypatch):
     monkeypatch.setattr(claude_estado, "ARQUIVO", tmp_path / "claude_estado" / "claude.json")
     monkeypatch.delenv("NF_CLAUDE_ESTADO", raising=False)
+    # o porteiro dos avisos tambem: um aviso de um teste nao cala o do outro
+    monkeypatch.setattr(avisos, "ARQUIVO", tmp_path / "avisos" / "avisos_estado.json")
+    monkeypatch.setattr(avisos, "REGISTRO", tmp_path / "avisos" / "avisos_enviados.jsonl")
     yield

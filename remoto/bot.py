@@ -23,7 +23,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import comandos, config, vigia_tailnet
+from . import avisos, comandos, config, vigia_tailnet
 from .api import Telegram
 
 
@@ -126,14 +126,27 @@ class Bot:
         # O conjunto so guarda o que ainda esta na janela do diario: sem isso
         # ele cresceria para sempre num processo que fica ligado dias.
         self.avisados = {self._marca(e) for e in recentes}
+        saiu = False
         for evento in reversed(novos[:5]):
             fabrica = comandos.atividade.FABRICAS.get(evento.get("fabrica"), {})
             texto = (f"❗ *{fabrica.get('rotulo', evento.get('fabrica'))}* "
                      f"({evento.get('canal', '?')})\n"
                      f"{(evento.get('detalhe') or '')[:400]}")
+            # O MESMO ERRO, UMA VEZ POR DIA. A marca acima e a identidade do
+            # EVENTO (com o segundo): o reparo que falha igual a cada tentativa
+            # gera um evento novo por tentativa. Medido em 04/10/2026: 22 vezes
+            # "No module named 'ias'" em 4 h, cada uma uma mensagem e uma
+            # apuracao. O total do dia continua no relatorio de funcionamento.
+            chave = "bot.erro|" + "|".join(str(evento.get(c) or "") for c in
+                                           ("fabrica", "canal", "etapa"))
+            if not avisos.liberar(texto, chave=chave + "|" + avisos.normalizar(
+                    evento.get("detalhe") or "")[:200], origem="bot.alerta"):
+                continue
+            saiu = True
             for chat in config.carregar()["autorizados"]:
                 self.tg.mensagem(chat, texto, markdown=True)
-        self._apurar()
+        if saiu:
+            self._apurar()
 
     def _apurar(self):
         """Solta o Claude em cima dos erros novos, sem segurar o bot.
@@ -183,9 +196,13 @@ class Bot:
                 self.tg.mensagem(chat, texto, markdown=True)
             self.log(f"[remoto] relatorio de {nome} enviado.")
 
-    def avisar_todos(self, texto: str):
+    def avisar_todos(self, texto: str, *, chave: str | None = None) -> bool:
+        """Aviso espontaneo (nao e resposta a comando): passa pelo porteiro."""
+        if not avisos.liberar(texto, chave=chave, origem="bot"):
+            return False
         for chat in config.carregar()["autorizados"]:
             self.tg.mensagem(chat, texto)
+        return True
 
     # ---------------------------------------------------------------- laco
     def uma_volta(self, timeout: int = 30) -> int:
@@ -217,7 +234,10 @@ class Bot:
         ficou fora dele depois de um religamento e nada avisou. Desliga com
         `"vigiar_tailnet": false` no remoto.json."""
         if config.carregar().get("vigiar_tailnet", True):
-            self.vigia_tailnet = vigia_tailnet.Vigia(avisar=self.avisar_todos)
+            # chave UNICA "tailnet": caiu -> voltou -> caiu sai sempre (o
+            # estado mudou); o mesmo "consertei" cinco vezes num dia, uma so.
+            self.vigia_tailnet = vigia_tailnet.Vigia(
+                avisar=lambda texto: self.avisar_todos(texto, chave="tailnet"))
 
     def _vigiar_tailnet(self):
         if self.vigia_tailnet is None:
@@ -239,7 +259,11 @@ class Bot:
                      f"conversa com @{nome} e mande:\n"
                      f"     /parear {self.codigo}")
         else:
-            self.avisar_todos("🤖 bot no ar. /ajuda para ver o que eu faço.")
+            # Uma vez por dia: o coordenador religa o bot a cada codigo novo
+            # (60 religamentos em 48 h, medido em 04/10/2026), e cada um
+            # mandava esta linha.
+            self.avisar_todos("🤖 bot no ar. /ajuda para ver o que eu faço.",
+                              chave="bot.no_ar")
         self._ligar_vigia_tailnet()
         while True:
             try:

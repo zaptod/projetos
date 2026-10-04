@@ -454,10 +454,34 @@ def funcionamento(agora: datetime | None = None, *, horas: int = 24) -> str:
     else:
         linhas += ["", "*Erros* — nenhum ✓"]
 
+    # --- o que o porteiro calou: a repeticao vira uma linha por dia
+    linhas += _linhas_dos_calados(horas)
+
     # --- o agendamento, que e o que decide se AMANHA acontece
     linhas += ["", "*Agendamento*"] + _linhas_do_agendador()
     linhas += ["", "*Credenciais*"] + _linhas_das_credenciais()
     return "\n".join(linhas)
+
+
+def _linhas_dos_calados(horas: int = 24) -> list[str]:
+    """Os avisos repetidos que nao foram ao celular (ver `avisos.py`).
+
+    Calar sem contar seria esconder: aqui o dia diz quantas vezes cada um
+    se repetiu, numa linha so.
+    """
+    try:
+        from . import avisos
+        calados = avisos.calados(horas)
+    except Exception:                                          # noqa: BLE001
+        return []
+    if not calados:
+        return []
+    total = sum(c["calados"] for c in calados)
+    saida = ["", f"*Avisos repetidos calados* ({total})"]
+    for ficha in calados[:3]:
+        texto = " ".join(str(ficha.get("texto") or ficha["chave"]).split())[:80]
+        saida.append(f"  {ficha['calados']}x {texto}")
+    return saida
 
 
 def _linhas_das_credenciais() -> list[str]:

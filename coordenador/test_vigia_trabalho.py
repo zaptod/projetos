@@ -539,3 +539,78 @@ def test_arvore_suja_espera_em_vez_de_abandonar(mundo):
     assert not mundo.vigia.ultimo["olho"]
     assert "suja" in mundo.vigia.ultimo.get("esperando", {}) or any(
         e.get("id") == "suja" for e in mundo.vigia.ultimo.get("esperando", []))
+
+
+# ---- 04/10/2026: o Andamento repetia o mesmo item parado da fila ----------
+FILA_PARADA = {"id": "b0d22ef8", "parte": "builds", "prioridade": 1,
+               "item": "Som real nas 15 builds de estoque ainda com som sintetizado"}
+
+
+def _andamentos(mundo):
+    return [a for a in mundo.avisos if a.startswith("🛰 Andamento")]
+
+
+def test_contagem_do_grimorio_oscilando_nao_vira_andamento(mundo):
+    """0 -> 1 -> 0 -> 1 decisoes (e leitura que falha) nao e novidade: so as
+    linhas fixas e o item parado da fila saiam, hora apos hora."""
+    mundo.mesa.fila = [FILA_PARADA]
+    carregar = mundo.grimorio.carregar
+    for i in range(6):
+        if i % 3 == 2:
+            mundo.grimorio.carregar = lambda: (_ for _ in ()).throw(OSError("lendo"))
+        else:
+            mundo.grimorio.carregar = carregar
+            mundo.grimorio.itens = ({"n1": {"id": "n1", "projeto": "geral",
+                                            "situacao": "pendente"}} if i % 2 else {})
+        mundo.relogio.andar(61)
+        mundo.vigia.passo()
+    mundo.grimorio.carregar = carregar
+    # o no n1 chegou UMA vez (i=1); ir e voltar de pendente nao e no novo
+    resumos = _andamentos(mundo)
+    assert len(resumos) == 1 and "1 decisão(ões) nova(s)" in resumos[0]
+
+
+def test_decisao_nova_esperando_ele_sai_com_todas_as_letras(mundo):
+    mundo.vigia.passo()
+    mundo.grimorio.itens = {"n1": {"id": "n1", "titulo": "T", "projeto": "geral",
+                                   "situacao": "pendente"}}
+    mundo.relogio.andar(61)
+    mundo.vigia.passo()
+    resumos = _andamentos(mundo)
+    assert len(resumos) == 1
+    assert "📥 1 decisão(ões) nova(s) no Grimório esperando você" in resumos[0]
+    # ele respondeu (a contagem caiu): nao e aviso
+    mundo.grimorio.itens = {}
+    mundo.relogio.andar(61)
+    mundo.vigia.passo()
+    assert len(_andamentos(mundo)) == 1
+
+
+def test_o_item_parado_da_fila_aparece_uma_vez_e_depois_so_se_mudar(mundo):
+    d = mundo.delegar
+    mundo.mesa.fila = [FILA_PARADA]
+    for n, ident in enumerate(("f1", "f2", "f3")):
+        mundo.relogio.andar(61)
+        d.novo(ident, mundo.relogio().isoformat(timespec="seconds"))
+        d.testes[ident] = [verde()]
+        mundo.vigia.passo()
+    resumos = _andamentos(mundo)
+    assert len(resumos) == 3                     # cada um com novidade de verdade
+    assert ["Som real" in r for r in resumos] == [True, False, False]
+    # a fila mudou: aparece de novo
+    mundo.mesa.fila = [{"id": "n", "parte": "geral", "item": "outra coisa"}, FILA_PARADA]
+    mundo.relogio.andar(61)
+    d.novo("f4", mundo.relogio().isoformat(timespec="seconds"))
+    d.testes["f4"] = [verde()]
+    mundo.vigia.passo()
+    assert "Fila: 2 item(ns); primeiro: [geral] outra coisa" in _andamentos(mundo)[-1]
+
+
+def test_novidade_sem_linha_no_texto_nao_manda_andamento(mundo):
+    mem = mundo.vigia._ler_memoria()
+    mem["novidades"].append({"em": "2026-10-02T09:00:00", "tipo": "desconhecida",
+                             "texto": "x"})
+    mundo.vigia._gravar_memoria(mem)
+    mundo.relogio.andar(61)
+    mundo.vigia.passo()
+    assert _andamentos(mundo) == []

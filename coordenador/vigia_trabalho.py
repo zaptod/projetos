@@ -693,12 +693,14 @@ class VigiaTrabalho:
 
     # -------------------------------------------------------------- resumo
     def _espera_adrian(self) -> dict:
-        saida = {"decisoes": None, "titulos": [], "propostas": None}
+        saida = {"decisoes": None, "titulos": [], "propostas": None, "ids": None}
         try:
             itens = self.decisoes.carregar()
             pendentes = [i for i in itens.values() if i.get("situacao") in ("pendente", "a_rever")]
             saida["decisoes"] = len(pendentes)
             saida["titulos"] = [f"{i.get('projeto')}/{i.get('titulo')}" for i in pendentes][:5]
+            saida["ids"] = [f"{i.get('projeto')}/{i.get('id') or i.get('titulo')}"
+                            for i in pendentes]
         except Exception:                                     # noqa: BLE001
             pass
         try:
@@ -732,33 +734,72 @@ class VigiaTrabalho:
                                                        for f in fila[:3]]},
                 "novidades": len(mem["novidades"])}
 
+    def _espera_nova(self, espera: dict, mem: dict, agora: datetime) -> None:
+        """So o que CHEGOU para ele vira novidade, e dito com todas as letras.
+
+        Ate 04/10/2026 qualquer mudanca na contagem (0 -> 1 -> 0, ou uma
+        leitura do Grimorio que falhava e dava None) virava a novidade
+        "mudou o que espera você" — que nem aparecia no texto. O resumo saia
+        so com as linhas fixas, e a ultima era sempre "Fila: ...; primeiro:
+        [builds] Som real nas 15 builds de estoque ainda com som sintetizado".
+        Medido: 14 Andamentos em 48 h, 9 terminando nesse item parado e 3
+        sem novidade nenhuma.
+        """
+        mem.pop("espera_assinatura", None)
+        partes = []
+        # DECISAO: pelo id, e cada uma so uma vez — o mesmo no indo e
+        # voltando de "pendente" nao e no novo.
+        ids = espera.get("ids")
+        if ids is not None:
+            vistos = mem.get("espera_vistos")
+            primeira = not isinstance(vistos, list)
+            vistos = [] if primeira else vistos
+            novos = [i for i in ids if i not in vistos]
+            mem["espera_vistos"] = (vistos + novos)[-300:]
+            if novos and not primeira:
+                partes.append(f"{len(novos)} decisão(ões) nova(s) no Grimório")
+        # PROPOSTA do cerebro: so contagem que SOBE (uma leitura que falha
+        # da None e nao conta como mudanca).
+        propostas = espera.get("propostas")
+        if propostas is not None:
+            anterior = mem.get("espera_propostas")
+            mem["espera_propostas"] = propostas
+            if isinstance(anterior, int) and propostas > anterior:
+                partes.append(f"{propostas - anterior} proposta(s) nova(s) do cérebro")
+        if partes:
+            mem["novidades"].append({"em": _iso(agora), "tipo": "espera",
+                                     "texto": " e ".join(partes) + " esperando você"})
+
     def _resumo(self, trabalho: dict, mem: dict, agora: datetime) -> None:
         espera = trabalho["espera_adrian"]
-        assinatura = f"{espera.get('decisoes')}|{espera.get('propostas')}"
-        if mem.get("espera_assinatura") not in (None, assinatura):
-            mem["novidades"].append({"em": _iso(agora), "tipo": "espera",
-                                     "texto": "mudou o que espera você"})
-        mem["espera_assinatura"] = assinatura
+        self._espera_nova(espera, mem, agora)
+        icones = {"aplicado": "✓", "terminou": "⏹", "olho": "⚠", "corrigindo": "🔧",
+                  "no": "🌳", "mesa": "📌", "parada": "⏸", "integrando": "🧩",
+                  "espera": "📥"}
+        # Novidade que nao aparece no texto nao justifica mensagem.
+        mem["novidades"] = [n for n in mem["novidades"] if n.get("tipo") in icones]
         if not mem["novidades"]:
             return
         ultimo = _data(mem.get("resumo_em"))
         if ultimo and (agora - ultimo).total_seconds() < RESUMO_A_CADA_S:
             return
         linhas = [f"🛰 Andamento ({agora:%H:%M})"]
-        icones = {"aplicado": "✓", "terminou": "⏹", "olho": "⚠", "corrigindo": "🔧",
-                  "no": "🌳", "mesa": "📌", "parada": "⏸"}
         for n in mem["novidades"][-12:]:
-            if n["tipo"] in icones:
-                linhas.append(f"{icones[n['tipo']]} {n['texto']}")
+            linhas.append(f"{icones[n['tipo']]} {n['texto']}")
         rodando = len(trabalho["rodando"])
         linhas.append(f"Rodando: {rodando} delegado(s) do Codex, "
                       f"{len(trabalho['mesa'])} tarefa(s) na Mesa")
         if espera.get("decisoes") is not None or espera.get("propostas") is not None:
             linhas.append(f"Espera você: {espera.get('decisoes') or 0} decisão(ões) no "
                           f"Grimório, {espera.get('propostas') or 0} proposta(s) do cérebro")
+        # A FILA SO QUANDO MUDA. O mesmo "primeiro da fila" parado desde 30/09
+        # repetido em toda mensagem era a "notificacao infinita do re-render".
         fila = trabalho["fila"]
-        linhas.append(f"Fila: {fila['n']} item(ns)"
+        linha_fila = (f"Fila: {fila['n']} item(ns)"
                       + (f"; primeiro: {fila['primeiros'][0]}" if fila["primeiros"] else ""))
+        if linha_fila != mem.get("fila_dita"):
+            linhas.append(linha_fila)
+            mem["fila_dita"] = linha_fila
         if trabalho["proibido"]:
             linhas.append(f"({trabalho['proibido']}: só observo)")
         texto = "\n".join(linhas)

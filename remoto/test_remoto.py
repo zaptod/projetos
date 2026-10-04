@@ -88,6 +88,14 @@ class BaseTemp(unittest.TestCase):
         self.pasta = Path(self._tmp.name)
         config.ARQUIVO = str(self.pasta / "remoto.json")
         self.addCleanup(lambda: setattr(config, "ARQUIVO", None))
+        # o porteiro dos avisos tambem (vale para quem roda com unittest,
+        # que nao passa pelo conftest)
+        from remoto import avisos
+        antes = (avisos.ARQUIVO, avisos.REGISTRO)
+        avisos.ARQUIVO = self.pasta / "avisos_estado.json"
+        avisos.REGISTRO = self.pasta / "avisos_enviados.jsonl"
+        self.addCleanup(lambda: (setattr(avisos, "ARQUIVO", antes[0]),
+                                 setattr(avisos, "REGISTRO", antes[1])))
         # o diario tambem vai para a pasta temporaria
         self._arquivo_diario = comandos.atividade._arquivo
         comandos.atividade._arquivo = lambda: self.pasta / "atividade.jsonl"
