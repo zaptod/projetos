@@ -3,7 +3,15 @@
   "contexto": "Na fila da Mesa desde 30/09: re-renderizar 15 builds de estoque (variantes B 00026–00041, A 00026–00029, 00085) que ainda têm som sintetizado, para pôr o som real do jogo (~12 min cada, ~3 h no total, recusa as que divergirem). Você parou o re-render em 29/09 e ninguém pegou o item; ele aparecia em todo resumo de andamento no Telegram — era a 'notificação repetida de re-render'. O estoque de builds está em 20 vídeos (2 dias).",
   "criado": "2026-10-04T13:39:24.537069",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-04T13:41:14",
+      "opcao": "so-novas",
+      "origem": "app"
+    }
+  ],
   "id": "som-real-15-builds",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "O item parado desde 30/09 vai ou sai?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Som real nas 15 builds de estoque: fazer ou tirar da fila?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-04T13:41:14",
+    "opcao": "so-novas"
+  }
 }
