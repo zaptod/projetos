@@ -33,3 +33,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Lote das builds: a quarta entra?** — seg–qua para as builds também (recomendado) (01/10/2026) `lote-builds-quarta`
 - ✅ **Imagem-mestra do estilo: aprovar?** — Refazer (diga o que mudar no comentário) (02/10/2026) · “Sei lá quero algo mais estiloso” `imagem-mestra-v1`
 - ✅ **Imagem-mestra: qual estilo (9 testes)?** — 2 Anime (02/10/2026) `imagem-mestra-v2`
+- ⏳ **Som real nas 15 builds de estoque: fazer ou tirar da fila?** — O item parado desde 30/09 vai ou sai? `som-real-15-builds`
