@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-cb44cd52",
+      "em": "2026-10-04T13:54:40",
+      "evento": "2026-10-04T13:54:34",
+      "linha": 118,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "ligar",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Hoje o gerente está DESLIGADO: os itens da fila da Mesa só andam se alguém mandar, e as permissões do tipo 'gerente aceita' viram pergunta para você. Ligado, ele pega cada item da fila e contrata o trabalhador do cargo certo (Codex para construir, Claude para investigar/consertar), respeitando o limite de paralelo e o teto de uso; manda toda entrega aplicada para o conferente; e aceita sozinho as permissões que a sua política deixa (rede, repositório conhecido). Publicar, contas, push e decisões de produto continuam sempre com você.",
   "criado": "2026-10-04T13:52:20.952254",
   "depende_de": [],
