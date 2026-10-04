@@ -283,3 +283,32 @@ def test_pergunta_de_estado_fica_com_o_cerebro():
     assert not pedidos.e_de_estado("corrija o app que não está no ar?")
     assert not pedidos.e_de_estado("faça a aba de pedidos mostrar o status de cada um, com "
                                    "progresso ao vivo e a resposta final do conferente " * 3)
+
+
+def test_resposta_do_grimorio_vira_pedido_e_fica_lida(mesa):
+    """04/10/2026: "Por que nao tem ninguem lendo as decisoes?"."""
+    eventos = [{"id": "arquivo-de-videos", "projeto": "geral", "titulo": "Liberar espaço",
+                "opcao": "drive-desktop", "opcao_rotulo": "Google Drive para computador",
+                "comentario": "", "lida": False}]
+    itens = {"arquivo-de-videos": {"titulo": "Liberar espaço", "pergunta": "Como arquivar?",
+                                   "contexto": "73 GB de vídeos",
+                                   "opcoes": [{"id": "drive-desktop", "descricao": "move para o G:"}]}}
+    marcados = []
+
+    def marcar(ref, gerou, nota="", origem="leitor"):
+        marcados.append((ref, gerou))
+        eventos[0]["lida"] = True
+    mesa.grimorio = (lambda: [e for e in eventos if not e["lida"]], marcar, lambda: itens)
+    mesa.passo()
+    assert marcados and marcados[0][0] == "geral/arquivo-de-videos"
+    p = _pedido(mesa)
+    assert marcados[0][1] == [f"tarefa:{p['id']}"]
+    assert "Google Drive para computador" in p["texto"] and "move para o G:" in p["texto"]
+    assert p["origem"] == "grimorio"
+    assert mesa.despachante.criados[0][1]["cargo"] == "orquestrador"
+    mesa.passo()                                   # ja lida: nao cria de novo
+    assert len(marcados) == 1
+
+
+def test_sem_grimorio_ligado_o_passo_nao_le_nada(mesa):
+    assert mesa.grimorio is None and mesa.ler_grimorio() == []

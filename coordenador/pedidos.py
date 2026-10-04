@@ -143,6 +143,9 @@ class MesaPedidos:
         self.claude = claude
         self.relogio = relogio
         self.avisar = avisar or (lambda _texto: None)
+        # quem le as respostas do Grimorio: (leitor, marcar, carregar). Desligado por
+        # padrao -- teste nunca le nem marca o Grimorio real; o MESA de producao liga.
+        self.grimorio = None
         self.uso = uso
 
     # ------------------------------------------------------------ entrada
@@ -152,7 +155,7 @@ class MesaPedidos:
         texto = str(texto or "").strip()
         if not texto:
             raise ValueError("pedido vazio")
-        if origem not in ("app", "telegram"):
+        if origem not in ("app", "telegram", "grimorio"):
             raise ValueError("origem desconhecida")
         with _TRAVA:
             dados = _ler()
@@ -574,7 +577,50 @@ class MesaPedidos:
             _linha(dados, pedido, "em espera: " + motivo)
 
     # ------------------------------------------------------------ pulso
+    def ler_grimorio(self, leitor=None, marcar=None, carregar=None):
+        """Cada resposta NAO LIDA do Grimorio vira um pedido para um orquestrador do
+        servidor, e a resposta fica marcada como lida apontando para ele.
+
+        04/10/2026, o Adrian: "Por que nao tem ninguem lendo as decisoes?". Quem lia
+        era so a sessao do VS Code: fechada ela, a resposta ficava parada."""
+        if leitor is None or marcar is None or carregar is None:
+            if self.grimorio is None:
+                return []
+            leitor, marcar, carregar = self.grimorio
+        criados = []
+        itens = carregar()
+        for ev in leitor():
+            if ev.get("lida") or ev.get("ilegivel") or not ev.get("id"):
+                continue
+            no = itens.get(ev["id"]) or {}
+            opcao = next((o for o in no.get("opcoes") or [] if o.get("id") == ev.get("opcao")), {})
+            texto = (f"O Adrian respondeu no Grimório ({ev.get('projeto')}/{ev['id']}): "
+                     f"«{ev.get('titulo') or no.get('titulo')}»\n"
+                     f"Pergunta: {no.get('pergunta') or ''}\n"
+                     f"Escolheu: {ev.get('opcao_rotulo') or ev.get('opcao')} — {opcao.get('descricao') or ''}\n"
+                     + (f"Comentário dele: {ev['comentario']}\n" if ev.get("comentario") else "")
+                     + f"Contexto do nó: {no.get('contexto') or ''}\n\n"
+                     "APLIQUE a escolha: faça o que ela pede (ou contrate quem faça), confira e "
+                     "responda curto. Se já estiver feito, confirme e encerre. Se a escolha precisar "
+                     "de algo que só ele faz (login, conta), diga exatamente o quê.")
+            pedido = self.registrar(texto, "grimorio", novo=True)
+            ref = f"{ev.get('projeto')}/{ev['id']}"
+            try:
+                marcar(ref, [f"tarefa:{pedido['id']}"],
+                       nota="lida pelo servidor; virou pedido ao orquestrador", origem="leitor")
+            except Exception as exc:                          # noqa: BLE001
+                with _TRAVA:
+                    dados = _ler()
+                    _linha(dados, pedido, f"não consegui marcar {ref} como lida: {exc}")
+                    _gravar(dados)
+            criados.append(pedido["id"])
+        return criados
+
     def passo(self):
+        try:
+            self.ler_grimorio()
+        except Exception as exc:                              # noqa: BLE001
+            self.avisar(f"⚠ não consegui ler o Grimório: {exc}")
         with _TRAVA:
             dados = _ler()
             for pedido in dados["pedidos"]:
@@ -613,6 +659,11 @@ class MesaPedidos:
 
 
 MESA = MesaPedidos()
+
+
+def _ligar_grimorio_real():
+    from remoto import decisoes
+    MESA.grimorio = (decisoes.leitor, decisoes.marcar, decisoes.carregar)
 
 
 def registrar(texto, origem="app", *, novo=False):

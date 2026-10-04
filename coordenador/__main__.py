@@ -99,6 +99,8 @@ def montar() -> Supervisor:
     # a resposta final de um pedido vai tambem ao Telegram, de onde quer que
     # ele tenha vindo
     pedidos.MESA.avisar = s.avisar
+    # as respostas do Grimorio sao lidas pelo SERVIDOR (04/10/2026)
+    pedidos._ligar_grimorio_real()
     return s
 
 
