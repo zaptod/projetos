@@ -21,8 +21,17 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import sys
 import time
 from pathlib import Path
+
+# O pacote `ias` (correio, carteiro, rodizio) mora na RAIZ do repositorio e nao
+# e instalado: rodando de `historias/` (main.py auto) ele nao era achado, e toda
+# passada de imagens morreu com "No module named 'ias'" em 04/10/2026 -- os
+# testes passavam porque o pytest roda da raiz.
+_RAIZ_DO_REPO = str(Path(__file__).resolve().parents[3])
+if _RAIZ_DO_REPO not in sys.path:
+    sys.path.append(_RAIZ_DO_REPO)
 
 from builds.identity import browser as _rb_identity_browser
 from builds.identity import client as _rb_identity_client
