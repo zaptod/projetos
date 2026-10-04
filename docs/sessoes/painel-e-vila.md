@@ -42,6 +42,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Codex: quanto ele pensa** — Médio por padrão, alto nas difíceis (recomendado) (01/10/2026) `codex-esforco`
 - ✅ **Vigia do coordenador: aplica entrega do Codex sozinho?** — Sim, aplica sozinho (02/10/2026) `vigia-aplica-sozinho`
 - ✅ **Liberar espaço: arquivar os vídeos no Google Drive** — Google Drive para computador (recomendado) (04/10/2026) `arquivo-de-videos`
+- ⏳ **Ligar o gerente da equipe (a fila anda sozinha)?** — O gerente do servidor pode tocar a fila e as permissões sozinho? `gerente-ligado`
 
 **Painel e Vila**
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
