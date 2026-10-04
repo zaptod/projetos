@@ -33,11 +33,17 @@ def carregar_servicos(caminho=None):
 
 def processos_windows(rodar=subprocess.run):
     """[{pid, comando}], isolado para que testes nao dependam do Windows."""
-    script = ("Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine,"
+    # Saida em UTF-8 e leitura que NUNCA quebra: um processo com byte fora do
+    # padrao na linha de comando (0x87, cp850) fazia a leitura falhar, a lista
+    # vinha vazia e o pulso pulava TUDO -- leitor do Grimorio, vigia, gerente,
+    # pedidos. 3.043 pulsos assim de 02/10 a 04/10/2026.
+    script = ("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+              "Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine,"
               "@{n='Inicio';e={$_.CreationDate.ToString('s')}} | ConvertTo-Json -Compress")
     try:
         resultado = rodar(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                          capture_output=True, text=True, check=False)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          check=False)
         dados = json.loads(resultado.stdout or "[]")
     except (OSError, ValueError, TypeError):
         return []

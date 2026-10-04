@@ -281,3 +281,22 @@ def test_o_coordenador_de_producao_liga_a_esteira():
 
     from coordenador import __main__ as principal
     assert "esteira=ciclo_das_esteiras" in inspect.getsource(principal.montar)
+
+
+def test_processos_windows_le_em_utf8_sem_quebrar():
+    """04/10/2026: um byte fora do padrao na linha de comando de um processo fazia a
+    lista vir vazia e o pulso pular tudo (3.043 vezes em dois dias)."""
+    import subprocess
+
+    from coordenador.supervisor import processos_windows
+    visto = {}
+
+    def rodar(cmd, **kw):
+        visto.update(kw)
+        visto["script"] = cmd[-1]
+        saida = '[{"ProcessId": 7, "CommandLine": "python -m ias carteiro \u00e7", "Inicio": "2026-10-04T07:00:00"}]'
+        return subprocess.CompletedProcess(cmd, 0, stdout=saida, stderr="")
+    lista = processos_windows(rodar=rodar)
+    assert lista and lista[0]["pid"] == 7
+    assert visto["encoding"] == "utf-8" and visto["errors"] == "replace"
+    assert "OutputEncoding" in visto["script"]
