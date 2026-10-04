@@ -56,9 +56,13 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 Documento de passagem — escrito em 27/09/2026 pela sessão dona desta parte.
 
 As imagens usam `config/imagens.json`: `geradores_imagem` limita a roda a Gemini,
-ChatGPT e PicassoIA. Enquanto a decisão `imagens-divisao` estiver pendente, vale
-`por-historia`: a primeira cena fixa o gerador que está há mais tempo sem gerar,
-e as demais usam o mesmo; duas falhas da mesma cena movem só ela ao próximo. Em
+ChatGPT e PicassoIA. A decisão `imagens-divisao` foi tomada em 03/10/2026: um
+gerador por história (`por-historia`). Uma história nova fixa, na primeira cena,
+o gerador que está há mais tempo sem gerar, e as demais usam o mesmo; duas
+falhas da mesma cena movem só ela ao próximo. Uma história em andamento sem
+`gerador_imagem` no `imagens.json` herda o gerador das cenas já registradas
+(`fila.gerador_herdado`: o mais frequente; cena sem o campo `gerador` conta como
+PicassoIA, o único antes de 03/10), mesmo que ele esteja fora de cota. Em
 `por-cena`, cada pedido entra na caixa `livre`. O worker só copia o arquivo que
 o correio respondeu com prova de origem para `cenas/`; sem prova, a cena continua
 pendente.

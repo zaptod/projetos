@@ -304,9 +304,15 @@ def _gerar_pelo_correio(historia_id: str, *, limite: int | None = None,
         raise NaoRodou("nenhum gerador de imagem esta livre ou em cota")
     fixado = fila.gerador_da_historia(historia_id)
     if divisao == "por-historia" and not fixado:
-        fixado = ordem[0]
+        # Historia em andamento herda o gerador das cenas prontas (mesmo fora
+        # de cota): trocar no meio muda o rosto do personagem na serie.
+        herdado = fila.gerador_herdado(historia_id)
+        fixado = herdado or ordem[0]
         fila.definir_gerador_da_historia(historia_id, fixado)
-        log(f"[imagens] {historia_id}: {fixado} fixado para a historia.")
+        origem_fixado = ("herdado das cenas ja feitas" if herdado
+                         else "pelo rodizio")
+        log(f"[imagens] {historia_id}: {fixado} fixado para a historia "
+            f"({origem_fixado}).")
 
     geradas, erros, recusadas = 0, [], []
     protagonista = str(roteiro.get("protagonista") or "")

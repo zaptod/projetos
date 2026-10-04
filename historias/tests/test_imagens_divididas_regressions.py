@@ -106,6 +106,41 @@ class ImagensDivididasTests(unittest.TestCase):
         self.assertEqual("chatgpt", meta["cenas"]["1:1"]["gerador"])
         self.assertEqual(2, len(meta["falhas_de_geracao"]["1:1"]))
 
+    def _cena_antiga_pronta(self, registro):
+        """Cena 1 ja feita, registrada no formato que a historia guardou."""
+        linha = fila.estado("historia_teste", self.roteiro(2))[0]
+        linha["arquivo"].parent.mkdir(parents=True, exist_ok=True)
+        linha["arquivo"].write_bytes(self._bytes())
+        fila._gravar_meta("historia_teste", {"cenas": {"1:1": registro}})
+
+    def test_historia_antiga_sem_gerador_herda_o_picasso(self):
+        # Antes de 03/10 o PicassoIA era o unico gerador e a cena nao
+        # registrava qual foi; a parte que falta nao pode mudar de gerador.
+        self._cena_antiga_pronta({"prompt": "scene 1", "arquivo": "cena_01.png"})
+        chamadas = []
+        saida = worker.gerar("historia_teste", entregador=self.entregador(chamadas),
+                             log=lambda _msg: None)
+
+        self.assertEqual(1, saida["geradas"])
+        self.assertEqual(["picasso"], [caixa for caixa, _ in chamadas])
+        self.assertEqual("picasso", fila.gerador_da_historia("historia_teste"))
+
+    def test_historia_em_andamento_herda_o_gerador_registrado(self):
+        self._cena_antiga_pronta({"prompt": "scene 1", "arquivo": "cena_01.png",
+                                  "gerador": "chatgpt"})
+        chamadas = []
+        worker.gerar("historia_teste", entregador=self.entregador(chamadas),
+                     log=lambda _msg: None)
+
+        self.assertEqual(["chatgpt"], [caixa for caixa, _ in chamadas])
+        self.assertEqual("chatgpt", fila.gerador_da_historia("historia_teste"))
+
+    def test_gerador_herdado_fica_com_o_mais_frequente(self):
+        self.assertEqual("", fila.gerador_herdado("historia_teste"))
+        fila._gravar_meta("historia_teste", {"cenas": {
+            "1:1": {"gerador": "gemini"}, "1:2": {}, "1:3": {"gerador": ""}}})
+        self.assertEqual("picasso", fila.gerador_herdado("historia_teste"))
+
     def test_por_cena_pede_a_caixa_livre(self):
         fila.carregar_config = lambda: {
             "geradores_imagem": ["gemini", "chatgpt", "picasso"],

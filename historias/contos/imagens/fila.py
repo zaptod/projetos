@@ -256,6 +256,25 @@ def gerador_da_historia(historia_id: str) -> str:
     return str(_meta(historia_id).get("gerador_imagem") or "")
 
 
+def gerador_herdado(historia_id: str) -> str:
+    """O gerador que as cenas ja registradas usaram, ou ``""`` sem cena.
+
+    Historias comecadas antes de 03/10/2026 tem cenas sem o campo
+    ``gerador``: o PicassoIA era o unico, entao elas contam como "picasso".
+    Com mais de um, fica o mais frequente (empate: o que apareceu primeiro).
+    """
+    cenas = _meta(historia_id).get("cenas") or {}
+    contagem: dict[str, int] = {}
+    for registro in cenas.values():
+        if not isinstance(registro, dict):
+            continue
+        gerador = str(registro.get("gerador") or "picasso").lower()
+        contagem[gerador] = contagem.get(gerador, 0) + 1
+    if not contagem:
+        return ""
+    return max(contagem, key=contagem.get)
+
+
 def definir_gerador_da_historia(historia_id: str, gerador: str) -> None:
     """Fixa o gerador que dara unidade visual a uma historia."""
     dados = _meta(historia_id)
