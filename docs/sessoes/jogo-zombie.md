@@ -41,7 +41,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ✅ **Gemini: o CLI não aceita a conta pessoal** — Seguir com o Gemini no navegador (recomendado) (01/10/2026) `gemini-sem-cli`
 - ✅ **Codex: quanto ele pensa** — Médio por padrão, alto nas difíceis (recomendado) (01/10/2026) `codex-esforco`
 - ✅ **Vigia do coordenador: aplica entrega do Codex sozinho?** — Sim, aplica sozinho (02/10/2026) `vigia-aplica-sozinho`
-- ⏳ **Liberar espaço: arquivar os vídeos no Google Drive** — Como os vídeos antigos vão para o seu Drive de 5 TB? `arquivo-de-videos`
+- ✅ **Liberar espaço: arquivar os vídeos no Google Drive** — Google Drive para computador (recomendado) (04/10/2026) `arquivo-de-videos`
 
 **Jogo zombie**
 - ✅ **Formato do 1º vídeo** — Duelo (27/09/2026) `formato-do-primeiro-video`
