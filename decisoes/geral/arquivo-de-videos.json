@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Medido em 04/10: os vídeos ocupam 73 GB no E: (histórias 44 GB em 55 pastas; builds 29 GB, 27 GB deles já publicados) e crescem todo dia; o C: tem 14 GB livres e o E: 116 GB. Em cada pasta, 80% é mp4 (finais + pedaços de montagem) e o resto wav/png. Regra proposta para qualquer opção: vai para o Drive o que foi PUBLICADO há mais de 3 dias (e o que foi descartado); o estoque ainda não publicado fica no PC; o registro guarda onde cada vídeo foi parar, para recuperar quando precisar (republicar, métricas, recorte). O Google Drive para computador já está instalado no PC, mas desligado.",
+  "criado": "2026-10-04T12:45:50.558168",
+  "depende_de": [],
+  "historico": [],
+  "id": "arquivo-de-videos",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Você abre o app do Drive uma vez e faz login; ele cria o disco G: em modo streaming (os arquivos ficam só na nuvem e baixam quando abertos). O servidor move as pastas para G:\\Meu Drive\\neural-fights-arquivo sozinho, todo dia de madrugada. Sem configuração técnica.",
+      "id": "drive-desktop",
+      "pede_comentario": false,
+      "rotulo": "Google Drive para computador (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O servidor envia direto pela API do Drive, sem disco G:, com conferência de cada arquivo. Mais robusto para volumes grandes, mas exige uma autorização no navegador que só você pode fazer e um app do Google Cloud.",
+      "id": "rclone",
+      "pede_comentario": false,
+      "rotulo": "rclone (programa de linha de comando)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Sem Drive: apaga só os pedaços intermediários (_segments, wav) dos vídeos já publicados e mantém o mp4 final. Libera menos (uns 20-30%) e não guarda os pedaços.",
+      "id": "so-apagar",
+      "pede_comentario": false,
+      "rotulo": "Só apagar pedaços de montagem"
+    }
+  ],
+  "pergunta": "Como os vídeos antigos vão para o seu Drive de 5 TB?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Liberar espaço: arquivar os vídeos no Google Drive",
+  "vigente": null
+}

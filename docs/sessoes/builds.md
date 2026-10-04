@@ -41,6 +41,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Gemini: o CLI não aceita a conta pessoal** — Seguir com o Gemini no navegador (recomendado) (01/10/2026) `gemini-sem-cli`
 - ✅ **Codex: quanto ele pensa** — Médio por padrão, alto nas difíceis (recomendado) (01/10/2026) `codex-esforco`
 - ✅ **Vigia do coordenador: aplica entrega do Codex sozinho?** — Sim, aplica sozinho (02/10/2026) `vigia-aplica-sozinho`
+- ⏳ **Liberar espaço: arquivar os vídeos no Google Drive** — Como os vídeos antigos vão para o seu Drive de 5 TB? `arquivo-de-videos`
 
 **Builds**
 - ✅ **Variantes B** — Título próprio para cada uma (27/09/2026) `variantes-b`

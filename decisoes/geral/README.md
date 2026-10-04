@@ -40,3 +40,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Gemini: o CLI não aceita a conta pessoal** — Seguir com o Gemini no navegador (recomendado) (01/10/2026) `gemini-sem-cli`
 - ✅ **Codex: quanto ele pensa** — Médio por padrão, alto nas difíceis (recomendado) (01/10/2026) `codex-esforco`
 - ✅ **Vigia do coordenador: aplica entrega do Codex sozinho?** — Sim, aplica sozinho (02/10/2026) `vigia-aplica-sozinho`
+- ⏳ **Liberar espaço: arquivar os vídeos no Google Drive** — Como os vídeos antigos vão para o seu Drive de 5 TB? `arquivo-de-videos`
