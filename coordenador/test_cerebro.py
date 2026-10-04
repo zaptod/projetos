@@ -209,48 +209,20 @@ def test_o_codex_roda_so_leitura_numa_pasta_vazia(monkeypatch):
     assert kw["input"] == "prompt" and "UM_TOKEN_SECRETO" not in kw["env"]
 
 
-def test_com_a_sessao_ouvindo_a_mensagem_e_dela(feitos):
+def test_a_mensagem_da_mesa_e_do_servidor_nunca_do_cerebro(feitos):
+    """04/10/2026: a "mensagem para o orquestrador" vira PEDIDO no pulso
+    (`orquestrador.aplicar_pelo_servidor`). O cerebro nao a pega mais, com ou
+    sem a sessao do VS Code ouvindo (antes: depois de 60 s sem ouvinte)."""
     velho = (datetime.now() - timedelta(minutes=5)).isoformat(timespec="seconds")
     comandos = [{"id": "m1", "comando": "mensagem", "valor": "reinicia o app", "em": velho,
                  "situacao": "pendente"}]
     aplicados, codex = [], Codex({"resposta": "feito", "acoes": []})
-    r = cerebro.atender(comandos=lambda: comandos, aplicar=lambda i, **k: aplicados.append(i),
-                        vigia={"situacao": "ouvindo"}, rodar=codex, executar=feitos)
-    assert r == [] and aplicados == [] and codex.prompts == []
-    r = cerebro.atender(comandos=lambda: comandos, aplicar=lambda i, **k: aplicados.append(i),
-                        vigia={"situacao": "acordou"}, rodar=codex, executar=feitos)
-    assert r == [] and codex.prompts == []
-
-
-def test_sem_ouvinte_ha_60_s_o_cerebro_pega_a_mensagem(feitos):
-    agora = datetime.now()
-    novo = (agora - timedelta(seconds=20)).isoformat(timespec="seconds")
-    velho = (agora - timedelta(seconds=90)).isoformat(timespec="seconds")
-    comandos = [{"id": "m1", "comando": "mensagem", "valor": "como está?", "em": novo,
-                 "situacao": "pendente"},
-                {"id": "m2", "comando": "mensagem", "valor": "reinicia o app", "em": velho,
-                 "situacao": "pendente"},
-                {"id": "c3", "comando": "max_paralelo", "valor": 3, "em": velho,
-                 "situacao": "pendente"}]
-    aplicados = []
-    codex = Codex({"resposta": "Reiniciei.", "acoes": [acao("servico_reiniciar", "app")]})
-    r = cerebro.atender(comandos=lambda: comandos,
-                        aplicar=lambda i, **k: aplicados.append((i, k)),
-                        vigia={"situacao": "fora"}, rodar=codex, executar=feitos)
-    assert [x["comando"] for x in r] == ["m2"]
-    assert aplicados[0][0] == "m2" and "Reiniciei." in aplicados[0][1]["nota"]
-    assert feitos.lista == [("servico_reiniciar", "app")]
-
-
-def test_com_proibido_a_mensagem_fica_para_a_sessao(feitos):
-    claude_estado.mudar(False, por="teste")
-    velho = (datetime.now() - timedelta(minutes=5)).isoformat(timespec="seconds")
-    comandos = [{"id": "m1", "comando": "mensagem", "valor": "oi", "em": velho,
-                 "situacao": "pendente"}]
-    aplicados = []
-    cerebro.atender(comandos=lambda: comandos, aplicar=lambda i, **k: aplicados.append(i),
-                    vigia={"situacao": "fechada"}, rodar=Codex(), executar=feitos)
-    assert aplicados == []
+    for vigia in ("ouvindo", "acordou", "fora", "fechada"):
+        r = cerebro.atender(comandos=lambda: comandos,
+                            aplicar=lambda i, **k: aplicados.append(i),
+                            vigia={"situacao": vigia}, rodar=codex, executar=feitos)
+        assert r == []
+    assert aplicados == [] and codex.prompts == [] and feitos.lista == []
 
 
 def test_entrada_do_telegram_e_atendida_uma_vez_e_responde_por_la(feitos):

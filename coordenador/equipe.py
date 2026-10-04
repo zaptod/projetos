@@ -46,6 +46,18 @@ class GerenteEquipe:
         self.ultimo = agora
         return bool(self.despachante.ler_config().get("gerente_ligado", False))
 
+    def _fila_pausada(self):
+        """O "Pausar a fila" do app (04/10: o servidor aplica o comando na
+        hora) vale aqui: pausada, ninguem e contratado da fila. Config
+        ilegivel tambem nao contrata (falha fechado)."""
+        ler = getattr(self.mesa, "ler_config", None)
+        if ler is None:
+            return False
+        try:
+            return bool(ler().get("fila_pausada"))
+        except Exception:                                    # noqa: BLE001
+            return True
+
     def _contratar(self, item):
         tarefa_id = _id(item.get("id"))
         if any(t.get("id") == tarefa_id for t in self.despachante.listar()):
@@ -119,7 +131,7 @@ class GerenteEquipe:
         estado_mesa = self.mesa.ler_estado()
         ativos = [t for t in self.despachante.listar() if t.get("situacao") == "rodando"]
         limite = max(1, int(self.despachante.ler_config().get("delegados_paralelo", 1)))
-        if len(ativos) < limite:
+        if len(ativos) < limite and not self._fila_pausada():
             for item in estado_mesa.get("fila") or []:
                 self._contratar(item)
                 break

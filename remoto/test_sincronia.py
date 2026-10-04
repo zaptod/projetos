@@ -42,6 +42,15 @@ def _vigia_em(mundo, dados: dict) -> None:
     (pasta / "vigia.json").write_text(json.dumps(dados), encoding="utf-8")
 
 
+def _coordenador_pulsou(mundo, segundos_atras: float) -> None:
+    """O retrato que o coordenador publica a cada pulso (o servidor)."""
+    pasta = mundo.tmp / "coordenador"
+    pasta.mkdir(parents=True, exist_ok=True)
+    (pasta / "estado.json").write_text(json.dumps(
+        {"pid": 11840, "desde": _iso(3600), "pulso_em": _iso(segundos_atras),
+         "servicos": {}, "eventos": []}), encoding="utf-8")
+
+
 def _comando_de(mundo, segundos_atras: float, comando="retomar_fila", valor=None,
                 cid="49cfa9bb"):
     pasta = mundo.tmp / "orquestrador"
@@ -58,7 +67,11 @@ def test_caso_zero_sem_vigia_sem_sessao_sem_comando(mundo):
     assert "nunca deu sinal" in v["texto"]
     tela = O.para_o_app()
     assert tela["vigia"]["situacao"] == "fechada"
-    assert tela["sem_ouvinte"] is None
+    assert tela["comando_parado"] is None
+    # sem retrato do coordenador: o servidor "nunca" pulsou, e isso e alarme
+    assert tela["servidor"]["situacao"] == "nunca" and tela["fora_do_ar"] is True
+    assert tela["servidor"]["alarmes"] == [tela["servidor"]["texto"]]
+    assert tela["servidor"]["vscode"]["aberto"] is False
     # ler nao cria nada, e o aviso do Telegram nao fala de nada
     assert O._AvisoSemOuvinte.verificar(avisar=pytest.fail) is None
     assert not (mundo.tmp / "orquestrador").exists()
@@ -82,25 +95,43 @@ def test_pid_vivo_de_verdade():
     assert O._pid_vivo(0) is None and O._pid_vivo("x") is None
 
 
-def test_a_reproducao_de_29_09_as_00h58(mundo, monkeypatch):
-    """Sessao aberta (um relato de agora), vigia desligado desde o checkpoint
-    das 00:20, "retomar a fila" pendente ha 2 min 36 s. O campo antigo dizia
-    que estava tudo bem; a Mesa agora diz quem NAO esta ouvindo."""
+def test_a_reproducao_de_04_10_as_13h16_sessao_fechada_nao_e_alarme(mundo, monkeypatch):
+    """04/10 13:16: o app dizia "Sessao fechada: sem sinal do orquestrador
+    desde 07:12 (ha 5 h 59 min)" com o selo vermelho, e o coordenador pulsava
+    a cada 5 s. Quem aplica e o servidor: VS Code fechado e so uma linha."""
     monkeypatch.setattr(O, "_pid_vivo", lambda pid: False)
-    O.pulso()                                        # a CLI deu sinal agora
-    _vigia_em(mundo, {"situacao": "saiu", "pid": 999, "desde": _iso(3000),
-                      "pulso_em": _iso(2340), "saiu_em": _iso(2330),
+    O.pulso()
+    caminho = mundo.tmp / "orquestrador" / "estado.json"
+    estado = json.loads(caminho.read_text(encoding="utf-8"))
+    estado["atualizado_em"] = _iso(5 * 3600 + 59 * 60)
+    caminho.write_text(json.dumps(estado), encoding="utf-8")
+    _vigia_em(mundo, {"situacao": "saiu", "pid": 999, "desde": _iso(30000),
+                      "pulso_em": _iso(21600), "saiu_em": _iso(21590),
                       "motivo": "interrompido"})
+    _coordenador_pulsou(mundo, 3)
+    tela = O.para_o_app()
+    assert tela["vigia"]["situacao"] == "fechada"     # o VS Code, de fato, fechado
+    s = tela["servidor"]
+    assert s["situacao"] == "ok" and s["texto"].startswith("Servidor no ar · pulso às")
+    assert s["alarmes"] == [] and tela["fora_do_ar"] is False
+    assert tela["comando_parado"] is None
+    assert s["vscode"]["aberto"] is False and s["vscode"]["texto"].startswith("VS Code: fechado")
+    assert "Sessão fechada" not in json.dumps(tela, ensure_ascii=False)
+
+
+def test_comando_parado_com_o_servidor_sem_pulso_e_alarme(mundo):
+    """O mesmo "retomar a fila" de 2 min 36 s, agora com o coordenador sem
+    pulso: isso sim e problema (ninguem aplica)."""
+    _coordenador_pulsou(mundo, 600)
     _comando_de(mundo, 156)
     tela = O.para_o_app()
-    assert tela["fora_do_ar"] is False               # o sinal antigo: "tudo bem"
-    assert tela["vigia"]["situacao"] == "fora"
-    assert "o vigia está desligado há 38 min" in tela["vigia"]["texto"]
-    aviso = tela["sem_ouvinte"]
-    assert aviso["tipo"] == "sem_ouvinte" and aviso["comando"] == "49cfa9bb"
-    assert aviso["texto"].startswith("Ninguém está ouvindo agora; o comando será "
-                                     "aplicado quando o orquestrador voltar.")
-    assert "«retomar a fila»" in aviso["texto"]
+    s = tela["servidor"]
+    assert s["situacao"] == "sem_pulso" and tela["fora_do_ar"] is True
+    assert s["texto"].startswith("Servidor sem pulso desde")
+    aviso = tela["comando_parado"]
+    assert aviso["tipo"] == "sem_servidor" and aviso["comando"] == "49cfa9bb"
+    assert "«retomar a fila»" in aviso["texto"] and "quando ele voltar" in aviso["texto"]
+    assert s["alarmes"][0] == s["texto"]
 
 
 def test_sessao_fechada_diz_que_os_agentes_podem_nao_rodar(mundo):
@@ -111,8 +142,9 @@ def test_sessao_fechada_diz_que_os_agentes_podem_nao_rodar(mundo):
     caminho.write_text(json.dumps(estado), encoding="utf-8")
     v = O.situacao_do_vigia()
     assert v["situacao"] == "fechada"
-    assert "sem sinal do orquestrador desde" in v["texto"]
-    assert "O agente da lista pode não estar rodando" in v["texto"]
+    assert "VS Code fechado: sem sinal da sessão desde" in v["texto"]
+    assert "Não faz falta: o servidor aplica os comandos." in v["texto"]
+    assert "O agente que ela registrou pode não estar rodando" in v["texto"]
 
 
 def test_acordou_com_comando_e_aplicando_ate_3_min(mundo, monkeypatch):
@@ -122,23 +154,25 @@ def test_acordou_com_comando_e_aplicando_ate_3_min(mundo, monkeypatch):
     _comando_de(mundo, 200)
     v = O.situacao_do_vigia()
     assert v["situacao"] == "acordou"
-    # acordou = esta aplicando: nao e "ninguem ouvindo"
-    assert O.sem_ouvinte(O.comandos_com_situacao()[0], v) is None
+    assert O.situacao_do_vscode(vigia=v)["aberto"] is True
     assert O.situacao_do_vigia(time.time() + 181)["situacao"] == "fora"
 
 
-def test_sem_ouvinte_so_depois_de_2_min_e_preso_quando_ouvindo(mundo, monkeypatch):
+def test_comando_parado_so_depois_de_2_min_e_preso_com_o_servidor_no_ar(mundo):
     # 100 s e nao 119: com a maquina carregada a suite levava >1 s ate aqui e o
     # comando "de 119 s" ja tinha 120,004 s (barrou a entrega da Arena, 02/10)
     _comando_de(mundo, 100)
-    fora = {"situacao": "fora"}
-    assert O.sem_ouvinte(O.comandos_com_situacao()[0], fora) is None
-    assert O.sem_ouvinte(O.comandos_com_situacao()[0], fora, time.time() + 21)["tipo"] \
-        == "sem_ouvinte"
-    # ouvindo e ainda pendente depois de 2 min: travou do lado dele
-    preso = O.sem_ouvinte(O.comandos_com_situacao()[0], {"situacao": "ouvindo"},
-                          time.time() + 60)
-    assert preso["tipo"] == "preso" and "Algo travou" in preso["texto"]
+    sem = {"situacao": "sem_pulso"}
+    assert O.comando_parado(O.comandos_com_situacao()[0], sem) is None
+    assert O.comando_parado(O.comandos_com_situacao()[0], sem, time.time() + 21)["tipo"] \
+        == "sem_servidor"
+    # o servidor no ar e o comando ainda pendente depois de 2 min: travou no pulso
+    preso = O.comando_parado(O.comandos_com_situacao()[0], {"situacao": "ok"},
+                             time.time() + 60)
+    assert preso["tipo"] == "preso" and "não saiu da fila" in preso["texto"]
+    _coordenador_pulsou(mundo, 1)
+    servidor = O.situacao_do_servidor(time.time() + 60)
+    assert servidor["situacao"] == "ok" and servidor["alarmes"] == [preso["texto"]]
 
 
 # ============================================================ o `esperar`
@@ -212,21 +246,23 @@ def test_cli_vigia_diz_quem_ouve(mundo, capsys):
 def test_aviso_uma_vez_por_ocorrencia_e_o_voltou(mundo, monkeypatch):
     monkeypatch.setattr(O, "_pid_vivo", lambda pid: True)
     O.pulso()
+    _coordenador_pulsou(mundo, 400)
     _comando_de(mundo, 150)
     enviados = []
     texto = O._AvisoSemOuvinte.verificar(avisar=enviados.append)
-    assert texto and "Ninguém está ouvindo agora" in texto and len(enviados) == 1
+    assert texto and "O servidor está sem pulso" in texto and len(enviados) == 1
     # mesma ocorrencia, e o servidor que reinicia: nada de novo
     assert O._AvisoSemOuvinte.verificar(avisar=enviados.append) is None
     assert O._AvisoSemOuvinte().verificar(avisar=enviados.append) is None
     # outro comando na mesma ocorrencia: ainda nada
     _comando_de(mundo, 130, comando="pausar_fila", cid="aaaa0001")
     assert O._AvisoSemOuvinte.verificar(avisar=enviados.append) is None
-    # o orquestrador volta e aplica: um aviso de volta, com a demora
-    O.aplicado("49cfa9bb")
-    O.aplicado("aaaa0001")
+    # o servidor volta e aplica: um aviso de volta, com a demora
+    _coordenador_pulsou(mundo, 1)
+    O.aplicar_pelo_servidor({"id": "49cfa9bb", "comando": "retomar_fila"})
+    O.aplicar_pelo_servidor({"id": "aaaa0001", "comando": "pausar_fila"})
     volta = O._AvisoSemOuvinte.verificar(avisar=enviados.append)
-    assert volta.startswith("✓ Mesa de comando: o orquestrador voltou e aplicou «retomar a fila»")
+    assert volta.startswith("✓ Mesa de comando: o servidor aplicou «retomar a fila»")
     assert "ficou pendente 2 min" in volta
     assert len(enviados) == 2
     assert O._AvisoSemOuvinte.verificar(avisar=enviados.append) is None
@@ -258,17 +294,19 @@ def test_toques_rapidos_nao_gravam_o_mesmo_comando_duas_vezes(mundo):
     assert sum(1 for x in O.pendentes() if x["comando"] == "priorizar") == 2
 
 
-def test_rota_do_comando_diz_se_alguem_ouve_e_se_repetiu(servidor, mundo):
+def test_rota_do_comando_diz_se_o_servidor_esta_no_ar_e_se_repetiu(servidor, mundo):
     token = _parear(servidor)
     status, r = _pedir(servidor, "POST", "/api/orquestrador/comando",
                        {"comando": "pausar_fila", "valor": None}, token)
-    assert status == 200 and r["vigia"]["situacao"] == "fechada"
+    assert status == 200 and r["servidor"]["situacao"] == "nunca"
+    _coordenador_pulsou(mundo, 2)
     status, r2 = _pedir(servidor, "POST", "/api/orquestrador/comando",
                         {"comando": "pausar_fila", "valor": None}, token)
     assert status == 200 and r2["comando"]["repetido"] is True
     assert r2["comando"]["id"] == r["comando"]["id"]
     status, tela = _pedir(servidor, "GET", "/api/orquestrador", token=token)
-    assert tela["pendentes"] == 1 and tela["vigia"]["situacao"] == "fechada"
+    assert tela["pendentes"] == 1 and tela["servidor"]["situacao"] == "ok"
+    assert tela["servidor"]["resumo"].endswith("comandos: 1 esperando o pulso")
 
 
 # ============================================ a casca e o relogio do PC
@@ -350,7 +388,8 @@ def test_rota_responder_com_tela_velha_da_409(servidor, mundo):
                        {"id": "teste-sincronia", "opcao": "b", "esperava": ""}, token)
     assert status == 409 and "mudou enquanto" in r["erro"]
     status, dados = _pedir(servidor, "GET", "/api/decisoes", token=token)
-    assert status == 200 and dados["vigia"]["situacao"] == "fechada"
+    # quem le as respostas e o servidor: sem retrato do coordenador, "nunca"
+    assert status == 200 and dados["servidor"]["situacao"] == "nunca"
     assert dados["itens"]["teste-sincronia"]["vigente"]["opcao"] == "a"
 
 

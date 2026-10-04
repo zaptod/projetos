@@ -221,7 +221,8 @@ python -m remoto.delegar listar | ver --id X | uso | modelos   # o Codex delegad
 python -m remoto.orquestrador capacidade --max-paralelo N | --teto P | --forca-total on|off \
     [--modo M] --fonte chat|app [--porque "palavras dele"]            # vira regra (§7)
 python -m remoto.orquestrador eu "no que a sessão principal está"
-python -m remoto.orquestrador vigia       # quem ouve os comandos agora (código 1 = ninguém; §9)
+python -m remoto.orquestrador vigia       # o `esperar` do VS Code (código 1 = fechado; §9)
+python -m remoto.orquestrador servidor    # quem aplica: pulso, pedidos, trabalhadores, alarmes (§19)
 python -m ias carteiro [--uma-vez] [--duble]   # o carteiro do correio (§10); --duble não abre navegador
 python -m ias correio <ia> [--enviar TEXTO] [--json]   # a caixa de uma IA
 ```
@@ -490,6 +491,11 @@ Pedido do Adrian: ver no que o orquestrador trabalha e controlar fluxo,
 acessos, decisões, capacidade e agentes paralelos, com os limites de sessão
 e semana à vista. Desenho: `~/.claude/plans/orquestrador-no-app.md`.
 
+> **Desde 04/10/2026 quem aplica os comandos é o SERVIDOR** (o pulso do
+> coordenador, `orquestrador.aplicar_pelo_servidor`), não a sessão do VS
+> Code; o topo de Agora mostra o servidor (§19). O que segue sobre `esperar`
+> e "ouvindo" descreve a sessão do VS Code, que virou só mais um trabalhador.
+
 **Princípio.** O orquestrador **publica** o estado em arquivos, pela CLI; o
 app **mostra** e **grava comandos**; o orquestrador lê (`pendentes`), aplica
 e registra (`aplicado`). A config só muda no `aplicado`. A tela mostra cada
@@ -712,7 +718,7 @@ retrato de
 `%LOCALAPPDATA%\neural-fights\coordenador\estado.json`: pulso, serviços,
 ações fechadas do PC e eventos. A rota `/api/coordenador` só lê esse arquivo;
 `/api/coordenador/comando` exige aparelho pareado e `--acoes`, valida o
-catálogo publicado e deixa o pedido pendente para o orquestrador aplicar.
+catálogo publicado e deixa o pedido pendente para o pulso do coordenador aplicar.
 
 **02/10/2026: o cérebro e o vigia de trabalho** (detalhes em
 `docs/sessoes/coordenador.md`). A tela ganhou duas abas:
@@ -869,6 +875,12 @@ vazia. Foram 25 conferências pelo DOM e 0 erros de JS. Telas em
 - No caso ZERO, nenhum contador e nenhum cartão.
 
 ## 9. Sincronia: o que a tela mostra contra o que acontece (29/09/2026)
+
+> **Mudou em 04/10/2026 (§19):** o `sem_ouvinte` saiu; no lugar dele,
+> `comando_parado(comandos, servidor)` olha o SERVIDOR (o pulso do
+> coordenador), e o aviso do Telegram (decisão
+> `aviso-no-telegram-comando-da-mesa-sem-ni`, os dois avisos) fala dele. O
+> `situacao_do_vigia` continua, só para a sessão do VS Code, sem alarme.
 
 Pedido do Adrian: "cuide desse problema de sincronização que existe hoje no
 app". Levantado medindo (log `outputs/app_celular.txt`, `comandos.jsonl`,
@@ -1296,7 +1308,7 @@ desligar pelo app. "Usar o Claude" é tudo que chama o Claude Code sozinho:
 | o **apurador** do bot (`claude -p`) | `uma_volta` não chama o Claude, **não marca** os erros (ficam para quando liberar, dentro das 12 h) e escreve no diário `apurador/log` "apuração pulada: Claude proibido pelo Adrian desde HH:MM (N erro(s) guardado(s))". `apurar` e `consertar` também recusam sozinhos (guarda no ponto, não só no funil) |
 | `orquestrador agente-inicio` | recusa com código 3: "Claude proibido pelo Adrian desde HH:MM; nem o --forcar passa" — com ou sem `--forcar` |
 | `orquestrador esperar` | **não acorda** com comando nem com decisão nova (cada saída acorda a sessão principal, e isso é uso). Os comandos ficam pendentes e o cursor das decisões não anda. O `vigia.json` segue pulsando, com `segurando: "Claude proibido desde …"`. Sai **só** quando o estado volta a `liberado`, com `{"tipo": "claude_liberado", "em", "por", "motivo", "texto"}` na frente e os comandos e decisões guardados atrás (motivo da saída: `claude_liberado`) |
-| o aviso "ninguém ouvindo" | vira `guardado` na Mesa (sem faixa vermelha nem selo) e **não** manda Telegram: comando parado é a ordem dele, não ausência |
+| o aviso "ninguém ouvindo" | **mudou em 04/10 (§19):** não há mais "guardado". O servidor aplica os comandos com o Claude proibido também (aplicar não usa o Claude); a mensagem vira pedido, e o pedido espera o Claude (ou vai ao Codex, se for de construir) |
 
 O carteiro das IAs (`ias/`) abre navegador, não o Claude: não é afetado.
 
@@ -2172,6 +2184,99 @@ consertados antes da entrega: 🛰 e 🎞 nas abas saíam como glifo de texto
 tem os 4 objetos (⏳ ampulheta, 📖 grimório roxo com chroma verde, 📯
 corneta de mensageiro, 🔭 luneta); as 7 antigas e os 3 ícones de dentro da
 Mesa saíram (nenhum tinha arte). Inventário regenerado: 133 itens.
+## 19. O servidor aplica os comandos; sem "sessão fechada" (04/10/2026)
+
+Pedido do Adrian (04/10): "tá com um aviso de sessão fechada em relação ao
+orquestrador, resolva tudo em relação às pendências que ficaram na
+arquitetura". A hierarquia é servidor (o coordenador, 24 h) → app →
+trabalhadores (Claude, Codex, VS Code), e o app ainda tratava a sessão do VS
+Code como "o orquestrador".
+
+**Medido às 13:16:** a Mesa dizia "Sessão fechada: sem sinal do orquestrador
+desde 07:12 (há 5 h 59 min)", com o selo vermelho no objeto Agora. Ao mesmo
+tempo, o coordenador pulsava a cada 5 s (PID 11840), com 2 trabalhadores
+rodando e 3 pedidos. O `vigia.json` era de 02/10 12:19 e o último relato da
+sessão, de 03/10 16:06. Os comandos do app (capacidade, fila, parar,
+modelos, mensagem) só saíam quando a sessão rodasse `esperar`/`aplicado`.
+
+**Quem aplica agora.** O pulso do coordenador (`Supervisor.processar_comandos`)
+manda cada pendente que não é de serviço para `aplicar_app` =
+`orquestrador.aplicar_pelo_servidor` (ligado em `coordenador/__main__.py`):
+- **capacidade e modo**: o `aplicado` de sempre, com Grimório e histórico,
+  e o espelho no despachante: `delegados/config.json` → `delegados_paralelo`
+  = o paralelo efetivo da Mesa (um por vez = 1);
+- **modelos**: `modelo_agentes`/`modelo_claude` também vão para o
+  `modelo_claude` do despachante; o `modelo_codex` o despachante já lia da
+  Mesa no próximo `criar`; o `modelo_gemini` grava o `llm.json` como antes;
+- **fila** (pausar, retomar, ordem, pôr, tirar): como antes, no `estado.json`.
+  O gerente da equipe (`coordenador/equipe.py`) passou a obedecer o
+  `fila_pausada`;
+- **parar_agente**: um trabalhador do servidor vai ao `delegar.parar` (para
+  em ~2 s). Um agente da Mesa, com o VS Code fechado, sai como "parado"
+  (`agente_fim`); com ele aberto, fica "parando" para a sessão fechar. Id
+  que ninguém tem é recusado com o motivo;
+- **mensagem para o orquestrador**: vira PEDIDO
+  (`coordenador.pedidos.registrar(texto, "app")`), continuação do pedido vivo
+  quando houver um; a nota diz "virou o pedido pedido-xxxx";
+- **contestar**: o nó já está no Grimório; o servidor só marca como visto.
+
+Cada um é marcado aplicado (ou recusado) com o desfecho na nota, e a linha
+do tempo diz "o servidor aplicou …". Com o Claude proibido também: aplicar
+não usa o Claude. Erro de disco deixa o comando pendente e vira **um**
+evento `comando_erro` no coordenador (não um a cada 5 s). Se o `esperar` do
+VS Code aplicar antes, o servidor vê `JaResolvido` e segue: nada é aplicado
+duas vezes. O que o servidor grava no estado não renova o `atualizado_em`
+(o sinal da CLI da sessão), senão um VS Code fechado pareceria aberto (a
+prova pegou isso).
+
+O cérebro (`coordenador/cerebro.py`) não pega mais a mensagem da Mesa depois
+de 60 s sem ouvinte; o aviso "o Claude não está aberto; sua mensagem ficou
+guardada" do supervisor saiu.
+
+**O que a tela mostra** (`situacao_do_servidor`, chave `servidor` do
+`/api/orquestrador`, e a CLI `python -m remoto.orquestrador servidor`):
+- topo de "Rodando agora": **Servidor** — "🛰 no ar · Servidor no ar · pulso
+  às HH:MM:SS (há N s)", "N pedido(s) em andamento · M trabalhador(es)
+  rodando · comandos: todos aplicados", e "💻 VS Code: aberto/fechado
+  (último sinal DD/MM HH:MM)", sem alarme;
+- **alarmes** (faixa vermelha e selo vermelho no objeto Agora) só para
+  problema real: o coordenador sem pulso há mais de 2 min (ou nunca), um
+  comando pendente há mais de 2 min com o servidor no ar ("preso"), um
+  trabalhador travado (processo sumido sem desfecho, ou rodando sem evento
+  há mais de 15 min) e o Claude acima do teto;
+- `fora_do_ar` agora é "o servidor sem pulso"; a chave `sem_ouvinte` virou
+  `comando_parado`; a rota do comando e o `/api/decisoes` levam `servidor`
+  no lugar de `vigia`; o rodapé do Grimório só fica vermelho com o servidor
+  sem pulso;
+- os textos que falavam do "orquestrador ouvindo / voltar a ouvir / sessão
+  fechada / comandos guardados" saíram do Agora, do Mandar, do Decidir e do
+  interruptor do Claude (`test_servidor_aplica.py` varre a casca).
+
+Casca `v41`. **Testes:** `remoto/test_servidor_aplica.py` (24: o pulso
+aplica sem sessão, a capacidade no despachante, fila e modelos, a mensagem
+vira pedido, com o Claude proibido também, o parar nos três casos, o já
+resolvido, o erro de disco, o servidor vivo sem aviso, sem pulso com
+alarme, travado e teto, o VS Code aberto sem alarme, a data do último sinal
+e a CLI); `test_sincronia.py` e `test_claude_estado.py` reescritos para o
+modelo novo; `coordenador/test_coordenador.py` (+2), `test_cerebro.py` e
+`test_equipe.py` (+1); e o `test_app_tela.py` com a Mesa real isolada e o
+teste de navegador do Agora (servidor no ar sem faixa nem selo; sem pulso
+há 10 min, com os dois).
+
+**Prova de tela (04/10, 13:36):** instância isolada na 8934 dentro do
+processo da prova, com cópia do estado real (orquestrador, coordenador
+recopiado a cada 2 s, pedidos e fichas dos delegados), sem sonda, sem
+`--acoes` e sem Telegram; Chrome 390×844, clicando. "Servidor no ar · pulso
+às 13:36:00 (há 5 s)", "2 pedido(s) em andamento · 2 trabalhador(es)
+rodando · comandos: todos aplicados", "VS Code: fechado (último sinal 03/10
+16:06)", faixa oculta, objeto Agora sem selo vermelho, nenhum "sessão
+fechada", 0 erros de JS. Telas em `E:\projetos-wt\_prova_servidor\133601\telas\`.
+
+**Fica para depois:** o servidor do app (8931) e o coordenador precisam
+reiniciar para valer (o coordenador carrega o `aplicar_pelo_servidor`; o
+app, a casca v41 e as rotas). Quem reinicia é quem chamou, fora da janela
+da postagem.
+
 # Sprites para conferir
 
 **Decidir > 🎨 Sprites** mostra as fichas que a esteira deixou em

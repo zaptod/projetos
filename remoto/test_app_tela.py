@@ -58,6 +58,16 @@ def _decisoes_de_fixture():
             "leitor": {"nao_lidas": 0, "eventos_ilegiveis": 0, "erro_da_mesa": ""}}
 
 
+def _coordenador_pulsou(local: Path, segundos_atras: float) -> None:
+    """O retrato que o coordenador (o servidor) publica a cada pulso."""
+    pasta = local / "neural-fights" / "coordenador"
+    pasta.mkdir(parents=True, exist_ok=True)
+    pulso = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - segundos_atras))
+    (pasta / "estado.json").write_text(json.dumps(
+        {"pid": 11840, "desde": pulso, "pulso_em": pulso, "versao": "teste",
+         "servicos": {}, "acoes_pc": [], "eventos": []}), encoding="utf-8")
+
+
 @pytest.fixture
 def tela_isolada(tmp_path, monkeypatch):
     """Servidor e fontes da tela: so fixtures, inclusive LOCALAPPDATA."""
@@ -75,7 +85,11 @@ def tela_isolada(tmp_path, monkeypatch):
     monkeypatch.setattr(painel_dados._Previsao, "disponivel", staticmethod(lambda: False))
     monkeypatch.setattr(painel_dados, "_RELATORIOS_CACHE", {})
     monkeypatch.setattr(painel_dados, "videos", lambda n=40: [])
-    monkeypatch.setattr(orquestrador, "para_o_app", lambda: {})
+    # a Mesa de verdade (04/10), com tudo na pasta do teste: o orquestrador mora
+    # no LOCALAPPDATA trocado; o coordenador (o servidor) pulsa ali tambem
+    monkeypatch.setattr(orquestrador, "USO_EXTRA", tmp_path / "uso_sessao.json")
+    monkeypatch.setenv("NF_COORDENADOR_PASTA", str(local / "neural-fights" / "coordenador"))
+    _coordenador_pulsou(local, 0)
     monkeypatch.setattr(decisoes, "para_o_app", _decisoes_de_fixture)
     monkeypatch.setattr(vila_dados, "estado", lambda: {"placar": [], "travas": [], "fabricas": []})
     monkeypatch.setattr(vila_nova.MOTOR, "retrato", lambda: {})
@@ -202,3 +216,51 @@ def test_o_app_abre_vila_objetos_e_abas_sem_erros_de_tela(tela_isolada, tamanho)
         assert not imagens_quebradas, imagens_quebradas
         assert not api_erros, api_erros
         nav.close()
+
+
+def test_agora_mostra_o_servidor_e_nao_a_sessao_fechada(tela_isolada, tmp_path):
+    """04/10/2026: com o coordenador pulsando e o VS Code fechado, o Agora diz
+    "Servidor no ar", sem faixa nem selo vermelho; com o coordenador sem pulso
+    ha 10 min, a faixa e o selo acendem. Conferido pelo DOM, no Chrome."""
+    if not NAVEGADOR:
+        pytest.skip("so com NF_TESTE_NAVEGADOR=1")
+    from patchright.sync_api import sync_playwright
+
+    local = Path(os.environ["LOCALAPPDATA"])
+    base = f"http://127.0.0.1:{tela_isolada.server_address[1]}"
+    token = api_http.trocar_codigo(api_http.novo_codigo(), "chrome-de-teste")
+    CAPTURAS.mkdir(parents=True, exist_ok=True)
+    erros = []
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch(channel="chrome", headless=True)
+        ctx = nav.new_context(viewport={"width": 390, "height": 844}, is_mobile=True,
+                              has_touch=True, service_workers="block")
+        ctx.set_default_timeout(8000)
+        page = ctx.new_page()
+        page.on("pageerror", lambda erro: erros.append(str(erro)))
+        page.goto(base + "/", wait_until="domcontentloaded")
+        page.evaluate("([token]) => localStorage.setItem('painel.token', token)", [token])
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function("document.body.classList.contains('pareado')")
+        page.locator("#obj-agora").wait_for(state="visible")
+        page.evaluate("() => document.querySelector('#obj-agora').click()")
+        page.locator("#orq-servidor").wait_for(state="visible")
+        servidor = page.locator("#orq-servidor").inner_text()
+        assert "no ar" in servidor and "Servidor no ar · pulso às" in servidor
+        assert "VS Code: fechado" in page.locator("#orq-vscode").inner_text()
+        assert "oculto" in (page.locator("#orq-faixa").get_attribute("class") or "")
+        assert "selo-alerta" not in (page.locator("#obj-agora").get_attribute("class") or "")
+        corpo = page.locator("#tela-agora").inner_text()
+        assert "essão fechada" not in corpo and "ouvindo" not in corpo
+        page.screenshot(path=str(CAPTURAS / "agora-servidor-no-ar.png"))
+        page.screenshot(path=str(CAPTURAS / "agora-servidor-no-ar-inteira.png"), full_page=True)
+
+        # o servidor para de pulsar: isso sim e alarme (a tela rele a cada 10 s)
+        _coordenador_pulsou(local, 600)
+        page.locator("#orq-faixa:not(.oculto)").wait_for(state="visible", timeout=20000)
+        assert "Servidor sem pulso desde" in page.locator("#orq-faixa").inner_text()
+        assert "sem pulso" in page.locator("#orq-servidor-selo").inner_text()
+        assert "selo-alerta" in (page.locator("#obj-agora").get_attribute("class") or "")
+        page.screenshot(path=str(CAPTURAS / "agora-servidor-sem-pulso.png"))
+        nav.close()
+    assert not erros, erros

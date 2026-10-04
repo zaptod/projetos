@@ -23,9 +23,17 @@ aplicou (`aplicado`). Tudo mora em `%LOCALAPPDATA%\\neural-fights\\orquestrador\
     vigia.json                   `esperar`     o pulso de quem ouve os comandos (30 s) e a saida
     acessos.json                 gerado        agentes, conectores, contas (sem segredo), o que o app dispara
 
-A CONFIG SO MUDA QUANDO O ORQUESTRADOR ACEITA. O app grava o comando; o
-`config.json` muda no `aplicado`. Assim a tela diz a verdade: "pendente"
-enquanto ninguem leu, "aplicado" quando vale, "recusado" com o motivo.
+A CONFIG SO MUDA NO `aplicado`. O app grava o comando; o `config.json` muda
+no `aplicado`. Assim a tela diz a verdade: "pendente" enquanto ninguem leu,
+"aplicado" quando vale, "recusado" com o motivo.
+
+DESDE 04/10/2026 QUEM APLICA E O SERVIDOR. A hierarquia e servidor (o
+coordenador, 24 h) -> app -> trabalhadores. O pulso do coordenador chama
+`aplicar_pelo_servidor` para cada comando pendente (a mensagem vira pedido,
+a capacidade vale tambem no despachante, o parar vai ao despachante); a
+sessao do VS Code deixou de ser necessaria e e so mais um trabalhador
+(`situacao_do_vscode`, sem alarme). O topo de Agora mostra
+`situacao_do_servidor`: pulso, pedidos, trabalhadores, comandos e alarmes.
 
 CLI (a do orquestrador):
 
@@ -47,7 +55,8 @@ CLI (a do orquestrador):
     python -m remoto.orquestrador esperar [--intervalo S]     # sai quando chega comando
                                                   # ou resposta nova do Adrian (decisao_nova);
                                                   # pulsa o vigia.json a cada 30 s
-    python -m remoto.orquestrador vigia                       # quem esta ouvindo (codigo 1 = ninguem)
+    python -m remoto.orquestrador vigia                       # o `esperar` do VS Code (codigo 1 = fechado)
+    python -m remoto.orquestrador servidor                    # o servidor: pulso, pedidos, alarmes
     python -m remoto.orquestrador config | estado | uso | pulso | onde | modelos
     python -m remoto.orquestrador sonda                        # mede o uso uma vez
     python -m remoto.orquestrador acessos [--conector NOME]... [--modo-permissao M]
@@ -59,6 +68,7 @@ CLI (a do orquestrador):
 from __future__ import annotations
 
 import argparse
+import contextlib
 import glob
 import hashlib
 import json
@@ -229,8 +239,25 @@ def ler_estado() -> dict:
     return estado
 
 
+_PELO_SERVIDOR = threading.local()
+
+
+@contextlib.contextmanager
+def _pelo_servidor():
+    """Enquanto o servidor aplica um comando, o que ele grava no estado NAO
+    renova `atualizado_em`: esse campo e o sinal da sessao do VS Code (a CLI
+    dela), e o servidor aplicando faria um VS Code fechado parecer aberto."""
+    antes = getattr(_PELO_SERVIDOR, "ativo", False)
+    _PELO_SERVIDOR.ativo = True
+    try:
+        yield
+    finally:
+        _PELO_SERVIDOR.ativo = antes
+
+
 def _gravar_estado(estado: dict) -> None:
-    estado["atualizado_em"] = _agora_iso()
+    if not getattr(_PELO_SERVIDOR, "ativo", False):
+        estado["atualizado_em"] = _agora_iso()
     _arquivar_concluidos(estado)
     _gravar_json(arquivo("estado.json"), estado)
 
@@ -713,7 +740,6 @@ def pulso() -> str:
 VIGIA_PULSO_S = 30
 VIGIA_VIVO_S = 90             # tres pulsos perdidos: nao esta ouvindo
 VIGIA_ACORDOU_S = 180         # saiu com um comando: esta aplicando, ate 3 min
-SEM_OUVINTE_S = 120           # pendente ha mais que isto sem ouvinte: avisa
 SITUACOES_DO_VIGIA = ("ouvindo", "acordou", "preso", "fora", "fechada")
 
 
@@ -834,7 +860,11 @@ def _ha(segundos) -> str:
 
 
 def situacao_do_vigia(agora: float | None = None, estado: dict | None = None) -> dict:
-    """Quem esta ouvindo os comandos do app, agora.
+    """A sessao do VS Code: o `esperar` dela esta ouvindo?
+
+    Desde 04/10/2026 quem aplica os comandos e o SERVIDOR (o pulso do
+    coordenador, `aplicar_pelo_servidor`): isto so descreve a sessao do VS Code
+    como mais um trabalhador, e a tela nao alarma por ela.
 
     ouvindo  o `esperar` pulsou ha menos de 90 s e o processo existe;
     acordou  ele saiu ha menos de 3 min com um comando ou resposta nova (esta
@@ -869,21 +899,21 @@ def situacao_do_vigia(agora: float | None = None, estado: dict | None = None) ->
         if (vigia.get("situacao") == "ouvindo" and idade is not None
                 and idade <= VIGIA_VIVO_S and _pid_vivo(vigia.get("pid")) is not False):
             saida["situacao"] = "ouvindo"
-            saida["texto"] = (f"O orquestrador está ouvindo (último pulso às "
+            saida["texto"] = (f"A sessão do VS Code está ouvindo (último pulso às "
                               f"{str(vigia.get('pulso_em'))[11:19]}).")
             if vigia.get("segurando"):
                 # Claude proibido: o `esperar` esta vivo, mas nao acorda
                 saida["segurando"] = str(vigia["segurando"])
-                saida["texto"] = (f"O orquestrador está ouvindo, mas segurando: "
-                                  f"{vigia['segurando']}. Nada é aplicado até liberar.")
+                saida["texto"] = (f"A sessão do VS Code está ouvindo, mas segurando: "
+                                  f"{vigia['segurando']}. O servidor aplica os comandos.")
             return saida
         saiu_idade = _idade_s(vigia.get("saiu_em"), agora)
         if (vigia.get("situacao") == "saiu" and vigia.get("motivo") in
                 ("comando", "decisao_nova") and saiu_idade is not None
                 and saiu_idade <= VIGIA_ACORDOU_S):
             saida["situacao"] = "acordou"
-            saida["texto"] = (f"O orquestrador acordou às {_hhmm(vigia.get('saiu_em'))} "
-                              "com um pedido e está aplicando; volta a ouvir em seguida.")
+            saida["texto"] = (f"A sessão do VS Code acordou às {_hhmm(vigia.get('saiu_em'))} "
+                              "com um pedido; volta a ouvir em seguida.")
             return saida
         # desde quando ninguem ouve: a saida registrada, ou o ultimo pulso
         desde = vigia.get("saiu_em") if vigia.get("situacao") == "saiu" \
@@ -897,57 +927,21 @@ def situacao_do_vigia(agora: float | None = None, estado: dict | None = None) ->
         else:
             quanto = (f"o vigia está desligado há {_ha(saida['sem_ouvir_s'])} "
                       f"(desde {_hhmm(saida['sem_ouvir_desde'])})")
-        saida["texto"] = (f"O orquestrador está fora: a sessão está aberta (sinal às "
-                          f"{_hhmm(sessao_em)}), mas {quanto}.")
+        saida["texto"] = (f"VS Code aberto (sinal às {_hhmm(sessao_em)}), sem ouvir os "
+                          f"comandos: {quanto}. Não faz falta: o servidor aplica.")
         return saida
     agentes = len((estado or {}).get("agora") or [])
     if sessao_em:
-        texto = (f"Sessão fechada: sem sinal do orquestrador desde {_hhmm(sessao_em)} "
-                 f"(há {_ha(sessao_idade)}).")
+        texto = (f"VS Code fechado: sem sinal da sessão desde {_hhmm(sessao_em)} "
+                 f"(há {_ha(sessao_idade)}). Não faz falta: o servidor aplica os comandos.")
     else:
-        texto = "Sessão fechada: o orquestrador nunca deu sinal aqui."
+        texto = ("VS Code: a sessão nunca deu sinal aqui. Não faz falta: o servidor "
+                 "aplica os comandos.")
     if agentes:
-        texto += (f" {'O agente da lista pode' if agentes == 1 else f'Os {agentes} agentes da lista podem'}"
+        texto += (f" {'O agente que ela registrou pode' if agentes == 1 else f'Os {agentes} agentes que ela registrou podem'}"
                   " não estar rodando.")
     saida["texto"] = texto
     return saida
-
-
-def sem_ouvinte(comandos: list[dict], vigia: dict, agora: float | None = None) -> dict | None:
-    """O aviso "ninguem esta ouvindo": o comando pendente MAIS VELHO, se passou
-    de 2 min e o vigia nao esta ouvindo. Ouvindo e ainda pendente e defeito
-    (o `esperar` le a cada 5 s): o aviso diz isso, e nao que ele saiu."""
-    agora = time.time() if agora is None else agora
-    pendentes_ = [c for c in comandos if c.get("situacao") == "pendente"]
-    idades = [(_idade_s(c.get("em"), agora), c) for c in pendentes_]
-    idades = [(i, c) for i, c in idades if i is not None]
-    if not idades:
-        return None
-    proibido = claude_estado.motivo_proibido()
-    if proibido:
-        # Nao e defeito nem ausencia: e a ordem dele. Os comandos ficam
-        # guardados e saem quando ele liberar (o `esperar` os devolve).
-        return {"tipo": "guardado", "comando": None, "desde": None, "idade_s": None,
-                "quantos": len(pendentes_),
-                "texto": (f"{proibido}: {len(pendentes_)} comando(s) guardado(s); "
-                          "saem quando ele liberar.")}
-    idade, comando = max(idades, key=lambda x: x[0])
-    if idade < SEM_OUVINTE_S or vigia.get("situacao") == "acordou":
-        return None
-    qual = (f"«{comando.get('rotulo') or comando.get('comando')}», pendente desde "
-            f"{_hhmm(comando.get('em'))} (há {_ha(idade)})")
-    if len(pendentes_) > 1:
-        qual += f", e mais {len(pendentes_) - 1}"
-    if vigia.get("situacao") == "ouvindo":
-        texto = (f"O orquestrador está ouvindo, mas o comando não saiu da fila: {qual}. "
-                 "Algo travou do lado dele.")
-        tipo = "preso"
-    else:
-        texto = ("Ninguém está ouvindo agora; o comando será aplicado quando o "
-                 f"orquestrador voltar. {qual}.")
-        tipo = "sem_ouvinte"
-    return {"tipo": tipo, "comando": comando.get("id"), "desde": comando.get("em"),
-            "idade_s": idade, "quantos": len(pendentes_), "texto": texto}
 
 
 def esperar(intervalo: float = 5.0, *, como_json: bool = False,
@@ -1032,9 +1026,10 @@ def esperar(intervalo: float = 5.0, *, como_json: bool = False,
 
 
 class _AvisoSemOuvinte:
-    """No servidor do app: comando pendente ha mais de 2 min sem ninguem
-    ouvindo vira UM aviso no Telegram por ocorrencia, e um "voltou" quando ela
-    fecha. A ocorrencia mora em `aviso_sem_ouvinte.json`: o servidor que
+    """No servidor do app: comando pendente ha mais de 2 min (o servidor sem
+    pulso, ou preso nele) vira UM aviso no Telegram por ocorrencia, e um
+    "aplicou" quando ela fecha (decisao app-e-bot/aviso-no-telegram-...). A
+    ocorrencia mora em `aviso_sem_ouvinte.json`: o servidor do app que
     reinicia no meio dela nao avisa de novo."""
 
     INTERVALO_S = 30
@@ -1062,18 +1057,20 @@ class _AvisoSemOuvinte:
                 sys.stderr.write(f"aviso sem ouvinte: {type(exc).__name__}: {exc}\n")
 
     @staticmethod
-    def verificar(agora: float | None = None, avisar=None) -> str | None:
-        """Uma olhada. Devolve o texto avisado (ou None)."""
+    def verificar(agora: float | None = None, avisar=None, coordenador: dict | None = None) -> str | None:
+        """Uma olhada. Devolve o texto avisado (ou None).
+
+        Desde 04/10 quem aplica e o pulso do servidor, com ou sem o Claude
+        proibido: comando parado ha 2 min e o servidor sem pulso, ou preso
+        nele. A sessao do VS Code nao entra na conta."""
         agora = time.time() if agora is None else agora
-        if claude_estado.motivo_proibido():
-            # Claude proibido: comando parado e a ordem dele, nao ausencia.
-            # Nada de "ninguem ouvindo" nem "voltou" enquanto durar.
-            return None
         if avisar is None:
             from .acoes import avisar_texto as avisar
         comandos, _ = comandos_com_situacao()
-        vigia = situacao_do_vigia(agora)
-        aviso = sem_ouvinte(comandos, vigia, agora)
+        servidor = situacao_do_servidor(agora, coordenador=coordenador, comandos=comandos,
+                                        uso={}, estado={}, vigia={},
+                                        pedidos_vivos=[], trabalhadores=([], []))
+        aviso = servidor["comando_parado"]
         caminho = arquivo("aviso_sem_ouvinte.json")
         try:
             registro = _ler_json(caminho, {}) or {}
@@ -1085,8 +1082,6 @@ class _AvisoSemOuvinte:
         texto = None
         if aviso and not aberta:
             texto = f"⏳ Mesa de comando: {aviso['texto']}"
-            if aviso["tipo"] == "sem_ouvinte" and vigia.get("texto"):
-                texto += f"\n{vigia['texto']}"
             registro = {"aberta": True, "comando": aviso["comando"],
                         "desde": aviso["desde"], "avisado_em": _agora_iso()}
         elif not aviso and aberta:
@@ -1099,13 +1094,13 @@ class _AvisoSemOuvinte:
                 fim = _idade_s(antigo.get("aplicado_em"), agora)
                 if inicio is not None and fim is not None:
                     demora = inicio - fim
-                texto = (f"✓ Mesa de comando: o orquestrador voltou e "
+                texto = (f"✓ Mesa de comando: o servidor "
                          f"{'recusou' if antigo['situacao'] == 'recusado' else 'aplicou'} "
                          f"«{antigo.get('rotulo')}» às {_hhmm(antigo.get('aplicado_em'))}"
                          + (f" (ficou pendente {_ha(demora)})" if demora is not None else "")
                          + ".")
             elif pendentes_:
-                texto = (f"✓ Mesa de comando: o orquestrador voltou a ouvir às "
+                texto = (f"✓ Mesa de comando: o servidor voltou a pulsar às "
                          f"{datetime.fromtimestamp(agora).strftime('%H:%M')}; "
                          "o comando sai em instantes.")
             else:
@@ -1233,9 +1228,9 @@ def modelos_para_o_app(config: dict) -> dict:
         "claude": {
             "vigente": config.get("modelo_claude") or config.get("modelo_agentes"),
             "opcoes": [{"id": i, "rotulo": r, "nota": n} for i, r, n in MODELOS_CLAUDE],
-            "padrao": "o orquestrador escolhe por tarefa",
-            "nota": ("Vale para os AGENTES que o orquestrador dispara. O modelo da sessão "
-                     "principal só você troca, com /model no Claude Code."),
+            "padrao": "o padrão do Claude Code",
+            "nota": ("Vale para os trabalhadores Claude do servidor (o despachante usa no "
+                     "próximo). O da sessão do VS Code só você troca, com /model."),
         },
         "codex": {
             "vigente": config.get("modelo_codex"),
@@ -1669,15 +1664,27 @@ def _descrever(nome: str, valor) -> str:
     return f"{rotulo}: {_curto(valor, 80)}"
 
 
-def aplicado(comando_id: str, *, recusado: str = "", nota: str = "") -> dict:
-    """O orquestrador leu e aplicou (ou recusou, com o motivo)."""
+class JaResolvido(Recusa):
+    """O comando ja nao esta pendente: outro (o servidor ou a CLI) resolveu antes."""
+
+
+def aplicado(comando_id: str, *, recusado: str = "", nota: str = "", efeito: bool = True,
+             depois=None, por: str = "") -> dict:
+    """Quem aplica (o servidor, desde 04/10; ou a CLI) registra que aplicou, ou
+    recusou com o motivo.
+
+    `efeito=False`: quem chamou ja fez o efeito (a mensagem que virou pedido, o
+    parar do servidor). `depois`: uma funcao chamada depois do efeito, cuja
+    nota entra no registro (o espelho no despachante); a falha dela vira nota,
+    nunca desfaz o que ja valeu. `por` vai na linha do tempo ("o servidor").
+    """
     with _trava():
         lista, _ = comandos_com_situacao()
         comando = next((c for c in lista if c.get("id") == comando_id), None)
         if comando is None:
             raise Recusa(f"comando desconhecido: {comando_id}")
         if comando["situacao"] != "pendente":
-            raise Recusa(f"o comando {comando_id} já foi {comando['situacao']}")
+            raise JaResolvido(f"o comando {comando_id} já foi {comando['situacao']}")
         # o nome do item, antes de ele sair da fila (a linha do tempo diz o que saiu)
         descricao = _descrever(comando["comando"], comando.get("valor"))
         if comando["comando"] == "tirar_da_fila":
@@ -1689,13 +1696,20 @@ def aplicado(comando_id: str, *, recusado: str = "", nota: str = "") -> dict:
             linha = {"id": comando_id, "em": _agora_iso(), "resultado": "recusado",
                      "motivo": _curto(recusado, 500), "nota": _curto(nota, 500)}
         else:
-            extra = _efeito(comando)
+            extra = _efeito(comando) if efeito else ""
+            if depois is not None:
+                try:
+                    mais = depois() or ""
+                except Exception as exc:                     # noqa: BLE001
+                    mais = f"o espelho falhou ({type(exc).__name__}: {_curto(exc, 160)})"
+                extra = " · ".join(x for x in (extra, mais) if x)
             linha = {"id": comando_id, "em": _agora_iso(), "resultado": "aplicado",
                      "motivo": "", "nota": _curto(" · ".join(x for x in (nota, extra) if x),
                                                    500)}
         _anexar(arquivo("comandos_aplicados.jsonl"), linha)
         estado = ler_estado()                    # quem aplica esta vivo
-        _movimento(estado, ("recusou " if recusado else "aplicou ") + descricao)
+        _movimento(estado, (f"{por} " if por else "")
+                   + ("recusou " if recusado else "aplicou ") + descricao)
         _gravar_estado(estado)
     return linha
 
@@ -1749,6 +1763,322 @@ def capacidade(pedidos, *, fonte: str = "chat", porque: str = "") -> list[dict]:
                    + "; ".join(_descrever(f["comando"], f["valor"]) for f in feitos))
         _gravar_estado(estado)
     return feitos
+
+
+# ===================================================== o servidor aplica
+# 04/10/2026, o Adrian: "tá com um aviso de sessão fechada em relação ao
+# orquestrador, resolva tudo". Desde 03/10 a hierarquia e SERVIDOR (o
+# coordenador, 24 h) -> APP -> trabalhadores (Claude, Codex, VS Code). Medido
+# as 13:16: o app dizia "Sessao fechada: sem sinal do orquestrador desde 07:12
+# (ha 5 h 59 min)" com o selo vermelho, enquanto o coordenador pulsava a cada
+# 5 s, com 2 trabalhadores rodando e 3 pedidos. E os comandos do app (max
+# paralelo, fila, parar, modelos, mensagem) ficavam pendentes ate a sessao do
+# VS Code rodar `esperar`/`aplicado`.
+#
+# Agora o pulso do coordenador chama `aplicar_pelo_servidor` para cada
+# pendente: a config muda aqui (e no despachante, `delegados/config.json`), a
+# mensagem vira PEDIDO (`coordenador.pedidos`), o parar vai ao despachante. Com
+# o Claude proibido os comandos tambem valem: aplicar nao usa o Claude (a
+# mensagem vira pedido, e o pedido espera o Claude ou vai ao Codex). A sessao
+# do VS Code e so mais um trabalhador: se o `esperar` dela aplicar antes, o
+# servidor ve `JaResolvido` e segue.
+COORDENADOR_SEM_PULSO_S = 120     # sem pulso ha mais que isto: alarme
+COMANDO_PARADO_S = 120            # pendente ha mais que isto com o servidor no ar: alarme
+TRABALHADOR_TRAVADO_S = 15 * 60   # rodando sem evento (os pedidos param aos 10 min)
+DO_SUPERVISOR = ("servico_reiniciar", "servico_parar", "servico_ligar", "pc_acao")
+
+
+def _registrar_pedido(texto: str) -> dict:
+    from coordenador import pedidos
+    return pedidos.registrar(texto, "app")
+
+
+def _espelhar_no_despachante(nome: str, despachante=None) -> str:
+    """A capacidade e o modelo Claude da Mesa valem tambem para os
+    trabalhadores do servidor (`delegados/config.json`). O `modelo_codex` o
+    despachante ja le da Mesa a cada `criar`."""
+    if despachante is None:
+        from . import delegar as despachante
+    config = ler_config()
+    if nome in ("max_paralelo", "modo"):
+        n = paralelo_efetivo(config)
+        if int(despachante.ler_config().get("delegados_paralelo") or 1) == n:
+            return f"o despachante já estava em {n} trabalhador(es) ao mesmo tempo"
+        despachante.gravar_config({"delegados_paralelo": n})
+        return f"despachante: até {n} trabalhador(es) ao mesmo tempo"
+    if nome in ("modelo_agentes", "modelo_claude"):
+        modelo = config.get("modelo_claude") or config.get("modelo_agentes")
+        despachante.gravar_config({"modelo_claude": modelo})
+        return "despachante: trabalhadores Claude com " + (modelo or "o modelo padrão")
+    return ""
+
+
+def _parar_pelo_servidor(alvo: str, despachante=None, vscode_aberto: bool = False) -> str:
+    """Parar um trabalhador do servidor (o despachante para em ~2 s) e/ou um
+    agente da Mesa. Agente da Mesa com o VS Code fechado ja nao roda (morreu
+    com a sessao): fecha como "parado". Aberto, fica "parando" para ela."""
+    if despachante is None:
+        from . import delegar as despachante
+    notas, achou = [], False
+    try:
+        ficha = despachante.ler_estado(alvo)
+    except Exception:                                        # noqa: BLE001
+        ficha = None
+    if ficha is not None:
+        achou = True
+        try:
+            notas.append(str(despachante.parar(alvo)))
+        except Exception as exc:                             # noqa: BLE001
+            notas.append(f"trabalhador {alvo}: {_curto(exc, 160)}")
+    estado = ler_estado()
+    agente = next((a for a in estado["agora"] if a.get("id") == alvo), None)
+    if agente is not None:
+        achou = True
+        if vscode_aberto:
+            agente["situacao"] = "parando"
+            _gravar_estado(estado)
+            notas.append("na Mesa: parando (a sessão do VS Code fecha com agente-fim)")
+        else:
+            agente_fim(alvo, situacao="parado",
+                       relato_final="parado pelo servidor a pedido do app; o VS Code estava fechado")
+            notas.append("na Mesa: fechado como parado (o VS Code está fechado)")
+    if not achou:
+        raise Recusa(f"nenhum trabalhador nem agente com o id {alvo}")
+    return " · ".join(notas)
+
+
+def aplicar_pelo_servidor(comando: dict, *, registrar_pedido=None, despachante=None,
+                          vscode_aberto=None) -> dict | None:
+    """Um comando do app, aplicado no pulso do coordenador. Devolve a linha de
+    `comandos_aplicados.jsonl`, ou None quando nao era dele (servico e acao do
+    PC sao do supervisor) ou outro ja resolveu. Recusa vira "recusado" com o
+    motivo; erro de disco sobe (fica pendente e o pulso tenta de novo)."""
+    cid = str(comando.get("id") or "")
+    nome = comando.get("comando")
+    valor = comando.get("valor")
+    if not cid or nome in DO_SUPERVISOR:
+        return None
+    por = "o servidor"
+    with _trava(), _pelo_servidor():
+        atual = next((c for c in pendentes() if c.get("id") == cid), None)
+        if atual is None:
+            return None                          # ja resolvido (a CLI, o VS Code)
+        try:
+            if nome == "mensagem":
+                texto = str(valor or "").strip()
+                pedido = (registrar_pedido or _registrar_pedido)(texto)
+                nota = (f"virou o pedido {pedido.get('id')}"
+                        + (" (continuação do pedido em andamento)" if pedido.get("continuacao")
+                           else "")
+                        + "; um orquestrador do servidor atende (Agora > Pedir mostra)")
+                return aplicado(cid, efeito=False, nota=nota, por=por)
+            if nome == "parar_agente":
+                if vscode_aberto is None:
+                    vscode_aberto = situacao_do_vscode()["aberto"]
+                nota = _parar_pelo_servidor(str(valor or ""), despachante, vscode_aberto)
+                return aplicado(cid, efeito=False, nota=nota, por=por)
+            if nome == "contestar":
+                return aplicado(cid, efeito=False, por=por,
+                                nota="o nó já está no Grimório; a sua resposta lá vira pedido "
+                                     "no servidor")
+            depois = None
+            if nome in ("max_paralelo", "modo", "modelo_agentes", "modelo_claude"):
+                def depois():
+                    return _espelhar_no_despachante(nome, despachante)
+            nota = ("vale no próximo trabalhador Codex" if nome == "modelo_codex"
+                    else "aplicado pelo servidor")
+            return aplicado(cid, nota=nota, depois=depois, por=por)
+        except JaResolvido:
+            return None
+        except Recusa as exc:
+            return aplicado(cid, recusado=str(exc), por=por)
+        except ValueError as exc:                # o pedido vazio, a origem errada
+            return aplicado(cid, recusado=str(exc), por=por)
+
+
+def _estado_do_coordenador() -> dict:
+    """O retrato que o coordenador publica a cada pulso. Nunca levanta."""
+    try:
+        from coordenador.estado import ler_estado as ler
+        dados = ler()
+    except Exception:                                        # noqa: BLE001
+        return {}
+    return dados if isinstance(dados, dict) else {}
+
+
+def _pedidos_vivos() -> list[dict] | None:
+    """Os pedidos em andamento; None quando nao deu para ler."""
+    try:
+        from coordenador import pedidos
+        return [p for p in pedidos.para_o_app()["pedidos"]
+                if p.get("situacao") in pedidos.VIVOS]
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+def _trabalhadores_do_servidor(agora: float) -> tuple[list[dict], list[dict]] | None:
+    """(rodando, travados) entre os trabalhadores do despachante. Travado: o
+    processo sumiu sem desfecho, ou rodando sem evento ha mais de 15 min."""
+    try:
+        from . import delegar
+        lista = [delegar._vivo_para_tela(e) for e in delegar.listar()]
+    except Exception:                                        # noqa: BLE001
+        return None
+    rodando, travados = [], []
+    for t in lista:
+        if t.get("situacao") == "sumiu":
+            travados.append(dict(t, motivo_travado="o processo sumiu sem desfecho"))
+            continue
+        if t.get("situacao") != "rodando":
+            continue
+        rodando.append(t)
+        sinal = t.get("ultimo_evento_em") or t.get("inicio")
+        idade = _idade_s(sinal, agora) if sinal else None
+        if idade is not None and idade > TRABALHADOR_TRAVADO_S:
+            travados.append(dict(t, motivo_travado=f"sem evento há {_ha(idade)}"))
+    return rodando, travados
+
+
+def situacao_do_vscode(agora: float | None = None, estado: dict | None = None,
+                       vigia: dict | None = None) -> dict:
+    """A sessao do VS Code como mais um trabalhador: aberta ou fechada, sem
+    alarme. Sinal dela: o `esperar` pulsando (vigia.json) ou o relato `eu`.
+    (O `estado.atualizado_em` nao serve: o servidor tambem grava o estado.)"""
+    agora = time.time() if agora is None else agora
+    if vigia is None:
+        vigia = situacao_do_vigia(agora, estado)
+    if estado is None:
+        try:
+            estado = ler_estado() if arquivo("estado.json").is_file() else {}
+        except Recusa:
+            estado = {}
+    principal = (estado or {}).get("principal") or {}
+    relato_em = principal.get("relato_em")
+    idade_relato = _idade_s(relato_em, agora) if relato_em else None
+    ouvindo = vigia.get("situacao") in ("ouvindo", "acordou")
+    aberto = ouvindo or (idade_relato is not None and idade_relato <= FORA_DO_AR_S)
+    sinais = [str(x) for x in (vigia.get("pulso_em"), vigia.get("saiu_em"), relato_em) if x]
+    ultimo = max(sinais) if sinais else None
+    if aberto:
+        texto = "VS Code: aberto" + (" (ouvindo os comandos também)" if ouvindo else "")
+    else:
+        quando = None
+        if ultimo:
+            hoje = datetime.fromtimestamp(agora).date().isoformat()
+            quando = (_hhmm(ultimo) if ultimo[:10] == hoje
+                      else f"{ultimo[8:10]}/{ultimo[5:7]} {_hhmm(ultimo)}")
+        texto = "VS Code: fechado" + (f" (último sinal {quando})" if quando else "")
+    return {"aberto": bool(aberto), "texto": texto, "ultimo_sinal": ultimo,
+            "relato": principal.get("relato") if aberto else None,
+            "relato_em": relato_em if aberto else None}
+
+
+def comando_parado(comandos: list[dict], servidor: dict, agora: float | None = None) -> dict | None:
+    """O comando pendente MAIS VELHO, passado de 2 min. Quem aplica e o pulso
+    do servidor (segundos): pendente ha 2 min com ele no ar e defeito
+    ("preso"); sem pulso, sai quando ele voltar ("sem_servidor")."""
+    agora = time.time() if agora is None else agora
+    pendentes_ = [c for c in comandos if c.get("situacao") == "pendente"]
+    idades = [(_idade_s(c.get("em"), agora), c) for c in pendentes_]
+    idades = [(i, c) for i, c in idades if i is not None]
+    if not idades:
+        return None
+    idade, comando = max(idades, key=lambda x: x[0])
+    if idade < COMANDO_PARADO_S:
+        return None
+    qual = (f"«{comando.get('rotulo') or comando.get('comando')}», pendente desde "
+            f"{_hhmm(comando.get('em'))} (há {_ha(idade)})")
+    if len(pendentes_) > 1:
+        qual += f", e mais {len(pendentes_) - 1}"
+    if (servidor or {}).get("situacao") == "ok":
+        tipo = "preso"
+        texto = (f"O servidor está no ar, mas um comando não saiu da fila: {qual}. "
+                 "O pulso não conseguiu aplicar (veja os eventos do Coordenador).")
+    else:
+        tipo = "sem_servidor"
+        texto = (f"O servidor está sem pulso: {qual}. O comando sai quando ele voltar.")
+    return {"tipo": tipo, "comando": comando.get("id"), "desde": comando.get("em"),
+            "idade_s": idade, "quantos": len(pendentes_), "texto": texto}
+
+
+def situacao_do_servidor(agora: float | None = None, *, coordenador: dict | None = None,
+                         comandos: list[dict] | None = None, uso: dict | None = None,
+                         estado: dict | None = None, vigia: dict | None = None,
+                         pedidos_vivos=..., trabalhadores=...) -> dict:
+    """O que o app mostra no topo de Agora: o SERVIDOR.
+
+    ok        o coordenador pulsou ha menos de 2 min;
+    sem_pulso pulsou, mas ha mais que isso;
+    nunca     nao ha retrato do coordenador.
+    `alarmes` so tem problema real: servidor sem pulso, comando parado ha mais
+    de 2 min, trabalhador travado e o Claude acima do teto. A sessao do VS
+    Code vai em `vscode`, sem alarme.
+    """
+    agora = time.time() if agora is None else agora
+    coordenador = _estado_do_coordenador() if coordenador is None else coordenador
+    pulso_em = coordenador.get("pulso_em")
+    idade = _idade_s(pulso_em, agora) if pulso_em else None
+    if not pulso_em or idade is None:
+        situacao, texto = "nunca", "O servidor (coordenador) nunca publicou um pulso aqui."
+    elif idade <= COORDENADOR_SEM_PULSO_S:
+        situacao = "ok"
+        texto = f"Servidor no ar · pulso às {str(pulso_em)[11:19]}"
+    else:
+        situacao = "sem_pulso"
+        texto = (f"Servidor sem pulso desde {_hhmm(pulso_em)} (há {_ha(idade)}): "
+                 "comandos, pedidos e trabalhadores param até ele voltar.")
+    if comandos is None:
+        try:
+            comandos, _ = comandos_com_situacao()
+        except Recusa:
+            comandos = []
+    if pedidos_vivos is ...:
+        pedidos_vivos = _pedidos_vivos()
+    if trabalhadores is ...:
+        trabalhadores = _trabalhadores_do_servidor(agora)
+    rodando, travados = trabalhadores if trabalhadores is not None else ([], [])
+    pendentes_ = [c for c in comandos if c.get("situacao") == "pendente"]
+    parado = comando_parado(comandos, {"situacao": situacao}, agora)
+    alarmes = []
+    if situacao != "ok":
+        alarmes.append(texto)
+    if parado and situacao == "ok":
+        alarmes.append(parado["texto"])
+    for t in travados:
+        alarmes.append(f"Trabalhador travado: {t.get('id')} ({t.get('titulo') or t.get('cargo') or '?'})"
+                       f" — {t['motivo_travado']}.")
+    if uso is None:
+        try:
+            uso = ler_uso(agora)
+        except Recusa:
+            uso = {}
+    if (uso or {}).get("passou_teto"):
+        medicao = (uso or {}).get("medicao") or {}
+        pct = medicao.get("sessao_pct")
+        alarmes.append("O Claude passou do teto de uso"
+                       + (f" ({round(pct)}% da sessão, teto {uso.get('teto')}%)"
+                          if pct is not None else "")
+                       + ": os pedidos esperam ou vão ao Codex.")
+    resumo = []
+    if pedidos_vivos is None:
+        resumo.append("pedidos: não deu para ler")
+    else:
+        resumo.append(f"{len(pedidos_vivos)} pedido(s) em andamento")
+    if trabalhadores is None:
+        resumo.append("trabalhadores: não deu para ler")
+    else:
+        resumo.append(f"{len(rodando)} trabalhador(es) rodando")
+    resumo.append("comandos: todos aplicados" if not pendentes_
+                  else f"comandos: {len(pendentes_)} esperando o pulso")
+    return {"situacao": situacao, "texto": texto, "resumo": " · ".join(resumo),
+            "pulso_em": pulso_em, "pulso_idade_s": idade, "pid": coordenador.get("pid"),
+            "desde": coordenador.get("desde"), "versao": coordenador.get("versao"),
+            "pedidos": None if pedidos_vivos is None else len(pedidos_vivos),
+            "trabalhadores": None if trabalhadores is None else len(rodando),
+            "travados": [{"id": t.get("id"), "titulo": t.get("titulo"),
+                          "motivo": t["motivo_travado"]} for t in travados],
+            "comandos_pendentes": len(pendentes_), "comando_parado": parado,
+            "vscode": situacao_do_vscode(agora, estado, vigia), "alarmes": alarmes}
 
 
 # =================================================================== uso
@@ -2217,12 +2547,17 @@ def para_o_app(agora: float | None = None) -> dict:
         historico_config = []
     principal = (estado or {}).get("principal") or {}
     vigia = situacao_do_vigia(agora, estado if existe else None)
+    # 04/10: quem aplica os comandos e o SERVIDOR (o pulso do coordenador); a
+    # sessao do VS Code e so mais um trabalhador (`servidor.vscode`, sem alarme)
+    servidor = situacao_do_servidor(agora, comandos=comandos, uso=uso,
+                                    estado=estado if existe else {}, vigia=vigia)
     return {
         "agora": datetime.fromtimestamp(agora).isoformat(timespec="seconds"),
         "agora_epoch": agora,
-        # quem ouve os comandos (o `esperar`), e o aviso de pendente sem ouvinte
+        "servidor": servidor,
+        # o detalhe do `esperar` do VS Code (a CLI `vigia`); a tela nao alarma por ele
         "vigia": vigia,
-        "sem_ouvinte": sem_ouvinte(comandos, vigia, agora),
+        "comando_parado": servidor["comando_parado"],
         # o interruptor do Claude (liberado / proibido), com quem e desde quando
         "claude": claude_estado.para_o_app(),
         "estado": estado or _estado_vazio_sem_disco(),
@@ -2230,7 +2565,8 @@ def para_o_app(agora: float | None = None) -> dict:
         # reordenar (409 se a fila mudou no PC no meio do arrasto)
         "fila_versao": fila_versao((estado or {}).get("fila") or []),
         "estado_existe": existe,
-        "fora_do_ar": (not existe) or idade is None or idade > FORA_DO_AR_S,
+        # fora do ar = o SERVIDOR sem pulso (antes: a sessao do VS Code sem sinal)
+        "fora_do_ar": servidor["situacao"] != "ok",
         "idade_s": idade,
         "config": config,
         "paralelo_efetivo": paralelo_efetivo(config),
@@ -2389,8 +2725,9 @@ def texto_do_aviso_claude(liberado: bool, por: str, em: str | None) -> str:
     return (f"🤖 Claude {'liberado' if liberado else 'proibido'} {por} às "
             f"{claude_estado.hhmm(em) if em else '?'}"
             + ("" if liberado else
-               " — nenhum agente, sonda ou apuração roda; os comandos da Mesa "
-               "ficam guardados."))
+               " — nenhum trabalhador Claude, sonda ou apuração roda; os pedidos "
+               "esperam (os de construir vão ao Codex) e os comandos da Mesa "
+               "continuam valendo."))
 
 
 def _cli_claude(acao: str, *, motivo: str = "", por: str = "", avisar: bool = True,
@@ -2488,7 +2825,8 @@ def main(argv=None) -> int:
     acs = sub.add_parser("acessos", help="gera o acessos.json")
     acs.add_argument("--conector", action="append", default=None)
     acs.add_argument("--modo-permissao", default=None)
-    for nome in ("config", "estado", "uso", "pulso", "onde", "sonda", "vigia", "modelos"):
+    for nome in ("config", "estado", "uso", "pulso", "onde", "sonda", "vigia", "servidor",
+                 "modelos"):
         sub.add_parser(nome)
     cla = sub.add_parser("claude", help="o interruptor do Claude: status, liberar, proibir")
     cla.add_argument("acao", nargs="?", default="status",
@@ -2561,12 +2899,18 @@ def main(argv=None) -> int:
         elif args.cmd == "esperar":
             return esperar(args.intervalo, como_json=args.json)
         elif args.cmd == "vigia":
+            # a sessao do VS Code (o `esperar` dela); quem aplica e o servidor
             situacao = situacao_do_vigia()
             print(f"{situacao['situacao']}: {situacao['texto']}")
-            aviso = sem_ouvinte(comandos_com_situacao()[0], situacao)
-            if aviso:
-                print(aviso["texto"])
             return 0 if situacao["situacao"] in ("ouvindo", "acordou") else 1
+        elif args.cmd == "servidor":
+            servidor = situacao_do_servidor()
+            print(f"{servidor['situacao']}: {servidor['texto']}")
+            print(servidor["resumo"])
+            print(servidor["vscode"]["texto"])
+            for alarme in servidor["alarmes"]:
+                print("ALARME: " + alarme)
+            return 0 if servidor["situacao"] == "ok" and not servidor["alarmes"] else 1
         elif args.cmd == "acessos":
             dados = gerar_acessos(conectores=args.conector,
                                   modo_permissao=args.modo_permissao)

@@ -1055,13 +1055,16 @@ class Manipulador(BaseHTTPRequestHandler):
                     dados = decisoes.para_o_app()
                 except decisoes.Recusa as exc:
                     return self._erro(409, str(exc))
-                # quem le as respostas dele (o `esperar` acorda com elas)
+                # quem le as respostas dele: o SERVIDOR (o pulso do coordenador,
+                # `pedidos.ler_grimorio`), desde 04/10; nao a sessao do VS Code
                 try:
-                    vigia = orquestrador.situacao_do_vigia()
-                    dados["vigia"] = {"situacao": vigia["situacao"],
-                                      "texto": vigia["texto"]}
+                    servidor = orquestrador.situacao_do_servidor(
+                        pedidos_vivos=[], trabalhadores=([], []), uso={},
+                        estado={}, vigia={})
+                    dados["servidor"] = {"situacao": servidor["situacao"],
+                                         "texto": servidor["texto"]}
                 except Exception:                            # noqa: BLE001
-                    dados["vigia"] = None
+                    dados["servidor"] = None
                 return self._json(dados)
             if rota == "/api/assembleias":
                 # A assembleia so delibera; este endpoint expõe o estado que
@@ -1626,13 +1629,15 @@ class Manipulador(BaseHTTPRequestHandler):
                 if nome not in orquestrador.DO_APP:
                     return self._erro(400, "comando desconhecido")
                 linha = orquestrador.gravar_comando(nome, corpo.get("valor"), self._id)
-                # quem vai ler: a tela diz na hora se alguem esta ouvindo
+                # quem aplica: o pulso do servidor; a tela diz na hora se ele esta no ar
                 try:
-                    vigia = orquestrador.situacao_do_vigia()
-                    vigia = {"situacao": vigia["situacao"], "texto": vigia["texto"]}
+                    servidor = orquestrador.situacao_do_servidor(
+                        pedidos_vivos=[], trabalhadores=([], []), uso={},
+                        estado={}, vigia={})
+                    servidor = {"situacao": servidor["situacao"], "texto": servidor["texto"]}
                 except Exception:                            # noqa: BLE001
-                    vigia = None
-                return self._json({"feito": True, "comando": linha, "vigia": vigia})
+                    servidor = None
+                return self._json({"feito": True, "comando": linha, "servidor": servidor})
             feito = orquestrador.contestar(str(corpo.get("id") or "")[:20],
                                            str(corpo.get("comentario") or ""), self._id)
         except orquestrador.FilaMudou as exc:
@@ -2403,8 +2408,8 @@ def main(argv=None) -> int:
     # A Mesa de comando: a sonda de uso (a cada `sonda_min` do config.json do
     # orquestrador; 0 desliga) e o acessos.json com as chaves DESTE servidor.
     orquestrador.SONDA.iniciar()
-    # comando pendente ha mais de 2 min sem ninguem ouvindo: um aviso no
-    # Telegram por ocorrencia (e um quando o orquestrador volta)
+    # comando pendente ha mais de 2 min (o servidor sem pulso ou preso): um
+    # aviso no Telegram por ocorrencia (e um quando ele aplica)
     orquestrador.AVISO_SEM_OUVINTE.iniciar()
     threading.Thread(target=_gerar_acessos, args=(args.acoes, args.publicar,
                                                   args.perigosas),

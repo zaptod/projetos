@@ -263,16 +263,18 @@ def test_esperar_acorda_na_hora_quando_ele_proibe_no_meio(mundo, capsys):  # noq
     assert vigia["situacao"] == "saiu" and vigia["motivo"] == "claude_proibido"
 
 
-def test_sem_ouvinte_com_o_claude_proibido_e_guardado_e_nao_avisa(mundo):  # noqa: F811
-    O.gravar_comando("pausar_fila", None, "celular")
-    comandos, _ = O.comandos_com_situacao()
-    vigia = {"situacao": "fechada"}
-    agora = O.time.time() + 600
-    assert O.sem_ouvinte(comandos, vigia, agora)["tipo"] == "sem_ouvinte"
+def test_com_o_claude_proibido_o_servidor_aplica_os_comandos_mesmo_assim(mundo):  # noqa: F811
+    """Desde 04/10 quem aplica e o pulso do servidor, que nao usa o Claude:
+    nada fica "guardado" esperando liberar (antes o `esperar` segurava)."""
+    comando = O.gravar_comando("pausar_fila", None, "celular")
     _proibir()
-    aviso = O.sem_ouvinte(comandos, vigia, agora)
-    assert aviso["tipo"] == "guardado" and "guardado" in aviso["texto"]
-    assert O._AvisoSemOuvinte.verificar(agora, avisar=pytest.fail) is None
+    linha = O.aplicar_pelo_servidor(dict(comando))
+    assert linha["resultado"] == "aplicado"
+    assert O.ler_config()["fila_pausada"] is True and O.pendentes() == []
+    servidor = O.situacao_do_servidor(coordenador={"pulso_em": O._agora_iso()})
+    assert servidor["comando_parado"] is None and servidor["alarmes"] == []
+    assert O._AvisoSemOuvinte.verificar(O.time.time() + 600, avisar=pytest.fail,
+                                        coordenador={"pulso_em": O._agora_iso()}) is None
 
 
 def test_cli_claude_status_proibir_liberar(mundo, capsys):  # noqa: F811

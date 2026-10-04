@@ -522,7 +522,8 @@ function claudeDesenhar(c) {
   if (faixa) {
     faixa.textContent = proibido
       ? `Claude proibido ${c.desde_hhmm ? "desde " + c.desde_hhmm : ""}`.trim()
-        + " — nenhum agente, sonda ou apuração roda; os comandos ficam guardados."
+        + " — nenhum trabalhador Claude, sonda ou apuração roda; os pedidos esperam"
+        + " (os de construir vão ao Codex) e os comandos continuam valendo."
         + (c.origem === "ilegivel" ? ` (${c.motivo})` : "")
       : "";
     faixa.classList.toggle("oculto", !proibido);
@@ -538,9 +539,10 @@ async function claudeTrocar() {
   const liberar = !Claude.dados.liberado;
   const texto = liberar
     ? "Liberar o Claude? A sonda de uso, o apurador e os agentes voltam a rodar, "
-      + "e o orquestrador acorda com os comandos que ficaram guardados."
+      + "e os pedidos que esperavam o Claude voltam a andar."
     : "Proibir o Claude? Nenhum agente é disparado, a sonda de uso e a apuração "
-      + "de erros param, e os comandos da Mesa ficam guardados até você liberar.";
+      + "de erros param, e os pedidos esperam até você liberar (os de construir vão "
+      + "ao Codex). Os comandos da Mesa continuam valendo.";
   if (await perguntar(texto) !== "confirmar") return;
   Claude.enviando = true;
   claudeDesenhar(Claude.dados);

@@ -98,7 +98,7 @@ function ofiDesenharLista(d) {
   const lista = d.delegados || [];
   if (!lista.length) {
     alvo.replaceChildren(el("div", {class: "fraco"},
-      "Nenhuma tarefa delegada ainda. Quando o orquestrador mandar uma ao Codex, "
+      "Nenhuma tarefa delegada ainda. Quando o servidor mandar uma ao Codex, "
       + "ela aparece aqui e você acompanha ao vivo."));
     return;
   }
@@ -193,7 +193,7 @@ function ofiDesenharPesado(d) {
       d.testes_cauda ? el("pre", {class: "ofi-pre"}, d.testes_cauda) : null]
       .filter((x) => x != null));
   } else testes.replaceChildren(el("div", {class: "fraco"},
-    "O orquestrador ainda não rodou os testes desta tarefa."));
+    "O vigia do servidor ainda não rodou os testes desta tarefa."));
   // pedido e resposta
   $("oficina-pedido").textContent = d.pedido || "(sem o pedido)";
   $("oficina-resposta").textContent = d.resposta || (t.situacao === "rodando"

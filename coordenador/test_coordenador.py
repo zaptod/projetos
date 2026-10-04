@@ -135,6 +135,40 @@ def test_comandos_so_os_novos_e_acao_fora_do_catalogo_recusada():
     assert all(ident != "1" for ident, _ in feitos)
 
 
+def test_o_pulso_aplica_os_comandos_do_app_sem_a_sessao(monkeypatch):
+    # 04/10: capacidade, fila, parar, modelos e mensagem saem no pulso, por
+    # `aplicar_app` (orquestrador.aplicar_pelo_servidor); servico continua aqui
+    vistos, feitos = [], []
+    fila = [{"id": "1", "comando": "mensagem", "valor": "oi"},
+            {"id": "2", "comando": "max_paralelo", "valor": 3},
+            {"id": "3", "comando": "servico_ligar", "valor": "app"}]
+
+    def aplicar_app(comando):
+        vistos.append(comando["id"])
+        return {"id": comando["id"], "resultado": "aplicado", "nota": "virou o pedido p1"}
+    s, _ = supervisor(processos=lambda: [{"pid": 4, "comando": "System"}], comandos=lambda: fila,
+                      aplicar=lambda ident, **kw: feitos.append(ident), aplicar_app=aplicar_app,
+                      iniciar=lambda _: 9)
+    s.pulso()
+    assert vistos == ["1", "2"] and feitos == ["3"]
+    textos = [e["texto"] for e in s.eventos if e["tipo"] == "comando" and not e["servico"]]
+    assert textos == ["aplicado mensagem: virou o pedido p1", "aplicado max_paralelo: virou o pedido p1"]
+
+
+def test_erro_ao_aplicar_comando_do_app_vira_um_evento_e_nao_para_o_pulso():
+    fila = [{"id": "1", "comando": "mensagem", "valor": "oi"}]
+
+    def quebra(_comando):
+        raise OSError("disco cheio")
+    gravados = []
+    s, _ = supervisor(processos=lambda: [{"pid": 4, "comando": "System"}], comandos=lambda: fila,
+                      aplicar=lambda *a, **k: None, aplicar_app=quebra, gravar=gravados.append)
+    s.pulso()
+    s.pulso()
+    assert [e["tipo"] for e in s.eventos].count("comando_erro") == 1
+    assert len(gravados) == 2                      # o pulso seguiu e publicou o estado
+
+
 def test_rodar_tarefa_so_prefixos_permitidos():
     chamadas = []
     acoes_pc.executar("rodar_tarefa:NeuralFights_postar_06", rodar=lambda *a, **k: chamadas.append(a))

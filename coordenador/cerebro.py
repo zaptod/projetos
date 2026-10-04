@@ -33,7 +33,6 @@ import os
 import re
 import subprocess
 import tempfile
-import time
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -43,7 +42,6 @@ from .estado import pasta
 
 LIMITE_PENSAMENTOS_HORA = 30
 PROPOSTA_VALE_S = 30 * 60
-MENSAGEM_SEM_OUVINTE_S = 60      # regra 6: a sessao do VS Code tem a vez por 60 s
 CODEX_TIMEOUT_S = 180
 CONTEXTO_MAX = 20_000
 TEXTO_MAX = 4000
@@ -716,32 +714,19 @@ def classificar_duvida(duvida: str, contexto: str, *, rodar=None,
 
 
 # ================================================================= atender
-def mensagens_elegiveis(comandos: list[dict], vigia: dict, agora: float) -> list[dict]:
-    """Regra 6: a sessao do VS Code ouvindo tem a vez; sem ouvinte, depois de
-    60 s, a mensagem e do cerebro."""
-    if (vigia or {}).get("situacao") in ("ouvindo", "acordou"):
-        return []
-    saida = []
-    for c in comandos:
-        if c.get("comando") != "mensagem" or c.get("situacao", "pendente") != "pendente":
-            continue
-        try:
-            idade = agora - datetime.fromisoformat(c.get("em")).timestamp()
-        except (TypeError, ValueError):
-            continue
-        if idade >= MENSAGEM_SEM_OUVINTE_S:
-            saida.append(c)
-    return saida
-
-
 def atender(*, comandos=None, aplicar=None, avisar=None, vigia=None, rodar=None,
             executar=None, agora: float | None = None) -> list[dict]:
-    """Uma rodada do laco: as entradas diretas e as mensagens sem ouvinte.
+    """Uma rodada do laco: as entradas diretas (Telegram, aba Conversa).
 
-    Barato sem novidade (le dois arquivos). A entrada e marcada lida ANTES de
+    Barato sem novidade (le um arquivo). A entrada e marcada lida ANTES de
     pensar: um erro no meio vira resposta de erro, nunca um laco pensando de novo.
+
+    A "mensagem para o orquestrador" da Mesa NAO e daqui desde 04/10/2026: o
+    pulso do coordenador a aplica na hora e ela vira PEDIDO
+    (`orquestrador.aplicar_pelo_servidor`). Antes o cerebro a pegava depois de
+    60 s sem a sessao do VS Code ouvindo. `comandos`, `aplicar` e `vigia`
+    ficam na assinatura so por compatibilidade com quem chama.
     """
-    agora = time.time() if agora is None else agora
     atendidas = []
     for entrada in entradas_novas()[:POR_RODADA]:
         _marcar_lida(entrada["id"])
@@ -755,21 +740,6 @@ def atender(*, comandos=None, aplicar=None, avisar=None, vigia=None, rodar=None,
         if origem == "telegram" and avisar:
             avisar("🛰 " + r["resposta"])
         atendidas.append({"entrada": entrada["id"], **r})
-    if comandos is None or aplicar is None or _proibido():
-        return atendidas              # proibido: a mensagem fica guardada para a sessao
-    if vigia is None:
-        try:
-            from remoto.orquestrador import situacao_do_vigia
-            vigia = situacao_do_vigia()
-        except Exception:                                     # noqa: BLE001
-            vigia = {"situacao": "desconhecida"}
-    for c in mensagens_elegiveis(comandos(), vigia, agora)[:POR_RODADA]:
-        r = pensar(str(c.get("valor") or ""), "app", rodar=rodar, executar=executar)
-        try:
-            aplicar(c["id"], nota="coordenador: " + r["resposta"][:200])
-        except Exception:                                     # noqa: BLE001
-            pass
-        atendidas.append({"comando": c["id"], **r})
     return atendidas
 
 

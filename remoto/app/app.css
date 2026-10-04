@@ -462,6 +462,9 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
   border: 2px solid #b8661b; background: #fbe9c8; color: #6b3a1a; font-size: 14px;
   position: relative; z-index: 1; }
 .orq-vigia { margin-top: 4px; font-size: 13px; }
+/* 04/10: o topo de Agora é o servidor; o VS Code é uma linha discreta */
+.orq-servidor { margin-top: 4px; font-size: 14px; }
+.orq-vscode { margin-top: 4px; font-size: 12px; }
 .decisoes-rodape { margin: 8px 4px 0; font-size: 12px; }
 .decisao-mudou { display: flex; gap: 10px; align-items: center;
   justify-content: space-between; border: 2px solid var(--ativo); }

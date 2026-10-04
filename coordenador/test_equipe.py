@@ -49,3 +49,27 @@ def test_gerente_ligado_aceita_e_retoma_a_permissao_automatica():
     gerente.passo()
     assert d.decisões == [("perm-1", True)]
     assert d.fundos == [(["retomar", "--id", "perm-1"], "perm-1")]
+
+
+class MesaComFila:
+    def __init__(self, pausada):
+        self.pausada = pausada
+
+    def ler_estado(self):
+        return {"fila": [{"id": "f1", "parte": "builds", "item": "re-render"}]}
+
+    def ler_config(self):
+        return {"fila_pausada": self.pausada}
+
+
+def test_fila_pausada_pelo_app_nao_contrata_ninguem():
+    # 04/10: o "Pausar a fila" do app e aplicado pelo servidor na hora; o
+    # gerente obedece (antes so a sessao do VS Code obedecia)
+    for pausada, esperado in ((True, []), (False, ["f1"])):
+        d = Despachante(True)
+        d.tarefa = {"id": "outra", "situacao": "terminou"}
+        gerente = GerenteEquipe(mesa=MesaComFila(pausada), despachante=d)
+        contratados = []
+        gerente._contratar = lambda item: contratados.append(item["id"])
+        gerente.passo()
+        assert contratados == esperado

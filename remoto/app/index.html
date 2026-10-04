@@ -61,7 +61,8 @@
   </section>
 
   <!-- ============================================================ AGORA
-       "O que está rodando e o que vem a seguir": a sessão principal, os
+       "O que está rodando e o que vem a seguir": o servidor (desde 04/10
+       ele aplica os comandos; o VS Code é só mais um trabalhador), os
        agentes, o Codex, a fila, o coordenador, a próxima postagem, as
        fábricas, os erros e o paralelismo. Capacidade, modelos, limites,
        fluxo e acessos ficam recolhidos no fim. (Juntou o antigo Quadro de
@@ -89,8 +90,8 @@
     </div>
     <!-- o coordenador em uma linha; tocar abre a aba dele -->
     <button class="coord-mesa" id="coord-mesa" type="button">Coordenador: carregando…</button>
-    <!-- O Codex (01/10): o que o orquestrador delegou a ele; a aba Codex
-         mostra ao vivo. Só leitura: aplicar continua com o orquestrador. -->
+    <!-- O Codex (01/10): o que o servidor delegou a ele; a aba Codex
+         mostra ao vivo. Só leitura: quem aplica é o vigia do servidor. -->
     <div class="cartao" id="orq-sec-codex">
       <h2>🔧 Codex</h2>
       <div id="orq-codex"></div>
@@ -107,7 +108,7 @@
         <button class="acao" id="orq-pausar-fila">⏸ Pausar a fila</button>
         <button class="acao" id="orq-retomar-fila">▶ Retomar a fila</button>
       </div>
-      <div class="fraco">Pausada, o orquestrador não dispara ninguém da fila; quem já está
+      <div class="fraco">Pausada, o servidor não contrata ninguém da fila; quem já está
         trabalhando segue.</div>
     </div>
     <div class="cartao" id="agora-postagem">
@@ -201,8 +202,8 @@
   <section id="tela-oficina" class="oculto livro oficina" aria-label="Codex ao vivo">
     <div class="cartao" id="oficina-lista-cartao">
       <h2>Oficina do Codex</h2>
-      <div class="fraco">O que o orquestrador delegou ao Codex. Aqui é só olhar: quem aplica
-        é o orquestrador, depois de conferir o diff e rodar os testes de novo.</div>
+      <div class="fraco">O que o servidor delegou ao Codex. Aqui é só olhar: quem aplica
+        é o vigia do servidor, depois de conferir o diff e rodar os testes de novo.</div>
       <div id="oficina-uso"></div>
       <div id="oficina-erros" class="erro"></div>
       <div id="oficina-lista"></div>
@@ -391,6 +392,8 @@
     </div>
     <div class="cartao" id="orq-sec-mensagem">
       <h2>Mensagem para o orquestrador</h2>
+      <div class="fraco">Vira um pedido no próximo pulso do servidor: um orquestrador do
+        servidor atende, sem precisar do VS Code aberto.</div>
       <textarea id="orq-mensagem" class="decisao-comentario" rows="3" maxlength="1000"
                 placeholder="o que você quer que ele saiba ou faça"></textarea>
       <div class="botoes">

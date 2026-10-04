@@ -51,6 +51,10 @@ def mundo(tmp_path, monkeypatch):
     monkeypatch.setattr(O, "USO_EXTRA", tmp_path / "uso_sessao.json")
     monkeypatch.setattr(O, "PASTA_SONDA", tmp_path / "sonda")
     monkeypatch.setenv("CLAUDE_BIN", "claude-falso.exe")
+    # o servidor (o coordenador e os seus pedidos) e os trabalhadores do
+    # despachante: a Mesa le os dois desde 04/10, sempre da pasta do teste
+    monkeypatch.setenv("NF_COORDENADOR_PASTA", str(tmp_path / "coordenador"))
+    monkeypatch.setenv("NF_DELEGADOS_PASTA", str(tmp_path / "delegados"))
     monkeypatch.setattr(api_http, "ARQUIVO", tmp_path / "app_celular.json")
     avisos = []
     monkeypatch.setattr(acoes, "_entregar", avisos.append)
@@ -278,11 +282,17 @@ def test_fila_pausada_e_teto_passado_barram_o_inicio(mundo):
     assert O.agente_inicio("builds", "x")["situacao"] == "trabalhando"
 
 
-def test_fora_do_ar_depois_de_15_min(mundo):
+def test_fora_do_ar_e_o_servidor_sem_pulso_ha_mais_de_2_min(mundo):
+    # desde 04/10 "fora do ar" e o SERVIDOR (o pulso do coordenador), nao o
+    # sinal da sessao do VS Code: o pulso da CLI sozinho nao poe ninguem no ar
     O.pulso()
+    assert O.para_o_app()["fora_do_ar"] is True          # o coordenador nunca pulsou
+    pasta = mundo.tmp / "coordenador"
+    pasta.mkdir(parents=True)
+    (pasta / "estado.json").write_text(json.dumps({"pulso_em": O._agora_iso()}),
+                                       encoding="utf-8")
     assert O.para_o_app()["fora_do_ar"] is False
-    daqui_a_16 = time.time() + 16 * 60
-    assert O.para_o_app(daqui_a_16)["fora_do_ar"] is True
+    assert O.para_o_app(time.time() + 121)["fora_do_ar"] is True
 
 
 def test_concluidos_de_ontem_nao_aparecem_hoje(mundo):

@@ -163,7 +163,7 @@ class Supervisor:
                  git=None, comandos=None, aplicar=None, claude_proibido=None,
                  delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
                  cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None, assembleia=None,
-                 gerente_equipe=None, pedidos=None):
+                 gerente_equipe=None, pedidos=None, aplicar_app=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
         self.iniciar = iniciar or self._iniciar
@@ -173,6 +173,10 @@ class Supervisor:
         self.carteiro = carteiro or self._carteiro
         self.git = git or self._mudou_codigo
         self.comandos, self.aplicar = comandos, aplicar
+        # os comandos do app que nao sao de servico (orquestrador.aplicar_pelo_servidor);
+        # ausente nos testes que nao o pedem: o comando fica pendente
+        self.aplicar_app = aplicar_app
+        self.erros_comando = set()
         self.claude_proibido = claude_proibido or self._claude_proibido
         self.delegados = delegados or self._delegados
         self.parar_delegado = parar_delegado or self._parar_delegado
@@ -186,7 +190,6 @@ class Supervisor:
         self.ausencias = {n: 0 for n in self.servicos}
         self.velho_desde = {}
         self.eventos = []
-        self.avisos_mensagem = set()
         # O cerebro (`cerebro.atender`) e o vigia de trabalho so existem quando
         # o `__main__` os liga: nos testes, ausentes = nada de Codex nem git.
         self.cerebro, self.vigia_trabalho = cerebro, vigia_trabalho
@@ -422,11 +425,24 @@ class Supervisor:
                 estado.update(motivo_espera=espera, proximo_reinicio=None)
 
     def processar_comandos(self):
+        """Todo comando pendente do app e aplicado AQUI, no pulso (04/10/2026).
+
+        Servico e acao do PC sao do supervisor; o resto (capacidade, fila,
+        parar, modelos, mensagem -> pedido) vai a `aplicar_app`
+        (`orquestrador.aplicar_pelo_servidor`). A sessao do VS Code deixou de
+        ser necessaria: antes esses ficavam pendentes ate ela rodar `aplicado`.
+        """
         if not self.comandos or not self.aplicar:
             return
         meus = {"servico_reiniciar", "servico_parar", "servico_ligar", "pc_acao"}
-        for comando in self.comandos():
+        try:
+            lista = self.comandos()
+        except Exception as exc:                  # noqa: BLE001 - registro ilegivel nao para o pulso
+            self._erro_de_comando("lista", f"não li os comandos: {type(exc).__name__}: {exc}")
+            return
+        for comando in lista:
             if comando.get("comando") not in meus:
+                self._aplicar_do_app(comando)
                 continue
             try:
                 nome, valor = comando["comando"], comando.get("valor")
@@ -444,27 +460,35 @@ class Supervisor:
                 self.aplicar(comando["id"], nota="executado pelo coordenador")
                 self.evento(str(valor), "comando", nome)
             except (KeyError, ValueError, OSError, subprocess.SubprocessError) as exc:
-                self.aplicar(comando["id"], recusado=str(exc))
+                try:
+                    self.aplicar(comando["id"], recusado=str(exc))
+                except Exception as erro:         # noqa: BLE001 - ja resolvido por outro
+                    self._erro_de_comando(comando.get("id"), f"{type(erro).__name__}: {erro}")
+            except Exception as exc:              # noqa: BLE001 - JaResolvido e afins
+                self._erro_de_comando(comando.get("id"), f"{type(exc).__name__}: {exc}")
 
-    def avisar_mensagem_sem_ouvinte(self):
-        """O alerta e uma vez por mensagem; ela continua pendente para Claude."""
-        if not self.comandos:
+    def _aplicar_do_app(self, comando):
+        if not self.aplicar_app:
             return
-        if self.cerebro and not self.claude_proibido():
-            return            # sem ouvinte ha 60 s, o cerebro atende a mensagem
         try:
-            from remoto.orquestrador import sem_ouvinte, situacao_do_vigia
-            aviso = sem_ouvinte(self.comandos(), situacao_do_vigia())
-        except Exception:
+            linha = self.aplicar_app(comando)
+        except Exception as exc:                  # noqa: BLE001 - fica pendente; o pulso tenta de novo
+            self._erro_de_comando(comando.get("id"),
+                                  f"{comando.get('comando')}: {type(exc).__name__}: {exc}")
             return
-        ident = (aviso or {}).get("comando")
-        mensagem = next((c for c in self.comandos() if c.get("id") == ident and
-                         c.get("comando") == "mensagem"), None)
-        if mensagem and ident not in self.avisos_mensagem:
-            self.avisar("o Claude nao esta aberto; sua mensagem ficou guardada; "
-                        "o coordenador executa so comandos do app")
-            self.avisos_mensagem.add(ident)
-            self.evento("", "aviso", "mensagem guardada sem ouvinte")
+        if linha:
+            resultado = linha.get("resultado", "aplicado")
+            detalhe = linha.get("motivo") or linha.get("nota") or ""
+            self.evento("", "comando", f"{resultado} {comando.get('comando')}"
+                        + (f": {detalhe}" if detalhe else ""))
+
+    def _erro_de_comando(self, ident, texto):
+        """Um evento por comando com erro, nao um a cada pulso de 5 s."""
+        chave = (ident, texto)
+        if chave in self.erros_comando:
+            return
+        self.erros_comando.add(chave)
+        self.evento("", "comando_erro", f"{ident}: {texto}")
 
     # ------------------------------------------------ cerebro e vigia de trabalho
     def _em_fundo(self, nome, funcao):
@@ -588,7 +612,6 @@ class Supervisor:
             for ident in self.delegados():
                 self.parar_delegado(ident)
         self.processar_comandos()
-        self.avisar_mensagem_sem_ouvinte()
         self.processar_cerebro()
         self.processar_pedidos()
         self.vigiar_trabalho()

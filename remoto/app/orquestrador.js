@@ -1,6 +1,10 @@
 "use strict";
-// O orquestrador (a sessão principal do Claude Code) publica o que faz em
-// arquivos no PC; o app mostra e manda comandos. Até 02/10/2026 tudo isto era
+// A Mesa de comando: o estado do SERVIDOR e o trabalho dele, e os comandos do
+// Adrian. Desde 04/10/2026 quem aplica os comandos é o pulso do coordenador
+// (servidor 24 h), em segundos, e a sessão do VS Code é só mais um
+// trabalhador ("VS Code: aberto/fechado", sem alarme). Antes, esta tela
+// tratava a sessão do VS Code como "o orquestrador" e acendia "sessão
+// fechada" em vermelho com o servidor no ar. Até 02/10/2026 tudo isto era
 // uma tela só, a Mesa de comando, com 12 seções. Agora (decisão do Adrian,
 // app-e-bot/app-reorganizar) os mesmos ids moram em três objetos:
 //   Agora   — sessão principal, agentes, Codex, fila, e recolhidos no fim a
@@ -10,8 +14,8 @@
 // Um `orqCarregar` desenha tudo; cada objeto chama o que precisa.
 //
 // Nada aqui muda nada sozinho: cada toque vira um COMANDO que fica
-// "pendente" até o orquestrador aplicar (ou recusar, com o motivo). A
-// capacidade na tela é a que ele aceitou; a pedida aparece ao lado.
+// "pendente" até o servidor aplicar (ou recusar, com o motivo) no próximo
+// pulso. A capacidade na tela é a que vale; a pedida aparece ao lado.
 
 const ORQ_MS = 10000;
 const ORQ_FLUXO_MS = 60000;
@@ -32,9 +36,9 @@ const Orq = {dados: null, relogio: null, relogioFluxo: null, seloEm: 0,
              // três toques no "+" gravaram 4, 4 e 5 no mesmo segundo)
              alvoLocal: {}, adiado: {}, voando: new Set()};
 const ORQ_JUNTAR_MS = 700;
-// O que a tela diz de quem ouve os comandos (o `esperar` do orquestrador).
-const ORQ_VIGIA = {ouvindo: ["👂", "ouvindo", "ok"], acordou: ["⚙", "aplicando", "trabalhando"],
-                   fora: ["⚠", "fora", "erro"], fechada: ["■", "sessão fechada", "erro"]};
+// O que a tela diz do servidor (o coordenador): ele aplica os comandos.
+const ORQ_SERVIDOR = {ok: ["🛰️", "no ar", "ok"], sem_pulso: ["■", "sem pulso", "erro"],
+                      nunca: ["■", "nunca pulsou", "erro"]};
 
 function orqHora(iso) {
   if (!iso) return "—";
@@ -67,21 +71,17 @@ function orqPendentes(nome) {
   return lista.filter((c) => c.situacao === "pendente" && (!nome || c.comando === nome));
 }
 
-// O toast diz na hora se alguém está ouvindo: "pendente" sozinho parecia
-// "o app não obedece" (29/09 00:58: 2 min 36 s com o vigia desligado).
-function orqTextoEnviado(r) {
+// O toast diz na hora quem aplica: o pulso do servidor, em segundos. Com o
+// servidor sem pulso, diz isso (o comando sai quando ele voltar).
+function orqTextoEnviado(r, comando) {
   if (r.comando && r.comando.repetido)
-    return ["esse pedido já estava na fila do orquestrador; não mandei de novo", false];
-  const c = Orq.dados && Orq.dados.claude;
-  if (c && !c.liberado)
-    return ["guardado — o Claude está proibido; o comando sai quando você liberar", false];
-  const v = r.vigia || {};
-  if (v.situacao === "ouvindo") return ["enviado — o orquestrador está ouvindo e aplica em segundos", false];
-  if (v.situacao === "acordou") return ["enviado — o orquestrador está aplicando outro pedido; este vem logo depois", false];
-  if (v.situacao === "fora" || v.situacao === "fechada")
-    return ["enviado, mas ninguém está ouvindo agora; o comando será aplicado quando o "
-      + "orquestrador voltar", true];
-  return ["enviado — fica pendente até o orquestrador aplicar", false];
+    return ["esse pedido já estava esperando o servidor; não mandei de novo", false];
+  const s = r.servidor || {};
+  if (s.situacao && s.situacao !== "ok")
+    return ["enviado, mas o servidor está sem pulso; o comando sai quando ele voltar", true];
+  if (comando === "mensagem")
+    return ["enviado — vira um pedido no próximo pulso do servidor (Agora > Pedir acompanha)", false];
+  return ["enviado — o servidor aplica no próximo pulso (segundos)", false];
 }
 
 async function orqEnviar(comando, valor = null) {
@@ -94,7 +94,7 @@ async function orqEnviar(comando, valor = null) {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({comando, valor}),
     });
-    const [texto, ruim] = orqTextoEnviado(r);
+    const [texto, ruim] = orqTextoEnviado(r, comando);
     avisar(texto, ruim);
   } catch (err) { avisar(err.message, true); }
   finally { Orq.voando.delete(chave); }
@@ -137,30 +137,19 @@ function orqPerguntarTexto(titulo, explicacao, rotulo) {
 }
 
 // ---------------------------------------------------------------- faixa
+// Só problema real (04/10): o servidor sem pulso, um comando parado há mais
+// de 2 min, um trabalhador travado, o Claude acima do teto. A sessão do VS
+// Code fechada NÃO é problema: o servidor aplica sem ela.
+function orqAlarmes(d) {
+  if (d.servidor) return d.servidor.alarmes || [];
+  // servidor antigo (sem `servidor`): só o que ele já sabia dizer
+  return d.fora_do_ar ? ["O servidor não disse o estado dele."] : [];
+}
+
 function orqFaixa(d) {
   const faixa = $("orq-faixa");
-  const linhas = [];
-  let ruim = false;
-  const v = d.vigia || null;
-  // o aviso que importa primeiro: um pedido dele parado sem ninguém ouvindo
-  // (com o Claude proibido, "guardado" não é defeito: a faixa do Claude diz)
-  if (d.sem_ouvinte && d.sem_ouvinte.tipo !== "guardado") {
-    linhas.push(d.sem_ouvinte.texto);
-    ruim = true;
-  }
-  if (!d.estado_existe) {
-    linhas.push("O orquestrador ainda não publicou nada aqui. Os comandos ficam pendentes.");
-    ruim = true;
-  } else if (v && (v.situacao === "fora" || v.situacao === "fechada")) {
-    // "sessão aberta" e "alguém ouvindo" são coisas diferentes: qualquer
-    // comando da CLI renova o sinal, e só o `esperar` ouve os seus pedidos
-    linhas.push(v.texto + " Os comandos ficam pendentes até ele voltar a ouvir.");
-    ruim = true;
-  } else if (!v && d.fora_do_ar) {
-    linhas.push(`Orquestrador fora do ar: sem sinal desde ${orqHora(d.estado.atualizado_em)}`
-      + ` (${ha(d.idade_s)}). Os comandos ficam pendentes até a sessão voltar.`);
-    ruim = true;
-  }
+  const linhas = orqAlarmes(d).slice();
+  const ruim = linhas.length > 0;
   for (const e of d.erros || []) linhas.push("⚠ " + e);
   faixa.replaceChildren(...linhas.map((l) => el("div", {}, l)));
   faixa.classList.toggle("oculto", !linhas.length);
@@ -179,32 +168,37 @@ function orqIdade(iso) {
   return isNaN(t) ? null : (agoraPC() - t) / 1000;
 }
 
-// A sessão principal (o orquestrador), em uma linha, com a hora: o relato
-// que ele dá (`eu "..."`) e o último movimento que a CLI registrou sozinha.
+// O SERVIDOR em poucas linhas (04/10): o pulso do coordenador, os pedidos e
+// os trabalhadores rodando, os comandos e os trabalhadores travados. Embaixo,
+// a sessão do VS Code como mais um trabalhador, sem alarme, e o último
+// movimento registrado na Mesa.
 function orqDesenharPrincipal(d) {
   const p = d.principal || {};
+  const s = d.servidor || null;
   const alvo = $("orq-principal");
-  const partes = [el("div", {class: "orq-sub"}, "Sessão principal")];
-  if (p.relato) {
-    partes.push(el("div", {class: "orq-principal-relato"}, p.relato),
-      el("div", {class: "fraco"}, `${orqHora(p.relato_em)} (${orqDesde(p.relato_em)})`));
+  const partes = [el("div", {class: "orq-sub"}, "Servidor")];
+  if (s) {
+    const [ic, rot, cls] = ORQ_SERVIDOR[s.situacao] || ORQ_SERVIDOR.nunca;
+    const quando = s.situacao === "ok" && s.pulso_idade_s != null
+      ? ` (há ${Math.max(0, Math.round(s.pulso_idade_s))} s)` : "";
+    partes.push(el("div", {class: "orq-servidor", id: "orq-servidor"},
+      el("span", {class: "selo " + cls, id: "orq-servidor-selo"}, `${ic} ${rot}`),
+      el("span", {class: s.situacao === "ok" ? "" : "erro"}, " " + s.texto + quando)));
+    partes.push(el("div", {class: "fraco", id: "orq-servidor-resumo"}, s.resumo || ""));
+    for (const t of s.travados || []) {
+      partes.push(el("div", {class: "erro"}, `⚠ ${t.id}: ${t.motivo}`));
+    }
+    const vs = s.vscode || {};
+    partes.push(el("div", {class: "fraco orq-vscode", id: "orq-vscode"},
+      "💻 " + (vs.texto || "VS Code: —")
+      + (vs.relato ? ` · “${vs.relato}” (${orqHora(vs.relato_em)})` : "")));
   } else {
-    partes.push(el("div", {class: "fraco"}, "Ele ainda não disse no que está."));
+    partes.push(el("div", {class: "fraco"}, "O servidor ainda não disse o estado dele."));
   }
   if (p.movimento) {
+    // com a data quando não é de hoje (04/10: "13:51" era de ontem)
     partes.push(el("div", {class: "fraco"},
-      `último movimento ${orqHora(p.movimento_em)}: ${p.movimento}`));
-  }
-  const sinal = d.estado.atualizado_em;
-  partes.push(el("div", {class: d.fora_do_ar ? "erro" : "fraco"}, sinal
-    ? `sinal de vida ${orqHora(sinal)} (${ha(d.idade_s)})` : "nunca deu sinal de vida"));
-  const v = d.vigia;
-  if (v && ORQ_VIGIA[v.situacao]) {
-    const [ic, rot, cls] = ORQ_VIGIA[v.situacao];
-    partes.push(el("div", {class: "orq-vigia"},
-      el("span", {class: "selo " + cls, id: "orq-vigia-selo"}, `${ic} ${rot}`),
-      el("span", {class: v.situacao === "ouvindo" || v.situacao === "acordou" ? "fraco" : "erro"},
-        " " + v.texto)));
+      `último movimento ${quandoCurto(p.movimento_em) || "—"}: ${p.movimento}`));
   }
   const linha = p.linha || [];
   if (linha.length) {
@@ -280,8 +274,9 @@ function orqDesenharAgora(d) {
       const botao = el("button", {class: "acao perigo"}, "⏹ parar");
       botao.disabled = parando.has(a.id) || a.situacao === "parando";
       botao.addEventListener("click", async () => {
-        const r = await perguntar(`Pedir ao orquestrador para parar «${a.titulo}» (${a.parte})?`
-          + " Ele para o agente num ponto consistente.");
+        const r = await perguntar(`Parar «${a.titulo}» (${a.parte})?`
+          + " O servidor pede ao trabalhador para parar (em ~2 s); com o VS Code fechado,"
+          + " o agente dele sai da lista como parado.");
         if (r === "confirmar") orqEnviar("parar_agente", a.id);
       });
       return el("div", {class: "linha orq-agente"}, orqFicha(a.parte),
@@ -317,7 +312,7 @@ function orqSemNoticia(a) {
 // topo eram 6 "subir" seguidos). Soltar manda UM comando, a ordem inteira,
 // com a versão da fila que a tela viu (`esperava`): se a fila mudou no PC
 // no meio do arrasto, o servidor responde 409 e a tela reabre com a atual.
-// Enquanto o orquestrador não aplica, os cards ficam listrados ("pendente")
+// Enquanto o servidor não aplica, os cards ficam listrados ("pendente")
 // na ordem pedida; recusado, voltam ao lugar.
 const ORQ_PARTE = {
   geral: ["🧭", "#6b4526"], builds: ["🎲", "#8a4b1f"], historias: ["📖", "#5b3a7a"],
@@ -600,14 +595,14 @@ function orqArrastavel(lista) {
 }
 orqArrastavel($("orq-fila"));
 
-// Pôr na fila: a parte e o que fazer. Vira comando; o orquestrador põe.
+// Pôr na fila: a parte e o que fazer. Vira comando; o servidor põe no pulso.
 async function orqPorNaFila() {
   const d = $("dialogo-campos");
   const parte = el("select", {});
   for (const p of ORQ_PARTES) parte.append(el("option", {value: p}, p));
   const item = el("textarea", {class: "decisao-comentario", rows: "3", maxlength: "200"});
-  $("campos-corpo").replaceChildren(el("p", {}, "Pôr na fila do orquestrador"),
-    el("p", {class: "fraco"}, "Entra no fim; depois dá para subir. Fica pendente até ele aplicar."),
+  $("campos-corpo").replaceChildren(el("p", {}, "Pôr na fila de trabalho"),
+    el("p", {class: "fraco"}, "Entra no fim; depois dá para subir. O servidor põe no próximo pulso."),
     el("label", {class: "campo"}, "Parte", parte),
     el("label", {class: "campo"}, "O que fazer", item));
   const ok = await new Promise((resolve) => {
@@ -681,7 +676,7 @@ function orqDesenharCapacidade(d) {
     .flatMap((n) => orqPendentes(n))
     .map((p) => `${p.rotulo}: ${orqValor(p)}`);
   $("orq-capacidade-pendente").textContent = pedidos.length
-    ? "Pedido, esperando o orquestrador: " + pedidos.join(" · ") : "";
+    ? "Pedido, esperando o servidor: " + pedidos.join(" · ") : "";
   // recolhida no fim de Agora: a linha do título já diz o que vale
   const modo = (d.modos.find((m) => m.id === c.modo) || {}).rotulo || c.modo;
   orqResumoRecolhido("orq-capacidade-resumo", `${modo} · até ${d.paralelo_efetivo}`
@@ -709,7 +704,7 @@ function orqDesenharGrimorio(d) {
   });
   $("orq-grimorio").replaceChildren(
     el("h3", {class: "orq-sub"}, "No Grimório (vira regra)"),
-    el("div", {class: "fraco"}, "O que você muda aqui o orquestrador registra no Grimório, "
+    el("div", {class: "fraco"}, "O que você muda aqui o servidor registra no Grimório, "
       + "com commit — igual a uma instrução sua no chat."),
     ...linhas);
 }
@@ -968,8 +963,8 @@ function orqDesenharFluxoTrabalho(d) {
     passo("na fila", (e.fila || []).length), el("span", {}, "→"),
     passo("agora", (e.agora || []).length), el("span", {}, "→"),
     passo("feitos hoje", (e.concluidos_hoje || []).length)),
-    el("div", {class: "fraco"}, `Você manda → pendente → o orquestrador aplica ou recusa. `
-      + `${d.pendentes} comando(s) esperando.`));
+    el("div", {class: "fraco"}, `Você manda → pendente → o servidor aplica ou recusa no `
+      + `próximo pulso. ${d.pendentes} comando(s) esperando.`));
 }
 
 async function orqCarregarFluxo() {
@@ -1077,9 +1072,9 @@ function orqDesenharCodex(d) {
 }
 
 // ------------------------------------------------------ modelos (01/10)
-// Três seletores; cada troca vira COMANDO (pendente até o orquestrador
-// aplicar), e ao lado fica o que vale. O do Claude é o dos AGENTES que o
-// orquestrador dispara: o da sessão principal só o Adrian troca (/model).
+// Três seletores; cada troca vira COMANDO (o servidor aplica no próximo
+// pulso), e ao lado fica o que vale. O do Claude é o dos TRABALHADORES Claude
+// do servidor: o da sessão do VS Code só o Adrian troca (/model).
 const ORQ_MODELO_REGEX = /^[a-z0-9][a-z0-9._-]{1,48}$/;
 
 function orqSelectModelo(sel, comando, m, extra = []) {
@@ -1106,7 +1101,7 @@ function orqNotaModelo(alvo, comando, m, rotulo) {
     el("div", {}, el("strong", {}, "valendo: "), nome(m.vigente)
       + (m.ordem ? ` (procura: ${m.ordem.join(" → ")})` : "")),
     pend.length ? el("div", {class: "trabalhando"},
-      `pedido: ${nome(pend[0].valor)} — esperando o orquestrador aplicar`) : null,
+      `pedido: ${nome(pend[0].valor)} — esperando o servidor aplicar`) : null,
     m.erro ? el("div", {class: "erro"}, m.erro) : null,
     el("div", {}, m.nota || ""),
     m.fonte ? el("div", {}, `lista: ${m.fonte}`) : null].filter((x) => x != null));
@@ -1138,7 +1133,7 @@ function orqDesenharModelos(d) {
 
   const pedidos = ["modelo_agentes", "modelo_codex", "modelo_gemini"].flatMap((n) => orqPendentes(n));
   $("orq-modelos-pendente").textContent = pedidos.length
-    ? `${pedidos.length} troca(s) esperando o orquestrador.` : "";
+    ? `${pedidos.length} troca(s) esperando o servidor.` : "";
   const nome = (x) => x.vigente == null || x.vigente === "" ? "padrão"
     : ((x.opcoes.find((o) => o.id === x.vigente) || {}).rotulo || x.vigente);
   orqResumoRecolhido("orq-modelos-resumo", (pedidos.length ? "troca pendente · " : "")
@@ -1180,15 +1175,14 @@ async function orqCarregar() {
   } catch (err) { conexao(false, err); }
 }
 
-// O objeto Agora, na prateleira, avisa sem abrir: vermelho = passou do teto
-// ou orquestrador fora do ar; âmbar = comando esperando.
+// O objeto Agora, na prateleira, avisa sem abrir. Vermelho só para problema
+// real (04/10): servidor sem pulso há mais de 2 min, comando parado há mais
+// de 2 min, trabalhador travado ou o Claude acima do teto — a lista
+// `servidor.alarmes`. Âmbar = comando esperando o pulso. A sessão do VS
+// Code fechada não acende nada.
 function orqMarcarSelo(d) {
   const obj = $("obj-agora");
-  const semOuvido = d.vigia ? d.vigia.situacao === "fora" || d.vigia.situacao === "fechada"
-    : d.fora_do_ar;
-  const alerta = d.sem_ouvinte && d.sem_ouvinte.tipo !== "guardado";
-  obj.classList.toggle("selo-alerta", !!(alerta || (semOuvido && d.pendentes && !(d.claude && !d.claude.liberado))
-    || d.fora_do_ar || (d.uso && d.uso.passou_teto)));
+  obj.classList.toggle("selo-alerta", orqAlarmes(d).length > 0);
   obj.classList.toggle("selo-pendente", !!d.pendentes);
 }
 

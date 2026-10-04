@@ -165,13 +165,15 @@ function decisoesAssinatura(dados) {
 function decisoesRodape() {
   const alvo = $("decisoes-rodape");
   if (!alvo) return;
-  const v = Decisoes.dados && Decisoes.dados.vigia;
+  // quem lê as respostas é o SERVIDOR (04/10): só ele sem pulso é problema
+  const s = Decisoes.dados && Decisoes.dados.servidor;
+  const parado = !!(s && s.situacao !== "ok");
   const partes = [];
   if (Decisoes.lidoEm) partes.push(`atualizado às ${hora(Decisoes.lidoEm)}`);
-  if (v && (v.situacao === "fora" || v.situacao === "fechada"))
-    partes.push("o orquestrador não está ouvindo: ele lê as suas respostas quando voltar");
+  if (parado)
+    partes.push("o servidor está sem pulso: ele lê as suas respostas quando voltar");
   alvo.textContent = partes.join(" · ");
-  alvo.classList.toggle("erro", !!(v && (v.situacao === "fora" || v.situacao === "fechada")));
+  alvo.classList.toggle("erro", parado);
 }
 
 function decisoesLigarRelogio() {

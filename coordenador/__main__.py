@@ -80,7 +80,7 @@ def montar() -> Supervisor:
     e o vigia de trabalho, que usa o mesmo criterio de momento seguro e pede
     o reinicio ao proprio supervisor; e a esteira de sprites (palco e vila),
     um `ciclo` (anda tudo e mantem a producao cheia) a cada 5 min."""
-    from remoto.orquestrador import aplicado, pendentes
+    from remoto.orquestrador import aplicado, aplicar_pelo_servidor, pendentes
 
     from . import cerebro
     from . import pedidos
@@ -88,8 +88,10 @@ def montar() -> Supervisor:
     from .equipe import GerenteEquipe
     from .supervisor import ciclo_das_esteiras
     from ias.assembleia import avancar as avancar_assembleia
-    s = Supervisor(comandos=pendentes, aplicar=aplicado, cerebro=cerebro.atender,
-                   pedidos=pedidos.passo,
+    # 04/10/2026: TODO comando do app e aplicado no pulso (capacidade, fila,
+    # parar, modelos; a mensagem vira pedido), sem a sessao do VS Code
+    s = Supervisor(comandos=pendentes, aplicar=aplicado, aplicar_app=aplicar_pelo_servidor,
+                   cerebro=cerebro.atender, pedidos=pedidos.passo,
                    esteira=ciclo_das_esteiras, assembleia=avancar_assembleia)
     s.vigia_trabalho = VigiaTrabalho(
         avisar=s.avisar, evento=lambda tipo, texto: s.evento("", tipo, texto),
