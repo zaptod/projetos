@@ -481,6 +481,12 @@ com o som real — `duelo_00022`–`00031` — e 15 com o sintetizado, todos
 builds: as variantes B de `generation_00026`–`00041`, os A de `00026`–`00029`
 que estão fora por título, e a `00085`, com pendência de payoff.)
 
+**Essas 15 NÃO serão re-renderizadas** (decisão `som-real-15-builds`, 04/10/2026:
+"Só as novas têm som real"). O item `b0d22ef8` saiu da fila da Mesa; elas
+seguem no estoque com o sintetizado. O som real vale para as builds geradas
+daqui em diante, que já nascem com ele. Não reabrir o re-render sem nova
+ordem dele.
+
 Os outros 36 estão com o sintetizado. Sete deles ficam calados em 57–63% do
 trecho (`duelo_00014`, `00016`, `00017`, `generation_00029` A e B,
 `generation_00077` A e B) — não é luta muda pela régua, mas é o som que
