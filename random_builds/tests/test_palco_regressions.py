@@ -145,7 +145,19 @@ def test_efeitos_por_tipo_e_elemento_cobrem_os_12_elementos():
         for elemento in pares:
             cena = (PALCO / "biblioteca" / "efeitos" / "objetos" / tipo / f"{elemento}.tscn").read_text(
                 encoding="utf-8")
-            assert "objeto_cc0.gd" in cena
+            # Dois jeitos validos de desenhar o efeito: o objeto CC0 (textura
+            # parada de `texturas/`) e a FOLHA ANIMADA que o Adrian monta na
+            # Oficina de sprites (`folha_animada.gd` + `folhas/<nome>.png`;
+            # o `projetil/fogo.tscn` virou uma em 05/10/2026). Nos dois a
+            # textura tem de existir e estar em LICENCAS.md.
+            assert "objeto_cc0.gd" in cena or "folha_animada.gd" in cena, (tipo, elemento)
+            if "folha_animada.gd" in cena:
+                assert (PALCO / "biblioteca" / "efeitos" / "folha_animada.gd").is_file()
+                folhas = re.findall(r'path="res://biblioteca/efeitos/folhas/([\w.-]+)\.png"', cena)
+                assert folhas, (tipo, elemento)
+                for folha in folhas:
+                    assert (PALCO / "biblioteca" / "efeitos" / "folhas" / f"{folha}.png").is_file(), folha
+                    assert f"efeitos/folhas/{folha}.png" in licencas, folha
             for textura in re.findall(r'path="res://biblioteca/efeitos/texturas/(\w+)\.png"', cena):
                 assert (PALCO / "biblioteca" / "efeitos" / "texturas" / f"{textura}.png").is_file()
                 assert f"efeitos/texturas/{textura}.png" in licencas, textura

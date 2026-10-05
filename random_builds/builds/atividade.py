@@ -15,7 +15,9 @@ Uma linha JSONL por evento, em `%LOCALAPPDATA%/neural-fights/atividade.jsonl`
 Regras de sobrevivencia:
   - `registrar` NUNCA levanta: o diario e observabilidade, e observabilidade
     que derruba a pipeline e pior que nenhuma.
-  - O arquivo e podado quando passa de ~4000 linhas (ficam as 2000 novas).
+  - O arquivo e podado por IDADE e PRIORIDADE quando passa de ~6 MB (ver
+    `_podar`): fica tudo das ultimas 72 h (com teto de linhas, cortando o
+    `log` mais velho primeiro) e todo `erro` dos ultimos 7 dias.
 """
 from __future__ import annotations
 
@@ -41,8 +43,23 @@ FABRICAS = {
 }
 
 TRABALHANDO, OK, ERRO, LOG = "inicio", "ok", "erro", "log"
-_LIMITE_LINHAS = 4000
-_PODA_PARA = 2000
+
+# A PODA. Ate 05/10/2026 ela cortava por NUMERO de linhas (passou de 4000,
+# ficavam as 2000 novas): com a vistoria escrevendo 74% das linhas, o diario
+# cobria ~23,6 h e caia para ~12 h depois de cada poda — o relatorio "24 h"
+# lia 8,6 h, e um erro da madrugada sumia antes de alguem olhar.
+# Agora a poda e por idade e prioridade:
+#   - so dispara com o arquivo acima de `_LIMITE_BYTES` (leitura cara, rara);
+#   - todo evento das ultimas `_JANELA_S` fica, ate `_TETO_LINHAS`; passou
+#     do teto, sai primeiro o `log` mais velho, depois o resto mais velho;
+#   - todo `erro` dos ultimos `_ERRO_GUARDA_S` fica, fora do teto (ate
+#     `_TETO_ERROS`): e o que a apuracao e o bot procuram dias depois;
+#   - linha ilegivel ou sem data sai.
+_LIMITE_BYTES = 6_000_000
+_JANELA_S = 72 * 3600.0
+_ERRO_GUARDA_S = 7 * 24 * 3600.0
+_TETO_LINHAS = 12_000
+_TETO_ERROS = 3_000
 # Sem um "ok" nem "erro" depois disto, o inicio e considerado morto (processo
 # derrubado no meio): a fabrica nao pode ficar "trabalhando" para sempre.
 INICIO_VELHO_S = 2 * 3600.0
@@ -128,39 +145,102 @@ def registrar(fabrica: str, status: str, detalhe: str = "",
         pass
 
 
-def _podar(caminho: Path) -> None:
+def _podar(caminho: Path, agora: datetime | None = None) -> None:
     try:
-        if caminho.stat().st_size < _LIMITE_LINHAS * 120:
+        if caminho.stat().st_size < _LIMITE_BYTES:
             return
         linhas = caminho.read_text(encoding="utf-8", errors="replace").splitlines()
-        if len(linhas) > _LIMITE_LINHAS:
-            caminho.write_text("\n".join(linhas[-_PODA_PARA:]) + "\n",
+        mantidas = _o_que_fica(linhas, agora or datetime.now(timezone.utc))
+        if len(mantidas) < len(linhas):
+            caminho.write_text("".join(linha + "\n" for linha in mantidas),
                                encoding="utf-8")
     except OSError:
         pass
 
 
-def recentes(n: int = 60, fabrica: str | None = None) -> list:
-    """Os ultimos eventos, do mais novo para o mais velho."""
-    try:
-        with open(_arquivo(), encoding="utf-8", errors="replace") as fh:
-            linhas = fh.readlines()[-1200:]
-    except OSError:
-        return []
-    saida = []
-    for bruta in reversed(linhas):
-        bruta = bruta.strip()
-        if not bruta:
+def _o_que_fica(linhas: list[str], agora: datetime) -> list[str]:
+    """As linhas que sobrevivem a poda, na ordem original (ver `_LIMITE_BYTES`)."""
+    erros: list[int] = []
+    comuns: list[tuple[int, bool]] = []          # (indice, e_log)
+    for indice, bruta in enumerate(linhas):
+        if not bruta.strip():
             continue
         try:
             evento = json.loads(bruta)
-        except ValueError:
+            quando = datetime.fromisoformat(str(evento["ts"]))
+        except (ValueError, KeyError, TypeError):
             continue
-        if fabrica and evento.get("fabrica") != fabrica:
-            continue
-        saida.append(evento)
-        if len(saida) >= n:
-            break
+        if quando.tzinfo is None:
+            quando = quando.replace(tzinfo=timezone.utc)
+        idade = (agora - quando).total_seconds()
+        if evento.get("status") == ERRO and idade <= _ERRO_GUARDA_S:
+            erros.append(indice)
+        elif idade <= _JANELA_S:
+            comuns.append((indice, evento.get("status") == LOG))
+    erros = erros[-_TETO_ERROS:]
+    excesso = len(comuns) - _TETO_LINHAS
+    if excesso > 0:
+        # Os mais velhos primeiro, `log` antes de qualquer outro.
+        fora = {i for i, _ in sorted(comuns, key=lambda c: (not c[1], c[0]))[:excesso]}
+        comuns = [c for c in comuns if c[0] not in fora]
+    ficam = sorted(erros + [i for i, _ in comuns])
+    return [linhas[i] for i in ficam]
+
+
+def _linhas_do_fim(caminho: Path, bloco: int = 65536):
+    """As linhas do arquivo, da ultima para a primeira, lendo em blocos.
+
+    `recentes(n)` precisa ir tao fundo quanto o `n` pedido (com filtro de
+    fabrica, bem mais fundo que n linhas) sem ler o arquivo inteiro a cada
+    chamada — a Vila e o painel perguntam o tempo todo.
+    """
+    with open(caminho, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        posicao = fh.tell()
+        resto = b""
+        while posicao > 0:
+            passo = min(bloco, posicao)
+            posicao -= passo
+            fh.seek(posicao)
+            pedaco = fh.read(passo) + resto
+            partes = pedaco.split(b"\n")
+            resto = partes[0]
+            for parte in reversed(partes[1:]):
+                yield parte.decode("utf-8", errors="replace")
+        if resto:
+            yield resto.decode("utf-8", errors="replace")
+
+
+def recentes(n: int = 60, fabrica: str | None = None) -> list:
+    """Os ultimos `n` eventos (da `fabrica`, se pedida), do mais novo para o
+    mais velho.
+
+    Ate 05/10/2026 so olhava as ultimas 1200 linhas: `recentes(1200,
+    fabrica="picasso")` devolvia so os eventos do PicassoIA que cabiam
+    nelas, e quem pedia "as ultimas 24 h" recebia ~8,6 h. Agora vai ate
+    juntar `n` ou acabar o arquivo.
+    """
+    if n <= 0:
+        return []
+    saida = []
+    try:
+        for bruta in _linhas_do_fim(_arquivo()):
+            bruta = bruta.strip()
+            if not bruta:
+                continue
+            try:
+                evento = json.loads(bruta)
+            except ValueError:
+                continue
+            if not isinstance(evento, dict):
+                continue
+            if fabrica and evento.get("fabrica") != fabrica:
+                continue
+            saida.append(evento)
+            if len(saida) >= n:
+                break
+    except OSError:
+        return saida
     return saida
 
 

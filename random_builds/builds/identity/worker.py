@@ -101,6 +101,51 @@ def _generation(generation_id: str) -> dict | None:
         return None
 
 
+class EntradasFaltando(GeracaoFalhou):
+    """A juncao foi pega sem as duas imagens no disco.
+
+    Nao e falha do job: e cedo. O worker devolve o job para a fila SEM gastar
+    tentativa (`queue.reagendar`) — em 04/10/2026 as juncoes da 00078, 00090,
+    00095 e 00098 queimaram as tres tentativas assim e ficaram `failed` com a
+    imagem que faltava chegando depois.
+    """
+
+
+# Assinatura da parede gravada no `error` da fila (ver `ParedeDePlanos`): as
+# falhas antigas, de antes deste conserto, sao reconhecidas pelo texto.
+_PAREDE_NO_ERRO = queue.PAREDE_NO_ERRO
+# E a da juncao que foi pega sem as duas imagens (a mensagem de
+# `EntradasFaltando`, igual a da falha antiga).
+_FALTA_DE_ENTRADA_NO_ERRO = queue.FALTA_DE_ENTRADA_NO_ERRO
+
+# Quanto tempo o provedor fica pausado depois da parede de planos. A conta
+# volta sozinha (17/09/2026: reabrir o perfil resolveu) e a rodada seguinte
+# tenta de novo; `pausa_na_parede_min` na config muda.
+PAUSA_NA_PAREDE_MIN = 45.0
+
+# As falhas da ultima `drenar` deste processo, uma linha por job. Quem le e a
+# rodada de geracao (`pipeline/noite.py`), que dizia "fim: 0 erro(s)" com seis
+# tentativas queimadas pela parede de planos no meio (04/10/2026 01:16).
+_FALHAS: list[str] = []
+
+
+def falhas_da_ultima_rodada() -> list[str]:
+    """Copia das falhas registradas na ultima `drenar` deste processo."""
+    return list(_FALHAS)
+
+
+def _anotar_falha(job_id: str, exc: BaseException) -> None:
+    _FALHAS.append(f"{job_id}: {type(exc).__name__}: {str(exc)[:140]}")
+
+
+def _e_parede_de_planos(exc: BaseException) -> bool:
+    try:
+        from .picasso_client import ParedeDePlanos
+    except Exception:                                   # noqa: BLE001
+        return False
+    return isinstance(exc, ParedeDePlanos)
+
+
 def _preparar_juncao(client, job: dict):
     """Abre o Editor Pro e sobe as DUAS imagens que serao compostas.
 
@@ -115,16 +160,18 @@ def _preparar_juncao(client, job: dict):
     o prompt ainda precisa pedir para remover.
 
     O prompt ja esta na fila (e o de juncao); o que muda aqui e a PAGINA e as
-    imagens de entrada. Sem as duas no disco a juncao nao tem o que fazer.
+    imagens de entrada. Sem as duas no disco a juncao nao tem o que fazer —
+    e isso e conferido ANTES de mexer na pagina, e sai como `EntradasFaltando`
+    (adiamento, nao falha).
     """
     from . import picasso_selectors, referencias
     gid = job["generation_id"]
-    antes = client.preparar_espaco(picasso_selectors.URL_EDITOR)
     entradas = referencias.entradas_do_editor(gid)
     if len(entradas) < 2:
-        raise GeracaoFalhou(
+        raise EntradasFaltando(
             f"a juncao precisa das duas imagens e achei {len(entradas)} "
             f"em {gid}.")
+    antes = client.preparar_espaco(picasso_selectors.URL_EDITOR)
     anexadas = client.anexar_referencias(entradas)
     if len(anexadas) < 2:
         raise GeracaoFalhou(
@@ -475,6 +522,10 @@ def drenar(headless: bool = False, rerender: bool = True,
     uma nova tentativa do mesmo. O job em andamento termina. Sem os dois, o
     worker de sempre.
     """
+    # Limpa ANTES da trava: com outro worker de pe esta chamada volta 0, e a
+    # rodada da noite (uma `drenar` por provedor no mesmo processo) contaria
+    # de novo as falhas da chamada anterior.
+    _FALHAS.clear()
     with queue.instancia_unica() as sozinho:
         if not sozinho:
             print("[identity] outro worker ja esta rodando; nada a fazer.")
@@ -497,6 +548,7 @@ def _resolver_no_disco(rerender: bool, preview: bool) -> int:
     """
     from . import status
 
+    _reabrir_falhas_superadas()
     resolvidos = 0
     for job in queue.listar():
         if job["status"] != queue.PENDENTE:
@@ -518,6 +570,48 @@ def _resolver_no_disco(rerender: bool, preview: bool) -> int:
             queue.concluir(job_id, str(destino))
             resolvidos += 1
     return resolvidos
+
+
+def _reabrir_falhas_superadas() -> int:
+    """Devolve a fila o job `failed` cuja causa ja nao existe.
+
+    Dois casos, os dois medidos em 05/10/2026 (`queue.json`):
+
+    - JUNCAO com as duas imagens no disco. `generation_00078`, `00090` e
+      `00095` morreram com "achei 1 imagem" e a imagem que faltava chegou
+      depois; `failed` era terminal e as builds ficavam sem a imagem do
+      personagem com a arma para sempre (00090 e 00095: fora da fila de
+      publicacao por pendencia).
+    - PAREDE DE PLANOS. `generation_00098` personagem e arma "falharam" 3
+      vezes cada em 22 s (04/10 01:16) — a conta, nao o job. Desde este
+      conserto a parede e pausa (`_passada`), e as falhas antigas com essa
+      assinatura voltam como se tivessem sido pausa.
+
+    So reabre o que ainda falta: juncao cujo arquivo ja existe fica como esta.
+    Nunca levanta (roda antes de toda passada).
+
+    O criterio e `queue.motivo_para_reabrir` — o MESMO que `noite` usa para
+    decidir se chama o worker (`queue.reabriveis`). Build descartada ou ja
+    publicada fica de fora (`queue.fora_da_reabertura`): a 00078 esta no ar e
+    reabrir a juncao dela gastaria uma imagem e um re-render a toa.
+    """
+    reabertos = 0
+    try:
+        candidatos = queue.reabriveis()
+    except Exception:                                   # noqa: BLE001
+        return 0
+    for job in candidatos:
+        gid = job.get("generation_id", "")
+        slot = job.get("slot", slots.CHARACTER)
+        job_id = job.get("job_id") or slots.job_id(gid, slot)
+        motivo = queue.motivo_para_reabrir(job) or "causa superada"
+        try:
+            queue.reabrir_falha(job_id, motivo)
+        except Exception:                               # noqa: BLE001
+            continue
+        reabertos += 1
+        print(f"[identity] {job_id}: reaberto ({motivo}).")
+    return reabertos
 
 
 def _drenar(headless: bool, rerender: bool, preview: bool,
@@ -559,6 +653,7 @@ def _drenar(headless: bool, rerender: bool, preview: bool,
             # dado certo e o video ainda valer a tentativa, e vice-versa.
             print(f"[identity] passada de {provedores.rotulo(provedor)} "
                   f"falhou: {type(exc).__name__} {str(exc)[:160]}")
+            _anotar_falha(f"passada de {provedores.rotulo(provedor)}", exc)
             continue
         concluidos += feitos
         quebrou = quebrou or erro
@@ -652,6 +747,7 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
 
     concluidos = 0
     quebrou: Exception | None = None
+    parede: Exception | None = None
     print(f"[identity] --- passada: {provedores.rotulo(provedor)} ---")
     from contextlib import ExitStack
 
@@ -690,6 +786,8 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
             if saldo <= 0 and credito_bloqueia(ajustes, provedor):
                 queue.falhar(job["job_id"],
                              f"conta sem creditos em {provedor}", max_attempts=0)
+                _anotar_falha(job["job_id"], RuntimeError(
+                    f"conta sem creditos em {provedor}"))
                 print(f"[identity] {provedor} sem creditos: os jobs seguem na "
                       "fila para quando houver saldo.")
                 return 0, None
@@ -727,9 +825,24 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
                 adiados.add(job["job_id"])
                 print(f"[identity] {job['job_id']}: ainda gerando; "
                       "retomo na proxima passada.")
+            except EntradasFaltando as exc:
+                # Cedo, nao falha: a imagem que falta ainda pode chegar.
+                queue.reagendar(job["job_id"], str(exc))
+                adiados.add(job["job_id"])
+                print(f"[identity] {job['job_id']}: {exc} Volta para a fila "
+                      "sem gastar tentativa.")
             except Exception as exc:
+                if _e_parede_de_planos(exc):
+                    # A CONTA, nao o job: o proximo job bateria na mesma
+                    # parede (04/10/2026 01:16: seis tentativas em 22 s).
+                    # Pausa o provedor com prazo, como falta de credito, e o
+                    # job volta para a fila sem gastar tentativa.
+                    _parar_na_parede(provedor, job, exc, ajustes)
+                    parede = exc
+                    break
                 atualizado = queue.falhar(job["job_id"], str(exc), max_attempts)
                 estado = (atualizado or {}).get("status", "?")
+                _anotar_falha(job["job_id"], exc)
                 history.registrar(job["generation_id"], history.FALHOU,
                                   slot=job.get("slot"), provedor=provedor,
                                   erro=str(exc)[:200], estado=estado,
@@ -756,7 +869,38 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
                 time.sleep(espera)
                 pausa_humana(rng)
 
+    if parede is not None:
+        # DEPOIS do `with`: a fabrica anota `ok` ao sair limpa, e o ultimo
+        # evento do provedor tem de ser o erro (a Vila e a apuracao leem o
+        # ultimo). Sem `ref`: a parede e da conta, nao conserto de codigo.
+        atividade.registrar(provedor, atividade.ERRO,
+                            f"{type(parede).__name__}: {str(parede)[:200]}",
+                            etapa="identity.parede_de_planos")
     return concluidos, quebrou
+
+
+def _parar_na_parede(provedor: str, job: dict, exc: BaseException,
+                     ajustes: dict) -> None:
+    """Parede de planos: pausa o provedor com prazo e devolve o job intacto."""
+    job_id = job["job_id"]
+    minutos = float(ajustes.get("pausa_na_parede_min", PAUSA_NA_PAREDE_MIN)
+                    or PAUSA_NA_PAREDE_MIN)
+    queue.reagendar(job_id, f"pausado: {exc}")
+    _anotar_falha(job_id, exc)
+    try:
+        controle.pausar(provedor, motivo=f"parede de planos em "
+                        f"{provedores.rotulo(provedor)} (conta sem plano?)",
+                        minutos=minutos)
+    except Exception:                                   # noqa: BLE001
+        pass
+    history.registrar(job["generation_id"], history.FALHOU,
+                      slot=job.get("slot"), provedor=provedor,
+                      erro=str(exc)[:200], estado="pausado",
+                      tipo=type(exc).__name__)
+    print(f"[identity] {job_id}: {exc}")
+    print(f"[identity] {provedores.rotulo(provedor)} pausado por "
+          f"{minutos:.0f} min; o job volta para a fila sem gastar tentativa "
+          "e nenhum outro job deste provedor comeca agora.", flush=True)
 
 
 def _tem_pendente() -> bool:

@@ -47,10 +47,16 @@ class GrafoTests(unittest.TestCase):
         fila.ARQUIVO_FILA = self.raiz / "queue.json"
         icfg.OUTPUTS = self.raiz / "outputs"
         (icfg.OUTPUTS / GID).mkdir(parents=True)
+        # O GRAFO, nao a config: com `payoff_video=false` no identity.json
+        # real o claim pula o payoff (`fila.jobs_desligados`, 05/10/2026), e
+        # estes testes falam do payoff ligado.
+        self._desligados = fila.jobs_desligados
+        fila.jobs_desligados = lambda: frozenset()
 
     def tearDown(self):
         fila.ARQUIVO_FILA = self._fila
         icfg.OUTPUTS = self._outputs
+        fila.jobs_desligados = self._desligados
         self._tmp.cleanup()
 
     def _enfileirar(self, prazo=LONGE):

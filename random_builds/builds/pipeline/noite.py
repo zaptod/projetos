@@ -679,11 +679,18 @@ def proximo_do_worker(excluir=()) -> str | None:
     (`queue.tem_reivindicavel`): payoff esperando imagem nao conta."""
     from ..identity import config as icfg
     from ..identity import provedores, queue
+    from ..identity import controle
     maximo = int(icfg.settings().get("max_attempts", 3))
     for provedor in provedores.TODOS:
         if provedor in excluir:
             continue
         if queue.tem_reivindicavel(maximo, provedor=provedor):
+            return provedor
+        # A falha que a drenagem REABRE (`queue.reabriveis`) tambem e
+        # trabalho: a reabertura mora dentro do worker, e sem isto ela so
+        # acontecia se houvesse outro job `pending` para chamar o worker.
+        if (not controle.pausado_para(provedor)
+                and queue.reabriveis(provedor=provedor)):
             return provedor
     return None
 
@@ -696,10 +703,26 @@ def jobs_do_worker() -> list[dict]:
     # Build descartada (config/publicacao.json) nao anda: o claim a pula, e
     # conta-la aqui a faria parecer "em preparo" para sempre.
     descartadas = queue.geracoes_descartadas()
-    return [j for j in queue.listar()
-            if j.get("status") == queue.PENDENTE
-            and int(j.get("attempts", 0)) < maximo
-            and j.get("generation_id") not in descartadas]
+    # Slot desligado (o payoff do Digen com `payoff_video=false`) tambem nao
+    # anda: os 7 payoffs `pending` desde 29/09 faziam toda rodada achar que
+    # havia trabalho de worker e encurtar a geracao em 20 min (05/10/2026).
+    # E a juncao que espera imagem que nao vem (falhou de vez) e cemiterio,
+    # nao trabalho: desde 05/10 ela fica `pending` em vez de queimar as
+    # tentativas (`queue.espera_impossivel`).
+    desligados = queue.jobs_desligados()
+    todos = queue.listar()
+    vivos = [j for j in todos
+             if j.get("status") == queue.PENDENTE
+             and int(j.get("attempts", 0)) < maximo
+             and j.get("generation_id") not in descartadas
+             and j.get("slot") not in desligados
+             and not queue.espera_impossivel(j, todos)]
+    # E o `failed` que a proxima drenagem reabre (juncao com as duas imagens
+    # ja no disco, falha pela parede de planos). Medido pelo conferente em
+    # 05/10/2026 numa copia da fila: com 00104 e 00105 prontas, esta lista
+    # ficava vazia, a noite nao chamava o worker e as juncoes de 00090 e
+    # 00095 ficavam `failed` para sempre. Publicada e descartada ficam fora.
+    return vivos + queue.reabriveis(jobs=todos)
 
 
 # ------------------------------------------------------------------- diario
@@ -799,10 +822,29 @@ def _build_de_verdade():
 
 
 def _worker_de_verdade(so_provedor: str | None = None,
-                       prazo: float | None = None) -> int:
+                       prazo: float | None = None) -> dict:
+    """Drena e devolve `{"concluidos": n, "falhas": [...]}`.
+
+    As FALHAS vem junto porque o worker as engole (o job volta para a fila
+    ou congela em `failed`) e `drenar` so devolvia quantos concluiram: em
+    04/10/2026 01:16 a parede de planos queimou seis tentativas em 22 s e o
+    resumo disse "fim: 0 erro(s)". Duble de teste pode continuar devolvendo
+    so o inteiro (`_concluidos_e_falhas`).
+    """
     from ..identity import worker
-    return worker.drenar(headless=False, rerender=True, preview=False,
-                         so_provedor=so_provedor, prazo=prazo)
+    concluidos = worker.drenar(headless=False, rerender=True, preview=False,
+                               so_provedor=so_provedor, prazo=prazo)
+    return {"concluidos": concluidos,
+            "falhas": worker.falhas_da_ultima_rodada()}
+
+
+def _concluidos_e_falhas(retorno) -> tuple[int, list[str]]:
+    """O que o worker devolveu -> (concluidos, falhas). Aceita o inteiro de
+    antes e o dicionario de `_worker_de_verdade`."""
+    if isinstance(retorno, dict):
+        return (int(retorno.get("concluidos") or 0),
+                [str(f) for f in (retorno.get("falhas") or [])])
+    return int(retorno or 0), []
 
 
 def rodar(*, config: dict | None = None, ensaio: bool = False,
@@ -1194,12 +1236,17 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
             print(f"[noite] worker: {provedor}, jobs novos ate "
                   f"{prazo:%H:%M} ({minutos_job:.0f} min cada).")
             try:
-                feitos_agora = int(drenar(so_provedor=provedor,
-                                          prazo=prazo.timestamp()) or 0)
+                feitos_agora, falhas_do_worker = _concluidos_e_falhas(
+                    drenar(so_provedor=provedor, prazo=prazo.timestamp()))
             except Exception as exc:                           # noqa: BLE001
                 erros.append(f"worker: {type(exc).__name__}: {str(exc)[:160]}")
                 print(f"[noite] o worker falhou: {type(exc).__name__}: {exc}")
                 break
+            for falha in falhas_do_worker:
+                erros.append(f"worker {provedor}: {falha}"[:220])
+            if falhas_do_worker:
+                print(f"[noite] worker: {len(falhas_do_worker)} falha(s) em "
+                      f"{provedor} nesta passada.")
             if feitos_agora <= 0:
                 tentados.add(provedor)
                 print(f"[noite] worker: {provedor} nao andou (perfil "

@@ -307,17 +307,32 @@ def _dependencias_satisfeitas(job: dict, jobs: list[dict], agora: str) -> bool:
                                  renovado, senao rodadas mortas o empurrariam
                                  para frente para sempre.
 
+    EXCECAO: a JUNCAO (`character_weapon_ref`). Ela nao degrada: o Editor Pro
+    recebe as duas imagens e devolve uma; sem uma delas nao ha o que fazer.
+    Para ela so o caminho 1 vale — o ARQUIVO de cada imagem no disco. Linha
+    `failed`, linha ausente e prazo vencido NAO a liberam. Medido em
+    04/10/2026 01:18: as duas imagens da `generation_00098` tinham falhado
+    (parede de planos) e a juncao foi liberada pelo caminho 4 e queimou as
+    tres tentativas em 22 s com "achei 0 imagens"; a da 00078, 00090 e 00095
+    foram liberadas pelo prazo com uma imagem ainda a caminho e morreram com
+    "achei 1" — a imagem que faltava chegou depois. Esperando, quem degrada e
+    o payoff (que depende dela e continua liberado pelo prazo).
+
     Roda dentro do lock que o `claim` ja segura, sobre a lista em memoria: sem
     I/O de fila e sem reentrar em `_bloqueio()`.
     """
     dependencias = job.get("depends_on") or []
     if not dependencias:
         return True
+    precisa_do_arquivo = job.get("slot") in PRECISA_DAS_ENTRADAS
     por_id = {j["job_id"]: j for j in jobs}
     faltam = []
     for dependencia in dependencias:
         gid, slot = slots.partes(dependencia)
         if artefato.utilizavel(gid, slot):
+            continue
+        if precisa_do_arquivo:
+            faltam.append(dependencia)
             continue
         linha = por_id.get(dependencia)
         if linha is None or linha["status"] in (PRONTO, FALHOU):
@@ -325,8 +340,56 @@ def _dependencias_satisfeitas(job: dict, jobs: list[dict], agora: str) -> bool:
         faltam.append(dependencia)
     if not faltam:
         return True
+    if precisa_do_arquivo:
+        return False
     prazo = job.get("aguardar_ate")
     return bool(prazo) and agora >= prazo
+
+
+# Jobs que so podem rodar com o ARQUIVO de cada dependencia no disco: a juncao
+# compoe as duas imagens, e sem uma delas nao sai nada (ver acima).
+PRECISA_DAS_ENTRADAS = frozenset({slots.REFERENCIA})
+
+
+def espera_impossivel(job: dict, jobs: list[dict]) -> bool:
+    """A juncao espera uma imagem que NAO vai chegar sozinha?
+
+    Imagem sem arquivo cuja linha esta `failed`, ausente ou `done` (arquivo
+    apagado ou em quarentena) nao anda sem alguem mexer. Quem conta trabalho
+    vivo (`noite.jobs_do_worker`, as builds "em preparo") nao pode contar
+    essa juncao, senao ela vira cemiterio: `pending` para sempre, contada
+    como estoque a caminho. Falha por parede de planos volta sozinha
+    (`worker._reabrir_falhas_superadas`) e entao a espera volta a ser viva.
+    """
+    if job.get("slot") not in PRECISA_DAS_ENTRADAS:
+        return False
+    por_id = {j["job_id"]: j for j in jobs}
+    for dependencia in job.get("depends_on") or []:
+        gid, slot = slots.partes(dependencia)
+        if artefato.utilizavel(gid, slot):
+            continue
+        linha = por_id.get(dependencia)
+        if linha is None or linha.get("status") in (PRONTO, FALHOU):
+            return True
+    return False
+
+
+def jobs_desligados() -> frozenset[str]:
+    """Slots que a config atual NAO processa (`payoff_video=false`).
+
+    Medido em 05/10/2026: 7 payoffs do Digen `pending` com o video desligado
+    desde 29/09 (decisao `geral/digen-plano-free`). O worker nao abre o Digen
+    para eles, mas `tem_reivindicavel` os contava como trabalho: a rodada de
+    geracao chamava o worker do Digen toda vez e encurtava a propria janela
+    ("com job de identidade esperando, a geracao para 20 min antes"). Ficam
+    `pending` (nada e apagado): religar o video devolve os jobs. Config
+    ilegivel = nada desligado.
+    """
+    try:
+        ativos = set(config.jobs_ativos())
+    except Exception:                                   # noqa: BLE001
+        return frozenset()
+    return frozenset(s for s in slots.JOBS if s not in ativos)
 
 
 def geracoes_descartadas() -> set[str]:
@@ -349,11 +412,13 @@ def geracoes_descartadas() -> set[str]:
 
 def _reivindicavel(job: dict, jobs: list[dict], max_attempts: int,
                    provedor: str | None, agora: str,
-                   descartadas: set[str] | frozenset = frozenset()) -> bool:
+                   descartadas: set[str] | frozenset = frozenset(),
+                   desligados: frozenset = frozenset()) -> bool:
     return (job["status"] == PENDENTE
             and job.get("attempts", 0) < max_attempts
             and (provedor is None or job.get("provider") == provedor)
             and job.get("generation_id") not in descartadas
+            and job.get("slot") not in desligados
             and _dependencias_satisfeitas(job, jobs, agora))
 
 
@@ -370,10 +435,11 @@ def tem_reivindicavel(max_attempts: int = 3, provedor: str | None = None) -> boo
         return False
     agora = _agora()
     descartadas = geracoes_descartadas()
+    desligados = jobs_desligados()
     with _bloqueio():
         jobs = _ler()
         return any(_reivindicavel(j, jobs, max_attempts, provedor, agora,
-                                  descartadas)
+                                  descartadas, desligados)
                    for j in jobs)
 
 
@@ -399,13 +465,14 @@ def claim(max_attempts: int = 3, ignorar: set[str] | None = None,
     ignorar = ignorar or set()
     agora = _agora()
     descartadas = geracoes_descartadas()
+    desligados = jobs_desligados()
     with _bloqueio():
         jobs = _ler()
         for job in jobs:
             if job["job_id"] in ignorar:
                 continue
             if _reivindicavel(job, jobs, max_attempts, provedor, agora,
-                              descartadas):
+                              descartadas, desligados):
                 job.update({"status": RODANDO,
                             "attempts": job.get("attempts", 0) + 1,
                             "updated_at": _agora()})
@@ -425,8 +492,34 @@ def registrar_espaco(job_id: str, url: str) -> dict | None:
 
 
 def concluir(job_id: str, arquivo: str) -> dict | None:
-    return _atualizar(job_id, {"status": PRONTO, "arquivo": arquivo,
-                                      "error": None, "updated_at": _agora()})
+    """Marca `done` e, no MESMO lock, reabre a juncao que so esperava ISTO.
+
+    A juncao que morreu por falta de entrada (`failed`, "achei 1") volta para
+    `pending` na hora em que a ultima imagem dela chega ao disco — e a passada
+    que acabou de gerar a imagem ja a pega no proximo `claim`. Sem isso ela
+    so voltava no pre-passe da PROXIMA drenagem, e a rodada da noite so drena
+    se houver outro trabalho vivo (conferente, 05/10/2026: com 00104 e 00105
+    prontas, a juncao da 00098 ficaria `failed` para sempre).
+    """
+    with _bloqueio():
+        jobs = _ler()
+        feito = None
+        for job in jobs:
+            if job["job_id"] == job_id:
+                job.update({"status": PRONTO, "arquivo": arquivo,
+                            "error": None, "updated_at": _agora()})
+                feito = job
+                break
+        if feito is None:
+            return None
+        for job in jobs:
+            if job_id not in (job.get("depends_on") or []):
+                continue
+            motivo = _motivo_de_juncao(job)
+            if motivo is not None:
+                job.update(_reaberto(motivo))
+        _gravar(jobs)
+        return feito
 
 
 def registrar_envio(job_id: str, url: str | None,
@@ -525,6 +618,137 @@ def reabrir() -> int:
         if reabertos:
             _gravar(jobs)
         return reabertos
+
+
+def reabrir_falha(job_id: str, motivo: str) -> dict | None:
+    """Devolve UM job `failed` para `pending`, com as tentativas zeradas.
+
+    `failed` era terminal: so `identity run` (que o operador tinha de lembrar)
+    o tirava de la. Quem chama isto e o worker, e so quando a causa da falha
+    deixou de existir (as duas imagens da juncao chegaram ao disco, ou a
+    "falha" foi a parede de planos, que nao e defeito do job). Job em outro
+    estado fica como esta. `enviado` zerado pelo mesmo motivo do `enqueue`:
+    o que estava em voo naquela tentativa nao vale mais.
+    """
+    with _bloqueio():
+        jobs = _ler()
+        for job in jobs:
+            if job["job_id"] == job_id:
+                if job["status"] != FALHOU:
+                    return dict(job)
+                job.update(_reaberto(motivo))
+                _gravar(jobs)
+                return dict(job)
+    return None
+
+
+def _reaberto(motivo: str) -> dict:
+    return {"status": PENDENTE, "attempts": 0,
+            "enviado": False, "videos_antes": None,
+            "error": f"reaberto: {motivo}"[:500], "updated_at": _agora()}
+
+
+# Assinaturas gravadas no `error` da fila. A parede de planos (`ParedeDePlanos`
+# do `picasso_client`) e da CONTA, nao do job; a falta de entrada e a mensagem
+# de `worker.EntradasFaltando`, igual a da falha antiga ("achei 1").
+PAREDE_NO_ERRO = "parede de planos"
+FALTA_DE_ENTRADA_NO_ERRO = "a juncao precisa das duas imagens"
+
+
+def _motivo_de_juncao(job: dict) -> str | None:
+    """Juncao `failed` por falta de entrada com as duas entradas JA no disco."""
+    if job.get("status") != FALHOU or job.get("slot") not in PRECISA_DAS_ENTRADAS:
+        return None
+    dependencias = job.get("depends_on") or []
+    erro = str(job.get("error") or "").lower()
+    if not dependencias or FALTA_DE_ENTRADA_NO_ERRO not in erro:
+        return None
+    try:
+        if artefato.utilizavel(job.get("generation_id", ""),
+                               job.get("slot", "")):
+            return None
+        if all(artefato.utilizavel(*slots.partes(dep)) for dep in dependencias):
+            return "as duas imagens ja estao no disco"
+    except Exception:                                   # noqa: BLE001
+        return None
+    return None
+
+
+def motivo_para_reabrir(job: dict,
+                        fora: set[str] | frozenset = frozenset()) -> str | None:
+    """Por que este job `failed` pode voltar para a fila (ou `None`).
+
+    Dois casos, os dois medidos em 05/10/2026 (`queue.json`):
+
+    - JUNCAO que morreu por falta de entrada e agora tem as duas imagens no
+      disco (`generation_00078`, `00090`, `00095`: "achei 1", a imagem que
+      faltava chegou depois). Juncao que falhou por OUTRO motivo nao volta:
+      falharia de novo e queimaria tres tentativas por hora para sempre.
+    - PAREDE DE PLANOS (`generation_00098` personagem e arma, 04/10 01:16).
+
+    `fora`: geracoes que nao valem o gasto — build descartada ou ja publicada
+    (a 00078 tem 6 linhas no ledger; reabrir a juncao dela gastaria uma imagem
+    do PicassoIA e re-renderizaria um video que ja esta no ar). Ver
+    `fora_da_reabertura`. So le: quem grava e `worker._reabrir_falhas_superadas`.
+    """
+    if job.get("status") != FALHOU:
+        return None
+    gid = job.get("generation_id", "")
+    if gid in fora:
+        return None
+    juncao = _motivo_de_juncao(job)
+    if juncao is not None:
+        return juncao
+    if PAREDE_NO_ERRO not in str(job.get("error") or "").lower():
+        return None
+    try:
+        if artefato.utilizavel(gid, job.get("slot", slots.CHARACTER)):
+            return None
+    except Exception:                                   # noqa: BLE001
+        return None
+    return "a parede de planos e da conta, nao do job"
+
+
+def geracoes_publicadas() -> set[str]:
+    """Geracoes cuja BUILD ja saiu em algum destino (`metricas.publicado`).
+
+    A juncao e as imagens servem a build; com ela no ar, refaze-las e gasto
+    sem volta. Ledger ilegivel = nada publicado (a reabertura volta a valer
+    para todo mundo, como antes deste filtro).
+    """
+    try:
+        from ..publicar import catalogo, metricas
+        saida = set()
+        for linha in metricas.publicados():
+            partes = str(linha.get("video_id") or "").split(":")
+            if (len(partes) >= 2 and partes[1] == catalogo.BUILD
+                    and metricas.publicado(linha)):
+                saida.add(partes[0])
+        return saida
+    except Exception:                                   # noqa: BLE001
+        return set()
+
+
+def fora_da_reabertura() -> set[str]:
+    """Geracoes cujas falhas nao sao reabertas: descartadas e publicadas."""
+    return set(geracoes_descartadas()) | set(geracoes_publicadas())
+
+
+def reabriveis(provedor: str | None = None, jobs: list[dict] | None = None,
+               fora: set[str] | None = None) -> list[dict]:
+    """Os jobs `failed` que a proxima drenagem reabre (so leitura).
+
+    Existe porque a reabertura mora no worker, e quem decide CHAMAR o worker
+    (`noite.jobs_do_worker`/`proximo_do_worker`) so via `pending`: sem outro
+    trabalho vivo na fila, a juncao reabrivel nunca era drenada.
+    """
+    if jobs is None:
+        jobs = listar()
+    if fora is None:
+        fora = fora_da_reabertura()
+    return [j for j in jobs
+            if (provedor is None or j.get("provider") == provedor)
+            and motivo_para_reabrir(j, fora) is not None]
 
 
 def limpar_concluidos() -> int:
