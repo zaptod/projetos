@@ -61,19 +61,104 @@ def _local(ts) -> datetime | None:
 
 
 # ------------------------------------------------------------------ a noite
-def noite_esperada(agora: datetime | None = None) -> date:
-    """A ultima noite que ja devia ter deixado ficha de conferencia.
+#
+# "NOITE" FICOU NO NOME, MAS A CONFERENCIA E DE DIA. Ate 29/09/2026 ela
+# rodava de madrugada (01:28 a 05:20); desde 30/09 (edccded, lote de dia)
+# roda no SERVICO DO DIA das historias (`contos.pipeline.agenda.
+# _servico_do_dia`), no 1o disparo da janela pesada — 07:02, e a conferencia
+# em si as 07:04-07:35 depois da coleta de metricas. Estas contas seguiram
+# exigindo uma rodada ANTES das 06:37, e o alarme "noite sem conferencia" foi
+# ao celular todo dia de 02 a 05/10 por uma conferencia que tinha rodado
+# (varredura de 05/10/2026, item 14). Agora quem diz que a conferencia do dia
+# rodou e a ORIGEM da rodada (`servico`), gravada na ficha; o relogio so vale
+# para a ficha de antes da origem existir.
 
-    A noite do dia D roda de madrugada (01:28 a 05:20 em 27/09/2026) e acaba
-    quando o dia de grade de D abre (06:37, o horario depois do maior buraco
-    da grade). Antes disso, a ultima noite que ja acabou e a de D-1.
+# Quem conferiu. So a rodada do servico do dia cobre o dia; o botao do painel
+# e a linha de comando sao conferencias feitas a mao.
+ORIGEM_SERVICO = "servico"
+ORIGEM_PAINEL = "painel"
+ORIGEM_MANUAL = "manual"
+ORIGENS = (ORIGEM_SERVICO, ORIGEM_PAINEL, ORIGEM_MANUAL)
+
+# O 1o disparo da janela pesada, quando o config das historias nao abre.
+# A fonte e `historias/config/agenda.json` (`horas` + `janela_pesada`).
+PRIMEIRO_DISPARO_PADRAO = (7, 2)
+# Quanto depois do 1o disparo a conferencia do dia ja devia ter rodado. O
+# servico coleta metrica antes (YouTube ~7 min, TikTok ate 12 min por canal)
+# e a conferencia saiu as 07:04-07:35 de 01 a 05/10. Na transicao, uma rodada
+# da madrugada que emenda segura a trava e o disparo das 07:02 sai; o das
+# 08:02 faz o servico. Tres horas cobrem isso sem acusar falta de verdade.
+FOLGA_DO_SERVICO = timedelta(hours=3)
+
+
+def _config_da_agenda():
+    from pathlib import Path
+    return (Path(__file__).resolve().parents[3] / "historias" / "config"
+            / "agenda.json")
+
+
+def primeiro_disparo(caminho=None) -> tuple:
+    """`(hora, minuto)` do 1o disparo da janela pesada das historias.
+
+    E ele que faz o servico do dia (metrica, tempos, conferencia). Lido do
+    config, para a janela mudar sem o alarme voltar a mentir; config que nao
+    abre ou sem disparo na janela: `PRIMEIRO_DISPARO_PADRAO`. Nunca levanta.
     """
-    from . import conferencia
+    try:
+        with open(caminho or _config_da_agenda(), encoding="utf-8-sig") as fh:
+            dados = json.load(fh)
+        janela = dados.get("janela_pesada") or {}
+        inicio = int(janela.get("inicio", 0)) % 24
+        fim = int(janela.get("fim", 0)) % 24
+        disparos = []
+        for item in dados.get("horas") or []:
+            texto = str(item).strip()
+            hora, _, minuto = texto.partition(":")
+            # Hora cheia dispara as :20 (`agenda.MINUTO_PADRAO`).
+            hora, minuto = int(hora), int(minuto) if minuto else 20
+            if not 0 <= hora < 24:
+                continue
+            if inicio == fim:
+                dentro = True
+            elif inicio < fim:
+                dentro = inicio <= hora < fim
+            else:
+                dentro = hora >= inicio or hora < fim
+            if dentro:
+                # Ordem do DIA DA JANELA: a que atravessa a meia-noite
+                # comeca no `inicio`, nao na hora 0.
+                disparos.append(((hora - inicio) % 24, minuto, hora))
+        if disparos:
+            _ordem, minuto, hora = min(disparos)
+            return hora, minuto
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return PRIMEIRO_DISPARO_PADRAO
+
+
+def limite_do_servico(caminho=None) -> str:
+    """`'HH:MM'`: a hora em que a conferencia do dia ja devia ter rodado."""
+    hora, minuto = primeiro_disparo(caminho)
+    limite = datetime(2000, 1, 1, hora, minuto) + FOLGA_DO_SERVICO
+    if limite.day != 1:
+        return "23:59"
+    return limite.strftime("%H:%M")
+
+
+def noite_esperada(agora: datetime | None = None, *,
+                   limite: str | None = None) -> date:
+    """O ultimo dia que ja devia ter deixado ficha de conferencia do servico.
+
+    A conferencia do dia D roda no servico do dia (1o disparo da janela, as
+    07:02) e tem `FOLGA_DO_SERVICO` para acabar: ate as 10:02 a ultima que
+    ja devia existir e a de D-1; dali em diante, a de D. (Ate 30/09/2026 era
+    a madrugada, e a virada era a abertura do dia de grade, 06:37.)
+    """
     agora = agora or datetime.now()
-    abertura, _ = conferencia.abertura_e_fechamento("youtube")
-    abre = agora.replace(hour=int(abertura), minute=grade.minuto(abertura),
-                         second=0, microsecond=0)
-    return agora.date() if agora >= abre else agora.date() - timedelta(days=1)
+    hora, minuto = (limite or limite_do_servico()).split(":")
+    vira = agora.replace(hour=int(hora), minute=int(minuto), second=0,
+                         microsecond=0)
+    return agora.date() if agora >= vira else agora.date() - timedelta(days=1)
 
 
 def _dia(ficha) -> date | None:
@@ -83,35 +168,57 @@ def _dia(ficha) -> date | None:
         return None
 
 
-def noite_rodou(ficha) -> bool | None:
-    """A ficha do dia teve rodada DE MADRUGADA, antes de o dia de grade abrir?
+def noite_rodou(ficha, *, limite: str | None = None) -> bool | None:
+    """A ficha do dia teve a rodada do SERVICO DO DIA?
 
     A ficha do dia e regravada por qualquer rodada, inclusive a do botao do
-    painel as 14:00; sem isto, ela apagaria o rastro da noite que faltou.
-    Ficha de antes de 28/09/2026 nao tem `rodadas`: `None`, nao sei.
+    painel as 14:00; sem isto, ela apagaria o rastro do servico que faltou.
+
+    - rodada com origem `servico` cobre o dia, a qualquer hora (servico que
+      atrasou ainda e servico);
+    - rodada com origem `painel`/`manual` NAO cobre, nem de madrugada;
+    - rodada sem origem (ficha de antes de 05/10/2026) cobre se rodou antes
+      de `limite_do_servico()` — as de 02 a 05/10 (07:04-07:35) e as da
+      madrugada de setembro. Uma conferencia a mao antes das 10:02 nessas
+      fichas passa por servico: nao ha como separar, e o erro e o do lado
+      quieto so para fichas que ja passaram.
+    - ficha sem `rodadas` (antes de 28/09/2026): `None`, nao sei;
+    - `rodadas` vazia: `False`.
     """
-    from . import conferencia
     rodadas = (ficha or {}).get("rodadas") if isinstance(ficha, dict) else None
     if not isinstance(rodadas, list):
         return None
-    abertura, _ = conferencia.abertura_e_fechamento("youtube")
-    limite = grade.horario(abertura)
-    return any(str(r)[:5] < limite for r in rodadas)
+    origens = ficha.get("origens")
+    if not isinstance(origens, list) or len(origens) != len(rodadas):
+        origens = [None] * len(rodadas)
+    corte = None
+    for rodada, origem in zip(rodadas, origens):
+        if origem == ORIGEM_SERVICO:
+            return True
+        if origem is None:
+            corte = corte or limite or limite_do_servico()
+            if str(rodada)[:5] < corte:
+                return True
+    return False
 
 
 def noites_sem_conferencia(ficha, agora: datetime | None = None
                            ) -> dict | None:
-    """`None` quando a ultima noite esperada tem ficha; senao, o buraco.
+    """`None` quando o ultimo dia esperado tem ficha do servico; senao, o buraco.
 
     `ficha` e a mais recente do canal (a de erro conta: rodou e falhou e
     outra pergunta, com alerta proprio). Sem ficha nenhuma, `ultima` e
-    `None` — nunca rodou tambem e noite sem conferencia.
+    `None` — nunca rodou tambem e dia sem conferencia (CASO ZERO acende).
     """
-    esperada = noite_esperada(agora)
+    limite = limite_do_servico()
+    esperada = noite_esperada(agora, limite=limite)
     ultima = _dia(ficha)
     if ultima is not None and ultima > esperada:
+        # Ficha de hoje antes do limite: o servico de hoje ainda esta na
+        # folga. So a ficha mais recente e lida, entao o dia de ontem nao da
+        # para julgar daqui (a conferencia de hoje julga, em `noites_puladas`).
         return None
-    if ultima == esperada and noite_rodou(ficha) is not False:
+    if ultima == esperada and noite_rodou(ficha, limite=limite) is not False:
         return None
     feita = ultima if ultima is not None and ultima < esperada else None
     if ultima == esperada:
@@ -264,8 +371,11 @@ def cobertura_de_ids(linhas, agora: datetime | None = None, *,
 
 
 __all__ = ["COBERTURA_MINIMA", "DIAS_DE_COBERTURA", "FABRICAS_QUE_OBSERVAM",
-           "FOLGA_DO_ID", "HORAS_DE_EVENTOS", "MINIMO_DE_HORAS_COBERTAS",
+           "FOLGA_DO_ID", "FOLGA_DO_SERVICO", "HORAS_DE_EVENTOS",
+           "MINIMO_DE_HORAS_COBERTAS", "ORIGEM_MANUAL", "ORIGEM_PAINEL",
+           "ORIGEM_SERVICO", "ORIGENS", "PRIMEIRO_DISPARO_PADRAO",
            "STATUS_DE_TRABALHO",
            "cobertura_de_ids", "eventos_por_canal", "horarios_entre",
-           "ler_diario", "noite_esperada", "noite_rodou", "noites_puladas",
-           "noites_sem_conferencia"]
+           "ler_diario", "limite_do_servico", "noite_esperada",
+           "noite_rodou", "noites_puladas", "noites_sem_conferencia",
+           "primeiro_disparo"]

@@ -9,7 +9,8 @@ NENHUM caso aqui toca a rede: as duas listas sao injetadas, e ha um caso que
 prova justamente isso.
 """
 import unittest
-from datetime import date
+from datetime import date, datetime
+from pathlib import Path
 
 from builds.publicar import conferencia
 
@@ -602,6 +603,90 @@ class OAlarme(unittest.TestCase):
             "fantasmas": [], "rascunhos": [], "orfaos": [], "casados": 1,
             "no_ledger": 1, "janela_dias": 3})
         self.assertEqual(avisos, [])
+
+
+class AOrigemDaRodada(unittest.TestCase):
+    """Varredura de 05/10/2026, item 14: a conferencia passou para o servico
+    do dia (07:02) em 30/09, e a regra dos sinais seguiu pedindo rodada antes
+    das 06:37 — "noite(s) sem conferencia" foi ao celular todo dia de 02 a
+    05/10. Agora a ficha diz QUEM conferiu."""
+
+    LIMPA = {"canal": "builds", "plataforma": "youtube", "veredito": "limpo",
+             "fantasmas": [], "rascunhos": [], "orfaos": [], "casados": 1,
+             "no_ledger": 1, "janela_dias": 3}
+
+    def _rodar(self, anterior, agora, **kwargs):
+        from builds import atividade
+        from builds.publicar import sinais
+        salvos, avisos = [], []
+        real = (conferencia.conferir, conferencia.salvar, atividade.registrar,
+                sinais._config_da_agenda)
+        conferencia.conferir = lambda *a, **k: dict(self.LIMPA)
+        conferencia.salvar = salvos.append
+        atividade.registrar = lambda *a, **k: avisos.append(a[2])
+        # O 1o disparo do padrao (07:02), e nao o do config da maquina.
+        sinais._config_da_agenda = lambda: Path("E:/nao/existe/agenda.json")
+
+        def restaurar():
+            (conferencia.conferir, conferencia.salvar, atividade.registrar,
+             sinais._config_da_agenda) = real
+
+        self.addCleanup(restaurar)
+        _sem_leituras_reais(self)
+        conferencia.ultima = lambda canal="builds": anterior
+        conferencia.conferir_tudo(("builds",), log=lambda _t: None,
+                                  agora=agora, **kwargs)
+        return salvos[0], [a for a in avisos if "sem conferencia" in a]
+
+    def test_o_servico_grava_a_origem(self):
+        ficha, _ = self._rodar({}, datetime(2026, 10, 5, 7, 35),
+                               origem="servico")
+        self.assertEqual("servico", ficha["origem"])
+        self.assertEqual(["07:35"], ficha["rodadas"])
+        self.assertEqual(["servico"], ficha["origens"])
+
+    def test_sem_origem_e_painel_o_lado_que_acende(self):
+        ficha, _ = self._rodar({}, datetime(2026, 10, 5, 14, 0))
+        self.assertEqual("painel", ficha["origem"])
+        self.assertEqual(["painel"], ficha["origens"])
+
+    def test_a_rodada_herdada_sem_origem_fica_nao_sei(self):
+        anterior = {"canal": "builds", "dia": "2026-10-05",
+                    "rodadas": ["07:35"]}
+        ficha, _ = self._rodar(anterior, datetime(2026, 10, 5, 14, 0))
+        self.assertEqual(["07:35", "14:00"], ficha["rodadas"])
+        self.assertEqual([None, "painel"], ficha["origens"])
+
+    def test_o_alarme_falso_de_toda_manha_nao_sai_mais(self):
+        # O caso real de 05/10: anterior e a ficha de 04/10, rodada 07:34
+        # (sem `origens`, de antes do conserto). O alarme saiu as 07:36.
+        anterior = {"canal": "builds", "dia": "2026-10-04",
+                    "rodadas": ["07:34"]}
+        ficha, alarmes = self._rodar(anterior, datetime(2026, 10, 5, 7, 35),
+                                     origem="servico")
+        self.assertEqual([], alarmes)
+        self.assertEqual([], ficha["sinais"]["noites_puladas"])
+        # E a de amanha, ja com origem, tambem cala.
+        _, alarmes = self._rodar(ficha, datetime(2026, 10, 6, 7, 35),
+                                 origem="servico")
+        self.assertEqual([], alarmes)
+
+    def test_CASO_ZERO_dia_sem_conferencia_acende(self):
+        # A ficha anterior e de 03/10: o dia 04/10 nao teve conferencia.
+        anterior = {"canal": "builds", "dia": "2026-10-03",
+                    "rodadas": ["07:30"], "origens": ["servico"]}
+        _, alarmes = self._rodar(anterior, datetime(2026, 10, 5, 7, 35),
+                                 origem="servico")
+        self.assertEqual(1, len(alarmes))
+        self.assertIn("04/10", alarmes[0])
+
+    def test_dia_so_com_o_painel_acende(self):
+        anterior = {"canal": "builds", "dia": "2026-10-04",
+                    "rodadas": ["07:10"], "origens": ["painel"]}
+        _, alarmes = self._rodar(anterior, datetime(2026, 10, 5, 7, 35),
+                                 origem="servico")
+        self.assertEqual(1, len(alarmes))
+        self.assertIn("04/10", alarmes[0])
 
 
 if __name__ == "__main__":

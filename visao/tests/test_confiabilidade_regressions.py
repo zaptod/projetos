@@ -12,6 +12,23 @@ from panorama import confiabilidade as C
 
 DIA = "2026-09-16"
 
+_CONFIG_REAL = None
+
+
+def setUpModule():
+    # HERMETICO tambem no horario do servico do dia: `sinais` le o 1o
+    # disparo de `historias/config/agenda.json`; aqui vale o padrao (07:02),
+    # para o caso nao depender do que o Adrian mudar na agenda.
+    global _CONFIG_REAL
+    from builds.publicar import sinais
+    _CONFIG_REAL = sinais._config_da_agenda
+    sinais._config_da_agenda = lambda: "E:/nao/existe/agenda.json"
+
+
+def tearDownModule():
+    from builds.publicar import sinais
+    sinais._config_da_agenda = _CONFIG_REAL
+
 
 def _yt(video_id, *, hora="09:40", prova_ok=True, qualidade="hd",
         reconhecido=True, url="https://youtu.be/x", laudo=True):
@@ -304,7 +321,7 @@ class AConferencia(unittest.TestCase):
         ficha = _retrato(conferencias={"builds": ontem,
                                        "historias": _limpo()})
         (alerta,) = [a for a in ficha["alertas"] if "builds" in a]
-        self.assertIn("a noite de 16/09 não rodou", alerta)
+        self.assertIn("a do dia 16/09 não rodou", alerta)
 
     def test_a_noite_nao_e_cobrada_antes_de_acabar(self):
         # As 03:00 a noite de hoje ainda esta rodando: a ficha de ontem basta.
@@ -314,6 +331,37 @@ class AConferencia(unittest.TestCase):
                                                          dia="2026-09-15")},
                          agora=C.datetime(2026, 9, 16, 3, 0))
         self.assertFalse(any("não rodou" in a for a in ficha["alertas"]))
+
+    def test_o_servico_do_dia_nao_e_cobrado_antes_da_folga(self):
+        # Varredura de 05/10/2026, item 14: a conferencia mora no servico do
+        # dia (07:02, conferindo as 07:04-07:35) e a regra antiga cobrava
+        # rodada antes das 06:37 — a pagina e o relatorio acusavam todo dia.
+        # As 08:00 de 16/09 a de 15/09 (rodada 07:35) ainda basta.
+        ontem = dict(_limpo(), dia="2026-09-15", rodadas=["07:35"])
+        ficha = _retrato(conferencias={"builds": ontem,
+                                       "historias": dict(ontem)},
+                         agora=C.datetime(2026, 9, 16, 8, 0))
+        self.assertFalse(any("não rodou" in a for a in ficha["alertas"]))
+
+    def test_CASO_ZERO_o_servico_que_nao_rodou_acende_depois_da_folga(self):
+        ontem = dict(_limpo(), dia="2026-09-15", rodadas=["07:35"],
+                     origens=["servico"])
+        ficha = _retrato(conferencias={"builds": ontem,
+                                       "historias": dict(ontem)},
+                         agora=C.datetime(2026, 9, 16, 10, 2))
+        (alerta,) = [a for a in ficha["alertas"]
+                     if "builds" in a and "não rodou" in a]
+        self.assertIn("a do dia 16/09 não rodou", alerta)
+
+    def test_ficha_de_hoje_so_do_painel_acende(self):
+        hoje = dict(_limpo(), dia="2026-09-16", rodadas=["07:10"],
+                    origens=["painel"])
+        ficha = _retrato(conferencias={"builds": hoje,
+                                       "historias": _limpo()},
+                         agora=C.datetime(2026, 9, 16, 22, 30))
+        (alerta,) = [a for a in ficha["alertas"]
+                     if "builds" in a and "não rodou" in a]
+        self.assertIn("feita à mão", alerta)
 
 
 class AGradeNaPagina(unittest.TestCase):

@@ -556,18 +556,26 @@ def _avisos_herdados(anterior: dict, dia: str) -> dict:
     return {"grade": grade_avisada, "noite": da_noite}
 
 
-def _rodadas(anterior: dict, dia: str, agora: datetime) -> list:
-    """As horas em que a conferencia rodou HOJE, esta inclusive.
+def _rodadas(anterior: dict, dia: str, agora: datetime,
+             origem: str | None = None) -> tuple:
+    """`(rodadas, origens)`: as horas em que a conferencia rodou HOJE e quem
+    a rodou, esta inclusive. As duas listas andam alinhadas.
 
     A ficha do dia e regravada a cada rodada, e o botao do painel tambem
     grava. Sem a lista, uma conferencia feita a mao as 14:00 apagava o
-    rastro de que a noite nao tinha rodado.
+    rastro de que o servico do dia nao tinha rodado. A ORIGEM (05/10/2026)
+    e o que `sinais.noite_rodou` le: a hora deixou de dizer quem conferiu
+    quando a conferencia passou da madrugada para o servico das 07:02.
+    Rodada herdada de ficha sem `origens` fica `None` (nao sei).
     """
     if isinstance(anterior, dict) and anterior.get("dia") == dia:
         feitas = [str(r) for r in anterior.get("rodadas") or []]
+        quem = anterior.get("origens")
+        if not isinstance(quem, list) or len(quem) != len(feitas):
+            quem = [None] * len(feitas)
     else:
-        feitas = []
-    return feitas + [agora.strftime("%H:%M")]
+        feitas, quem = [], []
+    return feitas + [agora.strftime("%H:%M")], list(quem) + [origem]
 
 
 def _vigiar(canal: str, anterior: dict, contagem, agora: datetime) -> dict:
@@ -620,13 +628,23 @@ def _avisar_sinais(canal: str, vigia: dict, avisos: dict, atividade) -> None:
 
 
 def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
-                  log=print, agora: datetime | None = None) -> dict:
+                  log=print, agora: datetime | None = None,
+                  origem: str = "painel") -> dict:
     """Confere cada canal, grava e ACENDE o alarme quando esta sujo.
 
     O alarme nao tem uma linha de Telegram: uma linha de erro no diario ja
     vira aviso no celular (`bot._alertar`) e ja convoca a apuracao automatica
     do Claude. Escrever um segundo caminho de aviso seria criar a proxima
     divergencia.
+
+    `origem` diz QUEM conferiu e vai para a ficha (`origem`, `origens`):
+    `"servico"` e o servico do dia das historias (`agenda._servico_do_dia`,
+    07:02), o unico que cobre o dia em `sinais.noite_rodou`; `"painel"`
+    (padrao, o botao da pagina) e `"manual"` (linha de comando) sao
+    conferencias a mao. O padrao e o lado que ACENDE: quem esquecer de dizer
+    que e o servico ganha um alarme, nunca um silencio. Origem desconhecida
+    e gravada como veio e tambem nao cobre o dia — sem levantar, porque uma
+    conferencia que nao roda por causa de um rotulo e pior que um alarme.
     """
     from .. import atividade
     from . import sinais
@@ -679,7 +697,9 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
             vigia = {"erro": f"{type(exc).__name__}: {exc}"}
         ficha["sinais"] = vigia
         ficha["avisos"] = avisos
-        ficha["rodadas"] = _rodadas(anterior, dia, relogio)
+        ficha["origem"] = origem
+        ficha["rodadas"], ficha["origens"] = _rodadas(anterior, dia, relogio,
+                                                      origem)
         # A FALHA TAMBEM VAI PARA DISCO. Sem isto a pagina via "nunca rodou"
         # — medido em 16/09/2026, com os tres tokens revogados — e "nunca
         # rodou" e "rodou e o token morreu" pedem acoes diferentes.
@@ -770,7 +790,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     canais = (args.canal,) if args.canal else ("builds", "historias")
-    fichas = conferir_tudo(canais, dias=args.dias)
+    # A mao: nao cobre o servico do dia (`sinais.noite_rodou`).
+    fichas = conferir_tudo(canais, dias=args.dias, origem="manual")
     sujo = False
     for canal, ficha in fichas.items():
         if ficha.get("erro"):

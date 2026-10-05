@@ -11,8 +11,11 @@ alarme reage a evento e ausencia nao escreve linha:
 Cada sinal tem o caso CHEIO e o caso VAZIO lado a lado: sem dado, a resposta
 e "nao medi" (`None`), nunca nota boa.
 """
+import json
+import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 from builds.publicar import sinais
 
@@ -26,13 +29,33 @@ def _evento(horas_atras: float, canal="builds", fabrica="publicacao",
             "fabrica": fabrica, "status": status, "detalhe": "x"}
 
 
+def _sem_config_real(caso: unittest.TestCase) -> None:
+    """O 1o disparo vem do config REAL das historias; aqui, do padrao
+    (07:02), para o teste nao depender do que o Adrian mudar na agenda."""
+    real = sinais._config_da_agenda
+    sinais._config_da_agenda = lambda: Path("E:/nao/existe/agenda.json")
+    caso.addCleanup(setattr, sinais, "_config_da_agenda", real)
+
+
 class ANoite(unittest.TestCase):
 
-    def test_a_noite_esperada_vira_quando_o_dia_de_grade_abre(self):
+    def setUp(self):
+        _sem_config_real(self)
+
+    def test_o_dia_esperado_vira_no_servico_mais_a_folga(self):
+        # A conferencia mora no servico do dia (07:02) desde 30/09/2026; com
+        # a folga de 3 h, o dia D so e cobrado a partir das 10:02 de D.
+        self.assertEqual("10:02", sinais.limite_do_servico())
         self.assertEqual(date(2026, 9, 27),
                          sinais.noite_esperada(datetime(2026, 9, 28, 5, 20)))
-        self.assertEqual(date(2026, 9, 28),
+        # 06:37 (a virada antiga) e 07:35 (a conferencia real de 05/10):
+        # o servico de hoje ainda esta na folga.
+        self.assertEqual(date(2026, 9, 27),
                          sinais.noite_esperada(datetime(2026, 9, 28, 6, 37)))
+        self.assertEqual(date(2026, 9, 27),
+                         sinais.noite_esperada(datetime(2026, 9, 28, 7, 35)))
+        self.assertEqual(date(2026, 9, 28),
+                         sinais.noite_esperada(datetime(2026, 9, 28, 10, 2)))
         self.assertEqual(date(2026, 9, 28),
                          sinais.noite_esperada(datetime(2026, 9, 28, 22, 30)))
 
@@ -80,6 +103,131 @@ class ANoite(unittest.TestCase):
         # A de ontem so teve rodada feita a mao: a noite de ontem faltou.
         self.assertEqual(["2026-09-21"], sinais.noites_puladas(
             {"dia": "2026-09-21", "rodadas": ["14:00"]}, date(2026, 9, 22)))
+
+
+class OServicoDoDia(unittest.TestCase):
+    """Varredura de 05/10/2026, item 14: de 02 a 05/10 o celular recebeu
+    "noite(s) sem conferencia" TODO DIA, com a conferencia rodando as
+    07:04-07:35 no servico do dia. A regra pedia rodada antes das 06:37."""
+
+    def setUp(self):
+        _sem_config_real(self)
+
+    def test_a_ficha_de_07_35_nao_gera_noite_pulada(self):
+        # As fichas reais de 02 a 05/10 (sem `origens`, de antes do conserto).
+        for anterior, hoje in ((["07:04"], date(2026, 10, 3)),
+                               (["07:30"], date(2026, 10, 4)),
+                               (["07:34"], date(2026, 10, 5)),
+                               (["07:35"], date(2026, 10, 6))):
+            dia = (hoje - timedelta(days=1)).isoformat()
+            self.assertEqual([], sinais.noites_puladas(
+                {"dia": dia, "rodadas": anterior}, hoje), (dia, anterior))
+        self.assertIsNone(sinais.noites_sem_conferencia(
+            {"dia": "2026-10-05", "rodadas": ["07:35"]},
+            datetime(2026, 10, 5, 22, 30)))
+
+    def test_a_origem_servico_cobre_o_dia_a_qualquer_hora(self):
+        # Servico que atrasou (PC dormindo, trava ocupada) ainda e servico.
+        ficha = {"dia": "2026-10-05", "rodadas": ["07:10", "14:00"],
+                 "origens": ["painel", "servico"]}
+        self.assertTrue(sinais.noite_rodou(ficha))
+        self.assertEqual([], sinais.noites_puladas(ficha, date(2026, 10, 6)))
+        self.assertIsNone(sinais.noites_sem_conferencia(
+            ficha, datetime(2026, 10, 5, 22, 30)))
+
+    def test_painel_nao_cobre_o_dia_nem_cedo(self):
+        # Com origem gravada, a hora nao salva a rodada feita a mao.
+        for hora in ("03:00", "07:10", "14:00"):
+            ficha = {"dia": "2026-10-05", "rodadas": [hora],
+                     "origens": ["painel"]}
+            self.assertFalse(sinais.noite_rodou(ficha), hora)
+            self.assertEqual(["2026-10-05"],
+                             sinais.noites_puladas(ficha, date(2026, 10, 6)))
+            buraco = sinais.noites_sem_conferencia(
+                ficha, datetime(2026, 10, 5, 22, 30))
+            self.assertEqual(1, buraco["noites"])
+
+    def test_origem_desconhecida_nao_cobre(self):
+        ficha = {"dia": "2026-10-05", "rodadas": ["07:35"],
+                 "origens": ["servicO"]}
+        self.assertFalse(sinais.noite_rodou(ficha))
+
+    def test_origens_desalinhadas_viram_nao_sei_por_rodada(self):
+        # Lista torta nao pode virar "servico": cai na regra da hora.
+        self.assertTrue(sinais.noite_rodou(
+            {"rodadas": ["07:35"], "origens": ["servico", "painel"]}))
+        self.assertFalse(sinais.noite_rodou(
+            {"rodadas": ["14:00"], "origens": []}))
+
+    def test_CASO_ZERO_dia_sem_conferencia_continua_acendendo(self):
+        # Nenhuma ficha em 04/10: a de 03/10 e a anterior da rodada de 05/10.
+        self.assertEqual(["2026-10-04"], sinais.noites_puladas(
+            {"dia": "2026-10-03", "rodadas": ["07:30"],
+             "origens": ["servico"]}, date(2026, 10, 5)))
+        buraco = sinais.noites_sem_conferencia(
+            {"dia": "2026-10-03", "rodadas": ["07:30"],
+             "origens": ["servico"]}, datetime(2026, 10, 5, 10, 2))
+        self.assertEqual({"esperada": "2026-10-05", "ultima": "2026-10-03",
+                          "noites": 2}, buraco)
+        # Ficha com `rodadas` vazia: rodou ninguem.
+        self.assertFalse(sinais.noite_rodou({"dia": "2026-10-05",
+                                             "rodadas": []}))
+        # Nenhuma ficha nunca: acende.
+        self.assertIsNotNone(sinais.noites_sem_conferencia(
+            {}, datetime(2026, 10, 5, 22, 30)))
+
+    def test_o_servico_atrasado_acende_depois_da_folga(self):
+        # Ultima ficha e a de ontem, e ja passou das 10:02: o de hoje faltou.
+        ontem = {"dia": "2026-10-04", "rodadas": ["07:34"],
+                 "origens": ["servico"]}
+        self.assertIsNone(sinais.noites_sem_conferencia(
+            ontem, datetime(2026, 10, 5, 10, 1)))
+        self.assertEqual(1, sinais.noites_sem_conferencia(
+            ontem, datetime(2026, 10, 5, 10, 2))["noites"])
+
+
+class OPrimeiroDisparo(unittest.TestCase):
+
+    def _config(self, dados):
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        caminho = Path(pasta.name) / "agenda.json"
+        caminho.write_text(json.dumps(dados) if not isinstance(dados, str)
+                           else dados, encoding="utf-8")
+        return caminho
+
+    def test_o_1o_disparo_dentro_da_janela(self):
+        caminho = self._config({"janela_pesada": {"inicio": 7, "fim": 22},
+                                "horas": [1, 2, "07:02", "08:02", "23:02"]})
+        self.assertEqual((7, 2), sinais.primeiro_disparo(caminho))
+        self.assertEqual("10:02", sinais.limite_do_servico(caminho))
+
+    def test_janela_que_atravessa_a_meia_noite(self):
+        caminho = self._config({"janela_pesada": {"inicio": 22, "fim": 6},
+                                "horas": [3, "22:30", 23]})
+        self.assertEqual((22, 30), sinais.primeiro_disparo(caminho))
+        # 22:30 + 3 h passa da meia-noite: o limite e o fim do dia.
+        self.assertEqual("23:59", sinais.limite_do_servico(caminho))
+
+    def test_hora_cheia_dispara_as_20(self):
+        caminho = self._config({"janela_pesada": {"inicio": 8, "fim": 20},
+                                "horas": [5, 9]})
+        self.assertEqual((9, 20), sinais.primeiro_disparo(caminho))
+
+    def test_config_torto_cai_no_padrao(self):
+        for dados in ("{nao e json", {"horas": "x"},
+                      {"janela_pesada": {"inicio": 7, "fim": 22},
+                       "horas": [1, 2]}):
+            self.assertEqual(sinais.PRIMEIRO_DISPARO_PADRAO,
+                             sinais.primeiro_disparo(self._config(dados)))
+
+    def test_o_config_real_e_lido(self):
+        # Contrato com `historias/config/agenda.json`: o disparo lido cai na
+        # hora em que a janela pesada abre.
+        with open(sinais._config_da_agenda(), encoding="utf-8-sig") as fh:
+            janela = json.load(fh)["janela_pesada"]
+        hora, _minuto = sinais.primeiro_disparo()
+        self.assertEqual(int(janela["inicio"]), hora)
 
 
 class OsEventosDoCanal(unittest.TestCase):

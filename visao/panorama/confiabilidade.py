@@ -400,20 +400,25 @@ def _alertas(ficha: dict) -> list:
         noite = sinal.get("noite")
         estado = (ficha["conferencia"].get(canal) or {}).get("estado")
         if noite and estado != "nunca rodou":
-            # A NOITE QUE FALTOU. A de 21/09/2026 passou sem conferencia, e
-            # a regra antiga (dois dias) nunca teria dito nada.
+            # O DIA QUE FICOU SEM CONFERENCIA. A noite de 21/09/2026 passou
+            # sem conferencia, e a regra antiga (dois dias) nunca teria dito
+            # nada. Desde 30/09 a conferencia e do servico do dia (07:02), e
+            # o "noite" do sinal ficou so no nome: a conta (`sinais`) cobra
+            # a rodada de origem `servico` a partir das 10:02 (varredura de
+            # 05/10/2026, item 14 — antes cobrava rodada antes das 06:37 e
+            # acusava todo dia).
             esperada = _dia_curto(noite.get("esperada"))
             if not noite.get("ultima"):
                 alertas.append(f"conferência de {canal} nunca rodou")
             elif noite["ultima"] < str(noite.get("esperada") or ""):
                 alertas.append(
                     f"conferência de {canal} parada desde "
-                    f"{_dia_curto(noite.get('ultima'))}: a noite de "
+                    f"{_dia_curto(noite.get('ultima'))}: a do dia "
                     f"{esperada} não rodou")
             else:
                 alertas.append(
-                    f"conferência de {canal}: a noite de {esperada} não rodou "
-                    "(só houve conferência feita à mão)")
+                    f"conferência de {canal}: a do dia {esperada} não rodou "
+                    "no serviço do dia (só houve conferência feita à mão)")
         eventos = sinal.get("eventos_24h") or {}
         if eventos.get("poucos"):
             alertas.append(

@@ -47,7 +47,8 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 <!-- decisoes:fim -->
 
 Documento de passagem. A fotografia do §2 é de 27/09/2026; o que foi medido
-de novo em 28/09 (madrugada e noite) está com a data e a hora. Onde um número da fotografia
+de novo em 28/09 (madrugada e noite) e em 05/10 (a conferência no serviço do
+dia, §3) está com a data e a hora. Onde um número da fotografia
 não reproduziu, está dito. O que eu não medi está marcado como **não medi**,
 nunca preenchido por suposição.
 
@@ -170,8 +171,12 @@ Refazer: `tiktok_metricas.carregar_salvas(canal)` e mediana do campo `views`.
   `remoto/relatorios.py` (que é do app e bot).
 - `auditoria` — **sem horário**: é pedido. Decodifica mp4, leva segundos.
 
-**Conferência noturna** (`builds.publicar.conferencia.conferir_tudo`, na
-rodada de madrugada): baixa os uploads reais do canal e compara com o ledger
+**Conferência do dia** (`builds.publicar.conferencia.conferir_tudo`). Até
+29/09 rodava de madrugada; desde 30/09 (`edccded`, lote de dia) roda **uma
+vez por dia no serviço do dia das histórias** (`contos.pipeline.agenda.
+_servico_do_dia`, 1º disparo da janela pesada, 07:02; a conferência em si
+saiu às 07:04–07:35 de 01 a 05/10, depois da coleta de métricas). O "noite"
+que ficou nos nomes (`noite_rodou`, `avisos.noite`) é histórico. Ela baixa os uploads reais do canal e compara com o ledger
 numa janela de 3 dias. Acusa `fantasmas` (ledger afirma, canal não tem),
 `rascunhos` (privado no canal), `orfaos_privados`, `so_sd`, `duplicados`,
 `mesmo_video`. Suja → linha de erro no diário, que vira aviso no Telegram.
@@ -314,6 +319,12 @@ Refazer (só leitura, sem gravar ficha):
 do painel às 14:00 regravava a ficha e apagava o rastro de que a noite não
 rodou.
 
+**`origem` e `origens`** (05/10): quem conferiu — `servico` (o serviço do
+dia, que passa `origem="servico"`), `painel` (o botão; é o **padrão**, o lado
+que acende) ou `manual` (a linha de comando). `origens` anda alinhada com
+`rodadas`; rodada herdada de ficha sem `origens` fica `null` (não sei). Só
+`servico` cobre o dia nos sinais.
+
 **Gravação de uma vez** (28/09): `salvar` grava em `<dia>.json.tmp` e troca
 com `os.replace`. A página lê a ficha a cada 3 s e a madrugada a regrava a
 cada rodada; escrever por cima deixava o leitor ver JSON pela metade
@@ -327,7 +338,7 @@ para o panorama (relatório das 22:30 e painel):
 
 | Sinal | Conta | Acende quando | Caso vazio |
 | --- | --- | --- | --- |
-| noite sem conferência | a última ficha contra `noite_esperada(agora)` — a noite do dia D acaba quando o dia de grade de D abre (06:37) | a noite esperada não tem ficha com rodada **antes das 06:37** | nenhuma ficha = "nunca rodou" (acende) |
+| dia sem conferência (o nome no código ainda é "noite") | a última ficha contra `noite_esperada(agora)` — o dia D é cobrado a partir do **1º disparo da janela pesada + 3 h** (`limite_do_servico()`: 07:02 + 3 h = **10:02**, lido de `historias/config/agenda.json`; config que não abre = 07:02) | o dia esperado não tem ficha com rodada de origem **`servico`** (a qualquer hora); ficha sem `origens` (de antes de 05/10) vale pela hora, rodada antes das 10:02 | nenhuma ficha = "nunca rodou" (acende); dia inteiro sem ficha entre duas = `noites_puladas` (acende); `rodadas` vazia = não rodou |
 | canal parado | eventos `inicio/ok/erro` do canal nas últimas 24 h, **fora** das fábricas que observam (`conferencia`, `metricas`, `apurador`) | menos eventos que horários da grade na janela lida (10 em 24 h) | diário vazio ou menos de 12 h lidas: `None`, não acende |
 | `youtube_id` | publicações do YouTube de 7 dias atrás até 24 h atrás (a reconciliação só roda de madrugada) | cobertura abaixo de 90% | nenhuma linha na janela: `None`, **não é 100%** |
 
@@ -344,6 +355,18 @@ mínimo 10). `youtube_id` de 21 a 27/09: **builds 1/1, histórias 54/54**.
 Nenhuma noite faltando. Os casos que teriam acendido: a noite de 21/09 (sem
 ficha nos dois canais), builds com **0 eventos em 25 e 26/09**, e histórias
 de 18 a 27/09 com a reconciliação morta.
+
+**O alarme falso de toda manhã** (05/10, varredura item 14). As fichas de
+01 a 05/10 têm **uma rodada só, entre 07:04 e 07:35** (a do serviço do dia),
+e a regra ainda pedia rodada antes das 06:37: `noites_puladas` trouxe o dia
+anterior em **02, 03, 04 e 05/10, nos dois canais**, e o alarme foi ao
+celular às 07:36 de 05/10 por uma conferência que tinha rodado. Refeito com
+a regra nova sobre as fichas reais (só leitura, 14:4x de 05/10): as duas
+únicas noites puladas desde 16/09 são **21/09 e 29/09** (sem ficha nos dois
+canais — buracos de verdade, que continuam acendendo); 02 a 05/10 dão `[]`;
+`noites_sem_conferencia` agora é `None` nos dois canais. Refazer: para cada
+par de fichas seguidas em `*/outputs/_conferencia/`,
+`sinais.noites_puladas(ficha_anterior, date(dia_da_seguinte))`.
 
 ### A coleta da noite: marca por parte (28/09)
 
@@ -473,6 +496,14 @@ a versão nova repete na rodada seguinte.
 - **Marca gravada com a coleta morta.** Onze noites (17 a 28/09) com o YouTube
   falhando e a marca dizendo "feito". Marca que se grava sem olhar o
   resultado é medidor verde. Conserto: marca por parte (§3).
+- **O horário mudou e o sinal não.** A conferência saiu da madrugada para o
+  serviço das 07:02 em 30/09, e `sinais` seguiu exigindo rodada antes das
+  06:37: alarme "noite sem conferência" **todo dia de 02 a 05/10**, com a
+  conferência rodando. Medidor que acende sempre é tão surdo quanto o que
+  nunca acende. Conserto (05/10): a ficha grava **quem** conferiu
+  (`origem`), e o horário do serviço vem do config da agenda, não de uma
+  cópia no código. Quem chamar `conferir_tudo` sem dizer a origem ganha
+  `painel`, que **não** cobre o dia — o erro cai do lado do alarme.
 - **O observador contado como trabalho.** Contar os alarmes da conferência
   como "evento do canal" faria o canal parado parecer vivo — ela escreve
   sobre ele duas vezes por noite. `sinais` tira `conferencia`, `metricas` e
