@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-7c727778",
+      "em": "2026-10-05T12:32:20",
+      "evento": "2026-10-05T12:32:15",
+      "linha": 119,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "esperar",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Existe um arquivo de teste fora do git (random_builds/tests/test_parede_de_plano_digen_regressions.py) com 13 testes falhando: o cliente do Digen fecha a 'parede de planos' (Assine para gerar) como se fosse propaganda e segue gastando tentativa. Hoje não causa estrago porque o payoff em vídeo do Digen está desligado (payoff_video=false), mas volta a quebrar no dia em que ligar.",
   "criado": "2026-10-05T12:27:32.698741",
   "depende_de": [],
