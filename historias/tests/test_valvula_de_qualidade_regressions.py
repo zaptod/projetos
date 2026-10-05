@@ -136,9 +136,12 @@ class RetencaoTests(unittest.TestCase):
         self.alvo = _video("historia_00032", 5)
 
     def test_vencido_so_conta_com_o_parecer_reprovado(self):
+        """O texto e o da UMA passada (15/09/2026): "as rodadas de conserto
+        acabaram" ainda falava das tres rodadas de antes."""
         self.m._veto_vencido = lambda _a: True
         self.m._situacao_do_parecer = lambda _a: "reprovado"
-        self.assertIn("rodadas de conserto", self.m._retencao(self.alvo))
+        self.assertIn("passada de conserto", self.m._retencao(self.alvo))
+        self.assertNotIn("rodadas", self.m._retencao(self.alvo))
         self.m._situacao_do_parecer = lambda _a: "aprovado"
         self.assertEqual("", self.m._retencao(self.alvo),
                          "consertado e aprovado assistindo nao e retido")
@@ -210,12 +213,29 @@ class QuandoSaiFicaMarcadoTests(unittest.TestCase):
         self.assertTrue(all(m[4].get("erro") is False for m in self.marcas))
         self.assertIn("a IA reprovou", ficha["retido"])
 
-    def test_saiu_em_um_destino_marca_os_dois(self):
-        """A recuperacao do TikTok levaria depois, como extra, a parte que so
-        saiu no YouTube: extra nunca e "o horario ia ficar vazio"."""
+    def test_saiu_so_no_youtube_marca_so_o_youtube(self):
+        """Ate 05/10/2026 marcava os dois ("a recuperacao do TikTok e extra").
+        Medido: das 44 marcas `[qualidade]` do TikTok das historias, 2 eram
+        de partes que NAO estavam no TikTok — `historia_00034:celular:p06` e
+        `historia_00042:celular:p06`, que sairam no YouTube e falharam la. A
+        marca as tirava da recuperacao, e o fim das duas series nunca chegou
+        ao TikTok."""
         self._rodar(url="publicado no YouTube", tiktok="",
                     retencao="x: a IA reprovou")
-        self.assertEqual(["youtube", "tiktok"], [m[2] for m in self.marcas])
+        self.assertEqual(["youtube"], [m[2] for m in self.marcas])
+
+    def test_saiu_so_no_tiktok_marca_so_o_tiktok(self):
+        self._rodar(url="", tiktok="publicado no TikTok",
+                    retencao="x: a IA reprovou")
+        self.assertEqual(["tiktok"], [m[2] for m in self.marcas])
+
+    def test_clique_sem_confirmacao_nao_e_saida_no_tiktok(self):
+        """"Cliquei mas nao confirmou" ja vai para a lista pelo `desfecho`,
+        com a marca de clique; a de qualidade nao entra por cima."""
+        self._rodar(url="publicado no YouTube",
+                    tiktok="cliquei em publicar, mas o TikTok nao confirmou",
+                    retencao="x: a IA reprovou")
+        self.assertEqual(["youtube"], [m[2] for m in self.marcas])
 
     def test_nao_saiu_nao_marca(self):
         """Marcar antes de sair tiraria a parte da fila para sempre."""

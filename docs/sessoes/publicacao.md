@@ -76,16 +76,27 @@ Esta parte **escolhe** qual vídeo sai, **publica** nos dois destinos e
 
 Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
 
-1. `esperar_a_rede()` — resolve DNS por até 300 s (abrir o Chrome para descobrir
-   que a rede caiu custa minutos).
+1. `esperar_a_rede()` — DNS **e aperto de mão TLS** (`_conexao_tls`) com
+   `studio.youtube.com` e `www.tiktok.com`, por até 300 s (abrir o Chrome
+   para descobrir que a rede caiu custa minutos; e em 05/10 o DNS resolvia
+   com o TLS morto). `oauth2.googleapis.com` (a API: capa, id pelo canal) é
+   conferido e só avisa (`ALVOS_AVISADOS`): sem ele o vídeo sai igual.
 2. **Histórias**: `fila_de_historias()` ordena → `proxima_historia()` peneira →
    `contos.publicar.catalogo.publicar_youtube` → `serie.registrar` →
    `_tiktok_das_historias` → `serie.registrar`.
 3. **Builds**: `proximo_build()` → `youtube.publicar_como_configurado` →
    `_tiktok_dos_builds` (`tiktok.publicar`) — os dois **registram por dentro**.
+   Cada canal passa por `_publicar_canal`: se a **rede** derrubou um destino
+   (`_derrubados_pela_rede`: "infraestrutura", `net::err`, SSL, timeout de
+   conexão — nunca login, cota ou legenda), espera 60 s, confere a rede e
+   roda o canal de novo, até 2 vezes, só dentro do mesmo `grade.slot` e de
+   25 min do começo da rodada. As guardas por destino fazem o resto.
 4. Depois, e nunca no lugar: **recuperação do TikTok** (1 por canal, saiu no
    YouTube e nunca chegou lá), **recuperação do YouTube** (1, ficou privado no
    canal) e **reserva do TikTok** (só se builds não levou nada lá neste horário).
+   Se o TikTok acabou de cair por rede nesta rodada, recuperação e reserva do
+   TikTok ficam para a próxima (em 05/10 a recuperação repetia o timeout
+   segundos depois).
 5. `avisar()` no Telegram, estoque em vídeos e dias contra o piso de
    reposição, e **saída 1** se tentou e nada saiu (era `return 0` fixo, e o
    Agendador registrava sucesso em rodada vazia). Na noite de quarta (22h →
@@ -146,7 +157,11 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Imagem faltando / arquivo quebrado | `contos.publicar.qualidade.vistoriar_parte`; `v.pendencias` (builds) |
 | História sendo renderizada | trava `historias__render__<fonte>` |
 | Rodízio favela/normal/babaca | `_no_rodizio_dos_tipos` → `contos.publicar.tipos` |
-| Válvula de qualidade: parte **retida** (veto da IA vencido, ou parecer só pela folha) só sai se o horário fosse ficar vazio | `postar._retencao` (lida de arquivo, não gasta `TENTATIVAS`), `proxima_historia` (retidos antes dos vetados e dos fora de ordem no último recurso); quando sai, `_marcar_retido` põe `[qualidade] ` na lista "a conferir" de cada destino onde saiu (não sai sozinha: quem confere é uma pessoa) |
+| Válvula de qualidade: parte **retida** (veto da IA vencido, parecer só pela folha, ou **consertada** — o reparo refez as cenas depois do veto e ninguém assistiu ao mp4 novo) só sai se o horário fosse ficar vazio | `postar._retencao` (lida de arquivo, não gasta `TENTATIVAS`; a situação vem de `parecer.estado_do_video`, com "consertado"), `proxima_historia` (retidos antes dos vetados e dos fora de ordem no último recurso; entre os retidos, a consertada primeiro); quando sai, `_marcar_retido` põe `[qualidade] ` na lista "a conferir" **só** do destino onde saiu de fato (TikTok só confirmado) — não sai sozinha: quem confere é uma pessoa. A retida que chega ao TikTok **depois** (recuperação, ou "YouTube já saiu nesta hora; levando só para o TikTok") ganha a marca lá e a válvula no diário por `_retida_chegou_ao_tiktok`; as marcas da ficha moram num lugar só, `_valvula_da_parte` |
+| Página do YouTube/TikTok que não abre | `identity.browser.abrir_pagina` (3 tentativas: a aba de sempre com `domcontentloaded` 90 s, depois aba nova com `commit` 60 s; a aba que falhou é fechada assim que a nova existe, e na falha final sobra uma só) e `ir_para` (mesma aba, para quem tem ouvinte nela); `tiktok._abrir`/`youtube_web._abrir` levantam `"infraestrutura: ..."`, que `desfecho.classificar` não conta contra o vídeo |
+| Legenda do TikTok comida pelo editor | `escrita.escrever` pausa `PAUSA_DEPOIS_DO_ENTER_S` (0,25 s) depois de limpar e de cada Enter; `tiktok._escrever_legenda` tenta 3 modos (`MODOS_DA_LEGENDA`: digitada, colada, digitada devagar) e só escreve depois do envio a 100% (`_esperar_envio`, "Enviado （…MB）" com parêntese de largura cheia — `_sem_acento` faz NFKC antes do NFD —, teto 120 s) |
+| Capa recusada pela conta (403) | `youtube.definir_capa` + `capa_bloqueada`: o 403 marca a conta em `<runtime>/capa_bloqueada.json`, a capa não é pedida de novo no mesmo dia (revalida 1x/dia) e o diário ganha 1 aviso quando o bloqueio começa. Short não procura miniatura no Studio (`youtube_web._e_short`) |
+| Estágio do processamento no Studio | `youtube_web._classificar_rodape`: só o **rodapé** do diálogo classifica (seletor, ou o trecho em volta da contagem regressiva) e vai ao laudo. O último estágio legível vai ao passo, ao laudo (`ultimo_estagio_legivel`) e ao ERRO do diário, mas **não decide o clique**: `desconhecida` no estouro do teto publica (regra de 16/09) — `subindo`/`processando` lidos AGORA continuam segurando |
 | Desistência após 3 falhas | `_anotar_falha_no_tiktok`, `FALHAS_ATE_DESISTIR=3` |
 | Cota do YouTube não mata o TikTok | `_e_limite_diario` + `try/except` por destino |
 
@@ -343,6 +358,45 @@ diário.
   Builds: 7 variantes B (`generation_00030`–`00041`) com 13,0 dias de mp4,
   que já saem primeiro (o build é FIFO dentro do formato) — nada a
   reordenar. Testes: `historias/tests/test_lote_na_publicacao_regressions.py`.
+- **Varredura de 05/10/2026** (relatório da varredura de erros, itens 1–5,
+  17 e 19), cada um com teste em `historias/tests/test_postar_varredura_0510_regressions.py`
+  ou `random_builds/tests/test_publicar_varredura_0510_regressions.py`:
+  - *Estoque -1 por log*: `_linha` fazia `sys.stdout.buffer.write`; dentro da
+    agenda o stdout é `_SaidaNoDiario` (sem `.buffer`), a contagem levantava
+    e `pendentes_por_canal` devolvia -1 em silêncio — o freio da agenda
+    contava as retidas (58) e três madrugadas ficaram sem história.
+    Reproduzido: -1 com o stdout trocado, 1 com o normal (HEAD); agora 1 e 1,
+    e o -1, quando acontece, vai ao diário (`_contagem_falhou`).
+  - *Consertada saía como "veto venceu"*: na fila de 05/10, 12:41, 57
+    partes: 1 limpa, 56 retidas, **37 consertadas** (mp4 mais novo que o
+    veto e "refiz" no `_reparos.json`). Continuam retidas — o Adrian decidiu
+    em 05/10, 12:32, que a IA **não** olha de novo o mp4 consertado
+    (`historias/reolhar-depois-do-conserto`, opção "não": uma passada só) —,
+    mas saem primeiro entre as retidas e o aviso diz "consertada". `postar
+    --ver` mostra quantas.
+  - *Marca no destino errado*: das 44 marcas `[qualidade]` do TikTok das
+    histórias, 2 eram de partes que **não** estavam lá (h34 p06 e h42 p06,
+    saíram no YouTube e falharam no TikTok): a recuperação as descartava.
+    As duas marcas antigas continuam no arquivo — soltá-las é ação à parte.
+    Efeito colateral achado pelo conferente: a retida passou a chegar ao
+    TikTok depois, e os dois caminhos que a levam lá (recuperação e
+    "levando só para o TikTok") não marcavam nada — agora marcam
+    (`_retida_chegou_ao_tiktok`).
+  - *Horário perdido por rede*: o 23:37 de 04/10 (4 envios) e o TikTok das
+    09:37 de 05/10 (3 timeouts) — `goto` único de 90 s, DNS ok com TLS
+    morto, nenhuma reposição. Ver `abrir_pagina`, `esperar_a_rede` e
+    `_publicar_canal` acima.
+  - *Capa*: 151 "capa recusada (403)" no `outputs/postar.txt` (histórias)
+    contra 34 enviadas (builds), nenhuma no diário. Falta o Adrian verificar
+    o canal "historinhas" em youtube.com/verify.
+  - *Estágio ilegível*: 13 publicações com `desconhecida` desde 16/09 e o
+    laudo gravando só o cabeçalho (`texto[:200]`): a frase do rodapé nunca
+    foi vista. Quando aparecer no diário ("Rodape: ..."), entra em `FASES`.
+    A 1ª versão do conserto fazia a leitura ilegível herdar o último estágio
+    até o clique — e segurava o vídeo: nos ledgers, 8 publicações que
+    estouraram com `desconhecida` depois de começar legíveis (histórias 2
+    processando + 1 subindo, builds 5 subindo) teriam perdido o YouTube.
+    Desfeito antes do commit: o herdado só informa.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois

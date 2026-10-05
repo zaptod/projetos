@@ -409,6 +409,17 @@ def definir_capa(video_id: str, capa, *, canal: str = "builds",
     fala = log or (lambda _linha: None)
     caminho = Path(capa) if capa else None
     if not video_id or caminho is None or not caminho.is_file():
+        if capa and video_id:
+            # A CAPA QUE NAO EXISTE e dita, e nao calada (generation_00102,
+            # 05/10/2026): sem esta linha nao dava para separar "nao tinha
+            # capa" de "nem tentei".
+            fala(f"  capa: o arquivo nao existe ({capa}); nada a enviar")
+        return False
+    bloqueio = capa_bloqueada(canal)
+    if bloqueio:
+        fala(f"  capa: o canal recusa miniatura ({bloqueio.get('status')} "
+             f"desde {str(bloqueio.get('desde', ''))[:10]}); tento de novo "
+             "amanha")
         return False
     try:
         import requests
@@ -424,13 +435,118 @@ def definir_capa(video_id: str, capa, *, canal: str = "builds",
             params={"videoId": video_id}, data=caminho.read_bytes())
         if resposta.ok:
             fala("  capa enviada")
+            _soltar_bloqueio_da_capa(canal, log=fala)
             return True
         # O motivo importa: canal sem verificacao por telefone recebe 403
         # aqui e em nenhum outro lugar do fluxo.
         fala(f"  capa recusada ({resposta.status_code}): {resposta.text[:160]}")
+        if resposta.status_code == 403:
+            _bloquear_capa(canal, resposta.status_code, resposta.text)
     except Exception as erro:
         fala(f"  capa falhou ({type(erro).__name__}: {erro})")
     return False
+
+
+# A CAPA RECUSADA POR CONTA (05/10/2026). O canal de historias ("historinhas")
+# nao tem miniatura personalizada liberada — falta a verificacao por telefone
+# em youtube.com/verify, que so o Adrian faz. Medido no `outputs/postar.txt`
+# em 05/10, 12:43: 151 "capa recusada (403)", de historias, contra 34 "capa
+# enviada", de builds; e nenhuma no diario. Cada publicacao pedia de novo, levava o mesmo
+# 403 e ninguem via. Agora: o 403 marca a conta, a capa nao e pedida de novo
+# no mesmo dia (uma revalidacao por dia, a primeira publicacao do dia), e o
+# diario ganha UM aviso quando o bloqueio comeca — nao um por video.
+#
+# Mora no RUNTIME (`contas.runtime_dir()`, o mesmo do `audio_medido.json`), e
+# nao em `outputs/`: o conftest isola o runtime, entao um teste que receba um
+# 403 dublado nunca marca a conta de verdade. `None` = descobre na hora.
+ARQUIVO_DO_BLOQUEIO_DA_CAPA: Path | None = None
+
+
+def _arquivo_do_bloqueio() -> Path:
+    if ARQUIVO_DO_BLOQUEIO_DA_CAPA is not None:
+        return Path(ARQUIVO_DO_BLOQUEIO_DA_CAPA)
+    from ..contas import runtime_dir
+    return Path(runtime_dir()) / "capa_bloqueada.json"
+
+
+def _chave_da_capa(canal: str) -> str:
+    """A CONTA, e nao so o canal: e a credencial que leva o 403."""
+    try:
+        return f"{canal}:{caminho_credenciais(canal).stem}"
+    except Exception:                                          # noqa: BLE001
+        return str(canal)
+
+
+def _bloqueios_da_capa() -> dict:
+    try:
+        with open(_arquivo_do_bloqueio(), encoding="utf-8-sig") as fh:
+            dados = json.load(fh)
+    except Exception:                                          # noqa: BLE001
+        return {}
+    return dados if isinstance(dados, dict) else {}
+
+
+def _gravar_bloqueios_da_capa(dados: dict) -> None:
+    try:
+        arquivo = _arquivo_do_bloqueio()
+        arquivo.parent.mkdir(parents=True, exist_ok=True)
+        provisorio = arquivo.with_suffix(".tmp")
+        provisorio.write_text(json.dumps(dados, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+        provisorio.replace(arquivo)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def capa_bloqueada(canal: str, agora: datetime | None = None) -> dict | None:
+    """O bloqueio da capa desta conta, se ja foi conferido HOJE. Nunca levanta.
+
+    Bloqueio de ontem devolve `None`: e a revalidacao diaria — a primeira
+    capa do dia e pedida de novo, e o 403 (ou o sucesso) decide.
+    """
+    ficha = _bloqueios_da_capa().get(_chave_da_capa(canal))
+    if not isinstance(ficha, dict):
+        return None
+    hoje = (agora or datetime.now()).date().isoformat()
+    if str(ficha.get("conferido") or "")[:10] != hoje:
+        return None
+    return ficha
+
+
+def _bloquear_capa(canal: str, status: int, texto: str,
+                   agora: datetime | None = None) -> None:
+    """Marca a conta. O diario so ouve quando o bloqueio COMECA."""
+    agora = agora or datetime.now()
+    dados = _bloqueios_da_capa()
+    chave = _chave_da_capa(canal)
+    novo = chave not in dados
+    ficha = dados.get(chave) if isinstance(dados.get(chave), dict) else {}
+    ficha.update({"status": int(status), "motivo": str(texto)[:200],
+                  "conferido": agora.isoformat(timespec="seconds")})
+    ficha.setdefault("desde", agora.isoformat(timespec="seconds"))
+    dados[chave] = ficha
+    _gravar_bloqueios_da_capa(dados)
+    if not novo:
+        return
+    try:
+        from .. import atividade
+        atividade.registrar(
+            "publicacao", atividade.ERRO,
+            f"a conta do canal {canal} recusa miniatura personalizada "
+            f"({status}). Falta verificar o canal por telefone em "
+            "youtube.com/verify. Os videos saem com a capa automatica; "
+            "confiro de novo uma vez por dia.",
+            canal, etapa="publicar.youtube.capa", ref=chave)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def _soltar_bloqueio_da_capa(canal: str, log=None) -> None:
+    dados = _bloqueios_da_capa()
+    if dados.pop(_chave_da_capa(canal), None) is not None:
+        _gravar_bloqueios_da_capa(dados)
+        if log:
+            log("  capa: o canal voltou a aceitar miniatura; bloqueio solto")
 
 
 def _corpo(video, config: dict, visibilidade: str,

@@ -203,9 +203,16 @@ class LimiteDiarioTests(unittest.TestCase):
         self.assertIn("avisar_limite_diario(", alvo[:600])
 
     def test_o_caminho_NORMAL_tambem_avisa(self):
-        """Quem roda sozinho nos oito horarios e ele, nao o escoamento."""
+        """Quem roda sozinho nos oito horarios e ele, nao o escoamento.
+
+        Desde 05/10/2026 a passada de cada canal mora em `_rodar_canal`
+        (chamada por `main` via `_publicar_canal`, que repoe o que a rede
+        derrubou): o aviso de cota e dela."""
         fonte = POSTAR.read_text(encoding="utf-8")
-        corpo = fonte[fonte.index("def main("):]
+        principal = fonte[fonte.index("def main("):]
+        self.assertIn("_publicar_canal(", principal)
+        corpo = fonte[fonte.index("def _rodar_canal("):]
+        corpo = corpo[:corpo.index("\ndef ")]
         self.assertIn("_e_limite_diario(exc)", corpo)
         self.assertIn("avisar_limite_diario(", corpo)
 class AvisoDoTelegramTests(unittest.TestCase):

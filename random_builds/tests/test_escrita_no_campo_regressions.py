@@ -40,6 +40,21 @@ DESCRICAO_H32_P04 = (
 MS_POR_TECLA_MEDIDO = 126
 
 
+_DORMIR_DE_VERDADE = escrita.DORMIR
+
+
+def setUpModule():
+    # A pausa depois do Enter (05/10/2026) e de tempo REAL; aqui o tempo e o
+    # do relogio dublado. Sem isto a 3a tentativa da legenda (devagar, 0,8 s
+    # por Enter) gastava 12 s de parede num teste. Quem conta as pausas e
+    # `test_publicar_varredura_0510_regressions`.
+    escrita.DORMIR = lambda _s: None
+
+
+def tearDownModule():
+    escrita.DORMIR = _DORMIR_DE_VERDADE
+
+
 class _Relogio:
     def __init__(self):
         self.agora = 0.0
@@ -294,10 +309,13 @@ class TikTokLegendaTests(_PastaDeTelas):
                          "a primeira tentativa que estourou deixa a tela")
 
     def test_nada_entra_e_nao_publica(self):
+        """Uma foto por tentativa: tres desde 05/10/2026 (digitada, colada,
+        digitada devagar — `tiktok.MODOS_DA_LEGENDA`)."""
         ok, laudo, pagina = self._rodar(_Campo(guarda=False))
         self.assertFalse(ok)
         self.assertTrue(tiktok._deve_barrar(True, DESCRICAO_H32_P04, laudo))
-        self.assertEqual(2, len(pagina.fotos))
+        self.assertEqual(3, len(tiktok.MODOS_DA_LEGENDA))
+        self.assertEqual(3, len(pagina.fotos))
 
 
 class LeituraExigeCadaLinhaTests(unittest.TestCase):

@@ -210,7 +210,9 @@ class NaoPublicaSemLegendaTests(unittest.TestCase):
         laudo, _, barrou = self._rodar(campo)
         self.assertEqual("ficou vazia", laudo["legenda"])
         self.assertTrue(barrou)
-        self.assertEqual(2, campo.tentativas, "tinha de tentar de novo")
+        # Tres tentativas desde 05/10/2026 (digitada, colada, devagar).
+        self.assertEqual(len(tiktok.MODOS_DA_LEGENDA), campo.tentativas,
+                         "tinha de tentar de novo")
 
     def test_campo_ausente_nao_publica(self):
         laudo, _, barrou = self._rodar(None)

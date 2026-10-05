@@ -66,6 +66,16 @@ PRAZO_S = 180.0
 ATRASO_TECLA_MS = 8
 RELOGIO = time.monotonic
 
+# A PAUSA DEPOIS DO ENTER E DA LIMPEZA (05/10/2026). O editor do TikTok
+# (contenteditable re-renderizado a cada bloco) ainda esta montando o
+# paragrafo novo quando o trecho seguinte chega, e o come ou o joga para
+# outro lugar: h34 p06, 00:39 de 05/10, o paragrafo "Eu escrevo..." foi parar
+# depois das hashtags na 1a tentativa e sumiu na 2a (telas `_213926` e
+# `_213929`). Um quarto de segundo por Enter custa ~1,5 s numa legenda de seis
+# linhas. `DORMIR` existe para o teste contar as pausas sem esperar.
+PAUSA_DEPOIS_DO_ENTER_S = 0.25
+DORMIR = time.sleep
+
 # Hashtag e o espaco que a segue (sem atravessar a linha): digitados.
 _HASHTAG = re.compile(r"#\S+[ \t]*")
 
@@ -110,7 +120,7 @@ def pedacos(texto: str, *, colar: bool = True) -> list:
 
 def escrever(page, campo, texto: str, *, colar: bool = True,
              atraso_ms: int = ATRASO_TECLA_MS, prazo_s: float = PRAZO_S,
-             relogio=None) -> dict:
+             relogio=None, pausa_s: float | None = None, dormir=None) -> dict:
     """Limpa o campo e escreve `texto`. Devolve o laudo; NAO confere.
 
     Conferir e com `estado`, e quem decide o que fazer com "nao pegou" e quem
@@ -119,12 +129,19 @@ def escrever(page, campo, texto: str, *, colar: bool = True,
 
     `relogio` (ou `RELOGIO` do modulo) existe para o teste medir o prazo no
     MESMO relogio em que o teclado dublado gasta o tempo medido.
+
+    `pausa_s` (padrao `PAUSA_DEPOIS_DO_ENTER_S`) e a espera depois de limpar
+    o campo e depois de CADA Enter, antes do trecho seguinte.
     """
     relogio = relogio or RELOGIO
+    dormir = dormir or DORMIR
+    pausa = PAUSA_DEPOIS_DO_ENTER_S if pausa_s is None else max(0.0, pausa_s)
     comeco = relogio()
     campo.click()
     page.keyboard.press("Control+A")
     page.keyboard.press("Delete")
+    if pausa:
+        dormir(pausa)
     teclas = 0
     for modo, trecho in pedacos(texto, colar=colar):
         passou = relogio() - comeco
@@ -137,6 +154,8 @@ def escrever(page, campo, texto: str, *, colar: bool = True,
         elif modo == "tecla":
             page.keyboard.press(trecho)
             teclas += 1
+            if pausa:
+                dormir(pausa)
         else:
             page.keyboard.type(trecho, delay=atraso_ms)
             teclas += len(trecho)

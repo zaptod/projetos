@@ -39,6 +39,10 @@ MARCAS_DE_INFRAESTRUTURA = (
     "pediu login", "nao esta valida neste perfil",
     "err_name_not_resolved", "err_connection", "err_internet",
     "net::err", "nao achei o campo de arquivo",
+    # A pagina que nao abriu em nenhuma tentativa (05/10/2026): o
+    # `tiktok._abrir` diz "infraestrutura: ..." com todas as letras. Antes o
+    # `Timeout 90000ms` do `goto` caia em "falha" e contava contra o video.
+    "infraestrutura",
 )
 
 

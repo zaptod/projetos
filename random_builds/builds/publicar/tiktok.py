@@ -18,11 +18,13 @@ Duas consequências que valem estar escritas:
 """
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
 from .. import atividade
-from ..identity.browser import contexto_persistente, pagina
+from ..identity.browser import (AberturaFalhou, abrir_pagina,
+                                contexto_persistente, ir_para, pagina)
 from . import audio, desfecho, escrita
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -159,8 +161,15 @@ def _primeiro(page, seletores, timeout: float = 5.0):
 
 
 def _sem_acento(texto: str) -> str:
+    """Minusculas, sem acento e com a LARGURA CHEIA dobrada para a comum.
+
+    O NFKC vem antes do NFD (05/10/2026): o TikTok escreve "Enviado （60.85MB）"
+    com o parentese de largura cheia (U+FF08), que o NFD sozinho mantem — e o
+    sinal "enviado (" nunca casava.
+    """
     import unicodedata
-    return "".join(c for c in unicodedata.normalize("NFD", str(texto or ""))
+    texto = unicodedata.normalize("NFKC", str(texto or ""))
+    return "".join(c for c in unicodedata.normalize("NFD", texto)
                    if unicodedata.category(c) != "Mn").lower()
 
 
@@ -188,9 +197,18 @@ def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
     Grava o resultado em `laudo["legenda"]`, que e o que vai para a ficha e
     para a mensagem do erro: "legenda nao escreveu" e "botao nao habilitou"
     tem conserto diferente e nao podem chegar ao diario como a mesma falha.
+
+    TRES TENTATIVAS desde 05/10/2026 (`MODOS_DA_LEGENDA`): digitada, colada
+    e digitada DEVAGAR. As tres com a pausa depois de cada Enter
+    (`escrita.PAUSA_DEPOIS_DO_ENTER_S`): o editor do TikTok come o trecho que
+    chega colado ao Enter — h34 p06, 00:39 de 05/10, telas `_213926` (o
+    paragrafo "Eu escrevo..." foi parar depois das hashtags) e `_213929`
+    (sumiu). Nas ultimas 6000 linhas do log: 7 falhas na 1a tentativa e 5
+    legendas adiadas.
     """
-    for tentativa in (1, 2):
-        de_novo = "; tentando de novo." if tentativa == 1 else "."
+    ultima = len(MODOS_DA_LEGENDA)
+    for tentativa, (modo, ajustes) in enumerate(MODOS_DA_LEGENDA, start=1):
+        de_novo = "; tentando de novo." if tentativa < ultima else "."
         campo = _primeiro(page, CAMPO_LEGENDA, timeout=10.0)
         if campo is None:
             laudo["legenda"] = "campo não encontrado"
@@ -208,9 +226,13 @@ def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
         # paragrafos: o editor do TikTok come o texto colado quando o Enter
         # chega logo atras (85 de 230 caracteres no contador). No YouTube a
         # colagem saiu identica nas duas publicacoes, conferida pela API.
-        colar = tentativa == 2
+        #
+        # A 3a (05/10/2026) e TECLA A TECLA DEVAGAR, com pausa maior depois
+        # do Enter: e a ultima chance antes de adiar o video, entao troca
+        # velocidade por folga.
+        colar = modo == "colada"
         try:
-            escrita.escrever(page, campo, texto, colar=colar)
+            escrita.escrever(page, campo, texto, colar=colar, **ajustes)
         except Exception as exc:                               # noqa: BLE001
             laudo["legenda"] = f"falhou: {type(exc).__name__}"
             laudo["tela"] = escrita.fotografar(page, "tiktok_legenda")
@@ -226,11 +248,83 @@ def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
             passo(f"escrevi a legenda mas ela {estado}{de_novo}")
             continue
         laudo["legenda"] = "escrita"
-        laudo["legenda_modo"] = "colada" if colar else "digitada"
+        laudo["legenda_modo"] = modo
         passo("legenda escrita." if tentativa == 1
-              else "legenda escrita (2a tentativa, colada).")
+              else f"legenda escrita ({tentativa}a tentativa, {modo}).")
         return True
     return False
+
+
+# As tentativas da legenda, em ordem: (modo, ajustes de `escrita.escrever`).
+# "digitada lenta" e o jeito tecla a tecla com 5x o atraso por tecla e uma
+# pausa maior depois de cada Enter e da limpeza.
+MODOS_DA_LEGENDA = (
+    ("digitada", {}),
+    ("colada", {}),
+    ("digitada lenta", {"atraso_ms": 40, "pausa_s": 0.8}),
+)
+
+
+# A barra do arquivo no topo da tela de upload diz "Enviado (60.85MB)" quando
+# o arquivo terminou de subir (telas de 04/10/2026, 21:39). Enquanto sobe, ha
+# uma porcentagem. A legenda so e escrita depois disso: o editor e
+# re-renderizado quando o envio termina, e texto escrito no meio vai junto.
+# O espaco antes do parentese e opcional: o conferente viu na captura
+# `20261004_213926` o parentese de largura cheia, que vem com o "espaco" no
+# proprio desenho — depois do NFKC ele pode chegar colado ou nao.
+SINAIS_DE_ENVIADO = re.compile(
+    r"\b(?:enviado|uploaded)\s*\(|upload (?:concluido|complete)")
+PALAVRAS_DE_ENVIANDO = ("enviando", "carregando", "uploading")
+_PORCENTAGEM = re.compile(r"(?<![\d.,])(\d{1,3})(?:[.,]\d+)?\s*%")
+ESPERA_DO_ENVIO_S = 120.0
+
+
+def _envio_concluido(page) -> bool | None:
+    """O arquivo terminou de subir? True, False, ou None quando a tela nao diz.
+
+    Nunca levanta. `None` NAO e "nao": quem espera segue em frente, porque
+    trocar uma leitura que falhou por um horario perdido e o erro caro.
+    """
+    try:
+        texto = _sem_acento(page.evaluate(
+            "() => document.body ? document.body.innerText : ''"))
+    except Exception:                                          # noqa: BLE001
+        return None
+    if SINAIS_DE_ENVIADO.search(texto):
+        return True
+    # A porcentagem so conta junto da palavra do envio: um "0%" qualquer da
+    # tela (verificacao de direitos, por exemplo) seguraria toda legenda.
+    if not any(palavra in texto for palavra in PALAVRAS_DE_ENVIANDO):
+        return None
+    numeros = [int(n) for n in _PORCENTAGEM.findall(texto)]
+    if any(n < 100 for n in numeros):
+        return False
+    return None
+
+
+def _esperar_envio(page, passo, espera: float = ESPERA_DO_ENVIO_S,
+                   *, dormir=None, relogio=None) -> bool | None:
+    """Espera o upload chegar a 100% antes da legenda. Devolve a ultima leitura.
+
+    Sai na hora com True (enviado) ou None (a tela nao diz); so espera
+    enquanto ha uma porcentagem abaixo de 100, e no maximo `espera`.
+    """
+    dormir = dormir or time.sleep
+    relogio = relogio or time.monotonic
+    fim = relogio() + espera
+    avisou = False
+    while True:
+        estado = _envio_concluido(page)
+        if estado is not False:
+            return estado
+        if relogio() >= fim:
+            passo(f"o envio nao chegou a 100% em {espera:.0f}s; escrevo a "
+                  "legenda assim mesmo.")
+            return False
+        if not avisou:
+            passo("esperando o envio chegar a 100% antes da legenda...")
+            avisou = True
+        dormir(2.0)
 
 
 # A CONFERENCIA MUDOU-SE PARA `escrita` em 27/09/2026, quando o YouTube passou
@@ -297,9 +391,19 @@ def _confirmar_publicacao(page, passo, espera: float = ESPERA_CONFIRMAR_S) -> st
 
 
 def _abrir(ctx, url: str):
-    page = pagina(ctx)
-    page.goto(url, wait_until="domcontentloaded", timeout=90_000)
-    return page
+    """A pagina, com novas tentativas (`browser.abrir_pagina`).
+
+    Desde 05/10/2026: um `goto` de 90 s sem segunda chance perdeu o TikTok do
+    23:37 de 04/10 e o das 09:37 de 05/10. Na falha final o erro DIZ que e
+    infraestrutura — `desfecho.classificar` nao conta isso contra o video, e
+    a rodada sabe que vale tentar de novo.
+    """
+    try:
+        return abrir_pagina(ctx, url,
+                            log=lambda t: print(f"[tiktok] {t}", flush=True))
+    except AberturaFalhou as exc:
+        raise TikTokFalhou(
+            f"infraestrutura: a pagina do TikTok nao abriu ({exc})") from exc
 
 
 def sondar(*, canal: str = "builds", saida: Path | None = None) -> Path:
@@ -570,14 +674,20 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
               "na tela — tentando publicar mesmo assim.")
 
         texto_legenda = video.descricao_completa[:2000]
+        laudo["envio_concluido"] = _esperar_envio(page, passo)
         _escrever_legenda(page, texto_legenda, passo, laudo)
 
         if _deve_barrar(postar, texto_legenda, laudo):
+            # "VOLTA NA FILA DE ATRASADOS" so e verdade porque, desde
+            # 05/10/2026, a parte RETIDA so fica "a conferir" no destino onde
+            # saiu (`postar._marcar_retido`): antes ela era marcada aqui tambem
+            # e a recuperacao a descartava — h34 p06 e h42 p06 nunca chegaram.
             raise TikTokFalhou(
                 f"a legenda não entrou ({laudo.get('legenda')}) e publicar sem "
                 "ela queima o vídeo: sem título e sem hashtag ele não é "
-                "encontrado por ninguém. Adiado de propósito — volta na fila "
-                "de atrasados e sai inteiro. A janela segue aberta.")
+                "encontrado por ninguém. Adiado de propósito — se já saiu no "
+                "YouTube, a recuperação do TikTok o leva numa próxima rodada; "
+                "senão ele volta à fila. A janela segue aberta.")
 
         if not postar:
             passo("PARANDO antes de publicar — confira e clique em Publicar. "
@@ -687,7 +797,13 @@ def legenda_no_studio(page, tiktok_id: str,
             achados[str(bruto.get("item_id"))] = str(bruto.get("desc") or "")
 
     page.on("response", ouvir)
-    page.goto(URL_CONTEUDO, wait_until="domcontentloaded", timeout=90_000)
+    # NA MESMA ABA (o ouvinte esta nela), com uma segunda chance.
+    try:
+        ir_para(page, URL_CONTEUDO,
+                log=lambda t: print(f"[tiktok] {t}", flush=True))
+    except AberturaFalhou as exc:
+        raise TikTokFalhou(
+            f"infraestrutura: a lista do Studio nao abriu ({exc})") from exc
     fim = time.time() + espera
     while str(tiktok_id) not in achados and time.time() < fim:
         page.wait_for_timeout(1000)

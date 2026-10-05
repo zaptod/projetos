@@ -31,7 +31,8 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import atividade
-from ..identity.browser import contexto_persistente, montou, pagina
+from ..identity.browser import (AberturaFalhou, abrir_pagina,
+                                contexto_persistente, ir_para, montou)
 from . import escrita
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -209,8 +210,7 @@ def canais_da_sessao(canal: str = "builds", *, log=print) -> list:
 
         for item in achados:
             try:
-                page.goto(f"https://www.youtube.com/@{item['arroba']}",
-                          wait_until="domcontentloaded", timeout=60_000)
+                ir_para(page, f"https://www.youtube.com/@{item['arroba']}")
                 time.sleep(3)
                 canon = page.evaluate(
                     "() => {const l = document.querySelector"
@@ -485,9 +485,33 @@ def _esperar_qualidade(page, passo, laudo: dict, *, canal: str = "builds",
             return {"qualidade": "desconhecida", "falta": "", "texto": "",
                     "reconhecido": False, "escopo": "nenhum"}
 
+    # O ULTIMO ESTAGIO LEGIVEL VAI PARA A ESPERA E PARA O LAUDO, MAS NAO
+    # DECIDE O CLIQUE (05/10/2026). Uma leitura ilegivel no meio da espera (a
+    # frase do rodape mudou) nao apaga o que se sabia: o passo e o diario
+    # dizem "a ultima legivel foi 'processando'". Mas no ESTOURO do teto quem
+    # decide e a leitura de AGORA, e `desconhecida` publica — a regra de
+    # 16/09: uma troca de layout do Studio nao pode derrubar todas as
+    # postagens. Medido nos ledgers em 05/10: 8 publicacoes estouraram a
+    # espera com `desconhecida` no clique depois de comecar num estagio
+    # legivel (historias 2 processando + 1 subindo, builds 5 subindo). Se a
+    # leitura herdada decidisse, as 8 teriam perdido o YouTube — e a frase
+    # que falta em FASES e justamente a que o Studio mostra no fim.
+    ultimo_legivel = ""
+
+    def ler_lembrando():
+        nonlocal ultimo_legivel
+        lido = ler()
+        if lido.get("reconhecido") and lido["qualidade"] != "desconhecida":
+            ultimo_legivel = lido["qualidade"]
+        return lido
+
+    def lembrado(estagio: dict) -> str:
+        """O ultimo estagio legivel, so quando a leitura de agora e ilegivel."""
+        return ultimo_legivel if estagio["qualidade"] == "desconhecida" else ""
+
     limite = _teto_da_espera() if limite_s is None else limite_s
     comeco = time.monotonic()
-    estagio = ler()
+    estagio = ler_lembrando()
     laudo["qualidade_ao_habilitar"] = estagio["qualidade"]
     esperou = 0.0
     # `sd` ENTRA NA ESPERA, mas NAO na guarda: sao perguntas diferentes.
@@ -497,27 +521,38 @@ def _esperar_qualidade(page, passo, laudo: dict, *, canal: str = "builds",
                                     "desconhecida")
            and esperou < limite):
         passo(f"esperando o processamento ({estagio['qualidade']}"
+              + (f"; a ultima legivel foi '{lembrado(estagio)}'"
+                 if lembrado(estagio) else "")
               + (f", {estagio['falta']}" if estagio["falta"] else "") + ")...")
         time.sleep(5)
         esperou = time.monotonic() - comeco
-        estagio = ler()
+        estagio = ler_lembrando()
     laudo["esperou_s"] = round(esperou, 1)
     laudo["qualidade_no_clique"] = estagio["qualidade"]
     laudo["falta_texto"] = estagio["falta"]
     laudo["texto_da_barra"] = estagio["texto"]
     laudo["reconhecido"] = estagio["reconhecido"]
     laudo["escopo"] = estagio["escopo"]
+    if lembrado(estagio):
+        laudo["ultimo_estagio_legivel"] = lembrado(estagio)
     if esperou >= limite:
         laudo["estourou_a_espera"] = True
         passo(f"o processamento nao terminou em {limite:.0f}s "
-              f"(ficou em {estagio['qualidade']})")
+              f"(ficou em {estagio['qualidade']}"
+              + (f"; a ultima legivel foi '{lembrado(estagio)}'"
+                 if lembrado(estagio) else "") + ")")
         if estagio["qualidade"] == "desconhecida":
+            # O RODAPE vai no texto (e nao o comeco do dialogo): e a frase que
+            # falta em FASES, e so assim alguem a ve.
             try:
                 atividade.registrar(
                     "publicacao", atividade.ERRO,
                     f"estagio ILEGIVEL no clique depois de {limite:.0f}s; "
-                    f"publiquei assim mesmo. Barra: "
-                    f"{estagio.get('texto', '')[:120]}",
+                    "publiquei assim mesmo"
+                    + (f" (a ultima leitura legivel foi "
+                       f"'{lembrado(estagio)}')"
+                       if lembrado(estagio) else "")
+                    + f". Rodape: {estagio.get('texto', '')[:200]}",
                     canal, etapa="publicar.youtube.estagio")
             except Exception:                                  # noqa: BLE001
                 pass
@@ -543,40 +578,108 @@ def _qualidade_agora(page) -> dict:
     # processamento do video de ONTEM, com um numero plausivel que ninguem
     # questionaria. O rodape com "Envio concluido / processamento vai
     # comecar" fica dentro do dialogo, entao nada do que interessa se perde.
+    #
+    # E DENTRO DO DIALOGO, SO O RODAPE (05/10/2026). O texto inteiro do
+    # dialogo comeca pelo TITULO que nos mesmos escrevemos e pelo estado do
+    # rascunho ("salvo como privado", "salvando..."): uma frase de FASES no
+    # titulo, ou o "salvando..." do rascunho, classificavam o upload. O
+    # rodape vem pelo seletor quando o Studio o expoe; senao, e o trecho em
+    # volta da contagem regressiva, que so existe la.
     try:
-        bruto = page.evaluate(
+        lido = page.evaluate(
             "() => {"
             " const d = document.querySelector('ytcp-uploads-dialog');"
-            " return d ? d.innerText : '';"
+            " if (!d) return {dialogo: '', rodape: ''};"
+            " const sels = ['ytcp-video-upload-progress',"
+            "               '.ytcp-video-upload-progress',"
+            "               '[class*=\"upload-progress\"]',"
+            "               '.left-button-area', '#dialog-footer'];"
+            " let rodape = '';"
+            " for (const s of sels) {"
+            "   const e = d.querySelector(s);"
+            "   if (e && (e.innerText || '').trim()) {"
+            "     rodape = e.innerText; break; }"
+            " }"
+            " return {dialogo: d.innerText || '', rodape: rodape};"
             "}")
     except Exception:
         return vazio
-    texto = _sem_acento(bruto)
+    if isinstance(lido, str):
+        # Pagina antiga (ou duble) que devolve so o texto do dialogo.
+        lido = {"dialogo": lido, "rodape": ""}
+    lido = lido if isinstance(lido, dict) else {}
+    texto = _sem_acento(lido.get("dialogo") or "")
     if not texto.strip():
         # Sem dialogo nao ha o que atribuir a ESTE video. Ler a pagina toda
         # aqui seria trocar "nao sei" por um palpite com cara de medida.
         return vazio
+    return _classificar_rodape(texto, _sem_acento(lido.get("rodape") or ""))
 
-    achado = FALTA.search(texto)
+
+# Quanto texto guardar em volta da contagem regressiva quando o rodape nao
+# vem pelo seletor. O laudo gravava `texto[:200]`, que e so o CABECALHO do
+# dialogo (titulo + "salvo como privado" + as abas): nas 13 publicacoes com
+# estagio "desconhecida" desde 16/09/2026 (todas com "6 minutos restantes"
+# ou "10 minutos restantes") a frase do rodape nunca foi vista.
+ANTES_DA_CONTAGEM = 160
+DEPOIS_DA_CONTAGEM = 60
+
+
+def _rodape_pela_contagem(texto: str) -> str:
+    """O trecho do dialogo em volta da contagem regressiva, ou `""`."""
+    achados = list(FALTA.finditer(texto))
+    if not achados:
+        return ""
+    ultimo = achados[-1]                # o rodape e o fim do dialogo
+    comeco = max(0, ultimo.start() - ANTES_DA_CONTAGEM)
+    return " ".join(texto[comeco:ultimo.end() + DEPOIS_DA_CONTAGEM].split())
+
+
+def _classificar_rodape(texto: str, rodape: str = "") -> dict:
+    """O estagio, lido SO no rodape do dialogo. Puro, para o teste.
+
+    `texto` e o dialogo inteiro (sem acento); `rodape`, o que o seletor do
+    rodape devolveu (pode vir vazio). O laudo grava o rodape, e nao o
+    comeco do dialogo: e nele que esta a frase que precisa entrar em FASES.
+    """
+    rodape = " ".join(str(rodape or "").split())
+    janela = _rodape_pela_contagem(texto)
+    # O rodape do seletor primeiro; depois o trecho da contagem — que tambem
+    # cobre o seletor que pegou o elemento errado (so os botoes, digamos).
+    candidatos = [(alvo, escopo) for alvo, escopo in
+                  ((rodape, "rodape"), (janela, "contagem")) if alvo]
+    achado = FALTA.search(rodape) or FALTA.search(texto)
     falta = achado.group(0) if achado else ""
-    for rotulo, frases in FASES:
-        if any(frase in texto for frase in frases):
-            return {"qualidade": rotulo, "falta": falta,
-                    "texto": texto[:200], "reconhecido": True,
-                    "escopo": "dialogo"}
+    for alvo, escopo in candidatos:
+        for rotulo, frases in FASES:
+            if any(frase in alvo for frase in frases):
+                return {"qualidade": rotulo, "falta": falta,
+                        "texto": alvo[:240], "reconhecido": True,
+                        "escopo": escopo}
     if falta:
         # CONTAGEM REGRESSIVA SEM FRASE CONHECIDA. Medido em 16/09/2026, na
         # primeira noite com esta medicao ligada: a barra dizia "10 minutos
         # restantes" e nenhuma frase de FASES casava, entao o classificador
         # caia em "hd" por omissao e gravava o oposto da verdade. Se o Studio
         # ainda conta o tempo, alguma coisa esta pendente — e a resposta
-        # honesta e dizer que nao se sabe o que.
+        # honesta e dizer que nao se sabe o que. O laudo leva o trecho COM a
+        # contagem: e nele que esta a frase que falta em FASES.
+        alvo, escopo = ((rodape, "rodape") if FALTA.search(rodape)
+                        else (janela, "contagem"))
         return {"qualidade": "desconhecida", "falta": falta,
-                "texto": texto[:200], "reconhecido": False,
-                "escopo": "dialogo"}
+                "texto": alvo[:240], "reconhecido": False, "escopo": escopo}
+    if not rodape:
+        # Sem rodape pelo seletor e sem contagem: o dialogo inteiro, como era
+        # antes — o unico jeito de ver "Envio concluido" nesse caso.
+        for rotulo, frases in FASES:
+            if any(frase in texto for frase in frases):
+                return {"qualidade": rotulo, "falta": "",
+                        "texto": " ".join(texto.split())[:240],
+                        "reconhecido": True, "escopo": "dialogo"}
     visto = any(_sem_acento(s) in texto for s in SINAIS_PUBLICADO)
-    return {"qualidade": "hd", "falta": falta, "texto": texto[:200],
-            "reconhecido": visto, "escopo": "dialogo"}
+    return {"qualidade": "hd", "falta": "",
+            "texto": (rodape or " ".join(texto.split()))[:240],
+            "reconhecido": visto, "escopo": "rodape" if rodape else "dialogo"}
 
 
 def _id_do_video(url: str) -> str:
@@ -607,10 +710,42 @@ def _conta_ativa(canal: str) -> str:
         return ""
 
 
+LIMITE_DO_SHORT_S = 180.0
+
+
+def _e_short(video) -> bool:
+    """O YouTube vai tratar este video como Short?
+
+    Vertical e com ate 3 min (`LIMITE_DO_SHORT_S`). Sem duracao conhecida, o
+    vertical conta como Short: toda parte longa ja e cortada em pedacos de
+    ate 180 s (`cortes.py`) antes de subir.
+    """
+    if not getattr(video, "vertical", False):
+        return False
+    for nome in ("duracao", "duracao_s"):
+        valor = getattr(video, nome, None)
+        try:
+            if valor is not None and float(valor) > 0:
+                return float(valor) <= LIMITE_DO_SHORT_S
+        except (TypeError, ValueError):
+            continue
+    return True
+
+
 def _abrir(ctx, url: str):
-    page = pagina(ctx)
-    page.goto(url, wait_until="domcontentloaded", timeout=90_000)
-    return page
+    """A pagina, com novas tentativas (`browser.abrir_pagina`).
+
+    Desde 05/10/2026: um `goto` de 90 s sem segunda chance perdeu o YouTube
+    do 23:37 de 04/10 (historias e builds). Na falha final o erro diz que e
+    infraestrutura, e a rodada (`postar.main`) tenta o canal de novo dentro
+    do mesmo horario.
+    """
+    try:
+        return abrir_pagina(
+            ctx, url, log=lambda t: print(f"[youtube-web] {t}", flush=True))
+    except AberturaFalhou as exc:
+        raise YouTubeWebFalhou(
+            f"infraestrutura: a pagina do YouTube nao abriu ({exc})") from exc
 
 
 def _esperar_montar(page, segundos: float = PACIENCIA_S) -> bool:
@@ -1035,7 +1170,14 @@ def publicar(video, *, visibilidade: str | None = None,
             passo(f"descricao escrita ({laudo['escrita']['descricao']}).")
 
         capa = getattr(video, "capa", None)
-        if capa and Path(capa).is_file():
+        if capa and Path(capa).is_file() and _e_short(video):
+            # SHORT NAO TEM CAMPO DE MINIATURA no envio do Studio: a procura
+            # gastava 8 s por video e terminava sempre em "campo de miniatura
+            # nao apareceu" (05/10/2026). A capa de Short, quando o canal
+            # permite, vai pela API depois (`youtube.definir_capa`).
+            passo("Short: o Studio nao tem campo de miniatura no envio; a "
+                  "capa vai pela API depois, se o canal permitir.")
+        elif capa and Path(capa).is_file():
             try:
                 entrada_capa = _primeiro(page, ENTRADA_MINIATURA, timeout=8.0)
                 if entrada_capa is None:

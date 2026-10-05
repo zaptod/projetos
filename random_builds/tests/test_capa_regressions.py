@@ -147,6 +147,16 @@ class CapaNoCatalogoTests(unittest.TestCase):
 class UploadDaCapaTests(unittest.TestCase):
     """A capa e enfeite: falhar nela nao pode custar a publicacao."""
 
+    def setUp(self):
+        # O bloqueio por conta (05/10/2026) grava um arquivo: cada teste tem
+        # o seu, senao o 403 de um teste bloqueia a capa do seguinte.
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        original = youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA
+        youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA = Path(pasta.name) / "bloqueio.json"
+        self.addCleanup(setattr, youtube, "ARQUIVO_DO_BLOQUEIO_DA_CAPA",
+                        original)
+
     class _Resposta:
         def __init__(self, ok=True, status=200, texto=""):
             self.ok, self.status_code, self.text = ok, status, texto
@@ -213,6 +223,137 @@ class UploadDaCapaTests(unittest.TestCase):
         for seletor in youtube_web.ENTRADA_MINIATURA:
             with self.subTest(seletor=seletor):
                 self.assertNotEqual(youtube_web.ENTRADA_ARQUIVO, seletor)
+
+
+class CapaBloqueadaPorContaTests(unittest.TestCase):
+    """O 403 marca a CONTA, e a capa nao e pedida de novo no mesmo dia.
+
+    Medido no `outputs/postar.txt` em 05/10/2026, 12:43: 151 "capa recusada
+    (403)" — todas do canal de historias, que nao tem miniatura liberada
+    (falta youtube.com/verify) — contra 34 "capa enviada", de builds; e
+    nenhuma linha no diario. Cada publicacao pedia de novo e levava o mesmo
+    403. Conta de mao do conserto: no dia do bloqueio, 1 pedido (o 403) e
+    os outros 9 horarios de historias pulam; no dia seguinte, 1 pedido de
+    novo (a revalidacao), e o diario ganha 1 aviso no total, nao 151.
+    """
+
+    class _Resposta:
+        def __init__(self, ok=True, status=200, texto=""):
+            self.ok, self.status_code, self.text = ok, status, texto
+
+    def setUp(self):
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.pasta = Path(pasta.name)
+        original = youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA
+        youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA = self.pasta / "bloqueio.json"
+        self.addCleanup(setattr, youtube, "ARQUIVO_DO_BLOQUEIO_DA_CAPA",
+                        original)
+        self.capa = self.pasta / "capa.png"
+        Image.new("RGB", (64, 36)).save(self.capa)
+        self.pedidos = []
+        self.resposta = self._Resposta(ok=False, status=403,
+                                       texto="forbidden: thumbnails")
+        self.diario = []
+        from builds import atividade
+        original_registrar = atividade.registrar
+        atividade.registrar = lambda *a, **k: self.diario.append((a, k))
+        self.addCleanup(setattr, atividade, "registrar", original_registrar)
+
+    def _pedir(self, canal="historias"):
+        def falso_post(url, **kw):
+            self.pedidos.append(url)
+            return self.resposta
+
+        with patch.object(youtube, "carregar_credenciais",
+                          return_value=object()), \
+             patch.object(youtube, "token_de_acesso", return_value="t"), \
+             patch.dict("sys.modules", {"requests": type(
+                 "M", (), {"post": staticmethod(falso_post)})}):
+            return youtube.definir_capa("abc123", self.capa, canal=canal)
+
+    def test_o_403_bloqueia_o_resto_do_dia_e_avisa_uma_vez(self):
+        for _ in range(10):                      # dez horarios num dia
+            self.assertFalse(self._pedir())
+        self.assertEqual(1, len(self.pedidos), "so o primeiro pergunta")
+        self.assertEqual(1, len(self.diario), "um aviso, nao dez")
+        self.assertIn("youtube.com/verify", self.diario[0][0][2])
+
+    def test_no_dia_seguinte_pergunta_de_novo_sem_novo_aviso(self):
+        self.assertFalse(self._pedir())
+        dados = json.loads(youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA.read_text(
+            encoding="utf-8"))
+        for ficha in dados.values():
+            ficha["conferido"] = "2026-10-04T23:37:00"     # ontem
+        youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA.write_text(
+            json.dumps(dados), encoding="utf-8")
+        self.assertFalse(self._pedir())
+        self.assertEqual(2, len(self.pedidos), "a revalidacao do dia")
+        self.assertEqual(1, len(self.diario), "o bloqueio nao e novo")
+
+    def test_quando_o_canal_libera_o_bloqueio_sai(self):
+        self.assertFalse(self._pedir())
+        dados = json.loads(youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA.read_text(
+            encoding="utf-8"))
+        for ficha in dados.values():
+            ficha["conferido"] = "2026-10-04T23:37:00"
+        youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA.write_text(
+            json.dumps(dados), encoding="utf-8")
+        self.resposta = self._Resposta()
+        self.assertTrue(self._pedir())
+        self.assertEqual({}, json.loads(
+            youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA.read_text(encoding="utf-8")))
+
+    def test_o_bloqueio_e_da_conta_e_nao_de_todas(self):
+        """O 403 das historias nao pode custar a capa dos builds."""
+        self.assertFalse(self._pedir("historias"))
+        self.resposta = self._Resposta()
+        self.assertTrue(self._pedir("builds"))
+
+    def test_caso_zero_sem_arquivo_ninguem_esta_bloqueado(self):
+        self.assertIsNone(youtube.capa_bloqueada("historias"))
+        self.resposta = self._Resposta()
+        self.assertTrue(self._pedir())
+        self.assertFalse(youtube.ARQUIVO_DO_BLOQUEIO_DA_CAPA.exists(),
+                         "sucesso sem bloqueio nao cria arquivo")
+
+    def test_outro_erro_nao_bloqueia(self):
+        """500 e falha passageira, nao falta de permissao do canal."""
+        self.resposta = self._Resposta(ok=False, status=500, texto="backend")
+        self.assertFalse(self._pedir())
+        self.assertFalse(self._pedir())
+        self.assertEqual(2, len(self.pedidos))
+        self.assertEqual([], self.diario)
+
+
+class ShortSemMiniaturaNoStudioTests(unittest.TestCase):
+    """O Studio nao tem campo de miniatura no envio de um Short: a procura
+    gastava 8 s e sempre terminava em "campo de miniatura nao apareceu"."""
+
+    def _video(self, vertical, duracao=None):
+        return type("V", (), {"vertical": vertical, "duracao": duracao})()
+
+    def test_vertical_curto_e_short(self):
+        from builds.publicar import youtube_web
+        self.assertTrue(youtube_web._e_short(self._video(True, 62.0)))
+
+    def test_vertical_sem_duracao_conta_como_short(self):
+        """Toda parte longa ja e cortada em pedacos de ate 180 s."""
+        from builds.publicar import youtube_web
+        self.assertTrue(youtube_web._e_short(self._video(True)))
+
+    def test_vertical_longo_e_horizontal_nao_sao(self):
+        from builds.publicar import youtube_web
+        self.assertFalse(youtube_web._e_short(self._video(True, 240.0)))
+        self.assertFalse(youtube_web._e_short(self._video(False, 60.0)))
+
+    def test_publicar_pula_a_miniatura_do_short(self):
+        import inspect
+        from builds.publicar import youtube_web
+        fonte = inspect.getsource(youtube_web.publicar)
+        antes = fonte[:fonte.index("ENTRADA_MINIATURA")]
+        self.assertIn("_e_short(video)", antes,
+                      "o Short tem de ser decidido ANTES de procurar o campo")
 
 
 if __name__ == "__main__":

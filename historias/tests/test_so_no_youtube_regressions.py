@@ -69,7 +69,11 @@ class SoNoYoutubeTests(unittest.TestCase):
         self.p._sem_a_conferir = (lambda fila, _c: []
                                   if self.a_conferir else fila)
         self.p._retencao = lambda _a: self.retencao
-        self.p._marcar_retido = lambda a, r: self.marcou.append((a.id, r))
+        self.p._marcar_retido = (
+            lambda a, r, destinos=("youtube", "tiktok"):
+            self.marcou.append((a.id, r)) or self.destinos.append(
+                tuple(destinos)))
+        self.destinos = []
         self.p._visibilidade_das_historias = lambda: "public"
         self.p._horario_que_a_linha_tomaria = lambda *_a: ""
 
@@ -128,6 +132,9 @@ class SoNoYoutubeTests(unittest.TestCase):
         self.retencao = "a IA reprovou e as rodadas de conserto acabaram"
         self.p.subir_so_no_youtube(_V.id)
         self.assertEqual([(_V.id, self.retencao)], self.marcou)
+        # So no YouTube, onde ela saiu (05/10/2026): marcada no TikTok
+        # sem estar la, a recuperacao do TikTok a descartaria.
+        self.assertEqual([("youtube",)], self.destinos)
 
     def test_retida_no_ver_nao_marca(self):
         self.retencao = "a IA reprovou"

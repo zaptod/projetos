@@ -48,7 +48,33 @@ HORA_PADRAO = grade.horario(17)   # compatibilidade com quem passa --hora
 
 
 def _linha(texto: str = "") -> None:
-    sys.stdout.buffer.write((texto + "\n").encode("utf-8", "replace"))
+    """Uma linha no log. NUNCA levanta: log que derruba a conta e pior que
+    log que se perde.
+
+    Era `sys.stdout.buffer.write(...)` seco. Em 05/10/2026 a agenda das
+    historias rodava DENTRO da trava com `sys.stdout` trocado por
+    `_SaidaNoDiario`, que nao tem `.buffer`: a primeira historia que ja
+    tinha saido 2x no dia escrevia uma linha aqui, o `AttributeError`
+    subia ate `pendentes_por_canal`, que devolvia -1, e o freio caia no
+    plano B contando as RETIDAS como estoque — "59 videos na fila (teto
+    20)" contra 1 parte limpa, e tres madrugadas sem historia nova.
+    Medido: -1 com o stdout trocado, 1 com o normal.
+    """
+    texto = str(texto) + "\n"
+    saida = sys.stdout
+    try:
+        buffer = getattr(saida, "buffer", None)
+        if buffer is not None:
+            buffer.write(texto.encode("utf-8", "replace"))
+            return
+        try:
+            saida.write(texto)
+        except UnicodeEncodeError:
+            codificacao = getattr(saida, "encoding", None) or "ascii"
+            saida.write(texto.encode(codificacao, "replace")
+                        .decode(codificacao, "replace"))
+    except Exception:                                          # noqa: BLE001
+        pass
 
 
 def _prova_ok(laudo):
@@ -72,10 +98,40 @@ def _prova_ok(laudo):
 # verdade e o horario seguinte tenta de novo.
 ESPERA_DE_REDE_S = 300.0
 ALVOS_DE_REDE = ("studio.youtube.com", "www.tiktok.com")
+# `oauth2.googleapis.com` ENTRA em 05/10/2026: e o token da API (id do video
+# pelo canal, capa, conferencia), e na madrugada de 04/10 o 23:37 morreu com
+# SSLError justamente nos pedidos a ele. Mas ele e CONFERIDO, nao exigido:
+# sem a API o video sai do mesmo jeito (so sem capa e sem o id pelo canal), e
+# "nao sei" nunca barra video — exigir aqui trocaria um enfeite pelo horario.
+ALVOS_AVISADOS = ("oauth2.googleapis.com",)
+PRAZO_DO_TLS_S = 10.0
+
+
+def _conexao_tls(alvo: str, prazo: float = PRAZO_DO_TLS_S) -> str:
+    """`""` se um aperto de mao TLS com `alvo`:443 fecha; senao, o porque.
+
+    Resolver o nome nao basta: na madrugada de 05/10/2026 o DNS respondia e a
+    conexao morria no TLS (`SSLEOFError`), e o 23:37 de 04/10 caiu inteiro
+    (4 envios) com a guarda de rede dizendo que estava tudo bem.
+    """
+    import socket
+    import ssl
+    try:
+        socket.getaddrinfo(alvo, 443)
+    except OSError as exc:
+        return f"nao resolve ({type(exc).__name__})"
+    try:
+        contexto = ssl.create_default_context()
+        with socket.create_connection((alvo, 443), timeout=prazo) as bruto:
+            with contexto.wrap_socket(bruto, server_hostname=alvo):
+                pass
+    except (OSError, ssl.SSLError) as exc:
+        return f"TLS falhou ({type(exc).__name__}: {str(exc)[:80]})"
+    return ""
 
 
 def esperar_a_rede(*, limite: float = ESPERA_DE_REDE_S, log=None) -> bool:
-    """Espera o DNS resolver. `False` quando desiste.
+    """Espera a rede de VERDADE (DNS e TLS). `False` quando desiste.
 
     POR QUE ISTO EXISTE: em 11/09/2026 a queda de energia derrubou o PC. Ele
     voltou as 03:34, as tarefas das 06:07, 07:07 e 08:07 dispararam em dia,
@@ -83,35 +139,39 @@ def esperar_a_rede(*, limite: float = ESPERA_DE_REDE_S, log=None) -> bool:
     voltado junto. Tres horarios perdidos por uma coisa que se resolve
     esperando.
 
-    Resolver o NOME e o teste certo, e nao abrir o navegador: e barato, e e
-    exatamente o passo que falhava. Espera crescente para nao martelar o
-    resolvedor enquanto ele ainda sobe.
+    Ate 05/10/2026 isto so resolvia o NOME. Na madrugada de 05/10 o DNS
+    respondia e o TLS morria (`SSLEOFError`): a guarda dizia "rede ok" e o
+    Chrome estourava 90 s depois. Agora cada alvo precisa fechar um aperto
+    de mao TLS (`_conexao_tls`) — ainda barato (milissegundos), e e o passo
+    que falhava. Espera crescente para nao martelar a rede enquanto sobe.
     """
-    import socket
     import time
 
     log = log or _linha
     fim = time.monotonic() + max(0.0, float(limite))
     espera, avisou = 1.0, False
     while True:
-        faltou = ""
+        faltou, porque = "", ""
         for alvo in ALVOS_DE_REDE:
-            try:
-                socket.getaddrinfo(alvo, 443)
-            except OSError:
+            porque = _conexao_tls(alvo)
+            if porque:
                 faltou = alvo
                 break
         if not faltou:
             if avisou:
                 log("[rede] voltou; sigo com a postagem.")
+            for opcional in ALVOS_AVISADOS:
+                motivo = _conexao_tls(opcional)
+                if motivo:
+                    log(f"[rede] {opcional}: {motivo}; publico assim mesmo "
+                        "(sem a API: sem capa e sem o id pelo canal).")
             return True
         if time.monotonic() >= fim:
-            log(f"[rede] {faltou} nao resolve depois de {limite:.0f}s; "
+            log(f"[rede] {faltou}: {porque} depois de {limite:.0f}s; "
                 "desisto deste horario.")
             return False
         if not avisou:
-            log(f"[rede] {faltou} ainda nao resolve; espero ate "
-                f"{limite:.0f}s.")
+            log(f"[rede] {faltou}: {porque}; espero ate {limite:.0f}s.")
             avisou = True
         time.sleep(min(espera, max(0.0, fim - time.monotonic())))
         espera = min(espera * 2, 15.0)
@@ -500,11 +560,12 @@ def _parecer_da_ia(alvo, roteiro: dict, laudo: dict) -> str:
     # `lembrado` devolve `None` quando o mp4 mudou desde o veredito, entao um
     # re-render continua merecendo pergunta nova.
     #
-    # TRES RODADAS E SAI. Veto vencido nao e perguntado de novo: perguntar
+    # A PASSADA DE CONSERTO FOI GASTA E SAI (uma so desde 15/09/2026; eram
+    # tres rodadas antes). Veto vencido nao e perguntado de novo: perguntar
     # daria a mesma reprovacao e travaria o horario outra vez.
     if _veto_vencido(alvo):
-        _linha(f"[parecer] {alvo.id}: a IA reprovou, mas as rodadas de "
-               "conserto acabaram; sai assim.")
+        _linha(f"[parecer] {alvo.id}: a IA reprovou, mas a passada de "
+               "conserto ja foi gasta; sai assim.")
         return ""
     ficha = parecer.lembrado(alvo)
     if ficha and not ficha.get("aprovado"):
@@ -569,11 +630,19 @@ def _atualizar_metricas() -> None:
 
 
 def _veto_vencido(alvo) -> bool:
-    """Tres rodadas de conserto e a IA ainda reprova: sai assim.
+    """A passada de conserto foi gasta e a IA ainda reprova: sai assim.
 
-    A regra mora em `contos.publicar.qualidade.veto_vencido`, a mesma que a
-    auditoria e o freio de estoque consultam.
+    Uma passada so desde 15/09/2026 (eram tres rodadas antes). A regra mora
+    em `contos.publicar.qualidade.veto_vencido`, a mesma que a auditoria e o
+    freio de estoque consultam.
+
+    A PARTE CONSERTADA NAO E VETO VENCIDO (05/10/2026). O reparo que refez as
+    cenas tambem gasta a passada, e ate aqui a parte consertada saia com "o
+    veto da IA venceu" — um veto do mp4 ANTIGO. Ela e outra coisa
+    (`_consertada`): ninguem viu o mp4 novo ainda.
     """
+    if _consertada(alvo):
+        return False
     try:
         from contos.publicar import qualidade
         return qualidade.veto_vencido(alvo)
@@ -588,11 +657,17 @@ def _veto_lembrado(alvo) -> str:
     `TENTATIVAS`. Em 13/09/2026 os seis primeiros da fila eram os seis
     barrados, o teto de seis se esgotava neles, e onze aprovados logo atras
     nunca eram vistos: nenhuma historia saiu nos horarios.
+
+    `parecer.lembrado` primeiro (compara o mtime: e o parecer DESTE mp4). O
+    veto de um mp4 antigo so vale se o video nao foi consertado depois dele:
+    re-render sem conserto nao apaga o veto (15/09/2026), conserto sim — a
+    parte consertada passa pela valvula (`_retencao`), e nao pelo veto.
     """
     try:
         from contos.publicar import parecer
-        # O veto e do VIDEO: re-render sem conserto nao o apaga (15/09/2026).
-        ficha = parecer.lembrado(alvo) or parecer.veto_por_id(alvo)
+        ficha = parecer.lembrado(alvo)
+        if ficha is None and not _consertada(alvo):
+            ficha = parecer.veto_por_id(alvo)
     except Exception:                                          # noqa: BLE001
         return ""
     if not ficha or ficha.get("aprovado") or _veto_vencido(alvo):
@@ -601,17 +676,34 @@ def _veto_lembrado(alvo) -> str:
     return f"{alvo.id}: a IA REPROVOU — {motivos}"
 
 
-def _situacao_do_parecer(alvo) -> str:
-    """"aprovado" | "reprovado" | "nao_assistido" | "" (sem ficha).
+# A SITUACAO de uma parte reprovada que o reparo REFEZ depois do veto e cujo
+# mp4 novo ninguem assistiu. Quem a reconhece e `contos.publicar.parecer`
+# (`estado_do_video`/`consertado`: mp4 mais novo que o parecer E "refiz" no
+# `_reparos.json` depois dele); aqui so se le a resposta.
+CONSERTADA = "consertado"
 
-    O ultimo parecer do VIDEO, pelo id (`parecer.situacao_do_video`): um
-    re-render sem parecer novo nao apaga o que foi dito dele. Nunca levanta.
+
+def _situacao_do_parecer(alvo) -> str:
+    """"aprovado" | "reprovado" | "nao_assistido" | "consertado" | "".
+
+    O ultimo parecer do VIDEO, pelo id: um re-render sem parecer novo nao
+    apaga o que foi dito dele. "consertado" vem de `parecer.estado_do_video`
+    (um criterio so, la); sem ela, a resposta e a de antes
+    (`situacao_do_video`). Nunca levanta.
     """
     try:
         from contos.publicar import parecer
+        estado = getattr(parecer, "estado_do_video", None)
+        if callable(estado):
+            return str(estado(alvo) or "")
         return parecer.situacao_do_video(alvo)
     except Exception:                                          # noqa: BLE001
         return ""
+
+
+def _consertada(alvo) -> bool:
+    """Reprovada, consertada depois do veto, e a IA nao viu o mp4 novo?"""
+    return _situacao_do_parecer(alvo) == CONSERTADA
 
 
 def _retencao(alvo) -> str:
@@ -632,11 +724,23 @@ def _retencao(alvo) -> str:
     antes (`_veto_lembrado`), e aqui ele so importa para a marca, quando sai
     como ultimo recurso. Sem parecer nenhum NAO e retido: a postagem nao
     pergunta ao Gemini, e reter tudo que nao tem ficha pararia o canal.
+
+    A CONSERTADA (05/10/2026) continua retida: o reparo refez as cenas depois
+    do veto, mas ninguem assistiu ao mp4 novo, e "consertado" nao e
+    "aprovado". Ela so ganha a FRENTE das outras retidas no ultimo recurso
+    (`proxima_historia`). Medido na fila de 05/10: 57 de 58 partes retidas,
+    37 delas ja consertadas — todas saiam com "o veto venceu", o texto do
+    mp4 antigo. A IA NAO olha de novo o mp4 consertado: decisao do Adrian
+    de 05/10/2026, 12:32 (`historias/reolhar-depois-do-conserto`, opcao
+    "nao" — uma passada so; a consertada so ganha prioridade).
     """
     situacao = _situacao_do_parecer(alvo)
+    if situacao == CONSERTADA:
+        return (f"{alvo.id}: a IA reprovou, o reparo refez as cenas e "
+                "ninguem assistiu ao video consertado")
     if situacao == "reprovado":
         return (f"{alvo.id}: a IA reprovou"
-                + (" e as rodadas de conserto acabaram"
+                + (" e a passada de conserto ja foi gasta"
                    if _veto_vencido(alvo) else ""))
     if situacao == "nao_assistido":
         return f"{alvo.id}: parecer so pela folha de contato (ninguem assistiu)"
@@ -648,21 +752,28 @@ def _retencao(alvo) -> str:
 PREFIXO_DA_RETENCAO = "[qualidade] "
 
 
-def _marcar_retido(alvo, retencao: str) -> None:
-    """A parte retida que SAIU vai para a lista "a conferir" dos DOIS destinos.
+def _marcar_retido(alvo, retencao: str,
+                   destinos=("youtube", "tiktok")) -> None:
+    """A parte retida que SAIU vai para a lista "a conferir" de cada destino
+    ONDE ELA SAIU — e so nele.
 
-    Nos dois, e nao so onde saiu: a recuperacao do TikTok leva a parte que
-    saiu no YouTube e falhou la — e ela e extra, nunca "o horario ia ficar
-    vazio". Marcada, ela espera a pessoa conferir. So DEPOIS de sair: marcar
-    antes tiraria da fila a parte que ainda nao foi a lugar nenhum.
+    Ate 05/10/2026 marcava os dois, "porque a recuperacao do TikTok e extra".
+    O preco, medido: `historia_00034:celular:p06` e `historia_00042:celular:
+    p06` sairam no YouTube, falharam no TikTok (legenda adiada) e ficaram
+    marcadas "a conferir" la — `_fila_do_tiktok` as descarta, entao o fim
+    das duas series nunca chegou ao TikTok, e a mensagem do erro prometia
+    "volta na fila de atrasados". Marca em destino onde a parte nao esta
+    nao protege ninguem de nada: so a esconde da recuperacao. Quem chama
+    passa `destinos` = onde saiu de verdade (TikTok so confirmado).
 
-    Nunca levanta: a publicacao ja aconteceu.
+    So DEPOIS de sair: marcar antes tiraria da fila a parte que ainda nao
+    foi a lugar nenhum. Nunca levanta: a publicacao ja aconteceu.
     """
     try:
         from builds.publicar import desfecho
     except Exception:                                          # noqa: BLE001
         return
-    for plataforma in ("youtube", "tiktok"):
+    for plataforma in destinos:
         try:
             desfecho.marcar_para_conferir(
                 "historias", alvo.id, PREFIXO_DA_RETENCAO + retencao,
@@ -673,6 +784,46 @@ def _marcar_retido(alvo, retencao: str) -> None:
         except Exception as exc:                               # noqa: BLE001
             _linha(f"[postar] {alvo.id}: nao consegui por na lista a conferir "
                    f"do {plataforma} ({type(exc).__name__}).")
+
+
+def _valvula_da_parte(ficha: dict, alvo) -> str:
+    """Poe na ficha as marcas da valvula desta parte; devolve a retencao.
+
+    UM LUGAR SO para as marcas (`veto_vencido`, `veto_ignorado`, `retido`,
+    `consertada`), porque desde 05/10/2026 ha TRES caminhos que levam uma
+    parte de historia ao ar: a rodada inteira (`postar_historia`), o "YouTube
+    ja saiu nesta hora; levando so para o TikTok" (que a reposicao por rede
+    usa) e a recuperacao do TikTok. So o primeiro marcava. Nunca levanta.
+    """
+    try:
+        if _veto_vencido(alvo):
+            ficha["veto_vencido"] = True
+        elif _veto_lembrado(alvo):
+            ficha["veto_ignorado"] = True
+        retencao = _retencao(alvo)
+    except Exception:                                          # noqa: BLE001
+        return ""
+    if retencao:
+        ficha["retido"] = retencao
+        if _consertada(alvo):
+            ficha["consertada"] = True
+    return retencao
+
+
+def _retida_chegou_ao_tiktok(alvo, ficha: dict) -> None:
+    """A parte que chega ao TikTok DEPOIS do YouTube passa pela valvula LA.
+
+    Conferente, 05/10/2026: com a marca so onde a parte saiu (item 4 da
+    varredura), a retida que saiu no YouTube e falhou no TikTok volta a
+    chegar ao TikTok — pela recuperacao ou pelo "levando so para o TikTok".
+    Nenhum dos dois marcava "[qualidade]" la nem gravava a valvula no
+    diario: a parte reprovada pela IA ia ao ar no TikTok fora da lista que
+    uma pessoa confere. Chame SO com o TikTok confirmado. Nunca levanta.
+    """
+    retencao = _valvula_da_parte(ficha, alvo)
+    if retencao:
+        _marcar_retido(alvo, retencao, ("tiktok",))
+    _registrar_valvula(dict(ficha, feito=True))
 
 
 def proxima_historia(*, vistoriar: bool = True):
@@ -753,6 +904,13 @@ def proxima_historia(*, vistoriar: bool = True):
     # viu), depois a VETADA (o veto ainda pode ser consertado; publica-la
     # agora queima o conserto), e so entao a parte seguinte fora de ordem.
     # A retida que sai vai para a lista "a conferir" (`postar_historia`).
+    #
+    # ENTRE AS RETIDAS, A CONSERTADA PRIMEIRO (05/10/2026): o reparo ja
+    # refez as cenas que a IA apontou, e a vetada sem conserto sai com o
+    # defeito que ela viu. Ordenacao ESTAVEL, e so entre retidas: cada uma e
+    # a proxima parte da sua serie (a serie para na primeira barrada), entao
+    # isto nunca fura a ordem de uma serie.
+    retidos.sort(key=lambda a: 0 if _consertada(a) else 1)
     for alvo in retidos[:3]:
         roteiro = R.carregar(alvo.fonte_id)
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
@@ -914,11 +1072,17 @@ def postar_historia(*, so_ver: bool = False) -> dict:
                               "YouTube mas nao esta mais no catalogo"}
         _linha(f"[postar] historias: YouTube ja saiu nesta hora; "
                f"levando {alvo.id} so para o TikTok.")
-        return {"canal": "historias", "feito": True, "alvo": alvo.id,
-                "titulo": alvo.titulo, "url": ja_yt.get("url") or "",
-                "parte": alvo.parte, "partes": alvo.partes,
-                "visibilidade": _visibilidade_das_historias(),
-                "so_tiktok": True, "tiktok": _tiktok_das_historias(alvo)}
+        falha_tk: dict = {}
+        ficha = {"canal": "historias", "feito": True, "alvo": alvo.id,
+                 "titulo": alvo.titulo, "url": ja_yt.get("url") or "",
+                 "parte": alvo.parte, "partes": alvo.partes,
+                 "visibilidade": _visibilidade_das_historias(),
+                 "so_tiktok": True,
+                 "tiktok": _tiktok_das_historias(alvo, falha_tk)}
+        _anotar_falha_do_tiktok(ficha, falha_tk)
+        if _tiktok_confirmado(ficha["tiktok"]):
+            _retida_chegou_ao_tiktok(alvo, ficha)
+        return ficha
     alvo, recusados = proxima_historia()
     if alvo is None:
         motivo = "nao ha parte publicavel"
@@ -966,13 +1130,7 @@ def postar_historia(*, so_ver: bool = False) -> dict:
              "titulo": alvo.titulo, "url": url,
              "parte": alvo.parte, "partes": alvo.partes,
              "visibilidade": visibilidade, "recusados": recusados}
-    if _veto_vencido(alvo):
-        ficha["veto_vencido"] = True
-    elif _veto_lembrado(alvo):
-        ficha["veto_ignorado"] = True
-    retencao = _retencao(alvo)
-    if retencao:
-        ficha["retido"] = retencao
+    _valvula_da_parte(ficha, alvo)
     if titulo_repetido(alvo, "historias"):
         ficha["titulo_repetido"] = True
     if cota:
@@ -987,7 +1145,10 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         ficha["tiktok_fora_da_grade"] = True
         _linha("[postar] historias: este horario nao e da grade do TikTok.")
     else:
-        ficha["tiktok"] = "" if ja_tk else _tiktok_das_historias(alvo)
+        falha_tk: dict = {}
+        ficha["tiktok"] = "" if ja_tk else _tiktok_das_historias(alvo,
+                                                                  falha_tk)
+        _anotar_falha_do_tiktok(ficha, falha_tk)
     # Deu TikTok e nao deu YouTube: a rodada fez alguma coisa, e o relatorio
     # tem que dizer isso em vez de chamar tudo de falha. So com o post
     # CONFIRMADO: "cliquei mas o TikTok nao confirmou" nao e publicacao
@@ -996,8 +1157,12 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         ficha["feito"] = True
     # A PARTE RETIDA QUE SAIU FICA A CONFERIR (valvula de qualidade): so sai
     # retida quando nao havia outra, e quem confere e uma pessoa.
+    # SO ONDE ELA SAIU (05/10/2026): marcada no TikTok sem estar la, a parte
+    # some da recuperacao e o fim da serie nunca chega ao TikTok.
     if ficha.get("retido") and ficha["feito"]:
-        _marcar_retido(alvo, ficha["retido"])
+        onde = (("youtube",) if url else ()) + (
+            ("tiktok",) if _tiktok_confirmado(ficha["tiktok"]) else ())
+        _marcar_retido(alvo, ficha["retido"], onde)
     _registrar_valvula(ficha)
     return ficha
 
@@ -1132,7 +1297,7 @@ def subir_so_no_youtube(video_id: str, *, so_ver: bool = False) -> dict:
     # A RETIDA QUE SAI FICA A CONFERIR, como na grade (valvula de 28/09):
     # quem decidiu subir foi uma pessoa, mas quem confere o video tambem.
     if retencao and ficha["feito"]:
-        _marcar_retido(alvo, retencao)
+        _marcar_retido(alvo, retencao, ("youtube",))
     return ficha
 
 
@@ -1915,15 +2080,23 @@ def recuperar_no_tiktok(so_ver: bool = False,
               else _tiktok_das_historias(alvo, falha))
     desfecho = desfecho_do_tiktok(estado, falha)
     feito = desfecho == "publicado"
+    valvula: dict = {"canal": canal, "alvo": alvo.id}
     if feito:
         _esquecer_falhas_no_tiktok(canal, alvo.id)
+        # A RETIDA QUE CHEGA AQUI FICA A CONFERIR NO TIKTOK (05/10/2026). A
+        # valvula e de historias: builds nao tem parecer de retencao.
+        if canal == "historias":
+            _retida_chegou_ao_tiktok(alvo, valvula)
     elif desfecho == "falha":
         _anotar_falha_no_tiktok(canal, alvo.id)
     # "infraestrutura" nao conta nada: o video continua na fila e a proxima
     # rodada tenta de novo, porque o defeito nao e dele.
-    return {"feito": feito, "desfecho": desfecho, "fila": len(fila),
-            "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
-            "canal": canal, "tiktok": estado}
+    resultado = {"feito": feito, "desfecho": desfecho, "fila": len(fila),
+                 "alvo": alvo.id, "titulo": getattr(alvo, "titulo", ""),
+                 "canal": canal, "tiktok": estado}
+    if valvula.get("retido"):
+        resultado["retido"] = valvula["retido"]
+    return resultado
 
 
 RECUPERACAO_YOUTUBE_LIGADA = True
@@ -2183,6 +2356,8 @@ def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
         if falha is not None:
             falha["tipo"] = type(exc).__name__
             falha["mensagem"] = str(exc)[:300]
+            if laudo.get("clicou"):
+                falha["clicou"] = True
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
         # A EXCECAO NAO PULA A CLASSIFICACAO: se o clique ja tinha saido (o
         # `laudo` guarda isso), o video precisa ir para "a conferir" mesmo
@@ -2301,7 +2476,7 @@ def _titulos_no_ar(canal: str, plataforma: str | None = None,
 # As marcas da ficha que querem dizer "saiu, mas pela valvula". A ordem e a
 # da gravidade, e e a que o relatorio mostra.
 VALVULAS = {
-    "veto_vencido": "veto da IA venceu (as rodadas de conserto acabaram)",
+    "veto_vencido": "veto da IA venceu (a passada de conserto ja foi gasta)",
     "veto_ignorado": "veto da IA ignorado (nao havia outro video pronto)",
     "retido": "saiu RETIDA pela valvula de qualidade (nao havia outra parte)",
     # A valvula fechou em 17/09, entao esta marca mudou de sentido: ela nao
@@ -2473,6 +2648,161 @@ def _tiktok_confirmado(estado) -> bool:
         # ganharia uma linha de publicacao para um post que talvez nao
         # exista, e ninguem iria conferir.
         return False
+
+
+def _anotar_falha_do_tiktok(ficha: dict, falha: dict) -> None:
+    """Poe na ficha POR QUE o TikTok nao saiu, quando houve excecao.
+
+    E o que deixa a rodada (`main`) separar "a rede caiu" — vale tentar de
+    novo neste horario — de "o TikTok recusou o video", que nao vale.
+    """
+    if falha and not _tiktok_confirmado(ficha.get("tiktok")):
+        ficha["tiktok_falha"] = (f"{falha.get('tipo', '')}: "
+                                 f"{falha.get('mensagem', '')}")[:300]
+        if falha.get("clicou"):
+            # O CLIQUE JA TINHA SAIDO: o post pode estar no ar. Repor seria
+            # publicar de novo no perfil (`_derrubados_pela_rede` respeita).
+            ficha["tiktok_clicou"] = True
+
+
+# -------------------------------------------------- horario que a rede derrubou
+# REPOR NO MESMO HORARIO o destino que a REDE derrubou (05/10/2026). O 23:37
+# de 04/10 caiu inteiro (4 envios, timeout e SSLError entre 23:44 e 00:00) e
+# o TikTok das 09:37 de 05/10 caiu 3 vezes, com o YouTube publicando no mesmo
+# minuto: nao havia segunda tentativa, o horario ficava vazio e o video
+# empurrava a fila para o seguinte. Agora, quando a falha e de rede, a rodada
+# espera, confere a rede e roda o MESMO canal de novo — as guardas de
+# um-por-horario por destino fazem o resto (o destino que ja saiu nao sai de
+# novo; o que caiu leva o mesmo video, ou o proximo).
+TENTATIVAS_POR_REDE = 2              # tentativas EXTRAS, por canal
+PAUSA_ANTES_DE_REPOR_S = 60.0
+JANELA_DE_REPOSICAO_MIN = 25         # contados do comeco da rodada
+ESPERA_DE_REDE_NA_REPOSICAO_S = 120.0
+# O que diz "foi a rede" — e so isso: login vencido, perfil ocupado ou video
+# recusado nao melhoram tentando de novo daqui a um minuto.
+MARCAS_DE_REDE = ("infraestrutura", "net::err", "err_name_not_resolved",
+                  "err_connection", "err_internet", "err_timed_out",
+                  "sslerror", "ssleoferror", "ssl:", "connectionreset",
+                  "connection reset", "connectionerror", "timed out",
+                  "remotedisconnected", "rede nao voltou")
+
+
+def _e_de_rede(texto) -> bool:
+    baixo = str(texto or "").lower()
+    return any(m in baixo for m in MARCAS_DE_REDE)
+
+
+def _derrubados_pela_rede(r: dict) -> list:
+    """Os destinos que a REDE derrubou nesta ficha: [] | ["youtube", "tiktok"].
+
+    Ficha inteira que nao saiu por excecao de rede (o canal levantou antes de
+    publicar) conta como os dois.
+    """
+    if not r or r.get("repetido") or r.get("veria"):
+        return []
+    caidos = []
+    if r.get("youtube_falhou") and _e_de_rede(r.get("motivo")):
+        caidos.append("youtube")
+    if (not r.get("tiktok_fora_da_grade") and not r.get("tiktok_clicou")
+            and not _tiktok_confirmado(r.get("tiktok"))
+            and _e_de_rede(r.get("tiktok_falha"))):
+        caidos.append("tiktok")
+    if (not caidos and not r.get("feito") and not r.get("youtube_falhou")
+            and _e_de_rede(r.get("motivo"))):
+        caidos = ["youtube", "tiktok"]
+    return caidos
+
+
+def _ainda_no_horario(comeco: float, slot: int, agora=None,
+                      relogio=None) -> bool:
+    """A reposicao ainda cabe NESTE horario da grade?
+
+    Dentro de `JANELA_DE_REPOSICAO_MIN` do comeco da rodada E no mesmo
+    `grade.slot` — o menor buraco da grade e de 60 min, entao repor nunca
+    invade o horario seguinte.
+    """
+    import time
+    from datetime import datetime
+    relogio = relogio or time.monotonic
+    if relogio() - comeco >= JANELA_DE_REPOSICAO_MIN * 60:
+        return False
+    return grade.slot(agora or datetime.now()) == slot
+
+
+def _juntar_reposicao(r: dict, nova: dict) -> tuple:
+    """(ficha da rodada, ficha extra ou None) depois de uma reposicao.
+
+    - so faltava o TikTok e ele foi de novo: a mesma ficha, com o TikTok novo;
+    - nada a repor (o horario ja tem os dois): a ficha de antes;
+    - um video DIFERENTE saiu (o YouTube caiu e o TikTok tinha ido): as duas.
+    """
+    if not nova or nova.get("repetido"):
+        return r, None
+    if nova.get("so_tiktok") and nova.get("alvo") == r.get("alvo"):
+        junta = dict(r)
+        junta["tiktok"] = nova.get("tiktok", "")
+        for chave in ("tiktok_falha", "tiktok_clicou"):
+            junta.pop(chave, None)
+            if nova.get(chave):
+                junta[chave] = nova[chave]
+        if _tiktok_confirmado(junta["tiktok"]):
+            junta["feito"] = True
+        junta["reposto"] = True
+        return junta, None
+    if not r.get("feito"):
+        return dict(nova, reposto=True), None
+    if nova.get("feito") and nova.get("alvo") != r.get("alvo"):
+        return r, dict(nova, reposto=True)
+    return r, None
+
+
+def _dormir(segundos: float) -> None:
+    import time
+    time.sleep(segundos)
+
+
+def _rodar_canal(canal: str, funcao, so_ver: bool) -> dict:
+    """Uma passada de um canal. Nunca levanta: a excecao vira ficha."""
+    try:
+        return funcao(so_ver=so_ver)
+    except Exception as exc:                                   # noqa: BLE001
+        # A COTA AVISA NO TELEGRAM, e e AQUI que isso precisa acontecer:
+        # o escoamento (`--tudo`) e coisa de uma vez, e quem roda sozinho
+        # nos oito horarios e este caminho. Ter posto o aviso so la seria
+        # avisar justamente na hora em que ele ja esta olhando.
+        if _e_limite_diario(exc):
+            avisar_limite_diario(f"canal {canal}: {exc}")
+        return {"canal": canal, "feito": False,
+                "motivo": f"{type(exc).__name__}: {exc}"[:200]}
+
+
+def _publicar_canal(canal: str, funcao, *, so_ver: bool,
+                    comeco: float, slot: int) -> list:
+    """O canal, com a reposicao do que a rede derrubou. Devolve as fichas."""
+    r = _rodar_canal(canal, funcao, so_ver)
+    extras: list = []
+    tentativas = 0
+    while (not so_ver and tentativas < TENTATIVAS_POR_REDE
+           and _derrubados_pela_rede(r) and _ainda_no_horario(comeco, slot)):
+        tentativas += 1
+        caidos = _derrubados_pela_rede(r)
+        _linha(f"[postar] {canal}: {' e '.join(caidos)} caiu por REDE; espero "
+               f"{PAUSA_ANTES_DE_REPOR_S:.0f}s e tento de novo neste horario "
+               f"({tentativas}/{TENTATIVAS_POR_REDE}).")
+        _dormir(PAUSA_ANTES_DE_REPOR_S)
+        if not _ainda_no_horario(comeco, slot):
+            break
+        if not esperar_a_rede(limite=ESPERA_DE_REDE_NA_REPOSICAO_S):
+            break
+        nova = _rodar_canal(canal, funcao, False)
+        r, extra = _juntar_reposicao(r, nova)
+        if extra:
+            # O destino que caiu ganhou OUTRO video neste horario: reposto.
+            extras.append(extra)
+            break
+        if nova.get("repetido"):
+            break             # o horario ja tem os dois destinos
+    return [r] + extras
 
 
 def _builds_prontos(config=None, *, medir_audio: bool = True,
@@ -2657,9 +2987,13 @@ def postar_build(*, so_ver: bool = False) -> dict:
                               "YouTube mas nao esta mais no catalogo"}
         _linha(f"[postar] builds: YouTube ja saiu nesta hora; "
                f"levando {alvo.id} so para o TikTok.")
-        return {"canal": "builds", "feito": True, "alvo": alvo.id,
-                "titulo": alvo.titulo, "url": ja_yt.get("url") or "",
-                "so_tiktok": True, "tiktok": _tiktok_dos_builds(alvo)}
+        falha_tk: dict = {}
+        ficha = {"canal": "builds", "feito": True, "alvo": alvo.id,
+                 "titulo": alvo.titulo, "url": ja_yt.get("url") or "",
+                 "so_tiktok": True,
+                 "tiktok": _tiktok_dos_builds(alvo, falha_tk)}
+        _anotar_falha_do_tiktok(ficha, falha_tk)
+        return ficha
     alvo = proximo_build(marcar=not so_ver)
     if alvo is None:
         return {"canal": "builds", "feito": False,
@@ -2707,7 +3041,9 @@ def postar_build(*, so_ver: bool = False) -> dict:
         ficha["tiktok_fora_da_grade"] = True
         _linha("[postar] builds: este horario nao e da grade do TikTok.")
     else:
-        ficha["tiktok"] = "" if ja_tk else _tiktok_dos_builds(alvo)
+        falha_tk: dict = {}
+        ficha["tiktok"] = "" if ja_tk else _tiktok_dos_builds(alvo, falha_tk)
+        _anotar_falha_do_tiktok(ficha, falha_tk)
     if _tiktok_confirmado(ficha["tiktok"]):
         ficha["feito"] = True
     _registrar_valvula(ficha)
@@ -2764,6 +3100,8 @@ def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
         if falha is not None:
             falha["tipo"] = type(exc).__name__
             falha["mensagem"] = str(exc)[:300]
+            if laudo.get("clicou"):
+                falha["clicou"] = True
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
         estado = ""
     return estado
@@ -2878,7 +3216,11 @@ def pendentes_por_canal() -> dict:
         # parte, em `retidos_por_canal`.
         saida["historias"] = len([v for v in fila_de_historias()
                                   if not _retencao(v)])
-    except Exception:                                          # noqa: BLE001
+    except Exception as exc:                                   # noqa: BLE001
+        # O -1 TEM DE DEIXAR RASTRO. Em 05/10/2026 ele era engolido aqui, e
+        # quem le (o freio da agenda) caiu no plano B contando as retidas:
+        # tres madrugadas sem historia nova, e nenhuma linha dizendo por que.
+        _contagem_falhou("historias", exc)
         saida["historias"] = -1
     try:
         # O MESMO FUNIL DO `proximo_build`, e nao uma contagem propria.
@@ -2889,9 +3231,28 @@ def pendentes_por_canal() -> dict:
         # nao era o numero que sai. Desde 27/09/2026 e literalmente a mesma
         # funcao (`_builds_prontos`), com o audio mudo junto.
         saida["builds"] = len(_builds_prontos())
-    except Exception:                                          # noqa: BLE001
+    except Exception as exc:                                   # noqa: BLE001
+        _contagem_falhou("builds", exc)
         saida["builds"] = -1
     return saida
+
+
+def _contagem_falhou(canal: str, exc: BaseException) -> None:
+    """A contagem do estoque quebrou: log E diario, e nunca levanta.
+
+    O -1 que sai daqui e "nao sei", e "nao sei" calado ja virou numero
+    errado uma vez (o plano B da agenda). O diario e o que o bot de apuracao
+    e a pagina de confiabilidade leem.
+    """
+    texto = (f"nao consegui contar o estoque de {canal} "
+             f"({type(exc).__name__}: {str(exc)[:160]}); devolvo -1")
+    _linha(f"[estoque] {texto}")
+    try:
+        from builds import atividade
+        atividade.registrar("publicacao", atividade.ERRO, texto, canal,
+                            etapa="publicar.estoque")
+    except Exception:                                          # noqa: BLE001
+        pass
 
 
 def retidos_por_canal() -> dict:
@@ -2904,6 +3265,22 @@ def retidos_por_canal() -> dict:
     try:
         return {"historias": len([v for v in fila_de_historias()
                                   if _retencao(v)])}
+    except Exception:                                          # noqa: BLE001
+        return {"historias": -1}
+
+
+def consertadas_por_canal() -> dict:
+    """Quantas das retidas ja foram CONSERTADAS e esperam so alguem assistir.
+
+    Em 05/10/2026, 37 das 57 retidas. Elas NAO voltam ao estoque limpo: o
+    Adrian decidiu manter uma passada so (`historias/reolhar-depois-do-
+    conserto`, opcao "nao", 05/10 12:32) — a consertada so ganha a frente
+    entre as retidas. O numero fica no `--ver` para se ver o tamanho da fila
+    que espera alguem assistir. `-1` quando nao deu para contar.
+    """
+    try:
+        return {"historias": len([v for v in fila_de_historias()
+                                  if _consertada(v)])}
     except Exception:                                          # noqa: BLE001
         return {"historias": -1}
 
@@ -3172,15 +3549,21 @@ def avisar(resultados: list) -> None:
                           f" · {_conta_do_destino('tiktok', canal)}")
         linhas.append(f"    `{r.get('alvo', '')}`")
         if r.get("veto_vencido"):
-            linhas.append("    ⚠ saiu com veto da IA: as 3 rodadas de "
-                          "conserto acabaram")
+            # Uma passada so desde 15/09/2026: "as 3 rodadas" mentia.
+            linhas.append("    ⚠ saiu com veto da IA: a passada de "
+                          "conserto já foi gasta")
         if r.get("veto_ignorado"):
             linhas.append("    ⚠ saiu com veto da IA: nao havia outro video "
                           "pronto e o horario nao podia ficar vazio")
         if r.get("retido"):
-            linhas.append("    ⚠ saiu RETIDA (a IA reprovou ou ninguem "
-                          "assistiu): nao havia outra parte. Esta na lista "
-                          "a conferir.")
+            if r.get("consertada"):
+                linhas.append("    ⚠ saiu RETIDA (consertada depois do veto, "
+                              "mas ninguem assistiu ao video novo): nao "
+                              "havia outra parte. Esta na lista a conferir.")
+            else:
+                linhas.append("    ⚠ saiu RETIDA (a IA reprovou ou ninguem "
+                              "assistiu): nao havia outra parte. Esta na "
+                              "lista a conferir.")
         if r.get("titulo_repetido"):
             linhas.append("    ⚠ saiu com titulo JA PUBLICADO: nao havia "
                           "outro video na fila. Os dois competem entre si.")
@@ -3551,22 +3934,27 @@ def main(argv=None) -> int:
                 for c in ("historias", "builds")])
         return 1
 
+    import time as _time
+    from datetime import datetime as _datetime
+    comeco_da_rodada = _time.monotonic()
+    slot_da_rodada = grade.slot(_datetime.now())
     resultados = []
     for canal, funcao in (("historias", postar_historia),
                           ("builds", postar_build)):
         if args.so not in (None, canal):
             continue
-        try:
-            resultados.append(funcao(so_ver=args.ver))
-        except Exception as exc:                               # noqa: BLE001
-            # A COTA AVISA NO TELEGRAM, e e AQUI que isso precisa acontecer:
-            # o escoamento (`--tudo`) e coisa de uma vez, e quem roda sozinho
-            # nos oito horarios e este caminho. Ter posto o aviso so la seria
-            # avisar justamente na hora em que ele ja esta olhando.
-            if _e_limite_diario(exc):
-                avisar_limite_diario(f"canal {canal}: {exc}")
-            resultados.append({"canal": canal, "feito": False,
-                               "motivo": f"{type(exc).__name__}: {exc}"[:200]})
+        # Cada canal passa por `_rodar_canal` (que nunca levanta e avisa a
+        # cota no Telegram) e, se a REDE derrubou um destino, e reposto
+        # neste mesmo horario (`_publicar_canal`, 05/10/2026).
+        resultados.extend(_publicar_canal(
+            canal, funcao, so_ver=args.ver, comeco=comeco_da_rodada,
+            slot=slot_da_rodada))
+    # O TikTok que acabou de cair por REDE nao e chamado de novo nesta
+    # rodada pela recuperacao nem pela reserva: em 05/10/2026, as 09:4x, a
+    # recuperacao rodou segundos depois do timeout, no mesmo processo, e
+    # repetiu o mesmo erro (3 timeouts em 9 min). A proxima rodada tenta.
+    tiktok_caiu_por_rede = any("tiktok" in _derrubados_pela_rede(r)
+                               for r in resultados)
 
     for r in resultados:
         marca = "POSTADO" if r.get("feito") else "-------"
@@ -3599,8 +3987,16 @@ def main(argv=None) -> int:
     for canal in ("historias", "builds"):
         if args.so not in (None, canal):
             continue
+        if tiktok_caiu_por_rede and not args.ver:
+            _linha(f"[postar] recuperacao do TikTok ({canal}) fica para a "
+                   "proxima rodada: o TikTok acabou de cair por rede.")
+            continue
         try:
             recuperado = recuperar_no_tiktok(so_ver=args.ver, canal=canal)
+            if recuperado.get("desfecho") == "infraestrutura":
+                # A recuperacao de um canal caiu por maquina/rede: a do
+                # proximo canal e a reserva bateriam na mesma parede.
+                tiktok_caiu_por_rede = True
             if recuperado.get("fila"):
                 if args.ver:
                     _linha(f"[postar] {recuperado['fila']} atrasado(s) no "
@@ -3653,7 +4049,10 @@ def main(argv=None) -> int:
 
     # A RESERVA E A ULTIMA A FALAR. Ela so existe para buraco: se a rodada e a
     # recuperacao ja levaram um build ao TikTok, nao ha buraco nenhum.
-    if args.so in (None, "builds"):
+    if args.so in (None, "builds") and tiktok_caiu_por_rede and not args.ver:
+        _linha("[postar] reserva do TikTok fica para a proxima rodada: o "
+               "TikTok acabou de cair por rede.")
+    elif args.so in (None, "builds"):
         try:
             da_reserva = publicar_da_reserva(so_ver=args.ver)
             if da_reserva.get("reserva"):
@@ -3689,10 +4088,14 @@ def main(argv=None) -> int:
                        f"{PRAZO_DE_FRESCOR_DIAS}")
         except Exception as exc:                               # noqa: BLE001
             _linha(f"  frescor: nao deu para medir ({type(exc).__name__})")
+    consertadas = consertadas_por_canal() if args.ver else {}
     for canal, quantos in retidos_por_canal().items():
         if quantos:
             _linha(f"  retidos {canal:<10} {quantos:>4} parte(s) (a IA "
                    "reprovou ou ninguem assistiu; so no lugar do vazio)")
+            if consertadas.get(canal, 0) > 0:
+                _linha(f"    consertadas      {consertadas[canal]:>4} delas "
+                       "(o reparo refez as cenas; falta alguem assistir)")
     # SEPARADA DA GORDURA, nunca somada a ela. Estes builds ja estao no ar no
     # YouTube: eles nao sao estoque para publicar, so alcance que falta ser
     # colhido no segundo destino. Somar os dois numeros faria o painel dizer

@@ -314,6 +314,118 @@ def pagina(ctx):
     return ctx.pages[0] if ctx.pages else ctx.new_page()
 
 
+class AberturaFalhou(RuntimeError):
+    """A pagina nao abriu em nenhuma tentativa. E INFRAESTRUTURA (rede, TLS,
+    aba travada), nunca defeito do video: quem chama traduz para a sua
+    classe de erro dizendo isso com todas as letras."""
+
+
+# Tentativas de abrir uma pagina e o prazo de cada uma. A primeira e a de
+# sempre (aba que o Chrome restaurou, `domcontentloaded`, 90 s); as outras vao
+# em ABA NOVA e esperam so o `commit` (a resposta chegou), porque quem chama ja
+# espera o elemento de que precisa logo depois — `domcontentloaded` numa SPA
+# pesada com a rede lenta e o que estourava.
+TENTATIVAS_DE_ABERTURA = 3
+PRAZO_DA_PRIMEIRA_MS = 90_000
+PRAZO_DAS_OUTRAS_MS = 60_000
+PAUSA_ENTRE_ABERTURAS_S = 3.0
+
+
+def _uma_linha(exc: BaseException) -> str:
+    texto = str(exc).strip().splitlines()
+    return f"{type(exc).__name__}: {(texto[0] if texto else '')[:160]}"
+
+
+def abrir_pagina(ctx, url: str, *, tentativas: int = TENTATIVAS_DE_ABERTURA,
+                 log=None, dormir=None):
+    """Abre `url` e devolve a aba; tenta de novo antes de desistir.
+
+    POR QUE ISTO EXISTE (05/10/2026): o `_abrir` do TikTok e o do YouTube
+    faziam UM `page.goto(..., timeout=90_000)` e levantavam no primeiro
+    estouro. Entre 23:44 e 00:00 de 04/10 (horario local) caiu o 23:37
+    inteiro (YouTube e TikTok, historias e builds: 4 envios), e as 09:42,
+    09:48 e 09:51 de 05/10 o TikTok de `generation_00102` e da `historia_00042
+    p06` — com o YouTube publicando no mesmo minuto. Nao era o video: era a
+    abertura.
+
+    1a tentativa: a aba que o Chrome ja tem (`pagina`), `domcontentloaded`.
+    Da 2a em diante: ABA NOVA (a restaurada pode estar travada) e
+    `wait_until="commit"`, como no conserto do PicassoIA (ef3667d). Na falha
+    final levanta `AberturaFalhou` com a causa de cada tentativa.
+
+    A ABA QUE FALHOU E FECHADA assim que a seguinte existe (conferente,
+    05/10/2026: Chrome real com o prazo em 1 ms, 3 falhas deixavam 4 abas; no
+    perfil persistente a travada continuava sendo `ctx.pages[0]`, a que
+    `pagina(ctx)` pega na rodada seguinte). Abre-se a nova ANTES de fechar a
+    velha para o contexto nunca ficar sem aba nenhuma; por isso, na falha
+    final, sobra exatamente uma — a da ultima tentativa.
+    """
+    dormir = dormir or time.sleep
+    falar = log or (lambda _texto: None)
+    causas = []
+    page = falhou = None
+    for n in range(1, max(1, int(tentativas)) + 1):
+        try:
+            if n == 1:
+                page = pagina(ctx)
+            else:
+                page = ctx.new_page()
+                _fechar_aba(falhou)
+                falhou = None
+            page.goto(url, wait_until="domcontentloaded" if n == 1
+                      else "commit",
+                      timeout=PRAZO_DA_PRIMEIRA_MS if n == 1
+                      else PRAZO_DAS_OUTRAS_MS)
+            if n > 1:
+                falar(f"a pagina abriu na tentativa {n} (aba nova).")
+            return page
+        except Exception as exc:                               # noqa: BLE001
+            # Se o `new_page` levantou, `page` ainda e a aba anterior (que
+            # nao foi fechada): ela continua sendo a que falhou.
+            falhou = page
+            causas.append(f"{n}a: {_uma_linha(exc)}")
+            falar(f"a pagina nao abriu (tentativa {n} de {tentativas}: "
+                  f"{_uma_linha(exc)})")
+            if n < tentativas:
+                dormir(PAUSA_ENTRE_ABERTURAS_S)
+    raise AberturaFalhou(f"nao consegui abrir {url} em {len(causas)} "
+                         f"tentativa(s) — " + " | ".join(causas))
+
+
+def _fechar_aba(page) -> None:
+    """Fecha uma aba que falhou. Nunca levanta: fechar e faxina, nao a tarefa."""
+    if page is None:
+        return
+    with contextlib.suppress(Exception):
+        page.close()
+
+
+def ir_para(page, url: str, *, tentativas: int = 2, log=None, dormir=None):
+    """O mesmo cuidado de `abrir_pagina`, mas NA MESMA ABA.
+
+    Para quem ja pendurou um ouvinte na aba (`page.on("response", ...)`) e
+    perderia a resposta numa aba nova. A 2a tentativa espera so o `commit`.
+    """
+    dormir = dormir or time.sleep
+    falar = log or (lambda _texto: None)
+    causas = []
+    for n in range(1, max(1, int(tentativas)) + 1):
+        try:
+            page.goto(url, wait_until="domcontentloaded" if n == 1
+                      else "commit",
+                      timeout=PRAZO_DA_PRIMEIRA_MS if n == 1
+                      else PRAZO_DAS_OUTRAS_MS)
+            return page
+        except Exception as exc:                               # noqa: BLE001
+            causas.append(f"{n}a: {_uma_linha(exc)}")
+            falar(f"a pagina nao abriu (tentativa {n} de {tentativas}: "
+                  f"{_uma_linha(exc)})")
+            if n < tentativas:
+                dormir(PAUSA_ENTRE_ABERTURAS_S)
+    raise AberturaFalhou(f"nao consegui abrir {url} em {len(causas)} "
+                         f"tentativa(s) — " + " | ".join(causas))
+
+
 # O que conta como "a pagina montou": qualquer conteudo real do app.
 CONTEUDO_HIDRATADO = ('[contenteditable="true"], video, a[href*="/space/"], '
                       'button.submit-btn')
