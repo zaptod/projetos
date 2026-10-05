@@ -122,16 +122,24 @@ def main(argv=None):
                              help="devolve um pedido falhou/parado para 'esperando'")
     reabrir.add_argument("id", nargs="+")
     reabrir.add_argument("--motivo", default="reaberto pelo orquestrador")
+    reabrir.add_argument("--continuacao", default=None,
+                         help="texto que vai ao mesmo trabalhador (o caminho novo)")
+    reavaliar = sub.add_parser("reavaliar-pedido",
+                               help="passa a regra do DESFECHO num pedido 'entregue' antigo")
+    reavaliar.add_argument("id", nargs="+")
     args = parser.parse_args(argv)
     if args.acao == "rodar":
         return montar().rodar()
-    if args.acao == "reabrir-pedido":
+    if args.acao in ("reabrir-pedido", "reavaliar-pedido"):
         from . import pedidos
         codigo = 0
         for ident in args.id:
             try:
-                p = pedidos.reabrir(ident, args.motivo)
-                print(f"{ident}: {p['situacao']}")
+                if args.acao == "reabrir-pedido":
+                    p = pedidos.reabrir(ident, args.motivo, args.continuacao)
+                else:
+                    p = pedidos.reavaliar(ident)
+                print(f"{ident}: {p['situacao']}" + (f" ({p['motivo']})" if p.get("motivo") else ""))
             except (KeyError, ValueError) as exc:
                 print(f"{ident}: {exc}")
                 codigo = 1
