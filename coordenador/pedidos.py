@@ -21,14 +21,43 @@ Ciclo de um pedido:
              dele volta ao MESMO pedido como continuacao
     pediu `EXECUTAR: <acao>` -> executando (no repositorio principal, lista
              branca, nunca publica) -> o resultado volta ao mesmo trabalhador
-    pediu `EXECUTAR: gerente ligar` (estado do servidor) -> o SERVIDOR grava,
-             relê e responde (o trabalhador na worktree nao alcanca o LOCALAPPDATA)
-    terminou: a ultima linha `DESFECHO: feito | bloqueado — ... | falhou — ...`
-             decide entregue/respondido, esperando_voce (com o que falta) ou falhou.
-             Sem a linha, frase de bloqueio ("nao foi possivel", "falta o Adrian")
-             vira esperando_voce: "entregue" nunca sai as cegas (05/10/2026)
-    saudacao/"como estao as coisas?" -> respondido na hora com o retrato do
-             servidor; nunca gruda num pedido antigo (05/10/2026)
+    pediu `EXECUTAR: gerente ligar` (estado do servidor) -> NUNCA roda sozinho:
+             vira pedido de PERMISSAO ao Adrian (categoria estado_do_servidor,
+             Agora > Equipe); aprovado, o servidor grava, rele e responde
+    o Adrian escolheu no Grimorio uma opcao com `acao_servidor` -> o servidor
+             executa na hora (lista branca), rele e responde, sem trabalhador
+    terminou: a ULTIMA linha `DESFECHO: feito | bloqueado — ... | falhou — ...`
+             decide: feito -> entregue/respondido; bloqueado -> esperando_voce
+             com o texto; falhou -> falhou. Sem a linha: UMA continuacao ao
+             mesmo trabalhador pedindo a linha; faltou de novo -> esperando_voce
+             ("o trabalhador nao declarou o desfecho"). Nenhuma frase e lida.
+             A cobranca leva a resposta ORIGINAL (o Claude abre sessao nova a
+             cada rodada), e a resposta final ao Adrian e a original com o
+             desfecho declarado depois (nunca o "Ok, conferido" da cobranca)
+    continuacao: SO a resposta EXPLICITA, com o id do pedido (o botao
+             Responder do app; `/responder <id> <texto>` no Telegram). Texto
+             livre nunca gruda em pedido nenhum: abre um pedido novo (conferente
+             3: "grudar no ativo mais novo" mandava assunto novo a um pedido de
+             outro assunto, parado num pid morto)
+    trabalhador ja LIMPO (ou ficha que sumiu): a resposta do Adrian vai a UM
+             trabalhador novo, com a historia (texto dele + ultima resposta +
+             a resposta dele); recusado, falhou com o motivo. A cobranca do
+             desfecho nao contrata ninguem: esperando voce
+    conversa solta de forma FIXA (lista pequena, comparada inteira: "oi",
+             "bom dia", "coordenador?", "qual o progresso", "alguma novidade",
+             "status"...) -> respondido na hora com o retrato; agradecimento
+             solto ("ok", "valeu", "obrigado", "beleza") -> o retrato e o
+             lembrete do Responder. Qualquer outro texto abre pedido.
+    o que o SERVIDOR devolve ao trabalhador (cobranca, resultado de
+             EXECUTAR, recusas) fica em `do_servidor`, nunca em `texto`: o
+             `texto` e so do Adrian e e o que escolhe a IA
+    o pedidos.json e gravado por varios processos (app, bot, coordenador):
+             toda leitura-e-gravacao vai sob `_TRAVA`, a trava de ARQUIVO. O
+             trabalho lento do pulso (git worktree add, abrir o despachante)
+             roda FORA dela: o pedido fica "contratando" (com o dono) e o
+             resultado e gravado com a trava de novo
+    (v2, 05/10/2026: a v1 adivinhava por frases e palavras soltas; a segunda
+    conferencia derrubou 24 sondas. Agora so regras fixas.)
 
 Nada aqui roda Claude/Codex no proprio processo: tudo vai por
 `delegar.no_fundo` (o pulso do coordenador e a requisicao do app nunca ficam
@@ -56,11 +85,64 @@ RETOMAR_S = 120             # entre duas tentativas de retomar o mesmo pedido
 PROGRESSO_S = 60            # no maximo uma linha de progresso por minuto
 MAX_RETOMADAS = 5           # o mesmo trabalhador retomado 5 vezes: falhou
 MAX_EXECUCOES = 3           # acoes do repositorio real por pedido
+LENTO_PRAZO_S = 5 * 60      # "contratando" sem dono vivo ha 5 min: o pulso morreu no meio
 FINAIS = ("conferido", "falhou", "respondido")
 VIVOS = ("recebido", "trabalhando", "esperando", "entregue", "parado_limite",
-         "esperando_voce", "executando")
+         "esperando_voce", "executando", "contratando")
 PERMITIDOS = ["remoto/**", "coordenador/**", "docs/**", ".claude/agents/**"]
-_TRAVA = threading.RLock()
+class _TravaDoArquivo:
+    """Uma leitura-e-gravacao do pedidos.json por vez, entre THREADS e entre
+    PROCESSOS (o app e o bot registram, o coordenador anda o `passo`).
+
+    Conferente 4 (05/10/2026): a trava era um `threading.RLock`, que so vale
+    dentro do processo. O `passo` lia o arquivo inteiro, andava os pedidos e
+    regravava o retrato velho por cima do Responder que o app tinha gravado no
+    meio: "Resposta enviada ao pedido..." no app e nada no disco. Agora e o
+    `trava_arquivo` (msvcrt.locking no pedidos.lock, reentrante na mesma
+    thread), o mesmo do cerebro e do delegar.
+
+    Os avisos (Telegram, rede) pedidos com a trava na mao saem DEPOIS de
+    solta-la: uma rede lenta nao segura o Responder do app."""
+
+    def __init__(self):
+        self._local = threading.local()
+
+    def _pilha(self):
+        if not hasattr(self._local, "pilha"):
+            self._local.pilha, self._local.avisos = [], []
+        return self._local.pilha
+
+    def segurando(self) -> bool:
+        return bool(self._pilha())
+
+    def adiar(self, enviar, texto) -> None:
+        self._pilha()
+        self._local.avisos.append((enviar, texto))
+
+    def __enter__(self):
+        from remoto.api_http import trava_arquivo
+        alvo = estado.pasta() / "pedidos.lock"
+        contexto = trava_arquivo(alvo)
+        contexto.__enter__()
+        self._pilha().append(contexto)
+        return self
+
+    def __exit__(self, *erro):
+        pilha = self._pilha()
+        contexto = pilha.pop()
+        try:
+            return contexto.__exit__(*erro)
+        finally:
+            if not pilha and self._local.avisos:
+                avisos, self._local.avisos = self._local.avisos, []
+                for enviar, texto in avisos:
+                    try:
+                        enviar(texto)
+                    except Exception:                         # noqa: BLE001
+                        pass
+
+
+_TRAVA = _TravaDoArquivo()
 RAIZ = Path(__file__).resolve().parents[1]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -74,32 +156,31 @@ _MARCA_EXECUTAR = re.compile(
     r"^[ \t>*_`-]*EXECUTAR[*_`]*\s*:\s*`?([a-z0-9_]+)((?:[ \t]+[^\s`]+)*)`?[ \t]*$",
     re.IGNORECASE | re.MULTILINE)
 # 05/10/2026: "entregue" mentia. O cb44cd52 ("ligar o gerente") ficou
-# "entregue" com a resposta "Nao foi possivel ligar"; o cd2e5e0c com "Status:
-# bloqueado so pelo login do Drive". A ultima linha da resposta diz o desfecho.
+# "entregue" com a resposta "Nao foi possivel ligar". A ULTIMA linha da
+# resposta diz o desfecho; nada mais do texto e lido (v2: sem frases).
 _MARCA_DESFECHO = re.compile(
     r"^[ \t>*_`-]*DESFECHO[*_`]*[ \t]*:[*_` \t]*(feito|bloqueado|falhou)\b[*_`]*[ \t]*"
     r"(?:[—–:-]+[ \t]*)?(.*?)[*_` \t]*$",
-    re.IGNORECASE | re.MULTILINE)
-# Sem a linha, frases de quem NAO terminou (comparadas sem acento).
-# 05/10/2026 (conferente): palavra solta em qualquer linha dava falso bloqueio
-# em 7 de 59 respostas reais de entregas boas ("a remocao foi bloqueada pela
-# politica do sandbox", no fim; "depende do Adrian aprovar", descrevendo o
-# cerebro). Nos 5 bloqueios de verdade o veredito esta na ABERTURA ("Nao foi
-# possivel ligar", "Nao apliquei a escolha") ou na forma de ESTADO ("Status:
-# bloqueado", "Bloqueado por permissao", "Falta o Adrian abrir...").
-_BLOQUEIO_ESTADO = tuple(re.compile(p) for p in (       # em qualquer linha
-    r"^(?:status\s*:?\s*)?bloquead[oa]s?\b",
-    r"\b(?:estou|fiquei|continuo|sigo|estamos|ficamos)\s+bloquead[oa]s?\b",
-    r"\bfalta (?:o|do) adrian\b", r"\bso o adrian (?:pode|consegue|faz)\b"))
-_BLOQUEIO_ABERTURA = tuple(re.compile(p) for p in (     # so no 1o paragrafo
-    r"\bnao foi possivel\b", r"\bnao consegui\b", r"\bnao deu para\b", r"\bnao apliquei\b",
-    r"\bnao da para\b", r"\bfoi bloquead[oa]\b", r"\bpermissao negada\b",
-    r"\baguardando (?:a )?permissao\b", r"\b(?:depende|precisa) (?:do|que o) adrian\b"))
-# "DESFECHO: feito parcialmente — faltou o teste" nao e feito
-_FEITO_COM_RESSALVA = re.compile(
-    r"\b(?:parcial\w*|faltou|faltam?|exceto|mas|porem|ressalvas?|pendentes?|incomplet\w*)\b")
-_RASCUNHO = re.compile(r"(?:^|/)(?:resposta\.md|\.permissao\.json|\.codex_tarefa\.md|"
-                       r"\.tarefa_[^/]*\.md|\.conf_[^/]*\.md)$")
+    re.IGNORECASE)
+# conferente 3 (05/10/2026): "DESFECHO: feito | bloqueado — ... | falhou — ..."
+# (o formato colado) era lido como "feito". So o MODELO literal nao declara
+# nada: outro desfecho logo em seguida ("feito | bloqueado", "feito/falhou"),
+# ou o marcador "<o que falta...>"/"<motivo>" do formato. Conferente 4: um "/"
+# ou "|" no MEIO do motivo ("espera o deploy / falhou o login") e motivo.
+_MODELO_COPIADO = re.compile(r"^[*_`\s]*[|/]\s*[*_`]*\s*(?:feito|bloqueado|falhou)\b"
+                             r"|<\s*(?:o que falta|motivo)[^<>]*>", re.IGNORECASE)
+# linha que so tem enfeite (a cerca ``` de um bloco, um --- ) nao e a "ultima"
+_ENFEITE = re.compile(r"^[\s`*_>~=-]*$")
+# o que nunca e codigo: o rascunho da resposta, o pedido de permissao e a
+# tarefa (o diff de 05/10 contava o resposta.md do cb44cd52 como "1 arquivo")
+_RASCUNHO = re.compile(r"(?:^|[/\\])(?:resposta\.md|\.permissao\.json|\.codex_tarefa\.md|"
+                       r"\.tarefa_[^/\\]*\.md|\.conf_[^/\\]*\.md)$")
+COBRAR_DESFECHO = (
+    "O servidor: a sua mensagem final não terminou com a linha do desfecho. Não refaça o "
+    "trabalho: responda curto com o que ficou e termine com UMA destas linhas, como a "
+    "última da mensagem:\n`DESFECHO: feito`\n`DESFECHO: bloqueado — <o que falta e quem "
+    "faz>`\n`DESFECHO: falhou — <motivo>`")
+SEM_DESFECHO = "o trabalhador não declarou o desfecho — leia a resposta"
 # A queda por limite do Claude: so na rodada mais nova (depois do ultimo
 # `delegar.inicio`), para um evento velho nao condenar uma rodada nova.
 _FRASES_DE_LIMITE = ("hit your weekly limit", "hit your limit", "usage limit",
@@ -139,9 +220,13 @@ ACOES_REPO = {
 }
 # 05/10/2026: o cb44cd52 pediu "ligar o gerente" e o Codex respondeu "Nao foi
 # possivel": a worktree nao grava o %LOCALAPPDATA% (delegar.lock). Estas acoes
-# mudam o ESTADO do servidor: o pulso faz na hora (escrita de um json, sem
-# janela), rele para conferir e responde ao Adrian. `fazer` e o nome da funcao
-# deste modulo (procurada na hora: o teste troca). Nunca publica, conta ou push.
+# mudam o ESTADO do servidor: o pulso faz (escrita de um json, sem janela),
+# rele para conferir e responde ao Adrian. Quem dispara (v2):
+#   - a escolha ESTRUTURADA do Grimorio (a opcao tem `acao_servidor`): roda na hora;
+#   - `EXECUTAR: gerente ligar` de um trabalhador: NUNCA sozinho; vira pedido de
+#     permissao (categoria estado_do_servidor) e roda so depois de o Adrian aprovar.
+# `fazer` e o nome da funcao deste modulo (procurada na hora: o teste troca).
+# Nunca publica, conta ou push.
 ACOES_SERVIDOR = {
     "gerente": {
         "o_que": "liga ou desliga o gerente da equipe (a fila anda sozinha)",
@@ -153,7 +238,14 @@ ACOES_SERVIDOR = {
         "o_que": "quantos trabalhadores ao mesmo tempo (1 a 8), pela Mesa",
         "parametros": [r"[1-8]"], "fazer": "_servidor_paralelo"},
 }
+# a categoria de permissao do estado do servidor (o mesmo nome do
+# `remoto.delegar.ESTADO_DO_SERVIDOR`; repetido aqui para o teste com duble)
+CATEGORIA_ESTADO = "estado_do_servidor"
 _PUBLICA = ("publicar", "postar", "upload", "publish", "push")
+# recusas do `delegar._preparar_rodada` que so pedem para esperar (a janela,
+# o paralelo cheio, o teto do Codex, a ficha ainda "rodando"): o relancamento
+# recusado por elas NAO gasta retomada. O comeco de cada mensagem do delegar.
+RECUSAS_DE_ESPERA = ("nada começa entre", "no máximo", "da janela de 5 h", "já está rodando")
 JANELA_ANTES_MIN, JANELA_DEPOIS_MIN = 12, 18      # a janela das postagens
 
 # perguntas curtas de estado continuam no cerebro (resposta em segundos)
@@ -169,24 +261,31 @@ _VERBO = {"le": "lendo", "testa": "rodando testes", "roda": "rodando", "muda": "
 # 05/10/2026: "Ola coordenador, como as coisas estao" e "Coordenador?" viraram
 # continuacao do cd2e5e0c (o arquivo no Drive). Conversa solta nao e pedido:
 # responde na hora com o retrato do servidor e nao gruda em pedido nenhum.
-_SAUDACAO = re.compile(r"^(?:oi+|ola|ole|opa|salve|hey|alo|e ai|eai|eae|bom dia|boa tarde|"
-                       r"boa noite)\b")
-_CHAMADO = re.compile(r"^(?:coordenador|orquestrador|servidor|ta ai|esta ai|alguem ai|"
-                      r"tudo bem|tudo certo|e entao)?$")
-# "como as coisas estao" (o verbo no fim) ou o substantivo de andamento numa
-# PERGUNTA ("qual o progresso", "alguma novidade?"); "um pedido em andamento"
-# e frase de pedido, nao conversa
-_COMO_ESTA = re.compile(r"\bcomo\b.*\b(?:esta|estao|anda|andam|vai|vao|ficou|ficaram|ta|tao)$")
-_ANDAMENTO = re.compile(r"\b(?:novidades?|progresso|andamento|status)\b")
-_PERGUNTA = re.compile(r"^(?:qual|quais|como|tem|alguma|algum|cade|e o|e a|e os|e as)\b|"
-                       r"^(?:o |a )?(?:novidades?|progresso|andamento|status)$")
-# quem informa ou manda nao esta so conversando ("ja loguei", "pode ligar")
-_INFORMA = re.compile(r"\b(?:loguei|liguei|entrei|instalei|fiz|pronto|feito|pode|use|usa|"
-                      r"quero|prefiro|aprovo|liga|ligue|desliga|desligue|pare)\b")
+# Conferente 5 (05/10/2026): o vocabulario aberto (12 palavras) e o "curto"
+# por contagem (ate 3 palavras, pergunta ate 6) engoliam pedidos de verdade
+# ("reinicie o app", "rode os testes", "pode ligar o gerente?"). Volta a
+# especificacao: LISTA FIXA e pequena, comparada INTEIRA (sem acento nem
+# pontuacao). O texto tem de ser uma frase da lista, ou ate CONVERSA_MAX_PECAS
+# delas em sequencia ("bom dia, coordenador, alguma novidade?"); sobrou uma
+# palavra de fora, e pedido.
+SAUDACOES = frozenset({"oi", "ola", "bom dia", "boa tarde", "boa noite", "e ai", "opa",
+                       "coordenador"})
+PERGUNTAS_DE_STATUS = frozenset({"qual o progresso", "como estao as coisas",
+                                 "como as coisas estao", "alguma novidade", "status",
+                                 "e ai como ta"})
+# agradecimento solto: tambem so responde curto (o retrato e o lembrete do Responder)
+AGRADECIMENTOS = frozenset({"ok", "valeu", "obrigado", "obrigada", "beleza"})
+CONVERSA_MAX_PECAS = 3
+CURTO_AVISO = (
+    "Agradecimento solto (ok, valeu, obrigado, beleza) não abre pedido (ninguém foi "
+    "contratado); qualquer outro texto abre. Para responder a um pedido: "
+    "botão Responder no próprio pedido (app) ou /responder <id> <texto> (Telegram).")
 _ROTULO = {"recebido": "recebido", "trabalhando": "trabalhando", "esperando": "em espera",
            "entregue": "entregue, esperando aplicar e conferir",
-           "parado_limite": "parado no limite do Claude", "esperando_voce": "esperando você",
-           "executando": "executando no servidor", "conferido": "conferido",
+           "parado_limite": "parado no limite — volta sozinho",
+           "esperando_voce": "esperando você",
+           "executando": "o servidor está executando",
+           "contratando": "chamando o trabalhador", "conferido": "conferido",
            "falhou": "falhou", "respondido": "respondido"}
 
 
@@ -219,10 +318,19 @@ def _ler():
 def _gravar(dados):
     alvo = _arquivo()
     alvo.parent.mkdir(parents=True, exist_ok=True)
-    temporario = alvo.with_name("." + alvo.name + ".tmp")
+    temporario = alvo.with_name(f".{alvo.name}.{os.getpid()}.tmp")
     temporario.write_text(json.dumps(dados, ensure_ascii=False, separators=(",", ":")),
                           encoding="utf-8")
-    os.replace(temporario, alvo)
+    # o app lendo o arquivo (para_o_app le sem trava) segura o destino por um
+    # instante, e o os.replace do Windows da PermissionError: tenta de novo
+    for tentativa in range(6):
+        try:
+            os.replace(temporario, alvo)
+            return
+        except PermissionError:
+            if tentativa == 5:
+                raise
+            time.sleep(0.15)
 
 
 def _linha(dados, pedido, texto, *, de="orquestrador", origem=None, tipo="progresso",
@@ -233,6 +341,12 @@ def _linha(dados, pedido, texto, *, de="orquestrador", origem=None, tipo="progre
     dados["conversa"].append(linha)
     dados["conversa"] = dados["conversa"][-400:]
     return linha
+
+
+def _titulo(pedido) -> str:
+    """«primeira linha do pedido», para o aviso dizer DE QUAL pedido fala."""
+    primeira = (str((pedido or {}).get("texto") or "").strip().splitlines() or [""])[0]
+    return f"Pedido: «{primeira[:90]}»" if primeira else ""
 
 
 def e_de_estado(texto: str) -> bool:
@@ -260,120 +374,82 @@ def _plano(texto) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", _sem_acento(texto)).split())
 
 
+def forma_fixa(texto: str) -> str:
+    """"conversa" (saudacao, chamado, pergunta de status), "agradecimento"
+    ("ok", "valeu") ou "" (qualquer outra coisa: e pedido).
+
+    O texto inteiro, sem acento nem pontuacao, tem de ser uma frase das listas
+    fixas, ou ate CONVERSA_MAX_PECAS delas em sequencia; so pontuacao ("?") e
+    chamado. Nenhuma palavra solta e lida: sobrou uma de fora, e pedido."""
+    palavras = _plano(texto).split()
+    if not palavras:
+        return "conversa" if str(texto or "").strip() else ""
+
+    def partir(inicio, pecas):
+        if inicio == len(palavras):
+            return []
+        if pecas == CONVERSA_MAX_PECAS:
+            return None
+        for fim in range(len(palavras), inicio, -1):
+            frase = " ".join(palavras[inicio:fim])
+            tipo = ("agradecimento" if frase in AGRADECIMENTOS else
+                    "conversa" if frase in SAUDACOES or frase in PERGUNTAS_DE_STATUS else "")
+            if tipo:
+                resto = partir(fim, pecas + 1)
+                if resto is not None:
+                    return [tipo] + resto
+        return None
+
+    tipos = partir(0, 0)
+    if not tipos:
+        return ""
+    return "agradecimento" if "agradecimento" in tipos else "conversa"
+
+
 def e_conversa_solta(texto: str) -> bool:
-    """Saudacao, chamado ("Coordenador?") ou pergunta curta de andamento
-    ("como as coisas estao", "qual o progresso"): nao e pedido nem continuacao."""
-    plano = _plano(texto)
-    if len(plano) > 80 or _construir(plano) or _INFORMA.search(plano):
-        return False
-    resto = _SAUDACAO.sub("", plano).strip()
-    resto = re.sub(r"^(?:coordenador|orquestrador)\b", "", resto).strip()
-    if _CHAMADO.fullmatch(resto):
-        return True
-    if len(resto.split()) > 8:
-        return False
-    if _COMO_ESTA.search(resto):
-        return True
-    pergunta = "?" in str(texto) or bool(_PERGUNTA.search(resto))
-    return pergunta and bool(_ANDAMENTO.search(resto))
-
-
-def _frases_de_bloqueio(texto: str) -> list:
-    """As linhas que dizem "nao terminei": a forma de estado em qualquer linha,
-    a frase fraca so na abertura (o 1o paragrafo, ate 3 linhas). As linhas de
-    marca (DESFECHO, EXECUTAR, GRIMORIO) nao contam."""
-    linhas = [x.strip(" \t*_>-`") for x in str(texto or "").splitlines()]
-    linhas = [x for x in linhas if not re.match(r"(?i)(?:desfecho|executar|grim[óo]rio)\s*[*_`]*:", x)]
-    while linhas and not linhas[0]:
-        linhas.pop(0)
-    abertura = []
-    for linha in linhas:
-        if not linha or len(abertura) == 3:
-            break
-        abertura.append(linha)
-    achadas = []
-    for i, linha in enumerate(linhas):
-        plano = _sem_acento(linha)
-        if (any(p.search(plano) for p in _BLOQUEIO_ESTADO)
-                or (i < len(abertura) and any(p.search(plano) for p in _BLOQUEIO_ABERTURA))):
-            achadas.append(linha)
-    return achadas
-
-
-# Pedido que ja parou e espera: so recebe a mensagem que responde a ELE.
-_AGUARDAM_RESPOSTA = ("entregue", "esperando_voce")
-_CONTINUA = re.compile(r"^(?:e|tambem|agora|ainda|mais|alem disso|aproveita\w*|so que|mas|"
-                       r"isso|esse|essa|nele|nela|nesse|nessa|neste|nesta|dele|dela|ok|sim|"
-                       r"nao|beleza|blz|certo|ja|deu)\b")
-_COMUNS = frozenset(
-    "agora ainda antes depois quando porque sobre tambem fazer favor preciso quero outra outro "
-    "outras outros coisa coisas pedido pedidos adrian todos todas mesmo mesma esses essas estes "
-    "estas aquele aquela ficou estao voce entao assim alguma algum desse dessa deste desta onde "
-    "aqui obrigado valeu coordenador orquestrador servidor responda resposta tarefa precisa "
-    "pode podem deixa esta isto nisso".split())
-
-
-def _palavras(texto) -> set:
-    """As palavras que identificam um assunto (5+ letras, sem as comuns)."""
-    return {p for p in _plano(texto).split()
-            if len(p) >= 5 and p not in _COMUNS and not p.isdigit()}
-
-
-def e_continuacao(texto: str) -> bool:
-    """A mensagem tem forma de continuacao ou de resposta ("e confira no
-    celular", "agora faca Y tambem", "ja loguei", "pode ligar")."""
-    plano = _plano(texto)
-    return bool(_CONTINUA.match(plano) or _INFORMA.search(plano))
+    """Conversa de forma fixa (saudacao, status ou agradecimento): nao e
+    pedido nem continuacao; responde o retrato (`forma_fixa`)."""
+    return bool(forma_fixa(texto))
 
 
 def ler_desfecho(resposta: str) -> dict:
-    """O desfecho da resposta final: {"tipo", "motivo", "fonte", "aviso"}.
+    """O desfecho da resposta final: {"tipo", "motivo", "fonte"}.
 
-    tipo: feito | bloqueado | falhou. fonte: "linha" (a marca DESFECHO, a
-    ultima vale), "heuristica" (sem a marca, achou frase de bloqueio), "vazia"
-    (terminou sem dizer nada: nao da para saber se fez) ou "sem_linha".
-    aviso: o "feito" que o proprio texto desmente ("Nao foi possivel ligar" +
-    "DESFECHO: feito", ou "feito parcialmente — faltou o teste"); quem decide
-    o que fazer com ele e o `_encerrar` (com codigo: entregue com aviso; sem
-    codigo: esperando voce)."""
-    texto = str(resposta or "")
-    marcas = list(_MARCA_DESFECHO.finditer(texto))
-    if marcas:
-        marca = marcas[-1]
-        tipo = marca.group(1).lower()
-        motivo = marca.group(2).strip(" \t*_`—–-:")
-        aviso = ""
-        if tipo == "feito":
-            if motivo and _FEITO_COM_RESSALVA.search(_sem_acento(motivo)):
-                aviso = "feito " + motivo
-            else:
-                aviso = " · ".join(_frases_de_bloqueio(texto))
-            motivo = ""
-        return {"tipo": tipo, "motivo": motivo[:300], "fonte": "linha", "aviso": aviso[:300]}
-    if not texto.strip():
-        return {"tipo": "bloqueado", "fonte": "vazia", "aviso": "",
-                "motivo": "o trabalhador terminou sem resposta (não dá para saber se fez)"}
-    achadas = _frases_de_bloqueio(texto)
-    if achadas:
-        return {"tipo": "bloqueado", "motivo": " · ".join(achadas)[:300], "fonte": "heuristica",
-                "aviso": ""}
-    return {"tipo": "feito", "motivo": "", "fonte": "sem_linha", "aviso": ""}
+    So a ULTIMA linha (nao vazia, sem contar enfeite como a cerca ```) conta:
+    `DESFECHO: feito`, `DESFECHO: bloqueado — <o que falta>` ou
+    `DESFECHO: falhou — <motivo>`. Com ela, fonte "linha" e vale o que ela
+    diz. Sem ela, tipo None e fonte "sem_linha": o servidor pergunta de novo
+    ao trabalhador, e nao le frase nenhuma do texto (v2, 05/10/2026)."""
+    linhas = [x for x in str(resposta or "").splitlines() if not _ENFEITE.match(x)]
+    marca = _MARCA_DESFECHO.match(linhas[-1]) if linhas else None
+    if not marca or _MODELO_COPIADO.search(marca.group(2)):
+        # sem a linha, ou a linha e o FORMATO colado ("feito | bloqueado — ... |
+        # falhou — ..." ou "bloqueado — <o que falta>"): nada foi declarado
+        return {"tipo": None, "motivo": "", "fonte": "sem_linha"}
+    tipo = marca.group(1).lower()
+    motivo = "" if tipo == "feito" else marca.group(2).strip(" \t*_`—–-:")
+    return {"tipo": tipo, "motivo": motivo[:300], "fonte": "linha"}
+
+
+def _conta_codigo(nomes) -> int:
+    return len([n for n in nomes if n and not _RASCUNHO.search(str(n))])
 
 
 def arquivos_de_codigo(ficha: dict) -> int:
-    """Quantos arquivos de CODIGO a entrega mudou (o rascunho resposta.md e o
-    .permissao.json nao contam: o diff do cb44cd52 tinha "1 arquivo", que era
-    o resposta.md)."""
+    """Quantos arquivos de CODIGO a entrega mudou. O rascunho resposta.md, o
+    .permissao.json e a tarefa nunca contam.
+
+    v2 (05/10/2026): com `aplicado` era `len(...) or 1`, e uma entrega
+    aplicada so com o resposta.md contava como 1 arquivo de codigo."""
     ficha = ficha if isinstance(ficha, dict) else {}
     aplicado = ficha.get("aplicado")
-    if aplicado:
-        lista = aplicado.get("arquivos") if isinstance(aplicado, dict) else None
-        return len([a for a in lista or [] if not _RASCUNHO.search(str(a))]) or 1
+    lista = aplicado.get("arquivos") if isinstance(aplicado, dict) else None
+    if isinstance(lista, list):
+        return _conta_codigo(lista)
     diff = ficha.get("diff") if isinstance(ficha.get("diff"), dict) else {}
     arquivos = diff.get("arquivos")
     if isinstance(arquivos, list):
-        nomes = [a.get("caminho") if isinstance(a, dict) else a for a in arquivos]
-        return len([n for n in nomes if not _RASCUNHO.search(str(n or ""))])
+        return _conta_codigo([a.get("caminho") if isinstance(a, dict) else a for a in arquivos])
     try:
         total = int(arquivos or 0)
     except (TypeError, ValueError):
@@ -514,7 +590,7 @@ def marca_executar(resposta: str):
     05/10/2026 (conferente): a primeira linha EXECUTAR em qualquer ponto
     disparava; um exemplo no meio da resposta ("EXECUTAR: `gerente ligar`")
     ligava o gerente."""
-    linhas = [x for x in str(resposta or "").splitlines() if x.strip()]
+    linhas = [x for x in str(resposta or "").splitlines() if not _ENFEITE.match(x)]
     while linhas and _MARCA_DESFECHO.match(linhas[-1]):
         linhas.pop()
     marca = _MARCA_EXECUTAR.match(linhas[-1]) if linhas else None
@@ -523,44 +599,33 @@ def marca_executar(resposta: str):
     return marca.group(1).lower(), marca.group(2).split()
 
 
-# O que o Adrian precisa ter citado no pedido para a acao de estado valer.
-# 05/10/2026 (conferente): qualquer trabalhador, de qualquer pedido, podia
-# terminar com "EXECUTAR: paralelo 8" e o pulso executava -- furando "um
-# projeto por vez" e o controle de capacidade, que e dele.
-_OBJETO_DA_ACAO = {
-    "gerente": ("o gerente", re.compile(r"\bgerente\b")),
-    "paralelo": ("o paralelo", re.compile(
-        r"\b(?:paralel\w*|simultane\w*|ao mesmo tempo|um por vez|capacidade)\b")),
-    "renovacao": ("a renovação", re.compile(r"\brenov\w*")),
-}
+def marca_grimorio(resposta: str):
+    """"projeto/id" da marca GRIMÓRIO, so se ela for a ULTIMA linha nao vazia
+    (uma linha DESFECHO depois dela e tolerada), ou None.
+
+    Conferente 4 (05/10/2026): a marca valia em qualquer ponto, e "Consultei o
+    no abaixo, ja decidido:\\nGRIMÓRIO: geral/x\\ne fiz o resto.\\nDESFECHO:
+    feito" parava esperando o Grimorio, contra a linha DESFECHO."""
+    linhas = [x for x in str(resposta or "").splitlines() if not _ENFEITE.match(x)]
+    while linhas and _MARCA_DESFECHO.match(linhas[-1]):
+        linhas.pop()
+    marca = _MARCA_GRIMORIO.match(linhas[-1]) if linhas else None
+    if not marca:
+        return None
+    return f"{marca.group(1).lower()}/{marca.group(2).lower()}"
 
 
-_NAO_E_ESCOLHA = re.compile(r"^(?:Pergunta|Contexto do nó)\s*:|^APLIQUE a escolha")
+def ler_acao_servidor(texto: str) -> tuple:
+    """("gerente", ["ligar"]) do campo `acao_servidor` de uma opcao do Grimorio
+    ("gerente ligar"), conferido contra a lista branca; ValueError se nao vale.
 
-
-def _o_que_ele_escolheu(texto: str) -> str:
-    """Do texto do Adrian, so o que ELE disse: o pedido do Grimorio traz a
-    pergunta e o contexto do no (escritos por quem criou o no; o do cb44cd52
-    fala em "paralelo"), que nao autorizam nada."""
-    return "\n".join(x for x in str(texto or "").splitlines() if not _NAO_E_ESCOLHA.match(x))
-
-
-def autorizada_pelo_adrian(nome: str, argumentos, texto_do_adrian: str) -> str:
-    """'' se o texto do Adrian pede esta acao de estado; senao, o porque."""
-    objeto, padrao = _OBJETO_DA_ACAO.get(nome, (nome, None))
-    plano = _plano(_o_que_ele_escolheu(texto_do_adrian))
-    if padrao is None or not padrao.search(plano):
-        return f"você não pediu nada sobre {objeto} neste pedido"
-    if nome == "gerente":
-        palavras = plano.split()
-        desligar = any(p.startswith(("deslig", "desativ")) for p in palavras)
-        ligar = any(p.startswith(("lig", "ativ", "religa")) for p in palavras)
-        quer = (list(argumentos) or [""])[0]
-        if quer == "ligar" and desligar and not ligar:
-            return "você pediu para DESLIGAR o gerente"
-        if quer == "desligar" and ligar and not desligar:
-            return "você pediu para LIGAR o gerente"
-    return ""
+    E o mesmo formato da linha EXECUTAR, sem a marca. `remoto.decisoes` usa
+    isto para recusar, ao criar o no, uma acao que o servidor nao executaria."""
+    partes = str(texto or "").split()
+    if not partes:
+        raise ValueError("acao_servidor vazia")
+    _fazer, argumentos = acao_do_servidor(partes[0], partes[1:])
+    return partes[0].lower(), argumentos
 
 
 _MARCAS_DO_SERVIDOR = re.compile(r"\n\n(?:O servidor recusou `EXECUTAR|Resultado de `EXECUTAR|"
@@ -582,6 +647,36 @@ def _anotar_do_adrian(pedido: dict, texto: str) -> None:
         do = [texto_do_adrian(pedido)] if pedido.get("texto") else []
     do.append(str(texto)[:2000])
     pedido["do_adrian"] = do[-20:]
+
+
+def _nova_entrada(pedido: dict, de: str) -> None:
+    """Uma mensagem nova para o trabalhador (do Adrian ou do servidor)."""
+    pedido["entradas"] = int(pedido.get("entradas") or 0) + 1
+    pedido["continuar_de"] = de
+
+
+def _marcar_entregue(pedido: dict) -> None:
+    """Tudo o que entrou ate aqui foi escrito para o trabalhador (o pedido.md
+    de um trabalhador novo, ou o continuacao.md)."""
+    pedido["entregue_ate"] = int(pedido.get("entradas") or 0)
+
+
+def _pendente(pedido: dict) -> bool:
+    """Entrou mensagem que nenhum trabalhador recebeu ainda?
+
+    Conferente 5 (05/10/2026): o pulso agora solta a trava enquanto relanca
+    o trabalhador; um Responder nesse meio nao pode ser apagado pelo
+    `continuar=False` de quem ja tinha escrito a continuacao sem ele."""
+    return int(pedido.get("entradas") or 0) > int(pedido.get("entregue_ate") or 0)
+
+
+def _resumo(texto: str, limite: int) -> str:
+    """O texto cortado em `limite`, sem perder a ULTIMA linha (o desfecho)."""
+    texto = str(texto or "").strip()
+    if len(texto) <= limite:
+        return texto
+    ultima = texto.splitlines()[-1].strip()[:limite // 3]
+    return texto[:max(0, limite - len(ultima) - 3)].rstrip() + " …\n" + ultima
 
 
 def _servidor_gerente(argumentos) -> str:
@@ -705,22 +800,25 @@ _COMO_RESPONDER = (
     "- Se faltar uma decisão do Adrian, não pergunte solto: escreva `.permissao.json` com a "
     "categoria `decisao_de_produto` (o servidor cria o nó no Grimório) e termine. A resposta "
     "dele volta a ESTE pedido como continuação. Se o nó já existe no Grimório do repositório "
-    "principal, termine com a linha `GRIMÓRIO: <projeto>/<id>`.\n"
+    "principal, termine com a linha `GRIMÓRIO: <projeto>/<id>` (como a ÚLTIMA linha; no "
+    "meio do texto, citando um nó, ela não vale).\n"
     "- Se precisar rodar algo no repositório real (fora da worktree), termine com UMA linha "
     "`EXECUTAR: <nome>` desta lista branca; o servidor roda, fora da janela das postagens, "
     "e devolve a saída a você. Nada fora da lista roda, e nada publica.\n"
     "- O ESTADO do servidor (`%LOCALAPPDATA%`: gerente, renovação, paralelo) a worktree NÃO "
-    "grava. Não tente e não peça permissão para isso: termine com `EXECUTAR: gerente ligar` "
-    "(ou `renovacao`, `paralelo`) e o próprio servidor grava, relê para conferir e responde "
-    "ao Adrian. Só vale se o ADRIAN pediu isso neste pedido; a marca vale apenas na ÚLTIMA "
-    "linha (no meio do texto, como exemplo, ela não roda).\n"
+    "grava. Não tente e não escreva `.permissao.json` para isso: termine com "
+    "`EXECUTAR: gerente ligar` (ou `renovacao`, `paralelo`). O servidor NÃO executa sozinho: "
+    "vira um pedido de permissão ao Adrian (Agora › Equipe), e só depois de ele aprovar o "
+    "servidor grava, relê para conferir e responde. A marca vale apenas na ÚLTIMA linha (no "
+    "meio do texto, como exemplo, ela não roda).\n"
     + _lista_de_acoes() + "\n"
     "- A ÚLTIMA linha da mensagem final é o desfecho, num destes formatos:\n"
     "  `DESFECHO: feito` (fez e conferiu)\n"
     "  `DESFECHO: bloqueado — <o que falta e quem faz>` (ex.: falta o Adrian entrar na conta)\n"
     "  `DESFECHO: falhou — <motivo>`\n"
-    "  Sem ela o servidor não marca o pedido como entregue. Quem termina com EXECUTAR ou "
-    "GRIMÓRIO não precisa dela.\n")
+    "  O servidor lê SÓ essa linha, não o resto do texto: escreva o que realmente aconteceu. "
+    "Sem ela o servidor pede uma vez; faltando de novo, o pedido para esperando o Adrian ler "
+    "a resposta. Quem termina com EXECUTAR ou GRIMÓRIO não precisa dela.\n")
 
 
 class MesaPedidos:
@@ -735,7 +833,7 @@ class MesaPedidos:
         self.despachante = despachante
         self.claude = claude
         self.relogio = relogio
-        self.avisar = avisar or (lambda _texto: None)
+        self.avisar = avisar
         # quem le as respostas do Grimorio: (leitor, marcar, carregar). Desligado por
         # padrao -- teste nunca le nem marca o Grimorio real; o MESA de producao liga.
         self.grimorio = None
@@ -746,11 +844,45 @@ class MesaPedidos:
         # o diario (atividade.jsonl): desligado por padrao -- teste nunca
         # escreve no diario real; o MESA de producao liga (`_ligar_producao`)
         self.diario = diario
+        # as respostas do Grimorio com `acao_servidor` ja executadas neste processo
+        self._acoes_do_grimorio = {}
+        # o trabalho lento do `passo` (fora da trava): a fila e o dono da reserva
+        self._fila_lenta, self._dono = None, None
+
+    @property
+    def avisar(self):
+        """O aviso ao Adrian. Com a trava do pedidos.json na mao, fica para
+        depois de solta-la (o Telegram e rede)."""
+        enviar = self._avisar_real
+
+        def avisar(texto):
+            if _TRAVA.segurando():
+                _TRAVA.adiar(enviar, texto)
+                return None
+            return enviar(texto)
+        return avisar
+
+    @avisar.setter
+    def avisar(self, funcao):
+        self._avisar_real = funcao or (lambda _texto: None)
 
     # ------------------------------------------------------------ entrada
-    def registrar(self, texto, origem="app", *, novo=False):
+    def registrar(self, texto, origem="app", *, novo=False, responde_a=None):
         """Guarda o pedido (ou a continuacao) e volta na hora: quem contrata,
-        corrige e retoma e o `passo`, no pulso do coordenador."""
+        corrige e retoma e o `passo`, no pulso do coordenador.
+
+        `responde_a`: o id do pedido que o Adrian respondeu (o botao Responder
+        do app, o `/responder <id>` do Telegram). E o UNICO caminho para
+        continuar um pedido, em qualquer situacao: KeyError se nao existe,
+        ValueError se nao ha trabalhador para continuar ou se o pedido espera
+        a permissao do estado do servidor (essa se responde com Permitir/Negar).
+
+        Conferente 3 (05/10/2026): com a regra "texto livre gruda no ATIVO mais
+        novo", "Faz o video novo do Neural Fights" virou continuacao do
+        pedido-7c727778 (digen-parede), "trabalhando" com o pid 11412 morto e em
+        retomada por horas. Sem ler o assunto nao ha como saber a qual pedido o
+        texto pertence, e ler o assunto e adivinhar. Entao: texto livre SEMPRE
+        abre pedido novo (ou e conversa solta); `novo` ficou sem efeito."""
         texto = str(texto or "").strip()
         if not texto:
             raise ValueError("pedido vazio")
@@ -758,24 +890,15 @@ class MesaPedidos:
             raise ValueError("origem desconhecida")
         with _TRAVA:
             dados = _ler()
-            if e_conversa_solta(texto):
-                # nem continuacao nem trabalhador: o retrato, na hora (e o
-                # "novo assunto" pedido antes continua valendo para o proximo)
-                return self._responder_conversa(dados, texto, origem)
-            if dados.pop("novo_assunto", False):
-                novo = True
-            atual = None if novo else self._continua_qual(dados, texto)
-            if atual:
-                _anotar_do_adrian(atual, texto)
-                atual["texto"] += "\n\nContinuação do Adrian:\n" + texto
-                atual["ultima_continuacao"] = texto
-                atual["continuar"] = True
-                atual["atualizado_em"] = _iso()
-                atual["mensagens"] = int(atual.get("mensagens") or 1) + 1
-                _linha(dados, atual, texto, de="adrian", origem=origem, tipo="pedido")
-                _linha(dados, atual, "continuação recebida; vai ao mesmo orquestrador")
-                _gravar(dados)
-                return dict(atual, continuacao=True)
+            if responde_a:
+                return self._responder_pedido(dados, str(responde_a), texto, origem)
+            dados.pop("novo_assunto", None)       # v1: o "/novo"; hoje todo texto e novo
+            forma = forma_fixa(texto) if origem != "grimorio" else ""
+            if forma:
+                # nem continuacao nem trabalhador: o retrato, na hora (o
+                # agradecimento solto leva o lembrete do Responder)
+                return self._responder_conversa(
+                    dados, texto, origem, CURTO_AVISO if forma == "agradecimento" else "")
             ident = "pedido-" + uuid.uuid4().hex[:8]
             agora = _iso()
             pedido = {"id": ident, "texto": texto, "origem": origem, "situacao": "recebido",
@@ -790,29 +913,50 @@ class MesaPedidos:
         return dict(pedido, continuacao=False)
 
     @staticmethod
-    def _continua_qual(dados, texto):
-        """O pedido de que a mensagem e continuacao, ou None (pedido novo).
+    def _anexar(dados, pedido, texto, origem):
+        """A mensagem do Adrian entra no pedido e vai ao mesmo trabalhador.
 
-        05/10/2026 (conferente): "Faz o backup das fotos", com o cd2e5e0c
-        parado no login do Drive, virava continuacao dele e o "destravava".
-        Pedido ATIVO (trabalhando, em espera, executando, no limite) recebe a
-        mensagem como antes; "entregue" e "esperando voce" so a que responde a
-        ele: a que cita uma palavra dele ("ja loguei no Drive" vai ao do Drive,
-        mesmo que outro seja mais novo) ou, no mais novo, a que tem forma de
-        continuacao ("e confira no celular", "agora faca Y tambem", "pode")."""
-        vivos = [p for p in reversed(dados["pedidos"]) if p.get("situacao") in VIVOS]
-        if not vivos:
-            return None
-        minhas = _palavras(texto)
-        for pedido in vivos:
-            if (pedido.get("situacao") in _AGUARDAM_RESPOSTA and minhas
-                    and minhas & _palavras(texto_do_adrian(pedido) + "\n"
-                                           + str(pedido.get("motivo") or ""))):
-                return pedido
-        novo = vivos[0]
-        if novo.get("situacao") not in _AGUARDAM_RESPOSTA or e_continuacao(texto):
-            return novo
-        return None
+        `continuar_em` cai: uma continuacao ja em voo (escrita antes desta
+        mensagem) nao a leva, e o `_acompanhar` so encerra o `continuar` quando
+        tudo o que entrou ja foi entregue (`_pendente`)."""
+        _anotar_do_adrian(pedido, texto)
+        pedido["texto"] += "\n\nContinuação do Adrian:\n" + texto
+        _nova_entrada(pedido, "adrian")
+        pedido.update(ultima_continuacao=texto, continuar=True, atualizado_em=_iso(),
+                      mensagens=int(pedido.get("mensagens") or 1) + 1, desfecho_cobrado=False,
+                      resposta_cobrada=None, continuar_em=None)
+        _linha(dados, pedido, texto, de="adrian", origem=origem, tipo="pedido")
+
+    def _responder_pedido(self, dados, ident, texto, origem):
+        """A resposta EXPLICITA do Adrian a um pedido (o botao Responder): vale
+        para qualquer situacao; o que ja tinha parado volta a andar com o MESMO
+        trabalhador (o `_continuar` contrata outro se a entrega ja foi aplicada)."""
+        pedido = next((p for p in dados["pedidos"] if p.get("id") == ident), None)
+        if pedido is None:
+            raise KeyError(f"não há o pedido {ident}")
+        if not pedido.get("trabalhador") and pedido.get("situacao") in FINAIS:
+            raise ValueError(f"{ident} não teve trabalhador para continuar (foi conversa ou "
+                             "encerrou antes de contratar): mande como pedido novo")
+        pe = pedido.get("permissao_estado")
+        if pe and self._permissao_pendente(pe, pedido):
+            # conferente 3: o Responder NEGAVA a permissao pendente, e "sim,
+            # pode ligar" nao ligava nada. Essa pergunta tem botao proprio.
+            raise ValueError(f"{ident} espera a sua permissão para `{pe.get('comando')}`: "
+                             "toque Permitir ou Negar no próprio pedido (ou em Agora › "
+                             "Equipe); texto não aprova nem nega")
+        antes = pedido.get("situacao")
+        self._anexar(dados, pedido, texto, origem)
+        if antes in FINAIS:
+            # reaberto pela resposta dele: retomadas zeradas, confere de novo
+            pedido.update(situacao="esperando", motivo="", retomadas=0, tentou_em=None,
+                          conf_tentou_em=None, continuar_em=None, bloqueio=None,
+                          conferente=None)
+            _linha(dados, pedido, f"você respondeu a este pedido (estava {_ROTULO.get(antes, antes)});"
+                                  " ele volta ao mesmo orquestrador")
+        else:
+            _linha(dados, pedido, "sua resposta a este pedido vai ao mesmo orquestrador")
+        _gravar(dados)
+        return dict(pedido, continuacao=True)
 
     def _retrato(self, dados) -> str:
         """O que o servidor esta fazendo, medido do pedidos.json."""
@@ -831,26 +975,30 @@ class MesaPedidos:
                 f"{p['id']} {_ROTULO.get(p.get('situacao'), p.get('situacao'))}"
                 for p in encerrados))
         if any(p.get("situacao") == "esperando_voce" for p in vivos):
-            linhas.append("Os que esperam você andam quando você responder no próprio pedido "
-                          "(ou no Grimório).")
+            linhas.append("Os que esperam você andam quando você toca Responder no próprio "
+                          "pedido (no app) ou manda /responder <id> <texto> no Telegram, "
+                          "toca Permitir/Negar na permissão ou responde no Grimório.")
         return "\n".join(linhas)
 
-    def _responder_conversa(self, dados, texto, origem):
+    def _responder_conversa(self, dados, texto, origem, aviso=""):
         ident = "pedido-" + uuid.uuid4().hex[:8]
         agora = _iso()
         retrato = self._retrato(dados)
+        if aviso:
+            retrato = aviso + "\n" + retrato
         pedido = {"id": ident, "texto": texto, "origem": origem, "situacao": "respondido",
                   "motivo": "", "trabalhador": None, "conferente": None, "ia": None,
                   "contratos": 0, "criado_em": agora, "atualizado_em": agora,
                   "ultimo_evento_em": agora, "mensagens": 1, "conversa": True,
-                  "resposta": retrato[:2000]}
+                  "curto": bool(aviso), "resposta": retrato[:2000]}
         dados["pedidos"].append(pedido)
         dados["pedidos"] = dados["pedidos"][-100:]
         _linha(dados, pedido, texto, de="adrian", origem=origem, tipo="pedido")
         _linha(dados, pedido, retrato, tipo="final", limite=2000)
         _gravar(dados)
-        if origem == "telegram":
-            self.avisar("🧭 " + retrato[:1500])
+        # conferente 3: o bot chama `registrar` no PROCESSO DELE, onde o
+        # `avisar` e o vazio do __init__; o retrato volta no proprio item
+        # (`conversa` + `resposta`) e o bot o devolve como resposta
         return dict(pedido, continuacao=False)
 
     def novo_assunto(self, origem="app"):
@@ -864,6 +1012,12 @@ class MesaPedidos:
                                       "texto": "novo assunto: o próximo pedido abre "
                                                "outro orquestrador"})
             _gravar(dados)
+
+    def _avisar(self, pedido, cabeca, texto):
+        """Aviso ao Adrian (Telegram) que diz DE QUAL pedido fala: o id (que o
+        `/responder <id>` usa) e a primeira linha do pedido."""
+        titulo = _titulo(pedido)
+        self.avisar(f"{cabeca} ({pedido['id']}): {texto}" + (f"\n{titulo}" if titulo else ""))
 
     # ------------------------------------------------------------ guardas
     def _motivo_claude(self):
@@ -964,10 +1118,9 @@ class MesaPedidos:
     def _parar_por_limite(self, dados, pedido, queda):
         """Queda por limite NAO gasta retomada: o pedido para e volta sozinho
         quando o uso liberar. Pedido de construir vai ao Codex na hora."""
-        if _construir(pedido["texto"]):
-            pedido.update(trabalhador=None, contratos=int(pedido.get("contratos") or 0) + 1,
-                          tentou_em=None, ia_forcada="codex", continuar=False,
-                          continuar_em=None)
+        if _construir(texto_do_adrian(pedido)):
+            self._trocar_trabalhador(pedido, tentou_em=None, ia_forcada="codex", continuar=False,
+                                     continuar_em=None)
             self._esperar(dados, pedido, "o Claude bateu no limite (" + queda["motivo"][:120]
                           + "); o Codex assume")
             return
@@ -995,8 +1148,8 @@ class MesaPedidos:
             # esperando agora: o Codex assume com o pedido inteiro.
             ficha = self._estado_do(pedido.get("trabalhador")) or {}
             if ficha.get("ia") != "codex":
-                pedido.update(situacao="esperando", motivo="", trabalhador=None,
-                              contratos=int(pedido.get("contratos") or 0) + 1,
+                self._trocar_trabalhador(pedido)
+                pedido.update(situacao="esperando", motivo="",
                               tentou_em=None, ia_forcada="codex", continuar=False,
                               continuar_em=None, limite_liberado_n=pedido.get("limite_n"),
                               atualizado_em=_iso())
@@ -1072,6 +1225,45 @@ class MesaPedidos:
                 pass
         return max(candidatos) if candidatos else None
 
+    def _tamanho_do_fundo(self, ident) -> int:
+        try:
+            return (self.despachante.pasta_da(ident) / "fundo.txt").stat().st_size
+        except (OSError, AttributeError, TypeError):
+            return 0
+
+    def _recusa_do_relancamento(self, dados, pedido, ident) -> str:
+        """A recusa que o `delegar` escreveu no fundo.txt DEPOIS do ultimo
+        relancamento (`recusado: <motivo>`), ou ''.
+
+        05/10/2026 (v2): relancamento recusado por espera (a janela, o paralelo
+        cheio, o teto do Codex) devolve a retomada que tinha gasto; a recusa
+        fica em `ultima_recusa` e entra no motivo do falhou."""
+        if "fundo_offset" not in pedido:
+            return ""
+        try:
+            bruto = (self.despachante.pasta_da(ident) / "fundo.txt").read_bytes()
+        except (OSError, AttributeError, TypeError):
+            return ""
+        inicio = int(pedido.get("fundo_offset") or 0)
+        if len(bruto) < inicio:
+            inicio = 0                       # o arquivo foi trocado
+        pedido["fundo_offset"] = len(bruto)
+        novas = [x.strip() for x in bruto[inicio:].decode("utf-8", "replace").splitlines()]
+        recusa = next((x[len("recusado:"):].strip() for x in reversed(novas)
+                       if x.startswith("recusado:")), "")
+        if not recusa:
+            return ""
+        relancado = pedido.pop("relancado", False)
+        pedido["recusando"] = True
+        de_espera = any(p in recusa for p in RECUSAS_DE_ESPERA)
+        if relancado and de_espera:
+            pedido["retomadas"] = max(0, int(pedido.get("retomadas") or 0) - 1)
+        if recusa != pedido.get("ultima_recusa"):
+            _linha(dados, pedido, "o despachante recusou o relançamento: " + recusa[:200]
+                   + ("; não gasta retomada" if relancado and de_espera else ""))
+        pedido["ultima_recusa"] = recusa[:200]
+        return recusa
+
     def _motivo_do_fundo(self, ident):
         """A ultima linha do despachante no fundo (a recusa do `rodar`)."""
         try:
@@ -1081,7 +1273,143 @@ class MesaPedidos:
         linhas = [x.strip() for x in bruto.decode("utf-8", "replace").splitlines() if x.strip()]
         return linhas[-1][:200] if linhas else ""
 
+    # ------------------------------------------------------- o lento, sem trava
+    def _lento(self, dados, pedido, fazer, depois, o_que):
+        """O trabalho lento do pulso (`git worktree add` do `criar`, abrir o
+        despachante no fundo) roda FORA da trava do pedidos.json.
+
+        Conferente 5 (05/10/2026): o `passo` segurava a trava durante cinco
+        `criar` seguidos, e o Responder do app (outro processo) esperava ate o
+        prazo de 15 s e voltava 503. Agora: dentro da trava o pedido fica
+        reservado ("contratando", com o dono = este pulso); o `passo` solta a
+        trava, roda `fazer()`, pega a trava de novo, rele o arquivo e chama
+        `depois(dados, pedido, resultado, erro)` no pedido RELIDO (o que o app
+        gravou no meio fica). Fora do `passo`, roda na hora."""
+        if self._fila_lenta is None:
+            try:
+                resultado, erro = fazer(), None
+            except Exception as exc:                          # noqa: BLE001
+                resultado, erro = None, exc
+            depois(dados, pedido, resultado, erro)
+            return
+        pedido["contratando"] = {"dono": self._dono, "antes": pedido.get("situacao"),
+                                 "em": _iso(self.relogio()), "o_que": str(o_que)[:160]}
+        pedido["situacao"] = "contratando"
+        self._fila_lenta.append((pedido["id"], fazer, depois))
+
+    def _rodar_os_lentos(self, fila):
+        """Fora da trava: cada `fazer()`, na ordem. Devolve os resultados."""
+        feitos = []
+        for ident, fazer, depois in fila:
+            try:
+                feitos.append((ident, depois, fazer(), None))
+            except Exception as exc:                          # noqa: BLE001
+                feitos.append((ident, depois, None, exc))
+        return feitos
+
+    def _gravar_os_lentos(self, dados, feitos, dono):
+        """Com a trava de novo, no arquivo relido: o resultado de cada um."""
+        por_id = {p.get("id"): p for p in dados["pedidos"]}
+        for ident, depois, resultado, erro in feitos:
+            pedido = por_id.get(ident)
+            reserva = (pedido or {}).get("contratando") or {}
+            if pedido is None or reserva.get("dono") != dono:
+                continue          # saiu da lista, ou outro pulso ja o devolveu
+            pedido.pop("contratando", None)
+            if pedido.get("situacao") == "contratando":
+                pedido["situacao"] = reserva.get("antes") or "esperando"
+            try:
+                depois(dados, pedido, resultado, erro)
+            except Exception as exc:                          # noqa: BLE001
+                self._esperar(dados, pedido, f"erro interno ({type(exc).__name__}: {exc})")
+
+    def _contratando_parado(self, dados, pedido):
+        """"contratando" de um pulso que morreu no meio (o coordenador
+        reiniciou): passado LENTO_PRAZO_S, volta ao que era e o pulso tenta de
+        novo. Do pulso vivo (outro processo), espera."""
+        reserva = pedido.get("contratando") or {}
+        desde = _segundos_desde(reserva.get("em"), self.relogio())
+        if desde is not None and 0 <= desde < LENTO_PRAZO_S:
+            return
+        pedido.pop("contratando", None)
+        pedido.update(situacao=reserva.get("antes") or "esperando", tentou_em=None,
+                      continuar_em=None, atualizado_em=_iso())
+        _linha(dados, pedido, "a chamada ao trabalhador não voltou (o coordenador reiniciou "
+                              "no meio?); tento de novo")
+
     # ------------------------------------------------------------ contratar
+    @staticmethod
+    def _trocar_trabalhador(pedido, **extra):
+        """O proximo `_contratar` abre um trabalhador NOVO; o de agora fica em
+        `anterior` (a resposta dele vai na historia do novo)."""
+        if pedido.get("trabalhador"):
+            pedido["anterior"] = pedido["trabalhador"]
+        pedido.update(trabalhador=None, contratos=int(pedido.get("contratos") or 0) + 1,
+                      **extra)
+
+    def _corpo_do_pedido(self, pedido) -> str:
+        """O que o trabalhador NOVO recebe: o pedido; e, quando ja houve outro
+        antes (limpo, sumido, o Codex assumindo, a entrega ja aplicada), a
+        HISTORIA: o texto do Adrian, a ultima resposta do anterior, o que o
+        servidor devolveu, e a resposta do Adrian que ainda nao foi entregue."""
+        partes = [pedido["texto"]]
+        anterior = pedido.get("anterior")
+        if anterior:
+            resposta = (self._resposta(anterior) or str(pedido.get("resposta") or "")).strip()
+            if resposta:
+                partes.append(f"# A última resposta do trabalhador anterior ({anterior})\n\n"
+                              + resposta[-6000:])
+        notas = [str(n) for n in pedido.get("do_servidor") or []]
+        if notas:
+            partes.append("# O que o servidor já devolveu neste pedido (em ordem)\n\n"
+                          + "\n\n---\n\n".join(notas))
+        if anterior and _pendente(pedido):
+            if pedido.get("continuar_de") == "servidor" and notas:
+                partes.append("# A mensagem que vale agora (do servidor)\n\n" + notas[-1])
+            elif pedido.get("ultima_continuacao"):
+                partes.append("# A resposta do Adrian (a que vale agora)\n\n"
+                              + str(pedido["ultima_continuacao"]))
+        return "\n\n".join(partes)
+
+    def _substituir_trabalhador(self, dados, pedido, ficha):
+        """O trabalhador ja foi LIMPO (a worktree nao existe mais) ou a ficha
+        sumiu: o `delegar` recusa `corrigir`/`rodar` para sempre.
+
+        Conferente 5 (05/10/2026, loop66): o Responder ao 66e4ba54 (limpo)
+        relancava a cada pulso, e o fundo.txt ganhava um "recusado: ... ja foi
+        limpa" por pulso, sem fim. Agora: UM trabalhador novo, com a historia;
+        se ele tambem for recusado, falhou com o motivo da recusa. A cobranca
+        do desfecho nao contrata ninguem (um novo refaria tudo so pela linha):
+        esperando voce, com a resposta original."""
+        antigo = pedido.get("trabalhador")
+        porque = "já foi limpo (a worktree dele não existe mais)" if ficha else "sumiu"
+        if pedido.get("continuar") and self._em_cobranca(pedido):
+            original = str(pedido.get("resposta_cobrada") or "") or self._resposta(antigo)
+            pedido.update(continuar=False, continuar_em=None, resposta_cobrada=None)
+            _marcar_entregue(pedido)
+            pedido["desfecho"] = {"tipo": None, "fonte": "sem_linha", "motivo": SEM_DESFECHO}
+            _linha(dados, pedido, f"o trabalhador {antigo} {porque}: a cobrança do desfecho "
+                                  "não vai a ninguém novo")
+            self._bloquear(dados, pedido, SEM_DESFECHO, original, prefixo="")
+            return
+        self._trocar_trabalhador(pedido, conferente=None)
+        pedido.update(situacao="recebido", motivo="", continuar=False, continuar_em=None,
+                      tentou_em=None, retomadas=0, substituto_de=antigo, atualizado_em=_iso())
+        _linha(dados, pedido, f"o trabalhador {antigo} {porque}: o pedido vai a UM "
+                              "orquestrador novo, com a história (o seu texto, a última "
+                              "resposta e a sua resposta)")
+        self._contratar(dados, pedido)
+
+    def _substituto_recusado(self, dados, pedido, motivo):
+        """O trabalhador novo (o que substituiu o limpo) foi recusado: falhou,
+        com o motivo da recusa, sem tentar de novo a cada pulso."""
+        motivo = (f"o trabalhador {pedido.get('substituto_de')} já tinha sido limpo, e o novo "
+                  f"foi recusado: {motivo}")[:300]
+        pedido.pop("substituto_de", None)
+        pedido.update(situacao="falhou", motivo=motivo, atualizado_em=_iso())
+        _linha(dados, pedido, "falhou: " + motivo, tipo="final")
+        self._avisar(pedido, "❌ Pedido falhou", motivo)
+
     def _contratar(self, dados, pedido):
         if not self._pode_tentar(pedido):
             return
@@ -1089,40 +1417,64 @@ class MesaPedidos:
         ia = pedido.get("ia_forcada") or "claude"
         motivo = self._motivo_claude() if ia == "claude" else ""
         if motivo:
-            if not _construir(pedido["texto"]):
+            if not _construir(texto_do_adrian(pedido)):
                 self._esperar(dados, pedido, motivo)
                 return
             ia = "codex"          # o Codex assume os pedidos de construir
         n = int(pedido.get("contratos") or 0)
         ident = pedido["id"] if n == 0 else f"{pedido['id']}-{n}"
+        corpo = None
         if self._estado_do(ident) is None:
-            caminho = self.despachante.pasta_da(ident) / "pedido.md"
-            caminho.parent.mkdir(parents=True, exist_ok=True)
             corpo = ("# PEDIDO do Adrian (" + ("Telegram" if pedido.get("origem") == "telegram"
-                                                 else "app") + ")\n\n" + pedido["texto"]
-                     + "\n\n" + _COMO_RESPONDER)
+                                                 else "app") + ")\n\n"
+                     + self._corpo_do_pedido(pedido) + "\n\n" + _COMO_RESPONDER)
             if ia == "codex":
                 # o Codex nao recebe o prompt do cargo: vai junto com a tarefa
                 try:
                     corpo = self.despachante.prompt_do_cargo("orquestrador") + "\n\n" + corpo
                 except Exception:
                     pass
-            caminho.write_text(corpo, encoding="utf-8")
+            _marcar_entregue(pedido)
+        titulo = pedido["texto"].splitlines()[0][:160]
+        offset = self._tamanho_do_fundo(ident)
+        despachante = self.despachante
+
+        def fazer():
+            if corpo is not None:
+                caminho = despachante.pasta_da(ident) / "pedido.md"
+                caminho.parent.mkdir(parents=True, exist_ok=True)
+                caminho.write_text(corpo, encoding="utf-8")
+                try:
+                    despachante.criar(ident, caminho, PERMITIDOS, ia=ia, cargo="orquestrador",
+                                      titulo=titulo)
+                except Exception as exc:                      # noqa: BLE001
+                    return ("criar", exc)
             try:
-                self.despachante.criar(ident, caminho, PERMITIDOS, ia=ia, cargo="orquestrador",
-                                       titulo=pedido["texto"].splitlines()[0][:160])
-            except Exception as exc:
-                self._esperar(dados, pedido, "contratar: " + str(exc)[:200])
+                despachante.no_fundo(["rodar", "--id", ident], ident)
+            except Exception as exc:                          # noqa: BLE001
+                return ("rodar", exc)
+            return ("ok", None)
+
+        def depois(dados, pedido, resultado, erro):
+            etapa, exc = resultado if resultado else ("criar", erro)
+            if etapa == "criar":
+                if pedido.get("substituto_de"):
+                    self._substituto_recusado(dados, pedido, str(exc)[:200])
+                else:
+                    self._esperar(dados, pedido, "contratar: " + str(exc)[:200])
                 return
-        try:
-            self.despachante.no_fundo(["rodar", "--id", ident], ident)
-        except Exception as exc:
-            pedido.update(trabalhador=ident, ia=ia)
-            self._esperar(dados, pedido, "rodar: " + str(exc)[:200])
-            return
-        pedido.update(trabalhador=ident, ia=ia, situacao="trabalhando", motivo="",
-                      continuar=False, atualizado_em=_iso(), ultimo_evento_em=_iso())
-        _linha(dados, pedido, f"{ia} orquestrador contratado ({ident}); trabalhando numa worktree")
+            pedido.update(fundo_offset=offset, relancado=False, trabalhador=ident, ia=ia)
+            if etapa == "rodar":
+                self._esperar(dados, pedido, "rodar: " + str(exc)[:200])
+                return
+            pedido.update(situacao="trabalhando", motivo="", atualizado_em=_iso(),
+                          ultimo_evento_em=_iso())
+            if not _pendente(pedido):
+                pedido["continuar"] = False       # o novo recebeu tudo no pedido.md
+            _linha(dados, pedido, f"{ia} orquestrador contratado ({ident}); trabalhando numa "
+                                  "worktree")
+
+        self._lento(dados, pedido, fazer, depois, f"contratando {ia} ({ident})")
 
     # ------------------------------------------------------------ acompanhar
     def _progresso(self, dados, pedido, ident):
@@ -1152,11 +1504,27 @@ class MesaPedidos:
         trabalhador = pedido.get("trabalhador")
         ficha = self._estado_do(trabalhador)
         if not ficha:
-            pedido.update(trabalhador=None, contratos=int(pedido.get("contratos") or 0) + 1)
-            self._esperar(dados, pedido, "o trabalhador sumiu; vou contratar outro")
+            self._substituir_trabalhador(dados, pedido, None)
             return
         situacao = self._situacao_do(ficha)
         agora = self.relogio()
+        if situacao != "rodando":
+            recusa = self._recusa_do_relancamento(dados, pedido, trabalhador)
+            if recusa and pedido.get("substituto_de") and not any(
+                    p in recusa for p in RECUSAS_DE_ESPERA):
+                # o trabalhador novo (do limpo) recusado: falhou, uma vez
+                self._substituto_recusado(dados, pedido, recusa[:200])
+                return
+            if recusa:
+                # a linha da recusa ja saiu (uma vez por recusa nova): aqui so
+                # o estado, sem repetir "em espera" a cada tentativa
+                pedido.update(situacao="esperando", tentou_em=_iso(agora), atualizado_em=_iso(),
+                              motivo=("o despachante recusou o relançamento (" + recusa[:160]
+                                      + "); tento de novo em 2 min")[:240])
+                return
+        else:
+            pedido.pop("recusando", None)        # rodando de verdade: a recusa passou
+            pedido.pop("substituto_de", None)
         if situacao != ficha.get("situacao"):
             # a ficha diz "rodando", mas o processo morreu: retoma de verdade
             # (sem chamar `parar`, que recusa pid morto)
@@ -1165,7 +1533,12 @@ class MesaPedidos:
             return
         if situacao == "rodando":
             if pedido.get("continuar") and pedido.get("continuar_em"):
-                pedido.update(continuar=False, continuar_em=None, motivo="")
+                if _pendente(pedido):
+                    # entrou mensagem depois da continuacao em voo: vai na
+                    # proxima, quando esta rodada acabar
+                    pedido["continuar_em"] = None
+                else:
+                    pedido.update(continuar=False, continuar_em=None, motivo="")
             sinal = self._ultimo_sinal(trabalhador, ficha)
             if sinal is not None:
                 pedido["ultimo_evento_em"] = sinal.isoformat(timespec="seconds")
@@ -1220,7 +1593,7 @@ class MesaPedidos:
         if mudou:
             _linha(dados, pedido, "em espera: " + pedido["motivo"])
             if via != "permissao":       # a permissao o gerente ja avisa
-                self.avisar(f"❓ Um pedido espera a sua decisão no Grimório: {ref}")
+                self._avisar(pedido, "❓ Pedido espera a sua decisão no Grimório", ref)
 
     def _no_do_grimorio(self, ref):
         """O no da referencia: {} se nao existe, None se nao da para conferir
@@ -1284,7 +1657,7 @@ class MesaPedidos:
                                        opcao.get("descricao"), vigente.get("comentario"),
                                        ja_dada=True)
             _anotar_do_adrian(pedido, texto)
-            self._devolver(dados, pedido, texto)
+            self._devolver(dados, pedido, texto, do_adrian=True)      # a decisao e DELE
             pedido.update(grimorio_ref=None, grimorio_via=None,
                           mensagens=int(pedido.get("mensagens") or 1) + 1)
             _linha(dados, pedido, texto, de="adrian", origem="grimorio", tipo="pedido")
@@ -1297,6 +1670,9 @@ class MesaPedidos:
     def _cuidar_do_grimorio(self, dados, pedido):
         """A permissao foi decidida pelo app (fora do Grimorio), ou o Adrian
         escreveu uma continuacao: segue o fluxo sem esperar o no."""
+        if pedido.get("permissao_estado"):
+            self._cuidar_da_permissao_de_estado(dados, pedido)
+            return
         if pedido.get("continuar"):
             bloqueado = bool(pedido.get("bloqueio"))
             pedido.update(situacao="esperando", motivo="", grimorio_ref=None,
@@ -1331,11 +1707,12 @@ class MesaPedidos:
                 return pedido
         return None
 
-    def _retomar_com_resposta(self, ev, no, opcao):
+    def _retomar_com_resposta(self, ev, no, opcao, extra=""):
         """A resposta do Adrian volta ao MESMO pedido, como continuacao.
 
         Lacuna 2 (05/10/2026): cada resposta virava um pedido NOVO, e o
-        trabalhador que perguntou ficava parado para sempre."""
+        trabalhador que perguntou ficava parado para sempre. `extra`: o que o
+        servidor ja fez com a escolha (a `acao_servidor` executada)."""
         with _TRAVA:
             dados = _ler()
             pedido = self._pedido_esperando(dados, ev.get("projeto"), ev["id"])
@@ -1344,6 +1721,9 @@ class MesaPedidos:
             ref = pedido.get("grimorio_ref")
             texto = _texto_da_resposta(ref, ev.get("opcao_rotulo") or ev.get("opcao"),
                                        opcao.get("descricao"), ev.get("comentario"))
+            # a `resposta_cobrada` fica (conferente hf1): a cobranca pode ter
+            # virado pergunta ao Grimorio; a original vai junto no fim
+            pedido["desfecho_cobrado"] = False
             if pedido.get("grimorio_via") == "permissao":
                 # 05/10/2026 (conferente): respondido no app, o api_http JA
                 # decidiu a permissao e relancou `retomar`. Decidir de novo
@@ -1361,11 +1741,17 @@ class MesaPedidos:
                     _linha(dados, pedido, f"não consegui registrar a permissão: {exc}")
             _anotar_do_adrian(pedido, texto)
             pedido["texto"] += "\n\n" + texto
+            if extra:
+                # o que o SERVIDOR fez com a escolha (a `acao_servidor`) nao e
+                # texto do Adrian: vai ao trabalhador por `do_servidor`
+                pedido["do_servidor"] = (list(pedido.get("do_servidor") or []) + [extra[:6000]])[-8:]
+            _nova_entrada(pedido, "adrian")
             pedido.update(situacao="esperando", motivo="", continuar=True,
                           ultima_continuacao=texto, continuar_em=None, tentou_em=None,
                           grimorio_ref=None, grimorio_via=None, atualizado_em=_iso(),
                           mensagens=int(pedido.get("mensagens") or 1) + 1)
-            _linha(dados, pedido, texto, de="adrian", origem="grimorio", tipo="pedido")
+            _linha(dados, pedido, texto + (f"\n{extra}" if extra else ""), de="adrian",
+                   origem="grimorio", tipo="pedido")
             _linha(dados, pedido, "a resposta do Grimório volta ao mesmo orquestrador")
             _gravar(dados)
             return pedido["id"]
@@ -1476,148 +1862,322 @@ class MesaPedidos:
                                       f"principal: {desfecho}.\nFim da saída:\n```\n"
                                       + (saida.strip()[-2500:] or "(vazia)") + "\n```")
 
-    def _devolver(self, dados, pedido, texto):
-        """O texto volta ao MESMO trabalhador como continuacao."""
-        pedido["texto"] += "\n\n" + texto
+    def _devolver(self, dados, pedido, texto, *, do_adrian=False):
+        """O texto volta ao MESMO trabalhador como continuacao.
+
+        Conferente 5 (05/10/2026): o texto do SERVIDOR (a cobranca do desfecho,
+        o resultado de EXECUTAR, as recusas) entrava em `pedido["texto"]`, e o
+        "Nao refaca o trabalho" da cobranca fazia o `_construir` achar "faca":
+        uma pergunta contratava o Codex com o Claude proibido. Agora ele fica em
+        `do_servidor`; o `texto` e so o que o Adrian escreveu (e decidiu)."""
+        texto = str(texto)
+        if do_adrian:
+            pedido["texto"] += "\n\n" + texto
+        else:
+            notas = list(pedido.get("do_servidor") or [])
+            notas.append(texto[:6000])
+            pedido["do_servidor"] = notas[-8:]
+        _nova_entrada(pedido, "adrian" if do_adrian else "servidor")
         pedido.update(situacao="esperando", motivo="", continuar=True,
                       ultima_continuacao=texto[:600], continuar_em=None, tentou_em=None,
                       atualizado_em=_iso())
 
     def _entregue(self, dados, pedido, ficha):
         resposta = self._resposta(pedido.get("trabalhador"))
-        marca = _MARCA_GRIMORIO.search(resposta)
-        if marca and self._pedir_ao_grimorio(
-                dados, pedido, f"{marca.group(1).lower()}/{marca.group(2).lower()}"):
+        # a resposta que a cobranca do desfecho guardou (a ORIGINAL). So se le
+        # aqui: quem limpa e o fim de verdade (_encerrar/_bloquear). Conferente
+        # hf1 (2b): o pop perdia a original quando o pedido nao encerrava neste
+        # pulso (diff ainda nao medido, GRIMORIO, EXECUTAR) e o Adrian recebia
+        # so "Ok, conferido.\nDESFECHO: feito"
+        original = pedido.get("resposta_cobrada")
+        respondeu_a_cobranca = self._em_cobranca(pedido)
+        ref = marca_grimorio(resposta)
+        if ref and self._pedir_ao_grimorio(dados, pedido, ref):
             return
         acao = marca_executar(resposta)
         if acao and acao[0] in ACOES_SERVIDOR:
-            if self._executar_no_servidor(dados, pedido, ficha, acao[0], acao[1]):
+            if self._pedir_permissao_de_estado(dados, pedido, ficha, acao[0], acao[1]):
                 return
         elif acao and self._pedir_execucao(dados, pedido, acao[0], acao[1]):
             return
-        self._encerrar(dados, pedido, ficha, resposta, ler_desfecho(resposta))
+        desfecho = ler_desfecho(resposta)
+        if desfecho["fonte"] == "sem_linha":
+            self._sem_desfecho(dados, pedido, ficha, resposta, original)
+            return
+        if original is not None and original.strip():
+            if respondeu_a_cobranca:
+                # conferente 5 (c6): a resposta da cobranca e so a linha ("Ok,
+                # conferido.\nDESFECHO: feito"); ao Adrian vai a ORIGINAL, com o
+                # desfecho declarado depois
+                linha = [x for x in resposta.splitlines() if not _ENFEITE.match(x)][-1].strip()
+                resposta = original.rstrip() + "\n\n" + linha
+            else:
+                # entre a cobranca e o fim houve outra rodada (Grimorio,
+                # EXECUTAR): a original e a resposta nova, inteiras
+                resposta = original.rstrip() + "\n\n" + resposta.strip()
+        self._encerrar(dados, pedido, ficha, resposta, desfecho)
+
+    def _sem_desfecho(self, dados, pedido, ficha, resposta, original=None):
+        """Sem a linha DESFECHO: UMA continuacao ao mesmo trabalhador pedindo a
+        linha; faltou de novo: esperando voce, com o motivo fixo.
+
+        Conferente 4: com a entrega ja aplicada, a cobranca vai ao MESMO
+        trabalhador, com o aviso de que nada mais deve mudar. Conferente 5: a
+        cobranca SEMPRE leva a resposta original (`resposta_cobrada`): o Claude
+        abre sessao nova a cada rodada e declararia o desfecho de um trabalho
+        que nao viu; e o resposta.md e sobrescrito pela resposta da cobranca."""
+        if not pedido.get("desfecho_cobrado"):
+            pedido["desfecho_cobrado"] = True
+            _linha(dados, pedido, "a resposta veio sem a linha DESFECHO; pedi ao mesmo "
+                                  "trabalhador que termine com ela")
+            self._devolver(dados, pedido, COBRAR_DESFECHO)
+            if original is not None and original.strip() and original.strip() != resposta.strip():
+                # a original de uma cobranca anterior (antes de um Grimorio ou
+                # EXECUTAR) continua: o trabalhador ve tudo o que respondeu
+                resposta = original.rstrip() + "\n\n" + resposta.strip()
+            pedido["resposta_cobrada"] = resposta[-6000:]
+            return
+        pedido["desfecho"] = {"tipo": None, "fonte": "sem_linha", "motivo": SEM_DESFECHO}
+        if original is not None and original.strip() and original.strip() != resposta.strip():
+            resposta = (original.rstrip() + "\n\n(depois da cobrança, ainda sem a linha:)\n"
+                        + resposta.strip())
+        self._bloquear(dados, pedido, SEM_DESFECHO, resposta, prefixo="")
+
+    def _em_cobranca(self, pedido) -> bool:
+        """A ultima mensagem ao trabalhador e a cobranca do desfecho (do
+        servidor)? Regra fixa: a `resposta_cobrada` guardada E a ultima
+        continuacao e o proprio COBRAR_DESFECHO (um EXECUTAR ou um Grimorio
+        depois dela nao e cobranca)."""
+        return (pedido.get("resposta_cobrada") is not None
+                and pedido.get("continuar_de") == "servidor"
+                and str(pedido.get("ultima_continuacao") or "") == COBRAR_DESFECHO[:600])
 
     def _encerrar(self, dados, pedido, ficha, resposta, desfecho):
-        """O desfecho decide: feito -> respondido/entregue; bloqueado ->
-        esperando_voce com o que falta; falhou -> falhou com o motivo."""
-        tipo, fonte = desfecho["tipo"], desfecho["fonte"]
+        """A linha decide, e so ela: feito -> entregue (mudou codigo) ou
+        respondido (so respondeu); bloqueado -> esperando voce com o texto
+        dela; falhou -> falhou com o motivo dela."""
+        tipo = desfecho["tipo"]
         motivo = str(desfecho.get("motivo") or "").strip()
-        aviso = str(desfecho.get("aviso") or "").strip()
-        codigo = arquivos_de_codigo(ficha)
-        if fonte in ("heuristica", "sem_linha", "vazia"):
-            _linha(dados, pedido, "a resposta veio sem a linha DESFECHO; "
-                   + ("li como BLOQUEADO pelas frases dela" if fonte == "heuristica" else
-                      "terminou sem resposta: não marco como entregue" if fonte == "vazia" else
-                      "nenhuma frase de bloqueio: sigo pelo que mudou"))
-        if tipo == "bloqueado" and fonte == "heuristica" and codigo:
-            # 05/10/2026 (conferente): adivinhado pelas frases, com codigo
-            # mudado: nao some do vigia/conferente; entra com o aviso
-            tipo, aviso, motivo = "feito", motivo, ""
-            _linha(dados, pedido, f"mas mudou {codigo} arquivo(s) de código: vai como entregue "
-                                  "com aviso, e o conferente olha")
-        elif tipo == "feito" and aviso and not codigo:
-            # "Nao foi possivel ligar" + "DESFECHO: feito", sem codigo: nada
-            # foi entregue -- o "feito" mente
-            tipo, motivo = "bloqueado", aviso
-            _linha(dados, pedido, "a linha diz feito, mas o texto diz que não: " + aviso[:200])
-        pedido["desfecho"] = {"tipo": tipo, "fonte": fonte, "motivo": motivo[:300],
-                              "aviso": aviso[:300]}
+        pedido["desfecho"] = {"tipo": tipo, "fonte": desfecho.get("fonte") or "linha",
+                              "motivo": motivo[:300]}
         if tipo == "falhou":
+            pedido.update(desfecho_cobrado=False, resposta_cobrada=None)
             motivo = motivo or "o trabalhador disse que falhou, sem o motivo"
             pedido.update(situacao="falhou", motivo=motivo[:240], resposta=resposta[:1000],
                           atualizado_em=_iso())
             _linha(dados, pedido, "falhou: " + motivo, tipo="final")
-            self.avisar("❌ Pedido falhou: " + motivo[:400])
+            self._avisar(pedido, "❌ Pedido falhou", motivo[:400])
             return
         if tipo == "bloqueado":
             self._bloquear(dados, pedido, motivo or "o trabalhador parou sem dizer o que falta",
                            resposta)
             return
-        diff = ficha.get("diff") if isinstance(ficha.get("diff"), dict) else {}
-        if diff and not codigo:
+        sem_medida = not ficha.get("aplicado") and not isinstance(ficha.get("diff"), dict)
+        if sem_medida:
+            # conferente 3 (c4): sem o diff medido, "feito" virava "entregue"
+            # e ficava la para sempre (o vigia nao tem o que aplicar). O delegar
+            # mede logo depois de terminar; se nao mediu em RETOMAR_S (a
+            # worktree sumiu, o git falhou), e resposta sem codigo
+            desde = pedido.setdefault("sem_diff_desde", _iso(self.relogio()))
+            espera = _segundos_desde(desde, self.relogio())
+            if espera is not None and espera < RETOMAR_S:
+                # a `resposta_cobrada` fica: o proximo pulso ainda precisa dela
+                self._esperar(dados, pedido, "terminou; esperando o despachante medir o diff")
+                return
+        pedido.pop("sem_diff_desde", None)
+        pedido.update(desfecho_cobrado=False, resposta_cobrada=None)
+        if sem_medida or not arquivos_de_codigo(ficha):
             # so respondeu (nada de codigo; o rascunho resposta.md nao conta):
             # nao ha o que aplicar nem conferir
-            pedido.update(situacao="respondido", motivo="", resposta=resposta[:1000],
+            pedido.update(situacao="respondido", motivo="", resposta=_resumo(resposta, 1000),
                           atualizado_em=_iso())
-            final = resposta.strip()[:500] or "terminou sem mudar código"
+            final = _resumo(resposta, 500) or "terminou sem mudar código"
+            if sem_medida:
+                final += " (o despachante não mediu o diff: nada foi aplicado)"
             _linha(dados, pedido, "respondido: " + final, tipo="final")
-            self.avisar("🧭 Pedido respondido: " + final)
+            self._avisar(pedido, "🧭 Pedido respondido", final)
             return
-        motivo = ("entregue com aviso: " + aviso)[:240] if aviso else ""
-        pedido.update(situacao="entregue", motivo=motivo, atualizado_em=_iso())
-        _linha(dados, pedido, (motivo + "; " if motivo else "entregue; ")
-               + "esperando o vigia testar e aplicar, depois o conferente olha")
+        # a resposta (a original, quando houve cobranca) fica: o conferente e o
+        # aviso de "conferido" a usam, nao o resposta.md da cobranca
+        pedido.update(situacao="entregue", motivo="", atualizado_em=_iso(),
+                      resposta=_resumo(resposta, 20_000))
+        _linha(dados, pedido, "entregue; esperando o vigia testar e aplicar, depois o "
+                              "conferente olha")
 
-    def _bloquear(self, dados, pedido, motivo, resposta=""):
+    def _bloquear(self, dados, pedido, motivo, resposta="", *, prefixo="bloqueado: "):
         """Parou por algo que so o Adrian faz: "esperando voce", com o que falta.
-        A resposta dele no proprio pedido volta ao MESMO trabalhador."""
-        motivo = ("bloqueado: " + str(motivo).strip())[:240]
+        A resposta dele (o Responder do app) volta ao MESMO trabalhador."""
+        motivo = (prefixo + str(motivo).strip())[:240]
         mudou = pedido.get("situacao") != "esperando_voce" or pedido.get("motivo") != motivo
         pedido.update(situacao="esperando_voce", motivo=motivo, bloqueio=motivo,
-                      grimorio_ref=None, grimorio_via=None, atualizado_em=_iso())
+                      grimorio_ref=None, grimorio_via=None, resposta_cobrada=None,
+                      atualizado_em=_iso())
         if resposta:
             pedido["resposta"] = resposta[:1000]
         if mudou:
             _linha(dados, pedido, "esperando você — " + motivo, tipo="final")
-            self.avisar("⏸ Pedido esperando você: " + motivo)
+            self._avisar(pedido, "⏸ Pedido esperando você",
+                         motivo + f" (responda pelo botão Responder do pedido, no app, ou aqui "
+                                  f"com /responder {pedido['id'][len('pedido-'):]} <texto>)")
 
-    def _executar_no_servidor(self, dados, pedido, ficha, nome, argumentos):
-        """`EXECUTAR: gerente ligar`: o SERVIDOR grava o proprio estado, rele e
-        responde. Devolve se cuidou do pedido (False: passou do teto de acoes)."""
+    # ------------------------------------------------- estado do servidor (v2)
+    def _pedir_permissao_de_estado(self, dados, pedido, ficha, nome, argumentos):
+        """`EXECUTAR: gerente ligar` vindo do TRABALHADOR nunca roda sozinho:
+        vira pedido de permissao ao Adrian (categoria estado_do_servidor), no
+        mesmo sistema das outras permissoes (Agora > Equipe). Aprovado, o pulso
+        executa e confere (`_cuidar_da_permissao_de_estado`). Devolve se cuidou
+        do pedido (False: passou do teto de acoes)."""
         feitas = int(pedido.get("execucoes") or 0)
         if feitas >= MAX_EXECUCOES:
             _linha(dados, pedido, f"pediu EXECUTAR {nome}, mas já foram {feitas} ações neste "
-                                  "pedido; não executo mais")
+                                  "pedido; não peço mais")
             return False
         pedido["execucoes"] = feitas + 1
         try:
-            fazer, argumentos = acao_do_servidor(nome, argumentos)
+            _fazer, argumentos = acao_do_servidor(nome, argumentos)
         except ValueError as exc:
             _linha(dados, pedido, f"EXECUTAR {nome} recusado: {exc}")
             self._devolver(dados, pedido, f"O servidor recusou `EXECUTAR: {nome}`: {exc}. "
                                           "Ações liberadas:\n" + _lista_de_acoes())
             return True
         comando = " ".join([nome, *argumentos])
-        porque = autorizada_pelo_adrian(nome, argumentos, texto_do_adrian(pedido))
-        if porque:
-            # o estado do servidor e do Adrian: o trabalhador nao muda sozinho
-            _linha(dados, pedido, f"EXECUTAR {comando} NÃO executado: {porque}")
-            self._registrar_no_diario("recusado", f"{pedido['id']}: {comando}: {porque}",
-                                      ref=pedido["id"])
-            self._bloquear(dados, pedido, f"o trabalhador pediu `EXECUTAR: {comando}`, mas "
-                                          f"{porque}; não executei. Se quer, responda aqui "
-                                          f"(ex.: «pode {comando}»)",
-                           self._resposta(pedido.get("trabalhador")))
-            return True
-        self._registrar_no_diario("inicio", f"{pedido['id']}: {comando} (estado do servidor)",
-                                  ref=pedido["id"])
+        trabalhador = pedido.get("trabalhador")
         try:
+            ficha_nova = self.despachante.registrar_pedido_permissao(trabalhador, {
+                "o_que": f"o servidor executar `{comando}` ({ACOES_SERVIDOR[nome]['o_que']})",
+                "categoria": CATEGORIA_ESTADO,
+                "por_que": (f"o trabalhador do {pedido['id']} terminou pedindo "
+                            f"`EXECUTAR: {comando}`; muda o estado do servidor, então só "
+                            "roda com a sua aprovação"),
+                "alvo": comando,
+                # o aviso ao Adrian sai daqui (com o id do pedido); o gerente
+                # da equipe nao repete
+                "avisado": "coordenador"})
+            pp = (ficha_nova or {}).get("pedido_permissao") or {}
+            if pp.get("categoria") != CATEGORIA_ESTADO or pp.get("alvo") != comando:
+                raise RuntimeError("o trabalhador já tinha outra permissão pendente: "
+                                   + str(pp.get("o_que") or "?"))
+        except Exception as exc:                              # noqa: BLE001
+            self._bloquear(dados, pedido, f"o trabalhador pediu `EXECUTAR: {comando}`, mas não "
+                                          f"consegui registrar o pedido de permissão ({exc}); "
+                                          "nada foi executado", self._resposta(trabalhador))
+            return True
+        pedido["permissao_estado"] = {"nome": nome, "args": list(argumentos),
+                                      "comando": comando, "trabalhador": trabalhador,
+                                      "em": pp.get("em"), "regra": pp.get("regra")}
+        self._registrar_no_diario("pedido", f"{pedido['id']}: {comando} espera a sua permissão "
+                                            "(estado do servidor)", ref=pedido["id"])
+        motivo = (f"o trabalhador pediu `{comando}` (estado do servidor): toque Permitir ou "
+                  "Negar no pedido (ou em Agora › Equipe › Pedidos de permissão)")
+        pedido.update(situacao="esperando_voce", motivo=motivo[:240], grimorio_ref=None,
+                      grimorio_via=None, atualizado_em=_iso(),
+                      resposta=self._resposta(trabalhador)[:1000])
+        _linha(dados, pedido, "esperando você — " + motivo)
+        # conferente 3 (b1/b2): sem este aviso, o Adrian so via a permissao se
+        # abrisse o app; o gerente da equipe deduplicava por trabalhador
+        self.avisar(f"❓ {pedido['id']} pede a sua permissão: o servidor executar `{comando}` "
+                    f"({ACOES_SERVIDOR[nome]['o_que']}). {_titulo(pedido)}\nToque Permitir ou "
+                    "Negar no pedido, no app (Coordenador › Conversa ou Agora › Equipe).")
+        return True
+
+    def _cuidar_da_permissao_de_estado(self, dados, pedido):
+        """Le a decisao do Adrian no registro da ficha (`delegar.decidir_permissao`):
+        permitir -> o servidor executa, rele e responde; negar -> nada muda.
+
+        Uma resposta dele ja anexada ao pedido (`continuar`) so chega aqui com a
+        permissao DECIDIDA (o Responder recusa enquanto ela espera): a decisao
+        vale primeiro (executa ou registra o "negou") e so depois a resposta
+        segue ao mesmo trabalhador. Conferente 4: Permitir e logo depois
+        `/responder` antes do pulso jogava fora a acao aprovada.
+        Pendente com `continuar` (so um caminho antigo chegaria): a permissao
+        e negada e a mensagem segue."""
+        pe = pedido["permissao_estado"]
+        trabalhador = pe.get("trabalhador") or pedido.get("trabalhador")
+        ficha = self._estado_do(trabalhador) or {}
+        pendente = self._permissao_pendente(pe, pedido, ficha)
+        continuar = bool(pedido.get("continuar"))
+        if pendente:
+            if not continuar:
+                return                     # o Adrian ainda nao decidiu
+            try:
+                self.despachante.decidir_permissao(trabalhador, False)
+            except Exception as exc:                          # noqa: BLE001
+                _linha(dados, pedido, f"não consegui negar a permissão pendente: {exc}")
+            pedido.update(permissao_estado=None, situacao="esperando", motivo="",
+                          tentou_em=None, bloqueio=None, atualizado_em=_iso())
+            _linha(dados, pedido, f"sua resposta chegou antes da decisão: `{pe['comando']}` "
+                                  "NÃO foi executado, e a mensagem vai ao mesmo orquestrador")
+            return
+        registro = next((r for r in reversed(ficha.get("permissoes") or [])
+                         if (r.get("pedido") or {}).get("categoria") == CATEGORIA_ESTADO
+                         and (r.get("pedido") or {}).get("alvo") == pe["comando"]
+                         and (not pe.get("em") or (r.get("pedido") or {}).get("em") == pe["em"])),
+                        None)
+        pedido["permissao_estado"] = None
+        if registro is None:
+            self._bloquear(dados, pedido, f"o pedido de permissão para `{pe['comando']}` sumiu "
+                                          "sem decisão; nada foi executado")
+        elif registro.get("decisao") != "permitir":
+            self._registrar_no_diario("recusado", f"{pedido['id']}: {pe['comando']}: negado pelo "
+                                                  "Adrian", ref=pedido["id"])
+            self._fim_do_estado(dados, pedido, ficha, f"você negou `{pe['comando']}`: o servidor "
+                                                      "não mudou nada", ok=True, executou=False)
+        else:
+            self._executar_estado(dados, pedido, ficha, pe["nome"], pe["args"])
+        if continuar:
+            # a decisao ja valeu; a resposta dele, anexada antes do pulso, segue
+            pedido.update(situacao="esperando", motivo="", continuar=True, tentou_em=None,
+                          continuar_em=None, bloqueio=None, atualizado_em=_iso())
+            _linha(dados, pedido, f"a decisão sobre `{pe['comando']}` valeu primeiro; a sua "
+                                  "resposta segue ao mesmo orquestrador")
+
+    def _permissao_pendente(self, pe, pedido, ficha=None) -> bool:
+        """A permissao do estado do servidor deste pedido ainda espera o Adrian?"""
+        if ficha is None:
+            ficha = self._estado_do(pe.get("trabalhador") or pedido.get("trabalhador")) or {}
+        return (ficha.get("situacao") == "aguardando_permissao"
+                and (ficha.get("pedido_permissao") or {}).get("categoria") == CATEGORIA_ESTADO)
+
+    def _executar_estado(self, dados, pedido, ficha, nome, argumentos):
+        """O Adrian aprovou: o SERVIDOR grava o proprio estado, rele e responde."""
+        comando = " ".join([nome, *argumentos])
+        self._registrar_no_diario("inicio", f"{pedido['id']}: {comando} (estado do servidor, "
+                                            "aprovado pelo Adrian)", ref=pedido["id"])
+        try:
+            fazer, argumentos = acao_do_servidor(nome, argumentos)
             feito, ok = fazer(argumentos), True
         except Exception as exc:                              # noqa: BLE001
             feito, ok = f"{type(exc).__name__}: {exc}"[:300], False
         self._registrar_no_diario("ok" if ok else "erro", f"{pedido['id']}: {comando}: {feito}",
                                   ref=pedido["id"])
         historico = list(pedido.get("execucoes_feitas") or [])
-        historico.append({"nome": nome, "args": argumentos, "em": _iso(self.relogio()),
+        historico.append({"nome": nome, "args": list(argumentos), "em": _iso(self.relogio()),
                           "desfecho": ("conferido: " if ok else "não rodou: ") + feito})
         pedido["execucoes_feitas"] = historico[-MAX_EXECUCOES:]
         if not ok:
             self._encerrar(dados, pedido, ficha, feito, {
                 "tipo": "falhou", "fonte": "servidor",
                 "motivo": f"o servidor não conseguiu `{comando}`: {feito}"})
-            return True
+            return
         _linha(dados, pedido, f"o servidor executou `{comando}` e conferiu: {feito}")
+        self._fim_do_estado(dados, pedido, ficha, f"feito pelo servidor — {feito}", ok=True,
+                            executou=True)
+
+    def _fim_do_estado(self, dados, pedido, ficha, texto, *, ok, executou):
+        """Depois da permissao decidida: com codigo, a entrega ainda passa pelo
+        vigia e pelo conferente; sem codigo, respondido."""
         if arquivos_de_codigo(ficha):
-            # tambem mudou codigo: esse ainda passa pelo vigia e pelo conferente
-            self._encerrar(dados, pedido, ficha, self._resposta(pedido.get("trabalhador")),
-                           {"tipo": "feito", "fonte": "servidor", "motivo": ""})
-            return True
+            pedido.update(situacao="entregue", motivo=texto[:240], atualizado_em=_iso())
+            pedido["desfecho"] = {"tipo": "feito", "fonte": "servidor", "motivo": ""}
+            _linha(dados, pedido, texto + "; o código segue para o vigia e o conferente")
+            return
         pedido.update(situacao="respondido", motivo="", atualizado_em=_iso(),
-                      resposta=f"Feito pelo servidor: {feito}")
-        pedido["desfecho"] = {"tipo": "feito", "fonte": "servidor", "motivo": ""}
-        _linha(dados, pedido, "respondido: feito pelo servidor — " + feito, tipo="final")
-        self.avisar("🧭 Pedido respondido: feito pelo servidor — " + feito)
-        return True
+                      resposta=texto[0].upper() + texto[1:])
+        pedido["desfecho"] = {"tipo": "feito" if executou else None, "fonte": "servidor",
+                              "motivo": "" if executou else texto[:300]}
+        _linha(dados, pedido, "respondido: " + texto, tipo="final")
+        self._avisar(pedido, "🧭 Pedido respondido", texto)
+
 
     def _resposta(self, ident):
         if not ident:
@@ -1631,7 +2191,7 @@ class MesaPedidos:
         trabalhador = pedido["trabalhador"]
         ficha = self._estado_do(trabalhador)
         if not ficha:
-            pedido.update(trabalhador=None, contratos=int(pedido.get("contratos") or 0) + 1)
+            self._substituir_trabalhador(dados, pedido, None)
             return
         situacao = self._situacao_do(ficha)
         if situacao == "rodando":
@@ -1679,15 +2239,17 @@ class MesaPedidos:
         elif not self._pode_tentar(pedido):
             return
         pedido["tentou_em"] = _iso(self.relogio())
+        if ficha.get("limpo"):
+            # o `delegar` recusa para sempre: nunca um "recusado:" por pulso
+            self._substituir_trabalhador(dados, pedido, ficha)
+            return
         if ficha.get("ia") == "claude":
             motivo = self._motivo_claude()
             if motivo:
-                if _construir(pedido["texto"]):
+                if _construir(texto_do_adrian(pedido)):
                     # o Codex assume: um trabalhador novo, a worktree do
                     # Claude fica como estava (o diff dela nao se perde)
-                    pedido.update(trabalhador=None,
-                                  contratos=int(pedido.get("contratos") or 0) + 1,
-                                  tentou_em=None, ia_forcada="codex")
+                    self._trocar_trabalhador(pedido, tentou_em=None, ia_forcada="codex")
                     self._esperar(dados, pedido, motivo + "; o Codex assume")
                 else:
                     self._esperar(dados, pedido, motivo)
@@ -1695,64 +2257,119 @@ class MesaPedidos:
         if pedido.get("continuar"):
             self._continuar(dados, pedido, ficha)
             return
+        self._recusa_do_relancamento(dados, pedido, trabalhador)
         if int(pedido.get("retomadas") or 0) >= MAX_RETOMADAS:
             # o mesmo trabalhador caiu de novo e de novo: nao fica girando
             # para sempre gastando a janela; o Adrian ve e decide
+            recusa = str(pedido.get("ultima_recusa") or "")
             pedido.update(situacao="falhou", atualizado_em=_iso(),
-                          motivo=f"caiu {MAX_RETOMADAS} vezes: " + str(pedido.get("motivo") or "?")[:200])
+                          motivo=(f"caiu {MAX_RETOMADAS} vezes: "
+                                  + str(pedido.get("motivo") or "?")[:160]
+                                  + (f" (o despachante recusou: {recusa[:120]})" if recusa
+                                     else ""))[:300])
             _linha(dados, pedido, "falhou: " + pedido["motivo"], tipo="final")
-            self.avisar("❌ Pedido parado: " + pedido["motivo"])
+            self._avisar(pedido, "❌ Pedido parado", pedido["motivo"])
             return
         pedido["retomadas"] = int(pedido.get("retomadas") or 0) + 1
         concedida = (situacao == "criado"
                      and str(ficha.get("motivo") or "").startswith("permissao concedida:"))
-        try:
-            self.despachante.no_fundo(["retomar" if concedida else "rodar", "--id", trabalhador],
-                                      trabalhador)
-        except Exception as exc:
-            self._esperar(dados, pedido, "retomada: " + str(exc)[:200])
-            return
-        pedido.update(situacao="trabalhando", motivo="", atualizado_em=_iso())
-        _linha(dados, pedido, "trabalhador retomado")
+        pedido.update(fundo_offset=self._tamanho_do_fundo(trabalhador), relancado=True)
+        argv = ["retomar" if concedida else "rodar", "--id", trabalhador]
+        despachante = self.despachante
+
+        def depois(dados, pedido, _resultado, erro):
+            if erro is not None:
+                self._esperar(dados, pedido, "retomada: " + str(erro)[:200])
+                return
+            pedido.update(situacao="trabalhando", motivo="", atualizado_em=_iso())
+            if not pedido.get("recusando"):
+                # com o despachante recusando, a tentativa nova nao vira linha a
+                # cada 2 min; a linha sai quando a recusa mudar ou ele rodar
+                _linha(dados, pedido, "trabalhador retomado")
+
+        self._lento(dados, pedido, lambda: despachante.no_fundo(argv, trabalhador), depois,
+                    f"relançando {trabalhador}")
 
     def _continuar(self, dados, pedido, ficha):
         """A continuacao do Adrian vai ao MESMO trabalhador, no fundo."""
         trabalhador = pedido["trabalhador"]
-        if ficha.get("aplicado"):
+        cobranca = self._em_cobranca(pedido)
+        sem_conversa = ficha.get("ia") == "codex" and not ficha.get("thread_id")
+        if cobranca and sem_conversa:
+            # um `rodar` refaria a tarefa inteira so pela linha: nao cobra
+            original = str(pedido.get("resposta_cobrada") or "") or self._resposta(trabalhador)
+            pedido.update(continuar=False, continuar_em=None, resposta_cobrada=None)
+            _marcar_entregue(pedido)
+            pedido["desfecho"] = {"tipo": None, "fonte": "sem_linha", "motivo": SEM_DESFECHO}
+            self._bloquear(dados, pedido, SEM_DESFECHO, original, prefixo="")
+            return
+        if ficha.get("aplicado") and not cobranca:
             # a entrega dele ja esta na arvore principal (e o `aplicar` nao
             # reaplica): a continuacao vai a um trabalhador novo, que parte do
-            # HEAD com a mudanca e recebe o pedido inteiro
-            pedido.update(trabalhador=None, conferente=None, continuar=False,
-                          continuar_em=None, tentou_em=None, situacao="recebido",
-                          contratos=int(pedido.get("contratos") or 0) + 1)
+            # HEAD com a mudanca e recebe o pedido inteiro, com a historia
+            self._trocar_trabalhador(pedido, conferente=None, continuar=False,
+                                     continuar_em=None, tentou_em=None, situacao="recebido")
             _linha(dados, pedido, "a entrega anterior já foi aplicada; a continuação "
                                   "vai a um orquestrador novo com o pedido inteiro")
             return
         caminho = self.despachante.pasta_da(trabalhador) / "continuacao.md"
         caminho.parent.mkdir(parents=True, exist_ok=True)
-        # o Claude abre sessao nova a cada rodada: leva o pedido inteiro
-        caminho.write_text("O Adrian continuou o pedido. Pedido inteiro, com as "
-                           "continuações:\n\n" + pedido["texto"]
-                           + "\n\nAtenda a ÚLTIMA continuação, sem desfazer o que já fez.",
-                           encoding="utf-8")
-        if ficha.get("ia") == "codex" and not ficha.get("thread_id"):
+        if cobranca:
+            # conferente 5 (c6): o Claude abre sessao nova a cada rodada; sem a
+            # resposta original, declararia o desfecho de um trabalho que nao viu
+            aviso = ("O pedido já foi feito e a sua entrega JÁ FOI APLICADA na árvore principal. "
+                     "NÃO mude arquivo nenhum (uma mudança nova não seria aplicada).\n\n"
+                     if ficha.get("aplicado") else "")
+            texto = (aviso + "Pedido:\n\n" + pedido["texto"] + "\n\nA sua mensagem final foi:\n\n"
+                     + str(pedido.get("resposta_cobrada") or "(vazia)") + "\n\n"
+                     + COBRAR_DESFECHO)
+        else:
+            texto = self._texto_da_continuacao(pedido)
+        caminho.write_text(texto, encoding="utf-8")
+        _marcar_entregue(pedido)
+        if sem_conversa:
             argv = ["rodar", "--id", trabalhador]     # sem conversa para continuar
         else:
             argv = ["corrigir", "--id", trabalhador, "--texto", str(caminho)]
-        try:
-            self.despachante.no_fundo(argv, trabalhador)
-        except Exception as exc:
-            self._esperar(dados, pedido, "continuação: " + str(exc)[:200])
-            return
-        if pedido.get("conferente"):
-            pedido["conferente"] = None       # a entrega vai mudar: confere de novo
-        primeira = not pedido.get("continuar_em")
-        # `continuar` so cai quando o trabalhador estiver rodando (_acompanhar)
-        pedido.update(situacao="trabalhando", continuar_em=_iso(self.relogio()),
-                      atualizado_em=_iso())
-        if primeira:
-            pedido["motivo"] = ""
-            _linha(dados, pedido, "continuação entregue ao mesmo orquestrador")
+        despachante = self.despachante
+
+        def depois(dados, pedido, _resultado, erro):
+            if erro is not None:
+                self._esperar(dados, pedido, "continuação: " + str(erro)[:200])
+                return
+            if pedido.get("conferente"):
+                pedido["conferente"] = None       # a entrega vai mudar: confere de novo
+            primeira = not pedido.get("continuar_em")
+            # `continuar` so cai quando o trabalhador estiver rodando (_acompanhar)
+            pedido.update(situacao="trabalhando", continuar_em=_iso(self.relogio()),
+                          atualizado_em=_iso())
+            if primeira:
+                pedido["motivo"] = ""
+                _linha(dados, pedido, "continuação entregue ao mesmo orquestrador")
+
+        self._lento(dados, pedido, lambda: despachante.no_fundo(argv, trabalhador), depois,
+                    f"continuação para {trabalhador}")
+
+    @staticmethod
+    def _texto_da_continuacao(pedido) -> str:
+        """O continuacao.md: o Claude abre sessao nova a cada rodada, entao leva
+        o pedido inteiro (o que o Adrian escreveu), o que o servidor devolveu e,
+        por ultimo, a mensagem que vale agora."""
+        notas = [str(n) for n in pedido.get("do_servidor") or []]
+        partes = ["O pedido continua. Pedido inteiro (o que o Adrian escreveu, com as "
+                  "continuações dele):\n\n" + pedido["texto"]]
+        if notas:
+            partes.append("O que o servidor devolveu neste pedido (em ordem):\n\n"
+                          + "\n\n---\n\n".join(notas))
+        if pedido.get("continuar_de") == "servidor" and notas:
+            agora, de = notas[-1], "do servidor"
+        else:
+            agora, de = str(pedido.get("ultima_continuacao") or ""), "do Adrian"
+        if agora:
+            partes.append(f"A ÚLTIMA mensagem ({de}), a que vale agora:\n\n{agora}")
+        partes.append("Atenda a ÚLTIMA mensagem, sem desfazer o que já fez, e termine com a "
+                      "linha DESFECHO.")
+        return "\n\n".join(partes)
 
     # ------------------------------------------------------------ conferir
     def _conferir(self, dados, pedido):
@@ -1787,7 +2404,8 @@ class MesaPedidos:
                      + trabalhador + "), JÁ APLICADA nesta worktree: "
                      + ", ".join((ficha.get("aplicado") or {}).get("arquivos") or [])
                      + ".\n\nO pedido do Adrian:\n\n" + pedido["texto"][:20_000]
-                     + "\n\nA resposta do trabalhador:\n\n" + self._resposta(trabalhador)[:20_000]
+                     + "\n\nA resposta do trabalhador:\n\n"
+                     + (str(pedido.get("resposta") or "") or self._resposta(trabalhador))[:20_000]
                      + "\n\nDevolva APROVADO ou DEFEITOS (com a lista) na sua mensagem final; "
                        "não crie arquivo resposta.md (nem outro) na worktree.")
             if ia == "codex":
@@ -1796,32 +2414,40 @@ class MesaPedidos:
                 except Exception:
                     pass
             caminho.write_text(corpo, encoding="utf-8")
-            try:
-                self.despachante.criar(ident, caminho, PERMITIDOS[:3], ia=ia,
-                                       cargo="conferente", titulo="Conferir " + pedido["id"])
-                self.despachante.no_fundo(["rodar", "--id", ident], ident)
-            except Exception as exc:
-                self._esperar_conferente(dados, pedido, str(exc)[:200])
-                return
-            pedido.update(conferente=ident, motivo="")
-            _linha(dados, pedido, f"aplicado; conferente ({ia}) olhando")
+            despachante, titulo = self.despachante, "Conferir " + pedido["id"]
+
+            def contratar_conferente():
+                despachante.criar(ident, caminho, PERMITIDOS[:3], ia=ia, cargo="conferente",
+                                  titulo=titulo)
+                despachante.no_fundo(["rodar", "--id", ident], ident)
+
+            def depois(dados, pedido, _resultado, erro):
+                if erro is not None:
+                    self._esperar_conferente(dados, pedido, str(erro)[:200])
+                    return
+                pedido.update(conferente=ident, motivo="")
+                _linha(dados, pedido, f"aplicado; conferente ({ia}) olhando")
+
+            self._lento(dados, pedido, contratar_conferente, depois, f"contratando o conferente "
+                                                                     f"({ident})")
             return
         pedido["conferente"] = ident
         situacao = self._situacao_do(conf)
         if situacao == "terminou":
             resposta = self._resposta(ident)
             if _aprovado(resposta):
+                do_trabalhador = str(pedido.get("resposta") or "") or self._resposta(trabalhador)
                 pedido.update(situacao="conferido", motivo="", resposta=resposta[:1000],
                               atualizado_em=_iso())
-                final = (self._resposta(trabalhador).strip()[:400] or "pronto")
+                final = (_resumo(do_trabalhador, 400) or "pronto")
                 _linha(dados, pedido, "conferido: " + final, tipo="final")
-                self.avisar("✅ Pedido conferido: " + final)
+                self._avisar(pedido, "✅ Pedido conferido", final)
             else:
                 pedido.update(situacao="falhou", motivo="o conferente apontou defeitos",
                               resposta=resposta[:1000], atualizado_em=_iso())
                 _linha(dados, pedido, "o conferente apontou defeitos: "
                        + (resposta.strip()[:400] or "(sem resposta)"), tipo="final")
-                self.avisar("❌ Pedido com defeitos: " + (resposta.strip()[:400] or "?"))
+                self._avisar(pedido, "❌ Pedido com defeitos", resposta.strip()[:400] or "?")
             return
         if situacao in ("rodando", "criado"):
             return
@@ -1839,10 +2465,14 @@ class MesaPedidos:
         if motivo:
             self._esperar_conferente(dados, pedido, motivo)
             return
-        try:
-            self.despachante.no_fundo(["rodar", "--id", ident], ident)
-        except Exception as exc:
-            self._esperar_conferente(dados, pedido, str(exc)[:200])
+        despachante = self.despachante
+
+        def depois(dados, pedido, _resultado, erro):
+            if erro is not None:
+                self._esperar_conferente(dados, pedido, str(erro)[:200])
+
+        self._lento(dados, pedido, lambda: despachante.no_fundo(["rodar", "--id", ident], ident),
+                    depois, f"relançando o conferente ({ident})")
 
     def _esperar_conferente(self, dados, pedido, motivo):
         """Continua "entregue" (o pulso volta ao conferente), com o motivo."""
@@ -1870,6 +2500,11 @@ class MesaPedidos:
             no = itens.get(ev["id"]) or {}
             opcao = next((o for o in no.get("opcoes") or [] if o.get("id") == ev.get("opcao")), {})
             ref = f"{ev.get('projeto')}/{ev['id']}"
+            if str(opcao.get("acao_servidor") or "").strip():
+                # v2: a escolha ESTRUTURADA manda o servidor agir; ninguem e
+                # contratado e nenhuma frase e interpretada
+                criados.append(self._acao_do_grimorio(ev, no, opcao, ref, marcar))
+                continue
             # Lacuna 2: um pedido PERGUNTOU isto e esta parado esperando: a
             # resposta volta a ele, e nao abre um pedido novo
             retomado = self._retomar_com_resposta(ev, no, opcao)
@@ -1908,44 +2543,149 @@ class MesaPedidos:
             criados.append(pedido["id"])
         return criados
 
+    def _acao_do_grimorio(self, ev, no, opcao, ref, marcar):
+        """A opcao escolhida tem `acao_servidor` ("gerente ligar"): o servidor
+        executa pela lista branca, rele para conferir, responde ao Adrian e
+        marca a resposta como lida. Devolve o id do pedido que registrou.
+
+        A mesma resposta nao roda duas vezes neste processo, mesmo se marcar
+        falhar (a acao e idempotente, mas o aviso repetido seria barulho)."""
+        # conferente 5 (grim_real): o `em` e por segundo; "deixar" e logo
+        # "ligar" no mesmo segundo davam a MESMA chave, e a segunda escolha
+        # nunca rodava nem ficava lida. A linha (`n`) do eventos.jsonl separa.
+        chave = (ref, str(ev.get("em") or ""), str(ev.get("n") or ev.get("linha") or ""))
+        feitas = self._acoes_do_grimorio
+        if chave in feitas:
+            return feitas[chave]
+        acao = str(opcao.get("acao_servidor") or "").strip()
+        rotulo = ev.get("opcao_rotulo") or opcao.get("rotulo") or ev.get("opcao")
+        try:
+            nome, argumentos = ler_acao_servidor(acao)
+            fazer, argumentos = acao_do_servidor(nome, argumentos)
+            comando = " ".join([nome, *argumentos])
+        except ValueError as exc:
+            fazer, comando, invalida = None, acao, str(exc)
+        else:
+            invalida = ""
+        self._registrar_no_diario("inicio", f"{ref}: {comando} (escolha do Grimório)", ref=ref)
+        if fazer is None:
+            feito, ok = f"a ação do nó não vale: {invalida}", False
+        else:
+            try:
+                feito, ok = fazer(argumentos), True
+            except Exception as exc:                          # noqa: BLE001
+                feito, ok = f"{type(exc).__name__}: {exc}"[:300], False
+        self._registrar_no_diario("ok" if ok else "erro", f"{ref}: {comando}: {feito}", ref=ref)
+        resultado = (f"O servidor executou `{comando}` e conferiu: {feito}" if ok else
+                     f"O servidor NÃO conseguiu `{comando}`: {feito}")
+        retomado = self._retomar_com_resposta(ev, no, opcao, extra=resultado)
+        with _TRAVA:
+            dados = _ler()
+            if retomado:
+                pedido = next(p for p in dados["pedidos"] if p["id"] == retomado)
+            else:
+                ident = "pedido-" + uuid.uuid4().hex[:8]
+                agora = _iso()
+                pedido = {"id": ident, "origem": "grimorio",
+                          "texto": (f"O Adrian respondeu no Grimório ({ref}): "
+                                    f"«{ev.get('titulo') or no.get('titulo') or ''}»\n"
+                                    f"Escolheu: {rotulo} (ação do servidor: `{acao}`)"),
+                          "situacao": "respondido" if ok else "falhou",
+                          "motivo": "" if ok else resultado[:240], "trabalhador": None,
+                          "conferente": None, "ia": None, "contratos": 0, "criado_em": agora,
+                          "atualizado_em": agora, "ultimo_evento_em": agora, "mensagens": 1,
+                          "resposta": resultado[:1000], "grimorio_acao": comando,
+                          "desfecho": {"tipo": "feito" if ok else "falhou",
+                                       "fonte": "servidor", "motivo": "" if ok else feito[:300]}}
+                dados["pedidos"].append(pedido)
+                dados["pedidos"] = dados["pedidos"][-100:]
+                _linha(dados, pedido, pedido["texto"], de="adrian", origem="grimorio",
+                       tipo="pedido")
+                _linha(dados, pedido, ("respondido: " if ok else "falhou: ") + resultado,
+                       tipo="final")
+            historico = list(pedido.get("execucoes_feitas") or [])
+            historico.append({"nome": comando.split()[0] if comando else "?",
+                              "args": comando.split()[1:], "em": _iso(self.relogio()),
+                              "desfecho": ("conferido: " if ok else "não rodou: ") + feito,
+                              "origem": "grimorio"})
+            pedido["execucoes_feitas"] = historico[-MAX_EXECUCOES:]
+            _gravar(dados)
+        self.avisar((f"🧭 Grimório ({ref}): você escolheu «{rotulo}»; " if ok
+                     else f"❌ Grimório ({ref}): você escolheu «{rotulo}», mas ")
+                    + resultado[0].lower() + resultado[1:])
+        nota = ("lida pelo servidor; executou `" + comando + "` e conferiu" if ok
+                else "lida pelo servidor; a ação `" + comando + "` falhou: " + feito[:120])
+        try:
+            marcar(ref, [f"tarefa:{pedido['id']}"], nota=nota, origem="leitor")
+        except Exception as exc:                              # noqa: BLE001
+            with _TRAVA:
+                dados = _ler()
+                alvo = next((p for p in dados["pedidos"] if p["id"] == pedido["id"]), None)
+                if alvo:
+                    _linha(dados, alvo, f"não consegui marcar {ref} como lida: {exc}")
+                    _gravar(dados)
+        feitas[chave] = pedido["id"]
+        return pedido["id"]
+
     def passo(self):
         try:
             self.ler_grimorio()
         except Exception as exc:                              # noqa: BLE001
             self.avisar(f"⚠ não consegui ler o Grimório: {exc}")
+        dono = uuid.uuid4().hex[:12]
         with _TRAVA:
             dados = _ler()
-            for pedido in dados["pedidos"]:
-                situacao = pedido.get("situacao")
-                if situacao in FINAIS:
-                    continue
-                try:
-                    if situacao == "parado_limite":
-                        self._cuidar_do_limite(dados, pedido)
-                    elif situacao == "esperando_voce":
-                        self._cuidar_do_grimorio(dados, pedido)
-                    elif situacao == "executando":
-                        self._andar_execucao(dados, pedido)
-                    elif not pedido.get("trabalhador"):
-                        self._contratar(dados, pedido)
-                    elif situacao == "trabalhando":
-                        if pedido.get("continuar"):
-                            ficha = self._estado_do(pedido["trabalhador"]) or {}
-                            if self._situacao_do(ficha) not in ("rodando", "criado"):
-                                self._retomar(dados, pedido)
-                                continue
-                        self._acompanhar(dados, pedido)
-                    elif situacao in ("esperando", "recebido"):
-                        self._retomar(dados, pedido)
-                    elif situacao == "entregue":
-                        if pedido.get("continuar"):
-                            self._retomar(dados, pedido)
-                        else:
-                            self._conferir(dados, pedido)
-                except Exception as exc:    # um pedido ruim nao para os outros
-                    self._esperar(dados, pedido, f"erro interno ({type(exc).__name__}: {exc})")
+            self._dono, self._fila_lenta = dono, []
+            try:
+                self._andar_os_pedidos(dados)
+            finally:
+                fila, self._fila_lenta = self._fila_lenta, None
             _gravar(dados)
+        if not fila:
             return dados
+        # fora da trava: o Responder do app (outro processo) nao espera o
+        # `git worktree add` nem a abertura do despachante
+        feitos = self._rodar_os_lentos(fila)
+        with _TRAVA:
+            dados = _ler()
+            self._gravar_os_lentos(dados, feitos, dono)
+            _gravar(dados)
+        return dados
+
+    def _andar_os_pedidos(self, dados):
+        """Uma passada pelos pedidos vivos, com a trava na mao. O lento fica na
+        fila (`_lento`) para depois de solta-la."""
+        for pedido in dados["pedidos"]:
+            situacao = pedido.get("situacao")
+            if situacao in FINAIS:
+                continue
+            try:
+                if situacao == "contratando":
+                    self._contratando_parado(dados, pedido)
+                elif situacao == "parado_limite":
+                    self._cuidar_do_limite(dados, pedido)
+                elif situacao == "esperando_voce":
+                    self._cuidar_do_grimorio(dados, pedido)
+                elif situacao == "executando":
+                    self._andar_execucao(dados, pedido)
+                elif not pedido.get("trabalhador"):
+                    self._contratar(dados, pedido)
+                elif situacao == "trabalhando":
+                    if pedido.get("continuar"):
+                        ficha = self._estado_do(pedido["trabalhador"]) or {}
+                        if self._situacao_do(ficha) not in ("rodando", "criado"):
+                            self._retomar(dados, pedido)
+                            continue
+                    self._acompanhar(dados, pedido)
+                elif situacao in ("esperando", "recebido"):
+                    self._retomar(dados, pedido)
+                elif situacao == "entregue":
+                    if pedido.get("continuar"):
+                        self._retomar(dados, pedido)
+                    else:
+                        self._conferir(dados, pedido)
+            except Exception as exc:    # um pedido ruim nao para os outros
+                self._esperar(dados, pedido, f"erro interno ({type(exc).__name__}: {exc})")
 
     def reabrir(self, ident, motivo="reaberto", continuacao=None):
         """Devolve um pedido encerrado (ou parado) para "esperando", com as
@@ -1962,12 +2702,24 @@ class MesaPedidos:
             pedido = next((p for p in dados["pedidos"] if p.get("id") == ident), None)
             if pedido is None:
                 raise KeyError(f"não há o pedido {ident}")
-            if pedido.get("situacao") in ("trabalhando", "executando"):
+            if pedido.get("situacao") in ("trabalhando", "executando", "contratando"):
                 raise ValueError(f"{ident} está {pedido['situacao']}; nada a reabrir")
             antes = pedido.get("situacao")
+            pe = pedido.get("permissao_estado")
+            if pe:
+                # reaberto sem a decisao dele: a permissao do estado do
+                # servidor nao fica pendente sem dono; nada e executado
+                ficha = self._estado_do(pe.get("trabalhador")) or {}
+                if ficha.get("situacao") == "aguardando_permissao":
+                    try:
+                        self.despachante.decidir_permissao(pe.get("trabalhador"), False)
+                    except Exception as exc:                  # noqa: BLE001
+                        _linha(dados, pedido, f"não consegui negar a permissão pendente: {exc}")
+                _linha(dados, pedido, f"reaberto: `{pe.get('comando')}` não foi executado")
             pedido.update(situacao="esperando", motivo="", retomadas=0, tentou_em=None,
                           conf_tentou_em=None, continuar_em=None, bloqueio=None,
-                          grimorio_ref=None, grimorio_via=None, atualizado_em=_iso())
+                          grimorio_ref=None, grimorio_via=None, permissao_estado=None,
+                          desfecho_cobrado=False, resposta_cobrada=None, atualizado_em=_iso())
             if antes == "falhou" and pedido.get("conferente"):
                 pedido["conferente"] = None      # defeitos: confere de novo do zero
             _linha(dados, pedido, f"{motivo} (estava {antes}); o pulso retoma o mesmo "
@@ -1983,7 +2735,10 @@ class MesaPedidos:
                                + "): segue pelo caminho novo")
                     except Exception as exc:                  # noqa: BLE001
                         _linha(dados, pedido, f"não consegui negar a permissão pendente: {exc}")
-                self._devolver(dados, pedido, str(continuacao).strip())
+                # quem reabre com continuacao e o Adrian (ou a sessao dele) pela
+                # linha de comando: e texto DELE, nao do servidor
+                self._devolver(dados, pedido, str(continuacao).strip(), do_adrian=True)
+                _anotar_do_adrian(pedido, str(continuacao).strip())
                 _linha(dados, pedido, str(continuacao).strip(), tipo="pedido")
             _gravar(dados)
             return dict(pedido)
@@ -2011,12 +2766,15 @@ class MesaPedidos:
                                       "deste pedido: " + " | ".join(soltas)[:300])
             resposta = self._resposta(trabalhador)
             desfecho = ler_desfecho(resposta)
-            _linha(dados, pedido, f"reavaliado pela regra do desfecho (estava entregue; "
-                                  f"a resposta diz: {desfecho['tipo']})")
-            if desfecho["tipo"] != "feito":
+            _linha(dados, pedido, "reavaliado pela regra do desfecho (estava entregue; a última "
+                                  "linha diz: " + (desfecho["tipo"] or "nada — sem a linha") + ")")
+            if desfecho["fonte"] == "sem_linha":
+                pedido["desfecho"] = {"tipo": None, "fonte": "sem_linha", "motivo": SEM_DESFECHO}
+                self._bloquear(dados, pedido, SEM_DESFECHO, resposta, prefixo="")
+            elif desfecho["tipo"] != "feito":
                 self._encerrar(dados, pedido, ficha, resposta, desfecho)
             else:
-                pedido["desfecho"] = {"tipo": "feito", "fonte": desfecho["fonte"], "motivo": ""}
+                pedido["desfecho"] = {"tipo": "feito", "fonte": "linha", "motivo": ""}
             _gravar(dados)
             return dict(pedido)
 
@@ -2039,6 +2797,12 @@ class MesaPedidos:
         dados = _ler()
         pedidos = [{k: v for k, v in p.items() if k != "resposta"}
                    for p in reversed(dados["pedidos"])][:40]
+        for p in pedidos:
+            pe = p.get("permissao_estado")
+            if isinstance(pe, dict):
+                # o app so mostra Permitir/Negar enquanto a ficha espera; ja
+                # decidida, o pulso executa (ou registra o "negou") em segundos
+                p["permissao_estado"] = dict(pe, pendente=self._permissao_pendente(pe, p))
         return {"pedidos": pedidos, "conversa": dados["conversa"][-120:],
                 "novo_assunto": bool(dados.get("novo_assunto")),
                 "na_fila": sum(1 for p in pedidos if p.get("situacao") in VIVOS)}
@@ -2063,8 +2827,8 @@ def _ligar_producao():
         MESA.diario = None
 
 
-def registrar(texto, origem="app", *, novo=False):
-    return MESA.registrar(texto, origem, novo=novo)
+def registrar(texto, origem="app", *, novo=False, responde_a=None):
+    return MESA.registrar(texto, origem, novo=novo, responde_a=responde_a)
 
 
 def reabrir(ident, motivo="reaberto", continuacao=None):

@@ -35,12 +35,76 @@ def test_texto_livre_vira_pedido_do_orquestrador(cerebro):
     lista = pedidos.para_o_app()["pedidos"]
     assert [(p["texto"], p["origem"]) for p in lista] == [
         ("reinicia o carteiro, por favor", "telegram")]
+    # 05/10 (conferente 3): texto solto nunca gruda; continuar e explicito
+    primeiro = lista[0]["id"]
+    assert primeiro in resposta and "/responder" in resposta
     resposta, _ = comandos.executar("e o bot também")
-    assert "MESMO orquestrador" in resposta
-    assert len(pedidos.para_o_app()["pedidos"]) == 1
-    assert "assunto novo" in comandos.executar("/novo")[0]
-    comandos.executar("outra coisa")
+    assert "pedido novo" in resposta
     assert len(pedidos.para_o_app()["pedidos"]) == 2
+    curto = primeiro[len("pedido-"):]
+    resposta, _ = comandos.executar(f"/responder {curto} e reinicia o app junto")
+    assert resposta.startswith(f"🧭 continuação enviada ao pedido {primeiro}")
+    assert "reinicia o carteiro" in resposta                # diz DE QUAL pedido
+    assert len(pedidos.para_o_app()["pedidos"]) == 2
+    alvo = next(p for p in pedidos.para_o_app()["pedidos"] if p["id"] == primeiro)
+    assert alvo["continuar"] is True and "e reinicia o app junto" in alvo["texto"]
+    assert "não há o pedido" in comandos.executar("/responder ffffffff oi")[0]
+    assert "use: /responder" in comandos.executar("/responder")[0]
+    assert "pedido novo" in comandos.executar("/novo")[0]
+
+
+def test_responder_com_quebra_de_linha_depois_do_id(cerebro):
+    """Conferente 4: "/responder 7c727778" + quebra de linha + texto virava o
+    id "pedido-7c727778\\nja" ("não há o pedido")."""
+    from coordenador import pedidos
+    comandos.executar("reinicia o carteiro, por favor")
+    primeiro = pedidos.para_o_app()["pedidos"][0]["id"]
+    curto = primeiro[len("pedido-"):]
+    for separador in ("\n", "\t", "  \n "):
+        resposta, _ = comandos.executar(f"/responder {curto}{separador}já loguei no Drive")
+        assert resposta.startswith(f"🧭 continuação enviada ao pedido {primeiro}"), resposta
+    alvo = next(p for p in pedidos.para_o_app()["pedidos"] if p["id"] == primeiro)
+    assert alvo["ultima_continuacao"] == "já loguei no Drive"
+    assert "use: /responder" in comandos.executar(f"/responder {curto}\n")[0]
+
+
+@pytest.mark.parametrize("texto", ["ok", "valeu", "obrigado", "beleza"])
+def test_mensagem_curta_no_telegram_nao_abre_pedido(cerebro, texto):
+    """Conferente 4: "ok" respondia "recebido como pedido novo" e contratava um
+    orquestrador pago. Agradecimento solto (lista fixa, conferente 5): o
+    retrato e o lembrete do /responder."""
+    from coordenador import pedidos
+    resposta, _ = comandos.executar(texto)
+    assert resposta.startswith("🧭 Agradecimento solto (ok, valeu, obrigado, beleza) não abre pedido"), resposta
+    assert "/responder" in resposta and "pedido novo (" not in resposta
+    assert [p.get("conversa") for p in pedidos.para_o_app()["pedidos"]] == [True]
+
+
+@pytest.mark.parametrize("texto", ["já loguei", "e o gerente?", "reinicie o app",
+                                   "pode ligar o gerente?"])
+def test_texto_curto_fora_da_lista_fixa_e_pedido_no_telegram(cerebro, texto):
+    """Conferente 5 (05/10/2026): o "curto" por contagem de palavras engolia
+    pedidos de verdade. So a lista fixa e conversa; o resto e pedido."""
+    from coordenador import pedidos
+    resposta, _ = comandos.executar(texto)
+    assert resposta.startswith("🧭 recebido como pedido novo"), resposta
+    assert [p.get("conversa") for p in pedidos.para_o_app()["pedidos"]] == [None]
+
+
+@pytest.mark.parametrize("texto", ["qual o progresso?", "Coordenador?", "oi",
+                                   "bom dia coordenador, qual o progresso?"])
+def test_conversa_solta_no_telegram_devolve_o_retrato(cerebro, texto):
+    """Conferente 3 (05/10/2026): o bot respondia "um orquestrador vai atender"
+    a "qual o progresso?", que nasce respondido sem orquestrador, e o retrato
+    ia ao `avisar` vazio do processo do bot. Agora o retrato e a resposta."""
+    from coordenador import pedidos
+    comandos.executar("corrija o X do aplicativo agora")
+    resposta, _ = comandos.executar(texto)
+    assert resposta.startswith("🧭 Retrato do servidor"), resposta
+    assert "orquestrador do servidor vai atender" not in resposta
+    assert "corrija o X" in resposta                        # o pedido aberto aparece
+    situacoes = sorted(p["situacao"] for p in pedidos.para_o_app()["pedidos"])
+    assert situacoes == ["recebido", "respondido"]
 
 
 def test_comando_com_barra_continua_igual(cerebro, monkeypatch):

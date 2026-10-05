@@ -707,6 +707,12 @@ details.recolhido[open] > summary { margin-bottom: 8px; }
 .coord-escrever textarea { flex: 1; min-width: 0; font: inherit; padding: 6px; border-radius: 8px; }
 .coord-proposta { padding: 8px 0; border-top: 1px solid var(--linha); overflow-wrap: anywhere; }
 .coord-proposta:first-child { border-top: 0; }
+/* o Responder do pedido (05/10, v2): a resposta explícita vai a ESTE pedido */
+.pedido-responder { margin-top: 6px; }
+.pedido-responder .pedido-resposta { width: 100%; box-sizing: border-box; font: inherit;
+  font-size: 15px; padding: 7px; border-radius: 8px; border: 1px solid var(--linha);
+  background: var(--fundo); color: var(--texto); resize: vertical; min-height: 64px; }
+.pedido-responder .botoes { margin-top: 6px; }
 @media (prefers-color-scheme: dark) {
   .livro.coordenador { background: radial-gradient(ellipse at top, #344452, #1d252d); }
   .livro.coordenador .cartao { background: rgba(30, 33, 39, .96); }

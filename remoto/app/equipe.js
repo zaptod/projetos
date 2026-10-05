@@ -42,9 +42,17 @@ function equipePedidoPermissao(t) {
   permitir.addEventListener("click", () => decidir("permitir"));
   const negar = el("button", {class: "acao", type: "button"}, "❌ Negar");
   negar.addEventListener("click", () => decidir("negar"));
-  const sempre = el("button", {class: "acao", type: "button"}, "✅ Permitir sempre para este cargo");
-  sempre.addEventListener("click", () => decidir("permitir", true));
-  acoes.append(permitir, negar, sempre); linha.append(acoes);
+  acoes.append(permitir, negar);
+  if (p.categoria === "estado_do_servidor") {
+    // 05/10 (v2): mudar o estado do servidor é sempre com você; aprovado, o
+    // próprio servidor executa e confere (não relança o trabalhador)
+    acoes.append(el("span", {class: "fraco"}, "Aprovado, o servidor executa e confere."));
+  } else {
+    const sempre = el("button", {class: "acao", type: "button"}, "✅ Permitir sempre para este cargo");
+    sempre.addEventListener("click", () => decidir("permitir", true));
+    acoes.append(sempre);
+  }
+  linha.append(acoes);
   return linha;
 }
 

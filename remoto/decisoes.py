@@ -29,10 +29,20 @@ nem `add .` (outro agente pode ter arquivo no stage). O bloco de uma sessao
 so entra no commit se o arquivo nao tiver OUTRA mudanca por commitar. Commit
 que falha nao desfaz a decisao: ela vale, e o aviso diz que o commit ficou.
 
+ACAO DO SERVIDOR NA OPCAO. Uma opcao pode levar `acao_servidor` (terceiro
+campo: `--opcao "id=Rotulo|descricao|gerente ligar"`), validada contra a lista
+branca `coordenador.pedidos.ACOES_SERVIDOR` (gerente, renovacao, paralelo).
+O ultimo campo so e acao quando comeca pelo NOME de uma delas; senao e o resto
+da descricao, que pode ter "|" (`"Manter|usa A | B como hoje"`, como antes).
+Quando o Adrian ESCOLHE essa opcao, o servidor executa a acao na hora, rele o
+config para conferir, responde e marca a resposta como lida -- sem contratar
+trabalhador e sem ler texto livre (05/10/2026, pedido honesto v2).
+
     python -m remoto.decisoes listar [--projeto P] [--situacao S]
     python -m remoto.decisoes arvore [--projeto P]
     python -m remoto.decisoes adicionar --projeto P --titulo T --pergunta Q \\
         --opcao "Rotulo" --opcao "id=Rotulo|descricao" \\
+        --opcao "id=Rotulo|descricao|gerente ligar" \\
         [--midia "caminho|ROTULO"] [--copiar] [--depende "decisao=opcao"] \\
         [--contexto C] [--sem-comentario] [--id ID] [--commit]
     python -m remoto.decisoes responder <id> <opcao> [--comentario C] [--sem-commit]
@@ -298,29 +308,66 @@ def _slug(texto: str, limite: int = 40) -> str:
     return slug[:limite].strip("-") or "x"
 
 
+def acao_servidor_valida(texto: str) -> str:
+    """A `acao_servidor` de uma opcao ("gerente ligar"), normalizada, ou Recusa.
+
+    Conferida contra a lista branca do servidor (`coordenador.pedidos.
+    ACOES_SERVIDOR`): uma acao que o servidor nao executaria nao entra no no."""
+    from coordenador import pedidos               # o coordenador ja importa o remoto
+    try:
+        nome, argumentos = pedidos.ler_acao_servidor(texto)
+    except ValueError as exc:
+        raise Recusa(f"acao_servidor inválida ({texto!r}): {exc}") from exc
+    return " ".join([nome, *argumentos])
+
+
+def _parece_acao(campo: str) -> bool:
+    """O campo comeca pelo NOME de uma acao do servidor ("gerente ...")? Forma
+    fixa: a primeira palavra e uma chave de `coordenador.pedidos.ACOES_SERVIDOR`."""
+    from coordenador import pedidos
+    primeira = (str(campo or "").strip().split() or [""])[0].lower()
+    return primeira in pedidos.ACOES_SERVIDOR
+
+
 def _opcoes(brutas) -> list[dict]:
+    """As opcoes do no. Cada uma: "rotulo", "rotulo|descricao",
+    "id=rotulo|descricao" ou "id=rotulo|descricao|acao_servidor" (ou um dict
+    com essas chaves). Com `acao_servidor` (ex.: "gerente ligar"), escolher a
+    opcao faz o SERVIDOR executar a acao na hora (lista branca), sem
+    trabalhador nem interpretacao de texto (coordenador.pedidos, 05/10/2026)."""
     saida, vistos = [], set()
     for bruta in brutas or []:
         if isinstance(bruta, dict):
             rotulo = str(bruta.get("rotulo") or "").strip()
             descricao = str(bruta.get("descricao") or "").strip()
             opcao_id = str(bruta.get("id") or "").strip()
+            acao = str(bruta.get("acao_servidor") or "").strip()
         else:
             texto = str(bruta)
             opcao_id = ""
             if "=" in texto.split("|")[0]:
                 opcao_id, _, texto = texto.partition("=")
             rotulo, _, descricao = texto.partition("|")
-            rotulo, descricao = rotulo.strip(), descricao.strip()
+            rotulo, descricao, acao = rotulo.strip(), descricao.strip(), ""
+            # o ULTIMO campo so e acao quando comeca pelo nome de uma acao da
+            # lista branca (gerente, renovacao, paralelo); senao e o resto da
+            # descricao, que pode ter "|" como antes ("usa A | B como hoje").
+            # Comecou pelo nome e nao valida: Recusa alta, nunca silencio.
+            cabeca, barra, cauda = descricao.rpartition("|")
+            if barra and _parece_acao(cauda):
+                descricao, acao = cabeca.strip(), cauda.strip()
         if not rotulo:
             raise Recusa("opção sem rótulo")
         opcao_id = opcao_id.strip() or _slug(rotulo, 30)
         if not _ID.fullmatch(opcao_id) or opcao_id in vistos:
             raise Recusa(f"id de opção inválido ou repetido: {opcao_id}")
         vistos.add(opcao_id)
-        saida.append({"id": opcao_id, "rotulo": rotulo, "descricao": descricao,
-                      "desbloqueia": [],
-                      "pede_comentario": bool(_PEDE_COMENTARIO.search(rotulo))})
+        opcao = {"id": opcao_id, "rotulo": rotulo, "descricao": descricao,
+                 "desbloqueia": [],
+                 "pede_comentario": bool(_PEDE_COMENTARIO.search(rotulo))}
+        if acao:
+            opcao["acao_servidor"] = acao_servidor_valida(acao)
+        saida.append(opcao)
     if not saida:
         raise Recusa("a decisão precisa de pelo menos uma opção")
     return saida
@@ -1126,7 +1173,8 @@ def _publico(item: dict, itens: dict, leitura: dict | None = None) -> dict:
             "pergunta": item.get("pergunta", ""), "contexto": item.get("contexto", ""),
             "midias": midias,
             "opcoes": [{k: o.get(k) for k in ("id", "rotulo", "descricao",
-                                                "desbloqueia", "pede_comentario")}
+                                                "desbloqueia", "pede_comentario",
+                                                "acao_servidor")}
                        for o in item.get("opcoes") or []],
             "comentario": bool(item.get("comentario", True)),
             "depende_de": [{"decisao": d["decisao"], "opcao": d["opcao"],
@@ -1271,7 +1319,9 @@ def main(argv=None) -> int:
     add.add_argument("--pergunta", default="")
     add.add_argument("--contexto", default="")
     add.add_argument("--opcao", action="append", default=[],
-                     help='"rótulo", "rótulo|descrição" ou "id=rótulo|descrição"')
+                     help='"rótulo", "rótulo|descrição", "id=rótulo|descrição" ou '
+                          '"id=rótulo|descrição|ação" (ação do servidor da lista branca, '
+                          'ex.: "gerente ligar": escolhida, o servidor executa na hora)')
     add.add_argument("--midia", action="append", default=[],
                      help='"caminho" ou "caminho|RÓTULO" (repita)')
     add.add_argument("--copiar", action="store_true",

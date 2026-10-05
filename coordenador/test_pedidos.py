@@ -59,20 +59,47 @@ class DespachanteFalso:
     def parar(self, ident):
         self.parados.append(ident)
 
-    def terminar(self, ident, *, arquivos=1, resposta="feito", aplicado=True):
+    def terminar(self, ident, *, arquivos=1, resposta="feito", aplicado=True, desfecho="feito"):
+        """O trabalhador terminou. Como o prompt manda, a resposta acaba com a
+        linha DESFECHO (`desfecho`, so se ela ainda nao tiver); `desfecho=None`
+        e o trabalhador que esqueceu a linha (v2, 05/10/2026)."""
+        if desfecho is not None and pedidos.ler_desfecho(resposta)["fonte"] == "sem_linha":
+            resposta = f"{resposta}\nDESFECHO: {desfecho}"
         self.estados[ident].update(situacao="terminou", diff={"arquivos": arquivos},
                                    aplicado={"arquivos": ["remoto/x.py"]} if aplicado else None)
         (self.raiz / ident).mkdir(parents=True, exist_ok=True)
         (self.raiz / ident / "resposta.md").write_text(resposta, encoding="utf-8")
 
+    def registrar_pedido_permissao(self, ident, pedido):
+        """Como o `delegar.registrar_pedido_permissao`: a ficha para esperando a
+        decisao (o estado do servidor guarda a situacao de antes)."""
+        estado = self.estados[ident]
+        if estado.get("situacao") == "aguardando_permissao" and estado.get("pedido_permissao"):
+            return estado
+        pp = dict(pedido, regra="perguntar_ao_adrian", em=f"2026-10-03T10:2{len(self.decisoes)}:00")
+        if pp.get("categoria") == "estado_do_servidor":
+            pp["situacao_antes"] = estado.get("situacao") or "terminou"
+        estado.update(situacao="aguardando_permissao", pedido_permissao=pp,
+                      motivo="aguardando permissao: " + pp["o_que"])
+        return estado
+
     def decidir_permissao(self, ident, permitir, sempre=False):
         self.decisoes.append((ident, permitir))
-        pp = self.estados[ident].get("pedido_permissao") or {}
-        self.estados[ident].update(
+        estado = self.estados[ident]
+        pp = estado.get("pedido_permissao") or {}
+        estado["permissoes"] = list(estado.get("permissoes") or []) + [
+            {"pedido": pp, "decisao": "permitir" if permitir else "negar"}]
+        if pp.get("categoria") == "estado_do_servidor":
+            # como o delegar: a ficha volta ao que era, ninguem e relancado
+            estado.update(situacao=pp.get("situacao_antes") or "terminou", pedido_permissao=None,
+                          motivo=("permissao concedida: " if permitir else "permissao negada: ")
+                          + str(pp.get("o_que") or ""))
+            return estado
+        estado.update(
             situacao="criado" if permitir else "negado", pedido_permissao=None,
             motivo=("permissao concedida: " if permitir else "permissao negada: ")
             + str(pp.get("o_que") or ""))
-        return self.estados[ident]
+        return estado
 
     def cair_no_limite(self, ident, renova_em, *, codigo_saida=1):
         """A rodada como a de 04/10: inicio, rate_limit_event "rejected", o
@@ -143,10 +170,11 @@ def test_pedido_cria_orquestrador_com_o_texto(mesa):
     assert _pedido(mesa)["situacao"] == "trabalhando"
 
 
-def test_continuacao_vai_ao_mesmo_e_novo_assunto_abre_outro(mesa):
-    primeiro = mesa.registrar("corrija a tela")
+def test_continuacao_so_pelo_id_e_texto_solto_abre_outro(mesa):
+    """05/10 (conferente 3): texto solto nunca gruda; a continuacao e pelo id."""
+    primeiro = mesa.registrar("corrija a tela do app")
     mesa.passo()
-    mesmo = mesa.registrar("e confira no celular")
+    mesmo = mesa.registrar("e confira no celular", responde_a=primeiro["id"])
     assert mesmo["id"] == primeiro["id"] and mesmo["continuacao"] is True
     # rodando: a continuacao espera a rodada acabar (nunca roda no processo)
     mesa.passo()
@@ -156,16 +184,15 @@ def test_continuacao_vai_ao_mesmo_e_novo_assunto_abre_outro(mesa):
     ultimo = mesa.despachante.fundos[-1]
     assert ultimo[:3] == ["corrigir", "--id", primeiro["id"]]
     texto = (mesa.despachante.pasta_da(primeiro["id"]) / "continuacao.md").read_text(encoding="utf-8")
-    assert "corrija a tela" in texto and "e confira no celular" in texto
-    mesa.novo_assunto("telegram")
-    outro = mesa.registrar("construa outra coisa")
+    assert "corrija a tela do app" in texto and "e confira no celular" in texto
+    outro = mesa.registrar("construa outra coisa no app")
     assert outro["id"] != primeiro["id"] and outro["continuacao"] is False
     mesa.passo()
     assert [c[0] for c in mesa.despachante.criados] == [primeiro["id"], outro["id"]]
 
 
 def test_travado_espera_e_e_retomado(mesa):
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     mesa.relogio.andar(minutes=11)               # nenhum evento desde 10:19:30
     mesa.passo()
@@ -182,7 +209,7 @@ def test_travado_espera_e_e_retomado(mesa):
 
 
 def test_trabalhador_que_cai_sempre_vira_falhou(mesa):
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     for _ in range(pedidos.MAX_RETOMADAS + 2):
         mesa.despachante.estados[p["id"]].update(situacao="falhou", motivo="saiu com 1")
@@ -251,7 +278,7 @@ def test_claude_proibido_no_meio_de_construir_passa_ao_codex(mesa):
 
 
 def test_entrega_aplicada_vai_ao_conferente_e_o_final_chega_ao_telegram(mesa):
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     mesa.despachante.terminar(p["id"], aplicado=False, resposta="consertei X")
     mesa.passo()
@@ -262,7 +289,7 @@ def test_entrega_aplicada_vai_ao_conferente_e_o_final_chega_ao_telegram(mesa):
     mesa.passo()
     conf, kw, tarefa = mesa.despachante.criados[1]
     assert conf == "mesa-conf-" + p["id"] and kw["cargo"] == "conferente"
-    assert "corrija X" in tarefa and "consertei X" in tarefa
+    assert "corrija o defeito X do app" in tarefa and "consertei X" in tarefa
     mesa.despachante.terminar(conf, resposta="APROVADO: testes ok")
     mesa.passo()
     assert _pedido(mesa)["situacao"] == "conferido"
@@ -270,7 +297,7 @@ def test_entrega_aplicada_vai_ao_conferente_e_o_final_chega_ao_telegram(mesa):
 
 
 def test_conferente_com_defeitos_falha(mesa):
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     mesa.despachante.terminar(p["id"])
     mesa.passo()
@@ -282,27 +309,28 @@ def test_conferente_com_defeitos_falha(mesa):
 
 
 def test_so_resposta_sem_codigo_fica_respondido(mesa):
-    p = mesa.registrar("por que o vigia parou ontem?")
+    p = mesa.registrar("por que o vigia parou ontem à noite?")
     mesa.passo()
     mesa.despachante.terminar(p["id"], arquivos=0, aplicado=False, resposta="faltou disco")
     mesa.passo()
     assert _pedido(mesa)["situacao"] == "respondido"
     assert "faltou disco" in mesa.avisos[-1]
     # um pedido encerrado nao recebe continuacao: o proximo texto abre outro
-    assert mesa.registrar("outra coisa")["id"] != p["id"]
+    assert mesa.registrar("outra coisa para fazer agora")["id"] != p["id"]
 
 
 def test_continuacao_depois_de_aplicado_vai_a_um_orquestrador_novo(mesa):
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     mesa.despachante.terminar(p["id"], resposta="consertei X")      # o vigia ja aplicou
     mesa.passo()
-    mesa.registrar("agora faça Y também")
+    # v2: entregue so recebe a resposta EXPLICITA (o Responder do app)
+    assert mesa.registrar("agora faça Y também", responde_a=p["id"])["id"] == p["id"]
     mesa.passo()                       # o mesmo nao pode: o aplicar nao reaplica
     mesa.passo()
     novo, kw, tarefa = mesa.despachante.criados[-1]
     assert novo == p["id"] + "-1" and kw["cargo"] == "orquestrador"
-    assert "corrija X" in tarefa and "agora faça Y também" in tarefa
+    assert "corrija o defeito X do app" in tarefa and "agora faça Y também" in tarefa
 
 
 def test_veredito_e_a_primeira_palavra():
@@ -312,7 +340,7 @@ def test_veredito_e_a_primeira_palavra():
 
 
 def test_progresso_ao_vivo_resumido(mesa):
-    mesa.registrar("corrija X")
+    mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     mesa.passo()
     textos = [c["texto"] for c in mesa.para_o_app()["conversa"]]
@@ -456,7 +484,7 @@ def test_teto_da_semana_espera_dizendo_o_porque_e_quando_renova(mesa):
 
 
 def test_reabrir_devolve_o_pedido_falhou_ao_mesmo_trabalhador(mesa):
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     for _ in range(pedidos.MAX_RETOMADAS + 2):
         mesa.despachante.estados[p["id"]].update(situacao="falhou", motivo="saiu com 1")
@@ -496,7 +524,7 @@ def test_reabrir_pela_linha_de_comando(tmp_path, monkeypatch):
     from coordenador import __main__ as cli
     monkeypatch.setattr(pedidos, "MESA", pedidos.MesaPedidos(
         despachante=DespachanteFalso(tmp_path / "d"), claude=ClaudeFalso()))
-    p = pedidos.registrar("corrija X")
+    p = pedidos.registrar("corrija o defeito X do app")
     with pedidos._TRAVA:
         dados = pedidos._ler()
         dados["pedidos"][0]["situacao"] = "falhou"
@@ -520,7 +548,7 @@ def _grimorio(mesa, eventos, itens):
 
 
 def test_permissao_de_decisao_espera_o_grimorio_e_a_resposta_retoma_o_mesmo(mesa):
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     mesa.despachante.estados[p["id"]].update(
         situacao="aguardando_permissao", motivo="aguardando permissao: escolher a voz",
@@ -579,7 +607,10 @@ def test_continuacao_do_adrian_acorda_o_pedido_que_esperava_o_grimorio(mesa):
     mesa.despachante.terminar(p["id"], arquivos=0, aplicado=False,
                               resposta="GRIMÓRIO: historias/qual-voz")
     mesa.passo()
-    mesa.registrar("use a grave, não precisa esperar")
+    # v2: texto solto nao gruda no que espera o Grimorio; a resposta explicita sim
+    solto = mesa.registrar("use a grave, não precisa esperar")
+    assert solto["id"] != p["id"] and solto["continuacao"] is False
+    mesa.registrar("use a grave, não precisa esperar", responde_a=p["id"])
     _andar(mesa, 2)
     assert _pedido(mesa)["situacao"] == "trabalhando"
     assert mesa.despachante.fundos[-1][:3] == ["corrigir", "--id", p["id"]]
@@ -587,7 +618,7 @@ def test_continuacao_do_adrian_acorda_o_pedido_que_esperava_o_grimorio(mesa):
 
 def test_permissao_comum_espera_sem_queimar_retomadas(mesa):
     """03/10: o 66e4ba54 foi relancado 5 vezes esperando a permissao."""
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     mesa.despachante.estados[p["id"]].update(
         situacao="aguardando_permissao", motivo="aguardando permissao: rodar no repo real",
@@ -631,7 +662,7 @@ def test_marca_para_no_ja_respondido_e_lido_entrega_a_decisao_na_hora(mesa):
     pedido ficava em espera 100 h e o Adrian recebia "espera a sua decisao"."""
     eventos = [{"id": "gerente-ligado", "projeto": "geral", "opcao": "sim", "lida": True}]
     _grimorio(mesa, eventos, NO_LIGADO)
-    p = mesa.registrar("ligue o gerente")
+    p = mesa.registrar("ligue o gerente da equipe")
     mesa.passo()
     mesa.despachante.estados[p["id"]]["thread_id"] = "t1"
     mesa.despachante.terminar(p["id"], arquivos=0, aplicado=False,
@@ -657,7 +688,9 @@ def test_marca_para_no_que_nao_existe_devolve_e_nao_prende(mesa):
         _andar(mesa, 2)
         if vez < 2:
             assert mesa.despachante.fundos[-1][:3] == ["corrigir", "--id", p["id"]]
-            assert "não existe" in _pedido(mesa)["texto"]
+            # o que o SERVIDOR devolve nunca entra no texto do Adrian (conferente 5)
+            assert "não existe" in " ".join(_pedido(mesa)["do_servidor"])
+            assert "não existe" not in _pedido(mesa)["texto"]
             mesa.passo()                     # o pulso o ve rodando a continuacao
     assert _pedido(mesa)["situacao"] == "respondido"       # na 3a vez segue, nao gira
     assert not any("❓" in a for a in mesa.avisos)
@@ -698,7 +731,7 @@ def test_permissao_decidida_no_app_nao_decide_de_novo_nem_gasta_rodada(mesa):
             raise RuntimeError("nao ha permissao pendente nessa tarefa")
         return original(ident, permitir, sempre)
     desp.decidir_permissao = decidir_como_o_real
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     desp.estados[p["id"]].update(
         situacao="aguardando_permissao", motivo="aguardando permissao: escolher a voz",
@@ -734,7 +767,8 @@ def test_mensagem_nova_com_o_pedido_parado_no_limite_vai_ao_codex(mesa):
     mesa.uso = lambda: USO_NO_TETO
     _andar(mesa, 2)
     assert _pedido(mesa)["situacao"] == "parado_limite"
-    r = mesa.registrar("e também me diga quando ele roda")
+    # v2: o pedido parado no limite so recebe a resposta explicita
+    r = mesa.registrar("e também me diga quando ele roda", responde_a=p["id"])
     assert r["continuacao"]
     _andar(mesa, 2)
     assert [(c[0], c[1]["ia"]) for c in mesa.despachante.criados] == [
@@ -821,8 +855,9 @@ def test_executar_roda_no_repo_registra_no_diario_e_volta_ao_trabalhador(mesa, a
     assert len(fios) == 1
     fios[0].join(60)
     mesa.passo()
-    texto = _pedido(mesa)["texto"]
+    texto = " ".join(_pedido(mesa)["do_servidor"])
     assert "ola do repo real" in texto and "código 0" in texto
+    assert "ola do repo real" not in _pedido(mesa)["texto"]
     assert [a[1] for a, _k in diario] == ["inicio", "ok"]
     assert diario[0][0][0] == "coordenador" and diario[1][1]["ref"] == p["id"]
     mesa.passo()
@@ -841,7 +876,8 @@ def test_executar_fora_da_lista_branca_e_recusado(mesa, acao_duble):
                               resposta="EXECUTAR: rm_tudo")
     mesa.passo()
     assert chamadas == []
-    assert "recusou" in _pedido(mesa)["texto"] and "duble" in _pedido(mesa)["texto"]
+    notas = " ".join(_pedido(mesa)["do_servidor"])
+    assert "recusou" in notas and "duble" in notas
     # argumento fora da expressao tambem
     with pytest.raises(ValueError):
         pedidos.montar_acao("duble_param", ["../../etc"])
@@ -869,7 +905,7 @@ def test_executar_espera_a_janela_da_postagem(mesa, acao_duble):
     chamadas = []
     mesa.executor = lambda acao, pasta: chamadas.append(acao["nome"])
     mesa.relogio.agora = datetime(2026, 10, 3, 17, 40)        # 17:57 - 17 min: fora
-    p = mesa.registrar("rode")
+    p = mesa.registrar("rode a ação da lista branca")
     mesa.passo()
     mesa.relogio.agora = datetime(2026, 10, 3, 17, 50)        # dentro da janela do 17:57
     mesa.despachante.terminar(p["id"], arquivos=0, aplicado=False,
@@ -894,14 +930,14 @@ def test_execucao_que_nao_volta_vira_erro_no_diario(mesa, acao_duble):
     diario = []
     mesa.diario = lambda *a, **k: diario.append(a[1])
     mesa.executor = lambda acao, pasta: None                   # morreu sem resultado
-    p = mesa.registrar("rode")
+    p = mesa.registrar("rode a ação da lista branca")
     mesa.passo()
     mesa.despachante.terminar(p["id"], arquivos=0, aplicado=False, resposta="EXECUTAR: duble")
     mesa.passo()
     mesa.relogio.andar(seconds=60 + 301)
     mesa.passo()
     assert diario == ["inicio", "erro"]
-    assert "não voltou" in _pedido(mesa)["texto"]
+    assert "não voltou" in " ".join(_pedido(mesa)["do_servidor"])
 
 
 def test_no_maximo_tres_execucoes_por_pedido(mesa, acao_duble):
@@ -912,7 +948,7 @@ def test_no_maximo_tres_execucoes_por_pedido(mesa, acao_duble):
         pasta.mkdir(parents=True, exist_ok=True)
         (pasta / "resultado.json").write_text('{"codigo": 0}', encoding="utf-8")
     mesa.executor = executor
-    p = mesa.registrar("rode")
+    p = mesa.registrar("rode a ação da lista branca")
     mesa.passo()
     for _ in range(pedidos.MAX_EXECUCOES + 2):
         mesa.despachante.terminar(p["id"], arquivos=0, aplicado=False,
@@ -923,7 +959,7 @@ def test_no_maximo_tres_execucoes_por_pedido(mesa, acao_duble):
 
 # ================================================ prompts (item 12)
 def test_prompts_mandam_responder_na_mensagem_final(mesa):
-    p = mesa.registrar("corrija X")
+    p = mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     tarefa = mesa.despachante.criados[0][2]
     assert "mensagem final" in tarefa and "NÃO crie arquivo resposta.md" in tarefa

@@ -377,3 +377,143 @@ def test_ligar_o_gerente_fica_ligado(tela_isolada, tmp_path, monkeypatch):
     salvo = json.loads((delegados / "config.json").read_text(encoding="utf-8"))
     assert salvo["gerente_ligado"] is True
     assert not erros, erros
+
+
+@pytest.mark.parametrize("tema", ["light", "dark"])
+def test_responder_no_cartao_do_pedido_vai_ao_mesmo_pedido(tela_isolada, monkeypatch, tema):
+    """05/10/2026 (pedido honesto v2): o pedido que parou esperando voce so
+    recebe a resposta EXPLICITA. O botao Responder do cartao Pedir abre a
+    caixa, e o texto chega ao MESMO pedido (pela rota com o id)."""
+    if not NAVEGADOR:
+        pytest.skip("so com NF_TESTE_NAVEGADOR=1")
+    from patchright.sync_api import sync_playwright
+
+    from coordenador import pedidos
+    monkeypatch.setattr(tela_isolada.RequestHandlerClass.estado, "com_acoes", True)
+    p = pedidos.registrar("arquive os vídeos antigos no Google Drive", "app", novo=True)
+    with pedidos._TRAVA:
+        dados = pedidos._ler()
+        alvo = next(x for x in dados["pedidos"] if x["id"] == p["id"])
+        alvo.update(situacao="esperando_voce", trabalhador=p["id"], ia="codex",
+                    motivo="bloqueado: falta o Adrian entrar na conta de 5 TB do Drive")
+        pedidos._gravar(dados)
+    base = f"http://127.0.0.1:{tela_isolada.server_address[1]}"
+    token = api_http.trocar_codigo(api_http.novo_codigo(), "chrome-de-teste")
+    CAPTURAS.mkdir(parents=True, exist_ok=True)
+    erros = []
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch(channel="chrome", headless=True)
+        ctx = nav.new_context(viewport={"width": 390, "height": 844}, is_mobile=True,
+                              has_touch=True, service_workers="block", color_scheme=tema)
+        ctx.set_default_timeout(8000)
+        page = ctx.new_page()
+        page.on("pageerror", lambda erro: erros.append(str(erro)))
+        page.goto(base + "/", wait_until="domcontentloaded")
+        page.evaluate("([token]) => localStorage.setItem('painel.token', token)", [token])
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function("document.body.classList.contains('pareado')")
+        page.evaluate("() => document.querySelector('#obj-agora').click()")
+        cartao = page.locator("#pedido-estado .coord-proposta").first
+        cartao.wait_for(state="visible")
+        assert "esperando você · arquive" in cartao.inner_text()
+        assert "no Grimório" not in cartao.inner_text()          # nao espera nenhum no
+        cartao.get_by_role("button", name="Responder").click()
+        caixa = page.locator("#pedido-estado .pedido-resposta")
+        caixa.wait_for(state="visible")
+        caixa.fill("já loguei no Drive")
+        page.wait_for_timeout(6000)              # um recarregamento de 5 s nao apaga a caixa
+        assert caixa.input_value() == "já loguei no Drive"
+        assert page.locator("#tela-agora").evaluate("t => t.scrollWidth <= t.clientWidth")
+        cartao.screenshot(path=str(CAPTURAS / f"pedido-responder-390x844-{tema}.png"))
+        page.screenshot(path=str(CAPTURAS / f"pedido-responder-tela-390x844-{tema}.png"))
+        page.locator("#pedido-estado").get_by_role("button", name="Enviar a este pedido").click()
+        page.locator("#pedido-estado .pedido-resposta").wait_for(state="detached")
+        nav.close()
+    atual = next(x for x in pedidos.para_o_app()["pedidos"] if x["id"] == p["id"])
+    assert atual["continuar"] is True and atual["texto"].endswith("já loguei no Drive")
+    assert len(pedidos.para_o_app()["pedidos"]) == 1                 # nenhum pedido novo
+    assert not erros, erros
+
+
+@pytest.mark.parametrize("tema", ["light", "dark"])
+def test_permissao_de_estado_no_cartao_tem_permitir_e_nao_responder(tela_isolada, monkeypatch,
+                                                                    tmp_path, tema):
+    """Conferente 3 (defeito 7): o cartao "esperando voce · ligue o gerente"
+    mostrava Responder, que NEGAVA a permissao. Agora mostra Permitir/Negar
+    (a rota de Agora › Equipe), e o caminho real liga o gerente da PASTA DO
+    TESTE: delegar de verdade, servidor isolado, Chrome a 390x844."""
+    if not NAVEGADOR:
+        pytest.skip("so com NF_TESTE_NAVEGADOR=1")
+    import json
+    import os
+    from patchright.sync_api import sync_playwright
+
+    from coordenador import pedidos
+    from remoto import delegar
+    monkeypatch.setenv("NF_DELEGADOS_PASTA", str(tmp_path / "delegados"))
+    monkeypatch.setattr(delegar, "PASTA", None)
+    real = os.path.join(os.environ.get("LOCALAPPDATA", ""), "neural-fights", "delegados")
+    assert os.path.normcase(str(delegar.pasta())) != os.path.normcase(real)
+    delegar.gravar_config({"gerente_ligado": False})
+    monkeypatch.setattr(tela_isolada.RequestHandlerClass.estado, "com_acoes", True)
+    p = pedidos.registrar("ligue o gerente da equipe", "app")
+    ident = p["id"]
+    pasta = delegar.pasta_da(ident)
+    pasta.mkdir(parents=True)
+    (pasta / "estado.json").write_text(json.dumps({
+        "id": ident, "situacao": "terminou", "cargo": "orquestrador", "ia": "claude",
+        "worktree": str(pasta / "wt")}), encoding="utf-8")
+    pp = delegar.registrar_pedido_permissao(ident, {
+        "o_que": "o servidor executar `gerente ligar`", "categoria": "estado_do_servidor",
+        "por_que": "x", "alvo": "gerente ligar", "avisado": "coordenador"})["pedido_permissao"]
+    with pedidos._TRAVA:
+        dados = pedidos._ler()
+        alvo = next(x for x in dados["pedidos"] if x["id"] == ident)
+        alvo.update(situacao="esperando_voce", trabalhador=ident, ia="claude",
+                    motivo="o trabalhador pediu `gerente ligar` (estado do servidor): toque "
+                           "Permitir ou Negar no pedido",
+                    permissao_estado={"nome": "gerente", "args": ["ligar"],
+                                      "comando": "gerente ligar", "trabalhador": ident,
+                                      "em": pp["em"], "regra": pp["regra"]})
+        pedidos._gravar(dados)
+    base = f"http://127.0.0.1:{tela_isolada.server_address[1]}"
+    token = api_http.trocar_codigo(api_http.novo_codigo(), "chrome-de-teste")
+    CAPTURAS.mkdir(parents=True, exist_ok=True)
+    erros = []
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch(channel="chrome", headless=True)
+        ctx = nav.new_context(viewport={"width": 390, "height": 844}, is_mobile=True,
+                              has_touch=True, service_workers="block", color_scheme=tema)
+        ctx.set_default_timeout(8000)
+        page = ctx.new_page()
+        page.on("pageerror", lambda erro: erros.append(str(erro)))
+        page.goto(base + "/", wait_until="domcontentloaded")
+        page.evaluate("([token]) => localStorage.setItem('painel.token', token)", [token])
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function("document.body.classList.contains('pareado')")
+        page.evaluate("() => document.querySelector('#obj-agora').click()")
+        cartao = page.locator("#pedido-estado .coord-proposta").first
+        cartao.wait_for(state="visible")
+        texto = cartao.inner_text()
+        assert "esperando você · ligue o gerente" in texto and ident in texto
+        assert cartao.get_by_role("button", name="Responder").count() == 0
+        assert cartao.get_by_role("button", name="✅ Permitir").count() == 1
+        assert cartao.get_by_role("button", name="❌ Negar").count() == 1
+        assert page.locator("#pedido-novo").count() == 0                 # o "Novo assunto" saiu
+        assert page.locator("#tela-agora").evaluate("t => t.scrollWidth <= t.clientWidth")
+        cartao.screenshot(path=str(CAPTURAS / f"pedido-permissao-390x844-{tema}.png"))
+        cartao.get_by_role("button", name="✅ Permitir").click()
+        page.wait_for_function("() => document.querySelector('#pedido-estado').innerText"
+                               ".includes('Decidido: o servidor cuida')")
+        assert cartao.get_by_role("button", name="✅ Permitir").count() == 0   # nao pede de novo
+        nav.close()
+    ficha = delegar.ler_estado(ident)
+    assert ficha["situacao"] == "terminou" and not ficha.get("pedido_permissao")
+    assert ficha["permissoes"][-1]["decisao"] == "permitir"
+    assert delegar.ler_config()["gerente_ligado"] is False         # quem executa e o pulso
+    pedidos.passo()
+    atual = next(x for x in pedidos.para_o_app()["pedidos"] if x["id"] == ident)
+    assert atual["situacao"] == "respondido", atual
+    assert delegar.ler_config()["gerente_ligado"] is True           # da pasta do teste
+    assert len(pedidos.para_o_app()["pedidos"]) == 1
+    assert not erros, erros

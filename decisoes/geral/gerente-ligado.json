@@ -28,6 +28,7 @@
   "midias": [],
   "opcoes": [
     {
+      "acao_servidor": "gerente ligar",
       "desbloqueia": [],
       "descricao": "A fila anda sem você precisar mandar; você acompanha na aba Equipe e pode pausar a fila pelo app.",
       "id": "ligar",
@@ -35,6 +36,7 @@
       "rotulo": "Ligar (recomendado)"
     },
     {
+      "acao_servidor": "gerente desligar",
       "desbloqueia": [],
       "descricao": "Cada item da fila só anda quando você manda pelo app.",
       "id": "deixar",

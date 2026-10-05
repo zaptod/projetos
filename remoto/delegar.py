@@ -149,8 +149,15 @@ PADRAO_CONFIG = {
                   "consertar": "claude", "conferir": "claude"},
 }
 
+# `estado_do_servidor` (05/10/2026, pedido honesto v2): o trabalhador terminou
+# com `EXECUTAR: gerente ligar` (ou renovacao, paralelo). O SERVIDOR registra
+# o pedido de permissao (o trabalhador nao: `.permissao.json` nao aceita esta
+# categoria) e, aprovado, executa e confere. Nunca "gerente aceita": a regra so
+# pode ser perguntar ao Adrian ou negar, e "Permitir sempre" nao vale aqui.
+ESTADO_DO_SERVIDOR = "estado_do_servidor"
 CATEGORIAS_PERMISSAO = ("repositorio_externo", "caminho_protegido", "publicar", "conta",
-                        "push", "rede", "instalar", "apagar", "decisao_de_produto")
+                        "push", "rede", "instalar", "apagar", "decisao_de_produto",
+                        ESTADO_DO_SERVIDOR)
 REGRAS_PERMISSAO = ("gerente_aceita", "perguntar_ao_adrian", "negar")
 PADRAO_PERMISSOES = {
     "repos_conhecidos": [r"E:\jogo_ZOMBIE", r"E:\projetos"],
@@ -158,7 +165,8 @@ PADRAO_PERMISSOES = {
                "caminho_protegido": "perguntar_ao_adrian", "instalar": "perguntar_ao_adrian",
                "rede": "gerente_aceita", "apagar": "perguntar_ao_adrian",
                "publicar": "perguntar_ao_adrian", "push": "perguntar_ao_adrian",
-               "conta": "negar", "decisao_de_produto": "perguntar_ao_adrian"},
+               "conta": "negar", "decisao_de_produto": "perguntar_ao_adrian",
+               ESTADO_DO_SERVIDOR: "perguntar_ao_adrian"},
     "cargos": {"jogo-zombie": {"*": "gerente_aceita", "publicar": "perguntar_ao_adrian",
                                   "conta": "negar", "push": "perguntar_ao_adrian",
                                   "decisao_de_produto": "perguntar_ao_adrian"}},
@@ -408,6 +416,9 @@ def gravar_permissoes(mudancas: dict) -> dict:
                 categoria not in CATEGORIAS_PERMISSAO + ("*",) or regra not in REGRAS_PERMISSAO
                 for categoria, regra in por_categoria.items()):
             raise Recusa("regra por cargo invalida: " + str(cargo))
+    if "gerente_aceita" in (regras.get(ESTADO_DO_SERVIDOR),
+                            *(c.get(ESTADO_DO_SERVIDOR) for c in cargos_regras.values())):
+        raise Recusa("estado_do_servidor nunca é aceito pelo gerente: perguntar_ao_adrian ou negar")
     dados = {"repos_conhecidos": [str(x) for x in conhecidos], "regras": regras,
              "cargos": cargos_regras}
     _gravar_json(_permissoes_path(), dados)
@@ -421,6 +432,11 @@ def regra_de_permissao(cargo: str, categoria: str, alvo: str = "") -> str:
         return "negar"
     politica = ler_permissoes()
     por_cargo = politica["cargos"].get(str(cargo or "").lower(), {})
+    if categoria == ESTADO_DO_SERVIDOR:
+        # o "*" de um cargo (jogo-zombie: gerente_aceita) nao alcanca o estado
+        # do servidor: so o Adrian aprova, ou a politica nega
+        regra = por_cargo.get(categoria) or politica["regras"].get(categoria)
+        return "negar" if regra == "negar" else "perguntar_ao_adrian"
     regra = por_cargo.get(categoria, por_cargo.get("*"))
     if regra:
         return regra
@@ -1367,7 +1383,10 @@ def pedido_de_permissao(tarefa_id: str) -> dict | None:
     if isinstance(bruto, dict):
         pedido = {chave: str(bruto.get(chave) or "").strip()
                   for chave in ("o_que", "categoria", "por_que", "alvo")}
-        if pedido["categoria"] in CATEGORIAS_PERMISSAO and all(pedido.values()):
+        # o estado do servidor so o SERVIDOR pede (coordenador.pedidos), nunca o
+        # trabalhador: sem quem execute, a aprovacao nao faria nada
+        if (pedido["categoria"] in CATEGORIAS_PERMISSAO
+                and pedido["categoria"] != ESTADO_DO_SERVIDOR and all(pedido.values())):
             return pedido
     estado = ler_estado(tarefa_id)
     resposta = _texto_da_resposta(tarefa_id).lower()
@@ -1384,10 +1403,19 @@ def registrar_pedido_permissao(tarefa_id: str, pedido: dict) -> dict:
     estado = ler_estado(tarefa_id)
     if estado.get("situacao") == "aguardando_permissao" and estado.get("pedido_permissao"):
         return estado
+    avisado = str(pedido.get("avisado") or "").strip()[:40]
     pedido = {chave: str(pedido.get(chave) or "").strip()
               for chave in ("o_que", "categoria", "por_que", "alvo")}
+    if avisado:
+        # quem ja avisou o Adrian (o coordenador, com o id do pedido): o
+        # gerente da equipe nao manda o mesmo aviso de novo
+        pedido["avisado"] = avisado
     pedido["regra"] = regra_de_permissao(estado.get("cargo", ""), pedido["categoria"], pedido["alvo"])
     pedido["em"] = _agora_iso()
+    if pedido["categoria"] == ESTADO_DO_SERVIDOR:
+        # o trabalhador ja terminou: decidida a permissao, a ficha volta a
+        # isto (e o vigia segue com o codigo, se houver), sem relancar ninguem
+        pedido["situacao_antes"] = str(estado.get("situacao") or "terminou")
     if pedido["categoria"] == "decisao_de_produto":
         try:
             from . import decisoes
@@ -1433,6 +1461,16 @@ def decidir_permissao(tarefa_id: str, permitir: bool, *, sempre: bool = False) -
             permitir = False
         registro = {"em": _agora_iso(), "pedido": pedido, "decisao": "permitir" if permitir else "negar"}
         estado["permissoes"] = list(estado.get("permissoes") or []) + [registro]
+        if categoria == ESTADO_DO_SERVIDOR:
+            # quem executa e o servidor (coordenador.pedidos le este registro);
+            # a ficha volta ao que era, sem "criado": nem o app nem o gerente
+            # relancam o trabalhador. "Permitir sempre" nao vale aqui.
+            estado.update(situacao=pedido.get("situacao_antes") or "terminou",
+                          motivo=("permissao concedida: " if permitir else "permissao negada: ")
+                          + str(pedido.get("o_que") or ""), pedido_permissao=None)
+            _gravar_estado(estado)
+            _log(tarefa_id, estado["motivo"])
+            return estado
         if not permitir:
             estado.update(situacao="negado", motivo="permissao negada: " + str(pedido.get("o_que") or ""),
                           pedido_permissao=None)

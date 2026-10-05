@@ -72,10 +72,9 @@
     <div id="orq-faixa" class="orq-faixa oculto" role="status"></div>
     <div class="cartao pedir-cartao" id="pedir-cartao">
       <h2>📝 Pedir</h2>
-      <div class="fraco">Um pedido livre vai ao orquestrador do servidor e fica acompanhado aqui.</div>
+      <div class="fraco">Cada texto vira um pedido novo, acompanhado aqui (só a saudação ou a pergunta de status da lista fixa e o agradecimento solto, como “ok”, “valeu”, “obrigado”, “beleza”, recebem o retrato). Para continuar um pedido, toque Responder nele.</div>
       <textarea id="pedido-texto" class="pedir-caixa" aria-label="Pedido ao orquestrador" rows="3" maxlength="4000" placeholder="O que você precisa?"></textarea>
       <div class="botoes"><button class="acao primario" id="pedido-enviar" type="button">Pedir</button>
-        <button class="acao" id="pedido-novo" type="button">Novo assunto</button>
         <button class="acao" id="pedido-conversa" type="button">Ver a conversa</button></div>
       <div id="pedido-estado"></div>
     </div>
@@ -300,7 +299,6 @@
           <textarea id="coord-texto" rows="2" maxlength="4000"
                     placeholder="Pergunte o estado ou faça um pedido" aria-label="Mensagem para o coordenador"></textarea>
           <button class="acao" id="coord-enviar" type="button">Enviar</button>
-          <button class="acao" id="coord-novo" type="button">Novo assunto</button>
         </div>
       </div>
     </div>
@@ -505,7 +503,7 @@
           <div class="fluxo-entrada" role="listitem"><b>📝 App</b>
             <span>Agora › Pedir, ou a Conversa do Coordenador</span></div>
           <div class="fluxo-entrada" role="listitem"><b>✈️ Telegram</b>
-            <span>texto sem “/”; <code>/novo</code> abre outro assunto</span></div>
+            <span>texto sem “/” é pedido novo (saudação e agradecimento da lista fixa só recebem o retrato); <code>/responder &lt;id&gt;</code> continua um</span></div>
           <div class="fluxo-entrada" role="listitem"><b>📖 Grimório</b>
             <span>a sua resposta a uma decisão</span></div>
         </div>
@@ -521,10 +519,18 @@
             <div class="fluxo-cabeca"><b>1 · Mesa de pedidos</b><code>MesaPedidos</code></div>
             <p>Guarda o pedido e responde na hora. Pergunta curta de estado (“o app
               está no ar?”) não vira pedido: vai ao cérebro, que responde em segundos.
-              Texto novo enquanto o pedido está vivo vai ao <b>mesmo</b> orquestrador;
-              “Novo assunto” abre outro.</p>
+              Saudação ou pergunta de status de uma <b>lista fixa</b> (“oi”, “bom dia”,
+              “coordenador?”, “qual o progresso?”, “alguma novidade?”, “status”) recebe o
+              retrato do servidor; agradecimento solto (“ok”, “valeu”, “obrigado”,
+              “beleza”) recebe o retrato e o lembrete do Responder. A lista é comparada
+              inteira: qualquer outro texto, mesmo curto (“reinicie o app”, “pode ligar o
+              gerente?”), é sempre um pedido <b>novo</b>, e nunca gruda num pedido que já
+              existe. Para continuar um pedido (em qualquer situação), toque
+              <b>Responder</b> no próprio pedido, ou no Telegram mande
+              <code>/responder &lt;id&gt; &lt;texto&gt;</code> com o id que vem no aviso.</p>
             <div class="fluxo-desvio d-grimorio">↳ a resposta do Grimório volta ao pedido que
-              a esperava; se nenhum esperava, vira pedido novo</div>
+              a esperava; se nenhum esperava, vira pedido novo. Se a opção escolhida traz
+              uma ação do servidor (ligar o gerente), o servidor executa na hora e responde</div>
           </li>
           <li class="fluxo-seta" aria-hidden="true"><svg viewBox="0 0 20 18"><path d="M10 0 V14 M4 9 L10 16 L16 9" /></svg></li>
           <li class="fluxo-passo">
@@ -532,7 +538,14 @@
             <p>Um trabalhador de cargo “orquestrador”, contratado pelo coordenador,
               trabalha numa worktree só dele (<code>E:\projetos-wt</code>). É o
               <b>Claude</b>; se o Claude está proibido, acima do teto ou no limite, o
-              <b>Codex</b> assume os pedidos de construir (os outros esperam).</p>
+              <b>Codex</b> assume os pedidos de construir (os outros esperam). A última
+              linha da resposta dele é o <b>DESFECHO</b> (feito, bloqueado ou falhou), e
+              só ela decide; sem ela, o servidor pede uma vez, mandando de volta a
+              resposta original dele, e, faltando de novo, o pedido fica esperando você
+              ler a resposta. A resposta que chega a você é sempre a original, com o
+              desfecho declarado depois. Enquanto o coordenador chama o trabalhador (cria
+              a worktree), o pedido aparece como <b>chamando o trabalhador</b>; a sua
+              resposta nesse meio não se perde.</p>
             <div class="fluxo-desvio d-limite">↳ caiu no limite do Claude: ver
               <b>Limite do Claude</b>, abaixo</div>
             <div class="fluxo-desvio d-ok">↳ só respondeu, sem mudar código:
@@ -552,6 +565,10 @@
               <li><b class="r-nega">nega</b> — a tarefa não segue. Mexer em conta é
                 sempre negado.</li>
             </ul>
+            <p>Mudar o estado do servidor (gerente, renovação, paralelo) pedido pelo
+              trabalhador é sempre pergunta a você, com aviso no Telegram e os botões
+              Permitir e Negar no próprio pedido (texto não aprova nem nega); aprovado,
+              o próprio servidor executa, relê para conferir e responde.</p>
           </li>
           <li class="fluxo-seta" aria-hidden="true"><svg viewBox="0 0 20 18"><path d="M10 0 V14 M4 9 L10 16 L16 9" /></svg></li>
           <li class="fluxo-passo">
@@ -586,8 +603,9 @@
         <p class="fluxo-situacoes"><span class="fraco">O que o app mostra:</span>
           <span>recebido</span> → <span>trabalhando</span> → <span>entregue</span> →
           <span>conferido</span>; e também <span>respondido</span>, <span>em espera</span>,
-          <span>parado_limite</span>, <span>esperando você no Grimório</span>,
-          <span>executando</span> e <span>falhou</span>.</p>
+          <span>parado no limite — volta sozinho</span>, <span>esperando você</span> (com o
+          nó, quando é no Grimório), <span>o servidor está executando</span>,
+          <span>chamando o trabalhador</span> e <span>falhou</span>.</p>
 
         <h3 class="fluxo-titulo">Quando algo dá errado</h3>
         <div class="fluxo-erro d-limite" id="fluxo-limite">
@@ -595,8 +613,8 @@
           <p>A rodada caiu no limite (da sessão ou da semana). O pedido fica
             <b>parado_limite</b> sem gastar nenhuma das 5 retomadas, e volta a andar
             <b>sozinho</b> quando o uso renova. Pedido de construir não espera: o Codex
-            assume na hora. Uma mensagem nova sua com o Claude no limite também vai ao
-            Codex, com o pedido inteiro.</p>
+            assume na hora. Uma resposta sua ao pedido (Responder) com o Claude no limite
+            também vai ao Codex, com o pedido inteiro.</p>
         </div>
         <div class="fluxo-erro d-grimorio" id="fluxo-grimorio">
           <b>📖 Espera do Grimório</b>
@@ -604,8 +622,8 @@
             você no Grimório</b> e o Telegram avisa qual nó. Quando você responde, a
             resposta volta ao <b>mesmo</b> pedido e ao mesmo orquestrador, que
             continua de onde parou. Se a decisão já estava tomada, ela volta na hora,
-            sem perguntar de novo. Se você escrever outra coisa antes, ele segue sem
-            esperar.</p>
+            sem perguntar de novo. Se você responder no próprio pedido (Responder) antes,
+            ele segue sem esperar.</p>
         </div>
         <div class="fluxo-erro d-conflito" id="fluxo-conflito">
           <b>🔀 Conflito</b>
@@ -620,13 +638,23 @@
         <div class="fluxo-erro d-falhou" id="fluxo-falhou">
           <b>❌ Falhou</b>
           <p>Quando o mesmo trabalhador cai 5 vezes (o coordenador retoma a cada
-            2 min; 10 min sem sinal conta como queda) ou o conferente aponta defeitos.
-            O Telegram avisa.</p>
+            2 min; 10 min sem sinal conta como queda), quando a linha DESFECHO diz
+            falhou, ou quando o conferente aponta defeitos. Relançamento que o
+            despachante recusa só por espera (paralelo cheio, a janela de começar) não
+            conta como queda, e a recusa aparece no motivo. O Telegram avisa.</p>
           <p><b>Para ver:</b> Agora › Coordenador mostra o pedido com o motivo; Agora ›
             Equipe e Agora › Codex abrem o log do trabalhador.</p>
           <p><b>Para reabrir:</b> no PC, <code>python -m coordenador reabrir-pedido
             &lt;id&gt;</code>. Zera as retomadas e o <b>mesmo</b> trabalhador continua.
-            Uma mensagem nova depois do falhou abre um pedido novo.</p>
+            Pelo app, o botão Responder do pedido faz o mesmo, com a sua mensagem (no
+            Telegram, <code>/responder &lt;id&gt;</code>). Uma mensagem solta sempre abre
+            um pedido novo.</p>
+          <p><b>Trabalhador já limpo:</b> se a worktree dele já foi limpa (ou a ficha
+            sumiu), a sua resposta vai a <b>um</b> orquestrador novo, com a história do
+            pedido (o seu texto, a última resposta e a sua resposta); se o despachante
+            recusar o novo, o pedido falha com o motivo da recusa, sem tentar a cada
+            pulso. A cobrança do desfecho não contrata ninguém: o pedido fica esperando
+            você ler a resposta.</p>
         </div>
         <p class="fraco fluxo-nota">Um pedido pode ainda pedir uma ação da lista
           fechada (as histórias, os testes do coordenador) no repositório principal:

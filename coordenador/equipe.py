@@ -123,15 +123,29 @@ class GerenteEquipe:
 
         Desligado, o mesmo pedido continua visivel para o Adrian em vez de
         morrer por falta de um gerente residente.
+
+        Conferente 3 (05/10/2026): o aviso era deduplicado pelo id do
+        TRABALHADOR para sempre; a segunda permissao do mesmo trabalhador (o
+        pedido-cb44cd52-1 ja tinha pedido caminho_protegido) nao avisava. Agora
+        a chave e o pedido de permissao (categoria, alvo, hora), e o que deixou
+        de estar pendente sai da memoria.
         """
+        pendentes = set()
         for trabalhador in self.despachante.listar():
             if trabalhador.get("situacao") != "aguardando_permissao":
                 continue
             pedido = trabalhador.get("pedido_permissao") or {}
             ident = str(trabalhador.get("id") or "")
             categoria = str(pedido.get("categoria") or "")
+            chave = "|".join([ident, categoria, str(pedido.get("alvo") or ""),
+                              str(pedido.get("em") or ""), str(pedido.get("o_que") or "")])
+            pendentes.add(chave)
             regra = self.despachante.regra_de_permissao(trabalhador.get("cargo", ""), categoria,
                                                         pedido.get("alvo", ""))
+            if categoria == "estado_do_servidor" and regra == "gerente_aceita":
+                # 05/10/2026 (v2): o estado do servidor nunca anda sozinho; o
+                # `regra_de_permissao` ja garante, e aqui o gerente nao confia
+                regra = "perguntar_ao_adrian"
             if categoria == "conta" or regra == "negar":
                 self.despachante.decidir_permissao(ident, False)
                 self.avisar(f"❌ permissao negada para {ident}: {pedido.get('o_que')}")
@@ -141,10 +155,15 @@ class GerenteEquipe:
                 self.despachante.no_fundo(["retomar", "--id", ident], ident)
                 self.evento("equipe_permissao", f"permissao aceita; retomei {ident}")
                 continue
-            if ident not in self.estado["permissoes"]:
-                self.estado["permissoes"][ident] = pedido
-                self.avisar(f"❓ permissao de {ident}: {pedido.get('o_que')} — {pedido.get('por_que')}")
+            if chave not in self.estado["permissoes"]:
+                self.estado["permissoes"][chave] = pedido
+                if not pedido.get("avisado"):
+                    # o coordenador ja avisou as que ele pediu (com o id do pedido)
+                    self.avisar(f"❓ permissao de {ident}: {pedido.get('o_que')} — "
+                                f"{pedido.get('por_que')}")
                 self.evento("equipe_permissao", f"permissao espera Adrian: {ident}")
+        for chave in [c for c in self.estado["permissoes"] if c not in pendentes]:
+            del self.estado["permissoes"][chave]
 
     def passo(self):
         if not self._pode_passar():

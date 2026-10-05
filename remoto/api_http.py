@@ -1186,6 +1186,9 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._coordenador_comando()
         if rota == "/api/coordenador/falar":
             return self._coordenador_falar()
+        achado = re.fullmatch(r"/api/coordenador/pedido/(pedido-[0-9a-f]{8})/responder", rota)
+        if achado:
+            return self._coordenador_responder_pedido(achado.group(1))
         achado = re.fullmatch(r"/api/coordenador/proposta/([0-9a-f]{12})", rota)
         if achado:
             return self._coordenador_proposta(achado.group(1))
@@ -1745,13 +1748,10 @@ class Manipulador(BaseHTTPRequestHandler):
         texto = corpo.get("texto")
         novo = corpo.get("novo") is True
         if novo and (texto is None or (isinstance(texto, str) and not texto.strip())):
-            # "Novo assunto" sem texto: o proximo pedido abre outro orquestrador
-            from coordenador import pedidos
-            try:
-                pedidos.novo_assunto("app")
-            except OSError as exc:
-                return self._erro(503, f"não consegui guardar: {exc}")
-            return self._json({"feito": True, "novo_assunto": True})
+            # o "Novo assunto" (casca velha): desde 05/10/2026 todo texto solto
+            # ja abre pedido novo; nada a marcar
+            return self._json({"feito": True, "novo_assunto": False,
+                               "aviso": "todo texto já abre um pedido novo"})
         if not isinstance(texto, str) or not texto.strip():
             return self._erro(400, "a mensagem está vazia")
         if len(texto) > 4000:
@@ -1761,16 +1761,55 @@ class Manipulador(BaseHTTPRequestHandler):
         # `orquestrador` do servidor (coordenador/pedidos.py)
         from coordenador import cerebro as coord_cerebro, pedidos
         try:
-            if not novo and pedidos.e_de_estado(texto):
+            if pedidos.e_de_estado(texto) and not pedidos.e_conversa_solta(texto):
                 entrada = coord_cerebro.registrar_entrada(texto, "app")
                 return self._json({"feito": True, "id": entrada["id"], "em": entrada["em"],
                                    "situacao": "recebido", "para": "cerebro"})
-            item = pedidos.registrar(texto, "app", novo=novo)
+            item = pedidos.registrar(texto, "app")
         except (OSError, ValueError) as exc:
             return self._erro(503, f"não consegui guardar a mensagem: {exc}")
+        # 05/10 (conferente 3): texto solto nunca continua um pedido; volta o
+        # id e o titulo, para o aviso dizer QUAL pedido nasceu
         return self._json({"feito": True, "id": item["id"], "em": item["atualizado_em"],
-                           "situacao": item["situacao"], "para": "orquestrador",
+                           "situacao": item["situacao"],
+                           "para": "conversa" if item.get("conversa") else "orquestrador",
+                           # agradecimento solto da lista fixa: ninguem contratado
+                           "curto": bool(item.get("curto")),
+                           "titulo": _titulo_do_pedido(item),
                            "continuacao": bool(item.get("continuacao"))})
+
+    def _coordenador_responder_pedido(self, ident: str):
+        """O botao Responder do cartao de um pedido: a mensagem vai a ESTE
+        pedido (o id vem na rota), mesmo que ele esteja esperando voce,
+        entregue ou falhou. 05/10/2026 (v2): texto livre so continua pedido
+        ativo; o que ja parou so recebe a resposta explicita. Conferente 3:
+        texto livre nunca continua pedido nenhum; esta rota e o caminho. 409
+        quando o pedido espera a permissao do estado do servidor (Permitir/
+        Negar, nao texto). Exige pareamento e `--acoes` (relanca um trabalhador)."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        corpo = self._corpo(maximo=20_000)
+        if corpo is None:
+            return
+        texto = corpo.get("texto")
+        if not isinstance(texto, str) or not texto.strip():
+            return self._erro(400, "a resposta está vazia")
+        if len(texto) > 4000:
+            return self._erro(400, "a resposta passa de 4000 caracteres")
+        from coordenador import pedidos
+        try:
+            item = pedidos.registrar(texto, "app", responde_a=ident)
+        except KeyError:
+            return self._erro(404, "pedido desconhecido")
+        except ValueError as exc:
+            return self._erro(409, str(exc))
+        except OSError as exc:
+            return self._erro(503, f"não consegui guardar a resposta: {exc}")
+        return self._json({"feito": True, "id": item["id"], "em": item["atualizado_em"],
+                           "situacao": item["situacao"], "titulo": _titulo_do_pedido(item),
+                           "continuacao": True})
 
     def _coordenador_proposta(self, ident: str):
         """Confirmar ou recusar uma proposta do cerebro (vence em 30 min)."""
@@ -2219,6 +2258,13 @@ def _correio():
     subir mesmo sem o pacote `ias` no caminho)."""
     from ias import correio
     return correio
+
+
+def _titulo_do_pedido(item) -> str:
+    """A primeira mensagem do Adrian no pedido (a 1a linha), para o aviso do
+    app dizer DE QUAL pedido fala."""
+    primeiro = (item.get("do_adrian") or [item.get("texto") or ""])[0]
+    return (str(primeiro).strip().splitlines() or [""])[0][:90]
 
 
 def _limpo(dados):

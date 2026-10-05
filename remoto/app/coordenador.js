@@ -237,29 +237,131 @@ function coordProposta(p) {
 
 // Os pedidos (03/10): cada pedido livre vai a um trabalhador `orquestrador`
 // do servidor; o estado dele aparece aqui e no cartão "Pedir" do Agora.
+// v2 (05/10): "no Grimório" só quando o pedido espera um nó (grimorio_ref).
 const PEDIDO_ROTULO = {recebido: "recebido", trabalhando: "trabalhando", esperando: "em espera",
-  esperando_voce: "esperando você no Grimório", entregue: "entregue",
+  esperando_voce: "esperando você", entregue: "entregue",
+  parado_limite: "parado no limite — volta sozinho",
+  executando: "o servidor está executando",
+  // 05/10 (conferente 5): o pulso solta a trava enquanto cria a worktree
+  contratando: "chamando o trabalhador",
   conferido: "conferido", respondido: "respondido", falhou: "falhou"};
+// 05/10 (conferente 3): texto solto NUNCA continua um pedido (grudava no
+// "ativo mais novo", de outro assunto). Continuar é só pelo Responder, que
+// manda o id do pedido: /api/coordenador/pedido/<id>/responder. Executando
+// (o servidor rodando uma ação) não recebe resposta.
+const PEDIDO_SEM_RESPONDER = ["executando"];
+const PedidoResp = {aberto: null, rascunho: new Map(), enviando: false, decidindo: null};
+
+function pedidoTitulo(p) {
+  return String(p.texto || p.id).split("\n")[0];
+}
+
+// A permissão do estado do servidor (gerente, renovação, paralelo) pedida pelo
+// trabalhador: texto não aprova nem nega, então o cartão mostra Permitir e
+// Negar (a mesma rota de Agora › Equipe) em vez de Responder.
+function pedidoPermissao(p) {
+  const pe = p.permissao_estado;
+  if (pe.pendente === false) {
+    return el("div", {class: "pedido-responder fraco"},
+      `Decidido: o servidor cuida de \`${pe.comando || "?"}\` no próximo pulso e responde aqui.`);
+  }
+  const caixa = el("div", {class: "pedido-responder"},
+    el("div", {class: "fraco"}, `Permitir que o servidor execute \`${pe.comando || "?"}\`? `
+      + "Aprovado, o servidor executa, relê para conferir e responde aqui."));
+  async function decidir(decisao) {
+    if (PedidoResp.decidindo) return;
+    PedidoResp.decidindo = p.id;
+    try {
+      await api(`/api/equipe/${encodeURIComponent(pe.trabalhador || p.trabalhador)}/permissao`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({decisao, sempre: false})});
+      avisar(`${decisao === "permitir" ? "Permitido" : "Negado"}: ${pe.comando || "?"} `
+        + `(${p.id}). O servidor responde no pedido.`);
+    } catch (err) { avisar(err.message, true); }
+    PedidoResp.decidindo = null;
+    pedidosCarregar();
+  }
+  const permitir = el("button", {class: "acao primario", type: "button"}, "✅ Permitir");
+  permitir.addEventListener("click", () => decidir("permitir"));
+  const negar = el("button", {class: "acao", type: "button"}, "❌ Negar");
+  negar.addEventListener("click", () => decidir("negar"));
+  permitir.disabled = negar.disabled = PedidoResp.decidindo === p.id;
+  caixa.append(el("div", {class: "botoes"}, permitir, negar));
+  return caixa;
+}
+
+function pedidoRotulo(p) {
+  const rotulo = PEDIDO_ROTULO[p.situacao] || p.situacao || "recebido";
+  return p.situacao === "esperando_voce" && p.grimorio_ref
+    ? `${rotulo} no Grimório (${p.grimorio_ref})` : rotulo;
+}
 
 function pedidoLinha(p) {
-  const rotulo = PEDIDO_ROTULO[p.situacao] || p.situacao || "recebido";
-  const titulo = String(p.texto || p.id).split("\n")[0];
-  return el("div", {class: "coord-proposta"},
-    el("strong", {}, `${rotulo} · ${titulo.slice(0, 120)}`),
-    el("div", {class: "fraco"}, [p.ia ? `${p.ia} orquestrador` : "", p.trabalhador || "",
+  const titulo = pedidoTitulo(p);
+  const card = el("div", {class: "coord-proposta"},
+    el("strong", {}, `${pedidoRotulo(p)} · ${titulo.slice(0, 120)}`),
+    el("div", {class: "fraco"}, [p.id, p.ia ? `${p.ia} orquestrador` : "",
+      p.trabalhador && p.trabalhador !== p.id ? p.trabalhador : "",
       p.progresso || "", quandoCurto(p.atualizado_em) || ""].filter(Boolean).join(" · ")),
     p.motivo ? el("div", {class: "coord-aviso"}, p.motivo) : null);
+  if (p.situacao === "esperando_voce" && p.permissao_estado && p.permissao_estado.comando) {
+    card.append(pedidoPermissao(p));
+  } else if (p.trabalhador && !PEDIDO_SEM_RESPONDER.includes(p.situacao)) {
+    card.append(pedidoResponder(p));
+  }
+  return card;
+}
+
+function pedidoResponder(p) {
+  const caixa = el("div", {class: "pedido-responder"});
+  if (PedidoResp.aberto !== p.id) {
+    const b = el("button", {class: "acao", type: "button"}, "Responder");
+    b.addEventListener("click", () => { PedidoResp.aberto = p.id; pedidosCarregar(); });
+    caixa.append(b);
+    return caixa;
+  }
+  const campo = el("textarea", {class: "pedido-resposta", rows: "3", maxlength: "4000",
+    "aria-label": `Resposta ao pedido ${p.id}`, placeholder: "Sua resposta a este pedido"});
+  campo.value = PedidoResp.rascunho.get(p.id) || "";
+  campo.addEventListener("input", () => PedidoResp.rascunho.set(p.id, campo.value));
+  const enviar = el("button", {class: "acao primario", type: "button"}, "Enviar a este pedido");
+  enviar.disabled = PedidoResp.enviando;
+  enviar.addEventListener("click", () => pedidoEnviarResposta(p.id, campo.value));
+  const cancelar = el("button", {class: "acao", type: "button"}, "Cancelar");
+  cancelar.addEventListener("click", () => { PedidoResp.aberto = null; pedidosCarregar(); });
+  caixa.append(campo, el("div", {class: "botoes"}, enviar, cancelar));
+  return caixa;
+}
+
+async function pedidoEnviarResposta(id, texto) {
+  texto = String(texto || "").trim();
+  if (!texto || PedidoResp.enviando) return;
+  PedidoResp.enviando = true;
+  try {
+    const r = await api(`/api/coordenador/pedido/${encodeURIComponent(id)}/responder`, {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({texto})});
+    PedidoResp.rascunho.delete(id);
+    PedidoResp.aberto = null;
+    avisar(`Resposta enviada ao pedido ${id}${r && r.titulo ? ` («${r.titulo.slice(0, 60)}»)` : ""}.`);
+  } catch (err) { avisar(err.message, true); }
+  PedidoResp.enviando = false;
+  pedidosCarregar();
 }
 
 function pedidosDesenhar(dados) {
+  // escrevendo uma resposta: o pulso de 5 s não redesenha por cima (perderia o foco)
+  const ativo = document.activeElement;
+  if (ativo && ativo.classList && ativo.classList.contains("pedido-resposta")) return;
   const pedidos = Array.isArray(dados.pedidos) ? dados.pedidos : [];
   const vivos = pedidos.filter((p) => !["conferido", "respondido", "falhou"].includes(p.situacao));
   const recentes = [...vivos, ...pedidos.filter((p) => !vivos.includes(p))].slice(0, 6);
-  const lista = recentes.length ? recentes.map(pedidoLinha)
-    : [el("div", {class: "fraco"}, "Nenhum pedido ainda.")];
-  if (dados.novo_assunto) lista.unshift(el("div", {class: "coord-aviso"}, "O próximo pedido abre um orquestrador novo."));
-  $("coord-pedidos").replaceChildren(...lista);
-  $("pedido-estado").replaceChildren(...lista.slice(0, 3).map((n) => n.cloneNode(true)));
+  // duas listas montadas, não clonadas: o clone perdia os toques do Responder
+  const montar = (quantos) => {
+    return recentes.length ? recentes.slice(0, quantos).map(pedidoLinha)
+      : [el("div", {class: "fraco"}, "Nenhum pedido ainda.")];
+  };
+  $("coord-pedidos").replaceChildren(...montar(6));
+  $("pedido-estado").replaceChildren(...montar(3).slice(0, 3));
 }
 
 function coordConversaDesenhar(dados) {
@@ -298,21 +400,36 @@ async function pedidosCarregar() {
   try { pedidosDesenhar(await api("/api/coordenador/conversa")); } catch (err) { /* o cartão espera o próximo pulso */ }
 }
 
-async function coordEnviar(texto, novo) {
+// 05/10: chamava-se coordEnviar, o MESMO nome da função dos botões de serviço
+// (acima); a segunda declaração vencia e "Reiniciar" virava um pedido de texto.
+async function coordMandarTexto(texto) {
   return api("/api/coordenador/falar", {method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(texto ? {texto, novo} : {novo: true})});
+    body: JSON.stringify({texto})});
 }
 
-async function coordFalar(novo = false) {
+// O aviso diz QUAL pedido nasceu (05/10, conferente 3: "Continuação enviada
+// ao mesmo orquestrador" não dizia a qual).
+function pedidoAvisoDoEnvio(r) {
+  if (r.para === "cerebro") return "Pergunta de estado: o cérebro responde na Conversa.";
+  // 05/10 (conferente 5): agradecimento solto da lista fixa ("ok", "valeu",
+  // "obrigado", "beleza") não contrata ninguém; o resto do texto é pedido
+  if (r.para === "conversa" && r.curto) return "Agradecimento não abre pedido (ninguém foi "
+    + "contratado). Para responder a um pedido, toque Responder no cartão dele; o retrato está na Conversa.";
+  if (r.para === "conversa") return "O retrato do servidor está na Conversa.";
+  return `Pedido novo ${r.id}${r.titulo ? ` («${String(r.titulo).slice(0, 60)}»)` : ""}. `
+    + "Para continuar um pedido, toque Responder nele.";
+}
+
+async function coordFalar() {
   const campo = $("coord-texto");
   const texto = campo.value.trim();
-  if ((!texto && !novo) || CoordConv.enviando) return;
+  if (!texto || CoordConv.enviando) return;
   CoordConv.enviando = true;
   $("coord-enviar").disabled = true;
   try {
-    await coordEnviar(texto, novo);
+    const r = await coordMandarTexto(texto);
     campo.value = "";
-    if (novo && !texto) avisar("O próximo pedido abre um orquestrador novo.");
+    avisar(pedidoAvisoDoEnvio(r || {}));
   } catch (err) { avisar(err.message, true); }
   CoordConv.enviando = false;
   $("coord-enviar").disabled = false;
@@ -329,30 +446,26 @@ async function coordDecidir(id, decisao) {
 }
 
 let pedidoEnviando = false;
-async function pedidoRapido(novo = false) {
+async function pedidoRapido() {
   const campo = $("pedido-texto"), texto = campo.value.trim();
-  // toque duplo mandava o pedido duas vezes e o 2º virava "continuação" (03/10)
-  if ((!texto && !novo) || pedidoEnviando) return;
+  // toque duplo mandava o pedido duas vezes (03/10)
+  if (!texto || pedidoEnviando) return;
   pedidoEnviando = true;
-  $("pedido-enviar").disabled = $("pedido-novo").disabled = true;
+  $("pedido-enviar").disabled = true;
   try {
-    const r = await coordEnviar(texto, novo);
+    const r = await coordMandarTexto(texto);
     campo.value = "";
-    avisar(!texto ? "O próximo pedido abre um orquestrador novo."
-      : r.para === "cerebro" ? "Pergunta de estado: o cérebro responde na Conversa."
-      : r.continuacao ? "Continuação enviada ao mesmo orquestrador." : "Pedido recebido.");
+    avisar(pedidoAvisoDoEnvio(r || {}));
   } catch (err) { avisar(err.message, true); }
   finally {
     pedidoEnviando = false;
-    $("pedido-enviar").disabled = $("pedido-novo").disabled = false;
+    $("pedido-enviar").disabled = false;
   }
   pedidosCarregar();
 }
 
-$("coord-enviar").addEventListener("click", () => coordFalar(false));
-$("coord-novo").addEventListener("click", () => coordFalar(true));
-$("pedido-enviar").addEventListener("click", () => pedidoRapido(false));
-$("pedido-novo").addEventListener("click", () => pedidoRapido(true));
+$("coord-enviar").addEventListener("click", () => coordFalar());
+$("pedido-enviar").addEventListener("click", () => pedidoRapido());
 $("pedido-conversa").addEventListener("click", (e) => { CoordConv.aba = "conversa"; abrir("coordenador", e.currentTarget); coordAba("conversa"); });
 for (const b of document.querySelectorAll("#coord-abas [data-aba]")) {
   b.addEventListener("click", () => coordAba(b.dataset.aba));

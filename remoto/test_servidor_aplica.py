@@ -90,11 +90,14 @@ def test_mensagem_para_o_orquestrador_vira_pedido(mundo):  # noqa: F811
     assert len(vivos) == 1 and vivos[0]["texto"] == "conserte o relatório das 21h"
     assert vivos[0]["origem"] == "app"
     assert f"virou o pedido {vivos[0]['id']}" in linha["nota"]
-    # a segunda mensagem continua o mesmo pedido (como o Pedir do app)
+    # 05/10 (conferente 3): a segunda mensagem e pedido NOVO, como o Pedir do
+    # app; texto solto nunca continua um pedido (so o Responder, com o id)
     c2 = O.gravar_comando("mensagem", "e mande no Telegram", "614c026b")
     _pulso_do_coordenador().processar_comandos()
-    assert "continuação" in _situacao(c2["id"])["nota"]
-    assert len(pedidos.para_o_app()["pedidos"]) == 1
+    nota = _situacao(c2["id"])["nota"]
+    assert "continuação" not in nota and "virou o pedido" in nota
+    assert vivos[0]["id"] not in nota
+    assert len(pedidos.para_o_app()["pedidos"]) == 2
     # nada disso precisou do VS Code nem do Claude
     assert O.situacao_do_vigia()["situacao"] == "fechada"
 

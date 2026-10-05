@@ -78,9 +78,9 @@ def ajuda(_args: str = "") -> str:
         "/confiabilidade — o que saiu hoje e o que dá para provar\n"
         "/testar\\_conserto <carimbo> — a suíte com um remendo proposto\n"
         "/pausar [minutos] · /retomar · /parar\n"
-        "/novo — o próximo pedido abre outro orquestrador\n"
+        "/responder <id> <texto> — continua aquele pedido (o id vem no aviso)\n"
         "/ajuda — isto aqui\n"
-        "Texto sem / é um pedido: vai a um 🧭 orquestrador do servidor "
+        "Texto sem / é um pedido NOVO: vai a um 🧭 orquestrador do servidor "
         "(pergunta curta de estado vai ao 🛰 coordenador). A resposta vem aqui.")
 
 
@@ -358,7 +358,10 @@ def falar_ao_coordenador(texto: str) -> str:
     respostas chegam por aqui mesmo, pelo envio de sempre."""
     try:
         from coordenador import cerebro, pedidos
-        if pedidos.e_de_estado(texto):
+        # a conversa solta (forma fixa) responde o retrato na hora, antes do
+        # cerebro: "bom dia coordenador, como estão as coisas?" nao e pergunta
+        # para pensar
+        if pedidos.e_de_estado(texto) and not pedidos.e_conversa_solta(texto):
             cerebro.registrar_entrada(texto, "telegram")
             return ("🛰 recebido, pensando… o coordenador responde aqui. "
                     "Os comandos com / continuam: /ajuda")
@@ -366,24 +369,55 @@ def falar_ao_coordenador(texto: str) -> str:
     except Exception as exc:      # nenhuma mensagem derruba o bot
         return (f"não consegui guardar sua mensagem para o coordenador "
                 f"({type(exc).__name__}). Os comandos com / continuam: /ajuda")
-    if item.get("continuacao"):
-        return ("🧭 recebido; vai ao MESMO orquestrador do pedido aberto. "
-                "Assunto novo: /novo antes. Os comandos com / continuam: /ajuda")
-    return ("🧭 recebido; um orquestrador do servidor vai atender e eu aviso aqui "
-            "quando estiver conferido. Os comandos com / continuam: /ajuda")
+    if item.get("conversa"):
+        # 05/10/2026 (conferente 3): a conversa solta ("qual o progresso?")
+        # nasce respondida com o retrato, e o `avisar` do processo do bot e
+        # vazio: o retrato vai AQUI, na resposta, e nao a frase de "recebido"
+        return "🧭 " + str(item.get("resposta") or "sem retrato")[:3500]
+    return (f"🧭 recebido como pedido novo ({item['id']}); um orquestrador do servidor "
+            "vai atender e eu aviso aqui quando estiver conferido. Para continuar um "
+            "pedido: /responder <id> <texto>. Os comandos com / continuam: /ajuda")
+
+
+def responder(args: str = "") -> str:
+    """/responder <id> <texto> — a continuacao EXPLICITA de um pedido.
+
+    Texto solto nunca gruda num pedido (conferente 3, 05/10/2026); o id vem
+    nos avisos ("pedido-7c727778" ou so "7c727778"). O bot nao guarda o id da
+    mensagem do Telegram, entao responder (reply) a um aviso nao basta."""
+    # conferente 4: com partition(" "), o id seguido de quebra de linha e do
+    # texto virava um id so ("pedido-7c727778" + quebra + "ja"); qualquer
+    # espaco (quebra de linha, tab) separa o id do texto
+    partes = str(args or "").split(None, 1)
+    ident = partes[0].strip() if partes else ""
+    texto = partes[1].strip() if len(partes) > 1 else ""
+    if not ident or not texto:
+        return "use: /responder <id> <texto> (o id vem no aviso do pedido, ex.: 7c727778)"
+    if not ident.startswith("pedido-"):
+        ident = "pedido-" + ident
+    try:
+        from coordenador import pedidos
+        item = pedidos.registrar(texto, "telegram", responde_a=ident)
+    except KeyError:
+        return f"não há o pedido {ident}. Veja o id no aviso, ou mande como pedido novo."
+    except ValueError as exc:
+        return f"🧭 {ident}: {exc}"
+    except Exception as exc:      # noqa: BLE001
+        return f"não consegui guardar a resposta ({type(exc).__name__})."
+    primeiro = (item.get("do_adrian") or [item.get("texto") or ""])[0]
+    titulo = (str(primeiro).strip().splitlines() or [""])[0][:80]
+    return (f"🧭 continuação enviada ao pedido {ident}"
+            + (f" («{titulo}»)" if titulo else "") + "; vai ao mesmo orquestrador.")
 
 
 def novo(_args: str = "") -> str:
-    """/novo — o proximo texto abre outro orquestrador (outro assunto)."""
-    try:
-        from coordenador import pedidos
-        pedidos.novo_assunto("telegram")
-    except Exception as exc:      # noqa: BLE001
-        return f"não consegui abrir um assunto novo ({type(exc).__name__})."
-    return "🧭 assunto novo: o próximo texto vai a um orquestrador novo."
+    """/novo — sem efeito desde 05/10/2026: todo texto solto ja abre pedido novo."""
+    return ("🧭 todo texto sem / já abre um pedido novo. Para continuar um pedido: "
+            "/responder <id> <texto>.")
 
 
 TABELA["novo"] = novo
+TABELA["responder"] = responder
 
 
 def executar(texto: str):

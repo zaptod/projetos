@@ -103,7 +103,66 @@ def test_as_entradas_sao_as_que_o_registrar_aceita():
     fonte = inspect.getsource(pedidos.MesaPedidos.registrar)
     assert '("app", "telegram", "grimorio")' in fonte
     assert pedidos.e_de_estado("o app está no ar?")          # vai ao cerebro
-    assert "/novo" in (RAIZ / "remoto" / "comandos.py").read_text(encoding="utf-8")
+    from remoto import comandos
+    # 05/10 (conferente 3): texto solto e sempre pedido novo; continuar e
+    # explicito (Responder no app, /responder <id> no Telegram)
+    assert "responder" in comandos.TABELA and "/responder <id>" in _texto()
+    assert "sempre um pedido novo" in _texto()
+    assert "ATIVOS" not in fonte and "_ativo_mais_novo" not in fonte
+    # conferente 5: so a LISTA FIXA e conversa (comparada inteira); o "curto"
+    # por contagem de palavras saiu. As frases que a pagina cita sao as da lista
+    texto = _texto()
+    assert "forma_fixa" in fonte and "e_curto_demais" not in fonte
+    assert not hasattr(pedidos, "CURTO_MAX_PALAVRAS") and "até 3 palavras" not in texto
+    assert "lista fixa" in texto and "comparada inteira" in texto
+    for frase in ("oi", "bom dia", "coordenador?", "qual o progresso?", "alguma novidade?",
+                  "status"):
+        assert f"“{frase}”" in texto and pedidos.forma_fixa(frase) == "conversa", frase
+    for frase in ("ok", "valeu", "obrigado", "beleza"):
+        assert f"“{frase}”" in texto and pedidos.forma_fixa(frase) == "agradecimento", frase
+    for frase in ("reinicie o app", "pode ligar o gerente?"):     # curtos, mas pedidos
+        assert f"“{frase}”" in texto and pedidos.forma_fixa(frase) == "", frase
+
+
+def test_nenhum_texto_do_app_promete_a_regra_do_curto():
+    """Conferente hf1 (05/10/2026): a dica do cartao Pedir (fora da pagina
+    Fluxo) e o CURTO_AVISO diziam "mensagem curta nao abre pedido", e a regra
+    e a lista fixa: "reinicie o app" e "sim" abrem pedido. Confere o app
+    inteiro e o aviso que o servidor devolve, nao so o #biblioteca-fluxo."""
+    proibidas = re.compile(r"mensagem curta|mensagens curtas|texto curto não|curto demais",
+                           re.I)
+    for nome in sorted(p.name for p in APP.glob("*.html")) + sorted(
+            p.name for p in APP.glob("*.js")):
+        achou = proibidas.search((APP / nome).read_text(encoding="utf-8"))
+        assert achou is None, f"{nome}: {achou.group(0) if achou else ''}"
+    assert proibidas.search(pedidos.CURTO_AVISO) is None
+    assert "Agradecimento solto" in pedidos.CURTO_AVISO
+    assert all(f in pedidos.CURTO_AVISO for f in ("ok", "valeu", "obrigado", "beleza"))
+    pedir = HTML[HTML.index('id="pedir-cartao"'):HTML.index("</textarea>",
+                                                             HTML.index('id="pedir-cartao"'))]
+    assert "lista fixa" in pedir and "agradecimento solto" in pedir
+
+
+def test_responder_em_trabalhador_limpo_cobranca_e_contratando():
+    """Conferente 5 (05/10/2026): o que a pagina diz do trabalhador ja limpo,
+    da cobranca do desfecho e do "chamando o trabalhador" e o que o codigo faz."""
+    texto = _texto()
+    troca = inspect.getsource(pedidos.MesaPedidos._substituir_trabalhador)
+    assert "self._contratar(" in troca and "_em_cobranca" in troca and "_bloquear" in troca
+    assert "_substituto_recusado" in inspect.getsource(pedidos.MesaPedidos._contratar)
+    assert "já foi limpa" in texto and "um orquestrador novo" in texto.replace("<b>", "")
+    assert "o seu texto, a última resposta e a sua resposta" in texto
+    assert "falha com o motivo da recusa" in texto
+    assert "A cobrança do desfecho não contrata ninguém" in texto
+    # a cobranca leva a original e a resposta final e a original
+    assert "resposta_cobrada" in inspect.getsource(pedidos.MesaPedidos._continuar)
+    assert "original.rstrip()" in inspect.getsource(pedidos.MesaPedidos._entregue)
+    assert "mandando de volta a resposta original" in texto
+    assert "a original, com o desfecho declarado depois" in texto
+    # a trava: o lento roda fora dela, e o app mostra o estado do meio
+    assert pedidos._ROTULO["contratando"] == "chamando o trabalhador"
+    assert "chamando o trabalhador" in texto and "não se perde" in texto
+    assert "_rodar_os_lentos" in inspect.getsource(pedidos.MesaPedidos.passo)
 
 
 def test_os_numeros_da_pagina_sao_os_do_codigo():

@@ -187,17 +187,21 @@ def test_pedido_vira_item_do_orquestrador_e_aparece_na_conversa(servidor, cerebr
                            {"texto": "conserte o botão de reiniciar do app"}, token)
     assert status == 200 and dados["para"] == "orquestrador" and dados["situacao"] == "recebido"
     assert cerebro_isolado.entradas_novas() == []
+    assert dados["titulo"] == "conserte o botão de reiniciar do app"
+    # 05/10 (conferente 3): texto solto nunca continua; e pedido novo
     status, dados2 = _pedir(servidor, "POST", "/api/coordenador/falar",
                             {"texto": "e o de parar também"}, token)
-    assert dados2["id"] == dados["id"] and dados2["continuacao"] is True
-    status, _ = _pedir(servidor, "POST", "/api/coordenador/falar", {"novo": True}, token)
-    assert status == 200 and pedidos.para_o_app()["novo_assunto"] is True
-    status, dados3 = _pedir(servidor, "POST", "/api/coordenador/falar",
-                            {"texto": "outra coisa"}, token)
-    assert dados3["id"] != dados["id"]
+    assert dados2["id"] != dados["id"] and dados2["continuacao"] is False
+    status, velho = _pedir(servidor, "POST", "/api/coordenador/falar", {"novo": True}, token)
+    assert status == 200 and velho["novo_assunto"] is False        # a casca velha nao quebra
+    assert pedidos.para_o_app()["novo_assunto"] is False
+    status, dados3 = _pedir(servidor, "POST", "/api/coordenador/pedido/" + dados["id"]
+                            + "/responder", {"texto": "e o de parar junto"}, token)
+    assert status == 200 and dados3["id"] == dados["id"]
+    assert dados3["titulo"] == "conserte o botão de reiniciar do app"
     status, conversa = _pedir(servidor, "GET", "/api/coordenador/conversa", token=token)
     assert status == 200 and conversa["propostas"] == []           # o cerebro continua la
-    assert [p["id"] for p in conversa["pedidos"]] == [dados3["id"], dados["id"]]
+    assert [p["id"] for p in conversa["pedidos"]] == [dados2["id"], dados["id"]]
     textos = [m["texto"] for m in conversa["conversa"]]
     assert "conserte o botão de reiniciar do app" in textos and "e o de parar também" in textos
     assert any(m.get("de") == "orquestrador" for m in conversa["conversa"])
@@ -233,10 +237,100 @@ def test_proposta_confirmada_pelo_app_executa_e_a_vencida_nao(servidor, cerebro_
     assert status == 400
 
 
+def _parado_esperando_voce(pedidos, texto="arquive os vídeos no Drive"):
+    """Um pedido que parou esperando o Adrian, com trabalhador (como o cd2e5e0c)."""
+    p = pedidos.registrar(texto, "app", novo=True)
+    with pedidos._TRAVA:
+        dados = pedidos._ler()
+        alvo = next(x for x in dados["pedidos"] if x["id"] == p["id"])
+        alvo.update(situacao="esperando_voce", trabalhador=p["id"],
+                    motivo="bloqueado: falta o login do Drive")
+        pedidos._gravar(dados)
+    return p
+
+
+def test_responder_vai_ao_pedido_parado_pelo_id_e_o_texto_livre_nao(servidor, cerebro_isolado):
+    """v2 (05/10): o pedido que parou so recebe a resposta EXPLICITA."""
+    from coordenador import pedidos
+    token = _parear(servidor)
+    p = _parado_esperando_voce(pedidos)
+    status, solto = _pedir(servidor, "POST", "/api/coordenador/falar",
+                           {"texto": "já loguei no Drive"}, token)
+    assert status == 200 and solto["id"] != p["id"] and solto["continuacao"] is False
+    status, dados = _pedir(servidor, "POST", f"/api/coordenador/pedido/{p['id']}/responder",
+                           {"texto": "já loguei no Drive"}, token)
+    assert status == 200 and dados["id"] == p["id"] and dados["continuacao"] is True
+    alvo = next(x for x in pedidos.para_o_app()["pedidos"] if x["id"] == p["id"])
+    assert alvo["continuar"] is True and alvo["texto"].endswith("já loguei no Drive")
+
+
+def test_responder_erros(servidor, cerebro_isolado):
+    from coordenador import pedidos
+    token = _parear(servidor)
+    p = _parado_esperando_voce(pedidos)
+    rota = f"/api/coordenador/pedido/{p['id']}/responder"
+    assert _pedir(servidor, "POST", rota, {"texto": "  "}, token)[0] == 400
+    assert _pedir(servidor, "POST", rota, {"texto": "x" * 4001}, token)[0] == 400
+    assert _pedir(servidor, "POST", "/api/coordenador/pedido/pedido-00000000/responder",
+                  {"texto": "oi"}, token)[0] == 404
+    conversa = pedidos.registrar("Coordenador?", "app")          # sem trabalhador
+    assert _pedir(servidor, "POST", f"/api/coordenador/pedido/{conversa['id']}/responder",
+                  {"texto": "e então"}, token)[0] == 409
+    # id fora do formato nem chega na rota
+    assert _pedir(servidor, "POST", "/api/coordenador/pedido/../responder",
+                  {"texto": "oi"}, token)[0] == 404
+
+
+def test_responder_com_permissao_de_estado_pendente_e_409(servidor, cerebro_isolado, monkeypatch):
+    """Conferente 3 (defeito 7): "sim, pode ligar" pelo Responder negava a
+    permissao. Texto nao aprova nem nega: 409, e o cartao tem Permitir/Negar."""
+    from coordenador import pedidos
+    token = _parear(servidor)
+    p = _parado_esperando_voce(pedidos)
+    with pedidos._TRAVA:
+        dados = pedidos._ler()
+        alvo = next(x for x in dados["pedidos"] if x["id"] == p["id"])
+        alvo["permissao_estado"] = {"nome": "gerente", "args": ["ligar"], "comando": "gerente ligar",
+                                    "trabalhador": p["id"]}
+        pedidos._gravar(dados)
+    monkeypatch.setattr(pedidos.MESA, "_estado_do", lambda ident: {
+        "situacao": "aguardando_permissao", "pedido_permissao": {"categoria": "estado_do_servidor"}})
+    status, dados = _pedir(servidor, "POST", f"/api/coordenador/pedido/{p['id']}/responder",
+                           {"texto": "sim, pode ligar"}, token)
+    assert status == 409 and "Permitir ou Negar" in str(dados)
+    alvo = next(x for x in pedidos.para_o_app()["pedidos"] if x["id"] == p["id"])
+    assert "sim, pode ligar" not in alvo["texto"] and alvo["permissao_estado"]["comando"] == \
+        "gerente ligar"
+
+
+def test_o_app_tem_um_so_coordenviar_e_o_responder_usa_a_rota():
+    """05/10: havia DUAS `function coordEnviar` em coordenador.js; a segunda
+    (a do texto) vencia, e o "Reiniciar" de um servico virava um pedido."""
+    from pathlib import Path
+    js = (Path(api_http.__file__).resolve().parent / "app" / "coordenador.js").read_text(
+        encoding="utf-8")
+    assert js.count("function coordEnviar(") == 1
+    assert "async function coordEnviar(cmd, valor" in js
+    assert "/api/coordenador/comando" in js[js.index("async function coordEnviar("):][:600]
+    assert "/api/coordenador/pedido/${encodeURIComponent(id)}/responder" in js
+    assert "cloneNode" not in js[js.index("function pedidosDesenhar"):]   # o clone perdia o toque
+    # conferente 3: a permissao de estado tem Permitir/Negar no proprio
+    # cartao (a rota da Equipe), e o "Novo assunto" saiu (todo texto e novo)
+    linha = js[js.index("function pedidoLinha"):][:900]
+    assert "p.permissao_estado" in linha and "pedidoPermissao(p)" in linha
+    permissao = js[js.index("function pedidoPermissao"):][:1500]
+    assert "/api/equipe/${encodeURIComponent(" in permissao and "/permissao`" in permissao
+    assert "Continuação enviada ao mesmo orquestrador" not in js
+    html = (Path(api_http.__file__).resolve().parent / "app" / "index.html").read_text(
+        encoding="utf-8")
+    assert "pedido-novo" not in html and "coord-novo" not in html and "pedido-novo" not in js
+
+
 @pytest.mark.parametrize("metodo,rota,corpo", [
     ("GET", "/api/coordenador/conversa", None),
     ("POST", "/api/coordenador/falar", {"texto": "oi"}),
     ("POST", "/api/coordenador/proposta/0123456789ab", {"decisao": "confirmar"}),
+    ("POST", "/api/coordenador/pedido/pedido-0123abcd/responder", {"texto": "oi"}),
 ])
 def test_rotas_do_cerebro_exigem_pareamento(servidor, cerebro_isolado, metodo, rota, corpo):
     status, _ = _pedir(servidor, metodo, rota, corpo)
@@ -246,6 +340,7 @@ def test_rotas_do_cerebro_exigem_pareamento(servidor, cerebro_isolado, metodo, r
 @pytest.mark.parametrize("rota,corpo", [
     ("/api/coordenador/falar", {"texto": "oi"}),
     ("/api/coordenador/proposta/0123456789ab", {"decisao": "confirmar"}),
+    ("/api/coordenador/pedido/pedido-0123abcd/responder", {"texto": "oi"}),
 ])
 def test_rotas_do_cerebro_que_agem_exigem_acoes(mundo, cerebro_isolado, rota, corpo):
     srv = api_http.criar_servidor("127.0.0.1", 0, local=True)

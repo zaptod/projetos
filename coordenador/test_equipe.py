@@ -40,7 +40,7 @@ def test_gerente_desligado_deixa_a_permissao_automatica_para_o_adrian():
     gerente = GerenteEquipe(mesa=Mesa(), despachante=d, avisar=avisos.append)
     gerente.passo()
     assert d.decisões == [] and d.fundos == []
-    assert "perm-1" in gerente.estado["permissoes"] and avisos
+    assert any(k.startswith("perm-1|") for k in gerente.estado["permissoes"]) and avisos
 
 
 def test_gerente_ligado_aceita_e_retoma_a_permissao_automatica():

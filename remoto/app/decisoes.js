@@ -464,7 +464,9 @@ function decisoesAbrir(id) {
     const b = el("button", {class: "acao decisao-opcao" + (vigente ? " vigente" : ""),
                             "aria-pressed": "false"},
       el("div", {}, o.rotulo + (vigente ? "  · vigente" : "")),
-      o.descricao ? el("div", {class: "fraco"}, o.descricao) : null);
+      o.descricao ? el("div", {class: "fraco"}, o.descricao) : null,
+      // a escolha manda o servidor agir na hora (coordenador/pedidos.py)
+      o.acao_servidor ? el("div", {class: "fraco"}, `o servidor executa: ${o.acao_servidor}`) : null);
     if (item.situacao === "bloqueada") b.disabled = true;
     b.addEventListener("click", () => {
       marcada = o.id;

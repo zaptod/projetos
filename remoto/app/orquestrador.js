@@ -786,13 +786,27 @@ function orqDesenharLimites(d) {
       u.janela_forca_total
         ? el("div", {class: "ok"}, `Janela da força total: faltam menos de `
           + `${u.forca_total_antes_min} min para renovar.`) : null].filter(Boolean));
-    if (u.passou_teto) {
-      aviso.textContent = `Passou do teto: a sessão está em ${Math.round(m.sessao_pct)}%, `
-        + `e o teto é ${u.teto}%. Pela regra, os agentes param.`;
-      aviso.classList.remove("oculto");
-    }
+  }
+  // 05/10 (v2): o teto pode ser o da SEMANA (ou o "rejected"), com a sessão em
+  // 41%: o aviso diz qual (motivo_teto) e quando renova (renova_em), não "a
+  // sessão está em X%". Vale também com a medição velha, se a semana segue no teto.
+  if (u.passou_teto) {
+    aviso.textContent = orqAvisoTeto(u);
+    aviso.classList.remove("oculto");
   }
   orqGrafico(d.historico_uso || [], u.teto);
+}
+
+function orqAvisoTeto(u) {
+  const m = u.medicao || {};
+  const sessao = !u.motivo_teto || /^a sessão/.test(u.motivo_teto);
+  if (sessao && m.sessao_pct != null) {
+    return `Passou do teto: a sessão está em ${Math.round(m.sessao_pct)}%, `
+      + `e o teto é ${u.teto}%. Pela regra, os agentes param.`;
+  }
+  return `Passou do teto: ${u.motivo_teto || "o uso está no teto"}`
+    + (u.renova_em ? `; renova ${orqHoraEpoch(u.renova_em)}` : "")
+    + ". Pela regra, os agentes param.";
 }
 
 function orqSonda(d) {
