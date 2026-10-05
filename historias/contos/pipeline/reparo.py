@@ -122,17 +122,54 @@ def veto_consumido(video_id: str) -> bool:
     return (UMA_PASSADA and passada_gasta(video_id)) or insistente(video_id)
 
 
+# O `feito` de um conserto APLICADO (cenas refeitas, imagens geradas,
+# re-render). Fora daqui: a desistencia ("a IA reprova e nao ha conserto
+# automatico") e as falhas da maquina ("a imagem nova nao veio", "ainda
+# faltam", "falhou").
+_FEITO_DO_CONSERTO = ("refiz", "gerei", "re-renderizei", "consertei")
+
+
+def _e_conserto(feito) -> bool:
+    return str(feito or "").lower().startswith(_FEITO_DO_CONSERTO)
+
+
+def _conserto_da_ficha(ficha: dict) -> bool:
+    if "consertado" in ficha:
+        return bool(ficha["consertado"])
+    # Registro de antes do campo: deduz pelo `feito` que gastou a passada.
+    return _passada_da_ficha(ficha) and _e_conserto(ficha.get("feito"))
+
+
+def consertado(video_id: str) -> bool:
+    """A passada do veto foi gasta com um conserto APLICADO?
+
+    Decisao do Adrian em 05/10/2026 (Grimorio
+    historias/reolhar-depois-do-conserto): a consertada NAO volta a IA, so
+    ganha prioridade sobre a vetada sem conserto no ultimo recurso da
+    postagem. Nunca levanta.
+    """
+    try:
+        ficha = _ler().get(str(video_id)) or {}
+        return (isinstance(ficha, dict) and _passada_da_ficha(ficha)
+                and _conserto_da_ficha(ficha))
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
 def _anotar(video_id: str, motivo: str, feito: str, *,
             passada: bool = False) -> int:
     dados = _ler()
     ficha = dados.setdefault(str(video_id), {"tentativas": 0})
     ja_gasta = _passada_da_ficha(ficha)
+    ja_consertado = _conserto_da_ficha(ficha)
     ficha["tentativas"] = int(ficha.get("tentativas") or 0) + 1
     ficha["quando"] = datetime.now().isoformat(timespec="seconds")
     ficha["motivo"] = str(motivo)[:200]
     ficha["feito"] = feito
-    # A passada, uma vez gasta, fica gasta.
+    # A passada, uma vez gasta, fica gasta. O conserto aplicado tambem: uma
+    # falha da maquina depois dele troca o `feito`, mas nao desfaz o conserto.
     ficha["passada"] = bool(passada) or ja_gasta
+    ficha["consertado"] = ja_consertado or (bool(passada) and _e_conserto(feito))
     _gravar(dados)
     return ficha["tentativas"]
 
@@ -774,4 +811,4 @@ def rodada(*, limite: int = 2, headless: bool = False, log=print) -> dict:
 
 
 __all__ = ["reparar", "rodada", "insistente", "tentativas", "esquecer",
-           "cenas_com_colagem", "TETO_DE_TENTATIVAS"]
+           "consertado", "cenas_com_colagem", "TETO_DE_TENTATIVAS"]

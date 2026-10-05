@@ -650,6 +650,19 @@ def _veto_vencido(alvo) -> bool:
         return False
 
 
+def _consertado(alvo) -> bool:
+    """A passada do veto foi gasta com um conserto APLICADO (cenas refeitas,
+    re-render), e nao com a desistencia da IA?
+
+    A regra mora em `contos.pipeline.reparo.consertado`. Nunca levanta.
+    """
+    try:
+        from contos.pipeline import reparo
+        return reparo.consertado(alvo.id)
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
 def _veto_lembrado(alvo) -> str:
     """O veto da IA ja gravado para este arquivo, se ainda vale. `""` se nao.
 
@@ -905,19 +918,31 @@ def proxima_historia(*, vistoriar: bool = True):
     # agora queima o conserto), e so entao a parte seguinte fora de ordem.
     # A retida que sai vai para a lista "a conferir" (`postar_historia`).
     #
-    # ENTRE AS RETIDAS, A CONSERTADA PRIMEIRO (05/10/2026): o reparo ja
-    # refez as cenas que a IA apontou, e a vetada sem conserto sai com o
-    # defeito que ela viu. Ordenacao ESTAVEL, e so entre retidas: cada uma e
-    # a proxima parte da sua serie (a serie para na primeira barrada), entao
-    # isto nunca fura a ordem de uma serie.
-    retidos.sort(key=lambda a: 0 if _consertada(a) else 1)
+    # ENTRE AS RETIDAS, A CONSERTADA PRIMEIRO. Decisao do Adrian em 05/10/2026
+    # (Grimorio historias/reolhar-depois-do-conserto): "manter uma passada so
+    # — consertada sem nova olhada so ganha prioridade sobre a vetada sem
+    # conserto". Medido no mesmo dia: 57 de 58 partes retidas, 37 consertadas,
+    # e na ordem da fila os `[:3]` caiam em retidas sem conserto nenhum. O
+    # reparo ja refez as cenas que a IA apontou, e a vetada sem conserto sai
+    # com o defeito que ela viu. Consertada por qualquer dos dois registros:
+    # o parecer (`_consertada`: mp4 mais novo que o veto) ou a ficha do
+    # reparo (`_consertado`: a passada foi gasta com conserto APLICADO).
+    # Ordenacao ESTAVEL, e so entre retidas: cada uma e a proxima parte da
+    # sua serie (a serie para na primeira barrada), entao isto nunca fura a
+    # ordem de uma serie; dentro de cada grupo vale a ordem da fila.
+    consertadas = {alvo.id for alvo in retidos
+                   if _consertada(alvo) or _consertado(alvo)}
+    retidos.sort(key=lambda alvo: alvo.id not in consertadas)
     for alvo in retidos[:3]:
         roteiro = R.carregar(alvo.fonte_id)
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
                                           alvo.caminho, roteiro)
         if laudo["ok"]:
             _linha(f"[postar] {alvo.id}: nenhuma parte limpa na fila; sai "
-                   "esta, RETIDA, para o horario nao ficar vazio — e fica "
+                   "esta, RETIDA"
+                   + (" (consertada, sem nova olhada)"
+                      if alvo.id in consertadas else "")
+                   + ", para o horario nao ficar vazio — e fica "
                    "na lista a conferir.")
             return alvo, recusados
     for alvo in vetados[:3]:

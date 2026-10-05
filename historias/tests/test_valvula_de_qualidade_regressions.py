@@ -58,6 +58,8 @@ class _Fila(unittest.TestCase):
         self.m._veto_lembrado = (
             lambda alvo: f"{alvo.id}: veto" if alvo.id in self.vetadas else "")
         self.m._veto_vencido = lambda alvo: alvo.id in self.vencidas
+        self.consertadas = set()
+        self.m._consertado = lambda alvo: alvo.id in self.consertadas
         self.m._parecer_da_ia = lambda *_a, **_k: ""
         self.m._situacao_do_parecer = lambda alvo: (
             "reprovado" if alvo.id in self.vencidas | self.vetadas
@@ -126,6 +128,104 @@ class RetidoSoSaiSemOutroTests(_Fila):
         self.vencidas.add("historia_00032:celular:p05")
         self.quebradas.add("historia_00032:celular:p05")
         self.assertIsNone(self._escolha(fila))
+
+
+class ConsertadaPrimeiroTests(_Fila):
+    """Decisao do Adrian em 05/10/2026 (historias/reolhar-depois-do-conserto):
+    sem nova olhada da IA, a retida CONSERTADA so ganha prioridade sobre a
+    retida sem conserto. Medido no dia: 57 de 58 retidas, 37 consertadas, e o
+    `retidos[:3]` na ordem da fila caia nas sem conserto."""
+
+    def test_consertada_em_quinto_sai_antes_das_sem_conserto(self):
+        fila = [_video(f"historia_{n:05d}", 1) for n in range(20, 25)]
+        self.vencidas.update(v.id for v in fila)
+        self.consertadas.add("historia_00024:celular:p01")
+        self.assertEqual("historia_00024:celular:p01", self._escolha(fila))
+
+    def test_entre_as_consertadas_vale_a_ordem_da_fila(self):
+        fila = [_video(f"historia_{n:05d}", 1) for n in range(20, 25)]
+        self.vencidas.update(v.id for v in fila)
+        self.consertadas.update({"historia_00022:celular:p01",
+                                 "historia_00024:celular:p01"})
+        self.assertEqual("historia_00022:celular:p01", self._escolha(fila))
+
+    def test_consertada_ainda_cede_a_vez_a_parte_limpa(self):
+        fila = [_video("historia_00032", 5), _video("historia_00040", 1)]
+        self.vencidas.add("historia_00032:celular:p05")
+        self.consertadas.add("historia_00032:celular:p05")
+        self.assertEqual("historia_00040:celular:p01", self._escolha(fila))
+
+    def test_consertada_nao_passa_na_frente_da_parte_anterior(self):
+        """A serie espera: a p06 consertada fica atras da p05 sem conserto."""
+        fila = [_video("historia_00032", 5), _video("historia_00032", 6)]
+        self.vencidas.update({"historia_00032:celular:p05",
+                              "historia_00032:celular:p06"})
+        self.consertadas.add("historia_00032:celular:p06")
+        self.assertEqual("historia_00032:celular:p05", self._escolha(fila))
+
+    def test_consertada_continua_antes_da_vetada(self):
+        fila = [_video("historia_00034", 1), _video("historia_00032", 5)]
+        self.vetadas.add("historia_00034:celular:p01")
+        self.vencidas.add("historia_00032:celular:p05")
+        self.consertadas.add("historia_00032:celular:p05")
+        self.assertEqual("historia_00032:celular:p05", self._escolha(fila))
+
+
+class ConsertadoDoReparoTests(unittest.TestCase):
+    """`reparo.consertado`: a passada gasta com conserto APLICADO."""
+
+    def setUp(self):
+        import tempfile
+        from contos.pipeline import reparo
+        self.reparo = reparo
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        _trocar(self, reparo, "REGISTRO", Path(tmp.name) / "_reparos.json")
+
+    def test_cenas_refeitas_e_re_render(self):
+        self.reparo._anotar("a", "a IA reprovou: cena 2: x",
+                            "refiz as cenas [2] e re-renderizei", passada=True)
+        self.assertTrue(self.reparo.consertado("a"))
+
+    def test_desistencia_da_ia_nao_e_conserto(self):
+        self.reparo._anotar("b", "a IA reprovou: x",
+                            "a IA reprova e nao ha conserto automatico",
+                            passada=True)
+        self.assertTrue(self.reparo.passada_gasta("b"))
+        self.assertFalse(self.reparo.consertado("b"))
+
+    def test_falha_da_maquina_nao_e_conserto(self):
+        self.reparo._anotar("c", "a IA reprovou: cena 3: x",
+                            "a imagem nova nao veio; desfiz")
+        self.assertFalse(self.reparo.consertado("c"))
+
+    def test_sem_ficha(self):
+        self.assertFalse(self.reparo.consertado("nenhum"))
+
+    def test_falha_depois_do_conserto_nao_o_desfaz(self):
+        self.reparo._anotar("d", "a IA reprovou: cena 2: x",
+                            "refiz as cenas [2] e re-renderizei", passada=True)
+        self.reparo._anotar("d", "mp4 velho", "falhou: OSError")
+        self.assertTrue(self.reparo.consertado("d"))
+
+    def test_registro_antigo_deduz_pelo_feito(self):
+        import json
+        self.reparo.REGISTRO.write_text(json.dumps({
+            "a": {"tentativas": 1, "feito": "refiz as cenas [2] e re-renderizei"},
+            "b": {"tentativas": 1,
+                  "feito": "a IA reprova e nao ha conserto automatico"},
+            "c": {"tentativas": 1, "feito": "a imagem nova nao veio; desfiz"},
+            "e": {"tentativas": 1, "passada": True,
+                  "feito": "gerei as imagens que faltavam e re-renderizei"}}),
+            encoding="utf-8")
+        self.assertTrue(self.reparo.consertado("a"))
+        self.assertFalse(self.reparo.consertado("b"))
+        self.assertFalse(self.reparo.consertado("c"))
+        self.assertTrue(self.reparo.consertado("e"))
+
+    def test_registro_ilegivel_nao_levanta(self):
+        self.reparo.REGISTRO.write_text("{nao e json", encoding="utf-8")
+        self.assertFalse(self.reparo.consertado("a"))
 
 
 class RetencaoTests(unittest.TestCase):
